@@ -207,6 +207,8 @@ Decided later on 24 September 2026:
 - Cost rows: the icon as tall as the gauge, no good name, no percentage; the unit cost on a mini screen in LED segments with a smaller /unit, and "Market price £Y" under it.
 - Close and Location are each a line of the title tall.
 - The power line is left out; the diagnostics say the same.
+- Economics: value added in production and transport costs open to show their parts, each on its own screen; a printed £ before every screen, all one width; revenue (if sold) and costs as two bars; more room for the icons; more space after the modifiers and after the economics.
+- Labour and Wages' doors are weathered: grime, chips to primer and rust, scuffs, hinges, a door closer, a pressed panel.
 - Economics · per turn is rebuilt on accurate figures (`building_economics.gd`, reusing the engine's quoting helpers): Value added in production, Transport costs (by how each side goes, the intermediary's fee where it trades), Net Value Added; a bar of where each £ goes, costs in shades of red and the net value added in green, icons over the slices; a lamp with its icon for each side's transport; "Inputs free" and "Output free to ship" flags; no section for a building with neither inputs nor outputs.
 
 Still open:

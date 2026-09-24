@@ -1365,36 +1365,117 @@ function labourDoorGeometry() {
   const win = [lx + lw * 0.26, ly + lh * 0.09, lw * 0.48, lh * 0.2];
   return { lx, ly, lw, lh, plate, win };
 }
+/** Weathered paint for a door leaf or jamb (w × h): mottling, grime running down from the top, dirt
+ * gathering at the foot, chips through to primer and rust (thicker along the edges and low down), and
+ * scuffs. Returns the colour, and a bump map where the chips are cut into the paint. `wear` scales it. */
+function weatheredPaint(w, h, base, { wear = 1, grip = null, hinges = [] } = {}) {
+  const chips = [];
+  const colour = canvas2d(w, h, (c) => {
+    c.fillStyle = base; c.fillRect(0, 0, w, h);
+    for (let i = 0; i < 46 * wear; i++) {                                  // broad mottling
+      const x = rand() * w, y = rand() * h, r = 8 + rand() * 30, dark = rand() < 0.55;
+      const grd = c.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, dark ? `rgba(12,16,18,${0.05 + rand() * 0.05})` : `rgba(210,220,222,${0.03 + rand() * 0.04})`);
+      grd.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = grd; c.fillRect(x - r, y - r, 2 * r, 2 * r);
+    }
+    for (let i = 0; i < 34 * wear; i++) {                                  // grime run down from the top
+      const x = rand() * w, y0 = rand() * h * 0.5, len = 20 + rand() * h * 0.6, wd = 0.8 + rand() * 2.4;
+      const grd = c.createLinearGradient(0, y0, 0, y0 + len);
+      grd.addColorStop(0, `rgba(20,22,20,${0.06 + rand() * 0.07})`); grd.addColorStop(1, 'rgba(20,22,20,0)');
+      c.fillStyle = grd; c.fillRect(x, y0, wd, len);
+    }
+    const foot = c.createLinearGradient(0, h * 0.55, 0, h);                 // dirt at the foot
+    foot.addColorStop(0, 'rgba(40,32,22,0)'); foot.addColorStop(1, `rgba(40,32,22,${0.42 * wear})`);
+    c.fillStyle = foot; c.fillRect(0, h * 0.55, w, h * 0.45);
+    if (grip) {                                                            // hands round the handle
+      const [gx, gy] = grip, grd = c.createRadialGradient(gx, gy, 0, gx, gy, 24);
+      grd.addColorStop(0, 'rgba(18,20,22,0.34)'); grd.addColorStop(1, 'rgba(18,20,22,0)');
+      c.fillStyle = grd; c.fillRect(gx - 24, gy - 24, 48, 48);
+    }
+    for (const hy of hinges) {                                             // rust run down from the hinges
+      const grd = c.createLinearGradient(0, hy, 0, hy + 26);
+      grd.addColorStop(0, 'rgba(120,58,24,0.55)'); grd.addColorStop(1, 'rgba(120,58,24,0)');
+      c.fillStyle = grd; c.fillRect(1, hy, 3 + rand() * 2, 26);
+    }
+    // Chips, as many as the surface is large: mostly along the edges and down at the foot, where
+    // boots, trolleys and the frame catch it; grey primer showing, rusted at the heart of the larger ones.
+    const chipCount = Math.round(28 * wear * (w * h) / 40000 + 10 * wear * (w + h) / 400);
+    for (let i = 0; i < chipCount; i++) {
+      const edge = rand() < 0.7;
+      const x = edge ? (rand() < 0.5 ? rand() * 5 : w - rand() * 5) : rand() * w;
+      const y = edge ? rand() * h : h * (0.6 + rand() * 0.4);
+      const r = 0.5 + rand() * (edge ? 1.8 : 1.3), pts = [];
+      for (let k = 0; k < 7; k++) { const a = k / 7 * Math.PI * 2, rr = r * (0.55 + rand() * 0.6); pts.push([x + Math.cos(a) * rr, y + Math.sin(a) * rr * 0.8]); }
+      chips.push(pts);
+      c.fillStyle = `rgba(${128 + rand() * 20},${132 + rand() * 18},${128 + rand() * 16},0.6)`;
+      c.beginPath(); pts.forEach(([px, py], k) => (k ? c.lineTo(px, py) : c.moveTo(px, py))); c.closePath(); c.fill();
+      if (r > 1.2 && rand() < 0.5) { c.fillStyle = `rgba(${86 + rand() * 24},${42 + rand() * 14},${20 + rand() * 8},0.75)`; c.beginPath(); c.arc(x, y, r * 0.5, 0, Math.PI * 2); c.fill(); }
+    }
+    for (let i = 0; i < 90 * wear; i++) {                                  // scuffs, most of them low
+      const x = rand() * w, y = h * (rand() < 0.7 ? 0.62 + rand() * 0.38 : rand()), a = (rand() - 0.5) * 0.9, l = 3 + rand() * 12;
+      c.strokeStyle = rand() < 0.6 ? `rgba(196,200,198,${0.08 + rand() * 0.14})` : `rgba(10,10,10,${0.1 + rand() * 0.14})`;
+      c.lineWidth = 0.5 + rand() * 0.5; c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); c.stroke();
+    }
+    const lock = c.createLinearGradient(w - 8, 0, w, 0);                   // the lock edge rubbed bright
+    lock.addColorStop(0, 'rgba(200,205,205,0)'); lock.addColorStop(1, 'rgba(200,205,205,0.14)');
+    c.fillStyle = lock; c.fillRect(w - 8, h * 0.3, 8, h * 0.4);
+  });
+  const bump = canvas2d(w, h, (c) => {
+    c.fillStyle = '#808080'; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#4a4a4a';
+    for (const pts of chips) { c.beginPath(); pts.forEach(([px, py], k) => (k ? c.lineTo(px, py) : c.moveTo(px, py))); c.closePath(); c.fill(); }
+  });
+  return { colour, bump };
+}
+
+/** Diamond tread plate for a threshold (w × h): raised lozenges on worn steel. */
+function treadPlate(w, h) {
+  return canvas2d(w, h, (c) => {
+    c.fillStyle = '#7c8185'; c.fillRect(0, 0, w, h);
+    for (let y = 1; y < h; y += 3.2) for (let x = (Math.round(y / 3.2) % 2) * 3; x < w; x += 6) {
+      c.fillStyle = 'rgba(220,224,226,0.55)'; c.beginPath(); c.ellipse(x, y, 1.9, 0.7, 0.6, 0, Math.PI * 2); c.fill();
+    }
+    const dirt = c.createLinearGradient(0, 0, w, 0); dirt.addColorStop(0, 'rgba(40,32,22,0.35)'); dirt.addColorStop(0.5, 'rgba(40,32,22,0.1)'); dirt.addColorStop(1, 'rgba(40,32,22,0.35)');
+    c.fillStyle = dirt; c.fillRect(0, 0, w, h);
+  });
+}
+
 function labourDoor(lit) {
   const { W, H, M, jamb } = LDOOR, { lx, ly, lw, lh, plate, win } = labourDoorGeometry(), g = new THREE.Group();
   const at = (m, x, z, y = 0) => { m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; g.add(m); return m; };
-  const jambMat = new THREE.MeshStandardMaterial({ color: 0x3a3f45, map: noiseTexture(18, 60, 120), metalness: 0.6, roughness: 0.5, envMap: studioEnv, envMapIntensity: 0.6 });
-  // The jamb: a steel channel down each side and across the head, and a threshold strip at the foot.
+  const [wx, wy, ww, wh] = win, [px, py, pw, ph] = plate;
+  const hingeYs = [ly + lh * 0.1, ly + lh * 0.5, ly + lh * 0.88];
+  const hx = lx + lw - 16, hz = ly + lh * 0.5;
+  // The jamb: a steel channel down each side and across the head, painted darker and as worn, with a
+  // tread-plate threshold at the foot.
+  const jambPaint = weatheredPaint(jamb, H - 2 * M, '#343a40', { wear: 0.5 });
+  const jambMat = new THREE.MeshStandardMaterial({ map: faceTexture(jambPaint.colour, jamb, H - 2 * M), bumpMap: faceTexture(jambPaint.bump, jamb, H - 2 * M, false), bumpScale: 0.6, metalness: 0.55, roughness: 0.55, envMap: studioEnv, envMapIntensity: 0.6 });
+  const headPaint = weatheredPaint(W - 2 * M, jamb, '#343a40', { wear: 0.4 });
+  const headMat = new THREE.MeshStandardMaterial({ map: faceTexture(headPaint.colour, W - 2 * M, jamb), metalness: 0.55, roughness: 0.55, envMap: studioEnv, envMapIntensity: 0.6 });
   at(new THREE.Mesh(extrude(rrShape(jamb, H - 2 * M, 2), 7, 1.2, 1, 2), jambMat), M + jamb / 2, H / 2);
   at(new THREE.Mesh(extrude(rrShape(jamb, H - 2 * M, 2), 7, 1.2, 1, 2), jambMat), W - M - jamb / 2, H / 2);
-  at(new THREE.Mesh(extrude(rrShape(W - 2 * M, jamb, 2), 7.5, 1.2, 1, 2), jambMat), W / 2, M + jamb / 2);
-  at(new THREE.Mesh(extrude(rrShape(W - 2 * M - 2 * jamb, 5, 1), 1.5, 0.8, 0.6, 2), MAT.screw), W / 2, H - M - 2.5);
-  // The leaf: painted steel, worn at its lock edge and scuffed near its foot; the window cut through it.
-  const paint = canvas2d(lw, lh, (c) => {
-    c.fillStyle = '#4b6470'; c.fillRect(0, 0, lw, lh);
-    for (let i = 0; i < lw * lh / 60; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '10,16,20'},${0.015 + rand() * 0.03})`; c.fillRect(rand() * lw, rand() * lh, 1 + rand() * 3, 1 + rand() * 3); }
-    for (let i = 0; i < 26; i++) {                                         // scuffs, low down
-      const x = rand() * lw, y = lh * (0.55 + rand() * 0.2), a = rand() * Math.PI, l = 3 + rand() * 10;
-      c.strokeStyle = `rgba(200,205,208,${0.08 + rand() * 0.12})`; c.lineWidth = 0.7;
-      c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); c.stroke();
-    }
-    for (let i = 0; i < 18; i++) {                                         // paint rubbed off the lock edge
-      c.fillStyle = `rgba(150,156,160,${0.2 + rand() * 0.3})`; c.fillRect(lw - 2 - rand() * 4, lh * (0.35 + rand() * 0.3), 1 + rand() * 2, 2 + rand() * 6);
-    }
-    const shade = c.createLinearGradient(0, 0, lw, 0); shade.addColorStop(0, 'rgba(0,0,0,0.12)'); shade.addColorStop(0.15, 'rgba(0,0,0,0)');
-    c.fillStyle = shade; c.fillRect(0, 0, lw, lh);
-  });
+  at(new THREE.Mesh(extrude(rrShape(W - 2 * M, jamb, 2), 7.5, 1.2, 1, 2), headMat), W / 2, M + jamb / 2);
+  const tw = W - 2 * M - 2 * jamb, tread = new THREE.MeshStandardMaterial({ map: faceTexture(treadPlate(tw, 5), tw, 5), metalness: 0.85, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
+  at(new THREE.Mesh(extrude(rrShape(tw, 5, 1), 1.5, 0.8, 0.6, 2), [tread, MAT.screw]), W / 2, H - M - 2.5);
+  // The leaf: weathered paint over steel, the window cut through it, a pressed panel below the window.
+  const paint = weatheredPaint(lw, lh, '#4b5f68', { grip: [hx - lx, hz - ly], hinges: hingeYs.map((y) => y - ly + 8) });
   const leafShape = rrShape(lw, lh, 2);
-  leafShape.holes.push(rr(new THREE.Path(), win[2], win[3], 2, win[0] + win[2] / 2 - (lx + lw / 2), -(win[1] + win[3] / 2 - (ly + lh / 2))));
-  const leafMat = new THREE.MeshStandardMaterial({ map: faceTexture(paint, lw, lh), metalness: 0.45, roughness: 0.55, envMap: studioEnv, envMapIntensity: 0.5 });
+  leafShape.holes.push(rr(new THREE.Path(), ww, wh, 2, wx + ww / 2 - (lx + lw / 2), -(wy + wh / 2 - (ly + lh / 2))));
+  const leafMat = new THREE.MeshStandardMaterial({ map: faceTexture(paint.colour, lw, lh), bumpMap: faceTexture(paint.bump, lw, lh, false), bumpScale: 0.8, metalness: 0.4, roughness: 0.6, envMap: studioEnv, envMapIntensity: 0.5 });
   at(new THREE.Mesh(extrude(leafShape, 3, 1, 0.8, 2), [leafMat, jambMat]), lx + lw / 2, ly + lh / 2);
-  // The window: wired glass set back in a steel bead.
-  const [wx, wy, ww, wh] = win;
+  const panelTop = wy + wh + 12, panelBottom = py - 10, pnl = rrShape(lw - 22, panelBottom - panelTop, 3);
+  pnl.holes.push(rr(new THREE.Path(), lw - 28, panelBottom - panelTop - 6, 2));
+  at(new THREE.Mesh(extrude(pnl, 0.6, 0.5, 0.4, 2), leafMat), lx + lw / 2, (panelTop + panelBottom) / 2, 4.2);
+  // Three barrel hinges on the hinge side, and a door closer across the head.
+  const hingeMat = new THREE.MeshStandardMaterial({ color: 0x5b5a57, map: noiseTexture(30, 40, 30), metalness: 0.8, roughness: 0.5, envMap: studioEnv, envMapIntensity: 0.7 });
+  for (const y of hingeYs) {
+    at(new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 17, 16).rotateX(Math.PI / 2), hingeMat), lx - 0.5, y + 8, 4);
+    at(new THREE.Mesh(extrude(rrShape(7, 15, 1), 0.5, 0.4, 0.3, 1), hingeMat), lx + 4, y + 8, 4.8);
+  }
+  const closer = new THREE.MeshStandardMaterial({ color: 0x6f757b, map: noiseTexture(30, 60, 30), metalness: 0.8, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.7 });
+  at(new THREE.Mesh(extrude(rrShape(36, 8, 2.5), 5, 1.4, 1.1, 3), closer), lx + 26, ly + 7, 5);
+  at(new THREE.Mesh(extrude(rrShape(30, 2.4, 1), 1.2, 0.5, 0.4, 2), closer), lx + 52, ly + 3, 9.5);
+  // The window: grimy wired glass set back in a steel bead screwed at its corners.
   const glass = canvas2d(ww, wh, (c) => {
     if (lit) {
       const warm = c.createRadialGradient(ww * 0.45, wh * 0.55, 0, ww / 2, wh / 2, Math.max(ww, wh) * 0.75);
@@ -1407,31 +1488,40 @@ function labourDoor(lit) {
     c.fillRect(0, 0, ww, wh);
     c.strokeStyle = lit ? 'rgba(70,44,16,0.45)' : 'rgba(190,200,210,0.22)'; c.lineWidth = 0.6;
     for (let d = -wh; d < ww + wh; d += 6) { c.beginPath(); c.moveTo(d, 0); c.lineTo(d + wh, wh); c.moveTo(d + wh, 0); c.lineTo(d, wh); c.stroke(); }
+    for (let i = 0; i < 9; i++) {                                          // smudges and grime in the corners
+      const x = rand() * ww, y = rand() * wh, r = 3 + rand() * 9, grd = c.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, lit ? 'rgba(80,50,20,0.18)' : 'rgba(150,160,160,0.08)'); grd.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = grd; c.fillRect(x - r, y - r, 2 * r, 2 * r);
+    }
+    const rim = c.createRadialGradient(ww / 2, wh / 2, Math.min(ww, wh) * 0.3, ww / 2, wh / 2, Math.max(ww, wh) * 0.7);
+    rim.addColorStop(0, 'rgba(30,26,20,0)'); rim.addColorStop(1, 'rgba(30,26,20,0.35)');
+    c.fillStyle = rim; c.fillRect(0, 0, ww, wh);
     const glare = c.createLinearGradient(0, 0, ww, wh);
-    glare.addColorStop(0.2, 'rgba(255,255,255,0)'); glare.addColorStop(0.32, `rgba(255,255,255,${lit ? 0.18 : 0.12})`); glare.addColorStop(0.44, 'rgba(255,255,255,0)');
+    glare.addColorStop(0.2, 'rgba(255,255,255,0)'); glare.addColorStop(0.32, `rgba(255,255,255,${lit ? 0.16 : 0.1})`); glare.addColorStop(0.44, 'rgba(255,255,255,0)');
     c.fillStyle = glare; c.fillRect(0, 0, ww, wh);
   });
   const glassMat = lit
     ? new THREE.MeshBasicMaterial({ map: faceTexture(glass, ww, wh), toneMapped: false })
-    : new THREE.MeshPhysicalMaterial({ map: faceTexture(glass, ww, wh), roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.1, envMap: studioEnv, envMapIntensity: 0.6 });
+    : new THREE.MeshPhysicalMaterial({ map: faceTexture(glass, ww, wh), roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.15, envMap: studioEnv, envMapIntensity: 0.55 });
   const pane = new THREE.Mesh(extrude(rrShape(ww, wh, 1), 0.2), glassMat); pane.receiveShadow = true; pane.position.set(wx + ww / 2, 1.2, wy + wh / 2); g.add(pane);
-  const bead = rrShape(ww + 7, wh + 7, 3); bead.holes.push(rr(new THREE.Path(), ww - 1, wh - 1, 1));
-  at(new THREE.Mesh(extrude(bead, 1.5, 0.9, 0.7, 2), MAT.screw), wx + ww / 2, wy + wh / 2, 3.8);
-  // The handle: a round rose and a lever towards the hinge side.
-  const chrome = new THREE.MeshStandardMaterial({ color: 0xc2c7cc, metalness: 1, roughness: 0.28, envMap: studioEnv, envMapIntensity: 1 });
-  const hx = lx + lw - 16, hz = ly + lh * 0.5;
+  const bead = rrShape(ww + 8, wh + 8, 3); bead.holes.push(rr(new THREE.Path(), ww - 1, wh - 1, 1));
+  at(new THREE.Mesh(extrude(bead, 1.5, 0.9, 0.7, 2), hingeMat), wx + ww / 2, wy + wh / 2, 3.8);
+  for (const [sx, sy] of [[wx - 1.5, wy - 1.5], [wx + ww + 1.5, wy - 1.5], [wx - 1.5, wy + wh + 1.5], [wx + ww + 1.5, wy + wh + 1.5]]) { const sc = screw(1.6); sc.position.set(sx, 7.4, sy); g.add(sc); }
+  // The handle: a worn chrome rose and a lever towards the hinge side.
+  const chrome = new THREE.MeshStandardMaterial({ color: 0x8e9398, map: noiseTexture(34, 70, 30), metalness: 1, roughness: 0.42, envMap: studioEnv, envMapIntensity: 0.7 });
   at(new THREE.Mesh(new THREE.CylinderGeometry(6.5, 6.8, 2.2, 28), chrome), hx, hz, 5);
   at(new THREE.Mesh(extrude(rrShape(30, 5.5, 2.6), 2.8, 1.2, 1, 3), chrome), hx - 13, hz, 6);
-  // The kick plate: brushed steel, screwed at its corners.
-  const [px, py, pw, ph] = plate;
+  // The kick plate: brushed steel, scuffed by boots, screwed at its corners.
   const brushed = canvas2d(pw, ph, (c) => {
-    c.fillStyle = '#b9bfc5'; c.fillRect(0, 0, pw, ph);
+    c.fillStyle = '#a3a9ae'; c.fillRect(0, 0, pw, ph);
     for (let i = 0; i < ph * 7; i++) { const y = rand() * ph; c.strokeStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '60,66,72'},${0.05 + rand() * 0.1})`; c.lineWidth = 0.5; c.beginPath(); c.moveTo(rand() * pw * 0.3, y); c.lineTo(pw * (0.5 + rand() * 0.5), y); c.stroke(); }
-    for (let i = 0; i < 10; i++) { const x = rand() * pw, y = rand() * ph; c.strokeStyle = 'rgba(40,44,48,0.18)'; c.lineWidth = 0.6; c.beginPath(); c.moveTo(x, y); c.lineTo(x + 4 + rand() * 8, y + (rand() - 0.5) * 3); c.stroke(); }
+    for (let i = 0; i < 26; i++) { const x = rand() * pw, y = ph * (0.3 + rand() * 0.7); c.strokeStyle = `rgba(30,30,28,${0.12 + rand() * 0.18})`; c.lineWidth = 0.6 + rand() * 0.8; c.beginPath(); c.moveTo(x, y); c.lineTo(x + 4 + rand() * 14, y + (rand() - 0.5) * 4); c.stroke(); }
+    const dirt = c.createLinearGradient(0, ph * 0.3, 0, ph); dirt.addColorStop(0, 'rgba(50,40,28,0)'); dirt.addColorStop(1, 'rgba(50,40,28,0.42)');
+    c.fillStyle = dirt; c.fillRect(0, 0, pw, ph);
   });
-  const kick = new THREE.MeshStandardMaterial({ map: faceTexture(brushed, pw, ph), metalness: 0.9, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.8 });
+  const kick = new THREE.MeshStandardMaterial({ map: faceTexture(brushed, pw, ph), metalness: 0.9, roughness: 0.38, envMap: studioEnv, envMapIntensity: 0.8 });
   at(new THREE.Mesh(extrude(rrShape(pw, ph, 2), 0.6, 0.6, 0.5, 2), [kick, MAT.screw]), px + pw / 2, py + ph / 2, 4);
-  for (const [sx, sy] of [[px + 5, py + 5], [px + pw - 5, py + 5], [px + 5, py + ph - 5], [px + pw - 5, py + ph - 5]]) { const s = screw(2.4); s.position.set(sx, 5.4, sy); g.add(s); }
+  for (const [sx, sy] of [[px + 5, py + 5], [px + pw - 5, py + 5], [px + 5, py + ph - 5], [px + pw - 5, py + ph - 5]]) { const sc = screw(2.4); sc.position.set(sx, 5.4, sy); g.add(sc); }
   g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
   return g;
 }

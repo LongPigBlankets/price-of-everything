@@ -681,11 +681,13 @@ func _test_bdp_v3_rules() -> void:
 		and Econ.transport_tone(1.0, 0.0) == "bad" and Econ.transport_tone(0.0, 0.0) == "ok",
 		"bdp v3: a transport lamp is green under 3% of its goods' value, amber under 8%, red above")
 	var Bar = load("res://scripts/bdp_v3_value_bar.gd")
-	var gain: Array = Bar.slices_for({"output_value": 100.0, "input_value": 50.0, "labour": 20.0, "upkeep": 10.0, "transport": 5.0, "net_value_added": 15.0})
-	var loss: Array = Bar.slices_for({"output_value": 100.0, "input_value": 80.0, "labour": 20.0, "upkeep": 10.0, "transport": 10.0, "net_value_added": -20.0})
-	_check(gain.size() == 5 and gain[-1].key == "value" and is_equal_approx(float(gain[-1].to), 1.0) and is_equal_approx(float(gain[0].to), 0.5)
-		and loss.size() == 4 and loss.all(func(x: Dictionary) -> bool: return x.key != "value") and is_equal_approx(float(loss[-1].to), 1.0),
-		"bdp v3: the value bar runs the costs then the net value added across the output's value, and the costs alone at a loss")
+	var steel_id := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	var gain: Array = Bar.rows_for({"outputs": [{"good_id": steel_id, "value": 100.0}], "sold": false, "input_value": 50.0, "labour": 20.0, "upkeep": 10.0, "transport": 5.0})
+	var loss: Array = Bar.rows_for({"outputs": [{"good_id": steel_id, "value": 100.0}], "sold": true, "input_value": 80.0, "labour": 20.0, "upkeep": 10.0, "transport": 10.0})
+	_check(gain[0].label == "Revenue if sold" and is_equal_approx(float(gain[0].slices[-1].to), 1.0) and is_equal_approx(float(gain[1].slices[-1].to), 0.85)
+		and gain[1].slices.size() == 4 and loss[0].label == "Revenue" and is_equal_approx(float(loss[0].slices[-1].to), 100.0 / 120.0)
+		and is_equal_approx(float(loss[1].slices[-1].to), 1.0),
+		"bdp v3: revenue and costs are two bars on one scale, the larger of the two filling it")
 	var econ_iids: Array = []
 	for pair in [["b_028", "r_225"], ["b_001", "r_001"], ["b_003", "r_004"], ["b_007", "r_009"]]:
 		econ_iids.append(BuildingState.add_building(pair[0], pair[1], "tile_5_10", MatchState.LOCAL_PLAYER, "v3_econ_" + pair[1]))
@@ -895,13 +897,28 @@ func _test_bdp_v3_panel() -> void:
 	_check(panel.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text.contains("ready to draw from the grid") and l.is_visible_in_tree()).is_empty(),
 		"bdp v3: the power line is left out, the diagnostics say the same")
 	var econ_card: Control = panel.find_child("EconomicsV3", true, false)
-	var econ_leds: Array = econ_card.find_children("BdpV3Led*", "", true, false) if econ_card != null else []
+	var shown_leds := func() -> Array:
+		return econ_card.find_children("BdpV3Led*", "", true, false).filter(func(n: Control) -> bool: return n.is_visible_in_tree()) if econ_card != null else []
+	await get_tree().process_frame
+	var closed_leds: int = shown_leds.call().size()
+	var va_box: Control = econ_card.find_child("ValueAdded", true, false) if econ_card != null else null
+	if va_box != null:
+		var click := InputEventMouseButton.new()
+		click.button_index = MOUSE_BUTTON_LEFT
+		click.pressed = true
+		va_box.get_node("Head").gui_input.emit(click)
+	var open_leds: int = shown_leds.call().size()
+	var pounds: Array = econ_card.find_children("MoneyLed", "", true, false) if econ_card != null else []
 	var econ_bar: Control = econ_card.find_child("BdpV3ValueBar", true, false) if econ_card != null else null
 	var econ_lamps: Array = econ_card.find_children("TransportLamp", "", true, false) if econ_card != null else []
-	_check(econ_card != null and econ_card.find_child("ValueAdded", true, false) != null
-		and econ_card.find_child("Transport", true, false) != null and econ_card.find_child("NetValueAdded", true, false) != null
-		and econ_leds.size() == 3 and econ_bar != null and econ_bar.slice_keys().size() >= 4 and econ_lamps.size() == 2,
-		"bdp v3: economics shows value added in production, transport costs and net value added on LED screens, the value bar and two transport lamps (%d LEDs, %d lamps)" % [econ_leds.size(), econ_lamps.size()])
+	_check(econ_card != null and closed_leds == 3 and open_leds == 7 and pounds.size() >= 7
+		and econ_card.find_child("Transport", true, false) != null and econ_card.find_child("NetValueAdded", true, false) != null,
+		"bdp v3: value added in production and transport open to show their parts, every figure an LED screen after a £ (%d shown closed, %d with value added open)" % [closed_leds, open_leds])
+	_check(econ_bar != null and econ_bar.row_label(0) == "Revenue if sold" and econ_bar.row_keys(0).size() >= 1
+		and econ_bar.row_keys(1).has("inputs") and econ_bar.row_keys(1).has("labour") and econ_lamps.size() == 2,
+		"bdp v3: revenue (if sold) and costs show as two bars, and each side's transport has a lamp (%s | %s)" % [econ_bar.row_keys(0) if econ_bar != null else [], econ_bar.row_keys(1) if econ_bar != null else []])
+	if va_box != null:
+		panel._v3_econ_open.clear()
 	var line_h: float = load("res://scripts/bdp_v3_title.gd").line_height()
 	var key_px: float = panel._close_key.size.y * load("res://scripts/bdp_v3_key.gd").KEY_SIDE / load("res://scripts/bdp_v3_key.gd").TEXTURE_SIDE
 	_check(absf(key_px - line_h) < 1.5 and absf((panel._pin_key.position.y - panel._close_key.position.y) - load("res://scripts/bdp_v3_title.gd").line_pitch()) < 1.5,

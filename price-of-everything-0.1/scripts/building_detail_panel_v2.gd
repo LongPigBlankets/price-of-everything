@@ -2838,6 +2838,11 @@ func _v3_modifiers(mod: Dictionary, total: int, by_cat: Dictionary) -> void:
 	_fill_modifiers(vb, total, by_cat)
 	sheet.visible = _v3_modifiers_open
 	_body.add_child(sheet)
+	var gap := Control.new()
+	gap.name = "ModifiersGap"
+	gap.custom_minimum_size = Vector2(0.0, V3_MONEY_GAP)
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_body.add_child(gap)
 	for l: Label in sheet.find_children("*", "Label", true, false):
 		l.add_theme_color_override("font_color", _v3_ink(l.get_theme_color("font_color")))
 	key.toggled.connect(func(open: bool) -> void:
@@ -2941,37 +2946,58 @@ func _add_carried_rows(vb: VBoxContainer) -> float:
 	return financing_per_turn
 
 ## v3's economics (BuildingEconomics.per_turn), on the frame's steel:
-##   Value added in production   its output less inputs, labour and upkeep, the parts listed under it;
-##   Transport costs             bringing its inputs in and taking its output to market, by how each goes;
+##   Value added in production   its output less inputs, labour and upkeep; opens to show each;
+##   Transport costs             bringing its inputs in and taking its output to market; opens to show
+##                               each side's cost by how it goes;
 ##   Net Value Added             the first less the second;
-## each figure on a mini screen in LED segments; then the bar of where each £ of output goes; then a lamp
-## for each side's transport, with its icon, lit by transport's share of that side's goods (or flagged
-## free: a mine's inputs, a power plant's output). Loan repayments and stored goods follow, as in v2.
+## every figure on a mini screen in LED segments after a printed £ (results green, or red below zero;
+## costs red); then its revenue and its costs as two bars on one scale; then a lamp for each side's
+## transport, with its icon, lit by transport's share of that side's goods (or flagged free: a mine's
+## inputs, a power plant's output). Loan repayments and stored goods follow, as in v2.
 const V3_ECON_ICON_PX := 30.0
+const V3_ECON_INDENT := 22.0
+## The space the money frame leaves after the modifiers and after the economics.
+const V3_MONEY_GAP := 14.0
+## Which of v3's economics rows are open, kept across rebuilds.
+var _v3_econ_open := {}
+## The digits every economics screen shows, so they are one width and their £ signs line up.
+var _v3_led_digits := 0
 
 func _build_economics_v3(econ: Dictionary) -> PanelContainer:
 	var card := _make_card()
 	card.name = "EconomicsV3"
 	var bare := StyleBoxEmpty.new()
 	bare.set_content_margin_all(4)
+	bare.content_margin_bottom = 4 + V3_MONEY_GAP
 	card.add_theme_stylebox_override("panel", bare)
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", DS.SP["MD"])
-	var output_label := "Output" if bool(econ.get("sold", true)) else "Output (if sold)"
-	var parts := PackedStringArray(["%s %s" % [output_label, _money(float(econ.output_value))]])
+	var ok: Color = DS.PALETTE["OK"]
+	var bad: Color = DS.PALETTE["DANGER"]
+	var made: Array = [["Output (if sold)" if not bool(econ.get("sold", true)) else "Output", float(econ.output_value), ok]]
 	if not bool(econ.get("inputs_free", false)):
-		parts.append("Inputs %s" % _money(float(econ.input_value)))
-	parts.append("Labour %s" % _money(float(econ.labour)))
-	parts.append("Upkeep %s" % _money(float(econ.upkeep)))
-	vb.add_child(_v3_econ_row("ValueAdded", "Value added in production", " − ".join(parts), float(econ.value_added)))
-	var sides := PackedStringArray()
-	for side in [["In", "methods_in", "transport_in"], ["Out", "methods_out", "transport_out"]]:
-		var methods: Array = econ.get(side[1], [])
-		if methods.is_empty():
-			continue
-		sides.append("%s: %s" % [side[0], " · ".join(methods.map(func(m: Dictionary) -> String: return "%s %s" % [m.name, _money(float(m.cost))]))])
-	vb.add_child(_v3_econ_row("Transport", "Transport costs", " — ".join(sides) if not sides.is_empty() else "None", -float(econ.transport)))
-	vb.add_child(_v3_econ_row("NetValueAdded", "Net Value Added", "Before tax", float(econ.net_value_added), true))
+		made.append(["Inputs", float(econ.input_value), bad])
+	made.append(["Labour", float(econ.labour), bad])
+	made.append(["Upkeep", float(econ.upkeep), bad])
+	var va := float(econ.value_added)
+	var moved: Array = []
+	for side in [["Inputs", "methods_in"], ["Outputs", "methods_out"]]:
+		for m: Dictionary in econ.get(side[1], []):
+			moved.append(["%s · %s" % [side[0], m.name], float(m.cost), bad])
+	var transport := float(econ.transport)
+	var figures: Array = [va, transport, float(econ.net_value_added)]
+	for part: Array in made + moved:
+		figures.append(float(part[1]))
+	_v3_led_digits = 0
+	for f: float in figures:
+		_v3_led_digits = maxi(_v3_led_digits, BdpV3Led.cells_for("%.2f" % f).size())
+	vb.add_child(_v3_econ_accordion("ValueAdded", "value_added", "Value added in production", va, ok if va >= 0.0 else bad, made))
+	vb.add_child(_v3_econ_accordion("Transport", "transport", "Transport costs", transport, bad if transport > 0.0 else ok, moved))
+	var nva := float(econ.net_value_added)
+	var net := _v3_econ_line("Net Value Added", nva, ok if nva >= 0.0 else bad, true)
+	net.name = "NetValueAdded"
+	net.tooltip_text = "Before tax"
+	vb.add_child(net)
 	var bar: Control = BdpV3ValueBar.new()
 	bar.set_values(econ)
 	vb.add_child(bar)
@@ -2986,32 +3012,79 @@ func _build_economics_v3(econ: Dictionary) -> PanelContainer:
 	_add_carried_rows(vb)
 	return card
 
-## One of v3's economics rows: its name and the parts that make it, and the figure on an LED screen, green
-## when it adds value and red when it takes it.
-func _v3_econ_row(node_name: String, title: String, detail: String, figure: float, strong: bool = false) -> HBoxContainer:
+## One of v3's economics figures: its name, a printed £ and the figure on an LED screen in `colour`.
+func _v3_econ_line(title: String, figure: float, colour: Color, strong: bool = false) -> HBoxContainer:
 	var row := HBoxContainer.new()
-	row.name = node_name
 	row.add_theme_constant_override("separation", DS.SP["SM"])
-	var col := VBoxContainer.new()
-	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	col.add_theme_constant_override("separation", 0)
-	row.add_child(col)
 	var t := Label.new()
-	t.theme_type_variation = "Body"
+	t.theme_type_variation = "Body" if strong else "Caption"
 	t.text = title
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if strong:
 		t.add_theme_font_size_override("font_size", 17)
-	col.add_child(t)
-	var d := Label.new()
-	d.theme_type_variation = "Caption"
-	d.text = detail
-	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	col.add_child(d)
-	var led: Control = BdpV3Led.new()
-	led.set_figure("%.2f" % figure, DS.PALETTE["OK"] if figure >= 0.0 else DS.PALETTE["DANGER"])
-	row.add_child(led)
+	row.add_child(t)
+	row.add_child(_v3_money_led(figure, colour))
 	return row
+
+## A £ figure, as the cost to produce shows it: a printed £ and the figure on an LED screen.
+func _v3_money_led(figure: float, colour: Color) -> HBoxContainer:
+	var hb := HBoxContainer.new()
+	hb.name = "MoneyLed"
+	hb.add_theme_constant_override("separation", 4)
+	hb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var pound := _v3_metal_label("£", HORIZONTAL_ALIGNMENT_RIGHT)
+	pound.add_theme_font_size_override("font_size", 18)
+	hb.add_child(pound)
+	var led: Control = BdpV3Led.new()
+	var text := "%.2f" % figure
+	led.set_figure(" ".repeat(maxi(0, _v3_led_digits - BdpV3Led.cells_for(text).size())) + text, colour)
+	hb.add_child(led)
+	return hb
+
+## One of v3's economics rows that opens: a chevron, its name and its figure; open, the figures that make
+## it, indented under it, each on its own screen. With nothing to show under it, it doesn't open.
+func _v3_econ_accordion(node_name: String, key: String, title: String, figure: float, colour: Color, parts: Array) -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.name = node_name
+	box.add_theme_constant_override("separation", DS.SP["SM"])
+	var head := _v3_econ_line(title, figure, colour, true)
+	head.name = "Head"
+	box.add_child(head)
+	if parts.is_empty():
+		return box
+	var chevron := Control.new()
+	chevron.name = "Chevron"
+	chevron.custom_minimum_size = Vector2(14, 14)
+	chevron.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	chevron.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(chevron)
+	head.move_child(chevron, 0)
+	var nested := VBoxContainer.new()
+	nested.name = "Parts"
+	nested.add_theme_constant_override("separation", 4)
+	var indent := MarginContainer.new()
+	indent.add_theme_constant_override("margin_left", roundi(V3_ECON_INDENT))
+	indent.add_child(nested)
+	box.add_child(indent)
+	for p: Array in parts:
+		nested.add_child(_v3_econ_line(str(p[0]), float(p[1]), p[2]))
+	indent.visible = bool(_v3_econ_open.get(key, false))
+	chevron.draw.connect(func() -> void:
+		var c := chevron.size * 0.5
+		var r := 4.0
+		var pts := PackedVector2Array([c + Vector2(-r, -r * 0.5), c + Vector2(0, r * 0.5), c + Vector2(r, -r * 0.5)]) if indent.visible \
+			else PackedVector2Array([c + Vector2(-r * 0.5, -r), c + Vector2(r * 0.5, 0), c + Vector2(-r * 0.5, r)])
+		chevron.draw_polyline(pts, DS.PALETTE["TEXT"], 2.0, true))
+	head.mouse_filter = Control.MOUSE_FILTER_STOP
+	head.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	head.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			head.accept_event()
+			indent.visible = not indent.visible
+			_v3_econ_open[key] = indent.visible
+			chevron.queue_redraw())
+	return box
 
 ## A transport lamp: the side's raised icon, its lamp, and what its transport costs a turn, or a flag
 ## when that side travels free.
