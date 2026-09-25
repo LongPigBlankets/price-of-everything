@@ -19,6 +19,10 @@ const SOLD_TO_OWNER := "npc_market"
 const DEFAULT_TILE_LAND_OWNED := 0
 const LAND_PATCH_SIZE := 10
 const LAND_PATCH_COST := 10.0
+## The planning limit: once everyone's space used on a tile (other companies' buildings included) would
+## pass this, local opposition raises a new building's material and money costs by half. The build
+## check applies it; the tile view draws it.
+const DENSITY_SOFT_CAPACITY := 100.0
 ## The most land any tile can ever hold, and the default for terrain this table does not
 ## name. Kept as the hard ceiling: every cap below is clamped to it.
 const MAX_TILE_LAND := 200

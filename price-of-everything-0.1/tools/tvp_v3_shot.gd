@@ -66,6 +66,13 @@ func _ready() -> void:
 			panel.call("show_tile", td, tab)
 			await _settle(12)
 			_save(panel.get_global_rect().grow(16.0), "tvp_%s_%s" % [look, tab])
+	# The land in full on the busy tile.
+	panel.call("show_tile", td, "bl")
+	await _settle(6)
+	panel.call("_set_land_open", true)
+	await _settle(12)
+	_save(panel.get_global_rect().grow(16.0), "tvp_v3_land")
+	panel.call("_set_land_open", false)
 	# v3 on an empty, unsurveyed tile: Survey beside the land, nothing of yours.
 	var empty: Dictionary = {"id": EMPTY_TILE}
 	if terrain != null and terrain.has_method("id_to_coord"):
@@ -73,6 +80,10 @@ func _ready() -> void:
 	panel.call("show_tile", empty, "bl")
 	await _settle(12)
 	_save(panel.get_global_rect().grow(16.0), "tvp_v3_empty")
+	panel.call("_set_land_open", true)
+	await _settle(12)
+	_save(panel.get_global_rect().grow(16.0), "tvp_v3_empty_land")
+	panel.call("_set_land_open", false)
 	UiPrefs.set_use_tvp_v3(false)
 	print("[TVP_SHOT] done")
 	get_tree().quit(0)

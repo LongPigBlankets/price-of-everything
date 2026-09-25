@@ -56,7 +56,8 @@ const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const V3Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const V3Key := preload("res://scripts/bdp_v3_key.gd")
 const CabinetKey := preload("res://scripts/tile_cabinet_key.gd")
-const LandGauge := preload("res://scripts/tile_land_gauge.gd")
+const LandHex := preload("res://scripts/tile_land_hex.gd")
+const PlayerColours := preload("res://scripts/player_colours.gd")
 const V3Led := preload("res://scripts/bdp_v3_led.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
@@ -89,8 +90,6 @@ const V3_BODY_PX := 14
 const V3_CAPTION_PX := 15
 ## Buy Land's and Survey's keys beside the land gauge.
 const V3_SIDE_KEY_W := 104.0
-## The legend's swatch for your buildings, which the gauge shows in their categories' colours.
-const V3_LAND_BUILT := Color("#d9893a")
 ## A link counts as near capacity at this share of it.
 const V3_LINK_NEAR := 0.9
 ## The keys' names where the owner's differ from the v2 tabs'.
@@ -164,9 +163,16 @@ var _player_only_checkbox: CheckBox = null
 var _built_v3 := false
 var _nameplate: Control = null
 var _nameplate_text := ""
-var _land_gauge: Control = null
-var _land_legend: HFlowContainer = null
+var _land_hex: Control = null
+var _land_readout: Label = null
 var _survey_key: Control = null
+## The land in full, shown in the body's place while open.
+var _land_open := false
+var _land_view: ScrollContainer = null
+var _land_full: Control = null
+var _land_list: VBoxContainer = null
+var _land_view_readout: Label = null
+var _body_scroll: ScrollContainer = null
 
 func _enter_tree() -> void:
 	# the hex grid overlay mirrors this panel's tile as its brass selection
@@ -337,9 +343,15 @@ func _on_look_changed(_on: bool) -> void:
 	_chips_row = null
 	_banner_texture = null
 	_nameplate = null
-	_land_gauge = null
-	_land_legend = null
+	_land_hex = null
+	_land_readout = null
 	_survey_key = null
+	_land_open = false
+	_land_view = null
+	_land_full = null
+	_land_list = null
+	_land_view_readout = null
+	_body_scroll = null
 	_land_chart = null
 	_land_rail = null
 	_apply_anchors()
@@ -378,12 +390,6 @@ func _build_ui_v3() -> void:
 	# The fixed part, top to bottom (docs/tile-view-ds2-plan.md §4.2): what the place is, whether you can
 	# use it, and whether anything is wrong. Each action sits beside the figure it changes.
 	root.add_child(_build_nameplate_row())
-	var status := HFlowContainer.new()
-	status.name = "StatusLine"
-	status.add_theme_constant_override("h_separation", 10)
-	status.add_theme_constant_override("v_separation", 4)
-	_chips_row = status
-	root.add_child(status)
 	root.add_child(_build_land_row())
 	root.add_child(_build_key_bed())
 
@@ -394,10 +400,12 @@ func _build_ui_v3() -> void:
 	body_sheet.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(body_sheet)
 	var scroll := ScrollContainer.new()
+	scroll.name = "BodyScroll"
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	body_sheet.add_child(scroll)
+	_body_scroll = scroll
 	_pane_host = VBoxContainer.new()
 	_pane_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_pane_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -409,6 +417,9 @@ func _build_ui_v3() -> void:
 		pane.visible = false
 		_pane_host.add_child(pane)
 		_panes[tab.id] = pane
+	# The land in full takes the body's place while it is open (the sheet fits both to its room).
+	_land_view = _build_land_view()
+	body_sheet.add_child(_land_view)
 
 
 ## A sheet of the top bar's navy steel (its flyouts' plate) with `pad` of room inside.
@@ -480,40 +491,217 @@ func _draw_nameplate() -> void:
 	n.draw_string(font, Vector2(22, base), _nameplate_text, HORIZONTAL_ALIGNMENT_LEFT, room, fs, V3_NAME_INK)
 
 
-## The land: the sight gauge with its legend in the one vocabulary, Buy Land beside it, and Survey while
-## the tile is unsurveyed.
+## The land: at a glance, the tile's hex on its LED screen (a click opens it in full), and beside it the status
+## line, the land's figures, Buy Land, and Survey while the tile is unsurveyed.
 func _build_land_row() -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.name = "LandRow"
-	row.add_theme_constant_override("separation", 12)
+	row.add_theme_constant_override("separation", 14)
+	_land_hex = LandHex.new()
+	_land_hex.name = "TileLandChart"   # tutorial spotlight target, as the v2 land chart
+	_land_hex.expand_requested.connect(func() -> void: _set_land_open(not _land_open))
+	row.add_child(_land_hex)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_theme_constant_override("separation", 6)
+	col.add_theme_constant_override("separation", 8)
 	row.add_child(col)
-	_land_gauge = LandGauge.new()
-	_land_gauge.segment_clicked.connect(_on_chart_segment_clicked)
-	col.add_child(_land_gauge)
-	_land_legend = HFlowContainer.new()
-	_land_legend.name = "LandLegend"
-	_land_legend.add_theme_constant_override("h_separation", 12)
-	col.add_child(_land_legend)
+	var status := HFlowContainer.new()
+	status.name = "StatusLine"
+	status.add_theme_constant_override("h_separation", 10)
+	status.add_theme_constant_override("v_separation", 4)
+	_chips_row = status
+	col.add_child(status)
+	_land_readout = _v3_print_white("")
+	_land_readout.name = "LandFigures"
+	_land_readout.add_theme_color_override("font_color", V3_INK)
+	_land_readout.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(_land_readout)
+	var keys := HBoxContainer.new()
+	keys.add_theme_constant_override("separation", 10)
+	col.add_child(keys)
 	var buy := CabinetKey.new()
 	buy.name = "BLBuyLandButton"   # tutorial spotlight target
 	buy.text = "Buy Land"
-	buy.size_flags_horizontal = Control.SIZE_SHRINK_END
-	buy.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	buy.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	buy.custom_minimum_size.x = V3_SIDE_KEY_W
 	buy.pressed.connect(func() -> void: _on_buy_land_pressed(buy))
-	row.add_child(buy)
+	keys.add_child(buy)
 	_survey_key = CabinetKey.new()
 	_survey_key.name = "SurveyKey"
 	_survey_key.text = "Survey"
-	_survey_key.size_flags_horizontal = Control.SIZE_SHRINK_END
-	_survey_key.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_survey_key.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	_survey_key.custom_minimum_size.x = V3_SIDE_KEY_W
 	_survey_key.pressed.connect(func() -> void: survey_requested.emit(_current_tile_data))
-	row.add_child(_survey_key)
+	keys.add_child(_survey_key)
 	return row
+
+
+## The land in full, shown in the body's place: the tile's hex as an annunciator panel, and beside it your
+## buildings broken out in their shades, then free land, other companies', land to buy, the tile's
+## maximum and the planning limit.
+func _build_land_view() -> ScrollContainer:
+	var scroll := ScrollContainer.new()
+	scroll.name = "LandView"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.visible = false
+	var view := VBoxContainer.new()
+	view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	view.add_theme_constant_override("separation", 14)
+	scroll.add_child(view)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	view.add_child(head)
+	var title := _v3_print_white("LAND")
+	title.add_theme_font_override("font", Plate.FONT_SEMI)
+	title.add_theme_font_size_override("font_size", V3_CAPTION_PX)
+	head.add_child(title)
+	_land_view_readout = _v3_print_white("")
+	_land_view_readout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_land_view_readout.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	head.add_child(_land_view_readout)
+	var close := V3Key.make("close")
+	close.name = "LandCloseKey"
+	close.tooltip_text = "Back to the tab"
+	close.pressed.connect(func() -> void: _set_land_open(false))
+	head.add_child(close)
+	var main := HBoxContainer.new()
+	main.add_theme_constant_override("separation", 18)
+	view.add_child(main)
+	_land_full = LandHex.new()
+	_land_full.name = "TileLandFull"
+	_land_full.expanded = true
+	_land_full.building_clicked.connect(_on_chart_segment_clicked)
+	main.add_child(_land_full)
+	_land_list = VBoxContainer.new()
+	_land_list.name = "LandList"
+	_land_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_land_list.add_theme_constant_override("separation", 5)
+	main.add_child(_land_list)
+	return scroll
+
+
+## Opens or closes the land in full in the body's place. The tab under it keeps its place; pressing a key
+## closes the land and opens that tab.
+func _set_land_open(on: bool) -> void:
+	_land_open = on and _built_v3
+	if _land_view != null:
+		_land_view.visible = _land_open
+	if _body_scroll != null:
+		_body_scroll.visible = not _land_open
+	if _land_hex != null:
+		_land_hex.open = _land_open
+	if _land_open:
+		_refresh_land_view()
+	_apply_tile_styles()
+
+
+func _refresh_land_view() -> void:
+	if _land_full == null or _current_tile_id == "":
+		return
+	var chart := TileViewData.land_chart_data(_current_tile_id, _current_tile_data)
+	var totals := TileViewData.land_totals(_current_tile_id, _current_tile_data)
+	_land_full.configure(chart, totals)
+	_land_view_readout.text = _land_figures(totals)
+	for child in _land_list.get_children():
+		_land_list.remove_child(child)
+		child.queue_free()
+	var groups: Array = _land_full.groups
+	var yours: Array = []
+	var theirs := 0.0
+	var theirs_count := 0
+	var features := 0.0
+	var free := {}
+	var buy := {}
+	for g: Dictionary in groups:
+		match str(g.kind):
+			"yours": yours.append(g)
+			"theirs":
+				theirs += float(g.units)
+				theirs_count += 1
+			"feature": features += float(g.units)
+			"free": free = g
+			"buy": buy = g
+	_land_list.add_child(_land_caption("Your buildings"))
+	if yours.is_empty():
+		_land_list.add_child(_land_line(null, "None yet", ""))
+	for g: Dictionary in yours:
+		var label := str(g.short) if str(g.short) != "" else str(g.name)
+		var line := _land_line(g.colour, label + (", under construction" if bool(g.construction) else ""), str(roundi(float(g.units))))
+		line.tooltip_text = str(g.name)
+		var iid := str(g.instance_id)
+		if iid != "":
+			line.mouse_filter = Control.MOUSE_FILTER_STOP
+			line.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+			line.gui_input.connect(func(e: InputEvent) -> void:
+				if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+					_on_chart_segment_clicked(iid))
+		_land_list.add_child(line)
+	_land_list.add_child(_land_caption("The rest of the tile"))
+	_land_list.add_child(_land_line(_land_full.colour_of(groups.find(free)) if not free.is_empty() else LandHex.UNLIT_WINDOW,
+		"Your free land", str(int(totals.free))))
+	if theirs_count > 0:
+		_land_list.add_child(_land_line(PlayerColours.NPC, "Other companies, %d %s" % [theirs_count, "building" if theirs_count == 1 else "buildings"],
+			str(roundi(theirs))))
+	if features > 0.0:
+		_land_list.add_child(_land_line(LandHex.STONE, "Woods and ruins", str(roundi(features))))
+	_land_list.add_child(_land_line(LandHex.UNLIT_WINDOW, "To buy", str(int(totals.buyable))))
+	_land_list.add_child(_land_line(null, "Tile maximum", str(int(chart.get("type_cap", 0)))))
+	if int(chart.get("type_cap", 0)) > int(BuildingState.DENSITY_SOFT_CAPACITY):
+		_land_list.add_child(_land_line("hazard", "Planning limit", str(int(BuildingState.DENSITY_SOFT_CAPACITY))))
+
+
+func _land_caption(text: String) -> Label:
+	var l := _v3_print_white(text.to_upper())
+	l.add_theme_font_override("font", Plate.FONT_SEMI)
+	l.add_theme_font_size_override("font_size", V3_CAPTION_PX)
+	return l
+
+
+## One line of the land's breakdown: its swatch ("hazard" for the planning limit's tape), what it is and how
+## much land.
+func _land_line(colour: Variant, text: String, units: String) -> HBoxContainer:
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 8)
+	var sw := Control.new()
+	sw.custom_minimum_size = Vector2(12, 12)
+	sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	sw.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sw.draw.connect(func() -> void:
+		if colour is Color:
+			sw.draw_rect(Rect2(Vector2.ZERO, sw.size), colour)
+		elif str(colour) == "hazard":
+			sw.draw_rect(Rect2(0, 3, 12, 6), LandHex.HAZARD_DARK)
+			for x in [0.0, 5.0, 10.0]:
+				sw.draw_rect(Rect2(x, 4, 2.5, 4), LandHex.HAZARD))
+	line.add_child(sw)
+	var name_label := _v3_print_white(text)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_label.clip_text = true
+	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_child(name_label)
+	var figure := _v3_print_white(units)
+	figure.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	figure.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_child(figure)
+	return line
+
+
+## The land's figures in words: the room left before the planning limit (or that it is passed), free land
+## and land to buy.
+func _land_figures(totals: Dictionary) -> String:
+	var parts: Array = []
+	var cap := BuildingState.max_tile_land(_current_tile_id)
+	var limit := BuildingState.DENSITY_SOFT_CAPACITY
+	if cap > int(limit):
+		var room := limit - BuildingState.get_tile_space_used(_current_tile_id)
+		if room >= 0.0:
+			parts.append("%d to go before planning costs" % floori(room))
+		else:
+			parts.append("Past the planning limit, new buildings cost 50% more")
+	parts.append("%d free" % int(totals.free))
+	parts.append("%d to buy" % int(totals.buyable))
+	return ", ".join(parts)
 
 
 ## The five latching keys on their black key bed; over each, a pilot lamp and the tab's figure on an LED
@@ -655,7 +843,7 @@ func _refresh_keys_v3() -> void:
 		"Links near or over capacity, of the %d built on this tile" % built)
 
 
-## The status line (owner, terrain, survey, deposits, seaport) led by the owner's lamp, and the land row.
+## The status line (owner, terrain, survey, deposits, seaport) led by the owner's lamp, and the land.
 func _refresh_status_line_v3(tile_data: Dictionary) -> void:
 	var tid := str(tile_data.get("id", ""))
 	_nameplate_text = Catalog.tile_name(tid)
@@ -706,28 +894,10 @@ func _refresh_status_line_v3(tile_data: Dictionary) -> void:
 		_chips_row.add_child(_v3_tag(str(words[i])))
 
 	var totals := TileViewData.land_totals(tid, tile_data)
-	_land_gauge.configure(TileViewData.land_chart_data(tid, tile_data), totals)
-	for child in _land_legend.get_children():
-		_land_legend.remove_child(child)
-		child.queue_free()
-	var npc := int((TileViewData.land_chart_data(tid, tile_data) as Dictionary).get("npc_footprint", 0))
-	var entries: Array = [[V3_LAND_BUILT, "%d built" % int(totals.built)], [LandGauge.FREE, "%d free" % int(totals.free)],
-		[LandGauge.BUYABLE, "%d buyable" % int(totals.buyable)], [null, "%d max" % int(totals.max)]]
-	if npc > 0:
-		entries.append([LandGauge.OTHERS, "%d held by other companies" % npc])
-	for e: Array in entries:
-		var item := HBoxContainer.new()
-		item.add_theme_constant_override("separation", 5)
-		if e[0] != null:
-			var sw := ColorRect.new()
-			sw.color = e[0]
-			sw.custom_minimum_size = Vector2(10, 10)
-			sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			item.add_child(sw)
-		var l := _v3_print_white(str(e[1]))
-		l.add_theme_color_override("font_color", V3_INK)
-		item.add_child(l)
-		_land_legend.add_child(item)
+	_land_hex.configure(TileViewData.land_chart_data(tid, tile_data), totals)
+	_land_readout.text = _land_figures(totals)
+	if _land_open:
+		_refresh_land_view()
 	var surveyed := survey == "Surveyed"
 	_survey_key.visible = not surveyed
 	_survey_key.disabled = not MatchState.is_tile_surveyable(tid)
@@ -1010,6 +1180,8 @@ func _on_tile_input(event: InputEvent, tab_id: String) -> void:
 		accept_event()
 
 func _select_tab(tab_id: String) -> void:
+	if _land_open:
+		_set_land_open(false)
 	if tab_id != "stock":
 		_close_goods_drawer()
 		_stock_manage_expanded = false
@@ -1234,7 +1406,7 @@ func _apply_tile_styles() -> void:
 		for tab in _tabs():
 			var key := (_tiles[tab.id] as Dictionary).get("root") as CabinetKey
 			if key != null:
-				key.latched = tab.id == _active_tab
+				key.latched = tab.id == _active_tab and not _land_open
 		return
 	for tab in TABS:
 		var id: String = tab.id

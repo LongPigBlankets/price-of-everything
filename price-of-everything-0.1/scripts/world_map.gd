@@ -64,7 +64,6 @@ const StartLayoutBakedScript := preload("res://scripts/start_layout_baked.gd")
 const WARM_MARGIN := 1000.0
 var goods_graph_view: GoodsGraphViewScript
 
-const DENSITY_SOFT_CAPACITY := 100.0
 const InfraIcons := preload("res://scripts/infra_icons.gd")
 const AuthoredMapRef := preload("res://scripts/authored_map.gd")
 const OLD_GROWTH_FOREST_BUILDING_ID := "b_016"
@@ -3062,7 +3061,7 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 			% Catalog.tile_label(tile_id))
 		return {"allowed": false, "cost_multiplier": 1.0, "reason": "Insufficient land — buy more here"}
 	var cost_multiplier := 1.0
-	if projected_space > DENSITY_SOFT_CAPACITY:
+	if projected_space > BuildingState.DENSITY_SOFT_CAPACITY:
 		cost_multiplier = 1.5
 		_show_tile_space_caution("Local opposition to density on tile %s will increase material and money costs for new buildings by 50%%" % tile_id)
 	return {"allowed": true, "cost_multiplier": cost_multiplier}

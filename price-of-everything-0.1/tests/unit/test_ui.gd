@@ -306,6 +306,64 @@ func _test_rotary_selector_options() -> void:
 	panel.queue_free()
 	UiPrefs.set_use_tvp_v3(was)
 
+func _test_tile_land_hex() -> void:
+	# The tile's land as a hex of squares: exactly as many squares as the tile holds, in a hex's rows, filled
+	# from the bottom with other companies' land first, your buildings in shades of your livery, and the
+	# planning limit drawn between the 100th square and the 101st.
+	var Hex := load("res://scripts/tile_land_hex.gd")
+	var sums_ok := true
+	for n: int in [1, 7, 50, 99, 100, 120, 160, 170, 200, 260]:
+		var rows: Array = Hex.hex_rows(n)
+		var total := 0
+		var widest := 0
+		for w in rows:
+			total += int(w)
+			sums_ok = sums_ok and int(w) >= 1
+		for r in rows.size():
+			if int(rows[r]) > int(rows[widest]):
+				widest = r
+		sums_ok = sums_ok and total == n and (rows.size() < 3 or (widest >= rows.size() / 3 and widest <= rows.size() * 2 / 3))
+	var r200: Array = Hex.hex_rows(200)
+	var mirrored := r200.duplicate()
+	mirrored.reverse()
+	_check(sums_ok and r200 == mirrored and int(r200[0]) < int(r200[r200.size() / 2]),
+		"land hex: every tile size makes a hex of exactly that many squares, widest in the middle, level (%s)" % str(r200))
+	var hex: Control = Hex.new()
+	add_child(hex)
+	var chart := {"type_cap": 170, "segments": [
+		{"size": 25.0, "is_other": true, "name": "Glassworks", "instance_id": "npc1"},
+		{"size": 20.0, "is_other": true, "name": "Mill", "instance_id": "npc2"},
+		{"size": 20.0, "is_other": false, "name": "Motor", "instance_id": "m1"},
+		{"size": 11.0, "is_other": false, "name": "Steel", "instance_id": "m2"},
+		{"size": 7.0, "is_other": false, "name": "Depot", "instance_id": "m3", "is_construction": true},
+	]}
+	hex.configure(chart, {"free": 12, "buyable": 75, "max": 125})
+	var cells: PackedInt32Array = hex.get("cell_group")
+	var groups: Array = hex.get("groups")
+	_check(cells.size() == 170 and str(groups[cells[0]].kind) == "theirs" and str(groups[cells[45]].kind) == "yours"
+		and str(groups[cells[83]].kind) == "free" and str(groups[cells[169]].kind) == "buy",
+		"land hex: sized by the tile's maximum, filled from the bottom: other companies, yours, free, to buy")
+	var livery: Color = load("res://scripts/player_colours.gd").active_color()
+	var yours: Array = groups.filter(func(g: Dictionary) -> bool: return str(g.kind) == "yours")
+	var distinct := true
+	for i in yours.size():
+		for j in range(i + 1, mini(i + 3, yours.size())):
+			distinct = distinct and absf((yours[i].colour as Color).ok_hsl_l - (yours[j].colour as Color).ok_hsl_l) >= 0.1
+	for entry: Dictionary in load("res://scripts/player_colours.gd").all():
+		var sh: Array = Hex.shades(entry.color, 6, Hex.YOUR_STEPS, Hex.YOUR_FLOOR)
+		for i in sh.size():
+			distinct = distinct and (sh[i] as Color).ok_hsl_l >= Hex.YOUR_FLOOR - 0.001
+			for j in range(i + 1, mini(i + 3, sh.size())):
+				distinct = distinct and absf((sh[i] as Color).ok_hsl_l - (sh[j] as Color).ok_hsl_l) >= 0.1
+	_check(distinct and absf((yours[0].colour as Color).ok_hsl_h - livery.ok_hsl_h) < 0.02,
+		"land hex: your buildings are shades of your livery, neighbours at least a tenth apart in lightness, on every livery")
+	_check(int(hex.get("limit")) == int(BuildingState.DENSITY_SOFT_CAPACITY) and not (hex.call("limit_segments") as Array).is_empty(),
+		"land hex: the planning limit is drawn, at the build check's own figure")
+	chart["type_cap"] = 90
+	hex.configure(chart, {"free": 0, "buyable": 0, "max": 45})
+	_check((hex.call("limit_segments") as Array).is_empty(), "land hex: a tile smaller than the limit draws no limit")
+	hex.queue_free()
+
 func _test_tile_view_cabinet() -> void:
 	# Tile view v3's shell: the stainless door with its engraved nameplate (the name, the coordinates on hover),
 	# five latching keys with Transport added, the pressed key latched and its tab open, and the v2 panel back
@@ -338,8 +396,16 @@ func _test_tile_view_cabinet() -> void:
 	var name_text := str(panel.get("_nameplate_text"))
 	_check(name_text != "" and not name_text.contains("(") and plate.tooltip_text == "Coordinates 5, 10",
 		"tile view v3: the nameplate carries the site's name, the coordinates only on hover (%s)" % name_text)
+	(panel.find_child("TileLandChart", true, false) as Control).emit_signal("expand_requested")
+	await get_tree().process_frame
+	var land_view: Control = panel.find_child("LandView", true, false)
+	_check(land_view != null and land_view.visible and not (panel.find_child("BodyScroll", true, false) as Control).visible
+		and not bool(keys[3].get("latched")) and not (panel.find_child("TileLandFull", true, false).get("groups") as Array).is_empty(),
+		"tile view v3: clicking the land hex shows the land in full in the body's place, no key latched")
 	keys[4].emit_signal("pressed")
 	await get_tree().process_frame
+	_check(not land_view.visible and (panel.find_child("BodyScroll", true, false) as Control).visible,
+		"tile view v3: pressing a key closes the land and opens its tab")
 	_check(str(panel.get("_active_tab")) == "transport" and bool(keys[4].get("latched")) and not bool(keys[3].get("latched")),
 		"tile view v3: pressing a key opens its tab and latches it, releasing the last")
 	_check(panel.find_child("InfraCell_cables", true, false) != null or not ResearchState.infrastructure_tendering_available(),

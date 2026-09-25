@@ -242,6 +242,8 @@ static func land_chart_data(tile_id: String, tile_data: Dictionary) -> Dictionar
 			"name": _building_full_name(bd, recipe), "value": int(round(size)),
 			"icon": _building_icon_tex(bd), "stalled": stalled,
 			"tooltip": BuildingNaming.label_for_tile(tile_id, iid, str(building.get("building_id", "")), str(building.get("recipe_id", ""))),
+			# Ruins and woods that belong to the land rather than to a company.
+			"feature": is_ruins or BuildingState.is_land_owned_wood(building),
 		}
 		if is_other:
 			other_footprint += size
