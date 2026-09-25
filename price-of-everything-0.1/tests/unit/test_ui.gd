@@ -426,6 +426,16 @@ func _test_tile_land_hex() -> void:
 	hex.configure(chart, {"free": 0, "buyable": 0, "max": 45})
 	_check((hex.call("limit_segments") as Array).is_empty(), "land hex: a tile smaller than the limit draws no limit")
 	hex.queue_free()
+	# The mini hex: laid on the plate, the biggest tile's filling its room, a smaller tile's by its share.
+	var mini: Control = Hex.new()
+	add_child(mini)
+	mini.configure({"type_cap": 200, "segments": []}, {"free": 0, "buyable": 200, "max": 200})
+	var big: Rect2 = mini.call("mini_rect")
+	mini.configure({"type_cap": 120, "segments": []}, {"free": 0, "buyable": 120, "max": 120})
+	var small: Rect2 = mini.call("mini_rect")
+	_check(big.size.x >= 115.0 and absf(small.size.x / big.size.x - sqrt(0.6)) < 0.01 and absf(big.size.y / big.size.x - 480.0 / 540.0) < 0.01,
+		"land hex: the mini hex is %d x %d on the biggest tile, a mountain's smaller by its share (%d x %d)" % [roundi(big.size.x), roundi(big.size.y), roundi(small.size.x), roundi(small.size.y)])
+	mini.queue_free()
 
 ## Each building's block in a land hex's full view, as its bounding box in squares.
 func _land_block_shapes(hex: Control) -> Array:

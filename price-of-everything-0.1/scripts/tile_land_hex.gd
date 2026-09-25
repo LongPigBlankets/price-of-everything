@@ -5,10 +5,10 @@ extends Control
 ## tile's first 100 units end, striped yellow and black like the hazard tape on a factory floor so it reads
 ## on every company's livery.
 ##
-## Two looks. Collapsed, the mini hex at the top of the panel, read at a glance: one smooth hex on a small
-## screen, filled from the bottom in flat bands whose areas are the land's shares (other companies', woods
-## and ruins, your buildings, your free land, land to buy), one colour each, and the limit a level line
-## across it; a click asks for the full view. Expanded, the split view: an annunciator panel of backlit
+## Two looks. Collapsed, the mini hex at the top of the panel, read at a glance: one smooth hex laid straight
+## onto the stainless plate with a thin black rim, filled from the bottom in flat bands whose areas are the
+## land's shares (other companies', woods and ruins, your buildings, your free land, land to buy), one colour
+## each, and the limit a level line across it; a click asks for the full view. Expanded, the split view: an annunciator panel of backlit
 ## windows, one square per unit of land on an aligned grid. The used land is laid out as one block per
 ## building, each as near square as the room allows, its windows joined in one shade (yours in shades of
 ## your company's livery, other companies' in the map's paper white) with a dark line between buildings;
@@ -20,18 +20,12 @@ signal building_clicked(instance_id: String)
 
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const PlayerColours := preload("res://scripts/player_colours.gd")
-const SCREEN: Texture2D = preload("res://assets/ui/bdp_v3/mini_screen.png")
-const GLASS: Texture2D = preload("res://assets/ui/bdp_v3/mini_screen_glass.png")
 const HOUSING: Texture2D = preload("res://assets/ui/bdp_v3/diag_plastic.png")
 const SCREW: Texture2D = preload("res://assets/ui/bdp_v3/screw_silver.png")
 const CAPTURE_SCALE := 1.875
 const TEXELS := 2.0 / 1.875
-## From layout.json, in layout pixels: the mini screen's shadow room, bezel and pane corner (the mini hex's
-## case), and the diagnostics' black plastic plate's shadow room and corner (the full view's housing), with
-## Building Detail's silver screws in its corners.
-const SCREEN_MARGIN := 8.0
-const SCREEN_RIM := 7.0
-const SCREEN_RADIUS := 5.0
+## From layout.json, in layout pixels: the diagnostics' black plastic plate's shadow room and corner (the full
+## view's housing), with Building Detail's silver screws in its corners.
 const HOUSING_MARGIN := 14.0
 const HOUSING_CORNER := 40.0
 const SCREW_SIZE := 30.0 / 1.875
@@ -43,11 +37,14 @@ const TILE_ASPECT := 480.0 / 540.0
 const PITCH := 16.0
 const GAP := 3.0
 const PAD := 20.0
-## The mini hex's screen is one size whatever the tile. The biggest tile (200 units) fills its pane but for
-## this margin; a smaller tile's hex has the area its land bears to that.
-const COLLAPSED_BOX := Vector2(116.0, 104.0)
-const MINI_MARGIN := 6.0
+## The mini hex's room is one size whatever the tile. The biggest tile (200 units) fills it but for its rim
+## and the ring it wears while the full view is open; a smaller tile's hex has the area its land bears to
+## that. The rim is black, this wide in logical pixels, and the ring as far again past it.
+const COLLAPSED_BOX := Vector2(128.0, 114.0)
 const MINI_FULL := 200.0
+const MINI_RIM := 2.0
+const OPEN_RING_WIDTH := 3.0
+const RIM := Color("#0e0f11")
 ## Lightness steps between buildings' shades in the full view, in OKHSL, repeating: four levels 0.12 apart,
 ## in an order that keeps buildings one or two apart in the layout at least that far apart. Other companies'
 ## step down from paper white.
@@ -323,7 +320,7 @@ func configure(chart: Dictionary, totals: Dictionary) -> void:
 func _band_colour(kind: String, livery: Color) -> Color:
 	match kind:
 		"theirs":
-			return PlayerColours.NPC.lerp(PANE, 0.12)
+			return PlayerColours.NPC
 		"feature":
 			return STONE
 		"yours":
@@ -486,12 +483,12 @@ func _notification(what: int) -> void:
 		queue_redraw()
 
 
-## The mini hex's rectangle: centred in the screen's pane, its area the tile's share of the biggest tile's.
+## The mini hex's rectangle: centred in its room, its area the tile's share of the biggest tile's.
 func mini_rect() -> Rect2:
-	var pane := Rect2(Vector2.ZERO, size if size != Vector2.ZERO else custom_minimum_size).grow(-SCREEN_RIM / CAPTURE_SCALE - MINI_MARGIN)
-	var w := minf(pane.size.x, pane.size.y / TILE_ASPECT) * sqrt(clampf(float(squares) / MINI_FULL, 0.05, 1.0))
+	var room := Rect2(Vector2.ZERO, size if size != Vector2.ZERO else custom_minimum_size).grow(-MINI_RIM - OPEN_RING_WIDTH)
+	var w := minf(room.size.x, room.size.y / TILE_ASPECT) * sqrt(clampf(float(squares) / MINI_FULL, 0.05, 1.0))
 	var h := w * TILE_ASPECT
-	return Rect2(pane.get_center() - Vector2(w, h) * 0.5, Vector2(w, h))
+	return Rect2(room.get_center() - Vector2(w, h) * 0.5, Vector2(w, h))
 
 
 ## The mini hex's band under a point, or -1.
@@ -580,12 +577,14 @@ func _draw() -> void:
 
 
 func _draw_mini() -> void:
-	var box := Rect2(Vector2.ZERO, size)
-	var corner := (SCREEN_MARGIN + SCREEN_RIM + SCREEN_RADIUS + 2.0) * TEXELS
-	Nine.paint(self, SCREEN, box.grow(SCREEN_MARGIN / CAPTURE_SCALE), corner)
-	draw_rect(box.grow(-SCREEN_RIM / CAPTURE_SCALE), PANE)
 	var r := mini_rect()
 	var poly := hex_polygon(r)
+	# Laid on the plate: a navy ring while the full view is open, as a latched key sits down, then the rim.
+	if open:
+		for ring: PackedVector2Array in Geometry2D.offset_polygon(poly, MINI_RIM + OPEN_RING_WIDTH, Geometry2D.JOIN_MITER):
+			draw_colored_polygon(ring, OPEN_RING)
+	for rim: PackedVector2Array in Geometry2D.offset_polygon(poly, MINI_RIM, Geometry2D.JOIN_MITER):
+		draw_colored_polygon(rim, RIM)
 	var total := float(maxi(squares, 1))
 	var cum := 0.0
 	for bi in bands.size():
@@ -600,16 +599,10 @@ func _draw_mini() -> void:
 			Vector2(r.end.x + 1.0, y0), Vector2(r.position.x - 1.0, y0)])
 		for piece: PackedVector2Array in Geometry2D.intersect_polygons(poly, slab):
 			draw_colored_polygon(piece, c)
-	var outline := poly.duplicate()
-	outline.append(poly[0])
-	draw_polyline(outline, Color(1, 1, 1, 0.14), 1.0, true)
 	if limit > 0 and limit < squares:
 		var y := r.end.y - r.size.y * level_height(float(limit) / total)
-		var half := r.size.x * 0.5 - r.size.x * 0.25 * absf(y - r.get_center().y) / (r.size.y * 0.5)
-		_draw_hazard([[Vector2(r.get_center().x - half - 4.0, y), Vector2(r.get_center().x + half + 4.0, y)]], 2.6, 1.4, 2.2)
-	Nine.paint(self, GLASS, box.grow(SCREEN_MARGIN / CAPTURE_SCALE), corner)
-	if open:
-		draw_rect(box.grow(SCREEN_MARGIN / CAPTURE_SCALE - 1.0), OPEN_RING, false, 2.0)
+		var half := r.size.x * 0.5 - r.size.x * 0.25 * absf(y - r.get_center().y) / (r.size.y * 0.5) + MINI_RIM
+		_draw_hazard([[Vector2(r.get_center().x - half - 4.0, y), Vector2(r.get_center().x + half + 4.0, y)]], 2.8, 1.5, 2.4)
 
 
 func _draw_full() -> void:
