@@ -490,6 +490,20 @@ func _test_tile_view_cabinet() -> void:
 	panel.connect("locate_requested", func(t: String) -> void: located.append(t))
 	(panel.find_child("LocationKey", true, false) as BaseButton).pressed.emit()
 	_check(located == [tile], "tile view v3: the Location key asks the map to show this tile")
+	var terrain_icon: TextureRect = panel.find_child("TerrainIcon", true, false)
+	var every_type := true
+	var types := {}
+	var csv := FileAccess.open("res://data/tile_properties.csv", FileAccess.READ)
+	var head: PackedStringArray = csv.get_csv_line()
+	var type_col := head.find("type")
+	while not csv.eof_reached():
+		var line: PackedStringArray = csv.get_csv_line()
+		if line.size() > type_col and line[type_col] != "":
+			types[line[type_col]] = true
+	for type_name: String in types:
+		every_type = every_type and ResourceLoader.exists("res://assets/icons/ui_icons/terrain/terrain_%s.png" % type_name)
+	_check(terrain_icon != null and terrain_icon.texture.resource_path.ends_with("terrain_%s.png" % Catalog.tile_type(tile)) and every_type,
+		"tile view v3: the status line shows the tile's terrain glyph, and every terrain in the tile data has one (%s)" % ", ".join(PackedStringArray(types.keys())))
 	var plate: Control = panel.find_child("Nameplate", true, false)
 	var name_text := str(panel.get("_nameplate_text"))
 	_check(name_text != "" and not name_text.contains("(") and plate.tooltip_text == "Coordinates 5, 10",

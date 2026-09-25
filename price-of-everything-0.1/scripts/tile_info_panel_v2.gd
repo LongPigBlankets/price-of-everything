@@ -92,6 +92,10 @@ const V3_CAPTION_PX := 15
 const V3_SIDE_KEY_W := 104.0
 ## A link counts as near capacity at this share of it.
 const V3_LINK_NEAR := 0.9
+## The terrain glyphs, cut from the owner's sprite sheet by tools/extract_terrain_icons.py at one scale for
+## the set, and how many logical pixels each texture pixel takes in the status line (a city's glyph 21 tall).
+const TERRAIN_ICON := "res://assets/icons/ui_icons/terrain/terrain_%s.png"
+const TERRAIN_ICON_SCALE := 0.17
 ## The keys' names where the owner's differ from the v2 tabs'.
 const V3_KEY_NAMES := {"stock": "Stock"}
 
@@ -777,6 +781,30 @@ func _v3_tag(text: String) -> Label:
 	return l
 
 
+## The tile's terrain in the status line: its glyph from the sprite sheet, inked navy like the words on the
+## steel and standing on the line's foot so the ground lines sit level, then its name.
+func _v3_terrain_tag(terrain: String) -> HBoxContainer:
+	var tag := HBoxContainer.new()
+	tag.name = "TerrainTag"
+	tag.add_theme_constant_override("separation", 6)
+	var path := TERRAIN_ICON % terrain.to_lower().replace(" ", "_")
+	if ResourceLoader.exists(path):
+		var tex := load(path) as Texture2D
+		var icon := TextureRect.new()
+		icon.name = "TerrainIcon"
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.texture = tex
+		icon.custom_minimum_size = tex.get_size() * TERRAIN_ICON_SCALE
+		icon.size_flags_vertical = Control.SIZE_SHRINK_END
+		icon.self_modulate = V3_INK
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tag.add_child(icon)
+	tag.add_child(_v3_tag(terrain.capitalize()))
+	return tag
+
+
 ## One key's lamp and figure. `tone` is ok, warn, bad or off; `figure` goes on the LED screen (digits,
 ## "-" and "."), `pre` and `unit` are printed either side of it.
 func _set_key_v3(tab_id: String, tone: String, figure: String, pre: String, unit: String, tip: String) -> void:
@@ -871,9 +899,9 @@ func _refresh_status_line_v3(tile_data: Dictionary) -> void:
 	lamp.set_tone("ok" if yours else "off")
 	_chips_row.add_child(lamp)
 	var words: Array = ["Yours" if yours else ("Other companies" if others else "Unowned")]
-	var terrain := str(tile_data.get("type", "")).strip_edges().capitalize()
+	var terrain := str(tile_data.get("type", Catalog.tile_type(tid))).strip_edges()
 	if terrain != "":
-		words.append(terrain)
+		words.append(_v3_terrain_tag(terrain))
 	var survey := _survey_status_for_tile(tile_data)
 	words.append(survey)
 	var gated: Dictionary = TileViewData.survey_gated_deposits(tid, tile_data)
@@ -891,7 +919,7 @@ func _refresh_status_line_v3(tile_data: Dictionary) -> void:
 			rule.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			_chips_row.add_child(rule)
-		_chips_row.add_child(_v3_tag(str(words[i])))
+		_chips_row.add_child(words[i] if words[i] is Control else _v3_tag(str(words[i])))
 
 	var totals := TileViewData.land_totals(tid, tile_data)
 	_land_hex.configure(TileViewData.land_chart_data(tid, tile_data), totals)
