@@ -409,13 +409,13 @@ func _test_tile_land_hex() -> void:
 		for j in range(i + 1, mini(i + 3, yours.size())):
 			distinct = distinct and absf((yours[i].colour as Color).ok_hsl_l - (yours[j].colour as Color).ok_hsl_l) >= 0.1
 	for entry: Dictionary in load("res://scripts/player_colours.gd").all():
-		var sh: Array = Hex.shades(entry.color, 6, Hex.YOUR_STEPS, Hex.YOUR_FLOOR)
+		var sh: Array = Hex.shades(entry.color, 6, Hex.YOUR_STEPS, Hex.YOUR_FLOOR, Hex.YOUR_CEILING)
 		for i in sh.size():
-			distinct = distinct and (sh[i] as Color).ok_hsl_l >= Hex.YOUR_FLOOR - 0.001
+			distinct = distinct and (sh[i] as Color).ok_hsl_l >= Hex.YOUR_FLOOR - 0.001 and (sh[i] as Color).ok_hsl_l <= Hex.YOUR_CEILING + 0.001
 			for j in range(i + 1, mini(i + 3, sh.size())):
 				distinct = distinct and absf((sh[i] as Color).ok_hsl_l - (sh[j] as Color).ok_hsl_l) >= 0.1
 	_check(distinct and absf((yours[0].colour as Color).ok_hsl_h - livery.ok_hsl_h) < 0.02,
-		"land hex: your buildings are shades of your livery, neighbours at least a tenth apart in lightness, on every livery")
+		"land hex: your buildings are shades of your livery, neighbours at least a tenth apart, none as pale as paper white, on every livery")
 	var bands: Array = hex.get("bands")
 	var kinds: Array = bands.map(func(b: Dictionary) -> String: return str(b.kind))
 	_check(kinds == ["theirs", "yours", "free", "buy"] and bands[1].colour == livery,
@@ -502,8 +502,18 @@ func _test_tile_view_cabinet() -> void:
 			types[line[type_col]] = true
 	for type_name: String in types:
 		every_type = every_type and ResourceLoader.exists("res://assets/icons/ui_icons/terrain/terrain_%s.png" % type_name)
+	_check(terrain_icon != null and terrain_icon.get_parent().name == "HexColumn" and terrain_icon.tooltip_text.contains("holds up to %d land" % BuildingState.max_tile_land(tile)),
+		"tile view v3: the terrain glyph stands over the hex, its tooltip the land the terrain allows (%s)" % terrain_icon.tooltip_text.replace("\n", " "))
+	var ruleset_was: Dictionary = MatchState.ruleset.duplicate()
+	MatchState.ruleset["company_colour"] = "construction_yellow"
+	var yellow_tape: Dictionary = load("res://scripts/tile_land_hex.gd").tape()
+	MatchState.ruleset["company_colour"] = "diesel_red"
+	var red_tape: Dictionary = load("res://scripts/tile_land_hex.gd").tape()
+	MatchState.ruleset = ruleset_was
+	_check(yellow_tape.stripe == Color("#e8281e") and red_tape.stripe == Color("#f2c230"),
+		"tile view v3: the planning tape is red on white for a yellow livery, yellow on black for any other")
 	_check(terrain_icon != null and terrain_icon.texture.resource_path.ends_with("terrain_%s.png" % Catalog.tile_type(tile)) and every_type,
-		"tile view v3: the status line shows the tile's terrain glyph, and every terrain in the tile data has one (%s)" % ", ".join(PackedStringArray(types.keys())))
+		"tile view v3: the glyph is the tile's terrain, and every terrain in the tile data has one (%s)" % ", ".join(PackedStringArray(types.keys())))
 	var plate: Control = panel.find_child("Nameplate", true, false)
 	var name_text := str(panel.get("_nameplate_text"))
 	_check(name_text != "" and not name_text.contains("(") and plate.tooltip_text == "Coordinates 5, 10",

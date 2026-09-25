@@ -72,6 +72,15 @@ func _ready() -> void:
 	panel.call("_set_land_open", true)
 	await _settle(12)
 	_save(panel.get_global_rect().grow(16.0), "tvp_v3_land")
+	# The same with a yellow livery: the planning tape turns red on white.
+	var livery_was: Variant = MatchState.ruleset.get("company_colour", "")
+	MatchState.ruleset["company_colour"] = "construction_yellow"
+	panel.call("show_tile", td, "bl")
+	await _settle(6)
+	panel.call("_set_land_open", true)
+	await _settle(12)
+	_save(panel.get_global_rect().grow(16.0), "tvp_v3_land_yellow")
+	MatchState.ruleset["company_colour"] = livery_was
 	panel.call("_set_land_open", false)
 	# v3 on an empty, unsurveyed tile: Survey beside the land, nothing of yours.
 	var empty: Dictionary = {"id": EMPTY_TILE}

@@ -96,6 +96,9 @@ const V3_LINK_NEAR := 0.9
 ## the set, and how many logical pixels each texture pixel takes in the status line (a city's glyph 21 tall).
 const TERRAIN_ICON := "res://assets/icons/ui_icons/terrain/terrain_%s.png"
 const TERRAIN_ICON_SCALE := 0.17
+## What each terrain is, for the glyph's tooltip.
+const TERRAIN_GROUND := {"rural": "Open country", "urban": "Built-up ground", "hill": "Rough ground",
+	"mountain": "Steep ground", "sea": "Open water", "deep_sea": "Deep water"}
 ## The keys' names where the owner's differ from the v2 tabs'.
 const V3_KEY_NAMES := {"stock": "Stock"}
 
@@ -168,6 +171,7 @@ var _built_v3 := false
 var _nameplate: Control = null
 var _nameplate_text := ""
 var _land_hex: Control = null
+var _terrain_glyph: TextureRect = null
 var _land_readout: Label = null
 var _survey_key: Control = null
 ## The land in full, shown in the body's place while open.
@@ -348,6 +352,7 @@ func _on_look_changed(_on: bool) -> void:
 	_banner_texture = null
 	_nameplate = null
 	_land_hex = null
+	_terrain_glyph = null
 	_land_readout = null
 	_survey_key = null
 	_land_open = false
@@ -501,10 +506,24 @@ func _build_land_row() -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.name = "LandRow"
 	row.add_theme_constant_override("separation", 14)
+	# The terrain's glyph stands over the hex; hovering it says what the terrain does to the tile's land.
+	var hex_col := VBoxContainer.new()
+	hex_col.name = "HexColumn"
+	hex_col.add_theme_constant_override("separation", 4)
+	row.add_child(hex_col)
+	_terrain_glyph = TextureRect.new()
+	_terrain_glyph.name = "TerrainIcon"
+	_terrain_glyph.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_terrain_glyph.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_terrain_glyph.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_terrain_glyph.self_modulate = V3_INK
+	_terrain_glyph.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_terrain_glyph.mouse_filter = Control.MOUSE_FILTER_STOP
+	hex_col.add_child(_terrain_glyph)
 	_land_hex = LandHex.new()
 	_land_hex.name = "TileLandChart"   # tutorial spotlight target, as the v2 land chart
 	_land_hex.expand_requested.connect(func() -> void: _set_land_open(not _land_open))
-	row.add_child(_land_hex)
+	hex_col.add_child(_land_hex)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_theme_constant_override("separation", 8)
@@ -674,9 +693,11 @@ func _land_line(colour: Variant, text: String, units: String) -> HBoxContainer:
 		if colour is Color:
 			sw.draw_rect(Rect2(Vector2.ZERO, sw.size), colour)
 		elif str(colour) == "hazard":
-			sw.draw_rect(Rect2(0, 3, 12, 6), LandHex.HAZARD_DARK)
+			var tape: Dictionary = LandHex.tape()
+			sw.draw_rect(Rect2(0, 2.5, 12, 7), LandHex.HAZARD_DARK)
+			sw.draw_rect(Rect2(0, 3, 12, 6), tape.band)
 			for x in [0.0, 5.0, 10.0]:
-				sw.draw_rect(Rect2(x, 4, 2.5, 4), LandHex.HAZARD))
+				sw.draw_rect(Rect2(x, 4, 2.5, 4), tape.stripe))
 	line.add_child(sw)
 	var name_label := _v3_print_white(text)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -781,28 +802,21 @@ func _v3_tag(text: String) -> Label:
 	return l
 
 
-## The tile's terrain in the status line: its glyph from the sprite sheet, inked navy like the words on the
-## steel and standing on the line's foot so the ground lines sit level, then its name.
-func _v3_terrain_tag(terrain: String) -> HBoxContainer:
-	var tag := HBoxContainer.new()
-	tag.name = "TerrainTag"
-	tag.add_theme_constant_override("separation", 6)
-	var path := TERRAIN_ICON % terrain.to_lower().replace(" ", "_")
-	if ResourceLoader.exists(path):
-		var tex := load(path) as Texture2D
-		var icon := TextureRect.new()
-		icon.name = "TerrainIcon"
-		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.texture = tex
-		icon.custom_minimum_size = tex.get_size() * TERRAIN_ICON_SCALE
-		icon.size_flags_vertical = Control.SIZE_SHRINK_END
-		icon.self_modulate = V3_INK
-		icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		tag.add_child(icon)
-	tag.add_child(_v3_tag(terrain.capitalize()))
-	return tag
+## The terrain's glyph over the hex, from the owner's sprite sheet, inked navy like the print on the steel;
+## its tooltip says how much land the terrain lets the tile hold.
+func _refresh_terrain_glyph(terrain: String) -> void:
+	var key := terrain.to_lower().replace(" ", "_")
+	var path := TERRAIN_ICON % key
+	var tex: Texture2D = load(path) if ResourceLoader.exists(path) else null
+	_terrain_glyph.texture = tex
+	_terrain_glyph.visible = tex != null
+	if tex != null:
+		_terrain_glyph.custom_minimum_size = tex.get_size() * TERRAIN_ICON_SCALE
+	var cap := BuildingState.max_tile_land(_current_tile_id)
+	var most := BuildingState.MAX_TILE_LAND
+	var room := ("%d less than open country" % (most - cap)) if cap < most else "the most any tile can hold"
+	_terrain_glyph.tooltip_text = "%s. %s holds up to %d land, %s.\nOnce %d are in use, new buildings cost 50%% more." % [
+		terrain.capitalize(), str(TERRAIN_GROUND.get(key, "This ground")), cap, room, int(BuildingState.DENSITY_SOFT_CAPACITY)]
 
 
 ## One key's lamp and figure. `tone` is ok, warn, bad or off; `figure` goes on the LED screen (digits,
@@ -901,7 +915,8 @@ func _refresh_status_line_v3(tile_data: Dictionary) -> void:
 	var words: Array = ["Yours" if yours else ("Other companies" if others else "Unowned")]
 	var terrain := str(tile_data.get("type", Catalog.tile_type(tid))).strip_edges()
 	if terrain != "":
-		words.append(_v3_terrain_tag(terrain))
+		words.append(terrain.capitalize())
+	_refresh_terrain_glyph(terrain)
 	var survey := _survey_status_for_tile(tile_data)
 	words.append(survey)
 	var gated: Dictionary = TileViewData.survey_gated_deposits(tid, tile_data)

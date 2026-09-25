@@ -2,8 +2,8 @@ extends Control
 ## Tile view v3: the tile's land as a hex, as big as the land the tile can hold (so a mountain's hex is
 ## smaller than a rural one's), filling from the bottom (docs/tile-view-ds2-plan.md §9). The planning rule
 ## counts everyone's space used, so the used land fills first, and the planning limit is drawn where the
-## tile's first 100 units end, striped yellow and black like the hazard tape on a factory floor so it reads
-## on every company's livery.
+## tile's first 100 units end, striped like the hazard tape on a factory floor: yellow on black, or red on
+## white when the company's livery is itself yellow, so it never matches the player's buildings.
 ##
 ## Two looks. Collapsed, the mini hex at the top of the panel, read at a glance: one smooth hex laid straight
 ## onto the stainless plate with a thin black rim, filled from the bottom in flat bands whose areas are the
@@ -50,9 +50,11 @@ const RIM := Color("#0e0f11")
 ## step down from paper white.
 const YOUR_STEPS := [0.0, 0.24, -0.12, 0.12]
 const THEIR_STEPS := [0.0, -0.14, -0.06, -0.2]
-## Your buildings' shades stay at least this light (OKHSL), so a dark livery still reads as lit against the
-## unlit squares; other companies' paper white stays at least this light. None go past SHADE_CEILING.
+## Your buildings' shades stay at least YOUR_FLOOR light (OKHSL), so a dark livery still reads as lit against
+## the unlit squares, and no lighter than YOUR_CEILING, so a pale livery's lightest shade is still its colour
+## and not the paper white of other companies' buildings. Theirs stay between THEIR_FLOOR and SHADE_CEILING.
 const YOUR_FLOOR := 0.42
+const YOUR_CEILING := 0.84
 const THEIR_FLOOR := 0.6
 const SHADE_CEILING := 0.95
 const UNLIT := Color("#262a30")
@@ -62,6 +64,8 @@ const PANE := Color("#0d1014")
 const WELL := Color("#131416")
 const HAZARD := Color("#f2c230")
 const HAZARD_DARK := Color("#16171a")
+const HAZARD_RED := Color("#e8281e")
+const HAZARD_WHITE := Color("#f4f2ec")
 const OPEN_RING := Color("#0b2340")
 ## The mini hex's bands, bottom up.
 const BAND_ORDER := ["theirs", "feature", "yours", "free", "buy"]
@@ -189,14 +193,14 @@ static func hex_polygon(r: Rect2) -> PackedVector2Array:
 
 
 ## `count` shades of `base` a step apart in lightness. The steps are taken round the base's own lightness,
-## moved just enough that none falls below `floor` or past SHADE_CEILING, so no two are clamped together.
-static func shades(base: Color, count: int, steps: Array, floor := 0.2) -> Array:
+## moved just enough that none falls below `floor` or past `ceiling`, so no two are clamped together.
+static func shades(base: Color, count: int, steps: Array, floor := 0.2, ceiling := SHADE_CEILING) -> Array:
 	var lowest := 0.0
 	var highest := 0.0
 	for step in steps:
 		lowest = minf(lowest, float(step))
 		highest = maxf(highest, float(step))
-	var centre := clampf(base.ok_hsl_l, floor - lowest, SHADE_CEILING - highest)
+	var centre := clampf(base.ok_hsl_l, floor - lowest, ceiling - highest)
 	var out: Array = []
 	for i in count:
 		var l := centre + float(steps[i % steps.size()])
@@ -223,7 +227,7 @@ func configure(chart: Dictionary, totals: Dictionary) -> void:
 		elif kind == "theirs":
 			theirs += 1
 	var livery := PlayerColours.active_color()
-	var your_shades := shades(livery, yours, YOUR_STEPS, YOUR_FLOOR)
+	var your_shades := shades(livery, yours, YOUR_STEPS, YOUR_FLOOR, YOUR_CEILING)
 	var their_shades := shades(PlayerColours.NPC, theirs, THEIR_STEPS, THEIR_FLOOR)
 	var yi := 0
 	var ti := 0
@@ -640,10 +644,23 @@ func _draw_full() -> void:
 		_draw_hazard(segments, 5.0, 3.0, 5.0)
 
 
-## Hazard tape along each [from, to]: a dark band with yellow dashes along it.
+## The planning limit's tape for the livery in play: {band, stripe}. Yellow dashes on black, unless the
+## livery is a yellow (hue 32 to 72 degrees, not greyed), when it is red dashes on white instead.
+static func tape() -> Dictionary:
+	var livery := PlayerColours.active_color()
+	if livery.h >= 0.09 and livery.h <= 0.2 and livery.s > 0.3:
+		return {"band": HAZARD_WHITE, "stripe": HAZARD_RED}
+	return {"band": HAZARD_DARK, "stripe": HAZARD}
+
+
+## Hazard tape along each [from, to]: a band with dashes along it (tape()), a dark keyline round a white band.
 func _draw_hazard(segments: Array, band: float, stripe: float, dash: float) -> void:
+	var colours := tape()
+	if colours.band != HAZARD_DARK:
+		for seg: Array in segments:
+			draw_line(seg[0], seg[1], HAZARD_DARK, band + 1.5)
 	for seg: Array in segments:
-		draw_line(seg[0], seg[1], HAZARD_DARK, band)
+		draw_line(seg[0], seg[1], colours.band, band)
 	for seg: Array in segments:
 		var a: Vector2 = seg[0]
 		var b: Vector2 = seg[1]
@@ -651,7 +668,7 @@ func _draw_hazard(segments: Array, band: float, stripe: float, dash: float) -> v
 		var dir := (b - a) / maxf(length, 0.001)
 		var t := 0.0
 		while t < length:
-			draw_line(a + dir * t, a + dir * minf(t + dash, length), HAZARD, stripe)
+			draw_line(a + dir * t, a + dir * minf(t + dash, length), colours.stripe, stripe)
 			t += dash * 2.0
 
 
