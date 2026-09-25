@@ -93,9 +93,9 @@ const V3_SIDE_KEY_W := 104.0
 ## A link counts as near capacity at this share of it.
 const V3_LINK_NEAR := 0.9
 ## The terrain glyphs, cut from the owner's sprite sheet by tools/extract_terrain_icons.py at one scale for
-## the set, and how many logical pixels each texture pixel takes in the status line (a city's glyph 21 tall).
+## the set, and how many logical pixels each texture pixel takes over the mini hex (a city's glyph 33 tall).
 const TERRAIN_ICON := "res://assets/icons/ui_icons/terrain/terrain_%s.png"
-const TERRAIN_ICON_SCALE := 0.17
+const TERRAIN_ICON_SCALE := 0.27
 ## What each terrain is, for the glyph's tooltip.
 const TERRAIN_GROUND := {"rural": "Open country", "urban": "Built-up ground", "hill": "Rough ground",
 	"mountain": "Steep ground", "sea": "Open water", "deep_sea": "Deep water"}
