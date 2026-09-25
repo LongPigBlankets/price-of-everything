@@ -52,13 +52,13 @@ const TAB_METAL_ACTIVE := Color(0.070, 0.230, 0.385)
 ## Tile view v3 (UiPrefs.use_tvp_v3), the site's control cabinet (docs/tile-view-ds2-plan.md §9): a fifth
 ## key for Transport, where the infrastructure moves from the foot of Buildings.
 const TRANSPORT_TAB := {"id": "transport", "label": "Transport"}
-## v3's tab bodies, one script each.
+## v3's tab bodies, one script each, loaded when the tab is drawn so a fault in one leaves the others working.
 const V3_TAB_BODIES := {
-	"bl": preload("res://scripts/tvp_v3/buildings_tab.gd"),
-	"power": preload("res://scripts/tvp_v3/power_tab.gd"),
-	"prod": preload("res://scripts/tvp_v3/goods_tab.gd"),
-	"stock": preload("res://scripts/tvp_v3/stock_tab.gd"),
-	"transport": preload("res://scripts/tvp_v3/transport_tab.gd"),
+	"bl": "res://scripts/tvp_v3/buildings_tab.gd",
+	"power": "res://scripts/tvp_v3/power_tab.gd",
+	"prod": "res://scripts/tvp_v3/goods_tab.gd",
+	"stock": "res://scripts/tvp_v3/stock_tab.gd",
+	"transport": "res://scripts/tvp_v3/transport_tab.gd",
 }
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const V3Lamp := preload("res://scripts/bdp_v3_lamp.gd")
@@ -1493,7 +1493,9 @@ func _refresh_pane(tab_id: String) -> void:
 		child.queue_free()
 	if _built_v3:
 		# v3's tab bodies each live in their own script (scripts/tvp_v3/).
-		(V3_TAB_BODIES[tab_id] as Script).call("build", self, pane)
+		var body := load(str(V3_TAB_BODIES[tab_id])) as Script
+		if body != null and body.can_instantiate():
+			body.call("build", self, pane)
 		return
 	match tab_id:
 		"power": _build_power_pane(pane)
