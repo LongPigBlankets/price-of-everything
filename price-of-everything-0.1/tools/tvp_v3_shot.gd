@@ -3,7 +3,8 @@ extends Node2D
 ## (two pixels each), after three turns of a busy tile you own: each tab, with the v3 look off and on
 ## (UiPrefs.use_tvp_v3), cropped to the panel.
 ##   Godot --path . res://tools/tvp_v3_shot.tscn --quit-after 20000 -- --no-telemetry
-## Writes tvp_<look>_<tab>.png into $TVP_SHOT_DIR (or /tmp).
+## Writes tvp_<look>_<tab>.png into $TVP_SHOT_DIR (or /tmp). With TVP_SHOT_TABS set, v3 tabs only, paged
+## down their whole body (see _shoot_tabs).
 
 const LOGICAL := Vector2i(1920, 1080)
 const TILE := "tile_5_10"
@@ -58,6 +59,14 @@ func _ready() -> void:
 	var td: Dictionary = {"id": TILE}
 	if terrain != null and terrain.has_method("id_to_coord"):
 		td = terrain.tiles.get(terrain.id_to_coord(TILE), td)
+	# TVP_SHOT_TABS=bl,power (any of bl, power, prod, stock, transport): v3 only, each tab on the busy tile a
+	# screen at a time down its whole body (tvp_v3_<tab>_busy_p1.png, _p2 ...), then on the empty mountain
+	# tile (tvp_v3_<tab>_empty.png).
+	var only := OS.get_environment("TVP_SHOT_TABS")
+	if only != "":
+		await _shoot_tabs(panel, terrain, td, only.split(","))
+		get_tree().quit(0)
+		return
 	for look: String in ["v2", "v3"]:
 		UiPrefs.set_use_tvp_v3(look == "v3")
 		for tab: String in TABS:
@@ -96,6 +105,33 @@ func _ready() -> void:
 	UiPrefs.set_use_tvp_v3(false)
 	print("[TVP_SHOT] done")
 	get_tree().quit(0)
+
+
+func _shoot_tabs(panel: Control, terrain: Node, td: Dictionary, tabs: PackedStringArray) -> void:
+	UiPrefs.set_use_tvp_v3(true)
+	await _settle(6)
+	var empty: Dictionary = {"id": EMPTY_TILE}
+	if terrain != null and terrain.has_method("id_to_coord"):
+		empty = terrain.tiles.get(terrain.id_to_coord(EMPTY_TILE), empty)
+	for tab: String in tabs:
+		tab = tab.strip_edges()
+		panel.call("show_tile", td, tab)
+		await _settle(12)
+		var scroll: ScrollContainer = panel.find_child("BodyScroll", true, false)
+		var page := 1
+		var step := maxf(80.0, scroll.size.y - 60.0) if scroll != null else 0.0
+		while page <= 5:
+			_save(panel.get_global_rect().grow(16.0), "tvp_v3_%s_busy_p%d" % [tab, page])
+			if scroll == null or scroll.scroll_vertical + scroll.size.y >= scroll.get_v_scroll_bar().max_value - 1.0:
+				break
+			scroll.scroll_vertical = int(scroll.scroll_vertical + step)
+			await _settle(4)
+			page += 1
+		panel.call("show_tile", empty, tab)
+		await _settle(12)
+		_save(panel.get_global_rect().grow(16.0), "tvp_v3_%s_empty" % tab)
+	UiPrefs.set_use_tvp_v3(false)
+	print("[TVP_SHOT] done")
 
 
 func _save(r: Rect2, tag: String) -> void:
