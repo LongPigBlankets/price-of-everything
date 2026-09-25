@@ -2,7 +2,7 @@
 
 Status: PLAN, revised 24 September 2026 after the top bar. The owner has decided §8 (answers written beside each). Built: §6's figures (yours only, from the engine), links that open their tab, and the stock controls shown only where you own land or have goods (Phase 1 in part, commit 1680e87b). The concept for the look is §9; nothing of it is built yet.
 
-Read with `docs/ds2-theme.md` (now on main; §13 is the method as used on the top bar), `docs/bdp-v3-roadmap.md` and `docs/top-bar-ds2-plan.md`. The bar is 60 px with no notch and the panels under it start at y 72 instead of 114, so this panel has already gained 42 px at its top.
+The owner's settled decisions for this panel and the top bar are collected in `docs/ds2-owner-decisions.md`. Read with `docs/ds2-theme.md` (now on main; §13 is the method as used on the top bar), `docs/bdp-v3-roadmap.md` and `docs/top-bar-ds2-plan.md`. The bar is 60 px with no notch and the panels under it start at y 72 instead of 114, so this panel has already gained 42 px at its top.
 
 Captures are in `artifacts/ui_ds2_plan/` (`tile_bl`, `tile_power`, `tile_prod`, `tile_stock`, an empty unsurveyed tile, an NPC tile, and the whole screen with the building detail docked beside the panel), made by `tools/ui_plan_shot.tscn` on a fixed 1920 × 1080 viewport at two pixels per logical pixel. `tile_view_arrangement.png` sets today's Buildings tab beside the proposed arrangement.
 
