@@ -326,6 +326,14 @@ func _test_tile_view_cabinet() -> void:
 		"tile view v3: the switch rebuilds the panel as the cabinet, a nameplate and five keys on their bed")
 	_check(str(panel.get("_active_tab")) == "stock" and bool(keys[3].get("latched")) and not bool(keys[0].get("latched")),
 		"tile view v3: the open tab survives the rebuild and its key stays latched")
+	_check(panel.find_child("TileLandChart", true, false) != null and panel.find_child("BLBuyLandButton", true, false) != null
+		and panel.find_child("LocationKey", true, false) != null and panel.find_child("OwnerLamp", true, false) != null
+		and panel.find_child("RailSheet", true, false) == null and (panel as Control).custom_minimum_size.x == 655.0,
+		"tile view v3: the fixed part is the plan's, the land gauge with Buy Land beside it, Location, the owner's lamp, no land column")
+	var located: Array = []
+	panel.connect("locate_requested", func(t: String) -> void: located.append(t))
+	(panel.find_child("LocationKey", true, false) as BaseButton).pressed.emit()
+	_check(located == [tile], "tile view v3: the Location key asks the map to show this tile")
 	var plate: Control = panel.find_child("Nameplate", true, false)
 	var name_text := str(panel.get("_nameplate_text"))
 	_check(name_text != "" and not name_text.contains("(") and plate.tooltip_text == "Coordinates 5, 10",

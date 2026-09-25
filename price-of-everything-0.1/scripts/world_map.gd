@@ -964,6 +964,7 @@ func _build_info_panel() -> void:
 	_info_panel.building_clicked.connect(_on_v2_building_clicked)
 	_info_panel.pick_destination_requested.connect(_on_v2_pick_destination)
 	_info_panel.survey_requested.connect(_on_survey_tile_clicked)
+	_info_panel.locate_requested.connect(func(tile_id: String) -> void: _focus_camera_on_tile(tile_id))
 
 
 ## Dialogs, the debug terminal and the two effect layers.

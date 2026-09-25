@@ -22,6 +22,7 @@ const KEY_INSET := 16.0
 const FACE_INSET := 15.6
 const LATCH_TINT := Color(0.8, 0.8, 0.8)
 const PRESS_TINT := Color(0.94, 0.94, 0.94)
+const DISABLED_TINT := Color(0.62, 0.62, 0.62)
 const NAVY := Color("#0b2340")
 const LABEL_PX := 15
 
@@ -32,6 +33,12 @@ var text := "":
 var latched := false:
 	set(v):
 		latched = v
+		queue_redraw()
+## A disabled key is greyed and doesn't press; its tooltip says why.
+var disabled := false:
+	set(v):
+		disabled = v
+		mouse_default_cursor_shape = Control.CURSOR_ARROW if v else Control.CURSOR_POINTING_HAND
 		queue_redraw()
 var _held := false
 
@@ -48,6 +55,8 @@ func _gui_input(event: InputEvent) -> void:
 	if mb == null or mb.button_index != MOUSE_BUTTON_LEFT:
 		return
 	accept_event()
+	if disabled:
+		return
 	if mb.pressed:
 		_held = true
 		queue_redraw()
@@ -69,6 +78,8 @@ func _notification(what: int) -> void:
 func _draw() -> void:
 	var tex := LATCHED if latched else (PRESSED if _held else NORMAL)
 	var tint := LATCH_TINT if latched else (PRESS_TINT if _held else Color.WHITE)
+	if disabled:
+		tint = DISABLED_TINT
 	var out := KEY_INSET / CAPTURE_SCALE
 	var dest := Rect2(-out, -out, size.x + 2.0 * out, size.y + 2.0 * out)
 	var cap_px := CAP / CAPTURE_SCALE
@@ -87,4 +98,4 @@ func _draw() -> void:
 	var fs := Plate._fit(font, label, LABEL_PX, face.size.x - 6.0)
 	var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 	var base := face.get_center().y + (font.get_ascent(fs) - font.get_descent(fs)) * 0.5
-	draw_string(font, Vector2(face.get_center().x - w * 0.5, base), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, NAVY.lerp(Color.BLACK, 0.25) if latched else NAVY)
+	draw_string(font, Vector2(face.get_center().x - w * 0.5, base), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(NAVY, 0.5) if disabled else (NAVY.lerp(Color.BLACK, 0.25) if latched else NAVY))

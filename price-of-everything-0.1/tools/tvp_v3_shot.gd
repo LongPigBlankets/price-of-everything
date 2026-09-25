@@ -7,6 +7,7 @@ extends Node2D
 
 const LOGICAL := Vector2i(1920, 1080)
 const TILE := "tile_5_10"
+const EMPTY_TILE := "tile_6_1"
 const TABS := ["bl", "power", "prod", "stock", "transport"]
 
 var _vp: SubViewport
@@ -65,6 +66,13 @@ func _ready() -> void:
 			panel.call("show_tile", td, tab)
 			await _settle(12)
 			_save(panel.get_global_rect().grow(16.0), "tvp_%s_%s" % [look, tab])
+	# v3 on an empty, unsurveyed tile: Survey beside the land, nothing of yours.
+	var empty: Dictionary = {"id": EMPTY_TILE}
+	if terrain != null and terrain.has_method("id_to_coord"):
+		empty = terrain.tiles.get(terrain.id_to_coord(EMPTY_TILE), empty)
+	panel.call("show_tile", empty, "bl")
+	await _settle(12)
+	_save(panel.get_global_rect().grow(16.0), "tvp_v3_empty")
 	UiPrefs.set_use_tvp_v3(false)
 	print("[TVP_SHOT] done")
 	get_tree().quit(0)

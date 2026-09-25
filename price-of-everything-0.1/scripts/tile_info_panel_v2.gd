@@ -15,6 +15,8 @@ signal survey_requested(tile_data: Dictionary)
 ## Asks the host (world_map) to enter map "pick a destination tile" mode; the
 ## result comes back via on_destination_picked().
 signal pick_destination_requested()
+## v3's Location key: centre the map on this tile.
+signal locate_requested(tile_id: String)
 
 const TileViewData := preload("res://scripts/tile_view_data.gd")
 const INFRA_DIAL := preload("res://scripts/infra_dial.gd")
@@ -54,6 +56,10 @@ const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const V3Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const V3Key := preload("res://scripts/bdp_v3_key.gd")
 const CabinetKey := preload("res://scripts/tile_cabinet_key.gd")
+const LandGauge := preload("res://scripts/tile_land_gauge.gd")
+const V3Led := preload("res://scripts/bdp_v3_led.gd")
+const Plate := preload("res://scripts/bdp_v3_plate.gd")
+const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
 ## The cabinet's renders (tools/button_mockup/cluster.html?export&only=tiledoor,tilekey), their numbers from
 ## layout.json in layout pixels (1.875 to a logical pixel, 2/1.875 texels to a layout pixel).
 const V3_LAYOUT := 1.875
@@ -80,6 +86,13 @@ const V3_PAD := 26
 const V3_INK := Color("#0b2340")
 const V3_NAME_INK := Color("#eef1f5")
 const V3_BODY_PX := 14
+const V3_CAPTION_PX := 15
+## Buy Land's and Survey's keys beside the land gauge.
+const V3_SIDE_KEY_W := 104.0
+## The legend's swatch for your buildings, which the gauge shows in their categories' colours.
+const V3_LAND_BUILT := Color("#d9893a")
+## A link counts as near capacity at this share of it.
+const V3_LINK_NEAR := 0.9
 ## The keys' names where the owner's differ from the v2 tabs'.
 const V3_KEY_NAMES := {"stock": "Stock"}
 
@@ -151,6 +164,9 @@ var _player_only_checkbox: CheckBox = null
 var _built_v3 := false
 var _nameplate: Control = null
 var _nameplate_text := ""
+var _land_gauge: Control = null
+var _land_legend: HFlowContainer = null
+var _survey_key: Control = null
 
 func _enter_tree() -> void:
 	# the hex grid overlay mirrors this panel's tile as its brass selection
@@ -191,7 +207,7 @@ func _apply_anchors() -> void:
 	# Rail is 75px collapsed / 216px expanded; widen the whole panel to match. The expanded
 	# rail grew by 16 when the land chart gained its owned-bracket gutter, so the bars keep
 	# the width — and the room for a building's name — that they had before it.
-	var panel_w := 796.0 if _rail_expanded else 655.0
+	var panel_w := 655.0 if UiPrefs.use_tvp_v3 else (796.0 if _rail_expanded else 655.0)
 	custom_minimum_size = Vector2(panel_w, 0)
 	anchor_left = 1.0
 	anchor_right = 1.0
@@ -321,6 +337,12 @@ func _on_look_changed(_on: bool) -> void:
 	_chips_row = null
 	_banner_texture = null
 	_nameplate = null
+	_land_gauge = null
+	_land_legend = null
+	_survey_key = null
+	_land_chart = null
+	_land_rail = null
+	_apply_anchors()
 	_apply_panel_style()
 	_build_ui()
 	queue_redraw()
@@ -353,30 +375,24 @@ func _build_ui_v3() -> void:
 	root.name = "Cabinet"
 	root.add_theme_constant_override("separation", 12)
 	add_child(root)
+	# The fixed part, top to bottom (docs/tile-view-ds2-plan.md §4.2): what the place is, whether you can
+	# use it, and whether anything is wrong. Each action sits beside the figure it changes.
 	root.add_child(_build_nameplate_row())
 	var status := HFlowContainer.new()
 	status.name = "StatusLine"
-	status.add_theme_constant_override("h_separation", 8)
-	status.add_theme_constant_override("v_separation", 6)
+	status.add_theme_constant_override("h_separation", 10)
+	status.add_theme_constant_override("v_separation", 4)
 	_chips_row = status
 	root.add_child(status)
+	root.add_child(_build_land_row())
 	root.add_child(_build_key_bed())
 
-	# The tray: the land rail and the open tab's body, each on a sheet of the bar's navy steel, so the
-	# bodies keep the dark ground they were built on until each is restyled.
-	var tray := HBoxContainer.new()
-	tray.name = "Tray"
-	tray.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	tray.add_theme_constant_override("separation", 12)
-	root.add_child(tray)
-	var rail_sheet := _v3_sheet(10)
-	rail_sheet.name = "RailSheet"
-	rail_sheet.add_child(_build_land_rail())
-	tray.add_child(rail_sheet)
+	# The body: the open tab on a sheet of the bar's navy steel, the dark ground the tabs were built on,
+	# until each is restyled.
 	var body_sheet := _v3_sheet(12)
 	body_sheet.name = "BodySheet"
-	body_sheet.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tray.add_child(body_sheet)
+	body_sheet.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_child(body_sheet)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -409,11 +425,11 @@ func _v3_sheet(pad: int) -> PanelContainer:
 
 
 ## The engraved nameplate riveted to the door (the site's name; its coordinates on hover), which drags the
-## panel as the v2 title bar does, and Building Detail's Close key.
+## panel as the v2 title bar does, then Building Detail's Location and Close keys.
 func _build_nameplate_row() -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.name = "NameplateRow"
-	row.add_theme_constant_override("separation", 10)
+	row.add_theme_constant_override("separation", 8)
 	_nameplate = Control.new()
 	_nameplate.name = "Nameplate"
 	_nameplate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -425,6 +441,12 @@ func _build_nameplate_row() -> HBoxContainer:
 	_nameplate.gui_input.connect(_on_header_drag)
 	_nameplate.draw.connect(_draw_nameplate)
 	row.add_child(_nameplate)
+	var locate := V3Key.make("pin")
+	locate.name = "LocationKey"
+	locate.tooltip_text = "Show this tile on the map"
+	locate.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	locate.pressed.connect(func() -> void: locate_requested.emit(_current_tile_id))
+	row.add_child(locate)
 	var close := V3Key.make("close")
 	close.name = "CloseKey"
 	close.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -458,13 +480,50 @@ func _draw_nameplate() -> void:
 	n.draw_string(font, Vector2(22, base), _nameplate_text, HORIZONTAL_ALIGNMENT_LEFT, room, fs, V3_NAME_INK)
 
 
-## The five latching keys on their black key bed, a pilot lamp and the tab's figure over each.
+## The land: the sight gauge with its legend in the one vocabulary, Buy Land beside it, and Survey while
+## the tile is unsurveyed.
+func _build_land_row() -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = "LandRow"
+	row.add_theme_constant_override("separation", 12)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 6)
+	row.add_child(col)
+	_land_gauge = LandGauge.new()
+	_land_gauge.segment_clicked.connect(_on_chart_segment_clicked)
+	col.add_child(_land_gauge)
+	_land_legend = HFlowContainer.new()
+	_land_legend.name = "LandLegend"
+	_land_legend.add_theme_constant_override("h_separation", 12)
+	col.add_child(_land_legend)
+	var buy := CabinetKey.new()
+	buy.name = "BLBuyLandButton"   # tutorial spotlight target
+	buy.text = "Buy Land"
+	buy.size_flags_horizontal = Control.SIZE_SHRINK_END
+	buy.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	buy.custom_minimum_size.x = V3_SIDE_KEY_W
+	buy.pressed.connect(func() -> void: _on_buy_land_pressed(buy))
+	row.add_child(buy)
+	_survey_key = CabinetKey.new()
+	_survey_key.name = "SurveyKey"
+	_survey_key.text = "Survey"
+	_survey_key.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_survey_key.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_survey_key.custom_minimum_size.x = V3_SIDE_KEY_W
+	_survey_key.pressed.connect(func() -> void: survey_requested.emit(_current_tile_data))
+	row.add_child(_survey_key)
+	return row
+
+
+## The five latching keys on their black key bed; over each, a pilot lamp and the tab's figure on an LED
+## screen, a £ or a unit printed beside it.
 func _build_key_bed() -> PanelContainer:
 	var bed := PanelContainer.new()
 	bed.name = "KeyBed"
 	var bare := StyleBoxEmpty.new()
-	bare.content_margin_left = 12
-	bare.content_margin_right = 12
+	bare.content_margin_left = 10
+	bare.content_margin_right = 10
 	bare.content_margin_top = 8
 	bare.content_margin_bottom = 12
 	bed.add_theme_stylebox_override("panel", bare)
@@ -473,7 +532,7 @@ func _build_key_bed() -> PanelContainer:
 		Nine.paint(bed, V3_KEYBED, Rect2(Vector2.ZERO, bed.size).grow(V3_KEYBED_MARGIN / V3_LAYOUT),
 			(V3_KEYBED_MARGIN + V3_KEYBED_CORNER) * V3_TEXELS))
 	var keys := HBoxContainer.new()
-	keys.add_theme_constant_override("separation", 10)
+	keys.add_theme_constant_override("separation", 8)
 	bed.add_child(keys)
 	for tab in _tabs():
 		var id: String = tab.id
@@ -481,17 +540,22 @@ func _build_key_bed() -> PanelContainer:
 		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		col.add_theme_constant_override("separation", 6)
 		var head := HBoxContainer.new()
+		head.name = "Figure"
 		head.alignment = BoxContainer.ALIGNMENT_CENTER
-		head.add_theme_constant_override("separation", 5)
+		head.add_theme_constant_override("separation", 3)
+		head.mouse_filter = Control.MOUSE_FILTER_PASS
 		var lamp := V3Lamp.new()
 		lamp.lamp_scale = 0.55
 		head.add_child(lamp)
-		var figure := Label.new()
-		figure.name = "Figure"
-		figure.add_theme_font_override("font", UIFonts.PLEX_MED)
-		figure.add_theme_font_size_override("font_size", V3_BODY_PX)
-		figure.add_theme_color_override("font_color", DS.PALETTE.TEXT)
-		head.add_child(figure)
+		var gap := Control.new()
+		gap.custom_minimum_size.x = 2
+		head.add_child(gap)
+		var pre := _v3_print_white("")
+		head.add_child(pre)
+		var screen: Control = V3Led.new()
+		head.add_child(screen)
+		var unit := _v3_print_white("")
+		head.add_child(unit)
 		col.add_child(head)
 		var key := CabinetKey.new()
 		key.name = "TabKey_%s" % id
@@ -499,11 +563,99 @@ func _build_key_bed() -> PanelContainer:
 		key.pressed.connect(func() -> void: _select_tab(id))
 		col.add_child(key)
 		keys.add_child(col)
-		_tiles[id] = {"root": key, "led": lamp, "metric": figure, "unit": null, "hover": false, "color": DS.PALETTE.TEXT}
+		_tiles[id] = {"root": key, "led": lamp, "screen": screen, "pre": pre, "metric": unit, "unit": null,
+			"head": head, "hover": false, "color": DS.PALETTE.TEXT}
 	return bed
 
 
-## The status line on the stainless: survey, terrain and deposits as tags, and the land figures in navy.
+func _v3_print_white(text: String) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_override("font", UIFonts.PLEX_MED)
+	l.add_theme_font_size_override("font_size", V3_BODY_PX)
+	l.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return l
+
+
+## A word of the status line: engraved into the stainless and filled navy.
+func _v3_tag(text: String) -> Label:
+	var l := Label.new()
+	l.text = text.to_upper()
+	l.add_theme_font_override("font", Plate.FONT_SEMI)
+	l.add_theme_font_size_override("font_size", V3_CAPTION_PX)
+	l.add_theme_color_override("font_color", V3_INK)
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return l
+
+
+## One key's lamp and figure. `tone` is ok, warn, bad or off; `figure` goes on the LED screen (digits,
+## "-" and "."), `pre` and `unit` are printed either side of it.
+func _set_key_v3(tab_id: String, tone: String, figure: String, pre: String, unit: String, tip: String) -> void:
+	var t: Dictionary = _tiles[tab_id]
+	(t.led as V3Lamp).set_tone(tone if tone in ["warn", "bad"] else "off")
+	(t.screen as V3Led).set_figure(figure, Color.WHITE)
+	(t.pre as Label).text = pre
+	(t.pre as Label).visible = pre != ""
+	(t.metric as Label).text = unit
+	(t.metric as Label).visible = unit != ""
+	(t.head as Control).tooltip_text = tip
+	(t.root as Control).tooltip_text = tip
+
+
+## The keys' figures (docs/tile-view-ds2-plan.md §4.2): your buildings, or the stalled and problem ones
+## when any; net MW; net value added; stock fill; links near capacity of those built.
+func _refresh_keys_v3() -> void:
+	var tone := func(status: String) -> String: return {"warn": "warn", "problem": "bad"}.get(status, "off")
+	var bl := TileViewData.buildings_land_summary(_current_tile_id, _current_tile_data)
+	var yours := 0
+	var stalled := 0
+	var problems := 0
+	for row: Dictionary in bl.buildings:
+		var inst := BuildingState.get_building(str(row.get("instance_id", "")))
+		if bool(row.get("is_infra", false)) or inst.is_empty() or not BuildingState.is_player_owned(inst):
+			continue
+		yours += 1
+		match str(row.get("status", "ok")):
+			"problem": problems += 1
+			"warn": stalled += 1
+	if problems > 0:
+		_set_key_v3("bl", "bad", str(problems), "", "need you", "%d of your buildings need you" % problems)
+	elif stalled > 0:
+		_set_key_v3("bl", "warn", str(stalled), "", "stalled", "%d of your buildings stalled last turn" % stalled)
+	else:
+		_set_key_v3("bl", "off", str(yours), "", "", "Your buildings on this tile")
+
+	var power := TileViewData.power_summary(_current_tile_id)
+	_set_key_v3("power", tone.call(str(power.status)), "0" if power.status == "muted" else str(int(power.net)), "", "MW",
+		"Net power on this tile: made less drawn")
+
+	var prod := TileViewData.production_summary(_current_tile_id)
+	var money := MoneyFigure.led(float(prod.net_value))
+	_set_key_v3("prod", tone.call(str(prod.status)), str(money.figure), "£", str(money.suffix),
+		"Net value added a turn by your buildings")
+
+	var stock := TileViewData.stockpile_summary(_current_tile_id)
+	_set_key_v3("stock", "bad" if stock.is_full else tone.call(str(stock.status)), str(roundi(float(stock.pct) * 100.0)), "", "%",
+		"Storage used: %d of %d" % [int(stock.used), int(stock.capacity)])
+
+	var built := 0
+	var near := 0
+	var over := 0
+	for slot: Dictionary in TileViewData.infrastructure_summary(_current_tile_id, _current_tile_data):
+		if str(slot.get("state", "")) != "exists":
+			continue
+		built += 1
+		var pct := float((slot.get("transit", {}) as Dictionary).get("pct", 0.0))
+		if pct > 1.0:
+			over += 1
+		elif pct >= V3_LINK_NEAR:
+			near += 1
+	_set_key_v3("transport", "bad" if over > 0 else ("warn" if near > 0 else "off"), str(near + over), "", "of %d" % built,
+		"Links near or over capacity, of the %d built on this tile" % built)
+
+
+## The status line (owner, terrain, survey, deposits, seaport) led by the owner's lamp, and the land row.
 func _refresh_status_line_v3(tile_data: Dictionary) -> void:
 	var tid := str(tile_data.get("id", ""))
 	_nameplate_text = Catalog.tile_name(tid)
@@ -515,39 +667,72 @@ func _refresh_status_line_v3(tile_data: Dictionary) -> void:
 	for child in _chips_row.get_children():
 		_chips_row.remove_child(child)
 		child.queue_free()
-	var survey := _survey_status_for_tile(tile_data)
-	if survey == "Surveyed":
-		_chips_row.add_child(_make_chip(survey, DS.PALETTE.OK))
-	else:
-		_chips_row.add_child(_make_chip(survey, DS.PALETTE.WARN))
-		var btn := _make_action_button("Survey")
-		btn.name = "SurveyButton"
-		btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		btn.add_theme_font_size_override("font_size", V3_BODY_PX)
-		btn.pressed.connect(func(): survey_requested.emit(_current_tile_data))
-		if MatchState.is_tile_surveyable(_current_tile_id):
-			btn.tooltip_text = "Survey this tile"
-		else:
-			btn.disabled = true
-			btn.tooltip_text = "This tile is out of survey range. Survey more tiles to extend your range."
-		_chips_row.add_child(btn)
+	var yours := BuildingState.get_tile_land_owned(tid) > 0
+	var others := false
+	var port := {}
+	for b: Dictionary in BuildingState.get_buildings_on_tile(tid):
+		var mine := BuildingState.is_player_owned(b)
+		yours = yours or mine
+		if str(b.get("building_id", "")) == PORT_BUILDING_ID:
+			port = b
+		elif not mine and not TileViewData._is_ruins(Catalog.get_building(str(b.get("building_id", "")))):
+			others = true
+	var lamp := V3Lamp.new()
+	lamp.name = "OwnerLamp"
+	lamp.lamp_scale = 0.55
+	lamp.set_tone("ok" if yours else "off")
+	_chips_row.add_child(lamp)
+	var words: Array = ["Yours" if yours else ("Other companies" if others else "Unowned")]
 	var terrain := str(tile_data.get("type", "")).strip_edges().capitalize()
 	if terrain != "":
-		_chips_row.add_child(_make_chip(terrain, DS.PALETTE.TEXT))
+		words.append(terrain)
+	var survey := _survey_status_for_tile(tile_data)
+	words.append(survey)
 	var gated: Dictionary = TileViewData.survey_gated_deposits(tid, tile_data)
 	if gated.status == "unsurveyed":
-		_chips_row.add_child(_make_chip("Deposits Unknown", DS.PALETTE.TEXT))
+		words.append("Deposits unknown")
 	for row in gated.rows:
-		_chips_row.add_child(_make_chip(str(row.chip_label), DS.PALETTE.TEXT))
-	var totals := TileViewData.land_totals(_current_tile_id, _current_tile_data)
-	var land := Label.new()
-	land.name = "LandFigures"
-	land.text = "%d built, %d buyable, %d max" % [int(totals.built), int(totals.buyable), int(totals.max)]
-	land.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	land.add_theme_font_override("font", UIFonts.PLEX_MED)
-	land.add_theme_font_size_override("font_size", V3_BODY_PX)
-	land.add_theme_color_override("font_color", V3_INK)
-	_chips_row.add_child(land)
+		words.append(str(row.chip_label))
+	if not port.is_empty():
+		words.append("Seaport (yours)" if BuildingState.is_player_owned(port) else "Seaport (NPC)")
+	for i in words.size():
+		if i > 0:
+			var rule := ColorRect.new()
+			rule.color = Color(V3_INK, 0.45)
+			rule.custom_minimum_size = Vector2(1.5, 14)
+			rule.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			_chips_row.add_child(rule)
+		_chips_row.add_child(_v3_tag(str(words[i])))
+
+	var totals := TileViewData.land_totals(tid, tile_data)
+	_land_gauge.configure(TileViewData.land_chart_data(tid, tile_data), totals)
+	for child in _land_legend.get_children():
+		_land_legend.remove_child(child)
+		child.queue_free()
+	var npc := int((TileViewData.land_chart_data(tid, tile_data) as Dictionary).get("npc_footprint", 0))
+	var entries: Array = [[V3_LAND_BUILT, "%d built" % int(totals.built)], [LandGauge.FREE, "%d free" % int(totals.free)],
+		[LandGauge.BUYABLE, "%d buyable" % int(totals.buyable)], [null, "%d max" % int(totals.max)]]
+	if npc > 0:
+		entries.append([LandGauge.OTHERS, "%d held by other companies" % npc])
+	for e: Array in entries:
+		var item := HBoxContainer.new()
+		item.add_theme_constant_override("separation", 5)
+		if e[0] != null:
+			var sw := ColorRect.new()
+			sw.color = e[0]
+			sw.custom_minimum_size = Vector2(10, 10)
+			sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			item.add_child(sw)
+		var l := _v3_print_white(str(e[1]))
+		l.add_theme_color_override("font_color", V3_INK)
+		item.add_child(l)
+		_land_legend.add_child(item)
+	var surveyed := survey == "Surveyed"
+	_survey_key.visible = not surveyed
+	_survey_key.disabled = not MatchState.is_tile_surveyable(tid)
+	_survey_key.tooltip_text = "Survey this tile" if not _survey_key.disabled \
+		else "This tile is out of survey range. Survey more tiles to extend your range."
 
 
 ## "Coordinates 5, 10" from a tile id such as "tile_5_10".
@@ -990,6 +1175,10 @@ func _make_survey_button(status: String) -> Control:
 # Metric tiles
 # ─────────────────────────────────────────────────────────────────────────────
 func _refresh_tiles() -> void:
+	if _built_v3:
+		_refresh_keys_v3()
+		_apply_tile_styles()
+		return
 	var power := TileViewData.power_summary(_current_tile_id)
 	var bl := TileViewData.buildings_land_summary(_current_tile_id, _current_tile_data)
 	var prod := TileViewData.production_summary(_current_tile_id)
@@ -999,15 +1188,6 @@ func _refresh_tiles() -> void:
 	_set_tile("bl", bl.status, _bl_metric(bl), _bl_unit(bl))
 	_set_tile("prod", prod.status, "£%d" % roundi(prod.net_value), "/turn")
 	_set_tile("stock", stock.status, _stock_metric(stock), "%d/%d" % [stock.used, stock.capacity])
-	if _built_v3:
-		_set_tile("prod", prod.status, "£%d" % roundi(prod.net_value), "a turn")
-		_set_tile("power", power.status, "0" if power.status == "muted" else "%+d" % int(power.net), "MW")
-		_set_tile("stock", stock.status, _stock_metric(stock), "full" if not stock.is_full else "")
-		var built := 0
-		for slot in TileViewData.infrastructure_summary(_current_tile_id, _current_tile_data):
-			if str(slot.get("state", "")) == "exists":
-				built += 1
-		_set_tile("transport", "ok" if built > 0 else "muted", str(built), "built")
 	_apply_tile_styles()
 
 func _power_metric(power: Dictionary) -> String:
@@ -1037,11 +1217,6 @@ func _stock_metric(stock: Dictionary) -> String:
 
 func _set_tile(tab_id: String, status: String, metric_text: String, unit_text: String) -> void:
 	var t: Dictionary = _tiles[tab_id]
-	if _built_v3:
-		# The lamp lights for anything to look at, as the v2 tabs' lamps do; the figure prints white on the bed.
-		(t.led as V3Lamp).set_tone({"warn": "warn", "problem": "bad"}.get(status, "off"))
-		(t.metric as Label).text = ("%s %s" % [metric_text, unit_text]).strip_edges()
-		return
 	var color := _status_color(status)
 	t["color"] = color
 	var lamp := t.get("led") as StatusLed
