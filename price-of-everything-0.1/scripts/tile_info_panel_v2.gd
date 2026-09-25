@@ -30,6 +30,8 @@ const KeyedBuildingIcon := preload("res://scripts/keyed_building_icon.gd")
 const BuildingIcon := preload("res://scripts/building_icon.gd")
 const PLUS_ICON_PATH := "res://assets/icons/ui_icons/plus_off_white.png"
 const ROUTE_STOCKPILE_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_stockpile.png")
+## v3's rotary selector (the white plastic knob), for choices of two to seven options.
+const RotarySelector := preload("res://scripts/rotary_selector.gd")
 const ROUTE_MARKET_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_port.png")
 const ROUTE_MIDDLEMAN_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_lorry.png")
 # Classic TileInfoPanel footprint is 760×630; this is 120px narrower, 100px taller.
@@ -120,6 +122,7 @@ func _ready() -> void:
 	_apply_token_theme()
 	_build_ui()
 	# Live data refresh while open.
+	UiPrefs.tvp_v3_changed.connect(func(_on: bool) -> void: _refresh_if_visible())
 	BuildingState.building_added.connect(func(_i): _refresh_if_visible())
 	BuildingState.building_removed.connect(func(_i): _refresh_if_visible())
 	BuildingState.building_owner_changed.connect(func(_i): _refresh_if_visible())
@@ -2222,6 +2225,8 @@ func _commit_warehouse_upgrade(source: String) -> void:
 # hidden behind one button: most visits to the Stockpile tab are about storage,
 # while changing every building on a tile is an occasional management action.
 func _make_surplus_controls() -> Control:
+	if UiPrefs.use_tvp_v3:
+		return _make_surplus_knob()
 	var box := VBoxContainer.new()
 	box.name = "SurplusControls"
 	box.add_theme_constant_override("separation", 5)
@@ -2255,6 +2260,43 @@ func _make_surplus_controls() -> Control:
 				_refresh_active_pane())
 		row.add_child(button)
 	box.add_child(row)
+	return box
+
+## v3: the tile's surplus route on the rotary selector: one icon per route on its arc (click one and the knob
+## turns to it; its name is its tooltip), "SURPLUS" printed under it. The routes the player cannot use yet
+## are shown, faint, with the reason on hover.
+func _make_surplus_knob() -> Control:
+	var box := VBoxContainer.new()
+	box.name = "SurplusControls"
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var selected := MatchState.get_sell_surplus_destination(_current_tile_id)
+	var routes := [
+		{"id": "none", "icon": ROUTE_STOCKPILE_ICON, "name": "Keep in this tile's stockpile", "enabled": true},
+	]
+	if ResearchState.logistics_progression_active():
+		var ok := ResearchState.open_logistics_contracts_available()
+		routes.append({"id": "middleman", "icon": ROUTE_MIDDLEMAN_ICON, "enabled": ok,
+			"name": "Sell to the Logistics Intermediary" if ok else "Sell to the Logistics Intermediary: needs Open Logistics Contracts"})
+	var licensed := ResearchState.global_trade_license_available()
+	routes.append({"id": "market", "icon": ROUTE_MARKET_ICON, "enabled": licensed,
+		"name": "Sell on the global market through the nearest port" if licensed else "Sell through a port: needs the Government Import/Export License"})
+	var knob: Control = RotarySelector.new()
+	knob.name = "SurplusKnob"
+	knob.knob_size = 118.0
+	knob.set("label", "SURPLUS")
+	knob.set("label_colour", DS.PALETTE.TEXT)
+	knob.call("set_options", routes)
+	for i in routes.size():
+		var b: Button = (knob.get("option_buttons") as Array)[i]
+		# The port route keeps the tutorial's "SellSurplusToggle" spotlight name.
+		b.name = "SellSurplusToggle" if routes[i].id == "market" else "Surplus_%s" % str(routes[i].id).capitalize()
+		if str(routes[i].id) == selected:
+			knob.call("set_value_no_signal", i + 1)
+	knob.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	knob.value_changed.connect(func(v: int) -> void:
+		MatchState.set_sell_surplus_destination(_current_tile_id, str(routes[v - 1].id))
+		_refresh_active_pane.call_deferred())
+	box.add_child(knob)
 	return box
 
 func _make_stockpile_back_button() -> Control:

@@ -256,6 +256,56 @@ func _test_grid_selection_follows_panel() -> void:
 	terrain.queue_free()
 	await get_tree().process_frame
 
+func _test_rotary_selector_options() -> void:
+	# The knob with options: one icon button per option on its arc; clicking one turns the knob there; a
+	# disabled option cannot be chosen; the label is the only text.
+	var K = load("res://scripts/rotary_selector.gd")
+	var knob: Control = K.new()
+	knob.knob_size = 118.0
+	var icon: Texture2D = load("res://assets/icons/ui_icons/route_stockpile.png")
+	knob.call("set_options", [{"id": "keep", "icon": icon, "name": "Keep"}, {"id": "lorry", "icon": icon, "name": "Lorry", "enabled": false},
+		{"id": "port", "icon": icon, "name": "Port"}])
+	knob.set("label", "SURPLUS")
+	add_child(knob)
+	await get_tree().process_frame
+	var seen := []
+	knob.value_changed.connect(func(v: int) -> void: seen.append(v))
+	var buttons: Array = knob.get("option_buttons")
+	_check(buttons.size() == 3 and (buttons[0] as Button).tooltip_text == "Keep" and (buttons[1] as Button).disabled,
+		"knob options: an icon button per option, named by its tooltip, a disabled one disabled")
+	(buttons[2] as Button).pressed.emit()
+	_check(knob.value == 3 and seen == [3] and knob.call("_frame", 2) == 5, "knob options: clicking an icon turns the knob to it")
+	knob.value = 1
+	_check(knob.call("_step", 1) == 3, "knob options: stepping passes over a disabled option")
+	_check(buttons[0].position.y < knob.call("_centre").y and buttons[2].position.x > buttons[0].position.x,
+		"knob options: the icons stand on the arc above the knob, in order left to right")
+	knob.queue_free()
+	# v3's Stock tab: the surplus route on the knob, the port route still the tutorial's SellSurplusToggle.
+	var was: bool = UiPrefs.use_tvp_v3
+	UiPrefs.set_use_tvp_v3(true)
+	var panel: Control = load("res://scripts/tile_info_panel_v2.gd").new()
+	add_child(panel)
+	await get_tree().process_frame
+	var tile := "tile_5_10"
+	var dest_was := MatchState.get_sell_surplus_destination(tile)
+	Stockpile.add(tile, str(Catalog.get_good_by_internal_name("steel").get("id", "")), 5)
+	panel.show_tile({"id": tile}, "stock")
+	await get_tree().process_frame
+	var sk: Control = panel.find_child("SurplusKnob", true, false)
+	var keep: Button = panel.find_child("Surplus_None", true, false)
+	_check(sk != null and panel.find_child("SellSurplusToggle", true, false) is Button and keep != null,
+		"tile view v3: the surplus route is a knob, its port icon still named SellSurplusToggle")
+	MatchState.set_sell_surplus_destination(tile, "market")
+	panel.show_tile({"id": tile}, "stock")
+	await get_tree().process_frame
+	keep = panel.find_child("Surplus_None", true, false)
+	if keep != null:
+		keep.pressed.emit()
+	_check(MatchState.get_sell_surplus_destination(tile) == "none", "tile view v3: clicking the keep icon sets the route to keep")
+	MatchState.set_sell_surplus_destination(tile, dest_was)
+	panel.queue_free()
+	UiPrefs.set_use_tvp_v3(was)
+
 func _test_tile_view_numbers_and_links() -> void:
 	# The tile view's Goods and Power are the engine's figures for your buildings only; a link opens the
 	# tab it names; the stock controls are yours only where you own land or goods.

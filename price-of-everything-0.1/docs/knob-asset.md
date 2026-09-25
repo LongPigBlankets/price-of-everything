@@ -18,6 +18,8 @@ Every frame uses the same camera and the ring never moves, so swapping frames tu
 
 `scripts/rotary_selector.gd` is the control that uses these frames. It draws the knob with the numbers 1–7 on an arc above it and emits `value_changed(value: int)`. The player can click a number, drag the knob, scroll, or use the arrow keys. Set `knob_size` to change the drawn size.
 
+Given `options` (two to seven, each `{id, icon, name, enabled}`) it has one position per option instead of the numbers: each option is an icon on the arc that is a real button (click it and the knob turns there; its name is its tooltip; a disabled one is faint and passed over by the wheel and keys), spread symmetrically over the frames (three options use 10, 12 and 2 o'clock), with an engraved tick from the ring to each, and `label` printed under the knob as its only text. The tile view v3 uses it for the tile's surplus route (`SurplusKnob`).
+
 The Settings panel's Gameplay tab uses it for the dummy "Test setting" (`SettingsPanel.test_setting`, 1–7). Like the other tabs, it only commits on Apply. The value lasts for the session and is not saved.
 
 ## Regenerating
