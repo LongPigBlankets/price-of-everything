@@ -307,28 +307,31 @@ func _test_rotary_selector_options() -> void:
 	UiPrefs.set_use_tvp_v3(was)
 
 func _test_tile_land_hex() -> void:
-	# The tile's land as a hex of squares: exactly as many squares as the tile holds, in a hex's rows, filled
-	# from the bottom with other companies' land first, your buildings in shades of your livery, and the
-	# planning limit drawn between the 100th square and the 101st.
+	# The tile's land as a hex: exactly as many squares as the tile holds, on an aligned grid in a hex's rows;
+	# the used land laid out as a compact block per building (within 2:1), filled from the bottom, your
+	# buildings in shades of your livery; the mini hex's bands area-true; the planning limit drawn.
 	var Hex := load("res://scripts/tile_land_hex.gd")
-	var sums_ok := true
+	var grids_ok := true
 	for n: int in [1, 7, 50, 99, 100, 120, 160, 170, 200, 260]:
-		var rows: Array = Hex.hex_rows(n)
+		var grid: Dictionary = Hex.hex_grid(n)
 		var total := 0
 		var widest := 0
-		for w in rows:
-			total += int(w)
-			sums_ok = sums_ok and int(w) >= 1
+		var rows: Array = grid.rows
 		for r in rows.size():
-			if int(rows[r]) > int(rows[widest]):
+			total += int(rows[r][1])
+			grids_ok = grids_ok and int(rows[r][1]) >= 1 and int(rows[r][0]) >= 0 and int(rows[r][0]) + int(rows[r][1]) <= int(grid.cols)
+			# centred to within a square on the grid
+			grids_ok = grids_ok and absi(int(rows[r][0]) * 2 + int(rows[r][1]) - int(grid.cols)) <= 1
+			if int(rows[r][1]) > int(rows[widest][1]):
 				widest = r
-		sums_ok = sums_ok and total == n and (rows.size() < 3 or (widest >= rows.size() / 3 and widest <= rows.size() * 2 / 3))
-	var r200: Array = Hex.hex_rows(200)
-	var mirrored := r200.duplicate()
-	mirrored.reverse()
-	_check(sums_ok and r200 == mirrored and int(r200[0]) < int(r200[r200.size() / 2]),
-		"land hex: every tile size makes a hex of exactly that many squares, widest in the middle, level (%s)" % str(r200))
+		grids_ok = grids_ok and total == n and (rows.size() < 3 or (widest >= rows.size() / 3 and widest <= rows.size() * 2 / 3))
+	_check(grids_ok, "land hex: every tile size makes a hex of exactly that many squares on aligned columns, centred, widest in the middle (200: %s)" % str(Hex.hex_grid(200).rows))
+	var level_ok := is_equal_approx(Hex.level_height(0.5), 0.5) and is_equal_approx(Hex.level_height(0.0), 0.0) and is_equal_approx(Hex.level_height(1.0), 1.0)
+	for f: float in [0.1, 0.3, 0.588, 0.9]:
+		level_ok = level_ok and absf(Hex.area_below(Hex.level_height(f)) - f) < 0.0001
+	_check(level_ok, "land hex: the mini hex's bands meet where their areas say, the hex widening to its middle")
 	var hex: Control = Hex.new()
+	hex.expanded = true
 	add_child(hex)
 	var chart := {"type_cap": 170, "segments": [
 		{"size": 25.0, "is_other": true, "name": "Glassworks", "instance_id": "npc1"},
@@ -340,9 +343,65 @@ func _test_tile_land_hex() -> void:
 	hex.configure(chart, {"free": 12, "buyable": 75, "max": 125})
 	var cells: PackedInt32Array = hex.get("cell_group")
 	var groups: Array = hex.get("groups")
-	_check(cells.size() == 170 and str(groups[cells[0]].kind) == "theirs" and str(groups[cells[45]].kind) == "yours"
-		and str(groups[cells[83]].kind) == "free" and str(groups[cells[169]].kind) == "buy",
-		"land hex: sized by the tile's maximum, filled from the bottom: other companies, yours, free, to buy")
+	var used_first := true
+	for k in 83:
+		used_first = used_first and str(groups[cells[k]].kind) in ["theirs", "yours"]
+	_check(cells.size() == 170 and used_first and str(groups[cells[83]].kind) == "free" and str(groups[cells[169]].kind) == "buy",
+		"land hex: sized by the tile's maximum, the used land first in the fill, then free, then to buy")
+	# Each building: one contiguous block, its bounding box within 2:1.
+	var neighbours: Array = hex.get("_pairs")
+	var cell_row: PackedInt32Array = hex.get("_cell_row")
+	var cell_col: PackedInt32Array = hex.get("_cell_col")
+	var blocks_ok := true
+	var shapes: Array = []
+	for gi in groups.size():
+		if not str(groups[gi].kind) in ["theirs", "yours"]:
+			continue
+		var mine: Array = []
+		for k in cells.size():
+			if cells[k] == gi:
+				mine.append(k)
+		var seen := {mine[0]: true}
+		var todo: Array = [mine[0]]
+		while not todo.is_empty():
+			var at: int = todo.pop_back()
+			for pair: Array in neighbours:
+				for side in 2:
+					var here := int(pair[side])
+					var there := int(pair[1 - side])
+					if here == at and cells[there] == gi and not seen.has(there):
+						seen[there] = true
+						todo.append(there)
+		var c0 := 999
+		var c1 := -1
+		var r0 := 999
+		var r1 := -1
+		for k: int in mine:
+			c0 = mini(c0, cell_col[k])
+			c1 = maxi(c1, cell_col[k])
+			r0 = mini(r0, cell_row[k])
+			r1 = maxi(r1, cell_row[k])
+		var w := c1 - c0 + 1
+		var h := r1 - r0 + 1
+		shapes.append("%dx%d" % [w, h])
+		blocks_ok = blocks_ok and seen.size() == mine.size() and maxf(float(w) / h, float(h) / w) <= 2.0
+	_check(blocks_ok, "land hex: each building is one block, no more than twice as long as it is wide (%s)" % ", ".join(PackedStringArray(shapes)))
+	# A busier tile: four other companies' buildings and three of yours past the planning limit.
+	var busy := {"type_cap": 170, "segments": [
+		{"size": 25.0, "is_other": true, "instance_id": "n1"}, {"size": 20.0, "is_other": true, "instance_id": "n2"},
+		{"size": 11.0, "is_other": true, "instance_id": "n3"}, {"size": 10.0, "is_other": true, "instance_id": "n4"},
+		{"size": 15.0, "is_other": false, "instance_id": "y1"}, {"size": 15.0, "is_other": false, "instance_id": "y2"},
+		{"size": 25.0, "is_other": false, "instance_id": "y3"},
+	]}
+	hex.configure(busy, {"free": 0, "buyable": 49, "max": 104})
+	var busy_shapes: Array = _land_block_shapes(hex)
+	blocks_ok = true
+	for shape: Vector2i in busy_shapes:
+		blocks_ok = blocks_ok and maxf(float(shape.x) / shape.y, float(shape.y) / shape.x) <= 2.0
+	_check(blocks_ok, "land hex: on a busier tile too, no block more than twice as long as it is wide (%s)" % str(busy_shapes))
+	hex.configure(chart, {"free": 12, "buyable": 75, "max": 125})
+	cells = hex.get("cell_group")
+	groups = hex.get("groups")
 	var livery: Color = load("res://scripts/player_colours.gd").active_color()
 	var yours: Array = groups.filter(func(g: Dictionary) -> bool: return str(g.kind) == "yours")
 	var distinct := true
@@ -357,12 +416,41 @@ func _test_tile_land_hex() -> void:
 				distinct = distinct and absf((sh[i] as Color).ok_hsl_l - (sh[j] as Color).ok_hsl_l) >= 0.1
 	_check(distinct and absf((yours[0].colour as Color).ok_hsl_h - livery.ok_hsl_h) < 0.02,
 		"land hex: your buildings are shades of your livery, neighbours at least a tenth apart in lightness, on every livery")
+	var bands: Array = hex.get("bands")
+	var kinds: Array = bands.map(func(b: Dictionary) -> String: return str(b.kind))
+	_check(kinds == ["theirs", "yours", "free", "buy"] and bands[1].colour == livery,
+		"land hex: the mini hex has one band per kind of land, bottom up, yours in the livery itself")
 	_check(int(hex.get("limit")) == int(BuildingState.DENSITY_SOFT_CAPACITY) and not (hex.call("limit_segments") as Array).is_empty(),
 		"land hex: the planning limit is drawn, at the build check's own figure")
 	chart["type_cap"] = 90
 	hex.configure(chart, {"free": 0, "buyable": 0, "max": 45})
 	_check((hex.call("limit_segments") as Array).is_empty(), "land hex: a tile smaller than the limit draws no limit")
 	hex.queue_free()
+
+## Each building's block in a land hex's full view, as its bounding box in squares.
+func _land_block_shapes(hex: Control) -> Array:
+	var cells: PackedInt32Array = hex.get("cell_group")
+	var groups: Array = hex.get("groups")
+	var cell_row: PackedInt32Array = hex.get("_cell_row")
+	var cell_col: PackedInt32Array = hex.get("_cell_col")
+	var out: Array = []
+	for gi in groups.size():
+		if not str(groups[gi].kind) in ["theirs", "yours", "feature"]:
+			continue
+		var c0 := 999
+		var c1 := -1
+		var r0 := 999
+		var r1 := -1
+		for k in cells.size():
+			if cells[k] == gi:
+				c0 = mini(c0, cell_col[k])
+				c1 = maxi(c1, cell_col[k])
+				r0 = mini(r0, cell_row[k])
+				r1 = maxi(r1, cell_row[k])
+		if c1 >= 0:
+			out.append(Vector2i(c1 - c0 + 1, r1 - r0 + 1))
+	return out
+
 
 func _test_tile_view_cabinet() -> void:
 	# Tile view v3's shell: the stainless door with its engraved nameplate (the name, the coordinates on hover),
