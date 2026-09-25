@@ -47,6 +47,42 @@ const TAB_METAL := Color(0.035, 0.135, 0.245)
 const TAB_METAL_HOVER := Color(0.055, 0.185, 0.315)
 const TAB_METAL_ACTIVE := Color(0.070, 0.230, 0.385)
 
+## Tile view v3 (UiPrefs.use_tvp_v3), the site's control cabinet (docs/tile-view-ds2-plan.md §9): a fifth
+## key for Transport, where the infrastructure moves from the foot of Buildings.
+const TRANSPORT_TAB := {"id": "transport", "label": "Transport"}
+const Nine := preload("res://scripts/bdp_v3_nine.gd")
+const V3Lamp := preload("res://scripts/bdp_v3_lamp.gd")
+const V3Key := preload("res://scripts/bdp_v3_key.gd")
+const CabinetKey := preload("res://scripts/tile_cabinet_key.gd")
+## The cabinet's renders (tools/button_mockup/cluster.html?export&only=tiledoor,tilekey), their numbers from
+## layout.json in layout pixels (1.875 to a logical pixel, 2/1.875 texels to a layout pixel).
+const V3_LAYOUT := 1.875
+const V3_TEXELS := 2.0 / 1.875
+const V3_DOOR: Texture2D = preload("res://assets/ui/bdp_v3/tile_door.png")
+const V3_DOOR_MARGIN := 24.0
+const V3_DOOR_CORNER := 96.0
+const V3_DOOR_PIPE_INSET := 16.0
+const V3_FLANGE_H: Texture2D = preload("res://assets/ui/bdp_v3/tile_flange_h.png")
+const V3_FLANGE_V: Texture2D = preload("res://assets/ui/bdp_v3/tile_flange_v.png")
+const V3_FLANGE := 64.0
+const V3_NAMEPLATE: Texture2D = preload("res://assets/ui/bdp_v3/tile_nameplate.png")
+const V3_NAMEPLATE_MARGIN := 14.0
+const V3_NAMEPLATE_CAP := 60.0
+const V3_KEYBED: Texture2D = preload("res://assets/ui/bdp_v3/tile_keybed.png")
+const V3_KEYBED_MARGIN := 14.0
+const V3_KEYBED_CORNER := 40.0
+const V3_SHEET: Texture2D = preload("res://assets/ui/bdp_v3/bar_sheet.png")
+const V3_SHEET_MARGIN := 10.0
+const V3_SHEET_CORNER := 60.0
+## Room inside the door, clear of the pipe run round its edge.
+const V3_PAD := 26
+## Print on the stainless: navy, engraved and filled (DS2 rule 3); the name on the black nameplate in white.
+const V3_INK := Color("#0b2340")
+const V3_NAME_INK := Color("#eef1f5")
+const V3_BODY_PX := 14
+## The keys' names where the owner's differ from the v2 tabs'.
+const V3_KEY_NAMES := {"stock": "Stock"}
+
 const CHART_HEIGHT := 170.0
 const STOCK_BAR_WIDTH := 60.0
 const STOCK_ICON_SIZE := 60.0
@@ -94,7 +130,7 @@ var _current_tile_id: String = ""
 var _active_tab: String = "bl"
 
 var _title_label: Label = null
-var _chips_row: VBoxContainer = null
+var _chips_row: Container = null
 var _drag_delta := Vector2.ZERO   # user-applied offset from dragging the title bar
 var _dragging := false
 var _land_chart: Control = null
@@ -111,6 +147,10 @@ var _panes: Dictionary = {}        # tab_id -> Control (body container)
 var _pane_host: VBoxContainer = null
 var _show_player_buildings_only := false
 var _player_only_checkbox: CheckBox = null
+## Whether the panel was built as the v3 cabinet; the look is rebuilt when the switch changes.
+var _built_v3 := false
+var _nameplate: Control = null
+var _nameplate_text := ""
 
 func _enter_tree() -> void:
 	# the hex grid overlay mirrors this panel's tile as its brass selection
@@ -122,7 +162,7 @@ func _ready() -> void:
 	_apply_token_theme()
 	_build_ui()
 	# Live data refresh while open.
-	UiPrefs.tvp_v3_changed.connect(func(_on: bool) -> void: _refresh_if_visible())
+	UiPrefs.tvp_v3_changed.connect(_on_look_changed)
 	BuildingState.building_added.connect(func(_i): _refresh_if_visible())
 	BuildingState.building_removed.connect(func(_i): _refresh_if_visible())
 	BuildingState.building_owner_changed.connect(func(_i): _refresh_if_visible())
@@ -184,6 +224,13 @@ func _apply_token_theme() -> void:
 	theme = t
 
 func _apply_panel_style() -> void:
+	if UiPrefs.use_tvp_v3:
+		# The cabinet door is painted in _draw; the stylebox only keeps the content clear of its pipe.
+		var bare := StyleBoxEmpty.new()
+		bare.set_content_margin_all(V3_PAD)
+		add_theme_stylebox_override("panel", bare)
+		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		return
 	# Same 9-slice pipe frame as the classic TVP.
 	var tex := load(TILE_MODAL_FRAME_PATH) as Texture2D
 	if tex == null:
@@ -217,6 +264,10 @@ func _apply_panel_style() -> void:
 # UI construction
 # ─────────────────────────────────────────────────────────────────────────────
 func _build_ui() -> void:
+	_built_v3 = UiPrefs.use_tvp_v3
+	if _built_v3:
+		_build_ui_v3()
+		return
 	# Outer row: land rail on the left, main panel content on the right.
 	var outer := HBoxContainer.new()
 	outer.add_theme_constant_override("separation", 8)
@@ -242,13 +293,269 @@ func _build_ui() -> void:
 	_pane_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_pane_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(_pane_host)
-	for tab in TABS:
+	for tab in _tabs():
 		var pane := VBoxContainer.new()
 		pane.add_theme_constant_override("separation", 9)
 		pane.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		pane.visible = false
 		_pane_host.add_child(pane)
 		_panes[tab.id] = pane
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tile view v3: the site's control cabinet
+# ─────────────────────────────────────────────────────────────────────────────
+## The tabs this build of the panel has: v3 adds Transport.
+func _tabs() -> Array:
+	return TABS + [TRANSPORT_TAB] if _built_v3 else TABS
+
+
+## The switch changed: tear the panel down and build it in the other look, on the same tile and tab.
+func _on_look_changed(_on: bool) -> void:
+	_close_goods_drawer()
+	for c in get_children():
+		remove_child(c)
+		c.queue_free()
+	_tiles.clear()
+	_panes.clear()
+	_title_label = null
+	_chips_row = null
+	_banner_texture = null
+	_nameplate = null
+	_apply_panel_style()
+	_build_ui()
+	queue_redraw()
+	if not visible or _current_tile_id == "":
+		return
+	if not _panes.has(_active_tab):
+		_active_tab = "bl"
+	_refresh_banner(_current_tile_data)
+	_refresh_land_rail()
+	_refresh_tiles()
+	_select_tab(_active_tab)
+
+
+## The cabinet door: brushed stainless with the black iron pipe run round its edge, and a flange at the
+## middle of each side.
+func _draw() -> void:
+	if not _built_v3:
+		return
+	Nine.paint(self, V3_DOOR, Rect2(Vector2.ZERO, size).grow(V3_DOOR_MARGIN / V3_LAYOUT),
+		(V3_DOOR_MARGIN + V3_DOOR_CORNER) * V3_TEXELS)
+	var p := V3_DOOR_PIPE_INSET / V3_LAYOUT
+	var f := V3_FLANGE / V3_LAYOUT
+	for spot: Array in [[Vector2(size.x * 0.5, p), V3_FLANGE_H], [Vector2(size.x * 0.5, size.y - p), V3_FLANGE_H],
+			[Vector2(p, size.y * 0.5), V3_FLANGE_V], [Vector2(size.x - p, size.y * 0.5), V3_FLANGE_V]]:
+		draw_texture_rect(spot[1], Rect2((spot[0] as Vector2) - Vector2(f, f) * 0.5, Vector2(f, f)), false)
+
+
+func _build_ui_v3() -> void:
+	var root := VBoxContainer.new()
+	root.name = "Cabinet"
+	root.add_theme_constant_override("separation", 12)
+	add_child(root)
+	root.add_child(_build_nameplate_row())
+	var status := HFlowContainer.new()
+	status.name = "StatusLine"
+	status.add_theme_constant_override("h_separation", 8)
+	status.add_theme_constant_override("v_separation", 6)
+	_chips_row = status
+	root.add_child(status)
+	root.add_child(_build_key_bed())
+
+	# The tray: the land rail and the open tab's body, each on a sheet of the bar's navy steel, so the
+	# bodies keep the dark ground they were built on until each is restyled.
+	var tray := HBoxContainer.new()
+	tray.name = "Tray"
+	tray.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	tray.add_theme_constant_override("separation", 12)
+	root.add_child(tray)
+	var rail_sheet := _v3_sheet(10)
+	rail_sheet.name = "RailSheet"
+	rail_sheet.add_child(_build_land_rail())
+	tray.add_child(rail_sheet)
+	var body_sheet := _v3_sheet(12)
+	body_sheet.name = "BodySheet"
+	body_sheet.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tray.add_child(body_sheet)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	body_sheet.add_child(scroll)
+	_pane_host = VBoxContainer.new()
+	_pane_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_pane_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_pane_host)
+	for tab in _tabs():
+		var pane := VBoxContainer.new()
+		pane.add_theme_constant_override("separation", 9)
+		pane.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		pane.visible = false
+		_pane_host.add_child(pane)
+		_panes[tab.id] = pane
+
+
+## A sheet of the top bar's navy steel (its flyouts' plate) with `pad` of room inside.
+func _v3_sheet(pad: int) -> PanelContainer:
+	var sheet := PanelContainer.new()
+	var bare := StyleBoxEmpty.new()
+	bare.set_content_margin_all(pad)
+	sheet.add_theme_stylebox_override("panel", bare)
+	sheet.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	sheet.draw.connect(func() -> void:
+		Nine.paint(sheet, V3_SHEET, Rect2(Vector2.ZERO, sheet.size).grow(V3_SHEET_MARGIN / V3_LAYOUT),
+			(V3_SHEET_MARGIN + V3_SHEET_CORNER) * V3_TEXELS))
+	return sheet
+
+
+## The engraved nameplate riveted to the door (the site's name; its coordinates on hover), which drags the
+## panel as the v2 title bar does, and Building Detail's Close key.
+func _build_nameplate_row() -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = "NameplateRow"
+	row.add_theme_constant_override("separation", 10)
+	_nameplate = Control.new()
+	_nameplate.name = "Nameplate"
+	_nameplate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_nameplate.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_nameplate.custom_minimum_size = Vector2(0, 36)
+	_nameplate.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_nameplate.mouse_filter = Control.MOUSE_FILTER_STOP
+	_nameplate.mouse_default_cursor_shape = Control.CURSOR_MOVE
+	_nameplate.gui_input.connect(_on_header_drag)
+	_nameplate.draw.connect(_draw_nameplate)
+	row.add_child(_nameplate)
+	var close := V3Key.make("close")
+	close.name = "CloseKey"
+	close.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	close.pressed.connect(hide)
+	row.add_child(close)
+	return row
+
+
+func _draw_nameplate() -> void:
+	var n := _nameplate
+	var out := V3_NAMEPLATE_MARGIN / V3_LAYOUT
+	var dest := Rect2(Vector2.ZERO, n.size).grow(out)
+	var cap_px := V3_NAMEPLATE_CAP / V3_LAYOUT
+	var cap_tx := V3_NAMEPLATE_CAP * V3_TEXELS
+	var tw := float(V3_NAMEPLATE.get_width())
+	var th := float(V3_NAMEPLATE.get_height())
+	n.draw_texture_rect_region(V3_NAMEPLATE, Rect2(dest.position, Vector2(cap_px, dest.size.y)), Rect2(0, 0, cap_tx, th))
+	n.draw_texture_rect_region(V3_NAMEPLATE, Rect2(dest.position.x + cap_px, dest.position.y, dest.size.x - 2.0 * cap_px, dest.size.y),
+		Rect2(cap_tx, 0, tw - 2.0 * cap_tx, th))
+	n.draw_texture_rect_region(V3_NAMEPLATE, Rect2(dest.end.x - cap_px, dest.position.y, cap_px, dest.size.y), Rect2(tw - cap_tx, 0, cap_tx, th))
+	if _nameplate_text == "":
+		return
+	# Cut into the enamel and filled white: the cut's upper wall shows as a dark line over the letters.
+	var font: Font = UIFonts.BEBAS
+	var fs := 28
+	var room := n.size.x - 44.0
+	while fs > 16 and font.get_string_size(_nameplate_text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > room:
+		fs -= 1
+	var base := n.size.y * 0.5 + (font.get_ascent(fs) - font.get_descent(fs)) * 0.5
+	n.draw_string(font, Vector2(22, base - 1), _nameplate_text, HORIZONTAL_ALIGNMENT_LEFT, room, fs, Color(0, 0, 0, 0.7))
+	n.draw_string(font, Vector2(22, base), _nameplate_text, HORIZONTAL_ALIGNMENT_LEFT, room, fs, V3_NAME_INK)
+
+
+## The five latching keys on their black key bed, a pilot lamp and the tab's figure over each.
+func _build_key_bed() -> PanelContainer:
+	var bed := PanelContainer.new()
+	bed.name = "KeyBed"
+	var bare := StyleBoxEmpty.new()
+	bare.content_margin_left = 12
+	bare.content_margin_right = 12
+	bare.content_margin_top = 8
+	bare.content_margin_bottom = 12
+	bed.add_theme_stylebox_override("panel", bare)
+	bed.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	bed.draw.connect(func() -> void:
+		Nine.paint(bed, V3_KEYBED, Rect2(Vector2.ZERO, bed.size).grow(V3_KEYBED_MARGIN / V3_LAYOUT),
+			(V3_KEYBED_MARGIN + V3_KEYBED_CORNER) * V3_TEXELS))
+	var keys := HBoxContainer.new()
+	keys.add_theme_constant_override("separation", 10)
+	bed.add_child(keys)
+	for tab in _tabs():
+		var id: String = tab.id
+		var col := VBoxContainer.new()
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.add_theme_constant_override("separation", 6)
+		var head := HBoxContainer.new()
+		head.alignment = BoxContainer.ALIGNMENT_CENTER
+		head.add_theme_constant_override("separation", 5)
+		var lamp := V3Lamp.new()
+		lamp.lamp_scale = 0.55
+		head.add_child(lamp)
+		var figure := Label.new()
+		figure.name = "Figure"
+		figure.add_theme_font_override("font", UIFonts.PLEX_MED)
+		figure.add_theme_font_size_override("font_size", V3_BODY_PX)
+		figure.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+		head.add_child(figure)
+		col.add_child(head)
+		var key := CabinetKey.new()
+		key.name = "TabKey_%s" % id
+		key.text = str(V3_KEY_NAMES.get(id, tab.label))
+		key.pressed.connect(func() -> void: _select_tab(id))
+		col.add_child(key)
+		keys.add_child(col)
+		_tiles[id] = {"root": key, "led": lamp, "metric": figure, "unit": null, "hover": false, "color": DS.PALETTE.TEXT}
+	return bed
+
+
+## The status line on the stainless: survey, terrain and deposits as tags, and the land figures in navy.
+func _refresh_status_line_v3(tile_data: Dictionary) -> void:
+	var tid := str(tile_data.get("id", ""))
+	_nameplate_text = Catalog.tile_name(tid)
+	if _nameplate_text == "":
+		_nameplate_text = _tile_coordinates(tid)
+	if _nameplate != null:
+		_nameplate.tooltip_text = _tile_coordinates(tid)
+		_nameplate.queue_redraw()
+	for child in _chips_row.get_children():
+		_chips_row.remove_child(child)
+		child.queue_free()
+	var survey := _survey_status_for_tile(tile_data)
+	if survey == "Surveyed":
+		_chips_row.add_child(_make_chip(survey, DS.PALETTE.OK))
+	else:
+		_chips_row.add_child(_make_chip(survey, DS.PALETTE.WARN))
+		var btn := _make_action_button("Survey")
+		btn.name = "SurveyButton"
+		btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		btn.add_theme_font_size_override("font_size", V3_BODY_PX)
+		btn.pressed.connect(func(): survey_requested.emit(_current_tile_data))
+		if MatchState.is_tile_surveyable(_current_tile_id):
+			btn.tooltip_text = "Survey this tile"
+		else:
+			btn.disabled = true
+			btn.tooltip_text = "This tile is out of survey range. Survey more tiles to extend your range."
+		_chips_row.add_child(btn)
+	var terrain := str(tile_data.get("type", "")).strip_edges().capitalize()
+	if terrain != "":
+		_chips_row.add_child(_make_chip(terrain, DS.PALETTE.TEXT))
+	var gated: Dictionary = TileViewData.survey_gated_deposits(tid, tile_data)
+	if gated.status == "unsurveyed":
+		_chips_row.add_child(_make_chip("Deposits Unknown", DS.PALETTE.TEXT))
+	for row in gated.rows:
+		_chips_row.add_child(_make_chip(str(row.chip_label), DS.PALETTE.TEXT))
+	var totals := TileViewData.land_totals(_current_tile_id, _current_tile_data)
+	var land := Label.new()
+	land.name = "LandFigures"
+	land.text = "%d built, %d buyable, %d max" % [int(totals.built), int(totals.buyable), int(totals.max)]
+	land.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	land.add_theme_font_override("font", UIFonts.PLEX_MED)
+	land.add_theme_font_size_override("font_size", V3_BODY_PX)
+	land.add_theme_color_override("font_color", V3_INK)
+	_chips_row.add_child(land)
+
+
+## "Coordinates 5, 10" from a tile id such as "tile_5_10".
+static func _tile_coordinates(tile_id: String) -> String:
+	var parts := tile_id.split("_")
+	if parts.size() == 3 and parts[1].is_valid_int() and parts[2].is_valid_int():
+		return "Coordinates %s, %s" % [parts[1], parts[2]]
+	return tile_id
 
 func _build_land_rail() -> VBoxContainer:
 	_land_rail = VBoxContainer.new()
@@ -522,7 +829,7 @@ func _select_tab(tab_id: String) -> void:
 		_close_goods_drawer()
 		_stock_manage_expanded = false
 	_active_tab = tab_id
-	for tab in TABS:
+	for tab in _tabs():
 		var id: String = tab.id
 		_panes[id].visible = (id == tab_id)
 	_apply_tile_styles()
@@ -586,6 +893,9 @@ func _apply_refresh() -> void:
 # ─────────────────────────────────────────────────────────────────────────────
 func _refresh_banner(tile_data: Dictionary) -> void:
 	var tid := str(tile_data.get("id", ""))
+	if _built_v3:
+		_refresh_status_line_v3(tile_data)
+		return
 	_title_label.text = Catalog.tile_label(tid)
 	_refresh_banner_image(tile_data)
 	for child in _chips_row.get_children():
@@ -689,6 +999,15 @@ func _refresh_tiles() -> void:
 	_set_tile("bl", bl.status, _bl_metric(bl), _bl_unit(bl))
 	_set_tile("prod", prod.status, "£%d" % roundi(prod.net_value), "/turn")
 	_set_tile("stock", stock.status, _stock_metric(stock), "%d/%d" % [stock.used, stock.capacity])
+	if _built_v3:
+		_set_tile("prod", prod.status, "£%d" % roundi(prod.net_value), "a turn")
+		_set_tile("power", power.status, "0" if power.status == "muted" else "%+d" % int(power.net), "MW")
+		_set_tile("stock", stock.status, _stock_metric(stock), "full" if not stock.is_full else "")
+		var built := 0
+		for slot in TileViewData.infrastructure_summary(_current_tile_id, _current_tile_data):
+			if str(slot.get("state", "")) == "exists":
+				built += 1
+		_set_tile("transport", "ok" if built > 0 else "muted", str(built), "built")
 	_apply_tile_styles()
 
 func _power_metric(power: Dictionary) -> String:
@@ -718,6 +1037,11 @@ func _stock_metric(stock: Dictionary) -> String:
 
 func _set_tile(tab_id: String, status: String, metric_text: String, unit_text: String) -> void:
 	var t: Dictionary = _tiles[tab_id]
+	if _built_v3:
+		# The lamp lights for anything to look at, as the v2 tabs' lamps do; the figure prints white on the bed.
+		(t.led as V3Lamp).set_tone({"warn": "warn", "problem": "bad"}.get(status, "off"))
+		(t.metric as Label).text = ("%s %s" % [metric_text, unit_text]).strip_edges()
+		return
 	var color := _status_color(status)
 	t["color"] = color
 	var lamp := t.get("led") as StatusLed
@@ -731,6 +1055,12 @@ func _set_tile(tab_id: String, status: String, metric_text: String, unit_text: S
 	(t.unit as Label).text = unit_text
 
 func _apply_tile_styles() -> void:
+	if _built_v3:
+		for tab in _tabs():
+			var key := (_tiles[tab.id] as Dictionary).get("root") as CabinetKey
+			if key != null:
+				key.latched = tab.id == _active_tab
+		return
 	for tab in TABS:
 		var id: String = tab.id
 		var t: Dictionary = _tiles[id]
@@ -768,6 +1098,7 @@ func _refresh_pane(tab_id: String) -> void:
 		"bl": _build_bl_pane(pane)
 		"prod": _build_prod_pane(pane)
 		"stock": _build_stock_pane(pane)
+		"transport": _build_transport_pane(pane)
 	if tab_id == "stock" and is_instance_valid(_goods_drawer):
 		_refresh_goods_drawer()
 
@@ -1505,9 +1836,17 @@ func _build_bl_pane(pane: VBoxContainer) -> void:
 	# In Logistics Intermediary games infrastructure is a tendered capability. Until
 	# Infrastructure Tendering is unlocked the tile view omits this section entirely, so
 	# the player is not shown controls that the progression has not granted yet.
-	if ResearchState.infrastructure_tendering_available():
+	if ResearchState.infrastructure_tendering_available() and not _built_v3:
 		pane.add_child(_make_section_title("Infrastructure", "transit / capacity", "ok"))
 		pane.add_child(_make_infra_grid())
+
+## Tile view v3's Transport tab: the tile's infrastructure, which v2 keeps at the foot of Buildings.
+func _build_transport_pane(pane: VBoxContainer) -> void:
+	if not ResearchState.infrastructure_tendering_available():
+		pane.add_child(_make_muted_label("Infrastructure opens with Infrastructure Tendering."))
+		return
+	pane.add_child(_make_section_title("Infrastructure", "transit / capacity", "ok"))
+	pane.add_child(_make_infra_grid())
 
 # A seaport (b_004) on this tile is shown as a special building pinned to the top of the
 # Buildings tab: click it to open its detail panel; if an NPC owns it, a Buy button transfers

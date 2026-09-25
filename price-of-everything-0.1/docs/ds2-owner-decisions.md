@@ -43,4 +43,4 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **Your buildings only** in Goods and Power, at this turn's real output (built). **Other companies fold** to one line; the "Show your buildings only" checkbox retires. The **power-plant catalogue becomes one Build power key** into Construct.
 - **Warehouse, surplus and logistics controls** show only where you own land or have goods (built). **Links open their tab** (built).
 - **The knob** is the existing **white plastic knob** (`scripts/rotary_selector.gd`), for any choice of three to seven options. **Its options are icons on its arc, each a button** that turns the knob to it; the knob's name is its only text. Built for the tile's surplus route. The owner is happy with it.
-- **Next**: the cabinet shell: the stainless plate with its pipe edge, the engraved nameplate, the five latching keys.
+- **The cabinet shell is built** (the stainless door and its pipe, the engraved nameplate, the five latching keys); the tab bodies still sit on navy steel sheets until each is restyled. See `docs/tile-view-ds2-plan.md` §9, Phase 2.

@@ -306,6 +306,44 @@ func _test_rotary_selector_options() -> void:
 	panel.queue_free()
 	UiPrefs.set_use_tvp_v3(was)
 
+func _test_tile_view_cabinet() -> void:
+	# Tile view v3's shell: the stainless door with its engraved nameplate (the name, the coordinates on hover),
+	# five latching keys with Transport added, the pressed key latched and its tab open, and the v2 panel back
+	# exactly as it was when the switch goes off.
+	var was: bool = UiPrefs.use_tvp_v3
+	UiPrefs.set_use_tvp_v3(false)
+	var panel: Control = load("res://scripts/tile_info_panel_v2.gd").new()
+	add_child(panel)
+	await get_tree().process_frame
+	var tile := "tile_5_10"
+	panel.show_tile({"id": tile}, "stock")
+	UiPrefs.set_use_tvp_v3(true)
+	await get_tree().process_frame
+	var keys: Array = []
+	for id: String in ["bl", "power", "prod", "stock", "transport"]:
+		keys.append(panel.find_child("TabKey_" + id, true, false))
+	_check(not keys.has(null) and panel.find_child("Nameplate", true, false) != null and panel.find_child("KeyBed", true, false) != null,
+		"tile view v3: the switch rebuilds the panel as the cabinet, a nameplate and five keys on their bed")
+	_check(str(panel.get("_active_tab")) == "stock" and bool(keys[3].get("latched")) and not bool(keys[0].get("latched")),
+		"tile view v3: the open tab survives the rebuild and its key stays latched")
+	var plate: Control = panel.find_child("Nameplate", true, false)
+	var name_text := str(panel.get("_nameplate_text"))
+	_check(name_text != "" and not name_text.contains("(") and plate.tooltip_text == "Coordinates 5, 10",
+		"tile view v3: the nameplate carries the site's name, the coordinates only on hover (%s)" % name_text)
+	keys[4].emit_signal("pressed")
+	await get_tree().process_frame
+	_check(str(panel.get("_active_tab")) == "transport" and bool(keys[4].get("latched")) and not bool(keys[3].get("latched")),
+		"tile view v3: pressing a key opens its tab and latches it, releasing the last")
+	_check(panel.find_child("InfraCell_cables", true, false) != null or not ResearchState.infrastructure_tendering_available(),
+		"tile view v3: the infrastructure lives in Transport")
+	UiPrefs.set_use_tvp_v3(false)
+	await get_tree().process_frame
+	_check(panel.find_child("Nameplate", true, false) == null and panel.find_child("TabKey_bl", true, false) == null
+		and (panel.get("_panes") as Dictionary).size() == 4 and str(panel.get("_active_tab")) == "bl",
+		"tile view v3: off again, the v2 panel returns with its four tabs")
+	panel.queue_free()
+	UiPrefs.set_use_tvp_v3(was)
+
 func _test_tile_view_numbers_and_links() -> void:
 	# The tile view's Goods and Power are the engine's figures for your buildings only; a link opens the
 	# tab it names; the stock controls are yours only where you own land or goods.

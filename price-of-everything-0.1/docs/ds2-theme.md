@@ -76,7 +76,7 @@ All DS2 art is 3D-rendered in one three.js page, `tools/button_mockup/cluster.ht
   - `pilotLamp`, `guardButton`, `counterHousing`, `miniScreen`, `iconWell`, `gaugeSocket`;
   - `diagModule`, `cableRun`, `cableTap`, `toggleSlot`/`toggleKnob`, `rollingDoor`, `labourDoor`;
   - `sheetPlate`, `whiteSheet`, `plasticPlate`, `darkPlate`, `enamelPlate`.
-- **Seeds:** `withSeed(n, fn)` gives each set its own random sequence, so exporting one set never changes another's wear. A new set gets a new seed after the last one used (429, `barsheet`).
+- **Seeds:** `withSeed(n, fn)` gives each set its own random sequence, so exporting one set never changes another's wear. A new set gets a new seed after the last one used (432, `tilekey`; 430 is the tile view's study, 431 `tiledoor`).
 
 ### 3.2 The export
 

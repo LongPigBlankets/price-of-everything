@@ -7,7 +7,7 @@ extends Node2D
 
 const LOGICAL := Vector2i(1920, 1080)
 const TILE := "tile_5_10"
-const TABS := ["bl", "power", "goods", "stock"]
+const TABS := ["bl", "power", "prod", "stock", "transport"]
 
 var _vp: SubViewport
 var _wm
@@ -60,6 +60,8 @@ func _ready() -> void:
 	for look: String in ["v2", "v3"]:
 		UiPrefs.set_use_tvp_v3(look == "v3")
 		for tab: String in TABS:
+			if tab == "transport" and look == "v2":
+				continue
 			panel.call("show_tile", td, tab)
 			await _settle(12)
 			_save(panel.get_global_rect().grow(16.0), "tvp_%s_%s" % [look, tab])
