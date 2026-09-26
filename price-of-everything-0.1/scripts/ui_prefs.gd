@@ -25,6 +25,8 @@ signal topbar_v3_1_changed(enabled: bool)
 signal bdp_v3_changed(enabled: bool)
 ## The DS2 top bar (docs/top-bar-ds2-plan.md) switched on or off.
 signal topbar_ds2_changed(enabled: bool)
+## The tile view's v3 look (docs/tile-view-ds2-plan.md) switched on or off.
+signal tvp_v3_changed(enabled: bool)
 signal empire_button_icon_changed(use_badge: bool)
 
 # Debug-only: verbose per-turn production / CostSolver logs. Off by default because
@@ -63,10 +65,13 @@ var use_topbar_v3_1: bool = true
 # with raised icons (assets/ui/bdp_v3/, rendered by tools/button_mockup). The default; the debug
 # cheat `toggle bdp v3` switches back to v2. Session-only, never persisted.
 var use_bdp_v3: bool = true
-# The DS2 top bar: a worn steel strip with LED money and lamps (docs/top-bar-ds2-plan.md), built
-# phase by phase. Off by default; the debug cheat `toggle topbar ds2` switches it. With it off the
-# bar is v3.1 exactly. Session-only, never persisted.
-var use_topbar_ds2: bool = false
+# The DS2 top bar: a worn steel strip with LED money and lamps (docs/top-bar-ds2-plan.md). The
+# default; the debug cheat `toggle topbar ds2` switches back to v3.1, which is then exactly as it
+# was. Session-only, never persisted.
+var use_topbar_ds2: bool = true
+# The tile view v3: the site's control cabinet (docs/tile-view-ds2-plan.md §9). The default; the debug
+# cheat `toggle tvp v3` switches back to v2, which is then exactly as it was. Session-only, never persisted.
+var use_tvp_v3: bool = true
 # Building Detail v3's diagnostics: the Visual view (true) or the Text rows. The player's choice on the
 # panel's switch, kept while the game runs (closing the panel or starting a match keeps it).
 var bdp_diag_visual: bool = false
@@ -159,6 +164,16 @@ func set_use_topbar_ds2(enabled: bool) -> bool:
 
 func toggle_use_topbar_ds2() -> bool:
 	return set_use_topbar_ds2(not use_topbar_ds2)
+
+func set_use_tvp_v3(enabled: bool) -> bool:
+	if enabled == use_tvp_v3:
+		return use_tvp_v3
+	use_tvp_v3 = enabled
+	tvp_v3_changed.emit(use_tvp_v3)
+	return use_tvp_v3
+
+func toggle_use_tvp_v3() -> bool:
+	return set_use_tvp_v3(not use_tvp_v3)
 
 func set_bdp_diag_visual(visual: bool) -> void:
 	bdp_diag_visual = visual

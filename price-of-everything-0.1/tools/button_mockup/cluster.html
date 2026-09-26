@@ -2184,7 +2184,8 @@ async function exportLayers() {
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
-  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet.
+  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
+  // tiledoor, tilekey.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -2575,8 +2576,8 @@ async function exportLayers() {
 
   // --- a section frame: a narrow worn steel rim with a screw in each corner, drawn as a 9-slice
   if (want('section')) await withSeed(504, async () => {
-    // The screws sit on the rim's centre line, in from its rounded corners, as they would be driven.
-    const M = 18, FW = 560, FH = 360, RIM = 26, group = new THREE.Group(), si = 4 + RIM / 2;
+    // The screws sit on the rim towards its inner edge, well in from its rounded corners, as they would be driven.
+    const M = 18, FW = 560, FH = 360, RIM = 26, group = new THREE.Group(), si = 4 + RIM / 2 + 6;
     const ring = rrShape(FW - 8, FH - 8, 14); ring.holes.push(rr(new THREE.Path(), FW - 8 - 2 * RIM, FH - 8 - 2 * RIM, 8));
     const feat = { icons: [], buttons: [], screws: [[si, si], [FW - si, si], [si, FH - si], [FW - si, FH - si]].map(([x, y]) => ({ x: x - 4, y: y - 4 })) };
     const rim = new THREE.Mesh(extrude(ring, 3, 3.5, 2.8, 5), [plateMaterial(FW - 8, FH - 8, feat), MAT.plateSide]);
@@ -2702,6 +2703,201 @@ async function exportLayers() {
     g.add(shadowCatcher(W, H, W / 2, H / 2));
     await post('bar_sheet', stage([0, 0, W, H], [g]).grab());
     layout.bar_sheet = { size: [W, H], margin: M, corner: 60 };
+  });
+
+  // --- a study for the tile view (docs/tile-view-ds2-plan.md §9), not a game layer: the site's control
+  // cabinet. A brushed stainless door with a black iron pipe round its edge, an engraved nameplate, the
+  // five latching keys on a black key bed with a pilot lamp over each, a rotary selector with its positions
+  // engraved on the steel, and two equipment modules fed by one cable.
+  if (want('tilestudy')) await withSeed(430, async () => {
+    const W = 1120, H = 760, PW = 1060, PH = 700, x0 = (W - PW) / 2, y0 = (H - PH) / 2, group = new THREE.Group();
+    const NAVY_INK = '#0b2340';
+    // The door: brushed stainless, its grain along its width; the knob's positions engraved into it.
+    const KNOB = { x: 860, y: 520, r: 44, labels: ['KEEP', 'INTERMEDIARY', 'PORT'], angles: [-50, 0, 50] };
+    const steel = canvas2d(PW, PH, (g) => {
+      g.fillStyle = '#9fa5ab'; g.fillRect(0, 0, PW, PH);
+      for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(${rand() > 0.5 ? '255,255,255' : '0,0,0'},${0.015 + rand() * 0.03})`; g.fillRect(0, rand() * PH, PW, 2 + rand() * 18); }
+      for (let i = 0; i < Math.round(PW * PH / 40); i++) {
+        const y = rand() * PH, x = rand() * PW - 60, l = 30 + rand() * 260;
+        g.strokeStyle = `rgba(${rand() > 0.5 ? '245,247,250' : '40,44,50'},${0.025 + rand() * 0.06})`; g.lineWidth = 0.3 + rand() * 0.5;
+        g.beginPath(); g.moveTo(x, y); g.lineTo(x + l, y + (rand() - 0.5) * 0.4); g.stroke();
+      }
+      // The selector's scale: ticks and the positions' names, engraved and filled navy.
+      const kx = KNOB.x - x0, ky = KNOB.y - y0;
+      KNOB.angles.forEach((a, i) => {
+        const t = (a - 90) * Math.PI / 180;
+        g.strokeStyle = NAVY_INK; g.lineWidth = 3; g.beginPath();
+        g.moveTo(kx + Math.cos(t) * (KNOB.r + 8), ky + Math.sin(t) * (KNOB.r + 8)); g.lineTo(kx + Math.cos(t) * (KNOB.r + 20), ky + Math.sin(t) * (KNOB.r + 20)); g.stroke();
+        text(g, KNOB.labels[i], kx + Math.cos(t) * (KNOB.r + 34), ky + Math.sin(t) * (KNOB.r + 34), 160, 17, NAVY_INK, { align: 'center', weight: 700 });
+      });
+      text(g, 'SURPLUS ROUTE', kx, ky + KNOB.r + 38, 240, 18, NAVY_INK, { align: 'center', weight: 700 });
+    });
+    const steelMat = new THREE.MeshPhysicalMaterial({ map: faceTexture(steel, PW, PH), metalness: 1, roughness: 0.34, anisotropy: 0.6, envMap: studioEnv, envMapIntensity: 0.55 });
+    const door = new THREE.Mesh(extrude(rrShape(PW, PH, 22), 4, 3, 2.4, 5), [steelMat, MAT.plateSide]);
+    door.receiveShadow = true; door.position.set(W / 2, 0, H / 2); group.add(door);
+    const top = PLATE_TOP - 1;
+    // The black iron pipe round the edge, bending at the corners, a flange at the middle of each side.
+    const iron = new THREE.MeshStandardMaterial({ color: 0x2b2e33, map: noiseTexture(22, 50, 40), metalness: 1, roughness: 0.42, envMap: studioEnv, envMapIntensity: 0.7 });
+    const pr = 8, inset = 16, rw = PW - 2 * inset, rh = PH - 2 * inset;
+    const path = rr(new THREE.Path(), rw, rh, 30);
+    const pts = path.getSpacedPoints(360).map((p) => new THREE.Vector3(W / 2 + p.x, top + pr, H / 2 - p.y));
+    const loop = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true), 720, pr, 18, true), iron);
+    loop.castShadow = loop.receiveShadow = true; group.add(loop);
+    const flangeMat = new THREE.MeshStandardMaterial({ color: 0x3a3e44, metalness: 1, roughness: 0.38, envMap: studioEnv, envMapIntensity: 0.8 });
+    for (const [fx, fz, rot] of [[W / 2, y0 + inset, 0], [W / 2, y0 + PH - inset, 0], [x0 + inset, H / 2, 1], [x0 + PW - inset, H / 2, 1]]) {
+      const f = new THREE.Mesh(new THREE.CylinderGeometry(pr + 4, pr + 4, 7, 28).rotateZ(Math.PI / 2), flangeMat);
+      if (rot) f.rotation.y = Math.PI / 2;
+      f.position.set(fx, top + pr, fz); f.castShadow = true; group.add(f);
+    }
+    // The nameplate: black enamel, the name cut through to white, four rivets.
+    const NP = { x: x0 + 70, y: y0 + 60, w: 440, h: 62 };
+    const plateFace = canvas2d(NP.w, NP.h, (g) => {
+      g.fillStyle = '#16181c'; g.fillRect(0, 0, NP.w, NP.h);
+      text(g, 'STONESHORE DOCKS', 26, NP.h / 2 + 1, NP.w - 52, 34, '#eef1f5', { weight: 700, family: '"Bebas Neue"' });
+    });
+    const np = new THREE.Mesh(extrude(rrShape(NP.w, NP.h, 6), 2.5, 1.5, 1.2, 3),
+      [new THREE.MeshPhysicalMaterial({ map: faceTexture(plateFace, NP.w, NP.h), roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.2, envMap: studioEnv, envMapIntensity: 0.5 }), flangeMat]);
+    np.castShadow = np.receiveShadow = true; np.position.set(NP.x + NP.w / 2, top, NP.y + NP.h / 2); group.add(np);
+    for (const [rx, rz] of [[NP.x + 12, NP.y + 12], [NP.x + NP.w - 12, NP.y + 12], [NP.x + 12, NP.y + NP.h - 12], [NP.x + NP.w - 12, NP.y + NP.h - 12]]) {
+      const rv = new THREE.Mesh(new THREE.SphereGeometry(3.2, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), flangeMat);
+      rv.scale.y = 0.55; rv.position.set(rx, top + 5.5, rz); rv.castShadow = true; group.add(rv);
+    }
+    // The key bed: black plastic, five latching keys, a pilot lamp over each; Stock is latched down.
+    const KB = { x: x0 + 70, y: y0 + 200, w: 700, h: 150 };
+    const bed = new THREE.Mesh(extrude(rrShape(KB.w, KB.h, 10), 4, 2.4, 2, 4),
+      [new THREE.MeshPhysicalMaterial({ map: faceTexture(blackPlasticFace(KB.w, KB.h, '#15171a', 0.06), KB.w, KB.h), roughness: 0.5, clearcoat: 0.3, envMap: studioEnv, envMapIntensity: 0.4 }), BLACK_PLASTIC_SIDE()]);
+    bed.castShadow = bed.receiveShadow = true; bed.position.set(KB.x + KB.w / 2, top, KB.y + KB.h / 2); group.add(bed);
+    const names = ['BUILDINGS', 'POWER', 'GOODS', 'STOCK', 'TRANSPORT'], lamps = [['#4fdc86', true], ['#ffa412', true], ['#4fdc86', true], [null, false], ['#4fdc86', true]];
+    const kw = 124, gap = (KB.w - 5 * kw) / 6;
+    names.forEach((nm, i) => {
+      const cx = KB.x + gap + kw / 2 + i * (kw + gap);
+      const k = keycap(kw, 78, 8, (g, a, b) => text(g, nm, a / 2, b / 2, a - 14, 22, NAVY_INK, { align: 'center', weight: 700 }));
+      k.position.set(cx, top + 6, KB.y + 98); group.add(k);
+      if (i === 3) k.userData.cap.position.y -= 5;
+      const lamp = pilotLamp(lamps[i][0], lamps[i][1]); lamp.scale.setScalar(0.55);
+      lamp.position.set(cx, top + 6, KB.y + 34); group.add(lamp);
+    });
+    // The rotary selector: a black bakelite knob, fluted round its skirt, a white pointer line on its top,
+    // turned to its middle position.
+    const bakelite = new THREE.MeshPhysicalMaterial({ color: 0x131417, roughness: 0.35, clearcoat: 0.7, clearcoatRoughness: 0.25, envMap: studioEnv, envMapIntensity: 0.6 });
+    const kr = KNOB.r;
+    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(kr, kr + 3, 14, 24), bakelite);
+    skirt.position.set(KNOB.x, top + 7, KNOB.y); skirt.castShadow = true; group.add(skirt);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(kr * 0.78, kr * 0.95, 12, 48), bakelite);
+    cap.position.set(KNOB.x, top + 19, KNOB.y); cap.castShadow = true; group.add(cap);
+    const pointer = new THREE.Mesh(new THREE.BoxGeometry(4, 1.2, kr * 0.72), new THREE.MeshStandardMaterial({ color: 0xf2f4f6, roughness: 0.4 }));
+    pointer.position.set(KNOB.x, top + 25.6, KNOB.y - kr * 0.36); group.add(pointer);
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(kr + 9, kr + 9, 2.5, 48), flangeMat);
+    collar.position.set(KNOB.x, top + 1.3, KNOB.y); collar.receiveShadow = true; group.add(collar);
+    // Two equipment modules of one group, fed by one cable down their left with a tap into each.
+    const MOD = { x: x0 + 150, y: y0 + 410, w: 330, h: 84, gap: 26 };
+    const modFace = new THREE.MeshPhysicalMaterial({ map: faceTexture(blackPlasticFace(MOD.w, MOD.h, '#1a1c20', 0.07), MOD.w, MOD.h), roughness: 0.55, clearcoat: 0.35, envMap: studioEnv, envMapIntensity: 0.4 });
+    const skin = canvas2d(64, 4, (c) => { c.fillStyle = '#1c1e21'; c.fillRect(0, 0, 64, 4); c.fillStyle = '#e9b81a'; c.fillRect(15, 0, 4, 4); }, 1);
+    const cmap = new THREE.CanvasTexture(skin); cmap.colorSpace = THREE.SRGBColorSpace; cmap.wrapS = cmap.wrapT = THREE.RepeatWrapping; cmap.repeat.set(1, 30);
+    const rubber = new THREE.MeshPhysicalMaterial({ map: cmap, roughness: 0.45, clearcoat: 0.4, envMap: studioEnv, envMapIntensity: 0.4 });
+    const trunkX = MOD.x - 56, cr2 = 5.5;
+    const trunk = new THREE.Mesh(new THREE.TubeGeometry(new THREE.LineCurve3(new THREE.Vector3(trunkX, top + cr2, MOD.y - 20), new THREE.Vector3(trunkX, top + cr2, MOD.y + 2 * MOD.h + MOD.gap + 30)), 40, cr2, 16, false), rubber);
+    trunk.castShadow = true; group.add(trunk);
+    for (let i = 0; i < 2; i++) {
+      const my = MOD.y + i * (MOD.h + MOD.gap) + MOD.h / 2;
+      const m = new THREE.Mesh(extrude(rrShape(MOD.w, MOD.h, 7), 2.5, 2.2, 1.8, 4), [modFace, BLACK_PLASTIC_SIDE()]);
+      m.castShadow = m.receiveShadow = true; m.position.set(MOD.x + MOD.w / 2, top, my); group.add(m);
+      const branch = new THREE.Mesh(new THREE.TubeGeometry(new THREE.LineCurve3(new THREE.Vector3(trunkX, top + cr2, my), new THREE.Vector3(MOD.x - 4, top + cr2, my)), 12, cr2 * 0.8, 14, false), rubber);
+      branch.castShadow = true; group.add(branch);
+      const box = new THREE.Mesh(new THREE.BoxGeometry(22, 12, 26), new THREE.MeshPhysicalMaterial({ color: 0x24272c, roughness: 0.5, clearcoat: 0.3, envMap: studioEnv, envMapIntensity: 0.4 }));
+      box.position.set(trunkX, top + 6, my); box.castShadow = true; group.add(box);
+      const lamp = pilotLamp(i === 0 ? '#4fdc86' : '#ffa412', true); lamp.scale.setScalar(0.5);
+      lamp.position.set(MOD.x + MOD.w - 34, top + 4, my); group.add(lamp);
+    }
+    group.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.5));
+    await post('tile_study', stage([0, 0, W, H], [group]).grab());
+  });
+
+  // --- the tile view's cabinet (docs/tile-view-ds2-plan.md §9): the stainless door with its black iron pipe
+  // run round the edge (a 9-slice rendered near the panel's own size, so its grain barely stretches), the
+  // pipe's flanges as their own small layers for the middle of each side, and the engraved nameplate (a
+  // horizontal three-slice, blank: the game prints the site's name).
+  // The pipe runs on the door's edge itself, its bends the door's own corners (inset 0, bend = r).
+  const TILE_DOOR = { PW: 1500, PH: 1710, M: 24, r: 22, pipe: 8, inset: 0, bend: 22, corner: 96 };
+  const TILE_FLANGE = { S: 64 };
+  const TILE_NAMEPLATE = { W: 720, H: 84, M: 14, cap: 60, rivet: 14 };
+  if (want('tiledoor')) await withSeed(431, async () => {
+    const { PW, PH, M, r, pipe: pr, inset, bend } = TILE_DOOR, W = PW + 2 * M, H = PH + 2 * M, group = new THREE.Group();
+    const steel = canvas2d(PW, PH, (g) => {
+      g.fillStyle = '#a3a9af'; g.fillRect(0, 0, PW, PH);
+      for (let i = 0; i < 60; i++) { g.fillStyle = `rgba(${rand() > 0.5 ? '255,255,255' : '0,0,0'},${0.012 + rand() * 0.028})`; g.fillRect(0, rand() * PH, PW, 2 + rand() * 18); }
+      for (let i = 0; i < Math.round(PW * PH / 40); i++) {
+        const y = rand() * PH, x = rand() * PW - 60, l = 30 + rand() * 260;
+        g.strokeStyle = `rgba(${rand() > 0.5 ? '245,247,250' : '40,44,50'},${0.025 + rand() * 0.06})`; g.lineWidth = 0.3 + rand() * 0.5;
+        g.beginPath(); g.moveTo(x, y); g.lineTo(x + l, y + (rand() - 0.5) * 0.4); g.stroke();
+      }
+    });
+    const steelMat = new THREE.MeshPhysicalMaterial({ map: faceTexture(steel, PW, PH), metalness: 1, roughness: 0.34, anisotropy: 0.6, envMap: studioEnv, envMapIntensity: 0.55 });
+    const door = new THREE.Mesh(extrude(rrShape(PW, PH, r), 4, 3, 2.4, 5), [steelMat, MAT.plateSide]);
+    door.castShadow = door.receiveShadow = true; door.position.set(W / 2, 0, H / 2); group.add(door);
+    const top = PLATE_TOP - 1;
+    const iron = new THREE.MeshStandardMaterial({ color: 0x2b2e33, map: noiseTexture(22, 50, 40), metalness: 1, roughness: 0.42, envMap: studioEnv, envMapIntensity: 0.7 });
+    const path = rr(new THREE.Path(), PW - 2 * inset, PH - 2 * inset, bend);
+    const pts = path.getSpacedPoints(480).map((q) => new THREE.Vector3(W / 2 + q.x, top + pr, H / 2 - q.y));
+    const loop = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true), 960, pr, 18, true), iron);
+    loop.castShadow = loop.receiveShadow = true; group.add(loop);
+    group.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.5));
+    await post('tile_door', stage([0, 0, W, H], [group]).grab());
+    layout.tile_door = { size: [W, H], margin: M, corner: TILE_DOOR.corner, pipe_inset: inset, pipe_radius: pr };
+
+    // The flanges: a collar round the pipe, on a patch of door so its shadow falls where it will lie.
+    const flangeMat = new THREE.MeshStandardMaterial({ color: 0x3a3e44, metalness: 1, roughness: 0.38, envMap: studioEnv, envMapIntensity: 0.8 });
+    for (const [name, rot] of [['tile_flange_h', false], ['tile_flange_v', true]]) {
+      const S = TILE_FLANGE.S, fg = new THREE.Group();
+      const f = new THREE.Mesh(new THREE.CylinderGeometry(pr + 4, pr + 4, 8, 32).rotateZ(Math.PI / 2), flangeMat);
+      if (rot) f.rotation.y = Math.PI / 2;
+      f.position.set(S / 2, top + pr, S / 2); f.castShadow = true; fg.add(f);
+      fg.add(shadowCatcher(S, S, S / 2, S / 2, top, 0.5));
+      await post(name, stage([0, 0, S, S], [fg]).grab());
+    }
+    layout.tile_flange = { size: [TILE_FLANGE.S, TILE_FLANGE.S] };
+
+    // The nameplate: black enamel on a thin steel back, two rivets at each end.
+    const { W: NW, H: NH, M: NM, rivet } = TILE_NAMEPLATE, pw = NW - 2 * NM, ph = NH - 2 * NM, ng = new THREE.Group();
+    const enamelFace = canvas2d(pw, ph, (g) => {
+      g.fillStyle = '#16181c'; g.fillRect(0, 0, pw, ph);
+      for (let i = 0; i < pw * ph / 120; i++) { g.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.015 + rand() * 0.025})`; g.fillRect(rand() * pw, rand() * ph, 1 + rand() * 2, 1 + rand() * 2); }
+    });
+    const np = new THREE.Mesh(extrude(rrShape(pw, ph, 6), 2.5, 1.5, 1.2, 3),
+      [new THREE.MeshPhysicalMaterial({ map: faceTexture(enamelFace, pw, ph), roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.2, envMap: studioEnv, envMapIntensity: 0.5 }), flangeMat]);
+    np.castShadow = np.receiveShadow = true; np.position.set(NW / 2, 0, NH / 2); ng.add(np);
+    for (const [rx, rz] of [[NM + rivet, NM + 12], [NW - NM - rivet, NM + 12], [NM + rivet, NH - NM - 12], [NW - NM - rivet, NH - NM - 12]]) {
+      const rv = new THREE.Mesh(new THREE.SphereGeometry(3.4, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), flangeMat);
+      rv.scale.y = 0.55; rv.position.set(rx, 6.5, rz); rv.castShadow = true; ng.add(rv);
+    }
+    ng.add(shadowCatcher(NW, NH, NW / 2, NH / 2));
+    await post('tile_nameplate', stage([0, 0, NW, NH], [ng]).grab());
+    layout.tile_nameplate = { size: [NW, NH], margin: NM, cap: TILE_NAMEPLATE.cap, face: [NM + 2, NM + 2, pw - 4, ph - 4] };
+  });
+
+  // --- the tile view's five latching keys: a blank cream keycap (a horizontal three-slice) up, pressed and
+  // latched (sunk to just above its bezel, where it stays while its tab is open), and the black plastic key bed they
+  // stand in (a 9-slice).
+  const TILE_KEY = { W: 232, H: 116, M: 16, cap: 60, press: 5, latch: 22 };
+  const TILE_KEYBED = { W: 600, H: 200, M: 14, r: 10 };
+  if (want('tilekey')) await withSeed(432, async () => {
+    const { W, H, M } = TILE_KEY, group = new THREE.Group();
+    const k = keycap(W - 2 * M, H - 2 * M, 12, () => {});
+    k.position.set(W / 2, 0, H / 2); group.add(k, shadowCatcher(W, H, W / 2, H / 2));
+    const st = stage([0, 0, W, H], [group]), cap = k.userData.cap, y = cap.position.y;
+    await post('tile_key', st.grab());
+    cap.position.y = y - TILE_KEY.press; await post('tile_key_pressed', st.grab());
+    cap.position.y = y - TILE_KEY.latch; await post('tile_key_latched', st.grab());
+    cap.position.y = y;
+    const [fw, fh] = k.userData.face;
+    layout.tile_key = { size: [W, H], cap: TILE_KEY.cap, rect: [M, M, W - 2 * M, H - 2 * M], face: [(W - fw) / 2, (H - fh) / 2, fw, fh], press: TILE_KEY.press, latch: TILE_KEY.latch };
+
+    const { W: BW, H: BH, M: BM, r } = TILE_KEYBED, pw = BW - 2 * BM, ph = BH - 2 * BM, bg = new THREE.Group();
+    const bed = new THREE.Mesh(extrude(rrShape(pw, ph, r), 4, 2.4, 2, 4),
+      [new THREE.MeshPhysicalMaterial({ map: faceTexture(blackPlasticFace(pw, ph, '#15171a', 0.06), pw, ph), roughness: 0.5, clearcoat: 0.3, envMap: studioEnv, envMapIntensity: 0.4 }), BLACK_PLASTIC_SIDE()]);
+    bed.castShadow = bed.receiveShadow = true; bed.position.set(BW / 2, 0, BH / 2); bg.add(bed, shadowCatcher(BW, BH, BW / 2, BH / 2));
+    await post('tile_keybed', stage([0, 0, BW, BH], [bg]).grab());
+    layout.tile_keybed = { size: [BW, BH], margin: BM, corner: 40 };
   });
 
   // --- the diagnostics' plastic plate and its silver screws, and the shipments' rolling door.

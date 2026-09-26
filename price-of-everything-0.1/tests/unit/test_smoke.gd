@@ -392,9 +392,15 @@ func _test_main_scene_instantiates() -> void:
 			if str(child.name).begins_with("TileInfoPanel"):
 				panel_count += 1
 	_check(panel_count == 1, "exactly one tile panel lives under HUDContent (found %d)" % panel_count)
-	# Guards the theme-cascade fix: DS variations must actually resolve on panels.
+	# Guards the theme-cascade fix: DS variations must actually resolve on panels. The v3 cabinet
+	# (the default) paints its name on the nameplate, so there the Title variation is read off the panel.
 	var tl = panel.get("_title_label") if panel != null else null
-	_check(tl != null and tl.get_theme_font_size("font_size") == DS.FS["H1"],
+	var title_fs: int = -1
+	if tl != null:
+		title_fs = tl.get_theme_font_size("font_size")
+	elif panel != null and panel.find_child("Nameplate", true, false) != null:
+		title_fs = (panel as Control).get_theme_font_size("font_size", &"Title")
+	_check(title_fs == DS.FS["H1"],
 		"DS theme reaches the tile panel (title uses the DS Title font)")
 	# Selecting a tile through the terrain layer's click signal opens the panel.
 	var terrain: Node = inst.find_child("TerrainLayer", true, false)

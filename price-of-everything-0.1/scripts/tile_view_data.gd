@@ -2,6 +2,8 @@ extends RefCounted
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const Middleman := preload("res://scripts/middleman_service.gd")
+const BuildingStatus := preload("res://scripts/building_status.gd")
+const BuildingEconomics := preload("res://scripts/building_economics.gd")
 
 
 ## Room a building actually occupies, INCLUDING its level. A levelled-up building is bigger
@@ -24,28 +26,30 @@ static func footprint_of(building: Dictionary, bd: Dictionary) -> float:
 # ─────────────────────────────────────────────────────────────────────────────
 # POWER
 # ─────────────────────────────────────────────────────────────────────────────
+## The tile's power last turn, as the engine settled it: MW generated and drawn on the tile (Power's
+## per-tile figures, capped by the cables), and your buildings that made or drew it at their real output.
+## Other companies' buildings never run, so none are counted.
 static func power_summary(tile_id: String) -> Dictionary:
-	var produced := 0
-	var consumed := 0
+	var produced := int(Power.tile_produced.get(tile_id, 0))
+	var consumed := int(Power.tile_drawn.get(tile_id, 0))
 	var drawing: Array = []        # [{name, amount}]
 	var producers: Array = []      # [{name, amount}]
 	for building in BuildingState.get_buildings_on_tile(tile_id):
+		if not BuildingState.is_player_owned(building):
+			continue
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		if recipe.is_empty():
 			continue
-		var name := _building_name(building)
 		var ran: bool = Production.last_turn_run.get(str(building.get("instance_id", "")), false)
 		if not ran:
 			continue
-		for output in _recipe_outputs(recipe):
-			if _output_internal(output) == "power":
-				var pq := int(output.get("qty", 0))
-				produced += pq
-				if pq > 0:
-					producers.append({"name": name, "amount": pq})
-		var energy := int(recipe.get("energy_req", 0))
+		var name := _building_name(building)
+		if _recipe_produces_power(recipe):
+			var pq := BuildingStatus.effective_power_output(building, recipe)
+			if pq > 0:
+				producers.append({"name": name, "amount": pq})
+		var energy := BuildingStatus.effective_energy_req(building, recipe)
 		if energy > 0:
-			consumed += energy
 			drawing.append({"name": name, "amount": energy})
 	var net := produced - consumed
 	# A tile connected to the grid (has cables) never shows red even in deficit —
@@ -238,6 +242,8 @@ static func land_chart_data(tile_id: String, tile_data: Dictionary) -> Dictionar
 			"name": _building_full_name(bd, recipe), "value": int(round(size)),
 			"icon": _building_icon_tex(bd), "stalled": stalled,
 			"tooltip": BuildingNaming.label_for_tile(tile_id, iid, str(building.get("building_id", "")), str(building.get("recipe_id", ""))),
+			# Ruins and woods that belong to the land rather than to a company.
+			"feature": is_ruins or BuildingState.is_land_owned_wood(building),
 		}
 		if is_other:
 			other_footprint += size
@@ -623,18 +629,29 @@ static func _inputs_status_for(instance_id: String, tile_id: String, recipe: Dic
 # ─────────────────────────────────────────────────────────────────────────────
 # PRODUCTION & GOODS
 # ─────────────────────────────────────────────────────────────────────────────
+## What your buildings on the tile make this turn and what it is worth, as Building Detail quotes it: each
+## building's outputs at this turn's real quantity (levels, start-up, intermittency) and its net value added
+## (BuildingEconomics.per_turn, the figure the turn's cash moves by). Other companies' buildings are left
+## out; they are not yours to earn from.
 static func production_summary(tile_id: String) -> Dictionary:
 	var by_good: Dictionary = {}
+	var net_value := 0.0
 	for building in BuildingState.get_buildings_on_tile(tile_id):
+		if not BuildingState.is_player_owned(building):
+			continue
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		if recipe.is_empty():
 			continue
+		var econ: Dictionary = BuildingEconomics.per_turn(building)
+		if not bool(econ.get("shown", false)):
+			continue
+		net_value += float(econ.get("net_value_added", 0.0))
 		var instance_id := str(building.get("instance_id", ""))
 		var ran: bool = Production.last_turn_run.get(instance_id, false)
-		for output in _recipe_outputs(recipe):
-			var good_id := _output_good_id(output)
-			var qty := int(output.get("qty", 0))
-			if good_id == "" or qty <= 0:
+		for output: Dictionary in econ.get("outputs", []):
+			var good_id := str(output.get("good_id", ""))
+			var qty := int(round(float(output.get("qty", 0))))
+			if good_id == "" or good_id == "power" or qty <= 0:
 				continue
 			var rec: Dictionary = by_good.get(good_id, {
 				"good_id": good_id,
@@ -646,7 +663,7 @@ static func production_summary(tile_id: String) -> Dictionary:
 				"ran": false,
 			})
 			rec.qty = int(rec.qty) + qty
-			rec.value = float(rec.value) + float(qty) * MarketState.get_price(good_id)
+			rec.value = float(rec.value) + float(output.get("value", 0.0))
 			rec.ran = bool(rec.ran) or ran
 			var unit_cost := _output_unit_cost(instance_id, good_id)
 			if unit_cost >= 0.0:
@@ -655,12 +672,10 @@ static func production_summary(tile_id: String) -> Dictionary:
 			rec["destination"] = _destination_text(building, good_id)
 			by_good[good_id] = rec
 	var rows: Array = []
-	var net_value := 0.0
 	for good_id in by_good:
 		var rec: Dictionary = by_good[good_id]
 		var cq := float(rec.cost_qty)
 		rec.unit_cost = (float(rec.cost_weight) / cq) if cq > 0.0 else -1.0
-		net_value += float(rec.value) - float(rec.cost_weight)
 		rows.append(rec)
 	rows.sort_custom(func(a, b): return float(a.value) > float(b.value))
 	var status := "ok"

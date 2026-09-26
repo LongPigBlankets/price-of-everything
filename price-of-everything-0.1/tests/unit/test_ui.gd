@@ -256,7 +256,351 @@ func _test_grid_selection_follows_panel() -> void:
 	terrain.queue_free()
 	await get_tree().process_frame
 
+func _test_rotary_selector_options() -> void:
+	# The knob with options: one icon button per option on its arc; clicking one turns the knob there; a
+	# disabled option cannot be chosen; the label is the only text.
+	var K = load("res://scripts/rotary_selector.gd")
+	var knob: Control = K.new()
+	knob.knob_size = 118.0
+	var icon: Texture2D = load("res://assets/icons/ui_icons/route_stockpile.png")
+	knob.call("set_options", [{"id": "keep", "icon": icon, "name": "Keep"}, {"id": "lorry", "icon": icon, "name": "Lorry", "enabled": false},
+		{"id": "port", "icon": icon, "name": "Port"}])
+	knob.set("label", "SURPLUS")
+	add_child(knob)
+	await get_tree().process_frame
+	var seen := []
+	knob.value_changed.connect(func(v: int) -> void: seen.append(v))
+	var buttons: Array = knob.get("option_buttons")
+	_check(buttons.size() == 3 and (buttons[0] as Button).tooltip_text == "Keep" and (buttons[1] as Button).disabled,
+		"knob options: an icon button per option, named by its tooltip, a disabled one disabled")
+	(buttons[2] as Button).pressed.emit()
+	_check(knob.value == 3 and seen == [3] and knob.call("_frame", 2) == 5, "knob options: clicking an icon turns the knob to it")
+	knob.value = 1
+	_check(knob.call("_step", 1) == 3, "knob options: stepping passes over a disabled option")
+	_check(buttons[0].position.y < knob.call("_centre").y and buttons[2].position.x > buttons[0].position.x,
+		"knob options: the icons stand on the arc above the knob, in order left to right")
+	knob.queue_free()
+	# v3's Stock tab: the surplus route on the knob, the port route still the tutorial's SellSurplusToggle.
+	var was: bool = UiPrefs.use_tvp_v3
+	UiPrefs.set_use_tvp_v3(true)
+	var panel: Control = load("res://scripts/tile_info_panel_v2.gd").new()
+	add_child(panel)
+	await get_tree().process_frame
+	var tile := "tile_5_10"
+	var dest_was := MatchState.get_sell_surplus_destination(tile)
+	Stockpile.add(tile, str(Catalog.get_good_by_internal_name("steel").get("id", "")), 5)
+	panel.show_tile({"id": tile}, "stock")
+	await get_tree().process_frame
+	var sk: Control = panel.find_child("SurplusKnob", true, false)
+	var keep: Button = panel.find_child("Surplus_None", true, false)
+	_check(sk != null and panel.find_child("SellSurplusToggle", true, false) is Button and keep != null,
+		"tile view v3: the surplus route is a knob, its port icon still named SellSurplusToggle")
+	MatchState.set_sell_surplus_destination(tile, "market")
+	panel.show_tile({"id": tile}, "stock")
+	await get_tree().process_frame
+	keep = panel.find_child("Surplus_None", true, false)
+	if keep != null:
+		keep.pressed.emit()
+	_check(MatchState.get_sell_surplus_destination(tile) == "none", "tile view v3: clicking the keep icon sets the route to keep")
+	MatchState.set_sell_surplus_destination(tile, dest_was)
+	panel.queue_free()
+	UiPrefs.set_use_tvp_v3(was)
+
+func _test_tile_land_hex() -> void:
+	# The tile's land as a hex: exactly as many squares as the tile holds, on an aligned grid in a hex's rows;
+	# the used land laid out as a compact block per building (within 2:1), filled from the bottom, your
+	# buildings in shades of your livery; the mini hex's bands area-true; the planning limit drawn.
+	var Hex := load("res://scripts/tile_land_hex.gd")
+	var grids_ok := true
+	for n: int in [1, 7, 50, 99, 100, 120, 160, 170, 200, 260]:
+		var grid: Dictionary = Hex.hex_grid(n)
+		var total := 0
+		var widest := 0
+		var rows: Array = grid.rows
+		for r in rows.size():
+			total += int(rows[r][1])
+			grids_ok = grids_ok and int(rows[r][1]) >= 1 and int(rows[r][0]) >= 0 and int(rows[r][0]) + int(rows[r][1]) <= int(grid.cols)
+			# centred to within a square on the grid
+			grids_ok = grids_ok and absi(int(rows[r][0]) * 2 + int(rows[r][1]) - int(grid.cols)) <= 1
+			if int(rows[r][1]) > int(rows[widest][1]):
+				widest = r
+		grids_ok = grids_ok and total == n and (rows.size() < 3 or (widest >= rows.size() / 3 and widest <= rows.size() * 2 / 3))
+	_check(grids_ok, "land hex: every tile size makes a hex of exactly that many squares on aligned columns, centred, widest in the middle (200: %s)" % str(Hex.hex_grid(200).rows))
+	var level_ok := is_equal_approx(Hex.level_height(0.5), 0.5) and is_equal_approx(Hex.level_height(0.0), 0.0) and is_equal_approx(Hex.level_height(1.0), 1.0)
+	for f: float in [0.1, 0.3, 0.588, 0.9]:
+		level_ok = level_ok and absf(Hex.area_below(Hex.level_height(f)) - f) < 0.0001
+	_check(level_ok, "land hex: the mini hex's bands meet where their areas say, the hex widening to its middle")
+	var hex: Control = Hex.new()
+	hex.expanded = true
+	add_child(hex)
+	var chart := {"type_cap": 170, "segments": [
+		{"size": 25.0, "is_other": true, "name": "Glassworks", "instance_id": "npc1"},
+		{"size": 20.0, "is_other": true, "name": "Mill", "instance_id": "npc2"},
+		{"size": 20.0, "is_other": false, "name": "Motor", "instance_id": "m1"},
+		{"size": 11.0, "is_other": false, "name": "Steel", "instance_id": "m2"},
+		{"size": 7.0, "is_other": false, "name": "Depot", "instance_id": "m3", "is_construction": true},
+	]}
+	hex.configure(chart, {"free": 12, "buyable": 75, "max": 125})
+	var cells: PackedInt32Array = hex.get("cell_group")
+	var groups: Array = hex.get("groups")
+	var used_first := true
+	for k in 83:
+		used_first = used_first and str(groups[cells[k]].kind) in ["theirs", "yours"]
+	_check(cells.size() == 170 and used_first and str(groups[cells[83]].kind) == "free" and str(groups[cells[169]].kind) == "buy",
+		"land hex: sized by the tile's maximum, the used land first in the fill, then free, then to buy")
+	# Each building: one contiguous block, its bounding box within 2:1.
+	var neighbours: Array = hex.get("_pairs")
+	var cell_row: PackedInt32Array = hex.get("_cell_row")
+	var cell_col: PackedInt32Array = hex.get("_cell_col")
+	var blocks_ok := true
+	var shapes: Array = []
+	for gi in groups.size():
+		if not str(groups[gi].kind) in ["theirs", "yours"]:
+			continue
+		var mine: Array = []
+		for k in cells.size():
+			if cells[k] == gi:
+				mine.append(k)
+		var seen := {mine[0]: true}
+		var todo: Array = [mine[0]]
+		while not todo.is_empty():
+			var at: int = todo.pop_back()
+			for pair: Array in neighbours:
+				for side in 2:
+					var here := int(pair[side])
+					var there := int(pair[1 - side])
+					if here == at and cells[there] == gi and not seen.has(there):
+						seen[there] = true
+						todo.append(there)
+		var c0 := 999
+		var c1 := -1
+		var r0 := 999
+		var r1 := -1
+		for k: int in mine:
+			c0 = mini(c0, cell_col[k])
+			c1 = maxi(c1, cell_col[k])
+			r0 = mini(r0, cell_row[k])
+			r1 = maxi(r1, cell_row[k])
+		var w := c1 - c0 + 1
+		var h := r1 - r0 + 1
+		shapes.append("%dx%d" % [w, h])
+		blocks_ok = blocks_ok and seen.size() == mine.size() and maxf(float(w) / h, float(h) / w) <= 2.0
+	_check(blocks_ok, "land hex: each building is one block, no more than twice as long as it is wide (%s)" % ", ".join(PackedStringArray(shapes)))
+	# A busier tile: four other companies' buildings and three of yours past the planning limit.
+	var busy := {"type_cap": 170, "segments": [
+		{"size": 25.0, "is_other": true, "instance_id": "n1"}, {"size": 20.0, "is_other": true, "instance_id": "n2"},
+		{"size": 11.0, "is_other": true, "instance_id": "n3"}, {"size": 10.0, "is_other": true, "instance_id": "n4"},
+		{"size": 15.0, "is_other": false, "instance_id": "y1"}, {"size": 15.0, "is_other": false, "instance_id": "y2"},
+		{"size": 25.0, "is_other": false, "instance_id": "y3"},
+	]}
+	hex.configure(busy, {"free": 0, "buyable": 49, "max": 104})
+	var busy_shapes: Array = _land_block_shapes(hex)
+	blocks_ok = true
+	for shape: Vector2i in busy_shapes:
+		blocks_ok = blocks_ok and maxf(float(shape.x) / shape.y, float(shape.y) / shape.x) <= 2.0
+	_check(blocks_ok, "land hex: on a busier tile too, no block more than twice as long as it is wide (%s)" % str(busy_shapes))
+	hex.configure(chart, {"free": 12, "buyable": 75, "max": 125})
+	cells = hex.get("cell_group")
+	groups = hex.get("groups")
+	var livery: Color = load("res://scripts/player_colours.gd").active_color()
+	var yours: Array = groups.filter(func(g: Dictionary) -> bool: return str(g.kind) == "yours")
+	var distinct := true
+	for i in yours.size():
+		for j in range(i + 1, mini(i + 3, yours.size())):
+			distinct = distinct and absf((yours[i].colour as Color).ok_hsl_l - (yours[j].colour as Color).ok_hsl_l) >= 0.1
+	for entry: Dictionary in load("res://scripts/player_colours.gd").all():
+		var sh: Array = Hex.shades(entry.color, 6, Hex.YOUR_STEPS, Hex.YOUR_FLOOR, Hex.YOUR_CEILING)
+		for i in sh.size():
+			distinct = distinct and (sh[i] as Color).ok_hsl_l >= Hex.YOUR_FLOOR - 0.001 and (sh[i] as Color).ok_hsl_l <= Hex.YOUR_CEILING + 0.001
+			for j in range(i + 1, mini(i + 3, sh.size())):
+				distinct = distinct and absf((sh[i] as Color).ok_hsl_l - (sh[j] as Color).ok_hsl_l) >= 0.1
+	_check(distinct and absf((yours[0].colour as Color).ok_hsl_h - livery.ok_hsl_h) < 0.02,
+		"land hex: your buildings are shades of your livery, neighbours at least a tenth apart, none as pale as paper white, on every livery")
+	var bands: Array = hex.get("bands")
+	var kinds: Array = bands.map(func(b: Dictionary) -> String: return str(b.kind))
+	_check(kinds == ["theirs", "yours", "free", "buy"] and bands[1].colour == livery,
+		"land hex: the mini hex has one band per kind of land, bottom up, yours in the livery itself")
+	_check(int(hex.get("limit")) == int(BuildingState.DENSITY_SOFT_CAPACITY) and not (hex.call("limit_segments") as Array).is_empty(),
+		"land hex: the planning limit is drawn, at the build check's own figure")
+	chart["type_cap"] = 90
+	hex.configure(chart, {"free": 0, "buyable": 0, "max": 45})
+	_check((hex.call("limit_segments") as Array).is_empty(), "land hex: a tile smaller than the limit draws no limit")
+	hex.queue_free()
+	# The mini hex: laid on the plate, the biggest tile's filling its room, a smaller tile's by its share.
+	var mini: Control = Hex.new()
+	add_child(mini)
+	mini.configure({"type_cap": 200, "segments": []}, {"free": 0, "buyable": 200, "max": 200})
+	var big: Rect2 = mini.call("mini_rect")
+	mini.configure({"type_cap": 120, "segments": []}, {"free": 0, "buyable": 120, "max": 120})
+	var small: Rect2 = mini.call("mini_rect")
+	_check(big.size.x >= 115.0 and absf(small.size.x / big.size.x - sqrt(0.6)) < 0.01 and absf(big.size.y / big.size.x - 480.0 / 540.0) < 0.01,
+		"land hex: the mini hex is %d x %d on the biggest tile, a mountain's smaller by its share (%d x %d)" % [roundi(big.size.x), roundi(big.size.y), roundi(small.size.x), roundi(small.size.y)])
+	mini.queue_free()
+
+## Each building's block in a land hex's full view, as its bounding box in squares.
+func _land_block_shapes(hex: Control) -> Array:
+	var cells: PackedInt32Array = hex.get("cell_group")
+	var groups: Array = hex.get("groups")
+	var cell_row: PackedInt32Array = hex.get("_cell_row")
+	var cell_col: PackedInt32Array = hex.get("_cell_col")
+	var out: Array = []
+	for gi in groups.size():
+		if not str(groups[gi].kind) in ["theirs", "yours", "feature"]:
+			continue
+		var c0 := 999
+		var c1 := -1
+		var r0 := 999
+		var r1 := -1
+		for k in cells.size():
+			if cells[k] == gi:
+				c0 = mini(c0, cell_col[k])
+				c1 = maxi(c1, cell_col[k])
+				r0 = mini(r0, cell_row[k])
+				r1 = maxi(r1, cell_row[k])
+		if c1 >= 0:
+			out.append(Vector2i(c1 - c0 + 1, r1 - r0 + 1))
+	return out
+
+
+func _test_tile_view_cables_missing() -> void:
+	# A tile without cables where your buildings make or draw power says so, and the Power key goes red.
+	var Panel := load("res://scripts/tile_info_panel_v2.gd")
+	var tile := ""
+	for candidate: String in ["tile_6_1", "tile_12_5", "tile_11_4", "tile_18_18"]:
+		if Power.tile_power_cap(candidate) == 0:
+			tile = candidate
+			break
+	if tile == "":
+		_check(false, "cables missing: a fixture tile without cables")
+		return
+	_check(Panel.cables_missing_text(tile) == "", "cables missing: nothing to say with none of your buildings on the tile")
+	var factory := BuildingState.add_building("b_007", "r_009", tile, MatchState.LOCAL_PLAYER, "cabless_motor")
+	var text: String = Panel.cables_missing_text(tile)
+	BuildingState.buildings.erase(factory)
+	_check(text == "Cables missing. Power consumption not possible.", "cables missing: a factory drawing power on a tile without cables (%s)" % text)
+	_check(Panel.cables_missing_text("tile_5_10") == "" or Power.tile_power_cap("tile_5_10") == 0, "cables missing: a tile with cables says nothing")
+
+
+func _test_tile_view_cabinet() -> void:
+	# Tile view v3's shell: the stainless door with its engraved nameplate (the name, the coordinates on hover),
+	# five latching keys with Transport added, the pressed key latched and its tab open, and the v2 panel back
+	# exactly as it was when the switch goes off.
+	var was: bool = UiPrefs.use_tvp_v3
+	UiPrefs.set_use_tvp_v3(false)
+	var panel: Control = load("res://scripts/tile_info_panel_v2.gd").new()
+	add_child(panel)
+	await get_tree().process_frame
+	var tile := "tile_5_10"
+	panel.show_tile({"id": tile}, "stock")
+	UiPrefs.set_use_tvp_v3(true)
+	await get_tree().process_frame
+	var keys: Array = []
+	for id: String in ["bl", "power", "prod", "stock", "transport"]:
+		keys.append(panel.find_child("TabKey_" + id, true, false))
+	_check(not keys.has(null) and panel.find_child("Nameplate", true, false) != null and panel.find_child("KeyBed", true, false) != null,
+		"tile view v3: the switch rebuilds the panel as the cabinet, a nameplate and five keys on their bed")
+	_check(str(panel.get("_active_tab")) == "stock" and bool(keys[3].get("latched")) and not bool(keys[0].get("latched")),
+		"tile view v3: the open tab survives the rebuild and its key stays latched")
+	_check(panel.find_child("TileLandChart", true, false) != null and panel.find_child("BLBuyLandButton", true, false) != null
+		and panel.find_child("LocationKey", true, false) != null and panel.find_child("OwnerLamp", true, false) != null
+		and panel.find_child("RailSheet", true, false) == null and (panel as Control).custom_minimum_size.x == 655.0,
+		"tile view v3: the fixed part is the plan's, the land gauge with Buy Land beside it, Location, the owner's lamp, no land column")
+	var located: Array = []
+	panel.connect("locate_requested", func(t: String) -> void: located.append(t))
+	(panel.find_child("LocationKey", true, false) as BaseButton).pressed.emit()
+	_check(located == [tile], "tile view v3: the Location key asks the map to show this tile")
+	var terrain_icon: TextureRect = panel.find_child("TerrainIcon", true, false)
+	var every_type := true
+	var types := {}
+	var csv := FileAccess.open("res://data/tile_properties.csv", FileAccess.READ)
+	var head: PackedStringArray = csv.get_csv_line()
+	var type_col := head.find("type")
+	while not csv.eof_reached():
+		var line: PackedStringArray = csv.get_csv_line()
+		if line.size() > type_col and line[type_col] != "":
+			types[line[type_col]] = true
+	for type_name: String in types:
+		every_type = every_type and ResourceLoader.exists("res://assets/icons/ui_icons/terrain/terrain_%s.png" % type_name)
+	_check(terrain_icon != null and terrain_icon.get_parent().name == "HexColumn" and terrain_icon.tooltip_text.contains("holds up to %d land" % BuildingState.max_tile_land(tile)),
+		"tile view v3: the terrain glyph stands over the hex, its tooltip the land the terrain allows (%s)" % terrain_icon.tooltip_text.replace("\n", " "))
+	var ruleset_was: Dictionary = MatchState.ruleset.duplicate()
+	MatchState.ruleset["company_colour"] = "construction_yellow"
+	var yellow_tape: Dictionary = load("res://scripts/tile_land_hex.gd").tape()
+	MatchState.ruleset["company_colour"] = "diesel_red"
+	var red_tape: Dictionary = load("res://scripts/tile_land_hex.gd").tape()
+	MatchState.ruleset = ruleset_was
+	_check(yellow_tape.stripe == Color("#e8281e") and red_tape.stripe == Color("#f2c230"),
+		"tile view v3: the planning tape is red on white for a yellow livery, yellow on black for any other")
+	_check(terrain_icon != null and terrain_icon.texture.resource_path.ends_with("terrain_%s.png" % Catalog.tile_type(tile)) and every_type,
+		"tile view v3: the glyph is the tile's terrain, and every terrain in the tile data has one (%s)" % ", ".join(PackedStringArray(types.keys())))
+	var plate: Control = panel.find_child("Nameplate", true, false)
+	var name_text := str(panel.get("_nameplate_text"))
+	_check(name_text != "" and not name_text.contains("(") and plate.tooltip_text == "Coordinates 5, 10",
+		"tile view v3: the nameplate carries the site's name, the coordinates only on hover (%s)" % name_text)
+	(panel.find_child("TileLandChart", true, false) as Control).emit_signal("expand_requested")
+	await get_tree().process_frame
+	var land_view: Control = panel.find_child("LandView", true, false)
+	_check(land_view != null and land_view.visible and not (panel.find_child("BodyScroll", true, false) as Control).visible
+		and not bool(keys[3].get("latched")) and not (panel.find_child("TileLandFull", true, false).get("groups") as Array).is_empty(),
+		"tile view v3: clicking the land hex shows the land in full in the body's place, no key latched")
+	keys[4].emit_signal("pressed")
+	await get_tree().process_frame
+	_check(not land_view.visible and (panel.find_child("BodyScroll", true, false) as Control).visible,
+		"tile view v3: pressing a key closes the land and opens its tab")
+	_check(str(panel.get("_active_tab")) == "transport" and bool(keys[4].get("latched")) and not bool(keys[3].get("latched")),
+		"tile view v3: pressing a key opens its tab and latches it, releasing the last")
+	_check(panel.find_child("InfraCell_cables", true, false) != null or not ResearchState.infrastructure_tendering_available(),
+		"tile view v3: the infrastructure lives in Transport")
+	UiPrefs.set_use_tvp_v3(false)
+	await get_tree().process_frame
+	_check(panel.find_child("Nameplate", true, false) == null and panel.find_child("TabKey_bl", true, false) == null
+		and (panel.get("_panes") as Dictionary).size() == 4 and str(panel.get("_active_tab")) == "bl",
+		"tile view v3: off again, the v2 panel returns with its four tabs")
+	panel.queue_free()
+	UiPrefs.set_use_tvp_v3(was)
+
+func _test_tile_view_numbers_and_links() -> void:
+	# The tile view's Goods and Power are the engine's figures for your buildings only; a link opens the
+	# tab it names; the stock controls are yours only where you own land or goods.
+	MatchState.reset()
+	Stockpile.clear_all()
+	var TVD := preload("res://scripts/tile_view_data.gd")
+	var Econ := preload("res://scripts/building_economics.gd")
+	var tile := "tile_5_10"
+	var mine := BuildingState.add_building("b_007", "r_009", tile, MatchState.LOCAL_PLAYER, "tvn_mine")
+	BuildingState.add_building("b_007", "r_009", tile, "npc_glass", "tvn_npc")
+	var prod: Dictionary = TVD.production_summary(tile)
+	var want: float = float(Econ.per_turn(BuildingState.get_building(mine)).get("net_value_added", 0.0))
+	_check(is_equal_approx(float(prod.net_value), want),
+		"tile view: Goods' net value is your buildings' net value added, as Building Detail quotes it (%.2f vs %.2f)" % [float(prod.net_value), want])
+	var produced_was: Dictionary = Power.tile_produced
+	var drawn_was: Dictionary = Power.tile_drawn
+	Power.tile_produced = {tile: 40}
+	Power.tile_drawn = {tile: 28}
+	var pw: Dictionary = TVD.power_summary(tile)
+	Power.tile_produced = produced_was
+	Power.tile_drawn = drawn_was
+	_check(int(pw.produced) == 40 and int(pw.consumed) == 28 and int(pw.net) == 12,
+		"tile view: Power reads the engine's per-tile MW")
+	var Panel := load("res://scripts/tile_info_panel_v2.gd")
+	_check(not Panel.player_present_on_tile("tile_0_0") and (Panel.player_present_on_tile(tile) == (BuildingState.get_tile_land_owned(tile) > 0 or Stockpile.get_used_capacity(tile) > 0)),
+		"tile view: the stock controls are yours only where you own land or have goods")
+	var panel: Control = Panel.new()
+	add_child(panel)
+	await get_tree().process_frame
+	panel.show_tile({"id": tile}, "stock")
+	var landed := str(panel.get("_active_tab"))
+	panel.show_tile({"id": tile})
+	_check(landed == "stock" and str(panel.get("_active_tab")) == "bl",
+		"tile view: a link opens the tab it names; a new tile opens on Buildings")
+	panel.queue_free()
+	BuildingState.buildings.erase(mine)
+	BuildingState.buildings.erase("tvn_npc")
+
 func _test_tile_view_player_building_filter() -> void:
+	# The filter is the v2 panel's; v3 has no NPC section of its own yet.
+	var was_v3: bool = UiPrefs.use_tvp_v3
+	UiPrefs.set_use_tvp_v3(false)
 	MatchState.reset()
 	Stockpile.clear_all()
 	var terrain := TileMapLayer.new()
@@ -276,6 +620,7 @@ func _test_tile_view_player_building_filter() -> void:
 		panel.queue_free()
 		terrain.queue_free()
 		await get_tree().process_frame
+		UiPrefs.set_use_tvp_v3(was_v3)
 		return
 	BuildingState.add_building("b_001", "r_001", tile_id, MatchState.LOCAL_PLAYER, "tv_filter_player")
 	BuildingState.add_building("b_001", "r_001", tile_id, "npc", "tv_filter_npc_1")
@@ -312,6 +657,7 @@ func _test_tile_view_player_building_filter() -> void:
 	panel.queue_free()
 	terrain.queue_free()
 	await get_tree().process_frame
+	UiPrefs.set_use_tvp_v3(was_v3)
 
 ## Chimney counts per industry (owner spec 2026-08-27), pinned because they are a design
 ## decision rather than a derived number — nothing else in the code would notice if a
@@ -1862,7 +2208,7 @@ func _test_bdp_v3_inbound_checks() -> void:
 		"inbound checks: transit is green within a turn, amber to four, red beyond, naming the slowest input (%s)" % mid_t.detail)
 	var freight: Dictionary = BR._freight_check({"shown": true, "transport_in": 5.0, "input_value": 100.0, "lamp_in": "warn"})
 	var free: Dictionary = BR._freight_check({"shown": true, "transport_in": 0.0, "input_value": 40.0, "inputs_free": false, "lamp_in": "ok"})
-	_check(str(freight.tone) == "warn" and str(freight.detail) == "£5.00 a turn to bring inputs in, 5% of their value."
+	_check(str(freight.tone) == "warn" and str(freight.detail) == "£5.00/turn to bring inputs in, 5% of their value."
 		and str(free.tone) == "ok",
 		"inbound checks: freight takes the economics' input transport lamp and gives the cost and its share (%s)" % freight.detail)
 	BuildingState.buildings.erase(iid)
@@ -1963,7 +2309,7 @@ func _test_bdp_v3_output_checks() -> void:
 		and BR._cheaper_mode(steel_id, ["roads"]) == "rail" and BR._cheaper_mode(steel_id, ["rail"]) == "" and BR._cheaper_mode(steel_id, []) == "rail"
 		and BR._cheaper_mode(water_id, ["roads", "rail"]) == "pipes" and BR._cheaper_mode(water_id, ["reinf_pipes"]) == ""
 		and BR._cheaper_mode(chlorine_id, ["roads"]) == "reinf_pipes" and BR._cheaper_mode(chlorine_id, ["reinf_pipes"]) == ""
-		and str(freight.tone) == ("ok" if 16.0 / qty < 0.15 else "warn") and str(freight.detail).contains("a unit to ship"),
+		and str(freight.tone) == ("ok" if 16.0 / qty < 0.15 else "warn") and str(freight.detail).contains("/unit to ship"),
 		"outputs checks: reach is amber, never red, when a cheaper infrastructure suits the good (rail; pipeline; reinforced for hazards), and no route out makes transit red (%s)" % no_route.detail)
 	# The port: green with room, amber within 10% of its cap for the good's transport class, red at it.
 	var port_tile := "tile_5_10"
