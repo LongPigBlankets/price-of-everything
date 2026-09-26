@@ -1457,5 +1457,64 @@
   ],
   "margin": 10,
   "corner": 60
+ },
+ "tile_door": {
+  "size": [
+   1548,
+   1758
+  ],
+  "margin": 24,
+  "corner": 96,
+  "pipe_inset": 0,
+  "pipe_radius": 8
+ },
+ "tile_flange": {
+  "size": [
+   64,
+   64
+  ]
+ },
+ "tile_nameplate": {
+  "size": [
+   720,
+   84
+  ],
+  "margin": 14,
+  "cap": 60,
+  "face": [
+   16,
+   16,
+   688,
+   52
+  ]
+ },
+ "tile_key": {
+  "size": [
+   232,
+   116
+  ],
+  "cap": 60,
+  "rect": [
+   16,
+   16,
+   200,
+   84
+  ],
+  "face": [
+   31.599999999999994,
+   31.6,
+   168.8,
+   52.8
+  ],
+  "press": 5,
+  "latch": 22
+ },
+ "tile_keybed": {
+  "size": [
+   600,
+   200
+  ],
+  "margin": 14,
+  "corner": 40
  }
 }

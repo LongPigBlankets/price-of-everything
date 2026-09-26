@@ -623,7 +623,7 @@ func _build_generic_detail(it: Dictionary) -> void:
 
 	# Deep-link rows (starved buildings etc.) → focus the building on the map.
 	for entry: Dictionary in it.get("list", []):
-		_detail.add_child(_list_row(entry, _item_color(it)))
+		_detail.add_child(_list_row(entry, _item_color(it), str(it.get("id", "")).begins_with("alert:storage")))
 	if int(it.get("list_more", 0)) > 0:
 		var more := Label.new()
 		more.theme_type_variation = "Caption"
@@ -727,7 +727,9 @@ func _stat_card(label: String, value: String, tone: String) -> Control:
 	vb.add_child(v)
 	return card
 
-func _list_row(entry: Dictionary, tint: Color) -> Control:
+## A row naming a building or a tile; a storage alert's rows open the tile on its Stockpile tab, where the
+## warehouse and the goods are.
+func _list_row(entry: Dictionary, tint: Color, to_stockpile: bool = false) -> Control:
 	var row := Button.new()
 	row.focus_mode = Control.FOCUS_NONE
 	row.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -736,7 +738,7 @@ func _list_row(entry: Dictionary, tint: Color) -> Control:
 	row.text = "%s   %s   — %s" % [Catalog.tile_label(tile), tile, str(entry.get("why", ""))]
 	row.add_theme_color_override("font_color", tint)
 	row.pressed.connect(func() -> void:
-		_navigate({"building_id": iid, "tile_id": tile, "panel": "building"}))
+		_navigate({"building_id": iid, "tile_id": tile, "panel": "stockpile" if to_stockpile else "building"}))
 	return row
 
 func _navigate(dl: Dictionary) -> void:
@@ -747,6 +749,8 @@ func _navigate(dl: Dictionary) -> void:
 		MatchState.focus_building_requested.emit(building_id)
 	elif tile_id != "":
 		MatchState.focus_tile_requested.emit(tile_id)
+		if str(dl.get("panel", "")) == "stockpile":
+			MatchState.tile_stockpile_requested.emit(tile_id)
 
 
 ## An update's leading mark: the GOOD's icon when the item names one (a deposit warning

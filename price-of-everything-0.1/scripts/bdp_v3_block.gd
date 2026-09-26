@@ -28,7 +28,8 @@ func _init() -> void:
 
 
 ## state: input_value, output_value (String); input_managed, output_managed (bool);
-## upgrade_title, upgrade_detail, upgrade_tooltip (String), upgrade_lit (bool);
+## upgrade_title, upgrade_detail, upgrade_tooltip (String), upgrade_lit (bool), upgrade_tip (a dot-matrix
+## card, dot_card.gd; when set it replaces upgrade_tooltip);
 ## recipe_title, recipe_detail, recipe_tooltip (String), recipe_enabled (bool).
 func configure(state: Dictionary) -> void:
 	var lit := bool(state.get("upgrade_lit", false))
@@ -52,14 +53,14 @@ func configure(state: Dictionary) -> void:
 		var value := "Manage Logistics" if managed else str(state.get("input_value" if side == "inputs" else "output_value", ""))
 		_add_key(side, value_lines(value), true, true, str(state.get(side.trim_suffix("s") + "_tooltip", "")))
 	_add_key("upgrade", two_lines(str(state.get("upgrade_title", "")), str(state.get("upgrade_detail", ""))), false,
-		lit, str(state.get("upgrade_tooltip", "")))
+		lit, str(state.get("upgrade_tooltip", "")), state.get("upgrade_tip", {}))
 	_add_key("recipe", two_lines(str(state.get("recipe_title", "")), str(state.get("recipe_detail", ""))), false,
 		bool(state.get("recipe_enabled", true)), str(state.get("recipe_tooltip", "")))
 
 
-func _add_key(key: String, lines: Array, caret: bool, enabled: bool, tooltip: String) -> void:
+func _add_key(key: String, lines: Array, caret: bool, enabled: bool, tooltip: String, tip: Dictionary = {}) -> void:
 	var r: Array = KEYS[key]
-	set_key(key, r[0], r[1], tex("block_key_" + key), tex("block_key_%s_pressed" % key), lines, caret, enabled, tooltip)
+	set_key(key, r[0], r[1], tex("block_key_" + key), tex("block_key_%s_pressed" % key), lines, caret, enabled, tooltip, tip)
 
 
 # --- rules ---------------------------------------------------------------------------------------

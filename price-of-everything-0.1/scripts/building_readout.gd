@@ -735,8 +735,8 @@ static func _supply_check(building: Dictionary, recipe: Dictionary, produces_pow
 	if produces_power:
 		var out := BuildingStatus.effective_power_output(building, recipe)
 		if _power_output_capped(str(building.get("instance_id", ""))):
-			return _check("power_supply", "Power supply", "warn", "Makes up to %d MW a turn, but its cables cannot carry it all." % out)
-		return _check("power_supply", "Power supply", "ok", "Makes %d MW a turn." % out)
+			return _check("power_supply", "Power supply", "warn", "Makes up to %d MW/turn, but its cables cannot carry it all." % out)
+		return _check("power_supply", "Power supply", "ok", "Makes %d MW/turn." % out)
 	var pw := power(building, recipe)
 	var amt := int(pw.get("amount", 0))
 	match str(pw.get("state", "none")):
@@ -933,7 +933,7 @@ static func _deposit_check(building: Dictionary, recipe: Dictionary) -> Dictiona
 	var runway := _deposit_runway(str(building.get("instance_id", "")))
 	if not runway.is_empty():
 		var t := int(runway.get("turns_left", 0))
-		return _check("deposit", "Deposit left", "warn", "About %d turn%s of %s left, %d at %d a turn. Build a replacement mine elsewhere." % [
+		return _check("deposit", "Deposit left", "warn", "About %d turn%s of %s left, %d at %d/turn. Build a replacement mine elsewhere." % [
 			t, "" if t == 1 else "s", name, int(runway.get("remaining", 0)), int(runway.get("per_turn", 0))])
 	var remaining := MatchState.deposit_remaining_for(tile, token)
 	if remaining < 0:
@@ -1070,7 +1070,7 @@ static func _freight_check(econ: Dictionary) -> Dictionary:
 	if bool(econ.get("inputs_free", false)) or cost <= 0.0:
 		return _check("freight", "Freight cost", "ok", "Bringing its inputs in costs nothing.")
 	var share := cost / value * 100.0 if value > 0.0 else 100.0
-	return _check("freight", "Freight cost", str(econ.get("lamp_in", "ok")), "£%.2f a turn to bring inputs in, %d%% of their value." % [cost, roundi(share)])
+	return _check("freight", "Freight cost", str(econ.get("lamp_in", "ok")), "£%.2f/turn to bring inputs in, %d%% of their value." % [cost, roundi(share)])
 
 # --- Output checks (the diagnostics' visual view) --------------------------------------------
 # Five checks, each over every good the recipe makes, a lamp for each tone among them: how each travels
@@ -1177,7 +1177,7 @@ static func _freight_out_check(route: Dictionary, building: Dictionary, g: Dicti
 	var cost := float(route.get("cost", 0.0))
 	var per_unit := cost / float(maxi(1, int(g.get("qty", 1))))
 	var band := "Cheap" if per_unit < 0.15 else ("Average" if per_unit < 0.4 else "Expensive")
-	return _good_check(g, "freight_out", "Freight cost", "ok" if per_unit < 0.15 else "warn", "£%s a unit to ship, £%.2f a turn. %s." % [_num(per_unit), cost, band])
+	return _good_check(g, "freight_out", "Freight cost", "ok" if per_unit < 0.15 else "warn", "£%s/unit to ship, £%.2f/turn. %s." % [_num(per_unit), cost, band])
 
 ## The port its outputs are sold through: the port a market route goes to, or the one nearest the
 ## stockpile they go to, which sells its surplus. "" when they pass no port.
@@ -1252,7 +1252,7 @@ static func _glut_check(building: Dictionary, g: Dictionary) -> Dictionary:
 		where = "%d%% over its base price" % roundi(impact)
 	var detail := "Sells at £%.2f, %s." % [MarketState.get_price(gid), where]
 	if falling > 0.0:
-		detail += " Your own selling pushes it down %.1f points a turn." % falling
+		detail += " Your own selling pushes it down %.1f points/turn." % falling
 	var tone := "ok"
 	if impact <= GLUT_RED_PCT:
 		tone = "bad"
@@ -1301,8 +1301,8 @@ static func _carbon_check(building: Dictionary, recipe: Dictionary, is_infrastru
 	var on := " on its %s" % _and_list(taxed) if not taxed.is_empty() else ""
 	var net := float(econ.get("net_value_added", NAN))
 	if not is_nan(net) and net < 0.0 and net + levy >= 0.0:
-		return _check("carbon", "Carbon levy", "bad", "Pays £%.2f a turn in carbon levy%s. That turns a profit into a loss of £%.2f." % [levy, on, -net])
-	return _check("carbon", "Carbon levy", "warn", "Pays £%.2f a turn in carbon levy%s." % [levy, on])
+		return _check("carbon", "Carbon levy", "bad", "Pays £%.2f/turn in carbon levy%s. That turns a profit into a loss of £%.2f." % [levy, on, -net])
+	return _check("carbon", "Carbon levy", "warn", "Pays £%.2f/turn in carbon levy%s." % [levy, on])
 
 static func _works_check(building: Dictionary) -> Dictionary:
 	var iid := str(building.get("instance_id", ""))

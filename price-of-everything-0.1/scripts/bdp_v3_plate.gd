@@ -13,6 +13,7 @@ extends Control
 
 signal key_pressed(key: String)
 
+const TransportTip := preload("res://scripts/ds2/dot_card.gd")
 const CAPTURE_SCALE := 1.875
 const NAVY := Color("#0b2340")
 const DANGER_INK := Color("#8f1f19")
@@ -91,11 +92,15 @@ func set_layers(back: Array[Texture2D], glow: Texture2D, front: Array[Texture2D]
 ## Adds or replaces a key. `rect` and `face` are in layout pixels; `lines` are dictionaries of
 ## {text, y (fraction of the face height), size (layout px), semi (bool), colour, align ("left"/"center")}.
 func set_key(key: String, rect: Rect2, face: Rect2, normal: Texture2D, pressed: Texture2D, lines: Array,
-		caret: bool, enabled: bool, tooltip: String = "") -> void:
+		caret: bool, enabled: bool, tooltip: String = "", tip: Dictionary = {}) -> void:
 	if not _keys.has(key):
 		_key_order.append(key)
+	# A key with a `tip` shows it on the dot-matrix card the tile view's keys use (dot_card.gd), its
+	# words in plain text as the tooltip's text.
+	if not tip.is_empty():
+		tooltip = TransportTip.plain(tip)
 	_keys[key] = {"rect": rect, "face": face, "normal": normal, "pressed": pressed, "lines": lines,
-		"caret": caret, "enabled": enabled, "tooltip": tooltip}
+		"caret": caret, "enabled": enabled, "tooltip": tooltip, "tip": tip}
 	tooltip_text = " " if tooltip != "" or tooltip_text != "" else ""
 	_redraw()
 
@@ -240,3 +245,9 @@ func _gui_input(event: InputEvent) -> void:
 func _get_tooltip(at_position: Vector2) -> String:
 	var key := _key_at(at_position)
 	return str(_keys[key].tooltip) if key != "" else ""
+
+
+func _make_custom_tooltip(_for_text: String) -> Object:
+	var key := _key_at(get_local_mouse_position())
+	var tip: Dictionary = _keys[key].get("tip", {}) if key != "" else {}
+	return TransportTip.make(tip, self) if not tip.is_empty() else null

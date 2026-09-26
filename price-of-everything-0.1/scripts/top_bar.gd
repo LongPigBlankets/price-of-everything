@@ -765,10 +765,22 @@ func _build_treasury() -> void:
 	sub.add_theme_constant_override("separation", 6)
 	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(sub)
+	_money_sub = sub
 	_net_label = _mini("", C_GOOD, 13)
 	sub.add_child(_net_label)
 	_runway_label = _mini("", C_RED, 11)
 	sub.add_child(_runway_label)
+	# DS2: the profit line and the runway stand in a column to the right of the cash (_ds2_money_layout).
+	_ds2_money_side = VBoxContainer.new()
+	_ds2_money_side.name = "Ds2MoneySide"
+	_ds2_money_side.alignment = BoxContainer.ALIGNMENT_CENTER
+	_ds2_money_side.add_theme_constant_override("separation", 0)
+	_ds2_money_side.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ds2_money_side.visible = false
+	_money_inner.add_child(_ds2_money_side)
+	money_widget.resized.connect(func() -> void:
+		if UiPrefs.use_topbar_ds2:
+			_ds2_refresh_cash())
 	money_widget.pressed.connect(func() -> void: _toggle_fly("treasury"))
 
 func _money_text(n: float) -> String:
@@ -1428,6 +1440,8 @@ const DS2_INK_OUTLINE := Color(0.03, 0.05, 0.08, 0.5)
 ## Cash on an LED screen: the screen's scale on the bar (a full-size screen is taller than a module with
 ## the net line under it), its cells (scripts/ds2/money_figure.gd), and the figure's colour.
 const DS2_CASH_SCALE := 0.75
+## The room between the cash's screen and the money module's top and foot.
+const DS2_CASH_PAD := 5.0
 const DS2_CASH_COLOUR := Color("#f4f6fa")
 const DS2_CASH_RED := Color("#e66060")   # DS2 DANGER on dark: the cash below zero
 ## The profit line and the runway, printed on the light concrete: DS2's inks for light surfaces (the ones
@@ -1503,6 +1517,9 @@ var _ds2_cash: HBoxContainer
 var _ds2_cash_led: Control
 var _ds2_cash_holder: Control
 var _ds2_cash_suffix: Label
+## v3.1's line under the cash, and DS2's column to its right that takes its labels.
+var _money_sub: HBoxContainer
+var _ds2_money_side: VBoxContainer
 
 
 func _ds2_setup() -> void:
@@ -1569,6 +1586,7 @@ func _ds2_apply() -> void:
 	_ds2_left_gap.visible = on
 	for label: Label in [_net_label, _runway_label]:
 		_ds2_print_on_concrete(label, on)
+	_ds2_money_layout(on)
 	# The bar's floor: nothing under DS2_BAR_MIN_PX (v3.1 keeps its 11 px lines).
 	var small: Array[Label] = [_quest_sub, _runway_label]
 	if _bankruptcy_strip != null:
@@ -3511,7 +3529,7 @@ func _add_transit_credit_rows(parent: VBoxContainer) -> void:
 	parent.add_child(_fly_row("Transit credit on the road", "%s · %s/turn" % [_money_text(balance), _money_text(balance * rate_pct / 100.0)], C_BRIGHT, C_BRIGHT, "FlyRowTransitCredit"))
 	var toggle := _fly_btn("", false)
 	toggle.name = "FlyTransitCreditToggle"
-	toggle.tooltip_text = "Port sales are paid when the goods reach the port. With this on, the bank pays you when they leave and charges %.2f%% a turn on what is still on the road. Turn it off to wait for payment and save the interest." % rate_pct
+	toggle.tooltip_text = "Port sales are paid when the goods reach the port. With this on, the bank pays you when they leave and charges %.2f%%/turn on what is still on the road. Turn it off to wait for payment and save the interest." % rate_pct
 	var label_for := func() -> String:
 		return "Advance port sales: %s" % ("On" if LoanState.transit_credit_enabled else "Off")
 	toggle.text = label_for.call()
@@ -3741,7 +3759,7 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 		var tcrow := _ds2_money_row("Transit credit on the road", LoanState.transit_credit_balance, DS2_CASH_COLOUR, digits, "FlyRowTransitCredit", DS2_SMALL_LED)
 		body.add_child(tcrow)
 		var toggle := _ds2_key_button("Advance port sales: %s" % ("On" if LoanState.transit_credit_enabled else "Off"), "FlyTransitCreditToggle")
-		toggle.tooltip_text = "Port sales are paid when the goods reach the port. With this on, the bank pays you when they leave and charges %.2f%% a turn on what is still on the road. Turn it off to wait for payment and save the interest." % rate_pct
+		toggle.tooltip_text = "Port sales are paid when the goods reach the port. With this on, the bank pays you when they leave and charges %.2f%%/turn on what is still on the road. Turn it off to wait for payment and save the interest." % rate_pct
 		toggle.pressed.connect(func() -> void:
 			LoanState.set_transit_credit_enabled(not LoanState.transit_credit_enabled)
 			_refresh_open_fly())
@@ -4112,7 +4130,22 @@ func _ds2_ink(label: Label, on: bool) -> void:
 			label.remove_theme_constant_override(key)
 
 
-## The cash on the LED screen, always five cells (blank ones unlit) so the screen never changes width.
+## DS2 prints the profit line and the runway in a column to the right of the cash, which then takes the
+## money module's full height; v3.1 keeps them on a line under the cash.
+func _ds2_money_layout(on: bool) -> void:
+	if _money_sub == null or _ds2_money_side == null:
+		return
+	var home: Container = _ds2_money_side if on else _money_sub
+	for label: Label in [_net_label, _runway_label]:
+		if label.get_parent() != home:
+			label.get_parent().remove_child(label)
+			home.add_child(label)
+	_money_sub.visible = not on
+	_ds2_money_side.visible = on
+
+
+## The cash on the LED screen, always five cells (blank ones unlit) so the screen never changes width. In
+## DS2 the screen takes the money module's height, DS2_CASH_PAD clear of its top and its foot.
 func _ds2_refresh_cash(colour: Color = Color(0, 0, 0, 0)) -> void:
 	if colour.a == 0.0:
 		colour = DS2_CASH_RED if MatchState.money < 0.0 else DS2_CASH_COLOUR
@@ -4124,7 +4157,11 @@ func _ds2_refresh_cash(colour: Color = Color(0, 0, 0, 0)) -> void:
 		+ 2.0 * Led.PAD + Vector2.ONE * 2.0 * Led.RIM / Led.CAPTURE_SCALE
 	_ds2_cash_led.custom_minimum_size = full
 	_ds2_cash_led.size = full
-	_ds2_cash_holder.custom_minimum_size = (full * DS2_CASH_SCALE).round()
+	var k := DS2_CASH_SCALE
+	if money_widget != null and money_widget.size.y > 2.0 * DS2_CASH_PAD:
+		k = (money_widget.size.y - 2.0 * DS2_CASH_PAD) / full.y
+	_ds2_cash_led.scale = Vector2.ONE * k
+	_ds2_cash_holder.custom_minimum_size = (full * k).round()
 	_ds2_cash_suffix.text = str(parts.suffix)
 	_ds2_cash_suffix.visible = str(parts.suffix) != ""
 	_ds2_cash_led.tooltip_text = _money_text(MatchState.money)
