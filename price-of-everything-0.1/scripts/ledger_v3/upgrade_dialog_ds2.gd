@@ -54,7 +54,7 @@ const OUTLINE_RADIUS := 12
 ## The materials grid's columns, and the room it leaves on its right for the dial.
 const MATERIAL_COLUMNS := 3
 const NAVY := Color("#0b2340")
-const DIAL_PX := 110.0
+const DIAL_PX := 165.0
 
 const WIDTH := 760.0
 const CONTENT_MARGIN := 26
@@ -321,10 +321,13 @@ func _materials(p: Dictionary) -> Control:
 	var materials: Array = p.get("materials", [])
 	var to_buy := float(p.get("market_cost", 0.0))
 	var sec := _section("UpgradeMaterials", "Materials", "plate")
-	# The crane over the source: its mast down the plate's right edge, its jib along the right half of the top.
-	var crane := CraneRig.new()
-	sec.add_child(crane)
-	sec.move_child(crane, 0)
+	# The plate and, over it, the crane standing on its edges: the mast down the right edge, the jib along the
+	# right half of the top (a wrapper, so the crane may lie on the plate's edge and not inside its margins).
+	var wrap := PanelContainer.new()
+	wrap.name = "MaterialsPlate"
+	wrap.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	wrap.add_child(sec)
+	wrap.add_child(CraneRig.new())
 	var vb: VBoxContainer = sec.get("content")
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 18)
@@ -357,8 +360,9 @@ func _materials(p: Dictionary) -> Control:
 	# costs at market.
 	var room := MarginContainer.new()
 	room.name = "MaterialsSource"
-	room.add_theme_constant_override("margin_right", roundi(CraneRig.MAST_W + 8.0))
-	room.add_theme_constant_override("margin_top", roundi(CraneRig.JIB_H))
+	# The section's content starts CASE_INSET in from the plate's edge; the crane's mast and cab take more.
+	room.add_theme_constant_override("margin_right", roundi(CraneRig.MAST_W + CraneRig.CAB.x + 10.0 - (Section.RIM + Section.PADDING)))
+	room.add_theme_constant_override("margin_top", 8)
 	room.add_theme_constant_override("margin_left", 0)
 	room.add_theme_constant_override("margin_bottom", 0)
 	var side := VBoxContainer.new()
@@ -377,7 +381,7 @@ func _materials(p: Dictionary) -> Control:
 		_on_steel(price.get_child(0) as Label)
 		side.add_child(price)
 	row.add_child(room)
-	return sec
+	return wrap
 
 
 ## Print on the light steel: navy, a faint light shadow under it (DS2's ink for light surfaces).
@@ -669,17 +673,26 @@ class LevelTrack extends Control:
 		Nine.paint(self, GLASS, bar.grow(MARGIN / CAPTURE_SCALE), corner)
 
 
-## A crane of steel lattice over the materials plate's right: the mast down its right edge, the jib along the
-## right half of its top, joined by a gusset at the corner. Drawn under the plate's contents.
+## A tower crane on the materials plate's edges, in steel lattice: the mast down the right edge from a yellow
+## machinery box at its foot, the jib along the right half of the top edge with its tip cut on a slant, and the
+## operator's yellow cab under the jib against the mast. Both girders are braced with crossbars and diagonals.
 class CraneRig extends Control:
 	const MAST_W := 30.0
 	const JIB_H := 26.0
-	const CHORD := 7.0
+	const CHORD := 6.0
+	const JIB_FROM := 0.44
+	const CAB := Vector2(38, 32)
+	const BASE := Vector2(64, 30)
 	const STEEL := Color("#343940")
 	const LIT := Color("#9aa2ab")
 	const SHADE := Color("#111417")
 	const BRACE := Color("#2b2f35")
 	const RIVET := Color("#c9ced6")
+	const YELLOW := Color("#f0b429")
+	const YELLOW_LIT := Color("#ffd666")
+	const YELLOW_DARK := Color("#b9820f")
+	const INK := Color("#2a1e04")
+	const GLASS := Color("#1b2a36")
 
 	func _init() -> void:
 		name = "CraneRig"
@@ -690,61 +703,80 @@ class CraneRig extends Control:
 			queue_redraw()
 
 	func _draw() -> void:
-		var mast := Rect2(size.x - MAST_W, 0.0, MAST_W, size.y)
-		var jib := Rect2(size.x * 0.5, 0.0, size.x * 0.5 - MAST_W * 0.5, JIB_H)
-		_truss(jib, true)
-		_truss(mast, false)
-		# The gusset where the jib meets the mast.
-		var g := PackedVector2Array([Vector2(mast.position.x, JIB_H), Vector2(mast.position.x - JIB_H, JIB_H),
-			Vector2(mast.position.x, JIB_H * 2.0)])
-		draw_colored_polygon(g, STEEL)
-		draw_polyline(PackedVector2Array([g[1], g[2]]), SHADE, 1.5, true)
-		for p: Vector2 in [Vector2(mast.position.x - 5.0, JIB_H + 4.0), Vector2(mast.position.x - 3.0, JIB_H + 10.0)]:
-			_rivet(p)
+		var mx := size.x - MAST_W
+		var mast := Rect2(mx, 0.0, MAST_W, size.y - BASE.y)
+		_girder(mast, false)
+		# The jib: its top chord runs out to the tip, its foot chord stops short, and the end brace slants.
+		var tip := size.x * JIB_FROM
+		var foot := tip + JIB_H
+		_girder(Rect2(foot, 0.0, mx - foot, JIB_H), true)
+		_bar(Vector2(tip, CHORD * 0.5), Vector2(foot, CHORD * 0.5), CHORD)
+		_line(Vector2(tip, CHORD), Vector2(foot, JIB_H - CHORD * 0.5), 4.0)
+		_rivet(Vector2(tip + 3.0, CHORD * 0.5))
+		_box(Rect2(Vector2(mx - CAB.x, JIB_H), CAB), true)
+		_box(Rect2(size - BASE, BASE), false)
 
-	## A lattice girder in `r`: two chords along its length with braces zigzagging between them.
-	func _truss(r: Rect2, across: bool) -> void:
-		var a: Rect2
-		var b: Rect2
-		if across:
-			a = Rect2(r.position, Vector2(r.size.x, CHORD))
-			b = Rect2(Vector2(r.position.x, r.end.y - CHORD), Vector2(r.size.x, CHORD))
-		else:
-			a = Rect2(r.position, Vector2(CHORD, r.size.y))
-			b = Rect2(Vector2(r.end.x - CHORD, r.position.y), Vector2(CHORD, r.size.y))
-		# The braces, a bay as long as the girder is deep.
+	## A lattice girder in `r`: a chord along each long side, a crossbar at every bay and a diagonal across it.
+	func _girder(r: Rect2, across: bool) -> void:
 		var depth := r.size.y if across else r.size.x
 		var length := r.size.x if across else r.size.y
 		var bays := maxi(1, roundi(length / depth))
 		var step := length / bays
+		var along := func(t: float, side: float) -> Vector2:
+			return Vector2(r.position.x + t, r.position.y + side) if across else Vector2(r.position.x + side, r.position.y + t)
+		var near := CHORD * 0.5
+		var far := depth - CHORD * 0.5
 		for i in bays:
 			var t0 := i * step
 			var t1 := (i + 1) * step
-			var p0: Vector2
-			var p1: Vector2
-			if across:
-				p0 = Vector2(r.position.x + t0, a.end.y if i % 2 == 0 else b.position.y)
-				p1 = Vector2(r.position.x + t1, b.position.y if i % 2 == 0 else a.end.y)
-			else:
-				p0 = Vector2(a.end.x if i % 2 == 0 else b.position.x, r.position.y + t0)
-				p1 = Vector2(b.position.x if i % 2 == 0 else a.end.x, r.position.y + t1)
-			draw_line(p0, p1, BRACE, 4.0, true)
-			draw_line(p0 + Vector2(-0.5, -0.5), p1 + Vector2(-0.5, -0.5), Color(LIT, 0.35), 1.0, true)
-		for chord: Rect2 in [a, b]:
-			draw_rect(chord, STEEL)
-			draw_rect(Rect2(chord.position, Vector2(chord.size.x, 1.0) if across else Vector2(1.0, chord.size.y)), LIT)
-			var far := Rect2(Vector2(chord.position.x, chord.end.y - 1.0), Vector2(chord.size.x, 1.0)) if across \
-				else Rect2(Vector2(chord.end.x - 1.0, chord.position.y), Vector2(1.0, chord.size.y))
-			draw_rect(far, SHADE)
+			_line(along.call(t0, near if i % 2 == 0 else far), along.call(t1, far if i % 2 == 0 else near), 3.0)
 		for i in bays + 1:
-			var t := i * step
-			if across:
-				_rivet(Vector2(r.position.x + t, a.get_center().y))
-				_rivet(Vector2(r.position.x + t, b.get_center().y))
-			else:
-				_rivet(Vector2(a.get_center().x, r.position.y + t))
-				_rivet(Vector2(b.get_center().x, r.position.y + t))
+			_line(along.call(i * step, near), along.call(i * step, far), 3.0)
+		_bar(along.call(0.0, near), along.call(length, near), CHORD)
+		_bar(along.call(0.0, far), along.call(length, far), CHORD)
+		for i in bays + 1:
+			_rivet(along.call(i * step, near))
+			_rivet(along.call(i * step, far))
+
+	## A chord: a steel bar `w` thick from `a` to `b`, lit along its upper edge and shaded along its lower.
+	func _bar(a: Vector2, b: Vector2, w: float) -> void:
+		draw_line(a, b, STEEL, w)
+		var n := (b - a).orthogonal().normalized() * (w * 0.5 - 0.5)
+		if n.y > 0.0:
+			n = -n
+		draw_line(a + n, b + n, LIT, 1.0)
+		draw_line(a - n, b - n, SHADE, 1.0)
+
+	func _line(a: Vector2, b: Vector2, w: float) -> void:
+		draw_line(a, b, BRACE, w, true)
+		draw_line(a + Vector2(-0.5, -0.5), b + Vector2(-0.5, -0.5), Color(LIT, 0.3), 1.0, true)
 
 	func _rivet(p: Vector2) -> void:
 		draw_circle(p + Vector2(0.5, 0.5), 1.8, SHADE)
 		draw_circle(p, 1.6, RIVET)
+
+	## A painted steel box in construction yellow: the cab (with its window) or the machinery at the foot
+	## (with its vents and a band of hazard stripes).
+	func _box(r: Rect2, cab: bool) -> void:
+		draw_rect(r.grow(1.0), INK)
+		draw_rect(r, YELLOW)
+		draw_rect(Rect2(r.position, Vector2(r.size.x, 3.0)), YELLOW_LIT)
+		draw_rect(Rect2(Vector2(r.position.x, r.end.y - 4.0), Vector2(r.size.x, 4.0)), YELLOW_DARK)
+		if cab:
+			var win := Rect2(r.position + Vector2(5.0, 6.0), Vector2(r.size.x - 12.0, r.size.y * 0.45))
+			draw_rect(win, GLASS)
+			draw_line(win.position + Vector2(3.0, win.size.y - 2.0), win.position + Vector2(win.size.x * 0.5, 2.0), Color(1, 1, 1, 0.25), 2.0)
+			draw_rect(win, INK, false, 1.0)
+		else:
+			var band := Rect2(r.position + Vector2(0.0, 3.0), Vector2(r.size.x, 7.0))
+			var x := band.position.x - band.size.y
+			while x < band.end.x:
+				var stripe := PackedVector2Array([Vector2(x, band.end.y), Vector2(x + 5.0, band.end.y),
+					Vector2(x + 5.0 + band.size.y, band.position.y), Vector2(x + band.size.y, band.position.y)])
+				for i in stripe.size():
+					stripe[i].x = clampf(stripe[i].x, band.position.x, band.end.x)
+				draw_colored_polygon(stripe, INK)
+				x += 10.0
+			for i in 3:
+				var vy := r.position.y + 14.0 + i * 4.0
+				draw_line(Vector2(r.position.x + 8.0, vy), Vector2(r.end.x - 8.0, vy), YELLOW_DARK, 2.0)
