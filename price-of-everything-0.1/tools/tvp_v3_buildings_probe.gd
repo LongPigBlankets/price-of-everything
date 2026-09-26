@@ -92,7 +92,6 @@ func _ready() -> void:
 	await _check_width()
 	await _check_columns()
 	_check_tips()
-	await _check_guard_room()
 	await _check_port_mine()
 	await _open(SOLO_TILE)
 	await _check_solo_click(solo_iid)
@@ -356,19 +355,6 @@ func _check_tips() -> void:
 		if m.mouse_default_cursor_shape == Control.CURSOR_POINTING_HAND and m.tooltip_text == "":
 			bare += 1
 	_ok(bare == 0, "every module has a hover readout (%d without)" % bare)
-
-
-## The port's lifted cover stays inside its module (it used to stand over the drawer's key).
-func _check_guard_room() -> void:
-	_panel.call("_refresh_pane", "bl")
-	await _frames(3)
-	var guard := _find("PortBuyButton") as Control
-	var module := _find("PortBuildingCard") as Control
-	if guard != null and module != null:
-		var cover_top := guard.get_global_rect().position.y - GuardKey.overhang(guard.size.x)
-		_ok(cover_top >= module.get_global_rect().position.y, "the lifted cover stays inside the port's module (%.1f over %.1f)" % [cover_top, module.get_global_rect().position.y])
-	else:
-		_ok(false, "the port's module and guard exist")
 
 
 ## Your own port stands in the same case and reads as your buildings do: its lamp and words, no price or Buy.

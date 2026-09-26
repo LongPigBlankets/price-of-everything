@@ -7,7 +7,7 @@ extends RefCounted
 ## - Build and Buy buildings first, two cream keys each beside its raised icon, on a steel plate.
 ## - The tile's port next, on a tile that has one, in a case of its own under the raised heading the
 ##   status line names it by (Seaport), never among the other companies' buildings: another company's
-##   port with its owner, its price and Building Detail's guarded button to buy it; your port as your
+##   port with its owner, its price and a Buy key; your port as your
 ##   buildings read, its lamp and words.
 ## - Your buildings in Building Detail's black plastic case, under its raised heading. Each is a raised
 ##   module: its emblem, its name, a lamp and the words that explain it (buildings_readings.gd: one roll-up
@@ -40,7 +40,6 @@ extends RefCounted
 const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
 const Readings := preload("res://scripts/tvp_v3/buildings_readings.gd")
 const Recheck := preload("res://scripts/tvp_v3/buildings_recheck.gd")
-const GuardKey := preload("res://scripts/ds2/guard_key.gd")
 const Drum := preload("res://scripts/ds2/drum_figure.gd")
 const Tip := preload("res://scripts/tvp_v3/buildings_tip.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
@@ -61,9 +60,6 @@ const FEED_X := Parts.PAD.x + Parts.EMBLEM_PX * 0.5
 const FEED_INDENT := FEED_X + Cable.TAP_LENGTH
 ## The action keys' raised icons (render set `baricon` and the diagnostics' `works`, as Building Detail's).
 const ACTION_ICON_PX := 34.0
-## The guarded button's cap, as tall as the LED screen beside it; the room kept round the lifted cover.
-const GUARD_PX := 36.0
-const COVER_CLEARANCE := 2.0
 ## Cancel's key, at least this wide (it takes the cost column's width).
 const CANCEL_W := 96.0
 ## The body's width before the pane has been laid out: the sheet's, less its scrollbar.
@@ -228,7 +224,7 @@ static func _actions(panel: Control, tile_id: String) -> MarginContainer:
 
 ## The tile's port in a case of its own under the actions, headed as the status line names it (Seaport),
 ## so it reads as the tile's port and never as one of the other companies' buildings. Another company's:
-## its owner, its price and the guarded Buy (_port_module). Yours: as your buildings read, its lamp and its
+## its owner, its price and its Buy key (_port_module). Yours: as your buildings read, its lamp and its
 ## words. Either way the module is PortBuildingCard, on screen as soon as the tab is, and a click opens the
 ## port in Building Detail.
 static func _add_port(panel: Control, pane: VBoxContainer, site: Dictionary, grid: Dictionary) -> void:
@@ -637,17 +633,10 @@ static func _their_head(first: Dictionary, count: int, grid: Dictionary) -> Pane
 
 
 ## The port another company owns, in the port's own case: whose it is, the price the Buildings market asks
-## on an LED screen in the house money format (MoneyFigure: £10.0K), and beside it Building Detail's guarded
-## button to buy it, its cap as tall as the screen. The module keeps room over the cap for the lifted cover,
-## so the cover stays inside it. Lifting the cover lights the price red, as a cost; pressing opens the
-## confirmation the v2 card used.
+## on an LED screen in the house money format (MoneyFigure: £10.0K), and beside it a Buy key; pressing it
+## opens the confirmation the v2 card used.
 static func _port_module(panel: Control, port: Dictionary) -> PanelContainer:
 	var module := Parts.module("PortBuildingCard")
-	var room := ceilf(GuardKey.overhang(GUARD_PX) + COVER_CLEARANCE - (Parts.WELL_PX - GUARD_PX) * 0.5)
-	var pad := (module.get_theme_stylebox("panel") as StyleBoxEmpty).duplicate() as StyleBoxEmpty
-	pad.content_margin_top = maxf(Parts.PAD.y, room)
-	pad.content_margin_bottom = maxf(Parts.PAD.y, room)
-	module.add_theme_stylebox_override("panel", pad)
 	var row := Parts.row_of(module)
 	row.add_child(Parts.emblem(PORT_ID, Parts.EMBLEM_PX))
 	var owner := BuildingReadout.company_name(str(port.get("owner", "")))
@@ -667,27 +656,17 @@ static func _port_module(panel: Control, port: Dictionary) -> PanelContainer:
 	price_box.add_theme_constant_override("separation", 4)
 	Tip.attach(price_box, {"name": "The port's price", "detail": "%s from %s." % [MoneyFigure.text(float(price)), owner]})
 	row.add_child(price_box)
-	var guard: Control = GuardKey.new(GUARD_PX)
-	guard.name = "PortBuyButton"
+	var buy := Parts.key_button("Buy", "PortBuyButton", 0.8)
+	buy.size_flags_horizontal = Control.SIZE_SHRINK_END
+	buy.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	buy.custom_minimum_size.x = CANCEL_W
 	var iid := str(port.get("instance_id", ""))
-	guard.disabled = Tutorial.port_purchase_disabled(PORT_ID)
-	var guard_tip := {"name": "Buy the port", "detail": Tutorial.PORT_PURCHASE_DISABLED_TOOLTIP + "." if guard.disabled \
-		else "Lift the cover, then press to buy it for %s." % MoneyFigure.text(float(price))}
-	Tip.attach(guard, guard_tip)
-	var led: Control = price_box.get_node("Led")
-	guard.connect("cover_changed", func(lifted: bool) -> void:
-		led.call("set_figure", figure, DS.PALETTE["DANGER"] if lifted else DS.PALETTE["TEXT"]))
-	guard.connect("pressed", func() -> void: panel.call("_open_port_buy", iid, price))
-	row.add_child(guard)
-	var word: Control
-	if Heading.can_show("Buy"):
-		word = Heading.new()
-		word.set("text", "Buy")
-	else:
-		word = Parts.caption("Buy", 18)
-	word.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(word)
-	Tip.attach(module, {"name": "Port", "detail": "Owned by %s. Buy it with the guarded key." % owner})
+	buy.disabled = Tutorial.port_purchase_disabled(PORT_ID)
+	Tip.attach(buy, {"name": "Buy the port", "detail": Tutorial.PORT_PURCHASE_DISABLED_TOOLTIP + "." if buy.disabled \
+		else "Buy it for %s." % MoneyFigure.text(float(price))})
+	buy.pressed.connect(func() -> void: panel.call("_open_port_buy", iid, price))
+	row.add_child(buy)
+	Tip.attach(module, {"name": "Port", "detail": "Owned by %s." % owner})
 	Parts.on_click(module, func() -> void: panel.emit_signal("building_clicked", port))
 	return module
 

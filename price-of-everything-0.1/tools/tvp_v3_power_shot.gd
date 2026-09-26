@@ -3,21 +3,18 @@ extends Node2D
 ## (two pixels each), cropped to the panel. First three turns with wind and solar selling to the national
 ## grid (the game's default), then three with it running first for your buildings:
 ##   busygrid     the standard busy port tile (two factories and a wind farm, as tools/tvp_v3_shot.gd sets
-##                it), its wind sold to the grid: "Y produced, Z consumed, all supplied by the national grid"
-##   producergrid a solar farm alone on its own cables: "Y MW produced, all sold to the national grid."
-##   fedgrid      one factory on cables joined to the producer's only: "Z MW consumed, all supplied by the
-##                national grid."
+##                it), its wind sold to the grid: "Y MW sold to the national grid." over "Z MW bought from the national grid."
+##   producergrid a solar farm alone on its own cables: "Y MW sold to the national grid."
+##   fedgrid      one factory on cables joined to the producer's only: "Z MW bought from the national grid."
 ##   mixedgrid    a solar farm and two factories on their own cables, consuming more than it produces
 ##   busy         the busy tile with its wind running first for you
 ##   green        a cabled tile with a solar farm running first, factories consuming it, and battery storage
 ##                with two lithium cells loaded and more in stock: intermittency and the bank
-##   deficit      a cabled tile with factories and no plant, on the busy and green tiles' cables: "Z MW
-##                consumed, net of A MW supplied by the national grid."
-##   mixed        mixedgrid running first for you: the owner's "Y MW produced, Z MW consumed, net of A MW
-##                supplied by the national grid."
-##   producer     the producer, part of its power used by the fed tile: "Y MW produced, net of A MW sold to
-##                the national grid."
-##   fed          the fed tile: "Z MW consumed, all supplied by your buildings."
+##   deficit      a cabled tile with factories and no plant, on the busy and green tiles' cables: "A MW
+##                bought from the national grid."
+##   mixed        mixedgrid running first for you: "A MW bought from the national grid."
+##   producer     the producer, part of its power used by the fed tile: "A MW sold to the national grid."
+##   fed          the fed tile: "Nothing sold to or bought from the national grid."
 ##   nocables     a tile with a factory and no cables
 ##   empty        the empty unowned mountain tile
 ## Each is paged down its whole body: tvp_v3_power_<scenario>_p1.png, _p2 ... and, where the tile has an
@@ -281,7 +278,7 @@ func _checks(panel: Control, terrain: Node, tid: String, deficit: String, bare: 
 			_check(grid != null and words == str(reading.words) and (key_tone == "off" or lamp == key_tone),
 				"%s: the grid lamp (%s) agrees with the Power key (%s), and its words are its reading's (%s)" % [t, lamp, key_tone, words])
 			if lamp == "amber":
-				_check(words.contains("MW consumed"), "%s: an amber grid lamp's words say what was consumed (%s)" % [t, words])
+				_check(words.contains("bought from the national grid"), "%s: an amber grid lamp's words say what was bought (%s)" % [t, words])
 		else:
 			_check(grid == null, "%s: no grid readout on a tile with no cables" % t)
 		var cables: Node = plate.find_child("Readout_Cables", true, false)
@@ -479,12 +476,12 @@ func _scenario_checks(panel: Control, tid: String, scenario: String, expected: V
 		var grid_label: Label = grid.find_child("Words", true, false) as Label if grid != null else null
 		var grid_words: String = grid_label.text if grid_label != null else ""
 		print("[TVP_SHOT] %s: national grid reads: %s" % [scenario, grid_words])
-		# One sentence in the owner's words, the one this scenario should read, with the engine's figures.
+		# The owner's words, what the tile sold and bought, with the engine's figures.
 		var want_words := _grid_expected(scenario, tid)
 		if want_words != "":
 			_check(grid_words == want_words, "%s: the national grid reads the sentence it should (%s)" % [scenario, want_words])
-		_check(grid_words.ends_with(".") and grid_words.count(".") == 1 and grid_label != null and grid_label.get_line_count() <= 2,
-			"%s: the national grid is one sentence on at most two lines (%d)" % [scenario, grid_label.get_line_count() if grid_label != null else -1])
+		_check(grid_words.ends_with(".") and grid_label != null and grid_label.get_line_count() == grid_words.count("."),
+			"%s: the national grid is a line a sentence (%d)" % [scenario, grid_label.get_line_count() if grid_label != null else -1])
 		var cables: Control = pane.find_child("Readout_Cables", true, false)
 		print("[TVP_SHOT] %s: cables read: %s" % [scenario, (cables.find_child("Words", true, false) as Label).text if cables != null else "(none)"])
 	else:
@@ -526,24 +523,23 @@ func _grid_expected(scenario: String, tid: String) -> String:
 	var drawn := int(Power.tile_drawn.get(tid, 0))
 	var settled: Dictionary = Power.get("_tile_grid_draw")
 	var from_grid := int(settled.get(tid, 0))
+	var sold := "%d MW sold to the national grid."
+	var bought := "%d MW bought from the national grid."
+	var none := "Nothing sold to or bought from the national grid."
 	match scenario:
 		"busygrid", "mixedgrid":
-			return "%d MW produced, %d MW consumed, all supplied by the national grid." % [made, drawn]
+			return "\n".join([sold % made, bought % drawn])
 		"producergrid":
-			return "%d MW produced, all sold to the national grid." % made
+			return sold % made
 		"fedgrid":
-			return "%d MW consumed, all supplied by the national grid." % drawn
-		"busy", "green", "green_next":
-			return "%d MW produced, %d MW consumed, all supplied by your buildings." % [made, drawn]
-		"deficit":
-			return "%d MW consumed, net of %d MW supplied by the national grid." % [drawn, from_grid]
-		"mixed":
-			return "%d MW produced, %d MW consumed, net of %d MW supplied by the national grid." % [made, drawn, from_grid]
+			return bought % drawn
+		"busy", "green", "green_next", "fed":
+			return none
+		"deficit", "mixed":
+			return bought % from_grid
 		"producer":
 			var used := int(Power.tile_drawn.get(str(_staged.get("fed", "")), 0))
-			return "%d MW produced, net of %d MW sold to the national grid." % [made, made - used]
-		"fed":
-			return "%d MW consumed, all supplied by your buildings." % drawn
+			return sold % (made - used)
 	return ""
 
 

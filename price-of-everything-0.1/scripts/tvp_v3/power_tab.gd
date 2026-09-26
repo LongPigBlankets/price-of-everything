@@ -281,16 +281,12 @@ static func cables_missing(tile: String) -> String:
 	return str(tv.call("cables_missing_text", tile)) if tv != null else ""
 
 
-## The national grid, while the tile is linked: {tone, words, tip}, in the owner's words, a line each for
-## what was produced, what was consumed and where the difference went (a line left out when its figure is
-## nothing). The lamp is the Power key's (amber when the tile consumed more than it produced). The last line,
-## by what the tile did last turn:
-##   produced, consumed nothing: "All sold to the national grid.", or, when the cables took some of it to your
-##     buildings on other tiles, "All used by your buildings." or "Net of A MW sold to the national grid."
-##   consumed: "All supplied by your buildings." (your plants here or your other tiles on the same cables
-##     covered it), "All supplied by the national grid.", or, both, "Net of A MW supplied by the national grid."
-## Where every MW went and came from is its tooltip (grid_tip). Every figure is the engine's settlement
-## (grid_split, spare_split), so the parts add up to the produced and consumed figures.
+## The national grid, while the tile is linked: {tone, words, tip}. What the tile sold to the national grid
+## and what it bought from it last turn, a line each, both when it did both (a plant here selling while your
+## buildings here buy, as intermittent power is sold): "228 MW sold to the national grid." and "170 MW bought
+## from the national grid.". With neither, one line says so. The lamp is the Power key's (amber when the tile
+## consumed more than it produced). Where every MW went and came from is its tooltip (grid_tip). Every figure
+## is the engine's settlement (grid_split, spare_split).
 static func grid_reading(tile: String, power: Dictionary) -> Dictionary:
 	var made := int(power.produced)
 	var drawn := int(power.consumed)
@@ -299,31 +295,16 @@ static func grid_reading(tile: String, power: Dictionary) -> Dictionary:
 	var tone := status_tone(str(power.status))
 	var split := grid_split(tile, made, drawn)
 	var flows := spare_split(tile, int(split.spare))
-	var to_tiles := int(flows.tiles)
-	var to_grid := int(split.sold) + int(flows.sold)
-	var tip := grid_tip(made, drawn, split, flows)
+	var sold := int(split.sold) + int(flows.sold)
+	var bought := int(split.grid)
 	var lines: PackedStringArray = []
-	if made > 0:
-		lines.append("%d MW produced." % made)
-	if drawn > 0:
-		lines.append("%d MW consumed." % drawn)
-	if drawn == 0:
-		if to_tiles > 0 and to_grid <= 0:
-			lines.append("All used by your buildings.")
-		elif to_tiles > 0:
-			lines.append("Net of %d MW sold to the national grid." % to_grid)
-		else:
-			lines.append("All sold to the national grid.")
-	else:
-		var from_grid := int(split.grid)
-		var yours := int(split.own) + int(split.network)
-		if from_grid <= 0:
-			lines.append("All supplied by your buildings.")
-		elif yours <= 0:
-			lines.append("All supplied by the national grid.")
-		else:
-			lines.append("Net of %d MW supplied by the national grid." % from_grid)
-	return {"tone": tone, "words": "\n".join(lines), "tip": tip}
+	if sold > 0:
+		lines.append("%d MW sold to the national grid." % sold)
+	if bought > 0:
+		lines.append("%d MW bought from the national grid." % bought)
+	if lines.is_empty():
+		lines.append("Nothing sold to or bought from the national grid.")
+	return {"tone": tone, "words": "\n".join(lines), "tip": grid_tip(made, drawn, split, flows)}
 
 
 ## Where the power produced here went and where the power consumed here came from, a line each, for the

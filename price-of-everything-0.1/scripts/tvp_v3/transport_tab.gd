@@ -6,7 +6,7 @@ extends RefCounted
 ## The site's services, as the cabinet's concept has them, in one plastic case like Building Detail's
 ## diagnostics: one rack of modules, each the case's full width. Every link the tile has or can have shows
 ## here, always in view (the Buildings tab shows none). First the infrastructure built here, each a module:
-## its emblem over a lamp for its load, its name, its level on a drum and an Upgrade key, its load on a
+## its emblem the card's full height, its name, its level on a drum and an Upgrade key, its load on a
 ## meter against capacity (cables: one meter, the larger of the power made and drawn against the cable's
 ## cap), the goods riding it, and a line only when something is wrong or a job runs; clicking the module
 ## opens the link. Then the infrastructure that can still be added, spare modules further down the rack, set
@@ -60,6 +60,8 @@ const SCREW: Texture2D = preload("res://assets/ui/bdp_v3/screw_silver.png")
 const SCREW_PITCH := 170.0
 ## The case's screws sit this far in from its edges, clear of modules DS2's plate padding in.
 const CASE_SCREW_INSET := 7.0
+## A card's emblem: the card's full height (a good's well), and no longer than this (the long pipes).
+const EMBLEM_BOX := 100.0
 ## How far a side screw keeps from a heading's line or a module's edge (its radius and a little more),
 ## and how far it may move off its even spacing to find a clear place before it is left out.
 const SCREW_CLEAR := 14.0
@@ -277,7 +279,7 @@ static func _rack(panel: Control, tile_id: String, links: Array, spare: Array, i
 # ── Links built here ──────────────────────────────────────────────────────────────────────────────
 
 
-## One built link: its emblem over its lamp; its name, its level on a drum and the key that raises it (whose
+## One built link: its emblem, the card's full height; its name, its level on a drum and the key that raises it (whose
 ## card says what raising it costs and brings); its load against capacity; the goods on it; what is wrong,
 ## if anything. Clicking it opens the link.
 static func _link_module(panel: Control, s: Dictionary, figure_w: float, last: Dictionary, levels: Dictionary) -> Control:
@@ -292,10 +294,11 @@ static func _link_module(panel: Control, s: Dictionary, figure_w: float, last: D
 	row.add_theme_constant_override("separation", COL_GAP)
 	module.add_child(row)
 	# The lamp stands level with the meter, the line it judges.
+	# The emblem fills the card's height with no lamp: the meter says how loaded the link is.
 	var emblem: Control = Emblem.new()
 	var head_h := Key.height_for(KEY_SCALE)
-	emblem.call("set_link", str(s.building_id), str(s.tone), head_h, true,
-		head_h + BODY_GAP + Meter.HEIGHT * 0.5 if not (s.meters as Array).is_empty() else -1.0)
+	emblem.call("set_link", str(s.building_id), str(s.tone), Metrics.GOOD_ICON, false)
+	emblem.call("fit_to", Metrics.GOOD_ICON, EMBLEM_BOX)
 	row.add_child(emblem)
 
 	var body := VBoxContainer.new()
@@ -532,7 +535,8 @@ static func _spare_module(panel: Control, tile_id: String, slot: Dictionary, pro
 	row.add_theme_constant_override("separation", COL_GAP)
 	module.add_child(row)
 	var emblem: Control = Emblem.new()
-	emblem.call("set_link", bid, "off", head_h, false)
+	emblem.call("set_link", bid, "off", Metrics.GOOD_ICON, false)
+	emblem.call("fit_to", Metrics.GOOD_ICON, EMBLEM_BOX)
 	row.add_child(emblem)
 
 	var main := VBoxContainer.new()
