@@ -1,6 +1,6 @@
 extends Node
-## Dev tool: several research unlocks landing on one turn now pop ONE FLYOUT EACH, stacked
-## under the notch, instead of collapsing into a single "N research unlocked" banner.
+## Dev tool: several research unlocks landing on one turn each become an "Unlocked: <name>" row
+## at the top of the bottom-left updates dock, rather than one "N research unlocked" line.
 ## Needs a window:
 ##   <godot> --path . res://tools/research_stack_shot.tscn --quit-after 120000
 

@@ -228,14 +228,14 @@ func _test_tutorial_engine() -> void:
 	}, 7, 59)
 	coach_overlay._reposition_card()
 	_check(absf(coach_overlay._card.get_rect().get_center().x - coach_overlay.size.x * 0.5) < 1.0
-		and is_equal_approx(coach_overlay._card.position.y, 110.0),
+		and is_equal_approx(coach_overlay._card.position.y, 72.0),
 		"tutorial: a Balance-panel collision moves the coach card to centre-top below the top bar")
 	fake_money_panel.free()
 	var pick_recipe_step: Dictionary = by_id.get("build_pick_recipe", {})
 	coach_overlay.show_step(pick_recipe_step, 13, 59)
 	coach_overlay._reposition_card()
 	_check(absf(coach_overlay._card.get_rect().get_center().x - coach_overlay.size.x * 0.5) < 1.0
-		and is_equal_approx(coach_overlay._card.position.y, 110.0),
+		and is_equal_approx(coach_overlay._card.position.y, 72.0),
 		"tutorial: Step 14 renders centre-top below the top bar, clear of the Construct panel")
 	coach_overlay.show_step(terminal_step, 58, 59)
 	_check(coach_next.text == "End tutorial" and coach_next.visible and not coach_skip.visible,

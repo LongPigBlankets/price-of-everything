@@ -109,7 +109,9 @@ var _tr_modal: PanelContainer = null
 var _tr_modal_label: Label = null
 const _TR_YELLOW := Color(1.0, 1.0, 0.45)
 const LEGEND_LEFT := 12.0
-const LEGEND_BOTTOM := 24.0
+const ToastManager := preload("res://scripts/toast_manager.gd")
+## Bottom-left legends stack on top of the updates dock.
+const LEGEND_BOTTOM := ToastManager.LEGEND_CLEARANCE
 
 # Per-good BUY flow (market is the implicit origin; ships via nearest port).
 var _buy: Dictionary = {}  # {good, qty, tiles: Array, state}
@@ -3074,11 +3076,10 @@ func _flash_build_refusal(coord: Vector2i, reason: String) -> void:
 
 ## Every space refusal comes through here — no room, no owned land, sea under a road.
 ##
-## It goes to the bottom-CENTRE stack, not the bottom-left one the other toasts share. The
-## left stack sits under the construct panel, and now that a refused build leaves that panel
-## open (so the player can buy land or pick another tile without rebuilding their selection),
-## a message posted there would be hidden behind the very panel that caused it. The centre
-## stack clears the bottom menu by 40px.
+## It goes to the updates dock as a red row. A refused build leaves the Construct panel open
+## (so the player can buy land or pick another tile without rebuilding their selection), and
+## the dock's slide-out stays down rather than cover it, so the row waits under the red bell;
+## the flash on the refused tile carries the reason meanwhile.
 func _show_tile_space_error(message: String) -> void:
 	BuildMode.last_attempt_refused = true
 	if _toast_layer != null and _toast_layer.has_method("show_blocked"):

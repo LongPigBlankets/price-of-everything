@@ -109,8 +109,9 @@ static func steps() -> Array:
 			"title": "Your control panel",
 			"mode": "annotate",
 			"card_side": "left",
-			"body": "A quick tour of the screen. The bar along the bottom is your toolkit. Each tool has a keyboard shortcut (the letter in brackets). The top bar is your dashboard: money, victory tracks, the briefing with updates and decisions, your advisors and the menu. You end each turn from the bottom right. Have a look, then press Next.",
+			"body": "A quick tour of the screen. The bar along the bottom is your toolkit. Each tool has a keyboard shortcut (the letter in brackets). The top bar is your dashboard: money, victory tracks, your advisors and the menu. Updates and decisions collect in the bottom left. You end each turn from the bottom right. Have a look, then press Next.",
 			"targets": [
+				{ "ref": "UpdatesDock", "label": "Updates and decisions", "side": "above" },
 				{ "ref": "ConstructButton", "label": "Build (C)", "side": "above" },
 				{ "ref": "ResourcesButton", "label": "Goods list (R)", "side": "above" },
 				{ "ref": "BuildingsButton", "label": "Buildings (L)", "side": "above" },
@@ -122,7 +123,6 @@ static func steps() -> Array:
 				{ "ref": "EmpireButton", "label": "Supply chain view (Tab)", "side": "above" },
 				{ "ref": "MoneyWidget", "label": "Budgets, charts & loans", "side": "below" },
 				{ "ref": "VictoryModule", "label": "Victory tracks: five ways to win", "side": "below" },
-				{ "ref": "BriefingModule", "label": "Briefing: updates & decisions", "side": "below" },
 				{ "ref": "CouncilModule", "label": "Advisors", "side": "below" },
 				{ "ref": "EncyclopediaButton", "label": "Encyclopedia (X)", "side": "below", "lift": 2 },
 				{ "ref": "GoodsGraphModule", "label": "Goods Graph (G)", "side": "below" },

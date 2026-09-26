@@ -2184,7 +2184,7 @@ async function exportLayers() {
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
-  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem.
+  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -2366,6 +2366,213 @@ async function exportLayers() {
     layout.panel_backing = { size: [PW, PH], corner: 60, trim: TRIM };
   });
 
+  // --- the top bar's strip: the backing's weathered navy steel running off the screen's top and both
+  // sides, a steel H-beam along its foot, and the shadow the bar throws on the map. Rendered as wide
+  // as a 32:9 screen is at 1080 tall (3840 logical px), so the game crops it from the middle and never
+  // stretches it. `barconcrete` is the concrete slab the game sets behind the money.
+  const BAR = { W: 7200, H: 112.5, BEAM: 18, SHADOW: 15, BLEED: 40 };
+  if (want('bar')) await withSeed(424, async () => {
+    const { W, H, BEAM, SHADOW, BLEED } = BAR, group = new THREE.Group();
+    const join = H - BEAM;                                                  // the beam's top edge
+    // The plate reaches past the frame on three sides, so its rubbed edges are off the screen.
+    const PW = W + 2 * BLEED, PH = join + BLEED + 6;
+    const face = { icons: [], buttons: [], screws: [], base: NAVY_STEEL_CANVAS, rub: '120,136,160' };
+    const steelSide = new THREE.MeshStandardMaterial({ color: 0x3a4250, metalness: 1, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
+    const plate = new THREE.Mesh(extrude(rrShape(PW, PH, 16), 4, 4.5, 3.6, 6), [plateMaterial(PW, PH, face), steelSide]);
+    plate.receiveShadow = true; plate.position.set(W / 2, 0, -BLEED + PH / 2); group.add(plate);
+    // The beam: an H-beam laid along the plate's foot, seen from the front: two raised flanges, top and
+    // bottom, with the web recessed between them, bolted through the web. Weathered steel, little rust.
+    const BW = W + 2 * BLEED, FL = 4.6, WEB = BEAM - 2 * FL;
+    const bolts = [];
+    for (let x = 30; x < BW; x += 64) bolts.push(x + (rand() - 0.5) * 3);
+    const grey = (r) => `rgba(${120 + r() * 40},${122 + r() * 40},${126 + r() * 40},${0.2 + r() * 0.3})`;
+    const webFeat = { icons: [], buttons: [], screws: [], base: DARK_STEEL_CANVAS, rub: '150,156,166', flecks: grey,
+      paint: (g) => { g.save(); g.filter = 'blur(1.4px)';
+        for (const x of bolts) if (rand() < 0.3) { g.fillStyle = `rgba(118,62,28,${0.08 + rand() * 0.1})`; g.beginPath(); g.ellipse(x + 1, WEB / 2 + 2, 3.4, 2.2, 0, 0, Math.PI * 2); g.fill(); }
+        g.restore(); } };
+    const flangeFeat = { icons: [], buttons: [], screws: [], rub: '226,230,236', flecks: grey };
+    const beamSide = new THREE.MeshStandardMaterial({ color: 0x6b7078, metalness: 1, roughness: 0.5, envMap: studioEnv, envMapIntensity: 0.8 });
+    const web = new THREE.Mesh(extrude(rrShape(BW, WEB + 2, 1), 1.2, 0.6, 0.5, 2), [plateMaterial(BW, WEB + 2, webFeat), beamSide]);
+    web.receiveShadow = true; web.position.set(W / 2, PLATE_TOP - 1, join + BEAM / 2); group.add(web);
+    for (const zc of [join + FL / 2, join + BEAM - FL / 2]) {
+      const flange = new THREE.Mesh(extrude(rrShape(BW, FL, 1.2), 3.6, 1.1, 0.9, 3), [plateMaterial(BW, FL, flangeFeat), beamSide]);
+      flange.castShadow = flange.receiveShadow = true; flange.position.set(W / 2, PLATE_TOP - 1, zc); group.add(flange);
+    }
+    const boltGeo = new THREE.CylinderGeometry(1.9, 2.1, 1.6, 6);
+    const boltMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, map: noiseTexture(20, 40, 30), metalness: 1, roughness: 0.42, envMap: studioEnv, envMapIntensity: 0.9 });
+    for (const x of bolts) {
+      const m = new THREE.Mesh(boltGeo, boltMat);
+      m.rotation.y = rand() * Math.PI; m.position.set(x - BLEED, PLATE_TOP + 1.8, join + BEAM / 2); m.castShadow = true; group.add(m);
+    }
+    const strip = stage([0, 0, W, H + SHADOW], [group]).grab();
+    // The shadow on the map below: one straight band, painted, since a shadow map this long loses its
+    // far end. A dark contact line under the beam, then a soft fall away from the house light.
+    await post('bar_strip', frame2d(W, H + SHADOW, (g) => {
+      const fall = g.createLinearGradient(0, H, 0, H + SHADOW);
+      fall.addColorStop(0, 'rgba(4,6,10,0.62)'); fall.addColorStop(0.25, 'rgba(4,6,10,0.34)'); fall.addColorStop(1, 'rgba(4,6,10,0)');
+      g.fillStyle = fall; g.fillRect(0, H, W, SHADOW);
+      g.drawImage(strip, 0, 0, W, H + SHADOW);
+    }));
+    layout.bar_strip = { size: [W, H + SHADOW], height: H, beam: BEAM, shadow: SHADOW };
+  });
+  /** Clean light beige-grey concrete: a fine even grain, the faintest cloud in the cast, a rare small bughole. */
+  const concreteCanvas = (w, h, base) => canvas2d(w, h, (g) => {
+    g.fillStyle = base; g.fillRect(0, 0, w, h);
+    g.save(); g.filter = 'blur(16px)';
+    for (let i = 0; i < Math.round(w * h / 2400); i++) {
+      g.fillStyle = `rgba(${rand() > 0.5 ? '255,255,252' : '60,58,54'},${0.02 + rand() * 0.025})`;
+      g.beginPath(); g.ellipse(rand() * w, rand() * h, 14 + rand() * 40, 10 + rand() * 24, rand() * Math.PI, 0, Math.PI * 2); g.fill();
+    }
+    g.restore();
+    for (let i = 0; i < Math.round(w * h / 10); i++) {
+      g.fillStyle = `rgba(${rand() > 0.5 ? '255,255,250' : '70,68,64'},${0.03 + rand() * 0.05})`;
+      const sz = 0.35 + rand() * 0.5; g.fillRect(rand() * w, rand() * h, sz, sz);
+    }
+    for (let i = 0; i < Math.round(w * h / 5000); i++) {
+      const x = rand() * w, y = rand() * h, r = 0.4 + rand() * 0.7;
+      g.fillStyle = 'rgba(80,77,72,0.4)'; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    }
+  });
+  const concreteMaterial = (w, h, base) => new THREE.MeshStandardMaterial({
+    map: faceTexture(concreteCanvas(w, h, base), w, h), roughness: 0.9, metalness: 0, envMap: roomEnv, envMapIntensity: 0.25 });
+  const concreteSide = new THREE.MeshStandardMaterial({ color: 0x9a958b, roughness: 0.95, metalness: 0 });
+  /** A shadow catcher over the steel only (above the beam); the strip is drawn under these pieces. */
+  const steelCatcher = (W, join, opacity = 0.55) => {
+    const c = new THREE.Mesh(new THREE.PlaneGeometry(W, join).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity }));
+    c.position.set(W / 2, PLATE_TOP - 1.5, join / 2); c.receiveShadow = true; return c;
+  };
+  // The concrete behind the money: a clean light grey slab, its top off the screen, its foot on the beam,
+  // framed by a pillar on each side standing proud of it. It throws its shadow on the steel.
+  if (want('barconcrete')) await withSeed(425, async () => {
+    const { H, BEAM, BLEED } = BAR, CW = 600, PIL = 34, M = 18, join = H - BEAM, group = new THREE.Group();
+    const CH = join + BLEED - 1;
+    const slab = new THREE.Mesh(extrude(rrShape(CW - 2 * PIL + 8, CH, 2), 3, 1.4, 1.2, 2),
+      [concreteMaterial(CW - 2 * PIL + 8, CH, '#b3aea4'), concreteSide]);
+    slab.castShadow = slab.receiveShadow = true; slab.position.set(M + CW / 2, PLATE_TOP - 1, -BLEED + CH / 2); group.add(slab);
+    for (const x of [M + PIL / 2, M + CW - PIL / 2]) {                    // the pillars, chamfered, proud of the slab
+      const pillar = new THREE.Mesh(extrude(rrShape(PIL, CH + 2, 3), 9, 2.6, 2.2, 3), [concreteMaterial(PIL, CH + 2, '#a7a197'), concreteSide]);
+      pillar.castShadow = pillar.receiveShadow = true; pillar.position.set(x, PLATE_TOP - 1, -BLEED + CH / 2 + 1); group.add(pillar);
+    }
+    group.add(steelCatcher(CW + 2 * M, join, 0.6));
+    await post('bar_concrete', stage([0, 0, CW + 2 * M, H + BAR.SHADOW], [group]).grab());
+    layout.bar_concrete = { size: [CW + 2 * M, H + BAR.SHADOW], outset: M, pillar: PIL, slab: [CW, join] };
+  });
+  /** A straight pipe up the bar (x across, from y0 down to y1 in the bar's frame), at its radius above the map plane. */
+  const upPipe = (x, y0, y1, r, mat) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, y1 - y0, 28).rotateX(Math.PI / 2), mat);
+    m.position.set(x, PLATE_TOP + r + 1, (y0 + y1) / 2); m.castShadow = m.receiveShadow = true; return m;
+  };
+  /** A collar round a pipe where it leaves the beam (or a clamp), `len` along the pipe. */
+  const collar = (x, y, r, len, mat) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 28).rotateX(Math.PI / 2), mat);
+    m.position.set(x, PLATE_TOP + r - 0.6, y); m.castShadow = m.receiveShadow = true; return m;
+  };
+  const silverPipe = new THREE.MeshStandardMaterial({ color: 0xb3bac2, map: noiseTexture(8, 20, 60), metalness: 1, roughness: 0.16, envMap: studioEnv, envMapIntensity: 1.05 });
+  const collarSteel = new THREE.MeshStandardMaterial({ color: 0x8e949b, map: noiseTexture(18, 60, 40), metalness: 1, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.85 });
+  // The silver pipe pair: it comes down off the screen at one divider, passes over the beam, turns under the
+  // bar and runs along beneath it to the other divider, where it turns and goes back up. Three pieces the
+  // game places: the left riser, the right riser (each lit by the house light, not mirrored) and the run
+  // between them (croppable like the strip), hung from the beam by brackets.
+  const PAIR = { r: 3.66, gap: 1.1, bend: 7, top: 30 };                   // top: where the pair's clamp sits
+  PAIR.pitch = 2 * PAIR.r + PAIR.gap;
+  PAIR.yu = BAR.H + PAIR.r + 1.5; PAIR.yl = PAIR.yu + PAIR.pitch;          // the run's upper and lower pipes
+  PAIR.HP = Math.ceil(PAIR.yl + PAIR.r + 12);                             // the pieces' frame height
+  const pipeTube = (pts, r, mat) => {
+    const curve = new THREE.CatmullRomCurve3(pts.map(([x, y]) => new THREE.Vector3(x, PLATE_TOP + r + 1, y)), false, 'centripetal', 0.2);
+    const t = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(24, Math.round(curve.getLength() / 2)), r, 20, false), mat);
+    t.castShadow = t.receiveShadow = true; return t;
+  };
+  const arcPts = (cx, cy, R, a0, a1, n = 16) => Array.from({ length: n + 1 }, (_, i) => {
+    const t = (a0 + (a1 - a0) * i / n) * Math.PI / 180; return [cx + R * Math.cos(t), cy + R * Math.sin(t)];
+  });
+  /** Shadow catchers for a riser: on the steel and on the beam. Its shadow on the map below the bar is
+   * painted (pairShadow), as the run's is, so the pieces match where they meet. */
+  const pieceCatchers = (W) => {
+    const join = BAR.H - BAR.BEAM, out = [steelCatcher(W, join, 0.55)];
+    const beamC = new THREE.Mesh(new THREE.PlaneGeometry(W, BAR.BEAM).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: 0.5 }));
+    beamC.position.set(W / 2, PLATE_TOP + 3, join + BAR.BEAM / 2); beamC.receiveShadow = true; out.push(beamC);
+    return out;
+  };
+  /** The pair's shadow on the map under the bar, from x0 to x1: a soft band just below the pipes. */
+  const pairShadow = (g, x0, x1) => {
+    g.save(); g.filter = 'blur(2px)'; g.fillStyle = 'rgba(4,6,10,0.4)';
+    g.fillRect(x0, PAIR.yu + 3, x1 - x0, PAIR.yl - PAIR.yu + 2 * PAIR.r + 2); g.restore();
+  };
+  const pairClamp = (xc, y) => {
+    const g = new THREE.Group(), { r, gap } = PAIR;
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(4 * r + gap + 8, 2.2, 6), collarSteel);
+    strap.position.set(xc, PLATE_TOP + 2 * r + 2.2, y); strap.castShadow = true; g.add(strap);
+    for (const d of [-1, 1]) { const b = screw(2); b.position.set(xc + d * (2 * r + gap / 2 + 1.5), PLATE_TOP + 2 * r + 3.4, y); g.add(b); }
+    return g;
+  };
+  if (want('barpipes')) await withSeed(427, async () => {
+    const { r, bend, pitch, yu, yl, HP, top } = PAIR, join = BAR.H - BAR.BEAM, RUN = 30;
+    // The left riser: outer pipe at xo, inner at xi; the run leaves to the right.
+    { const xo = 10 + r, xi = xo + pitch, W = Math.ceil(xi + bend + RUN), group = new THREE.Group();
+      group.add(pipeTube([[xi, -BAR.BLEED], ...arcPts(xi + bend, yu - bend, bend, 180, 90), [W + 2, yu]], r, silverPipe));
+      group.add(pipeTube([[xo, -BAR.BLEED], ...arcPts(xi + bend, yu - bend, bend + pitch, 180, 90, 22), [W + 2, yl]], r, silverPipe));
+      for (const x of [xo, xi]) group.add(collar(x, join - 1.5, r + 1.5, 4, collarSteel));
+      group.add(pairClamp((xo + xi) / 2, top));
+      for (const c of pieceCatchers(W)) group.add(c);
+      const img = stage([0, 0, W, HP], [group]).grab();
+      await post('bar_pipes_left', frame2d(W, HP, (g) => { pairShadow(g, xi + bend, W); g.drawImage(img, 0, 0, W, HP); }));
+      layout.bar_pipes_left = { size: [W, HP], axis: (xo + xi) / 2 };
+    }
+    // The right riser: the run comes in from the left, the inner pipe turns up at xi, the outer at xo.
+    { const xi = RUN + bend, xo = xi + pitch, W = Math.ceil(xo + r + 10), group = new THREE.Group();
+      group.add(pipeTube([[-2, yu], ...arcPts(xi - bend, yu - bend, bend, 90, 0), [xi, -BAR.BLEED]], r, silverPipe));
+      group.add(pipeTube([[-2, yl], ...arcPts(xi - bend, yu - bend, bend + pitch, 90, 0, 22), [xo, -BAR.BLEED]], r, silverPipe));
+      for (const x of [xo, xi]) group.add(collar(x, join - 1.5, r + 1.5, 4, collarSteel));
+      group.add(pairClamp((xo + xi) / 2, top));
+      for (const c of pieceCatchers(W)) group.add(c);
+      const img = stage([0, 0, W, HP], [group]).grab();
+      await post('bar_pipes_right', frame2d(W, HP, (g) => { pairShadow(g, 0, xi - bend); g.drawImage(img, 0, 0, W, HP); }));
+      layout.bar_pipes_right = { size: [W, HP], axis: (xo + xi) / 2 };
+    }
+    // The run: the pair along beneath the bar, hung from the beam by a bracket every so often.
+    { const W = 7200, group = new THREE.Group();
+      group.add(pipeTube([[-10, yu], [W / 2, yu], [W + 10, yu]], r, silverPipe));
+      group.add(pipeTube([[-10, yl], [W / 2, yl], [W + 10, yl]], r, silverPipe));
+      for (let x = 140; x < W; x += 420) {
+        const hanger = new THREE.Mesh(new THREE.BoxGeometry(5, 1.6, yl + r + 1.5 - BAR.H + 3), collarSteel);
+        hanger.position.set(x, PLATE_TOP + 2 * r + 2.2, BAR.H - 3 + (yl + r + 1.5 - BAR.H + 3) / 2); hanger.castShadow = true; group.add(hanger);
+        const b = screw(1.8); b.position.set(x, PLATE_TOP + 2 * r + 3.2, BAR.H - 1.5); group.add(b);
+      }
+      const mapC = new THREE.Mesh(new THREE.PlaneGeometry(W, PAIR.HP - BAR.H).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: 0.45 }));
+      mapC.position.set(W / 2, -6, BAR.H + (PAIR.HP - BAR.H) / 2); mapC.receiveShadow = true; group.add(mapC);
+      // A shadow map this long loses its far end: paint the run's shadow on the map as a band instead.
+      const run = stage([0, 0, W, HP], [group.children.filter((c) => c !== mapC).reduce((g, c) => (g.add(c), g), new THREE.Group())]).grab();
+      await post('bar_pipes_run', frame2d(W, HP, (g) => {
+        pairShadow(g, 0, W);
+        g.drawImage(run, 0, 0, W, HP);
+      }));
+      layout.bar_pipes_run = { size: [W, HP] };
+    }
+  });
+
+  // --- the bar's icons raised as the Building Detail panel's are: the game's art keyed into a mask (light
+  // pixels of the baked standalone icons, or the cream of a building icon), raised in the same cream
+  // enamel under the house light, with the swept shadow as its own layer.
+  const BAR_ICONS = { S: 110, icon: 86, height: 11, soften: 1.5, art: {
+    coin: 'ui_icons/standalone/coin.png', power: 'ui_icons/standalone/power_icon.png', trophy: 'ui_icons/standalone/trophy.png',
+    podium: 'ui_icons/standalone/podium.png', target: 'ui_icons/standalone/target.png', council: 'ui_icons/standalone/board-of-directors.png',
+    sankey: 'ui_icons/standalone/sankey.png', book: 'ui_icons/standalone/open-book.png', menu: 'ui_icons/standalone/menu.png',
+    warehouse: 'ui_icons/warehouse.png', roads: 'buildings/b_005_roads.png', port: 'buildings/b_004_port.png',
+  } };
+  if (want('baricon')) await withSeed(428, async () => {
+    const { S, icon, height, soften, art } = BAR_ICONS, o = (S - icon) / 2;
+    const enamel = new THREE.MeshPhysicalMaterial({ color: OFF_WHITE, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+    for (const [name, file] of Object.entries(art)) {
+      const img = await loadImage('/icons/' + file);
+      const mask = file.startsWith('buildings/') ? keyCream(img) : keyOpaque(img);
+      const rel = iconRelief(mask, icon, icon, enamel, { height, soften });
+      rel.position.set(S / 2, 0.3, S / 2);
+      await post('bar_icon_' + name, stage([0, 0, S, S], [rel]).grab());
+      await post('bar_icon_' + name + '_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height, draw: (tg, col) => stamp(tg, mask, o, o, icon, icon, col) }])));
+    }
+    layout.bar_icons = { size: [S, S], icon, names: Object.keys(art) };
+  });
+
   // --- a section frame: a narrow worn steel rim with a screw in each corner, drawn as a 9-slice
   if (want('section')) await withSeed(504, async () => {
     // The screws sit on the rim's centre line, in from its rounded corners, as they would be driven.
@@ -2482,6 +2689,19 @@ async function exportLayers() {
   if (want('sheet')) await withSeed(409, async () => {
     await post('sheet_plate', stage([0, 0, SHEET.W, SHEET.H], [sheetPlate()]).grab());
     layout.sheet_plate = { size: [SHEET.W, SHEET.H], margin: SHEET.M, corner: 60 };
+  });
+
+  // --- the top bar's sheets (its Treasury and Power flyouts): the action sheet's shape, in the bar's own
+  // weathered navy steel, with no trim, so a flyout is the same metal as the bar it drops from.
+  if (want('barsheet')) await withSeed(429, async () => {
+    const { W, H, M } = SHEET, g = new THREE.Group(), pw = W - 2 * M, ph = H - 2 * M;
+    const steelSide = new THREE.MeshStandardMaterial({ color: 0x3a4250, metalness: 1, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
+    const plate = new THREE.Mesh(extrude(rrShape(pw, ph, 12), 4, 4.5, 3.6, 6),
+      [plateMaterial(pw, ph, { icons: [], buttons: [], screws: [], base: NAVY_STEEL_CANVAS, rub: '120,136,160' }), steelSide]);
+    plate.castShadow = plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
+    g.add(shadowCatcher(W, H, W / 2, H / 2));
+    await post('bar_sheet', stage([0, 0, W, H], [g]).grab());
+    layout.bar_sheet = { size: [W, H], margin: M, corner: 60 };
   });
 
   // --- the diagnostics' plastic plate and its silver screws, and the shipments' rolling door.

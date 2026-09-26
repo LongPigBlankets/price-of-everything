@@ -51,6 +51,9 @@ var _tutorial_rescues: int = 0
 var _last_summary: Dictionary = {}
 var _panel: Control = null
 var _panel_layer: CanvasLayer = null
+## True while the auto-bridge is taking its loan, so listeners to LoanState.loan_taken can tell
+## a bridge loan (which announces itself in the updates dock) from any other.
+var bridging := false
 
 
 func _ready() -> void:
@@ -181,15 +184,17 @@ func _auto_bridge_negative_cash() -> void:
 	var amount: float = auto_bridge_amount()
 	if amount < 1.0:
 		return
-	if not LoanState.take_loan(amount):
+	bridging = enabled
+	var taken := LoanState.take_loan(amount)
+	bridging = false
+	if not taken:
 		return
 	var capacity_left: float = LoanState.available_capacity()
 	print("[Solvency] auto-bridge loan of £%.0f (capacity left £%.0f)" % [amount, capacity_left])
-	# Surfaces as a Turn Briefing info item (the standalone popup is retired) and in
-	# the bell — same event, one source of truth.
+	# Surfaces as a Turn Briefing info item and as one red row in the updates dock, after
+	# the "Cash is in the red" row that fired earlier this turn. The top bar's loan notice
+	# stands down for it (see `bridging`).
 	if enabled:
-		# Red toast in the bottom-centre warning stack — lands directly under the
-		# "Cash is in the red" toast that fired earlier this turn.
 		MatchState.request_toast(
 			"Loan taken to cover the deficit: £%.0f, £%.0f loan capacity left." % [amount, capacity_left],
 			"warning")

@@ -81,10 +81,12 @@ func _init() -> void:
 	add_child(_glass)
 
 
-## Shows one check: its stage and name on the first line ("Outputs: Reach"), what it found below.
+## Shows one check: its stage and name on the first line ("Outputs: Reach"), what it found below. An empty
+## tone shows no lamp, for a readout that names something rather than judges it.
 func show_check(stage: String, check_name: String, detail: String, tone: String) -> void:
 	_name.text = check_name if stage == "" else "%s: %s" % [stage, check_name]
 	_detail.text = detail
+	_lamp.visible = tone != ""
 	_lamp.set_tone(tone)
 
 

@@ -1099,6 +1099,468 @@ func _test_bdp_v3_panel() -> void:
 	BuildingState.buildings.erase(iid)
 	UiPrefs.set_use_bdp_v3(was)
 
+func _test_topbar_ds2_flag() -> void:
+	# The DS2 bar is built behind a session flag, off by default, switched by the debug cheat.
+	var was: bool = UiPrefs.use_topbar_ds2
+	UiPrefs.set_use_topbar_ds2(false)
+	var seen := []
+	var on_change := func(on: bool) -> void: seen.append(on)
+	UiPrefs.topbar_ds2_changed.connect(on_change)
+	var term: Node = load("res://scripts/debug_terminal.gd").new()
+	term.set("_cheats_unlocked", true)
+	var reply: String = str(term.call("_run_command", "toggle topbar ds2"))
+	_check(UiPrefs.use_topbar_ds2 and seen == [true] and reply.contains("DS2"),
+		"top bar ds2: the cheat switches the DS2 bar on and says so")
+	UiPrefs.toggle_use_topbar_ds2()
+	_check(not UiPrefs.use_topbar_ds2 and seen == [true, false], "top bar ds2: and off again")
+	UiPrefs.topbar_ds2_changed.disconnect(on_change)
+	term.free()
+	UiPrefs.set_use_topbar_ds2(was)
+
+func _test_top_bar_status() -> void:
+	# Power and Transport are judged once (TopBarStatus): the lamps light from the tone the readout shows.
+	var Status := preload("res://scripts/top_bar_status.gd")
+	var summary_was: Dictionary = Production.last_turn_summary
+	var missing_was: Dictionary = Production.missing_by_building
+	var inter_was: Dictionary = Production._intermittency_by_building
+	var stuck_was: Array = TransportState.overflow_shipments
+	Production.missing_by_building = {}
+	Production._intermittency_by_building = {}
+	Production.last_turn_summary = {}
+	_check(Status.power().tone == "off" and not Status.lit(Status.power()), "top bar status: no power made or drawn, the lamp stays off")
+	Production.last_turn_summary = {"power_supply": 40}
+	_check(Status.power().tone == "ok" and Status.power().name == "Self sufficient", "top bar status: own generation only is self sufficient")
+	Production.last_turn_summary = {"power_supply": 40, "grid_bought": 12}
+	var grid: Dictionary = Status.power()
+	_check(grid.tone == "warn" and not bool(grid.blink) and grid.detail == "You generated 40 MW. 12 MW came from the national grid.",
+		"top bar status: buying from the grid is amber: you generated X, Y came from the national grid")
+	Production._intermittency_by_building = {"x": {"derate": 0.3}}
+	var inter: Dictionary = Status.power()
+	_check(inter.tone == "warn" and bool(inter.blink) and inter.name == "Intermittent supply",
+		"top bar status: intermittency cutting buildings short blinks amber")
+	TransportState.overflow_shipments = [{}]
+	var t: Dictionary = Status.transport()
+	_check(t.freight.tone == "bad" and Status.lit(t.freight) and str(t.freight.detail).begins_with("1 shipment "),
+		"top bar status: freight stuck on arrival lights the freight lamp")
+	TransportState.overflow_shipments = []
+	_check(Status.transport().freight.tone == "ok", "top bar status: with nothing stuck the freight lamp is off")
+	var links_was: Array = TransportState.congested_links()
+	_check(Status.transport().links.detail == ("All shipments are working as expected." if links_was.is_empty() else Status.transport().links.detail),
+		"top bar status: links in order read 'All shipments are working as expected.'")
+	for st: Dictionary in [grid, inter, t.storage, t.links, t.freight]:
+		var copy := str(st.name) + " " + str(st.detail)
+		_check(not copy.contains(" - ") and not copy.contains(";") and not copy.contains("—"), "top bar status: plain copy (%s)" % copy)
+	Production.last_turn_summary = summary_was
+	Production.missing_by_building = missing_was
+	Production._intermittency_by_building = inter_was
+	TransportState.overflow_shipments = stuck_was
+
+func _test_topbar_ds2_strip() -> void:
+	# The DS2 strip: the money on the screen's centre line, the works to its left, the office to its
+	# right, the lamp over the strip; switched off, the bar is v3.1 exactly.
+	var was: bool = UiPrefs.use_topbar_ds2
+	UiPrefs.set_use_topbar_ds2(false)
+	var inst: Node = (load("res://scenes/main.tscn") as PackedScene).instantiate()
+	add_child(inst)
+	for _i in 4:
+		await get_tree().process_frame
+	var bar: Control = inst.get_node("UILayer/HUD/TopBar")
+	var hbox: HBoxContainer = bar.get_node("MarginContainer/HBoxContainer")
+	var names := func() -> PackedStringArray:
+		var out := PackedStringArray()
+		for c: Node in hbox.get_children():
+			if (c as Control).visible:
+				out.append(str(c.name))
+		return out
+	var v31_names: PackedStringArray = names.call()
+	UiPrefs.set_use_topbar_ds2(true)
+	for _i in 6:
+		await get_tree().process_frame
+	var money: Control = bar.get_node("MarginContainer/HBoxContainer/MoneyWidget")
+	var centre: float = money.get_global_rect().get_center().x
+	var screen_mid: float = bar.get_viewport_rect().size.x * 0.5
+	_check(absf(centre - screen_mid) <= 1.0, "top bar ds2: the money sits on the screen's centre line (%.1f vs %.1f)" % [centre, screen_mid])
+	var order: PackedStringArray = names.call()
+	_check(order.find("PowerModule") < order.find("MoneyWidget") and order.find("TransportModule") < order.find("MoneyWidget")
+		and order.find("VictoryModule") > order.find("MoneyWidget") and order.find("CouncilModule") > order.find("MoneyWidget"),
+		"top bar ds2: the works to the money's left, victory and the office to its right")
+	var cash: Control = money.find_child("Ds2Cash", true, false)
+	var money_was: float = MatchState.money
+	MatchState.money = 15600.0
+	bar.call("_refresh_treasury")
+	var led: Control = cash.get_child(1).get_child(0) if cash != null else null
+	var printed := PackedStringArray()
+	if cash != null:
+		for c: Node in cash.get_children():
+			if c is Label and (c as Label).visible:
+				printed.append((c as Label).text)
+	_check(cash != null and cash.visible and led != null and str(led.call("figure")).strip_edges() == "15.6"
+		and printed == PackedStringArray(["£", "K"]),
+		"top bar ds2: the cash on an LED screen, the £ printed before it and the K after it (%s)" % [printed])
+	var white: Color = led.get("colour") if led != null else Color.BLACK
+	MatchState.money = -1284.0
+	bar.call("_refresh_treasury")
+	var red: Color = led.get("colour") if led != null else Color.BLACK
+	_check(red.r > red.g + 0.2 and white.r > 0.9 and white.g > 0.9,
+		"top bar ds2: the cash is white, and red below zero")
+	var coin: Control = bar.get("_money_coin_icon")
+	_check(coin != null and not coin.visible, "top bar ds2: no coin beside the cash, the £ and the screen say what it is")
+	MatchState.money = money_was
+	bar.call("_refresh_treasury")
+	var pairs: Array = bar.get("_ds2_lamps")
+	var power_led = bar.get("_power_led")
+	var power_lamp: Control = null
+	for pair: Array in pairs:
+		if pair[0] == power_led:
+			power_lamp = pair[1]
+	var power_was: bool = power_led.lit
+	var power_colour: Color = power_led.color
+	var power_blink: bool = power_led.blink
+	power_led.blink = false
+	power_led.color = Color("#e2604a")
+	power_led.lit = true
+	await get_tree().process_frame
+	var lit_colour := str(power_lamp.get("colour")) if power_lamp != null else ""
+	power_led.lit = false
+	await get_tree().process_frame
+	var off_colour := str(power_lamp.get("colour")) if power_lamp != null else ""
+	power_led.lit = power_was
+	power_led.color = power_colour
+	power_led.blink = power_blink
+	_check(pairs.size() >= 7 and power_lamp != null and power_lamp.visible and power_led.self_modulate.a == 0.0
+		and lit_colour == "red" and off_colour == "off",
+		"top bar ds2: each lamp is Building Detail's pilot lamp, following its state (%d lamps, lit %s, off %s)" % [pairs.size(), lit_colour, off_colour])
+	var quest: Control = bar.get("_quest_btn")
+	if quest != null and quest.visible:
+		var area: Vector2 = bar.get("_ds2_quest_area")
+		var r: Rect2 = quest.get_global_rect()
+		var qicon: Control = bar.get("_quest_icon")
+		var text_col: Control = bar.get("_quest_text_col")
+		_check(absf(r.position.x - area.x) <= 1.0 and r.end.x <= area.y + 1.0
+			and (not text_col.is_visible_in_tree() or qicon.get_global_rect().end.x <= text_col.get_global_rect().position.x + 1.0),
+			"top bar ds2: the mission keeps to its section, icon first and its text to the right (%s in %s)" % [r, area])
+	var power_mod: Control = hbox.get_node("PowerModule")
+	power_mod.mouse_entered.emit()
+	var readout: Control = bar.get("_ds2_readout")
+	var want_power: Dictionary = preload("res://scripts/top_bar_status.gd").power()
+	_check(readout != null and readout.visible and str(readout.call("shown_name")) == "Power: %s" % want_power.name
+		and str(readout.call("shown_detail")) == str(want_power.detail) and readout.position.y >= bar.BAR_H,
+		"top bar ds2: hovering Power shows its readout under the bar, from the same status as its lamp")
+	_check(power_mod.call("_get_tooltip", Vector2.ZERO) == "", "top bar ds2: the tooltip stands down for the readout")
+	power_mod.mouse_exited.emit()
+	_check(not readout.visible, "top bar ds2: the readout goes when the pointer leaves")
+	var vic: Control = bar.get("_ds2_victory")
+	var counter: Control = bar.get("_ds2_victory_counter")
+	var bd: Dictionary = VictoryState.get_breakdown()
+	_check(vic != null and vic.visible and is_equal_approx(float(counter.get("value")), float(bd.get("total", 0)))
+		and str((bar.get("_ds2_victory_target") as Label).text).begins_with("/"),
+		"top bar ds2: the victory score on a drum counter, the target printed after it")
+	# Treasury and Power open as steel sheets; the Treasury keeps every node the tutorial and e2e use.
+	bar.call("_open_fly", "treasury")
+	await get_tree().process_frame
+	var fly: Control = bar.get("_fly_panel")
+	var names_ok := fly != null and fly.name == "Flyout_treasury"
+	for n: String in ["FlyRowCash", "FlyRowNet", "FlyTakeLoanButton", "FlyBalanceButton", "FlyChartsButton", "FlyUpcomingButton",
+			"FlyPlateCash", "FlyPlateTurn", "FlyPlateLoans"]:
+		names_ok = names_ok and fly.find_child(n, true, false) != null
+	_check(names_ok and fly.find_child("FlyTakeLoanButton", true, false) is Button and fly.find_child("BdpV3ModKey", true, false) != null,
+		"top bar ds2: the Treasury sheet keeps its named rows and buttons, the buttons on keycaps")
+	bar.call("_close_fly")
+	bar.call("_open_fly", "power")
+	await get_tree().process_frame
+	fly = bar.get("_fly_panel")
+	var sw: Control = fly.find_child("FlyPrioritySwitch_coal_gas", true, false) if fly != null else null
+	var was_prio: String = MatchState.power_priority_coal_gas
+	if sw != null:
+		var click := InputEventMouseButton.new()
+		click.button_index = MOUSE_BUTTON_LEFT
+		click.pressed = true
+		sw.call("_gui_input", click)   # the engine calls the handler; the signal would not reach it
+	var flipped: String = MatchState.power_priority_coal_gas
+	MatchState.set_power_priority("coal_gas", was_prio)
+	bar.call("_close_fly")
+	_check(sw != null and flipped != was_prio, "top bar ds2: the Power sheet's switch sets where coal and gas power goes")
+	var turn_was: int = TurnManager.current_turn
+	TurnManager.current_turn = maxi(turn_was, int(CompanyRankings.REVEAL_TURN))
+	bar.call("_module_pressed", "rankings")
+	await get_tree().process_frame
+	var rp: Control = bar.get("_rankings_panel")
+	var rp_open: bool = rp != null and rp.visible and str(bar.get("_fly_open_id")) == ""
+	PanelStack.close_top()
+	_check(rp_open and not rp.visible, "top bar ds2: Rankings opens its own panel, and Esc closes it")
+	TurnManager.current_turn = turn_was
+	var opened := []
+	var on_victory := func() -> void: opened.append("victory")
+	var on_council := func() -> void: opened.append("council")
+	bar.connect("victory_widget_clicked", on_victory)
+	bar.connect("council_widget_clicked", on_council)
+	bar.call("_module_pressed", "victory")
+	bar.call("_module_pressed", "council")
+	bar.disconnect("victory_widget_clicked", on_victory)
+	bar.disconnect("council_widget_clicked", on_council)
+	_check(opened == ["victory", "council"] and str(bar.get("_fly_open_id")) == "",
+		"top bar ds2: Victory and Council open their full panels, no flyout")
+	var shade: Node2D = bar.get_node_or_null("Ds2Shade")
+	_check(shade != null and shade.visible and bar.get_child(bar.get_child_count() - 1) == shade,
+		"top bar ds2: the lamp's shade is over the strip, drawn last")
+	UiPrefs.set_use_topbar_ds2(false)
+	for _i in 4:
+		await get_tree().process_frame
+	_check(names.call() == v31_names and not shade.visible and not cash.visible
+		and power_lamp != null and not power_lamp.visible and power_led.self_modulate.a == 1.0,
+		"top bar ds2: switched off, the v3.1 order and look come back")
+	inst.queue_free()
+	await get_tree().process_frame
+	UiPrefs.set_use_topbar_ds2(was)
+
+func _test_money_figure_format() -> void:
+	# The owner's LED money rule: at most five cells, the point free, K/M/B printed after.
+	var Money := preload("res://scripts/ds2/money_figure.gd")
+	var cases := {
+		0.0: "£0.00", 5.5: "£5.50", 999.99: "£999.99", 999.996: "£1000", 5717.0: "£5717",
+		9999.4: "£9999", 10000.0: "£10.0K", 15600.0: "£15.6K", 999949.0: "£999.9K",
+		1010000.0: "£1.01M", 12345678.0: "£12.35M", 2500000000.0: "£2.50B",
+		-120.0: "-£120.0", -9999.0: "-£9999", -15600.0: "-£15.6K", -555.0: "-£555.0",
+	}
+	var wrong := PackedStringArray()
+	for v: float in cases:
+		var got: String = Money.text(v)
+		var figure: String = Money.led(v).figure
+		if got != cases[v] or Money.cells(figure) > Money.MAX_CELLS:
+			wrong.append("%s -> %s" % [v, got])
+	_check(wrong.is_empty(), "money figure: the owner's five-cell rule %s" % ", ".join(wrong))
+
+func _test_top_bar_icon_fit() -> void:
+	# Every icon on the bar is fitted by its drawn art to one cap height (or the width limit for
+	# a wide icon), centred in its box; only the tabled exceptions are drawn larger.
+	var Bar := preload("res://scripts/top_bar.gd")
+	var Ind := preload("res://scripts/bdp_v3_indicator.gd")
+	var ok := true
+	var bad := PackedStringArray()
+	for tex: Texture2D in [Bar.ICON_COIN, Bar.ICON_POWER, Bar.ICON_VICTORY, Bar.ICON_RANKINGS, Bar.ICON_QUEST,
+			Bar.ICON_COUNCIL, Bar.ICON_GOODS_GRAPH, Bar.ICON_ENCYCLOPEDIA, Bar.ICON_MENU, Bar.WAREHOUSE_ICON]:
+		var fit: Dictionary = Bar._icon_fit(tex)
+		var box: Vector2 = fit.box
+		var dest: Rect2 = fit.dest
+		var k: float = float(Bar.ICON_OPTICAL.get(tex.resource_path, 1.0))
+		var capped: bool = absf(box.y - Bar.ICON_CAP * k) <= 1.0 or absf(box.x - Bar.ICON_MAX_W * k) <= 1.0
+		var art: Rect2 = Ind.art_rect(tex)
+		var scale: float = dest.size.x / tex.get_size().x
+		var art_centre: Vector2 = dest.position + (art.position + art.size * 0.5) * scale
+		var centred: bool = art_centre.distance_to(box * 0.5) <= 1.0
+		if not (capped and centred and box.y <= Bar.MOD_H):
+			ok = false
+			bad.append("%s box=%s" % [tex.resource_path.get_file(), box])
+	_check(ok, "top bar: every icon's art fills the cap height or the width limit, centred in its box %s" % ", ".join(bad))
+	_check(Bar.BAR_H == 60.0 and Bar.MOD_H + 8.0 + Bar.EDGE_H <= Bar.BAR_H, "top bar: 60 px, its modules inside it")
+
+func _test_updates_dock() -> void:
+	# Every toast is a row in a slide-out over a 60 px bottom-left dock with three bells.
+	var toasts: Control = load("res://scripts/toast_manager.gd").new()
+	add_child(toasts)
+	await get_tree().process_frame
+	var dock: Control = toasts.find_child("UpdatesDock", true, false)
+	_check(dock != null and is_equal_approx(dock.size.y, 60.0), "updates dock: 60 px tall")
+	_check(dock != null and dock.get_global_rect().position.x < 40.0 \
+		and dock.get_global_rect().end.y > toasts.size.y - 40.0, "updates dock: in the bottom-left corner")
+	var bells_ok := true
+	for tone: String in ["green", "amber", "red"]:
+		bells_ok = bells_ok and toasts.find_child("Bell_%s" % tone, true, false) != null and toasts.unread(tone) == 0
+	_check(bells_ok, "updates dock: a green, an amber and a red bell, none counting yet")
+	_check(toasts.tone_of("success") == "green" and toasts.tone_of("info") == "green" \
+		and toasts.tone_of("caution") == "amber" and toasts.tone_of("warning") == "red" \
+		and toasts.tone_of("error") == "red", "updates dock: each toast type rings its bell")
+
+	toasts._on_toast_requested("Built a steel furnace", "success")
+	toasts._on_toast_requested("Local opposition to density", "caution")
+	toasts._on_toast_requested("Cash is in the red", "warning")
+	toasts._on_toast_requested("No route to market", "error")
+	_check(toasts.row_count() == 4, "updates dock: every toast becomes a row")
+	_check(toasts.unread("green") == 1 and toasts.unread("amber") == 1 and toasts.unread("red") == 2,
+		"updates dock: each bell counts its rows")
+	var rows: Control = toasts.find_child("Rows", true, false)
+	_check(toasts.is_open() and rows.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+		"updates dock: a new row slides the rows out, letting clicks through")
+	_check(not toasts._timer.is_stopped() and is_equal_approx(toasts._timer.wait_time, toasts.TOAST_DURATION),
+		"updates dock: the rows collapse TOAST_DURATION after the last one")
+	await get_tree().create_timer(0.3).timeout
+	await get_tree().process_frame
+	var sweeps := []
+	for r: Node in toasts.find_child("RowList", true, false).get_children():
+		if (r as Control).visible:
+			sweeps.append(snappedf(r.get_node("Countdown").remaining, 0.001))
+	_check(sweeps.size() == 4 and toasts.countdown() < 1.0 and toasts.countdown() > 0.8 \
+		and sweeps.count(sweeps[0]) == 4 and absf(sweeps[0] - toasts.countdown()) < 0.05,
+		"updates dock: every shown row carries the same countdown sweep, running down")
+	toasts._on_timer()
+	_check(not toasts.is_open() and toasts.unread("red") == 2, "updates dock: collapsing keeps the bells' counts")
+
+	toasts.open_all()
+	_check(toasts.is_open() and rows.mouse_filter == Control.MOUSE_FILTER_STOP,
+		"updates dock: opened from the dock, the rows take the mouse")
+	_check(toasts.unread("green") + toasts.unread("amber") + toasts.unread("red") == 0,
+		"updates dock: opening from the dock clears the counts")
+	_check(toasts._dock_style.border_color == toasts.DOCK_BORDER_HOT, "updates dock: its rim lights while its slide-out is up")
+	var row_list: Node = toasts.find_child("RowList", true, false)
+	var shown := func() -> int:
+		return row_list.get_children().filter(func(r: Node) -> bool: return (r as Control).visible).size()
+	_check(shown.call() == 4, "updates dock: opened from the dock, every kept row shows")
+	toasts._on_timer()
+	_check(not toasts.is_open() and toasts._dock_style.border_color == toasts.DOCK_BORDER,
+		"updates dock: the dock's slide-out also closes when left alone, and its rim goes out")
+
+	toasts._on_toast_requested("Ordered 5 Steel", "success")
+	_check(toasts.is_open() and shown.call() == 1, "updates dock: opened by itself, only rows it hasn't shown")
+	for i in toasts.HISTORY_MAX + 5:
+		toasts.show_error("Refused %d" % i)
+	_check(toasts.row_count() == toasts.HISTORY_MAX, "updates dock: keeps the newest HISTORY_MAX rows")
+	_check(shown.call() == toasts.MAX_TOASTS, "updates dock: opened by itself, at most MAX_TOASTS rows")
+	_check(toasts.row_texts()[-1] == "Refused %d" % (toasts.HISTORY_MAX + 4), "updates dock: the newest row is last")
+	toasts.clear()
+	_check(toasts.row_count() == 0 and not toasts.is_open() and toasts.unread("red") == 0,
+		"updates dock: clearing empties the rows and the bells")
+	toasts.queue_free()
+
+func _test_updates_dock_filters_and_decisions() -> void:
+	# A bell opens the slide-out on its own rows; the pen counts decisions and opens the briefing.
+	var toasts: Control = load("res://scripts/toast_manager.gd").new()
+	add_child(toasts)
+	await get_tree().process_frame
+	var rows: Node = toasts.find_child("RowList", true, false)
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	var shown := func() -> PackedStringArray:
+		var out := PackedStringArray()
+		for r: Node in rows.get_children():
+			if (r as Control).visible:
+				out.append(str(r.get_meta("toast_message", "")))
+		return out
+	var pen: Control = toasts.find_child("Decisions", true, false)
+	var icons: Array = pen.get_parent().get_children() if pen != null else []
+	_check(pen != null and icons.find(pen) == 0 and icons.size() == 4,
+		"updates dock: a pen sits before the three bells")
+
+	toasts._on_toast_requested("Built a steel furnace", "success")
+	toasts._on_toast_requested("Local opposition to density", "caution")
+	toasts._on_toast_requested("Cash is in the red", "warning")
+	toasts._on_toast_requested("No route to market", "error")
+	toasts.collapse(false)
+	toasts.find_child("Bell_red", true, false).gui_input.emit(click)
+	_check(toasts.is_open() and toasts.filter() == "red" \
+		and shown.call() == PackedStringArray(["Cash is in the red", "No route to market"]),
+		"updates dock: clicking the red bell shows only the red rows")
+	_check(toasts.unread("red") == 0 and toasts.unread("green") == 1 and toasts.unread("amber") == 1,
+		"updates dock: a bell clears only its own count")
+	toasts.find_child("Bell_amber", true, false).gui_input.emit(click)
+	_check(toasts.is_open() and shown.call() == PackedStringArray(["Local opposition to density"]),
+		"updates dock: another bell switches the rows to its colour")
+	toasts.find_child("Bell_amber", true, false).gui_input.emit(click)
+	_check(not toasts.is_open() and toasts.filter() == "", "updates dock: the same bell again closes the rows")
+	toasts.find_child("UpdatesDock", true, false).gui_input.emit(click)
+	_check(shown.call().size() == 4, "updates dock: clicking the dock between its icons shows every row")
+	toasts.collapse(false)
+	toasts.clear()
+	toasts.open_all("green")
+	var empty: Label = null
+	for l: Node in toasts.find_children("*", "Label", true, false):
+		if (l as Label).text.begins_with("No ") and (l as Label).visible:
+			empty = l
+	_check(empty != null and empty.text == "No updates yet", "updates dock: an empty bell says it has nothing yet")
+	toasts.collapse(false)
+
+	var items_before: Array = TurnBriefing._items
+	var expanded_before: bool = TurnBriefing.expanded
+	TurnBriefing._items = [
+		{"id": "dec:1", "kind": "decision", "section": "decisions"},
+		{"id": "dec:2", "kind": "decision", "section": "decisions"},
+		{"id": "ev:9", "kind": "event", "section": "info"},
+	]
+	TurnBriefing.items_changed.emit()
+	var pill: Control = pen.find_child("Count", true, false)
+	_check(toasts.decisions() == 2 and pill != null and pill.visible and (pill.get_child(0) as Label).text == "2",
+		"updates dock: the pen counts the decisions waiting")
+	TurnBriefing.expanded = false
+	var opened := [""]
+	var saved_hide: bool = DecisionState.hide_updates
+	DecisionState.hide_updates = false
+	var on_expand := func(is_open: bool) -> void: opened[0] = "open" if is_open else "closed"
+	TurnBriefing.expanded_changed.connect(on_expand)
+	toasts.open_all()
+	pen.gui_input.emit(click)
+	_check(opened[0] == "open" and TurnBriefing.expanded and not toasts.is_open(),
+		"updates dock: the pen opens the briefing on its decisions and puts the rows away")
+	pen.gui_input.emit(click)
+	_check(opened[0] == "closed" and not TurnBriefing.expanded, "updates dock: the pen again closes the briefing")
+	TurnBriefing.expanded_changed.disconnect(on_expand)
+	DecisionState.hide_updates = saved_hide
+	TurnBriefing._items = items_before
+	TurnBriefing.expanded = expanded_before
+	TurnBriefing.items_changed.emit()
+	toasts.queue_free()
+
+func _test_updates_dock_research_and_notices() -> void:
+	# Research unlocks sit above the other rows as green links; notices are amber and keyed.
+	var toasts: Control = load("res://scripts/toast_manager.gd").new()
+	add_child(toasts)
+	await get_tree().process_frame
+	var rows: Node = toasts.find_child("RowList", true, false)
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+
+	toasts._on_toast_requested("Built a steel furnace", "success")
+	toasts.push_research("Interchangeable Tooling")
+	toasts.push_research("Operational Team Managers")
+	var texts: PackedStringArray = toasts.row_texts()
+	_check(texts.size() == 3 and texts[0] == "Unlocked: Interchangeable Tooling" \
+		and texts[1] == "Unlocked: Operational Team Managers" and texts[2] == "Built a steel furnace",
+		"updates dock: unlocks read 'Unlocked: <name>' and sit above the other rows, in the order they came")
+	_check(toasts.unread("green") == 3, "updates dock: unlocks ring the green bell")
+	var research_row: Control = rows.get_child(0)
+	_check(research_row.mouse_filter == Control.MOUSE_FILTER_STOP and toasts.find_child("Rows", true, false).mouse_filter == Control.MOUSE_FILTER_IGNORE,
+		"updates dock: an unlock's row takes its click while the rest lets clicks through")
+	var searched := [""]
+	var on_search := func(tech: String) -> void: searched[0] = tech
+	MatchState.research_search_requested.connect(on_search)
+	research_row.gui_input.emit(click)
+	MatchState.research_search_requested.disconnect(on_search)
+	_check(searched[0] == "Interchangeable Tooling" and not toasts.is_open(),
+		"updates dock: clicking an unlock opens the Research panel on it and puts the rows away")
+	toasts.push_research("Interchangeable Tooling")
+	_check(toasts.row_count() == 3, "updates dock: the same unlock twice keeps one row")
+
+	for i in toasts.MAX_TOASTS + 2:
+		toasts.show_caution("Caution %d" % i)
+	toasts.push_research("High-Volume Press Lines")
+	var shown: Array = rows.get_children().filter(func(r: Node) -> bool: return (r as Control).visible)
+	_check(shown.size() == toasts.MAX_TOASTS and str(shown[0].get_meta("toast_message", "")) == "Unlocked: High-Volume Press Lines",
+		"updates dock: an unlock shows first even when more rows arrived than fit")
+	toasts.collapse(false)
+
+	var turn_key := "upcoming:7"
+	toasts.push_notice(turn_key, "Input bill coming next turn.\nRecommended buffer: £150")
+	_check(toasts.has_row("notice:" + turn_key) and toasts.unread("amber") == toasts.MAX_TOASTS + 3,
+		"updates dock: a notice is an amber row under its key")
+	var count: int = toasts.row_count()
+	toasts.push_notice(turn_key, "Input bill coming next turn.\nRecommended buffer: £150")
+	_check(toasts.row_count() == count, "updates dock: the same notice again adds nothing")
+	toasts.push_notice(turn_key, "Input bill coming next turn.\nRecommended buffer: £200")
+	_check(toasts.row_count() == count and toasts.unread("amber") == toasts.MAX_TOASTS + 3 \
+		and toasts.row_texts()[-1].ends_with("£200"), "updates dock: a changed notice replaces its row")
+	toasts.remove_row("notice:" + turn_key)
+	_check(not toasts.has_row("notice:" + turn_key) and toasts.row_count() == count - 1,
+		"updates dock: a notice that no longer holds can be withdrawn")
+	var ran := [false]
+	toasts.push_notice("stock:tile_5_10:g_005:7", "Copper accumulating at Stoneshore (+19/turn).", func() -> void: ran[0] = true)
+	var notice_row: Control = null
+	for r: Node in rows.get_children():
+		if str(r.get_meta("key", "")) == "notice:stock:tile_5_10:g_005:7":
+			notice_row = r
+	if notice_row != null:
+		notice_row.gui_input.emit(click)
+	_check(notice_row != null and ran[0], "updates dock: a notice's link runs when its row is clicked")
+	toasts.queue_free()
 
 func _test_bdp_v3_diag_visual() -> void:
 	# The diagnostics' Visual / Text switch: the visual view's stage columns of icons over lamps, the readout

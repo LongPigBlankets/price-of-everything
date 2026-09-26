@@ -77,8 +77,7 @@ func _ready() -> void:
 	for node in _wm.find_children("*", "Control", true, false):
 		if node.get_script() != null \
 				and str(node.get_script().resource_path).ends_with("toast_manager.gd"):
-			for t in (node as Node).get_children():
-				t.queue_free()
+			node.call("clear")
 
 	var cam := get_viewport().get_camera_2d()
 	if cam != null:

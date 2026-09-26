@@ -27,6 +27,8 @@ var open := false
 ## The text printed on the key, and its ink.
 var summary := ""
 var summary_ink := NAVY
+## Print the summary centred on the key (a key that names an action) rather than from its left.
+var centred := false
 var openable := true:
 	set(v):
 		openable = v
@@ -99,7 +101,10 @@ func _draw() -> void:
 	var bold: Font = Plate.FONT_BOLD
 	if summary != "":
 		var fs := Plate._fit(bold, summary, roundi(22 * k), face.size.x - (34.0 if openable else 12.0) * k)
-		draw_string(bold, Vector2(face.position.x + 6.0 * k, _baseline(bold, fs, mid)), summary, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, summary_ink)
+		var x := face.position.x + 6.0 * k
+		if centred:
+			x = face.get_center().x - bold.get_string_size(summary, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x * 0.5
+		draw_string(bold, Vector2(x, _baseline(bold, fs, mid)), summary, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, summary_ink)
 	if not openable:
 		return
 	var cx := face.end.x - 12.0 * k

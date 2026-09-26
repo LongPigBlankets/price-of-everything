@@ -153,9 +153,9 @@ func _apply_anchors() -> void:
 	anchor_left = 1.0
 	anchor_right = 1.0
 	offset_left = -(panel_w + 30.0) + _drag_delta.x
-	# Clears the top bar AND the briefing notch's downward hang + shadow (~114px);
+	# Clears the top bar and its shadow (72 px down the screen; HUDContent starts at 36);
 	# aligns with the left-slot panels.
-	offset_top = 78.0 + _drag_delta.y
+	offset_top = 36.0 + _drag_delta.y
 	offset_right = -30.0 + _drag_delta.x
 	offset_bottom = 948.0 + _drag_delta.y  # taller panel (top pinned near the screen top, so it grows down)
 	grow_horizontal = Control.GROW_DIRECTION_BEGIN

@@ -1,6 +1,6 @@
 extends Node
-## Windowed shot: the anomaly cards under their modules, at the owner's sizing — as wide
-## as the module they belong to, three lines then an ellipsis, 6px padding, 16px off-white.
+## Windowed shot: two notices as amber rows in the bottom-left updates dock, one short and
+## one long, so the row wrapping shows.
 
 const START := "res://data/starts/metal_magnate.json"
 
@@ -17,18 +17,12 @@ func _ready() -> void:
 	var bar: Node = main.find_child("TopBar", true, false)
 	if bar == null:
 		push_error("no TopBar"); get_tree().quit(1); return
-	# One short card and one long one, so both the module width and the 3-line trim show.
-	var anchor: Variant = bar.get("money_widget")
-	if anchor == null:
-		anchor = bar.get("_power_btn")
-	if anchor == null:
-		push_error("no module anchor to hang a card on"); get_tree().quit(1); return
-	bar.call("_show_anomaly_stack", [
-		{"word": "earned you £912", "tone": "good",
+	bar.call("_post_notices", [
+		{"id": "payment", "word": "earned you £912", "tone": "good",
 			"text": "You sold 40 units of Steel to the global market, which earned you £912."},
-		{"word": "Transport", "tone": "bad",
+		{"id": "transport", "word": "Transport", "tone": "bad",
 			"text": "Transport costs are through the roof. Check if we are shipping by the most efficient transport, because every leg of a long haul is charged separately and the new smelter is nine tiles out."},
-	], anchor)
+	])
 	await _settle(30)
 	await _shot("user://poe_anomaly_cards.png")
 	get_tree().quit(0)
