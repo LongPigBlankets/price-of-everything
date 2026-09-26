@@ -1,11 +1,13 @@
 extends Control
-## DS2: the land icon, a hex half filled, in the cream of the raised icons (the construct panel's land
-## requirement draws the same shape). For a line about land beside the other raised icons.
+## DS2: the land icon, a hex half filled (the construct panel's land requirement draws the same shape), in
+## the good tiles' cream so it sits with the other icons in a cream outline.
 
-const INK := Color("#e8dcc4")
+const UIHelpers := preload("res://scripts/ui_helpers.gd")
 ## The hex's radius against the box, and its outline.
 const RADIUS := 0.42
 const LINE := 2.5
+
+var ink: Color = UIHelpers.PILL_PAPER
 
 
 func _init(side: float = 40.0) -> void:
@@ -21,6 +23,6 @@ func _draw() -> void:
 	var hex := PackedVector2Array()
 	for i in 6:
 		hex.append(c + Vector2(cos(i * TAU / 6.0), sin(i * TAU / 6.0)) * r)
-	draw_colored_polygon(PackedVector2Array([hex[0], hex[1], hex[2], hex[3]]), INK)
+	draw_colored_polygon(PackedVector2Array([hex[0], hex[1], hex[2], hex[3]]), ink)
 	hex.append(hex[0])
-	draw_polyline(hex, INK, LINE, true)
+	draw_polyline(hex, ink, LINE, true)

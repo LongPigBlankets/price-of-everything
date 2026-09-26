@@ -7,20 +7,20 @@ extends "res://scripts/upgrade_dialog.gd"
 ##   the head      the building's emblem, the raised title ("Upgrade Motor Factory A"), the level it goes
 ##                 from and to on a dot-matrix display, and the Close key
 ##   Materials     each good the next level takes in its well (the quantity on its pill), under it a lamp
-##                 and what is on the tile of what is needed (green when enough, amber short); then, when
-##                 some must be bought, their price at market on an LED screen
-##   Per turn      a row for each thing the level changes, led by its icon (a good in its well for what it
-##                 makes and uses, the raised power, labour and upkeep icons, the land hex): the figure now
-##                 and at the next level in large print, the change, and a bar on one linear scale across
-##                 every level (1, 2, 3: 100%, 200%, 300% of a building whose figures double and treble), lit
-##                 to now, the next level's step in green where it helps and red where it costs, a tick at
-##                 each level; then a unit's cost to make, now and then, on LED screens
+##                 and what is on the tile of what is needed (green when enough, amber short), three to a
+##                 row; on the right the Source dial (Order from market, first; Use materials on tile; Move
+##                 materials from other tiles; each lit only where it can be done) and under it, when some must
+##                 be bought, their price at market on an LED screen
+##   Per turn      on a black plastic case, a row a thing, every row a good's height, led by its icon (a good
+##                 in its well for what it makes and uses; the bolt, labour, upkeep and land hex in a cream
+##                 outline): the figure at this level and the next in large print, the change, and a bar on the
+##                 tile view's metering screen where this level is the same grey length in every row and the
+##                 next level's step runs on from it (green where it helps, red where it costs) on one scale,
+##                 so the rows that grow most run furthest; then a unit's cost to make, now and then
 ##   research      when the next level waits for research: the research icon, a red lamp, the research's
 ##                 name and a View Research key
 ##   land          the land hex and a lamp: what the larger building needs and what is free
-##   the foot      the clock and how long it takes; the materials dial (Use materials on tile, Order from
-##                 market, Move materials from other tiles, each lit only where it can be done, market first)
-##                 beside the Upgrade and Cancel keys
+##   the foot      the clock and how long it takes; the Upgrade and Cancel keys
 ## While an upgrade runs: an amber lamp, how long is left, and Cancel upgrade and Close. At the top level:
 ## a line saying so and Close.
 
@@ -34,6 +34,7 @@ const Key := preload("res://scripts/bdp_v3_key.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
 const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const LandIcon := preload("res://scripts/ds2/land_icon.gd")
+const BoltIcon := preload("res://scripts/ds2/bolt_icon.gd")
 const Rotary := preload("res://scripts/rotary_selector.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const RESEARCH_ICON: Texture2D = preload("res://assets/icons/ui_icons/alt/research.png")
@@ -47,7 +48,12 @@ const SOURCES := [
 ## figures.
 const ROW_ICON_PX := 44.0
 const FIGURE_PX := 20
-const TRACK_H := 16.0
+## The icons that aren't goods stand in a cream outline a good's size, so every row is one height.
+const OUTLINE_W := 2
+const OUTLINE_RADIUS := 12
+## The materials grid's columns, and the room it leaves on its right for the dial.
+const MATERIAL_COLUMNS := 3
+const DIAL_PX := 110.0
 
 const WIDTH := 760.0
 const CONTENT_MARGIN := 26
@@ -98,6 +104,11 @@ func _clear() -> void:
 		c.queue_free()
 
 
+## The materials dial's options (_sources) and the one chosen, by index; -1 when none can be done.
+var _options: Array = []
+var _choice := -1
+
+
 func _rebuild() -> void:
 	_clear()
 	var p := _preview
@@ -126,7 +137,7 @@ func _rebuild() -> void:
 		_content.add_child(_lamp_line("warn", line))
 		_content.add_child(_keys([["Cancel upgrade", func() -> void: _cancel(), false], ["Close", close, false]]))
 		return
-	_content.add_child(_materials(p.get("materials", []), float(p.get("market_cost", 0.0))))
+	_content.add_child(_materials(p))
 	_content.add_child(_per_turn(from_level, target, p.get("unit_cost", {})))
 	if str(p.get("research_gate", "")) != "" and bool(p.get("research_locked", false)):
 		_content.add_child(_research_line(str(p.get("research_gate", ""))))
@@ -151,45 +162,45 @@ func _sources(p: Dictionary) -> Array:
 	return out
 
 
-## The dial, then the Upgrade and Cancel keys. Upgrade starts it the dial's way; it is greyed while research
-## or land blocks it, or while no way of bringing the materials can be done.
+## The materials dial: where the next level's materials come from, market first, each option lit only where it
+## can be done. Sets _options and _choice.
+func _dial(p: Dictionary) -> Control:
+	_options = _sources(p)
+	var dial: Control = Rotary.new()
+	dial.name = "MaterialsDial"
+	dial.set("knob_size", DIAL_PX)
+	dial.set("label", "Source")
+	dial.set("label_colour", DS.PALETTE["TEXT"])
+	dial.set("options", _options)
+	_choice = -1
+	for i in _options.size():
+		if bool(_options[i].enabled) and (_choice < 0 or str(_options[i].id) == "market"):
+			_choice = i
+	if _choice >= 0:
+		dial.call("set_value_no_signal", _choice + 1)
+	dial.connect("value_changed", func(v: int) -> void:
+		if bool(_options[v - 1].enabled):
+			_choice = v - 1
+		elif _choice >= 0:
+			dial.call("set_value_no_signal", _choice + 1))
+	return dial
+
+
+## The Upgrade and Cancel keys. Upgrade starts it the dial's way; it is greyed while research or land blocks
+## it, or while no way of bringing the materials can be done.
 func _foot(p: Dictionary) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.name = "UpgradeKeys"
+	row.alignment = BoxContainer.ALIGNMENT_END
 	row.add_theme_constant_override("separation", 14)
-	var options := _sources(p)
-	var dial: Control = Rotary.new()
-	dial.name = "MaterialsDial"
-	dial.set("knob_size", 96.0)
-	dial.set("label", "Materials")
-	dial.set("label_colour", DS.PALETTE["TEXT"])
-	dial.set("options", options)
-	var first := -1
-	for i in options.size():
-		if bool(options[i].enabled) and (first < 0 or str(options[i].id) == "market"):
-			first = i
-	if first >= 0:
-		dial.call("set_value_no_signal", first + 1)
-	var chosen := [first]
-	dial.connect("value_changed", func(v: int) -> void:
-		if bool(options[v - 1].enabled):
-			chosen[0] = v - 1
-		elif chosen[0] >= 0:
-			dial.call("set_value_no_signal", chosen[0] + 1))
-	row.add_child(dial)
-	var fill := Control.new()
-	fill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(fill)
-	var blocked := bool(p.get("research_locked", false)) or not bool(p.get("fits", true)) or first < 0
+	var blocked := bool(p.get("research_locked", false)) or not bool(p.get("fits", true)) or _choice < 0
 	var up: Button = CreamKey.make("Key_Upgrade", "Upgrade", "", CreamKey.width_for("Upgrade", "", false, false))
-	up.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	if blocked:
 		up.call("set_spent", true)
 	else:
-		up.pressed.connect(func() -> void: _commit(str(options[chosen[0]].id)))
+		up.pressed.connect(func() -> void: _commit(str(_options[_choice].id)))
 	row.add_child(up)
 	var cancel: Button = CreamKey.make("Key_Cancel", "Cancel", "", CreamKey.width_for("Cancel", "", false, false))
-	cancel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	cancel.pressed.connect(close)
 	row.add_child(cancel)
 	return row
@@ -302,16 +313,23 @@ func _head(building_id: String, title_text: String, level_text: String) -> HBoxC
 
 ## Each material in its well with what is needed on its pill, under it what the tile holds of it; the
 ## price of what must be bought.
-func _materials(materials: Array, to_buy: float) -> Control:
+func _materials(p: Dictionary) -> Control:
+	var materials: Array = p.get("materials", [])
+	var to_buy := float(p.get("market_cost", 0.0))
 	var sec := _section("UpgradeMaterials", "Materials", "dark")
 	var vb: VBoxContainer = sec.get("content")
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 18)
+	vb.add_child(row)
+	var grid := GridContainer.new()
+	grid.name = "MaterialGrid"
+	grid.columns = MATERIAL_COLUMNS
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation", 22)
+	grid.add_theme_constant_override("v_separation", 12)
+	row.add_child(grid)
 	if materials.is_empty():
-		vb.add_child(_body("No materials needed."))
-		return sec
-	var flow := HFlowContainer.new()
-	flow.add_theme_constant_override("h_separation", 18)
-	flow.add_theme_constant_override("v_separation", 12)
-	vb.add_child(flow)
+		grid.add_child(_body("No materials needed."))
 	for m: Dictionary in materials:
 		var gid := str(m.get("good_id", ""))
 		var need := int(m.get("need", 0))
@@ -323,61 +341,72 @@ func _materials(materials: Array, to_buy: float) -> Control:
 		var line := HBoxContainer.new()
 		line.alignment = BoxContainer.ALIGNMENT_CENTER
 		line.add_theme_constant_override("separation", Parts.LAMP_GAP)
-		var lamp: Control = Lamp.new()
-		lamp.set("lamp_scale", Parts.LAMP_SCALE)
-		lamp.call("set_tone", "ok" if have >= need else "warn")
-		line.add_child(lamp)
-		var said := _figure("%d/%d" % [mini(have, need), need])
-		line.add_child(said)
+		line.add_child(_lamp("ok" if have >= need else "warn"))
+		line.add_child(_figure("%d/%d" % [mini(have, need), need]))
 		cell.add_child(line)
-		flow.add_child(cell)
+		grid.add_child(cell)
+	# On the right: the dial, and under it what buying the rest costs at market.
+	var side := VBoxContainer.new()
+	side.name = "MaterialsSource"
+	side.alignment = BoxContainer.ALIGNMENT_CENTER
+	side.add_theme_constant_override("separation", 8)
+	side.add_child(_dial(p))
 	if to_buy > 0.0:
-		var row := HBoxContainer.new()
-		row.name = "MarketPrice"
-		row.add_theme_constant_override("separation", 10)
-		var words := _body("The rest at market")
-		words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(words)
-		row.add_child(Parts.money("%.2f" % to_buy, DS.PALETTE["TEXT"], MONEY_DIGITS))
-		vb.add_child(row)
+		var price := Parts.money("%.2f" % to_buy, DS.PALETTE["TEXT"], MONEY_DIGITS)
+		price.name = "MarketPrice"
+		price.tooltip_text = "Buying what is short at market"
+		price.mouse_filter = Control.MOUSE_FILTER_PASS
+		side.add_child(price)
+	row.add_child(side)
 	return sec
 
 
-## What changes a turn at the next level: a row a thing, led by its icon, its figures now and then, the
-## change and a bar across every level; then a unit's cost to make, now and then.
+## What changes a turn at the next level, on a black plastic case: a row a thing, led by its icon, its figures
+## now and then, the change and a bar; then a unit's cost to make, now and then. Every bar starts from the
+## same grey length (this level) on one scale, so the rows that grow most run furthest.
 func _per_turn(from_level: int, target: int, unit_cost: Dictionary) -> Control:
-	var sec := _section("UpgradePerTurn", "Per turn", "steel")
+	var sec := _section("UpgradePerTurn", "Per turn", "plastic")
 	var vb: VBoxContainer = sec.get("content")
 	vb.add_child(_table_head(from_level, target))
 	var levels: Array = []
 	for l in range(1, BuildingLevels.MAX_LEVEL + 1):
 		levels.append(Production.stats_at_level(_instance_id, l))
-	var at := func(l: int) -> Dictionary: return levels[l - 1] if l - 1 < levels.size() else {}
-	var now: Dictionary = at.call(from_level)
+	var now: Dictionary = levels[from_level - 1] if from_level - 1 < levels.size() else {}
 	if now.is_empty():
 		return sec
+	# [node name, icon, values by level, decimals, unit, more is better]
+	var specs: Array = []
 	for i in (now.get("outputs", []) as Array).size():
 		var gid := str(now.outputs[i].get("good_id", ""))
-		var icon: Control = Parts.raised("bar_icon_power", ROW_ICON_PX) if gid == "power" \
+		var icon: Control = _outlined(BoltIcon.new(ROW_ICON_PX), "Power made, MW") if gid == "power" \
 			else Parts.good_in_well(gid, -1, "%s made a turn" % Catalog.get_display_name(gid))
-		vb.add_child(_track_row("Output_%s" % gid, icon, levels.map(func(st: Dictionary) -> float:
+		specs.append(["Output_%s" % gid, icon, levels.map(func(st: Dictionary) -> float:
 			return float((st.get("outputs", []) as Array)[i].get("qty", 0)) if i < (st.get("outputs", []) as Array).size() else 0.0),
-			from_level, target, 0, " MW" if gid == "power" else "", true))
+			0, " MW" if gid == "power" else "", true])
 	for i in (now.get("inputs", []) as Array).size():
 		var gid := str(now.inputs[i].get("good_id", ""))
-		vb.add_child(_track_row("Input_%s" % gid, Parts.good_in_well(gid, -1, "%s used a turn" % Catalog.get_display_name(gid)),
+		specs.append(["Input_%s" % gid, Parts.good_in_well(gid, -1, "%s used a turn" % Catalog.get_display_name(gid)),
 			levels.map(func(st: Dictionary) -> float:
 				return float((st.get("inputs", []) as Array)[i].get("qty", 0)) if i < (st.get("inputs", []) as Array).size() else 0.0),
-			from_level, target, 0, "", true))
+			0, "", true])
 	if levels.any(func(st: Dictionary) -> bool: return float(st.get("energy", 0.0)) > 0.0):
-		vb.add_child(_track_row("Power", _tipped(Parts.raised("bar_icon_power", ROW_ICON_PX), "Power drawn, MW"),
-			levels.map(func(st: Dictionary) -> float: return float(st.get("energy", 0.0))), from_level, target, 0, " MW", false))
-	vb.add_child(_track_row("Labour", _tipped(Parts.raised("econ_icon_labour", ROW_ICON_PX), "Labour a turn"),
-		levels.map(func(st: Dictionary) -> float: return float(st.get("labour", 0.0))), from_level, target, 2, "£", false))
-	vb.add_child(_track_row("Upkeep", _tipped(Parts.raised("econ_icon_upkeep", ROW_ICON_PX), "Upkeep a turn"),
-		levels.map(func(st: Dictionary) -> float: return float(st.get("maintenance", 0.0))), from_level, target, 2, "£", false))
-	vb.add_child(_track_row("Land", _tipped(LandIcon.new(ROW_ICON_PX), "Land the building takes"),
-		levels.map(func(st: Dictionary) -> float: return float(st.get("size", 0.0))), from_level, target, 0, "", false))
+		specs.append(["Power", _outlined(BoltIcon.new(ROW_ICON_PX), "Power drawn, MW"),
+			levels.map(func(st: Dictionary) -> float: return float(st.get("energy", 0.0))), 0, " MW", false])
+	specs.append(["Labour", _outlined(Parts.raised("econ_icon_labour", ROW_ICON_PX), "Labour a turn"),
+		levels.map(func(st: Dictionary) -> float: return float(st.get("labour", 0.0))), 2, "£", false])
+	specs.append(["Upkeep", _outlined(Parts.raised("econ_icon_upkeep", ROW_ICON_PX), "Upkeep a turn"),
+		levels.map(func(st: Dictionary) -> float: return float(st.get("maintenance", 0.0))), 2, "£", false])
+	specs.append(["Land", _outlined(LandIcon.new(ROW_ICON_PX), "Land the building takes"),
+		levels.map(func(st: Dictionary) -> float: return float(st.get("size", 0.0))), 0, "", false])
+	# One scale for every bar: the most any row reaches at any level, against its figure now.
+	var reach := 1.0
+	for spec: Array in specs:
+		var cur := float(spec[2][from_level - 1])
+		if cur > 0.0:
+			for v in spec[2]:
+				reach = maxf(reach, float(v) / cur)
+	for spec: Array in specs:
+		vb.add_child(_track_row(str(spec[0]), spec[1], spec[2], from_level, target, int(spec[3]), str(spec[4]), bool(spec[5]), reach))
 	if unit_cost.has("cur") and unit_cost.has("new"):
 		var cc := float(unit_cost.get("cur", 0.0))
 		var cn := float(unit_cost.get("new", 0.0))
@@ -392,6 +421,28 @@ func _per_turn(from_level: int, target: int, unit_cost: Dictionary) -> Control:
 		row.add_child(Parts.money("%.2f" % cn, DS.PALETTE["OK"] if cn <= cc else DS.PALETTE["DANGER"], MONEY_DIGITS))
 		vb.add_child(row)
 	return sec
+
+
+## An icon that isn't a good, in a cream outline with rounded corners a good's size, so it stands in the icon
+## column as a good's well does.
+func _outlined(icon: Control, tip: String) -> PanelContainer:
+	var box := PanelContainer.new()
+	box.custom_minimum_size = Vector2(Metrics.GOOD_ICON, Metrics.GOOD_ICON)
+	box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0, 0, 0, 0)
+	st.border_color = UIHelpers.PILL_PAPER
+	st.set_border_width_all(OUTLINE_W)
+	st.set_corner_radius_all(OUTLINE_RADIUS)
+	box.add_theme_stylebox_override("panel", st)
+	var center := CenterContainer.new()
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	center.add_child(icon)
+	box.add_child(center)
+	box.tooltip_text = tip
+	box.mouse_filter = Control.MOUSE_FILTER_PASS
+	return box
 
 
 ## The table's captions over its columns.
@@ -415,7 +466,7 @@ func _table_head(from_level: int, target: int) -> HBoxContainer:
 ## A row: the icon in the icon column, the figure now and at `target` in large print, the level bar and the
 ## change. A gain (`more_is_better`) lights green as it grows; a cost lights red.
 func _track_row(row_name: String, icon: Control, values: Array, from_level: int, target: int, decimals: int, unit: String,
-		more_is_better: bool) -> HBoxContainer:
+		more_is_better: bool, reach: float) -> HBoxContainer:
 	var cur := float(values[from_level - 1])
 	var nxt := float(values[target - 1])
 	var tone: Color = DS.PALETTE["TEXT"]
@@ -429,9 +480,10 @@ func _track_row(row_name: String, icon: Control, values: Array, from_level: int,
 		tone = DS.PALETTE["OK"] if more_is_better else DS.PALETTE["DANGER"]
 	var row := HBoxContainer.new()
 	row.name = row_name
+	row.custom_minimum_size.y = Metrics.GOOD_ICON
 	row.add_theme_constant_override("separation", 12)
 	var box := CenterContainer.new()
-	box.custom_minimum_size = Vector2(float(Metrics.GOOD_ICON), float(Metrics.GOOD_ICON) if icon.custom_minimum_size.y >= Metrics.GOOD_ICON else ROW_ICON_PX + 8.0)
+	box.custom_minimum_size = Vector2(Metrics.GOOD_ICON, Metrics.GOOD_ICON)
 	box.add_child(icon)
 	row.add_child(box)
 	var money := unit == "£"
@@ -449,7 +501,8 @@ func _track_row(row_name: String, icon: Control, values: Array, from_level: int,
 	track.values = values
 	track.now_level = from_level
 	track.next_level = target
-	track.step_colour = tone
+	track.reach = reach
+	track.step_colour = Color("#3fb265") if tone == DS.PALETTE["OK"] else (Color("#b03026") if tone == DS.PALETTE["DANGER"] else Color("#8d949e"))
 	track.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	track.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(track)
@@ -462,12 +515,6 @@ func _track_row(row_name: String, icon: Control, values: Array, from_level: int,
 	c.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(c)
 	return row
-
-
-func _tipped(c: Control, tip: String) -> Control:
-	c.tooltip_text = tip
-	c.mouse_filter = Control.MOUSE_FILTER_PASS
-	return c
 
 
 ## A framed section with its raised heading.
@@ -536,34 +583,57 @@ func _turns(n: int) -> String:
 	return "%d turn%s" % [n, "" if n == 1 else "s"]
 
 
-## A figure at every level on one linear scale, the largest level filling the bar: lit to the level now, the
-## next level's step in `step_colour`, the rest dark, a tick where each level stands.
+## A figure's bar on the tile view's metering screens (the Power and Stock tabs' mini screen and glass): this
+## level lit grey, always the same length (1 on a scale running to `reach`, shared by every row), the next
+## level's step after it in `step_colour` (green where it helps, red where it costs), dark beyond; a notch
+## where each level stands.
 class LevelTrack extends Control:
+	const Nine := preload("res://scripts/bdp_v3_nine.gd")
+	const SCREEN: Texture2D = preload("res://assets/ui/bdp_v3/mini_screen.png")
+	const GLASS: Texture2D = preload("res://assets/ui/bdp_v3/mini_screen_glass.png")
+	const CAPTURE_SCALE := 1.875
+	const MARGIN := 8.0
+	const RIM := 7.0
+	const RADIUS := 5.0
+	const PANE := Color("#0b0d10")
+	const BAR_H := 18.0
+	const GREY := Color("#8d949e")
 	var values: Array = []
 	var now_level := 1
 	var next_level := 2
+	var reach := 1.0
 	var step_colour := Color.WHITE
 
 	func _init() -> void:
-		custom_minimum_size = Vector2(120, TRACK_H)
+		custom_minimum_size = Vector2(120, BAR_H + 4.0)
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+
+	func _slice(r: Rect2, c: Color) -> void:
+		if r.size.x <= 0.0:
+			return
+		draw_rect(r, c)
+		draw_rect(Rect2(r.position, Vector2(r.size.x, r.size.y * 0.35)), Color(1, 1, 1, 0.12))
+		draw_rect(Rect2(r.position + Vector2(0.0, r.size.y * 0.75), Vector2(r.size.x, r.size.y * 0.25)), Color(0, 0, 0, 0.18))
 
 	func _draw() -> void:
-		var top := 0.0
-		for v in values:
-			top = maxf(top, float(v))
-		var bar := Rect2(Vector2(0, 2), Vector2(size.x, size.y - 4))
-		draw_rect(bar, Color(0, 0, 0, 0.45))
-		draw_rect(bar, Color(1, 1, 1, 0.18), false, 1.0)
-		if top <= 0.0 or values.size() < next_level:
-			return
-		var x_now := bar.size.x * float(values[now_level - 1]) / top
-		var x_next := bar.size.x * float(values[next_level - 1]) / top
-		draw_rect(Rect2(bar.position, Vector2(x_now, bar.size.y)), Color("#c9ced6"))
-		if x_next > x_now:
-			draw_rect(Rect2(bar.position + Vector2(x_now, 0), Vector2(x_next - x_now, bar.size.y)), step_colour)
-		elif x_next < x_now:
-			draw_rect(Rect2(bar.position + Vector2(x_next, 0), Vector2(x_now - x_next, bar.size.y)), Color(step_colour, 0.55))
-		for v in values:
-			var x := roundf(bar.size.x * float(v) / top)
-			draw_line(Vector2(x, 0), Vector2(x, size.y), Color(1, 1, 1, 0.85), 1.5)
+		var bar := Rect2(Vector2(0.0, (size.y - BAR_H) * 0.5), Vector2(size.x, BAR_H))
+		var corner := (MARGIN + RIM + RADIUS + 2.0) * 2.0 / CAPTURE_SCALE
+		Nine.paint(self, SCREEN, bar.grow(MARGIN / CAPTURE_SCALE), corner)
+		var pane := bar.grow(-RIM / CAPTURE_SCALE)
+		draw_rect(pane, PANE)
+		if values.size() >= next_level and float(values[now_level - 1]) > 0.0 and reach > 0.0:
+			var cur := float(values[now_level - 1])
+			var unit := pane.size.x / reach
+			var x_now := unit
+			var x_next := unit * float(values[next_level - 1]) / cur
+			_slice(Rect2(pane.position, Vector2(minf(x_now, x_next), pane.size.y)), GREY)
+			if x_next > x_now:
+				_slice(Rect2(pane.position + Vector2(x_now, 0.0), Vector2(x_next - x_now, pane.size.y)), step_colour)
+			elif x_next < x_now:
+				_slice(Rect2(pane.position + Vector2(x_next, 0.0), Vector2(x_now - x_next, pane.size.y)), Color(step_colour, 0.6))
+			for v in values:
+				var x := roundf(pane.position.x + unit * float(v) / cur) + 0.5
+				if x < pane.end.x - 1.0:
+					draw_line(Vector2(x, pane.position.y), Vector2(x, pane.end.y), Color(0, 0, 0, 0.7), 1.0)
+		Nine.paint(self, GLASS, bar.grow(MARGIN / CAPTURE_SCALE), corner)

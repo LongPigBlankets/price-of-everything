@@ -39,6 +39,8 @@ Every figure is the row model the v2 ledger already computes (`_row_vm`: CostSol
 
 **The owner's second review (26 September), built.** The upgrade panel's Per turn is a row a thing led by its icon (a good in its well for each output and input, the raised power, labour and upkeep icons, the land hex), the figure at this level and the next in 20 px print, the change, and a bar on one linear scale across every level (lit to now, the next step green where it helps and red where it costs, a tick at each level). Research still needed is the research icon, a red lamp, its name and a View Research key; land is the land hex, a lamp and "Need X. Only Y available. Buy more or demolish other buildings to make room." (green, with what is free, when it fits); then the clock and the time. One Upgrade key and Cancel, beside the materials dial: Order from market (the port, first), Use materials on tile (a hex with the warehouse), Move materials from other tiles (two hexes), each lit only where it can be done (`assets/icons/ui_icons/ds2/`).
 
+**Third review (26 September), built.** The icons that aren't goods (the bolt, labour, upkeep, the land hex, all in the good tiles' cream) stand in a cream outline a good's size, so every Per turn row is a good's height. Its bars are the tile view's metering screens, and this level is the same grey length in every row with the next step running on from it on one scale, so the rows that grow most run furthest. Per turn sits on the black plastic case. Materials are three to a row with the Source dial and the market price on the right.
+
 ## Open decisions (owner)
 
 1. **Default.** Keep behind the switch until approved, then make it the default with `toggle ledger ds2` switching back, as the top bar and tile view did?
