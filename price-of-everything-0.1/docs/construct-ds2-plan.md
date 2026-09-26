@@ -1,0 +1,117 @@
+# Construct panel: how it is used, what it holds, and a DS2 arrangement
+
+Status: planning, 26 September 2026. Nothing of the DS2 look is built. Done so far: the engine helpers every stage will read (`scripts/construction_rules.gd`, proven against the real build by `tests/construction_rules_parity.tscn`), and the construction credit facility removed (owner, 26 September: a stopgap from before the Logistics Intermediary). Two concept studies are being rendered for the owner to choose between (§5).
+
+Read with `docs/ds2-theme.md` (the look, the kit, the method in §13 and §14) and `docs/ds2-owner-decisions.md` (settled rulings). The tile view's plan (`docs/tile-view-ds2-plan.md`) is the model for this one.
+
+## 0. The brief
+
+The owner, 26 September 2026: the construct flow has several screens and many scenarios; tackle it after the DS2 top bar, tile view, upgrade panel and ledger. First evaluate the credit option (removed), then build the engine helpers from the identified flows (done), then the look. The owner suggests **either a works office or a construction lot with its crane** as the metaphor, and wants **one width across every stage** instead of the old panel's seesaw (560 px browsing, 448 px confirming, 510 px for some buildings).
+
+## 1. How it is used
+
+### 1.1 The ways in
+
+| Way in | State passed | Lands on |
+|---|---|---|
+| Bottom menu Construct, or C | nothing | catalogue, no site |
+| Tile view Build key (Buildings tab) | the tile | catalogue filtered to what the tile allows; Confirm builds there |
+| Tile view Power tab: Build power, Reduce intermittency | the tile, the Power filter, a "Battery" search | the same, filtered |
+| Market row Expand; a deposit's Build key with no single option; the tutorial | an output good | catalogue filtered to that good (the filter is invisible today) |
+| Esc during the map pick | the building and recipe | the confirm stage restored |
+
+Paths that build **without** the panel: the search overlay's Build (straight to the map pick), a deposit's Build key with one option (builds at once), the tile view's infrastructure keys, the tutorial's build actions. Owner decision 3 asks whether they should go through the build order.
+
+### 1.2 The stages today
+
+1. **Catalogue**: building cards (icon, name, price), a search field, nine single-select category chips, a locked Blueprint tab; a card opens to its recipe rows.
+2. **Confirm**: three layouts. The v3 confirm for a recipe (requirements, settings for intermittent power, timeline and payback, materials table, totals, recipe, cash after, Confirm with its reason, a materials source accordion); the old layout for infrastructure (purpose, level stats, materials, a land tickbox); the old layout behind a toggle.
+3. **Settings**: output destination, material source, start at half capacity, auto-buy land, expanded recipe cards.
+4. **Map pick** (no site chosen): the panel closes, the map shades, a hover card quotes the tile.
+
+Captures of every stage and state as it stands: `tools/construct_flow_shot.tscn` (to be moved into the repo with the flag, Phase 0).
+
+## 2. The scenarios
+
+What changes what the player sees. Most are rows and lamps, not layouts; the engine answers each one (`ConstructionRules.quote()`), so a stage shows the verdict and the figures the build acts on.
+
+| Scenario | Decided by | Shows as |
+|---|---|---|
+| Site known or not | the way in | with a site: verdicts, freight, land, forecast; without: estimates and "chosen on the map" |
+| Research locked recipe or building | `recipe_offer`, `building_offer` | hidden, as today |
+| Terrain (sea, offshore) | `recipe_offer`, `site_check` | not offered on that tile |
+| Deposit known missing, or unsurveyed | `requirement_block`, `blind_deposit` | refused, or a blind build warning |
+| Land: enough, buys, short, cannot buy, tile full | `land_plan` | a land line with its lamp; the buy intent |
+| Planning limit passed | `land_plan.density_multiplier` | the fee 50% higher, said once |
+| Material source and its research gates | `material_source` | the source, and a note when a gate changes it |
+| Kit on the tile, bought, from a surplus tile, missing | `materials_quote` | each good's line and the materials figure |
+| Cables or pipes missing | `site_needs` | advisory lamps |
+| Intermittent power | `is_intermittent` | the supply choice |
+| Not enough cash | `quote().blocks` | the spend key refused with the reason |
+| Infrastructure (tendering, already there, in progress, roads on sea) | `quote()` with no recipe | the same order, levels instead of a forecast |
+| Tutorial board | `quote().blocks` | refused off the board |
+| Demo ruleset | `BuildForecastTable.show_balance_impact()` | payback only |
+
+The parity check runs 31 of these through the real build and the helper, 96 checks.
+
+## 3. Findings
+
+1. **The same build is priced four ways.** Browse (base price plus the kit at buy price), the refusal toast, Confirm (the ledger) and the hover card each add it up differently; none matches the fee the build charges (base times the planning multiplier less the rebate). Fixed at the source: `quote()`.
+2. **A refused build can report success.** From the tile's Build, Confirm says "Building X on Y" and closes when the map refuses for anything but space (a bad deposit, sea, a missing kit under the same tile source).
+3. **Land bought for a refused build is kept.** The build buys land before it checks the kit and the cash.
+4. **The width seesaws** between stages (560, 448, 510).
+5. **Infrastructure uses the old confirm**, and is offered without checking Infrastructure Tendering.
+6. **The goods filter is invisible** and cannot be cleared.
+7. **Picking a material source without Remember** leaves the totals stale, and the pick carries to the next build anywhere.
+8. **Railways on sea** pass the sea rule (it checks `rail`, the building is `rails`).
+9. **Confirm's materials figure** skips the import licence rule and the intermediary's free units.
+10. **The Blueprint tab** is a locked stub.
+
+## 4. The arrangement
+
+**Principles.** One width for every stage. Each stage a body in one shell, swapped in place (as the tile view's tabs are), never a panel that resizes. Every figure and every refusal from `quote()`. Show only what informs (a section with nothing to say is not drawn).
+
+**Proposed flow: two stages and a sheet.**
+
+1. **Catalogue**: buildings by category, search, the goods filter shown as a removable tag. A building opens to its recipes; a recipe opens the order. Infrastructure is in the catalogue like any building.
+2. **Build order** (one layout for everything): a fixed head (what, where, the total, turns to build, the spend key with its reason), then the sections that inform: requirements (lamps: land, cables, pipes, deposit, tutorial), money (materials, fee, land, total, cash after), the outlook (payback, the timeline outside the demo), materials (goods in wells, on tile, elsewhere, bought), recipe. Infrastructure swaps the outlook for its levels; intermittent power adds its supply choice; no site says the site is chosen on the map.
+3. **Settings as a sheet** sliding over either stage (the DS2 sheet pattern), since they are company defaults, not a step.
+4. **Map pick**: the hover card becomes a dot card (`scripts/ds2/dot_card.gd`) reading `quote()`, or the order stays open and follows the hovered tile (owner decision 4).
+
+## 5. DS2 treatment: two concepts
+
+Rendered side by side on the real surface, catalogue and build order at the same width (600 logical px), for the owner to choose.
+
+- **Works office** (render set `constructoffice`, seed 433, study only): the catalogue is a steel plan chest, a drawer per building with a brass card holder, its raised emblem and price on an LED; the build order is a white plastic works order clipped to a steel board, lamps for requirements, goods in wells, the money column on LEDs in a dark plate, turns on a drum counter, the guarded Build key.
+- **Construction lot with its crane** (render set `constructlot`, seed 434, study only): the panel is a site hoarding in navy painted steel with a yellow lattice crane along its top, the title in its cab; the catalogue is enamel site boards bolted to the hoarding; the build order is the lot, the site board lowered on the hook, the plot taped off with the land it takes, materials on pallets, lamps on a site power pillar, the money on LEDs in the site cabin, turns on the cab's drum counter, the guarded Build key.
+
+Studies: `artifacts/construct_ds2/` once rendered.
+
+## 6. Numbers first (done)
+
+`scripts/construction_rules.gd`: `catalogue`, `recipe_offer`, `building_offer`, `site_check`, `requirement_block`, `blind_deposit`, `land_plan`, `material_source`, `materials_quote`, `build_fee`, `infrastructure_fee`, `site_needs`, `is_intermittent`, `quote`. The build (`world_map.gd`) calls its requirement, land, source and fee rules. Unit test `_test_construction_rules`; parity `tests/construction_rules_parity.tscn` (headless; exits 1 on any disagreement). The panel, the map overlay and the hover card still carry their own copies until the DS2 stages read `quote()`.
+
+## 7. Phases
+
+| Phase | What | Size |
+|---|---|---|
+| 0. Measure | the flag `UiPrefs.use_construct_ds2` and `toggle construct ds2`; the capture tool in the repo with a view per scenario of §2; the first standard of today's look | S |
+| 1. Concept | the two studies; the owner picks; the numbered decisions answered | S |
+| 2. Shell | backing, title, the stage switch, seam, scroll, lamp overlay; the one width | M |
+| 3. Build order | first, since money moves there and it has the most branches; reads `quote()`; replaces the old infrastructure layout | L |
+| 4. Catalogue | cards, categories, search, the goods filter tag | M |
+| 5. Settings sheet, map card | the sheet; the hover card as a dot card on `quote()` | M |
+| 6. Default | the owner's review rounds; the standard saved; the flag on by default | S |
+
+Each body is reviewed against §2's scenarios, up to three rounds, as the tile view's were. Tutorial and test handles kept: `ConstructPanelV2`, `BuildingCard_<id>`, `RecipeRow_<id>`, `BuildConfirmButton`, `ConstructionMaterialsSection`, `expand_building()`.
+
+## 8. Decisions for the owner
+
+1. **Metaphor**: works office or construction lot with its crane (studies, §5).
+2. **Width**: one width for every stage (decided); 600 logical px proposed (the tile view is 800, Building Detail 460, the upgrade panel 780).
+3. **Paths that skip the panel** (search Build, a deposit's Build key, the tile view's infrastructure keys): through the build order, or stay quick builds?
+4. **Map pick**: the build order stays open and follows the hovered tile, or a separate hover card as a dot card?
+5. **Blueprint tab**: cut, or planned?
+6. **Settings as a sheet** over the stages rather than a stage of its own?
+7. **Findings 2, 3 and 8** are engine bugs: fix them now, separately from the look?
+8. **Credit facility**: removed (decided, 26 September 2026).
