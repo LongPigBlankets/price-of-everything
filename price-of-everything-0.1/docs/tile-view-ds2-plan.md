@@ -1,6 +1,6 @@
 # Tile View: how it is used, what it holds, and a DS2 arrangement
 
-Status: PLAN, revised 24 September 2026 after the top bar. The owner has decided §8 (answers written beside each). Built: §6's figures (yours only, from the engine), links that open their tab, and the stock controls shown only where you own land or have goods (Phase 1 in part, commit 1680e87b). The concept for the look is §9; nothing of it is built yet.
+Status: v3 (the control cabinet, §9) is the DEFAULT since 26 September 2026; the cheat `toggle tvp v3` switches back to v2, which is then exactly as it was. Plan revised 24 September 2026 after the top bar. The owner has decided §8 (answers written beside each). Built: §6's figures (yours only, from the engine), links that open their tab, and the stock controls shown only where you own land or have goods (Phase 1 in part, commit 1680e87b). The concept for the look is §9; nothing of it is built yet.
 
 The owner's settled decisions for this panel and the top bar are collected in `docs/ds2-owner-decisions.md`. Read with `docs/ds2-theme.md` (now on main; §13 is the method as used on the top bar), `docs/bdp-v3-roadmap.md` and `docs/top-bar-ds2-plan.md`. The bar is 60 px with no notch and the panels under it start at y 72 instead of 114, so this panel has already gained 42 px at its top.
 

@@ -598,6 +598,9 @@ func _test_tile_view_numbers_and_links() -> void:
 	BuildingState.buildings.erase("tvn_npc")
 
 func _test_tile_view_player_building_filter() -> void:
+	# The filter is the v2 panel's; v3 has no NPC section of its own yet.
+	var was_v3: bool = UiPrefs.use_tvp_v3
+	UiPrefs.set_use_tvp_v3(false)
 	MatchState.reset()
 	Stockpile.clear_all()
 	var terrain := TileMapLayer.new()
@@ -617,6 +620,7 @@ func _test_tile_view_player_building_filter() -> void:
 		panel.queue_free()
 		terrain.queue_free()
 		await get_tree().process_frame
+		UiPrefs.set_use_tvp_v3(was_v3)
 		return
 	BuildingState.add_building("b_001", "r_001", tile_id, MatchState.LOCAL_PLAYER, "tv_filter_player")
 	BuildingState.add_building("b_001", "r_001", tile_id, "npc", "tv_filter_npc_1")
@@ -653,6 +657,7 @@ func _test_tile_view_player_building_filter() -> void:
 	panel.queue_free()
 	terrain.queue_free()
 	await get_tree().process_frame
+	UiPrefs.set_use_tvp_v3(was_v3)
 
 ## Chimney counts per industry (owner spec 2026-08-27), pinned because they are a design
 ## decision rather than a derived number — nothing else in the code would notice if a

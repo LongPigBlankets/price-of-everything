@@ -11,7 +11,7 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **Figures come from the engine's own helpers**; the lamp and the words that explain it come from one status helper, so they cannot disagree.
 - **Copy**: plain and brief, no hyphens, semicolons, dashes or middle dots; the owner's wording where given (below).
 
-## Top bar (`toggle topbar ds2`)
+## Top bar (the default; `toggle topbar ds2` switches back to v3.1)
 
 - **60 px**, one height, no notch. Panels under it start at y 72.
 - **Material**: the standard DS2 weathered navy steel. No brass. A steel **H-beam** runs along the foot (two raised flanges, the web recessed and bolted, little rust). Tried and rejected: brushed titanium, a navy lacquered sheet, a silver pipe along the foot.
@@ -35,7 +35,7 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - Every toast is a row in a slide-out over a 60 px dock that collapses after 5 s; the **white countdown line** runs across all shown rows.
 - A **fountain pen** for decisions (opens the briefing), then **green, amber and red bells**; each bell **filters** the slide-out to its rows. Research unlocks are green rows at the top ("Unlocked: <name>"); notices are amber rows. The briefing notch in the top bar is gone. The auto bridge loan posts once.
 
-## Tile view (`toggle tvp v3`)
+## Tile view (the default; `toggle tvp v3` switches back to v2)
 
 - **The concept is the site's control cabinet** (`docs/tile-view-ds2-plan.md` §9): a **brushed stainless** backing, a **black pipe** round its edge, metal and plastic parts, **cables joining building cards of the same group**.
 - **Five latching keys**: Buildings, Power, Goods, Stock and Transport (infrastructure moves out of Buildings into its own tab).
