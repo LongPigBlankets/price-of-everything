@@ -19,10 +19,13 @@ extends "res://scripts/upgrade_dialog.gd"
 ##                 so the rows that grow most run furthest; then a unit's cost to make, now and then
 ##   research      when the next level waits for research: the research icon, a red lamp, the research's
 ##                 name and a View Research key
-##   land          the land hex and a lamp: what the larger building needs and what is free
+##   land          the land hex and a lamp: what the larger building needs and what is free, and the land the
+##                 upgrade buys to close the gap (its price in the Materials plate's price, "Land Purchase" on hover)
 ##   the foot      the clock and how long it takes; the Upgrade and Cancel keys
 ## While an upgrade runs: an amber lamp, how long is left, and Cancel upgrade and Close. At the top level:
 ## a line saying so and Close.
+## The sheet opens in the same place every time, centred with its top on the screen; its head drags it, and
+## it is kept on the screen.
 
 const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
 const Metrics := preload("res://scripts/ds2/metrics.gd")
@@ -90,6 +93,8 @@ const CHANGE_CELLS := 5
 const CHANGE_PITCH := 2.0
 const CHANGE_W := 70.0
 const MONEY_DIGITS := 6
+## The least room kept between the sheet and the screen's edges.
+const SCREEN_MARGIN := 16.0
 
 
 func _build_shell() -> void:
@@ -106,15 +111,15 @@ func _build_shell() -> void:
 	scrim.mouse_filter = Control.MOUSE_FILTER_STOP
 	scrim.gui_input.connect(_on_scrim_input)
 	add_child(scrim)
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(center)
 	_card = PanelContainer.new()
 	_card.name = "UpgradeSheet"
 	_card.custom_minimum_size = Vector2(WIDTH, 0)
 	_card.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
-	center.add_child(_card)
+	add_child(_card)
+	# Placed by hand, not centred by a container: the sheet grows after it is built (the impact case takes its
+	# height a frame later) and a container left it where the shorter sheet stood.
+	_card.minimum_size_changed.connect(_place)
+	resized.connect(_place)
 	var backing: Control = Nine.make("panel_backing", BACKING_CORNER)
 	_card.add_child(backing)
 	var margin := MarginContainer.new()
@@ -140,6 +145,60 @@ var _price: Control = null
 var _note: Label = null
 ## Whether See more is open, kept while the panel is rebuilt.
 var _detail_open := false
+## Whether the sheet has been dragged since it opened, and the drag's hold on it.
+var _moved := false
+var _dragging := false
+var _drag_from := Vector2.ZERO
+
+
+func open(instance_id: String) -> void:
+	_moved = false
+	_dragging = false
+	super.open(instance_id)
+	_place()
+	_place.call_deferred()
+
+
+## Centred, its top on the screen, until it is dragged; then where it was dropped. Always kept on the screen.
+func _place() -> void:
+	if _card == null:
+		return
+	_card.reset_size()
+	var at := _card.position if _moved else ((size - _card.size) * 0.5).floor()
+	_card.position = Vector2(
+		clampf(at.x, SCREEN_MARGIN, maxf(SCREEN_MARGIN, size.x - _card.size.x - SCREEN_MARGIN)),
+		clampf(at.y, SCREEN_MARGIN, maxf(SCREEN_MARGIN, size.y - _card.size.y - SCREEN_MARGIN)))
+
+
+## The head drags the sheet (its Close key still closes it).
+func _input(event: InputEvent) -> void:
+	if not visible or _card == null:
+		return
+	if event is InputEventMouseButton and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+		var press := event as InputEventMouseButton
+		if press.pressed and _on_head(press.position):
+			_dragging = true
+			_drag_from = _card.position - press.position
+			get_viewport().set_input_as_handled()
+		elif not press.pressed and _dragging:
+			_dragging = false
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseMotion and _dragging:
+		_moved = true
+		_card.position = (event as InputEventMouseMotion).position + _drag_from
+		_place()
+		get_viewport().set_input_as_handled()
+
+
+## Whether `at` is on the sheet's head (from the sheet's top to the head's foot), off its Close key.
+func _on_head(at: Vector2) -> bool:
+	var head := _content.find_child("UpgradeHead", false, false) as Control
+	if head == null:
+		return false
+	var sheet := _card.get_global_rect()
+	var band := Rect2(sheet.position, Vector2(sheet.size.x, head.get_global_rect().end.y - sheet.position.y))
+	var close_key := head.find_child("CloseKey", true, false) as Control
+	return band.has_point(at) and not (close_key != null and close_key.get_global_rect().has_point(at))
 
 
 func _rebuild() -> void:
@@ -198,7 +257,8 @@ func _sources(p: Dictionary) -> Array:
 
 
 ## What the chosen source costs: the market's goods and freight, the stockpiles' freight, or nothing (a
-## building's upgrade has no fee; its price is its materials). {total, lines: [[words, figure]]}.
+## building's upgrade has no fee; its price is its materials), and the land it buys whatever the source.
+## {total, lines: [[words, figure]], caption}.
 func _source_cost(p: Dictionary, mode: String) -> Dictionary:
 	var lines: Array = []
 	var total := 0.0
@@ -220,9 +280,14 @@ func _source_cost(p: Dictionary, mode: String) -> Dictionary:
 				total += float(move.transport)
 			for gid in (plan.get("left", {}) as Dictionary):
 				lines.append(["%d %s not found, not bought" % [int(plan.left[gid]), Catalog.get_display_name(str(gid))], 0.0])
+	var land_cost := float(p.get("land_cost", 0.0))
+	if int(p.get("land_units", 0)) > 0:
+		lines.append(["Land Purchase: %s land" % _land(float(p.get("land_units", 0))), land_cost])
+		total += land_cost
 	if lines.is_empty():
 		lines.append(["Nothing to pay: the materials come from this tile", 0.0])
-	return {"total": total, "lines": lines}
+	return {"total": total, "lines": lines,
+		"caption": "Cost of the upgrade" if int(p.get("land_units", 0)) > 0 else "Cost of the materials"}
 
 
 ## The materials dial: where the next level's materials come from, market first, each option lit only where it
@@ -318,7 +383,7 @@ func _research_line(gate: String) -> HBoxContainer:
 
 
 ## The land the larger building needs against what is free on the tile (the ground left, and of it what you
-## own), green when it fits.
+## own), green when it fits; short of owned land, the land the upgrade buys and its price.
 func _land_line(building: Dictionary, p: Dictionary) -> HBoxContainer:
 	var tile := str(building.get("tile_id", ""))
 	var need := float(p.get("size_delta", 0.0))
@@ -334,11 +399,14 @@ func _land_line(building: Dictionary, p: Dictionary) -> HBoxContainer:
 	line.add_child(_lamp("ok" if fits else "bad"))
 	# The land free against the land the larger building needs; the hover says what that means and, short of
 	# room, what to do.
-	var said := _body("%s/%s available" % [_land(free), _land(need)])
+	var buys := int(p.get("land_units", 0))
+	var bought := "Buys %s land for £%.2f." % [_land(float(buys)), float(p.get("land_cost", 0.0))]
+	var said := _body("%s/%s available" % [_land(free), _land(need)] + ((". " + bought) if buys > 0 else ""))
 	said.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	said.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	line.add_child(said)
 	line.tooltip_text = ("The larger building needs %s more land and %s is free." % [_land(need), _land(free)]) \
+		+ ((" The upgrade %s It is in the price." % bought.replace("Buys", "buys")) if buys > 0 else "") \
 		+ ("" if fits else " Demolish other buildings to make room.")
 	line.mouse_filter = Control.MOUSE_FILTER_STOP
 	return line
@@ -498,7 +566,7 @@ static func breakdown_plate(cost: Dictionary) -> Control:
 	host.add_child(plate)
 	var vb: VBoxContainer = plate.get("content")
 	vb.add_theme_constant_override("separation", 6)
-	vb.add_child(Parts.caption("Cost of the materials", 16))
+	vb.add_child(Parts.caption(str(cost.get("caption", "Cost of the materials")), 16))
 	for line: Array in cost.get("lines", []):
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 24)
@@ -697,13 +765,13 @@ func _per_turn_rows(vb: VBoxContainer, levels: Array, from_level: int, target: i
 		levels.map(func(st: Dictionary) -> float: return float(st.get("maintenance", 0.0))), 2, "£", false, []])
 	specs.append(["Land", _tipped(LandIcon.new(METRIC_ICON_PX), "Land the building takes"),
 		levels.map(func(st: Dictionary) -> float: return float(st.get("size", 0.0))), 0, "", false, []])
-	# One scale for every bar: the most any row reaches at any level, against its figure now.
+	# One scale for every bar, running to the largest change: the most any row reaches at the next level,
+	# against its figure now. That row's bar runs the screen's full length.
 	var reach := 1.0
 	for spec: Array in specs:
 		var cur := float(spec[2][from_level - 1])
 		if cur > 0.0:
-			for v in spec[2]:
-				reach = maxf(reach, float(v) / cur)
+			reach = maxf(reach, float(spec[2][target - 1]) / cur)
 	for spec: Array in specs:
 		vb.add_child(_track_row(str(spec[0]), spec[1], spec[2], from_level, target, int(spec[3]), str(spec[4]), bool(spec[5]), reach, spec[6]))
 		# A cut in the plastic between what the building makes and what it takes.
@@ -888,7 +956,7 @@ func _turns(n: int) -> String:
 ## A figure's bar on the tile view's metering screens (the Power and Stock tabs' mini screen and glass): this
 ## level lit grey, always the same length (1 on a scale running to `reach`, shared by every row), the next
 ## level's step after it in `step_colour` (green where it helps, red where it costs), dark beyond; a notch
-## where each level stands.
+## where each level on the scale stands.
 class LevelTrack extends Control:
 	const Nine := preload("res://scripts/bdp_v3_nine.gd")
 	const SCREEN: Texture2D = preload("res://assets/ui/bdp_v3/mini_screen.png")

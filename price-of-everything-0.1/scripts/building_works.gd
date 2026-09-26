@@ -110,6 +110,23 @@ func _fits_reason(tile_id: String, delta: float, fits_physical: bool, fits_owned
 func land_text(v: float) -> String:
 	return str(int(round(v))) if absf(v - round(v)) < 0.05 else "%.1f" % v
 
+## The land an upgrade buys to close the gap between the player's estate on the tile and the larger building,
+## in whole patches as construction buys it: {units, patches, cost}. Units are 0 when the estate already has
+## the room, automatic land buying is off, or the tile doesn't have that much for sale.
+func upgrade_land_purchase(tile_id: String, delta: float) -> Dictionary:
+	var none := {"units": 0, "patches": 0, "cost": 0.0}
+	var short := BuildingState.get_tile_player_space_used(tile_id) + delta - float(BuildingState.get_tile_land_owned(tile_id))
+	if short <= 0.0 or not MatchState.construct_auto_buy_land:
+		return none
+	var patches := ceili(short / float(BuildingState.LAND_PATCH_SIZE))
+	if patches > BuildingState.get_tile_land_patches_available(tile_id):
+		return none
+	var units := mini(patches * BuildingState.LAND_PATCH_SIZE, BuildingState.get_tile_land_units_available(tile_id))
+	if float(units) < short:
+		return none
+	return {"units": units, "patches": patches,
+		"cost": AdvisorState.purchase_cost_after_advisor(float(patches) * BuildingState.LAND_PATCH_COST, {"tile_id": tile_id})}
+
 func _upgrade_size_delta(building_id: String, from_level: int, target: int) -> float:
 	var base_size := float(Catalog.get_building(building_id).get("tile_size_used", 1.0))
 	return base_size * (BuildingLevels.mult("size", target) - BuildingLevels.mult("size", from_level))
@@ -535,7 +552,9 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 	var projected_player := BuildingState.get_tile_player_space_used(tile_id) + delta
 	var fits_physical: bool = projected <= float(BuildingState.max_tile_land(tile_id))
 	var fits_owned: bool = projected_player <= float(BuildingState.get_tile_land_owned(tile_id))
-	var fits: bool = fits_physical and fits_owned
+	# Short of owned land but not of room, the upgrade buys the gap.
+	var land := upgrade_land_purchase(tile_id, delta) if fits_physical and not fits_owned else {}
+	var fits: bool = fits_physical and (fits_owned or int(land.get("units", 0)) > 0)
 
 	var gate := BuildingLevels.research_gate(internal, target)
 	var pend := pending_upgrade(instance_id)
@@ -563,8 +582,11 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 		# WHY it does not fit, and by how much. "Not enough room" over a tile panel reading
 		# "122 owned" reads as a bug: the binding limit is usually the tile's PHYSICAL space,
 		# which counts the NPC buildings sitting on it, not the land the player owns.
-		"fits_reason": _fits_reason(tile_id, delta, fits_physical, fits_owned),
+		"fits_reason": "" if fits else _fits_reason(tile_id, delta, fits_physical, fits_owned),
 		"size_delta": delta,
+		# The land the upgrade buys to fit, and its price.
+		"land_units": int(land.get("units", 0)),
+		"land_cost": float(land.get("cost", 0.0)),
 		"already_upgrading": not pend.is_empty(),
 		"pending_turns_left": int(pend.get("turns_remaining", 0)),
 		"pending_status": str(pend.get("status", "")),
@@ -674,7 +696,10 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 	var projected_player := BuildingState.get_tile_player_space_used(tile_id) + size_delta
 	var room_physical: bool = projected <= float(BuildingState.max_tile_land(tile_id))
 	var room_owned: bool = projected_player <= float(BuildingState.get_tile_land_owned(tile_id))
-	if not (room_physical and room_owned):
+	# Short of owned land but not of room, the upgrade buys the gap (bought once everything else is cleared).
+	var land := upgrade_land_purchase(tile_id, size_delta) if room_physical and not room_owned else {}
+	var land_cost := float(land.get("cost", 0.0))
+	if not (room_physical and (room_owned or int(land.get("units", 0)) > 0)):
 		return {"ok": false, "reason": _fits_reason(tile_id, size_delta, room_physical, room_owned)}
 
 	# Split materials: what's on the tile vs the shortfall.
@@ -704,7 +729,9 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 					if quote.is_empty():
 						return {"ok": false, "reason": "No market route to deliver %s to this tile." % Catalog.get_display_name(str(gid))}
 					total += float(quote.get("cost", 0.0))
-				if total > MatchState.money:
+				if total + land_cost > MatchState.money:
+					if land_cost > 0.0:
+						return {"ok": false, "reason": "Not enough money to order the missing materials and buy the land (≈£%d)." % int(ceil(total + land_cost))}
 					return {"ok": false, "reason": "Not enough money to order the missing materials (≈£%d)." % int(ceil(total))}
 			"transfer":
 				transfer_source = Construction.find_source_tile(tile_id, shortfall)
@@ -712,6 +739,12 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 					return {"ok": false, "reason": "No single tile has the spare stock to transfer."}
 			_:
 				return {"ok": false, "reason": "Unknown sourcing mode."}
+
+	if not land.is_empty() and int(land.get("units", 0)) > 0:
+		if land_cost > MatchState.money:
+			return {"ok": false, "reason": "Not enough money to buy the land the larger building needs (≈£%d)." % int(ceil(land_cost))}
+		if not BuildingState.purchase_tile_land(tile_id, int(land.get("patches", 0))):
+			return {"ok": false, "reason": "Could not buy the land the larger building needs."}
 
 	# Cleared to commit. Reserve the in-place portion now (mirrors construction): consume what
 	# we already have so co-located production can't claim it before the upgrade does.
@@ -751,7 +784,7 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 	if up_rebate > 0.0:
 		MatchState.add_money(up_rebate)
 	building_upgrade_started.emit(instance_id, target)
-	return {"ok": true, "status": status, "target_level": target}
+	return {"ok": true, "status": status, "target_level": target, "land_bought": int(land.get("units", 0))}
 
 ## Where an upgrade's shortfall can come from without buying it: every other tile's spare stock (what it holds
 ## less what its own buildings are committed to), nearest first, as much of each good as the tiles can spare.

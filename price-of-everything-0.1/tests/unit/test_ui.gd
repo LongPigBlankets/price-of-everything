@@ -2439,6 +2439,82 @@ func _test_building_ledger_ds2() -> void:
 	await get_tree().process_frame
 
 
+## The DS2 upgrade panel with land to buy, opened twice: the price and its hover carry the Land Purchase; the
+## Per turn bars run to the largest change; the sheet opens in the same place both times with its top on the
+## screen, and its head drags it.
+func _test_upgrade_ds2_land_place_and_bars() -> void:
+	MatchState.reset()
+	Stockpile.clear_all()
+	var tile := "tile_5_10"
+	var iid := BuildingState.add_building("b_009", "", tile, "player_1", "ds2_land", false)
+	BuildingState.tile_land_owned[tile] = int(ceil(BuildingState.get_tile_player_space_used(tile)))
+	var p: Dictionary = BuildingWorks.preview_upgrade(iid)
+	var dialog: Control = load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd").new()
+	add_child(dialog)
+	dialog.call("open", iid)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var price := dialog.find_child("SourcePrice", true, false)
+	var cost: Dictionary = price.get("breakdown") if price != null else {}
+	var land_lines := (cost.get("lines", []) as Array).filter(func(l: Array) -> bool: return str(l[0]).begins_with("Land Purchase"))
+	_check(int(p.get("land_units", 0)) > 0 and land_lines.size() == 1
+		and absf(float(land_lines[0][1]) - float(p.get("land_cost", 0.0))) < 0.01,
+		"upgrade ds2 land: the price's hover has the Land Purchase at its price")
+	var summed := 0.0
+	for l: Array in cost.get("lines", []):
+		summed += float(l[1])
+	_check(absf(float(cost.get("total", 0.0)) - summed) < 0.01 and float(cost.get("total", 0.0)) >= float(p.get("land_cost", 0.0)),
+		"upgrade ds2 land: the price is the materials and the land")
+	var land_line := dialog.find_child("LandLine", true, false) as Control
+	_check(land_line != null and land_line.tooltip_text.contains("buys"),
+		"upgrade ds2 land: the land line says the upgrade buys the land")
+	# The bars: one scale, running to the largest change.
+	var tracks: Array = []
+	var stack: Array = [dialog]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n.get("reach") != null and n.get("values") != null:
+			tracks.append(n)
+		stack.append_array(n.get_children())
+	var largest := 1.0
+	for t: Control in tracks:
+		var vals: Array = t.get("values")
+		var from: int = t.get("now_level")
+		if float(vals[from - 1]) > 0.0:
+			largest = maxf(largest, float(vals[int(t.get("next_level")) - 1]) / float(vals[from - 1]))
+	_check(not tracks.is_empty() and tracks.all(func(t: Control) -> bool: return is_equal_approx(float(t.get("reach")), largest)),
+		"upgrade ds2 bars: every bar's scale runs to the largest change (%s)" % largest)
+	# The place: the same both times, the top on the screen.
+	var sheet := dialog.find_child("UpgradeSheet", true, false) as Control
+	var first := sheet.position
+	_check(first.y >= 0.0 and first.x >= 0.0 and sheet.position.x + sheet.size.x <= dialog.size.x,
+		"upgrade ds2 place: the sheet opens on the screen")
+	var head := dialog.find_child("UpgradeHead", true, false) as Control
+	var grab := Vector2(head.get_global_rect().position.x + 60.0, head.get_global_rect().get_center().y)
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = grab
+	dialog.call("_input", press)
+	var motion := InputEventMouseMotion.new()
+	motion.position = grab + Vector2(-40.0, 30.0)
+	dialog.call("_input", motion)
+	var release := press.duplicate() as InputEventMouseButton
+	release.pressed = false
+	release.position = motion.position
+	dialog.call("_input", release)
+	_check(sheet.position != first, "upgrade ds2 place: the head drags the sheet")
+	dialog.call("close")
+	dialog.call("open", iid)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(sheet.position == first, "upgrade ds2 place: opened again it stands where it first stood (%s, then %s)" % [first, sheet.position])
+	dialog.queue_free()
+	MatchState.reset()
+	Stockpile.clear_all()
+	await get_tree().process_frame
+
+
 ## The DS2 upgrade panel is the default, and its Upgrade key starts the upgrade: a building with its kit on the
 ## tile, its research and its land, the panel opened for it, the key pressed.
 func _test_upgrade_ds2_commits() -> void:

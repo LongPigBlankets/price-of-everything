@@ -2237,6 +2237,8 @@ func _test_upgrade_reserved_space_blocks() -> void:
 	# only ever prove that the tech is locked.
 	ResearchState.grant_unlock(BuildingLevels.research_gate("assembly_plant", 2))
 	BuildingState.tile_land_owned[tile] = int(ceil(BuildingState.get_tile_space_used(tile))) + 4
+	# With automatic land buying on, the upgrade would buy its way past the owned-land gate.
+	MatchState.set_construct_auto_buy_land(false, false)
 	var second: Dictionary = BuildingWorks.start_upgrade("resv_b", "tile")
 	var blocked_reason := str(second.get("reason", "")).to_lower()
 	_check(not bool(second.get("ok", false))
@@ -2273,6 +2275,46 @@ func _test_upgrade_reserved_space_blocks() -> void:
 	_check(absf(BuildingState.get_tile_space_used(tile) - (before_cancel - 12.0)) < 0.01,
 		"upgrade hold: cancelling an upgrade returns the room it was holding")
 	MatchState.reset()
+
+## An upgrade short of owned land but not of room buys the gap in whole patches, as construction does: the
+## preview prices it and lets it through, the start buys it and charges it. With automatic land buying off it is
+## refused as before.
+func _test_upgrade_buys_land() -> void:
+	MatchState.reset()
+	Stockpile.clear_all()
+	var tile := "tile_5_10"
+	var iid := BuildingState.add_building("b_009", "", tile, "player_1", "land_up", false)
+	ResearchState.grant_unlock(BuildingLevels.research_gate("assembly_plant", 2))
+	BuildingState.tile_land_owned[tile] = int(ceil(BuildingState.get_tile_player_space_used(tile)))
+	var p: Dictionary = BuildingWorks.preview_upgrade(iid)
+	var delta := float(p.get("size_delta", 0.0))
+	var units := int(p.get("land_units", 0))
+	_check(delta > 0.0 and units >= delta and units % BuildingState.LAND_PATCH_SIZE == 0,
+		"upgrade land: the preview buys at least the gap, in whole patches")
+	_check(float(p.get("land_cost", 0.0)) > 0.0 and bool(p.get("fits", false)),
+		"upgrade land: priced, and the upgrade fits with it")
+	MatchState.set_construct_auto_buy_land(false, false)
+	var off: Dictionary = BuildingWorks.preview_upgrade(iid)
+	_check(not bool(off.get("fits", true)) and int(off.get("land_units", -1)) == 0,
+		"upgrade land: with automatic land buying off it doesn't fit")
+	_check(not bool(BuildingWorks.start_upgrade(iid, "tile_wait").get("ok", false)),
+		"upgrade land: and it is refused")
+	MatchState.set_construct_auto_buy_land(true, false)
+	var owned_before := BuildingState.get_tile_land_owned(tile)
+	var money_before: float = MatchState.money
+	var need: Dictionary = {}
+	for m: Dictionary in p.get("materials", []):
+		need[str(m.good_id)] = int(m.need)
+	var rebate: float = MatchState._materials_rebate(need)
+	var started: Dictionary = BuildingWorks.start_upgrade(iid, "tile_wait")
+	_check(bool(started.get("ok", false)) and int(started.get("land_bought", 0)) == units
+		and BuildingState.get_tile_land_owned(tile) == owned_before + units,
+		"upgrade land: starting the upgrade buys the land")
+	_check(absf((money_before - MatchState.money) - (float(p.get("land_cost", 0.0)) - rebate)) < 0.01,
+		"upgrade land: and charges its price")
+	BuildingWorks.cancel_upgrade(iid)
+	MatchState.reset()
+	Stockpile.clear_all()
 
 # ── Construct confirm: buying the land is part of the decision (owner 2026-08-23) ──
 func _test_construct_land_tickbox() -> void:
