@@ -473,8 +473,10 @@ func _render_infrastructure_build_overlay(infra_type: String) -> void:
 		if _tile_has_infrastructure(tile_data, infra_key):
 			continue
 		# Infrastructure mode leaves current_building_id empty, so name the building the way
-		# world_map does when it actually places one.
-		if not _tile_has_physical_room(tile_id, infra_building_id):
+		# world_map does when it actually places one. The tile's water refuses roads, rail and
+		# pipes at sea, and cables on deep sea (Catalog.is_allowed_on_tile_type).
+		if not Catalog.is_allowed_on_tile_type(infra_type, str(tile_data.get("type", ""))) \
+				or not _tile_has_physical_room(tile_id, infra_building_id):
 			var full := _make_build_hex_marker("blocked")
 			full.position = _tile_world_pos(coord) + BUILD_TILE_VERTICAL_OFFSET
 			add_child(full)

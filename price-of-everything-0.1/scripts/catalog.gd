@@ -1171,14 +1171,19 @@ func get_building_display_name(building_id: String) -> String:
 	var b: Dictionary = _buildings_by_id.get(building_id, {})
 	return b.get("display_name", building_id)
 
-# Terrain-placement rule: sea / deep_sea tiles accept ONLY the sea-only buildings
-# (offshore wind / offshore oil); every other building is land-only and the sea-only
-# buildings conversely cannot be placed on land. tile_type is the tile's "type" field.
+# Terrain-placement rule: sea / deep_sea tiles accept the sea-only buildings (offshore wind /
+# offshore oil) and the infrastructure that may cross water (cables on sea, HVDC on sea and deep
+# sea); every other building is land-only and the sea-only buildings conversely cannot be placed
+# on land. tile_type is the tile's "type" field.
 func is_building_allowed_on_tile_type(building_id: String, tile_type: String) -> bool:
-	var internal: String = str(get_building(building_id).get("internal_name", ""))
-	var is_sea: bool = tile_type == "sea" or tile_type == "deep_sea"
-	var is_sea_only: bool = internal in EconomyConfig.SEA_ONLY_BUILDINGS
-	return is_sea_only if is_sea else not is_sea_only
+	return is_allowed_on_tile_type(str(get_building(building_id).get("internal_name", "")), tile_type)
+
+# The same rule by internal name, for infrastructure no catalogue building provides yet (HVDC).
+func is_allowed_on_tile_type(internal_name: String, tile_type: String) -> bool:
+	var is_sea_only: bool = internal_name in EconomyConfig.SEA_ONLY_BUILDINGS
+	if tile_type != "sea" and tile_type != "deep_sea":
+		return not is_sea_only
+	return is_sea_only or internal_name in (EconomyConfig.SEA_INFRASTRUCTURE.get(tile_type, []) as Array)
 
 # Resolve a recipe's building reference (internal_name, possibly aliased) to a b_id.
 func _resolve_building_id(building_field: String) -> String:

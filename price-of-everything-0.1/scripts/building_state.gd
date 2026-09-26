@@ -351,6 +351,13 @@ func purchase_tile_land(tile_id: String, patches: int = 1, cap: int = MAX_TILE_L
 	tile_land_owned_changed.emit(tile_id)
 	return true
 
+## Undo a land purchase whose build was refused: the tile goes back to the land it held and the
+## price comes back in full.
+func return_tile_land(tile_id: String, owned_before: int, refund: float) -> void:
+	tile_land_owned[tile_id] = owned_before
+	MatchState.add_money(refund)
+	tile_land_owned_changed.emit(tile_id)
+
 func sellable_land_patches(tile_id: String) -> int:
 	if tile_id == "":
 		return 0

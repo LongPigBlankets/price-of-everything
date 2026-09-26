@@ -3289,31 +3289,14 @@ func _on_confirm_pressed() -> void:
 		# and is filtered out of the locked list — but guard defensively anyway.
 		if _selected_recipe.is_empty():
 			return
-		if UiPrefs.use_construct_panel_v3:
-			# V3: one intent. The land shortfall is bought inside the build attempt's own
-			# space gate (world_map._space_check_for_build via BuildMode.attempt_buy_land),
-			# so a build refused upstream of that gate cannot leave the player
-			# owning land they bought for nothing.
-			if not BuildMode.attempt_direct_build(building_id,
-					str(_selected_recipe.get("recipe_id", "")), _locked_tile_id,
-					_buy_land_wanted and _land_purchase_units > 0):
-				# Refused — the map has already said why; keep the selection on screen.
-				return
-		else:
-			# Buy the land FIRST, or the build is refused for the room it was about to have.
-			if _buy_land_wanted and _land_purchase_units > 0:
-				var patches := int(ceil(float(_land_purchase_units) / float(BuildingState.LAND_PATCH_SIZE)))
-				if not BuildingState.purchase_tile_land(_locked_tile_id, patches):
-					MatchState.request_toast(
-						"Could not buy the land on %s — the build needs it first."
-							% Catalog.tile_label(_locked_tile_id), "warning")
-					return
-			if not BuildMode.attempt_direct_build(building_id,
-					str(_selected_recipe.get("recipe_id", "")), _locked_tile_id):
-				# Refused — no land, no room, sea. The map has already said which, so stay exactly
-				# as we are: the building, the recipe and the tile are all still chosen, and the
-				# player can buy the land or pick another tile without starting the selection over.
-				return
+		# One intent: the land shortfall is bought inside the build attempt's own space gate
+		# (world_map._space_check_for_build via BuildMode.attempt_buy_land), and returned with its
+		# cash if the build is refused, so a refusal leaves nothing bought. A refusal of any kind
+		# reports false: the map has said why; keep the selection on screen.
+		if not BuildMode.attempt_direct_build(building_id,
+				str(_selected_recipe.get("recipe_id", "")), _locked_tile_id,
+				_buy_land_wanted and _land_purchase_units > 0):
+			return
 		MatchState.request_toast("Building %s on %s." % [str(_selected_building.get("display_name", "this building")), Catalog.tile_label(_locked_tile_id)], "info")
 		hide()
 		return

@@ -4,7 +4,8 @@ extends Node
 ## Boots the game, then for each scenario asks ConstructionRules.quote() what a build will do,
 ## makes the build through the same calls the construct panel and the map use
 ## (BuildMode.attempt_direct_build, BuildMode.infrastructure_attempted) and compares: placed or
-## refused, the first reason, the cash spent and the land bought. Each scenario is undone
+## refused, what attempt_direct_build answered, the first reason, the cash spent and the land
+## bought (a refused build keeps neither). Each scenario is undone
 ## (project cancelled, cash, land, stock and settings restored) before the next.
 ##
 ##   <godot> --headless --path . res://tests/construction_rules_parity.tscn --quit-after 20000
@@ -34,6 +35,7 @@ func _ready() -> void:
 
 	var home := "tile_5_10"
 	var sea := _find_tile(func(td: Dictionary) -> bool: return str(td.get("type", "")) == "sea")
+	var deep := _find_tile(func(td: Dictionary) -> bool: return str(td.get("type", "")) == "deep_sea")
 	var coal_recipe := _recipe_with_deposit("coal")
 	var mine_id := str(coal_recipe.get("building_id", ""))
 	var dry := _find_tile(func(td: Dictionary) -> bool:
@@ -42,7 +44,7 @@ func _ready() -> void:
 			and BuildingState.get_tile_space_used(str(td.get("id", ""))) < 20.0)
 	var offshore := str(Catalog.get_building_by_internal_name("offshore_wind_farm").get("id", ""))
 	var solar := str(Catalog.get_building_by_internal_name("solar_farm").get("id", ""))
-	print("[PARITY] tiles home=%s sea=%s dry=%s mine=%s/%s ruleset=%s" % [home, sea, dry, mine_id,
+	print("[PARITY] tiles home=%s sea=%s deep=%s dry=%s mine=%s/%s ruleset=%s" % [home, sea, deep, dry, mine_id,
 		str(coal_recipe.get("recipe_id", "")), str(MatchState.ruleset.get("logistics_model", ""))])
 
 	# Buildings, the default game.
@@ -57,6 +59,8 @@ func _ready() -> void:
 	await _build("factory, kit on the tile, no cash", "b_002", "r_005", home,
 		{"money": 5.0, "land": 60, "stock_kit": true})
 	await _build("factory, same tile source", "b_002", "r_005", home, {"money": 50000.0, "land": 60, "source": "same_tile"})
+	await _build("factory, buys land, then the kit refuses", "b_002", "r_005", home,
+		{"money": 50000.0, "land": 0, "source": "same_tile"})
 	await _build("factory, any tile source, none spare", "b_002", "r_005", home,
 		{"money": 50000.0, "land": 60, "source": "any_tile"})
 	await _build("factory, any tile source, spare elsewhere", "b_002", "r_005", home,
@@ -85,6 +89,13 @@ func _ready() -> void:
 	await _infra("cables, kit on the tile, past the planning limit", "cables", dry,
 		{"money": 50000.0, "land": 60, "stock_kit_infra": "cables", "crowd": 120.0})
 	await _infra("roads on sea", "roads", sea, {"money": 50000.0})
+	await _infra("rails on sea", "rails", sea, {"money": 50000.0})
+	await _infra("pipes on sea", "pipes", sea, {"money": 50000.0})
+	await _infra("reinforced pipes on sea", "reinf_pipes", sea, {"money": 50000.0})
+	await _infra("cables on sea", "cables", sea, {"money": 50000.0})
+	if deep != "":
+		await _infra("cables on deep sea", "cables", deep, {"money": 50000.0})
+		await _infra("rails on deep sea", "rails", deep, {"money": 50000.0})
 	await _infra("pipes, land short, auto buy off", "pipes", dry, {"money": 50000.0, "land": 0, "auto_buy": false})
 	await _infra_twice("cables twice", "cables", dry, {"money": 50000.0, "land": 60})
 
@@ -113,9 +124,12 @@ func _build(label: String, building_id: String, recipe_id: String, tile_id: Stri
 	var before := _snapshot(tile_id)
 	BuildMode._last_attempt_ms = -100000
 	_toasts.clear()
-	BuildMode.attempt_direct_build(building_id, recipe_id, tile_id, bool(setup.get("buy_land", false)))
+	var answered := BuildMode.attempt_direct_build(building_id, recipe_id, tile_id, bool(setup.get("buy_land", false)))
 	await _settle(2)
-	_compare(label, q, before, _snapshot(tile_id), tile_id)
+	var after := _snapshot(tile_id)
+	_compare(label, q, before, after, tile_id)
+	var placed := int(after.projects) > int(before.projects) or int(after.buildings) > int(before.buildings)
+	_expect(label, "answer", answered == placed, "attempt_direct_build answered %s, placed=%s" % [str(answered), str(placed)])
 	await _undo(tile_id, saved)
 
 
@@ -165,14 +179,12 @@ func _compare(label: String, q: Dictionary, before: Dictionary, after: Dictionar
 		str(q.ok), first_block, float(q.get("fee", 0.0)), float(q.get("materials", 0.0)), float(q.get("land", 0.0)),
 		float(q.get("total", 0.0)), ",".join(PackedStringArray((q.warnings as Array).map(func(w: Variant) -> String: return str((w as Dictionary).key))))])
 	_expect(label, "placed", placed == bool(q.ok), "engine placed=%s, rules ok=%s (%s)" % [str(placed), str(q.ok), first_block])
-	# Cash and land: a placed build spends the quote's total. A refused one keeps any land the
-	# space check bought on the way, since the build buys land before it checks the kit and the
-	# cash (and a sliver bought short of the need is kept too).
+	# Cash and land: a placed build spends the quote's total, land included. A refused one spends
+	# nothing and keeps no land: land bought on the way is returned with its cash.
 	var land_plan: Dictionary = q.get("land_plan", {})
-	var land_kept := bool(land_plan.get("will_buy", false)) \
-		and first_block in ["", "materials_short", "no_surplus", "funds", "land_short"]
-	var expected_spent := float(q.total) if bool(q.ok) else (float(land_plan.get("cost", 0.0)) if land_kept else 0.0)
-	var expected_land := int(land_plan.get("owned_after", 0)) - int(land_plan.get("owned", 0)) if land_kept else 0
+	var expected_spent := float(q.total) if bool(q.ok) else 0.0
+	var expected_land := int(land_plan.get("owned_after", 0)) - int(land_plan.get("owned", 0)) \
+		if bool(q.ok) and bool(land_plan.get("will_buy", false)) else 0
 	_expect(label, "cash", absf(spent - expected_spent) < 0.02,
 		"engine spent %.2f, rules expect %.2f" % [spent, expected_spent])
 	_expect(label, "land", land_bought == expected_land,

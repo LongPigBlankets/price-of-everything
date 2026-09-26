@@ -25,6 +25,10 @@ var _last_attempt_ms: int = 0
 ## the player can act on should leave their choices on screen, not throw the panel away and
 ## make them rebuild the whole selection to try the tile next door (owner, 25 Aug).
 var last_attempt_refused: bool = false
+## Set by the map when the attempt placed something (a building, a project awaiting materials).
+## attempt_direct_build answers with it, so a refusal of any kind (sea, a deposit, the kit, the
+## cash, the tutorial board) reads as a refusal, not only the space check's.
+var last_attempt_placed: bool = false
 ## True only for the duration of a direct-build attempt that asked to buy its land
 ## shortfall as part of the build (Construct V3's single confirm intent). The map's
 ## space gate (_space_check_for_build) reads it alongside the auto-buy-land setting,
@@ -89,8 +93,8 @@ func attempt_build(tile_id: String) -> void:
 	elif kind == Kind.INFRASTRUCTURE:
 		infrastructure_attempted.emit(current_infrastructure_type, tile_id)
 
-## Returns true when the attempt got as far as placing something (or opening a dialog that
-## will). False means it was refused outright and nothing changed.
+## Returns true when the attempt placed something. False means it was refused and nothing
+## changed: no cash spent and no land kept.
 ## buy_land: buy the tile's land shortfall (whole patches, clamped to what's for sale)
 ## inside the build's own space gate — the V3 confirm's single intent. See attempt_buy_land.
 func attempt_direct_build(building_id: String, recipe_id: String, tile_id: String, buy_land: bool = false) -> bool:
@@ -99,6 +103,7 @@ func attempt_direct_build(building_id: String, recipe_id: String, tile_id: Strin
 	if not _can_attempt_now():
 		return false
 	last_attempt_refused = false
+	last_attempt_placed = false
 	attempt_buy_land = buy_land
 	var previous_kind := kind
 	var previous_building := current_building_id
@@ -118,7 +123,7 @@ func attempt_direct_build(building_id: String, recipe_id: String, tile_id: Strin
 	current_infrastructure_type = previous_infra
 	return_to_construct_v2_on_exit = previous_return_to_construct_v2
 	# build_attempted is emitted synchronously, so the map has already run its gates.
-	return not last_attempt_refused
+	return last_attempt_placed and not last_attempt_refused
 
 func _can_attempt_now() -> bool:
 	var now: int = Time.get_ticks_msec()

@@ -57,13 +57,13 @@ The parity check runs 31 of these through the real build and the helper, 96 chec
 ## 3. Findings
 
 1. **The same build is priced four ways.** Browse (base price plus the kit at buy price), the refusal toast, Confirm (the ledger) and the hover card each add it up differently; none matches the fee the build charges (base times the planning multiplier less the rebate). Fixed at the source: `quote()`.
-2. **A refused build can report success.** From the tile's Build, Confirm says "Building X on Y" and closes when the map refuses for anything but space (a bad deposit, sea, a missing kit under the same tile source).
-3. **Land bought for a refused build is kept.** The build buys land before it checks the kit and the cash.
+2. **A refused build could report success.** From the tile's Build, Confirm said "Building X on Y" and closed when the map refused for anything but space. *Fixed (owner, 26 September): the map says whether it placed anything (`BuildMode.last_attempt_placed`), and that is what `attempt_direct_build` answers.*
+3. **Land bought for a refused build was kept.** The build buys land before it checks the kit and the cash. *Fixed (owner): the purchase is held for the attempt and returned with its cash on any refusal (`world_map._settle_attempt_land`, `BuildingState.return_tile_land`); its toast only shows once the build is placed.*
 4. **The width seesaws** between stages (560, 448, 510).
 5. **Infrastructure uses the old confirm**, and is offered without checking Infrastructure Tendering.
 6. **The goods filter is invisible** and cannot be cleared.
 7. **Picking a material source without Remember** leaves the totals stale, and the pick carries to the next build anywhere.
-8. **Railways on sea** pass the sea rule (it checks `rail`, the building is `rails`).
+8. **Railways on sea** passed the sea rule (it checked `rail`, the building is `rails`). *Fixed with the owner's rule for water (26 September): roads, rail, pipes and reinforced pipes are land only; cables reach the sea but not deep sea; HVDC, offshore wind farms and oil platforms go on deep sea (`EconomyConfig.SEA_INFRASTRUCTURE`, `Catalog.is_allowed_on_tile_type`). The build, the helpers, the map's infrastructure shading and the tile view's add keys all read it.*
 9. **Confirm's materials figure** skips the import licence rule and the intermediary's free units.
 10. **The Blueprint tab** is a locked stub.
 
@@ -113,5 +113,5 @@ Each body is reviewed against §2's scenarios, up to three rounds, as the tile v
 4. **Map pick**: the build order stays open and follows the hovered tile, or a separate hover card as a dot card?
 5. **Blueprint tab**: cut, or planned?
 6. **Settings as a sheet** over the stages rather than a stage of its own?
-7. **Findings 2, 3 and 8** are engine bugs: fix them now, separately from the look?
+7. **Findings 2, 3 and 8**: fixed now, separately from the look (decided, 26 September 2026).
 8. **Credit facility**: removed (decided, 26 September 2026).

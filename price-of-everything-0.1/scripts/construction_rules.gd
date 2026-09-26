@@ -19,9 +19,6 @@ extends RefCounted
 ##   Land            land_plan()
 ##   Infrastructure  quote() with an empty recipe (the tile view's add keys, the catalogue)
 
-## Roads and rail may not cross water; a pipeline or a cable may. Keyed by internal name, as
-## world_map's space check always was.
-const OVERLAND_INFRA := {"roads": true, "rail": true}
 const InfraIcons := preload("res://scripts/infra_icons.gd")
 const MONEY_EPSILON := 0.0001
 
@@ -113,6 +110,14 @@ static func is_tile_infrastructure(internal_name: String) -> bool:
 		if str((slot as Dictionary).key) == internal_name:
 			return true
 	return false
+
+
+## Why a tile's water refuses a piece of infrastructure, in the owner's plain words.
+static func terrain_text(internal_name: String, tile_type: String) -> String:
+	var label := _infra_label(internal_name)
+	if tile_type == "deep_sea" and internal_name == "cables":
+		return "Cables cannot be laid on deep sea. Only HVDC links reach that far."
+	return "%s cannot be built at sea." % label
 
 
 # --- Site rules ------------------------------------------------------------------------------
@@ -217,8 +222,8 @@ static func site_check(building_id: String, recipe_id: String, tile_data: Dictio
 		if block != "":
 			return block
 	var internal := str(Catalog.get_building(building_id).get("internal_name", ""))
-	if OVERLAND_INFRA.has(internal) and _is_sea(Catalog.tile_type(tile_id)):
-		return "sea"
+	if is_tile_infrastructure(internal) and not Catalog.is_allowed_on_tile_type(internal, Catalog.tile_type(tile_id)):
+		return "terrain"
 	if not has_physical_room(tile_id, building_id):
 		return "full"
 	return ""
@@ -228,10 +233,12 @@ static func site_check(building_id: String, recipe_id: String, tile_data: Dictio
 
 ## The land a build needs on a tile and what the build will do about it, in the order the
 ## build's space check decides:
-##   outcome        "ok", "sea" (roads or rail on water), "full" (the tile's physical cap),
+##   outcome        "ok", "terrain" (infrastructure the tile's water cannot take: roads, rail
+##                  and pipes at sea, cables on deep sea), "full" (the tile's physical cap),
 ##                  "cannot_buy" (a purchase was wanted but nothing is for sale or the cash
-##                  is short), "short" (not enough owned land and no purchase)
-##   will_buy       the build buys `patches` of land for `cost` on the way
+##                  is short), "short" (not enough owned land even with what is for sale)
+##   will_buy       the build buys `patches` of land for `cost` on the way. A build refused
+##                  after it bought land (for the kit or the cash) returns the land and the cash.
 ##   density_multiplier  1.5 past the planning limit (everyone's land over 100), else 1
 ## `buy_land` is the confirm's one off intent; the standing Auto-buy land setting also buys.
 ## Tendered infrastructure (Logistics Intermediary games with Infrastructure Tendering) may
@@ -260,8 +267,8 @@ static func land_plan(tile_id: String, building_id: String, buy_land: bool = fal
 		owned_after = mini(max_land, owned + granted)
 	var outcome := "ok"
 	var will_buy := false
-	if OVERLAND_INFRA.has(internal) and _is_sea(Catalog.tile_type(tile_id)):
-		outcome = "sea"
+	if is_tile_infrastructure(internal) and not Catalog.is_allowed_on_tile_type(internal, Catalog.tile_type(tile_id)):
+		outcome = "terrain"
 	elif projected > float(max_land):
 		outcome = "full"
 	elif shortfall > 0.0:
@@ -269,8 +276,7 @@ static func land_plan(tile_id: String, building_id: String, buy_land: bool = fal
 			if patches_for_sale <= 0 or MatchState.money < cost:
 				outcome = "cannot_buy"
 			elif player_projected > float(owned_after):
-				outcome = "short"
-				will_buy = true   # the build buys the sliver, then refuses for the rest
+				outcome = "short"   # what is for sale does not cover it; the build returns the sliver
 			else:
 				will_buy = true
 		else:
@@ -440,7 +446,7 @@ static func is_intermittent(building_id: String) -> bool:
 ##   warnings          [{key, text}] what goes ahead but deserves a word
 ##
 ## Block keys: tutorial_area, tendering, terrain, deposit, requirement, already_built,
-## in_progress, sea, full, cannot_buy_land, land_short, materials_short, no_surplus, funds.
+## in_progress, full, cannot_buy_land, land_short, materials_short, no_surplus, funds.
 ## Warning keys: site_unknown, blind_deposit, density, buys_land, source_changed, needs_cables,
 ## needs_pipes, needs_reinf_pipes, intermittent.
 static func quote(building_id: String, recipe_id: String = "", tile_id: String = "",
@@ -490,6 +496,9 @@ static func quote(building_id: String, recipe_id: String = "", tile_id: String =
 	if infrastructure:
 		if not ResearchState.infrastructure_tendering_available():
 			blocks.append({"key": "tendering", "text": "Infrastructure Tendering is needed to build infrastructure."})
+		var water := str(tile_data.get("type", Catalog.tile_type(tile_id)))
+		if not Catalog.is_allowed_on_tile_type(internal, water):
+			blocks.append({"key": "terrain", "text": terrain_text(internal, water)})
 		if _tile_has_infrastructure(tile_data, tile_id, internal):
 			blocks.append({"key": "already_built", "text": "This tile already has %s." % str(building.get("display_name", internal))})
 		for project: Variant in Construction.projects_on_tile(tile_id):
@@ -517,8 +526,8 @@ static func quote(building_id: String, recipe_id: String = "", tile_id: String =
 	var land := land_plan(tile_id, building_id, bool(opts.get("buy_land", false)))
 	q.land_plan = land
 	match str(land.outcome):
-		"sea":
-			blocks.append({"key": "sea", "text": "Roads and railways cannot be built on sea."})
+		"terrain":
+			blocks.append({"key": "terrain", "text": terrain_text(internal, Catalog.tile_type(tile_id))})
 		"full":
 			blocks.append({"key": "full", "text": "No room on this tile. It holds %d land." % int(land.max_land)})
 		"cannot_buy":

@@ -79,10 +79,18 @@ func _test_build_attempt_reports_refusal() -> void:
 	_check(not refused,
 		"build attempt: a refusal reports false, so the construct panel can stay open")
 	BuildMode._last_attempt_ms = 0
+	var place := func(_bid: String, _tid: String) -> void:
+		BuildMode.last_attempt_placed = true
+	BuildMode.build_attempted.connect(place)
 	var placed: bool = BuildMode.attempt_direct_build("b_007", "r_009", "tile_5_10")
+	BuildMode.build_attempted.disconnect(place)
 	_check(placed,
-		"build attempt: an attempt nothing refused reports true, so the panel closes as before")
+		"build attempt: an attempt the map placed reports true, so the panel closes as before")
+	BuildMode._last_attempt_ms = 0
+	_check(not BuildMode.attempt_direct_build("b_007", "r_009", "tile_5_10"),
+		"build attempt: an attempt nothing placed reports false, whatever refused it")
 	BuildMode.last_attempt_refused = false
+	BuildMode.last_attempt_placed = false
 
 
 func _test_build_mode_overlay_survey_visibility() -> void:
@@ -2454,6 +2462,28 @@ func _test_construction_rules() -> void:
 	MatchState.money = 1.0
 	_check(str(((rules.quote("b_002", "r_005").blocks as Array)[0] as Dictionary).key) == "funds",
 		"rules: without the cash the quote is blocked on funds")
+
+	# Water: roads, rail and pipes stay on land; cables reach the sea but not deep sea; HVDC and the
+	# offshore buildings go on both; ordinary buildings stay on land.
+	for land_only: String in ["roads", "rails", "pipes", "reinf_pipes"]:
+		_check(not Catalog.is_allowed_on_tile_type(land_only, "sea") and not Catalog.is_allowed_on_tile_type(land_only, "deep_sea")
+			and Catalog.is_allowed_on_tile_type(land_only, "rural"), "rules: %s are land only" % land_only)
+	_check(Catalog.is_allowed_on_tile_type("cables", "sea") and not Catalog.is_allowed_on_tile_type("cables", "deep_sea"),
+		"rules: cables reach the sea but not deep sea")
+	_check(Catalog.is_allowed_on_tile_type("hvdc", "deep_sea") and Catalog.is_allowed_on_tile_type("hvdc", "sea")
+		and Catalog.is_allowed_on_tile_type("hvdc", "rural"), "rules: HVDC goes anywhere")
+	_check(Catalog.is_building_allowed_on_tile_type("b_026", "deep_sea") and not Catalog.is_building_allowed_on_tile_type("b_002", "sea"),
+		"rules: offshore wind on deep sea, a furnace never at sea")
+	var sea_tile := ""
+	for tid: Variant in Catalog._tile_types:
+		if str(Catalog._tile_types[tid]) == "sea":
+			sea_tile = str(tid)
+			break
+	if sea_tile != "":
+		_check(str(rules.land_plan(sea_tile, "b_019").outcome) == "terrain" and rules.site_check("b_019", "", {"id": sea_tile, "type": "sea"}) == "terrain",
+			"rules: railways are refused at sea")
+		_check(str((rules.quote("b_019", "", sea_tile).blocks as Array).map(func(b: Variant) -> String: return str((b as Dictionary).key))).contains("terrain"),
+			"rules: the quote names the water as the reason")
 
 	# The catalogue: sorted by name, the port never offered, cables listed as infrastructure.
 	var entries: Array = rules.catalogue()
