@@ -64,7 +64,6 @@ const StartLayoutBakedScript := preload("res://scripts/start_layout_baked.gd")
 const WARM_MARGIN := 1000.0
 var goods_graph_view: GoodsGraphViewScript
 
-const DENSITY_SOFT_CAPACITY := 100.0
 const InfraIcons := preload("res://scripts/infra_icons.gd")
 const AuthoredMapRef := preload("res://scripts/authored_map.gd")
 const OLD_GROWTH_FOREST_BUILDING_ID := "b_016"
@@ -964,6 +963,7 @@ func _build_info_panel() -> void:
 	_info_panel.building_clicked.connect(_on_v2_building_clicked)
 	_info_panel.pick_destination_requested.connect(_on_v2_pick_destination)
 	_info_panel.survey_requested.connect(_on_survey_tile_clicked)
+	_info_panel.locate_requested.connect(func(tile_id: String) -> void: _focus_camera_on_tile(tile_id))
 
 
 ## Dialogs, the debug terminal and the two effect layers.
@@ -1748,10 +1748,7 @@ func _on_go_to_tile_stockpile(tile_id: String) -> void:
 	if td.is_empty():
 		return
 	_last_selected_tile = td
-	info_panel._active_tab = "stock"
-	info_panel.show_tile(td)
-	# show_tile resets to the Buildings tab, so ask for Stockpile again afterwards.
-	info_panel._select_tab("stock")
+	info_panel.show_tile(td, "stock")
 
 ## Deep-link target for notifications etc: centre the camera on the tile and
 ## open its panel. Emitted via MatchState.focus_tile_requested.
@@ -3064,7 +3061,7 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 			% Catalog.tile_label(tile_id))
 		return {"allowed": false, "cost_multiplier": 1.0, "reason": "Insufficient land — buy more here"}
 	var cost_multiplier := 1.0
-	if projected_space > DENSITY_SOFT_CAPACITY:
+	if projected_space > BuildingState.DENSITY_SOFT_CAPACITY:
 		cost_multiplier = 1.5
 		_show_tile_space_caution("Local opposition to density on tile %s will increase material and money costs for new buildings by 50%%" % tile_id)
 	return {"allowed": true, "cost_multiplier": cost_multiplier}
