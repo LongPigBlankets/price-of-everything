@@ -1,0 +1,47 @@
+# Building Ledger: DS2
+
+Status: first pass BUILT behind `toggle ledger ds2` (26 September 2026), branch `building-ledger-ds2`. With the switch off the ledger is exactly as it was (a test switches it on and off and checks both). Read with `docs/ds2-theme.md` (the method, §11 and §13; the kit, §5 and §14).
+
+## What the ledger is for
+
+The one place to see every building you own at once, compare them, find the ones in trouble, and jump to one (a row opens its Building Detail). It is opened from the bottom menu's Buildings button (L). It holds, for each building: what it is and where, what it makes, its routes in and out, its power, whether it ran, what a unit costs to make, what it nets a turn, its land, and a way to raise its level. Above the table: the count, a search, the routing objective, eleven filters, and sorting by column.
+
+## The inventory, v2 to DS2
+
+| v2 element | DS2 part |
+|---|---|
+| Brown pipe frame, navy panel | Building Detail's navy steel backing in its brass trim (`panel_backing`) |
+| Small icon and "BUILDINGS" label, X button | the raised title (`BdpV3Title`), Building Detail's Close key (`BdpV3Key`) |
+| "8 buildings" caption | a framed dot-matrix display: "9 BUILDINGS", or "4/9 SHOWN" while filters hide some |
+| Search box | the search on a mini screen's dark glass, white print |
+| Routing dropdown | three latching keys, Fastest, Cheapest, Blended, the objective in force latched |
+| Eleven flat chips in two rows | eleven latching keys on the tile view's key bed: what a building is doing, then what kind it is; copy without hyphens ("Loss making", "Intermittent green") |
+| Column captions, ▲▼ glyphs | metal labels; the sorted one cream with a drawn mark (no glyph a font may lack) |
+| Metallic row plates | Building Detail's raised modules in one plastic case, on the steel rail |
+| Embossed building icon | the building's emblem in polished metal |
+| Name, then a Tile column of coordinates | the name over its tile's name (coordinates in words where a tile has none), so the Tile column is gone |
+| Framed good icon with a pill | the good in its well, the quantity on the pill |
+| Power text in colour ("360 (self)") | a lamp (green your supply, amber the grid, red no cable) and "360 MW" over "Your supply" / "Grid" / "No cable" / "Makes" |
+| Status text in colour | a lamp and the word (green Running, amber Idle, red Starved) |
+| Cost/u, Net/t as coloured text | a printed £ and an LED screen each, one width down the table, in the same colours |
+| Numbered upgrade button | a cream Upgrade key whose hover is Building Detail's Upgrade card (the dot card); spent at the top level ("Max") and for infrastructure |
+| "—" for nothing | blank (no dashes in DS2 copy) |
+
+Every figure is the row model the v2 ledger already computes (`_row_vm`: CostSolver's unit cost, the market price, Production's run and missing records, BuildingStatus's power supply); DS2 changes none of them.
+
+## Built (first pass)
+
+`scripts/ledger_v3/ledger_v3.gd` builds the look from the kit (`scripts/tvp_v3/buildings_parts.gd` modules, case, captions, money, wells and emblems; `scripts/ds2/` dot matrix, latching keys, cream key, dot card; the BDP v3 backing, title, key, seam, lamp, LED and rail). `building_ledger_panel.gd` keeps the data, filters, sort and refresh, builds either look (`_build_look`) and rebuilds when the switch flips. Captures: `tools/ledger_ds2_shot.tscn` (v2, DS2, DS2 filtered and sorted), into `$LEDGER_SHOT_DIR`. Test: `_test_building_ledger_ds2`.
+
+## Open decisions (owner)
+
+1. **Default.** Keep behind the switch until approved, then make it the default with `toggle ledger ds2` switching back, as the top bar and tile view did?
+2. **Filters' room.** The key bed takes two rows of keys (about 130 px) above the table. Keep all eleven always in view, or fold the kind row (Production, Power, Infrastructure, the two greens) behind a key?
+3. **The house light.** Building Detail darkens its panel's far corner with its light overlay and gives the text back its brightness. The ledger is far wider; leave the light off (as now), or add it?
+4. **Rows for infrastructure.** Roads, cables and pipes show as rows with no figures and a spent Upgrade key. Keep them, or leave them to the Transport tab and the Infrastructure filter only?
+5. **Routes columns.** Inputs and Outputs keep the v2 route icons (flat buttons that open the building's logistics). Raise them as Building Detail's icons are, or keep them flat?
+6. **Money width.** Cost and Net screens share one width, set by the widest figure shown. Fine, or a fixed width so the table never shifts when a filter changes?
+
+## Next
+
+After the owner's first look: the decisions above, a standard (`artifacts/ledger_ds2_standard/`), hover readouts on the lamps (Building Detail's diagnostics' words), and the width check (`_body` minimum within the scroll's width less its rail) as a test.

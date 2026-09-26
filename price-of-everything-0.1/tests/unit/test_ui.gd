@@ -2367,3 +2367,60 @@ func _test_bdp_v3_output_checks() -> void:
 		"outputs checks: an indicator over three tones shows three lamps side by side, red, amber, green (%s)" % ", ".join(colours))
 	ind.queue_free()
 	BuildingState.buildings.erase(iid)
+
+
+## The Building Ledger's DS2 look (UiPrefs.use_ledger_ds2): off, the v2 chrome exactly; on, the raised title,
+## the dot count, filter keys that latch (Running and Starved exclusive), sort marks, routing keys, and a
+## module per building named in the new style with its tile's name; off again, v2 back.
+func _test_building_ledger_ds2() -> void:
+	MatchState.reset()
+	var was: bool = UiPrefs.use_ledger_ds2
+	UiPrefs.set_use_ledger_ds2(false)
+	var a := BuildingState.add_building("b_007", "r_009", "tile_13_2", MatchState.LOCAL_PLAYER, "ledger_ds2_a")
+	var b := BuildingState.add_building("b_003", "r_004", "tile_10_2", MatchState.LOCAL_PLAYER, "ledger_ds2_b")
+	var panel: PanelContainer = (load("res://scenes/building_ledger_panel.tscn") as PackedScene).instantiate()
+	add_child(panel)
+	await get_tree().process_frame
+	_check(panel.find_child("LedgerTitleRow", true, false) == null and (panel.get("header") as Control).visible,
+		"ledger ds2: off, the v2 header and no DS2 parts")
+	UiPrefs.set_use_ledger_ds2(true)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(panel.find_child("LedgerTitleRow", true, false) != null and not (panel.get("header") as Control).visible
+		and panel.find_child("LedgerBacking", false, false) != null, "ledger ds2: on, Building Detail's title and backing")
+	var rows: Control = panel.get("_body")
+	var names: Array[String] = []
+	for m in rows.get_children():
+		var n := m.find_child("Name", true, false) as Label
+		if n != null:
+			names.append(n.text)
+	_check(rows.get_child_count() == 2 and names.has(load("res://scripts/building_naming.gd").label_for_tile("tile_13_2", a, "b_007", "r_009")),
+		"ledger ds2: a module per building, named as the game names it (%s)" % str(names))
+	var count: Control = panel.find_child("CountDisplay", true, false)
+	_check(count != null and str(count.get("text")) == "2 BUILDINGS", "ledger ds2: the count on the dot display")
+	var keys: Dictionary = panel.get("_chips")
+	keys["running"].emit_signal("pressed")
+	keys["starved"].emit_signal("pressed")
+	_check(bool(keys["starved"].get("latched")) and not bool(keys["running"].get("latched"))
+		and bool((panel.get("_f") as Dictionary)["starved"]) and not bool((panel.get("_f") as Dictionary)["running"]),
+		"ledger ds2: filter keys latch, Running and Starved exclusive")
+	keys["starved"].emit_signal("pressed")
+	panel.call("_on_sort_pressed", "net")
+	var marks: Dictionary = panel.get("_sort_marks")
+	_check((marks["net"] as Control).visible and not (marks["name"] as Control).visible, "ledger ds2: the sorted column's mark")
+	var routes: Dictionary = panel.get("_route_keys")
+	(routes[MatchState.RouteObjective.CHEAPEST] as Control).emit_signal("pressed")
+	_check(MatchState.route_objective == MatchState.RouteObjective.CHEAPEST
+		and bool((routes[MatchState.RouteObjective.CHEAPEST] as Control).get("latched"))
+		and not bool((routes[MatchState.RouteObjective.FASTEST] as Control).get("latched")), "ledger ds2: routing keys latch the objective")
+	MatchState.set_route_objective(MatchState.RouteObjective.FASTEST)
+	UiPrefs.set_use_ledger_ds2(false)
+	await get_tree().process_frame
+	_check(panel.find_child("LedgerTitleRow", true, false) == null and panel.find_child("LedgerBacking", false, false) == null
+		and (panel.get("header") as Control).visible, "ledger ds2: off again, v2 back")
+	UiPrefs.set_use_ledger_ds2(was)
+	panel.queue_free()
+	BuildingState.remove_building(a)
+	BuildingState.remove_building(b)
+	MatchState.reset()
+	await get_tree().process_frame
