@@ -42,6 +42,11 @@ var label := "":
 		label = v
 		queue_redraw()
 var label_colour: Color = Color("#0b2340")
+## Options mode: the option icons' ink (white art tinted; navy on a light plate).
+var option_ink: Color = Color.WHITE:
+	set(v):
+		option_ink = v
+		_style_options()
 ## The option buttons, in option order (callers may rename them, e.g. for a tutorial spotlight).
 var option_buttons: Array[Button] = []
 
@@ -117,7 +122,7 @@ func set_options(list: Array) -> void:
 func _style_options() -> void:
 	for i in option_buttons.size():
 		var b := option_buttons[i]
-		b.modulate = Color(1, 1, 1, 1.0 if i + 1 == value else (0.3 if b.disabled else 0.62))
+		b.modulate = Color(option_ink, 1.0 if i + 1 == value else (0.3 if b.disabled else 0.62))
 
 
 ## Sets the position without emitting `value_changed` (for initialising from saved state).

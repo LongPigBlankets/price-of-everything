@@ -41,6 +41,8 @@ Every figure is the row model the v2 ledger already computes (`_row_vm`: CostSol
 
 **Third review (26 September), built.** The icons that aren't goods (the bolt, labour, upkeep, the land hex, all in the good tiles' cream) stand in a cream outline a good's size, so every Per turn row is a good's height. Its bars are the tile view's metering screens, and this level is the same grey length in every row with the next step running on from it on one scale, so the rows that grow most run furthest. Per turn sits on the black plastic case. Materials are three to a row with the Source dial and the market price on the right.
 
+**Fourth review (26 September), built.** Per turn's change reads on a dot-matrix screen in the row's tone, under the heading Change over the bars. Materials is a steel plate the rim's own steel (section style "plate", print navy), with a lattice crane over its right: the mast down the right edge, the jib along the right half of the top, the Source dial under it.
+
 ## Open decisions (owner)
 
 1. **Default.** Keep behind the switch until approved, then make it the default with `toggle ledger ds2` switching back, as the top bar and tile view did?

@@ -12,13 +12,15 @@ extends MarginContainer
 ## other plate's. `style` "slab" is that dark metal plate on its own, with no steel frame: a thin dark edge,
 ## a soft shadow under it, and Building Detail's silver screw set in near each corner. `style` "bare" draws
 ## nothing: its heading and content sit straight on the plate under it, inset as a framed section's are, so
-## its columns line up with the framed sections round it.
+## its columns line up with the framed sections round it. `style` "plate" fills the steel frame with the same
+## worn steel as its rim (sheet_plate.png), cropped as "dark" is: a light surface, so its print is navy.
 
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const FRAME: Texture2D = preload("res://assets/ui/bdp_v3/section_frame.png")
 const PLASTIC: Texture2D = preload("res://assets/ui/bdp_v3/diag_plastic.png")
 const SCREW: Texture2D = preload("res://assets/ui/bdp_v3/screw_silver.png")
 const DARK: Texture2D = preload("res://assets/ui/bdp_v3/dark_plate.png")
+const SHEET: Texture2D = preload("res://assets/ui/bdp_v3/sheet_plate.png")
 const TEXELS_PER_PIXEL := 2.0
 const CAPTURE_SCALE := 1.875
 ## The render's layout: shadow room around the rim and the rim's width (layout pixels at the capture
@@ -108,12 +110,13 @@ func _draw() -> void:
 		for p in [lo, Vector2(hi.x, lo.y), Vector2(lo.x, hi.y), hi]:
 			draw_texture_rect(SCREW, Rect2(p - s * 0.5, s), false)
 		return
-	if style == "dark":
+	if style == "dark" or style == "plate":
+		var fill: Texture2D = DARK if style == "dark" else SHEET
 		var inside := Rect2(Vector2.ZERO, size).grow(-RIM * 0.5)
-		var tex := DARK.get_size()
+		var tex := fill.get_size()
 		var want := inside.size * TEXELS_PER_PIXEL
 		if want.x <= tex.x and want.y <= tex.y:
-			draw_texture_rect_region(DARK, inside, Rect2((tex - want) * 0.5, want))
+			draw_texture_rect_region(fill, inside, Rect2((tex - want) * 0.5, want))
 		else:
-			draw_texture_rect(DARK, inside, false)
+			draw_texture_rect(fill, inside, false)
 	Nine.paint(self, FRAME, Rect2(Vector2.ZERO, size).grow(OUTSET), CORNER_TEXELS)

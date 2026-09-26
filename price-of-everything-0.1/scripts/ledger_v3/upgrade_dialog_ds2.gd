@@ -53,6 +53,7 @@ const OUTLINE_W := 2
 const OUTLINE_RADIUS := 12
 ## The materials grid's columns, and the room it leaves on its right for the dial.
 const MATERIAL_COLUMNS := 3
+const NAVY := Color("#0b2340")
 const DIAL_PX := 110.0
 
 const WIDTH := 760.0
@@ -60,7 +61,10 @@ const CONTENT_MARGIN := 26
 const BACKING_CORNER := 64.0
 ## The Per turn table's figure columns: now, the next level, the change.
 const FIGURE_W := 84.0
-const CHANGE_W := 66.0
+## The change's dot-matrix screen: its cells ("+100%" and a space) and dot pitch; its column's width.
+const CHANGE_CELLS := 5
+const CHANGE_PITCH := 2.0
+const CHANGE_W := 70.0
 const MONEY_DIGITS := 6
 
 
@@ -316,7 +320,11 @@ func _head(building_id: String, title_text: String, level_text: String) -> HBoxC
 func _materials(p: Dictionary) -> Control:
 	var materials: Array = p.get("materials", [])
 	var to_buy := float(p.get("market_cost", 0.0))
-	var sec := _section("UpgradeMaterials", "Materials", "dark")
+	var sec := _section("UpgradeMaterials", "Materials", "plate")
+	# The crane over the source: its mast down the plate's right edge, its jib along the right half of the top.
+	var crane := CraneRig.new()
+	sec.add_child(crane)
+	sec.move_child(crane, 0)
 	var vb: VBoxContainer = sec.get("content")
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 18)
@@ -342,23 +350,43 @@ func _materials(p: Dictionary) -> Control:
 		line.alignment = BoxContainer.ALIGNMENT_CENTER
 		line.add_theme_constant_override("separation", Parts.LAMP_GAP)
 		line.add_child(_lamp("ok" if have >= need else "warn"))
-		line.add_child(_figure("%d/%d" % [mini(have, need), need]))
+		line.add_child(_on_steel(_figure("%d/%d" % [mini(have, need), need])))
 		cell.add_child(line)
 		grid.add_child(cell)
-	# On the right: the dial, and under it what buying the rest costs at market.
+	# On the right, under the crane's jib and clear of its mast: the dial, and under it what buying the rest
+	# costs at market.
+	var room := MarginContainer.new()
+	room.name = "MaterialsSource"
+	room.add_theme_constant_override("margin_right", roundi(CraneRig.MAST_W + 8.0))
+	room.add_theme_constant_override("margin_top", roundi(CraneRig.JIB_H))
+	room.add_theme_constant_override("margin_left", 0)
+	room.add_theme_constant_override("margin_bottom", 0)
 	var side := VBoxContainer.new()
-	side.name = "MaterialsSource"
 	side.alignment = BoxContainer.ALIGNMENT_CENTER
 	side.add_theme_constant_override("separation", 8)
-	side.add_child(_dial(p))
+	room.add_child(side)
+	var dial := _dial(p)
+	dial.set("label_colour", NAVY)
+	dial.set("option_ink", NAVY)
+	side.add_child(dial)
 	if to_buy > 0.0:
 		var price := Parts.money("%.2f" % to_buy, DS.PALETTE["TEXT"], MONEY_DIGITS)
 		price.name = "MarketPrice"
 		price.tooltip_text = "Buying what is short at market"
 		price.mouse_filter = Control.MOUSE_FILTER_PASS
+		_on_steel(price.get_child(0) as Label)
 		side.add_child(price)
-	row.add_child(side)
+	row.add_child(room)
 	return sec
+
+
+## Print on the light steel: navy, a faint light shadow under it (DS2's ink for light surfaces).
+func _on_steel(l: Label) -> Label:
+	l.add_theme_color_override("font_color", NAVY)
+	l.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.35))
+	l.add_theme_constant_override("shadow_offset_x", 0)
+	l.add_theme_constant_override("shadow_offset_y", 1)
+	return l
 
 
 ## What changes a turn at the next level, on a black plastic case: a row a thing, led by its icon, its figures
@@ -454,12 +482,10 @@ func _table_head(from_level: int, target: int) -> HBoxContainer:
 		var l := Parts.caption(str(c[0]), Parts.CAPTION_PX, HORIZONTAL_ALIGNMENT_RIGHT)
 		l.custom_minimum_size.x = float(c[1])
 		row.add_child(l)
-	var levels := Parts.caption("Levels 1 to %d" % BuildingLevels.MAX_LEVEL, Parts.CAPTION_PX, HORIZONTAL_ALIGNMENT_CENTER)
+	var levels := Parts.caption("Change", Parts.CAPTION_PX, HORIZONTAL_ALIGNMENT_CENTER)
 	levels.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(levels)
-	var change := Parts.caption("Change", Parts.CAPTION_PX, HORIZONTAL_ALIGNMENT_RIGHT)
-	change.custom_minimum_size.x = CHANGE_W
-	row.add_child(change)
+	row.add_child(Parts.spacer(CHANGE_W, 0))
 	return row
 
 
@@ -506,13 +532,16 @@ func _track_row(row_name: String, icon: Control, values: Array, from_level: int,
 	track.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	track.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(track)
-	var c := _figure(change)
+	# The change on a dot-matrix screen, lit in the row's tone; a blank screen where nothing changes.
+	var c: Control = DotMatrix.new()
 	c.name = "Change"
-	c.add_theme_font_size_override("font_size", FIGURE_PX - 2)
-	c.add_theme_color_override("font_color", tone)
-	c.custom_minimum_size.x = CHANGE_W
-	c.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	c.set("pitch", CHANGE_PITCH)
+	c.set("align", HORIZONTAL_ALIGNMENT_RIGHT)
+	c.set("colour", tone)
+	c.set("text", change.lpad(CHANGE_CELLS))
 	c.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	c.tooltip_text = change
+	c.mouse_filter = Control.MOUSE_FILTER_PASS
 	row.add_child(c)
 	return row
 
@@ -524,7 +553,8 @@ func _section(node_name: String, heading: String, style: String) -> MarginContai
 	sec.set("style", style)
 	var vb: VBoxContainer = sec.get("content")
 	vb.add_theme_constant_override("separation", 10)
-	vb.add_child(Parts.heading(heading))
+	# On the light steel plate the heading is printed navy; elsewhere it is raised white.
+	vb.add_child(_on_steel(Parts.caption(heading, 18)) if style == "plate" else Parts.heading(heading))
 	return sec
 
 
@@ -637,3 +667,84 @@ class LevelTrack extends Control:
 				if x < pane.end.x - 1.0:
 					draw_line(Vector2(x, pane.position.y), Vector2(x, pane.end.y), Color(0, 0, 0, 0.7), 1.0)
 		Nine.paint(self, GLASS, bar.grow(MARGIN / CAPTURE_SCALE), corner)
+
+
+## A crane of steel lattice over the materials plate's right: the mast down its right edge, the jib along the
+## right half of its top, joined by a gusset at the corner. Drawn under the plate's contents.
+class CraneRig extends Control:
+	const MAST_W := 30.0
+	const JIB_H := 26.0
+	const CHORD := 7.0
+	const STEEL := Color("#343940")
+	const LIT := Color("#9aa2ab")
+	const SHADE := Color("#111417")
+	const BRACE := Color("#2b2f35")
+	const RIVET := Color("#c9ced6")
+
+	func _init() -> void:
+		name = "CraneRig"
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_RESIZED:
+			queue_redraw()
+
+	func _draw() -> void:
+		var mast := Rect2(size.x - MAST_W, 0.0, MAST_W, size.y)
+		var jib := Rect2(size.x * 0.5, 0.0, size.x * 0.5 - MAST_W * 0.5, JIB_H)
+		_truss(jib, true)
+		_truss(mast, false)
+		# The gusset where the jib meets the mast.
+		var g := PackedVector2Array([Vector2(mast.position.x, JIB_H), Vector2(mast.position.x - JIB_H, JIB_H),
+			Vector2(mast.position.x, JIB_H * 2.0)])
+		draw_colored_polygon(g, STEEL)
+		draw_polyline(PackedVector2Array([g[1], g[2]]), SHADE, 1.5, true)
+		for p: Vector2 in [Vector2(mast.position.x - 5.0, JIB_H + 4.0), Vector2(mast.position.x - 3.0, JIB_H + 10.0)]:
+			_rivet(p)
+
+	## A lattice girder in `r`: two chords along its length with braces zigzagging between them.
+	func _truss(r: Rect2, across: bool) -> void:
+		var a: Rect2
+		var b: Rect2
+		if across:
+			a = Rect2(r.position, Vector2(r.size.x, CHORD))
+			b = Rect2(Vector2(r.position.x, r.end.y - CHORD), Vector2(r.size.x, CHORD))
+		else:
+			a = Rect2(r.position, Vector2(CHORD, r.size.y))
+			b = Rect2(Vector2(r.end.x - CHORD, r.position.y), Vector2(CHORD, r.size.y))
+		# The braces, a bay as long as the girder is deep.
+		var depth := r.size.y if across else r.size.x
+		var length := r.size.x if across else r.size.y
+		var bays := maxi(1, roundi(length / depth))
+		var step := length / bays
+		for i in bays:
+			var t0 := i * step
+			var t1 := (i + 1) * step
+			var p0: Vector2
+			var p1: Vector2
+			if across:
+				p0 = Vector2(r.position.x + t0, a.end.y if i % 2 == 0 else b.position.y)
+				p1 = Vector2(r.position.x + t1, b.position.y if i % 2 == 0 else a.end.y)
+			else:
+				p0 = Vector2(a.end.x if i % 2 == 0 else b.position.x, r.position.y + t0)
+				p1 = Vector2(b.position.x if i % 2 == 0 else a.end.x, r.position.y + t1)
+			draw_line(p0, p1, BRACE, 4.0, true)
+			draw_line(p0 + Vector2(-0.5, -0.5), p1 + Vector2(-0.5, -0.5), Color(LIT, 0.35), 1.0, true)
+		for chord: Rect2 in [a, b]:
+			draw_rect(chord, STEEL)
+			draw_rect(Rect2(chord.position, Vector2(chord.size.x, 1.0) if across else Vector2(1.0, chord.size.y)), LIT)
+			var far := Rect2(Vector2(chord.position.x, chord.end.y - 1.0), Vector2(chord.size.x, 1.0)) if across \
+				else Rect2(Vector2(chord.end.x - 1.0, chord.position.y), Vector2(1.0, chord.size.y))
+			draw_rect(far, SHADE)
+		for i in bays + 1:
+			var t := i * step
+			if across:
+				_rivet(Vector2(r.position.x + t, a.get_center().y))
+				_rivet(Vector2(r.position.x + t, b.get_center().y))
+			else:
+				_rivet(Vector2(a.get_center().x, r.position.y + t))
+				_rivet(Vector2(b.get_center().x, r.position.y + t))
+
+	func _rivet(p: Vector2) -> void:
+		draw_circle(p + Vector2(0.5, 0.5), 1.8, SHADE)
+		draw_circle(p, 1.6, RIVET)

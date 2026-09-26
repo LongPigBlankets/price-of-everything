@@ -450,7 +450,7 @@ The tile view was the third surface moved to DS2 (`docs/tile-view-ds2-plan.md`; 
 | **Land icon**, **bolt icon** | `land_icon.gd`, `bolt_icon.gd` | a hex half filled; a plain lightning bolt (power as a quantity, not the grid's plug); both in the good tiles' cream (`ink`) | `LandIcon.new(side)`, `BoltIcon.new(side)` | the upgrade panel, in a cream outline a good's size so a row of them lines up with goods in wells |
 | **Money figure** | `money_figure.gd` | the owner's five-cell money rule for an LED (£999.99, £9999, £15.6K, £1.01M) | `led(value)` → `{figure, suffix}`, `text(value)` | the top bar's cash, the Goods key |
 
-Elsewhere, also reusable: `scripts/rotary_selector.gd` (the white knob; with `options`, one icon button per position on its arc), `scripts/bdp_v3_section.gd` style **`"bare"`** (draws nothing but keeps a framed section's insets, so a section can sit straight on the plate under it and still line its columns up with framed ones), and `scripts/tile_land_hex.gd` (land as a hex of squares; panel-specific, but its ordered bisection packing suits any "blocks in a shape" figure).
+Elsewhere, also reusable: `scripts/rotary_selector.gd` (the white knob; with `options`, one icon button per position on its arc, `option_ink` navy on a light plate), `scripts/bdp_v3_section.gd` style **`"plate"`** (the steel frame filled with the same worn steel as its rim, a light surface printed navy) and style **`"bare"`** (draws nothing but keeps a framed section's insets, so a section can sit straight on the plate under it and still line its columns up with framed ones), and `scripts/tile_land_hex.gd` (land as a hex of squares; panel-specific, but its ordered bisection packing suits any "blocks in a shape" figure).
 
 **Patterns it added.**
 
