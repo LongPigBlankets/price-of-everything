@@ -423,6 +423,8 @@ func _build_ui_v3() -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	body_sheet.add_child(scroll)
 	_body_scroll = scroll
+	# Building Detail's steel rail and grip rather than Godot's thin grey bar.
+	load("res://scripts/bdp_v3_scroll.gd").apply(scroll, true)
 	_pane_host = VBoxContainer.new()
 	_pane_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_pane_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1254,6 +1256,9 @@ static func player_present_on_tile(tile_id: String) -> bool:
 ## deep link names the tab it points at.
 func show_tile(tile_data: Dictionary, tab: String = "bl") -> void:
 	_close_goods_drawer()
+	# A different tile opens at the top of its tab, not wherever the last one was scrolled to.
+	if _body_scroll != null and str(tile_data.get("id", "")) != _current_tile_id:
+		_body_scroll.scroll_vertical = 0
 	_stock_sel.clear()
 	_stock_dest = ""
 	_current_tile_data = tile_data
