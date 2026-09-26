@@ -49,7 +49,14 @@ const SOURCES := [
 const NO_MARKET_NOTE := "Missing materials will not be bought from market."
 ## The raised icons (Building Detail's) that lead the Per turn rows, their size, and the print of the rows'
 ## figures.
-const ROW_ICON_PX := 44.0
+const ROW_ICON_PX := 36.0
+## The Per turn table: the icons that aren't goods, drawn as close to this square as their art allows; the
+## rows they head; three outputs' goods, two over one.
+const METRIC_ICON_PX := 54.0
+const METRIC_ROW_H := 60.0
+const OUTPUT_SMALL := 60
+## The research, land and time lines' height.
+const INFO_ROW_H := 40.0
 const FIGURE_PX := 20
 ## The icons that aren't goods stand in a cream outline a good's size, so every row is one height.
 const OUTLINE_W := 2
@@ -62,7 +69,7 @@ const OFF_WHITE := Color("#ece6d6")
 const DIAL_PX := 165.0
 
 const WIDTH := 760.0
-const CONTENT_MARGIN := 26
+const CONTENT_MARGIN := 18
 const BACKING_CORNER := 64.0
 ## The Per turn table's figure columns: now, the next level, the change.
 const FIGURE_W := 84.0
@@ -103,7 +110,7 @@ func _build_shell() -> void:
 		margin.add_theme_constant_override(side, CONTENT_MARGIN)
 	_card.add_child(margin)
 	_content = VBoxContainer.new()
-	_content.add_theme_constant_override("separation", 14)
+	_content.add_theme_constant_override("separation", 10)
 	margin.add_child(_content)
 
 
@@ -270,6 +277,7 @@ func _foot(p: Dictionary) -> HBoxContainer:
 func _research_line(gate: String) -> HBoxContainer:
 	var line := HBoxContainer.new()
 	line.name = "ResearchLine"
+	line.custom_minimum_size.y = INFO_ROW_H
 	line.add_theme_constant_override("separation", 10)
 	var icon := TextureRect.new()
 	icon.texture = RESEARCH_ICON
@@ -283,7 +291,8 @@ func _research_line(gate: String) -> HBoxContainer:
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	line.add_child(name)
-	var view: Button = CreamKey.make("Key_ViewResearch", "View Research", "", CreamKey.width_for("View Research", "", false, false))
+	var k := minf(1.0, INFO_ROW_H / CreamKey.height_for(1.0))
+	var view: Button = CreamKey.make("Key_ViewResearch", "View Research", "", CreamKey.width_for("View Research", "", false, false, k), false, false, k)
 	view.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	view.pressed.connect(func() -> void:
 		close()
@@ -303,6 +312,7 @@ func _land_line(building: Dictionary, p: Dictionary) -> HBoxContainer:
 	var fits := bool(p.get("fits", true))
 	var line := HBoxContainer.new()
 	line.name = "LandLine"
+	line.custom_minimum_size.y = INFO_ROW_H
 	line.add_theme_constant_override("separation", 10)
 	line.add_child(LandIcon.new(ROW_ICON_PX))
 	line.add_child(_lamp("ok" if fits else "bad"))
@@ -319,6 +329,7 @@ func _land_line(building: Dictionary, p: Dictionary) -> HBoxContainer:
 func _time_line(turns: int, from_level: int) -> HBoxContainer:
 	var line := HBoxContainer.new()
 	line.name = "TimeLine"
+	line.custom_minimum_size.y = INFO_ROW_H
 	line.add_theme_constant_override("separation", 10)
 	line.add_child(Parts.raised("diag_icon_transit", ROW_ICON_PX))
 	var said := _body("%s. Building continues producing at level %d until upgrade complete." % [_turns(turns), from_level])
@@ -499,37 +510,55 @@ func _on_steel(l: Label) -> Label:
 func _per_turn(from_level: int, target: int, unit_cost: Dictionary) -> Control:
 	var sec := _section("UpgradePerTurn", "Per turn", "plastic")
 	var vb: VBoxContainer = sec.get("content")
-	vb.add_child(_table_head(from_level, target))
 	var levels: Array = []
 	for l in range(1, BuildingLevels.MAX_LEVEL + 1):
 		levels.append(Production.stats_at_level(_instance_id, l))
 	var now: Dictionary = levels[from_level - 1] if from_level - 1 < levels.size() else {}
 	if now.is_empty():
 		return sec
-	# [node name, icon, values by level, decimals, unit, more is better]
+	var outputs: Array = now.get("outputs", [])
+	var cluster := _output_cluster(outputs)
+	_icon_col = maxf(float(METRIC_ICON_PX), cluster.get_combined_minimum_size().x)
+	vb.add_child(_table_head(from_level, target))
+	var per_level := func(key: String, i: int) -> Array:
+		return levels.map(func(st: Dictionary) -> float:
+			var list: Array = st.get(key, [])
+			return float(list[i].get("qty", 0)) if i < list.size() else 0.0)
+	# [node name, icon, values by level, decimals, unit, more is better, figure lines by level (or [])]
 	var specs: Array = []
-	for i in (now.get("outputs", []) as Array).size():
-		var gid := str(now.outputs[i].get("good_id", ""))
-		var icon: Control = _outlined(BoltIcon.new(ROW_ICON_PX), "Power made, MW") if gid == "power" \
-			else Parts.good_in_well(gid, -1, "%s made a turn" % Catalog.get_display_name(gid))
-		specs.append(["Output_%s" % gid, icon, levels.map(func(st: Dictionary) -> float:
-			return float((st.get("outputs", []) as Array)[i].get("qty", 0)) if i < (st.get("outputs", []) as Array).size() else 0.0),
-			0, " MW" if gid == "power" else "", true])
-	for i in (now.get("inputs", []) as Array).size():
-		var gid := str(now.inputs[i].get("good_id", ""))
-		specs.append(["Input_%s" % gid, Parts.good_in_well(gid, -1, "%s used a turn" % Catalog.get_display_name(gid)),
-			levels.map(func(st: Dictionary) -> float:
-				return float((st.get("inputs", []) as Array)[i].get("qty", 0)) if i < (st.get("inputs", []) as Array).size() else 0.0),
-			0, "", false])
+	if not outputs.is_empty():
+		# Every output grows by the level's one factor, so the first output's figures set the bar and the change;
+		# each output's own figures print in the columns, a line each.
+		var lines_by_level: Array = []
+		for l in levels.size():
+			var lines: PackedStringArray = []
+			for i in outputs.size():
+				var q := float((per_level.call("outputs", i) as Array)[l])
+				lines.append(_num(q, 0) + (" MW" if str(outputs[i].get("good_id", "")) == "power" else ""))
+			lines_by_level.append("\n".join(lines))
+		specs.append(["Outputs", cluster, per_level.call("outputs", 0), 0, "", true, lines_by_level])
+	var inputs: Array = now.get("inputs", [])
+	if not inputs.is_empty():
+		var totals: Array = []
+		for l in levels.size():
+			var sum := 0.0
+			for i in inputs.size():
+				sum += float((per_level.call("inputs", i) as Array)[l])
+			totals.append(sum)
+		var tip: PackedStringArray = ["Goods used a turn"]
+		for i in inputs.size():
+			var vals: Array = per_level.call("inputs", i)
+			tip.append("%s: %s → %s" % [Catalog.get_display_name(str(inputs[i].get("good_id", ""))), _num(float(vals[from_level - 1]), 0), _num(float(vals[target - 1]), 0)])
+		specs.append(["Inputs", _tipped(Parts.raised("econ_icon_inputs", METRIC_ICON_PX), "\n".join(tip)), totals, 0, "", false, []])
 	if levels.any(func(st: Dictionary) -> bool: return float(st.get("energy", 0.0)) > 0.0):
-		specs.append(["Power", _outlined(BoltIcon.new(ROW_ICON_PX), "Power drawn, MW"),
-			levels.map(func(st: Dictionary) -> float: return float(st.get("energy", 0.0))), 0, " MW", false])
-	specs.append(["Labour", _outlined(Parts.raised("econ_icon_labour", ROW_ICON_PX), "Labour a turn"),
-		levels.map(func(st: Dictionary) -> float: return float(st.get("labour", 0.0))), 2, "£", false])
-	specs.append(["Upkeep", _outlined(Parts.raised("econ_icon_upkeep", ROW_ICON_PX), "Upkeep a turn"),
-		levels.map(func(st: Dictionary) -> float: return float(st.get("maintenance", 0.0))), 2, "£", false])
-	specs.append(["Land", _outlined(LandIcon.new(ROW_ICON_PX), "Land the building takes"),
-		levels.map(func(st: Dictionary) -> float: return float(st.get("size", 0.0))), 0, "", false])
+		specs.append(["Power", _tipped(BoltIcon.new(METRIC_ICON_PX), "Power drawn, MW"),
+			levels.map(func(st: Dictionary) -> float: return float(st.get("energy", 0.0))), 0, " MW", false, []])
+	specs.append(["Labour", _tipped(Parts.raised("econ_icon_labour", METRIC_ICON_PX), "Labour a turn"),
+		levels.map(func(st: Dictionary) -> float: return float(st.get("labour", 0.0))), 2, "£", false, []])
+	specs.append(["Upkeep", _tipped(Parts.raised("econ_icon_upkeep", METRIC_ICON_PX), "Upkeep a turn"),
+		levels.map(func(st: Dictionary) -> float: return float(st.get("maintenance", 0.0))), 2, "£", false, []])
+	specs.append(["Land", _tipped(LandIcon.new(METRIC_ICON_PX), "Land the building takes"),
+		levels.map(func(st: Dictionary) -> float: return float(st.get("size", 0.0))), 0, "", false, []])
 	# One scale for every bar: the most any row reaches at any level, against its figure now.
 	var reach := 1.0
 	for spec: Array in specs:
@@ -538,7 +567,10 @@ func _per_turn(from_level: int, target: int, unit_cost: Dictionary) -> Control:
 			for v in spec[2]:
 				reach = maxf(reach, float(v) / cur)
 	for spec: Array in specs:
-		vb.add_child(_track_row(str(spec[0]), spec[1], spec[2], from_level, target, int(spec[3]), str(spec[4]), bool(spec[5]), reach))
+		vb.add_child(_track_row(str(spec[0]), spec[1], spec[2], from_level, target, int(spec[3]), str(spec[4]), bool(spec[5]), reach, spec[6]))
+		# A cut in the plastic between what the building makes and what it takes.
+		if str(spec[0]) == "Outputs" and specs.size() > 1:
+			vb.add_child(Cut.new())
 	if unit_cost.has("cur") and unit_cost.has("new"):
 		var cc := float(unit_cost.get("cur", 0.0))
 		var cn := float(unit_cost.get("new", 0.0))
@@ -555,39 +587,42 @@ func _per_turn(from_level: int, target: int, unit_cost: Dictionary) -> Control:
 	return sec
 
 
-## An icon that isn't a good, in a cream outline with rounded corners a good's size, so it stands in the icon
-## column as a good's well does.
-func _outlined(icon: Control, tip: String) -> PanelContainer:
-	var box := PanelContainer.new()
-	box.custom_minimum_size = Vector2(Metrics.GOOD_ICON, Metrics.GOOD_ICON) + Vector2.ONE * 2.0 * ceilf(Parts.WELL_REACH * 0.5)
-	box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var st := StyleBoxFlat.new()
-	st.bg_color = Color(0, 0, 0, 0)
-	st.border_color = UIHelpers.PILL_PAPER
-	st.set_border_width_all(OUTLINE_W)
-	st.set_corner_radius_all(OUTLINE_RADIUS)
-	box.add_theme_stylebox_override("panel", st)
-	var center := CenterContainer.new()
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	center.add_child(icon)
-	box.add_child(center)
-	box.tooltip_text = tip
-	box.mouse_filter = Control.MOUSE_FILTER_PASS
-	return box
+## `c` with a hover naming it; it passes the mouse on.
+func _tipped(c: Control, tip: String) -> Control:
+	c.tooltip_text = tip
+	c.mouse_filter = Control.MOUSE_FILTER_PASS
+	return c
 
 
-## Every Per turn row's height and icon column: a good's 72 px icon and its well's frame round it, so the
-## rows of goods and of the other figures stand the same.
-func _row_side() -> float:
-	return float(Metrics.GOOD_ICON) + 2.0 * ceilf(Parts.WELL_REACH)
+## What the building makes, its goods in their wells: one or two at a good's full size side by side, three at
+## OUTPUT_SMALL two over one. Power made is the bolt.
+func _output_cluster(outputs: Array) -> Control:
+	var px := Metrics.GOOD_ICON if outputs.size() <= 2 else OUTPUT_SMALL
+	var grid := GridContainer.new()
+	grid.name = "OutputCluster"
+	grid.columns = 2 if outputs.size() >= 2 else 1
+	grid.add_theme_constant_override("h_separation", 2 * ceili(Parts.WELL_REACH))
+	grid.add_theme_constant_override("v_separation", 2 * ceili(Parts.WELL_REACH))
+	for o: Dictionary in outputs:
+		var gid := str(o.get("good_id", ""))
+		var icon: Control = _tipped(BoltIcon.new(px), "Power made, MW") if gid == "power" \
+			else Parts.good_in_well(gid, -1, "%s made a turn" % Catalog.get_display_name(gid), true, px)
+		var cell := CenterContainer.new()
+		cell.custom_minimum_size = Vector2(px, px) + Vector2.ONE * 2.0 * ceilf(Parts.WELL_REACH)
+		cell.add_child(icon)
+		grid.add_child(cell)
+	return grid
+
+
+## The rows' icon column: as wide as the outputs' cluster, so every row's figures line up under the headings.
+var _icon_col := 0.0
 
 
 ## The table's captions over its columns.
 func _table_head(from_level: int, target: int) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
-	row.add_child(Parts.spacer(_row_side(), 0))
+	row.add_child(Parts.spacer(_icon_col, 0))
 	for c: Array in [["Lvl %d" % from_level, FIGURE_W], ["Lvl %d" % target, FIGURE_W]]:
 		var l := Parts.caption(str(c[0]), Parts.CAPTION_PX, HORIZONTAL_ALIGNMENT_RIGHT)
 		l.custom_minimum_size.x = float(c[1])
@@ -602,7 +637,7 @@ func _table_head(from_level: int, target: int) -> HBoxContainer:
 ## A row: the icon in the icon column, the figure now and at `target` in large print, the level bar and the
 ## change. A gain (`more_is_better`) lights green as it grows; a cost lights red.
 func _track_row(row_name: String, icon: Control, values: Array, from_level: int, target: int, decimals: int, unit: String,
-		more_is_better: bool, reach: float) -> HBoxContainer:
+		more_is_better: bool, reach: float, lines: Array = []) -> HBoxContainer:
 	var cur := float(values[from_level - 1])
 	var nxt := float(values[target - 1])
 	var tone: Color = DS.PALETTE["TEXT"]
@@ -616,15 +651,17 @@ func _track_row(row_name: String, icon: Control, values: Array, from_level: int,
 		tone = DS.PALETTE["OK"] if more_is_better else DS.PALETTE["DANGER"]
 	var row := HBoxContainer.new()
 	row.name = row_name
-	row.custom_minimum_size.y = _row_side()
+	row.custom_minimum_size.y = METRIC_ROW_H
 	row.add_theme_constant_override("separation", 12)
 	var box := CenterContainer.new()
-	box.custom_minimum_size = Vector2(_row_side(), _row_side())
+	box.custom_minimum_size = Vector2(_icon_col, METRIC_ROW_H)
 	box.add_child(icon)
 	row.add_child(box)
 	var money := unit == "£"
-	for pair: Array in [["Now", cur, DS.PALETTE["TEXT"]], ["Next", nxt, tone]]:
+	for pair: Array in [["Now", cur, DS.PALETTE["TEXT"], from_level], ["Next", nxt, tone, target]]:
 		var text := ("£" if money else "") + _num(float(pair[1]), decimals) + ("" if money else unit)
+		if not lines.is_empty():
+			text = str(lines[int(pair[3]) - 1])
 		var f := _figure(text)
 		f.name = str(pair[0])
 		f.add_theme_font_size_override("font_size", FIGURE_PX)
@@ -909,3 +946,16 @@ class TipHost extends MarginContainer:
 			var win := get_parent() as Window
 			if win != null:
 				win.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+
+
+## A cut across the plastic: a dark groove with a lit lip under it.
+class Cut extends Control:
+	func _init() -> void:
+		name = "Cut"
+		custom_minimum_size = Vector2(0, 6)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var y := roundf(size.y * 0.5)
+		draw_line(Vector2(0, y), Vector2(size.x, y), Color(0, 0, 0, 0.75), 2.0)
+		draw_line(Vector2(0, y + 1.5), Vector2(size.x, y + 1.5), Color(1, 1, 1, 0.10), 1.0)
