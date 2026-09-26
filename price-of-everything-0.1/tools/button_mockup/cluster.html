@@ -3227,23 +3227,25 @@ async function exportLayers() {
   });
 
   // --- a study for the construct panel, not a game layer: the construction lot with its crane. One panel at
-  // two stages, side by side at one width (600 logical px). A heavy yellow lattice tower stands off the
-  // hoarding's left edge, only its inner chord and the ends of its bracing inside the panel; the cab on its
-  // top carries the title, and the site's name hangs from the jib on a plate to match. The catalogue: the
-  // category keys on a black plate whose tab rises under the jib to hold the search, an enamel site board
-  // per building on the navy steel hoarding, the Furnace's across the width with its recipes hung under it
-  // on chains as tags. The build order, drawn in full with the fold marked: the site board lowered on the
-  // hook with its recipe, the verdict on the cabin desk (total, cash after, turns to build, the guarded Build
-  // key), the site's requirements on the feeder pillar, the cost beside the materials source knob, the
-  // materials on pallets with their stock and price, the outlook on the programme board, and the lot last.
+  // two stages, side by side at one width (600 logical px). A yellow lattice tower stands off the hoarding's
+  // left edge, its inner chord and the ends of its bracing inside the panel; the cab on its top carries the
+  // title, and the site's name hangs from the jib on a plate to match. The catalogue: the category keys on a
+  // black plate whose tab rises under the jib to hold the search, an enamel site board per building on the
+  // navy steel hoarding, its icon printed flat as a blueprint, the Furnace's across the width with its
+  // recipes hung under it as enamel tags in the condensed diagram. The build order, in full with its fold:
+  // the site board lowered on the hook (the icon, the name of building and recipe together, the expanded
+  // diagram on an enamel sign sunk into it), the verdict on the cabin desk with the seam under it where the
+  // fixed head ends, the requirement lamps, the cost, the materials yard with the source knob, the outlook,
+  // and the lot last. Under the catalogue, the building icon three ways for comparison. On every LED the
+  // point takes a cell of its own, and a figure drops a decimal from £100.
   if (want('constructlot')) await withSeed(434, async () => {
     for (const f of ['500 30px "IBM Plex Sans"', '600 30px "IBM Plex Sans"', '700 30px "IBM Plex Sans"', '600 30px "Barlow Condensed"', '700 30px "Barlow Condensed"', `60px ${TITLE_FAMILY}`]) await document.fonts.load(f);
-    const PW = 1125, FOLD = 1710, MX = 60, GAP = 120, MR = 260, CAPT = 110, FOOT = 120, SH1 = FOLD + 60;
-    const CL = 120, CW = PW - 40 - CL, OX = [MX, MX + PW + GAP], OY = CAPT, W = OX[1] + PW + MR;
+    const PW = 1125, FOLD = 1710, MX = 60, GAP = 300, MR = 260, CAPT = 110, FOOT = 120, SH1 = FOLD + 60;
+    const CL = 80, CW = PW - 40 - CL, OX = [MX, MX + PW + GAP], OY = CAPT, W = OX[1] + PW + MR;
     const T = PLATE_TOP, CREAM = '#feedc3', ENAMEL_FIELD = '#0a2140', YELLOW = '#d9a21e', LIGHT = '#e8eef7';
     const RED = '#ff4d3d', GREEN = '#4fe38a', WHITE_LED = '#eef3fa', INK_OK = '#1d6b3a', INK_BAD = '#8f1f19';
     const PLEX = '"IBM Plex Sans"', BARLOW = '"Barlow Condensed"';
-    const groups = [new THREE.Group(), new THREE.Group()], prints = [];
+    const groups = [new THREE.Group(), new THREE.Group(), new THREE.Group()], prints = [], notes = [];
     /** Places a part at (x, z) on the page and height y, in the render of the stage being built (`cur`). */
     let cur = 0;
     const add = (m, x, z, y = T) => { m.position.set(x, y, z); groups[cur].add(m); return m; };
@@ -3260,14 +3262,16 @@ async function exportLayers() {
       }
       return best ? best[1] : [str];
     };
-    /** The owner's money rule for a screen (scripts/ds2/money_figure.gd): at most five cells, two decimals
-     * below £1,000, whole pounds to £9999, then £15.6K, £1.01M, £1.01B; the K, M or B printed after. */
-    const moneyLed = (v) => {
+    /** The owner's money rule for a screen: the point takes a cell of its own and a figure at most five cells;
+     * two decimals below £100 (20.00), one to £999.9 (481.3), whole pounds to £9999 (1153), then £15.6K,
+     * £1.01M, £1.01B, the K, M or B printed after the screen. `whole` keeps to whole pounds below £10,000. */
+    const moneyLed = (v, { whole = false } = {}) => {
       const minus = v < 0 ? '-' : '', a = Math.abs(v);
-      for (const [div, suffix, d0, limit] of [[1, '', 2, 1000], [1, '', 0, 10000], [1e3, 'K', 1, 1000], [1e6, 'M', 2, 1000], [1e9, 'B', 2, 1000], [1e12, 'T', 2, Infinity]]) {
+      const small = whole ? [[1, '', 0, 10000]] : [[1, '', 2, 100], [1, '', 1, 1000], [1, '', 0, 10000]];
+      for (const [div, suffix, d0, limit] of [...small, [1e3, 'K', 1, 1000], [1e6, 'M', 2, 1000], [1e9, 'B', 2, 1000], [1e12, 'T', 2, Infinity]]) {
         let d = d0, shown = (a / div).toFixed(d);
         if (parseFloat(shown) >= limit) continue;
-        while (d > 0 && (minus + shown).replace('.', '').length > 5) shown = (a / div).toFixed(--d);
+        while (d > 0 && (minus + shown).length > 5) shown = (a / div).toFixed(--d);
         return { figure: minus + shown, suffix };
       }
     };
@@ -3344,18 +3348,17 @@ async function exportLayers() {
     };
     const ledFace = (iw, ih, str, cells, colour) => canvas2d(iw, ih, (c) => {
       const rgb = rgbOf(colour), padX = 7, padY = 6, cw = (iw - 2 * padX) / cells, ch = ih - 2 * padY, t = Math.min(cw * 0.2, ch * 0.12);
-      const list = []; for (const k of str) { if (k === '.') { if (list.length) list[list.length - 1].dot = true; } else list.push({ k, dot: false }); }
-      while (list.length < cells) list.unshift({ k: ' ', dot: false });
+      const list = [...str]; while (list.length < cells) list.unshift(' ');   // every character a cell, the point too
       c.fillStyle = '#060808'; c.fillRect(0, 0, iw, ih);
-      const cell = (i, segs, dot, style) => {
+      const cell = (i, k, style) => {
         c.save(); c.translate(padX + i * cw + cw / 2, padY + ch / 2); c.transform(1, 0, -0.09, 1, 0, 0); c.translate(-cw / 2, -ch / 2); c.fillStyle = style;
-        for (const s of segs) { const [[ax, ay], [bx, by]] = SEGS[s]; segment(c, ax * cw, ay * ch, bx * cw, by * ch, t); }
-        if (dot) { c.beginPath(); c.arc(0.95 * cw, 0.94 * ch, t * 0.6, 0, Math.PI * 2); c.fill(); }
+        if (k === '.') { c.beginPath(); c.arc(0.5 * cw, 0.92 * ch, t * 0.95, 0, Math.PI * 2); c.fill(); }
+        else for (const sg of (DIGITS[k] ?? '')) { const [[ax, ay], [bx, by]] = SEGS[sg]; segment(c, ax * cw, ay * ch, bx * cw, by * ch, t); }
         c.restore();
       };
-      list.forEach((_, i) => cell(i, 'abcdefg', true, `rgba(${rgb},0.08)`));
-      c.save(); c.filter = 'blur(2.4px)'; c.globalAlpha = 0.75; list.forEach((d, i) => cell(i, DIGITS[d.k] ?? '', d.dot, colour)); c.restore();
-      list.forEach((d, i) => cell(i, DIGITS[d.k] ?? '', d.dot, colour));
+      list.forEach((_, i) => cell(i, '8', `rgba(${rgb},0.08)`));
+      c.save(); c.filter = 'blur(2.4px)'; c.globalAlpha = 0.75; list.forEach((k, i) => cell(i, k, colour)); c.restore();
+      list.forEach((k, i) => cell(i, k, colour));
       const top = c.createLinearGradient(0, 0, 0, 7); top.addColorStop(0, 'rgba(0,0,0,0.6)'); top.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = top; c.fillRect(0, 0, iw, 7);
       const left = c.createLinearGradient(0, 0, 5, 0); left.addColorStop(0, 'rgba(0,0,0,0.45)'); left.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = left; c.fillRect(0, 0, 5, ih);
       const glare = c.createLinearGradient(0, 0, iw * 0.5, ih); glare.addColorStop(0.3, 'rgba(255,255,255,0)'); glare.addColorStop(0.45, 'rgba(255,255,255,0.07)'); glare.addColorStop(0.6, 'rgba(255,255,255,0)');
@@ -3373,8 +3376,8 @@ async function exportLayers() {
     };
     const ledScreen = (str, cells, colour) => { const iw = Math.round(cells * CELL[0] + 14), ih = CELL[1] + 12; return glassScreen(iw, ih, ledFace(iw, ih, str, cells, colour)); };
     /** A money figure on a dark surface: the £ printed, the screen from x (its left edge), the K, M or B after. */
-    const money = (value, colour, cells, x, cz, y) => {
-      const { figure, suffix } = moneyLed(value), scr = ledScreen(figure, cells, colour);
+    const money = (value, colour, cells, x, cz, y, opts = {}) => {
+      const { figure, suffix } = moneyLed(value, opts), scr = ledScreen(figure, cells, colour);
       add(scr.group, x + scr.w / 2, cz, y);
       printWhite('£', x - 9, cz + 1, 34, { weight: 600, align: 'right' });
       if (suffix) printWhite(suffix, x + scr.w + 8, cz + 1, 34, { weight: 600 });
@@ -3450,27 +3453,27 @@ async function exportLayers() {
     // and the ends of its struts and bracing show, cut by the panel's edge; the slewing unit on its top, the
     // cab beside it carrying the title under its window, the lattice jib along the top with the site's name
     // hung from it, and the trolley; `drop` lowers the striped hook block from it.
-    const CAB = { x: 104, y: 36, w: 268, h: 192 }, JIB = { x0: CAB.x + CAB.w, x1: PW - 120, t: 48, b: 128 };
+    const CAB = { x: 70, y: 36, w: 268, h: 192 }, JIB = { x0: CAB.x + CAB.w, x1: PW - 120, t: 48, b: 128 };
     const PLACARD = { x: JIB.x1 - NAMEPLATE.w, y: 152 };
     const crane = (ox, feat, sh, { trolley, drop = null, site = null }) => {
       const X = (x) => ox + x, Z = (z) => OY + z, cab = CAB, cy = T + 3, ctop = cy + 13;
-      // The tower: two heavy chords 236 apart (the outer one off the panel), a strut at each joint and a brace
+      // The tower: two heavy chords 104 apart (the outer one off the panel), a strut at each joint and a brace
       // each way across every square bay, a bolted gusset over each joint of the inner chord.
-      const ci = 86, co = -150, t0 = 44, t1 = sh - 18, bay = ci - co;   // the chords stop flush with the hoarding's foot
-      bar(X(co), Z(t0), X(co), Z(t1), 28, 17, T + 1, YELLOW, 0.8);
-      bar(X(ci), Z(t0), X(ci), Z(t1), 28, 17, T + 1, YELLOW, 0.8);
-      for (let y = t0 + 110; y < t1 - 30; y += bay) {
+      const ci = 46, co = -58, t0 = 44, t1 = sh - 18, bay = ci - co;   // the chords stop flush with the hoarding's foot
+      bar(X(co), Z(t0), X(co), Z(t1), 26, 16, T + 1, YELLOW, 0.8);
+      bar(X(ci), Z(t0), X(ci), Z(t1), 26, 16, T + 1, YELLOW, 0.8);
+      for (let y = t0 + 96; y < t1 - 30; y += bay) {
         const y2 = Math.min(y + bay, t1), f = (y2 - y) / bay;   // the last bay stops at the hoarding's foot
-        bar(X(co), Z(y), X(ci), Z(y), 15, 12, T + 2, YELLOW, 0.6);
-        bar(X(co), Z(y), X(co + (ci - co) * f), Z(y2), 12, 11, T + 2.5, YELLOW, 0.6);
-        bar(X(ci), Z(y), X(ci - (ci - co) * f), Z(y2), 12, 11, T + 3, YELLOW, 0.6);
-        add(shade(new THREE.Mesh(extrude(rrShape(36, 70, 5), 1.6, 1, 0.8, 2), [painted(36, 70, YELLOW, 0.9), yellowSide])), X(ci), Z(y), T + 17.4);
-        for (const [bx, bz] of [[-9, -23], [9, -23], [-9, 0], [9, 0], [-9, 23], [9, 23]]) add(screw(3), X(ci + bx), Z(y + bz), T + 20.6);
+        bar(X(co), Z(y), X(ci), Z(y), 13, 11, T + 2, YELLOW, 0.6);
+        bar(X(co), Z(y), X(co + (ci - co) * f), Z(y2), 11, 10, T + 2.5, YELLOW, 0.6);
+        bar(X(ci), Z(y), X(ci - (ci - co) * f), Z(y2), 11, 10, T + 3, YELLOW, 0.6);
+        add(shade(new THREE.Mesh(extrude(rrShape(34, 60, 5), 1.6, 1, 0.8, 2), [painted(34, 60, YELLOW, 0.9), yellowSide])), X(ci), Z(y), T + 16.4);
+        for (const [bx, bz] of [[-8, -19], [8, -19], [-8, 0], [8, 0], [-8, 19], [8, 19]]) add(screw(2.8), X(ci + bx), Z(y + bz), T + 19.6);
       }
       // The slewing unit on the tower's top, a dark slewing ring under it; the cab stands beside it.
-      add(shade(new THREE.Mesh(extrude(rrShape(ci - co + 28, 70, 8), 10, 2, 1.6, 3), [painted(ci - co + 28, 70, YELLOW, 0.9), yellowSide])), X((co + ci) / 2 + 6), Z(t0 + 20), T + 3);
-      add(shade(new THREE.Mesh(extrude(rrShape(ci - co + 20, 12, 3), 3, 1, 0.8, 2), darkSteel)), X((co + ci) / 2 + 6), Z(t0 + 62), T + 3);
-      for (const bx of [14, 50, 86]) for (const bz of [2, 38]) add(screw(3.6), X(bx), Z(t0 + bz), T + 17.5);
+      add(shade(new THREE.Mesh(extrude(rrShape(ci - co + 32, 70, 8), 10, 2, 1.6, 3), [painted(ci - co + 32, 70, YELLOW, 0.9), yellowSide])), X((co + ci) / 2 + 10), Z(t0 + 20), T + 3);
+      add(shade(new THREE.Mesh(extrude(rrShape(ci - co + 24, 12, 3), 3, 1, 0.8, 2), darkSteel)), X((co + ci) / 2 + 10), Z(t0 + 62), T + 3);
+      for (const bx of [12, 44]) for (const bz of [2, 38]) add(screw(3.6), X(bx), Z(t0 + bz), T + 17.5);
       // The cab.
       add(shade(new THREE.Mesh(extrude(rrShape(cab.w, cab.h, 10), 8, 2.5, 2, 3), [painted(cab.w, cab.h, YELLOW, 0.9), yellowSide])), X(cab.x + cab.w / 2), Z(cab.y + cab.h / 2), cy);
       feat.buttons.push({ x: cab.x, y: cab.y, w: cab.w, h: cab.h, r: 10 });
@@ -3528,11 +3531,29 @@ async function exportLayers() {
       return { bowl: [trolley + 8 - 11, drop + hbh - 3 + 24] };
     };
 
-    // --- an enamel site board: cream enamel on a steel sheet, a navy field holding the building's emblem
-    // raised in polished metal, the rest printed navy; `print` paints its words.
+    // --- an enamel site board: cream enamel on a steel sheet, a navy field holding the building's icon, the rest
+    // printed navy; `print` paints its words. The icon, by `style`: printed flat in light line art over a faint
+    // blueprint grid ('flat', the look now used), raised in polished metal with its soft shadow as in v2
+    // ('relief'), or printed with a crisp two pixel emboss and no blur ('emboss').
     const EMBLEM_MASK = {};
     const emblemMask = async (file) => (EMBLEM_MASK[file] ??= keyCream(await loadImage('/icons/buildings/' + file)));
-    const siteBoard = async (ox, { x, y, w, h, file, field, emblem, base = T, bolts = true, print }) => {
+    const BLUEPRINT_INK = '#e3ebf5';
+    /** The faint grid of a blueprint on a navy field at (fx, fy), fs square. */
+    const blueprintGrid = (c, fx, fy, fs, r = 6) => {
+      c.save(); c.beginPath(); c.roundRect(fx, fy, fs, fs, r); c.clip();
+      const n = 12, step = fs / n;
+      for (let k = 1; k < n; k++) { c.fillStyle = `rgba(160,192,236,${k % 4 === 0 ? 0.17 : 0.08})`; c.fillRect(fx + k * step, fy, 1, fs); c.fillRect(fx, fy + k * step, fs, 1); }
+      c.restore();
+    };
+    /** A building icon printed on its field: flat as a blueprint, or with a crisp emboss. */
+    const printIcon = (c, mask, style, x, y, s) => {
+      if (style === 'flat') { stamp(c, mask, x, y, s, s, BLUEPRINT_INK); return; }
+      if (style === 'emboss') {
+        stamp(c, mask, x + 2, y + 2, s, s, 'rgba(0,0,0,0.95)'); stamp(c, mask, x - 1.5, y - 1.5, s, s, 'rgba(255,255,255,0.6)');
+        stamp(c, mask, x, y, s, s, '#dcdad2');
+      }
+    };
+    const siteBoard = async (ox, { x, y, w, h, file, field, emblem, base = T, bolts = true, print, style = 'flat' }) => {
       const mask = await emblemMask(file), [fx, fy, fs] = field, ex = fx + (fs - emblem) / 2, ey = fy + (fs - emblem) / 2;
       const face = canvas2d(w, h, (c) => {
         c.fillStyle = CREAM; c.fillRect(0, 0, w, h);
@@ -3540,7 +3561,9 @@ async function exportLayers() {
         for (let i = 0; i < w * h / 60; i++) { c.fillStyle = `rgba(58,46,30,${0.08 + rand() * 0.16})`; c.fillRect(rand() * w, rand() * h, 0.4 + rand(), 0.4 + rand()); }
         c.strokeStyle = ENAMEL_FIELD; c.lineWidth = 2.4; c.beginPath(); c.roundRect(6, 6, w - 12, h - 12, 7); c.stroke();
         c.fillStyle = ENAMEL_FIELD; c.beginPath(); c.roundRect(fx, fy, fs, fs, 6); c.fill();
-        drawIconShadows(c, w, h, [{ height: 11, draw: (g, col) => stamp(g, mask, ex, ey, emblem, emblem, col) }]);
+        if (style === 'flat') blueprintGrid(c, fx, fy, fs);
+        if (style === 'relief') drawIconShadows(c, w, h, [{ height: 11, draw: (g, col) => stamp(g, mask, ex, ey, emblem, emblem, col) }]);
+        else printIcon(c, mask, style, ex, ey, emblem);
         print?.(c);
         for (const [cx, cy, sx, sy] of [[0, 0, 1, 1], [w, 0, -1, 1], [0, h, 1, -1], [w, h, -1, -1]]) {   // chips at the corners
           for (let i = 0, count = 1 + Math.floor(rand() * 3); i < count; i++) {
@@ -3553,7 +3576,7 @@ async function exportLayers() {
       });
       add(shade(new THREE.Mesh(extrude(rrShape(w, h, 10), 2, 1.6, 1.2, 3), [enamelMat(face, w, h), MAT.plateSide])), ox + x + w / 2, OY + y + h / 2, base);
       const top = base + 5.2;
-      add(relief(emblem, emblem, (g, a, b) => stamp(g, mask, 0, 0, a, b, '#fff'), chrome, { height: 11, soften: 1.6, faceGrade: false }), ox + x + ex + emblem / 2, OY + y + ey + emblem / 2, top + 0.3);
+      if (style === 'relief') add(relief(emblem, emblem, (g, a, b) => stamp(g, mask, 0, 0, a, b, '#fff'), chrome, { height: 11, soften: 1.6, faceGrade: false }), ox + x + ex + emblem / 2, OY + y + ey + emblem / 2, top + 0.3);
       if (bolts) for (const [bx, bz] of [[13, 13], [w - 13, 13], [13, h - 13], [w - 13, h - 13]]) add(screw(6), ox + x + bx, OY + y + bz, top + 0.2);
       return top;
     };
@@ -3575,33 +3598,63 @@ async function exportLayers() {
       add(shade(new THREE.Mesh(extrude(sh, 3, 1.2, 0.9, 3), MAT.frame)), cx, cz, y + 2.2);
     };
 
-    // --- a recipe as a diagram: its inputs in wells with their quantities, a plus between them, the navy
-    // arrow carrying the power it draws beside a yellow bolt, then its outputs. `diagram` lays the parts out
-    // from x0; `paintDiagram` prints the plus signs and the arrow onto the host's face; `setWells` sets the
-    // goods in their wells on it.
-    const WELL_OUT = 148, PLUS = 42, ARROW = 196, DGAP = 10;
-    const diagram = (items, x0) => { let x = x0; return items.map((it) => { const w = it === '+' ? PLUS : it.power != null ? ARROW : WELL_OUT; const box = { it, x, w }; x += w + DGAP; return box; }); };
-    const diagramWidth = (items) => { const b = diagram(items, 0), l = b[b.length - 1]; return l.x + l.w; };
+    // --- a recipe drawn on vitreous enamel, as Building Detail's recipe sign. Expanded: each good's icon with its
+    // quantity in the navy pill inside its corner, a plus between the inputs, the navy arrow carrying the power
+    // it draws beside a yellow bolt, then the output, larger. Condensed (the Construct panel's default setting,
+    // as UIHelpers.mini_recipe_diagram): the bare icons, the plus and a plain arrow. No good under 72 logical px.
+    const ICON_IN = 136, ICON_OUT = 150, PLUS = 34, DGAP = 10;
+    const diagram = (items, x0, expanded) => {
+      let x = x0; const last = items.length - 1;
+      return items.map((it, i) => {
+        const w = it === '+' ? PLUS : it.arrow ? (expanded ? 172 : 112) : (expanded && i === last ? ICON_OUT : ICON_IN);
+        const box = { it, x, w }; x += w + DGAP; return box;
+      });
+    };
+    const diagramWidth = (items, expanded) => { const b = diagram(items, 0, expanded), l = b[b.length - 1]; return l.x + l.w; };
     const BOLT = [[0.60, 0.04], [0.22, 0.56], [0.47, 0.56], [0.36, 0.96], [0.78, 0.40], [0.53, 0.40], [0.66, 0.04]];
-    const paintDiagram = (c, boxes, cy) => {
+    const paintRecipe = (c, boxes, cy, expanded) => {
       for (const { it, x, w } of boxes) {
-        if (it === '+') { text(c, '+', x + w / 2, cy, w, 48, NAVY, { align: 'center', weight: 600, family: PLEX }); continue; }
-        if (it.power == null) continue;
-        const sh = 74, hh = 124, hw = 56, fig = String(it.power);
-        c.fillStyle = NAVY; c.beginPath(); c.moveTo(x, cy - sh / 2); c.lineTo(x + w - hw, cy - sh / 2); c.lineTo(x + w - hw, cy - hh / 2); c.lineTo(x + w, cy);
-        c.lineTo(x + w - hw, cy + hh / 2); c.lineTo(x + w - hw, cy + sh / 2); c.lineTo(x, cy + sh / 2); c.closePath(); c.fill();
-        text(c, fig, x + 16, cy + 2, 100, 40, '#f4f1e8', { weight: 600, family: PLEX });
-        c.font = `600 40px ${PLEX}`; const bs = 42, bx = x + 16 + c.measureText(fig).width + 4, by = cy - bs / 2;
-        c.fillStyle = '#f2c230'; c.beginPath(); BOLT.forEach(([u, v], k) => (k ? c.lineTo(bx + u * bs, by + v * bs) : c.moveTo(bx + u * bs, by + v * bs))); c.closePath(); c.fill();
+        if (it === '+') { text(c, '+', x + w / 2, cy, w + 12, 46, NAVY, { align: 'center', weight: 600, family: PLEX }); continue; }
+        if (it.arrow) {
+          const sh = expanded ? 74 : 38, hh = expanded ? 124 : 76, hw = expanded ? 56 : 42;
+          c.fillStyle = NAVY; c.beginPath(); c.moveTo(x, cy - sh / 2); c.lineTo(x + w - hw, cy - sh / 2); c.lineTo(x + w - hw, cy - hh / 2); c.lineTo(x + w, cy);
+          c.lineTo(x + w - hw, cy + hh / 2); c.lineTo(x + w - hw, cy + sh / 2); c.lineTo(x, cy + sh / 2); c.closePath(); c.fill();
+          if (!expanded) continue;
+          const fig = String(it.power);
+          text(c, fig, x + 16, cy + 2, 100, 40, '#f4f1e8', { weight: 600, family: PLEX });
+          c.font = `600 40px ${PLEX}`; const bs = 42, bx = x + 16 + c.measureText(fig).width + 4, by = cy - bs / 2;
+          c.fillStyle = '#f2c230'; c.beginPath(); BOLT.forEach(([u, v], k) => (k ? c.lineTo(bx + u * bs, by + v * bs) : c.moveTo(bx + u * bs, by + v * bs))); c.closePath(); c.fill();
+          continue;
+        }
+        fitImage(c, IMG[it.img], x, cy - w / 2, w, w);
+        if (expanded) pill(c, String(it.qty), x + w - 4, cy + w / 2 - 4, 38, 25);
       }
     };
-    const setWells = async (boxes, ox, x0, cz, top) => {
-      for (const { it, x, w } of boxes) if (it.img) goodWell(await goodImg(it.img), it.qty, ox + x0 + x + w / 2, cz, top);
-    };
+    /** The enamel's grunge (recipeGrunge) on its field, inside the navy band and pinstripe. */
+    const enamelInset = ENAMEL.rim + ENAMEL.band + ENAMEL.gap + ENAMEL.stripe;
+    const grunge = (c, w, h) => { c.save(); c.beginPath(); c.roundRect(enamelInset, enamelInset, w - 2 * enamelInset, h - 2 * enamelInset, 4); c.clip(); c.translate(enamelInset, enamelInset); recipeGrunge(c); c.restore(); };
+    /** A hanging enamel plate: the recipe sign's cream, rim, navy band and pinstripe, chipped at its corners. */
+    const hungEnamel = (w, h, paint) => canvas2d(w, h, (g) => {
+      const { rim, band, gap, stripe, radius } = ENAMEL;
+      g.fillStyle = ENAMEL_CREAM; g.fillRect(0, 0, w, h);
+      const bi = rim + band / 2; g.strokeStyle = ENAMEL_FIELD; g.lineWidth = band; g.beginPath(); g.roundRect(bi, bi, w - 2 * bi, h - 2 * bi, Math.max(2, radius - bi)); g.stroke();
+      const si = rim + band + gap + stripe / 2; g.lineWidth = stripe; g.beginPath(); g.roundRect(si, si, w - 2 * si, h - 2 * si, Math.max(2, radius - si)); g.stroke();
+      grunge(g, w, h);
+      for (const [cx, cy, sx, sy] of [[0, 0, 1, 1], [w, 0, -1, 1], [0, h, 1, -1], [w, h, -1, -1]]) {
+        for (let i = 0, count = 1 + Math.floor(rand() * 3); i < count; i++) {
+          const x = cx + sx * (6 + rand() * 30), y = cy + sy * (6 + rand() * (i ? 30 : 12)), r = 1.6 + rand() * 3.4;
+          const pts = Array.from({ length: 9 }, (_, k) => { const a = k / 9 * Math.PI * 2, q = r * (0.55 + rand() * 0.6); return [x + Math.cos(a) * q, y + Math.sin(a) * q]; });
+          g.beginPath(); pts.forEach(([px, py], k) => (k ? g.lineTo(px, py) : g.moveTo(px, py))); g.closePath(); g.fillStyle = '#2a2521'; g.fill();
+          g.strokeStyle = 'rgba(255,250,236,0.55)'; g.lineWidth = 0.6; g.stroke();
+        }
+      }
+      paint?.(g);
+    });
     const ORE = 'alternate_icons/medium/g_002_iron_ore.png', COAL = 'alternate_icons/medium/g_001_coal.png';
     const INGOTS = 'alternate_icons/medium/g_004_iron_ingots.png', STEEL = 'alternate_icons/medium/g_006_steel.png';
-    const PIG_IRON = [{ img: ORE, qty: 40 }, '+', { img: COAL, qty: 20 }, { power: 140 }, { img: INGOTS, qty: 70 }];
-    const STEELMAKING = [{ img: INGOTS, qty: 37 }, '+', { img: COAL, qty: 20 }, { power: 140 }, { img: STEEL, qty: 49 }];
+    const PIG_IRON = [{ img: ORE, qty: 40 }, '+', { img: COAL, qty: 20 }, { arrow: true, power: 140 }, { img: INGOTS, qty: 70 }];
+    const STEELMAKING = [{ img: INGOTS, qty: 37 }, '+', { img: COAL, qty: 20 }, { arrow: true, power: 140 }, { img: STEEL, qty: 49 }];
+    for (const f of [ORE, COAL, INGOTS, STEEL]) await goodImg(f);
 
     // --- the white plastic knob (tools/knob_render, drawn in the game from its frames by rotary_selector.gd):
     // a worn off-white dish and grip fin with a red dot, sunk in a dark grey metal collar. R is the collar's
@@ -3779,13 +3832,15 @@ async function exportLayers() {
         feat.buttons.push({ x, y, w, h: BH, r: 10 });
         if (!wide) continue;
         let above = y + BH, aboveTop = top;
-        for (const [recipe, items] of [['Pig Iron Smelting', PIG_IRON], ['Steelmaking', STEELMAKING]]) {
-          const TAG = { h: 238, head: 44, row: 146 }, ty = above + 40, dx = (CW - diagramWidth(items)) / 2, boxes = diagram(items, dx);
-          for (const fx of [64, CW - 64]) { ring(X(CL + fx), Z(above - 14), aboveTop, 5, 1.7); chain(X(CL + fx), Z(above - 14), Z(ty + 14), T + 6); }
-          const tagTop = whitePlate(ox, CL, ty, CW, TAG.h, (c) => { ink(c, recipe, CW / 2, TAG.head, 28, NAVY, { weight: 600, align: 'center' }); paintDiagram(c, boxes, TAG.row); }, T + 1);
-          for (const fx of [64, CW - 64]) eyelet(X(CL + fx), Z(ty + 14), tagTop);
-          await setWells(boxes, ox, CL, Z(ty + TAG.row), tagTop);
+        for (const [k, [name, items]] of [['Iron Furnace', PIG_IRON], ['Steel Furnace', STEELMAKING]].entries()) {
+          const TAG = { h: 250, head: 52, row: 156 }, ty = above + 40, boxes = diagram(items, (CW - diagramWidth(items, false)) / 2, false);
+          for (const fx of [64, CW - 64]) { ring(X(CL + fx), Z(above - 14), aboveTop, 5, 1.7); chain(X(CL + fx), Z(above - 14), Z(ty + 30), T + 6); }
+          const face = hungEnamel(CW, TAG.h, (c) => { text(c, name, CW / 2, TAG.head, CW - 200, 30, NAVY, { weight: 600, family: PLEX, align: 'center' }); paintRecipe(c, boxes, TAG.row, false); });
+          add(shade(new THREE.Mesh(extrude(rrShape(CW, TAG.h, ENAMEL.radius), 2, 1.6, 1.2, 3), [enamelMat(face, CW, TAG.h), MAT.plateSide])), X(CL + CW / 2), Z(ty + TAG.h / 2), T + 1);
+          const tagTop = T + 6.2;
+          for (const fx of [64, CW - 64]) eyelet(X(CL + fx), Z(ty + 30), tagTop);
           feat.buttons.push({ x: CL, y: ty, w: CW, h: TAG.h, r: 10 });
+          if (!k) notes.push({ x: OX[0] + PW + 56, y: OY + ty + TAG.row, lines: ['condensed', '(Construct setting)'] });
           above = ty + TAG.h; aboveTop = tagTop;
         }
       }
@@ -3797,36 +3852,53 @@ async function exportLayers() {
     {
       const ox = OX[1], feat = feats[1], X = (x) => ox + x, Z = (z) => OY + z;
       smallKey('back', X(PW - 60), Z(160)); feat.buttons.push({ x: PW - 98, y: 122, w: 76, h: 76, r: 8 });
-      const B = { x: CL, y: 334, w: CW, h: 302 }, TROLLEY = B.x + B.w / 2 + 3, DROP = 196;
+      const B = { x: CL, y: 334, w: CW, h: 336 }, TROLLEY = B.x + B.w / 2 + 3, DROP = 196;
 
-      // (a) The hook holds a spreader beam by its eye plate; a chain from each end lowers the Furnace's site
-      // board, which names the building and its recipe and draws the recipe out.
+      // (a) The hook holds a spreader beam by its eye plate; a chain from each end lowers the site board: a worn
+      // steel sign named for building and recipe together, the icon printed as a blueprint on its left, and the
+      // recipe, expanded, on a vitreous enamel sign sunk into it on its right.
       const [bx, bz] = [TROLLEY - 3, DROP + 67], SPY = 296;   // the hook's bowl (see crane)
       const eye = new THREE.Shape(), hy = SPY - 7 - bz; eye.moveTo(-24, 0); eye.lineTo(24, 0); eye.lineTo(13, hy + 6); eye.quadraticCurveTo(0, hy + 22, -13, hy + 6); eye.closePath();
       eye.holes.push(new THREE.Path().absarc(0, hy, 6, 0, Math.PI * 2, true));
       add(shade(new THREE.Mesh(extrude(eye, 2, 1, 0.8, 2), [painted(48, 44, YELLOW, 0.5), yellowSide])), X(bx), Z(SPY - 7), T + 4);
       bar(X(B.x + 30), Z(SPY), X(B.x + B.w - 30), Z(SPY), 14, 10, T + 5);
-      for (const ex of [B.x + 40, B.x + B.w - 40]) { chain(X(ex), Z(SPY + 4), Z(B.y + 12), T + 14); add(screw(4), X(ex), Z(SPY), T + 15); }
-      const bBoxes = diagram(PIG_IRON, 212);
-      const bTop = await siteBoard(ox, { x: B.x, y: B.y, w: B.w, h: B.h, file: 'b_002_furnace.png', field: [24, 24, 168], emblem: 140, base: T + 9, bolts: false, print: (c) => {
-        text(c, 'Furnace', 212, 58, 700, 46, NAVY, { weight: 700, family: PLEX });
-        text(c, 'Pig Iron Smelting', 212, 104, 700, 30, NAVY, { weight: 600, family: PLEX });
-        paintDiagram(c, bBoxes, 206);
-      } });
-      for (const ex of [B.x + 40, B.x + B.w - 40]) ring(X(ex), Z(B.y + 12), bTop, 5.5, 1.8);
-      await setWells(bBoxes, ox, B.x, Z(B.y + 206), bTop);
+      for (const ex of [B.x + 40, B.x + B.w - 40]) { chain(X(ex), Z(SPY + 4), Z(B.y + 14), T + 16); add(screw(4), X(ex), Z(SPY), T + 15); }
+      const bBase = T + 9, bTop = bBase + 4 + 3.2, TILE = { x: 24, y: 94, s: 216 };
+      const EN = { x: TILE.x + TILE.s + 20, y: TILE.y, w: B.w - TILE.x - TILE.s - 20 - 24, h: TILE.s };
+      const boardIcons = [];
+      raised(ox, feat, 'IRON FURNACE', B.x + 24, B.y + 8, 60, TITLE_FAMILY, 400, { icons: boardIcons, x: B.x, y: B.y, top: bTop });
+      const bShape = rrShape(B.w, B.h, 12);
+      bShape.holes.push(rr(new THREE.Path(), EN.w, EN.h, ENAMEL.radius, EN.x + EN.w / 2 - B.w / 2, B.h / 2 - (EN.y + EN.h / 2)));
+      add(shade(new THREE.Mesh(extrude(bShape, 4, 1.6, 1.2, 3), [plateMaterial(B.w, B.h, { icons: boardIcons, buttons: [{ x: TILE.x, y: TILE.y, w: TILE.s, h: TILE.s, r: 8 }], screws: [] }), MAT.plateSide])), X(B.x + B.w / 2), Z(B.y + B.h / 2), bBase);
+      feat.buttons.push({ x: B.x, y: B.y, w: B.w, h: B.h, r: 12 });
+      for (const ex of [B.x + 40, B.x + B.w - 40]) ring(X(ex), Z(B.y + 14), bTop, 5.5, 1.8);
+      // The enamel sign at the foot of its recess, the recipe expanded on it.
+      const eBoxes = diagram(PIG_IRON, (EN.w - diagramWidth(PIG_IRON, true)) / 2, true);
+      const eFace = canvas2d(EN.w, EN.h, (c) => { c.drawImage(enamelFace(EN.w, EN.h), 0, 0, EN.w, EN.h); grunge(c, EN.w, EN.h); paintRecipe(c, eBoxes, EN.h / 2, true); });
+      const eMat = new THREE.MeshPhysicalMaterial({ map: faceTexture(eFace, EN.w, EN.h), roughness: 0.34, clearcoat: 0.8, clearcoatRoughness: 0.14, envMap: studioEnv, envMapIntensity: 0.28 });
+      const sign = new THREE.Mesh(extrude(rrShape(EN.w, EN.h, ENAMEL.radius), 0.5), [eMat, eMat]); sign.receiveShadow = true;
+      add(sign, X(B.x + EN.x + EN.w / 2), Z(B.y + EN.y + EN.h / 2), bBase + 1);
+      notes.push({ x: OX[1] + PW + 56, y: OY + B.y + EN.y + EN.h / 2, lines: ['expanded'] });
+      // The icon on a navy enamel tile riveted to the steel, printed flat as a blueprint.
+      const fmask = await emblemMask('b_002_furnace.png'), ts = TILE.s;
+      const tileFace = canvas2d(ts, ts, (c) => { c.fillStyle = ENAMEL_FIELD; c.fillRect(0, 0, ts, ts); blueprintGrid(c, 0, 0, ts, 8); printIcon(c, fmask, 'flat', 28, 28, ts - 56); });
+      add(shade(new THREE.Mesh(extrude(rrShape(ts, ts, 8), 1.5, 1, 0.8, 2), [enamelMat(tileFace, ts, ts), MAT.plateSide])), X(B.x + TILE.x + ts / 2), Z(B.y + TILE.y + ts / 2), bTop);
+      for (const [rx, rz] of [[11, 11], [ts - 11, 11], [11, ts - 11], [ts - 11, ts - 11]]) {
+        const rv = new THREE.Mesh(new THREE.SphereGeometry(3.4, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), darkSteel); rv.scale.y = 0.55; add(shade(rv), X(B.x + TILE.x + rx), Z(B.y + TILE.y + rz), bTop + 3.5);
+      }
 
-      // (b) The verdict on the cabin desk: the total and the cash after on LEDs, the build time on a drum
-      // counter, and the guarded Build key, an amber cap under a hinged clear cover.
-      const D = { x: CL, y: B.y + B.h + 28, w: CW, h: 180 }, dtop = T + 10, deskIcons = [];
-      const GS = 118, gx = D.x + 686, gz = D.y + (D.h - GS) / 2;
+      // (b) The verdict on the cabin desk: the total and the cash after on LEDs, the build time on a drum counter,
+      // when the materials arrive, and the guarded Build key, an amber cap under a hinged clear cover.
+      const D = { x: CL, y: B.y + B.h + 28, w: CW, h: 204 }, dtop = T + 10, deskIcons = [];
+      const GS = 118, gx = D.x + 700, gz = D.y + (D.h - GS) / 2;
       raised(ox, feat, 'Build', gx + GS + 24, gz + GS / 2 - 32, 46, BARLOW, 700, { icons: deskIcons, x: D.x, y: D.y, top: dtop });
-      const capY = D.y + 44, scrY = D.y + 114;
+      const capY = D.y + 40, scrY = D.y + 104;
       cabin(ox, feat, D.x, D.y, D.w, D.h, deskIcons, [{ x: gx - D.x, y: gz - D.y, w: GS, h: GS, r: 12 }]);
       printWhite('Total', X(D.x + 32), Z(capY), 26, { weight: 600 });
-      money(473.21, RED, 5, X(D.x + 62), Z(scrY), dtop);
+      money(481.3, RED, 5, X(D.x + 62), Z(scrY), dtop);
       printWhite('Cash after', X(D.x + 256), Z(capY), 26, { weight: 600 });
       money(49526.79, GREEN, 5, X(D.x + 286), Z(scrY), dtop);
+      printWhite('Materials arrive in 1 turn', X(D.x + 32), Z(D.y + 170), 26);
       {
         const { cap, cell, H: CH, win, drumR } = COUNTER, cells = 2, Wc = 2 * cap + cells * cell, k = 65 / CH, g = new THREE.Group();
         const wy = (win[0] + win[1]) / 2, wh = win[1] - win[0];
@@ -3835,7 +3907,7 @@ async function exportLayers() {
         const drum = new THREE.MeshStandardMaterial({ color: 0x151618, roughness: 0.45, metalness: 0.2, envMap: studioEnv, envMapIntensity: 0.6 });
         for (let i = 0; i < cells; i++) { const d = new THREE.Mesh(new THREE.CylinderGeometry(drumR, drumR, cell - 2.4, 48, 1).rotateZ(Math.PI / 2), drum); d.position.set(cap + i * cell + cell / 2, 4.6 - drumR, wy); d.receiveShadow = true; g.add(d); }
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(Wc - 2 * cap + 8, wh).rotateX(-Math.PI / 2), MAT.gap); floor.position.set(Wc / 2, -2, wy); g.add(floor);
-        g.scale.setScalar(k); const cx0 = D.x + 500, cz0 = D.y + 114 - CH * k / 2;
+        g.scale.setScalar(k); const cx0 = D.x + 500, cz0 = scrY - CH * k / 2;
         add(g, X(cx0), Z(cz0), dtop + 1);
         prints.push((c) => {   // the leading drum blank, the 3 on the next
           text(c, '3', X(cx0 + k * (cap + cell + cell / 2)), Z(cz0 + k * wy) + 1, 40, k * 34, '#efede6', { align: 'center', weight: 600, family: BARLOW });
@@ -3846,9 +3918,29 @@ async function exportLayers() {
       add(guardButton(GS, HAMMER, LAMP.amber), X(gx + GS / 2), Z(gz + GS / 2), dtop);
       glow(X(gx + GS / 2), Z(gz + GS / 2), GS * 1.1, '#ffa412', 0.5);
 
+      // The seam: Building Detail's ribbed rubber nosing across the panel where the fixed head (the board and the
+      // verdict) meets the body, which scrolls under it; the body's shade just under its lip.
+      const seamY = D.y + D.h + 16;
+      {
+        const { top, nose, H: SEAM_H } = SEAM, R0 = SEAM_RUBBER_TOP, sh0 = new THREE.Shape(), P = (z, h) => [-z, h];
+        sh0.moveTo(...P(top, 0));
+        const z0 = top + 1, z1 = nose - 4, valley = R0 - 3.2, crest = R0 + 0.6;
+        for (let i = 0; i <= 80; i++) { const z = z0 + (z1 - z0) * i / 80, q = 0.5 - 0.5 * Math.cos(2 * Math.PI * 2.5 * i / 80); sh0.lineTo(...P(z, valley + (crest - valley) * Math.pow(q, 0.6))); }
+        sh0.quadraticCurveTo(...P(nose - 0.2, crest - 0.2), ...P(nose, 0.4)); sh0.lineTo(...P(nose, 0)); sh0.lineTo(...P(top, 0));
+        const geo = new THREE.ExtrudeGeometry(sh0, { depth: PW - 8, bevelEnabled: false, curveSegments: 8 }); geo.rotateY(Math.PI / 2); geo.translate(4, 0, 0);
+        const tread = new THREE.MeshPhysicalMaterial({ color: 0x131416, roughness: 0.72, bumpMap: noiseTexture(90, 0, 10), bumpScale: 0.3, sheen: 0.8, sheenColor: new THREE.Color(0x5a6068), sheenRoughness: 0.45, envMap: studioEnv, envMapIntensity: 0.65 });
+        const strip = new THREE.Mesh(geo, tread); strip.castShadow = strip.receiveShadow = true;
+        add(strip, X(0), Z(seamY - top), T + 20);
+        prints.push((c) => {
+          const y0 = Z(seamY + nose - top - 2), y1 = Z(seamY + SEAM_H - top), grd = c.createLinearGradient(0, y0, 0, y1);
+          grd.addColorStop(0, 'rgba(4,6,8,0.62)'); grd.addColorStop(0.18, 'rgba(4,6,8,0.34)'); grd.addColorStop(0.55, 'rgba(4,6,8,0.1)'); grd.addColorStop(1, 'rgba(4,6,8,0)');
+          c.fillStyle = grd; c.fillRect(X(4), y0, PW - 8, y1 - y0);
+        });
+      }
+
       // (c) The site's requirements on the feeder pillar: a lamp for each, its words beside it. The land it
       // buys is said here only.
-      let y = D.y + D.h + 34;
+      let y = seamY + 44;
       raised(ox, feat, 'SITE REQUIREMENTS', CL + 4, y);
       const PL = { x: CL, y: y + 38, w: CW, h: 132 };
       add(shade(new THREE.Mesh(extrude(rrShape(PL.w, PL.h, 14), 10, 2, 1.6, 3), [painted(PL.w, PL.h, '#2f3a35', 0.7), new THREE.MeshStandardMaterial({ color: 0x252d29, metalness: 0.3, roughness: 0.6, envMap: studioEnv, envMapIntensity: 0.5 })])), X(PL.x + PL.w / 2), Z(PL.y + PL.h / 2));
@@ -3863,58 +3955,62 @@ async function exportLayers() {
         printWhite(detail, X(lx + 42), Z(lz + 18), 26);
       }
 
-      // (d) The cost in the site cabin, one screen width, after a printed £; beside it the materials source,
-      // the white knob with an icon button for each source on its arc.
+      // (d) The cost in the site cabin, one screen width, after a printed £: the materials in whole pounds, the
+      // fee, the land, and the total.
       y = PL.y + PL.h + 34;
       raised(ox, feat, 'COST', CL + 4, y);
-      const CB = { x: CL, y: y + 38, w: 570, h: 300 }, cbtop = T + 10;
+      const CB = { x: CL, y: y + 38, w: CW, h: 300 }, cbtop = T + 10;
       cabin(ox, feat, CB.x, CB.y, CB.w, CB.h);
-      for (const [label, v, cz, bold] of [['Materials', 433.21, 52, false], ['Fee', 20, 118, false], ['Land', 20, 184, false], ['Total', 473.21, 254, true]]) {
-        money(v, RED, 5, X(CB.x + CB.w - 26 - 141), Z(CB.y + cz), cbtop);
+      for (const [label, v, cz, bold, whole] of [['Materials', 441, 52, false, true], ['Fee', 20, 118, false, false], ['Land', 20, 184, false, false], ['Total', 481.3, 254, true, false]]) {
+        money(v, RED, 5, X(CB.x + CB.w - 30 - 141), Z(CB.y + cz), cbtop, { whole });
         printWhite(label, X(CB.x + 30), Z(CB.y + cz), 26, { weight: bold ? 600 : 500 });
       }
       prints.push((c) => {   // the rule over the total, cut into the plate
         const ry = Z(CB.y + 219), x0 = X(CB.x + 22), x1 = X(CB.x + CB.w - 22);
         c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(x0, ry - 1, x1 - x0, 1.6); c.fillStyle = 'rgba(210,218,230,0.28)'; c.fillRect(x0, ry + 0.8, x1 - x0, 1);
       });
+
+      // (e) The materials yard: one gravel laydown in two columns of three bays. Five hold the goods on their
+      // pallets, each good in its well with its quantity and a white label beside it (its name, and how many are
+      // on this tile and elsewhere); the sixth holds the site's control box with the "Materials from" knob,
+      // turned to the Logistics Intermediary, the default since it delivers fastest.
+      y = CB.y + CB.h + 34;
+      raised(ox, feat, 'MATERIALS', CL + 4, y);
+      const LD = { x: CL, y: y + 38, w: CW, pad: 18, gap: 12, rows: [206, 206, 272] };
+      LD.colW = (LD.w - 2 * LD.pad - LD.gap) / 2; LD.h = 2 * LD.pad + LD.rows.reduce((a, b) => a + b, 0) + 2 * LD.gap;
+      const ltop = ground(ox, feat, LD.x, LD.y, LD.w, LD.h);
+      const bay = (i) => { const col = i % 2, row = Math.floor(i / 2); return { x: LD.x + LD.pad + col * (LD.colW + LD.gap), y: LD.y + LD.pad + LD.rows.slice(0, row).reduce((a, b) => a + b, 0) + row * LD.gap, h: LD.rows[row] }; };
+      const goods = [['alternate_icons/medium/g_017_concrete.png', 10, 'Concrete'], ['medium/g_023_building_frame.png', 7, 'Building Frame'], ['medium/g_071_construction_equipment_ice.png', 3, 'Construction Equipment ICE'], ['medium/g_028_rubber.png', 6, 'Rubber'], ['medium/g_027_plastics.png', 6, 'Plastics']];
+      const S = 176, LBL = { w: LD.colW - S - 16 - 12, h: 150 }, labelFont = `600 26px ${PLEX}`;
+      for (const [i, [file, qty, name]] of goods.entries()) {
+        const cell = bay(i), cx = X(cell.x + S / 2), cz = Z(cell.y + cell.h / 2);
+        const deck = pallet(cx, cz, ltop, S);
+        goodWell(await goodImg(file), qty, cx, cz, deck);
+        const lx = cell.x + S + 16, ly = cell.y + (cell.h - LBL.h) / 2, lines = wrap(name, labelFont, LBL.w - 28);
+        whitePlate(ox, lx, ly, LBL.w, LBL.h, (c) => {
+          lines.forEach((ln, k) => ink(c, ln, 14, 30 + k * 30, 26, NAVY, { weight: 600, maxW: LBL.w - 28 }));
+          ink(c, 'On tile', 14, 98, 25); ink(c, '0', LBL.w - 14, 98, 25, NAVY, { weight: 600, align: 'right' });
+          ink(c, 'Elsewhere', 14, 128, 25); ink(c, '0', LBL.w - 14, 128, 25, NAVY, { weight: 600, align: 'right' });
+        }, ltop);
+      }
       {
-        const R = 78, arc = 1.78 * R, P = 72, kx = CB.x + CB.w + (CW - CB.w) / 2, kz = CB.y + 160;
-        const sources = [['route_lorry.png', 180], ['route_port.png', 120], ['ds2/source_this_tile.png', 60], ['ds2/source_other_tiles.png', 0]], chosen = 1;
-        add(knob(R, sources[chosen][1]), X(kx), Z(kz), T);
-        const dimEnamel = new THREE.MeshPhysicalMaterial({ color: 0xb3ab9c, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+        const cell = bay(5), btop = cabin(ox, feat, cell.x, cell.y, LD.colW, cell.h);
+        const R = 68, arc = 1.78 * R, P = 80, kx = cell.x + LD.colW / 2, kz = cell.y + 157;
+        const sources = [['route_lorry.png', 180], ['route_port.png', 120], ['ds2/source_this_tile.png', 60], ['ds2/source_other_tiles.png', 0]], chosen = 0;
+        add(knob(R, sources[chosen][1]), X(kx), Z(kz), btop);
+        const openEnamel = new THREE.MeshPhysicalMaterial({ color: 0xc4bba8, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
         for (const [i, [file, deg]] of sources.entries()) {
-          const img = await loadImage('/icons/ui_icons/' + file), t = THREE.MathUtils.degToRad(deg), px = kx + Math.cos(t) * arc, pz = kz - Math.sin(t) * arc, art = P - 18;
+          const img = await loadImage('/icons/ui_icons/' + file), t = THREE.MathUtils.degToRad(deg), px = kx + Math.cos(t) * arc, pz = kz - Math.sin(t) * arc, art = P - 16;
           const drawArt = (g, col) => stamp(g, img, (P - art) / 2, (P - art) / 2, art, art, col);
-          add(shade(new THREE.Mesh(extrude(rrShape(P, P, 8), 3, 1.6, 1.2, 3), [blackPlastic(P, P, (c) => drawIconShadows(c, P, P, [{ height: 7, draw: drawArt }])), BLACK_PLASTIC_SIDE()])), X(px), Z(pz));
-          add(iconRelief(img, art, art, i === chosen ? creamEnamel : dimEnamel, { height: 7, soften: 1.1 }), X(px), Z(pz), T + 3 + 3.2 + 0.3);
+          add(shade(new THREE.Mesh(extrude(rrShape(P, P, 8), 3, 1.6, 1.2, 3), [blackPlastic(P, P, (c) => drawIconShadows(c, P, P, [{ height: 7, draw: drawArt }])), BLACK_PLASTIC_SIDE()])), X(px), Z(pz), btop);
+          add(iconRelief(img, art, art, i === chosen ? creamEnamel : openEnamel, { height: 7, soften: 1.1 }), X(px), Z(pz), btop + 6.5);
           prints.push((c) => {   // a tick from the ring towards the option
             const ux = Math.cos(t), uz = -Math.sin(t), r0 = R * 1.08, r1 = R * 1.08 + 12;
             c.save(); c.strokeStyle = LIGHT; c.lineWidth = 3.4; c.lineCap = 'round'; c.shadowColor = 'rgba(0,0,0,0.9)'; c.shadowOffsetX = 1.5; c.shadowOffsetY = 1.5;
             c.beginPath(); c.moveTo(X(kx + ux * r0), Z(kz + uz * r0)); c.lineTo(X(kx + ux * r1), Z(kz + uz * r1)); c.stroke(); c.restore();
           });
         }
-        printWhite('Materials from', X(kx), Z(kz + R + 42), 28, { align: 'center', weight: 500 });
-      }
-
-      // (e) The laydown area: the materials on pallets, each good in its well with its quantity, and a white
-      // label under each with its stock on this tile and elsewhere and its price at market.
-      y = CB.y + CB.h + 34;
-      raised(ox, feat, 'MATERIALS', CL + 4, y);
-      const LD = { x: CL, y: y + 38, w: CW, h: 380 }, S = 176, LBL = { w: 180, h: 148 };
-      const ltop = ground(ox, feat, LD.x, LD.y, LD.w, LD.h);
-      const goods = [['alternate_icons/medium/g_017_concrete.png', 10, 63.60], ['medium/g_023_building_frame.png', 7, 137.35], ['medium/g_071_construction_equipment_ice.png', 3, 135.45], ['medium/g_028_rubber.png', 6, 36.68], ['medium/g_027_plastics.png', 6, 57.99]];
-      const gp = (LD.w - goods.length * LBL.w) / (goods.length + 1);
-      for (const [i, [file, qty, price]] of goods.entries()) {
-        const lx = LD.x + gp + i * (LBL.w + gp), cx = X(lx + LBL.w / 2), cz = Z(LD.y + 16 + S / 2);
-        const deck = pallet(cx, cz, ltop, S);
-        goodWell(await goodImg(file), qty, cx, cz, deck);
-        const ly = LD.y + 16 + S + 18, scr = ledScreen(moneyLed(price).figure, 5, RED), sx = LBL.w - 10 - scr.w;
-        const top = whitePlate(ox, lx, ly, LBL.w, LBL.h, (c) => {
-          ink(c, 'On tile', 14, 28, 25); ink(c, '0', LBL.w - 14, 28, 25, NAVY, { weight: 600, align: 'right' });
-          ink(c, 'Elsewhere', 14, 60, 25); ink(c, '0', LBL.w - 14, 60, 25, NAVY, { weight: 600, align: 'right' });
-          ink(c, '£', sx - 4, 109, 32, NAVY, { weight: 600, align: 'right' });
-        }, ltop);
-        add(scr.group, X(lx + sx + scr.w / 2), Z(ly + 108), top);
+        printWhite('Materials from', X(kx), Z(kz + R + 33), 28, { align: 'center', weight: 500 });
       }
 
       // (f) The outlook on the site's programme board: the payback, the turns ahead with their cash in the
@@ -3989,6 +4085,11 @@ async function exportLayers() {
       groups[i].add(shadowCatcher(PW, SH, ox + PW / 2, OY + SH / 2, T + 0.05, 0.42));
     }
 
+    // Under the catalogue, on the backdrop: the Furnace's icon three ways, for the owner to compare.
+    cur = 2;
+    const SWY = FOLD + 200, SWS = 220, SWG = 120, SWATCHES = [['relief', 'relief (v2)'], ['emboss', 'simple emboss'], ['flat', 'flat blueprint']];
+    for (const [i, [style]] of SWATCHES.entries()) await siteBoard(OX[0], { x: 60 + i * (SWS + SWG), y: SWY, w: SWS, h: SWS, file: 'b_002_furnace.png', field: [22, 22, SWS - 44], emblem: SWS - 84, style });
+
     // Each stage its own render, so the house light's shadow map covers it; the tower is cut at the panel's
     // left edge, the catalogue at the panel's foot, and the build order is shown whole with its fold marked.
     const H = OY + SH2 + FOOT;
@@ -3999,6 +4100,9 @@ async function exportLayers() {
       st.scene.traverse((o) => { if (o.isDirectionalLight) o.shadow.mapSize.set(4096, 4096); });
       return { img: st.grab(), x0, x1, y1 };
     });
+    const sw = { x0: OX[0] + 20, x1: OX[0] + 60 + 3 * SWS + 2 * SWG + 40, y0: OY + SWY - 30, y1: OY + SWY + SWS + 40 };
+    groups[2].add(shadowCatcher(sw.x1 - sw.x0, sw.y1 - sw.y0, (sw.x0 + sw.x1) / 2, (sw.y0 + sw.y1) / 2, 0.05, 0.5));
+    sw.img = stage([sw.x0, sw.y0, sw.x1, sw.y1], [groups[2]]).grab();
     await post('construct_study_lot', frame2d(W, H, (g) => {
       const BG = '#121820';
       g.fillStyle = BG; g.fillRect(0, 0, W, H);
@@ -4015,6 +4119,17 @@ async function exportLayers() {
         g.strokeStyle = 'rgba(232,238,247,0.95)'; g.lineWidth = 2.2; g.stroke(); g.restore();
         text(g, 'fold, 912 px', x1 + 14, fy + 1, MR - 50, 28, LIGHT, { weight: 500, family: PLEX });
       }
+      // The recipe settings, each named beside its diagram.
+      for (const n of notes) {
+        g.save(); g.strokeStyle = '#e9b81a'; g.fillStyle = '#e9b81a'; g.lineWidth = 2.5;
+        const ax = n.x - 12, bx = n.x - 42; g.beginPath(); g.moveTo(ax, n.y); g.lineTo(bx, n.y); g.stroke();
+        g.beginPath(); g.moveTo(bx - 10, n.y); g.lineTo(bx + 2, n.y - 7); g.lineTo(bx + 2, n.y + 7); g.closePath(); g.fill(); g.restore();
+        n.lines.forEach((ln, k) => text(g, ln, n.x, n.y + (k - (n.lines.length - 1) / 2) * 32, 220, k ? 24 : 28, LIGHT, { weight: k ? 500 : 600, family: PLEX }));
+      }
+      // The icon swatches.
+      g.drawImage(sw.img, sw.x0, sw.y0, sw.x1 - sw.x0, sw.y1 - sw.y0);
+      text(g, 'Building icon, three ways', OX[0] + 60, OY + SWY - 44, 900, 30, LIGHT, { weight: 600, family: PLEX });
+      SWATCHES.forEach(([, label], i) => text(g, label, OX[0] + 60 + i * (SWS + SWG) + SWS / 2, OY + SWY + SWS + 38, SWS + SWG - 20, 26, LIGHT, { weight: 500, family: PLEX, align: 'center' }));
       [['1', 'Catalogue'], ['2', 'Build order']].forEach(([n, s], i) => {
         text(g, n, OX[i], 56, 40, 40, '#e9b81a', { weight: 700, family: PLEX });
         text(g, s, OX[i] + 38, 56, 600, 36, LIGHT, { weight: 600, family: PLEX });

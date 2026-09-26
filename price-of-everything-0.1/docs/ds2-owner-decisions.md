@@ -48,3 +48,21 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **The planning limit's tape never matches the player's colour**: yellow on black, or **red on white when the player's livery is yellow**.
 - **Cables and HVDC stay in Transport** with every other link. The Power tab shows their sections too, but only when they are built. A tile with no cables where your buildings make or draw power says **"Cables missing. Power production (or consumption) not possible."**, and the Power key's mark goes red.
 - **The cabinet shell is built** (the stainless door and its pipe, the engraved nameplate, the five latching keys); the tab bodies still sit on navy steel sheets until each is restyled. See `docs/tile-view-ds2-plan.md` §9, Phase 2.
+
+## Digital displays (26 September 2026, from the Construct studies)
+
+- **The decimal point takes a cell of its own** on an LED screen, as wide as a digit's. Today's screens light the point beside the digit before it; moving every panel to the new rule is a kit change (`bdp_v3_led.gd`, `scripts/ds2/money_figure.gd`), still to schedule.
+- **Money on a screen**: two decimals below £100 (20.00), one decimal from £100 (481.3), whole pounds from £1,000 (1153), then £15.6K, £1.01M, £1.01B with the letter printed after the screen. At most five cells with the point counted.
+- **A materials cost is whole pounds only** (it was too busy with pence).
+
+## Construct (26 September 2026; plan `docs/construct-ds2-plan.md`)
+
+- **The construction lot with its crane** is the concept (over the works office). One width for every stage.
+- **The tile's name** sits on a placard hung from the jib, symmetrical to the CONSTRUCT plate on the cab, when a tile is chosen.
+- **The tower** is wide and cut off by the panel's edge, so only part of it shows (half the width of study round 2).
+- **The search field** sits under the crane in a tab rising from the category plate.
+- **Priority in the build order**: what is built, then the verdict (total, cash after, turns, the Build key, kept high: if you have the money, everything else is detail), then requirements, cost, materials, outlook; **the land use last**, good to look at but not the most important.
+- **Materials**: no per good prices (the materials total speaks for them), the goods in a grid of two columns and three rows on one backing, the Materials from knob in the sixth cell. **The intermediary is the default source**, since it is faster.
+- **A recipe is drawn, not named**: on a building's board the icon on the left and the recipe diagram in enamel on the right, expanded or condensed as the Construct setting says.
+- **Names**: the building by what it makes, without its letter until built: "Iron Furnace", "Copper Furnace"; where several recipes make the same thing, the recipe tells them apart: "Motor Assembly Plant", "SynRM Motor Assembly Plant".
+- **Building icons**: the polished relief with its soft grey edge looked wrong; a simple emboss or flat print (a blueprint) is being compared.
