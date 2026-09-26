@@ -6,7 +6,7 @@ browser. The page renders every layer of the v3 panel parts and posts them here;
 into assets/ui/bdp_v3/ with layout.json. The tab title changes to "export done" when it has finished.
 Add &only=lamp,scroll (any of the sets listed in cluster.html's exportLayers) to render just those
 sets; the page then reads the current layout.json from here and updates only their entries. The page
-reads the game's fonts from /fonts/ and its icons from /icons/ (assets/icons/), so lettering and raised
+reads the game's fonts from /fonts/, its icons from /icons/ (assets/icons/) and the advisors' portraits from /advisors/, so lettering and raised
 icons match the game's own.
 An optional argument sets the port (default 8771).
 """
@@ -20,6 +20,7 @@ OUT = HERE.parents[1] / "assets" / "ui" / "bdp_v3"
 LAYER = re.compile(r"^/layers/([a-z0-9_]+\.(?:png|json))$")
 FONT = re.compile(r"^/fonts/([A-Za-z0-9_-]+\.ttf)$")   # the game's fonts, for lettering that matches it
 ICON = re.compile(r"^/icons/((?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\.png)$")   # the game's icons, for raised icons
+ADVISOR = re.compile(r"^/advisors/([A-Za-z0-9_-]+\.png)$")   # the advisors' portraits (assets/advisors/)
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -36,6 +37,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             data = path.read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", "font/ttf")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        advisor = ADVISOR.match(self.path)
+        if advisor:
+            path = HERE.parents[1] / "assets" / "advisors" / advisor.group(1)
+            if not path.exists():
+                self.send_error(404)
+                return
+            data = path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
