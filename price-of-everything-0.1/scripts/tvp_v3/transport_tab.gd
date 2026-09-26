@@ -11,7 +11,7 @@ extends RefCounted
 ## cap), the goods riding it, and a line only when something is wrong or a job runs; clicking the module
 ## opens the link. Then the infrastructure that can still be added, spare modules further down the rack, set
 ## out as a table: how many tiles it reaches, its throughput, what laying it takes, and a Build key. The
-## only keys are Build and Upgrade; hovering a key lights its card (transport_tip.gd): what building or
+## only keys are Build and Upgrade; hovering a key lights its card (dot_card.gd): what building or
 ## raising the link costs and what it brings. HVDC, which no building
 ## provides yet, stays hidden. Building and raising links wait for Infrastructure Tendering, as the v2
 ## section always has: until then the links built here show read only, their Upgrade keys greyed, with a
@@ -37,12 +37,12 @@ const Led := preload("res://scripts/bdp_v3_led.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 const UIFonts := preload("res://scripts/ui_fonts.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
-const Meter := preload("res://scripts/tvp_v3/transport_meter.gd")
-const Key := preload("res://scripts/tvp_v3/transport_key.gd")
-const Emblem := preload("res://scripts/tvp_v3/transport_emblem.gd")
+const Meter := preload("res://scripts/ds2/led_meter.gd")
+const Key := preload("res://scripts/ds2/cream_key.gd")
+const Emblem := preload("res://scripts/ds2/emblem_lamp.gd")
 const Quote := preload("res://scripts/tvp_v3/transport_quote.gd")
-const Tip := preload("res://scripts/tvp_v3/transport_tip.gd")
-const Well := preload("res://scripts/tvp_v3/transport_well.gd")
+const Tip := preload("res://scripts/ds2/dot_card.gd")
+const Well := preload("res://scripts/ds2/good_well.gd")
 
 ## Building Detail's diagnostics module plate (layout.json diag_module): its shadow room and 9-slice corner.
 const MODULE: Texture2D = preload("res://assets/ui/bdp_v3/diag_module.png")
@@ -91,7 +91,7 @@ const NAMES := {"reinf_pipes": "Reinforced pipes"}
 ## A build card's note past the planning limit: the map charges half the fee again there
 ## (transport_quote.gd PLANNING_CHARGE); the materials a link takes don't change.
 const PLANNING_NOTE := "Fee +50% past the planning limit"
-## The goods on a link or needed to lay one, each in its well with its quantity in a pill (transport_well.gd):
+## The goods on a link or needed to lay one, each in its well with its quantity in a pill (good_well.gd):
 ## their icons' side, how many show (four, or three and a count of the rest, fit the module's width), and
 ## the gap between wells, clear of each other's frames.
 const GOOD_PX := 52

@@ -1,5 +1,5 @@
 extends RefCounted
-## Tile view v3, Transport: a good in Building Detail's icon well with its quantity in a pill, the one shape a
+## DS2 (the tile view's Transport and Stock tabs): a good in Building Detail's icon well with its quantity in a pill, the one shape a
 ## good's quantity takes in the cabinet (DS2 rule 7): the cream icon set below a thin metal frame
 ## (res://assets/ui/bdp_v3/icon_well.png, a 9-slice), its quantity in a small navy pill inside its corner, kept
 ## clear of most of the drawing. The goods riding a link, what laying one takes, and the materials on a hover

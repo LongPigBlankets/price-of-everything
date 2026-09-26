@@ -1,5 +1,5 @@
 extends Control
-## Tile view v3, Buildings tab: a drum counter at rest, Building Detail's (bdp_v3_counter.gd: the gunmetal
+## DS2 (the tile view's Buildings tab): a drum counter at rest, Building Detail's (bdp_v3_counter.gd: the gunmetal
 ## housing, black drums and the glass over them, counter_housing.png and counter_glass.png), drawn to a
 ## height of the tab's choosing so it stands as tall as the LED screens beside it. The housing's ends and
 ## drums scale together; the digits are printed live at the matching size, so they stay sharp. Every drum

@@ -4,7 +4,7 @@ extends RefCounted
 ## group's member), a good set in its well with the quantity pill inside (unlit while its building is
 ## stalled; a smaller well and pill on a member's line), Cost to produce as a £ and an LED screen (the
 ## seven-segment screen is for money only), turns on drum counters as tall as those screens
-## (buildings_drum.gd), raised headings, metal labels, cream keys, emblems in polished metal, and the
+## (drum_figure.gd), raised headings, metal labels, cream keys, emblems in polished metal, and the
 ## column the body's parts stand in, clear of the scroll rail. Modules, keys and figures carry Building
 ## Detail's readout as their hover (buildings_tip.gd). Presentation only: the tab (buildings_tab.gd) says
 ## what goes where.
@@ -19,7 +19,7 @@ const Indicator := preload("res://scripts/bdp_v3_indicator.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const KeyedBuildingIcon := preload("res://scripts/keyed_building_icon.gd")
-const Drum := preload("res://scripts/tvp_v3/buildings_drum.gd")
+const Drum := preload("res://scripts/ds2/drum_figure.gd")
 const Tip := preload("res://scripts/tvp_v3/buildings_tip.gd")
 
 ## Building Detail's raised module (layout.json diag_module): its shadow room and 9-slice corner.

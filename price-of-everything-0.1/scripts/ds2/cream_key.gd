@@ -1,9 +1,9 @@
 extends Button
-## Tile view v3, Transport: a real Button (named, pressable by tests and the tutorial) drawn as one of the
+## DS2 (the tile view's Transport tab): a real Button (named, pressable by tests and the tutorial) drawn as one of the
 ## cabinet's own cream keys (res://assets/ui/bdp_v3/tile_key.png with its _pressed and _latched renders, a
-## horizontal three-slice drawn as scripts/tile_cabinet_key.gd draws the five tab keys). Its print is navy:
+## horizontal three-slice drawn as scripts/ds2/latch_key.gd draws the five tab keys). Its print is navy:
 ## the action in one word, Build or Upgrade; what the action costs and brings is on its hover card
-## (scripts/tvp_v3/transport_tip.gd, kept in `tip`), which opens inside the tile view's body. A key that
+## (scripts/ds2/dot_card.gd, kept in `tip`), which opens inside the tile view's body. A key that
 ## opens something can have a chevron at its right end. A second, smaller line under the action is still possible, as Building Detail's Upgrade key
 ## prints one.
 ##
@@ -13,9 +13,9 @@ extends Button
 ## or can't be paid for prints in the red ink for light surfaces (`title_ink`), its card saying why.
 ##
 ## A key with nothing left to do (a link at its top level) is greyed as the cabinet greys a key it can't
-## press (tile_cabinet_key.gd's DISABLED_TINT, its print faded), and keeps its place in the key column.
+## press (latch_key.gd's DISABLED_TINT, its print faded), and keeps its place in the key column.
 
-const TileKey := preload("res://scripts/tile_cabinet_key.gd")
+const TileKey := preload("res://scripts/ds2/latch_key.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 
@@ -38,7 +38,7 @@ var title := ""
 var detail := ""
 var detail_ink := NAVY
 var title_ink := NAVY
-## The hover card (transport_tip.gd), shown in place of a plain tooltip when set.
+## The hover card (dot_card.gd), shown in place of a plain tooltip when set.
 var tip: Dictionary = {}
 var chevron := false
 var busy := false
@@ -50,7 +50,7 @@ var _lamp: Control
 ## A key `width` wide printing `title_text` (and `detail_text` under it); `node_name` names the Button.
 static func make(node_name: String, title_text: String, detail_text: String, width: float, opens := false, latched := false,
 		k := 1.0) -> Button:
-	var b: Button = load("res://scripts/tvp_v3/transport_key.gd").new()
+	var b: Button = load("res://scripts/ds2/cream_key.gd").new()
 	b.name = node_name
 	b.title = title_text
 	b.detail = detail_text
@@ -199,7 +199,7 @@ func _draw() -> void:
 
 
 func _make_custom_tooltip(_for_text: String) -> Object:
-	return load("res://scripts/tvp_v3/transport_tip.gd").make(tip, self) if not tip.is_empty() else null
+	return load("res://scripts/ds2/dot_card.gd").make(tip, self) if not tip.is_empty() else null
 
 
 ## A line printed on `baseline`, centred across `room` (from its left on a key that opens something).

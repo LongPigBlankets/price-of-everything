@@ -956,7 +956,7 @@ func _no_cover() -> bool:
 ## bezel stays clear of the strip under it; and no two wells of waiting shipments meet.
 func _overlaps(tag: String) -> void:
 	var Section := load("res://scripts/bdp_v3_section.gd")
-	var Key := load("res://scripts/tile_cabinet_key.gd")
+	var Key := load("res://scripts/ds2/latch_key.gd")
 	var Parts := load("res://scripts/tvp_v3/stock_parts.gd")
 	var scroll: ScrollContainer = _panel.find_child("BodyScroll", true, false)
 	var pane: Node = (_panel.get("_panes") as Dictionary).get("stock")

@@ -1,5 +1,5 @@
 extends Control
-## Tile view v3, Buildings tab: a guarded button for spending (docs/tile-view-ds2-plan.md §9, Spending),
+## DS2 (the tile view's Buildings tab): a guarded button for spending (docs/tile-view-ds2-plan.md §9, Spending),
 ## Building Detail's footer key on its own: the amber cap with its coins under a hinged clear cover, drawn
 ## from its region of the footer's render (guard_sell, _pressed, _cover, _cover_open), with a warm glow
 ## round it. The first click lifts the cover, which stands up over the cap; the second presses the cap and

@@ -16,8 +16,8 @@ extends Node
 ## Prints [BL_CHECK] PASS / FAIL lines, then "[BL_CHECK] N passed, M failed"; exits 1 on any failure.
 
 const Readings := preload("res://scripts/tvp_v3/buildings_readings.gd")
-const Drum := preload("res://scripts/tvp_v3/buildings_drum.gd")
-const GuardKey := preload("res://scripts/tvp_v3/buildings_guard.gd")
+const Drum := preload("res://scripts/ds2/drum_figure.gd")
+const GuardKey := preload("res://scripts/ds2/guard_key.gd")
 const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
 const BuildingReadout := preload("res://scripts/building_readout.gd")
 const TutorialDetectors := preload("res://scripts/tutorial/tutorial_detectors.gd")

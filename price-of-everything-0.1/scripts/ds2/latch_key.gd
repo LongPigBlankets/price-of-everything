@@ -1,5 +1,5 @@
 extends Control
-## Tile view v3: one of the cabinet's five latching keys (docs/tile-view-ds2-plan.md §9). A blank cream
+## DS2: a latching key, as the tile view's five tab keys (docs/tile-view-ds2-plan.md §9). A blank cream
 ## keycap in its bezel (res://assets/ui/bdp_v3/tile_key.png, _pressed and _latched, rendered by
 ## tools/button_mockup/cluster.html?export&only=tilekey and drawn as a horizontal three-slice), its name
 ## printed on its top in navy. Pressing it latches it down, where it stays while its tab is open; the

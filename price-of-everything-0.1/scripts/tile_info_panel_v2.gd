@@ -63,7 +63,7 @@ const V3_TAB_BODIES := {
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const V3Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const V3Key := preload("res://scripts/bdp_v3_key.gd")
-const CabinetKey := preload("res://scripts/tile_cabinet_key.gd")
+const CabinetKey := preload("res://scripts/ds2/latch_key.gd")
 const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
 ## The display's marks for a tab that needs a look.
 const V3_KEY_MARK := {"warn": Color("#ffb21f"), "bad": Color("#ff3b2f")}

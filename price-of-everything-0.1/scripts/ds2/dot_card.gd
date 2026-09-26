@@ -1,5 +1,5 @@
 extends RefCounted
-## Tile view v3, Transport: the hover card of a link's module and its keys. What building or raising a link
+## DS2: a hover card on a dot-matrix screen (the tile view's Transport keys, Building Detail's Upgrade key). What building or raising a link
 ## costs and what it brings, lit on a dot-matrix screen in the gunmetal bezel and glass of Building Detail's
 ## readouts, so it reads as a part of the cabinet and not a tooltip box:
 ##   ● UPGRADE TO LEVEL 2
@@ -28,7 +28,7 @@ extends RefCounted
 
 const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
-const Well := preload("res://scripts/tvp_v3/transport_well.gd")
+const Well := preload("res://scripts/ds2/good_well.gd")
 ## The dots' pitch: a character seven dots tall is 14 px, the body text's size, and each line and cell is a
 ## whole number of pixels.
 const PITCH := 2.0
@@ -261,7 +261,7 @@ class Board extends VBoxContainer:
 		add_theme_constant_override("separation", 0)
 
 	func fill(tip: Dictionary) -> void:
-		var T: GDScript = load("res://scripts/tvp_v3/transport_tip.gd")
+		var T: GDScript = load("res://scripts/ds2/dot_card.gd")
 		var lines: Array = T.board_lines(tip)
 		var goods: Dictionary = tip.get("goods", {})
 		var col: int = T.caption_chars(tip)
@@ -352,4 +352,4 @@ class TipPanel extends PanelContainer:
 	var tip: Dictionary = {}
 
 	func _make_custom_tooltip(_for_text: String) -> Object:
-		return load("res://scripts/tvp_v3/transport_tip.gd").make(tip, self) if not tip.is_empty() else null
+		return load("res://scripts/ds2/dot_card.gd").make(tip, self) if not tip.is_empty() else null

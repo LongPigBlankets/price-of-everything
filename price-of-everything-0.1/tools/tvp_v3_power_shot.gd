@@ -583,7 +583,7 @@ func _check_key_rows(pane: Control, scenario: String) -> void:
 	var rows := {}
 	for n: Node in pane.find_children("*", "Control", true, false):
 		var sc: Script = n.get_script()
-		if sc == null or not sc.resource_path.ends_with("tile_cabinet_key.gd"):
+		if sc == null or not sc.resource_path.ends_with("latch_key.gd"):
 			continue
 		var parent := n.get_parent()
 		if parent is HBoxContainer:
@@ -669,7 +669,7 @@ func _case_rim(c: Control) -> float:
 		return 14.0
 	if path.ends_with("bdp_v3_readout.gd") or path.ends_with("dot_matrix.gd") or path.ends_with("power_bank.gd"):
 		return 3.0
-	if path.ends_with("tile_cabinet_key.gd") or path.ends_with("bdp_v3_key.gd"):
+	if path.ends_with("latch_key.gd") or path.ends_with("bdp_v3_key.gd"):
 		return 0.0
 	if str(c.name).begins_with("CutShort_"):
 		return 2.0
@@ -695,7 +695,7 @@ func _keys_under(root: Node) -> Array:
 		return out
 	for n: Node in root.find_children("*", "Control", true, false):
 		var sc: Script = n.get_script()
-		if sc != null and sc.resource_path.ends_with("tile_cabinet_key.gd"):
+		if sc != null and sc.resource_path.ends_with("latch_key.gd"):
 			out.append(str(n.name))
 	return out
 

@@ -11,7 +11,7 @@ const Indicator := preload("res://scripts/bdp_v3_indicator.gd")
 const ModKey := preload("res://scripts/bdp_v3_mod_key.gd")
 const Door := preload("res://scripts/bdp_v3_door.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
-const CabinetKey := preload("res://scripts/tile_cabinet_key.gd")
+const CabinetKey := preload("res://scripts/ds2/latch_key.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIFonts := preload("res://scripts/ui_fonts.gd")
@@ -376,7 +376,7 @@ static func mark(face_path: String, px: float, column: float) -> Control:
 
 
 ## The scale that stands Building Detail's wide key (`BdpV3ModKey`) at the cabinet's own keys' height
-## (`tile_cabinet_key.gd`, Build); the tab's one wide key, the fold under the total, stands a step smaller.
+## (`latch_key.gd`, Build); the tab's one wide key, the fold under the total, stands a step smaller.
 static func key_scale() -> float:
 	var cabinet := (CabinetKey.HEIGHT - 2.0 * CabinetKey.KEY_INSET) / CabinetKey.CAPTURE_SCALE
 	var wide := (ModKey.HEIGHT - 2.0 * ModKey.KEY_INSET) / ModKey.CAPTURE_SCALE
@@ -428,7 +428,7 @@ static func fold_button(title: String, key_scale: float, button_name: String, op
 	return b
 
 
-## One of the cabinet's cream keys (`tile_cabinet_key.gd`, as Build and Buy Land) printing `text` in navy
+## One of the cabinet's cream keys (`latch_key.gd`, as Build and Buy Land) printing `text` in navy
 ## capitals, `width` wide at the cabinet keys' height, named `key_name` so a test or the tutorial can find
 ## and press it. It calls `on_press` when pressed (an empty Callable connects nothing, for a caller that
 ## connects its own once it holds the key).
@@ -445,7 +445,7 @@ static func cabinet_key(text: String, key_name: String, width: float, tip: Strin
 	return key
 
 
-## The width a cabinet key (`tile_cabinet_key.gd`, as Buy Land) needs to print `text` at its full size.
+## The width a cabinet key (`latch_key.gd`, as Buy Land) needs to print `text` at its full size.
 static func cabinet_key_width(text: String) -> float:
 	var print_w := Plate.FONT_SEMI.get_string_size(text.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, CabinetKey.LABEL_PX).x
 	return print_w + 6.0 + 2.0 * CabinetKey.FACE_INSET / CabinetKey.CAPTURE_SCALE + 2.0 * KEY_PRINT_ROOM

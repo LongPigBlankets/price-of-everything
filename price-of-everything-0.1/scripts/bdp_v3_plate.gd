@@ -13,7 +13,7 @@ extends Control
 
 signal key_pressed(key: String)
 
-const TransportTip := preload("res://scripts/tvp_v3/transport_tip.gd")
+const TransportTip := preload("res://scripts/ds2/dot_card.gd")
 const CAPTURE_SCALE := 1.875
 const NAVY := Color("#0b2340")
 const DANGER_INK := Color("#8f1f19")
@@ -95,7 +95,7 @@ func set_key(key: String, rect: Rect2, face: Rect2, normal: Texture2D, pressed: 
 		caret: bool, enabled: bool, tooltip: String = "", tip: Dictionary = {}) -> void:
 	if not _keys.has(key):
 		_key_order.append(key)
-	# A key with a `tip` shows it on the dot-matrix card the tile view's keys use (transport_tip.gd), its
+	# A key with a `tip` shows it on the dot-matrix card the tile view's keys use (dot_card.gd), its
 	# words in plain text as the tooltip's text.
 	if not tip.is_empty():
 		tooltip = TransportTip.plain(tip)

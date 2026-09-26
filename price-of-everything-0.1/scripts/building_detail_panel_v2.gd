@@ -1781,7 +1781,7 @@ static func v3_upgrade_state(building: Dictionary) -> Dictionary:
 		"upgrade_lit": met, "upgrade_tooltip": "" if met else "Requires research: %s" % gate, "upgrade_tip": tip}
 
 
-## The Upgrade key's hover card (scripts/tvp_v3/transport_tip.gd), from BuildingWorks.preview_upgrade: the
+## The Upgrade key's hover card (scripts/ds2/dot_card.gd), from BuildingWorks.preview_upgrade: the
 ## next level's output gain, what buying the missing materials costs, the land it adds and the time it
 ## takes, with the materials in their wells; the turns left while it runs; the top level; why it can't run.
 static func v3_upgrade_tip(building: Dictionary) -> Dictionary:

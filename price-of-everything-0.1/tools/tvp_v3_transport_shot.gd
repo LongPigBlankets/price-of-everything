@@ -294,7 +294,7 @@ func _print_keys(panel: Control, tag: String) -> void:
 			state = " latched"
 		elif bool(b.get("spent")):
 			state = " greyed"
-		elif b.get("title_ink") == load("res://scripts/tvp_v3/transport_key.gd").RED_INK:
+		elif b.get("title_ink") == load("res://scripts/ds2/cream_key.gd").RED_INK:
 			state = " red"
 		var t := str(b.get("title"))
 		var odd := not (t in ["Build", "Upgrade"]) or str(b.get("detail")) != ""
@@ -490,7 +490,7 @@ func _shown_tip() -> Window:
 ## each overlap found.
 func _audit(panel: Control, tag: String) -> void:
 	var tab: GDScript = load("res://scripts/tvp_v3/transport_tab.gd")
-	var well: GDScript = load("res://scripts/tvp_v3/transport_well.gd")
+	var well: GDScript = load("res://scripts/ds2/good_well.gd")
 	var found: Array[String] = []
 	var scroll: ScrollContainer = panel.find_child("BodyScroll", true, false)
 	var case := panel.find_child("TransportLinks", true, false) as Control

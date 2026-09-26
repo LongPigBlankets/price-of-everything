@@ -147,7 +147,7 @@ Each entry lists the look, its render set and layers, the Godot script and API, 
 | Component | Look | Render → layers | Godot | BDP use |
 |---|---|---|---|---|
 | **Backing plate** | navy-grey steel, a narrow welded brass trim (14 px), heat tint by the weld | `backing` → `panel_backing` | `BdpV3Nine` full-rect, corner 60 | the panel itself |
-| **Section frame** | a narrow worn steel rim (26 px), a screw in each corner on the rim's centre line | `section` → `section_frame` | `BdpV3Section` (`content` VBox; `RIM`, `PADDING`) | every framed section |
+| **Section frame** | a narrow worn steel rim (26 px), a screw in each corner, on the rim towards its inner edge | `section` → `section_frame` | `BdpV3Section` (`content` VBox; `RIM`, `PADDING`) | every framed section |
 | **Dark metal plate** | blackened gunmetal filling a frame's inside, edges under the rim; cropped, not stretched | `darkplate` → `dark_plate` (900 × 1400) | `BdpV3Section.style = "dark"` | Cost to produce, Inbound shipments |
 | **Plastic case** | moulded black plastic, a rounded glossy edge; silver screws placed by Godot, 4 top, 4 bottom, 6 a side | `plastic` → `diag_plastic`, `screw_silver` | `BdpV3Section.style = "plastic"`; `screw_points(size)` | Diagnostics |
 | **Raised module** | a slightly raised black plastic panel inside a case | `module` → `diag_module` | `_v3_diag_module()` *(panel helper)*: PanelContainer with the module painted in `draw` | each diagnostics row |
@@ -422,3 +422,43 @@ The top bar was the second surface moved to DS2 (`docs/top-bar-ds2-plan.md` reco
 
 **Surfaces.** The bar and its sheets are the same navy steel as Building Detail's backing, without the brass trim (the owner removed it from the bar); dark gunmetal plates sit inside it as Building Detail's Cost plates do.
 
+
+---
+
+## 14. The tile view: what it added to the kit
+
+The tile view was the third surface moved to DS2 (`docs/tile-view-ds2-plan.md`; the owner's rulings in `docs/ds2-owner-decisions.md`), built as the site's control cabinet: a brushed stainless door with a pipe round its edge, an engraved nameplate, a key bed of five latching keys under one dot-matrix display, and one navy steel body sheet holding each tab. It and the top bar are the default look; `toggle topbar ds2` and `toggle tvp v3` switch back to the old ones. The approved captures are `artifacts/tvp_v3_standard/` (tag `tvp-v3-standard-2026-09-26`).
+
+**Where the kit lives.** Parts any panel can use are in `scripts/ds2/`, each preloaded by path (no `class_name` until the editor has scanned them; §12). A panel's own compositions stay in its folder (`scripts/tvp_v3/<tab>_*.gd`). The BDP v3 parts (`scripts/bdp_v3_*.gd`) stay where they are until §10's extraction; the DS2 parts build on them.
+
+**Parts in `scripts/ds2/`.**
+
+| Part | File | Look | API | Used by |
+|---|---|---|---|---|
+| **Dot-matrix text** | `dot_matrix.gd` | five by seven dots a character, lit over faint unlit dots; framed in the mini screen's bezel and glass, or unframed for a strip holding several | `text` or `set_runs([{text, colour}])`, `pitch`, `framed`, `align`; `THIN` (a narrow space, one dot column, for a figure and its unit: "531 MW"); `string_width(t, pitch)` | the key display, the dot card, the top bar's readouts |
+| **Dot card** | `dot_card.gd` | a hover card on a dot-matrix screen in the readouts' bezel: a title (with an amber or red mark), a blank line, captions and values in two columns, goods in their wells laid over the cells, notes in their tone | a card is `{title, tone, rows: [{caption, value, tone}], notes: [{text, tone}], goods, goods_caption, goods_note}`; `attach(host, card)` (the host shows it from `_make_custom_tooltip`, its words in `tooltip_text` for tests), `make(card, anchor)`, `plain(card)`; `TipPanel` for a container that carries one | Transport's Build and Upgrade keys; Building Detail's Upgrade key (`bdp_v3_plate.gd` `set_key(..., tip)`, card from `v3_upgrade_tip`) |
+| **Good in a well** | `good_well.gd` | a good's cream icon set under the icon well's thin metal frame, its quantity in a navy pill inside its corner (the one shape a good's quantity takes) | `make(good_id, qty, note, px)`, `reach()`, `count(n)` | Transport, Stock, the dot card's goods |
+| **LED meter** | `led_meter.gd` | a load against capacity as a bar of LED cells on a mini screen, a mark at capacity, the scale stretching past it when over | `set_load(load, capacity, near_share, tone)`, `tone_for(...)` (green, amber from `near_share`, red over) | Transport's links |
+| **Cream key** | `cream_key.gd` | a real `Button` drawn as the cabinet's cream key (three-sliced), navy print, red print when refused, latched with its lamp lit while a job runs, greyed when spent | `make(name, title, detail, width, opens, latched, scale)`, `height_for(k)`, `width_for(...)`, `set_busy`, `set_spent`, `title_ink`, `tip` (a dot card) | Transport's Build and Upgrade |
+| **Latching key** | `latch_key.gd` | a blank cream keycap in its bezel with its name printed; stays down while its tab is shown | `text`, `latched`, `disabled`, signal `pressed` | the tile view's five tab keys; Buy Land and the Goods keys via `goods_parts.cabinet_key` |
+| **Drum figure** | `drum_figure.gd` | Building Detail's drum counter at rest, drawn to a given height so it stands as tall as the LED screens beside it | `drums`, `value`, `led_height()`, `width_for(drums, height)` | Buildings (turns left, turns to build) |
+| **Guarded key** | `guard_key.gd` | Building Detail's footer key on its own: the amber cap under a hinged clear cover; the first click lifts the cover, the second spends | signals `pressed`, `cover_changed(open)`; `lift()`, `drop()`, `is_open()`, `overhang(side)`, `tip` | Buildings (buying another company's building) |
+| **Emblem over a lamp** | `emblem_lamp.gd` | a building's emblem raised in polished metal over its pilot lamp, the lamp level with the line it judges; no lamp for a thing not yet built | `set_link(building_id, tone, head_h, with_lamp, lamp_mid)`, `hot` (brightens on hover), `art_dest()` | Transport's modules |
+| **Flashing lamp** | `flash_lamp.gd` | a pilot lamp alternating between two tones, for a state between them | `set_tone(tone)`, `set_cycle(tones, seconds)` | Power's intermittency |
+| **Money figure** | `money_figure.gd` | the owner's five-cell money rule for an LED (£999.99, £9999, £15.6K, £1.01M) | `led(value)` → `{figure, suffix}`, `text(value)` | the top bar's cash, the Goods key |
+
+Elsewhere, also reusable: `scripts/rotary_selector.gd` (the white knob; with `options`, one icon button per position on its arc), `scripts/bdp_v3_section.gd` style **`"bare"`** (draws nothing but keeps a framed section's insets, so a section can sit straight on the plate under it and still line its columns up with framed ones), and `scripts/tile_land_hex.gd` (land as a hex of squares; panel-specific, but its ordered bisection packing suits any "blocks in a shape" figure).
+
+**Patterns it added.**
+
+1. **One display over a row of keys.** Each key's figure sits on one wide unframed dot-matrix strip above it, a mark before the figure when the key's tab needs a look. Figures use the narrow space before a unit and none before `%` or `/N` ("531 MW", "27%", "0/2"); power over 999 MW reads GW to one place (`power_figure`).
+2. **A card on the key, not the row.** A module that can be built or raised shows what that costs and brings only while its key is hovered; the module itself opens the thing. The same card on every surface's key for the same kind of action (Building Detail's Upgrade key shows the tile view's card).
+3. **Rows that name, figures in columns.** A row's own name is its only line; what it carries or how it works goes on the key's card. Column headings stand over their columns ("Tile Distance", "Throughput"), a column at least as wide as its heading, and values carry no unit the heading already gives ("2", not "2 tiles"). Rates read "/turn", "/unit" or "/tile", never "a turn".
+4. **Room for the rail kept.** Where opening a fold usually brings the scroll rail (a tile with other companies' buildings), the column keeps the rail's room even while it hides, so nothing reflows when it shows (`buildings_parts.Column.reserve`).
+5. **Swatches on any plate.** A legend's colour sits in a small stainless bezel with a black line round the colour: a dark colour reads against the steel, a light one against the line, on navy or on silver (`_land_line`).
+6. **Sections without a container.** A section with nothing to frame sits straight on the body's plate (`"bare"`); where it has nothing to show, one line says why in the words column, rather than a sign on a door.
+7. **Multi-line readings.** A reading with several figures gives each its own line ("228 MW produced." / "170 MW consumed." / "All supplied by the national grid.").
+
+**Names.** Buildings the owner named after what they do are named in one place, `scripts/building_naming.gd` (`family_name`): "Motor Factory A", "Chlor Alkali Complex A", "Needle Coke Plant B", "Plastics Plant C", "Coal Power Plant A", "Offshore Wind Farm A". Anything that needs a name without its letter calls `BuildingNaming.without_letter(full)`; never split a name on " - ", which only the older kinds ("Mine - Coal - A") carry.
+
+**Renders added.** Sets `tiledoor` (431: the stainless door, pipe, flanges, nameplate), `tilekey` (432: the latching key), and the frame's screws moved onto the rim (`section`, seed 504; its screws sit six layout px further in than before). Export one set with `?export&only=<set>` on your own port (§12).

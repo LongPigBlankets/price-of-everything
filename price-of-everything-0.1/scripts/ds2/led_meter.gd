@@ -1,5 +1,5 @@
 extends Control
-## Tile view v3, Transport: a link's load against its capacity as a bar of LED cells on a mini screen, the
+## DS2 (the tile view's Transport tab): a load against its capacity as a bar of LED cells on a mini screen, the
 ## way a level meter on a control desk reads. The screen is Building Detail's (res://assets/ui/bdp_v3/
 ## mini_screen.png and its glass, both 9-slices, as the LED figures use).
 ##

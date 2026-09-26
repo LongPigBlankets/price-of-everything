@@ -1,5 +1,5 @@
 extends Control
-## Tile view v3, Transport: a link's emblem (Building Detail's building emblem, the building's icon raised in
+## DS2 (the tile view's Transport tab): a building's emblem (Building Detail's building emblem, the building's icon raised in
 ## polished metal, res://assets/ui/bdp_v3/bld_emblem_<id>.png and its shadow) over its pilot lamp, as the
 ## diagnostics' indicator shows a check. A link not yet built has no lamp: there is nothing to judge, and
 ## a key latched with its own lamp says when one is being built.

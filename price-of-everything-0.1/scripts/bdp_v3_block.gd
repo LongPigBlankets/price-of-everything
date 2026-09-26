@@ -29,7 +29,7 @@ func _init() -> void:
 
 ## state: input_value, output_value (String); input_managed, output_managed (bool);
 ## upgrade_title, upgrade_detail, upgrade_tooltip (String), upgrade_lit (bool), upgrade_tip (a dot-matrix
-## card, transport_tip.gd; when set it replaces upgrade_tooltip);
+## card, dot_card.gd; when set it replaces upgrade_tooltip);
 ## recipe_title, recipe_detail, recipe_tooltip (String), recipe_enabled (bool).
 func configure(state: Dictionary) -> void:
 	var lit := bool(state.get("upgrade_lit", false))

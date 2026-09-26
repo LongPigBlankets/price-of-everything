@@ -15,7 +15,7 @@ const Parts := preload("res://scripts/tvp_v3/stock_parts.gd")
 const Led := preload("res://scripts/bdp_v3_led.gd")
 const Toggle := preload("res://scripts/bdp_v3_toggle.gd")
 const Heading := preload("res://scripts/bdp_v3_heading.gd")
-const CabinetKey := preload("res://scripts/tile_cabinet_key.gd")
+const CabinetKey := preload("res://scripts/ds2/latch_key.gd")
 
 const MARKET_DEST := "__market__"
 const SPECIAL_ORDER_DEST := "__special_order__"
