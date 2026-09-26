@@ -1459,3 +1459,47 @@ func _test_building_diagnostics() -> void:
 	_check(not has_mod_row, "diagnostics: no 'Output modifiers' row even with an active modifier")
 	_check(not has_parts, "diagnostics: no diagnostics row carries a modifier 'parts' accordion")
 	Modifiers.remove(mod_id)
+
+
+## The upgrade panel's stockpile sources (BuildingWorks.start_upgrade "stockpiles" and "tile_wait"): the plan pulls
+## another tile's spare stock and leaves the rest; starting moves it and waits; the wait never buys what is
+## missing from market, however long it stalls; tile_wait starts with nothing on the tile and waits.
+func _test_upgrade_stockpile_modes() -> void:
+	MatchState.reset()
+	Stockpile.clear_all()
+	var dest := "tile_12_2"
+	var src := "tile_13_2"
+	BuildingState.tile_land_owned[dest] = 200
+	var iid := BuildingState.add_building("b_013", "", dest)
+	var kit: Dictionary = BuildingLevels.upgrade_materials("poly_plant", 2)
+	var first := str(kit.keys()[0])
+	var gid := str(Catalog.get_good_by_internal_name(first).get("id", ""))
+	Stockpile.add(src, gid, int(kit[first]))
+	var plan: Dictionary = BuildingWorks.preview_upgrade(iid).get("stockpile_plan", {})
+	_check(int((plan.get("covered", {}) as Dictionary).get(gid, 0)) == int(kit[first]) and not (plan.get("left", {}) as Dictionary).is_empty(),
+		"upgrade stockpiles: the plan takes another tile's spare and leaves the rest (%s)" % str(plan))
+	var before := TransportState.pending_transport_shipments.size()
+	var gate := BuildingLevels.research_gate("poly_plant", 2)
+	if gate != "":
+		ResearchState.grant_unlock(gate)
+	var r := BuildingWorks.start_upgrade(iid, "stockpiles")
+	var pending: Dictionary = {}
+	for p: Dictionary in BuildingWorks.pending_upgrades:
+		if str(p.get("instance_id", "")) == iid:
+			pending = p
+	_check(bool(r.get("ok", false)) and str(r.get("status", "")) == BuildingWorks.UPGRADE_STATUS_AWAITING
+		and bool(pending.get("no_market", false)) and TransportState.pending_transport_shipments.size() > before,
+		"upgrade stockpiles: starts, moves the spare over and waits for the rest")
+	var moved := TransportState.pending_transport_shipments.size()
+	var missing: Dictionary = pending.get("missing", {})
+	var still := missing.duplicate()
+	still.erase(gid)
+	for i in BuildingWorks.UPGRADE_STALL_TURNS + 2:
+		BuildingWorks._retry_stalled_upgrade(pending, iid, dest, still)
+	_check(TransportState.pending_transport_shipments.size() == moved, "upgrade stockpiles: a long wait never buys the rest from market")
+	var iid2 := BuildingState.add_building("b_013", "", dest)
+	var r2 := BuildingWorks.start_upgrade(iid2, "tile_wait")
+	_check(bool(r2.get("ok", false)) and str(r2.get("status", "")) == BuildingWorks.UPGRADE_STATUS_AWAITING,
+		"upgrade tile_wait: starts with materials missing and waits for them")
+	MatchState.reset()
+	Stockpile.clear_all()
