@@ -17,6 +17,7 @@ extends RefCounted
 ## Clicking a module opens the building, as the v2 row does.
 
 const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Metrics := preload("res://scripts/ds2/metrics.gd")
 const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
 const LatchKey := preload("res://scripts/ds2/latch_key.gd")
 const CreamKey := preload("res://scripts/ds2/cream_key.gd")
@@ -46,8 +47,8 @@ const TEXELS := 2.0 / 1.875
 const COL_GAP := 8
 const COLUMNS := [
 	{"key": "emblem", "label": "", "w": 60.0, "sort": false},
-	{"key": "name", "label": "Building", "w": 200.0, "sort": true},
-	{"key": "output", "label": "Makes", "w": 72.0, "sort": true},
+	{"key": "name", "label": "Building", "w": 192.0, "sort": true},
+	{"key": "output", "label": "Makes", "w": 80.0, "sort": true},
 	{"key": "logistics_inputs", "label": "Inputs", "w": 76.0, "sort": false},
 	{"key": "logistics_outputs", "label": "Outputs", "w": 76.0, "sort": false},
 	{"key": "power", "label": "Power", "w": 120.0, "sort": true},
@@ -57,9 +58,10 @@ const COLUMNS := [
 	{"key": "land", "label": "Land", "w": 50.0, "sort": true},
 	{"key": "upgrade", "label": "", "w": 100.0, "sort": false},
 ]
-## The emblem's side, and a good's well in the Makes column.
-const EMBLEM_PX := 54.0
-const WELL_PX := 56
+## The emblem's side and a good's well in the Makes column: the tile view's building cards', so every DS2
+## building card is one height (scripts/ds2/metrics.gd CARD_H).
+const EMBLEM_PX := Parts.EMBLEM_PX
+const WELL_PX := Parts.WELL_PX
 ## The filter keys, a row each: what a building is doing, then what kind it is.
 const FILTER_ROWS := [
 	[["running", "Running"], ["starved", "Starved"], ["unpowered", "Unpowered"], ["loss", "Loss making"],
@@ -282,6 +284,7 @@ static func table() -> Dictionary:
 ## `digits` the cells every money screen in the table takes; `on_open` opens the building.
 static func row(vm: Dictionary, logistics: Callable, digits: int, on_open: Callable, on_upgrade: Callable) -> PanelContainer:
 	var m := Parts.module("LedgerRow_%s" % str(vm.instance_id))
+	m.custom_minimum_size.y = Metrics.CARD_H
 	m.mouse_filter = Control.MOUSE_FILTER_STOP
 	Parts.on_click(m, on_open)
 	var line := Parts.row_of(m)
