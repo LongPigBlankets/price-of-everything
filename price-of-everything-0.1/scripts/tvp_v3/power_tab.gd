@@ -154,7 +154,7 @@ static func _balance(panel: Control, tile: String, power: Dictionary, im: Dictio
 	rows.name = "Readouts"
 	rows.add_theme_constant_override("separation", 10)
 	if idle:
-		rows.add_child(_cables_row(panel, tile, power))
+		_add_link_rows(rows, panel, tile, power)
 		rows.add_child(_plants_row(tile, build))
 	else:
 		var meter: Control = Meter.new()
@@ -165,7 +165,7 @@ static func _balance(panel: Control, tile: String, power: Dictionary, im: Dictio
 		meter.call("set_reading", _makers(tile), _users(tile), made, drawn, int(power.net), status_tone(str(power.status)))
 		body.add_child(meter)
 		body.add_child(_rule())
-		rows.add_child(_cables_row(panel, tile, power))
+		_add_link_rows(rows, panel, tile, power)
 	if bool(power.get("connected", false)):
 		rows.add_child(_grid_row(panel, tile, power))
 		if not idle:
@@ -649,6 +649,27 @@ static func plain_name(tile: String, iid: String, bid: String, rid: String) -> S
 
 
 # ── The balance's readouts ──────────────────────────────────────────────────────────────────────────────
+
+## The links that carry power, as the owner ruled: they live in Transport, and show here only where they are
+## built, the cables also where they are missing and your buildings here need them ("Cables missing").
+static func _add_link_rows(rows: Control, panel: Control, tile: String, power: Dictionary) -> void:
+	if Power.tile_power_cap(tile) > 0 or cables_missing(tile) != "":
+		rows.add_child(_cables_row(panel, tile, power))
+	var hvdc := _built_link(tile, panel.get("_current_tile_data"), "hvdc")
+	if not hvdc.is_empty():
+		var key := _key("Upgrade", "PowerHvdcKey", "Upgrade the HVDC link on this tile, in Transport.")
+		key.pressed.connect(func() -> void: panel.call("_select_tab", "transport"))
+		rows.add_child(_readout("diag_icon_cable", "ok", "HVDC", "Level %d." % int(hvdc.get("level", 1)), key))
+
+
+## A built link's slot from TileViewData.infrastructure_summary, or {} where it isn't built.
+static func _built_link(tile: String, tile_data: Dictionary, key: String) -> Dictionary:
+	var data: Dictionary = {}
+	for slot: Dictionary in TileViewData.infrastructure_summary(tile, tile_data):
+		if str(slot.get("key", "")) == key and str(slot.get("state", "")) == "exists":
+			data = slot
+	return data
+
 
 ## The cables, and the Transport tab's own key words for them: Build where there are none and your
 ## buildings need them, Upgrade near or at their cap. Both open Transport, where the cables are laid and
