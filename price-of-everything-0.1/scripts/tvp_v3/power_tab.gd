@@ -38,6 +38,7 @@ extends RefCounted
 ## captions, key labels and the notes printed on the plate in capitals take none. Building names are the
 ## game's without its hyphens (plain_name).
 
+const Metrics := preload("res://scripts/ds2/metrics.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
 const Heading := preload("res://scripts/bdp_v3_heading.gd")
 const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
@@ -93,7 +94,7 @@ const MODULE_PAD_R := 10.0
 const MODULE_SEP := 12.0
 ## The battery cells, in the order the storage lists them.
 const CHEMISTRIES := ["lithium_battery", "sodium_battery", "iron_battery"]
-const CELL_ICON_PX := 52
+const CELL_ICON_PX := Metrics.GOOD_ICON
 ## Building Detail's navy quantity pill: its height and how far inside the icon's corner it sits.
 const PILL_H := 22
 const PILL_INSET := 5

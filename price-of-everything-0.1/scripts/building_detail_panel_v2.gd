@@ -1,4 +1,5 @@
 extends PanelContainer
+const Metrics := preload("res://scripts/ds2/metrics.gd")
 const EffectEmblem := preload("res://scripts/effect_emblem.gd")
 ## Building Detail — the scenario-adaptive detail panel.
 ## Code-instantiated by world_map. THE building detail panel.
@@ -914,7 +915,7 @@ func _build_infra_breakdown(building: Dictionary, building_data: Dictionary) -> 
 		var qty := int(row.get("qty", 0))
 		var cost := float(row.get("cost", 0.0))
 		var penalty := float(row.get("penalty", 0.0))
-		grid.add_child(_good_icon_pill(good_id, Catalog.get_internal_name(good_id), qty, 60))
+		grid.add_child(_good_icon_pill(good_id, Catalog.get_internal_name(good_id), qty, Metrics.GOOD_ICON))
 		grid.add_child(_breakdown_value_label("£%.2f" % cost, DS.PALETTE["TEXT"]))
 		var has_penalty := penalty > 0.01
 		grid.add_child(_breakdown_value_label(("£%.2f" % penalty) if has_penalty else "—",
@@ -1334,7 +1335,7 @@ func _commit_upgrade(iid: String, mode: String, duration: int) -> void:
 
 ## Good-icon size on the upgrade sheet. Frameless: the metal bevel ate a 52 px cell and
 ## left the good barely readable.
-const UPGRADE_MAT_ICON := 56
+const UPGRADE_MAT_ICON := Metrics.GOOD_ICON
 
 # A material cell for the upgrade sheet: plain good icon (need pill) + have/need caption.
 func _upgrade_material_cell(m: Dictionary) -> Control:
@@ -1859,7 +1860,7 @@ func _build_v3_footer(building: Dictionary) -> Control:
 ## icons and how many to a row.
 const V3_OUTCOME_INSET := 18.0
 const V3_OUTCOME_SECONDS := 0.22
-const V3_REFUND_ICON := 50
+const V3_REFUND_ICON := Metrics.GOOD_ICON
 const V3_REFUND_COLUMNS := 5
 const V3_SHEET_TEXTURE: Texture2D = preload("res://assets/ui/bdp_v3/sheet_plate.png")
 
