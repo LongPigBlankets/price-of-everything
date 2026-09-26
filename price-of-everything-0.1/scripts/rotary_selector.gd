@@ -52,6 +52,9 @@ var option_ink: Color = Color.WHITE:
 ## before `options`.
 var option_plates := false
 var option_scale := 1.0
+## Options mode: where the label stands, this far below the knob's ring; at its default (-1) it stands under
+## the frame's drop shadow as before.
+var label_gap := -1.0
 const PLATE_PAD := 6.0
 const PLATE_FILL := Color("#1d1f23")
 const PLATE_EDGE := Color("#3b3f45")
@@ -90,7 +93,7 @@ func _fit() -> void:
 	var arc := _arc_top()
 	var below := (FRAME_SIZE - FRAME_CENTRE.y) * s
 	if not options.is_empty():
-		below += OPTION_LABEL_SIZE + 4.0
+		below = _label_top() - _centre_y_offset() + OPTION_LABEL_SIZE + 4.0 if label_gap >= 0.0 else below + OPTION_LABEL_SIZE + 4.0
 	custom_minimum_size = Vector2(maxf(knob_size, 2.0 * arc), arc + below)
 	_place_options()
 
@@ -170,7 +173,8 @@ func _draw() -> void:
 		if label != "":
 			var lf := get_theme_font(&"font", &"Body")
 			var ext := lf.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, OPTION_LABEL_SIZE)
-			var y := centre.y + (FRAME_SIZE - FRAME_CENTRE.y) * s + lf.get_ascent(OPTION_LABEL_SIZE)
+			var y := (centre.y - _centre_y_offset() + _label_top() if label_gap >= 0.0 else centre.y + (FRAME_SIZE - FRAME_CENTRE.y) * s) \
+				+ lf.get_ascent(OPTION_LABEL_SIZE)
 			draw_string(lf, Vector2(centre.x - ext.x * 0.5, y), label, HORIZONTAL_ALIGNMENT_LEFT, -1, OPTION_LABEL_SIZE, label_colour)
 		if has_focus():
 			draw_arc(centre, FRAME_RADIUS * s + 6.0, 0.0, TAU, 64, Color(DS.PALETTE.ACCENT, 0.5), 1.5, true)
@@ -281,6 +285,16 @@ func _place_options() -> void:
 	for i in option_buttons.size():
 		var at := _centre() + Vector2(cos(_angle(i)), -sin(_angle(i))) * r
 		option_buttons[i].position = (at - Vector2(_option_side(), _option_side()) * 0.5).round()
+
+
+## The label's top below the knob's centre when `label_gap` places it: the ring's radius and the gap.
+func _label_top() -> float:
+	return _centre_y_offset() + FRAME_RADIUS * _scale() + label_gap
+
+
+## The knob's centre below the control's top (what _centre gives, taken as an offset).
+func _centre_y_offset() -> float:
+	return _arc_top()
 
 
 ## An option's square: its icon at `option_scale`, and round it the plastic plate's padding when it has one.

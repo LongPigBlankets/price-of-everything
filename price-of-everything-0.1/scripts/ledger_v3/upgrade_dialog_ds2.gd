@@ -68,14 +68,17 @@ const OUTLINE_W := 2
 const OUTLINE_RADIUS := 12
 ## The materials grid's columns, and the room it leaves on its right for the dial.
 const MATERIAL_COLUMNS := 3
+const MATERIAL_CELL_GAP := 6
 const NAVY := Color("#0b2340")
 ## The embossed icons on the dial's black plastic plates.
 const OFF_WHITE := Color("#ece6d6")
 const DIAL_PX := 165.0
 ## How much nearer the crane the dial stands than its column would put it.
 const DIAL_SHIFT := 30.0
+## The dial's name this far under its ring; the price's foot level with the foot of the lowest materials' frames.
+const SOURCE_GAP := 10.0
 
-const WIDTH := 840.0
+const WIDTH := 780.0
 const CONTENT_MARGIN := 18
 const BACKING_CORNER := 64.0
 ## The Per turn table's figure columns: now, the next level, the change.
@@ -117,7 +120,7 @@ func _build_shell() -> void:
 		margin.add_theme_constant_override(side, CONTENT_MARGIN)
 	_card.add_child(margin)
 	_content = VBoxContainer.new()
-	_content.add_theme_constant_override("separation", 10)
+	_content.add_theme_constant_override("separation", 8)
 	margin.add_child(_content)
 
 
@@ -170,8 +173,9 @@ func _rebuild() -> void:
 	if str(p.get("research_gate", "")) != "" and bool(p.get("research_locked", false)):
 		_content.add_child(_research_line(str(p.get("research_gate", ""))))
 	_content.add_child(_land_line(building, p))
-	_content.add_child(_time_line(int(p.get("duration", 3)), from_level))
-	_content.add_child(_foot(p))
+	var time := _time_line(int(p.get("duration", 3)), from_level)
+	time.add_child(_foot(p))
+	_content.add_child(time)
 
 
 ## The materials dial's options with whether each can be done here: the kit all on the tile and unclaimed,
@@ -227,6 +231,7 @@ func _dial(p: Dictionary) -> Control:
 	dial.name = "MaterialsDial"
 	dial.set("knob_size", DIAL_PX)
 	dial.set("option_plates", true)
+	dial.set("label_gap", SOURCE_GAP)
 	dial.set("option_scale", 1.2)
 	dial.set("option_ink", OFF_WHITE)
 	dial.set("label", "Source")
@@ -406,7 +411,7 @@ func _materials(p: Dictionary) -> Control:
 	wrap.add_child(CraneRig.new())
 	var vb: VBoxContainer = sec.get("content")
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 18)
+	row.add_theme_constant_override("separation", 10)
 	vb.add_child(row)
 	var grid := GridContainer.new()
 	grid.name = "MaterialGrid"
@@ -423,7 +428,7 @@ func _materials(p: Dictionary) -> Control:
 		var have := int(m.get("have", 0))
 		var cell := VBoxContainer.new()
 		cell.name = "Material_%s" % gid
-		cell.add_theme_constant_override("separation", 6)
+		cell.add_theme_constant_override("separation", MATERIAL_CELL_GAP)
 		cell.add_child(Parts.good_in_well(gid, need, "%s: %d needed, %d on the tile" % [Catalog.get_display_name(gid), need, have]))
 		var line := HBoxContainer.new()
 		line.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -460,7 +465,16 @@ func _materials(p: Dictionary) -> Control:
 		price.add_child(part)
 	money.free()
 	_on_steel(price.get_child(0) as Label)
-	row.add_child(price)
+	var price_room := MarginContainer.new()
+	price_room.name = "PriceRoom"
+	price_room.size_flags_vertical = Control.SIZE_SHRINK_END
+	for edge in ["margin_left", "margin_right", "margin_top"]:
+		price_room.add_theme_constant_override(edge, 0)
+	# A material's cell is its icon, a gap and its count; the well's frame reaches below the icon. The price
+	# stands so its foot meets the frame's.
+	price_room.add_theme_constant_override("margin_bottom", roundi(MATERIAL_CELL_GAP + _figure("0/0").get_combined_minimum_size().y - Parts.WELL_REACH))
+	price_room.add_child(price)
+	row.add_child(price_room)
 	_price = price
 	row.add_child(room)
 	_note = _on_steel(_body(NO_MARKET_NOTE))
@@ -539,7 +553,7 @@ func _impact(from_level: int, target: int) -> Control:
 		head.add_child(c)
 	vb.add_child(head)
 	for spec: Array in [["Estimated Cost Increase", "cost", false], ["Estimated Cost per Unit", "unit", false],
-			["Estimated Value of Output", "value", true]]:
+			["Estimated Value of Output", "value", true], ["Estimated Net Value Add", "net", true]]:
 		vb.add_child(_estimate_row(str(spec[0]), est[spec[1]], from_level, target, bool(spec[2])))
 	var detail := VBoxContainer.new()
 	detail.name = "PerTurnRows"
@@ -573,7 +587,7 @@ func _impact(from_level: int, target: int) -> Control:
 	return scroll
 
 
-## The three estimates at every level: {cost, unit, value: [by level]}. Costs a turn are the inputs at market,
+## The estimates at every level: {cost, unit, value, net: [by level]}, net the value less the costs. Costs a turn are the inputs at market,
 ## power at the grid's price, labour and upkeep; the value is the outputs at market (power at the grid's price
 ## for selling); a unit's cost is those costs over the first output, so the three agree.
 func _estimates(levels: Array) -> Dictionary:
@@ -593,7 +607,10 @@ func _estimates(levels: Array) -> Dictionary:
 		cost.append(c)
 		value.append(v)
 		unit.append(c / first if first > 0.0 else 0.0)
-	return {"cost": cost, "value": value, "unit": unit}
+	var net: Array = []
+	for i in value.size():
+		net.append(float(value[i]) - float(cost[i]))
+	return {"cost": cost, "value": value, "unit": unit, "net": net}
 
 
 ## An estimate's row, a good's icon tall at the least: its name, and its figure at this level and the next on

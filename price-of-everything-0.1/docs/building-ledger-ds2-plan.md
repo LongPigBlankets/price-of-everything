@@ -47,6 +47,8 @@ Every figure is the row model the v2 ledger already computes (`_row_vm`: CostSol
 
 **Sixth review (26 September), built.** The panel is 840 × 918 (it was 1459 tall and ran off a 1080 screen). Per turn became Estimated impact, a plastic case with no heading: Estimated Cost Increase, Estimated Cost per Unit and Estimated Value of Output, each 54 px, this level and the next on LED screens; See more opens the Per turn rows under them (outputs in one row, a cut, inputs in one row under the inputs icon, 54 px icons), and the case keeps its closed height and scrolls on a rail kept at its side. The price stands between the materials and the dial; the dial moved 30 px right.
 
+**Seventh review (26 September), built.** 780 × 895: a fourth estimate, Estimated Net Value Add (the output's value less the costs); the price's foot level with the lowest materials' frames; Source 10 px under the knob; Upgrade and Cancel on the time line.
+
 ## Open decisions (owner)
 
 1. **Default.** Keep behind the switch until approved, then make it the default with `toggle ledger ds2` switching back, as the top bar and tile view did?
