@@ -2367,3 +2367,35 @@ func _test_bdp_v3_output_checks() -> void:
 		"outputs checks: an indicator over three tones shows three lamps side by side, red, amber, green (%s)" % ", ".join(colours))
 	ind.queue_free()
 	BuildingState.buildings.erase(iid)
+
+
+## The DS2 upgrade panel is the default, and its Upgrade key starts the upgrade: a building with its kit on the
+## tile, its research and its land, the panel opened for it, the key pressed.
+func _test_upgrade_ds2_commits() -> void:
+	MatchState.reset()
+	Stockpile.clear_all()
+	_check(UiPrefs.use_upgrade_ds2, "upgrade ds2: the DS2 upgrade panel is the default")
+	var levels := load("res://scripts/building_levels.gd")
+	var tile := "tile_12_2"
+	BuildingState.tile_land_owned[tile] = 200
+	var iid := BuildingState.add_building("b_013", "", tile)
+	var gate: String = levels.research_gate("poly_plant", 2)
+	if gate != "":
+		ResearchState.grant_unlock(gate)
+	var kit: Dictionary = levels.upgrade_materials("poly_plant", 2)
+	for internal in kit:
+		Stockpile.add(tile, str(Catalog.get_good_by_internal_name(str(internal)).get("id", "")), int(kit[internal]))
+	var dialog: Control = load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd").new()
+	add_child(dialog)
+	dialog.call("open", iid)
+	await get_tree().process_frame
+	var key := dialog.find_child("Key_Upgrade", true, false) as Button
+	_check(key != null and not key.disabled, "upgrade ds2: the Upgrade key is live with the kit, research and land in place")
+	if key != null:
+		key.emit_signal("pressed")
+	_check(BuildingWorks.is_upgrading(iid) and not dialog.visible, "upgrade ds2: pressing Upgrade starts the upgrade and closes the panel")
+	BuildingWorks.cancel_upgrade(iid)
+	dialog.queue_free()
+	MatchState.reset()
+	Stockpile.clear_all()
+	await get_tree().process_frame

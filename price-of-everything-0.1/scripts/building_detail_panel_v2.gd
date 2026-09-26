@@ -1153,9 +1153,12 @@ func _build_primary_actions(building: Dictionary, _building_data: Dictionary) ->
 func _open_upgrade_sheet(building: Dictionary) -> void:
 	var iid := str(building.get("instance_id", ""))
 	var preview: Dictionary = BuildingWorks.preview_upgrade(iid)
-	if bool(preview.get("ok", false)) and not bool(preview.get("at_max", false)) \
+	# The DS2 panel also shows the top level and an upgrade under way, so only infrastructure's cash upgrade
+	# keeps the sheet.
+	var ds2 := UiPrefs.use_upgrade_ds2 and not bool(preview.get("infra", false))
+	if bool(preview.get("ok", false)) and (ds2 or (not bool(preview.get("at_max", false)) \
 			and not bool(preview.get("infra", false)) \
-			and not bool(preview.get("already_upgrading", false)):
+			and not bool(preview.get("already_upgrading", false)))):
 		_ensure_upgrade_dialog()
 		_upgrade_dialog.call("open", iid)
 		return
@@ -1394,13 +1397,18 @@ func _fmt_dec(v: float, decimals: int) -> String:
 ## arrangement the building ledger uses, so the screens share one dialog rather than each
 ## carrying their own.
 func _ensure_upgrade_dialog() -> void:
+	# The DS2 panel unless `toggle upgrade ds2` switched it back; a switch replaces the one built for the other.
 	if _upgrade_dialog != null and is_instance_valid(_upgrade_dialog):
-		return
+		if bool(_upgrade_dialog.get_meta("ds2", false)) == UiPrefs.use_upgrade_ds2:
+			return
+		_upgrade_dialog.queue_free()
+		_upgrade_dialog = null
 	if _upgrade_dialog_layer == null or not is_instance_valid(_upgrade_dialog_layer):
 		_upgrade_dialog_layer = CanvasLayer.new()
 		_upgrade_dialog_layer.layer = 128
 		get_tree().root.add_child(_upgrade_dialog_layer)
-	_upgrade_dialog = (load("res://scripts/upgrade_dialog.gd") as Script).new()
+	_upgrade_dialog = (load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd" if UiPrefs.use_upgrade_ds2 else "res://scripts/upgrade_dialog.gd") as Script).new()
+	_upgrade_dialog.set_meta("ds2", UiPrefs.use_upgrade_ds2)
 	_upgrade_dialog_layer.add_child(_upgrade_dialog)
 	_upgrade_dialog.connect("committed", func(_iid: String) -> void: _queue_refresh())
 

@@ -494,6 +494,7 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 	var materials: Array = []
 	var shortfall: Dictionary = {}
 	var market_cost := 0.0
+	var market_lines: Array = []   # per good bought: its quantity, what the goods cost and their freight
 	var market_sourceable := true  # false if any shortfall good has no port route to this tile
 	# What another awaiting job on this tile has already banked is on the tile but not
 	# available -- see reserved_materials_on_tile.
@@ -513,6 +514,8 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 				market_sourceable = false
 			else:
 				market_cost += float(quote.get("cost", 0.0))
+				market_lines.append({"good_id": gid, "qty": short, "goods": float(quote.get("goods_cost", 0.0)),
+					"transport": float(quote.get("transport_cost", 0.0))})
 		materials.append({
 			"good_id": gid, "name": Catalog.get_display_name(gid),
 			"need": need, "have": have, "short": short, "free": free,
@@ -549,6 +552,10 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 		"all_on_tile": all_on_tile,
 		"all_on_tile_free": all_on_tile_free,
 		"market_sourceable": market_sourceable,
+		"market_lines": market_lines,
+		# Pulling the shortfall from every tile's spare stock (the "stockpiles" mode): what comes from where,
+		# its freight, and what no tile can spare.
+		"stockpile_plan": upgrade_stockpile_plan(tile_id, shortfall),
 		"source_tile": str(source.get("tile_id", "")),
 		"source_turns": int(source.get("turns", 0)),
 		"market_cost": market_cost,
@@ -681,8 +688,13 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 	# Validate the chosen sourcing BEFORE consuming anything — start_upgrade is atomic, so a
 	# broke wallet / no port / no spare tile fails cleanly with nothing taken off the tile.
 	var transfer_source: Dictionary = {}
+	var stock_plan: Dictionary = {}
 	if not shortfall.is_empty():
 		match mode:
+			"tile_wait":
+				pass   # waits for the materials to reach the tile by any means; nothing is bought
+			"stockpiles":
+				stock_plan = upgrade_stockpile_plan(tile_id, shortfall)
 			"tile":
 				return {"ok": false, "reason": "Upgrade materials missing on the tile.", "missing": shortfall, "required": need_by_gid}
 			"market":
@@ -715,6 +727,9 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 				MatchState.queue_buy(tile_id, str(gid), int(shortfall[gid]), false, {"upgrade_instance_id": instance_id})
 		elif mode == "transfer":
 			TransportState.queue_move(str(transfer_source.get("tile_id", "")), tile_id, shortfall, false, {"upgrade_instance_id": instance_id})
+		elif mode == "stockpiles":
+			for move: Dictionary in stock_plan.get("from_tiles", []):
+				TransportState.queue_move(str(move.tile_id), tile_id, move.goods, false, {"upgrade_instance_id": instance_id})
 
 	var status := UPGRADE_STATUS_UPGRADING if shortfall.is_empty() else UPGRADE_STATUS_AWAITING
 	pending_upgrades.append({
@@ -728,6 +743,8 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 		"missing": shortfall.duplicate(true),
 		"turns_remaining": BuildingLevels.UPGRADE_DURATION,
 		"size_delta": size_delta,
+		# Sourced from stockpiles only: what is still missing waits and is never bought from market.
+		"no_market": mode == "tile_wait" or mode == "stockpiles",
 	})
 	# Chief Investment rebates a fraction of the upgrade kit's market value (like a build).
 	var up_rebate := MatchState._materials_rebate(need_by_gid)
@@ -735,6 +752,47 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 		MatchState.add_money(up_rebate)
 	building_upgrade_started.emit(instance_id, target)
 	return {"ok": true, "status": status, "target_level": target}
+
+## Where an upgrade's shortfall can come from without buying it: every other tile's spare stock (what it holds
+## less what its own buildings are committed to), nearest first, as much of each good as the tiles can spare.
+## {from_tiles: [{tile_id, goods: {gid: qty}, transport}], covered: {gid: qty}, left: {gid: qty}, transport}.
+## Tiles are taken in a fixed order (route turns, then tile id), so the same state always plans the same way.
+func upgrade_stockpile_plan(dest_tile: String, shortfall: Dictionary) -> Dictionary:
+	var plan := {"from_tiles": [], "covered": {}, "left": shortfall.duplicate(), "transport": 0.0}
+	if shortfall.is_empty():
+		return plan
+	var sources: Array = []
+	for tile_key in Stockpile.tiles_with_stock():
+		var src := str(tile_key)
+		if src == dest_tile or not src.begins_with("tile_"):
+			continue
+		var route: Dictionary = TransportService.route(src, dest_tile)
+		sources.append({"tile_id": src, "turns": int(route.get("turns", 0)), "route": route})
+	sources.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a.turns) < int(b.turns) if int(a.turns) != int(b.turns) else str(a.tile_id) < str(b.tile_id))
+	var left: Dictionary = plan.left
+	for src: Dictionary in sources:
+		if left.is_empty():
+			break
+		var committed: Dictionary = Production.compute_committed_for_tile(str(src.tile_id))
+		var goods := {}
+		var freight := 0.0
+		for gid in left.keys():
+			var spare: int = Stockpile.get_at_tile(str(src.tile_id), str(gid)) - int(committed.get(gid, 0))
+			var take := mini(spare, int(left[gid]))
+			if take <= 0 or not TransportService.route_is_reachable(TransportService.route(str(src.tile_id), dest_tile, str(gid))):
+				continue
+			goods[gid] = take
+			freight += TransportService.transport_cost_for_route(str(gid), take, TransportService.route(str(src.tile_id), dest_tile, str(gid)))
+			plan.covered[gid] = int(plan.covered.get(gid, 0)) + take
+			left[gid] = int(left[gid]) - take
+			if int(left[gid]) <= 0:
+				left.erase(gid)
+		if not goods.is_empty():
+			plan.from_tiles.append({"tile_id": str(src.tile_id), "goods": goods, "transport": freight})
+			plan.transport = float(plan.transport) + freight
+	return plan
+
 
 # Cash-only infra upgrade: charge up front, run the same 3-turn countdown, and let
 # tick_upgrades write the new level onto the tile. No kit → no Chief-Investment rebate
@@ -840,8 +898,8 @@ func _retry_stalled_upgrade(p: Dictionary, instance_id: String, tile_id: String,
 		var gid := str(gid_value)
 		if not _upgrade_has_inbound(instance_id, tile_id, gid):
 			stranded[gid] = int(still[gid_value])
-	if stranded.is_empty():
-		p["stalled_turns"] = 0   # something is still on its way; waiting is correct
+	if stranded.is_empty() or bool(p.get("no_market", false)):
+		p["stalled_turns"] = 0   # something is still on its way, or the player chose never to buy: wait
 		return
 	var stalled := int(p.get("stalled_turns", 0)) + 1
 	p["stalled_turns"] = stalled
