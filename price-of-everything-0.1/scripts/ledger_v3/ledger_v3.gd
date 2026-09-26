@@ -5,8 +5,7 @@ extends RefCounted
 ## the filters, the sort and the refresh wiring, and asks this script for the parts.
 ##
 ## The panel is Building Detail's: its navy steel backing in its brass trim, the raised title and the Close
-## key. Under the title, a strip: the count on a dot-matrix display, the search on a screen, and the routing
-## objective as three latching keys. Then the filters as latching keys on a key bed, the tile view's, one row
+## key. Under the title, a strip: the count on a dot-matrix display and the search on a screen. Then the filters as latching keys on a key bed, the tile view's, one row
 ## for what a building is doing and one for what kind it is. Under the seam, the column headings as metal
 ## labels (click one to sort by it, again to turn the order round; the sorted column's heading is cream with
 ## a mark pointing the way it runs) over one plastic case of raised modules, a building a module:
@@ -31,6 +30,7 @@ const Led := preload("res://scripts/bdp_v3_led.gd")
 const Scroll := preload("res://scripts/bdp_v3_scroll.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const UIFonts := preload("res://scripts/ui_fonts.gd")
+const RoutesView := preload("res://scripts/logistics_routes_view.gd")
 
 ## Building Detail's backing: its 9-slice corner in texels, the content's margin inside the brass trim and
 ## the trim's width (building_detail_panel_v2.gd BACKING_TRIM, CONTENT_MARGIN).
@@ -47,21 +47,29 @@ const TEXELS := 2.0 / 1.875
 const COL_GAP := 8
 const COLUMNS := [
 	{"key": "emblem", "label": "", "w": 60.0, "sort": false},
-	{"key": "name", "label": "Building", "w": 192.0, "sort": true},
+	{"key": "name", "label": "Building", "w": 172.0, "sort": true},
 	{"key": "output", "label": "Makes", "w": 80.0, "sort": true},
-	{"key": "logistics_inputs", "label": "Inputs", "w": 76.0, "sort": false},
-	{"key": "logistics_outputs", "label": "Outputs", "w": 76.0, "sort": false},
-	{"key": "power", "label": "Power", "w": 120.0, "sort": true},
-	{"key": "status", "label": "Status", "w": 100.0, "sort": true},
-	{"key": "cost", "label": "Cost/unit", "w": 104.0, "sort": true},
-	{"key": "net", "label": "Net/turn", "w": 110.0, "sort": true},
-	{"key": "land", "label": "Land", "w": 50.0, "sort": true},
-	{"key": "upgrade", "label": "", "w": 100.0, "sort": false},
+	{"key": "logistics_inputs", "label": "Source", "w": 80.0, "sort": false},
+	{"key": "logistics_outputs", "label": "Destination", "w": 88.0, "sort": false},
+	{"key": "power", "label": "Power", "w": 104.0, "sort": true},
+	{"key": "status", "label": "Status", "w": 92.0, "sort": true},
+	{"key": "cost", "label": "Cost/unit", "w": 98.0, "sort": true},
+	{"key": "net", "label": "Net/turn", "w": 100.0, "sort": true},
+	{"key": "land", "label": "Land", "w": 44.0, "sort": true},
+	{"key": "upgrade", "label": "", "w": 150.0, "sort": false},
 ]
 ## The emblem's side and a good's well in the Makes column: the tile view's building cards', so every DS2
 ## building card is one height (scripts/ds2/metrics.gd CARD_H).
 const EMBLEM_PX := Parts.EMBLEM_PX
 const WELL_PX := Parts.WELL_PX
+## Where a building's goods come from and go to, by kind (logistics_routes_view.gd endpoints): each kind's
+## raised icon, or the producing building's emblem. One kind fills the card's height; two or three stand
+## smaller, two to a line, each with how many places of its kind when more than one. No more than three
+## kinds show; the hover lists every place.
+const ROUTE_ICONS := {"grid": "bar_icon_power", "middleman": "diag_icon_freight", "stockpile": "bar_icon_warehouse",
+	"port": "bar_icon_port"}
+const ROUTE_SMALL := 34.0
+const ROUTE_KINDS := 3
 ## The filter keys, a row each: what a building is doing, then what kind it is.
 const FILTER_ROWS := [
 	[["running", "Running"], ["starved", "Starved"], ["unpowered", "Unpowered"], ["loss", "Loss making"],
@@ -69,8 +77,6 @@ const FILTER_ROWS := [
 	[["cat_production", "Production"], ["cat_power", "Power"], ["cat_infrastructure", "Infrastructure"],
 		["green_intermittent", "Intermittent green"], ["green_steady", "Steady green"]],
 ]
-const ROUTES := [["Fastest", 0], ["Cheapest", 1], ["Blended", 2]]
-const ROUTE_KEY_W := 104.0
 ## The search screen's height, and the dot display's pitch.
 const SEARCH_H := 34.0
 const COUNT_PITCH := 2.0
@@ -114,9 +120,9 @@ static func title_row(on_close: Callable, on_drag: Callable) -> HBoxContainer:
 	return row
 
 
-## The strip under the title: the count on a dot display, the search on a screen, the routing keys.
-## Returns {row, count, search, routes}.
-static func toolbar(on_search: Callable, on_route: Callable) -> Dictionary:
+## The strip under the title: the count on a dot display and the search on a screen (the routing objective
+## is the Shipments and Stockpiles panel's). Returns {row, count, search}.
+static func toolbar(on_search: Callable) -> Dictionary:
 	var row := HBoxContainer.new()
 	row.name = "LedgerToolbar"
 	row.add_theme_constant_override("separation", 14)
@@ -128,19 +134,7 @@ static func toolbar(on_search: Callable, on_route: Callable) -> Dictionary:
 	row.add_child(count)
 	var screen := _search_screen(on_search)
 	row.add_child(screen)
-	row.add_child(Parts.caption("Routing"))
-	var routes := {}
-	for pair: Array in ROUTES:
-		var key: Control = LatchKey.new()
-		key.name = "Route_%s" % str(pair[0])
-		key.set("text", str(pair[0]))
-		key.size_flags_horizontal = Control.SIZE_SHRINK_END
-		key.custom_minimum_size.x = ROUTE_KEY_W
-		var id := int(pair[1])
-		key.connect("pressed", func() -> void: on_route.call(id))
-		routes[id] = key
-		row.add_child(key)
-	return {"row": row, "count": count, "search": screen.get_meta("edit"), "routes": routes}
+	return {"row": row, "count": count, "search": screen.get_meta("edit")}
 
 
 ## The search field on one of Building Detail's mini screens: white print on the dark glass.
@@ -280,9 +274,10 @@ static func table() -> Dictionary:
 
 # --- a row -------------------------------------------------------------------------------------
 
-## A building's module. `vm` is the panel's row model; `logistics` builds a routes cell (the panel's);
-## `digits` the cells every money screen in the table takes; `on_open` opens the building.
-static func row(vm: Dictionary, logistics: Callable, digits: int, on_open: Callable, on_upgrade: Callable) -> PanelContainer:
+## A building's module. `vm` is the panel's row model; `on_logistics` opens the building's logistics (a
+## Source or Destination pressed); `digits` the cells every money screen in the table takes; `on_open`
+## opens the building.
+static func row(vm: Dictionary, on_logistics: Callable, digits: int, on_open: Callable, on_upgrade: Callable) -> PanelContainer:
 	var m := Parts.module("LedgerRow_%s" % str(vm.instance_id))
 	m.custom_minimum_size.y = Metrics.CARD_H
 	m.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -290,11 +285,11 @@ static func row(vm: Dictionary, logistics: Callable, digits: int, on_open: Calla
 	var line := Parts.row_of(m)
 	line.add_theme_constant_override("separation", COL_GAP)
 	for col: Dictionary in COLUMNS:
-		line.add_child(_cell(str(col.key), float(col.w), vm, logistics, digits, on_upgrade))
+		line.add_child(_cell(str(col.key), float(col.w), vm, on_logistics, digits, on_upgrade))
 	return m
 
 
-static func _cell(key: String, w: float, vm: Dictionary, logistics: Callable, digits: int, on_upgrade: Callable) -> Control:
+static func _cell(key: String, w: float, vm: Dictionary, on_logistics: Callable, digits: int, on_upgrade: Callable) -> Control:
 	match key:
 		"emblem":
 			return _boxed(Parts.emblem(str(vm.building_id), EMBLEM_PX), w)
@@ -306,7 +301,7 @@ static func _cell(key: String, w: float, vm: Dictionary, logistics: Callable, di
 				return Parts.spacer(w, 0)
 			return _boxed(Parts.good_in_well(gid, int(vm.out_qty), Parts.output_tip(gid, int(vm.out_qty)), true, WELL_PX), w)
 		"logistics_inputs", "logistics_outputs":
-			return logistics.call(vm, "input" if key == "logistics_inputs" else "output", w)
+			return route_cell(vm, "input" if key == "logistics_inputs" else "output", w, on_logistics)
 		"power":
 			return _lamp_cell(str(vm.power.get("tone", "")), str(vm.power.get("figure", "")), str(vm.power.get("words", "")), w)
 		"status":
@@ -331,6 +326,64 @@ static func _cell(key: String, w: float, vm: Dictionary, logistics: Callable, di
 		"upgrade":
 			return _upgrade_key(vm, w, on_upgrade)
 	return Parts.spacer(w, 0)
+
+
+## The Source or Destination column (`side` input or output): the kinds of place, grouped (ROUTE_ICONS).
+static func route_cell(vm: Dictionary, side: String, w: float, on_logistics: Callable) -> Control:
+	var routes: Array = RoutesView.endpoints(BuildingState.get_building(str(vm.instance_id)), side)
+	if routes.is_empty():
+		return Parts.spacer(w, 0)
+	var groups := {}
+	var order: Array = []
+	for r: Dictionary in routes:
+		var kind := str(r.icon)
+		if not groups.has(kind):
+			groups[kind] = []
+			order.append(kind)
+		(groups[kind] as Array).append(str(r.label))
+	var ranked := order.duplicate()
+	ranked.sort_custom(func(a: String, b: String) -> bool:
+		var na: int = (groups[a] as Array).size()
+		var nb: int = (groups[b] as Array).size()
+		return na > nb if na != nb else order.find(a) < order.find(b))
+	var shown := ranked.slice(0, ROUTE_KINDS)
+	var px := float(Metrics.GOOD_ICON) if shown.size() == 1 else ROUTE_SMALL
+	var cell := VBoxContainer.new()
+	cell.name = "Source" if side == "input" else "Destination"
+	cell.custom_minimum_size.x = w
+	cell.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	cell.alignment = BoxContainer.ALIGNMENT_CENTER
+	cell.add_theme_constant_override("separation", 4)
+	var tip: PackedStringArray = []
+	for kind in order:
+		for label in groups[kind]:
+			tip.append(str(label))
+	cell.tooltip_text = "\n".join(tip)
+	Parts.on_click(cell, on_logistics)
+	var line: HBoxContainer = null
+	for i in shown.size():
+		if i % 2 == 0:
+			line = HBoxContainer.new()
+			line.alignment = BoxContainer.ALIGNMENT_CENTER
+			line.add_theme_constant_override("separation", 4)
+			line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			cell.add_child(line)
+		line.add_child(_route_icon(str(shown[i]), (groups[shown[i]] as Array).size(), px))
+	return cell
+
+
+## A kind of place `px` square: its raised icon, or the building's emblem, with how many when more than one.
+static func _route_icon(kind: String, count: int, px: float) -> Control:
+	var holder := Control.new()
+	holder.name = "Route_%s" % kind
+	holder.custom_minimum_size = Vector2(px, px)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var art: Control = Parts.raised(str(ROUTE_ICONS[kind]), px) if ROUTE_ICONS.has(kind) else Parts.emblem(kind, px)
+	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	holder.add_child(art)
+	if count > 1:
+		holder.add_child(Parts.pill(count, px < float(Metrics.GOOD_ICON)))
+	return holder
 
 
 ## `child` centred in a column `w` wide.
@@ -399,12 +452,16 @@ static func _lamp_cell(tone: String, figure: String, words: String, w: float) ->
 	return line
 
 
-## The Upgrade key: its card is Building Detail's Upgrade key's (the dot card). Spent at the top level, and
-## for infrastructure, which the Transport tab raises.
+## The Upgrade key, naming the level it raises the building to ("Upgrade to Lvl 2"): its card is Building
+## Detail's Upgrade key's (the dot card: what the next level brings and what it takes). Spent at the top
+## level, and for infrastructure, which the Transport tab raises.
 static func _upgrade_key(vm: Dictionary, w: float, on_upgrade: Callable) -> Control:
 	var level := int(vm.level)
 	var top := level >= BuildingLevels.MAX_LEVEL
-	var key: Button = CreamKey.make("Upgrade_%s" % str(vm.instance_id), "Max" if top else "Upgrade", "", w)
+	var words := "Max level" if top else "Upgrade to Lvl %d" % (level + 1)
+	# One print size down the column: the longest words a key there says.
+	var k := minf(1.0, w / maxf(1.0, CreamKey.width_for("Upgrade to Lvl %d" % BuildingLevels.MAX_LEVEL, "", false, false)))
+	var key: Button = CreamKey.make("Upgrade_%s" % str(vm.instance_id), words, "", w, false, false, k)
 	key.mouse_filter = Control.MOUSE_FILTER_STOP
 	var building := BuildingState.get_building(str(vm.instance_id))
 	var card: Dictionary = load("res://scripts/building_detail_panel_v2.gd").v3_upgrade_tip(building)

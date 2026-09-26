@@ -14,7 +14,7 @@ The one place to see every building you own at once, compare them, find the ones
 | Small icon and "BUILDINGS" label, X button | the raised title (`BdpV3Title`), Building Detail's Close key (`BdpV3Key`) |
 | "8 buildings" caption | a framed dot-matrix display: "9 BUILDINGS", or "4/9 SHOWN" while filters hide some |
 | Search box | the search on a mini screen's dark glass, white print |
-| Routing dropdown | three latching keys, Fastest, Cheapest, Blended, the objective in force latched |
+| Routing dropdown | moved to the Shipments and Stockpiles panel |
 | Eleven flat chips in two rows | eleven latching keys on the tile view's key bed: what a building is doing, then what kind it is; copy without hyphens ("Loss making", "Intermittent green") |
 | Column captions, ▲▼ glyphs | metal labels; the sorted one cream with a drawn mark (no glyph a font may lack) |
 | Metallic row plates | Building Detail's raised modules in one plastic case, on the steel rail |
@@ -34,6 +34,8 @@ Every figure is the row model the v2 ledger already computes (`_row_vm`: CostSol
 `scripts/ledger_v3/ledger_v3.gd` builds the look from the kit (`scripts/tvp_v3/buildings_parts.gd` modules, case, captions, money, wells and emblems; `scripts/ds2/` dot matrix, latching keys, cream key, dot card; the BDP v3 backing, title, key, seam, lamp, LED and rail). `building_ledger_panel.gd` keeps the data, filters, sort and refresh, builds either look (`_build_look`) and rebuilds when the switch flips. Captures: `tools/ledger_ds2_shot.tscn` (v2, DS2, DS2 filtered and sorted), into `$LEDGER_SHOT_DIR`. Test: `_test_building_ledger_ds2`.
 
 **Card height.** Each row is a DS2 building card, one height with the tile view's (`scripts/ds2/metrics.gd` CARD_H: a 72 px good in its well and 8 px above and below), its emblem and well the Buildings tab's.
+
+**The owner's first review (26 September), built.** The routing objective moved to the Shipments and Stockpiles panel (its header, beside Logistics Settings, in every game), so the ledger's strip is the count and the search. Inputs and Outputs became Source and Destination: the places grouped by kind (the grid, the intermediary, stockpiles, the port, a producing building), one kind a full-height icon, two or three smaller with how many of each, never more than three kinds (the hover lists every place). The Upgrade key says "Upgrade to Lvl 2" ("Max level" at the top), and its card says what the level brings (each output a turn, now and then; a unit's cost, now and then) and what it takes. Power plants show their MW alone. The upgrade panel is DS2 (`scripts/ledger_v3/upgrade_dialog_ds2.gd`, the v2 dialog's own logic): the emblem, raised title and level on a dot display; Materials in wells with have/need lamps and the rest's price on an LED; Per turn as a table (now, the next level, the change); a unit's cost on LED screens; blockers on red lamps; the time and the keys.
 
 ## Open decisions (owner)
 

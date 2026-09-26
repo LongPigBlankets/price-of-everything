@@ -2370,8 +2370,9 @@ func _test_bdp_v3_output_checks() -> void:
 
 
 ## The Building Ledger's DS2 look (UiPrefs.use_ledger_ds2): off, the v2 chrome exactly; on, the raised title,
-## the dot count, filter keys that latch (Running and Starved exclusive), sort marks, routing keys, and a
-## module per building named in the new style with its tile's name; off again, v2 back.
+## the dot count, filter keys that latch (Running and Starved exclusive), sort marks, a module per building
+## named in the new style with its tile's name, Source and Destination, the Upgrade key and its DS2 panel;
+## the routing objective on the Shipments and Stockpiles panel; off again, v2 back.
 func _test_building_ledger_ds2() -> void:
 	MatchState.reset()
 	var was: bool = UiPrefs.use_ledger_ds2
@@ -2408,12 +2409,24 @@ func _test_building_ledger_ds2() -> void:
 	panel.call("_on_sort_pressed", "net")
 	var marks: Dictionary = panel.get("_sort_marks")
 	_check((marks["net"] as Control).visible and not (marks["name"] as Control).visible, "ledger ds2: the sorted column's mark")
-	var routes: Dictionary = panel.get("_route_keys")
-	(routes[MatchState.RouteObjective.CHEAPEST] as Control).emit_signal("pressed")
-	_check(MatchState.route_objective == MatchState.RouteObjective.CHEAPEST
-		and bool((routes[MatchState.RouteObjective.CHEAPEST] as Control).get("latched"))
-		and not bool((routes[MatchState.RouteObjective.FASTEST] as Control).get("latched")), "ledger ds2: routing keys latch the objective")
-	MatchState.set_route_objective(MatchState.RouteObjective.FASTEST)
+	_check(panel.find_child("Route_Fastest", true, false) == null and (panel.get("_header_cells") as Dictionary)["logistics_inputs"].text == "Source"
+		and (panel.get("_header_cells") as Dictionary)["logistics_outputs"].text == "Destination",
+		"ledger ds2: no routing keys (they are the Shipments panel's), Source and Destination headings")
+	var up := panel.find_child("Upgrade_%s" % a, true, false)
+	_check(up != null and str(up.get("title")) == "Upgrade to Lvl 2" and str(up.tooltip_text) != "",
+		"ledger ds2: the Upgrade key names the level and explains it on hover (%s)" % (str(up.get("title")) if up != null else "none"))
+	panel.call("_open_upgrade", a)
+	await get_tree().process_frame
+	var dialog: Control = panel.get("_upgrade_dialog")
+	_check(dialog != null and dialog.visible and bool(dialog.get_meta("ds2", false)) and dialog.find_child("UpgradeHead", true, false) != null
+		and dialog.find_child("UpgradeKeys", true, false) != null, "ledger ds2: Upgrade opens the DS2 upgrade panel")
+	if dialog != null:
+		dialog.call("close")
+	var transport: Control = load("res://scripts/transport_panel.gd").new()
+	add_child(transport)
+	await get_tree().process_frame
+	_check(transport.find_child("RoutingObjective", true, false) != null, "the routing objective is on the Shipments and Stockpiles panel")
+	transport.queue_free()
 	UiPrefs.set_use_ledger_ds2(false)
 	await get_tree().process_frame
 	_check(panel.find_child("LedgerTitleRow", true, false) == null and panel.find_child("LedgerBacking", false, false) == null

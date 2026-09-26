@@ -2,7 +2,7 @@ extends Node
 ## Captures of the Building Ledger in its v2 and DS2 looks (UiPrefs.use_ledger_ds2), in the real HUD, cropped
 ## to the panel: the same seeded buildings (producers and consumers, levels one to three, running, starved
 ## and idle, a cost and a net each where the solver has one), then in DS2 the Starved filter on and the table
-## sorted by net per turn. Needs a window:
+## sorted by net per turn, and the DS2 upgrade panel for a factory. Needs a window:
 ##   <godot> --path . res://tools/ledger_ds2_shot.tscn --quit-after 3000 -- --no-telemetry
 ## Writes ledger_<look>_<state>.png into $LEDGER_SHOT_DIR (or the user data folder).
 
@@ -54,6 +54,16 @@ func _ready() -> void:
 	ledger.call("_on_sort_pressed", "net")
 	await _settle(8)
 	_shot(ledger, dir.path_join("ledger_ds2_filtered.png"))
+	# The DS2 upgrade panel for the first factory in the table.
+	for id in ids:
+		if str(BuildingState.buildings[id].get("building_id", "")) == "b_007":
+			ledger.call("_open_upgrade", id)
+			break
+	await _settle(10)
+	var dialog: Control = ledger.get("_upgrade_dialog")
+	if dialog != null:
+		_shot(dialog.find_child("UpgradeSheet", true, false) as Control, dir.path_join("ledger_ds2_upgrade.png"))
+		dialog.call("close")
 	print("[LEDGER_SHOT] rows %d, min width %.0f of %.0f" % [(ledger.get("_body") as Control).get_child_count(),
 		ledger.get_combined_minimum_size().x, ledger.size.x])
 	get_tree().quit(0)

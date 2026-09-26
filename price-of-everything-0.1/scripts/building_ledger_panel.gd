@@ -75,7 +75,6 @@ var _v3_extra: Array[Node] = []
 var _count_display: Control = null
 var _sort_marks := {}
 var _money_digits := 4
-var _route_keys := {}
 var _v2_margins := {}
 
 # Header drag state.
@@ -135,7 +134,6 @@ func _build_look() -> void:
 	_chips.clear()
 	_header_cells.clear()
 	_sort_marks.clear()
-	_route_keys.clear()
 	_count_label = null
 	_count_display = null
 	_v3 = UiPrefs.use_ledger_ds2
@@ -163,14 +161,10 @@ func _build_v3_chrome() -> void:
 	_layout.add_child(LedgerV3.title_row(func() -> void: close_requested.emit(), _on_header_gui_input))
 	var bar := LedgerV3.toolbar(func(t: String) -> void:
 		_search_text = t.strip_edges().to_lower()
-		_render(), func(id: int) -> void:
-		MatchState.set_route_objective(id)
-		_show_route())
+		_render())
 	_layout.add_child(bar.row)
 	_count_display = bar.count
 	_search = bar.search
-	_route_keys = bar.routes
-	_show_route()
 	var f := LedgerV3.filters(func(key: String) -> void: _on_chip(key, not bool(_f[key])))
 	_layout.add_child(f.bed)
 	_chips = f.keys
@@ -182,12 +176,6 @@ func _build_v3_chrome() -> void:
 	var t := LedgerV3.table()
 	_layout.add_child(t.scroll)
 	_body = t.rows
-
-
-## The routing keys: the objective in force latched.
-func _show_route() -> void:
-	for id in _route_keys:
-		(_route_keys[id] as Control).set("latched", int(id) == int(MatchState.route_objective))
 
 
 ## A filter chip or key on or off, without running its handler.
@@ -597,7 +585,7 @@ func _power_cell(b: Dictionary, recipe: Dictionary, is_infra: bool) -> Dictionar
 		if gen <= 0:
 			return {"color": BuildingStatus.STATUS_GREY, "text": "—", "value": -1}
 		return {"color": BuildingStatus.STATUS_GREEN, "text": "+%d (self)" % gen, "value": gen,
-			"tone": "ok", "figure": "+%d MW" % gen, "words": "Makes"}
+			"tone": "ok", "figure": "+%d MW" % gen, "words": ""}
 	# Consumers: show the consumption + where the power comes from.
 	var req: int = BuildingStatus.effective_energy_req(b, recipe)
 	if req <= 0:
@@ -634,7 +622,9 @@ func _status_rank(text: String) -> int:
 ## A DS2 row (scripts/ledger_v3/ledger_v3.gd): clicking it opens the building, as the v2 row does.
 func _build_v3_row(vm: Dictionary) -> Control:
 	var iid := str(vm.instance_id)
-	return LedgerV3.row(vm, _logistics_cell, _money_digits, func() -> void:
+	return LedgerV3.row(vm, func() -> void:
+		close_requested.emit()
+		MatchState.building_logistics_requested.emit(iid), _money_digits, func() -> void:
 		MatchState.focus_building_requested.emit(iid)
 		close_requested.emit(), _open_upgrade)
 
@@ -795,13 +785,19 @@ func _open_upgrade(instance_id: String) -> void:
 	_upgrade_dialog.open(instance_id)
 
 func _ensure_upgrade_dialog() -> void:
+	# The DS2 ledger opens the DS2 dialog (scripts/ledger_v3/upgrade_dialog_ds2.gd); a switch of look
+	# replaces the one built for the other.
 	if _upgrade_dialog != null and is_instance_valid(_upgrade_dialog):
-		return
+		if bool(_upgrade_dialog.get_meta("ds2", false)) == _v3:
+			return
+		_upgrade_dialog.queue_free()
+		_upgrade_dialog = null
 	if _upgrade_dialog_layer == null or not is_instance_valid(_upgrade_dialog_layer):
 		_upgrade_dialog_layer = CanvasLayer.new()
 		_upgrade_dialog_layer.layer = 128
 		get_tree().root.add_child(_upgrade_dialog_layer)
-	_upgrade_dialog = (load("res://scripts/upgrade_dialog.gd") as Script).new()
+	_upgrade_dialog = (load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd" if _v3 else "res://scripts/upgrade_dialog.gd") as Script).new()
+	_upgrade_dialog.set_meta("ds2", _v3)
 	_upgrade_dialog_layer.add_child(_upgrade_dialog)
 	_upgrade_dialog.committed.connect(func(_id: String) -> void: _request_refresh())
 

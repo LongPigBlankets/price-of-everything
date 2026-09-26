@@ -1803,10 +1803,23 @@ static func v3_upgrade_tip(building: Dictionary) -> Dictionary:
 		else:
 			card.rows.append({"caption": "Ready in", "value": turns.call(int(q.get("pending_turns_left", 0)))})
 		return card
+	# What the next level brings: each output's quantity a turn and a unit's cost, now and then.
 	var rows: Array = []
-	var gain := BdpV3Block.upgrade_detail(level)
-	if gain != "":
-		rows.append({"caption": "Output", "value": gain.trim_suffix(" Output")})
+	var stats: Dictionary = q.get("stats", {})
+	var cur_out: Array = (stats.get("cur", {}) as Dictionary).get("outputs", [])
+	var new_out: Array = (stats.get("new", {}) as Dictionary).get("outputs", [])
+	for i in mini(cur_out.size(), new_out.size()):
+		var unit := " MW" if str(cur_out[i].get("good_id", "")) == "power" else "/turn"
+		rows.append({"caption": str(cur_out[i].get("name", "Output")), "value": "%d → %d%s" % [
+			int(cur_out[i].get("qty", 0)), int(new_out[i].get("qty", 0)), unit], "tone": "ok"})
+	if rows.is_empty():
+		var gain := BdpV3Block.upgrade_detail(level)
+		if gain != "":
+			rows.append({"caption": "Output", "value": gain.trim_suffix(" Output"), "tone": "ok"})
+	var uc: Dictionary = q.get("unit_cost", {})
+	if uc.has("cur") and uc.has("new"):
+		var cheaper := float(uc.new) <= float(uc.cur)
+		rows.append({"caption": "Unit cost", "value": "£%.2f → £%.2f" % [float(uc.cur), float(uc.new)], "tone": "ok" if cheaper else "bad"})
 	var buy := float(q.get("market_cost", 0.0))
 	if buy > 0.005:
 		rows.append({"caption": "Cost", "value": "£%.2f" % buy, "tone": "" if MatchState.money >= buy else "bad"})
