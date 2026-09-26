@@ -39,11 +39,14 @@ const Rotary := preload("res://scripts/rotary_selector.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const RESEARCH_ICON: Texture2D = preload("res://assets/icons/ui_icons/alt/research.png")
 ## The materials dial's options: [mode, icon, words], in the dial's order (market in the middle, first choice).
+## Each is a BuildingWorks.start_upgrade mode: tile_wait waits for what is missing to reach the tile, market buys
+## it, stockpiles moves every other tile's spare stock over; the two stockpile modes never buy what is missing.
 const SOURCES := [
-	["tile", "res://assets/icons/ui_icons/ds2/source_this_tile.png", "Use materials on tile"],
+	["tile_wait", "res://assets/icons/ui_icons/ds2/source_this_tile.png", "This tile's stockpile"],
 	["market", "res://assets/icons/ui_icons/route_port.png", "Order from market"],
-	["transfer", "res://assets/icons/ui_icons/ds2/source_other_tiles.png", "Move materials from other tiles"],
+	["stockpiles", "res://assets/icons/ui_icons/ds2/source_other_tiles.png", "All tile stockpiles"],
 ]
+const NO_MARKET_NOTE := "Missing materials will not be bought from market."
 ## The raised icons (Building Detail's) that lead the Per turn rows, their size, and the print of the rows'
 ## figures.
 const ROW_ICON_PX := 44.0
@@ -111,6 +114,9 @@ func _clear() -> void:
 ## The materials dial's options (_sources) and the one chosen, by index; -1 when none can be done.
 var _options: Array = []
 var _choice := -1
+## The Materials plate's price screen (its hover the breakdown) and its no-buy note, which follow the dial.
+var _price: Control = null
+var _note: Label = null
 
 
 func _rebuild() -> void:
@@ -153,17 +159,46 @@ func _rebuild() -> void:
 ## The materials dial's options with whether each can be done here: the kit all on the tile and unclaimed,
 ## a port route for what is short, a tile that can send what is short.
 func _sources(p: Dictionary) -> Array:
-	var on_tile := bool(p.get("all_on_tile", false))
-	var free := bool(p.get("all_on_tile_free", on_tile))
-	var src := str(p.get("source_tile", ""))
-	var ok := {"tile": free, "market": bool(p.get("market_sourceable", true)), "transfer": src != ""}
+	var any_here := false
+	var short := false
+	for m: Dictionary in p.get("materials", []):
+		any_here = any_here or int(m.get("have", 0)) > 0
+		short = short or int(m.get("short", 0)) > 0
+	var plan: Dictionary = p.get("stockpile_plan", {})
+	var ok := {"tile_wait": any_here or not short, "market": bool(p.get("market_sourceable", true)),
+		"stockpiles": not short or not (plan.get("from_tiles", []) as Array).is_empty()}
 	var out: Array = []
 	for spec: Array in SOURCES:
-		var words := str(spec[2])
-		if str(spec[0]) == "transfer" and src != "":
-			words = "Move materials from %s" % Catalog.tile_label(src)
-		out.append({"id": str(spec[0]), "icon": load(str(spec[1])), "name": words, "enabled": bool(ok[str(spec[0])])})
+		out.append({"id": str(spec[0]), "icon": load(str(spec[1])), "name": str(spec[2]), "enabled": bool(ok[str(spec[0])])})
 	return out
+
+
+## What the chosen source costs: the market's goods and freight, the stockpiles' freight, or nothing (a
+## building's upgrade has no fee; its price is its materials). {total, lines: [[words, figure]]}.
+func _source_cost(p: Dictionary, mode: String) -> Dictionary:
+	var lines: Array = []
+	var total := 0.0
+	match mode:
+		"market":
+			for l: Dictionary in p.get("market_lines", []):
+				var name := "%d %s" % [int(l.qty), Catalog.get_display_name(str(l.good_id))]
+				lines.append([name, float(l.goods)])
+				lines.append(["  Transport", float(l.transport)])
+				total += float(l.goods) + float(l.transport)
+		"stockpiles":
+			var plan: Dictionary = p.get("stockpile_plan", {})
+			for move: Dictionary in plan.get("from_tiles", []):
+				var parts: PackedStringArray = []
+				for gid in move.goods:
+					parts.append("%d %s" % [int(move.goods[gid]), Catalog.get_display_name(str(gid))])
+				lines.append(["From %s: %s" % [Catalog.tile_name(str(move.tile_id)) if Catalog.tile_name(str(move.tile_id)) != "" \
+					else Catalog.tile_label(str(move.tile_id)), ", ".join(parts)], float(move.transport)])
+				total += float(move.transport)
+			for gid in (plan.get("left", {}) as Dictionary):
+				lines.append(["%d %s not found, not bought" % [int(plan.left[gid]), Catalog.get_display_name(str(gid))], 0.0])
+	if lines.is_empty():
+		lines.append(["Nothing to pay: the materials come from this tile", 0.0])
+	return {"total": total, "lines": lines}
 
 
 ## The materials dial: where the next level's materials come from, market first, each option lit only where it
@@ -185,9 +220,25 @@ func _dial(p: Dictionary) -> Control:
 	dial.connect("value_changed", func(v: int) -> void:
 		if bool(_options[v - 1].enabled):
 			_choice = v - 1
+			_show_source(p)
 		elif _choice >= 0:
 			dial.call("set_value_no_signal", _choice + 1))
 	return dial
+
+
+## The price screen, its breakdown and the no-buy note follow the dial.
+func _show_source(p: Dictionary) -> void:
+	var mode := str(_options[_choice].id) if _choice >= 0 else "market"
+	var cost := _source_cost(p, mode)
+	if _price != null and is_instance_valid(_price):
+		var led: Control = _price.find_child("Led", true, false)
+		if led != null:
+			var figure := "%.2f" % float(cost.total)
+			led.call("set_figure", " ".repeat(maxi(0, MONEY_DIGITS - preload("res://scripts/bdp_v3_led.gd").cells_for(figure).size())) + figure, DS.PALETTE["TEXT"])
+		_price.set("breakdown", cost)
+		_price.tooltip_text = str(_options[_choice].name) if _choice >= 0 else ""
+	if _note != null and is_instance_valid(_note):
+		_note.visible = mode == "tile_wait" or mode == "stockpiles"
 
 
 ## The Upgrade and Cancel keys. Upgrade starts it the dial's way; it is greyed while research or land blocks
@@ -367,21 +418,73 @@ func _materials(p: Dictionary) -> Control:
 	room.add_theme_constant_override("margin_bottom", 0)
 	var side := VBoxContainer.new()
 	side.alignment = BoxContainer.ALIGNMENT_CENTER
-	side.add_theme_constant_override("separation", 8)
+	# The dial's name sits close under it; the price stands further off.
+	side.add_theme_constant_override("separation", 22)
 	room.add_child(side)
 	var dial := _dial(p)
 	dial.set("label_colour", NAVY)
 	dial.set("option_ink", NAVY)
 	side.add_child(dial)
-	if to_buy > 0.0:
-		var price := Parts.money("%.2f" % to_buy, DS.PALETTE["TEXT"], MONEY_DIGITS)
-		price.name = "MarketPrice"
-		price.tooltip_text = "Buying what is short at market"
-		price.mouse_filter = Control.MOUSE_FILTER_PASS
-		_on_steel(price.get_child(0) as Label)
-		side.add_child(price)
+	# What the chosen source costs, its breakdown on hover.
+	var money := Parts.money("%.2f" % to_buy, DS.PALETTE["TEXT"], MONEY_DIGITS)
+	var price := PriceBox.new()
+	price.name = "SourcePrice"
+	price.alignment = BoxContainer.ALIGNMENT_CENTER
+	price.add_theme_constant_override("separation", 4)
+	price.mouse_filter = Control.MOUSE_FILTER_STOP
+	for part in money.get_children():
+		money.remove_child(part)
+		price.add_child(part)
+	money.free()
+	_on_steel(price.get_child(0) as Label)
+	side.add_child(price)
+	_price = price
 	row.add_child(room)
+	_note = _on_steel(_body(NO_MARKET_NOTE))
+	_note.name = "NoMarketNote"
+	vb.add_child(_note)
+	_show_source(p)
 	return wrap
+
+
+## The breakdown of what the source costs, on a steel plate: a line a good (or a tile it comes from) with its
+## figure, then the total. `cost` is _source_cost's.
+static func breakdown_plate(cost: Dictionary) -> Control:
+	var host := TipHost.new()
+	var plate: MarginContainer = Section.new()
+	plate.set("style", "plate")
+	host.add_child(plate)
+	var vb: VBoxContainer = plate.get("content")
+	vb.add_theme_constant_override("separation", 6)
+	var ink := func(l: Label) -> Label:
+		l.add_theme_color_override("font_color", NAVY)
+		l.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.35))
+		l.add_theme_constant_override("shadow_offset_x", 0)
+		l.add_theme_constant_override("shadow_offset_y", 1)
+		return l
+	vb.add_child(ink.call(Parts.caption("Cost of the materials", 16)))
+	for line: Array in cost.get("lines", []):
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 24)
+		var words: Label = ink.call(Parts.body(str(line[0])))
+		words.autowrap_mode = TextServer.AUTOWRAP_OFF
+		words.custom_minimum_size.x = 0
+		row.add_child(words)
+		var fig: Label = ink.call(Parts.body("£%.2f" % float(line[1])))
+		fig.autowrap_mode = TextServer.AUTOWRAP_OFF
+		fig.custom_minimum_size.x = 80
+		fig.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		fig.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(fig)
+		vb.add_child(row)
+	var total := HBoxContainer.new()
+	var tw: Label = ink.call(Parts.caption("Total", 16))
+	tw.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	total.add_child(tw)
+	var tf: Label = ink.call(Parts.caption("£%.2f" % float(cost.get("total", 0.0)), 16, HORIZONTAL_ALIGNMENT_RIGHT))
+	total.add_child(tf)
+	vb.add_child(total)
+	return host
 
 
 ## Print on the light steel: navy, a faint light shadow under it (DS2's ink for light surfaces).
@@ -420,7 +523,7 @@ func _per_turn(from_level: int, target: int, unit_cost: Dictionary) -> Control:
 		specs.append(["Input_%s" % gid, Parts.good_in_well(gid, -1, "%s used a turn" % Catalog.get_display_name(gid)),
 			levels.map(func(st: Dictionary) -> float:
 				return float((st.get("inputs", []) as Array)[i].get("qty", 0)) if i < (st.get("inputs", []) as Array).size() else 0.0),
-			0, "", true])
+			0, "", false])
 	if levels.any(func(st: Dictionary) -> bool: return float(st.get("energy", 0.0)) > 0.0):
 		specs.append(["Power", _outlined(BoltIcon.new(ROW_ICON_PX), "Power drawn, MW"),
 			levels.map(func(st: Dictionary) -> float: return float(st.get("energy", 0.0))), 0, " MW", false])
@@ -459,7 +562,7 @@ func _per_turn(from_level: int, target: int, unit_cost: Dictionary) -> Control:
 ## column as a good's well does.
 func _outlined(icon: Control, tip: String) -> PanelContainer:
 	var box := PanelContainer.new()
-	box.custom_minimum_size = Vector2(Metrics.GOOD_ICON, Metrics.GOOD_ICON)
+	box.custom_minimum_size = Vector2(Metrics.GOOD_ICON, Metrics.GOOD_ICON) + Vector2.ONE * 2.0 * ceilf(Parts.WELL_REACH * 0.5)
 	box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var st := StyleBoxFlat.new()
@@ -477,11 +580,17 @@ func _outlined(icon: Control, tip: String) -> PanelContainer:
 	return box
 
 
+## Every Per turn row's height and icon column: a good's 72 px icon and its well's frame round it, so the
+## rows of goods and of the other figures stand the same.
+func _row_side() -> float:
+	return float(Metrics.GOOD_ICON) + 2.0 * ceilf(Parts.WELL_REACH)
+
+
 ## The table's captions over its columns.
 func _table_head(from_level: int, target: int) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
-	row.add_child(Parts.spacer(float(Metrics.GOOD_ICON), 0))
+	row.add_child(Parts.spacer(_row_side(), 0))
 	for c: Array in [["Lvl %d" % from_level, FIGURE_W], ["Lvl %d" % target, FIGURE_W]]:
 		var l := Parts.caption(str(c[0]), Parts.CAPTION_PX, HORIZONTAL_ALIGNMENT_RIGHT)
 		l.custom_minimum_size.x = float(c[1])
@@ -510,10 +619,10 @@ func _track_row(row_name: String, icon: Control, values: Array, from_level: int,
 		tone = DS.PALETTE["OK"] if more_is_better else DS.PALETTE["DANGER"]
 	var row := HBoxContainer.new()
 	row.name = row_name
-	row.custom_minimum_size.y = Metrics.GOOD_ICON
+	row.custom_minimum_size.y = _row_side()
 	row.add_theme_constant_override("separation", 12)
 	var box := CenterContainer.new()
-	box.custom_minimum_size = Vector2(Metrics.GOOD_ICON, Metrics.GOOD_ICON)
+	box.custom_minimum_size = Vector2(_row_side(), _row_side())
 	box.add_child(icon)
 	row.add_child(box)
 	var money := unit == "£"
@@ -674,14 +783,15 @@ class LevelTrack extends Control:
 
 
 ## A tower crane on the materials plate's edges, in steel lattice: the mast down the right edge from a yellow
-## machinery box at its foot, the jib along the right half of the top edge with its tip cut on a slant, and the
-## operator's yellow cab under the jib against the mast. Both girders are braced with crossbars and diagonals.
+## machinery box at its foot, the jib along the right half of the top edge (its top chord stopping short so
+## its tip slants down to the foot chord), and the operator's yellow cab up at the top, where the jib meets
+## the mast. Both girders are braced with a cross in every bay.
 class CraneRig extends Control:
 	const MAST_W := 30.0
 	const JIB_H := 26.0
 	const CHORD := 6.0
 	const JIB_FROM := 0.44
-	const CAB := Vector2(38, 32)
+	const CAB := Vector2(40, 34)
 	const BASE := Vector2(64, 30)
 	const STEEL := Color("#343940")
 	const LIT := Color("#9aa2ab")
@@ -704,39 +814,39 @@ class CraneRig extends Control:
 
 	func _draw() -> void:
 		var mx := size.x - MAST_W
-		var mast := Rect2(mx, 0.0, MAST_W, size.y - BASE.y)
-		_girder(mast, false)
-		# The jib: its top chord runs out to the tip, its foot chord stops short, and the end brace slants.
+		_girder(Rect2(mx, 0.0, MAST_W, size.y - BASE.y), false)
+		# The jib: the foot chord runs out to the tip, the top chord stops a bay short, and the end slants down
+		# from the top chord's end to the tip.
 		var tip := size.x * JIB_FROM
-		var foot := tip + JIB_H
-		_girder(Rect2(foot, 0.0, mx - foot, JIB_H), true)
-		_bar(Vector2(tip, CHORD * 0.5), Vector2(foot, CHORD * 0.5), CHORD)
-		_line(Vector2(tip, CHORD), Vector2(foot, JIB_H - CHORD * 0.5), 4.0)
-		_rivet(Vector2(tip + 3.0, CHORD * 0.5))
-		_box(Rect2(Vector2(mx - CAB.x, JIB_H), CAB), true)
+		var shoulder := tip + JIB_H
+		_girder(Rect2(shoulder, 0.0, mx - shoulder, JIB_H), true)
+		_bar(Vector2(tip, JIB_H - CHORD * 0.5), Vector2(shoulder, JIB_H - CHORD * 0.5), CHORD)
+		_bar(Vector2(shoulder, CHORD * 0.5), Vector2(tip, JIB_H - CHORD * 0.5), CHORD)
+		_rivet(Vector2(tip + 3.0, JIB_H - CHORD * 0.5))
+		# The cab up top against the mast, over the jib's root; the machinery at the mast's foot.
+		_box(Rect2(Vector2(mx - CAB.x, 0.0), CAB), true)
 		_box(Rect2(size - BASE, BASE), false)
 
-	## A lattice girder in `r`: a chord along each long side, a crossbar at every bay and a diagonal across it.
+	## A lattice girder in `r`: a chord along each long side and a cross (two diagonals) in every bay.
 	func _girder(r: Rect2, across: bool) -> void:
 		var depth := r.size.y if across else r.size.x
 		var length := r.size.x if across else r.size.y
 		var bays := maxi(1, roundi(length / depth))
 		var step := length / bays
-		var along := func(t: float, side: float) -> Vector2:
+		var at := func(t: float, side: float) -> Vector2:
 			return Vector2(r.position.x + t, r.position.y + side) if across else Vector2(r.position.x + side, r.position.y + t)
 		var near := CHORD * 0.5
 		var far := depth - CHORD * 0.5
 		for i in bays:
 			var t0 := i * step
 			var t1 := (i + 1) * step
-			_line(along.call(t0, near if i % 2 == 0 else far), along.call(t1, far if i % 2 == 0 else near), 3.0)
+			_line(at.call(t0, near), at.call(t1, far), 2.5)
+			_line(at.call(t0, far), at.call(t1, near), 2.5)
+		_bar(at.call(0.0, near), at.call(length, near), CHORD)
+		_bar(at.call(0.0, far), at.call(length, far), CHORD)
 		for i in bays + 1:
-			_line(along.call(i * step, near), along.call(i * step, far), 3.0)
-		_bar(along.call(0.0, near), along.call(length, near), CHORD)
-		_bar(along.call(0.0, far), along.call(length, far), CHORD)
-		for i in bays + 1:
-			_rivet(along.call(i * step, near))
-			_rivet(along.call(i * step, far))
+			_rivet(at.call(i * step, near))
+			_rivet(at.call(i * step, far))
 
 	## A chord: a steel bar `w` thick from `a` to `b`, lit along its upper edge and shaded along its lower.
 	func _bar(a: Vector2, b: Vector2, w: float) -> void:
@@ -763,7 +873,7 @@ class CraneRig extends Control:
 		draw_rect(Rect2(r.position, Vector2(r.size.x, 3.0)), YELLOW_LIT)
 		draw_rect(Rect2(Vector2(r.position.x, r.end.y - 4.0), Vector2(r.size.x, 4.0)), YELLOW_DARK)
 		if cab:
-			var win := Rect2(r.position + Vector2(5.0, 6.0), Vector2(r.size.x - 12.0, r.size.y * 0.45))
+			var win := Rect2(r.position + Vector2(5.0, 7.0), Vector2(r.size.x - 12.0, r.size.y * 0.45))
 			draw_rect(win, GLASS)
 			draw_line(win.position + Vector2(3.0, win.size.y - 2.0), win.position + Vector2(win.size.x * 0.5, 2.0), Color(1, 1, 1, 0.25), 2.0)
 			draw_rect(win, INK, false, 1.0)
@@ -780,3 +890,25 @@ class CraneRig extends Control:
 			for i in 3:
 				var vy := r.position.y + 14.0 + i * 4.0
 				draw_line(Vector2(r.position.x + 8.0, vy), Vector2(r.end.x - 8.0, vy), YELLOW_DARK, 2.0)
+
+
+## The source's price screen: its hover is the cost's breakdown on a steel plate.
+class PriceBox extends HBoxContainer:
+	var breakdown: Dictionary = {}
+
+	func _make_custom_tooltip(_for_text: String) -> Object:
+		return load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd").breakdown_plate(breakdown) if not breakdown.is_empty() else null
+
+
+## Holds a hover plate in the tooltip's window, the window's own panel cleared so only the plate is drawn.
+class TipHost extends MarginContainer:
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+			add_theme_constant_override(side, 8)
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_PARENTED:
+			var win := get_parent() as Window
+			if win != null:
+				win.add_theme_stylebox_override("panel", StyleBoxEmpty.new())

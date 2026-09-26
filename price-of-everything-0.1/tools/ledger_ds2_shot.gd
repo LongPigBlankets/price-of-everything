@@ -63,6 +63,29 @@ func _ready() -> void:
 	var dialog: Control = ledger.get("_upgrade_dialog")
 	if dialog != null:
 		_shot(dialog.find_child("UpgradeSheet", true, false) as Control, dir.path_join("ledger_ds2_upgrade.png"))
+		# The same with half the materials on the tile: their lamps green, only the rest priced.
+		var iid := str(dialog.get("_instance_id"))
+		var tile := str(BuildingState.get_building(iid).get("tile_id", ""))
+		var mats: Array = BuildingWorks.preview_upgrade(iid).get("materials", [])
+		for i in mats.size():
+			if i % 2 == 0:
+				Stockpile.add(tile, str(mats[i].good_id), int(mats[i].need))
+		dialog.call("open", iid)
+		await _settle(8)
+		_shot(dialog.find_child("UpgradeSheet", true, false) as Control, dir.path_join("ledger_ds2_upgrade_stock.png"))
+		# The price's breakdown plate, as its hover shows it.
+		var price: Control = dialog.find_child("SourcePrice", true, false)
+		# Drawn with the dialog shut: a real tooltip opens above its scrim, a plate on the HUD would sit under it.
+		var plate: Control = price.call("_make_custom_tooltip", "") if price != null else null
+		dialog.call("close")
+		await _settle(2)
+		if price != null:
+			if plate != null:
+				hud.add_child(plate)
+				plate.position = Vector2(80, 80)
+				await _settle(6)
+				_shot(plate, dir.path_join("ledger_ds2_upgrade_breakdown.png"))
+				plate.queue_free()
 		dialog.call("close")
 	print("[LEDGER_SHOT] rows %d, min width %.0f of %.0f" % [(ledger.get("_body") as Control).get_child_count(),
 		ledger.get_combined_minimum_size().x, ledger.size.x])

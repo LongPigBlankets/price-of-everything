@@ -43,6 +43,8 @@ Every figure is the row model the v2 ledger already computes (`_row_vm`: CostSol
 
 **Fourth review (26 September), built.** Per turn's change reads on a dot-matrix screen in the row's tone, under the heading Change over the bars. Materials is a steel plate the rim's own steel (section style "plate", print navy), with a lattice crane on its edges (mast down the right edge from a yellow machinery box, jib along the right half of the top with a slanted tip, the yellow cab under it, crossbars and diagonals), the Source dial under it at 1.5 times its size. The plate is one piece of steel, edge and face, its grain calmed.
 
+**Fifth review (26 September), built.** The Source dial's options are start_upgrade modes: This tile's stockpile (`tile_wait`: starts with what is missing and waits for it), Order from market (`market`, the first choice), All tile stockpiles (`stockpiles`: `BuildingWorks.upgrade_stockpile_plan` pulls every other tile's spare stock, nearest first, and waits for the rest). The two stockpile modes mark the pending upgrade `no_market`, so a stalled wait never re-orders from market, and the plate says "Missing materials will not be bought from market." while one is chosen. The price follows the dial (the market's goods and freight, the stockpiles' freight, £0 when all is on the tile: a building's upgrade has no fee) with its breakdown on a steel plate on hover. The crane is braced with a cross in every bay, its jib's tip slants down, its cab is up top. Per turn's inputs light red (they cost), and every row is a good's well tall.
+
 ## Open decisions (owner)
 
 1. **Default.** Keep behind the switch until approved, then make it the default with `toggle ledger ds2` switching back, as the top bar and tile view did?
