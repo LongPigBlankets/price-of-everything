@@ -47,6 +47,14 @@ var option_ink: Color = Color.WHITE:
 	set(v):
 		option_ink = v
 		_style_options()
+## Options mode: each option on a raised square of black plastic (Building Detail's module, no screws), its icon
+## embossed in `option_ink`; and the icons' size against OPTION_ICON. Set both before `options`.
+var option_plates := false
+var option_scale := 1.0
+const PLATE: Texture2D = preload("res://assets/ui/bdp_v3/diag_module.png")
+const PLATE_MARGIN := 10.0 / 1.875
+const PLATE_CORNER := 26.0 * 2.0 / 1.875
+const PLATE_PAD := 6.0
 ## The option buttons, in option order (callers may rename them, e.g. for a tutorial spotlight).
 var option_buttons: Array[Button] = []
 
@@ -94,18 +102,25 @@ func set_options(list: Array) -> void:
 		b.name = "KnobOption_%s" % str(o.get("id", i))
 		b.flat = true
 		b.focus_mode = Control.FOCUS_NONE
-		b.icon = o.get("icon", null)
+		b.icon = null if option_plates else o.get("icon", null)
 		b.expand_icon = true
+		if option_plates:
+			var face := OptionFace.new()
+			face.icon = o.get("icon", null)
+			face.pad = PLATE_PAD
+			face.selector = self
+			face.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			b.add_child(face)
 		b.tooltip_text = str(o.get("name", ""))
 		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		b.custom_minimum_size = Vector2(OPTION_ICON, OPTION_ICON)
+		b.custom_minimum_size = Vector2(_option_side(), _option_side())
 		b.size = b.custom_minimum_size
 		b.disabled = not bool(o.get("enabled", true))
 		# No frame and no padding: a themed button's content margins would leave the icon no room.
 		var bare := StyleBoxEmpty.new()
 		for state in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
 			b.add_theme_stylebox_override(state, bare)
-		b.add_theme_constant_override("icon_max_width", int(OPTION_ICON))
+		b.add_theme_constant_override("icon_max_width", int(_option_side()))
 		var at := i + 1
 		b.pressed.connect(func() -> void:
 			grab_focus()
@@ -122,7 +137,9 @@ func set_options(list: Array) -> void:
 func _style_options() -> void:
 	for i in option_buttons.size():
 		var b := option_buttons[i]
-		b.modulate = Color(option_ink, 1.0 if i + 1 == value else (0.3 if b.disabled else 0.62))
+		var alpha := 1.0 if i + 1 == value else (0.3 if b.disabled else 0.62)
+		# On plates the face inks its own icon; the button only fades.
+		b.modulate = Color(1, 1, 1, alpha) if option_plates else Color(option_ink, alpha)
 
 
 ## Sets the position without emitting `value_changed` (for initialising from saved state).
@@ -227,7 +244,7 @@ func _scale() -> float:
 func _arc_top() -> float:
 	if options.is_empty():
 		return FRAME_RADIUS * _scale() * LABEL_ARC + LABEL_SIZE_ACTIVE
-	return FRAME_RADIUS * _scale() * OPTION_ARC + OPTION_ICON * 0.5 + 2.0
+	return FRAME_RADIUS * _scale() * OPTION_ARC + _option_side() * 0.5 + 2.0
 
 
 ## Knob centre in local coordinates: horizontally centred, with room above for the arc.
@@ -256,7 +273,12 @@ func _place_options() -> void:
 	var r := FRAME_RADIUS * _scale() * OPTION_ARC
 	for i in option_buttons.size():
 		var at := _centre() + Vector2(cos(_angle(i)), -sin(_angle(i))) * r
-		option_buttons[i].position = (at - Vector2(OPTION_ICON, OPTION_ICON) * 0.5).round()
+		option_buttons[i].position = (at - Vector2(_option_side(), _option_side()) * 0.5).round()
+
+
+## An option's square: its icon at `option_scale`, and round it the plastic plate's padding when it has one.
+func _option_side() -> float:
+	return OPTION_ICON * option_scale + (2.0 * PLATE_PAD if option_plates else 0.0)
 
 
 func _label_position(i: int) -> Vector2:
@@ -292,3 +314,28 @@ func _position_towards(p: Vector2) -> int:
 			best_gap = gap
 			best = i + 1
 	return best
+
+
+## An option on its black plastic square: the plate, then the icon embossed, a dark copy down and to the right
+## under it, in the selector's ink.
+class OptionFace extends Control:
+	var icon: Texture2D
+	var pad := 6.0
+	var selector: Control
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+
+	func _draw() -> void:
+		var box := Rect2(Vector2.ZERO, size)
+		var c: Dictionary = (selector.get_script() as Script).get_script_constant_map()
+		preload("res://scripts/bdp_v3_nine.gd").paint(self, c["PLATE"], box.grow(float(c["PLATE_MARGIN"])), float(c["PLATE_CORNER"]))
+		if icon == null:
+			return
+		var art := box.grow(-pad)
+		var k := minf(art.size.x / icon.get_width(), art.size.y / icon.get_height())
+		var dest := Rect2(art.position + (art.size - icon.get_size() * k) * 0.5, icon.get_size() * k)
+		draw_texture_rect(icon, Rect2(dest.position + Vector2(1.5, 1.5), dest.size), false, Color(0, 0, 0, 0.85))
+		draw_texture_rect(icon, Rect2(dest.position + Vector2(-0.5, -0.5), dest.size), false, Color(1, 1, 1, 0.18))
+		draw_texture_rect(icon, dest, false, selector.get("option_ink"))

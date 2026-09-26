@@ -57,6 +57,8 @@ const OUTLINE_RADIUS := 12
 ## The materials grid's columns, and the room it leaves on its right for the dial.
 const MATERIAL_COLUMNS := 3
 const NAVY := Color("#0b2340")
+## The embossed icons on the dial's black plastic plates.
+const OFF_WHITE := Color("#ece6d6")
 const DIAL_PX := 165.0
 
 const WIDTH := 760.0
@@ -208,6 +210,9 @@ func _dial(p: Dictionary) -> Control:
 	var dial: Control = Rotary.new()
 	dial.name = "MaterialsDial"
 	dial.set("knob_size", DIAL_PX)
+	dial.set("option_plates", true)
+	dial.set("option_scale", 1.2)
+	dial.set("option_ink", OFF_WHITE)
 	dial.set("label", "Source")
 	dial.set("label_colour", DS.PALETTE["TEXT"])
 	dial.set("options", _options)
@@ -423,7 +428,6 @@ func _materials(p: Dictionary) -> Control:
 	room.add_child(side)
 	var dial := _dial(p)
 	dial.set("label_colour", NAVY)
-	dial.set("option_ink", NAVY)
 	side.add_child(dial)
 	# What the chosen source costs, its breakdown on hover.
 	var money := Parts.money("%.2f" % to_buy, DS.PALETTE["TEXT"], MONEY_DIGITS)
@@ -447,30 +451,24 @@ func _materials(p: Dictionary) -> Control:
 	return wrap
 
 
-## The breakdown of what the source costs, on a steel plate: a line a good (or a tile it comes from) with its
+## The breakdown of what the source costs, on the dark metal plate the other hovers use, off-white print: a line a good (or a tile it comes from) with its
 ## figure, then the total. `cost` is _source_cost's.
 static func breakdown_plate(cost: Dictionary) -> Control:
 	var host := TipHost.new()
 	var plate: MarginContainer = Section.new()
-	plate.set("style", "plate")
+	plate.set("style", "slab")
 	host.add_child(plate)
 	var vb: VBoxContainer = plate.get("content")
 	vb.add_theme_constant_override("separation", 6)
-	var ink := func(l: Label) -> Label:
-		l.add_theme_color_override("font_color", NAVY)
-		l.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.35))
-		l.add_theme_constant_override("shadow_offset_x", 0)
-		l.add_theme_constant_override("shadow_offset_y", 1)
-		return l
-	vb.add_child(ink.call(Parts.caption("Cost of the materials", 16)))
+	vb.add_child(Parts.caption("Cost of the materials", 16))
 	for line: Array in cost.get("lines", []):
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 24)
-		var words: Label = ink.call(Parts.body(str(line[0])))
+		var words := Parts.body(str(line[0]))
 		words.autowrap_mode = TextServer.AUTOWRAP_OFF
 		words.custom_minimum_size.x = 0
 		row.add_child(words)
-		var fig: Label = ink.call(Parts.body("£%.2f" % float(line[1])))
+		var fig := Parts.body("£%.2f" % float(line[1]))
 		fig.autowrap_mode = TextServer.AUTOWRAP_OFF
 		fig.custom_minimum_size.x = 80
 		fig.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -478,11 +476,10 @@ static func breakdown_plate(cost: Dictionary) -> Control:
 		row.add_child(fig)
 		vb.add_child(row)
 	var total := HBoxContainer.new()
-	var tw: Label = ink.call(Parts.caption("Total", 16))
+	var tw := Parts.caption("Total", 16)
 	tw.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	total.add_child(tw)
-	var tf: Label = ink.call(Parts.caption("£%.2f" % float(cost.get("total", 0.0)), 16, HORIZONTAL_ALIGNMENT_RIGHT))
-	total.add_child(tf)
+	total.add_child(Parts.caption("£%.2f" % float(cost.get("total", 0.0)), 16, HORIZONTAL_ALIGNMENT_RIGHT))
 	vb.add_child(total)
 	return host
 
