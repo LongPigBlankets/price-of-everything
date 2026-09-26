@@ -47,14 +47,19 @@ var option_ink: Color = Color.WHITE:
 	set(v):
 		option_ink = v
 		_style_options()
-## Options mode: each option on a raised square of black plastic (Building Detail's module, no screws), its icon
-## embossed in `option_ink`; and the icons' size against OPTION_ICON. Set both before `options`.
+## Options mode: each option on a square of black plastic (no screws), always shown, its icon embossed in
+## `option_ink` and greyed when the option can't be chosen; and the icons' size against OPTION_ICON. Set both
+## before `options`.
 var option_plates := false
 var option_scale := 1.0
-const PLATE: Texture2D = preload("res://assets/ui/bdp_v3/diag_module.png")
-const PLATE_MARGIN := 10.0 / 1.875
-const PLATE_CORNER := 26.0 * 2.0 / 1.875
 const PLATE_PAD := 6.0
+const PLATE_FILL := Color("#1d1f23")
+const PLATE_EDGE := Color("#3b3f45")
+const PLATE_LIT := Color(1, 1, 1, 0.10)
+const PLATE_RADIUS := 6
+## An option's icon: chosen, free to choose, and greyed.
+const ICON_ALPHA := {"chosen": 1.0, "open": 0.72}
+const ICON_GREY := Color(0.45, 0.45, 0.47, 0.8)
 ## The option buttons, in option order (callers may rename them, e.g. for a tutorial spotlight).
 var option_buttons: Array[Button] = []
 
@@ -138,8 +143,10 @@ func _style_options() -> void:
 	for i in option_buttons.size():
 		var b := option_buttons[i]
 		var alpha := 1.0 if i + 1 == value else (0.3 if b.disabled else 0.62)
-		# On plates the face inks its own icon; the button only fades.
-		b.modulate = Color(1, 1, 1, alpha) if option_plates else Color(option_ink, alpha)
+		# On plates the plate always shows and the face inks and greys its own icon.
+		b.modulate = Color.WHITE if option_plates else Color(option_ink, alpha)
+		if option_plates and b.get_child_count() > 0:
+			(b.get_child(0) as Control).queue_redraw()
 
 
 ## Sets the position without emitting `value_changed` (for initialising from saved state).
@@ -316,8 +323,9 @@ func _position_towards(p: Vector2) -> int:
 	return best
 
 
-## An option on its black plastic square: the plate, then the icon embossed, a dark copy down and to the right
-## under it, in the selector's ink.
+## An option on its black plastic square: the plate (a moulded edge lit along its top), then the icon embossed,
+## a dark copy down and to the right under it, in the selector's ink, fainter when not chosen and grey when the
+## option can't be chosen.
 class OptionFace extends Control:
 	var icon: Texture2D
 	var pad := 6.0
@@ -330,12 +338,26 @@ class OptionFace extends Control:
 	func _draw() -> void:
 		var box := Rect2(Vector2.ZERO, size)
 		var c: Dictionary = (selector.get_script() as Script).get_script_constant_map()
-		preload("res://scripts/bdp_v3_nine.gd").paint(self, c["PLATE"], box.grow(float(c["PLATE_MARGIN"])), float(c["PLATE_CORNER"]))
+		var plate := StyleBoxFlat.new()
+		plate.bg_color = c["PLATE_FILL"]
+		plate.border_color = c["PLATE_EDGE"]
+		plate.set_border_width_all(1)
+		plate.set_corner_radius_all(int(c["PLATE_RADIUS"]))
+		draw_style_box(plate, box)
+		draw_line(Vector2(4.0, 1.5), Vector2(size.x - 4.0, 1.5), c["PLATE_LIT"], 1.0)
 		if icon == null:
 			return
+		var button := get_parent() as Button
+		var buttons: Array = selector.get("option_buttons")
+		var chosen: bool = button != null and buttons.find(button) + 1 == int(selector.get("value"))
+		var ink: Color = selector.get("option_ink")
+		if button != null and button.disabled:
+			ink = c["ICON_GREY"]
+		elif not chosen:
+			ink = Color(ink, float(c["ICON_ALPHA"]["open"]))
 		var art := box.grow(-pad)
 		var k := minf(art.size.x / icon.get_width(), art.size.y / icon.get_height())
 		var dest := Rect2(art.position + (art.size - icon.get_size() * k) * 0.5, icon.get_size() * k)
-		draw_texture_rect(icon, Rect2(dest.position + Vector2(1.5, 1.5), dest.size), false, Color(0, 0, 0, 0.85))
-		draw_texture_rect(icon, Rect2(dest.position + Vector2(-0.5, -0.5), dest.size), false, Color(1, 1, 1, 0.18))
-		draw_texture_rect(icon, dest, false, selector.get("option_ink"))
+		draw_texture_rect(icon, Rect2(dest.position + Vector2(1.5, 1.5), dest.size), false, Color(0, 0, 0, 0.85 * ink.a))
+		draw_texture_rect(icon, Rect2(dest.position + Vector2(-0.5, -0.5), dest.size), false, Color(1, 1, 1, 0.18 * ink.a))
+		draw_texture_rect(icon, dest, false, ink)
