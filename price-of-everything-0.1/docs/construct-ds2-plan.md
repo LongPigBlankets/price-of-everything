@@ -1,6 +1,6 @@
 # Construct panel: how it is used, what it holds, and a DS2 arrangement
 
-Status: planning, 26 September 2026. Nothing of the DS2 look is built. Done so far: the engine helpers every stage will read (`scripts/construction_rules.gd`, proven against the real build by `tests/construction_rules_parity.tscn`), and the construction credit facility removed (owner, 26 September: a stopgap from before the Logistics Intermediary). Two concept studies are being rendered for the owner to choose between (§5).
+Status: planning, 26 September 2026. Nothing of the DS2 look is built. Done so far: the engine helpers every stage will read (`scripts/construction_rules.gd`, proven against the real build by `tests/construction_rules_parity.tscn`), and the construction credit facility removed (owner, 26 September: a stopgap from before the Logistics Intermediary). Two concept studies are rendered for the owner to choose between (§5).
 
 Read with `docs/ds2-theme.md` (the look, the kit, the method in §13 and §14) and `docs/ds2-owner-decisions.md` (settled rulings). The tile view's plan (`docs/tile-view-ds2-plan.md`) is the model for this one.
 
@@ -85,7 +85,10 @@ Rendered side by side on the real surface, catalogue and build order at the same
 - **Works office** (render set `constructoffice`, seed 433, study only): the catalogue is a steel plan chest, a drawer per building with a brass card holder, its raised emblem and price on an LED; the build order is a white plastic works order clipped to a steel board, lamps for requirements, goods in wells, the money column on LEDs in a dark plate, turns on a drum counter, the guarded Build key.
 - **Construction lot with its crane** (render set `constructlot`, seed 434, study only): the panel is a site hoarding in navy painted steel with a yellow lattice crane along its top, the title in its cab; the catalogue is enamel site boards bolted to the hoarding; the build order is the lot, the site board lowered on the hook, the plot taped off with the land it takes, materials on pallets, lamps on a site power pillar, the money on LEDs in the site cabin, turns on the cab's drum counter, the guarded Build key.
 
-Studies: `artifacts/construct_ds2/` once rendered.
+Studies (rendered 26 September 2026, catalogue and build order side by side, each 1125 layout px = 600 logical wide):
+- `artifacts/construct_ds2/construct_study_office.png`: the plan chest (ten latching keys with an All key, a dot-matrix search, drawers with brass card holders, the Furnace drawer open to its recipe cards) and the works order on white plastic under a clip (site, building, recipe, requirement lamps, goods in wells, a dark plate with the drum counter, payback, the money column and the guarded Build key).
+- `artifacts/construct_ds2/construct_study_lot.png`: the hoarding with a yellow tower crane (mast, cab carrying the title, lattice jib, trolley and hook), enamel site boards two a row with recipe tags on chains; the build order with the site board lowered on a spreader, the lot taped off as a grid of 18 slabs and 2 to buy, a site clock drum counter, the cost cabin on LEDs, materials on timber pallets, a feeder pillar with the requirement lamps, payback and the guarded Build key.
+Open points the studies raise: the site named twice on the works order; the lot's land note repeating its lamp; the lot's small recipe pills and board LEDs below the game's sizes; seven boards leaving one cell empty in two columns.
 
 ## 6. Numbers first (done)
 
