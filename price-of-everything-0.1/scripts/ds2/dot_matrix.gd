@@ -18,6 +18,11 @@ const PANE := Color("#0b0d10")
 const UNLIT_ALPHA := 0.09
 const COLUMNS := 5
 const ROWS := 7
+## A narrow space, for a gap between a figure and its unit ("531 MW"): one dot column wide where a character
+## cell is six, so the words keep together. Plain spaces stay a full cell, which the cards that line their
+## columns up by padding with spaces rely on.
+const THIN := "\u2009"
+const THIN_COLUMNS := 1
 
 ## Five bits a row, top row first.
 const FONT := {
@@ -93,12 +98,18 @@ static func text_width(count: int, p: float) -> float:
 	return maxf(0.0, count * (COLUMNS + 1) * p - p)
 
 
+## Width of `t`'s dots at pitch `p`, a narrow space (THIN) counting its own columns.
+static func string_width(t: String, p: float) -> float:
+	var thin := t.count(THIN)
+	return maxf(0.0, text_width(t.length() - thin, p) + thin * (THIN_COLUMNS + 1) * p - (p if thin == t.length() else 0.0))
+
+
 func _padding() -> Vector2:
 	return Vector2(4.0, 3.0) + (Vector2.ONE * RIM / CAPTURE_SCALE if framed else Vector2.ZERO)
 
 
 func _resize() -> void:
-	custom_minimum_size = Vector2(text_width(text.length(), pitch), ROWS * pitch) + 2.0 * _padding()
+	custom_minimum_size = Vector2(string_width(text, pitch), ROWS * pitch) + 2.0 * _padding()
 	queue_redraw()
 
 
@@ -108,8 +119,7 @@ func _draw() -> void:
 	if framed:
 		Nine.paint(self, SCREEN, box.grow(MARGIN / CAPTURE_SCALE), corner)
 		draw_rect(box.grow(-RIM / CAPTURE_SCALE), PANE)
-	var count := text.length()
-	var width := text_width(count, pitch)
+	var width := string_width(text, pitch)
 	var x0 := (size.x - width) * 0.5
 	if align == HORIZONTAL_ALIGNMENT_LEFT:
 		x0 = _padding().x
@@ -117,23 +127,23 @@ func _draw() -> void:
 		x0 = size.x - _padding().x - width
 	var y0 := (size.y - ROWS * pitch) * 0.5
 	var r := pitch * 0.44
-	var i := 0
+	var cx := x0 + pitch * 0.5
 	for run: Dictionary in _runs:
 		var lit: Color = run.colour
 		var glow := Color(lit, 0.3)
 		var unlit := Color(1, 1, 1, UNLIT_ALPHA)
 		for ch in str(run.text).to_upper():
 			var rows: Array = FONT.get(ch, FONT[" "])
-			var cx := x0 + i * (COLUMNS + 1) * pitch + pitch * 0.5
+			var cols := THIN_COLUMNS if ch == THIN else COLUMNS
 			for row in ROWS:
-				var bits := int(rows[row])
-				for col in COLUMNS:
+				var bits := int(rows[row]) if ch != THIN else 0
+				for col in cols:
 					var p := Vector2(cx + col * pitch, y0 + row * pitch + pitch * 0.5)
 					if bits & (1 << (COLUMNS - 1 - col)):
 						draw_circle(p, r * 1.7, glow)
 						draw_circle(p, r, lit)
 					else:
 						draw_circle(p, r * 0.8, unlit)
-			i += 1
+			cx += (cols + 1) * pitch
 	if framed:
 		Nine.paint(self, GLASS, box.grow(MARGIN / CAPTURE_SCALE), corner)

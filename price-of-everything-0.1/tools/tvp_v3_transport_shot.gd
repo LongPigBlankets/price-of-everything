@@ -274,7 +274,7 @@ func _print_tones(panel: Control, tag: String) -> void:
 			continue
 		var meters: Array[String] = []
 		for m in cell.find_children("Meter*", "Control", true, false):
-			meters.append("%s %s (%.0f of %.0f)" % [str(m.get_parent().get_child(0).text), str(m.get("tone")), float(m.get("used")), float(m.get("cap"))])
+			meters.append("%s %s (%.0f of %.0f)" % [str(m.name).trim_prefix("Meter"), str(m.get("tone")), float(m.get("used")), float(m.get("cap"))])
 		var words := ""
 		for l in cell.find_children("*", "Label", true, false):
 			var t := str((l as Label).text)

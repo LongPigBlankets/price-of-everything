@@ -1761,22 +1761,77 @@ func _on_v3_key(key: String, building: Dictionary, recipe: Dictionary) -> void:
 
 
 ## The Upgrade key: its two lines, whether the arrow is lit (the upgrade can start: not already
-## upgrading, not at the top level, its research unlocked) and, when it is not, why.
+## upgrading, not at the top level, its research unlocked) and, when it is not, why; and its hover card
+## (v3_upgrade_tip), the dot-matrix card the tile view's Upgrade keys show.
 static func v3_upgrade_state(building: Dictionary) -> Dictionary:
 	var iid := str(building.get("instance_id", ""))
 	var level := int(building.get("level", 1))
+	var tip := v3_upgrade_tip(building)
 	var progress := BuildingWorks.upgrade_progress_snapshot(iid)
 	if not progress.is_empty():
 		return {"upgrade_title": "Upgrading…", "upgrade_detail": "", "upgrade_lit": false,
-			"upgrade_tooltip": str(progress.get("tooltip", "Upgrade in progress."))}
+			"upgrade_tooltip": str(progress.get("tooltip", "Upgrade in progress.")), "upgrade_tip": tip}
 	if level >= BuildingLevels.MAX_LEVEL:
 		return {"upgrade_title": "Max level (L%d)" % level, "upgrade_detail": "", "upgrade_lit": false,
-			"upgrade_tooltip": "Already at the maximum level."}
+			"upgrade_tooltip": "Already at the maximum level.", "upgrade_tip": tip}
 	var internal := str(Catalog.get_building(str(building.get("building_id", ""))).get("internal_name", ""))
 	var gate := BuildingLevels.research_gate(internal, level + 1)
 	var met := gate == "" or ResearchState.is_unlocked(gate)
 	return {"upgrade_title": "Upgrade to Lv %d" % (level + 1), "upgrade_detail": BdpV3Block.upgrade_detail(level),
-		"upgrade_lit": met, "upgrade_tooltip": "" if met else "Requires research: %s" % gate}
+		"upgrade_lit": met, "upgrade_tooltip": "" if met else "Requires research: %s" % gate, "upgrade_tip": tip}
+
+
+## The Upgrade key's hover card (scripts/tvp_v3/transport_tip.gd), from BuildingWorks.preview_upgrade: the
+## next level's output gain, what buying the missing materials costs, the land it adds and the time it
+## takes, with the materials in their wells; the turns left while it runs; the top level; why it can't run.
+static func v3_upgrade_tip(building: Dictionary) -> Dictionary:
+	var iid := str(building.get("instance_id", ""))
+	var level := int(building.get("level", 1))
+	var q: Dictionary = BuildingWorks.preview_upgrade(iid) if iid != "" else {}
+	if not bool(q.get("ok", false)):
+		return {}
+	if bool(q.get("at_max", false)):
+		return {"title": "Top level", "rows": [{"caption": "Level", "value": "%d of %d" % [level, BuildingLevels.MAX_LEVEL]}]}
+	var target := int(q.get("target_level", level + 1))
+	var turns := func(n: int) -> String: return "%d turn%s" % [n, "" if n == 1 else "s"]
+	if bool(q.get("already_upgrading", false)):
+		var waiting := str(q.get("pending_status", "")) == Construction.STATUS_AWAITING_MATERIALS
+		var card := {"title": "Upgrading to level %d" % target, "tone": "warn", "rows": []}
+		if waiting:
+			card.notes = [{"text": "Waiting for materials", "tone": "warn"}]
+		else:
+			card.rows.append({"caption": "Ready in", "value": turns.call(int(q.get("pending_turns_left", 0)))})
+		return card
+	var rows: Array = []
+	var gain := BdpV3Block.upgrade_detail(level)
+	if gain != "":
+		rows.append({"caption": "Output", "value": gain.trim_suffix(" Output")})
+	var buy := float(q.get("market_cost", 0.0))
+	if buy > 0.005:
+		rows.append({"caption": "Cost", "value": "£%.2f" % buy, "tone": "" if MatchState.money >= buy else "bad"})
+	if float(q.get("size_delta", 0.0)) > 0.0:
+		rows.append({"caption": "Land", "value": "+%d" % roundi(float(q.get("size_delta", 0.0)))})
+	rows.append({"caption": "Time", "value": turns.call(int(q.get("duration", 0)))})
+	var card := {"title": "Upgrade to level %d" % target, "rows": rows, "notes": []}
+	var goods := {}
+	for m: Dictionary in q.get("materials", []):
+		goods[str(m.get("good_id", ""))] = int(m.get("need", 0))
+	if not goods.is_empty():
+		card.goods = goods
+		card.goods_caption = "Needs"
+		card.goods_note = "On site" if bool(q.get("all_on_tile", false)) else ("Bought in" if bool(q.get("market_sourceable", true)) else "")
+	if bool(q.get("research_locked", false)):
+		var gate := str(q.get("research_gate", ""))
+		var title := ResearchState.research_title_for_node_id(gate)
+		card.tone = "bad"
+		card.notes.append({"text": "Needs research: %s" % (title if title != "" else gate), "tone": "bad"})
+	if not bool(q.get("fits", true)):
+		card.tone = "bad"
+		card.notes.append({"text": str(q.get("fits_reason", "Not enough room")).trim_suffix("."), "tone": "bad"})
+	if not bool(q.get("market_sourceable", true)):
+		card.tone = "bad"
+		card.notes.append({"text": "Materials can't reach this tile", "tone": "bad"})
+	return card
 
 
 func _build_v3_footer(building: Dictionary) -> Control:
@@ -3468,7 +3523,7 @@ func _v3_transport_lamp(side: String, tone: String, cost: float, free_flag: Stri
 	col.add_child(_v3_metal_label("%s transport" % side.capitalize(), HORIZONTAL_ALIGNMENT_LEFT))
 	var value := Label.new()
 	value.theme_type_variation = "Caption"
-	value.text = free_flag if free_flag != "" else "%s a turn" % _money(cost)
+	value.text = free_flag if free_flag != "" else "%s/turn" % _money(cost)
 	col.add_child(value)
 	return hb
 

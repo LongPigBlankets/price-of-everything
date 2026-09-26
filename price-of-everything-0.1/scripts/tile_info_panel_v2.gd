@@ -67,6 +67,15 @@ const CabinetKey := preload("res://scripts/tile_cabinet_key.gd")
 const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
 ## The display's marks for a tab that needs a look.
 const V3_KEY_MARK := {"warn": Color("#ffb21f"), "bad": Color("#ff3b2f")}
+## The key display's dots (a character 7 dots tall, so 14 px at 2.0) and the extra room above and below them,
+## so the figures sit smaller on a taller glass.
+const V3_FIGURE_PITCH := 2.0
+## The land breakdown's swatch: its side, and its stainless bezel's face, shadow and lit edge.
+const V3_SWATCH := 18.0
+const V3_SWATCH_STEEL := Color("#b9c0c8")
+const V3_SWATCH_STEEL_DK := Color("#5d656e")
+const V3_SWATCH_STEEL_LT := Color("#e6eaee")
+const V3_DISPLAY_ROOM := 5.0
 ## The planning limit's explanation, on hover of the term in the land line.
 const V3_PLANNING_NOTE := "Above the planning limit, local opposition makes construction more complex, increasing materials requirements by 50%"
 ## The body sheet's padding, logical pixels.
@@ -701,23 +710,34 @@ func _land_caption(text: String) -> Label:
 
 
 ## One line of the land's breakdown: its swatch ("hazard" for the planning limit's tape), what it is and how
-## much land.
+## much land. Each swatch sits in a small stainless bezel with a black line round the colour, so a dark
+## colour reads against the bright steel and a light one against the black line, whatever the plate under it.
 func _land_line(colour: Variant, text: String, units: String) -> HBoxContainer:
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 8)
 	var sw := Control.new()
-	sw.custom_minimum_size = Vector2(12, 12)
+	sw.custom_minimum_size = Vector2(V3_SWATCH, V3_SWATCH)
 	sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	sw.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	sw.draw.connect(func() -> void:
+		if not colour is Color and str(colour) != "hazard":
+			return
+		var box := Rect2(Vector2.ZERO, sw.size)
+		sw.draw_rect(box, V3_SWATCH_STEEL_DK)
+		sw.draw_rect(box.grow(-1.0), V3_SWATCH_STEEL)
+		sw.draw_rect(Rect2(box.position + Vector2(1, 1), Vector2(box.size.x - 2.0, 1.0)), V3_SWATCH_STEEL_LT)
+		var inner := box.grow(-3.0)
+		sw.draw_rect(inner, Color.BLACK)
+		inner = inner.grow(-1.0)
 		if colour is Color:
-			sw.draw_rect(Rect2(Vector2.ZERO, sw.size), colour)
-		elif str(colour) == "hazard":
+			sw.draw_rect(inner, colour)
+		else:
 			var tape: Dictionary = LandHex.tape()
-			sw.draw_rect(Rect2(0, 2.5, 12, 7), LandHex.HAZARD_DARK)
-			sw.draw_rect(Rect2(0, 3, 12, 6), tape.band)
-			for x in [0.0, 5.0, 10.0]:
-				sw.draw_rect(Rect2(x, 4, 2.5, 4), tape.stripe))
+			sw.draw_rect(inner, tape.band)
+			var x := inner.position.x
+			while x < inner.end.x:
+				sw.draw_rect(Rect2(x, inner.position.y + 2.0, minf(2.5, inner.end.x - x), inner.size.y - 4.0), tape.stripe)
+				x += 5.0)
 	line.add_child(sw)
 	var name_label := _v3_print_white(text)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -793,6 +813,8 @@ func _build_key_bed() -> PanelContainer:
 	display.name = "KeyDisplay"
 	var inset := StyleBoxEmpty.new()
 	inset.set_content_margin_all(DotMatrix.RIM / V3_LAYOUT + 2.0)
+	inset.content_margin_top += V3_DISPLAY_ROOM
+	inset.content_margin_bottom += V3_DISPLAY_ROOM
 	display.add_theme_stylebox_override("panel", inset)
 	display.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	var corner := (DotMatrix.MARGIN + DotMatrix.RIM + DotMatrix.RADIUS + 2.0) * V3_TEXELS
@@ -819,7 +841,7 @@ func _build_key_bed() -> PanelContainer:
 		var figure := DotMatrix.new()
 		figure.name = "Figure_%s" % id
 		figure.framed = false
-		figure.pitch = 2.6
+		figure.pitch = V3_FIGURE_PITCH
 		figure.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		figure.mouse_filter = Control.MOUSE_FILTER_PASS
 		figures.add_child(figure)
@@ -871,10 +893,12 @@ func _refresh_terrain_glyph(terrain: String) -> void:
 
 
 ## One key's figure on the display. `tone` is ok, warn, bad or off: warn and bad put an amber or red mark
-## before the figure; `pre` and `unit` print either side of it.
+## before the figure; `pre` and `unit` print either side of it, the unit after a narrow space unless it is
+## a sign that sits against the figure (% or /N).
 func _set_key_v3(tab_id: String, tone: String, figure: String, pre: String, unit: String, tip: String) -> void:
 	var t: Dictionary = _tiles[tab_id]
-	var words := ("%s%s %s" % [pre, figure, unit]).strip_edges()
+	var joint := "" if unit == "" or unit.begins_with("%") or unit.begins_with("/") else DotMatrix.THIN
+	var words := "%s%s%s%s" % [pre, figure, joint, unit]
 	var runs: Array = []
 	if tone in ["warn", "bad"]:
 		runs.append({"text": "● ", "colour": V3_KEY_MARK[tone]})
@@ -907,6 +931,13 @@ static func cables_missing_text(tile_id: String) -> String:
 	return "Cables missing. Power %s not possible." % what
 
 
+## A power figure and its unit for the display: whole MW up to 999, then GW to one place ("1.2 GW").
+static func power_figure(mw: int) -> Array:
+	if absi(mw) <= 999:
+		return [str(mw), "MW"]
+	return ["%.1f" % (mw / 1000.0), "GW"]
+
+
 ## The keys' figures (docs/tile-view-ds2-plan.md §4.2): your buildings, or the stalled and problem ones
 ## when any; net MW; net value added; stock fill; links near capacity of those built.
 func _refresh_keys_v3() -> void:
@@ -935,13 +966,13 @@ func _refresh_keys_v3() -> void:
 	if stranded != "":
 		_set_key_v3("power", "bad", "0", "", "MW", stranded)
 	else:
-		_set_key_v3("power", tone.call(str(power.status)), "0" if power.status == "muted" else str(int(power.net)), "", "MW",
-			"Net power on this tile: made less drawn")
+		var watts := power_figure(0 if power.status == "muted" else int(power.net))
+		_set_key_v3("power", tone.call(str(power.status)), watts[0], "", watts[1], "Net power on this tile: made less drawn")
 
 	var prod := TileViewData.production_summary(_current_tile_id)
 	var money := MoneyFigure.led(float(prod.net_value))
 	_set_key_v3("prod", tone.call(str(prod.status)), str(money.figure), "£", str(money.suffix),
-		"Net value added a turn by your buildings")
+		"Net value added/turn by your buildings")
 
 	var stock := TileViewData.stockpile_summary(_current_tile_id)
 	_set_key_v3("stock", "bad" if stock.is_full else tone.call(str(stock.status)), str(roundi(float(stock.pct) * 100.0)), "", "%",
@@ -959,7 +990,7 @@ func _refresh_keys_v3() -> void:
 			over += 1
 		elif pct >= V3_LINK_NEAR:
 			near += 1
-	_set_key_v3("transport", "bad" if over > 0 else ("warn" if near > 0 else "off"), str(near + over), "", "of %d" % built,
+	_set_key_v3("transport", "bad" if over > 0 else ("warn" if near > 0 else "off"), str(near + over), "", "/%d" % built,
 		"Links near or over capacity, of the %d built on this tile" % built)
 
 

@@ -82,6 +82,7 @@ static func build(panel: Control, pane: VBoxContainer) -> void:
 	pane.add_child(column)
 	var body := column.rows
 	var site := _site(tile_id)
+	column.reserve = not (site.others as Array).is_empty()
 	var grid := _grid(panel, pane, site)
 	body.add_child(_actions(panel, tile_id))
 	_add_port(panel, body, site, grid)
@@ -309,7 +310,7 @@ static func _sub_caption(text: String, label_name: String) -> Control:
 	return label
 
 
-## The building's name as the game gives it on this tile ("Industrial Goods Factory - Motor - E"). A project
+## The building's name as the game gives it on this tile ("Motor Factory E", "Mine - Coal - A"). A project
 ## is named the same way, by its place among the tile's buildings and projects.
 static func _name_of(b: Dictionary) -> String:
 	return BuildingNaming.label_for_tile(str(b.get("tile_id", "")), str(b.get("instance_id", "")),
@@ -317,11 +318,9 @@ static func _name_of(b: Dictionary) -> String:
 
 
 ## A group's name: its members' name without the letter that tells them apart
-## ("Industrial Goods Factory - Motor"), so a group and a building alone read as the same kind of thing.
+## ("Motor Factory", "Mine - Coal"), so a group and a building alone read as the same kind of thing.
 static func _group_name(first: Dictionary) -> String:
-	var full := _name_of(first)
-	var cut := full.rfind(" - ")
-	return full.substr(0, cut) if cut > 0 else full
+	return BuildingNaming.without_letter(_name_of(first))
 
 
 ## A group member's name without the kind of building its head already names ("Motor - E").
@@ -345,9 +344,9 @@ static func _check_tip(check: Dictionary, stage: String) -> Dictionary:
 static func _cost_tip(cost: Dictionary, among: int) -> Dictionary:
 	if cost.is_empty():
 		return {}
-	var each := "£%.2f a unit to make" % float(cost.unit_cost)
+	var each := "£%.2f/unit to make" % float(cost.unit_cost)
 	if among > 1:
-		each = "£%.2f a unit at the dearest of the %d" % [float(cost.unit_cost), among]
+		each = "£%.2f/unit at the dearest of the %d" % [float(cost.unit_cost), among]
 	return {"name": "Cost to produce", "detail": "%s. Market price £%.2f." % [each, float(cost.get("market_price", 0.0))]}
 
 

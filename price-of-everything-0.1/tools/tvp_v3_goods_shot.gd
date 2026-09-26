@@ -458,10 +458,6 @@ func _audit(pane: Control, tile: String) -> void:
 			elif c.name == "MoneyLed" or c.name == "Raised" or c.name == "QtyPill" or c.name == "Sign" \
 					or c.name == "BdpV3ValueBar":
 				reach = 0.0
-			elif c.name == "ShutDoor":
-				var dr := float(GoodsTab.DOOR_REACH)
-				r = Rect2(r.position.x - dr, r.position.y, r.size.x + 2.0 * dr, r.size.y + dr)
-				reach = 0.0
 			if reach < 0.0:
 				continue
 			var ext := r.grow(reach)

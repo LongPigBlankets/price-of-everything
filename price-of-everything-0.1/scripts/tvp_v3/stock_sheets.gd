@@ -317,13 +317,13 @@ static func _quote(tile: String, gid: String, dest: String, order: Dictionary, r
 			screen.call("set_figure", "%.2f" % net, DS.PALETTE.OK if net >= 0.0 else DS.PALETTE.DANGER)
 			var said := ("after £%.2f port charges" % fees) if fees > 0.005 else "no port charges"
 			if recurring:
-				said = "a turn, " + said
+				said = "/turn, " + said
 			else:
 				said += (", ships in %d turn%s" % [turns, "" if turns == 1 else "s"]) if turns > 0 else ", sold now"
 			if special and bonus > 0:
 				said += ", plus a %d%% bonus when the order is filled" % bonus
 			words.text = said
-			words.tooltip_text = ("%d a turn at today's price, £%.2f each" if recurring else "%d at £%.2f each") % [q, unit]
+			words.tooltip_text = ("%d/turn at today's price, £%.2f each" if recurring else "%d at £%.2f each") % [q, unit]
 	else:
 		update = func(q: int) -> void:
 			var surcharge := TransportState.LARGE_SHIPMENT_SURCHARGE if q > TransportState.LARGE_SHIPMENT_THRESHOLD else 1.0
@@ -331,7 +331,7 @@ static func _quote(tile: String, gid: String, dest: String, order: Dictionary, r
 			screen.call("set_figure", "%.2f" % cost, DS.PALETTE.DANGER)
 			var said := "arrives in %d turn%s" % [turns, "" if turns == 1 else "s"]
 			if recurring:
-				said = "a turn, each " + said
+				said = "/turn, each " + said
 			if surcharge > 1.0:
 				said += ", double rate over %d units" % TransportState.LARGE_SHIPMENT_THRESHOLD
 			words.text = said

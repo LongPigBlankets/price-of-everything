@@ -2576,8 +2576,8 @@ async function exportLayers() {
 
   // --- a section frame: a narrow worn steel rim with a screw in each corner, drawn as a 9-slice
   if (want('section')) await withSeed(504, async () => {
-    // The screws sit on the rim's centre line, in from its rounded corners, as they would be driven.
-    const M = 18, FW = 560, FH = 360, RIM = 26, group = new THREE.Group(), si = 4 + RIM / 2;
+    // The screws sit on the rim towards its inner edge, well in from its rounded corners, as they would be driven.
+    const M = 18, FW = 560, FH = 360, RIM = 26, group = new THREE.Group(), si = 4 + RIM / 2 + 6;
     const ring = rrShape(FW - 8, FH - 8, 14); ring.holes.push(rr(new THREE.Path(), FW - 8 - 2 * RIM, FH - 8 - 2 * RIM, 8));
     const feat = { icons: [], buttons: [], screws: [[si, si], [FW - si, si], [si, FH - si], [FW - si, FH - si]].map(([x, y]) => ({ x: x - 4, y: y - 4 })) };
     const rim = new THREE.Mesh(extrude(ring, 3, 3.5, 2.8, 5), [plateMaterial(FW - 8, FH - 8, feat), MAT.plateSide]);

@@ -347,14 +347,14 @@ static func eta(tile: String, stock: Dictionary) -> Dictionary:
 	var span := "over the last %d turn%s" % [over, "" if over == 1 else "s"]
 	var rate := Stockpile.fill_trend_per_turn(tile, TREND_TURNS)
 	var turns := Stockpile.turns_until_full(tile, TREND_TURNS)
-	var tip := "Up about %d a turn %s" % [maxi(1, roundi(rate)), span]
+	var tip := "Up about %d/turn %s" % [maxi(1, roundi(rate)), span]
 	if turns == 0:
 		return {"tone": "bad", "text": "Full next turn at this rate", "tip": tip}
 	if turns > 0:
 		return {"tone": "bad" if turns <= ETA_RED_TURNS else "warn",
 			"text": "Full in %d turn%s at this rate" % [turns, "" if turns == 1 else "s"], "tip": tip}
 	if rate < -maxf(1.0, float(stock.capacity) * TREND_DEAD_BAND):
-		return {"tone": "ok", "text": "Emptying, down about %d a turn" % maxi(1, roundi(-rate)), "tip": "Measured %s" % span}
+		return {"tone": "ok", "text": "Emptying, down about %d/turn" % maxi(1, roundi(-rate)), "tip": "Measured %s" % span}
 	return {"tone": "off", "text": "Steady %s" % span, "tip": "Not filling"}
 
 

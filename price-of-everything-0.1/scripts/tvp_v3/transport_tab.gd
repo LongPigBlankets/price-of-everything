@@ -4,16 +4,15 @@ extends RefCounted
 ## `panel` is the tile view (scripts/tile_info_panel_v2.gd): its tile, its signals and its helpers.
 ##
 ## The site's services, as the cabinet's concept has them, in one plastic case like Building Detail's
-## diagnostics: one rack of modules with the site's cable down its left. Every link the tile has or can
-## have shows here, always in view (the Buildings tab shows none). First the links built here, each a
-## module tapped off the cable: its emblem over a lamp for its load, its name and what it carries, its
-## level on a drum and an Upgrade key, its load on a meter against capacity (cables: one meter, the larger
-## of the power made and drawn against the cable's cap), the goods riding it, and a line only when
-## something is wrong or a job runs; clicking the module opens the link. Then the links that can still be
-## built, spare modules further down the same rack that the cable runs past without a tap, set out as a
-## table: what each carries, how far it reaches in a turn, its capacity, what laying it takes, and a Build
-## key. The only keys are Build and Upgrade; hovering a module or its key lights its card
-## (transport_tip.gd): what building or raising the link costs and what it brings. HVDC, which no building
+## diagnostics: one rack of modules, each the case's full width. Every link the tile has or can have shows
+## here, always in view (the Buildings tab shows none). First the infrastructure built here, each a module:
+## its emblem over a lamp for its load, its name, its level on a drum and an Upgrade key, its load on a
+## meter against capacity (cables: one meter, the larger of the power made and drawn against the cable's
+## cap), the goods riding it, and a line only when something is wrong or a job runs; clicking the module
+## opens the link. Then the infrastructure that can still be added, spare modules further down the rack, set
+## out as a table: how many tiles it reaches, its throughput, what laying it takes, and a Build key. The
+## only keys are Build and Upgrade; hovering a key lights its card (transport_tip.gd): what building or
+## raising the link costs and what it brings. HVDC, which no building
 ## provides yet, stays hidden. Building and raising links wait for Infrastructure Tendering, as the v2
 ## section always has: until then the links built here show read only, their Upgrade keys greyed, with a
 ## line saying so under them, and none can be added.
@@ -33,7 +32,6 @@ const TileViewData := preload("res://scripts/tile_view_data.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
 const Heading := preload("res://scripts/bdp_v3_heading.gd")
 const Counter := preload("res://scripts/bdp_v3_counter.gd")
-const Cable := preload("res://scripts/bdp_v3_cable.gd")
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const Led := preload("res://scripts/bdp_v3_led.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
@@ -53,9 +51,6 @@ const MODULE_CORNER := 26.0 * 2.0 / 1.875
 const MODULE_PAD := 10.0
 ## A spare module, not yet wired: the same plate, a shade duller.
 const SPARE_TINT := Color(0.8, 0.8, 0.82)
-## The cable down the case's left, and the modules' left margin (a branch's length to its right).
-const CABLE_X := 10.0
-const GUTTER := CABLE_X + Cable.TAP_LENGTH
 const CARD_RIGHT := 2.0
 const MODULE_GAP := 8
 ## The plastic case and its silver screws (layout.json diag_plastic, screw_silver), about this far apart.
@@ -76,16 +71,17 @@ const FOOT_GAP := 8
 const BODY_PX := 14
 const CAPTION_PX := 15
 ## The column grid, the same in every state: the gap between columns, the keys' scale (every key in the
-## column is as wide as the widest, Upgrade latched with its lamp: key_width), the meters' caption column,
-## the spare modules' Reach and Capacity columns, and the meters' figure column, as wide as the widest
-## figure a link at any level reads (a wider one, far over capacity, widens it).
+## column is as wide as the widest, Upgrade latched with its lamp: key_width), the spare modules' Tile
+## Distance and Throughput columns (at least as wide as their captions), and the meters' figure column, as
+## wide as the widest figure a link at any level reads (a wider one, far over capacity, widens it).
 const COL_GAP := 8
 const KEY_SCALE := 1.0
 const KEY_WORDS := ["Upgrade", "Build"]
-const CAPTION_W := 50.0
+const REACH_CAPTION := "Tile Distance"
+const CAPACITY_CAPTION := "Throughput"
 const REACH_W := 42.0
 const CAPACITY_W := 70.0
-const FIGURE_TEMPLATES := ["8,888 of 8,888 MW", "888 of 888 a turn"]
+const FIGURE_TEMPLATES := ["8,888 of 8,888 MW", "888 of 888/turn"]
 ## The gap between the lines of a module.
 const BODY_GAP := 7
 ## The least width a wrapping sentence asks for.
@@ -141,10 +137,9 @@ static func build(panel: Control, pane: VBoxContainer) -> void:
 		case.name = "TransportLinks"
 		var content := case.get_child(0) as VBoxContainer
 		content.add_theme_constant_override("separation", MODULE_GAP)
-		# The headings stand over the modules' left edge: past the cable's gutter when it runs down the rack.
-		var indent := GUTTER if not links.is_empty() else 0.0
+		var indent := 0.0
 		if not links.is_empty():
-			content.add_child(_heading_row("Links", false, indent))
+			content.add_child(_heading_row("Infrastructure", false, indent))
 		content.add_child(_rack(panel, tile_id, links, spare, indent, last, levels))
 		if not open:
 			content.add_child(_locked_line(indent))
@@ -208,7 +203,7 @@ static func link_state(tile_id: String, slot: Dictionary, near: float, can_build
 		var used := int(transit.get("used", 0))
 		s.capped = true
 		s.share = float(transit.get("pct", 0.0))
-		s.meters = [["Carried", used, cap, "%s of %s a turn" % [_count(used), _count(cap)]]]
+		s.meters = [["Carried", used, cap, "%s of %s/turn" % [_count(used), _count(cap)]]]
 	s["tone"] = link_tone(float(s.share), near) if bool(s.capped) else "ok"
 
 	# What is wrong with it, if anything: the words say what the lamp and the meter show.
@@ -254,44 +249,34 @@ static func link_state(tile_id: String, slot: Dictionary, near: float, can_build
 # ── The rack ──────────────────────────────────────────────────────────────────────────────────────
 
 ## One rack of modules, `indent` in from the case's edge: the links built here, then under their heading
-## the links that can still be built. When links are built the site's cable runs down the rack's left from
-## the first module to the last, tapped into each built link and running past the spare ones, which are
-## not wired yet; the headings keep to the modules' column, clear of it.
+## the links that can still be built.
 static func _rack(panel: Control, tile_id: String, links: Array, spare: Array, indent: float, last: Dictionary,
 		levels: Dictionary) -> Control:
 	var card := _card(indent)
 	card.name = "TransportRack"
 	var list := card.get_child(0) as VBoxContainer
-	var taps: Array[Control] = []
 	var figure_w := _figure_width(links)
 	for s: Dictionary in links:
-		var m := _link_module(panel, s, figure_w, last, levels)
-		list.add_child(m)
-		taps.append(m)
+		list.add_child(_link_module(panel, s, figure_w, last, levels))
 	if not spare.is_empty():
 		if not links.is_empty():
 			list.add_child(_gap(GROUP_GAP))
-		list.add_child(_heading_row("Add a link", true))
+		list.add_child(_heading_row("Add Infrastructure", true))
 		var building: Dictionary = {}
 		for project: Dictionary in Construction.projects_on_tile(tile_id):
 			building[str(project.get("building_id", ""))] = project
 		for slot: Dictionary in spare:
 			var bd: Dictionary = slot.get("building_data", {})
 			list.add_child(_spare_module(panel, tile_id, slot, building.get(str(bd.get("id", "")), {})))
-	if not taps.is_empty():
-		var cable: Control = Cable.new()
-		cable.set("centre_x", CABLE_X - indent)
-		card.add_child(cable)
-		cable.set("taps", taps)
 	return card
 
 
 # ── Links built here ──────────────────────────────────────────────────────────────────────────────
 
 
-## One built link: its emblem over its lamp; its name and what it carries, its level on a drum and the key
-## that raises it; its load against capacity; the goods on it; what is wrong, if anything. Clicking it opens
-## the link; hovering it lights its card: what raising it costs and brings.
+## One built link: its emblem over its lamp; its name, its level on a drum and the key that raises it (whose
+## card says what raising it costs and brings); its load against capacity; the goods on it; what is wrong,
+## if anything. Clicking it opens the link.
 static func _link_module(panel: Control, s: Dictionary, figure_w: float, last: Dictionary, levels: Dictionary) -> Control:
 	var key: String = s.key
 	var title: String = s.title
@@ -315,8 +300,7 @@ static func _link_module(panel: Control, s: Dictionary, figure_w: float, last: D
 	body.add_theme_constant_override("separation", BODY_GAP)
 	row.add_child(body)
 
-	# The name and what it carries, as the spare modules have them; the level on a drum; the key that
-	# raises it.
+	# The name, as the spare modules have it; the level on a drum; the key that raises it.
 	var head := HBoxContainer.new()
 	head.name = "Head"
 	head.custom_minimum_size.y = head_h
@@ -350,11 +334,9 @@ static func _link_module(panel: Control, s: Dictionary, figure_w: float, last: D
 	if float(s.paid) >= 0.005:
 		body.add_child(_overages(float(s.paid)))
 
-	# The whole module opens the link too, as the v2 cell did, brightens its emblem under the pointer and
-	# lights its card.
+	# The whole module opens the link too, as the v2 cell did, and brightens its emblem under the pointer.
 	module.mouse_filter = Control.MOUSE_FILTER_STOP
 	module.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	Tip.attach(module, card)
 	module.gui_input.connect(func(e: InputEvent) -> void:
 		var mb := e as InputEventMouseButton
 		if mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
@@ -420,30 +402,29 @@ static func _gain_rows(key: String, mode: String, level: int, target: int) -> Ar
 	var rows: Array = []
 	var cap_now := _capacity(key, level)
 	var cap_then := _capacity(key, target)
-	var unit := " MW" if key == "cables" else " a turn"
+	var unit := " MW" if key == "cables" else "/turn"
+	var caption := "Capacity" if key == "cables" else CAPACITY_CAPTION
 	if cap_now <= 0 and cap_then <= 0:
-		rows.append({"caption": "Capacity", "value": "No limit"})
+		rows.append({"caption": caption, "value": "No limit"})
 	elif cap_then != cap_now:
-		rows.append({"caption": "Capacity", "value": "%s → %s%s" % [_count(cap_now), _count(cap_then), unit]})
+		rows.append({"caption": caption, "value": "%s → %s%s" % [_count(cap_now), _count(cap_then), unit]})
 	else:
-		rows.append({"caption": "Capacity", "value": _count(cap_now) + unit})
+		rows.append({"caption": caption, "value": _count(cap_now) + unit})
 	if mode != "":
 		var reach_now := EconomyConfig.infra_range_for_level(mode, level)
 		var reach_then := EconomyConfig.infra_range_for_level(mode, target)
 		if reach_then != reach_now:
-			rows.append({"caption": "Reach", "value": "%d → %d tiles" % [reach_now, reach_then]})
+			rows.append({"caption": REACH_CAPTION, "value": "%d → %d" % [reach_now, reach_then]})
 		elif reach_now > 0:
-			rows.append({"caption": "Reach", "value": "%d tiles" % reach_now})
+			rows.append({"caption": REACH_CAPTION, "value": "%d" % reach_now})
 	return rows
 
 
-## A meter's line: its caption, the meter, and the figure it reads (red when the link is over capacity).
+## A meter's line: the meter and the figure it reads (red when the link is over capacity). `caption` names
+## the meter's node.
 static func _meter_row(caption: String, load_now: float, cap: float, figure: String, figure_w: float, near: float, over: bool) -> HBoxContainer:
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 8)
-	var c := _caption(caption)
-	c.custom_minimum_size.x = CAPTION_W
-	hb.add_child(c)
 	var meter: Control = Meter.new()
 	meter.name = "Meter%s" % caption
 	meter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -510,10 +491,7 @@ static func _wells_row(node_name: String, caption: String) -> HBoxContainer:
 	var hb := HBoxContainer.new()
 	hb.name = node_name
 	hb.add_theme_constant_override("separation", GOOD_GAP)
-	var c := _caption(caption)
-	# The first well's frame starts in the meters' column.
-	c.custom_minimum_size.x = CAPTION_W + 8.0 - GOOD_GAP + ceilf(Well.reach()) * 0.5
-	hb.add_child(c)
+	hb.add_child(_caption(caption))
 	return hb
 
 
@@ -532,10 +510,10 @@ static func _wells_room(row: Control) -> MarginContainer:
 
 # ── Links that can still be built ─────────────────────────────────────────────────────────────────
 
-## One link that can be built: its emblem (no lamp: nothing is running to judge), its name and what it
-## carries, its reach and capacity at level 1 in the table's columns, its Build key, and under them what
-## laying it takes, or how long it has left while it is being built (the key latched with its lamp lit).
-## Hovering it lights its card: what building it costs and brings. Named InfraCell_<key> for the tutorial,
+## One link that can be built: its emblem (no lamp: nothing is running to judge), its name, the tiles it
+## reaches and its throughput at level 1 in the table's columns, its Build key, and under them what laying
+## it takes, or how long it has left while it is being built (the key latched with its lamp lit). Hovering
+## the key lights its card: what building it costs and brings. Named InfraCell_<key> for the tutorial,
 ## which presses the first Button in it: the Build key.
 static func _spare_module(panel: Control, tile_id: String, slot: Dictionary, project: Dictionary) -> Control:
 	var key := str(slot.get("key", ""))
@@ -565,8 +543,8 @@ static func _spare_module(panel: Control, tile_id: String, slot: Dictionary, pro
 	main.add_child(top)
 	top.add_child(_name_words(title, key))
 	var reach := EconomyConfig.infra_range_for_level(mode, 1) if mode != "" else 0
-	top.add_child(_cell(("%d tiles" % reach) if reach > 0 else "Grid", REACH_W))
-	top.add_child(_cell(_capacity_short(key, _capacity(key, 1)), CAPACITY_W))
+	top.add_child(_cell(str(reach) if reach > 0 else "Grid", reach_width()))
+	top.add_child(_cell(_capacity_short(key, _capacity(key, 1)), capacity_width()))
 
 	# The key on the same line as the figures it would bring, in the keys' column.
 	var q := Quote.quote(tile_id, bid) if project.is_empty() else {}
@@ -584,7 +562,6 @@ static func _spare_module(panel: Control, tile_id: String, slot: Dictionary, pro
 		var needs := _needs_row(tile_id, bid)
 		if needs != null:
 			main.add_child(_wells_room(needs))
-	Tip.attach(module, card)
 	return module
 
 
@@ -639,6 +616,7 @@ static func build_card(title: String, key: String, mode: String, bid: String, q:
 		if int(q.get("land_short", 0)) > 0:
 			card.rows.append({"caption": "Land", "value": "%d needed" % int(q.land_short), "tone": "bad"})
 		card.rows.append_array(gains)
+		card.rows.append({"caption": "Carries", "value": _carried(key)})
 		card.rows.append(time)
 		if bool(q.planning):
 			card.notes.append({"text": PLANNING_NOTE, "tone": "warn"})
@@ -649,6 +627,7 @@ static func build_card(title: String, key: String, mode: String, bid: String, q:
 	if int(q.land_units) > 0:
 		card.rows.append({"caption": "Land", "value": "%d to buy" % int(q.land_units)})
 	card.rows.append_array(gains)
+	card.rows.append({"caption": "Carries", "value": _carried(key)})
 	card.rows.append(time)
 	if bool(q.planning):
 		card.notes.append({"text": PLANNING_NOTE, "tone": "warn"})
@@ -658,18 +637,13 @@ static func build_card(title: String, key: String, mode: String, bid: String, q:
 	return card
 
 
-## A link's name over what it carries, filling the room its line leaves.
-static func _name_words(title: String, key: String) -> VBoxContainer:
+## A link's name, filling the room its line leaves. What it carries is on its Build key's card.
+static func _name_words(title: String, _key: String) -> VBoxContainer:
 	var words := VBoxContainer.new()
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	words.alignment = BoxContainer.ALIGNMENT_CENTER
 	words.add_theme_constant_override("separation", 0)
 	words.add_child(_print(title, true))
-	var carries := _print(_carried(key))
-	carries.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	carries.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	carries.custom_minimum_size.x = 90
-	words.add_child(carries)
 	return words
 
 
@@ -731,7 +705,7 @@ static func _heading_row(text: String, columns: bool, indent := 0.0) -> Control:
 	fill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hb.add_child(fill)
-	for pair in [["Reach", REACH_W], ["Capacity", CAPACITY_W]]:
+	for pair in [[REACH_CAPTION, reach_width()], [CAPACITY_CAPTION, capacity_width()]]:
 		var c := _caption(str(pair[0]))
 		c.custom_minimum_size.x = float(pair[1])
 		c.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -963,7 +937,7 @@ static func _capacity(key: String, level: int) -> int:
 static func _capacity_short(key: String, cap: int) -> String:
 	if cap <= 0:
 		return "No limit"
-	return ("%s MW" % _count(cap)) if key == "cables" else ("%s a turn" % _count(cap))
+	return ("%s MW" % _count(cap)) if key == "cables" else ("%s/turn" % _count(cap))
 
 
 ## The goods a link takes, in words, from the transport classes it tolerates.
@@ -986,6 +960,15 @@ static func _goods_words(classes: Array) -> String:
 	if parts.is_empty():
 		return "nothing"
 	return ", ".join(parts)
+
+
+## The spare modules' Tile Distance and Throughput columns: their set width, or their caption's when wider.
+static func reach_width() -> float:
+	return maxf(REACH_W, ceilf(Plate.FONT_SEMI.get_string_size(REACH_CAPTION.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, CAPTION_PX).x))
+
+
+static func capacity_width() -> float:
+	return maxf(CAPACITY_W, ceilf(Plate.FONT_SEMI.get_string_size(CAPACITY_CAPTION.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, CAPTION_PX).x))
 
 
 ## Every key in the column is this wide: the widest word a key says, latched with its lamp.

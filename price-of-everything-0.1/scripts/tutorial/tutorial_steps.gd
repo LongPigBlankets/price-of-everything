@@ -922,7 +922,7 @@ static func steps() -> Array:
 			"id": "build_alu_open",
 			"chapter": "Integration · Revenue",
 			"title": "Build an aluminium Furnace",
-			"body": "A Furnace makes %d aluminium a turn. Your factory needs %d, and the surplus %d sells each turn. Build it right here on your factory's tile: its output feeds the factory on the same tile with no shipping. We will improve this base process once it is running. Open the build tile and click Build." % [
+			"body": "A Furnace makes %d aluminium/turn. Your factory needs %d, and the surplus %d sells each turn. Build it right here on your factory's tile: its output feeds the factory on the same tile with no shipping. We will improve this base process once it is running. Open the build tile and click Build." % [
 				_recipe_output_qty("r_050"),
 				_recipe_input_qty("r_056", "aluminium"),
 				maxi(0, _recipe_output_qty("r_050") - _recipe_input_qty("r_056", "aluminium")),

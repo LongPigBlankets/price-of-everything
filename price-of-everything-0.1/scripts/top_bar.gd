@@ -3511,7 +3511,7 @@ func _add_transit_credit_rows(parent: VBoxContainer) -> void:
 	parent.add_child(_fly_row("Transit credit on the road", "%s · %s/turn" % [_money_text(balance), _money_text(balance * rate_pct / 100.0)], C_BRIGHT, C_BRIGHT, "FlyRowTransitCredit"))
 	var toggle := _fly_btn("", false)
 	toggle.name = "FlyTransitCreditToggle"
-	toggle.tooltip_text = "Port sales are paid when the goods reach the port. With this on, the bank pays you when they leave and charges %.2f%% a turn on what is still on the road. Turn it off to wait for payment and save the interest." % rate_pct
+	toggle.tooltip_text = "Port sales are paid when the goods reach the port. With this on, the bank pays you when they leave and charges %.2f%%/turn on what is still on the road. Turn it off to wait for payment and save the interest." % rate_pct
 	var label_for := func() -> String:
 		return "Advance port sales: %s" % ("On" if LoanState.transit_credit_enabled else "Off")
 	toggle.text = label_for.call()
@@ -3741,7 +3741,7 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 		var tcrow := _ds2_money_row("Transit credit on the road", LoanState.transit_credit_balance, DS2_CASH_COLOUR, digits, "FlyRowTransitCredit", DS2_SMALL_LED)
 		body.add_child(tcrow)
 		var toggle := _ds2_key_button("Advance port sales: %s" % ("On" if LoanState.transit_credit_enabled else "Off"), "FlyTransitCreditToggle")
-		toggle.tooltip_text = "Port sales are paid when the goods reach the port. With this on, the bank pays you when they leave and charges %.2f%% a turn on what is still on the road. Turn it off to wait for payment and save the interest." % rate_pct
+		toggle.tooltip_text = "Port sales are paid when the goods reach the port. With this on, the bank pays you when they leave and charges %.2f%%/turn on what is still on the road. Turn it off to wait for payment and save the interest." % rate_pct
 		toggle.pressed.connect(func() -> void:
 			LoanState.set_transit_credit_enabled(not LoanState.transit_credit_enabled)
 			_refresh_open_fly())

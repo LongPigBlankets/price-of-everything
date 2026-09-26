@@ -10,7 +10,9 @@ extends MarginContainer
 ## fills its inside with a dark metal plate (dark_plate.png), its edges under the rim, cropped from the
 ## render's middle at the render's scale rather than stretched, so its scratches are the size of every
 ## other plate's. `style` "slab" is that dark metal plate on its own, with no steel frame: a thin dark edge,
-## a soft shadow under it, and Building Detail's silver screw set in near each corner.
+## a soft shadow under it, and Building Detail's silver screw set in near each corner. `style` "bare" draws
+## nothing: its heading and content sit straight on the plate under it, inset as a framed section's are, so
+## its columns line up with the framed sections round it.
 
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const FRAME: Texture2D = preload("res://assets/ui/bdp_v3/section_frame.png")
@@ -81,6 +83,8 @@ func _notification(what: int) -> void:
 
 
 func _draw() -> void:
+	if style == "bare":
+		return
 	if style == "plastic":
 		Nine.paint(self, PLASTIC, Rect2(Vector2.ZERO, size).grow(PLASTIC_MARGIN), PLASTIC_CORNER_TEXELS)
 		var s := SCREW.get_size() / 2.0

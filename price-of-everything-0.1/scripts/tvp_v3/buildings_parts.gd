@@ -41,8 +41,8 @@ const RAISED := "res://assets/ui/bdp_v3/%s.png"
 ## lamp and its words; the text sizes (the owner's standard: body 14, captions 15, the printed £ 18).
 const PAD := Vector2(10.0, 8.0)
 const GAP := 10
-const EMBLEM_PX := 46.0
-const WELL_PX := 56
+const EMBLEM_PX := 54.0
+const WELL_PX := 66
 const LAMP_SCALE := 0.72
 const LAMP_GAP := 7
 const BODY_PX := 14
@@ -615,6 +615,12 @@ static func spacer(w: float, h: float) -> Control:
 ## cases take the body's width, as far from the sheet's rim on the right as on the left.
 class Column extends MarginContainer:
 	var rows: VBoxContainer
+	## Keep the scroll rail's room even while it hides, so the parts don't reflow when it shows (a tile
+	## with other companies' buildings, whose fold opening usually brings the rail).
+	var reserve := false:
+		set(v):
+			reserve = v
+			_fit()
 	var _bar: ScrollBar
 
 	func _init(gap: int) -> void:
@@ -642,7 +648,12 @@ class Column extends MarginContainer:
 		_bar = null
 
 	func _fit() -> void:
-		add_theme_constant_override("margin_right", GUTTER if _bar != null and _bar.visible else 0)
+		if _bar != null and _bar.visible:
+			add_theme_constant_override("margin_right", GUTTER)
+		elif reserve and _bar != null:
+			add_theme_constant_override("margin_right", GUTTER + roundi(_bar.get_combined_minimum_size().x))
+		else:
+			add_theme_constant_override("margin_right", 0)
 
 
 ## A raised render drawn so its art, not its frame, fills a `side`-pixel box, centred on the box's midline;
