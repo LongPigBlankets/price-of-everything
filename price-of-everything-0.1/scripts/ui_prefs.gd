@@ -74,9 +74,9 @@ var use_topbar_ds2: bool = true
 # The tile view v3: the site's control cabinet (docs/tile-view-ds2-plan.md §9). The default; the debug
 # cheat `toggle tvp v3` switches back to v2, which is then exactly as it was. Session-only, never persisted.
 var use_tvp_v3: bool = true
-# The Building Ledger in DS2 (docs/building-ledger-ds2-plan.md), built step by step. Off by default; the debug
-# cheat `toggle ledger ds2` switches it. With it off the ledger is exactly as it was. Session-only, never persisted.
-var use_ledger_ds2: bool = false
+# The Building Ledger in DS2 (docs/building-ledger-ds2-plan.md). The default; the debug cheat `toggle ledger ds2`
+# switches back to the v2 ledger, exactly as it was. Session-only, never persisted.
+var use_ledger_ds2: bool = true
 # The upgrade panel in DS2 (scripts/ledger_v3/upgrade_dialog_ds2.gd), opened from Building Detail and the ledger.
 # The default; the debug cheat `toggle upgrade ds2` switches back to the v2 dialog. Session-only, never persisted.
 var use_upgrade_ds2: bool = true

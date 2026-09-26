@@ -23,7 +23,7 @@ extends CanvasLayer
 ##   toggle topbar ds2                switch the top bar back to v3.1 (DS2 is default), and again to return
 ##   toggle tvp v3                    switch the tile view back to v2 (v3 is default), and again to return
 ##   toggle bdp v3                    switch building detail back to v2 (v3 is default), and again to return
-##   toggle ledger ds2                switch the building ledger to its DS2 look (in progress), and back
+##   toggle ledger ds2                switch the building ledger back to v2 (DS2 is default), and again to return
 ##   toggle upgrade ds2               switch the upgrade panel back to v2 (DS2 is default), and again to return
 ##   research all                     unlock every research node (alias of `unlock all`)
 ##   unlock hidden_buildings          enable the three hidden prototype buildings

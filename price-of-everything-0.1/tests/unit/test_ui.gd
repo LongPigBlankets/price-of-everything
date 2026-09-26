@@ -2375,6 +2375,9 @@ func _test_bdp_v3_output_checks() -> void:
 ## the routing objective on the Shipments and Stockpiles panel; off again, v2 back.
 func _test_building_ledger_ds2() -> void:
 	MatchState.reset()
+	var fresh: Object = UiPrefs.get_script().new()
+	_check(fresh.get("use_ledger_ds2") == true, "ledger ds2: the DS2 ledger is the default")
+	fresh.free()
 	var was: bool = UiPrefs.use_ledger_ds2
 	UiPrefs.set_use_ledger_ds2(false)
 	var a := BuildingState.add_building("b_007", "r_009", "tile_13_2", MatchState.LOCAL_PLAYER, "ledger_ds2_a")

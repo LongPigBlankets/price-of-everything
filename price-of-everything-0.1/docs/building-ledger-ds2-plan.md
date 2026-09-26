@@ -53,7 +53,7 @@ Every figure is the row model the v2 ledger already computes (`_row_vm`: CostSol
 
 ## Open decisions (owner)
 
-1. **Default.** Keep behind the switch until approved, then make it the default with `toggle ledger ds2` switching back, as the top bar and tile view did?
+1. **Default.** Decided: the DS2 ledger is the default (`UiPrefs.use_ledger_ds2`); `toggle ledger ds2` switches back to v2, as the top bar and tile view do.
 2. **Filters' room.** The key bed takes two rows of keys (about 130 px) above the table. Keep all eleven always in view, or fold the kind row (Production, Power, Infrastructure, the two greens) behind a key?
 3. **The house light.** Building Detail darkens its panel's far corner with its light overlay and gives the text back its brightness. The ledger is far wider; leave the light off (as now), or add it?
 4. **Rows for infrastructure.** Roads, cables and pipes show as rows with no figures and a spent Upgrade key. Keep them, or leave them to the Transport tab and the Infrastructure filter only?
