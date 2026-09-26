@@ -256,6 +256,32 @@ func _test_grid_selection_follows_panel() -> void:
 	terrain.queue_free()
 	await get_tree().process_frame
 
+
+## Each building's block in a land hex's full view, as its bounding box in squares.
+func _land_block_shapes(hex: Control) -> Array:
+	var cells: PackedInt32Array = hex.get("cell_group")
+	var groups: Array = hex.get("groups")
+	var cell_row: PackedInt32Array = hex.get("_cell_row")
+	var cell_col: PackedInt32Array = hex.get("_cell_col")
+	var out: Array = []
+	for gi in groups.size():
+		if not str(groups[gi].kind) in ["theirs", "yours", "feature"]:
+			continue
+		var c0 := 999
+		var c1 := -1
+		var r0 := 999
+		var r1 := -1
+		for k in cells.size():
+			if cells[k] == gi:
+				c0 = mini(c0, cell_col[k])
+				c1 = maxi(c1, cell_col[k])
+				r0 = mini(r0, cell_row[k])
+				r1 = maxi(r1, cell_row[k])
+		if c1 >= 0:
+			out.append(Vector2i(c1 - c0 + 1, r1 - r0 + 1))
+	return out
+
+
 func _test_tile_view_player_building_filter() -> void:
 	MatchState.reset()
 	Stockpile.clear_all()
@@ -1862,7 +1888,7 @@ func _test_bdp_v3_inbound_checks() -> void:
 		"inbound checks: transit is green within a turn, amber to four, red beyond, naming the slowest input (%s)" % mid_t.detail)
 	var freight: Dictionary = BR._freight_check({"shown": true, "transport_in": 5.0, "input_value": 100.0, "lamp_in": "warn"})
 	var free: Dictionary = BR._freight_check({"shown": true, "transport_in": 0.0, "input_value": 40.0, "inputs_free": false, "lamp_in": "ok"})
-	_check(str(freight.tone) == "warn" and str(freight.detail) == "£5.00 a turn to bring inputs in, 5% of their value."
+	_check(str(freight.tone) == "warn" and str(freight.detail) == "£5.00/turn to bring inputs in, 5% of their value."
 		and str(free.tone) == "ok",
 		"inbound checks: freight takes the economics' input transport lamp and gives the cost and its share (%s)" % freight.detail)
 	BuildingState.buildings.erase(iid)
@@ -1963,7 +1989,7 @@ func _test_bdp_v3_output_checks() -> void:
 		and BR._cheaper_mode(steel_id, ["roads"]) == "rail" and BR._cheaper_mode(steel_id, ["rail"]) == "" and BR._cheaper_mode(steel_id, []) == "rail"
 		and BR._cheaper_mode(water_id, ["roads", "rail"]) == "pipes" and BR._cheaper_mode(water_id, ["reinf_pipes"]) == ""
 		and BR._cheaper_mode(chlorine_id, ["roads"]) == "reinf_pipes" and BR._cheaper_mode(chlorine_id, ["reinf_pipes"]) == ""
-		and str(freight.tone) == ("ok" if 16.0 / qty < 0.15 else "warn") and str(freight.detail).contains("a unit to ship"),
+		and str(freight.tone) == ("ok" if 16.0 / qty < 0.15 else "warn") and str(freight.detail).contains("/unit to ship"),
 		"outputs checks: reach is amber, never red, when a cheaper infrastructure suits the good (rail; pipeline; reinforced for hazards), and no route out makes transit red (%s)" % no_route.detail)
 	# The port: green with room, amber within 10% of its cap for the good's transport class, red at it.
 	var port_tile := "tile_5_10"

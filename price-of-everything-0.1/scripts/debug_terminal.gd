@@ -20,6 +20,8 @@ extends CanvasLayer
 ##   swap empire view sprite          toggle the empire view sprite style (big 2.5D sprites, no backdrop)
 ##   swap port badge                 gold port hex on selling buildings <-> lines to the port row
 ##   swap empire button               toggle the Empire View button's two icon treatments
+##   toggle topbar ds2                switch the top bar back to v3.1 (DS2 is default), and again to return
+##   toggle bdp v3                    switch building detail back to v2 (v3 is default), and again to return
 ##   research all                     unlock every research node (alias of `unlock all`)
 ##   unlock hidden_buildings          enable the three hidden prototype buildings
 ##   unlock advisors                 open the full advisor roster, all seats + seat research
@@ -447,7 +449,7 @@ func _run_command(text: String) -> String:
 				return str(editor.call("procedural_central_buildings_command", cmd))
 			return str(editor.call("procedural_region_command", cmd, parts[2].to_lower()))
 		"help":
-			return "commands:  hide updates | show updates   |   cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap construct_panel_v3   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   enable|disable procedural <north|arin|vandel|capital|all>   |   enable|disable procedural central buildings  (map editor)   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  hide updates | show updates   |   cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap construct_panel_v3   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury|bdp v3|topbar ds2   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   enable|disable procedural <north|arin|vandel|capital|all>   |   enable|disable procedural central buildings  (map editor)   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 
