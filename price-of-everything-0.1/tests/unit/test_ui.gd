@@ -1124,6 +1124,118 @@ func _test_bdp_v3_rules() -> void:
 		"bdp v3: the rail is 16 px wide and keeps its ends (%s)" % str(rail.get_minimum_size()))
 
 
+## Building Detail's Input sources and Output destination sheets in DS2 (UiPrefs.use_routes_ds2): off, the v2
+## sheets exactly; on, the readout fixed under the title, a module a good on the plastic case with its figures
+## quoted by the economics, knobs whose options say what they do on the readout, turning a knob changing the
+## route and the rebuilt knob showing it, and no coordinates in the words.
+func _test_bdp_routes_ds2() -> void:
+	MatchState.reset()
+	Stockpile.clear_all()
+	var was_v3: bool = UiPrefs.use_bdp_v3
+	var was: bool = UiPrefs.use_routes_ds2
+	var fresh: Object = UiPrefs.get_script().new()
+	_check(fresh.get("use_routes_ds2") == true, "routes ds2: the DS2 input and output sheets are the default")
+	fresh.free()
+	UiPrefs.set_use_bdp_v3(true)
+	var terminal: Node = load("res://scripts/debug_terminal.gd").new()
+	add_child(terminal)
+	await get_tree().process_frame
+	terminal._cheats_unlocked = true
+	UiPrefs.use_routes_ds2 = false
+	var reply: String = terminal._run_command("toggle routes ds2")
+	_check(UiPrefs.use_routes_ds2 and reply.contains("DS2"), "routes ds2: `toggle routes ds2` switches the sheets to DS2 (%s)" % reply)
+	terminal.queue_free()
+	var tile := "tile_5_10"
+	var iid: String = BuildingState.add_building("b_007", "r_009", tile, MatchState.LOCAL_PLAYER, "routes_ds2")
+	var b: Dictionary = BuildingState.get_building(iid)
+	var recipe := Catalog.get_recipe("r_009")
+	var steel := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	var motor := str(Catalog.get_good_by_internal_name("motor").get("id", ""))
+	Stockpile.add(tile, steel, 60)
+	var panel = load("res://scripts/building_detail_panel_v2.gd").new()
+	add_child(panel)
+	await get_tree().process_frame
+	panel.show_building(b)
+	await get_tree().process_frame
+
+	UiPrefs.use_routes_ds2 = false
+	panel._open_input_sources_sheet(b, recipe)
+	await get_tree().process_frame
+	_check(panel.find_child("InputPlates", true, false) == null and panel.find_child("RoutesReadout", true, false) == null,
+		"routes ds2: off, the v2 input sheet exactly")
+	UiPrefs.use_routes_ds2 = true
+	panel._open_input_sources_sheet(b, recipe)
+	await get_tree().process_frame
+	var readout: Control = panel.find_child("RoutesReadout", true, false)
+	var scroll: ScrollContainer = panel.find_child("ActionSheetScroll", true, false)
+	_check(readout != null and scroll != null and readout.get_parent() == scroll.get_parent(),
+		"routes ds2: the readout stands under the title, outside the scroll")
+	_check(str(readout.call("shown_name")) == "Change the Input source for goods." and str(readout.call("shown_detail")).begins_with("The market sells only what you ship in"),
+		"routes ds2: with the pointer on no option the readout says what the sheet changes (%s)" % str(readout.call("shown_name")))
+	var steel_plate: Control = panel.find_child("Input_%s" % steel, true, false)
+	_check(steel_plate != null and str(steel_plate.get("style")) == "plastic" and steel_plate.get_parent().name == "InputPlates",
+		"routes ds2: each good is its own screwed plastic plate, straight on the sheet")
+	var inputs: Array = recipe.get("inputs", [])
+	var modules := inputs.filter(func(i: Dictionary) -> bool: return panel.find_child("Input_%s" % str(i.good_id), true, false) != null)
+	_check(modules.size() == inputs.size(), "routes ds2: a module for each of the %d inputs" % inputs.size())
+	var econ: Dictionary = load("res://scripts/building_economics.gd").per_turn(b)
+	var steel_line: Dictionary = (econ.inputs as Array).filter(func(l: Dictionary) -> bool: return str(l.good_id) == steel)[0]
+	var module: Control = panel.find_child("Input_%s" % steel, true, false)
+	var goods_row: Control = module.find_child("GoodsPerTurn", true, false)
+	var led: Control = goods_row.find_child("MoneyLed", true, false).get_child(1) if goods_row != null else null
+	_check(led != null and str(led.call("figure")).strip_edges() == "%.2f" % float(steel_line.value),
+		"routes ds2: the goods figure is the economics' own (%s, %s)" % [str(led.call("figure")) if led != null else "none", "%.2f" % float(steel_line.value)])
+	var stock_line: Control = module.find_child("StockLine", true, false)
+	_check(stock_line != null and (stock_line.get_child(1) as Label).text.begins_with("60 on the tile"),
+		"routes ds2: the stock line says what the tile holds")
+	var words: Label = module.find_child("SourceWords", true, false)
+	_check(words != null and not words.text.contains("(") and not words.text.contains(" - "),
+		"routes ds2: the source is said without coordinates or dashes (%s)" % (words.text if words != null else "none"))
+	var option: Button = module.find_child("RouteOption_GlobalMarket", true, false)
+	option.mouse_entered.emit()
+	_check(str(readout.call("shown_name")).contains("Global market") and str(readout.call("shown_detail")) != "",
+		"routes ds2: pointing at an option names it on the readout (%s)" % str(readout.call("shown_name")))
+	option.mouse_exited.emit()
+	# Turning Steel's knob to the stockpile: tile stock only, and the rebuilt knob points there.
+	var knob: Control = module.find_child("PrimaryKnob_%s" % steel, true, false)
+	knob.set("value", 1)
+	await get_tree().process_frame
+	var route: Dictionary = load("res://scripts/middleman_service.gd").input_source_route(iid, steel)
+	_check(str(route.primary) == "stockpile" and str(route.fallback) == "",
+		"routes ds2: turning the knob to the stockpile makes it tile stock only (%s)" % str(route))
+	var rebuilt: Control = panel.find_child("PrimaryKnob_%s" % steel, true, false)
+	_check(rebuilt != null and rebuilt != knob and int(rebuilt.get("value")) == 1, "routes ds2: the rebuilt knob shows the change")
+	var case: Control = panel.find_child("InputPlates", true, false)
+	scroll = panel.find_child("ActionSheetScroll", true, false)
+	_check(case.get_combined_minimum_size().x <= scroll.size.x - scroll.get_v_scroll_bar().get_combined_minimum_size().x,
+		"routes ds2: the case fits beside the scroll rail (%.0f in %.0f)" % [case.get_combined_minimum_size().x, scroll.size.x])
+
+	# The output: turned to this tile's stockpile.
+	panel._open_output_sheet(b, recipe)
+	await get_tree().process_frame
+	var out_module: Control = panel.find_child("Output_%s" % motor, true, false)
+	_check(out_module != null and out_module.find_child("DestinationLine", true, false) != null, "routes ds2: the output's module and where it goes")
+	var turn_to := func(choice: String) -> void:
+		var k: Control = panel.find_child("DestinationKnob_%s" % motor, true, false)
+		var ids: Array = (k.get("options") as Array).map(func(c: Dictionary) -> String: return str(c.id))
+		k.set("value", ids.find(choice) + 1)
+	turn_to.call("market")
+	await get_tree().process_frame
+	_check(MatchState.is_output_market(iid, motor), "routes ds2: turning the destination knob to the market sells the output there")
+	turn_to.call("stockpile")
+	await get_tree().process_frame
+	_check(MatchState.get_output_stockpile_destination(iid, motor) == tile and not MatchState.is_output_market(iid, motor),
+		"routes ds2: and to the stockpile keeps it on the tile")
+
+	panel._close_sheet()
+	panel.queue_free()
+	UiPrefs.use_routes_ds2 = was
+	UiPrefs.set_use_bdp_v3(was_v3)
+	MatchState.reset()
+	Stockpile.clear_all()
+	await get_tree().process_frame
+
+
 func _test_bdp_v3_panel() -> void:
 	var was: bool = UiPrefs.use_bdp_v3
 	UiPrefs.set_use_bdp_v3(false)

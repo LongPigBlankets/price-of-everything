@@ -80,6 +80,10 @@ var use_ledger_ds2: bool = true
 # The upgrade panel in DS2 (scripts/ledger_v3/upgrade_dialog_ds2.gd), opened from Building Detail and the ledger.
 # The default; the debug cheat `toggle upgrade ds2` switches back to the v2 dialog. Session-only, never persisted.
 var use_upgrade_ds2: bool = true
+# Building Detail's Input sources and Output destination sheets in DS2 (scripts/bdp_v3_routes.gd,
+# docs/bdp-routes-ds2-plan.md), with Building Detail v3 on. The default; the debug cheat `toggle routes ds2`
+# switches back to the v2 sheets. Session-only, never persisted.
+var use_routes_ds2: bool = true
 # Building Detail v3's diagnostics: the Visual view (true) or the Text rows. The player's choice on the
 # panel's switch, kept while the game runs (closing the panel or starting a match keeps it).
 var bdp_diag_visual: bool = false
@@ -196,6 +200,10 @@ func toggle_use_ledger_ds2() -> bool:
 func toggle_use_upgrade_ds2() -> bool:
 	use_upgrade_ds2 = not use_upgrade_ds2
 	return use_upgrade_ds2
+
+func toggle_use_routes_ds2() -> bool:
+	use_routes_ds2 = not use_routes_ds2
+	return use_routes_ds2
 
 func set_bdp_diag_visual(visual: bool) -> void:
 	bdp_diag_visual = visual

@@ -553,8 +553,8 @@ func _test_recipe_choice_row_mini_diagram() -> void:
 	# target once a sheet asks for it: PANEL_WIDTH + extra_width, exactly.
 	panel2.call("_open_recipe_sheet", {"instance_id": "probe_iid", "building_id": "b_007", "recipe_id": "r_033"})
 	await get_tree().process_frame
-	_check(absf(panel2.size.x - (panel2.PANEL_WIDTH + 100.0)) < 0.5,
-		"change-recipe sheet: opening it widens the panel to PANEL_WIDTH+100 to fit the mini diagram bars (got %.1f)" % panel2.size.x)
+	_check(absf(panel2.size.x - (float(panel2.call("_panel_width")) + 100.0)) < 0.5,
+		"change-recipe sheet: opening it widens the panel by 100 to fit the mini diagram bars (got %.1f)" % panel2.size.x)
 	panel2.call("_close_sheet")
 	await get_tree().process_frame
 	_check(absf(panel2.size.x - normal_width) < 0.5,
