@@ -38,14 +38,6 @@ static func payments() -> Array:
 			amount = total / float(EconomyConfig.LOAN_TERM_TURNS)
 		if amount > 0.0:
 			rows.append({"label": LoanState.loan_label(loan) + " instalment", "schedule": LoanState.repayment_label(loan), "amount": amount, "due_in": grace + 1, "kind": "loan"})
-	for iid: String in MatchState.building_tabs:
-		var tab: Dictionary = MatchState.building_tabs[iid]
-		# Unfinished credit windows still accrue; show them separately as an estimate.
-		if int(tab.get("turns_left", 0)) > 0:
-			continue
-		var slices := int(tab.get("slices_left", 0))
-		if str(tab.get("mode", "slices")) == "slices" and slices > 0:
-			rows.append({"label": "Building credit: " + _building_name(iid), "amount": float(tab.get("accrued", 0.0)) / float(slices), "due_in": 1, "kind": "credit"})
 	return rows
 
 static func due_total(rows: Array, horizon: int = 1) -> float:
@@ -311,14 +303,14 @@ static func record_arrival(amount: float) -> void:
 	if _recording:
 		_arrivals_paid += amount
 
-static func finish_turn(summary: Dictionary, tab_payments: float) -> void:
+static func finish_turn(summary: Dictionary) -> void:
 	if not _recording:
 		return
 	_recording = false
 	var total := 0.0
 	for row: Dictionary in _orders:
 		total += float(row.amount)
-	var paid := _arrivals_paid + float(summary.get("interest_paid", 0.0)) + tab_payments
+	var paid := _arrivals_paid + float(summary.get("interest_paid", 0.0))
 	last_comparison = {"turn": int(_before.turn), "forecast": _before, "actual_orders": _orders.duplicate(true),
 		"actual_due": paid, "actual_orders_total": total, "actual_labour": float(summary.get("labour_paid", 0.0)),
 		"actual_maintenance": float(summary.get("maintenance_paid", 0.0)), "due_error": paid - float(_before.due),

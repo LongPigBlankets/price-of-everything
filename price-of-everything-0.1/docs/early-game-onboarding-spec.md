@@ -236,6 +236,8 @@ sell-all-surplus.
 
 ### 5.3 Building operational loans — **LOCKED** (simplified 5-turn form)
 
+> **Removed, 26 September 2026.** The owner retired the credit facility: it was a stopgap from before the Logistics Intermediary, which removes the start-up cash dip it covered (the intermediary buys a new building's inputs and sells its output in the same turn). Measured before removal: it could never open in an intermediary game, which is the whole demo; in the older starts the automatic bridge loan and Treasury loans already carried the dip, the loan option paid the carried costs out twice, inputs were refunded whether or not they were bought, and power was carried only on tiles without cables. The Chief Investment construction loan went with it (it had been unreachable since the missing materials dialog was retired). The section below is kept as the record of what it was.
+
 Per newly *constructed* building (not NPC purchases, **never infrastructure**).
 Construct-panel setting, enabled by default. **Requires a seated CFO — any CFO**
 (§5.4); with no CFO there is no popup and no rollup — costs hit cash as today.

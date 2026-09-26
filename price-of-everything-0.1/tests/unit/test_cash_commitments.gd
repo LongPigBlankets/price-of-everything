@@ -61,15 +61,13 @@ func _test_booked_payments_exclude_paid_and_separate_grace() -> void:
 		{"turns_remaining": 1, "good_id": "g_003", "qty": 10, "destination_tile": "tile_5_10"},
 	]
 	TransportState.overflow_shipments = [{"good_id": "g_003", "qty": 10, "destination_tile": "tile_5_10"}]
-	MatchState.building_tabs = {"trial": {"turns_left": 0, "mode": "slices", "slices_left": 3, "accrued": 30.0}}
 	var rows := Forecast.payments()
-	_check(absf(Forecast.due_total(rows) - 42.5) < 0.001, "due includes billed freight once, loan and building credit; excludes already-paid overflow")
-	_check(rows.size() == 5, "future bill and grace loan remain visible separately")
+	_check(absf(Forecast.due_total(rows) - 32.5) < 0.001, "due includes billed freight once and the loan; excludes already-paid overflow")
+	_check(rows.size() == 4, "future bill and grace loan remain visible separately")
 	_check(int(rows[3].due_in) == 2, "loan grace expiry is not a same-turn cash payment")
 	var cash := MatchState.money
-	MatchState.tick_building_tabs()
 	LoanState.process_payments()
-	_check(absf(cash - MatchState.money - 15.0) < 0.001, "actual loan/tab payments match forecast while grace conversion stays non-cash")
+	_check(absf(cash - MatchState.money - 5.0) < 0.001, "actual loan payments match forecast while grace conversion stays non-cash")
 	LoanState.loans.clear()
 	MatchState.reset()
 
@@ -106,33 +104,6 @@ func _test_extra_cost_total_is_shared_and_excludes_routine_costs() -> void:
 	_check(is_equal_approx(float(costs.total), 0.0), "extra costs exclude construction payable later and routine spending")
 	_check(costs == Forecast.attention_costs(data, {"actual_orders": []}), "panel and notice share the same total regardless of ordering history")
 
-func _test_credit_expiry_repayment_and_refinance_cash() -> void:
-	MatchState.reset()
-	LoanState.loans.clear()
-	MatchState.money = 1000.0
-	MatchState.building_tabs = {
-		"expiring": {"turns_left": 1, "accrued": 60.0, "mode": "slices", "slices_left": 0},
-		"paying": {"turns_left": 0, "accrued": 120.0, "mode": "slices", "slices_left": 3},
-		"refinancing": {"turns_left": 1, "accrued": 90.0, "mode": "loan", "slices_left": 0}}
-	var before := MatchState.money
-	var movements := MatchState.tick_building_tabs()
-	_check(is_equal_approx(float(movements.repaid), 40.0), "credit: window expiry does not charge its first slice early")
-	_check(is_equal_approx(float(movements.loan_received), 90.0), "credit: refinancing cash is recorded separately from repayments")
-	_check(is_equal_approx(MatchState.money - before, float(movements.loan_received) - float(movements.repaid)), "credit: simultaneous borrowing and repayment reconcile to actual cash")
-	_check(not MatchState.building_tabs.has("refinancing"), "credit: converted tab is not resurrected or repaid twice")
-	before = MatchState.money
-	movements = MatchState.tick_building_tabs()
-	_check(is_equal_approx(float(movements.repaid), 40.0 + 60.0 / MatchState.TAB_SLICES), "credit: first instalment starts the turn after the window closes")
-	_check(is_equal_approx(before - MatchState.money, float(movements.repaid)), "credit: next instalments reconcile to actual cash")
-	var summary := {"money_in": 500.0, "money_out": 100.0, "goods_sales_revenue": 500.0,
-		"labour_paid": 140.0, "building_tab_carried": 40.0, "building_credit_repaid": 30.0,
-		"building_credit_loan_received": 90.0}
-	_check(is_equal_approx(Production.cash_change_of(summary), 460.0), "credit: cash report includes financing without changing operating net")
-	_check(is_equal_approx(preload("res://scripts/money_panel.gd").net_cash_of(summary), 460.0), "credit: Balance rows match cash report with both financing directions")
-	_check(is_equal_approx(Production.cash_change_of({"money_in": 20.0, "money_out": 5.0}), 15.0), "credit: old summaries without new fields still render")
-	LoanState.loans.clear()
-	MatchState.reset()
-
 func _test_attention_costs_exclude_routine_spending() -> void:
 	var previous := {"actual_orders": [{"tile": "a", "good": "ore", "qty": 10}]}
 	var data := {"labour": 500.0, "maintenance": 200.0, "payments": [
@@ -143,7 +114,6 @@ func _test_attention_costs_exclude_routine_spending() -> void:
 	(data.payments as Array).append_array([
 		{"kind": "shipment", "source_kind": "construction", "amount": 25.0, "due_in": 1},
 		{"kind": "shipment", "source_kind": "upgrade", "amount": 30.0, "due_in": 3},
-		{"kind": "credit", "amount": 5.0, "due_in": 1},
 		{"kind": "loan", "amount": 9.0, "due_in": 1},
 		{"kind": "loan", "amount": 50.0, "due_in": 3}])
 	(data.orders as Array).append({"kind": "input", "tile": "b", "good": "ore", "qty": 4, "amount": 40.0})

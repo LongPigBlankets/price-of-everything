@@ -3323,47 +3323,22 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	var warehousing := float(econ.get("warehousing_cost", 0.0))
 	if warehousing > 0.0:
 		vb.add_child(_metric("Warehousing / turn", "−£%.2f" % warehousing, DS.PALETTE["DANGER"], false))
-	var financing_per_turn := _add_carried_rows(vb)
+	_add_carried_rows(vb)
 	# Carbon levy on this recipe's taxed inputs (only shown once the policy is in force).
 	var carbon_tax := float(econ.get("carbon_tax", 0.0))
 	if carbon_tax > 0.0:
 		vb.add_child(_metric("Carbon tax / turn", "−£%.2f" % carbon_tax, DS.PALETTE["DANGER"], false))
 	vb.add_child(HSeparator.new())
-	# Operations net (output − running costs) minus this building's own build financing, so the
-	# bottom line reflects the cash it actually contributes while its construction debt is live.
-	var net := float(econ.get("net", 0.0)) - financing_per_turn
+	var net := float(econ.get("net", 0.0))
 	vb.add_child(_metric("Net / turn", "%s£%.2f" % ["+" if net >= 0.0 else "−", absf(net)], DS.PALETTE["OK"] if net >= 0.0 else DS.PALETTE["DANGER"], true))
 	return card
 
-## Carried costs and held stock, both money or goods the player owns but cannot see on the tile, so they
-## get a line in the economics rather than living only in the sim: this building's loan repayment and
-## what is stored for it. Returns the repayment per turn.
-func _add_carried_rows(vb: VBoxContainer) -> float:
-	var iid_econ := str(_current_building.get("instance_id", ""))
-	# The REPAYMENT, not the outstanding tab: what it takes a turn and how many turns are
-	# left to run. The total is still there to read — it is this figure
-	# times the turns — but the per-turn cost is what a player plans around.
-	# Financing this building carries per turn: the deferred build-cost tab AND any construction
-	# loan taken to build it (tag_last_loan_building tied it to this instance). Both are shown in
-	# the one "Loan repayment" line and — unlike before — folded into the Net below, so the bottom
-	# line is the cash this building actually leaves the company after servicing its own build debt.
-	# General empire loans are excluded on purpose; they live at the company level.
-	var tab_pay: Dictionary = MatchState.building_tab_repayment(iid_econ)
-	var tab_per := float(tab_pay.get("per_turn", 0.0)) if float(tab_pay.get("accrued", 0.0)) > 0.0 else 0.0
-	var loan_pay: Dictionary = LoanState.building_loan_repayment(iid_econ)
-	var loan_per := float(loan_pay.get("per_turn", 0.0))
-	var financing_per_turn := tab_per + loan_per
-	if financing_per_turn > 0.0:
-		var turns_left := maxi(int(tab_pay.get("turns_left", 0)), int(loan_pay.get("turns_left", 0)))
-		var starts_in := int(tab_pay.get("starts_in", 0))
-		var value := "−£%.2f  (%d turns)" % [financing_per_turn, turns_left]
-		if starts_in > 0 and loan_per <= 0.0:
-			value = "−£%.2f  (%d turns, starts in %d)" % [financing_per_turn, turns_left, starts_in]
-		vb.add_child(_metric("Loan repayment", value, DS.PALETTE["WARN"], false))
-	var held := MatchState.ghost_holding_units(iid_econ)
+## Goods held for this building off the tile: the player owns them but cannot see them there,
+## so they get a line in the economics rather than living only in the sim.
+func _add_carried_rows(vb: VBoxContainer) -> void:
+	var held := MatchState.ghost_holding_units(str(_current_building.get("instance_id", "")))
 	if held > 0:
 		vb.add_child(_metric("Stored for this building", "%d units" % held, DS.PALETTE["TEXT_MUTED"], false))
-	return financing_per_turn
 
 ## v3's economics (BuildingEconomics.per_turn), on the frame's steel:
 ##   Value added in production   its output less inputs, labour and upkeep; opens to show each;

@@ -20,14 +20,12 @@ const CELL_SIZE := 72.0
 signal cancelled
 signal buy_requested(building_id: String, recipe_id: String, tile_id: String)
 signal use_stockpile_requested(building_id: String, recipe_id: String, tile_id: String)
-signal credit_requested(building_id: String, recipe_id: String, tile_id: String)
 
 var _missing_grid: GridContainer
 var _market_total_label: Label
 var _eta_label: Label
 var _buy_button: Button
 var _use_button: Button
-var _credit_button: Button
 
 var _building_id: String = ""
 var _recipe_id: String = ""
@@ -49,8 +47,6 @@ func open(building_id: String, recipe_id: String, tile_id: String, missing: Dict
 	_update_market_total()
 	_update_eta()
 	_update_use_button(missing)
-	# Chief Investment unlocks build-on-credit; hidden otherwise.
-	_credit_button.visible = MatchState.construction_credit_available()
 	visible = true
 	move_to_front()
 
@@ -178,11 +174,6 @@ func _build_ui() -> void:
 	_buy_button.pressed.connect(_on_buy_pressed)
 	row.add_child(_buy_button)
 
-	_credit_button = _make_button("Build on credit (10 turns @ 5%)", 1.5)
-	_credit_button.visible = false
-	_credit_button.pressed.connect(_on_credit_pressed)
-	row.add_child(_credit_button)
-
 	var cancel_button := _make_button("Cancel construction", 1.0)
 	cancel_button.pressed.connect(_on_cancel_pressed)
 	row.add_child(cancel_button)
@@ -275,8 +266,3 @@ func _on_buy_pressed() -> void:
 func _on_use_pressed() -> void:
 	visible = false
 	use_stockpile_requested.emit(_building_id, _recipe_id, _tile_id)
-
-
-func _on_credit_pressed() -> void:
-	visible = false
-	credit_requested.emit(_building_id, _recipe_id, _tile_id)

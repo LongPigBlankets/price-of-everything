@@ -82,16 +82,6 @@ func _ready() -> void:
 	check(payback != null and payback.get_theme_font_size("font_size") == 20, "Payback is prominent")
 	for label in timeline.get_children():
 		check(not label.text.contains("£"), "Forecast avoids money amounts")
-	AdvisorState.advisor_seats = {"cfo": "vera"}
-	MatchState.set_construct_credit_default("slices")
-	await settle()
-	timeline = hover.card.find_child("RevenueTimeline", true, false)
-	check(timeline.get_child_count() == 18 and timeline.get_child(13).text == "During repayment", "CFO adds one repayment row")
-	check(timeline.get_child(16).text == "Stable production\nafter repayment", "Stable production follows the CFO repayment row")
-	var forecast: Dictionary = Preview.preview("tile_5_10", "b_002", "r_005").forecast
-	check(timeline.get_child(15).text == "Turn %d onwards" % (int(forecast.financing.end) + 1), "Stable production starts after the last repayment")
-	check(timeline.get_child(17).text == table_script._cash_direction(float(forecast.steady_net)), "Final outlook excludes temporary repayment costs")
-	check(hover.card.size.y < 500, "CFO hover remains compact")
 
 	Stockpile.stockpile_changed.emit()
 	check(hover._key == "", "Material changes invalidate the site quote without moving the cursor")

@@ -306,19 +306,6 @@ func _test_advisor_phase2_effects() -> void:
 	# Upgrade kit is rebated the same way as a build (shares construction_rebate)
 	_check(is_equal_approx(MatchState._materials_rebate({str(g): 10}), 10.0 * MarketState.get_price(str(g)) * 0.10),
 		"phase2: Chief Investment rebates 10% of upgrade-kit materials value")
-	# Seated Chief Investment also unlocks build-on-credit (10-turn, 5% construction loan)
-	_check(MatchState.construction_credit_available(), "phase2: seated Chief Investment unlocks build-on-credit")
-	var money_b := MatchState.money
-	var loans_b := LoanState.loans.size()
-	var out_b := LoanState.total_outstanding()
-	if LoanState.take_construction_loan(20.0):
-		var new_loan: Dictionary = LoanState.loans[LoanState.loans.size() - 1]
-		_check(LoanState.loans.size() == loans_b + 1
-			and is_equal_approx(LoanState.total_outstanding() - out_b, 21.0)
-			and int(new_loan.get("turns_remaining", 0)) == LoanState.CONSTRUCTION_LOAN_TERM,
-			"phase2: construction loan owes principal + 5% over 10 turns")
-		LoanState.loans.remove_at(LoanState.loans.size() - 1)
-	MatchState.money = money_b
 	# COO negotiates grid tariffs: cheaper imports, better-paid exports (tier 3 -10% / +10%).
 	AdvisorState.advisor_seats = {"coo": "tom"}   # tom ops 3 -> COO tier 3
 	AdvisorState.reconcile_advisor_modifiers()
@@ -346,7 +333,6 @@ func _test_advisor_phase2_effects() -> void:
 		"impact: seat maluses do not appear as positive bonus value")
 	AdvisorState.advisor_seats = {}
 	AdvisorState.reconcile_advisor_modifiers()
-	_check(not MatchState.construction_credit_available(), "phase2: no Chief Investment -> build-on-credit locked")
 	AdvisorState.advisor_seats = saved_seats
 	AdvisorState.reconcile_advisor_modifiers()
 	Modifiers.reset()

@@ -55,13 +55,9 @@ func _test_tile_switch_is_atomic_and_sides_independent() -> void:
 	_check(Stockpile.get_at_tile("tile_5_4", "g_006")==40, "hiding stockpile preserves owned stock")
 	cleanup()
 
-func _test_tile_switch_credit_and_ownership_guards() -> void:
-	var ids := setup(2)
+func _test_tile_switch_ownership_guards() -> void:
+	setup(2)
 	Service.set_tile_mode("tile_5_4", "input", "managed")
-	MatchState.building_tabs[ids[1]] = {"amount":10.0}
-	_check(not Service.set_tile_mode("tile_5_4", "input", "middleman").ok, "one credit tab rejects whole operation")
-	_check(not Service.uses_inputs(ids[0]), "earlier eligible building not partially switched")
-	MatchState.building_tabs.clear()
 	var npc := BuildingState.add_building("b_007", "r_009", "tile_5_4", "npc")
 	_check(Service.tile_sides("tile_5_4").input.size()==2, "NPC excluded from tile controls")
 	Service.set_tile_mode("tile_5_4", "input", "middleman")

@@ -67,9 +67,7 @@ var _goods_purchased_value: Label
 var _proj_goods_purchased_value: Label
 var _warehousing_value: Label
 var _advisor_value: Label
-var _building_tab_value: Label
-var _credit_repaid_value: Label
-var _credit_loan_value: Label
+var _operating_loan_value: Label
 var _proj_warehousing_value: Label
 var _profit_sharing_value: Label
 var _proj_profit_sharing_value: Label
@@ -363,13 +361,6 @@ func _ready() -> void:
 	_goods_purchased_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Goods purchased")
 	_proj_goods_purchased_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Goods purchased")
 	_advisor_value = _insert_cost_row(_costs_section, "LabourRow", "Advisor salaries")
-	_building_tab_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Put on building credit")
-	# Running costs a new building charged to its credit window instead of paying in cash
-	# this turn. It reads as a CREDIT here because the lines above already charged it in
-	# full; this is the part that did not leave the bank yet. The tab settles when the
-	# window closes (MatchState.tick_building_tabs).
-	if _building_tab_value != null and _building_tab_value.get_parent() != null:
-		_building_tab_value.get_parent().tooltip_text = "Running costs charged to a new building's credit window rather than paid in cash this turn. They are already counted in the costs above; this line takes back the part you have not actually paid yet, and the tab settles when the window closes."
 	_normalise_balance_rows()
 	_warehousing_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Warehousing")
 	_proj_warehousing_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Warehousing")
@@ -382,10 +373,8 @@ func _ready() -> void:
 	_proj_green_subsidy_value = _insert_finance_row(proj_revenue_section, "Proj_PowerSalesRow", "Green subsidy", "+£0.00")
 	var projection_content := $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent as VBoxContainer
 	_profit_sharing_value = _insert_finance_row(_balance_content, "DividendsRow", "Profit Sharing", "-£0.00")
-	_credit_repaid_value = _insert_finance_row(_balance_content, _profit_sharing_value.get_parent().name, "Building credit repaid", "-£0.00")
-	_credit_repaid_value.name = "BuildingCreditRepaidValue"
-	_credit_loan_value = _insert_finance_row(_balance_content, _credit_repaid_value.get_parent().name, "Operating loan proceeds", "+£0.00")
-	_credit_loan_value.name = "BuildingCreditLoanValue"
+	_operating_loan_value = _insert_finance_row(_balance_content, _profit_sharing_value.get_parent().name, "Operating loan proceeds", "+£0.00")
+	_operating_loan_value.name = "OperatingLoanValue"
 	_proj_profit_sharing_value = _insert_finance_row(projection_content, "Proj_DividendsRow", "Profit Sharing", "-£0.00")
 	# After every row exists, not before: both passes walk the finished sheet.
 	_normalise_balance_rows()
@@ -589,15 +578,13 @@ static func operating_costs_of(s: Dictionary) -> float:
 	return float(s.get("maintenance_paid", 0.0)) + float(s.get("labour_paid", 0.0)) \
 		+ float(s.get("advisor_paid", 0.0)) + float(s.get("transport_paid", 0.0)) \
 		+ float(s.get("power_purchase_cost", 0.0)) + float(s.get("goods_purchased_cost", 0.0)) \
-		+ float(s.get("warehousing_paid", 0.0)) + float(s.get("carbon_tax_paid", 0.0)) \
-		- float(s.get("building_tab_carried", 0.0))
+		+ float(s.get("warehousing_paid", 0.0)) + float(s.get("carbon_tax_paid", 0.0))
 
-## Must equal Production.cash_change_of: operating flows plus credit financing movements.
+## Must equal Production.cash_change_of: operating flows plus the intermediary's operating loans.
 static func net_cash_of(s: Dictionary) -> float:
 	return total_revenue_of(s) - operating_costs_of(s) - float(s.get("interest_paid", 0.0)) \
 		- float(s.get("taxes_paid", 0.0)) - float(s.get("dividends_paid", 0.0)) \
-		- float(s.get("profit_sharing_paid", 0.0)) - float(s.get("building_credit_repaid", 0.0)) \
-		+ float(s.get("building_credit_loan_received", 0.0)) + float(s.get("middleman_financing", 0.0))
+		- float(s.get("profit_sharing_paid", 0.0)) + float(s.get("middleman_financing", 0.0))
 
 
 func _refresh_balance_sheet() -> void:
@@ -615,7 +602,6 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	var maintenance: float = summary.get("maintenance_paid", 0.0)
 	var labour: float = summary.get("labour_paid", 0.0)
 	var advisor: float = summary.get("advisor_paid", 0.0)
-	var tab_carried: float = summary.get("building_tab_carried", 0.0)
 	var transport: float = summary.get("transport_paid", 0.0)
 	var power_purchase: float = summary.get("power_purchase_cost", 0.0)
 	var goods_purchased: float = summary.get("goods_purchased_cost", 0.0)
@@ -648,11 +634,6 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	_render_transport_breakdown(transport, summary.get("transport_breakdown", {}))
 	_goods_purchased_value.text = "-£%.2f" % goods_purchased
 	_warehousing_value.text = "-£%.2f" % warehousing
-	# A CREDIT, not a charge: these running costs are charged in full on the lines above and
-	# then carried, so the row gives the money back and the total tells the truth. What is owed
-	# across every tab is a running balance, not this turn's movement — it goes in the tooltip.
-	_building_tab_value.text = "+£%.2f" % tab_carried
-	_building_tab_value.tooltip_text = "Deferred onto building tabs this turn.\nOutstanding across all tabs: £%.2f" % MatchState.total_building_tab_debt()
 	_carbon_tax_value.text = "-£%.2f" % carbon_tax
 	_green_subsidy_value.text = "+£%.2f" % green_subsidy
 	total_costs_value.text = "-£%.2f" % total_costs
@@ -673,12 +654,11 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	
 	dividends_value.text = "-£%.2f" % dividends
 	_profit_sharing_value.text = "-£%.2f" % profit_sharing
-	_credit_repaid_value.text = "-£%.2f" % float(summary.get("building_credit_repaid", 0.0))
-	_credit_loan_value.text = "+£%.2f" % (float(summary.get("building_credit_loan_received", 0.0)) + float(summary.get("middleman_financing", 0.0)))
-	_credit_loan_value.get_parent().visible = (float(summary.get("building_credit_loan_received", 0.0)) + float(summary.get("middleman_financing", 0.0))) > 0.0
+	_operating_loan_value.text = "+£%.2f" % float(summary.get("middleman_financing", 0.0))
+	_operating_loan_value.get_parent().visible = float(summary.get("middleman_financing", 0.0)) > 0.0
 	
 	net_cashflow_value.text = _format_signed(net_cashflow)
-	net_cashflow_value.get_parent().tooltip_text = "Cash movement from the last production settlement, including building-credit repayments and operating loan proceeds. Player purchases, loans taken between turns and later events are separate."
+	net_cashflow_value.get_parent().tooltip_text = "Cash movement from the last production settlement, including operating loan proceeds. Player purchases, loans taken between turns and later events are separate."
 	_color_for_value(net_cashflow_value, net_cashflow)
 
 	# Per-building-type breakdown tooltips.
