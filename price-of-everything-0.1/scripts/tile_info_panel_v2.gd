@@ -885,6 +885,28 @@ func _set_key_v3(tab_id: String, tone: String, figure: String, pre: String, unit
 	(t.root as Control).tooltip_text = tip
 
 
+## When the tile has no cables but your buildings on it make or draw power, what can't happen: "Cables
+## missing. Power production not possible." (or consumption, or both); otherwise "". Power only moves on
+## a tile through its cables (Power.tile_power_cap is 0 without them).
+static func cables_missing_text(tile_id: String) -> String:
+	if tile_id == "" or Power.tile_power_cap(tile_id) > 0:
+		return ""
+	var makes := false
+	var draws := false
+	for b: Dictionary in BuildingState.get_buildings_on_tile(tile_id):
+		if not BuildingState.is_player_owned(b):
+			continue
+		var recipe := Catalog.get_recipe(str(b.get("recipe_id", "")))
+		if str(recipe.get("output_name", "")) == "power" or str(recipe.get("output_1", "")) == "power":
+			makes = true
+		if int(recipe.get("energy_req", 0)) > 0:
+			draws = true
+	if not makes and not draws:
+		return ""
+	var what := "production and consumption" if makes and draws else ("production" if makes else "consumption")
+	return "Cables missing. Power %s not possible." % what
+
+
 ## The keys' figures (docs/tile-view-ds2-plan.md §4.2): your buildings, or the stalled and problem ones
 ## when any; net MW; net value added; stock fill; links near capacity of those built.
 func _refresh_keys_v3() -> void:
@@ -909,8 +931,12 @@ func _refresh_keys_v3() -> void:
 		_set_key_v3("bl", "off", str(yours), "", "", "Your buildings on this tile")
 
 	var power := TileViewData.power_summary(_current_tile_id)
-	_set_key_v3("power", tone.call(str(power.status)), "0" if power.status == "muted" else str(int(power.net)), "", "MW",
-		"Net power on this tile: made less drawn")
+	var stranded := cables_missing_text(_current_tile_id)
+	if stranded != "":
+		_set_key_v3("power", "bad", "0", "", "MW", stranded)
+	else:
+		_set_key_v3("power", tone.call(str(power.status)), "0" if power.status == "muted" else str(int(power.net)), "", "MW",
+			"Net power on this tile: made less drawn")
 
 	var prod := TileViewData.production_summary(_current_tile_id)
 	var money := MoneyFigure.led(float(prod.net_value))
@@ -979,7 +1005,7 @@ func _refresh_status_line_v3(tile_data: Dictionary) -> void:
 	if gated.status == "unsurveyed":
 		words.append("Deposits unknown")
 	if not (gated.rows as Array).is_empty():
-		words.append(_v3_deposit_tags(gated.rows))
+		words.append(_v3_deposit_tags(gated.rows, gated.status != "unsurveyed"))
 	if not port.is_empty():
 		words.append(_v3_port_link(port))
 	for i in words.size():
@@ -1004,12 +1030,15 @@ func _refresh_status_line_v3(tile_data: Dictionary) -> void:
 		else "This tile is out of survey range. Survey more tiles to extend your range."
 
 
-## The tile's deposits in the status line: each good's icon with its size after it (a question mark while the
-## size is unknown), the full name and size on hover.
-func _v3_deposit_tags(rows: Array) -> HBoxContainer:
+## The tile's deposits in the status line, after the word Deposits (left out on an unsurveyed tile, whose
+## line already says the deposits are unknown): each good's icon with its size after it where the game
+## tracks one (a question mark while unknown), the full name and size on hover.
+func _v3_deposit_tags(rows: Array, captioned: bool) -> HBoxContainer:
 	var tags := HBoxContainer.new()
 	tags.name = "Deposits"
 	tags.add_theme_constant_override("separation", 10)
+	if captioned:
+		tags.add_child(_v3_tag("Deposits"))
 	for row: Dictionary in rows:
 		var tag := HBoxContainer.new()
 		tag.name = "Deposit_%s" % str(row.get("good_id", ""))

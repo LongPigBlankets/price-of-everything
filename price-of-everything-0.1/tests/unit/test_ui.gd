@@ -462,6 +462,25 @@ func _land_block_shapes(hex: Control) -> Array:
 	return out
 
 
+func _test_tile_view_cables_missing() -> void:
+	# A tile without cables where your buildings make or draw power says so, and the Power key goes red.
+	var Panel := load("res://scripts/tile_info_panel_v2.gd")
+	var tile := ""
+	for candidate: String in ["tile_6_1", "tile_12_5", "tile_11_4", "tile_18_18"]:
+		if Power.tile_power_cap(candidate) == 0:
+			tile = candidate
+			break
+	if tile == "":
+		_check(false, "cables missing: a fixture tile without cables")
+		return
+	_check(Panel.cables_missing_text(tile) == "", "cables missing: nothing to say with none of your buildings on the tile")
+	var factory := BuildingState.add_building("b_007", "r_009", tile, MatchState.LOCAL_PLAYER, "cabless_motor")
+	var text: String = Panel.cables_missing_text(tile)
+	BuildingState.buildings.erase(factory)
+	_check(text == "Cables missing. Power consumption not possible.", "cables missing: a factory drawing power on a tile without cables (%s)" % text)
+	_check(Panel.cables_missing_text("tile_5_10") == "" or Power.tile_power_cap("tile_5_10") == 0, "cables missing: a tile with cables says nothing")
+
+
 func _test_tile_view_cabinet() -> void:
 	# Tile view v3's shell: the stainless door with its engraved nameplate (the name, the coordinates on hover),
 	# five latching keys with Transport added, the pressed key latched and its tab open, and the v2 panel back
