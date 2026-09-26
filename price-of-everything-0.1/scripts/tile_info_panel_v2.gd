@@ -64,6 +64,15 @@ const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const V3Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const V3Key := preload("res://scripts/bdp_v3_key.gd")
 const CabinetKey := preload("res://scripts/tile_cabinet_key.gd")
+const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
+## The display's marks for a tab that needs a look.
+const V3_KEY_MARK := {"warn": Color("#ffb21f"), "bad": Color("#ff3b2f")}
+## The planning limit's explanation, on hover of the term in the land line.
+const V3_PLANNING_NOTE := "Above the planning limit, local opposition makes construction more complex, increasing materials requirements by 50%"
+## The body sheet's padding, logical pixels.
+const V3_BODY_PAD := 22
+## Deposit icons in the status line, logical pixels.
+const V3_DEPOSIT_ICON := 22.0
 const LandHex := preload("res://scripts/tile_land_hex.gd")
 const PlayerColours := preload("res://scripts/player_colours.gd")
 const V3Led := preload("res://scripts/bdp_v3_led.gd")
@@ -76,7 +85,7 @@ const V3_TEXELS := 2.0 / 1.875
 const V3_DOOR: Texture2D = preload("res://assets/ui/bdp_v3/tile_door.png")
 const V3_DOOR_MARGIN := 24.0
 const V3_DOOR_CORNER := 96.0
-const V3_DOOR_PIPE_INSET := 16.0
+const V3_DOOR_PIPE_INSET := 0.0
 const V3_FLANGE_H: Texture2D = preload("res://assets/ui/bdp_v3/tile_flange_h.png")
 const V3_FLANGE_V: Texture2D = preload("res://assets/ui/bdp_v3/tile_flange_v.png")
 const V3_FLANGE := 64.0
@@ -180,14 +189,14 @@ var _nameplate: Control = null
 var _nameplate_text := ""
 var _land_hex: Control = null
 var _terrain_glyph: TextureRect = null
-var _land_readout: Label = null
+var _land_readout: HFlowContainer = null
 var _survey_key: Control = null
 ## The land in full, shown in the body's place while open.
 var _land_open := false
 var _land_view: ScrollContainer = null
 var _land_full: Control = null
 var _land_list: VBoxContainer = null
-var _land_view_readout: Label = null
+var _land_view_readout: HFlowContainer = null
 var _body_scroll: ScrollContainer = null
 
 func _enter_tree() -> void:
@@ -412,7 +421,9 @@ func _build_ui_v3() -> void:
 
 	# The body: the open tab on a sheet of the bar's navy steel, the dark ground the tabs were built on,
 	# until each is restyled.
-	var body_sheet := _v3_sheet(12)
+	# Room enough inside the sheet's rim for the cases the tabs set in it, whose renders reach past their
+	# edges for their shadows (the section frame's 18 layout px, the plastic plate's 14).
+	var body_sheet := _v3_sheet(V3_BODY_PAD)
 	body_sheet.name = "BodySheet"
 	body_sheet.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(body_sheet)
@@ -544,10 +555,9 @@ func _build_land_row() -> HBoxContainer:
 	status.add_theme_constant_override("v_separation", 4)
 	_chips_row = status
 	col.add_child(status)
-	_land_readout = _v3_print_white("")
+	_land_readout = HFlowContainer.new()
 	_land_readout.name = "LandFigures"
-	_land_readout.add_theme_color_override("font_color", V3_INK)
-	_land_readout.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_land_readout.add_theme_constant_override("h_separation", 0)
 	col.add_child(_land_readout)
 	var keys := HBoxContainer.new()
 	keys.add_theme_constant_override("separation", 10)
@@ -588,9 +598,9 @@ func _build_land_view() -> ScrollContainer:
 	title.add_theme_font_override("font", Plate.FONT_SEMI)
 	title.add_theme_font_size_override("font_size", V3_CAPTION_PX)
 	head.add_child(title)
-	_land_view_readout = _v3_print_white("")
+	_land_view_readout = HFlowContainer.new()
+	_land_view_readout.add_theme_constant_override("h_separation", 0)
 	_land_view_readout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_land_view_readout.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	head.add_child(_land_view_readout)
 	var close := V3Key.make("close")
 	close.name = "LandCloseKey"
@@ -634,7 +644,7 @@ func _refresh_land_view() -> void:
 	var chart := TileViewData.land_chart_data(_current_tile_id, _current_tile_data)
 	var totals := TileViewData.land_totals(_current_tile_id, _current_tile_data)
 	_land_full.configure(chart, totals)
-	_land_view_readout.text = _land_figures(totals)
+	_fill_land_line(_land_view_readout, DS.PALETTE.TEXT)
 	for child in _land_list.get_children():
 		_land_list.remove_child(child)
 		child.queue_free()
@@ -722,72 +732,103 @@ func _land_line(colour: Variant, text: String, units: String) -> HBoxContainer:
 	return line
 
 
-## The land's figures in words: the room left before the planning limit (or that it is passed), free land
-## and land to buy.
-func _land_figures(totals: Dictionary) -> String:
-	var parts: Array = []
+## The land in words: how much land until the planning limit (underlined, its hover the explanation) and
+## how much until the tile's cap, both counting everyone's buildings as the build check does.
+func _fill_land_line(box: HFlowContainer, ink: Color) -> void:
+	for child in box.get_children():
+		box.remove_child(child)
+		child.queue_free()
 	var cap := BuildingState.max_tile_land(_current_tile_id)
+	var used := BuildingState.get_tile_space_used(_current_tile_id)
 	var limit := BuildingState.DENSITY_SOFT_CAPACITY
+	var words := func(text: String) -> Label:
+		var l := _v3_print_white(text)
+		l.add_theme_color_override("font_color", ink)
+		box.add_child(l)
+		return l
 	if cap > int(limit):
-		var room := limit - BuildingState.get_tile_space_used(_current_tile_id)
-		if room >= 0.0:
-			parts.append("%d to go before planning costs" % floori(room))
-		else:
-			parts.append("Past the planning limit, new buildings cost 50% more")
-	parts.append("%d free" % int(totals.free))
-	parts.append("%d to buy" % int(totals.buyable))
-	return ", ".join(parts)
+		var room := limit - used
+		words.call(("%d land until the " % floori(room)) if room >= 0.0 else "Past the ")
+		var term: Label = words.call("planning limit")
+		term.name = "PlanningLimitTerm"
+		term.tooltip_text = V3_PLANNING_NOTE
+		term.mouse_filter = Control.MOUSE_FILTER_STOP
+		term.mouse_default_cursor_shape = Control.CURSOR_HELP
+		_v3_underline(term, ink)
+		words.call(". ")
+	words.call("%d land until max cap." % maxi(0, cap - ceili(used)))
 
 
-## The five latching keys on their black key bed; over each, a pilot lamp and the tab's figure on an LED
-## screen, a £ or a unit printed beside it.
+## Underlines a label's text, for a term with an explanation on hover or a link.
+func _v3_underline(label: Label, ink: Color) -> void:
+	label.draw.connect(func() -> void:
+		var font := label.get_theme_font("font")
+		var fs := label.get_theme_font_size("font_size")
+		var w := font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var y := (label.size.y + font.get_ascent(fs) - font.get_descent(fs)) * 0.5 + 2.0
+		label.draw_line(Vector2(0, y), Vector2(w, y), Color(ink, 0.8), 1.0))
+
+
+## The five latching keys on their black key bed, and over them one wide, short dot-matrix display with each
+## tab's figure above its key in white, an amber or red mark before it when the tab needs a look.
 func _build_key_bed() -> PanelContainer:
 	var bed := PanelContainer.new()
 	bed.name = "KeyBed"
 	var bare := StyleBoxEmpty.new()
 	bare.content_margin_left = 10
 	bare.content_margin_right = 10
-	bare.content_margin_top = 8
+	bare.content_margin_top = 10
 	bare.content_margin_bottom = 12
 	bed.add_theme_stylebox_override("panel", bare)
 	bed.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	bed.draw.connect(func() -> void:
 		Nine.paint(bed, V3_KEYBED, Rect2(Vector2.ZERO, bed.size).grow(V3_KEYBED_MARGIN / V3_LAYOUT),
 			(V3_KEYBED_MARGIN + V3_KEYBED_CORNER) * V3_TEXELS))
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 10)
+	bed.add_child(stack)
+	# The display: the mini screen's bezel and glass stretched across the bed, its figures in columns
+	# that line up with the keys under them.
+	var display := PanelContainer.new()
+	display.name = "KeyDisplay"
+	var inset := StyleBoxEmpty.new()
+	inset.set_content_margin_all(DotMatrix.RIM / V3_LAYOUT + 2.0)
+	display.add_theme_stylebox_override("panel", inset)
+	display.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var corner := (DotMatrix.MARGIN + DotMatrix.RIM + DotMatrix.RADIUS + 2.0) * V3_TEXELS
+	display.draw.connect(func() -> void:
+		var r := Rect2(Vector2.ZERO, display.size)
+		Nine.paint(display, DotMatrix.SCREEN, r.grow(DotMatrix.MARGIN / V3_LAYOUT), corner)
+		display.draw_rect(r.grow(-DotMatrix.RIM / V3_LAYOUT), DotMatrix.PANE))
+	var glass := Control.new()
+	glass.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	glass.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	glass.draw.connect(func() -> void:
+		Nine.paint(glass, DotMatrix.GLASS, Rect2(-Vector2.ONE * (DotMatrix.RIM / V3_LAYOUT + 2.0),
+			display.size).grow(DotMatrix.MARGIN / V3_LAYOUT), corner))
+	var figures := HBoxContainer.new()
+	figures.add_theme_constant_override("separation", 8)
+	display.add_child(figures)
+	display.add_child(glass)
+	stack.add_child(display)
 	var keys := HBoxContainer.new()
 	keys.add_theme_constant_override("separation", 8)
-	bed.add_child(keys)
+	stack.add_child(keys)
 	for tab in _tabs():
 		var id: String = tab.id
-		var col := VBoxContainer.new()
-		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		col.add_theme_constant_override("separation", 6)
-		var head := HBoxContainer.new()
-		head.name = "Figure"
-		head.alignment = BoxContainer.ALIGNMENT_CENTER
-		head.add_theme_constant_override("separation", 3)
-		head.mouse_filter = Control.MOUSE_FILTER_PASS
-		var lamp := V3Lamp.new()
-		lamp.lamp_scale = 0.55
-		head.add_child(lamp)
-		var gap := Control.new()
-		gap.custom_minimum_size.x = 2
-		head.add_child(gap)
-		var pre := _v3_print_white("")
-		head.add_child(pre)
-		var screen: Control = V3Led.new()
-		head.add_child(screen)
-		var unit := _v3_print_white("")
-		head.add_child(unit)
-		col.add_child(head)
+		var figure := DotMatrix.new()
+		figure.name = "Figure_%s" % id
+		figure.framed = false
+		figure.pitch = 2.6
+		figure.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		figure.mouse_filter = Control.MOUSE_FILTER_PASS
+		figures.add_child(figure)
 		var key := CabinetKey.new()
 		key.name = "TabKey_%s" % id
 		key.text = str(V3_KEY_NAMES.get(id, tab.label))
 		key.pressed.connect(func() -> void: _select_tab(id))
-		col.add_child(key)
-		keys.add_child(col)
-		_tiles[id] = {"root": key, "led": lamp, "screen": screen, "pre": pre, "metric": unit, "unit": null,
-			"head": head, "hover": false, "color": DS.PALETTE.TEXT}
+		keys.add_child(key)
+		_tiles[id] = {"root": key, "figure": figure, "unit": null, "hover": false, "color": DS.PALETTE.TEXT, "tone": "off"}
 	return bed
 
 
@@ -829,17 +870,18 @@ func _refresh_terrain_glyph(terrain: String) -> void:
 		terrain.capitalize(), str(TERRAIN_GROUND.get(key, "This ground")), cap, room, int(BuildingState.DENSITY_SOFT_CAPACITY)]
 
 
-## One key's lamp and figure. `tone` is ok, warn, bad or off; `figure` goes on the LED screen (digits,
-## "-" and "."), `pre` and `unit` are printed either side of it.
+## One key's figure on the display. `tone` is ok, warn, bad or off: warn and bad put an amber or red mark
+## before the figure; `pre` and `unit` print either side of it.
 func _set_key_v3(tab_id: String, tone: String, figure: String, pre: String, unit: String, tip: String) -> void:
 	var t: Dictionary = _tiles[tab_id]
-	(t.led as V3Lamp).set_tone(tone if tone in ["warn", "bad"] else "off")
-	(t.screen as V3Led).set_figure(figure, Color.WHITE)
-	(t.pre as Label).text = pre
-	(t.pre as Label).visible = pre != ""
-	(t.metric as Label).text = unit
-	(t.metric as Label).visible = unit != ""
-	(t.head as Control).tooltip_text = tip
+	var words := ("%s%s %s" % [pre, figure, unit]).strip_edges()
+	var runs: Array = []
+	if tone in ["warn", "bad"]:
+		runs.append({"text": "● ", "colour": V3_KEY_MARK[tone]})
+	runs.append({"text": words, "colour": Color.WHITE})
+	(t.figure as Control).call("set_runs", runs)
+	t["tone"] = tone
+	(t.figure as Control).tooltip_text = tip
 	(t.root as Control).tooltip_text = tip
 
 
@@ -915,14 +957,18 @@ func _refresh_status_line_v3(tile_data: Dictionary) -> void:
 		yours = yours or mine
 		if str(b.get("building_id", "")) == PORT_BUILDING_ID:
 			port = b
-		elif not mine and not TileViewData._is_ruins(Catalog.get_building(str(b.get("building_id", "")))):
+		elif not mine and not TileViewData._is_ruins(Catalog.get_building(str(b.get("building_id", "")))) \
+				and not BuildingState.is_land_owned_wood(b):
 			others = true
+	# The lamp says whose land it is; a tile of yours needs no word for it.
 	var lamp := V3Lamp.new()
 	lamp.name = "OwnerLamp"
 	lamp.lamp_scale = 0.55
 	lamp.set_tone("ok" if yours else "off")
+	lamp.mouse_filter = Control.MOUSE_FILTER_STOP
+	lamp.tooltip_text = "You hold land or buildings here" if yours else ("Other companies hold land here" if others else "Nobody holds land here yet")
 	_chips_row.add_child(lamp)
-	var words: Array = ["Yours" if yours else ("Other companies" if others else "Unowned")]
+	var words: Array = [] if yours else ["Other companies" if others else "Unowned"]
 	var terrain := str(tile_data.get("type", Catalog.tile_type(tid))).strip_edges()
 	if terrain != "":
 		words.append(terrain.capitalize())
@@ -932,10 +978,10 @@ func _refresh_status_line_v3(tile_data: Dictionary) -> void:
 	var gated: Dictionary = TileViewData.survey_gated_deposits(tid, tile_data)
 	if gated.status == "unsurveyed":
 		words.append("Deposits unknown")
-	for row in gated.rows:
-		words.append(str(row.chip_label))
+	if not (gated.rows as Array).is_empty():
+		words.append(_v3_deposit_tags(gated.rows))
 	if not port.is_empty():
-		words.append("Seaport (yours)" if BuildingState.is_player_owned(port) else "Seaport (NPC)")
+		words.append(_v3_port_link(port))
 	for i in words.size():
 		if i > 0:
 			var rule := ColorRect.new()
@@ -948,7 +994,7 @@ func _refresh_status_line_v3(tile_data: Dictionary) -> void:
 
 	var totals := TileViewData.land_totals(tid, tile_data)
 	_land_hex.configure(TileViewData.land_chart_data(tid, tile_data), totals)
-	_land_readout.text = _land_figures(totals)
+	_fill_land_line(_land_readout, V3_INK)
 	if _land_open:
 		_refresh_land_view()
 	var surveyed := survey == "Surveyed"
@@ -956,6 +1002,51 @@ func _refresh_status_line_v3(tile_data: Dictionary) -> void:
 	_survey_key.disabled = not MatchState.is_tile_surveyable(tid)
 	_survey_key.tooltip_text = "Survey this tile" if not _survey_key.disabled \
 		else "This tile is out of survey range. Survey more tiles to extend your range."
+
+
+## The tile's deposits in the status line: each good's icon with its size after it (a question mark while the
+## size is unknown), the full name and size on hover.
+func _v3_deposit_tags(rows: Array) -> HBoxContainer:
+	var tags := HBoxContainer.new()
+	tags.name = "Deposits"
+	tags.add_theme_constant_override("separation", 10)
+	for row: Dictionary in rows:
+		var tag := HBoxContainer.new()
+		tag.name = "Deposit_%s" % str(row.get("good_id", ""))
+		tag.add_theme_constant_override("separation", 3)
+		tag.mouse_filter = Control.MOUSE_FILTER_STOP
+		tag.tooltip_text = str(row.get("chip_label", row.get("display_name", "")))
+		var tex: Texture2D = GoodIcons.texture_for(str(row.get("good_id", "")), str(row.get("internal_name", "")))
+		if tex != null:
+			var icon := TextureRect.new()
+			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			icon.texture = tex
+			icon.custom_minimum_size = Vector2(V3_DEPOSIT_ICON, V3_DEPOSIT_ICON)
+			icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			tag.add_child(icon)
+		var size := int(row.get("size_qty", -1))
+		if size != -1:
+			var n := _v3_tag("?" if size == -2 else str(size))
+			n.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			tag.add_child(n)
+		tags.add_child(tag)
+	return tags
+
+
+## The seaport in the status line, underlined as a link: it opens the port's detail, where it can be bought.
+func _v3_port_link(port: Dictionary) -> Label:
+	var link := _v3_tag("Seaport (yours)" if BuildingState.is_player_owned(port) else "Seaport (NPC)")
+	link.name = "SeaportLink"
+	link.mouse_filter = Control.MOUSE_FILTER_STOP
+	link.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	link.tooltip_text = "Open the port"
+	_v3_underline(link, V3_INK)
+	link.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			building_clicked.emit(port))
+	return link
 
 
 ## "Coordinates 5, 10" from a tile id such as "tile_5_10".

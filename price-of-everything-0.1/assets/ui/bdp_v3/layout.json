@@ -1465,8 +1465,8 @@
   ],
   "margin": 24,
   "corner": 96,
-  "pipe_inset": 16,
-  "pipe_radius": 7
+  "pipe_inset": 0,
+  "pipe_radius": 8
  },
  "tile_flange": {
   "size": [

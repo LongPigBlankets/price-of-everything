@@ -2817,7 +2817,8 @@ async function exportLayers() {
   // run round the edge (a 9-slice rendered near the panel's own size, so its grain barely stretches), the
   // pipe's flanges as their own small layers for the middle of each side, and the engraved nameplate (a
   // horizontal three-slice, blank: the game prints the site's name).
-  const TILE_DOOR = { PW: 1500, PH: 1710, M: 24, r: 22, pipe: 7, inset: 16, bend: 30, corner: 96 };
+  // The pipe runs on the door's edge itself, its bends the door's own corners (inset 0, bend = r).
+  const TILE_DOOR = { PW: 1500, PH: 1710, M: 24, r: 22, pipe: 8, inset: 0, bend: 22, corner: 96 };
   const TILE_FLANGE = { S: 64 };
   const TILE_NAMEPLATE = { W: 720, H: 84, M: 14, cap: 60, rivet: 14 };
   if (want('tiledoor')) await withSeed(431, async () => {
