@@ -2185,7 +2185,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // tiledoor, tilekey. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy.
+  // tiledoor, tilekey. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -5148,6 +5148,722 @@ async function exportLayers() {
         g.fillStyle = BG; g.fillRect(OX + PW / 2 - 130, y - 18, 260, 36);
         text(g, '924 px wide', OX + PW / 2, y + 1, 250, 28, LIGHT, { align: 'center', weight: 500, family: PLEX });
       }
+    }));
+  });
+
+  // --- a study for the People panel (docs/people-ds2-plan.md §5), not a game layer: both tabs at one width
+  // (800 logical px) in one shell, a painted steel cabinet with the PEOPLE nameplate, two latching tab keys
+  // and the ribbed seam. Advisors: the boardroom table seen from above on its carpet, ten seats, each place
+  // carrying its role's brass nameplate; a filled place has the portrait, stars, lamp and its money on LEDs,
+  // a locked place a closed folder under a padlock and the seat's levers. Labour: the time clock with its
+  // shift bell and punch card, the factory doors (headcount on the kick plates), the policy knobs beside the
+  // union notice board, the automation switch, and the lockers that hold the other policies.
+  if (want('peoplestudy')) await withSeed(437, async () => {
+    for (const f of ['500 30px "IBM Plex Sans"', '600 30px "IBM Plex Sans"', '700 30px "IBM Plex Sans"', '600 30px "Barlow Condensed"', '700 30px "Barlow Condensed"', `60px ${TITLE_FAMILY}`]) await document.fonts.load(f);
+    const PW = 1500, MX = 60, GAP = 220, MR = 330, CAPT = 110, FOOT = 130, FOLD = 1710;
+    const OX = [MX, MX + PW + GAP], OY = CAPT, W = OX[1] + PW + MR;
+    const T = PLATE_TOP, LIGHT = '#e8eef7', RED = '#ff4d3d', GREEN = '#4fe38a', CREAM = '#feedc3';
+    const PLEX = '"IBM Plex Sans"', BARLOW = '"Barlow Condensed"';
+    const groups = [new THREE.Group(), new THREE.Group()], prints = [], notes = [];
+    let cur = 0;
+    const add = (m, x, z, y = T) => { m.position.set(x, y, z); groups[cur].add(m); return m; };
+    const shade = (m) => { m.traverse((o) => { if (o.isMesh) o.castShadow = o.receiveShadow = true; }); return m; };
+    const rgbOf = (hex) => { const c = new THREE.Color(hex); return `${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)}`; };
+    const measure = (str, font) => { const c = document.createElement('canvas').getContext('2d'); c.font = font; return c.measureText(str).width; };
+    /** Greedy word wrap to lines no wider than maxW. */
+    const wrapLines = (str, font, maxW) => {
+      const out = []; let line = '';
+      for (const w of str.split(' ')) { const t = line ? line + ' ' + w : w; if (line && measure(t, font) > maxW) { out.push(line); line = w; } else line = t; }
+      if (line) out.push(line); return out;
+    };
+    /** The owner's money rule for a screen (docs/ds2-owner-decisions.md, Digital displays): the point takes a cell
+     * of its own and a figure at most five cells; two decimals below £100, one to £999.9, whole pounds to £9999,
+     * then £15.6K, £1.01M, the letter printed after the screen. */
+    const moneyLed = (v) => {
+      const minus = v < 0 ? '-' : '', a = Math.abs(v);
+      for (const [div, suffix, d0, limit] of [[1, '', 2, 100], [1, '', 1, 1000], [1, '', 0, 10000], [1e3, 'K', 1, 1000], [1e6, 'M', 2, 1000], [1e9, 'B', 2, Infinity]]) {
+        let d = d0, shown = (a / div).toFixed(d);
+        if (parseFloat(shown) >= limit) continue;
+        while (d > 0 && (minus + shown).length > 5) shown = (a / div).toFixed(--d);
+        return { figure: minus + shown, suffix };
+      }
+    };
+
+    // Materials.
+    const painted = (w, h, base, wear) => {
+      const p = weatheredPaint(w, h, base, { wear });
+      return new THREE.MeshStandardMaterial({ map: faceTexture(p.colour, w, h), bumpMap: faceTexture(p.bump, w, h, false), bumpScale: 0.6, metalness: 0.3, roughness: 0.58, envMap: studioEnv, envMapIntensity: 0.5 });
+    };
+    const paintSide = new THREE.MeshStandardMaterial({ color: 0x3c4a46, metalness: 0.4, roughness: 0.55, envMap: studioEnv, envMapIntensity: 0.5 });
+    const galv = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, map: noiseTexture(24, 60, 30), metalness: 1, roughness: 0.38, envMap: studioEnv, envMapIntensity: 0.9 });
+    const darkSteel = new THREE.MeshStandardMaterial({ color: 0x3c4046, map: noiseTexture(20, 40, 40), metalness: 1, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.85 });
+    const chrome = new THREE.MeshStandardMaterial({ color: 0xb4b9c0, metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 1.0 });
+    const brass = new THREE.MeshStandardMaterial({ color: 0xc9a35a, map: noiseTexture(18, 40, 40), metalness: 1, roughness: 0.34, envMap: studioEnv, envMapIntensity: 0.95 });
+    const creamEnamel = new THREE.MeshPhysicalMaterial({ color: OFF_WHITE, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+    const dimEnamel = new THREE.MeshPhysicalMaterial({ color: 0x8f887c, roughness: 0.55, clearcoat: 0.2, clearcoatRoughness: 0.35 });
+    const blackPlastic = (w, h, paint) => new THREE.MeshPhysicalMaterial({ map: faceTexture(canvas2d(w, h, (c) => { c.drawImage(blackPlasticFace(w, h, '#15171a', 0.06), 0, 0, w, h); paint?.(c); }), w, h), roughness: 0.5, clearcoat: 0.3, envMap: studioEnv, envMapIntensity: 0.4 });
+    /** Leather with a stitched border, for the blotters and folders. */
+    const leather = (w, h, base, stitch = true, seams = []) => new THREE.MeshPhysicalMaterial({ map: faceTexture(canvas2d(w, h, (c) => {
+      c.fillStyle = base; c.fillRect(0, 0, w, h);
+      for (let i = 0; i < w * h / 2600; i++) { const x = rand() * w, y = rand() * h, r = 10 + rand() * 40, grd = c.createRadialGradient(x, y, 0, x, y, r); grd.addColorStop(0, `rgba(${rand() < 0.5 ? '0,0,0' : '255,255,255'},${0.03 + rand() * 0.04})`); grd.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = grd; c.fillRect(x - r, y - r, 2 * r, 2 * r); }
+      for (let i = 0; i < w * h / 40; i++) { c.fillStyle = `rgba(0,0,0,${0.06 + rand() * 0.1})`; c.fillRect(rand() * w, rand() * h, 0.6 + rand(), 0.6 + rand()); }
+      const rub = c.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.2, w / 2, h / 2, Math.max(w, h) * 0.7); rub.addColorStop(0, 'rgba(255,255,255,0.04)'); rub.addColorStop(1, 'rgba(0,0,0,0.22)'); c.fillStyle = rub; c.fillRect(0, 0, w, h);
+      if (stitch) { c.save(); c.setLineDash([5, 4]); c.strokeStyle = 'rgba(214,200,164,0.42)'; c.lineWidth = 1.3; c.beginPath(); c.roundRect(7, 7, w - 14, h - 14, 6); c.stroke(); c.restore(); }
+      for (const f of seams) { const x = f * w; c.save(); c.filter = 'blur(1.5px)'; c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(x - 3, 6, 6, h - 12); c.fillStyle = 'rgba(255,255,255,0.1)'; c.fillRect(x + 3, 6, 3, h - 12); c.restore(); }
+    }), w, h), roughness: 0.55, clearcoat: seams.length ? 0.45 : 0.18, clearcoatRoughness: seams.length ? 0.3 : 0.5, envMap: studioEnv, envMapIntensity: seams.length ? 0.5 : 0.3 });
+    /** Brushed brass with navy print cut into it (a nameplate, a card holder). */
+    const brassFace = (w, h, paint) => new THREE.MeshStandardMaterial({ map: faceTexture(canvas2d(w, h, (c) => {
+      c.fillStyle = '#c29a50'; c.fillRect(0, 0, w, h);
+      for (let i = 0; i < h * 5; i++) { const y = rand() * h; c.strokeStyle = `rgba(${rand() < 0.5 ? '255,236,190' : '96,70,30'},${0.08 + rand() * 0.12})`; c.lineWidth = 0.5; c.beginPath(); c.moveTo(rand() * w * 0.3, y); c.lineTo(w * (0.5 + rand() * 0.5), y); c.stroke(); }
+      const edge = c.createLinearGradient(0, 0, 0, h); edge.addColorStop(0, 'rgba(255,240,200,0.18)'); edge.addColorStop(0.5, 'rgba(0,0,0,0)'); edge.addColorStop(1, 'rgba(60,40,10,0.22)'); c.fillStyle = edge; c.fillRect(0, 0, w, h);
+      paint?.(c);
+    }), w, h), metalness: 0.75, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.7 });
+
+    // Print: white with a dark shadow on anything dark, drawn over the render as the game prints live.
+    const printWhite = (str, x, y, size, { weight = 500, family = PLEX, align = 'left', maxW = 900, colour = LIGHT } = {}) => prints.push((g) => {
+      g.save(); g.shadowColor = 'rgba(0,0,0,0.9)'; g.shadowOffsetX = 1.7; g.shadowOffsetY = 1.7; g.shadowBlur = 1.2;
+      text(g, str, x, y, maxW, size, colour, { align, weight, family }); g.restore();
+    });
+    /** Print on a light surface, into its face: navy, or a darker semantic ink, with a faint light shadow. */
+    const ink = (c, str, x, y, size, colour = NAVY, { weight = 500, family = PLEX, align = 'left', maxW = 900 } = {}) => {
+      c.save(); c.shadowColor = 'rgba(255,255,255,0.55)'; c.shadowOffsetX = 1; c.shadowOffsetY = 1;
+      text(c, str, x, y, maxW, size, colour, { align, weight, family }); c.restore();
+    };
+    const glow = (x, y, r, colour, a = 0.42) => prints.push((g) => {
+      const rgb = rgbOf(colour), grd = g.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, `rgba(${rgb},${a})`); grd.addColorStop(0.22, `rgba(${rgb},${a * 0.52})`); grd.addColorStop(0.5, `rgba(${rgb},${a * 0.16})`); grd.addColorStop(1, `rgba(${rgb},0)`);
+      g.save(); g.globalCompositeOperation = 'lighter'; g.fillStyle = grd; g.fillRect(x - r, y - r, 2 * r, 2 * r); g.restore();
+    });
+    /** A pilot lamp in a tone (green, amber, red, or null for off), with its glow when lit. */
+    const lamp = (tone, x, z, y, s = 0.6) => {
+      const colour = tone ? LAMP[tone] : null, l = pilotLamp(colour, !!tone); l.scale.setScalar(s); add(l, x, z, y);
+      if (tone) glow(x, z, 60 * s / 0.6, '#' + new THREE.Color(colour).getHexString());
+    };
+
+    // Seven segment figures on a mini screen, each digit and the point a cell of its own (the new rule), right
+    // aligned in a set number of cells, each cell the game's 12 x 21 logical px.
+    const CELL = [22.5, 39];
+    const DIGITS = { 0: 'abcdef', 1: 'bc', 2: 'abdeg', 3: 'abcdg', 4: 'bcfg', 5: 'acdfg', 6: 'acdefg', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg', '-': 'g', ' ': '' };
+    const SEGS = { a: [[0.2, 0.06], [0.8, 0.06]], b: [[0.8, 0.06], [0.8, 0.5]], c: [[0.8, 0.5], [0.8, 0.94]], d: [[0.2, 0.94], [0.8, 0.94]], e: [[0.2, 0.5], [0.2, 0.94]], f: [[0.2, 0.06], [0.2, 0.5]], g: [[0.2, 0.5], [0.8, 0.5]] };
+    const segment = (c, x0, y0, x1, y1, t) => {
+      const L = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / L, uy = (y1 - y0) / L, nx = -uy, ny = ux, h = t / 2, gap = t * 0.32;
+      const ax = x0 + ux * gap, ay = y0 + uy * gap, bx = x1 - ux * gap, by = y1 - uy * gap;
+      c.beginPath(); c.moveTo(ax, ay); c.lineTo(ax + ux * h + nx * h, ay + uy * h + ny * h); c.lineTo(bx - ux * h + nx * h, by - uy * h + ny * h);
+      c.lineTo(bx, by); c.lineTo(bx - ux * h - nx * h, by - uy * h - ny * h); c.lineTo(ax + ux * h - nx * h, ay + uy * h - ny * h); c.closePath(); c.fill();
+    };
+    const ledFace = (iw, ih, str, cells, colour) => canvas2d(iw, ih, (c) => {
+      const rgb = rgbOf(colour), padX = 7, padY = 6, cw = (iw - 2 * padX) / cells, ch = ih - 2 * padY, t = Math.min(cw * 0.2, ch * 0.12);
+      const list = [...str]; while (list.length < cells) list.unshift(' ');
+      c.fillStyle = '#060808'; c.fillRect(0, 0, iw, ih);
+      const cell = (i, k, style) => {
+        c.save(); c.translate(padX + i * cw + cw / 2, padY + ch / 2); c.transform(1, 0, -0.09, 1, 0, 0); c.translate(-cw / 2, -ch / 2); c.fillStyle = style;
+        if (k === '.') { c.beginPath(); c.arc(0.5 * cw, 0.92 * ch, t * 0.95, 0, Math.PI * 2); c.fill(); }
+        else for (const sg of (DIGITS[k] ?? '')) { const [[ax, ay], [bx, by]] = SEGS[sg]; segment(c, ax * cw, ay * ch, bx * cw, by * ch, t); }
+        c.restore();
+      };
+      list.forEach((_, i) => cell(i, '8', `rgba(${rgb},0.08)`));
+      c.save(); c.filter = 'blur(2.4px)'; c.globalAlpha = 0.75; list.forEach((k, i) => cell(i, k, colour)); c.restore();
+      list.forEach((k, i) => cell(i, k, colour));
+      const top = c.createLinearGradient(0, 0, 0, 7); top.addColorStop(0, 'rgba(0,0,0,0.6)'); top.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = top; c.fillRect(0, 0, iw, 7);
+      const left = c.createLinearGradient(0, 0, 5, 0); left.addColorStop(0, 'rgba(0,0,0,0.45)'); left.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = left; c.fillRect(0, 0, 5, ih);
+      const glare = c.createLinearGradient(0, 0, iw * 0.5, ih); glare.addColorStop(0.3, 'rgba(255,255,255,0)'); glare.addColorStop(0.45, 'rgba(255,255,255,0.07)'); glare.addColorStop(0.6, 'rgba(255,255,255,0)');
+      c.fillStyle = glare; c.fillRect(0, 0, iw, ih);
+    });
+    const glassScreen = (iw, ih, face) => {
+      const rim = 7, ow = iw + 2 * rim, oh = ih + 2 * rim, g = new THREE.Group();
+      const shape = rrShape(ow, oh, 5 + rim); shape.holes.push(rr(new THREE.Path(), iw, ih, 5));
+      g.add(shade(new THREE.Mesh(extrude(shape, 2.5, 1.2, 1, 3), MAT.frame)));
+      const tex = new THREE.CanvasTexture(face); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(iw + 1, ih + 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+      pane.position.y = 0.4; g.add(pane);
+      return { group: g, w: ow, h: oh };
+    };
+    const ledScreen = (str, cells, colour) => { const iw = Math.round(cells * CELL[0] + 14), ih = CELL[1] + 12; return glassScreen(iw, ih, ledFace(iw, ih, str, cells, colour)); };
+    /** A money figure on a dark surface: the £ printed, the screen from x (its left edge), the K or M after. */
+    const money = (value, colour, cells, x, cz, y, unit = '', pound = 34) => {
+      const { figure, suffix } = moneyLed(value), scr = ledScreen(figure, cells, colour);
+      add(scr.group, x + scr.w / 2, cz, y);
+      printWhite('£', x - 8, cz + 1, pound, { weight: 600, align: 'right' });
+      const after = (suffix ? suffix : '') + unit;
+      if (after) printWhite(after, x + scr.w + 8, cz + 1, suffix ? 34 : 26, { weight: suffix ? 600 : 500 });
+      return scr;
+    };
+    /** A drum counter (Building Detail's) standing hgt tall, its left edge at x, centred on cz. */
+    const drum = (cells, str, x, cz, base, hgt = 65) => {
+      const { cap, cell, H: CH, win, drumR } = COUNTER, Wc = 2 * cap + cells * cell, k = hgt / CH, g = new THREE.Group();
+      const wy = (win[0] + win[1]) / 2, wh = win[1] - win[0];
+      const hs = rrShape(Wc - 4, CH - 4, 8); hs.holes.push(rr(new THREE.Path(), Wc - 2 * cap + 8, wh, 3, 0, wy - CH / 2));
+      const housing = new THREE.Mesh(extrude(hs, 2, 2, 1.6, 3), MAT.frame); housing.castShadow = housing.receiveShadow = true; housing.position.set(Wc / 2, 2, CH / 2); g.add(housing);
+      const dm = new THREE.MeshStandardMaterial({ color: 0x151618, roughness: 0.45, metalness: 0.2, envMap: studioEnv, envMapIntensity: 0.6 });
+      for (let i = 0; i < cells; i++) { const d = new THREE.Mesh(new THREE.CylinderGeometry(drumR, drumR, cell - 2.4, 48, 1).rotateZ(Math.PI / 2), dm); d.position.set(cap + i * cell + cell / 2, 4.6 - drumR, wy); d.receiveShadow = true; g.add(d); }
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(Wc - 2 * cap + 8, wh).rotateX(-Math.PI / 2), MAT.gap); floor.position.set(Wc / 2, -2, wy); g.add(floor);
+      g.scale.setScalar(k); const cz0 = cz - CH * k / 2;
+      add(g, x, cz0, base + 1);
+      const chars = str.padStart(cells, ' ');
+      prints.push((c) => {
+        [...chars].forEach((ch, i) => { if (ch !== ' ') text(c, ch, x + k * (cap + i * cell + cell / 2), cz0 + k * wy + 1, 40, k * 34, '#efede6', { align: 'center', weight: 600, family: BARLOW }); });
+        c.save(); c.translate(x, cz0); c.scale(k, k); paintCounterGlass(c, Wc); c.restore();
+      });
+      return Wc * k;
+    };
+
+    /** Raised white lettering on the cabinet, or on a plate (`on`: its icons, its x, y on the panel, its top). */
+    const raised = (ox, feat, str, x, y, size = 28, family = PLEX, weight = 700, on = null) => {
+      const font = `${weight} ${size}px ${family}`, w = Math.ceil(measure(str, font)) + 10, h = Math.round(size * 1.4);
+      const draw = (g, col) => text(g, str, 2, h / 2, w - 4, size, col, { weight, family });
+      add(relief(w, h, (g) => draw(g, '#fff'), WHITE_LETTERS, { height: 5, soften: 0.7 }), ox + x + w / 2, OY + y + h / 2, (on ? on.top : T) + 0.3);
+      const px = on ? x - on.x : x, py = on ? y - on.y : y;
+      (on ? on.icons : feat.icons).push({ height: 5, box: [px, py, w, h], draw: (g, col) => { g.save(); g.translate(px, py); draw(g, col); g.restore(); } });
+      return w;
+    };
+    const smallKey = (glyph, x, z) => {
+      const k = keycap(76, 76, 6, (g, a, b) => {
+        g.strokeStyle = NAVY; g.lineWidth = a * 0.13; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath();
+        g.moveTo(a * 0.3, b * 0.3); g.lineTo(a * 0.7, b * 0.7); g.moveTo(a * 0.7, b * 0.3); g.lineTo(a * 0.3, b * 0.7); g.stroke();
+      });
+      add(k, x, z);
+    };
+    /** A plate of blackened gunmetal, silver screws in its corners; its top is T + 10. */
+    const cabin = (ox, feat, x, y, w, h, icons = [], buttons = []) => {
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 10), 4, 3, 2.4, 4), [plateMaterial(w, h, { icons, buttons, screws: [], base: DARK_STEEL_CANVAS, rub: '130,138,150' }), MAT.plateSide])), ox + x + w / 2, OY + y + h / 2);
+      feat.buttons.push({ x, y, w, h, r: 10 });
+      for (const [sx, sy] of [[13, 13], [w - 13, 13], [13, h - 13], [w - 13, h - 13]]) { const s = silverScrew(); s.remove(s.children[s.children.length - 1]); add(s, ox + x + sx - 15, OY + y + sy - 15, T + 10); }
+      return T + 10;
+    };
+    /** A moulded case of black plastic, silver screws in its corners, its face painted by `paint`; returns its top. */
+    const plasticCase = (ox, feat, x, y, w, h, paint) => {
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 12), 4, 2.4, 2, 4), [blackPlastic(w, h, paint), BLACK_PLASTIC_SIDE()])), ox + x + w / 2, OY + y + h / 2);
+      feat.buttons.push({ x, y, w, h, r: 12 });
+      for (const [sx, sy] of [[14, 14], [w - 14, 14], [14, h - 14], [w - 14, h - 14]]) { const s = silverScrew(); s.remove(s.children[s.children.length - 1]); add(s, ox + x + sx - 15, OY + y + sy - 15, T + 8.8); }
+      return T + 8.8;
+    };
+    /** A nameplate: black enamel, its words raised in white Bebas, a rivet at each corner. */
+    const namePlate = (ox, x, y, w, h, str, base) => {
+      const X = (v) => ox + v, Z = (v) => OY + v, tb = { x: 14, y: 5, w: w - 28, h: h - 10 };
+      const drawTitle = (g, col) => text(g, str, tb.w / 2, tb.h / 2 + 3, tb.w - 4, 60, col, { weight: 400, family: TITLE_FAMILY, align: 'center' });
+      const plateC = canvas2d(w, h, (c) => {
+        c.fillStyle = '#16181c'; c.fillRect(0, 0, w, h);
+        for (let i = 0; i < w * h / 120; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.015 + rand() * 0.025})`; c.fillRect(rand() * w, rand() * h, 1 + rand() * 2, 1 + rand() * 2); }
+        drawIconShadows(c, w, h, [{ height: 5, draw: (g, col) => { g.save(); g.translate(tb.x, tb.y); drawTitle(g, col); g.restore(); } }]);
+      });
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 6), 2, 1.2, 1, 3), [new THREE.MeshPhysicalMaterial({ map: faceTexture(plateC, w, h), roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.2, envMap: studioEnv, envMapIntensity: 0.5 }), darkSteel])), X(x + w / 2), Z(y + h / 2), base);
+      add(relief(tb.w, tb.h, (g) => drawTitle(g, '#fff'), WHITE_LETTERS, { height: 5, soften: 0.7 }), X(x + tb.x + tb.w / 2), Z(y + tb.y + tb.h / 2), base + 4.7);
+      for (const [rx, rz] of [[9, 9], [w - 9, 9], [9, h - 9], [w - 9, h - 9]]) {
+        const rv = new THREE.Mesh(new THREE.SphereGeometry(3, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), darkSteel); rv.scale.y = 0.55; add(shade(rv), X(x + rx), Z(y + rz), base + 4.4);
+      }
+    };
+    /** The white plastic knob (tools/knob_render; in the game scripts/rotary_selector.gd): a worn off-white dish
+     * and grip fin with a red dot, sunk in a dark grey metal collar. deg turns the pointer (0 at three o'clock). */
+    const knob = (R, deg) => {
+      const g = new THREE.Group(), turn = new THREE.Group(), k = R / 1.075;
+      const smooth = (pts, n = 96) => new THREE.SplineCurve(pts.map(([x, y]) => new THREE.Vector2(x, y))).getPoints(n);
+      const sh = (m) => { m.castShadow = m.receiveShadow = true; return m; };
+      const collar = new THREE.MeshPhysicalMaterial({ color: 0x8b8b8b, metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 0.9, side: THREE.DoubleSide });
+      const N = 512, U = N / 2, P = (x, z) => [(x + 1) / 2 * N, (1 - z) / 2 * N];
+      const wear = document.createElement('canvas'); wear.width = wear.height = N;
+      { const c = wear.getContext('2d'), [ox0, oy0] = P(0, 0);
+        c.fillStyle = '#fff'; c.fillRect(0, 0, N, N);
+        const grd = c.createRadialGradient(ox0, oy0, 0.78 * U, ox0, oy0, 0.97 * U); grd.addColorStop(0, 'rgba(100,90,74,0)'); grd.addColorStop(1, 'rgba(100,90,74,0.5)'); c.fillStyle = grd; c.fillRect(0, 0, N, N);
+        c.save(); c.filter = `blur(${0.03 * U}px)`; c.strokeStyle = 'rgba(92,82,66,0.55)'; c.lineWidth = 0.16 * U;
+        const [x0, z0] = P(-0.95, 0.23), [x1, z1] = P(0.95, -0.23); c.strokeRect(x0, z0, x1 - x0, z1 - z0); c.restore();
+        for (let i = 0; i < 26; i++) { const r = (0.1 + rand() * 0.2) * U, x = rand() * N, y = rand() * N, s = c.createRadialGradient(x, y, 0, x, y, r); s.addColorStop(0, `rgba(120,110,92,${0.02 + rand() * 0.03})`); s.addColorStop(1, 'rgba(120,110,92,0)'); c.fillStyle = s; c.fillRect(x - r, y - r, 2 * r, 2 * r); }
+        for (let i = 0; i < 160; i++) { const x = rand() * N, y = rand() * N, a = rand() * Math.PI, l = 4 + rand() * 26; c.strokeStyle = `rgba(100,94,84,${0.04 + rand() * 0.06})`; c.lineWidth = 0.5 + rand() * 0.8; c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); c.stroke(); }
+      }
+      const wearTex = new THREE.CanvasTexture(wear); wearTex.colorSpace = THREE.SRGBColorSpace;
+      const plasticK = { color: 0xe4e0d7, roughness: 0.62, clearcoat: 0.18, clearcoatRoughness: 0.42, side: THREE.DoubleSide };
+      g.add(sh(new THREE.Mesh(new THREE.LatheGeometry(smooth([[1.075, 0.0], [1.075, 0.2], [1.074, 0.34], [1.066, 0.4], [1.05, 0.435], [1.02, 0.45], [0.995, 0.444], [0.977, 0.42], [0.967, 0.37], [0.964, 0.2], [0.964, 0.0]]), 192), collar)));
+      const gap = new THREE.Mesh(new THREE.RingGeometry(0.9, 0.966, 128).rotateX(-Math.PI / 2), MAT.gap); gap.position.y = 0.01; g.add(gap);
+      const dishGeo = new THREE.LatheGeometry(smooth([[0.948, 0.0], [0.952, 0.05], [0.94, 0.095], [0.905, 0.118], [0.75, 0.116], [0.45, 0.104], [0.2, 0.098], [0.0, 0.096]]), 192);
+      { const pos = dishGeo.attributes.position, uv = dishGeo.attributes.uv; for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) + 1) / 2, (pos.getZ(i) + 1) / 2); }
+      turn.add(sh(new THREE.Mesh(dishGeo, new THREE.MeshPhysicalMaterial({ ...plasticK, map: wearTex }))));
+      const FIN_BASE = 0.08, FIN_H = 0.27, HW = 0.2, CR = 0.07, BT = 0.06, BS = 0.03, BACK = -0.9, TIP = 0.9;
+      const fin = new THREE.Shape(); fin.moveTo(-HW, 0); fin.lineTo(HW, 0); fin.lineTo(HW, FIN_H - CR); fin.quadraticCurveTo(HW, FIN_H, HW - CR, FIN_H);
+      fin.lineTo(-HW + CR, FIN_H); fin.quadraticCurveTo(-HW, FIN_H, -HW, FIN_H - CR); fin.closePath();
+      const finGeo = new THREE.ExtrudeGeometry(fin, { depth: TIP - BACK - 2 * BT, bevelEnabled: true, bevelThickness: BT, bevelSize: BS, bevelSegments: 8, curveSegments: 16 });
+      finGeo.rotateY(Math.PI / 2); finGeo.translate(BACK + BT, FIN_BASE, 0); finGeo.computeVertexNormals();
+      turn.add(sh(new THREE.Mesh(finGeo, new THREE.MeshPhysicalMaterial(plasticK))));
+      const dot = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.048, 0.006, 40), new THREE.MeshPhysicalMaterial({ color: 0xd3242a, roughness: 0.4, clearcoat: 0.5 }));
+      dot.position.set(0.7, FIN_BASE + FIN_H + BS + 0.001, 0); dot.receiveShadow = true; turn.add(dot);
+      turn.rotation.y = THREE.MathUtils.degToRad(deg); g.add(turn);
+      g.scale.setScalar(k);
+      return g;
+    };
+    /** A slide switch (Building Detail's Visual / Text switch), scale s, centred at (cx, cz), thumb left when off. */
+    const slideSwitch = (cx, cz, base, s, on) => {
+      const slot = toggleSlot(); slot.scale.setScalar(s); add(slot, cx - TOGGLE.W / 2 * s, cz - TOGGLE.H / 2 * s, base);
+      const kn = toggleKnob(), travel = (TOGGLE.slotW - TOGGLE.knobW) / 2 - 2; kn.scale.setScalar(s);
+      add(kn, cx + (on ? travel : -travel) * s - TOGGLE.knob / 2 * s, cz - TOGGLE.knob / 2 * s, base + 0.4);
+    };
+    /** A brass padlock lying on its back, its shackle towards the top. */
+    const padlock = (cx, cz, base, s = 1) => {
+      const body = new THREE.Mesh(extrude(rrShape(52 * s, 44 * s, 9 * s), 9 * s, 2, 1.6, 3), brass); add(shade(body), cx, cz + 8 * s, base);
+      const shackle = new THREE.Mesh(new THREE.TorusGeometry(15 * s, 4.2 * s, 14, 28, Math.PI).rotateX(-Math.PI / 2), chrome);
+      shackle.scale.z = 1.2; add(shade(shackle), cx, cz - 14 * s, base + 7 * s);
+      for (const dx of [-15, 15]) add(shade(new THREE.Mesh(new THREE.CylinderGeometry(4.2 * s, 4.2 * s, 10 * s, 16).rotateX(Math.PI / 2), chrome)), cx + dx * s, cz - 9 * s, base + 7 * s);
+      const hole = new THREE.Mesh(new THREE.CircleGeometry(4 * s, 20).rotateX(-Math.PI / 2), MAT.gap); add(hole, cx, cz + 6 * s, base + 9 * s + 4.2);
+      const slotm = new THREE.Mesh(new THREE.PlaneGeometry(3 * s, 9 * s).rotateX(-Math.PI / 2), MAT.gap); add(slotm, cx, cz + 12 * s, base + 9 * s + 4.2);
+    };
+    /** A five-point star, centred in a w x h box. */
+    const starPath = (w, h) => {
+      const r = Math.min(w, h) / 2, cx = w / 2, cy = h / 2 + r * 0.06, p = new Path2D();
+      for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, q = i % 2 ? r * 0.44 : r; if (i) p.lineTo(cx + Math.cos(a) * q, cy + Math.sin(a) * q); else p.moveTo(cx + Math.cos(a) * q, cy + Math.sin(a) * q); }
+      p.closePath(); return p;
+    };
+    const drawStar = (g, w, h, col) => { g.fillStyle = col; g.fill(starPath(w, h)); };
+
+    // The shared shell: the cabinet's header (the PEOPLE nameplate, the two latching tab keys on their key bed,
+    // the Close key) and the ribbed seam under it, where the body scrolls.
+    const feats = [0, 1].map(() => ({ icons: [], buttons: [], screws: [] }));
+    const SEAM_Y = 176;
+    for (const [i, ox] of OX.entries()) {
+      cur = i;
+      const feat = feats[i], X = (x) => ox + x, Z = (z) => OY + z;
+      namePlate(ox, 60, 44, 244, 66, 'PEOPLE', T); feat.buttons.push({ x: 60, y: 44, w: 244, h: 66, r: 6 });
+      const KB = { x: 344, y: 30, w: 600, h: 100 };
+      add(shade(new THREE.Mesh(extrude(rrShape(KB.w, KB.h, 10), 4, 2.4, 2, 4), [blackPlastic(KB.w, KB.h), BLACK_PLASTIC_SIDE()])), X(KB.x + KB.w / 2), Z(KB.y + KB.h / 2));
+      feat.buttons.push({ x: KB.x, y: KB.y, w: KB.w, h: KB.h, r: 10 });
+      ['ADVISORS', 'LABOUR'].forEach((nm, k) => {
+        const key = keycap(280, 84, 10, (g, a, b) => text(g, nm, a / 2, b / 2 + 1, a - 20, 28, NAVY, { align: 'center', weight: 700 }));
+        add(key, X(KB.x + 20 + 140 + k * 300), Z(KB.y + KB.h / 2), T + 6);
+        if (k === i) {
+          key.userData.cap.position.y -= 16;
+          const kx = X(KB.x + 20 + 140 + k * 300), kz = Z(KB.y + KB.h / 2);
+          prints.push((c) => { c.save(); c.fillStyle = 'rgba(20,16,8,0.2)'; c.beginPath(); c.roundRect(kx - 124, kz - 28, 248, 56, 6); c.fill(); c.restore(); });
+        }
+      });
+      smallKey('x', X(PW - 70), Z(84)); feat.buttons.push({ x: PW - 108, y: 46, w: 76, h: 76, r: 8 });
+      // The seam: the ribbed rubber nosing across the panel where the fixed header meets the body.
+      const { top, nose, H: SEAM_H } = SEAM, R0 = SEAM_RUBBER_TOP, sh0 = new THREE.Shape(), P = (z, h) => [-z, h];
+      sh0.moveTo(...P(top, 0));
+      const z0 = top + 1, z1 = nose - 4, valley = R0 - 3.2, crest = R0 + 0.6;
+      for (let s = 0; s <= 80; s++) { const z = z0 + (z1 - z0) * s / 80, q = 0.5 - 0.5 * Math.cos(2 * Math.PI * 2.5 * s / 80); sh0.lineTo(...P(z, valley + (crest - valley) * Math.pow(q, 0.6))); }
+      sh0.quadraticCurveTo(...P(nose - 0.2, crest - 0.2), ...P(nose, 0.4)); sh0.lineTo(...P(nose, 0)); sh0.lineTo(...P(top, 0));
+      const geo = new THREE.ExtrudeGeometry(sh0, { depth: PW - 8, bevelEnabled: false, curveSegments: 8 }); geo.rotateY(Math.PI / 2); geo.translate(4, 0, 0);
+      const tread = new THREE.MeshPhysicalMaterial({ color: 0x131416, roughness: 0.72, bumpMap: noiseTexture(90, 0, 10), bumpScale: 0.3, sheen: 0.8, sheenColor: new THREE.Color(0x5a6068), sheenRoughness: 0.45, envMap: studioEnv, envMapIntensity: 0.65 });
+      const strip = new THREE.Mesh(geo, tread); strip.castShadow = strip.receiveShadow = true;
+      add(strip, X(0), Z(SEAM_Y - top), T + 20);
+      prints.push((c) => {
+        const y0 = Z(SEAM_Y + nose - top - 2), y1 = Z(SEAM_Y + SEAM_H - top), grd = c.createLinearGradient(0, y0, 0, y1);
+        grd.addColorStop(0, 'rgba(4,6,8,0.62)'); grd.addColorStop(0.18, 'rgba(4,6,8,0.34)'); grd.addColorStop(0.55, 'rgba(4,6,8,0.1)'); grd.addColorStop(1, 'rgba(4,6,8,0)');
+        c.fillStyle = grd; c.fillRect(X(4), y0, PW - 8, y1 - y0);
+      });
+    }
+
+    // ===== Tab 1: Advisors, the boardroom =====
+    let SH0 = 0;
+    cur = 0;
+    {
+      const ox = OX[0], feat = feats[0], X = (x) => ox + x, Z = (z) => OY + z;
+      // (a) The council's figures on a gunmetal plate: seats filled on a drum, the payroll on an LED, the Add advisor key.
+      raised(ox, feat, 'COUNCIL', 64, 222);
+      const CS = { x: 60, y: 268, w: 1380, h: 124 }, ctop = cabin(ox, feat, CS.x, CS.y, CS.w, CS.h);
+      printWhite('Seats filled', X(CS.x + 32), Z(CS.y + 40), 26, { weight: 600 });
+      const dw = drum(1, '2', X(CS.x + 32), Z(CS.y + 86), ctop, 54);
+      printWhite('of 2', X(CS.x + 32 + dw + 12), Z(CS.y + 87), 26);
+      printWhite('Payroll', X(CS.x + 330), Z(CS.y + 40), 26, { weight: 600 });
+      money(20.72, RED, 5, X(CS.x + 362), Z(CS.y + 86), ctop, '/turn');
+      add(keycap(300, 92, 10, (g, a, b) => text(g, 'Add advisor', a / 2, b / 2 + 1, a - 20, 30, NAVY, { align: 'center', weight: 700 })), X(CS.x + CS.w - 190), Z(CS.y + CS.h / 2), ctop);
+
+      // (b) The boardroom: a carpet bay, the walnut table, five places a side, a chair at each.
+      const PLACE = { w: 252, h: 530, gap: 14, pad: 16 }, BAY = { x: 60, y: 426, w: 1380 }, EDGE = 186;
+      const TB = { x: 76, y: BAY.y + EDGE, w: 1348 }; TB.h = 2 * PLACE.h + 2 * PLACE.pad + 24; BAY.h = EDGE + TB.h + EDGE;
+      const carpet = canvas2d(BAY.w, BAY.h, (g) => {
+        g.fillStyle = '#3b1b20'; g.fillRect(0, 0, BAY.w, BAY.h);
+        for (let i = 0; i < BAY.w * BAY.h / 10; i++) { g.fillStyle = `rgba(${rand() < 0.5 ? '0,0,0' : '160,90,90'},${0.05 + rand() * 0.08})`; g.fillRect(rand() * BAY.w, rand() * BAY.h, 1 + rand() * 1.5, 1 + rand() * 1.5); }
+        g.strokeStyle = 'rgba(190,140,90,0.13)'; g.lineWidth = 2;
+        for (let d = -BAY.h; d < BAY.w + BAY.h; d += 60) { g.beginPath(); g.moveTo(d, 0); g.lineTo(d + BAY.h, BAY.h); g.moveTo(d + BAY.h, 0); g.lineTo(d, BAY.h); g.stroke(); }
+        g.strokeStyle = 'rgba(200,160,100,0.35)'; g.lineWidth = 5; g.strokeRect(22, 22, BAY.w - 44, BAY.h - 44);
+        const vig = g.createRadialGradient(BAY.w / 2, BAY.h / 2, BAY.h * 0.3, BAY.w / 2, BAY.h / 2, BAY.h * 0.8); vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(0,0,0,0.3)'); g.fillStyle = vig; g.fillRect(0, 0, BAY.w, BAY.h);
+      });
+      add(shade(new THREE.Mesh(extrude(rrShape(BAY.w, BAY.h, 10), 2, 1.5, 1.2, 2), [new THREE.MeshStandardMaterial({ map: faceTexture(carpet, BAY.w, BAY.h), roughness: 0.95, metalness: 0, envMap: roomEnv, envMapIntensity: 0.2 }), new THREE.MeshStandardMaterial({ color: 0x2a1216, roughness: 0.9 })])), X(BAY.x + BAY.w / 2), Z(BAY.y + BAY.h / 2));
+      feat.buttons.push({ x: BAY.x, y: BAY.y, w: BAY.w, h: BAY.h, r: 10 });
+      const CT = T + 5, TT = CT + 46, BT = TT + 3.2;
+      const walnut = canvas2d(TB.w, TB.h, (g) => {
+        g.fillStyle = '#44291a'; g.fillRect(0, 0, TB.w, TB.h);
+        for (let i = 0; i < TB.h * 1.6; i++) {
+          const y = rand() * TB.h, amp = 2 + rand() * 6, f = 80 + rand() * 260, ph = rand() * 6;
+          g.strokeStyle = `rgba(${rand() < 0.62 ? '24,12,6' : '120,78,46'},${0.06 + rand() * 0.14})`; g.lineWidth = 0.5 + rand() * 1.4; g.beginPath(); g.moveTo(0, y);
+          for (let x = 0; x <= TB.w; x += 16) g.lineTo(x, y + Math.sin(x / f + ph) * amp); g.stroke();
+        }
+        for (let i = 0; i < 7; i++) { const y = rand() * TB.h, hh = 30 + rand() * 90, grd = g.createLinearGradient(0, y, 0, y + hh); grd.addColorStop(0, 'rgba(0,0,0,0)'); grd.addColorStop(0.5, `rgba(${rand() < 0.5 ? '20,10,4' : '110,70,40'},0.12)`); grd.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = grd; g.fillRect(0, y, TB.w, hh); }
+        g.strokeStyle = '#b8914f'; g.lineWidth = 2.6; g.beginPath(); g.roundRect(9, 9, TB.w - 18, TB.h - 18, 12); g.stroke();
+        g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 1; g.beginPath(); g.roundRect(11, 11, TB.w - 22, TB.h - 22, 11); g.stroke();
+      });
+      const wood = new THREE.MeshPhysicalMaterial({ map: faceTexture(walnut, TB.w, TB.h), roughness: 0.34, clearcoat: 0.8, clearcoatRoughness: 0.14, envMap: studioEnv, envMapIntensity: 0.3 });
+      add(shade(new THREE.Mesh(extrude(rrShape(TB.w, TB.h, 20), 6, 3, 2.4, 4), [wood, new THREE.MeshStandardMaterial({ color: 0x2b170d, roughness: 0.5 })])), X(TB.x + TB.w / 2), Z(TB.y + TB.h / 2), CT + 34);
+      const chairLeather = new THREE.MeshPhysicalMaterial({ color: 0x0d0b0b, map: noiseTexture(14, 30, 60), roughness: 0.42, clearcoat: 0.5, clearcoatRoughness: 0.3, envMap: studioEnv, envMapIntensity: 0.6 });
+      const cushion = leather(150, 124, '#1b1716', false, [0.34, 0.66]);
+      const chairFrame = new THREE.MeshStandardMaterial({ color: 0x2a2a2c, metalness: 0.7, roughness: 0.4, envMap: studioEnv, envMapIntensity: 0.6 });
+      /** A leather chair from above: the seat, the curved back on the far side (dir -1: above the table), arms. */
+      const chair = (cx, cz, dir) => {
+        add(shade(new THREE.Mesh(extrude(rrShape(150, 124, 34), 8, 5, 4.2, 5), [cushion, chairLeather])), cx, cz, CT);
+        const back = new THREE.Shape(); back.absarc(0, 0, 118, Math.PI * 0.22, Math.PI * 0.78, false); back.absarc(0, 0, 90, Math.PI * 0.78, Math.PI * 0.22, true); back.closePath();
+        const bm = new THREE.Mesh(extrude(back, 18, 5, 4, 4), chairLeather); if (dir > 0) bm.rotation.y = Math.PI;
+        add(shade(bm), cx, cz, CT);
+        for (const dx of [-86, 86]) add(shade(new THREE.Mesh(extrude(rrShape(22, 118, 10), 8, 3, 2.4, 3), chairFrame)), cx + dx, cz + dir * 6, CT + 10);
+      };
+      const SEATS = [
+        { role: 'CFO', who: { name: ['Vera', 'Ashby'], img: '/icons/people_study/natasha.png', stars: 5, effect: ['Loan interest', '25% lower'], bonus: 0, salary: 10.36, net: -10.36, tone: 'amber' } },
+        { role: 'COO', who: { name: ['Tom', 'Bracken'], img: '/icons/people_study/lance.png', stars: 2, effect: ['Labour cost', '10% lower'], bonus: 27.8, salary: 10.36, net: 17.44, tone: 'green' } },
+        { role: 'VP Logistics', kit: 'Transport cost, throughput, distance per turn' },
+        { role: 'HR Director', kit: 'Labour policies, retention, labour cost' },
+        { role: 'Technical Director', kit: 'Recipe output (chosen category), free tech unlock' },
+        { role: 'Research Director', kit: 'Free tech unlocks' },
+        { role: 'Government Affairs', kit: 'Tax reduction, green subsidy, carbon relief' },
+        { role: 'Chief Investment', kit: 'One off cheap loan, purchase value, capex' },
+        { role: 'Chief Markets Officer', kit: 'Market spread, sale price boosts, forewarning' },
+        { role: 'Sustainability Officer', kit: 'Greenest push, green premium, clean adoption discount' },
+      ];
+      const plateFont = `700 26px ${BARLOW}`;
+      for (const [n, seat] of SEATS.entries()) {
+        const row = n < 5 ? 0 : 1, col = n % 5, px = TB.x + PLACE.pad + col * (PLACE.w + PLACE.gap), py = TB.y + PLACE.pad + row * (PLACE.h + 24);
+        const cx = px + PLACE.w / 2, dir = row ? 1 : -1, edge = row ? TB.y + TB.h : TB.y;
+        // The chair: pulled out at a filled seat, pushed in under the table at a locked one.
+        chair(X(cx), Z(edge + (seat.who ? dir * 62 : -dir * 20)), dir);
+        // The role's nameplate, engraved brass, one line or two.
+        const role = seat.role.toUpperCase(), lines = measure(role, plateFont) <= 200 ? [role] : wrapLines(role, `700 24px ${BARLOW}`, 200);
+        const NP = { x: px + 12, y: py + 12, w: PLACE.w - 24, h: 62 };
+        const npMat = brassFace(NP.w, NP.h, (c) => { c.save(); c.shadowColor = 'rgba(255,238,200,0.55)'; c.shadowOffsetX = 1; c.shadowOffsetY = 1;
+          lines.forEach((ln, k) => text(c, ln, NP.w / 2, NP.h / 2 + (k - (lines.length - 1) / 2) * 26 + 1, NP.w - 16, lines.length > 1 ? 24 : 28, NAVY, { align: 'center', weight: 700 })); c.restore(); });
+        if (seat.who) {
+          const a = seat.who;
+          add(shade(new THREE.Mesh(extrude(rrShape(PLACE.w, PLACE.h, 10), 1.5, 0.8, 0.6, 2), leather(PLACE.w, PLACE.h, '#1f3a2f'))), X(cx), Z(py + PLACE.h / 2), TT);
+          add(shade(new THREE.Mesh(extrude(rrShape(NP.w, NP.h, 5), 2.5, 1, 0.8, 2), [npMat, brass])), X(NP.x + NP.w / 2), Z(NP.y + NP.h / 2), BT);
+          for (const [sx, sz] of [[10, 10], [NP.w - 10, 10], [10, NP.h - 10], [NP.w - 10, NP.h - 10]]) { const s = screw(2.6); add(s, X(NP.x + sx), Z(NP.y + sz), BT + 4.8); }
+          // The portrait, under glass in a brass frame.
+          const PH = { x: px + 12, y: py + 88, w: 120, h: 150 }, img = await loadImage(a.img);
+          const photo = canvas2d(PH.w, PH.h, (c) => { const k = Math.max(PH.w / img.width, PH.h / img.height), dw = img.width * k, dh = img.height * k; c.drawImage(img, (PH.w - dw) / 2, (PH.h - dh) / 2, dw, dh); });
+          add(new THREE.Mesh(extrude(rrShape(PH.w, PH.h, 3), 0.6), new THREE.MeshPhysicalMaterial({ map: faceTexture(photo, PH.w, PH.h), roughness: 0.4, clearcoat: 0.7, clearcoatRoughness: 0.1, envMap: studioEnv, envMapIntensity: 0.25 })), X(PH.x + PH.w / 2), Z(PH.y + PH.h / 2), BT);
+          const fr = rrShape(PH.w + 16, PH.h + 16, 8); fr.holes.push(rr(new THREE.Path(), PH.w - 2, PH.h - 2, 3));
+          add(shade(new THREE.Mesh(extrude(fr, 3, 1.2, 1, 3), brass)), X(PH.x + PH.w / 2), Z(PH.y + PH.h / 2), BT);
+          // Beside it: the lamp (the seat pays or not), the name, the stars earned in brass, the rest engraved.
+          lamp(a.tone, X(px + 194), Z(py + 110), BT, 0.62);
+          a.name.forEach((ln, k) => printWhite(ln, X(px + 146), Z(py + 160 + k * 30), 26, { weight: 600, maxW: PLACE.w - 156 }));
+          for (let s = 0; s < 5; s++) {
+            const sx = px + 146 + s * 19 + 8, sz = py + 226;
+            if (s < a.stars) add(relief(17, 17, (g, w, h) => drawStar(g, w, h, '#fff'), brass, { height: 3.5, soften: 0.5, faceGrade: false }), X(sx), Z(sz), BT + 0.3);
+            else prints.push((c) => { const p = starPath(17, 17); c.save(); c.translate(X(sx) - 8.5, Z(sz) - 8.5); c.lineWidth = 1.4; c.strokeStyle = 'rgba(0,0,0,0.6)'; c.stroke(p); c.translate(0.8, 0.8); c.strokeStyle = 'rgba(214,200,164,0.3)'; c.stroke(p); c.restore(); });
+          }
+          a.effect.forEach((ln, k) => printWhite(ln, X(px + 12), Z(py + 268 + k * 28), 26));
+          // The money: what the seat is worth, what it costs, and the difference.
+          for (const [k, [label, v, colour]] of [['Bonus', a.bonus, GREEN], ['Salary', a.salary, RED], ['Net', a.net, a.net < 0 ? RED : GREEN]].entries()) {
+            const cz = py + 352 + k * 68;
+            printWhite(label, X(px + 12), Z(cz + 1), 27, { weight: k === 2 ? 700 : 600, family: BARLOW });
+            money(v, colour, 5, X(px + PLACE.w - 147), Z(cz), BT, '', 28);
+          }
+        } else {
+          // A locked seat: the nameplate lies on the bare table, the folder closed under a padlock, the levers
+          // the seat would bring printed beside it.
+          add(shade(new THREE.Mesh(extrude(rrShape(NP.w, NP.h, 5), 2.5, 1, 0.8, 2), [npMat, brass])), X(NP.x + NP.w / 2), Z(NP.y + NP.h / 2), TT);
+          for (const [sx, sz] of [[10, 10], [NP.w - 10, 10], [10, NP.h - 10], [NP.w - 10, NP.h - 10]]) { const s = screw(2.6); add(s, X(NP.x + sx), Z(NP.y + sz), TT + 4.8); }
+          const FD = { x: px + 22, y: py + 96, w: PLACE.w - 44, h: 170 };
+          add(shade(new THREE.Mesh(extrude(rrShape(FD.w, FD.h, 8), 4, 1.2, 1, 3), leather(FD.w, FD.h, '#2a1a14'))), X(FD.x + FD.w / 2), Z(FD.y + FD.h / 2), TT);
+          for (const [sx, sz, rot] of [[0, 0, 0], [FD.w, 0, 1], [0, FD.h, 3], [FD.w, FD.h, 2]]) {
+            const tri = new THREE.Shape(); tri.moveTo(0, 0); tri.lineTo(22, 0); tri.lineTo(0, -22); tri.closePath();
+            const m = new THREE.Mesh(extrude(tri, 1, 0.5, 0.4, 1), brass); m.rotation.y = -rot * Math.PI / 2; add(shade(m), X(FD.x + sx), Z(FD.y + sz), TT + 6.6);
+          }
+          padlock(X(FD.x + FD.w / 2), Z(FD.y + FD.h / 2), TT + 7.4, 1.05);
+          wrapLines(seat.kit, `500 26px ${PLEX}`, PLACE.w - 28).forEach((ln, k) => printWhite(ln, X(px + 14), Z(py + 312 + k * 32), 26));
+        }
+      }
+      SH0 = BAY.y + BAY.h + 44;
+    }
+
+    // ===== Tab 2: Labour, the works =====
+    let SH1 = 0;
+    cur = 1;
+    {
+      const ox = OX[1], feat = feats[1], X = (x) => ox + x, Z = (z) => OY + z;
+      // (a) The time clock: a hammertone housing with the shift bell and its lamp (lit when labour has reached its
+      // floor), the dial, a time card in the slot, and the labour cost on LEDs, the share of base on a drum.
+      raised(ox, feat, 'LABOUR COST', 64, 222);
+      const TC = { x: 60, y: 268, w: 520, h: 460 };
+      add(shade(new THREE.Mesh(extrude(rrShape(TC.w, TC.h, 16), 10, 2.5, 2, 4), [painted(TC.w, TC.h, '#2f3935', 0.7), paintSide])), X(TC.x + TC.w / 2), Z(TC.y + TC.h / 2));
+      feat.buttons.push({ x: TC.x, y: TC.y, w: TC.w, h: TC.h, r: 16 });
+      const HT = T + 15;
+      for (const [sx, sy] of [[16, 16], [TC.w - 16, 16], [16, TC.h - 16], [TC.w - 16, TC.h - 16]]) add(screw(5), X(TC.x + sx), Z(TC.y + sy), HT);
+      // The bell on its bracket.
+      const BL = { x: TC.x + 100, y: TC.y + 92 };
+      add(shade(new THREE.Mesh(extrude(rrShape(26, 110, 6), 4, 1.5, 1.2, 2), darkSteel)), X(BL.x), Z(BL.y - 10), HT);
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(44, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshPhysicalMaterial({ color: 0xa8231b, map: noiseTexture(16, 30, 40), roughness: 0.32, clearcoat: 0.8, clearcoatRoughness: 0.2, envMap: studioEnv, envMapIntensity: 0.7 }));
+      dome.scale.y = 0.55; add(shade(dome), X(BL.x), Z(BL.y), HT + 5);
+      add(shade(new THREE.Mesh(new THREE.CylinderGeometry(8, 9, 8, 24), chrome)), X(BL.x), Z(BL.y), HT + 27);
+      add(shade(new THREE.Mesh(new THREE.SphereGeometry(7, 20, 10), chrome)), X(BL.x + 48), Z(BL.y + 20), HT + 10);
+      lamp(null, X(BL.x), Z(BL.y + 96), HT, 0.62);
+      printWhite('At floor', X(BL.x), Z(BL.y + 138), 26, { align: 'center' });
+      // The dial: cream enamel, navy marks, the hands at the shift's change.
+      const DR = 88, DC = { x: TC.x + 318, y: TC.y + 138 };
+      const dial = canvas2d(2 * DR, 2 * DR, (c) => {
+        c.fillStyle = '#efe6cf'; c.fillRect(0, 0, 2 * DR, 2 * DR);
+        const grd = c.createRadialGradient(DR, DR, DR * 0.2, DR, DR, DR); grd.addColorStop(0, 'rgba(255,255,255,0.1)'); grd.addColorStop(1, 'rgba(120,96,60,0.22)'); c.fillStyle = grd; c.fillRect(0, 0, 2 * DR, 2 * DR);
+        c.strokeStyle = NAVY;
+        for (let i = 0; i < 60; i++) { const a = i / 60 * Math.PI * 2, r0 = i % 5 ? DR * 0.86 : DR * 0.78; c.lineWidth = i % 5 ? 1.2 : 3.2; c.beginPath(); c.moveTo(DR + Math.cos(a) * r0, DR + Math.sin(a) * r0); c.lineTo(DR + Math.cos(a) * DR * 0.93, DR + Math.sin(a) * DR * 0.93); c.stroke(); }
+        for (const [n, a] of [['12', -90], ['3', 0], ['6', 90], ['9', 180]]) { const t = a * Math.PI / 180; text(c, n, DR + Math.cos(t) * DR * 0.6, DR + Math.sin(t) * DR * 0.6 + 1, 40, 26, NAVY, { align: 'center', weight: 700, family: BARLOW }); }
+        const hand = (deg, len, wdt) => { const t = (deg - 90) * Math.PI / 180; c.lineCap = 'round'; c.lineWidth = wdt; c.strokeStyle = '#101a26'; c.beginPath(); c.moveTo(DR - Math.cos(t) * 10, DR - Math.sin(t) * 10); c.lineTo(DR + Math.cos(t) * len, DR + Math.sin(t) * len); c.stroke(); };
+        hand(240, DR * 0.5, 6); hand(0, DR * 0.74, 4);
+        c.strokeStyle = '#b8261d'; c.lineWidth = 1.6; const t = (150 - 90) * Math.PI / 180; c.beginPath(); c.moveTo(DR - Math.cos(t) * 14, DR - Math.sin(t) * 14); c.lineTo(DR + Math.cos(t) * DR * 0.8, DR + Math.sin(t) * DR * 0.8); c.stroke();
+      });
+      const disc = new THREE.Shape().absarc(0, 0, DR, 0, Math.PI * 2, false);
+      add(shade(new THREE.Mesh(extrude(disc, 2, 0.8, 0.6, 2), new THREE.MeshPhysicalMaterial({ map: faceTexture(dial, 2 * DR, 2 * DR), roughness: 0.35, clearcoat: 0.8, clearcoatRoughness: 0.12, envMap: studioEnv, envMapIntensity: 0.3 }))), X(DC.x), Z(DC.y), HT);
+      add(shade(new THREE.Mesh(new THREE.TorusGeometry(DR + 4, 6, 18, 96).rotateX(Math.PI / 2), chrome)), X(DC.x), Z(DC.y), HT + 3);
+      add(shade(new THREE.Mesh(new THREE.CylinderGeometry(7, 7, 4, 24), chrome)), X(DC.x), Z(DC.y), HT + 4);
+      // The time card: manila, printed in rows and punched, standing in the slot at the housing's top.
+      const CD = { x: TC.x + 438, y: TC.y - 64, w: 70, h: 100 };
+      const card = canvas2d(CD.w, CD.h, (c) => {
+        c.fillStyle = '#e6d6a8'; c.fillRect(0, 0, CD.w, CD.h);
+        for (let i = 0; i < 300; i++) { c.fillStyle = `rgba(90,70,30,${0.04 + rand() * 0.06})`; c.fillRect(rand() * CD.w, rand() * CD.h, 1, 1); }
+        c.fillStyle = 'rgba(11,35,64,0.8)'; c.fillRect(6, 8, CD.w - 12, 4);
+        for (let r = 0; r < 7; r++) { c.fillStyle = 'rgba(11,35,64,0.3)'; c.fillRect(6, 22 + r * 11, CD.w - 12, 1); c.fillStyle = 'rgba(160,40,34,0.75)'; c.fillRect(8, 24 + r * 11, 12, 1.4); if (r < 5) { c.fillStyle = 'rgba(20,16,10,0.85)'; c.beginPath(); c.arc(CD.w - 14, 27.5 + r * 11, 2.6, 0, Math.PI * 2); c.fill(); } }
+      });
+      add(new THREE.Mesh(extrude(rrShape(CD.w + 18, 12, 4), 0.5), MAT.gap), X(CD.x + CD.w / 2), Z(TC.y + 34), HT + 0.1);
+      add(shade(new THREE.Mesh(extrude((() => { const s = rrShape(CD.w + 34, 26, 7); s.holes.push(rr(new THREE.Path(), CD.w + 16, 10, 3)); return s; })(), 3, 1, 0.8, 2), chrome)), X(CD.x + CD.w / 2), Z(TC.y + 34), HT);
+      add(shade(new THREE.Mesh(extrude(rrShape(CD.w, CD.h, 3), 0.6, 0.3, 0.2, 1), new THREE.MeshStandardMaterial({ map: faceTexture(card, CD.w, CD.h), roughness: 0.85 }))), X(CD.x + CD.w / 2), Z(CD.y + CD.h / 2), HT + 3.5);
+      // The figures.
+      const RD = { x: TC.x + 40, cap: TC.x + 40 };
+      printWhite('Labour cost', X(RD.x), Z(TC.y + 290), 26, { weight: 600 });
+      money(158.84, RED, 5, X(TC.x + 280), Z(TC.y + 290), HT, '/turn');
+      printWhite('Of base', X(RD.x), Z(TC.y + 362), 26, { weight: 600 });
+      const bw = drum(3, '100', X(TC.x + 280), Z(TC.y + 362), HT, 60);
+      printWhite('%', X(TC.x + 280 + bw + 8), Z(TC.y + 363), 28, { weight: 600 });
+      printWhite('In 10 turns', X(RD.x), Z(TC.y + 428), 26, { weight: 600 });
+      money(158.84, RED, 5, X(TC.x + 280), Z(TC.y + 428), HT, '/turn');
+
+      // (b) The workforce: Building Detail's factory doors, one per kind of worker, the headcount on the kick plate.
+      raised(ox, feat, 'WORKFORCE', 624, 222);
+      const DS = 1.25, { plate } = labourDoorGeometry(), DW = LDOOR.W * DS, DH = LDOOR.H * DS;
+      [['Unskilled', '25,700'], ['Skilled', '5,550'], ['High skilled', '1,000']].forEach(([label, count], k) => {
+        const dx = 612 + k * (DW + 20), dy = 262;
+        const d = labourDoor(true); d.scale.setScalar(DS); add(d, X(dx), Z(dy), T);
+        feat.buttons.push({ x: dx + 12, y: dy + 12, w: DW - 24, h: DH - 24, r: 4 });
+        const [pxp, pyp, pwp, php] = plate, kx = X(dx + (pxp + pwp / 2) * DS), kz = Z(dy + (pyp + php / 2) * DS);
+        prints.push((c) => { c.save(); c.shadowColor = 'rgba(255,255,255,0.6)'; c.shadowOffsetX = 1; c.shadowOffsetY = 1.2; text(c, count, kx, kz + 1, pwp * DS - 16, 34, NAVY, { align: 'center', weight: 700, family: BARLOW }); c.restore(); });
+        printWhite(label, X(dx + DW / 2), Z(dy + DH + 26), 26, { align: 'center', weight: 600 });
+      });
+      notes.push({ x: OX[1] + PW + 48, y: OY + 262 + DH * 0.86, lines: ['headcount', 'illustrative'] });
+
+      // (c) The policies: six knobs on a gunmetal plate, each option an icon on its arc; the union notice board beside
+      // it pins the effect of the knob under the cursor and each policy in force.
+      raised(ox, feat, 'POLICIES', 64, 756);
+      raised(ox, feat, 'NOTICES', 994, 756);
+      const KP = { x: 60, y: 796, w: 900, h: 880 }, ktop = cabin(ox, feat, KP.x, KP.y, KP.w, KP.h);
+      const ICON = 64;
+      const mask = (paint) => canvas2d(ICON, ICON, (g) => { g.fillStyle = '#fff'; g.strokeStyle = '#fff'; g.lineCap = 'round'; g.lineJoin = 'round'; paint(g, ICON); }, 2);
+      const pieSector = (g, cx, cy, r, from, to) => { g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, r, from, to); g.closePath(); g.fill(); };
+      const ART = {
+        // Hours worked: the dial's lit share.
+        effort: [1 / 3, 1 / 2, 2 / 3].map((f) => mask((g, s) => { g.lineWidth = s * 0.07; g.beginPath(); g.arc(s / 2, s / 2, s * 0.4, 0, Math.PI * 2); g.stroke(); pieSector(g, s / 2, s / 2, s * 0.32, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2); })),
+        // Pay while idle: the share of a banknote paid.
+        idle: [0.5, 0.75, 1].map((f) => mask((g, s) => { g.lineWidth = s * 0.06; g.strokeRect(s * 0.08, s * 0.24, s * 0.84, s * 0.52); g.fillRect(s * 0.14, s * 0.3, s * 0.72 * f, s * 0.4); })),
+        // Safety: an open shield, a banded one, a full one.
+        safety: [0, 1, 2].map((lv) => mask((g, s) => {
+          const path = () => { g.beginPath(); g.moveTo(s / 2, s * 0.08); g.lineTo(s * 0.86, s * 0.22); g.quadraticCurveTo(s * 0.84, s * 0.72, s / 2, s * 0.94); g.quadraticCurveTo(s * 0.16, s * 0.72, s * 0.14, s * 0.22); g.closePath(); };
+          g.lineWidth = s * 0.07; path(); if (lv === 2) g.fill(); else g.stroke();
+          if (lv === 1) g.fillRect(s * 0.2, s * 0.42, s * 0.6, s * 0.14);
+          if (lv === 2) { g.globalCompositeOperation = 'destination-out'; g.lineWidth = s * 0.1; g.beginPath(); g.moveTo(s * 0.32, s * 0.5); g.lineTo(s * 0.46, s * 0.64); g.lineTo(s * 0.7, s * 0.36); g.stroke(); g.globalCompositeOperation = 'source-over'; }
+        })),
+        // Pensions: one, two or three bars filled.
+        pension: [1, 2, 3].map((n) => mask((g, s) => { g.lineWidth = s * 0.05; for (let i = 0; i < 3; i++) { const bh = s * (0.3 + i * 0.25), x = s * (0.12 + i * 0.28), y = s * 0.9 - bh; if (i < n) g.fillRect(x, y, s * 0.2, bh); else g.strokeRect(x + 1.5, y + 1.5, s * 0.2 - 3, bh - 3); } })),
+        // Annual bonus: none, one gift, two.
+        bonus: [0, 1, 2].map((n) => mask((g, s) => {
+          // A wrapped box: the lid wider than the box, a ribbon down its middle, a bow of two loops on top.
+          const gift = (x, y, w, fill) => {
+            const lid = w * 0.24, h = w * 0.78;
+            g.lineWidth = s * 0.05;
+            if (fill) { g.fillRect(x + w * 0.07, y + lid, w * 0.86, h - lid); g.fillRect(x, y, w, lid * 0.86); }
+            else { g.strokeRect(x + w * 0.07, y + lid, w * 0.86, h - lid); g.strokeRect(x, y, w, lid * 0.86); }
+            if (fill) { g.globalCompositeOperation = 'destination-out'; g.fillRect(x + w * 0.44, y, w * 0.12, h); g.fillRect(x, y + lid * 0.86, w, w * 0.06); g.globalCompositeOperation = 'source-over'; }
+            else { g.beginPath(); g.moveTo(x + w / 2, y); g.lineTo(x + w / 2, y + h); g.stroke(); }
+            g.lineWidth = s * 0.045;
+            for (const [dx, rot] of [[0.33, -0.5], [0.67, 0.5]]) { g.beginPath(); g.ellipse(x + w * dx, y - w * 0.1, w * 0.15, w * 0.09, rot, 0, Math.PI * 2); g.stroke(); }
+          };
+          if (n === 0) { gift(s * 0.2, s * 0.34, s * 0.6, false); g.lineWidth = s * 0.08; g.beginPath(); g.moveTo(s * 0.1, s * 0.9); g.lineTo(s * 0.9, s * 0.1); g.stroke(); }
+          if (n === 1) gift(s * 0.18, s * 0.3, s * 0.64, true);
+          if (n === 2) { gift(s * 0.02, s * 0.44, s * 0.45, true); gift(s * 0.53, s * 0.44, s * 0.45, true); }
+        })),
+        // Profit share: a pie with no slice, a small one, a larger one.
+        profit: [0, 0.15, 0.3].map((f) => mask((g, s) => { g.lineWidth = s * 0.07; g.beginPath(); g.arc(s / 2, s / 2, s * 0.4, 0, Math.PI * 2); g.stroke(); if (f) pieSector(g, s / 2, s / 2, s * 0.44, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2); })),
+      };
+      const KNOBS = [['Work effort', 'effort', 1], ['Pay while idle', 'idle', 2], ['Safety', 'safety', 1], ['Pensions', 'pension', 1], ['Annual bonus', 'bonus', 0], ['Profit share', 'profit', 0]];
+      const ANG = [150, 90, 30];
+      for (const [n, [name, key, chosen]] of KNOBS.entries()) {
+        const cell = { x: KP.x + 10 + (n % 2) * 440, y: KP.y + 12 + Math.floor(n / 2) * 286 };
+        const R = 64, arc = 1.8 * R, P = 78, kx = cell.x + 220, kz = cell.y + 160;
+        add(knob(R, ANG[chosen]), X(kx), Z(kz), ktop);
+        ART[key].forEach((img, i) => {
+          const t = THREE.MathUtils.degToRad(ANG[i]), px = kx + Math.cos(t) * arc, pz = kz - Math.sin(t) * arc, art = P - 22;
+          const drawArt = (g, col) => stamp(g, img, (P - art) / 2, (P - art) / 2, art, art, col);
+          add(shade(new THREE.Mesh(extrude(rrShape(P, P, 8), 3, 1.6, 1.2, 3), [blackPlastic(P, P, (c) => drawIconShadows(c, P, P, [{ height: 6, draw: drawArt }])), BLACK_PLASTIC_SIDE()])), X(px), Z(pz), ktop);
+          add(iconRelief(img, art, art, i === chosen ? creamEnamel : dimEnamel, { height: 6, soften: 1.0 }), X(px), Z(pz), ktop + 6.5);
+          prints.push((c) => {
+            const ux = Math.cos(t), uz = -Math.sin(t), r0 = R * 1.08, r1 = R * 1.08 + 11;
+            c.save(); c.strokeStyle = i === chosen ? LIGHT : 'rgba(232,238,247,0.45)'; c.lineWidth = 3.4; c.lineCap = 'round'; c.shadowColor = 'rgba(0,0,0,0.9)'; c.shadowOffsetX = 1.5; c.shadowOffsetY = 1.5;
+            c.beginPath(); c.moveTo(X(kx + ux * r0), Z(kz + uz * r0)); c.lineTo(X(kx + ux * r1), Z(kz + uz * r1)); c.stroke(); c.restore();
+          });
+        });
+        printWhite(name, X(kx), Z(kz + R + 32), 26, { align: 'center', weight: 600 });
+      }
+      // The notice board: cork in a timber frame, index cards pinned to it, navy print.
+      const NB = { x: 990, y: 796, w: 450, h: 880 };
+      const cork = canvas2d(NB.w, NB.h, (g) => {
+        g.fillStyle = '#a97c4c'; g.fillRect(0, 0, NB.w, NB.h);
+        for (let i = 0; i < NB.w * NB.h / 6; i++) { const k = rand(); g.fillStyle = k < 0.5 ? `rgba(70,42,18,${0.15 + rand() * 0.25})` : `rgba(214,170,110,${0.12 + rand() * 0.2})`; g.fillRect(rand() * NB.w, rand() * NB.h, 0.8 + rand() * 2, 0.8 + rand() * 2); }
+        for (let i = 0; i < 30; i++) { g.fillStyle = 'rgba(40,24,10,0.5)'; g.beginPath(); g.arc(rand() * NB.w, rand() * NB.h, 1.2, 0, Math.PI * 2); g.fill(); }
+        g.strokeStyle = '#5b3a1f'; g.lineWidth = 22; g.strokeRect(0, 0, NB.w, NB.h);
+        g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 4; g.strokeRect(12, 12, NB.w - 24, NB.h - 24);
+      });
+      add(shade(new THREE.Mesh(extrude(rrShape(NB.w, NB.h, 6), 4, 2, 1.6, 3), [new THREE.MeshStandardMaterial({ map: faceTexture(cork, NB.w, NB.h), roughness: 0.9 }), new THREE.MeshStandardMaterial({ color: 0x4a2f18, roughness: 0.6 })])), X(NB.x + NB.w / 2), Z(NB.y + NB.h / 2));
+      feat.buttons.push({ x: NB.x, y: NB.y, w: NB.w, h: NB.h, r: 6 });
+      const CARDS = [
+        ['Work effort', 'Standard', 'Salary cost unchanged. Output pressure recovers 1%/turn toward none.', '#f4efe2', -1.2, '#c9302a'],
+        ['Pay while idle', '100%', 'Workers are paid in full whether the line runs or not.', '#efe2b8', 0.9, '#e0b21e'],
+        ['Safety', 'Standard', 'Regulation compliance. No change to output or labour cost.', '#f4efe2', -0.6, '#2f6fb3'],
+        ['Pensions', 'Industry average', 'The baseline. No change either way.', '#efe2b8', 1.3, '#c9302a'],
+      ];
+      let cy = NB.y + 34;
+      for (const [title, option, body, paper, rot, pinCol] of CARDS) {
+        const cw = NB.w - 56, bodyLines = wrapLines(body, `500 25px ${PLEX}`, cw - 36), ch = 98 + bodyLines.length * 32;
+        const face = canvas2d(cw, ch, (c) => {
+          c.fillStyle = paper; c.fillRect(0, 0, cw, ch);
+          for (let i = 0; i < cw * ch / 80; i++) { c.fillStyle = `rgba(90,70,40,${0.03 + rand() * 0.05})`; c.fillRect(rand() * cw, rand() * ch, 1, 1); }
+          c.fillStyle = 'rgba(180,40,40,0.35)'; c.fillRect(0, 60, cw, 1.5);
+          ink(c, title, 18, 38, 27, NAVY, { weight: 600, maxW: cw * 0.5 });
+          ink(c, option, cw - 18, 38, 27, NAVY, { weight: 700, align: 'right', maxW: cw * 0.48 });
+          bodyLines.forEach((ln, k) => ink(c, ln, 18, 88 + k * 32, 25, NAVY, { maxW: cw - 36 }));
+        });
+        const m = new THREE.Mesh(extrude(rrShape(cw, ch, 3), 0.5, 0.3, 0.2, 1), new THREE.MeshStandardMaterial({ map: faceTexture(face, cw, ch), roughness: 0.85 }));
+        m.rotation.y = THREE.MathUtils.degToRad(rot); add(shade(m), X(NB.x + NB.w / 2), Z(cy + ch / 2), T + 9.5);
+        const pin = new THREE.Mesh(new THREE.SphereGeometry(8, 24, 12), new THREE.MeshPhysicalMaterial({ color: pinCol, roughness: 0.3, clearcoat: 0.8, envMap: studioEnv, envMapIntensity: 0.5 }));
+        pin.scale.y = 0.7; add(shade(pin), X(NB.x + NB.w / 2), Z(cy + 4), T + 12);
+        cy += ch + 22;
+      }
+
+      // (d) Automation, the one on or off workforce policy, on a black plastic case: hands on the left, machines on
+      // the right, the slide switch between them.
+      raised(ox, feat, 'AUTOMATION', 64, 1714);
+      const AC = { x: 60, y: 1754, w: 310, h: 440 };
+      const AICON = 96, eng = await loadImage('/icons/research/glyph/engineer.png'), gears = await loadImage('/icons/research/glyph/gears.png');
+      const IC = [[eng, AC.w * 0.27, 150], [gears, AC.w * 0.73, 150]];
+      const atop = plasticCase(ox, feat, AC.x, AC.y, AC.w, AC.h, (c) => drawIconShadows(c, AC.w, AC.h, IC.map(([img, ix, iy]) => ({ height: 8, draw: (g, col) => stamp(g, img, ix - AICON / 2, iy - AICON / 2, AICON, AICON, col) }))));
+      IC.forEach(([img, ix, iy], k) => add(iconRelief(img, AICON, AICON, k === 0 ? creamEnamel : dimEnamel, { height: 8, soften: 1.2 }), X(AC.x + ix), Z(AC.y + iy), atop + 0.3));
+      slideSwitch(X(AC.x + AC.w / 2), Z(AC.y + 270), atop, 1.9, false);
+      printWhite('Push automation', X(AC.x + AC.w / 2), Z(AC.y + 372), 26, { align: 'center', weight: 600 });
+
+      // (e) The other policies in the workers' lockers: a name card in a brass holder, a slide switch on the door,
+      // and a padlock through the hasp where the policy is not yet open.
+      raised(ox, feat, 'OTHER POLICIES', 404, 1714);
+      const LK = { x: 400, y: 1754, w: 248, h: 440, gap: 16 };
+      const LOCKERS = [['Extended Annual Leave', null], ['Generous Parental Leave', null], ['Long Tenure Awards', 'Needs an HR Director'], ['Stock Options', 'Opens with an HR mission']];
+      for (const [k, [name, lock]] of LOCKERS.entries()) {
+        const lx = LK.x + k * (LK.w + LK.gap), ly = LK.y;
+        const hy = [60, LK.h - 70];
+        add(shade(new THREE.Mesh(extrude(rrShape(LK.w, LK.h, 6), 6, 2, 1.6, 3), [painted(LK.w, LK.h, '#4a5f6b', 1.0), paintSide])), X(lx + LK.w / 2), Z(ly + LK.h / 2));
+        feat.buttons.push({ x: lx, y: ly, w: LK.w, h: LK.h, r: 6 });
+        const top = T + 10;
+        for (let v = 0; v < 5; v++) add(new THREE.Mesh(extrude(rrShape(150, 7, 3.5), 0.4), MAT.gap), X(lx + LK.w / 2), Z(ly + 34 + v * 14), top + 0.05);
+        for (const y of hy) { add(shade(new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 34, 16).rotateX(Math.PI / 2), darkSteel)), X(lx + 5), Z(ly + y), top); }
+        // The name card in its brass holder.
+        const CH = { x: lx + 24, y: ly + 112, w: LK.w - 48, h: lock ? 132 : 100 };
+        const nameLines = wrapLines(name, `600 26px ${PLEX}`, CH.w - 20), noteLines = lock ? wrapLines(lock, `500 23px ${PLEX}`, CH.w - 20) : [];
+        const cardFace = canvas2d(CH.w, CH.h, (c) => {
+          paintPlastic(c, CH.w, CH.h);
+          const all = [...nameLines.map((l) => [l, 26, 600]), ...noteLines.map((l) => [l, 23, 500])], lh = 29, y0 = CH.h / 2 - (all.length - 1) * lh / 2;
+          all.forEach(([l, s, w], i) => ink(c, l, CH.w / 2, y0 + i * lh, s, i >= nameLines.length ? '#7a4a00' : NAVY, { weight: w, align: 'center', maxW: CH.w - 16 }));
+        });
+        add(shade(new THREE.Mesh(extrude(rrShape(CH.w, CH.h, 4), 1, 0.5, 0.4, 2), [new THREE.MeshPhysicalMaterial({ map: faceTexture(cardFace, CH.w, CH.h), ...KNOB_PLASTIC }), MAT.skirt])), X(CH.x + CH.w / 2), Z(CH.y + CH.h / 2), top);
+        const holder = rrShape(CH.w + 16, CH.h + 16, 7); holder.holes.push(rr(new THREE.Path(), CH.w - 6, CH.h - 6, 4));
+        add(shade(new THREE.Mesh(extrude(holder, 2, 0.8, 0.6, 2), brass)), X(CH.x + CH.w / 2), Z(CH.y + CH.h / 2), top + 1);
+        // The switch, off; the handle; the padlock through the hasp when the policy is locked.
+        slideSwitch(X(lx + LK.w / 2 - 20), Z(ly + 316), top, 1.55, false);
+        add(shade(new THREE.Mesh(extrude(rrShape(26, 84, 8), 2, 1, 0.8, 2), darkSteel)), X(lx + LK.w - 30), Z(ly + 316), top);
+        add(shade(new THREE.Mesh(extrude(rrShape(14, 66, 7), 5, 1.5, 1.2, 3), galv)), X(lx + LK.w - 30), Z(ly + 316), top + 4);
+        if (lock) {
+          add(shade(new THREE.Mesh(extrude((() => { const s = rrShape(22, 44, 6); s.holes.push(rr(new THREE.Path(), 9, 18, 3, 0, -6)); return s; })(), 3, 1, 0.8, 2), darkSteel)), X(lx + LK.w - 30), Z(ly + 382), top);
+          padlock(X(lx + LK.w - 30), Z(ly + 400), top + 4, 0.72);
+        }
+      }
+      SH1 = LK.y + LK.h + 40;
+    }
+
+    // The cabinet last: each panel is three bolted sheets of painted steel, carrying the grime round everything
+    // mounted on it and the swept shadows of its raised letters; two hinges down its left edge.
+    const CAB_PAINT = (() => {
+      const c = document.createElement('canvas'); c.width = PLATE_TEX.width; c.height = PLATE_TEX.height;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      drawBlurred(g, 'brightness(1.6) contrast(0.5) blur(7px) grayscale(1)');
+      g.globalAlpha = 0.16; g.filter = 'brightness(1.6) contrast(0.5) grayscale(1)'; g.drawImage(PLATE_TEX, 0, 0);
+      g.globalAlpha = 1; g.filter = 'none'; g.globalCompositeOperation = 'multiply'; g.fillStyle = '#62776f'; g.fillRect(0, 0, c.width, c.height);
+      return c;
+    })();
+    const chipPaint = (g, w, h) => {
+      for (let i = 0; i < (w + h) / 9; i++) {
+        const side = Math.floor(rand() * 4), t = rand(), x = side < 2 ? t * w : (side === 2 ? rand() * 9 : w - rand() * 9), y = side >= 2 ? t * h : (side === 0 ? rand() * 9 : h - rand() * 9), r = 0.6 + rand() * 2.2;
+        g.fillStyle = `rgba(${128 + rand() * 20},${132 + rand() * 18},${128 + rand() * 16},0.55)`; g.beginPath(); g.ellipse(x, y, r, r * 0.8, rand() * 3, 0, Math.PI * 2); g.fill();
+        if (r > 1.6 && rand() < 0.5) { g.fillStyle = 'rgba(96,48,22,0.7)'; g.beginPath(); g.arc(x, y, r * 0.45, 0, Math.PI * 2); g.fill(); }
+      }
+      const foot = g.createLinearGradient(0, h * 0.8, 0, h); foot.addColorStop(0, 'rgba(40,32,22,0)'); foot.addColorStop(1, 'rgba(40,32,22,0.3)'); g.fillStyle = foot; g.fillRect(0, h * 0.8, w, h * 0.2);
+    };
+    const SHS = [SH0, SH1];
+    for (const [i, ox] of OX.entries()) {
+      cur = i;
+      const feat = feats[i], n = 3, sw = PW / n, SH = SHS[i];
+      for (const x of [sw - 15, sw + 15, 2 * sw - 15, 2 * sw + 15, PW - 16]) for (let y = 58; y < SH - 20; y += 128) {
+        if (y > 150 && y < 210) continue;   // the seam runs here
+        feat.screws.push({ x, y }); add(screw(7), ox + x, OY + y, T + 0.5);
+      }
+      for (let k = 0; k < n; k++) {
+        const sx = k * sw, over = (b) => b[0] < sx + sw && b[0] + b[2] > sx;
+        const face = { base: CAB_PAINT, rub: '176,190,184', paint: chipPaint,
+          icons: feat.icons.filter((ic) => over(ic.box)).map((ic) => ({ ...ic, draw: (g, col) => { g.save(); g.translate(-sx - 4, -4); ic.draw(g, col); g.restore(); } })),
+          buttons: feat.buttons.filter((b) => over([b.x, 0, b.w])).map((b) => ({ ...b, x: b.x - sx - 4, y: b.y - 4 })),
+          screws: feat.screws.filter((q) => q.x > sx && q.x < sx + sw).map((q) => ({ x: q.x - sx - 4, y: q.y - 4 })) };
+        const sheet = new THREE.Mesh(extrude(rrShape(sw - 8, SH - 8, 10), 4, 4.5, 3.6, 6), [plateMaterial(sw - 8, SH - 8, face), paintSide]);
+        sheet.receiveShadow = true; add(sheet, ox + sx + sw / 2, OY + SH / 2, 0);
+      }
+      for (const hy of [260, SH - 260]) {
+        add(shade(new THREE.Mesh(new THREE.CylinderGeometry(9, 9, 110, 24).rotateX(Math.PI / 2), darkSteel)), ox - 4, OY + hy, T - 2);
+        add(shade(new THREE.Mesh(extrude(rrShape(26, 104, 3), 1.5, 0.8, 0.6, 2), darkSteel)), ox + 14, OY + hy, T);
+        for (const dz of [-34, 0, 34]) add(screw(3.4), ox + 16, OY + hy + dz, T + 3.2);
+      }
+      groups[i].add(shadowCatcher(PW, SH, ox + PW / 2, OY + SH / 2, T + 0.05, 0.42));
+    }
+
+    // Each tab its own render, so the house light's shadow map covers it; composed with the print, the fold
+    // (the panel's height in the game) and the one width.
+    const H = OY + Math.max(SH0, SH1) + FOOT;
+    const shots = [0, 1].map((i) => {
+      const x0 = OX[i] - 40, x1 = OX[i] + PW + 40, y1 = OY + SHS[i] + 40;
+      groups[i].add(shadowCatcher(x1 - x0, y1, (x0 + x1) / 2, y1 / 2, 0.05, 0.5));
+      const st = stage([x0, 0, x1, y1], [groups[i]]);
+      st.scene.traverse((o) => { if (o.isDirectionalLight) o.shadow.mapSize.set(4096, 4096); });
+      return { img: st.grab(), x0, x1, y1 };
+    });
+    await post('people_study', frame2d(W, H, (g) => {
+      const BG = '#121820';
+      g.fillStyle = BG; g.fillRect(0, 0, W, H);
+      shots.forEach((s) => g.drawImage(s.img, s.x0, 0, s.x1 - s.x0, s.y1));
+      for (const p of prints) p(g);
+      for (const [i, ox] of OX.entries()) {
+        // The fold: what shows before the body scrolls, at the tile view's height.
+        const fy = OY + FOLD, x0 = ox - 26, x1 = ox + PW + 26;
+        g.save(); g.strokeStyle = 'rgba(8,12,18,0.85)'; g.lineWidth = 5; g.setLineDash([16, 10]); g.beginPath(); g.moveTo(x0, fy); g.lineTo(x1, fy); g.stroke();
+        g.strokeStyle = 'rgba(232,238,247,0.95)'; g.lineWidth = 2.2; g.stroke(); g.restore();
+        if (i === 1) text(g, 'fold, 912 px', x1 + 14, fy + 1, MR - 40, 28, LIGHT, { weight: 500, family: PLEX });
+        // One width for both tabs.
+        const y = OY + SHS[i] + 58; g.strokeStyle = 'rgba(232,238,247,0.7)'; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(ox, y); g.lineTo(ox + PW, y); g.moveTo(ox, y - 12); g.lineTo(ox, y + 12); g.moveTo(ox + PW, y - 12); g.lineTo(ox + PW, y + 12); g.stroke();
+        g.fillStyle = BG; g.fillRect(ox + PW / 2 - 130, y - 18, 260, 36);
+        text(g, '800 px wide', ox + PW / 2, y + 1, 250, 28, LIGHT, { align: 'center', weight: 500, family: PLEX });
+      }
+      for (const nt of notes) {
+        g.save(); g.strokeStyle = '#e9b81a'; g.fillStyle = '#e9b81a'; g.lineWidth = 2.5;
+        const ax = nt.x - 12, bx = nt.x - 42; g.beginPath(); g.moveTo(ax, nt.y); g.lineTo(bx, nt.y); g.stroke();
+        g.beginPath(); g.moveTo(bx - 10, nt.y); g.lineTo(bx + 2, nt.y - 7); g.lineTo(bx + 2, nt.y + 7); g.closePath(); g.fill(); g.restore();
+        nt.lines.forEach((ln, k) => text(g, ln, nt.x, nt.y + (k - (nt.lines.length - 1) / 2) * 32, MR - 60, 28, LIGHT, { weight: k ? 500 : 600, family: PLEX }));
+      }
+      [['1', 'Advisors'], ['2', 'Labour']].forEach(([n, s], i) => {
+        text(g, n, OX[i], 56, 40, 40, '#e9b81a', { weight: 700, family: PLEX });
+        text(g, s, OX[i] + 38, 56, 600, 36, LIGHT, { weight: 600, family: PLEX });
+      });
     }));
   });
 
