@@ -47,10 +47,18 @@ const _EXTS := [".png", ".svg", ".PNG", ".SVG"]
 const _ALTERNATE_ROOT := "res://assets/icons/goods/alternate_icons"
 
 static var _texture_cache: Dictionary = {}
+## Things drawn with another good's icon: a deposit with no good of its own shows what it yields
+## ([good id, internal name]).
+const STAND_INS := {"shale_oil": ["g_026", "crude_oil"]}
 
 
 ## The icon for a good at `tier`. Defaults to `small`, which covers every display in the game.
 static func texture_for(good_id: String, internal_name: String, tier := TIER_SMALL) -> Texture2D:
+	for key: String in [internal_name, good_id]:
+		if STAND_INS.has(key):
+			good_id = str(STAND_INS[key][0])
+			internal_name = str(STAND_INS[key][1])
+			break
 	var cache_key := "%s|%s|%s" % [tier, good_id, internal_name]
 	if _texture_cache.has(cache_key):
 		return _texture_cache[cache_key] as Texture2D

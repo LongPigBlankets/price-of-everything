@@ -63,10 +63,10 @@ var use_topbar_v3_1: bool = true
 # with raised icons (assets/ui/bdp_v3/, rendered by tools/button_mockup). The default; the debug
 # cheat `toggle bdp v3` switches back to v2. Session-only, never persisted.
 var use_bdp_v3: bool = true
-# The DS2 top bar: a worn steel strip with LED money and lamps (docs/top-bar-ds2-plan.md), built
-# phase by phase. Off by default; the debug cheat `toggle topbar ds2` switches it. With it off the
-# bar is v3.1 exactly. Session-only, never persisted.
-var use_topbar_ds2: bool = false
+# The DS2 top bar: a worn steel strip with LED money and lamps (docs/top-bar-ds2-plan.md). The
+# default; the debug cheat `toggle topbar ds2` switches back to v3.1, which is then exactly as it
+# was. Session-only, never persisted.
+var use_topbar_ds2: bool = true
 # Building Detail v3's diagnostics: the Visual view (true) or the Text rows. The player's choice on the
 # panel's switch, kept while the game runs (closing the panel or starting a match keeps it).
 var bdp_diag_visual: bool = false
