@@ -2369,6 +2369,76 @@ func _test_bdp_v3_output_checks() -> void:
 	BuildingState.buildings.erase(iid)
 
 
+## The Building Ledger's DS2 look (UiPrefs.use_ledger_ds2): off, the v2 chrome exactly; on, the raised title,
+## the dot count, filter keys that latch (Running and Starved exclusive), sort marks, a module per building
+## named in the new style with its tile's name, Source and Destination, the Upgrade key and its DS2 panel;
+## the routing objective on the Shipments and Stockpiles panel; off again, v2 back.
+func _test_building_ledger_ds2() -> void:
+	MatchState.reset()
+	var was: bool = UiPrefs.use_ledger_ds2
+	UiPrefs.set_use_ledger_ds2(false)
+	var a := BuildingState.add_building("b_007", "r_009", "tile_13_2", MatchState.LOCAL_PLAYER, "ledger_ds2_a")
+	var b := BuildingState.add_building("b_003", "r_004", "tile_10_2", MatchState.LOCAL_PLAYER, "ledger_ds2_b")
+	var panel: PanelContainer = (load("res://scenes/building_ledger_panel.tscn") as PackedScene).instantiate()
+	add_child(panel)
+	await get_tree().process_frame
+	_check(panel.find_child("LedgerTitleRow", true, false) == null and (panel.get("header") as Control).visible,
+		"ledger ds2: off, the v2 header and no DS2 parts")
+	UiPrefs.set_use_ledger_ds2(true)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(panel.find_child("LedgerTitleRow", true, false) != null and not (panel.get("header") as Control).visible
+		and panel.find_child("LedgerBacking", false, false) != null, "ledger ds2: on, Building Detail's title and backing")
+	var rows: Control = panel.get("_body")
+	var names: Array[String] = []
+	for m in rows.get_children():
+		var n := m.find_child("Name", true, false) as Label
+		if n != null:
+			names.append(n.text)
+	_check(rows.get_child_count() == 2 and names.has(load("res://scripts/building_naming.gd").label_for_tile("tile_13_2", a, "b_007", "r_009")),
+		"ledger ds2: a module per building, named as the game names it (%s)" % str(names))
+	var count: Control = panel.find_child("CountDisplay", true, false)
+	_check(count != null and str(count.get("text")) == "2 BUILDINGS", "ledger ds2: the count on the dot display")
+	var keys: Dictionary = panel.get("_chips")
+	keys["running"].emit_signal("pressed")
+	keys["starved"].emit_signal("pressed")
+	_check(bool(keys["starved"].get("latched")) and not bool(keys["running"].get("latched"))
+		and bool((panel.get("_f") as Dictionary)["starved"]) and not bool((panel.get("_f") as Dictionary)["running"]),
+		"ledger ds2: filter keys latch, Running and Starved exclusive")
+	keys["starved"].emit_signal("pressed")
+	panel.call("_on_sort_pressed", "net")
+	var marks: Dictionary = panel.get("_sort_marks")
+	_check((marks["net"] as Control).visible and not (marks["name"] as Control).visible, "ledger ds2: the sorted column's mark")
+	_check(panel.find_child("Route_Fastest", true, false) == null and (panel.get("_header_cells") as Dictionary)["logistics_inputs"].text == "Source"
+		and (panel.get("_header_cells") as Dictionary)["logistics_outputs"].text == "Destination",
+		"ledger ds2: no routing keys (they are the Shipments panel's), Source and Destination headings")
+	var up := panel.find_child("Upgrade_%s" % a, true, false)
+	_check(up != null and str(up.get("title")) == "Upgrade to Lvl 2" and str(up.tooltip_text) != "",
+		"ledger ds2: the Upgrade key names the level and explains it on hover (%s)" % (str(up.get("title")) if up != null else "none"))
+	panel.call("_open_upgrade", a)
+	await get_tree().process_frame
+	var dialog: Control = panel.get("_upgrade_dialog")
+	_check(dialog != null and dialog.visible and bool(dialog.get_meta("ds2", false)) and dialog.find_child("UpgradeHead", true, false) != null
+		and dialog.find_child("UpgradeKeys", true, false) != null, "ledger ds2: Upgrade opens the DS2 upgrade panel")
+	if dialog != null:
+		dialog.call("close")
+	var transport: Control = load("res://scripts/transport_panel.gd").new()
+	add_child(transport)
+	await get_tree().process_frame
+	_check(transport.find_child("RoutingObjective", true, false) != null, "the routing objective is on the Shipments and Stockpiles panel")
+	transport.queue_free()
+	UiPrefs.set_use_ledger_ds2(false)
+	await get_tree().process_frame
+	_check(panel.find_child("LedgerTitleRow", true, false) == null and panel.find_child("LedgerBacking", false, false) == null
+		and (panel.get("header") as Control).visible, "ledger ds2: off again, v2 back")
+	UiPrefs.set_use_ledger_ds2(was)
+	panel.queue_free()
+	BuildingState.remove_building(a)
+	BuildingState.remove_building(b)
+	MatchState.reset()
+	await get_tree().process_frame
+
+
 ## The DS2 upgrade panel is the default, and its Upgrade key starts the upgrade: a building with its kit on the
 ## tile, its research and its land, the panel opened for it, the key pressed.
 func _test_upgrade_ds2_commits() -> void:
