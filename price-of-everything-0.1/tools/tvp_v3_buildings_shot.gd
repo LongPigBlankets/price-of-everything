@@ -117,15 +117,8 @@ func _ready() -> void:
 	if cost != null:
 		await _hover(panel, cost, Vector2(0.5, 0.5), "bls_hover_cost")
 
-	# The port's guarded Buy, its cover lifted.
+	# The port's Buy key.
 	var guard: Control = panel.find_child("PortBuyButton", true, false)
-	if guard != null:
-		_scroll_into_view(panel, guard)
-		await _settle(4)
-		guard.call("lift")
-		await _settle(6)
-		_save(panel.get_global_rect().grow(16.0), "bls_guard_lifted")
-		guard.call("drop")
 	print("[TVP_SHOT] guard %s" % ("found" if guard != null else "MISSING"))
 	panel.set_meta("tvp_bl_others_open", false)
 	_set_group(panel, "b_007|r_009", false)

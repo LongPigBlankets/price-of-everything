@@ -30,6 +30,9 @@ const HOT_MODULATE := Color(1.2, 1.2, 1.2)
 
 var icon: Texture2D
 var shadow: Texture2D
+## The art's height and the longest it may run, CAP_H and BOX_W unless a card asks for more (fit_to).
+var cap_h := CAP_H
+var box_w := BOX_W
 var factor := 1.0
 var row_h := CAP_H
 var lit := true
@@ -62,7 +65,7 @@ func set_link(building_id: String, tone: String, head_h := CAP_H, with_lamp := t
 	var shadow_path := path.replace(".png", "_shadow.png")
 	shadow = load(shadow_path) if icon != null and ResourceLoader.exists(shadow_path) else null
 	factor = float(OPTICAL.get(building_id, 1.0))
-	row_h = maxf(head_h, CAP_H)
+	row_h = maxf(head_h, cap_h)
 	lit = with_lamp
 	lamp_mid = mid
 	lamp.visible = with_lamp
@@ -71,9 +74,18 @@ func set_link(building_id: String, tone: String, head_h := CAP_H, with_lamp := t
 	queue_redraw()
 
 
+## Fits the art to `cap` px tall and no longer than `box` (a card that gives its emblem its full height).
+func fit_to(cap: float, box: float) -> void:
+	cap_h = cap
+	box_w = box
+	row_h = maxf(row_h, cap)
+	_fit_box()
+	queue_redraw()
+
+
 func _fit_box() -> void:
 	var side: Vector2 = lamp.custom_minimum_size
-	custom_minimum_size = Vector2(BOX_W, _lamp_top() + side.y if lit else row_h)
+	custom_minimum_size = Vector2(box_w, _lamp_top() + side.y if lit else row_h)
 	_place_lamp()
 
 
@@ -92,9 +104,9 @@ func _place_lamp() -> void:
 ## midline. The shadow is drawn to the same rect, so it falls where it was rendered.
 func art_dest() -> Rect2:
 	var art := Indicator.art_rect(icon)
-	var k := CAP_H * factor / maxf(art.size.y, 1.0)
-	if art.size.x * k > BOX_W * factor:
-		k = BOX_W * factor / art.size.x
+	var k := cap_h * factor / maxf(art.size.y, 1.0)
+	if art.size.x * k > box_w * factor:
+		k = box_w * factor / art.size.x
 	var art_size := art.size * k
 	var at := Vector2((size.x - art_size.x) * 0.5, (row_h - art_size.y) * 0.5)
 	return Rect2(at - art.position * k, icon.get_size() * k)
