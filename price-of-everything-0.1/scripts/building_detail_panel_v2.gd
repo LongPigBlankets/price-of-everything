@@ -18,6 +18,7 @@ const BuyDialog := preload("res://scripts/buy_building_dialog.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const InfrastructureInfo := preload("res://scripts/infrastructure_info.gd")
 const BdpV3Block := preload("res://scripts/bdp_v3_block.gd")
+const BdpV3Routes := preload("res://scripts/bdp_v3_routes.gd")
 const BdpV3Footer := preload("res://scripts/bdp_v3_footer.gd")
 const BdpV3Key := preload("res://scripts/bdp_v3_key.gd")
 const BdpV3Lamp := preload("res://scripts/bdp_v3_lamp.gd")
@@ -64,6 +65,8 @@ const PANEL_EDGE_MARGIN := 20.0
 const TOP_BAR_CLEARANCE := 72.0   # clears the top bar and its shadow
 const BOTTOM_CLEARANCE := 110.0  # fallback: keep clear of the bottom menu when no tile panel to match
 const PANEL_WIDTH := 460.0
+## v3's width: its content held it at 495 wide; the owner widened it by 30 for the input and output sheets.
+const V3_PANEL_WIDTH := 525.0
 const CONTENT_MARGIN := 26
 ## The width v3's header keeps for its keys.
 const V3_KEY_COLUMN := 96.0 / 1.875
@@ -138,7 +141,7 @@ var _backing: Control = null
 func _ready() -> void:
 	if DS and DS.theme:
 		theme = DS.theme
-	custom_minimum_size = Vector2(PANEL_WIDTH, 0)
+	custom_minimum_size = Vector2(_panel_width(), 0)
 	_build_shell()
 	_wire_live_refresh()
 	visibility_changed.connect(_on_visibility_changed)
@@ -1153,9 +1156,12 @@ func _build_primary_actions(building: Dictionary, _building_data: Dictionary) ->
 func _open_upgrade_sheet(building: Dictionary) -> void:
 	var iid := str(building.get("instance_id", ""))
 	var preview: Dictionary = BuildingWorks.preview_upgrade(iid)
-	if bool(preview.get("ok", false)) and not bool(preview.get("at_max", false)) \
+	# The DS2 panel also shows the top level and an upgrade under way, so only infrastructure's cash upgrade
+	# keeps the sheet.
+	var ds2 := UiPrefs.use_upgrade_ds2 and not bool(preview.get("infra", false))
+	if bool(preview.get("ok", false)) and (ds2 or (not bool(preview.get("at_max", false)) \
 			and not bool(preview.get("infra", false)) \
-			and not bool(preview.get("already_upgrading", false)):
+			and not bool(preview.get("already_upgrading", false)))):
 		_ensure_upgrade_dialog()
 		_upgrade_dialog.call("open", iid)
 		return
@@ -1394,13 +1400,18 @@ func _fmt_dec(v: float, decimals: int) -> String:
 ## arrangement the building ledger uses, so the screens share one dialog rather than each
 ## carrying their own.
 func _ensure_upgrade_dialog() -> void:
+	# The DS2 panel unless `toggle upgrade ds2` switched it back; a switch replaces the one built for the other.
 	if _upgrade_dialog != null and is_instance_valid(_upgrade_dialog):
-		return
+		if bool(_upgrade_dialog.get_meta("ds2", false)) == UiPrefs.use_upgrade_ds2:
+			return
+		_upgrade_dialog.queue_free()
+		_upgrade_dialog = null
 	if _upgrade_dialog_layer == null or not is_instance_valid(_upgrade_dialog_layer):
 		_upgrade_dialog_layer = CanvasLayer.new()
 		_upgrade_dialog_layer.layer = 128
 		get_tree().root.add_child(_upgrade_dialog_layer)
-	_upgrade_dialog = (load("res://scripts/upgrade_dialog.gd") as Script).new()
+	_upgrade_dialog = (load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd" if UiPrefs.use_upgrade_ds2 else "res://scripts/upgrade_dialog.gd") as Script).new()
+	_upgrade_dialog.set_meta("ds2", UiPrefs.use_upgrade_ds2)
 	_upgrade_dialog_layer.add_child(_upgrade_dialog)
 	_upgrade_dialog.connect("committed", func(_iid: String) -> void: _queue_refresh())
 
@@ -1629,6 +1640,8 @@ func _apply_retrofit(iid: String, recipe: Dictionary) -> void:
 func _on_bdp_v3_changed(_enabled: bool) -> void:
 	_apply_v3_chrome()
 	_close_sheet()
+	if is_inside_tree():
+		_size_and_position()   # v3 and v2 differ in width
 	_queue_refresh()
 
 
@@ -3909,6 +3922,9 @@ func _off_white_icon_rect(texture: Texture2D, size: Vector2) -> TextureRect:
 	return icon
 
 func _open_input_sources_sheet(building: Dictionary, recipe: Dictionary) -> void:
+	if UiPrefs.use_bdp_v3 and UiPrefs.use_routes_ds2:
+		_open_sheet("Input sources", func(vb: VBoxContainer) -> void: BdpV3Routes.inputs(self, vb, building, recipe))
+		return
 	var iid := str(building.get("instance_id", ""))
 	_open_sheet("Input sources", func(vb: VBoxContainer) -> void:
 		_add_logistics_options(vb,building,"input")
@@ -4142,6 +4158,9 @@ func _route_source_description(building: Dictionary, _gid: String, source: Strin
 	return source
 
 func _open_output_sheet(building: Dictionary, recipe: Dictionary) -> void:
+	if UiPrefs.use_bdp_v3 and UiPrefs.use_routes_ds2:
+		_open_sheet("Output destination", func(vb: VBoxContainer) -> void: BdpV3Routes.outputs(self, vb, building, recipe))
+		return
 	if str(recipe.get("output_name", "")) == "power":
 		_open_sheet("Electricity output", func(vb: VBoxContainer) -> void:
 			var note := Label.new()
@@ -4659,9 +4678,13 @@ func _target_height() -> float:
 
 func _resize_body() -> void:
 	var h := _target_height()
-	var w := PANEL_WIDTH + _sheet_extra_width
+	var w := _panel_width() + _sheet_extra_width
 	custom_minimum_size = Vector2(w, h)
 	size = Vector2(w, h)
+
+## The panel's width before a sheet widens it: v3's, or v2's.
+func _panel_width() -> float:
+	return V3_PANEL_WIDTH if UiPrefs.use_bdp_v3 else PANEL_WIDTH
 
 func _size_and_position() -> void:
 	_resize_body()

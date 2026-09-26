@@ -447,8 +447,8 @@ func _test_main_scene_instantiates() -> void:
 		_check(first_generation_count > 0 and second_generation_count == first_generation_count,
 			"building detail: same-frame rebuild replaces old controls")
 		await get_tree().process_frame
-		_check((detail as Control).size.x <= 520.0,
-			"building detail: same-frame rebuild stays at its narrow panel width")
+		_check((detail as Control).size.x <= float(detail.call("_panel_width")) + 1.0,
+			"building detail: same-frame rebuild stays at its narrow panel width (%.0f)" % (detail as Control).size.x)
 		detail.hide()
 	else:
 		_check(false, "building detail: Industrial Goods Factory fixture is available")

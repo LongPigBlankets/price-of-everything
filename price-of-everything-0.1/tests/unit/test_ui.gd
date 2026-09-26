@@ -1124,6 +1124,118 @@ func _test_bdp_v3_rules() -> void:
 		"bdp v3: the rail is 16 px wide and keeps its ends (%s)" % str(rail.get_minimum_size()))
 
 
+## Building Detail's Input sources and Output destination sheets in DS2 (UiPrefs.use_routes_ds2): off, the v2
+## sheets exactly; on, the readout fixed under the title, a module a good on the plastic case with its figures
+## quoted by the economics, knobs whose options say what they do on the readout, turning a knob changing the
+## route and the rebuilt knob showing it, and no coordinates in the words.
+func _test_bdp_routes_ds2() -> void:
+	MatchState.reset()
+	Stockpile.clear_all()
+	var was_v3: bool = UiPrefs.use_bdp_v3
+	var was: bool = UiPrefs.use_routes_ds2
+	var fresh: Object = UiPrefs.get_script().new()
+	_check(fresh.get("use_routes_ds2") == true, "routes ds2: the DS2 input and output sheets are the default")
+	fresh.free()
+	UiPrefs.set_use_bdp_v3(true)
+	var terminal: Node = load("res://scripts/debug_terminal.gd").new()
+	add_child(terminal)
+	await get_tree().process_frame
+	terminal._cheats_unlocked = true
+	UiPrefs.use_routes_ds2 = false
+	var reply: String = terminal._run_command("toggle routes ds2")
+	_check(UiPrefs.use_routes_ds2 and reply.contains("DS2"), "routes ds2: `toggle routes ds2` switches the sheets to DS2 (%s)" % reply)
+	terminal.queue_free()
+	var tile := "tile_5_10"
+	var iid: String = BuildingState.add_building("b_007", "r_009", tile, MatchState.LOCAL_PLAYER, "routes_ds2")
+	var b: Dictionary = BuildingState.get_building(iid)
+	var recipe := Catalog.get_recipe("r_009")
+	var steel := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	var motor := str(Catalog.get_good_by_internal_name("motor").get("id", ""))
+	Stockpile.add(tile, steel, 60)
+	var panel = load("res://scripts/building_detail_panel_v2.gd").new()
+	add_child(panel)
+	await get_tree().process_frame
+	panel.show_building(b)
+	await get_tree().process_frame
+
+	UiPrefs.use_routes_ds2 = false
+	panel._open_input_sources_sheet(b, recipe)
+	await get_tree().process_frame
+	_check(panel.find_child("InputPlates", true, false) == null and panel.find_child("RoutesReadout", true, false) == null,
+		"routes ds2: off, the v2 input sheet exactly")
+	UiPrefs.use_routes_ds2 = true
+	panel._open_input_sources_sheet(b, recipe)
+	await get_tree().process_frame
+	var readout: Control = panel.find_child("RoutesReadout", true, false)
+	var scroll: ScrollContainer = panel.find_child("ActionSheetScroll", true, false)
+	_check(readout != null and scroll != null and readout.get_parent() == scroll.get_parent(),
+		"routes ds2: the readout stands under the title, outside the scroll")
+	_check(str(readout.call("shown_name")) == "Change the Input source for goods." and str(readout.call("shown_detail")).begins_with("The market sells only what you ship in"),
+		"routes ds2: with the pointer on no option the readout says what the sheet changes (%s)" % str(readout.call("shown_name")))
+	var steel_plate: Control = panel.find_child("Input_%s" % steel, true, false)
+	_check(steel_plate != null and str(steel_plate.get("style")) == "plastic" and steel_plate.get_parent().name == "InputPlates",
+		"routes ds2: each good is its own screwed plastic plate, straight on the sheet")
+	var inputs: Array = recipe.get("inputs", [])
+	var modules := inputs.filter(func(i: Dictionary) -> bool: return panel.find_child("Input_%s" % str(i.good_id), true, false) != null)
+	_check(modules.size() == inputs.size(), "routes ds2: a module for each of the %d inputs" % inputs.size())
+	var econ: Dictionary = load("res://scripts/building_economics.gd").per_turn(b)
+	var steel_line: Dictionary = (econ.inputs as Array).filter(func(l: Dictionary) -> bool: return str(l.good_id) == steel)[0]
+	var module: Control = panel.find_child("Input_%s" % steel, true, false)
+	var goods_row: Control = module.find_child("GoodsPerTurn", true, false)
+	var led: Control = goods_row.find_child("MoneyLed", true, false).get_child(1) if goods_row != null else null
+	_check(led != null and str(led.call("figure")).strip_edges() == "%.2f" % float(steel_line.value),
+		"routes ds2: the goods figure is the economics' own (%s, %s)" % [str(led.call("figure")) if led != null else "none", "%.2f" % float(steel_line.value)])
+	var stock_line: Control = module.find_child("StockLine", true, false)
+	_check(stock_line != null and (stock_line.get_child(1) as Label).text.begins_with("60 on the tile"),
+		"routes ds2: the stock line says what the tile holds")
+	var words: Label = module.find_child("SourceWords", true, false)
+	_check(words != null and not words.text.contains("(") and not words.text.contains(" - "),
+		"routes ds2: the source is said without coordinates or dashes (%s)" % (words.text if words != null else "none"))
+	var option: Button = module.find_child("RouteOption_GlobalMarket", true, false)
+	option.mouse_entered.emit()
+	_check(str(readout.call("shown_name")).contains("Global market") and str(readout.call("shown_detail")) != "",
+		"routes ds2: pointing at an option names it on the readout (%s)" % str(readout.call("shown_name")))
+	option.mouse_exited.emit()
+	# Turning Steel's knob to the stockpile: tile stock only, and the rebuilt knob points there.
+	var knob: Control = module.find_child("PrimaryKnob_%s" % steel, true, false)
+	knob.set("value", 1)
+	await get_tree().process_frame
+	var route: Dictionary = load("res://scripts/middleman_service.gd").input_source_route(iid, steel)
+	_check(str(route.primary) == "stockpile" and str(route.fallback) == "",
+		"routes ds2: turning the knob to the stockpile makes it tile stock only (%s)" % str(route))
+	var rebuilt: Control = panel.find_child("PrimaryKnob_%s" % steel, true, false)
+	_check(rebuilt != null and rebuilt != knob and int(rebuilt.get("value")) == 1, "routes ds2: the rebuilt knob shows the change")
+	var case: Control = panel.find_child("InputPlates", true, false)
+	scroll = panel.find_child("ActionSheetScroll", true, false)
+	_check(case.get_combined_minimum_size().x <= scroll.size.x - scroll.get_v_scroll_bar().get_combined_minimum_size().x,
+		"routes ds2: the case fits beside the scroll rail (%.0f in %.0f)" % [case.get_combined_minimum_size().x, scroll.size.x])
+
+	# The output: turned to this tile's stockpile.
+	panel._open_output_sheet(b, recipe)
+	await get_tree().process_frame
+	var out_module: Control = panel.find_child("Output_%s" % motor, true, false)
+	_check(out_module != null and out_module.find_child("DestinationLine", true, false) != null, "routes ds2: the output's module and where it goes")
+	var turn_to := func(choice: String) -> void:
+		var k: Control = panel.find_child("DestinationKnob_%s" % motor, true, false)
+		var ids: Array = (k.get("options") as Array).map(func(c: Dictionary) -> String: return str(c.id))
+		k.set("value", ids.find(choice) + 1)
+	turn_to.call("market")
+	await get_tree().process_frame
+	_check(MatchState.is_output_market(iid, motor), "routes ds2: turning the destination knob to the market sells the output there")
+	turn_to.call("stockpile")
+	await get_tree().process_frame
+	_check(MatchState.get_output_stockpile_destination(iid, motor) == tile and not MatchState.is_output_market(iid, motor),
+		"routes ds2: and to the stockpile keeps it on the tile")
+
+	panel._close_sheet()
+	panel.queue_free()
+	UiPrefs.use_routes_ds2 = was
+	UiPrefs.set_use_bdp_v3(was_v3)
+	MatchState.reset()
+	Stockpile.clear_all()
+	await get_tree().process_frame
+
+
 func _test_bdp_v3_panel() -> void:
 	var was: bool = UiPrefs.use_bdp_v3
 	UiPrefs.set_use_bdp_v3(false)
@@ -2367,3 +2479,184 @@ func _test_bdp_v3_output_checks() -> void:
 		"outputs checks: an indicator over three tones shows three lamps side by side, red, amber, green (%s)" % ", ".join(colours))
 	ind.queue_free()
 	BuildingState.buildings.erase(iid)
+
+
+## The Building Ledger's DS2 look (UiPrefs.use_ledger_ds2): off, the v2 chrome exactly; on, the raised title,
+## the dot count, filter keys that latch (Running and Starved exclusive), sort marks, a module per building
+## named in the new style with its tile's name, Source and Destination, the Upgrade key and its DS2 panel;
+## the routing objective on the Shipments and Stockpiles panel; off again, v2 back.
+func _test_building_ledger_ds2() -> void:
+	MatchState.reset()
+	var fresh: Object = UiPrefs.get_script().new()
+	_check(fresh.get("use_ledger_ds2") == true, "ledger ds2: the DS2 ledger is the default")
+	fresh.free()
+	var was: bool = UiPrefs.use_ledger_ds2
+	UiPrefs.set_use_ledger_ds2(false)
+	var a := BuildingState.add_building("b_007", "r_009", "tile_13_2", MatchState.LOCAL_PLAYER, "ledger_ds2_a")
+	var b := BuildingState.add_building("b_003", "r_004", "tile_10_2", MatchState.LOCAL_PLAYER, "ledger_ds2_b")
+	var panel: PanelContainer = (load("res://scenes/building_ledger_panel.tscn") as PackedScene).instantiate()
+	add_child(panel)
+	await get_tree().process_frame
+	_check(panel.find_child("LedgerTitleRow", true, false) == null and (panel.get("header") as Control).visible,
+		"ledger ds2: off, the v2 header and no DS2 parts")
+	UiPrefs.set_use_ledger_ds2(true)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(panel.find_child("LedgerTitleRow", true, false) != null and not (panel.get("header") as Control).visible
+		and panel.find_child("LedgerBacking", false, false) != null, "ledger ds2: on, Building Detail's title and backing")
+	var rows: Control = panel.get("_body")
+	var names: Array[String] = []
+	for m in rows.get_children():
+		var n := m.find_child("Name", true, false) as Label
+		if n != null:
+			names.append(n.text)
+	_check(rows.get_child_count() == 2 and names.has(load("res://scripts/building_naming.gd").label_for_tile("tile_13_2", a, "b_007", "r_009")),
+		"ledger ds2: a module per building, named as the game names it (%s)" % str(names))
+	var count: Control = panel.find_child("CountDisplay", true, false)
+	_check(count != null and str(count.get("text")) == "2 BUILDINGS", "ledger ds2: the count on the dot display")
+	var keys: Dictionary = panel.get("_chips")
+	keys["running"].emit_signal("pressed")
+	keys["starved"].emit_signal("pressed")
+	_check(bool(keys["starved"].get("latched")) and not bool(keys["running"].get("latched"))
+		and bool((panel.get("_f") as Dictionary)["starved"]) and not bool((panel.get("_f") as Dictionary)["running"]),
+		"ledger ds2: filter keys latch, Running and Starved exclusive")
+	keys["starved"].emit_signal("pressed")
+	panel.call("_on_sort_pressed", "net")
+	var marks: Dictionary = panel.get("_sort_marks")
+	_check((marks["net"] as Control).visible and not (marks["name"] as Control).visible, "ledger ds2: the sorted column's mark")
+	_check(panel.find_child("Route_Fastest", true, false) == null and (panel.get("_header_cells") as Dictionary)["logistics_inputs"].text == "Source"
+		and (panel.get("_header_cells") as Dictionary)["logistics_outputs"].text == "Destination",
+		"ledger ds2: no routing keys (they are the Shipments panel's), Source and Destination headings")
+	var up := panel.find_child("Upgrade_%s" % a, true, false)
+	_check(up != null and str(up.get("title")) == "Upgrade to Lvl 2" and str(up.tooltip_text) != "",
+		"ledger ds2: the Upgrade key names the level and explains it on hover (%s)" % (str(up.get("title")) if up != null else "none"))
+	panel.call("_open_upgrade", a)
+	await get_tree().process_frame
+	var dialog: Control = panel.get("_upgrade_dialog")
+	_check(dialog != null and dialog.visible and bool(dialog.get_meta("ds2", false)) and dialog.find_child("UpgradeHead", true, false) != null
+		and dialog.find_child("UpgradeKeys", true, false) != null, "ledger ds2: Upgrade opens the DS2 upgrade panel")
+	if dialog != null:
+		dialog.call("close")
+	var transport: Control = load("res://scripts/transport_panel.gd").new()
+	add_child(transport)
+	await get_tree().process_frame
+	_check(transport.find_child("RoutingObjective", true, false) != null, "the routing objective is on the Shipments and Stockpiles panel")
+	transport.queue_free()
+	UiPrefs.set_use_ledger_ds2(false)
+	await get_tree().process_frame
+	_check(panel.find_child("LedgerTitleRow", true, false) == null and panel.find_child("LedgerBacking", false, false) == null
+		and (panel.get("header") as Control).visible, "ledger ds2: off again, v2 back")
+	UiPrefs.set_use_ledger_ds2(was)
+	panel.queue_free()
+	BuildingState.remove_building(a)
+	BuildingState.remove_building(b)
+	MatchState.reset()
+	await get_tree().process_frame
+
+
+## The DS2 upgrade panel with land to buy, opened twice: the price and its hover carry the Land Purchase; the
+## Per turn bars run to the largest change; the sheet opens in the same place both times with its top on the
+## screen, and its head drags it.
+func _test_upgrade_ds2_land_place_and_bars() -> void:
+	MatchState.reset()
+	Stockpile.clear_all()
+	var tile := "tile_5_10"
+	var iid := BuildingState.add_building("b_009", "", tile, "player_1", "ds2_land", false)
+	BuildingState.tile_land_owned[tile] = int(ceil(BuildingState.get_tile_player_space_used(tile)))
+	var p: Dictionary = BuildingWorks.preview_upgrade(iid)
+	var dialog: Control = load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd").new()
+	add_child(dialog)
+	dialog.call("open", iid)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var price := dialog.find_child("SourcePrice", true, false)
+	var cost: Dictionary = price.get("breakdown") if price != null else {}
+	var land_lines := (cost.get("lines", []) as Array).filter(func(l: Array) -> bool: return str(l[0]).begins_with("Land Purchase"))
+	_check(int(p.get("land_units", 0)) > 0 and land_lines.size() == 1
+		and absf(float(land_lines[0][1]) - float(p.get("land_cost", 0.0))) < 0.01,
+		"upgrade ds2 land: the price's hover has the Land Purchase at its price")
+	var summed := 0.0
+	for l: Array in cost.get("lines", []):
+		summed += float(l[1])
+	_check(absf(float(cost.get("total", 0.0)) - summed) < 0.01 and float(cost.get("total", 0.0)) >= float(p.get("land_cost", 0.0)),
+		"upgrade ds2 land: the price is the materials and the land")
+	var land_line := dialog.find_child("LandLine", true, false) as Control
+	_check(land_line != null and land_line.tooltip_text.contains("buys"),
+		"upgrade ds2 land: the land line says the upgrade buys the land")
+	# The bars: one scale, running to the largest change.
+	var tracks: Array = []
+	var stack: Array = [dialog]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n.get("reach") != null and n.get("values") != null:
+			tracks.append(n)
+		stack.append_array(n.get_children())
+	var largest := 1.0
+	for t: Control in tracks:
+		var vals: Array = t.get("values")
+		var from: int = t.get("now_level")
+		if float(vals[from - 1]) > 0.0:
+			largest = maxf(largest, float(vals[int(t.get("next_level")) - 1]) / float(vals[from - 1]))
+	_check(not tracks.is_empty() and tracks.all(func(t: Control) -> bool: return is_equal_approx(float(t.get("reach")), largest)),
+		"upgrade ds2 bars: every bar's scale runs to the largest change (%s)" % largest)
+	# The place: the same both times, the top on the screen.
+	var sheet := dialog.find_child("UpgradeSheet", true, false) as Control
+	var first := sheet.position
+	_check(first.y >= 0.0 and first.x >= 0.0 and sheet.position.x + sheet.size.x <= dialog.size.x,
+		"upgrade ds2 place: the sheet opens on the screen")
+	var head := dialog.find_child("UpgradeHead", true, false) as Control
+	var grab := Vector2(head.get_global_rect().position.x + 60.0, head.get_global_rect().get_center().y)
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = grab
+	dialog.call("_input", press)
+	var motion := InputEventMouseMotion.new()
+	motion.position = grab + Vector2(-40.0, 30.0)
+	dialog.call("_input", motion)
+	var release := press.duplicate() as InputEventMouseButton
+	release.pressed = false
+	release.position = motion.position
+	dialog.call("_input", release)
+	_check(sheet.position != first, "upgrade ds2 place: the head drags the sheet")
+	dialog.call("close")
+	dialog.call("open", iid)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(sheet.position == first, "upgrade ds2 place: opened again it stands where it first stood (%s, then %s)" % [first, sheet.position])
+	dialog.queue_free()
+	MatchState.reset()
+	Stockpile.clear_all()
+	await get_tree().process_frame
+
+
+## The DS2 upgrade panel is the default, and its Upgrade key starts the upgrade: a building with its kit on the
+## tile, its research and its land, the panel opened for it, the key pressed.
+func _test_upgrade_ds2_commits() -> void:
+	MatchState.reset()
+	Stockpile.clear_all()
+	_check(UiPrefs.use_upgrade_ds2, "upgrade ds2: the DS2 upgrade panel is the default")
+	var levels := load("res://scripts/building_levels.gd")
+	var tile := "tile_12_2"
+	BuildingState.tile_land_owned[tile] = 200
+	var iid := BuildingState.add_building("b_013", "", tile)
+	var gate: String = levels.research_gate("poly_plant", 2)
+	if gate != "":
+		ResearchState.grant_unlock(gate)
+	var kit: Dictionary = levels.upgrade_materials("poly_plant", 2)
+	for internal in kit:
+		Stockpile.add(tile, str(Catalog.get_good_by_internal_name(str(internal)).get("id", "")), int(kit[internal]))
+	var dialog: Control = load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd").new()
+	add_child(dialog)
+	dialog.call("open", iid)
+	await get_tree().process_frame
+	var key := dialog.find_child("Key_Upgrade", true, false) as Button
+	_check(key != null and not key.disabled, "upgrade ds2: the Upgrade key is live with the kit, research and land in place")
+	if key != null:
+		key.emit_signal("pressed")
+	_check(BuildingWorks.is_upgrading(iid) and not dialog.visible, "upgrade ds2: pressing Upgrade starts the upgrade and closes the panel")
+	BuildingWorks.cancel_upgrade(iid)
+	dialog.queue_free()
+	MatchState.reset()
+	Stockpile.clear_all()
+	await get_tree().process_frame

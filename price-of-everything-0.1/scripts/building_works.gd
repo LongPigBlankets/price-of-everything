@@ -110,6 +110,23 @@ func _fits_reason(tile_id: String, delta: float, fits_physical: bool, fits_owned
 func land_text(v: float) -> String:
 	return str(int(round(v))) if absf(v - round(v)) < 0.05 else "%.1f" % v
 
+## The land an upgrade buys to close the gap between the player's estate on the tile and the larger building,
+## in whole patches as construction buys it: {units, patches, cost}. Units are 0 when the estate already has
+## the room, automatic land buying is off, or the tile doesn't have that much for sale.
+func upgrade_land_purchase(tile_id: String, delta: float) -> Dictionary:
+	var none := {"units": 0, "patches": 0, "cost": 0.0}
+	var short := BuildingState.get_tile_player_space_used(tile_id) + delta - float(BuildingState.get_tile_land_owned(tile_id))
+	if short <= 0.0 or not MatchState.construct_auto_buy_land:
+		return none
+	var patches := ceili(short / float(BuildingState.LAND_PATCH_SIZE))
+	if patches > BuildingState.get_tile_land_patches_available(tile_id):
+		return none
+	var units := mini(patches * BuildingState.LAND_PATCH_SIZE, BuildingState.get_tile_land_units_available(tile_id))
+	if float(units) < short:
+		return none
+	return {"units": units, "patches": patches,
+		"cost": AdvisorState.purchase_cost_after_advisor(float(patches) * BuildingState.LAND_PATCH_COST, {"tile_id": tile_id})}
+
 func _upgrade_size_delta(building_id: String, from_level: int, target: int) -> float:
 	var base_size := float(Catalog.get_building(building_id).get("tile_size_used", 1.0))
 	return base_size * (BuildingLevels.mult("size", target) - BuildingLevels.mult("size", from_level))
@@ -494,6 +511,7 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 	var materials: Array = []
 	var shortfall: Dictionary = {}
 	var market_cost := 0.0
+	var market_lines: Array = []   # per good bought: its quantity, what the goods cost and their freight
 	var market_sourceable := true  # false if any shortfall good has no port route to this tile
 	# What another awaiting job on this tile has already banked is on the tile but not
 	# available -- see reserved_materials_on_tile.
@@ -513,6 +531,8 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 				market_sourceable = false
 			else:
 				market_cost += float(quote.get("cost", 0.0))
+				market_lines.append({"good_id": gid, "qty": short, "goods": float(quote.get("goods_cost", 0.0)),
+					"transport": float(quote.get("transport_cost", 0.0))})
 		materials.append({
 			"good_id": gid, "name": Catalog.get_display_name(gid),
 			"need": need, "have": have, "short": short, "free": free,
@@ -532,7 +552,9 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 	var projected_player := BuildingState.get_tile_player_space_used(tile_id) + delta
 	var fits_physical: bool = projected <= float(BuildingState.max_tile_land(tile_id))
 	var fits_owned: bool = projected_player <= float(BuildingState.get_tile_land_owned(tile_id))
-	var fits: bool = fits_physical and fits_owned
+	# Short of owned land but not of room, the upgrade buys the gap.
+	var land := upgrade_land_purchase(tile_id, delta) if fits_physical and not fits_owned else {}
+	var fits: bool = fits_physical and (fits_owned or int(land.get("units", 0)) > 0)
 
 	var gate := BuildingLevels.research_gate(internal, target)
 	var pend := pending_upgrade(instance_id)
@@ -549,6 +571,10 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 		"all_on_tile": all_on_tile,
 		"all_on_tile_free": all_on_tile_free,
 		"market_sourceable": market_sourceable,
+		"market_lines": market_lines,
+		# Pulling the shortfall from every tile's spare stock (the "stockpiles" mode): what comes from where,
+		# its freight, and what no tile can spare.
+		"stockpile_plan": upgrade_stockpile_plan(tile_id, shortfall),
 		"source_tile": str(source.get("tile_id", "")),
 		"source_turns": int(source.get("turns", 0)),
 		"market_cost": market_cost,
@@ -556,8 +582,11 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 		# WHY it does not fit, and by how much. "Not enough room" over a tile panel reading
 		# "122 owned" reads as a bug: the binding limit is usually the tile's PHYSICAL space,
 		# which counts the NPC buildings sitting on it, not the land the player owns.
-		"fits_reason": _fits_reason(tile_id, delta, fits_physical, fits_owned),
+		"fits_reason": "" if fits else _fits_reason(tile_id, delta, fits_physical, fits_owned),
 		"size_delta": delta,
+		# The land the upgrade buys to fit, and its price.
+		"land_units": int(land.get("units", 0)),
+		"land_cost": float(land.get("cost", 0.0)),
 		"already_upgrading": not pend.is_empty(),
 		"pending_turns_left": int(pend.get("turns_remaining", 0)),
 		"pending_status": str(pend.get("status", "")),
@@ -667,7 +696,10 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 	var projected_player := BuildingState.get_tile_player_space_used(tile_id) + size_delta
 	var room_physical: bool = projected <= float(BuildingState.max_tile_land(tile_id))
 	var room_owned: bool = projected_player <= float(BuildingState.get_tile_land_owned(tile_id))
-	if not (room_physical and room_owned):
+	# Short of owned land but not of room, the upgrade buys the gap (bought once everything else is cleared).
+	var land := upgrade_land_purchase(tile_id, size_delta) if room_physical and not room_owned else {}
+	var land_cost := float(land.get("cost", 0.0))
+	if not (room_physical and (room_owned or int(land.get("units", 0)) > 0)):
 		return {"ok": false, "reason": _fits_reason(tile_id, size_delta, room_physical, room_owned)}
 
 	# Split materials: what's on the tile vs the shortfall.
@@ -681,8 +713,13 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 	# Validate the chosen sourcing BEFORE consuming anything — start_upgrade is atomic, so a
 	# broke wallet / no port / no spare tile fails cleanly with nothing taken off the tile.
 	var transfer_source: Dictionary = {}
+	var stock_plan: Dictionary = {}
 	if not shortfall.is_empty():
 		match mode:
+			"tile_wait":
+				pass   # waits for the materials to reach the tile by any means; nothing is bought
+			"stockpiles":
+				stock_plan = upgrade_stockpile_plan(tile_id, shortfall)
 			"tile":
 				return {"ok": false, "reason": "Upgrade materials missing on the tile.", "missing": shortfall, "required": need_by_gid}
 			"market":
@@ -692,7 +729,9 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 					if quote.is_empty():
 						return {"ok": false, "reason": "No market route to deliver %s to this tile." % Catalog.get_display_name(str(gid))}
 					total += float(quote.get("cost", 0.0))
-				if total > MatchState.money:
+				if total + land_cost > MatchState.money:
+					if land_cost > 0.0:
+						return {"ok": false, "reason": "Not enough money to order the missing materials and buy the land (≈£%d)." % int(ceil(total + land_cost))}
 					return {"ok": false, "reason": "Not enough money to order the missing materials (≈£%d)." % int(ceil(total))}
 			"transfer":
 				transfer_source = Construction.find_source_tile(tile_id, shortfall)
@@ -700,6 +739,12 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 					return {"ok": false, "reason": "No single tile has the spare stock to transfer."}
 			_:
 				return {"ok": false, "reason": "Unknown sourcing mode."}
+
+	if not land.is_empty() and int(land.get("units", 0)) > 0:
+		if land_cost > MatchState.money:
+			return {"ok": false, "reason": "Not enough money to buy the land the larger building needs (≈£%d)." % int(ceil(land_cost))}
+		if not BuildingState.purchase_tile_land(tile_id, int(land.get("patches", 0))):
+			return {"ok": false, "reason": "Could not buy the land the larger building needs."}
 
 	# Cleared to commit. Reserve the in-place portion now (mirrors construction): consume what
 	# we already have so co-located production can't claim it before the upgrade does.
@@ -715,6 +760,9 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 				MatchState.queue_buy(tile_id, str(gid), int(shortfall[gid]), false, {"upgrade_instance_id": instance_id})
 		elif mode == "transfer":
 			TransportState.queue_move(str(transfer_source.get("tile_id", "")), tile_id, shortfall, false, {"upgrade_instance_id": instance_id})
+		elif mode == "stockpiles":
+			for move: Dictionary in stock_plan.get("from_tiles", []):
+				TransportState.queue_move(str(move.tile_id), tile_id, move.goods, false, {"upgrade_instance_id": instance_id})
 
 	var status := UPGRADE_STATUS_UPGRADING if shortfall.is_empty() else UPGRADE_STATUS_AWAITING
 	pending_upgrades.append({
@@ -728,13 +776,56 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 		"missing": shortfall.duplicate(true),
 		"turns_remaining": BuildingLevels.UPGRADE_DURATION,
 		"size_delta": size_delta,
+		# Sourced from stockpiles only: what is still missing waits and is never bought from market.
+		"no_market": mode == "tile_wait" or mode == "stockpiles",
 	})
 	# Chief Investment rebates a fraction of the upgrade kit's market value (like a build).
 	var up_rebate := MatchState._materials_rebate(need_by_gid)
 	if up_rebate > 0.0:
 		MatchState.add_money(up_rebate)
 	building_upgrade_started.emit(instance_id, target)
-	return {"ok": true, "status": status, "target_level": target}
+	return {"ok": true, "status": status, "target_level": target, "land_bought": int(land.get("units", 0))}
+
+## Where an upgrade's shortfall can come from without buying it: every other tile's spare stock (what it holds
+## less what its own buildings are committed to), nearest first, as much of each good as the tiles can spare.
+## {from_tiles: [{tile_id, goods: {gid: qty}, transport}], covered: {gid: qty}, left: {gid: qty}, transport}.
+## Tiles are taken in a fixed order (route turns, then tile id), so the same state always plans the same way.
+func upgrade_stockpile_plan(dest_tile: String, shortfall: Dictionary) -> Dictionary:
+	var plan := {"from_tiles": [], "covered": {}, "left": shortfall.duplicate(), "transport": 0.0}
+	if shortfall.is_empty():
+		return plan
+	var sources: Array = []
+	for tile_key in Stockpile.tiles_with_stock():
+		var src := str(tile_key)
+		if src == dest_tile or not src.begins_with("tile_"):
+			continue
+		var route: Dictionary = TransportService.route(src, dest_tile)
+		sources.append({"tile_id": src, "turns": int(route.get("turns", 0)), "route": route})
+	sources.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a.turns) < int(b.turns) if int(a.turns) != int(b.turns) else str(a.tile_id) < str(b.tile_id))
+	var left: Dictionary = plan.left
+	for src: Dictionary in sources:
+		if left.is_empty():
+			break
+		var committed: Dictionary = Production.compute_committed_for_tile(str(src.tile_id))
+		var goods := {}
+		var freight := 0.0
+		for gid in left.keys():
+			var spare: int = Stockpile.get_at_tile(str(src.tile_id), str(gid)) - int(committed.get(gid, 0))
+			var take := mini(spare, int(left[gid]))
+			if take <= 0 or not TransportService.route_is_reachable(TransportService.route(str(src.tile_id), dest_tile, str(gid))):
+				continue
+			goods[gid] = take
+			freight += TransportService.transport_cost_for_route(str(gid), take, TransportService.route(str(src.tile_id), dest_tile, str(gid)))
+			plan.covered[gid] = int(plan.covered.get(gid, 0)) + take
+			left[gid] = int(left[gid]) - take
+			if int(left[gid]) <= 0:
+				left.erase(gid)
+		if not goods.is_empty():
+			plan.from_tiles.append({"tile_id": str(src.tile_id), "goods": goods, "transport": freight})
+			plan.transport = float(plan.transport) + freight
+	return plan
+
 
 # Cash-only infra upgrade: charge up front, run the same 3-turn countdown, and let
 # tick_upgrades write the new level onto the tile. No kit → no Chief-Investment rebate
@@ -840,8 +931,8 @@ func _retry_stalled_upgrade(p: Dictionary, instance_id: String, tile_id: String,
 		var gid := str(gid_value)
 		if not _upgrade_has_inbound(instance_id, tile_id, gid):
 			stranded[gid] = int(still[gid_value])
-	if stranded.is_empty():
-		p["stalled_turns"] = 0   # something is still on its way; waiting is correct
+	if stranded.is_empty() or bool(p.get("no_market", false)):
+		p["stalled_turns"] = 0   # something is still on its way, or the player chose never to buy: wait
 		return
 	var stalled := int(p.get("stalled_turns", 0)) + 1
 	p["stalled_turns"] = stalled

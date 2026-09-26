@@ -27,6 +27,8 @@ signal bdp_v3_changed(enabled: bool)
 signal topbar_ds2_changed(enabled: bool)
 ## The tile view's v3 look (docs/tile-view-ds2-plan.md) switched on or off.
 signal tvp_v3_changed(enabled: bool)
+## The Building Ledger's DS2 look (docs/building-ledger-ds2-plan.md) switched on or off.
+signal ledger_ds2_changed(enabled: bool)
 signal empire_button_icon_changed(use_badge: bool)
 
 # Debug-only: verbose per-turn production / CostSolver logs. Off by default because
@@ -72,6 +74,16 @@ var use_topbar_ds2: bool = true
 # The tile view v3: the site's control cabinet (docs/tile-view-ds2-plan.md §9). The default; the debug
 # cheat `toggle tvp v3` switches back to v2, which is then exactly as it was. Session-only, never persisted.
 var use_tvp_v3: bool = true
+# The Building Ledger in DS2 (docs/building-ledger-ds2-plan.md). The default; the debug cheat `toggle ledger ds2`
+# switches back to the v2 ledger, exactly as it was. Session-only, never persisted.
+var use_ledger_ds2: bool = true
+# The upgrade panel in DS2 (scripts/ledger_v3/upgrade_dialog_ds2.gd), opened from Building Detail and the ledger.
+# The default; the debug cheat `toggle upgrade ds2` switches back to the v2 dialog. Session-only, never persisted.
+var use_upgrade_ds2: bool = true
+# Building Detail's Input sources and Output destination sheets in DS2 (scripts/bdp_v3_routes.gd,
+# docs/bdp-routes-ds2-plan.md), with Building Detail v3 on. The default; the debug cheat `toggle routes ds2`
+# switches back to the v2 sheets. Session-only, never persisted.
+var use_routes_ds2: bool = true
 # Building Detail v3's diagnostics: the Visual view (true) or the Text rows. The player's choice on the
 # panel's switch, kept while the game runs (closing the panel or starting a match keeps it).
 var bdp_diag_visual: bool = false
@@ -174,6 +186,24 @@ func set_use_tvp_v3(enabled: bool) -> bool:
 
 func toggle_use_tvp_v3() -> bool:
 	return set_use_tvp_v3(not use_tvp_v3)
+
+func set_use_ledger_ds2(enabled: bool) -> bool:
+	if enabled == use_ledger_ds2:
+		return use_ledger_ds2
+	use_ledger_ds2 = enabled
+	ledger_ds2_changed.emit(use_ledger_ds2)
+	return use_ledger_ds2
+
+func toggle_use_ledger_ds2() -> bool:
+	return set_use_ledger_ds2(not use_ledger_ds2)
+
+func toggle_use_upgrade_ds2() -> bool:
+	use_upgrade_ds2 = not use_upgrade_ds2
+	return use_upgrade_ds2
+
+func toggle_use_routes_ds2() -> bool:
+	use_routes_ds2 = not use_routes_ds2
+	return use_routes_ds2
 
 func set_bdp_diag_visual(visual: bool) -> void:
 	bdp_diag_visual = visual
