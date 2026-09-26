@@ -88,6 +88,7 @@ Rendered side by side on the real surface, catalogue and build order at the same
 Studies (rendered 26 September 2026, catalogue and build order side by side, each 1125 layout px = 600 logical wide):
 - `artifacts/construct_ds2/construct_study_office.png`: the plan chest (ten latching keys with an All key, a dot-matrix search, drawers with brass card holders, the Furnace drawer open to its recipe cards) and the works order on white plastic under a clip (site, building, recipe, requirement lamps, goods in wells, a dark plate with the drum counter, payback, the money column and the guarded Build key).
 - `artifacts/construct_ds2/construct_study_lot.png`: the hoarding with a yellow tower crane (mast, cab carrying the title, lattice jib, trolley and hook), enamel site boards two a row with recipe tags on chains; the build order with the site board lowered on a spreader, the lot taped off as a grid of 18 slabs and 2 to buy, a site clock drum counter, the cost cabin on LEDs, materials on timber pallets, a feeder pillar with the requirement lamps, payback and the guarded Build key.
+- `artifacts/construct_ds2/construct_study_lot_v2.png` (round 2, after the owner's first review): the tower cut off by the panel's edge, STONESHORE DOCKS on a plate hung from the jib, the search in a tab rising from the category plate, recipe tags as diagrams (goods in wells, power on the arrow), and the whole build order to the fold and past it: the site board with its recipe, the verdict (total, cash after £49.5K, turns, the guarded Build key), requirement lamps, the cost cabin with the Materials from knob, pallets with on tile, elsewhere and price, the outlook with the timeline and buffer, and the land lot last and small.
 Open points the studies raise: the site named twice on the works order; the lot's land note repeating its lamp; the lot's small recipe pills and board LEDs below the game's sizes; seven boards leaving one cell empty in two columns.
 
 ## 6. Numbers first (done)
@@ -110,7 +111,15 @@ Each body is reviewed against §2's scenarios, up to three rounds, as the tile v
 
 ## 8. Decisions for the owner
 
-1. **Metaphor**: works office or construction lot with its crane (studies, §5).
+1. **Metaphor**: works office or construction lot with its crane (studies, §5). *Decided: the construction lot with its crane (26 September 2026). The owner's first review of it:*
+   - *The tile's name, when one is chosen, on a placard hanging off the jib, symmetrical to the CONSTRUCT plate on the cab.*
+   - *The crane's mast much wider, running off the panel's edge so only part of it shows.*
+   - *The land lot is good to look at but far from the most important information: smaller, lower.*
+   - *Cash after follows the money rule used elsewhere (`scripts/ds2/money_figure.gd`: £999.99, £9999, £15.6K, £1.01M, £1.01B, no pence past £1,000).*
+   - *Show the whole build order, not a crop.*
+   - *The search field moves under the crane, in a notch rising from the category plate.*
+   - *A recipe on a building's board shows what it consumes and makes, not only its name.*
+   *Round 2 of the study answers these (`artifacts/construct_ds2/construct_study_lot_v2.png`).*
 2. **Width**: one width for every stage (decided); 600 logical px proposed (the tile view is 800, Building Detail 460, the upgrade panel 780).
 3. **Paths that skip the panel** (search Build, a deposit's Build key, the tile view's infrastructure keys): through the build order, or stay quick builds?
 4. **Map pick**: the build order stays open and follows the hovered tile, or a separate hover card as a dot card?

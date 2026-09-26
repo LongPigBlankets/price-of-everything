@@ -3227,19 +3227,26 @@ async function exportLayers() {
   });
 
   // --- a study for the construct panel, not a game layer: the construction lot with its crane. One panel at
-  // two stages, side by side and one width (600 logical px): the catalogue, each building an enamel site board
-  // bolted to a navy steel hoarding under a yellow lattice tower crane, the categories on latching keys and the
-  // search on dark glass; and the build order, the crane's hook lowering the chosen board over its taped lot,
-  // the materials on pallets, the site's checks on a feeder pillar, the build time on a drum counter, the cost
-  // in the site cabin and the guarded Build key.
+  // two stages, side by side at one width (600 logical px). A heavy yellow lattice tower stands off the
+  // hoarding's left edge, only its inner chord and the ends of its bracing inside the panel; the cab on its
+  // top carries the title, and the site's name hangs from the jib on a plate to match. The catalogue: the
+  // category keys on a black plate whose tab rises under the jib to hold the search, an enamel site board
+  // per building on the navy steel hoarding, the Furnace's across the width with its recipes hung under it
+  // on chains as tags. The build order, drawn in full with the fold marked: the site board lowered on the
+  // hook with its recipe, the verdict on the cabin desk (total, cash after, turns to build, the guarded Build
+  // key), the site's requirements on the feeder pillar, the cost beside the materials source knob, the
+  // materials on pallets with their stock and price, the outlook on the programme board, and the lot last.
   if (want('constructlot')) await withSeed(434, async () => {
-    for (const f of ['500 30px "IBM Plex Sans"', '600 30px "IBM Plex Sans"', '700 30px "IBM Plex Sans"', '600 30px "Barlow Condensed"', '700 30px "Barlow Condensed"']) await document.fonts.load(f);
-    const PW = 1125, PH = 1350, SH = 1400, MX = 60, GAP = 100, CAPT = 100, FOOT = 100;
-    const W = 2 * MX + 2 * PW + GAP, H = CAPT + PH + FOOT, OX = [MX, MX + PW + GAP], OY = CAPT;
+    for (const f of ['500 30px "IBM Plex Sans"', '600 30px "IBM Plex Sans"', '700 30px "IBM Plex Sans"', '600 30px "Barlow Condensed"', '700 30px "Barlow Condensed"', `60px ${TITLE_FAMILY}`]) await document.fonts.load(f);
+    const PW = 1125, FOLD = 1710, MX = 60, GAP = 120, MR = 260, CAPT = 110, FOOT = 120, SH1 = FOLD + 60;
+    const CL = 120, CW = PW - 40 - CL, OX = [MX, MX + PW + GAP], OY = CAPT, W = OX[1] + PW + MR;
     const T = PLATE_TOP, CREAM = '#feedc3', ENAMEL_FIELD = '#0a2140', YELLOW = '#d9a21e', LIGHT = '#e8eef7';
-    const RED = '#ff4d3d', GREEN = '#4fe38a', PLEX = '"IBM Plex Sans"', BARLOW = '"Barlow Condensed"';
-    const group = new THREE.Group(), prints = [];
-    const add = (m, x, z, y = T) => { m.position.set(x, y, z); group.add(m); return m; };
+    const RED = '#ff4d3d', GREEN = '#4fe38a', WHITE_LED = '#eef3fa', INK_OK = '#1d6b3a', INK_BAD = '#8f1f19';
+    const PLEX = '"IBM Plex Sans"', BARLOW = '"Barlow Condensed"';
+    const groups = [new THREE.Group(), new THREE.Group()], prints = [];
+    /** Places a part at (x, z) on the page and height y, in the render of the stage being built (`cur`). */
+    let cur = 0;
+    const add = (m, x, z, y = T) => { m.position.set(x, y, z); groups[cur].add(m); return m; };
     const shade = (m) => { m.traverse((o) => { if (o.isMesh) o.castShadow = o.receiveShadow = true; }); return m; };
     const rgbOf = (hex) => { const c = new THREE.Color(hex); return `${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)}`; };
     const measure = (str, font) => { const c = document.createElement('canvas').getContext('2d'); c.font = font; return c.measureText(str).width; };
@@ -3253,6 +3260,17 @@ async function exportLayers() {
       }
       return best ? best[1] : [str];
     };
+    /** The owner's money rule for a screen (scripts/ds2/money_figure.gd): at most five cells, two decimals
+     * below £1,000, whole pounds to £9999, then £15.6K, £1.01M, £1.01B; the K, M or B printed after. */
+    const moneyLed = (v) => {
+      const minus = v < 0 ? '-' : '', a = Math.abs(v);
+      for (const [div, suffix, d0, limit] of [[1, '', 2, 1000], [1, '', 0, 10000], [1e3, 'K', 1, 1000], [1e6, 'M', 2, 1000], [1e9, 'B', 2, 1000], [1e12, 'T', 2, Infinity]]) {
+        let d = d0, shown = (a / div).toFixed(d);
+        if (parseFloat(shown) >= limit) continue;
+        while (d > 0 && (minus + shown).replace('.', '').length > 5) shown = (a / div).toFixed(--d);
+        return { figure: minus + shown, suffix };
+      }
+    };
 
     // Materials.
     const yellowSide = new THREE.MeshStandardMaterial({ color: 0xa47816, metalness: 0.35, roughness: 0.55, envMap: studioEnv, envMapIntensity: 0.55 });
@@ -3264,9 +3282,10 @@ async function exportLayers() {
     const darkSteel = new THREE.MeshStandardMaterial({ color: 0x3c4046, map: noiseTexture(20, 40, 40), metalness: 1, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.85 });
     const chrome = new THREE.MeshStandardMaterial({ color: 0xb4b9c0, metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 1.0 });
     const rubber = new THREE.MeshPhysicalMaterial({ color: 0x141517, roughness: 0.6, clearcoat: 0.3, envMap: studioEnv, envMapIntensity: 0.4 });
+    const creamEnamel = new THREE.MeshPhysicalMaterial({ color: OFF_WHITE, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
     const enamelMat = (c, w, h) => new THREE.MeshPhysicalMaterial({ map: faceTexture(c, w, h), roughness: 0.34, clearcoat: 0.8, clearcoatRoughness: 0.14, envMap: studioEnv, envMapIntensity: 0.28 });
-    const darkPlateMat = (w, h) => plateMaterial(w, h, { icons: [], buttons: [], screws: [], base: DARK_STEEL_CANVAS, rub: '130,138,150' });
     const concreteSideC = new THREE.MeshStandardMaterial({ color: 0x9a958b, roughness: 0.95, metalness: 0 });
+    const blackPlastic = (w, h, paint) => new THREE.MeshPhysicalMaterial({ map: faceTexture(canvas2d(w, h, (c) => { c.drawImage(blackPlasticFace(w, h, '#15171a', 0.06), 0, 0, w, h); paint?.(c); }), w, h), roughness: 0.5, clearcoat: 0.3, envMap: studioEnv, envMapIntensity: 0.4 });
 
     /** A painted steel member lying on the plate from (x0, z0) to (x1, z1), t wide and h high, its foot at y. */
     const bar = (x0, z0, x1, z1, t, h, y, base = YELLOW, wear = 0.45) => {
@@ -3284,12 +3303,19 @@ async function exportLayers() {
     };
     /** A flat ring lying on a surface (an eye bolt, a grommet). */
     const ring = (x, z, y, r = 5.5, tube = 1.8) => add(shade(new THREE.Mesh(new THREE.TorusGeometry(r, tube, 10, 28).rotateX(Math.PI / 2), galv)), x, z, y + tube);
+    /** A hole through a hung plate with a ring through it, for its chain. */
+    const eyelet = (x, z, y) => { add(new THREE.Mesh(new THREE.CircleGeometry(4.2, 24).rotateX(-Math.PI / 2), MAT.gap), x, z, y + 0.1); ring(x, z, y, 6.2, 1.9); };
 
     // Print: white with a dark shadow on anything dark, drawn over the render as the game prints live.
-    const printWhite = (str, x, y, size, { weight = 500, family = PLEX, align = 'left', maxW = 700, colour = LIGHT } = {}) => prints.push((g) => {
+    const printWhite = (str, x, y, size, { weight = 500, family = PLEX, align = 'left', maxW = 900, colour = LIGHT } = {}) => prints.push((g) => {
       g.save(); g.shadowColor = 'rgba(0,0,0,0.9)'; g.shadowOffsetX = 1.7; g.shadowOffsetY = 1.7; g.shadowBlur = 1.2;
       text(g, str, x, y, maxW, size, colour, { align, weight, family }); g.restore();
     });
+    /** Print on a light surface, into its face: navy, or a darker semantic ink, with a faint light shadow. */
+    const ink = (c, str, x, y, size, colour = NAVY, { weight = 500, family = PLEX, align = 'left', maxW = 900 } = {}) => {
+      c.save(); c.shadowColor = 'rgba(255,255,255,0.55)'; c.shadowOffsetX = 1; c.shadowOffsetY = 1;
+      text(c, str, x, y, maxW, size, colour, { align, weight, family }); c.restore();
+    };
     const glow = (x, y, r, colour, a = 0.42) => prints.push((g) => {
       const rgb = rgbOf(colour), grd = g.createRadialGradient(x, y, 0, x, y, r);
       grd.addColorStop(0, `rgba(${rgb},${a})`); grd.addColorStop(0.22, `rgba(${rgb},${a * 0.52})`); grd.addColorStop(0.5, `rgba(${rgb},${a * 0.16})`); grd.addColorStop(1, `rgba(${rgb},0)`);
@@ -3305,7 +3331,9 @@ async function exportLayers() {
     const fitImage = (c, img, x, y, w, h) => { const k = Math.min(w / img.width, h / img.height), dw = img.width * k, dh = img.height * k; c.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh); };
 
     // Seven segment figures on a mini screen: a gunmetal bezel round dark glass, lit digits over faint unlit
-    // ones, each digit with a point of its own; the figure right aligned in a set number of cells.
+    // ones, each digit with a point of its own; the figure right aligned in a set number of cells, each cell
+    // the game's 12 × 21 logical px.
+    const CELL = [22.5, 39];
     const DIGITS = { 0: 'abcdef', 1: 'bc', 2: 'abdeg', 3: 'abcdg', 4: 'bcfg', 5: 'acdfg', 6: 'acdefg', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg', '-': 'g', ' ': '' };
     const SEGS = { a: [[0.2, 0.06], [0.8, 0.06]], b: [[0.8, 0.06], [0.8, 0.5]], c: [[0.8, 0.5], [0.8, 0.94]], d: [[0.2, 0.94], [0.8, 0.94]], e: [[0.2, 0.5], [0.2, 0.94]], f: [[0.2, 0.06], [0.2, 0.5]], g: [[0.2, 0.5], [0.8, 0.5]] };
     const segment = (c, x0, y0, x1, y1, t) => {
@@ -3343,14 +3371,23 @@ async function exportLayers() {
       pane.position.y = 0.4; g.add(pane);
       return { group: g, w: ow, h: oh };
     };
-    const ledScreen = (str, cells, colour, cw = 19, ch = 30) => { const iw = Math.round(cells * cw + 14), ih = ch + 12; return glassScreen(iw, ih, ledFace(iw, ih, str, cells, colour)); };
+    const ledScreen = (str, cells, colour) => { const iw = Math.round(cells * CELL[0] + 14), ih = CELL[1] + 12; return glassScreen(iw, ih, ledFace(iw, ih, str, cells, colour)); };
+    /** A money figure on a dark surface: the £ printed, the screen from x (its left edge), the K, M or B after. */
+    const money = (value, colour, cells, x, cz, y) => {
+      const { figure, suffix } = moneyLed(value), scr = ledScreen(figure, cells, colour);
+      add(scr.group, x + scr.w / 2, cz, y);
+      printWhite('£', x - 9, cz + 1, 34, { weight: 600, align: 'right' });
+      if (suffix) printWhite(suffix, x + scr.w + 8, cz + 1, 34, { weight: 600 });
+      return scr;
+    };
 
-    /** Raised white lettering on the hoarding, its swept shadow painted into the steel under it. */
-    const raised = (ox, feat, str, x, y, size = 28, family = PLEX, weight = 700) => {
+    /** Raised white lettering; on the hoarding, or on a plate (`on`: its icons, its x, y on the panel, its top). */
+    const raised = (ox, feat, str, x, y, size = 28, family = PLEX, weight = 700, on = null) => {
       const font = `${weight} ${size}px ${family}`, w = Math.ceil(measure(str, font)) + 10, h = Math.round(size * 1.4);
       const draw = (g, col) => text(g, str, 2, h / 2, w - 4, size, col, { weight, family });
-      add(relief(w, h, (g) => draw(g, '#fff'), WHITE_LETTERS, { height: 5, soften: 0.7 }), ox + x + w / 2, OY + y + h / 2, T + 0.3);
-      feat.icons.push({ height: 5, box: [x, y, w, h], draw: (g, col) => { g.save(); g.translate(x, y); draw(g, col); g.restore(); } });
+      add(relief(w, h, (g) => draw(g, '#fff'), WHITE_LETTERS, { height: 5, soften: 0.7 }), ox + x + w / 2, OY + y + h / 2, (on ? on.top : T) + 0.3);
+      const px = on ? x - on.x : x, py = on ? y - on.y : y;
+      (on ? on.icons : feat.icons).push({ height: 5, box: [px, py, w, h], draw: (g, col) => { g.save(); g.translate(px, py); draw(g, col); g.restore(); } });
       return w;
     };
     /** A small cream keycap with a navy glyph, as Close and Back. */
@@ -3362,6 +3399,20 @@ async function exportLayers() {
         g.stroke();
       });
       add(k, x, z);
+    };
+    /** A plate of blackened gunmetal (the site cabin), silver screws in its corners; its top is T + 10. */
+    const cabin = (ox, feat, x, y, w, h, icons = [], buttons = []) => {
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 10), 4, 3, 2.4, 4), [plateMaterial(w, h, { icons, buttons, screws: [], base: DARK_STEEL_CANVAS, rub: '130,138,150' }), MAT.plateSide])), ox + x + w / 2, OY + y + h / 2);
+      feat.buttons.push({ x, y, w, h, r: 10 });
+      const top = T + 10;
+      for (const [sx, sy] of [[13, 13], [w - 13, 13], [13, h - 13], [w - 13, h - 13]]) { const s = silverScrew(); s.remove(s.children[s.children.length - 1]); add(s, ox + x + sx - 15, OY + y + sy - 15, top); }
+      return top;
+    };
+    /** A moulded plate of the keycaps' white plastic, printed navy by `paint`; returns its top. */
+    const whitePlate = (ox, x, y, w, h, paint, base = T) => {
+      const face = canvas2d(w, h, (c) => { paintPlastic(c, w, h); paint?.(c); });
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 10), 2, 1.4, 1.1, 3), [new THREE.MeshPhysicalMaterial({ map: faceTexture(face, w, h), ...KNOB_PLASTIC }), MAT.skirt])), ox + x + w / 2, OY + y + h / 2, base);
+      return base + 4.8;
     };
 
     // --- the hoarding's top rail: a steel H-beam bolted along the top edge, as the top bar's.
@@ -3377,27 +3428,54 @@ async function exportLayers() {
       for (const x of bolts) { const m = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.6, 2, 6), galv); m.rotation.y = rand() * Math.PI; add(shade(m), ox + x, OY + BEAM / 2, T + 3.4); }
     };
 
-    // --- the crane: a yellow lattice jib along the top, the cab at its root carrying the title on a black
-    // enamel plate under its window, and the trolley, ropes and striped hook block further along.
-    const crane = (ox, feat, { trolley, drop }) => {
-      const X = (x) => ox + x, Z = (z) => OY + z;
-      const cab = { x: 46, y: 36, w: 268, h: 168 }, cy = T + 3, ctop = cy + 13;
-      // The mast down the hoarding's left margin: two chords, a zigzag of lacing, a strut at each section's
-      // joint; on its top the slewing block, which carries the cab and the jib.
-      const m0 = 9, m1 = 33, mt = 44, mb = SH - 10, sec = 96;
-      bar(X(m0), Z(mt), X(m0), Z(mb), 5, 6, T + 1); bar(X(m1), Z(mt), X(m1), Z(mb), 5, 6, T + 1);
-      for (let y = mt; y < mb - 1; y += sec) {
-        bar(X(m0), Z(y), X(m1), Z(y), 4, 5, T + 1.5);
-        for (let k = 0; k < 4; k++) { const a = y + k * sec / 4, b = a + sec / 4; if (b > mb) break; bar(X(k % 2 ? m1 : m0), Z(a), X(k % 2 ? m0 : m1), Z(b), 3.2, 4, T + 1.5); }
-        for (const mx of [m0, m1]) add(screw(2.2), X(mx), Z(y), T + 7.2);
+    // --- a nameplate: black enamel, its words raised in white Bebas, a rivet at each corner. The cab's
+    // CONSTRUCT and the site's name on the jib are one size.
+    const NAMEPLATE = { w: 244, h: 66 };
+    const namePlate = (ox, x, y, str, base) => {
+      const X = (v) => ox + v, Z = (v) => OY + v, { w, h } = NAMEPLATE, tb = { x: 14, y: 5, w: w - 28, h: h - 10 };
+      const drawTitle = (g, col) => text(g, str, tb.w / 2, tb.h / 2 + 3, tb.w - 4, 60, col, { weight: 400, family: TITLE_FAMILY, align: 'center' });
+      const plateC = canvas2d(w, h, (c) => {
+        c.fillStyle = '#16181c'; c.fillRect(0, 0, w, h);
+        for (let i = 0; i < w * h / 120; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.015 + rand() * 0.025})`; c.fillRect(rand() * w, rand() * h, 1 + rand() * 2, 1 + rand() * 2); }
+        drawIconShadows(c, w, h, [{ height: 5, draw: (g, col) => { g.save(); g.translate(tb.x, tb.y); drawTitle(g, col); g.restore(); } }]);
+      });
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 6), 2, 1.2, 1, 3), [new THREE.MeshPhysicalMaterial({ map: faceTexture(plateC, w, h), roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.2, envMap: studioEnv, envMapIntensity: 0.5 }), darkSteel])), X(x + w / 2), Z(y + h / 2), base);
+      add(relief(tb.w, tb.h, (g) => drawTitle(g, '#fff'), WHITE_LETTERS, { height: 5, soften: 0.7 }), X(x + tb.x + tb.w / 2), Z(y + tb.y + tb.h / 2), base + 4.7);
+      for (const [rx, rz] of [[9, 9], [w - 9, 9], [9, h - 9], [w - 9, h - 9]]) {
+        const rv = new THREE.Mesh(new THREE.SphereGeometry(3, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), darkSteel); rv.scale.y = 0.55; add(shade(rv), X(x + rx), Z(y + rz), base + 4.4);
       }
-      add(shade(new THREE.Mesh(extrude(rrShape(40, 44, 6), 9, 2, 1.6, 3), [painted(40, 44, YELLOW, 0.8), yellowSide])), X(21), Z(52), T + 3);
-      add(shade(new THREE.Mesh(extrude(rrShape(44, 8, 2), 3, 1, 0.8, 2), darkSteel)), X(21), Z(76), T + 3);
-      for (const [bx, bz] of [[10, 40], [32, 40], [10, 64], [32, 64]]) add(screw(2.4), X(bx), Z(bz), T + 16.2);
+    };
+
+    // --- the crane: a heavy lattice tower standing just off the hoarding's left edge, so only its inner chord
+    // and the ends of its struts and bracing show, cut by the panel's edge; the slewing unit on its top, the
+    // cab beside it carrying the title under its window, the lattice jib along the top with the site's name
+    // hung from it, and the trolley; `drop` lowers the striped hook block from it.
+    const CAB = { x: 104, y: 36, w: 268, h: 192 }, JIB = { x0: CAB.x + CAB.w, x1: PW - 120, t: 48, b: 128 };
+    const PLACARD = { x: JIB.x1 - NAMEPLATE.w, y: 152 };
+    const crane = (ox, feat, sh, { trolley, drop = null, site = null }) => {
+      const X = (x) => ox + x, Z = (z) => OY + z, cab = CAB, cy = T + 3, ctop = cy + 13;
+      // The tower: two heavy chords 236 apart (the outer one off the panel), a strut at each joint and a brace
+      // each way across every square bay, a bolted gusset over each joint of the inner chord.
+      const ci = 86, co = -150, t0 = 44, t1 = sh - 18, bay = ci - co;   // the chords stop flush with the hoarding's foot
+      bar(X(co), Z(t0), X(co), Z(t1), 28, 17, T + 1, YELLOW, 0.8);
+      bar(X(ci), Z(t0), X(ci), Z(t1), 28, 17, T + 1, YELLOW, 0.8);
+      for (let y = t0 + 110; y < t1 - 30; y += bay) {
+        const y2 = Math.min(y + bay, t1), f = (y2 - y) / bay;   // the last bay stops at the hoarding's foot
+        bar(X(co), Z(y), X(ci), Z(y), 15, 12, T + 2, YELLOW, 0.6);
+        bar(X(co), Z(y), X(co + (ci - co) * f), Z(y2), 12, 11, T + 2.5, YELLOW, 0.6);
+        bar(X(ci), Z(y), X(ci - (ci - co) * f), Z(y2), 12, 11, T + 3, YELLOW, 0.6);
+        add(shade(new THREE.Mesh(extrude(rrShape(36, 70, 5), 1.6, 1, 0.8, 2), [painted(36, 70, YELLOW, 0.9), yellowSide])), X(ci), Z(y), T + 17.4);
+        for (const [bx, bz] of [[-9, -23], [9, -23], [-9, 0], [9, 0], [-9, 23], [9, 23]]) add(screw(3), X(ci + bx), Z(y + bz), T + 20.6);
+      }
+      // The slewing unit on the tower's top, a dark slewing ring under it; the cab stands beside it.
+      add(shade(new THREE.Mesh(extrude(rrShape(ci - co + 28, 70, 8), 10, 2, 1.6, 3), [painted(ci - co + 28, 70, YELLOW, 0.9), yellowSide])), X((co + ci) / 2 + 6), Z(t0 + 20), T + 3);
+      add(shade(new THREE.Mesh(extrude(rrShape(ci - co + 20, 12, 3), 3, 1, 0.8, 2), darkSteel)), X((co + ci) / 2 + 6), Z(t0 + 62), T + 3);
+      for (const bx of [14, 50, 86]) for (const bz of [2, 38]) add(screw(3.6), X(bx), Z(t0 + bz), T + 17.5);
+      // The cab.
       add(shade(new THREE.Mesh(extrude(rrShape(cab.w, cab.h, 10), 8, 2.5, 2, 3), [painted(cab.w, cab.h, YELLOW, 0.9), yellowSide])), X(cab.x + cab.w / 2), Z(cab.y + cab.h / 2), cy);
       feat.buttons.push({ x: cab.x, y: cab.y, w: cab.w, h: cab.h, r: 10 });
       // The window: dark glass in a rubber gasket, two mullions.
-      const win = { x: cab.x + 16, y: cab.y + 14, w: cab.w - 32, h: 58 };
+      const win = { x: cab.x + 16, y: cab.y + 16, w: cab.w - 32, h: 62 };
       const glassC = canvas2d(win.w, win.h, (c) => {
         c.fillStyle = '#121a20'; c.fillRect(0, 0, win.w, win.h);
         const gl = c.createLinearGradient(0, 0, win.w * 0.7, win.h); gl.addColorStop(0.18, 'rgba(255,255,255,0)'); gl.addColorStop(0.3, 'rgba(214,226,236,0.14)'); gl.addColorStop(0.42, 'rgba(255,255,255,0)');
@@ -3408,21 +3486,9 @@ async function exportLayers() {
       const gasket = rrShape(win.w + 10, win.h + 10, 7); gasket.holes.push(rr(new THREE.Path(), win.w, win.h, 4));
       add(shade(new THREE.Mesh(extrude(gasket, 1.2, 1, 0.8, 2), rubber)), X(win.x + win.w / 2), Z(win.y + win.h / 2), ctop);
       for (const k of [1, 2]) bar(X(win.x + k * win.w / 3), Z(win.y - 2), X(win.x + k * win.w / 3), Z(win.y + win.h + 2), 7, 4, ctop + 0.4);
-      // The nameplate: black enamel, the title raised in white Bebas, a rivet at each corner.
-      const np = { x: cab.x + 12, y: cab.y + 88, w: cab.w - 24, h: 66 }, tb = { x: 14, y: 5, w: np.w - 28, h: np.h - 10 };
-      const drawTitle = (g, col) => text(g, 'CONSTRUCT', 2, tb.h / 2 + 3, tb.w - 4, 60, col, { weight: 400, family: TITLE_FAMILY });
-      const plateC = canvas2d(np.w, np.h, (c) => {
-        c.fillStyle = '#16181c'; c.fillRect(0, 0, np.w, np.h);
-        for (let i = 0; i < np.w * np.h / 120; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.015 + rand() * 0.025})`; c.fillRect(rand() * np.w, rand() * np.h, 1 + rand() * 2, 1 + rand() * 2); }
-        drawIconShadows(c, np.w, np.h, [{ height: 5, draw: (g, col) => { g.save(); g.translate(tb.x, tb.y); drawTitle(g, col); g.restore(); } }]);
-      });
-      add(shade(new THREE.Mesh(extrude(rrShape(np.w, np.h, 6), 2, 1.2, 1, 3), [new THREE.MeshPhysicalMaterial({ map: faceTexture(plateC, np.w, np.h), roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.2, envMap: studioEnv, envMapIntensity: 0.5 }), darkSteel])), X(np.x + np.w / 2), Z(np.y + np.h / 2), ctop);
-      add(relief(tb.w, tb.h, (g) => drawTitle(g, '#fff'), WHITE_LETTERS, { height: 5, soften: 0.7 }), X(np.x + tb.x + tb.w / 2), Z(np.y + tb.y + tb.h / 2), ctop + 4.7);
-      for (const [rx, rz] of [[9, 9], [np.w - 9, 9], [9, np.h - 9], [np.w - 9, np.h - 9]]) {
-        const rv = new THREE.Mesh(new THREE.SphereGeometry(3, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), darkSteel); rv.scale.y = 0.55; add(shade(rv), X(np.x + rx), Z(np.y + rz), ctop + 4.4);
-      }
+      namePlate(ox, cab.x + 12, PLACARD.y, 'CONSTRUCT', ctop);
       // The jib: top and bottom chords, Warren lacing, a root post and a sloped tip, bolted at its nodes.
-      const jx0 = cab.x + cab.w, jx1 = PW - 120, jt = 48, jb = 128, tip = 70, yj = T + 7;
+      const { x0: jx0, x1: jx1, t: jt, b: jb } = JIB, tip = 70, yj = T + 7;
       bar(X(jx0 - 8), Z(jt), X(jx1 - tip), Z(jt), 11, 9, yj);
       bar(X(jx0 - 8), Z(jb), X(jx1), Z(jb), 11, 9, yj);
       bar(X(jx1 - tip), Z(jt), X(jx1), Z(jb), 10, 9, yj);
@@ -3434,9 +3500,17 @@ async function exportLayers() {
         bar(X(a), Z(jb), X(m), Z(jt), 6, 6, yj + 1); bar(X(m), Z(jt), X(b), Z(jb), 6, 6, yj + 1);
         for (const [nx, nz] of [[m, jt], [b, jb]]) { const s = screw(2.6); add(s, X(nx), Z(nz), yj + 9.2); }
       }
-      // The trolley on the bottom chord, the hoist ropes and the hook block, striped yellow and black.
+      // The site's name, when the flow was opened from a tile: its plate hung under the jib on two short chains.
+      if (site) {
+        const px = PLACARD.x, py = PLACARD.y, pb = T + 3;
+        for (const hx of [px + 38, px + NAMEPLATE.w - 38]) { chain(X(hx), Z(jb + 3), Z(py + 11), T + 8); eyelet(X(hx), Z(py + 11), pb + 4.4); }
+        namePlate(ox, px, py, site, pb);
+        feat.buttons.push({ x: px, y: py, w: NAMEPLATE.w, h: NAMEPLATE.h, r: 6 });
+      }
+      // The trolley on the bottom chord; with a drop, the hoist ropes and the hook block, striped yellow and black.
       add(shade(new THREE.Mesh(extrude(rrShape(66, 30, 5), 7, 1.5, 1.2, 2), [painted(66, 30, YELLOW, 0.7), yellowSide])), X(trolley), Z(jb + 1), yj + 9);
       for (const dx of [-24, 24]) add(screw(3), X(trolley + dx), Z(jb + 1), yj + 19);
+      if (drop == null) return null;
       const ropeMat = new THREE.MeshStandardMaterial({ color: 0x70757b, metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 0.9 });
       const r0 = jb + 14, r1 = drop + 4;
       for (const dx of [-7, 7]) add(shade(new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, r1 - r0, 10).rotateX(Math.PI / 2), ropeMat)), X(trolley + dx), Z((r0 + r1) / 2), T + 12);
@@ -3485,18 +3559,87 @@ async function exportLayers() {
     };
 
     // --- a good in its well: the cream tile, the icon, its quantity in the navy pill inside its corner,
-    // under a thin gunmetal frame; S is the tile (the opening).
+    // under a thin gunmetal frame; S is the tile (the opening), never under 72 logical px.
+    const IMG = {};
+    const goodImg = async (file) => (IMG[file] ??= await loadImage('/icons/goods/' + file));
     const goodWell = (img, qty, cx, cz, y, S = 138) => {
       const face = canvas2d(S, S, (c) => {
         c.fillStyle = CREAM; c.fillRect(0, 0, S, S);
         fitImage(c, img, S * 0.1, S * 0.08, S * 0.8, S * 0.8);
         c.save(); c.filter = 'blur(2.5px)'; c.lineWidth = 5; c.strokeStyle = 'rgba(0,0,0,0.3)'; c.beginPath(); c.roundRect(0, 0, S, S, 10); c.stroke();
         c.lineWidth = 7; c.strokeStyle = 'rgba(0,0,0,0.34)'; c.beginPath(); c.roundRect(3, 3, S, S, 10); c.stroke(); c.restore();
-        pill(c, String(qty), S - 7, S - 7, 32, 22);
+        pill(c, String(qty), S - 7, S - 7, 38, 25);
       });
       add(shade(new THREE.Mesh(extrude(rrShape(S, S, 10), 2, 0.8, 0.6, 2), [new THREE.MeshPhysicalMaterial({ map: faceTexture(face, S, S), roughness: 0.55, clearcoat: 0.2, envMap: studioEnv, envMapIntensity: 0.3 }), MAT.skirt])), cx, cz, y);
       const rim = 7, sh = rrShape(S + 2 * rim - 4, S + 2 * rim - 4, 10 + rim); sh.holes.push(rr(new THREE.Path(), S - 4, S - 4, 10));
       add(shade(new THREE.Mesh(extrude(sh, 3, 1.2, 0.9, 3), MAT.frame)), cx, cz, y + 2.2);
+    };
+
+    // --- a recipe as a diagram: its inputs in wells with their quantities, a plus between them, the navy
+    // arrow carrying the power it draws beside a yellow bolt, then its outputs. `diagram` lays the parts out
+    // from x0; `paintDiagram` prints the plus signs and the arrow onto the host's face; `setWells` sets the
+    // goods in their wells on it.
+    const WELL_OUT = 148, PLUS = 42, ARROW = 196, DGAP = 10;
+    const diagram = (items, x0) => { let x = x0; return items.map((it) => { const w = it === '+' ? PLUS : it.power != null ? ARROW : WELL_OUT; const box = { it, x, w }; x += w + DGAP; return box; }); };
+    const diagramWidth = (items) => { const b = diagram(items, 0), l = b[b.length - 1]; return l.x + l.w; };
+    const BOLT = [[0.60, 0.04], [0.22, 0.56], [0.47, 0.56], [0.36, 0.96], [0.78, 0.40], [0.53, 0.40], [0.66, 0.04]];
+    const paintDiagram = (c, boxes, cy) => {
+      for (const { it, x, w } of boxes) {
+        if (it === '+') { text(c, '+', x + w / 2, cy, w, 48, NAVY, { align: 'center', weight: 600, family: PLEX }); continue; }
+        if (it.power == null) continue;
+        const sh = 74, hh = 124, hw = 56, fig = String(it.power);
+        c.fillStyle = NAVY; c.beginPath(); c.moveTo(x, cy - sh / 2); c.lineTo(x + w - hw, cy - sh / 2); c.lineTo(x + w - hw, cy - hh / 2); c.lineTo(x + w, cy);
+        c.lineTo(x + w - hw, cy + hh / 2); c.lineTo(x + w - hw, cy + sh / 2); c.lineTo(x, cy + sh / 2); c.closePath(); c.fill();
+        text(c, fig, x + 16, cy + 2, 100, 40, '#f4f1e8', { weight: 600, family: PLEX });
+        c.font = `600 40px ${PLEX}`; const bs = 42, bx = x + 16 + c.measureText(fig).width + 4, by = cy - bs / 2;
+        c.fillStyle = '#f2c230'; c.beginPath(); BOLT.forEach(([u, v], k) => (k ? c.lineTo(bx + u * bs, by + v * bs) : c.moveTo(bx + u * bs, by + v * bs))); c.closePath(); c.fill();
+      }
+    };
+    const setWells = async (boxes, ox, x0, cz, top) => {
+      for (const { it, x, w } of boxes) if (it.img) goodWell(await goodImg(it.img), it.qty, ox + x0 + x + w / 2, cz, top);
+    };
+    const ORE = 'alternate_icons/medium/g_002_iron_ore.png', COAL = 'alternate_icons/medium/g_001_coal.png';
+    const INGOTS = 'alternate_icons/medium/g_004_iron_ingots.png', STEEL = 'alternate_icons/medium/g_006_steel.png';
+    const PIG_IRON = [{ img: ORE, qty: 40 }, '+', { img: COAL, qty: 20 }, { power: 140 }, { img: INGOTS, qty: 70 }];
+    const STEELMAKING = [{ img: INGOTS, qty: 37 }, '+', { img: COAL, qty: 20 }, { power: 140 }, { img: STEEL, qty: 49 }];
+
+    // --- the white plastic knob (tools/knob_render, drawn in the game from its frames by rotary_selector.gd):
+    // a worn off-white dish and grip fin with a red dot, sunk in a dark grey metal collar. R is the collar's
+    // radius; deg turns the pointer (0 at three o'clock, counter-clockwise).
+    const knob = (R, deg) => {
+      const g = new THREE.Group(), turn = new THREE.Group(), k = R / 1.075;
+      const smooth = (pts, n = 96) => new THREE.SplineCurve(pts.map(([x, y]) => new THREE.Vector2(x, y))).getPoints(n);
+      const sh = (m) => { m.castShadow = m.receiveShadow = true; return m; };
+      const collar = new THREE.MeshPhysicalMaterial({ color: 0x8b8b8b, metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 0.9, side: THREE.DoubleSide });
+      // Wear where it gathers: grime round the dish's edge and along the grip, faint smudges, fine scuffs.
+      const N = 512, U = N / 2, P = (x, z) => [(x + 1) / 2 * N, (1 - z) / 2 * N];
+      const wear = document.createElement('canvas'); wear.width = wear.height = N;
+      { const c = wear.getContext('2d'), [ox0, oy0] = P(0, 0);
+        c.fillStyle = '#fff'; c.fillRect(0, 0, N, N);
+        const grd = c.createRadialGradient(ox0, oy0, 0.78 * U, ox0, oy0, 0.97 * U); grd.addColorStop(0, 'rgba(100,90,74,0)'); grd.addColorStop(1, 'rgba(100,90,74,0.5)'); c.fillStyle = grd; c.fillRect(0, 0, N, N);
+        c.save(); c.filter = `blur(${0.03 * U}px)`; c.strokeStyle = 'rgba(92,82,66,0.55)'; c.lineWidth = 0.16 * U;
+        const [x0, z0] = P(-0.95, 0.23), [x1, z1] = P(0.95, -0.23); c.strokeRect(x0, z0, x1 - x0, z1 - z0); c.restore();
+        for (let i = 0; i < 26; i++) { const r = (0.1 + rand() * 0.2) * U, x = rand() * N, y = rand() * N, s = c.createRadialGradient(x, y, 0, x, y, r); s.addColorStop(0, `rgba(120,110,92,${0.02 + rand() * 0.03})`); s.addColorStop(1, 'rgba(120,110,92,0)'); c.fillStyle = s; c.fillRect(x - r, y - r, 2 * r, 2 * r); }
+        for (let i = 0; i < 160; i++) { const x = rand() * N, y = rand() * N, a = rand() * Math.PI, l = 4 + rand() * 26; c.strokeStyle = `rgba(100,94,84,${0.04 + rand() * 0.06})`; c.lineWidth = 0.5 + rand() * 0.8; c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); c.stroke(); }
+      }
+      const wearTex = new THREE.CanvasTexture(wear); wearTex.colorSpace = THREE.SRGBColorSpace;
+      const plasticK = { color: 0xe4e0d7, roughness: 0.62, clearcoat: 0.18, clearcoatRoughness: 0.42, side: THREE.DoubleSide };
+      g.add(sh(new THREE.Mesh(new THREE.LatheGeometry(smooth([[1.075, 0.0], [1.075, 0.2], [1.074, 0.34], [1.066, 0.4], [1.05, 0.435], [1.02, 0.45], [0.995, 0.444], [0.977, 0.42], [0.967, 0.37], [0.964, 0.2], [0.964, 0.0]]), 192), collar)));
+      const gap = new THREE.Mesh(new THREE.RingGeometry(0.9, 0.966, 128).rotateX(-Math.PI / 2), MAT.gap); gap.position.y = 0.01; g.add(gap);
+      const dishGeo = new THREE.LatheGeometry(smooth([[0.948, 0.0], [0.952, 0.05], [0.94, 0.095], [0.905, 0.118], [0.75, 0.116], [0.45, 0.104], [0.2, 0.098], [0.0, 0.096]]), 192);
+      { const pos = dishGeo.attributes.position, uv = dishGeo.attributes.uv; for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) + 1) / 2, (pos.getZ(i) + 1) / 2); }
+      turn.add(sh(new THREE.Mesh(dishGeo, new THREE.MeshPhysicalMaterial({ ...plasticK, map: wearTex }))));
+      const FIN_BASE = 0.08, FIN_H = 0.27, HW = 0.2, CR = 0.07, BT = 0.06, BS = 0.03, BACK = -0.9, TIP = 0.9;
+      const fin = new THREE.Shape(); fin.moveTo(-HW, 0); fin.lineTo(HW, 0); fin.lineTo(HW, FIN_H - CR); fin.quadraticCurveTo(HW, FIN_H, HW - CR, FIN_H);
+      fin.lineTo(-HW + CR, FIN_H); fin.quadraticCurveTo(-HW, FIN_H, -HW, FIN_H - CR); fin.closePath();
+      const finGeo = new THREE.ExtrudeGeometry(fin, { depth: TIP - BACK - 2 * BT, bevelEnabled: true, bevelThickness: BT, bevelSize: BS, bevelSegments: 8, curveSegments: 16 });
+      finGeo.rotateY(Math.PI / 2); finGeo.translate(BACK + BT, FIN_BASE, 0); finGeo.computeVertexNormals();
+      turn.add(sh(new THREE.Mesh(finGeo, new THREE.MeshPhysicalMaterial(plasticK))));
+      const dot = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.048, 0.006, 40), new THREE.MeshPhysicalMaterial({ color: 0xd3242a, roughness: 0.4, clearcoat: 0.5 }));
+      dot.position.set(0.7, FIN_BASE + FIN_H + BS + 0.001, 0); dot.receiveShadow = true; turn.add(dot);
+      turn.rotation.y = THREE.MathUtils.degToRad(deg); g.add(turn);
+      g.scale.setScalar(k);
+      return g;
     };
 
     // --- gravel ground, for the lot and the laydown area.
@@ -3518,11 +3661,11 @@ async function exportLayers() {
       return T + 5;
     };
     /** Hazard tape, yellow on black, as a flat strip from (x0, z0) to (x1, z1). */
-    const tape = (x0, z0, x1, z1, y, t = 12) => {
+    const tape = (x0, z0, x1, z1, y, t = 10) => {
       const L = Math.hypot(x1 - x0, z1 - z0);
       const c = canvas2d(L, t, (g) => {
         g.fillStyle = '#131313'; g.fillRect(0, 0, L, t); g.fillStyle = '#f2c11a';
-        for (let d = -t; d < L + t; d += 18) { g.beginPath(); g.moveTo(d, 0); g.lineTo(d + 9, 0); g.lineTo(d + 9 - t, t); g.lineTo(d - t, t); g.closePath(); g.fill(); }
+        for (let d = -t; d < L + t; d += 16) { g.beginPath(); g.moveTo(d, 0); g.lineTo(d + 8, 0); g.lineTo(d + 8 - t, t); g.lineTo(d - t, t); g.closePath(); g.fill(); }
         for (let i = 0; i < L / 6; i++) { g.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.06 + rand() * 0.1})`; g.fillRect(rand() * L, rand() * t, 1 + rand() * 3, 0.5 + rand()); }
       });
       const m = new THREE.Mesh(extrude(rrShape(L, t, 1), 0.5), new THREE.MeshPhysicalMaterial({ map: faceTexture(c, L, t), roughness: 0.42, clearcoat: 0.45, clearcoatRoughness: 0.3, envMap: studioEnv, envMapIntensity: 0.4 }));
@@ -3553,223 +3696,283 @@ async function exportLayers() {
       }
       return y + 9 + 5;
     };
+    const HAMMER = (() => {
+      const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'); g.fillStyle = '#fff';
+      g.translate(128, 132); g.rotate(-Math.PI / 4);
+      g.beginPath(); g.roundRect(-13, -40, 26, 150, 10); g.fill();
+      g.beginPath(); g.roundRect(-62, -86, 92, 46, 8); g.fill();
+      g.beginPath(); g.moveTo(26, -86); g.quadraticCurveTo(74, -90, 90, -52); g.lineTo(66, -46); g.quadraticCurveTo(54, -64, 26, -58); g.closePath(); g.fill();
+      return c;
+    })();
 
-    // Shared by both stages: the rail, the crane, the Close key.
+    // Shared by both stages: the rail, the crane with the site's name, the Close key.
     const feats = [0, 1].map(() => ({ icons: [], buttons: [], screws: [] }));
-    for (const ox of OX) { rail(ox); smallKey('x', ox + PW - 60, OY + 76); }
+    for (const [i, ox] of OX.entries()) { cur = i; rail(ox); smallKey('x', ox + PW - 60, OY + 76); }
     feats.forEach((f) => f.buttons.push({ x: PW - 98, y: 38, w: 76, h: 76, r: 8 }));
-    const lot1 = crane(OX[0], feats[0], { trolley: 880, drop: 146 });
-    const lot2 = crane(OX[1], feats[1], { trolley: 566, drop: 170 });
+    const SITE = 'STONESHORE DOCKS';
 
     // ===== Stage 1: the catalogue =====
+    cur = 0;
     {
-      const ox = OX[0], feat = feats[0];
-      // The site control box: black plastic, nine latching keys for the categories in two rows, and the search.
-      const BOX = { x: 40, y: 230, w: PW - 80, pad: 16, kh: 70, gap: 10 };
-      BOX.h = 2 * BOX.pad + 2 * BOX.kh + BOX.gap;
-      add(shade(new THREE.Mesh(extrude(rrShape(BOX.w, BOX.h, 10), 4, 2.4, 2, 4), [new THREE.MeshPhysicalMaterial({ map: faceTexture(blackPlasticFace(BOX.w, BOX.h, '#15171a', 0.06), BOX.w, BOX.h), roughness: 0.5, clearcoat: 0.3, envMap: studioEnv, envMapIntensity: 0.4 }), BLACK_PLASTIC_SIDE()])), ox + BOX.x + BOX.w / 2, OY + BOX.y + BOX.h / 2);
-      feat.buttons.push({ x: BOX.x, y: BOX.y, w: BOX.w, h: BOX.h, r: 10 });
-      const bedTop = T + 8.8, keyFont = `700 23px ${BARLOW}`, keyPad = 2 * (SKIRT_S + 6.6) + 30;
-      const rows = [['EXTRACTION', 'REFINERY', 'METALLURGY', 'ELECTROCHEMISTRY', 'FARM FORESTS'], ['POWER', 'INFRASTRUCTURE', 'WATER', 'MANUFACTURING']];
-      const inner = BOX.w - 2 * BOX.pad, nat = rows.map((r) => r.map((s) => measure(s, keyFont) + keyPad));
-      const extra = (inner - nat[0].reduce((a, b) => a + b, 0) - (rows[0].length - 1) * BOX.gap) / rows[0].length;
-      let searchX = 0;
-      rows.forEach((r, ri) => {
-        let x = BOX.x + BOX.pad; const cz = BOX.y + BOX.pad + BOX.kh / 2 + ri * (BOX.kh + BOX.gap);
-        r.forEach((nm, i) => {
-          const kw = nat[ri][i] + extra;
-          const k = keycap(kw, BOX.kh, 8, (g, a, b) => text(g, nm, a / 2, b / 2 + 1, a - 14, 23, NAVY, { align: 'center', weight: 700 }));
-          add(k, ox + x + kw / 2, OY + cz, T + 6); x += kw + BOX.gap;
-        });
-        if (ri === 1) searchX = x;
-      });
-      // The search: an engraved label and a strip of dark glass, a magnifier and a lit caret behind it.
-      const sz = BOX.y + BOX.pad + BOX.kh + BOX.gap + BOX.kh / 2, labelW = 92, gx = searchX + labelW, gw = BOX.x + BOX.w - BOX.pad - gx - 4, gh = 34;
-      printWhite('SEARCH', ox + searchX + 8, OY + sz + 1, 26, { weight: 600, family: BARLOW });
-      const sface = canvas2d(gw - 14, gh, (c) => {
-        c.fillStyle = '#060808'; c.fillRect(0, 0, gw - 14, gh);
-        c.strokeStyle = LIGHT; c.lineWidth = 2.6; c.beginPath(); c.arc(17, gh / 2 - 2, 7.5, 0, Math.PI * 2); c.stroke();
-        c.lineCap = 'round'; c.lineWidth = 3.2; c.beginPath(); c.moveTo(22.5, gh / 2 + 3.5); c.lineTo(29, gh / 2 + 10); c.stroke();
-        c.save(); c.filter = 'blur(2px)'; c.fillStyle = GREEN; c.fillRect(42, 7, 3.5, gh - 14); c.restore(); c.fillStyle = GREEN; c.fillRect(42, 7, 3.5, gh - 14);
+      const ox = OX[0], feat = feats[0], X = (x) => ox + x, Z = (z) => OY + z;
+      crane(ox, feat, SH1, { trolley: JIB.x0 + 330, site: SITE });
+      // The control plate: black plastic moulded in one piece, its tab rising under the jib between the cab and
+      // the site's name to hold the search; the nine category keys across its full width in two rows below.
+      const CP = { x: CL, y: PLACARD.y, w: CW, n0: CAB.x + CAB.w + 16 - CL, n1: PLACARD.x - 16 - CL, pad: 18, kh: 76, gap: 10 };
+      CP.nh = CAB.y + CAB.h + 16 - CP.y; CP.h = CP.nh + 2 * CP.pad + 2 * CP.kh + CP.gap;
+      const notched = (() => {
+        const { w: bw, h: bh, n0, n1, nh } = CP, r = 12, f = 18, s = new THREE.Shape(), P = (x, y) => [x - bw / 2, bh / 2 - y];
+        const M = (x, y) => s.moveTo(...P(x, y)), L = (x, y) => s.lineTo(...P(x, y)), Q = (cx, cy, x, y) => s.quadraticCurveTo(...P(cx, cy), ...P(x, y));
+        M(r, nh); L(n0 - f, nh); Q(n0, nh, n0, nh - f); L(n0, r); Q(n0, 0, n0 + r, 0); L(n1 - r, 0); Q(n1, 0, n1, r); L(n1, nh - f); Q(n1, nh, n1 + f, nh);
+        L(bw - r, nh); Q(bw, nh, bw, nh + r); L(bw, bh - r); Q(bw, bh, bw - r, bh); L(r, bh); Q(0, bh, 0, bh - r); L(0, nh + r); Q(0, nh, r, nh);
+        return s;
+      })();
+      // The search in the tab: a raised magnifier, then a long strip of dark glass with the lit caret.
+      const MAG = { x: CP.n0 + 22, y: CP.nh / 2 - 27, s: 54 };
+      const drawMag = (g, col) => {
+        g.save(); g.strokeStyle = col; g.lineCap = 'round'; g.lineWidth = 7; g.beginPath(); g.arc(MAG.x + 22, MAG.y + 22, 15, 0, Math.PI * 2); g.stroke();
+        g.lineWidth = 10; g.beginPath(); g.moveTo(MAG.x + 34, MAG.y + 34); g.lineTo(MAG.x + 47, MAG.y + 47); g.stroke(); g.restore();
+      };
+      const plate = new THREE.Mesh(extrude(notched, 4, 2.4, 2, 4), [blackPlastic(CP.w, CP.h, (c) => drawIconShadows(c, CP.w, CP.h, [{ height: 8, draw: drawMag }])), BLACK_PLASTIC_SIDE()]);
+      add(shade(plate), X(CP.x + CP.w / 2), Z(CP.y + CP.h / 2));
+      feat.buttons.push({ x: CP.x + CP.n0, y: CP.y, w: CP.n1 - CP.n0, h: CP.nh + 20, r: 12 }, { x: CP.x, y: CP.y + CP.nh, w: CP.w, h: CP.h - CP.nh, r: 12 });
+      const bedTop = T + 8.8;
+      add(relief(MAG.s, MAG.s, (g) => { g.save(); g.translate(-MAG.x, -MAG.y); drawMag(g, '#fff'); g.restore(); }, creamEnamel, { height: 8, soften: 1.2 }), X(CP.x + MAG.x + MAG.s / 2), Z(CP.y + MAG.y + MAG.s / 2), bedTop + 0.3);
+      const gx0 = MAG.x + MAG.s + 16, gx1 = CP.n1 - 20, gh = 50, gw = gx1 - gx0 - 14;
+      const sface = canvas2d(gw, gh, (c) => {
+        c.fillStyle = '#060808'; c.fillRect(0, 0, gw, gh);
+        c.save(); c.filter = 'blur(2px)'; c.fillStyle = GREEN; c.fillRect(14, 9, 4, gh - 18); c.restore(); c.fillStyle = GREEN; c.fillRect(14, 9, 4, gh - 18);
         const top = c.createLinearGradient(0, 0, 0, 7); top.addColorStop(0, 'rgba(0,0,0,0.6)'); top.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = top; c.fillRect(0, 0, gw, 7);
         const glare = c.createLinearGradient(0, 0, gw * 0.4, gh); glare.addColorStop(0.3, 'rgba(255,255,255,0)'); glare.addColorStop(0.45, 'rgba(255,255,255,0.06)'); glare.addColorStop(0.6, 'rgba(255,255,255,0)'); c.fillStyle = glare; c.fillRect(0, 0, gw, gh);
       });
-      const search = glassScreen(gw - 14, gh, sface); add(search.group, ox + gx + gw / 2, OY + sz, bedTop);
-      for (const [sx, sy] of [[12, 12], [BOX.w - 12, 12], [12, BOX.h - 12], [BOX.w - 12, BOX.h - 12]]) add(screw(5), ox + BOX.x + sx, OY + BOX.y + sy, bedTop);
+      add(glassScreen(gw, gh, sface).group, X(CP.x + (gx0 + gx1) / 2), Z(CP.y + CP.nh / 2), bedTop);
+      for (const [sx, sy] of [[CP.n0 + 11, 11], [CP.n1 - 11, 11], [10, CP.nh + 10], [CP.w - 10, CP.nh + 10], [10, CP.h - 10], [CP.w - 10, CP.h - 10]]) add(screw(4.6), X(CP.x + sx), Z(CP.y + sy), bedTop);
+      // The category keys, fitted to the plate's width at one print size.
+      const rows = [['EXTRACTION', 'REFINERY', 'METALLURGY', 'ELECTROCHEMISTRY', 'FARM FORESTS'], ['POWER', 'INFRASTRUCTURE', 'WATER', 'MANUFACTURING']];
+      const inner = CP.w - 2 * CP.pad, kpad = 50;
+      const natural = (r, s) => r.reduce((a, nm) => a + measure(nm, `700 ${s}px ${BARLOW}`) + kpad, 0) + (r.length - 1) * CP.gap;
+      let ks = 28; while (ks > 23 && Math.max(...rows.map((r) => natural(r, ks))) > inner) ks -= 0.5;
+      rows.forEach((r, ri) => {
+        const extra = (inner - natural(r, ks)) / r.length, cz = CP.y + CP.nh + CP.pad + CP.kh / 2 + ri * (CP.kh + CP.gap);
+        let x = CP.x + CP.pad;
+        for (const nm of r) {
+          const kw = measure(nm, `700 ${ks}px ${BARLOW}`) + kpad + extra;
+          add(keycap(kw, CP.kh, 8, (g, a, b) => text(g, nm, a / 2, b / 2 + 1, a - 10, ks, NAVY, { align: 'center', weight: 700 })), X(x + kw / 2), Z(cz), T + 6);
+          x += kw + CP.gap;
+        }
+      });
 
-      // The site boards, two to a row, in the catalogue's order; the Furnace's opened, its recipe tags hung under it.
-      const BW = (PW - 80 - 16) / 2, BH = 172, rowY = 432, pitch = BH + 16;
-      const list = [['Assembly Plant', 'b_009_assembly_plant.png', '1153.19'], ['Battery Electric Storage', 'b_028_battery.png', '349.06'], ['Cables', 'b_006_cables.png', '75.30'],
-        ['Chemical Plant', 'b_012_chem_plant.png', '800.13'], ['Desalination Plant', 'b_021_desal.png', '287.02'], ['Electric Arc Furnace', 'b_008_eaf.png', '798.06'], ['Furnace', 'b_002_furnace.png', '451.06']];
-      const nameFont = `600 28px ${PLEX}`, tx = 186, cells = 6;
+      // The site boards, two to a row in the catalogue's order; the Furnace's across the width, opened, its
+      // recipes hung under it as tags, each the recipe drawn out.
+      const BW = (CW - 16) / 2, BH = 180, rowY = CP.y + CP.h + 16, pitch = BH + 16, tx = 186;
+      const list = [['Assembly Plant', 'b_009_assembly_plant.png', 1153.19], ['Battery Electric Storage', 'b_028_battery.png', 349.06], ['Cables', 'b_006_cables.png', 75.30],
+        ['Chemical Plant', 'b_012_chem_plant.png', 800.13], ['Desalination Plant', 'b_021_desal.png', 287.02], ['Electric Arc Furnace', 'b_008_eaf.png', 798.06], ['Furnace', 'b_002_furnace.png', 451.06]];
+      const nameFont = `600 28px ${PLEX}`;
       for (const [i, [name, file, price]] of list.entries()) {
-        const x = 40 + (i % 2) * (BW + 16), y = rowY + Math.floor(i / 2) * pitch, lines = wrap(name, nameFont, BW - tx - 22);
-        const scr = ledScreen(price, cells, RED), sy = BH - 20 - scr.h / 2;
-        const top = await siteBoard(ox, { x, y, w: BW, h: BH, file, field: [26, 16, 140], emblem: 116, print: (c) => {
-          lines.forEach((ln, k) => text(c, ln, tx, 40 + k * 34, BW - tx - 22, 28, NAVY, { weight: 600, family: PLEX }));
+        const wide = name === 'Furnace', w = wide ? CW : BW, x = CL + (wide ? 0 : (i % 2) * (BW + 16)), y = rowY + Math.floor(i / 2) * pitch;
+        const lines = wrap(name, nameFont, w - tx - 22), scr = ledScreen(moneyLed(price).figure, 5, RED), sy = BH - 18 - scr.h / 2;
+        const top = await siteBoard(ox, { x, y, w, h: BH, file, field: [26, 20, 140], emblem: 116, print: (c) => {
+          lines.forEach((ln, k) => text(c, ln, tx, 42 + k * 34, w - tx - 22, 28, NAVY, { weight: 600, family: PLEX }));
           text(c, '£', tx, sy + 1, 30, 34, NAVY, { weight: 600, family: PLEX });
         } });
-        add(scr.group, ox + x + tx + 26 + scr.w / 2, OY + y + sy, top);
-        feat.buttons.push({ x, y, w: BW, h: BH, r: 10 });
-        if (name === 'Furnace') {
-          // Opened: two eye bolts along its foot, a chain from each to a cream recipe tag.
-          const tagW = 226, tagH = 80, tagY = y + BH + 38;
-          for (const [k, recipe] of ['Pig Iron Smelting', 'Steelmaking'].entries()) {
-            const cx = x + BW * (k ? 0.74 : 0.26);
-            ring(ox + cx, OY + y + BH - 12, top, 5, 1.7);
-            chain(ox + cx, OY + y + BH - 12, OY + tagY + 14, T + 6);
-            const face = canvas2d(tagW, tagH, (c) => { paintPlastic(c, tagW, tagH); text(c, recipe, tagW / 2, tagH * 0.64, tagW - 24, 27, NAVY, { align: 'center', weight: 600, family: PLEX }); });
-            add(shade(new THREE.Mesh(extrude(rrShape(tagW, tagH, 10), 2, 1.4, 1.1, 3), [new THREE.MeshPhysicalMaterial({ map: faceTexture(face, tagW, tagH), ...KNOB_PLASTIC }), MAT.skirt])), ox + cx, OY + tagY + tagH / 2, T + 1);
-            const hole = new THREE.Mesh(new THREE.CircleGeometry(4.2, 24).rotateX(-Math.PI / 2), MAT.gap); add(hole, ox + cx, OY + tagY + 14, T + 6.9);
-            ring(ox + cx, OY + tagY + 14, T + 6.8, 6.2, 1.9);
-            feat.buttons.push({ x: cx - tagW / 2, y: tagY, w: tagW, h: tagH, r: 10 });
-          }
+        add(scr.group, X(x + tx + 28 + scr.w / 2), Z(y + sy), top);
+        feat.buttons.push({ x, y, w, h: BH, r: 10 });
+        if (!wide) continue;
+        let above = y + BH, aboveTop = top;
+        for (const [recipe, items] of [['Pig Iron Smelting', PIG_IRON], ['Steelmaking', STEELMAKING]]) {
+          const TAG = { h: 238, head: 44, row: 146 }, ty = above + 40, dx = (CW - diagramWidth(items)) / 2, boxes = diagram(items, dx);
+          for (const fx of [64, CW - 64]) { ring(X(CL + fx), Z(above - 14), aboveTop, 5, 1.7); chain(X(CL + fx), Z(above - 14), Z(ty + 14), T + 6); }
+          const tagTop = whitePlate(ox, CL, ty, CW, TAG.h, (c) => { ink(c, recipe, CW / 2, TAG.head, 28, NAVY, { weight: 600, align: 'center' }); paintDiagram(c, boxes, TAG.row); }, T + 1);
+          for (const fx of [64, CW - 64]) eyelet(X(CL + fx), Z(ty + 14), tagTop);
+          await setWells(boxes, ox, CL, Z(ty + TAG.row), tagTop);
+          feat.buttons.push({ x: CL, y: ty, w: CW, h: TAG.h, r: 10 });
+          above = ty + TAG.h; aboveTop = tagTop;
         }
       }
     }
 
-    // ===== Stage 2: the build order =====
+    // ===== Stage 2: the build order, in full =====
+    let SH2 = 0;
+    cur = 1;
     {
       const ox = OX[1], feat = feats[1], X = (x) => ox + x, Z = (z) => OY + z;
       smallKey('back', X(PW - 60), Z(160)); feat.buttons.push({ x: PW - 98, y: 122, w: 76, h: 76, r: 8 });
-      // The hook holds a spreader beam by its eye plate; a chain from each end lowers the Furnace's site board.
-      const [bx, bz] = lot2.bowl, SPY = 262, B = { x: 170, y: 290, w: PW - 340, h: 230 };
+      const B = { x: CL, y: 334, w: CW, h: 302 }, TROLLEY = B.x + B.w / 2 + 3, DROP = 196;
+
+      // (a) The hook holds a spreader beam by its eye plate; a chain from each end lowers the Furnace's site
+      // board, which names the building and its recipe and draws the recipe out.
+      const [bx, bz] = [TROLLEY - 3, DROP + 67], SPY = 296;   // the hook's bowl (see crane)
       const eye = new THREE.Shape(), hy = SPY - 7 - bz; eye.moveTo(-24, 0); eye.lineTo(24, 0); eye.lineTo(13, hy + 6); eye.quadraticCurveTo(0, hy + 22, -13, hy + 6); eye.closePath();
       eye.holes.push(new THREE.Path().absarc(0, hy, 6, 0, Math.PI * 2, true));
       add(shade(new THREE.Mesh(extrude(eye, 2, 1, 0.8, 2), [painted(48, 44, YELLOW, 0.5), yellowSide])), X(bx), Z(SPY - 7), T + 4);
       bar(X(B.x + 30), Z(SPY), X(B.x + B.w - 30), Z(SPY), 14, 10, T + 5);
       for (const ex of [B.x + 40, B.x + B.w - 40]) { chain(X(ex), Z(SPY + 4), Z(B.y + 12), T + 14); add(screw(4), X(ex), Z(SPY), T + 15); }
-      const oreImg = await loadImage('/icons/goods/alternate_icons/medium/g_002_iron_ore.png'), coalImg = await loadImage('/icons/goods/alternate_icons/medium/g_001_coal.png');
-      const powerImg = await loadImage('/icons/goods/medium/g_010_power.png'), pigImg = await loadImage('/icons/goods/alternate_icons/medium/g_004_iron_ingots.png');
-      const top = await siteBoard(ox, { x: B.x, y: B.y, w: B.w, h: B.h, file: 'b_002_furnace.png', field: [22, 22, 180], emblem: 150, base: T + 9, bolts: false, print: (c) => {
-        const tx = 226;
-        text(c, 'Furnace', tx, 50, 500, 46, NAVY, { weight: 700, family: PLEX });
-        text(c, 'Pig Iron Smelting', tx, 96, 500, 30, NAVY, { weight: 600, family: PLEX });
-        text(c, 'Stoneshore Docks', tx, 132, 500, 26, NAVY, { weight: 500, family: PLEX });
-        let x = tx; const iy = 152, is = 60;
-        for (const it of [[oreImg, '40'], '+', [coalImg, '20'], '+', [powerImg, '140'], '→', [pigImg, '70']]) {
-          if (typeof it === 'string') { text(c, it, x + 15, iy + is / 2, 30, 34, NAVY, { align: 'center', weight: 600, family: PLEX }); x += 30; continue; }
-          fitImage(c, it[0], x, iy, is, is); pill(c, it[1], x + is + 6, iy + is + 2, 24, 17); x += is + 14;
-        }
+      const bBoxes = diagram(PIG_IRON, 212);
+      const bTop = await siteBoard(ox, { x: B.x, y: B.y, w: B.w, h: B.h, file: 'b_002_furnace.png', field: [24, 24, 168], emblem: 140, base: T + 9, bolts: false, print: (c) => {
+        text(c, 'Furnace', 212, 58, 700, 46, NAVY, { weight: 700, family: PLEX });
+        text(c, 'Pig Iron Smelting', 212, 104, 700, 30, NAVY, { weight: 600, family: PLEX });
+        paintDiagram(c, bBoxes, 206);
       } });
-      for (const ex of [B.x + 40, B.x + B.w - 40]) ring(X(ex), Z(B.y + 12), top, 5.5, 1.8);
+      for (const ex of [B.x + 40, B.x + B.w - 40]) ring(X(ex), Z(B.y + 12), bTop, 5.5, 1.8);
+      await setWells(bBoxes, ox, B.x, Z(B.y + 206), bTop);
 
-      // The lot: gravel inside hazard tape on four stakes; its twenty squares bought, eighteen under concrete
-      // slabs (the building), two marked out spare. Its legend underneath, and the site clock in its corner.
-      const L = { x: 40, y: 574, w: 560, h: 340 }, G = { x: 66, y: 604, n: 5, m: 4, s: 54, p: 60 };
-      const gw = G.n * G.p - (G.p - G.s), gh = G.m * G.p - (G.p - G.s);
-      const spare = [[4, 3], [3, 3]];
-      raised(ox, feat, 'LAND', 44, 534);
-      const gtop = ground(ox, feat, L.x, L.y, L.w, L.h, (g) => {
-        g.save(); g.setLineDash([6, 5]); g.strokeStyle = 'rgba(238,236,226,0.75)'; g.lineWidth = 2;
-        for (const [i, j] of spare) g.strokeRect(G.x - L.x + i * G.p + 1, G.y - L.y + j * G.p + 1, G.s - 2, G.s - 2);
-        g.restore();
-      });
-      for (let j = 0; j < G.m; j++) for (let i = 0; i < G.n; i++) {
-        if (spare.some(([a, b]) => a === i && b === j)) continue;
-        add(shade(new THREE.Mesh(extrude(rrShape(G.s, G.s, 3), 2, 1, 0.8, 2), [concreteMaterial(G.s, G.s, rand() < 0.5 ? '#b3aea4' : '#aba69c'), concreteSideC])), X(G.x + i * G.p + G.s / 2), Z(G.y + j * G.p + G.s / 2), gtop);
-      }
-      const tp = { x0: G.x - 16, y0: G.y - 16, x1: G.x + gw + 16, y1: G.y + gh + 16 }, ty = gtop + 9;
-      tape(X(tp.x0), Z(tp.y0), X(tp.x1), Z(tp.y0), ty); tape(X(tp.x1), Z(tp.y0), X(tp.x1), Z(tp.y1), ty);
-      tape(X(tp.x1), Z(tp.y1), X(tp.x0), Z(tp.y1), ty); tape(X(tp.x0), Z(tp.y1), X(tp.x0), Z(tp.y0), ty);
-      for (const [px, pz] of [[tp.x0, tp.y0], [tp.x1, tp.y0], [tp.x0, tp.y1], [tp.x1, tp.y1]]) {
-        add(shade(new THREE.Mesh(new THREE.CylinderGeometry(5, 5.5, 13, 20), galv)), X(px), Z(pz), gtop + 6.5);
-        add(shade(new THREE.Mesh(new THREE.SphereGeometry(6.5, 20, 10), painted(20, 20, YELLOW, 0.3))), X(px), Z(pz), gtop + 13);
-      }
-      // The legend: a concrete slab and a piece of tape, each with its words.
-      const ly = L.y + L.h - 30;
-      add(shade(new THREE.Mesh(extrude(rrShape(26, 26, 2), 2, 1, 0.8, 2), [concreteMaterial(26, 26, '#b3aea4'), concreteSideC])), X(L.x + 34), Z(ly), gtop);
-      printWhite('Takes 18 land', X(L.x + 58), Z(ly), 26);
-      tape(X(L.x + 272), Z(ly), X(L.x + 318), Z(ly), gtop + 1);
-      printWhite('Buys 20 land', X(L.x + 332), Z(ly), 26);
-      // The site clock: a dark plate with the build time on a drum counter.
-      const CK = { x: tp.x1 + 22, y: G.y - 8, w: L.x + L.w - 16 - (tp.x1 + 22), h: 178 };
-      add(shade(new THREE.Mesh(extrude(rrShape(CK.w, CK.h, 8), 3, 2, 1.6, 3), [darkPlateMat(CK.w, CK.h), MAT.plateSide])), X(CK.x + CK.w / 2), Z(CK.y + CK.h / 2), gtop);
-      const cktop = gtop + 7;
-      for (const [sx, sy] of [[11, 11], [CK.w - 11, 11], [11, CK.h - 11], [CK.w - 11, CK.h - 11]]) { const s = silverScrew(); s.remove(s.children[s.children.length - 1]); add(s, X(CK.x + sx - 15), Z(CK.y + sy - 15), cktop); }
+      // (b) The verdict on the cabin desk: the total and the cash after on LEDs, the build time on a drum
+      // counter, and the guarded Build key, an amber cap under a hinged clear cover.
+      const D = { x: CL, y: B.y + B.h + 28, w: CW, h: 180 }, dtop = T + 10, deskIcons = [];
+      const GS = 118, gx = D.x + 686, gz = D.y + (D.h - GS) / 2;
+      raised(ox, feat, 'Build', gx + GS + 24, gz + GS / 2 - 32, 46, BARLOW, 700, { icons: deskIcons, x: D.x, y: D.y, top: dtop });
+      const capY = D.y + 44, scrY = D.y + 114;
+      cabin(ox, feat, D.x, D.y, D.w, D.h, deskIcons, [{ x: gx - D.x, y: gz - D.y, w: GS, h: GS, r: 12 }]);
+      printWhite('Total', X(D.x + 32), Z(capY), 26, { weight: 600 });
+      money(473.21, RED, 5, X(D.x + 62), Z(scrY), dtop);
+      printWhite('Cash after', X(D.x + 256), Z(capY), 26, { weight: 600 });
+      money(49526.79, GREEN, 5, X(D.x + 286), Z(scrY), dtop);
       {
-        const { cap, cell, H: CH, win, drumR } = COUNTER, cells = 2, Wc = 2 * cap + cells * cell, k = 1.35, g = new THREE.Group();
+        const { cap, cell, H: CH, win, drumR } = COUNTER, cells = 2, Wc = 2 * cap + cells * cell, k = 65 / CH, g = new THREE.Group();
         const wy = (win[0] + win[1]) / 2, wh = win[1] - win[0];
         const hs = rrShape(Wc - 4, CH - 4, 8); hs.holes.push(rr(new THREE.Path(), Wc - 2 * cap + 8, wh, 3, 0, wy - CH / 2));
         const housing = new THREE.Mesh(extrude(hs, 2, 2, 1.6, 3), MAT.frame); housing.castShadow = housing.receiveShadow = true; housing.position.set(Wc / 2, 2, CH / 2); g.add(housing);
         const drum = new THREE.MeshStandardMaterial({ color: 0x151618, roughness: 0.45, metalness: 0.2, envMap: studioEnv, envMapIntensity: 0.6 });
         for (let i = 0; i < cells; i++) { const d = new THREE.Mesh(new THREE.CylinderGeometry(drumR, drumR, cell - 2.4, 48, 1).rotateZ(Math.PI / 2), drum); d.position.set(cap + i * cell + cell / 2, 4.6 - drumR, wy); d.receiveShadow = true; g.add(d); }
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(Wc - 2 * cap + 8, wh).rotateX(-Math.PI / 2), MAT.gap); floor.position.set(Wc / 2, -2, wy); g.add(floor);
-        g.scale.setScalar(k); const cx0 = CK.x + (CK.w - Wc * k) / 2, cz0 = CK.y + 26;
-        add(g, X(cx0), Z(cz0), cktop + 3);
-        prints.push((c) => {
-          ['0', '3'].forEach((d, i) => text(c, d, X(cx0 + k * (cap + i * cell + cell / 2)), Z(cz0 + k * wy) + 1, 40, k * 34, '#efede6', { align: 'center', weight: 600, family: BARLOW }));
+        g.scale.setScalar(k); const cx0 = D.x + 500, cz0 = D.y + 114 - CH * k / 2;
+        add(g, X(cx0), Z(cz0), dtop + 1);
+        prints.push((c) => {   // the leading drum blank, the 3 on the next
+          text(c, '3', X(cx0 + k * (cap + cell + cell / 2)), Z(cz0 + k * wy) + 1, 40, k * 34, '#efede6', { align: 'center', weight: 600, family: BARLOW });
           c.save(); c.translate(X(cx0), Z(cz0)); c.scale(k, k); paintCounterGlass(c, Wc); c.restore();
         });
-        printWhite('Turns to build', X(CK.x + CK.w / 2), Z(cz0 + CH * k + 40), 26, { align: 'center', maxW: CK.w - 16 });
+        printWhite('Turns to build', X(cx0 - 4), Z(capY), 26, { weight: 600 });
       }
+      add(guardButton(GS, HAMMER, LAMP.amber), X(gx + GS / 2), Z(gz + GS / 2), dtop);
+      glow(X(gx + GS / 2), Z(gz + GS / 2), GS * 1.1, '#ffa412', 0.5);
 
-      // The site cabin: a dark metal panel with the money on LED screens, one width, after a printed £.
-      const CB = { x: 620, y: 574, w: PW - 40 - 620, h: 340 };
-      raised(ox, feat, 'COST', CB.x + 4, 534);
-      add(shade(new THREE.Mesh(extrude(rrShape(CB.w, CB.h, 10), 4, 3, 2.4, 4), [darkPlateMat(CB.w, CB.h), MAT.plateSide])), X(CB.x + CB.w / 2), Z(CB.y + CB.h / 2));
-      feat.buttons.push({ x: CB.x, y: CB.y, w: CB.w, h: CB.h, r: 10 });
-      const cbtop = T + 10;
-      for (const [sx, sy] of [[13, 13], [CB.w - 13, 13], [13, CB.h - 13], [CB.w - 13, CB.h - 13]]) { const s = silverScrew(); s.remove(s.children[s.children.length - 1]); add(s, X(CB.x + sx - 15), Z(CB.y + sy - 15), cbtop); }
-      const money = [['Materials', '433.21', RED], ['Fee', '20.00', RED], ['Land', '20.00', RED], ['Total', '473.21', RED], ['Cash after', '49526.79', GREEN]];
-      money.forEach(([label, fig, col], i) => {
-        const cz = CB.y + 46 + i * 60 + (i >= 3 ? 10 : 0), scr = ledScreen(fig, 7, col), sx = CB.x + CB.w - 26 - scr.w / 2;
-        add(scr.group, X(sx), Z(cz), cbtop);
-        printWhite(label, X(CB.x + 26), Z(cz), 26, { weight: label === 'Total' ? 600 : 500 });
-        printWhite('£', X(sx - scr.w / 2 - 22), Z(cz) + 1, 34, { weight: 600 });
-      });
-      prints.push((c) => {   // the rule over the total, cut into the plate
-        const y = Z(CB.y + 46 + 2.5 * 60 + 5), x0 = X(CB.x + 22), x1 = X(CB.x + CB.w - 22);
-        c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(x0, y - 1, x1 - x0, 1.6); c.fillStyle = 'rgba(210,218,230,0.28)'; c.fillRect(x0, y + 0.8, x1 - x0, 1);
-      });
-
-      // The laydown area: the materials on pallets, each good in its well with its quantity.
-      raised(ox, feat, 'MATERIALS', 44, 930);
-      const LD = { x: 40, y: 968, w: PW - 80, h: 192 }, S = 178;
-      const ltop = ground(ox, feat, LD.x, LD.y, LD.w, LD.h);
-      const goods = [['alternate_icons/medium/g_017_concrete.png', 10], ['medium/g_023_building_frame.png', 7], ['medium/g_071_construction_equipment_ice.png', 3], ['medium/g_028_rubber.png', 6], ['medium/g_027_plastics.png', 6]];
-      const gp = (LD.w - goods.length * S) / (goods.length + 1);
-      for (const [i, [file, qty]] of goods.entries()) {
-        const cx = X(LD.x + gp + S / 2 + i * (S + gp)), cz = Z(LD.y + LD.h / 2);
-        const deck = pallet(cx, cz, ltop, S);
-        goodWell(await loadImage('/icons/goods/' + file), qty, cx, cz, deck);
-      }
-
-      // The site's feeder pillar: a lamp for each requirement, its words beside it.
-      const PL = { x: 40, y: 1176, w: 470, h: 164 };
+      // (c) The site's requirements on the feeder pillar: a lamp for each, its words beside it. The land it
+      // buys is said here only.
+      let y = D.y + D.h + 34;
+      raised(ox, feat, 'SITE REQUIREMENTS', CL + 4, y);
+      const PL = { x: CL, y: y + 38, w: CW, h: 132 };
       add(shade(new THREE.Mesh(extrude(rrShape(PL.w, PL.h, 14), 10, 2, 1.6, 3), [painted(PL.w, PL.h, '#2f3a35', 0.7), new THREE.MeshStandardMaterial({ color: 0x252d29, metalness: 0.3, roughness: 0.6, envMap: studioEnv, envMapIntensity: 0.5 })])), X(PL.x + PL.w / 2), Z(PL.y + PL.h / 2));
       feat.buttons.push({ x: PL.x, y: PL.y, w: PL.w, h: PL.h, r: 14 });
       const ptop = T + 14;
-      for (let i = 0; i < 4; i++) add(shade(new THREE.Mesh(extrude(rrShape(6, 44, 3), 0.4), MAT.gap)), X(PL.x + PL.w - 70 + i * 13), Z(PL.y + 40), ptop - 0.2);
+      for (let i = 0; i < 4; i++) add(shade(new THREE.Mesh(extrude(rrShape(6, 50, 3), 0.4), MAT.gap)), X(PL.x + PL.w - 74 + i * 13), Z(PL.y + PL.h / 2), ptop - 0.2);
       for (const [i, [colour, title, detail]] of [[LAMP.green, 'Cables', 'In place'], [LAMP.amber, 'Land', 'Buys 20 land for £20']].entries()) {
-        const lz = PL.y + 44 + i * 76, lamp = pilotLamp(colour, true); lamp.scale.setScalar(0.85);
-        add(lamp, X(PL.x + 50), Z(lz), ptop);
-        glow(X(PL.x + 50), Z(lz), 48, '#' + new THREE.Color(colour).getHexString());
-        printWhite(title, X(PL.x + 92), Z(lz - 14), 28, { weight: 600 });
-        printWhite(detail, X(PL.x + 92), Z(lz + 16), 24);
+        const lx = PL.x + 54 + i * 440, lz = PL.y + PL.h / 2, lamp = pilotLamp(colour, true); lamp.scale.setScalar(0.85);
+        add(lamp, X(lx), Z(lz), ptop);
+        glow(X(lx), Z(lz), 48, '#' + new THREE.Color(colour).getHexString());
+        printWhite(title, X(lx + 42), Z(lz - 16), 28, { weight: 600 });
+        printWhite(detail, X(lx + 42), Z(lz + 18), 26);
       }
 
-      // The outlook, and the guarded Build key: an amber cap under a hinged clear cover.
-      printWhite('Payback 20 to 30 turns', X(812), Z(1200), 28, { weight: 600, align: 'center' });
-      const HAMMER = (() => {
-        const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'); g.fillStyle = '#fff';
-        g.translate(128, 132); g.rotate(-Math.PI / 4);
-        g.beginPath(); g.roundRect(-13, -40, 26, 150, 10); g.fill();
-        g.beginPath(); g.roundRect(-62, -86, 92, 46, 8); g.fill();
-        g.beginPath(); g.moveTo(26, -86); g.quadraticCurveTo(74, -90, 90, -52); g.lineTo(66, -46); g.quadraticCurveTo(54, -64, 26, -58); g.closePath(); g.fill();
-        return c;
-      })();
-      const GS = 100, gx = 712, gz = 1234;
-      add(guardButton(GS, HAMMER, LAMP.amber), X(gx + GS / 2), Z(gz + GS / 2));
-      feat.buttons.push({ x: gx, y: gz, w: GS, h: GS, r: 12 });
-      glow(X(gx + GS / 2), Z(gz + GS / 2), GS * 1.1, '#ffa412', 0.5);
-      raised(ox, feat, 'Build', gx + GS + 24, gz + GS / 2 - 30, 46, BARLOW, 700);
+      // (d) The cost in the site cabin, one screen width, after a printed £; beside it the materials source,
+      // the white knob with an icon button for each source on its arc.
+      y = PL.y + PL.h + 34;
+      raised(ox, feat, 'COST', CL + 4, y);
+      const CB = { x: CL, y: y + 38, w: 570, h: 300 }, cbtop = T + 10;
+      cabin(ox, feat, CB.x, CB.y, CB.w, CB.h);
+      for (const [label, v, cz, bold] of [['Materials', 433.21, 52, false], ['Fee', 20, 118, false], ['Land', 20, 184, false], ['Total', 473.21, 254, true]]) {
+        money(v, RED, 5, X(CB.x + CB.w - 26 - 141), Z(CB.y + cz), cbtop);
+        printWhite(label, X(CB.x + 30), Z(CB.y + cz), 26, { weight: bold ? 600 : 500 });
+      }
+      prints.push((c) => {   // the rule over the total, cut into the plate
+        const ry = Z(CB.y + 219), x0 = X(CB.x + 22), x1 = X(CB.x + CB.w - 22);
+        c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(x0, ry - 1, x1 - x0, 1.6); c.fillStyle = 'rgba(210,218,230,0.28)'; c.fillRect(x0, ry + 0.8, x1 - x0, 1);
+      });
+      {
+        const R = 78, arc = 1.78 * R, P = 72, kx = CB.x + CB.w + (CW - CB.w) / 2, kz = CB.y + 160;
+        const sources = [['route_lorry.png', 180], ['route_port.png', 120], ['ds2/source_this_tile.png', 60], ['ds2/source_other_tiles.png', 0]], chosen = 1;
+        add(knob(R, sources[chosen][1]), X(kx), Z(kz), T);
+        const dimEnamel = new THREE.MeshPhysicalMaterial({ color: 0xb3ab9c, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+        for (const [i, [file, deg]] of sources.entries()) {
+          const img = await loadImage('/icons/ui_icons/' + file), t = THREE.MathUtils.degToRad(deg), px = kx + Math.cos(t) * arc, pz = kz - Math.sin(t) * arc, art = P - 18;
+          const drawArt = (g, col) => stamp(g, img, (P - art) / 2, (P - art) / 2, art, art, col);
+          add(shade(new THREE.Mesh(extrude(rrShape(P, P, 8), 3, 1.6, 1.2, 3), [blackPlastic(P, P, (c) => drawIconShadows(c, P, P, [{ height: 7, draw: drawArt }])), BLACK_PLASTIC_SIDE()])), X(px), Z(pz));
+          add(iconRelief(img, art, art, i === chosen ? creamEnamel : dimEnamel, { height: 7, soften: 1.1 }), X(px), Z(pz), T + 3 + 3.2 + 0.3);
+          prints.push((c) => {   // a tick from the ring towards the option
+            const ux = Math.cos(t), uz = -Math.sin(t), r0 = R * 1.08, r1 = R * 1.08 + 12;
+            c.save(); c.strokeStyle = LIGHT; c.lineWidth = 3.4; c.lineCap = 'round'; c.shadowColor = 'rgba(0,0,0,0.9)'; c.shadowOffsetX = 1.5; c.shadowOffsetY = 1.5;
+            c.beginPath(); c.moveTo(X(kx + ux * r0), Z(kz + uz * r0)); c.lineTo(X(kx + ux * r1), Z(kz + uz * r1)); c.stroke(); c.restore();
+          });
+        }
+        printWhite('Materials from', X(kx), Z(kz + R + 42), 28, { align: 'center', weight: 500 });
+      }
+
+      // (e) The laydown area: the materials on pallets, each good in its well with its quantity, and a white
+      // label under each with its stock on this tile and elsewhere and its price at market.
+      y = CB.y + CB.h + 34;
+      raised(ox, feat, 'MATERIALS', CL + 4, y);
+      const LD = { x: CL, y: y + 38, w: CW, h: 380 }, S = 176, LBL = { w: 180, h: 148 };
+      const ltop = ground(ox, feat, LD.x, LD.y, LD.w, LD.h);
+      const goods = [['alternate_icons/medium/g_017_concrete.png', 10, 63.60], ['medium/g_023_building_frame.png', 7, 137.35], ['medium/g_071_construction_equipment_ice.png', 3, 135.45], ['medium/g_028_rubber.png', 6, 36.68], ['medium/g_027_plastics.png', 6, 57.99]];
+      const gp = (LD.w - goods.length * LBL.w) / (goods.length + 1);
+      for (const [i, [file, qty, price]] of goods.entries()) {
+        const lx = LD.x + gp + i * (LBL.w + gp), cx = X(lx + LBL.w / 2), cz = Z(LD.y + 16 + S / 2);
+        const deck = pallet(cx, cz, ltop, S);
+        goodWell(await goodImg(file), qty, cx, cz, deck);
+        const ly = LD.y + 16 + S + 18, scr = ledScreen(moneyLed(price).figure, 5, RED), sx = LBL.w - 10 - scr.w;
+        const top = whitePlate(ox, lx, ly, LBL.w, LBL.h, (c) => {
+          ink(c, 'On tile', 14, 28, 25); ink(c, '0', LBL.w - 14, 28, 25, NAVY, { weight: 600, align: 'right' });
+          ink(c, 'Elsewhere', 14, 60, 25); ink(c, '0', LBL.w - 14, 60, 25, NAVY, { weight: 600, align: 'right' });
+          ink(c, '£', sx - 4, 109, 32, NAVY, { weight: 600, align: 'right' });
+        }, ltop);
+        add(scr.group, X(lx + sx + scr.w / 2), Z(ly + 108), top);
+      }
+
+      // (f) The outlook on the site's programme board: the payback, the turns ahead with their cash in the
+      // light surface's inks, and the buffer to keep before the first sales.
+      y = LD.y + LD.h + 34;
+      raised(ox, feat, 'OUTLOOK', CL + 4, y);
+      const OB = { x: CL, y: y + 38, w: CW, h: 396 };
+      const plan = [['Turn 3', 'Build completes', 'Small deficit', INK_BAD], ['Turn 4', 'First production', 'Deficit', INK_BAD], ['Turn 5', 'Revenue arrives', 'Small surplus', INK_OK], ['Turn 5 onwards', 'Stable production', 'Small surplus', INK_OK]];
+      const buf = ledScreen(moneyLed(138.02).figure, 5, WHITE_LED), bufX = OB.w - 30 - buf.w;
+      const obTop = whitePlate(ox, OB.x, OB.y, OB.w, OB.h, (c) => {
+        ink(c, 'Payback 20 to 30 turns', 30, 46, 32, NAVY, { weight: 600 });
+        plan.forEach(([turn, what, cash, col], i) => {
+          const ry = 110 + i * 52;
+          c.fillStyle = 'rgba(11,35,64,0.14)'; c.fillRect(30, ry - 26, OB.w - 60, 1.5);
+          ink(c, turn, 30, ry, 26, NAVY, { weight: 600 }); ink(c, what, 280, ry, 26); ink(c, cash, 640, ry, 26, col, { weight: 600 });
+        });
+        c.fillStyle = 'rgba(11,35,64,0.32)'; c.fillRect(30, 300, OB.w - 60, 2);
+        ink(c, 'Recommended buffer before first sales', 30, 346, 26);
+        ink(c, '£', bufX - 8, 347, 34, NAVY, { weight: 600, align: 'right' });
+      });
+      add(buf.group, X(OB.x + bufX + buf.w / 2), Z(OB.y + 346), obTop);
+
+      // (g) The lot, small and last: gravel inside hazard tape on four stakes, its twenty squares bought,
+      // eighteen under concrete slabs (the building) and two marked out spare.
+      y = OB.y + OB.h + 34;
+      raised(ox, feat, 'LAND', CL + 4, y);
+      const LL = { x: CL, y: y + 38, w: 470, h: 206 }, G = { x: CL + 42, y: y + 38 + 36, n: 5, m: 4, s: 30, p: 35 };
+      const gw = G.n * G.p - (G.p - G.s), gh = G.m * G.p - (G.p - G.s), spare = [[4, 3], [3, 3]];
+      const gtop = ground(ox, feat, LL.x, LL.y, LL.w, LL.h, (g) => {
+        g.save(); g.setLineDash([5, 4]); g.strokeStyle = 'rgba(238,236,226,0.75)'; g.lineWidth = 1.8;
+        for (const [i, j] of spare) g.strokeRect(G.x - LL.x + i * G.p + 1, G.y - LL.y + j * G.p + 1, G.s - 2, G.s - 2);
+        g.restore();
+      });
+      for (let j = 0; j < G.m; j++) for (let i = 0; i < G.n; i++) {
+        if (spare.some(([a, b]) => a === i && b === j)) continue;
+        add(shade(new THREE.Mesh(extrude(rrShape(G.s, G.s, 3), 2, 1, 0.8, 2), [concreteMaterial(G.s, G.s, rand() < 0.5 ? '#b3aea4' : '#aba69c'), concreteSideC])), X(G.x + i * G.p + G.s / 2), Z(G.y + j * G.p + G.s / 2), gtop);
+      }
+      const tp = { x0: G.x - 14, y0: G.y - 14, x1: G.x + gw + 14, y1: G.y + gh + 14 }, ty = gtop + 9;
+      tape(X(tp.x0), Z(tp.y0), X(tp.x1), Z(tp.y0), ty); tape(X(tp.x1), Z(tp.y0), X(tp.x1), Z(tp.y1), ty);
+      tape(X(tp.x1), Z(tp.y1), X(tp.x0), Z(tp.y1), ty); tape(X(tp.x0), Z(tp.y1), X(tp.x0), Z(tp.y0), ty);
+      for (const [px, pz] of [[tp.x0, tp.y0], [tp.x1, tp.y0], [tp.x0, tp.y1], [tp.x1, tp.y1]]) {
+        add(shade(new THREE.Mesh(new THREE.CylinderGeometry(4.5, 5, 12, 20), galv)), X(px), Z(pz), gtop + 6);
+        add(shade(new THREE.Mesh(new THREE.SphereGeometry(5.8, 20, 10), painted(20, 20, YELLOW, 0.3))), X(px), Z(pz), gtop + 12);
+      }
+      const lg = { x: tp.x1 + 34, z: LL.y + LL.h / 2 };
+      add(shade(new THREE.Mesh(extrude(rrShape(26, 26, 2), 2, 1, 0.8, 2), [concreteMaterial(26, 26, '#b3aea4'), concreteSideC])), X(lg.x + 13), Z(lg.z), gtop);
+      printWhite('Takes 18 land', X(lg.x + 40), Z(lg.z), 26);
+      SH2 = LL.y + LL.h + 40;
+      // The crane last, its tower running down to the hoarding's foot.
+      crane(ox, feat, SH2, { trolley: TROLLEY, drop: DROP, site: SITE });
     }
 
     // The hoardings last: each is three bolted sheets of navy steel, carrying the grime round everything
     // mounted on it and the swept shadows of its raised letters.
+    const SHS = [SH1, SH2];
     for (const [i, ox] of OX.entries()) {
-      const feat = feats[i], n = 3, sw = PW / n;
+      cur = i;
+      const feat = feats[i], n = 3, sw = PW / n, SH = SHS[i];
       for (const x of [sw - 15, sw + 15, 2 * sw - 15, 2 * sw + 15, PW - 16]) for (let y = 58; y < SH - 20; y += 128) {
         feat.screws.push({ x, y }); add(screw(7), ox + x, OY + y, T + 0.5);
       }
@@ -3783,29 +3986,43 @@ async function exportLayers() {
         const sheet = new THREE.Mesh(extrude(rrShape(sw - 8, SH - 8, 10), 4, 4.5, 3.6, 6), [plateMaterial(sw - 8, SH - 8, face), side]);
         sheet.receiveShadow = true; add(sheet, ox + sx + sw / 2, OY + SH / 2, 0);
       }
-      group.add(shadowCatcher(PW, SH, ox + PW / 2, OY + SH / 2, T + 0.05, 0.42));
+      groups[i].add(shadowCatcher(PW, SH, ox + PW / 2, OY + SH / 2, T + 0.05, 0.42));
     }
-    group.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.5));
 
-    const st = stage([0, 0, W, H], [group]);
-    st.scene.traverse((o) => { if (o.isDirectionalLight) o.shadow.mapSize.set(4096, 4096); });
-    const img = st.grab();
+    // Each stage its own render, so the house light's shadow map covers it; the tower is cut at the panel's
+    // left edge, the catalogue at the panel's foot, and the build order is shown whole with its fold marked.
+    const H = OY + SH2 + FOOT;
+    const shots = [0, 1].map((i) => {
+      const x0 = OX[i] - 40, x1 = OX[i] + PW + 40, y1 = OY + SHS[i] + 40;
+      groups[i].add(shadowCatcher(x1 - x0, y1, (x0 + x1) / 2, y1 / 2, 0.05, 0.5));
+      const st = stage([x0, 0, x1, y1], [groups[i]]);
+      st.scene.traverse((o) => { if (o.isDirectionalLight) o.shadow.mapSize.set(4096, 4096); });
+      return { img: st.grab(), x0, x1, y1 };
+    });
     await post('construct_study_lot', frame2d(W, H, (g) => {
-      g.fillStyle = '#121820'; g.fillRect(0, 0, W, H);
-      for (const ox of OX) { g.save(); g.beginPath(); g.rect(ox - 40, 0, PW + 80, OY + PH); g.clip(); g.drawImage(img, 0, 0, W, H); g.restore(); }
+      const BG = '#121820';
+      g.fillStyle = BG; g.fillRect(0, 0, W, H);
+      shots.forEach((s, i) => { g.save(); g.beginPath(); g.rect(OX[i], 0, s.x1 - OX[i], i ? s.y1 : OY + FOLD); g.clip(); g.drawImage(s.img, s.x0, 0, s.x1 - s.x0, s.y1); g.restore(); });
       for (const p of prints) p(g);
-      for (const ox of OX) {   // the crop: the panel runs on below
-        const fade = g.createLinearGradient(0, OY + PH - 26, 0, OY + PH); fade.addColorStop(0, 'rgba(18,24,32,0)'); fade.addColorStop(1, 'rgba(18,24,32,1)');
-        g.fillStyle = fade; g.fillRect(ox - 40, OY + PH - 26, PW + 80, 26);
+      // The catalogue to the panel's foot: its list scrolls on below.
+      g.fillStyle = BG; g.fillRect(OX[0] - 40, OY + FOLD, PW + 80, H - OY - FOLD);
+      const fade = g.createLinearGradient(0, OY + FOLD - 34, 0, OY + FOLD); fade.addColorStop(0, 'rgba(18,24,32,0)'); fade.addColorStop(1, 'rgba(18,24,32,1)');
+      g.fillStyle = fade; g.fillRect(OX[0] - 40, OY + FOLD - 34, PW + 80, 34);
+      // The build order's fold: what shows before its body scrolls.
+      {
+        const fy = OY + FOLD, x0 = OX[1] - 26, x1 = OX[1] + PW + 32;
+        g.save(); g.strokeStyle = 'rgba(8,12,18,0.85)'; g.lineWidth = 5; g.setLineDash([16, 10]); g.beginPath(); g.moveTo(x0, fy); g.lineTo(x1, fy); g.stroke();
+        g.strokeStyle = 'rgba(232,238,247,0.95)'; g.lineWidth = 2.2; g.stroke(); g.restore();
+        text(g, 'fold, 912 px', x1 + 14, fy + 1, MR - 50, 28, LIGHT, { weight: 500, family: PLEX });
       }
       [['1', 'Catalogue'], ['2', 'Build order']].forEach(([n, s], i) => {
-        text(g, n, OX[i], 52, 40, 40, '#e9b81a', { weight: 700, family: PLEX });
-        text(g, s, OX[i] + 38, 52, 600, 36, LIGHT, { weight: 600, family: PLEX });
+        text(g, n, OX[i], 56, 40, 40, '#e9b81a', { weight: 700, family: PLEX });
+        text(g, s, OX[i] + 38, 56, 600, 36, LIGHT, { weight: 600, family: PLEX });
       });
-      for (const ox of OX) {   // one width for every stage
-        const y = OY + PH + 44; g.strokeStyle = 'rgba(232,238,247,0.7)'; g.lineWidth = 2;
+      for (const [i, ox] of OX.entries()) {   // one width for every stage
+        const y = OY + (i ? SH2 : FOLD) + 58; g.strokeStyle = 'rgba(232,238,247,0.7)'; g.lineWidth = 2;
         g.beginPath(); g.moveTo(ox, y); g.lineTo(ox + PW, y); g.moveTo(ox, y - 12); g.lineTo(ox, y + 12); g.moveTo(ox + PW, y - 12); g.lineTo(ox + PW, y + 12); g.stroke();
-        g.fillStyle = '#121820'; g.fillRect(ox + PW / 2 - 130, y - 18, 260, 36);
+        g.fillStyle = BG; g.fillRect(ox + PW / 2 - 130, y - 18, 260, 36);
         text(g, '600 px wide', ox + PW / 2, y + 1, 250, 28, LIGHT, { align: 'center', weight: 500, family: PLEX });
       }
     }));
