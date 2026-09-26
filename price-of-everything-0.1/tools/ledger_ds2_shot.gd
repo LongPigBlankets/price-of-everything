@@ -63,6 +63,14 @@ func _ready() -> void:
 	var dialog: Control = ledger.get("_upgrade_dialog")
 	if dialog != null:
 		_shot(dialog.find_child("UpgradeSheet", true, false) as Control, dir.path_join("ledger_ds2_upgrade.png"))
+		var sheet := dialog.find_child("UpgradeSheet", true, false) as Control
+		var parts: Array[String] = []
+		for sec_name in ["UpgradeHead", "MaterialsPlate", "UpgradePerTurn", "ResearchLine", "LandLine", "TimeLine", "UpgradeKeys"]:
+			var n := sheet.find_child(sec_name, true, false) as Control
+			if n != null:
+				parts.append("%s %.0f" % [sec_name, n.size.y])
+		print("[LEDGER_SHOT] upgrade sheet %.0f x %.0f in a %.0f x %.0f viewport; %s" % [sheet.size.x, sheet.size.y,
+			get_viewport().get_visible_rect().size.x, get_viewport().get_visible_rect().size.y, ", ".join(parts)])
 		# The same with half the materials on the tile: their lamps green, only the rest priced.
 		var iid := str(dialog.get("_instance_id"))
 		var tile := str(BuildingState.get_building(iid).get("tile_id", ""))
