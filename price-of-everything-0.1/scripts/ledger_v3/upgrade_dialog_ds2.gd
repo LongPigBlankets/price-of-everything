@@ -57,6 +57,11 @@ const METRIC_ROW_H := 60.0
 const OUTPUT_SMALL := 60
 ## The research, land and time lines' height.
 const INFO_ROW_H := 40.0
+## The estimates' rows, and the room kept at the impact case's side for its scroll rail.
+const ESTIMATE_ROW_H := 54.0
+const RAIL_ROOM := 20
+## The See more key's width.
+const FOLD_W := 200.0
 const FIGURE_PX := 20
 ## The icons that aren't goods stand in a cream outline a good's size, so every row is one height.
 const OUTLINE_W := 2
@@ -67,8 +72,10 @@ const NAVY := Color("#0b2340")
 ## The embossed icons on the dial's black plastic plates.
 const OFF_WHITE := Color("#ece6d6")
 const DIAL_PX := 165.0
+## How much nearer the crane the dial stands than its column would put it.
+const DIAL_SHIFT := 30.0
 
-const WIDTH := 760.0
+const WIDTH := 840.0
 const CONTENT_MARGIN := 18
 const BACKING_CORNER := 64.0
 ## The Per turn table's figure columns: now, the next level, the change.
@@ -126,6 +133,8 @@ var _choice := -1
 ## The Materials plate's price screen (its hover the breakdown) and its no-buy note, which follow the dial.
 var _price: Control = null
 var _note: Label = null
+## Whether See more is open, kept while the panel is rebuilt.
+var _detail_open := false
 
 
 func _rebuild() -> void:
@@ -157,7 +166,7 @@ func _rebuild() -> void:
 		_content.add_child(_keys([["Cancel upgrade", func() -> void: _cancel(), false], ["Close", close, false]]))
 		return
 	_content.add_child(_materials(p))
-	_content.add_child(_per_turn(from_level, target, p.get("unit_cost", {})))
+	_content.add_child(_impact(from_level, target))
 	if str(p.get("research_gate", "")) != "" and bool(p.get("research_locked", false)):
 		_content.add_child(_research_line(str(p.get("research_gate", ""))))
 	_content.add_child(_land_line(building, p))
@@ -428,23 +437,22 @@ func _materials(p: Dictionary) -> Control:
 	var room := MarginContainer.new()
 	room.name = "MaterialsSource"
 	# The section's content starts CASE_INSET in from the plate's edge; the crane's mast and cab take more.
-	room.add_theme_constant_override("margin_right", roundi(CraneRig.MAST_W + CraneRig.CAB.x + 10.0 - (Section.RIM + Section.PADDING)))
+	room.add_theme_constant_override("margin_right", roundi(CraneRig.MAST_W + CraneRig.CAB.x + 10.0 - (Section.RIM + Section.PADDING) - DIAL_SHIFT))
 	room.add_theme_constant_override("margin_top", 8)
 	room.add_theme_constant_override("margin_left", 0)
 	room.add_theme_constant_override("margin_bottom", 0)
 	var side := VBoxContainer.new()
 	side.alignment = BoxContainer.ALIGNMENT_CENTER
-	# The dial's name sits close under it; the price stands further off.
-	side.add_theme_constant_override("separation", 22)
 	room.add_child(side)
 	var dial := _dial(p)
 	dial.set("label_colour", NAVY)
 	side.add_child(dial)
-	# What the chosen source costs, its breakdown on hover.
+	# Between the materials and the dial: what the chosen source costs, its breakdown on hover.
 	var money := Parts.money("%.2f" % to_buy, DS.PALETTE["TEXT"], MONEY_DIGITS)
 	var price := PriceBox.new()
 	price.name = "SourcePrice"
 	price.alignment = BoxContainer.ALIGNMENT_CENTER
+	price.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	price.add_theme_constant_override("separation", 4)
 	price.mouse_filter = Control.MOUSE_FILTER_STOP
 	for part in money.get_children():
@@ -452,7 +460,7 @@ func _materials(p: Dictionary) -> Control:
 		price.add_child(part)
 	money.free()
 	_on_steel(price.get_child(0) as Label)
-	side.add_child(price)
+	row.add_child(price)
 	_price = price
 	row.add_child(room)
 	_note = _on_steel(_body(NO_MARKET_NOTE))
@@ -507,15 +515,116 @@ func _on_steel(l: Label) -> Label:
 ## What changes a turn at the next level, on a black plastic case: a row a thing, led by its icon, its figures
 ## now and then, the change and a bar; then a unit's cost to make, now and then. Every bar starts from the
 ## same grey length (this level) on one scale, so the rows that grow most run furthest.
-func _per_turn(from_level: int, target: int, unit_cost: Dictionary) -> Control:
-	var sec := _section("UpgradePerTurn", "Per turn", "plastic")
-	var vb: VBoxContainer = sec.get("content")
+## Estimated impact, on a black plastic case: a unit's cost, the costs and the output's value a turn at this
+## level and the next on LED screens, always shown; See more opens the Per turn rows under them, and the case,
+## which keeps its closed height, scrolls on the rail kept at its side.
+func _impact(from_level: int, target: int) -> Control:
 	var levels: Array = []
 	for l in range(1, BuildingLevels.MAX_LEVEL + 1):
 		levels.append(Production.stats_at_level(_instance_id, l))
+	var sec: MarginContainer = Section.new()
+	sec.name = "UpgradePerTurn"
+	sec.set("style", "plastic")
+	var vb: VBoxContainer = sec.get("content")
+	vb.add_theme_constant_override("separation", 6)
+	var est := _estimates(levels)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(gap)
+	for lvl in [from_level, target]:
+		var c := Parts.caption("Lvl %d" % lvl, Parts.CAPTION_PX, HORIZONTAL_ALIGNMENT_CENTER)
+		c.custom_minimum_size.x = Parts.money_width(MONEY_DIGITS)
+		head.add_child(c)
+	vb.add_child(head)
+	for spec: Array in [["Estimated Cost Increase", "cost", false], ["Estimated Cost per Unit", "unit", false],
+			["Estimated Value of Output", "value", true]]:
+		vb.add_child(_estimate_row(str(spec[0]), est[spec[1]], from_level, target, bool(spec[2])))
+	var detail := VBoxContainer.new()
+	detail.name = "PerTurnRows"
+	detail.add_theme_constant_override("separation", 10)
+	detail.visible = _detail_open
+	var fold := load("res://scripts/tvp_v3/goods_parts.gd").fold_button("See more", 0.8, "SeeMore", _detail_open,
+		func(open: bool) -> void:
+			_detail_open = open
+			detail.visible = open) as Button
+	fold.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	fold.custom_minimum_size.x = FOLD_W
+	vb.add_child(fold)
+	vb.add_child(detail)
+	_per_turn_rows(detail, levels, from_level, target)
+	# The case in a scroll that keeps the closed case's height, the rail's room kept at its side always.
+	var room := MarginContainer.new()
+	room.add_theme_constant_override("margin_right", RAIL_ROOM)
+	room.add_child(sec)
+	var scroll := ScrollContainer.new()
+	scroll.name = "ImpactScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	preload("res://scripts/bdp_v3_scroll.gd").apply(scroll, true)
+	room.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(room)
+	var fit := func() -> void:
+		var was := detail.visible
+		detail.visible = false
+		scroll.custom_minimum_size.y = room.get_combined_minimum_size().y
+		detail.visible = was
+	scroll.ready.connect(fit, CONNECT_DEFERRED)
+	return scroll
+
+
+## The three estimates at every level: {cost, unit, value: [by level]}. Costs a turn are the inputs at market,
+## power at the grid's price, labour and upkeep; the value is the outputs at market (power at the grid's price
+## for selling); a unit's cost is those costs over the first output, so the three agree.
+func _estimates(levels: Array) -> Dictionary:
+	var cost: Array = []
+	var value: Array = []
+	var unit: Array = []
+	for st: Dictionary in levels:
+		var c := float(st.get("energy", 0.0)) * EconomyConfig.GRID_BUY_PRICE + float(st.get("labour", 0.0)) + float(st.get("maintenance", 0.0))
+		for i: Dictionary in st.get("inputs", []):
+			c += float(i.get("qty", 0)) * MarketState.get_price(str(i.get("good_id", "")))
+		var v := 0.0
+		for o: Dictionary in st.get("outputs", []):
+			var gid := str(o.get("good_id", ""))
+			v += float(o.get("qty", 0)) * (EconomyConfig.GRID_SELL_PRICE if gid == "power" else MarketState.get_price(gid))
+		var outs: Array = st.get("outputs", [])
+		var first := float(outs[0].get("qty", 0)) if not outs.is_empty() else 0.0
+		cost.append(c)
+		value.append(v)
+		unit.append(c / first if first > 0.0 else 0.0)
+	return {"cost": cost, "value": value, "unit": unit}
+
+
+## An estimate's row, a good's icon tall at the least: its name, and its figure at this level and the next on
+## LED screens, the next lit green where it helps and red where it costs.
+func _estimate_row(label: String, values: Array, from_level: int, target: int, more_is_better: bool) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = label.to_pascal_case()
+	row.custom_minimum_size.y = ESTIMATE_ROW_H
+	row.add_theme_constant_override("separation", 12)
+	var name := _figure(label)
+	name.add_theme_font_size_override("font_size", 16)
+	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(name)
+	var cur := float(values[from_level - 1])
+	var nxt := float(values[target - 1])
+	var tone: Color = DS.PALETTE["TEXT"]
+	if not is_equal_approx(cur, nxt):
+		tone = DS.PALETTE["OK"] if (nxt > cur) == more_is_better else DS.PALETTE["DANGER"]
+	for pair: Array in [[cur, DS.PALETTE["TEXT"]], [nxt, tone]]:
+		var m := Parts.money("%.2f" % float(pair[0]), pair[1], MONEY_DIGITS)
+		m.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(m)
+	return row
+
+
+## The Per turn rows, under See more: the table's captions, then a row a thing.
+func _per_turn_rows(vb: VBoxContainer, levels: Array, from_level: int, target: int) -> void:
 	var now: Dictionary = levels[from_level - 1] if from_level - 1 < levels.size() else {}
 	if now.is_empty():
-		return sec
+		return
 	var outputs: Array = now.get("outputs", [])
 	var cluster := _output_cluster(outputs)
 	_icon_col = maxf(float(METRIC_ICON_PX), cluster.get_combined_minimum_size().x)
@@ -571,20 +680,7 @@ func _per_turn(from_level: int, target: int, unit_cost: Dictionary) -> Control:
 		# A cut in the plastic between what the building makes and what it takes.
 		if str(spec[0]) == "Outputs" and specs.size() > 1:
 			vb.add_child(Cut.new())
-	if unit_cost.has("cur") and unit_cost.has("new"):
-		var cc := float(unit_cost.get("cur", 0.0))
-		var cn := float(unit_cost.get("new", 0.0))
-		var row := HBoxContainer.new()
-		row.name = "UnitCost"
-		row.add_theme_constant_override("separation", 10)
-		var words := _figure("A unit's cost to make")
-		words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(words)
-		row.add_child(Parts.money("%.2f" % cc, DS.PALETTE["TEXT"], MONEY_DIGITS))
-		row.add_child(Parts.caption("→", 18))
-		row.add_child(Parts.money("%.2f" % cn, DS.PALETTE["OK"] if cn <= cc else DS.PALETTE["DANGER"], MONEY_DIGITS))
-		vb.add_child(row)
-	return sec
+
 
 
 ## `c` with a hover naming it; it passes the mouse on.

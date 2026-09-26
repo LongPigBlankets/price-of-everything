@@ -65,12 +65,20 @@ func _ready() -> void:
 		_shot(dialog.find_child("UpgradeSheet", true, false) as Control, dir.path_join("ledger_ds2_upgrade.png"))
 		var sheet := dialog.find_child("UpgradeSheet", true, false) as Control
 		var parts: Array[String] = []
-		for sec_name in ["UpgradeHead", "MaterialsPlate", "UpgradePerTurn", "ResearchLine", "LandLine", "TimeLine", "UpgradeKeys"]:
+		for sec_name in ["UpgradeHead", "MaterialsPlate", "ImpactScroll", "ResearchLine", "LandLine", "TimeLine", "UpgradeKeys"]:
 			var n := sheet.find_child(sec_name, true, false) as Control
 			if n != null:
 				parts.append("%s %.0f" % [sec_name, n.size.y])
 		print("[LEDGER_SHOT] upgrade sheet %.0f x %.0f in a %.0f x %.0f viewport; %s" % [sheet.size.x, sheet.size.y,
 			get_viewport().get_visible_rect().size.x, get_viewport().get_visible_rect().size.y, ", ".join(parts)])
+		# See more open: the Per turn rows under the estimates, the case scrolling.
+		var more := sheet.find_child("SeeMore", true, false) as Button
+		if more != null:
+			more.emit_signal("pressed")
+			await _settle(8)
+			_shot(sheet, dir.path_join("ledger_ds2_upgrade_open.png"))
+			more.emit_signal("pressed")
+			await _settle(4)
 		# The same with half the materials on the tile: their lamps green, only the rest priced.
 		var iid := str(dialog.get("_instance_id"))
 		var tile := str(BuildingState.get_building(iid).get("tile_id", ""))
