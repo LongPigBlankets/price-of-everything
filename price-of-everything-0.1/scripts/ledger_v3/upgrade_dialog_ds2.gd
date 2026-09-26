@@ -70,6 +70,8 @@ const OUTLINE_RADIUS := 12
 const MATERIAL_COLUMNS := 3
 const MATERIAL_CELL_GAP := 6
 const NAVY := Color("#0b2340")
+## The total's rule and label on the plastic.
+const CREAM := Color("#f3e3bd")
 ## The embossed icons on the dial's black plastic plates.
 const OFF_WHITE := Color("#ece6d6")
 const DIAL_PX := 165.0
@@ -330,12 +332,15 @@ func _land_line(building: Dictionary, p: Dictionary) -> HBoxContainer:
 	line.add_theme_constant_override("separation", 10)
 	line.add_child(LandIcon.new(ROW_ICON_PX))
 	line.add_child(_lamp("ok" if fits else "bad"))
-	var words := ("Needs %s land. %s available." % [_land(need), _land(free)]) if fits \
-		else "Need %s. Only %s available. Buy more or demolish other buildings to make room." % [_land(need), _land(free)]
-	var said := _body(words)
+	# The land free against the land the larger building needs; the hover says what that means and, short of
+	# room, what to do.
+	var said := _body("%s/%s available" % [_land(free), _land(need)])
 	said.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	said.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	line.add_child(said)
+	line.tooltip_text = ("The larger building needs %s more land and %s is free." % [_land(need), _land(free)]) \
+		+ ("" if fits else " Demolish other buildings to make room.")
+	line.mouse_filter = Control.MOUSE_FILTER_STOP
 	return line
 
 
@@ -554,7 +559,14 @@ func _impact(from_level: int, target: int) -> Control:
 	vb.add_child(head)
 	for spec: Array in [["Estimated Cost Increase", "cost", false], ["Estimated Cost per Unit", "unit", false],
 			["Estimated Value of Output", "value", true], ["Estimated Net Value Add", "net", true]]:
-		vb.add_child(_estimate_row(str(spec[0]), est[spec[1]], from_level, target, bool(spec[2])))
+		var total := str(spec[1]) == "net"
+		if total:
+			# The net is the total: a cream rule over it, as a ledger rules off its sum.
+			vb.add_child(TotalRule.new())
+		var row := _estimate_row(str(spec[0]), est[spec[1]], from_level, target, bool(spec[2]))
+		if total:
+			(row.get_child(0) as Label).add_theme_color_override("font_color", CREAM)
+		vb.add_child(row)
 	var detail := VBoxContainer.new()
 	detail.name = "PerTurnRows"
 	detail.add_theme_constant_override("separation", 10)
@@ -1072,3 +1084,16 @@ class Cut extends Control:
 		var y := roundf(size.y * 0.5)
 		draw_line(Vector2(0, y), Vector2(size.x, y), Color(0, 0, 0, 0.75), 2.0)
 		draw_line(Vector2(0, y + 1.5), Vector2(size.x, y + 1.5), Color(1, 1, 1, 0.10), 1.0)
+
+
+## A total's rule: a cream line across the case with a darker hairline under it, over the row it totals.
+class TotalRule extends Control:
+	func _init() -> void:
+		name = "TotalRule"
+		custom_minimum_size = Vector2(0, 8)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var y := roundf(size.y * 0.5)
+		draw_line(Vector2(0, y - 1.0), Vector2(size.x, y - 1.0), Color("#f3e3bd"), 2.0)
+		draw_line(Vector2(0, y + 1.5), Vector2(size.x, y + 1.5), Color(0, 0, 0, 0.6), 1.0)
