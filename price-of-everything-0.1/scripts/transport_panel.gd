@@ -185,6 +185,7 @@ func _header() -> Control:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(spacer)
+	row.add_child(_build_routing_control())
 	_settings_button = Button.new()
 	_settings_button.name = "LogisticsSettings"
 	_settings_button.text = "Logistics Settings"
@@ -202,6 +203,33 @@ func _header() -> Control:
 		hide())
 	row.add_child(close)
 	return row
+
+
+## The company's routing objective for shipments (how routes between tiles are chosen), every game.
+func _build_routing_control() -> Control:
+	var box := HBoxContainer.new()
+	box.name = "Routing"
+	box.add_theme_constant_override("separation", DS.SP["SM"])
+	var lbl := Label.new()
+	lbl.theme_type_variation = "Caption"
+	lbl.text = "Routing"
+	lbl.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+	lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	box.add_child(lbl)
+	var dd := OptionButton.new()
+	dd.name = "RoutingObjective"
+	dd.focus_mode = Control.FOCUS_NONE
+	dd.custom_minimum_size = Vector2(130, 38)
+	dd.add_item("Fastest", MatchState.RouteObjective.FASTEST)
+	dd.add_item("Cheapest", MatchState.RouteObjective.CHEAPEST)
+	dd.add_item("Blended", MatchState.RouteObjective.BLENDED)
+	dd.select(dd.get_item_index(MatchState.route_objective))
+	dd.item_selected.connect(func(idx: int) -> void: MatchState.set_route_objective(dd.get_item_id(idx)))
+	dd.visibility_changed.connect(func() -> void:
+		if dd.is_visible_in_tree():
+			dd.select(dd.get_item_index(MatchState.route_objective)))
+	box.add_child(dd)
+	return box
 
 
 func _build_settings_overlay() -> void:

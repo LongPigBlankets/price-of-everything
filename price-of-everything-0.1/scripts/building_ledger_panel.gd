@@ -12,6 +12,7 @@ const BuildingNaming := preload("res://scripts/building_naming.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const BuildingIcon := preload("res://scripts/building_icon.gd")  # navy-keyed, square-cropped building icons
 const LedgerRowStyle := preload("res://scripts/ledger_row_style.gd")  # metallic, top-left-lit row plate
+const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")  # the DS2 look (UiPrefs.use_ledger_ds2)
 
 const ROW_INSET := 12  # row cell inset (LedgerRowStyle BORDER 5 + PAD_H 7); header inset matches it
 
@@ -67,6 +68,15 @@ var _header_cells := {}          # key -> Label (click-to-sort)
 var _upgrade_dialog: Control = null
 var _upgrade_dialog_layer: CanvasLayer = null
 
+# The DS2 look: whether it is built, the nodes it added outside the layout (the backing), its count display,
+# its headings' sort marks and the cells every money screen takes.
+var _v3 := false
+var _v3_extra: Array[Node] = []
+var _count_display: Control = null
+var _sort_marks := {}
+var _money_digits := 4
+var _v2_margins := {}
+
 # Header drag state.
 var _dragging := false
 var _drag_panel_start := Vector2.ZERO
@@ -75,11 +85,16 @@ var _drag_mouse_start := Vector2.ZERO
 func _ready() -> void:
 	if DS and DS.theme:
 		theme = DS.theme
-	add_theme_stylebox_override("panel", preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(8.0))
 	title_label.text = "Buildings"
 	close_button.pressed.connect(func() -> void: close_requested.emit())
 	header.gui_input.connect(_on_header_gui_input)
-	_build_chrome()
+	var margin := $MarginContainer as MarginContainer
+	for side in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		_v2_margins[side] = margin.get_theme_constant(side)
+	_build_look()
+	UiPrefs.ledger_ds2_changed.connect(func(_on: bool) -> void:
+		_build_look()
+		_rebuild())
 
 	# Refresh wiring: structural changes + per-turn. The status/power/cost columns are
 	# recomputed on every rebuild, and turn_resolution_completed fires once per turn — so
@@ -102,6 +117,77 @@ func _ready() -> void:
 
 	call_deferred("_center_on_screen")
 	_rebuild()
+
+# ── Look: v2, or DS2 behind UiPrefs.use_ledger_ds2 ───────────────────────────────────────
+## Builds the panel's chrome in the look the switch asks for, taking down the other first. The filters,
+## the sort and the search carry over.
+func _build_look() -> void:
+	for n in _v3_extra:
+		if is_instance_valid(n):
+			n.get_parent().remove_child(n)
+			n.queue_free()
+	_v3_extra.clear()
+	for c in _layout.get_children():
+		if c != header:
+			_layout.remove_child(c)
+			c.queue_free()
+	_chips.clear()
+	_header_cells.clear()
+	_sort_marks.clear()
+	_count_label = null
+	_count_display = null
+	_v3 = UiPrefs.use_ledger_ds2
+	var margin := $MarginContainer as MarginContainer
+	header.visible = not _v3
+	if not _v3:
+		for side in _v2_margins:
+			margin.add_theme_constant_override(side, int(_v2_margins[side]))
+		add_theme_stylebox_override("panel", preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(8.0))
+		_build_chrome()
+	else:
+		for side in _v2_margins:
+			margin.add_theme_constant_override(side, LedgerV3.CONTENT_MARGIN)
+		_v3_extra.append(LedgerV3.dress(self))
+		_build_v3_chrome()
+	if _search != null:
+		_search.text = _search_text
+	for k in _f:
+		_set_chip(k, bool(_f[k]))
+	_update_header_labels()
+
+
+func _build_v3_chrome() -> void:
+	_layout.add_theme_constant_override("separation", 12)
+	_layout.add_child(LedgerV3.title_row(func() -> void: close_requested.emit(), _on_header_gui_input))
+	var bar := LedgerV3.toolbar(func(t: String) -> void:
+		_search_text = t.strip_edges().to_lower()
+		_render())
+	_layout.add_child(bar.row)
+	_count_display = bar.count
+	_search = bar.search
+	var f := LedgerV3.filters(func(key: String) -> void: _on_chip(key, not bool(_f[key])))
+	_layout.add_child(f.bed)
+	_chips = f.keys
+	_layout.add_child(LedgerV3.seam())
+	var heads := LedgerV3.heading_row(_on_sort_pressed)
+	_layout.add_child(heads.row)
+	_header_cells = heads.cells
+	_sort_marks = heads.marks
+	var t := LedgerV3.table()
+	_layout.add_child(t.scroll)
+	_body = t.rows
+
+
+## A filter chip or key on or off, without running its handler.
+func _set_chip(key: String, on: bool) -> void:
+	if not _chips.has(key):
+		return
+	var c: Control = _chips[key]
+	if c is Button:
+		(c as Button).set_pressed_no_signal(on)
+	else:
+		c.set("latched", on)
+
 
 # ── Chrome (toolbar + filter bar + header row + scrolling body) ─────────────────────────
 func _build_chrome() -> void:
@@ -219,20 +305,14 @@ func _chip_box(bg: Color, border: Color) -> StyleBoxFlat:
 
 func _on_chip(key: String, pressed: bool) -> void:
 	_f[key] = pressed
-	# Running and Starved are mutually exclusive (a building can't be both).
-	if pressed and key == "running" and _chips["starved"].button_pressed:
-		_chips["starved"].set_pressed_no_signal(false)
-		_f["starved"] = false
-	elif pressed and key == "starved" and _chips["running"].button_pressed:
-		_chips["running"].set_pressed_no_signal(false)
-		_f["running"] = false
-	# Profitable and Loss-making are likewise mutually exclusive.
-	elif pressed and key == "profitable" and _chips["loss"].button_pressed:
-		_chips["loss"].set_pressed_no_signal(false)
-		_f["loss"] = false
-	elif pressed and key == "loss" and _chips["profitable"].button_pressed:
-		_chips["profitable"].set_pressed_no_signal(false)
-		_f["profitable"] = false
+	_set_chip(key, pressed)
+	# Running and Starved are mutually exclusive (a building can't be both), as are Profitable and
+	# Loss-making.
+	for pair in [["running", "starved"], ["profitable", "loss"]]:
+		if pressed and key in pair:
+			var other: String = pair[1] if key == pair[0] else pair[0]
+			_f[other] = false
+			_set_chip(other, false)
 	_render()
 
 # Public: open the ledger showing ONLY the given filter (used by deep-links such as the
@@ -242,11 +322,9 @@ func set_filter_preset(key: String) -> void:
 		return
 	for k in _f.keys():
 		_f[k] = false
-		if _chips.has(k):
-			_chips[k].set_pressed_no_signal(false)
+		_set_chip(k, false)
 	_f[key] = true
-	if _chips.has(key):
-		_chips[key].set_pressed_no_signal(true)
+	_set_chip(key, true)
 	_rebuild()
 
 func _passes_filters(vm: Dictionary) -> bool:
@@ -320,6 +398,9 @@ func _on_sort_pressed(key: String) -> void:
 	_render()
 
 func _update_header_labels() -> void:
+	if _v3:
+		LedgerV3.show_sort(_header_cells, _sort_marks, _sort_key, _sort_asc)
+		return
 	for col in COLUMNS:
 		var key: String = str(col.key)
 		var l: Label = _header_cells.get(key)
@@ -394,8 +475,12 @@ func _render() -> void:
 		c.queue_free()
 	var shown: Array = _all_vms.filter(_passes_filters)
 	shown.sort_custom(_compare)
+	if _v3:
+		_money_digits = LedgerV3.money_digits(shown)
 	for vm in shown:
-		_body.add_child(_build_row(vm))
+		_body.add_child(_build_v3_row(vm) if _v3 else _build_row(vm))
+	if _count_display != null:
+		_count_display.set("text", LedgerV3.count_text(shown.size(), _all_vms.size()))
 	if _count_label != null:
 		if shown.size() == _all_vms.size():
 			_count_label.text = "%d building%s" % [_all_vms.size(), "" if _all_vms.size() == 1 else "s"]
@@ -462,12 +547,14 @@ func _row_vm(b: Dictionary) -> Dictionary:
 		"building_id": building_id, "binternal": str(bdata.get("internal_name", "")),
 		"name": name_str, "name_l": name_str.to_lower(),
 		"tile": _tile_short(tile_id), "sort_tile": _tile_sort(tile_id),
+		"tile_name": _tile_name(tile_id),
 		"type": _type_label(category),
 		"output": output_str, "output_l": output_str.to_lower(),
 		"out_good_id": icon_gid, "out_internal": icon_internal, "out_qty": out_qty,
 		"level": level,
 		"power": power, "status": status,
 		"cost_text": ("£%.2f" % uc) if uc >= 0.0 else "—",
+		"cost_value": uc, "net_value": sort_net if sort_net > -1.0e17 else NAN,
 		"cost_color": cost_color,
 		"net_text": net_text, "net_color": net_color, "sort_net": sort_net,
 		"land": "%.1f" % land, "land_value": land,
@@ -497,17 +584,21 @@ func _power_cell(b: Dictionary, recipe: Dictionary, is_infra: bool) -> Dictionar
 		var gen: int = BuildingStatus.effective_power_output(b, recipe)
 		if gen <= 0:
 			return {"color": BuildingStatus.STATUS_GREY, "text": "—", "value": -1}
-		return {"color": BuildingStatus.STATUS_GREEN, "text": "+%d (self)" % gen, "value": gen}
+		return {"color": BuildingStatus.STATUS_GREEN, "text": "+%d (self)" % gen, "value": gen,
+			"tone": "ok", "figure": "+%d MW" % gen, "words": ""}
 	# Consumers: show the consumption + where the power comes from.
 	var req: int = BuildingStatus.effective_energy_req(b, recipe)
 	if req <= 0:
 		return {"color": BuildingStatus.STATUS_GREY, "text": "—", "value": -1}
 	var supply: String = BuildingStatus.power_supply(b)
 	if supply == "Owned Supply":
-		return {"color": BuildingStatus.STATUS_GREEN, "text": "%d (self)" % req, "value": req}
+		return {"color": BuildingStatus.STATUS_GREEN, "text": "%d (self)" % req, "value": req,
+			"tone": "ok", "figure": "%d MW" % req, "words": "Your supply"}
 	elif supply == "Grid":
-		return {"color": BuildingStatus.STATUS_YELLOW, "text": "%d (grid)" % req, "value": req}
-	return {"color": BuildingStatus.STATUS_RED, "text": "%d (no cable)" % req, "value": req}
+		return {"color": BuildingStatus.STATUS_YELLOW, "text": "%d (grid)" % req, "value": req,
+			"tone": "warn", "figure": "%d MW" % req, "words": "Grid"}
+	return {"color": BuildingStatus.STATUS_RED, "text": "%d (no cable)" % req, "value": req,
+		"tone": "bad", "figure": "%d MW" % req, "words": "No cable"}
 
 func _status_cell(b: Dictionary, recipe: Dictionary, is_infra: bool) -> Dictionary:
 	if is_infra:
@@ -528,6 +619,15 @@ func _status_rank(text: String) -> int:
 		_: return 3
 
 # ── Row widgets ──────────────────────────────────────────────────────────────────────────
+## A DS2 row (scripts/ledger_v3/ledger_v3.gd): clicking it opens the building, as the v2 row does.
+func _build_v3_row(vm: Dictionary) -> Control:
+	var iid := str(vm.instance_id)
+	return LedgerV3.row(vm, func() -> void:
+		close_requested.emit()
+		MatchState.building_logistics_requested.emit(iid), _money_digits, func() -> void:
+		MatchState.focus_building_requested.emit(iid)
+		close_requested.emit(), _open_upgrade)
+
 func _build_row(vm: Dictionary) -> Control:
 	var row := PanelContainer.new()
 	row.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -685,13 +785,19 @@ func _open_upgrade(instance_id: String) -> void:
 	_upgrade_dialog.open(instance_id)
 
 func _ensure_upgrade_dialog() -> void:
+	# The DS2 upgrade panel (scripts/ledger_v3/upgrade_dialog_ds2.gd) unless `toggle upgrade ds2` switched it back;
+	# a switch replaces the one built for the other.
 	if _upgrade_dialog != null and is_instance_valid(_upgrade_dialog):
-		return
+		if bool(_upgrade_dialog.get_meta("ds2", false)) == UiPrefs.use_upgrade_ds2:
+			return
+		_upgrade_dialog.queue_free()
+		_upgrade_dialog = null
 	if _upgrade_dialog_layer == null or not is_instance_valid(_upgrade_dialog_layer):
 		_upgrade_dialog_layer = CanvasLayer.new()
 		_upgrade_dialog_layer.layer = 128
 		get_tree().root.add_child(_upgrade_dialog_layer)
-	_upgrade_dialog = (load("res://scripts/upgrade_dialog.gd") as Script).new()
+	_upgrade_dialog = (load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd" if UiPrefs.use_upgrade_ds2 else "res://scripts/upgrade_dialog.gd") as Script).new()
+	_upgrade_dialog.set_meta("ds2", UiPrefs.use_upgrade_ds2)
 	_upgrade_dialog_layer.add_child(_upgrade_dialog)
 	_upgrade_dialog.committed.connect(func(_id: String) -> void: _request_refresh())
 
@@ -710,6 +816,14 @@ func _on_row_gui_input(event: InputEvent, instance_id: String) -> void:
 # ── Helpers ─────────────────────────────────────────────────────────────────────────────
 func _tile_short(tile_id: String) -> String:
 	return tile_id.trim_prefix("tile_") if tile_id.begins_with("tile_") else tile_id
+
+## A tile's name, or its coordinates in words where it has none, as the tile view's nameplate says them.
+func _tile_name(tile_id: String) -> String:
+	var named := Catalog.tile_name(tile_id)
+	if named != "":
+		return named
+	var parts := _tile_short(tile_id).split("_")
+	return "Coordinates %s, %s" % [parts[0], parts[1]] if parts.size() == 2 else tile_id
 
 func _tile_sort(tile_id: String) -> int:
 	var parts := _tile_short(tile_id).split("_")
@@ -747,7 +861,8 @@ func _logistics_cell(vm: Dictionary, side: String, width: float) -> Control:
 	cell.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var routes: Array = preload("res://scripts/logistics_routes_view.gd").endpoints(BuildingState.get_building(str(vm.instance_id)), side)
 	if routes.is_empty():
-		cell.add_child(_text_cell("—", width, HORIZONTAL_ALIGNMENT_CENTER))
+		# DS2 leaves an empty route blank (no dashes in its copy).
+		cell.add_child(Control.new() if _v3 else _text_cell("—", width, HORIZONTAL_ALIGNMENT_CENTER))
 		return cell
 	# Two icons per line keep multi-good routes within their column.
 	var row: HBoxContainer
