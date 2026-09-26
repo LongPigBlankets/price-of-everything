@@ -785,10 +785,10 @@ func _open_upgrade(instance_id: String) -> void:
 	_upgrade_dialog.open(instance_id)
 
 func _ensure_upgrade_dialog() -> void:
-	# The DS2 ledger opens the DS2 dialog (scripts/ledger_v3/upgrade_dialog_ds2.gd); a switch of look
-	# replaces the one built for the other.
+	# The DS2 upgrade panel (scripts/ledger_v3/upgrade_dialog_ds2.gd) unless `toggle upgrade ds2` switched it back;
+	# a switch replaces the one built for the other.
 	if _upgrade_dialog != null and is_instance_valid(_upgrade_dialog):
-		if bool(_upgrade_dialog.get_meta("ds2", false)) == _v3:
+		if bool(_upgrade_dialog.get_meta("ds2", false)) == UiPrefs.use_upgrade_ds2:
 			return
 		_upgrade_dialog.queue_free()
 		_upgrade_dialog = null
@@ -796,8 +796,8 @@ func _ensure_upgrade_dialog() -> void:
 		_upgrade_dialog_layer = CanvasLayer.new()
 		_upgrade_dialog_layer.layer = 128
 		get_tree().root.add_child(_upgrade_dialog_layer)
-	_upgrade_dialog = (load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd" if _v3 else "res://scripts/upgrade_dialog.gd") as Script).new()
-	_upgrade_dialog.set_meta("ds2", _v3)
+	_upgrade_dialog = (load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd" if UiPrefs.use_upgrade_ds2 else "res://scripts/upgrade_dialog.gd") as Script).new()
+	_upgrade_dialog.set_meta("ds2", UiPrefs.use_upgrade_ds2)
 	_upgrade_dialog_layer.add_child(_upgrade_dialog)
 	_upgrade_dialog.committed.connect(func(_id: String) -> void: _request_refresh())
 

@@ -49,6 +49,8 @@ Every figure is the row model the v2 ledger already computes (`_row_vm`: CostSol
 
 **Seventh review (26 September), built.** 780 × 895: a fourth estimate, Estimated Net Value Add (the output's value less the costs); the price's foot level with the lowest materials' frames; Source 10 px under the knob; Upgrade and Cancel on the time line.
 
+**The DS2 upgrade panel is the default** (`UiPrefs.use_upgrade_ds2`, `toggle upgrade ds2` switches back to the v2 dialog): Building Detail's Upgrade key and the ledger both open it; only infrastructure's cash upgrade keeps Building Detail's sheet. Its Upgrade key starts the upgrade the dial's way (test `_test_upgrade_ds2_commits`).
+
 ## Open decisions (owner)
 
 1. **Default.** Keep behind the switch until approved, then make it the default with `toggle ledger ds2` switching back, as the top bar and tile view did?
