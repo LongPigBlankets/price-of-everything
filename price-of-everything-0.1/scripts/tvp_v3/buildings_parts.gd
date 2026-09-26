@@ -9,6 +9,7 @@ extends RefCounted
 ## Detail's readout as their hover (buildings_tip.gd). Presentation only: the tab (buildings_tab.gd) says
 ## what goes where.
 
+const Metrics := preload("res://scripts/ds2/metrics.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
 const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const ModKey := preload("res://scripts/bdp_v3_mod_key.gd")
@@ -39,10 +40,10 @@ const RAISED := "res://assets/ui/bdp_v3/%s.png"
 ## A module's inside margins and the gap between its parts; the emblem's side (sized by its art) and the
 ## well's; the lamps' size as a share of the status lamp's (the diagnostics rows'), and the gap between a
 ## lamp and its words; the text sizes (the owner's standard: body 14, captions 15, the printed £ 18).
-const PAD := Vector2(10.0, 8.0)
+const PAD := Vector2(10.0, Metrics.CARD_PAD_Y)
 const GAP := 10
-const EMBLEM_PX := 54.0
-const WELL_PX := 66
+const EMBLEM_PX := 58.0
+const WELL_PX := Metrics.GOOD_ICON
 const LAMP_SCALE := 0.72
 const LAMP_GAP := 7
 const BODY_PX := 14
@@ -51,8 +52,8 @@ const POUND_PX := 18
 const MODULE_GAP := 8
 ## A compact module's (a group member's) inside margin, top and bottom, and the smaller well its output
 ## stands in, with the quantity pill scaled to it: its height, type size and inset from the icon's corner.
-const COMPACT_PAD_Y := 5.0
-const MEMBER_WELL_PX := 40
+const COMPACT_PAD_Y := Metrics.CARD_PAD_Y
+const MEMBER_WELL_PX := Metrics.GOOD_ICON
 const SMALL_PILL_H := 17
 const SMALL_PILL_PX := 12
 const SMALL_PILL_INSET := 3
@@ -62,6 +63,8 @@ const WORDS_DROP := 4
 ## two parts (the plastic case's shadow 7.5 px below and 3 px above, the steel frame's 6.6 px below), so
 ## one case's edge or shadow never lies over the next.
 const CASE_GAP := 14
+## The case's screws sit this far in from its edges, clear of modules DS2's plate padding in.
+const CASE_SCREW_INSET := 7.0
 ## Room kept between the cases and the body's scroll rail while the rail shows, past the cases' shadow room.
 const GUTTER := 10
 ## A module under the pointer is drawn this much brighter.
@@ -79,7 +82,7 @@ const DRAWER_MARGIN := 12
 
 ## The case's inside margin: the kit's sections' rim and padding.
 static func case_margin() -> float:
-	return roundf(Section.RIM + Section.PADDING)
+	return float(Metrics.PLATE_PAD)
 
 
 ## Building Detail's black plastic case (its diagnostics' diag_plastic render and silver screws), its
@@ -115,7 +118,7 @@ static func plastic_case(case_name: String, front := false) -> MarginContainer:
 ## shorter than SHORT_CASE (a drawer's front, an empty case) keeps its four corner screws only, clear of
 ## what it holds; so does the top edge of a drawer's case (`front`).
 static func screw_points(plate: Vector2, front := false) -> PackedVector2Array:
-	var lo := Vector2(Section.SCREW_INSET, Section.SCREW_INSET)
+	var lo := Vector2(CASE_SCREW_INSET, CASE_SCREW_INSET)
 	var hi := plate - lo
 	var across := maxi(2, roundi((hi.x - lo.x) / SCREW_PITCH.x) + 1) if plate.y >= SHORT_CASE else 2
 	var down := maxi(2, roundi((hi.y - lo.y) / SCREW_PITCH.y) + 1)

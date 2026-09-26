@@ -35,11 +35,10 @@ const PITCH := 2.0
 ## The room between the glass's edge and the dot cells (DotMatrix's own padding adds to it).
 const PAD := Vector2(3.0, 4.0)
 ## The goods' icons, and the room kept round a well's frame inside its run of cells.
-const GOOD_PX := 40
+const GOOD_PX := preload("res://scripts/ds2/metrics.gd").GOOD_ICON
 const WELL_ROOM := 4.0
 ## The lines a row of goods takes, and the one its words are on, the wells centred on it.
-const GOODS_LINES := 3
-const GOODS_WORDS_LINE := 1
+## (goods_lines(), goods_words_line(): as many as a well and its room take, the words on the middle one.)
 const MARK := "●"
 ## Where the card opens: this far right of the pointer and below it, or this far above it when there is no
 ## room below; the room left round it in the tooltip's window for the bezel's shadow.
@@ -118,6 +117,18 @@ static func tone_colour(tone: String) -> Color:
 		"warn": return DS.PALETTE["WARN"]
 		"ok": return DS.PALETTE["OK"]
 	return Color.WHITE
+
+
+## The lines a row of goods takes: enough for a well, its frame and its room, at a line's height (seven dots
+## and the unframed display's padding above and below).
+static func goods_lines() -> int:
+	var line_h := DotMatrix.ROWS * PITCH + 6.0
+	return maxi(3, ceili((GOOD_PX + 2.0 * Well.reach() + 2.0 * WELL_ROOM) / line_h))
+
+
+## The goods' line their words are on: the middle one.
+static func goods_words_line() -> int:
+	return goods_lines() / 2
 
 
 ## One character cell's width, a dot column of spacing included.
@@ -303,18 +314,20 @@ class Board extends VBoxContainer:
 		stack.add_theme_constant_override("separation", 0)
 		var line_size := Vector2.ZERO
 		var pad := Vector2.ZERO
-		for i in GOODS_LINES:
-			var line: Control = T.dot_line(runs if i == GOODS_WORDS_LINE else [], chars)
+		var lines: int = T.goods_lines()
+		var words_line: int = T.goods_words_line()
+		for i in lines:
+			var line: Control = T.dot_line(runs if i == words_line else [], chars)
 			stack.add_child(line)
 			line_size = line.custom_minimum_size
 			pad = line.call("_padding")
 		var line_h := line_size.y
-		block.custom_minimum_size = Vector2(line_size.x, line_h * GOODS_LINES)
+		block.custom_minimum_size = Vector2(line_size.x, line_h * lines)
 		stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		block.add_child(stack)
 		var p := PITCH
 		var cell: float = T.cell_width()
-		var cy := line_h * (GOODS_WORDS_LINE + 0.5)
+		var cy := line_h * (words_line + 0.5)
 		var i := 0
 		for gid in goods:
 			var first := col + i * span

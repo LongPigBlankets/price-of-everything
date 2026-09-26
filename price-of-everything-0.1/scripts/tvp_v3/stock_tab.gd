@@ -30,6 +30,7 @@ extends RefCounted
 ## Lamps and their words come from one rule each: the fill and last turn's peak from the stockpile
 ## summary's thresholds (fill_tone), the forecast from the transport panel's (eta).
 
+const Metrics := preload("res://scripts/ds2/metrics.gd")
 const Parts := preload("res://scripts/tvp_v3/stock_parts.gd")
 const Sheets := preload("res://scripts/tvp_v3/stock_sheets.gd")
 const Gauge := preload("res://scripts/tvp_v3/stock_gauge.gd")
@@ -50,7 +51,7 @@ const ROUTE_MIDDLEMAN_ICON: Texture2D = preload("res://assets/icons/ui_icons/rou
 ## line and the gap between rows and cells.
 const BAY_COLS := 4
 const BAY_ROWS := 2
-const CELL_ICON := 64
+const CELL_ICON := Metrics.GOOD_ICON
 const NAME_H := 20.0
 const CELL_GAP := 10
 const CELL_H := CELL_ICON + 4.0 + NAME_H
@@ -60,7 +61,7 @@ const ROW_ICON_PX := 24.0
 const EVERY_TURN_PX := 20.0
 ## A waiting shipment's good, in a well big enough for its quantity pill, and the room kept above and below
 ## its well.
-const SHIPMENT_ICON_PX := 48
+const SHIPMENT_ICON_PX := Metrics.GOOD_ICON
 const SHIPMENT_GAP := 6
 const ICON_PATH := "res://assets/ui/bdp_v3/diag_icon_%s.png"
 ## The room between the tab's sections, between the warehouse's readings and its knob, between an icon,

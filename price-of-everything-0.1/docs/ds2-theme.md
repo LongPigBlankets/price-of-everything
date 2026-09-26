@@ -431,6 +431,8 @@ The tile view was the third surface moved to DS2 (`docs/tile-view-ds2-plan.md`; 
 
 **Where the kit lives.** Parts any panel can use are in `scripts/ds2/`, each preloaded by path (no `class_name` until the editor has scanned them; §12). A panel's own compositions stay in its folder (`scripts/tvp_v3/<tab>_*.gd`). The BDP v3 parts (`scripts/bdp_v3_*.gd`) stay where they are until §10's extraction; the DS2 parts build on them.
 
+**Shared sizes** (`scripts/ds2/metrics.gd`, the owner's rulings): a good's icon is never drawn smaller than `GOOD_ICON` (72 px) in a well, on a tile or on a card; every building card (the tile view's buildings and infrastructure, the ledger's rows) is at least `CARD_H` tall (the icon and `CARD_PAD_Y` above and below); a plate keeps `PLATE_PAD` (12 px) between its edge and the plates it holds (the tile view's door past its pipe, its navy sheet, the plastic cases), with the scroll rail 5 px nearer the sheet's edge than the content. Read them from there rather than restating a number. Small markers are not good icons in this sense and keep their size: the status line's deposit tags, the icons over a value bar or the stock gauge's slices, the diagnostics' inline chips.
+
 **Parts in `scripts/ds2/`.**
 
 | Part | File | Look | API | Used by |

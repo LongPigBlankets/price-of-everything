@@ -30,6 +30,7 @@ extends RefCounted
 ## TileViewData.production_summary adds it for the Goods key, TileViewData.sales_summary,
 ## TileViewData.survey_gated_deposits and the construction projects' own turns.
 
+const Metrics := preload("res://scripts/ds2/metrics.gd")
 const Parts := preload("res://scripts/tvp_v3/goods_parts.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
 const ValueBar := preload("res://scripts/tvp_v3/goods_value_bar.gd")
@@ -45,7 +46,7 @@ const ROW_GAP := 12
 const KEY_ROW_GAP := 10
 ## Every row's icon column: a good's well is this size, and any other mark (a building's emblem, the sales
 ## lorry, the survey pick) is raised at MARK_PX, sized by its drawn art, and centred in it.
-const ICON_COL := 64
+const ICON_COL := Metrics.GOOD_ICON
 const MARK_PX := 44.0
 ## The fewest cells on a £ screen (Building Detail's economics screens, five figures with their pence).
 const MIN_MONEY_CELLS := 5

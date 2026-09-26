@@ -28,6 +28,7 @@ extends RefCounted
 ## built and what laying one takes), EconomyConfig (a link's reach at a level), and the Build key's quote
 ## (scripts/tvp_v3/transport_quote.gd, the map's own pricing steps read without acting).
 
+const Metrics := preload("res://scripts/ds2/metrics.gd")
 const TileViewData := preload("res://scripts/tile_view_data.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
 const Heading := preload("res://scripts/bdp_v3_heading.gd")
@@ -57,6 +58,8 @@ const MODULE_GAP := 8
 const PLASTIC: Texture2D = preload("res://assets/ui/bdp_v3/diag_plastic.png")
 const SCREW: Texture2D = preload("res://assets/ui/bdp_v3/screw_silver.png")
 const SCREW_PITCH := 170.0
+## The case's screws sit this far in from its edges, clear of modules DS2's plate padding in.
+const CASE_SCREW_INSET := 7.0
 ## How far a side screw keeps from a heading's line or a module's edge (its radius and a little more),
 ## and how far it may move off its even spacing to find a clear place before it is left out.
 const SCREW_CLEAR := 14.0
@@ -94,7 +97,7 @@ const PLANNING_NOTE := "Fee +50% past the planning limit"
 ## The goods on a link or needed to lay one, each in its well with its quantity in a pill (good_well.gd):
 ## their icons' side, how many show (four, or three and a count of the rest, fit the module's width), and
 ## the gap between wells, clear of each other's frames.
-const GOOD_PX := 52
+const GOOD_PX := Metrics.GOOD_ICON
 const GOODS_SHOWN := 4
 const GOOD_GAP := 14
 ## The room above and below a row of wells, past the lines' own gap, so a frame keeps clear of a meter's
@@ -738,9 +741,8 @@ static func _plastic_case() -> MarginContainer:
 	var case := MarginContainer.new()
 	case.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	case.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	var m := roundi(Section.RIM + Section.PADDING)
 	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
-		case.add_theme_constant_override(side, m)
+		case.add_theme_constant_override(side, Metrics.PLATE_PAD)
 	var content := VBoxContainer.new()
 	content.add_theme_constant_override("separation", 8)
 	case.add_child(content)
@@ -758,7 +760,7 @@ static func _plastic_case() -> MarginContainer:
 ## down each side as evenly, each side screw moved to the nearest height clear of `avoid` (bands of y, from
 ## _screw_bands) within SCREW_SHIFT, or left out when there is none.
 static func screw_points(plate: Vector2, avoid: Array = []) -> PackedVector2Array:
-	var lo := Vector2(Section.SCREW_INSET, Section.SCREW_INSET)
+	var lo := Vector2(CASE_SCREW_INSET, CASE_SCREW_INSET)
 	var hi := plate - lo
 	var across := maxi(2, roundi((hi.x - lo.x) / SCREW_PITCH) + 1)
 	var down := maxi(2, roundi((hi.y - lo.y) / SCREW_PITCH) + 1)
@@ -816,14 +818,16 @@ static func _screw_bands(case: Control) -> Array:
 	return bands
 
 
-## A raised module in the plastic case, as each of Building Detail's diagnostics rows is.
+## A raised module in the plastic case, as each of Building Detail's diagnostics rows is: a building card, at
+## least DS2's card height (the Buildings tab's cards are the same).
 static func _module() -> PanelContainer:
 	var module: PanelContainer = Tip.TipPanel.new()
+	module.custom_minimum_size.y = Metrics.CARD_H
 	var pad := StyleBoxEmpty.new()
 	pad.content_margin_left = MODULE_PAD
 	pad.content_margin_right = MODULE_PAD
-	pad.content_margin_top = 8
-	pad.content_margin_bottom = 9
+	pad.content_margin_top = Metrics.CARD_PAD_Y
+	pad.content_margin_bottom = Metrics.CARD_PAD_Y
 	module.add_theme_stylebox_override("panel", pad)
 	module.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	module.draw.connect(func() -> void:

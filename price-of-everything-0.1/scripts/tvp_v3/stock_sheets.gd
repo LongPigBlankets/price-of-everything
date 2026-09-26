@@ -11,6 +11,7 @@ extends RefCounted
 ##   use with what you hold and what the market charges (MatchState.warehouse_upgrade_quote), and the two
 ##   ways to pay.
 
+const Metrics := preload("res://scripts/ds2/metrics.gd")
 const Parts := preload("res://scripts/tvp_v3/stock_parts.gd")
 const Led := preload("res://scripts/bdp_v3_led.gd")
 const Toggle := preload("res://scripts/bdp_v3_toggle.gd")
@@ -19,8 +20,8 @@ const CabinetKey := preload("res://scripts/ds2/latch_key.gd")
 
 const MARKET_DEST := "__market__"
 const SPECIAL_ORDER_DEST := "__special_order__"
-const GOOD_PX := 72
-const MATERIAL_PX := 52
+const GOOD_PX := Metrics.GOOD_ICON
+const MATERIAL_PX := Metrics.GOOD_ICON
 ## The destination keys' width, and the sheet's captions' column (three keys and the caption fit the
 ## narrowest body).
 const DEST_KEY_W := 116.0

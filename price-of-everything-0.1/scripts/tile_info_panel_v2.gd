@@ -18,6 +18,7 @@ signal pick_destination_requested()
 ## v3's Location key: centre the map on this tile.
 signal locate_requested(tile_id: String)
 
+const Metrics := preload("res://scripts/ds2/metrics.gd")
 const TileViewData := preload("res://scripts/tile_view_data.gd")
 const INFRA_DIAL := preload("res://scripts/infra_dial.gd")
 const LAND_BAR := preload("res://scripts/land_bar.gd")
@@ -78,8 +79,10 @@ const V3_SWATCH_STEEL_LT := Color("#e6eaee")
 const V3_DISPLAY_ROOM := 5.0
 ## The planning limit's explanation, on hover of the term in the land line.
 const V3_PLANNING_NOTE := "Above the planning limit, local opposition makes construction more complex, increasing materials requirements by 50%"
-## The body sheet's padding, logical pixels.
-const V3_BODY_PAD := 22
+## The body sheet's padding, logical pixels (DS2's room between a plate's edge and what it holds), and how
+## much nearer its edge the scroll rail stands than the content does.
+const V3_BODY_PAD := Metrics.PLATE_PAD
+const V3_RAIL_NUDGE := 5
 ## Deposit icons in the status line, logical pixels.
 const V3_DEPOSIT_ICON := 22.0
 const LandHex := preload("res://scripts/tile_land_hex.gd")
@@ -107,8 +110,9 @@ const V3_KEYBED_CORNER := 40.0
 const V3_SHEET: Texture2D = preload("res://assets/ui/bdp_v3/bar_sheet.png")
 const V3_SHEET_MARGIN := 10.0
 const V3_SHEET_CORNER := 60.0
-## Room inside the door, clear of the pipe run round its edge.
-const V3_PAD := 26
+## Room inside the door: DS2's plate padding from the stainless, past the half of the pipe run round its
+## edge that lies on the door (tile_door pipe_radius 8 layout px, centred on the edge).
+const V3_PAD := Metrics.PLATE_PAD + 4
 ## Print on the stainless: navy, engraved and filled (DS2 rule 3); the name on the black nameplate in white.
 const V3_INK := Color("#0b2340")
 const V3_NAME_INK := Color("#eef1f5")
@@ -434,6 +438,8 @@ func _build_ui_v3() -> void:
 	# edges for their shadows (the section frame's 18 layout px, the plastic plate's 14).
 	var body_sheet := _v3_sheet(V3_BODY_PAD)
 	body_sheet.name = "BodySheet"
+	# The rail stands V3_RAIL_NUDGE nearer the sheet's edge; while it hides, the panes keep that room.
+	(body_sheet.get_theme_stylebox("panel") as StyleBoxEmpty).content_margin_right = V3_BODY_PAD - V3_RAIL_NUDGE
 	body_sheet.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(body_sheet)
 	var scroll := ScrollContainer.new()
@@ -445,10 +451,19 @@ func _build_ui_v3() -> void:
 	_body_scroll = scroll
 	# Building Detail's steel rail and grip rather than Godot's thin grey bar.
 	load("res://scripts/bdp_v3_scroll.gd").apply(scroll, true)
+	var room := MarginContainer.new()
+	room.name = "PaneRoom"
+	room.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	room.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(room)
+	var bar := scroll.get_v_scroll_bar()
+	var follow := func() -> void: room.add_theme_constant_override("margin_right", 0 if bar.visible else V3_RAIL_NUDGE)
+	bar.visibility_changed.connect(follow)
+	follow.call()
 	_pane_host = VBoxContainer.new()
 	_pane_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_pane_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(_pane_host)
+	room.add_child(_pane_host)
 	for tab in _tabs():
 		var pane := VBoxContainer.new()
 		pane.add_theme_constant_override("separation", 9)
