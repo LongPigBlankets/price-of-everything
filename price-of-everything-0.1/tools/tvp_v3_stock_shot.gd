@@ -1,14 +1,17 @@
 extends Node2D
 ## Captures of the tile view v3's Stock tab in the cases tools/tvp_v3_shot.gd lacks: the Move or sell sheet
-## (sliding in, settled, a destination chosen, a special order), the warehouse's expansion sheet, a bay
-## with more goods than it shows (closed and opened), a full warehouse with goods turned away and
-## shipments waiting, the routing knobs of an intermediary game, land you own with nothing stored, a tile
-## about to fill, a peak near the bar's end, and a tile that isn't yours. Beside the captures it checks the
-## tab's contract and its rules: the forecast line against the transport panel's own rule, last turn's peak
-## and the stored figure against the stockpile summary's thresholds, one line when full with the backlog
-## straight under it, one text column, no tag line fanning out across the bar, the bar's tags picking and
-## lighting goods as the bay does, the licence's name, and that neither the body nor a sheet asks for more
-## width than the scroll shows.
+## (sliding in over the body, settled, a destination chosen, every turn, a special order), the warehouse's
+## upgrade sheet, a bay with more goods than it shows (closed and opened), a full warehouse with goods
+## turned away and shipments waiting, the routing knobs of an intermediary game, land you own with nothing
+## stored, a tile about to fill, a peak near the bar's end, a tile that isn't yours, and the whole Move or
+## sell flow driven with real clicks and keys. Beside the captures it checks the tab's contract and its
+## rules: the forecast line against the transport panel's own rule, last turn's peak and the stored figure
+## against the stockpile summary's thresholds, one line when full with the backlog straight under it, one
+## text column, no tag line fanning out across the bar, the bar's tags picking and lighting goods as the
+## bay does, the licence's name, the upgrade key and its strip against the engine's capacity at the next
+## level, figures that aren't money on dot matrices, no case's rim over another's, the sheet laid over the
+## body rather than in its place, the flow's effects in the engine's own state, and that neither the body
+## nor a sheet asks for more width than the scroll shows.
 ## Same setup as tools/tvp_v3_shot.gd: the real HUD at 1920 x 1080, two pixels each, a busy tile you own.
 ##   Godot --path . res://tools/tvp_v3_stock_shot.tscn --quit-after 40000 -- --no-telemetry
 ## Writes tvp_v3_stock_<case>.png into $TVP_SHOT_DIR (or /tmp).
@@ -67,7 +70,7 @@ func _ready() -> void:
 	await _settle(6)
 	var td := _tile_data(TILE)
 	var only := OS.get_environment("TVP_STOCK_CASES")
-	var cases := only.split(",") if only != "" else PackedStringArray(["checks", "rules", "hover", "sheet", "sheet_tile", "expand", "few", "maxed", "many", "full", "logistics", "owned_empty", "idle", "idle_port"])
+	var cases := only.split(",") if only != "" else PackedStringArray(["checks", "rules", "hover", "sheet", "sheet_tile", "expand", "few", "maxed", "many", "full", "logistics", "owned_empty", "idle", "idle_port", "flow"])
 
 	if "checks" in cases:
 		await _checks(td)
@@ -79,6 +82,8 @@ func _ready() -> void:
 		# Pointing at a good in the bay lights its slice in the warehouse's bar.
 		_panel.call("show_tile", td, "stock")
 		await _settle(10)
+		_top()
+		await _settle(3)
 		var cell: Control = _panel.find_child("StoredGood_" + _gid("copper_wiring"), true, false)
 		if cell != null:
 			cell.mouse_entered.emit()
@@ -98,24 +103,60 @@ func _ready() -> void:
 	if "sheet" in cases:
 		_panel.call("show_tile", td, "stock")
 		await _settle(12)
+		_scroll_to("GoodsBay")
+		await _settle(4)
+		var body_at := _body_scroll()
 		_panel.call("select_stock_good", _gid("steel"))
 		await _settle(3)
 		await _save("sheet_sliding")
 		await _settle(30)
 		await _save("sheet")
+		_sheet_over_body("sheet", body_at)
+		# It is the Stock tab's alone: leaving the tab takes it off, the land's full view hides it, and coming
+		# back to Stock with the good still picked lays it over the body again.
+		_panel.call("_select_tab", "bl")
+		await _settle(4)
+		var gone := _no_cover()
+		_panel.call("_select_tab", "stock")
+		await _settle(4)
+		var back := not _no_cover()
+		_panel.call("_set_land_open", true)
+		await _settle(4)
+		var lid: Control = _panel.find_child("StockGoodActions", true, false)
+		var hidden := lid != null and not lid.visible
+		_panel.call("_set_land_open", false)
+		await _settle(4)
+		lid = _panel.find_child("StockGoodActions", true, false)
+		_check(gone and back and hidden and lid != null and lid.visible,
+			"the sheet goes with the Stock tab (%s), returns with it (%s), and hides under the land's full view (%s)" % [str(gone), str(back), str(hidden)])
 		_panel.set("_stock_dest", "__market__")
+		_panel.call("_refresh_pane", "stock")
+		await _settle(8)
+		var once_words := str((_panel.find_child("QuoteDetail", true, false) as Label).text)
+		await _save("sheet_market_once")
 		_panel.set("_stock_recurring", true)
 		_panel.call("_refresh_pane", "stock")
 		await _settle(8)
+		var every_words := str((_panel.find_child("QuoteDetail", true, false) as Label).text)
+		_check(every_words.begins_with("a turn") and not once_words.contains("a turn"),
+			"the price line says a turn when it repeats (\"%s\"), not when once (\"%s\")" % [every_words, once_words])
 		await _save("sheet_market")
 		SpecialOrderState.create_order("steel", -1, 4, 30)
 		_panel.set("_stock_dest", "__special_order__")
 		_panel.call("_refresh_pane", "stock")
 		await _settle(8)
 		await _save("sheet_special")
-		_bottom()
+		_sheet_bottom()
 		await _settle(4)
 		await _save("sheet_bottom")
+		# A rebuild of the same sheet (a key on it pressed) keeps it where it was scrolled to.
+		var sheet_scroll: ScrollContainer = _panel.find_child("SheetScroll", true, false)
+		var was := sheet_scroll.scroll_vertical if sheet_scroll != null else -1
+		_panel.call("_refresh_pane", "stock")
+		await _settle(8)
+		sheet_scroll = _panel.find_child("SheetScroll", true, false)
+		_check(was > 0 and sheet_scroll != null and absi(sheet_scroll.scroll_vertical - was) <= 1,
+			"a sheet rebuilt in place keeps its scroll (%d, now %d)" % [was, sheet_scroll.scroll_vertical if sheet_scroll != null else -1])
 		_panel.set("_stock_sel", {})
 		_panel.set("_stock_dest", "")
 		_panel.set("_stock_recurring", false)
@@ -128,9 +169,11 @@ func _ready() -> void:
 		await _settle(4)
 		_panel.set("_stock_dest", "tile_6_10")
 		_panel.set("_stock_qty", 40)
+		_panel.set("_stock_recurring", true)
 		_panel.call("_refresh_pane", "stock")
 		await _settle(30)
 		await _save("sheet_tile")
+		_panel.set("_stock_recurring", false)
 		_panel.set("_stock_sel", {})
 		_panel.set("_stock_dest", "")
 
@@ -141,7 +184,17 @@ func _ready() -> void:
 		_panel.call("_refresh_pane", "stock")
 		await _settle(30)
 		await _save("expand")
+		var dots: Node = _panel.find_child("CapacityDots", true, false)
+		var quote := MatchState.warehouse_upgrade_quote(TILE)
+		var after := _capacity_at_level(TILE, int(quote.get("next_level", 2)))
+		_check(dots != null and str(dots.get("text")) == "%d → %d" % [Stockpile.get_capacity(TILE), after]
+			and _panel.find_child("WarehouseExpansion", true, false).find_child("BdpV3Led", true, false) != null,
+			"the upgrade sheet's capacity is on a dot matrix (%s), its money on LEDs" % (str(dots.get("text")) if dots != null else "none"))
 		_panel.set("_warehouse_expand", false)
+		_panel.call("_refresh_pane", "stock")
+		await _settle(6)
+		_check(_panel.find_child("WarehouseExpansion", true, false) == null and _no_cover(),
+			"closing the upgrade sheet takes it off the body")
 
 	if "few" in cases:
 		# Land of yours with three goods: the bay is one row, the door up.
@@ -170,6 +223,11 @@ func _ready() -> void:
 		_top()
 		await _settle(4)
 		await _save("maxed")
+		var maxed_key: Node = _panel.find_child("WarehouseMaxed", true, false)
+		var maxed_strip: Node = _panel.find_child("CapacityStrip", true, false)
+		_check(maxed_key != null and bool(maxed_key.get("disabled")) and maxed_strip != null
+			and str(maxed_strip.get("text")) == "CAPACITY: %d" % Stockpile.get_capacity(TILE),
+			"at the top level the key is greyed and the strip says the capacity (%s)" % (str(maxed_strip.get("text")) if maxed_strip != null else "none"))
 		Stockpile.set_warehouse_level(TILE, was)
 
 	if "many" in cases:
@@ -186,6 +244,21 @@ func _ready() -> void:
 		var shown := many_tags.filter(func(t: Dictionary) -> bool: return str(t.kind) == "good").size()
 		_check(more.size() == 1 and shown + (more[0].goods as Array).size() == goods_n,
 			"many goods: %d tagged, one +N tag for the other %d" % [shown, goods_n - shown])
+		# A click on the +N tag opens every good in the bay and brings the bay into view.
+		_top()
+		await _settle(3)
+		var many_gauge: Control = _panel.find_child("StockGauge", true, false)
+		await _click(many_gauge.get_global_transform() * (many_gauge.call("_tag_rect", more[0]) as Rect2).get_center())
+		await _settle(6)
+		var all_rack: Control = _panel.find_child("StockpileAllGoods", true, false)
+		var view: Rect2 = (_panel.find_child("BodyScroll", true, false) as Control).get_global_rect()
+		var bay_top: float = (_panel.find_child("GoodsBay", true, false) as Control).global_position.y
+		_check(all_rack != null and all_rack.find_children("StoredGood_*", "Button", true, false).size() == goods_n
+			and bay_top >= view.position.y - 0.5 and bay_top <= view.position.y + 40.0,
+			"a click on the +N tag opens every good in the bay and brings it into view (%d goods, the bay %.0f px down the view)" % [
+				all_rack.find_children("StoredGood_*", "Button", true, false).size() if all_rack != null else 0, bay_top - view.position.y])
+		await _save("many_more_clicked")
+		_panel.set_meta("tvp_stock_all_goods", "")
 		_panel.set_meta("tvp_stock_all_goods", TILE)
 		_panel.call("_refresh_pane", "stock")
 		await _settle(8)
@@ -195,6 +268,8 @@ func _ready() -> void:
 		_panel.set_meta("tvp_stock_all_goods", "")
 
 	if "full" in cases:
+		var had_steel := Stockpile.get_at_tile(TILE, _gid("steel"))
+		var had_coal := Stockpile.get_at_tile(TILE, _gid("coal"))
 		Stockpile.add(TILE, _gid("steel"), 5000)
 		Stockpile.add(TILE, _gid("coal"), 120)
 		TransportState.hold_overflow_shipment({"source_tile": "tile_6_10", "destination_tile": TILE,
@@ -215,7 +290,8 @@ func _ready() -> void:
 			"full: one red line (%d), the way out under it (%s)" % [reds, way.text if way != null else "none"])
 		_text_column("full")
 		_tag_lines("full")
-		_led_tone("full", TileViewData.stockpile_summary(TILE))
+		_stored_tone("full", TileViewData.stockpile_summary(TILE))
+		_overlaps("full")
 		# The backlog sits in the readings, straight under the full line, a line's gap apart, each
 		# shipment's wait in its own sentence.
 		var full_row: Control = _panel.find_child("FullRow", true, false)
@@ -225,18 +301,30 @@ func _ready() -> void:
 			and head.get_index() == full_row.get_index() + 1
 		var gap := head.global_position.y - full_row.get_global_rect().end.y if under else -1.0
 		var words: Node = _panel.find_child("ShipmentWords", true, false)
-		_check(under and absf(gap - float(StockTab.LINE_GAP)) <= 0.5 and words != null and "waiting" in str(words.get("text")),
-			"the backlog sits straight under the full line (%.1f px apart), the wait in its sentence" % gap)
-		var clean := true
+		_check(under and absf(gap - float(StockTab.LINE_GAP)) <= 0.5 and words != null and "waiting" in (words as RichTextLabel).get_parsed_text(),
+			"the backlog sits straight under the full line (%.1f px apart), each shipment's wait beside it" % gap)
+		# Each shipment on one line: its good's quantity on the pill in its well, its name and wait unwrapped.
+		var one_line := true
+		var pills := 0
 		for row: Node in _panel.find_children("OverflowShipment", "", true, false):
-			for l: Node in row.find_children("*", "RichTextLabel", true, false):
-				if "(" in (l as RichTextLabel).get_parsed_text():
-					clean = false
-		_check(clean and _panel.find_child("OverflowShipment", true, false) != null,
-			"shipments waiting to unload name their tile without coordinates")
+			var said := row.find_child("ShipmentWords", true, false) as RichTextLabel
+			var well: Control = row.find_child("GoodInWell", true, false)
+			if row.find_child("QtyPill", true, false) != null:
+				pills += 1
+			one_line = one_line and said != null and said.get_line_count() == 1 and "waiting" in said.get_parsed_text() \
+				and well != null and absf(well.get_global_rect().get_center().y - said.get_global_rect().get_center().y) <= 1.5 \
+				and not "(" in said.get_parsed_text()
+		_check(one_line and pills == _panel.find_children("OverflowShipment", "", true, false).size() and pills > 0,
+			"each waiting shipment sits on one line, its quantity on its well's pill, no coordinates (%d)" % pills)
 		_bottom()
 		await _settle(4)
 		await _save("full_bottom")
+		# Back as it was, so the cases after this one have room.
+		Stockpile.consume(TILE, _gid("steel"), Stockpile.get_at_tile(TILE, _gid("steel")) - had_steel)
+		Stockpile.consume(TILE, _gid("coal"), Stockpile.get_at_tile(TILE, _gid("coal")) - had_coal)
+		TransportState.overflow_shipments = TransportState.overflow_shipments.filter(func(r: Dictionary) -> bool:
+			return not (str(r.get("destination_tile", "")) == TILE and str(r.get("source_tile", "")) == "tile_6_10"))
+		Stockpile._refused.erase(str(Stockpile.call("_tile_key", TILE)))
 
 	if "logistics" in cases:
 		var model_was = MatchState.ruleset.get("logistics_model", null)
@@ -267,6 +355,14 @@ func _ready() -> void:
 		_panel.call("show_tile", _tile_data(EMPTY_TILE), "stock")
 		await _settle(12)
 		await _save("owned_empty")
+		# The bar sits under the head, as on a busy tile, not floated down beside the knob.
+		var head_e: Control = _panel.find_child("WarehouseHead", true, false)
+		var gauge_e: Control = _panel.find_child("StockGauge", true, false)
+		var fill_e: Control = _panel.find_child("WarehouseFill", true, false)
+		var lift := gauge_e.global_position.y - fill_e.global_position.y if gauge_e != null and fill_e != null else -1.0
+		_check(head_e != null and gauge_e != null and lift <= 0.5,
+			"owned and empty: the bar starts at the top of its column, under the head (%.1f px down)" % lift)
+		_overlaps("owned_empty")
 		BuildingState.tile_land_owned.erase(EMPTY_TILE)
 
 	if "idle" in cases:
@@ -278,6 +374,7 @@ func _ready() -> void:
 		var holds: Node = _panel.find_child("IdleCapacity", true, false)
 		var Door := load("res://scripts/bdp_v3_door.gd")
 		var StockTab := load("res://scripts/tvp_v3/stock_tab.gd")
+		_overlaps("idle")
 		_check(door != null and door.size.y <= Door.rolled_up_height() + StockTab.CELL_H + 0.5
 			and holds != null and _panel.find_child("WarehouseHead", true, false).is_ancestor_of(holds)
 			and _panel.find_child("SurplusKnob", true, false) == null and _panel.find_child("GoodsBay", true, false) == null,
@@ -292,6 +389,9 @@ func _ready() -> void:
 			await _save("idle_port")
 		else:
 			print("[TVP_SHOT] idle_port skipped: no unowned port tile near %s" % EMPTY_TILE)
+
+	if "flow" in cases:
+		await _flow(td)
 
 	UiPrefs.set_use_tvp_v3(false)
 	print("[TVP_CHECK] all cases: %d failed" % _failed)
@@ -336,18 +436,50 @@ func _checks(td: Dictionary) -> void:
 	_check(lit_col != null and lit_col.modulate.r > 1.05 and str(gauge.get("hot")) == first_gid,
 		"pointing at a tag lights its good's cell in the bay")
 	gauge.call("_point", "")
-	gauge.emit_signal("picked", first_gid)
-	await _settle(6)
-	_check(_panel.find_child("StockGoodActions", true, false) != null and str((_panel.get("_stock_sel") as Dictionary).get("good_id", "")) == first_gid,
-		"picking a tag opens its good's Move or sell sheet")
-	(_panel.find_child("SheetBack", true, false) as BaseButton).pressed.emit()
-	await _settle(6)
-	var expand_key: Control = _panel.find_child("ExpandWarehouse", true, false)
+	# Picked with the mouse, as a player does, from each of the three places a good can be picked.
+	for how: String in ["tag", "slice", "bay"]:
+		_top()
+		await _settle(3)
+		gauge = _panel.find_child("StockGauge", true, false)
+		var gid := first_gid if how == "tag" else (_gid("copper_wiring") if how == "slice" else steel)
+		var at := _tag_point(gauge, gid) if how == "tag" else (_slice_point(gauge, gid) if how == "slice" else Vector2.ZERO)
+		if how == "bay":
+			_scroll_to("StoredGood_" + gid)
+			await _settle(3)
+			at = (_panel.find_child("StoredGood_" + gid, true, false) as Control).get_global_rect().get_center()
+		await _click(at)
+		await _settle(4)
+		var picked := str((_panel.get("_stock_sel") as Dictionary).get("good_id", ""))
+		# And nothing else took the click (a good's icon elsewhere opens its encyclopedia entry).
+		var search: Control = _wm.find_child("SearchOverlay", true, false)
+		var opened := search != null and search.visible
+		if opened:
+			search.call("close_search")
+		_check(_panel.find_child("StockGoodActions", true, false) != null and picked == gid and not opened,
+			"a click on the good's %s opens its Move or sell sheet (%s)" % [{"tag": "tag over the bar", "slice": "slice of the bar", "bay": "cell in the bay"}[how], Catalog.get_display_name(picked)])
+		await _click((_panel.find_child("SheetBack", true, false) as Control).get_global_rect().get_center())
+		await _settle(4)
+		_check(_panel.find_child("StockGoodActions", true, false) == null and (_panel.get("_stock_sel") as Dictionary).is_empty(),
+			"Back, clicked, takes the %s pick's sheet off" % how)
+	# The head: the stored figure against the capacity on a dot matrix, the upgrade key over its strip.
+	var head: Control = _panel.find_child("WarehouseHead", true, false)
+	var up_key: Control = _panel.find_child("UpgradeWarehouse", true, false)
+	var strip: Control = _panel.find_child("CapacityStrip", true, false)
 	var quote := MatchState.warehouse_upgrade_quote(TILE)
-	var after := Stockpile.get_capacity(TILE) - int(quote.get("current_cap", 0)) + int(quote.get("next_cap", 0))
-	_check(expand_key != null and str(expand_key.get("text")) == "Expand to %d" % after
-		and _panel.find_child("WarehouseHead", true, false).is_ancestor_of(expand_key),
-		"Expand sits on the capacity line and says what the tile will hold (%s)" % (str(expand_key.get("text")) if expand_key != null else "none"))
+	var next_level := int(quote.get("next_level", 2))
+	var cap_now := Stockpile.get_capacity(TILE)
+	var after := _capacity_at_level(TILE, next_level)
+	var strip_ok := up_key != null and strip != null and absf(strip.global_position.x - up_key.global_position.x) <= 0.5 \
+		and absf(strip.size.x - up_key.size.x) <= 0.5 and strip.global_position.y > up_key.get_global_rect().end.y
+	_check(up_key != null and str(up_key.get("text")) == "Upgrade to Lvl%d" % next_level and head.is_ancestor_of(up_key) and strip_ok
+		and str(strip.get("text")) == "CAPACITY: %d → %d" % [cap_now, after],
+		"the upgrade key says \"%s\", the strip under it \"%s\" (the engine holds %d at level %d)" % [
+			str(up_key.get("text")) if up_key != null else "none", str(strip.get("text")) if strip != null else "none", after, next_level])
+	var stored: Node = _panel.find_child("StoredDots", true, false)
+	_check(stored != null and str(stored.get("text")).ends_with("%d OF %d" % [Stockpile.get_used_capacity(TILE), cap_now])
+		and _panel.find_child("WarehouseSection", true, false).find_child("BdpV3Led", true, false) == null,
+		"the stored figure is on a dot matrix (%s), no seven segment screen in the warehouse" % (str(stored.get("text")) if stored != null else "none"))
+	_overlaps("busy")
 	var cell := _panel.find_child("StoredGood_" + steel, true, false) as Button
 	cell.pressed.emit()
 	await _settle(6)
@@ -372,10 +504,11 @@ func _checks(td: Dictionary) -> void:
 	await _settle(6)
 	_check(_panel.find_child("StockGoodActions", true, false) == null and _panel.find_child("WarehouseSection", true, false) != null
 		and (_panel.get("_stock_sel") as Dictionary).is_empty(), "Back closes the sheet and drops the pick")
-	(_panel.find_child("ExpandWarehouse", true, false) as Control).emit_signal("pressed")
+	(_panel.find_child("UpgradeWarehouse", true, false) as Control).emit_signal("pressed")
 	await _settle(6)
-	_check(_panel.find_child("WarehouseExpansion", true, false) != null and _panel.find_child("ExpandFromMarket", true, false) != null,
-		"Expand opens the warehouse's sheet with its ways to pay")
+	_check(_panel.find_child("WarehouseExpansion", true, false) != null and _panel.find_child("ExpandFromMarket", true, false) != null
+		and str((_panel.find_child("SheetTitle", true, false) as Label).text) == "Upgrade to Lvl%d" % next_level,
+		"the upgrade key opens the warehouse's sheet with its ways to pay")
 	(_panel.find_child("SheetBack", true, false) as BaseButton).pressed.emit()
 	await _settle(6)
 	for i in range(1, 14):
@@ -443,7 +576,9 @@ func _rules(td: Dictionary) -> void:
 			var lamp: Node = row.find_child("BdpV3Lamp", true, false) if row != null else null
 			_check(row != null and lamp != null and str(lamp.get("colour")) == "red" and row.find_child("LineWayOut", true, false) != null,
 				"a tile about to fill shows it on its forecast line, lamp red, the way out under it")
-			_led_tone("filling", stock)
+			_stored_tone("filling", stock)
+			_top()
+			await _settle(3)
 			await _save("filling")
 	# Last turn's peak is judged by the fill's own thresholds: amber at 92%, green at 85%.
 	for pct in [85, 92]:
@@ -458,6 +593,8 @@ func _rules(td: Dictionary) -> void:
 		if pct == 92:
 			# A peak near the bar's end leaves no room on the glass: PEAK is a tag right over its mark.
 			_tag_lines("peak_high")
+			_top()
+			await _settle(3)
 			await _save("peak_high")
 	tp.free()
 	var now := int(Stockpile.get_tile_totals(TILE).get(steel, 0))
@@ -521,12 +658,343 @@ func _tag_lines(tag: String) -> void:
 		tag, worst, on_shelf, "on the glass" if bool(gauge.call("peak_on_glass")) else ("over its mark" if bool(gauge.call("peak_marked")) else "not marked")])
 
 
-## What is stored is lit in the fill's tone: white, amber when nearly full, red when full.
-func _led_tone(tag: String, stock: Dictionary) -> void:
-	var led: Node = _panel.find_child("StoredLed", true, false)
-	var want: Color = {"problem": DS.PALETTE.DANGER, "warn": DS.PALETTE.WARN}.get(str(stock.status), DS.PALETTE.TEXT)
-	_check(led != null and led.get("colour") == want, "%s: the stored figure is lit as the fill (%s)" % [tag, str(stock.status)])
+## What is stored is in white on its dot matrix, a mark before it lit amber when nearly full, red when full.
+func _stored_tone(tag: String, stock: Dictionary) -> void:
+	var dots: Node = _panel.find_child("StoredDots", true, false)
+	var runs: Array = dots.get("_runs") if dots != null else []
+	var want: Variant = {"problem": DS.PALETTE.DANGER, "warn": DS.PALETTE.WARN}.get(str(stock.status), null)
+	var ok := dots != null and not runs.is_empty() and Color(runs[-1].colour) == Color.WHITE
+	if want == null:
+		ok = ok and runs.size() == 1
+	else:
+		ok = ok and runs.size() == 2 and Color(runs[0].colour) == want and str(runs[0].text).begins_with("●")
+	_check(ok, "%s: the stored figure is white, its mark lit as the fill (%s)" % [tag, str(stock.status)])
 
+
+
+## The whole Move or sell flow, driven with real clicks and keys through the viewport as a player would, then
+## checked in the engine's own state:
+##   once to the market (picked on the bar's slice): the goods leave the tile and the sale is paid;
+##   every turn to the market (picked in the bay): the entry is filed, and after a turn it has sold again;
+##   to a special order (picked on the bar's tag): the order is committed;
+##   every turn to a tile picked on the map (picked on the bar's slice): the freight is paid, the shipment is
+##   on its way, the entry is filed, and after a turn another has gone.
+## Plastics and glass stand in for the goods: none of the tile's buildings make or use them.
+func _flow(td: Dictionary) -> void:
+	var plastics := _gid("plastics")
+	var glass := _gid("glass")
+	var steel := _gid("steel")
+	var dest := "tile_6_10"
+	Stockpile.add(TILE, plastics, 40 - Stockpile.get_at_tile(TILE, plastics))
+	Stockpile.add(TILE, glass, 40 - Stockpile.get_at_tile(TILE, glass))
+	MatchState.money = 8000.0
+	_panel.call("show_tile", td, "stock")
+	await _settle(10)
+
+	# 1. Once to the market, picked on the plastics' slice of the warehouse's bar.
+	var money0 := MatchState.money
+	await _pick_on_bar(plastics, false)
+	await _save("flow_picked")
+	await _type_qty(7)
+	await _click_named("DestMarket")
+	var net := _screen_figure("QuoteRow")
+	var said := _text_of("ConfirmStockAction")
+	await _save("flow_market_once")
+	await _click_named("ConfirmStockAction")
+	await _settle(6)
+	var paid := MatchState.money - money0
+	_check(said == "Sell 7 Plastics" and Stockpile.get_at_tile(TILE, plastics) == 33 and absf(paid - net) <= 0.05 and _no_cover(),
+		"flow, once to the market: \"%s\" took 7 Plastics off the tile (%d left) and paid £%.2f (quoted £%.2f), the sheet closed" % [
+			said, Stockpile.get_at_tile(TILE, plastics), paid, net])
+
+	# 2. Every turn to the market, picked in the bay.
+	await _pick_in_bay(plastics)
+	await _type_qty(5)
+	await _click_named("DestMarket")
+	await _click_switch()
+	said = _text_of("ConfirmStockAction")
+	var words := _text_of("QuoteDetail")
+	await _save("flow_market_every")
+	await _click_named("ConfirmStockAction")
+	await _settle(6)
+	var filed_sell := MatchState.recurring_sells.filter(func(e: Dictionary) -> bool:
+		return str(e.get("source", "")) == TILE and int((e.get("goods", {}) as Dictionary).get(plastics, 0)) == 5)
+	_check(said == "Sell 5 Plastics every turn" and words.begins_with("a turn") and Stockpile.get_at_tile(TILE, plastics) == 28
+		and filed_sell.size() == 1, "flow, every turn to the market: \"%s\" (%s) sold 5 now (%d left) and filed the every turn sale" % [
+			said, words, Stockpile.get_at_tile(TILE, plastics)])
+
+	# 3. A special order, picked on the steel's tag over the bar.
+	var order := SpecialOrderState.get_active_order_for_good(steel)
+	if order.is_empty():
+		order = SpecialOrderState.create_order("steel", -1, 4, 30)
+	var committed0 := int(order.get("qty_committed", 0))
+	var steel0 := Stockpile.get_at_tile(TILE, steel)
+	await _pick_on_bar(steel, true)
+	await _click_named("DestSpecialOrder")
+	await _type_qty(6)
+	said = _text_of("ConfirmStockAction")
+	await _save("flow_special")
+	await _click_named("ConfirmStockAction")
+	await _settle(6)
+	order = SpecialOrderState.get_order(str(order.get("id", "")))
+	_check(said == "Send 6 Steel to the order" and int(order.get("qty_committed", 0)) == committed0 + 6
+		and Stockpile.get_at_tile(TILE, steel) == steel0 - 6, "flow, special order: \"%s\" committed 6 more to the order (%d) and took them off the tile" % [
+			said, int(order.get("qty_committed", 0))])
+
+	# 4. Every turn to a tile picked on the map, picked on the glass's slice.
+	money0 = MatchState.money
+	var shipments0 := _shipments(glass, dest)
+	await _pick_on_bar(glass, false)
+	await _type_qty(10)
+	await _click_named("DestTile")
+	var picking := bool(_wm.get("_v2_picking_dest"))
+	# The map's own click on the tile, as the terrain layer reports it.
+	(_wm.get("terrain_layer") as Node).emit_signal("stockpile_destination_selected", _tile_data(dest), false, false)
+	await _settle(6)
+	await _click_switch()
+	var freight := _screen_figure("QuoteRow")
+	said = _text_of("ConfirmStockAction")
+	var to := _text_of("DestinationName")
+	await _save("flow_tile_every")
+	await _click_named("ConfirmStockAction")
+	await _settle(6)
+	var filed_move := TransportState.recurring_moves.filter(func(e: Dictionary) -> bool:
+		return str(e.get("source", "")) == TILE and str(e.get("dest", "")) == dest and int((e.get("goods", {}) as Dictionary).get(glass, 0)) == 10)
+	var spent := money0 - MatchState.money
+	_check(picking and said == "Move 10 Glass every turn" and Stockpile.get_at_tile(TILE, glass) == 30 and _shipments(glass, dest) == shipments0 + 10
+		and absf(spent - freight) <= 0.05 and filed_move.size() == 1,
+		"flow, every turn to a tile: the map was asked for a tile (%s), \"%s\" %s sent 10 Glass (on the way %d), paid £%.2f freight (quoted £%.2f), filed the every turn move" % [
+			str(picking), said, to, _shipments(glass, dest), spent, freight])
+
+	# A turn later the every turn ones have gone again.
+	TurnManager.commit_turn()
+	if TurnManager.is_resolving:
+		await TurnManager.turn_resolution_completed
+	await _settle(10)
+	_check(Stockpile.get_at_tile(TILE, plastics) == 23 and Stockpile.get_at_tile(TILE, glass) == 20,
+		"flow, a turn later: the every turn sale and move ran again (Plastics %d, Glass %d on the tile)" % [
+			Stockpile.get_at_tile(TILE, plastics), Stockpile.get_at_tile(TILE, glass)])
+	for e: Dictionary in filed_sell:
+		MatchState.remove_recurring_sell(e)
+	for e: Dictionary in filed_move:
+		TransportState.remove_recurring_move(e)
+
+
+## Units of `good` on their way from the busy tile to `dest`, or already there.
+func _shipments(good: String, dest: String) -> int:
+	var n := Stockpile.get_at_tile(dest, good)
+	for sh: Dictionary in TransportState.pending_transport_shipments:
+		if str(sh.get("source_tile", "")) == TILE and str(sh.get("destination_tile", "")) == dest and str(sh.get("good_id", "")) == good:
+			n += int(sh.get("qty", 0))
+	return n
+
+
+func _pick_on_bar(gid: String, on_tag: bool) -> void:
+	_top()
+	await _settle(3)
+	var gauge: Control = _panel.find_child("StockGauge", true, false)
+	await _click(_tag_point(gauge, gid) if on_tag else _slice_point(gauge, gid))
+	await _settle(6)
+
+
+func _pick_in_bay(gid: String) -> void:
+	var open := _panel.find_child("OtherGoodsBar", true, false)
+	if open != null and _panel.find_child("StoredGood_" + gid, true, false) == null:
+		open.emit_signal("toggled", true)
+		await _settle(4)
+	_scroll_to("StoredGood_" + gid)
+	await _settle(3)
+	await _click((_panel.find_child("StoredGood_" + gid, true, false) as Control).get_global_rect().get_center())
+	await _settle(6)
+
+
+## Types a quantity into the sheet's screen: click it, clear it, the digits, Enter.
+func _type_qty(qty: int) -> void:
+	var field: LineEdit = _panel.find_child("QuantityRow", true, false).find_child("Entry", true, false)
+	await _click_control(field)
+	_key(KEY_END)
+	for _i in 8:
+		_key(KEY_BACKSPACE)
+	for ch in str(qty):
+		_key(KEY_0 + int(ch), ch.unicode_at(0))
+	_key(KEY_ENTER)
+	await _settle(3)
+
+
+func _key(code: Key, unicode := 0) -> void:
+	for down in [true, false]:
+		var k := InputEventKey.new()
+		k.keycode = code
+		k.physical_keycode = code
+		k.unicode = unicode if down else 0
+		k.pressed = down
+		_vp.push_input(k, true)
+
+
+## Throws the sheet's Once / Every turn switch.
+func _click_switch() -> void:
+	var sw: Node = _panel.find_child("RepeatRow", true, false).find_child("Switch", true, false)
+	await _click_control(sw.get_child(1) as Control)
+	await _settle(6)
+
+
+func _click_named(node_name: String) -> void:
+	await _click_control(_panel.find_child(node_name, true, false) as Control)
+	await _settle(6)
+
+
+## Scrolls a control into view within the sheet's own scroll when it is on the sheet, then clicks its middle.
+func _click_control(c: Control) -> void:
+	var p: Node = c.get_parent()
+	while p != null and not (p is ScrollContainer):
+		p = p.get_parent()
+	if p != null:
+		(p as ScrollContainer).ensure_control_visible(c)
+		await _settle(3)
+	await _click(c.get_global_rect().get_center())
+
+
+## A left click at `at` (the HUD's logical pixels), pushed through the viewport as the mouse's would be.
+func _click(at: Vector2) -> void:
+	var move := InputEventMouseMotion.new()
+	move.position = at
+	move.global_position = at
+	_vp.push_input(move, true)
+	for down in [true, false]:
+		var b := InputEventMouseButton.new()
+		b.button_index = MOUSE_BUTTON_LEFT
+		b.pressed = down
+		b.button_mask = MOUSE_BUTTON_MASK_LEFT if down else 0
+		b.position = at
+		b.global_position = at
+		_vp.push_input(b, true)
+	await _settle(2)
+
+
+## The middle of a good's tag over the gauge's bar, and of its slice on the bar, in the HUD's pixels.
+func _tag_point(gauge: Control, gid: String) -> Vector2:
+	for t: Dictionary in gauge.call("tags"):
+		if str(t.kind) == "good" and str(t.good_id) == gid:
+			return gauge.get_global_transform() * (gauge.call("_tag_rect", t) as Rect2).get_center()
+	return Vector2(-1, -1)
+
+
+func _slice_point(gauge: Control, gid: String) -> Vector2:
+	var pane: Rect2 = gauge.call("_pane")
+	for sl: Dictionary in gauge.get("slices"):
+		if str(sl.good_id) == gid:
+			var x := (float(gauge.call("_x", float(sl.from))) + float(gauge.call("_x", float(sl.to)))) * 0.5
+			return gauge.get_global_transform() * Vector2(x, pane.get_center().y)
+	return Vector2(-1, -1)
+
+
+func _text_of(node_name: String) -> String:
+	var n: Node = _panel.find_child(node_name, true, false)
+	if n == null:
+		return ""
+	if "text" in n:
+		return str(n.get("text"))
+	var said := PackedStringArray()
+	for l: Node in n.find_children("*", "Label", true, false):
+		if (l as Label).text != "":
+			said.append((l as Label).text)
+	return " ".join(said)
+
+
+func _screen_figure(row_name: String) -> float:
+	var row: Node = _panel.find_child(row_name, true, false)
+	var screen: Node = row.find_child("BdpV3Led", true, false) if row != null else null
+	return str(screen.call("figure")).strip_edges().to_float() if screen != null else NAN
+
+
+## What the engine says the tile holds with its warehouse at `level`: the level set, the capacity read, the
+## level put back.
+func _capacity_at_level(tile: String, level: int) -> int:
+	var key := str(Stockpile.call("_tile_key", tile))
+	var had := int(Stockpile._warehouse_levels.get(key, 1))
+	Stockpile.set_warehouse_level(tile, level)
+	var cap := Stockpile.get_capacity(tile)
+	Stockpile.set_warehouse_level(tile, had)
+	return cap
+
+
+func _body_scroll() -> int:
+	var scroll: ScrollContainer = _panel.find_child("BodyScroll", true, false)
+	return scroll.scroll_vertical if scroll != null else -1
+
+
+## The sheet lies over the body, which is still built under it and scrolled where it was: the sheet's cover
+## is the scroll's sibling on the navy sheet and covers exactly the scroll's view.
+func _sheet_over_body(tag: String, body_at: int) -> void:
+	var scroll: ScrollContainer = _panel.find_child("BodyScroll", true, false)
+	var lid: Control = _panel.find_child("StockGoodActions", true, false)
+	var same := lid != null and scroll != null and lid.get_parent() == scroll.get_parent() \
+		and lid.get_global_rect().position.distance_to(scroll.get_global_rect().position) <= 0.5 \
+		and lid.get_global_rect().size.distance_to(scroll.get_global_rect().size) <= 0.5
+	_check(same and _panel.find_child("WarehouseSection", true, false) != null and _panel.find_child("GoodsBay", true, false) != null
+		and scroll.scroll_vertical == body_at,
+		"%s: the sheet lies over the body's view, the body built under it and scrolled where it was (%d, was %d)" % [
+			tag, scroll.scroll_vertical if scroll != null else -1, body_at])
+
+
+func _sheet_bottom() -> void:
+	var s: ScrollContainer = _panel.find_child("SheetScroll", true, false)
+	if s != null:
+		s.scroll_vertical = int(s.get_v_scroll_bar().max_value)
+
+
+func _no_cover() -> bool:
+	var scroll: ScrollContainer = _panel.find_child("BodyScroll", true, false)
+	for c: Node in scroll.get_parent().get_children():
+		if c.has_meta("tvp_stock_sheet_cover") and not c.is_queued_for_deletion():
+			return false
+	return true
+
+
+## No case's rim over another's: the sections stand apart and inside the body's view, clear of its rail;
+## each rolling door stops inside its section's dark plate, clear of the frame's rim; the upgrade key's
+## bezel stays clear of the strip under it; and no two wells of waiting shipments meet.
+func _overlaps(tag: String) -> void:
+	var Section := load("res://scripts/bdp_v3_section.gd")
+	var Key := load("res://scripts/tile_cabinet_key.gd")
+	var Parts := load("res://scripts/tvp_v3/stock_parts.gd")
+	var scroll: ScrollContainer = _panel.find_child("BodyScroll", true, false)
+	var pane: Node = (_panel.get("_panes") as Dictionary).get("stock")
+	var view := scroll.get_global_rect()
+	var rail_x := scroll.get_v_scroll_bar().global_position.x if scroll.get_v_scroll_bar().visible else view.end.x
+	var bad := PackedStringArray()
+	var sections: Array = pane.find_children("*", "MarginContainer", true, false).filter(func(n: Node) -> bool:
+		return n.get_script() == Section)
+	for i in sections.size():
+		var r := (sections[i] as Control).get_global_rect()
+		if r.position.x < view.position.x - 0.5 or r.end.x > rail_x + 0.5:
+			bad.append("%s past the view (%.0f to %.0f of %.0f to %.0f)" % [sections[i].name, r.position.x, r.end.x, view.position.x, rail_x])
+		for j in range(i + 1, sections.size()):
+			if r.intersects((sections[j] as Control).get_global_rect()):
+				bad.append("%s meets %s" % [sections[i].name, sections[j].name])
+	for door: Node in pane.find_children("BayDoor", "", true, false) + pane.find_children("IdleDoor", "", true, false):
+		var d := (door as Control).get_global_rect()
+		var reach := float(door.get("reach"))
+		var sec: Node = door.get_parent()
+		while sec != null and sec.get_script() != Section:
+			sec = sec.get_parent()
+		if sec != null:
+			var inner := (sec as Control).get_global_rect().grow(-Section.RIM - 2.0)
+			if d.position.x - reach < inner.position.x - 0.5 or d.end.x + reach > inner.end.x + 0.5:
+				bad.append("%s's housing on %s's rim" % [door.name, sec.name])
+	var key: Control = pane.find_child("UpgradeWarehouse", true, false)
+	if key == null:
+		key = pane.find_child("WarehouseMaxed", true, false)
+	var strip: Control = pane.find_child("CapacityStrip", true, false)
+	if key != null and strip != null and strip.global_position.y - key.get_global_rect().end.y < Key.KEY_INSET / Key.CAPTURE_SCALE - 1.0:
+		bad.append("the key's bezel on the strip (%.1f px apart)" % (strip.global_position.y - key.get_global_rect().end.y))
+	var wells: Array = []
+	for row: Node in pane.find_children("OverflowShipment", "", true, false):
+		wells.append((row.find_child("GoodInWell", true, false) as Control).get_global_rect())
+	for i in range(1, wells.size()):
+		if (wells[i] as Rect2).position.y - (wells[i - 1] as Rect2).end.y < 2.0 * Parts.SCREEN_RIM:
+			bad.append("two waiting shipments' wells meet")
+	_check(bad.is_empty(), "%s: no case's rim over another's (%s)" % [tag, "clear" if bad.is_empty() else "; ".join(bad)])
 
 var _failed := 0
 

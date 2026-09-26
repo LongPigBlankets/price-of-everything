@@ -5,7 +5,6 @@ extends RefCounted
 
 const Heading := preload("res://scripts/bdp_v3_heading.gd")
 const Led := preload("res://scripts/bdp_v3_led.gd")
-const Counter := preload("res://scripts/bdp_v3_counter.gd")
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 const Indicator := preload("res://scripts/bdp_v3_indicator.gd")
@@ -41,6 +40,19 @@ const KEY_PRINT_ROOM := 12.0
 const SIGN_PAD := Vector2(30.0, 13.0)
 ## The shut door: the room above and below its sign, over the slats.
 const SIGN_MARGIN := 9.0
+## Building Detail's navy quantity pill (`_qty_pill` with `inside`): its height, how far inside the icon's
+## corner it sits (QTY_PILL_INSET), the count from which it shows thousands as K (so a deposit's thousands
+## stay a pill in the corner rather than a band across the well), and the count from which the K is whole.
+const PILL_H := 22
+const PILL_INSET := 5
+const PILL_THOUSANDS := 1000
+const PILL_WHOLE_THOUSANDS := 10000
+## A plate of Building Detail's dark metal standing on its own (`BdpV3Section` "slab"): its inside margin
+## above and below its rows. Across, its rows start where every framed section's rows start, so the tab's
+## columns run straight through it. It stands SLAB_SIDE in from the body's edges, where the framed
+## sections' rims show.
+const SLAB_PAD_Y := 16
+const SLAB_SIDE := 3
 
 ## The widths `money_width` has measured, by cell count (each measure makes a screen to read its size).
 static var _money_widths := {}
@@ -198,39 +210,6 @@ static func result_colour(figure: float) -> Color:
 	return DS.PALETTE.OK if figure > 0.0 else DS.PALETTE.DANGER
 
 
-## How much larger than Building Detail's the tab draws its drum counters: to the height of its LED
-## screens, so a row's units and its £ stand one height on one midline.
-static func drum_scale() -> float:
-	var screen := Led.CELL.y + 2.0 * Led.PAD.y + 2.0 * Led.RIM / Led.CAPTURE_SCALE
-	return screen / (Counter.HEIGHT / Counter.CAPTURE_SCALE)
-
-
-## A drum counter showing `value` on `drums` drums, drawn at `drum_scale`. It rolls from the reading the
-## panel last showed under `key`, so a figure that changes with the turn turns over like an odometer; the
-## readings are kept on the panel, which outlives each rebuild of the tab.
-static func counter(panel: Control, key: String, value: float, drums: int) -> Control:
-	var c: Control = Counter.new()
-	c.call("configure", drums, 0)
-	var readings: Dictionary = panel.get_meta("tvp_prod_readings", {})
-	c.call("set_value", value, float(readings[key]) if readings.has(key) else NAN)
-	readings[key] = value
-	panel.set_meta("tvp_prod_readings", readings)
-	var k := drum_scale()
-	var mount := Control.new()
-	mount.name = "Drums"
-	mount.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	mount.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	mount.custom_minimum_size = c.custom_minimum_size * k
-	c.scale = Vector2(k, k)
-	mount.add_child(c)
-	return mount
-
-
-## The width of a drum counter with `drums` drums, as `counter` draws it.
-static func counter_width(drums: int) -> float:
-	return (2.0 * Counter.CAP + drums * Counter.CELL) / Counter.CAPTURE_SCALE * drum_scale()
-
-
 ## True when the good has art to show.
 static func has_icon(good_id: String) -> bool:
 	var internal := str(Catalog.get_good(good_id).get("internal_name", ""))
@@ -250,10 +229,11 @@ static func _frame(host: Control) -> void:
 	host.add_child(well)
 
 
-## A good's cream icon tile set below a thin metal frame (Building Detail's `_v3_set_in_well`), no pill:
-## its quantity is on a drum beside it. Hovering names the good with `lines` under it; a click opens it in
-## the encyclopedia, as every good's icon does.
-static func good_in_well(good_id: String, px: int, lines := PackedStringArray()) -> Control:
+## A good's cream icon tile set below a thin metal frame (Building Detail's `_v3_set_in_well`), with its
+## quantity on the navy pill inside the icon's corner (`qty` text, "" for none), as every good's quantity
+## shows in the game. Hovering names the good with `lines` under it; a click opens it in the encyclopedia,
+## as every good's icon does.
+static func good_in_well(good_id: String, px: int, lines := PackedStringArray(), qty := "") -> Control:
 	var internal := str(Catalog.get_good(good_id).get("internal_name", ""))
 	var icon := UIHelpers.make_plain_good_icon(good_id, internal, px)
 	var tile := icon.get_child(0) as PanelContainer
@@ -262,15 +242,62 @@ static func good_in_well(good_id: String, px: int, lines := PackedStringArray())
 		st.set_corner_radius_all(roundi(WELL_RADIUS))
 		tile.add_theme_stylebox_override("panel", st)
 	_frame(icon)
+	if qty != "":
+		icon.add_child(pill(qty))
 	if icon.get("detail_lines") != null:
 		icon.set("detail_lines", lines)
 	UIHelpers.link_good_icon_to_encyclopedia(icon, good_id)
 	return icon
 
 
+## A count as the pill prints it: the whole number below PILL_THOUSANDS, then thousands as K with one
+## decimal ("1.9K", "2K"), whole from PILL_WHOLE_THOUSANDS ("12K"). Rounded down, so a deposit's pill never
+## shows more than is left; the well's hover gives the exact count.
+static func pill_text(qty: int) -> String:
+	if qty < PILL_THOUSANDS:
+		return str(qty)
+	if qty >= PILL_WHOLE_THOUSANDS:
+		return "%dK" % floori(qty / 1000.0)
+	var tenths := floori(qty / 100.0)
+	var whole := floori(tenths / 10.0)
+	var tenth := tenths - whole * 10
+	return "%dK" % whole if tenth == 0 else "%d.%dK" % [whole, tenth]
+
+
+## Building Detail's navy quantity pill, kept inside the icon's bottom right corner, over the well's frame.
+static func pill(text: String) -> Control:
+	var w := maxi(PILL_H, text.length() * 9 + 14)
+	var p := PanelContainer.new()
+	p.name = "QtyPill"
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.custom_minimum_size = Vector2(w, PILL_H)
+	p.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	p.offset_left = -w - PILL_INSET
+	p.offset_top = -PILL_H - PILL_INSET
+	p.offset_right = -PILL_INSET
+	p.offset_bottom = -PILL_INSET
+	var st := StyleBoxFlat.new()
+	st.bg_color = DS.PALETTE["BG_PANEL"]
+	st.set_corner_radius_all(int(PILL_H / 2.0))
+	st.set_border_width_all(2)
+	st.border_color = DS.PALETTE["BORDER_STRONG"]
+	p.add_theme_stylebox_override("panel", st)
+	var l := Label.new()
+	l.name = "Qty"
+	l.theme_type_variation = "Numeric"
+	l.text = text
+	l.add_theme_color_override("font_color", DS.PALETTE["ACCENT"])
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_child(l)
+	return p
+
+
 ## The same well for a deposit whose good has no art: the cream tile with the good's name printed on it in
-## navy capitals, so the row keeps its icon's place and says plainly what the ground holds.
-static func named_well(text: String, px: int) -> Control:
+## navy capitals, so the row keeps its icon's place and says plainly what the ground holds. With a `qty`
+## its pill sits in the corner as on any good, and the name stands above the pill's band, clear of it.
+static func named_well(text: String, px: int, qty := "") -> Control:
 	var root := Control.new()
 	root.name = "NamedWell"
 	root.custom_minimum_size = Vector2(px, px)
@@ -298,8 +325,13 @@ static func named_well(text: String, px: int) -> Control:
 	l.add_theme_constant_override("line_spacing", -3)
 	l.add_theme_color_override("font_color", NAVY)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if qty != "":
+		l.offset_top = 3
+		l.offset_bottom = -(PILL_H + PILL_INSET)
 	root.add_child(l)
 	_frame(root)
+	if qty != "":
+		root.add_child(pill(qty))
 	return root
 
 
@@ -344,7 +376,7 @@ static func mark(face_path: String, px: float, column: float) -> Control:
 
 
 ## The scale that stands Building Detail's wide key (`BdpV3ModKey`) at the cabinet's own keys' height
-## (`tile_cabinet_key.gd`, Build), so every key in the tab is one height and a column of them one rail.
+## (`tile_cabinet_key.gd`, Build); the tab's one wide key, the fold under the total, stands a step smaller.
 static func key_scale() -> float:
 	var cabinet := (CabinetKey.HEIGHT - 2.0 * CabinetKey.KEY_INSET) / CabinetKey.CAPTURE_SCALE
 	var wide := (ModKey.HEIGHT - 2.0 * ModKey.KEY_INSET) / ModKey.CAPTURE_SCALE
@@ -381,18 +413,10 @@ static func _wide_key(title: String, key_scale: float, button_name: String) -> B
 	return b
 
 
-## A key that goes somewhere: the wide key with its chevron pointing on (as Building Detail's economics
-## rows open), which calls `on_press`. Every key in the tab that opens a building is one of these; keys
-## that act (Build) are the cabinet's own, in capitals.
-static func link_button(title: String, key_scale: float, button_name: String, on_press: Callable) -> Button:
-	var b := _wide_key(title, key_scale, button_name)
-	b.pressed.connect(on_press)
-	return b
-
-
 ## A key that folds open what explains its figure, as Building Detail's Value added in production: the
 ## wide key, latched down with its chevron pointing down while `open`. Pressing it flips it and calls
-## `on_toggle` with the new state.
+## `on_toggle` with the new state. It is the tab's only wide key: every key that opens a building or
+## builds one is the cabinet's own, in capitals.
 static func fold_button(title: String, key_scale: float, button_name: String, open: bool, on_toggle: Callable) -> Button:
 	var b := _wide_key(title, key_scale, button_name)
 	var key := b.get_child(0) as Control
@@ -404,27 +428,27 @@ static func fold_button(title: String, key_scale: float, button_name: String, op
 	return b
 
 
-## The width a wide key needs to print `title` at its full size, chevron and rims included.
-static func link_key_width(title: String, key_scale: float) -> float:
-	var print_w := Plate.FONT_BOLD.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, roundi(22 * key_scale)).x
-	return print_w + (34.0 + 2.0 * ModKey.FACE_INSET / ModKey.CAPTURE_SCALE) * key_scale
+## One of the cabinet's cream keys (`tile_cabinet_key.gd`, as Build and Buy Land) printing `text` in navy
+## capitals, `width` wide at the cabinet keys' height, named `key_name` so a test or the tutorial can find
+## and press it. It calls `on_press` when pressed (an empty Callable connects nothing, for a caller that
+## connects its own once it holds the key).
+static func cabinet_key(text: String, key_name: String, width: float, tip: String, on_press: Callable) -> Control:
+	var key: Control = CabinetKey.new()
+	key.name = key_name
+	key.size_flags_horizontal = Control.SIZE_SHRINK_END
+	key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	key.custom_minimum_size.x = width
+	key.set("text", text)
+	key.tooltip_text = tip
+	if on_press.is_valid():
+		key.connect("pressed", on_press)
+	return key
 
 
 ## The width a cabinet key (`tile_cabinet_key.gd`, as Buy Land) needs to print `text` at its full size.
 static func cabinet_key_width(text: String) -> float:
 	var print_w := Plate.FONT_SEMI.get_string_size(text.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, CabinetKey.LABEL_PX).x
 	return print_w + 6.0 + 2.0 * CabinetKey.FACE_INSET / CabinetKey.CAPTURE_SCALE + 2.0 * KEY_PRINT_ROOM
-
-
-## The bay's rolling door rolled up under the heading while goods are made (Building Detail's shipments
-## bay with every row in use): its housing with the bottom bar tucked under it, reaching `reach` beyond
-## its sides to the frame's rim, and shading the top of the bay. The same door `shut_door` lets down.
-static func rolled_door(reach: float) -> Control:
-	var door: Control = Door.new()
-	door.name = "RolledDoor"
-	door.set("reach", reach)
-	door.custom_minimum_size.y = Door.rolled_up_height()
-	return door
 
 
 ## A bay's rolling door let down to its foot over an empty bay (Building Detail's shipments door,
@@ -473,6 +497,37 @@ static func sign_plate(text: String) -> MarginContainer:
 	words.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
 	(plate.get("content") as VBoxContainer).add_child(words)
 	return plate
+
+
+## A plate of Building Detail's dark metal on its own, a silver screw near each corner (`BdpV3Section`
+## "slab"): a thing apart from the framed sections round it. It stands SLAB_SIDE in from the body's edges,
+## so its dark edge lines up with the framed sections' rims rather than reaching past them, and its rows
+## start and end where a framed section's rows do, clear of its screws, so the tab's columns run straight
+## through it. Returns the mount (named `slab_name`); the plate is its child, its rows in the plate's
+## `content`.
+static func slab(slab_name: String, row_gap: int) -> MarginContainer:
+	var mount := MarginContainer.new()
+	mount.name = slab_name
+	mount.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mount.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mount.add_theme_constant_override("margin_left", SLAB_SIDE)
+	mount.add_theme_constant_override("margin_right", SLAB_SIDE)
+	var plate: MarginContainer = Section.new()
+	plate.name = "Plate"
+	plate.set("style", "slab")
+	var inset := roundi(Section.RIM + Section.PADDING) - SLAB_SIDE
+	plate.add_theme_constant_override("margin_left", inset)
+	plate.add_theme_constant_override("margin_right", inset)
+	plate.add_theme_constant_override("margin_top", SLAB_PAD_Y)
+	plate.add_theme_constant_override("margin_bottom", SLAB_PAD_Y)
+	(plate.get("content") as VBoxContainer).add_theme_constant_override("separation", row_gap)
+	mount.add_child(plate)
+	return mount
+
+
+## The rows of a plate `slab` made.
+static func slab_content(mount: MarginContainer) -> VBoxContainer:
+	return (mount.get_child(0) as Control).get("content")
 
 
 ## A groove pressed across a plate over `row`, in the middle of the `gap` above it, where one group of rows

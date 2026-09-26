@@ -4,24 +4,26 @@ extends RefCounted
 ## `panel` is the tile view (scripts/tile_info_panel_v2.gd): its tile, its signals and its helpers.
 ##
 ## The yard, top to bottom, each part in Building Detail v3's kit:
-##   Warehouse (a dark plate in a steel frame). Its capacity line: what is stored on an LED screen against
-##     the one capacity (amber when nearly full, red when full, as the fill), and Expand beside it saying
-##     what the tile will hold. Under it, the fill as a level bar on the screens' glass (stock_gauge.gd): a
+##   Warehouse (a dark plate in a steel frame). Its head: the heading over what is stored against the one
+##     capacity on a dot matrix ("375 OF 1400", a mark lit amber when nearly full and red when full, as
+##     the fill); on the right "Upgrade to Lvl2" over a strip saying what the next level holds
+##     ("CAPACITY: 1400 → 2200"). Under it, the fill as a level bar on the screens' glass (stock_gauge.gd): a
 ##     slice a good, the biggest tagged with their icons, each on a short line to its slice or, when they
 ##     had to spread to fit, together on a shelf whose legs stand on the stretch of fill they name; a
 ##     dashed mark with PEAK lit beside it when last turn's peak stood above today's level; and under it
 ##     the scale of what the capacity is made of ("800 warehouse L1", "+600 port"). A tag or a slice picks
 ##     its good as the bay does. Under the bar, in one text column, each a raised icon and a lamp: last
 ##     turn's peak (or, when it ran out of room, that line and the way out), the shipments waiting to
-##     unload under it, when it will be full, where the surplus goes, and goods that went building to
-##     building. Beside the bar and its lines, the surplus knob exactly as built, the warehouse's outlet.
+##     unload under it (each on one line, its good in a well with its quantity pill), when it will be full,
+##     where the surplus goes, and goods that went building to building. Beside the bar and its lines, the
+##     surplus knob exactly as built, the warehouse's outlet.
 ##   Stored goods (a dark plate): Building Detail's shipments bay, four to a row, most first, each good in
 ##     its well with its quantity pill inside and its name under it, under the rolled up door; the door is
 ##     down over an empty bay. Picking a good opens the Move or sell sheet; pointing at one lights its
 ##     slice and its tag in the warehouse's bar. More than eight: a wide key opens the rest.
 ##   Logistics (the diagnostics' black plastic), in intermediary games only: a knob for the inputs and one
 ##     for the outputs of every building here, and a readout for the option under the pointer.
-## Warehouse expansion and Move or sell are sheets that slide in over the body (stock_sheets.gd). The
+## The warehouse's upgrade and Move or sell are sheets that slide in over the body (stock_sheets.gd). The
 ## controls show only where you own land or have goods (TileInfoPanel.player_present_on_tile); elsewhere
 ## the warehouse is a shut door, one bay row high, under a heading that says what it would hold.
 ##
@@ -56,9 +58,10 @@ const CELL_H := CELL_ICON + 4.0 + NAME_H
 ## and the one by a good in the bay that leaves every turn.
 const ROW_ICON_PX := 24.0
 const EVERY_TURN_PX := 20.0
-## A waiting shipment's good, in a well a line high.
-const SHIPMENT_ICON_PX := 28
-const NBSP := "\u00a0"
+## A waiting shipment's good, in a well big enough for its quantity pill, and the room kept above and below
+## its well.
+const SHIPMENT_ICON_PX := 48
+const SHIPMENT_GAP := 6
 const ICON_PATH := "res://assets/ui/bdp_v3/diag_icon_%s.png"
 ## The room between the tab's sections, between the warehouse's readings and its knob, between an icon,
 ## its lamp and its words, and between one line and the next.
@@ -66,6 +69,8 @@ const SECTION_GAP := 14
 const KNOB_GAP := 14
 const ROW_SEP := 8
 const LINE_GAP := 4
+## Between the head's two rows: clear of the key's bezel, which reaches past its cap.
+const HEAD_ROW_GAP := 10
 ## Every line keeps one row's height (the surplus line whatever the pointer shows in it).
 const SURPLUS_LINE_H := 28.0
 ## The turns the fill's trend is taken over (Stockpile.turns_until_full's own default, and the transport
@@ -77,8 +82,12 @@ const FILL_WARN := 0.9
 ## change smaller than this share of the capacity (at least one unit) reads as steady.
 const ETA_RED_TURNS := 3
 const TREND_DEAD_BAND := 0.01
-## Under a red line about room: what makes room, each beside it (the bay below, the knob, Expand above).
-const WAY_OUT := "Sell, move or expand to make room"
+## Under a red line about room: what makes room, each beside it (the bay below, the knob, the upgrade key
+## above).
+const WAY_OUT := "Sell, move or upgrade to make room"
+## How far a bay's rolling door reaches past the section's content towards its frame: to just inside the
+## dark plate, clear of the frame's inner bevel, so the door's housing never sits on the frame's rim.
+const DOOR_REACH := Section.PADDING - 3.0
 ## The logistics knobs are a little smaller than the surplus knob.
 const LOGISTICS_KNOB := 100.0
 ## Where the surplus goes, by route: the raised icon, and the line under the bar.
@@ -108,6 +117,7 @@ static func build(panel: Control, pane: VBoxContainer) -> void:
 	var tile := str(panel.get("_current_tile_id"))
 	pane.add_theme_constant_override("separation", SECTION_GAP)
 	if tile == "":
+		Parts.close(panel)
 		return
 	var present := bool(panel.call("player_present_on_tile", tile))
 	# Another tile starts at the top of the body.
@@ -116,27 +126,41 @@ static func build(panel: Control, pane: VBoxContainer) -> void:
 		var scroll := panel.get("_body_scroll") as ScrollContainer
 		if scroll != null:
 			scroll.set_deferred("scroll_vertical", 0)
-	# A sheet over the body: Move or sell for a picked good, or the warehouse's expansion.
-	if not (panel.get("_stock_sel") as Dictionary).is_empty() and Sheets.move_or_sell(panel, pane, tile):
-		return
 	var quote: Dictionary = MatchState.warehouse_upgrade_quote(tile)
-	if bool(panel.get("_warehouse_expand")):
-		if present and not bool(quote.get("maxed", false)):
-			Sheets.expand(panel, pane, tile)
-			return
+	if bool(panel.get("_warehouse_expand")) and (not present or bool(quote.get("maxed", false))):
 		panel.set("_warehouse_expand", false)
-	panel.set_meta("tvp_stock_sheet", "")
 	var stock := TileViewData.stockpile_summary(tile)
-	# Nothing can be stored where you have neither land nor goods: the warehouse says what it would hold.
+	# The body is always built, so a sheet slides in over it and it is there, as it was, when Back is pressed.
 	if not present:
+		# Nothing can be stored where you have neither land nor goods: the warehouse says what it would hold.
 		pane.add_child(_idle(tile, stock))
-		return
-	var gauge: Control = Gauge.new()
-	pane.add_child(_warehouse(panel, tile, stock, quote, gauge))
-	pane.add_child(_bay(panel, tile, stock, gauge))
-	var logistics: Dictionary = MiddlemanService.tile_sides(tile)
-	if _has_logistics(logistics):
-		pane.add_child(_logistics(panel, logistics))
+	else:
+		var gauge: Control = Gauge.new()
+		pane.add_child(_warehouse(panel, tile, stock, quote, gauge))
+		var bay := _bay(panel, tile, stock, gauge)
+		pane.add_child(bay)
+		if bool(panel.get_meta("tvp_stock_reveal_bay", false)):
+			panel.set_meta("tvp_stock_reveal_bay", false)
+			var scroll := panel.get("_body_scroll") as ScrollContainer
+			if scroll != null:
+				# Its top at the top of the view, once the body is laid out.
+				panel.get_tree().process_frame.connect(func() -> void:
+					if is_instance_valid(bay) and is_instance_valid(scroll):
+						scroll.scroll_vertical = int(bay.global_position.y - scroll.global_position.y + scroll.scroll_vertical - 8.0),
+					CONNECT_ONE_SHOT)
+		var logistics: Dictionary = MiddlemanService.tile_sides(tile)
+		if _has_logistics(logistics):
+			pane.add_child(_logistics(panel, logistics))
+	# A sheet over the body: Move or sell for a picked good, or the warehouse's upgrade. Only while this tab
+	# is the one showing: the sheet lies outside the pane, over whatever the body shows.
+	if pane.visible:
+		if not (panel.get("_stock_sel") as Dictionary).is_empty() and Sheets.move_or_sell(panel, tile):
+			return
+		if bool(panel.get("_warehouse_expand")):
+			Sheets.expand(panel, tile)
+			return
+	Parts.close(panel)
+	panel.set_meta("tvp_stock_sheet", "")
 
 
 static func _refresh(panel: Control) -> void:
@@ -156,38 +180,39 @@ static func _warehouse(panel: Control, tile: String, stock: Dictionary, quote: D
 	var tone := _summary_tone(stock)
 	var parts := _capacity_parts(tile, cap)
 
-	# The capacity line: what is stored against the one capacity, and Expand beside it saying what it buys.
-	var head := HBoxContainer.new()
+	# The head: the heading over what is stored against the capacity, on the left; the upgrade key over
+	# the strip that says what the next level holds, on the right.
+	var head := GridContainer.new()
 	head.name = "WarehouseHead"
-	head.add_theme_constant_override("separation", 8)
-	head.add_child(Parts.heading("Warehouse"))
+	head.columns = 3
+	head.add_theme_constant_override("h_separation", 12)
+	head.add_theme_constant_override("v_separation", HEAD_ROW_GAP)
+	var title := Parts.heading("Warehouse")
+	title.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	head.add_child(title)
 	head.add_child(Parts.spacer())
-	var stored := Parts.led(str(used), tone_colour(tone), str(cap).length())
-	stored.name = "StoredLed"
-	stored.tooltip_text = "Stored on this tile now"
-	stored.mouse_filter = Control.MOUSE_FILTER_PASS
-	head.add_child(stored)
-	var of := Parts.metal("of %d" % cap)
-	of.name = "CapacityLabel"
+	var maxed := bool(quote.get("maxed", false))
+	head.add_child(_upgrade_key(panel, quote))
+	var stored := Parts.dots("%d OF %d" % [used, cap], tone)
+	stored.name = "StoredDots"
 	var tips := PackedStringArray()
 	for p: Dictionary in parts:
 		tips.append(str(p.tip).to_lower())
-	of.tooltip_text = "This tile holds %d: %s" % [cap, ", ".join(tips)]
-	of.mouse_filter = Control.MOUSE_FILTER_PASS
-	head.add_child(of)
-	if bool(quote.get("maxed", false)):
-		# Expand's key stays in its place, greyed, saying why there is nothing to press.
-		var done: Control = CabinetKey.new()
-		done.name = "WarehouseMaxed"
-		done.text = "Fully expanded"
-		done.disabled = true
-		done.custom_minimum_size.x = 150.0
-		done.size_flags_horizontal = Control.SIZE_SHRINK_END
-		done.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		done.tooltip_text = "The warehouse is at level %d, its highest" % int(quote.get("level", 1))
-		head.add_child(done)
-	else:
-		head.add_child(_expand_key(panel, cap, quote, parts))
+	stored.tooltip_text = "%d stored on this tile. It holds %d: %s" % [used, cap, ", ".join(tips)]
+	stored.mouse_filter = Control.MOUSE_FILTER_PASS
+	stored.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	head.add_child(stored)
+	var gap := Control.new()
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(gap)
+	var next_cap := cap if maxed else Sheets.capacity_at(tile, int(quote.get("next_level", 2)))
+	var strip := Parts.dots("CAPACITY: %s" % (str(cap) if maxed else Sheets.capacity_change(cap, next_cap)))
+	strip.name = "CapacityStrip"
+	strip.tooltip_text = ("The warehouse is at its highest level, %d, and this tile holds %d" % [int(quote.get("level", 1)), cap]) if maxed \
+		else ("At level %d this tile holds %d, %d more than now" % [int(quote.get("next_level", 2)), next_cap, next_cap - cap])
+	strip.mouse_filter = Control.MOUSE_FILTER_PASS
+	strip.size_flags_horizontal = Control.SIZE_FILL
+	head.add_child(strip)
 	c.add_child(head)
 
 	# On the left the fill (a slice a good, the biggest tagged, over what the capacity is made of) and its
@@ -198,11 +223,17 @@ static func _warehouse(panel: Control, tile: String, stock: Dictionary, quote: D
 	var left := VBoxContainer.new()
 	left.name = "WarehouseFill"
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left.alignment = BoxContainer.ALIGNMENT_CENTER
+	# From the top, so the bar sits under the head wherever it is, tagged or not.
+	left.alignment = BoxContainer.ALIGNMENT_BEGIN
 	left.add_theme_constant_override("separation", 6)
 	body.add_child(left)
 	gauge.set_fill(stock.goods, used, cap, Stockpile.get_peak_used(tile), parts, tone)
 	gauge.connect("picked", func(gid: String) -> void: panel.call_deferred("select_stock_good", gid))
+	# The "+N" tile opens every good in the bay and brings the bay into view.
+	gauge.connect("more_picked", func() -> void:
+		panel.set_meta("tvp_stock_all_goods", tile)
+		panel.set_meta("tvp_stock_reveal_bay", true)
+		_refresh(panel))
 	left.add_child(gauge)
 	var lines := VBoxContainer.new()
 	lines.name = "WarehouseReadings"
@@ -241,38 +272,30 @@ static func _backlog(lines: VBoxContainer, tile: String, stock: Dictionary) -> v
 	var units := 0
 	for r: Dictionary in overflow:
 		units += int(r.get("qty", 0))
-	var said := ("%d units waiting to unload" % units) if overflow.size() == 1 \
-		else ("%d units in %d shipments waiting to unload" % [units, overflow.size()])
-	var waiting := _row("source", "bad" if bool(stock.is_full) else "warn", said)
+	var waiting := _row("source", "bad" if bool(stock.is_full) else "warn", "%d units waiting to unload" % units)
 	waiting.name = "OverflowHead"
-	waiting.tooltip_text = "Shipments that reached this tile but wait to unload until there is room"
+	waiting.tooltip_text = "%d shipment%s reached this tile and wait to unload until there is room" % [
+		overflow.size(), "" if overflow.size() == 1 else "s"]
 	lines.add_child(waiting)
 	for r: Dictionary in overflow:
 		lines.add_child(_overflow_row(r))
 
 
-## Expand, on the capacity line, saying what the tile will hold once the warehouse is a level up. With a
-## capacity modifier in play the new total isn't simply the sum, so it says what the level adds instead.
-static func _expand_key(panel: Control, cap: int, quote: Dictionary, parts: Array) -> Control:
-	var now_level := int(quote.get("current_cap", 0))
-	var next_level := int(quote.get("next_cap", 0))
-	var gain := next_level - now_level
-	var exact := true
-	for p: Dictionary in parts:
-		if bool(p.get("modifier", false)):
-			exact = false
-	var units := 0
-	for p: Dictionary in parts:
-		units += int(p.units)
-	exact = exact and units == cap
+## The upgrade key, over its strip in the warehouse's head: "Upgrade to Lvl2", the next level's number; at the
+## highest level it stays in its place, greyed, saying so.
+static func _upgrade_key(panel: Control, quote: Dictionary) -> Control:
 	var key: Control = CabinetKey.new()
-	key.name = "ExpandWarehouse"
-	key.text = ("Expand to %d" % (cap + gain)) if exact else ("Expand +%d" % gain)
-	key.custom_minimum_size.x = 150.0
-	key.size_flags_horizontal = Control.SIZE_SHRINK_END
+	key.size_flags_horizontal = Control.SIZE_FILL
 	key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	key.tooltip_text = "Warehouse level %d holds %d, %d more than level %d. See what it takes." % [
-		int(quote.get("next_level", 2)), next_level, gain, int(quote.get("level", 1))]
+	if bool(quote.get("maxed", false)):
+		key.name = "WarehouseMaxed"
+		key.text = "Fully upgraded"
+		key.disabled = true
+		key.tooltip_text = "The warehouse is at level %d, its highest" % int(quote.get("level", 1))
+		return key
+	key.name = "UpgradeWarehouse"
+	key.text = "Upgrade to Lvl%d" % int(quote.get("next_level", 2))
+	key.tooltip_text = "See what the upgrade takes and pay for it"
 	key.pressed.connect(func() -> void:
 		panel.set("_warehouse_expand", true)
 		_refresh(panel))
@@ -290,7 +313,7 @@ static func _fill_line(tile: String, stock: Dictionary) -> Control:
 			else "Full now, more goods will be turned away"
 		var full := _row("stock", "bad", fact, true, WAY_OUT)
 		full.name = "FullRow"
-		full.tooltip_text = "Sell or move goods from the bay below, sell the surplus with the knob, or expand the warehouse"
+		full.tooltip_text = "Sell or move goods from the bay below, sell the surplus with the knob, or upgrade the warehouse"
 		return full
 	var peak := Stockpile.get_peak_used(tile)
 	var row := _row("unsold", fill_tone(peak, cap), "Last turn's peak %d%%" % roundi(float(peak) / float(maxi(cap, 1)) * 100.0))
@@ -379,14 +402,6 @@ static func _surplus_row(tile: String, knob_box: Control) -> Control:
 			(buttons[i] as Control).mouse_entered.connect(func() -> void: put.call(id, text))
 			(buttons[i] as Control).mouse_exited.connect(back)
 	return row
-
-
-## A tone's figure colour on an LED: amber when nearly full, red when full, else white as the keys' LEDs.
-static func tone_colour(tone: String) -> Color:
-	match tone:
-		"bad": return DS.PALETTE.DANGER
-		"warn": return DS.PALETTE.WARN
-	return DS.PALETTE.TEXT
 
 
 ## The fill's tone from the stockpile summary's own status (the Stock key's lamp reads the same).
@@ -479,57 +494,55 @@ static func _row(icon: String, tone: String, text: String, danger := false, then
 
 
 ## A shipment that reached this tile but can't unload while it is full, under the line that counts them,
-## in the lines' text column: the good in its well, then one sentence, how much and where from by name
-## (the coordinates on hover) and how long it has waited, the wait in amber.
+## in the lines' text column, on one line: the good in its well with its quantity on its pill, then its
+## name and how long it has waited, the wait in amber. Where it came from, by name and coordinates, is on
+## hover.
 static func _overflow_row(r: Dictionary) -> Control:
 	var indent := MarginContainer.new()
 	indent.name = "OverflowShipment"
 	indent.mouse_filter = Control.MOUSE_FILTER_PASS
 	indent.add_theme_constant_override("margin_left", roundi(_text_x()))
+	# Room above and below the well, so its rim never meets the next one's.
+	indent.add_theme_constant_override("margin_top", SHIPMENT_GAP)
+	indent.add_theme_constant_override("margin_bottom", SHIPMENT_GAP)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", ROW_SEP)
+	row.add_theme_constant_override("separation", ROW_SEP + 4)
 	row.mouse_filter = Control.MOUSE_FILTER_PASS
-	row.custom_minimum_size.y = SURPLUS_LINE_H
 	indent.add_child(row)
 	var gid := str(r.get("good_id", ""))
-	row.add_child(Parts.good_in_well(gid, SHIPMENT_ICON_PX))
-	var src := str(r.get("source_tile", ""))
-	var from := (" from %s" % Parts.tile_words(src)) if src != "" else ""
+	var qty := int(r.get("qty", 0))
+	row.add_child(Parts.good_in_well(gid, SHIPMENT_ICON_PX, qty, true))
 	var turns := int(r.get("turns_waiting", 0))
-	var what := "%d %s%s" % [int(r.get("qty", 0)), Catalog.get_display_name(gid), from]
-	var wait := "waiting %d turn%s" % [turns, "" if turns == 1 else "s"]
-	# The wait is kept whole (no break spaces) so a narrow column wraps before it, never inside it.
-	var words := _sentence("%s, [color=#%s]%s[/color]" % [what.replace("[", "[lb]"), DS.PALETTE.WARN.to_html(false),
-		wait.replace(" ", NBSP)])
+	# One line whatever the name: it doesn't wrap, and a name too long for the column is cut at its end.
+	var words := RichTextLabel.new()
 	words.name = "ShipmentWords"
+	words.bbcode_enabled = true
+	words.autowrap_mode = TextServer.AUTOWRAP_OFF
+	words.scroll_active = false
+	words.fit_content = false
+	words.clip_contents = true
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	words.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	words.custom_minimum_size.y = SURPLUS_LINE_H
+	words.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	words.add_theme_font_override("normal_font", Parts.UIFonts.PLEX_MED)
+	words.add_theme_font_size_override("normal_font_size", Parts.BODY_PX)
+	words.add_theme_color_override("default_color", DS.PALETTE.TEXT)
+	words.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+	words.add_theme_constant_override("shadow_offset_x", 1)
+	words.add_theme_constant_override("shadow_offset_y", 1)
+	words.text = "%s, [color=#%s]waiting %d turn%s[/color]" % [Catalog.get_display_name(gid).replace("[", "[lb]"),
+		DS.PALETTE.WARN.to_html(false), turns, "" if turns == 1 else "s"]
 	row.add_child(words)
-	var tip := "%s, %s to unload" % [what, wait]
+	var src := str(r.get("source_tile", ""))
+	var tip := "%d %s%s, waiting %d turn%s to unload" % [qty, Catalog.get_display_name(gid),
+		(" from %s" % Parts.tile_words(src)) if src != "" else "", turns, "" if turns == 1 else "s"]
 	if src != "":
 		tip += "\nFrom %s" % Parts.coords(src)
 	indent.tooltip_text = tip
 	words.tooltip_text = tip
+	words.mouse_filter = Control.MOUSE_FILTER_PASS
 	return indent
-
-
-## Body text as one wrapping sentence that may carry colour ([color] tags), embossed as Parts.body is.
-static func _sentence(bbcode: String) -> RichTextLabel:
-	var r := RichTextLabel.new()
-	r.bbcode_enabled = true
-	r.fit_content = true
-	r.scroll_active = false
-	r.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	r.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	r.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	r.custom_minimum_size.x = 120.0
-	r.mouse_filter = Control.MOUSE_FILTER_PASS
-	r.add_theme_font_override("normal_font", Parts.UIFonts.PLEX_MED)
-	r.add_theme_font_size_override("normal_font_size", Parts.BODY_PX)
-	r.add_theme_color_override("default_color", DS.PALETTE.TEXT)
-	r.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
-	r.add_theme_constant_override("shadow_offset_x", 1)
-	r.add_theme_constant_override("shadow_offset_y", 1)
-	r.text = bbcode
-	return r
 
 
 # --- A warehouse that isn't yours: a shut door ------------------------------------------------------------
@@ -556,7 +569,7 @@ static func _idle(tile: String, stock: Dictionary) -> Control:
 	c.add_child(head)
 	var door: Control = Door.new()
 	door.name = "IdleDoor"
-	door.reach = Section.PADDING
+	door.reach = DOOR_REACH
 	door.custom_minimum_size.y = Door.rolled_up_height() + CELL_H
 	var notice := VBoxContainer.new()
 	notice.name = "IdleSign"
@@ -568,7 +581,7 @@ static func _idle(tile: String, stock: Dictionary) -> Control:
 	var shut := Parts.metal("Closed", HORIZONTAL_ALIGNMENT_CENTER)
 	shut.add_theme_font_size_override("font_size", 20)
 	notice.add_child(shut)
-	var why := Parts.metal("Yours to use once you own land or keep goods here", HORIZONTAL_ALIGNMENT_CENTER)
+	var why := Parts.metal("Opens once you own land or keep goods here", HORIZONTAL_ALIGNMENT_CENTER)
 	why.name = "IdleNote"
 	why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	notice.add_child(why)
@@ -605,7 +618,7 @@ static func _bay(panel: Control, tile: String, stock: Dictionary, gauge: Control
 	# The door is up over a bay in use, its housing across the top; down over an empty one.
 	var door: Control = Door.new()
 	door.name = "BayDoor"
-	door.reach = Section.PADDING
+	door.reach = DOOR_REACH
 	door.custom_minimum_size.y = Door.rolled_up_height()
 	c.add_child(door)
 	if goods.is_empty():

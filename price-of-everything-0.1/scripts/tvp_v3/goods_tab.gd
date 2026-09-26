@@ -3,41 +3,43 @@ extends RefCounted
 ## refresh while UiPrefs.use_tvp_v3 is on. With the switch off the v2 panel builds the tab itself.
 ## `panel` is the tile view (scripts/tile_info_panel_v2.gd): its tile, its signals and its helpers.
 ##
-## Framed sections on the body's navy steel, in the order a player asks of a site: what it earns, what it
-## makes, and what the ground holds.
-##   economics       each of your buildings here on a key that opens it, beside its net value added, best
-##                   first; ruled off under them the tile's total (the Goods key's figure) on a key that
-##                   folds open Building Detail's value bars, what the goods fetch against what the
-##                   buildings spend (closed at first); then what the tile sold last turn, the one figure
-##                   here that is money banked (while it sold something or your buildings here make goods).
-##   the output bay  a dark plate, its rolling door up in its housing under the heading: each good your
-##                   buildings make here this turn in a well, its units on a drum counter and their value
-##                   at market on an LED screen, by value. With nothing made the door is down to its foot,
-##                   a sign on it saying why. With none of your buildings here the bay gives way to a line.
-##   deposits        each deposit the survey shows, what works it, its units left, and its key; or why
-##                   there are none to show.
+## In the order a player asks of a site: what it earns, what it makes, and what the ground holds.
+##   economics       with two or more of your buildings here, a framed section: each building's emblem, its
+##                   kind over what it makes and its letter ("Industrial Goods Factory" over "Motor E"), its
+##                   Open key, and its net value added on an LED screen, best first.
+##   the result      a plate of dark metal of its own, apart from the buildings above it: the tile's net
+##                   value added (the Goods key's figure) on its screen, and under it the key that folds
+##                   open Building Detail's value bars, what the goods fetch against what the buildings
+##                   spend (closed at first). With one building the plate names it as an Economics row does,
+##                   under the title, and carries its Open key, so its figure shows once. Ruled off under
+##                   it, what the tile sold last turn, the one figure here that is money banked (while it
+##                   sold something or your buildings make goods).
+##   the output bay  a framed dark plate: each good your buildings make here this turn in a well, its
+##                   quantity on the pill in the icon's corner as every good's is, and its value at market on
+##                   an LED screen, by value. With nothing made, or none of your buildings here, the bay's
+##                   rolling door is down to its foot with a sign on it saying why.
+##   deposits        each deposit the survey shows in a well, its units left on the pill, what works it, and
+##                   its key; or why there are none to show.
 ## One grid runs down the tab: an icon column (a good in its well, anything else a raised mark centred in
-## the same column), the row's words from one x, then two figure columns at the right. The units column
-## holds drum counters, each with the drums its own figure needs, set at the column's right edge. The money
-## column is as wide as the £ screens (every screen has the same cells) on every tile, and a deposit's key
-## fills it. Every key in the tab stands at the cabinet keys' height. Captions for the columns sit on each
-## section's heading line.
+## the same column), the row's words from one x, then the key column and the money column at the right.
+## The money column is as wide as the £ screens (every screen has the same cells) and is there whenever the
+## tab shows money. Every key in the tab, Open or Build, is one of the cabinet's cream keys, one width on
+## every tile and in the one key column beside the money column. The one wide key with a chevron is the fold
+## under the total, a step smaller. Captions for the columns sit on each section's heading line.
 ## Every figure is the engine's: BuildingEconomics.per_turn (Building Detail's), added up as
 ## TileViewData.production_summary adds it for the Goods key, TileViewData.sales_summary,
 ## TileViewData.survey_gated_deposits and the construction projects' own turns.
 
 const Parts := preload("res://scripts/tvp_v3/goods_parts.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
-const Counter := preload("res://scripts/bdp_v3_counter.gd")
-const ValueBar := preload("res://scripts/bdp_v3_value_bar.gd")
-const CabinetKey := preload("res://scripts/tile_cabinet_key.gd")
+const ValueBar := preload("res://scripts/tvp_v3/goods_value_bar.gd")
 const TileViewData := preload("res://scripts/tile_view_data.gd")
 const BuildingEconomics := preload("res://scripts/building_economics.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 
 ## The room between sections, between a row's columns, and between rows (DS.SP MD, the wells' frames
 ## clear of each other). Rows of keys stand closer: their bezels keep the room between them.
-const SECTION_GAP := 8
+const SECTION_GAP := 12
 const COL_GAP := 12
 const ROW_GAP := 12
 const KEY_ROW_GAP := 10
@@ -45,22 +47,25 @@ const KEY_ROW_GAP := 10
 ## lorry, the survey pick) is raised at MARK_PX, sized by its drawn art, and centred in it.
 const ICON_COL := 64
 const MARK_PX := 44.0
-## The fewest drums on a counter (Building Detail's workers counter), and the fewest cells on a £ screen
-## (Building Detail's economics screens, five figures with their pence).
-const MIN_DRUMS := 3
+## The fewest cells on a £ screen (Building Detail's economics screens, five figures with their pence).
 const MIN_MONEY_CELLS := 5
-## How far the bay's door reaches past its row to the frame's rim, at its sides and (shut) its foot.
-const DOOR_REACH := Section.PADDING
-## The words on the keys a deposit row can carry.
+## How far the bay's door reaches past its row towards the frame, at its sides and (shut) its foot: to the
+## rim's inner edge and no further, so the door never lies over the frame.
+const DOOR_REACH := Section.PADDING - 2.0
+## The fold key's size against the cabinet keys': a step smaller, as Building Detail nests its keys, so
+## its print stays under the total it explains.
+const FOLD_KEY_SCALE := 0.8
+## The words on the keys a row can carry: Open a building, or Build one (another, while one is going up, as
+## the row's line says).
 const OPEN := "Open"
 const BUILD := "Build"
-const BUILD_ANOTHER := "Build another"
+const FOLD_TITLE := "Revenue and costs"
 ## Where the panel keeps whether the value bars are folded open, across refreshes and tiles.
 const BARS_OPEN_META := "tvp_prod_bars_open"
-## The raised marks: the sales lorry, the survey pick, and the outputs gear from Building Detail's plate.
+## The raised marks: the sales lorry, the survey pick, and the coins of Building Detail's value bars.
 const FREIGHT_ICON := "res://assets/ui/bdp_v3/diag_icon_freight.png"
 const SURVEY_ICON := "res://assets/ui/bdp_v3/diag_icon_deposit.png"
-const OUTPUT_ICON := "res://assets/ui/bdp_v3/block_icon_output.png"
+const VALUE_ICON := "res://assets/ui/bdp_v3/econ_icon_value.png"
 
 
 static func build(panel: Control, pane: VBoxContainer) -> void:
@@ -74,18 +79,16 @@ static func build(panel: Control, pane: VBoxContainer) -> void:
 	# (then nothing sold says the goods went elsewhere). A tile making only power sells none at market.
 	var sold := int(sales.units) > 0 or float(sales.revenue) > 0.0
 	var show_sales := sold or not (prod.rows as Array).is_empty()
-	var here := _yours_here(tile)
 	var gated := TileViewData.survey_gated_deposits(tile, tile_data)
 	var deposits: Array = []
 	for d: Dictionary in gated.rows:
 		deposits.append(_deposit_view(tile, d))
-	var grid := columns(yours, prod, sales, show_sales, deposits)
+	var grid := columns(yours, prod, sales, show_sales)
+	if yours.size() > 1:
+		pane.add_child(_economics(panel, tile, yours, grid))
 	if not yours.is_empty() or sold:
-		pane.add_child(_economics(panel, tile, prod, yours, sales if show_sales else {}, grid))
-	if here:
-		pane.add_child(_output_bay(panel, tile, prod, yours, grid))
-	else:
-		pane.add_child(_none_here())
+		pane.add_child(_result(panel, tile, prod, yours, sales if show_sales else {}, grid))
+	pane.add_child(_output_bay(tile, prod, yours, _yours_here(tile), grid))
 	pane.add_child(_deposits(panel, tile, gated, deposits, grid))
 
 
@@ -130,20 +133,14 @@ static func summary(yours: Array) -> Dictionary:
 	return {"net_value": net, "rows": rows}
 
 
-## The drums a count shows on: as many as its own figure needs, at least MIN_DRUMS.
-static func drums(value: float) -> int:
-	return Counter.drums_for(value, 0, MIN_DRUMS)
-
-
 ## The tab's figure columns, one width in every section so they run straight down it:
 ##   cells, money_w    every £ screen's cells (as many as the largest figure needs, at least
-##                     MIN_MONEY_CELLS) and the money column's width, the screens' own, on every tile;
-##   key_w             a deposit key's width: the money column's where the tab shows £ screens, so the keys
-##                     and the screens share both edges, or the widest key's own where it shows none;
-##   units_w           the units column: its widest counter (or a deposit's size in words);
-##   bay_units, deposit_units   the widest figure in the bay's and in Deposits' units column, for centring
-##                     each heading's caption over its own figures at the column's right edge.
-static func columns(yours: Array, prod: Dictionary, sales: Dictionary, show_sales: bool, deposits: Array) -> Dictionary:
+##                     MIN_MONEY_CELLS) and the money column's width, the screens' own;
+##   shows_money       whether the tab shows any £ screen, so its sections keep the money column;
+##   key_w             the key column's width, beside the money column: every key the tab shows (Open in
+##                     Economics, on the result plate and on a worked deposit, and a deposit's Build) is
+##                     this wide on every tile, the wider print's with its room.
+static func columns(yours: Array, prod: Dictionary, sales: Dictionary, show_sales: bool) -> Dictionary:
 	var cells := maxi(MIN_MONEY_CELLS, Parts.money_cells(float(prod.net_value)))
 	for y: Dictionary in yours:
 		cells = maxi(cells, Parts.money_cells(float(y.econ.get("net_value_added", 0.0))))
@@ -151,20 +148,9 @@ static func columns(yours: Array, prod: Dictionary, sales: Dictionary, show_sale
 		cells = maxi(cells, Parts.money_cells(float(r.value)))
 	if show_sales:
 		cells = maxi(cells, Parts.money_cells(float(sales.revenue)))
-	var bay_units := 0.0
-	for r: Dictionary in prod.rows:
-		bay_units = maxf(bay_units, Parts.counter_width(drums(float(r.qty))))
-	var deposit_units := 0.0
-	var key_natural := 0.0
-	for v: Dictionary in deposits:
-		key_natural = maxf(key_natural, Parts.link_key_width(v.key_text, Parts.key_scale()) if v.link \
-			else Parts.cabinet_key_width(v.key_text))
-		deposit_units = maxf(deposit_units, Parts.counter_width(drums(float(v.size_qty))) if v.on_drums \
-			else Parts.body_width(v.size_text))
-	var money_w := Parts.money_width(cells)
-	var shows_money := not yours.is_empty() or show_sales
-	return {"cells": cells, "money_w": money_w, "key_w": money_w if shows_money else ceilf(key_natural),
-		"units_w": ceilf(maxf(bay_units, deposit_units)), "bay_units": bay_units, "deposit_units": deposit_units}
+	var shows_money := not yours.is_empty() or show_sales or not (prod.rows as Array).is_empty()
+	return {"cells": cells, "money_w": Parts.money_width(cells), "shows_money": shows_money,
+		"key_w": ceilf(maxf(Parts.cabinet_key_width(OPEN), Parts.cabinet_key_width(BUILD)))}
 
 
 ## True when you have a building, or one going up, on the tile.
@@ -197,23 +183,23 @@ static func _row(row_name: String, icon: Control) -> HBoxContainer:
 	return row
 
 
-## A row's words: its title (semibold) and, when there is one, a line under it.
-static func _words(title: String, line := "") -> VBoxContainer:
+## A row's words: its title (semibold, or `title_px` for the total's emphasis) and the `lines` under it, each
+## trimmed with an ellipsis rather than widening the body.
+static func _words(title: String, lines := PackedStringArray(), title_px := Parts.BODY_PX) -> VBoxContainer:
 	var info := VBoxContainer.new()
 	info.name = "Words"
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	info.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	info.add_theme_constant_override("separation", 2)
-	info.add_child(Parts.body(title, true))
-	if line != "":
-		info.add_child(Parts.body(line))
+	var t := Parts.body(title, true, title_px)
+	t.name = "Title"
+	info.add_child(t)
+	for line in lines:
+		var l := Parts.body(line)
+		l.name = "Line"
+		info.add_child(l)
 	return info
-
-
-## A count on its own drums, at the units column's right edge.
-static func _units(panel: Control, key: String, value: float, grid: Dictionary) -> Control:
-	return Parts.at_end(Parts.counter(panel, key, value, drums(value)), float(grid.units_w), "Units")
 
 
 ## A £ figure on the tab's screens: every one the money column's width.
@@ -221,61 +207,111 @@ static func _money(figure: float, grid: Dictionary) -> Control:
 	return Parts.money(figure, Parts.result_colour(figure), int(grid.cells))
 
 
+## One of your buildings here named in two parts, as every row names it: its kind, and what it makes with
+## its letter ("Industrial Goods Factory", "Motor E"). The game's name for it (BuildingNaming,
+## "Industrial Goods Factory - Motor - E") is split at its separators, which the tab never prints.
+static func name_parts(tile: String, building: Dictionary) -> PackedStringArray:
+	var full := BuildingNaming.label_for_tile(tile, str(building.get("instance_id", "")),
+		str(building.get("building_id", "")), str(building.get("recipe_id", "")))
+	var parts := full.split(" - ", false)
+	if parts.size() <= 1:
+		return PackedStringArray([full, ""])
+	return PackedStringArray([parts[0], " ".join(parts.slice(1))])
+
+
+## A building's two part name on one line, for a hover ("Industrial Goods Factory, Motor E").
+static func _name_line(parts: PackedStringArray) -> String:
+	return parts[0] if parts[1] == "" else "%s, %s" % [parts[0], parts[1]]
+
+
+## The cabinet key that opens one of your buildings, the key column wide.
+static func _open_key(panel: Control, tile: String, building: Dictionary, grid: Dictionary) -> Control:
+	var iid := str(building.get("instance_id", ""))
+	return Parts.cabinet_key(OPEN, "OpenBuilding_%s" % iid, float(grid.key_w),
+		"Open %s" % _name_line(name_parts(tile, building)),
+		func() -> void:
+			var live := BuildingState.get_building(iid)
+			if not live.is_empty():
+				panel.building_clicked.emit(live))
+
+
 # --- Economics ---------------------------------------------------------------------------------------
 
-## Your buildings' economics, then what the tile sold last turn (`sales`, or {} to leave it out).
-static func _economics(panel: Control, tile: String, prod: Dictionary, yours: Array, sales: Dictionary,
-		grid: Dictionary) -> Control:
-	var sec := _section("Economics", "Economics", [["Per turn", grid.money_w]], "steel", KEY_ROW_GAP)
+## Two or more of your buildings: each one's emblem, its name (its kind as the title, what it makes and its
+## letter under it), its Open key and its net value added, best first. The total stands apart from them on
+## its own plate (`_result`).
+static func _economics(panel: Control, tile: String, yours: Array, grid: Dictionary) -> Control:
+	var sec := _section("Economics", "Economics", [["", grid.key_w], ["Per turn", grid.money_w]], "steel",
+		KEY_ROW_GAP)
 	var vb: VBoxContainer = sec.get("content")
-	if not yours.is_empty():
-		var best := yours.duplicate()
-		best.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-			return float(a.econ.net_value_added) > float(b.econ.net_value_added))
-		for y: Dictionary in best:
-			vb.add_child(_building_row(panel, tile, y.building, float(y.econ.net_value_added), grid))
-		_add_total(panel, vb, float(prod.net_value), yours, grid)
-	if not sales.is_empty():
-		var row := _sales_row(sales, grid)
-		if not yours.is_empty():
-			Parts.groove_over(row, KEY_ROW_GAP)
+	var best := yours.duplicate()
+	best.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return float(a.econ.net_value_added) > float(b.econ.net_value_added))
+	for y: Dictionary in best:
+		var building: Dictionary = y.building
+		var row := _row("Building_%s" % str(building.get("instance_id", "")),
+			Parts.mark(Parts.EMBLEM % str(building.get("building_id", "")), MARK_PX, ICON_COL))
+		var parts := name_parts(tile, building)
+		row.add_child(_words(parts[0], PackedStringArray([parts[1]]) if parts[1] != "" else PackedStringArray()))
+		row.add_child(_open_key(panel, tile, building, grid))
+		row.add_child(_money(float(y.econ.net_value_added), grid))
 		vb.add_child(row)
 	return sec
 
 
-## One of your buildings: its emblem, its name on a key that opens it, its net value added.
-static func _building_row(panel: Control, tile: String, building: Dictionary, nva: float, grid: Dictionary) -> HBoxContainer:
-	var iid := str(building.get("instance_id", ""))
-	var bid := str(building.get("building_id", ""))
-	var row := _row("Building_%s" % iid, Parts.mark(Parts.EMBLEM % bid, MARK_PX, ICON_COL))
-	var title := BuildingNaming.label_for_tile(tile, iid, bid, str(building.get("recipe_id", "")))
-	var key := Parts.link_button(title, Parts.key_scale(), "OpenBuilding_%s" % iid, func() -> void:
-		var live := BuildingState.get_building(iid)
-		if not live.is_empty():
-			panel.building_clicked.emit(live))
-	key.tooltip_text = "Open %s" % title
-	row.add_child(key)
-	row.add_child(_money(nva, grid))
-	return row
+## The result, on a plate of dark metal of its own: the tile's net value added on its screen, and the key
+## that folds open what makes it (Building Detail's Value added in production: each good's revenue against
+## the inputs, labour, upkeep and transport, on one scale), closed at first, its state kept on the panel so
+## once opened the bars stay open across refreshes and tiles. With one building the plate names it under
+## the title as an Economics row names one (its kind over what it makes and its letter) and carries its
+## Open key. Ruled off under it, what the tile sold last turn (`sales`, or {} to leave it out).
+static func _result(panel: Control, tile: String, prod: Dictionary, yours: Array, sales: Dictionary,
+		grid: Dictionary) -> Control:
+	var plate := Parts.slab("Result", KEY_ROW_GAP)
+	var vb := Parts.slab_content(plate)
+	if not yours.is_empty():
+		var total := float(prod.net_value)
+		var row: HBoxContainer
+		if yours.size() == 1:
+			var building: Dictionary = yours[0].building
+			row = _row("NetValueAdded", Parts.mark(Parts.EMBLEM % str(building.get("building_id", "")), MARK_PX, ICON_COL))
+			var parts := name_parts(tile, building)
+			var lines := PackedStringArray([parts[0]])
+			if parts[1] != "":
+				lines.append(parts[1])
+			row.add_child(_words("Net value added", lines, Parts.STRONG_PX))
+			row.add_child(_open_key(panel, tile, building, grid))
+			row.tooltip_text = "What this building adds a turn, before tax."
+		else:
+			row = _row("NetValueAdded", Parts.mark(VALUE_ICON, MARK_PX, ICON_COL))
+			row.add_child(_words("Net value added", PackedStringArray(["Per turn, before tax"]), Parts.STRONG_PX))
+			row.tooltip_text = "What your buildings here add a turn, before tax."
+		row.add_child(_money(total, grid))
+		vb.add_child(row)
+		_add_fold(panel, vb, yours, grid)
+	if not sales.is_empty():
+		var sold_row := _sales_row(sales, grid)
+		if not yours.is_empty():
+			Parts.groove_over(sold_row, KEY_ROW_GAP)
+		vb.add_child(sold_row)
+	return plate
 
 
-## The tile's net value added, ruled off under its buildings as a sum is, on a key that folds open what
-## makes it (Building Detail's Value added in production): the value bars, each good's revenue against
-## the inputs, labour, upkeep and transport, on one scale. Closed at first. Its state is kept on the
-## panel, so once opened the bars stay open across refreshes and tiles.
-static func _add_total(panel: Control, vb: VBoxContainer, total: float, yours: Array, grid: Dictionary) -> void:
+## The key under the total that folds its value bars open, from the words' x to the money column, and the
+## bars under it while it is open.
+static func _add_fold(panel: Control, vb: VBoxContainer, yours: Array, grid: Dictionary) -> void:
 	var open := bool(panel.get_meta(BARS_OPEN_META, false))
 	var bars := VBoxContainer.new()
 	bars.name = "ValueBars"
 	bars.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var row := _row("NetValueAdded", Parts.spacer(ICON_COL))
-	var key := Parts.fold_button("Net value added", Parts.key_scale(), "NetValueAddedKey", open, func(now: bool) -> void:
-		panel.set_meta(BARS_OPEN_META, now)
-		_show_bars(bars, yours, now))
-	key.tooltip_text = "What your buildings here add a turn, before tax. Press for what the goods fetch against what the buildings spend."
+	var row := _row("Fold", Parts.spacer(ICON_COL))
+	var key := Parts.fold_button(FOLD_TITLE, Parts.key_scale() * FOLD_KEY_SCALE, "RevenueAndCostsKey", open,
+		func(now: bool) -> void:
+			panel.set_meta(BARS_OPEN_META, now)
+			_show_bars(bars, yours, now))
+	key.tooltip_text = "What the goods fetch against what the buildings spend."
 	row.add_child(key)
-	row.add_child(_money(total, grid))
-	Parts.groove_over(row, KEY_ROW_GAP)
+	row.add_child(Parts.spacer(float(grid.money_w)))
 	vb.add_child(row)
 	vb.add_child(bars)
 	_show_bars(bars, yours, open)
@@ -295,7 +331,7 @@ static func _show_bars(bars: VBoxContainer, yours: Array, open: bool) -> void:
 static func _sales_row(sales: Dictionary, grid: Dictionary) -> HBoxContainer:
 	var row := _row("SoldLastTurn", Parts.mark(FREIGHT_ICON, MARK_PX, ICON_COL))
 	row.tooltip_text = "Goods from this tile sold at market last turn, and what they fetched."
-	row.add_child(_words("Sold last turn", sold_line(int(sales.units))))
+	row.add_child(_words("Sold last turn", PackedStringArray([sold_line(int(sales.units))])))
 	row.add_child(_money(float(sales.revenue), grid))
 	return row
 
@@ -337,26 +373,29 @@ static func _tile_economics(yours: Array) -> Dictionary:
 
 # --- The output bay --------------------------------------------------------------------------------
 
-static func _output_bay(panel: Control, tile: String, prod: Dictionary, yours: Array, grid: Dictionary) -> Control:
+## The bay: what your buildings here make this turn, or its door down with a sign saying why nothing is in
+## it (`here`: you have a building on the tile or one going up).
+static func _output_bay(tile: String, prod: Dictionary, yours: Array, here: bool, grid: Dictionary) -> Control:
 	var rows: Array = prod.rows
-	var captions := [["Units", grid.units_w, grid.bay_units], ["Value", grid.money_w]] if not rows.is_empty() else []
+	var captions := [["Value", grid.money_w]] if not rows.is_empty() else []
 	var bay := _section("OutputBay", "Outputs this turn", captions, "dark")
 	var vb: VBoxContainer = bay.get("content")
 	if rows.is_empty():
-		# Nothing made: the bay's rolling door is down from the heading to the frame's rim, and a sign on
-		# it says why.
-		vb.add_child(Parts.shut_door(nothing_made_note(tile, yours), DOOR_REACH))
+		# Nothing made: the bay's rolling door is down from the heading to the frame, and a sign on it says
+		# why.
+		vb.add_child(Parts.shut_door(nothing_made_note(tile, yours, here), DOOR_REACH))
 		return bay
-	# Goods made: the same door rolled up into its housing over them.
-	vb.add_child(Parts.rolled_door(DOOR_REACH))
+	# Goods made: the door is away and the goods stand in the bay under the heading.
 	for r: Dictionary in rows:
-		vb.add_child(_bay_row(panel, r, grid))
+		vb.add_child(_bay_row(r, grid))
 	return bay
 
 
-## Why the bay is empty while you have something on the tile: buildings that make no goods this turn (a
-## power plant, one stalled or starting), or only buildings still going up.
-static func nothing_made_note(tile: String, yours: Array) -> String:
+## Why the bay is empty: none of your buildings here, buildings that make no goods this turn (a power
+## plant, one stalled or starting), or only buildings still going up.
+static func nothing_made_note(tile: String, yours: Array, here := true) -> String:
+	if not here:
+		return "You have no buildings here."
 	if yours.is_empty():
 		var going_up := Construction.projects_on_tile(tile).size()
 		if going_up == 1:
@@ -366,37 +405,23 @@ static func nothing_made_note(tile: String, yours: Array) -> String:
 	return "Your buildings here make no goods this turn."
 
 
-## One good in the bay: its icon in a well, its name and market price, this turn's units on the drums and
-## their value at market on the screen.
-static func _bay_row(panel: Control, r: Dictionary, grid: Dictionary) -> HBoxContainer:
+## One good in the bay: its icon in a well with this turn's quantity on its pill, its name and market
+## price, and the quantity's value at market on the screen.
+static func _bay_row(r: Dictionary, grid: Dictionary) -> HBoxContainer:
 	var gid := str(r.good_id)
 	var qty := int(r.qty)
 	var value := float(r.value)
 	var row := _row("Output_%s" % gid, Parts.good_in_well(gid, ICON_COL, PackedStringArray([
-		"Made this turn: %d" % qty, "Worth £%.2f at market" % value])))
-	row.add_child(_words(str(r.display_name), "Market price £%.2f" % MarketState.get_price(gid)))
-	row.add_child(_units(panel, "out:%s" % gid, float(qty), grid))
+		"Made this turn: %d" % qty, "Worth £%.2f at market" % value]), Parts.pill_text(qty)))
+	row.add_child(_words(str(r.display_name), PackedStringArray(["Market price £%.2f" % MarketState.get_price(gid)])))
 	row.add_child(_money(value, grid))
 	return row
-
-
-## With none of your buildings on the tile, one line in the bay's place: nothing of yours makes goods here.
-static func _none_here() -> Control:
-	var line := MarginContainer.new()
-	line.name = "NoBuildingsHere"
-	var inset := roundi(Section.RIM + Section.PADDING)
-	line.add_theme_constant_override("margin_left", inset)
-	line.add_theme_constant_override("margin_right", inset)
-	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	line.add_child(_note("NothingMade", OUTPUT_ICON, "You have no buildings making goods here."))
-	return line
 
 
 # --- Deposits ----------------------------------------------------------------------------------------
 
 static func _deposits(panel: Control, tile: String, gated: Dictionary, deposits: Array, grid: Dictionary) -> Control:
-	var captions := [["Left", grid.units_w, grid.deposit_units], ["", grid.key_w]] if not deposits.is_empty() else []
-	var sec := _section("Deposits", "Deposits", captions)
+	var sec := _section("Deposits", "Deposits")
 	var vb: VBoxContainer = sec.get("content")
 	if str(gated.status) == "unsurveyed":
 		vb.add_child(_note("SurveyNote", SURVEY_ICON, survey_note(tile)))
@@ -418,8 +443,7 @@ static func survey_note(tile: String) -> String:
 	return "This tile is out of survey range. Survey more tiles to extend your range."
 
 
-## A line saying why there is nothing to show, beside its raised mark in the icon column like every row:
-## the outputs gear for goods, the survey pick in Deposits.
+## A line saying why there is nothing to show, beside its raised mark in the icon column like every row.
 static func _note(note_name: String, icon: String, text: String) -> HBoxContainer:
 	var note := _row(note_name, Parts.mark(icon, MARK_PX, ICON_COL))
 	var t := Parts.body(text, false, Parts.BODY_PX, true)
@@ -428,8 +452,9 @@ static func _note(note_name: String, icon: String, text: String) -> HBoxContaine
 	return note
 
 
-## What the survey says of a deposit's size, in words: water and a deposit the engine tracks no amount for
-## never run out (MatchState.has_infinite_deposit), a partial survey leaves the size unknown.
+## What the survey says of a deposit's size, in words (the well's hover, and the row's words where the
+## size has no count for the pill): water and a deposit the engine tracks no amount for never run out
+## (MatchState.has_infinite_deposit), a partial survey leaves the size unknown.
 static func deposit_size_text(tile: String, d: Dictionary) -> String:
 	var size_qty := int(d.get("size_qty", -1))
 	if bool(d.get("is_water", false)):
@@ -456,8 +481,8 @@ static func deposit_project(tile: String, token: String, opts: Variant = null) -
 	return {}
 
 
-## What works a deposit, the line that explains its key: yours or another company's building (Open),
-## one going up and its turns (Build another), or nothing yet (Build).
+## What works a deposit, the line that explains its key: your building or another company's (Open), one
+## going up and its turns (Build, another), or nothing yet (Build).
 static func deposit_state(d: Dictionary, project: Dictionary) -> String:
 	if bool(d.get("has_building", false)):
 		var worker := BuildingState.get_building(str(d.get("instance_id", "")))
@@ -472,67 +497,61 @@ static func deposit_state(d: Dictionary, project: Dictionary) -> String:
 
 
 ## A deposit read once for its row and for the tab's columns: the survey's row `d`, its size in words and
-## whether it goes on the drums, what works it, and its key (a link that opens the building working it, or
-## the cabinet's Build).
+## on the pill (its units left, "?" while a partial survey leaves them unknown, "" for a deposit that never
+## runs out, which says so in words instead), what works it, and its key.
 static func _deposit_view(tile: String, d: Dictionary) -> Dictionary:
 	var token := str(d.deposit_token)
 	var water := bool(d.get("is_water", false))
 	var size_qty := int(d.get("size_qty", -1))
+	var size_text := deposit_size_text(tile, d)
+	var shown := ""
+	if not water and size_qty >= 0:
+		shown = Parts.pill_text(size_qty)
+	elif size_text == "Size unknown":
+		shown = "?"
 	var worked := bool(d.get("has_building", false))
 	var opts: Array = [] if worked else TileViewData.deposit_build_options(token)
 	var project := {} if worked else deposit_project(tile, token, opts)
-	var key_text := OPEN if worked else (BUILD if project.is_empty() else BUILD_ANOTHER)
-	return {"d": d, "token": token, "size_qty": size_qty, "size_text": deposit_size_text(tile, d),
-		"on_drums": size_qty >= 0 and not water, "state": deposit_state(d, project), "link": worked,
-		"key_text": key_text, "opts": opts}
+	return {"d": d, "token": token, "size_qty": size_qty, "size_text": size_text, "pill": shown,
+		"state": deposit_state(d, project), "worked": worked, "going_up": not project.is_empty(), "opts": opts}
 
 
-## One deposit: the good in a well, its name and what works it, its units left on the drums (or the size in
-## words), and its key, the money column's width: Build (Build another while one is going up) in the
-## cabinet's own keys, or where a building already works it, a key that opens that building, as the
-## Economics rows open theirs.
+## One deposit: the good in a well with its units left on the pill, its name, what works it and, where the
+## size has no count for the pill, that it never runs out, then its key in the key column: Open where a
+## building already works it (as the Economics rows open theirs), or Build (another, while one is going
+## up). Where the tab shows money the row keeps the money column, empty, so its key stands in line
+## with the Open keys above.
 static func _deposit_row(panel: Control, tile: String, v: Dictionary, grid: Dictionary) -> HBoxContainer:
 	var d: Dictionary = v.d
 	var gid := str(d.good_id)
 	var token := str(v.token)
 	var water := bool(d.get("is_water", false))
 	var name := str(d.display_name) if water else "%s deposit" % str(d.display_name)
-	var icon: Control = Parts.good_in_well(gid, ICON_COL, PackedStringArray([str(v.size_text)])) \
-		if Parts.has_icon(gid) else Parts.named_well(str(d.display_name), ICON_COL)
+	var icon: Control = Parts.good_in_well(gid, ICON_COL, PackedStringArray([str(v.size_text)]), str(v.pill)) \
+		if Parts.has_icon(gid) else Parts.named_well(str(d.display_name), ICON_COL, str(v.pill))
 	var row := _row("Deposit_%s" % token, icon)
-	row.add_child(_words(name, str(v.state)))
-	if bool(v.on_drums):
-		row.add_child(_units(panel, "deposit:%s" % token, float(v.size_qty), grid))
-	else:
-		var words := Parts.body(str(v.size_text))
-		words.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
-		words.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		row.add_child(Parts.at_end(words, float(grid.units_w), "Units"))
+	var lines := PackedStringArray([str(v.state)])
+	if str(v.pill) == "":
+		lines.append(str(v.size_text))
+	row.add_child(_words(name, lines))
 	var key_w := float(grid.key_w)
-	if bool(v.link):
+	if bool(v.worked):
 		var iid := str(d.get("instance_id", ""))
-		var link := Parts.link_button(OPEN, Parts.key_scale(), "GoToBuilding_%s" % token, func() -> void:
-			panel.call("_go_to_building", iid))
-		link.size_flags_horizontal = Control.SIZE_SHRINK_END
-		link.custom_minimum_size.x = key_w
 		var worker := BuildingState.get_building(iid)
-		link.tooltip_text = "Open the building working this deposit" if worker.is_empty() else "Open %s" % \
-			BuildingNaming.label_for_tile(tile, iid, str(worker.get("building_id", "")), str(worker.get("recipe_id", "")))
-		row.add_child(link)
-		return row
-	var key: Control = CabinetKey.new()
-	key.name = "DepositKey"
-	key.size_flags_horizontal = Control.SIZE_SHRINK_END
-	key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	key.custom_minimum_size.x = key_w
-	key.set("text", str(v.key_text))
-	var opts: Array = v.opts
-	if opts.size() == 1:
-		key.tooltip_text = "Build a %s here" % str(opts[0].building_name)
-	elif opts.size() > 1:
-		key.tooltip_text = "Choose a building to put here"
+		var tip := "Open the building working this deposit" if worker.is_empty() \
+			else "Open %s" % _name_line(name_parts(tile, worker))
+		row.add_child(Parts.cabinet_key(OPEN, "GoToBuilding_%s" % token, key_w, tip, func() -> void:
+			panel.call("_go_to_building", iid)))
 	else:
-		key.tooltip_text = "Find a building that makes %s" % Catalog.get_display_name(gid)
-	key.connect("pressed", func() -> void: panel.call("_on_deposit_build", token, gid, key))
-	row.add_child(key)
+		var opts: Array = v.opts
+		var build_tip := "Find a building that makes %s" % Catalog.get_display_name(gid)
+		if opts.size() == 1:
+			build_tip = ("Build another %s here" if bool(v.going_up) else "Build a %s here") % str(opts[0].building_name)
+		elif opts.size() > 1:
+			build_tip = "Choose a building to put here"
+		var key := Parts.cabinet_key(BUILD, "DepositKey", key_w, build_tip, Callable())
+		key.connect("pressed", func() -> void: panel.call("_on_deposit_build", token, gid, key))
+		row.add_child(key)
+	if bool(grid.shows_money):
+		row.add_child(Parts.spacer(float(grid.money_w)))
 	return row

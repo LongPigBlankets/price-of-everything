@@ -1,14 +1,16 @@
 extends Button
 ## Tile view v3, Transport: a real Button (named, pressable by tests and the tutorial) drawn as one of the
 ## cabinet's own cream keys (res://assets/ui/bdp_v3/tile_key.png with its _pressed and _latched renders, a
-## horizontal three-slice drawn as scripts/tile_cabinet_key.gd draws the five tab keys). Its print is navy: the
-## action, and under it, smaller, what the action brings or costs, as Building Detail's Upgrade key prints
-## "Upgrade to Lv 2" over "+100% Output". A key that opens something has a chevron at its right end.
+## horizontal three-slice drawn as scripts/tile_cabinet_key.gd draws the five tab keys). Its print is navy:
+## the action in one word, Build or Upgrade; what the action costs and brings is on its hover card
+## (scripts/tvp_v3/transport_tip.gd, kept in `tip`), which opens inside the tile view's body. A key that
+## opens something can have a chevron at its right end. A second, smaller line under the action is still possible, as Building Detail's Upgrade key
+## prints one.
 ##
 ## While its job runs the key is latched as the cabinet's tab keys latch: the cap sunk to its bezel with the
 ## dark well showing round it, a shade darker, its print in the amber ink for light surfaces and a pilot
-## lamp lit amber in its left end, so it plainly can't be pressed again. A second line that warns (the
-## press would be refused, or can't be paid for) prints in the red ink for light surfaces.
+## lamp lit amber in its left end, so it plainly can't be pressed again. A key whose press would be refused
+## or can't be paid for prints in the red ink for light surfaces (`title_ink`), its card saying why.
 ##
 ## A key with nothing left to do (a link at its top level) is greyed as the cabinet greys a key it can't
 ## press (tile_cabinet_key.gd's DISABLED_TINT, its print faded), and keeps its place in the key column.
@@ -35,6 +37,9 @@ const SUNK := 1.0
 var title := ""
 var detail := ""
 var detail_ink := NAVY
+var title_ink := NAVY
+## The hover card (transport_tip.gd), shown in place of a plain tooltip when set.
+var tip: Dictionary = {}
 var chevron := false
 var busy := false
 var spent := false
@@ -165,7 +170,7 @@ func _draw() -> void:
 	draw_texture_rect_region(tex, Rect2(dest.end.x - cap_px, dest.position.y, cap_px, dest.size.y), Rect2(tw - cap_tx, 0, cap_tx, th), tint)
 
 	var face := _face()
-	var ink := AMBER_INK if busy else (Color(NAVY, 0.5) if spent else NAVY)
+	var ink := AMBER_INK if busy else (Color(NAVY, 0.5) if spent else title_ink)
 	var left := face.position.x + 6.0 * k
 	if busy:
 		left += _lamp_side() + 5.0
@@ -191,6 +196,10 @@ func _draw() -> void:
 		var c := 5.0 * k
 		draw_polyline(PackedVector2Array([Vector2(cx - c * 0.5, mid - c), Vector2(cx + c * 0.5, mid), Vector2(cx - c * 0.5, mid + c)]),
 			ink, 2.4 * k, true)
+
+
+func _make_custom_tooltip(_for_text: String) -> Object:
+	return load("res://scripts/tvp_v3/transport_tip.gd").make(tip, self) if not tip.is_empty() else null
 
 
 ## A line printed on `baseline`, centred across `room` (from its left on a key that opens something).

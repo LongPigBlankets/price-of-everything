@@ -1,23 +1,30 @@
 extends Node2D
 ## Captures of the tile view v3's Goods tab (scripts/tvp_v3/goods_tab.gd), in the real HUD at 1920 × 1080
 ## (two pixels each), after three turns:
-##   busy      the port tile tools/tvp_v3_shot.gd uses, with thirty motors sold so the sales row has
-##             figures, and surveyed with no deposits (the empty Deposits state)
-##   deposits  a surveyed tile with three deposits: a mine on its sand, a motor factory, a chemical works
-##             that loses money (a red row under a green total), and a sulphur works going up
-##   loss      the tile beside it with only a hydrogen power station: a red total, and the bay's door shut
-##   going_up  another tile beside it with only a building going up: the door shut, the going up note
-##   sold_only a tile beside the port with none of your buildings, where stock was sold last turn: the
-##             Economics section holds the sales row alone
-##   survey    an unsurveyed tile inside survey range (the Survey the tile note)
-##   empty     the unowned mountain tile out of survey range
+##   busy       the port tile tools/tvp_v3_shot.gd uses, with thirty motors sold so the sales row has
+##              figures, and surveyed with no deposits (the empty Deposits state)
+##   deposits   a surveyed tile with three deposits: a mine on its sand, a motor factory, a chemical works
+##              that loses money (a red row over a green total), and a sulphur works going up
+##   loss       the tile beside it with only a hydrogen power station: one building, so the result plate
+##              names it and there is no Economics list; a red total, and the bay's door shut
+##   going_up   another tile beside it with only a building going up: the door shut, the going up note
+##   sold_only  a tile beside the port with none of your buildings, where stock was sold last turn: the
+##              result plate holds the sales row alone, the bay shut with no buildings of yours
+##   unworked   a surveyed tile with deposits and none of your buildings: the bay shut, Build keys
+##   survey     an unsurveyed tile inside survey range (the Survey the tile note)
+##   empty      the unowned mountain tile out of survey range
 ## Each is paged down its whole body. Also prints how long the tab takes to build, checks that the
-## economics rows add up to the Goods key's figure, and presses a building's key.
+## economics rows add up to the Goods key's figure, that every key stands in the one key column at one
+## width, that each pill sits in its icon's corner, that the copy keeps the owner's rules (no dashes or
+## semicolons, no "Yours", no print under 12 px, the value bars' names at the caption size), audits every
+## part against its case for overlaps (a part over another, or over its case's rim or screws), and presses a
+## building's key.
 ## Then the busy and deposits tiles again with the total's key pressed (the value bars folded open).
 ##   Godot --path . res://tools/tvp_v3_goods_shot.tscn --quit-after 40000 -- --no-telemetry
 ## Writes tvp_v3_goods_<view>_p<n>.png into $TVP_SHOT_DIR (or /tmp).
 
 const GoodsTab := preload("res://scripts/tvp_v3/goods_tab.gd")
+const Section := preload("res://scripts/bdp_v3_section.gd")
 const TileViewData := preload("res://scripts/tile_view_data.gd")
 const BuildingEconomics := preload("res://scripts/building_economics.gd")
 const LOGICAL := Vector2i(1920, 1080)
@@ -115,6 +122,9 @@ func _ready() -> void:
 		views["going_up"] = up
 	if sold_only != "":
 		views["sold_only"] = sold_only
+	var unworked := _unworked_deposit_tile()
+	if unworked != "":
+		views["unworked"] = unworked
 	var survey := _surveyable_tile()
 	if survey != "":
 		views["survey"] = survey
@@ -128,7 +138,7 @@ func _ready() -> void:
 	# The total's key folds the value bars open under it (and the state is kept on the panel).
 	panel.call("show_tile", _tile(BUSY), "prod")
 	await _settle(8)
-	var fold: Button = panel.find_child("NetValueAddedKey", true, false)
+	var fold: Button = panel.find_child("RevenueAndCostsKey", true, false)
 	if fold != null:
 		fold.pressed.emit()
 		await _settle(10)
@@ -139,11 +149,15 @@ func _ready() -> void:
 		await _settle(8)
 		bars = panel.find_child("ValueBars", true, false)
 		print("[TVP_GOODS] after a refresh: bars shown %s" % (bars != null and bars.is_visible_in_tree()))
+		_copy((panel.find_child("OutputBay", true, false) as Control).get_parent(), "%s open" % BUSY)
+		_audit((panel.find_child("OutputBay", true, false) as Control).get_parent(), "%s open" % BUSY)
 		await _pages(panel, "busy_open")
 		panel.call("show_tile", _tile(DEPOSITS), "prod")
 		await _settle(10)
+		_copy((panel.find_child("OutputBay", true, false) as Control).get_parent(), "%s open" % DEPOSITS)
+		_audit((panel.find_child("OutputBay", true, false) as Control).get_parent(), "%s open" % DEPOSITS)
 		await _pages(panel, "deposits_open")
-		fold = panel.find_child("NetValueAddedKey", true, false)
+		fold = panel.find_child("RevenueAndCostsKey", true, false)
 		fold.pressed.emit()
 		await _settle(4)
 		bars = panel.find_child("ValueBars", true, false)
@@ -175,23 +189,23 @@ func _ready() -> void:
 	await _settle(4)
 	var opened: Array = []
 	panel.building_clicked.connect(func(b: Dictionary) -> void: opened.append(str(b.get("instance_id", ""))))
-	var key: Button = null
-	for n in panel.find_children("OpenBuilding_*", "Button", true, false):
+	var key: Control = null
+	for n in panel.find_children("OpenBuilding_*", "", true, false):
 		if (n as Control).is_visible_in_tree():
 			key = n
 			break
 	if key != null:
-		key.pressed.emit()
+		key.emit_signal("pressed")
 	print("[TVP_GOODS] key %s opened: %s" % [key.name if key != null else "(none)", str(opened)])
 	# The deposit's Go to building key opens the building working it.
 	opened.clear()
-	var go: Button = null
-	for n in panel.find_children("GoToBuilding_*", "Button", true, false):
+	var go: Control = null
+	for n in panel.find_children("GoToBuilding_*", "", true, false):
 		if (n as Control).is_visible_in_tree():
 			go = n
 			break
 	if go != null:
-		go.pressed.emit()
+		go.emit_signal("pressed")
 	print("[TVP_GOODS] key %s opened: %s" % [go.name if go != null else "(none)", str(opened)])
 	UiPrefs.set_use_tvp_v3(false)
 	print("[TVP_SHOT] done")
@@ -223,6 +237,28 @@ func _going_up_tile(beside: String) -> String:
 	return ""
 
 
+## A land tile with deposits and nothing of the player's on it, surveyed here, for Deposits with Build keys
+## under a shut bay.
+func _unworked_deposit_tile() -> String:
+	for tid in Catalog.all_tile_ids():
+		var t := str(tid)
+		if t == BUSY or t == DEPOSITS or t == EMPTY or not Construction.projects_on_tile(t).is_empty() \
+				or int(MatchState.get_tile_sales(t).get("units", 0)) > 0:
+			continue
+		var td := _tile(t)
+		var kind := str(td.get("type", "")).to_lower()
+		if kind == "" or kind.contains("sea") or kind.contains("ocean") or kind.contains("water"):
+			continue
+		var mine := false
+		for b: Dictionary in BuildingState.get_buildings_on_tile(t):
+			mine = mine or BuildingState.is_player_owned(b)
+		if mine or TileViewData.deposits_summary(t, td).size() < 2:
+			continue
+		MatchState.mark_tile_surveyed(t)
+		return t
+	return ""
+
+
 ## An unsurveyed land tile the player could survey now (inside survey range), for the Survey note.
 func _surveyable_tile() -> String:
 	for tid in Catalog.all_tile_ids():
@@ -238,7 +274,7 @@ func _surveyable_tile() -> String:
 	return ""
 
 
-## The economics rows add up to the Goods key's figure, and what each section shows.
+## The economics rows add up to the Goods key's figure, what each section shows, and the overlap audit.
 func _check(panel: Control, tile: String) -> void:
 	var prod := TileViewData.production_summary(tile)
 	var yours := GoodsTab.your_economics(tile)
@@ -253,87 +289,217 @@ func _check(panel: Control, tile: String) -> void:
 	for y: Dictionary in yours:
 		print("[TVP_GOODS] %s:   %s %s net value added %.2f" % [tile, str(y.building.get("building_id", "")),
 			str(y.building.get("recipe_id", "")), float(y.econ.get("net_value_added", 0.0))])
-	var pane: Node = panel.find_child("OutputBay", true, false)
+	var bay: Node = panel.find_child("OutputBay", true, false)
 	var scroll: ScrollContainer = panel.find_child("BodyScroll", true, false)
-	if pane != null and scroll != null:
-		var body_w := (pane.get_parent() as Control).get_combined_minimum_size().x
-		print("[TVP_GOODS] %s: body min width %.1f, room %.1f" % [tile, body_w, scroll.size.x - scroll.get_v_scroll_bar().size.x])
+	if bay == null:
+		print("[TVP_GOODS] %s: NO OUTPUT BAY" % tile)
+		return
+	var pane := bay.get_parent() as Control
+	if scroll != null:
+		print("[TVP_GOODS] %s: body min width %.1f, room %.1f" % [tile, pane.get_combined_minimum_size().x,
+			scroll.size.x - scroll.get_v_scroll_bar().size.x])
 	var gated := TileViewData.survey_gated_deposits(tile, _tile(tile))
 	print("[TVP_GOODS] %s: net %.4f outputs %d sales %s survey %s deposits %d note %s" % [tile,
 		float(prod.net_value), (prod.rows as Array).size(), str(TileViewData.sales_summary(tile)),
 		str(gated.status), (gated.rows as Array).size(), GoodsTab.survey_note(tile)])
+	var sections: Array = []
+	for c in pane.get_children():
+		sections.append(str(c.name))
+	print("[TVP_GOODS] %s: sections %s" % [tile, str(sections)])
 	# Where each row's words start, from the tab's left: one x for every row type.
 	var xs := {}
-	for n in panel.find_children("Words", "VBoxContainer", true, false):
+	for n in pane.find_children("Words", "VBoxContainer", true, false):
 		var c := n as Control
 		if c.is_visible_in_tree():
 			xs[str(c.get_parent().name).get_slice("_", 0)] = snappedf(c.global_position.x, 0.5)
-	for n in panel.find_children("OpenBuilding_*", "Button", true, false):
-		var c := n as Control
-		if c.is_visible_in_tree():
-			xs["key"] = snappedf(c.global_position.x, 0.5)
-	var nva: Node = panel.find_child("NetValueAdded", true, false)
-	if nva != null:
-		xs["total"] = snappedf((nva.get_child(1) as Control).global_position.x, 0.5)
-	for n in panel.find_children("*Note", "HBoxContainer", true, false):
+	var fold: Control = pane.find_child("RevenueAndCostsKey", true, false)
+	if fold != null:
+		xs["fold"] = snappedf(fold.global_position.x, 0.5)
+	for n in pane.find_children("*Note", "HBoxContainer", true, false):
 		var c := n as Control
 		if c.is_visible_in_tree() and c.get_child_count() > 1:
 			xs[str(c.name)] = snappedf((c.get_child(1) as Control).global_position.x, 0.5)
-	var none: Node = panel.find_child("NothingMade", true, false)
-	if none != null and (none as Control).is_visible_in_tree():
-		xs["NothingMade"] = snappedf((none.get_child(1) as Control).global_position.x, 0.5)
 	print("[TVP_GOODS] %s: text column x %s" % [tile, str(xs)])
 	# The grid: each figure column's edges, gathered across every section. One entry per column means its
 	# figures run straight down the tab.
-	var body: Node = panel.find_child("OutputBay", true, false)
-	if body == null:
-		body = panel.find_child("Deposits", true, false)
 	var cols := {}
-	if body != null:
-		for pattern: String in ["Units", "MoneyLed", "DepositKey", "GoToBuilding_*"]:
-			for n in body.get_parent().find_children(pattern, "", true, false):
-				var c := n as Control
-				if not c.is_visible_in_tree():
-					continue
-				var key := "units" if pattern == "Units" else ("money" if pattern == "MoneyLed" else "key")
-				if not cols.has(key):
-					cols[key] = {}
-				cols[key]["%.1f..%.1f" % [c.global_position.x, c.global_position.x + c.size.x]] = true
-		# Each counter's drums and its right edge: sized to its own figure, one right edge down the tab.
-		var counters: Array = []
-		for n in body.get_parent().find_children("BdpV3Counter", "", true, false):
+	for pattern: String in ["MoneyLed", "DepositKey", "GoToBuilding_*", "OpenBuilding_*"]:
+		for n in pane.find_children(pattern, "", true, false):
 			var c := n as Control
-			if c.is_visible_in_tree():
-				var mount := c.get_parent() as Control
-				counters.append("%d drums reading %d, right %.1f" % [int(c.get("drums")), int(c.get("value")),
-					mount.global_position.x + mount.size.x])
-		print("[TVP_GOODS] %s: counters %s" % [tile, str(counters)])
-		# Every key's height, and the print the cabinet keys fit their labels to.
-		var keys: Array = []
-		for n in body.get_parent().find_children("*", "", true, false):
-			var c := n as Control
-			if c == null or not c.is_visible_in_tree():
+			if not c.is_visible_in_tree():
 				continue
-			if c is Button and (c.name.begins_with("OpenBuilding_") or c.name.begins_with("GoToBuilding_") or c.name == "NetValueAddedKey"):
-				keys.append("%s h %.1f w %.1f" % [c.name, c.size.y, c.size.x])
-			elif c.name == "DepositKey":
-				var Plate: GDScript = load("res://scripts/bdp_v3_plate.gd")
-				var label := str(c.get("text")).to_upper()
-				var face := c.size.x - 2.0 * 15.6 / 1.875
-				var fs: int = Plate._fit(Plate.FONT_SEMI, label, 15, face - 6.0)
-				keys.append("%s %s h %.1f w %.1f print %d px" % [c.name, label, c.size.y, c.size.x, fs])
-		print("[TVP_GOODS] %s: keys %s" % [tile, str(keys)])
+			# Every key in the tab (Open, Build, Build another) stands in the one key column.
+			var key := "money" if pattern == "MoneyLed" else "key"
+			if not cols.has(key):
+				cols[key] = {}
+			cols[key]["%.1f..%.1f" % [c.global_position.x, c.global_position.x + c.size.x]] = true
 	for key: String in cols:
-		print("[TVP_GOODS] %s: %s column edges %s" % [tile, key, str((cols[key] as Dictionary).keys())])
-	var housing: Control = panel.find_child("RolledDoor", true, false)
-	if housing != null and housing.is_visible_in_tree():
-		print("[TVP_GOODS] %s: door rolled up under the heading, %.1f tall" % [tile, housing.size.y])
-	# The shut door reaches the frame's rim at its foot.
-	var door: Control = panel.find_child("ShutDoor", true, false)
+		print("[TVP_GOODS] %s: %s column edges %s%s" % [tile, key, str((cols[key] as Dictionary).keys()),
+			"" if (cols[key] as Dictionary).size() == 1 else " MORE THAN ONE"])
+	# Each good's quantity on its pill, and no drum counter or other display for it anywhere in the tab.
+	var pills: Array = []
+	for n in pane.find_children("QtyPill", "", true, false):
+		var p := n as Control
+		if p.is_visible_in_tree():
+			var host := p.get_parent() as Control
+			var inside := Rect2(host.global_position, host.size).encloses(Rect2(p.global_position, p.size))
+			# In the icon's corner: its right edge at the inset, its foot on the icon's (the pill's print is
+			# taller than its set height, so it stands a little lower than the inset, as Building Detail's
+			# does), and no wider than two thirds of the icon (three characters), so it reads as the corner
+			# pill rather than a band across the well.
+			var right_gap := host.global_position.x + host.size.x - (p.global_position.x + p.size.x)
+			var foot_gap := host.global_position.y + host.size.y - (p.global_position.y + p.size.y)
+			var corner := absf(right_gap - 5.0) < 0.6 and foot_gap >= 0.0 and foot_gap <= 5.5 \
+				and p.size.x <= host.size.x * 2.0 / 3.0
+			pills.append("%s %s w %.0f gaps %.1f,%.1f%s%s" % [str(host.get_parent().name), str((p.find_child("Qty", true, false) as Label).text),
+				p.size.x, right_gap, foot_gap, "" if inside else " OUTSIDE ITS ICON", "" if corner else " NOT IN THE CORNER"])
+	print("[TVP_GOODS] %s: pills %s, drum counters %d" % [tile, str(pills),
+		pane.find_children("BdpV3Counter", "", true, false).size()])
+	# Every key's height and width, and the print the cabinet keys fit their labels to.
+	var keys: Array = []
+	var Plate: GDScript = load("res://scripts/bdp_v3_plate.gd")
+	for n in pane.find_children("*", "", true, false):
+		var c := n as Control
+		if c == null or not c.is_visible_in_tree():
+			continue
+		if c.get("text") != null and c.has_signal("pressed") and not c is Button and not c is Label:
+			var label := str(c.get("text")).to_upper()
+			var face := c.size.x - 2.0 * 15.6 / 1.875
+			var fs: int = Plate._fit(Plate.FONT_SEMI, label, 15, face - 6.0)
+			keys.append("%s %s h %.1f w %.1f print %d px" % [c.name, label, c.size.y, c.size.x, fs])
+		elif c is Button and c.name == "RevenueAndCostsKey":
+			keys.append("%s h %.1f w %.1f" % [c.name, c.size.y, c.size.x])
+	print("[TVP_GOODS] %s: keys %s" % [tile, str(keys)])
+	var door: Control = pane.find_child("ShutDoor", true, false)
 	if door != null and door.is_visible_in_tree():
-		var bay := door.get_parent().get_parent() as Control
-		print("[TVP_GOODS] %s: door foot %.1f, bay rim %.1f, note %s" % [tile, door.global_position.y + door.size.y + 8.0,
-			bay.global_position.y + bay.size.y - 26.0 / 1.875, str((door.find_child("Note", true, false) as Label).text)])
+		print("[TVP_GOODS] %s: door shut, note %s" % [tile, str((door.find_child("Note", true, false) as Label).text)])
+	_copy(pane, tile)
+	_audit(pane, tile)
+
+
+## The owner's copy and text rules over everything the tab prints or says on hover: no hyphen or dash
+## between words, no semicolon, en or em dash or middle dot, never "Yours", and no print under 12 px
+## (body 14, captions 15). Prints each break.
+func _copy(pane: Control, tile: String) -> void:
+	var breaks: Array = []
+	var smallest := 99
+	for n in pane.find_children("*", "", true, false):
+		var c := n as Control
+		if c == null or not c.is_visible_in_tree():
+			continue
+		var said: Array = [c.tooltip_text]
+		if c is Label:
+			said.append((c as Label).text)
+			smallest = mini(smallest, (c as Label).get_theme_font_size("font_size"))
+		elif c.get("text") != null and c.has_signal("pressed") and not c is Button:
+			said.append(str(c.get("text")))
+		elif c.get("summary") != null:
+			said.append(str(c.get("summary")))
+		var lines_of: Variant = c.get("detail_lines")
+		if lines_of is PackedStringArray:
+			said.append_array(Array(lines_of))
+		for t: String in said:
+			for bad: String in [" - ", ";", "\u2013", "\u2014", "\u00b7", "Yours"]:
+				if t.contains(bad):
+					breaks.append("%s: %s" % [str(c.name), t])
+	var bars: Control = pane.find_child("BdpV3ValueBar", true, false)
+	var bar_note := ""
+	if bars != null and bars.is_visible_in_tree():
+		bar_note = ", value bar names at %d px, widest %.1f of %.1f" % [int(bars.get("CAPTION_PX")),
+			float(bars.call("widest_caption")), float(bars.get("LABEL_W")) - 6.0]
+	print("[TVP_GOODS] %s: copy %s, smallest print %d px%s" % [tile, "clean" if breaks.is_empty() else "BREAKS " + str(breaks),
+		smallest, bar_note])
+
+
+## Nothing may overlap anything else: every part's drawn extent (its control grown by how far its render
+## shows beyond it) lies inside its case's opening (a framed section's rim, a plate's screws kept clear),
+## and no two parts of a case overlap unless one holds the other (a pill in its icon). Prints each clash.
+func _audit(pane: Control, tile: String) -> void:
+	var clashes: Array = []
+	var checked := 0
+	for case_node in pane.get_children():
+		var case_ctrl := case_node as Control
+		if case_ctrl == null or not case_ctrl.is_visible_in_tree():
+			continue
+		# The result plate stands in a mount that holds it in from the body's edges.
+		if case_ctrl.get("style") == null and case_ctrl.get_child_count() == 1:
+			case_ctrl = case_ctrl.get_child(0) as Control
+		var outer := Rect2(case_ctrl.global_position, case_ctrl.size)
+		var slab := str(case_ctrl.get("style")) == "slab"
+		# A plate's dark edge and shadow stay within the body's column, where the framed sections' rims stand.
+		var drawn := outer.grow(1.5) if slab else outer
+		if slab:
+			drawn = Rect2(drawn.position, drawn.size + Vector2(1.0, 1.0))
+		var column := Rect2(pane.global_position, pane.size)
+		if drawn.position.x < column.position.x or drawn.end.x > column.end.x:
+			clashes.append("%s reaches past the body's column (%.1f..%.1f against %.1f..%.1f)" % [str(case_ctrl.name),
+				drawn.position.x, drawn.end.x, column.position.x, column.end.x])
+		# A framed section's opening is inside its rim; a plate's is all of it but its corner screws.
+		var opening := outer if slab else outer.grow(-Section.RIM)
+		var screws: Array = []
+		if slab:
+			var lo := Vector2(Section.SLAB_SCREW_INSET, Section.SLAB_SCREW_INSET)
+			var hi := outer.size - lo
+			for p: Vector2 in [lo, Vector2(hi.x, lo.y), Vector2(lo.x, hi.y), hi]:
+				screws.append(Rect2(outer.position + p - Vector2(8, 8), Vector2(16, 16)))
+		var parts: Array = []
+		for n in case_ctrl.find_children("*", "", true, false):
+			var c := n as Control
+			if c == null or not c.is_visible_in_tree() or c.size.x <= 0.0:
+				continue
+			var r := Rect2(c.global_position, c.size)
+			var reach := -1.0
+			if c.name == "IconWell":
+				reach = 3.0
+			elif c.has_signal("pressed") and c.get("text") != null and not c is Label and not c is Button:
+				reach = 3.0
+			elif c is Button and c.get_child_count() > 0 and str(c.get_child(0).name) == "BdpV3ModKey":
+				reach = 3.0
+			elif c.name == "MoneyLed" or c.name == "Raised" or c.name == "QtyPill" or c.name == "Sign" \
+					or c.name == "BdpV3ValueBar":
+				reach = 0.0
+			elif c.name == "ShutDoor":
+				var dr := float(GoodsTab.DOOR_REACH)
+				r = Rect2(r.position.x - dr, r.position.y, r.size.x + 2.0 * dr, r.size.y + dr)
+				reach = 0.0
+			if reach < 0.0:
+				continue
+			var ext := r.grow(reach)
+			checked += 1
+			if not opening.encloses(ext):
+				clashes.append("%s/%s over %s's %s" % [str(case_ctrl.name), str(c.name), str(case_ctrl.name), "edge" if slab else "rim"])
+			for s: Rect2 in screws:
+				if s.intersects(ext):
+					clashes.append("%s/%s over a screw" % [str(case_ctrl.name), str(c.name)])
+			parts.append([c, ext])
+		for i in parts.size():
+			for j in range(i + 1, parts.size()):
+				var a: Control = parts[i][0]
+				var b: Control = parts[j][0]
+				if a.is_ancestor_of(b) or b.is_ancestor_of(a):
+					continue
+				# A pill sits inside its icon's well by design; the well's frame and the icon share a host.
+				if (a.name == "QtyPill" and b.name == "IconWell") or (b.name == "QtyPill" and a.name == "IconWell"):
+					if a.get_parent() == b.get_parent():
+						continue
+				if a.name == "Sign" or b.name == "Sign":
+					if a.is_ancestor_of(b) or b.is_ancestor_of(a) or a.get_parent().get_parent() == b or b.get_parent().get_parent() == a:
+						continue
+				var ra: Rect2 = parts[i][1]
+				var rb: Rect2 = parts[j][1]
+				if ra.intersects(rb):
+					clashes.append("%s/%s over %s" % [str(case_ctrl.name), str(a.name), str(b.name)])
+	# Cases stand clear of each other.
+	var cases: Array = []
+	for case_node in pane.get_children():
+		var c := case_node as Control
+		if c != null and c.is_visible_in_tree():
+			cases.append(c)
+	for i in range(1, cases.size()):
+		var gap: float = (cases[i] as Control).global_position.y - ((cases[i - 1] as Control).global_position.y + (cases[i - 1] as Control).size.y)
+		if gap < 8.0:
+			clashes.append("%s only %.1f below %s" % [cases[i].name, gap, cases[i - 1].name])
+	print("[TVP_GOODS] %s: overlap audit, %d parts, %s" % [tile, checked, "clear" if clashes.is_empty() else "CLASHES " + str(clashes)])
 
 
 ## Pages down the tab's body from its top, a capture a page.

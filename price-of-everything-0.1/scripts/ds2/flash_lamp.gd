@@ -40,7 +40,15 @@ func tones() -> Array:
 	return _cycle.duplicate() if not _cycle.is_empty() else [colour]
 
 
+## Godot turns processing on at ready for any script with _process, so a steady lamp turns it off again.
+func _ready() -> void:
+	set_process(not _cycle.is_empty())
+
+
 func _process(delta: float) -> void:
+	if _cycle.is_empty():
+		set_process(false)
+		return
 	_clock = fposmod(_clock + delta, _period)
 	_step()
 

@@ -2,10 +2,12 @@ extends RefCounted
 ## Tile view v3, Buildings tab: the parts its body is made of, all Building Detail v3's (docs/ds2-theme.md
 ## §5): the black plastic case and its silver screws, the raised modules (and a one-line module for a
 ## group's member), a good set in its well with the quantity pill inside (unlit while its building is
-## stalled), Cost to produce as a £ and an LED screen, counts on drum counters as tall as those screens
-## (buildings_drum.gd), raised headings, metal labels, cream keys, emblems in polished metal. Modules, keys
-## and figures carry Building Detail's readout as their hover (buildings_tip.gd). Presentation only: the
-## tab (buildings_tab.gd) says what goes where.
+## stalled; a smaller well and pill on a member's line), Cost to produce as a £ and an LED screen (the
+## seven-segment screen is for money only), turns on drum counters as tall as those screens
+## (buildings_drum.gd), raised headings, metal labels, cream keys, emblems in polished metal, and the
+## column the body's parts stand in, clear of the scroll rail. Modules, keys and figures carry Building
+## Detail's readout as their hover (buildings_tip.gd). Presentation only: the tab (buildings_tab.gd) says
+## what goes where.
 
 const Section := preload("res://scripts/bdp_v3_section.gd")
 const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
@@ -47,8 +49,21 @@ const BODY_PX := 14
 const CAPTION_PX := 15
 const POUND_PX := 18
 const MODULE_GAP := 8
-## A compact module's (a group member's) inside margin, top and bottom.
+## A compact module's (a group member's) inside margin, top and bottom, and the smaller well its output
+## stands in, with the quantity pill scaled to it: its height, type size and inset from the icon's corner.
 const COMPACT_PAD_Y := 5.0
+const MEMBER_WELL_PX := 40
+const SMALL_PILL_H := 17
+const SMALL_PILL_PX := 12
+const SMALL_PILL_INSET := 3
+## How far under a member's line its own words start: past the reach of the well's frame below its tile.
+const WORDS_DROP := 4
+## The body's parts one under another this far apart: more than their renders reach past them between
+## two parts (the plastic case's shadow 7.5 px below and 3 px above, the steel frame's 6.6 px below), so
+## one case's edge or shadow never lies over the next.
+const CASE_GAP := 14
+## Room kept between the cases and the body's scroll rail while the rail shows, past the cases' shadow room.
+const GUTTER := 10
 ## A module under the pointer is drawn this much brighter.
 const HOT := Color(1.22, 1.22, 1.22)
 ## A good in the well of a stalled building: the cream tile left unlit.
@@ -69,13 +84,16 @@ static func case_margin() -> float:
 
 ## Building Detail's black plastic case (its diagnostics' diag_plastic render and silver screws), its
 ## content inset as the kit's sections are. The screws are spaced along each edge by its length, about as
-## far apart as on Building Detail's case, so a short case isn't crowded with them. Rows go in child 0.
-static func plastic_case(case_name: String) -> MarginContainer:
+## far apart as on Building Detail's case, so a short case isn't crowded with them. A drawer's case
+## (`front`) keeps its top edge to its two corner screws, clear of the key its front holds nearer that
+## edge. Rows go in child 0.
+static func plastic_case(case_name: String, front := false) -> MarginContainer:
 	var case := MarginContainer.new()
 	case.name = case_name
 	case.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	case.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	case.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	case.set_meta("front", front)
 	var m := roundi(case_margin())
 	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
 		case.add_theme_constant_override(side, m)
@@ -87,7 +105,7 @@ static func plastic_case(case_name: String) -> MarginContainer:
 	case.draw.connect(func() -> void:
 		Nine.paint(case, Section.PLASTIC, Rect2(Vector2.ZERO, case.size).grow(Section.PLASTIC_MARGIN), Section.PLASTIC_CORNER_TEXELS)
 		var s: Vector2 = Section.SCREW.get_size() / 2.0
-		for p in screw_points(case.size):
+		for p in screw_points(case.size, front):
 			case.draw_texture_rect(Section.SCREW, Rect2(p - s * 0.5, s), false))
 	case.resized.connect(case.queue_redraw)
 	return case
@@ -95,8 +113,8 @@ static func plastic_case(case_name: String) -> MarginContainer:
 
 ## Where a case's screws go: one in each corner, then evenly along each edge about SCREW_PITCH apart. A case
 ## shorter than SHORT_CASE (a drawer's front, an empty case) keeps its four corner screws only, clear of
-## what it holds.
-static func screw_points(plate: Vector2) -> PackedVector2Array:
+## what it holds; so does the top edge of a drawer's case (`front`).
+static func screw_points(plate: Vector2, front := false) -> PackedVector2Array:
 	var lo := Vector2(Section.SCREW_INSET, Section.SCREW_INSET)
 	var hi := plate - lo
 	var across := maxi(2, roundi((hi.x - lo.x) / SCREW_PITCH.x) + 1) if plate.y >= SHORT_CASE else 2
@@ -104,7 +122,8 @@ static func screw_points(plate: Vector2) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	for i in across:
 		var x := lerpf(lo.x, hi.x, float(i) / (across - 1))
-		pts.append(Vector2(x, lo.y))
+		if not front or i == 0 or i == across - 1:
+			pts.append(Vector2(x, lo.y))
 		pts.append(Vector2(x, hi.y))
 	for i in range(1, down - 1):
 		var y := lerpf(lo.y, hi.y, float(i) / (down - 1))
@@ -115,7 +134,7 @@ static func screw_points(plate: Vector2) -> PackedVector2Array:
 
 ## Building Detail's raised module, as its diagnostics' rows are, with room inside. Its parts go in one row
 ## (child 0 of the module), at least a well tall; a compact module (a group member on its cable) is one
-## line, as tall as an LED screen. Its hover is a readout (`Tip.attach`).
+## line, as tall as a member's smaller well. Its hover is a readout (`Tip.attach`).
 static func module(module_name: String, compact := false) -> PanelContainer:
 	var m: PanelContainer = Tip.TipPanel.new()
 	m.name = module_name
@@ -137,7 +156,7 @@ static func module(module_name: String, compact := false) -> PanelContainer:
 	row.name = "Row"
 	row.add_theme_constant_override("separation", GAP)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.custom_minimum_size = Vector2(0, Drum.led_height() if compact else float(WELL_PX))
+	row.custom_minimum_size = Vector2(0, float(MEMBER_WELL_PX if compact else WELL_PX))
 	m.add_child(row)
 	return m
 
@@ -247,9 +266,10 @@ static func words_under(m: PanelContainer, words: String, indent: float) -> void
 	m.remove_child(row)
 	var col := VBoxContainer.new()
 	col.name = "Lines"
-	# The row is a drum's height and its title sits in the middle of it: the words tuck up under the title,
-	# just clear of the drum's foot.
-	col.add_theme_constant_override("separation", -2)
+	# The row is a member's well tall and its title sits in the middle of it. The well's frame reaches about
+	# 5 px below the good's tile: the words start WORDS_DROP under the row, so their letters stand clear of
+	# the frame where the words run under the well.
+	col.add_theme_constant_override("separation", WORDS_DROP)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	m.add_child(col)
 	col.add_child(row)
@@ -264,7 +284,8 @@ static func words_under(m: PanelContainer, words: String, indent: float) -> void
 	col.add_child(inset)
 
 
-## A count on a drum counter as tall as the LED screens beside it.
+## A project's turns on a drum counter as tall as the LED screens beside it (never a good's quantity,
+## which is the pill on its icon).
 static func drum(value: int, drums: int) -> Control:
 	return Drum.new(Drum.led_height(), drums, value)
 
@@ -336,8 +357,9 @@ static func output_tip(gid: String, qty: int, lit := true) -> String:
 	return "%d MW this turn" % qty if Catalog.get_internal_name(gid) == "power" else "%d this turn" % qty
 
 
-static func good_in_well(gid: String, qty: int, tip: String, lit := true) -> Control:
-	var icon := UIHelpers.make_plain_good_icon(gid, Catalog.get_internal_name(gid), WELL_PX)
+## A good in its well, `px` square: a member's line takes the smaller well (MEMBER_WELL_PX) and pill.
+static func good_in_well(gid: String, qty: int, tip: String, lit := true, px: int = WELL_PX) -> Control:
+	var icon := UIHelpers.make_plain_good_icon(gid, Catalog.get_internal_name(gid), px)
 	if tip != "":
 		icon.set("detail_lines", PackedStringArray([tip]))
 	icon.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -358,32 +380,41 @@ static func good_in_well(gid: String, qty: int, tip: String, lit := true) -> Con
 	well.resized.connect(well.queue_redraw)
 	icon.add_child(well)
 	if qty >= 0:
-		icon.add_child(pill(qty))
+		icon.add_child(pill(qty, px < WELL_PX))
 	return icon
 
 
-## Building Detail's navy quantity pill, kept inside the icon's corner.
-static func pill(qty: int) -> Control:
+## Building Detail's navy quantity pill, kept inside the icon's corner; `small` for a member's smaller well:
+## the same pill, shorter, its figure at 12 px, so it covers no more of the good than on the full well.
+static func pill(qty: int, small := false) -> Control:
 	var text := str(qty)
-	var h := 22
-	var w := maxi(h, text.length() * 9 + 14)
+	var h := SMALL_PILL_H if small else 22
+	var inset := SMALL_PILL_INSET if small else 5
+	var w := maxi(h, ceili(FONT_TITLE.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, SMALL_PILL_PX).x) + 10) \
+		if small else maxi(h, text.length() * 9 + 14)
 	var p := PanelContainer.new()
 	p.name = "Qty"
 	p.custom_minimum_size = Vector2(w, h)
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	p.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	p.offset_left = -w - 5
-	p.offset_top = -h - 5
-	p.offset_right = -5
-	p.offset_bottom = -5
+	p.offset_left = -w - inset
+	p.offset_top = -h - inset
+	p.offset_right = -inset
+	p.offset_bottom = -inset
 	var st := StyleBoxFlat.new()
 	st.bg_color = DS.PALETTE["BG_PANEL"]
 	st.set_corner_radius_all(int(h / 2.0))
-	st.set_border_width_all(2)
+	st.set_border_width_all(1 if small else 2)
 	st.border_color = DS.PALETTE["BORDER_STRONG"]
+	if small:
+		st.content_margin_top = 0
+		st.content_margin_bottom = 0
 	p.add_theme_stylebox_override("panel", st)
 	var l := Label.new()
 	l.theme_type_variation = "Numeric"
+	if small:
+		l.add_theme_font_override("font", FONT_TITLE)
+		l.add_theme_font_size_override("font_size", SMALL_PILL_PX)
 	l.text = text
 	l.add_theme_color_override("font_color", DS.PALETTE["ACCENT"])
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -577,6 +608,41 @@ static func spacer(w: float, h: float) -> Control:
 	c.custom_minimum_size = Vector2(w, h)
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return c
+
+
+## The column the tab's parts stand in, CASE_GAP apart (in `rows`). While the body's scroll rail shows, it
+## keeps GUTTER clear of the rail, so no case's edge or shadow runs under it; with the rail hidden the
+## cases take the body's width, as far from the sheet's rim on the right as on the left.
+class Column extends MarginContainer:
+	var rows: VBoxContainer
+	var _bar: ScrollBar
+
+	func _init(gap: int) -> void:
+		name = "BuildingsBody"
+		size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rows = VBoxContainer.new()
+		rows.name = "Parts"
+		rows.add_theme_constant_override("separation", gap)
+		rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(rows)
+
+	func _enter_tree() -> void:
+		var up := get_parent()
+		while up != null and not up is ScrollContainer:
+			up = up.get_parent()
+		_bar = (up as ScrollContainer).get_v_scroll_bar() if up != null else null
+		if _bar != null and not _bar.visibility_changed.is_connected(_fit):
+			_bar.visibility_changed.connect(_fit)
+		_fit()
+
+	func _exit_tree() -> void:
+		if _bar != null and is_instance_valid(_bar) and _bar.visibility_changed.is_connected(_fit):
+			_bar.visibility_changed.disconnect(_fit)
+		_bar = null
+
+	func _fit() -> void:
+		add_theme_constant_override("margin_right", GUTTER if _bar != null and _bar.visible else 0)
 
 
 ## A raised render drawn so its art, not its frame, fills a `side`-pixel box, centred on the box's midline;

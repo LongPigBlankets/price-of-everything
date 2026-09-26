@@ -1066,7 +1066,7 @@ func _v3_deposit_tags(rows: Array, captioned: bool) -> HBoxContainer:
 
 ## The seaport in the status line, underlined as a link: it opens the port's detail, where it can be bought.
 func _v3_port_link(port: Dictionary) -> Label:
-	var link := _v3_tag("Seaport (yours)" if BuildingState.is_player_owned(port) else "Seaport (NPC)")
+	var link := _v3_tag("Seaport" if BuildingState.is_player_owned(port) else "Seaport (NPC)")
 	link.name = "SeaportLink"
 	link.mouse_filter = Control.MOUSE_FILTER_STOP
 	link.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND

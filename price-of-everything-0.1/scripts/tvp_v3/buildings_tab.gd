@@ -5,27 +5,35 @@ extends RefCounted
 ##
 ## The site's equipment racked in dark cases, as Building Detail racks its diagnostics:
 ## - Build and Buy buildings first, two cream keys each beside its raised icon, on a steel plate.
+## - The tile's port next, on a tile that has one, in a case of its own under the raised heading the
+##   status line names it by (Seaport), never among the other companies' buildings: another company's
+##   port with its owner, its price and Building Detail's guarded button to buy it; your port as your
+##   buildings read, its lamp and words.
 ## - Your buildings in Building Detail's black plastic case, under its raised heading. Each is a raised
 ##   module: its emblem, its name, a lamp and the words that explain it (buildings_readings.gd: one roll-up
 ##   of Building Detail's diagnostics, with the stall that makes a 0 named in it), what it makes this turn
-##   set in a well (unlit over a 0 while the engine says it is stalled), and what a unit costs to make on an
-##   LED screen against its market price. Buildings of the same kind and recipe are a group, its head named
-##   as its members are without their letter ("Industrial Goods Factory - Motor"): the group's worst lamp,
-##   what the members that run make, and its dearest unit. A group starts folded to its head; opened, its
-##   members hang off one cable with a tap into each, as diagnostics rows read: lamp and name, under it in
-##   full what a member says beyond the head's words, and its output on a drum counter. Under construction
-##   follows under a metal label, each project's turns on a drum.
-## - Every figure in the case stands in one of two columns: the figure column (wells, the members' drums,
-##   the projects' turns) and the cost column (the LED screens, a member's own cost, Cancel), one width down
-##   the case, so each reads down one line as Building Detail's screens do. Each action sits beside the
-##   figure it changes.
+##   as a good in its well with the quantity pill (unlit over a 0 while the engine says it is stalled), and
+##   what a unit costs to make on an LED screen against its market price. Buildings of the same kind and
+##   recipe are a group, its head named as its members are without their letter ("Industrial Goods
+##   Factory - Motor"): the group's worst lamp, what the members that run make, and its dearest unit. A
+##   group starts folded to its head; opened, its members hang off one cable with a tap into each, as
+##   diagnostics rows read: lamp and name, under it in full what a member says beyond the head's words, and
+##   its output as its good in a smaller well with its pill. Under construction follows under a metal
+##   label, each project's turns on a drum.
+## - Every figure in the case stands in one of two columns: the figure column (wells, the projects' turns)
+##   and the cost column (the LED screens, a member's own cost, Cancel), one width down the case, so each
+##   reads down one line as Building Detail's screens do. Each action sits beside the figure it changes.
+##   The seven-segment screens show money only.
 ## - Hovering a module, a key or a figure shows Building Detail's readout at the pointer
 ##   (buildings_tip.gd): what the worst check found, in the engine's full sentence.
-## - Other companies' buildings in a second case, folded behind one wide key that opens it: the port first,
-##   with its price and Building Detail's guarded button to buy it, then each company's buildings under a
-##   metal label with its name, grouped and folded as yours are.
+## - Other companies' buildings in a second case, folded behind one wide key that counts them ("4 other
+##   companies' buildings") and opens it: each company's buildings under a metal label with its name,
+##   grouped and folded as yours are.
 ## - Woods and ruins last, in their own case under a raised heading, as features of the land rather than
 ##   anyone's company.
+## Infrastructure (roads, cables, pipes, rail) is the Transport tab's: it is neither shown nor counted here.
+## The parts stand CASE_GAP apart in a column kept clear of the scroll rail (buildings_parts.gd Column), so
+## no case's edge, screws or shadow lies over another's or the rail.
 ##
 ## Open groups, the open drawer and the readings are kept on the panel (meta), so a refresh keeps them.
 
@@ -34,7 +42,6 @@ const Readings := preload("res://scripts/tvp_v3/buildings_readings.gd")
 const Recheck := preload("res://scripts/tvp_v3/buildings_recheck.gd")
 const GuardKey := preload("res://scripts/tvp_v3/buildings_guard.gd")
 const Drum := preload("res://scripts/tvp_v3/buildings_drum.gd")
-const Spotlight := preload("res://scripts/tvp_v3/buildings_spotlight.gd")
 const Tip := preload("res://scripts/tvp_v3/buildings_tip.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
 const Cable := preload("res://scripts/bdp_v3_cable.gd")
@@ -71,13 +78,16 @@ const META_OTHERS := "tvp_bl_others_open"
 
 static func build(panel: Control, pane: VBoxContainer) -> void:
 	var tile_id := str(panel.get("_current_tile_id"))
-	pane.add_theme_constant_override("separation", 14)
+	var column: Parts.Column = Parts.Column.new(Parts.CASE_GAP)
+	pane.add_child(column)
+	var body := column.rows
 	var site := _site(tile_id)
 	var grid := _grid(panel, pane, site)
-	pane.add_child(_actions(panel, tile_id))
-	_add_yours(panel, pane, site, grid)
-	_add_others(panel, pane, site, grid)
-	_add_features(panel, pane, site)
+	body.add_child(_actions(panel, tile_id))
+	_add_port(panel, body, site, grid)
+	_add_yours(panel, body, site, grid)
+	_add_others(panel, body, site, grid)
+	_add_features(panel, body, site)
 	if not (grid.recheck as Array).is_empty():
 		pane.add_child(Recheck.new(panel, grid.recheck))
 
@@ -85,7 +95,8 @@ static func build(panel: Control, pane: VBoxContainer) -> void:
 # --- what is on the tile -------------------------------------------------------------------
 
 ## The tile's buildings sorted by whose they are: yours, other companies', the land's own woods and ruins,
-## the port, and your buildings under construction. Infrastructure is the Transport tab's.
+## the port, and your buildings under construction. Infrastructure is the Transport tab's, built or going
+## up: it is left out of every list here.
 static func _site(tile_id: String) -> Dictionary:
 	var mine: Array = []
 	var others: Array = []
@@ -96,7 +107,7 @@ static func _site(tile_id: String) -> Dictionary:
 		if bid == PORT_ID:
 			port = b
 			continue
-		if str(Catalog.get_building(bid).get("category", "")).to_lower() == "infrastructure":
+		if _is_infrastructure(bid):
 			continue
 		if BuildingState.is_player_owned(b):
 			mine.append(b)
@@ -104,9 +115,17 @@ static func _site(tile_id: String) -> Dictionary:
 			features.append(b)
 		else:
 			others.append(b)
+	var projects: Array = []
+	for p: Dictionary in Construction.projects_on_tile(tile_id):
+		if not _is_infrastructure(str(p.get("building_id", ""))):
+			projects.append(p)
 	var port_mine := not port.is_empty() and BuildingState.is_player_owned(port)
 	return {"tile_id": tile_id, "mine": mine, "others": others, "features": features, "port": port,
-		"port_mine": port_mine, "projects": Construction.projects_on_tile(tile_id)}
+		"port_mine": port_mine, "projects": projects}
+
+
+static func _is_infrastructure(building_id: String) -> bool:
+	return str(Catalog.get_building(building_id).get("category", "")).to_lower() == "infrastructure"
 
 
 ## Buildings of one kind and recipe (and, for other companies, one owner) together, in the order first seen.
@@ -128,9 +147,10 @@ static func _groups(buildings: Array, by_owner: bool) -> Array:
 
 
 ## The readings of your buildings and the cases' column grid:
-## - inner: a module's inside width;
-## - fig_w: the figure column, wide enough for the widest set of wells, the widest drum and the turns'
-##   label (which may stand out past it into the gaps beside it, no further);
+## - inner: a module's inside width (with the column's gutter off it, as when the scroll rail shows);
+## - fig_w: the figure column, wide enough for the widest set of wells (a member's smaller well fits in
+##   it), the widest turns drum and the turns' label (which may stand out past it into the gaps beside it,
+##   no further);
 ## - cost_w: the cost column, the widest money screen or market line, or Cancel;
 ## - digits: one digit count for every cost screen, so the screens are one width.
 static func _grid(panel: Control, pane: Control, site: Dictionary) -> Dictionary:
@@ -152,10 +172,6 @@ static func _grid(panel: Control, pane: Control, site: Dictionary) -> Dictionary
 	if digits > 0:
 		cost_w = ceilf(maxf(Parts.money_width(digits), market_w))
 	var fig_w := float(outs * Parts.WELL_PX + (outs - 1) * 8)
-	# The members' drums: the most any member of a group makes sets its group's drum count.
-	for g: Dictionary in _groups(site.mine, false):
-		if (g.members as Array).size() > 1:
-			fig_w = maxf(fig_w, Drum.width_for(str(_most(g.members, readings)).length(), Drum.led_height()))
 	var turn_drums := 1
 	var projects: Array = site.projects
 	if not projects.is_empty():
@@ -167,17 +183,7 @@ static func _grid(panel: Control, pane: Control, site: Dictionary) -> Dictionary
 		cost_w = maxf(cost_w, CANCEL_W)
 	var body_w := pane.size.x if pane.size.x > 200.0 else BODY_W
 	return {"readings": readings, "recheck": got.recheck, "digits": digits, "cost_w": cost_w, "fig_w": ceilf(fig_w),
-		"turn_drums": turn_drums, "inner": body_w - 2.0 * Parts.case_margin() - 2.0 * Parts.PAD.x}
-
-
-## The most any of `members` makes this turn (its first output), from their readings.
-static func _most(members: Array, readings: Dictionary) -> int:
-	var most := 0
-	for m: Dictionary in members:
-		var o: Array = (readings.get(str(m.get("instance_id", "")), {}) as Dictionary).get("outputs", [])
-		if not o.is_empty():
-			most = maxi(most, int((o[0] as Dictionary).qty))
-	return most
+		"turn_drums": turn_drums, "inner": body_w - Parts.GUTTER - 2.0 * Parts.case_margin() - 2.0 * Parts.PAD.x}
 
 
 ## The width right of a module's words: the figure column and the cost column, each after a gap.
@@ -217,6 +223,32 @@ static func _actions(panel: Control, tile_id: String) -> MarginContainer:
 	return plate
 
 
+# --- the port ------------------------------------------------------------------------------
+
+## The tile's port in a case of its own under the actions, headed as the status line names it (Seaport),
+## so it reads as the tile's port and never as one of the other companies' buildings. Another company's:
+## its owner, its price and the guarded Buy (_port_module). Yours: as your buildings read, its lamp and its
+## words. Either way the module is PortBuildingCard, on screen as soon as the tab is, and a click opens the
+## port in Building Detail.
+static func _add_port(panel: Control, pane: VBoxContainer, site: Dictionary, grid: Dictionary) -> void:
+	var port: Dictionary = site.port
+	if port.is_empty():
+		return
+	var case := Parts.plastic_case("TilePort")
+	pane.add_child(case)
+	var rows := case.get_child(0) as VBoxContainer
+	rows.add_child(Parts.heading("Seaport"))
+	if not bool(site.port_mine):
+		rows.add_child(_port_module(panel, port))
+		return
+	var reading: Dictionary = (grid.readings as Dictionary).get(str(port.get("instance_id", "")), {})
+	if reading.is_empty():
+		reading = Readings.reading(port)
+	var mine := _mine_module(panel, port, reading, grid, "Port")
+	mine.name = "PortBuildingCard"
+	rows.add_child(mine)
+
+
 # --- your buildings ------------------------------------------------------------------------
 
 static func _add_yours(panel: Control, pane: VBoxContainer, site: Dictionary, grid: Dictionary) -> void:
@@ -227,19 +259,13 @@ static func _add_yours(panel: Control, pane: VBoxContainer, site: Dictionary, gr
 	pane.add_child(case)
 	var rows := case.get_child(0) as VBoxContainer
 	rows.add_child(Parts.heading("Your buildings"))
-	if mine.is_empty() and projects.is_empty() and not bool(site.port_mine):
+	if mine.is_empty() and projects.is_empty():
 		var none := Parts.body("You have no buildings on this tile.")
 		none.name = "BLNoneOfYours"
 		rows.add_child(none)
 		return
 
 	var modules: int = 0
-	if bool(site.port_mine):
-		var port: Dictionary = site.port
-		var pm := _mine_module(panel, port, readings[str(port.get("instance_id", ""))], grid, "Port")
-		pm.name = "PortBuildingCard"
-		rows.add_child(pm)
-		modules += 1
 	var open: Dictionary = panel.get_meta(META_GROUPS, {})
 	for g: Dictionary in _groups(mine, false):
 		var members: Array = g.members
@@ -259,12 +285,10 @@ static func _add_yours(panel: Control, pane: VBoxContainer, site: Dictionary, gr
 		var gr := Readings.group_reading(member_readings, names)
 		var head := _head_module(first, gr, grid, members.size())
 		head.name = card_name
-		# One drum count down the group, so its counters are one width and read like one bank.
-		var drums := str(_most(members, readings)).length()
 		var member_modules: Array[Control] = []
 		for i in members.size():
 			member_modules.append(_member_module(panel, members[i], member_readings[i], gr, grid, str(names[i]),
-				drums, (gr.extra as Array)[i]))
+				(gr.extra as Array)[i]))
 		var key := str(g.key)
 		rows.add_child(_group_block(panel, key, head, member_modules, bool(open.get(key, false))))
 
@@ -346,28 +370,28 @@ static func _mine_module(panel: Control, b: Dictionary, r: Dictionary, grid: Dic
 
 
 ## A group member on its cable, as a diagnostics row reads: its lamp and its short name, with what it makes
-## this turn on a drum counter in the figure column (0 while it is stalled) and its unit cost in the cost
-## column only where it differs from the head's (the head shows the group's dearest and the market). Under
-## that line, across the module, what it says beyond the head's words (`extra`), in full. A member with
-## nothing to add is one line. Its cable's tap feeds its first line (meta "tap").
+## this turn in the figure column as the head shows it, the good in its well with the quantity pill, the
+## well a member's smaller one (unlit over a 0 while it is stalled), and its unit cost in the cost column
+## only where it differs from the head's (the head shows the group's dearest and the market). Under that
+## line, across the module, what it says beyond the head's words (`extra`), in full. A member with nothing
+## to add is one line. Its cable's tap feeds its first line (meta "tap").
 static func _member_module(panel: Control, b: Dictionary, r: Dictionary, gr: Dictionary, grid: Dictionary,
-		title: String, drums: int, extra: Array) -> PanelContainer:
+		title: String, extra: Array) -> PanelContainer:
 	var module := Parts.module("MemberModule", true)
 	var row := Parts.row_of(module)
 	var outs: Array = r.outputs
 	row.add_child(Parts.line_info(title, str(r.tone), ""))
-	var col: HBoxContainer = Tip.TipHBox.new()
+	var col := HBoxContainer.new()
 	col.name = "Outputs"
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.custom_minimum_size = Vector2(float(grid.fig_w), 0)
 	col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	col.mouse_filter = Control.MOUSE_FILTER_PASS
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if not outs.is_empty():
 		var o: Dictionary = outs[0]
-		col.add_child(Parts.drum(int(o.qty), drums))
+		var gid := str(o.good_id)
 		var lit := bool(r.get("runs", true))
-		Tip.attach(col, {"name": Catalog.get_display_name(str(o.good_id)),
-			"detail": Readings.sentence(Parts.output_tip(str(o.good_id), int(o.qty), lit)) + "."})
+		col.add_child(Parts.good_in_well(gid, int(o.qty), Parts.output_tip(gid, int(o.qty), lit), lit, Parts.MEMBER_WELL_PX))
 	row.add_child(col)
 	if float(grid.cost_w) > 0.0:
 		var c: Dictionary = r.cost
@@ -500,24 +524,19 @@ static func _project_module(panel: Control, p: Dictionary, grid: Dictionary) -> 
 
 # --- other companies -----------------------------------------------------------------------
 
-## Other companies' buildings in their own case, folded behind one wide key that names how many and the
-## port; the key opens the case: the port first with its price and guarded Buy, then each company's
-## buildings under its name, grouped and folded as yours are, their wells in your wells' column. The case
-## also opens while a tutorial step spotlights the port (buildings_spotlight.gd).
+## Other companies' buildings in their own case, folded behind one wide key that counts them and nothing
+## else (the port has its own case, infrastructure its own tab); the key opens the case: each company's
+## buildings under its name, grouped and folded as yours are, their wells in your wells' column.
 static func _add_others(panel: Control, pane: VBoxContainer, site: Dictionary, grid: Dictionary) -> void:
 	var others: Array = site.others
-	var port: Dictionary = site.port
-	var port_theirs := not port.is_empty() and not bool(site.port_mine)
-	var n := others.size() + (1 if port_theirs else 0)
+	var n := others.size()
 	if n == 0:
 		return
 	var summary := "%d other companies' buildings" % n if n > 1 else "1 other company's building"
-	if port_theirs:
-		summary += ", the port and %d more" % (n - 1) if n > 1 else ", the port"
-	var open := bool(panel.get_meta(META_OTHERS, false)) or Spotlight.wants_open()
+	var open := bool(panel.get_meta(META_OTHERS, false))
 	# The case is the drawer: shut, it is only its front, the key on a slim strip of the case; open, it
-	# holds the port and the companies' buildings under the key.
-	var drawer := Parts.plastic_case("OtherCompanies")
+	# holds the companies' buildings under the key. Its top edge keeps to its corner screws, clear of the key.
+	var drawer := Parts.plastic_case("OtherCompanies", true)
 	drawer.add_theme_constant_override("margin_top", Parts.DRAWER_MARGIN)
 	var shut_bottom := func(is_open: bool) -> void:
 		drawer.add_theme_constant_override("margin_bottom", roundi(Parts.case_margin()) if is_open else Parts.DRAWER_MARGIN)
@@ -541,14 +560,6 @@ static func _add_others(panel: Control, pane: VBoxContainer, site: Dictionary, g
 		inside.visible = now_open
 		shut_bottom.call(now_open)
 		panel.set_meta(META_OTHERS, now_open))
-	drawer.add_child(Spotlight.new(func() -> void:
-		if inside.visible:
-			return
-		inside.visible = true
-		shut_bottom.call(true)
-		key.call("set_open", true)))
-	if port_theirs:
-		inside.add_child(_port_module(panel, port))
 	var by_company := {}
 	var companies: Array = []
 	for b: Dictionary in others:
@@ -560,7 +571,7 @@ static func _add_others(panel: Control, pane: VBoxContainer, site: Dictionary, g
 	var kept: Dictionary = panel.get_meta(META_GROUPS, {})
 	for i in companies.size():
 		var owner: String = companies[i]
-		if port_theirs or i > 0:
+		if i > 0:
 			inside.add_child(Parts.spacer(0, 4))
 		inside.add_child(_sub_caption(BuildingReadout.company_name(owner), "Company"))
 		for g: Dictionary in _groups(by_company[owner], true):
@@ -626,8 +637,8 @@ static func _their_head(first: Dictionary, count: int, grid: Dictionary) -> Pane
 	return module
 
 
-## The port another company owns, first in their case: whose it is, the price the Buildings market asks on
-## an LED screen in the house money format (MoneyFigure: £10.0K), and beside it Building Detail's guarded
+## The port another company owns, in the port's own case: whose it is, the price the Buildings market asks
+## on an LED screen in the house money format (MoneyFigure: £10.0K), and beside it Building Detail's guarded
 ## button to buy it, its cap as tall as the screen. The module keeps room over the cap for the lifted cover,
 ## so the cover stays inside it. Lifting the cover lights the price red, as a cost; pressing opens the
 ## confirmation the v2 card used.

@@ -3,13 +3,15 @@ extends Node2D
 ## lacks, in the real HUD at 1920 × 1080 (two pixels each), cropped to the panel:
 ##   Godot --path . res://tools/tvp_v3_buildings_shot.tscn --quit-after 40000 -- --no-telemetry
 ## Writes into $TVP_SHOT_DIR (or /tmp):
-##   bls_default_p<N>    the busy port tile as a player first sees it: groups folded, other companies shut
+##   bls_default_p<N>    the busy port tile as a player first sees it: groups folded, other companies shut,
+##                       the port in its own case under the actions
 ##   bls_open_p<N>       the same with the motor group open (a fourth motor just built beside three that
 ##                       ran, so one member's words and output differ) and other companies' case open
 ##   bls_hover           a group member hovered through the real input path: its readout at the pointer
 ##   bls_hover_cost      the motor group's cost screen hovered: what the dearest unit costs
 ##   bls_hover_wind      the stalled wind farms' head hovered on the tile with no cables
 ##   bls_guard_lifted    the port's guarded Buy with its cover lifted, the price lit red
+##   bls_port_mine       the same tile with the port yours: it reads as your buildings do
 ##   bls_big_p<N>        a tile with 20 of your buildings, unpowered (stalled factories read 0), folded
 ##   bls_big_open_p<N>   the same with the ten motors' group open
 ##   bls_features_p<N>   a tile with woods or ruins of the land's own
@@ -127,6 +129,18 @@ func _ready() -> void:
 	print("[TVP_SHOT] guard %s" % ("found" if guard != null else "MISSING"))
 	panel.set_meta("tvp_bl_others_open", false)
 	_set_group(panel, "b_007|r_009", false)
+
+	# The port yours: its own case, read as your buildings are.
+	var port: Dictionary = {}
+	for b: Dictionary in BuildingState.get_buildings_on_tile(TILE):
+		if str(b.get("building_id", "")) == "b_004":
+			port = b
+	if not port.is_empty():
+		var owner := str(port.get("owner", ""))
+		port["owner"] = MatchState.LOCAL_PLAYER
+		await _open(panel, terrain, TILE)
+		_save(panel.get_global_rect().grow(16.0), "bls_port_mine")
+		port["owner"] = owner
 
 	# Twenty of your buildings on unpowered land: folded, then the ten motors' group open.
 	await _open(panel, terrain, BIG_TILE)

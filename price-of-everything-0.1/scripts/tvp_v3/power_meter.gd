@@ -1,24 +1,25 @@
 extends Control
 ## Tile view v3, Power: the tile's balance as a meter panel. Two bars on one scale, the power your buildings
-## made over the power they drew, each a lit strip on a mini screen (Building Detail's value bars: the same
-## bezel and glass), a slice for each kind of building, made in the value bars' revenue greens and drawn in
-## their cost reds. Each slice is named on a tag: the building's raised emblem and a short name printed on
-## the plate, joined to its slice by a leader line, the made tags over the made bar and the drawn tags under
-## the drawn bar. Where the power made ends is marked down across the drawn bar, so the gap between the two
-## ends is the tile's net.
+## produced over the power they consumed (the national grid row's words), each a lit strip on a mini screen
+## (Building Detail's value bars: the same bezel and glass), a slice for each kind of building, produced in
+## the value bars' revenue greens and consumed in their cost reds. Each slice is named on a tag: the
+## building's raised emblem and a short name printed on the plate, joined to its slice by a leader line, the
+## produced tags over the produced bar and the consumed tags under the consumed bar. Where the power produced
+## ends is marked down across the consumed bar, so the gap between the two ends is the tile's net.
 ##
-## The figures stand in one column at the right, each on an LED screen with its caption printed before it
-## and MW after it: made (green), drawn (red and unsigned, as Building Detail's costs), and the net under a
-## sum's rule in the colour the tab gives it. A key set with set_key (Build power) stands over the column,
-## over the MADE figure it adds to, at the top of the meter: the made tags (or an empty bar's note) share
-## its band, centred on its midline, and the made bar starts just under it, so the band holds no dead room.
+## The figures stand in one column at the right, each on a dot matrix screen in white (DS2: the seven
+## segment LED is for money only) with its caption printed before it and MW after it: produced, consumed,
+## and the net under a sum's rule, an amber or red mark before it when the tab's key shows one. A key set
+## with set_key (Build power) stands over the column, over the PRODUCED figure it adds to, at the top of the
+## meter: the produced tags (or an empty bar's note) share its band, centred on its midline, and the
+## produced bar starts just under it, so the band holds no dead room.
 ##
 ## Hovering a slice or its tag names it with its MW; clicking opens it.
 
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const Light := preload("res://scripts/bdp_v3_light.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
-const Led := preload("res://scripts/bdp_v3_led.gd")
+const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
 const Indicator := preload("res://scripts/bdp_v3_indicator.gd")
 const SCREEN: Texture2D = preload("res://assets/ui/bdp_v3/mini_screen.png")
 const GLASS: Texture2D = preload("res://assets/ui/bdp_v3/mini_screen_glass.png")
@@ -60,6 +61,9 @@ const DRAWN := [Color("#b03026"), Color("#6b1914"), Color("#d64a3a"), Color("#8e
 ## The room between the key over the figures and the MADE figure's screen under it.
 const KEY_CLEAR := 4.0
 const MARK := Color("#6be08f")
+## The figures' dot pitch, the one the tab keys' display uses, and the net's status marks (the display's).
+const DOT_PITCH := 2.6
+const STATUS_MARK := {"warn": Color("#ffb21f"), "bad": Color("#ff3b2f")}
 const FALLBACK_ICON := "res://assets/ui/bdp_v3/bar_icon_power.png"
 
 ## Two rows, made then drawn: {caption, slices: [{name, short, value, count, iid, building_id, colour,
@@ -104,8 +108,11 @@ func _init() -> void:
 			Nine.paint(_glass, GLASS, _bar_rect(i).grow(SCREEN_MARGIN / CAPTURE_SCALE), _corner()))
 	add_child(_glass)
 	for i in 3:
-		var led: Control = Led.new()
+		var led: Control = DotMatrix.new()
 		led.name = ["MadeFigure", "DrawnFigure", "NetFigure"][i]
+		led.set("pitch", DOT_PITCH)
+		led.set("align", HORIZONTAL_ALIGNMENT_RIGHT)
+		led.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(led)
 		_leds.append(led)
 		var unit := Label.new()
@@ -121,9 +128,6 @@ func _init() -> void:
 		_units.append(unit)
 
 
-## The readings. `made` and `drawn` are [{name, short, value, count, iid, building_id}], one per kind of
-## building; `made_mw`, `drawn_mw` and `net_mw` the engine's per-tile figures, shown on the screens with
-## `digits` cells so the three are one width. `colours` are the screens' [made, drawn, net] inks.
 ## A key to stand over the figures' column, right-aligned to it at its own minimum width.
 func set_key(key: Control) -> void:
 	if _key != null:
@@ -134,7 +138,11 @@ func set_key(key: Control) -> void:
 	_relayout()
 
 
-func set_reading(made: Array, drawn: Array, made_mw: int, drawn_mw: int, net_mw: int, digits: int, colours: Array) -> void:
+## The readings. `made` and `drawn` are [{name, short, value, count, iid, building_id}], one per kind of
+## building; `made_mw`, `drawn_mw` and `net_mw` the engine's per-tile figures, shown in white on the
+## screens, padded to one width. `net_tone` (warn or bad) puts the tab key's amber or red mark before the
+## net, as the key's own display does.
+func set_reading(made: Array, drawn: Array, made_mw: int, drawn_mw: int, net_mw: int, net_tone := "") -> void:
 	var made_sum := 0.0
 	for s: Dictionary in made:
 		made_sum += float(s.value)
@@ -143,15 +151,29 @@ func set_reading(made: Array, drawn: Array, made_mw: int, drawn_mw: int, net_mw:
 		drawn_sum += float(s.value)
 	var span := maxf(maxf(float(made_mw), float(drawn_mw)), maxf(made_sum, drawn_sum))
 	rows = [
-		{"caption": "Made", "slices": _slices(made, span, MADE)},
-		{"caption": "Drawn", "slices": _slices(drawn, span, DRAWN)},
+		{"caption": "Produced", "slices": _slices(made, span, MADE)},
+		{"caption": "Consumed", "slices": _slices(drawn, span, DRAWN)},
 	]
 	_made_end = float(made_mw) / span if span > 0.0 else 0.0
-	var figures := [made_mw, drawn_mw, net_mw]
+	var texts := [str(made_mw), str(drawn_mw), str(net_mw)]
+	var mark := "● " if STATUS_MARK.has(net_tone) else ""
+	var chars := 1
 	for i in 3:
-		var text := str(int(figures[i]))
-		_leds[i].set_figure(" ".repeat(maxi(0, digits - Led.cells_for(text).size())) + text, colours[i])
+		chars = maxi(chars, str(texts[i]).length() + (mark.length() if i == 2 else 0))
+	for i in 3:
+		var text := str(texts[i])
+		var pad := " ".repeat(maxi(0, chars - text.length() - (mark.length() if i == 2 else 0)))
+		var runs: Array = [{"text": pad, "colour": Color.WHITE}]
+		if i == 2 and mark != "":
+			runs.append({"text": mark, "colour": STATUS_MARK[net_tone]})
+		runs.append({"text": text, "colour": Color.WHITE})
+		_leds[i].call("set_runs", runs)
 	_relayout()
+
+
+## The figure a screen shows, without its padding or mark: made 0, drawn 1, net 2.
+func figure(i: int) -> String:
+	return str(_leds[i].get("text")).replace("● ", "").strip_edges()
 
 
 static func _slices(parts: Array, span: float, inks: Array) -> Array:
@@ -214,7 +236,7 @@ func _figure_x() -> float:
 func _caption_w() -> float:
 	var font: Font = Plate.FONT_SEMI
 	var w := 0.0
-	for c in ["MADE", "DRAWN", "NET"]:
+	for c in ["PRODUCED", "CONSUMED", "NET"]:
 		w = maxf(w, font.get_string_size(c, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_PX).x)
 	return w
 
@@ -574,8 +596,8 @@ func _get_tooltip(at_position: Vector2) -> String:
 	if hit.x < 0:
 		return ""
 	var s: Dictionary = rows[hit.x].slices[hit.y]
-	var verb := "made" if hit.x == 0 else "drew"
+	var verb := "produced" if hit.x == 0 else "consumed"
 	var count := int(s.get("count", 1))
 	if count == 1:
-		return "%s %s %d MW. Click to open it" % [str(s.name), verb, int(s.value)]
-	return "%d %s %s %d MW between them. Click to open one" % [count, str(s.name), verb, int(s.value)]
+		return "%s %s %d MW.\nClick to open it." % [str(s.name), verb, int(s.value)]
+	return "%d %s %s %d MW between them.\nClick to open one." % [count, str(s.name), verb, int(s.value)]

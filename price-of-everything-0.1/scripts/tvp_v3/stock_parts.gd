@@ -1,12 +1,15 @@
 extends RefCounted
 ## Tile view v3, the Stock tab: the small parts its sections and sheets share, after Building Detail v3's
 ## own (scripts/building_detail_panel_v2.gd): white print embossed on dark metal, metal-label captions, a
-## good's icon set in a well, a raised icon trimmed to its art, figures on LED screens, a typed figure on an
-## LED screen's glass, and the steel sheet that slides in over the tab's body.
+## good's icon set in a well, a raised icon trimmed to its art, money on LED screens and every other figure
+## on a dot matrix, a typed figure on an LED screen's glass, and the steel sheet that slides in over the
+## tab's body.
 
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 const Led := preload("res://scripts/bdp_v3_led.gd")
+const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
+const Scroll := preload("res://scripts/bdp_v3_scroll.gd")
 const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const Key := preload("res://scripts/bdp_v3_key.gd")
 const Indicator := preload("res://scripts/bdp_v3_indicator.gd")
@@ -43,6 +46,12 @@ const SHEET_MARGIN := 10.0 / 1.875
 const SHEET_CORNER := (10.0 + 60.0) * 2.0 / 1.875
 const SHEET_PAD := 14
 const SHEET_SLIDE_SECONDS := 0.26
+## The body's navy steel sheet, sampled, behind a sheet's rounded corners.
+const SHEET_BACKING := Color("#232a33")
+## A figure's dot matrix: the dots' pitch (seven rows of 2 px make a 14 px figure, the body text's size).
+const DOT_PITCH := 2.0
+## The mark a dot matrix lights before its figure when the figure is a warning.
+const DOT_MARK := "●"
 
 
 ## White print that stands off dark metal or plastic: a dark shadow down and to the right.
@@ -126,7 +135,21 @@ static func lamp(tone: String, scale := ROW_LAMP) -> Control:
 	return l
 
 
-## A figure on an LED screen, padded with blank leading digits to `digits` cells.
+## A figure that isn't money on a framed dot matrix, in white; with a `tone` of "warn" or "bad" a mark lit
+## amber or red before it (as the cabinet's key bed marks its figures).
+static func dots(text: String, tone := "") -> Control:
+	var d: Control = DotMatrix.new()
+	d.pitch = DOT_PITCH
+	d.framed = true
+	var mark := {"warn": DS.PALETTE.WARN, "bad": DS.PALETTE.DANGER}
+	if mark.has(tone):
+		d.set_runs([{"text": DOT_MARK + " ", "colour": mark[tone]}, {"text": text, "colour": Color.WHITE}])
+	else:
+		d.text = text
+	return d
+
+
+## A figure on an LED screen, padded with blank leading digits to `digits` cells. Money and unit costs only.
 static func led(figure: String, colour: Color, digits := 0) -> Control:
 	var screen: Control = Led.new()
 	screen.set_figure(" ".repeat(maxi(0, digits - Led.cells_for(figure).size())) + figure, colour)
@@ -149,8 +172,11 @@ static func money(figure: float, colour: Color, digits := 0) -> HBoxContainer:
 ## A good's icon on its cream tile, set below a thin metal frame (Building Detail's icon well), its tile's
 ## corners following the frame's opening; with a `qty`, its navy quantity pill sits inside the icon's
 ## corner over the frame, as in Building Detail's shipments bay (DS2 rule 7). It takes no clicks: the
-## control it sits in does.
-static func good_in_well(good_id: String, px: int, qty := -1) -> Control:
+## control it sits in does. With `link`, the icon is a TextureRect, which the game's good hover registry
+## (scripts/good_hover_registry.gd) turns into a link to the good's encyclopedia entry, a click on it
+## opening the entry; without it the icon is drawn, so a click on it reaches the control it sits in (the
+## bay's cells, where a click opens the good's Move or sell sheet).
+static func good_in_well(good_id: String, px: int, qty := -1, link := false) -> Control:
 	var root := Control.new()
 	root.name = "GoodInWell"
 	root.custom_minimum_size = Vector2(px, px)
@@ -166,17 +192,31 @@ static func good_in_well(good_id: String, px: int, qty := -1) -> Control:
 	st.set_corner_radius_all(roundi(WELL_RADIUS))
 	tile.add_theme_stylebox_override("panel", st)
 	root.add_child(tile)
-	var icon := TextureRect.new()
+	var tex := GoodIcons.texture_for_size(good_id, Catalog.get_internal_name(good_id), float(px))
+	var inset := roundf(px * 0.1)
+	var icon: Control
+	if link:
+		var rect := TextureRect.new()
+		rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		rect.texture = tex
+		icon = rect
+	else:
+		icon = Control.new()
+		icon.draw.connect(func() -> void:
+			if tex == null:
+				return
+			var k := minf(icon.size.x / tex.get_width(), icon.size.y / tex.get_height())
+			var drawn := tex.get_size() * k
+			icon.draw_texture_rect(tex, Rect2((icon.size - drawn) * 0.5, drawn), false))
+		icon.resized.connect(icon.queue_redraw)
+	icon.name = "Icon"
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var inset := roundf(px * 0.1)
 	icon.offset_left = inset
 	icon.offset_top = inset
 	icon.offset_right = -inset
 	icon.offset_bottom = -inset
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.texture = GoodIcons.texture_for_size(good_id, Catalog.get_internal_name(good_id), float(px))
 	root.add_child(icon)
 	var well := Control.new()
 	well.name = "IconWell"
@@ -307,27 +347,47 @@ static func entry(value: int, lo: int, hi: int, width: float, changed: Callable)
 	return screen
 
 
-## Building Detail's action sheet in the tab's body: a worn steel plate that slides in from the right the
-## first time it opens for `key` (kept on the panel, so a rebuild leaves it in place), Back and its title
-## across the top. It covers the body's whole view. Returns the column the sheet's rows go in.
-static func sheet(panel: Control, pane: VBoxContainer, key: String, node_name: String, title: String, back: Callable) -> VBoxContainer:
-	var holder := Control.new()
-	holder.name = node_name
-	holder.clip_contents = true
-	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	holder.mouse_filter = Control.MOUSE_FILTER_STOP
-	pane.add_child(holder)
+## Building Detail's action sheet over the tab's body: a worn steel plate that slides in from the right, over
+## the body as it stands (the body stays built, and scrolled where it was, under it), the first time it
+## opens for `key` (kept on the panel, so a rebuild leaves it in place). Back and its title stay across the
+## top; the rows scroll under them on the sheet's own rail. The sheet covers the body's whole view and
+## takes its clicks. It is a cover laid on the body's navy sheet beside the scroll, so it lives outside the
+## tab's pane: the tab takes it off whenever it rebuilds without it (`close`), and it goes when the tab is
+## left and hides while the land's full view has the body's place. Returns the column the rows go in.
+static func sheet(panel: Control, key: String, node_name: String, title: String, back: Callable) -> VBoxContainer:
+	var body := panel.get("_body_scroll") as ScrollContainer
+	var host := body.get_parent() as Control
+	# A rebuild of the same sheet keeps it where it was scrolled to.
+	var keep := -1
+	var old := cover(panel)
+	if old != null and str(old.get_meta("sheet_key", "")) == key:
+		var old_scroll := old.find_child("SheetScroll", true, false) as ScrollContainer
+		if old_scroll != null:
+			keep = old_scroll.scroll_vertical
+	close(panel)
+	_hook(panel)
+	var lid := Control.new()
+	lid.name = node_name
+	lid.set_meta(COVER_META, true)
+	lid.set_meta("sheet_key", key)
+	lid.clip_contents = true
+	lid.mouse_filter = Control.MOUSE_FILTER_STOP
+	lid.visible = body.visible
+	host.add_child(lid)
 	var plate := PanelContainer.new()
 	plate.name = "SheetPlate"
 	plate.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	plate.mouse_filter = Control.MOUSE_FILTER_STOP
 	var pad := StyleBoxEmpty.new()
 	pad.set_content_margin_all(SHEET_PAD)
 	plate.add_theme_stylebox_override("panel", pad)
 	plate.draw.connect(func() -> void:
+		# The navy sheet's own colour behind the plate's rounded corners, so nothing of the body shows there.
+		plate.draw_rect(Rect2(Vector2.ZERO, plate.size), SHEET_BACKING)
 		Nine.paint(plate, SHEET, Rect2(Vector2.ZERO, plate.size).grow(SHEET_MARGIN), SHEET_CORNER))
-	holder.add_child(plate)
+	lid.add_child(plate)
 	var col := VBoxContainer.new()
-	col.name = "SheetRows"
+	col.name = "SheetColumn"
 	col.add_theme_constant_override("separation", 12)
 	plate.add_child(col)
 	var head := HBoxContainer.new()
@@ -348,26 +408,81 @@ static func sheet(panel: Control, pane: VBoxContainer, key: String, node_name: S
 	tl.clip_text = true
 	emboss(tl)
 	head.add_child(tl)
-	var scroll := panel.get("_body_scroll") as ScrollContainer
+	var scroll := ScrollContainer.new()
+	scroll.name = "SheetScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	Scroll.apply(scroll, true)
+	col.add_child(scroll)
+	var rows := VBoxContainer.new()
+	rows.name = "SheetRows"
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", 12)
+	scroll.add_child(rows)
+	if keep > 0:
+		# Once the rows are laid out and the rail knows their height.
+		scroll.get_v_scroll_bar().changed.connect(func() -> void: scroll.scroll_vertical = keep, CONNECT_ONE_SHOT)
 	var fresh := str(panel.get_meta("tvp_stock_sheet", "")) != key
 	panel.set_meta("tvp_stock_sheet", key)
-	var state := {"slide": fresh}
+	# The plate fills the cover edge to edge, so none of the body shows round it once it is in.
+	var state := {"slide": fresh, "sliding": false}
 	var fit := func() -> void:
-		var room := (scroll.size.y - 4.0) if scroll != null else 0.0
-		var h := maxf(plate.get_combined_minimum_size().y, room)
-		if not is_equal_approx(holder.custom_minimum_size.y, h):
-			holder.custom_minimum_size.y = h
-		plate.size = Vector2(holder.size.x, h)
-		if bool(state.slide) and holder.size.x > 0.0:
+		plate.size = lid.size
+		plate.position.y = 0.0
+		if bool(state.slide) and lid.size.x > 0.0:
 			state.slide = false
-			plate.position.x = holder.size.x
-			plate.create_tween().tween_property(plate, "position:x", 0.0, SHEET_SLIDE_SECONDS) \
+			state.sliding = true
+			plate.position.x = lid.size.x
+			var tw := plate.create_tween()
+			tw.tween_property(plate, "position:x", 0.0, SHEET_SLIDE_SECONDS) \
 				.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	plate.minimum_size_changed.connect(fit)
-	holder.resized.connect(fit)
-	if fresh and scroll != null:
-		scroll.set_deferred("scroll_vertical", 0)
-	return col
+			tw.finished.connect(func() -> void: state.sliding = false)
+		elif not bool(state.sliding):
+			plate.position.x = 0.0
+	lid.resized.connect(fit)
+	return rows
+
+
+const COVER_META := "tvp_stock_sheet_cover"
+
+
+## The sheet over the body, or null.
+static func cover(panel: Control) -> Control:
+	var body := panel.get("_body_scroll") as ScrollContainer
+	if body == null or body.get_parent() == null:
+		return null
+	for c: Node in body.get_parent().get_children():
+		if c.has_meta(COVER_META) and not c.is_queued_for_deletion():
+			return c as Control
+	return null
+
+
+## Takes the sheet off the body, if one is on it.
+static func close(panel: Control) -> void:
+	var lid := cover(panel)
+	while lid != null:
+		lid.get_parent().remove_child(lid)
+		lid.queue_free()
+		lid = cover(panel)
+
+
+## Once for the panel: the sheet goes when the Stock tab is left, and hides while the body's scroll does
+## (the land's full view has the body's place).
+static func _hook(panel: Control) -> void:
+	var body := panel.get("_body_scroll") as ScrollContainer
+	if body != null and not body.has_meta("tvp_stock_sheet_hook"):
+		body.set_meta("tvp_stock_sheet_hook", true)
+		body.visibility_changed.connect(func() -> void:
+			var lid := cover(panel)
+			if lid != null:
+				lid.visible = body.visible)
+	var panes = panel.get("_panes")
+	var pane := (panes as Dictionary).get("stock") as Control if panes is Dictionary else null
+	if pane != null and not pane.has_meta("tvp_stock_sheet_hook"):
+		pane.set_meta("tvp_stock_sheet_hook", true)
+		pane.visibility_changed.connect(func() -> void:
+			if not pane.visible:
+				close(panel))
 
 
 ## A row of a sheet: its caption in a column of one width, then its controls.

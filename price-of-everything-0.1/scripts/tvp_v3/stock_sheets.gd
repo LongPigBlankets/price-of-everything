@@ -1,17 +1,18 @@
 extends RefCounted
 ## Tile view v3, the Stock tab: its two action sheets, each a worn steel plate that slides in over the tab's
-## body as Building Detail's sheets do (docs/tile-view-ds2-plan.md §5, Phase 5).
-##   Move or sell: the good picked in the bay, how many, where to (the market, a special order for it, or a
-##   tile picked on the map), once or every turn, what that is worth (the sale after port charges, or the
-##   freight), then the key that does it; under it the good's standing order, selling all but a set amount
-##   every turn. The panel keeps the choice (_stock_sel, _stock_qty, _stock_dest, _stock_recurring) and
-##   carries it out (_confirm_stock_action), as v2 does.
-##   Expand the warehouse: what the tile holds now and after, the materials the works use with what you
-##   hold and what the market charges (MatchState.warehouse_upgrade_quote), and the two ways to pay.
+## body as Building Detail's sheets do (docs/tile-view-ds2-plan.md §5, Phase 5; stock_parts.gd `sheet`).
+##   Move or sell: the good picked in the bay or on the warehouse's bar, in its well with its quantity pill,
+##   how many, where to (the market, a special order for it, or a tile picked on the map), once or every
+##   turn, what that is worth (the sale after port charges, or the freight, a turn when it repeats), then
+##   the key that does it; under it the good's standing order, selling all but a set amount every turn.
+##   The panel keeps the choice (_stock_sel, _stock_qty, _stock_dest, _stock_recurring) and carries it out
+##   (_confirm_stock_action), as v2 does.
+##   Upgrade the warehouse: its capacity now and at the next level on a dot matrix, the materials the works
+##   use with what you hold and what the market charges (MatchState.warehouse_upgrade_quote), and the two
+##   ways to pay.
 
 const Parts := preload("res://scripts/tvp_v3/stock_parts.gd")
 const Led := preload("res://scripts/bdp_v3_led.gd")
-const Counter := preload("res://scripts/bdp_v3_counter.gd")
 const Toggle := preload("res://scripts/bdp_v3_toggle.gd")
 const Heading := preload("res://scripts/bdp_v3_heading.gd")
 const CabinetKey := preload("res://scripts/tile_cabinet_key.gd")
@@ -19,9 +20,11 @@ const CabinetKey := preload("res://scripts/tile_cabinet_key.gd")
 const MARKET_DEST := "__market__"
 const SPECIAL_ORDER_DEST := "__special_order__"
 const GOOD_PX := 72
-const MATERIAL_PX := 44
-## The destination keys' width.
-const DEST_KEY_W := 128.0
+const MATERIAL_PX := 52
+## The destination keys' width, and the sheet's captions' column (three keys and the caption fit the
+## narrowest body).
+const DEST_KEY_W := 116.0
+const CAPTION_W := 92.0
 
 
 static func _refresh(panel: Control) -> void:
@@ -51,7 +54,7 @@ static func standing(tile: String, gid: String) -> Array:
 
 ## The Move or sell sheet for the good the panel has picked. False when the good has gone from the tile
 ## (the pick is dropped and the tab shows instead).
-static func move_or_sell(panel: Control, pane: VBoxContainer, tile: String) -> bool:
+static func move_or_sell(panel: Control, tile: String) -> bool:
 	var sel: Dictionary = panel.get("_stock_sel")
 	var gid := str(sel.get("good_id", ""))
 	var good_name := str(sel.get("name", Catalog.get_display_name(gid)))
@@ -74,30 +77,25 @@ static func move_or_sell(panel: Control, pane: VBoxContainer, tile: String) -> b
 	var recurring := bool(panel.get("_stock_recurring")) and dest != SPECIAL_ORDER_DEST
 	panel.set("_stock_recurring", recurring)
 
-	var rows := Parts.sheet(panel, pane, "move:" + gid, "StockGoodActions", "Move or sell %s" % good_name, func() -> void:
+	var rows := Parts.sheet(panel, "move:" + gid, "StockGoodActions", "Move or sell %s" % good_name, func() -> void:
 		panel.set("_stock_sel", {})
 		panel.set("_stock_dest", "")
 		panel.set("_stock_recurring", false)
 		_refresh(panel))
 
-	# The good, and how much of it is here, on a drum counter.
+	# The good in its well, how much of it is here on its quantity pill, as in the bay.
 	var good := HBoxContainer.new()
 	good.name = "SheetGood"
 	good.add_theme_constant_override("separation", 14)
-	good.add_child(Parts.good_in_well(gid, GOOD_PX))
-	var count_row := HBoxContainer.new()
-	count_row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	count_row.add_theme_constant_override("separation", 8)
-	var drums: Control = Counter.new()
-	drums.configure(Counter.drums_for(available, 0, 1), 0)
-	drums.set_value(available)
-	count_row.add_child(drums)
-	count_row.add_child(Parts.metal("on this tile"))
-	good.add_child(count_row)
+	good.add_child(Parts.good_in_well(gid, GOOD_PX, available, true))
+	var here := Parts.metal("On this tile")
+	here.tooltip_text = "%d %s on this tile" % [available, good_name]
+	here.mouse_filter = Control.MOUSE_FILTER_PASS
+	good.add_child(here)
 	rows.add_child(good)
 
 	# How many: typed on a screen, or All. The confirm key's words and the quote follow what is typed.
-	var qty_row := Parts.sheet_row("Quantity")
+	var qty_row := Parts.sheet_row("Quantity", CAPTION_W)
 	qty_row.name = "QuantityRow"
 	var live := {"key": null, "quote": func(_q: int) -> void: pass}
 	var entry := Parts.entry(qty, 1, maxi(1, max_qty), 96.0, func(v: int) -> void:
@@ -119,7 +117,7 @@ static func move_or_sell(panel: Control, pane: VBoxContainer, tile: String) -> b
 	rows.add_child(qty_row)
 
 	# Where to: latching keys, the chosen one down.
-	var dest_row := Parts.sheet_row("Send to")
+	var dest_row := Parts.sheet_row("Send to", CAPTION_W)
 	dest_row.name = "DestinationRow"
 	var keys := HBoxContainer.new()
 	keys.add_theme_constant_override("separation", 8)
@@ -153,7 +151,7 @@ static func move_or_sell(panel: Control, pane: VBoxContainer, tile: String) -> b
 	keys.add_child(tile_key)
 	rows.add_child(dest_row)
 	if to_tile:
-		var to_line := Parts.sheet_row("")
+		var to_line := Parts.sheet_row("", CAPTION_W)
 		to_line.name = "DestinationName"
 		var to_name := Parts.body("To %s" % Parts.tile_words(dest, "the tile you picked"), true)
 		to_name.tooltip_text = Parts.coords(dest)
@@ -162,7 +160,7 @@ static func move_or_sell(panel: Control, pane: VBoxContainer, tile: String) -> b
 		rows.add_child(to_line)
 
 	# Once, or every turn: Building Detail's slide switch, its two sides named in raised letters.
-	var repeat_row := Parts.sheet_row("Repeat")
+	var repeat_row := Parts.sheet_row("Repeat", CAPTION_W)
 	repeat_row.name = "RepeatRow"
 	if dest == SPECIAL_ORDER_DEST:
 		repeat_row.add_child(Parts.body("A special order goes once"))
@@ -173,7 +171,7 @@ static func move_or_sell(panel: Control, pane: VBoxContainer, tile: String) -> b
 	rows.add_child(repeat_row)
 
 	# What it is worth, right over the key that does it.
-	var quote := _quote(tile, gid, dest, order)
+	var quote := _quote(tile, gid, dest, order, recurring)
 	if quote.row != null:
 		rows.add_child(quote.row)
 		live.quote = quote.update
@@ -216,7 +214,7 @@ static func move_or_sell(panel: Control, pane: VBoxContainer, tile: String) -> b
 	st_head.add_child(Parts.heading("Standing order"))
 	standing.add_child(st_head)
 	standing.add_child(Parts.para("Every turn, sell all %s here except the amount you keep. Inputs this tile's buildings need are always kept on top." % good_name))
-	var keep_row := Parts.sheet_row("Keep")
+	var keep_row := Parts.sheet_row("Keep", CAPTION_W)
 	var on := MatchState.is_auto_sell_good(tile, gid)
 	var keep_now := MatchState.auto_sell_keep_for(tile, gid)
 	var keep_entry := Parts.entry(keep_now, 0, 999999, 96.0, func(v: int) -> void:
@@ -282,15 +280,16 @@ static func _recurring_row(panel: Control, r: Dictionary) -> HBoxContainer:
 ##     order) less the port's charges, and the order's bonus when it is filled;
 ##   a tile: the freight (TransportService.transport_cost_for_route with queue_move's large shipment
 ##     surcharge) and the turns it takes.
+## Repeating every turn, the figure is a turn's, at today's price, and the words say so.
 ## {row (null with no destination), update: Callable(qty), blocked: why the key can't go, or ""}.
-static func _quote(tile: String, gid: String, dest: String, order: Dictionary) -> Dictionary:
+static func _quote(tile: String, gid: String, dest: String, order: Dictionary, recurring := false) -> Dictionary:
 	var none := {"row": null, "update": func(_q: int) -> void: pass, "blocked": ""}
 	if dest == "":
 		return none
 	var selling := dest == MARKET_DEST or dest == SPECIAL_ORDER_DEST
 	var route := TransportService.route_to_nearest_port(tile, gid) if selling else TransportService.route(tile, dest, gid)
 	var port := str(route.get("port", ""))
-	var row := Parts.sheet_row("You get" if selling else "Freight")
+	var row := Parts.sheet_row("You get" if selling else "Freight", CAPTION_W)
 	row.name = "QuoteRow"
 	if (selling and port == "") or not TransportService.route_is_reachable(route):
 		var why := "No route to a port from here" if selling else "No route from here to that tile"
@@ -317,17 +316,22 @@ static func _quote(tile: String, gid: String, dest: String, order: Dictionary) -
 			var net := float(q) * unit - fees
 			screen.call("set_figure", "%.2f" % net, DS.PALETTE.OK if net >= 0.0 else DS.PALETTE.DANGER)
 			var said := ("after £%.2f port charges" % fees) if fees > 0.005 else "no port charges"
-			said += (", ships in %d turn%s" % [turns, "" if turns == 1 else "s"]) if turns > 0 else ", sold now"
+			if recurring:
+				said = "a turn, " + said
+			else:
+				said += (", ships in %d turn%s" % [turns, "" if turns == 1 else "s"]) if turns > 0 else ", sold now"
 			if special and bonus > 0:
 				said += ", plus a %d%% bonus when the order is filled" % bonus
 			words.text = said
-			words.tooltip_text = "%d at £%.2f" % [q, unit]
+			words.tooltip_text = ("%d a turn at today's price, £%.2f each" if recurring else "%d at £%.2f each") % [q, unit]
 	else:
 		update = func(q: int) -> void:
 			var surcharge := TransportState.LARGE_SHIPMENT_SURCHARGE if q > TransportState.LARGE_SHIPMENT_THRESHOLD else 1.0
 			var cost := TransportService.transport_cost_for_route(gid, q, route, surcharge)
 			screen.call("set_figure", "%.2f" % cost, DS.PALETTE.DANGER)
 			var said := "arrives in %d turn%s" % [turns, "" if turns == 1 else "s"]
+			if recurring:
+				said = "a turn, each " + said
 			if surcharge > 1.0:
 				said += ", double rate over %d units" % TransportState.LARGE_SHIPMENT_THRESHOLD
 			words.text = said
@@ -335,31 +339,42 @@ static func _quote(tile: String, gid: String, dest: String, order: Dictionary) -
 	return {"row": row, "update": update, "blocked": ""}
 
 
-## The Expand the warehouse sheet: what the tile holds now and after, the bill of materials and the two
+## What the tile would hold with its warehouse at `level`: that level's own room, the storage the tile's
+## buildings add (the port's 600) and the capacity modifiers, added up as Stockpile.get_capacity does.
+static func capacity_at(tile: String, level: int) -> int:
+	var base := int(EconomyConfig.WAREHOUSE_STORAGE_CAP.get(level, Stockpile.TILE_CAPACITY))
+	var boost := 0
+	for iid in BuildingState.tile_buildings.get(tile, []):
+		var bd: Dictionary = Catalog.get_building(str(BuildingState.get_building(str(iid)).get("building_id", "")))
+		boost += int(bd.get("storage_boost", 0))
+	return int(round(Modifiers.apply("stockpile_capacity", tile, float(base + boost), {"tile_id": tile})))
+
+
+## A capacity now and after an upgrade, as the dot matrix shows it: "1400 → 2200".
+static func capacity_change(now: int, after: int) -> String:
+	return "%d → %d" % [now, after]
+
+
+## The warehouse's upgrade sheet: its capacity now and at the next level, the bill of materials and the two
 ## ways to pay, with why a way is shut when it is.
-static func expand(panel: Control, pane: VBoxContainer, tile: String) -> void:
+static func expand(panel: Control, tile: String) -> void:
 	var quote: Dictionary = MatchState.warehouse_upgrade_quote(tile)
-	var rows := Parts.sheet(panel, pane, "expand", "WarehouseExpansion", "Expand the warehouse", func() -> void:
-		panel.set("_warehouse_expand", false)
-		_refresh(panel))
 	var level := int(quote.get("level", 1))
 	var next_level := int(quote.get("next_level", level + 1))
-	var gain := int(quote.get("next_cap", 0)) - int(quote.get("current_cap", 0))
-	var cap := Stockpile.get_capacity(tile)
+	var rows := Parts.sheet(panel, "expand", "WarehouseExpansion", "Upgrade to Lvl%d" % next_level, func() -> void:
+		panel.set("_warehouse_expand", false)
+		_refresh(panel))
+	var now := Stockpile.get_capacity(tile)
+	var after := capacity_at(tile, next_level)
 
-	# What the tile holds now and after, on screens.
-	var holds := Parts.sheet_row("This tile holds")
+	# The capacity now and after, on a dot matrix, as the strip under the upgrade key.
+	var holds := Parts.sheet_row("Capacity", CAPTION_W)
 	holds.name = "HoldsRow"
-	var digits := str(cap + gain).length()
-	holds.add_child(Parts.led(str(cap), DS.PALETTE.TEXT, digits))
-	holds.add_child(Parts.metal("now"))
-	var gap := Control.new()
-	gap.custom_minimum_size.x = 10.0
-	holds.add_child(gap)
-	holds.add_child(Parts.led(str(cap + gain), DS.PALETTE.OK, digits))
-	holds.add_child(Parts.metal("at level %d" % next_level))
+	var shown := Parts.dots(capacity_change(now, after))
+	shown.name = "CapacityDots"
+	holds.add_child(shown)
 	rows.add_child(holds)
-	rows.add_child(Parts.para("The warehouse goes from level %d to level %d, %d more units. The works use these materials." % [level, next_level, gain]))
+	rows.add_child(Parts.para("Level %d to level %d adds %d units of storage. The works use these materials." % [level, next_level, after - now]))
 
 	var materials: Array = quote.get("materials", [])
 	var cost_digits := 0
@@ -377,12 +392,12 @@ static func expand(panel: Control, pane: VBoxContainer, tile: String) -> void:
 			short.append(Catalog.get_display_name(good_id))
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 12)
-		row.add_child(Parts.good_in_well(good_id, MATERIAL_PX))
+		row.add_child(Parts.good_in_well(good_id, MATERIAL_PX, need, true))
 		var names := VBoxContainer.new()
 		names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		names.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		names.add_theme_constant_override("separation", 0)
-		var title := Parts.body("%s ×%d" % [Catalog.get_display_name(good_id), need], true)
+		var title := Parts.body(Catalog.get_display_name(good_id), true)
 		title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		title.clip_text = true
 		title.custom_minimum_size.x = 120.0

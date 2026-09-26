@@ -11,9 +11,12 @@ extends Control
 ## it). Under the bar a scale of brackets says what the capacity is made of: the warehouse's level, the
 ## storage a building adds (the port's 600) and any modifier. Pointing at a good in the bay, or at its tile
 ## or slice here, lights its slice and its tile and names it under the bar, in the scale's place; picking
-## a tile or a slice asks for that good's Move or sell sheet (`picked`).
+## a tile or a slice asks for that good's Move or sell sheet (`picked`), and picking the "+N" tile asks for
+## every good in the bay (`more_picked`).
 
 signal picked(good_id: String)
+## The "+N" tile was picked: the goods it stands for are in the bay, behind its wide key.
+signal more_picked
 ## The good under the pointer here, "" when it leaves one, so the bay can light that good's cell.
 signal pointed(good_id: String)
 
@@ -263,7 +266,7 @@ func _gui_input(event: InputEvent) -> void:
 	var motion := event as InputEventMouseMotion
 	if motion != null:
 		var gid := _good_at(motion.position)
-		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if gid != "" else Control.CURSOR_ARROW
+		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if gid != "" or _on_more(motion.position) else Control.CURSOR_ARROW
 		_point(gid)
 		return
 	var click := event as InputEventMouseButton
@@ -272,6 +275,9 @@ func _gui_input(event: InputEvent) -> void:
 		if gid != "":
 			accept_event()
 			picked.emit(gid)
+		elif _on_more(click.position):
+			accept_event()
+			more_picked.emit()
 
 
 func _point(gid: String) -> void:
@@ -292,6 +298,14 @@ func _good_at(at: Vector2) -> String:
 			if at.x >= _x(float(s.from)) - 0.5 and at.x <= _x(float(s.to)) + 0.5:
 				return str(s.good_id)
 	return ""
+
+
+## Whether `at` is on the "+N" tile.
+func _on_more(at: Vector2) -> bool:
+	for t: Dictionary in tags():
+		if str(t.kind) == "more" and _tag_rect(t).grow(2.0).has_point(at):
+			return true
+	return false
 
 
 func _frame_h() -> float:
@@ -416,10 +430,11 @@ func _draw() -> void:
 				lit = lit or str(g.good_id) == hot
 		if lit:
 			_ring.draw(get_canvas_item(), rect.grow(2.0))
-	# Under it, the good pointed at, in the scale's place while it is lit.
+	# Under it, the good pointed at, in the scale's place while it is lit: its name (its quantity is on its
+	# pill in the bay, lit with it).
 	var lit_slice := _hot_slice()
 	if not lit_slice.is_empty():
-		var text := "%s %d" % [str(lit_slice.name).to_upper(), int(lit_slice.qty)]
+		var text := str(lit_slice.name).to_upper()
 		var x := (_x(float(lit_slice.from)) + _x(float(lit_slice.to))) * 0.5
 		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, TAG_PX).x
 		var y := bar.end.y + 1.0
@@ -490,7 +505,7 @@ func _get_tooltip(at_position: Vector2) -> String:
 				var names := PackedStringArray()
 				for g: Dictionary in t.goods:
 					names.append("%s %d" % [str(g.name), int(g.qty)])
-				return "%d more goods: %s" % [(t.goods as Array).size(), ", ".join(names)]
+				return "%d more goods: %s\nClick to see them all in the bay" % [(t.goods as Array).size(), ", ".join(names)]
 			"peak":
 				return "Last turn's peak: %d of %d" % [peak, capacity]
 	if peak_marked():
