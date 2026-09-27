@@ -426,15 +426,16 @@ func _test_middleman_port_rate_from_start() -> void:
 	MatchState.reset()
 	MatchState.ruleset["logistics_model"] = "middleman_v1"
 	for turn in [1, 10, 30, 31, 100]:
-		_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(turn), 0.03), "middleman port rate is normal from turn %d" % turn)
-	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(1, true), 0.03), "middleman ruleset supersedes tutorial port relief")
+		_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(turn), EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES), "intermediary games charge their port rate from turn %d" % turn)
+	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(1, true), EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES), "the intermediary ruleset supersedes tutorial port relief")
+	_check(is_equal_approx(EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES, 2.0 * EconomyConfig.SEAPORT_AD_VALOREM_LATE), "intermediary games pay twice the standard late port rate")
 	TurnManager.current_turn = 1
-	_check(is_equal_approx(TransportState.seaport_insurance_rate(""), 0.03), "actual port billing uses normal opening rate")
-	_check(is_equal_approx(float(TransportService.port_ad_valorem_per_unit("g_006").rate), 0.03), "port quote agrees with billing")
+	_check(is_equal_approx(TransportState.seaport_insurance_rate(""), EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES), "actual port billing uses the intermediary-game rate")
+	_check(is_equal_approx(float(TransportService.port_ad_valorem_per_unit("g_006").rate), EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES), "port quote agrees with billing")
 	var saved := MatchState.export_state()
 	MatchState.reset()
 	MatchState.import_state(saved)
-	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(1), 0.03), "middleman port rule survives save/load")
+	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(1), EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES), "the intermediary port rule survives save/load")
 	MatchState.reset()
 	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(1), 0.005), "legacy games keep introductory relief")
 	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(100, true), 0.005), "legacy tutorials keep their current rate")

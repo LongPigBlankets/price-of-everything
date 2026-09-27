@@ -97,7 +97,7 @@ The panel is the exchange's floor furniture: the quote board over the pit, the l
 | **Good on a tile** | the good's cream icon tile in a gunmetal well (138 layout px, 73.6 logical) | the tile's left |
 | **Name** | one wide split flap, as the destination field of an old station board | the name in white capitals, the flap's split across the letters |
 | **Buy and sell** | the board's price windows | printed £ then a white seven segment LED, five cells, the point in its own cell (0.60, 11.60, 481.3, 1153) |
-| **Direction** | an arrow lamp: the pilot lamp's bezel with a triangular lens | green pointing up while rising, red pointing down while falling, dark and round while steady; one lamp for both prices |
+| **Direction** | a plain trend arrow, no lamp (owner, 27 September) | up while rising, down while falling, nothing while steady; red when it goes against the player's own trade (buying while it rises, selling while it falls), green when with it, off-white when the player is not trading it (`MParts.trend_tone`) |
 | **Your goods** | a pilot lamp on the tile | green where you make it for less than the market pays, amber about even, red dearer, none where you don't make it |
 | **The good's slip** | the pit's chart recorder and signal desk | under the tile, a dark plate: graph paper behind glass (the sell price over recent turns), the impact ladder as ten LED cells with its rung lit, one line in words, the good's four keys |
 | **Listing board** | lots posted by the exchange | under a raised owner heading, each lot an enamel card in a brass holder: the building printed flat on its navy field (blueprint), name and tile in navy, output in its well with the quantity pill |
@@ -170,9 +170,9 @@ Contracts kept: `MarketPanel` (tutorial spotlight, `close_market_panel`), `open_
 ## 8. Decisions (the owner, 27 September 2026)
 
 1. **Metaphor**: DECIDED, the commodities exchange as studied: the nameplate, the bell, the ticker and the dot matrix key strip.
-2. **Width**: DECIDED, **840 logical for every tab** (`MarketDs2.WIDTH`, `market_panel.gd` `DS2_WIDTH`), against 1220 today. A test holds every tab, the open slip and the sell panel to it.
+2. **Width**: DECIDED, **960 logical for every tab** (840 until the owner asked for the Resources panel's spacing, 27 September: 20 between value columns, Sold 56, Impact 64, the name 122) (`MarketDs2.WIDTH`, `market_panel.gd` `DS2_WIDTH`), against 1220 today. A test holds every tab, the open slip and the sell panel to it.
 3. **Tabs**: DECIDED, as they are, the five: Prices, Buildings, Special Orders, Recurring, History. Moves stay in the market (Recurring and History).
-4. **The board**: DECIDED, **one row per good**, not tiles: modules in the ledger's language with sortable headings. Columns: the good in its well and its name (the arrow lamp and a word under it); Buy and Sell (raw; Sell at the sale price); Sold last turn; Your cost and Profit; the current Impact. The row opens its slip, which carries the Sell and Buy keys with Move and Build more (the owner allowed "a Sell key and a Buy key, or open the slip"; the slip keeps the row inside the width).
+4. **The board**: DECIDED, **one row per good**, not tiles: modules in the ledger's language with sortable headings. Columns: the good in its well and its name (the trend arrow and a word under it); Buy and Sell (raw; Sell at the sale price); Sold last turn; Your cost and Profit; the current Impact. The row opens its slip, which carries the Sell and Buy keys with Move and Build more (the owner allowed "a Sell key and a Buy key, or open the slip"; the slip keeps the row inside the width).
 5. **Your cost and profit**: DECIDED, **no lamps**: LED screens lit green, amber or red. Profit is green above break even, red below it, amber within **2% of the sale price** (at least a penny) either way (`MarketRules.BREAK_EVEN_SHARE`, `profit_tone`). Your cost is green below the sale price, red above it (amber only at the price itself, `cost_tone`). Profit is the sale price less your cost (`board_row`), blank for a good you don't make.
 6. **Prices on the board**: DECIDED, **raw**, no transport: `MarketRules.buy_price` and `sale_price`. What a sale pays is the sale price; its charges are the sell panel's.
 7. **The impact**: DECIDED, **one column showing the current impact, underlined**, its hover a dot card with the good's impact ladder (`MarketRules.impact_ladder`). The ten columns and their toggle go (in DS2; today's look keeps them).
@@ -198,7 +198,7 @@ Contracts kept: `MarketPanel` (tutorial spotlight, `close_market_panel`), `open_
 | Part | Where | Reused / new |
 |---|---|---|
 | Backing, content margin, seam, sort marks, search screen, plastic case, modules, wells, captions | `ledger_v3.gd`, `tvp_v3/buildings_parts.gd` | reused |
-| Nameplate (MARKET, black enamel in brass), exchange bell, arrow lamp (up green, down red; steady is `lamp_off`) | render set `marketparts`, seed 450: `market_nameplate`, `market_bell`, `lamp_arrow_up`, `lamp_arrow_down`; `scripts/market_ds2/parts.gd` | new |
+| Nameplate (MARKET, black enamel in brass), exchange bell (the arrow lamp's renders `lamp_arrow_up`/`lamp_arrow_down` are retired for the drawn trend arrow) | render set `marketparts`, seed 450: `market_nameplate`, `market_bell`, `lamp_arrow_up`, `lamp_arrow_down`; `scripts/market_ds2/parts.gd` | new |
 | Key bed and the strip of figures over five latching keys, the ticker | `market_ds2.gd` (the tile view's key bed pattern, `LatchKey`, `DotMatrix`) | reused parts; ▲ ▼ added to the dot matrix font |
 | Money screens under the display rule (the point in its own cell, five cells) | `bdp_v3_led.gd` `point_cell` (off by default, so every other panel is unchanged), `money_figure.gd` `display()` | kit change, opt in |
 | Prices: rows, sort, filters, impact card, the slip (chart recorder with its hover readout, impact meter, keys) | `prices_tab.gd`, `slip.gd` | new; dot card reused |

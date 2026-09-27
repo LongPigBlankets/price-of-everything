@@ -120,6 +120,27 @@ func _test_market_ds2_board_figures() -> void:
 	_done(panel)
 
 
+## The trend arrow is red when the price goes against the player's own trade, green when with it, plain when
+## the player is not trading the good, and hidden while the price holds. The impact card counts "/ turn".
+func _test_market_ds2_trend_arrow() -> void:
+	var MParts := preload("res://scripts/market_ds2/parts.gd")
+	_check(MParts.trend_tone(1, -20.0) == "bad", "arrow: buying while it rises is red")
+	_check(MParts.trend_tone(-1, 20.0) == "bad", "arrow: selling while it falls is red")
+	_check(MParts.trend_tone(-1, -20.0) == "ok", "arrow: buying while it falls is green")
+	_check(MParts.trend_tone(1, 20.0) == "ok", "arrow: selling while it rises is green")
+	_check(MParts.trend_tone(1, 0.0) == "" and MParts.trend_tone(0, 20.0) == "", "arrow: plain when not trading or holding")
+	var panel := _panel(true)
+	panel.show()
+	await get_tree().process_frame
+	var row: Control = (panel.call("ds2") as Control).call("tab", "prices").call("row_for", COAL)
+	_check(row != null and row.find_child("TrendArrow", true, false) != null and row.find_child("ArrowLamp", true, false) == null,
+		"arrow: the row carries the arrow, not the lamp")
+	var card: Dictionary = MParts.ladder_card(COAL)
+	for line: Dictionary in card.rows:
+		_check(str(line.caption).ends_with("/ TURN"), "impact card: %s counts / TURN" % str(line.caption))
+	_done(panel)
+
+
 ## Every tab keeps to the one width: nothing in a tab asks for more than the panel's width allows.
 func _test_market_ds2_width_discipline() -> void:
 	var panel := _panel(true)
@@ -315,7 +336,8 @@ func _test_market_ds2_lamp_overlay() -> void:
 	var dots := panel.find_children("Dots", "", true, false)
 	_check(not dots.is_empty() and dots.all(func(n: Node) -> bool: return (n as CanvasItem).material == null), "lamp: dot matrix dots are not darkened")
 	var glows := panel.find_children("Glow", "", true, false)
-	_check(not glows.is_empty() and glows.all(func(n: Node) -> bool: return (n as CanvasItem).material == Overlay.glow_material()),
+	# The board's arrow lamps were its only glows; the drawn trend arrow has none. Any glow still adds in full.
+	_check(glows.all(func(n: Node) -> bool: return (n as CanvasItem).material == Overlay.glow_material()),
 		"lamp: glows add at full strength")
 	var modules := panel.find_children("MarketRow_*", "", true, false)
 	_check(not modules.is_empty() and (modules[0] as CanvasItem).material == Overlay.shade_material(), "lamp: a row's plastic is darkened")

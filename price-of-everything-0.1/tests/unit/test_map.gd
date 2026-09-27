@@ -5745,3 +5745,70 @@ func _test_farm_on_a_crowded_tile() -> void:
 	await get_tree().process_frame
 	SaveLoad.import_snapshot(snapshot)
 	await get_tree().process_frame
+
+## Rivers are ONE mesh, not a draw_line per bezier sample. As draw calls the network was ~288,000
+## canvas objects a frame (each antialiased line is five), eighteen times the GL Compatibility
+## instance buffer, whose growth path crashes the engine when the GPU lags. tools/canvas_load_probe
+## sweeps the whole map for the frame budget; this pins the geometry and the live layer.
+func _test_river_mesh_builder() -> void:
+	var Builder: GDScript = load("res://scripts/river_mesh_builder.gd")
+	var geo: RefCounted = Builder.new()
+	var blue := Color(0.2, 0.4, 0.8, 0.7)
+	var pts := PackedVector2Array([Vector2(0, 0), Vector2(100, 0), Vector2(100, 100)])
+	geo.call("stroke", pts, PackedFloat32Array([10.0, 10.0, 10.0]), blue)
+	var verts: PackedVector2Array = geo.get("verts")
+	var colours: PackedColorArray = geo.get("colours")
+	var indices: PackedInt32Array = geo.get("indices")
+	# 4 per sample (feather, edge, edge, feather) + 2 per capped end.
+	_check(verts.size() == 3 * 4 + 2 * 2, "river mesh: a 3-sample ribbon has 16 vertices (got %d)" % verts.size())
+	# 3 quads per span, a quad and two corners per cap: (2*3*2 + 2*4) triangles.
+	_check(indices.size() == (2 * 3 * 2 + 2 * 4) * 3,
+		"river mesh: 20 triangles for two spans and two caps (got %d)" % (indices.size() / 3))
+	_check(is_zero_approx(colours[0].a) and is_equal_approx(colours[1].a, 0.7)
+		and is_zero_approx(colours[3].a), "river mesh: the feather fades to clear, the body keeps its alpha")
+	# The mitre at the right-angle bend keeps the full half-width off BOTH segments.
+	var edge: Vector2 = verts[4 + 1]
+	var off_first := absf(edge.y)
+	var off_second := absf(edge.x - 100.0)
+	_check(is_equal_approx(off_first, 5.0) and is_equal_approx(off_second, 5.0),
+		"river mesh: the bend is mitred to the half-width on both legs (%.2f, %.2f)" % [off_first, off_second])
+	var closed: RefCounted = Builder.new()
+	closed.call("stroke", PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 10), Vector2(0, 10)]),
+		PackedFloat32Array([2.0, 2.0, 2.0, 2.0]), blue, true)
+	_check((closed.get("verts") as PackedVector2Array).size() == 16
+		and (closed.get("indices") as PackedInt32Array).size() == 4 * 3 * 2 * 3,
+		"river mesh: a closed shore wraps with no caps")
+	var m: ArrayMesh = geo.call("mesh")
+	_check(m.get_surface_count() == 1, "river mesh: one surface")
+
+func _test_river_layer_is_one_mesh() -> void:
+	var packed: PackedScene = load("res://scenes/main.tscn")
+	var inst: Node = packed.instantiate()
+	add_child(inst)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var rv: Node = inst.find_child("RiverVisuals", true, false)
+	_check(rv != null, "river layer: RiverVisuals exists")
+	if rv == null:
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+	var first: ArrayMesh = rv.get("_mesh")
+	_check(first != null and first.get_surface_count() == 1
+		and first.surface_get_array_len(0) > 1000,
+		"river layer: the whole network is built as one mesh (%d vertices)" % (
+			first.surface_get_array_len(0) if first != null else 0))
+	var was_mid := MapStyle.midcentury
+	var was_ink := MapStyle.ink
+	MapStyle.set_midcentury(false)
+	MapStyle.set_ink(false)
+	await get_tree().process_frame
+	var classic: ArrayMesh = rv.get("_mesh")
+	# Classic draws no bank casing, so the rebuilt mesh is smaller: proof it was rebuilt.
+	_check(classic != null and first != null and classic != first
+		and classic.surface_get_array_len(0) < first.surface_get_array_len(0),
+		"river layer: a style change rebuilds the mesh (casing gone in classic)")
+	MapStyle.set_ink(was_ink)
+	MapStyle.set_midcentury(was_mid)
+	inst.queue_free()
+	await get_tree().process_frame

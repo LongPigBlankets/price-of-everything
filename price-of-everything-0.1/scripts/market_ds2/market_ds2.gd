@@ -30,7 +30,7 @@ const LotsTab := preload("res://scripts/market_ds2/lots_tab.gd")
 const BookTabs := preload("res://scripts/market_ds2/book_tabs.gd")
 
 ## The panel's one width, every tab (owner, decision 2).
-const WIDTH := 840.0
+const WIDTH := 960.0
 const TABS := [["prices", "Prices"], ["buildings", "Buildings"], ["special_orders", "Special Orders"],
 	["recurring", "Recurring"], ["history", "History"]]
 const LAYOUT := 1.875
