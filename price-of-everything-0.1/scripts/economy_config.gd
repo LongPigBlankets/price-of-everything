@@ -152,6 +152,9 @@ const SEAPORT_BASE_FEE_PER_GOOD: float = 0.0
 const SEAPORT_AD_VALOREM_EARLY: float = 0.005   # t1-30: learning window
 const SEAPORT_AD_VALOREM_LATE: float = 0.03     # t31+: the squeeze
 const SEAPORT_AD_VALOREM_STEP_TURN: int = 31
+# Logistics Intermediary games charge this from turn 1: twice the late rate, so taking
+# logistics in-house pays only on short routes to port.
+const SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES: float = 0.06
 const OWNED_SEAPORT_AD_VALOREM_SHARE: float = 0.5  # owning the port halves it, as before
 const SEAPORT_INSURANCE_RATE: float = 0.0005 # Legacy; superseded by the schedule above.
 const OWNED_SEAPORT_INSURANCE_RATE: float = 0.00025 # Legacy; superseded.
@@ -161,7 +164,7 @@ func seaport_ad_valorem_rate(turn: int, tutorial_match: bool = false) -> float:
 	# The middleman replaces introductory port relief in the new logistics ruleset.
 	# Legacy saves/tutorials keep their existing economy until explicitly migrated.
 	if str(MatchState.ruleset.get("logistics_model", "legacy")) == "middleman_v1":
-		return SEAPORT_AD_VALOREM_LATE
+		return SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES
 	return SEAPORT_AD_VALOREM_EARLY if tutorial_match or turn < SEAPORT_AD_VALOREM_STEP_TURN else SEAPORT_AD_VALOREM_LATE
 const SEAPORT_FEE_GROWTH_PER_TURN: float = 0.001 # Both components rise 0.1% per turn.
 const SEAPORT_THROUGHPUT_STANDARD: int = 1500
