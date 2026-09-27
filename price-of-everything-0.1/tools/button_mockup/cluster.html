@@ -3239,8 +3239,8 @@ async function exportLayers() {
   // and the lot last. Under the catalogue, the building icon three ways for comparison. On every LED the
   // point takes a cell of its own, and a figure drops a decimal from £100.
   // The construct panel's game layers (docs/construct-ds2-plan.md), exported with the study's own parts so they match
-  // it: constructhead (464), constructboard (465), constructyard (466), constructcat (467).
-  const CONSTRUCT_PARTS = ['constructhead', 'constructboard', 'constructyard', 'constructcat'];
+  // it: constructhead (464), constructboard (465), constructyard (466), constructcat (467), constructkey (468).
+  const CONSTRUCT_PARTS = ['constructhead', 'constructboard', 'constructyard', 'constructcat', 'constructkey'];
   if (want('constructlot') || CONSTRUCT_PARTS.some(want)) await withSeed(434, async () => {
     for (const f of ['500 30px "IBM Plex Sans"', '600 30px "IBM Plex Sans"', '700 30px "IBM Plex Sans"', '600 30px "Barlow Condensed"', '700 30px "Barlow Condensed"', `60px ${TITLE_FAMILY}`]) await document.fonts.load(f);
     const PW = 1125, FOLD = 1710, MX = 60, GAP = 300, MR = 260, CAPT = 110, FOOT = 120, SH1 = FOLD + 60;
@@ -4376,6 +4376,22 @@ async function exportLayers() {
       }
       await grabPart('construct_tag', [-6, -TAG.drop - 24, CW + 12, TAG.h + 14]);
       Object.assign(layout.construct_tag, { tag: [0, 0, CW, TAG.h], drop: TAG.drop, name_y: 52, row_y: 156 });
+    });
+
+    if (want('constructkey')) await withSeed(468, async () => {
+      // The Build key: the cabinet's cream key (tile_key's size and slices, so scripts/ds2/cream_key.gd draws it the
+      // same way) in a polished brass bezel instead of the gunmetal one; up, pressed and latched.
+      const { W: KW, H: KH, M: KM } = { W: 232, H: 116, M: 16 };
+      const brass = new THREE.MeshStandardMaterial({ color: 0xd2ab5c, map: noiseTexture(18, 40, 30), metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 1.0 });
+      const group = new THREE.Group(), k = keycap(KW - 2 * KM, KH - 2 * KM, 12, () => {});
+      k.traverse((o) => { if (o.isMesh && o.material === MAT.frame) o.material = brass; });
+      k.position.set(KW / 2, 0, KH / 2); group.add(k, shadowCatcher(KW, KH, KW / 2, KH / 2));
+      const st = stage([0, 0, KW, KH], [group]), cap = k.userData.cap, y = cap.position.y;
+      await post('construct_key_brass', st.grab());
+      cap.position.y = y - 5; await post('construct_key_brass_pressed', st.grab());
+      cap.position.y = y - 22; await post('construct_key_brass_latched', st.grab());
+      cap.position.y = y;
+      layout.construct_key_brass = { size: [KW, KH], like: 'tile_key' };
     });
   });
 

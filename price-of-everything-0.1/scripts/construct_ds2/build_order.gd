@@ -23,10 +23,10 @@ const Indicator := preload("res://scripts/bdp_v3_indicator.gd")
 const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
 const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
 const CreamKey := preload("res://scripts/ds2/cream_key.gd")
+const InfrastructureInfo := preload("res://scripts/infrastructure_info.gd")
 const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
 const Metrics := preload("res://scripts/ds2/metrics.gd")
 const Rotary := preload("res://scripts/rotary_selector.gd")
-const RecipeDiagram := preload("res://scripts/recipe_diagram.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 const BuildForecast := preload("res://scripts/build_forecast.gd")
@@ -71,7 +71,7 @@ const SHEET_MARGIN := 14.0 * S
 const SHEET_CORNER := (14.0 + 40.0) * E
 const NAVY_INK := Color("#0b2340")
 const INK := {"ok": Color("#1d6b3a"), "warn": Color("#7a4a00"), "bad": Color("#8f1f19")}
-## The Build key: the cabinet's cream key, at least this wide.
+## The Build key: the cabinet's cream key in a brass bezel (owner), at least this wide.
 const BUILD_KEY_W := 112.0
 ## What a refused Build points at: a block's key to the part that glows (the money on the verdict, else the
 ## requirement's row on the feeder pillar; the land's blocks all point at its row).
@@ -95,6 +95,7 @@ static func build(panel: Control, q: Dictionary) -> void:
 	var content: VBoxContainer = panel.get("_content")
 	var building: Dictionary = panel.get("_selected_building")
 	var recipe: Dictionary = panel.get("_selected_recipe")
+	var infra := recipe.is_empty()
 	pinned.add_child(site_board(building, recipe))
 	pinned.add_child(_gap(10))
 	pinned.add_child(verdict(panel, q))
@@ -103,13 +104,18 @@ static func build(panel: Control, q: Dictionary) -> void:
 	content.add_child(_gap(10))
 	content.add_child(_section("SITE REQUIREMENTS", requirements(panel, q)))
 	content.add_child(_section("COST", cost(q)))
-	var materials := _section("MATERIALS", yard(panel, q))
-	materials.name = "ConstructionMaterialsSection"
-	content.add_child(materials)
-	var outlook := outlook(panel, q)
-	if outlook != null:
-		content.add_child(_section("OUTLOOK", outlook))
-	if bool(q.get("site_known", false)):
+	# Roads, pipes and rails take no materials: no yard to stock.
+	if not ((panel.get("_v3_ledger") as Dictionary).get("rows", []) as Array).is_empty():
+		var materials := _section("MATERIALS", yard(panel, q))
+		materials.name = "ConstructionMaterialsSection"
+		content.add_child(materials)
+	if infra:
+		content.add_child(_section("LEVELS", levels(building)))
+	else:
+		var outlook := outlook(panel, q)
+		if outlook != null:
+			content.add_child(_section("OUTLOOK", outlook))
+	if bool(q.get("site_known", false)) and not infra:
 		content.add_child(_section("LAND", land(q)))
 	content.add_child(_gap(8))
 
@@ -125,7 +131,8 @@ static func site_board(building: Dictionary, recipe: Dictionary) -> Control:
 	board.name = "SiteBoard"
 	board.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	board.custom_minimum_size = BOARD
-	var sign := enamel_recipe(recipe, BOARD_ENAMEL.size * S)
+	var sign := enamel_recipe(recipe, BOARD_ENAMEL.size * S) if not recipe.is_empty() \
+		else enamel_purpose(building, BOARD_ENAMEL.size * S)
 	sign.position = BOARD_ENAMEL.position * S
 	board.add_child(sign)
 	var face := Control.new()
@@ -172,42 +179,195 @@ static func enamel_recipe(recipe: Dictionary, size: Vector2) -> Control:
 	var enamel: Control = Enamel.new()
 	card.add_child(enamel)
 	var clear: Array[Control] = []
-	card.add_child(recipe_row(recipe, false, clear))
+	card.add_child(recipe_row(recipe, false, clear, size - Vector2(20.0, 14.0)))
 	enamel.call("watch", clear)
 	return card
 
 
-## The recipe drawn out in a row: the inputs, a plus between them, the navy arrow, the output(s). Expanded, each
-## good carries its quantity and the arrow the power it draws; condensed (`condensed`), the bare icons and a
-## plain arrow, as the Construct setting says. `clear` collects the icons and the arrow (the enamel's grunge
-## keeps off them).
-static func recipe_row(recipe: Dictionary, condensed: bool, clear: Array[Control] = []) -> HBoxContainer:
+## Infrastructure's enamel sign: what it is for, printed navy (it has no recipe).
+static func enamel_purpose(building: Dictionary, size: Vector2) -> Control:
+	var card := PanelContainer.new()
+	card.name = "PurposeSign"
+	card.custom_minimum_size = size
+	card.size = size
+	card.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(Enamel.new())
+	var pad := MarginContainer.new()
+	for side in ["left", "right"]:
+		pad.add_theme_constant_override("margin_" + side, 22)
+	card.add_child(pad)
+	var words := _ink(InfrastructureInfo.purpose(InfrastructureInfo.key_for(building)), 16, NAVY_INK, true)
+	words.name = "Purpose"
+	words.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	words.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	words.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	words.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	pad.add_child(words)
+	return card
+
+
+## Infrastructure's levels on the programme board, level by level across: what one tile carries a turn, how far
+## goods go in a turn and what moving them costs (the router's own tables: EconomyConfig, TransportService).
+static func levels(building: Dictionary) -> Control:
+	var key := InfrastructureInfo.key_for(building)
+	var sheet := PanelContainer.new()
+	sheet.name = "LevelsBoard"
+	var pad := StyleBoxEmpty.new()
+	pad.set_content_margin_all(14)
+	sheet.add_theme_stylebox_override("panel", pad)
+	sheet.draw.connect(func() -> void:
+		Nine.paint(sheet, Plate.tex("sheet_white"), Rect2(Vector2.ZERO, sheet.size).grow(SHEET_MARGIN), SHEET_CORNER))
+	if not InfrastructureInfo.has_level_stats(key):
+		sheet.add_child(_ink("No levels yet.", 14, NAVY_INK))
+		return sheet
+	var grid := GridContainer.new()
+	grid.name = "LevelsTable"
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 16)
+	grid.add_theme_constant_override("v_separation", 6)
+	sheet.add_child(grid)
+	grid.add_child(_ink("", 14, NAVY_INK))
+	for level in range(1, 4):
+		var h := _ink("Level %d" % level, 14, NAVY_INK, true)
+		h.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		h.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		grid.add_child(h)
+	for row: Array in level_rows(key):
+		var l := _ink(str(row[0]), 14, NAVY_INK)
+		l.custom_minimum_size.x = 150
+		grid.add_child(l)
+		for v in row.slice(1):
+			var c := _ink(str(v), 14, NAVY_INK, true)
+			c.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			grid.add_child(c)
+	return sheet
+
+
+## [label, level 1, level 2, level 3] rows for infrastructure `key`.
+static func level_rows(key: String) -> Array:
+	if key == "cables":
+		var caps: Array = [key]
+		for level in range(1, 4):
+			caps.append("%d MW" % int(round(float(EconomyConfig.CABLE_POWER_CAP.get(level, 0)))))
+		caps[0] = "Power/tile/turn"
+		return [caps, ["Reach", "Network", "Network", "Network"], ["Transmission", "Free", "Free", "Free"]]
+	var carry: Array = ["Units/tile/turn"]
+	var reach: Array = ["Tiles/turn"]
+	var cost: Array = ["Cost/unit"]
+	for level in range(1, 4):
+		var stats: Dictionary = InfrastructureInfo.level_stats(key, level)
+		carry.append(str(int(round(TransportService.link_capacity(key, level)))))
+		var r := EconomyConfig.infra_range_for_level(key, level)
+		reach.append(str(r if r > 0 else Catalog.infra_range(key)))
+		cost.append(str(stats.get("cost", "")).replace("–", " to ").replace(" / unit / turn", "").replace(" / unit / tile", "/tile"))
+	return [carry, reach, cost]
+
+
+## The recipe drawn out: the inputs, a plus between them, the navy arrow, the output(s). Expanded, each good
+## carries its quantity and the arrow the power it draws; condensed (`condensed`), the bare icons and a plain
+## arrow, as the Construct setting says. It fits `room`: one row with the goods as large as fit (from 64 px
+## down to 40), else the inputs (and the outputs, past two) in two rows of a grid. Recipes run to six inputs
+## and four outputs, seven in all; the grid takes up to six inputs and five outputs. `clear` collects the icons
+## and the arrow (the enamel's grunge keeps off them).
+static func recipe_row(recipe: Dictionary, condensed: bool, clear: Array[Control] = [], room := Vector2(536.0, 86.0)) -> HBoxContainer:
+	var flow := recipe_flow(recipe)
+	var inputs: Array = flow.inputs
+	var outputs: Array = flow.outputs
+	var power := 0 if condensed else int(flow.power_in)
+	var arrow_w := RecipeArrow.width_for(power)
+	var plan := fit_plan(inputs.size(), outputs.size(), arrow_w, room)
 	var row := HBoxContainer.new()
 	row.name = "RecipeDiagram"
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 6)
+	row.add_theme_constant_override("separation", ROW_SEP)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var flow: Dictionary = RecipeDiagram.flow_from_recipe(recipe)
-	var inputs: Array = flow.get("inputs", [])
-	var outputs: Array = flow.get("outputs", [])
-	if outputs.is_empty() and not (flow.get("output", {}) as Dictionary).is_empty():
-		outputs = [flow.get("output", {})]
-	var in_px := 64.0 if inputs.size() <= 2 else 46.0
-	for i in inputs.size():
-		if i > 0:
-			row.add_child(_plus())
-		var ic := _recipe_good(inputs[i], in_px, not condensed)
-		row.add_child(ic)
-		clear.append(ic)
-	var arrow := RecipeArrow.new(0 if condensed else int(flow.get("power_in", 0)))
+	row.set_meta("plan", plan)
+	var s := float(plan.icon)
+	row.add_child(_side(inputs, s, bool(plan.grid_in), true, not condensed, clear))
+	var arrow := RecipeArrow.new(power)
 	row.add_child(arrow)
 	clear.append(arrow)
-	var out_px := 72.0 if outputs.size() <= 1 else 46.0
-	for o in outputs:
-		var ic := _recipe_good(o, out_px, not condensed)
-		row.add_child(ic)
-		clear.append(ic)
+	var so := float(plan.out_icon)
+	row.add_child(_side(outputs, so, bool(plan.grid_out), false, not condensed, clear))
 	return row
+
+
+## The recipe's goods, every output included (RecipeDiagram.flow_from_recipe gives the first alone, which hides
+## co-products: E-Waste Recycling's rubber, aluminium and alloy ingots, Chlor-Alkali's hydrogen).
+static func recipe_flow(recipe: Dictionary) -> Dictionary:
+	var side := func(list: Array) -> Array:
+		var out: Array = []
+		for g: Dictionary in list:
+			out.append({"good_id": str(g.get("good_id", "")), "internal": str(g.get("internal_name", "")), "qty": int(g.get("qty", 0))})
+		return out
+	return {"inputs": side.call(recipe.get("inputs", [])), "outputs": side.call(recipe.get("outputs", [])),
+		"power_in": int(recipe.get("energy_req", 0))}
+
+
+const ROW_SEP := 6.0
+const PLUS_W := 13.0
+const GRID_GAP := 4.0
+## The goods' sizes tried in one row, largest first, then in a grid of two rows.
+const ROW_SIZES := [64.0, 56.0, 48.0, 40.0]
+const GRID_SIZES := [44.0, 40.0, 36.0, 32.0]
+
+
+## How a recipe of `n_in` inputs and `n_out` outputs fits `room`: {icon, out_icon, grid_in, grid_out}.
+static func fit_plan(n_in: int, n_out: int, arrow_w: float, room: Vector2) -> Dictionary:
+	for s: float in ROW_SIZES:
+		var so := s + 8.0 if n_out <= 1 else s
+		var w := _row_width(n_in, s, true) + ROW_SEP + arrow_w + ROW_SEP + _row_width(n_out, so, false)
+		if w <= room.x and so <= room.y:
+			return {"icon": s, "out_icon": so, "grid_in": false, "grid_out": false}
+	for s: float in GRID_SIZES:
+		if 2.0 * s + GRID_GAP > room.y and s > GRID_SIZES[-1]:
+			continue
+		var grid_out := n_out > 2
+		var w_in := _grid_width(n_in, s) if n_in > 1 else s
+		# A single output stands as tall as the grid beside it, at most a good's full size.
+		var so := minf(Metrics.GOOD_ICON, 2.0 * s + GRID_GAP) if n_out <= 1 else s
+		var w_out := _grid_width(n_out, s) if grid_out else _row_width(n_out, so, false)
+		if w_in + ROW_SEP + arrow_w + ROW_SEP + w_out <= room.x:
+			return {"icon": s, "out_icon": so, "grid_in": n_in > 1, "grid_out": grid_out}
+	return {"icon": GRID_SIZES[-1], "out_icon": GRID_SIZES[-1], "grid_in": n_in > 1, "grid_out": n_out > 2}
+
+
+static func _row_width(n: int, s: float, pluses: bool) -> float:
+	if n <= 0:
+		return 0.0
+	var between := (PLUS_W + 2.0 * ROW_SEP) if pluses else ROW_SEP
+	return n * s + (n - 1) * between
+
+
+static func _grid_width(n: int, s: float) -> float:
+	var cols := ceili(n / 2.0)
+	return cols * s + (cols - 1) * GRID_GAP
+
+
+## One side of the recipe: the goods in a row (a plus between inputs) or in a grid of two rows.
+static func _side(items: Array, s: float, grid: bool, pluses: bool, with_qty: bool, clear: Array[Control]) -> Control:
+	var box: Container
+	if grid:
+		var g := GridContainer.new()
+		g.columns = ceili(items.size() / 2.0)
+		g.add_theme_constant_override("h_separation", roundi(GRID_GAP))
+		g.add_theme_constant_override("v_separation", roundi(GRID_GAP))
+		box = g
+	else:
+		var h := HBoxContainer.new()
+		h.add_theme_constant_override("separation", roundi(ROW_SEP))
+		box = h
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	for i in items.size():
+		if i > 0 and pluses and not grid:
+			box.add_child(_plus())
+		var ic := _recipe_good(items[i], s, with_qty)
+		box.add_child(ic)
+		clear.append(ic)
+	return box
 
 
 static func _recipe_good(item: Dictionary, px: float, with_qty := true) -> Control:
@@ -217,13 +377,36 @@ static func _recipe_good(item: Dictionary, px: float, with_qty := true) -> Contr
 	slot.mouse_filter = Control.MOUSE_FILTER_PASS
 	var gid := str(item.get("good_id", ""))
 	slot.tooltip_text = Catalog.get_display_name(gid)
-	var tr := TextureRect.new()
-	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	tr.texture = GoodIcons.texture_for_size(gid, str(item.get("internal", "")), px)
-	tr.set_anchors_preset(Control.PRESET_FULL_RECT)
-	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	slot.add_child(tr)
+	var tex := GoodIcons.texture_for_size(gid, str(item.get("internal", "")), px)
+	if tex != null:
+		var tr := TextureRect.new()
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tr.texture = tex
+		tr.set_anchors_preset(Control.PRESET_FULL_RECT)
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(tr)
+	else:
+		# A good with no icon yet: its name on a cream tile, so the recipe still says what it takes.
+		var tile := PanelContainer.new()
+		var st := StyleBoxFlat.new()
+		st.bg_color = Color("#fbeac0")
+		st.set_corner_radius_all(6)
+		st.set_border_width_all(1)
+		st.border_color = Color(0.043, 0.137, 0.25, 0.5)
+		tile.add_theme_stylebox_override("panel", st)
+		tile.set_anchors_preset(Control.PRESET_FULL_RECT)
+		tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		st.content_margin_left = 3
+		st.content_margin_right = 3
+		st.content_margin_top = 4
+		st.content_margin_bottom = 20   # the quantity pill's corner
+		var l := _ink(Catalog.get_display_name(gid), 9 if px < 60.0 else 10, NAVY_INK, true)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+		tile.add_child(l)
+		slot.add_child(tile)
 	if with_qty:
 		slot.add_child(Parts.pill(int(item.get("qty", 0)), px < 60.0))
 	return slot
@@ -277,6 +460,7 @@ static func verdict(panel: Control, q: Dictionary) -> Control:
 	var reason := _refusal(q)
 	var width := maxf(BUILD_KEY_W, CreamKey.width_for("Build", "", false, false))
 	var key: Button = CreamKey.make("BuildConfirmButton", "Build", "", width)
+	key.set("rim", "brass")
 	key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	key.tooltip_text = reason if reason != "" else _build_words(q)
 	if reason != "":
@@ -520,8 +704,13 @@ static func cost(q: Dictionary) -> Control:
 	cabin.set("style", "slab")
 	var vb: VBoxContainer = cabin.get("content")
 	vb.add_theme_constant_override("separation", 8)
-	var lines := [["Materials", float(q.get("materials", 0.0)), true], ["Fee", float(q.get("fee", 0.0)), false],
-		["Land", float(q.get("land", 0.0)), false]]
+	# Only what informs: no materials line for what takes none, no land line before a site is chosen.
+	var lines: Array = []
+	if float(q.get("materials", 0.0)) > 0.0:
+		lines.append(["Materials", float(q.get("materials", 0.0)), true])
+	lines.append(["Fee", float(q.get("fee", 0.0)), false])
+	if bool(q.get("site_known", false)):
+		lines.append(["Land", float(q.get("land", 0.0)), false])
 	var total := float(q.get("total", 0.0))
 	var digits := _cells(total)
 	for l: Array in lines:
@@ -841,7 +1030,11 @@ class RecipeArrow extends Control:
 		power = power_in
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 		size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		custom_minimum_size = Vector2(92.0 if power > 0 else 60.0, 66.0)
+		custom_minimum_size = Vector2(width_for(power), 56.0)
+
+	## The arrow's width: room for the power it draws and its bolt, or a plain arrow.
+	static func width_for(power_in: int) -> float:
+		return 92.0 if power_in > 0 else 52.0
 
 	func _draw() -> void:
 		var w := size.x

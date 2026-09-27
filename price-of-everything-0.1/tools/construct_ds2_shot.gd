@@ -113,6 +113,18 @@ func _ready() -> void:
 	(panel.get("_scroll") as ScrollContainer).scroll_vertical = 0
 	await _settle(4)
 	await _shot(panel, "order_no_site")
+	# Infrastructure: its purpose on the sign and its levels in place of the outlook; Roads take no materials.
+	for infra: Array in [["b_006", "infra_cables"], ["b_005", "infra_roads"]]:
+		panel.call("open_browser")
+		panel.call("_on_infrastructure_selected", str(infra[0]))
+		await _settle(8)
+		(panel.get("_scroll") as ScrollContainer).scroll_vertical = 0
+		await _settle(4)
+		await _shot(panel, str(infra[1]))
+		var sc: ScrollContainer = panel.get("_scroll")
+		sc.scroll_vertical = int(sc.get_v_scroll_bar().max_value)
+		await _settle(4)
+		await _shot(panel, str(infra[1]) + "_foot")
 	print("[CONSTRUCT_SHOT] done, %s" % _dir)
 	get_tree().quit(0)
 

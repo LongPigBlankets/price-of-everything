@@ -185,9 +185,11 @@ static func recipe_tag(building_id: String, recipe: Dictionary, condensed: bool,
 	name.size = Vector2(TAG.x, 24.0)
 	name.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tag.add_child(name)
-	var row := BuildOrder.recipe_row(recipe, condensed)
-	row.position = Vector2(0, TAG_ROW_Y - 40.0)
-	row.size = Vector2(TAG.x, 80.0)
+	# The recipe fits the tag under its name, inside the enamel's band.
+	var room := Vector2(TAG.x - 48.0, 86.0)
+	var row := BuildOrder.recipe_row(recipe, condensed, [], room)
+	row.position = Vector2(0, TAG_ROW_Y - room.y * 0.5)
+	row.size = Vector2(TAG.x, room.y)
 	tag.add_child(row)
 	return tag
 
