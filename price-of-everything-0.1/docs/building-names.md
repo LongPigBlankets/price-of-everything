@@ -20,10 +20,10 @@ Rows marked **check** carry a note for the owner.
 | Mine | Coal Mining (r_001) | Coal | **Coal Mine** | Mine - Coal - A |  |
 | Mine | Copper Mining (r_006) | Copper Ore | **Copper Mine** | Mine - Copper Ore - A |  |
 | Mine | Iron Mining (r_002) | Iron Ore | **Iron Mine** | Mine - Iron Ore - A |  |
-| Mine | Limestone Mining (r_019) | Limestone | **Limestone Mine** | Mine - Limestone - A | **check** Limestone is quarried, but keeps the Mine word with its kind. |
+| Mine | Limestone Mining (r_019) | Limestone | **Limestone Mine** | Mine - Limestone - A |  |
 | Mine | Lithium Mining (r_016) | Lithium Ore | **Lithium Mine** | Mine - Lithium Ore - A |  |
 | Mine | Rare Earth Mining (r_017) | Rare Earth Ore | **Rare Earth Mine** | Mine - Rare Earth Ore - A |  |
-| Mine | Sand Excavation (r_018) | Sand | **Sand Mine** | Mine - Sand - A | **check** Sand is dug, not mined, but keeps the Mine word with its kind. |
+| Mine | Sand Excavation (r_018) | Sand | **Sand Mine** | Mine - Sand - A |  |
 | Mine | Sulphur Mining (r_179) | Sulphur | **Sulphur Mine** | Mine - Sulphur - A |  |
 | Furnace | Alloy Metal Smelting (r_132) | Alloy Metals Ingots | **Alloy Metal Furnace** | Furnace - Alloy Metals Ingots - A |  |
 | Furnace | Bayer Process (r_040) | Alumina | **Alumina Furnace** | Furnace - Alumina - A |  |
@@ -54,8 +54,8 @@ Rows marked **check** carry a note for the owner.
 | Industrial Goods Factory | Alkaline Battery Manufacturing (r_101) | Alkaline Battery | **Alkaline Battery Factory** | Alkaline Battery Factory A |  |
 | Industrial Goods Factory | Car Body Manufacturing (r_068) | Car Body | **Car Body Factory** | Car Body Factory A |  |
 | Industrial Goods Factory | Basic Circuit Soldering (r_120) | Circuit Board | **Circuit Board Factory** | Circuit Board Factory A |  |
-| Industrial Goods Factory | Construction Equipment Assembly (EV) (r_034) | Construction Equipment EV | **Construction Equipment EV Factory** | Construction Equipment EV Factory A | **check** Keeps the good's own word order, "Construction Equipment EV". |
-| Industrial Goods Factory | Construction Equiment Assembly (ICE) (r_033) | Construction Equipment ICE | **Construction Equipment ICE Factory** | Construction Equipment ICE Factory A | **check** Keeps the good's own word order, "Construction Equipment ICE". |
+| Industrial Goods Factory | Construction Equipment Assembly (EV) (r_034) | Construction Equipment EV | **Construction Equipment EV Factory** | Construction Equipment EV Factory A |  |
+| Industrial Goods Factory | Construction Equiment Assembly (ICE) (r_033) | Construction Equipment ICE | **Construction Equipment ICE Factory** | Construction Equipment ICE Factory A |  |
 | Industrial Goods Factory | Copper Pipe Manufacturing (r_220) | Copper Pipe | **Copper Pipe Factory** | Copper Pipe Factory A |  |
 | Industrial Goods Factory | Copper Wire Drawing (r_008) | Copper Wiring | **Copper Wiring Factory** | Copper Wiring Factory A |  |
 | Industrial Goods Factory | Electrical Components Production (r_126) | Electrical Components | **Electrical Components Factory** | Electrical Components Factory A |  |
@@ -71,8 +71,8 @@ Rows marked **check** carry a note for the owner.
 | Industrial Goods Factory | Radial Axial Tire Production (r_165) | Tyres | **Tyres Factory** | Tyres Factory A |  |
 | Industrial Goods Factory | uPVC Window Manufacturing (r_055) | Windows | **uPVC Windows Factory** | Windows Factory A |  |
 | Industrial Goods Factory | Window Manufacturing (r_056) | Windows | **Windows Factory** | Windows Factory A |  |
-| Electric Arc Furnace | ELYSIS Aluminium (r_083) | Aluminium | **ELYSIS Aluminium Electric Furnace** | Electric Arc Furnace - Aluminium - A | **check** No recipe of this group is the plain one, so each carries its own word. |
-| Electric Arc Furnace | Aluminium Direct Carbothermic Electrolysis (r_084) | Aluminium | **Carbothermic Aluminium Electric Furnace** | Electric Arc Furnace - Aluminium - A | **check** No recipe of this group is the plain one, so each carries its own word. |
+| Electric Arc Furnace | ELYSIS Aluminium (r_083) | Aluminium | **ELYSIS Aluminium Electric Furnace** | Electric Arc Furnace - Aluminium - A |  |
+| Electric Arc Furnace | Aluminium Direct Carbothermic Electrolysis (r_084) | Aluminium | **Carbothermic Aluminium Electric Furnace** | Electric Arc Furnace - Aluminium - A |  |
 | Electric Arc Furnace | Electric Concrete Production (r_030) | Concrete | **Concrete Electric Furnace** | Electric Arc Furnace - Concrete - A |  |
 | Electric Arc Furnace | Anthracite Graphitisation (r_231) | Graphite | **Graphite Electric Furnace** | Electric Arc Furnace - Graphite - A |  |
 | Electric Arc Furnace | Silicon Smelting (r_044) | Metallurgical Silicon | **Metallurgical Silicon Electric Furnace** | Electric Arc Furnace - Metallurgical Silicon - A |  |
@@ -86,26 +86,26 @@ Rows marked **check** carry a note for the owner.
 | Assembly Plant | Monocrystal CPU Fabbing (r_230) | CPU | **Monocrystal CPU Assembly Plant** | Assembly Plant - CPU - A |  |
 | Assembly Plant | Hybrid Engine Manufacturing (r_074) | Engine | **Engine Assembly Plant** | Assembly Plant - Engine - A |  |
 | Assembly Plant | EV Assembly (r_119) | Electric Car | **Electric Car Assembly Plant** | Assembly Plant - Electric Car - A |  |
-| Assembly Plant | Heavy Vehicles Automated Manufacturing (r_205) | Heavy Vehicle | **Automated Heavy Vehicle Assembly Plant** | Assembly Plant - Heavy Vehicle - A | **check** No recipe of this group is the plain one, so each carries its own word. |
-| Assembly Plant | Electric Heavy Vehicles Manufacturing (r_206) | Heavy Vehicle | **Electric Heavy Vehicle Assembly Plant** | Assembly Plant - Heavy Vehicle - A | **check** No recipe of this group is the plain one, so each carries its own word. |
+| Assembly Plant | Heavy Vehicles Automated Manufacturing (r_205) | Heavy Vehicle | **Automated Heavy Vehicle Assembly Plant** | Assembly Plant - Heavy Vehicle - A |  |
+| Assembly Plant | Electric Heavy Vehicles Manufacturing (r_206) | Heavy Vehicle | **Electric Heavy Vehicle Assembly Plant** | Assembly Plant - Heavy Vehicle - A |  |
 | Assembly Plant | Hydraulics Automated Assembly (r_237) | Hydraulic Components | **Hydraulic Components Assembly Plant** | Assembly Plant - Hydraulic Components - A |  |
 | Assembly Plant | Automated ICE Car Assembly (r_118) | Diesel Car | **Diesel Car Assembly Plant** | Assembly Plant - Diesel Car - A |  |
 | Assembly Plant | Large Vehicle Engine Manufacturing (r_073) | Large Engine | **Large Engine Assembly Plant** | Assembly Plant - Large Engine - A |  |
 | Assembly Plant | Heavy Electric Motor (r_207) | Large Engine | **Electric Large Engine Assembly Plant** | Assembly Plant - Large Engine - A |  |
 | Assembly Plant | SynRM Magnetless Motors (r_065) | Motor | **SynRM Motor Assembly Plant** | Assembly Plant - Motor - A |  |
 | Assembly Plant | Axial Flux Motors (r_066) | Motor | **Axial Motor Assembly Plant** | Assembly Plant - Motor - A |  |
-| Assembly Plant | Hairpin Stator Motors (r_203) | Motor | **Hairpin Stator Motor Assembly Plant** | Assembly Plant - Motor - A | **check** Hairpin Stator kept in full beside "Axial" and "SynRM". "Hairpin" alone would not collide if a shorter name is wanted. |
+| Assembly Plant | Hairpin Stator Motors (r_203) | Motor | **Hairpin Stator Motor Assembly Plant** | Assembly Plant - Motor - A |  |
 | Assembly Plant | Sodium Ion Battery Manufacturing (r_102) | Sodium Ion Battery | **Sodium Ion Battery Assembly Plant** | Assembly Plant - Sodium Ion Battery - A |  |
 | Assembly Plant | Solar Panel Manufacturing (r_058) | Solar Panel | **Solar Panel Assembly Plant** | Assembly Plant - Solar Panel - A |  |
 | Assembly Plant | Durable Perovskite Solar Panels (r_060) | Solar Panel | **Perovskite Solar Panel Assembly Plant** | Assembly Plant - Solar Panel - A |  |
 | Assembly Plant | Wind Turbine Manufacturing (r_059) | Wind Turbine | **Wind Turbine Assembly Plant** | Assembly Plant - Wind Turbine - A |  |
 | Assembly Plant | Segmented Assembly Wind Turbines (r_061) | Wind Turbine | **Segmented Wind Turbine Assembly Plant** | Assembly Plant - Wind Turbine - A |  |
 | High Tech Manufactory | Fabless Semiconductors (r_123) | CPU | **Fabless CPU Manufactory** | High Tech Manufactory - CPU - A |  |
-| High Tech Manufactory | Semiconductor 3D Printing (r_124) | CPU | **3D Printed CPU Manufactory** | High Tech Manufactory - CPU - A | **check** No recipe of this group is the plain one, so each carries its own word. |
+| High Tech Manufactory | Semiconductor 3D Printing (r_124) | CPU | **3D Printed CPU Manufactory** | High Tech Manufactory - CPU - A |  |
 | High Tech Manufactory | Precision Electrical Components (r_127) | Electrical Components | **Electrical Components Manufactory** | High Tech Manufactory - Electrical Components - A |  |
 | High Tech Manufactory | Lithium Phosphate Batteries (r_099) | Lithium Ion Battery | **Lithium Ion Battery Manufactory** | High Tech Manufactory - Lithium Ion Battery - A |  |
-| High Tech Manufactory | Heterojunction Solar Panels (r_063) | Solar Panel | **Heterojunction Solar Panel Manufactory** | High Tech Manufactory - Solar Panel - A | **check** No recipe of this group is the plain one, so each carries its own word. |
-| High Tech Manufactory | Triple Tandem Solar Panels (r_064) | Solar Panel | **Triple Tandem Solar Panel Manufactory** | High Tech Manufactory - Solar Panel - A | **check** No recipe of this group is the plain one, so each carries its own word. |
+| High Tech Manufactory | Heterojunction Solar Panels (r_063) | Solar Panel | **Heterojunction Solar Panel Manufactory** | High Tech Manufactory - Solar Panel - A |  |
+| High Tech Manufactory | Triple Tandem Solar Panels (r_064) | Solar Panel | **Triple Tandem Solar Panel Manufactory** | High Tech Manufactory - Solar Panel - A |  |
 | Petrochemical Refinery | Ethylene Refining (r_023) | Ethylene | **Oil Processing Refinery** | Oil Processing Refinery A |  |
 | Petrochemical Refinery | Fuels Refining (r_022) | Diesel Fuel | **Oil Processing Refinery** | Oil Processing Refinery A |  |
 | Petrochemical Refinery | Petroleum Needle Coke Calcination (r_150) | Graphite | **Needle Coke Plant** | Needle Coke Plant A |  |
@@ -124,8 +124,8 @@ Rows marked **check** carry a note for the owner.
 | Chemical Plant | Sulphuric Acid Production (r_115) | Industrial Acids | **Sulphuric Acid Chemical Plant** | Industrial Acids Chemical Plant A |  |
 | Chemical Plant | Generic Acid Production (r_116) | Industrial Acids | **Acid Chemical Plant** | Industrial Acids Chemical Plant A |  |
 | Chemical Plant | Nitrogen Air Separation (r_087) | Nitrogen | **Nitrogen Chemical Plant** | Nitrogen Chemical Plant A |  |
-| Chemical Plant | Polysilicon (Siemens) Smelting (r_045) | Polysilicon | **Siemens Polysilicon Chemical Plant** | Polysilicon Chemical Plant A | **check** No recipe of this group is the plain one, so each carries its own word. |
-| Chemical Plant | Fluidised Bed Reactor + CZ Silicon (r_081) | Polysilicon | **Fluidised Bed Polysilicon Chemical Plant** | Polysilicon Chemical Plant A | **check** No recipe of this group is the plain one, so each carries its own word. |
+| Chemical Plant | Polysilicon (Siemens) Smelting (r_045) | Polysilicon | **Siemens Polysilicon Chemical Plant** | Polysilicon Chemical Plant A |  |
+| Chemical Plant | Fluidised Bed Reactor + CZ Silicon (r_081) | Polysilicon | **Fluidised Bed Polysilicon Chemical Plant** | Polysilicon Chemical Plant A |  |
 | Chemical Plant | Rubber Vulcanisation (r_067) | Tyres | **Tyres Chemical Plant** | Tyres Chemical Plant A |  |
 | Polymerisation Refinery | Plastics Manufacturing (r_024) | Plastics | **Plastics Plant** | Plastics Plant A |  |
 | Polymerisation Refinery | PVC Polymerisation (r_175) | PVC | **PVC Plant** | PVC Plant A |  |
@@ -145,20 +145,20 @@ Rows marked **check** carry a note for the owner.
 | Electrolyser | Rare Earth Reduction (r_041) | Refined Rare Earths | **Rare Earth Electrolyser** | Electrolyser - Refined Rare Earths - A |  |
 | Electrolyser | Magnetic Separation Electrolysis (r_226) | Refined Rare Earths | **Magnetic Separation Rare Earth Electrolyser** | Electrolyser - Refined Rare Earths - A |  |
 | Desalination Plant | Desalination (r_051) | Pure Water | **Desalination Plant** | Desalination Plant - Pure Water - A |  |
-| Water Recyling Plant | Water Treatment (r_105) | Pure Water | **Water Recycling Plant** | Water Recyling Plant - Pure Water - A | **check** The type's display name is misspelt ("Recyling"). The building name spells it right. |
+| Water Recyling Plant | Water Treatment (r_105) | Pure Water | **Water Recycling Plant** | Water Recyling Plant - Pure Water - A |  |
 | Solar Farm | Solar Power Generation (r_146) | Power | **Solar Farm** | Solar Farm A |  |
 | Onshore Wind Farm | Onshore wind generation (r_037) | Power | **Wind Farm** | Wind Farm A |  |
 | Offshore Wind Farm | Offshore Wind Power Generation (r_145) | Power | **Offshore Wind Farm** | Offshore Wind Farm A |  |
-| Offshore Wind Farm | Floating Offshore Wind Power (r_223) | Power | **Floating Offshore Wind Farm** | Offshore Wind Farm A | **check** Floating is the qualifier. The owner's wind farm names otherwise kept. |
+| Offshore Wind Farm | Floating Offshore Wind Power (r_223) | Power | **Floating Offshore Wind Farm** | Offshore Wind Farm A |  |
 | Hydroelectric Dam | Hydroelectric Power (r_224) | Power | **Hydroelectric Dam** | Hydroelectric Dam - Power - A |  |
-| Battery Electric Storage | Battery Storage (r_225) |  | **Battery Electric Storage** | Battery Electric Storage - A | **check** Stores power and makes nothing, so it keeps its type name. |
+| Battery Electric Storage | Battery Storage (r_225) |  | **Battery Electric Storage** | Battery Electric Storage - A |  |
 | Oil Wells | Oil Drilling (r_014) | Crude Oil | **Oil Well** | Oil Wells - Crude Oil - A |  |
 | Offshore Oil Platform | Offshore Oil Extraction (r_178) | Crude Oil | **Oil Platform** | Offshore Oil Platform - Crude Oil - A |  |
 | Offshore Oil Platform | Deepwater Oil Extraction (r_221) | Crude Oil | **Deepwater Oil Platform** | Offshore Oil Platform - Crude Oil - A |  |
 | Offshore Oil Platform | Subsea Manifold Extraction (r_222) | Crude Oil | **Subsea Manifold Oil Platform** | Offshore Oil Platform - Crude Oil - A |  |
 | Hydraulic Fracking Oil Wells | Shale Oil Fracking (r_177) | Crude Oil | **Fracking Oil Well** | Hydraulic Fracking Oil Wells - Crude Oil - A |  |
-| Recycling Plant | Biowaste Recycling (r_108) | Biomass | **Biomass Recycling Plant** | Recycling Plant - Biomass - A | **check** Named by its main output, biomass, though it recycles bio waste. |
-| Recycling Plant | E-Waste Recycling (r_107) | Copper Wiring | **Copper Wiring Recycling Plant** | Recycling Plant - Copper Wiring - A | **check** Named by its main output, copper wiring, though it recycles electronic waste. |
+| Recycling Plant | Biowaste Recycling (r_108) | Biomass | **Biomass Recycling Plant** | Recycling Plant - Biomass - A |  |
+| Recycling Plant | E-Waste Recycling (r_107) | Copper Wiring | **Copper Wiring Recycling Plant** | Recycling Plant - Copper Wiring - A |  |
 | Water Pump | Water Pumping (r_011) | Pure Water | **Water Pump** | Water Pump - Pure Water - A |  |
 
 ## Buildings without recipes
