@@ -71,8 +71,8 @@ func _test_construct_ds2_build_order_reads_quote() -> void:
 	_check(total != null and _led_figure(total) == str(MoneyFigure.screen(float(q.total), 2).figure).strip_edges(),
 		"build order: Total is quote().total (%s)" % str(q.total))
 	var key: Control = panel.find_child("BuildConfirmButton", true, false)
-	_check(key != null and key.get_script() == preload("res://scripts/ds2/guard_key.gd"), "build order: BuildConfirmButton is the guarded key")
-	_check(key != null and not bool(key.get("disabled")), "build order: Build is open with the money to build")
+	_check(key is Button and key.get_script() == preload("res://scripts/ds2/cream_key.gd"), "build order: BuildConfirmButton is a plain cream key")
+	_check(key != null and key.get("title_ink") != preload("res://scripts/ds2/cream_key.gd").RED_INK, "build order: Build prints navy with the money to build")
 	_check(panel.find_child("ConstructionMaterialsSection", true, false) != null, "build order: the materials section keeps its name")
 	_check(panel.find_child("RequirementGrid", true, false) != null, "build order: the requirements are on the pillar")
 	_check(panel.find_child("SiteBoard", true, false) != null and panel.find_child("RecipeSign", true, false) != null,
@@ -85,7 +85,14 @@ func _test_construct_ds2_build_order_reads_quote() -> void:
 	var reason := str(panel.call("_v3_confirm_block_reason"))
 	_check(reason != "" and reason == str(((q.blocks as Array)[0] as Dictionary).text), "build order: the refusal is quote()'s first block")
 	key = panel.find_child("BuildConfirmButton", true, false)
-	_check(key != null and bool(key.get("disabled")), "build order: Build is refused without the money")
+	_check(key != null and key.get("title_ink") == preload("res://scripts/ds2/cream_key.gd").RED_INK, "build order: Build prints red without the money")
+	# Pressed while refused, it builds nothing and the money glows.
+	var view_before := int(panel.get("_view"))
+	(key as Button).pressed.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(str(panel.get("last_flagged")) == "funds" and int(panel.get("_view")) == view_before,
+		"build order: a refused press makes the money glow and builds nothing")
 	MatchState.money = saved
 	panel.queue_free()
 
@@ -173,4 +180,35 @@ func _test_construct_ds2_catalogue() -> void:
 		await get_tree().process_frame
 		_check(int(panel.get("_view")) == 0, "catalogue: pressed again, it comes back")
 	MatchState.money = saved
+	panel.queue_free()
+
+
+func _test_construct_ds2_land_glows() -> void:
+	var saved_money := MatchState.money
+	var saved_auto := MatchState.construct_auto_buy_land
+	MatchState.money = 50000.0
+	MatchState.set_construct_auto_buy_land(false)
+	# Stoneshore: a land tile the player owns no land on at the start.
+	var tile := "tile_4_9"
+	var panel := _panel()
+	panel.show()
+	_order(panel, tile)
+	await get_tree().process_frame
+	var blocks: Array = (panel.call("quote") as Dictionary).get("blocks", [])
+	var land_blocked := not blocks.is_empty() and str((blocks[0] as Dictionary).key) in ["land_short", "cannot_buy_land", "full"]
+	_check(land_blocked, "build order: with auto buy off and no land, the land blocks (%s)" % tile)
+	if land_blocked:
+		(panel.find_child("BuildConfirmButton", true, false) as Button).pressed.emit()
+		await get_tree().process_frame
+		await get_tree().process_frame
+		_check(str(panel.get("last_flagged")) == "land", "build order: a refused press makes the land glow")
+		var buy: Button = panel.find_child("RequirementAction_land", true, false)
+		_check(buy != null, "build order: the land row offers Buy land")
+		if buy != null:
+			buy.pressed.emit()
+			await get_tree().process_frame
+			var after: Array = (panel.call("quote") as Dictionary).get("blocks", [])
+			_check(after.is_empty() and bool(panel.get("_buy_land_wanted")), "build order: Buy land lifts the land's block")
+	MatchState.set_construct_auto_buy_land(saved_auto)
+	MatchState.money = saved_money
 	panel.queue_free()

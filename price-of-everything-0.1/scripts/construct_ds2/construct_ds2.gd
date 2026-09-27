@@ -21,6 +21,7 @@ const Plate := preload("res://scripts/bdp_v3_plate.gd")
 const Key := preload("res://scripts/bdp_v3_key.gd")
 const Scroll := preload("res://scripts/bdp_v3_scroll.gd")
 const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
+const Light := preload("res://scripts/bdp_v3_light.gd")
 const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
 
 const CAPTURE_SCALE := 1.875
@@ -68,6 +69,9 @@ var _back_key: Control
 var _settings_key: TextureButton
 var _catplate: Control
 var _quote: Dictionary = {}
+## The glow over what blocks a refused build, and what it last pointed at (for tests).
+var _flash: BlockerGlow
+var last_flagged := ""
 ## The build order last shown (building, recipe, site): a new one opens at its top.
 var _view_opened := ""
 
@@ -396,6 +400,48 @@ func _v3_confirm_block_reason() -> String:
 	return str((blocks[0] as Dictionary).get("text", "")) if not blocks.is_empty() else ""
 
 
+## The land this build buys follows the Construct setting "Auto-buy land" until the player chooses on the
+## build order itself (the Land row's Buy land key).
+func _v3_compute_land() -> Dictionary:
+	var out := super._v3_compute_land()
+	if bool(out.get("purchasable", false)) and not _land_toggle_touched:
+		_buy_land_wanted = MatchState.construct_auto_buy_land
+		out.covered = _buy_land_wanted
+	return out
+
+
+## The Land row's Buy land key: this build buys the land it is short.
+func buy_land() -> void:
+	_land_toggle_touched = true
+	_buy_land_wanted = true
+	_render()
+
+
+## A refused Build pressed: the part that blocks it glows, the money on the verdict or the requirement's row on the
+## feeder pillar (brought into view first), as the quote's first block says.
+func flag_blocker() -> void:
+	var blocks: Array = quote().get("blocks", [])
+	if blocks.is_empty():
+		return
+	var want := BuildOrder.blocker_for(str((blocks[0] as Dictionary).get("key", "")))
+	var target: Control = null
+	for n in find_children("*", "Control", true, false):
+		if str((n as Control).get_meta("blocker", "")) == want and (n as Control).is_visible_in_tree():
+			target = n
+			break
+	if target == null:
+		return
+	last_flagged = want
+	if _content.is_ancestor_of(target):
+		_scroll.ensure_control_visible(target)
+		await get_tree().process_frame
+	if _flash == null or not is_instance_valid(_flash):
+		_flash = BlockerGlow.new()
+		add_child(_flash)
+	move_child(_flash, get_child_count() - 1)
+	_flash.pulse(Rect2(target.global_position - global_position, target.size))
+
+
 ## The source knob turned: this build's materials come from `id` (the Construct setting keeps its own).
 func pick_material_source(id: String) -> void:
 	MatchState.pending_build_material_source = id
@@ -432,3 +478,41 @@ func _draw_layer(layer: String, rect: Rect2) -> void:
 	var tex := Plate.tex(layer)
 	if tex != null:
 		draw_texture_rect(tex, rect, false)
+
+
+## A red lamp glow laid over a part of the panel and pulsed twice: what blocks a refused build. Drawn over the
+## panel's children, added in (the lamp glows' material), so the part reads as lit, not covered.
+class BlockerGlow extends Control:
+	const PULSES := 2
+	const UP := 0.16
+	const DOWN := 0.42
+	const SPREAD := Vector2(40.0, 30.0)
+	## Added twice at the peak: over a lit red LED one pass barely shows.
+	const PASSES := 2
+	var _rect := Rect2()
+	var strength := 0.0:
+		set(v):
+			strength = v
+			queue_redraw()
+
+	func _init() -> void:
+		name = "BlockerGlow"
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		set_anchors_preset(Control.PRESET_FULL_RECT)
+		material = Light.glow_material()
+		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+
+	func pulse(rect: Rect2) -> void:
+		_rect = rect
+		var tw := create_tween()
+		for i in PULSES:
+			tw.tween_property(self, "strength", 1.0, UP).set_trans(Tween.TRANS_SINE)
+			tw.tween_property(self, "strength", 0.0, DOWN).set_trans(Tween.TRANS_SINE)
+
+	func _draw() -> void:
+		if strength <= 0.0:
+			return
+		var tex := Plate.tex("lamp_glow_red")
+		if tex != null:
+			for i in PASSES:
+				draw_texture_rect(tex, _rect.grow_individual(SPREAD.x, SPREAD.y, SPREAD.x, SPREAD.y), false, Color(1, 1, 1, strength))

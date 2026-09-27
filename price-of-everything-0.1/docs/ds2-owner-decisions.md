@@ -68,6 +68,8 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **Materials**: no per good prices (the materials total speaks for them), the goods in a grid of two columns and three rows on one backing, the Materials from knob in the sixth cell. **The intermediary is the default source**, since it is faster.
 - **A recipe is drawn, not named**: on a building's board the icon on the left and the recipe diagram in enamel on the right, expanded or condensed as the Construct setting says.
 - **Names**: the building by what it makes, without its letter until built: "Iron Furnace", "Copper Furnace"; where several recipes make the same thing, the recipe tells them apart: "Motor Assembly Plant", "SynRM Motor Assembly Plant".
+- **The Build key** (27 September) stays high in the verdict, where it is quick to decide, but as a plain cream key, not the guarded cap: building is not that big a decision. Refused, it prints red, and a press makes the part that blocks glow instead of building: the money (Cash after), or the land's row when auto buy land is off (the row then offers Buy land), or the requirement that blocks.
+- **The settings key** (27 September) is a white plastic key with a bevel and a navy gear, on a plate on the crane (over the jib's root, beside the cab).
 - **Every name in `docs/building-names.md` is approved as the table proposed it**, including the 19 rows that were marked for a second look (Limestone Mine, Sand Mine, Hairpin Stator Motor Assembly Plant and the rest). Only the unloaded farm recipes remain open.
 - **Building icons**: the polished relief with its soft grey edge looked wrong; a simple emboss or flat print (a blueprint) is being compared.
 

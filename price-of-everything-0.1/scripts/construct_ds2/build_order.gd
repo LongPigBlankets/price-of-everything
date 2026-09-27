@@ -4,7 +4,9 @@ extends RefCounted
 ##   Pinned: the site board lowered on the hook (the building's name raised on worn steel, its icon printed
 ##     flat as a blueprint on a navy enamel tile, the recipe on an enamel sign sunk into the board) and the
 ##     verdict on the site cabin's desk (the total and the cash after on LEDs, the turns to build on a drum
-##     counter, when the materials arrive, the guarded Build key), the seam under them.
+##     counter, when the materials arrive, the Build key), the seam under them. The Build key is a plain cream
+##     key high in the verdict (the owner: a quick decision, not an armed one); refused, it prints red and a
+##     press makes the part that blocks glow instead (`blocker_for`).
 ##   Scrolling: the site's requirements as lamps on the feeder pillar; the cost in the cabin; the materials
 ##     yard (each good on its pallet in its well, a label with what is on the tile and elsewhere, the
 ##     Materials from knob in the sixth bay); the outlook on the programme board; the land lot, last.
@@ -20,7 +22,7 @@ const Enamel := preload("res://scripts/bdp_v3_enamel.gd")
 const Indicator := preload("res://scripts/bdp_v3_indicator.gd")
 const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
 const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
-const GuardKey := preload("res://scripts/ds2/guard_key.gd")
+const CreamKey := preload("res://scripts/ds2/cream_key.gd")
 const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
 const Metrics := preload("res://scripts/ds2/metrics.gd")
 const Rotary := preload("res://scripts/rotary_selector.gd")
@@ -69,9 +71,11 @@ const SHEET_MARGIN := 14.0 * S
 const SHEET_CORNER := (14.0 + 40.0) * E
 const NAVY_INK := Color("#0b2340")
 const INK := {"ok": Color("#1d6b3a"), "warn": Color("#7a4a00"), "bad": Color("#8f1f19")}
-## The Build key's cap, and the words beside it.
-const GUARD_PX := 58.0
-const BUILD_WORD_PX := 26
+## The Build key: the cabinet's cream key, at least this wide.
+const BUILD_KEY_W := 112.0
+## What a refused Build points at: a block's key to the part that glows (the money on the verdict, else the
+## requirement's row on the feeder pillar; the land's blocks all point at its row).
+const LAND_BLOCKS := ["full", "cannot_buy_land", "land_short", "terrain"]
 ## The materials' sources on the knob, as the Construct setting names them.
 const SOURCES := [
 	["middleman", "res://assets/icons/ui_icons/route_lorry.png", "Logistics Intermediary"],
@@ -255,7 +259,10 @@ static func verdict(panel: Control, q: Dictionary) -> Control:
 	var t := _figure("Total", total, DS.PALETTE["DANGER"], digits)
 	t.name = "V3Total"
 	row.add_child(t)
-	row.add_child(_figure("Cash after", after, DS.PALETTE["OK"] if after >= 0.0 else DS.PALETTE["DANGER"], digits))
+	var cash := _figure("Cash after", after, DS.PALETTE["OK"] if after >= 0.0 else DS.PALETTE["DANGER"], digits)
+	cash.name = "CashAfter"
+	cash.get_child(1).set_meta("blocker", "funds")
+	row.add_child(cash)
 	var turns := VBoxContainer.new()
 	turns.name = "V3DurationBox"
 	turns.add_theme_constant_override("separation", 4)
@@ -267,18 +274,20 @@ static func verdict(panel: Control, q: Dictionary) -> Control:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(spacer)
-	var key: Control = GuardKey.new(GUARD_PX)
-	key.name = "BuildConfirmButton"
-	key.set("layer", "guard_build")
 	var reason := _refusal(q)
-	key.set("disabled", reason != "")
-	key.set("tip", {"stage": "Build", "name": "Build" if reason == "" else "Cannot build", "detail": reason if reason != "" else _build_words(q), "tone": "" if reason == "" else "bad"})
+	var width := maxf(BUILD_KEY_W, CreamKey.width_for("Build", "", false, false))
+	var key: Button = CreamKey.make("BuildConfirmButton", "Build", "", width)
+	key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	key.tooltip_text = reason if reason != "" else _build_words(q)
-	key.connect("pressed", func() -> void: panel.call("_on_confirm_pressed"))
+	if reason != "":
+		key.set("title_ink", CreamKey.RED_INK)
+	# Refused, a press shows what blocks it; otherwise it builds, as Confirm always has.
+	key.pressed.connect(func() -> void:
+		if str(panel.call("_v3_confirm_block_reason")) != "":
+			panel.call("flag_blocker")
+		else:
+			panel.call("_on_confirm_pressed"))
 	row.add_child(key)
-	var word := Parts.caption("Build", BUILD_WORD_PX)
-	word.name = "BuildWord"
-	row.add_child(word)
 	var foot := _foot_line(q, reason)
 	if foot != "":
 		var l := Parts.body(foot)
@@ -303,6 +312,14 @@ static func _foot_line(q: Dictionary, reason: String) -> String:
 
 static func _build_words(q: Dictionary) -> String:
 	return "Pick the site on the map." if not bool(q.get("site_known", false)) else "Starts construction on this tile."
+
+
+## The part a refused build points at for block `key`: "funds" for the money, "land" for the land's blocks,
+## else the block's own requirement row.
+static func blocker_for(key: String) -> String:
+	if key in LAND_BLOCKS:
+		return "land"
+	return key
 
 
 ## The quote's first block, which refuses the build.
@@ -337,8 +354,21 @@ static func requirements(panel: Control, q: Dictionary) -> Control:
 	var vb := VBoxContainer.new()
 	vb.name = "RequirementGrid"
 	vb.add_theme_constant_override("separation", 8)
-	for i in range(0, rows.size(), 2):
-		vb.add_child(_pillar(rows.slice(i, i + 2)))
+	# Two lamps a pillar; a row with a key of its own (Buy land) takes a pillar to itself.
+	var pair: Array = []
+	for r: Dictionary in rows:
+		if r.has("action"):
+			if not pair.is_empty():
+				vb.add_child(_pillar(pair))
+				pair = []
+			vb.add_child(_pillar([r]))
+			continue
+		pair.append(r)
+		if pair.size() == 2:
+			vb.add_child(_pillar(pair))
+			pair = []
+	if not pair.is_empty():
+		vb.add_child(_pillar(pair))
 	return vb
 
 
@@ -354,7 +384,14 @@ static func requirement_rows(panel: Control, q: Dictionary) -> Array:
 		var lp: Dictionary = q.get("land_plan", {})
 		var land_block := _find(blocks, ["full", "cannot_buy_land", "land_short", "terrain"])
 		if not land_block.is_empty():
-			out.append({"key": "land", "tone": "bad", "title": "Land", "detail": str(land_block.text)})
+			var row := {"key": "land", "tone": "bad", "title": "Land", "detail": str(land_block.text)}
+			# Short, with land for sale here to cover it: the player can buy it for this build.
+			var land: Dictionary = panel.get("_v3_land")
+			if bool(land.get("purchasable", false)) and not bool(panel.get("_buy_land_wanted")):
+				row.detail = "Short %d land. Buys %d for %s." % [int(land.get("short", 0)), int(land.get("units", 0)), MoneyFigure.text(float(land.get("cost", 0.0)))]
+				row["action"] = Callable(panel, "buy_land")
+				row["action_title"] = "Buy land"
+			out.append(row)
 			said[str(land_block.key)] = true
 		elif bool(lp.get("will_buy", false)):
 			out.append({"key": "land", "tone": "warn", "title": "Land",
@@ -438,6 +475,7 @@ static func _pillar(rows: Array) -> Control:
 		var r: Dictionary = rows[i]
 		var line := HBoxContainer.new()
 		line.name = "Requirement_%s" % str(r.key)
+		line.set_meta("blocker", str(r.key))
 		line.add_theme_constant_override("separation", 10)
 		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var lamp: Control = Lamp.new()
@@ -454,12 +492,20 @@ static func _pillar(rows: Array) -> Control:
 		words.add_child(t)
 		var d := Parts.body(str(r.detail))
 		d.name = "RequirementDetail_%s" % str(r.key)
-		d.custom_minimum_size.x = (PILLAR_LAMP_X[1] - PILLAR_LAMP_X[0] - 70.0) * S if rows.size() > 1 else PILLAR.x - 120.0
+		d.custom_minimum_size.x = (PILLAR_LAMP_X[1] - PILLAR_LAMP_X[0] - 70.0) * S if rows.size() > 1 else 200.0
 		d.max_lines_visible = 2
 		words.add_child(d)
 		line.add_child(words)
+		if r.has("action"):
+			var act: Button = CreamKey.make("RequirementAction_%s" % str(r.key), str(r.action_title), "", CreamKey.width_for(str(r.action_title), "", false, false, 0.8), false, false, 0.8)
+			act.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			act.pressed.connect(r.action)
+			line.add_child(act)
+		words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		line.position = Vector2(PILLAR_LAMP_X[i] * S - 14.0, 8.0)
-		line.size = Vector2((PILLAR_LAMP_X[1] - PILLAR_LAMP_X[0]) * S - 10.0, PILLAR.y - 16.0)
+		# One row alone spans the pillar up to its vents; two share it.
+		var span := (PILLAR_LAMP_X[1] - PILLAR_LAMP_X[0]) * S - 10.0 if rows.size() > 1 else PILLAR.x - PILLAR_LAMP_X[0] * S - 64.0
+		line.size = Vector2(span, PILLAR.y - 16.0)
 		line.alignment = BoxContainer.ALIGNMENT_CENTER
 		p.add_child(line)
 	return p
