@@ -1810,5 +1810,248 @@
    "red",
    "green"
   ]
+ },
+ "construct_head": {
+  "size": [
+   1125,
+   244
+  ],
+  "origin": [
+   0,
+   0
+  ]
+ },
+ "construct_mast": {
+  "size": [
+   120,
+   104
+  ],
+  "origin": [
+   0,
+   348
+  ],
+  "at": 244
+ },
+ "construct_placard": {
+  "size": [
+   272,
+   104
+  ],
+  "origin": [
+   749,
+   128
+  ],
+  "face": [
+   775,
+   157,
+   216,
+   56
+  ]
+ },
+ "construct_trolley": {
+  "size": [
+   84,
+   48
+  ],
+  "origin": [
+   18,
+   106
+  ],
+  "centre_x": 60
+ },
+ "construct_rig": {
+  "size": [
+   1005,
+   222
+  ],
+  "origin": [
+   80,
+   136
+  ],
+  "trolley_x": 585.5
+ },
+ "construct_hoarding": {
+  "size": [
+   1125,
+   2250
+  ],
+  "origin": [
+   0,
+   0
+  ]
+ },
+ "construct_panel": {
+  "width": 1125,
+  "content_x": 80,
+  "content_w": 1005,
+  "head_h": 244,
+  "cab": {
+   "x": 70,
+   "y": 36,
+   "w": 268,
+   "h": 192
+  },
+  "jib": {
+   "x0": 338,
+   "x1": 1005,
+   "t": 48,
+   "b": 128
+  },
+  "placard": {
+   "x": 761,
+   "y": 152
+  },
+  "nameplate": {
+   "w": 244,
+   "h": 66
+  },
+  "close": [
+   1065,
+   76
+  ],
+  "back": [
+   1065,
+   160
+  ]
+ },
+ "construct_board": {
+  "size": [
+   1027,
+   360
+  ],
+  "origin": [
+   -8,
+   -8
+  ],
+  "board": [
+   0,
+   0,
+   1005,
+   336
+  ],
+  "tile": [
+   24,
+   94,
+   216,
+   216
+  ],
+  "icon_inset": 28,
+  "enamel": [
+   260,
+   94,
+   721,
+   216
+  ],
+  "title": [
+   24,
+   8
+  ],
+  "ink": "#e3ebf5"
+ },
+ "guard_build": {
+  "size": [
+   240,
+   214
+  ],
+  "head": 64,
+  "button": [
+   70,
+   89,
+   100,
+   100
+  ],
+  "colour": "amber",
+  "icon": "hammer"
+ },
+ "construct_yard": {
+  "size": [
+   1023,
+   764
+  ],
+  "origin": [
+   -6,
+   -6
+  ],
+  "yard": [
+   0,
+   0,
+   1005,
+   744
+  ],
+  "pad": 18,
+  "gap": 12,
+  "rows": [
+   206,
+   206,
+   272
+  ],
+  "pallet": 176
+ },
+ "construct_pallet": {
+  "size": [
+   206,
+   206
+  ],
+  "origin": [
+   0,
+   0
+  ]
+ },
+ "construct_pillar": {
+  "size": [
+   1023,
+   152
+  ],
+  "origin": [
+   -6,
+   -6
+  ]
+ },
+ "construct_lot": {
+  "size": [
+   488,
+   226
+  ],
+  "origin": [
+   -6,
+   -6
+  ]
+ },
+ "construct_slab": {
+  "size": [
+   50,
+   50
+  ],
+  "origin": [
+   0,
+   0
+  ],
+  "slab": [
+   10,
+   10,
+   30,
+   30
+  ]
+ },
+ "construct_stake": {
+  "size": [
+   40,
+   40
+  ],
+  "origin": [
+   0,
+   0
+  ]
+ },
+ "construct_tape": {
+  "size": [
+   320,
+   24
+  ],
+  "origin": [
+   0,
+   10
+  ],
+  "period": 16
  }
 }

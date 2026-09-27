@@ -33,6 +33,8 @@ signal ledger_ds2_changed(enabled: bool)
 signal people_ds2_changed(enabled: bool)
 signal market_ds2_changed(enabled: bool)
 signal briefing_ds2_changed(enabled: bool)
+## The construct panel's DS2 look, the construction lot (docs/construct-ds2-plan.md), switched on or off.
+signal construct_ds2_changed(enabled: bool)
 signal empire_button_icon_changed(use_badge: bool)
 
 # Debug-only: verbose per-turn production / CostSolver logs. Off by default because
@@ -90,6 +92,9 @@ var use_market_ds2: bool = false
 # The turn briefing in DS2, the foreman's clipboard and the annunciator (docs/briefing-ds2-plan.md), behind the
 # debug cheat `toggle briefing ds2` while it is built. Off by default. Session-only, never persisted.
 var use_briefing_ds2: bool = false
+# The construct panel in DS2, the construction lot with its crane (docs/construct-ds2-plan.md), behind the debug
+# cheat `toggle construct ds2` while it is built. Off by default. Session-only, never persisted.
+var use_construct_ds2: bool = false
 # The upgrade panel in DS2 (scripts/ledger_v3/upgrade_dialog_ds2.gd), opened from Building Detail and the ledger.
 # The default; the debug cheat `toggle upgrade ds2` switches back to the v2 dialog. Session-only, never persisted.
 var use_upgrade_ds2: bool = true
@@ -239,6 +244,16 @@ func toggle_use_briefing_ds2() -> bool:
 
 func toggle_use_market_ds2() -> bool:
 	return set_use_market_ds2(not use_market_ds2)
+
+func set_use_construct_ds2(enabled: bool) -> bool:
+	if enabled == use_construct_ds2:
+		return use_construct_ds2
+	use_construct_ds2 = enabled
+	construct_ds2_changed.emit(use_construct_ds2)
+	return use_construct_ds2
+
+func toggle_use_construct_ds2() -> bool:
+	return set_use_construct_ds2(not use_construct_ds2)
 
 func toggle_use_upgrade_ds2() -> bool:
 	use_upgrade_ds2 = not use_upgrade_ds2

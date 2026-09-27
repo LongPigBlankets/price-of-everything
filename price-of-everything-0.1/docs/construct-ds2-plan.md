@@ -1,6 +1,6 @@
 # Construct panel: how it is used, what it holds, and a DS2 arrangement
 
-Status: planning, 26 September 2026. Nothing of the DS2 look is built. Done so far: the engine helpers every stage will read (`scripts/construction_rules.gd`, proven against the real build by `tests/construction_rules_parity.tscn`), and the construction credit facility removed (owner, 26 September: a stopgap from before the Logistics Intermediary). Two concept studies are rendered for the owner to choose between (§5).
+Status: building, 27 September 2026, behind `toggle construct ds2` (`UiPrefs.use_construct_ds2`, off by default). Built: the shell (the hoarding, the crane and its head, the site's plate, one width of 600) and the build order for every recipe (§4.2), reading `ConstructionRules.quote()`. Still today's bodies inside the hoarding: the catalogue, the settings and the infrastructure confirm (phases 4 and 5). Earlier: the engine helpers every stage reads (`scripts/construction_rules.gd`, proven against the real build by `tests/construction_rules_parity.tscn`), the construction credit facility removed (owner, 26 September: a stopgap from before the Logistics Intermediary), and the two concept studies (§5); the owner chose the construction lot.
 
 Read with `docs/ds2-theme.md` (the look, the kit, the method in §13 and §14) and `docs/ds2-owner-decisions.md` (settled rulings). The tile view's plan (`docs/tile-view-ds2-plan.md`) is the model for this one.
 
@@ -109,6 +109,14 @@ Open points the studies raise: the site named twice on the works order; the lot'
 | 6. Default | the owner's review rounds; the standard saved; the flag on by default | S |
 
 Each body is reviewed against §2's scenarios, up to three rounds, as the tile view's were. Tutorial and test handles kept: `ConstructPanelV2`, `BuildingCard_<id>`, `RecipeRow_<id>`, `BuildConfirmButton`, `ConstructionMaterialsSection`, `expand_building()`.
+
+**Built so far (27 September 2026).**
+
+- **The panel.** `scripts/construct_ds2/construct_ds2.gd` extends `construct_panel_v2.gd`: every way in, the state, Confirm and the handles the tutorial and tests look up are the parent's; the shell and the build order are its own. `bottom_menu.gd` builds it in place of today's panel while the flag is on and rebuilds it when the flag flips (`_construct_v2_script`, `_on_construct_ds2_changed`), under the same name, `ConstructPanelV2`.
+- **The build order** (`scripts/construct_ds2/build_order.gd`): the site board on the hook (the name raised, the icon printed flat as a blueprint from its emblem's silhouette, `flat_print.gdshader`, the recipe on an enamel sign in the board's recess), the verdict on the cabin desk (Total and Cash after on LEDs, Turns to build on a drum, when the materials arrive, the guarded Build key named `BuildConfirmButton`), the seam; then the requirements on the feeder pillar (two lamps a pillar), the cost in the cabin, the materials yard (a good on its pallet in its well, a white label with what is on the tile and elsewhere, the Materials from knob in the sixth bay, which sets `MatchState.pending_build_material_source`), the outlook on the programme board and the land lot. The Build key's refusal is the quote's first block (`_v3_confirm_block_reason`).
+- **Renders** (`tools/button_mockup/cluster.html`, inside the `constructlot` block so they share the study's parts; the study still renders byte identical): `constructhead` (464: `construct_head`, `construct_mast`, `construct_placard`, `construct_trolley`, `construct_rig`, `construct_hoarding`), `constructboard` (465: `construct_board`, `guard_build` and its pressed and cover layers), `constructyard` (466: `construct_yard`, `construct_pallet`, `construct_pillar`, `construct_lot`, `construct_slab`, `construct_stake`, `construct_tape`). Each is placed by the game at its `origin` in layout px.
+- **Captures:** `tools/construct_ds2_shot.tscn` (the catalogue; the build order on Stoneshore at its top, middle and foot; the build order with no site), in `artifacts/construct_ds2/ds2_v1/`.
+- **Tests:** `tests/unit/test_construct_ds2.gd`.
 
 ## 8. Decisions for the owner
 
