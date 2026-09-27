@@ -2185,7 +2185,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy.
+  // tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -6299,6 +6299,382 @@ async function exportLayers() {
     await post('guard_dismiss_cover', sf.grab());
     gb.userData.cover.rotation.x = -COVER_OPEN; await post('guard_dismiss_cover_open', sf.grab()); gb.userData.cover.rotation.x = 0;
     layout.guard_dismiss = { size: [FW, FH + HEAD], head: HEAD, button: [x, BY + HEAD, S, S], colour: 'red', icon: 'boot' };
+  });
+
+  // --- the turn briefing's concept study (docs/briefing-ds2-plan.md §5). A study, not a game layer: nothing in the
+  // game reads briefing_study. The briefing becomes the tray that rises from the updates dock at the screen's bottom
+  // left, one width (460 logical px) for every state: (1) a decision to answer, (2) alerts only. Each state is drawn
+  // over a transparent window the size of the screen's left 700 logical px; the capture of the real screen
+  // (artifacts/briefing_ds2/before/12_clean_screen.png, 1.875 capture px a logical px, so one capture px a layout px)
+  // is laid under those windows afterwards. Words and figures are the turn 4 captures'.
+  if (want('briefingstudy')) await withSeed(460, async () => {
+    for (const f of ['500 30px "IBM Plex Sans"', '600 30px "IBM Plex Sans"', '700 30px "IBM Plex Sans"', '600 30px "Barlow Condensed"', '700 30px "Barlow Condensed"', `60px ${TITLE_FAMILY}`]) await document.fonts.load(f);
+    const SW = 1312, SH = 2260, MX = 60, GAP = 90, CAPT = 120, FOOT = 40;
+    const OX = [MX, MX + SW + GAP], OY = CAPT, W = OX[1] + SW + MX, H = OY + SH + FOOT;
+    const T = PLATE_TOP, LIGHT = '#e8eef7', PLEX = '"IBM Plex Sans"', BARLOW = '"Barlow Condensed"';
+    // The dock stays where it is (12 px in, 12 px up, 60 tall); the tray is 460 logical px wide and rises from behind it.
+    const DOCK = { x: 22.5, y: 2124, w: 440, h: 112 }, TX = 22.5, TW = 862, PAD = 26, IW = TW - 2 * PAD;
+    const TRAY_BOTTOM = DOCK.y + 30;
+    const groups = [new THREE.Group(), new THREE.Group()], prints = [];
+    let cur = 0;
+    const add = (m, x, z, y = T) => { m.position.set(x, y, z); groups[cur].add(m); return m; };
+    const shade = (m) => { m.traverse((o) => { if (o.isMesh) o.castShadow = o.receiveShadow = true; }); return m; };
+    const rgbOf = (hex) => { const c = new THREE.Color(hex); return `${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)}`; };
+    const measure = (str, font) => { const c = document.createElement('canvas').getContext('2d'); c.font = font; return c.measureText(str).width; };
+    const wrapLines = (str, font, maxW) => {
+      const out = []; let line = '';
+      for (const w of str.split(' ')) { const t = line ? line + ' ' + w : w; if (line && measure(t, font) > maxW) { out.push(line); line = w; } else line = t; }
+      if (line) out.push(line); return out;
+    };
+    // The owner's screen rule (Digital displays): the point a cell of its own, five cells at most, never more than two decimals.
+    const moneyLed = (v) => {
+      const minus = v < 0 ? '-' : '', a = Math.abs(v);
+      for (const [div, suffix, d0, limit] of [[1, '', 2, 100], [1, '', 1, 1000], [1, '', 0, 10000], [1e3, 'K', 1, 1000], [1e6, 'M', 2, 1000]]) {
+        let d = d0, shown = (a / div).toFixed(d);
+        if (parseFloat(shown) >= limit) continue;
+        while (d > 0 && (minus + shown).length > 5) shown = (a / div).toFixed(--d);
+        return { figure: minus + shown, suffix };
+      }
+    };
+    const printWhite = (str, x, y, size, { weight = 500, family = PLEX, align = 'left', maxW = 900, colour = LIGHT } = {}) => prints.push((g) => {
+      g.save(); g.shadowColor = 'rgba(0,0,0,0.9)'; g.shadowOffsetX = 1.7; g.shadowOffsetY = 1.7; g.shadowBlur = 1.2;
+      text(g, str, x, y, maxW, size, colour, { align, weight, family }); g.restore();
+    });
+    const ink = (c, str, x, y, size, colour = NAVY, { weight = 500, family = PLEX, align = 'left', maxW = 900 } = {}) => {
+      c.save(); c.shadowColor = 'rgba(255,255,255,0.55)'; c.shadowOffsetX = 1; c.shadowOffsetY = 1;
+      text(c, str, x, y, maxW, size, colour, { align, weight, family }); c.restore();
+    };
+    const glow = (x, y, r, colour, a = 0.42) => prints.push((g) => {
+      const rgb = rgbOf(colour), grd = g.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, `rgba(${rgb},${a})`); grd.addColorStop(0.22, `rgba(${rgb},${a * 0.52})`); grd.addColorStop(0.5, `rgba(${rgb},${a * 0.16})`); grd.addColorStop(1, `rgba(${rgb},0)`);
+      g.save(); g.globalCompositeOperation = 'lighter'; g.fillStyle = grd; g.fillRect(x - r, y - r, 2 * r, 2 * r); g.restore();
+    });
+    const lamp = (tone, x, z, y, s = 0.6) => {
+      const colour = tone ? LAMP[tone] : null, l = pilotLamp(colour, !!tone); l.scale.setScalar(s); add(l, x, z, y);
+      if (tone) glow(x, z, 60 * s / 0.6, '#' + new THREE.Color(colour).getHexString());
+    };
+
+    // Seven segment figures, each digit and the point a cell of its own (the game's 12 x 21 logical px cell).
+    const CELL = [22.5, 39];
+    const DIGITS = { 0: 'abcdef', 1: 'bc', 2: 'abdeg', 3: 'abcdg', 4: 'bcfg', 5: 'acdfg', 6: 'acdefg', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg', '-': 'g', ' ': '' };
+    const SEGS = { a: [[0.2, 0.06], [0.8, 0.06]], b: [[0.8, 0.06], [0.8, 0.5]], c: [[0.8, 0.5], [0.8, 0.94]], d: [[0.2, 0.94], [0.8, 0.94]], e: [[0.2, 0.5], [0.2, 0.94]], f: [[0.2, 0.06], [0.2, 0.5]], g: [[0.2, 0.5], [0.8, 0.5]] };
+    const segment = (c, x0, y0, x1, y1, t) => {
+      const L = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / L, uy = (y1 - y0) / L, nx = -uy, ny = ux, h = t / 2, gap = t * 0.32;
+      const ax = x0 + ux * gap, ay = y0 + uy * gap, bx = x1 - ux * gap, by = y1 - uy * gap;
+      c.beginPath(); c.moveTo(ax, ay); c.lineTo(ax + ux * h + nx * h, ay + uy * h + ny * h); c.lineTo(bx - ux * h + nx * h, by - uy * h + ny * h);
+      c.lineTo(bx, by); c.lineTo(bx - ux * h - nx * h, by - uy * h - ny * h); c.lineTo(ax + ux * h - nx * h, ay + uy * h - ny * h); c.closePath(); c.fill();
+    };
+    const glassFinish = (c, iw, ih) => {
+      const top = c.createLinearGradient(0, 0, 0, 7); top.addColorStop(0, 'rgba(0,0,0,0.6)'); top.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = top; c.fillRect(0, 0, iw, 7);
+      const left = c.createLinearGradient(0, 0, 5, 0); left.addColorStop(0, 'rgba(0,0,0,0.45)'); left.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = left; c.fillRect(0, 0, 5, ih);
+      const glare = c.createLinearGradient(0, 0, iw * 0.5, ih); glare.addColorStop(0.3, 'rgba(255,255,255,0)'); glare.addColorStop(0.45, 'rgba(255,255,255,0.06)'); glare.addColorStop(0.6, 'rgba(255,255,255,0)');
+      c.fillStyle = glare; c.fillRect(0, 0, iw, ih);
+    };
+    const ledFace = (iw, ih, str, cells, colour) => canvas2d(iw, ih, (c) => {
+      const rgb = rgbOf(colour), padX = 7, padY = 6, cw = (iw - 2 * padX) / cells, ch = ih - 2 * padY, t = Math.min(cw * 0.2, ch * 0.12);
+      const list = [...str]; while (list.length < cells) list.unshift(' ');
+      c.fillStyle = '#060808'; c.fillRect(0, 0, iw, ih);
+      const cell = (i, k, style) => {
+        c.save(); c.translate(padX + i * cw + cw / 2, padY + ch / 2); c.transform(1, 0, -0.09, 1, 0, 0); c.translate(-cw / 2, -ch / 2); c.fillStyle = style;
+        if (k === '.') { c.beginPath(); c.arc(0.5 * cw, 0.92 * ch, t * 0.95, 0, Math.PI * 2); c.fill(); }
+        else for (const sg of (DIGITS[k] ?? '')) { const [[ax, ay], [bx, by]] = SEGS[sg]; segment(c, ax * cw, ay * ch, bx * cw, by * ch, t); }
+        c.restore();
+      };
+      list.forEach((_, i) => cell(i, '8', `rgba(${rgb},0.08)`));
+      c.save(); c.filter = 'blur(2.4px)'; c.globalAlpha = 0.75; list.forEach((k, i) => cell(i, k, colour)); c.restore();
+      list.forEach((k, i) => cell(i, k, colour));
+      glassFinish(c, iw, ih);
+    });
+    const glassScreen = (iw, ih, face) => {
+      const rim = 7, ow = iw + 2 * rim, oh = ih + 2 * rim, g = new THREE.Group();
+      const shape = rrShape(ow, oh, 5 + rim); shape.holes.push(rr(new THREE.Path(), iw, ih, 5));
+      g.add(shade(new THREE.Mesh(extrude(shape, 2.5, 1.2, 1, 3), MAT.frame)));
+      const tex = new THREE.CanvasTexture(face); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(iw + 1, ih + 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+      pane.position.y = 0.4; g.add(pane);
+      return { group: g, w: ow, h: oh };
+    };
+    const ledScreen = (str, cells, colour) => { const iw = Math.round(cells * CELL[0] + 14), ih = CELL[1] + 12; return glassScreen(iw, ih, ledFace(iw, ih, str, cells, colour)); };
+    /** A money figure on a dark surface: the £ printed, the screen from x (its left edge). */
+    const money = (value, colour, cells, x, cz, y) => {
+      const { figure, suffix } = moneyLed(value), scr = ledScreen(figure, cells, colour);
+      add(scr.group, x + scr.w / 2, cz, y);
+      printWhite('£', x - 8, cz + 1, 34, { weight: 600, align: 'right' });
+      if (suffix) printWhite(suffix, x + scr.w + 8, cz + 1, 34, { weight: 600 });
+      return scr.w;
+    };
+    /** A drum counter (Building Detail's), hgt tall, its left edge at x, centred on cz. */
+    const drum = (cells, str, x, cz, base, hgt = 64) => {
+      const { cap, cell, H: CH, win, drumR } = COUNTER, Wc = 2 * cap + cells * cell, k = hgt / CH, g = new THREE.Group();
+      const wy = (win[0] + win[1]) / 2, wh = win[1] - win[0];
+      const hs = rrShape(Wc - 4, CH - 4, 8); hs.holes.push(rr(new THREE.Path(), Wc - 2 * cap + 8, wh, 3, 0, wy - CH / 2));
+      const housing = new THREE.Mesh(extrude(hs, 2, 2, 1.6, 3), MAT.frame); housing.castShadow = housing.receiveShadow = true; housing.position.set(Wc / 2, 2, CH / 2); g.add(housing);
+      const dm = new THREE.MeshStandardMaterial({ color: 0x151618, roughness: 0.45, metalness: 0.2, envMap: studioEnv, envMapIntensity: 0.6 });
+      for (let i = 0; i < cells; i++) { const d = new THREE.Mesh(new THREE.CylinderGeometry(drumR, drumR, cell - 2.4, 48, 1).rotateZ(Math.PI / 2), dm); d.position.set(cap + i * cell + cell / 2, 4.6 - drumR, wy); d.receiveShadow = true; g.add(d); }
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(Wc - 2 * cap + 8, wh).rotateX(-Math.PI / 2), MAT.gap); floor.position.set(Wc / 2, -2, wy); g.add(floor);
+      g.scale.setScalar(k); const cz0 = cz - CH * k / 2;
+      add(g, x, cz0, base + 1);
+      const chars = str.padStart(cells, ' ');
+      prints.push((c) => {
+        [...chars].forEach((ch, i) => { if (ch !== ' ') text(c, ch, x + k * (cap + i * cell + cell / 2), cz0 + k * wy + 1, 40, k * 34, '#efede6', { align: 'center', weight: 600, family: BARLOW }); });
+        c.save(); c.translate(x, cz0); c.scale(k, k); paintCounterGlass(c, Wc); c.restore();
+      });
+      return Wc * k;
+    };
+
+    // Materials.
+    const darkSteel = new THREE.MeshStandardMaterial({ color: 0x3c4046, map: noiseTexture(20, 40, 40), metalness: 1, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.85 });
+    const chrome = new THREE.MeshStandardMaterial({ color: 0xb4b9c0, metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 1.0 });
+    const steelSide = new THREE.MeshStandardMaterial({ color: 0x5a6068, metalness: 1, roughness: 0.42, envMap: studioEnv, envMapIntensity: 0.8 });
+    const blackPlastic = (w, h, paint) => new THREE.MeshPhysicalMaterial({ map: faceTexture(canvas2d(w, h, (c) => { c.drawImage(blackPlasticFace(w, h, '#15171a', 0.06), 0, 0, w, h); paint?.(c); }), w, h), roughness: 0.5, clearcoat: 0.3, envMap: studioEnv, envMapIntensity: 0.4 });
+    /** Tempered hardboard, the clipboard's board: brown, fine fibre speckle, rubbed pale where hands hold it. */
+    const hardboard = (w, h) => new THREE.MeshPhysicalMaterial({ map: faceTexture(canvas2d(w, h, (c) => {
+      c.fillStyle = '#5e4128'; c.fillRect(0, 0, w, h);
+      for (let i = 0; i < w * h / 30; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '24,14,6' : '150,110,70'},${0.05 + rand() * 0.08})`; c.fillRect(rand() * w, rand() * h, 0.8 + rand() * 1.6, 0.6 + rand()); }
+      for (let i = 0; i < 26; i++) { const x = rand() * w, y = rand() * h, r = 30 + rand() * 90, grd = c.createRadialGradient(x, y, 0, x, y, r); grd.addColorStop(0, `rgba(${rand() < 0.5 ? '0,0,0' : '255,220,170'},${0.03 + rand() * 0.04})`); grd.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = grd; c.fillRect(x - r, y - r, 2 * r, 2 * r); }
+      for (const [x, y] of [[0, h * 0.55], [w, h * 0.55]]) { const grd = c.createRadialGradient(x, y, 0, x, y, 120); grd.addColorStop(0, 'rgba(210,180,140,0.16)'); grd.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = grd; c.fillRect(0, 0, w, h); }
+      c.save(); c.filter = 'blur(3px)'; c.strokeStyle = 'rgba(0,0,0,0.35)'; c.lineWidth = 8; c.beginPath(); c.roundRect(4, 4, w - 8, h - 8, 16); c.stroke(); c.restore();
+    }), w, h), roughness: 0.7, clearcoat: 0.15, clearcoatRoughness: 0.6, envMap: studioEnv, envMapIntensity: 0.3 });
+    const boardSide = new THREE.MeshStandardMaterial({ color: 0x3a2716, roughness: 0.8 });
+
+    const smallKey = (glyph, x, z, base) => {
+      const k = keycap(76, 76, 6, (g, a, b) => {
+        g.strokeStyle = NAVY; g.lineWidth = a * 0.13; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath();
+        if (glyph === 'down') { g.moveTo(a * 0.28, b * 0.38); g.lineTo(a * 0.5, b * 0.62); g.lineTo(a * 0.72, b * 0.38); }
+        g.stroke();
+      });
+      add(k, x, z, base);
+    };
+    /** A wide cream keycap with its words printed navy. */
+    const wideKey = (str, x, z, w, h, base, size = 28) => add(keycap(w, h, 8, (g, a, b) => text(g, str, a / 2, b / 2 + 1, a - 22, size, NAVY, { align: 'center', weight: 700, family: BARLOW })), x, z, base);
+    /** A plate of blackened gunmetal, silver screws in its corners; returns its top. */
+    const cabin = (x, y, w, h) => {
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 10), 4, 3, 2.4, 4), [plateMaterial(w, h, { icons: [], buttons: [], screws: [], base: DARK_STEEL_CANVAS, rub: '130,138,150' }), MAT.plateSide])), x + w / 2, y + h / 2);
+      for (const [sx, sy] of [[13, 13], [w - 13, 13], [13, h - 13], [w - 13, h - 13]]) { const s = silverScrew(); s.remove(s.children[s.children.length - 1]); add(s, x + sx - 15, y + sy - 15, T + 10); }
+      return T + 10;
+    };
+    /** A moulded case of black plastic, silver screws in its corners; returns its top. */
+    const plasticCase = (x, y, w, h) => {
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 12), 4, 2.4, 2, 4), [blackPlastic(w, h), BLACK_PLASTIC_SIDE()])), x + w / 2, y + h / 2);
+      for (const [sx, sy] of [[14, 14], [w - 14, 14], [14, h - 14], [w - 14, h - 14]]) { const s = silverScrew(); s.remove(s.children[s.children.length - 1]); add(s, x + sx - 15, y + sy - 15, T + 8.8); }
+      return T + 8.8;
+    };
+    /** The nameplate: black enamel, its words raised in white Bebas, a rivet at each corner. */
+    const namePlate = (x, y, w, h, str, base) => {
+      const tb = { x: 14, y: 5, w: w - 28, h: h - 10 };
+      const drawTitle = (g, col) => text(g, str, tb.w / 2, tb.h / 2 + 3, tb.w - 4, 56, col, { weight: 400, family: TITLE_FAMILY, align: 'center' });
+      const plateC = canvas2d(w, h, (c) => {
+        c.fillStyle = '#16181c'; c.fillRect(0, 0, w, h);
+        for (let i = 0; i < w * h / 120; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.015 + rand() * 0.025})`; c.fillRect(rand() * w, rand() * h, 1 + rand() * 2, 1 + rand() * 2); }
+        drawIconShadows(c, w, h, [{ height: 5, draw: (g, col) => { g.save(); g.translate(tb.x, tb.y); drawTitle(g, col); g.restore(); } }]);
+      });
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 6), 2, 1.2, 1, 3), [new THREE.MeshPhysicalMaterial({ map: faceTexture(plateC, w, h), roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.2, envMap: studioEnv, envMapIntensity: 0.5 }), darkSteel])), x + w / 2, y + h / 2, base);
+      add(relief(tb.w, tb.h, (g) => drawTitle(g, '#fff'), WHITE_LETTERS, { height: 5, soften: 0.7 }), x + tb.x + tb.w / 2, y + tb.y + tb.h / 2, base + 4.7);
+      for (const [rx, rz] of [[9, 9], [w - 9, 9], [9, h - 9], [w - 9, h - 9]]) {
+        const rv = new THREE.Mesh(new THREE.SphereGeometry(3, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), darkSteel); rv.scale.y = 0.55; add(shade(rv), x + rx, y + rz, base + 4.4);
+      }
+    };
+    /** A readout: dark glass in the screens' gunmetal bezel, a pilot lamp at its left, white print (BdpV3Readout). */
+    const readout = (x, y, w, h, tone, lines, base) => {
+      const scr = glassScreen(w - 14, h - 14, canvas2d(w - 14, h - 14, (c) => { c.fillStyle = '#080b0d'; c.fillRect(0, 0, w, h); glassFinish(c, w - 14, h - 14); }));
+      add(scr.group, x + w / 2, y + h / 2, base);
+      lamp(tone, x + 46, y + h / 2, base + 0.6, 0.62);
+      const lh = lines.length > 1 ? 40 : 0, y0 = y + h / 2 - lh * (lines.length - 1) / 2;
+      lines.forEach(([str, size, weight], k) => printWhite(str, x + 84, y0 + k * lh, size, { weight, maxW: w - 110 }));
+    };
+    /** A good's cream tile set under the icon well's thin metal frame, `px` square, centred at (cx, cz). */
+    const goodWell = (img, cx, cz, px, base) => {
+      const tile = canvas2d(px, px, (c) => {
+        c.fillStyle = '#f3e7cc'; c.beginPath(); c.roundRect(0, 0, px, px, 12); c.fill();
+        const k = 0.84, s = px * k; c.drawImage(img, (px - s) / 2, (px - s) / 2, s, s);
+      });
+      const tex = new THREE.CanvasTexture(tile); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+      add(new THREE.Mesh(new THREE.PlaneGeometry(px, px).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.7 })), cx, cz, base + 0.2);
+      const f = iconWell(), k = (px + 2 * WELL.rim + 4) / (WELL.W - 2 * WELL.M);
+      f.children.pop(); f.scale.setScalar(k); add(shade(f), cx - WELL.W * k / 2, cz - WELL.W * k / 2, base + 0.3);
+      prints.push((g) => { g.save(); g.translate(cx - WELL.W * k / 2, cz - WELL.W * k / 2); g.scale(k, k); paintWellShade(g); g.restore(); });
+    };
+
+    // The annunciator: one backlit window per kind of alert, lit amber or red with its count, dark when clear.
+    const ANN = { cols: 4, rows: 2, wh: 84, gap: 12, pad: 24 };
+    const KINDS = [['STARVED', 'amber', 2], ['CASH SHORT', null, 0], ['BANKRUPTCY', null, 0], ['CABLES FULL', null, 0],
+      ['STORAGE FULL', 'amber', 2], ['STOCKPILE SMALL', 'red', 1], ['DEPOSIT LOW', null, 0], ['DEPOSIT OUT', null, 0]];
+    const annunciator = (x, y, selected) => {
+      const w = IW, ww = (w - 2 * ANN.pad - (ANN.cols - 1) * ANN.gap) / ANN.cols, h = 2 * ANN.pad + ANN.rows * ANN.wh + (ANN.rows - 1) * ANN.gap;
+      const top = plasticCase(x, y, w, h);
+      KINDS.forEach(([name, tone, n], i) => {
+        const cx = x + ANN.pad + (i % ANN.cols) * (ww + ANN.gap), cy = y + ANN.pad + Math.floor(i / ANN.cols) * (ANN.wh + ANN.gap);
+        const lit = tone ? LAMP[tone] : null, hex = lit ? '#' + new THREE.Color(lit).getHexString() : null;
+        const face = canvas2d(ww - 10, ANN.wh - 10, (c) => {
+          const fw = ww - 10, fh = ANN.wh - 10;
+          if (lit) {
+            const grd = c.createRadialGradient(fw / 2, fh / 2, 4, fw / 2, fh / 2, fw * 0.62);
+            grd.addColorStop(0, '#' + new THREE.Color(lit).lerp(new THREE.Color(0xffffff), 0.45).getHexString()); grd.addColorStop(1, hex);
+            c.fillStyle = grd; c.fillRect(0, 0, fw, fh);
+          } else { c.fillStyle = '#1b1e22'; c.fillRect(0, 0, fw, fh); }
+          for (let k = 0; k < fw * fh / 40; k++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.02 + rand() * 0.03})`; c.fillRect(rand() * fw, rand() * fh, 1, 1); }
+          const ink2 = lit ? '#1e0f02' : '#e8eef7';
+          const lx = n ? fw / 2 - 18 : fw / 2, lw = fw - (n ? 54 : 16), parts = name.split(' ');
+          c.font = `700 25px ${BARLOW}`;
+          if (c.measureText(name).width > lw && parts.length > 1) parts.forEach((pt, k) => text(c, pt, lx, fh / 2 + (k - 0.5) * 26 + 1, lw, 24, ink2, { align: 'center', weight: 700, family: BARLOW }));
+          else text(c, name, lx, fh / 2 + 1, lw, 25, ink2, { align: 'center', weight: 700, family: BARLOW });
+          if (n) text(c, String(n), fw - 20, fh / 2 + 1, 30, 30, ink2, { align: 'center', weight: 700, family: BARLOW });
+          glassFinish(c, fw, fh);
+        });
+        const scr = glassScreen(ww - 10, ANN.wh - 10, face);
+        add(scr.group, cx + ww / 2, cy + ANN.wh / 2, top);
+        if (lit) glow(cx + ww / 2, cy + ANN.wh / 2, ww * 0.7, hex, 0.3);
+        if (selected === name) prints.push((g) => {
+          g.save(); g.strokeStyle = 'rgba(232,238,247,0.95)'; g.lineWidth = 3; g.beginPath(); g.roundRect(cx - 7, cy - 7, ww + 14, ANN.wh + 14, 10); g.stroke();
+          g.fillStyle = 'rgba(232,238,247,0.95)'; g.beginPath(); g.moveTo(cx + ww / 2 - 11, cy + ANN.wh + 8); g.lineTo(cx + ww / 2 + 11, cy + ANN.wh + 8); g.lineTo(cx + ww / 2, cy + ANN.wh + 19); g.closePath(); g.fill(); g.restore();
+        });
+      });
+      return h;
+    };
+
+    // The dock under the tray: navy steel, the pen and the three bells raised, each count on a navy pill.
+    const dock = (pen, bells) => {
+      const { w, h } = DOCK, x = OX[cur] + DOCK.x, y = OY + DOCK.y, feat = { icons: [], buttons: [], screws: [] }, cells = [70, 175, 275, 375], iconS = 64;
+      const dy = 18;
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 14), 4, 3, 2.4, 4), [plateMaterial(w, h, { ...feat, base: NAVY_STEEL_CANVAS, rub: '120,136,160' }), steelSide])), x + w / 2, y + h / 2, 8);
+      const tones = [null, '#3fb265', '#e6b85c', '#e66060'];
+      [pen, ...bells].forEach((n, i) => {
+        const img = i === 0 ? PEN : BELL, dim = i > 0 && !n.count, col = i > 0 ? new THREE.Color(tones[i]).multiplyScalar(dim ? 0.5 : 1) : null;
+        const mat = i === 0 ? MAT.plastic : new THREE.MeshPhysicalMaterial({ color: col, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+        const cx = x + cells[i], cz = y + h / 2 - 2, s = (i === 0 ? 1 : 0.9) * iconS;
+        if (i === 0 && pen.open) {   // the pen's cell is sunk while its tray is up
+          add(shade(new THREE.Mesh(extrude(rrShape(92, 92, 10), 1, 1, 0.8, 2), new THREE.MeshStandardMaterial({ color: 0x0c1016, roughness: 0.6 }))), cx, cz, dy - 1);
+        }
+        add(iconRelief(img, s, s, mat, { height: 7, soften: 1.1 }), cx, cz, dy + 0.3);
+        if (i === 0 && pen.lamp) lamp(pen.lamp, cx + 38, cz - 34, dy, 0.42);
+        if (n.count) prints.push((g) => {
+          const t = String(n.count), pw = 20 + t.length * 13, px = cx + 16, py = cz + 18;
+          g.save(); g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 4; g.shadowOffsetY = 2; g.fillStyle = NAVY; g.beginPath(); g.roundRect(px, py, pw, 30, 15); g.fill(); g.restore();
+          g.strokeStyle = 'rgba(232,238,247,0.55)'; g.lineWidth = 1.5; g.beginPath(); g.roundRect(px, py, pw, 30, 15); g.stroke();
+          text(g, t, px + pw / 2, py + 16, pw, 24, LIGHT, { align: 'center', weight: 700, family: BARLOW });
+        });
+      });
+    };
+
+    const PEN = keyOpaque(await loadImage('/icons/ui_icons/standalone/fountain_pen.png'));
+    const BELL = keyOpaque(await loadImage('/icons/ui_icons/standalone/bell.png'));
+    const SILICA = await loadImage('/icons/goods/medium/g_020_silica.png');
+    const ETHYLENE = await loadImage('/icons/goods/medium/g_024_ethylene.png');
+
+    // The two states. Each is laid out from its top; the tray's height follows its content and its foot tucks behind the dock.
+    const LETTER = {
+      kicker: 'DECISION', count: '1 of 1', title: 'A Retired Man Who Misses the Work',
+      body: ['Andrew Keeler ran a shipping firm for thirty years. He offers to serve as your CFO or COO for thirty turns without pay.',
+        '"I\'ve negotiated lots of deals with suppliers and banks in the past. But my specialty will always be transporting goods cheap."'],
+    };
+    const BOARD_W = IW, LW = BOARD_W - 44, LTX = 34, BODY_FONT = '500 27px "IBM Plex Sans"';
+    const bodyLines = LETTER.body.map((p) => wrapLines(p, BODY_FONT, LW - 2 * LTX));
+    const LH = 170 + bodyLines.reduce((s, ls) => s + ls.length * 38 + 18, 0) + 10, BH = LH + 70;
+    const REPLY_H = 66 + 2 * 124 + 16;
+    const ANN_H = 2 * ANN.pad + ANN.rows * ANN.wh + (ANN.rows - 1) * ANN.gap;
+    const HEAD = 96, GATE = 80, SP = 18;
+    const heights = [
+      PAD + HEAD + SP + GATE + SP + BH + SP + REPLY_H + SP + ANN_H + 58 + PAD + 30,
+      PAD + HEAD + SP + GATE + SP + ANN_H + SP + 126 + SP + (2 * 160 + 24) + SP + 104 + PAD + 30,
+    ];
+
+    for (const [i, ox] of OX.entries()) {
+      cur = i;
+      const TH = heights[i], ty = TRAY_BOTTOM - TH, X = (x) => ox + TX + x, Z = (y) => OY + ty + y;
+      // The tray: the dock's and the top bar's navy steel, no trim, screws in its top corners.
+      const feat = { icons: [], buttons: [], screws: [{ x: 22, y: 22 }, { x: TW - 22, y: 22 }] };
+      add(shade(new THREE.Mesh(extrude(rrShape(TW, TH, 14), 4, 4.5, 3.6, 6), [plateMaterial(TW, TH, { ...feat, base: NAVY_STEEL_CANVAS, rub: '120,136,160' }), steelSide])), X(TW / 2), Z(TH / 2), 0);
+      for (const s of feat.screws) add(screw(7), X(s.x), Z(s.y), T + 0.5);
+      let y = PAD;
+      namePlate(X(PAD + 18), Z(y + 10), 330, 76, 'THIS TURN', T);
+      smallKey('down', X(TW - PAD - 38 - 18), Z(y + 48), T);
+      y += HEAD + SP;
+      // The gate: whether the turn can end, the one line the old footer said.
+      if (i === 0) readout(X(PAD), Z(y), IW, GATE, 'amber', [['Answer 1 decision before you end the turn.', 28, 600]], T);
+      else readout(X(PAD), Z(y), IW, GATE, 'green', [['No decisions waiting. You can end the turn.', 28, 600]], T);
+      y += GATE + SP;
+      if (i === 0) {
+        // The letter, clipped to a hardboard clipboard: the story in navy on white plastic.
+        add(shade(new THREE.Mesh(extrude(rrShape(BOARD_W, BH, 18), 5, 2, 1.6, 3), [hardboard(BOARD_W, BH), boardSide])), X(PAD + BOARD_W / 2), Z(y + BH / 2), T);
+        const letter = canvas2d(LW, LH, (c) => {
+          paintPlastic(c, LW, LH);
+          ink(c, LETTER.kicker, LTX, 80, 24, NAVY, { weight: 700, family: BARLOW });
+          ink(c, LETTER.count, LW - LTX, 80, 24, NAVY, { weight: 600, family: BARLOW, align: 'right' });
+          ink(c, LETTER.title, LTX, 124, 40, NAVY, { weight: 700, family: BARLOW, maxW: LW - 2 * LTX });
+          c.fillStyle = 'rgba(11,35,64,0.5)'; c.fillRect(LTX, 150, LW - 2 * LTX, 2);
+          let ly = 186;
+          bodyLines.forEach((ls) => { ls.forEach((l) => { ink(c, l, LTX, ly, 27, NAVY, { weight: 500 }); ly += 38; }); ly += 18; });
+        });
+        const lt = T + 7;
+        add(shade(new THREE.Mesh(extrude(rrShape(LW, LH, 6), 1.2, 1, 0.8, 2), [new THREE.MeshPhysicalMaterial({ map: faceTexture(letter, LW, LH), ...KNOB_PLASTIC }), MAT.skirt])), X(PAD + BOARD_W / 2), Z(y + 48 + LH / 2), lt);
+        // The clip: a pressed steel jaw over the letter's head, its spring roll behind, two rivets into the board.
+        const cy0 = y + 30;
+        add(shade(new THREE.Mesh(extrude(rrShape(300, 58, 14), 4, 2, 1.6, 3), darkSteel)), X(PAD + BOARD_W / 2), Z(cy0 + 20), lt + 2.2);
+        add(shade(new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 262, 28).rotateZ(Math.PI / 2), chrome)), X(PAD + BOARD_W / 2), Z(cy0 - 12), T + 12);
+        for (const dx of [-100, 100]) add(shade(new THREE.Mesh(new THREE.SphereGeometry(6, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), darkSteel)), X(PAD + BOARD_W / 2 + dx), Z(cy0 + 22), lt + 8.5);
+        y += BH + SP;
+        // The answer: each choice a cream key on the gunmetal plate, what it brings beside it, figures on screens.
+        const ct = cabin(X(PAD), Z(y), IW, REPLY_H);
+        printWhite('Your answer', X(PAD + 30), Z(y + 38), 28, { weight: 700 });
+        const rows = [
+          { key: "Give him the CFO's chair", lines: ['Seat for 30 turns, unpaid.', 'Loan at 5%'], fig: () => money(200, LIGHT, 5, X(PAD + IW - 24) - (5 * CELL[0] + 28), Z(y + 66 + 62 + 22), ct) },
+          { key: "Give him the COO's chair", lines: ['Seat for 30 turns, unpaid.', 'Freight prepaid'], fig: () => drum(4, '1000', X(PAD + IW - 24) - 2 * COUNTER.cap * 58 / COUNTER.H - 4 * COUNTER.cell * 58 / COUNTER.H, Z(y + 66 + 124 + 62 + 22), ct, 58) },
+        ];
+        rows.forEach((r, k) => {
+          const ry = y + 66 + k * 124 + 62;
+          wideKey(r.key, X(PAD + 30 + 175), Z(ry), 350, 96, ct, 27);
+          printWhite(r.lines[0], X(PAD + 410), Z(ry - 22), 26);
+          printWhite(r.lines[1], X(PAD + 410), Z(ry + 22), 26);
+          r.fig();
+        });
+        y += REPLY_H + SP;
+        annunciator(X(PAD), Z(y), null);
+        y += ANN_H;
+        printWhite('3 alerts lit. Pick a lamp for the detail.', X(PAD + 6), Z(y + 30), 26);
+      } else {
+        annunciator(X(PAD), Z(y), 'STARVED');
+        y += ANN_H + SP;
+        readout(X(PAD), Z(y), IW, 126, 'amber', [['2 buildings starved', 30, 600], ['Inputs were missing, so they made nothing this turn.', 25, 500]], T);
+        y += 126 + SP;
+        const rh = 2 * 160 + 24, ct = cabin(X(PAD), Z(y), IW, rh);
+        [['Lightning Bourne', 'Missing silica', SILICA], ['Thistle River Valley', 'Missing ethylene', ETHYLENE]].forEach(([place, why, img], k) => {
+          const cz = Z(y + 12 + 80 + k * 160);
+          goodWell(img, X(PAD + 30 + 68), cz, 128, ct);
+          printWhite(place, X(PAD + 196), cz - 20, 30, { weight: 600 });
+          printWhite(why, X(PAD + 196), cz + 22, 26);
+          wideKey('Go to', X(TW - PAD - 30 - 85), cz, 170, 88, ct, 28);
+        });
+        y += rh + SP;
+        wideKey('Dismiss', X(PAD + 105), Z(y + 52), 210, 92, T, 28);
+        printWhite('It lights again if it gets worse.', X(PAD + 236), Z(y + 52), 26);
+      }
+      dock({ count: i === 0 ? 1 : 0, open: true, lamp: 'red' }, [{ count: 13 }, { count: 1 }, { count: 0 }]);   // the pen's lamp: the worst lit window
+    }
+
+    // Each state its own render, so the house light's shadow map covers it; laid over the transparent screens.
+    const shots = [0, 1].map((i) => {
+      const x0 = OX[i], x1 = OX[i] + TX + TW + 60, y0 = OY + TRAY_BOTTOM - heights[i] - 60, y1 = OY + DOCK.y + DOCK.h + 40;
+      groups[i].add(shadowCatcher(x1 - x0, y1 - y0, (x0 + x1) / 2, (y0 + y1) / 2, 0.05, 0.5));
+      const st = stage([x0, y0, x1, y1], [groups[i]]);
+      st.scene.traverse((o) => { if (o.isDirectionalLight) o.shadow.mapSize.set(4096, 4096); });
+      return { img: st.grab(), x0, y0, x1, y1 };
+    });
+    await post('briefing_study', frame2d(W, H, (g) => {
+      g.fillStyle = '#121820'; g.fillRect(0, 0, W, H);
+      for (const ox of OX) g.clearRect(ox, OY, SW, SH);   // the real screen goes under these windows
+      shots.forEach((s) => g.drawImage(s.img, s.x0, s.y0, s.x1 - s.x0, s.y1 - s.y0));
+      for (const p of prints) p(g);
+      [['1', 'A decision to answer'], ['2', 'Alerts only']].forEach(([n, s], i) => {
+        text(g, n, OX[i], 62, 40, 44, '#e9b81a', { weight: 700, family: PLEX });
+        text(g, s, OX[i] + 40, 62, 700, 38, LIGHT, { weight: 600, family: PLEX });
+        // One width for every state.
+        const yy = OY + TRAY_BOTTOM - heights[i] - 34, xa = OX[i] + TX, xb = xa + TW;
+        g.save(); g.shadowColor = 'rgba(0,0,0,0.9)'; g.shadowBlur = 6; g.strokeStyle = 'rgba(232,238,247,0.95)'; g.lineWidth = 2.5;
+        g.beginPath(); g.moveTo(xa, yy); g.lineTo(xb, yy); g.moveTo(xa, yy - 12); g.lineTo(xa, yy + 12); g.moveTo(xb, yy - 12); g.lineTo(xb, yy + 12); g.stroke();
+        g.fillStyle = 'rgba(18,24,32,0.92)'; g.fillRect(xa + TW / 2 - 110, yy - 20, 220, 40); g.restore();
+        text(g, '460 px wide', xa + TW / 2, yy + 1, 210, 28, LIGHT, { align: 'center', weight: 500, family: PLEX });
+      });
+    }));
   });
 
   // --- the tile view's cabinet (docs/tile-view-ds2-plan.md §9): the stainless door with its black iron pipe
