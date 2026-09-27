@@ -1766,5 +1766,49 @@
    112
   ],
   "bezel": 44
+ },
+ "brief_backing": {
+  "size": [
+   1060,
+   2248
+  ],
+  "margin": 24,
+  "foot": 80,
+  "corner": 40
+ },
+ "brief_board": {
+  "size": [
+   952,
+   1232
+  ],
+  "margin": 16,
+  "foot": 60,
+  "corner": 40
+ },
+ "brief_clip": {
+  "size": [
+   360,
+   124
+  ],
+  "margin": 20,
+  "jaw": [
+   300,
+   58
+  ]
+ },
+ "brief_window": {
+  "size": [
+   236,
+   96
+  ],
+  "margin": 8,
+  "rim": 7,
+  "radius": 5,
+  "tones": [
+   "dark",
+   "amber",
+   "red",
+   "green"
+  ]
  }
 }

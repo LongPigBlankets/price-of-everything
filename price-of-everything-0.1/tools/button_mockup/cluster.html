@@ -2185,7 +2185,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
+  // tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -6675,6 +6675,83 @@ async function exportLayers() {
         text(g, '460 px wide', xa + TW / 2, yy + 1, 210, 28, LIGHT, { align: 'center', weight: 500, family: PLEX });
       });
     }));
+  });
+
+  // --- the turn briefing's parts (docs/briefing-ds2-plan.md §5, as studied in briefingstudy): the backing (the top
+  // bar's navy steel, no trim, a screw in each corner; one width, 540 logical px, cropped from the top by the game with
+  // its foot drawn whole), the foreman's clipboard (a tempered hardboard board, cropped the same way, and its pressed
+  // steel clip with the chrome spring roll), and the annunciator's windows (dark glass in the LED screens' gunmetal
+  // bezel, lit amber, red or green behind it or dark; a 9-slice, the legend printed by the game). Seeds 461 up.
+  const BRIEF_BACKING = { W: 1012, H: 2200, M: 24, foot: 80, screw: 22 };
+  const BRIEF_BOARD = { W: 920, H: 1200, M: 16, r: 18, foot: 60 };
+  const BRIEF_CLIP = { W: 360, H: 124, M: 20, jaw: [300, 58], roll: 262 };
+  const BRIEF_WINDOW = { W: 236, H: 96, M: 8, rim: 7, r: 5 };
+  if (want('briefback')) await withSeed(461, async () => {
+    const { W, H, M, screw: si } = BRIEF_BACKING, g = new THREE.Group();
+    const steelSide = new THREE.MeshStandardMaterial({ color: 0x3a4250, metalness: 1, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
+    const corners = [[si, si], [W - si, si], [si, H - si], [W - si, H - si]];
+    const feat = { icons: [], buttons: [], screws: corners.map(([x, y]) => ({ x: x - 4, y: y - 4 })), base: NAVY_STEEL_CANVAS, rub: '120,136,160' };
+    put(g, new THREE.Mesh(extrude(rrShape(W, H, 14), 4, 4.5, 3.6, 6), [plateMaterial(W, H, feat), steelSide]), M + W / 2, M + H / 2);
+    for (const [x, y] of corners) put(g, screw(7), M + x, M + y, PLATE_TOP + 0.5);
+    g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.5));
+    await post('brief_backing', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+    layout.brief_backing = { size: [W + 2 * M, H + 2 * M], margin: M, foot: BRIEF_BACKING.foot, corner: 40 };
+  });
+  if (want('briefclip')) await withSeed(462, async () => {
+    const darkSteel = new THREE.MeshStandardMaterial({ color: 0x3c4046, map: noiseTexture(20, 40, 40), metalness: 1, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.85 });
+    const chrome = new THREE.MeshStandardMaterial({ color: 0xb4b9c0, metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 1.0 });
+    { // the board: tempered hardboard, fine fibre speckle, rubbed pale where hands hold it, a darker rim
+      const { W, H, M, r } = BRIEF_BOARD, g = new THREE.Group();
+      const face = canvas2d(W, H, (c) => {
+        c.fillStyle = '#5e4128'; c.fillRect(0, 0, W, H);
+        for (let i = 0; i < W * H / 30; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '24,14,6' : '150,110,70'},${0.05 + rand() * 0.08})`; c.fillRect(rand() * W, rand() * H, 0.8 + rand() * 1.6, 0.6 + rand()); }
+        for (let i = 0; i < 30; i++) { const x = rand() * W, y = rand() * H, rr2 = 30 + rand() * 90, grd = c.createRadialGradient(x, y, 0, x, y, rr2); grd.addColorStop(0, `rgba(${rand() < 0.5 ? '0,0,0' : '255,220,170'},${0.03 + rand() * 0.04})`); grd.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = grd; c.fillRect(x - rr2, y - rr2, 2 * rr2, 2 * rr2); }
+        for (const [x, y] of [[0, 160], [W, 160]]) { const grd = c.createRadialGradient(x, y, 0, x, y, 120); grd.addColorStop(0, 'rgba(210,180,140,0.16)'); grd.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = grd; c.fillRect(0, 0, W, H); }
+        c.save(); c.filter = 'blur(3px)'; c.strokeStyle = 'rgba(0,0,0,0.35)'; c.lineWidth = 8; c.beginPath(); c.roundRect(4, 4, W - 8, H - 8, 16); c.stroke(); c.restore();
+      });
+      const board = new THREE.MeshPhysicalMaterial({ map: faceTexture(face, W, H), roughness: 0.7, clearcoat: 0.15, clearcoatRoughness: 0.6, envMap: studioEnv, envMapIntensity: 0.3 });
+      put(g, new THREE.Mesh(extrude(rrShape(W, H, r), 5, 2, 1.6, 3), [board, new THREE.MeshStandardMaterial({ color: 0x3a2716, roughness: 0.8 })]), M + W / 2, M + H / 2);
+      g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.5));
+      await post('brief_board', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      layout.brief_board = { size: [W + 2 * M, H + 2 * M], margin: M, foot: BRIEF_BOARD.foot, corner: 40 };
+    }
+    { // the clip: a pressed steel jaw, its chrome spring roll behind it, two rivets into the board
+      const { W, H, M, jaw: [jw, jh], roll } = BRIEF_CLIP, g = new THREE.Group(), cx = W / 2, top = 7;
+      put(g, new THREE.Mesh(extrude(rrShape(jw, jh, 14), 4, 2, 1.6, 3), darkSteel), cx, M + 32 + jh / 2, top + 2.2);
+      put(g, new THREE.Mesh(new THREE.CylinderGeometry(10, 10, roll, 28).rotateZ(Math.PI / 2), chrome), cx, M + 22, top + 12);
+      for (const dx of [-100, 100]) put(g, new THREE.Mesh(new THREE.SphereGeometry(6, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), darkSteel), cx + dx, M + 32 + jh / 2 + 2, top + 8.5);
+      g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.55));
+      await post('brief_clip', stage([0, 0, W, H], [g]).grab());
+      layout.brief_clip = { size: [W, H], margin: M, jaw: BRIEF_CLIP.jaw };
+    }
+  });
+  if (want('briefwin')) await withSeed(463, async () => {
+    const { W, H, M, rim, r } = BRIEF_WINDOW, ow = W - 2 * M, oh = H - 2 * M, iw = ow - 2 * rim, ih = oh - 2 * rim;
+    const tones = { dark: null, amber: LAMP.amber, red: LAMP.red, green: LAMP.green };
+    for (const [tone, lit] of Object.entries(tones)) {
+      const face = canvas2d(iw, ih, (c) => {
+        if (lit) {
+          const col = new THREE.Color(lit), hex = '#' + col.getHexString();
+          const grd = c.createRadialGradient(iw / 2, ih / 2, 4, iw / 2, ih / 2, iw * 0.62);
+          grd.addColorStop(0, '#' + col.clone().lerp(new THREE.Color(0xffffff), 0.45).getHexString()); grd.addColorStop(1, hex);
+          c.fillStyle = grd; c.fillRect(0, 0, iw, ih);
+        } else { c.fillStyle = '#1b1e22'; c.fillRect(0, 0, iw, ih); }
+        for (let k = 0; k < iw * ih / 40; k++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.02 + rand() * 0.03})`; c.fillRect(rand() * iw, rand() * ih, 1, 1); }
+        const topG = c.createLinearGradient(0, 0, 0, 7); topG.addColorStop(0, 'rgba(0,0,0,0.6)'); topG.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = topG; c.fillRect(0, 0, iw, 7);
+        const leftG = c.createLinearGradient(0, 0, 5, 0); leftG.addColorStop(0, 'rgba(0,0,0,0.45)'); leftG.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = leftG; c.fillRect(0, 0, 5, ih);
+        const glare = c.createLinearGradient(0, 0, iw * 0.5, ih); glare.addColorStop(0.3, 'rgba(255,255,255,0)'); glare.addColorStop(0.45, 'rgba(255,255,255,0.06)'); glare.addColorStop(0.6, 'rgba(255,255,255,0)');
+        c.fillStyle = glare; c.fillRect(0, 0, iw, ih);
+      });
+      const g = new THREE.Group();
+      const shape = rrShape(ow, oh, r + rim); shape.holes.push(rr(new THREE.Path(), iw, ih, r));
+      put(g, new THREE.Mesh(extrude(shape, 2.5, 1.2, 1, 3), MAT.frame), W / 2, H / 2);
+      const tex = new THREE.CanvasTexture(face); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(iw + 1, ih + 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+      pane.position.set(W / 2, 0.4, H / 2); g.add(pane);
+      g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
+      await post('brief_window_' + tone, stage([0, 0, W, H], [g]).grab());
+    }
+    layout.brief_window = { size: [W, H], margin: M, rim, radius: r, tones: Object.keys(tones) };
   });
 
   // --- the tile view's cabinet (docs/tile-view-ds2-plan.md §9): the stainless door with its black iron pipe
