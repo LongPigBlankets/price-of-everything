@@ -28,7 +28,7 @@ const Slip := preload("res://scripts/market_ds2/slip.gd")
 ## The gap between a good's well and its name, and between every other column (the Resources panel's spacing).
 const COL_GAP := 4
 const VALUE_GAP := 20
-const NAME_W := 112.0
+const NAME_W := 122.0
 const SOLD_W := 56.0
 const IMPACT_W := 64.0
 ## The well and the name sit together at COL_GAP; the columns after them are VALUE_GAP apart.
