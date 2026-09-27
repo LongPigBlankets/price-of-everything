@@ -32,6 +32,14 @@ var disabled := false:
 		_redraw()
 ## The hover readout: {stage, name, detail, tone}.
 var tip: Dictionary = {}
+## Which guarded cap it draws (its layers `<layer>`, `_pressed`, `_cover`, `_cover_open`, each framed as the
+## footer's guard_sell) and its glow: Sell's amber coins by default, People's red Dismiss boot (guard_dismiss,
+## lamp_glow_red).
+var layer := "guard_sell":
+	set(v):
+		layer = v
+		_redraw()
+var glow := "lamp_glow_amber"
 var _open_left := 0.0
 var _held := false
 var _glow: Control
@@ -140,13 +148,13 @@ func _region_rect() -> Rect2:
 func _draw() -> void:
 	var down := _held and is_open()
 	var tint := DIM if disabled else (PRESS_TINT if down else Color.WHITE)
-	draw_texture_rect_region(Plate.tex("guard_sell_pressed" if down else "guard_sell"), _region_rect(), REGION, tint)
-	draw_texture_rect_region(Plate.tex("guard_sell_cover_open" if is_open() else "guard_sell_cover"), _region_rect(), REGION)
+	draw_texture_rect_region(Plate.tex(layer + "_pressed" if down else layer), _region_rect(), REGION, tint)
+	draw_texture_rect_region(Plate.tex(layer + ("_cover_open" if is_open() else "_cover")), _region_rect(), REGION)
 
 
 func _draw_glow() -> void:
 	if disabled:
 		return
 	var side := size.x * GLOW_SPAN
-	_glow.draw_texture_rect(Plate.tex("lamp_glow_amber"), Rect2(size * 0.5 - Vector2(side, side) * 0.5, Vector2(side, side)), false,
+	_glow.draw_texture_rect(Plate.tex(glow), Rect2(size * 0.5 - Vector2(side, side) * 0.5, Vector2(side, side)), false,
 		Color(1, 1, 1, 0.85 if is_open() else 0.6))

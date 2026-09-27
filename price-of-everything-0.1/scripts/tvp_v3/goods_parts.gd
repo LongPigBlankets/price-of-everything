@@ -187,11 +187,8 @@ static func money_width(digits: int) -> float:
 	digits = maxi(1, digits)
 	if _money_widths.has(digits):
 		return float(_money_widths[digits])
-	# Money always shows pence, so its screen has a lit point, which takes room of its own.
-	var probe: Control = Led.new()
-	probe.call("set_figure", "0".repeat(maxi(1, digits - 2)) + ".00", Color.WHITE)
-	var w: float = probe.custom_minimum_size.x
-	probe.free()
+	# The point is a cell of its own, counted in `digits`.
+	var w: float = Led.width_for_cells(digits)
 	var out := ceilf(Plate.FONT_SEMI.get_string_size("£", HORIZONTAL_ALIGNMENT_LEFT, -1, POUND_PX).x + POUND_GAP + w)
 	_money_widths[digits] = out
 	return out

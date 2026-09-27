@@ -316,8 +316,13 @@ func _run() -> void:
 	var people := node_named("PeoplePanel")
 	var council: Node = null
 	for item in people.find_children("*", "Control", true, false):
-		if item.get_script() == preload("res://scripts/advisor_council_tab.gd"):
-			council = item
+		# Today's council tab, or the DS2 boardroom that extends it (the default look).
+		var sc: Script = item.get_script() as Script
+		while sc != null:
+			if sc == preload("res://scripts/advisor_council_tab.gd"):
+				council = item
+				break
+			sc = sc.get_base_script()
 	check(council != null, "tutorial uses the current council tab")
 	if council != null:
 		var candidates: Array = council._picker_candidates()

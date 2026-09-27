@@ -204,7 +204,7 @@ const ADVISOR_ROSTER := [
 	# The family friend. Joins pro bono at turn 3 in whichever post the player picks, then
 	# leaves at t33. Salary 0 — he is a favour, not a hire. See spec §5.4.
 	{"id": "andrew",    "name": "Andrew Keeler",   "role": "coo",                "inf": 3, "ops": 3, "lead": 3, "inn": 2, "fin": 3, "salary": 0.0, "traits": {"specialty_name": "Out of Retirement", "specialty_description": "misses the work; serves 30 turns for nothing", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
-	{"id": "vera",      "name": "Vera Ashby",      "role": "cfo",                "inf": 3, "ops": 3, "lead": 3, "inn": 2, "fin": 3, "salary": 1.0, "traits": {"specialty_name": "Family Trust",         "specialty_description": "reduced salary, no malus anywhere",                 "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "vera",      "name": "Vera Ashby",      "role": "cfo",                "inf": 3, "ops": 3, "lead": 3, "inn": 2, "fin": 3, "salary": 1.0, "traits": {"specialty_name": "Family Trust",         "specialty_description": "no malus anywhere",                                 "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
 	{"id": "alexandra", "name": "Alexandra Reyes", "role": "coo",                "inf": 3, "ops": 3, "lead": 3, "inn": 3, "fin": 2, "salary": 4.0, "traits": {"specialty_name": "Prima Donna",          "specialty_description": "superb everywhere; high salary + walk-risk if benched", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
 	{"id": "gerald",    "name": "Gerald Vance",    "role": "coo",                "inf": 2, "ops": 3, "lead": 3, "inn": 2, "fin": 2, "salary": 2.0, "traits": {"specialty_name": "Dinosaur",             "specialty_description": "top operator; brakes clean-recipe adoption (carbon, later)", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
 	{"id": "eleanor",   "name": "Eleanor Shaw",    "role": "hr_director",        "inf": 3, "ops": 2, "lead": 3, "inn": 1, "fin": 3, "salary": 2.0, "traits": {"specialty_name": "Beloved",              "specialty_description": "labour cost via HR + slows advisor churn",           "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
@@ -268,7 +268,7 @@ const ADVISOR_DISPLAY := {
 	# crashed the advisors tab when he was clicked — every other reader of this table assumes
 	# one exists for anyone on the roster.
 	"andrew":   {"initials": "AK", "portrait_path": "res://assets/advisors/andrew.png", "accent": "#6B7F5A", "bonus": "Out of Retirement: serves 30 turns unpaid, in one of two chairs", "recommendation": "Free, capable, and temporary — take the seat you need most for the next 30 turns.", "bio": "Ran a shipping firm for thirty years and retired from it two years ago, which he has found to be one and a half years too many. He is not here for the money.", "agenda": "Get the working life out of his system, then go back to the garden.", "likes": ["Being useful", "Cheap freight"], "dislikes": ["Being kept past his welcome"], "bonuses": ["No salary for his tenure", "A signing gift in either chair"]},
-	"vera":      {"initials": "VA", "portrait_path": "res://assets/advisors/natasha.png", "accent": "#7C5A80", "bonus": "Family Trust: cheap, steady, strong almost anywhere", "recommendation": "Your reliable keystone — she holds any seat well.", "bio": "Your sister and the steady hand on the board: numerate, unflappable, and very hard to surprise twice.", "agenda": "Anchor the board and keep every seat competently filled.", "likes": ["Steady growth", "A balanced board"], "dislikes": ["Reckless bets", "Idle capital"], "bonuses": ["Reduced salary", "No weak seat"]},
+	"vera":      {"initials": "VA", "portrait_path": "res://assets/advisors/natasha.png", "accent": "#7C5A80", "bonus": "Family Trust: steady, strong almost anywhere", "recommendation": "Your reliable keystone — she holds any seat well.", "bio": "Your sister and the steady hand on the board: numerate, unflappable, and very hard to surprise twice.", "agenda": "Anchor the board and keep every seat competently filled.", "likes": ["Steady growth", "A balanced board"], "dislikes": ["Reckless bets", "Idle capital"], "bonuses": ["No weak seat"]},
 	"alexandra": {"initials": "AR", "portrait_path": "res://assets/advisors/alexandra.png", "accent": "#8A5A5A", "bonus": "Prima Donna: superb everywhere, high salary + walk-risk", "recommendation": "A top hire who forces a full board reshuffle when she arrives.", "bio": "A rival operator good enough at everything to make your whole board nervous — and she knows her price.", "agenda": "Be indispensable, be paid, and never be sidelined.", "likes": ["Being centrally slotted", "Ambitious plays"], "dislikes": ["Being benched", "Being under-slotted"], "bonuses": ["Strong in any seat", "Commands a high salary"]},
 	"gerald":    {"initials": "GV", "portrait_path": "res://assets/advisors/dan.png", "accent": "#455C78", "bonus": "Dinosaur: superb operator, brakes the green pivot", "recommendation": "Keep him for the throughput; the carbon squeeze makes him a dilemma.", "bio": "A superb pure operator who runs a plant beautifully and fights decarbonisation on instinct.", "agenda": "Maximise output and upkeep; resist the clean transition.", "likes": ["High utilisation", "Cheap fuel"], "dislikes": ["Clean retrofits", "Carbon rules"], "bonuses": ["Excellent COO", "Drags clean adoption"]},
 	"eleanor":   {"initials": "ES", "portrait_path": "res://assets/advisors/anita.png", "accent": "#51707A", "bonus": "Beloved: labour + morale, slows churn", "recommendation": "The glue that lets a flawed board function.", "bio": "The diplomat the crews trust — dampens labour spikes and keeps the board from walking.", "agenda": "Keep the workforce and the board loyal.", "likes": ["Fair policies", "A stable board"], "dislikes": ["Layoffs", "Churn"], "bonuses": ["Labour cost down", "Advisor retention"]},
@@ -655,7 +655,8 @@ func _founder_coo_transport_active(advisor_id: String, seat_id: String) -> bool:
 		and founder_seat == "coo" and not founder_tenure_expired()
 
 ## A deliberately simple, legible cash snapshot for the council UI: value only the
-## POSITIVE seat effects against the last completed turn's matching ledger line. It
+## POSITIVE seat effects against the last completed turn's matching ledger line (a loan interest
+## cut against the loans the company has now, _loan_interest_saving). It
 ## is not a forecast — if the company paid no tax or freight that turn, a reduction
 ## to that cost is worth £0 in this snapshot. One-off/non-ledger levers (construction,
 ## purchases and throughput headroom) likewise stay at £0 rather than inventing value.
@@ -693,8 +694,30 @@ func advisor_bonus_preview_per_turn(advisor_id: String, seat_id: String, snapsho
 				basis = float(summary.get("goods_purchased_cost", 0.0)) * markup / (1.0 + markup)
 			"market_price":
 				basis = float(summary.get("goods_sales_revenue", 0.0))
+			"loan_interest":
+				# Today's loans: the interest in their payments now, against what it would be without this
+				# advisor's cut (every loan_interest modifier sums as a delta off the base rate). Nothing
+				# without loans. A display value only: the cut itself prices a loan when it is taken.
+				total += _loan_interest_saving(advisor_id, seat_id, float(eff.get("pct", 0.0)))
+				continue
 		total += maxf(0.0, basis) * pct
 	return total
+
+## What an advisor's loan interest cut `pct` (negative) is worth on the loans the company has now: the interest
+## their payments carry a turn (LoanState.interest_per_turn), grossed up to the rate it would carry without the
+## cut, less what it carries. The loan_interest modifiers sum as deltas off the base rate (LoanState's
+## effective_loan_interest_rate); the cut is counted in when the advisor already holds the seat.
+func _loan_interest_saving(advisor_id: String, seat_id: String, pct: float) -> float:
+	var interest: float = LoanState.interest_per_turn()
+	if interest <= 0.0 or pct >= 0.0:
+		return 0.0
+	var net: float = float(Modifiers.resolve_pct("loan_interest", "*", {}).get("net", 0.0))
+	var seated := str(advisor_seats.get(seat_id, "")) == advisor_id
+	var with_cut: float = maxf(0.0, 1.0 + (net if seated else net + pct) / 100.0)
+	var without_cut: float = maxf(0.0, 1.0 + (net - pct if seated else net) / 100.0)
+	if with_cut <= 0.0:
+		return 0.0
+	return maxf(0.0, interest * without_cut / with_cut - interest)
 
 ## Sign alone does not say whether a seat effect helps: lower costs are good,
 ## while higher throughput, sale prices and rebates are good.

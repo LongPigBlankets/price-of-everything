@@ -43,6 +43,12 @@ var tip: Dictionary = {}
 var chevron := false
 var busy := false
 var spent := false
+## A key standing for a choice that is made (one of a row, as the tab keys): latched down, a shade darker, its
+## print navy and no lamp; it can still be pressed. Off by default.
+var chosen := false:
+	set(v):
+		chosen = v
+		queue_redraw()
 var key_scale := 1.0
 var _lamp: Control
 
@@ -135,7 +141,7 @@ func set_spent(value: bool) -> void:
 
 func _face() -> Rect2:
 	var face := Rect2(Vector2.ZERO, size).grow(-TileKey.FACE_INSET / TileKey.CAPTURE_SCALE * key_scale)
-	if busy:
+	if busy or chosen:
 		face.position.y += SUNK
 	return face
 
@@ -152,8 +158,8 @@ func _place_lamp() -> void:
 
 func _draw() -> void:
 	var held := get_draw_mode() == DRAW_PRESSED or get_draw_mode() == DRAW_HOVER_PRESSED
-	var tex: Texture2D = TileKey.LATCHED if busy else (TileKey.PRESSED if held else TileKey.NORMAL)
-	var tint := TileKey.LATCH_TINT if busy else (TileKey.PRESS_TINT if held else Color.WHITE)
+	var tex: Texture2D = TileKey.LATCHED if busy or chosen else (TileKey.PRESSED if held else TileKey.NORMAL)
+	var tint := TileKey.LATCH_TINT if busy or chosen else (TileKey.PRESS_TINT if held else Color.WHITE)
 	if spent and not busy:
 		tex = TileKey.NORMAL
 		tint = TileKey.DISABLED_TINT

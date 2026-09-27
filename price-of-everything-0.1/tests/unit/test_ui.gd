@@ -1019,9 +1019,15 @@ func _test_bdp_v3_rules() -> void:
 	_check(Counter.drums_for(54.17, 2, 4) == 4 and Counter.drums_for(1234.5, 2, 4) == 6 and Counter.drums_for(10052, 0, 3) == 5,
 		"bdp v3: a counter has as many drums as its value needs, and at least its minimum")
 	var Led = load("res://scripts/bdp_v3_led.gd")
-	_check(Led.cells_for("7.95") == [["7", true], ["9", false], ["5", false]] and Led.cells_for("123.40").size() == 5
-		and Led.cells_for("--.--") == [["-", false], ["-", true], ["-", false], ["-", false]],
-		"bdp v3: an LED figure takes a cell per digit, its point lit on the digit before it")
+	# The owner's screen rule: the point a cell of its own, at most five cells, never more than two decimals.
+	_check(Led.cells_for("7.95") == [["7", false], [".", false], ["9", false], ["5", false]] and Led.cells_for("123.40").size() == 5
+		and Led.cells_for("--.--").size() == 5 and Led.cells_for("  9.99").size() == 6
+		and Led.cells_for("7.95", false) == [["7", true], ["9", false], ["5", false]],
+		"bdp v3: an LED figure takes a cell per character, its point one of them (the old way on request)")
+	_check(str(Led.fit("1234.56").figure) == "1235" and str(Led.fit("158.84").figure) == "158.8"
+		and str(Led.fit("12345.60").figure) == "12.3" and str(Led.fit("12345.60").suffix) == "K"
+		and str(Led.fit("-10.36").figure) == "-10.4" and str(Led.fit("42").figure) == "42" and str(Led.fit(" 1.15").figure) == " 1.15",
+		"bdp v3: a figure is fitted to five cells, decimals dropped never added, K after from 10,000")
 	var Econ = load("res://scripts/building_economics.gd")
 	_check(Econ.transport_tone(1.0, 100.0) == "ok" and Econ.transport_tone(5.0, 100.0) == "warn" and Econ.transport_tone(9.0, 100.0) == "bad"
 		and Econ.transport_tone(1.0, 0.0) == "bad" and Econ.transport_tone(0.0, 0.0) == "ok",
@@ -1492,7 +1498,7 @@ func _test_bdp_v3_panel() -> void:
 		var sell_led: Node = sell_plate.find_child("BdpV3Led", true, false) if sell_plate != null else null
 		var sell_texts: Array = sell_plate.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text) if sell_plate != null else []
 		_check(sell_plate != null and absf(sell_plate.position.y) < 0.5 and demo_plate.position.y > 1.0 and sell_texts.has("Building will become NPC")
-			and sell_led != null and sell_led.figure() == "%.2f" % float(load("res://scripts/building_price.gd").sale_price(b)),
+			and sell_led != null and sell_led.figure() == str(load("res://scripts/bdp_v3_led.gd").fit("%.2f" % float(load("res://scripts/building_price.gd").sale_price(b))).figure),
 			"bdp v3: lifting Sell's cover slides up that the building becomes NPC and what it sells for")
 		footer.drop("sell")
 		await get_tree().create_timer(0.35).timeout
@@ -1772,13 +1778,14 @@ func _test_topbar_ds2_strip() -> void:
 	UiPrefs.set_use_topbar_ds2(was)
 
 func _test_money_figure_format() -> void:
-	# The owner's LED money rule: at most five cells, the point free, K/M/B printed after.
+	# The owner's LED money rule: at most five cells with the point counted, never more than two decimals, K/M/B
+	# printed after (docs/ds2-owner-decisions.md, Digital displays).
 	var Money := preload("res://scripts/ds2/money_figure.gd")
 	var cases := {
-		0.0: "£0.00", 5.5: "£5.50", 999.99: "£999.99", 999.996: "£1000", 5717.0: "£5717",
-		9999.4: "£9999", 10000.0: "£10.0K", 15600.0: "£15.6K", 999949.0: "£999.9K",
-		1010000.0: "£1.01M", 12345678.0: "£12.35M", 2500000000.0: "£2.50B",
-		-120.0: "-£120.0", -9999.0: "-£9999", -15600.0: "-£15.6K", -555.0: "-£555.0",
+		0.0: "£0.00", 1.15: "£1.15", 5.5: "£5.50", 99.99: "£99.99", 99.996: "£100.0", 999.1: "£999.1",
+		999.99: "£1000", 999.996: "£1000", 5717.0: "£5717", 9999.4: "£9999", 10000.0: "£10.0K", 15600.0: "£15.6K",
+		999949.0: "£999.9K", 1010000.0: "£1.01M", 12345678.0: "£12.35M", 2500000000.0: "£2.50B",
+		-10.36: "-£10.4", -120.0: "-£120", -9999.0: "-£9999", -15600.0: "-£15.6K", -555.0: "-£555",
 	}
 	var wrong := PackedStringArray()
 	for v: float in cases:

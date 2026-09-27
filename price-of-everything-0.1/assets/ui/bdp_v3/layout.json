@@ -1516,5 +1516,228 @@
   ],
   "margin": 14,
   "corner": 40
+ },
+ "people_icons": {
+  "size": [
+   128,
+   128
+  ],
+  "names": [
+   "people_icon_effort_0",
+   "people_icon_effort_1",
+   "people_icon_effort_2",
+   "people_icon_idle_0",
+   "people_icon_idle_1",
+   "people_icon_idle_2",
+   "people_icon_safety_0",
+   "people_icon_safety_1",
+   "people_icon_safety_2",
+   "people_icon_pension_0",
+   "people_icon_pension_1",
+   "people_icon_pension_2",
+   "people_icon_bonus_0",
+   "people_icon_bonus_1",
+   "people_icon_bonus_2",
+   "people_icon_profit_0",
+   "people_icon_profit_1",
+   "people_icon_profit_2"
+  ]
+ },
+ "people_auto": {
+  "size": [
+   124,
+   124
+  ],
+  "icon": 96
+ },
+ "people_backing": {
+  "size": [
+   1548,
+   2248
+  ],
+  "margin": 24,
+  "bottom": 420,
+  "hinges": [
+   260,
+   1940
+  ],
+  "sheets": 3,
+  "corner": 40
+ },
+ "people_carpet": {
+  "size": [
+   1412,
+   2032
+  ],
+  "margin": 16,
+  "border": 22,
+  "foot": 120
+ },
+ "people_table": {
+  "size": [
+   1380,
+   1832
+  ],
+  "margin": 16,
+  "foot": 80
+ },
+ "people_chair": {
+  "size": [
+   270,
+   250
+  ],
+  "seat_up": [
+   135,
+   150
+  ],
+  "seat_down": [
+   135,
+   100
+  ],
+  "seat": [
+   150,
+   124
+  ]
+ },
+ "people_blotter": {
+  "size": [
+   276,
+   554
+  ],
+  "margin": 12,
+  "corner": 40
+ },
+ "people_nameplate": {
+  "size": [
+   248,
+   82
+  ],
+  "margin": 10,
+  "cap": 34,
+  "face": [
+   26,
+   14,
+   196,
+   54
+  ]
+ },
+ "people_frame": {
+  "size": [
+   168,
+   198
+  ],
+  "margin": 16,
+  "rim": 8,
+  "hole": [
+   24,
+   24,
+   120,
+   150
+  ]
+ },
+ "people_folder": {
+  "size": [
+   244,
+   206
+  ],
+  "margin": 18
+ },
+ "people_star": {
+  "size": [
+   44,
+   44
+  ],
+  "star": 30
+ },
+ "people_clock": {
+  "size": [
+   560,
+   564
+  ],
+  "housing": [
+   20,
+   84,
+   520,
+   460
+  ],
+  "bell": [
+   120,
+   176
+  ],
+  "lamp": [
+   120,
+   272
+  ],
+  "dial": [
+   338,
+   222
+  ],
+  "dial_r": 88
+ },
+ "people_cork": {
+  "size": [
+   478,
+   908
+  ],
+  "margin": 14,
+  "corner": 44,
+  "frame": 16
+ },
+ "people_card": {
+  "size": [
+   414,
+   260
+  ],
+  "margin": 10,
+  "rule": 60,
+  "corner": 76
+ },
+ "people_pin": {
+  "size": [
+   36,
+   36
+  ],
+  "r": 8
+ },
+ "people_locker": {
+  "size": [
+   284,
+   476
+  ],
+  "margin": 18,
+  "card": [
+   45,
+   133,
+   194,
+   126
+  ],
+  "switch_at": [
+   122,
+   334
+  ]
+ },
+ "people_sheet_dark": {
+  "size": [
+   1440,
+   1900
+  ],
+  "margin": 12,
+  "foot": 160,
+  "screw": 22
+ },
+ "guard_dismiss": {
+  "size": [
+   240,
+   214
+  ],
+  "head": 64,
+  "button": [
+   70,
+   89,
+   100,
+   100
+  ],
+  "colour": "red",
+  "icon": "boot"
  }
 }
