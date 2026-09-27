@@ -154,8 +154,8 @@ research_renew_012,Renewable Power,research_renew_011,,,,III,Firm Intermittency,
 research_inorg_018,Chemistry,research_inorg_021,,,,II,Run L1,desal,3,20 turns,Reverse Osmosis Trains,level2,Unlocks upgrading Desalination Plant to Level 2 for more output.
 research_inorg_019,Chemistry,research_inorg_018,,,,III,Run Profitable L2,desal,2,buildings,Seawater RO Megaplants,level3,Unlocks upgrading Desalination Plant to Level 3 for more output.
 research_inorg_020,Chemistry,research_inorg_025,,,,III,Run Profitable L2,water_pump,2,buildings,Extensive Drainage Systems,level3,Unlocks upgrading Water Pump to Level 3 for more output.
-research_recyc_001,Recycling,,,,,II,Run L1,water_recycling,3,20 turns,Membrane Bioreactors,level2,Unlocks upgrading Water Recyling Plant to Level 2 for more output.
-research_recyc_002,Recycling,research_recyc_001,,,,III,Run Profitable L2,water_recycling,2,buildings,Closed-Loop Reclaim,level3,Unlocks upgrading Water Recyling Plant to Level 3 for more output.
+research_recyc_001,Recycling,,,,,II,Run L1,water_recycling,3,20 turns,Membrane Bioreactors,level2,Unlocks upgrading Water Recycling Plant to Level 2 for more output.
+research_recyc_002,Recycling,research_recyc_001,,,,III,Run Profitable L2,water_recycling,2,buildings,Closed-Loop Reclaim,level3,Unlocks upgrading Water Recycling Plant to Level 3 for more output.
 research_biochem_007,Farming & Forestry,,,,,III,Run Profitable L2,farm,3,buildings,Controlled-Environment Farming,level3,Unlocks upgrading Farm to Level 3 for more output.
 research_infra_006,Infrastructure,research_infra_001,,,,II,Use Infrastructure,roads,3,50% of L1 for 5 turns,Multi-Lane Widening,level2,Unlocks upgrading Roads to Level 2 for more output.
 research_infra_007,Infrastructure,research_infra_006,,,,III,Use Infrastructure,roads,3,200% of L1 for 5 turns,Grade-Separated Interchanges,level3,Unlocks upgrading Roads to Level 3 for more output.

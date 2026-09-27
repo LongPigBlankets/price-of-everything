@@ -20,7 +20,7 @@ b_018,reinf_pipes,Reinforced Pipeworks,1,10000,50,50,,,,,,,,,,,1,1,infrastructur
 b_019,rails,Railways,1,10000,70,70,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,3,0,0,0,infrastructure,0,,,,,
 b_020,electrolyser,Electrolyser,1,10000,10,10,concrete,10,building_frame,5,construction_equipment_ice,4,electrical_components,6,rubber,36,2,15,production,standard,10000,,,,,1.5,1120,420,42,electrochemistry,0,plastics,35,,,
 b_021,desal,Desalination Plant,1,10000,10,10,concrete,3,building_frame,2,construction_equipment_ice,1,rubber,11,plastics,11,2,15,production,standard,10000,,,,,1.5,2330,360,17,water,0,,,,,
-b_022,water_recycling,Water Recyling Plant,1,10000,10,10,concrete,3,building_frame,1,construction_equipment_ice,1,rubber,2,plastics,2,2,15,production,standard,10000,,,,,1.5,1640,250,12,water,0,,,,,
+b_022,water_recycling,Water Recycling Plant,1,10000,10,10,concrete,3,building_frame,1,construction_equipment_ice,1,rubber,2,plastics,2,2,15,production,standard,10000,,,,,1.5,1640,250,12,water,0,,,,,
 b_023,landfill,Landfill,1,10000,1,1,,,,,,,,,,,2,15,production,standard,10000,,,,,3,62,31,9,infrastructure,0,,,,,
 b_024,solar_farm,Solar Farm,1,10000,10,10,concrete,5,electrical_components,10,construction_equipment_ice,3,rubber,11,plastics,11,2,25,power,standard,10000,,,,,3,31,63,47,power,0,,,,,
 b_025,onshore_wind_farm,Onshore Wind Farm,1,10000,10,10,steel,17,concrete,9,construction_equipment_ice,5,rubber,18,plastics,16,2,25,power,standard,10000,,,,,3,31,63,47,power,0,,,,,

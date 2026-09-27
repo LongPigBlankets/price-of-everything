@@ -8,21 +8,14 @@ const OUT := "res://docs/building-names.md"
 
 ## Names worth the owner's second look, by recipe id or, for a whole kind, by building internal name.
 const FLAGS := {
-	"battery": "Stores power and makes nothing, so it keeps its type name.",
 	"heat_battery": "Stores heat and makes nothing, so it keeps its type name.",
-	"water_recycling": "The type's display name is misspelt (\"Recyling\"). The building name spells it right.",
-	"r_203": "Hairpin Stator kept in full beside \"Axial\" and \"SynRM\". \"Hairpin\" alone would not collide if a shorter name is wanted.",
-	"r_107": "Named by its main output, copper wiring, though it recycles electronic waste.",
-	"r_108": "Named by its main output, biomass, though it recycles bio waste.",
-	"r_223": "Floating is the qualifier. The owner's wind farm names otherwise kept.",
-	"r_034": "Keeps the good's own word order, \"Construction Equipment EV\".",
-	"r_033": "Keeps the good's own word order, \"Construction Equipment ICE\".",
-	"r_018": "Sand is dug, not mined, but keeps the Mine word with its kind.",
-	"r_019": "Limestone is quarried, but keeps the Mine word with its kind.",
 }
 
-## Recipes whose names the owner has settled: SynRM and Axial Motor Assembly Plant, Fabless CPU Manufactory.
-const OWNER_SETTLED := ["r_065", "r_066", "r_123"]
+## Recipes whose names the owner has settled, so they carry no note: SynRM and Axial Motor Assembly Plant,
+## Fabless CPU Manufactory, then every name the owner approved as the table proposed it.
+const OWNER_SETTLED := ["r_065", "r_066", "r_123",
+	"r_018", "r_019", "r_033", "r_034", "r_083", "r_084", "r_205", "r_206", "r_203", "r_124",
+	"r_063", "r_064", "r_045", "r_081", "r_105", "r_223", "r_225", "r_108", "r_107"]
 
 ## Notes on the names the unloaded farm and forest recipes will take.
 const DORMANT_FLAGS := {
@@ -73,7 +66,7 @@ func _ready() -> void:
 			loaded[rid] = true
 			var out_id := str(r.get("output_name", ""))
 			var output := str(Catalog.get_good_by_internal_name(out_id).get("display_name", out_id)) if out_id != "" else ""
-			var note := str(FLAGS.get(rid, FLAGS.get(internal, "")))
+			var note := "" if rid in OWNER_SETTLED else str(FLAGS.get(rid, FLAGS.get(internal, "")))
 			if note == "" and _same_name_count(bid, BuildingNaming.name_for(bid, rid)) > 1:
 				note = "Shares its name with another recipe of this building, so the two cannot be told apart by name."
 			if note == "" and _no_plain_sibling(bid, r):
