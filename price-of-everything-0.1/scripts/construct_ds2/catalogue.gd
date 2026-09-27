@@ -40,13 +40,16 @@ const CARD_CAP_R := 46.0
 const CARD_ICON := Rect2(38.0, 32.0, 116.0, 116.0)
 const CARD_TEXT_X := 186.0
 const CARD_GAP := 16.0 * S
-## layout.json construct_tag: the tag, its render reaching up past its top by its chains, where its name and
-## its recipe sit, and how far it hangs below what it hangs from.
-const TAG := Vector2(1005.0, 250.0) * S
-const TAG_LAYER := Rect2(-6.0, -64.0, 1023.0, 328.0)
+## layout.json construct_tag: the tag, its render reaching up past its top by its chains, the tab rising between
+## the chains that carries the recipe's name (the owner: the name sits outside the diagram), the body below it that
+## is the diagram's alone, and how far it hangs below what it hangs from.
+const TAG := Vector2(1005.0, 266.0) * S
+const TAG_LAYER := Rect2(-6.0, -64.0, 1023.0, 344.0)
+const TAG_TAB := Rect2(92.0, 0.0, 821.0, 46.0)
+const TAG_BODY := Rect2(0.0, 46.0, 1005.0, 220.0)
 const TAG_DROP := 40.0 * S
-const TAG_NAME_Y := 52.0 * S
-const TAG_ROW_Y := 156.0 * S
+## The room the recipe has in the body, inside the enamel's band.
+const TAG_ROOM := Vector2(1005.0 * S - 48.0, 220.0 * S - 14.0)
 const NAVY := Color("#0b2340")
 const SEMI: FontFile = preload("res://assets/fonts/IBMPlexSans-SemiBold.ttf")
 const NAME_PX := 15
@@ -181,15 +184,17 @@ static func recipe_tag(building_id: String, recipe: Dictionary, condensed: bool,
 	name.add_theme_font_size_override("font_size", TAG_NAME_PX)
 	name.add_theme_color_override("font_color", NAVY)
 	name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name.position = Vector2(0, TAG_NAME_Y - 12.0)
-	name.size = Vector2(TAG.x, 24.0)
+	name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	name.clip_text = true
+	name.position = TAG_TAB.position * S + Vector2(0, 3.0)
+	name.size = TAG_TAB.size * S
 	name.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tag.add_child(name)
-	# The recipe fits the tag under its name, inside the enamel's band.
-	var room := Vector2(TAG.x - 48.0, 86.0)
-	var row := BuildOrder.recipe_row(recipe, condensed, [], room)
-	row.position = Vector2(0, TAG_ROW_Y - room.y * 0.5)
-	row.size = Vector2(TAG.x, room.y)
+	# The recipe fills the body under the tab, inside the enamel's band.
+	var row := BuildOrder.recipe_row(recipe, condensed, [], TAG_ROOM)
+	var body := Rect2(TAG_BODY.position * S, TAG_BODY.size * S)
+	row.position = Vector2(0, body.get_center().y - TAG_ROOM.y * 0.5)
+	row.size = Vector2(TAG.x, TAG_ROOM.y)
 	tag.add_child(row)
 	return tag
 

@@ -4365,17 +4365,60 @@ async function exportLayers() {
       await grabPart('construct_card', [-6, -6, BW + 10, BH + 12]);
       Object.assign(layout.construct_card, { board: [0, 0, BW, BH], field: FIELD, emblem: 116, text_x: 186, cap_left: 206, cap_right: 46 });
 
-      // A recipe tag hung under an opened board: the recipe sign's enamel (cream, navy band and pinstripe, chipped),
-      // eyelets at its top and a chain from each up to a ring on the board above; the game prints the name and
-      // draws the recipe.
-      const TAG = { h: 250, drop: 40, fx: 64 };
+      // A recipe tag hung under an opened board: the recipe sign's enamel (cream, navy band and pinstripe, chipped)
+      // with a tab rising from its top edge between the chains, 15 px in from each, to carry the recipe's name
+      // (owner: the name sits outside the diagram, the whole body is the diagram's); eyelets on its shoulders
+      // and a chain from each up to a ring on the board above. The game prints the name and draws the recipe.
+      const TAG = { h: 266, tab: 46, drop: 40, fx: 64, notch: 28, r: ENAMEL.radius, f: 14 };
+      TAG.x0 = TAG.fx + TAG.notch; TAG.x1 = CW - TAG.fx - TAG.notch;
+      /** The notched outline inset by d: the body below the tab's height, the tab above it between x0 and x1. */
+      const notchPath = (g, d, W = CW, H = TAG.h) => {
+        const { tab, x0, x1, f } = TAG, r = Math.max(2, TAG.r - d), top = tab + d;
+        g.beginPath();
+        g.moveTo(d + r, top);
+        g.lineTo(x0 - f + d, top); g.quadraticCurveTo(x0 + d, top, x0 + d, top - f);
+        g.lineTo(x0 + d, d + r); g.quadraticCurveTo(x0 + d, d, x0 + d + r, d);
+        g.lineTo(x1 - d - r, d); g.quadraticCurveTo(x1 - d, d, x1 - d, d + r);
+        g.lineTo(x1 - d, top - f); g.quadraticCurveTo(x1 - d, top, x1 - d + f, top);
+        g.lineTo(W - d - r, top); g.quadraticCurveTo(W - d, top, W - d, top + r);
+        g.lineTo(W - d, H - d - r); g.quadraticCurveTo(W - d, H - d, W - d - r, H - d);
+        g.lineTo(d + r, H - d); g.quadraticCurveTo(d, H - d, d, H - d - r);
+        g.lineTo(d, top + r); g.quadraticCurveTo(d, top, d + r, top);
+        g.closePath();
+      };
+      const notchShape = (() => {
+        const { tab, x0, x1, f, r } = TAG, W = CW, H = TAG.h, s = new THREE.Shape(), P = (x, y) => [x - W / 2, H / 2 - y];
+        const M = (x, y) => s.moveTo(...P(x, y)), L = (x, y) => s.lineTo(...P(x, y)), Q = (cx, cy, x, y) => s.quadraticCurveTo(...P(cx, cy), ...P(x, y));
+        M(r, tab); L(x0 - f, tab); Q(x0, tab, x0, tab - f); L(x0, r); Q(x0, 0, x0 + r, 0); L(x1 - r, 0); Q(x1, 0, x1, r); L(x1, tab - f); Q(x1, tab, x1 + f, tab);
+        L(W - r, tab); Q(W, tab, W, tab + r); L(W, H - r); Q(W, H, W - r, H); L(r, H); Q(0, H, 0, H - r); L(0, tab + r); Q(0, tab, r, tab);
+        return s;
+      })();
+      const face = canvas2d(CW, TAG.h, (g) => {
+        const { rim, band, gap, stripe } = ENAMEL;
+        g.save(); notchPath(g, 0); g.clip();
+        g.fillStyle = ENAMEL_CREAM; g.fillRect(0, 0, CW, TAG.h);
+        g.fillStyle = '#' + new THREE.Color(ENAMEL_NAVY).getHexString(); notchPath(g, rim); g.fill();
+        g.fillStyle = ENAMEL_CREAM; notchPath(g, rim + band); g.fill();
+        g.strokeStyle = '#' + new THREE.Color(ENAMEL_NAVY).getHexString(); g.lineWidth = stripe; notchPath(g, rim + band + gap + stripe / 2); g.stroke();
+        g.save(); notchPath(g, rim + band + gap + stripe); g.clip(); g.translate(0, 0); recipeGrunge(g); g.restore();
+        for (const [cx, cy, sx, sy] of [[0, TAG.tab, 1, 1], [CW, TAG.tab, -1, 1], [0, TAG.h, 1, -1], [CW, TAG.h, -1, -1], [TAG.x0, 0, 1, 1], [TAG.x1, 0, -1, 1]]) {
+          for (let i = 0, count = 1 + Math.floor(rand() * 3); i < count; i++) {
+            const x = cx + sx * (6 + rand() * 30), y = cy + sy * (6 + rand() * (i ? 24 : 10)), rr2 = 1.6 + rand() * 3.4;
+            const pts = Array.from({ length: 9 }, (_, k) => { const a = k / 9 * Math.PI * 2, q = rr2 * (0.55 + rand() * 0.6); return [x + Math.cos(a) * q, y + Math.sin(a) * q]; });
+            g.beginPath(); pts.forEach(([px, py], k) => (k ? g.lineTo(px, py) : g.moveTo(px, py))); g.closePath(); g.fillStyle = '#2a2521'; g.fill();
+            g.strokeStyle = 'rgba(255,250,236,0.55)'; g.lineWidth = 0.6; g.stroke();
+          }
+        }
+        g.restore();
+      });
       partGroup();
-      add(shade(new THREE.Mesh(extrude(rrShape(CW, TAG.h, ENAMEL.radius), 2, 1.6, 1.2, 3), [enamelMat(hungEnamel(CW, TAG.h), CW, TAG.h), MAT.plateSide])), CW / 2, OY + TAG.h / 2, T + 1);
+      add(shade(new THREE.Mesh(extrude(notchShape, 2, 1.6, 1.2, 3), [enamelMat(face, CW, TAG.h), MAT.plateSide])), CW / 2, OY + TAG.h / 2, T + 1);
+      const eyeY = TAG.tab + 26;
       for (const fx of [TAG.fx, CW - TAG.fx]) {
-        ring(fx, OY - TAG.drop - 14, T + 7.2, 5, 1.7); chain(fx, OY - TAG.drop - 14, OY + 30, T + 6); eyelet(fx, OY + 30, T + 6.2);
+        ring(fx, OY - TAG.drop - 14, T + 7.2, 5, 1.7); chain(fx, OY - TAG.drop - 14, OY + eyeY, T + 6); eyelet(fx, OY + eyeY, T + 6.2);
       }
       await grabPart('construct_tag', [-6, -TAG.drop - 24, CW + 12, TAG.h + 14]);
-      Object.assign(layout.construct_tag, { tag: [0, 0, CW, TAG.h], drop: TAG.drop, name_y: 52, row_y: 156 });
+      Object.assign(layout.construct_tag, { tag: [0, 0, CW, TAG.h], tab: [TAG.x0, 0, TAG.x1 - TAG.x0, TAG.tab], body: [0, TAG.tab, CW, TAG.h - TAG.tab], drop: TAG.drop });
     });
 
     if (want('constructkey')) await withSeed(468, async () => {

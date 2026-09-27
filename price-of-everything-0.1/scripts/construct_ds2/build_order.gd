@@ -267,9 +267,9 @@ static func level_rows(key: String) -> Array:
 
 ## The recipe drawn out: the inputs, a plus between them, the navy arrow, the output(s). Expanded, each good
 ## carries its quantity and the arrow the power it draws; condensed (`condensed`), the bare icons and a plain
-## arrow, as the Construct setting says. It fits `room`: one row with the goods as large as fit (from 64 px
-## down to 40), else the inputs (and the outputs, past two) in two rows of a grid. Recipes run to six inputs
-## and four outputs, seven in all; the grid takes up to six inputs and five outputs. `clear` collects the icons
+## arrow, as the Construct setting says. It fits `room` (fit_plan): one row while each side has two goods at most
+## and they keep 48 px or more; a side of three or more in two rows of a grid, a side of one or two beside it
+## drawn larger. Recipes run to six inputs and four outputs, seven in all; the grid takes up to six a side. `clear` collects the icons
 ## and the arrow (the enamel's grunge keeps off them).
 static func recipe_row(recipe: Dictionary, condensed: bool, clear: Array[Control] = [], room := Vector2(536.0, 86.0)) -> HBoxContainer:
 	var flow := recipe_flow(recipe)
@@ -309,29 +309,43 @@ static func recipe_flow(recipe: Dictionary) -> Dictionary:
 const ROW_SEP := 6.0
 const PLUS_W := 13.0
 const GRID_GAP := 4.0
-## The goods' sizes tried in one row, largest first, then in a grid of two rows.
-const ROW_SIZES := [64.0, 56.0, 48.0, 40.0]
-const GRID_SIZES := [44.0, 40.0, 36.0, 32.0]
+## The goods' sizes tried in one row, largest first (never under 48 px, the owner), then in a grid of two rows.
+const ROW_SIZES := [64.0, 56.0, 48.0]
+const GRID_SIZES := [56.0, 52.0, 48.0, 44.0, 40.0, 36.0, 32.0]
 
 
-## How a recipe of `n_in` inputs and `n_out` outputs fits `room`: {icon, out_icon, grid_in, grid_out}.
+## How a recipe of `n_in` inputs and `n_out` outputs fits `room`: {icon, out_icon, grid_in, grid_out}, `icon` and
+## `out_icon` the size of each side's goods. One row while each side has two goods at most and they keep 48 px
+## (the owner); a side of three or more goes into two rows, and a side of one or two beside a grid stands larger:
+## one good as tall as the grid (a good's full size at most), two at a grid cell's size and a bit.
 static func fit_plan(n_in: int, n_out: int, arrow_w: float, room: Vector2) -> Dictionary:
-	for s: float in ROW_SIZES:
-		var so := s + 8.0 if n_out <= 1 else s
-		var w := _row_width(n_in, s, true) + ROW_SEP + arrow_w + ROW_SEP + _row_width(n_out, so, false)
-		if w <= room.x and so <= room.y:
-			return {"icon": s, "out_icon": so, "grid_in": false, "grid_out": false}
+	if n_in <= 2 and n_out <= 2:
+		for s: float in ROW_SIZES:
+			var so := s + 8.0 if n_out <= 1 else s
+			var w := _row_width(n_in, s, true) + ROW_SEP + arrow_w + ROW_SEP + _row_width(n_out, so, false)
+			if w <= room.x and so <= room.y:
+				return {"icon": s, "out_icon": so, "grid_in": false, "grid_out": false}
 	for s: float in GRID_SIZES:
-		if 2.0 * s + GRID_GAP > room.y and s > GRID_SIZES[-1]:
+		var tall := 2.0 * s + GRID_GAP
+		if tall > room.y and s > GRID_SIZES[-1]:
 			continue
-		var grid_out := n_out > 2
-		var w_in := _grid_width(n_in, s) if n_in > 1 else s
-		# A single output stands as tall as the grid beside it, at most a good's full size.
-		var so := minf(Metrics.GOOD_ICON, 2.0 * s + GRID_GAP) if n_out <= 1 else s
+		var grid_in := n_in >= 3 or (n_in == 2 and n_out <= 2)
+		var grid_out := n_out >= 3
+		var si := s if grid_in else _lone(n_in, s, tall)
+		var so := s if grid_out else _lone(n_out, s, tall)
+		var w_in := _grid_width(n_in, s) if grid_in else _row_width(n_in, si, true)
 		var w_out := _grid_width(n_out, s) if grid_out else _row_width(n_out, so, false)
 		if w_in + ROW_SEP + arrow_w + ROW_SEP + w_out <= room.x:
-			return {"icon": s, "out_icon": so, "grid_in": n_in > 1, "grid_out": grid_out}
-	return {"icon": GRID_SIZES[-1], "out_icon": GRID_SIZES[-1], "grid_in": n_in > 1, "grid_out": n_out > 2}
+			return {"icon": si, "out_icon": so, "grid_in": grid_in, "grid_out": grid_out}
+	var last: float = GRID_SIZES[-1]
+	return {"icon": last, "out_icon": last, "grid_in": n_in >= 2, "grid_out": n_out >= 3}
+
+
+## The size of a side of one or two goods standing beside a grid of cells `s`, the grid `tall`.
+static func _lone(n: int, s: float, tall: float) -> float:
+	if n <= 1:
+		return minf(Metrics.GOOD_ICON, tall)
+	return minf(64.0, s + 12.0)
 
 
 static func _row_width(n: int, s: float, pluses: bool) -> float:
@@ -346,28 +360,39 @@ static func _grid_width(n: int, s: float) -> float:
 	return cols * s + (cols - 1) * GRID_GAP
 
 
-## One side of the recipe: the goods in a row (a plus between inputs) or in a grid of two rows.
+## One side of the recipe: the goods in a row (a plus between inputs), or in two rows, the longer on top and
+## the shorter centred under it (three goods read two over one).
 static func _side(items: Array, s: float, grid: bool, pluses: bool, with_qty: bool, clear: Array[Control]) -> Control:
-	var box: Container
-	if grid:
-		var g := GridContainer.new()
-		g.columns = ceili(items.size() / 2.0)
-		g.add_theme_constant_override("h_separation", roundi(GRID_GAP))
-		g.add_theme_constant_override("v_separation", roundi(GRID_GAP))
-		box = g
-	else:
+	if not grid:
 		var h := HBoxContainer.new()
 		h.add_theme_constant_override("separation", roundi(ROW_SEP))
-		box = h
-	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	for i in items.size():
-		if i > 0 and pluses and not grid:
-			box.add_child(_plus())
-		var ic := _recipe_good(items[i], s, with_qty)
-		box.add_child(ic)
-		clear.append(ic)
-	return box
+		h.alignment = BoxContainer.ALIGNMENT_CENTER
+		h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		h.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		for i in items.size():
+			if i > 0 and pluses:
+				h.add_child(_plus())
+			var ic := _recipe_good(items[i], s, with_qty)
+			h.add_child(ic)
+			clear.append(ic)
+		return h
+	var rows := VBoxContainer.new()
+	rows.name = "TwoRows"
+	rows.add_theme_constant_override("separation", roundi(GRID_GAP))
+	rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rows.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var top := ceili(items.size() / 2.0)
+	for part: Array in [items.slice(0, top), items.slice(top)]:
+		var line := HBoxContainer.new()
+		line.alignment = BoxContainer.ALIGNMENT_CENTER
+		line.add_theme_constant_override("separation", roundi(GRID_GAP))
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		for it: Dictionary in part:
+			var ic := _recipe_good(it, s, with_qty)
+			line.add_child(ic)
+			clear.append(ic)
+		rows.add_child(line)
+	return rows
 
 
 static func _recipe_good(item: Dictionary, px: float, with_qty := true) -> Control:
