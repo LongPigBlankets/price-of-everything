@@ -101,6 +101,13 @@ func _ds2_views(panel: Control) -> void:
 	tab.call("_set_view", {"mode": "detail", "sel_id": "tom", "back": "roster"})
 	await _settle(30)
 	await _shot(panel, "people_ds2_dossier_seated")
+	# The same without the lamp's overlay (docs/ds2-theme.md §4), to compare what the lamp does.
+	var shade: Control = shell.find_child("PeopleShade", false, false)
+	if shade != null:
+		shade.visible = false
+		await _settle(4)
+		await _shot(panel, "people_ds2_dossier_seated_unlit")
+		shade.visible = true
 	var guard: Control = panel.find_child("DismissKey", true, false)
 	if guard != null:
 		guard.call("lift")
@@ -109,6 +116,16 @@ func _ds2_views(panel: Control) -> void:
 		guard.call("drop")
 	tab.call("_set_view", {"mode": "roster"})
 	await _settle(8)
+	if shade != null:
+		shade.visible = false
+		await _settle(4)
+		await _shot(panel, "people_ds2_advisors_unlit")
+		shell.call("show_tab", 1)
+		await _settle(10)
+		await _shot(panel, "people_ds2_labour_unlit")
+		shade.visible = true
+		shell.call("show_tab", 0)
+		await _settle(6)
 
 
 ## The DS2 Labour tab's other views, where the look has them.
