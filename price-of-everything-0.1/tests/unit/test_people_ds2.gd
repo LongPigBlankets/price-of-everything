@@ -152,18 +152,27 @@ func _test_people_ds2_advisors() -> void:
 		var parts := preload("res://scripts/people_ds2/parts.gd")
 		_check(figs == [parts.money_text(float(st.bonus)), parts.money_text(float(st.salary)), parts.money_text(float(st.net))],
 			"people ds2 advisors: %s's bonus, salary and net are the council's figures (%s)" % [sid, ", ".join(figs)])
-	var locked: Control = room.find_child("Seat_vp_logistics", true, false)
+	var count: Control = pp.find_child("CouncilCount", true, false)
+	_check(count != null and str(count.get("text")) == "2/3 ADVISORS", "people ds2 advisors: the council plate reads 2/3 ADVISORS")
+	var unopened: Control = room.find_child("Seat_vp_logistics", true, false)
 	var open: Control = room.find_child("Seat_technical_director", true, false)
-	_check(str(locked.get("state")) == "locked" and _folder_locked(locked) == 1, "people ds2 advisors: a seat not yet opened has its padlock")
+	var req: Label = unopened.find_child("Requirement", true, false)
+	_check(str(unopened.get("state")) == "unopened" and _folder_locked(unopened) == 0 and req != null
+		and req.text == "Opens with Executive Search", "people ds2 advisors: with a slot free, a seat not yet opened says what opens it, no padlock")
 	_check(str(open.get("state")) == "open" and open.find_child("AssignSeat_technical_director", true, false) is Button
-		and _folder_locked(open) == -1, "people ds2 advisors: an open seat has its Assign key and no folder")
+		and _folder_locked(open) == -1, "people ds2 advisors: with a slot free, an open seat has its Assign key and no folder")
 	AdvisorState.max_advisor_slots = 2
 	AdvisorState.advisors_changed.emit()
 	await get_tree().process_frame
 	await get_tree().process_frame
-	var full: Control = pp.find_child("Seat_technical_director", true, false)
-	_check(full != null and str(full.get("state")) == "full" and _folder_locked(full) == 0,
-		"people ds2 advisors: on a full council an opened seat's folder is closed without a padlock")
+	var padlocks := 0
+	var empty := 0
+	for place in pp.find_child("Boardroom", true, false).find_children("Seat_*", "", true, false):
+		if AdvisorState.get_advisor_in_seat(str(place.name).trim_prefix("Seat_")) == "":
+			empty += 1
+			padlocks += 1 if _folder_locked(place) == 1 and str(place.get("state")) == "locked" else 0
+	_check(empty == 8 and padlocks == 8, "people ds2 advisors: with no slot free, every empty seat has its padlock (%d of %d)" % [padlocks, empty])
+	_check(str(pp.find_child("CouncilCount", true, false).get("text")) == "2/2 ADVISORS", "people ds2 advisors: a full council reads 2/2 ADVISORS")
 	AdvisorState.max_advisor_slots = 3
 	AdvisorState.advisors_changed.emit()
 	await get_tree().process_frame

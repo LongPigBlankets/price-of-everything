@@ -24,7 +24,7 @@ const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const Scroll := preload("res://scripts/bdp_v3_scroll.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
 const CreamKey := preload("res://scripts/ds2/cream_key.gd")
-const Drum := preload("res://scripts/ds2/drum_figure.gd")
+const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
 const Key := preload("res://scripts/bdp_v3_key.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 
@@ -152,8 +152,8 @@ func _build_roster() -> void:
 			line.add_child(_place(sid, r == 0))
 
 
-## The council's figures on a gunmetal slab: seats filled on a drum "of" the cap, the payroll on an LED, Add
-## advisor.
+## The council's figures on a gunmetal slab: the advisors seated of the most the company can seat now on a
+## dot matrix ("2/3 ADVISORS"), the payroll on an LED, Add advisor.
 func _council_strip() -> Control:
 	var slab: Control = Section.new()
 	slab.name = "CouncilStrip"
@@ -165,19 +165,14 @@ func _council_strip() -> Control:
 	var seats := VBoxContainer.new()
 	seats.add_theme_constant_override("separation", 4)
 	line.add_child(seats)
-	seats.add_child(_row_title("Seats filled"))
-	var seat_line := HBoxContainer.new()
-	seat_line.add_theme_constant_override("separation", 8)
-	seats.add_child(seat_line)
-	var filled := AdvisorState.advisor_seats.size()
-	var drum: Control = Drum.new(Drum.led_height(), 1 if AdvisorState.max_advisor_slots < 10 else 2, filled)
-	drum.name = "SeatsFilled"
-	seat_line.add_child(drum)
-	var of_cap := Parts.body("of %d" % AdvisorState.max_advisor_slots)
-	of_cap.autowrap_mode = TextServer.AUTOWRAP_OFF
-	of_cap.custom_minimum_size.x = 0
-	of_cap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	seat_line.add_child(of_cap)
+	seats.add_child(_row_title("Council"))
+	var count: Control = DotMatrix.new()
+	count.name = "CouncilCount"
+	count.set("pitch", 2.0)
+	count.set("text", SeatStatus.council_count())
+	count.tooltip_text = "Advisors seated, of the most you can seat now."
+	count.mouse_filter = Control.MOUSE_FILTER_PASS
+	seats.add_child(count)
 	var pay := VBoxContainer.new()
 	pay.add_theme_constant_override("separation", 4)
 	line.add_child(pay)
@@ -234,6 +229,11 @@ func _place(seat_id: String, top_row: bool) -> Control:
 			folder.name = "Folder"
 			folder.locked = str(st.state) == "locked"
 			col.add_child(folder)
+			if str(st.state) == "unopened":
+				var req := _small(SeatStatus.requirement(seat_id))
+				req.name = "Requirement"
+				req.add_theme_font_override("font", Kit.FONT_TITLE)
+				col.add_child(req)
 			col.add_child(_levers(seat_id))
 	return place
 

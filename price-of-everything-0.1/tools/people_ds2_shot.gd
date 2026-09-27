@@ -76,13 +76,19 @@ func _ds2_views(panel: Control) -> void:
 		return
 	shell.call("show_tab", 0)
 	var tab: Control = shell.call("body", 0)
-	AdvisorState.all_seats_unlocked = false
+	# A full council (2/2): every empty seat padlocked.
+	AdvisorState.max_advisor_slots = 2
 	AdvisorState.advisors_changed.emit()
 	await _settle(16)
-	await _shot(panel, "people_ds2_advisors_locked")
+	await _shot(panel, "people_ds2_advisors_full")
+	# A slot free (2/3) before the rest of the seats are opened: the open seats' Assign keys, the others' requirement.
+	AdvisorState.all_seats_unlocked = false
+	AdvisorState.max_advisor_slots = 3
+	AdvisorState.advisors_changed.emit()
+	await _settle(16)
+	await _shot(panel, "people_ds2_advisors_unopened")
 	AdvisorState.all_seats_unlocked = true
 	AdvisorState.recruited_advisor_ids = ["gerald", "eleanor", "hitomi", "marcus"]
-	AdvisorState.max_advisor_slots = 3
 	AdvisorState.advisors_changed.emit()
 	await _settle(16)
 	await _shot(panel, "people_ds2_advisors_open")

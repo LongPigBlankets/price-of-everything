@@ -2,11 +2,12 @@ extends RefCounted
 ## One council seat's state, read from the engine (docs/people-ds2-plan.md §6): the boardroom's lamp, chair,
 ## folder and padlock, and the words its hover gives, all read this one helper, so they cannot disagree.
 ##
-##   filled  an advisor sits there: the lamp green when the seat returns more than it costs (net above zero),
-##           amber when not; the bonus, salary and net the council shows (AdvisorState's own quotes)
-##   open    the company has the seat and room on the council: the chair pulled out, "Assign advisor"
-##   full    the company has the seat but the council is at its cap: the folder closed, no padlock
-##   locked  the seat is not open yet (the Executive Search research opens the rest): the padlock
+##   filled    an advisor sits there: the lamp green when the seat returns more than it costs (net above zero),
+##             amber when not; the bonus, salary and net the council shows (AdvisorState's own quotes)
+##   open      the company has the seat and a free slot on the council: the chair pulled out, "Assign advisor"
+##   unopened  a free slot, but research has not opened the seat yet: its folder closed, the requirement in words
+##   locked    the council is full, no free slot to assign: the padlock through its folder
+## The padlock means only one thing: there is no slot free (owner, 27 September 2026).
 
 const SEATS_RESEARCH := "Executive Search"
 ## Short names for the seat effects' domains, as a place prints them ("Labour 10% lower").
@@ -29,12 +30,22 @@ static func seat(seat_id: String) -> Dictionary:
 		var pays := net > 0.0
 		return {"state": "filled", "advisor": aid, "tone": "ok" if pays else "warn", "bonus": bonus, "salary": salary,
 			"net": net, "words": "Returns more than the seat costs." if pays else "Costs more than the seat returns."}
-	if not AdvisorState.is_seat_available(seat_id):
-		return {"state": "locked", "advisor": "", "tone": "", "words": "Opens with %s research." % SEATS_RESEARCH}
 	if AdvisorState.advisor_seats.size() >= AdvisorState.max_advisor_slots:
-		return {"state": "full", "advisor": "", "tone": "",
+		return {"state": "locked", "advisor": "", "tone": "",
 			"words": "The council is full at %d. Unseat someone to fill this seat." % AdvisorState.max_advisor_slots}
+	if not AdvisorState.is_seat_available(seat_id):
+		return {"state": "unopened", "advisor": "", "tone": "", "words": requirement(seat_id)}
 	return {"state": "open", "advisor": "", "tone": "", "words": "Assign an advisor to this seat."}
+
+
+## What opens a seat the company does not have yet, in plain words.
+static func requirement(_seat_id: String) -> String:
+	return "Opens with %s" % SEATS_RESEARCH
+
+
+## The council's count: advisors seated of the most the company can seat now ("2/3 ADVISORS").
+static func council_count() -> String:
+	return "%d/%d ADVISORS" % [AdvisorState.advisor_seats.size(), AdvisorState.max_advisor_slots]
 
 
 ## An effect in words: "Labour 10% lower", "Export price 10% higher".
