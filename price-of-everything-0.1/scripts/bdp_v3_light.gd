@@ -18,15 +18,20 @@ const FAR := 0.9
 const DARKEST := 0.7
 ## Share of the darkening that the text takes back (the text is not relit past its own colour).
 const TEXT_GIVE_BACK := 0.5
+## The top bar is too short for a lamp in a corner: its light falls evenly from the screen's left edge to its
+## right, to the same darkest (across_material).
+const ACROSS_NEAR := 0.0
+const ACROSS_FAR := 1.0
 
 const _LAMP := """
 uniform vec2 lamp_uv = vec2(0.0, 0.0);
 uniform float near_d = 0.25;
 uniform float far_d = 0.9;
 uniform float darkest = 0.7;
+uniform float across = 0.0;
 float lamp(vec2 screen_uv, vec2 pixel_size) {
 	vec2 aspect = vec2(pixel_size.y / pixel_size.x, 1.0);
-	float d = length((screen_uv - lamp_uv) * aspect) / length(aspect);
+	float d = mix(length((screen_uv - lamp_uv) * aspect) / length(aspect), screen_uv.x, across);
 	return mix(1.0, darkest, clamp((d - near_d) / (far_d - near_d), 0.0, 1.0));
 }
 """
@@ -63,6 +68,7 @@ static var _shade: ShaderMaterial
 static var _text: ShaderMaterial
 static var _glow: ShaderMaterial
 static var _emissive: ShaderMaterial
+static var _across: Dictionary = {}
 
 
 static func _material(code: String) -> ShaderMaterial:
@@ -106,6 +112,26 @@ static func glow_material() -> ShaderMaterial:
 	if _glow == null:
 		_glow = _material(_GLOW)
 	return _glow
+
+
+## `m` (one of the materials above) lit from the left edge instead of the corner: the top bar's light. One twin
+## per material, shared as the materials are.
+static func across_material(m: ShaderMaterial) -> ShaderMaterial:
+	if m == null:
+		return null
+	var twin: ShaderMaterial = _across.get(m) if _across.has(m) else null
+	if twin == null:
+		twin = m.duplicate() as ShaderMaterial
+		twin.set_shader_parameter("across", 1.0)
+		twin.set_shader_parameter("near_d", ACROSS_NEAR)
+		twin.set_shader_parameter("far_d", ACROSS_FAR)
+		_across[m] = twin
+	return twin
+
+
+## The top bar's light at a screen x (0 at the left edge, 1 at the right), as its shaders work it out.
+static func light_across(screen_x: float) -> float:
+	return lerpf(1.0, DARKEST, clampf((screen_x - ACROSS_NEAR) / (ACROSS_FAR - ACROSS_NEAR), 0.0, 1.0))
 
 
 ## The lamp's light at a screen UV, as the shaders work it out (for tests and tools).

@@ -5,8 +5,8 @@ extends Control
 ## The shell is a painted steel cabinet in machinery green (people_backing: three bolted sheets, two hinges down
 ## the left), one width for both tabs. A fixed head: the PEOPLE nameplate (the tile view's black enamel, the name
 ## printed white), the two latching tab keys on their key bed (the open one latched down), Close. Under it the
-## ribbed seam, where the open tab's body scrolls on Building Detail's steel rail. The lamp over the panel is one
-## overlay drawn last; every label under the panel takes back half its shade, as Building Detail's do.
+## ribbed seam, where the open tab's body scrolls on Building Detail's steel rail. The lamp lights the panel part
+## by part (scripts/ds2/lamp_overlay.gd), its sheets and parts added later too, as Building Detail's.
 
 signal close_requested
 ## A press or drag on the head, which moves the panel as the v2 title bar does.
@@ -16,7 +16,7 @@ const Parts := preload("res://scripts/people_ds2/parts.gd")
 const LatchKey := preload("res://scripts/ds2/latch_key.gd")
 const Key := preload("res://scripts/bdp_v3_key.gd")
 const Seam := preload("res://scripts/bdp_v3_seam.gd")
-const Light := preload("res://scripts/bdp_v3_light.gd")
+const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const UIFonts := preload("res://scripts/ui_fonts.gd")
 const AdvisorsTab := preload("res://scripts/people_ds2/advisors_ds2.gd")
@@ -30,8 +30,6 @@ const BACKING_FOOT := 420.0
 const MARGIN_X := 26
 const MARGIN_TOP := 18
 const MARGIN_BOTTOM := 20
-## The overlay's rounded corners (the sheets' corner, 10 layout px).
-const SHADE_CORNER := 6.0
 ## The nameplate (the tile view's tile_nameplate: 14 layout px of margin, 60 kept at each end) and its print.
 const NAMEPLATE: Texture2D = preload("res://assets/ui/bdp_v3/tile_nameplate.png")
 const NAMEPLATE_MARGIN := 14.0
@@ -51,7 +49,6 @@ var _tab := 0
 var _margin: MarginContainer
 var _seam: Control
 var _seam_slot: Control
-var _shade: Control
 
 
 func _init() -> void:
@@ -97,38 +94,8 @@ func _ready() -> void:
 	_seam.set("outset", MARGIN_X - 4.0 / Parts.LAYOUT)
 	add_child(_seam)
 	_seam_slot.item_rect_changed.connect(_place_seam)
-	_shade = Control.new()
-	_shade.name = "PeopleShade"
-	_shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_shade.material = Light.shade_material()
-	(_shade.material as ShaderMaterial).set_shader_parameter("corner", SHADE_CORNER)
-	_shade.draw.connect(func() -> void: _shade.draw_rect(Rect2(Vector2.ZERO, _shade.size), Color.WHITE))
-	_shade.resized.connect(func() -> void: (_shade.material as ShaderMaterial).set_shader_parameter("rect_size", _shade.size))
-	add_child(_shade)
 	show_tab(_tab)
-	_relight_all()
-
-
-func _enter_tree() -> void:
-	if not get_tree().node_added.is_connected(_on_node_added):
-		get_tree().node_added.connect(_on_node_added)
-
-
-func _exit_tree() -> void:
-	if get_tree().node_added.is_connected(_on_node_added):
-		get_tree().node_added.disconnect(_on_node_added)
-
-
-## Every label that comes under the panel takes back half the lamp's shade (DS2 §4).
-func _on_node_added(n: Node) -> void:
-	if (n is Label or n is RichTextLabel) and is_ancestor_of(n):
-		(n as CanvasItem).material = Light.text_material()
-
-
-func _relight_all() -> void:
-	for n in find_children("*", "Label", true, false) + find_children("*", "RichTextLabel", true, false):
-		(n as CanvasItem).material = Light.text_material()
+	LampOverlay.attach(self)
 
 
 func _place_seam() -> void:

@@ -359,9 +359,10 @@ func _test_people_ds2_shell() -> void:
 	pp.connect("close_requested", func() -> void: closed[0] = true)
 	(pp.find_child("CloseKey", true, false) as TextureButton).pressed.emit()
 	_check(closed[0], "people ds2 shell: Close asks the panel to close")
-	_check(shell.get_child(shell.get_child_count() - 1).name == "PeopleShade", "people ds2 shell: the lamp's overlay is drawn last")
+	var Lamp = preload("res://scripts/ds2/lamp_overlay.gd")
+	_check(Lamp.find(shell) != null and shell.find_child("PeopleShade", true, false) == null, "people ds2 shell: the lamp lights the panel part by part")
 	var lit := true
-	var text_light := preload("res://scripts/bdp_v3_light.gd").text_material()
+	var text_light: Material = Lamp.text_material()
 	for l in shell.find_children("*", "Label", true, false):
 		lit = lit and (l as Label).material == text_light
 	_check(lit, "people ds2 shell: every label takes back part of the lamp's shade")
@@ -374,11 +375,10 @@ func _test_people_ds2_shell() -> void:
 	var sheet_lit := sheet != null and sheet.visible
 	for l in sheet.find_children("*", "Label", true, false):
 		sheet_lit = sheet_lit and (l as Label).material == text_light
-	var emissive := preload("res://scripts/bdp_v3_light.gd").emissive_material()
 	var screens_lit := true
 	for seg in sheet.find_children("Segments", "", true, false):
-		screens_lit = screens_lit and (seg as CanvasItem).material == emissive
-	_check(sheet_lit and screens_lit and shell.get_child(shell.get_child_count() - 1).name == "PeopleShade" and shell.is_ancestor_of(sheet),
+		screens_lit = screens_lit and (seg as CanvasItem).material == null
+	_check(sheet_lit and screens_lit and shell.is_ancestor_of(sheet),
 		"people ds2 shell: the dossier sheet lies under the lamp, its print given back, its screens undimmed")
 	tab.call("_set_view", {"mode": "roster"})
 	shell.call("show_tab", 0)

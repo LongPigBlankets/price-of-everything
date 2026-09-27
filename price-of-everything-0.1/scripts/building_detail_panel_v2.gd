@@ -29,7 +29,7 @@ const BdpV3Scroll := preload("res://scripts/bdp_v3_scroll.gd")
 const BdpV3Seam := preload("res://scripts/bdp_v3_seam.gd")
 const BdpV3Title := preload("res://scripts/bdp_v3_title.gd")
 const BdpV3Enamel := preload("res://scripts/bdp_v3_enamel.gd")
-const BdpV3Light := preload("res://scripts/bdp_v3_light.gd")
+const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
 const BdpV3Cable := preload("res://scripts/bdp_v3_cable.gd")
 const BdpV3Counter := preload("res://scripts/bdp_v3_counter.gd")
 const PanelGauge := preload("res://scripts/panel_gauge.gd")
@@ -72,9 +72,7 @@ const V3_PANEL_WIDTH := 525.0
 const CONTENT_MARGIN := 26
 ## The width v3's header keeps for its keys.
 const V3_KEY_COLUMN := 96.0 / 1.875
-## The backing's rounded corner, in pixels (panel_backing: 4 + 16 layout pixels), and its brass trim's
-## width in layout pixels (layout.json panel_backing).
-const BACKING_CORNER := 10.5
+## The backing's brass trim's width in layout pixels (layout.json panel_backing).
 const BACKING_TRIM := 14.0
 
 # Empire-view click (world_map sets this before show_building): dock at the tile view
@@ -133,8 +131,6 @@ var _close_button: Button = null
 var _close_key: TextureButton = null
 # v3's Location keycap under the close key: pans the map to the building.
 var _pin_key: TextureButton = null
-# v3's lamp over the whole panel (a multiply overlay; see bdp_v3_light.gd).
-var _shade: Control = null
 # v2's brass pipe border, and v3's backing plate (dark navy-grey steel in a brass trim) drawn behind
 # everything instead.
 var _pipe_frame: Control = null
@@ -170,15 +166,6 @@ func _build_shell() -> void:
 	_backing = BdpV3Nine.make("panel_backing", 64.0)
 	add_child(_backing)
 	move_child(_backing, 0)   # behind the content
-	# Over the backing and content, under the action sheets (added later).
-	_shade = Control.new()
-	_shade.name = "BdpV3Shade"
-	_shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_shade.material = BdpV3Light.shade_material()
-	_shade.draw.connect(func() -> void: _shade.draw_rect(Rect2(Vector2.ZERO, _shade.size), Color.WHITE))
-	_shade.resized.connect(func() -> void: (_shade.material as ShaderMaterial).set_shader_parameter("rect_size", _shade.size))
-	(_shade.material as ShaderMaterial).set_shader_parameter("corner", BACKING_CORNER)
-	add_child(_shade)
 
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", DS.SP["SM"])
@@ -1495,7 +1482,6 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 	if preserve_scroll:
 		scroll.set_deferred("scroll_vertical", restore_scroll)
 	if slide != null:
-		move_child(_shade, get_child_count() - 1)   # the plate is under the lamp too
 		_apply_v3_text_light()
 		if not preserve_scroll:   # a sheet rebuilt in place stays put
 			slide.position.x = size.x
@@ -1660,7 +1646,11 @@ func _apply_v3_chrome() -> void:
 	_close_button.visible = not v3
 	_close_key.visible = v3
 	_pin_key.visible = v3
-	_shade.visible = v3
+	# The lamp over the panel and its sheets, part by part (docs/ds2-theme.md §4.1).
+	if v3:
+		LampOverlay.attach(self)
+	else:
+		LampOverlay.detach(self)
 	_apply_v3_title()
 	_apply_v3_text_light()
 	_badge.visible = not v3
@@ -1686,16 +1676,17 @@ func _on_pin_pressed() -> void:
 		cam.pan_to_tile(str(_current_building.get("tile_id", "")))
 
 
-## Under v3's lamp, the panel's text takes back part of the darkening round it (bdp_v3_light.gd), the
-## action sheets' too (their plates sit under the lamp). Runs after every rebuild and sheet.
+## Under v3 the lamp overlay lights the text as it is added (half the darkening, lamp_overlay.gd), the
+## action sheets' too. v2 has no lamp: its text is drawn plain. Runs after every rebuild and sheet.
 func _apply_v3_text_light() -> void:
-	var m: Material = BdpV3Light.text_material() if UiPrefs.use_bdp_v3 else null
+	if UiPrefs.use_bdp_v3:
+		return
 	var roots: Array[Node] = [_margin]
 	if _sheet != null and is_instance_valid(_sheet):
 		roots.append(_sheet)
 	for root in roots:
 		for n in root.find_children("*", "Label", true, false) + root.find_children("*", "RichTextLabel", true, false):
-			(n as CanvasItem).material = m
+			(n as CanvasItem).material = null
 
 
 ## v3's raised title in place of the label, unless the title has a character its letters lack.

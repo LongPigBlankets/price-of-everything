@@ -8,6 +8,7 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **Text**: body 14 px (IBM Plex Sans Medium, semibold for a row's own title), metal-label captions 15 px (Barlow Condensed SemiBold), the printed £ 18 px. A compact strip such as the bar may go smaller, never under 12 px. White on anything dark; navy on anything light (stainless, concrete, white plastic), with DS2's light-surface inks for semantic figures (#1d6b3a, #7a4a00, #8f1f19) and a faint light shadow, not a dark outline.
 - **Icons are sized by their drawn art, not their canvas**, to one cap height on one midline; thin icons get a tabled optical factor.
 - **Icons are raised as Building Detail's are** (cream enamel relief with its swept shadow, render set per surface). The knob's icons may later be embossed in the new off-white (a refinement, not yet done).
+- **The lamp, part by part** (`scripts/ds2/lamp_overlay.gd`) on every DS2 panel, Building Detail included (27 September 2026). The top bar is the exception (below).
 - **Figures come from the engine's own helpers**; the lamp and the words that explain it come from one status helper, so they cannot disagree.
 - **Copy**: plain and brief, no hyphens, semicolons, dashes or middle dots; the owner's wording where given (below).
 
@@ -19,6 +20,7 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **Pipes**: a pair of polished silver pipes rises just off each side of the concrete, symmetrical about the money, and runs along beneath the beam to meet the other side (1 px thinner and 1 px closer than first built, so the loop ends at y 69, clear of the panels).
 - **Mission** sits left of the left pipes, icon first, text to its right, never crossing into another section (trimmed with an ellipsis). It moves to the dock as a work order later.
 - **Icons** raised as Building Detail's; **lamps** are Building Detail's pilot lamps. Goods Graph, Encyclopedia and Menu stay raised icons (no keycaps) and show no lamp in their readout.
+- **Light**: a simple light from left to right (27 September 2026): the bar is not tall enough for the corner lamp's fall to the bottom right. It keeps its one overlay, not the part by part lamp.
 - **Victory**: the score on a drum counter with "/1,000" printed after it. The turn stays as text.
 - **Hover readouts** under the bar, in the owner's words:
   - Power: "You generated X MW. Y MW came from the national grid."

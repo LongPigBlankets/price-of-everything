@@ -1110,6 +1110,9 @@ func _test_bdp_v3_rules() -> void:
 		and Light.light_at(Vector2(0.75, 0.15), screen) > Light.light_at(Vector2(0.95, 0.9), screen)
 		and is_equal_approx(Light.light_at(Vector2(1.0, 1.0), screen), Light.DARKEST),
 		"bdp v3: the lamp over the panel is brightest at the screen's top-left and darkest at its far corner")
+	_check(is_equal_approx(Light.light_across(0.0), 1.0) and is_equal_approx(Light.light_across(1.0), Light.DARKEST)
+		and is_equal_approx(Light.light_across(0.5), lerpf(1.0, Light.DARKEST, 0.5)),
+		"top bar ds2: the bar's light falls evenly from the screen's left edge to its right")
 	var Seam = load("res://scripts/bdp_v3_seam.gd")
 	var seam_parts: Array = Seam.slices(430.0)
 	_check(seam_parts.size() == 3 and is_equal_approx(float(seam_parts[0][3]), Seam.CAP / 1.875)
@@ -1310,8 +1313,12 @@ func _test_bdp_v3_panel() -> void:
 	MatchState.focus_building_requested.disconnect(on_focus)
 	_check(focused == [iid], "bdp v3: the Location key asks the map to show the building")
 	var body_label: Label = panel._body.find_children("*", "Label", true, false)[0]
-	_check(panel._shade.visible and body_label.material == load("res://scripts/bdp_v3_light.gd").text_material(),
-		"bdp v3: the lamp's overlay covers the panel and the text takes some of its light back")
+	var Overlay = load("res://scripts/ds2/lamp_overlay.gd")
+	var led_layers: Array = panel.find_children("*", "", true, false).filter(func(n: Node) -> bool:
+		return n is CanvasItem and n.get_parent() != null and n.get_parent().get_script() == load("res://scripts/bdp_v3_led.gd"))
+	_check(Overlay.find(panel) != null and panel.material == Overlay.shade_material() and body_label.material == Overlay.text_material()
+		and led_layers.all(func(n: Node) -> bool: return (n as CanvasItem).material != load("res://scripts/bdp_v3_light.gd").emissive_material()),
+		"bdp v3: the lamp lights the panel part by part, its text by half, its LEDs not at all")
 	var diag: PanelContainer = panel.find_child("DiagnosticsCard", true, false)
 	var diag_frame: Node = diag.get_parent().get_parent() if diag != null else null
 	var lamps: Array = diag.find_children("BdpV3Lamp*", "", true, false) if diag != null else []
@@ -1530,8 +1537,8 @@ func _test_bdp_v3_panel() -> void:
 		var sheet_scroll := panel._sheet.find_child("ActionSheetScroll", true, false) as ScrollContainer
 		_check(sheet_scroll != null and Scroll.is_applied(sheet_scroll), "bdp v3: the sheets scroll on the steel rail too")
 		var slide: Control = panel._sheet.find_child("SheetSlide", true, false)
-		_check(slide != null and slide.find_child("BdpV3SheetPlate", false, false) != null and slide.position.x > 0.0
-			and panel.get_child(panel.get_child_count() - 1) == panel._shade,
+		var plate: CanvasItem = slide.find_child("BdpV3SheetPlate", false, false) if slide != null else null
+		_check(plate != null and slide.position.x > 0.0 and plate.material == load("res://scripts/ds2/lamp_overlay.gd").shade_material(),
 			"bdp v3: a sheet is a steel plate that slides in, under the lamp (starting %.0f px along)" % (slide.position.x if slide != null else -1.0))
 		panel._close_sheet()
 		var r: Rect2 = block.key_rect("recipe")
@@ -1555,7 +1562,7 @@ func _test_bdp_v3_panel() -> void:
 		and not panel._seam.visible and is_equal_approx(panel._scroll.offset_top, 0.0)
 		and panel._title_label.visible and not panel._title_v3.visible
 		and panel.find_child("BdpV3Enamel", true, false) == null
-		and panel._subtitle_label.visible and not panel._pin_key.visible and not panel._shade.visible
+		and panel._subtitle_label.visible and not panel._pin_key.visible and load("res://scripts/ds2/lamp_overlay.gd").find(panel) == null
 		and panel._body.find_children("*", "Label", true, false)[0].material == null,
 		"bdp v3: switching it off brings back the plain title, the badge and location line, the plain scrollbar, the unedged body, the plain diagram and unshaded text")
 	panel.queue_free()
@@ -1703,6 +1710,14 @@ func _test_topbar_ds2_strip() -> void:
 		_check(absf(r.position.x - area.x) <= 1.0 and r.end.x <= area.y + 1.0
 			and (not text_col.is_visible_in_tree() or qicon.get_global_rect().end.x <= text_col.get_global_rect().position.x + 1.0),
 			"top bar ds2: the mission keeps to its section, icon first and its text to the right (%s in %s)" % [r, area])
+	var Light = load("res://scripts/bdp_v3_light.gd")
+	var bar_shade: ShaderMaterial = (bar.get("_ds2_shade") as CanvasItem).material
+	var bar_led_lit: bool = led != null and led.find_children("*", "", true, false).any(func(n: Node) -> bool:
+		return (n as CanvasItem) != null and (n as CanvasItem).material == Light.across_material(Light.emissive_material()))
+	var bar_label: Label = bar.get("_net_label")
+	_check(float(bar_shade.get_shader_parameter("across")) == 1.0 and bar_led_lit
+		and bar_label.material == Light.across_material(Light.text_material()),
+		"top bar ds2: the bar is lit from the screen's left edge, its text and its LED screens against the same light")
 	var power_mod: Control = hbox.get_node("PowerModule")
 	power_mod.mouse_entered.emit()
 	var readout: Control = bar.get("_ds2_readout")
