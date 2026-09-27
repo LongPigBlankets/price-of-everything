@@ -4285,14 +4285,27 @@ func _add_output_good_options(vb: VBoxContainer, building: Dictionary, recipe: D
 	row.add_child(_logistics_route_option(building, "output", "Global market", market_detail, is_market, func() -> void:
 		MatchState.route_output_to_market(iid, good_id)
 		_queue_refresh()
-		_open_output_sheet(building, recipe), good_id, market_available))
+		_open_output_sheet(building, recipe), good_id, market_available, "market"))
 	var stockpile_available := ResearchState.open_logistics_contracts_available()
 	var stockpile_detail := "Store the output on this tile for later use." if stockpile_available else "[Requires Open Logistics Contracts]"
+	# Leaving the intermediary for this tile's stockpile asks one question, not two: the change
+	# is made at once and the surplus prompt says so, with an Undo (a toast when nothing piles up).
+	var was_intermediary: bool = preload("res://scripts/middleman_service.gd").buys_output(iid, good_id)
+	var prior_tile := MatchState.get_output_stockpile_destination(iid, good_id)
 	row.add_child(_logistics_route_option(building, "output", "Tile stockpile", stockpile_detail, on_tile, func() -> void:
 		MatchState.set_output_stockpile_destination(iid, tile_id, good_id)
 		_queue_refresh()
 		_open_output_sheet(building, recipe)
-		preload("res://scripts/stockpile_route_prompt.gd").offer(get_parent(), tile_id, good_id), good_id, stockpile_available))
+		var context := {}
+		if was_intermediary:
+			context = {"supplier_changed": true, "undo": func() -> void:
+				preload("res://scripts/middleman_service.gd").set_good_mode(iid, "output", good_id, "middleman")
+				if prior_tile != "":
+					MatchState.set_output_stockpile_destination(iid, prior_tile, good_id)
+				else:
+					MatchState.clear_output_stockpile_destination(iid, good_id)
+				_queue_refresh()}
+		preload("res://scripts/stockpile_route_prompt.gd").offer(get_parent(), tile_id, good_id, context), good_id, stockpile_available, "stockpile", false))
 	row.add_child(_logistics_route_option(building, "output", "Ship to another tile", "Pick a tile on the shipping map to feed a downstream building you own." if stockpile_available else "[Requires Open Logistics Contracts]", other, func() -> void:
 		MatchState.begin_output_stockpile_selection(iid, good_id, true)
 		_close_sheet(), good_id, stockpile_available))
@@ -4771,7 +4784,7 @@ func _request_all_managed_source(building: Dictionary, side: String, source: Str
 	var service = preload("res://scripts/middleman_service.gd")
 	var action := func() -> bool: return _apply_all_managed_source(building, side, source)
 	if service.side_all_middleman(str(building.get("instance_id", "")), side):
-		preload("res://scripts/logistics_confirmation.gd").request(self, "managed", action)
+		preload("res://scripts/logistics_confirmation.gd").request(self, "managed", action, Callable(), {"side": side, "destination": "market" if source == "market" else "stockpile"})
 	else:
 		action.call()
 
@@ -4805,15 +4818,15 @@ func _apply_all_managed_source(building: Dictionary, side: String, source: Strin
 	else: _open_output_sheet(building, recipe)
 	return true
 
-func _logistics_route_option(building: Dictionary, side: String, title: String, detail: String, active: bool, on_press: Callable, good_id: String = "", enabled: bool = true) -> Control:
+func _logistics_route_option(building: Dictionary, side: String, title: String, detail: String, active: bool, on_press: Callable, good_id: String = "", enabled: bool = true, destination: String = "", confirm: bool = true) -> Control:
 	var service = preload("res://scripts/middleman_service.gd")
 	var intermediary: bool = service.supplies_good(str(building.instance_id), good_id) if side == "input" and good_id != "" else (service.buys_output(str(building.instance_id), good_id) if side == "output" and good_id != "" else service.side_all_middleman(str(building.instance_id), side))
 	var action := func() -> void:
-		if intermediary: _request_logistics_mode(building, side, "managed", on_press, good_id)
+		if intermediary: _request_logistics_mode(building, side, "managed", on_press, good_id, destination, confirm)
 		else: on_press.call()
 	return _dest_option(title, detail, active and not intermediary, action, enabled)
 
-func _request_logistics_mode(building: Dictionary, side: String, mode: String, after_change: Callable = Callable(), good_id: String = "") -> void:
+func _request_logistics_mode(building: Dictionary, side: String, mode: String, after_change: Callable = Callable(), good_id: String = "", destination: String = "", confirm: bool = true) -> void:
 	var service = preload("res://scripts/middleman_service.gd")
 	var active: bool = service.supplies_good(str(building.instance_id), good_id) if side == "input" and good_id != "" else (service.buys_output(str(building.instance_id), good_id) if side == "output" and good_id != "" else service.side_all_middleman(str(building.instance_id), side))
 	if (mode == "middleman") == active: return
@@ -4829,4 +4842,7 @@ func _request_logistics_mode(building: Dictionary, side: String, mode: String, a
 			if side == "input": _open_input_sources_sheet(building, recipe)
 			else: _open_output_sheet(building, recipe)
 		return true
-	preload("res://scripts/logistics_confirmation.gd").request(self, mode, apply)
+	if not confirm:
+		apply.call()
+		return
+	preload("res://scripts/logistics_confirmation.gd").request(self, mode, apply, Callable(), {"side": side, "good": good_id, "destination": destination})
