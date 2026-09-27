@@ -145,7 +145,7 @@ Rows marked **check** carry a note for the owner.
 | Electrolyser | Rare Earth Reduction (r_041) | Refined Rare Earths | **Rare Earth Electrolyser** | Electrolyser - Refined Rare Earths - A |  |
 | Electrolyser | Magnetic Separation Electrolysis (r_226) | Refined Rare Earths | **Magnetic Separation Rare Earth Electrolyser** | Electrolyser - Refined Rare Earths - A |  |
 | Desalination Plant | Desalination (r_051) | Pure Water | **Desalination Plant** | Desalination Plant - Pure Water - A |  |
-| Water Recyling Plant | Water Treatment (r_105) | Pure Water | **Water Recycling Plant** | Water Recyling Plant - Pure Water - A |  |
+| Water Recycling Plant | Water Treatment (r_105) | Pure Water | **Water Recycling Plant** | Water Recycling Plant - Pure Water - A |  |
 | Solar Farm | Solar Power Generation (r_146) | Power | **Solar Farm** | Solar Farm A |  |
 | Onshore Wind Farm | Onshore wind generation (r_037) | Power | **Wind Farm** | Wind Farm A |  |
 | Offshore Wind Farm | Offshore Wind Power Generation (r_145) | Power | **Offshore Wind Farm** | Offshore Wind Farm A |  |

@@ -395,12 +395,12 @@ Two nodes carry two rewards (a level **and** a recipe, or a recipe **and** an ou
 
 | Node | R | Title | Now | Unlocks | Base | Overlay |
 |---|---|---|---|---|---|---|
-| `recyc_003` | I | Tertiary Filtration | `filter` | output +15% Water Recyling Plant | `b_022_water_recycling` | **output** |
+| `recyc_003` | I | Tertiary Filtration | `filter` | output +15% Water Recycling Plant | `b_022_water_recycling` | **output** |
 | `recyc_004` | I | Advanced Oxidation Loops | `scrub` | recipe E-Waste Recycling | `g_007_copper_wiring` | **merge** |
-| `recyc_005` | I | Zero-Discharge Water | `loop` | power -10% Water Recyling Plant | `b_022_water_recycling` | power arrow_down |
+| `recyc_005` | I | Zero-Discharge Water | `loop` | power -10% Water Recycling Plant | `b_022_water_recycling` | power arrow_down |
 | `recyc_006` | I | Biowaste Digestion | `bio` | recipe Biowaste Recycling | `g_062_biomass` | **merge** |
-| `recyc_001` | II | Membrane Bioreactors | `level2` | Level 2 for Water Recyling Plant | `b_022_water_recycling` | `level_2` |
-| `recyc_002` | III | Closed-Loop Reclaim | `level3` | Level 3 for Water Recyling Plant | `b_022_water_recycling` | `level_3` |
+| `recyc_001` | II | Membrane Bioreactors | `level2` | Level 2 for Water Recycling Plant | `b_022_water_recycling` | `level_2` |
+| `recyc_002` | III | Closed-Loop Reclaim | `level3` | Level 3 for Water Recycling Plant | `b_022_water_recycling` | `level_3` |
 
 ### People Management (11)
 
