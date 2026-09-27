@@ -140,8 +140,8 @@ One proposal for each of the 248 current CSV unlocks, grouped by the revised cat
 | Unlock ID | Unlock | Suggested image | Card | Effect badge |
 |---|---|---|---|---|
 | `research_biochem_004` | Wastewater Bioreactors | Pure Water (`g_009`) | Goods · cream square | Recipe + |
-| `research_recyc_001` | Membrane Bioreactors | Water Recyling Plant (`b_022`) | Building · brushed metal / navy | II |
-| `research_recyc_002` | Closed-Loop Reclaim | Water Recyling Plant (`b_022`) | Building · brushed metal / navy | III |
+| `research_recyc_001` | Membrane Bioreactors | Water Recycling Plant (`b_022`) | Building · brushed metal / navy | II |
+| `research_recyc_002` | Closed-Loop Reclaim | Water Recycling Plant (`b_022`) | Building · brushed metal / navy | III |
 | `research_recyc_003` | Tertiary Filtration | Recycling Plant (`b_036`) | Building · brushed metal / navy | Output ↑ |
 | `research_recyc_004` | Advanced Oxidation Loops | Copper Wiring (`g_007`) | Goods · cream square | Recipe + |
 | `research_recyc_005` | Zero-Discharge Water | Recycling Plant (`b_036`) | Building · brushed metal / navy | Bolt ↓ |
