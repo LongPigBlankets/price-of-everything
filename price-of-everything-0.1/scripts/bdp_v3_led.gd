@@ -35,6 +35,9 @@ const SEGMENTS := {
 }
 
 var colour := Color.WHITE
+## The owner's newer rule (docs/ds2-owner-decisions.md, Digital displays): the point takes a cell of its own, as
+## wide as a digit's. Off by default, so every screen built before it keeps its look; set it before set_figure.
+var point_cell := false
 ## [character, point after it] per cell.
 var _cells: Array = []
 var _segments: Control
@@ -73,8 +76,17 @@ static func cells_for(figure: String) -> Array:
 	return out
 
 
+## The cells a figure takes when the point has a cell of its own: every digit, "-", space and "." one each.
+static func cells_with_points(figure: String) -> Array:
+	var out: Array = []
+	for ch in figure:
+		if ch == "." or SEGMENTS.has(ch):
+			out.append([ch, false])
+	return out
+
+
 func set_figure(figure: String, lit: Color) -> void:
-	_cells = cells_for(figure)
+	_cells = cells_with_points(figure) if point_cell else cells_for(figure)
 	colour = lit
 	var pane := Vector2(_digits_width(), CELL.y) + 2.0 * PAD
 	custom_minimum_size = pane + Vector2.ONE * 2.0 * RIM / CAPTURE_SCALE
@@ -126,6 +138,12 @@ func _draw_segments() -> void:
 		var at := origin + Vector2(x, 0.0)
 		var point := bool(_cells[i][1])
 		x += CELL.x + GAP + (POINT_ROOM if point else 0.0)
+		if str(_cells[i][0]) == ".":
+			# A point in a cell of its own: the dot at the foot of the cell, no segments.
+			var spot := at + Vector2(CELL.x * 0.5 - (CELL.y - STROKE * 0.5 - CELL.y) * SLANT, CELL.y - STROKE * 0.5)
+			_segments.draw_circle(spot, STROKE * 1.0, glow)
+			_segments.draw_circle(spot, STROKE * 0.7, colour)
+			continue
 		var on := str(SEGMENTS.get(str(_cells[i][0]), ""))
 		for seg in "abcdefg":
 			var poly := _segment(seg, at)
