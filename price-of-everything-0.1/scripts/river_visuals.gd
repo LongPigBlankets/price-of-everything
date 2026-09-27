@@ -30,70 +30,64 @@ const RIVER_POINTS := {
 @onready var terrain_layer: HexMap = %TerrainLayer
 
 var river_properties := {}
-## Which draw pass is running: 1 = water (always); 0 = ink bank casing, drawn
+## Which draw pass is running: 1 = water (always); 0 = ink bank casing, laid
 ## first across the WHOLE map in ink mode — casing must finish everywhere
 ## before any blue goes down, or tile-seam joints blotch dark over the
 ## neighbouring path's water.
 var _pass := 1
 
-## Viewport culling, the same shape BuildingVisuals uses.
-##
-## _draw walked EVERY tile on the map — twice, because the shipped style draws ink linework as
-## a second pass — and the resulting command buffer is replayed by the renderer every frame
-## whether or not _draw runs again. Measured at 13.5 ms/frame, 58% of everything the world
-## costs, for a map of which a screenful is a small fraction (owner, 25 Aug: panning is jerky).
-##
-## The margin is generous because a river is drawn from its tile CENTRE and reaches into its
-## neighbours; culling on the centre alone would clip an arm at the screen edge.
-const CULL_MARGIN := 900.0
-const ViewStream := preload("res://scripts/view_stream.gd")
-var _view := Rect2()
-
-func _process(_delta: float) -> void:
-	var view := _visible_world_rect()
-	if view.size.x <= 0.0:
-		return
-	# See view_stream.gd: `!=` repaints on any sub-pixel drift, which is every frame.
-	if not ViewStream.settled(view, _view, CULL_MARGIN):
-		_view = view
-		queue_redraw()
-
-func _visible_world_rect() -> Rect2:
-	var vp := get_viewport()
-	if vp == null:
-		return Rect2()
-	var size := vp.get_visible_rect().size
-	if size.x <= 0.0:
-		return Rect2()
-	return (vp.get_canvas_transform().affine_inverse() * Rect2(Vector2.ZERO, size)).grow(CULL_MARGIN)
+## The whole river network is ONE mesh, built on the first draw and again on a style change
+## (the colours live in its vertices), then drawn with a single call. Triangles keep their
+## order inside it, so the casing pass still lies under all the water. See RiverMeshBuilder
+## for why: as draw_line calls it was ~288,000 canvas objects a frame, enough to crash the GL
+## Compatibility renderer. The GPU clips what is off screen, so there is no view culling.
+const RiverMeshBuilder := preload("res://scripts/river_mesh_builder.gd")
+var _mesh: ArrayMesh = null
+var _built := false
+var _geo: RiverMeshBuilder = null
+var _white_tex: Texture2D = null
 
 func _ready() -> void:
 	river_properties = _load_river_properties()
-	MapStyle.style_changed.connect(queue_redraw)
+	MapStyle.style_changed.connect(_on_style_changed)
+	queue_redraw()
+
+func _on_style_changed() -> void:
+	_built = false
 	queue_redraw()
 
 func _draw() -> void:
 	if terrain_layer == null:
 		return
+	if not _built:
+		_build_mesh()
+	if _mesh != null:
+		draw_mesh(_mesh, _white_texture())
 
+func _build_mesh() -> void:
+	_built = true
+	_geo = RiverMeshBuilder.new()
 	var passes: Array = [0, 1] if MapStyle.uses_ink_linework() else [1]
-	# Empty until _process has polled once (and in tests, which never run a viewport): an empty
-	# rect means "no opinion", and every tile is drawn exactly as before.
-	var cull := _view.size.x > 0.0
 	for p in passes:
 		_pass = p
 		for coord in terrain_layer.tiles:
 			var tile_data: Dictionary = terrain_layer.tiles[coord]
 			if not tile_data.get("has_river", false):
 				continue
-			if cull and not _view.has_point(
-					terrain_layer.map_to_local(terrain_layer.map_coord_for_tile_coord(coord))):
-				continue
 			var river_type: String = str(tile_data.get("river_type", ""))
 			if river_type == "" or not river_properties.has(river_type):
 				continue
 			var river_data: Dictionary = river_properties[river_type]
 			_draw_tile_river(coord, river_data)
+	_mesh = null if _geo.is_empty() else _geo.mesh()
+	_geo = null
+
+func _white_texture() -> Texture2D:
+	if _white_tex == null:
+		var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+		img.fill(Color.WHITE)
+		_white_tex = ImageTexture.create_from_image(img)
+	return _white_tex
 
 ## Returns every river path as a world-space, sampled polyline along the exact
 ## same routes the river is drawn on (one entry per path; tiles with joints/merges
@@ -478,21 +472,57 @@ func _draw_curved_river_path(points: PackedVector2Array, point_ids: Array[String
 		draw_points[last_index] = draw_points[last_index] + _hsm_outward_direction(point_ids[point_ids.size() - 1]) * MOUTH_EXIT_EXTENSION
 
 	var tangents: Array[Vector2] = _path_tangents(draw_points, point_ids)
+	# One ribbon along the whole path, not a quad per sample: see RiverMeshBuilder.
+	var line := PackedVector2Array([draw_points[0]])
+	var widths := PackedFloat32Array([RIVER_WIDTH])
+	var flow_marks: Array = []
+	var mouth: Array = []
 	for i in range(draw_points.size() - 1):
-		var start_width: float = RIVER_WIDTH
 		var is_mouth_segment: bool = has_river_mouth and i == draw_points.size() - 2
 		var end_width: float = RIVER_MOUTH_WIDTH if is_mouth_segment else RIVER_WIDTH
-		_draw_cubic_segment(
-			draw_points[i],
-			draw_points[i + 1],
-			tangents[i],
-			tangents[i + 1],
-			POINT_TENSIONS[i],
-			POINT_TENSIONS[i + 1],
-			start_width,
-			end_width,
-			is_mouth_segment
-		)
+		var start: Vector2 = draw_points[i]
+		var end: Vector2 = draw_points[i + 1]
+		var segment_length: float = start.distance_to(end)
+		var control_a: Vector2 = start + tangents[i] * segment_length * POINT_TENSIONS[i]
+		var control_b: Vector2 = end - tangents[i + 1] * segment_length * POINT_TENSIONS[i + 1]
+		# THE MOUTH ENDS AT THE COASTLINE, it does not swim out into the bay: when the last
+		# stretch crosses into the sea it fades out there instead (_draw_mouth_segment).
+		if is_mouth_segment and _mouth_reaches_sea(start, control_a, control_b, end):
+			mouth = [start, control_a, control_b, end, RIVER_WIDTH, end_width]
+			break
+		for step in range(1, CURVE_STEPS + 1):
+			var t: float = float(step) / float(CURVE_STEPS)
+			var point: Vector2 = _cubic_bezier(start, control_a, control_b, end, t)
+			var width: float = lerpf(RIVER_WIDTH, end_width, t)
+			if step == CURVE_STEPS / 2:
+				flow_marks.append([line[line.size() - 1], point, width])
+			line.append(point)
+			widths.append(width)
+	# Where a path meets its neighbour at a tile edge both share the edge's tangent and neither
+	# is capped, so the two ribbons butt together without a seam.
+	var end_dir: Vector2 = tangents[tangents.size() - 1] if mouth.is_empty() else Vector2.ZERO
+	var cap_start := not _is_hsm(point_ids[0])
+	var cap_end := mouth.is_empty() and not _is_hsm(point_ids[point_ids.size() - 1])
+	if _pass == 0:
+		for i in widths.size():
+			widths[i] += MapStyle.river_casing_extra()
+		_geo.stroke(line, widths, MapStyle.river_casing(), false, tangents[0], end_dir,
+			cap_start, cap_end)
+	else:
+		_geo.stroke(line, widths, MapStyle.river_color(), false, tangents[0], end_dir,
+			cap_start, cap_end)
+		if MapStyle.uses_ink_linework():
+			for mark in flow_marks:
+				_draw_flow_squiggle(mark[0], mark[1], mark[2])
+	if not mouth.is_empty():
+		_draw_mouth_segment(mouth[0], mouth[1], mouth[2], mouth[3], mouth[4], mouth[5])
+
+func _mouth_reaches_sea(start: Vector2, control_a: Vector2, control_b: Vector2,
+		end: Vector2) -> bool:
+	for i in range(CURVE_STEPS + 1):
+		if _point_is_sea(_cubic_bezier(start, control_a, control_b, end, float(i) / CURVE_STEPS)):
+			return true
+	return false
 
 func _path_tangents(points: PackedVector2Array, point_ids: Array[String]) -> Array[Vector2]:
 	var tangents: Array[Vector2] = []
@@ -518,11 +548,12 @@ func _draw_bean_lake(center: Vector2, width: float, height: float, seed_text: St
 	if _pass == 0:
 		return   # lakes draw fill + shore in the water pass (no casing needed)
 	var points := _bean_lake_points(center, width, height, seed_text)
-	draw_colored_polygon(points, MapStyle.river_color())
+	_geo.polygon(points, MapStyle.river_color())
 	if MapStyle.uses_ink_linework():
-		var shore := points.duplicate()
-		shore.append(shore[0])
-		draw_polyline(shore, MapStyle.lake_shore_color(MapStyle.river_color()), MapStyle.lake_shore_width(), true)
+		var shore_widths := PackedFloat32Array()
+		shore_widths.resize(points.size())
+		shore_widths.fill(MapStyle.lake_shore_width())
+		_geo.stroke(points, shore_widths, MapStyle.lake_shore_color(MapStyle.river_color()), true)
 
 func _bean_lake_points(center: Vector2, width: float, height: float,
 		seed_text: String) -> PackedVector2Array:
@@ -535,58 +566,10 @@ func _bean_lake_points(center: Vector2, width: float, height: float,
 		points.append(center + Vector2(cos(angle) * radius_x, sin(angle) * radius_y))
 	return points
 
-func _draw_cubic_segment(
-	start: Vector2,
-	end: Vector2,
-	start_tangent: Vector2,
-	end_tangent: Vector2,
-	start_tension: float,
-	end_tension: float,
-	start_width: float,
-	end_width: float,
-	clip_at_sea: bool = false
-) -> void:
-	var segment_length: float = start.distance_to(end)
-	var control_a: Vector2 = start + start_tangent * segment_length * start_tension
-	var control_b: Vector2 = end - end_tangent * segment_length * end_tension
-	if clip_at_sea and _draw_mouth_segment(start, control_a, control_b, end, start_width, end_width):
-		return
-	var previous: Vector2 = start
-
-	for step in range(1, CURVE_STEPS + 1):
-		var t: float = float(step) / float(CURVE_STEPS)
-		var point: Vector2 = _cubic_bezier(start, control_a, control_b, end, t)
-		var width: float = lerpf(start_width, end_width, t)
-		# THE MOUTH ENDS AT THE COASTLINE, it does not swim out into the bay.
-		#
-		# A mouth is detected from the neighbouring TILE's type and then pushed
-		# MOUTH_EXIT_EXTENSION past the tile edge — but the coastline is a wiggly polygon that
-		# often cuts well inland of that edge, so the last stretch was painted on top of open
-		# water: a paler tongue of river ink crossing the sea, with its own casing cutting
-		# through the coast stroke (owner, 25 Aug). Draw the step that CROSSES the boundary and
-		# then stop: that leaves no gap, and the ≤1 sample of overlap tucks under the coast ink
-		# rather than reading as a river running out to sea.
-		var reached_sea: bool = clip_at_sea and _point_is_sea(point)
-		if _pass == 0:
-			draw_line(previous, point, MapStyle.river_casing(), width + MapStyle.river_casing_extra(), true)
-			if reached_sea:
-				# draw_line has square caps, so a clip mid-flare ends in a corner that reads as
-				# a jetty. One circle rounds it off into a mouth.
-				draw_circle(point, (width + MapStyle.river_casing_extra()) * 0.5, MapStyle.river_casing())
-		else:
-			draw_line(previous, point, MapStyle.river_color(), width, true)
-			if reached_sea:
-				draw_circle(point, width * 0.5, MapStyle.river_color())
-			if MapStyle.uses_ink_linework() and step == CURVE_STEPS / 2:
-				_draw_flow_squiggle(previous, point, width)
-		if reached_sea:
-			return
-		previous = point
-
 ## Fade bank ink before the shore and blend river water through the coast stroke
 ## into transparent sea. Vertex colours keep the transition continuous, without a cap.
 func _draw_mouth_segment(start: Vector2, control_a: Vector2, control_b: Vector2,
-		end: Vector2, start_width: float, end_width: float) -> bool:
+		end: Vector2, start_width: float, end_width: float) -> void:
 	var points := PackedVector2Array()
 	var distances := PackedFloat32Array()
 	var coast_distance := -1.0
@@ -600,7 +583,7 @@ func _draw_mouth_segment(start: Vector2, control_a: Vector2, control_b: Vector2,
 		if coast_distance < 0.0 and _point_is_sea(point):
 			coast_distance = total
 	if coast_distance < 0.0:
-		return false
+		return
 	var blend_length := maxf(end_width * 1.5, 28.0)
 	var finish := coast_distance + end_width
 	# The authored endpoint may be right on the coast; give its fade enough water.
@@ -610,9 +593,9 @@ func _draw_mouth_segment(start: Vector2, control_a: Vector2, control_b: Vector2,
 		distances.append(finish)
 	# Join the preceding bank segment without a hairline wedge at the bend.
 	if _pass == 0:
-		draw_circle(start, (start_width + MapStyle.river_casing_extra()) * 0.5, MapStyle.river_casing())
+		_geo.circle(start, (start_width + MapStyle.river_casing_extra()) * 0.5, MapStyle.river_casing())
 	else:
-		draw_circle(start, start_width * 0.5, MapStyle.river_color())
+		_geo.circle(start, start_width * 0.5, MapStyle.river_color())
 	var normals := PackedVector2Array()
 	for i in points.size():
 		var tangent := points[mini(i + 1, points.size() - 1)] - points[maxi(i - 1, 0)]
@@ -636,10 +619,9 @@ func _draw_mouth_segment(start: Vector2, control_a: Vector2, control_b: Vector2,
 				color.a = 1.0 - smoothstep(coast_distance + end_width * 0.15, finish, d)
 			colors.append(color)
 			widths.append(width * 0.5)
-		draw_polygon(PackedVector2Array([a - normals[i] * widths[0], a + normals[i] * widths[0],
-			b + normals[i + 1] * widths[1], b - normals[i + 1] * widths[1]]),
+		_geo.polygon(PackedVector2Array([a - normals[i] * widths[0], a + normals[i] * widths[0],
+			b + normals[i + 1] * widths[1], b - normals[i + 1] * widths[1]]), Color.WHITE,
 			PackedColorArray([colors[0], colors[0], colors[1], colors[1]]))
-	return true
 
 
 ## One short darker-blue dash along the flow direction, seeded per location —
@@ -656,7 +638,7 @@ func _draw_flow_squiggle(a: Vector2, b: Vector2, width: float) -> void:
 	var slide := (float(RoadHash.pick(seed + "|s", 100)) / 100.0 - 0.5) * width * 0.5
 	var dash_len := width * (0.8 + float(RoadHash.pick(seed + "|l", 100)) / 100.0 * 0.8)
 	var c := mid + perp * slide
-	draw_line(c - dir * dash_len * 0.5, c + dir * dash_len * 0.5, MapStyle.river_squiggle(), 2.0, true)
+	_geo.line(c - dir * dash_len * 0.5, c + dir * dash_len * 0.5, 2.0, MapStyle.river_squiggle())
 
 func _hsm_outward_direction(hsm: String) -> Vector2:
 	match hsm:

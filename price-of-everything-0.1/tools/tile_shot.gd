@@ -159,8 +159,13 @@ func _apply_style(style: String) -> void:
 	match style:
 		"ink":
 			MapStyle.set_midcentury(false)
-		"classic", "plate":
+			MapStyle.set_ink(true)
+		"plate":
 			MapStyle.set_midcentury(false)
+			MapStyle.set_plate(true)
+		"classic":
+			MapStyle.set_midcentury(false)
+			MapStyle.set_ink(false)
 		_:
 			MapStyle.set_midcentury(true)
 

@@ -19,7 +19,7 @@ extends Node2D
 const AuthoredMap := preload("res://scripts/authored_map.gd")
 const ViewStream := preload("res://scripts/view_stream.gd")
 
-## THE SAME BUG THE RIVERS HAD (see river_visuals.gd). _draw walked EVERY edge of the whole
+## THE SAME BUG THE RIVERS HAD (they are one mesh now: river_mesh_builder.gd). _draw walked EVERY edge of the whole
 ## 728-edge network — twice, casing under bed — and the renderer replays that command buffer
 ## every frame whether or not _draw runs again. Measured with tools/pan_profile.tscn:
 ## 2,466 draw calls and ~43 ms of a 59 ms frame at MAXIMUM ZOOM, on a camera that was not even
