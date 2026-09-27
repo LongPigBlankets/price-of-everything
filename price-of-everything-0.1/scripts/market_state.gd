@@ -454,8 +454,7 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 		# SALE price only — applied here, not in get_price(), so buy prices are unaffected.
 		# Ordinary market sales are clamped to the buy price (no arbitrage); special-order
 		# deliveries keep the raw uplifted price and add their premium downstream.
-		var _ctx := MarketRules.sale_ctx(str(gid))
-		var unit_price: float = (Modifiers.apply("market_price", str(gid), get_price(str(gid)), _ctx)
+		var unit_price: float = (MarketRules.order_price(str(gid))
 			if special_order_id != "" else MarketRules.sale_price(str(gid)))
 		var revenue: float = float(sold) * unit_price
 		items.append({"good_id": str(gid), "qty": sold, "revenue": revenue})

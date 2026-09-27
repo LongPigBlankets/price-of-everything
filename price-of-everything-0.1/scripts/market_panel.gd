@@ -11,6 +11,10 @@ const MarketRowScene: PackedScene = preload("res://scenes/market_row.tscn")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const BuildingMarketTab := preload("res://scripts/building_market_panel.gd")  # NPC buildings-for-sale tab
 const MarketRules := preload("res://scripts/market_rules.gd")
+const MarketDs2 := preload("res://scripts/market_ds2/market_ds2.gd")
+const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
+## The DS2 look's one width, every tab (UiPrefs.use_market_ds2; docs/market-ds2-plan.md §8, decision 2).
+const DS2_WIDTH := 840.0
 const HEADER_HEIGHT := 40.0
 const TAB_PRICES := "prices"
 const TAB_BUILDINGS := "buildings"
@@ -29,6 +33,11 @@ var _dragging := false
 var _drag_offset := Vector2.ZERO
 ## The sell panel (scripts/market_sell_panel.gd), made on the first Sell and laid over the panel while open.
 var _sell_panel: PanelContainer = null
+## The DS2 look (scripts/market_ds2/market_ds2.gd) while UiPrefs.use_market_ds2 is on: the exchange in its own
+## margin over the backing; today's look (the scene's MarginContainer) hidden under it, untouched.
+var _ds2: Control = null
+var _ds2_margin: MarginContainer = null
+var _ds2_backing: Control = null
 var _ledger_refreshers: Array = []  # Callables that rebuild the Transactions/Movements tabs
 # Buying now lives in the per-good "Purchase" flow on the world map (world_map.gd).
 
@@ -75,6 +84,64 @@ func _ready() -> void:
 	SpecialOrderState.orders_changed.connect(_queue_refresh)
 	visibility_changed.connect(_on_panel_visibility_changed)
 	Production.turn_processed.connect(_queue_refresh)
+	UiPrefs.market_ds2_changed.connect(func(_on: bool) -> void: _apply_look())
+	MarketState.prices_updated.connect(func() -> void:
+		if _ds2 != null and visible:
+			_ds2.call("ring"))
+	_apply_look()
+
+
+## Builds the look UiPrefs.use_market_ds2 asks for, taking down the other. With the switch off the panel is
+## today's: the scene's own MarginContainer, its stylebox, its width.
+func _apply_look() -> void:
+	var on := UiPrefs.use_market_ds2
+	if on and _ds2 == null:
+		_ds2_backing = LedgerV3.dress(self)
+		_ds2_backing.name = "MarketBacking"
+		_ds2_margin = MarginContainer.new()
+		_ds2_margin.name = "MarketDs2Margin"
+		for side in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+			_ds2_margin.add_theme_constant_override(side, LedgerV3.CONTENT_MARGIN)
+		_ds2 = MarketDs2.new()
+		_ds2.set("host", self)
+		_ds2.connect("close_requested", hide)
+		_ds2.connect("drag_input", _on_ds2_drag)
+		_ds2_margin.add_child(_ds2)
+		add_child(_ds2_margin)
+	elif not on and _ds2 != null:
+		for n in [_ds2_backing, _ds2_margin]:
+			if is_instance_valid(n):
+				remove_child(n)
+				n.queue_free()
+		_ds2 = null
+		_ds2_margin = null
+		_ds2_backing = null
+		add_theme_stylebox_override("panel", preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(8.0))
+	$MarginContainer.visible = not on
+	if _sell_panel != null:
+		_sell_panel.call("set_ds2", on)
+		move_child(_sell_panel, get_child_count() - 1)
+	if visible:
+		_centre_and_resize()
+		if _ds2 != null:
+			if str(_ds2.call("current_tab")) == "":
+				_ds2.call("show_tab", "prices")
+			_ds2.call("refresh")
+		else:
+			_on_panel_visibility_changed()
+
+
+## The DS2 look, for tests and tools (null with the switch off).
+func ds2() -> Control:
+	return _ds2
+
+
+func _on_ds2_drag(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		_dragging = event.pressed
+		_drag_offset = global_position - get_global_mouse_position()
+	elif event is InputEventMouseMotion and _dragging:
+		global_position = get_global_mouse_position() + _drag_offset
 
 func _queue_refresh(_a: Variant = null) -> void:
 	_dirty = true
@@ -88,6 +155,9 @@ func _apply_queued_refresh() -> void:
 	if not _dirty or not visible:
 		return  # hidden panels stay dirty and repaint once on show
 	_dirty = false
+	if _ds2 != null:
+		_ds2.call("refresh")
+		return
 	for row in rows:
 		if is_instance_valid(row) and row.has_method("_refresh"):
 			row._refresh()
@@ -304,7 +374,7 @@ func _centre_and_resize() -> void:
 	# Wide enough to show every column without sideways scrolling, centred on
 	# screen (capped to the viewport on narrow displays).
 	var vp := get_viewport_rect().size
-	var w := minf(1220.0, vp.x - 60.0)
+	var w := minf(DS2_WIDTH if _ds2 != null else 1220.0, vp.x - 60.0)
 	var base_h := minf(640.0, vp.y - 80.0)
 	# 30% taller than the old (base_h + 40) panel, with ALL the extra height added
 	# upward — the bottom edge stays put and the top grows up — so the rows get more room.
@@ -325,6 +395,15 @@ func _on_panel_visibility_changed() -> void:
 			_buildings_tab.clear_tile_filter(false)
 		if _sell_panel != null and _sell_panel.visible:
 			_sell_panel.call("close")
+		if _ds2 != null:
+			_ds2.call("clear_tile_filter")
+		return
+	if _ds2 != null:
+		_centre_and_resize()
+		if str(_ds2.call("current_tab")) == "":
+			_ds2.call("show_tab", "prices")
+		_dirty = false
+		_ds2.call("refresh")
 		return
 	_ensure_built()   # first open builds the cheap tab shell
 	_centre_and_resize()
@@ -487,6 +566,8 @@ func _detach(node: Node) -> void:
 
 ## The tabs' keys, in the order they show (captures and tests page through them).
 func tab_keys() -> Array:
+	if _ds2 != null:
+		return _ds2.call("tab_keys")
 	_ensure_built()
 	var keys: Array = []
 	if _tabs != null:
@@ -497,6 +578,9 @@ func tab_keys() -> Array:
 
 ## Shows the tab `key`, building it first if need be.
 func show_tab(key: String) -> void:
+	if _ds2 != null:
+		_ds2.call("show_tab", key)
+		return
 	_ensure_built()
 	var root := _tab_roots.get(key, null) as Control
 	if _tabs == null or root == null:
@@ -508,6 +592,9 @@ func show_tab(key: String) -> void:
 # Open the Market on the Buildings tab, filtered to a single tile's buildings (a temporary
 # filter that the player can clear). Called from the tile view's "Buy Buildings" button.
 func open_buildings_for_tile(tile_id: String) -> void:
+	if _ds2 != null:
+		_ds2.call("open_buildings_for_tile", tile_id)
+		return
 	_pending_buildings_tile_filter = tile_id
 	_ensure_built()   # may be opened before the market was ever shown
 	if _tabs == null:
@@ -648,6 +735,7 @@ func _refresh_ledgers(_summary: Dictionary = {}) -> void:
 func open_sell_panel(good_id: String) -> void:
 	if _sell_panel == null:
 		_sell_panel = preload("res://scripts/market_sell_panel.gd").new()
+		_sell_panel.set("ds2", _ds2 != null)
 		add_child(_sell_panel)
 		_sell_panel.connect("sold", func(_r: Dictionary) -> void: _queue_refresh())
 	_sell_panel.call("open", good_id)
@@ -655,6 +743,11 @@ func open_sell_panel(good_id: String) -> void:
 
 func sell_panel() -> PanelContainer:
 	return _sell_panel
+
+
+## Views the capture tool shows beyond the tabs (the DS2 look's hovers).
+func capture_views() -> Array:
+	return _ds2.call("capture_views") if _ds2 != null else []
 
 
 # ── Recurring orders list (Movements + Sales tabs) ───────────────────────────

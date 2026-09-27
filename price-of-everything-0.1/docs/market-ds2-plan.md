@@ -1,6 +1,6 @@
 # Market panel: how it is used, what it holds, and a DS2 arrangement
 
-Status: planning, 26 September 2026. Nothing of the DS2 look is built. One concept study is rendered for the owner (§5): `artifacts/market_ds2/market_study_v1.png`, render set `marketstudy` (seed 435) in `tools/button_mockup/cluster.html`, a study and not a game layer.
+Status: built behind `toggle market ds2` (`UiPrefs.use_market_ds2`, off by default), 27 September 2026: the numbers (§6), today's panel's fixes (§9.1) and the DS2 exchange, every tab (§9.2). The owner's decisions are in §8. Before that: planning, 26 September 2026. One concept study is rendered for the owner (§5): `artifacts/market_ds2/market_study_v1.png`, render set `marketstudy` (seed 435) in `tools/button_mockup/cluster.html`, a study and not a game layer.
 
 Read with `docs/ds2-theme.md` (the look, the kit, the method in §13 and §14) and `docs/ds2-owner-decisions.md` (settled rulings, including the new money rule under "Digital displays"). The tile view's plan (`docs/tile-view-ds2-plan.md`) and Construct's (`docs/construct-ds2-plan.md`) are the models for this one. Captures of today's panel, every tab paged top to bottom: `artifacts/market_ds2/before/`.
 
@@ -167,20 +167,50 @@ Behind `UiPrefs.use_market_ds2` (cheat `toggle market ds2`); with the flag off t
 
 Contracts kept: `MarketPanel` (tutorial spotlight, `close_market_panel`), `open_buildings_for_tile`, `BuildingsContent`, `MarketGoodDetails`, `MarketActions` and `PriceHistoryChart` (`tests/unit/test_market.gd`, `tools/trailer_launch_capture.gd`), the three `MatchState` request signals.
 
-## 8. Decisions for the owner
+## 8. Decisions (the owner, 27 September 2026)
 
-1. **Metaphor**: the exchange as studied (quote board, listing board, tickets, blotter), or changes to it.
-2. **Width**: 720 logical for every tab (proposed), against 1220 today.
-3. **Tabs**: five keys (Prices, Buildings, Special Orders, Recurring, History), merging Sales, Movements and Transactions by what they are (standing orders, a record). Should moves stay in the market at all, or go to the transport panel?
-4. **The board**: two columns of tiles (studied), or one row per good at the same width.
-5. **Your cost and profit**: a lamp on the tile and the figures on the slip (studied), or kept as columns.
-6. **Prices on the board**: at the market (today), or delivered to your nearest port with freight and port charge on the slip.
-7. **The impact ladder**: one meter on the slip with its rung lit (studied), replacing the ten columns and their toggle.
-8. **The bell**: an ornament with a hover and a ring as prices are set, or cut. **The ticker**: on and scrolling, static, or cut.
-9. **Hand signal cards**: set aside, or as decoration on the Buy and Sell keys.
-10. **The slip**: opens under its tile (studied, as today's row expansion), or slides in as a sheet.
-11. **The row's Sell key** (dead today): wire it to the stock's Move or Sell sheet, or remove it.
-12. **Recurring buys**: give them Cancel in Recurring (a missing action, not a new one).
-13. **Buying a lot**: the guarded key per lot replacing the confirm dialog and its "Do not show again" (studied).
-14. **Lots grouped under their owner** (studied), dropping the owner from every row.
-15. **Bulk sell**: a sell ticket with the engine's preview before the key, and the guarded key for it.
+1. **Metaphor**: DECIDED, the commodities exchange as studied: the nameplate, the bell, the ticker and the dot matrix key strip.
+2. **Width**: DECIDED, **840 logical for every tab** (`MarketDs2.WIDTH`, `market_panel.gd` `DS2_WIDTH`), against 1220 today. A test holds every tab, the open slip and the sell panel to it.
+3. **Tabs**: DECIDED, as they are, the five: Prices, Buildings, Special Orders, Recurring, History. Moves stay in the market (Recurring and History).
+4. **The board**: DECIDED, **one row per good**, not tiles: modules in the ledger's language with sortable headings. Columns: the good in its well and its name (the arrow lamp and a word under it); Buy and Sell (raw; Sell at the sale price); Sold last turn; Your cost and Profit; the current Impact. The row opens its slip, which carries the Sell and Buy keys with Move and Build more (the owner allowed "a Sell key and a Buy key, or open the slip"; the slip keeps the row inside the width).
+5. **Your cost and profit**: DECIDED, **no lamps**: LED screens lit green, amber or red. Profit is green above break even, red below it, amber within **2% of the sale price** (at least a penny) either way (`MarketRules.BREAK_EVEN_SHARE`, `profit_tone`). Your cost is green below the sale price, red above it (amber only at the price itself, `cost_tone`). Profit is the sale price less your cost (`board_row`), blank for a good you don't make.
+6. **Prices on the board**: DECIDED, **raw**, no transport: `MarketRules.buy_price` and `sale_price`. What a sale pays is the sale price; its charges are the sell panel's.
+7. **The impact**: DECIDED, **one column showing the current impact, underlined**, its hover a dot card with the good's impact ladder (`MarketRules.impact_ladder`). The ten columns and their toggle go (in DS2; today's look keeps them).
+8. **Bell and ticker**: DECIDED, **kept**. The bell rings as a turn's prices are set and its hover says "Prices set for turn N."; the ticker scrolls the goods on the move (▲ ▼) and orders due within five turns (●), words and marks only.
+9. **Hand signal cards**: DECIDED, kept as a decoration **for now**; not built yet (nothing on the keys).
+10. **The slip**: DECIDED, opens **inline under its row**. Its chart's hover shows that turn's price with the units you sold and bought that turn (`MarketRules.history`).
+11. **The Sell key**: DECIDED, opens the **sell panel**: every tile that holds or makes the good with a tick each and Select all; all from each tile, everything but X, or only X per tile; **one off (default) or recurring**; a live preview from `MarketRules.sell_quote`, per tile and in total; a **guarded Confirm sale key**. One off sells now (`sell_all_to_market`, the queue_sell path); recurring sets up the sale for the chosen tiles (`add_recurring_bulk_sell`, sold each turn in PROCESS). Both looks.
+12. **Recurring**: DECIDED, every standing order with **Cancel**, recurring buys included. Both looks (today's in Transactions).
+13. **Buying a lot**: DECIDED, a **guarded Buy key per lot**, replacing the confirm dialog in DS2.
+14. **Lot grouping**: **PENDING**. Until the owner decides, the lots are one list with an **Owner column**, sortable by building, owner or price.
+15. **Bulk sell**: DECIDED, in the sell panel: bulk sell is the sell panel for one good. The Sales tab's form is gone from today's look too.
+
+## 9. What is built
+
+### 9.1 Today's panel (both looks)
+
+- The Sell column is `MarketRules.sale_price`; its bracket and the buy's are the engine's impact free prices; the arrow is `MarketState.price_trend`.
+- A row's Sell key opens the sell panel (`scripts/market_sell_panel.gd`, laid over the market until Back). The Sales tab lists recurring sales only; its bulk form moved into the sell panel.
+- Transactions: a Value column (each row's booked value) and Cancel on every recurring sale, bulk sale and buy.
+
+### 9.2 The exchange (DS2, `toggle market ds2`)
+
+| Part | Where | Reused / new |
+|---|---|---|
+| Backing, content margin, seam, sort marks, search screen, plastic case, modules, wells, captions | `ledger_v3.gd`, `tvp_v3/buildings_parts.gd` | reused |
+| Nameplate (MARKET, black enamel in brass), exchange bell, arrow lamp (up green, down red; steady is `lamp_off`) | render set `marketparts`, seed 450: `market_nameplate`, `market_bell`, `lamp_arrow_up`, `lamp_arrow_down`; `scripts/market_ds2/parts.gd` | new |
+| Key bed and the strip of figures over five latching keys, the ticker | `market_ds2.gd` (the tile view's key bed pattern, `LatchKey`, `DotMatrix`) | reused parts; ▲ ▼ added to the dot matrix font |
+| Money screens under the display rule (the point in its own cell, five cells) | `bdp_v3_led.gd` `point_cell` (off by default, so every other panel is unchanged), `money_figure.gd` `display()` | kit change, opt in |
+| Prices: rows, sort, filters, impact card, the slip (chart recorder with its hover readout, impact meter, keys) | `prices_tab.gd`, `slip.gd` | new; dot card reused |
+| Sell panel's skin: a sheet of the backing, quantity and one off keys on the key bed, a module a place with a latching Sell key, totals, the guarded key | `sell_skin.gd` | new; guard key reused |
+| Buildings: lots with emblem, place, owner, output, a red whole pound price and a guarded Buy key; the tile tag; Show more (40 at a time) | `lots_tab.gd`; `building_market_panel.gd` `lots()`, `buy_lot()` | new; the v2 tab's data and buy, made static |
+| Special Orders (tickets: target on the pill, delivered on an LED meter, turns left on a drum, premium, bonus from `SpecialOrderState.premium_quote`), Recurring (Cancel), History (the blotter with values) | `book_tabs.gd` | new |
+
+Captures: `tools/market_ds2_shot.tscn` (`MARKET_SHOT_DIR`, `MARKET_SHOT_LOOKS=v2,ds2`): every tab paged, the sell panel in each mode, one off and recurring, the cover lifted, the impact card and the chart hover, both looks. Tests: `tests/unit/test_market_rules.gd`, `test_market_panel.gd`, `test_market_ds2.gd`.
+
+### 9.3 Left
+
+- The owner's rounds on the look; a first standard once approved (Phase 6).
+- Lot grouping (decision 14), hand signal cards (decision 9).
+- Telemetry counters (Phase 0); lot names through `BuildingNaming.family_name`; `MatchState.buy_building` shared with the tile view and Building Detail (and the tutorial's purchase gate).
+- The lamp overlay (`BdpV3Light`) is not applied to the exchange yet, as on the ledger.

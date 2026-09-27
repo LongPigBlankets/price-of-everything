@@ -47,6 +47,13 @@ static func sale_price(good_id: String) -> float:
 	return MarketState.get_sale_price(good_id, sale_ctx(good_id))
 
 
+## What a unit delivered to a special order is paid before the order's premium: the market price with its
+## uplifts, not clamped to the buy price (the premium pays for the fulfilment). execute_sale prices an order's
+## units with it.
+static func order_price(good_id: String) -> float:
+	return Modifiers.apply("market_price", good_id, MarketState.get_price(good_id), sale_ctx(good_id))
+
+
 ## What a unit costs to buy at the market, before freight and the port charge: the raw price on the board.
 static func buy_price(good_id: String) -> float:
 	return MarketState.get_buy_price(good_id)
@@ -336,3 +343,66 @@ static func sell_quote(good_id: String, tiles: Array, mode: String, qty: int) ->
 		by_tile[tile] = line
 	return {"good_id": good_id, "unit_price": unit, "params": params, "mode": mode, "qty": qty,
 		"tiles": lines, "by_tile": by_tile, "total": total}
+
+
+# --- The head: the key strip and the ticker -------------------------------------------------
+
+## The goods whose price is moving, among `goods` (ids): [{good_id, name, dir}], rising first, then falling,
+## each by name. The Prices key's figure and the ticker both read it, so they agree.
+static func movers(goods: Array) -> Array:
+	var up: Array = []
+	var down: Array = []
+	for g: Variant in goods:
+		var gid := str(g)
+		var dir := int(MarketState.price_trend(gid).dir)
+		if dir == 0:
+			continue
+		var row := {"good_id": gid, "name": Catalog.get_display_name(gid), "dir": dir}
+		(up if dir > 0 else down).append(row)
+	var by_name := func(a: Dictionary, b: Dictionary) -> bool: return str(a.name) < str(b.name)
+	up.sort_custom(by_name)
+	down.sort_custom(by_name)
+	return up + down
+
+
+## Special orders falling due within `turns` turns (this one included): [{order, good_id, name, due}], soonest
+## first.
+static func orders_due(turns: int) -> Array:
+	var now := int(TurnManager.current_turn)
+	var out: Array = []
+	for o: Dictionary in SpecialOrderState.get_active_orders():
+		var due := int(o.get("expires_turn", 0))
+		if due >= now and due - now < turns:
+			var gid := str(o.get("good_id", ""))
+			out.append({"order": o, "good_id": gid, "name": Catalog.get_display_name(gid), "due": due})
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a.due) < int(b.due) if int(a.due) != int(b.due) else str(a.name) < str(b.name))
+	return out
+
+
+## The standing orders the Recurring tab lists: recurring sales, bulk sales and buys (with their Cancel),
+## and recurring moves.
+static func standing_orders() -> Array:
+	var rows: Array = MatchState.get_recurring_transaction_rows()
+	for m: Dictionary in TransportState.recurring_moves:
+		var goods: Dictionary = m.get("goods", {})
+		for gid: Variant in goods:
+			rows.append({"type": "Move", "sub": "move", "entry": m, "good": Catalog.get_display_name(str(gid)),
+				"good_id": str(gid), "qty": int(goods[gid]), "from": place_name(str(m.get("source", ""))),
+				"to": place_name(str(m.get("dest", ""))), "turn_started": int(m.get("turn_started", 0))})
+	return rows
+
+
+## Every one off buy, sale and move, newest first: [{type, from, to, good, qty, value, turn_started,
+## turn_ended}] (value -1 where none was booked, as for a move).
+static func blotter() -> Array:
+	var rows: Array = MatchState.get_oneoff_transaction_rows() + TransportState.get_oneoff_move_rows()
+	var indexed: Array = []
+	for i in rows.size():
+		indexed.append([i, rows[i]])
+	indexed.sort_custom(func(a: Array, b: Array) -> bool:
+		var ta := int((a[1] as Dictionary).get("turn_started", 0))
+		var tb := int((b[1] as Dictionary).get("turn_started", 0))
+		return ta > tb if ta != tb else int(a[0]) > int(b[0]))
+	return indexed.map(func(p: Array) -> Dictionary: return p[1])
+

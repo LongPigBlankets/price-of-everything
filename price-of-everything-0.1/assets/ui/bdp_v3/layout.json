@@ -1739,5 +1739,32 @@
   ],
   "colour": "red",
   "icon": "boot"
+ },
+ "market_nameplate": {
+  "size": [
+   288,
+   114
+  ],
+  "margin": 16,
+  "plate": [
+   16,
+   16,
+   256,
+   82
+  ]
+ },
+ "market_bell": {
+  "size": [
+   128,
+   128
+  ],
+  "radius": 48
+ },
+ "lamp_arrow": {
+  "size": [
+   112,
+   112
+  ],
+  "bezel": 44
  }
 }
