@@ -585,12 +585,7 @@ func _process_production() -> void:
 		var active_recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
 		# A paused (mothballed) building keeps its upkeep but carries no workforce.
 		var iid_cost := str(building.get("instance_id", ""))
-		var labour: float = 0.0 if BuildingWorks.is_building_paused(iid_cost) else _calculate_labour_cost(building, active_recipe)
-		# "Worker pay while not running": a building that produced NOTHING this turn pays its
-		# workforce at the policy rate. Keyed strictly on having run — a derated building did
-		# run, so it pays in full and its labour still reaches CostSolver at the true figure.
-		if labour > 0.0 and not bool(last_turn_run.get(iid_cost, false)):
-			labour *= LabourState.idle_labour_pay_share
+		var labour: float = labour_charge(building, bool(last_turn_run.get(iid_cost, false)), active_recipe)
 		var total_cost: float = maint + labour
 		MatchState.add_money(-total_cost)
 		summary.maintenance_paid += maint
@@ -1755,6 +1750,20 @@ func _inbound_transport_per_unit(tile_id: String, good_id: String) -> float:
 		return 0.0
 	return float(rec.get("cost", 0.0)) / qty
 
+## What a building's workforce is paid this turn: its labour cost (_calculate_labour_cost), nothing while it is
+## paused (a mothballed building keeps its upkeep but carries no workforce), and, when it produced nothing
+## (`ran` false), the "worker pay while not running" share of it. Keyed strictly on having run: a derated
+## building did run, so it pays in full and its labour still reaches CostSolver at the true figure. The one
+## figure the turn charges (maintenance_labour), the cash forecast quotes (CashCommitments) and the People
+## panel shows (labour_overview).
+func labour_charge(building: Dictionary, ran: bool, recipe: Dictionary = {}) -> float:
+	if BuildingWorks.is_building_paused(str(building.get("instance_id", ""))):
+		return 0.0
+	var labour: float = _calculate_labour_cost(building, recipe)
+	if labour > 0.0 and not ran:
+		labour *= LabourState.idle_labour_pay_share
+	return labour
+
 func _calculate_labour_cost(building: Dictionary, recipe: Dictionary = {}) -> float:
 	# While retooling, a building pays only a reduced fraction of its base labour and
 	# skips the usual modifier factor (spec §7.3).
@@ -1767,14 +1776,10 @@ func _calculate_labour_cost(building: Dictionary, recipe: Dictionary = {}) -> fl
 # grown wage rates x headcount x the level labour multiplier. This is the "100% base"
 # that every discount/surcharge is measured against.
 func _base_labour_cost(building: Dictionary, recipe: Dictionary = {}) -> float:
-	var bdata: Dictionary = Catalog.get_building(building.get("building_id", ""))
-	var rdata: Dictionary = recipe if not recipe.is_empty() else Catalog.get_recipe(str(building.get("recipe_id", "")))
-	var recipe_unskilled: int = int(rdata.get("labour_unskilled_required", -1))
-	var recipe_skilled: int = int(rdata.get("labour_skilled_required", -1))
-	var recipe_high_skilled: int = int(rdata.get("labour_h_skilled_required", -1))
-	var unskilled: int = recipe_unskilled if recipe_unskilled >= 0 else int(bdata.get("labour_unskilled_required", EconomyConfig.STUB_UNSKILLED_PER_BUILDING))
-	var skilled: int = recipe_skilled if recipe_skilled >= 0 else int(bdata.get("labour_skilled_required", EconomyConfig.STUB_SKILLED_PER_BUILDING))
-	var high_skilled: int = recipe_high_skilled if recipe_high_skilled >= 0 else int(bdata.get("labour_h_skilled_required", EconomyConfig.STUB_HIGH_SKILLED_PER_BUILDING))
+	var heads := labour_heads(building, recipe)
+	var unskilled: int = heads.x
+	var skilled: int = heads.y
+	var high_skilled: int = heads.z
 	# Wage rates compound every turn (EconomyConfig.LABOUR_*_GROWTH), so the same
 	# building costs more to staff as the game goes on.
 	var base_cost: float = (
@@ -1783,6 +1788,31 @@ func _base_labour_cost(building: Dictionary, recipe: Dictionary = {}) -> float:
 		+ high_skilled * _grown_labour_rate(EconomyConfig.LABOUR_HIGH_SKILLED_RATE, EconomyConfig.LABOUR_HIGH_SKILLED_GROWTH)
 	)
 	return base_cost * BuildingLevels.mult("labour", int(building.get("level", 1)))
+
+## A building's workforce by kind (unskilled, skilled, high skilled): its recipe's columns, else its building's,
+## else the stub. The headcount its labour cost is priced on (_base_labour_cost).
+func labour_heads(building: Dictionary, recipe: Dictionary = {}) -> Vector3i:
+	var bdata: Dictionary = Catalog.get_building(building.get("building_id", ""))
+	var rdata: Dictionary = recipe if not recipe.is_empty() else Catalog.get_recipe(str(building.get("recipe_id", "")))
+	var recipe_unskilled: int = int(rdata.get("labour_unskilled_required", -1))
+	var recipe_skilled: int = int(rdata.get("labour_skilled_required", -1))
+	var recipe_high_skilled: int = int(rdata.get("labour_h_skilled_required", -1))
+	var unskilled: int = recipe_unskilled if recipe_unskilled >= 0 else int(bdata.get("labour_unskilled_required", EconomyConfig.STUB_UNSKILLED_PER_BUILDING))
+	var skilled: int = recipe_skilled if recipe_skilled >= 0 else int(bdata.get("labour_skilled_required", EconomyConfig.STUB_SKILLED_PER_BUILDING))
+	var high_skilled: int = recipe_high_skilled if recipe_high_skilled >= 0 else int(bdata.get("labour_h_skilled_required", EconomyConfig.STUB_HIGH_SKILLED_PER_BUILDING))
+	return Vector3i(unskilled, skilled, high_skilled)
+
+## The company's workforce by kind: every player building's headcount (labour_heads), none for a paused one,
+## which carries no workforce. For the People panel's doors.
+func labour_headcount() -> Dictionary:
+	var total := Vector3i.ZERO
+	for building in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(building):
+			continue
+		if BuildingWorks.is_building_paused(str(building.get("instance_id", ""))):
+			continue
+		total += labour_heads(building, Catalog.get_recipe(str(building.get("recipe_id", ""))))
+	return {"unskilled": total.x, "skilled": total.y, "high_skilled": total.z}
 
 # Every percentage labour modifier applies ADDITIVELY to the 100% base — they no
 # longer compound. Research head-count trims (e.g. Lights-Out Automation, the
@@ -1796,18 +1826,19 @@ func labour_cost_factor(building: Dictionary, policy_delta_override: float = INF
 	var policy_delta: float = LabourState.workforce_labour_cost_delta() if is_inf(policy_delta_override) else policy_delta_override
 	return maxf(EconomyConfig.LABOUR_FACTOR_MIN, 1.0 + headcount_delta + slider_delta + policy_delta)
 
-# Aggregate labour snapshot for the People panel's Labour indicator: current £/turn,
-# the effective % of base, the next-turn direction (from workforce-policy accrual),
-# and the 10-turn estimate. Buildings are held constant; only the workforce-policy
-# labour delta is projected forward.
+# Aggregate labour snapshot for the People panel's Labour indicator. `current` is what the turn charges: each
+# building's labour_charge, as maintenance_labour pays it (paused buildings carry no workforce, a building that
+# did not run last turn is paid at the idle share, a retooling one its reduced fraction). `base` is the same
+# workforce before any percentage modifier (the "100% of base"), so `factor_pct` is the modifiers' net effect.
+# `next_turn` and `est_10_turns` hold the buildings and their run state constant and project only the
+# workforce-policy labour delta forward. `at_floor`: some building's factor is at EconomyConfig.LABOUR_FACTOR_MIN.
 func labour_overview() -> Dictionary:
 	var base_total := 0.0
 	var current := 0.0
 	var next_turn := 0.0
 	var est_ten := 0.0
 	var at_floor := false
-	var slider_delta: float = LabourState.labour_multiplier - 1.0
-	var policy_now: float = LabourState.workforce_labour_cost_delta()
+	var has_buildings := false
 	var policy_next: float = LabourState.projected_workforce_labour_delta(1)
 	var policy_ten: float = LabourState.projected_workforce_labour_delta(10)
 	for building in BuildingState.buildings.values():
@@ -1817,16 +1848,23 @@ func labour_overview() -> Dictionary:
 		var b_base: float = _base_labour_cost(building, active_recipe)
 		if b_base <= 0.0:
 			continue
-		var bid: String = str(building.get("building_id", ""))
-		var hc: float = float(Modifiers.resolve_pct("labour_headcount", bid, {"building_id": bid}).get("net", 0.0)) / 100.0
-		var floor_min: float = EconomyConfig.LABOUR_FACTOR_MIN
-		var raw_now: float = 1.0 + hc + slider_delta + policy_now
-		if raw_now <= floor_min + 0.000001:
+		has_buildings = true
+		var iid := str(building.get("instance_id", ""))
+		if BuildingWorks.is_building_paused(iid):
+			continue
+		var ran := bool(last_turn_run.get(iid, false))
+		var share: float = 1.0 if ran else LabourState.idle_labour_pay_share
+		var charge: float = labour_charge(building, ran, active_recipe)
+		base_total += b_base * share
+		current += charge
+		if BuildingWorks.is_retooling(iid):
+			next_turn += charge
+			est_ten += charge
+			continue
+		if labour_cost_factor(building) <= EconomyConfig.LABOUR_FACTOR_MIN + 0.000001:
 			at_floor = true
-		base_total += b_base
-		current   += b_base * maxf(floor_min, raw_now)
-		next_turn += b_base * maxf(floor_min, 1.0 + hc + slider_delta + policy_next)
-		est_ten   += b_base * maxf(floor_min, 1.0 + hc + slider_delta + policy_ten)
+		next_turn += b_base * share * labour_cost_factor(building, policy_next)
+		est_ten += b_base * share * labour_cost_factor(building, policy_ten)
 	var factor_pct: float = (current / base_total * 100.0) if base_total > 0.0 else 100.0
 	return {
 		"base": base_total,
@@ -1834,7 +1872,7 @@ func labour_overview() -> Dictionary:
 		"next_turn": next_turn,
 		"est_10_turns": est_ten,
 		"factor_pct": factor_pct,
-		"has_buildings": base_total > 0.0,
+		"has_buildings": has_buildings,
 		"at_floor": at_floor,
 	}
 

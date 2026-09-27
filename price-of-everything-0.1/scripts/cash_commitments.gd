@@ -157,8 +157,7 @@ static func snapshot() -> Dictionary:
 					elif qty > 0:
 						transit.append({"destination_tile": dest, "good_id": gid, "qty": qty})
 		maintenance += Production._calculate_maintenance_cost(b)
-		if not BuildingWorks.is_building_paused(iid):
-			labour += Production._calculate_labour_cost(b, recipe) * (1.0 if run else LabourState.idle_labour_pay_share)
+		labour += Production.labour_charge(b, run, recipe)
 	for item: Dictionary in outputs:
 		_land(stock, transit, {"good_id": item.good, "qty": item.qty}, str(item.tile))
 	for move: Dictionary in TransportState.recurring_moves:
