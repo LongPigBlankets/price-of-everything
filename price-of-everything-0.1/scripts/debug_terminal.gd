@@ -24,7 +24,7 @@ extends CanvasLayer
 ##   toggle tvp v3                    switch the tile view back to v2 (v3 is default), and again to return
 ##   toggle bdp v3                    switch building detail back to v2 (v3 is default), and again to return
 ##   toggle ledger ds2                switch the building ledger back to v2 (DS2 is default), and again to return
-##   toggle people ds2                switch the People panel to its DS2 look (in progress), and back
+##   toggle people ds2                switch the People panel back to v2 (DS2 is default), and again to return
 ##   toggle upgrade ds2               switch the upgrade panel back to v2 (DS2 is default), and again to return
 ##   toggle routes ds2                switch Building Detail's input and output sheets back to v2 (DS2 is default), and again to return
 ##   research all                     unlock every research node (alias of `unlock all`)

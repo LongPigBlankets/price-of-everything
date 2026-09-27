@@ -25,6 +25,7 @@ func _ready() -> void:
 	await _settle(5)
 
 	var hud: Control = game.get_node("UILayer/HUD")
+	UiPrefs.set_use_people_ds2(false)  # this tool shows today's (v2) panel
 	var people: Control = load("res://scripts/people_panel.gd").new()
 	hud.add_child(people)
 	people.custom_minimum_size = Vector2(980, 660)
