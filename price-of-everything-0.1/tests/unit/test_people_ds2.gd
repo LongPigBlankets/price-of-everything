@@ -190,6 +190,27 @@ func _test_people_ds2_advisors() -> void:
 	_check(bool(tab.call("sheet_open")) and pp.find_child("Candidate_gerald", true, false) != null
 		and pp.find_child("Boardroom", true, false) != null,
 		"people ds2 advisors: Add advisor slides the picker over the table, the table kept")
+	_check((pp.find_child("Candidates", true, false) as GridContainer).columns == 2, "people ds2 advisors: the picker files candidates two to a row")
+	tab.call("_set_view", {"mode": "detail", "sel_id": "tom", "back": "roster"})
+	await get_tree().process_frame
+	var cols: Control = pp.find_child("DossierColumns", true, false)
+	_check(cols != null and cols.get_child_count() == 2 and cols.get_child(0).find_child("AdvisorFinancialPreview", true, false) != null
+		and cols.get_child(1).find_child("Skills", true, false) != null, "people ds2 advisors: the dossier in two columns, who and cost left, effects and skills right")
+	var guard: Control = pp.find_child("DismissKey", true, false)
+	_check(guard != null and str(guard.get("layer")) == "guard_dismiss" and not bool(guard.call("is_open")),
+		"people ds2 advisors: Dismiss is a guarded cap with its boot, the cover down")
+	var fired := [false]
+	guard.connect("pressed", func() -> void: fired[0] = true)
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.position = guard.size * 0.5
+	click.pressed = true
+	guard.call("_gui_input", click)
+	click.pressed = false
+	guard.call("_gui_input", click)
+	_check(bool(guard.call("is_open")) and not fired[0] and AdvisorState.get_advisor_in_seat("coo") == "tom",
+		"people ds2 advisors: the first click lifts Dismiss's cover and dismisses nobody")
+	guard.call("drop")
 	tab.call("_set_view", {"mode": "detail", "sel_id": "gerald", "back": "picker"})
 	await get_tree().process_frame
 	var confirm := pp.find_child("AdvisorHireAssignButton", true, false) as Button

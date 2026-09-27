@@ -2185,7 +2185,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy.
+  // tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -6246,6 +6246,59 @@ async function exportLayers() {
       await post(name + '_shadow', frame2d(AS, AS, (g) => drawIconShadows(g, AS, AS, [{ height, draw: (tg, col) => stamp(tg, img, o, o, icon, icon, col) }])));
     }
     layout.people_auto = { size: [AS, AS], icon };
+  });
+
+  // The dossier's sheet: dark gunmetal (Building Detail's dark plate, larger), a silver screw in each corner, so the
+  // picker's and the dossier's print is white on dark (the owner found white on the light steel sheet too faint).
+  // The game crops it from the top and takes its foot whole.
+  const PEOPLE_SHEET = { W: 1440, H: 1900, M: 12, foot: 160, screw: 22 };
+  if (want('peoplesheet')) await withSeed(444, async () => {
+    const { W, H, M, foot, screw: si } = PEOPLE_SHEET, g = new THREE.Group(), pw = W - 2 * M, ph = H - 2 * M;
+    const plate = new THREE.Mesh(extrude(rrShape(pw, ph, 12), 4, 4.5, 3.6, 6),
+      [plateMaterial(pw, ph, { icons: [], buttons: [], screws: [[si, si], [pw - si, si], [si, ph - si], [pw - si, ph - si]].map(([x, y]) => ({ x, y })), base: DARK_STEEL_CANVAS, rub: '130,138,150' }), MAT.plateSide]);
+    plate.castShadow = plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
+    for (const [x, y] of [[si, si], [pw - si, si], [si, ph - si], [pw - si, ph - si]]) {
+      const sc = silverScrew(); sc.remove(sc.children[sc.children.length - 1]); sc.position.set(M + x - 15, PLATE_TOP, M + y - 15); g.add(sc);
+    }
+    g.add(shadowCatcher(W, H, W / 2, H / 2));
+    await post('people_sheet_dark', stage([0, 0, W, H], [g]).grab());
+    layout.people_sheet_dark = { size: [W, H], margin: M, foot, screw: si };
+  });
+
+  // Dismiss: a guarded cap lit red with a work boot's silhouette, under the hinged clear cover, framed exactly as the
+  // footer's guard_sell (the button at the same place in a narrower frame), so scripts/ds2/guard_key.gd draws it.
+  const BOOT = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const g = c.getContext('2d'); g.fillStyle = '#fff';
+    g.beginPath();
+    g.moveTo(58, 26); g.lineTo(132, 26); g.lineTo(136, 128);                      // the shaft's back and front
+    g.quadraticCurveTo(150, 140, 186, 150); g.quadraticCurveTo(232, 160, 236, 196); // the vamp to the toe
+    g.lineTo(236, 214); g.lineTo(40, 214); g.lineTo(40, 170);                       // the sole to the heel
+    g.quadraticCurveTo(46, 150, 54, 138); g.closePath(); g.fill();
+    g.fillRect(34, 214, 206, 18);                                                   // the welt and sole
+    g.globalCompositeOperation = 'destination-out';
+    g.fillRect(52, 40, 86, 10);                                                     // the collar's line
+    for (const y of [70, 92, 114]) { g.beginPath(); g.moveTo(104, y); g.lineTo(134, y - 6); g.lineWidth = 7; g.strokeStyle = '#000'; g.stroke(); }
+    g.fillRect(30, 206, 214, 6);                                                    // the sole's seam
+    g.fillRect(84, 214, 12, 18); g.fillRect(150, 214, 12, 18); g.fillRect(200, 214, 12, 18);  // the tread
+    g.globalCompositeOperation = 'source-over';
+    return c;
+  })();
+  if (want('peopleguard')) await withSeed(445, async () => {
+    const FW = 240, FH = 150, S = 100, BY = (FH - S) / 2, HEAD = 64, x = 70, group = new THREE.Group();
+    const gb = guardButton(S, BOOT, 0xe8281e); gb.position.set(x + S / 2, PLATE_TOP, BY + S / 2); group.add(gb);
+    const catcher = new THREE.Mesh(new THREE.PlaneGeometry(FW, FH).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: 0.5 }));
+    catcher.position.set(FW / 2, PLATE_TOP + 0.4, FH / 2); catcher.receiveShadow = true; group.add(catcher);
+    const sf = stage([0, -HEAD, FW, FH], [group]);
+    catcher.visible = false; gb.userData.cover.visible = false;
+    await post('guard_dismiss', sf.grab());
+    const cap = gb.userData.cap, y = cap.position.y; cap.position.y = y - 3.5; await post('guard_dismiss_pressed', sf.grab()); cap.position.y = y;
+    catcher.visible = true;
+    gb.traverse((o) => { if (o.isMesh && !gb.userData.cover.getObjectById(o.id)) o.visible = false; });
+    gb.userData.cover.visible = true; gb.userData.cover.traverse((o) => { o.visible = true; });
+    await post('guard_dismiss_cover', sf.grab());
+    gb.userData.cover.rotation.x = -COVER_OPEN; await post('guard_dismiss_cover_open', sf.grab()); gb.userData.cover.rotation.x = 0;
+    layout.guard_dismiss = { size: [FW, FH + HEAD], head: HEAD, button: [x, BY + HEAD, S, S], colour: 'red', icon: 'boot' };
   });
 
   // --- the tile view's cabinet (docs/tile-view-ds2-plan.md §9): the stainless door with its black iron pipe

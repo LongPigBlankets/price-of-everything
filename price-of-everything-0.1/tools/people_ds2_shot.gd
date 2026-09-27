@@ -101,6 +101,12 @@ func _ds2_views(panel: Control) -> void:
 	tab.call("_set_view", {"mode": "detail", "sel_id": "tom", "back": "roster"})
 	await _settle(30)
 	await _shot(panel, "people_ds2_dossier_seated")
+	var guard: Control = panel.find_child("DismissKey", true, false)
+	if guard != null:
+		guard.call("lift")
+		await _settle(6)
+		await _shot(panel, "people_ds2_dismiss_lifted")
+		guard.call("drop")
 	tab.call("_set_view", {"mode": "roster"})
 	await _settle(8)
 

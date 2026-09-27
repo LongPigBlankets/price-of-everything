@@ -1715,5 +1715,29 @@
    122,
    334
   ]
+ },
+ "people_sheet_dark": {
+  "size": [
+   1440,
+   1900
+  ],
+  "margin": 12,
+  "foot": 160,
+  "screw": 22
+ },
+ "guard_dismiss": {
+  "size": [
+   240,
+   214
+  ],
+  "head": 64,
+  "button": [
+   70,
+   89,
+   100,
+   100
+  ],
+  "colour": "red",
+  "icon": "boot"
  }
 }

@@ -27,6 +27,7 @@ const CreamKey := preload("res://scripts/ds2/cream_key.gd")
 const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
 const Key := preload("res://scripts/bdp_v3_key.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
+const GuardKey := preload("res://scripts/ds2/guard_key.gd")
 
 ## The body keeps the scroll rail's room whether it shows or not, so nothing reflows when it does.
 const RAIL_ROOM := 24
@@ -58,9 +59,18 @@ const FOLDER := {"margin": 18.0, "size": Vector2(208, 170)}
 const STAR := {"size": 44.0, "star": 30.0}
 ## The dossier sheet (Building Detail's steel sheet) and how long it takes to slide in.
 const SHEET_PAD := 18
+## The dark sheet's render (layout.json people_sheet_dark): its shadow room and the foot drawn whole.
+const SHEET_DARK := {"margin": 12.0, "foot": 160.0}
+## The key bed round the dossier's seat keys (the tile view's), and the two columns' gap.
+const KEYBED: Texture2D = preload("res://assets/ui/bdp_v3/tile_keybed.png")
+const KEYBED_MARGIN := 14.0
+const KEYBED_CORNER := 40.0
+const COLUMN_GAP := 18
 const SLIDE_SECONDS := 0.26
 ## How long an armed Dismiss key waits for its second press.
 const DISARM_SECONDS := 4.0
+## The Dismiss guard's cap.
+const DISMISS_PX := 46.0
 
 var _scroll: ScrollContainer
 var _sheet: PanelContainer
@@ -336,8 +346,9 @@ func _make_sheet() -> PanelContainer:
 	sheet.add_theme_stylebox_override("panel", pad)
 	sheet.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	sheet.mouse_filter = Control.MOUSE_FILTER_STOP
+	# Dark gunmetal (people_sheet_dark), so the print on it is white on dark: cropped from the top, its foot whole.
 	sheet.draw.connect(func() -> void:
-		Section.Nine.paint(sheet, Section.SHEET, Rect2(Vector2.ZERO, sheet.size).grow(Section.SHEET_MARGIN), Section.SHEET_CORNER_TEXELS))
+		Parts.crop_v(sheet, Parts.tex("people_sheet_dark"), Rect2(Vector2.ZERO, sheet.size), SHEET_DARK.margin, SHEET_DARK.foot))
 	sheet.visible = false
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 10)
@@ -405,6 +416,8 @@ func sheet_open() -> bool:
 
 # --- the picker: candidates as files -----------------------------------------------------------
 
+## The candidates two to a row on the dark sheet, each on a raised plastic module: portrait, name, stars, the
+## pitch, the salary and (hiring for a seat) the net.
 func _build_picker() -> void:
 	var pool := _picker_candidates()
 	_sheet_head.add_child(Parts.heading("Available advisors"))
@@ -427,52 +440,57 @@ func _build_picker() -> void:
 	if pool.is_empty():
 		_sheet_root.add_child(Parts.body("No candidates yet. New advisors join as the company grows."))
 		return
-	var case := Kit.plastic_case("Candidates")
-	_sheet_root.add_child(case)
-	var rows: VBoxContainer = case.get_child(0)
+	var grid := GridContainer.new()
+	grid.name = "Candidates"
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_sheet_root.add_child(grid)
 	for adv in pool:
-		rows.add_child(_candidate(adv, hire_seat))
+		grid.add_child(_candidate(adv, hire_seat))
 
 
 func _candidate(adv: Dictionary, hire_seat: String) -> Control:
 	var aid := str(adv.get("id", ""))
 	var m := Kit.module("Candidate_%s" % aid)
 	m.mouse_filter = Control.MOUSE_FILTER_STOP
+	m.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	Kit.on_click(m, func() -> void:
 		_set_view({"mode": "detail", "sel_id": aid, "hire_seat": _view.get("hire_seat", ""), "back": "picker"}))
 	var row := Kit.row_of(m)
 	var p := Portrait.new()
 	p.set_advisor(adv)
-	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	p.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	row.add_child(p)
 	var who := VBoxContainer.new()
 	who.add_theme_constant_override("separation", 4)
 	who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	who.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	who.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(who)
-	who.add_child(Parts.title(str(adv.get("name", aid))))
+	var name_l := Parts.title(str(adv.get("name", aid)))
+	name_l.custom_minimum_size.x = 60
+	who.add_child(name_l)
 	var stars := Stars.new()
 	stars.count = AdvisorState.advisor_star_by_id(aid)
 	who.add_child(stars)
-	who.add_child(Parts.body(_plain(str(adv.get("recommendation", adv.get("bonus", ""))))))
-	var fee := VBoxContainer.new()
-	fee.add_theme_constant_override("separation", 5)
-	fee.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	fee.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(fee)
-	fee.add_child(_money_row("Salary", _salary(aid), Parts.RED, "CandidateSalary"))
+	var pitch := _small(_plain(str(adv.get("recommendation", adv.get("bonus", "")))))
+	who.add_child(pitch)
+	who.add_child(_money_row("Salary", _salary(aid), Parts.RED, "CandidateSalary"))
 	if hire_seat != "":
 		var net := AdvisorState.advisor_bonus_preview_per_turn(aid, hire_seat) - _salary(aid)
-		fee.add_child(_money_row("Net", net, Parts.GREEN if net >= 0.0 else Parts.RED, "CandidateNet"))
-	var employed := AdvisorState.permanent_advisor_ids.has(aid)
-	if employed:
-		fee.add_child(_small("Unpaid" if not AdvisorState.advisor_is_payrolled(aid) else "On the payroll, benched"))
+		who.add_child(_money_row("Net", net, Parts.GREEN if net >= 0.0 else Parts.RED, "CandidateNet"))
+	if AdvisorState.permanent_advisor_ids.has(aid):
+		who.add_child(_small("Unpaid" if not AdvisorState.advisor_is_payrolled(aid) else "On the payroll, benched"))
 	return m
 
 
 # --- the dossier: one advisor, seated or a candidate ---------------------------------------------
 
+## The dossier on the dark sheet in two columns: on the left who they are (portrait, name, stars, standing, bio)
+## and what they cost and bring in the seat on LEDs; on the right the seat's effects in words and their skills
+## on lamps. Under both, the seat keys and Hire on a key bed while a seat is being chosen, and the seated
+## advisor's keys (Reassign, Unseat, and Dismiss under its guard).
 func _build_detail() -> void:
 	var aid := str(_view.get("sel_id", ""))
 	var adv := AdvisorState.get_advisor(aid)
@@ -486,13 +504,32 @@ func _build_detail() -> void:
 			seated_seat = str(sid)
 	var employed := AdvisorState.permanent_advisor_ids.has(aid)
 	_sheet_head.add_child(Parts.heading("Dossier"))
+	var choosing := seated_seat == "" or bool(_view.get("reassign", false))
+	var focus_seat := seated_seat if not choosing else str(_view.get("selected_seat", ""))
+	if focus_seat != "" and not AdvisorState.is_seat_available(focus_seat):
+		focus_seat = ""
+
+	var cols := HBoxContainer.new()
+	cols.name = "DossierColumns"
+	cols.add_theme_constant_override("separation", COLUMN_GAP)
+	_sheet_root.add_child(cols)
+	var left := VBoxContainer.new()
+	left.name = "Who"
+	left.add_theme_constant_override("separation", 10)
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(left)
+	var right := VBoxContainer.new()
+	right.name = "Brings"
+	right.add_theme_constant_override("separation", 10)
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(right)
 
 	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 14)
-	_sheet_root.add_child(head)
+	head.add_theme_constant_override("separation", 12)
+	left.add_child(head)
 	var p := Portrait.new()
 	p.name = "AdvisorPortrait"
-	p.portrait_size = Vector2(88, 110)
+	p.portrait_size = Vector2(80, 100)
 	p.set_advisor(adv)
 	head.add_child(p)
 	var who := VBoxContainer.new()
@@ -500,49 +537,48 @@ func _build_detail() -> void:
 	who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(who)
 	var nm := Parts.title(str(adv.get("name", aid)))
-	nm.add_theme_font_size_override("font_size", 20)
+	nm.add_theme_font_size_override("font_size", 19)
+	nm.custom_minimum_size.x = 60
 	who.add_child(nm)
 	var stars := Stars.new()
+	stars.star_px = 14.0
 	stars.count = AdvisorState.advisor_star_by_id(aid)
-	stars.star_px = 15.0
 	who.add_child(stars)
-	var standing := ""
+	var standing := "Candidate."
 	if seated_seat != "":
 		standing = "Seated as %s." % _seat_name(seated_seat)
 	elif employed:
 		standing = "Serves unpaid." if not AdvisorState.advisor_is_payrolled(aid) else "On the payroll, benched."
-	who.add_child(Parts.body(standing if standing != "" else "Candidate."))
-	who.add_child(Parts.body(_plain(str(adv.get("bio", "")))))
-
+	var st_l := Parts.body(standing)
+	st_l.custom_minimum_size.x = 60
+	who.add_child(st_l)
+	var bio := Parts.body(_plain(str(adv.get("bio", ""))))
+	bio.custom_minimum_size.x = 60
+	left.add_child(bio)
 	if employed and preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
 		var loyalty := AdvisorState.advisor_loyalty_value(aid)
-		var done := AdvisorState.advisor_missions_done(aid)
-		_sheet_root.add_child(Parts.body("Loyalty %+.1f, %s. %d of 5 missions done." % [loyalty, str(_loyalty_tone(loyalty).label), done]))
-
-	var choosing := seated_seat == "" or bool(_view.get("reassign", false))
-	if choosing:
-		_sheet_root.add_child(_seat_keys(aid, seated_seat))
-
-	var focus_seat := seated_seat if not choosing else str(_view.get("selected_seat", ""))
-	if focus_seat != "" and not AdvisorState.is_seat_available(focus_seat):
-		focus_seat = ""
+		left.add_child(Parts.body("Loyalty %+.1f, %s. %d of 5 missions done." % [loyalty, str(_loyalty_tone(loyalty).label), AdvisorState.advisor_missions_done(aid)]))
 	var bring := Parts.title("")
+	bring.custom_minimum_size.x = 60
 	if focus_seat == "":
 		bring.text = "Choose a seat to see what they bring."
 		bring.name = "AdvisorBonusPrompt"
-		_sheet_root.add_child(bring)
+		left.add_child(bring)
 	else:
 		bring.text = "What they bring as %s" % _seat_name(focus_seat)
 		bring.name = "AdvisorBonusSection"
-		_sheet_root.add_child(bring)
-		_sheet_root.add_child(_dossier_figures(aid, focus_seat))
+		left.add_child(bring)
+		left.add_child(_dossier_money(aid, focus_seat))
 
-	_sheet_root.add_child(Parts.heading("Skills"))
+	right.add_child(Parts.heading("Effects"))
+	right.add_child(_dossier_effects(aid, focus_seat))
+	right.add_child(Parts.heading("Skills"))
 	var skills := GridContainer.new()
+	skills.name = "Skills"
 	skills.columns = 2
 	skills.add_theme_constant_override("h_separation", 14)
 	skills.add_theme_constant_override("v_separation", 6)
-	_sheet_root.add_child(skills)
+	right.add_child(skills)
 	for pair in _top_disciplines(aid, 5):
 		var l := Parts.body(str(pair[0]))
 		l.custom_minimum_size.x = 110
@@ -559,60 +595,83 @@ func _build_detail() -> void:
 		lamps.set_meta("level", int(pair[1]))
 		skills.add_child(lamps)
 
-	var foot := HBoxContainer.new()
-	foot.name = "DossierKeys"
-	foot.add_theme_constant_override("separation", 12)
-	_sheet_root.add_child(foot)
+	if choosing:
+		_sheet_root.add_child(_seat_keys(aid, seated_seat))
 	if seated_seat != "":
+		var foot := HBoxContainer.new()
+		foot.name = "DossierKeys"
+		foot.add_theme_constant_override("separation", 12)
+		_sheet_root.add_child(foot)
 		var reassign: Button = CreamKey.make("ReassignKey", "Reassign seat", "", 150.0, false, false, 0.8)
+		reassign.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		reassign.pressed.connect(func() -> void:
 			_set_view({"mode": "detail", "sel_id": aid, "reassign": true, "back": _view.get("back", "roster")}))
 		foot.add_child(reassign)
 		var unseat: Button = CreamKey.make("UnseatKey", "Unseat", "", 110.0, false, false, 0.8)
+		unseat.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		unseat.tooltip_text = "Keeps them on the payroll."
 		unseat.pressed.connect(func() -> void:
 			AdvisorState.unassign_seat(seated_seat)
 			_set_view({"mode": "roster"}))
 		foot.add_child(unseat)
+		var gap := Control.new()
+		gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		foot.add_child(gap)
 		foot.add_child(_dismiss_key(aid))
 
 
-## Dismiss, printed in the red ink: the first press arms it ("Press again to dismiss"), the second dismisses;
-## left alone it disarms after a few seconds, as Building Detail's guarded keys drop their covers.
-func _dismiss_key(advisor_id: String) -> Button:
-	var key: Button = CreamKey.make("DismissKey", "Dismiss", "", 0.0, false, false, 0.8)
-	key.custom_minimum_size.x = CreamKey.width_for("Press again to dismiss", "", false, false, 0.8)
-	key.set("title_ink", CreamKey.RED_INK)
-	key.pressed.connect(func() -> void:
-		if not bool(key.get_meta("armed", false)):
-			key.set_meta("armed", true)
-			key.set("title", "Press again to dismiss")
-			key.queue_redraw()
-			get_tree().create_timer(DISARM_SECONDS).timeout.connect(func() -> void:
-				if is_instance_valid(key):
-					key.set_meta("armed", false)
-					key.set("title", "Dismiss")
-					key.queue_redraw())
-			return
+## Dismiss under a guard: the red cap with a work boot under its clear cover (guard_dismiss). The first press
+## lifts the cover, the second dismisses; a cover left alone drops after a few seconds. Its name printed beside.
+func _dismiss_key(advisor_id: String) -> Control:
+	var box := HBoxContainer.new()
+	box.name = "Dismiss"
+	box.add_theme_constant_override("separation", 10)
+	var guard: Control = GuardKey.new(DISMISS_PX)
+	guard.name = "DismissKey"
+	guard.set("layer", "guard_dismiss")
+	guard.set("glow", "lamp_glow_red")
+	guard.tooltip_text = "Dismiss. Lift the cover, then press."
+	guard.connect("pressed", func() -> void:
 		AdvisorState.fire_advisor(advisor_id)
 		_set_view({"mode": "roster"}))
-	return key
+	var room := Control.new()
+	room.custom_minimum_size = Vector2(DISMISS_PX, DISMISS_PX + GuardKey.overhang(DISMISS_PX))
+	room.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	room.add_child(guard)
+	guard.position = Vector2(0, GuardKey.overhang(DISMISS_PX))
+	guard.size = Vector2(DISMISS_PX, DISMISS_PX)
+	box.add_child(room)
+	var l := Parts.caption("Dismiss", 18)
+	l.size_flags_vertical = Control.SIZE_SHRINK_END
+	l.custom_minimum_size.y = DISMISS_PX
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	box.add_child(l)
+	return box
 
 
 ## The seat keys (a cream key a seat, the chosen one latched), then the confirm key and what hiring costs.
 ## Today's rules: nobody is hired before the founder's decision, a full council takes no new seat, the
 ## founder sits only in the two starting seats, and seats the company has not opened are not offered.
 func _seat_keys(advisor_id: String, current_seat: String) -> Control:
+	var bed := PanelContainer.new()
+	bed.name = "SeatChoiceBed"
+	var pad := StyleBoxEmpty.new()
+	pad.set_content_margin_all(14)
+	bed.add_theme_stylebox_override("panel", pad)
+	bed.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	bed.draw.connect(func() -> void:
+		Section.Nine.paint(bed, KEYBED, Rect2(Vector2.ZERO, bed.size).grow(KEYBED_MARGIN / Parts.LAYOUT), (KEYBED_MARGIN + KEYBED_CORNER) * Parts.TEXELS))
 	var wrap := VBoxContainer.new()
 	wrap.name = "SeatChoice"
 	wrap.add_theme_constant_override("separation", 10)
+	bed.add_child(wrap)
 	if TurnManager.current_turn < DecisionState.FOUNDER_DECISION_TURN:
 		wrap.add_child(Parts.body("You have no board yet. A retired shipping director is expected by turn %d." % DecisionState.FOUNDER_DECISION_TURN))
-		return wrap
+		return bed
 	var seated := AdvisorState.advisor_seats.size()
 	if not (current_seat != "" or seated < AdvisorState.max_advisor_slots):
 		wrap.add_child(Parts.body("The council is full at %d of %d. Unseat someone first." % [seated, AdvisorState.max_advisor_slots]))
-		return wrap
+		return bed
 	var open_seats: Array[String] = []
 	for sid in AdvisorState.SEAT_DEFINITIONS:
 		if not AdvisorState.is_seat_available(str(sid)):
@@ -661,38 +720,48 @@ func _seat_keys(advisor_id: String, current_seat: String) -> Control:
 		cost.name = "AdvisorHireCostLine"
 		cost.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		line.add_child(cost)
-	return wrap
+	return bed
 
 
-## The bonus, salary and net for the seat on LEDs, and every effect in words.
-func _dossier_figures(advisor_id: String, seat_id: String) -> Control:
-	var line := HBoxContainer.new()
-	line.add_theme_constant_override("separation", 24)
+## The bonus, salary and net for the seat on LEDs.
+func _dossier_money(advisor_id: String, seat_id: String) -> Control:
 	var money := VBoxContainer.new()
 	money.name = "AdvisorFinancialPreview"
 	money.add_theme_constant_override("separation", 6)
-	line.add_child(money)
+	money.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	var bonus := AdvisorState.advisor_bonus_preview_per_turn(advisor_id, seat_id)
 	var salary := _salary(advisor_id)
 	var net := bonus - salary
 	money.add_child(_money_row("Bonus", bonus, Parts.GREEN, "AdvisorBonusValue"))
 	money.add_child(_money_row("Salary", salary, Parts.RED, "AdvisorSalaryValue"))
 	money.add_child(_money_row("Net", net, Parts.GREEN if net >= 0.0 else Parts.RED, "AdvisorNetBenefitValue"))
-	money.custom_minimum_size.x = 150
-	money.tooltip_text = "From the last turn. It moves with revenue and costs."
+	money.custom_minimum_size.x = 170
+	money.tooltip_text = "From today's figures. It moves with revenue, costs and loans."
+	return money
+
+
+## Every effect of the seat in words, and the founder's gifts; before a seat is chosen, the seat each effect needs.
+func _dossier_effects(advisor_id: String, seat_id: String) -> Control:
 	var words := VBoxContainer.new()
+	words.name = "EffectWords"
 	words.add_theme_constant_override("separation", 3)
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	line.add_child(words)
+	if seat_id == "":
+		words.add_child(Parts.body("Choose a seat below."))
+		return words
 	for w in SeatStatus.effects(advisor_id, seat_id):
-		words.add_child(Parts.body(w))
+		var l := Parts.body(w)
+		l.custom_minimum_size.x = 60
+		words.add_child(l)
 	for r: Dictionary in _advisor_bonus_rows(advisor_id, seat_id):
 		var name_text := str(r.get("name", ""))
 		if name_text.begins_with("Signing gift") or name_text.begins_with("Serves"):
-			words.add_child(Parts.body(_plain(name_text) + ": " + _plain(str(r.get("effect", "")))))
+			var l := Parts.body(_plain(name_text) + ": " + _plain(str(r.get("effect", ""))))
+			l.custom_minimum_size.x = 60
+			words.add_child(l)
 	if words.get_child_count() == 0:
 		words.add_child(Parts.body("No effect in this seat."))
-	return line
+	return words
 
 
 ## What hiring costs, in words without dashes: "£10.4 a turn: £10.0 base and 1% of revenue (£0.4)".
