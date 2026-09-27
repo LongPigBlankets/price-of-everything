@@ -2684,7 +2684,7 @@ func _test_building_names_follow_the_owners_convention() -> void:
 		["b_008", "r_076"]: "Steel Electric Furnace", ["b_008", "r_083"]: "ELYSIS Aluminium Electric Furnace",
 		["b_009", "r_066"]: "Axial Motor Assembly Plant",
 		["b_014", "r_209"]: "Strip Farm", ["b_014", "r_211"]: "Agrisolar Farm", ["b_014", "r_212"]: "Livestock Farm",
-		["b_014", "r_208"]: "Sustainable Farm", ["b_015", "r_213"]: "Logging Forest", ["b_015", "r_215"]: "Sustainable Forest",
+		["b_014", "r_208"]: "Sustainable Farm", ["b_015", "r_213"]: "Logging Forest", ["b_015", "r_215"]: "Gently Pruned Forest", ["b_015", "r_214"]: "Sustainable Forest",
 	}
 	var wrong: Array = []
 	for key: Array in cases:

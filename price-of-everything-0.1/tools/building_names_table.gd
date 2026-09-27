@@ -12,8 +12,6 @@ const FLAGS := {
 	"heat_battery": "Stores heat and makes nothing, so it keeps its type name.",
 	"water_recycling": "The type's display name is misspelt (\"Recyling\"). The building name spells it right.",
 	"r_203": "Hairpin Stator kept in full beside \"Axial\" and \"SynRM\". \"Hairpin\" alone would not collide if a shorter name is wanted.",
-	"r_214": "Sustainable Forestry and Gentle Pruning are both the sustainable kind, so both read \"Sustainable Forest\" and cannot be told apart by name.",
-	"r_215": "Sustainable Forestry and Gentle Pruning are both the sustainable kind, so both read \"Sustainable Forest\" and cannot be told apart by name.",
 	"r_107": "Named by its main output, copper wiring, though it recycles electronic waste.",
 	"r_108": "Named by its main output, biomass, though it recycles bio waste.",
 	"r_223": "Floating is the qualifier. The owner's wind farm names otherwise kept.",
@@ -23,8 +21,8 @@ const FLAGS := {
 	"r_019": "Limestone is quarried, but keeps the Mine word with its kind.",
 }
 
-## Recipes whose names the owner has settled: SynRM and Axial Motor Assembly Plant.
-const OWNER_SETTLED := ["r_065", "r_066"]
+## Recipes whose names the owner has settled: SynRM and Axial Motor Assembly Plant, Fabless CPU Manufactory.
+const OWNER_SETTLED := ["r_065", "r_066", "r_123"]
 
 ## Notes on the names the unloaded farm and forest recipes will take.
 const DORMANT_FLAGS := {
@@ -34,7 +32,6 @@ const DORMANT_FLAGS := {
 	"r_171": "Intensive read as the strip kind.",
 	"r_092": "Mixed Crop Sustainable Farming and Sustainable Food Production both read \"Sustainable Farm\".",
 	"r_091": "Once food loads, a Strip Farm may make biomass or food: the name says the kind, not the good.",
-	"r_097": "Gentle Pruning read as the sustainable kind, the same name as Sustainable Forestry.",
 }
 
 func _ready() -> void:

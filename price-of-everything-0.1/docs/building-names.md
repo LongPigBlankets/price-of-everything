@@ -100,7 +100,7 @@ Rows marked **check** carry a note for the owner.
 | Assembly Plant | Durable Perovskite Solar Panels (r_060) | Solar Panel | **Perovskite Solar Panel Assembly Plant** | Assembly Plant - Solar Panel - A |  |
 | Assembly Plant | Wind Turbine Manufacturing (r_059) | Wind Turbine | **Wind Turbine Assembly Plant** | Assembly Plant - Wind Turbine - A |  |
 | Assembly Plant | Segmented Assembly Wind Turbines (r_061) | Wind Turbine | **Segmented Wind Turbine Assembly Plant** | Assembly Plant - Wind Turbine - A |  |
-| High Tech Manufactory | Fabless Semiconductors (r_123) | CPU | **Fabless CPU Manufactory** | High Tech Manufactory - CPU - A | **check** No recipe of this group is the plain one, so each carries its own word. |
+| High Tech Manufactory | Fabless Semiconductors (r_123) | CPU | **Fabless CPU Manufactory** | High Tech Manufactory - CPU - A |  |
 | High Tech Manufactory | Semiconductor 3D Printing (r_124) | CPU | **3D Printed CPU Manufactory** | High Tech Manufactory - CPU - A | **check** No recipe of this group is the plain one, so each carries its own word. |
 | High Tech Manufactory | Precision Electrical Components (r_127) | Electrical Components | **Electrical Components Manufactory** | High Tech Manufactory - Electrical Components - A |  |
 | High Tech Manufactory | Lithium Phosphate Batteries (r_099) | Lithium Ion Battery | **Lithium Ion Battery Manufactory** | High Tech Manufactory - Lithium Ion Battery - A |  |
@@ -135,8 +135,8 @@ Rows marked **check** carry a note for the owner.
 | Farm | Agri Solar Farming - Biomass (r_211) | Biomass | **Agrisolar Farm** | Farm - Biomass - A |  |
 | Farm | Livestock Farming - Biomass (r_212) | Biomass | **Livestock Farm** | Farm - Biomass - A |  |
 | New Growth Forest | Aggressive Logging - Biomass (r_213) | Biomass | **Logging Forest** | New Growth Forest - Biomass - A |  |
-| New Growth Forest | Sustainable Forestry - Biomass (r_214) | Biomass | **Sustainable Forest** | New Growth Forest - Biomass - A | **check** Sustainable Forestry and Gentle Pruning are both the sustainable kind, so both read "Sustainable Forest" and cannot be told apart by name. |
-| New Growth Forest | Gentle Pruning - Biomass (r_215) | Biomass | **Sustainable Forest** | New Growth Forest - Biomass - A | **check** Sustainable Forestry and Gentle Pruning are both the sustainable kind, so both read "Sustainable Forest" and cannot be told apart by name. |
+| New Growth Forest | Sustainable Forestry - Biomass (r_214) | Biomass | **Sustainable Forest** | New Growth Forest - Biomass - A |  |
+| New Growth Forest | Gentle Pruning - Biomass (r_215) | Biomass | **Gently Pruned Forest** | New Growth Forest - Biomass - A |  |
 | Electrolyser | Alloy Metal Electrolysis (r_133) | Alloy Metals Ingots | **Alloy Metal Electrolyser** | Electrolyser - Alloy Metals Ingots - A |  |
 | Electrolyser | Methane Pyrolysis (r_078) | Hydrogen | **Methane Pyrolysis Hydrogen Electrolyser** | Electrolyser - Hydrogen - A |  |
 | Electrolyser | Water Electrolysis (r_079) | Hydrogen | **Hydrogen Electrolyser** | Electrolyser - Hydrogen - A |  |
@@ -204,7 +204,7 @@ They have no name until they load. The rule will name them then.
 | Livestock Farming (r_094) | farm | food | **Livestock Farm** |  |
 | Aggressive Logging (r_095) | forest | wood | **Logging Forest** |  |
 | Sustainable Forestry (r_096) | forest | wood | **Sustainable Forest** |  |
-| Gentle Pruning (r_097) | forest | wood | **Sustainable Forest** | **check** Gentle Pruning read as the sustainable kind, the same name as Sustainable Forestry. |
+| Gentle Pruning (r_097) | forest | wood | **Gently Pruned Forest** |  |
 | National Park Tourism (r_098) | forest | wood | **Tourist Forest** |  |
 | Redox Flow Batteries (r_100) | high_tech_manufactory | flow_battery |  |  |
 | High Quality Steel Alloying (r_103) | eaf | hq_steel |  |  |

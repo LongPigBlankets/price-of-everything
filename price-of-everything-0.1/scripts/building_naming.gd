@@ -93,11 +93,11 @@ const KIND_NAMES := {
 	# Forests
 	"r_213": "Logging Forest",     # Aggressive Logging - Biomass
 	"r_214": "Sustainable Forest", # Sustainable Forestry - Biomass
-	"r_215": "Sustainable Forest", # Gentle Pruning - Biomass
+	"r_215": "Gently Pruned Forest", # Gentle Pruning - Biomass
 	"r_216": "Tourist Forest",     # National Park Tourism - Biomass
 	"r_095": "Logging Forest",     # Aggressive Logging
 	"r_096": "Sustainable Forest", # Sustainable Forestry
-	"r_097": "Sustainable Forest", # Gentle Pruning
+	"r_097": "Gently Pruned Forest", # Gentle Pruning
 	"r_098": "Tourist Forest",     # National Park Tourism
 }
 ## Qualifiers where derivation from the recipe's name reads wrong, by recipe id; "" is the plain recipe.
