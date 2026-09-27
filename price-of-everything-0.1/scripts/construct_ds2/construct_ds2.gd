@@ -15,6 +15,8 @@ extends "res://scripts/construct_panel_v2.gd"
 ## placed at the layout's own coordinates: layout px from the panel's top-left, divided by CAPTURE_SCALE.
 
 const BuildOrder := preload("res://scripts/construct_ds2/build_order.gd")
+const Catalogue := preload("res://scripts/construct_ds2/catalogue.gd")
+const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 const Key := preload("res://scripts/bdp_v3_key.gd")
 const Scroll := preload("res://scripts/bdp_v3_scroll.gd")
@@ -28,6 +30,12 @@ const WIDTH := 1125.0 / CAPTURE_SCALE
 const CONTENT_X := 80.0 / CAPTURE_SCALE
 const CONTENT_W := 1005.0 / CAPTURE_SCALE
 const HEAD_H := 244.0 / CAPTURE_SCALE
+## Where the catalogue's control plate starts (its tab rises under the jib, between the cab and the site's plate).
+const PLATE_Y := 152.0 / CAPTURE_SCALE
+## The Construct settings on the crane: a steel plate bolted over the jib's root, a white key with a navy gear
+## (layout.json construct_settings: the render's origin and size).
+const SETTINGS_AT := Vector2(336.0, 34.0) / CAPTURE_SCALE
+const SETTINGS_SIZE := Vector2(122.0, 118.0) / CAPTURE_SCALE
 ## Where the build order's site board hangs (under the hook, the spreader and its chains).
 const BOARD_Y := 334.0 / CAPTURE_SCALE
 ## The tower's bay under the head, repeated down the hoarding's left edge.
@@ -57,7 +65,8 @@ const PLACARD_PX := 22
 var _head: Control
 var _placard_label: Label
 var _back_key: Control
-var _settings_key: Control
+var _settings_key: TextureButton
+var _catplate: Control
 var _quote: Dictionary = {}
 ## The build order last shown (building, recipe, site): a new one opens at its top.
 var _view_opened := ""
@@ -106,6 +115,23 @@ func _build_shell() -> void:
 	back.visible = false
 	_head.add_child(back)
 	_back_key = back
+	var gear := TextureButton.new()
+	gear.name = "SettingsKey"
+	gear.texture_normal = Plate.tex("construct_settings")
+	gear.texture_pressed = Plate.tex("construct_settings_pressed")
+	gear.ignore_texture_size = true
+	gear.stretch_mode = TextureButton.STRETCH_SCALE
+	gear.position = SETTINGS_AT
+	gear.size = SETTINGS_SIZE
+	gear.tooltip_text = "Construct settings"
+	gear.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	gear.pressed.connect(func() -> void:
+		if _view == View.SETTINGS:
+			_on_back_from_settings()
+		else:
+			_on_settings_pressed())
+	_head.add_child(gear)
+	_settings_key = gear
 	_placard_label = Label.new()
 	_placard_label.name = "SiteName"
 	_placard_label.add_theme_font_override("font", PLACARD_FONT)
@@ -156,17 +182,7 @@ func _build_shell() -> void:
 	_search_input.add_theme_font_size_override("font_size", 13)
 	_search_input.text_changed.connect(_on_search_changed)
 	_search_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var search_row := HBoxContainer.new()
-	search_row.add_theme_constant_override("separation", 10)
-	_search_margin.add_child(search_row)
-	search_row.add_child(_search_input)
-	# The Construct settings, at the end of the search row on the catalogue.
-	var settings := Parts.key_button("Settings", "SettingsKey", 0.62)
-	settings.size_flags_horizontal = Control.SIZE_SHRINK_END
-	settings.custom_minimum_size.x = 96.0
-	settings.pressed.connect(_on_settings_pressed)
-	search_row.add_child(settings)
-	_settings_key = settings
+	_search_margin.add_child(_search_input)
 
 	_filter_margin = MarginContainer.new()
 	_filter_margin.add_theme_constant_override("margin_top", 10)
@@ -180,6 +196,11 @@ func _build_shell() -> void:
 	_filter_row = HBoxContainer.new()
 	_filter_row.add_theme_constant_override("separation", 6)
 	_filter_scroll.add_child(_filter_row)
+
+	# The catalogue's control plate: the search set into its tab, the category keys.
+	_catplate = Catalogue.control_plate(_search_input, _pick_category)
+	_catplate.visible = false
+	body.add_child(_catplate)
 
 	# The build order's fixed head: the site board and the verdict, the seam under them.
 	_pinned = VBoxContainer.new()
@@ -223,10 +244,13 @@ func _sync_head() -> void:
 	if _head == null:
 		return
 	var order := _is_build_order()
-	_head.custom_minimum_size.y = BOARD_Y if order else HEAD_H
+	var browsing := _view == View.BROWSE
+	_head.custom_minimum_size.y = BOARD_Y if order else (PLATE_Y if browsing else HEAD_H)
 	_back_key.visible = _view == View.CONFIRM
-	_settings_key.visible = _view == View.BROWSE
+	_catplate.visible = browsing
 	_mode_toggle.visible = false
+	_search_margin.visible = false
+	_filter_margin.visible = false
 	var site := _site_name()
 	_placard_label.text = site.to_upper()
 	_placard_label.visible = site != ""
@@ -241,6 +265,87 @@ func _site_name() -> String:
 	if _locked_tile_id == "":
 		return ""
 	return Catalog.tile_name(_locked_tile_id)
+
+
+## The catalogue: the control plate under the crane, then the site boards two to a row; the building opened
+## across the width with its recipe tags hung under it.
+func _render_browse() -> void:
+	_set_panel_width(false)
+	_search_input.visible = true
+	Catalogue.show_filter(_catplate, _active_filters)
+	_content.add_theme_constant_override("separation", roundi(Catalogue.CARD_GAP))
+	if _output_good_filter != "":
+		_content.add_child(_goods_tag())
+	var query := _search_query.strip_edges().to_lower()
+	var shown := _filtered_buildings()
+	if shown.is_empty():
+		var nothing_here := _locked_tile_id != "" and query == "" and _active_filters.is_empty()
+		var empty := Parts.body("Nothing can be built on this tile." if nothing_here else "No buildings match.")
+		empty.name = "CatalogueEmpty"
+		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty.custom_minimum_size = Vector2(0, 80)
+		_content.add_child(empty)
+		return
+	var half := (CONTENT_W - Catalogue.CARD_GAP) * 0.5
+	var source := _current_material_source()
+	var condensed := not UiPrefs.construct_expanded_recipe_mode
+	var row: HBoxContainer = null
+	for building: Dictionary in shown:
+		var bid := str(building.get("id", ""))
+		var infra := str(building.get("category", "")).to_lower() == "infrastructure"
+		var recipes := _visible_recipes_for(building, query)
+		var price := Catalogue.price(bid, _locked_tile_id, _locked_tile_data, source)
+		var reason := ""
+		if recipes.is_empty() and not infra:
+			reason = "No recipe of it can be built here."
+		elif MatchState.money + 0.0001 < price:
+			reason = "Needs %s, you have %s." % [MoneyFigure.text(price), MoneyFigure.text(MatchState.money)]
+		var press := func() -> void: pass
+		if infra:
+			press = func() -> void: _on_infrastructure_selected(bid)
+		elif not recipes.is_empty():
+			press = func() -> void: _on_building_pressed(bid)
+		if bid == _expanded_building_id and not infra and not recipes.is_empty():
+			row = null
+			_content.add_child(Catalogue.site_card(building, CONTENT_W, price, reason, press))
+			for recipe: Dictionary in recipes:
+				var rid := str(recipe.get("recipe_id", ""))
+				var drop := Control.new()
+				# The rows' own gap falls either side of this spacer, so the tag hangs TAG_DROP below.
+				drop.custom_minimum_size = Vector2(0, maxf(0.0, Catalogue.TAG_DROP - 2.0 * roundi(Catalogue.CARD_GAP)))
+				drop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				_content.add_child(drop)
+				_content.add_child(Catalogue.recipe_tag(bid, recipe, condensed, func() -> void: _on_recipe_pressed(bid, rid)))
+			continue
+		if row == null or row.get_child_count() >= 2:
+			row = HBoxContainer.new()
+			row.add_theme_constant_override("separation", roundi(Catalogue.CARD_GAP))
+			_content.add_child(row)
+		row.add_child(Catalogue.site_card(building, half, price, reason, press))
+
+
+## A category key pressed: that category alone, or all again when it was already the one shown.
+func _pick_category(id: String) -> void:
+	_on_filter_toggled(not _active_filters.has(id), id)
+
+
+## The goods filter, shown and removable: the catalogue narrowed to what makes a good.
+func _goods_tag() -> Control:
+	var row := HBoxContainer.new()
+	row.name = "GoodsFilter"
+	row.add_theme_constant_override("separation", 10)
+	var words := Parts.body("Buildings that make %s." % Catalog.get_display_name(_output_good_filter))
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(words)
+	var clear := Parts.key_button("Show all", "ClearGoodsFilter", 0.62)
+	clear.size_flags_horizontal = Control.SIZE_SHRINK_END
+	clear.custom_minimum_size.x = 104.0
+	clear.pressed.connect(func() -> void:
+		_output_good_filter = ""
+		_load_data()
+		_render())
+	row.add_child(clear)
+	return row
 
 
 ## Every recipe's confirm is the build order, whatever the v3 confirm toggle says; infrastructure keeps

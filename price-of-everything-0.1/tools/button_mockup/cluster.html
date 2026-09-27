@@ -3239,8 +3239,8 @@ async function exportLayers() {
   // and the lot last. Under the catalogue, the building icon three ways for comparison. On every LED the
   // point takes a cell of its own, and a figure drops a decimal from £100.
   // The construct panel's game layers (docs/construct-ds2-plan.md), exported with the study's own parts so they match
-  // it: constructhead (464), constructboard (465), constructyard (466).
-  const CONSTRUCT_PARTS = ['constructhead', 'constructboard', 'constructyard'];
+  // it: constructhead (464), constructboard (465), constructyard (466), constructcat (467).
+  const CONSTRUCT_PARTS = ['constructhead', 'constructboard', 'constructyard', 'constructcat'];
   if (want('constructlot') || CONSTRUCT_PARTS.some(want)) await withSeed(434, async () => {
     for (const f of ['500 30px "IBM Plex Sans"', '600 30px "IBM Plex Sans"', '700 30px "IBM Plex Sans"', '600 30px "Barlow Condensed"', '700 30px "Barlow Condensed"', `60px ${TITLE_FAMILY}`]) await document.fonts.load(f);
     const PW = 1125, FOLD = 1710, MX = 60, GAP = 300, MR = 260, CAPT = 110, FOOT = 120, SH1 = FOLD + 60;
@@ -3575,7 +3575,7 @@ async function exportLayers() {
         for (let i = 0; i < w * h / 60; i++) { c.fillStyle = `rgba(58,46,30,${0.08 + rand() * 0.16})`; c.fillRect(rand() * w, rand() * h, 0.4 + rand(), 0.4 + rand()); }
         c.strokeStyle = ENAMEL_FIELD; c.lineWidth = 2.4; c.beginPath(); c.roundRect(6, 6, w - 12, h - 12, 7); c.stroke();
         c.fillStyle = ENAMEL_FIELD; c.beginPath(); c.roundRect(fx, fy, fs, fs, 6); c.fill();
-        if (style === 'flat') blueprintGrid(c, fx, fy, fs);
+        if (style === 'flat' || style === 'grid') blueprintGrid(c, fx, fy, fs);   // 'grid': the field alone, the game prints the icon
         if (style === 'relief') drawIconShadows(c, w, h, [{ height: 11, draw: (g, col) => stamp(g, mask, ex, ey, emblem, emblem, col) }]);
         else printIcon(c, mask, style, ex, ey, emblem);
         print?.(c);
@@ -4284,6 +4284,98 @@ async function exportLayers() {
       partGroup(); tape(0, OY + 20, 320, OY + 20, T + 14);
       await grabPart('construct_tape', [0, 10, 320, 34], T + 5.3);
       layout.construct_tape.period = 16;
+    });
+
+
+    if (want('constructcat')) await withSeed(467, async () => {
+      // The Construct settings on the crane: a small steel plate bolted over the jib's root, beside the cab,
+      // carrying a white plastic key with a chamfered bevel in a moulded bezel, a navy gear printed on it.
+      const GP = { x: 346, y: 44, w: 96, h: 90 }, GK = 76, gTop = T + 22;
+      const gear = (c, a, b) => {
+        const cx = a / 2, cy = b / 2, n = 8, ro = Math.min(a, b) * 0.44, ri = ro * 0.74, rh = ro * 0.34;
+        c.fillStyle = NAVY; c.beginPath();
+        for (let i = 0; i < n * 4; i++) {
+          const ang = (i / (n * 4)) * Math.PI * 2 - Math.PI / (n * 4), r = (i % 4 < 2) ? ro : ri;
+          const x = cx + Math.cos(ang) * r, y = cy + Math.sin(ang) * r; i ? c.lineTo(x, y) : c.moveTo(x, y);
+        }
+        c.closePath(); c.moveTo(cx + rh, cy); c.arc(cx, cy, rh, 0, Math.PI * 2, true); c.fill('evenodd');
+      };
+      const whiteKey = (w, h, r, paint) => {
+        const g = new THREE.Group(), frameGapRim = 1.6 + 5;
+        const cw = w - 2 * (SKIRT_S + frameGapRim), ch = h - 2 * (SKIRT_S + frameGapRim), cr = Math.max(3, r - SKIRT_S);
+        const face = canvas2d(cw, ch, (c) => {
+          c.fillStyle = '#f1efe8'; c.fillRect(0, 0, cw, ch);
+          for (let i = 0; i < cw * ch / 30; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '120,112,98'},${0.03 + rand() * 0.05})`; c.fillRect(rand() * cw, rand() * ch, 1, 1); }
+          paint(c, cw, ch);
+        });
+        const skirt = new THREE.MeshPhysicalMaterial({ color: 0xdedbd2, ...KNOB_PLASTIC });
+        const cap = new THREE.Mesh(extrude(rrShape(cw, ch, cr), 4, SKIRT_T, SKIRT_S, 1), [new THREE.MeshPhysicalMaterial({ map: faceTexture(face, cw, ch), ...KNOB_PLASTIC }), skirt]);
+        cap.castShadow = cap.receiveShadow = true; cap.position.y = 1.5;
+        g.add(mouldedFrame(cw + SKIRT_S * 2, ch + SKIRT_S * 2, cr + SKIRT_S), cap); g.userData.cap = cap;
+        return g;
+      };
+      partGroup();
+      add(shade(new THREE.Mesh(extrude(rrShape(GP.w, GP.h, 8), 3, 1.4, 1.1, 3), [plateMaterial(GP.w, GP.h, { icons: [], buttons: [{ x: (GP.w - GK) / 2 - 4, y: (GP.h - GK) / 2 - 4, w: GK + 8, h: GK + 8, r: 10 }], screws: [] }), MAT.plateSide])), GP.x + GP.w / 2, OY + GP.y + GP.h / 2, gTop - 6);
+      for (const [sx, sy] of [[8, 8], [GP.w - 8, 8], [8, GP.h - 8], [GP.w - 8, GP.h - 8]]) add(screw(3), GP.x + sx, OY + GP.y + sy, gTop);
+      const key = whiteKey(GK, GK, 9, gear); add(key, GP.x + GP.w / 2, OY + GP.y + GP.h / 2, gTop);
+      const gb = [GP.x - 10, GP.y - 10, GP.x + GP.w + 16, GP.y + GP.h + 18];
+      await grabPart('construct_settings', gb, T + 0.3);
+      const cap = key.userData.cap, cy0 = cap.position.y; cap.position.y = cy0 - 3.5;
+      groups[cur].children.filter((c) => c.isMesh && c.material?.isShadowMaterial).forEach((c) => groups[cur].remove(c));
+      await grabPart('construct_settings_pressed', gb, T + 0.3); cap.position.y = cy0;
+      Object.assign(layout.construct_settings, { key: [GP.x + (GP.w - GK) / 2, GP.y + (GP.h - GK) / 2, GK, GK] });
+
+      // The catalogue's control plate: black plastic moulded in one piece, its tab rising under the jib between the
+      // cab and the site's name to hold the search (a raised magnifier and a strip of dark glass, blank: the game
+      // types in it), the category keys (the tile view's latching keys, placed by the game) in two rows below.
+      const CPr = { x: CL, y: PLACARD.y, w: CW, n0: CAB.x + CAB.w + 16 - CL, n1: PLACARD.x - 16 - CL, pad: 18, kh: 84, gap: 10 };
+      CPr.nh = CAB.y + CAB.h + 16 - CPr.y; CPr.h = CPr.nh + 2 * CPr.pad + 2 * CPr.kh + CPr.gap;
+      const notched = (() => {
+        const { w: bw, h: bh, n0, n1, nh } = CPr, r = 12, f = 18, s = new THREE.Shape(), P = (x, y) => [x - bw / 2, bh / 2 - y];
+        const M = (x, y) => s.moveTo(...P(x, y)), L = (x, y) => s.lineTo(...P(x, y)), Q = (cx, cy, x, y) => s.quadraticCurveTo(...P(cx, cy), ...P(x, y));
+        M(r, nh); L(n0 - f, nh); Q(n0, nh, n0, nh - f); L(n0, r); Q(n0, 0, n0 + r, 0); L(n1 - r, 0); Q(n1, 0, n1, r); L(n1, nh - f); Q(n1, nh, n1 + f, nh);
+        L(bw - r, nh); Q(bw, nh, bw, nh + r); L(bw, bh - r); Q(bw, bh, bw - r, bh); L(r, bh); Q(0, bh, 0, bh - r); L(0, nh + r); Q(0, nh, r, nh);
+        return s;
+      })();
+      const MAG = { x: CPr.n0 + 22, y: CPr.nh / 2 - 27, s: 54 };
+      const drawMag = (g, col) => {
+        g.save(); g.strokeStyle = col; g.lineCap = 'round'; g.lineWidth = 7; g.beginPath(); g.arc(MAG.x + 22, MAG.y + 22, 15, 0, Math.PI * 2); g.stroke();
+        g.lineWidth = 10; g.beginPath(); g.moveTo(MAG.x + 34, MAG.y + 34); g.lineTo(MAG.x + 47, MAG.y + 47); g.stroke(); g.restore();
+      };
+      partGroup();
+      add(shade(new THREE.Mesh(extrude(notched, 4, 2.4, 2, 4), [blackPlastic(CPr.w, CPr.h, (c) => drawIconShadows(c, CPr.w, CPr.h, [{ height: 8, draw: drawMag }])), BLACK_PLASTIC_SIDE()])), CPr.w / 2, OY + CPr.h / 2);
+      const bedTop = T + 8.8;
+      add(relief(MAG.s, MAG.s, (g) => { g.save(); g.translate(-MAG.x, -MAG.y); drawMag(g, '#fff'); g.restore(); }, creamEnamel, { height: 8, soften: 1.2 }), MAG.x + MAG.s / 2, OY + MAG.y + MAG.s / 2, bedTop + 0.3);
+      const gx0 = MAG.x + MAG.s + 16, gx1 = CPr.n1 - 20, gh = 50, gw = gx1 - gx0 - 14;
+      const sface = canvas2d(gw, gh, (c) => {
+        c.fillStyle = '#060808'; c.fillRect(0, 0, gw, gh);
+        const top = c.createLinearGradient(0, 0, 0, 7); top.addColorStop(0, 'rgba(0,0,0,0.6)'); top.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = top; c.fillRect(0, 0, gw, 7);
+        const glare = c.createLinearGradient(0, 0, gw * 0.4, gh); glare.addColorStop(0.3, 'rgba(255,255,255,0)'); glare.addColorStop(0.45, 'rgba(255,255,255,0.06)'); glare.addColorStop(0.6, 'rgba(255,255,255,0)'); c.fillStyle = glare; c.fillRect(0, 0, gw, gh);
+      });
+      add(glassScreen(gw, gh, sface).group, (gx0 + gx1) / 2, OY + CPr.nh / 2, bedTop);
+      for (const [sx, sy] of [[CPr.n0 + 11, 11], [CPr.n1 - 11, 11], [10, CPr.nh + 10], [CPr.w - 10, CPr.nh + 10], [10, CPr.h - 10], [CPr.w - 10, CPr.h - 10]]) add(screw(4.6), sx, OY + sy, bedTop);
+      await grabPart('construct_catplate', [-8, -8, CPr.w + 12, CPr.h + 14]);
+      Object.assign(layout.construct_catplate, { at: [CPr.x, CPr.y], plate: [0, 0, CPr.w, CPr.h], tab: [CPr.n0, CPr.n1, CPr.nh], search: [gx0 + 7, CPr.nh / 2 - gh / 2, gw, gh],
+        keys: [CPr.pad, CPr.nh + CPr.pad, CPr.w - 2 * CPr.pad, CPr.kh, CPr.gap] });
+
+      // A site board for the catalogue: cream enamel on its steel sheet, the navy field with the blueprint grid (the
+      // game prints the building's icon, name and price), bolted at its corners; drawn as a horizontal three-slice.
+      const BW = (CW - 16) / 2, BH = 180, FIELD = [26, 20, 140];
+      partGroup(); await siteBoard(0, { x: 0, y: 0, w: BW, h: BH, file: 'b_002_furnace.png', field: FIELD, emblem: 116, style: 'grid' });
+      await grabPart('construct_card', [-6, -6, BW + 10, BH + 12]);
+      Object.assign(layout.construct_card, { board: [0, 0, BW, BH], field: FIELD, emblem: 116, text_x: 186, cap_left: 206, cap_right: 46 });
+
+      // A recipe tag hung under an opened board: the recipe sign's enamel (cream, navy band and pinstripe, chipped),
+      // eyelets at its top and a chain from each up to a ring on the board above; the game prints the name and
+      // draws the recipe.
+      const TAG = { h: 250, drop: 40, fx: 64 };
+      partGroup();
+      add(shade(new THREE.Mesh(extrude(rrShape(CW, TAG.h, ENAMEL.radius), 2, 1.6, 1.2, 3), [enamelMat(hungEnamel(CW, TAG.h), CW, TAG.h), MAT.plateSide])), CW / 2, OY + TAG.h / 2, T + 1);
+      for (const fx of [TAG.fx, CW - TAG.fx]) {
+        ring(fx, OY - TAG.drop - 14, T + 7.2, 5, 1.7); chain(fx, OY - TAG.drop - 14, OY + 30, T + 6); eyelet(fx, OY + 30, T + 6.2);
+      }
+      await grabPart('construct_tag', [-6, -TAG.drop - 24, CW + 12, TAG.h + 14]);
+      Object.assign(layout.construct_tag, { tag: [0, 0, CW, TAG.h], drop: TAG.drop, name_y: 52, row_y: 156 });
     });
   });
 

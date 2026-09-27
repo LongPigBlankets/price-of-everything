@@ -167,37 +167,46 @@ static func enamel_recipe(recipe: Dictionary, size: Vector2) -> Control:
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var enamel: Control = Enamel.new()
 	card.add_child(enamel)
+	var clear: Array[Control] = []
+	card.add_child(recipe_row(recipe, false, clear))
+	enamel.call("watch", clear)
+	return card
+
+
+## The recipe drawn out in a row: the inputs, a plus between them, the navy arrow, the output(s). Expanded, each
+## good carries its quantity and the arrow the power it draws; condensed (`condensed`), the bare icons and a
+## plain arrow, as the Construct setting says. `clear` collects the icons and the arrow (the enamel's grunge
+## keeps off them).
+static func recipe_row(recipe: Dictionary, condensed: bool, clear: Array[Control] = []) -> HBoxContainer:
 	var row := HBoxContainer.new()
+	row.name = "RecipeDiagram"
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 6)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.add_child(row)
 	var flow: Dictionary = RecipeDiagram.flow_from_recipe(recipe)
 	var inputs: Array = flow.get("inputs", [])
 	var outputs: Array = flow.get("outputs", [])
 	if outputs.is_empty() and not (flow.get("output", {}) as Dictionary).is_empty():
 		outputs = [flow.get("output", {})]
 	var in_px := 64.0 if inputs.size() <= 2 else 46.0
-	var clear: Array[Control] = []
 	for i in inputs.size():
 		if i > 0:
 			row.add_child(_plus())
-		var ic := _recipe_good(inputs[i], in_px)
+		var ic := _recipe_good(inputs[i], in_px, not condensed)
 		row.add_child(ic)
 		clear.append(ic)
-	var arrow := RecipeArrow.new(int(flow.get("power_in", 0)))
+	var arrow := RecipeArrow.new(0 if condensed else int(flow.get("power_in", 0)))
 	row.add_child(arrow)
 	clear.append(arrow)
 	var out_px := 72.0 if outputs.size() <= 1 else 46.0
 	for o in outputs:
-		var ic := _recipe_good(o, out_px)
+		var ic := _recipe_good(o, out_px, not condensed)
 		row.add_child(ic)
 		clear.append(ic)
-	enamel.call("watch", clear)
-	return card
+	return row
 
 
-static func _recipe_good(item: Dictionary, px: float) -> Control:
+static func _recipe_good(item: Dictionary, px: float, with_qty := true) -> Control:
 	var slot := Control.new()
 	slot.custom_minimum_size = Vector2(px, px)
 	slot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -211,7 +220,8 @@ static func _recipe_good(item: Dictionary, px: float) -> Control:
 	tr.set_anchors_preset(Control.PRESET_FULL_RECT)
 	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot.add_child(tr)
-	slot.add_child(Parts.pill(int(item.get("qty", 0)), px < 60.0))
+	if with_qty:
+		slot.add_child(Parts.pill(int(item.get("qty", 0)), px < 60.0))
 	return slot
 
 
