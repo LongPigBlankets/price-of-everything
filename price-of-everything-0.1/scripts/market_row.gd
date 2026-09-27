@@ -3,6 +3,10 @@ extends VBoxContainer
 ## expandable Sell / Purchase / Move / Expand action block underneath.
 
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
+const MarketRules := preload("res://scripts/market_rules.gd")
+
+## The Sell key: the market panel opens its sell panel for the good.
+signal sell_requested(good_id: String)
 
 const ICON_SIZE := 98      # outer plate; icon fills ICON_SIZE - 2×12px frame margin
 const NAME_W := 240.0
@@ -112,7 +116,13 @@ func setup(good_data: Dictionary) -> void:
 		var b := Button.new()
 		b.text = action
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		if action == "Expand":
+		if action == "Sell":
+			b.name = "SellKey"
+			b.pressed.connect(func() -> void: sell_requested.emit(good_id))
+			if not Catalog.is_good_sellable(good_id):
+				b.disabled = true
+				b.tooltip_text = "This good can't be sold to the market."
+		elif action == "Expand":
 			b.pressed.connect(_on_expand_to_construct)
 		elif action == "Move":
 			b.pressed.connect(_on_move)
@@ -202,18 +212,7 @@ func set_impact_expanded(expanded: bool) -> void:
 
 ## The rung index the player's 10-turn average net volume sits on, or -1.
 func _active_rung() -> int:
-	var base_out := Catalog.base_output_for_good(good_id)
-	if base_out <= 0:
-		return -1
-	var v: float = absf(MarketState.rolling_net_volume(good_id))
-	var scale: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
-	var active := -1
-	for i in EconomyConfig.PRICE_IMPACT_LADDER.size():
-		if v > float(EconomyConfig.PRICE_IMPACT_LADDER[i][0]) * float(base_out) * scale:
-			active = i
-		else:
-			break
-	return active
+	return int(MarketState.price_trend(good_id).rung)
 
 ## Each cell carries THIS GOOD'S quantity for that column's rate (owner 2026-08-29): the
 ## rate is identical down a column and lives in the header, while the units that trigger it
@@ -259,20 +258,10 @@ static func _thousands(n: int) -> String:
 	return ("-" + out) if n < 0 else out
 
 
-## Which way this good's price is headed: -1 falling, +1 rising, 0 steady.
-## Mirrors MarketState's regime logic (accrue while the 10-turn average is over
-## the first rung; otherwise walk home to base) so the arrow can't disagree
-## with the simulation.
+## Which way this good's price is headed: -1 falling, +1 rising, 0 steady, from the regime the
+## simulation runs on (MarketState.price_trend), so the arrow can't disagree with it.
 func _price_direction() -> int:
-	var avg: float = MarketState.rolling_net_volume(good_id)
-	var scale: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
-	var rate: float = EconomyConfig.price_impact_rate(avg, Catalog.base_output_for_good(good_id), scale)
-	var a: float = MarketState.get_impact_pct(good_id)
-	if rate > 0.0:
-		return -1 if avg > 0.0 else 1
-	if absf(a) > 0.0005:
-		return 1 if a < 0.0 else -1
-	return 0
+	return int(MarketState.price_trend(good_id).dir)
 
 func _direction_tooltip(dir: int) -> String:
 	var avg: float = MarketState.rolling_net_volume(good_id)
@@ -372,18 +361,20 @@ func _refresh() -> void:
 	# impact-free base price of the turn in brackets underneath. A direction
 	# arrow says which way the price is headed (falling red / rising green),
 	# derived from the same regime logic the simulation runs on.
-	var impact: float = MarketState.get_impact_pct(good_id)
+	# Every figure from MarketRules.board_row: the sell price is what a sale is paid this turn
+	# (MarketRules.sale_price, uplifts included), the buy price the raw market price.
+	var board := MarketRules.board_row(good_id)
+	var impact: float = float(board.impact)
 	var has_impact := absf(impact) > 0.0005
-	var impact_mult := 1.0 + impact / 100.0
-	var dir := _price_direction()
+	var dir := int(board.dir)
 	var arrow := "" if dir == 0 else " [color=#%s]%s[/color]" % [(COST_RED if dir < 0 else COST_GREEN).to_html(false), "▼" if dir < 0 else "▲"]
 	var dir_tip := _direction_tooltip(dir)
-	var sale_now: float = MarketState.get_price(good_id)
-	_price_label.text = ("£%.2f%s\n(£%.2f)" % [sale_now, arrow, MarketState.get_base_price_now(good_id)]) if has_impact \
+	var sale_now: float = float(board.sell)
+	_price_label.text = ("£%.2f%s\n(£%.2f)" % [sale_now, arrow, float(board.sell_before_impact)]) if has_impact \
 		else "£%.2f%s" % [sale_now, arrow]
 	_price_label.tooltip_text = dir_tip
-	var buy_now: float = MarketState.get_buy_price(good_id)
-	_buy_price_label.text = ("£%.2f%s\n(£%.2f)" % [buy_now, arrow, buy_now / impact_mult]) if has_impact \
+	var buy_now: float = float(board.buy)
+	_buy_price_label.text = ("£%.2f%s\n(£%.2f)" % [buy_now, arrow, float(board.buy_before_impact)]) if has_impact \
 		else "£%.2f%s" % [buy_now, arrow]
 	_buy_price_label.tooltip_text = dir_tip
 	for pl: RichTextLabel in [_price_label, _buy_price_label]:

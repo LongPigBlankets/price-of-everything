@@ -10,6 +10,7 @@ extends PanelContainer
 const MarketRowScene: PackedScene = preload("res://scenes/market_row.tscn")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const BuildingMarketTab := preload("res://scripts/building_market_panel.gd")  # NPC buildings-for-sale tab
+const MarketRules := preload("res://scripts/market_rules.gd")
 const HEADER_HEIGHT := 40.0
 const TAB_PRICES := "prices"
 const TAB_BUILDINGS := "buildings"
@@ -26,10 +27,8 @@ var _special_orders_count_label: Label = null
 var _special_orders_body: VBoxContainer = null
 var _dragging := false
 var _drag_offset := Vector2.ZERO
-var _good_option: OptionButton = null
-var _finished_check: CheckBox = null
-var _recurring_check: CheckBox = null
-var _keep_spin: SpinBox = null
+## The sell panel (scripts/market_sell_panel.gd), made on the first Sell and laid over the panel while open.
+var _sell_panel: PanelContainer = null
 var _ledger_refreshers: Array = []  # Callables that rebuild the Transactions/Movements tabs
 # Buying now lives in the per-good "Purchase" flow on the world map (world_map.gd).
 
@@ -324,6 +323,8 @@ func _on_panel_visibility_changed() -> void:
 		# (via the Market button) shows every building again.
 		if _buildings_tab != null:
 			_buildings_tab.clear_tile_filter(false)
+		if _sell_panel != null and _sell_panel.visible:
+			_sell_panel.call("close")
 		return
 	_ensure_built()   # first open builds the cheap tab shell
 	_centre_and_resize()
@@ -333,9 +334,6 @@ func _on_panel_visibility_changed() -> void:
 	_refresh_ledgers()
 	_refresh_special_orders()
 	_update_filter_availability()
-	# Fresh open: clear the stale "recurring" choice on the Sales tab.
-	if _recurring_check != null:
-		_recurring_check.set_pressed_no_signal(false)
 
 func _build_tabs() -> void:
 	var tabs := TabContainer.new()
@@ -446,12 +444,10 @@ func _build_special_orders_lazy_tab(root: VBoxContainer) -> void:
 	_adopt_children(_build_special_orders_tab(), root)
 	_refresh_special_orders()
 
+## Recurring sales, each with Cancel. Selling in bulk is a good's sell panel (its Sell key on Good prices).
 func _build_sales_tab(root: VBoxContainer) -> void:
 	root.add_theme_constant_override("separation", 12)
 	root.add_child(_build_recurring_orders_section("sells"))
-	var sep := HSeparator.new()
-	root.add_child(sep)
-	_build_bulk_sell_section(root)
 
 func _build_movements_tab(root: VBoxContainer) -> void:
 	root.add_theme_constant_override("separation", 12)
@@ -489,6 +485,26 @@ func _detach(node: Node) -> void:
 	if parent != null:
 		parent.remove_child(node)
 
+## The tabs' keys, in the order they show (captures and tests page through them).
+func tab_keys() -> Array:
+	_ensure_built()
+	var keys: Array = []
+	if _tabs != null:
+		for i in _tabs.get_child_count():
+			keys.append(_tab_key_for_index(i))
+	return keys
+
+
+## Shows the tab `key`, building it first if need be.
+func show_tab(key: String) -> void:
+	_ensure_built()
+	var root := _tab_roots.get(key, null) as Control
+	if _tabs == null or root == null:
+		return
+	_tabs.current_tab = root.get_index()
+	_ensure_tab_built(key)
+
+
 # Open the Market on the Buildings tab, filtered to a single tile's buildings (a temporary
 # filter that the player can clear). Called from the tile view's "Buy Buildings" button.
 func open_buildings_for_tile(tile_id: String) -> void:
@@ -522,9 +538,10 @@ func _build_ledger_tab(title: String, recurring_getter: Callable, oneoff_getter:
 	body.add_child(recurring.root)
 	body.add_child(oneoff.root)
 
+	# Transactions carry their money value, and a recurring order its Cancel.
 	var refresh := func() -> void:
-		_populate_accordion(recurring, "Recurring", recurring_getter.call())
-		_populate_accordion(oneoff, "One-off", oneoff_getter.call())
+		_populate_accordion(recurring, "Recurring", recurring_getter.call(), true, true)
+		_populate_accordion(oneoff, "One-off", oneoff_getter.call(), true, false)
 	_ledger_refreshers.append(refresh)
 	refresh.call()
 	return tab
@@ -548,7 +565,7 @@ func _make_accordion() -> Dictionary:
 	)
 	return acc
 
-func _populate_accordion(acc: Dictionary, label: String, rows: Array) -> void:
+func _populate_accordion(acc: Dictionary, label: String, rows: Array, with_value := false, with_cancel := false) -> void:
 	var content: VBoxContainer = acc.content
 	for c in content.get_children():
 		c.queue_free()
@@ -563,11 +580,18 @@ func _populate_accordion(acc: Dictionary, label: String, rows: Array) -> void:
 		content.add_child(empty)
 		return
 	var grid := GridContainer.new()
-	grid.columns = 7
+	grid.name = "LedgerGrid"
+	var headings := ["Type", "From", "To", "Good", "Qty"]
+	if with_value:
+		headings.append("Value")
+	headings.append_array(["Started", "Ended"])
+	if with_cancel:
+		headings.append("")
+	grid.columns = headings.size()
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 2)
 	content.add_child(grid)
-	for h in ["Type", "From", "To", "Good", "Qty", "Started", "Ended"]:
+	for h in headings:
 		grid.add_child(_ledger_cell(h, true))
 	for r in rows:
 		grid.add_child(_ledger_cell(str(r.get("type", "")), false))
@@ -575,8 +599,29 @@ func _populate_accordion(acc: Dictionary, label: String, rows: Array) -> void:
 		grid.add_child(_ledger_cell(str(r.get("to", "")), false))
 		grid.add_child(_ledger_cell(str(r.get("good", "")), false))
 		grid.add_child(_ledger_cell("—" if int(r.get("qty", 0)) < 0 else str(int(r.get("qty", 0))), false))
+		if with_value:
+			var value := float(r.get("value", -1.0))
+			grid.add_child(_ledger_cell("£%.2f" % value if value >= 0.0 else "", false))
 		grid.add_child(_ledger_cell("T%d" % int(r.get("turn_started", 0)), false))
 		grid.add_child(_ledger_cell(_format_turn_ended(int(r.get("turn_ended", -1))), false))
+		if with_cancel:
+			grid.add_child(_ledger_cancel(r))
+
+## Cancel for a recurring transaction's row (a recurring sale, bulk sale or buy).
+func _ledger_cancel(r: Dictionary) -> Control:
+	var sub := str(r.get("sub", ""))
+	if sub == "" or not r.has("entry"):
+		return Control.new()
+	var entry: Dictionary = r.entry
+	var cancel := Button.new()
+	cancel.name = "CancelRecurring"
+	cancel.text = "Cancel"
+	cancel.focus_mode = Control.FOCUS_NONE
+	cancel.add_theme_font_size_override("font_size", 12)
+	cancel.tooltip_text = "Stop this recurring order"
+	cancel.pressed.connect(func() -> void: _cancel_recurring(sub, entry))
+	return cancel
+
 
 func _ledger_cell(text: String, is_header: bool) -> Label:
 	var lbl := Label.new()
@@ -599,67 +644,18 @@ func _refresh_ledgers(_summary: Dictionary = {}) -> void:
 	for refresh in _ledger_refreshers:
 		refresh.call()
 
-func _build_bulk_sell_section(parent: VBoxContainer) -> void:
-	# Stories 4 & 5: sell across many/all tiles to market, with good / finished / threshold filters.
-	var header := Label.new()
-	header.text = "Sell to market (bulk)"
-	header.add_theme_font_size_override("font_size", 16)
-	parent.add_child(header)
+## Opens the sell panel for a good over the panel (a row's Sell key).
+func open_sell_panel(good_id: String) -> void:
+	if _sell_panel == null:
+		_sell_panel = preload("res://scripts/market_sell_panel.gd").new()
+		add_child(_sell_panel)
+		_sell_panel.connect("sold", func(_r: Dictionary) -> void: _queue_refresh())
+	_sell_panel.call("open", good_id)
 
-	_good_option = OptionButton.new()
-	_good_option.add_item("All goods")
-	_good_option.set_item_metadata(0, "")
-	for g in Catalog.sellable_goods():
-		_good_option.add_item(str(g.display_name))
-		_good_option.set_item_metadata(_good_option.item_count - 1, str(g.id))
-	parent.add_child(_make_labeled_row("Good", _good_option))
 
-	_finished_check = UIHelpers.make_custom_checkbox()
-	parent.add_child(UIHelpers.make_setting_row("Finished goods only (non-raw)", _finished_check))
+func sell_panel() -> PanelContainer:
+	return _sell_panel
 
-	_keep_spin = SpinBox.new()
-	_keep_spin.min_value = 0
-	_keep_spin.max_value = 100000
-	_keep_spin.step = 1
-	_keep_spin.value = 0
-	parent.add_child(_make_labeled_row("Keep per tile", _keep_spin))
-
-	_recurring_check = UIHelpers.make_custom_checkbox()
-	parent.add_child(UIHelpers.make_setting_row("Make recurring every turn", _recurring_check))
-
-	var sell_btn := Button.new()
-	sell_btn.text = "Sell from all tiles"
-	sell_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sell_btn.pressed.connect(_on_bulk_sell_pressed)
-	parent.add_child(sell_btn)
-
-func _make_labeled_row(label_text: String, control: Control) -> HBoxContainer:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	var lbl := Label.new()
-	lbl.text = label_text
-	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(lbl)
-	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(control)
-	return row
-
-func _on_bulk_sell_pressed() -> void:
-	var params := {
-		"good_id": str(_good_option.get_item_metadata(_good_option.selected)),
-		"finished_only": _finished_check.button_pressed,
-		"per_tile_keep": int(_keep_spin.value),
-	}
-	var result: Dictionary = MatchState.sell_all_to_market(params)
-	var qty := int(result.get("total_qty", 0))
-	var tiles := int(result.get("tiles", 0))
-	if qty > 0:
-		MatchState.request_toast("Selling %d units from %d tile%s to market" % [
-			qty, tiles, "" if tiles == 1 else "s"], "success")
-	else:
-		MatchState.request_toast("Nothing to sell with those filters", "warning")
-	if _recurring_check != null and _recurring_check.button_pressed:
-		MatchState.add_recurring_bulk_sell(params)
 
 # ── Recurring orders list (Movements + Sales tabs) ───────────────────────────
 # A searchable, filterable list of standing orders — one card per recurring move /
@@ -874,16 +870,9 @@ func _recurring_row(item: Dictionary) -> Control:
 	return card
 
 func _cancel_recurring(sub: String, entry: Dictionary) -> void:
-	var ok := false
-	match sub:
-		"move":
-			ok = TransportState.remove_recurring_move(entry)
-		"sell":
-			ok = MatchState.remove_recurring_sell(entry)
-		"bulk":
-			ok = MatchState.remove_recurring_bulk_sell(entry)
-	if ok:
+	if MatchState.remove_recurring_order(sub, entry):
 		MatchState.request_toast("Recurring order cancelled", "success")
+		_refresh_ledgers()
 
 func _recurring_title(item: Dictionary) -> String:
 	match str(item.get("sub", "")):
@@ -892,14 +881,21 @@ func _recurring_title(item: Dictionary) -> String:
 		"sell":
 			return "Sell from %s" % Catalog.tile_label(str(item.source))
 		"bulk":
-			var gid := str((item.get("params", {}) as Dictionary).get("good_id", ""))
-			return "Bulk sell: %s" % ("all goods" if gid == "" else Catalog.get_display_name(gid))
+			var p: Dictionary = item.get("params", {})
+			var gid := str(p.get("good_id", ""))
+			var tiles: Array = p.get("tiles", [])
+			var what := "all goods" if gid == "" else Catalog.get_display_name(gid)
+			if tiles.is_empty():
+				return "Bulk sell: %s" % what
+			return "Sell %s from %s" % [what, MarketRules.place_name(str(tiles[0])) if tiles.size() == 1 else "%d places" % tiles.size()]
 	return ""
 
 func _recurring_goods_summary(item: Dictionary) -> String:
 	if str(item.get("sub", "")) == "bulk":
 		var p: Dictionary = item.get("params", {})
 		var extra := " · finished only" if bool(p.get("finished_only", false)) else ""
+		if int(p.get("per_tile_max", 0)) > 0:
+			return "only %d per tile%s · every turn" % [int(p.get("per_tile_max", 0)), extra]
 		return "keep %d per tile%s · every turn" % [int(p.get("per_tile_keep", 0)), extra]
 	var parts: Array = []
 	var goods: Dictionary = item.get("goods", {})
@@ -1281,6 +1277,7 @@ func _build_content() -> void:
 		content_vbox.add_child(row)
 		row.setup(good_data)
 		row.set_impact_expanded(_impact_expanded)
+		row.connect("sell_requested", open_sell_panel)
 		rows.append(row)
 
 func _gui_input(event: InputEvent) -> void:
