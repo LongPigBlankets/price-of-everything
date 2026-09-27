@@ -30,6 +30,8 @@ const LAYOUT_PATH := "res://assets/ui/bdp_v3/layout.json"
 static var _atlas := {}
 
 var text := "": set = set_text
+## The hover card (scripts/ds2/dot_card.gd): the recipe the building runs. None when empty.
+var tip: Dictionary = {}
 var _para := TextParagraph.new()
 ## [face region, drawn rect, face shade] per letter, top to bottom, left to right.
 var _letters: Array = []
@@ -83,6 +85,10 @@ func _init() -> void:
 func set_text(value: String) -> void:
 	text = value.to_upper()
 	_lay_out()
+
+
+func _make_custom_tooltip(_for_text: String) -> Object:
+	return load("res://scripts/ds2/dot_card.gd").make(tip, self) if not tip.is_empty() else null
 
 
 func letter_count() -> int:

@@ -8,17 +8,12 @@ const OUT := "res://docs/building-names.md"
 
 ## Names worth the owner's second look, by recipe id or, for a whole kind, by building internal name.
 const FLAGS := {
-	"eaf": "\"Arc Furnace\" shortens Electric Arc Furnace so the name stays at three or four words.",
-	"high_tech_manufactory": "\"Manufactory\" drops \"High Tech\" to keep the names short.",
-	"new_forest": "Forest names carry \"Biomass\", the only good a forest makes in the game.",
-	"fracking_oil_well": "\"Fracking Oil Well\" rather than the type's \"Hydraulic Fracking Oil Wells\".",
-	"offshore_oil_platform": "\"Oil Platform\": the sea already says offshore.",
 	"battery": "Stores power and makes nothing, so it keeps its type name.",
 	"heat_battery": "Stores heat and makes nothing, so it keeps its type name.",
 	"water_recycling": "The type's display name is misspelt (\"Recyling\"). The building name spells it right.",
-	"r_065": "The owner's example names a plain \"Motor Assembly Plant\", but all three motor recipes here are named processes, so each carries its own word. Axial Flux (the earliest research) could be the plain one.",
-	"r_066": "See SynRM.",
-	"r_203": "See SynRM.",
+	"r_203": "Hairpin Stator kept in full beside \"Axial\" and \"SynRM\". \"Hairpin\" alone would not collide if a shorter name is wanted.",
+	"r_214": "Sustainable Forestry and Gentle Pruning are both the sustainable kind, so both read \"Sustainable Forest\" and cannot be told apart by name.",
+	"r_215": "Sustainable Forestry and Gentle Pruning are both the sustainable kind, so both read \"Sustainable Forest\" and cannot be told apart by name.",
 	"r_107": "Named by its main output, copper wiring, though it recycles electronic waste.",
 	"r_108": "Named by its main output, biomass, though it recycles bio waste.",
 	"r_223": "Floating is the qualifier. The owner's wind farm names otherwise kept.",
@@ -26,6 +21,20 @@ const FLAGS := {
 	"r_033": "Keeps the good's own word order, \"Construction Equipment ICE\".",
 	"r_018": "Sand is dug, not mined, but keeps the Mine word with its kind.",
 	"r_019": "Limestone is quarried, but keeps the Mine word with its kind.",
+}
+
+## Recipes whose names the owner has settled: SynRM and Axial Motor Assembly Plant.
+const OWNER_SETTLED := ["r_065", "r_066"]
+
+## Notes on the names the unloaded farm and forest recipes will take.
+const DORMANT_FLAGS := {
+	"r_168": "A guess: named Sustainable as the plain counterpart of Intensive Fabric Crops Farming (Strip). Its name says no kind.",
+	"r_169": "A guess: named Sustainable as the plain counterpart of Intensive Oil Crops Farming (Strip). Its name says no kind.",
+	"r_170": "Intensive read as the strip kind.",
+	"r_171": "Intensive read as the strip kind.",
+	"r_092": "Mixed Crop Sustainable Farming and Sustainable Food Production both read \"Sustainable Farm\".",
+	"r_091": "Once food loads, a Strip Farm may make biomass or food: the name says the kind, not the good.",
+	"r_097": "Gentle Pruning read as the sustainable kind, the same name as Sustainable Forestry.",
 }
 
 func _ready() -> void:
@@ -68,6 +77,8 @@ func _ready() -> void:
 			var out_id := str(r.get("output_name", ""))
 			var output := str(Catalog.get_good_by_internal_name(out_id).get("display_name", out_id)) if out_id != "" else ""
 			var note := str(FLAGS.get(rid, FLAGS.get(internal, "")))
+			if note == "" and _same_name_count(bid, BuildingNaming.name_for(bid, rid)) > 1:
+				note = "Shares its name with another recipe of this building, so the two cannot be told apart by name."
 			if note == "" and _no_plain_sibling(bid, r):
 				note = "No recipe of this group is the plain one, so each carries its own word."
 			if note != "":
@@ -91,8 +102,8 @@ func _ready() -> void:
 	lines.append("`data/recipes_all.csv` rows the catalogue drops, because their building or one of their goods is not in the game.")
 	lines.append("They have no name until they load. The rule will name them then.")
 	lines.append("")
-	lines.append("| Recipe | Building field | Main output |")
-	lines.append("|---|---|---|")
+	lines.append("| Recipe | Building field | Main output | Name when it loads | Note |")
+	lines.append("|---|---|---|---|---|")
 	var f := FileAccess.open("res://data/recipes_all.csv", FileAccess.READ)
 	var header := f.get_csv_line()
 	var i_id := header.find("recipe_id")
@@ -105,15 +116,33 @@ func _ready() -> void:
 		if row.size() <= i_out or row[i_id] == "" or loaded.has(row[i_id]):
 			continue
 		dormant += 1
-		lines.append("| %s (%s) | %s | %s |" % [row[i_name], row[i_id], row[i_b], row[i_out]])
+		var kind := str(BuildingNaming.KIND_NAMES.get(row[i_id], ""))
+		var dnote := str(DORMANT_FLAGS.get(row[i_id], ""))
+		if dnote != "":
+			dnote = "**check** " + dnote
+		lines.append("| %s (%s) | %s | %s | %s | %s |" % [row[i_name], row[i_id], row[i_b], row[i_out],
+			("**%s**" % kind) if kind != "" else "", dnote])
 	lines.append("")
 	FileAccess.open(OUT, FileAccess.WRITE).store_string("\n".join(lines))
 	print("building_names_table: %d loaded recipes, %d flagged, %d without recipes, %d not loaded -> %s" % [
 		loaded.size(), flagged, no_recipe.size(), dormant, OUT])
 	get_tree().quit()
 
+## How many of a building's recipes take `name` (the owner's refinery and power plant names excepted).
+static func _same_name_count(building_id: String, name: String) -> int:
+	if str(Catalog.get_building(building_id).get("internal_name", "")) in BuildingNaming.NO_QUALIFIER_KINDS:
+		return 1
+	var n := 0
+	for o: Dictionary in Catalog.all_recipes_for_building(building_id):
+		if BuildingNaming.name_for(building_id, str(o.get("recipe_id", ""))) == name:
+			n += 1
+	return n
+
 ## True when this recipe shares its main output with others of its building and none of them is the plain one.
 static func _no_plain_sibling(building_id: String, recipe: Dictionary) -> bool:
+	var rid := str(recipe.get("recipe_id", ""))
+	if BuildingNaming.KIND_NAMES.has(rid) or rid in OWNER_SETTLED:
+		return false
 	var out_id := str(recipe.get("output_name", ""))
 	var group: Array = Catalog.all_recipes_for_building(building_id).filter(
 		func(o: Dictionary) -> bool: return str(o.get("output_name", "")) == out_id)

@@ -3,6 +3,7 @@ extends RefCounted
 ## Construct): a building is named by what it makes, and carries its letter once it stands on a tile.
 ##   "<qualifier> <output word> <building word> <Letter>"
 ##   "Iron Furnace A", "Coal Mine B", "Steel Furnace", "HIsarna Steel Furnace", "SynRM Motor Assembly Plant"
+## Farms and forests are named by their kind instead (KIND_NAMES): "Strip Farm", "Logging Forest A".
 ##
 ## The OUTPUT WORD is the main output's plain name, without the form word the building already implies
 ## ("Iron Ingots" makes "Iron Furnace", "Iron Ore" makes "Iron Mine"). Where the building's own word already says
@@ -38,7 +39,7 @@ const NO_QUALIFIER_KINDS := ["petro_refinery", "power_plant"]
 const BUILDING_WORDS := {
 	"mine": "Mine",
 	"furnace": "Furnace",
-	"eaf": "Arc Furnace",
+	"eaf": "Electric Furnace",
 	"assembly_plant": "Assembly Plant",
 	"high_tech_manufactory": "Manufactory",
 	"electrolyser": "Electrolyser",
@@ -72,6 +73,33 @@ const FORM_SUFFIXES := [" Ingots", " Ore"]
 const GENERIC_WORDS := ["manufacturing", "manufacture", "production", "smelting", "making", "steelmaking",
 	"glassmaking", "mining", "assembly", "process", "refining", "fabbing", "extraction", "generation", "power",
 	"farming", "forestry", "electrolysis", "automated", "of", "and", "the"]
+## Farms and forests are named by the kind of husbandry, not by what they make, whole: recipe id to name.
+## Rows for recipes the game does not load yet are here so they are named when they do.
+const KIND_NAMES := {
+	# Farms
+	"r_208": "Sustainable Farm",   # Sustainable Biomass Production
+	"r_209": "Strip Farm",         # Strip Farming - Biomass
+	"r_211": "Agrisolar Farm",     # Agri Solar Farming - Biomass
+	"r_212": "Livestock Farm",     # Livestock Farming - Biomass
+	"r_090": "Sustainable Farm",   # Sustainable Food Production
+	"r_091": "Strip Farm",         # Strip Farming
+	"r_092": "Sustainable Farm",   # Mixed Crop Sustainable Farming
+	"r_093": "Agrisolar Farm",     # Agri Solar Farming
+	"r_094": "Livestock Farm",     # Livestock Farming
+	"r_168": "Sustainable Farm",   # Fabric Crops Farming, the plain counterpart of the intensive one
+	"r_170": "Strip Farm",         # Intensive Fabric Crops Farming
+	"r_169": "Sustainable Farm",   # Oil Crops Farming, the plain counterpart of the intensive one
+	"r_171": "Strip Farm",         # Intensive Oil Crops Farming
+	# Forests
+	"r_213": "Logging Forest",     # Aggressive Logging - Biomass
+	"r_214": "Sustainable Forest", # Sustainable Forestry - Biomass
+	"r_215": "Sustainable Forest", # Gentle Pruning - Biomass
+	"r_216": "Tourist Forest",     # National Park Tourism - Biomass
+	"r_095": "Logging Forest",     # Aggressive Logging
+	"r_096": "Sustainable Forest", # Sustainable Forestry
+	"r_097": "Sustainable Forest", # Gentle Pruning
+	"r_098": "Tourist Forest",     # National Park Tourism
+}
 ## Qualifiers where derivation from the recipe's name reads wrong, by recipe id; "" is the plain recipe.
 const QUALIFIERS := {
 	# Furnace
@@ -92,6 +120,7 @@ const QUALIFIERS := {
 	"r_073": "",                   # Large Vehicle Engine Manufacturing
 	"r_207": "Electric",           # Heavy Electric Motor
 	"r_065": "SynRM",              # SynRM Magnetless Motors
+	"r_066": "Axial",              # Axial Flux Motors
 	"r_060": "Perovskite",         # Durable Perovskite Solar Panels
 	# High tech manufactory
 	"r_123": "Fabless",            # Fabless Semiconductors
@@ -105,10 +134,6 @@ const QUALIFIERS := {
 	# Chemical plant
 	"r_116": "",                   # Generic Acid Production
 	"r_081": "Fluidised Bed",      # Fluidised Bed Reactor + CZ Silicon
-	# Farm and forest
-	"r_208": "",                   # Sustainable Biomass Production
-	"r_214": "",                   # Sustainable Forestry - Biomass
-	"r_216": "National Park",      # National Park Tourism - Biomass
 	# Oil platform
 	"r_178": "",                   # Offshore Oil Extraction
 }
@@ -135,6 +160,8 @@ static func name_for(building_id: String, recipe_id: String) -> String:
 	var recipe: Dictionary = Catalog.get_recipe(recipe_id) if recipe_id != "" else {}
 	if recipe.is_empty():
 		return str(bd.get("display_name", building_id))
+	if KIND_NAMES.has(recipe_id):
+		return str(KIND_NAMES[recipe_id])
 	var out_id := str(recipe.get("output_name", ""))
 	var output := ""
 	if out_id != "":

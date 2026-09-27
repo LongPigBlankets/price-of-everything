@@ -12,6 +12,7 @@ const EffectEmblem := preload("res://scripts/effect_emblem.gd")
 
 const BuildingReadout := preload("res://scripts/building_readout.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
+const DotCard := preload("res://scripts/ds2/dot_card.gd")
 const BuildingStatus := preload("res://scripts/building_status.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
@@ -193,10 +194,12 @@ func _build_shell() -> void:
 	_title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_title_label.custom_minimum_size = Vector2(PANEL_WIDTH - 2.0 * DS.SP["MD"] - 44.0, 0)
+	_title_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	header.add_child(_title_label)
 	_title_v3 = BdpV3Title.new()
 	# The emblem takes its side and a gap from the title's width.
 	_title_v3.custom_minimum_size = Vector2(_title_label.custom_minimum_size.x - BdpV3Emblem.side() - DS.SP["SM"], 0)
+	_title_v3.mouse_filter = Control.MOUSE_FILTER_PASS
 	header.add_child(_title_v3)
 	_close_button = Button.new()
 	_close_button.text = "X"
@@ -358,6 +361,10 @@ func _rebuild(building: Dictionary) -> void:
 	var display_name := str(building_data.get("display_name", building.get("building_id", "Building")))
 	_title_label.text = display_name if is_infra else BuildingNaming.of(building)
 	_title_v3.text = _title_label.text
+	# The title is one name; the recipe it runs shows on hovering it: a plain tooltip on v2, the dot card on v3.
+	var recipe_tip := {} if is_infra else v3_recipe_tip(building, recipe)
+	DotCard.attach(_title_v3, recipe_tip)
+	_title_label.tooltip_text = _title_v3.tooltip_text
 	_emblem_v3.visible = UiPrefs.use_bdp_v3 and _emblem_v3.set_building(str(building.get("building_id", "")))
 	_apply_v3_title()
 	# Catalog.tile_label, not the raw id: this was the one surface still printing
@@ -1798,6 +1805,32 @@ static func v3_upgrade_state(building: Dictionary) -> Dictionary:
 ## The Upgrade key's hover card (scripts/ds2/dot_card.gd), from BuildingWorks.preview_upgrade: the
 ## next level's output gain, what buying the missing materials costs, the land it adds and the time it
 ## takes, with the materials in their wells; the turns left while it runs; the top level; why it can't run.
+## The title's hover card (scripts/ds2/dot_card.gd): the recipe the building runs, what it makes a run as
+## facts, the power it draws, and what it takes in the goods' wells, at the building's level. Empty with no recipe.
+static func v3_recipe_tip(building: Dictionary, recipe: Dictionary) -> Dictionary:
+	if recipe.is_empty():
+		return {}
+	var level := int(building.get("level", 1))
+	var rows: Array = []
+	for o: Dictionary in recipe.get("outputs", []):
+		var gid := str(o.get("good_id", ""))
+		var qty := int(round(float(o.get("qty", 0)) * BuildingLevels.mult("output", level)))
+		var power := str(o.get("internal_name", "")) == "power"
+		rows.append({"caption": "Makes" if rows.is_empty() else "",
+			"value": ("%d MW" % qty) if power else "%d %s" % [qty, Catalog.get_display_name(gid)]})
+	var energy := int(recipe.get("energy_req", 0))
+	if energy > 0:
+		rows.append({"caption": "Power", "value": "%d MW" % energy})
+	var card := {"title": str(recipe.get("display_name", "")), "rows": rows}
+	var goods := {}
+	for i: Dictionary in recipe.get("inputs", []):
+		goods[str(i.get("good_id", ""))] = int(round(float(i.get("qty", 0)) * BuildingLevels.mult("input", level)))
+	if not goods.is_empty():
+		card.goods = goods
+		card.goods_caption = "Takes"
+	return card
+
+
 static func v3_upgrade_tip(building: Dictionary) -> Dictionary:
 	var iid := str(building.get("instance_id", ""))
 	var level := int(building.get("level", 1))

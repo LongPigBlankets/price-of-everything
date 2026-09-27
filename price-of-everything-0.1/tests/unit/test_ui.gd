@@ -2681,6 +2681,10 @@ func _test_building_names_follow_the_owners_convention() -> void:
 		["b_002", "r_007"]: "Copper Furnace",
 		["b_007", "r_009"]: "Motor Factory", ["b_007", "r_071"]: "Engine Factory", ["b_007", "r_072"]: "V8 Engine Factory",
 		["b_003", "r_004"]: "Coal Power Plant",
+		["b_008", "r_076"]: "Steel Electric Furnace", ["b_008", "r_083"]: "ELYSIS Aluminium Electric Furnace",
+		["b_009", "r_066"]: "Axial Motor Assembly Plant",
+		["b_014", "r_209"]: "Strip Farm", ["b_014", "r_211"]: "Agrisolar Farm", ["b_014", "r_212"]: "Livestock Farm",
+		["b_014", "r_208"]: "Sustainable Farm", ["b_015", "r_213"]: "Logging Forest", ["b_015", "r_215"]: "Sustainable Forest",
 	}
 	var wrong: Array = []
 	for key: Array in cases:
@@ -2704,3 +2708,23 @@ func _test_building_names_follow_the_owners_convention() -> void:
 				if n.contains(ch):
 					bad.append(n)
 	_check(bad.is_empty(), "names: no name carries a hyphen, dash, semicolon or middle dot (%s)" % ", ".join(bad))
+
+
+func _test_building_detail_title_shows_its_recipe_on_hover() -> void:
+	# Building Detail's title is one name; hovering it shows the recipe, what it makes and what it takes.
+	var iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "title_tip")
+	var panel: Control = (load("res://scripts/building_detail_panel_v2.gd") as GDScript).new()
+	add_child(panel)
+	panel.show_building(BuildingState.get_building(iid))
+	await get_tree().process_frame
+	var title: String = panel._title_label.text
+	_check(title == load("res://scripts/building_naming.gd").of(BuildingState.get_building(iid)) and not title.contains("—"),
+		"bdp title: one name, the recipe not beside it (%s)" % title)
+	var tip: Dictionary = panel._title_v3.tip
+	_check(str(tip.get("title", "")) == "Motor Manufacture" and (tip.get("goods", {}) as Dictionary).size() == 2
+		and panel._title_v3.mouse_filter != Control.MOUSE_FILTER_IGNORE,
+		"bdp title: hovering the v3 title shows the recipe's dot card, its inputs in wells (%s)" % str(tip))
+	_check(panel._title_label.tooltip_text.begins_with("Motor Manufacture") and panel._title_label.tooltip_text.contains("Motor"),
+		"bdp title: the v2 title's tooltip names the recipe and what it makes")
+	panel.queue_free()
+	BuildingState.remove_building(iid)

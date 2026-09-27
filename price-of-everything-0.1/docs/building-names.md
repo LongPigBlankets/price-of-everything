@@ -71,13 +71,13 @@ Rows marked **check** carry a note for the owner.
 | Industrial Goods Factory | Radial Axial Tire Production (r_165) | Tyres | **Tyres Factory** | Tyres Factory A |  |
 | Industrial Goods Factory | uPVC Window Manufacturing (r_055) | Windows | **uPVC Windows Factory** | Windows Factory A |  |
 | Industrial Goods Factory | Window Manufacturing (r_056) | Windows | **Windows Factory** | Windows Factory A |  |
-| Electric Arc Furnace | ELYSIS Aluminium (r_083) | Aluminium | **ELYSIS Aluminium Arc Furnace** | Electric Arc Furnace - Aluminium - A | **check** "Arc Furnace" shortens Electric Arc Furnace so the name stays at three or four words. |
-| Electric Arc Furnace | Aluminium Direct Carbothermic Electrolysis (r_084) | Aluminium | **Carbothermic Aluminium Arc Furnace** | Electric Arc Furnace - Aluminium - A | **check** "Arc Furnace" shortens Electric Arc Furnace so the name stays at three or four words. |
-| Electric Arc Furnace | Electric Concrete Production (r_030) | Concrete | **Concrete Arc Furnace** | Electric Arc Furnace - Concrete - A | **check** "Arc Furnace" shortens Electric Arc Furnace so the name stays at three or four words. |
-| Electric Arc Furnace | Anthracite Graphitisation (r_231) | Graphite | **Graphite Arc Furnace** | Electric Arc Furnace - Graphite - A | **check** "Arc Furnace" shortens Electric Arc Furnace so the name stays at three or four words. |
-| Electric Arc Furnace | Silicon Smelting (r_044) | Metallurgical Silicon | **Metallurgical Silicon Arc Furnace** | Electric Arc Furnace - Metallurgical Silicon - A | **check** "Arc Furnace" shortens Electric Arc Furnace so the name stays at three or four words. |
-| Electric Arc Furnace | Electric Arc Steelmaking (r_076) | Steel | **Steel Arc Furnace** | Electric Arc Furnace - Steel - A | **check** "Arc Furnace" shortens Electric Arc Furnace so the name stays at three or four words. |
-| Electric Arc Furnace | Scrap Recycling (r_106) | Steel | **Scrap Steel Arc Furnace** | Electric Arc Furnace - Steel - A | **check** "Arc Furnace" shortens Electric Arc Furnace so the name stays at three or four words. |
+| Electric Arc Furnace | ELYSIS Aluminium (r_083) | Aluminium | **ELYSIS Aluminium Electric Furnace** | Electric Arc Furnace - Aluminium - A | **check** No recipe of this group is the plain one, so each carries its own word. |
+| Electric Arc Furnace | Aluminium Direct Carbothermic Electrolysis (r_084) | Aluminium | **Carbothermic Aluminium Electric Furnace** | Electric Arc Furnace - Aluminium - A | **check** No recipe of this group is the plain one, so each carries its own word. |
+| Electric Arc Furnace | Electric Concrete Production (r_030) | Concrete | **Concrete Electric Furnace** | Electric Arc Furnace - Concrete - A |  |
+| Electric Arc Furnace | Anthracite Graphitisation (r_231) | Graphite | **Graphite Electric Furnace** | Electric Arc Furnace - Graphite - A |  |
+| Electric Arc Furnace | Silicon Smelting (r_044) | Metallurgical Silicon | **Metallurgical Silicon Electric Furnace** | Electric Arc Furnace - Metallurgical Silicon - A |  |
+| Electric Arc Furnace | Electric Arc Steelmaking (r_076) | Steel | **Steel Electric Furnace** | Electric Arc Furnace - Steel - A |  |
+| Electric Arc Furnace | Scrap Recycling (r_106) | Steel | **Scrap Steel Electric Furnace** | Electric Arc Furnace - Steel - A |  |
 | Assembly Plant | Building Frame Manufacture (r_057) | Building Frame | **Building Frame Assembly Plant** | Assembly Plant - Building Frame - A |  |
 | Assembly Plant | Lightweight Car Bodies (r_069) | Car Body | **Car Body Assembly Plant** | Assembly Plant - Car Body - A |  |
 | Assembly Plant | Circuit Printing (r_121) | Circuit Board | **Circuit Board Assembly Plant** | Assembly Plant - Circuit Board - A |  |
@@ -92,20 +92,20 @@ Rows marked **check** carry a note for the owner.
 | Assembly Plant | Automated ICE Car Assembly (r_118) | Diesel Car | **Diesel Car Assembly Plant** | Assembly Plant - Diesel Car - A |  |
 | Assembly Plant | Large Vehicle Engine Manufacturing (r_073) | Large Engine | **Large Engine Assembly Plant** | Assembly Plant - Large Engine - A |  |
 | Assembly Plant | Heavy Electric Motor (r_207) | Large Engine | **Electric Large Engine Assembly Plant** | Assembly Plant - Large Engine - A |  |
-| Assembly Plant | SynRM Magnetless Motors (r_065) | Motor | **SynRM Motor Assembly Plant** | Assembly Plant - Motor - A | **check** The owner's example names a plain "Motor Assembly Plant", but all three motor recipes here are named processes, so each carries its own word. Axial Flux (the earliest research) could be the plain one. |
-| Assembly Plant | Axial Flux Motors (r_066) | Motor | **Axial Flux Motor Assembly Plant** | Assembly Plant - Motor - A | **check** See SynRM. |
-| Assembly Plant | Hairpin Stator Motors (r_203) | Motor | **Hairpin Stator Motor Assembly Plant** | Assembly Plant - Motor - A | **check** See SynRM. |
+| Assembly Plant | SynRM Magnetless Motors (r_065) | Motor | **SynRM Motor Assembly Plant** | Assembly Plant - Motor - A |  |
+| Assembly Plant | Axial Flux Motors (r_066) | Motor | **Axial Motor Assembly Plant** | Assembly Plant - Motor - A |  |
+| Assembly Plant | Hairpin Stator Motors (r_203) | Motor | **Hairpin Stator Motor Assembly Plant** | Assembly Plant - Motor - A | **check** Hairpin Stator kept in full beside "Axial" and "SynRM". "Hairpin" alone would not collide if a shorter name is wanted. |
 | Assembly Plant | Sodium Ion Battery Manufacturing (r_102) | Sodium Ion Battery | **Sodium Ion Battery Assembly Plant** | Assembly Plant - Sodium Ion Battery - A |  |
 | Assembly Plant | Solar Panel Manufacturing (r_058) | Solar Panel | **Solar Panel Assembly Plant** | Assembly Plant - Solar Panel - A |  |
 | Assembly Plant | Durable Perovskite Solar Panels (r_060) | Solar Panel | **Perovskite Solar Panel Assembly Plant** | Assembly Plant - Solar Panel - A |  |
 | Assembly Plant | Wind Turbine Manufacturing (r_059) | Wind Turbine | **Wind Turbine Assembly Plant** | Assembly Plant - Wind Turbine - A |  |
 | Assembly Plant | Segmented Assembly Wind Turbines (r_061) | Wind Turbine | **Segmented Wind Turbine Assembly Plant** | Assembly Plant - Wind Turbine - A |  |
-| High Tech Manufactory | Fabless Semiconductors (r_123) | CPU | **Fabless CPU Manufactory** | High Tech Manufactory - CPU - A | **check** "Manufactory" drops "High Tech" to keep the names short. |
-| High Tech Manufactory | Semiconductor 3D Printing (r_124) | CPU | **3D Printed CPU Manufactory** | High Tech Manufactory - CPU - A | **check** "Manufactory" drops "High Tech" to keep the names short. |
-| High Tech Manufactory | Precision Electrical Components (r_127) | Electrical Components | **Electrical Components Manufactory** | High Tech Manufactory - Electrical Components - A | **check** "Manufactory" drops "High Tech" to keep the names short. |
-| High Tech Manufactory | Lithium Phosphate Batteries (r_099) | Lithium Ion Battery | **Lithium Ion Battery Manufactory** | High Tech Manufactory - Lithium Ion Battery - A | **check** "Manufactory" drops "High Tech" to keep the names short. |
-| High Tech Manufactory | Heterojunction Solar Panels (r_063) | Solar Panel | **Heterojunction Solar Panel Manufactory** | High Tech Manufactory - Solar Panel - A | **check** "Manufactory" drops "High Tech" to keep the names short. |
-| High Tech Manufactory | Triple Tandem Solar Panels (r_064) | Solar Panel | **Triple Tandem Solar Panel Manufactory** | High Tech Manufactory - Solar Panel - A | **check** "Manufactory" drops "High Tech" to keep the names short. |
+| High Tech Manufactory | Fabless Semiconductors (r_123) | CPU | **Fabless CPU Manufactory** | High Tech Manufactory - CPU - A | **check** No recipe of this group is the plain one, so each carries its own word. |
+| High Tech Manufactory | Semiconductor 3D Printing (r_124) | CPU | **3D Printed CPU Manufactory** | High Tech Manufactory - CPU - A | **check** No recipe of this group is the plain one, so each carries its own word. |
+| High Tech Manufactory | Precision Electrical Components (r_127) | Electrical Components | **Electrical Components Manufactory** | High Tech Manufactory - Electrical Components - A |  |
+| High Tech Manufactory | Lithium Phosphate Batteries (r_099) | Lithium Ion Battery | **Lithium Ion Battery Manufactory** | High Tech Manufactory - Lithium Ion Battery - A |  |
+| High Tech Manufactory | Heterojunction Solar Panels (r_063) | Solar Panel | **Heterojunction Solar Panel Manufactory** | High Tech Manufactory - Solar Panel - A | **check** No recipe of this group is the plain one, so each carries its own word. |
+| High Tech Manufactory | Triple Tandem Solar Panels (r_064) | Solar Panel | **Triple Tandem Solar Panel Manufactory** | High Tech Manufactory - Solar Panel - A | **check** No recipe of this group is the plain one, so each carries its own word. |
 | Petrochemical Refinery | Ethylene Refining (r_023) | Ethylene | **Oil Processing Refinery** | Oil Processing Refinery A |  |
 | Petrochemical Refinery | Fuels Refining (r_022) | Diesel Fuel | **Oil Processing Refinery** | Oil Processing Refinery A |  |
 | Petrochemical Refinery | Petroleum Needle Coke Calcination (r_150) | Graphite | **Needle Coke Plant** | Needle Coke Plant A |  |
@@ -130,13 +130,13 @@ Rows marked **check** carry a note for the owner.
 | Polymerisation Refinery | Plastics Manufacturing (r_024) | Plastics | **Plastics Plant** | Plastics Plant A |  |
 | Polymerisation Refinery | PVC Polymerisation (r_175) | PVC | **PVC Plant** | PVC Plant A |  |
 | Polymerisation Refinery | Synthetic Rubber Production (r_028) | Rubber | **Rubber Plant** | Rubber Plant A |  |
-| Farm | Sustainable Biomass Production (r_208) | Biomass | **Biomass Farm** | Farm - Biomass - A |  |
-| Farm | Strip Farming - Biomass (r_209) | Biomass | **Strip Biomass Farm** | Farm - Biomass - A |  |
-| Farm | Agri Solar Farming - Biomass (r_211) | Biomass | **Agri Solar Biomass Farm** | Farm - Biomass - A |  |
-| Farm | Livestock Farming - Biomass (r_212) | Biomass | **Livestock Biomass Farm** | Farm - Biomass - A |  |
-| New Growth Forest | Aggressive Logging - Biomass (r_213) | Biomass | **Aggressive Logging Biomass Forest** | New Growth Forest - Biomass - A | **check** Forest names carry "Biomass", the only good a forest makes in the game. |
-| New Growth Forest | Sustainable Forestry - Biomass (r_214) | Biomass | **Biomass Forest** | New Growth Forest - Biomass - A | **check** Forest names carry "Biomass", the only good a forest makes in the game. |
-| New Growth Forest | Gentle Pruning - Biomass (r_215) | Biomass | **Gentle Pruning Biomass Forest** | New Growth Forest - Biomass - A | **check** Forest names carry "Biomass", the only good a forest makes in the game. |
+| Farm | Sustainable Biomass Production (r_208) | Biomass | **Sustainable Farm** | Farm - Biomass - A |  |
+| Farm | Strip Farming - Biomass (r_209) | Biomass | **Strip Farm** | Farm - Biomass - A |  |
+| Farm | Agri Solar Farming - Biomass (r_211) | Biomass | **Agrisolar Farm** | Farm - Biomass - A |  |
+| Farm | Livestock Farming - Biomass (r_212) | Biomass | **Livestock Farm** | Farm - Biomass - A |  |
+| New Growth Forest | Aggressive Logging - Biomass (r_213) | Biomass | **Logging Forest** | New Growth Forest - Biomass - A |  |
+| New Growth Forest | Sustainable Forestry - Biomass (r_214) | Biomass | **Sustainable Forest** | New Growth Forest - Biomass - A | **check** Sustainable Forestry and Gentle Pruning are both the sustainable kind, so both read "Sustainable Forest" and cannot be told apart by name. |
+| New Growth Forest | Gentle Pruning - Biomass (r_215) | Biomass | **Sustainable Forest** | New Growth Forest - Biomass - A | **check** Sustainable Forestry and Gentle Pruning are both the sustainable kind, so both read "Sustainable Forest" and cannot be told apart by name. |
 | Electrolyser | Alloy Metal Electrolysis (r_133) | Alloy Metals Ingots | **Alloy Metal Electrolyser** | Electrolyser - Alloy Metals Ingots - A |  |
 | Electrolyser | Methane Pyrolysis (r_078) | Hydrogen | **Methane Pyrolysis Hydrogen Electrolyser** | Electrolyser - Hydrogen - A |  |
 | Electrolyser | Water Electrolysis (r_079) | Hydrogen | **Hydrogen Electrolyser** | Electrolyser - Hydrogen - A |  |
@@ -153,10 +153,10 @@ Rows marked **check** carry a note for the owner.
 | Hydroelectric Dam | Hydroelectric Power (r_224) | Power | **Hydroelectric Dam** | Hydroelectric Dam - Power - A |  |
 | Battery Electric Storage | Battery Storage (r_225) |  | **Battery Electric Storage** | Battery Electric Storage - A | **check** Stores power and makes nothing, so it keeps its type name. |
 | Oil Wells | Oil Drilling (r_014) | Crude Oil | **Oil Well** | Oil Wells - Crude Oil - A |  |
-| Offshore Oil Platform | Offshore Oil Extraction (r_178) | Crude Oil | **Oil Platform** | Offshore Oil Platform - Crude Oil - A | **check** "Oil Platform": the sea already says offshore. |
-| Offshore Oil Platform | Deepwater Oil Extraction (r_221) | Crude Oil | **Deepwater Oil Platform** | Offshore Oil Platform - Crude Oil - A | **check** "Oil Platform": the sea already says offshore. |
-| Offshore Oil Platform | Subsea Manifold Extraction (r_222) | Crude Oil | **Subsea Manifold Oil Platform** | Offshore Oil Platform - Crude Oil - A | **check** "Oil Platform": the sea already says offshore. |
-| Hydraulic Fracking Oil Wells | Shale Oil Fracking (r_177) | Crude Oil | **Fracking Oil Well** | Hydraulic Fracking Oil Wells - Crude Oil - A | **check** "Fracking Oil Well" rather than the type's "Hydraulic Fracking Oil Wells". |
+| Offshore Oil Platform | Offshore Oil Extraction (r_178) | Crude Oil | **Oil Platform** | Offshore Oil Platform - Crude Oil - A |  |
+| Offshore Oil Platform | Deepwater Oil Extraction (r_221) | Crude Oil | **Deepwater Oil Platform** | Offshore Oil Platform - Crude Oil - A |  |
+| Offshore Oil Platform | Subsea Manifold Extraction (r_222) | Crude Oil | **Subsea Manifold Oil Platform** | Offshore Oil Platform - Crude Oil - A |  |
+| Hydraulic Fracking Oil Wells | Shale Oil Fracking (r_177) | Crude Oil | **Fracking Oil Well** | Hydraulic Fracking Oil Wells - Crude Oil - A |  |
 | Recycling Plant | Biowaste Recycling (r_108) | Biomass | **Biomass Recycling Plant** | Recycling Plant - Biomass - A | **check** Named by its main output, biomass, though it recycles bio waste. |
 | Recycling Plant | E-Waste Recycling (r_107) | Copper Wiring | **Copper Wiring Recycling Plant** | Recycling Plant - Copper Wiring - A | **check** Named by its main output, copper wiring, though it recycles electronic waste. |
 | Water Pump | Water Pumping (r_011) | Pure Water | **Water Pump** | Water Pump - Pure Water - A |  |
@@ -185,68 +185,68 @@ These keep their type name, with a letter where one stands on a tile ("Port A").
 `data/recipes_all.csv` rows the catalogue drops, because their building or one of their goods is not in the game.
 They have no name until they load. The rule will name them then.
 
-| Recipe | Building field | Main output |
-|---|---|---|
-| Heavy Fuels Refining (r_021) | petro_refinery | fuels |
-| Biomass Compression (r_043) | bio_chem_plant | compressed_biomass |
-| Direct Lithium Extraction (r_048) | brine_processing_plant | lithium_carbonate |
-| Brine Evaporation (r_049) | brine_processing_plant | sulphur |
-| Carbon Fibre Wind Turbines (r_062) | high_tech_manufactory | wind_turbine |
-| Superlightweight Car Bodies (r_070) | assembly_plant | car_body |
-| Oxygen Free High Conductivity Copper (r_085) | eaf | copper_ingots |
-| Oxygen Air Separation (r_086) | chem_plant | oxygen |
-| Steam Methane Reforming (r_088) | petro_refinery | hydrogen |
-| Direct Injection Hydrogen Engines (r_089) | assembly_plant | engine |
-| Sustainable Food Production (r_090) | farm | food |
-| Strip Farming (r_091) | farm | food |
-| Mixed Crop Sustainable Farming (r_092) | farm | food |
-| Agri Solar Farming (r_093) | farm | food |
-| Livestock Farming (r_094) | farm | food |
-| Aggressive Logging (r_095) | forest | wood |
-| Sustainable Forestry (r_096) | forest | wood |
-| Gentle Pruning (r_097) | forest | wood |
-| National Park Tourism (r_098) | forest | wood |
-| Redox Flow Batteries (r_100) | high_tech_manufactory | flow_battery |
-| High Quality Steel Alloying (r_103) | eaf | hq_steel |
-| Depolymerisation (r_104) | poly_plant | ethylene |
-| Waste to Power (r_109) | power_plant | hydrocarbon_power |
-| Rare Earth Recycling (r_110) | recycling_plant | refined_ree |
-| Lithium Recycling (r_111) | recycling_plant | lithium_carbonate |
-| Open Combined Gas Cycle Turbine (r_112) | power_plant | hydrocarbon_power |
-| Aluminium Recycling (r_113) | recycling_plant | aluminium |
-| Inert-Atmosphere Precision Components (r_128) | high_tech_manufactory | electrical_components |
-| Carbon Fibre Weaving (r_129) | high_tech_manufactory | carbon_fibre |
-| Carbon Fibre 3D Printing (r_130) | high_tech_manufactory | carbon_fibre |
-| Solid State Batteries (r_137) | high_tech_manufactory | solid_battery |
-| Basic Fermentation (r_138) | bio_chem_plant | ethanol |
-| Celulosic Enzymatic Hydrolysis (r_139) | bio_chem_plant | ethanol |
-| Transestesterification (r_140) | bio_chem_plant | fuels |
-| HEFA Biofuels (r_141) | bio_chem_plant | SAF |
-| Crude Distillation (r_142) | petro_refinery | heavy_oil |
-| Catalytic Cracking (r_143) | petro_refinery | heavy_oil |
-| Gas to Methane (r_144) | petro_refinery | methane |
-| Propane Dehydrogenation (r_147) | petro_refinery | hydrogen |
-| Steam Cracking (r_148) | petro_refinery | ethylene |
-| Delayed Coking (r_149) | petro_refinery | pet_coke |
-| Alcohol to Jet SAF (r_152) | chem_plant | SAF |
-| Biomass Gassification (r_153) | bio_chem_plant | fuels |
-| Micro Algae Digestion (r_155) | bio_chem_plant | ethylene |
-| Medical Goods Production (r_156) | high_tech_manufactory | medical_components |
-| Thermo Mechanical Pulping (r_157) | timber_paper_factory | wood_pulp |
-| Chemical Wood Bleaching (r_158) | timber_paper_factory | wood_pulp |
-| Wood Pulp Bleaching (r_159) | timber_paper_factory | paper_pulp |
-| Paper Goods Production (r_160) | timber_paper_factory | paper_goods |
-| Paper Pulp Oxygen Delignification (r_161) | timber_paper_factory | paper_pulp |
-| Wood Toy Craftsmanship (r_162) | factory | toys |
-| plastics Toy Manufacturing (r_163) | factory | toys |
-| plastics Toy Mass Production (r_164) | factory | toys |
-| Food Paper Packaging (r_166) | consumer_goods_factory | food_products |
-| plastics Food Packaging (r_167) | consumer_goods_factory | food_products |
-| Fabric Crops Farming (r_168) | farm | fabric_crops |
-| Oil Crops Farming (r_169) | farm | oil_crops |
-| Intensive Fabric Crops Farming (r_170) | farm | fabric_crops |
-| Intensive Oil Crops Farming (r_171) | farm | oil_crops |
-| Pharmaceutical Precuror Production (r_172) | bio_chem_plant | api |
-| Specialty Microbe Production (r_173) | bio_chem_plant | spec_microbes |
-| Methanol Production (r_174) | petro_refinery | methanol |
-| National Park Tourism - Biomass (r_216) | forest | biomass |
+| Recipe | Building field | Main output | Name when it loads | Note |
+|---|---|---|---|---|
+| Heavy Fuels Refining (r_021) | petro_refinery | fuels |  |  |
+| Biomass Compression (r_043) | bio_chem_plant | compressed_biomass |  |  |
+| Direct Lithium Extraction (r_048) | brine_processing_plant | lithium_carbonate |  |  |
+| Brine Evaporation (r_049) | brine_processing_plant | sulphur |  |  |
+| Carbon Fibre Wind Turbines (r_062) | high_tech_manufactory | wind_turbine |  |  |
+| Superlightweight Car Bodies (r_070) | assembly_plant | car_body |  |  |
+| Oxygen Free High Conductivity Copper (r_085) | eaf | copper_ingots |  |  |
+| Oxygen Air Separation (r_086) | chem_plant | oxygen |  |  |
+| Steam Methane Reforming (r_088) | petro_refinery | hydrogen |  |  |
+| Direct Injection Hydrogen Engines (r_089) | assembly_plant | engine |  |  |
+| Sustainable Food Production (r_090) | farm | food | **Sustainable Farm** |  |
+| Strip Farming (r_091) | farm | food | **Strip Farm** | **check** Once food loads, a Strip Farm may make biomass or food: the name says the kind, not the good. |
+| Mixed Crop Sustainable Farming (r_092) | farm | food | **Sustainable Farm** | **check** Mixed Crop Sustainable Farming and Sustainable Food Production both read "Sustainable Farm". |
+| Agri Solar Farming (r_093) | farm | food | **Agrisolar Farm** |  |
+| Livestock Farming (r_094) | farm | food | **Livestock Farm** |  |
+| Aggressive Logging (r_095) | forest | wood | **Logging Forest** |  |
+| Sustainable Forestry (r_096) | forest | wood | **Sustainable Forest** |  |
+| Gentle Pruning (r_097) | forest | wood | **Sustainable Forest** | **check** Gentle Pruning read as the sustainable kind, the same name as Sustainable Forestry. |
+| National Park Tourism (r_098) | forest | wood | **Tourist Forest** |  |
+| Redox Flow Batteries (r_100) | high_tech_manufactory | flow_battery |  |  |
+| High Quality Steel Alloying (r_103) | eaf | hq_steel |  |  |
+| Depolymerisation (r_104) | poly_plant | ethylene |  |  |
+| Waste to Power (r_109) | power_plant | hydrocarbon_power |  |  |
+| Rare Earth Recycling (r_110) | recycling_plant | refined_ree |  |  |
+| Lithium Recycling (r_111) | recycling_plant | lithium_carbonate |  |  |
+| Open Combined Gas Cycle Turbine (r_112) | power_plant | hydrocarbon_power |  |  |
+| Aluminium Recycling (r_113) | recycling_plant | aluminium |  |  |
+| Inert-Atmosphere Precision Components (r_128) | high_tech_manufactory | electrical_components |  |  |
+| Carbon Fibre Weaving (r_129) | high_tech_manufactory | carbon_fibre |  |  |
+| Carbon Fibre 3D Printing (r_130) | high_tech_manufactory | carbon_fibre |  |  |
+| Solid State Batteries (r_137) | high_tech_manufactory | solid_battery |  |  |
+| Basic Fermentation (r_138) | bio_chem_plant | ethanol |  |  |
+| Celulosic Enzymatic Hydrolysis (r_139) | bio_chem_plant | ethanol |  |  |
+| Transestesterification (r_140) | bio_chem_plant | fuels |  |  |
+| HEFA Biofuels (r_141) | bio_chem_plant | SAF |  |  |
+| Crude Distillation (r_142) | petro_refinery | heavy_oil |  |  |
+| Catalytic Cracking (r_143) | petro_refinery | heavy_oil |  |  |
+| Gas to Methane (r_144) | petro_refinery | methane |  |  |
+| Propane Dehydrogenation (r_147) | petro_refinery | hydrogen |  |  |
+| Steam Cracking (r_148) | petro_refinery | ethylene |  |  |
+| Delayed Coking (r_149) | petro_refinery | pet_coke |  |  |
+| Alcohol to Jet SAF (r_152) | chem_plant | SAF |  |  |
+| Biomass Gassification (r_153) | bio_chem_plant | fuels |  |  |
+| Micro Algae Digestion (r_155) | bio_chem_plant | ethylene |  |  |
+| Medical Goods Production (r_156) | high_tech_manufactory | medical_components |  |  |
+| Thermo Mechanical Pulping (r_157) | timber_paper_factory | wood_pulp |  |  |
+| Chemical Wood Bleaching (r_158) | timber_paper_factory | wood_pulp |  |  |
+| Wood Pulp Bleaching (r_159) | timber_paper_factory | paper_pulp |  |  |
+| Paper Goods Production (r_160) | timber_paper_factory | paper_goods |  |  |
+| Paper Pulp Oxygen Delignification (r_161) | timber_paper_factory | paper_pulp |  |  |
+| Wood Toy Craftsmanship (r_162) | factory | toys |  |  |
+| plastics Toy Manufacturing (r_163) | factory | toys |  |  |
+| plastics Toy Mass Production (r_164) | factory | toys |  |  |
+| Food Paper Packaging (r_166) | consumer_goods_factory | food_products |  |  |
+| plastics Food Packaging (r_167) | consumer_goods_factory | food_products |  |  |
+| Fabric Crops Farming (r_168) | farm | fabric_crops | **Sustainable Farm** | **check** A guess: named Sustainable as the plain counterpart of Intensive Fabric Crops Farming (Strip). Its name says no kind. |
+| Oil Crops Farming (r_169) | farm | oil_crops | **Sustainable Farm** | **check** A guess: named Sustainable as the plain counterpart of Intensive Oil Crops Farming (Strip). Its name says no kind. |
+| Intensive Fabric Crops Farming (r_170) | farm | fabric_crops | **Strip Farm** | **check** Intensive read as the strip kind. |
+| Intensive Oil Crops Farming (r_171) | farm | oil_crops | **Strip Farm** | **check** Intensive read as the strip kind. |
+| Pharmaceutical Precuror Production (r_172) | bio_chem_plant | api |  |  |
+| Specialty Microbe Production (r_173) | bio_chem_plant | spec_microbes |  |  |
+| Methanol Production (r_174) | petro_refinery | methanol |  |  |
+| National Park Tourism - Biomass (r_216) | forest | biomass | **Tourist Forest** |  |
