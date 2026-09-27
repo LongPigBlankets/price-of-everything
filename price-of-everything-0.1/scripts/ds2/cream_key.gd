@@ -41,6 +41,12 @@ var title_ink := NAVY
 ## The hover card (dot_card.gd), shown in place of a plain tooltip when set.
 var tip: Dictionary = {}
 var chevron := false
+## The key's bezel: "" the gunmetal one; "brass" the polished brass of the construct panel's Build key
+## (construct_key_brass, _pressed, _latched: tile_key's size and slices).
+var rim := "":
+	set(v):
+		rim = v
+		queue_redraw()
 var busy := false
 var spent := false
 ## A key standing for a choice that is made (one of a row, as the tab keys): latched down, a shade darker, its
@@ -159,9 +165,11 @@ func _place_lamp() -> void:
 func _draw() -> void:
 	var held := get_draw_mode() == DRAW_PRESSED or get_draw_mode() == DRAW_HOVER_PRESSED
 	var tex: Texture2D = TileKey.LATCHED if busy or chosen else (TileKey.PRESSED if held else TileKey.NORMAL)
+	if rim == "brass":
+		tex = Plate.tex("construct_key_brass" + ("_latched" if busy or chosen else ("_pressed" if held else "")))
 	var tint := TileKey.LATCH_TINT if busy or chosen else (TileKey.PRESS_TINT if held else Color.WHITE)
 	if spent and not busy:
-		tex = TileKey.NORMAL
+		tex = Plate.tex("construct_key_brass") if rim == "brass" else TileKey.NORMAL
 		tint = TileKey.DISABLED_TINT
 	var k := key_scale
 	var out := TileKey.KEY_INSET / TileKey.CAPTURE_SCALE * k

@@ -2117,5 +2117,12 @@
   "drop": 40,
   "name_y": 52,
   "row_y": 156
+ },
+ "construct_key_brass": {
+  "size": [
+   232,
+   116
+  ],
+  "like": "tile_key"
  }
 }

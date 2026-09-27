@@ -238,6 +238,9 @@ func _build_shell() -> void:
 
 
 func _render() -> void:
+	# A glow belongs to the view it pointed into.
+	if _flash != null and is_instance_valid(_flash):
+		_flash.stop()
 	super._render()
 	_sync_head()
 
@@ -262,7 +265,7 @@ func _sync_head() -> void:
 
 
 func _is_build_order() -> bool:
-	return _view == View.CONFIRM and not _selected_recipe.is_empty()
+	return _view == View.CONFIRM
 
 
 func _site_name() -> String:
@@ -352,13 +355,10 @@ func _goods_tag() -> Control:
 	return row
 
 
-## Every recipe's confirm is the build order, whatever the v3 confirm toggle says; infrastructure keeps
-## today's confirm inside the hoarding until the build order takes it (plan §7, phase 3).
+## Every confirm is the build order, whatever the v3 confirm toggle says: a recipe's, and infrastructure's with
+## its purpose on the sign and its levels in place of the outlook.
 func _render_confirm() -> void:
-	if not _selected_recipe.is_empty():
-		_render_confirm_v3()
-		return
-	super._render_confirm()
+	_render_confirm_v3()
 
 
 func _render_confirm_v3() -> void:
@@ -373,7 +373,7 @@ func _render_confirm_v3() -> void:
 	var recipe_id := str(_selected_recipe.get("recipe_id", ""))
 	_v3_land = _v3_compute_land()
 	_v3_ledger = Construction.materials_ledger(building_id, _locked_tile_id)
-	_v3_forecast = BuildForecast.project(building_id, recipe_id, _locked_tile_id)
+	_v3_forecast = BuildForecast.project(building_id, recipe_id, _locked_tile_id) if recipe_id != "" else {}
 	_quote = quote()
 	if _view_opened != _order_key():
 		_view_opened = _order_key()
@@ -502,9 +502,18 @@ class BlockerGlow extends Control:
 		material = Light.glow_material()
 		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 
+	var _tween: Tween
+
+	func stop() -> void:
+		if _tween != null and _tween.is_valid():
+			_tween.kill()
+		strength = 0.0
+
 	func pulse(rect: Rect2) -> void:
+		stop()
 		_rect = rect
 		var tw := create_tween()
+		_tween = tw
 		for i in PULSES:
 			tw.tween_property(self, "strength", 1.0, UP).set_trans(Tween.TRANS_SINE)
 			tw.tween_property(self, "strength", 0.0, DOWN).set_trans(Tween.TRANS_SINE)

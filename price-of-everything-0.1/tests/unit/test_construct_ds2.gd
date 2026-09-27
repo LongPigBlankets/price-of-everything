@@ -212,3 +212,31 @@ func _test_construct_ds2_land_glows() -> void:
 	MatchState.set_construct_auto_buy_land(saved_auto)
 	MatchState.money = saved_money
 	panel.queue_free()
+
+
+func _test_construct_ds2_infrastructure() -> void:
+	var saved := MatchState.money
+	MatchState.money = 50000.0
+	var panel := _panel()
+	panel.show()
+	panel.call("open_browser")
+	panel.call("_on_infrastructure_selected", "b_006")
+	await get_tree().process_frame
+	_check(panel.find_child("PurposeSign", true, false) != null and panel.find_child("RecipeSign", true, false) == null,
+		"infrastructure: Cables' sign says what it is for, no recipe")
+	_check(panel.find_child("LevelsTable", true, false) != null and panel.find_child("ProgrammeBoard", true, false) == null,
+		"infrastructure: its levels stand in place of the outlook")
+	_check(panel.find_child("ConstructionMaterialsSection", true, false) != null, "infrastructure: Cables' materials are in the yard")
+	_check(panel.find_child("LandLot", true, false) == null, "infrastructure: no land lot")
+	var total: Node = panel.find_child("V3Total", true, false)
+	var q: Dictionary = panel.call("quote")
+	_check(total != null and _led_figure(total) == str(MoneyFigure.screen(float(q.total), 2).figure).strip_edges(), "infrastructure: Total is quote()'s")
+	_check(str(panel.call("_v3_confirm_block_reason")) == "", "infrastructure: Build is open with the money")
+	var rows: Array = preload("res://scripts/construct_ds2/build_order.gd").level_rows("roads")
+	_check(rows.size() == 3 and (rows[1] as Array).size() == 4 and not str(rows[2]).contains("–"), "infrastructure: three rows of three levels, no dashes")
+	panel.call("open_browser")
+	panel.call("_on_infrastructure_selected", "b_005")
+	await get_tree().process_frame
+	_check(panel.find_child("ConstructionMaterialsSection", true, false) == null, "infrastructure: Roads take no materials, no yard")
+	MatchState.money = saved
+	panel.queue_free()

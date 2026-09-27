@@ -16,7 +16,7 @@ static func purpose(key: String) -> String:
 	match key:
 		"roads": return "Enables faster movement of solid goods like sand, coal and computers."
 		"rail": return "Enables faster and cheaper movement of solid goods than roads."
-		"pipes": return "Enables transport of safe liquids — water, crude oil, processed oil and waste water."
+		"pipes": return "Enables transport of safe liquids: water, crude oil, processed oil and waste water."
 		"reinf_pipes": return "Enables transport of hazardous liquids and gases, such as nitrogen, hydrogen and chlorine."
 		"cables": return "Enables power transmission from electricity producers and to consumers. Required to power buildings."
 		"hvdc": return "Nothing yet."
