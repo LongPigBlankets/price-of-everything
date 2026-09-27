@@ -114,3 +114,63 @@ func _test_construct_ds2_bottom_menu_picks() -> void:
 	UiPrefs.set_use_construct_ds2(false)
 	_check(str(menu.call("_construct_v2_script")) == "res://scripts/construct_panel_v2.gd", "bottom menu: the flag off builds today's panel")
 	menu.free()
+
+
+func _test_construct_ds2_catalogue() -> void:
+	var saved := MatchState.money
+	MatchState.money = 50000.0
+	var panel := _panel()
+	panel.call("open_browser")
+	await get_tree().process_frame
+	var card: Node = panel.find_child("BuildingCard_%s" % FURNACE, true, false)
+	_check(card != null and card is Button, "catalogue: the Furnace's board is BuildingCard_b_002")
+	var price_led: Node = card.find_child("Led", true, false) if card != null else null
+	var price := float(Rules.quote(FURNACE, "", "", {}, {"source": str(panel.call("_current_material_source")), "buy_land": false}).total)
+	_check(price_led != null and str(price_led.call("figure")).strip_edges() == str(MoneyFigure.screen(price, 2).figure),
+		"catalogue: a board's price is quote()'s (%s)" % str(price))
+	_check(panel.find_child("CataloguePlate", true, false) != null and panel.find_child("Filter_metallurgy", true, false) != null,
+		"catalogue: the control plate carries the category keys")
+	# Open the Furnace: its board across the width, its recipes hung as tags.
+	(card as Button).pressed.emit()
+	await get_tree().process_frame
+	var tag: Node = panel.find_child("RecipeRow_%s" % PIG_IRON, true, false)
+	_check(tag != null and tag is Button, "catalogue: the opened board hangs RecipeRow_r_005")
+	var wide: Control = panel.find_child("BuildingCard_%s" % FURNACE, true, false)
+	_check(wide != null and is_equal_approx(wide.custom_minimum_size.x, float(panel.get("CONTENT_W"))), "catalogue: the opened board spans the width")
+	# A tag pressed opens its build order.
+	(tag as Button).pressed.emit()
+	await get_tree().process_frame
+	_check(int(panel.get("_view")) == 1 and str((panel.get("_selected_recipe") as Dictionary).get("recipe_id", "")) == PIG_IRON,
+		"catalogue: a tag opens its build order")
+	# A category key filters; again clears it.
+	panel.call("open_browser")
+	panel.call("_pick_category", "power")
+	await get_tree().process_frame
+	_check((panel.get("_active_filters") as Dictionary).has("power") and panel.find_child("BuildingCard_%s" % FURNACE, true, false) == null,
+		"catalogue: Power shows the power buildings alone")
+	var key: Node = panel.find_child("Filter_power", true, false)
+	_check(key != null and bool(key.get("latched")), "catalogue: the Power key stays down")
+	panel.call("_pick_category", "power")
+	await get_tree().process_frame
+	_check((panel.get("_active_filters") as Dictionary).is_empty(), "catalogue: the key again shows every building")
+	# The goods filter is shown and clears.
+	panel.call("open_for_output_good", "g_004")
+	await get_tree().process_frame
+	var clear: Button = panel.find_child("ClearGoodsFilter", true, false)
+	_check(clear != null and panel.find_child("GoodsFilter", true, false) != null, "catalogue: the goods filter is shown")
+	if clear != null:
+		clear.pressed.emit()
+		await get_tree().process_frame
+	_check(str(panel.get("_output_good_filter")) == "", "catalogue: Show all clears the goods filter")
+	# The settings key on the crane opens the settings, and again comes back.
+	var gear: BaseButton = panel.find_child("SettingsKey", true, false)
+	_check(gear != null, "catalogue: the settings key is on the crane")
+	if gear != null:
+		gear.pressed.emit()
+		await get_tree().process_frame
+		_check(int(panel.get("_view")) == 2, "catalogue: the settings key opens the settings")
+		gear.pressed.emit()
+		await get_tree().process_frame
+		_check(int(panel.get("_view")) == 0, "catalogue: pressed again, it comes back")
+	MatchState.money = saved
+	panel.queue_free()

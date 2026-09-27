@@ -1,6 +1,7 @@
 extends Node
 ## Captures of the construct panel in DS2, the construction lot (`toggle construct ds2`), each cropped to the
-## panel: the catalogue; the build order for a Furnace's Pig Iron Smelting on Stoneshore (or CONSTRUCT_SHOT_TILE),
+## panel: the catalogue (whole, the Furnace opened condensed and expanded, Metallurgy picked, the goods filter),
+## the settings; the build order for a Furnace's Pig Iron Smelting on Stoneshore (or CONSTRUCT_SHOT_TILE),
 ## at its top, its middle and its foot; the build order with no site chosen.
 ##   CONSTRUCT_SHOT_DIR=<dir> [CONSTRUCT_SHOT_BUILD=b_002] [CONSTRUCT_SHOT_RECIPE=r_005] \
 ##     <godot> --path . res://tools/construct_ds2_shot.tscn --quit-after 60000 -- --no-telemetry
@@ -50,6 +51,26 @@ func _ready() -> void:
 	panel.call("open_browser")
 	await _settle(8)
 	await _shot(panel, "catalogue")
+	panel.call("expand_building", bid)
+	await _settle(6)
+	await _scroll_to(panel, "BuildingCard_%s" % bid)
+	await _shot(panel, "catalogue_open_condensed")
+	UiPrefs.set_construct_expanded_recipe_mode(true)
+	panel.call("_render")
+	await _settle(6)
+	await _scroll_to(panel, "BuildingCard_%s" % bid)
+	await _shot(panel, "catalogue_open_expanded")
+	UiPrefs.set_construct_expanded_recipe_mode(false)
+	panel.call("open_browser")
+	panel.call("_pick_category", "metallurgy")
+	await _settle(6)
+	await _shot(panel, "catalogue_metallurgy")
+	panel.call("open_for_output_good", "g_004")
+	await _settle(6)
+	await _shot(panel, "catalogue_goods_filter")
+	panel.call("_on_settings_pressed")
+	await _settle(6)
+	await _shot(panel, "settings")
 	var tile := OS.get_environment("CONSTRUCT_SHOT_TILE")
 	if tile == "":
 		tile = _named_tile("Stoneshore")
@@ -82,6 +103,15 @@ func _confirm(panel: Control, bid: String, rid: String) -> void:
 	panel.set("_selected_recipe", Catalog.get_recipe(rid))
 	panel.set("_view", 1)
 	panel.call("_render")
+
+
+## Scrolls the panel's body so the named node sits at its top.
+func _scroll_to(panel: Control, node_name: String) -> void:
+	var scroll: ScrollContainer = panel.get("_scroll")
+	var n: Control = panel.find_child(node_name, true, false)
+	if n != null:
+		scroll.scroll_vertical = int(n.global_position.y - scroll.global_position.y + scroll.scroll_vertical - 8.0)
+	await _settle(4)
 
 
 func _named_tile(word: String) -> String:
