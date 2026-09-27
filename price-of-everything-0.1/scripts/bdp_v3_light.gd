@@ -44,9 +44,10 @@ void vertex() {
 	local = VERTEX;
 }
 void fragment() {
-	// Outside the panel's rounded corners the map shows through: leave it be.
+	// Outside the panel's rounded corners the map shows through: leave it be. With no corner the rect is square
+	// and everything drawn is shaded.
 	vec2 q = abs(local - rect_size * 0.5) - (rect_size * 0.5 - vec2(corner));
-	float outside = step(corner, length(max(q, vec2(0.0))));
+	float outside = corner > 0.0 ? step(corner, length(max(q, vec2(0.0)))) : 0.0;
 	COLOR = vec4(vec3(mix(lamp(SCREEN_UV, SCREEN_PIXEL_SIZE), 1.0, outside)), 1.0);
 }
 """
