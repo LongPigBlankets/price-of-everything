@@ -159,6 +159,12 @@ func capture_views() -> Array:
 	var views: Array = []
 	if _tabs.has("prices"):
 		views.append_array(_tabs["prices"].call("capture_views"))
+	views.append({"name": "buildings_by_owner", "show": func() -> void:
+		show_tab("buildings")
+		_tabs["buildings"].call("set_by_owner", true),
+		"hide": func() -> void:
+			_tabs["buildings"].call("set_by_owner", false)
+			show_tab("prices")})
 	return views
 
 
