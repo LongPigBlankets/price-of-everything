@@ -2185,7 +2185,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // tiledoor, tilekey. Studies, not game layers: tilestudy, constructoffice, constructlot.
+  // tiledoor, tilekey. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -4139,6 +4139,1014 @@ async function exportLayers() {
         g.beginPath(); g.moveTo(ox, y); g.lineTo(ox + PW, y); g.moveTo(ox, y - 12); g.lineTo(ox, y + 12); g.moveTo(ox + PW, y - 12); g.lineTo(ox + PW, y + 12); g.stroke();
         g.fillStyle = BG; g.fillRect(ox + PW / 2 - 130, y - 18, 260, 36);
         text(g, '600 px wide', ox + PW / 2, y + 1, 250, 28, LIGHT, { align: 'center', weight: 500, family: PLEX });
+      }
+    }));
+  });
+
+  // --- a study for the Market panel (docs/market-ds2-plan.md), not a game layer: the commodities exchange.
+  // One panel at one width (720 logical px) in two of its tabs side by side, under one fixed head: a navy
+  // steel backing in a welded brass trim, the MARKET nameplate beside the exchange bell, five latching tab
+  // keys under one dot matrix strip, and the ticker. Prices is the quote board: a tile per good on a dark
+  // board in a thin brass frame, its name on a split flap, buy and sell on LED screens after a printed £,
+  // an arrow lamp for the way the price is heading and a green lamp where you make the good for less than
+  // the market pays; Copper Ingots is open on its slip (the chart recorder, the price impact ladder and the
+  // good's keys). Buildings for sale is the listing board: the lots grouped under their owner, each an
+  // enamel card in a brass holder, its price on a red LED and the guarded Buy key, one cover lifted.
+  if (want('marketstudy')) await withSeed(435, async () => {
+    for (const f of ['500 30px "IBM Plex Sans"', '600 30px "IBM Plex Sans"', '700 30px "IBM Plex Sans"', '600 30px "Barlow Condensed"', '700 30px "Barlow Condensed"', `60px ${TITLE_FAMILY}`]) await document.fonts.load(f);
+    const PW = 1350, PH = 1780, FOLD = 1620, MX = 60, GAP = 360, MR = 360, CAPT = 110, FOOT = 120;
+    const OX = [MX, MX + PW + GAP], OY = CAPT, W = OX[1] + PW + MR, H = OY + FOLD + FOOT;
+    const T = PLATE_TOP, CL = 40, CR = 1284, CW = CR - CL;
+    const CREAM = '#feedc3', ENAMEL_FIELD = '#0a2140', LIGHT = '#e8eef7';
+    const RED = '#ff4d3d', GREEN = '#4fe38a', AMBER = '#ffb23a', WHITE_LED = '#eef3fa';
+    const PLEX = '"IBM Plex Sans"', BARLOW = '"Barlow Condensed"';
+    const groups = [new THREE.Group(), new THREE.Group()], prints = [], notes = [];
+    const feats = [0, 1].map(() => ({ icons: [], buttons: [], screws: [] }));
+    let cur = 0;
+    const add = (m, x, z, y = T) => { m.position.set(x, y, z); groups[cur].add(m); return m; };
+    const shade = (m) => { m.traverse((o) => { if (o.isMesh) o.castShadow = o.receiveShadow = true; }); return m; };
+    const rgbOf = (hex) => { const c = new THREE.Color(hex); return `${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)}`; };
+    const measure = (str, font) => { const c = document.createElement('canvas').getContext('2d'); c.font = font; return c.measureText(str).width; };
+    /** The owner's money rule for a screen (as the construct study's): the point in a cell of its own, five
+     * cells at most; two decimals below £100, one to £999.9, whole pounds to £9999, then K, M, B after it. */
+    const moneyLed = (v, { whole = false } = {}) => {
+      const minus = v < 0 ? '-' : '', a = Math.abs(v);
+      const small = whole ? [[1, '', 0, 10000]] : [[1, '', 2, 100], [1, '', 1, 1000], [1, '', 0, 10000]];
+      for (const [div, suffix, d0, limit] of [...small, [1e3, 'K', 1, 1000], [1e6, 'M', 2, 1000], [1e9, 'B', 2, 1000]]) {
+        let d = d0, shown = (a / div).toFixed(d);
+        if (parseFloat(shown) >= limit) continue;
+        while (d > 0 && (minus + shown).length > 5) shown = (a / div).toFixed(--d);
+        return { figure: minus + shown, suffix };
+      }
+      return { figure: minus + a.toFixed(0), suffix: '' };
+    };
+
+    // Materials.
+    const brassSide = new THREE.MeshStandardMaterial({ color: 0xa8843f, metalness: 1, roughness: 0.4, envMap: studioEnv, envMapIntensity: 0.9 });
+    const brass = new THREE.MeshStandardMaterial({ color: 0xd2ab5c, map: noiseTexture(18, 40, 30), metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 1.0 });
+    const darkSteel = new THREE.MeshStandardMaterial({ color: 0x3c4046, map: noiseTexture(20, 40, 40), metalness: 1, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.85 });
+    const creamEnamel = new THREE.MeshPhysicalMaterial({ color: OFF_WHITE, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+    const enamelMat = (c, w, h) => new THREE.MeshPhysicalMaterial({ map: faceTexture(c, w, h), roughness: 0.34, clearcoat: 0.8, clearcoatRoughness: 0.14, envMap: studioEnv, envMapIntensity: 0.28 });
+    const blackPlastic = (w, h, paint, colour = '#15171a') => new THREE.MeshPhysicalMaterial({ map: faceTexture(canvas2d(w, h, (c) => { c.drawImage(blackPlasticFace(w, h, colour, 0.06), 0, 0, w, h); paint?.(c); }), w, h), roughness: 0.5, clearcoat: 0.3, envMap: studioEnv, envMapIntensity: 0.4 });
+    const tarnish = (r) => `rgba(${60 + r() * 20},${44 + r() * 14},${18 + r() * 10},${0.25 + r() * 0.35})`;
+    /** A thin brass frame round a w × h opening (the tiles' and the lot cards' fittings), rim wide. */
+    const brassFrame = (x, z, w, h, r, rim, y) => {
+      const ow = w + 2 * rim, oh = h + 2 * rim, s = rrShape(ow, oh, r + rim); s.holes.push(rr(new THREE.Path(), w, h, r));
+      const m = new THREE.Mesh(extrude(s, 1.6, 1.2, 0.9, 3), [plateMaterial(ow, oh, { icons: [], buttons: [], screws: [], base: BRASS_TRIM_CANVAS, rub: '255,236,180', flecks: tarnish }), brassSide]);
+      return add(shade(m), x, z, y);
+    };
+
+    // Print: white with a dark shadow on anything dark, drawn over the render as the game prints live.
+    const printWhite = (str, x, y, size, { weight = 500, family = PLEX, align = 'left', maxW = 900, colour = LIGHT } = {}) => prints.push((g) => {
+      g.save(); g.shadowColor = 'rgba(0,0,0,0.9)'; g.shadowOffsetX = 1.7; g.shadowOffsetY = 1.7; g.shadowBlur = 1.2;
+      text(g, str, x, y, maxW, size, colour, { align, weight, family }); g.restore();
+    });
+    /** Print on a light surface, into its face: navy, with a faint light shadow. */
+    const ink = (c, str, x, y, size, colour = NAVY, { weight = 500, family = PLEX, align = 'left', maxW = 900 } = {}) => {
+      c.save(); c.shadowColor = 'rgba(255,255,255,0.55)'; c.shadowOffsetX = 1; c.shadowOffsetY = 1;
+      text(c, str, x, y, maxW, size, colour, { align, weight, family }); c.restore();
+    };
+    const glow = (x, y, r, colour, a = 0.42) => prints.push((g) => {
+      const rgb = rgbOf(colour), grd = g.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, `rgba(${rgb},${a})`); grd.addColorStop(0.22, `rgba(${rgb},${a * 0.52})`); grd.addColorStop(0.5, `rgba(${rgb},${a * 0.16})`); grd.addColorStop(1, `rgba(${rgb},0)`);
+      g.save(); g.globalCompositeOperation = 'lighter'; g.fillStyle = grd; g.fillRect(x - r, y - r, 2 * r, 2 * r); g.restore();
+    });
+    const pill = (c, str, r, b, h, size) => {
+      c.font = `600 ${size}px ${PLEX}`; const w = Math.max(h, c.measureText(str).width + size * 0.8);
+      c.fillStyle = '#0b1c30'; c.beginPath(); c.roundRect(r - w, b - h, w, h, h / 2); c.fill();
+      c.strokeStyle = 'rgba(120,146,178,0.9)'; c.lineWidth = 1.2; c.stroke();
+      text(c, str, r - w / 2, b - h / 2 + 0.5, w, size, CREAM, { align: 'center', weight: 600, family: PLEX });
+    };
+    const fitImage = (c, img, x, y, w, h) => { const k = Math.min(w / img.width, h / img.height), dw = img.width * k, dh = img.height * k; c.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh); };
+
+    // Seven segment figures on a mini screen (as the construct study's): lit digits over faint unlit ones,
+    // every character a cell of its own, the point too; each cell the game's 12 × 21 logical px.
+    const CELL = [22.5, 39];
+    const DIGITS = { 0: 'abcdef', 1: 'bc', 2: 'abdeg', 3: 'abcdg', 4: 'bcfg', 5: 'acdfg', 6: 'acdefg', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg', '-': 'g', ' ': '' };
+    const SEGS = { a: [[0.2, 0.06], [0.8, 0.06]], b: [[0.8, 0.06], [0.8, 0.5]], c: [[0.8, 0.5], [0.8, 0.94]], d: [[0.2, 0.94], [0.8, 0.94]], e: [[0.2, 0.5], [0.2, 0.94]], f: [[0.2, 0.06], [0.2, 0.5]], g: [[0.2, 0.5], [0.8, 0.5]] };
+    const segment = (c, x0, y0, x1, y1, t) => {
+      const L = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / L, uy = (y1 - y0) / L, nx = -uy, ny = ux, h = t / 2, gap = t * 0.32;
+      const ax = x0 + ux * gap, ay = y0 + uy * gap, bx = x1 - ux * gap, by = y1 - uy * gap;
+      c.beginPath(); c.moveTo(ax, ay); c.lineTo(ax + ux * h + nx * h, ay + uy * h + ny * h); c.lineTo(bx - ux * h + nx * h, by - uy * h + ny * h);
+      c.lineTo(bx, by); c.lineTo(bx - ux * h - nx * h, by - uy * h - ny * h); c.lineTo(ax + ux * h - nx * h, ay + uy * h - ny * h); c.closePath(); c.fill();
+    };
+    /** Dark glass with its top shadow, left shade and a diagonal glare, over whatever `paint` lit. */
+    const paneFinish = (c, iw, ih) => {
+      const top = c.createLinearGradient(0, 0, 0, 7); top.addColorStop(0, 'rgba(0,0,0,0.6)'); top.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = top; c.fillRect(0, 0, iw, 7);
+      const left = c.createLinearGradient(0, 0, 5, 0); left.addColorStop(0, 'rgba(0,0,0,0.45)'); left.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = left; c.fillRect(0, 0, 5, ih);
+      const glare = c.createLinearGradient(0, 0, Math.min(iw, 400) * 0.5, ih); glare.addColorStop(0.3, 'rgba(255,255,255,0)'); glare.addColorStop(0.45, 'rgba(255,255,255,0.07)'); glare.addColorStop(0.6, 'rgba(255,255,255,0)');
+      c.fillStyle = glare; c.fillRect(0, 0, iw, ih);
+    };
+    const ledFace = (iw, ih, str, cells, colour) => canvas2d(iw, ih, (c) => {
+      const rgb = rgbOf(colour), padX = 7, padY = 6, cw = (iw - 2 * padX) / cells, ch = ih - 2 * padY, t = Math.min(cw * 0.2, ch * 0.12);
+      const list = [...str]; while (list.length < cells) list.unshift(' ');
+      c.fillStyle = '#060808'; c.fillRect(0, 0, iw, ih);
+      const cell = (i, k, style) => {
+        c.save(); c.translate(padX + i * cw + cw / 2, padY + ch / 2); c.transform(1, 0, -0.09, 1, 0, 0); c.translate(-cw / 2, -ch / 2); c.fillStyle = style;
+        if (k === '.') { c.beginPath(); c.arc(0.5 * cw, 0.92 * ch, t * 0.95, 0, Math.PI * 2); c.fill(); }
+        else for (const sg of (DIGITS[k] ?? '')) { const [[ax, ay], [bx, by]] = SEGS[sg]; segment(c, ax * cw, ay * ch, bx * cw, by * ch, t); }
+        c.restore();
+      };
+      list.forEach((_, i) => cell(i, '8', `rgba(${rgb},0.08)`));
+      c.save(); c.filter = 'blur(2.4px)'; c.globalAlpha = 0.75; list.forEach((k, i) => cell(i, k, colour)); c.restore();
+      list.forEach((k, i) => cell(i, k, colour));
+      paneFinish(c, iw, ih);
+    });
+    /** A screen in the mini screen's gunmetal bezel, centred on the group's origin; w, h its outside. */
+    const glassScreen = (iw, ih, face) => {
+      const rim = 7, ow = iw + 2 * rim, oh = ih + 2 * rim, g = new THREE.Group();
+      const shape = rrShape(ow, oh, 5 + rim); shape.holes.push(rr(new THREE.Path(), iw, ih, 5));
+      g.add(shade(new THREE.Mesh(extrude(shape, 2.5, 1.2, 1, 3), MAT.frame)));
+      const tex = new THREE.CanvasTexture(face); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(iw + 1, ih + 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+      pane.position.y = 0.4; g.add(pane);
+      return { group: g, w: ow, h: oh };
+    };
+    const ledScreen = (str, cells, colour) => { const iw = Math.round(cells * CELL[0] + 14), ih = CELL[1] + 12; return glassScreen(iw, ih, ledFace(iw, ih, str, cells, colour)); };
+    const SCREEN5 = Math.round(5 * CELL[0] + 14) + 14;   // a five cell screen's outside width
+    /** A money figure on a dark surface: the £ printed, the screen from x (its left edge), the K or M after. */
+    const money = (value, colour, cells, x, cz, y, opts = {}) => {
+      const { figure, suffix } = moneyLed(value, opts), scr = ledScreen(figure, cells, colour);
+      add(scr.group, x + scr.w / 2, cz, y);
+      printWhite('£', x - 9, cz + 1, 34, { weight: 600, align: 'right' });
+      if (suffix) printWhite(suffix, x + scr.w + 8, cz + 1, 34, { weight: 600 });
+      return scr;
+    };
+
+    // Dot matrix text (scripts/ds2/dot_matrix.gd's font): five by seven dots a character, one dot apart,
+    // lit over faint unlit dots, for words and counts that aren't money.
+    const DOT_FONT = {
+      0: [14, 17, 19, 21, 25, 17, 14], 1: [4, 12, 4, 4, 4, 4, 14], 2: [14, 17, 1, 2, 4, 8, 31], 3: [31, 2, 4, 2, 1, 17, 14], 4: [2, 6, 10, 18, 31, 2, 2],
+      5: [31, 16, 30, 1, 1, 17, 14], 6: [6, 8, 16, 30, 17, 17, 14], 7: [31, 1, 2, 4, 8, 8, 8], 8: [14, 17, 17, 14, 17, 17, 14], 9: [14, 17, 17, 15, 1, 2, 12],
+      A: [14, 17, 17, 31, 17, 17, 17], B: [30, 17, 17, 30, 17, 17, 30], C: [14, 17, 16, 16, 16, 17, 14], D: [28, 18, 17, 17, 17, 18, 28], E: [31, 16, 16, 30, 16, 16, 31],
+      F: [31, 16, 16, 30, 16, 16, 16], G: [14, 17, 16, 23, 17, 17, 15], H: [17, 17, 17, 31, 17, 17, 17], I: [14, 4, 4, 4, 4, 4, 14], J: [7, 2, 2, 2, 2, 18, 12],
+      K: [17, 18, 20, 24, 20, 18, 17], L: [16, 16, 16, 16, 16, 16, 31], M: [17, 27, 21, 21, 17, 17, 17], N: [17, 17, 25, 21, 19, 17, 17], O: [14, 17, 17, 17, 17, 17, 14],
+      P: [30, 17, 17, 30, 16, 16, 16], Q: [14, 17, 17, 17, 21, 18, 13], R: [30, 17, 17, 30, 20, 18, 17], S: [15, 16, 16, 14, 1, 1, 30], T: [31, 4, 4, 4, 4, 4, 4],
+      U: [17, 17, 17, 17, 17, 17, 14], V: [17, 17, 17, 17, 17, 10, 4], W: [17, 17, 17, 21, 21, 21, 10], X: [17, 17, 10, 4, 10, 17, 17], Y: [17, 17, 17, 10, 4, 4, 4],
+      Z: [31, 1, 2, 4, 8, 16, 31], ' ': [0, 0, 0, 0, 0, 0, 0], '%': [24, 25, 2, 4, 8, 19, 3], '/': [0, 1, 2, 4, 8, 16, 0], '.': [0, 0, 0, 0, 0, 12, 12],
+      ':': [0, 12, 12, 0, 12, 12, 0], '▲': [0, 0, 4, 14, 31, 0, 0], '▼': [0, 0, 31, 14, 4, 0, 0], '●': [0, 14, 31, 31, 31, 14, 0],
+    };
+    const dotCols = (str) => [...str].length * 6 - 1;
+    /** A dot matrix pane iw × ih at `pitch`: `paint(put, cols)` lights runs with put(str, column, colour). */
+    const dotFace = (iw, ih, pitch, paint) => canvas2d(iw, ih, (c) => {
+      c.fillStyle = '#07090b'; c.fillRect(0, 0, iw, ih);
+      const r = pitch * 0.34, cols = Math.floor((iw - 10) / pitch) + 1, y0 = ih / 2 - 3 * pitch, x0 = (iw - (cols - 1) * pitch) / 2, lit = [];
+      c.fillStyle = 'rgba(255,255,255,0.075)';
+      for (let i = 0; i < cols; i++) for (let j = 0; j < 7; j++) { c.beginPath(); c.arc(x0 + i * pitch, y0 + j * pitch, r, 0, Math.PI * 2); c.fill(); }
+      const put = (str, col, colour) => {
+        let k0 = col;
+        for (const ch of str.toUpperCase()) {
+          (DOT_FONT[ch] ?? DOT_FONT[' ']).forEach((bits, j) => { for (let k = 0; k < 5; k++) if (bits & (16 >> k) && k0 + k < cols && k0 + k >= 0) lit.push([x0 + (k0 + k) * pitch, y0 + j * pitch, colour]); });
+          k0 += 6;
+        }
+        return k0;
+      };
+      paint(put, cols);
+      c.save(); c.filter = `blur(${pitch * 0.55}px)`; c.globalAlpha = 0.8;
+      for (const [x, y, col] of lit) { c.fillStyle = col; c.beginPath(); c.arc(x, y, r * 1.5, 0, Math.PI * 2); c.fill(); }
+      c.restore();
+      for (const [x, y, col] of lit) { c.fillStyle = col; c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill(); }
+      paneFinish(c, iw, ih);
+    });
+
+    /** A small cream keycap with a navy glyph, as Close. */
+    const smallKey = (x, z) => {
+      add(keycap(76, 76, 6, (g, a, b) => {
+        g.strokeStyle = NAVY; g.lineWidth = a * 0.13; g.lineCap = 'round'; g.beginPath();
+        g.moveTo(a * 0.3, b * 0.3); g.lineTo(a * 0.7, b * 0.7); g.moveTo(a * 0.7, b * 0.3); g.lineTo(a * 0.3, b * 0.7); g.stroke();
+      }), x, z);
+    };
+    /** A cream key with its name printed navy, fitted; `down` latches it. */
+    const nameKey = (nm, cx, cz, w, h, size, y, down = false) => {
+      const k = keycap(w, h, 8, (g, a, b) => text(g, nm, a / 2, b / 2 + 1, a - 12, size, NAVY, { align: 'center', weight: 700 }));
+      add(k, cx, cz, y); if (down) k.userData.cap.position.y -= 5;
+      return k;
+    };
+    /** A plate of blackened gunmetal, silver screws in its corners (screws false: none); returns its top. */
+    const cabin = (ox, feat, x, y, w, h, screws = true) => {
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 10), 4, 3, 2.4, 4), [plateMaterial(w, h, { icons: [], buttons: [], screws: [], base: DARK_STEEL_CANVAS, rub: '130,138,150' }), MAT.plateSide])), ox + x + w / 2, OY + y + h / 2);
+      feat.buttons.push({ x, y, w, h, r: 10 });
+      const top = T + 10;
+      if (screws) for (const [sx, sy] of [[13, 13], [w - 13, 13], [13, h - 13], [w - 13, h - 13]]) { const s = silverScrew(); s.remove(s.children[s.children.length - 1]); add(s, ox + x + sx - 15, OY + y + sy - 15, top); }
+      return top;
+    };
+    /** A black plastic bed (the key beds, the search's), moulded in one piece; returns its top. */
+    const bed = (ox, feat, x, y, w, h, paint) => {
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 10), 4, 2.4, 2, 4), [blackPlastic(w, h, paint), BLACK_PLASTIC_SIDE()])), ox + x + w / 2, OY + y + h / 2);
+      feat.buttons.push({ x, y, w, h, r: 10 });
+      for (const [sx, sy] of [[11, 11], [w - 11, 11], [11, h - 11], [w - 11, h - 11]]) add(screw(4.4), ox + x + sx, OY + y + sy, T + 8.8);
+      return T + 8.8;
+    };
+
+    // Goods: the cream tile, the icon, a quantity in the navy pill inside its corner (none where the board
+    // has no quantity to give), under the thin gunmetal well frame. S is the opening, never under 135 layout px.
+    const IMG = {};
+    const goodImg = async (file) => (IMG[file] ??= await loadImage('/icons/goods/' + file));
+    const goodWell = (img, qty, cx, cz, y, S = 138) => {
+      const face = canvas2d(S, S, (c) => {
+        c.fillStyle = CREAM; c.fillRect(0, 0, S, S);
+        fitImage(c, img, S * 0.1, S * 0.08, S * 0.8, S * 0.8);
+        c.save(); c.filter = 'blur(2.5px)'; c.lineWidth = 5; c.strokeStyle = 'rgba(0,0,0,0.3)'; c.beginPath(); c.roundRect(0, 0, S, S, 10); c.stroke();
+        c.lineWidth = 7; c.strokeStyle = 'rgba(0,0,0,0.34)'; c.beginPath(); c.roundRect(3, 3, S, S, 10); c.stroke(); c.restore();
+        if (qty != null) pill(c, String(qty), S - 7, S - 7, 38, 25);
+      });
+      add(shade(new THREE.Mesh(extrude(rrShape(S, S, 10), 2, 0.8, 0.6, 2), [new THREE.MeshPhysicalMaterial({ map: faceTexture(face, S, S), roughness: 0.55, clearcoat: 0.2, envMap: studioEnv, envMapIntensity: 0.3 }), MAT.skirt])), cx, cz, y);
+      const rim = 7, sh = rrShape(S + 2 * rim - 4, S + 2 * rim - 4, 10 + rim); sh.holes.push(rr(new THREE.Path(), S - 4, S - 4, 10));
+      add(shade(new THREE.Mesh(extrude(sh, 3, 1.2, 0.9, 3), MAT.frame)), cx, cz, y + 2.2);
+    };
+    const WELL = 138 + 14;   // a well's outside
+
+    // --- the split flap: one wide flap, as the destination field of an old station board, in a gunmetal
+    // case; the name is printed on it, and the flap's split crosses the letters. (x, y) its top left.
+    const flap = (ox, x, y, w, h, name, base) => {
+      const X = (v) => ox + v, Z = (v) => OY + v, iw = w - 14, ih = h - 12;
+      const s = rrShape(w, h, 7); s.holes.push(rr(new THREE.Path(), iw, ih, 3));
+      add(shade(new THREE.Mesh(extrude(s, 3, 1.2, 1, 3), MAT.frame)), X(x + w / 2), Z(y + h / 2), base);
+      const half = ih / 2 - 1;
+      for (const [k, col] of [[0, 0x17181b], [1, 0x121315]]) {
+        const leaf = new THREE.Mesh(extrude(rrShape(iw - 2, half, 2), 1, 0.4, 0.3, 1), new THREE.MeshPhysicalMaterial({ color: col, roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.3, envMap: studioEnv, envMapIntensity: 0.35 }));
+        add(shade(leaf), X(x + w / 2), Z(y + 6 + half / 2 + k * (half + 2)), base + 0.4);
+      }
+      for (const px of [x + 3.5, x + w - 3.5]) add(shade(new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 6, 12).rotateZ(Math.PI / 2), darkSteel)), X(px), Z(y + h / 2), base + 4.5);
+      prints.push((g) => {
+        text(g, name.toUpperCase(), X(x + 18), Z(y + h / 2 + h * 0.07), iw - 28, h * 0.66, '#f1f3f6', { weight: 600, family: BARLOW });
+        g.fillStyle = 'rgba(4,5,6,0.95)'; g.fillRect(X(x + 7), Z(y + h / 2) - 1.3, iw, 2.6);
+        g.fillStyle = 'rgba(210,216,226,0.16)'; g.fillRect(X(x + 7), Z(y + h / 2) + 1.3, iw, 1);
+        const sheen = g.createLinearGradient(0, Z(y + 6), 0, Z(y + h / 2)); sheen.addColorStop(0, 'rgba(255,255,255,0.07)'); sheen.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = sheen; g.fillRect(X(x + 7), Z(y + 6), iw, ih / 2);
+      });
+    };
+
+    // --- the arrow lamp: the pilot lamp's bezel with a triangular lens, lit green pointing up while the
+    // price rises and red pointing down while it falls; a steady price leaves it dark and round.
+    const arrowLamp = (dir, x, z, y, s = 1.02) => {
+      const g = pilotLamp(null, false);
+      if (dir) {
+        g.remove(g.children[2]);
+        const disc = new THREE.Mesh(new THREE.CircleGeometry(12.6, 40).rotateX(-Math.PI / 2), lensMaterial(null, false)); disc.position.y = 6.3; g.add(disc);
+        const c = new THREE.Color(dir > 0 ? LAMP.green : LAMP.red), a = 12.4, tri = new THREE.Shape();
+        if (dir > 0) { tri.moveTo(0, a); tri.lineTo(a, -a * 0.62); tri.lineTo(-a, -a * 0.62); }
+        else { tri.moveTo(0, -a); tri.lineTo(-a, a * 0.62); tri.lineTo(a, a * 0.62); }
+        tri.closePath();
+        const lens = new THREE.Mesh(extrude(tri, 1.6, 1.4, 1, 2), new THREE.MeshPhysicalMaterial({ color: c.clone().multiplyScalar(0.6), emissive: c, emissiveIntensity: 0.95, roughness: 0.14, clearcoat: 1, clearcoatRoughness: 0.08, envMap: studioEnv, envMapIntensity: 0.5, flatShading: true }));
+        lens.position.y = 6.4; g.add(lens);
+        glow(x, z, 34 * s, '#' + c.getHexString(), 0.4);
+      }
+      g.scale.setScalar(s); add(g, x, z, y);
+    };
+
+    // --- the exchange bell: a brass dome on a black base, its striker in the middle; it rings as a turn's
+    // prices are set.
+    const bell = (x, z) => {
+      add(shade(new THREE.Mesh(new THREE.CylinderGeometry(46, 48, 8, 64), new THREE.MeshPhysicalMaterial({ color: 0x151618, roughness: 0.4, clearcoat: 0.6, envMap: studioEnv, envMapIntensity: 0.5 }))), x, z, T + 4);
+      const prof = [[40, 0], [40, 3], [38.5, 8], [35, 14], [29, 19.5], [21, 23.5], [11, 25.8], [0, 26.5]].map(([r, h]) => new THREE.Vector2(r, h));
+      add(shade(new THREE.Mesh(new THREE.LatheGeometry(prof, 96), brass)), x, z, T + 8);
+      add(shade(new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.4, 10, 20), darkSteel)), x, z, T + 38);
+      add(shade(new THREE.Mesh(new THREE.SphereGeometry(7.5, 28, 14), brass)), x, z, T + 45);
+    };
+
+    // --- a black enamel nameplate in a brass rim, its word raised in white Bebas, a brass rivet at each corner.
+    const NP = { w: 244, h: 70 };
+    const namePlate = (ox, x, y, str) => {
+      const X = (v) => ox + v, Z = (v) => OY + v, { w, h } = NP, tb = { x: 16, y: 6, w: w - 32, h: h - 12 }, base = T;
+      const drawTitle = (g, col) => text(g, str, tb.w / 2, tb.h / 2 + 3, tb.w - 4, 60, col, { weight: 400, family: TITLE_FAMILY, align: 'center' });
+      const plateC = canvas2d(w, h, (c) => {
+        c.fillStyle = '#15171b'; c.fillRect(0, 0, w, h);
+        for (let i = 0; i < w * h / 120; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.015 + rand() * 0.025})`; c.fillRect(rand() * w, rand() * h, 1 + rand() * 2, 1 + rand() * 2); }
+        drawIconShadows(c, w, h, [{ height: 5, draw: (g, col) => { g.save(); g.translate(tb.x, tb.y); drawTitle(g, col); g.restore(); } }]);
+      });
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 6), 2, 1.2, 1, 3), [new THREE.MeshPhysicalMaterial({ map: faceTexture(plateC, w, h), roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.2, envMap: studioEnv, envMapIntensity: 0.5 }), darkSteel])), X(x + w / 2), Z(y + h / 2), base);
+      add(relief(tb.w, tb.h, (g) => drawTitle(g, '#fff'), WHITE_LETTERS, { height: 5, soften: 0.7 }), X(x + tb.x + tb.w / 2), Z(y + tb.y + tb.h / 2), base + 4.7);
+      brassFrame(X(x + w / 2), Z(y + h / 2), w, h, 6, 6, base);
+      for (const [rx, rz] of [[9, 9], [w - 9, 9], [9, h - 9], [w - 9, h - 9]]) {
+        const rv = new THREE.Mesh(new THREE.SphereGeometry(3, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), brass); rv.scale.y = 0.55; add(shade(rv), X(x + rx), Z(y + rz), base + 4.4);
+      }
+    };
+
+    /** Raised white lettering on the backing (a section heading), its shadow baked into the backing. */
+    const raised = (ox, feat, str, x, y, size = 28, family = PLEX, weight = 700) => {
+      const font = `${weight} ${size}px ${family}`, w = Math.ceil(measure(str, font)) + 10, h = Math.round(size * 1.4);
+      const draw = (g, col) => text(g, str, 2, h / 2, w - 4, size, col, { weight, family });
+      add(relief(w, h, (g) => draw(g, '#fff'), WHITE_LETTERS, { height: 5, soften: 0.7 }), ox + x + w / 2, OY + y + h / 2, T + 0.3);
+      feat.icons.push({ height: 5, box: [x, y, w, h], draw: (g, col) => { g.save(); g.translate(x, y); draw(g, col); g.restore(); } });
+      return w;
+    };
+
+    // --- the search: a raised magnifier on its bed, then a strip of dark glass with the lit caret.
+    const MAGS = 54;
+    const drawMag = (g, col, mx, my) => {
+      g.save(); g.strokeStyle = col; g.lineCap = 'round'; g.lineWidth = 7; g.beginPath(); g.arc(mx + 22, my + 22, 15, 0, Math.PI * 2); g.stroke();
+      g.lineWidth = 10; g.beginPath(); g.moveTo(mx + 34, my + 34); g.lineTo(mx + 47, my + 47); g.stroke(); g.restore();
+    };
+    const searchField = (ox, x, cz, x1, top) => {
+      add(relief(MAGS, MAGS, (g) => drawMag(g, '#fff', 0, 0), creamEnamel, { height: 8, soften: 1.2 }), ox + x + MAGS / 2, OY + cz, top + 0.3);
+      const gx0 = x + MAGS + 16, gw = x1 - gx0 - 14, gh = 50;
+      const sface = canvas2d(gw, gh, (c) => {
+        c.fillStyle = '#060808'; c.fillRect(0, 0, gw, gh);
+        c.save(); c.filter = 'blur(2px)'; c.fillStyle = GREEN; c.fillRect(14, 9, 4, gh - 18); c.restore(); c.fillStyle = GREEN; c.fillRect(14, 9, 4, gh - 18);
+        paneFinish(c, gw, gh);
+      });
+      add(glassScreen(gw, gh, sface).group, ox + (gx0 + x1) / 2, OY + cz, top);
+    };
+
+    // --- the scrollbar: a steel rail screwed to the backing with a slot down it, a ridged rubber grip in it.
+    const rail = (ox, y0, y1, thumb0, thumbH) => {
+      const x = 1310, w = 22, L = y1 - y0;
+      add(shade(new THREE.Mesh(extrude(rrShape(w, L, 6), 1.5, 2, 1.6, 3), [plateMaterial(w, L, { icons: [], buttons: [], screws: [] }), MAT.plateSide])), ox + x, OY + y0 + L / 2);
+      add(new THREE.Mesh(extrude(rrShape(8, L - 44, 4), 0.2), MAT.gap), ox + x, OY + y0 + L / 2, T + 5.6);
+      for (const sy of [y0 + 11]) add(screw(4.2), ox + x, OY + sy, T + 5.6);
+      const ridges = canvas2d(30, thumbH, (c) => { c.fillStyle = '#1a1b1d'; c.fillRect(0, 0, 30, thumbH); for (let t = -30; t < thumbH; t += 7.5) { c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 2.4; c.beginPath(); c.moveTo(0, t); c.lineTo(30, t + 14); c.stroke(); c.strokeStyle = 'rgba(120,126,134,0.25)'; c.lineWidth = 1; c.beginPath(); c.moveTo(0, t + 2.4); c.lineTo(30, t + 16.4); c.stroke(); } });
+      add(shade(new THREE.Mesh(extrude(rrShape(28, thumbH, 12), 5, 2.4, 1.8, 4), [new THREE.MeshPhysicalMaterial({ map: faceTexture(ridges, 28, thumbH), roughness: 0.7, clearcoat: 0.2, envMap: studioEnv, envMapIntensity: 0.4 }), new THREE.MeshPhysicalMaterial({ color: 0x17181a, roughness: 0.7 })])), ox + x, OY + thumb0 + thumbH / 2, T + 5.6);
+    };
+
+    // --- the seam: the ribbed rubber nosing where the fixed head meets the body, which scrolls under it.
+    const seam = (ox, seamY) => {
+      const { top, nose, H: SEAM_H } = SEAM, R0 = SEAM_RUBBER_TOP, sh0 = new THREE.Shape(), P = (z, h) => [-z, h];
+      sh0.moveTo(...P(top, 0));
+      const z0 = top + 1, z1 = nose - 4, valley = R0 - 3.2, crest = R0 + 0.6;
+      for (let i = 0; i <= 80; i++) { const z = z0 + (z1 - z0) * i / 80, q = 0.5 - 0.5 * Math.cos(2 * Math.PI * 2.5 * i / 80); sh0.lineTo(...P(z, valley + (crest - valley) * Math.pow(q, 0.6))); }
+      sh0.quadraticCurveTo(...P(nose - 0.2, crest - 0.2), ...P(nose, 0.4)); sh0.lineTo(...P(nose, 0)); sh0.lineTo(...P(top, 0));
+      const geo = new THREE.ExtrudeGeometry(sh0, { depth: PW - 36, bevelEnabled: false, curveSegments: 8 }); geo.rotateY(Math.PI / 2); geo.translate(18, 0, 0);
+      const tread = new THREE.MeshPhysicalMaterial({ color: 0x131416, roughness: 0.72, bumpMap: noiseTexture(90, 0, 10), bumpScale: 0.3, sheen: 0.8, sheenColor: new THREE.Color(0x5a6068), sheenRoughness: 0.45, envMap: studioEnv, envMapIntensity: 0.65 });
+      const strip = new THREE.Mesh(geo, tread); strip.castShadow = strip.receiveShadow = true;
+      add(strip, ox, OY + seamY - top, T + 20);
+      prints.push((c) => {
+        const y0 = OY + seamY + nose - top - 2, y1 = OY + seamY + SEAM_H - top, grd = c.createLinearGradient(0, y0, 0, y1);
+        grd.addColorStop(0, 'rgba(4,6,8,0.62)'); grd.addColorStop(0.18, 'rgba(4,6,8,0.34)'); grd.addColorStop(0.55, 'rgba(4,6,8,0.1)'); grd.addColorStop(1, 'rgba(4,6,8,0)');
+        c.fillStyle = grd; c.fillRect(ox + 18, y0, PW - 36, y1 - y0);
+      });
+    };
+
+    // ===== The fixed head, the same on every tab =====
+    const TABS = ['PRICES', 'BUILDINGS', 'SPECIAL ORDERS', 'RECURRING', 'HISTORY'];
+    const TAB_FIGURES = [[['▲', GREEN], ['5 ', LIGHT], ['▼', RED], ['2', LIGHT]], [['559', LIGHT]], [['4', LIGHT]], [['0', LIGHT]], [['22', LIGHT]]];
+    const TICKER = [['▲ ', GREEN], ['COPPER INGOTS   ', LIGHT], ['▼ ', RED], ['STEEL   ', LIGHT], ['● ', AMBER], ['COAL ORDER DUE TURN 20   ', LIGHT],
+      ['▲ ', GREEN], ['COPPER WIRING   ', LIGHT], ['▲ ', GREEN], ['PURE WATER', LIGHT]];
+    const KB = { x: CL, y: 128, w: CW, h: 172 }, TK = { y: 314, h: 56 }, SEAM_Y = 392, BODY = 424;
+    const head = (i) => {
+      cur = i; const ox = OX[i], feat = feats[i], X = (x) => ox + x, Z = (z) => OY + z;
+      namePlate(ox, CL, 30, 'MARKET'); feat.buttons.push({ x: CL - 6, y: 24, w: NP.w + 12, h: NP.h + 12, r: 10 });
+      bell(X(CL + NP.w + 78), Z(65)); feat.buttons.push({ x: CL + NP.w + 26, y: 13, w: 104, h: 104, r: 52 });
+      smallKey(X(CR - 38), Z(65)); feat.buttons.push({ x: CR - 76, y: 27, w: 76, h: 76, r: 8 });
+      // The key bed: the dot matrix strip across its top, a figure over each key; the five latching keys.
+      const btop = bed(ox, feat, KB.x, KB.y, KB.w, KB.h);
+      const kw = (KB.w - 2 * 22 - 4 * 14) / 5, kx = (k) => KB.x + 22 + kw / 2 + k * (kw + 14);
+      const pitch = 4.125, sw = KB.w - 44 - 14, sh = 38, sx0 = KB.x + 22;
+      const strip = dotFace(sw, sh, pitch, (put, cols) => {
+        const x0 = (sw - (cols - 1) * pitch) / 2;
+        TAB_FIGURES.forEach((runs, k) => {
+          const n = dotCols(runs.map((r) => r[0]).join('')), centre = (kx(k) - sx0 - 7 - x0) / pitch;
+          let col = Math.round(centre - n / 2); for (const [s, c] of runs) col = put(s, col, c);
+        });
+      });
+      add(glassScreen(sw, sh, strip).group, X(KB.x + KB.w / 2), Z(KB.y + 20 + (sh + 14) / 2), btop);
+      TABS.forEach((nm, k) => nameKey(nm, X(kx(k)), Z(KB.y + 118), kw, 84, 26, btop, k === i));
+      // The ticker: one long dot matrix screen of the goods on the move and the orders falling due.
+      const tw = CW - 14, th = TK.h - 14;
+      const face = dotFace(tw, th, 3.75, (put) => { let col = 2; for (const [s, c] of TICKER) col = put(s, col, c); });
+      add(glassScreen(tw, th, face).group, X(CL + CW / 2), Z(TK.y + TK.h / 2), T);
+      feat.buttons.push({ x: CL, y: TK.y, w: CW, h: TK.h, r: 10 });
+      seam(ox, SEAM_Y);
+    };
+
+    // ===== Tab 1: Prices, the quote board =====
+    cur = 0;
+    head(0);
+    {
+      const ox = OX[0], feat = feats[0], X = (x) => ox + x, Z = (z) => OY + z;
+      // The filter bed: the search, then the three filters as latching keys.
+      const FB = { x: CL, y: BODY, w: CW, h: 92 }, KW = 196;
+      const ftop = bed(ox, feat, FB.x, FB.y, FB.w, FB.h, (c) => drawIconShadows(c, FB.w, FB.h, [{ height: 8, draw: (g, col) => drawMag(g, col, 20, FB.h / 2 - 27) }]));
+      const keysX = FB.x + FB.w - 18 - 3 * KW - 2 * 12;
+      searchField(ox, FB.x + 20, FB.y + FB.h / 2, keysX - 16, ftop);
+      ['YOU PRODUCE', 'PROFITABLE', 'UNPROFITABLE'].forEach((nm, k) => nameKey(nm, X(keysX + KW / 2 + k * (KW + 12)), Z(FB.y + FB.h / 2), KW, 68, 24, ftop));
+      // The board: blackened gunmetal, a quote tile per good in two columns, each tile in a thin brass frame.
+      const BD = { x: CL, y: BODY + 108, w: CW, h: PH - 16 - (BODY + 108) }, pad = 16, cg = 20, rg = 18, TW = (CW - 2 * pad - cg) / 2, TH = 200;
+      const btop = cabin(ox, feat, BD.x, BD.y, BD.w, BD.h, false);
+      const goods = [
+        ['Coal', 'alternate_icons/medium/g_001_coal.png', 0.60, 0.57, -1, 'green'],
+        ['Iron Ore', 'alternate_icons/medium/g_002_iron_ore.png', 0.89, 0.85, 0],
+        ['Copper Ore', 'alternate_icons/medium/g_003_copper_ore.png', 0.99, 0.94, 0],
+        ['Iron Ingots', 'alternate_icons/medium/g_004_iron_ingots.png', 1.34, 1.28, 0],
+        ['Copper Ingots', 'alternate_icons/medium/g_005_copper_ingots.png', 3.28, 3.13, 1],
+        ['Steel', 'alternate_icons/medium/g_006_steel.png', 2.49, 2.37, -1],
+        ['Copper Wiring', 'alternate_icons/medium/g_007_copper_wiring.png', 4.98, 4.75, 1],
+        ['Motor', 'alternate_icons/medium/g_008_motor.png', 11.60, 11.05, 0],
+      ];
+      const SLIP = { after: 2, h: 306 }, OPEN = 4;   // the slip opens under the third row, for Copper Ingots
+      let y = BD.y + pad;
+      for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 2; col++) {
+          const [name, file, buy, sell, dir, cost] = goods[row * 2 + col], tx = BD.x + pad + col * (TW + cg), ty = y, sel = row * 2 + col === OPEN;
+          const tbase = btop + (sel ? -2.5 : 0);
+          add(shade(new THREE.Mesh(extrude(rrShape(TW, TH, 8), 3, 1.6, 1.2, 3), [blackPlastic(TW, TH, null, sel ? '#1b1d21' : '#16181b'), BLACK_PLASTIC_SIDE()])), X(tx + TW / 2), Z(ty + TH / 2), tbase);
+          brassFrame(X(tx + TW / 2), Z(ty + TH / 2), TW + 4, TH + 4, 9, 5, btop);
+          const top = tbase + 6.2;
+          goodWell(await goodImg(file), null, X(tx + 14 + WELL / 2), Z(ty + TH / 2), top);
+          const rx = tx + 14 + WELL + 16, rw = TW - (14 + WELL + 16) - 14;
+          flap(ox, rx, ty + 14, rw - 40, 66, name, top);
+          if (cost) { const lamp = pilotLamp(LAMP.green, true); lamp.scale.setScalar(0.72); add(lamp, X(rx + rw - 16), Z(ty + 47), top); glow(X(rx + rw - 16), Z(ty + 47), 34, '#4fdc86', 0.45); }
+          const ly = ty + 154, bx = rx + 22, sx = bx + SCREEN5 + 34;
+          printWhite('BUY', X(bx - 20), Z(ty + 102), 26, { weight: 600, family: BARLOW });
+          printWhite('SELL', X(sx - 20), Z(ty + 102), 26, { weight: 600, family: BARLOW });
+          money(buy, WHITE_LED, 5, X(bx), Z(ly), top);
+          money(sell, WHITE_LED, 5, X(sx), Z(ly), top);
+          arrowLamp(dir, X(sx + SCREEN5 + 28), Z(ly), top);
+          if (row === 0 && col === 0) notes.push({ x: OX[0] + PW + 56, y: OY + ty + 45, lines: ['green lamp on Coal', 'you make it for less'], at: X(CR) + 8 });
+          if (row === 2 && col === 1) notes.push({ x: OX[0] + PW + 56, y: OY + ly, lines: ['arrow lamp', 'which way it moves'], at: X(sx + SCREEN5 + 54) });
+        }
+        y += TH + rg;
+        if (row !== SLIP.after) continue;
+        // The slip for the good whose tile is down: the chart recorder of its sell price, the price impact
+        // ladder with the rung its trade is on, and its four keys.
+        const S = { x: BD.x + pad, y, w: CW - 2 * pad, h: SLIP.h };
+        const stop = cabin(ox, feat, S.x, S.y, S.w, S.h);
+        const pcx = BD.x + pad + TW / 2, tri = new THREE.Shape(); tri.moveTo(-20, 0); tri.lineTo(20, 0); tri.lineTo(0, 15); tri.closePath();
+        add(shade(new THREE.Mesh(extrude(tri, 3, 1, 0.8, 2), darkSteel)), X(pcx), Z(S.y + 2), btop);
+        // The chart recorder: graph paper behind glass in a gunmetal bezel.
+        const CH = { x: S.x + 24, y: S.y + 24, w: 600, h: S.h - 48 }, pw = CH.w - 20, ph = CH.h - 20;
+        const paper = canvas2d(pw, ph, (c) => {
+          c.fillStyle = '#efe7d3'; c.fillRect(0, 0, pw, ph);
+          const L = 64, R = 56, Tp = 50, B = 44;
+          for (let gx = L; gx <= pw - R + 0.1; gx += (pw - L - R) / 20) { c.fillStyle = 'rgba(11,35,64,0.1)'; c.fillRect(gx, Tp, 1, ph - Tp - B); }
+          for (let gy = Tp; gy <= ph - B + 0.1; gy += (ph - Tp - B) / 8) { c.fillStyle = 'rgba(11,35,64,0.1)'; c.fillRect(L, gy, pw - L - R, 1); }
+          for (let k = 0; k <= 4; k++) { const gx = L + k * (pw - L - R) / 4; c.fillStyle = 'rgba(11,35,64,0.24)'; c.fillRect(gx, Tp, 1.4, ph - Tp - B); }
+          c.fillStyle = 'rgba(11,35,64,0.5)'; c.fillRect(L, ph - B, pw - L - R, 2);
+          ink(c, 'Copper Ingots, sell price over 5 turns', 18, 26, 24, NAVY, { weight: 600 });
+          const vals = [3.11, 3.12, 3.12, 3.13, 3.13], lo = 2.9, hi = 3.3, P = vals.map((v, k) => [L + k * (pw - L - R) / 4, ph - B - (v - lo) / (hi - lo) * (ph - Tp - B)]);
+          c.strokeStyle = NAVY; c.lineWidth = 3.4; c.lineJoin = 'round'; c.beginPath(); P.forEach(([px, py], k) => (k ? c.lineTo(px, py) : c.moveTo(px, py))); c.stroke();
+          for (const [px, py] of P) { c.fillStyle = NAVY; c.beginPath(); c.arc(px, py, 5, 0, Math.PI * 2); c.fill(); }
+          ['Turn 1', 'Turn 2', 'Turn 3', 'Turn 4', 'Turn 5'].forEach((t, k) => ink(c, t, L + k * (pw - L - R) / 4, ph - 20, 20, NAVY, { align: 'center' }));
+          c.save(); c.globalCompositeOperation = 'multiply'; const vg = c.createRadialGradient(pw / 2, ph / 2, ph * 0.2, pw / 2, ph / 2, pw * 0.7); vg.addColorStop(0, 'rgba(255,255,255,1)'); vg.addColorStop(1, 'rgba(206,194,166,1)'); c.fillStyle = vg; c.fillRect(0, 0, pw, ph); c.restore();
+        });
+        const ring = rrShape(CH.w, CH.h, 12); ring.holes.push(rr(new THREE.Path(), pw, ph, 5));
+        add(shade(new THREE.Mesh(extrude(ring, 3, 1.4, 1.1, 3), MAT.frame)), X(CH.x + CH.w / 2), Z(CH.y + CH.h / 2), stop);
+        add(new THREE.Mesh(extrude(rrShape(pw, ph, 5), 0.4), new THREE.MeshStandardMaterial({ map: faceTexture(paper, pw, ph), roughness: 0.85, metalness: 0 })), X(CH.x + CH.w / 2), Z(CH.y + CH.h / 2), stop + 0.2);
+        prints.push((g) => {   // the glass over the paper
+          const gx = X(CH.x + 10), gy = Z(CH.y + 10), gl = g.createLinearGradient(gx, gy, gx + pw * 0.6, gy + ph);
+          gl.addColorStop(0.2, 'rgba(255,255,255,0)'); gl.addColorStop(0.32, 'rgba(255,255,255,0.13)'); gl.addColorStop(0.42, 'rgba(255,255,255,0)'); g.fillStyle = gl; g.fillRect(gx, gy, pw, ph);
+        });
+        // The price impact ladder: ten rungs on a screen, the one its buying is on lit amber.
+        const RX = CH.x + CH.w + 32, RW = S.x + S.w - 26 - RX;
+        printWhite('PRICE IMPACT', X(RX), Z(S.y + 44), 28, { weight: 600, family: BARLOW });
+        const mw = RW - 14, mh = 36, rungs = 10;
+        const meter = canvas2d(mw, mh, (c) => {
+          c.fillStyle = '#060808'; c.fillRect(0, 0, mw, mh);
+          const gp = 8, cw = (mw - 16 - (rungs - 1) * gp) / rungs;
+          for (let k = 0; k < rungs; k++) { const x = 8 + k * (cw + gp); c.fillStyle = `rgba(${rgbOf(AMBER)},0.09)`; c.fillRect(x, 8, cw, mh - 16); }
+          c.save(); c.filter = 'blur(3px)'; c.fillStyle = AMBER; c.fillRect(8, 8, cw, mh - 16); c.restore(); c.fillStyle = AMBER; c.fillRect(8, 8, cw, mh - 16);
+          paneFinish(c, mw, mh);
+        });
+        add(glassScreen(mw, mh, meter).group, X(RX + RW / 2), Z(S.y + 88), stop);
+        printWhite('Your buying raises it 0.1%/turn.', X(RX), Z(S.y + 142), 26);
+        const KW2 = (RW - 3 * 12) / 4;
+        ['BUY', 'SELL', 'MOVE', 'BUILD MORE'].forEach((nm, k) => nameKey(nm, X(RX + KW2 / 2 + k * (KW2 + 12)), Z(S.y + 226), KW2, 92, 25, stop));
+        notes.push({ x: OX[0] + PW + 56, y: OY + S.y + S.h / 2, lines: ['the good\'s slip', 'chart, impact, keys'], at: X(CR) + 8 });
+        y += SLIP.h + rg;
+      }
+      rail(ox, BODY + 4, PH - 20, BODY + 40, 250);
+      notes.push({ x: OX[0] + PW + 56, y: OY + TK.y + TK.h / 2, lines: ['ticker', 'goods on the move'], at: X(CR) + 8 });
+    }
+
+    // ===== Tab 2: Buildings for sale, the listing board =====
+    cur = 1;
+    head(1);
+    {
+      const ox = OX[1], feat = feats[1], X = (x) => ox + x, Z = (z) => OY + z;
+      const SB = { x: CL, y: BODY, w: CW, h: 92 };
+      const stop = bed(ox, feat, SB.x, SB.y, SB.w, SB.h, (c) => drawIconShadows(c, SB.w, SB.h, [{ height: 8, draw: (g, col) => drawMag(g, col, 20, SB.h / 2 - 27) }]));
+      searchField(ox, SB.x + 20, SB.y + SB.h / 2, SB.x + SB.w - 20, stop);
+      const FK = { x: CL, y: SB.y + SB.h + 14, w: CW, h: 92 }, n = 8, kw = (FK.w - 2 * 16 - (n - 1) * 10) / n;
+      const ftop = bed(ox, feat, FK.x, FK.y, FK.w, FK.h);
+      ['PRODUCTION', 'POWER', 'USES POWER', 'NO GRID', 'LEVEL 1', 'LEVEL 2', 'LEVEL 3', 'NEAR PORT'].forEach((nm, k) => nameKey(nm, X(FK.x + 16 + kw / 2 + k * (kw + 10)), Z(FK.y + FK.h / 2), kw, 68, 23, ftop));
+      // The lots, grouped under their owner's name.
+      let y = FK.y + FK.h + 26;
+      raised(ox, feat, 'ARIN CITY PETROCHEMICAL CO.', CL + 4, y, 28);
+      notes.push({ x: OX[1] + PW + 56, y: OY + y + 20, lines: ['lots under', 'their owner'], at: X(CR) + 8 });
+      y += 50;
+      const BLUE = '#e3ebf5';
+      const blueprintGrid = (c, fx, fy, fs, r = 6) => {
+        c.save(); c.beginPath(); c.roundRect(fx, fy, fs, fs, r); c.clip();
+        const k = 12, step = fs / k;
+        for (let i = 1; i < k; i++) { c.fillStyle = `rgba(160,192,236,${i % 4 === 0 ? 0.17 : 0.08})`; c.fillRect(fx + i * step, fy, 1, fs); c.fillRect(fx, fy + i * step, fs, 1); }
+        c.restore();
+      };
+      const lots = [
+        ['Chlor Alkali Complex B', 'Arin City', 'b_012_chem_plant.png', 'alternate_icons/medium/g_012_chlorine.png', 20, 863],
+        ['Chlor Alkali Complex B', 'Arin City Highgate', 'b_012_chem_plant.png', 'alternate_icons/medium/g_012_chlorine.png', 20, 824],
+        ['Coal Power Plant C', 'Arin City Old Quarter', 'b_003_power_plant.png', null, null, 584],
+        ['Desalination Plant C', 'Arin City Highgate', 'b_021_desal.png', 'medium/g_009_pure_water.png', 40, 255],
+        ['Electrolyser B', 'Arin City Old Quarter', 'b_020_electrolyser.png', 'alternate_icons/medium/g_014_hydrogen.png', 16, 1080],
+      ];
+      const LH = 184, LG = 16, CARDW = 890, rim = 8, gS = 110;
+      const guardIcon = canvas2d(128, 128, (c) => text(c, 'BUY', 64, 68, 124, 64, '#fff', { align: 'center', weight: 700, family: BARLOW }), 2);
+      for (const [i, [name, place, bfile, gfile, qty, price]] of lots.entries()) {
+        const lx = CL, cx0 = lx + rim, cy0 = y + rim, cw = CARDW - 2 * rim, ch = LH - 2 * rim;
+        // The card: cream enamel, the building's icon printed flat on its navy field as a blueprint, the name and
+        // the place in navy; its output in a well on the right.
+        const mask = keyCream(await loadImage('/icons/buildings/' + bfile)), fs = 136, fx = 14, fy = (ch - fs) / 2;
+        const face = canvas2d(cw, ch, (c) => {
+          c.fillStyle = CREAM; c.fillRect(0, 0, cw, ch);
+          for (let k = 0; k < cw * ch / 5000; k++) { const px = rand() * cw, py = rand() * ch, r = 20 + rand() * 60, grd = c.createRadialGradient(px, py, 0, px, py, r); grd.addColorStop(0, `rgba(206,158,52,${0.04 + rand() * 0.05})`); grd.addColorStop(1, 'rgba(206,158,52,0)'); c.fillStyle = grd; c.fillRect(px - r, py - r, 2 * r, 2 * r); }
+          for (let k = 0; k < cw * ch / 60; k++) { c.fillStyle = `rgba(58,46,30,${0.07 + rand() * 0.14})`; c.fillRect(rand() * cw, rand() * ch, 0.4 + rand(), 0.4 + rand()); }
+          c.fillStyle = ENAMEL_FIELD; c.beginPath(); c.roundRect(fx, fy, fs, fs, 6); c.fill();
+          blueprintGrid(c, fx, fy, fs); stamp(c, mask, fx + 16, fy + 16, fs - 32, fs - 32, BLUE);
+          const tx = fx + fs + 24, tw = cw - tx - (gfile ? WELL + 30 : 20);
+          ink(c, name, tx, ch / 2 - 22, 32, NAVY, { weight: 600, maxW: tw });
+          ink(c, place, tx, ch / 2 + 24, 27, NAVY, { weight: 500, maxW: tw });
+        });
+        add(shade(new THREE.Mesh(extrude(rrShape(cw, ch, 8), 2, 1.2, 1, 3), [enamelMat(face, cw, ch), MAT.plateSide])), X(cx0 + cw / 2), Z(cy0 + ch / 2), T);
+        brassFrame(X(cx0 + cw / 2), Z(cy0 + ch / 2), cw - 6, ch - 6, 6, rim + 3, T + 3.5);
+        for (const [rx, rz] of [[4, 4], [cw - 4, 4], [4, ch - 4], [cw - 4, ch - 4]]) { const rv = new THREE.Mesh(new THREE.SphereGeometry(3.2, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), brass); rv.scale.y = 0.55; add(shade(rv), X(cx0 + rx), Z(cy0 + rz), T + 7.4); }
+        feat.buttons.push({ x: lx, y, w: CARDW, h: LH, r: 10 });
+        if (gfile) goodWell(await goodImg(gfile), qty, X(cx0 + cw - 16 - WELL / 2), Z(cy0 + ch / 2), T + 5.2);
+        // The price on a red LED, whole pounds as it is charged, and the guarded Buy key.
+        const my = y + LH / 2, px = lx + CARDW + 36;
+        money(price, RED, 5, X(px), Z(my), T, { whole: true });
+        const gx = px + SCREEN5 + 22 + gS / 2, gb = guardButton(gS, guardIcon, LAMP.amber);
+        if (i === 1) gb.userData.cover.rotation.x = -COVER_OPEN;
+        add(gb, X(gx), Z(my), T);
+        feat.buttons.push({ x: gx - gS / 2, y: my - gS / 2, w: gS, h: gS, r: 12 });
+        glow(X(gx), Z(my), gS * (i === 1 ? 1.2 : 0.95), '#ffa412', i === 1 ? 0.55 : 0.4);
+        if (i === 1) notes.push({ x: OX[1] + PW + 56, y: OY + my, lines: ['cover lifted', 'the second click buys'], at: X(gx + gS / 2 + 14) });
+        y += LH + LG;
+      }
+      rail(ox, BODY + 4, PH - 20, BODY + 60, 140);
+      notes.push({ x: OX[1] + PW + 56, y: OY + KB.y + 39, lines: ['a figure per key'], at: X(CR) + 8 });
+    }
+
+    // The backings last: navy steel in a welded brass trim, carrying the grime round everything mounted on
+    // it and the swept shadows of its raised letters.
+    for (const [i, ox] of OX.entries()) {
+      cur = i;
+      const feat = feats[i], TRIM = 14, ir = 7, iw = PW - 8 - 2 * TRIM, ih = PH - 8 - 2 * TRIM;
+      const shift = { base: NAVY_STEEL_CANVAS, rub: '120,136,160',
+        icons: feat.icons.map((ic) => ({ ...ic, draw: (g, col) => { g.save(); g.translate(-4, -4); ic.draw(g, col); g.restore(); } })),
+        buttons: feat.buttons.map((b) => ({ ...b, x: b.x - 4, y: b.y - 4 })), screws: [] };
+      const steelSide = new THREE.MeshStandardMaterial({ color: 0x3a4250, metalness: 1, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
+      const plate = new THREE.Mesh(extrude(rrShape(PW - 8, PH - 8, 16), 4, 4.5, 3.6, 6), [plateMaterial(PW - 8, PH - 8, shift), steelSide]);
+      plate.receiveShadow = true; add(plate, ox + PW / 2, OY + PH / 2, 0);
+      const ring = rrShape(PW - 8, PH - 8, 16); ring.holes.push(rr(new THREE.Path(), iw, ih, ir));
+      const trim = new THREE.Mesh(extrude(ring, 2.5, 3, 2.4, 5), [plateMaterial(PW - 8, PH - 8, { icons: [], buttons: [], screws: [], base: BRASS_TRIM_CANVAS, rub: '255,236,180', flecks: tarnish }), brassSide]);
+      trim.castShadow = trim.receiveShadow = true; add(trim, ox + PW / 2, OY + PH / 2, T - 1);
+      const bead = weldBead(iw - 4.8, ih - 4.8, Math.max(2, ir - 2.4), 3.6); add(bead, ox + PW / 2, OY + PH / 2, T);
+      groups[i].add(shadowCatcher(PW, PH, ox + PW / 2, OY + PH / 2, T + 0.05, 0.42));
+    }
+
+    // Each tab its own render, so the house light's shadow map covers it; both shown to the same fold.
+    const shots = [0, 1].map((i) => {
+      const x0 = OX[i] - 40, x1 = OX[i] + PW + 40, y1 = OY + PH + 40;
+      groups[i].add(shadowCatcher(x1 - x0, y1, (x0 + x1) / 2, y1 / 2, 0.05, 0.5));
+      const st = stage([x0, 0, x1, y1], [groups[i]]);
+      st.scene.traverse((o) => { if (o.isDirectionalLight) o.shadow.mapSize.set(4096, 4096); });
+      return { img: st.grab(), x0, x1, y1 };
+    });
+    await post('market_study', frame2d(W, H, (g) => {
+      const BG = '#121820';
+      g.fillStyle = BG; g.fillRect(0, 0, W, H);
+      shots.forEach((s, i) => { g.save(); g.beginPath(); g.rect(OX[i] - 30, 0, PW + 60, OY + FOLD); g.clip(); g.drawImage(s.img, s.x0, 0, s.x1 - s.x0, s.y1); g.restore(); });
+      for (const p of prints) p(g);
+      // Both tabs to the same fold: the body scrolls on below it.
+      for (const ox of OX) {
+        g.fillStyle = BG; g.fillRect(ox - 40, OY + FOLD, PW + 80, H - OY - FOLD);
+        const fade = g.createLinearGradient(0, OY + FOLD - 40, 0, OY + FOLD); fade.addColorStop(0, 'rgba(18,24,32,0)'); fade.addColorStop(1, 'rgba(18,24,32,1)');
+        g.fillStyle = fade; g.fillRect(ox - 40, OY + FOLD - 40, PW + 80, 40);
+      }
+      for (const n of notes) {
+        g.save(); g.strokeStyle = '#e9b81a'; g.fillStyle = '#e9b81a'; g.lineWidth = 2.5;
+        const ax = n.x - 12, bx = n.at ?? n.x - 42; g.beginPath(); g.moveTo(ax, n.y); g.lineTo(bx + 10, n.y); g.stroke();
+        g.beginPath(); g.moveTo(bx, n.y); g.lineTo(bx + 12, n.y - 7); g.lineTo(bx + 12, n.y + 7); g.closePath(); g.fill(); g.restore();
+        n.lines.forEach((ln, k) => text(g, ln, n.x, n.y + (k - (n.lines.length - 1) / 2) * 32, MR - 70, k ? 24 : 28, LIGHT, { weight: k ? 500 : 600, family: PLEX }));
+      }
+      [['1', 'Prices'], ['2', 'Buildings for sale']].forEach(([k, s], i) => {
+        text(g, k, OX[i], 56, 40, 40, '#e9b81a', { weight: 700, family: PLEX });
+        text(g, s, OX[i] + 38, 56, 700, 36, LIGHT, { weight: 600, family: PLEX });
+      });
+      for (const ox of OX) {   // one width for every tab
+        const y = OY + FOLD + 58; g.strokeStyle = 'rgba(232,238,247,0.7)'; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(ox, y); g.lineTo(ox + PW, y); g.moveTo(ox, y - 12); g.lineTo(ox, y + 12); g.moveTo(ox + PW, y - 12); g.lineTo(ox + PW, y + 12); g.stroke();
+        g.fillStyle = BG; g.fillRect(ox + PW / 2 - 130, y - 18, 260, 36);
+        text(g, '720 px wide', ox + PW / 2, y + 1, 250, 28, LIGHT, { align: 'center', weight: 500, family: PLEX });
+      }
+    }));
+  });
+
+  // --- a study for the resources panel (docs/resources-ds2-plan.md §5), not a game layer: the stock table as
+  // the Building Ledger's sibling. Building Detail's navy steel backing in its brass trim, the raised title,
+  // the Goods Graph and Close keys, the count on a dot matrix and the search on dark glass, the filters as
+  // latching keys on the key bed, the seam, metal label headings (the sorted one cream with its mark), then
+  // one black plastic case of raised modules, a good a module: its cream tile in a well with its stock on the
+  // pill, its name over where it is held, a lamp and a word for whether it covers its use, made and used last
+  // turn, and cost, market price and carbon tax a unit on LED screens after a printed £. Coal is opened: its
+  // bin card, the keycaps' cream plastic slid out from under the module, printed navy with where it is held,
+  // what came in and what went out last turn, its worth and storage fee, and a key for its freight rates.
+  // The whole "In stock" list is drawn, the panel's foot on a 1080 screen marked as the fold.
+  if (want('resourcesstudy')) await withSeed(436, async () => {
+    for (const f of ['500 30px "IBM Plex Sans"', '600 30px "IBM Plex Sans"', '700 30px "IBM Plex Sans"', '600 30px "Barlow Condensed"', '700 30px "Barlow Condensed"', `60px ${TITLE_FAMILY}`]) await document.fonts.load(f);
+    const PW = 1732.5, MX = 60, MR = 400, CAPT = 120, FOOT = 170, OX = MX, OY = CAPT;
+    const T = PLATE_TOP, CM = 48, TRIM = 14, CREAM = '#feedc3', LIGHT = '#e8eef7';
+    const RED = '#ff4d3d', WHITE_LED = '#eef3fa', INK_OK = '#1d6b3a';
+    const PLEX = '"IBM Plex Sans"', BARLOW = '"Barlow Condensed"';
+    const group = new THREE.Group(), prints = [], notes = [];
+    const feat = { icons: [], buttons: [], screws: [] };
+    const X = (x) => OX + x, Z = (y) => OY + y;
+    const add = (m, x, z, y = T) => { m.position.set(x, y, z); group.add(m); return m; };
+    const shade = (m) => { m.traverse((o) => { if (o.isMesh) o.castShadow = o.receiveShadow = true; }); return m; };
+    const rgbOf = (hex) => { const c = new THREE.Color(hex); return `${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)}`; };
+    const measure = (str, font) => { const c = document.createElement('canvas').getContext('2d'); c.font = font; return c.measureText(str).width; };
+    /** The owner's money rule: the point a cell of its own, at most five cells; two decimals below £100, one
+     * to £999.9, whole pounds to £9999, then £15.6K, £1.01M, the letter printed after the screen. */
+    const moneyLed = (v) => {
+      const minus = v < 0 ? '-' : '', a = Math.abs(v);
+      for (const [div, suffix, d0, limit] of [[1, '', 2, 100], [1, '', 1, 1000], [1, '', 0, 10000], [1e3, 'K', 1, 1000], [1e6, 'M', 2, 1000], [1e9, 'B', 2, Infinity]]) {
+        let d = d0, shown = (a / div).toFixed(d);
+        if (parseFloat(shown) >= limit) continue;
+        while (d > 0 && (minus + shown).length > 5) shown = (a / div).toFixed(--d);
+        return { figure: minus + shown, suffix };
+      }
+    };
+
+    // Print: white with a dark shadow on anything dark, drawn over the render as the game prints live.
+    const printWhite = (str, x, y, size, { weight = 500, family = PLEX, align = 'left', maxW = 900, colour = LIGHT } = {}) => prints.push((g) => {
+      g.save(); g.shadowColor = 'rgba(0,0,0,0.9)'; g.shadowOffsetX = 1.7; g.shadowOffsetY = 1.7; g.shadowBlur = 1.2;
+      text(g, str, x, y, maxW, size, colour, { align, weight, family }); g.restore();
+    });
+    /** Print on a light surface, into its face: navy, or a darker semantic ink, with a faint light shadow. */
+    const ink = (c, str, x, y, size, colour = NAVY, { weight = 500, family = PLEX, align = 'left', maxW = 900 } = {}) => {
+      c.save(); c.shadowColor = 'rgba(255,255,255,0.55)'; c.shadowOffsetX = 1; c.shadowOffsetY = 1;
+      text(c, str, x, y, maxW, size, colour, { align, weight, family }); c.restore();
+    };
+    const glow = (x, y, r, colour, a = 0.42) => prints.push((g) => {
+      const rgb = rgbOf(colour), grd = g.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, `rgba(${rgb},${a})`); grd.addColorStop(0.22, `rgba(${rgb},${a * 0.52})`); grd.addColorStop(0.5, `rgba(${rgb},${a * 0.16})`); grd.addColorStop(1, `rgba(${rgb},0)`);
+      g.save(); g.globalCompositeOperation = 'lighter'; g.fillStyle = grd; g.fillRect(x - r, y - r, 2 * r, 2 * r); g.restore();
+    });
+    /** The navy quantity pill, its right and bottom edges at (r, b). */
+    const pill = (c, str, r, b, h, size) => {
+      c.font = `600 ${size}px ${PLEX}`; const w = Math.max(h, c.measureText(str).width + size * 0.8);
+      c.fillStyle = '#0b1c30'; c.beginPath(); c.roundRect(r - w, b - h, w, h, h / 2); c.fill();
+      c.strokeStyle = 'rgba(120,146,178,0.9)'; c.lineWidth = 1.2; c.stroke();
+      text(c, str, r - w / 2, b - h / 2 + 0.5, w, size, CREAM, { align: 'center', weight: 600, family: PLEX });
+    };
+    const fitImage = (c, img, x, y, w, h) => { const k = Math.min(w / img.width, h / img.height), dw = img.width * k, dh = img.height * k; c.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh); };
+
+    // Seven segment figures on a mini screen, each character a cell, the point too; a cell is the game's
+    // 12 × 21 logical px.
+    const CELL = [22.5, 39];
+    const DIGITS = { 0: 'abcdef', 1: 'bc', 2: 'abdeg', 3: 'abcdg', 4: 'bcfg', 5: 'acdfg', 6: 'acdefg', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg', '-': 'g', ' ': '' };
+    const SEGS = { a: [[0.2, 0.06], [0.8, 0.06]], b: [[0.8, 0.06], [0.8, 0.5]], c: [[0.8, 0.5], [0.8, 0.94]], d: [[0.2, 0.94], [0.8, 0.94]], e: [[0.2, 0.5], [0.2, 0.94]], f: [[0.2, 0.06], [0.2, 0.5]], g: [[0.2, 0.5], [0.8, 0.5]] };
+    const segment = (c, x0, y0, x1, y1, t) => {
+      const L = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / L, uy = (y1 - y0) / L, nx = -uy, ny = ux, h = t / 2, gap = t * 0.32;
+      const ax = x0 + ux * gap, ay = y0 + uy * gap, bx = x1 - ux * gap, by = y1 - uy * gap;
+      c.beginPath(); c.moveTo(ax, ay); c.lineTo(ax + ux * h + nx * h, ay + uy * h + ny * h); c.lineTo(bx - ux * h + nx * h, by - uy * h + ny * h);
+      c.lineTo(bx, by); c.lineTo(bx - ux * h - nx * h, by - uy * h - ny * h); c.lineTo(ax + ux * h - nx * h, ay + uy * h - ny * h); c.closePath(); c.fill();
+    };
+    const glassOver = (c, iw, ih) => {
+      const top = c.createLinearGradient(0, 0, 0, 7); top.addColorStop(0, 'rgba(0,0,0,0.6)'); top.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = top; c.fillRect(0, 0, iw, 7);
+      const left = c.createLinearGradient(0, 0, 5, 0); left.addColorStop(0, 'rgba(0,0,0,0.45)'); left.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = left; c.fillRect(0, 0, 5, ih);
+      const glare = c.createLinearGradient(0, 0, iw * 0.5, ih); glare.addColorStop(0.3, 'rgba(255,255,255,0)'); glare.addColorStop(0.45, 'rgba(255,255,255,0.07)'); glare.addColorStop(0.6, 'rgba(255,255,255,0)');
+      c.fillStyle = glare; c.fillRect(0, 0, iw, ih);
+    };
+    const ledFace = (iw, ih, str, cells, colour) => canvas2d(iw, ih, (c) => {
+      const rgb = rgbOf(colour), padX = 7, padY = 6, cw = (iw - 2 * padX) / cells, ch = ih - 2 * padY, t = Math.min(cw * 0.2, ch * 0.12);
+      const list = [...str]; while (list.length < cells) list.unshift(' ');
+      c.fillStyle = '#060808'; c.fillRect(0, 0, iw, ih);
+      const cell = (i, k, style) => {
+        c.save(); c.translate(padX + i * cw + cw / 2, padY + ch / 2); c.transform(1, 0, -0.09, 1, 0, 0); c.translate(-cw / 2, -ch / 2); c.fillStyle = style;
+        if (k === '.') { c.beginPath(); c.arc(0.5 * cw, 0.92 * ch, t * 0.95, 0, Math.PI * 2); c.fill(); }
+        else for (const sg of (DIGITS[k] ?? '')) { const [[ax, ay], [bx, by]] = SEGS[sg]; segment(c, ax * cw, ay * ch, bx * cw, by * ch, t); }
+        c.restore();
+      };
+      list.forEach((_, i) => cell(i, '8', `rgba(${rgb},0.08)`));
+      c.save(); c.filter = 'blur(2.4px)'; c.globalAlpha = 0.75; list.forEach((k, i) => cell(i, k, colour)); c.restore();
+      list.forEach((k, i) => cell(i, k, colour));
+      glassOver(c, iw, ih);
+    });
+    /** Five by seven dots a character, lit over faint unlit dots across the whole pane. */
+    const DOT_FONT = {
+      '1': ['00100', '01100', '00100', '00100', '00100', '00100', '01110'], '4': ['00010', '00110', '01010', '10010', '11111', '00010', '00010'],
+      I: ['01110', '00100', '00100', '00100', '00100', '00100', '01110'], N: ['10001', '11001', '10101', '10011', '10001', '10001', '10001'],
+      S: ['01111', '10000', '10000', '01110', '00001', '00001', '11110'], T: ['11111', '00100', '00100', '00100', '00100', '00100', '00100'],
+      O: ['01110', '10001', '10001', '10001', '10001', '10001', '01110'], C: ['01110', '10001', '10000', '10000', '10000', '10001', '01110'],
+      K: ['10001', '10010', '10100', '11000', '10100', '10010', '10001'], ' ': ['00000', '00000', '00000', '00000', '00000', '00000', '00000'],
+    };
+    const dotFace = (iw, ih, str, pitch, colour = '#f2f5fa') => canvas2d(iw, ih, (c) => {
+      c.fillStyle = '#060808'; c.fillRect(0, 0, iw, ih);
+      const rgb = rgbOf(colour), r = pitch * 0.34, oy = (ih - 7 * pitch) / 2 + pitch / 2, cols = Math.floor((iw - pitch) / pitch), ox = (iw - cols * pitch) / 2 + pitch / 2;
+      const lit = new Set();
+      [...str].forEach((ch, i) => (DOT_FONT[ch] ?? DOT_FONT[' ']).forEach((row, y) => [...row].forEach((b, x) => { if (b === '1') lit.add(`${1 + i * 6 + x},${y}`); })));
+      for (let y = 0; y < 7; y++) for (let x = 0; x < cols; x++) { c.fillStyle = `rgba(${rgb},0.07)`; c.beginPath(); c.arc(ox + x * pitch, oy + y * pitch, r, 0, Math.PI * 2); c.fill(); }
+      const litDots = (style) => { c.fillStyle = style; for (const k of lit) { const [x, y] = k.split(',').map(Number); c.beginPath(); c.arc(ox + x * pitch, oy + y * pitch, r, 0, Math.PI * 2); c.fill(); } };
+      c.save(); c.filter = 'blur(2px)'; c.globalAlpha = 0.7; litDots(colour); c.restore(); litDots(colour);
+      glassOver(c, iw, ih);
+    });
+    const plainGlass = (iw, ih) => canvas2d(iw, ih, (c) => { c.fillStyle = '#070a0b'; c.fillRect(0, 0, iw, ih); glassOver(c, iw, ih); });
+    /** A screen in the mini screen's bezel, centred on the group's origin; w, h its outside. */
+    const glassScreen = (iw, ih, face) => {
+      const rim = 7, ow = iw + 2 * rim, oh = ih + 2 * rim, g = new THREE.Group();
+      const shape = rrShape(ow, oh, 5 + rim); shape.holes.push(rr(new THREE.Path(), iw, ih, 5));
+      g.add(shade(new THREE.Mesh(extrude(shape, 2.5, 1.2, 1, 3), MAT.frame)));
+      const tex = new THREE.CanvasTexture(face); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(iw + 1, ih + 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+      pane.position.y = 0.4; g.add(pane);
+      return { group: g, w: ow, h: oh };
+    };
+    const LED_CELLS = 5, LED_W = Math.round(LED_CELLS * CELL[0] + 14) + 14;
+    const ledScreen = (str, colour) => { const iw = Math.round(LED_CELLS * CELL[0] + 14), ih = CELL[1] + 12; return glassScreen(iw, ih, ledFace(iw, ih, str, LED_CELLS, colour)); };
+    /** A money figure on a dark surface: the £ printed, the screen from x (its left edge), the letter after. */
+    const money = (value, colour, x, cz, y) => {
+      const { figure, suffix } = moneyLed(value), scr = ledScreen(figure, colour);
+      add(scr.group, X(x + scr.w / 2), Z(cz), y);
+      printWhite('£', X(x - 8), Z(cz + 1), 34, { weight: 600, align: 'right' });
+      if (suffix) printWhite(suffix, X(x + scr.w + 8), Z(cz + 1), 34, { weight: 600 });
+      return scr;
+    };
+    /** Raised white lettering on the backing, its swept shadow baked into the backing's steel. */
+    const raised = (str, x, y, size, family, weight) => {
+      const font = `${weight} ${size}px ${family}`, w = Math.ceil(measure(str, font)) + 12, h = Math.round(size * 1.3);
+      const draw = (g, col) => text(g, str, 3, h / 2 + size * 0.06, w - 6, size, col, { weight, family });
+      add(relief(w, h, (g) => draw(g, '#fff'), WHITE_LETTERS, { height: 5, soften: 0.7 }), X(x + w / 2), Z(y + h / 2), T + 0.3);
+      feat.icons.push({ height: 5, box: [x, y, w, h], draw: (g, col) => { g.save(); g.translate(x, y); draw(g, col); g.restore(); } });
+      return w;
+    };
+    /** A small cream keycap with a navy glyph, as Close; `glyph` draws on the key's face. */
+    const smallKey = (glyph, x, z) => {
+      const k = keycap(76, 76, 6, (g, a, b) => {
+        g.strokeStyle = NAVY; g.fillStyle = NAVY; g.lineWidth = a * 0.13; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath(); glyph(g, a, b);
+      });
+      add(k, X(x), Z(z)); feat.buttons.push({ x: x - 38, y: z - 38, w: 76, h: 76, r: 8 });
+    };
+    const IMG = {};
+    const goodImg = async (file) => (IMG[file] ??= await loadImage('/icons/goods/medium/' + file));
+    /** A good in its well: the cream tile, the icon, its stock in the navy pill inside its corner, under a
+     * thin gunmetal frame; S is the tile (the opening), 72 logical px. */
+    const goodWell = (img, qty, cx, cz, y, S = 135) => {
+      const face = canvas2d(S, S, (c) => {
+        c.fillStyle = CREAM; c.fillRect(0, 0, S, S);
+        fitImage(c, img, S * 0.1, S * 0.08, S * 0.8, S * 0.8);
+        c.save(); c.filter = 'blur(2.5px)'; c.lineWidth = 5; c.strokeStyle = 'rgba(0,0,0,0.3)'; c.beginPath(); c.roundRect(0, 0, S, S, 10); c.stroke();
+        c.lineWidth = 7; c.strokeStyle = 'rgba(0,0,0,0.34)'; c.beginPath(); c.roundRect(3, 3, S, S, 10); c.stroke(); c.restore();
+        pill(c, String(qty), S - 7, S - 7, 38, 25);
+      });
+      add(shade(new THREE.Mesh(extrude(rrShape(S, S, 10), 2, 0.8, 0.6, 2), [new THREE.MeshPhysicalMaterial({ map: faceTexture(face, S, S), roughness: 0.55, clearcoat: 0.2, envMap: studioEnv, envMapIntensity: 0.3 }), MAT.skirt])), cx, cz, y);
+      const rim = 7, sh = rrShape(S + 2 * rim - 4, S + 2 * rim - 4, 10 + rim); sh.holes.push(rr(new THREE.Path(), S - 4, S - 4, 10));
+      add(shade(new THREE.Mesh(extrude(sh, 3, 1.2, 0.9, 3), MAT.frame)), cx, cz, y + 2.2);
+    };
+    const lampColour = { green: LAMP.green, amber: LAMP.amber, red: LAMP.red };
+    const lampCss = { green: '#4fdc86', amber: '#ffa412', red: '#e8281e' };
+    const lamp = (tone, x, z, y, s = 0.7) => {
+      const l = pilotLamp(tone ? lampColour[tone] : null, !!tone); l.scale.setScalar(s); add(l, X(x), Z(z), y);
+      if (tone) glow(X(x), Z(z), 46, lampCss[tone], 0.4);
+    };
+
+    // --- the goods, the "In stock" filter sorted by stock: stock, cost a unit and made from the captures;
+    // market as each good's base price (illustrative); carbon tax a unit at turn 5, before the levy (£0.00 on
+    // the two taxed goods). Coal's use by its power plant and its split between two tiles are illustrative.
+    const TILE_A = 'Thistle River Valley', TILE_B = 'Lightning Bourne', TILE_C = 'Port Lightning Old Quarter';
+    const ROWS = [
+      { file: 'g_001_coal.png', name: 'Coal', where: '2 tiles', stock: 188, made: 42, used: 30, cost: 0.43, market: 0.5727, carbon: 0, tone: 'green', status: 'Enough', open: true },
+      { file: 'g_007_copper_wiring.png', name: 'Copper Wiring', where: TILE_A, stock: 102, market: 4.7361, status: 'Held' },
+      { file: 'g_017_concrete.png', name: 'Concrete', where: TILE_A, stock: 62, market: 6.0567, status: 'Held' },
+      { file: 'g_009_pure_water.png', name: 'Pure Water', where: TILE_B, stock: 59, market: 0.568, status: 'Held' },
+      { file: 'g_013_sodium_hydroxide.png', name: 'Sodium Hydroxide', where: TILE_A, stock: 40, market: 1.0394, status: 'Held' },
+      { file: 'g_008_motor.png', name: 'Motor', where: TILE_C, stock: 33, market: 11.0451, status: 'Held' },
+      { file: 'g_020_silica.png', name: 'Silica', where: TILE_B, stock: 32, market: 4.2886, status: 'Held' },
+      { file: 'g_006_steel.png', name: 'Steel', where: TILE_A, stock: 28, market: 2.3679, status: 'Held' },
+      { file: 'g_024_ethylene.png', name: 'Ethylene', where: TILE_C, stock: 24, used: 9, market: 5.9397, carbon: 0, tone: 'amber', status: 'Low' },
+      { file: 'g_012_chlorine.png', name: 'Chlorine', where: TILE_A, stock: 20, market: 1.3964, status: 'Held' },
+      { file: 'g_014_hydrogen.png', name: 'Hydrogen', where: TILE_A, stock: 20, market: 3.8691, status: 'Held' },
+      { file: 'g_005_copper_ingots.png', name: 'Copper Ingots', where: TILE_C, stock: 10, market: 3.1132, status: 'Held' },
+      { file: 'g_015_basic_salt.png', name: 'Basic Salt', where: TILE_A, stock: 10, market: 0.7485, tone: 'red', status: 'Short' },
+      { file: 'g_016_limestone.png', name: 'Limestone', where: TILE_B, stock: 10, market: 1.3528, status: 'Held' },
+    ];
+    for (const r of ROWS) await goodImg(r.file);
+
+    // --- the vertical layout (panel px from the backing's top-left).
+    const Y = { title: 44, keys: 86, strip: 150, stripH: 64, bed: 238, bedH: 128, seam: 386, heads: 462, caseTop: 492 };
+    const CASE = { x0: CM, x1: PW - CM - 42 }, RAIL_X = PW - CM - 15;
+    const MOD = { x0: CASE.x0 + 22, x1: CASE.x1 - 22, h: 165, gap: 14 }, CARD = { h: 336, tuck: 14 };
+    const COL = { well: MOD.x0 + 18 + 74.5, name: 257, lamp: 604, status: 628, made: 846, used: 980, cost: 1030, market: 1220, carbon: 1410, chev: 1590 };
+    const rowsY = []; { let y = Y.caseTop + 22; for (const r of ROWS) { rowsY.push(y); y += MOD.h + MOD.gap + (r.open ? CARD.h - CARD.tuck : 0); } Y.caseBot = y - MOD.gap + 22; }
+    const PH = Y.caseBot + CM, FOLD = 890 * 1.875;
+
+    // --- the title row: the raised title; the Goods Graph key (a sankey of three flows) and the Close key.
+    raised('RESOURCES', CM - 2, Y.title - 2, 60, TITLE_FAMILY, 400);
+    smallKey((g, a, b) => { g.moveTo(a * 0.3, b * 0.3); g.lineTo(a * 0.7, b * 0.7); g.moveTo(a * 0.7, b * 0.3); g.lineTo(a * 0.3, b * 0.7); g.stroke(); }, PW - CM - 38, Y.keys);
+    const SANKEY = keyCream(await loadImage('/icons/ui_icons/standalone/sankey.png'));
+    smallKey((g, a, b) => stamp(g, SANKEY, a * 0.14, b * 0.14, a * 0.72, b * 0.72, NAVY), PW - CM - 38 - 96, Y.keys);
+
+    // --- the strip: the count on a dot matrix, the search on dark glass.
+    const cy0 = Y.strip + Y.stripH / 2, dotW = 330;
+    const dot = glassScreen(dotW - 14, Y.stripH - 14, dotFace(dotW - 14, Y.stripH - 14, '14 IN STOCK', 4.7));
+    add(dot.group, X(CM + dotW / 2), Z(cy0), T); feat.buttons.push({ x: CM, y: Y.strip, w: dotW, h: Y.stripH, r: 8 });
+    const sx0 = CM + dotW + 18, sw = PW - CM - sx0;
+    const search = glassScreen(sw - 14, Y.stripH - 14, plainGlass(sw - 14, Y.stripH - 14));
+    add(search.group, X(sx0 + sw / 2), Z(cy0), T); feat.buttons.push({ x: sx0, y: Y.strip, w: sw, h: Y.stripH, r: 8 });
+    printWhite('Search goods', X(sx0 + 22), Z(cy0 + 1), 26, { weight: 500 });
+
+    // --- the filters: six latching keys on the black key bed; In stock latched down, a shade darker.
+    {
+      const bw = PW - 2 * CM, bed = new THREE.Mesh(extrude(rrShape(bw, Y.bedH, 10), 4, 2.4, 2, 4),
+        [new THREE.MeshPhysicalMaterial({ map: faceTexture(blackPlasticFace(bw, Y.bedH, '#15171a', 0.06), bw, Y.bedH), roughness: 0.5, clearcoat: 0.3, envMap: studioEnv, envMapIntensity: 0.4 }), BLACK_PLASTIC_SIDE()]);
+      add(shade(bed), X(CM + bw / 2), Z(Y.bed + Y.bedH / 2)); feat.buttons.push({ x: CM, y: Y.bed, w: bw, h: Y.bedH, r: 10 });
+      const names = ['IN STOCK', 'SHORT', 'MADE', 'BOUGHT', 'SOLD', 'CARBON TAXED'], n = names.length, gap = 16, kw = (bw - (n + 1) * gap) / n, kh = 88;
+      names.forEach((nm, i) => {
+        const latched = i === 0;
+        const k = keycap(kw, kh, 10, (g, a, b) => {
+          if (latched) { g.fillStyle = 'rgba(52,40,24,0.3)'; g.fillRect(0, 0, a, b); }
+          text(g, nm, a / 2, b / 2 + 1, a - 16, 26, NAVY, { align: 'center', weight: 700 });
+        });
+        add(k, X(CM + gap + kw / 2 + i * (kw + gap)), Z(Y.bed + Y.bedH / 2), T + 9);
+        if (latched) k.userData.cap.position.y -= 20;
+      });
+    }
+
+    // --- the seam where the scrolling body meets the fixed head: the ribbed rubber nosing, trim to trim.
+    { const w0 = SEAM.W; SEAM.W = PW - 2 * (TRIM + 6); const s = seamStrip(); SEAM.W = w0; add(s, X(TRIM + 6), Z(Y.seam), T); }
+
+    // --- the headings: metal labels over their columns; STOCK, the sorted one, cream with a drawn mark.
+    const hy = Z(Y.heads);
+    printWhite('STOCK', X(COL.well - 12), hy, 28, { weight: 600, family: BARLOW, align: 'center', colour: CREAM });
+    prints.push((g) => { const x = X(COL.well + 34), y = hy; g.save(); g.shadowColor = 'rgba(0,0,0,0.9)'; g.shadowOffsetX = 1.5; g.shadowOffsetY = 1.5; g.fillStyle = CREAM; g.beginPath(); g.moveTo(x - 8, y - 5); g.lineTo(x + 8, y - 5); g.lineTo(x, y + 7); g.closePath(); g.fill(); g.restore(); });
+    printWhite('GOOD', X(COL.name), hy, 28, { weight: 600, family: BARLOW });
+    printWhite('STATUS', X(COL.lamp - 14), hy, 28, { weight: 600, family: BARLOW });
+    printWhite('MADE/TURN', X(COL.made), hy, 28, { weight: 600, family: BARLOW, align: 'right' });
+    printWhite('USED/TURN', X(COL.used), hy, 28, { weight: 600, family: BARLOW, align: 'right' });
+    printWhite('COST/UNIT', X(COL.cost + LED_W / 2 - 8), hy, 28, { weight: 600, family: BARLOW, align: 'center' });
+    printWhite('MARKET', X(COL.market + LED_W / 2 - 8), hy, 28, { weight: 600, family: BARLOW, align: 'center' });
+    printWhite('CARBON TAX', X(COL.carbon + LED_W / 2 - 8), hy, 28, { weight: 600, family: BARLOW, align: 'center' });
+
+    // --- the case: black plastic, Building Detail's silver screws round its edge.
+    const caseW = CASE.x1 - CASE.x0, caseH = Y.caseBot - Y.caseTop;
+    {
+      const face = new THREE.MeshPhysicalMaterial({ map: faceTexture(blackPlasticFace(caseW, caseH, '#0e0f11', 0.05), caseW, caseH), roughness: 0.6, clearcoat: 0.3, clearcoatRoughness: 0.45, envMap: studioEnv, envMapIntensity: 0.35 });
+      add(shade(new THREE.Mesh(extrude(rrShape(caseW, caseH, 12), 3, 3, 2.6, 5), [face, BLACK_PLASTIC_SIDE()])), X(CASE.x0 + caseW / 2), Z(Y.caseTop + caseH / 2));
+      feat.buttons.push({ x: CASE.x0, y: Y.caseTop, w: caseW, h: caseH, r: 12 });
+      const pts = [];
+      for (let k = 0; k <= 5; k++) { const x = CASE.x0 + 12 + k * (caseW - 24) / 5; pts.push([x, Y.caseTop + 11], [x, Y.caseBot - 11]); }
+      for (let y = Y.caseTop + 11 + 260; y < Y.caseBot - 150; y += 260) pts.push([CASE.x0 + 11, y], [CASE.x1 - 11, y]);
+      for (const [x, y] of pts) { const s = silverScrew(); s.remove(s.children[s.children.length - 1]); s.scale.setScalar(0.8); add(s, X(x) - 12, Z(y) - 12, T + 9); }
+    }
+    const MT = T + 9 + 6.9;   // a module's top
+
+    // --- the modules, a good each.
+    const modW = MOD.x1 - MOD.x0;
+    const moduleAt = (y) => {
+      const face = new THREE.MeshPhysicalMaterial({ map: faceTexture(blackPlasticFace(modW, MOD.h, '#1a1c20', 0.07), modW, MOD.h), roughness: 0.55, clearcoat: 0.35, clearcoatRoughness: 0.4, envMap: studioEnv, envMapIntensity: 0.4 });
+      add(shade(new THREE.Mesh(extrude(rrShape(modW, MOD.h, 7), 2.5, 2.2, 1.8, 4), [face, BLACK_PLASTIC_SIDE()])), X(MOD.x0 + modW / 2), Z(y + MOD.h / 2), T + 9);
+    };
+    const chevron = (x, y, up) => prints.push((g) => {
+      g.save(); g.shadowColor = 'rgba(0,0,0,0.9)'; g.shadowOffsetX = 1.5; g.shadowOffsetY = 1.5; g.strokeStyle = LIGHT; g.lineWidth = 4; g.lineCap = 'round'; g.lineJoin = 'round';
+      const d = up ? -1 : 1; g.beginPath(); g.moveTo(x - 11, y - 5 * d); g.lineTo(x, y + 6 * d); g.lineTo(x + 11, y - 5 * d); g.stroke(); g.restore();
+    });
+    ROWS.forEach((r, i) => {
+      const y = rowsY[i], cy = y + MOD.h / 2;
+      moduleAt(y);
+      goodWell(IMG[r.file], r.stock, X(COL.well), Z(cy), MT);
+      printWhite(r.name, X(COL.name), Z(cy - 17), 28, { weight: 600, maxW: 310 });
+      printWhite(r.where, X(COL.name), Z(cy + 19), 26, { weight: 500, maxW: 310 });
+      lamp(r.tone, COL.lamp, cy, MT);
+      printWhite(r.status, X(COL.status), Z(cy + 1), 27, { weight: 500 });
+      if (r.made) printWhite(String(r.made), X(COL.made), Z(cy + 1), 30, { weight: 600, align: 'right' });
+      if (r.used) printWhite(String(r.used), X(COL.used), Z(cy + 1), 30, { weight: 600, align: 'right' });
+      if (r.cost != null) money(r.cost, RED, COL.cost, cy, MT);
+      money(r.market, WHITE_LED, COL.market, cy, MT);
+      if (r.carbon != null) money(r.carbon, RED, COL.carbon, cy, MT);
+      chevron(X(COL.chev), Z(cy), !!r.open);
+    });
+
+    // --- Coal's bin card: the keycaps' cream plastic slid out from under its module, printed navy.
+    const MINE = keyCream(await loadImage('/icons/buildings/b_001_mine.png'));
+    const PLANT = keyCream(await loadImage('/icons/buildings/b_003_power_plant.png'));
+    {
+      const oi = ROWS.findIndex((r) => r.open), cy0c = rowsY[oi] + MOD.h - CARD.tuck;
+      const x0 = MOD.x0 + 30, w = modW - 60, h = CARD.h, colW = (w - 80) / 3;
+      const cols = [x0 + 40, x0 + 40 + colW + 20, x0 + 40 + 2 * (colW + 20)];
+      const colR = (k) => cols[k] - x0 + colW - 30;
+      const HEAD = 62, R1 = 118, R2 = 168, RULE = 196, TOT = 224, FY = 290;   // card px
+      const lines = [
+        { head: 'HELD AT', rows: [[null, TILE_A, '120'], [null, TILE_B, '68']], total: ['Total', '188'] },
+        { head: 'CAME IN LAST TURN', rows: [[MINE, 'Coal Mine A', '42'], [null, 'Bought from market', '0']], total: ['Total', '42'] },
+        { head: 'WENT OUT LAST TURN', rows: [[PLANT, 'Coal Power Plant B', '30'], [null, 'Sold to market', '0']], total: ['Total', '30'] },
+      ];
+      const F600 = `600 26px ${PLEX}`, lw = (s) => Math.ceil(measure(s, F600));
+      const worth = { lx: 34, label: 'Worth at market' }; worth.x = worth.lx + lw(worth.label) + 38;
+      const fee = { lx: worth.x + LED_W + 46, label: 'Storage fee/turn' }; fee.x = fee.lx + lw(fee.label) + 38;
+      const net = { lx: fee.x + LED_W + 46 }; net.vx = net.lx + lw('Net change') + 12;
+      const face = canvas2d(w, h, (c) => {
+        paintPlastic(c, w, h);
+        // The slip's lip, where it came out from under the module: a shade along its top.
+        const lip = c.createLinearGradient(0, 0, 0, 30); lip.addColorStop(0, 'rgba(40,30,16,0.42)'); lip.addColorStop(1, 'rgba(40,30,16,0)'); c.fillStyle = lip; c.fillRect(0, 0, w, 30);
+        lines.forEach((ln, k) => {
+          const lx = cols[k] - x0, rx = colR(k);
+          ink(c, ln.head, lx, HEAD, 26, NAVY, { weight: 700, family: BARLOW });
+          c.fillStyle = 'rgba(11,35,64,0.55)'; c.fillRect(lx, HEAD + 20, rx - lx, 2);
+          ln.rows.forEach(([icon, label, qty], j) => {
+            const yy = j ? R2 : R1; let tx = lx;
+            if (icon) { stamp(c, icon, lx, yy - 20, 40, 40, NAVY); tx = lx + 50; }
+            ink(c, label, tx, yy, 26, NAVY, { weight: 500, maxW: rx - tx - 60 });
+            ink(c, qty, rx, yy, 28, NAVY, { weight: 600, align: 'right' });
+            c.fillStyle = 'rgba(11,35,64,0.16)'; c.fillRect(lx, yy + 24, rx - lx, 1.2);
+          });
+          c.fillStyle = 'rgba(11,35,64,0.55)'; c.fillRect(lx, RULE, rx - lx, 2);
+          ink(c, ln.total[0], lx, TOT, 26, NAVY, { weight: 600 });
+          ink(c, ln.total[1], rx, TOT, 28, NAVY, { weight: 700, align: 'right' });
+        });
+        c.fillStyle = 'rgba(11,35,64,0.3)'; c.fillRect(34, FY - 44, w - 68, 1.5);
+        for (const m of [worth, fee]) { ink(c, m.label, m.lx, FY, 26, NAVY, { weight: 600 }); ink(c, '£', m.x - 10, FY + 1, 34, NAVY, { weight: 600, align: 'right' }); }
+        ink(c, 'Net change', net.lx, FY, 26, NAVY, { weight: 600 });
+        ink(c, '+12/turn', net.vx, FY, 28, INK_OK, { weight: 700 });
+      });
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 10), 2, 1.4, 1.1, 3), [new THREE.MeshPhysicalMaterial({ map: faceTexture(face, w, h), ...KNOB_PLASTIC }), MAT.skirt])), X(x0 + w / 2), Z(cy0c + h / 2), T + 9);
+      const ct = T + 9 + 4.8;
+      for (const m of [[worth, 188 * 0.5727], [fee, 188 * (0.02 + 0.004 * 0.5727)]]) {
+        const scr = ledScreen(moneyLed(m[1]).figure, m[0] === worth ? WHITE_LED : RED);
+        add(scr.group, X(x0 + m[0].x + scr.w / 2), Z(cy0c + FY), ct);
+      }
+      const kw = 240, kh = 80;
+      const k = keycap(kw, kh, 10, (g, a, b) => text(g, 'FREIGHT RATES', a / 2, b / 2 + 1, a - 16, 25, NAVY, { align: 'center', weight: 700 }));
+      add(k, X(x0 + w - 40 - kw / 2), Z(cy0c + FY), ct);
+      notes.push({ x: X(PW) + 58, y: Z(cy0c + h / 2), lines: ['Coal opened:', 'its bin card'] });
+    }
+
+    // --- the scroll rail down the case's right, its grip at the top: the fold shows about a third.
+    {
+      const h0 = RAIL.H; RAIL.H = caseH; const rail = scrollRail(); RAIL.H = h0;
+      add(rail, X(RAIL_X - RAIL.W / 2), Z(Y.caseTop), T);
+      const t0 = THUMB.H; THUMB.H = Math.round((FOLD - Y.caseTop - 40) / (caseH) * (caseH - 60)); const thumb = scrollThumb(); THUMB.H = t0;
+      add(thumb, X(RAIL_X - THUMB.W / 2), Z(Y.caseTop + 30), T);
+      feat.buttons.push({ x: RAIL_X - 15, y: Y.caseTop, w: 30, h: caseH, r: 12 });
+    }
+
+    // --- the backing last: Building Detail's navy steel in its brass trim, carrying the grime round every
+    // part mounted on it and the swept shadow of the raised title.
+    {
+      const iw = PW - 8 - 2 * TRIM, ih = PH - 8 - 2 * TRIM, ir = 7, FOOTB = 2.4;
+      const tint = (inset, bands) => (g, w, h) => {
+        g.save(); g.filter = 'blur(1.4px)';
+        for (const [d, colour, width] of bands) { const at = inset + d; g.strokeStyle = colour; g.lineWidth = width; g.beginPath(); g.roundRect(at, at, w - 2 * at, h - 2 * at, Math.max(2, ir - (at - TRIM))); g.stroke(); }
+        g.restore();
+      };
+      const face = { base: NAVY_STEEL_CANVAS, rub: '120,136,160',
+        icons: feat.icons.map((ic) => ({ ...ic, draw: (g, col) => { g.save(); g.translate(-4, -4); ic.draw(g, col); g.restore(); } })),
+        buttons: feat.buttons.map((b) => ({ ...b, x: b.x - 4, y: b.y - 4 })), screws: [],
+        paint: tint(TRIM, [[6, 'rgba(222,182,98,0.5)', 2.8], [8.5, 'rgba(170,100,58,0.38)', 2.6], [11, 'rgba(126,82,160,0.3)', 2.6], [13.6, 'rgba(72,108,184,0.24)', 2.8], [16.2, 'rgba(72,108,184,0.1)', 2.8]]) };
+      const steelSide = new THREE.MeshStandardMaterial({ color: 0x3a4250, metalness: 1, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
+      const plate = new THREE.Mesh(extrude(rrShape(PW - 8, PH - 8, 16), 4, 4.5, 3.6, 6), [plateMaterial(PW - 8, PH - 8, face), steelSide]);
+      plate.receiveShadow = true; add(plate, X(PW / 2), Z(PH / 2), 0);
+      const ring = rrShape(PW - 8, PH - 8, 16); ring.holes.push(rr(new THREE.Path(), iw, ih, ir));
+      const tarnish = (r) => `rgba(${60 + r() * 20},${44 + r() * 14},${18 + r() * 10},${0.25 + r() * 0.35})`;
+      const trimFeat = { icons: [], buttons: [], screws: [], base: BRASS_TRIM_CANVAS, rub: '255,236,180', flecks: tarnish,
+        paint: (g, w, h) => tint(0, [[TRIM - 1.5, 'rgba(92,60,24,0.5)', 2.6], [TRIM - 4, 'rgba(120,80,34,0.28)', 2.6]])(g, w, h) };
+      const brassSide = new THREE.MeshStandardMaterial({ color: 0xa8843f, metalness: 1, roughness: 0.4, envMap: studioEnv, envMapIntensity: 0.9 });
+      const trim = new THREE.Mesh(extrude(ring, 2.5, 3, 2.4, 5), [plateMaterial(PW - 8, PH - 8, trimFeat), brassSide]);
+      trim.castShadow = trim.receiveShadow = true; add(trim, X(PW / 2), Z(PH / 2), PLATE_TOP - 1);
+      const bead = weldBead(iw - 2 * FOOTB, ih - 2 * FOOTB, Math.max(2, ir - FOOTB), 3.6); add(bead, X(PW / 2), Z(PH / 2), PLATE_TOP);
+    }
+
+    // Callouts beside the panel.
+    notes.push({ x: X(PW) + 58, y: Z(Y.bed + Y.bedH / 2), lines: ['Filters,', 'latching keys'] });
+    notes.push({ x: X(PW) + 58, y: Z(Y.heads), lines: ['Sorted by stock'] });
+    { const i = ROWS.findIndex((r) => r.tone === 'amber'); notes.push({ x: X(PW) + 58, y: Z(rowsY[i] + MOD.h / 2), lines: ['Amber: under', 'three turns of use'] }); }
+    { const i = ROWS.findIndex((r) => r.tone === 'red'); notes.push({ x: X(PW) + 58, y: Z(rowsY[i] + MOD.h / 2), lines: ['Red: a building', 'went short of it'] }); }
+
+    // Two renders, top and bottom, cut between two modules, so the house light's shadow map covers each.
+    const W = MX + PW + MR, H = OY + PH + FOOT;
+    const cutI = ROWS.findIndex((_, i) => rowsY[i] > FOLD - 60), cut = rowsY[cutI] - MOD.gap / 2;
+    group.add(shadowCatcher(PW + 80, PH + 80, X(PW / 2), Z(PH / 2), 0.05, 0.5));
+    const x0s = X(-40), x1s = X(PW + 40);
+    const shotA = stage([x0s, 0, x1s, Z(cut) + 60], [group]);
+    shotA.scene.traverse((o) => { if (o.isDirectionalLight) o.shadow.mapSize.set(4096, 4096); });
+    const imgA = shotA.grab();
+    const shotB = stage([x0s, Z(cut) - 60, x1s, Z(PH) + 40], [group]);
+    shotB.scene.traverse((o) => { if (o.isDirectionalLight) o.shadow.mapSize.set(4096, 4096); });
+    const imgB = shotB.grab();
+    await post('resources_study', frame2d(W, H, (g) => {
+      const BG = '#121820';
+      g.fillStyle = BG; g.fillRect(0, 0, W, H);
+      g.save(); g.beginPath(); g.rect(x0s, 0, x1s - x0s, Z(cut)); g.clip(); g.drawImage(imgA, x0s, 0, x1s - x0s, Z(cut) + 60); g.restore();
+      g.save(); g.beginPath(); g.rect(x0s, Z(cut), x1s - x0s, H - Z(cut)); g.clip(); g.drawImage(imgB, x0s, Z(cut) - 60, x1s - x0s, Z(PH) + 100 - Z(cut)); g.restore();
+      for (const p of prints) p(g);
+      // The fold: the panel's foot on a 1080 screen, under the top bar and over the bottom menu.
+      {
+        const fy = Z(FOLD), fx0 = X(-26), fx1 = X(PW + 32);
+        g.save(); g.strokeStyle = 'rgba(8,12,18,0.85)'; g.lineWidth = 5; g.setLineDash([16, 10]); g.beginPath(); g.moveTo(fx0, fy); g.lineTo(fx1, fy); g.stroke();
+        g.strokeStyle = 'rgba(232,238,247,0.95)'; g.lineWidth = 2.2; g.stroke(); g.restore();
+        text(g, 'fold, 890 px', fx1 + 14, fy + 1, MR - 60, 28, LIGHT, { weight: 500, family: PLEX });
+      }
+      for (const n of notes) {
+        g.save(); g.strokeStyle = '#e9b81a'; g.fillStyle = '#e9b81a'; g.lineWidth = 2.5;
+        const ax = n.x - 12, bx = n.x - 42; g.beginPath(); g.moveTo(ax, n.y); g.lineTo(bx, n.y); g.stroke();
+        g.beginPath(); g.moveTo(bx - 10, n.y); g.lineTo(bx + 2, n.y - 7); g.lineTo(bx + 2, n.y + 7); g.closePath(); g.fill(); g.restore();
+        n.lines.forEach((ln, k) => text(g, ln, n.x, n.y + (k - (n.lines.length - 1) / 2) * 32, MR - 70, 27, LIGHT, { weight: k ? 500 : 600, family: PLEX }));
+      }
+      text(g, 'Resources', OX, 58, 600, 40, LIGHT, { weight: 600, family: PLEX });
+      text(g, 'In stock, sorted by stock, Coal opened. Turn 5 figures.', OX + 200, 60, 1400, 28, LIGHT, { weight: 500, family: PLEX });
+      { // one width for every state
+        const y = Z(PH) + 70; g.strokeStyle = 'rgba(232,238,247,0.7)'; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(OX, y); g.lineTo(OX + PW, y); g.moveTo(OX, y - 12); g.lineTo(OX, y + 12); g.moveTo(OX + PW, y - 12); g.lineTo(OX + PW, y + 12); g.stroke();
+        g.fillStyle = BG; g.fillRect(OX + PW / 2 - 130, y - 18, 260, 36);
+        text(g, '924 px wide', OX + PW / 2, y + 1, 250, 28, LIGHT, { align: 'center', weight: 500, family: PLEX });
       }
     }));
   });
