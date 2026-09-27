@@ -67,7 +67,7 @@ It refreshes on `Stockpile.stockpile_changed`, `CostSolver.costs_updated` and `t
 
 - **Head (fixed).** Title, Goods Graph and Close keys. The count ("14 IN STOCK") and the search. Filters: In stock (the default), Short, Made, Bought, Sold, Carbon taxed.
 - **Headings (sort).** Stock (default, largest first), Good, Status, Made/turn, Used/turn, Cost/unit, Market, Carbon tax.
-- **Row.** The good in its well, stock on the pill; its name over where it is held (a tile's name, or "2 tiles"); a lamp and one word (Enough, Low, Short, Held); made and used last turn (blank when none); cost, market and carbon tax a unit on LED screens (a screen only where there is a figure).
+- **Row.** The good in its well, stock on the pill; its name over where it is held (a tile's name, or "2 tiles"); made and used last turn (blank when none); cost, market and carbon tax a unit on LED screens (a screen only where there is a figure).
 - **A row opened: its bin card.** Held at (each tile and its units, the total); Came in last turn (each of your buildings that made it, bought from market, the total); Went out last turn (each building that used it, sold to market, the total); the stock's worth at market, its storage fee a turn, the net change; a Freight rates key opening today's freight table on a sheet.
 - **Power** leaves the table (it is shown in the top bar's Power and the tile view's Power tab), or keeps a row with MW in words: owner decision 6.
 
@@ -136,7 +136,7 @@ Contracts kept: the node name `ResourcePanel` (tutorial, `bottom_menu.gd`, `sell
 2. **Width**: 924 logical, today's (recommended), for every state.
 3. **Stock counts** goods staged by the intermediary and goods in transit (in the card as their own lines, the pill keeping the stockpile), or the stockpile only, as today?
 4. **Default filter**: In stock (hold or used last turn) (recommended), or every good as today?
-5. **Status words and the amber rule**: Enough, Low, Short, Held; amber under three turns of use?
+5. **Status words and the amber rule**: Enough, Low, Short, Held; amber under three turns of use? *Decided (owner, 27 September 2026): no status lamps or words. A player running just in time, or buying over a turn or two and selling straight away, holds little stock by design, so Low or Short would read as a problem when nothing is wrong; the cases are too unclear to judge with one lamp. The column and its lamps come out; the study keeps them only as a record.*
 6. **Power**: out of the table (recommended), or a row with MW in words?
 7. **Carbon tax column**: a screen for every taxed good from turn 1 (reading 0.00 before the levy, as in the study, so the player sees which goods will be taxed), or the column only once the levy is announced?
 8. **Market column**: the sale price (recommended), the buy price, or both on the card?
