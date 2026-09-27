@@ -114,25 +114,42 @@ The panel is the exchange's floor furniture: the quote board over the pit, the l
 
 ## 6. Numbers first
 
-Before the restyle, as `ds2-theme.md` §11 step 3 asks. Each figure from one helper; extracted where the engine computes it inline.
+Before the restyle, as `ds2-theme.md` §11 step 3 asks. Built 27 September 2026 (step 1): every figure the market shows comes from one static script, `scripts/market_rules.gd` (`MarketRules`, preloaded by path, pure), which the engine's own sale paths call, the pattern `scripts/construction_rules.gd` set.
 
-| Figure | Helper |
-|---|---|
-| Sell price | `MarketState.get_sale_price(gid)` (what a sale is paid), not `get_price` |
-| Buy price | `MarketState.get_buy_price(gid)` |
-| Impact, price before impact | `get_impact_pct`, `get_base_price_now`, for both prices (no re-derived bracket) |
-| Arrow, rung, rate, ticker | new `MarketState.price_trend(gid)` → `{dir, rate, rung, avg}`, extracted from `_tick_impact` and `get_estimated_price_in_n_turns`, which call it too; `impact_thresholds`, `rolling_net_volume` for the slip |
-| Your cost and its lamp | `CostSolver.get_good_unit_cost(gid)` against the sale price; the tone from one helper shared with the building readout's cost basis |
-| Sold, bought last turn | `Production.last_turn_summary` |
-| Price history | `MarketState.history_for(gid)` (with its cost basis) |
-| Delivered prices on the slip (decision 6) | `TransportService.quote_market_buy`, `MarketState.sale_charges` at the player's nearest port |
-| Lot price | `MatchState.building_purchase_price(b)` |
-| Buying a lot | new `MatchState.buy_building(iid)`: the tutorial gate, the charge, the transfer, the toast; the tile view and Building Detail call it too |
-| Lot names | `BuildingNaming.family_name` |
-| Order bonus | new `SpecialOrderState.premium_quote(order)` on the rule `settle_delivery` pays; `remaining_uncommitted` |
-| History values | `transaction_log` entries gain the value booked (`queue_buy`'s total, `execute_sale`'s revenue) when written |
-| Bulk sell preview | `sell_all_to_market` with a quote mode that books nothing |
-| Tab figures | counts of the above, one helper so the strip and the ticker agree |
+### 6.1 What the earlier DS2 moves already had, and what the market reuses
+
+| Helper | What it is | Used here |
+|---|---|---|
+| `scripts/construction_rules.gd` | the construct flow's rules and quote, called by the build itself | the pattern: one static rules script, the engine calls it, a parity test proves it |
+| `BuildingEconomics.per_turn` | a building's turn at the engine's own prices and charges | not directly (it is per building); its stock output line now values at `MarketRules.sale_price`, the price the sell phase pays |
+| `MarketState.sale_charges` | a market sale's freight and port charge, commit or quote | the sell quote's charges; gained `sale_charges_with(..., reservations)` so a quote over several tiles counts the port's use tile by tile |
+| `Production.stock_sale_charges` | a stockpile sale's leg to port and port charge (the sell phase) | not used by the sell panel: its sales go through `execute_sale`, which charges `sale_charges` (the buyer pays the inland freight on a manual sale) |
+| `TransportService.quote_market_buy` | a purchase's goods, freight and port charge | not on the board (owner: raw prices, decision 6); kept for the Buy flow |
+| `scripts/ds2/money_figure.gd` | the top bar's five cell money rule | the DS2 board's screens, with the new point cell rule (§9) |
+| `TileViewData` | the tile view's per tile summaries | nothing fits: it is per tile, the market is per good |
+| `ledger_v3` builders | the ledger's DS2 rows, headings with sort marks, money columns, the case | the DS2 board reuses the shell (dress, title row, seam, sort headings) and `buildings_parts` (modules, wells, money, captions) |
+| `CashCommitments` | one turn's cash planning | nothing to show on the market; recurring buys it reads are unchanged |
+| `MarketState.history_for`, `impact_thresholds`, `rolling_net_volume` | the price history, the ladder, the window | read through `MarketRules.history` and `impact_ladder` |
+
+### 6.2 `MarketRules`, what each figure is
+
+| Figure | Helper | Engine side |
+|---|---|---|
+| Sell price | `sale_price(gid)`: `get_sale_price` with the good's context (uplifts, clamped to the buy price) | `execute_sale` and the sell phase (`Production._sell_stockpile_totals`) both pay it. The sell phase paid the bare `get_price` before: the mechanics audit's "two sell paths price the same good differently", fixed |
+| Buy price | `buy_price(gid)`: the raw `get_buy_price`, no transport (decision 6) | |
+| Before impact | `board_row`'s `buy_before_impact`, `sell_before_impact`: new `MarketState.buy_price_from` / `sale_price_from` at `get_base_price_now` | `get_buy_price` and `get_sale_price` are these at today's price |
+| Arrow, rung, rate | new `MarketState.price_trend(gid)` → `{dir, regime, rate, rung, avg, impact}` | `get_estimated_price_in_n_turns` reads it; the old row's copy (`_price_direction`, `_active_rung`) is gone |
+| One board row | `board_row(gid)`: buy, sell, sold and bought last turn (`Production.last_turn_summary`), your cost (`CostSolver.get_good_unit_cost`), profit (sell less cost), `cost_tone`, `profit_tone`, the trend | |
+| Tones | `cost_tone`: green below the sale price, red above, amber at it. `profit_tone`: green above break even, red below, amber within `BREAK_EVEN_SHARE` (2%) of the sale price, at least a penny | |
+| Impact ladder | `impact_ladder(gid)`: each rung's net units a turn (this turn's thresholds) and %/turn, the active rung | |
+| History | `history(gid, turns)`: per turn the price, the sale price, your cost then, and the units you sold and bought | new, save safe: `MarketState` writes `sold` and `bought` into the turn's history point as the turn advances (only when non zero; a missing key reads 0), and `sale` where it differs from the price |
+| Sell sources | `sell_sources(gid)`: every tile of yours that holds it or makes it, held and made this turn | |
+| Bulk sale | `sell_params(gid, tiles, mode, qty)`, `sell_plan(params)` | `MatchState.sell_all_to_market` sells exactly `sell_plan`; its params gained `tiles` (only these) and `per_tile_max` (only X) |
+| Sell preview | `sell_quote(gid, tiles, mode, qty)`: per tile units, revenue, freight, port charge, net, turns; totals | a parity test sells and compares units, revenue and the charges paid |
+| Transaction value | `transaction_log` entries carry `value` where booked: a sale's revenue (`execute_sale`, the sell phase), a buy's cost of goods (`queue_buy`) | older entries have none and show blank |
+| Cancel | `MatchState.remove_recurring_buy`, `remove_recurring_order(sub, entry)`; recurring rows carry their order | `add_recurring_buy` now emits `recurring_orders_changed` |
+
+Still as planned, not yet built: `SpecialOrderState.premium_quote`, `MatchState.buy_building`, `BuildingNaming.family_name` for lots.
 
 ## 7. Phases
 

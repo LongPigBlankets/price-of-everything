@@ -1,5 +1,6 @@
 extends Node
 
+const MarketRules := preload("res://scripts/market_rules.gd")
 const FORECAST_TURNS := 10
 
 var prices: Dictionary = {}  # good_id -> impact-FREE base price (float); STATIC since decay retired
@@ -51,8 +52,16 @@ func _record_price_history(overwrite_current: bool = true) -> void:
 		var gid: String = str(good.id)
 		var samples: Array = price_history.get(gid, [])
 		var point := {"turn": turn, "price": get_price(gid), "cost_basis": CostSolver.get_good_unit_cost(gid)}
+		# The sale price is kept only where it differs from the price (a market_price uplift or the
+		# buy clamp), so the saved history stays as small as it was.
+		var sale := MarketRules.sale_price(gid)
+		if absf(sale - float(point.price)) > 0.000001:
+			point["sale"] = sale
 		if not samples.is_empty() and int(samples[-1].turn) == turn:
 			if overwrite_current:
+				for kept in ["sold", "bought"]:
+					if (samples[-1] as Dictionary).has(kept):
+						point[kept] = samples[-1][kept]
 				samples[-1] = point
 		else:
 			samples.append(point)
@@ -60,6 +69,24 @@ func _record_price_history(overwrite_current: bool = true) -> void:
 
 func history_for(good_id: String) -> Array:
 	return (price_history.get(good_id, []) as Array).duplicate(true)
+
+## Writes the units the player sold to and bought from the market into the turn they were traded
+## at: trades made while turn N is decided and resolved move at turn N's price, and tick_turn folds
+## them in as the turn advances to N + 1, before turn N + 1's price is recorded. Kept only when
+## non zero ("sold", "bought"), so an untraded good's history is as small as before; a reader
+## takes a missing key as 0.
+func _record_turn_volumes(turn: int) -> void:
+	for gid in _turn_sold.keys() + _turn_bought.keys():
+		var samples: Array = price_history.get(str(gid), [])
+		if samples.is_empty() or int(samples[-1].get("turn", -1)) != turn:
+			continue
+		var point: Dictionary = samples[-1]
+		var sold := int(_turn_sold.get(gid, 0))
+		var bought := int(_turn_bought.get(gid, 0))
+		if sold > 0:
+			point["sold"] = sold
+		if bought > 0:
+			point["bought"] = bought
 
 func get_price(good_id: String) -> float:
 	# The price you RECEIVE when selling a unit to the market: the impact-free
@@ -151,8 +178,13 @@ func get_buy_price(good_id: String) -> float:
 	# The price you PAY to buy a unit from the market — the sale price plus the
 	# market spread (EconomyConfig.MARKET_BUY_MARKUP), which a Chief Markets advisor
 	# can tighten via the "market_spread" modifier domain.
+	return buy_price_from(good_id, get_price(good_id))
+
+## The buy price for a market price of `price`: the price plus the spread. get_buy_price is this at
+## today's price; the market panel asks it at the impact free price too.
+func buy_price_from(_good_id: String, price: float) -> float:
 	var spread_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("market_spread", "*", {}).get("net", 0.0)) / 100.0)
-	return get_price(good_id) * (1.0 + EconomyConfig.MARKET_BUY_MARKUP * spread_mult)
+	return price * (1.0 + EconomyConfig.MARKET_BUY_MARKUP * spread_mult)
 
 # The realised market SALE price for one unit: get_price() plus any market_price
 # uplift (research / Chief Markets), CLAMPED so it can never exceed the buy price.
@@ -160,8 +192,43 @@ func get_buy_price(good_id: String) -> float:
 # and resell at a profit (arbitrage). Special-order deliveries are the sole exception
 # — their premium pays for fulfilment and is priced separately, so they bypass this.
 func get_sale_price(good_id: String, ctx: Dictionary = {}) -> float:
-	var lifted: float = Modifiers.apply("market_price", good_id, get_price(good_id), ctx)
-	return minf(lifted, get_buy_price(good_id))
+	return sale_price_from(good_id, get_price(good_id), ctx)
+
+## The sale price for a market price of `price`: the uplifts applied, clamped to the buy price at that
+## price. get_sale_price is this at today's price.
+func sale_price_from(good_id: String, price: float, ctx: Dictionary = {}) -> float:
+	var lifted: float = Modifiers.apply("market_price", good_id, price, ctx)
+	return minf(lifted, buy_price_from(good_id, price))
+
+## Which way a good's price is heading, from the regime _tick_impact runs on: while the rolling window's
+## average net volume is over the first ladder rung the pressure accrues (selling pushes the price down,
+## buying up); otherwise an impacted price walks home to its base. {dir: -1 falling, 1 rising, 0 steady,
+## regime: "pressure", "recovering" or "steady", rate: the %/turn the window's average accrues, rung: the
+## ladder rung that average sits on (-1 under the first), avg: the window's average net volume (positive
+## is net selling), impact: the accumulated %}. The market panel's arrow and get_estimated_price_in_n_turns
+## both read it, so the arrow and the projection cannot disagree.
+func price_trend(good_id: String) -> Dictionary:
+	var avg: float = rolling_net_volume(good_id)
+	var base_out: int = Catalog.base_output_for_good(good_id)
+	var scale: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
+	var rate: float = EconomyConfig.price_impact_rate(avg, base_out, scale)
+	var a: float = get_impact_pct(good_id)
+	var dir := 0
+	var regime := "steady"
+	if rate > 0.0:
+		dir = -1 if avg > 0.0 else 1
+		regime = "pressure"
+	elif absf(a) > 0.0005:
+		dir = 1 if a < 0.0 else -1
+		regime = "recovering"
+	var rung := -1
+	if base_out > 0:
+		for i in EconomyConfig.PRICE_IMPACT_LADDER.size():
+			if absf(avg) > float(EconomyConfig.PRICE_IMPACT_LADDER[i][0]) * float(base_out) * scale:
+				rung = i
+			else:
+				break
+	return {"dir": dir, "regime": regime, "rate": rate, "rung": rung, "avg": avg, "impact": a}
 
 func get_estimated_price_in_n_turns(good_id: String, n: int) -> float:
 	# Projects the SUSTAINED course — "if you keep doing what you have been doing".
@@ -170,11 +237,10 @@ func get_estimated_price_in_n_turns(good_id: String, n: int) -> float:
 	# panel) they are always empty, and projecting off them told a player
 	# mid-glut that their price was about to recover while it was still falling.
 	# The regime logic here mirrors _tick_impact so the two cannot disagree.
-	var avg: float = rolling_net_volume(good_id)
-	var base_out: int = Catalog.base_output_for_good(good_id)
-	var scale: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
-	var rate: float = EconomyConfig.price_impact_rate(avg, base_out, scale)
-	var a: float = get_impact_pct(good_id)
+	var trend := price_trend(good_id)
+	var avg: float = float(trend.avg)
+	var rate: float = float(trend.rate)
+	var a: float = float(trend.impact)
 	var projected: float = a
 	if rate > 0.0:
 		projected = a + (-rate if avg > 0.0 else rate) * float(n)
@@ -236,6 +302,7 @@ func tick_turn() -> void:
 	# "prices always fall" — docs/price-impact-ladder-spec.md). Base prices are
 	# static; only glut/deficit impact moves what the player sees, and the
 	# downward squeeze rests on the carbon levy, port fees and input premia.
+	_record_turn_volumes(int(TurnManager.current_turn) - 1)
 	for good_id in prices.keys():
 		_tick_impact(str(good_id))
 	_turn_sold.clear()
@@ -326,6 +393,15 @@ func _tick_impact(good_id: String) -> void:
 ## for the turn, as a real sale does; a quote (the detail panel's) leaves it untouched.
 ## Returns {transport_cost, transport_breakdown: {mode: cost, port_fees, port_insurance}}.
 func sale_charges(port: String, route: Dictionary, items: Array, seller_pays_freight: bool, commit: bool) -> Dictionary:
+	return sale_charges_with(port, route, items, seller_pays_freight, commit, [])
+
+
+## sale_charges with the port's use this turn raised by `reservations` (preview only), shaped as the port's
+## pending reservations ({source_tile: port, good_id, qty, is_purchase, construction_order_pending}): a
+## quote of sales from several tiles counts the earlier tiles' units against the port, as their sales will
+## have booked them by the time the later tile's sale is charged.
+func sale_charges_with(port: String, route: Dictionary, items: Array, seller_pays_freight: bool, commit: bool,
+		reservations: Array) -> Dictionary:
 	var transport_cost := 0.0
 	var transport_breakdown: Dictionary = {}
 	if seller_pays_freight:
@@ -338,7 +414,7 @@ func sale_charges(port: String, route: Dictionary, items: Array, seller_pays_fre
 				transport_breakdown[mode] = float(transport_breakdown.get(mode, 0.0)) + float(route_breakdown[mode])
 	for it in items:
 		var sea_charge := TransportState.commit_sea_shipping(port, str(it.good_id), int(it.qty), "sell") if commit \
-			else TransportState.preview_sea_shipping(port, str(it.good_id), int(it.qty))
+			else TransportState.preview_sea_shipping(port, str(it.good_id), int(it.qty), reservations)
 		transport_cost += float(sea_charge.get("total", 0.0))
 		transport_breakdown["port_fees"] = float(transport_breakdown.get("port_fees", 0.0)) + float(sea_charge.get("base_fee", 0.0))
 		transport_breakdown["port_insurance"] = float(transport_breakdown.get("port_insurance", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
@@ -378,9 +454,9 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 		# SALE price only — applied here, not in get_price(), so buy prices are unaffected.
 		# Ordinary market sales are clamped to the buy price (no arbitrage); special-order
 		# deliveries keep the raw uplifted price and add their premium downstream.
-		var _ctx := {"good_id": str(gid), "good_internal": str(Catalog.get_good(str(gid)).get("internal_name", ""))}
+		var _ctx := MarketRules.sale_ctx(str(gid))
 		var unit_price: float = (Modifiers.apply("market_price", str(gid), get_price(str(gid)), _ctx)
-			if special_order_id != "" else get_sale_price(str(gid), _ctx))
+			if special_order_id != "" else MarketRules.sale_price(str(gid)))
 		var revenue: float = float(sold) * unit_price
 		items.append({"good_id": str(gid), "qty": sold, "revenue": revenue})
 		total_qty += sold
@@ -423,7 +499,7 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 
 	if log_oneoff:
 		for it in items:
-			MatchState.log_market_sale(source_tile, port, str(it.good_id), int(it.qty), turns)
+			MatchState.log_market_sale(source_tile, port, str(it.good_id), int(it.qty), turns, float(it.revenue))
 
 	var special_order_committed := false
 	if special_order_id != "":

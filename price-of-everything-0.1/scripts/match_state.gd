@@ -1,6 +1,7 @@
 extends Node
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const BuildingPrice := preload("res://scripts/building_price.gd")
+const MarketRules := preload("res://scripts/market_rules.gd")
 
 # MatchState: the canonical store for everything that changes during a match.
 # Other systems read and write here; never store match data elsewhere.
@@ -1487,6 +1488,14 @@ func add_recurring_bulk_sell(params: Dictionary) -> void:
 
 func add_recurring_buy(dest_tile: String, good_id: String, qty: int) -> void:
 	recurring_buys.append({"dest": dest_tile, "good": good_id, "qty": qty, "turn_started": _ledger_turn()})
+	recurring_orders_changed.emit()
+
+func remove_recurring_buy(entry: Dictionary) -> bool:
+	if not recurring_buys.has(entry):
+		return false
+	recurring_buys.erase(entry)
+	recurring_orders_changed.emit()
+	return true
 
 # --- Ledger helpers for the Transactions / Movements tabs ---
 
@@ -1499,16 +1508,21 @@ func _log_transaction(entry: Dictionary) -> void:
 		transaction_log = transaction_log.slice(transaction_log.size() - LEDGER_MAX)
 
 
-func log_market_sale(source_tile: String, port_tile: String, good_id: String, qty: int, turns: int) -> void:
+## `value` is the sale's revenue, booked where the sale prices it (execute_sale, the sell phase); a caller
+## that has none passes nothing and the row shows no value.
+func log_market_sale(source_tile: String, port_tile: String, good_id: String, qty: int, turns: int, value: float = -1.0) -> void:
 	# Production calls this when output / stockpile sells to market, so the ledger reflects it.
 	if qty <= 0:
 		return
 	var started := _ledger_turn()
-	_log_transaction({
+	var entry := {
 		"kind": "sell", "good_id": str(good_id), "qty": int(qty),
 		"tile_from": source_tile, "tile_to": port_tile if port_tile != "" else "Market",
 		"turn_started": started, "turn_ended": started + maxi(0, turns),
-	})
+	}
+	if value >= 0.0:
+		entry["value"] = value
+	_log_transaction(entry)
 
 
 func _ledger_tile_label(tile_id: String) -> String:
@@ -1518,11 +1532,14 @@ func _ledger_tile_label(tile_id: String) -> String:
 		return Catalog.tile_label(tile_id)
 	return tile_id  # e.g. "Market", "All tiles"
 
-func _txn_row(kind: String, good: String, qty: int, tile_from: String, tile_to: String, started: int, ended: int) -> Dictionary:
+## `value`: the goods' money as booked (a sale's revenue, a buy's cost of goods), or -1 where none was
+## recorded (a recurring order, a row from an older save).
+func _txn_row(kind: String, good: String, qty: int, tile_from: String, tile_to: String, started: int, ended: int,
+		value: float = -1.0) -> Dictionary:
 	return {
 		"type": "Buy" if kind == "buy" else "Sell",
 		"from": _ledger_tile_label(tile_from), "to": _ledger_tile_label(tile_to),
-		"good": good, "qty": qty, "turn_started": started, "turn_ended": ended,
+		"good": good, "qty": qty, "turn_started": started, "turn_ended": ended, "value": value,
 	}
 
 func _move_row(good: String, qty: int, tile_from: String, tile_to: String, started: int, ended: int) -> Dictionary:
@@ -1617,6 +1634,7 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 			"kind": "buy", "good_id": good_id, "qty": qty,
 			"tile_from": port, "tile_to": dest_tile,
 			"turn_started": started, "turn_ended": started + maxi(0, turns),
+			"value": float(qty) * unit_price,
 		})
 	if turns >= 1:
 		var shipment: Dictionary = {
@@ -1778,63 +1796,66 @@ func get_oneoff_transaction_rows() -> Array:
 	for t in transaction_log:
 		rows.append(_txn_row(str(t.get("kind", "sell")), Catalog.get_display_name(str(t.get("good_id", ""))),
 			int(t.get("qty", 0)), str(t.get("tile_from", "")), str(t.get("tile_to", "")),
-			int(t.get("turn_started", 0)), int(t.get("turn_ended", -1))))
+			int(t.get("turn_started", 0)), int(t.get("turn_ended", -1)), float(t.get("value", -1.0))))
 	return rows
 
 func get_recurring_transaction_rows() -> Array:
 	var rows: Array = []
+	# Each row carries its standing order (`entry`, as held in its array) and `sub` (sell, bulk, buy), so the
+	# panel's Cancel removes that order. A recurring sale of several goods is one order: Cancel on any of
+	# its rows stops all of them.
 	for m in recurring_sells:
 		var port := TransportService.nearest_port_tile(str(m.get("source", "")))
 		for gid in m.get("goods", {}).keys():
-			rows.append(_txn_row("sell", Catalog.get_display_name(str(gid)), int(m.goods[gid]),
-				str(m.get("source", "")), port, int(m.get("turn_started", 0)), -1))
+			var row := _txn_row("sell", Catalog.get_display_name(str(gid)), int(m.goods[gid]),
+				str(m.get("source", "")), port, int(m.get("turn_started", 0)), -1)
+			row["sub"] = "sell"
+			row["entry"] = m
+			rows.append(row)
 	for r in recurring_bulk_sells:
 		var p: Dictionary = r.get("params", {})
 		var good_label := "All goods" if str(p.get("good_id", "")) == "" else Catalog.get_display_name(str(p.get("good_id", "")))
 		if bool(p.get("finished_only", false)):
 			good_label += " (finished)"
-		rows.append(_txn_row("sell", good_label, -1, "All tiles", "Market", int(r.get("turn_started", 0)), -1))
+		var tiles: Array = p.get("tiles", [])
+		var from := "All tiles" if tiles.is_empty() else ("%d tiles" % tiles.size() if tiles.size() > 1 else str(tiles[0]))
+		var cap := int(p.get("per_tile_max", 0))
+		var bulk := _txn_row("sell", good_label, cap if cap > 0 else -1, from, "Market", int(r.get("turn_started", 0)), -1)
+		bulk["sub"] = "bulk"
+		bulk["entry"] = r
+		rows.append(bulk)
 	for b in recurring_buys:
-		rows.append(_txn_row("buy", Catalog.get_display_name(str(b.get("good", ""))), int(b.get("qty", 0)),
-			TransportService.nearest_port_tile(str(b.get("dest", ""))), str(b.get("dest", "")), int(b.get("turn_started", 0)), -1))
+		var buy := _txn_row("buy", Catalog.get_display_name(str(b.get("good", ""))), int(b.get("qty", 0)),
+			TransportService.nearest_port_tile(str(b.get("dest", ""))), str(b.get("dest", "")), int(b.get("turn_started", 0)), -1)
+		buy["sub"] = "buy"
+		buy["entry"] = b
+		rows.append(buy)
 	return rows
 
+## Stops a recurring order a transactions row carries (`sub` sell, bulk or buy, and its `entry`).
+func remove_recurring_order(sub: String, entry: Dictionary) -> bool:
+	match sub:
+		"sell":
+			return remove_recurring_sell(entry)
+		"bulk":
+			return remove_recurring_bulk_sell(entry)
+		"buy":
+			return remove_recurring_buy(entry)
+		"move":
+			return TransportState.remove_recurring_move(entry)
+	return false
 
-func _is_finished_good(good_id: String) -> bool:
-	# No explicit "finished" tier in the MVP, so "finished/manufactured" = non-raw, non-power.
-	var gt := str(Catalog.get_good(good_id).get("good_type", ""))
-	return gt != "" and gt != "raw" and gt != "power"
 
 func sell_all_to_market(params: Dictionary, log_oneoff: bool = true) -> Dictionary:
-	# Stories 4 & 5: sweep every tile's stockpile and sell to the nearest port, filtered by
-	#   good_id     ("" = all goods, else a specific good)
-	#   finished_only (only manufactured/non-raw goods)
-	#   per_tile_keep (leave this many of each good per tile; sell the surplus above it)
-	var good_filter := str(params.get("good_id", ""))
-	var finished_only := bool(params.get("finished_only", false))
-	var keep: int = maxi(0, int(params.get("per_tile_keep", 0)))
+	# Stories 4 & 5: sweep the stockpiles and sell to the nearest port. What each tile sells is
+	# MarketRules.sell_plan(params) (its params are listed there), the plan the market's sell panel
+	# previews with MarketRules.sell_quote.
 	var total_qty := 0
 	var total_revenue := 0.0
 	var tiles_sold := 0
-	for tile_key in Stockpile.tiles_with_stock():
-		var tile_id := str(tile_key)
-		if not tile_id.begins_with("tile_"):
-			continue
-		var totals: Dictionary = Stockpile.get_tile_totals(tile_id)
-		var goods_qtys: Dictionary = {}
-		for gid in totals.keys():
-			var g := str(gid)
-			if not Catalog.is_good_sellable(g):
-				continue
-			if good_filter != "" and g != good_filter:
-				continue
-			if finished_only and not _is_finished_good(g):
-				continue
-			var surplus := int(totals[gid]) - keep
-			if surplus > 0:
-				goods_qtys[g] = surplus
-		if goods_qtys.is_empty():
-			continue
+	for step: Dictionary in MarketRules.sell_plan(params):
+		var tile_id := str(step.tile)
+		var goods_qtys: Dictionary = step.goods
 		var summary := queue_sell(tile_id, goods_qtys, log_oneoff)
 		if not summary.is_empty():
 			total_qty += int(summary.get("total_qty", 0))

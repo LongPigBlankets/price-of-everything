@@ -1,5 +1,6 @@
 extends Node
 const BuildingLevels := preload("res://scripts/building_levels.gd")
+const MarketRules := preload("res://scripts/market_rules.gd")
 
 ## How many turns of ore left before a mine starts warning. Short enough to be actionable
 ## (a replacement mine takes turns to build and the nearest spare deposit is 4-6 tiles away
@@ -1470,7 +1471,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		if qty <= 0:
 			continue
 		var good_key := str(good_id)
-		var price: float = MarketState.get_price(good_key)
+		var price: float = MarketRules.sale_price(good_key)
 		var sold_qty: int = Stockpile.consume(coord, good_key, qty)
 		if sold_qty <= 0:
 			continue
@@ -1485,7 +1486,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		})
 		sale_record.total_qty += sold_qty
 		sale_record.total_revenue += sold_revenue
-		MatchState.log_market_sale(source_tile, port_tile, good_key, sold_qty, int(route.turns))
+		MatchState.log_market_sale(source_tile, port_tile, good_key, sold_qty, int(route.turns), sold_revenue)
 		if not deferred:
 			# No port (or distance 0) — pay out immediately.
 			MatchState.add_money(sold_revenue)
