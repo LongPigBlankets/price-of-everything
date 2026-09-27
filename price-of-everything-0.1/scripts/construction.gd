@@ -286,6 +286,8 @@ func start_on_tile(building_id: String, recipe_id: String, tile_id: String, buil
 		"startup_half_capacity": MatchState.construct_start_half_capacity and recipe_id != "",
 		"output_destination": output_destination,
 	}
+	# The name at the start, kept with the save. Nothing shows it: every surface names a project through
+	# BuildingNaming when it draws, so an older save's name in the old form never reaches the screen.
 	construction_projects[instance_id]["name"] = BuildingNaming.label_for_tile(tile_id, instance_id, building_id, recipe_id)
 	construction_started.emit(instance_id, tile_id)
 	return instance_id

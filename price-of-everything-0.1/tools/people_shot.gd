@@ -21,6 +21,7 @@ func _ready() -> void:
 
 	var layer := CanvasLayer.new()
 	add_child(layer)
+	UiPrefs.set_use_people_ds2(false)  # this tool shows today's (v2) panel
 	_panel = load("res://scripts/people_panel.gd").new()
 	layer.add_child(_panel)
 	await get_tree().process_frame

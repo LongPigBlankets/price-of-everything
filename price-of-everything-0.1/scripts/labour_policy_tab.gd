@@ -302,9 +302,8 @@ func _build_labour_costs(parent: Control) -> void:
 		col.add_child(_dim_label("No player buildings yet — labour costs start with your first build.", 12))
 		return
 	var current := float(ov.get("current", 0.0))
-	var base := float(ov.get("base_total", 0.0))
-	var est := float(ov.get("est_ten", current))
-	var pct := (current / base * 100.0) if base > 0.0 else 100.0
+	var est := float(ov.get("est_10_turns", current))
+	var pct := float(ov.get("factor_pct", 100.0))
 	var now_row := HBoxContainer.new()
 	now_row.add_theme_constant_override("separation", 8)
 	col.add_child(now_row)

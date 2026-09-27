@@ -3,6 +3,7 @@ extends RefCounted
 const Allocator := preload("res://scripts/input_order_planner.gd")
 const Status := preload("res://scripts/building_status.gd")
 const Routes := preload("res://scripts/stockpile_guidance.gd")
+const BuildingNaming := preload("res://scripts/building_naming.gd")
 static var last_comparison: Dictionary = {}
 static var _before: Dictionary = {}
 static var _orders: Array = []
@@ -49,7 +50,7 @@ static func due_total(rows: Array, horizon: int = 1) -> float:
 
 static func _building_name(iid: String) -> String:
 	var b := BuildingState.get_building(iid)
-	return str(b.get("name", Catalog.get_building_display_name(str(b.get("building_id", ""))))) if not b.is_empty() else iid
+	return BuildingNaming.of(b) if not b.is_empty() else iid
 
 static func snapshot() -> Dictionary:
 	var started := Time.get_ticks_usec()
@@ -157,8 +158,7 @@ static func snapshot() -> Dictionary:
 					elif qty > 0:
 						transit.append({"destination_tile": dest, "good_id": gid, "qty": qty})
 		maintenance += Production._calculate_maintenance_cost(b)
-		if not BuildingWorks.is_building_paused(iid):
-			labour += Production._calculate_labour_cost(b, recipe) * (1.0 if run else LabourState.idle_labour_pay_share)
+		labour += Production.labour_charge(b, run, recipe)
 	for item: Dictionary in outputs:
 		_land(stock, transit, {"good_id": item.good, "qty": item.qty}, str(item.tile))
 	for move: Dictionary in TransportState.recurring_moves:
@@ -191,7 +191,7 @@ static func snapshot() -> Dictionary:
 		if not demand.has(tile):
 			demand[tile] = []
 		demand[tile].append(entry)
-		names[iid] = _building_name(iid) if not bool(b.get("forecast_new", false)) else Catalog.get_building_display_name(str(b.building_id)) + " (completing)"
+		names[iid] = _building_name(iid) if not bool(b.get("forecast_new", false)) else BuildingNaming.name_for(str(b.building_id), str(b.get("recipe_id", ""))) + " (completing)"
 	for tile: String in demand:
 		var leads: Dictionary = {}
 		var pool: Dictionary = {}

@@ -55,18 +55,13 @@ func _ready() -> void:
 	await _settle(24)
 	var panel = _wm.building_panel_v2
 	_save(panel, "top")
-	# The same view without the lamp's overlay, to measure what the overlay does (the ratio of the two).
-	panel._shade.visible = false
-	await _settle(3)
-	_save(panel, "top_unshaded")
-	# And with the text's give-back off too: the panel as it would be with no lamp at all.
-	for n in panel._margin.find_children("*", "Label", true, false):
-		(n as CanvasItem).material = null
+	# The same view with no lamp at all, to measure what the lamp does (the ratio of the two).
+	var Lamp = load("res://scripts/ds2/lamp_overlay.gd")
+	Lamp.detach(panel)
 	await _settle(3)
 	_save(panel, "top_unlit")
-	panel._apply_v3_text_light()
 	print("[BDP_V3_SHOT] viewport %s, panel %s" % [_vp.get_visible_rect().size, panel.get_global_rect()])
-	panel._shade.visible = true
+	Lamp.attach(panel)
 	await _settle(3)
 
 	for st in [["Running", "ok"], ["Starting", "warn"], ["Stalled", "bad"], ["NPC-owned", "info"]]:

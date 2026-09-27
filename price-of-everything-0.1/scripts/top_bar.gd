@@ -1536,7 +1536,7 @@ func _ds2_setup() -> void:
 	hbox.add_child(_ds2_left_gap)
 	_ds2_shade = Node2D.new()
 	_ds2_shade.name = "Ds2Shade"
-	_ds2_shade.material = Ds2Light.shade_material()
+	_ds2_shade.material = Ds2Light.across_material(Ds2Light.shade_material())
 	_ds2_shade.visible = false
 	_ds2_shade.draw.connect(func() -> void: _ds2_shade.draw_rect(Rect2(0, -TOP_BLEED, size.x, size.y + TOP_BLEED), Color.WHITE))
 	add_child(_ds2_shade)
@@ -1546,6 +1546,7 @@ func _ds2_setup() -> void:
 	for node: Node in find_children("*", "Control", true, false):
 		if node is StatusLed:
 			_ds2_add_lamp(node as StatusLed)
+	get_tree().node_added.connect(_on_ds2_node_added)
 	_ds2_readout = Readout.new()
 	_ds2_readout.name = "Ds2Readout"
 	# On a CanvasLayer the DS theme is not inherited: without it the detail line's Caption style fell back to
@@ -1611,9 +1612,11 @@ func _ds2_apply() -> void:
 		for i in _v31_order.size():
 			hbox.move_child(_v31_order[i], i)
 		hbox.move_child(_ds2_left_gap, hbox.get_child_count() - 1)
-	var text_light: Material = Ds2Light.text_material() if on else null
+	var text_light: Material = Ds2Light.across_material(Ds2Light.text_material()) if on else null
 	for label: Node in find_children("*", "Label", true, false):
 		(label as Label).material = text_light
+	for node: Node in find_children("*", "CanvasItem", true, false):
+		_ds2_light_across(node)
 	# The icons: raised cream enamel with its swept shadow, as on Building Detail.
 	for trio: Array in _ds2_faces:
 		(trio[0] as Control).visible = not on
@@ -1762,6 +1765,26 @@ func _ds2_add_lamp(led: StatusLed) -> void:
 		if lamp.visible:
 			lamp.call("set_tone", _ds2_lamp_tone(led)))
 	_ds2_lamps.append([led, lamp])
+
+
+## Under DS2 the bar is lit from the screen's left edge, not the corner lamp's diagonal: its text, its lights and
+## its glows take their share against that light (bdp_v3_light.gd across_material), and back again with it off.
+func _ds2_light_across(n: Node) -> void:
+	var item := n as CanvasItem
+	if item == null or not (item.material is ShaderMaterial):
+		return
+	var on: bool = UiPrefs.use_topbar_ds2
+	for base: ShaderMaterial in [Ds2Light.text_material(), Ds2Light.emissive_material(), Ds2Light.glow_material()]:
+		var twin := Ds2Light.across_material(base)
+		if on and item.material == base:
+			item.material = twin
+		elif not on and item.material == twin:
+			item.material = base
+
+
+func _on_ds2_node_added(n: Node) -> void:
+	if is_ancestor_of(n):
+		_ds2_light_across(n)
 
 
 ## A StatusLed's state as a pilot lamp's tone, by the hue of its colour.
@@ -4147,8 +4170,8 @@ func _ds2_refresh_cash(colour: Color = Color(0, 0, 0, 0)) -> void:
 	var figure: String = parts.figure
 	figure = " ".repeat(maxi(0, MoneyFigure.MAX_CELLS - MoneyFigure.cells(figure))) + figure
 	_ds2_cash_led.call("set_figure", figure, colour)
-	var full := Vector2(MoneyFigure.MAX_CELLS * Led.CELL.x + (MoneyFigure.MAX_CELLS - 1) * Led.GAP + Led.POINT_ROOM, Led.CELL.y) \
-		+ 2.0 * Led.PAD + Vector2.ONE * 2.0 * Led.RIM / Led.CAPTURE_SCALE
+	# Five cells, the point one of them (the owner's screen rule).
+	var full := Vector2(Led.width_for_cells(MoneyFigure.MAX_CELLS), Led.CELL.y + 2.0 * Led.PAD.y + 2.0 * Led.RIM / Led.CAPTURE_SCALE)
 	_ds2_cash_led.custom_minimum_size = full
 	_ds2_cash_led.size = full
 	var k := DS2_CASH_SCALE

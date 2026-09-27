@@ -7,6 +7,8 @@ extends PanelContainer
 ## Instantiated by world_map.gd and parented to the HUD. Listens to
 ## MatchState.overflow_shipment_held; only build-material overflows prompt here.
 
+const BuildingNaming := preload("res://scripts/building_naming.gd")
+
 signal go_to_stockpile_requested(tile_id: String)
 
 var _title: Label
@@ -116,9 +118,5 @@ func _building_name_for(record: Dictionary) -> String:
 	var dest := str(record.get("destination_tile", ""))
 	for p in Construction.projects_on_tile(dest):
 		if str(p.get("instance_id", "")) == iid:
-			var rec: Dictionary = Catalog.get_recipe(str(p.get("recipe_id", "")))
-			var rn := str(rec.get("display_name", "")).strip_edges()
-			if rn != "":
-				return rn
-			return str(Catalog.get_building(p.get("building_id", "")).get("display_name", "a building"))
+			return BuildingNaming.label_for_tile(dest, iid, str(p.get("building_id", "")), str(p.get("recipe_id", "")))
 	return Catalog.get_display_name(str(record.get("good_id", "")))

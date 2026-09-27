@@ -216,10 +216,14 @@ func _filled_seat_card(seat_id: String, advisor_id: String) -> Control:
 	frow.add_theme_constant_override("separation", 10)
 	col.add_child(frow)
 	var effects: Array = AdvisorState.advisor_seat_effect_list(advisor_id, seat_id)
-	frow.add_child(_dim_label(_effect_text(effects[0]) if not effects.is_empty() else "no seat effects", 11))
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	frow.add_child(spacer)
+	# Every effect the seat carries, not only the first (a COO moves labour, upkeep, power and both grid prices).
+	var said: PackedStringArray = []
+	for eff in effects:
+		said.append(_effect_text(eff))
+	var effects_label := _dim_label(", ".join(said) if not said.is_empty() else "no seat effects", 11)
+	effects_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	effects_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	frow.add_child(effects_label)
 	frow.add_child(_tone_label("★".repeat(AdvisorState.advisor_star_by_id(advisor_id)), _WARN, 12))
 	col.add_child(_financial_preview(advisor_id, seat_id, true))
 	return btn
@@ -651,26 +655,7 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 		confirm.tooltip_text = "Choose a position first."
 	elif comparing and not worthwhile:
 		confirm.tooltip_text = "Benefits are below salary in the latest turn. Compare other candidates or choose this advisor anyway."
-	confirm.pressed.connect(func() -> void:
-		if selected_seat == "":
-			return
-		if inspecting:
-			if Tutorial.is_active_step("advisors_inspect"):
-				Tutorial._advance()
-			return
-		if not AdvisorState.permanent_advisor_ids.has(advisor_id):
-			if not AdvisorState.hire_advisor(advisor_id):
-				MatchState.request_toast("Could not hire — council is full or they refuse to return.", "warning")
-				return
-		var who := str(AdvisorState.get_advisor(advisor_id).get("name", advisor_id))
-		if AdvisorState.assign_advisor_to_seat(selected_seat, advisor_id):
-			MatchState.request_toast("%s assigned as %s" % [who, _seat_name(selected_seat)], "success")
-		else:
-			# A refused assignment used to fall through silently and return to the roster, so
-			# the advisor appeared in whatever seat they were in before and it read as the game
-			# choosing a different role. Say so instead.
-			MatchState.request_toast("Could not seat %s as %s — the council is full." % [who, _seat_name(selected_seat)], "warning")
-		_set_view({"mode": "roster"}))
+	confirm.pressed.connect(func() -> void: _confirm_choice(advisor_id, selected_seat, inspecting))
 	row.add_child(confirm)
 	# Cost sits BELOW the button, not inside its label: it is two numbers plus a percentage and
 	# it changes every turn, which made for a button caption that was mostly arithmetic.
@@ -679,6 +664,30 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 		cost.name = "AdvisorHireCostLine"
 		wrap.add_child(cost)
 	return wrap
+
+
+## The confirm key: in the tutorial's comparison step it only moves the tutorial on; otherwise it hires the
+## advisor if need be and seats them, says how that went, and goes back to the roster.
+func _confirm_choice(advisor_id: String, selected_seat: String, inspecting: bool) -> void:
+	if selected_seat == "":
+		return
+	if inspecting:
+		if Tutorial.is_active_step("advisors_inspect"):
+			Tutorial._advance()
+		return
+	if not AdvisorState.permanent_advisor_ids.has(advisor_id):
+		if not AdvisorState.hire_advisor(advisor_id):
+			MatchState.request_toast("Could not hire — council is full or they refuse to return.", "warning")
+			return
+	var who := str(AdvisorState.get_advisor(advisor_id).get("name", advisor_id))
+	if AdvisorState.assign_advisor_to_seat(selected_seat, advisor_id):
+		MatchState.request_toast("%s assigned as %s" % [who, _seat_name(selected_seat)], "success")
+	else:
+		# A refused assignment used to fall through silently and return to the roster, so
+		# the advisor appeared in whatever seat they were in before and it read as the game
+		# choosing a different role. Say so instead.
+		MatchState.request_toast("Could not seat %s as %s — the council is full." % [who, _seat_name(selected_seat)], "warning")
+	_set_view({"mode": "roster"})
 
 
 func tutorial_candidate_worthwhile(advisor_id: String, seat_id: String) -> bool:

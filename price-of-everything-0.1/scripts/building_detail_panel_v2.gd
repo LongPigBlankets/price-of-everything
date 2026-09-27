@@ -11,6 +11,8 @@ const EffectEmblem := preload("res://scripts/effect_emblem.gd")
 ## See docs/building-detail-v2-plan.md.
 
 const BuildingReadout := preload("res://scripts/building_readout.gd")
+const BuildingNaming := preload("res://scripts/building_naming.gd")
+const DotCard := preload("res://scripts/ds2/dot_card.gd")
 const BuildingStatus := preload("res://scripts/building_status.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
@@ -27,7 +29,7 @@ const BdpV3Scroll := preload("res://scripts/bdp_v3_scroll.gd")
 const BdpV3Seam := preload("res://scripts/bdp_v3_seam.gd")
 const BdpV3Title := preload("res://scripts/bdp_v3_title.gd")
 const BdpV3Enamel := preload("res://scripts/bdp_v3_enamel.gd")
-const BdpV3Light := preload("res://scripts/bdp_v3_light.gd")
+const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
 const BdpV3Cable := preload("res://scripts/bdp_v3_cable.gd")
 const BdpV3Counter := preload("res://scripts/bdp_v3_counter.gd")
 const PanelGauge := preload("res://scripts/panel_gauge.gd")
@@ -70,9 +72,7 @@ const V3_PANEL_WIDTH := 525.0
 const CONTENT_MARGIN := 26
 ## The width v3's header keeps for its keys.
 const V3_KEY_COLUMN := 96.0 / 1.875
-## The backing's rounded corner, in pixels (panel_backing: 4 + 16 layout pixels), and its brass trim's
-## width in layout pixels (layout.json panel_backing).
-const BACKING_CORNER := 10.5
+## The backing's brass trim's width in layout pixels (layout.json panel_backing).
 const BACKING_TRIM := 14.0
 
 # Empire-view click (world_map sets this before show_building): dock at the tile view
@@ -131,8 +131,6 @@ var _close_button: Button = null
 var _close_key: TextureButton = null
 # v3's Location keycap under the close key: pans the map to the building.
 var _pin_key: TextureButton = null
-# v3's lamp over the whole panel (a multiply overlay; see bdp_v3_light.gd).
-var _shade: Control = null
 # v2's brass pipe border, and v3's backing plate (dark navy-grey steel in a brass trim) drawn behind
 # everything instead.
 var _pipe_frame: Control = null
@@ -168,15 +166,6 @@ func _build_shell() -> void:
 	_backing = BdpV3Nine.make("panel_backing", 64.0)
 	add_child(_backing)
 	move_child(_backing, 0)   # behind the content
-	# Over the backing and content, under the action sheets (added later).
-	_shade = Control.new()
-	_shade.name = "BdpV3Shade"
-	_shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_shade.material = BdpV3Light.shade_material()
-	_shade.draw.connect(func() -> void: _shade.draw_rect(Rect2(Vector2.ZERO, _shade.size), Color.WHITE))
-	_shade.resized.connect(func() -> void: (_shade.material as ShaderMaterial).set_shader_parameter("rect_size", _shade.size))
-	(_shade.material as ShaderMaterial).set_shader_parameter("corner", BACKING_CORNER)
-	add_child(_shade)
 
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", DS.SP["SM"])
@@ -192,10 +181,12 @@ func _build_shell() -> void:
 	_title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_title_label.custom_minimum_size = Vector2(PANEL_WIDTH - 2.0 * DS.SP["MD"] - 44.0, 0)
+	_title_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	header.add_child(_title_label)
 	_title_v3 = BdpV3Title.new()
 	# The emblem takes its side and a gap from the title's width.
 	_title_v3.custom_minimum_size = Vector2(_title_label.custom_minimum_size.x - BdpV3Emblem.side() - DS.SP["SM"], 0)
+	_title_v3.mouse_filter = Control.MOUSE_FILTER_PASS
 	header.add_child(_title_v3)
 	_close_button = Button.new()
 	_close_button.text = "X"
@@ -355,9 +346,12 @@ func _rebuild(building: Dictionary) -> void:
 	var kind := BuildingReadout.classify(building_data, recipe, str(building.get("building_id", "")))
 
 	var display_name := str(building_data.get("display_name", building.get("building_id", "Building")))
-	var recipe_name := str(recipe.get("display_name", ""))
-	_title_label.text = display_name if recipe_name == "" else "%s — %s" % [display_name, recipe_name]
+	_title_label.text = display_name if is_infra else BuildingNaming.of(building)
 	_title_v3.text = _title_label.text
+	# The title is one name; the recipe it runs shows on hovering it: a plain tooltip on v2, the dot card on v3.
+	var recipe_tip := {} if is_infra else v3_recipe_tip(building, recipe)
+	DotCard.attach(_title_v3, recipe_tip)
+	_title_label.tooltip_text = _title_v3.tooltip_text
 	_emblem_v3.visible = UiPrefs.use_bdp_v3 and _emblem_v3.set_building(str(building.get("building_id", "")))
 	_apply_v3_title()
 	# Catalog.tile_label, not the raw id: this was the one surface still printing
@@ -542,7 +536,7 @@ func _render_npc(building: Dictionary, building_data: Dictionary, recipe: Dictio
 	_body.add_child(card)
 
 	if not bool(own.get("is_ruins", false)):
-		var display_name := str(building_data.get("display_name", building.get("building_id", "Building")))
+		var display_name := BuildingNaming.of(building)
 		var price := BuildingReadout.buy_price(building)
 		var buy := Button.new()
 		buy.name = "NPCBuildingBuyButton"
@@ -1488,7 +1482,6 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 	if preserve_scroll:
 		scroll.set_deferred("scroll_vertical", restore_scroll)
 	if slide != null:
-		move_child(_shade, get_child_count() - 1)   # the plate is under the lamp too
 		_apply_v3_text_light()
 		if not preserve_scroll:   # a sheet rebuilt in place stays put
 			slide.position.x = size.x
@@ -1653,7 +1646,11 @@ func _apply_v3_chrome() -> void:
 	_close_button.visible = not v3
 	_close_key.visible = v3
 	_pin_key.visible = v3
-	_shade.visible = v3
+	# The lamp over the panel and its sheets, part by part (docs/ds2-theme.md §4.1).
+	if v3:
+		LampOverlay.attach(self)
+	else:
+		LampOverlay.detach(self)
 	_apply_v3_title()
 	_apply_v3_text_light()
 	_badge.visible = not v3
@@ -1679,16 +1676,17 @@ func _on_pin_pressed() -> void:
 		cam.pan_to_tile(str(_current_building.get("tile_id", "")))
 
 
-## Under v3's lamp, the panel's text takes back part of the darkening round it (bdp_v3_light.gd), the
-## action sheets' too (their plates sit under the lamp). Runs after every rebuild and sheet.
+## Under v3 the lamp overlay lights the text as it is added (half the darkening, lamp_overlay.gd), the
+## action sheets' too. v2 has no lamp: its text is drawn plain. Runs after every rebuild and sheet.
 func _apply_v3_text_light() -> void:
-	var m: Material = BdpV3Light.text_material() if UiPrefs.use_bdp_v3 else null
+	if UiPrefs.use_bdp_v3:
+		return
 	var roots: Array[Node] = [_margin]
 	if _sheet != null and is_instance_valid(_sheet):
 		roots.append(_sheet)
 	for root in roots:
 		for n in root.find_children("*", "Label", true, false) + root.find_children("*", "RichTextLabel", true, false):
-			(n as CanvasItem).material = m
+			(n as CanvasItem).material = null
 
 
 ## v3's raised title in place of the label, unless the title has a character its letters lack.
@@ -1798,6 +1796,32 @@ static func v3_upgrade_state(building: Dictionary) -> Dictionary:
 ## The Upgrade key's hover card (scripts/ds2/dot_card.gd), from BuildingWorks.preview_upgrade: the
 ## next level's output gain, what buying the missing materials costs, the land it adds and the time it
 ## takes, with the materials in their wells; the turns left while it runs; the top level; why it can't run.
+## The title's hover card (scripts/ds2/dot_card.gd): the recipe the building runs, what it makes a run as
+## facts, the power it draws, and what it takes in the goods' wells, at the building's level. Empty with no recipe.
+static func v3_recipe_tip(building: Dictionary, recipe: Dictionary) -> Dictionary:
+	if recipe.is_empty():
+		return {}
+	var level := int(building.get("level", 1))
+	var rows: Array = []
+	for o: Dictionary in recipe.get("outputs", []):
+		var gid := str(o.get("good_id", ""))
+		var qty := int(round(float(o.get("qty", 0)) * BuildingLevels.mult("output", level)))
+		var power := str(o.get("internal_name", "")) == "power"
+		rows.append({"caption": "Makes" if rows.is_empty() else "",
+			"value": ("%d MW" % qty) if power else "%d %s" % [qty, Catalog.get_display_name(gid)]})
+	var energy := int(recipe.get("energy_req", 0))
+	if energy > 0:
+		rows.append({"caption": "Power", "value": "%d MW" % energy})
+	var card := {"title": str(recipe.get("display_name", "")), "rows": rows}
+	var goods := {}
+	for i: Dictionary in recipe.get("inputs", []):
+		goods[str(i.get("good_id", ""))] = int(round(float(i.get("qty", 0)) * BuildingLevels.mult("input", level)))
+	if not goods.is_empty():
+		card.goods = goods
+		card.goods_caption = "Takes"
+	return card
+
+
 static func v3_upgrade_tip(building: Dictionary) -> Dictionary:
 	var iid := str(building.get("instance_id", ""))
 	var level := int(building.get("level", 1))

@@ -450,10 +450,7 @@ static func money(amount_text: String, colour: Color, digits: int, suffix := "")
 
 ## How wide `money` is for a figure of `digits` cells.
 static func money_width(digits: int) -> float:
-	var led: Control = Led.new()
-	led.call("set_figure", "8".repeat(maxi(1, digits)), Color.WHITE)
-	var w: float = led.custom_minimum_size.x
-	led.free()
+	var w: float = Led.width_for_cells(digits)
 	return Plate.FONT_SEMI.get_string_size("£", HORIZONTAL_ALIGNMENT_LEFT, -1, POUND_PX).x + 4.0 + w
 
 

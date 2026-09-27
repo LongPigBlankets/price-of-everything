@@ -529,9 +529,9 @@ func _test_construct_browse_recipe_card() -> void:
 		"recipe card: diagram height matches Building Details' own flow-card height (156px)")
 	var name_lbl: Label = null
 	for lbl in _all_labels(row):
-		if lbl.text == "Construction Equiment Assembly (ICE)":   # "Equiment" is the source CSV's own spelling
+		if lbl.text == "Construction Equipment ICE Factory":   # the building's name on this recipe (BuildingNaming)
 			name_lbl = lbl
-	_check(name_lbl != null, "recipe card: the recipe name is present")
+	_check(name_lbl != null, "recipe card: the building's name on the recipe is present")
 	if name_lbl != null and diagram != null:
 		_check(int(name_lbl.get_theme_font_size("font_size")) == 19,
 			"recipe card: name matches the building header's font size (19px)")
@@ -1147,7 +1147,7 @@ func _test_construct_v3_4_iteration() -> void:
 	await get_tree().process_frame
 
 	var verdict_box: Control = panel.find_child("V3VerdictStrip", true, false)
-	var building_name := str(panel.get("_selected_building").get("display_name", ""))
+	var building_name := "Iron Furnace"   # the building's name on its recipe (BuildingNaming), not its type's
 	var recipe_name := str(panel.get("_selected_recipe").get("display_name", ""))
 	var name_label: Label = null
 	var recipe_label: Label = null

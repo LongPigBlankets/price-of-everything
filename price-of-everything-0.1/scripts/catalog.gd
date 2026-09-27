@@ -1014,6 +1014,11 @@ func _recipe_for_demo(recipe: Dictionary) -> Dictionary:
 func get_recipe(recipe_id: String) -> Dictionary:
 	return _recipe_for_demo(_recipes_by_id.get(recipe_id, {}))
 
+## Every loaded recipe of a building, whatever research, the demo or a prohibition hides. For what must not
+## change as the game goes on, like a building's name.
+func all_recipes_for_building(building_id: String) -> Array:
+	return _recipes_by_building.get(building_id, [])
+
 func get_recipes_for_building(building_id: String) -> Array:
 	# Feature 1: hide recipes gated behind un-researched tech (tech_unlock_req
 	# column). Base recipes (empty column) are always available.

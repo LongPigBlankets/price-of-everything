@@ -271,10 +271,15 @@ func _rebuild() -> void:
 	call_deferred("_sync_header_gutter")  # after layout: the scrollbar may have appeared/vanished
 
 func _collect_npc_buildings() -> Array:
+	return lots(_tile_filter)
+
+## Every building for sale (other companies', no infrastructure), on `tile_filter` when given, sorted by owner
+## then name: a row model each (the market's DS2 Buildings tab reads the same list).
+static func lots(tile_filter: String = "") -> Array:
 	var out: Array = []
 	for instance_id in BuildingState.buildings:
 		var b: Dictionary = BuildingState.buildings[instance_id]
-		if _tile_filter != "" and str(b.get("tile_id", "")) != _tile_filter:
+		if tile_filter != "" and str(b.get("tile_id", "")) != tile_filter:
 			continue
 		if BuildingState.is_player_owned(b):
 			continue
@@ -289,7 +294,7 @@ func _collect_npc_buildings() -> Array:
 		return c < 0)
 	return out
 
-func _row_vm(b: Dictionary) -> Dictionary:
+static func _row_vm(b: Dictionary) -> Dictionary:
 	var instance_id := str(b.get("instance_id", ""))
 	var building_id := str(b.get("building_id", ""))
 	var tile_id := str(b.get("tile_id", ""))
@@ -334,7 +339,7 @@ func _row_vm(b: Dictionary) -> Dictionary:
 		"blob": blob,
 	}
 
-func _is_infrastructure(b: Dictionary) -> bool:
+static func _is_infrastructure(b: Dictionary) -> bool:
 	var bdata: Dictionary = Catalog.get_building(str(b.get("building_id", "")))
 	return str(bdata.get("category", "production")) == "infrastructure"
 
@@ -572,19 +577,25 @@ func _on_dialog_confirmed(dont_ask_again: bool) -> void:
 	_do_buy(_pending_instance_id, _pending_name, _pending_price)
 
 func _do_buy(instance_id: String, building_name: String, price: int) -> void:
+	buy_lot(instance_id, building_name, price)
+
+## Buys a lot at `price` (the figure its key showed): the charge, the transfer and the toast. False when it is
+## gone or can't be paid for.
+static func buy_lot(instance_id: String, building_name: String, price: int) -> bool:
 	if instance_id == "" or not BuildingState.buildings.has(instance_id):
-		return
+		return false
 	# Pay for it. deduct_money is atomic — false means the player can't afford it, so reuse the
 	# same insufficient-money toast as building (now on the left), with buy-specific text.
 	if not MatchState.deduct_money(float(price)):
 		MatchState.build_rejected_no_funds.emit("Not enough money to buy %s — need £%d, you have £%.0f" % [
 			building_name, price, MatchState.money])
-		return
+		return false
 	# Ownership transfer is immediate; production picks it up next turn. building_owner_changed
 	# drives the ledger refresh + drops this row from the for-sale list (_on_owner_changed).
 	BuildingState.set_building_owner(instance_id, MatchState.LOCAL_PLAYER)
 	MatchState.request_toast("Purchased %s for £%d" % [building_name, price], "success")
 	Audio.transaction()
+	return true
 
 # A building changed owner — if it's now the player's, drop it from the for-sale list at once.
 func _on_owner_changed(instance_id: String) -> void:
@@ -604,5 +615,5 @@ func _row_style(hover: bool) -> StyleBox:
 	s.hover = hover
 	return s
 
-func _short_tile(tile_id: String) -> String:
+static func _short_tile(tile_id: String) -> String:
 	return tile_id.trim_prefix("tile_") if tile_id.begins_with("tile_") else tile_id

@@ -425,6 +425,15 @@ func settle_delivery(order_id: String, good_ref: String, qty: int, base_revenue:
 		"qty_counted_for_premium": required_units_in_delivery,
 	}
 
+## The bonus the order pays when it is filled, on the rule settle_delivery pays it by: the premium on the
+## revenue of the required units, those delivered at what they were paid and the rest at today's order price
+## (`unit_price`, MarketRules.order_price), less any premium already paid.
+func premium_quote(order: Dictionary, unit_price: float) -> float:
+	var required := int(order.get("qty_required", 0))
+	var remaining := maxi(0, required - int(order.get("qty_delivered", 0)))
+	var base := float(order.get("base_revenue_delivered", 0.0)) + float(remaining) * unit_price
+	return maxf(0.0, base * float(order.get("premium_pct", 0.0)) - float(order.get("premium_paid", 0.0)))
+
 func warn_orders_for_turn(turn: int) -> Array:
 	var warned: Array = []
 	for i in range(active_orders.size()):

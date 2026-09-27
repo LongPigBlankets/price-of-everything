@@ -1019,9 +1019,15 @@ func _test_bdp_v3_rules() -> void:
 	_check(Counter.drums_for(54.17, 2, 4) == 4 and Counter.drums_for(1234.5, 2, 4) == 6 and Counter.drums_for(10052, 0, 3) == 5,
 		"bdp v3: a counter has as many drums as its value needs, and at least its minimum")
 	var Led = load("res://scripts/bdp_v3_led.gd")
-	_check(Led.cells_for("7.95") == [["7", true], ["9", false], ["5", false]] and Led.cells_for("123.40").size() == 5
-		and Led.cells_for("--.--") == [["-", false], ["-", true], ["-", false], ["-", false]],
-		"bdp v3: an LED figure takes a cell per digit, its point lit on the digit before it")
+	# The owner's screen rule: the point a cell of its own, at most five cells, never more than two decimals.
+	_check(Led.cells_for("7.95") == [["7", false], [".", false], ["9", false], ["5", false]] and Led.cells_for("123.40").size() == 5
+		and Led.cells_for("--.--").size() == 5 and Led.cells_for("  9.99").size() == 6
+		and Led.cells_for("7.95", false) == [["7", true], ["9", false], ["5", false]],
+		"bdp v3: an LED figure takes a cell per character, its point one of them (the old way on request)")
+	_check(str(Led.fit("1234.56").figure) == "1235" and str(Led.fit("158.84").figure) == "158.8"
+		and str(Led.fit("12345.60").figure) == "12.3" and str(Led.fit("12345.60").suffix) == "K"
+		and str(Led.fit("-10.36").figure) == "-10.4" and str(Led.fit("42").figure) == "42" and str(Led.fit(" 1.15").figure) == " 1.15",
+		"bdp v3: a figure is fitted to five cells, decimals dropped never added, K after from 10,000")
 	var Econ = load("res://scripts/building_economics.gd")
 	_check(Econ.transport_tone(1.0, 100.0) == "ok" and Econ.transport_tone(5.0, 100.0) == "warn" and Econ.transport_tone(9.0, 100.0) == "bad"
 		and Econ.transport_tone(1.0, 0.0) == "bad" and Econ.transport_tone(0.0, 0.0) == "ok",
@@ -1104,6 +1110,9 @@ func _test_bdp_v3_rules() -> void:
 		and Light.light_at(Vector2(0.75, 0.15), screen) > Light.light_at(Vector2(0.95, 0.9), screen)
 		and is_equal_approx(Light.light_at(Vector2(1.0, 1.0), screen), Light.DARKEST),
 		"bdp v3: the lamp over the panel is brightest at the screen's top-left and darkest at its far corner")
+	_check(is_equal_approx(Light.light_across(0.0), 1.0) and is_equal_approx(Light.light_across(1.0), Light.DARKEST)
+		and is_equal_approx(Light.light_across(0.5), lerpf(1.0, Light.DARKEST, 0.5)),
+		"top bar ds2: the bar's light falls evenly from the screen's left edge to its right")
 	var Seam = load("res://scripts/bdp_v3_seam.gd")
 	var seam_parts: Array = Seam.slices(430.0)
 	_check(seam_parts.size() == 3 and is_equal_approx(float(seam_parts[0][3]), Seam.CAP / 1.875)
@@ -1304,8 +1313,12 @@ func _test_bdp_v3_panel() -> void:
 	MatchState.focus_building_requested.disconnect(on_focus)
 	_check(focused == [iid], "bdp v3: the Location key asks the map to show the building")
 	var body_label: Label = panel._body.find_children("*", "Label", true, false)[0]
-	_check(panel._shade.visible and body_label.material == load("res://scripts/bdp_v3_light.gd").text_material(),
-		"bdp v3: the lamp's overlay covers the panel and the text takes some of its light back")
+	var Overlay = load("res://scripts/ds2/lamp_overlay.gd")
+	var led_layers: Array = panel.find_children("*", "", true, false).filter(func(n: Node) -> bool:
+		return n is CanvasItem and n.get_parent() != null and n.get_parent().get_script() == load("res://scripts/bdp_v3_led.gd"))
+	_check(Overlay.find(panel) != null and panel.material == Overlay.shade_material() and body_label.material == Overlay.text_material()
+		and led_layers.all(func(n: Node) -> bool: return (n as CanvasItem).material != load("res://scripts/bdp_v3_light.gd").emissive_material()),
+		"bdp v3: the lamp lights the panel part by part, its text by half, its LEDs not at all")
 	var diag: PanelContainer = panel.find_child("DiagnosticsCard", true, false)
 	var diag_frame: Node = diag.get_parent().get_parent() if diag != null else null
 	var lamps: Array = diag.find_children("BdpV3Lamp*", "", true, false) if diag != null else []
@@ -1404,9 +1417,9 @@ func _test_bdp_v3_panel() -> void:
 	var Emblem = load("res://scripts/bdp_v3_emblem.gd")
 	var emblem: Control = panel._emblem_v3
 	_check(emblem.visible and emblem.face != null and is_equal_approx(emblem.size.y, Emblem.side())
-		and panel._title_v3._para.get_line_count() == 2 and absf(Emblem.side() - panel._title_v3.custom_minimum_size.y) < 1.0
+		and panel._title_v3._para.get_line_count() <= 2 and panel._title_v3.custom_minimum_size.y <= Emblem.side() + 1.0
 		and emblem.get_global_rect().position.x < panel._title_v3.get_global_rect().position.x,
-		"bdp v3: the building's metal emblem stands top left, as tall as the title's two lines beside it (%.0f px, title %.0f px)" % [Emblem.side(), panel._title_v3.custom_minimum_size.y])
+		"bdp v3: the building's metal emblem stands top left, as tall as two title lines, the title beside it in no more (%.0f px, title %.0f px)" % [Emblem.side(), panel._title_v3.custom_minimum_size.y])
 	var room: float = panel._scroll.size.x - panel._scroll.get_v_scroll_bar().size.x
 	_check(panel._body.get_combined_minimum_size().x <= room + 0.5,
 		"bdp v3: no section needs more width than the body has, which would push the scrollbar into the trim (%.0f of %.0f px)" % [panel._body.get_combined_minimum_size().x, room])
@@ -1492,7 +1505,7 @@ func _test_bdp_v3_panel() -> void:
 		var sell_led: Node = sell_plate.find_child("BdpV3Led", true, false) if sell_plate != null else null
 		var sell_texts: Array = sell_plate.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text) if sell_plate != null else []
 		_check(sell_plate != null and absf(sell_plate.position.y) < 0.5 and demo_plate.position.y > 1.0 and sell_texts.has("Building will become NPC")
-			and sell_led != null and sell_led.figure() == "%.2f" % float(load("res://scripts/building_price.gd").sale_price(b)),
+			and sell_led != null and sell_led.figure() == str(load("res://scripts/bdp_v3_led.gd").fit("%.2f" % float(load("res://scripts/building_price.gd").sale_price(b))).figure),
 			"bdp v3: lifting Sell's cover slides up that the building becomes NPC and what it sells for")
 		footer.drop("sell")
 		await get_tree().create_timer(0.35).timeout
@@ -1524,8 +1537,8 @@ func _test_bdp_v3_panel() -> void:
 		var sheet_scroll := panel._sheet.find_child("ActionSheetScroll", true, false) as ScrollContainer
 		_check(sheet_scroll != null and Scroll.is_applied(sheet_scroll), "bdp v3: the sheets scroll on the steel rail too")
 		var slide: Control = panel._sheet.find_child("SheetSlide", true, false)
-		_check(slide != null and slide.find_child("BdpV3SheetPlate", false, false) != null and slide.position.x > 0.0
-			and panel.get_child(panel.get_child_count() - 1) == panel._shade,
+		var plate: CanvasItem = slide.find_child("BdpV3SheetPlate", false, false) if slide != null else null
+		_check(plate != null and slide.position.x > 0.0 and plate.material == load("res://scripts/ds2/lamp_overlay.gd").shade_material(),
 			"bdp v3: a sheet is a steel plate that slides in, under the lamp (starting %.0f px along)" % (slide.position.x if slide != null else -1.0))
 		panel._close_sheet()
 		var r: Rect2 = block.key_rect("recipe")
@@ -1549,7 +1562,7 @@ func _test_bdp_v3_panel() -> void:
 		and not panel._seam.visible and is_equal_approx(panel._scroll.offset_top, 0.0)
 		and panel._title_label.visible and not panel._title_v3.visible
 		and panel.find_child("BdpV3Enamel", true, false) == null
-		and panel._subtitle_label.visible and not panel._pin_key.visible and not panel._shade.visible
+		and panel._subtitle_label.visible and not panel._pin_key.visible and load("res://scripts/ds2/lamp_overlay.gd").find(panel) == null
 		and panel._body.find_children("*", "Label", true, false)[0].material == null,
 		"bdp v3: switching it off brings back the plain title, the badge and location line, the plain scrollbar, the unedged body, the plain diagram and unshaded text")
 	panel.queue_free()
@@ -1697,6 +1710,14 @@ func _test_topbar_ds2_strip() -> void:
 		_check(absf(r.position.x - area.x) <= 1.0 and r.end.x <= area.y + 1.0
 			and (not text_col.is_visible_in_tree() or qicon.get_global_rect().end.x <= text_col.get_global_rect().position.x + 1.0),
 			"top bar ds2: the mission keeps to its section, icon first and its text to the right (%s in %s)" % [r, area])
+	var Light = load("res://scripts/bdp_v3_light.gd")
+	var bar_shade: ShaderMaterial = (bar.get("_ds2_shade") as CanvasItem).material
+	var bar_led_lit: bool = led != null and led.find_children("*", "", true, false).any(func(n: Node) -> bool:
+		return (n as CanvasItem) != null and (n as CanvasItem).material == Light.across_material(Light.emissive_material()))
+	var bar_label: Label = bar.get("_net_label")
+	_check(float(bar_shade.get_shader_parameter("across")) == 1.0 and bar_led_lit
+		and bar_label.material == Light.across_material(Light.text_material()),
+		"top bar ds2: the bar is lit from the screen's left edge, its text and its LED screens against the same light")
 	var power_mod: Control = hbox.get_node("PowerModule")
 	power_mod.mouse_entered.emit()
 	var readout: Control = bar.get("_ds2_readout")
@@ -1772,13 +1793,14 @@ func _test_topbar_ds2_strip() -> void:
 	UiPrefs.set_use_topbar_ds2(was)
 
 func _test_money_figure_format() -> void:
-	# The owner's LED money rule: at most five cells, the point free, K/M/B printed after.
+	# The owner's LED money rule: at most five cells with the point counted, never more than two decimals, K/M/B
+	# printed after (docs/ds2-owner-decisions.md, Digital displays).
 	var Money := preload("res://scripts/ds2/money_figure.gd")
 	var cases := {
-		0.0: "£0.00", 5.5: "£5.50", 999.99: "£999.99", 999.996: "£1000", 5717.0: "£5717",
-		9999.4: "£9999", 10000.0: "£10.0K", 15600.0: "£15.6K", 999949.0: "£999.9K",
-		1010000.0: "£1.01M", 12345678.0: "£12.35M", 2500000000.0: "£2.50B",
-		-120.0: "-£120.0", -9999.0: "-£9999", -15600.0: "-£15.6K", -555.0: "-£555.0",
+		0.0: "£0.00", 1.15: "£1.15", 5.5: "£5.50", 99.99: "£99.99", 99.996: "£100.0", 999.1: "£999.1",
+		999.99: "£1000", 999.996: "£1000", 5717.0: "£5717", 9999.4: "£9999", 10000.0: "£10.0K", 15600.0: "£15.6K",
+		999949.0: "£999.9K", 1010000.0: "£1.01M", 12345678.0: "£12.35M", 2500000000.0: "£2.50B",
+		-10.36: "-£10.4", -120.0: "-£120", -9999.0: "-£9999", -15600.0: "-£15.6K", -555.0: "-£555",
 	}
 	var wrong := PackedStringArray()
 	for v: float in cases:
@@ -2660,3 +2682,64 @@ func _test_upgrade_ds2_commits() -> void:
 	MatchState.reset()
 	Stockpile.clear_all()
 	await get_tree().process_frame
+
+
+func _test_building_names_follow_the_owners_convention() -> void:
+	# Every building is named by what it makes, "<qualifier> <output word> <building word>", with its letter on a
+	# tile. The qualifier appears only where recipes of one building share a main output; the plain one has none.
+	var N = load("res://scripts/building_naming.gd")
+	var cases := {
+		["b_001", "r_001"]: "Coal Mine", ["b_001", "r_002"]: "Iron Mine", ["b_001", "r_010"]: "Salt Mine",
+		["b_002", "r_005"]: "Iron Furnace", ["b_002", "r_031"]: "Direct Reduced Iron Furnace",
+		["b_002", "r_003"]: "Steel Furnace", ["b_002", "r_025"]: "Basic Oxygen Steel Furnace",
+		["b_002", "r_077"]: "HIsarna Steel Furnace", ["b_002", "r_234"]: "Petro Steel Furnace",
+		["b_002", "r_007"]: "Copper Furnace",
+		["b_007", "r_009"]: "Motor Factory", ["b_007", "r_071"]: "Engine Factory", ["b_007", "r_072"]: "V8 Engine Factory",
+		["b_003", "r_004"]: "Coal Power Plant",
+		["b_008", "r_076"]: "Steel Electric Furnace", ["b_008", "r_083"]: "ELYSIS Aluminium Electric Furnace",
+		["b_009", "r_066"]: "Axial Motor Assembly Plant",
+		["b_014", "r_209"]: "Strip Farm", ["b_014", "r_211"]: "Agrisolar Farm", ["b_014", "r_212"]: "Livestock Farm",
+		["b_014", "r_208"]: "Sustainable Farm", ["b_015", "r_213"]: "Logging Forest", ["b_015", "r_215"]: "Gently Pruned Forest", ["b_015", "r_214"]: "Sustainable Forest",
+	}
+	var wrong: Array = []
+	for key: Array in cases:
+		var got: String = N.name_for(str(key[0]), str(key[1]))
+		if got != str(cases[key]):
+			wrong.append("%s/%s gave %s" % [key[0], key[1], got])
+	_check(wrong.is_empty(), "names: each kind named by what it makes, the recipe telling same output recipes apart (%s)" % ", ".join(wrong))
+	var synrm: String = N.name_for_recipe("r_065")
+	_check(synrm == "SynRM Motor Assembly Plant", "names: the owner's example, SynRM Motor Assembly Plant (%s)" % synrm)
+	_check(N.label("b_001", "r_001", 1) == "Coal Mine B" and N.name_for("b_004", "") == "Port",
+		"names: the letter follows the name, and a building with no recipe keeps its type's name")
+	_check(N.without_letter("Coal Mine B") == "Coal Mine" and N.without_letter("Mine - Coal - A") == "Mine - Coal"
+		and N.without_letter("Steel Furnace") == "Steel Furnace",
+		"names: without_letter drops the letter of a new name and of an old save's name, and leaves a name without one")
+	# The owner's copy rule: no hyphens, dashes, semicolons or middle dots in any name.
+	var bad: Array = []
+	for bd: Dictionary in Catalog.all_buildings():
+		for r: Dictionary in Catalog.all_recipes_for_building(str(bd.get("id", ""))):
+			var n: String = N.name_for(str(bd.get("id", "")), str(r.get("recipe_id", "")))
+			for ch: String in ["-", "–", "—", ";", "·"]:
+				if n.contains(ch):
+					bad.append(n)
+	_check(bad.is_empty(), "names: no name carries a hyphen, dash, semicolon or middle dot (%s)" % ", ".join(bad))
+
+
+func _test_building_detail_title_shows_its_recipe_on_hover() -> void:
+	# Building Detail's title is one name; hovering it shows the recipe, what it makes and what it takes.
+	var iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "title_tip")
+	var panel: Control = (load("res://scripts/building_detail_panel_v2.gd") as GDScript).new()
+	add_child(panel)
+	panel.show_building(BuildingState.get_building(iid))
+	await get_tree().process_frame
+	var title: String = panel._title_label.text
+	_check(title == load("res://scripts/building_naming.gd").of(BuildingState.get_building(iid)) and not title.contains("—"),
+		"bdp title: one name, the recipe not beside it (%s)" % title)
+	var tip: Dictionary = panel._title_v3.tip
+	_check(str(tip.get("title", "")) == "Motor Manufacture" and (tip.get("goods", {}) as Dictionary).size() == 2
+		and panel._title_v3.mouse_filter != Control.MOUSE_FILTER_IGNORE,
+		"bdp title: hovering the v3 title shows the recipe's dot card, its inputs in wells (%s)" % str(tip))
+	_check(panel._title_label.tooltip_text.begins_with("Motor Manufacture") and panel._title_label.tooltip_text.contains("Motor"),
+		"bdp title: the v2 title's tooltip names the recipe and what it makes")
+	panel.queue_free()
+	BuildingState.remove_building(iid)

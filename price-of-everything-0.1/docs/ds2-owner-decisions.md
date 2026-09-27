@@ -8,6 +8,7 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **Text**: body 14 px (IBM Plex Sans Medium, semibold for a row's own title), metal-label captions 15 px (Barlow Condensed SemiBold), the printed £ 18 px. A compact strip such as the bar may go smaller, never under 12 px. White on anything dark; navy on anything light (stainless, concrete, white plastic), with DS2's light-surface inks for semantic figures (#1d6b3a, #7a4a00, #8f1f19) and a faint light shadow, not a dark outline.
 - **Icons are sized by their drawn art, not their canvas**, to one cap height on one midline; thin icons get a tabled optical factor.
 - **Icons are raised as Building Detail's are** (cream enamel relief with its swept shadow, render set per surface). The knob's icons may later be embossed in the new off-white (a refinement, not yet done).
+- **The lamp, part by part** (`scripts/ds2/lamp_overlay.gd`) on every DS2 panel, Building Detail included (27 September 2026). The top bar is the exception (below).
 - **Figures come from the engine's own helpers**; the lamp and the words that explain it come from one status helper, so they cannot disagree.
 - **Copy**: plain and brief, no hyphens, semicolons, dashes or middle dots; the owner's wording where given (below).
 
@@ -19,6 +20,7 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **Pipes**: a pair of polished silver pipes rises just off each side of the concrete, symmetrical about the money, and runs along beneath the beam to meet the other side (1 px thinner and 1 px closer than first built, so the loop ends at y 69, clear of the panels).
 - **Mission** sits left of the left pipes, icon first, text to its right, never crossing into another section (trimmed with an ellipsis). It moves to the dock as a work order later.
 - **Icons** raised as Building Detail's; **lamps** are Building Detail's pilot lamps. Goods Graph, Encyclopedia and Menu stay raised icons (no keycaps) and show no lamp in their readout.
+- **Light**: a simple light from left to right (27 September 2026): the bar is not tall enough for the corner lamp's fall to the bottom right. It keeps its one overlay, not the part by part lamp.
 - **Victory**: the score on a drum counter with "/1,000" printed after it. The turn stays as text.
 - **Hover readouts** under the bar, in the owner's words:
   - Power: "You generated X MW. Y MW came from the national grid."
@@ -49,11 +51,12 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **Cables and HVDC stay in Transport** with every other link. The Power tab shows their sections too, but only when they are built. A tile with no cables where your buildings make or draw power says **"Cables missing. Power production (or consumption) not possible."**, and the Power key's mark goes red.
 - **The cabinet shell is built** (the stainless door and its pipe, the engraved nameplate, the five latching keys); the tab bodies still sit on navy steel sheets until each is restyled. See `docs/tile-view-ds2-plan.md` §9, Phase 2.
 
-## Digital displays (26 September 2026, from the Construct studies)
+## Digital displays (26 September 2026, from the Construct studies; made the rule everywhere 27 September 2026)
 
-- **The decimal point takes a cell of its own** on an LED screen, as wide as a digit's. Today's screens light the point beside the digit before it; moving every panel to the new rule is a kit change (`bdp_v3_led.gd`, `scripts/ds2/money_figure.gd`), still to schedule.
-- **Money on a screen**: two decimals below £100 (20.00), one decimal from £100 (481.3), whole pounds from £1,000 (1153), then £15.6K, £1.01M, £1.01B with the letter printed after the screen. At most five cells with the point counted.
+- **The decimal point takes a cell of its own** on every LED screen in the game, as wide as a digit's (`bdp_v3_led.gd`, the default).
+- **At most five cells, the point counted, and never more than two decimals.** Money on a screen: two decimals below £100 (1.15, 9.99, 99.99), one decimal from £100 (999.1), whole pounds from £1,000 (9999), then £15.6K (to 999.9K), £1.01M, £1.01B with the letter printed after the screen. A minus takes a cell, so a loss drops decimals to fit (-10.4). Other figures on screens follow the same cap; a figure is never given more decimals than it came with.
 - **A materials cost is whole pounds only** (it was too busy with pence).
+- Every LED fits its figure itself (`BdpV3Led.fit`, through `scripts/ds2/money_figure.gd` `screen`), so every panel (Building Detail, the top bar and its Treasury sheet, the tile view, the ledger, the upgrade panel, People) follows it; a group's screens are padded to the widest fitted figure, so they stay one width.
 
 ## Construct (26 September 2026; plan `docs/construct-ds2-plan.md`)
 
@@ -66,3 +69,17 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **A recipe is drawn, not named**: on a building's board the icon on the left and the recipe diagram in enamel on the right, expanded or condensed as the Construct setting says.
 - **Names**: the building by what it makes, without its letter until built: "Iron Furnace", "Copper Furnace"; where several recipes make the same thing, the recipe tells them apart: "Motor Assembly Plant", "SynRM Motor Assembly Plant".
 - **Building icons**: the polished relief with its soft grey edge looked wrong; a simple emboss or flat print (a blueprint) is being compared.
+
+## Resources (27 September 2026; plan `docs/resources-ds2-plan.md`)
+
+- **No status lamps on goods.** Just in time play, and buying over a turn or two to sell straight away, hold little stock by design; a Low or Short lamp would call that a problem. The scenarios are too unclear for one lamp, so the table shows the figures and no verdict.
+
+## People (27 September 2026; plan `docs/people-ds2-plan.md`)
+
+- **The boardroom and the works are the default**; `toggle people ds2` switches back to today's panel.
+- **The picker and the dossier are white on dark**, on a dark gunmetal sheet, the dossier in two columns so neither half is empty.
+- **Dismiss is a guarded cap with a boot** under its clear cover.
+- **A padlock means the council is full.** With a slot free, a seat not yet opened says what opens it; the council plate reads **X/Y advisors** (seated of the most you can seat now).
+- **A CFO's worth is today's**: the interest her cut saves on the loans the company has now, nothing without loans.
+- **No reduced salary** for Vera; the promise is gone.
+

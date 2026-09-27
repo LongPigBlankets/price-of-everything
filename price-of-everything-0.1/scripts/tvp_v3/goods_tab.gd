@@ -205,9 +205,9 @@ static func _money(figure: float, grid: Dictionary) -> Control:
 	return Parts.money(figure, Parts.result_colour(figure), int(grid.cells))
 
 
-## One of your buildings here named in two parts, as every row names it: its kind, and what it makes with
-## its letter ("Mine", "Coal A"). The game's name for it (BuildingNaming, "Mine - Coal - A") is split at
-## its separators, which the tab never prints; a name without them ("Motor Factory E") is one line.
+## One of your buildings here named as every row names it: the game's name for it (BuildingNaming, "Coal Mine A",
+## "Motor Factory E") on one line. An older name in the "Mine - Coal - A" form would split in two at its
+## separators, which the tab never prints.
 static func name_parts(tile: String, building: Dictionary) -> PackedStringArray:
 	var full := BuildingNaming.label_for_tile(tile, str(building.get("instance_id", "")),
 		str(building.get("building_id", "")), str(building.get("recipe_id", "")))

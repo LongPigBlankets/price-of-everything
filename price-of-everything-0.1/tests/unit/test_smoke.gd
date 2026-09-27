@@ -202,6 +202,9 @@ func _test_widgets_instantiate() -> void:
 	var _saved_adv_unlocked := AdvisorState.advisors_unlocked
 	AdvisorState.advisors_unlocked = true
 	AdvisorState.advisors_changed.emit()
+	# This fixture drives today's (v2) tabs; the DS2 look is the default and has its own tests (test_people_ds2.gd).
+	var was_people_ds2: bool = UiPrefs.use_people_ds2
+	UiPrefs.set_use_people_ds2(false)
 	var pp: Node = load("res://scripts/people_panel.gd").new()
 	add_child(pp)
 	_check(
@@ -358,6 +361,7 @@ func _test_widgets_instantiate() -> void:
 	if detail != null:
 		detail.queue_free()
 	pp.queue_free()
+	UiPrefs.set_use_people_ds2(was_people_ds2)
 	AdvisorState.advisors_unlocked = _saved_adv_unlocked
 	AdvisorState.permanent_advisor_ids = saved_advisors
 	AdvisorState.recruited_advisor_ids = saved_recruited

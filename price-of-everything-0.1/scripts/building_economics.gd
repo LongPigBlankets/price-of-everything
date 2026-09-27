@@ -17,6 +17,7 @@ extends RefCounted
 const Readout := preload("res://scripts/building_readout.gd")
 const Status := preload("res://scripts/building_status.gd")
 const Middleman := preload("res://scripts/middleman_service.gd")
+const MarketRules := preload("res://scripts/market_rules.gd")
 
 ## The transport lamps: green while transport costs less than this share of the goods' value on its
 ## side (inputs or outputs), amber below the next, red above it.
@@ -138,8 +139,7 @@ static func _output_line(building: Dictionary, recipe: Dictionary, gid: String, 
 	var disposition := Readout._output_disposition(building, recipe, gid)
 	if str(disposition.get("mode", "")) == "market":
 		# Straight to market from the building, at the sale price (research uplifts included).
-		var ctx := {"good_id": gid, "good_internal": str(Catalog.get_good(gid).get("internal_name", ""))}
-		line.value = float(qty) * MarketState.get_sale_price(gid, ctx)
+		line.value = float(qty) * MarketRules.sale_price(gid)
 		line.sold = true
 		var route := TransportService.route_to_nearest_port(tile, gid)
 		if str(route.get("port", "")) != "" and TransportService.route_is_reachable(route):
@@ -150,8 +150,8 @@ static func _output_line(building: Dictionary, recipe: Dictionary, gid: String, 
 			line.unreachable = true
 		return line
 	# Into a stockpile, this tile's or the one it is routed to, and sold from there: this turn when that
-	# tile sells its surplus, otherwise valued as if it did.
-	line.value = float(qty) * MarketState.get_price(gid)
+	# tile sells its surplus, otherwise valued as if it did, at the price the sell phase pays.
+	line.value = float(qty) * MarketRules.sale_price(gid)
 	line.sold = str(disposition.get("mode", "")) == "tile_sales"
 	var lands := str(disposition.get("sell_tile", tile))
 	var breakdown: Dictionary = {}

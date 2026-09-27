@@ -6,6 +6,12 @@ const MARKET_FALLBACK_SIZE := Vector2(400, 500)
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const AdvisorCouncilTabScript := preload("res://scripts/advisor_council_tab.gd")
 const LabourPolicyTabScript := preload("res://scripts/labour_policy_tab.gd")
+## The DS2 look (docs/people-ds2-plan.md), built while UiPrefs.use_people_ds2 is on.
+const PeopleDs2Script := preload("res://scripts/people_ds2/people_ds2.gd")
+## The DS2 look's width (plan §5): the tile view's, for both tabs.
+const DS2_WIDTH := 800.0
+## Under the top bar (60 px high, panels start at 72: docs/ds2-owner-decisions.md).
+const DS2_TOP := 72.0
 
 const ADVISOR_CARD_WIDTH := 260.0
 const ADVISOR_CARD_HEIGHT := 460.0
@@ -56,6 +62,8 @@ var _advisor_detail_dragging := false
 var _advisor_detail_drag_offset := Vector2.ZERO
 var _available_advisors: Array = []
 var _permanent_advisors: Array = []
+var _ds2 := false
+var _ds2_shell: Control = null
 
 func _ready() -> void:
 	name = "PeoplePanel"
@@ -65,10 +73,8 @@ func _ready() -> void:
 		theme = DS.theme
 	custom_minimum_size = MARKET_FALLBACK_SIZE
 	size = MARKET_FALLBACK_SIZE
-	_apply_research_window(self)
-	theme_type_variation = &"PanelContainer"
-	add_theme_stylebox_override("panel", preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(8.0))
-	_build_panel()
+	_build_look()
+	UiPrefs.people_ds2_changed.connect(func(_on: bool) -> void: _build_look())
 	LabourState.labour_multiplier_changed.connect(func(_value: float): _refresh_labour())
 	LabourState.workforce_policies_changed.connect(_refresh_policy_buttons)
 	LabourState.workforce_policies_changed.connect(_refresh_labour_indicator)
@@ -84,6 +90,26 @@ func _ready() -> void:
 	if not AdvisorState.advisor_mission_state_changed.is_connected(_on_advisor_mission_state_changed):
 		AdvisorState.advisor_mission_state_changed.connect(_on_advisor_mission_state_changed)
 	visibility_changed.connect(_on_visibility_changed)
+
+## Builds the panel in the look the switch asks for (UiPrefs.use_people_ds2), taking the other down first.
+## With the switch off it is today's panel exactly: the copper pipe frame, the title, the TabContainer.
+func _build_look() -> void:
+	for c in get_children():
+		remove_child(c)
+		c.queue_free()
+	_ds2 = UiPrefs.use_people_ds2
+	_ds2_shell = null
+	_apply_research_window(self)
+	theme_type_variation = &"PanelContainer"
+	if _ds2:
+		_ds2_shell = PeopleDs2Script.new()
+		_ds2_shell.connect("close_requested", func() -> void: close_requested.emit())
+		_ds2_shell.connect("drag_input", _on_people_header_input)
+		add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+		add_child(_ds2_shell)
+		return
+	add_theme_stylebox_override("panel", preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(8.0))
+	_build_panel()
 
 func _build_panel() -> void:
 	var margin := MarginContainer.new()
@@ -1985,6 +2011,12 @@ func _apply_research_window(control: Control) -> void:
 	control.offset_right = control.offset_left + w
 	control.offset_top = 32.0
 	control.offset_bottom = maxf(232.0, vp.y - 130.0)
+	if control == self and _ds2:
+		# DS2: one width for both tabs, under the top bar, the same foot.
+		w = minf(DS2_WIDTH, vp.x - 24.0)
+		control.offset_left = maxf(0.0, (vp.x - w) / 2.0)
+		control.offset_right = control.offset_left + w
+		control.offset_top = DS2_TOP
 
 func _apply_market_window(control: Control) -> void:
 	var vp := get_viewport_rect().size
