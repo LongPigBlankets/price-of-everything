@@ -7,6 +7,7 @@ const TAGS := {
 	"_test_people_ds2_switch": ["people", "ui"],
 	"_test_labour_headcount": ["people", "production"],
 	"_test_people_ds2_advisors": ["people", "advisors", "ui"],
+	"_test_people_ds2_labour": ["people", "production", "ui"],
 	"_test_seat_card_shows_every_effect": ["people", "advisors", "ui"],
 }
 
@@ -217,3 +218,89 @@ func _folder_locked(place: Node) -> int:
 	if folder == null:
 		return -1
 	return 1 if bool(folder.get("locked")) else 0
+
+
+## The DS2 Labour tab: the time clock shows the overview's figures (cost, share of base, ten turns) and its bell's
+## lamp is lit only at the floor; the doors carry the workforce by kind; six knobs stand where the policies are and
+## turning one sets the policy; the notice board pins each policy in force and, on hover, the option under the
+## pointer; the lockers of policies not yet open are padlocked and their switches dead; the body fits its scroll.
+func _test_people_ds2_labour() -> void:
+	MatchState.reset()
+	var was: bool = UiPrefs.use_people_ds2
+	var ids: Array[String] = []
+	for sp: Array in [["b_003", "r_004", "tile_10_2"], ["b_007", "r_009", "tile_13_2"]]:
+		BuildingState.tile_land_owned[str(sp[2])] = 200
+		ids.append(BuildingState.add_building(str(sp[0]), str(sp[1]), str(sp[2]), MatchState.LOCAL_PLAYER, ""))
+	UiPrefs.set_use_people_ds2(true)
+	var pp: PanelContainer = load("res://scripts/people_panel.gd").new()
+	add_child(pp)
+	pp.size = Vector2(800, 1000)
+	await get_tree().process_frame
+	var shell: Control = pp.find_child("PeopleDs2", false, false)
+	shell.call("show_tab", 1)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var tab: Control = pp.find_child("LabourDs2", true, false)
+	var clock: Control = pp.find_child("TimeClock", true, false)
+	var ov: Dictionary = Production.labour_overview()
+	var figs: Dictionary = clock.get_meta("figures", {}) if clock != null else {}
+	_check(clock != null and is_equal_approx(float(figs.get("current", -1.0)), float(ov.current))
+		and is_equal_approx(float(figs.get("factor_pct", -1.0)), float(ov.factor_pct))
+		and is_equal_approx(float(figs.get("est_10_turns", -1.0)), float(ov.est_10_turns)),
+		"people ds2 labour: the clock shows the overview's cost, share of base and ten turn figure")
+	var led: Control = clock.find_child("LabourCostNow", true, false).find_child("Led", true, false) if clock != null else null
+	var parts := preload("res://scripts/people_ds2/parts.gd")
+	_check(led != null and str(led.call("figure")).strip_edges() == str(preload("res://scripts/ds2/money_figure.gd").screen(float(ov.current)).figure),
+		"people ds2 labour: the cost's screen reads %s" % (str(led.call("figure")) if led != null else "none"))
+	_check(not bool(clock.find_child("FloorLamp", true, false).get_meta("lit")), "people ds2 labour: the bell's lamp is dark above the floor")
+	var hc: Dictionary = Production.labour_headcount()
+	var doors_ok := true
+	for kind in ["unskilled", "skilled", "high_skilled"]:
+		var door: Control = pp.find_child("Door_%s" % kind, true, false)
+		doors_ok = doors_ok and door != null and int(door.get("count")) == int(hc[kind])
+	_check(doors_ok and int(hc.unskilled) > 0, "people ds2 labour: each door carries its kind's headcount (%s)" % str(hc))
+	var knobs := ["effort", "idle", "safety", "pension", "bonus", "profit"]
+	var all_knobs := true
+	for k in knobs:
+		all_knobs = all_knobs and pp.find_child("Knob_%s" % k, true, false) != null
+	var effort: Control = pp.find_child("Knob_effort", true, false)
+	_check(all_knobs and effort != null and int(effort.get("value")) == 2, "people ds2 labour: six knobs, work effort at Standard")
+	_check(pp.find_child("Notice_effort", true, false) != null and str(pp.find_child("Notice_effort", true, false).get_meta("notice")) == "Work effort|Standard",
+		"people ds2 labour: the notice board pins the effort in force")
+	var lean: Button = (effort.get("option_buttons") as Array)[0]
+	lean.mouse_entered.emit()
+	var hover: Control = pp.find_child("HoverCard", true, false)
+	_check(hover != null and hover.visible and str(hover.get_meta("notice")) == "Work effort|Lean", "people ds2 labour: hovering an option pins its card on top")
+	lean.mouse_exited.emit()
+	effort.set("value", 1)
+	_check(is_equal_approx(LabourState.labour_multiplier, 0.8), "people ds2 labour: turning the knob to Lean sets the effort")
+	LabourState.set_labour_multiplier(1.0)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var tenure: Control = pp.find_child("Locker_%s" % LabourState.WORKFORCE_POLICY_LONG_TENURE, true, false)
+	var leave: Control = pp.find_child("Locker_%s" % LabourState.WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE, true, false)
+	_check(tenure != null and bool(tenure.get("locked")) and (tenure.find_child("Switch", true, false) as Control).mouse_filter == Control.MOUSE_FILTER_IGNORE
+		and leave != null and not bool(leave.get("locked")), "people ds2 labour: a policy not yet open is padlocked, its switch dead")
+	var sw: Control = leave.find_child("Switch", true, false)
+	sw.emit_signal("toggled", true)
+	_check(LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE), "people ds2 labour: a locker's switch sets its policy")
+	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE, false)
+	var scroll: ScrollContainer = pp.find_child("LabourScroll", true, false)
+	var body: Control = pp.find_child("LabourBody", true, false)
+	_check(body.get_combined_minimum_size().x <= scroll.size.x - scroll.get_v_scroll_bar().get_combined_minimum_size().x + 0.5,
+		"people ds2 labour: the body (min %.0f) fits its scroll (%.0f)" % [body.get_combined_minimum_size().x, scroll.size.x])
+	# At the floor: a labour cut deep enough that every building's factor bottoms out.
+	Modifiers.add({"id": "test_people_floor", "domain": "labour_headcount", "pct": -90.0, "label": "test", "source": "test", "target": "*"})
+	TurnManager.turn_resolution_completed.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var floor_lamp: Control = pp.find_child("FloorLamp", true, false)
+	_check(bool(Production.labour_overview().at_floor) and floor_lamp != null and bool(floor_lamp.get_meta("lit")),
+		"people ds2 labour: at the floor the bell's lamp is lit")
+	Modifiers.remove("test_people_floor")
+	UiPrefs.set_use_people_ds2(was)
+	pp.queue_free()
+	await get_tree().process_frame
+	for iid in ids:
+		BuildingState.remove_building(iid)
+	MatchState.reset()
