@@ -1,6 +1,6 @@
 extends RefCounted
-## The market's DS2 parts (docs/market-ds2-plan.md §5): the MARKET nameplate, the exchange bell, the arrow lamp
-## (render set `marketparts`, seed 450, in tools/button_mockup/cluster.html) and the money screens under the
+## The market's DS2 parts (docs/market-ds2-plan.md §5): the MARKET nameplate, the exchange bell, the trend arrow
+## (the nameplate and bell from render set `marketparts`, seed 450, in tools/button_mockup/cluster.html) and the money screens under the
 ## digital display rule (the point in a cell of its own, five cells at most: scripts/ds2/money_figure.gd
 ## `display`). Everything else comes from the kit: tvp_v3/buildings_parts.gd (modules, wells, captions, body
 ## text), ledger_v3 (the backing, the seam, the search screen, sort marks), scripts/ds2 (dot matrix, latching
@@ -16,13 +16,11 @@ const MarketRules := preload("res://scripts/market_rules.gd")
 
 const CAPTURE_SCALE := 1.875
 ## From layout.json: the nameplate's render (288 × 114, its plate inset by the shadow room), the bell's (128
-## square) and the arrow lamp's (the pilot lamp's 112 frame, a 44 bezel).
+## square).
 const NAMEPLATE_SIZE := Vector2(288.0, 114.0)
 const NAMEPLATE_MARGIN := 16.0
 const BELL_SIZE := 128.0
 const BELL_MARGIN := 16.0
-const LAMP_FRAME := 112.0
-const LAMP_BEZEL := 44.0
 ## The widest a money screen gets under the display rule.
 const MONEY_CELLS := 5
 ## The LED colours for a tone: green, amber, red; white for none.
@@ -89,7 +87,7 @@ static func ladder_card(gid: String) -> Dictionary:
 	var ladder := MarketRules.impact_ladder(gid)
 	var rows: Array = []
 	for rung: Dictionary in ladder.rungs:
-		rows.append({"caption": "OVER %s A TURN" % _thousands(int(rung.threshold)), "value": "%s%%" % String.num(float(rung.rate), 2),
+		rows.append({"caption": "OVER %s / TURN" % _thousands(int(rung.threshold)), "value": "%s%%" % String.num(float(rung.rate), 2),
 			"tone": "warn" if bool(rung.active) else ""})
 	var notes: Array = [{"text": ladder_words(ladder), "tone": ""}]
 	if (ladder.rungs as Array).is_empty():
@@ -102,7 +100,7 @@ static func ladder_card(gid: String) -> Dictionary:
 static func ladder_words(ladder: Dictionary) -> String:
 	match str(ladder.regime):
 		"pressure":
-			return "Your %s %s it %s%% a turn." % ["selling" if float(ladder.avg) > 0.0 else "buying",
+			return "Your %s %s it %s%% / turn." % ["selling" if float(ladder.avg) > 0.0 else "buying",
 				"lowers" if float(ladder.avg) > 0.0 else "raises", String.num(float(ladder.rate), 2)]
 		"recovering":
 			return "Walking back to its base over %d turns." % int(ladder.recovery_turns)
@@ -188,47 +186,50 @@ class Bell extends Control:
 		draw_texture_rect(Plate.tex("market_bell"), Rect2(-r + shake, Vector2.ONE * BELL_SIZE / CAPTURE_SCALE), false)
 
 
-## The arrow lamp: the pilot lamp's bezel with a triangular lens, green pointing up while the price rises,
-## red pointing down while it falls, dark and round while it holds (lamp_off). Its glow is the pilot lamp's.
-class ArrowLamp extends Control:
+## Whether the way a price is heading hurts the player or helps them, from the direction and the player's own
+## trade in it (the trend's avg: net units a turn, sold positive, bought negative):
+##   "bad"  red: buying while it rises, or selling while it falls
+##   "ok"   green: buying while it falls, or selling while it rises
+##   ""     plain: the player is not trading it, or the price holds
+static func trend_tone(dir: int, avg: float) -> String:
+	if dir == 0 or is_zero_approx(avg):
+		return ""
+	var selling := avg > 0.0
+	return "bad" if (dir < 0) == selling else "ok"
+
+
+## The trend arrow: a plain arrow beside the word under a good's name, up while the price rises and down while it
+## falls, red or green by trend_tone and off-white when the player is not trading the good. While the price holds
+## it draws nothing but keeps its room, so the words line up.
+class TrendArrow extends Control:
+	const SIDE := 16.0
 	var dir := 0
-	var lamp_scale := 0.72:
-		set(v):
-			lamp_scale = v
-			var side := roundf(LAMP_BEZEL / CAPTURE_SCALE * v)
-			custom_minimum_size = Vector2(side, side)
-			queue_redraw()
-	var _glow: Control
+	var colour := Color.WHITE
 
 	func _init() -> void:
-		name = "ArrowLamp"
+		name = "TrendArrow"
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		lamp_scale = 0.72
-		_glow = Control.new()
-		_glow.name = "Glow"
-		_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_glow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		_glow.material = Light.glow_material()
-		_glow.draw.connect(func() -> void:
-			if dir != 0:
-				_glow.draw_texture_rect(Plate.tex("lamp_glow_green" if dir > 0 else "lamp_glow_red"), _frame_rect(), false))
-		add_child(_glow)
+		custom_minimum_size = Vector2(SIDE, SIDE)
 
-	func set_dir(d: int) -> void:
+	## The direction, and the colour tone_colour(trend_tone(dir, avg)) gives it.
+	func set_trend(d: int, c: Color) -> void:
 		dir = signi(d)
+		colour = c
 		queue_redraw()
-		_glow.queue_redraw()
-
-	func _frame_rect() -> Rect2:
-		var side := LAMP_FRAME / CAPTURE_SCALE * lamp_scale
-		return Rect2((size - Vector2(side, side)) * 0.5, Vector2(side, side))
 
 	func _draw() -> void:
-		var layer := "lamp_off"
-		if dir > 0:
-			layer = "lamp_arrow_up"
-		elif dir < 0:
-			layer = "lamp_arrow_down"
-		draw_texture_rect(Plate.tex(layer), _frame_rect(), false)
+		if dir == 0:
+			return
+		var c := colour
+		var w := size.x
+		var h := size.y
+		var head := h * 0.5
+		var shaft := w * 0.18
+		var tip := Vector2(w * 0.5, 0.0)
+		var pts := PackedVector2Array([tip, Vector2(w, head), Vector2(w * 0.5 + shaft, head),
+			Vector2(w * 0.5 + shaft, h), Vector2(w * 0.5 - shaft, h), Vector2(w * 0.5 - shaft, head), Vector2(0.0, head)])
+		if dir < 0:
+			for i in pts.size():
+				pts[i].y = h - pts[i].y
+		draw_colored_polygon(pts, c)

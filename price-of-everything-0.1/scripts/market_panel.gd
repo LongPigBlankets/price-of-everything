@@ -15,7 +15,7 @@ const MarketDs2 := preload("res://scripts/market_ds2/market_ds2.gd")
 const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
 const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
 ## The DS2 look's one width, every tab (UiPrefs.use_market_ds2; docs/market-ds2-plan.md §8, decision 2).
-const DS2_WIDTH := 840.0
+const DS2_WIDTH := MarketDs2.WIDTH
 const HEADER_HEIGHT := 40.0
 const TAB_PRICES := "prices"
 const TAB_BUILDINGS := "buildings"

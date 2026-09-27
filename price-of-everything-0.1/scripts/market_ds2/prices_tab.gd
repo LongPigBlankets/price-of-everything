@@ -1,7 +1,8 @@
 extends VBoxContainer
 ## DS2 market, Prices: the quote board as one row per good (owner, decision 4), a module each in the ledger's
 ## language, under sortable headings (click one to sort by it, again to turn the order round):
-##   the good in its well and its name, the arrow lamp and a word under the name (the way the price is heading);
+##   the good in its well and its name, the trend arrow and a word under the name (the way the price is heading,
+##     red when it goes against the player's own trade, green when with it: MParts.trend_tone);
 ##   Buy and Sell on LED screens after a printed £, the raw market prices (decision 6), Sell being what a sale
 ##     is paid this turn (MarketRules.sale_price);
 ##   Sold, the units sold to the market last turn;
@@ -24,10 +25,14 @@ const DotCard := preload("res://scripts/ds2/dot_card.gd")
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const Slip := preload("res://scripts/market_ds2/slip.gd")
 
+## The gap between a good's well and its name, and between every other column (the Resources panel's spacing).
 const COL_GAP := 4
+const VALUE_GAP := 20
 const NAME_W := 112.0
-const SOLD_W := 40.0
-const IMPACT_W := 52.0
+const SOLD_W := 56.0
+const IMPACT_W := 64.0
+## The well and the name sit together at COL_GAP; the columns after them are VALUE_GAP apart.
+const LEAD_COLUMNS := 2
 ## The columns, left to right: key, heading, width (0: a money screen's), sortable.
 const COLUMNS := [
 	["well", "", float(Metrics.GOOD_ICON), false],
@@ -134,9 +139,11 @@ func _heading_row() -> MarginContainer:
 	wrap.add_theme_constant_override("margin_left", left)
 	wrap.add_theme_constant_override("margin_right", left)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", COL_GAP)
+	row.add_theme_constant_override("separation", VALUE_GAP)
 	wrap.add_child(row)
-	for col: Array in COLUMNS:
+	var lead := _lead_box(row)
+	for i in COLUMNS.size():
+		var col: Array = COLUMNS[i]
 		var key := str(col[0])
 		var cell := HBoxContainer.new()
 		cell.name = "Head_%s" % key
@@ -157,8 +164,18 @@ func _heading_row() -> MarginContainer:
 				var mb := e as InputEventMouseButton
 				if mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 					sort_by(key))
-		row.add_child(cell)
+		(lead if i < LEAD_COLUMNS else row).add_child(cell)
 	return wrap
+
+
+## The box that keeps the well and the name together at COL_GAP inside a line spaced at VALUE_GAP.
+static func _lead_box(line: HBoxContainer) -> HBoxContainer:
+	var lead := HBoxContainer.new()
+	lead.name = "Lead"
+	lead.add_theme_constant_override("separation", COL_GAP)
+	lead.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_child(lead)
+	return lead
 
 
 ## Sorts by a column; the same column again turns the order round.
@@ -256,9 +273,11 @@ func _row(r: Dictionary) -> PanelContainer:
 	Parts.on_click(m, func() -> void: toggle_slip(gid))
 	m.set_meta("good_id", gid)
 	var line := Parts.row_of(m)
-	line.add_theme_constant_override("separation", COL_GAP)
-	for col: Array in COLUMNS:
-		line.add_child(_cell(str(col[0]), column_width(col), r))
+	line.add_theme_constant_override("separation", VALUE_GAP)
+	var lead := _lead_box(line)
+	for i in COLUMNS.size():
+		var col: Array = COLUMNS[i]
+		(lead if i < LEAD_COLUMNS else line).add_child(_cell(str(col[0]), column_width(col), r))
 	return m
 
 
@@ -302,7 +321,7 @@ func _money_cell(cell_name: String, value: float, colour: Color, w: float) -> Co
 	return box
 
 
-## The name (semibold) over the arrow lamp and a word for the way the price is heading.
+## The name (semibold) over the trend arrow and a word for the way the price is heading.
 func _name_cell(r: Dictionary, w: float) -> VBoxContainer:
 	var col := VBoxContainer.new()
 	col.name = "NameCell"
@@ -318,9 +337,11 @@ func _name_cell(r: Dictionary, w: float) -> VBoxContainer:
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", Parts.LAMP_GAP)
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var lamp: Control = MParts.ArrowLamp.new()
-	lamp.call("set_dir", int(r.dir))
-	line.add_child(lamp)
+	var arrow: Control = MParts.TrendArrow.new()
+	var tone := MParts.trend_tone(int(r.dir), float((r.trend as Dictionary).get("avg", 0.0)))
+	arrow.call("set_trend", int(r.dir), MParts.tone_colour(tone))
+	arrow.set_meta("tone", tone)
+	line.add_child(arrow)
 	var word := Parts.body(str(WORDS.get(int(r.dir), "")))
 	word.name = "Heading"
 	word.autowrap_mode = TextServer.AUTOWRAP_OFF
