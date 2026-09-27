@@ -51,6 +51,15 @@ func _ready() -> void:
 	panel.call("open_browser")
 	await _settle(8)
 	await _shot(panel, "catalogue")
+	# £1,000 in hand: prices it covers twice over white, the rest red, what it can't pay for grey.
+	var full := MatchState.money
+	MatchState.money = 1000.0
+	panel.call("_render")
+	await _settle(6)
+	await _shot(panel, "catalogue_cash_1000")
+	MatchState.money = full
+	panel.call("_render")
+	await _settle(4)
 	panel.call("expand_building", bid)
 	await _settle(6)
 	await _scroll_to(panel, "BuildingCard_%s" % bid)

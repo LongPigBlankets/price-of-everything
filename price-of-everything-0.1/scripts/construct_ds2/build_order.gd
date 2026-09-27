@@ -464,7 +464,8 @@ static func verdict(panel: Control, q: Dictionary) -> Control:
 	var total := float(q.get("total", 0.0))
 	var after := float(q.get("cash_after", 0.0))
 	var digits := maxi(_cells(total), _cells(after))
-	var t := _figure("Total", total, DS.PALETTE["DANGER"], digits)
+	# White while the cash covers the total twice over, red below, as the catalogue's prices (owner).
+	var t := _figure("Total", total, preload("res://scripts/construct_ds2/catalogue.gd").price_colour(total, MatchState.money), digits)
 	t.name = "V3Total"
 	row.add_child(t)
 	var cash := _figure("Cash after", after, DS.PALETTE["OK"] if after >= 0.0 else DS.PALETTE["DANGER"], digits)

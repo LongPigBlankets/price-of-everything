@@ -65,7 +65,13 @@ const CARD_NAME_PX := 13
 const CARD_NAME_LINE := 17
 const TAG_NAME_PX := 16
 const POUND_PX := 18
-const MUTED := Color(0.72, 0.72, 0.72)
+## A card that can't be built or paid for is grey (owner): its container and plate through the grey shader, its
+## words and price in grey.
+const GREY_SHADER := preload("res://scripts/construct_ds2/grey.gdshader")
+const GREY_INK := Color("#5d6166")
+const GREY_LED := Color("#9aa0a6")
+## The price is white while the cash covers it this many times over (owner), red below.
+const COMFORT := 2.0
 ## The category keys' print: the latching key's own size, its words fitted.
 const KEY_LABELS := {"farm_forests": "FARM FORESTS"}
 
@@ -144,12 +150,17 @@ static func site_card(building: Dictionary, width: float, price: float, dim_reas
 	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	card.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	card.tooltip_text = dim_reason
-	if dim_reason != "":
-		card.modulate = MUTED
+	var grey := dim_reason != ""
+	if grey:
+		var m := ShaderMaterial.new()
+		m.shader = GREY_SHADER
+		card.material = m
 	card.pressed.connect(on_press)
 	var plate := PLATE_AT * S
 	var field := Rect2(plate + CARD_FIELD.position * S, CARD_FIELD.size * S)
 	var icon := BuildOrder.BlueprintIcon.new(bid)
+	if grey:
+		icon.modulate = Color(0.75, 0.75, 0.75)
 	icon.position = field.position + Vector2.ONE * CARD_ICON_INSET * S
 	icon.size = field.size - Vector2.ONE * 2.0 * CARD_ICON_INSET * S
 	card.add_child(icon)
@@ -161,7 +172,7 @@ static func site_card(building: Dictionary, width: float, price: float, dim_reas
 	name.add_theme_font_override("font", SEMI)
 	name.add_theme_font_size_override("font_size", CARD_NAME_PX)
 	name.add_theme_constant_override("line_spacing", -3)
-	name.add_theme_color_override("font_color", NAVY)
+	name.add_theme_color_override("font_color", GREY_INK if grey else NAVY)
 	name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	name.max_lines_visible = 2
 	name.position = Vector2(text_x, field.position.y - 3.0)
@@ -169,10 +180,10 @@ static func site_card(building: Dictionary, width: float, price: float, dim_reas
 	name.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(name)
 	var shown: Dictionary = MoneyFigure.screen(price, 2)
-	var money := Parts.money(str(shown.figure), DS.PALETTE["DANGER"], 5, str(shown.suffix))
+	var money := Parts.money(str(shown.figure), GREY_LED if grey else price_colour(price, MatchState.money), 5, str(shown.suffix))
 	money.name = "Price"
 	var pound: Label = money.get_child(0)
-	pound.add_theme_color_override("font_color", NAVY)
+	pound.add_theme_color_override("font_color", GREY_INK if grey else NAVY)
 	pound.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.3))
 	money.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(money)
@@ -218,6 +229,11 @@ static func recipe_tag(building_id: String, recipe: Dictionary, condensed: bool,
 	tag.mouse_exited.connect(func() -> void: glow.fade(false))
 	tag.add_child(row)
 	return tag
+
+
+## A price's colour against the cash: white while the cash covers it COMFORT times over, red below (owner).
+static func price_colour(price: float, cash: float) -> Color:
+	return DS.PALETTE["TEXT"] if cash >= COMFORT * price else DS.PALETTE["DANGER"]
 
 
 ## A board's price: the quote's total for the building on the site (with no site, its fee and its materials).
