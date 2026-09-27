@@ -1251,19 +1251,16 @@ func _thousands(n: int) -> String:
 	return ("-" if n < 0 else "") + out
 
 
-## Posts each research unlock to the updates dock the first time it appears -- TurnBriefing can
-## rebuild its items more than once as unlocks land, and keeps each for two turns.
+## Posts each research unlock to the updates dock the first time it appears -- TurnBriefing reads
+## the unlocks of the latest turn, which it keeps for two turns.
 func _refresh_briefing() -> void:
 	var dock := _updates_dock()
-	for it in TurnBriefing.items():
-		if str(it.get("event_kind", "")) != "research_unlocked":
-			continue
-		for entry in (it.get("research", []) as Array):
-			var tech := str((entry as Dictionary).get("name", ""))
-			if tech != "" and not _research_toasted.has(tech):
-				_research_toasted[tech] = true
-				if dock != null:
-					dock.push_research(tech)
+	for entry in TurnBriefing.recent_research():
+		var tech := str((entry as Dictionary).get("name", ""))
+		if tech != "" and not _research_toasted.has(tech):
+			_research_toasted[tech] = true
+			if dock != null:
+				dock.push_research(tech)
 
 
 # ── 5 · Council: seated portraits with loyalty rings + number chips ─────────────

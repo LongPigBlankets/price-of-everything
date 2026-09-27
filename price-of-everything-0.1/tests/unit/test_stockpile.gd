@@ -12,7 +12,6 @@ const TAGS := {
 	"_test_warehouse_upgrade": ["research", "stockpile"],
 	"_test_warehousing_fee_rates": ["market", "stockpile"],
 	"_test_jit_streak_and_direct_feed": ["production", "research", "stockpile"],
-	"_test_storage_alert_rearms_on_upgrade": ["events", "production", "stockpile"],
 }
 
 func _recipe_input_qty(recipe_id: String, good_id: String) -> int:
@@ -285,8 +284,8 @@ func _test_input_buy_capacity_building_first() -> void:
 	Production.last_turn_summary = summary
 	var item: Dictionary = TurnBriefing._storage_undersized_item()
 	_check(str(item.get("severity", "")) == "critical" and str(item.get("id", "")) == "alert:storage_undersized"
-		and str(item.get("title", "")).contains("lacks stockpile"),
-		"briefing renders the critical 'lacks stockpile' update")
+		and str(item.get("title", "")).contains("needs more stockpile"),
+		"briefing renders the critical 'needs more stockpile' update")
 	Production.last_turn_summary = saved_summary
 	_check(int(summary.purchased.get(steel, 0)) == w_steel,
 		"building-first: steel order = one building's FULL buffer (%d), not a spread" % w_steel)
@@ -430,33 +429,3 @@ func _test_jit_streak_and_direct_feed() -> void:
 	MatchState.reset()
 	Stockpile.clear_all()
 
-func _test_storage_alert_rearms_on_upgrade() -> void:
-	# A jam that holds steady never grows, so the magnitude rule silenced this alert for good:
-	# the player dismissed once and never heard about the tile again while it clipped every
-	# input order. Upgrading the warehouse is the action they take, so it re-arms the alert.
-	var saved_summary: Dictionary = Production.last_turn_summary
-	var saved_overflow: Array = TransportState.overflow_shipments.duplicate(true)
-	TurnBriefing._alert_dismissed.erase("alert:storage_full")
-	TurnBriefing._storage_dismiss_levels.clear()
-	var t := "tile_5_5"
-	TransportState.overflow_shipments = [{"destination_tile": t, "qty": 40}]
-	Production.last_turn_summary = {"input_orders_capped": []}
-	var lvl0: int = Stockpile.get_warehouse_level(t)
-	var item: Dictionary = TurnBriefing._storage_full_item()
-	_check(str(item.get("id", "")) == "alert:storage_full", "storage-full alert fires on a jammed tile")
-	_check((item.get("tiles", []) as Array).has(t), "storage-full item names its jammed tiles (for dismissal)")
-	TurnBriefing._items = [item]
-	TurnBriefing.dismiss("alert:storage_full")
-	_check(int(TurnBriefing._storage_dismiss_levels.get(t, -1)) == lvl0,
-		"dismissal snapshots the tile's warehouse level (%d)" % lvl0)
-	_check(TurnBriefing._storage_full_item().is_empty(),
-		"a jam of the SAME size stays quiet after dismissal")
-	Stockpile.set_warehouse_level(t, lvl0 + 1)
-	_check(str(TurnBriefing._storage_full_item().get("id", "")) == "alert:storage_full",
-		"upgrading the warehouse re-arms the alert while the tile is still jammed")
-	TransportState.overflow_shipments = []
-	_check(TurnBriefing._storage_full_item().is_empty(), "alert self-clears once the jam is gone")
-	_check(TurnBriefing._storage_dismiss_levels.is_empty(), "self-clear forgets the dismissal levels")
-	Stockpile.set_warehouse_level(t, lvl0)
-	TransportState.overflow_shipments = saved_overflow
-	Production.last_turn_summary = saved_summary

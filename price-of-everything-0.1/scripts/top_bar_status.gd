@@ -55,8 +55,10 @@ static func power() -> Dictionary:
 	return out
 
 
-## Transport across the company: units riding to market, links over capacity, tiles nearly full and
-## tiles refusing goods, and shipments stuck with nowhere to unload.
+## Transport across the company: units riding to market, links over capacity, tiles nearly full, tiles
+## full, tiles refusing goods, tiles whose input orders were cut to fit their storage, and shipments
+## stuck with nowhere to unload. A full tile shows here and nowhere else (owner ruling): no briefing
+## alert, no dock row, no dialog.
 static func transport_stats() -> Dictionary:
 	var to_market := 0
 	for s in TransportState.pending_transport_shipments:
@@ -66,30 +68,45 @@ static func transport_stats() -> Dictionary:
 		for it in (ship.get("sale_record", {}) as Dictionary).get("items", []):
 			to_market += int((it as Dictionary).get("qty", 0))
 	var full := 0
+	var at_cap := 0
 	var rejecting := 0
 	for tile_key in Stockpile.tiles_with_stock():
 		var cap := float(Stockpile.get_capacity(tile_key))
 		if cap <= 0.0:
 			continue
-		if float(Stockpile.get_used_capacity(tile_key)) / cap >= NEAR_FULL_FRACTION:
+		var used := float(Stockpile.get_used_capacity(tile_key))
+		if used / cap >= NEAR_FULL_FRACTION:
 			full += 1
+		if used >= cap:
+			at_cap += 1
 		if Stockpile.get_refused(tile_key) > 0:
 			rejecting += 1
+	var cut_tiles := {}
+	for c in Production.last_turn_summary.get("input_orders_capped", []):
+		var d: Dictionary = c
+		if int(d.get("wanted", 0)) > int(d.get("placed", 0)):
+			cut_tiles[str(d.get("tile_id", ""))] = true
 	return {"to_market": to_market, "over": TransportState.congested_links().size(), "full": full,
-		"rejecting": rejecting, "stuck": TransportState.overflow_shipments.size()}
+		"at_capacity": at_cap, "rejecting": rejecting, "orders_cut": cut_tiles.size(),
+		"stuck": TransportState.overflow_shipments.size()}
 
 
-## The Transport module's three lamps, each owning one failure: storage (tiles refusing goods, or more
-## than one nearly full), links (amber for up to three over capacity, red beyond) and freight (shipments
-## stuck on arrival).
+## The Transport module's three lamps, each owning one failure: storage (red for tiles refusing goods, a
+## tile full or more than one nearly full, amber for input orders cut to fit storage), links (amber for
+## up to three over capacity, red beyond) and freight (shipments stuck on arrival).
 static func transport() -> Dictionary:
 	var t := transport_stats()
 	var storage: Dictionary
 	if int(t.rejecting) > 0:
 		storage = {"tone": "bad", "name": "Storage full",
 			"detail": "%s refusing goods. %s at 95%% of storage or more." % [_count(int(t.rejecting), "tile"), _count(int(t.full), "tile")]}
+	elif int(t.at_capacity) > 0:
+		storage = {"tone": "bad", "name": "Storage full", "detail": "%s full." % _count(int(t.at_capacity), "tile")}
 	elif int(t.full) > 1:
 		storage = {"tone": "bad", "name": "Storage nearly full", "detail": "%s at 95%% of storage or more." % _count(int(t.full), "tile")}
+	elif int(t.orders_cut) > 0:
+		storage = {"tone": "warn", "name": "Orders cut to fit storage",
+			"detail": "Input orders on %s were cut to fit storage." % _count(int(t.orders_cut), "tile")}
 	else:
 		storage = {"tone": "ok", "name": "Storage",
 			"detail": ("%s at 95%% of storage or more." % _count(int(t.full), "tile")) if int(t.full) > 0 else "Every tile has room."}

@@ -1,8 +1,9 @@
 extends Control
-## The Turn Briefing's expanded form (spec §2): a mid-screen panel — header (This Turn ·
-## TURN n · cash · collapse), a left mini-menu sectioned DECISIONS / ALERTS / NEWS /
-## INFO, a detail area for the selected item, and a footer status line. No scrim: the
-## map stays visible and reachable; decisions gate End Turn, not input (owner ruling).
+## The Turn Briefing's expanded form (spec §2): a mid-screen panel with a header (This Turn,
+## the turn, the cash and the one Close key), a left mini-menu sectioned DECISIONS / ALERTS /
+## INFO, a detail area for the selected item, and a footer status line. No scrim: the map
+## stays visible and reachable; decisions gate End Turn, not input (owner ruling). The Close
+## key is the only way to close it with the mouse; Esc (PanelStack) is the keyboard's.
 ## Read-only against the sim — mutations go through DecisionState / TurnBriefing.
 
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
@@ -12,7 +13,6 @@ const CARD_MAX_H := 640.0
 const MARGIN := 64.0
 const CHOICE_MIN_W := 190.0
 const CHOICE_MIN_H := 300.0   # taller decision cards
-const REWARD_FONT := preload("res://assets/fonts/IBMPlexSans-SemiBold.ttf")  # bold reward line
 
 var _card: PanelContainer
 var _menu_list: VBoxContainer
@@ -75,13 +75,14 @@ func _ready() -> void:
 	_cash_label.theme_type_variation = "Numeric"
 	_cash_label.add_theme_color_override("font_color", DS.PALETTE["WARN"])
 	header.add_child(_cash_label)
-	var collapse_btn := Button.new()
-	collapse_btn.text = "▴"
-	collapse_btn.tooltip_text = "Collapse to the strip"
-	collapse_btn.focus_mode = Control.FOCUS_NONE
-	collapse_btn.custom_minimum_size = Vector2(30, 30)
-	collapse_btn.pressed.connect(func() -> void: TurnBriefing.collapse())
-	header.add_child(collapse_btn)
+	var close_btn := Button.new()
+	close_btn.name = "CloseKey"
+	close_btn.text = "✕"
+	close_btn.tooltip_text = "Close"
+	close_btn.focus_mode = Control.FOCUS_NONE
+	close_btn.custom_minimum_size = Vector2(30, 30)
+	close_btn.pressed.connect(func() -> void: TurnBriefing.collapse())
+	header.add_child(close_btn)
 	col.add_child(HSeparator.new())
 
 	# ── body: mini-menu | detail ──
@@ -132,11 +133,6 @@ func _ready() -> void:
 	_footer_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_footer_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	footer.add_child(_footer_label)
-	var collapse2 := Button.new()
-	collapse2.text = "Collapse ▴"
-	collapse2.focus_mode = Control.FOCUS_NONE
-	collapse2.pressed.connect(func() -> void: TurnBriefing.collapse())
-	footer.add_child(collapse2)
 
 	TurnBriefing.items_changed.connect(_on_items_changed)
 	MatchState.money_changed.connect(func(m: float) -> void:
@@ -225,7 +221,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 # Build
 # ---------------------------------------------------------------------------
 
-const _SECTIONS := [["decisions", "Decisions"], ["alerts", "Alerts"], ["news", "News"], ["info", "Info"]]
+const _SECTIONS := [["decisions", "Decisions"], ["alerts", "Alerts"], ["info", "Info"]]
 
 func _rebuild() -> void:
 	_turn_chip.text = "TURN %d" % TurnManager.current_turn
@@ -262,9 +258,8 @@ func _rebuild() -> void:
 	else:
 		_build_generic_detail(selected)
 
+	_footer_label.text = TurnBriefing.gate_line()
 	var n := TurnBriefing.unresolved_decisions().size()
-	_footer_label.text = ("%d decision%s must be answered before you can end the turn." \
-		% [n, "" if n == 1 else "s"]) if n > 0 else "All caught up — you can end the turn."
 	_footer_label.add_theme_color_override("font_color",
 		DS.PALETTE["WARN"] if n > 0 else DS.PALETTE["OK"])
 
@@ -305,7 +300,7 @@ func _menu_row(it: Dictionary) -> Control:
 	title.max_lines_visible = 2
 	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title.add_theme_color_override("font_color", Color("#F3F8FD") if on else DS.PALETTE["TEXT_MUTED"])
+	title.add_theme_color_override("font_color", Color("#F3F8FD") if on else DS.PALETTE["TEXT"])
 	hb.add_child(title)
 
 	if str(it.kind) != "decision" and str(it.section) == "alerts":
@@ -323,23 +318,10 @@ func _menu_row(it: Dictionary) -> Control:
 		else:
 			# "◔" was the last dingbat in the row and the one that rendered as a filled pie on
 			# the owner's machine. A drawn ring says "seen, not yet acted on" at any font.
-			hb.add_child(_ring_glyph(DS.PALETTE["TEXT_MUTED"], 11))
+			hb.add_child(_ring_glyph(DS.PALETTE["TEXT"], 11))
 			glyph = null
 		if glyph != null:
 			hb.add_child(glyph)
-
-	# ✕ dismiss on everything except decisions (owner ruling).
-	if bool(it.get("dismissible", false)):
-		var x := Button.new()
-		x.text = "✕"
-		x.flat = true
-		x.focus_mode = Control.FOCUS_NONE
-		x.custom_minimum_size = Vector2(18, 18)
-		x.add_theme_font_size_override("font_size", 10)
-		x.tooltip_text = "Dismiss"
-		x.mouse_filter = Control.MOUSE_FILTER_STOP
-		x.pressed.connect(func() -> void: TurnBriefing.dismiss(str(it.id)))
-		hb.add_child(x)
 
 	var id := str(it.id)
 	row.gui_input.connect(func(e: InputEvent) -> void:
@@ -373,7 +355,7 @@ func _detail_head(it: Dictionary, tag_text: String, tag_color: Color) -> Control
 func _build_decision_detail(it: Dictionary) -> void:
 	var view: Dictionary = it.view
 	var tint := _item_color(it)
-	_detail.add_child(_detail_head(it, "must be answered", tint))
+	_detail.add_child(_detail_head(it, "Must be answered", tint))
 	# Optional big-bold headline (government notices) above the flavour body.
 	var headline_text := str(view.get("headline", ""))
 	if headline_text != "":
@@ -387,11 +369,6 @@ func _build_decision_detail(it: Dictionary) -> void:
 	prompt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	prompt.text = str(view.body)
 	_detail.add_child(prompt)
-	if str((view.get("target", {}) as Dictionary).get("name", "")) != "":
-		var affects := Label.new()
-		affects.theme_type_variation = "Caption"
-		affects.text = "Affects: %s" % str(view.target.name)
-		_detail.add_child(affects)
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", DS.SP["SM"])
@@ -500,15 +477,14 @@ func _choice_card(view: Dictionary, choice: Dictionary) -> Control:
 		note.theme_type_variation = "Caption"
 		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		note.add_theme_color_override("font_color", DS.PALETTE["WARN"])
-		note.text = ("You're in the red — the full £%.0f cost is covered by a loan." % shortfall) \
-			if MatchState.money < 0.0 else ("You're short £%.0f — a loan covers it." % shortfall)
+		note.text = TurnBriefing.shortfall_line(shortfall)
 		vb.add_child(note)
 	if not available:
 		var lock := Label.new()
 		lock.theme_type_variation = "Caption"
 		lock.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		lock.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
-		lock.text = "🔒 %s" % str(choice.get("lock_reason", ""))
+		lock.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+		lock.text = str(choice.get("lock_reason", ""))
 		vb.add_child(lock)
 
 	# An expanding spacer eats the leftover height so the CTA anchors to the card
@@ -542,11 +518,11 @@ func _consequence_lines(consequence: String) -> Array:
 	return out
 
 func _line_tone(line: String) -> Color:
-	if line.begins_with("−") or line.begins_with("-") or line.contains("−£") or line.contains("delayed"):
+	if line.begins_with("Costs") or line.contains("delayed"):
 		return DS.PALETTE["DANGER"]
-	if line.begins_with("+"):
+	if line.begins_with("+") or line.begins_with("Pays") or line.begins_with("Free"):
 		return DS.PALETTE["OK"]
-	return DS.PALETTE["TEXT_MUTED"]
+	return DS.PALETTE["TEXT"]
 
 func _loyalty_chip(advisor_name: String, delta: float, up: bool) -> Control:
 	var chip := Label.new()
@@ -605,10 +581,6 @@ func _build_generic_detail(it: Dictionary) -> void:
 		body.text = body_text
 		_detail.add_child(body)
 
-	# Aggregated research unlocks: name / bold-green reward / condition, per entry.
-	if it.has("research"):
-		_build_research_list(it.get("research", []))
-
 	# Stat rows (2-column grid of label/value cards).
 	var rows: Array = it.get("rows", [])
 	if not rows.is_empty():
@@ -627,73 +599,32 @@ func _build_generic_detail(it: Dictionary) -> void:
 	if int(it.get("list_more", 0)) > 0:
 		var more := Label.new()
 		more.theme_type_variation = "Caption"
-		more.text = "…and %d more in the Ledger" % int(it.list_more)
+		more.text = "%d more not shown." % int(it.list_more)
 		_detail.add_child(more)
 
-	# Action row: deep-link · acknowledge (news) · dismiss.
+	# Action row: the deep link when no row names the place, and Silence alert.
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", DS.SP["SM"])
 	var dl: Dictionary = it.get("deeplink", {})
-	if str(dl.get("tile_id", "")) != "" or str(dl.get("building_id", "")) != "":
+	if (it.get("list", []) as Array).is_empty() and (str(dl.get("tile_id", "")) != "" or str(dl.get("building_id", "")) != ""):
 		var go := Button.new()
-		go.text = "Go to it  ➤"
+		go.text = "Go to"
 		go.focus_mode = Control.FOCUS_NONE
 		go.pressed.connect(func() -> void: _navigate(dl))
 		actions.add_child(go)
-	if bool(it.get("ackable", false)):
-		if bool(it.get("acked", false)):
-			var done := Label.new()
-			done.theme_type_variation = "Caption"
-			done.text = "✓ Acknowledged"
-			done.add_theme_color_override("font_color", DS.PALETTE["OK"])
-			actions.add_child(done)
-		else:
-			var ack := Button.new()
-			ack.theme_type_variation = "Primary"
-			ack.text = "Acknowledge ✓"
-			ack.focus_mode = Control.FOCUS_NONE
-			ack.pressed.connect(func() -> void: TurnBriefing.acknowledge(str(it.id)))
-			actions.add_child(ack)
 	if bool(it.get("dismissible", false)):
-		var dismiss := Button.new()
-		dismiss.text = "✕ Dismiss"
-		dismiss.focus_mode = Control.FOCUS_NONE
-		dismiss.pressed.connect(func() -> void: TurnBriefing.dismiss(str(it.id)))
-		actions.add_child(dismiss)
-		if str(it.section) == "alerts":
-			var hint := Label.new()
-			hint.theme_type_variation = "Caption"
-			hint.add_theme_font_size_override("font_size", 10)
-			hint.text = "re-surfaces only if it worsens · stays in the bell"
-			hint.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
-			actions.add_child(hint)
+		var silence := Button.new()
+		silence.name = "SilenceKey"
+		silence.text = TurnBriefing.SILENCE_LABEL
+		silence.focus_mode = Control.FOCUS_NONE
+		silence.pressed.connect(func() -> void: TurnBriefing.dismiss(str(it.id)))
+		actions.add_child(silence)
+		var hint := Label.new()
+		hint.theme_type_variation = "Caption"
+		hint.text = TurnBriefing.SILENCE_HINT
+		hint.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+		actions.add_child(hint)
 	_detail.add_child(actions)
-
-func _build_research_list(entries: Array) -> void:
-	for r: Dictionary in entries:
-		var group := VBoxContainer.new()
-		group.add_theme_constant_override("separation", 2)
-		var name_lbl := Label.new()
-		name_lbl.theme_type_variation = "Body"
-		name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		name_lbl.text = str(r.get("name", ""))
-		name_lbl.add_theme_color_override("font_color", Color("#F3F8FD"))
-		group.add_child(name_lbl)
-		var reward_lbl := Label.new()
-		reward_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		reward_lbl.add_theme_font_override("font", REWARD_FONT)
-		reward_lbl.add_theme_color_override("font_color", DS.PALETTE["OK"])   # green, bold
-		reward_lbl.text = str(r.get("reward", ""))
-		group.add_child(reward_lbl)
-		var cond := str(r.get("condition", ""))
-		if cond != "":
-			var cond_lbl := Label.new()
-			cond_lbl.theme_type_variation = "Caption"
-			cond_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			cond_lbl.text = "Our business learned this because we did: %s" % cond
-			cond_lbl.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
-			group.add_child(cond_lbl)
-		_detail.add_child(group)
 
 
 func _stat_card(label: String, value: String, tone: String) -> Control:
@@ -735,7 +666,7 @@ func _list_row(entry: Dictionary, tint: Color, to_stockpile: bool = false) -> Co
 	row.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	var iid := str(entry.get("instance_id", ""))
 	var tile := str(entry.get("tile_id", ""))
-	row.text = "%s   %s   — %s" % [Catalog.tile_label(tile), tile, str(entry.get("why", ""))]
+	row.text = "%s. %s" % [TurnBriefing.row_title(entry), TurnBriefing.row_detail(entry)]
 	row.add_theme_color_override("font_color", tint)
 	row.pressed.connect(func() -> void:
 		_navigate({"building_id": iid, "tile_id": tile, "panel": "stockpile" if to_stockpile else "building"}))

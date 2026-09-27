@@ -1017,8 +1017,7 @@ func pending_view(uid: String = "") -> Dictionary:
 		var available := seat == "" or _seat_tenured(seat)
 		var lock_reason := ""
 		if not available:
-			lock_reason = "Requires a seated %s (hired at least one turn ago)" \
-				% _seat_name(seat)
+			lock_reason = "Needs a %s hired at least one turn ago." % _seat_name(seat)
 		var cost := _upfront_cost(choice)
 		var shortfall := loan_needed_for(cost)
 		choices.append({
@@ -1027,12 +1026,15 @@ func pending_view(uid: String = "") -> Dictionary:
 			"available": available,
 			"lock_reason": lock_reason,
 			"consequence": _describe_effects(choice.get("effects", []), target),
+			"figures": choice_figures(str(d.def_id), str(choice.id), target),
+			"words": choice_words(str(d.def_id), str(choice.id), target),
 			"upfront_cost": cost,
 			"loan_shortfall": shortfall,
 			"advocate": _advocate_view(choice, follow_delta),
 		})
 	return {
 		"uid": str(d.uid),
+		"def_id": str(d.def_id),
 		"title": str(def.get("title", "")),
 		"headline": _policy_copy(str(def.get("headline", ""))),
 		"body": _policy_copy(str(def.get("body", "")).replace("{target_name}", str(target.get("name", "")))),
@@ -1345,57 +1347,105 @@ func _describe_effects(effects: Array, target: Dictionary) -> String:
 		return "No effect."
 	var parts: Array = []
 	for eff: Dictionary in effects:
-		if eff.has("describe"):
-			parts.append(_policy_copy(str(eff.describe)).trim_suffix("."))
-			continue
-		match str(eff.get("kind", "")):
-			"modifier":
-				var pct := float(eff.get("pct", 0.0))
-				var text := "%+.0f%% %s on %s" % [pct,
-					str(_DOMAIN_LABELS.get(str(eff.get("domain", "")), str(eff.get("domain", "")))),
-					str(target.get("name", "the company"))]
-				if eff.has("duration_turns"):
-					text += " for %d turns" % int(eff.duration_turns)
-				parts.append(text)
-			"cash":
-				if str(eff.get("formula", "")) == "pct_of_building_revenue":
-					parts.append("+£%.0f now (%.0f%% of last turn's revenue)"
-						% [_cash_amount(eff, target), float(eff.get("pct", 0.0))])
-				else:
-					var amount := float(eff.get("amount", 0.0))
-					parts.append(("+£%.0f now" if amount >= 0.0 else "−£%.0f now") % absf(amount))
-			"construction_delta":
-				parts.append("construction delayed %d turns" % int(eff.get("turns", 0)))
-			"grant_unlock":
-				var title := _pick_free_tech(target)
-				parts.append("free research unlock: %s" % (title if title != "" else "none available"))
-			"seat_founder":
-				parts.append("he takes the %s's chair for %d turns, unpaid" % [
-					str(eff.get("seat", "")).to_upper(), AdvisorState.FOUNDER_TENURE_TURNS])
-			"founder_loan":
-				parts.append("a one-off £%.0f loan at %.0f%% as a signing gift" % [
-					float(eff.get("amount", 0.0)), float(eff.get("rate", 0.0)) * 100.0])
-			"freight_credit":
-				parts.append("%d units of pre-paid domestic freight" % int(eff.get("units", 0)))
-			"middleman_credit":
-				parts.append("%d construction-material units free through the Logistics Intermediary" % int(eff.get("units", 0)))
-			"global_trade_license":
-				parts.append("direct global-market trading is enabled")
-			"agenda_tag":
-				pass   # advisor sentiment ripples are shown via loyalty, not here
-			"schedule_event":
-				parts.append("consequences follow in %d turns" % int(eff.get("in_turns", 0)))
-			"set_flag":
-				parts.append("%s becomes exempt from environmental events" % str(target.get("name", "it")))
-			"sell_land":
-				var patches := BuildingState.sellable_land_patches(str(target.get("tile_id", "")))
-				parts.append("+£%.0f now (sell %d land patches at %.0fx)"
-					% [float(patches) * BuildingState.LAND_PATCH_COST * float(eff.get("price_mult", 1.0)),
-						patches, float(eff.get("price_mult", 1.0))])
+		var text := _describe_effect(eff, target)
+		if text != "":
+			parts.append(text)
 	if parts.is_empty():
 		return "No direct effect."
 	var joined := ". ".join(PackedStringArray(parts))
 	return joined.substr(0, 1).to_upper() + joined.substr(1) + "."
+
+## One effect in words, without its closing full stop; "" for an effect that shows nothing.
+func _describe_effect(eff: Dictionary, target: Dictionary) -> String:
+	if eff.has("describe"):
+		return _policy_copy(str(eff.describe)).trim_suffix(".")
+	match str(eff.get("kind", "")):
+		"modifier":
+			var pct := float(eff.get("pct", 0.0))
+			var text := "%+.0f%% %s on %s" % [pct,
+				str(_DOMAIN_LABELS.get(str(eff.get("domain", "")), str(eff.get("domain", "")))),
+				str(target.get("name", "the company"))]
+			if eff.has("duration_turns"):
+				text += " for %d turns" % int(eff.duration_turns)
+			return text
+		"cash":
+			var amount := _cash_amount(eff, target)
+			var words := ("Pays £%.0f now" if amount >= 0.0 else "Costs £%.0f now") % absf(amount)
+			if str(eff.get("formula", "")) == "pct_of_building_revenue":
+				words += ", %.0f%% of last turn's revenue" % float(eff.get("pct", 0.0))
+			return words
+		"construction_delta":
+			return "Construction delayed %d turns" % int(eff.get("turns", 0))
+		"grant_unlock":
+			var title := _pick_free_tech(target)
+			return ("Free research: %s" % title) if title != "" else "No research left to grant"
+		"seat_founder":
+			return "The %s's chair for %d turns, unpaid" % [
+				str(eff.get("seat", "")).to_upper(), AdvisorState.FOUNDER_TENURE_TURNS]
+		"founder_loan":
+			return "A £%.0f loan at %.0f%%" % [float(eff.get("amount", 0.0)), float(eff.get("rate", 0.0)) * 100.0]
+		"freight_credit":
+			return "%d units of domestic freight, paid" % int(eff.get("units", 0))
+		"middleman_credit":
+			return "%d units of building materials delivered free by the Logistics Intermediary" % int(eff.get("units", 0))
+		"global_trade_license":
+			return "Direct trade on the global market"
+		"schedule_event":
+			return "A follow up in %d turns" % int(eff.get("in_turns", 0))
+		"set_flag":
+			return "%s is exempt from environmental events" % str(target.get("name", "It"))
+		"sell_land":
+			var patches := BuildingState.sellable_land_patches(str(target.get("tile_id", "")))
+			return "Pays £%.0f now for %d land patches at %.1fx" % [
+				float(patches) * BuildingState.LAND_PATCH_COST * float(eff.get("price_mult", 1.0)),
+				patches, float(eff.get("price_mult", 1.0))]
+	return ""   # agenda_tag (shown through loyalty), none
+
+## A choice's figures for screens, read from the same effects `resolve` applies, so the screens
+## and the outcome cannot disagree: [{kind, value, caption}], kind "cash" (paid to you), "cost"
+## (paid by you), "loan" (with "rate"), "units" or "turns". An effect that carries its own
+## words ("describe") shows none.
+func choice_figures(def_id: String, choice_id: String, target: Dictionary) -> Array:
+	var out: Array = []
+	var choice := _find_choice(DECISION_DEFINITIONS.get(def_id, {}), choice_id)
+	for eff: Dictionary in choice.get("effects", []):
+		if eff.has("describe"):
+			continue
+		match str(eff.get("kind", "")):
+			"cash":
+				var amount := _cash_amount(eff, target)
+				if amount >= 0.0:
+					out.append({"kind": "cash", "value": amount, "caption": "Paid to you now"})
+				else:
+					out.append({"kind": "cost", "value": -amount, "caption": "Cost now"})
+			"sell_land":
+				var patches := BuildingState.sellable_land_patches(str(target.get("tile_id", "")))
+				out.append({"kind": "cash", "caption": "Land sold",
+					"value": float(patches) * BuildingState.LAND_PATCH_COST * float(eff.get("price_mult", 1.0))})
+			"founder_loan":
+				out.append({"kind": "loan", "value": float(eff.get("amount", 0.0)), "rate": float(eff.get("rate", 0.0)),
+					"caption": "Loan at %.0f%%" % (float(eff.get("rate", 0.0)) * 100.0)})
+			"freight_credit":
+				out.append({"kind": "units", "value": int(eff.get("units", 0)), "caption": "Freight units paid"})
+			"middleman_credit":
+				out.append({"kind": "units", "value": int(eff.get("units", 0)), "caption": "Material units free"})
+			"construction_delta":
+				out.append({"kind": "turns", "value": int(eff.get("turns", 0)), "caption": "Turns of delay"})
+	return out
+
+## A choice's effects that have no figure, in words, one sentence each ("The CFO's chair for 30
+## turns, unpaid."). With choice_figures, the whole of `consequence`.
+func choice_words(def_id: String, choice_id: String, target: Dictionary) -> Array:
+	var out: Array = []
+	var choice := _find_choice(DECISION_DEFINITIONS.get(def_id, {}), choice_id)
+	for eff: Dictionary in choice.get("effects", []):
+		if not eff.has("describe") and str(eff.get("kind", "")) in \
+				["cash", "sell_land", "founder_loan", "freight_credit", "middleman_credit", "construction_delta"]:
+			continue
+		var text := _describe_effect(eff, target)
+		if text != "":
+			out.append(text.substr(0, 1).to_upper() + text.substr(1) + ".")
+	return out
 
 
 # ---------------------------------------------------------------------------

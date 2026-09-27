@@ -426,7 +426,7 @@ func _test_power_capped_alert() -> void:
 	var item: Dictionary = TurnBriefing._power_capped_item()
 	_check(str(item.get("id", "")) == "alert:power_capped" and str(item.get("severity", "")) == "warning",
 		"cable-cap alert fires as a warning (nothing is broken; output is being thrown away)")
-	_check(str(item.get("title", "")).contains("capped by cables"), "cable-cap alert names the cause")
+	_check(str(item.get("title", "")).contains("blocked by full cables"), "cable-cap alert names the cause")
 	var starved: Dictionary = TurnBriefing._starved_item()
 	_check(starved.is_empty(), "the same plant is NOT also reported as starved of power")
 	BuildingState.remove_building(gen)

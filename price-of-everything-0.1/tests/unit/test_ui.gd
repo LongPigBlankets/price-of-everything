@@ -1886,8 +1886,10 @@ func _test_updates_dock() -> void:
 		return row_list.get_children().filter(func(r: Node) -> bool: return (r as Control).visible).size()
 	_check(shown.call() == 4, "updates dock: opened from the dock, every kept row shows")
 	toasts._on_timer()
+	_check(toasts.is_open(), "updates dock: the dock's slide-out has no timer; it stays until a click outside it")
+	toasts.collapse()
 	_check(not toasts.is_open() and toasts._dock_style.border_color == toasts.DOCK_BORDER,
-		"updates dock: the dock's slide-out also closes when left alone, and its rim goes out")
+		"updates dock: put away, its rim goes out")
 
 	toasts._on_toast_requested("Ordered 5 Steel", "success")
 	_check(toasts.is_open() and shown.call() == 1, "updates dock: opened by itself, only rows it hasn't shown")
@@ -1936,7 +1938,7 @@ func _test_updates_dock_filters_and_decisions() -> void:
 	_check(toasts.is_open() and shown.call() == PackedStringArray(["Local opposition to density"]),
 		"updates dock: another bell switches the rows to its colour")
 	toasts.find_child("Bell_amber", true, false).gui_input.emit(click)
-	_check(not toasts.is_open() and toasts.filter() == "", "updates dock: the same bell again closes the rows")
+	_check(toasts.is_open() and toasts.filter() == "amber", "updates dock: the same bell again leaves its rows open")
 	toasts.find_child("UpdatesDock", true, false).gui_input.emit(click)
 	_check(shown.call().size() == 4, "updates dock: clicking the dock between its icons shows every row")
 	toasts.collapse(false)
@@ -1968,10 +1970,11 @@ func _test_updates_dock_filters_and_decisions() -> void:
 	TurnBriefing.expanded_changed.connect(on_expand)
 	toasts.open_all()
 	pen.gui_input.emit(click)
-	_check(opened[0] == "open" and TurnBriefing.expanded and not toasts.is_open(),
-		"updates dock: the pen opens the briefing on its decisions and puts the rows away")
+	_check(opened[0] == "open" and TurnBriefing.expanded and toasts.is_open(),
+		"updates dock: the pen opens the briefing on its decisions and leaves the rows open")
 	pen.gui_input.emit(click)
-	_check(opened[0] == "closed" and not TurnBriefing.expanded, "updates dock: the pen again closes the briefing")
+	_check(opened[0] == "open" and TurnBriefing.expanded, "updates dock: the pen only opens the briefing; its Close key closes it")
+	TurnBriefing.collapse()
 	TurnBriefing.expanded_changed.disconnect(on_expand)
 	DecisionState.hide_updates = saved_hide
 	TurnBriefing._items = items_before
@@ -2005,8 +2008,9 @@ func _test_updates_dock_research_and_notices() -> void:
 	MatchState.research_search_requested.connect(on_search)
 	research_row.gui_input.emit(click)
 	MatchState.research_search_requested.disconnect(on_search)
-	_check(searched[0] == "Interchangeable Tooling" and not toasts.is_open(),
-		"updates dock: clicking an unlock opens the Research panel on it and puts the rows away")
+	_check(searched[0] == "Interchangeable Tooling" and toasts.is_open(),
+		"updates dock: clicking an unlock opens the Research panel on it and leaves the rows up")
+	toasts.collapse(false)
 	toasts.push_research("Interchangeable Tooling")
 	_check(toasts.row_count() == 3, "updates dock: the same unlock twice keeps one row")
 
