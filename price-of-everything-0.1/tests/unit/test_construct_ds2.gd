@@ -241,3 +241,24 @@ func _test_construct_ds2_infrastructure() -> void:
 	_check(panel.find_child("ConstructionMaterialsSection", true, false) == null, "infrastructure: Roads take no materials, no yard")
 	MatchState.money = saved
 	panel.queue_free()
+
+
+func _test_construct_ds2_card_states() -> void:
+	var CAT := preload("res://scripts/construct_ds2/catalogue.gd")
+	_check(CAT.price_colour(100.0, 200.0) == DS.PALETTE["TEXT"] and CAT.price_colour(100.0, 199.0) == DS.PALETTE["DANGER"],
+		"card: white from twice the price in cash, red below")
+	var saved := MatchState.money
+	var panel := _panel()
+	panel.call("open_browser")
+	MatchState.money = 1000.0
+	panel.call("_render")
+	await get_tree().process_frame
+	var cables: Control = panel.find_child("BuildingCard_b_006", true, false)
+	var led: Node = cables.find_child("Led", true, false) if cables != null else null
+	_check(led != null and led.get("colour") == DS.PALETTE["TEXT"], "card: Cables at £75 reads white with £1,000")
+	var is_grey := func(c: Control) -> bool: return c != null and c.material is ShaderMaterial and (c.material as ShaderMaterial).shader == CAT.GREY_SHADER
+	_check(cables != null and not is_grey.call(cables), "card: an affordable card is not grey")
+	var dear: Control = panel.find_child("BuildingCard_b_009", true, false)
+	_check(is_grey.call(dear) and dear.tooltip_text != "", "card: one you can't pay for is grey (the lamp keeps off it), the reason on its hover")
+	MatchState.money = saved
+	panel.queue_free()
