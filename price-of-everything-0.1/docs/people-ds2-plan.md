@@ -1,6 +1,6 @@
 # People panel: how it is used, what it holds, and a DS2 arrangement
 
-Status: built behind `UiPrefs.use_people_ds2` (cheat `toggle people ds2`, off by default), 27 September 2026, branch `people-ds2`. Both tabs are built from the study's answers (§8, each "built as studied, owner to confirm"); what was built, and what is left, is in §9. The concept study is render set `peoplestudy`, seed 437, in `tools/button_mockup/cluster.html`; the game's own layers are the sets `peoplecab` to `peopleknob`, seeds 438 to 443.
+Status: built and the default since 27 September 2026 (`UiPrefs.use_people_ds2`, the cheat `toggle people ds2` switches back to today's panel), branch `people-ds2`. The owner's first review is answered in §10. Both tabs are built from the study's answers (§8, each "built as studied, owner to confirm"); what was built, and what is left, is in §9. The concept study is render set `peoplestudy`, seed 437, in `tools/button_mockup/cluster.html`; the game's own layers are the sets `peoplecab` to `peopleknob`, seeds 438 to 443.
 
 Read with `docs/ds2-theme.md` (the look, the kit, §13 and §14 for the method), `docs/ds2-owner-decisions.md` (settled rulings, including Digital displays) and `docs/tile-view-ds2-plan.md`, the model for this plan.
 
@@ -174,3 +174,16 @@ Left:
 - Loyalty and missions in the dossier are one line of text (shown only when the demo is unlocked); the agenda is not shown in DS2 yet.
 - The knob pictograms are embossed by the knob, not raised in relief; the slide switches are drawn up to 1.5 times their render, a little soft.
 - Moving every screen to the point-in-its-own-cell rule is still a kit change to schedule; only the People screens use it.
+
+## 10. The owner's first review (27 September 2026), and what changed
+
+1. *"The contrast is too low for the individual advisor, select an advisor screen. Maybe condense it since the right half is so empty."* The picker and the dossier now lie on a dark gunmetal sheet (`people_sheet_dark`, set `peoplesheet`, seed 444), white print on dark. The picker files candidates two to a row; the dossier has two columns (who they are and the LEDs on the left, effects and skills on the right), the seat keys and Hire on the tile view's key bed under them.
+2. *"Dismiss should become a guarded cover with a boot icon."* Dismiss is `scripts/ds2/guard_key.gd` with a red cap and a work boot's silhouette under its clear cover (set `peopleguard`, seed 445, `guard_dismiss*`). The first click lifts the cover, the second dismisses.
+3. *"Padlocks need to show only when the player doesn't have any empty slots they can assign. Make sure there is a X/Y advisors possible."* The padlock means the council is full. With a slot free, an opened seat shows Assign advisor and a seat not yet opened says "Opens with Executive Search" over its closed folder. The council plate reads "2/3 ADVISORS" on a dot matrix (seated of the most the company can seat now).
+4. *"Vera's worth should remain only applicable on today's metrics, so 0 is fine if the player has no loans."* The preview values a loan interest cut on the loans the company has now (`AdvisorState._loan_interest_saving`, `LoanState.interest_per_turn`); nothing without loans. Display only.
+5. *"Reduced salary should not apply."* The promise is gone from her specialty, her bonus line and her bonuses list; no salary changed.
+6. *"Make the decimal point in its own cell apply to all fields and cap it at 5 cells max. Never more than 2 decimals."* Every LED in the game now follows it (`bdp_v3_led.gd`, `money_figure.gd`); see `docs/ds2-owner-decisions.md`, Digital displays.
+7. *"Make the new advisor and labour panels the default ones."* Done; the tutorial's Advisors copy names the DS2 keys.
+8. *"Add lamp overlay to all these panels."* The People panel had it from its shell; a test now covers the sheets too.
+
+Still open for the owner: the council's "Opens with Executive Search" names the research that opens every other seat; loyalty and the agenda in the dossier; the knob pictograms raised in relief.

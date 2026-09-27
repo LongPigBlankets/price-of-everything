@@ -71,3 +71,13 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 ## Resources (27 September 2026; plan `docs/resources-ds2-plan.md`)
 
 - **No status lamps on goods.** Just in time play, and buying over a turn or two to sell straight away, hold little stock by design; a Low or Short lamp would call that a problem. The scenarios are too unclear for one lamp, so the table shows the figures and no verdict.
+
+## People (27 September 2026; plan `docs/people-ds2-plan.md`)
+
+- **The boardroom and the works are the default**; `toggle people ds2` switches back to today's panel.
+- **The picker and the dossier are white on dark**, on a dark gunmetal sheet, the dossier in two columns so neither half is empty.
+- **Dismiss is a guarded cap with a boot** under its clear cover.
+- **A padlock means the council is full.** With a slot free, a seat not yet opened says what opens it; the council plate reads **X/Y advisors** (seated of the most you can seat now).
+- **A CFO's worth is today's**: the interest her cut saves on the loans the company has now, nothing without loans.
+- **No reduced salary** for Vera; the promise is gone.
+
