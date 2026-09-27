@@ -96,6 +96,7 @@ python3 tools/button_mockup/export.py 8779        # a private port: 8771 may be 
 | 501–505 | `block`, `footer`, `backing`, `section`, `keys` |
 | 401–411 | `lamp`, `scroll`, `seam`, `title`, `enamel`, `pin`, `cable`, `counter`, `sheet`, `plastic`, `door` |
 | 412–423 | `heading`, `module`, `toggle`, `ldoor`, `modkey`, `sheetw`, `darkplate`, `modicon`, `screen`, `econ`, `diagicon`, `emblem` |
+| 461–463 | the turn briefing: `briefback` (`brief_backing`, the navy steel plate at 540 px, cropped from the top), `briefclip` (`brief_board`, the clipboard's hardboard, and `brief_clip`, its steel clip), `briefwin` (`brief_window_<dark, amber, red, green>`, the annunciator's window glass, a 9-slice, the legend printed by the game) |
 | 424–429 | the top bar: `bar` (the strip: navy steel, a steel H-beam along its foot), `barconcrete` (the slab behind the money, between two pillars), 426 unused (retired), `barpipes` (the silver pipe pair: `bar_pipes_left`, `_right`, `_run`), `baricon` (the bar's raised icons, `bar_icon_<name>` + `_shadow`), `barsheet` (the flyout sheet in the bar's navy steel, no trim) |
 
 Then import:

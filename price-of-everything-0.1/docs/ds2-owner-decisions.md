@@ -83,3 +83,13 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **A CFO's worth is today's**: the interest her cut saves on the loans the company has now, nothing without loans.
 - **No reduced salary** for Vera; the promise is gone.
 
+
+## Briefing (27 September 2026; plan `docs/briefing-ds2-plan.md`)
+
+- **Strict about copy.** The decision letters' story stays narrative; everything else is factual and brief. No hyphens, semicolons, dashes, middle dots or ellipses; places by name, never coordinates.
+- **One way to close the panel.** Dismiss, the caret and the X were one too many: the Close key only (Esc stays the keyboard's). Quieting an alert is Silence alert, a different action.
+- **The clipboard (or a folder of documents)** is the metaphor for decisions; the annunciator for live alerts.
+- **Width 540 px**, one width. **Placement: the middle of the screen**, since many decisions are mandatory. **It rises by itself** when a decision arrives.
+- **A tile jam shows on the top bar's transport LEDs** (storage), with no update of its own and no dialog.
+- **One-off news becomes toasts** (dock rows); the briefing keeps decisions and live alerts.
+- **Toasts are timed only the first time they appear in the turn.** Opened by the player, the updates stay until the player clicks any surface outside them; clicks on the toasts or on the briefing and updates controls in the bottom left do not close them.
