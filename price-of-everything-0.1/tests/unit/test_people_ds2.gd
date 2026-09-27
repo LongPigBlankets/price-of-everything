@@ -9,6 +9,7 @@ const TAGS := {
 	"_test_people_ds2_advisors": ["people", "advisors", "ui"],
 	"_test_people_ds2_labour": ["people", "production", "ui"],
 	"_test_people_ds2_shell": ["people", "ui"],
+	"_test_cfo_worth_on_todays_loans": ["people", "advisors", "finance"],
 	"_test_seat_card_shows_every_effect": ["people", "advisors", "ui"],
 }
 
@@ -338,3 +339,41 @@ func _test_people_ds2_shell() -> void:
 	UiPrefs.set_use_people_ds2(was)
 	pp.queue_free()
 	await get_tree().process_frame
+
+
+## A CFO's loan interest cut is worth what it saves on the loans the company has now: nothing without loans; with
+## a loan paying interest, the interest grossed up to the rate without the cut, less what is paid. Display only.
+func _test_cfo_worth_on_todays_loans() -> void:
+	var saved_loans: Array = LoanState.loans.duplicate(true)
+	var saved_ids: Array = AdvisorState.permanent_advisor_ids.duplicate()
+	var saved_seats: Dictionary = AdvisorState.advisor_seats.duplicate()
+	var saved_money := MatchState.money
+	LoanState.loans.clear()
+	AdvisorState.permanent_advisor_ids = ["vera"]
+	AdvisorState.advisor_seats.clear()
+	AdvisorState.assign_advisor_to_seat("cfo", "vera")
+	AdvisorState.reconcile_advisor_modifiers()
+	var quiet := {"dividends_paid": 0.0}
+	_check(is_zero_approx(AdvisorState.advisor_bonus_preview_per_turn("vera", "cfo", quiet)),
+		"cfo worth: nothing without loans")
+	LoanState.take_distress_loan(1000.0)
+	var loan: Dictionary = LoanState.loans[-1]
+	loan.grace_remaining = 0
+	loan.principal_remaining = float(loan.total_repayment)
+	loan.payment_per_turn = float(loan.total_repayment) / float(EconomyConfig.LOAN_TERM_TURNS)
+	var rate := float(loan.interest_rate)
+	var interest := float(loan.payment_per_turn) * rate / (1.0 + rate)
+	var net := float(Modifiers.resolve_pct("loan_interest", "*", {}).get("net", 0.0))
+	var cut := 0.0
+	for eff in AdvisorState.advisor_seat_effect_list("vera", "cfo"):
+		if str(eff.domain) == "loan_interest":
+			cut = float(eff.pct)
+	var want := interest * (1.0 + (net - cut) / 100.0) / (1.0 + net / 100.0) - interest
+	var got := AdvisorState.advisor_bonus_preview_per_turn("vera", "cfo", quiet)
+	_check(cut < 0.0 and want > 0.0 and absf(got - want) < 0.0001,
+		"cfo worth: with a loan, the interest her cut saves today (£%.2f, want £%.2f)" % [got, want])
+	LoanState.loans = saved_loans
+	MatchState.money = saved_money
+	AdvisorState.permanent_advisor_ids = saved_ids
+	AdvisorState.advisor_seats = saved_seats
+	AdvisorState.reconcile_advisor_modifiers()

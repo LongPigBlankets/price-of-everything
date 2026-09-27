@@ -45,7 +45,7 @@ Stats in **Inf / Ops / Lead / Inn / Fin** order. Stars derived via §2.2.
 
 | # | Advisor | Inf | Ops | Lead | Inn | Fin | Score | ★ | Best seat(s) | Signature specialty |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 1 | **Vera Ashby** *(sister, starts)* | 3 | 3 | 3 | 2 | 3 | 14 | 5★ | CFO / COO / IR | *Family Trust* — reduced salary, no malus anywhere. The keystone. |
+| 1 | **Vera Ashby** *(sister, starts)* | 3 | 3 | 3 | 2 | 3 | 14 | 5★ | CFO / COO / IR | *Family Trust* — no malus anywhere (the reduced salary was dropped, owner 27 September 2026: every advisor costs the same). The keystone. |
 | 2 | **Alexandra Reyes** *(rival, late)* | 3 | 3 | 3 | 3 | 2 | 14 | 5★ | anywhere | *Prima Donna* — superb everywhere; **high salary + walk-risk if benched/under-slotted**. |
 | 3 | **Gerald Vance** | 2 | 3 | 3 | 2 | 2 | 12 | 4★ | COO | *Dinosaur* — top operator; **brakes clean-recipe adoption / carbon transition** *(carbon-dependent — later phase)*. |
 | 4 | **Eleanor Shaw** | 3 | 2 | 3 | 1 | 3 | 12 | 4★ | HR / COO / Chief Markets | *Beloved* — labour cost via HR + **slows advisor churn (retention)**. Fin 3 body. |

@@ -305,6 +305,18 @@ func total_outstanding() -> float:
 		sum += loan.principal_remaining
 	return sum
 
+## The interest in the active loans' payments each turn, split from each payment as process_payments splits it
+## (a quote for the council's bonus preview; books nothing). Loans still in their grace pay nothing yet.
+func interest_per_turn() -> float:
+	var sum: float = 0.0
+	for loan in loans:
+		if int(loan.get("grace_remaining", 0)) > 0:
+			continue
+		var pay: float = minf(float(loan.payment_per_turn), float(loan.principal_remaining))
+		var rate: float = float(loan.get("interest_rate", EconomyConfig.LOAN_INTEREST_RATE))
+		sum += pay * (rate / (1.0 + rate))
+	return sum
+
 func total_per_turn_payment() -> float:
 	var sum: float = 0.0
 	for loan in loans:
