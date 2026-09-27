@@ -1777,7 +1777,8 @@ func _load_main_scene() -> void:
 	_ready_ms = float(Time.get_ticks_usec() - ready_start) / 1000.0
 	_terrain = _main.get_node("%TerrainLayer") as HexMap
 	_construct_panel = _main.get_node("%ConstructPanel") as Control
-	_construct_panel_v2 = _find_by_script(_main, "res://scripts/construct_panel_v2.gd") as Control
+	# By name: the DS2 construct panel (the default) extends the v2 script under the same name.
+	_construct_panel_v2 = _main.find_child("ConstructPanelV2", true, false) as Control
 	_money_panel = _main.get_node("%MoneyPanel") as Control
 	_loan_dialog = _main.get_node("%TakeLoanDialog") as Control
 	_terminal = _find_by_script(_main, "res://scripts/debug_terminal.gd")

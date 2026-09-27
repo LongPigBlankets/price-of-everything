@@ -35,11 +35,11 @@ func _led_figure(host: Node) -> String:
 	return str(led.call("figure")) if led != null else ""
 
 
-func _test_construct_ds2_off_by_default() -> void:
-	_check(not UiPrefs.use_construct_ds2, "construct ds2: off by default")
-	UiPrefs.set_use_construct_ds2(true)
-	_check(UiPrefs.use_construct_ds2, "construct ds2: the cheat's setter turns it on")
+func _test_construct_ds2_on_by_default() -> void:
+	_check(UiPrefs.use_construct_ds2, "construct ds2: on by default")
 	UiPrefs.set_use_construct_ds2(false)
+	_check(not UiPrefs.use_construct_ds2, "construct ds2: the cheat's setter turns it off")
+	UiPrefs.set_use_construct_ds2(true)
 
 
 func _test_construct_ds2_one_width() -> void:
@@ -120,6 +120,7 @@ func _test_construct_ds2_bottom_menu_picks() -> void:
 	_check(str(menu.call("_construct_v2_script")) == PANEL, "bottom menu: the flag on builds the construction lot")
 	UiPrefs.set_use_construct_ds2(false)
 	_check(str(menu.call("_construct_v2_script")) == "res://scripts/construct_panel_v2.gd", "bottom menu: the flag off builds today's panel")
+	UiPrefs.set_use_construct_ds2(true)
 	menu.free()
 
 
