@@ -88,6 +88,25 @@ func _ready() -> void:
 	scroll.scroll_vertical = int(scroll.get_v_scroll_bar().max_value)
 	await _settle(4)
 	await _shot(panel, "order_foot")
+	# Refused: too little money, then the land short with auto buy off; the Build key pressed, the blocker lit.
+	scroll.scroll_vertical = 0
+	var money := MatchState.money
+	MatchState.money = 60.0
+	panel.call("_render")
+	await _settle(6)
+	(panel.find_child("BuildConfirmButton", true, false) as Button).pressed.emit()
+	await get_tree().create_timer(0.16).timeout
+	await _shot(panel, "order_refused_money")
+	MatchState.money = money
+	var auto := MatchState.construct_auto_buy_land
+	MatchState.set_construct_auto_buy_land(false)
+	panel.call("open_for_tile", tile, td)
+	_confirm(panel, bid, rid)
+	await _settle(6)
+	(panel.find_child("BuildConfirmButton", true, false) as Button).pressed.emit()
+	await get_tree().create_timer(0.2).timeout
+	await _shot(panel, "order_refused_land")
+	MatchState.set_construct_auto_buy_land(auto)
 	panel.call("open_browser")
 	_confirm(panel, bid, rid)
 	await _settle(8)
