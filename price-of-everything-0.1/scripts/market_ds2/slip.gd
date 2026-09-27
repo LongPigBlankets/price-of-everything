@@ -215,19 +215,41 @@ class LadderMeter extends Control:
 	const AMBER := Color("#ffa412")
 	var rungs := 10
 	var lit := -1
+	var _cells: Control
+	var _glass: Control
 
 	func _init() -> void:
 		custom_minimum_size = Vector2(0, 26)
 		size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		# The cells give off their own light: a lamp overlay does not dim them.
+		_cells = Control.new()
+		_cells.name = "Cells"
+		_cells.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_cells.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_cells.material = Light.emissive_material()
+		_cells.draw.connect(_draw_cells)
+		add_child(_cells)
+		_glass = Control.new()
+		_glass.name = "Glass"
+		_glass.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_glass.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		_glass.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_glass.draw.connect(func() -> void:
+			Nine.paint(_glass, DotMatrix.GLASS, Rect2(Vector2.ZERO, size).grow(DotMatrix.MARGIN / DotMatrix.CAPTURE_SCALE), _corner()))
+		add_child(_glass)
+
+	func _corner() -> float:
+		return (DotMatrix.MARGIN + DotMatrix.RIM + DotMatrix.RADIUS + 2.0) * 2.0 / DotMatrix.CAPTURE_SCALE
 
 	func _draw() -> void:
 		var box := Rect2(Vector2.ZERO, size)
-		var corner := (DotMatrix.MARGIN + DotMatrix.RIM + DotMatrix.RADIUS + 2.0) * 2.0 / DotMatrix.CAPTURE_SCALE
-		Nine.paint(self, DotMatrix.SCREEN, box.grow(DotMatrix.MARGIN / DotMatrix.CAPTURE_SCALE), corner)
-		var pane := box.grow(-DotMatrix.RIM / DotMatrix.CAPTURE_SCALE)
-		draw_rect(pane, DotMatrix.PANE)
+		Nine.paint(self, DotMatrix.SCREEN, box.grow(DotMatrix.MARGIN / DotMatrix.CAPTURE_SCALE), _corner())
+		draw_rect(box.grow(-DotMatrix.RIM / DotMatrix.CAPTURE_SCALE), DotMatrix.PANE)
+
+	func _draw_cells() -> void:
+		var pane := Rect2(Vector2.ZERO, size).grow(-DotMatrix.RIM / DotMatrix.CAPTURE_SCALE)
 		var n := maxi(1, rungs)
 		var gap := 3.0
 		var inner := pane.grow(-3.0)
@@ -235,8 +257,7 @@ class LadderMeter extends Control:
 		for i in n:
 			var r := Rect2(inner.position.x + i * (w + gap), inner.position.y, w, inner.size.y)
 			if i <= lit:
-				draw_rect(r.grow(1.0), Color(AMBER, 0.3))
-				draw_rect(r, AMBER)
+				_cells.draw_rect(r.grow(1.0), Color(AMBER, 0.3))
+				_cells.draw_rect(r, AMBER)
 			else:
-				draw_rect(r, Color(AMBER, 0.1))
-		Nine.paint(self, DotMatrix.GLASS, box.grow(DotMatrix.MARGIN / DotMatrix.CAPTURE_SCALE), corner)
+				_cells.draw_rect(r, Color(AMBER, 0.1))

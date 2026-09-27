@@ -60,19 +60,23 @@ var framed := true:
 var align := HORIZONTAL_ALIGNMENT_CENTER:
 	set(v):
 		align = v
-		queue_redraw()
+		queue_redraw_all()
 var colour := Color.WHITE:
 	set(v):
 		colour = v
 		if _runs.size() <= 1:
 			_runs = [{"text": text, "colour": v}]
-		queue_redraw()
+		queue_redraw_all()
 var text := "":
 	set(v):
 		text = v
 		_runs = [{"text": v, "colour": colour}]
 		_resize()
 var _runs: Array = []
+## The dots on a layer of their own, which gives back all of a lamp overlay's shade (they give off their own
+## light, as the LED segments do), and the glass over them on another.
+var _dots: Control
+var _glass: Control
 
 
 func _init() -> void:
@@ -80,7 +84,31 @@ func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_dots = Control.new()
+	_dots.name = "Dots"
+	_dots.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_dots.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_dots.material = load("res://scripts/bdp_v3_light.gd").emissive_material()
+	_dots.draw.connect(_draw_dots)
+	add_child(_dots)
+	_glass = Control.new()
+	_glass.name = "Glass"
+	_glass.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_glass.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_glass.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_glass.draw.connect(func() -> void:
+		if framed:
+			var corner := (MARGIN + RIM + RADIUS + 2.0) * 2.0 / CAPTURE_SCALE
+			Nine.paint(_glass, GLASS, Rect2(Vector2.ZERO, size).grow(MARGIN / CAPTURE_SCALE), corner))
+	add_child(_glass)
 	_resize()
+
+
+func queue_redraw_all() -> void:
+	queue_redraw()
+	if _dots != null:
+		_dots.queue_redraw()
+		_glass.queue_redraw()
 
 
 ## Text in runs, each [{text, colour}], printed one after another.
@@ -111,7 +139,7 @@ func _padding() -> Vector2:
 
 func _resize() -> void:
 	custom_minimum_size = Vector2(string_width(text, pitch), ROWS * pitch) + 2.0 * _padding()
-	queue_redraw()
+	queue_redraw_all()
 
 
 func _draw() -> void:
@@ -120,6 +148,9 @@ func _draw() -> void:
 	if framed:
 		Nine.paint(self, SCREEN, box.grow(MARGIN / CAPTURE_SCALE), corner)
 		draw_rect(box.grow(-RIM / CAPTURE_SCALE), PANE)
+
+
+func _draw_dots() -> void:
 	var width := string_width(text, pitch)
 	var x0 := (size.x - width) * 0.5
 	if align == HORIZONTAL_ALIGNMENT_LEFT:
@@ -141,10 +172,9 @@ func _draw() -> void:
 				for col in cols:
 					var p := Vector2(cx + col * pitch, y0 + row * pitch + pitch * 0.5)
 					if bits & (1 << (COLUMNS - 1 - col)):
-						draw_circle(p, r * 1.7, glow)
-						draw_circle(p, r, lit)
+						_dots.draw_circle(p, r * 1.7, glow)
+						_dots.draw_circle(p, r, lit)
 					else:
-						draw_circle(p, r * 0.8, unlit)
+						_dots.draw_circle(p, r * 0.8, unlit)
 			cx += (cols + 1) * pitch
-	if framed:
-		Nine.paint(self, GLASS, box.grow(MARGIN / CAPTURE_SCALE), corner)
+

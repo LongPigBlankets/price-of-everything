@@ -182,7 +182,7 @@ Contracts kept: `MarketPanel` (tutorial spotlight, `close_market_panel`), `open_
 11. **The Sell key**: DECIDED, opens the **sell panel**: every tile that holds or makes the good with a tick each and Select all; all from each tile, everything but X, or only X per tile; **one off (default) or recurring**; a live preview from `MarketRules.sell_quote`, per tile and in total; a **guarded Confirm sale key**. One off sells now (`sell_all_to_market`, the queue_sell path); recurring sets up the sale for the chosen tiles (`add_recurring_bulk_sell`, sold each turn in PROCESS). Both looks.
 12. **Recurring**: DECIDED, every standing order with **Cancel**, recurring buys included. Both looks (today's in Transactions).
 13. **Buying a lot**: DECIDED, a **guarded Buy key per lot**, replacing the confirm dialog in DS2.
-14. **Lot grouping**: **PENDING**. Until the owner decides, the lots are one list with an **Owner column**, sortable by building, owner or price.
+14. **Lot grouping**: DECIDED (owner, 27 September 2026, round 2): "Have a Sort by Owner button, but the default should be by name of buildings." The lots sort by the building's name by default, with no headings; a latching **Sort by owner** key over the list (and the Owner heading) groups them, each company's name raised as a heading over its lots, as studied, and the rows then leave the owner out. Pressed again, back to names.
 15. **Bulk sell**: DECIDED, in the sell panel: bulk sell is the sell panel for one good. The Sales tab's form is gone from today's look too.
 
 ## 9. What is built
@@ -203,14 +203,15 @@ Contracts kept: `MarketPanel` (tutorial spotlight, `close_market_panel`), `open_
 | Money screens under the display rule (the point in its own cell, five cells) | `bdp_v3_led.gd` `point_cell` (off by default, so every other panel is unchanged), `money_figure.gd` `display()` | kit change, opt in |
 | Prices: rows, sort, filters, impact card, the slip (chart recorder with its hover readout, impact meter, keys) | `prices_tab.gd`, `slip.gd` | new; dot card reused |
 | Sell panel's skin: a sheet of the backing, quantity and one off keys on the key bed, a module a place with a latching Sell key, totals, the guarded key | `sell_skin.gd` | new; guard key reused |
-| Buildings: lots with emblem, place, owner, output, a red whole pound price and a guarded Buy key; the tile tag; Show more (40 at a time) | `lots_tab.gd`; `building_market_panel.gd` `lots()`, `buy_lot()` | new; the v2 tab's data and buy, made static |
+| Buildings: lots with emblem, place, owner, output, a red whole pound price and a guarded Buy key; by name by default, Sort by owner with raised owner headings; the tile tag; Show more (40 at a time) | `lots_tab.gd`; `building_market_panel.gd` `lots()`, `buy_lot()` | new; the v2 tab's data and buy, made static |
 | Special Orders (tickets: target on the pill, delivered on an LED meter, turns left on a drum, premium, bonus from `SpecialOrderState.premium_quote`), Recurring (Cancel), History (the blotter with values) | `book_tabs.gd` | new |
+
+The lamp (round 2, owner: "Add lamp overlay to all these panels"): `scripts/ds2/lamp_overlay.gd` lights the exchange, its slip, the sell panel and its sheet, as it now lights the Building Ledger DS2, the DS2 upgrade sheet and the tile view v3 (docs/ds2-theme.md §4.1).
 
 Captures: `tools/market_ds2_shot.tscn` (`MARKET_SHOT_DIR`, `MARKET_SHOT_LOOKS=v2,ds2`): every tab paged, the sell panel in each mode, one off and recurring, the cover lifted, the impact card and the chart hover, both looks. Tests: `tests/unit/test_market_rules.gd`, `test_market_panel.gd`, `test_market_ds2.gd`.
 
 ### 9.3 Left
 
 - The owner's rounds on the look; a first standard once approved (Phase 6).
-- Lot grouping (decision 14), hand signal cards (decision 9).
+- Hand signal cards (decision 9).
 - Telemetry counters (Phase 0); lot names through `BuildingNaming.family_name`; `MatchState.buy_building` shared with the tile view and Building Detail (and the tutorial's purchase gate).
-- The lamp overlay (`BdpV3Light`) is not applied to the exchange yet, as on the ledger.

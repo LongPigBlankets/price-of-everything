@@ -129,6 +129,8 @@ func _build_shell() -> void:
 	_content = VBoxContainer.new()
 	_content.add_theme_constant_override("separation", 8)
 	margin.add_child(_content)
+	# The lamp over the sheet (docs/ds2-theme.md §4), the text taking back half its shade.
+	preload("res://scripts/ds2/lamp_overlay.gd").attach(_card)
 
 
 func _clear() -> void:

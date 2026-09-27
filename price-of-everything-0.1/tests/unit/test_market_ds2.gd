@@ -236,6 +236,7 @@ func _test_market_ds2_lot_buy() -> void:
 	await get_tree().process_frame
 	panel.call("open_buildings_for_tile", tile)
 	var lots: Control = panel.call("ds2").call("tab", "buildings")
+	_check(str(lots.call("sort_key")) == "name" and not bool(lots.call("grouped")), "lots: sorted by the building's name by default")
 	var shown: Array = lots.call("shown_lots")
 	_check(shown.size() == 1 and str(shown[0].instance_id) == iid, "lots: the tile filter shows the tile's lot")
 	var price := int(shown[0].price)
@@ -252,3 +253,120 @@ func _test_market_ds2_lot_buy() -> void:
 	BuildingState.remove_building(iid)
 	BuildingState.tile_land_owned.erase(tile)
 	MatchState.money = saved_money
+
+
+## Lots sort by the building's name by default, with no owner headings; Sort by owner groups them under raised
+## owner headings, in owner order; pressing it again goes back to names.
+func _test_market_ds2_lots_sort_by_owner() -> void:
+	var tile := "ds2_sort_tile"
+	var made: Array = []
+	for spec: Array in [["b_007", "Zeta Works Co."], ["b_002", "Alpha Holdings Co."], ["b_007", "Alpha Holdings Co."]]:
+		made.append(BuildingState.add_building(str(spec[0]), "", tile, str(spec[1]), "", false))
+	var panel := _panel(true)
+	panel.show()
+	await get_tree().process_frame
+	panel.call("open_buildings_for_tile", tile)
+	var lots: Control = panel.call("ds2").call("tab", "buildings")
+	var shown: Array = lots.call("shown_lots")
+	var names: Array = shown.map(func(vm: Dictionary) -> String: return str(vm.name).to_lower())
+	var sorted_names := names.duplicate()
+	sorted_names.sort()
+	_check(names == sorted_names, "lots sort: by name by default (%s)" % ", ".join(PackedStringArray(names)))
+	_check(lots.find_children("*", "MarginContainer", true, false).filter(func(n: Node) -> bool: return n.has_meta("owner")).is_empty(),
+		"lots sort: no owner headings by name")
+	var key := lots.find_child("SortByOwner", true, false) as Control
+	_check(key != null and not bool(key.get("latched")), "lots sort: a Sort by owner key, up")
+	key.emit_signal("pressed")
+	await get_tree().process_frame
+	_check(bool(lots.call("grouped")) and bool(key.get("latched")), "lots sort: the key groups by owner and stays down")
+	# Same-named siblings are renamed: find the headings by their meta.
+	var heads := lots.find_children("*", "MarginContainer", true, false).filter(func(n: Node) -> bool: return n.has_meta("owner"))
+	var owners: Array = heads.map(func(h: Node) -> String: return str(h.get_meta("owner")))
+	_check(owners == ["Alpha Holdings Co.", "Zeta Works Co."], "lots sort: one raised heading an owner, in order (%s)" % str(owners))
+	var rows: Node = heads[0].get_parent() if not heads.is_empty() else null
+	if rows != null:
+		var first_lot: Node = rows.get_child(heads[0].get_index() + 1)
+		_check(str(first_lot.name).begins_with("Lot_"), "lots sort: an owner's lots follow its heading")
+	key.emit_signal("pressed")
+	await get_tree().process_frame
+	_check(str(lots.call("sort_key")) == "name" and lots.find_children("*", "MarginContainer", true, false).filter(
+		func(n: Node) -> bool: return n.has_meta("owner")).is_empty(),
+		"lots sort: pressed again, back to names without headings")
+	_done(panel)
+	for iid in made:
+		BuildingState.remove_building(str(iid))
+	BuildingState.tile_land_owned.erase(tile)
+
+
+## The lamp over the DS2 market (docs/ds2-theme.md §4): every part darkened by it, the sell panel's sheet and tabs
+## built later too, the text taking back half, LED segments, dot matrix dots and meter cells not darkened at all,
+## glows at full strength; gone with the switch off, every part back to its own material.
+func _test_market_ds2_lamp_overlay() -> void:
+	var Overlay: GDScript = load("res://scripts/ds2/lamp_overlay.gd")
+	var panel := _panel(true)
+	panel.show()
+	await get_tree().process_frame
+	_check(Overlay.find(panel) != null and panel.material == Overlay.shade_material(), "lamp: on, the panel's own plate darkened")
+	var labels := panel.find_children("*", "Label", true, false)
+	var lit := labels.filter(func(l: Node) -> bool: return (l as Label).material == Overlay.text_material())
+	_check(not labels.is_empty() and lit.size() == labels.size(), "lamp: every label takes back half (%d of %d)" % [lit.size(), labels.size()])
+	var segs := panel.find_children("Segments", "", true, false)
+	_check(not segs.is_empty() and segs.all(func(n: Node) -> bool: return (n as CanvasItem).material == null), "lamp: LED segments are not darkened")
+	var dots := panel.find_children("Dots", "", true, false)
+	_check(not dots.is_empty() and dots.all(func(n: Node) -> bool: return (n as CanvasItem).material == null), "lamp: dot matrix dots are not darkened")
+	var glows := panel.find_children("Glow", "", true, false)
+	_check(not glows.is_empty() and glows.all(func(n: Node) -> bool: return (n as CanvasItem).material == Overlay.glow_material()),
+		"lamp: glows add at full strength")
+	var modules := panel.find_children("MarketRow_*", "", true, false)
+	_check(not modules.is_empty() and (modules[0] as CanvasItem).material == Overlay.shade_material(), "lamp: a row's plastic is darkened")
+	panel.call("open_sell_panel", COAL)
+	await get_tree().process_frame
+	var sell: Node = panel.call("sell_panel")
+	_check((sell as CanvasItem).material == Overlay.shade_material() and sell.find_children("*", "Label", true, false).all(
+		func(l: Node) -> bool: return (l as Label).material == Overlay.text_material()), "lamp: the sell panel's sheet and its text too")
+	var ds2: Control = panel.call("ds2")
+	ds2.call("show_tab", "history")
+	await get_tree().process_frame
+	var hist := (ds2.call("tab", "history") as Node).find_children("*", "Label", true, false)
+	_check(not hist.is_empty() and hist.all(func(l: Node) -> bool: return (l as Label).material == Overlay.text_material()),
+		"lamp: a tab built later is lit too")
+	UiPrefs.set_use_market_ds2(false)
+	_check(Overlay.find(panel) == null and panel.material == null, "lamp: gone with the switch off")
+	var left := panel.find_children("*", "CanvasItem", true, false).filter(func(n: Node) -> bool: return (n as CanvasItem).has_meta(Overlay.ORIGINAL))
+	_check(left.is_empty(), "lamp: every part has its own material back")
+	var v2_labels := panel.find_children("*", "Label", true, false).filter(func(l: Node) -> bool: return (l as Label).material != null)
+	_check(v2_labels.is_empty(), "lamp: today's labels keep no material")
+	_done(panel)
+
+
+## The ledger DS2, its upgrade sheet and the tile view v3 carry the lamp too; the ledger's v2 look does not.
+func _test_ds2_panels_lamp_overlay() -> void:
+	var Overlay: GDScript = load("res://scripts/ds2/lamp_overlay.gd")
+	var was_ledger: bool = UiPrefs.use_ledger_ds2
+	UiPrefs.set_use_ledger_ds2(true)
+	var ledger: Control = load("res://scenes/building_ledger_panel.tscn").instantiate()
+	add_child(ledger)
+	await get_tree().process_frame
+	_check(Overlay.find(ledger) != null, "lamp: the ledger DS2 has the overlay")
+	UiPrefs.set_use_ledger_ds2(false)
+	_check(Overlay.find(ledger) == null, "lamp: the ledger v2 has none")
+	ledger.queue_free()
+	UiPrefs.set_use_ledger_ds2(was_ledger)
+	var dialog: Control = load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd").new()
+	add_child(dialog)
+	await get_tree().process_frame
+	var card := dialog.find_child("UpgradeSheet", true, false) as Control
+	_check(card != null and Overlay.find(card) != null, "lamp: the DS2 upgrade sheet has the overlay")
+	dialog.queue_free()
+	var was_tvp: bool = UiPrefs.use_tvp_v3
+	UiPrefs.set_use_tvp_v3(true)
+	var tvp: Control = load("res://scripts/tile_info_panel_v2.gd").new()
+	add_child(tvp)
+	await get_tree().process_frame
+	_check(Overlay.find(tvp) != null, "lamp: the tile view v3 has the overlay")
+	UiPrefs.set_use_tvp_v3(false)
+	await get_tree().process_frame
+	_check(Overlay.find(tvp) == null, "lamp: the tile view v2 has none")
+	tvp.queue_free()
+	UiPrefs.set_use_tvp_v3(was_tvp)
+

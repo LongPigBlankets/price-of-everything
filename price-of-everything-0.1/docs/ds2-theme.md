@@ -136,6 +136,12 @@ Layering is by sibling order, never `z_index`: a later sibling draws over an ear
 
 The lamp's light at a point, for tests and tools, is `BdpV3Light.light_at(screen_uv, screen_size)`.
 
+### 4.1 The lamp on the other DS2 panels
+
+The market (DS2), the Building Ledger DS2, the DS2 upgrade sheet and the tile view v3 take the same lamp through `scripts/ds2/lamp_overlay.gd` (`LampOverlay.attach(panel)`, `detach(panel)`), applied to each part as it draws rather than as one overlay drawn last: every canvas item in the panel, its sheets and parts added later included, gets a material by what it is. A plain part takes all of the lamp's darkening, text half (`TEXT_GIVE_BACK`), and what gives its own light (the emissive material: LED segments, dot matrix dots, meter and gauge cells) none; glows add at full strength. The picture is the overlay's for every plain part and every text, but a light never dims: a multiply overlay over an 8 bit frame cannot give light back to a segment already at full (white, the pure reds, bright greens clamp), so under Building Detail's overlay those lose up to a fifth in the far corner. With the switch off, every part gets its own material back.
+
+A trap it showed: `BdpV3Light.emissive_material()` brightens by the lamp's inverse, so a part carrying it on a panel **without** a lamp is over bright (a green LED reading 254 where its colour is 209). Such a part belongs under a lamp.
+
 ---
 
 ## 5. Components

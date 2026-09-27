@@ -13,6 +13,7 @@ const BuildingMarketTab := preload("res://scripts/building_market_panel.gd")  # 
 const MarketRules := preload("res://scripts/market_rules.gd")
 const MarketDs2 := preload("res://scripts/market_ds2/market_ds2.gd")
 const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
+const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
 ## The DS2 look's one width, every tab (UiPrefs.use_market_ds2; docs/market-ds2-plan.md §8, decision 2).
 const DS2_WIDTH := 840.0
 const HEADER_HEIGHT := 40.0
@@ -108,7 +109,10 @@ func _apply_look() -> void:
 		_ds2.connect("drag_input", _on_ds2_drag)
 		_ds2_margin.add_child(_ds2)
 		add_child(_ds2_margin)
+		# The lamp over the whole panel, the sell panel's sheet too (docs/ds2-theme.md §4).
+		LampOverlay.attach(self)
 	elif not on and _ds2 != null:
+		LampOverlay.detach(self)
 		for n in [_ds2_backing, _ds2_margin]:
 			if is_instance_valid(n):
 				remove_child(n)

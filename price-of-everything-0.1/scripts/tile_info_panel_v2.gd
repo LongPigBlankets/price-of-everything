@@ -372,6 +372,8 @@ func _tabs() -> Array:
 ## The switch changed: tear the panel down and build it in the other look, on the same tile and tab.
 func _on_look_changed(_on: bool) -> void:
 	_close_goods_drawer()
+	# The lamp lit the panel itself as well as its parts: give it back its own material first.
+	preload("res://scripts/ds2/lamp_overlay.gd").detach(self)
 	for c in get_children():
 		remove_child(c)
 		c.queue_free()
@@ -474,6 +476,9 @@ func _build_ui_v3() -> void:
 	# The land in full takes the body's place while it is open (the sheet fits both to its room).
 	_land_view = _build_land_view()
 	body_sheet.add_child(_land_view)
+	# The lamp over the cabinet, the door, its pipe and its sheets (docs/ds2-theme.md §4). The look switch clears
+	# the panel's children, the lamp with them; the door is the panel's own drawing, so v2 lets it go too.
+	preload("res://scripts/ds2/lamp_overlay.gd").attach(self)
 
 
 ## A sheet of the top bar's navy steel (its flyouts' plate) with `pad` of room inside.
