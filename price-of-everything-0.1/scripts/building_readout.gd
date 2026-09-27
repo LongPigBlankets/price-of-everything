@@ -14,6 +14,7 @@ const Middleman := preload("res://scripts/middleman_service.gd")
 
 const BuildingStatus := preload("res://scripts/building_status.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
+const BuildingNaming := preload("res://scripts/building_naming.gd")
 const BuildingPrice := preload("res://scripts/building_price.gd")
 const CompanyNames := preload("res://scripts/company_names.gd")
 const PORT_BUILDING_ID := "b_004"
@@ -913,7 +914,7 @@ static func _upstream_check(building: Dictionary, recipe: Dictionary) -> Diction
 			var r := int(rank.get(str(st.get("tone", "ok")), 0))
 			if r > worst_rank:
 				worst_rank = r
-				worst = "Your %s at %s, making %s, is %s." % [str(pdata.get("display_name", "supplier")).to_lower(),
+				worst = "Your %s at %s, making %s, is %s." % [BuildingNaming.of(producer),
 					_place(str(producer.get("tile_id", ""))), Catalog.get_display_name(str(inp.get("good_id", ""))).to_lower(),
 					str(st.get("label", "")).to_lower()]
 	if found == 0:
@@ -1616,12 +1617,11 @@ static func input_sources(building: Dictionary, recipe: Dictionary) -> Array:
 	for inp in recipe.get("inputs", []):
 		if Middleman.supplies_good(iid, str(inp.get("good_id", ""))): continue
 		for producer in _producers_for_input(inp, iid, tile_id):
-			var prod_data := Catalog.get_building(str(producer.get("building_id", "")))
 			rows.append({
 				"good_id": str(inp.get("good_id", "")),
 				"internal": str(inp.get("internal_name", "")),
 				"input_name": BuildingStatus.good_display_from_internal(str(inp.get("internal_name", ""))),
-				"building_name": str(prod_data.get("display_name", producer.get("building_id", ""))),
+				"building_name": BuildingNaming.of(producer),
 				"tile_id": str(producer.get("tile_id", "")),
 				"instance_id": str(producer.get("instance_id", "")),
 			})
@@ -1664,9 +1664,8 @@ static func output_consumers(building: Dictionary, recipe: Dictionary) -> Array:
 		var r := Catalog.get_recipe(str(b.get("recipe_id", "")))
 		for inp in r.get("inputs", []):
 			if str(inp.get("good_id", "")) == out_gid:
-				var bd := Catalog.get_building(str(b.get("building_id", "")))
 				rows.append({
-					"name": str(bd.get("display_name", b.get("building_id", ""))),
+					"name": BuildingNaming.of(b),
 					"instance_id": str(b.get("instance_id", "")),
 					"tile_id": str(b.get("tile_id", "")),
 				})

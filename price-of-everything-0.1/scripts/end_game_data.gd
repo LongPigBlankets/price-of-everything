@@ -7,6 +7,7 @@ extends RefCounted
 ##
 # tile_view_data owns the building-icon lookup (id_internal.png fallbacks).
 const TileViewData := preload("res://scripts/tile_view_data.gd")
+const BuildingNaming := preload("res://scripts/building_naming.gd")
 # The tile view's building-card glyph: keyed to transparency with the raised off-white
 # emboss baked in. The end screen's sprites are the SAME object as the cards', so a
 # building looks like itself wherever it appears.
@@ -454,7 +455,7 @@ static func _company_highlights() -> Dictionary:
 			units += int(k)
 		var b: Dictionary = BuildingState.buildings[str(iid)]
 		var bd: Dictionary = Catalog.get_building(str(b.get("building_id", "")))
-		work = {"name": str(bd.get("display_name", "?")),
+		work = {"name": BuildingNaming.of(b),
 			"value": "£%s net" % _num(int(round(net))),
 			"sub": "%s · £%s made, £%s to run over %d turns" % [
 				str(bd.get("display_name", "?")), _num(int(round(value))),

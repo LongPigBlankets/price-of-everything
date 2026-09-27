@@ -325,7 +325,7 @@ static func _append_construction_nodes(nodes: Array, ports: Array, terrain: Obje
 		nodes.append({
 			"iid": iid,
 			"building_id": bid,
-			"name": str(pd.get("name", "Under construction")),
+			"name": BuildingNaming.label_for_tile(str(pd.get("tile_id", "")), iid, bid, str(pd.get("recipe_id", ""))),
 			# The plate has no output, no RAG and no good icon to show, so the state gets its
 			# own line — otherwise a site's caption is just a name on an empty plate. A project
 			# waiting on materials is NOT counting down (turns_remaining is its full duration

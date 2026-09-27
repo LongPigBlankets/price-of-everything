@@ -14,6 +14,7 @@ signal cancelled
 const LedgerRowStyle := preload("res://scripts/ledger_row_style.gd")
 const BuildingIcon := preload("res://scripts/building_icon.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
+const BuildingNaming := preload("res://scripts/building_naming.gd")
 
 const PANEL_W := 620.0
 const ICON_COL := 48.0
@@ -249,7 +250,7 @@ func _consumer_rows() -> Array:
 			consumers.append({
 				"building_id": str(inst.get("building_id", "")),
 				"internal": str(bd.get("internal_name", "")),
-				"recipe_name": str(recipe.get("display_name", "")),
+				"recipe_name": BuildingNaming.of(inst),
 				"need": need,
 				"market_qty": 0,
 				"market_cost": 0.0,

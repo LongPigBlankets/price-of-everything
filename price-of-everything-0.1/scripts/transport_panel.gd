@@ -18,6 +18,7 @@ extends PanelContainer
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const InfraIcons := preload("res://scripts/infra_icons.gd")
 const BuildingIcon := preload("res://scripts/building_icon.gd")
+const BuildingNaming := preload("res://scripts/building_naming.gd")
 ## The tile view's building card, shared so the two lists look like one game.
 const BrushedCard := preload("res://scripts/brushed_card.gd")
 const ROUTE_STOCKPILE_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_stockpile.png")
@@ -937,7 +938,7 @@ func _build_logistics_overview(list: VBoxContainer) -> void:
 		if not service.eligible(b): continue
 		var iid := str(b.instance_id)
 		var button := Button.new()
-		button.text = "%s · In: %s / Out: %s" % [Catalog.get_building_display_name(str(b.building_id)),"Intermediary" if service.uses_inputs(iid) else "Managed","Intermediary" if service.uses_outputs(iid) else "Managed"]
+		button.text = "%s · In: %s / Out: %s" % [BuildingNaming.of(b),"Intermediary" if service.uses_inputs(iid) else "Managed","Intermediary" if service.uses_outputs(iid) else "Managed"]
 		button.tooltip_text = "Open building details to change logistics. Managed deliveries use generic carriers."
 		button.pressed.connect(func() -> void:
 			hide()

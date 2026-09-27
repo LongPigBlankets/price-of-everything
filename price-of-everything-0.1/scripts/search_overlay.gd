@@ -19,6 +19,7 @@ const GOOD_RUBRIC_WIDTH := 720.0
 const GOOD_TRANSPORT_MODES := ["nothing", "roads", "rail", "pipes", "reinf_pipes"]
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
+const BuildingNaming := preload("res://scripts/building_naming.gd")
 
 # Palette aligned to the DS navy theme (was bespoke pure-black). Dark surfaces use
 # DS navy (#040F1B) / highlight (#002E54); body text uses DS TEXT; the build
@@ -411,6 +412,7 @@ func _recipe_results(query: String) -> Array:
 			{"text": display_name, "reason": "Recipe name"},
 			{"text": recipe.get("recipe_id", ""), "reason": "Recipe ID"},
 			{"text": building_name, "reason": "Building needed"},
+			{"text": BuildingNaming.name_for_recipe(str(recipe.get("recipe_id", ""))), "reason": "Building name"},
 		])
 		var output_match := _best_named_match(query, output_names, "Produces")
 		var input_match := _best_named_match(query, input_names, "Uses")

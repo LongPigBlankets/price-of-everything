@@ -306,7 +306,7 @@ static func _sub_caption(text: String, label_name: String) -> Control:
 	return label
 
 
-## The building's name as the game gives it on this tile ("Motor Factory E", "Mine - Coal - A"). A project
+## The building's name as the game gives it on this tile ("Motor Factory E", "Coal Mine A"). A project
 ## is named the same way, by its place among the tile's buildings and projects.
 static func _name_of(b: Dictionary) -> String:
 	return BuildingNaming.label_for_tile(str(b.get("tile_id", "")), str(b.get("instance_id", "")),
@@ -314,18 +314,14 @@ static func _name_of(b: Dictionary) -> String:
 
 
 ## A group's name: its members' name without the letter that tells them apart
-## ("Motor Factory", "Mine - Coal"), so a group and a building alone read as the same kind of thing.
+## ("Motor Factory", "Coal Mine"), so a group and a building alone read as the same kind of thing.
 static func _group_name(first: Dictionary) -> String:
 	return BuildingNaming.without_letter(_name_of(first))
 
 
-## A group member's name without the kind of building its head already names ("Motor - E").
+## A group member's name, in full with its letter ("Coal Mine B").
 static func _member_name(b: Dictionary) -> String:
-	var full := _name_of(b)
-	var kind := str(Catalog.get_building(str(b.get("building_id", ""))).get("display_name", ""))
-	if kind != "" and full.begins_with(kind + " - "):
-		return full.substr(kind.length() + 3)
-	return full
+	return _name_of(b)
 
 
 ## A reading's check as a readout, named for `stage`.

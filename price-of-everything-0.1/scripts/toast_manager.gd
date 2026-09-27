@@ -46,6 +46,7 @@ const BELL_PX := 40.0
 const BELL_GAP := 18.0
 const BELL_ICON: Texture2D = preload("res://assets/icons/ui_icons/standalone/bell.png")
 const PEN_ICON: Texture2D = preload("res://assets/icons/ui_icons/standalone/fountain_pen.png")
+const BuildingNaming := preload("res://scripts/building_naming.gd")
 ## The pen's count pill: the briefing's colour for decisions.
 const PEN_PILL := Color("#F2A99C")
 ## What each bell's rows are called, in tooltips and the empty slide-out.
@@ -856,11 +857,8 @@ func _on_construction_started(instance_id: String, tile_id: String) -> void:
 	var project: Dictionary = Construction.construction_projects.get(instance_id, {})
 	if project.is_empty():
 		return  # 0-duration build completed instantly; the "built" toast covers it.
-	var building: Dictionary = Catalog.get_building(str(project.get("building_id", "")))
-	var b_name: String = str(building.get("display_name", project.get("building_id", "")))
-	var recipe: Dictionary = Catalog.get_recipe(str(project.get("recipe_id", "")))
-	var recipe_name: String = str(recipe.get("display_name", ""))
-	var who: String = b_name if recipe_name == "" else "%s — %s" % [b_name, recipe_name]
+	var who: String = BuildingNaming.label_for_tile(tile_id, instance_id, str(project.get("building_id", "")),
+		str(project.get("recipe_id", "")))
 	var duration: int = int(project.get("construction_duration", 0))
 	var msg: String = "Construction started for %s on tile %s. Will be complete in %d turn%s" % [
 		who, Catalog.tile_label(tile_id), duration, "" if duration == 1 else "s"
@@ -876,7 +874,8 @@ func _format_building_message(instance: Dictionary) -> String:
 	var building_id: String = instance.get("building_id", "")
 	var recipe_id: String = instance.get("recipe_id", "")
 	var building: Dictionary = Catalog.get_building(building_id)
-	var b_name: String = building.get("display_name", building_id)
+	var b_name: String = BuildingNaming.of(instance) if str(instance.get("instance_id", "")) != "" \
+		else BuildingNaming.name_for(building_id, recipe_id)
 	var cost: float = building.get("base_price", 0.0)
 
 	var line: String = "Built %s" % b_name

@@ -856,7 +856,7 @@ func _select_target(selector: String, def: Dictionary) -> Dictionary:
 			var p: Dictionary = Construction.construction_projects[iid]
 			return {"scope": scope, "instance_id": iid,
 				"tile_id": str(p.get("tile_id", "")),
-				"name": str(p.get("name", iid))}
+				"name": BuildingNaming.of(p)}
 		"highest_labour_building_type":
 			# Building type with the largest labour bill proxy: instance count x
 			# catalog labour headcount. Ties break to the lexicographically first id.

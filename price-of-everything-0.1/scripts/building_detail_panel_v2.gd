@@ -11,6 +11,7 @@ const EffectEmblem := preload("res://scripts/effect_emblem.gd")
 ## See docs/building-detail-v2-plan.md.
 
 const BuildingReadout := preload("res://scripts/building_readout.gd")
+const BuildingNaming := preload("res://scripts/building_naming.gd")
 const BuildingStatus := preload("res://scripts/building_status.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
@@ -355,8 +356,7 @@ func _rebuild(building: Dictionary) -> void:
 	var kind := BuildingReadout.classify(building_data, recipe, str(building.get("building_id", "")))
 
 	var display_name := str(building_data.get("display_name", building.get("building_id", "Building")))
-	var recipe_name := str(recipe.get("display_name", ""))
-	_title_label.text = display_name if recipe_name == "" else "%s — %s" % [display_name, recipe_name]
+	_title_label.text = display_name if is_infra else BuildingNaming.of(building)
 	_title_v3.text = _title_label.text
 	_emblem_v3.visible = UiPrefs.use_bdp_v3 and _emblem_v3.set_building(str(building.get("building_id", "")))
 	_apply_v3_title()
@@ -542,7 +542,7 @@ func _render_npc(building: Dictionary, building_data: Dictionary, recipe: Dictio
 	_body.add_child(card)
 
 	if not bool(own.get("is_ruins", false)):
-		var display_name := str(building_data.get("display_name", building.get("building_id", "Building")))
+		var display_name := BuildingNaming.of(building)
 		var price := BuildingReadout.buy_price(building)
 		var buy := Button.new()
 		buy.name = "NPCBuildingBuyButton"

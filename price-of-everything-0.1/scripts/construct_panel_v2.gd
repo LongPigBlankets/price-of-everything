@@ -22,6 +22,7 @@ const GOLD_DARK := Color("#c48d35")
 const GREEN := Color("#5fbf6b")
 const RED := DS.PALETTE["DANGER"]   # shared with the forecast chart's losing segments
 const BuildForecast := preload("res://scripts/build_forecast.gd")
+const BuildingNaming := preload("res://scripts/building_naming.gd")
 const BuildForecastTable := preload("res://scripts/build_forecast_table.gd")
 const CREAM := Color("#f4e6c0")
 const CREAM_SHADOW := Color("#9f875d")
@@ -1054,6 +1055,8 @@ func _recipe_category(recipe: Dictionary) -> String:
 func _recipe_matches(recipe: Dictionary, query: String) -> bool:
 	if str(recipe.get("display_name", "")).to_lower().contains(query):
 		return true
+	if BuildingNaming.name_for_recipe(str(recipe.get("recipe_id", ""))).to_lower().contains(query):
+		return true
 	if _recipe_category(recipe).to_lower().contains(query):
 		return true
 	var output_id := str(recipe.get("output_good_id", ""))
@@ -1222,7 +1225,7 @@ func _make_recipe_button(building_id: String, recipe: Dictionary, affordable: bo
 	name_pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(name_pad)
 	var recipe_name := Label.new()
-	recipe_name.text = str(recipe.get("display_name", ""))
+	recipe_name.text = BuildingNaming.name_for_recipe(str(recipe.get("recipe_id", "")))
 	recipe_name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	recipe_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	recipe_name.add_theme_font_size_override("font_size", BUILDING_NAME_FONT_SIZE)
@@ -1265,7 +1268,7 @@ func _render_confirm() -> void:
 	_filter_margin.visible = false
 	_mode_toggle.visible = false
 	_settings_button.visible = false
-	var building_name := str(_selected_building.get("display_name", ""))
+	var building_name := _selected_name()
 	var recipe_name := str(_selected_recipe.get("display_name", ""))
 	_header_title.text = "CONFIRM CONSTRUCTION"
 	# The hero card below already names the building and recipe; keep the title
@@ -1290,12 +1293,12 @@ func _render_confirm() -> void:
 	hero_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hero_row.add_child(hero_text)
 	var title := Label.new()
-	title.text = recipe_name if recipe_name != "" else building_name
+	title.text = building_name
 	title.add_theme_font_size_override("font_size", 17)
 	title.add_theme_color_override("font_color", TEXT)
 	hero_text.add_child(title)
 	var sub := Label.new()
-	sub.text = building_name if recipe_name != "" else "Infrastructure"
+	sub.text = recipe_name if recipe_name != "" else "Infrastructure"
 	sub.add_theme_font_size_override("font_size", 11)
 	sub.add_theme_color_override("font_color", _muted_tone())
 	hero_text.add_child(sub)
@@ -1541,7 +1544,7 @@ func _v3_verdict_strip() -> Control:
 	row1.add_child(text_box)
 	# Building name is the big text, recipe the small line under it.
 	var title := Label.new()
-	title.text = str(_selected_building.get("display_name", ""))
+	title.text = _selected_name()
 	title.add_theme_font_size_override("font_size", 17)
 	title.add_theme_color_override("font_color", TEXT)
 	text_box.add_child(title)
@@ -3259,6 +3262,11 @@ func _on_infrastructure_selected(building_id: String) -> void:
 	_render()
 
 
+## The chosen building's name: by its recipe once one is chosen ("Iron Furnace"), else its type's.
+func _selected_name() -> String:
+	return BuildingNaming.name_for(str(_selected_building.get("id", "")), str(_selected_recipe.get("recipe_id", "")))
+
+
 func _on_back_to_browse() -> void:
 	_view = View.BROWSE
 	_selected_building = {}
@@ -3297,14 +3305,14 @@ func _on_confirm_pressed() -> void:
 				str(_selected_recipe.get("recipe_id", "")), _locked_tile_id,
 				_buy_land_wanted and _land_purchase_units > 0):
 			return
-		MatchState.request_toast("Building %s on %s." % [str(_selected_building.get("display_name", "this building")), Catalog.tile_label(_locked_tile_id)], "info")
+		MatchState.request_toast("Building %s on %s." % [_selected_name(), Catalog.tile_label(_locked_tile_id)], "info")
 		hide()
 		return
 	if _selected_recipe.is_empty():
 		BuildMode.enter_infrastructure_mode(str(_selected_building.get("internal_name", "")), true)
 	else:
 		BuildMode.enter_build_mode(building_id, str(_selected_recipe.get("recipe_id", "")), true)
-	MatchState.request_toast("Construction confirmed — select a tile for %s." % str(_selected_building.get("display_name", "this building")), "info")
+	MatchState.request_toast("Construction confirmed — select a tile for %s." % _selected_name(), "info")
 	hide()
 
 
