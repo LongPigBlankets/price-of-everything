@@ -38,6 +38,11 @@ var colour := Color.WHITE
 ## The owner's newer rule (docs/ds2-owner-decisions.md, Digital displays): the point takes a cell of its own, as
 ## wide as a digit's. Off by default, so every screen built before it keeps its look; set it before set_figure.
 var point_cell := false
+## A screen for a tight column (a boardroom place): the cells closer together and less glass round them. Off by
+## default; set it before set_figure.
+var compact := false
+const COMPACT_GAP := 1.0
+const COMPACT_PAD := Vector2(3.0, 4.0)
 ## [character, point after it] per cell.
 var _cells: Array = []
 var _segments: Control
@@ -88,7 +93,7 @@ static func cells_with_points(figure: String) -> Array:
 func set_figure(figure: String, lit: Color) -> void:
 	_cells = cells_with_points(figure) if point_cell else cells_for(figure)
 	colour = lit
-	var pane := Vector2(_digits_width(), CELL.y) + 2.0 * PAD
+	var pane := Vector2(_digits_width(), CELL.y) + 2.0 * (COMPACT_PAD if compact else PAD)
 	custom_minimum_size = pane + Vector2.ONE * 2.0 * RIM / CAPTURE_SCALE
 	queue_redraw()
 	_segments.queue_redraw()
@@ -105,10 +110,14 @@ func figure() -> String:
 ## The digits' run across: the cells, the gaps between them, and room for each lit point.
 func _digits_width() -> float:
 	var n := _cells.size()
-	var w := n * CELL.x + maxi(n - 1, 0) * GAP
+	var w := n * CELL.x + maxi(n - 1, 0) * _gap()
 	for c: Array in _cells:
 		w += POINT_ROOM if bool(c[1]) else 0.0
 	return w
+
+
+func _gap() -> float:
+	return COMPACT_GAP if compact else GAP
 
 
 func _notification(what: int) -> void:
@@ -137,7 +146,7 @@ func _draw_segments() -> void:
 	for i in n:
 		var at := origin + Vector2(x, 0.0)
 		var point := bool(_cells[i][1])
-		x += CELL.x + GAP + (POINT_ROOM if point else 0.0)
+		x += CELL.x + _gap() + (POINT_ROOM if point else 0.0)
 		if str(_cells[i][0]) == ".":
 			# A point in a cell of its own: the dot at the foot of the cell, no segments.
 			var spot := at + Vector2(CELL.x * 0.5 - (CELL.y - STROKE * 0.5 - CELL.y) * SLANT, CELL.y - STROKE * 0.5)

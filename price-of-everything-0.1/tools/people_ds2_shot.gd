@@ -62,21 +62,57 @@ func _ready() -> void:
 			await _settle(14)
 			await _pages(panel, "people_%s_%s" % [look, ["advisors", "labour"][t]])
 	await _ds2_views(panel)
+	await _labour_views(panel)
 	print("[PEOPLE_SHOT] panel %s, min width %.0f" % [str(panel.get_global_rect()), panel.get_combined_minimum_size().x])
 	UiPrefs.set_use_people_ds2(false)
 	get_tree().quit(0)
 
 
-## The DS2 look's other views, where the look has them.
+## The DS2 Advisors tab's other views: the seats not yet opened (padlocks), a council with room (an open seat),
+## the picker with candidates, a candidate's dossier with a seat chosen, a seated advisor's dossier.
 func _ds2_views(panel: Control) -> void:
 	var shell: Control = panel.find_child("PeopleDs2", false, false)
-	if shell == null or not shell.has_method("shot_views"):
+	if shell == null:
 		return
-	for v: Dictionary in shell.call("shot_views"):
+	shell.call("show_tab", 0)
+	var tab: Control = shell.call("body", 0)
+	AdvisorState.all_seats_unlocked = false
+	AdvisorState.advisors_changed.emit()
+	await _settle(16)
+	await _shot(panel, "people_ds2_advisors_locked")
+	AdvisorState.all_seats_unlocked = true
+	AdvisorState.recruited_advisor_ids = ["gerald", "eleanor", "hitomi", "marcus"]
+	AdvisorState.max_advisor_slots = 3
+	AdvisorState.advisors_changed.emit()
+	await _settle(16)
+	await _shot(panel, "people_ds2_advisors_open")
+	tab.call("_set_view", {"mode": "picker", "back": "roster"})
+	await _settle(30)
+	await _shot(panel, "people_ds2_picker")
+	tab.call("_set_view", {"mode": "detail", "sel_id": "gerald", "selected_seat": "vp_logistics", "back": "picker"})
+	await _settle(30)
+	await _shot(panel, "people_ds2_dossier_candidate")
+	tab.call("_set_view", {"mode": "detail", "sel_id": "tom", "back": "roster"})
+	await _settle(30)
+	await _shot(panel, "people_ds2_dossier_seated")
+	tab.call("_set_view", {"mode": "roster"})
+	await _settle(8)
+
+
+## The DS2 Labour tab's other views, where the look has them.
+func _labour_views(panel: Control) -> void:
+	var shell: Control = panel.find_child("PeopleDs2", false, false)
+	if shell == null:
+		return
+	shell.call("show_tab", 1)
+	var tab: Control = shell.call("body", 1)
+	if tab == null or not tab.has_method("shot_views"):
+		return
+	for v: Dictionary in tab.call("shot_views"):
 		var setup: Callable = v.setup
-		await setup.call()
+		setup.call()
 		await _settle(int(v.get("frames", 16)))
-		await _shot(panel, "people_ds2_%s" % str(v.name))
+		await _pages(panel, "people_ds2_labour_%s" % str(v.name))
 
 
 func _show_tab(panel: Control, t: int) -> void:

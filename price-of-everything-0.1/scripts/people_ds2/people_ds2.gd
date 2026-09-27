@@ -232,17 +232,3 @@ func current_tab() -> int:
 
 func body(i: int) -> Control:
 	return _bodies[i]
-
-
-## The capture tool's extra views (tools/people_ds2_shot.gd): each {name, setup (awaitable), frames}.
-func shot_views() -> Array:
-	var out: Array = []
-	for b in _bodies:
-		if b.has_method("shot_views"):
-			for v: Dictionary in b.call("shot_views"):
-				var tab := _bodies.find(b)
-				var setup: Callable = v.setup
-				out.append({"name": v.name, "frames": v.get("frames", 16), "setup": func() -> void:
-					show_tab(tab)
-					await setup.call()})
-	return out
