@@ -994,7 +994,9 @@ func _build_port_card(building: Dictionary) -> PanelContainer:
 			vb.add_child(_port_activity_row(row, used_by_class))
 
 	_port_section(vb, "THE RATE CARD", false)
-	if TransportState.keeps_introductory_port_rate():
+	if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1":
+		vb.add_child(_port_metric("Ad valorem · all turns", "%s%% of market buy value" % String.num(EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES * 100.0, 1)))
+	elif TransportState.keeps_introductory_port_rate():
 		vb.add_child(_port_metric("Ad valorem · all turns", "0.5% of market buy value"))
 	else:
 		vb.add_child(_port_metric("Ad valorem · turns 1–30", "0.5% of market buy value"))
