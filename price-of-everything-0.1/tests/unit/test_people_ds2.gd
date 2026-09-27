@@ -8,6 +8,7 @@ const TAGS := {
 	"_test_labour_headcount": ["people", "production"],
 	"_test_people_ds2_advisors": ["people", "advisors", "ui"],
 	"_test_people_ds2_labour": ["people", "production", "ui"],
+	"_test_people_ds2_shell": ["people", "ui"],
 	"_test_seat_card_shows_every_effect": ["people", "advisors", "ui"],
 }
 
@@ -304,3 +305,36 @@ func _test_people_ds2_labour() -> void:
 	for iid in ids:
 		BuildingState.remove_building(iid)
 	MatchState.reset()
+
+
+## The DS2 shell: two latching tab keys (the open one latched), Close asks the panel to close, the lamp's overlay
+## is drawn last, and every label under the panel takes back part of its shade.
+func _test_people_ds2_shell() -> void:
+	var was: bool = UiPrefs.use_people_ds2
+	UiPrefs.set_use_people_ds2(true)
+	var pp: PanelContainer = load("res://scripts/people_panel.gd").new()
+	add_child(pp)
+	pp.size = Vector2(800, 1000)
+	await get_tree().process_frame
+	var shell: Control = pp.find_child("PeopleDs2", false, false)
+	var adv: Control = pp.find_child("TabKey_Advisors", true, false)
+	var lab: Control = pp.find_child("TabKey_Labour", true, false)
+	_check(shell != null and bool(adv.get("latched")) and not bool(lab.get("latched")) and (shell.call("body", 0) as Control).visible
+		and not (shell.call("body", 1) as Control).visible, "people ds2 shell: Advisors open first, its key latched")
+	lab.emit_signal("pressed")
+	_check(bool(lab.get("latched")) and not bool(adv.get("latched")) and (shell.call("body", 1) as Control).visible,
+		"people ds2 shell: the Labour key latches and shows Labour")
+	var closed := [false]
+	pp.connect("close_requested", func() -> void: closed[0] = true)
+	(pp.find_child("CloseKey", true, false) as TextureButton).pressed.emit()
+	_check(closed[0], "people ds2 shell: Close asks the panel to close")
+	_check(shell.get_child(shell.get_child_count() - 1).name == "PeopleShade", "people ds2 shell: the lamp's overlay is drawn last")
+	var lit := true
+	var text_light := preload("res://scripts/bdp_v3_light.gd").text_material()
+	for l in shell.find_children("*", "Label", true, false):
+		lit = lit and (l as Label).material == text_light
+	_check(lit, "people ds2 shell: every label takes back part of the lamp's shade")
+	shell.call("show_tab", 0)
+	UiPrefs.set_use_people_ds2(was)
+	pp.queue_free()
+	await get_tree().process_frame

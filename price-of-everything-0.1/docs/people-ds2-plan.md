@@ -1,6 +1,6 @@
 # People panel: how it is used, what it holds, and a DS2 arrangement
 
-Status: planning, 26 September 2026. Nothing of the DS2 look is built. One concept study is rendered (§5): render set `peoplestudy`, seed 437, in `tools/button_mockup/cluster.html`, not a game layer. Figures in it come from the captures in `artifacts/people_ds2/before/`, except the doors' headcounts, which are illustrative.
+Status: built behind `UiPrefs.use_people_ds2` (cheat `toggle people ds2`, off by default), 27 September 2026, branch `people-ds2`. Both tabs are built from the study's answers (§8, each "built as studied, owner to confirm"); what was built, and what is left, is in §9. The concept study is render set `peoplestudy`, seed 437, in `tools/button_mockup/cluster.html`; the game's own layers are the sets `peoplecab` to `peopleknob`, seeds 438 to 443.
 
 Read with `docs/ds2-theme.md` (the look, the kit, §13 and §14 for the method), `docs/ds2-owner-decisions.md` (settled rulings, including Digital displays) and `docs/tile-view-ds2-plan.md`, the model for this plan.
 
@@ -138,17 +138,39 @@ Contracts kept: `PeoplePanel`, `PeopleButton`, the `close_requested` signal, `co
 
 ## 8. Decisions for the owner
 
-1. **Width**: 800 logical for both tabs (recommended, §5), or keep a wider panel.
-2. **The shell**: painted machinery green steel (the study), the tile view's stainless, or the navy steel of Building Detail and the top bar.
-3. **The table**: five places a side, every seat always shown (recommended: the locked seats show what the company can grow into), or only the seats the company has opened, as today.
-4. **Four seat looks** (recommended): filled; open (chair pulled out, the blotter bare, "Assign advisor" on it); council full (chair pulled out, the folder closed without a padlock, "Council full"); not opened (the padlock). The study shows the first and the last.
-5. **The seat lamp**: green when the seat returns more than it costs, amber when not (the study); or by loyalty once loyalty is shown.
-6. **Three LEDs a place** (Bonus, Salary, Net, the study) or two (Salary, Net, the brief), the bonus in the hover.
-7. **Vera's worth and salary**: value the loan interest cut in the preview (recommended), and apply or drop her "reduced salary" (§3.4, §3.5).
-8. **Headcount on the doors**: a new figure from a new helper (recommended: the doors then say something), doors without numbers, or no doors.
-9. **The shift bell**: lit when labour reaches its floor (the study), or rung on the bonus turn.
-10. **The notice board**: the knob under the cursor and every policy in force (the study), or only the knob under the cursor.
-11. **Knob icons**: the study's pictograms, or the owner's own art; numerals allowed where the option is a number (50%, 75%, 100%)?
-12. **Lockers** for the four other policies, a padlock and its reason on a locked one (the study).
-13. **Height**: both tabs run past the 912 px fold (Advisors about 1040 logical, Labour about 1190) and scroll under the seam; accept, or put the lockers beside the notice board to shorten Labour.
-14. **Picker and detail as sheets** over the table (recommended), or views that replace it, as today.
+Each was built as the study answered it; the owner confirms or changes it. The original question stands under each answer.
+
+1. **Width**: 800 logical for both tabs (recommended, §5), or keep a wider panel. *Built as studied, owner to confirm: 800.*
+2. **The shell**: painted machinery green steel (the study), the tile view's stainless, or the navy steel of Building Detail and the top bar. *Built as studied, owner to confirm: machinery green (`people_backing`).*
+3. **The table**: five places a side, every seat always shown (recommended: the locked seats show what the company can grow into), or only the seats the company has opened, as today. *Built as studied, owner to confirm: all ten.*
+4. **Four seat looks** (recommended): filled; open (chair pulled out, the blotter bare, "Assign advisor" on it); council full (chair pulled out, the folder closed without a padlock, "Council full"); not opened (the padlock). The study shows the first and the last. *Built, owner to confirm: all four, from `scripts/people_ds2/seat_status.gd`. A full council's chair is pushed in (nobody can sit there yet). Note the study drew padlocks on seats that were open but at the cap; the build keeps the padlock for seats the Executive Search research has not opened.*
+5. **The seat lamp**: green when the seat returns more than it costs, amber when not (the study); or by loyalty once loyalty is shown. *Built as studied, owner to confirm: green when net > 0, amber otherwise.*
+6. **Three LEDs a place** (Bonus, Salary, Net, the study) or two (Salary, Net, the brief), the bonus in the hover. *Built as studied, owner to confirm: three, on compact screens (the cells closer, `bdp_v3_led.gd` `compact`) so they fit a place.*
+7. **Vera's worth and salary**: value the loan interest cut in the preview (recommended), and apply or drop her "reduced salary" (§3.4, §3.5). *Not built: both are balance decisions, left as they are. Owner question: should `advisor_bonus_preview_per_turn` value `loan_interest` against last turn's loan interest, and should Vera's salary be lower?*
+8. **Headcount on the doors**: a new figure from a new helper (recommended: the doors then say something), doors without numbers, or no doors. *Built as studied, owner to confirm: `Production.labour_headcount()`, the sum of the player's buildings' recipe (else building, else stub) headcount by kind, the columns `_base_labour_cost` prices; a paused building counts none. The count is not scaled by building level (as Building Detail's doors); owner to confirm.*
+9. **The shift bell**: lit when labour reaches its floor (the study), or rung on the bonus turn. *Built as studied, owner to confirm: the bell's lamp is lit amber when `labour_overview().at_floor` (some building's factor at `EconomyConfig.LABOUR_FACTOR_MIN`), dark otherwise.*
+10. **The notice board**: the knob under the cursor and every policy in force (the study), or only the knob under the cursor. *Built as studied, owner to confirm: the hovered option's card on top, then the six knobs' policies in force, automation and the other policies when on. The board grows with its cards.*
+11. **Knob icons**: the study's pictograms, or the owner's own art; numerals allowed where the option is a number (50%, 75%, 100%)? *Built as studied, owner to confirm: the study's pictograms (render set `peopleknob`, white masks the knob embosses on its plates; not yet raised as relief).*
+12. **Lockers** for the four other policies, a padlock and its reason on a locked one (the study). *Built as studied, owner to confirm.*
+13. **Height**: both tabs run past the 912 px fold (Advisors about 1040 logical, Labour about 1190) and scroll under the seam; accept, or put the lockers beside the notice board to shorten Labour. *Built as studied, owner to confirm: accepted; the body scrolls under the fixed head.*
+14. **Picker and detail as sheets** over the table (recommended), or views that replace it, as today. *Built, owner to confirm: steel sheets (Building Detail's `sheet_plate`) sliding in from the right in 0.26 s. Hire and assign is a plain cream key (one press, as the tutorial's words expect); Dismiss is the red key that needs a second press (it disarms after 4 s), in place of a guarded cover.*
+
+## 9. What is built, and what is left (27 September 2026)
+
+Built, each step a commit on `people-ds2`:
+
+- **Numbers** (§6): `Production.labour_charge(b, ran)` is the one labour figure (the turn's charge, the cash forecast, the panel); the Labour card reads the overview's keys; `labour_heads` and `labour_headcount`; every seat effect in words. The labour card fix is also on its own branch, `labour-card-fix`, for main.
+- **Layers**: `peoplecab` 438 (cabinet), `peopleroom` 439 (carpet, table, chairs, place, nameplate, frame, folders, stars), `peopleclock` 440, `peopleboard` 441 (cork, cards, pins), `peoplelocker` 442, `peopleknob` 443 (pictograms, automation icons), their numbers in `layout.json`.
+- **Shell** (`scripts/people_ds2/people_ds2.gd`), **Advisors** (`advisors_ds2.gd`, extends today's tab), **Labour** (`labour_ds2.gd`, extends today's tab), shared parts (`parts.gd`), the seat status helper (`seat_status.gd`).
+- **Kit additions**, each off by default: `bdp_v3_led.gd` `point_cell` (the point in its own cell, the owner's screen rule) and `compact`; `money_figure.gd` `screen()` (five cells, the point counted); `cream_key.gd` `chosen`.
+- **Captures**: `tools/people_ds2_shot.tscn` (both looks, each tab paged, seats locked and open, picker, dossiers, Labour at its extremes); a set is saved in `artifacts/people_ds2/ds2_v1/`.
+- **Tests**: `tests/unit/test_people_ds2.gd` and `tests/unit/test_labour_card.gd`.
+
+Left:
+
+- The owner's review rounds and a saved standard (Phase 6), then the switch on by default.
+- Copy and contrast in today's panel (§3.7): not touched, so the panel with the switch off stays exactly as it was.
+- Removing the legacy code in `people_panel.gd` (§3.9) and telemetry counters (§7 Phase 0).
+- Loyalty and missions in the dossier are one line of text (shown only when the demo is unlocked); the agenda is not shown in DS2 yet.
+- The knob pictograms are embossed by the knob, not raised in relief; the slide switches are drawn up to 1.5 times their render, a little soft.
+- Moving every screen to the point-in-its-own-cell rule is still a kit change to schedule; only the People screens use it.
