@@ -223,9 +223,9 @@ func _rebuild() -> void:
 	if _picked == "" and decisions.is_empty() and not lit.is_empty():
 		_picked = _worst(lit)
 	_body.add_child(_annunciator(windows))
-	if _picked == "":
-		var line := "No alerts." if lit.is_empty() else "%s lit. Pick one for its detail." % _count(lit.size(), "alert")
-		var said := Parts.body(line)
+	# The dark annunciator says there is nothing wrong; lit windows not yet picked say how to see them.
+	if _picked == "" and not lit.is_empty():
+		var said := Parts.body("%s lit. Pick one for its detail." % _count(lit.size(), "alert"))
 		said.name = "AnnunciatorLine"
 		_body.add_child(said)
 	else:
@@ -464,6 +464,8 @@ func _detail(w: Dictionary) -> void:
 		else:
 			for r: Array in stat_rows:
 				var value := Parts.title(str(r[1]))
+				value.autowrap_mode = TextServer.AUTOWRAP_OFF
+				value.custom_minimum_size.x = 0
 				value.size_flags_horizontal = Control.SIZE_SHRINK_END
 				value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 				col.add_child(_figure_line(str(r[0]), value))

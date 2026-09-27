@@ -1017,7 +1017,7 @@ func pending_view(uid: String = "") -> Dictionary:
 		var available := seat == "" or _seat_tenured(seat)
 		var lock_reason := ""
 		if not available:
-			lock_reason = "Needs a %s hired at least one turn ago." % _seat_name(seat)
+			lock_reason = "Needs the %s seat filled at least one turn ago." % _seat_name(seat)
 		var cost := _upfront_cost(choice)
 		var shortfall := loan_needed_for(cost)
 		choices.append({

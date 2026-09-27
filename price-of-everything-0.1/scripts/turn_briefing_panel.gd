@@ -570,7 +570,7 @@ func _portrait(advocate: Dictionary, px: int) -> Control:
 func _build_generic_detail(it: Dictionary) -> void:
 	var tag := ""
 	if str(it.section) == "alerts":
-		tag = "critical" if str(it.severity) == "critical" else "warning"
+		tag = "Critical" if str(it.severity) == "critical" else "Warning"
 	_detail.add_child(_detail_head(it, tag, _item_color(it)))
 
 	var body_text := str(it.get("body", ""))

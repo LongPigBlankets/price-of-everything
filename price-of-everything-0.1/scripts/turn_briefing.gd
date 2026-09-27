@@ -340,10 +340,10 @@ func _starved_item() -> Dictionary:
 	if _alert_dismissed.has("alert:starved") and total <= int(_alert_dismissed["alert:starved"]):
 		return {}
 	var listed: Array = (power_starved + input_starved).slice(0, STARVED_LIST_ROWS)
+	# The split only says something when both kinds are starved; one kind is the title again.
 	var rows: Array = []
-	if not power_starved.is_empty():
+	if not power_starved.is_empty() and not input_starved.is_empty():
 		rows.append(["Without power", _count(power_starved.size(), "building"), "bad"])
-	if not input_starved.is_empty():
 		rows.append(["Without inputs", _count(input_starved.size(), "building"), "warn"])
 	return {
 		"id": "alert:starved", "kind": "critical", "section": "alerts",
@@ -393,9 +393,10 @@ func _storage_undersized_item() -> Dictionary:
 		else "%d tiles need more stockpile" % rows.size()
 	var body := "Its buildings' inputs and outputs need more stockpile than the tile holds." if rows.size() == 1 \
 		else "Their buildings' inputs and outputs need more stockpile than the tiles hold."
-	var stat_rows: Array = [["Short by", _count(shortfall, "unit"), "bad"]]
+	# One tile's row already says what it needs and holds; several tiles add up.
+	var stat_rows: Array = []
 	if rows.size() > 1:
-		stat_rows.append(["Tiles", "%d" % rows.size(), ""])
+		stat_rows = [["Short by", _count(shortfall, "unit"), "bad"], ["Tiles", "%d" % rows.size(), ""]]
 	return {
 		"id": "alert:storage_undersized", "kind": "critical", "section": "alerts",
 		"severity": "critical", "dismissible": true, "magnitude": shortfall, "icon": "box",
