@@ -55,6 +55,14 @@ func _ready() -> void:
 	await _settle(6)
 	await _scroll_to(panel, "BuildingCard_%s" % bid)
 	await _shot(panel, "catalogue_open_condensed")
+	# The first tag hovered: its diagram glows.
+	var tag: Node = panel.find_child("RecipeRow_%s" % rid, true, false)
+	if tag != null:
+		tag.emit_signal("mouse_entered")
+		await get_tree().create_timer(0.3).timeout
+		await _shot(panel, "catalogue_tag_hover")
+		tag.emit_signal("mouse_exited")
+		await get_tree().create_timer(0.3).timeout
 	UiPrefs.set_construct_expanded_recipe_mode(true)
 	panel.call("_render")
 	await _settle(6)

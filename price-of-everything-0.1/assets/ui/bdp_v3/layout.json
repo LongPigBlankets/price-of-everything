@@ -2178,5 +2178,51 @@
    116
   ],
   "like": "tile_key"
+ },
+ "construct_container": {
+  "size": [
+   1023,
+   200
+  ],
+  "origin": [
+   -6,
+   -6
+  ],
+  "box": [
+   0,
+   0,
+   1005,
+   180
+  ],
+  "cap_left": 44,
+  "cap_right": 44,
+  "rib": 24
+ },
+ "construct_card_plate": {
+  "size": [
+   396,
+   168
+  ],
+  "origin": [
+   -6,
+   -6
+  ],
+  "at": [
+   36,
+   15
+  ],
+  "plate": [
+   0,
+   0,
+   380,
+   150
+  ],
+  "field": [
+   16,
+   15,
+   120
+  ],
+  "emblem": 100,
+  "text_x": 152
  }
 }

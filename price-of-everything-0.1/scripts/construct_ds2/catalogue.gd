@@ -28,18 +28,25 @@ const KEY_GAP := 10.0
 ## The category keys' two rows, as the study set them.
 const KEY_ROWS := [["extraction", "refinery", "metallurgy", "electrochemistry", "farm_forests"],
 	["power", "infrastructure", "water", "manufacturing"]]
-## layout.json construct_card: the board (a horizontal three-slice), its navy field and the icon in it, where the
-## words start, and the ends kept whole.
+## The building card as a shipping container (owner): layout.json construct_container, the blue corrugated side
+## drawn long and cropped to the card's width (its ends kept whole, its ribs never stretched), and
+## construct_card_plate, the enamel plate bolted to its left end holding the icon, the name and the price.
 const CARD_H := 180.0 * S
-const CARD_MARGIN := 6.0
-## The render reaches 6 past the board on the left and top, 10 on the right and 12 below (its shadow).
-const CARD_LAYER_GROW := Vector2(16.0, 18.0)
-const CARD_RIGHT_ROOM := 10.0
-const CARD_CAP_L := 206.0
-const CARD_CAP_R := 46.0
-const CARD_ICON := Rect2(38.0, 32.0, 116.0, 116.0)
-const CARD_TEXT_X := 186.0
+const BOX_LAYER := Rect2(-6.0, -6.0, 1023.0, 200.0)
+const BOX_CAP := 44.0
+const PLATE_AT := Vector2(36.0, 15.0)
+const CARD_PLATE_LAYER := Rect2(-6.0, -6.0, 396.0, 168.0)
+const PLATE_W := 380.0
+## In the plate: the navy blueprint field and the icon in it, where the words start.
+const CARD_FIELD := Rect2(16.0, 15.0, 120.0, 120.0)
+const CARD_ICON_INSET := 10.0
+const CARD_TEXT_X := 152.0
 const CARD_GAP := 16.0 * S
+## The hover glow on a recipe tag's diagram: the amber lamp glow, this strong at full, in and out this fast.
+const HOVER_GLOW := 1.0
+## The glow is added this many times at full: once reads faint over cream enamel.
+const HOVER_PASSES := 2
+const HOVER_TIME := 0.14
 ## layout.json construct_tag: the tag, its render reaching up past its top by its chains, the tab rising between
 ## the chains that carries the recipe's name (the owner: the name sits outside the diagram), the body below it that
 ## is the diagram's alone, and how far it hangs below what it hangs from.
@@ -53,6 +60,9 @@ const TAG_ROOM := Vector2(1005.0 * S - 48.0, 220.0 * S - 14.0)
 const NAVY := Color("#0b2340")
 const SEMI: FontFile = preload("res://assets/fonts/IBMPlexSans-SemiBold.ttf")
 const NAME_PX := 15
+## A card's name: two lines of it stand over the price, both within the icon tile's height.
+const CARD_NAME_PX := 13
+const CARD_NAME_LINE := 17
 const TAG_NAME_PX := 16
 const POUND_PX := 18
 const MUTED := Color(0.72, 0.72, 0.72)
@@ -137,20 +147,25 @@ static func site_card(building: Dictionary, width: float, price: float, dim_reas
 	if dim_reason != "":
 		card.modulate = MUTED
 	card.pressed.connect(on_press)
+	var plate := PLATE_AT * S
+	var field := Rect2(plate + CARD_FIELD.position * S, CARD_FIELD.size * S)
 	var icon := BuildOrder.BlueprintIcon.new(bid)
-	icon.position = CARD_ICON.position * S
-	icon.size = CARD_ICON.size * S
+	icon.position = field.position + Vector2.ONE * CARD_ICON_INSET * S
+	icon.size = field.size - Vector2.ONE * 2.0 * CARD_ICON_INSET * S
 	card.add_child(icon)
+	var text_x := plate.x + CARD_TEXT_X * S
+	var text_w := plate.x + PLATE_W * S - 10.0 - text_x
 	var name := Label.new()
 	name.name = "Name"
 	name.text = str(building.get("display_name", ""))
 	name.add_theme_font_override("font", SEMI)
-	name.add_theme_font_size_override("font_size", NAME_PX)
+	name.add_theme_font_size_override("font_size", CARD_NAME_PX)
+	name.add_theme_constant_override("line_spacing", -3)
 	name.add_theme_color_override("font_color", NAVY)
 	name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	name.max_lines_visible = 2
-	name.position = Vector2(CARD_TEXT_X * S, 9.0)
-	name.size = Vector2(width - CARD_TEXT_X * S - 12.0, 42.0)
+	name.position = Vector2(text_x, field.position.y - 3.0)
+	name.size = Vector2(text_w, 2.0 * CARD_NAME_LINE)
 	name.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(name)
 	var shown: Dictionary = MoneyFigure.screen(price, 2)
@@ -159,9 +174,10 @@ static func site_card(building: Dictionary, width: float, price: float, dim_reas
 	var pound: Label = money.get_child(0)
 	pound.add_theme_color_override("font_color", NAVY)
 	pound.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.3))
-	money.position = Vector2(CARD_TEXT_X * S - 2.0, CARD_H - 38.0)
 	money.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(money)
+	# The price's foot level with the foot of the icon's tile (owner).
+	money.position = Vector2(text_x - 2.0, field.end.y - money.get_combined_minimum_size().y)
 	return card
 
 
@@ -195,6 +211,11 @@ static func recipe_tag(building_id: String, recipe: Dictionary, condensed: bool,
 	var body := Rect2(TAG_BODY.position * S, TAG_BODY.size * S)
 	row.position = Vector2(0, body.get_center().y - TAG_ROOM.y * 0.5)
 	row.size = Vector2(TAG.x, TAG_ROOM.y)
+	# Hovered, the diagram glows.
+	var glow := HoverGlow.new(body)
+	tag.add_child(glow)
+	tag.mouse_entered.connect(func() -> void: glow.fade(true))
+	tag.mouse_exited.connect(func() -> void: glow.fade(false))
 	tag.add_child(row)
 	return tag
 
@@ -204,23 +225,55 @@ static func price(building_id: String, tile_id: String, tile_data: Dictionary, s
 	return float(Rules.quote(building_id, "", tile_id, tile_data, {"source": source, "buy_land": false}).get("total", 0.0))
 
 
-## The site board's enamel, drawn as a horizontal three-slice at the render's scale.
+## The card's container, cropped to the card's width (its ends whole, its ribs cropped, never stretched), and the
+## plate bolted to its left end.
 class SiteCard extends Button:
 	func _draw() -> void:
-		var tex := Plate.tex("construct_card")
-		if tex == null:
+		var box := Plate.tex("construct_container")
+		if box != null:
+			var dest := Rect2(BOX_LAYER.position * S, Vector2(size.x + (BOX_LAYER.size.x - 1005.0) * S, BOX_LAYER.size.y * S))
+			var th := float(box.get_height())
+			var cap := (BOX_CAP - BOX_LAYER.position.x) * E
+			var dcap := cap / 2.0
+			var mid := dest.size.x - 2.0 * dcap
+			draw_texture_rect_region(box, Rect2(dest.position, Vector2(dcap, dest.size.y)), Rect2(0, 0, cap, th))
+			draw_texture_rect_region(box, Rect2(dest.position + Vector2(dcap, 0), Vector2(mid, dest.size.y)), Rect2(cap, 0, mid * 2.0, th))
+			draw_texture_rect_region(box, Rect2(Vector2(dest.end.x - dcap, dest.position.y), Vector2(dcap, dest.size.y)),
+				Rect2(box.get_width() - cap, 0, cap, th))
+		var plate := Plate.tex("construct_card_plate")
+		if plate != null:
+			draw_texture_rect(plate, Rect2((PLATE_AT + CARD_PLATE_LAYER.position) * S, CARD_PLATE_LAYER.size * S), false)
+
+
+## A recipe tag's glow while hovered: the amber lamp glow added over its diagram.
+class HoverGlow extends Control:
+	var _area := Rect2()
+	var strength := 0.0:
+		set(v):
+			strength = v
+			queue_redraw()
+	var _tween: Tween
+
+	func _init(area: Rect2) -> void:
+		name = "HoverGlow"
+		_area = area
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		set_anchors_preset(Control.PRESET_FULL_RECT)
+		material = preload("res://scripts/bdp_v3_light.gd").glow_material()
+
+	func fade(on: bool) -> void:
+		if _tween != null and _tween.is_valid():
+			_tween.kill()
+		_tween = create_tween()
+		_tween.tween_property(self, "strength", HOVER_GLOW if on else 0.0, HOVER_TIME).set_trans(Tween.TRANS_SINE)
+
+	func _draw() -> void:
+		if strength <= 0.0:
 			return
-		var m := CARD_MARGIN * S
-		var dest := Rect2(Vector2(-m, -m), size + CARD_LAYER_GROW * S)
-		var tw := float(tex.get_width())
-		var th := float(tex.get_height())
-		var cl := (CARD_CAP_L + CARD_MARGIN) * E
-		var cr := (CARD_CAP_R + CARD_RIGHT_ROOM) * E
-		var dl := cl / 2.0
-		var dr := cr / 2.0
-		draw_texture_rect_region(tex, Rect2(dest.position, Vector2(dl, dest.size.y)), Rect2(0, 0, cl, th))
-		draw_texture_rect_region(tex, Rect2(dest.position + Vector2(dl, 0), Vector2(dest.size.x - dl - dr, dest.size.y)), Rect2(cl, 0, tw - cl - cr, th))
-		draw_texture_rect_region(tex, Rect2(Vector2(dest.end.x - dr, dest.position.y), Vector2(dr, dest.size.y)), Rect2(tw - cr, 0, cr, th))
+		var tex := Plate.tex("lamp_glow_amber")
+		if tex != null:
+			for i in HOVER_PASSES:
+				draw_texture_rect(tex, _area.grow_individual(-10.0, 10.0, -10.0, 10.0), false, Color(1, 1, 1, strength))
 
 
 ## The recipe tag's enamel and its chains, reaching up past its top to the board it hangs from.

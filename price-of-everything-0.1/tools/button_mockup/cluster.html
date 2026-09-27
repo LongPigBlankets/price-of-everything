@@ -3239,8 +3239,9 @@ async function exportLayers() {
   // and the lot last. Under the catalogue, the building icon three ways for comparison. On every LED the
   // point takes a cell of its own, and a figure drops a decimal from £100.
   // The construct panel's game layers (docs/construct-ds2-plan.md), exported with the study's own parts so they match
-  // it: constructhead (464), constructboard (465), constructyard (466), constructcat (467), constructkey (468).
-  const CONSTRUCT_PARTS = ['constructhead', 'constructboard', 'constructyard', 'constructcat', 'constructkey'];
+  // it: constructhead (464), constructboard (465), constructyard (466), constructcat (467), constructkey (468),
+  // constructbox (469).
+  const CONSTRUCT_PARTS = ['constructhead', 'constructboard', 'constructyard', 'constructcat', 'constructkey', 'constructbox'];
   if (want('constructlot') || CONSTRUCT_PARTS.some(want)) await withSeed(434, async () => {
     for (const f of ['500 30px "IBM Plex Sans"', '600 30px "IBM Plex Sans"', '700 30px "IBM Plex Sans"', '600 30px "Barlow Condensed"', '700 30px "Barlow Condensed"', `60px ${TITLE_FAMILY}`]) await document.fonts.load(f);
     const PW = 1125, FOLD = 1710, MX = 60, GAP = 300, MR = 260, CAPT = 110, FOOT = 120, SH1 = FOLD + 60;
@@ -4435,6 +4436,48 @@ async function exportLayers() {
       cap.position.y = y - 22; await post('construct_key_brass_latched', st.grab());
       cap.position.y = y;
       layout.construct_key_brass = { size: [KW, KH], like: 'tile_key' };
+    });
+
+    if (want('constructbox')) await withSeed(469, async () => {
+      // The catalogue's building card as a shipping container seen from its side (owner): blue painted corrugated
+      // steel between a darker top and bottom rail, a grey corner casting at each corner; long enough for an opened
+      // card and cropped by the game (its ribs never stretch). And its plate: the cream enamel sign with the navy
+      // blueprint field, bolted to the container's left end, the game printing the icon, the name and the price.
+      const BOX = { W: CW, H: 180, rail: 16, rib: 24, cast: 30, blue: '#2c5f92', railBlue: '#234d78' };
+      partGroup();
+      {
+        const { W, H, rail, rib } = BOX, p = weatheredPaint(W, H, BOX.blue, { wear: 0.55 });
+        const col = canvas2d(W, H, (g) => {
+          g.drawImage(p.colour, 0, 0, W, H);
+          for (let x = 0; x < W; x += rib) {
+            g.fillStyle = 'rgba(255,255,255,0.10)'; g.fillRect(x + 4, rail, 6, H - 2 * rail);
+            g.fillStyle = 'rgba(255,255,255,0.05)'; g.fillRect(x + 10, rail, 8, H - 2 * rail);
+            g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(x + 18, rail, 6, H - 2 * rail);
+          }
+          for (let i = 0; i < W * H / 900; i++) { const x = rand() * W, y = rail + rand() * (H - 2 * rail), l = 4 + rand() * 30; g.fillStyle = `rgba(${rand() < 0.5 ? '150,110,70' : '20,24,30'},${0.05 + rand() * 0.1})`; g.fillRect(x, y, 1 + rand() * 2, l); }
+        });
+        const bump = canvas2d(W, H, (g) => {
+          g.drawImage(p.bump, 0, 0, W, H);
+          for (let x = 0; x < W; x += rib) { g.fillStyle = 'rgba(210,210,210,0.8)'; g.fillRect(x + 6, rail, 12, H - 2 * rail); g.fillStyle = 'rgba(60,60,60,0.8)'; g.fillRect(x + 19, rail, 4, H - 2 * rail); }
+        });
+        const side = new THREE.MeshStandardMaterial({ color: 0x1f4368, metalness: 0.3, roughness: 0.6, envMap: studioEnv, envMapIntensity: 0.5 });
+        const mat = new THREE.MeshStandardMaterial({ map: faceTexture(col, W, H), bumpMap: faceTexture(bump, W, H, false), bumpScale: 1.4, metalness: 0.3, roughness: 0.55, envMap: studioEnv, envMapIntensity: 0.5 });
+        add(shade(new THREE.Mesh(extrude(rrShape(W, H, 4), 4, 2, 1.6, 3), [mat, side])), W / 2, OY + H / 2, 0);
+        for (const zc of [rail / 2, H - rail / 2]) add(shade(new THREE.Mesh(extrude(rrShape(W, rail, 2), 4, 1, 0.8, 2), [painted(W, rail, BOX.railBlue, 0.7), side])), W / 2, OY + zc, T - 1);
+        const castMat = new THREE.MeshStandardMaterial({ color: 0x6e737a, map: noiseTexture(20, 40, 30), metalness: 0.8, roughness: 0.5, envMap: studioEnv, envMapIntensity: 0.7 });
+        for (const [cx, cz] of [[BOX.cast / 2 + 2, 15], [W - BOX.cast / 2 - 2, 15], [BOX.cast / 2 + 2, H - 15], [W - BOX.cast / 2 - 2, H - 15]]) {
+          add(shade(new THREE.Mesh(extrude(rrShape(BOX.cast, 26, 3), 5, 1.4, 1.1, 2), castMat)), cx, OY + cz, T - 1);
+          const hole = new THREE.Mesh(new THREE.CircleGeometry(5, 20).rotateX(-Math.PI / 2), MAT.gap); hole.scale.set(1.5, 1, 1);
+          add(hole, cx, OY + cz, T + 6.6);
+        }
+      }
+      await grabPart('construct_container', [-6, -6, BOX.W + 12, BOX.H + 14], T + 0.3);
+      Object.assign(layout.construct_container, { box: [0, 0, BOX.W, BOX.H], cap_left: 44, cap_right: 44, rib: BOX.rib });
+
+      const PL = { x: 36, y: 15, w: 380, h: 150, field: [16, 15, 120], emblem: 100 };
+      partGroup(); await siteBoard(0, { x: 0, y: 0, w: PL.w, h: PL.h, file: 'b_002_furnace.png', field: PL.field, emblem: PL.emblem, style: 'grid' });
+      await grabPart('construct_card_plate', [-6, -6, PL.w + 10, PL.h + 12], T + 0.3);
+      Object.assign(layout.construct_card_plate, { at: [PL.x, PL.y], plate: [0, 0, PL.w, PL.h], field: PL.field, emblem: PL.emblem, text_x: PL.field[0] + PL.field[2] + 16 });
     });
   });
 
