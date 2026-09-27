@@ -3238,7 +3238,10 @@ async function exportLayers() {
   // fixed head ends, the requirement lamps, the cost, the materials yard with the source knob, the outlook,
   // and the lot last. Under the catalogue, the building icon three ways for comparison. On every LED the
   // point takes a cell of its own, and a figure drops a decimal from £100.
-  if (want('constructlot')) await withSeed(434, async () => {
+  // The construct panel's game layers (docs/construct-ds2-plan.md), exported with the study's own parts so they match
+  // it: constructhead (464), constructboard (465), constructyard (466).
+  const CONSTRUCT_PARTS = ['constructhead', 'constructboard', 'constructyard'];
+  if (want('constructlot') || CONSTRUCT_PARTS.some(want)) await withSeed(434, async () => {
     for (const f of ['500 30px "IBM Plex Sans"', '600 30px "IBM Plex Sans"', '700 30px "IBM Plex Sans"', '600 30px "Barlow Condensed"', '700 30px "Barlow Condensed"', `60px ${TITLE_FAMILY}`]) await document.fonts.load(f);
     const PW = 1125, FOLD = 1710, MX = 60, GAP = 300, MR = 260, CAPT = 110, FOOT = 120, SH1 = FOLD + 60;
     const CL = 80, CW = PW - 40 - CL, OX = [MX, MX + PW + GAP], OY = CAPT, W = OX[1] + PW + MR;
@@ -3511,9 +3514,20 @@ async function exportLayers() {
         feat.buttons.push({ x: px, y: py, w: NAMEPLATE.w, h: NAMEPLATE.h, r: 6 });
       }
       // The trolley on the bottom chord; with a drop, the hoist ropes and the hook block, striped yellow and black.
+      if (trolley == null) return null;
+      trolleyPart(ox, trolley);
+      if (drop == null) return null;
+      return hookPart(ox, trolley, drop);
+    };
+    /** The trolley on the jib's bottom chord at x. */
+    const trolleyPart = (ox, trolley) => {
+      const X = (x) => ox + x, Z = (z) => OY + z, { b: jb } = JIB, yj = T + 7;
       add(shade(new THREE.Mesh(extrude(rrShape(66, 30, 5), 7, 1.5, 1.2, 2), [painted(66, 30, YELLOW, 0.7), yellowSide])), X(trolley), Z(jb + 1), yj + 9);
       for (const dx of [-24, 24]) add(screw(3), X(trolley + dx), Z(jb + 1), yj + 19);
-      if (drop == null) return null;
+    };
+    /** The hoist ropes from the trolley at x down to the hook block, its top at `drop`, and the hook. */
+    const hookPart = (ox, trolley, drop) => {
+      const X = (x) => ox + x, Z = (z) => OY + z, { b: jb } = JIB;
       const ropeMat = new THREE.MeshStandardMaterial({ color: 0x70757b, metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 0.9 });
       const r0 = jb + 14, r1 = drop + 4;
       for (const dx of [-7, 7]) add(shade(new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, r1 - r0, 10).rotateX(Math.PI / 2), ropeMat)), X(trolley + dx), Z((r0 + r1) / 2), T + 12);
@@ -3758,6 +3772,7 @@ async function exportLayers() {
       return c;
     })();
 
+    if (want('constructlot')) {
     // Shared by both stages: the rail, the crane with the site's name, the Close key.
     const feats = [0, 1].map(() => ({ icons: [], buttons: [], screws: [] }));
     for (const [i, ox] of OX.entries()) { cur = i; rail(ox); smallKey('x', ox + PW - 60, OY + 76); }
@@ -4141,6 +4156,135 @@ async function exportLayers() {
         text(g, '600 px wide', ox + PW / 2, y + 1, 250, 28, LIGHT, { align: 'center', weight: 500, family: PLEX });
       }
     }));
+    }
+
+    // ===== The game layers (docs/construct-ds2-plan.md §5), each in a render of its own at the panel's own
+    // layout, placed by the game at `origin` (layout px from the panel's top-left). Nothing is printed: the game
+    // prints the site's name, the building's name and every figure. A part gets a group of its own and a
+    // shadow catcher at the hoarding's face, so its shadow falls where the game draws it.
+    const HEAD_H = 244, MAST = { x0: 0, w: 120, period: 104, from: HEAD_H + 104 };
+    const partGroup = () => { groups.push(new THREE.Group()); cur = groups.length - 1; return groups[cur]; };
+    const noFeat = () => ({ icons: [], buttons: [], screws: [] });
+    /** Renders the current group over [x0, y0, x1, y1] (panel layout px) with a catcher at height y. */
+    const grabPart = (name, [x0, y0, x1, y1], y = T + 0.3, opacity = 0.5) => {
+      const g = groups[cur];
+      g.add(shadowCatcher(x1 - x0, y1 - y0, (x0 + x1) / 2, OY + (y0 + y1) / 2, y, opacity));
+      const st = stage([x0, OY + y0, x1, OY + y1], [g]);
+      st.scene.traverse((o) => { if (o.isDirectionalLight) o.shadow.mapSize.set(4096, 4096); });
+      return post(name, st.grab()).then(() => { layout[name] = { size: [x1 - x0, y1 - y0], origin: [x0, y0] }; });
+    };
+    const BO = { x: CL, y: 334, w: CW, h: 336 }, BO_TROLLEY = BO.x + BO.w / 2 + 3, BO_DROP = 196, BO_SPY = 296;
+
+    if (want('constructhead')) await withSeed(464, async () => {
+      // The head: the hoarding's top rail and the crane (tower, slewing unit, cab with CONSTRUCT, jib), no trolley.
+      partGroup(); rail(0); crane(0, noFeat(), HEAD_H + 4 * MAST.period + 18, { trolley: null });
+      await grabPart('construct_head', [0, 0, PW, HEAD_H]);
+      // One bay of the tower, to repeat down the hoarding's left edge from HEAD_H.
+      partGroup(); crane(0, noFeat(), HEAD_H + 6 * MAST.period + 18, { trolley: null });
+      await grabPart('construct_mast', [MAST.x0, MAST.from, MAST.x0 + MAST.w, MAST.from + MAST.period]);
+      layout.construct_mast.at = HEAD_H;
+      // The site's name plate, blank, on its two chains from the jib.
+      partGroup();
+      { const px = PLACARD.x, py = PLACARD.y, pb = T + 3;
+        for (const hx of [px + 38, px + NAMEPLATE.w - 38]) { chain(hx, OY + JIB.b + 3, OY + py + 11, T + 8); eyelet(hx, OY + py + 11, pb + 4.4); }
+        namePlate(0, px, py, '', pb); }
+      await grabPart('construct_placard', [PLACARD.x - 12, JIB.b, PLACARD.x + NAMEPLATE.w + 16, PLACARD.y + NAMEPLATE.h + 14]);
+      layout.construct_placard.face = [PLACARD.x + 14, PLACARD.y + 5, NAMEPLATE.w - 28, NAMEPLATE.h - 10];
+      // The trolley alone, placed on the jib by the game.
+      partGroup(); trolleyPart(0, 60);
+      await grabPart('construct_trolley', [18, JIB.b - 22, 102, JIB.b + 26]);
+      layout.construct_trolley.centre_x = 60;
+      // The rig for the build order: the ropes and hook from the trolley, the eye plate, the spreader beam and a
+      // chain from each end down to the site board's rings.
+      partGroup();
+      hookPart(0, BO_TROLLEY, BO_DROP);
+      { const [bx, bz] = [BO_TROLLEY - 3, BO_DROP + 67];
+        const eye = new THREE.Shape(), hy = BO_SPY - 7 - bz; eye.moveTo(-24, 0); eye.lineTo(24, 0); eye.lineTo(13, hy + 6); eye.quadraticCurveTo(0, hy + 22, -13, hy + 6); eye.closePath();
+        eye.holes.push(new THREE.Path().absarc(0, hy, 6, 0, Math.PI * 2, true));
+        add(shade(new THREE.Mesh(extrude(eye, 2, 1, 0.8, 2), [painted(48, 44, YELLOW, 0.5), yellowSide])), bx, OY + BO_SPY - 7, T + 4);
+        bar(BO.x + 30, OY + BO_SPY, BO.x + BO.w - 30, OY + BO_SPY, 14, 10, T + 5);
+        for (const ex of [BO.x + 40, BO.x + BO.w - 40]) { chain(ex, OY + BO_SPY + 4, OY + BO.y + 14, T + 16); add(screw(4), ex, OY + BO_SPY, T + 15); } }
+      await grabPart('construct_rig', [BO.x, JIB.b + 8, BO.x + BO.w, BO.y + 24]);
+      layout.construct_rig.trolley_x = BO_TROLLEY;
+      // The hoarding: three bolted sheets of navy steel, long enough for the tallest panel, cropped by the game.
+      partGroup();
+      { const n = 3, sw = PW / n, SH = 2250, screwsAt = [];
+        for (const x of [sw - 15, sw + 15, 2 * sw - 15, 2 * sw + 15, PW - 16]) for (let y = 58; y < SH - 20; y += 128) { screwsAt.push({ x, y }); add(screw(7), x, OY + y, T + 0.5); }
+        for (let k = 0; k < n; k++) {
+          const sx = k * sw, face = { base: NAVY_STEEL_CANVAS, rub: '120,136,160', icons: [], buttons: [],
+            screws: screwsAt.filter((q) => q.x > sx && q.x < sx + sw).map((q) => ({ x: q.x - sx - 4, y: q.y - 4 })) };
+          const side = new THREE.MeshStandardMaterial({ color: 0x3a4250, metalness: 1, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
+          const sheet = new THREE.Mesh(extrude(rrShape(sw - 8, SH - 8, 10), 4, 4.5, 3.6, 6), [plateMaterial(sw - 8, SH - 8, face), side]);
+          sheet.receiveShadow = true; add(sheet, sx + sw / 2, OY + SH / 2, 0);
+        }
+        await grabPart('construct_hoarding', [0, 0, PW, SH], 0.05, 0.42); }
+      layout.construct_panel = { width: PW, content_x: CL, content_w: CW, head_h: HEAD_H, cab: CAB, jib: JIB, placard: PLACARD, nameplate: NAMEPLATE, close: [PW - 60, 76], back: [PW - 60, 160] };
+    });
+
+    if (want('constructboard')) await withSeed(465, async () => {
+      // The site board for the build order: worn steel, a recess for the recipe's enamel sign (drawn by the game
+      // under it), the rings its chains hang from, and the blueprint tile blank (the game prints the icon).
+      partGroup();
+      const B = { x: 0, y: 0, w: BO.w, h: BO.h }, bBase = T + 9, bTop = bBase + 4 + 3.2, TILE = { x: 24, y: 94, s: 216 };
+      const EN = { x: TILE.x + TILE.s + 20, y: TILE.y, w: B.w - TILE.x - TILE.s - 20 - 24, h: TILE.s };
+      const bShape = rrShape(B.w, B.h, 12);
+      bShape.holes.push(rr(new THREE.Path(), EN.w, EN.h, ENAMEL.radius, EN.x + EN.w / 2 - B.w / 2, B.h / 2 - (EN.y + EN.h / 2)));
+      add(shade(new THREE.Mesh(extrude(bShape, 4, 1.6, 1.2, 3), [plateMaterial(B.w, B.h, { icons: [], buttons: [{ x: TILE.x, y: TILE.y, w: TILE.s, h: TILE.s, r: 8 }], screws: [] }), MAT.plateSide])), B.w / 2, OY + B.h / 2, bBase);
+      for (const ex of [40, B.w - 40]) ring(ex, OY + 14, bTop, 5.5, 1.8);
+      const ts = TILE.s, tileFace = canvas2d(ts, ts, (c) => { c.fillStyle = ENAMEL_FIELD; c.fillRect(0, 0, ts, ts); blueprintGrid(c, 0, 0, ts, 8); });
+      add(shade(new THREE.Mesh(extrude(rrShape(ts, ts, 8), 1.5, 1, 0.8, 2), [enamelMat(tileFace, ts, ts), MAT.plateSide])), TILE.x + ts / 2, OY + TILE.y + ts / 2, bTop);
+      for (const [rx, rz] of [[11, 11], [ts - 11, 11], [11, ts - 11], [ts - 11, ts - 11]]) {
+        const rv = new THREE.Mesh(new THREE.SphereGeometry(3.4, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), darkSteel); rv.scale.y = 0.55; add(shade(rv), TILE.x + rx, OY + TILE.y + rz, bTop + 3.5);
+      }
+      await grabPart('construct_board', [-8, -8, B.w + 14, B.h + 16], T + 0.3);
+      Object.assign(layout.construct_board, { board: [0, 0, B.w, B.h], tile: [TILE.x, TILE.y, ts, ts], icon_inset: 28, enamel: [EN.x, EN.y, EN.w, EN.h], title: [24, 8], ink: BLUEPRINT_INK });
+      // The guarded Build key: the amber cap with a hammer under its hinged clear cover, framed as People's guard.
+      { const FW = 240, FH = 150, S = 100, BY = (FH - S) / 2, HEAD = 64, x = 70, group = new THREE.Group();
+        const gb = guardButton(S, HAMMER, 0xffa412); gb.position.set(x + S / 2, PLATE_TOP, BY + S / 2); group.add(gb);
+        const catcher = new THREE.Mesh(new THREE.PlaneGeometry(FW, FH).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: 0.5 }));
+        catcher.position.set(FW / 2, PLATE_TOP + 0.4, FH / 2); catcher.receiveShadow = true; group.add(catcher);
+        const sf = stage([0, -HEAD, FW, FH], [group]);
+        catcher.visible = false; gb.userData.cover.visible = false;
+        await post('guard_build', sf.grab());
+        const cap = gb.userData.cap, y = cap.position.y; cap.position.y = y - 3.5; await post('guard_build_pressed', sf.grab()); cap.position.y = y;
+        catcher.visible = true;
+        gb.traverse((o) => { if (o.isMesh && !gb.userData.cover.getObjectById(o.id)) o.visible = false; });
+        gb.userData.cover.visible = true; gb.userData.cover.traverse((o) => { o.visible = true; });
+        await post('guard_build_cover', sf.grab());
+        gb.userData.cover.rotation.x = -COVER_OPEN; await post('guard_build_cover_open', sf.grab()); gb.userData.cover.rotation.x = 0;
+        layout.guard_build = { size: [FW, FH + HEAD], head: HEAD, button: [x, BY + HEAD, S, S], colour: 'amber', icon: 'hammer' }; }
+    });
+
+    if (want('constructyard')) await withSeed(466, async () => {
+      // The materials yard: one gravel laydown for two columns of three bays (the game places the pallets).
+      const LD = { w: CW, pad: 18, gap: 12, rows: [206, 206, 272] };
+      LD.h = 2 * LD.pad + LD.rows.reduce((a, b) => a + b, 0) + 2 * LD.gap;
+      partGroup(); ground(0, noFeat(), 0, 0, LD.w, LD.h);
+      await grabPart('construct_yard', [-6, -6, LD.w + 12, LD.h + 14]);
+      Object.assign(layout.construct_yard, { yard: [0, 0, LD.w, LD.h], pad: LD.pad, gap: LD.gap, rows: LD.rows, pallet: 176 });
+      // A timber pallet on the gravel, its deck's top where a good's well sits.
+      partGroup(); { const S = 176; pallet(S / 2 + 10, OY + S / 2 + 10, T + 5, S); }
+      await grabPart('construct_pallet', [0, 0, 176 + 30, 176 + 30], T + 5.3);
+      // The feeder pillar's face: painted green steel with vents at its right end; the game sets the lamps.
+      partGroup();
+      { const PL = { w: CW, h: 132 };
+        add(shade(new THREE.Mesh(extrude(rrShape(PL.w, PL.h, 14), 10, 2, 1.6, 3), [painted(PL.w, PL.h, '#2f3a35', 0.7), new THREE.MeshStandardMaterial({ color: 0x252d29, metalness: 0.3, roughness: 0.6, envMap: studioEnv, envMapIntensity: 0.5 })])), PL.w / 2, OY + PL.h / 2);
+        for (let i = 0; i < 4; i++) add(shade(new THREE.Mesh(extrude(rrShape(6, 50, 3), 0.4), MAT.gap)), PL.w - 74 + i * 13, OY + PL.h / 2, T + 14 - 0.2);
+        await grabPart('construct_pillar', [-6, -6, PL.w + 12, PL.h + 14]); }
+      // The land lot: a gravel patch, one concrete slab, a stake, and hazard tape laid along and across.
+      partGroup(); ground(0, noFeat(), 0, 0, 470, 206);
+      await grabPart('construct_lot', [-6, -6, 482, 220]);
+      partGroup(); add(shade(new THREE.Mesh(extrude(rrShape(30, 30, 3), 2, 1, 0.8, 2), [concreteMaterial(30, 30, '#b3aea4'), concreteSideC])), 25, OY + 25, T + 5);
+      await grabPart('construct_slab', [0, 0, 50, 50], T + 5.3);
+      layout.construct_slab.slab = [10, 10, 30, 30];
+      partGroup();
+      add(shade(new THREE.Mesh(new THREE.CylinderGeometry(4.5, 5, 12, 20), galv)), 20, OY + 20, T + 11);
+      add(shade(new THREE.Mesh(new THREE.SphereGeometry(5.8, 20, 10), painted(20, 20, YELLOW, 0.3))), 20, OY + 20, T + 17);
+      await grabPart('construct_stake', [0, 0, 40, 40], T + 5.3);
+      partGroup(); tape(0, OY + 20, 320, OY + 20, T + 14);
+      await grabPart('construct_tape', [0, 10, 320, 34], T + 5.3);
+      layout.construct_tape.period = 16;
+    });
   });
 
   // --- a study for the Market panel (docs/market-ds2-plan.md), not a game layer: the commodities exchange.
