@@ -4147,8 +4147,8 @@ func _ds2_refresh_cash(colour: Color = Color(0, 0, 0, 0)) -> void:
 	var figure: String = parts.figure
 	figure = " ".repeat(maxi(0, MoneyFigure.MAX_CELLS - MoneyFigure.cells(figure))) + figure
 	_ds2_cash_led.call("set_figure", figure, colour)
-	var full := Vector2(MoneyFigure.MAX_CELLS * Led.CELL.x + (MoneyFigure.MAX_CELLS - 1) * Led.GAP + Led.POINT_ROOM, Led.CELL.y) \
-		+ 2.0 * Led.PAD + Vector2.ONE * 2.0 * Led.RIM / Led.CAPTURE_SCALE
+	# Five cells, the point one of them (the owner's screen rule).
+	var full := Vector2(Led.width_for_cells(MoneyFigure.MAX_CELLS), Led.CELL.y + 2.0 * Led.PAD.y + 2.0 * Led.RIM / Led.CAPTURE_SCALE)
 	_ds2_cash_led.custom_minimum_size = full
 	_ds2_cash_led.size = full
 	var k := DS2_CASH_SCALE

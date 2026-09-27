@@ -92,7 +92,7 @@ const FIGURE_W := 84.0
 const CHANGE_CELLS := 5
 const CHANGE_PITCH := 2.0
 const CHANGE_W := 70.0
-const MONEY_DIGITS := 6
+const MONEY_DIGITS := 5
 ## The least room kept between the sheet and the screen's edges.
 const SCREEN_MARGIN := 16.0
 
