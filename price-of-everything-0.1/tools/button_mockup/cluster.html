@@ -2185,7 +2185,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // tiledoor, tilekey. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy.
+  // tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -5865,6 +5865,387 @@ async function exportLayers() {
         text(g, s, OX[i] + 38, 56, 600, 36, LIGHT, { weight: 600, family: PLEX });
       });
     }));
+  });
+
+  // --- the People panel's game layers (docs/people-ds2-plan.md §5), each part family its own set and seed after
+  // the study's (437): the cabinet's green steel (peoplecab), the boardroom's parts (peopleroom), the time clock
+  // (peopleclock), the notice board (peopleboard), the lockers (peoplelocker) and the knobs' pictograms and the
+  // automation case's raised icons (peopleknob). The game prints every word and figure live; these are blank.
+  const PEOPLE = {
+    CAB: { W: 1500, H: 2200, M: 24, bottom: 420, sheets: 3, hinges: [260, 1940], screwPitch: 128 },
+    BAY: { W: 1380, H: 2000, M: 16, border: 22 },
+    TABLE: { W: 1348, H: 1800, M: 16, r: 20, inlay: 9 },
+    CHAIR: { W: 270, H: 250, cy: 150 },
+    BLOTTER: { W: 252, H: 530, M: 12, corner: 40 },
+    NAMEPLATE: { W: 228, H: 62, M: 10, cap: 34 },
+    FRAME: { W: 120, H: 150, M: 16, rim: 8 },
+    FOLDER: { W: 208, H: 170, M: 18 },
+    STAR: { S: 44, star: 30 },
+    CLOCK: { W: 520, H: 460, M: 20, top: 84, bell: [100, 92], lamp: [100, 188], dial: [318, 138], dialR: 88, card: [438, -64, 70, 100] },
+    CORK: { W: 450, H: 880, M: 14, corner: 44 },
+    CARD: { W: 394, H: 240, M: 10, rule: 60, corner: 76 },
+    PIN: { S: 36, r: 8 },
+    LOCKER: { W: 248, H: 440, M: 18, card: [24, 112, 200, 132], switchAt: [104, 316], handle: [218, 316], hasp: [218, 382], lock: [218, 400] },
+    ICON: { S: 128 },
+    AUTO: { S: 124, icon: 96, height: 8, soften: 1.2 },
+  };
+  /** The People sets' shared materials and parts (the study's, made inside each set's seed). */
+  const peopleKit = () => {
+    const paintSide = new THREE.MeshStandardMaterial({ color: 0x3c4a46, metalness: 0.4, roughness: 0.55, envMap: studioEnv, envMapIntensity: 0.5 });
+    const painted = (w, h, base, wear) => {
+      const p = weatheredPaint(w, h, base, { wear });
+      return new THREE.MeshStandardMaterial({ map: faceTexture(p.colour, w, h), bumpMap: faceTexture(p.bump, w, h, false), bumpScale: 0.6, metalness: 0.3, roughness: 0.58, envMap: studioEnv, envMapIntensity: 0.5 });
+    };
+    const galv = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, map: noiseTexture(24, 60, 30), metalness: 1, roughness: 0.38, envMap: studioEnv, envMapIntensity: 0.9 });
+    const darkSteel = new THREE.MeshStandardMaterial({ color: 0x3c4046, map: noiseTexture(20, 40, 40), metalness: 1, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.85 });
+    const chrome = new THREE.MeshStandardMaterial({ color: 0xb4b9c0, metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 1.0 });
+    const brass = new THREE.MeshStandardMaterial({ color: 0xc9a35a, map: noiseTexture(18, 40, 40), metalness: 1, roughness: 0.34, envMap: studioEnv, envMapIntensity: 0.95 });
+    const leather = (w, h, base, stitch = true, seams = []) => new THREE.MeshPhysicalMaterial({ map: faceTexture(canvas2d(w, h, (c) => {
+      c.fillStyle = base; c.fillRect(0, 0, w, h);
+      for (let i = 0; i < w * h / 2600; i++) { const x = rand() * w, y = rand() * h, r = 10 + rand() * 40, grd = c.createRadialGradient(x, y, 0, x, y, r); grd.addColorStop(0, `rgba(${rand() < 0.5 ? '0,0,0' : '255,255,255'},${0.03 + rand() * 0.04})`); grd.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = grd; c.fillRect(x - r, y - r, 2 * r, 2 * r); }
+      for (let i = 0; i < w * h / 40; i++) { c.fillStyle = `rgba(0,0,0,${0.06 + rand() * 0.1})`; c.fillRect(rand() * w, rand() * h, 0.6 + rand(), 0.6 + rand()); }
+      const rub = c.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.2, w / 2, h / 2, Math.max(w, h) * 0.7); rub.addColorStop(0, 'rgba(255,255,255,0.04)'); rub.addColorStop(1, 'rgba(0,0,0,0.22)'); c.fillStyle = rub; c.fillRect(0, 0, w, h);
+      if (stitch) { c.save(); c.setLineDash([5, 4]); c.strokeStyle = 'rgba(214,200,164,0.42)'; c.lineWidth = 1.3; c.beginPath(); c.roundRect(7, 7, w - 14, h - 14, 6); c.stroke(); c.restore(); }
+      for (const f of seams) { const x = f * w; c.save(); c.filter = 'blur(1.5px)'; c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(x - 3, 6, 6, h - 12); c.fillStyle = 'rgba(255,255,255,0.1)'; c.fillRect(x + 3, 6, 3, h - 12); c.restore(); }
+    }), w, h), roughness: 0.55, clearcoat: seams.length ? 0.45 : 0.18, clearcoatRoughness: seams.length ? 0.3 : 0.5, envMap: studioEnv, envMapIntensity: seams.length ? 0.5 : 0.3 });
+    const brassFace = (w, h) => new THREE.MeshStandardMaterial({ map: faceTexture(canvas2d(w, h, (c) => {
+      c.fillStyle = '#c29a50'; c.fillRect(0, 0, w, h);
+      for (let i = 0; i < h * 5; i++) { const y = rand() * h; c.strokeStyle = `rgba(${rand() < 0.5 ? '255,236,190' : '96,70,30'},${0.08 + rand() * 0.12})`; c.lineWidth = 0.5; c.beginPath(); c.moveTo(rand() * w * 0.3, y); c.lineTo(w * (0.5 + rand() * 0.5), y); c.stroke(); }
+      const edge = c.createLinearGradient(0, 0, 0, h); edge.addColorStop(0, 'rgba(255,240,200,0.18)'); edge.addColorStop(0.5, 'rgba(0,0,0,0)'); edge.addColorStop(1, 'rgba(60,40,10,0.22)'); c.fillStyle = edge; c.fillRect(0, 0, w, h);
+    }), w, h), metalness: 0.75, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.7 });
+    /** A brass padlock lying on its back, its shackle towards the top, centred at (cx, cz) with its body's top at base. */
+    const padlock = (g, cx, cz, base, s = 1) => {
+      const at = (m, x, z, y) => { m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; g.add(m); return m; };
+      at(new THREE.Mesh(extrude(rrShape(52 * s, 44 * s, 9 * s), 9 * s, 2, 1.6, 3), brass), cx, cz + 8 * s, base);
+      const shackle = new THREE.Mesh(new THREE.TorusGeometry(15 * s, 4.2 * s, 14, 28, Math.PI).rotateX(-Math.PI / 2), chrome);
+      shackle.scale.z = 1.2; at(shackle, cx, cz - 14 * s, base + 7 * s);
+      for (const dx of [-15, 15]) at(new THREE.Mesh(new THREE.CylinderGeometry(4.2 * s, 4.2 * s, 10 * s, 16).rotateX(Math.PI / 2), chrome), cx + dx * s, cz - 9 * s, base + 7 * s);
+      const hole = new THREE.Mesh(new THREE.CircleGeometry(4 * s, 20).rotateX(-Math.PI / 2), MAT.gap); hole.position.set(cx, base + 9 * s + 4.2, cz + 6 * s); g.add(hole);
+      const slotm = new THREE.Mesh(new THREE.PlaneGeometry(3 * s, 9 * s).rotateX(-Math.PI / 2), MAT.gap); slotm.position.set(cx, base + 9 * s + 4.2, cz + 12 * s); g.add(slotm);
+    };
+    const starPath = (w, h) => {
+      const r = Math.min(w, h) / 2, cx = w / 2, cy = h / 2 + r * 0.06, p = new Path2D();
+      for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, q = i % 2 ? r * 0.44 : r; if (i) p.lineTo(cx + Math.cos(a) * q, cy + Math.sin(a) * q); else p.moveTo(cx + Math.cos(a) * q, cy + Math.sin(a) * q); }
+      p.closePath(); return p;
+    };
+    return { paintSide, painted, galv, darkSteel, chrome, brass, leather, brassFace, padlock, starPath };
+  };
+  /** Adds m at (x, y, z) to g, casting and taking shadows. */
+  const put = (g, m, x, z, y = 0) => { m.position.set(x, y, z); m.traverse((o) => { if (o.isMesh) o.castShadow = o.receiveShadow = true; }); g.add(m); return m; };
+
+  // The cabinet: three bolted sheets of machinery green painted steel, chipped at their edges, a column of screws
+  // either side of each join and down the right edge, two hinges down the left. The game crops it from the top
+  // and takes the foot (the last `bottom` px, with the lower hinge) from the render's own foot.
+  if (want('peoplecab')) await withSeed(438, async () => {
+    const K = peopleKit(), { W, H, M, bottom, sheets, hinges, screwPitch } = PEOPLE.CAB, g = new THREE.Group();
+    const CAB_PAINT = (() => {
+      const c = document.createElement('canvas'); c.width = PLATE_TEX.width; c.height = PLATE_TEX.height;
+      const x = c.getContext('2d', { willReadFrequently: true });
+      drawBlurred(x, 'brightness(1.6) contrast(0.5) blur(7px) grayscale(1)');
+      x.globalAlpha = 0.16; x.filter = 'brightness(1.6) contrast(0.5) grayscale(1)'; x.drawImage(PLATE_TEX, 0, 0);
+      x.globalAlpha = 1; x.filter = 'none'; x.globalCompositeOperation = 'multiply'; x.fillStyle = '#62776f'; x.fillRect(0, 0, c.width, c.height);
+      return c;
+    })();
+    // Chips along the edges; the dirt at the foot kept within the foot the game draws whole.
+    const chipPaint = (x, w, h) => {
+      for (let i = 0; i < (w + h) / 9; i++) {
+        const side = Math.floor(rand() * 4), t = rand(), cx = side < 2 ? t * w : (side === 2 ? rand() * 9 : w - rand() * 9), cy = side >= 2 ? t * h : (side === 0 ? rand() * 9 : h - rand() * 9), r = 0.6 + rand() * 2.2;
+        x.fillStyle = `rgba(${128 + rand() * 20},${132 + rand() * 18},${128 + rand() * 16},0.55)`; x.beginPath(); x.ellipse(cx, cy, r, r * 0.8, rand() * 3, 0, Math.PI * 2); x.fill();
+        if (r > 1.6 && rand() < 0.5) { x.fillStyle = 'rgba(96,48,22,0.7)'; x.beginPath(); x.arc(cx, cy, r * 0.45, 0, Math.PI * 2); x.fill(); }
+      }
+      const foot = x.createLinearGradient(0, h - 300, 0, h); foot.addColorStop(0, 'rgba(40,32,22,0)'); foot.addColorStop(1, 'rgba(40,32,22,0.3)'); x.fillStyle = foot; x.fillRect(0, h - 300, w, 300);
+    };
+    const sw = W / sheets, screws = [];
+    const cols = [];
+    for (let k = 1; k < sheets; k++) cols.push(k * sw - 15, k * sw + 15);
+    cols.push(W - 16);
+    for (const x of cols) for (let y = 58; y < H - 20; y += screwPitch) screws.push({ x, y });
+    for (let k = 0; k < sheets; k++) {
+      const sx = k * sw;
+      const face = { base: CAB_PAINT, rub: '176,190,184', paint: chipPaint, icons: [], buttons: [],
+        screws: screws.filter((q) => q.x > sx && q.x < sx + sw).map((q) => ({ x: q.x - sx - 4, y: q.y - 4 })) };
+      const sheet = new THREE.Mesh(extrude(rrShape(sw - 8, H - 8, 10), 4, 4.5, 3.6, 6), [plateMaterial(sw - 8, H - 8, face), K.paintSide]);
+      sheet.receiveShadow = true; sheet.castShadow = true; sheet.position.set(M + sx + sw / 2, 0, M + H / 2); g.add(sheet);
+    }
+    for (const q of screws) put(g, screw(7), M + q.x, M + q.y, PLATE_TOP + 0.5);
+    for (const hy of hinges) {
+      put(g, new THREE.Mesh(new THREE.CylinderGeometry(9, 9, 110, 24).rotateX(Math.PI / 2), K.darkSteel), M - 4, M + hy, PLATE_TOP - 2);
+      put(g, new THREE.Mesh(extrude(rrShape(26, 104, 3), 1.5, 0.8, 0.6, 2), K.darkSteel), M + 14, M + hy, PLATE_TOP);
+      for (const dz of [-34, 0, 34]) put(g, screw(3.4), M + 16, M + hy + dz, PLATE_TOP + 3.2);
+    }
+    g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.5));
+    await post('people_backing', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+    layout.people_backing = { size: [W + 2 * M, H + 2 * M], margin: M, bottom, hinges, sheets, corner: 40 };
+  });
+
+  // The boardroom: the carpet bay and the walnut table (each cropped from the top by the game, its foot taken
+  // whole), a leather chair from above with its back away from the table (up) or towards the viewer (down), the
+  // green leather place (a 9-slice), the brass nameplate (a horizontal three-slice, blank), the portrait's brass
+  // frame (the game draws the portrait under it), the closed folder with and without its padlock, and the stars.
+  if (want('peopleroom')) await withSeed(439, async () => {
+    const K = peopleKit();
+    { // the carpet: oxblood pile, a border woven in, a vignette; no repeating figure, so the crop leaves no seam
+      const { W, H, M, border } = PEOPLE.BAY, g = new THREE.Group();
+      const carpet = canvas2d(W, H, (x) => {
+        x.fillStyle = '#3b1b20'; x.fillRect(0, 0, W, H);
+        for (let i = 0; i < W * H / 10; i++) { x.fillStyle = `rgba(${rand() < 0.5 ? '0,0,0' : '160,90,90'},${0.05 + rand() * 0.08})`; x.fillRect(rand() * W, rand() * H, 1 + rand() * 1.5, 1 + rand() * 1.5); }
+        x.strokeStyle = 'rgba(200,160,100,0.35)'; x.lineWidth = 5; x.strokeRect(border, border, W - 2 * border, H - 2 * border);
+        x.strokeStyle = 'rgba(200,160,100,0.16)'; x.lineWidth = 2; x.strokeRect(border + 10, border + 10, W - 2 * border - 20, H - 2 * border - 20);
+        for (const [x0, y0, x1, y1] of [[0, 0, 0, 90], [0, H, 0, H - 90], [0, 0, 90, 0], [W, 0, W - 90, 0]]) {
+          const grd = x.createLinearGradient(x0, y0, x1, y1); grd.addColorStop(0, 'rgba(0,0,0,0.3)'); grd.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = grd; x.fillRect(0, 0, W, H);
+        }
+      });
+      put(g, new THREE.Mesh(extrude(rrShape(W, H, 10), 2, 1.5, 1.2, 2), [new THREE.MeshStandardMaterial({ map: faceTexture(carpet, W, H), roughness: 0.95, metalness: 0, envMap: roomEnv, envMapIntensity: 0.2 }), new THREE.MeshStandardMaterial({ color: 0x2a1216, roughness: 0.9 })]), M + W / 2, M + H / 2);
+      g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.5));
+      await post('people_carpet', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      layout.people_carpet = { size: [W + 2 * M, H + 2 * M], margin: M, border, foot: 120 };
+    }
+    { // the walnut table, its brass inlay round the edge
+      const { W, H, M, r, inlay } = PEOPLE.TABLE, g = new THREE.Group();
+      const walnut = canvas2d(W, H, (x) => {
+        x.fillStyle = '#44291a'; x.fillRect(0, 0, W, H);
+        for (let i = 0; i < H * 1.6; i++) {
+          const y = rand() * H, amp = 2 + rand() * 6, f = 80 + rand() * 260, ph = rand() * 6;
+          x.strokeStyle = `rgba(${rand() < 0.62 ? '24,12,6' : '120,78,46'},${0.06 + rand() * 0.14})`; x.lineWidth = 0.5 + rand() * 1.4; x.beginPath(); x.moveTo(0, y);
+          for (let px = 0; px <= W; px += 16) x.lineTo(px, y + Math.sin(px / f + ph) * amp); x.stroke();
+        }
+        x.strokeStyle = '#b8914f'; x.lineWidth = 2.6; x.beginPath(); x.roundRect(inlay, inlay, W - 2 * inlay, H - 2 * inlay, 12); x.stroke();
+        x.strokeStyle = 'rgba(0,0,0,0.35)'; x.lineWidth = 1; x.beginPath(); x.roundRect(inlay + 2, inlay + 2, W - 2 * inlay - 4, H - 2 * inlay - 4, 11); x.stroke();
+      });
+      const wood = new THREE.MeshPhysicalMaterial({ map: faceTexture(walnut, W, H), roughness: 0.34, clearcoat: 0.8, clearcoatRoughness: 0.14, envMap: studioEnv, envMapIntensity: 0.3 });
+      put(g, new THREE.Mesh(extrude(rrShape(W, H, r), 6, 3, 2.4, 4), [wood, new THREE.MeshStandardMaterial({ color: 0x2b170d, roughness: 0.5 })]), M + W / 2, M + H / 2);
+      g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.55));
+      await post('people_table', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      layout.people_table = { size: [W + 2 * M, H + 2 * M], margin: M, foot: 80 };
+    }
+    { // the chairs: the seat, its curved back, the arms
+      const { W, H, cy } = PEOPLE.CHAIR;
+      const chairLeather = new THREE.MeshPhysicalMaterial({ color: 0x0d0b0b, map: noiseTexture(14, 30, 60), roughness: 0.42, clearcoat: 0.5, clearcoatRoughness: 0.3, envMap: studioEnv, envMapIntensity: 0.6 });
+      const cushion = K.leather(150, 124, '#1b1716', false, [0.34, 0.66]);
+      const chairFrame = new THREE.MeshStandardMaterial({ color: 0x2a2a2c, metalness: 0.7, roughness: 0.4, envMap: studioEnv, envMapIntensity: 0.6 });
+      for (const [name, dir] of [['people_chair_up', -1], ['people_chair_down', 1]]) {
+        const g = new THREE.Group(), cx = W / 2, cz = dir < 0 ? cy : H - cy;
+        put(g, new THREE.Mesh(extrude(rrShape(150, 124, 34), 8, 5, 4.2, 5), [cushion, chairLeather]), cx, cz, 0);
+        const back = new THREE.Shape(); back.absarc(0, 0, 118, Math.PI * 0.22, Math.PI * 0.78, false); back.absarc(0, 0, 90, Math.PI * 0.78, Math.PI * 0.22, true); back.closePath();
+        const bm = new THREE.Mesh(extrude(back, 18, 5, 4, 4), chairLeather); if (dir > 0) bm.rotation.y = Math.PI;
+        put(g, bm, cx, cz, 0);
+        for (const dx of [-86, 86]) put(g, new THREE.Mesh(extrude(rrShape(22, 118, 10), 8, 3, 2.4, 3), chairFrame), cx + dx, cz + dir * 6, 10);
+        g.add(shadowCatcher(W, H, W / 2, H / 2, -12, 0.5));
+        await post(name, stage([0, 0, W, H], [g]).grab());
+      }
+      layout.people_chair = { size: [W, H], seat_up: [W / 2, cy], seat_down: [W / 2, H - cy], seat: [150, 124] };
+    }
+    { // the place: green leather, stitched
+      const { W, H, M, corner } = PEOPLE.BLOTTER, g = new THREE.Group();
+      put(g, new THREE.Mesh(extrude(rrShape(W, H, 10), 1.5, 0.8, 0.6, 2), K.leather(W, H, '#1f3a2f')), M + W / 2, M + H / 2);
+      g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.5));
+      await post('people_blotter', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      layout.people_blotter = { size: [W + 2 * M, H + 2 * M], margin: M, corner };
+    }
+    { // the nameplate: brushed brass, a screw in each corner, blank
+      const { W, H, M, cap } = PEOPLE.NAMEPLATE, g = new THREE.Group();
+      put(g, new THREE.Mesh(extrude(rrShape(W, H, 5), 2.5, 1, 0.8, 2), [K.brassFace(W, H), K.brass]), M + W / 2, M + H / 2);
+      for (const [sx, sz] of [[10, 10], [W - 10, 10], [10, H - 10], [W - 10, H - 10]]) put(g, screw(2.6), M + sx, M + sz, 4.8);
+      g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.5));
+      await post('people_nameplate', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      layout.people_nameplate = { size: [W + 2 * M, H + 2 * M], margin: M, cap, face: [M + 16, M + 4, W - 32, H - 8] };
+    }
+    { // the portrait's frame: brass round a hole the game fills with the portrait
+      const { W, H, M, rim } = PEOPLE.FRAME, g = new THREE.Group(), fw = W + 2 * rim, fh = H + 2 * rim;
+      const fr = rrShape(fw, fh, 8); fr.holes.push(rr(new THREE.Path(), W - 2, H - 2, 3));
+      put(g, new THREE.Mesh(extrude(fr, 3, 1.2, 1, 3), K.brass), M + fw / 2, M + fh / 2, 0);
+      g.add(shadowCatcher(fw + 2 * M, fh + 2 * M, fw / 2 + M, fh / 2 + M, 0.05, 0.55));
+      await post('people_frame', stage([0, 0, fw + 2 * M, fh + 2 * M], [g]).grab());
+      layout.people_frame = { size: [fw + 2 * M, fh + 2 * M], margin: M, rim, hole: [M + rim, M + rim, W, H] };
+    }
+    { // the closed folder, brass corners, with and without the padlock
+      const { W, H, M } = PEOPLE.FOLDER;
+      for (const [name, locked] of [['people_folder', false], ['people_folder_locked', true]]) {
+        const g = new THREE.Group();
+        put(g, new THREE.Mesh(extrude(rrShape(W, H, 8), 4, 1.2, 1, 3), K.leather(W, H, '#2a1a14')), M + W / 2, M + H / 2);
+        for (const [sx, sz, rot] of [[0, 0, 0], [W, 0, 1], [0, H, 3], [W, H, 2]]) {
+          const tri = new THREE.Shape(); tri.moveTo(0, 0); tri.lineTo(22, 0); tri.lineTo(0, -22); tri.closePath();
+          const m = new THREE.Mesh(extrude(tri, 1, 0.5, 0.4, 1), K.brass); m.rotation.y = -rot * Math.PI / 2; put(g, m, M + sx, M + sz, 6.6);
+        }
+        if (locked) K.padlock(g, M + W / 2, M + H / 2, 7.4, 1.05);
+        g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.5));
+        await post(name, stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      }
+      layout.people_folder = { size: [W + 2 * M, H + 2 * M], margin: M };
+    }
+    { // a star earned, raised in brass, and one not, engraved
+      const { S, star } = PEOPLE.STAR, o = (S - star) / 2;
+      const r = relief(star, star, (x, w, h) => { x.fillStyle = '#fff'; x.fill(K.starPath(w, h)); }, K.brass, { height: 3.5, soften: 0.5, faceGrade: false });
+      r.position.set(S / 2, 0.3, S / 2);
+      await post('people_star', stage([0, 0, S, S], [r]).grab());
+      await post('people_star_shadow', frame2d(S, S, (x) => drawIconShadows(x, S, S, [{ height: 3.5, draw: (tg, col) => { tg.save(); tg.translate(o, o); tg.fillStyle = col; tg.fill(K.starPath(star, star)); tg.restore(); } }])));
+      await post('people_star_empty', frame2d(S, S, (x) => {
+        const p = K.starPath(star, star); x.save(); x.translate(o, o); x.lineWidth = 1.6; x.strokeStyle = 'rgba(0,0,0,0.6)'; x.stroke(p);
+        x.translate(0.9, 0.9); x.strokeStyle = 'rgba(214,200,164,0.34)'; x.stroke(p); x.restore();
+      }));
+      layout.people_star = { size: [S, S], star };
+    }
+  });
+
+  // The time clock: a hammertone housing, the shift bell on its bracket, the dial, the time card standing in its slot
+  // at the top. The game puts the bell's lamp and the figures on it.
+  if (want('peopleclock')) await withSeed(440, async () => {
+    await document.fonts.load('700 30px "Barlow Condensed"');
+    const K = peopleKit(), { W, H, M, top, bell, dial, dialR: DR, card } = PEOPLE.CLOCK, g = new THREE.Group();
+    const X = (x) => M + x, Z = (z) => top + z, HT = 15;
+    put(g, new THREE.Mesh(extrude(rrShape(W, H, 16), 10, 2.5, 2, 4), [K.painted(W, H, '#2f3935', 0.7), K.paintSide]), X(W / 2), Z(H / 2));
+    for (const [sx, sy] of [[16, 16], [W - 16, 16], [16, H - 16], [W - 16, H - 16]]) put(g, screw(5), X(sx), Z(sy), HT);
+    const [bx, by] = bell;
+    put(g, new THREE.Mesh(extrude(rrShape(26, 110, 6), 4, 1.5, 1.2, 2), K.darkSteel), X(bx), Z(by - 10), HT);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(44, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshPhysicalMaterial({ color: 0xa8231b, map: noiseTexture(16, 30, 40), roughness: 0.32, clearcoat: 0.8, clearcoatRoughness: 0.2, envMap: studioEnv, envMapIntensity: 0.7 }));
+    dome.scale.y = 0.55; put(g, dome, X(bx), Z(by), HT + 5);
+    put(g, new THREE.Mesh(new THREE.CylinderGeometry(8, 9, 8, 24), K.chrome), X(bx), Z(by), HT + 27);
+    put(g, new THREE.Mesh(new THREE.SphereGeometry(7, 20, 10), K.chrome), X(bx + 48), Z(by + 20), HT + 10);
+    const [dx, dy] = dial;
+    const face = canvas2d(2 * DR, 2 * DR, (c) => {
+      c.fillStyle = '#efe6cf'; c.fillRect(0, 0, 2 * DR, 2 * DR);
+      const grd = c.createRadialGradient(DR, DR, DR * 0.2, DR, DR, DR); grd.addColorStop(0, 'rgba(255,255,255,0.1)'); grd.addColorStop(1, 'rgba(120,96,60,0.22)'); c.fillStyle = grd; c.fillRect(0, 0, 2 * DR, 2 * DR);
+      c.strokeStyle = NAVY;
+      for (let i = 0; i < 60; i++) { const a = i / 60 * Math.PI * 2, r0 = i % 5 ? DR * 0.86 : DR * 0.78; c.lineWidth = i % 5 ? 1.2 : 3.2; c.beginPath(); c.moveTo(DR + Math.cos(a) * r0, DR + Math.sin(a) * r0); c.lineTo(DR + Math.cos(a) * DR * 0.93, DR + Math.sin(a) * DR * 0.93); c.stroke(); }
+      for (const [n, a] of [['12', -90], ['3', 0], ['6', 90], ['9', 180]]) { const t = a * Math.PI / 180; text(c, n, DR + Math.cos(t) * DR * 0.6, DR + Math.sin(t) * DR * 0.6 + 1, 40, 26, NAVY, { align: 'center', weight: 700, family: '"Barlow Condensed"' }); }
+      const hand = (deg, len, wdt) => { const t = (deg - 90) * Math.PI / 180; c.lineCap = 'round'; c.lineWidth = wdt; c.strokeStyle = '#101a26'; c.beginPath(); c.moveTo(DR - Math.cos(t) * 10, DR - Math.sin(t) * 10); c.lineTo(DR + Math.cos(t) * len, DR + Math.sin(t) * len); c.stroke(); };
+      hand(240, DR * 0.5, 6); hand(0, DR * 0.74, 4);
+      c.strokeStyle = '#b8261d'; c.lineWidth = 1.6; const t = (150 - 90) * Math.PI / 180; c.beginPath(); c.moveTo(DR - Math.cos(t) * 14, DR - Math.sin(t) * 14); c.lineTo(DR + Math.cos(t) * DR * 0.8, DR + Math.sin(t) * DR * 0.8); c.stroke();
+    });
+    const disc = new THREE.Shape().absarc(0, 0, DR, 0, Math.PI * 2, false);
+    put(g, new THREE.Mesh(extrude(disc, 2, 0.8, 0.6, 2), new THREE.MeshPhysicalMaterial({ map: faceTexture(face, 2 * DR, 2 * DR), roughness: 0.35, clearcoat: 0.8, clearcoatRoughness: 0.12, envMap: studioEnv, envMapIntensity: 0.3 })), X(dx), Z(dy), HT);
+    put(g, new THREE.Mesh(new THREE.TorusGeometry(DR + 4, 6, 18, 96).rotateX(Math.PI / 2), K.chrome), X(dx), Z(dy), HT + 3);
+    put(g, new THREE.Mesh(new THREE.CylinderGeometry(7, 7, 4, 24), K.chrome), X(dx), Z(dy), HT + 4);
+    const [cx0, cy0, cw, ch] = card;
+    const cardFace = canvas2d(cw, ch, (c) => {
+      c.fillStyle = '#e6d6a8'; c.fillRect(0, 0, cw, ch);
+      for (let i = 0; i < 300; i++) { c.fillStyle = `rgba(90,70,30,${0.04 + rand() * 0.06})`; c.fillRect(rand() * cw, rand() * ch, 1, 1); }
+      c.fillStyle = 'rgba(11,35,64,0.8)'; c.fillRect(6, 8, cw - 12, 4);
+      for (let r = 0; r < 7; r++) { c.fillStyle = 'rgba(11,35,64,0.3)'; c.fillRect(6, 22 + r * 11, cw - 12, 1); c.fillStyle = 'rgba(160,40,34,0.75)'; c.fillRect(8, 24 + r * 11, 12, 1.4); if (r < 5) { c.fillStyle = 'rgba(20,16,10,0.85)'; c.beginPath(); c.arc(cw - 14, 27.5 + r * 11, 2.6, 0, Math.PI * 2); c.fill(); } }
+    });
+    const slotMesh = new THREE.Mesh(extrude(rrShape(cw + 18, 12, 4), 0.5), MAT.gap); slotMesh.position.set(X(cx0 + cw / 2), HT + 0.1, Z(34)); g.add(slotMesh);
+    put(g, new THREE.Mesh(extrude((() => { const s = rrShape(cw + 34, 26, 7); s.holes.push(rr(new THREE.Path(), cw + 16, 10, 3)); return s; })(), 3, 1, 0.8, 2), K.chrome), X(cx0 + cw / 2), Z(34), HT);
+    put(g, new THREE.Mesh(extrude(rrShape(cw, ch, 3), 0.6, 0.3, 0.2, 1), new THREE.MeshStandardMaterial({ map: faceTexture(cardFace, cw, ch), roughness: 0.85 })), X(cx0 + cw / 2), Z(cy0 + ch / 2), HT + 3.5);
+    const FW = W + 2 * M, FH = top + H + M;
+    g.add(shadowCatcher(FW, FH, FW / 2, FH / 2, 0.05, 0.5));
+    await post('people_clock', stage([0, 0, FW, FH], [g]).grab());
+    layout.people_clock = { size: [FW, FH], housing: [M, top, W, H], bell: [M + bx, top + by], lamp: [M + PEOPLE.CLOCK.lamp[0], top + PEOPLE.CLOCK.lamp[1]], dial: [M + dx, top + dy], dial_r: DR };
+  });
+
+  // The notice board: cork in a timber frame (a 9-slice), the index cards pinned to it (white and manila, blank but
+  // for the red rule under the title line; 9-slices), and the pins.
+  if (want('peopleboard')) await withSeed(441, async () => {
+    { const { W, H, M, corner } = PEOPLE.CORK, g = new THREE.Group();
+      const cork = canvas2d(W, H, (x) => {
+        x.fillStyle = '#a97c4c'; x.fillRect(0, 0, W, H);
+        for (let i = 0; i < W * H / 6; i++) { const k = rand(); x.fillStyle = k < 0.5 ? `rgba(70,42,18,${0.15 + rand() * 0.25})` : `rgba(214,170,110,${0.12 + rand() * 0.2})`; x.fillRect(rand() * W, rand() * H, 0.8 + rand() * 2, 0.8 + rand() * 2); }
+        for (let i = 0; i < 30; i++) { x.fillStyle = 'rgba(40,24,10,0.5)'; x.beginPath(); x.arc(rand() * W, rand() * H, 1.2, 0, Math.PI * 2); x.fill(); }
+        x.strokeStyle = '#5b3a1f'; x.lineWidth = 22; x.strokeRect(0, 0, W, H);
+        x.strokeStyle = 'rgba(0,0,0,0.35)'; x.lineWidth = 4; x.strokeRect(12, 12, W - 24, H - 24);
+      });
+      put(g, new THREE.Mesh(extrude(rrShape(W, H, 6), 4, 2, 1.6, 3), [new THREE.MeshStandardMaterial({ map: faceTexture(cork, W, H), roughness: 0.9 }), new THREE.MeshStandardMaterial({ color: 0x4a2f18, roughness: 0.6 })]), M + W / 2, M + H / 2);
+      g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.55));
+      await post('people_cork', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      layout.people_cork = { size: [W + 2 * M, H + 2 * M], margin: M, corner, frame: 16 };
+    }
+    { const { W, H, M, rule, corner } = PEOPLE.CARD;
+      for (const [name, paper] of [['people_card_white', '#f4efe2'], ['people_card_manila', '#efe2b8']]) {
+        const g = new THREE.Group();
+        const face = canvas2d(W, H, (c) => {
+          c.fillStyle = paper; c.fillRect(0, 0, W, H);
+          for (let i = 0; i < W * H / 80; i++) { c.fillStyle = `rgba(90,70,40,${0.03 + rand() * 0.05})`; c.fillRect(rand() * W, rand() * H, 1, 1); }
+          c.fillStyle = 'rgba(180,40,40,0.35)'; c.fillRect(0, rule, W, 1.5);
+        });
+        put(g, new THREE.Mesh(extrude(rrShape(W, H, 3), 0.5, 0.3, 0.2, 1), new THREE.MeshStandardMaterial({ map: faceTexture(face, W, H), roughness: 0.85 })), M + W / 2, M + H / 2);
+        g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.5));
+        await post(name, stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      }
+      layout.people_card = { size: [W + 2 * M, H + 2 * M], margin: M, rule, corner };
+    }
+    { const { S, r } = PEOPLE.PIN;
+      for (const [name, col] of [['people_pin_red', '#c9302a'], ['people_pin_yellow', '#e0b21e'], ['people_pin_blue', '#2f6fb3']]) {
+        const g = new THREE.Group();
+        const pin = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 12), new THREE.MeshPhysicalMaterial({ color: col, roughness: 0.3, clearcoat: 0.8, envMap: studioEnv, envMapIntensity: 0.5 }));
+        pin.scale.y = 0.7; put(g, pin, S / 2, S / 2, 3);
+        g.add(shadowCatcher(S, S, S / 2, S / 2, 0.05, 0.55));
+        await post(name, stage([0, 0, S, S], [g]).grab());
+      }
+      layout.people_pin = { size: [S, S], r };
+    }
+  });
+
+  // The lockers: painted steel, vents, hinges, a brass card holder round a blank white plastic card, the handle; the
+  // locked one a hasp and a padlock through it. The game prints the card and sets the slide switch on the door.
+  if (want('peoplelocker')) await withSeed(442, async () => {
+    const K = peopleKit(), { W, H, M, card, handle, hasp, lock } = PEOPLE.LOCKER;
+    const face = K.painted(W, H, '#4a5f6b', 1.0), [cx, cy, cw, ch] = card;
+    const cardFace = new THREE.MeshPhysicalMaterial({ map: faceTexture(canvas2d(cw, ch, (c) => paintPlastic(c, cw, ch)), cw, ch), ...KNOB_PLASTIC });
+    for (const [name, locked] of [['people_locker', false], ['people_locker_locked', true]]) {
+      const g = new THREE.Group(), X = (x) => M + x, Z = (z) => M + z, top = 10;
+      put(g, new THREE.Mesh(extrude(rrShape(W, H, 6), 6, 2, 1.6, 3), [face, K.paintSide]), X(W / 2), Z(H / 2));
+      for (let v = 0; v < 5; v++) { const vent = new THREE.Mesh(extrude(rrShape(150, 7, 3.5), 0.4), MAT.gap); vent.position.set(X(W / 2), top + 0.05, Z(34 + v * 14)); g.add(vent); }
+      for (const y of [60, H - 70]) put(g, new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 34, 16).rotateX(Math.PI / 2), K.darkSteel), X(5), Z(y), top);
+      put(g, new THREE.Mesh(extrude(rrShape(cw, ch, 4), 1, 0.5, 0.4, 2), [cardFace, MAT.skirt]), X(cx + cw / 2), Z(cy + ch / 2), top);
+      const holder = rrShape(cw + 16, ch + 16, 7); holder.holes.push(rr(new THREE.Path(), cw - 6, ch - 6, 4));
+      put(g, new THREE.Mesh(extrude(holder, 2, 0.8, 0.6, 2), K.brass), X(cx + cw / 2), Z(cy + ch / 2), top + 1);
+      put(g, new THREE.Mesh(extrude(rrShape(26, 84, 8), 2, 1, 0.8, 2), K.darkSteel), X(handle[0]), Z(handle[1]), top);
+      put(g, new THREE.Mesh(extrude(rrShape(14, 66, 7), 5, 1.5, 1.2, 3), K.galv), X(handle[0]), Z(handle[1]), top + 4);
+      if (locked) {
+        put(g, new THREE.Mesh(extrude((() => { const s = rrShape(22, 44, 6); s.holes.push(rr(new THREE.Path(), 9, 18, 3, 0, -6)); return s; })(), 3, 1, 0.8, 2), K.darkSteel), X(hasp[0]), Z(hasp[1]), top);
+        K.padlock(g, X(lock[0]), Z(lock[1]), top + 4, 0.72);
+      }
+      g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.5));
+      await post(name, stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+    }
+    layout.people_locker = { size: [W + 2 * M, H + 2 * M], margin: M, card: [M + cx + 3, M + cy + 3, cw - 6, ch - 6], switch_at: [M + PEOPLE.LOCKER.switchAt[0], M + PEOPLE.LOCKER.switchAt[1]] };
+  });
+
+  // The policy knobs' pictograms, white masks the knob embosses on its plates (scripts/rotary_selector.gd
+  // option_plates), and the automation case's raised icons: hands (the engineer) and machines (gears).
+  if (want('peopleknob')) await withSeed(443, async () => {
+    const { S } = PEOPLE.ICON;
+    const mask = (paint) => frame2d(S / E, S / E, (g) => { g.scale(1 / E, 1 / E); g.fillStyle = '#fff'; g.strokeStyle = '#fff'; g.lineCap = 'round'; g.lineJoin = 'round'; paint(g, S); });
+    const pieSector = (g, cx, cy, r, from, to) => { g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, r, from, to); g.closePath(); g.fill(); };
+    const ART = {
+      effort: [1 / 3, 1 / 2, 2 / 3].map((f) => (g, s) => { g.lineWidth = s * 0.07; g.beginPath(); g.arc(s / 2, s / 2, s * 0.4, 0, Math.PI * 2); g.stroke(); pieSector(g, s / 2, s / 2, s * 0.32, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2); }),
+      idle: [0.5, 0.75, 1].map((f) => (g, s) => { g.lineWidth = s * 0.06; g.strokeRect(s * 0.08, s * 0.24, s * 0.84, s * 0.52); g.fillRect(s * 0.14, s * 0.3, s * 0.72 * f, s * 0.4); }),
+      safety: [0, 1, 2].map((lv) => (g, s) => {
+        const path = () => { g.beginPath(); g.moveTo(s / 2, s * 0.08); g.lineTo(s * 0.86, s * 0.22); g.quadraticCurveTo(s * 0.84, s * 0.72, s / 2, s * 0.94); g.quadraticCurveTo(s * 0.16, s * 0.72, s * 0.14, s * 0.22); g.closePath(); };
+        g.lineWidth = s * 0.07; path(); if (lv === 2) g.fill(); else g.stroke();
+        if (lv === 1) g.fillRect(s * 0.2, s * 0.42, s * 0.6, s * 0.14);
+        if (lv === 2) { g.globalCompositeOperation = 'destination-out'; g.lineWidth = s * 0.1; g.beginPath(); g.moveTo(s * 0.32, s * 0.5); g.lineTo(s * 0.46, s * 0.64); g.lineTo(s * 0.7, s * 0.36); g.stroke(); g.globalCompositeOperation = 'source-over'; }
+      }),
+      pension: [1, 2, 3].map((n) => (g, s) => { g.lineWidth = s * 0.05; for (let i = 0; i < 3; i++) { const bh = s * (0.3 + i * 0.25), x = s * (0.12 + i * 0.28), y = s * 0.9 - bh; if (i < n) g.fillRect(x, y, s * 0.2, bh); else g.strokeRect(x + 3, y + 3, s * 0.2 - 6, bh - 6); } }),
+      bonus: [0, 1, 2].map((n) => (g, s) => {
+        const gift = (x, y, w, fill) => {
+          const lid = w * 0.24, h = w * 0.78;
+          g.lineWidth = s * 0.05;
+          if (fill) { g.fillRect(x + w * 0.07, y + lid, w * 0.86, h - lid); g.fillRect(x, y, w, lid * 0.86); }
+          else { g.strokeRect(x + w * 0.07, y + lid, w * 0.86, h - lid); g.strokeRect(x, y, w, lid * 0.86); }
+          if (fill) { g.globalCompositeOperation = 'destination-out'; g.fillRect(x + w * 0.44, y, w * 0.12, h); g.fillRect(x, y + lid * 0.86, w, w * 0.06); g.globalCompositeOperation = 'source-over'; }
+          else { g.beginPath(); g.moveTo(x + w / 2, y); g.lineTo(x + w / 2, y + h); g.stroke(); }
+          g.lineWidth = s * 0.045;
+          for (const [dx, rot] of [[0.33, -0.5], [0.67, 0.5]]) { g.beginPath(); g.ellipse(x + w * dx, y - w * 0.1, w * 0.15, w * 0.09, rot, 0, Math.PI * 2); g.stroke(); }
+        };
+        if (n === 0) { gift(s * 0.2, s * 0.34, s * 0.6, false); g.lineWidth = s * 0.08; g.beginPath(); g.moveTo(s * 0.1, s * 0.9); g.lineTo(s * 0.9, s * 0.1); g.stroke(); }
+        if (n === 1) gift(s * 0.18, s * 0.3, s * 0.64, true);
+        if (n === 2) { gift(s * 0.02, s * 0.44, s * 0.45, true); gift(s * 0.53, s * 0.44, s * 0.45, true); }
+      }),
+      profit: [0, 0.15, 0.3].map((f) => (g, s) => { g.lineWidth = s * 0.07; g.beginPath(); g.arc(s / 2, s / 2, s * 0.4, 0, Math.PI * 2); g.stroke(); if (f) pieSector(g, s / 2, s / 2, s * 0.44, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2); }),
+    };
+    const names = [];
+    for (const [key, list] of Object.entries(ART)) for (const [i, paint] of list.entries()) { const n = `people_icon_${key}_${i}`; await post(n, mask(paint)); names.push(n); }
+    layout.people_icons = { size: [S, S], names };
+    const { S: AS, icon, height, soften } = PEOPLE.AUTO, o = (AS - icon) / 2;
+    const enamel = new THREE.MeshPhysicalMaterial({ color: OFF_WHITE, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+    for (const [name, file] of [['people_auto_hands', 'research/glyph/engineer.png'], ['people_auto_machines', 'research/glyph/gears.png']]) {
+      const img = await loadImage('/icons/' + file);
+      const r = iconRelief(img, icon, icon, enamel, { height, soften });
+      r.position.set(AS / 2, 0.3, AS / 2);
+      await post(name, stage([0, 0, AS, AS], [r]).grab());
+      await post(name + '_shadow', frame2d(AS, AS, (g) => drawIconShadows(g, AS, AS, [{ height, draw: (tg, col) => stamp(tg, img, o, o, icon, icon, col) }])));
+    }
+    layout.people_auto = { size: [AS, AS], icon };
   });
 
   // --- the tile view's cabinet (docs/tile-view-ds2-plan.md §9): the stainless door with its black iron pipe
