@@ -119,7 +119,6 @@ func _run(recipe_id: String) -> void:
 		"middleman_new_buildings": logistics_mode == "middleman", "tutorial_enabled": false}
 	MatchState.construct_material_source = "market"
 	MatchState.construct_output_destination = "market"
-	MatchState.set_construct_credit_default("none")
 	MatchState.power_priority_coal_gas = "grid"
 	MatchState.power_priority_wind_solar = "grid"
 	TransportState.seaport_auto_subscribe = false
@@ -194,7 +193,7 @@ func _run(recipe_id: String) -> void:
 		row["in_sample"] = first_running >= 0 and turn >= first_running + steady_warmup
 		_rows.append(row)
 		assert(ResearchState.unlocked_titles.is_empty() and AdvisorState.advisor_seats.is_empty())
-		assert(BuildingState.buildings.size() <= 1 + rail_owned_limit and MatchState.building_tabs.is_empty())
+		assert(BuildingState.buildings.size() <= 1 + rail_owned_limit)
 		if row["in_sample"]:
 			sample_count += 1
 			if sample_count == SAMPLE_TURNS:

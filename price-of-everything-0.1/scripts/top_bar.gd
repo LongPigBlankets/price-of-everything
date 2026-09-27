@@ -3449,15 +3449,12 @@ func _fly_treasury(vb: VBoxContainer) -> void:
 		["Goods sold", float(s.get("goods_sales_revenue", 0.0))],
 		["Power sold", float(s.get("power_sales_revenue", 0.0))],
 		["Green subsidy", float(s.get("green_subsidy_received", 0.0))],
-		["Put on building credit", float(s.get("building_tab_carried", 0.0))],
-		["Loan proceeds from building credit", float(s.get("building_credit_loan_received", 0.0))],
 		["Middleman operating loan", float(s.get("middleman_financing", 0.0))],
 	]
 	var operating_costs := float(s.get("maintenance_paid", 0.0)) + float(s.get("labour_paid", 0.0)) + float(s.get("advisor_paid", 0.0))
 	var taxes_and_dividends := float(s.get("taxes_paid", 0.0)) + float(s.get("dividends_paid", 0.0))
 	var costs := [
 		["Operating costs", operating_costs],
-		["Building credit repaid", float(s.get("building_credit_repaid", 0.0))],
 		["Power bought", float(s.get("power_purchase_cost", 0.0))],
 		["Transport costs", float(s.get("transport_paid", 0.0))],
 		["Goods purchased", float(s.get("goods_purchased_cost", 0.0))],
@@ -3704,13 +3701,10 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 		["Goods sold", float(s.get("goods_sales_revenue", 0.0))],
 		["Power sold", float(s.get("power_sales_revenue", 0.0))],
 		["Green subsidy", float(s.get("green_subsidy_received", 0.0))],
-		["Put on building credit", float(s.get("building_tab_carried", 0.0))],
-		["Loan proceeds from building credit", float(s.get("building_credit_loan_received", 0.0))],
 		["Middleman operating loan", float(s.get("middleman_financing", 0.0))],
 	]
 	var costs := [
 		["Operating costs", float(s.get("maintenance_paid", 0.0)) + float(s.get("labour_paid", 0.0)) + float(s.get("advisor_paid", 0.0))],
-		["Building credit repaid", float(s.get("building_credit_repaid", 0.0))],
 		["Power bought", float(s.get("power_purchase_cost", 0.0))],
 		["Transport costs", float(s.get("transport_paid", 0.0))],
 		["Goods purchased", float(s.get("goods_purchased_cost", 0.0))],

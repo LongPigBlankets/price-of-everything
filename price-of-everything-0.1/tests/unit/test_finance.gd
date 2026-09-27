@@ -333,17 +333,13 @@ func _test_balance_sheet_reconciles_with_cash() -> void:
 	AdvisorState.advisor_loyalty = loyalty_before
 	AdvisorState.advisor_hired_turn = hired_turn_before
 
-	# 2. The two keys the sheet used to drop must each move the bottom line by exactly their
-	# amount — a new cash movement wired into production.gd but not into the sheet fails here.
+	# 2. Advisor salaries, a key the sheet used to drop, must move the bottom line by exactly
+	# their amount — a new cash movement wired into production.gd but not into the sheet fails here.
 	var base := {"goods_sales_revenue": 500.0, "labour_paid": 80.0, "transport_paid": 120.0}
 	var with_advisor: Dictionary = base.duplicate()
 	with_advisor["advisor_paid"] = 25.0
 	_check(absf(MoneyPanel.net_cash_of(with_advisor) - (MoneyPanel.net_cash_of(base) - 25.0)) < 0.001,
 		"reconcile: advisor salaries come off the net, pound for pound")
-	var with_tab: Dictionary = base.duplicate()
-	with_tab["building_tab_carried"] = 40.0
-	_check(absf(MoneyPanel.net_cash_of(with_tab) - (MoneyPanel.net_cash_of(base) + 40.0)) < 0.001,
-		"reconcile: costs carried onto a building tab are credited back, pound for pound")
 
 
 func _test_auto_bridge_loan() -> void:

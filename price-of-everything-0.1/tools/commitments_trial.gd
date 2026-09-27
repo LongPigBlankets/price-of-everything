@@ -6,7 +6,7 @@ const OUT := "/tmp/cnc-commitments-trial"
 var failures := 0
 var results: Array = []
 var _cash_before_turn := 0.0
-var _credit_trial := false
+var _cash_trial := false
 var _cash_checks: Array = []
 
 func _enter_tree() -> void:
@@ -19,7 +19,7 @@ func check(ok: bool, label: String) -> void:
 		failures += 1
 
 func _ready() -> void:
-	_credit_trial = OS.get_cmdline_user_args().has("--credit-reconciliation")
+	_cash_trial = OS.get_cmdline_user_args().has("--cash-reconciliation")
 	DirAccess.make_dir_recursive_absolute(OUT)
 	var shots := DisplayServer.get_name() != "headless"
 	if shots:
@@ -55,7 +55,7 @@ func _ready() -> void:
 	check(is_zero_approx(float(Forecast.next_turn_costs(first).total)), "Metal Magnate starts with zero extra costs")
 	if OS.get_cmdline_user_args().has("--middleman-study"):
 		middleman_quotes()
-	if _credit_trial:
+	if _cash_trial:
 		Production.turn_processed.connect(_check_cash_reconciliation)
 	if shots:
 		money.open_tab("Upcoming")
@@ -84,13 +84,6 @@ func _ready() -> void:
 			TransportState.queue_transport_shipment({"source_tile": "tile_5_11", "destination_tile": "tile_5_10", "good_id": "g_003", "qty": 10, "turns_remaining": 1, "transport_turns": 1, "purchase_cost": 127.5, "purchase_goods_cost": 125.0, "is_purchase": true, "construction_instance_id": "trial_paid_materials"})
 			MatchState._recompute_unpaid_purchases()
 			MatchState.add_recurring_buy("tile_5_10", "g_003", 3)
-			if _credit_trial:
-				MatchState.building_tabs["trial_repayment"] = {"turns_left": 0, "accrued": 120.0, "mode": "slices", "slices_left": 3}
-				MatchState.building_tabs["trial_refinance"] = {"turns_left": 3, "accrued": 90.0, "mode": "loan", "slices_left": 0}
-				for iid: String in Production.last_turn_run:
-					if BuildingState.is_player_owned(BuildingState.get_building(iid)):
-						MatchState.building_tabs[iid] = {"turns_left": 2, "accrued": 0.0, "mode": "slices", "slices_left": 0}
-						break
 			var id := Construction.start_on_tile("b_002", "r_007", "tile_5_10")
 			if not id.is_empty():
 				Construction.construction_projects[id]["turns_remaining"] = 1
@@ -165,20 +158,20 @@ func _ready() -> void:
 		check(absf(float(result.actual_maintenance) - float(result.forecast.maintenance)) < 0.01, "maintenance estimate matches actual")
 		print("[CommitmentsTrial] turn=%d due=%.2f/%.2f orders=%.2f/%.2f preview_ms=%.2f" % [int(result.turn), float(result.forecast.due), float(result.actual_due), float(result.forecast.orders_total), float(result.actual_orders_total), float(expected.ms)])
 		results.append(result)
-		if shots and _credit_trial and index == 2:
+		if shots and _cash_trial and index == 2:
 			money.open_tab("Balance")
 			money._queue_refresh()
 			await settle(8)
 			var balance_scroll: ScrollContainer = money.get_node("MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll")
 			balance_scroll.scroll_vertical = 10000
 			await settle(4)
-			snap("credit-balance.png")
+			snap("cash-balance.png")
 			money.hide()
 			var bar: Node = world.get_node("UILayer/HUD/TopBar")
 			bar._open_fly("treasury")
 			await settle(6)
 			check(absf(_sum_cash_rows(bar) - Production.cash_change_of(Production.last_turn_summary)) < 0.02, "Treasury displayed rows add up to the cash change")
-			snap("credit-treasury.png")
+			snap("cash-treasury.png")
 			bar._close_fly()
 			money.show()
 	if shots:
@@ -300,10 +293,9 @@ func _check_cash_reconciliation(summary: Dictionary) -> void:
 	check(absf(display - actual) < 0.01, "reported cash change matches actual treasury movement")
 	check(absf(balance - actual) < 0.01, "Balance itemised total matches actual treasury movement")
 	var row := {"turn": TurnManager.current_turn, "actual": actual, "reported": display, "balance": balance,
-		"deferred": summary.get("building_tab_carried", 0.0), "repaid": summary.get("building_credit_repaid", 0.0),
-		"credit_loan_received": summary.get("building_credit_loan_received", 0.0)}
+		"operating_loans": summary.get("middleman_financing", 0.0)}
 	_cash_checks.append(row)
-	print("[CreditReconciliation] ", JSON.stringify(row))
+	print("[CashReconciliation] ", JSON.stringify(row))
 
 func prepayment_trial(world: Node, money: Node, shots: bool) -> void:
 	MatchState.add_money(10000.0)

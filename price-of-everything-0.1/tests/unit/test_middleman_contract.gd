@@ -70,8 +70,6 @@ func _test_explicit_credit_respects_loan_minimum_and_reuses_surplus() -> void:
 	_check(absf(plan.unallocated_cash-19)<0.000001 and absf(plan.credit_remaining)<0.000001,"surplus loan cash remains available, capacity is used once")
 	_check(not Contract.plan_batch(need,{},p,1.5,budget(cost-1,19)).ok,"nominal shortfall below capacity still rejects an unavailable minimum loan")
 	var b := budget(1000)
-	b.building_credit_tab=true
-	_check(Contract.plan_batch(need,{},p,1.5,b).reason=="unsupported_building_credit_tab","unimplemented tab funding cannot receive a synthetic second refund")
 
 func _test_private_partial_holdings_complete_or_wait_and_failed_batch_reuses() -> void:
 	var p := prices()

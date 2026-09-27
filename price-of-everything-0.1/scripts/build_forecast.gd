@@ -2,7 +2,7 @@ extends RefCounted
 ## Estimates a new building's operating cash and startup buffer using current
 ## prices and standing output. UI presents broad payback bands; internal amounts
 ## remain available for affordability checks and regression comparisons.
-## Company taxes, future price changes and player credit decisions are uncertain.
+## Company taxes and future price changes are uncertain.
 
 const PHASE_BUILDING := "building"
 const PHASE_COMPLETES := "completes"
@@ -77,7 +77,6 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 		out.phases = [{"kind":PHASE_BUILDING,"label":"Construction materials use the Logistics Intermediary" if material_source == "middleman" else "Construction materials use normal delivery","range":"Until materials arrive and construction finishes","per_turn":0.0,"turns":first_sale},
 			{"kind":PHASE_SELLING,"label":"Middleman: buy, produce and sell","range":"Each operating turn after completion","per_turn":float(p.net),"turns":-1}]
 		out.breakdown={"revenue":float(p.sale.goods_value)+float(p.grid_value),"inputs":float(p.buy.goods_value),"inbound_freight":float(p.buy.fee),"outbound_freight":float(p.sale.fee),"port_fee":0.0,"power":float(p.power),"carbon_tax":float(p.carbon_tax),"labour":float(p.labour),"maintenance":float(p.maintenance),"warehousing":0.0,"idle_standing":float(p.labour)+float(p.maintenance),"startup_inventory":float(p.buy.cash_out),"middleman_fee":float(p.fee)}
-		out.financing = {} # Middleman funding uses explicit company loans, never building tabs.
 		return out
 
 	# --- Outputs: what it sells, what the freight and port cost to sell it ---------------
@@ -224,7 +223,6 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 	var startup_inventory := _startup_inventory_cost(tile_id, recipe)
 	var cash_needed: float = standing + producing_cost * float(sale_delay) + startup_inventory
 
-	out.financing = _financing(recipe, labour, maintenance, standing, revenue - selling_cost, build_turns)
 	out.phases = phases
 	out.cash_needed = cash_needed
 	out.steady_net = revenue - selling_cost
@@ -443,27 +441,3 @@ static func _startup_inventory_cost(tile_id: String, recipe: Dictionary) -> floa
 		if not quote.is_empty():
 			total += float(quote.get("cost", 0.0)) * maxi(1, int(quote.get("turns", 1)))
 	return total
-
-
-## Operational credit is temporary cash relief, never recurring profit. The tab
-## opens one turn before completion; the idle turn and three production turns
-## accrue costs. Unknown (Ask) choices remain explicitly conditional in the UI.
-static func _financing(recipe: Dictionary, labour: float, maintenance: float, idle: float, steady: float, build_turns: int) -> Dictionary:
-	if not MatchState.cfo_seated():
-		return {}
-	var mode := MatchState.construct_credit_default
-	if mode == "none":
-		return {"mode": mode, "per_turn": 0.0, "net": steady}
-	var inputs := 0.0
-	for item in recipe.get("inputs", []):
-		inputs += int(item.get("qty", 0)) * MarketState.get_buy_price(str(item.get("good_id", "")))
-	var carried := idle + inputs + (labour + maintenance + inputs) * (MatchState.TAB_WINDOW_TURNS - 2)
-	var turns := MatchState.TAB_SLICES
-	var start := build_turns + MatchState.TAB_WINDOW_TURNS - 1
-	var payment := carried / float(turns)
-	if mode == "loan":
-		turns = EconomyConfig.LOAN_TERM_TURNS
-		start += EconomyConfig.LOAN_GRACE_TURNS - 1
-		payment = maxf(carried, EconomyConfig.LOAN_MINIMUM) * (1.0 + LoanState.effective_loan_interest_rate() * float(turns + EconomyConfig.LOAN_GRACE_TURNS) / turns) / turns
-	return {"mode": mode, "per_turn": payment, "net": steady - payment,
-		"start": start, "end": start + turns - 1}

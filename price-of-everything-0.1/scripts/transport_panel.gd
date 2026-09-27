@@ -1076,7 +1076,7 @@ func _global_logistics_choice_active(destination: String, side: String, ids: Arr
 func _request_global_logistics(side: String, destination: String) -> void:
 	var action := func() -> bool: return _apply_global_logistics(side, destination)
 	var mode := "middleman" if destination == "middleman" else "managed"
-	preload("res://scripts/logistics_confirmation.gd").request(self, mode, action, _refresh)
+	preload("res://scripts/logistics_confirmation.gd").request(self, mode, action, _refresh, {"side": side, "destination": destination})
 
 
 func _apply_global_logistics(side: String, destination: String) -> bool:

@@ -3323,47 +3323,22 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	var warehousing := float(econ.get("warehousing_cost", 0.0))
 	if warehousing > 0.0:
 		vb.add_child(_metric("Warehousing / turn", "−£%.2f" % warehousing, DS.PALETTE["DANGER"], false))
-	var financing_per_turn := _add_carried_rows(vb)
+	_add_carried_rows(vb)
 	# Carbon levy on this recipe's taxed inputs (only shown once the policy is in force).
 	var carbon_tax := float(econ.get("carbon_tax", 0.0))
 	if carbon_tax > 0.0:
 		vb.add_child(_metric("Carbon tax / turn", "−£%.2f" % carbon_tax, DS.PALETTE["DANGER"], false))
 	vb.add_child(HSeparator.new())
-	# Operations net (output − running costs) minus this building's own build financing, so the
-	# bottom line reflects the cash it actually contributes while its construction debt is live.
-	var net := float(econ.get("net", 0.0)) - financing_per_turn
+	var net := float(econ.get("net", 0.0))
 	vb.add_child(_metric("Net / turn", "%s£%.2f" % ["+" if net >= 0.0 else "−", absf(net)], DS.PALETTE["OK"] if net >= 0.0 else DS.PALETTE["DANGER"], true))
 	return card
 
-## Carried costs and held stock, both money or goods the player owns but cannot see on the tile, so they
-## get a line in the economics rather than living only in the sim: this building's loan repayment and
-## what is stored for it. Returns the repayment per turn.
-func _add_carried_rows(vb: VBoxContainer) -> float:
-	var iid_econ := str(_current_building.get("instance_id", ""))
-	# The REPAYMENT, not the outstanding tab: what it takes a turn and how many turns are
-	# left to run. The total is still there to read — it is this figure
-	# times the turns — but the per-turn cost is what a player plans around.
-	# Financing this building carries per turn: the deferred build-cost tab AND any construction
-	# loan taken to build it (tag_last_loan_building tied it to this instance). Both are shown in
-	# the one "Loan repayment" line and — unlike before — folded into the Net below, so the bottom
-	# line is the cash this building actually leaves the company after servicing its own build debt.
-	# General empire loans are excluded on purpose; they live at the company level.
-	var tab_pay: Dictionary = MatchState.building_tab_repayment(iid_econ)
-	var tab_per := float(tab_pay.get("per_turn", 0.0)) if float(tab_pay.get("accrued", 0.0)) > 0.0 else 0.0
-	var loan_pay: Dictionary = LoanState.building_loan_repayment(iid_econ)
-	var loan_per := float(loan_pay.get("per_turn", 0.0))
-	var financing_per_turn := tab_per + loan_per
-	if financing_per_turn > 0.0:
-		var turns_left := maxi(int(tab_pay.get("turns_left", 0)), int(loan_pay.get("turns_left", 0)))
-		var starts_in := int(tab_pay.get("starts_in", 0))
-		var value := "−£%.2f  (%d turns)" % [financing_per_turn, turns_left]
-		if starts_in > 0 and loan_per <= 0.0:
-			value = "−£%.2f  (%d turns, starts in %d)" % [financing_per_turn, turns_left, starts_in]
-		vb.add_child(_metric("Loan repayment", value, DS.PALETTE["WARN"], false))
-	var held := MatchState.ghost_holding_units(iid_econ)
+## Goods held for this building off the tile: the player owns them but cannot see them there,
+## so they get a line in the economics rather than living only in the sim.
+func _add_carried_rows(vb: VBoxContainer) -> void:
+	var held := MatchState.ghost_holding_units(str(_current_building.get("instance_id", "")))
 	if held > 0:
 		vb.add_child(_metric("Stored for this building", "%d units" % held, DS.PALETTE["TEXT_MUTED"], false))
-	return financing_per_turn
 
 ## v3's economics (BuildingEconomics.per_turn), on the frame's steel:
 ##   Value added in production   its output less inputs, labour and upkeep; opens to show each;
@@ -4310,14 +4285,27 @@ func _add_output_good_options(vb: VBoxContainer, building: Dictionary, recipe: D
 	row.add_child(_logistics_route_option(building, "output", "Global market", market_detail, is_market, func() -> void:
 		MatchState.route_output_to_market(iid, good_id)
 		_queue_refresh()
-		_open_output_sheet(building, recipe), good_id, market_available))
+		_open_output_sheet(building, recipe), good_id, market_available, "market"))
 	var stockpile_available := ResearchState.open_logistics_contracts_available()
 	var stockpile_detail := "Store the output on this tile for later use." if stockpile_available else "[Requires Open Logistics Contracts]"
+	# Leaving the intermediary for this tile's stockpile asks one question, not two: the change
+	# is made at once and the surplus prompt says so, with an Undo (a toast when nothing piles up).
+	var was_intermediary: bool = preload("res://scripts/middleman_service.gd").buys_output(iid, good_id)
+	var prior_tile := MatchState.get_output_stockpile_destination(iid, good_id)
 	row.add_child(_logistics_route_option(building, "output", "Tile stockpile", stockpile_detail, on_tile, func() -> void:
 		MatchState.set_output_stockpile_destination(iid, tile_id, good_id)
 		_queue_refresh()
 		_open_output_sheet(building, recipe)
-		preload("res://scripts/stockpile_route_prompt.gd").offer(get_parent(), tile_id, good_id), good_id, stockpile_available))
+		var context := {}
+		if was_intermediary:
+			context = {"supplier_changed": true, "undo": func() -> void:
+				preload("res://scripts/middleman_service.gd").set_good_mode(iid, "output", good_id, "middleman")
+				if prior_tile != "":
+					MatchState.set_output_stockpile_destination(iid, prior_tile, good_id)
+				else:
+					MatchState.clear_output_stockpile_destination(iid, good_id)
+				_queue_refresh()}
+		preload("res://scripts/stockpile_route_prompt.gd").offer(get_parent(), tile_id, good_id, context), good_id, stockpile_available, "stockpile", false))
 	row.add_child(_logistics_route_option(building, "output", "Ship to another tile", "Pick a tile on the shipping map to feed a downstream building you own." if stockpile_available else "[Requires Open Logistics Contracts]", other, func() -> void:
 		MatchState.begin_output_stockpile_selection(iid, good_id, true)
 		_close_sheet(), good_id, stockpile_available))
@@ -4796,7 +4784,7 @@ func _request_all_managed_source(building: Dictionary, side: String, source: Str
 	var service = preload("res://scripts/middleman_service.gd")
 	var action := func() -> bool: return _apply_all_managed_source(building, side, source)
 	if service.side_all_middleman(str(building.get("instance_id", "")), side):
-		preload("res://scripts/logistics_confirmation.gd").request(self, "managed", action)
+		preload("res://scripts/logistics_confirmation.gd").request(self, "managed", action, Callable(), {"side": side, "destination": "market" if source == "market" else "stockpile"})
 	else:
 		action.call()
 
@@ -4830,15 +4818,15 @@ func _apply_all_managed_source(building: Dictionary, side: String, source: Strin
 	else: _open_output_sheet(building, recipe)
 	return true
 
-func _logistics_route_option(building: Dictionary, side: String, title: String, detail: String, active: bool, on_press: Callable, good_id: String = "", enabled: bool = true) -> Control:
+func _logistics_route_option(building: Dictionary, side: String, title: String, detail: String, active: bool, on_press: Callable, good_id: String = "", enabled: bool = true, destination: String = "", confirm: bool = true) -> Control:
 	var service = preload("res://scripts/middleman_service.gd")
 	var intermediary: bool = service.supplies_good(str(building.instance_id), good_id) if side == "input" and good_id != "" else (service.buys_output(str(building.instance_id), good_id) if side == "output" and good_id != "" else service.side_all_middleman(str(building.instance_id), side))
 	var action := func() -> void:
-		if intermediary: _request_logistics_mode(building, side, "managed", on_press, good_id)
+		if intermediary: _request_logistics_mode(building, side, "managed", on_press, good_id, destination, confirm)
 		else: on_press.call()
 	return _dest_option(title, detail, active and not intermediary, action, enabled)
 
-func _request_logistics_mode(building: Dictionary, side: String, mode: String, after_change: Callable = Callable(), good_id: String = "") -> void:
+func _request_logistics_mode(building: Dictionary, side: String, mode: String, after_change: Callable = Callable(), good_id: String = "", destination: String = "", confirm: bool = true) -> void:
 	var service = preload("res://scripts/middleman_service.gd")
 	var active: bool = service.supplies_good(str(building.instance_id), good_id) if side == "input" and good_id != "" else (service.buys_output(str(building.instance_id), good_id) if side == "output" and good_id != "" else service.side_all_middleman(str(building.instance_id), side))
 	if (mode == "middleman") == active: return
@@ -4854,4 +4842,7 @@ func _request_logistics_mode(building: Dictionary, side: String, mode: String, a
 			if side == "input": _open_input_sources_sheet(building, recipe)
 			else: _open_output_sheet(building, recipe)
 		return true
-	preload("res://scripts/logistics_confirmation.gd").request(self, mode, apply)
+	if not confirm:
+		apply.call()
+		return
+	preload("res://scripts/logistics_confirmation.gd").request(self, mode, apply, Callable(), {"side": side, "good": good_id, "destination": destination})

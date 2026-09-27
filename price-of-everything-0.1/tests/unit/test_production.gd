@@ -5,7 +5,6 @@ const FEATURE := "production"
 ## Tests that also belong to other features (run under any of their tags).
 const TAGS := {
 	"_test_output_market_route": ["production", "special_orders"],
-	"_test_building_operational_tab": ["finance", "production"],
 	"_test_deposit_runthrough_ignores_output_modifiers": ["production", "research", "stockpile"],
 	"_test_deposit_penalty_modifier": ["production", "research", "stockpile"],
 	"_test_workforce_output_modifier_surfaces_in_building_status": ["production", "research"],
@@ -24,30 +23,6 @@ func _build_options_have_recipe(options: Array, recipe_id: String) -> bool:
 		if str(option.get("recipe_id", "")) == recipe_id:
 			return true
 	return false
-
-## The tab row a player reads is the REPAYMENT — per turn, and how many turns of it are left
-## — not the outstanding total (owner, 2026-09-03).
-func _test_building_tab_repayment() -> void:
-	var saved: Dictionary = MatchState.building_tabs.duplicate(true)
-	MatchState.building_tabs = {}
-	_check(MatchState.building_tab_repayment("nobody").get("per_turn", -1.0) == 0.0,
-		"tab repayment: a building with no tab owes nothing per turn")
-	# Still inside the interest-free window: quote the schedule it will run to, and the wait.
-	MatchState.building_tabs["b"] = {"turns_left": 3, "accrued": 120.0, "mode": "slices", "slices_left": 0}
-	var carrying: Dictionary = MatchState.building_tab_repayment("b")
-	_check(is_equal_approx(float(carrying.per_turn), 120.0 / float(MatchState.TAB_SLICES)),
-		"tab repayment: while carrying, the quoted slice is the total over TAB_SLICES (%.2f)" % float(carrying.per_turn))
-	_check(int(carrying.turns_left) == MatchState.TAB_SLICES and int(carrying.starts_in) == 3,
-		"tab repayment: while carrying, it says how many turns until the first slice")
-	# Repaying: the slice is the balance over the slices still to run.
-	MatchState.building_tabs["b"] = {"turns_left": 0, "accrued": 90.0, "mode": "slices", "slices_left": 9}
-	var paying: Dictionary = MatchState.building_tab_repayment("b")
-	_check(is_equal_approx(float(paying.per_turn), 10.0) and int(paying.turns_left) == 9,
-		"tab repayment: repaying quotes balance/slices and the slices left (%.2f x %d)"
-			% [float(paying.per_turn), int(paying.turns_left)])
-	_check(int(paying.starts_in) == 0, "tab repayment: a tab already paying is not waiting to start")
-	MatchState.building_tabs = saved
-
 
 ## The extraction-resources overlay marks tiles carrying a deposit that is NOT water. Water is
 ## on 123 tiles against 98 with anything else, and a water pump is an industrial building, not
@@ -348,57 +323,6 @@ func _test_output_market_route() -> void:
 	MatchState.clear_output_stockpile_destination("inst_test_market", "g_001")
 	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 0,
 		"clearing the route clears the cap too")
-
-func _test_building_operational_tab() -> void:
-	# A new build's first turns are carried, not paid (spec §5.3). Exposure is bounded by the
-	# window, which is why the old 1x-capex cap and forced sale are gone.
-	MatchState.reset()
-	MatchState.money = 1000.0
-	_check(not MatchState.can_open_building_tab(),
-		"tab: without a CFO there is nobody to arrange one")
-	_check(not MatchState.open_building_tab("inst_tab"),
-		"tab: no CFO means no tab, and costs simply hit cash")
-
-	AdvisorState.permanent_advisor_ids = ["vera"]
-	AdvisorState.assign_advisor_to_seat("cfo", "vera")
-	_check(MatchState.can_open_building_tab(), "tab: a seated CFO can arrange one")
-	_check(MatchState.open_building_tab("inst_tab"), "tab: opens for a new build")
-	_check(not MatchState.open_building_tab("inst_tab"), "tab: never opens twice for one building")
-
-	# Carry five turns of costs, then it settles into interest-free slices.
-	for _i in range(MatchState.TAB_WINDOW_TURNS):
-		_check(is_equal_approx(MatchState.accrue_building_tab("inst_tab", 20.0), 20.0),
-			"tab: a turn inside the window is carried")
-		MatchState.tick_building_tabs()
-	var owed: float = MatchState.building_tab_debt("inst_tab")
-	_check(is_equal_approx(owed, 20.0 * MatchState.TAB_WINDOW_TURNS),
-		"tab: carries exactly %d turns (£%.2f)" % [MatchState.TAB_WINDOW_TURNS, owed])
-	_check(is_equal_approx(MatchState.accrue_building_tab("inst_tab", 20.0), 0.0),
-		"tab: nothing is carried once the window closes")
-
-	# Repayment: equal interest-free slices until it clears.
-	var before: float = MatchState.money
-	MatchState.tick_building_tabs()
-	var paid: float = before - MatchState.money
-	_check(is_equal_approx(paid, owed / float(MatchState.TAB_SLICES)),
-		"tab: repays in %d equal slices (£%.2f each)" % [MatchState.TAB_SLICES, paid])
-	for _i in range(MatchState.TAB_SLICES):
-		MatchState.tick_building_tabs()
-	_check(not MatchState.building_tabs.has("inst_tab") and MatchState.total_building_tab_debt() <= 0.01,
-		"tab: clears once the last slice is paid")
-
-	# The loan route converts instead, and carries interest.
-	MatchState.reset()
-	AdvisorState.permanent_advisor_ids = ["vera"]
-	AdvisorState.assign_advisor_to_seat("cfo", "vera")
-	MatchState.open_building_tab("inst_loan", "loan")
-	MatchState.accrue_building_tab("inst_loan", 100.0)
-	var loans_before: float = LoanState.total_outstanding()
-	for _i in range(MatchState.TAB_WINDOW_TURNS):
-		MatchState.tick_building_tabs()
-	_check(LoanState.total_outstanding() > loans_before
-		and not MatchState.building_tabs.has("inst_loan"),
-		"tab: the loan route converts the balance into an ordinary loan")
 
 ## _recipe_diagram()'s input grid: 3 columns (up to 2 rows) once a recipe has more
 ## than 2 inputs — a 2026-08-27 fix. Was 2 columns (up to 3 rows), which overflowed

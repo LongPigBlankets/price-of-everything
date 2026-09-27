@@ -53,7 +53,6 @@ def validate(data: dict) -> None:
         assert abs(row["cash_reconciliation_residual"]) < 0.00001, (data["recipe_id"], row["turn"], row["cash_reconciliation_residual"])
         empire = row["empire"]
         assert empire.get("advisor_paid", 0) == 0
-        assert empire.get("building_tab_carried", 0) == 0
         income = sum(float(empire.get(key, 0)) for key in
                      ("goods_sales_revenue", "power_sales_revenue", "green_subsidy_received"))
         costs = sum(float(empire.get(key, 0)) for key in

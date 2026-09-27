@@ -2677,7 +2677,8 @@ func _make_infra_cell(slot: Dictionary) -> VBoxContainer:
 		"add":
 			dial.set_content(_make_infra_add_content(slot, tooltip))
 		_:
-			var b := _make_infra_button(_get_plus_icon(), null, DS.PALETTE.BG_INSET, DS.PALETTE.BG_INSET, "%s — not available yet" % slot.label, Callable())
+			var why := str(slot.get("reason", "")) if str(slot.get("reason", "")) != "" else "%s — not available yet" % slot.label
+			var b := _make_infra_button(_get_plus_icon(), null, DS.PALETTE.BG_INSET, DS.PALETTE.BG_INSET, why, Callable())
 			b.disabled = true
 			b.modulate = Color(1, 1, 1, 0.4)
 			dial.set_content(b)

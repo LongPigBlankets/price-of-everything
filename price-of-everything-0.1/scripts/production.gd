@@ -216,10 +216,6 @@ func _process_production() -> void:
 	"maintenance_paid": 0.0,
 	"labour_paid": 0.0,
 	"advisor_paid": 0.0,
-	# Running costs a building tab carried this turn instead of cash: charged in full to the
-	# *_paid lines above (so every ledger stays honest) and refunded, so money_out excludes
-	# them. The balance sheet has to subtract this or its net stops matching the cash delta.
-	"building_tab_carried": 0.0,
 	# Per-turn storage fee on stockpiled goods (per unit, by transport class —
 	# EconomyConfig.WAREHOUSING_COST_PER_UNIT_BY_CLASS).
 	"warehousing_paid": 0.0,
@@ -609,23 +605,6 @@ func _process_production() -> void:
 		if bool(last_turn_run.get(iid_cost, false)):
 			pl["power"] += (float(_effective_energy_req(building, active_recipe))
 				* EconomyConfig.GRID_BUY_PRICE)
-		# A new build's first turns are CARRIED, not paid: charge as normal above so every
-		# ledger stays honest, then refund onto its tab. Inputs are attributed synthetically
-		# (recipe x market price) because no per-building record of a market buy exists; power
-		# is the grid-imported share of its draw, since own generation costs nothing extra.
-		if MatchState.building_tabs.has(iid_cost):
-			var carried := labour + maint
-			for input in active_recipe.get("inputs", []):
-				var in_gid := str(input.get("good_id", ""))
-				if in_gid != "":
-					carried += float(_scaled_input_qty(input, building)) * MarketState.get_buy_price(in_gid)
-			if not Power.is_supplied(str(building.get("tile_id", "")), 0):
-				carried += float(_effective_energy_req(building, active_recipe)) * EconomyConfig.GRID_BUY_PRICE
-			var refunded := MatchState.accrue_building_tab(iid_cost, carried)
-			if refunded > 0.0:
-				MatchState.add_money(refunded)
-				summary.money_out -= refunded
-				summary.building_tab_carried += refunded
 		# === LOAN INTEREST PAYMENTS ==+var loan_payment: float = LoanState.process_payments()
 	_apply_advisor_costs(summary)
 	# Warehousing: every stockpiled unit pays a per-turn storage fee by transport
@@ -650,10 +629,6 @@ func _process_production() -> void:
 	TurnProfiler.section_end("maintenance_labour")
 
 	TurnProfiler.section_begin("loan_payments")
-	var credit_movements := MatchState.tick_building_tabs()
-	var tab_repayments := float(credit_movements.repaid)
-	summary["building_credit_repaid"] = tab_repayments
-	summary["building_credit_loan_received"] = float(credit_movements.loan_received)
 	var loan_payment: float = LoanState.process_payments()
 	if loan_payment > 0:
 		summary.interest_paid = loan_payment
@@ -721,7 +696,7 @@ func _process_production() -> void:
 	# of money_in so it doesn't count toward advisor profit unlocks (it's a cheat).
 	summary["fake_money"] = MatchState.fake_money_this_turn
 	MatchState.fake_money_this_turn = 0.0
-	preload("res://scripts/cash_commitments.gd").finish_turn(summary, tab_repayments)
+	preload("res://scripts/cash_commitments.gd").finish_turn(summary)
 	last_turn_summary = summary
 	_active_turn_summary = {}
 	summary.tile_supplied = _own_delivery_this_turn.duplicate(true)
@@ -739,7 +714,7 @@ func _process_production() -> void:
 			summary.produced, summary.consumed, summary.sold, summary.starved.size(),
 			cash_change_of(summary), pass_count
 		])
-		print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f goods_bought=£%.2f loan_payments=£%.2f tax=£%.2f div=£%.2f profit_share=£%.2f operational_credit=£%.2f carbon_tax=£%.2f green_subsidy=£%.2f reported_net=£%.2f tab_repayments=£%.2f cash_delta=£%.2f" % [
+		print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f goods_bought=£%.2f loan_payments=£%.2f tax=£%.2f div=£%.2f profit_share=£%.2f carbon_tax=£%.2f green_subsidy=£%.2f reported_net=£%.2f cash_delta=£%.2f" % [
 			summary.goods_sales_revenue,
 			summary.power_sales_revenue,
 			summary.power_purchase_cost,
@@ -749,11 +724,9 @@ func _process_production() -> void:
 			summary.taxes_paid,
 			summary.dividends_paid,
 			summary.profit_sharing_paid,
-			summary.building_tab_carried,
 			summary.carbon_tax_paid,
 			summary.green_subsidy_received,
 			cash_change_of(summary),
-			tab_repayments,
 			MatchState.money - cash_before_process
 		])
 		# Diagnostic: goods sitting in pending shipments (sales + moves). If a produced good
@@ -811,8 +784,6 @@ func _update_stockpile_input_gap_streaks(all_buildings: Array) -> void:
 ## calculation. Keep money_in/money_out semantics unchanged for economic consumers.
 static func cash_change_of(summary: Dictionary) -> float:
 	return float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0)) \
-		- float(summary.get("building_credit_repaid", 0.0)) \
-		+ float(summary.get("building_credit_loan_received", 0.0)) \
 		+ float(summary.get("middleman_financing", 0.0))
 
 func _apply_advisor_costs(summary: Dictionary) -> float:

@@ -79,7 +79,7 @@ func _feed(panel) -> void:
 			"power_purchase_cost": 19.0 + f,
 			"carbon_tax_paid": 4.0 * f,
 			"taxes_paid": 12.0, "dividends_paid": 9.0, "profit_sharing_paid": 3.0,
-			"interest_paid": 6.0, "building_tab_carried": (35.0 if t <= 3 else 0.0),
+			"interest_paid": 6.0,
 			"transport_breakdown": {"roads": 20.0 + 3.0 * f, "rail": 18.0 + 2.0 * f,
 				"port_outbound": 13.0 + 1.5 * f},
 		}

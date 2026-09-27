@@ -898,10 +898,18 @@ static func infrastructure_summary(tile_id: String, tile_data: Dictionary) -> Ar
 		var building_data := _infra_building_data_for_key(key)
 		var instance := _infra_instance_for_tile(tile_id, tile_data, key, building_data)
 		var state := "exists" if not instance.is_empty() else ("add" if not building_data.is_empty() else "unavailable")
+		# The tile's water decides what may be added: roads, rail and pipes stay on land, cables reach
+		# the sea but not deep sea (Catalog.is_allowed_on_tile_type).
+		var reason := ""
+		var tile_type := str(tile_data.get("type", Catalog.tile_type(tile_id)))
+		if state == "add" and not Catalog.is_allowed_on_tile_type(str(building_data.get("internal_name", key)), tile_type):
+			state = "not_here"
+			reason = preload("res://scripts/construction_rules.gd").terrain_text(str(building_data.get("internal_name", key)), tile_type)
 		slots.append({
 			"key": key,
 			"label": str(def.label),
 			"state": state,
+			"reason": reason,
 			"internal_name": str(building_data.get("internal_name", key)),
 			"instance": instance,
 			"building_data": building_data,

@@ -132,6 +132,7 @@ static func build(panel: Control, pane: VBoxContainer) -> void:
 				if open:
 					spare.append(slot)
 			# "unavailable": no building provides it (HVDC), so it stays hidden until one does.
+			# "not_here": the tile's water refuses it (roads at sea, cables on deep sea); hidden too.
 	if links.is_empty() and not open:
 		pane.add_child(_note(LOCKED_EMPTY))
 	var memory: Dictionary = panel.get_meta(META_LEVELS, {}) if panel.has_meta(META_LEVELS) else {}

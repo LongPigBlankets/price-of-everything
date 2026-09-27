@@ -240,6 +240,9 @@ const INTERMITTENCY_IMMUNE_RECIPES := ["r_080"]
 # land-only, and these two are conversely water-only (cannot be placed on land). By
 # building internal_name. (offshore_wind_farm b_026, offshore_oil_platform b_033.)
 const SEA_ONLY_BUILDINGS := ["offshore_wind_farm", "offshore_oil_platform"]
+# The tile infrastructure that may also cross water, by tile type: cables on sea but not deep sea,
+# HVDC links on both. Roads, rail, pipes and reinforced pipes are land only. By internal name.
+const SEA_INFRASTRUCTURE := {"sea": ["cables", "hvdc"], "deep_sea": ["hvdc"]}
 # Battery storage = deposit model (docs/battery-storage-spec.md). A battery building is housing
 # with BATTERY_STORAGE_CAP[level] CELL SLOTS; the player loads battery goods (locked, refundable
 # capital) into those slots and a tile's firming = min(slots, Σ loaded cells × density).

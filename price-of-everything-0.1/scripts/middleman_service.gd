@@ -71,8 +71,6 @@ static func set_mode(iid: String, side: String, mode: String, validate_only: boo
 		return {"ok":false,"reason":"Finish building works first."}
 	if mode == "middleman" and not recipe_side(Catalog.get_recipe(str(b.recipe_id)), side):
 		return {"ok":false,"reason":"This side uses the grid or has no tradeable materials."}
-	if mode == "middleman" and MatchState.building_tabs.has(iid):
-		return {"ok":false,"reason":"Resolve this building's credit tab first."}
 	var e := entry(iid)
 	var tradeable_goods: Array = _side_items(iid, side).filter(func(item: Dictionary) -> bool: return material_tradeable(str(item.get("good_id", "")), side)).map(func(item: Dictionary) -> String: return str(item.get("good_id", "")))
 	if tradeable_goods.is_empty(): return {"ok":false,"reason":"This side has no tradeable materials."}
@@ -125,8 +123,6 @@ static func set_good_mode(iid: String, side: String, gid: String, mode: String, 
 	if not eligible(b): return {"ok":false,"reason":"No tradeable material inputs or outputs on this building."}
 	if not (_side_items(iid, side) as Array).any(func(item: Dictionary) -> bool: return str(item.get("good_id", "")) == gid and material_tradeable(gid, side)):
 		return {"ok":false,"reason":"This good is not a tradeable part of the selected side."}
-	if mode == "middleman" and MatchState.building_tabs.has(iid):
-		return {"ok":false,"reason":"Resolve this building's credit tab first."}
 	var e := entry(iid)
 	var mode_key := "input_modes" if side == "input" else "output_modes"
 	if enabled(iid) and (e.get(mode_key, {}) as Dictionary).is_empty():
@@ -291,8 +287,8 @@ static func enable(iid: String) -> Dictionary:
 		return {"ok":false,"reason":"No tradeable material service for this building."}
 	if str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1":
 		return {"ok":false,"reason":"Requires middleman_v1 ruleset."}
-	if MatchState.building_tabs.has(iid) or BuildingWorks.is_retooling(iid) or BuildingWorks.is_upgrading(iid) or BuildingWorks.is_demolishing(iid):
-		return {"ok":false,"reason":"Finish credit/building works before enabling service."}
+	if BuildingWorks.is_retooling(iid) or BuildingWorks.is_upgrading(iid) or BuildingWorks.is_demolishing(iid):
+		return {"ok":false,"reason":"Finish building works before enabling service."}
 	if enabled(iid): return {"ok":true}
 	# Switching an existing physical pipeline is intentionally outside this slice.
 	for s: Dictionary in TransportState.pending_transport_shipments:
@@ -390,8 +386,7 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 			plan_held[gid] = 0
 		var plan := Contract.plan_batch(plan_required,plan_held,snapshot,float(e.coefficient),{
 			"cash":MatchState.money,"credit_available":maxf(0.0,LoanState.available_capacity()),
-			"commitments":protected+reserved_power,"running_reserve":running,"minimum_loan":EconomyConfig.LOAN_MINIMUM,
-			"building_credit_tab":MatchState.building_tabs.has(iid)},true,goods())
+			"commitments":protected+reserved_power,"running_reserve":running,"minimum_loan":EconomyConfig.LOAN_MINIMUM},true,goods())
 		if not bool(plan.ok):
 			e.reason = str(plan.reason)
 			if not bridge.is_empty(): e.bridge_reason = "Fallback purchase refused: " + str(plan.reason).replace("_", " ")
@@ -632,7 +627,7 @@ static func preview_building(b: Dictionary) -> Dictionary:
 		feasible = feasible and bool(Production._can_run_recipe(b,recipe).can_run)
 	for gid in required:
 		if int(required[gid])>int(held.get(gid,0)) and PolicyState.import_banned(str(gid),TurnManager.current_turn): feasible=false
-	var budget := Contract.plan_batch(required,held,snapshot,factor,{"cash":MatchState.money,"credit_available":maxf(0.0,LoanState.available_capacity()),"commitments":reserve,"running_reserve":labour+maintenance+power+carbon,"minimum_loan":EconomyConfig.LOAN_MINIMUM,"building_credit_tab":MatchState.building_tabs.has(iid)},feasible,goods())
+	var budget := Contract.plan_batch(required,held,snapshot,factor,{"cash":MatchState.money,"credit_available":maxf(0.0,LoanState.available_capacity()),"commitments":reserve,"running_reserve":labour+maintenance+power+carbon,"minimum_loan":EconomyConfig.LOAN_MINIMUM},feasible,goods())
 	var reason := ready_message(iid) if bool(budget.ok) else str(budget.get("reason","Unavailable")).replace("_"," ").capitalize()
 	if selling_held: reason = "Sell retained output before starting another batch."
 	return {"ok":true,"can_run":bool(budget.ok) and not selling_held,"reason":reason,"feasible":feasible,"required":required,"selling_held":selling_held,
@@ -647,7 +642,7 @@ static func default_for(recipe_id: String, tile: String) -> bool:
 ## Only new completed construction, before any operating orders exist.
 static func enroll_completed(iid: String) -> void:
 	var b: Dictionary = BuildingState.get_building(iid)
-	if b.is_empty() or not default_for(str(b.recipe_id),str(b.tile_id)) or MatchState.building_tabs.has(iid): return
+	if b.is_empty() or not default_for(str(b.recipe_id),str(b.tile_id)): return
 	if MatchState.middleman_service.is_empty():
 		MatchState.middleman_service={"schema":1,"match_id":str(Time.get_unix_time_from_system())+":"+str(Time.get_ticks_usec()),"buildings":{}}
 	MatchState.middleman_service.buildings[iid]={"coefficient":coefficient(b),"recipe_id":str(b.recipe_id),"inputs":{},"outputs":{},"turn":-1,"state":"idle","receipts":{},"input_mode":"middleman","output_mode":"middleman","input_modes":{},"output_modes":{}}
@@ -677,7 +672,7 @@ static func company_previews(completing: Array = []) -> Dictionary:
 		var tile := str(b.tile_id)
 		var draw: int = Production._effective_energy_req(b,Catalog.get_recipe(str(b.recipe_id)))
 		var feasible := bool(p.feasible) and int(draw_by_tile.get(tile,0))+draw <= Power.tile_power_cap(tile)
-		var plan := Contract.plan_batch(p.required,p.inputs,snapshot,coefficient(b),{"cash":cash,"credit_available":credit,"commitments":float(p.protected_commitments)+power_reserved,"running_reserve":float(p.labour)+float(p.maintenance)+float(p.power)+float(p.carbon_tax),"minimum_loan":EconomyConfig.LOAN_MINIMUM,"building_credit_tab":MatchState.building_tabs.has(iid)},feasible,goods())
+		var plan := Contract.plan_batch(p.required,p.inputs,snapshot,coefficient(b),{"cash":cash,"credit_available":credit,"commitments":float(p.protected_commitments)+power_reserved,"running_reserve":float(p.labour)+float(p.maintenance)+float(p.power)+float(p.carbon_tax),"minimum_loan":EconomyConfig.LOAN_MINIMUM},feasible,goods())
 		p.can_run = bool(plan.ok)
 		p.reason = ready_message(iid) if bool(plan.ok) else str(plan.get("reason","Unavailable")).replace("_"," ").capitalize()
 		p.funding_draw = float(plan.get("funding_draw",0.0))

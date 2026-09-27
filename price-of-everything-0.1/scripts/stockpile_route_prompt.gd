@@ -7,13 +7,18 @@ static var _active: WeakRef
 static var _dont_show_again := false # Session-only, like the tile surplus confirmation.
 var _tile := ""
 var _good := ""
+## {supplier_changed: bool, undo: Callable} when the prompt follows leaving the intermediary.
+var _context: Dictionary = {}
 var _closing := false
 var _dont_show: CheckBox
 
-static func offer(host: Node, tile: String, good: String) -> void:
-	if _dont_show_again or tile == "" or good == "" or Tutorial.active or TurnManager.is_resolving:
+static func offer(host: Node, tile: String, good: String, context: Dictionary = {}) -> void:
+	if tile == "" or good == "":
 		return
-	_pending.append({"host": weakref(host), "tile": tile, "good": good})
+	if _dont_show_again or Tutorial.active or TurnManager.is_resolving:
+		_say_supplier_changed(tile, good, context)
+		return
+	_pending.append({"host": weakref(host), "tile": tile, "good": good, "context": context})
 	_offer_next()
 
 static func offer_split(host: Node, instance_id: String, good: String) -> void:
@@ -37,6 +42,7 @@ static func _offer_next() -> void:
 	_active = weakref(prompt)
 	prompt.set("_tile", request.tile)
 	prompt.set("_good", request.good)
+	prompt.set("_context", request.get("context", {}))
 	prompt.tree_exited.connect(func() -> void:
 		_active = null
 		_offer_next.call_deferred(), CONNECT_ONE_SHOT)
@@ -52,6 +58,7 @@ func _open() -> void:
 		return
 	var projection := Guidance.estimate(_tile, _good)
 	if bool(projection.auto_sell) or int(projection.growth) <= 0:
+		_say_supplier_changed(_tile, _good, _context)
 		_close()
 		return
 	name = "StockpileRoutePrompt"
@@ -67,6 +74,8 @@ func _open() -> void:
 	col.add_theme_constant_override("separation", 12)
 	margin.add_child(col)
 	_add_text(col, "Surplus at " + Catalog.tile_label(_tile), "Title")
+	if bool(_context.get("supplier_changed", false)):
+		_add_text(col, "The intermediary no longer buys %s. It goes to this stockpile." % Catalog.get_display_name(_good).to_lower(), "Body")
 	_add_text(col, "%d units of %s will accumulate in stockpile each turn instead of selling, which will reduce your profit." % [projection.growth, Catalog.get_display_name(_good)], "Body")
 	_add_text(col, "Confirm if you want to sell the surplus your buildings on the tile don't need or keep all as stock.", "Body")
 	var buttons := HBoxContainer.new()
@@ -90,6 +99,16 @@ func _open() -> void:
 		Guidance.retain_intentionally(_tile, _good)
 		_close())
 	buttons.add_child(keep)
+	var undo: Callable = _context.get("undo", Callable())
+	if undo.is_valid():
+		var back := Button.new()
+		back.name = "UndoSupplierChange"
+		back.text = "Undo"
+		back.pressed.connect(func() -> void:
+			undo.call()
+			MatchState.request_toast("The intermediary buys %s again." % Catalog.get_display_name(_good).to_lower(), "info")
+			_close())
+		buttons.add_child(back)
 	_dont_show = UIHelpers.make_custom_checkbox()
 	_dont_show.name = "DontShowSurplusAgain"
 	col.add_child(UIHelpers.make_setting_row("Don't show again", _dont_show))
@@ -99,6 +118,13 @@ func _open() -> void:
 	PanelStack.push(self)
 	await get_tree().process_frame
 	position = (get_viewport_rect().size - size) * 0.5
+
+## Nothing to ask (no surplus, or the prompt is switched off): still say the supplier changed.
+static func _say_supplier_changed(tile: String, good: String, context: Dictionary) -> void:
+	if bool(context.get("supplier_changed", false)):
+		MatchState.request_toast("The intermediary no longer buys %s. It goes to the stockpile at %s." % [
+			Catalog.get_display_name(good).to_lower(), Catalog.tile_label(tile)], "info")
+
 
 func _add_text(parent: Node, text: String, variation: String) -> void:
 	var label := Label.new()

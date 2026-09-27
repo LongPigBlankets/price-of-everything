@@ -685,11 +685,6 @@ func cheat_labour_discount() -> void:
 # Cash rebate a Chief Investment advisor gives toward a build: a fraction of the
 # required build materials' CURRENT market value (tier3 +10% / tier2 +5% / tier1 -5%
 # surcharge). Returned as a positive amount to subtract from the money cost.
-# A seated Chief Investment advisor unlocks paying for construction on credit
-# (LoanState.take_construction_loan — the 4th option on the missing-materials dialog).
-func construction_credit_available() -> bool:
-	return not AdvisorState._roster_entry(str(AdvisorState.advisor_seats.get("chief_investment", ""))).is_empty()
-
 func construction_material_rebate(building_id: String) -> float:
 	if building_id == "":
 		return 0.0
@@ -848,8 +843,6 @@ func reset() -> void:
 	LabourState.reset()
 	AdvisorState.reset()
 	ghost_holdings.clear()
-	building_tabs.clear()
-	construct_credit_default = "ask"
 	fake_money_this_turn = 0.0
 	match_rng_seed = DEFAULT_MATCH_RNG_SEED
 	_match_rng.seed = match_rng_seed
@@ -910,8 +903,6 @@ func export_state() -> Dictionary:
 		"power_priority_coal_gas": power_priority_coal_gas,
 		"power_priority_wind_solar": power_priority_wind_solar,
 		"ghost_holdings": ghost_holdings.duplicate(true),
-		"building_tabs": building_tabs.duplicate(true),
-		"construct_credit_default": construct_credit_default,
 		"advisor_rng_seed": match_rng_seed,
 		"advisor_rng_state": _match_rng.state,
 		"cfo_tax_credit_pool": cfo_tax_credit_pool.duplicate(true),
@@ -988,8 +979,6 @@ func import_state(d: Dictionary) -> void:
 	cfo_tax_credit_pool = (d.get("cfo_tax_credit_pool", []) as Array).duplicate(true)
 	cfo_tax_credit_intro_shown = bool(d.get("cfo_tax_credit_intro_shown", false))
 	ghost_holdings = (d.get("ghost_holdings", {}) as Dictionary).duplicate(true)
-	building_tabs = (d.get("building_tabs", {}) as Dictionary).duplicate(true)
-	construct_credit_default = str(d.get("construct_credit_default", "ask"))
 	match_rng_seed = int(d.get("advisor_rng_seed", DEFAULT_MATCH_RNG_SEED))
 	_match_rng.seed = match_rng_seed
 	_match_rng.state = int(d.get("advisor_rng_state", _match_rng.state))
@@ -2015,148 +2004,8 @@ const _TIER_MULT := {3: 1.0, 2: 0.5, 1: -0.5, 0: 0.0}
 
 # Assign a HIRED, rostered advisor to a seat. Enforces the slot cap and
 # one-seat-per-advisor. Returns false if rejected.
-## Building operational loans (spec §5.3). A newly CONSTRUCTED building has no cash flow yet,
-## so its first TAB_WINDOW_TURNS of running costs are carried rather than paid: each turn they
-## are charged as normal and then refunded onto the tab, which keeps every existing cost site
-## and the money panel's ledger honest instead of diverting four separate charge paths.
-##
-## Exposure is bounded by construction — exactly five turns — which is why the earlier
-## open-ended version's 1x-capex cap and forced sale are gone. Requires a seated CFO: with no
-## one to arrange it, costs simply hit cash as before.
-const TAB_WINDOW_TURNS := 5
-const TAB_SLICES := 12
-## What to do when a build's credit facility comes up: "ask" raises the dialog, the other three
-## answer it silently. Stored beside the other construct-panel defaults.
-const CREDIT_DEFAULT_CHOICES: Array[String] = ["ask", "slices", "loan", "none"]
-var construct_credit_default: String = "ask"
-
-func set_construct_credit_default(value: String) -> void:
-	if not CREDIT_DEFAULT_CHOICES.has(value) or value == construct_credit_default:
-		return
-	construct_credit_default = value
-	construct_settings_changed.emit()
-var building_tabs: Dictionary = {}   # instance_id -> {turns_left, accrued, mode, slices_left}
-
-
-func can_open_building_tab() -> bool:
-	return cfo_seated()
-
-
-## Start carrying a building's running costs. Called the turn BEFORE it completes, because that
-## is when its inputs are ordered and the first money moves.
-func open_building_tab(instance_id: String, mode: String = "slices") -> bool:
-	if not can_open_building_tab() or instance_id == "" or building_tabs.has(instance_id):
-		return false
-	building_tabs[instance_id] = {
-		"turns_left": TAB_WINDOW_TURNS, "accrued": 0.0,
-		"mode": mode, "slices_left": 0,
-	}
-	return true
-
-
-## The player's answer to the credit offer. "none" closes the tab so this building's costs hit
-## cash exactly as they would have without the facility.
-func set_building_tab_mode(instance_id: String, mode: String) -> void:
-	if not building_tabs.has(instance_id):
-		return
-	if mode == "none":
-		building_tabs.erase(instance_id)
-		return
-	var tab: Dictionary = building_tabs[instance_id]
-	tab["mode"] = mode
-	building_tabs[instance_id] = tab
-
-
-func building_tab_debt(instance_id: String) -> float:
-	return float((building_tabs.get(instance_id, {}) as Dictionary).get("accrued", 0.0))
-
-
-## What a building's tab actually takes each turn, and for how many more turns — the pair the
-## detail panel shows, because "you owe £900" tells a player nothing about whether they can
-## afford it, while "£75 a turn for 12 turns" is the thing they budget against.
-##
-## Inside the interest-free window nothing is repaid yet, so the schedule quoted is the one it
-## WILL run to (the accrued total over TAB_SLICES) and `starts_in` counts the turns until the
-## first slice. Once repayment begins the slice is constant: each turn takes accrued/slices_left
-## and decrements both, which leaves the quotient where it was.
-func building_tab_repayment(instance_id: String) -> Dictionary:
-	var tab: Dictionary = building_tabs.get(instance_id, {})
-	var accrued := float(tab.get("accrued", 0.0))
-	if tab.is_empty() or accrued <= 0.0:
-		return {"accrued": 0.0, "per_turn": 0.0, "turns_left": 0, "starts_in": 0}
-	var slices := int(tab.get("slices_left", 0))
-	if slices > 0:
-		return {"accrued": accrued, "per_turn": accrued / float(slices),
-			"turns_left": slices, "starts_in": 0}
-	return {"accrued": accrued, "per_turn": accrued / float(TAB_SLICES),
-		"turns_left": TAB_SLICES, "starts_in": int(tab.get("turns_left", 0))}
-
-
-## Everything the player still owes across every building tab — the money panel's row.
-func total_building_tab_debt() -> float:
-	var total := 0.0
-	for iid in building_tabs:
-		total += float(building_tabs[iid].get("accrued", 0.0))
-	return total
-
-
-## Carry one turn of a building's running costs. Returns the amount refunded onto the tab, which
-## the caller credits back so the turn's cash matches what the player actually paid.
-func accrue_building_tab(instance_id: String, amount: float) -> float:
-	var tab: Dictionary = building_tabs.get(instance_id, {})
-	if tab.is_empty() or int(tab.get("turns_left", 0)) <= 0 or amount <= 0.0:
-		return 0.0
-	tab["accrued"] = float(tab.get("accrued", 0.0)) + amount
-	building_tabs[instance_id] = tab
-	return amount
-
-
-## End of turn: wind the window down and settle any tab that has run its course.
-func tick_building_tabs() -> Dictionary:
-	var movements := {"repaid": 0.0, "loan_received": 0.0}
-	for iid in building_tabs.keys():
-		var tab: Dictionary = building_tabs[iid]
-		var left := int(tab.get("turns_left", 0))
-		if left > 0:
-			tab["turns_left"] = left - 1
-			if tab["turns_left"] == 0:
-				var cash_before := money
-				_settle_building_tab(str(iid), tab)
-				movements.loan_received += money - cash_before
-				# Settling may have closed the tab outright (the loan route converts and
-				# erases). Writing it back unconditionally would resurrect it.
-				if not building_tabs.has(iid):
-					continue
-			building_tabs[iid] = tab
-			continue
-		# Repayment: one interest-free slice a turn until it is cleared.
-		if str(tab.get("mode", "slices")) == "slices" and int(tab.get("slices_left", 0)) > 0:
-			var slice: float = float(tab.get("accrued", 0.0)) / float(tab.get("slices_left", 1))
-			add_money(-slice)
-			movements.repaid += slice
-			tab["accrued"] = maxf(0.0, float(tab.get("accrued", 0.0)) - slice)
-			tab["slices_left"] = int(tab.get("slices_left", 0)) - 1
-			building_tabs[iid] = tab
-			if int(tab["slices_left"]) <= 0 or float(tab["accrued"]) <= 0.01:
-				building_tabs.erase(iid)
-	return movements
-
-
-func _settle_building_tab(instance_id: String, tab: Dictionary) -> void:
-	var owed := float(tab.get("accrued", 0.0))
-	if owed <= 0.0:
-		building_tabs.erase(instance_id)
-		return
-	if str(tab.get("mode", "slices")) == "loan":
-		# Converts to an ordinary loan — smaller payments, but it carries interest.
-		LoanState.take_distress_loan(owed)
-		building_tabs.erase(instance_id)
-		return
-	tab["slices_left"] = TAB_SLICES
-
-
-## Purchased buildings arrive with PURCHASE_SEED_TURNS of their recipe's inputs — a going
-## concern comes with stock, where a fresh build comes with a ramp to finance (§5.3's tab).
+## Purchased buildings arrive with PURCHASE_SEED_TURNS of their recipe's inputs: a going
+## concern comes with stock, where a fresh build starts empty.
 ## Infra and input-less recipes get nothing: there is no inventory to seed.
 const PURCHASE_SEED_TURNS := 2
 ## Goods that could not fit in the tile when a purchase was seeded. They exist, the player can

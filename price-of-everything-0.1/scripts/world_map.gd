@@ -65,6 +65,7 @@ const WARM_MARGIN := 1000.0
 var goods_graph_view: GoodsGraphViewScript
 
 const InfraIcons := preload("res://scripts/infra_icons.gd")
+const ConstructionRules := preload("res://scripts/construction_rules.gd")
 const AuthoredMapRef := preload("res://scripts/authored_map.gd")
 const OLD_GROWTH_FOREST_BUILDING_ID := "b_016"
 const OLD_GROWTH_FOREST_OWNER := "tile_data"
@@ -125,8 +126,10 @@ var _buy_legend: VBoxContainer = null
 var _buy_legend_panel: PanelContainer = null
 var _buy_modal: PanelContainer = null
 var _buy_modal_label: Label = null
-var _credit_dialog: PanelContainer = null
 var _construction_dialog: PanelContainer = null
+## Land the current build attempt bought on its way through the space check:
+## {tile_id, owned_before, cost}. Kept if the build is placed, returned with its cash if not.
+var _attempt_land: Dictionary = {}
 var _deposit_dialog: Control = null  # reused "no deposit" / "deposit exhausted" modal
 var _deposit_dialog_target: Dictionary = {}  # building the current deposit dialog acts on
 
@@ -284,7 +287,6 @@ func _build_base() -> void:
 	# A DEMOLISHED building must stop being drawn: sell, demolish, liquidate and bankruptcy
 	# all emit building_removed, not just a cancelled build.
 	BuildingState.building_removed.connect(_on_building_removed_visuals)
-	Construction.building_tab_opened.connect(_show_building_credit_dialog)
 	# Deposit feedback: reveal/popup when a blind (unsurveyed) build finishes, and a
 	# centre-screen prompt when a deposit runs out under a working building.
 	Construction.construction_completed.connect(_on_construction_completed_deposit_check)
@@ -2096,25 +2098,36 @@ func _on_encyclopedia_good_requested(good_id: String) -> void:
 func _on_search_recipe_build_requested(building_id: String, recipe_id: String) -> void:
 	BuildMode.enter_build_mode(building_id, recipe_id)
 
+## A build attempt from the map pick or a direct build (BuildMode.build_attempted). It reports what
+## happened through BuildMode.last_attempt_placed, the answer attempt_direct_build returns: a
+## Confirm only closes on a build that was placed. Land the attempt bought on the way is kept only
+## if the build is placed; a refusal returns the land and its cash.
 func _on_build_attempted(building_id: String, tile_id: String) -> void:
+	_attempt_land = {}
+	var placed := _attempt_build(building_id, tile_id)
+	_settle_attempt_land(placed)
+	BuildMode.last_attempt_placed = placed
+
+
+func _attempt_build(building_id: String, tile_id: String) -> bool:
 	print("[Build] attempt: building=%s tile=%s" % [building_id, tile_id])
 	if _tutorial_blocks(tile_id):
-		return
+		return false
 	var coord := terrain_layer.id_to_coord(tile_id)
 	if coord == Vector2i(-1, -1):
 		print("[Build] FAILED: tile_id %s did not resolve to a coord (id_to_coord returned -1,-1)" % tile_id)
-		return
+		return false
 
 	var recipe_id: String = BuildMode.current_recipe_id
 	if recipe_id == "":
 		print("[Build] FAILED: no recipe selected (BuildMode.current_recipe_id is empty)")
 		push_warning("Build attempted with no recipe selected")
-		return
+		return false
 	var recipe: Dictionary = Catalog.get_recipe(recipe_id)
 	if recipe.is_empty():
 		print("[Build] FAILED: unknown recipe %s (Catalog.get_recipe returned empty)" % recipe_id)
 		push_warning("Build attempted with unknown recipe %s" % recipe_id)
-		return
+		return false
 	if not terrain_layer.tiles.has(coord):
 		print("[Build] WARNING: terrain_layer.tiles has no entry for coord %s (skipping requirement check)" % str(coord))
 	else:
@@ -2127,23 +2140,23 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 			MatchState.request_toast(
 				"That can't be built at sea — only offshore wind and oil platforms can." if is_sea
 				else "Offshore buildings can only be built on sea or deep-sea tiles.", "warning")
-			return
+			return false
 		# Deposit recipes: block on a KNOWN-bad tile (toast), but let the player build
 		# blind on an unsurveyed tile — the outcome is revealed when it finishes.
 		var req_block := _recipe_requirement_block(tile_data, recipe, tile_id)
 		if req_block == "deposit":
 			MatchState.request_toast("Cannot build mine there, it does not have the right deposit.", "warning")
-			return
+			return false
 		elif req_block == "other":
 			print("[Build] FAILED: recipe requirements not met on %s" % tile_id)
-			return
+			return false
 
 	# Look up cost
 	var building_data: Dictionary = Catalog.get_building(building_id)
 	var space_check := _space_check_for_build(tile_id, building_id)
 	if not bool(space_check.get("allowed", false)):
-		return
-	var cost: float = maxf(0.0, float(building_data.get("base_price", 0.0)) * float(space_check.get("cost_multiplier", 1.0)) - MatchState.construction_material_rebate(building_id))
+		return false
+	var cost: float = ConstructionRules.build_fee(building_id, float(space_check.get("cost_multiplier", 1.0)))
 
 	# Construction materials must be present on the tile. If any are missing, offer the
 	# order-or-cancel dialog and stop here — no money deducted, no tile space reserved.
@@ -2153,39 +2166,29 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 		# The material choice is made INLINE now (construct panel's materials accordion), not in a
 		# pop-up. consume_build_material_source() returns that choice (or the standing setting), and
 		# never "ask" — so this always resolves to a concrete source and never opens the old modal.
-		var material_source := MatchState.consume_build_material_source()
-		if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" and material_source in ["same_tile", "any_tile"] and not ResearchState.open_logistics_contracts_available():
-			MatchState.request_toast("Open Logistics Contracts is required to use tile stockpiles for construction.", "warning")
-			material_source = "middleman"
-		if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" and material_source == "market" and not ResearchState.global_trade_license_available():
-			MatchState.request_toast("Government Import/Export License is required for direct global-market construction purchases.", "warning")
-			material_source = "middleman"
-		match material_source:
+		var source := ConstructionRules.material_source(MatchState.consume_build_material_source())
+		for note: Variant in source.notes:
+			MatchState.request_toast(str((note as Dictionary).text), "warning")
+		match str(source.buys_via):
 			"middleman":
-				if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1":
-					_on_construction_middleman_requested(building_id, recipe_id, tile_id)
-					return
-				_on_construction_buy_requested(building_id, recipe_id, tile_id)
-				return
+				return _on_construction_middleman_requested(building_id, recipe_id, tile_id)
 			"same_tile":
 				MatchState.request_toast("There are no tiles with the required construction materials. Deliver the materials manually to the tile to begin construction.", "error")
-				return
+				return false
 			"any_tile":
 				if not Construction.find_source_tile(tile_id, mat_check.get("missing", {})).is_empty():
-					_on_construction_use_stockpile_requested(building_id, recipe_id, tile_id)
-				else:
-					MatchState.request_toast("There are no tiles with the required construction materials. Deliver the materials manually to the tile to begin construction.", "error")
-				return
+					return _on_construction_use_stockpile_requested(building_id, recipe_id, tile_id)
+				MatchState.request_toast("There are no tiles with the required construction materials. Deliver the materials manually to the tile to begin construction.", "error")
+				return false
 			_:
 				# "market" (and any legacy value) — buy the kit in. Never blocks.
-				_on_construction_buy_requested(building_id, recipe_id, tile_id)
-				return
+				return _on_construction_buy_requested(building_id, recipe_id, tile_id)
 
 	# Check + deduct money
 	if not MatchState.deduct_money(cost):
 		print("[Build] FAILED: insufficient money. Need £%.2f, have £%.2f" % [cost, MatchState.money])
 		MatchState.build_rejected_no_funds.emit("Not enough money — need £%.2f, you have £%.2f" % [cost, MatchState.money])
-		return
+		return false
 
 	# Consume the construction materials and start the build (deferred behind a countdown).
 	var instance_id := Construction.start_on_tile(building_id, recipe_id, tile_id, cost)
@@ -2195,25 +2198,7 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 
 	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
 	Audio.building_placed()
-
-## The credit facility offer, raised when a build is one turn out (Construction emits
-## building_tab_opened). Declining closes the tab so costs hit cash as they always did.
-func _show_building_credit_dialog(instance_id: String) -> void:
-	if _credit_dialog == null:
-		_credit_dialog = load("res://scripts/building_credit_dialog.gd").new()
-		_credit_dialog.name = "BuildingCreditDialog"
-		_hud.add_child(_credit_dialog)
-		_credit_dialog.choice_made.connect(func(iid: String, mode: String) -> void:
-			MatchState.set_building_tab_mode(iid, mode))
-	# A standing answer skips the dialog entirely; "ask" is the only mode that interrupts.
-	var preset := MatchState.construct_credit_default
-	if preset != "ask":
-		MatchState.set_building_tab_mode(instance_id, preset)
-		return
-	var building: Dictionary = BuildingState.get_building(instance_id)
-	var label := str(Catalog.get_building(str(building.get("building_id", ""))).get("display_name", "this building"))
-	_credit_dialog.open(instance_id, label)
-
+	return true
 
 func _show_construction_missing_dialog(building_id: String, recipe_id: String, tile_id: String, missing: Dictionary) -> void:
 	# Lazily build one reusable dialog on the HUD. Phase 1 only wires Cancel (close); the
@@ -2224,10 +2209,9 @@ func _show_construction_missing_dialog(building_id: String, recipe_id: String, t
 		_hud.add_child(_construction_dialog)
 		_construction_dialog.buy_requested.connect(_on_construction_buy_requested)
 		_construction_dialog.use_stockpile_requested.connect(_on_construction_use_stockpile_requested)
-		_construction_dialog.credit_requested.connect(_on_construction_credit_requested)
 	_construction_dialog.open(building_id, recipe_id, tile_id, missing)
 
-func _on_construction_buy_requested(building_id: String, recipe_id: String, tile_id: String) -> void:
+func _on_construction_buy_requested(building_id: String, recipe_id: String, tile_id: String) -> bool:
 	# Buy-from-market path: charge the build cost now, order the missing materials, reserve the
 	# site as an awaiting_materials project. The material cost is charged inside queue_buy, so we
 	# confirm the player can afford build + materials together before committing to either.
@@ -2235,24 +2219,25 @@ func _on_construction_buy_requested(building_id: String, recipe_id: String, tile
 	var building_data: Dictionary = Catalog.get_building(building_id)
 	var space_check := _space_check_for_build(tile_id, building_id)
 	if not bool(space_check.get("allowed", false)):
-		return
-	var cost: float = maxf(0.0, float(building_data.get("base_price", 0.0)) * float(space_check.get("cost_multiplier", 1.0)) - MatchState.construction_material_rebate(building_id))
+		return false
+	var cost: float = ConstructionRules.build_fee(building_id, float(space_check.get("cost_multiplier", 1.0)))
 	var material_cost: float = Construction.estimate_market_cost(tile_id, building_id)
 	if MatchState.money < cost + material_cost:
 		MatchState.build_rejected_no_funds.emit(
 			"Not enough money — build £%.0f + materials £%.0f, you have £%.0f" % [cost, material_cost, MatchState.money])
-		return
+		return false
 	if not MatchState.deduct_money(cost):
-		return
+		return false
 	var instance_id := Construction.start_awaiting_market(building_id, recipe_id, tile_id, cost)
 	if instance_id.is_empty():
 		MatchState.add_money(cost)
 		MatchState.build_rejected_no_funds.emit("Could not reserve the complete material order. No construction costs were charged.")
-		return
+		return false
 	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
 	Audio.building_placed()
+	return true
 
-func _on_construction_middleman_requested(building_id: String, recipe_id: String, tile_id: String) -> void:
+func _on_construction_middleman_requested(building_id: String, recipe_id: String, tile_id: String) -> bool:
 	# The intermediary buys the missing kit at the ordinary market price plus its
 	# location fee, then delivers it to the private construction holding on the next
 	# turn. No port route or shared warehouse capacity is required.
@@ -2260,77 +2245,49 @@ func _on_construction_middleman_requested(building_id: String, recipe_id: String
 	var building_data: Dictionary = Catalog.get_building(building_id)
 	var space_check := _space_check_for_build(tile_id, building_id)
 	if not bool(space_check.get("allowed", false)):
-		return
-	var cost: float = maxf(0.0, float(building_data.get("base_price", 0.0)) * float(space_check.get("cost_multiplier", 1.0)) - MatchState.construction_material_rebate(building_id))
+		return false
+	var cost: float = ConstructionRules.build_fee(building_id, float(space_check.get("cost_multiplier", 1.0)))
 	var material_cost: float = Construction.estimate_middleman_cost(tile_id, building_id)
 	if MatchState.money < cost + material_cost:
 		MatchState.build_rejected_no_funds.emit(
 			"Not enough money — build £%.0f + intermediary materials £%.0f, you have £%.0f" % [cost, material_cost, MatchState.money])
-		return
+		return false
 	if not MatchState.deduct_money(cost):
-		return
+		return false
 	var instance_id := Construction.start_awaiting_middleman(building_id, recipe_id, tile_id, cost)
 	if instance_id.is_empty():
 		MatchState.add_money(cost)
 		MatchState.build_rejected_no_funds.emit("Could not reserve the intermediary material order. No construction costs were charged.")
-		return
+		return false
 	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
 	Audio.building_placed()
+	return true
 
-func _on_construction_credit_requested(building_id: String, recipe_id: String, tile_id: String) -> void:
-	# Build-on-credit (Chief Investment): finance build cost + materials with a 10-turn,
-	# 5% construction loan instead of paying cash. The loan disburses the full amount, we
-	# pay the build cost now, and the awaiting-market order charges the materials as usual.
-	if not MatchState.construction_credit_available():
-		return
-	var coord := terrain_layer.id_to_coord(tile_id)
-	var building_data: Dictionary = Catalog.get_building(building_id)
-	var space_check := _space_check_for_build(tile_id, building_id)
-	if not bool(space_check.get("allowed", false)):
-		return
-	var cost: float = maxf(0.0, float(building_data.get("base_price", 0.0)) * float(space_check.get("cost_multiplier", 1.0)) - MatchState.construction_material_rebate(building_id))
-	var material_cost: float = Construction.estimate_market_cost(tile_id, building_id)
-	if not LoanState.take_construction_loan(cost + material_cost):
-		MatchState.build_rejected_no_funds.emit(
-			"Construction loan of £%.0f exceeds your borrowing capacity" % (cost + material_cost))
-		return
-	if not MatchState.deduct_money(cost):
-		return
-	var instance_id := Construction.start_awaiting_market(building_id, recipe_id, tile_id, cost)
-	if instance_id.is_empty():
-		MatchState.add_money(cost)
-		MatchState.build_rejected_no_funds.emit("Could not reserve the complete material order. No construction costs were charged.")
-		return
-	# Tie the construction loan just taken to this build, so its repayment lands in THIS
-	# building's economics (the BDP loan line + net) rather than only the company-wide total.
-	LoanState.tag_last_loan_building(instance_id)
-	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
-	Audio.building_placed()
-
-func _on_construction_use_stockpile_requested(building_id: String, recipe_id: String, tile_id: String) -> void:
+func _on_construction_use_stockpile_requested(building_id: String, recipe_id: String, tile_id: String) -> bool:
 	# Source the missing materials from another tile's spare stock: charge the build cost +
 	# transport, pull the shortfall into the build site, reserve it as an awaiting project.
 	var coord := terrain_layer.id_to_coord(tile_id)
 	var building_data: Dictionary = Catalog.get_building(building_id)
 	var space_check := _space_check_for_build(tile_id, building_id)
 	if not bool(space_check.get("allowed", false)):
-		return
-	var cost: float = maxf(0.0, float(building_data.get("base_price", 0.0)) * float(space_check.get("cost_multiplier", 1.0)) - MatchState.construction_material_rebate(building_id))
+		return false
+	var cost: float = ConstructionRules.build_fee(building_id, float(space_check.get("cost_multiplier", 1.0)))
 	var missing: Dictionary = Construction.check_tile(tile_id, building_id).get("missing", {})
 	var source: Dictionary = Construction.find_source_tile(tile_id, missing)
 	if source.is_empty():
 		MatchState.build_rejected_no_funds.emit("No tile has the spare materials to build this here")
-		return
+		return false
 	var move_cost: float = float(TransportState.preview_move(str(source.get("tile_id", "")), tile_id, missing).get("cost", 0.0))
 	if MatchState.money < cost + move_cost:
 		MatchState.build_rejected_no_funds.emit(
 			"Not enough money — build £%.0f + transport £%.0f, you have £%.0f" % [cost, move_cost, MatchState.money])
-		return
+		return false
 	if not MatchState.deduct_money(cost):
-		return
+		return false
 	var instance_id := Construction.start_awaiting_from_tile(building_id, recipe_id, tile_id, str(source.get("tile_id", "")), cost)
 	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
 	Audio.building_placed()
+	return true
 
 func _on_construction_cancelled(instance_id: String, _tile_id: String) -> void:
 	_drop_building_visual(instance_id)
@@ -2669,21 +2626,7 @@ func _tile_has_building(tile_id: String, building_id: String) -> bool:
 # "" = buildable, "deposit" = known-missing deposit (toast + block),
 # "other" = some other requirement (potential/produces) not met.
 func _recipe_requirement_block(tile_data: Dictionary, recipe: Dictionary, tile_id: String) -> String:
-	var status := MatchState.survey_status(tile_id, str(tile_data.get("type", "")))
-	for req in recipe.get("requirements", []):
-		var rtype := str(req.get("type", ""))
-		if rtype == "deposit":
-			var token := str(req.get("value", ""))
-			# Unknown ground: allow a blind build (water is always visible, so it's
-			# still checked normally).
-			if token != "water" and status == "unsurveyed":
-				continue
-			if not _tile_meets_build_req(tile_data, req):
-				return "deposit"
-		else:
-			if not _tile_meets_build_req(tile_data, req):
-				return "other"
-	return ""
+	return ConstructionRules.requirement_block(tile_data, recipe, tile_id)
 
 func _recipe_nonwater_deposit_token(recipe: Dictionary) -> String:
 	for req in recipe.get("requirements", []):
@@ -2787,70 +2730,43 @@ func _open_supply_chain_review(instance_id: String, action: String) -> void:
 	panel.open(instance_id, action)
 
 func _tile_meets_build_req(tile_data: Dictionary, req: Dictionary) -> bool:
-	match req.get("type", ""):
-		"deposit":
-			var deposits: Array = tile_data.get("deposits", [])
-			return _deposits_include(deposits, str(req.get("value", "")))
-		"produces":
-			return _tile_produces_good(tile_data, req.get("value", ""))
-		"potential":
-			var value: String = req.get("value", "")
-			if value == "wind":
-				return tile_data.get("wind_potential", 0) > 0
-			if value == "solar":
-				return tile_data.get("solar_potential", 0) > 0
-			return false
-	return false
+	return ConstructionRules.tile_meets_requirement(tile_data, req)
 
 func _deposits_include(deposits: Array, internal_name: String) -> bool:
-	if internal_name == "":
-		return false
-	for deposit in deposits:
-		if _deposit_base_name(str(deposit)) == internal_name:
-			return true
-	return false
+	return ConstructionRules.deposits_include(deposits, internal_name)
 
-func _deposit_base_name(deposit: String) -> String:
-	var value := deposit.strip_edges()
-	var quantity_marker := value.find("(")
-	if quantity_marker > 0 and value.ends_with(")"):
-		return value.substr(0, quantity_marker)
-	return value
-
-func _tile_produces_good(tile_data: Dictionary, internal_name: String) -> bool:
-	var tile_id: String = tile_data.get("id", "")
-	if tile_id == "":
-		return false
-	var instance_ids: Array = BuildingState.tile_buildings.get(tile_id, [])
-	for inst_id in instance_ids:
-		var building: Dictionary = BuildingState.buildings.get(inst_id, {})
-		if building.is_empty():
-			continue
-		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
-		if recipe.get("output_name", "") == internal_name:
-			return true
-		for output in recipe.get("outputs", []):
-			if output.get("internal_name", "") == internal_name:
-				return true
-	return false
-
+## An infrastructure order from the map pick or a tile's add key (BuildMode.infrastructure_attempted).
+## Land bought on the way is kept only if the order is placed.
 func _on_infrastructure_attempted(infra_type: String, tile_id: String) -> void:
+	_attempt_land = {}
+	_settle_attempt_land(_attempt_infrastructure(infra_type, tile_id))
+
+
+func _attempt_infrastructure(infra_type: String, tile_id: String) -> bool:
 	if not ResearchState.infrastructure_tendering_available():
 		MatchState.request_toast("Infrastructure Tendering is required before building infrastructure.", "warning")
-		return
+		return false
 	var coord := terrain_layer.id_to_coord(tile_id)
 	if coord == Vector2i(-1, -1):
-		return
+		return false
 	if not terrain_layer.tiles.has(coord):
-		return
+		return false
 
 	var tile: Dictionary = terrain_layer.tiles[coord]
 	var infra: Array = tile.get("infrastructure_present", [])
+	# The tile's water first: roads, rail and pipes stay on land, cables reach the sea but not deep
+	# sea, HVDC goes anywhere (Catalog.is_allowed_on_tile_type).
+	var tile_type := str(tile.get("type", ""))
+	if not Catalog.is_allowed_on_tile_type(infra_type, tile_type):
+		var water_msg := ConstructionRules.terrain_text(infra_type, tile_type)
+		_show_tile_space_error(water_msg)
+		_flash_build_refusal(coord, water_msg)
+		return false
 
 	# Already present — silently bail (no charge, no error)
 	if infra.has(infra_type):
 		print("Tile %s already has %s" % [tile_id, infra_type])
-		return
+		return false
 
 	# Lookup cost
 	var building_data: Dictionary = Catalog.get_building_by_internal_name(infra_type)
@@ -2861,65 +2777,53 @@ func _on_infrastructure_attempted(infra_type: String, tile_id: String) -> void:
 		for project in Construction.projects_on_tile(tile_id):
 			if str(project.get("building_id", "")) == infra_building_id:
 				print("Tile %s is already building %s" % [tile_id, infra_type])
-				return
+				return false
 		var space_check := _space_check_for_build(tile_id, infra_building_id)
 		if not bool(space_check.get("allowed", false)):
 			# Say it ON THE TILE: returning silently makes the placement icon appear to do
 			# nothing, and the corner toast goes unread.
 			_flash_build_refusal(coord, str(space_check.get("reason", "Cannot build here")))
-			return
+			return false
 		# Infrastructure uses the same construction-material lifecycle as every
 		# other building; without this check start_on_tile() would consume whatever
 		# happened to be there and silently begin the project.
 		var mat_check: Dictionary = Construction.check_tile(tile_id, infra_building_id)
 		if not bool(mat_check.get("satisfied", false)):
-			var material_source := MatchState.consume_build_material_source()
-			if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" and material_source in ["same_tile", "any_tile"] and not ResearchState.open_logistics_contracts_available():
-				MatchState.request_toast("Open Logistics Contracts is required to use tile stockpiles for construction.", "warning")
-				material_source = "middleman"
-			if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" and material_source == "market" and not ResearchState.global_trade_license_available():
-				MatchState.request_toast("Government Import/Export License is required for direct global-market construction purchases.", "warning")
-				material_source = "middleman"
-			match material_source:
+			var source := ConstructionRules.material_source(MatchState.consume_build_material_source())
+			for note: Variant in source.notes:
+				MatchState.request_toast(str((note as Dictionary).text), "warning")
+			match str(source.buys_via):
 				"middleman":
-					if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1":
-						_on_construction_middleman_requested(infra_building_id, "", tile_id)
-					else:
-						_on_construction_buy_requested(infra_building_id, "", tile_id)
-					return
+					return _on_construction_middleman_requested(infra_building_id, "", tile_id)
 				"same_tile":
 					MatchState.request_toast("There are no tiles with the required construction materials. Deliver the materials manually to the tile to begin construction.", "error")
-					return
+					return false
 				"any_tile":
 					if not Construction.find_source_tile(tile_id, mat_check.get("missing", {})).is_empty():
-						_on_construction_use_stockpile_requested(infra_building_id, "", tile_id)
-					else:
-						MatchState.request_toast("There are no tiles with the required construction materials. Deliver the materials manually to the tile to begin construction.", "error")
-					return
+						return _on_construction_use_stockpile_requested(infra_building_id, "", tile_id)
+					MatchState.request_toast("There are no tiles with the required construction materials. Deliver the materials manually to the tile to begin construction.", "error")
+					return false
 				_:
-					_on_construction_buy_requested(infra_building_id, "", tile_id)
-					return
-		var cost_multiplier := float(space_check.get("cost_multiplier", 1.0))
-		cost *= cost_multiplier
-		_try_build_infrastructure(tile_id, coord, infra_type, infra_building_id, cost)
-		return
+					return _on_construction_buy_requested(infra_building_id, "", tile_id)
+		cost = ConstructionRules.infrastructure_fee(infra_building_id, float(space_check.get("cost_multiplier", 1.0)))
+		return _try_build_infrastructure(tile_id, coord, infra_type, infra_building_id, cost)
 
-	_try_build_infrastructure(tile_id, coord, infra_type, infra_building_id, cost)
+	return _try_build_infrastructure(tile_id, coord, infra_type, infra_building_id, cost)
 
-func _try_build_infrastructure(tile_id: String, coord: Vector2i, infra_type: String, infra_building_id: String, cost: float) -> void:
+func _try_build_infrastructure(tile_id: String, coord: Vector2i, infra_type: String, infra_building_id: String, cost: float) -> bool:
 	# Check + deduct
 	if not MatchState.deduct_money(cost):
 		print("[Build] FAILED: insufficient money for %s. Need £%.2f, have £%.2f" % [infra_type, cost, MatchState.money])
 		MatchState.build_rejected_no_funds.emit("Not enough money to build %s — need £%.2f, you have £%.2f" % [infra_type, cost, MatchState.money])
 		_flash_build_refusal(coord, "Insufficient money — £%d needed" % int(ceil(cost)))
-		return
+		return false
 
 	if infra_building_id == "":
 		# No catalog building backs this type, so there is nothing to construct:
 		# apply it instantly (none of the buildable types hit this path).
 		_apply_built_infrastructure(coord, tile_id, infra_type)
 		building_placed.emit(tile_id, "", "", "", coord)
-		return
+		return true
 
 	# Infrastructure builds like buildings: a construction project counting down
 	# build_duration turns (from the CSV) — the started/built toasts come from the
@@ -2929,6 +2833,7 @@ func _try_build_infrastructure(tile_id: String, coord: Vector2i, infra_type: Str
 	var instance_id := Construction.start_on_tile(infra_building_id, "", tile_id, cost)
 	print("Started building %s on %s — cost £%.2f" % [infra_type, tile_id, cost])
 	building_placed.emit(tile_id, infra_building_id, "", instance_id, coord)
+	return true
 
 # A finished infrastructure build joins the tile's infrastructure_present and the
 # router's live infra map (so roads/rails affect routing only once finished).
@@ -2992,79 +2897,71 @@ func _on_construction_completed_infra(instance_id: String, tile_id: String) -> v
 # The infra types that live on tiles (the canonical slot set). Port/airport are
 # category "infrastructure" in the CSV but are ordinary buildings on the map.
 func _is_tile_infra_type(internal_name: String) -> bool:
-	if internal_name == "":
-		return false
-	for slot in InfraIcons.SLOTS:
-		if str(slot.key) == internal_name:
-			return true
-	return false
-
-## The infrastructure that runs over ground. Pipes and cables are deliberately absent —
-## a pipeline or a cable may cross water, and only these two may not.
-const OVERLAND_INFRA := {"roads": true, "rail": true}
-
+	return ConstructionRules.is_tile_infrastructure(internal_name)
 
 func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
-	var building_data: Dictionary = Catalog.get_building(building_id)
-	# Overland infrastructure cannot be laid on water, and saying so comes FIRST: a sea
-	# tile also has no land to own, so the land gate below would otherwise answer "buy more
-	# land here" for a road across open water — advice the player cannot act on and which
-	# hides the real reason.
-	var internal := str(building_data.get("internal_name", ""))
-	if OVERLAND_INFRA.has(internal):
-		var ttype := Catalog.tile_type(tile_id)
-		if ttype == "sea" or ttype == "deep_sea":
-			var sea_msg := "Cannot build that infrastructure on sea."
-			print("[Build] FAILED: %s on %s tile %s" % [internal, ttype, tile_id])
-			_show_tile_space_error(sea_msg)
-			return {"allowed": false, "cost_multiplier": 1.0, "reason": sea_msg}
-	var added_space := maxf(0.0, float(building_data.get("tile_size_used", 1.0)))
-	var current_space := BuildingState.get_tile_space_used(tile_id)
-	var projected_space := current_space + added_space
-	var tile_cap := BuildingState.max_tile_land(tile_id)
-	if projected_space > float(tile_cap):
-		print("[Build] FAILED: tile %s is full (need %s, max %s)" % [tile_id, str(projected_space), str(tile_cap)])
+	# The rules (roads and rail off water, the tile's physical cap, owned land and what buying
+	# it takes, the planning limit) are ConstructionRules.land_plan's, the figures the construct
+	# flow shows. This keeps the side effects: the refusals and toasts, and the land purchase.
+	var plan := ConstructionRules.land_plan(tile_id, building_id, BuildMode.attempt_buy_land)
+	var internal := str(Catalog.get_building(building_id).get("internal_name", ""))
+	# Infrastructure the tile's water cannot take is refused FIRST: the land gate below would
+	# otherwise answer "buy more land here" for a road across open water, advice the player
+	# cannot act on and which hides the real reason.
+	if str(plan.outcome) == "terrain":
+		var water_msg := ConstructionRules.terrain_text(internal, Catalog.tile_type(tile_id))
+		print("[Build] FAILED: %s on %s tile %s" % [internal, Catalog.tile_type(tile_id), tile_id])
+		_show_tile_space_error(water_msg)
+		return {"allowed": false, "cost_multiplier": 1.0, "reason": water_msg}
+	if str(plan.outcome) == "full":
+		print("[Build] FAILED: tile %s is full (need %s, max %s)" % [tile_id, str(plan.projected), str(plan.max_land)])
 		var full_msg := "There is no more room on that tile. Demolish buildings to make room."
 		_show_tile_space_error(full_msg)
 		return {"allowed": false, "cost_multiplier": 1.0, "reason": "No room on this tile"}
-	# The owned-land gate only counts the player's estate — NPC buildings sit on
-	# their own land and must not eat the land the player has bought.
-	var projected_player := BuildingState.get_tile_player_space_used(tile_id) + added_space
-	var land_owned := BuildingState.get_tile_land_owned(tile_id)
-	# Auto-buy land (construct setting, or this one attempt's buy-land intent from the
-	# V3 confirm — BuildMode.attempt_buy_land): cover ONLY the shortfall, rounded up to whole
-	# patches, and only when there genuinely isn't room already — a tile that can already
-	# take the building buys nothing. purchase_tile_land clamps to what's actually for sale
-	# and can grant a clipped sliver, so the gate below is re-evaluated on the real result
-	# rather than assumed to have succeeded.
-	# Tendered infrastructure may cross land the player does not own. Only Logistics
-	# Intermediary games have the tendering research; elsewhere the land rule is unchanged.
-	var tendered_infrastructure := ResearchState.logistics_progression_active() \
-		and ResearchState.infrastructure_tendering_available() and _is_tile_infra_type(internal)
-	if projected_player > float(land_owned) and not tendered_infrastructure \
-			and (MatchState.construct_auto_buy_land or BuildMode.attempt_buy_land):
-		var shortfall := projected_player - float(land_owned)
-		var patches := int(ceil(shortfall / float(BuildingState.LAND_PATCH_SIZE)))
+	# The owned-land gate only counts the player's estate: NPC buildings sit on their own land
+	# and must not eat the land the player has bought. Auto-buy land (construct setting, or this
+	# one attempt's buy-land intent from the V3 confirm, BuildMode.attempt_buy_land) covers ONLY
+	# the shortfall, rounded up to whole patches. purchase_tile_land clamps to what's actually
+	# for sale and can grant a clipped sliver, so the gate below is re-evaluated on the real
+	# result rather than assumed to have succeeded. Tendered infrastructure may cross land the
+	# player does not own (plan.shortfall is 0 for it).
+	var land_owned := int(plan.owned)
+	if bool(plan.wants_buy):
+		var patches := int(ceil(float(plan.shortfall) / float(BuildingState.LAND_PATCH_SIZE)))
 		var before := land_owned
+		var cash_before := MatchState.money
 		if BuildingState.purchase_tile_land(tile_id, patches):
 			land_owned = BuildingState.get_tile_land_owned(tile_id)
-			MatchState.request_toast("Bought %d land on %s to fit this building." % [
-				land_owned - before, Catalog.tile_label(tile_id)], "info")
+			# Held until the build is placed (_settle_attempt_land): a refusal further on returns it.
+			_attempt_land = {"tile_id": tile_id, "owned_before": before, "cost": cash_before - MatchState.money}
 		else:
 			print("[Build] auto-buy land FAILED on %s (wanted %d patch(es))" % [tile_id, patches])
 			_show_tile_space_error("Not enough money (or land for sale) to buy the land this building needs on %s" % Catalog.tile_label(tile_id))
 			return {"allowed": false, "cost_multiplier": 1.0,
 				"reason": "Insufficient money to buy the land"}
-	if projected_player > float(land_owned) and not tendered_infrastructure:
-		print("[Build] FAILED: insufficient land on tile %s (need %s, own %s)" % [tile_id, str(projected_player), str(land_owned)])
+	if float(plan.shortfall) > 0.0 and float(plan.player_projected) > float(land_owned):
+		print("[Build] FAILED: insufficient land on tile %s (need %s, own %s)" % [tile_id, str(plan.player_projected), str(land_owned)])
 		_show_tile_space_error("You cannot build that. You do not own sufficient land on %s"
 			% Catalog.tile_label(tile_id))
 		return {"allowed": false, "cost_multiplier": 1.0, "reason": "Insufficient land — buy more here"}
-	var cost_multiplier := 1.0
-	if projected_space > BuildingState.DENSITY_SOFT_CAPACITY:
-		cost_multiplier = 1.5
+	var cost_multiplier := float(plan.density_multiplier)
+	if cost_multiplier > 1.0:
 		_show_tile_space_caution("Local opposition to density on tile %s will increase material and money costs for new buildings by 50%%" % tile_id)
 	return {"allowed": true, "cost_multiplier": cost_multiplier}
+
+## Settle the land a build attempt bought: kept, and said, when the build was placed; returned
+## with its cash when anything after the purchase refused the build.
+func _settle_attempt_land(placed: bool) -> void:
+	if _attempt_land.is_empty():
+		return
+	var bought := _attempt_land
+	_attempt_land = {}
+	var tile_id := str(bought.tile_id)
+	if placed:
+		MatchState.request_toast("Bought %d land on %s to fit this building." % [
+			BuildingState.get_tile_land_owned(tile_id) - int(bought.owned_before), Catalog.tile_label(tile_id)], "info")
+		return
+	BuildingState.return_tile_land(tile_id, int(bought.owned_before), float(bought.cost))
 
 ## Flash the refused tile red and print the reason under it, via the map overlay.
 func _flash_build_refusal(coord: Vector2i, reason: String) -> void:

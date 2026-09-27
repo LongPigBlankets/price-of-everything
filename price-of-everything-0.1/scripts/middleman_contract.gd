@@ -66,7 +66,6 @@ static func quote(side: String, lines: Array, prices: Dictionary, coefficient: f
 static func plan_batch(required: Dictionary, private_holdings: Dictionary, prices: Dictionary,
 		coefficient: float, budget: Dictionary, feasible: bool = true, allowed_goods: Array = PROTOTYPE_GOODS) -> Dictionary:
 	if not feasible: return _reject("production_blocked")
-	if bool(budget.get("building_credit_tab", false)): return _reject("unsupported_building_credit_tab")
 	for key in ["cash", "credit_available", "commitments", "running_reserve", "minimum_loan"]:
 		if not (budget.get(key) is int or budget.get(key) is float) or not is_finite(float(budget[key])):
 			return _reject("invalid_budget")

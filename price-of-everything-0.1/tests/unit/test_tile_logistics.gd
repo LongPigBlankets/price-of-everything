@@ -55,13 +55,9 @@ func _test_tile_switch_is_atomic_and_sides_independent() -> void:
 	_check(Stockpile.get_at_tile("tile_5_4", "g_006")==40, "hiding stockpile preserves owned stock")
 	cleanup()
 
-func _test_tile_switch_credit_and_ownership_guards() -> void:
-	var ids := setup(2)
+func _test_tile_switch_ownership_guards() -> void:
+	setup(2)
 	Service.set_tile_mode("tile_5_4", "input", "managed")
-	MatchState.building_tabs[ids[1]] = {"amount":10.0}
-	_check(not Service.set_tile_mode("tile_5_4", "input", "middleman").ok, "one credit tab rejects whole operation")
-	_check(not Service.uses_inputs(ids[0]), "earlier eligible building not partially switched")
-	MatchState.building_tabs.clear()
 	var npc := BuildingState.add_building("b_007", "r_009", "tile_5_4", "npc")
 	_check(Service.tile_sides("tile_5_4").input.size()==2, "NPC excluded from tile controls")
 	Service.set_tile_mode("tile_5_4", "input", "middleman")
@@ -124,4 +120,72 @@ func _test_global_switch_counts_and_checks_every_tile_before_changing() -> void:
 	_check(Service.set_modes(changes, "input", "managed").changed==2, "global switch changes exactly displayed selection")
 	_check(Service.uses_outputs(ids[1]) and Service.uses_outputs(remote), "global input choice leaves output unchanged")
 	_check(Service.set_modes(changes, "input", "managed").changed==0, "reapplying selection is idempotent")
+	cleanup()
+
+
+## Leaving the intermediary says what changes for that side and destination, and never promises
+## a port sale for goods going to a stockpile. A stockpile move with nothing to ask still says so.
+func _test_supplier_change_wording() -> void:
+	var confirm := preload("res://scripts/logistics_confirmation.gd")
+	var coal := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
+	var to_stock: String = confirm.message_for({"side": "output", "destination": "stockpile", "good": coal})
+	_check(to_stock.contains("coal") and not to_stock.contains("port"),
+		"supplier change: output to a stockpile names the good and no port sale")
+	_check(str(confirm.message_for({"side": "output", "destination": "market", "good": coal})).contains("port charge"),
+		"supplier change: output to the market names the port charge")
+	_check(str(confirm.message_for({"side": "input", "destination": "stockpile"})).contains("stockpile"),
+		"supplier change: input from a stockpile says where it comes from")
+	for text: String in [to_stock, str(confirm.message_for({}))]:
+		_check(not text.contains(" — ") and not text.contains(";"), "supplier change: plain copy, no dashes or semicolons")
+	var toasts: Array = []
+	var catch := func(m: String, _t: String) -> void: toasts.append(m)
+	MatchState.toast_requested.connect(catch)
+	preload("res://scripts/stockpile_route_prompt.gd")._say_supplier_changed("tile_5_10", coal, {"supplier_changed": true})
+	preload("res://scripts/stockpile_route_prompt.gd")._say_supplier_changed("tile_5_10", coal, {})
+	MatchState.toast_requested.disconnect(catch)
+	_check(toasts.size() == 1 and str(toasts[0]).contains("no longer buys coal"),
+		"supplier change: with nothing to ask, one toast says the intermediary stopped buying")
+
+
+## Building Detail: a good's output leaving the intermediary for its own stockpile changes at once,
+## with no supplier dialog (the surplus prompt carries it); other routes still ask once, in words
+## that fit the side and destination.
+func _test_supplier_change_one_dialog() -> void:
+	var iid := str(setup()[0])
+	var building := BuildingState.get_building(iid)
+	var service = preload("res://scripts/middleman_service.gd")
+	var gid := ""
+	for item: Dictionary in service._side_items(iid, "output"):
+		if service.material_tradeable(str(item.get("good_id", "")), "output"):
+			gid = str(item.get("good_id", ""))
+			break
+	var panel: Control = (load("res://scripts/building_detail_panel_v2.gd") as GDScript).new()
+	add_child(panel)
+	await get_tree().process_frame
+	if gid == "" or not service.buys_output(iid, gid):
+		_check(false, "supplier change: the test building sells an output through the intermediary")
+		panel.queue_free()
+		cleanup()
+		return
+	var ran := {"after": false}
+	panel.call("_request_logistics_mode", building, "output", "managed", func() -> void: ran["after"] = true, gid, "stockpile", false)
+	await get_tree().process_frame
+	_check(panel.find_child("TransportSupplierConfirmation", true, false) == null and bool(ran["after"])
+		and not service.buys_output(iid, gid),
+		"supplier change: to its own stockpile it changes at once, with no supplier dialog")
+	service.set_good_mode(iid, "output", gid, "middleman")
+	preload("res://scripts/logistics_confirmation.gd").skip_confirmation = false
+	panel.call("_request_logistics_mode", building, "output", "managed", Callable(), gid, "market", true)
+	await get_tree().process_frame
+	var dialog := panel.find_child("TransportSupplierConfirmation", true, false) as ConfirmationDialog
+	var words := ""
+	if dialog != null:
+		for label: Node in dialog.find_children("*", "Label", true, false):
+			words += (label as Label).text
+	_check(dialog != null and words.contains("port charge") and service.buys_output(iid, gid),
+		"supplier change: to the market it asks once, naming the port charge, and waits")
+	if dialog != null:
+		dialog.queue_free()
+	panel.queue_free()
+	await get_tree().process_frame
 	cleanup()

@@ -7,6 +7,7 @@ const InfrastructureInfo := preload("res://scripts/infrastructure_info.gd")
 const TAGS := {
 	"_test_build_forecast": ["construction", "market", "production", "research"],
 	"_test_construct_v3_sim": ["construction", "market", "stockpile"],
+	"_test_construction_rules": ["construction", "market", "research"],
 	"_test_construct_browse_building_header": ["construction", "market"],
 	"_test_construct_browse_recipe_card": ["construction", "market"],
 	"_test_construct_browse_mini_recipe_card": ["construction", "market"],
@@ -78,10 +79,18 @@ func _test_build_attempt_reports_refusal() -> void:
 	_check(not refused,
 		"build attempt: a refusal reports false, so the construct panel can stay open")
 	BuildMode._last_attempt_ms = 0
+	var place := func(_bid: String, _tid: String) -> void:
+		BuildMode.last_attempt_placed = true
+	BuildMode.build_attempted.connect(place)
 	var placed: bool = BuildMode.attempt_direct_build("b_007", "r_009", "tile_5_10")
+	BuildMode.build_attempted.disconnect(place)
 	_check(placed,
-		"build attempt: an attempt nothing refused reports true, so the panel closes as before")
+		"build attempt: an attempt the map placed reports true, so the panel closes as before")
+	BuildMode._last_attempt_ms = 0
+	_check(not BuildMode.attempt_direct_build("b_007", "r_009", "tile_5_10"),
+		"build attempt: an attempt nothing placed reports false, whatever refused it")
 	BuildMode.last_attempt_refused = false
+	BuildMode.last_attempt_placed = false
 
 
 func _test_build_mode_overlay_survey_visibility() -> void:
@@ -280,14 +289,6 @@ func _test_build_forecast() -> void:
 	_check(float(chlor.breakdown.startup_inventory) > 0, "forecast reserves initial input pipeline inventory")
 	_check(chlor.first_selling_turn == chlor.build_turns + 1 + chlor.sale_delay,
 		"forecast completion is the final construction turn, not an extra turn")
-	_check((chlor.financing as Dictionary).is_empty(), "repayment is absent without a CFO")
-	AdvisorState.advisor_seats = {"cfo": "vera"}
-	for mode in ["ask", "slices", "loan", "none"]:
-		MatchState.construct_credit_default = mode
-		var funded: Dictionary = BuildForecast.project("b_012", "r_012", "tile_4_9")
-		_check(funded.financing.mode == mode, "forecast respects CFO credit choice: " + mode)
-		_check(is_equal_approx(float(chlor.steady_net), float(funded.steady_net)), "credit never increases ongoing profitability")
-		_check(float(funded.financing.net) <= float(funded.steady_net), "repayment lowers available cash")
 	MatchState.reset()
 	Modifiers.reset()
 	# Two disconnected cabled islands: only the local surplus offsets imports.
@@ -2363,6 +2364,139 @@ func _test_construct_land_tickbox() -> void:
 		"construct land: the amount it buys is enough for the build to pass the land gate")
 	panel.free()
 	MatchState.reset()
+
+## ConstructionRules (scripts/construction_rules.gd): the construct flow's rules without the map.
+## Its parity with the real build is tests/construction_rules_parity.tscn, which boots the game.
+func _test_construction_rules() -> void:
+	MatchState.reset()
+	var rules := preload("res://scripts/construction_rules.gd")
+	var saved_ruleset: Dictionary = MatchState.ruleset.duplicate(true)
+	var tile := "tile_5_10"
+
+	# Material source: "middleman" buys from the market outside an intermediary game.
+	MatchState.ruleset["logistics_model"] = ""
+	MatchState.construct_material_source = "middleman"
+	MatchState.pending_build_material_source = ""
+	var plain: Dictionary = rules.material_source()
+	_check(str(plain.source) == "middleman" and str(plain.buys_via) == "market" and (plain.notes as Array).is_empty(),
+		"rules: outside an intermediary game the intermediary default buys from the market")
+	_check(str(rules.material_source("same_tile").buys_via) == "same_tile",
+		"rules: a requested source overrides the setting")
+	MatchState.pending_build_material_source = "any_tile"
+	_check(str(rules.material_source().source) == "any_tile" and MatchState.pending_build_material_source == "any_tile",
+		"rules: the one build pick is read, not consumed")
+	MatchState.pending_build_material_source = ""
+	# In an intermediary game the research gates send the build through the intermediary.
+	MatchState.ruleset["logistics_model"] = "middleman_v1"
+	var no_licence: Dictionary = rules.material_source("market")
+	_check(str(no_licence.buys_via) == "middleman" and str((no_licence.notes[0] as Dictionary).key) == "license",
+		"rules: without the licence a market build goes through the intermediary, and says so")
+	var no_contracts: Dictionary = rules.material_source("same_tile")
+	_check(str(no_contracts.buys_via) == "middleman" and str((no_contracts.notes[0] as Dictionary).key) == "contracts",
+		"rules: without Open Logistics Contracts a tile source goes through the intermediary")
+	MatchState.ruleset = saved_ruleset.duplicate(true)
+
+	# Fees: the planning limit raises the base; the rebate comes off after it for a building
+	# and before it for infrastructure built from a kit on the tile.
+	var furnace_base := float(Catalog.get_building("b_002").get("base_price", 0.0))
+	_check(absf(rules.build_fee("b_002", 1.5) - maxf(0.0, furnace_base * 1.5 - MatchState.construction_material_rebate("b_002"))) < 0.001,
+		"rules: the build fee is base x planning multiplier less the rebate")
+	var cable_base := float(Catalog.get_building("b_006").get("base_price", 0.0))
+	_check(absf(rules.infrastructure_fee("b_006", 1.5) - maxf(0.0, cable_base - MatchState.construction_material_rebate("b_006")) * 1.5) < 0.001,
+		"rules: infrastructure from a kit on the tile takes the rebate before the multiplier")
+
+	# Requirements: a known missing deposit refuses, an unsurveyed one is a blind build.
+	var mine_recipe: Dictionary = Catalog.get_recipe("r_001")
+	var coal_tile := {"id": "tile_rules_coal", "type": "hill", "deposits": ["coal(1000)"]}
+	var dry_tile := {"id": "tile_rules_dry", "type": "hill", "deposits": []}
+	MatchState.surveyed_tiles["tile_rules_coal"] = true
+	MatchState.surveyed_tiles["tile_rules_dry"] = true
+	_check(rules.requirement_block(coal_tile, mine_recipe, "tile_rules_coal") == "",
+		"rules: a surveyed tile with the deposit meets the recipe")
+	_check(rules.requirement_block(dry_tile, mine_recipe, "tile_rules_dry") == "deposit",
+		"rules: a surveyed tile without the deposit refuses it")
+	MatchState.surveyed_tiles.erase("tile_rules_dry")
+	_check(rules.requirement_block(dry_tile, mine_recipe, "tile_rules_dry") == "" \
+		and rules.blind_deposit(dry_tile, mine_recipe, "tile_rules_dry") != "",
+		"rules: an unsurveyed tile allows a blind build and names the deposit it bets on")
+	_check(not bool(rules.recipe_offer(mine_recipe, {"id": "tile_rules_sea", "type": "sea"}).offered),
+		"rules: the catalogue does not offer a mine at sea")
+	MatchState.surveyed_tiles.erase("tile_rules_coal")
+
+	# Land: the shortfall in whole patches, bought when the setting or the confirm says so.
+	var needed := float(Catalog.get_building("b_002").get("tile_size_used", 1))
+	BuildingState.tile_land_owned[tile] = 0
+	MatchState.money = 5000.0
+	MatchState.construct_auto_buy_land = true
+	var buying: Dictionary = rules.land_plan(tile, "b_002")
+	_check(str(buying.outcome) == "ok" and bool(buying.will_buy)
+		and int(buying.patches) == int(ceil((BuildingState.get_tile_player_space_used(tile) + needed) / float(BuildingState.LAND_PATCH_SIZE))),
+		"rules: with automatic buying on, a short tile buys the shortfall in whole patches")
+	MatchState.construct_auto_buy_land = false
+	_check(str(rules.land_plan(tile, "b_002").outcome) == "short",
+		"rules: with it off the build is refused for land")
+	_check(bool(rules.land_plan(tile, "b_002", true).will_buy),
+		"rules: the confirm's buy land intent buys even with the setting off")
+	MatchState.construct_auto_buy_land = true
+	MatchState.money = 1.0
+	_check(str(rules.land_plan(tile, "b_002").outcome) == "cannot_buy",
+		"rules: cash short of the land's price refuses the build")
+	MatchState.money = 5000.0
+
+	# Site needs: a recipe that draws power needs cables.
+	var powered: Dictionary = {}
+	for r: Variant in Catalog.all_recipes():
+		if int((r as Dictionary).get("energy_req", 0)) > 0:
+			powered = r
+			break
+	var needs: Array = rules.site_needs(powered)
+	_check(not needs.is_empty() and str((needs[0] as Dictionary).infra_key) == "cables" and not bool((needs[0] as Dictionary).satisfied),
+		"rules: a recipe that draws power needs cables, unjudged without a site")
+
+	# The quote without a site: the kit at today's prices and the fee, flagged as an estimate.
+	var q: Dictionary = rules.quote("b_002", "r_005")
+	var ledger: Dictionary = Construction.materials_ledger("b_002", "")
+	_check(not bool(q.site_known) and str((q.warnings[0] as Dictionary).key) == "site_unknown"
+		and absf(float(q.total) - (rules.build_fee("b_002") + float(ledger.subtotal))) < 0.01,
+		"rules: without a site the quote is the fee and the kit, and says the site is unknown")
+	MatchState.money = 1.0
+	_check(str(((rules.quote("b_002", "r_005").blocks as Array)[0] as Dictionary).key) == "funds",
+		"rules: without the cash the quote is blocked on funds")
+
+	# Water: roads, rail and pipes stay on land; cables reach the sea but not deep sea; HVDC and the
+	# offshore buildings go on both; ordinary buildings stay on land.
+	for land_only: String in ["roads", "rails", "pipes", "reinf_pipes"]:
+		_check(not Catalog.is_allowed_on_tile_type(land_only, "sea") and not Catalog.is_allowed_on_tile_type(land_only, "deep_sea")
+			and Catalog.is_allowed_on_tile_type(land_only, "rural"), "rules: %s are land only" % land_only)
+	_check(Catalog.is_allowed_on_tile_type("cables", "sea") and not Catalog.is_allowed_on_tile_type("cables", "deep_sea"),
+		"rules: cables reach the sea but not deep sea")
+	_check(Catalog.is_allowed_on_tile_type("hvdc", "deep_sea") and Catalog.is_allowed_on_tile_type("hvdc", "sea")
+		and Catalog.is_allowed_on_tile_type("hvdc", "rural"), "rules: HVDC goes anywhere")
+	_check(Catalog.is_building_allowed_on_tile_type("b_026", "deep_sea") and not Catalog.is_building_allowed_on_tile_type("b_002", "sea"),
+		"rules: offshore wind on deep sea, a furnace never at sea")
+	var sea_tile := ""
+	for tid: Variant in Catalog._tile_types:
+		if str(Catalog._tile_types[tid]) == "sea":
+			sea_tile = str(tid)
+			break
+	if sea_tile != "":
+		_check(str(rules.land_plan(sea_tile, "b_019").outcome) == "terrain" and rules.site_check("b_019", "", {"id": sea_tile, "type": "sea"}) == "terrain",
+			"rules: railways are refused at sea")
+		_check(str((rules.quote("b_019", "", sea_tile).blocks as Array).map(func(b: Variant) -> String: return str((b as Dictionary).key))).contains("terrain"),
+			"rules: the quote names the water as the reason")
+
+	# The catalogue: sorted by name, the port never offered, cables listed as infrastructure.
+	var entries: Array = rules.catalogue()
+	var names: Array = entries.map(func(e: Variant) -> String: return str((e as Dictionary).building.get("display_name", "")))
+	var sorted_names := names.duplicate()
+	sorted_names.sort_custom(func(a: String, b: String) -> bool: return a.naturalnocasecmp_to(b) < 0)
+	_check(names == sorted_names, "rules: the catalogue is sorted by name")
+	var ids: Array = entries.map(func(e: Variant) -> String: return str((e as Dictionary).building_id))
+	_check(not ids.has("b_004"), "rules: the catalogue never offers the port")
+	var cables_entry: Dictionary = entries[ids.find("b_006")] if ids.has("b_006") else {}
+	_check(bool(cables_entry.get("infrastructure", false)), "rules: cables are listed as infrastructure")
+	MatchState.reset()
+
 
 ## Infrastructure LEVEL sets how far one turn-move reaches (owner ruling 2026-08-09):
 ## roads 2-3-5, rail 4-6-9, pipes and reinforced pipes 2-3-5, ports 10-16-25. Range is not only
