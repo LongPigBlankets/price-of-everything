@@ -12,6 +12,7 @@ extends Node
 ## this autoload mutates them only through MatchState's dictionaries and API.
 
 const BuildingLevels := preload("res://scripts/building_levels.gd")
+const BuildingNaming := preload("res://scripts/building_naming.gd")
 
 # Demolish is a queued 1-turn job (mirrors upgrades/retrofits) before the building is removed.
 const DEMOLISH_TURNS := 1
@@ -496,7 +497,7 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 	var inst: Dictionary = BuildingState.buildings[instance_id]
 	var level := int(inst.get("level", 1))
 	var building_id := str(inst.get("building_id", ""))
-	var building_name := str(Catalog.get_building(building_id).get("display_name", building_id))
+	var building_name := BuildingNaming.of(inst)
 	var infra_internal := str(Catalog.get_building(building_id).get("internal_name", ""))
 	if INFRA_UPGRADABLE.has(infra_internal):
 		return _preview_infra_upgrade(inst, infra_internal)
@@ -948,8 +949,9 @@ func _retry_stalled_upgrade(p: Dictionary, instance_id: String, tile_id: String,
 			refused.append(Catalog.get_display_name(gid))
 		else:
 			ordered.append("%d %s" % [qty, Catalog.get_display_name(gid)])
-	var building_id := str(BuildingState.get_building(instance_id).get("building_id", str(p.get("building_id", ""))))
-	var what := str(Catalog.get_building(building_id).get("display_name", "An upgrade"))
+	var live := BuildingState.get_building(instance_id)
+	var what := BuildingNaming.of(live) if not live.is_empty() \
+		else BuildingNaming.name_for(str(p.get("building_id", "")), str(p.get("recipe_id", "")))
 	if not ordered.is_empty():
 		MatchState.request_toast("%s was waiting on materials nothing was carrying — re-ordered %s."
 			% [what, ", ".join(ordered)], "info")

@@ -31,6 +31,7 @@ signal tvp_v3_changed(enabled: bool)
 signal ledger_ds2_changed(enabled: bool)
 ## The People panel's DS2 look (docs/people-ds2-plan.md) switched on or off.
 signal people_ds2_changed(enabled: bool)
+signal market_ds2_changed(enabled: bool)
 signal empire_button_icon_changed(use_badge: bool)
 
 # Debug-only: verbose per-turn production / CostSolver logs. Off by default because
@@ -82,6 +83,9 @@ var use_ledger_ds2: bool = true
 # The People panel in DS2 (docs/people-ds2-plan.md): the boardroom and the works. The default; the debug cheat
 # `toggle people ds2` switches back to today's panel, which is then exactly as it was. Session-only, never persisted.
 var use_people_ds2: bool = true
+# The market panel in DS2, the commodities exchange (docs/market-ds2-plan.md), behind the debug cheat
+# `toggle market ds2` while it is built. Off by default.
+var use_market_ds2: bool = false
 # The upgrade panel in DS2 (scripts/ledger_v3/upgrade_dialog_ds2.gd), opened from Building Detail and the ledger.
 # The default; the debug cheat `toggle upgrade ds2` switches back to the v2 dialog. Session-only, never persisted.
 var use_upgrade_ds2: bool = true
@@ -211,6 +215,16 @@ func set_use_people_ds2(enabled: bool) -> bool:
 
 func toggle_use_people_ds2() -> bool:
 	return set_use_people_ds2(not use_people_ds2)
+
+func set_use_market_ds2(enabled: bool) -> bool:
+	if enabled == use_market_ds2:
+		return use_market_ds2
+	use_market_ds2 = enabled
+	market_ds2_changed.emit(use_market_ds2)
+	return use_market_ds2
+
+func toggle_use_market_ds2() -> bool:
+	return set_use_market_ds2(not use_market_ds2)
 
 func toggle_use_upgrade_ds2() -> bool:
 	use_upgrade_ds2 = not use_upgrade_ds2

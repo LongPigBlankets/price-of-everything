@@ -372,6 +372,8 @@ func _tabs() -> Array:
 ## The switch changed: tear the panel down and build it in the other look, on the same tile and tab.
 func _on_look_changed(_on: bool) -> void:
 	_close_goods_drawer()
+	# The lamp lit the panel itself as well as its parts: give it back its own material first.
+	preload("res://scripts/ds2/lamp_overlay.gd").detach(self)
 	for c in get_children():
 		remove_child(c)
 		c.queue_free()
@@ -474,6 +476,9 @@ func _build_ui_v3() -> void:
 	# The land in full takes the body's place while it is open (the sheet fits both to its room).
 	_land_view = _build_land_view()
 	body_sheet.add_child(_land_view)
+	# The lamp over the cabinet, the door, its pipe and its sheets (docs/ds2-theme.md §4). The look switch clears
+	# the panel's children, the lamp with them; the door is the panel's own drawing, so v2 lets it go too.
+	preload("res://scripts/ds2/lamp_overlay.gd").attach(self)
 
 
 ## A sheet of the top bar's navy steel (its flyouts' plate) with `pad` of room inside.
@@ -4320,9 +4325,9 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	info.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	info_margin.add_child(info)
 	var name_label := Label.new()
-	# Solo card shows the building's public name ("Mine - Coal - A"); a real group
-	# shows the shared recipe name.
-	name_label.text = str(first.get("name", "")) if solo else str(recipe.get("display_name", bd.get("display_name", "Building")))
+	# Solo card shows the building's public name ("Coal Mine A"); a real group
+	# shows the name its members share, without their letters ("Coal Mine").
+	name_label.text = str(first.get("name", "")) if solo else BuildingNaming.name_for(str(bd.get("id", "")), str(recipe.get("recipe_id", "")))
 	name_label.theme_type_variation = &"BuildingName"  # next size up (Barlow Semi 22)
 	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART  # spills onto next row
 	info.add_child(name_label)
@@ -4754,10 +4759,7 @@ func _make_construction_row(project: Dictionary) -> HBoxContainer:
 	row.add_child(icon)
 
 	var bd: Dictionary = Catalog.get_building(project.get("building_id", ""))
-	var p_recipe: Dictionary = Catalog.get_recipe(str(project.get("recipe_id", "")))
-	var p_name := str(p_recipe.get("display_name", "")).strip_edges()
-	if p_name == "":
-		p_name = str(bd.get("display_name", project.get("building_id", "")))
+	var p_name := BuildingNaming.of(project)
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -5182,7 +5184,7 @@ func _open_tile_logistics() -> void:
 		if not BuildingState.is_player_owned(b) or str(b.get("recipe_id","")) == "": continue
 		var iid := str(b.instance_id)
 		var button := Button.new()
-		button.text = "%s — In: %s · Out: %s" % [Catalog.get_building_display_name(str(b.building_id)),"Intermediary" if service.uses_inputs(iid) else "Managed","Intermediary" if service.uses_outputs(iid) else "Managed"]
+		button.text = "%s — In: %s · Out: %s" % [BuildingNaming.of(b),"Intermediary" if service.uses_inputs(iid) else "Managed","Intermediary" if service.uses_outputs(iid) else "Managed"]
 		button.pressed.connect(func() -> void:
 			MatchState.focus_building_requested.emit(iid)
 			dialog.queue_free())

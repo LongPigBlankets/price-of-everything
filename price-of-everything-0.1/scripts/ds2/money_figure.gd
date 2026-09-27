@@ -61,3 +61,19 @@ static func screen(value: float, max_decimals := 2) -> Dictionary:
 			shown = _fixed(scaled, decimals)
 		return {"figure": minus + shown, "suffix": step[1]}
 	return {"figure": minus + _fixed(a, 0), "suffix": ""}
+
+
+## The rule's figure for a screen, under the name the market's first build called it.
+static func display(value: float) -> Dictionary:
+	return screen(value)
+
+
+## The figure as the player reads it under the display rule: "£0.57", "£481.3", "£15.6K".
+static func display_text(value: float) -> String:
+	var parts := screen(value)
+	var figure: String = parts.figure
+	var minus := ""
+	if figure.begins_with("-"):
+		minus = "-"
+		figure = figure.substr(1)
+	return "%s£%s%s" % [minus, figure, parts.suffix]

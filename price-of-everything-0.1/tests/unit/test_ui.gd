@@ -1410,9 +1410,9 @@ func _test_bdp_v3_panel() -> void:
 	var Emblem = load("res://scripts/bdp_v3_emblem.gd")
 	var emblem: Control = panel._emblem_v3
 	_check(emblem.visible and emblem.face != null and is_equal_approx(emblem.size.y, Emblem.side())
-		and panel._title_v3._para.get_line_count() == 2 and absf(Emblem.side() - panel._title_v3.custom_minimum_size.y) < 1.0
+		and panel._title_v3._para.get_line_count() <= 2 and panel._title_v3.custom_minimum_size.y <= Emblem.side() + 1.0
 		and emblem.get_global_rect().position.x < panel._title_v3.get_global_rect().position.x,
-		"bdp v3: the building's metal emblem stands top left, as tall as the title's two lines beside it (%.0f px, title %.0f px)" % [Emblem.side(), panel._title_v3.custom_minimum_size.y])
+		"bdp v3: the building's metal emblem stands top left, as tall as two title lines, the title beside it in no more (%.0f px, title %.0f px)" % [Emblem.side(), panel._title_v3.custom_minimum_size.y])
 	var room: float = panel._scroll.size.x - panel._scroll.get_v_scroll_bar().size.x
 	_check(panel._body.get_combined_minimum_size().x <= room + 0.5,
 		"bdp v3: no section needs more width than the body has, which would push the scrollbar into the trim (%.0f of %.0f px)" % [panel._body.get_combined_minimum_size().x, room])
@@ -2667,3 +2667,64 @@ func _test_upgrade_ds2_commits() -> void:
 	MatchState.reset()
 	Stockpile.clear_all()
 	await get_tree().process_frame
+
+
+func _test_building_names_follow_the_owners_convention() -> void:
+	# Every building is named by what it makes, "<qualifier> <output word> <building word>", with its letter on a
+	# tile. The qualifier appears only where recipes of one building share a main output; the plain one has none.
+	var N = load("res://scripts/building_naming.gd")
+	var cases := {
+		["b_001", "r_001"]: "Coal Mine", ["b_001", "r_002"]: "Iron Mine", ["b_001", "r_010"]: "Salt Mine",
+		["b_002", "r_005"]: "Iron Furnace", ["b_002", "r_031"]: "Direct Reduced Iron Furnace",
+		["b_002", "r_003"]: "Steel Furnace", ["b_002", "r_025"]: "Basic Oxygen Steel Furnace",
+		["b_002", "r_077"]: "HIsarna Steel Furnace", ["b_002", "r_234"]: "Petro Steel Furnace",
+		["b_002", "r_007"]: "Copper Furnace",
+		["b_007", "r_009"]: "Motor Factory", ["b_007", "r_071"]: "Engine Factory", ["b_007", "r_072"]: "V8 Engine Factory",
+		["b_003", "r_004"]: "Coal Power Plant",
+		["b_008", "r_076"]: "Steel Electric Furnace", ["b_008", "r_083"]: "ELYSIS Aluminium Electric Furnace",
+		["b_009", "r_066"]: "Axial Motor Assembly Plant",
+		["b_014", "r_209"]: "Strip Farm", ["b_014", "r_211"]: "Agrisolar Farm", ["b_014", "r_212"]: "Livestock Farm",
+		["b_014", "r_208"]: "Sustainable Farm", ["b_015", "r_213"]: "Logging Forest", ["b_015", "r_215"]: "Gently Pruned Forest", ["b_015", "r_214"]: "Sustainable Forest",
+	}
+	var wrong: Array = []
+	for key: Array in cases:
+		var got: String = N.name_for(str(key[0]), str(key[1]))
+		if got != str(cases[key]):
+			wrong.append("%s/%s gave %s" % [key[0], key[1], got])
+	_check(wrong.is_empty(), "names: each kind named by what it makes, the recipe telling same output recipes apart (%s)" % ", ".join(wrong))
+	var synrm: String = N.name_for_recipe("r_065")
+	_check(synrm == "SynRM Motor Assembly Plant", "names: the owner's example, SynRM Motor Assembly Plant (%s)" % synrm)
+	_check(N.label("b_001", "r_001", 1) == "Coal Mine B" and N.name_for("b_004", "") == "Port",
+		"names: the letter follows the name, and a building with no recipe keeps its type's name")
+	_check(N.without_letter("Coal Mine B") == "Coal Mine" and N.without_letter("Mine - Coal - A") == "Mine - Coal"
+		and N.without_letter("Steel Furnace") == "Steel Furnace",
+		"names: without_letter drops the letter of a new name and of an old save's name, and leaves a name without one")
+	# The owner's copy rule: no hyphens, dashes, semicolons or middle dots in any name.
+	var bad: Array = []
+	for bd: Dictionary in Catalog.all_buildings():
+		for r: Dictionary in Catalog.all_recipes_for_building(str(bd.get("id", ""))):
+			var n: String = N.name_for(str(bd.get("id", "")), str(r.get("recipe_id", "")))
+			for ch: String in ["-", "–", "—", ";", "·"]:
+				if n.contains(ch):
+					bad.append(n)
+	_check(bad.is_empty(), "names: no name carries a hyphen, dash, semicolon or middle dot (%s)" % ", ".join(bad))
+
+
+func _test_building_detail_title_shows_its_recipe_on_hover() -> void:
+	# Building Detail's title is one name; hovering it shows the recipe, what it makes and what it takes.
+	var iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "title_tip")
+	var panel: Control = (load("res://scripts/building_detail_panel_v2.gd") as GDScript).new()
+	add_child(panel)
+	panel.show_building(BuildingState.get_building(iid))
+	await get_tree().process_frame
+	var title: String = panel._title_label.text
+	_check(title == load("res://scripts/building_naming.gd").of(BuildingState.get_building(iid)) and not title.contains("—"),
+		"bdp title: one name, the recipe not beside it (%s)" % title)
+	var tip: Dictionary = panel._title_v3.tip
+	_check(str(tip.get("title", "")) == "Motor Manufacture" and (tip.get("goods", {}) as Dictionary).size() == 2
+		and panel._title_v3.mouse_filter != Control.MOUSE_FILTER_IGNORE,
+		"bdp title: hovering the v3 title shows the recipe's dot card, its inputs in wells (%s)" % str(tip))
+	_check(panel._title_label.tooltip_text.begins_with("Motor Manufacture") and panel._title_label.tooltip_text.contains("Motor"),
+		"bdp title: the v2 title's tooltip names the recipe and what it makes")
+	panel.queue_free()
+	BuildingState.remove_building(iid)

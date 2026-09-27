@@ -2185,7 +2185,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy.
+  // tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -6386,6 +6386,78 @@ async function exportLayers() {
     bed.castShadow = bed.receiveShadow = true; bed.position.set(BW / 2, 0, BH / 2); bg.add(bed, shadowCatcher(BW, BH, BW / 2, BH / 2));
     await post('tile_keybed', stage([0, 0, BW, BH], [bg]).grab());
     layout.tile_keybed = { size: [BW, BH], margin: BM, corner: 40 };
+  });
+
+  // --- the market's parts (docs/market-ds2-plan.md §5, as studied in marketstudy): the MARKET nameplate (black
+  // enamel in a brass rim, the word raised in white Bebas, a brass rivet at each corner), the exchange bell (a
+  // brass dome on a black base, its striker on top) and the arrow lamp (the pilot lamp's bezel with a triangular
+  // lens, lit green pointing up, red pointing down; a steady price uses the plain lamp_off). Seeds 450 up (the
+  // people panel's parts take 438 to 449).
+  const MARKET_PLATE = { w: 244, h: 70, rim: 6, M: 16 };
+  const MARKET_BELL = { S: 128 };
+  if (want('marketparts')) await withSeed(450, async () => {
+    await document.fonts.load(`60px ${TITLE_FAMILY}`);
+    const brass = new THREE.MeshStandardMaterial({ color: 0xd2ab5c, map: noiseTexture(18, 40, 30), metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 1.0 });
+    const brassSide = new THREE.MeshStandardMaterial({ color: 0xa8843f, metalness: 1, roughness: 0.4, envMap: studioEnv, envMapIntensity: 0.9 });
+    const darkSteel = new THREE.MeshStandardMaterial({ color: 0x3c4046, map: noiseTexture(20, 40, 40), metalness: 1, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.85 });
+    const tarnish = (r) => `rgba(${60 + r() * 20},${44 + r() * 14},${18 + r() * 10},${0.25 + r() * 0.35})`;
+
+    // The nameplate.
+    {
+      const { w, h, rim, M } = MARKET_PLATE, W = w + 2 * rim + 2 * M, H = h + 2 * rim + 2 * M, cx = W / 2, cz = H / 2, group = new THREE.Group();
+      const tb = { x: 16, y: 6, w: w - 32, h: h - 12 };
+      const drawTitle = (g, col) => text(g, 'MARKET', tb.w / 2, tb.h / 2 + 3, tb.w - 4, 60, col, { weight: 400, family: TITLE_FAMILY, align: 'center' });
+      const face = canvas2d(w, h, (c) => {
+        c.fillStyle = '#15171b'; c.fillRect(0, 0, w, h);
+        for (let i = 0; i < w * h / 120; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.015 + rand() * 0.025})`; c.fillRect(rand() * w, rand() * h, 1 + rand() * 2, 1 + rand() * 2); }
+        drawIconShadows(c, w, h, [{ height: 5, draw: (g, col) => { g.save(); g.translate(tb.x, tb.y); drawTitle(g, col); g.restore(); } }]);
+      });
+      const plate = new THREE.Mesh(extrude(rrShape(w, h, 6), 2, 1.2, 1, 3), [new THREE.MeshPhysicalMaterial({ map: faceTexture(face, w, h), roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.2, envMap: studioEnv, envMapIntensity: 0.5 }), darkSteel]);
+      plate.castShadow = plate.receiveShadow = true; plate.position.set(cx, 0, cz); group.add(plate);
+      const word = relief(tb.w, tb.h, (g) => drawTitle(g, '#fff'), WHITE_LETTERS, { height: 5, soften: 0.7 });
+      word.position.set(M + rim + tb.x + tb.w / 2, 4.7, M + rim + tb.y + tb.h / 2); group.add(word);
+      const ow = w + 2 * rim, oh = h + 2 * rim, fs = rrShape(ow, oh, 6 + rim); fs.holes.push(rr(new THREE.Path(), w, h, 6));
+      const frame = new THREE.Mesh(extrude(fs, 1.6, 1.2, 0.9, 3), [plateMaterial(ow, oh, { icons: [], buttons: [], screws: [], base: BRASS_TRIM_CANVAS, rub: '255,236,180', flecks: tarnish }), brassSide]);
+      frame.castShadow = frame.receiveShadow = true; frame.position.set(cx, 0, cz); group.add(frame);
+      for (const [rx, rz] of [[9, 9], [w - 9, 9], [9, h - 9], [w - 9, h - 9]]) {
+        const rv = new THREE.Mesh(new THREE.SphereGeometry(3, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), brass);
+        rv.scale.y = 0.55; rv.castShadow = true; rv.position.set(M + rim + rx, 4.4, M + rim + rz); group.add(rv);
+      }
+      group.add(shadowCatcher(W, H, cx, cz));
+      await post('market_nameplate', stage([0, 0, W, H], [group]).grab());
+      layout.market_nameplate = { size: [W, H], margin: M, plate: [M, M, ow, oh] };
+    }
+
+    // The bell.
+    {
+      const S = MARKET_BELL.S, c = S / 2, group = new THREE.Group();
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(46, 48, 8, 64), new THREE.MeshPhysicalMaterial({ color: 0x151618, roughness: 0.4, clearcoat: 0.6, envMap: studioEnv, envMapIntensity: 0.5 }));
+      base.position.set(c, 4, c); group.add(base);
+      const prof = [[40, 0], [40, 3], [38.5, 8], [35, 14], [29, 19.5], [21, 23.5], [11, 25.8], [0, 26.5]].map(([r, hh]) => new THREE.Vector2(r, hh));
+      const dome = new THREE.Mesh(new THREE.LatheGeometry(prof, 96), brass); dome.position.set(c, 8, c); group.add(dome);
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.4, 10, 20), darkSteel); stem.position.set(c, 38, c); group.add(stem);
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(7.5, 28, 14), brass); knob.position.set(c, 45, c); group.add(knob);
+      group.traverse((o) => { if (o.isMesh) o.castShadow = o.receiveShadow = true; });
+      group.add(shadowCatcher(S, S, c, c));
+      await post('market_bell', stage([0, 0, S, S], [group]).grab());
+      layout.market_bell = { size: [S, S], radius: 48 };
+    }
+
+    // The arrow lamps.
+    for (const [name, dir] of [['lamp_arrow_up', 1], ['lamp_arrow_down', -1]]) {
+      const LS = LAMP_FRAME, c0 = LS / 2, group = new THREE.Group(), g = pilotLamp(null, false);
+      g.remove(g.children[2]);
+      const disc = new THREE.Mesh(new THREE.CircleGeometry(12.6, 40).rotateX(-Math.PI / 2), lensMaterial(null, false)); disc.position.y = 6.3; g.add(disc);
+      const col = new THREE.Color(dir > 0 ? LAMP.green : LAMP.red), a = 12.4, tri = new THREE.Shape();
+      if (dir > 0) { tri.moveTo(0, a); tri.lineTo(a, -a * 0.62); tri.lineTo(-a, -a * 0.62); }
+      else { tri.moveTo(0, -a); tri.lineTo(-a, a * 0.62); tri.lineTo(a, a * 0.62); }
+      tri.closePath();
+      const lens = new THREE.Mesh(extrude(tri, 1.6, 1.4, 1, 2), new THREE.MeshPhysicalMaterial({ color: col.clone().multiplyScalar(0.6), emissive: col, emissiveIntensity: 0.95, roughness: 0.14, clearcoat: 1, clearcoatRoughness: 0.08, envMap: studioEnv, envMapIntensity: 0.5, flatShading: true }));
+      lens.position.y = 6.4; g.add(lens);
+      g.position.set(c0, 0, c0); group.add(g, shadowCatcher(LS, LS, c0, c0));
+      await post(name, stage([0, 0, LS, LS], [group], { light: 'house' }).grab());
+    }
+    layout.lamp_arrow = { size: [LAMP_FRAME, LAMP_FRAME], bezel: 2 * LAMP_R };
   });
 
   // --- the diagnostics' plastic plate and its silver screws, and the shipments' rolling door.

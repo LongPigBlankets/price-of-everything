@@ -458,13 +458,10 @@ static func _output_route_label(instance_id: String, tile_id: String, recipe: Di
 		return "→ %s, %d turn%s" % [label, turns, "" if turns == 1 else "s"]
 	return "→ %s" % label
 
-# Full, descriptive building name for lists: the recipe's name when it has one
-# (e.g. "Coal Mining" instead of the generic "Mine"), else the building name.
+# Full, descriptive building name for lists, without its letter: by what it makes when it has a recipe
+# ("Coal Mine" instead of the generic "Mine"), else the building's type.
 static func _building_full_name(bd: Dictionary, recipe: Dictionary) -> String:
-	var rname := str(recipe.get("display_name", "")).strip_edges()
-	if rname != "":
-		return rname
-	return str(bd.get("display_name", bd.get("id", "")))
+	return BuildingNaming.name_for(str(bd.get("id", "")), str(recipe.get("recipe_id", "")))
 
 # RAG for OUTPUT transport duration — mirrors building_detail_panel: grey until
 # the building has run a turn; green if no off-tile destination; amber if the
@@ -860,7 +857,7 @@ static func deposit_build_options(deposit_token: String) -> Array:
 				opts.append({
 					"building_id": bid,
 					"recipe_id": str(recipe.get("recipe_id", recipe.get("id", ""))),
-					"building_name": str(building.get("display_name", bid)),
+					"building_name": BuildingNaming.name_for(bid, str(recipe.get("recipe_id", recipe.get("id", "")))),
 					"recipe_name": str(recipe.get("display_name", "")),
 				})
 				break
@@ -1017,8 +1014,7 @@ static func _infra_instance_for_tile(tile_id: String, tile_data: Dictionary, key
 # Internal helpers
 # ─────────────────────────────────────────────────────────────────────────────
 static func _building_name(building: Dictionary) -> String:
-	var bd: Dictionary = Catalog.get_building(building.get("building_id", ""))
-	return str(bd.get("display_name", building.get("building_id", "")))
+	return BuildingNaming.of(building)
 
 static func _building_subtitle(building: Dictionary, bd: Dictionary, recipe: Dictionary) -> String:
 	if str(bd.get("category", "")) == "infrastructure":

@@ -229,23 +229,20 @@ static func _add_kind(kinds: Dictionary, order: Array, tile: String, b: Dictiona
 		k.name = str(k.kind)
 
 
-## A kind of building by the game's naming, less the letter that tells one from another and the hyphens
-## (plain_name's form): "Industrial Goods Factory Steel", "Solar Farm".
+## A kind of building by the game's naming, less the letter that tells one from another: "Coal Power Plant",
+## "Solar Farm".
 static func _kind_name(bid: String, rid: String) -> String:
-	var parts := BuildingNaming.without_letter(BuildingNaming.label(bid, rid, 0)).split(" - ")
-	if parts.size() == 2 and str(Catalog.get_recipe(rid).get("output_name", "")) == "power":
-		parts.remove_at(1)
-	return " ".join(parts)
+	return BuildingNaming.name_for(bid, rid)
 
 
 ## The name a meter's tag prints: what a building makes (Steel, Motor), or for a power plant, the plant
-## (Solar Farm), since they all make power.
+## by its name (Coal Power Plant, Solar Farm), since they all make power.
 static func _short_name(bid: String, rid: String) -> String:
 	var recipe: Dictionary = Catalog.get_recipe(rid)
 	var out := str(recipe.get("output_name", ""))
 	if out != "" and out != "power":
 		return str(Catalog.get_good_by_internal_name(out).get("display_name", out))
-	return str(Catalog.get_building(bid).get("display_name", bid))
+	return BuildingNaming.name_for(bid, rid)
 
 
 # ── Readings: each lamp's tone and the words that explain it, from one place ─────────────────────────────
@@ -621,14 +618,9 @@ static func _and(items: PackedStringArray) -> String:
 	return ", ".join(items.slice(0, items.size() - 1)) + " and " + items[items.size() - 1]
 
 
-## A building's name as the game gives it on this tile, without the game's separating hyphens (the owner's
-## copy rule): its kind, what it makes (unless that is power, which every plant makes) and its letter,
-## "Industrial Goods Factory Steel D", "Solar Farm A".
+## A building's name as the game gives it on this tile, with its letter: "Steel Furnace D", "Solar Farm A".
 static func plain_name(tile: String, iid: String, bid: String, rid: String) -> String:
-	var parts := BuildingNaming.label_for_tile(tile, iid, bid, rid).split(" - ")
-	if parts.size() == 3 and str(Catalog.get_recipe(rid).get("output_name", "")) == "power":
-		parts.remove_at(1)
-	return " ".join(parts)
+	return BuildingNaming.label_for_tile(tile, iid, bid, rid)
 
 
 # ── The balance's readouts ──────────────────────────────────────────────────────────────────────────────

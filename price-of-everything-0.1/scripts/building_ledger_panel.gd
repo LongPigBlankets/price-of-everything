@@ -12,7 +12,8 @@ const BuildingNaming := preload("res://scripts/building_naming.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const BuildingIcon := preload("res://scripts/building_icon.gd")  # navy-keyed, square-cropped building icons
 const LedgerRowStyle := preload("res://scripts/ledger_row_style.gd")  # metallic, top-left-lit row plate
-const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")  # the DS2 look (UiPrefs.use_ledger_ds2)
+const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
+const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")  # the DS2 look (UiPrefs.use_ledger_ds2)
 
 const ROW_INSET := 12  # row cell inset (LedgerRowStyle BORDER 5 + PAD_H 7); header inset matches it
 
@@ -140,6 +141,7 @@ func _build_look() -> void:
 	var margin := $MarginContainer as MarginContainer
 	header.visible = not _v3
 	if not _v3:
+		LampOverlay.detach(self)
 		for side in _v2_margins:
 			margin.add_theme_constant_override(side, int(_v2_margins[side]))
 		add_theme_stylebox_override("panel", preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(8.0))
@@ -149,6 +151,8 @@ func _build_look() -> void:
 			margin.add_theme_constant_override(side, LedgerV3.CONTENT_MARGIN)
 		_v3_extra.append(LedgerV3.dress(self))
 		_build_v3_chrome()
+		# The lamp over the whole panel, its upgrade sheet's too (docs/ds2-theme.md §4).
+		LampOverlay.attach(self)
 	if _search != null:
 		_search.text = _search_text
 	for k in _f:
