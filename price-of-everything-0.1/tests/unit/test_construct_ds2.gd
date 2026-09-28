@@ -299,5 +299,19 @@ func _test_construct_ds2_delivery_drum() -> void:
 
 func _test_global_trade_license_threshold() -> void:
 	var d: Dictionary = ResearchState.get_unlock_def(ResearchState.GLOBAL_TRADE_LICENSE_TITLE)
-	_check(str(d.get("action", "")) == "Profit" and int(d.get("qty", 0)) == 75,
-		"licence: the Import/Export License research asks for £75 profit in a turn (got %s %s)" % [str(d.get("action", "")), str(d.get("qty", ""))])
+	_check(str(d.get("action", "")) == "Profit" and int(d.get("qty", 0)) == 75 and str(d.get("unit", "")) == "3 turns",
+		"licence: the Import/Export License asks for £75 profit a turn, 3 turns in a row (got %s %s %s)" % [
+			str(d.get("action", "")), str(d.get("qty", "")), str(d.get("unit", ""))])
+	_check(ResearchState.unlock_condition_text(ResearchState.GLOBAL_TRADE_LICENSE_TITLE) == "Make £75 profit a turn for 3 turns in a row",
+		"licence: its condition reads as the three turns")
+	# The streak: two good turns (a start's free opening stock) then a thin one do not carry it; three in a row do.
+	var saved: Array = (ResearchState.get("_recent_profits") as Array).duplicate()
+	ResearchState.set("_recent_profits", [115.0, 118.0, 32.0])
+	_check(not bool(ResearchState.call("_live_condition_met", d)), "licence: 115, 118 then 32 is not three turns at £75")
+	ResearchState.set("_recent_profits", [32.0, 80.0, 90.0])
+	_check(not bool(ResearchState.call("_live_condition_met", d)), "licence: two turns at £75 are not enough")
+	ResearchState.set("_recent_profits", [32.0, 80.0, 90.0, 75.0])
+	_check(bool(ResearchState.call("_live_condition_met", d)), "licence: three turns in a row at £75 or more unlock it")
+	ResearchState.set("_recent_profits", saved)
+	var exported: Dictionary = ResearchState.export_fields()
+	_check(exported.has("recent_profits") and exported.has("recent_profits_last_turn"), "licence: the profit history is saved")
