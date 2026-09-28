@@ -184,3 +184,51 @@ func _test_opening_reserve_is_released_with_the_inputs() -> void:
 	_check(Service.set_mode(iid, "input", "managed").ok, "take inputs in-house with a reserve on hand")
 	_check(Stockpile.get_at_tile("tile_5_4", "g_006") == 64 and Stockpile.get_at_tile("tile_5_4", "g_007") == 64, "held and reserved inputs both move to the tile stockpile")
 	cleanup()
+
+## Batches are funded all or nothing, so on a tight turn the most profitable batch goes first: with cash for
+## one batch and no credit, the better earner runs and the other waits, whatever order they were built in.
+func _test_intermediary_funds_the_most_profitable_batch_first() -> void:
+	var ids := setup(2)
+	var first := str(ids[0])
+	var better := str(ids[1])
+	Modifiers.add({"id": "test_better_output", "domain": "recipe_output", "target": "*",
+		"target_match": {"instance_id": better}, "pct": 50.0, "label": "test", "source": "test"})
+	var snapshot := Service.prices()
+	var m_first := Service.batch_margin(BuildingState.get_building(first), snapshot)
+	var m_better := Service.batch_margin(BuildingState.get_building(better), snapshot)
+	_check(m_better > m_first, "the boosted building's batch earns more (£%.1f against £%.1f)" % [m_better, m_first])
+	# No credit to borrow against, and cash for exactly one batch after the turn's bills.
+	LoanState.loans.append({"id": 99, "principal_initial": LoanState.capacity_total() + 10000.0,
+		"principal_remaining": 0.0, "payment_per_turn": 0.0, "turns_remaining": 0, "interest_paid": 0.0})
+	var p: Dictionary = Service.preview_building(BuildingState.get_building(better))
+	MatchState.money = float(p.upfront) + float(p.protected_commitments) + 1.0
+	Service.prepare(BuildingState.buildings.values(), summary())
+	_check(str(Service.entry(better).state) == "supplied" and str(Service.entry(first).state) == "rejected_before_supply",
+		"with cash for one batch the better earner is supplied and the first built waits (%s, %s)" % [
+			str(Service.entry(better).state), str(Service.entry(first).state)])
+	Modifiers.remove("test_better_output")
+	cleanup()
+
+## A start's one-off charge is paid once, in its turn, as a cost before tax; a later turn does not repeat it.
+func _test_start_one_off_charge_is_paid_once() -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/glass_merchant.json"))
+	var charges: Array = (SaveLoad.expand_start_config(cfg).get("match", {}) as Dictionary).get("one_off_charges", [])
+	_check(charges.size() == 1 and int(charges[0].turn) == 1 and is_equal_approx(float(charges[0].amount), 100.0)
+		and str(charges[0].label) == "Opening costs", "Glass Merchant books £100 of opening costs on turn 1")
+	_check(float(cfg.get("money", 0)) == 400.0 and float((cfg.get("loans", [{}]) as Array)[0].get("principal", 0)) == 2000.0,
+		"Glass Merchant opens with £400 and a £2,000 loan")
+	setup(1)
+	MatchState.one_off_charges = [{"turn": 1, "amount": 100.0, "label": "Opening costs"}]
+	var cash := MatchState.money
+	Production._process_production()
+	var s: Dictionary = Production.last_turn_summary
+	_check(is_equal_approx(float(s.get("one_off_paid", 0.0)), 100.0) and (s.get("one_off_lines", []) as Array).size() == 1,
+		"turn 1 pays the opening costs")
+	_check(absf(MatchState.money - cash - Production.cash_change_of(s)) < 0.0001, "the charge is in the turn's cash")
+	_check(absf(preload("res://scripts/money_panel.gd").net_cash_of(s) - Production.cash_change_of(s)) < 0.0001,
+		"the money panel counts it among the costs")
+	_check(MatchState.one_off_charges.is_empty(), "once paid, it is gone")
+	TurnManager.current_turn += 1
+	Production._process_production()
+	_check(float(Production.last_turn_summary.get("one_off_paid", 0.0)) == 0.0, "turn 2 does not charge it again")
+	cleanup()

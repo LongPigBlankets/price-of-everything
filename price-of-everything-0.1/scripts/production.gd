@@ -220,6 +220,9 @@ func _process_production() -> void:
 	# Per-turn storage fee on stockpiled goods (per unit, by transport class —
 	# EconomyConfig.WAREHOUSING_COST_PER_UNIT_BY_CLASS).
 	"warehousing_paid": 0.0,
+	# A start's one-off charges booked this turn (MatchState.one_off_charges), and their labels.
+	"one_off_paid": 0.0,
+	"one_off_lines": [],
 	"taxes_paid": 0.0,
 	"dividends_paid": 0.0,
 	"profit_sharing_paid": 0.0,
@@ -622,6 +625,7 @@ func _process_production() -> void:
 		MatchState.add_money(-warehousing)
 		summary.money_out += warehousing
 	summary.warehousing_paid = warehousing
+	_apply_one_off_charges(summary)
 	TurnProfiler.section_end("maintenance_labour")
 
 	TurnProfiler.section_begin("loan_payments")
@@ -781,6 +785,30 @@ func _update_stockpile_input_gap_streaks(all_buildings: Array) -> void:
 static func cash_change_of(summary: Dictionary) -> float:
 	return float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0)) \
 		+ float(summary.get("middleman_financing", 0.0))
+
+## A start's one-off charges due this turn: paid as a cost before tax, listed by label, and dropped once
+## paid so a reload cannot charge them again.
+func _apply_one_off_charges(summary: Dictionary) -> void:
+	var due: Array = []
+	var later: Array = []
+	for c: Variant in MatchState.one_off_charges:
+		if int((c as Dictionary).get("turn", 1)) <= TurnManager.current_turn:
+			due.append(c)
+		else:
+			later.append(c)
+	if due.is_empty():
+		return
+	MatchState.one_off_charges = later
+	var total := 0.0
+	var lines: Array = []
+	for c: Dictionary in due:
+		var amount := float(c.get("amount", 0.0))
+		total += amount
+		lines.append({"label": str(c.get("label", "Opening costs")), "amount": amount})
+	MatchState.add_money(-total)
+	summary.money_out += total
+	summary["one_off_paid"] = float(summary.get("one_off_paid", 0.0)) + total
+	summary["one_off_lines"] = lines
 
 func _apply_advisor_costs(summary: Dictionary) -> float:
 	# Charge against THIS turn's revenue, not last turn's: the sell phase has already run by

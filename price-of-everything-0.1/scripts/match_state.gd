@@ -126,6 +126,10 @@ var construct_start_half_capacity: bool = false
 var construct_auto_buy_land: bool = true
 ## Last public-road expansion batch applied; persisted so loading cannot repeat a batch.
 var public_roads_last_turn: int = 0
+## One-off charges a start books on a given turn, [{turn, amount, label}] (data/starts/*.json
+## "one_off_charges"). Production charges each once in its turn's costs and drops it, so a reload
+## cannot charge it twice.
+var one_off_charges: Array = []
 # Defaults captured by constructions when they are started. Construction kits use the
 # local Logistics Intermediary until the player unlocks other supply routes.
 var construct_material_source: String = "middleman"
@@ -820,6 +824,7 @@ func reset() -> void:
 	construct_start_half_capacity = false
 	construct_auto_buy_land = true
 	public_roads_last_turn = 0
+	one_off_charges = []
 	construct_material_source = "middleman"
 	construct_output_destination = "market"
 	power_priority_coal_gas = "self"
@@ -899,6 +904,7 @@ func export_state() -> Dictionary:
 		"construct_start_half_capacity": construct_start_half_capacity,
 		"construct_auto_buy_land": construct_auto_buy_land,
 		"public_roads_last_turn": public_roads_last_turn,
+		"one_off_charges": one_off_charges.duplicate(true),
 		"construct_material_source": construct_material_source,
 		"construct_output_destination": construct_output_destination,
 		"power_priority_coal_gas": power_priority_coal_gas,
@@ -966,6 +972,7 @@ func import_state(d: Dictionary) -> void:
 	# Additive key: saves written before this setting existed use automatic land buying.
 	set_construct_auto_buy_land(bool(d.get("construct_auto_buy_land", true)), false)
 	public_roads_last_turn = int(d.get("public_roads_last_turn", 0))
+	one_off_charges = (d.get("one_off_charges", []) as Array).duplicate(true)
 	set_construct_material_source(str(d.get("construct_material_source", "middleman")), false)
 	set_construct_output_destination(str(d.get("construct_output_destination", "market")), false)
 	# Additive key: saves written before this setting existed default to the same

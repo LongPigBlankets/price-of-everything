@@ -322,8 +322,17 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 			protected += Production._calculate_labour_cost(b, Catalog.get_recipe(str(b.recipe_id)))
 	var reserved_power := 0.0
 	var reserved_draw := {}
+	# Batches are funded all or nothing, so on a tight turn the order decides which buildings run. The one
+	# that earns most on its batch goes first (a windows factory before the furnaces that feed it), then the
+	# build order, so a shortfall stops the least profitable batch instead of the best one.
+	var margins := {}
+	for b: Dictionary in buildings:
+		margins[str(b.instance_id)] = batch_margin(b, snapshot)
 	var ordered := buildings.duplicate()
 	ordered.sort_custom(func(a: Dictionary,b: Dictionary) -> bool:
+		var am := float(margins.get(str(a.instance_id), 0.0))
+		var bm := float(margins.get(str(b.instance_id), 0.0))
+		if not is_equal_approx(am, bm): return am > bm
 		var ai := str(a.instance_id).get_slice("_",3).hex_to_int()
 		var bi := str(b.instance_id).get_slice("_",3).hex_to_int()
 		return str(a.instance_id)<str(b.instance_id) if ai==bi else ai<bi)
@@ -425,6 +434,34 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 		e.receipts.purchase = q.duplicate(true)
 		e.receipts.input_fee = float(q.fee)
 		e.state = "supplied"
+
+## What one full batch of `b` earns through the intermediary at `snapshot` prices: the sale of its outputs,
+## less buying all its inputs (fees included), its labour and its power at the grid price. Held inputs are
+## ignored, so the ranking is the building's own profitability, not this turn's shopping list.
+static func batch_margin(b: Dictionary, snapshot: Dictionary) -> float:
+	var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+	if recipe.is_empty():
+		return 0.0
+	var factor := coefficient(b)
+	var buy_lines := []
+	for input: Dictionary in recipe.get("inputs", []):
+		if material_tradeable(str(input.good_id), "input"):
+			buy_lines.append({"good": str(input.good_id), "quantity": Production._scaled_input_qty(input, b)})
+	var sell_lines := []
+	for output: Dictionary in recipe.get("outputs", []):
+		if not material_tradeable(str(output.good_id), "output"):
+			continue
+		var single := recipe.duplicate(true)
+		single.outputs = [output]
+		sell_lines.append({"good": str(output.good_id), "quantity": preload("res://scripts/building_status.gd").effective_output_qty(b, single, true)})
+	var buy := Contract.quote("buy", buy_lines, snapshot, factor, goods())
+	var sale := Contract.quote("sell", sell_lines, snapshot, factor, goods())
+	var grid_value := 0.0
+	if str(recipe.get("output_name", "")) == "power":
+		grid_value = Production._effective_power_output(b, recipe) * Power.grid_export_price()
+	return grid_value + (float(sale.get("net_receipt", 0.0)) if bool(sale.get("ok", false)) else 0.0) \
+		- (float(buy.get("cash_out", 0.0)) if bool(buy.get("ok", false)) else 0.0) \
+		- Production._calculate_labour_cost(b, recipe) - Production._effective_energy_req(b, recipe) * Power.grid_import_price()
 
 ## An existing business's opening reserve (see SaveLoad.expand_start_config) tops the held
 ## inputs up to this cycle's requirement, never beyond it.
