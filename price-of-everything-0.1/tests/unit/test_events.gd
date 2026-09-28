@@ -387,13 +387,13 @@ func _test_briefing_items_and_dismissal() -> void:
 	TurnBriefing._rebuild_items()
 	_check(not TurnBriefing.items().any(func(it) -> bool: return str(it.id) == "alert:starved"),
 		"briefing: a dismissed alert leaves the list")
-	# Same magnitude → stays quiet; worsened (another building starves) → re-surfaces.
+	# Silenced for good (owner, 28 September): even when another building starves it stays dark.
 	BuildingState.buildings["tb_starved2"] = {"instance_id": "tb_starved2", "building_id": "b_001",
 		"recipe_id": "", "tile_id": "tile_1_2", "owner": MatchState.LOCAL_PLAYER}
 	Production.missing_by_building["tb_starved2"] = [{"internal_name": "power"}]
 	TurnBriefing._rebuild_items()
-	_check(TurnBriefing.items().any(func(it) -> bool: return str(it.id) == "alert:starved"),
-		"briefing: the starved alert re-surfaces when the count worsens")
+	_check(not TurnBriefing.items().any(func(it) -> bool: return str(it.id) == "alert:starved"),
+		"briefing: a silenced starved alert stays dark when the count worsens")
 	BuildingState.buildings.erase("tb_starved")
 	BuildingState.buildings.erase("tb_starved2")
 	Production.missing_by_building = missing_before

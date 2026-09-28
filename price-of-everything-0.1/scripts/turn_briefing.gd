@@ -4,8 +4,8 @@ extends Node
 ## One surface for what the player must act on this turn: the decision queue and the live
 ## alerts (bankruptcy runway, starved buildings, cables, stockpile, deposits, cash for
 ## inputs), shown as the mid-screen panel. Owner rulings: decisions can NOT be dismissed
-## (resolve-only; they block End Turn via the commit_turn guard), alerts can be silenced
-## until they worsen; the panel auto-expands only on CRITICAL turns (an unresolved decision,
+## (resolve-only; they block End Turn via the commit_turn guard), an alert silenced never
+## lights again that game (its window stays dark); the panel auto-expands only on CRITICAL turns (an unresolved decision,
 ## or a new / newly-worsened critical alert) and otherwise stays closed. One-off news
 ## (research, construction done, a decision answered, the bridge loan, policy news,
 ## forewarnings) is a row in the updates dock only, and a full tile shows on the top bar's
@@ -69,9 +69,10 @@ static func item_display_color(it: Dictionary) -> Color:
 		return category_color(str(it.get("category", "")))
 	return severity_color(str(it.get("severity", "info")))
 
-## Silencing an alert quiets it until it worsens; it is not closing the panel, so its key says so.
+## Silencing an alert turns its kind off for the rest of the game (the owner): it is not closing the
+## panel, so its key says so, and the words beside it say it is for good.
 const SILENCE_LABEL := "Silence alert"
-const SILENCE_HINT := "It lights again if it gets worse."
+const SILENCE_HINT := "This will not trigger again."
 
 signal items_changed()
 signal expanded_changed(expanded: bool)
@@ -81,6 +82,7 @@ var expanded: bool = false
 
 var _items: Array = []                 # assembled BriefingItem dicts (view objects)
 var _alert_dismissed: Dictionary = {}  # alert_id -> magnitude at dismissal (persisted)
+var _silenced_windows: Dictionary = {}  # window kind (WINDOWS) -> true: never lit again this game (persisted)
 var _last_alert_ids: Dictionary = {}   # alert ids present last evaluation (new-alert detect)
 var _layer: CanvasLayer = null
 var _strip: Control = null
@@ -109,6 +111,7 @@ func _ready() -> void:
 
 func reset() -> void:
 	_alert_dismissed.clear()
+	_silenced_windows.clear()
 	_last_alert_ids.clear()
 	_select_on_expand = ""
 	expanded = false
@@ -155,7 +158,7 @@ func _rebuild_items() -> void:
 	if _tutorial_active():
 		_items = out
 		return
-	# 2. Live critical states (self-clearing; dismiss = quiet until worsened).
+	# 2. Live critical states (self-clearing; silencing one turns its kind off for good, below).
 	var bankruptcy := _bankruptcy_item()
 	if not bankruptcy.is_empty():
 		out.append(bankruptcy)
@@ -186,6 +189,8 @@ func _rebuild_items() -> void:
 		var item := _event_item(ev)
 		if not item.is_empty():
 			out.append(item)
+	# A silenced kind of alert never shows again (its window stays dark).
+	out = out.filter(func(it) -> bool: return not _silenced_windows.has(window_kind_for(str((it as Dictionary).get("id", "")))))
 	# Order: decisions, then alerts by severity, then info.
 	var rank := {"decisions": 0, "alerts": 1, "news": 2, "info": 3}
 	var sev_rank := {"critical": 0, "warning": 1, "info": 2}
@@ -663,6 +668,10 @@ func dismiss(item_id: String) -> void:
 	var item := _item_by_id(item_id)
 	if item.is_empty() or not bool(item.get("dismissible", false)):
 		return   # decisions land here too — never dismissible
+	# The alert's whole kind is silenced for good: "This will not trigger again."
+	var kind := window_kind_for(item_id)
+	if kind != "":
+		_silenced_windows[kind] = true
 	if item.has("magnitude"):
 		_alert_dismissed[item_id] = item.magnitude   # quiet until it worsens
 	elif item.has("event_id"):
@@ -689,6 +698,19 @@ const WINDOWS := [
 	["deposit_out", "DEPOSIT OUT", "ev:deposit_exhausted:"],
 	["mixed_inputs", "MIXED INPUTS", "alert:input_splice"],
 ]
+
+
+## The annunciator window an item lights ("" for none: decisions, news).
+static func window_kind_for(item_id: String) -> String:
+	for w: Array in WINDOWS:
+		if item_id == str(w[2]) or (str(w[2]).ends_with(":") and item_id.begins_with(str(w[2]))):
+			return str(w[0])
+	return ""
+
+
+## Whether a kind of alert has been silenced for the rest of the game.
+func is_silenced(kind: String) -> bool:
+	return _silenced_windows.has(kind)
 
 
 ## Each window as the items light it: {kind, legend, tone ("bad" red, "warn" amber, "ok" green for
@@ -877,12 +899,14 @@ func _on_ds2_changed(_on: bool) -> void:
 
 
 # ---------------------------------------------------------------------------
-# Save / load — only the dismissal signatures persist (additive key, tolerant).
+# Save / load — the dismissal signatures and the silenced kinds persist (additive keys, tolerant).
 # ---------------------------------------------------------------------------
 
 func export_state() -> Dictionary:
-	return {"alert_dismissed": _alert_dismissed.duplicate(true)}
+	return {"alert_dismissed": _alert_dismissed.duplicate(true), "silenced_windows": _silenced_windows.duplicate(true)}
 
 func import_state(d: Dictionary) -> void:
 	_alert_dismissed = (d.get("alert_dismissed", {}) as Dictionary).duplicate(true)
+	# Saves from before permanent silencing have none: every alert can still light.
+	_silenced_windows = (d.get("silenced_windows", {}) as Dictionary).duplicate(true)
 	_queue_refresh()

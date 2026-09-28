@@ -92,7 +92,7 @@ The header repeats the turn and the cash. The footer says "1 decision must be an
 | Annunciator | eight windows: Starved, Cash short, Bankruptcy, Cables full, Storage full, Stockpile small, Deposit low, Deposit out |
 | Readout | the picked window's name and one line of why |
 | Rows | per building or tile: the missing good in its well, the place (no coordinates), Go to |
-| Dismiss | Dismiss and "It lights again if it gets worse." |
+| Dismiss | Silence alert and "This will not trigger again." |
 
 ## 5. The DS2 concept: the foreman's clipboard and the annunciator
 
@@ -110,7 +110,7 @@ Study: `artifacts/briefing_ds2/briefing_study_v1.png` (the raw render beside it,
 | Picked alert | the latched window | a light ring round the window and a notch pointing to the readout |
 | Readout | the annunciator's message screen | dark glass, the window's lamp colour, "2 buildings starved", "Inputs were missing, so they made nothing this turn." |
 | Rows | job cards on a gunmetal plate | the missing good's cream tile in a well (72 logical, `GOOD_ICON`), the place and the reason in white, a Go to key |
-| Dismiss | a cream key | "It lights again if it gets worse." |
+| Dismiss | a cream key | "This will not trigger again." |
 | Dock | the tray's base | navy steel; the pen and the three bells raised (pen cream, bells green, amber, red, dimmed at zero), counts on navy pills, the pen's cell sunk while the tray is up, the pen's lamp lit in the worst lit window's colour (red here: Stockpile small) |
 
 Also considered: a teleprinter tape (reads as a log, which the dock rows already are), a dispatch board with pigeonholes (a grid of slots is the annunciator without the lamps), a sealed envelope on a blotter (heavier than the clipboard and hides the words behind a step), a pneumatic tube capsule (a nice arrival animation, not a layout; decision 6).
@@ -161,7 +161,7 @@ Contracts kept: `TurnBriefing.expand/collapse/items/unresolved_decisions/dismiss
 7. **The capacity dialog**: fold "Tile has reached maximum capacity" into the Storage full window and its rows, retiring the modal.
 8. **Annunciator windows**: the eight kinds studied (Starved, Cash short, Bankruptcy, Cables full, Storage full, Stockpile small, Deposit low, Deposit out), dark windows always shown so the panel keeps its shape; or lit windows only.
 9. **The pen's lamp**: lit in the worst lit window's colour (amber or red) while any alert is lit, so alerts show with the tray down.
-10. **Dismiss**: keep "quiet until it worsens" per kind (today), and the words "It lights again if it gets worse."
+10. **Dismiss**: Silence alert turns that kind of alert off for the rest of the game, its window dark, saved with the match (owner, 28 September; it used to stay quiet only until it worsened), and the words "This will not trigger again."
 11. **Cash and turn** leave the briefing's head (the top bar has both).
 12. **Letters stacked**: several decisions as letters on one clip, "1 of 2" on each, the next shown when one is answered.
 
@@ -174,7 +174,7 @@ The owner's answers, and how each was built. Phases 0 to 5 of §7 are done excep
 | Placement: the middle of the screen, since many decisions are mandatory; it rises by itself | `briefing_ds2.gd` centres the plate under the top bar's 72 px line, as tall as its content (the body scrolls on Building Detail's rail past the screen's room). It opens as today: a decision drawn, a turn starting with a decision or a new critical alert, End Turn refused, the pen. |
 | Width: 540 px | One width for every state (`WIDTH`), the body 490 px beside the rail's room; a test checks nothing widens it. |
 | Clipboard or a folder of documents | The foreman's clipboard: a hardboard board (`brief_board`, cropped from the top), a steel clip with its chrome roll (`brief_clip`), the letter on the keycaps' cream plastic (`sheet_white`), DECISION and "1 of 2", the title in Barlow, the story in Plex, navy. Letters are shown one at a time, the next when one is answered. |
-| One way to close, not three | The Close key (top right) is the only one; Esc through PanelStack stays the keyboard's. The old panel's footer Collapse and the rows' crosses are gone; the pen only opens the briefing (pressed with it up, the panel flashes). Quieting an alert is "Silence alert", "It lights again if it gets worse." |
+| One way to close, not three | The Close key (top right) is the only one; Esc through PanelStack stays the keyboard's. The old panel's footer Collapse and the rows' crosses are gone; the pen only opens the briefing (pressed with it up, the panel flashes). Quieting an alert is "Silence alert", "This will not trigger again." |
 | Copy: narrative stays, the rest factual | The decision's story is as written. Everything else was rewritten brief and plain (`turn_briefing.gd` item builders, `DecisionState._describe_effect`, the gate line, the loan line, the lock reason, the dock's own toasts): no hyphens, semicolons, dashes, middle dots, ellipses or "≈"; places by `Catalog.tile_name`, never coordinates or ids; no zero rows, and no row that repeats the title; no grey on navy; the dead "stays in the bell" hint is gone. |
 | Tile jam on the top bar's LED only | The Storage full alert, the "tile at capacity" item and row, and the capacity dialog are retired (`capacity_dialog.gd` is no longer mounted). `TopBarStatus.transport` lights the storage lamp red for a tile at capacity (and, as before, refusing goods or more than one nearly full) and amber for input orders cut to fit storage; goods waiting to unload light the freight lamp. |
 | One-off news becomes toasts | Research (the top bar posts it from `TurnBriefing.recent_research()`), construction done, a decision answered, the bridge loan and the tutorial top up already post their own rows; policy news, forewarnings, advisor tips, special orders and any other announcement now post one row as they fire (`TurnBriefing._on_event_fired`, red, amber or green by severity). The briefing keeps decisions until answered and live alerts. |

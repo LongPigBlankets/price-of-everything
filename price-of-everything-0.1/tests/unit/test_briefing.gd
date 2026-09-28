@@ -380,3 +380,30 @@ func _test_briefing_copy() -> void:
 	Production.last_turn_summary = summary_was
 	_restore_board(snap)
 	await get_tree().process_frame
+
+
+## Silence alert turns the alert's kind off for the rest of the game (owner, 28 September): it does not come
+## back when it worsens or after it clears, it survives a save, and the words beside the key say so.
+func _test_silence_alert_is_for_good() -> void:
+	_check(TurnBriefing.SILENCE_HINT == "This will not trigger again.", "silence: the hint says it will not trigger again")
+	var saved: Dictionary = TurnBriefing.export_state()
+	TurnBriefing.reset()
+	_check(TurnBriefing.window_kind_for("alert:starved") == "starved" and TurnBriefing.window_kind_for("ev:deposit_exhausted:7") == "deposit_out"
+		and TurnBriefing.window_kind_for("decision:abc") == "", "silence: items map to their annunciator window")
+	# A starved alert, as the briefing assembles it, silenced through the player's key.
+	TurnBriefing._items = [{"id": "alert:starved", "kind": "alert", "section": "alerts", "severity": "warning",
+		"dismissible": true, "magnitude": 1, "list": [], "list_more": 0}]
+	TurnBriefing.dismiss("alert:starved")
+	_check(TurnBriefing.is_silenced("starved"), "silence: the starved kind is silenced")
+	# Worse and cleared-then-back both stay dark: the silenced kind is filtered however big it gets.
+	TurnBriefing._alert_dismissed.erase("alert:starved")
+	var kept: Array = [{"id": "alert:starved"}, {"id": "alert:input_cash"}].filter(
+		func(it) -> bool: return not TurnBriefing.is_silenced(TurnBriefing.window_kind_for(str(it.id))))
+	_check(kept.size() == 1 and str(kept[0].id) == "alert:input_cash", "silence: a worse starved alert stays dark, others still light")
+	var state: Dictionary = TurnBriefing.export_state()
+	TurnBriefing.reset()
+	TurnBriefing.import_state(state)
+	_check(TurnBriefing.is_silenced("starved"), "silence: it survives a save and load")
+	TurnBriefing.import_state({"alert_dismissed": {}})
+	_check(not TurnBriefing.is_silenced("starved"), "silence: an older save silences nothing")
+	TurnBriefing.import_state(saved)
