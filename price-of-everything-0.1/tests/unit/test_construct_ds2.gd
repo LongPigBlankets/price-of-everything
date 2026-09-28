@@ -262,3 +262,42 @@ func _test_construct_ds2_card_states() -> void:
 	_check(is_grey.call(dear) and dear.tooltip_text != "", "card: one you can't pay for is grey (the lamp keeps off it), the reason on its hover")
 	MatchState.money = saved
 	panel.queue_free()
+
+
+## The verdict's turns: the materials' delivery beside the build, from the quote, so a cheap slow source shows its
+## wait. With no site there is nothing to deliver yet.
+func _test_construct_ds2_delivery_drum() -> void:
+	var saved_money := MatchState.money
+	var saved_source := MatchState.pending_build_material_source
+	MatchState.money = 50000.0
+	var panel := _panel()
+	panel.show()
+	_order(panel, "")
+	await get_tree().process_frame
+	_check(panel.find_child("DeliveryDrum", true, false) == null and panel.find_child("BuildDrum", true, false) != null,
+		"turns: with no site only the build is counted")
+	_order(panel, "tile_4_9")
+	await get_tree().process_frame
+	for source: String in ["middleman", "market"]:
+		panel.call("pick_material_source", source)
+		await get_tree().process_frame
+		var q: Dictionary = panel.call("quote")
+		var deliver: Control = panel.find_child("DeliveryDrum", true, false)
+		var build: Control = panel.find_child("BuildDrum", true, false)
+		_check(deliver != null and int(deliver.get("value")) == int(q.materials_turns)
+			and build != null and int(build.get("value")) == int(q.build_turns),
+			"turns (%s): deliver %d + build %d, the quote's" % [source, int(q.materials_turns), int(q.build_turns)])
+		var words := deliver.tooltip_text if deliver != null else ""
+		var expect := "Global market" if str((q.source as Dictionary).buys_via) == "market" else "Logistics Intermediary"
+		_check(bool((q.materials_quote as Dictionary).get("satisfied", false)) or words.begins_with(expect),
+			"turns (%s): the delivery's hover names where the materials come from (%s)" % [source, words])
+	_check(panel.find_child("MaterialsArrive", true, false) == null, "turns: the drum replaces the line under the verdict")
+	MatchState.pending_build_material_source = saved_source
+	MatchState.money = saved_money
+	panel.queue_free()
+
+
+func _test_global_trade_license_threshold() -> void:
+	var d: Dictionary = ResearchState.get_unlock_def(ResearchState.GLOBAL_TRADE_LICENSE_TITLE)
+	_check(str(d.get("action", "")) == "Profit" and int(d.get("qty", 0)) == 75,
+		"licence: the Import/Export License research asks for £75 profit in a turn (got %s %s)" % [str(d.get("action", "")), str(d.get("qty", ""))])

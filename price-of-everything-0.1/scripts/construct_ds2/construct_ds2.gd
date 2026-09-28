@@ -3,7 +3,7 @@ extends "res://scripts/construct_panel_v2.gd"
 ## `toggle construct ds2` (UiPrefs.use_construct_ds2). The same panel as construct_panel_v2.gd, its ways in,
 ## its state, its Confirm and every handle the tutorial and the tests look up (ConstructPanelV2,
 ## BuildConfirmButton, RecipeRow_<id>, ConstructionMaterialsSection), in the lot's look: a navy steel hoarding,
-## the yellow tower crane along its top with CONSTRUCT on its cab and the site's name on a plate hung from its
+## the yellow tower crane along its top with the settings key and CONSTRUCT on its cab and the site's name on a plate hung from its
 ## jib, one width for every stage.
 ##
 ## The build order (build_order.gd) hangs the site board from the hook: what is built, then the verdict, then
@@ -33,10 +33,10 @@ const CONTENT_W := 1005.0 / CAPTURE_SCALE
 const HEAD_H := 244.0 / CAPTURE_SCALE
 ## Where the catalogue's control plate starts (its tab rises under the jib, between the cab and the site's plate).
 const PLATE_Y := 152.0 / CAPTURE_SCALE
-## The Construct settings on the crane: a steel plate bolted over the jib's root, a white key with a navy gear
+## The Construct settings on the crane's cab, left of CONSTRUCT: a white key with a navy gear standing on the cab
 ## (layout.json construct_settings: the render's origin and size).
-const SETTINGS_AT := Vector2(336.0, 34.0) / CAPTURE_SCALE
-const SETTINGS_SIZE := Vector2(122.0, 118.0) / CAPTURE_SCALE
+const SETTINGS_AT := Vector2(72.0, 142.0) / CAPTURE_SCALE
+const SETTINGS_SIZE := Vector2(92.0, 94.0) / CAPTURE_SCALE
 ## Where the build order's site board hangs (under the hook, the spreader and its chains).
 const BOARD_Y := 334.0 / CAPTURE_SCALE
 ## The tower's bay under the head, repeated down the hoarding's left edge.

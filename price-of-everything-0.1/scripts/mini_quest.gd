@@ -49,7 +49,7 @@ const TREE_DEFINITIONS := {
 				"subtitle": "Move one input or output to a tile stockpile and complete a production cycle.",
 				"reward": "+5% output for 20 turns", "requires": ["middleman_contracts"]},
 			{"id": "global_license", "parent": "", "title": "Secure the Import/Export License",
-				"subtitle": "Reach £50 profit, then accept the government’s £150 license decision.",
+				"subtitle": "Reach £75 profit, then accept the government’s £150 license decision.",
 				"reward": "Unlock global-market buying and selling", "research": "Government Import/Export License"},
 			{"id": "global_surplus", "parent": "tile_stockpile", "parents": ["tile_stockpile", "global_license"],
 				"title": "Sell surplus to the global market",
