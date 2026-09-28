@@ -132,7 +132,7 @@ var _advisors_hired_streaks: Dictionary = {}
 const ADVISOR_STREAK_MAX_COUNT := 6
 var _advisors_hired_last_turn: int = -1
 ## Pre-tax profit of the last resolved turns, newest last, for "Profit" conditions held over several turns
-## in a row (a Unit of "3 turns"). One entry per turn; the free opening stock's first turns cannot carry it alone.
+## in a row (a Unit of "3 turns"). One entry per turn, so a single windfall turn cannot carry it alone.
 var _recent_profits: Array = []
 var _recent_profits_last_turn: int = -1
 const RECENT_PROFIT_TURNS := 12
