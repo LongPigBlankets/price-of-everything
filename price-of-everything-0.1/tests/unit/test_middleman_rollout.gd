@@ -114,9 +114,15 @@ func _test_live_mine_grid_and_nontradeable_coproduct() -> void:
 	_check(Service.uses_inputs(plant) and not Service.uses_outputs(plant), "grid exclusion survives reload")
 	cleanup()
 
-func _test_demo_starts_open_with_two_batches_on_hand() -> void:
-	for start: String in ["metal_magnate", "glass_merchant"]:
+## Each demo start opens with its own free batches (data/starts/*.json "opening_batches"): none, and turn 1 buys
+## the inputs (Metal Magnate, owner 28 September); N, one batch held and N-1 more in reserve (Glass Merchant, 2:
+## with none its £200 cannot buy a turn of the furnaces' inputs and the start never gets going).
+func _test_demo_starts_open_with_their_batches() -> void:
+	var want := {"metal_magnate": 0, "glass_merchant": 2}
+	for start: String in want:
 		var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/%s.json" % start))
+		var batches := int(cfg.get("opening_batches", 0))
+		_check(batches == int(want[start]), "%s opens with %d free batches" % [start, int(want[start])])
 		var snap := SaveLoad.expand_start_config(cfg)
 		var match_state: Dictionary = snap.get("match", {})
 		_check(str((match_state.get("ruleset", {}) as Dictionary).get("logistics_model", "")) == "middleman_v1", "%s is an intermediary game" % start)
@@ -125,15 +131,18 @@ func _test_demo_starts_open_with_two_batches_on_hand() -> void:
 		var exact := true
 		for iid in services:
 			var recipe := Catalog.get_recipe(str(services[iid].recipe_id))
-			var held: Dictionary = services[iid].inputs
+			var held: Dictionary = services[iid].get("inputs", {})
 			var reserve: Dictionary = services[iid].get("opening_inputs", {})
 			for input: Dictionary in recipe.get("inputs", []):
-				if Service.material_tradeable(str(input.good_id), "input") \
-						and (int(held.get(str(input.good_id), 0)) != int(input.qty) or int(reserve.get(str(input.good_id), 0)) != int(input.qty)):
+				if not Service.material_tradeable(str(input.good_id), "input"):
+					continue
+				var one := int(input.qty) if batches > 0 else 0
+				if int(held.get(str(input.good_id), 0)) != one or int(reserve.get(str(input.good_id), 0)) != int(input.qty) * maxi(0, batches - 1):
 					exact = false
 			if (recipe.get("inputs", []) as Array).is_empty() and not (held.is_empty() and reserve.is_empty()):
 				exact = false
-		_check(exact, "%s holds one batch and reserves a second per building, none for mines" % start)
+		_check(exact, "%s holds %s and reserves %d more per building, none for mines" % [start,
+			"one batch" if batches > 0 else "nothing", maxi(0, batches - 1)])
 		_check((cfg.get("stockpile", {}) as Dictionary).is_empty(), "%s has no tile stockpile to strand" % start)
 
 func _test_opening_reserve_runs_two_turns_then_buys() -> void:
