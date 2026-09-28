@@ -72,7 +72,7 @@ const SHEET_CORNER := (14.0 + 40.0) * E
 const NAVY_INK := Color("#0b2340")
 const INK := {"ok": Color("#1d6b3a"), "warn": Color("#7a4a00"), "bad": Color("#8f1f19")}
 ## The Build key: the cabinet's cream key in a brass bezel (owner), at least this wide.
-const BUILD_KEY_W := 112.0
+const BUILD_KEY_W := 88.0
 ## What a refused Build points at: a block's key to the part that glows (the money on the verdict, else the
 ## requirement's row on the feeder pillar; the land's blocks all point at its row).
 const LAND_BLOCKS := ["full", "cannot_buy_land", "land_short", "terrain"]
@@ -459,7 +459,7 @@ static func verdict(panel: Control, q: Dictionary) -> Control:
 	var vb: VBoxContainer = desk.get("content")
 	vb.add_theme_constant_override("separation", 6)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 18)
+	row.add_theme_constant_override("separation", 12)
 	vb.add_child(row)
 	var total := float(q.get("total", 0.0))
 	var after := float(q.get("cash_after", 0.0))
@@ -472,13 +472,7 @@ static func verdict(panel: Control, q: Dictionary) -> Control:
 	cash.name = "CashAfter"
 	cash.get_child(1).set_meta("blocker", "funds")
 	row.add_child(cash)
-	var turns := VBoxContainer.new()
-	turns.name = "V3DurationBox"
-	turns.add_theme_constant_override("separation", 4)
-	turns.add_child(Parts.caption("Turns to build"))
-	var n := int(q.get("build_turns", 0))
-	turns.add_child(Parts.drum(n, str(n).length()))
-	row.add_child(turns)
+	row.add_child(turns_column(q))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -508,16 +502,68 @@ static func verdict(panel: Control, q: Dictionary) -> Control:
 	return desk
 
 
-## The line under the verdict: why it cannot be built, else when the materials arrive, else where it goes.
+## The turns on drums: the materials' delivery, then the build, which only starts once they are in. The cheaper
+## sources pay for their price in time (the global market ships, the Intermediary delivers next turn), so the
+## delivery stands beside the build. With no site yet there is no delivery to count, only the build.
+static func turns_column(q: Dictionary) -> Control:
+	var col := VBoxContainer.new()
+	col.name = "V3DurationBox"
+	col.add_theme_constant_override("separation", 4)
+	var known := bool(q.get("site_known", false))
+	col.add_child(Parts.caption("Turns to deliver + build" if known else "Turns to build"))
+	var drums := HBoxContainer.new()
+	drums.add_theme_constant_override("separation", 6)
+	col.add_child(drums)
+	if known:
+		var m := int(q.get("materials_turns", 0))
+		var deliver := Parts.drum(m, str(m).length())
+		deliver.name = "DeliveryDrum"
+		deliver.tooltip_text = delivery_words(q)
+		deliver.mouse_filter = Control.MOUSE_FILTER_PASS
+		drums.add_child(deliver)
+		var plus := Parts.caption("+", 20)
+		plus.name = "TurnsPlus"
+		drums.add_child(plus)
+	var n := int(q.get("build_turns", 0))
+	var build := Parts.drum(n, str(n).length())
+	build.name = "BuildDrum"
+	build.tooltip_text = "%d turn%s to build once the materials are in." % [n, "" if n == 1 else "s"]
+	build.mouse_filter = Control.MOUSE_FILTER_PASS
+	drums.add_child(build)
+	return col
+
+
+## The line under the verdict: why it cannot be built, else where it goes. When the materials arrive is the
+## delivery drum's.
 static func _foot_line(q: Dictionary, reason: String) -> String:
 	if reason != "":
 		return reason
 	if not bool(q.get("site_known", false)):
 		return "The site is chosen on the map."
-	var m := int(q.get("materials_turns", 0))
-	if m > 0:
-		return "Materials arrive in %d turn%s." % [m, "" if m == 1 else "s"]
 	return ""
+
+
+## The delivery drum's tooltip: where the materials come from, how long they take, and that the build starts
+## once they are in.
+static func delivery_words(q: Dictionary) -> String:
+	var mats: Dictionary = q.get("materials_quote", {})
+	if bool(mats.get("satisfied", false)):
+		return "The materials are on the tile. Building starts now."
+	var m := int(q.get("materials_turns", 0))
+	var src := str((q.get("source", {}) as Dictionary).get("buys_via", ""))
+	var from := ""
+	for s: Array in SOURCES:
+		if str(s[0]) == src:
+			from = str(s[2])
+	if src == "any_tile":
+		from = "Another tile"
+	if from == "":
+		from = "The supplier"
+	if m <= 0:
+		return "%s delivers this turn. Building starts now." % from
+	return "%s delivers in %d turn%s. Building starts when the materials arrive, %d turn%s in all." % [
+		from, m, "" if m == 1 else "s", m + int(q.get("build_turns", 0)),
+		"" if m + int(q.get("build_turns", 0)) == 1 else "s"]
 
 
 static func _build_words(q: Dictionary) -> String:

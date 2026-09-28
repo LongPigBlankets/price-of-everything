@@ -22,7 +22,7 @@ const E := 2.0 / 1.875
 ## glass and the key bed (x, y, width, key height, gap).
 const PLATE := Vector2(1005.0, 306.0) * S
 const PLATE_LAYER := Rect2(-8.0, -8.0, 1025.0, 328.0)
-const SEARCH := Rect2(373.0, 21.0, 265.0, 50.0)
+const SEARCH := Rect2(447.0, 21.0, 191.0, 50.0)
 const KEYS := Rect2(18.0, 110.0, 969.0, 84.0)
 const KEY_GAP := 10.0
 ## The category keys' two rows, as the study set them.
