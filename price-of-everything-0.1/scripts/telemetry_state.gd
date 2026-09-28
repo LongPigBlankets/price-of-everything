@@ -62,6 +62,7 @@ const COST_LINES := {
 	"maintenance_paid": "maintenance",
 	"power_purchase_cost": "power",
 	"warehousing_paid": "storage",
+	"one_off_paid": "one_off",
 	"interest_paid": "interest",
 	"advisor_paid": "advisors",
 	"taxes_paid": "tax",

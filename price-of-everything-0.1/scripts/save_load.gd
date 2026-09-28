@@ -311,6 +311,18 @@ func _first_batch_inputs(building: Dictionary) -> Dictionary:
 			held[gid] = qty
 	return held
 
+## A start's one-off charges, [{turn, amount, label}]: booked as a cost in that turn (the first End Turn is
+## turn 1), so a start's first turn can carry what taking the business over costs.
+func _start_charges(entries: Variant) -> Array:
+	var out: Array = []
+	if not entries is Array:
+		return out
+	for c: Variant in entries:
+		if c is Dictionary and float((c as Dictionary).get("amount", 0.0)) > 0.0:
+			out.append({"turn": maxi(1, int((c as Dictionary).get("turn", 1))),
+				"amount": float((c as Dictionary).get("amount", 0.0)), "label": str((c as Dictionary).get("label", "Opening costs"))})
+	return out
+
 func _opening_reserve(building: Dictionary, batches: int) -> Dictionary:
 	var reserve := _first_batch_inputs(building) if batches > 1 else {}
 	for gid in reserve:
@@ -463,6 +475,7 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 				float(labour.get("output_pressure_pct", 0.0)),
 				EconomyConfig.LABOUR_OUTPUT_PRESSURE_FLOOR, EconomyConfig.LABOUR_OUTPUT_MOMENTUM_CAP),
 			"idle_labour_pay_share": clampf(float(labour.get("idle_pay_share", 1.0)), 0.5, 1.0),
+			"one_off_charges": _start_charges(cfg.get("one_off_charges", [])),
 		},
 		"stockpile": {"by_tile": (cfg.get("stockpile", {}) as Dictionary).duplicate(true)},
 		"loans": {"loans": loans, "next_loan_id": loans.size() + 1},
