@@ -72,7 +72,7 @@ const SHEET_CORNER := (14.0 + 40.0) * E
 const NAVY_INK := Color("#0b2340")
 const INK := {"ok": Color("#1d6b3a"), "warn": Color("#7a4a00"), "bad": Color("#8f1f19")}
 ## The Build key: the cabinet's cream key in a brass bezel (owner), at least this wide.
-const BUILD_KEY_W := 88.0
+const BUILD_KEY_W := 112.0
 ## What a refused Build points at: a block's key to the part that glows (the money on the verdict, else the
 ## requirement's row on the feeder pillar; the land's blocks all point at its row).
 const LAND_BLOCKS := ["full", "cannot_buy_land", "land_short", "terrain"]
@@ -450,8 +450,8 @@ static func _plus() -> Label:
 
 # --- the verdict -----------------------------------------------------------------------------------------
 
-## The verdict on the cabin desk: Total, Cash after and Turns to build over their screens, the guarded Build
-## key and its word, and when the materials arrive under them.
+## The verdict on the cabin desk: Total and the turns to deliver and build on the first row, Cash after under
+## Total on the second, the Build key low at the right beside them, and why it cannot be built under all.
 static func verdict(panel: Control, q: Dictionary) -> Control:
 	var desk: MarginContainer = Section.new()
 	desk.name = "V3VerdictStrip"
@@ -459,20 +459,29 @@ static func verdict(panel: Control, q: Dictionary) -> Control:
 	var vb: VBoxContainer = desk.get("content")
 	vb.add_theme_constant_override("separation", 6)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
+	row.add_theme_constant_override("separation", 18)
 	vb.add_child(row)
+	var figures := VBoxContainer.new()
+	figures.name = "VerdictFigures"
+	figures.add_theme_constant_override("separation", 10)
+	row.add_child(figures)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 18)
+	figures.add_child(top)
 	var total := float(q.get("total", 0.0))
 	var after := float(q.get("cash_after", 0.0))
 	var digits := maxi(_cells(total), _cells(after))
 	# White while the cash covers the total twice over, red below, as the catalogue's prices (owner).
 	var t := _figure("Total", total, preload("res://scripts/construct_ds2/catalogue.gd").price_colour(total, MatchState.money), digits)
 	t.name = "V3Total"
-	row.add_child(t)
+	top.add_child(t)
+	top.add_child(turns_column(q))
 	var cash := _figure("Cash after", after, DS.PALETTE["OK"] if after >= 0.0 else DS.PALETTE["DANGER"], digits)
 	cash.name = "CashAfter"
 	cash.get_child(1).set_meta("blocker", "funds")
-	row.add_child(cash)
-	row.add_child(turns_column(q))
+	# Under Total, its own width: the column is as wide as the first row.
+	cash.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	figures.add_child(cash)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -481,7 +490,8 @@ static func verdict(panel: Control, q: Dictionary) -> Control:
 	var width := maxf(BUILD_KEY_W, CreamKey.width_for("Build", "", false, false))
 	var key: Button = CreamKey.make("BuildConfirmButton", "Build", "", width)
 	key.set("rim", "brass")
-	key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	# Low, beside Cash after: read the figures, then build.
+	key.size_flags_vertical = Control.SIZE_SHRINK_END
 	key.tooltip_text = reason if reason != "" else _build_words(q)
 	if reason != "":
 		key.set("title_ink", CreamKey.RED_INK)
@@ -495,7 +505,7 @@ static func verdict(panel: Control, q: Dictionary) -> Control:
 	var foot := _foot_line(q, reason)
 	if foot != "":
 		var l := Parts.body(foot)
-		l.name = "V3ConfirmReason" if reason != "" else "MaterialsArrive"
+		l.name = "V3ConfirmReason" if reason != "" else "SiteHint"
 		if reason != "":
 			l.add_theme_color_override("font_color", DS.PALETTE["DANGER"])
 		vb.add_child(l)

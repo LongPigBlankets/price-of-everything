@@ -131,6 +131,11 @@ var _middleman_shipments_by_good: Dictionary = {}
 var _advisors_hired_streaks: Dictionary = {}
 const ADVISOR_STREAK_MAX_COUNT := 6
 var _advisors_hired_last_turn: int = -1
+## Pre-tax profit of the last resolved turns, newest last, for "Profit" conditions held over several turns
+## in a row (a Unit of "3 turns"). One entry per turn; the free opening stock's first turns cannot carry it alone.
+var _recent_profits: Array = []
+var _recent_profits_last_turn: int = -1
+const RECENT_PROFIT_TURNS := 12
 var _unlock_defs: Array = []   # [{research_node_id, title, action, object, qty, prereqs, description}]
 var _node_id_by_title: Dictionary = {}   # lazy title -> research_node_id (see research_node_id_for_title)
 var _title_by_node_id: Dictionary = {}   # lazy research_node_id -> title (see research_title_for_node_id)
@@ -147,6 +152,7 @@ func _on_phase_started(phase: int) -> void:
 		# deliberately replaces per-shipment and per-completion scans.
 		_update_profitable_run_streaks()
 		_update_advisors_hired_streaks()
+		_record_turn_profit()
 		_refresh_research_progress()
 
 
@@ -168,6 +174,8 @@ func reset() -> void:
 	_middleman_shipments_by_good.clear()
 	_advisors_hired_streaks.clear()
 	_advisors_hired_last_turn = -1
+	_recent_profits.clear()
+	_recent_profits_last_turn = -1
 	_global_trade_license_paid = false
 
 
@@ -186,6 +194,8 @@ func export_fields() -> Dictionary:
 		"middleman_shipments_by_good": _middleman_shipments_by_good.duplicate(true),
 		"advisors_hired_streaks": _advisors_hired_streaks.duplicate(true),
 		"advisors_hired_last_turn": _advisors_hired_last_turn,
+		"recent_profits": _recent_profits.duplicate(),
+		"recent_profits_last_turn": _recent_profits_last_turn,
 		"global_trade_license_paid": _global_trade_license_paid,
 	}
 
@@ -214,6 +224,11 @@ func import_fields(d: Dictionary) -> void:
 	for key in saved_streaks:
 		_advisors_hired_streaks[int(key)] = int(saved_streaks[key])
 	_advisors_hired_last_turn = int(d.get("advisors_hired_last_turn", -1))
+	# Older saves have no history: the streak starts again from the next turn.
+	_recent_profits.clear()
+	for p in d.get("recent_profits", []):
+		_recent_profits.append(float(p))
+	_recent_profits_last_turn = int(d.get("recent_profits_last_turn", -1))
 	_global_trade_license_paid = bool(d.get("global_trade_license_paid", false))
 
 
@@ -230,6 +245,26 @@ func _update_advisors_hired_streaks() -> void:
 
 func advisors_hired_streak(count: int) -> int:
 	return int(_advisors_hired_streaks.get(count, 0))
+
+## Once per resolved turn: this turn's pre-tax profit onto the recent history.
+func _record_turn_profit() -> void:
+	var turn := TurnManager.current_turn
+	if turn == _recent_profits_last_turn:
+		return
+	_recent_profits_last_turn = turn
+	_recent_profits.append(float(Production.last_turn_summary.get("pre_tax_profit", 0.0)))
+	while _recent_profits.size() > RECENT_PROFIT_TURNS:
+		_recent_profits.pop_front()
+
+## True when each of the last `turns` resolved turns made at least `need` pre-tax profit.
+func profit_held(need: float, turns: int) -> bool:
+	turns = maxi(1, turns)
+	if _recent_profits.size() < turns:
+		return false
+	for i in range(_recent_profits.size() - turns, _recent_profits.size()):
+		if float(_recent_profits[i]) < need:
+			return false
+	return true
 
 ## This turn's loan payments as a share of its sales revenue; 0 with no revenue.
 func loan_payment_share_of_revenue() -> float:
@@ -572,7 +607,9 @@ func unlock_condition_text(title: String) -> String:
 		"Stockpile filled": return "Supply one stockpile from %s for %d consecutive turns" % [object_name, qty]
 		"Ship Through Logistics Intermediary": return "Ship at least %d units of at least %s with a Logistics Intermediary" % [qty, unit]
 		"Produce Distinct": return "Produce at least %d different goods" % qty
-		"Profit": return "Reach £%d profit" % qty
+		"Profit":
+			var profit_turns := _leading_int(unit, 0)
+			return "Make £%d profit a turn for %d turns in a row" % [qty, profit_turns] if profit_turns > 1 else "Reach £%d profit" % qty
 		"Service Loans": return "Pay loans worth more than %d%% of revenue in one turn" % qty
 		"Keep Hired": return "Keep %s hired for %d consecutive turns" % [object_name, qty]
 		"Sustain": return "Maintain %s for %d consecutive turns" % [object_name, qty]
@@ -718,6 +755,10 @@ func _live_condition_met(d: Dictionary) -> bool:
 					distinct_goods += 1
 			return distinct_goods >= need
 		"Profit":
+			# A Unit of "N turns" asks for the profit N turns in a row; otherwise one turn is enough.
+			var profit_turns := _leading_int(str(d.get("unit", "")), 0)
+			if profit_turns > 1:
+				return profit_held(float(need), profit_turns)
 			return float(Production.last_turn_summary.get("pre_tax_profit", 0.0)) >= float(need)
 		"Service Loans":
 			return loan_payment_share_of_revenue() * 100.0 > float(need)
