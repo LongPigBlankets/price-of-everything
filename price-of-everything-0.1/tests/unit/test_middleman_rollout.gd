@@ -114,15 +114,15 @@ func _test_live_mine_grid_and_nontradeable_coproduct() -> void:
 	_check(Service.uses_inputs(plant) and not Service.uses_outputs(plant), "grid exclusion survives reload")
 	cleanup()
 
-## Each demo start opens with its own free batches (data/starts/*.json "opening_batches"): none, and turn 1 buys
-## the inputs (Metal Magnate, owner 28 September); N, one batch held and N-1 more in reserve (Glass Merchant, 2:
-## with none its £200 cannot buy a turn of the furnaces' inputs and the start never gets going).
+## Each demo start opens with its own free batches (data/starts/*.json "opening_batches", and a building entry's
+## own "opening_batches" for that building): none, and turn 1 buys the inputs; N, one batch held and N-1 more in
+## reserve. Metal Magnate has none (owner, 28 September). Glass Merchant stocks only its windows factory for one
+## turn, the rest buy on turn 1: the factory's batch is the dear one, and without it £300 cannot fund turn 1.
 func _test_demo_starts_open_with_their_batches() -> void:
-	var want := {"metal_magnate": 0, "glass_merchant": 2}
+	var want := {"metal_magnate": {}, "glass_merchant": {"b_007": 1}}
 	for start: String in want:
 		var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/%s.json" % start))
-		var batches := int(cfg.get("opening_batches", 0))
-		_check(batches == int(want[start]), "%s opens with %d free batches" % [start, int(want[start])])
+		_check(int(cfg.get("opening_batches", -1)) == 0, "%s opens with no free batches by default" % start)
 		var snap := SaveLoad.expand_start_config(cfg)
 		var match_state: Dictionary = snap.get("match", {})
 		_check(str((match_state.get("ruleset", {}) as Dictionary).get("logistics_model", "")) == "middleman_v1", "%s is an intermediary game" % start)
@@ -130,6 +130,8 @@ func _test_demo_starts_open_with_their_batches() -> void:
 		_check(services.size() == (cfg.get("buildings", []) as Array).size(), "%s enrols every starting building" % start)
 		var exact := true
 		for iid in services:
+			var building_id := str(services[iid].get("building_id", str(iid).get_slice("_", 1) + "_" + str(iid).get_slice("_", 2)))
+			var batches := int((want[start] as Dictionary).get(building_id, 0))
 			var recipe := Catalog.get_recipe(str(services[iid].recipe_id))
 			var held: Dictionary = services[iid].get("inputs", {})
 			var reserve: Dictionary = services[iid].get("opening_inputs", {})
@@ -141,9 +143,18 @@ func _test_demo_starts_open_with_their_batches() -> void:
 					exact = false
 			if (recipe.get("inputs", []) as Array).is_empty() and not (held.is_empty() and reserve.is_empty()):
 				exact = false
-		_check(exact, "%s holds %s and reserves %d more per building, none for mines" % [start,
-			"one batch" if batches > 0 else "nothing", maxi(0, batches - 1)])
+		_check(exact, "%s holds the free batches it names and nothing else (%s)" % [start, str(want[start])])
 		_check((cfg.get("stockpile", {}) as Dictionary).is_empty(), "%s has no tile stockpile to strand" % start)
+	# A building entry's own opening_batches overrides the start's.
+	var cfg2 := {"start": true, "ruleset": {"logistics_model": "middleman_v1", "middleman_new_buildings": true},
+		"opening_batches": 2, "money": 100, "buildings": [
+			{"building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_18_16"},
+			{"building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_18_16", "opening_batches": 0}]}
+	var services2: Dictionary = ((SaveLoad.expand_start_config(cfg2).get("match", {}) as Dictionary).get("middleman_service", {}) as Dictionary).get("buildings", {})
+	var stocked := 0
+	for iid in services2:
+		if not (services2[iid].get("inputs", {}) as Dictionary).is_empty(): stocked += 1
+	_check(services2.size() == 2 and stocked == 1, "a building's own opening_batches overrides the start's (%d of %d stocked)" % [stocked, services2.size()])
 
 func _test_opening_reserve_runs_two_turns_then_buys() -> void:
 	var iid := str(setup()[0])
