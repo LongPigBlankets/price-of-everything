@@ -315,3 +315,13 @@ func _test_global_trade_license_threshold() -> void:
 	ResearchState.set("_recent_profits", saved)
 	var exported: Dictionary = ResearchState.export_fields()
 	_check(exported.has("recent_profits") and exported.has("recent_profits_last_turn"), "licence: the profit history is saved")
+
+
+func _test_micro_silica_glass_bonus() -> void:
+	var glass := 0.0
+	for m: Dictionary in Modifiers.UNLOCK_MODIFIERS.get("research_inorg_003", []):
+		if str(m.get("id", "")) == "rn_micro_silica_glass":
+			glass = float(m.get("pct", 0.0))
+	_check(is_equal_approx(glass, 10.0), "Micro Silica Synthesis adds 10%% glass (got %.0f%%)" % glass)
+	_check(str(ResearchState.get_unlock_def("Micro Silica Synthesis").get("description", "")).contains("Glass output by 10%"),
+		"its description says 10%")

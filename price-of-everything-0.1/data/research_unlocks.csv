@@ -20,7 +20,7 @@ research_metal_022,Metallurgy,,,,,III,All Of,Produce|aluminium|600|units;Run|eaf
 research_metal_023,Metallurgy,,,,,I,All Of,Produce|steel|500|units;Produce Per Turn Any|pet_coke|carbonised_biomass|30|units per turn,1,conditions,Carbon Substitution,coal,Unlocks new recipes: Steelmaking (Petro); Steelmaking (Bio).
 research_inorg_001,"Glass, Silica & Concrete",,,,,I,Run Recipe,Glassmaking,3,furnaces,High Strength Glassmaking,glass,Unlocks new recipe: High Strength Glassmaking.
 research_inorg_002,"Glass, Silica & Concrete",research_inorg_001,,,,II,Produce,concrete,500,units,Pozzolanic Vitrification,cast,Increases Concrete output by 10% permanently.
-research_inorg_003,"Glass, Silica & Concrete",research_inorg_001,,,,II,Produce,glass,750,units,Micro Silica Synthesis,glass,Increases Concrete output by 5% and Glass output by 15% permanently.
+research_inorg_003,"Glass, Silica & Concrete",research_inorg_001,,,,II,Produce,glass,750,units,Micro Silica Synthesis,glass,Increases Concrete output by 5% and Glass output by 10% permanently.
 research_inorg_004,Chemistry,,,,,I,Build,Chemical Plant,3,units,Chlor Alkali Cells,cell,Increases Chemical Plant output by 5% permanently.
 research_inorg_005,Chemistry,research_inorg_004,,,,I,Produce,chlorine,250,units,Acid Gas Scrubbing,scrub,Reduces Chemical Plant maintenance by 10% permanently.
 research_inorg_006,Chemistry,research_inorg_005,,,,II,Run Producing,chlorine,1,15 turns,Industrial Salt Purification,salt,Increases the output of chlorine-producing recipes by 5% permanently.
