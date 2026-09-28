@@ -299,7 +299,8 @@ func start_new_game(start_path: String = DEFAULT_START) -> String:
 ## A start with "opening_batches": N sets its buildings up as an existing business: each
 ## intermediary building holds the inputs for its next batch and keeps N-1 further batches in
 ## an opening reserve, so its first N turns run without a purchase, a fee or a loan, and
-## nothing appears in the tile stockpile. The held amount is one cycle exactly, because the
+## nothing appears in the tile stockpile. A building entry's own "opening_batches" overrides
+## the start's for that building (Glass Merchant stocks its windows factory alone). The held amount is one cycle exactly, because the
 ## service never holds more than a building's next batch; the reserve tops it up each turn.
 func _first_batch_inputs(building: Dictionary) -> Dictionary:
 	var held := {}
@@ -334,6 +335,7 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 	# reordering — no fragile predicted ids. Shape: instance_id -> {good_id -> dest}.
 	var output_routes: Dictionary = {}
 	var service_buildings: Dictionary = {}
+	var opening_batches: Dictionary = {}   # instance_id -> the entry's own opening_batches
 	var counter := START_COUNTER_BASE
 	for entry in cfg.get("buildings", []):
 		var building_id := str(entry.get("building_id", ""))
@@ -352,6 +354,8 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			# Optional starting upgrade level (1..3); production reads building.level.
 			"level": clampi(int(entry.get("level", 1)), 1, BuildingLevels.MAX_LEVEL),
 		}
+		if entry.has("opening_batches"):
+			opening_batches[instance_id] = maxi(0, int(entry.get("opening_batches", 0)))
 		if str(entry.get("logistics_mode", "")) == "middleman" and tile_id == "tile_5_4" and recipe_id == "r_009":
 			service_buildings[instance_id] = {"coefficient":1.5,"recipe_id":recipe_id,"inputs":{},"outputs":{},"turn":-1,"state":"idle","receipts":{}}
 		var out_to := str(entry.get("output_to", ""))
@@ -414,11 +418,12 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			var recipe := Catalog.get_recipe(str(start_building.get("recipe_id", "")))
 			if not (MiddlemanService.recipe_side(recipe, "input") or MiddlemanService.recipe_side(recipe, "output")):
 				continue
+			var batches := int(opening_batches.get(iid, int(cfg.get("opening_batches", 0))))
 			service_buildings[iid] = {
 				"coefficient": MiddlemanLocations.coefficient(str(start_building.get("tile_id", ""))),
 				"recipe_id": str(start_building.get("recipe_id", "")),
-				"inputs": _first_batch_inputs(start_building) if int(cfg.get("opening_batches", 0)) > 0 else {},
-				"opening_inputs": _opening_reserve(start_building, int(cfg.get("opening_batches", 0))),
+				"inputs": _first_batch_inputs(start_building) if batches > 0 else {},
+				"opening_inputs": _opening_reserve(start_building, batches),
 				"outputs": {},
 				"turn": -1, "state": "idle", "receipts": {},
 				"input_mode": "middleman", "output_mode": "middleman",
