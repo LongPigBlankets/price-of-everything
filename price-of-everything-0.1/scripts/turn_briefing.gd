@@ -1,13 +1,15 @@
 extends Node
 ## TurnBriefing: the turn-start digest (docs/turn-briefing-panel-spec.md).
 ##
-## One surface for everything the player must act on this turn — the decision queue,
-## live critical states (bankruptcy runway, starved buildings), news announcements and
-## info updates — shown either as the collapsed ~300x50 strip centred under the top bar
-## or as the expanded mid-screen panel. Owner rulings: decisions can NOT be dismissed
-## (resolve-only; they block End Turn via the commit_turn guard), everything else can;
-## the panel auto-expands only on CRITICAL turns (an unresolved decision, or a new /
-## newly-worsened critical alert) and otherwise stays collapsed.
+## One surface for what the player must act on this turn: the decision queue and the live
+## alerts (bankruptcy runway, starved buildings, cables, stockpile, deposits, cash for
+## inputs), shown as the mid-screen panel. Owner rulings: decisions can NOT be dismissed
+## (resolve-only; they block End Turn via the commit_turn guard), an alert silenced never
+## lights again that game (its window stays dark); the panel auto-expands only on CRITICAL turns (an unresolved decision,
+## or a new / newly-worsened critical alert) and otherwise stays closed. One-off news
+## (research, construction done, a decision answered, the bridge loan, policy news,
+## forewarnings) is a row in the updates dock only, and a full tile shows on the top bar's
+## storage lamp only (docs/briefing-ds2-plan.md, docs/ds2-owner-decisions.md "Briefing").
 ##
 ## This autoload is a VIEW over DecisionState / EventScheduler / SolvencyState /
 ## Production — it owns no sim state beyond dismissal signatures for the live alerts
@@ -17,6 +19,8 @@ extends Node
 const BuildingStatus := preload("res://scripts/building_status.gd")
 const StripScript := preload("res://scripts/turn_briefing_strip.gd")
 const PanelScript := preload("res://scripts/turn_briefing_panel.gd")
+const PanelDs2Script := preload("res://scripts/briefing_ds2/briefing_ds2.gd")
+const BuildingNaming := preload("res://scripts/building_naming.gd")
 
 # A dismissed live alert re-surfaces when its magnitude worsens by at least this much
 # (starved: +1 building; bankruptcy: runway drops by another £50 band).
@@ -65,6 +69,11 @@ static func item_display_color(it: Dictionary) -> Color:
 		return category_color(str(it.get("category", "")))
 	return severity_color(str(it.get("severity", "info")))
 
+## Silencing an alert turns its kind off for the rest of the game (the owner): it is not closing the
+## panel, so its key says so, and the words beside it say it is for good.
+const SILENCE_LABEL := "Silence alert"
+const SILENCE_HINT := "This will not trigger again."
+
 signal items_changed()
 signal expanded_changed(expanded: bool)
 
@@ -73,13 +82,7 @@ var expanded: bool = false
 
 var _items: Array = []                 # assembled BriefingItem dicts (view objects)
 var _alert_dismissed: Dictionary = {}  # alert_id -> magnitude at dismissal (persisted)
-# Warehouse level of each jammed tile at the moment "storage full" was dismissed. A jam that
-# holds steady never grows, so the magnitude rule alone silenced this alert permanently — the
-# player upgraded, assumed it was solved, and never heard about it again while the tile went on
-# clipping input orders. Upgrading is the one thing they DO about it, so an upgrade re-arms the
-# alert: if the tile is still jammed afterwards, they need to know the upgrade was not enough.
-var _storage_dismiss_levels: Dictionary = {}   # tile_id -> warehouse level at dismissal
-var _acked: Dictionary = {}            # event id -> true (session-scoped ack for news)
+var _silenced_windows: Dictionary = {}  # window kind (WINDOWS) -> true: never lit again this game (persisted)
 var _last_alert_ids: Dictionary = {}   # alert ids present last evaluation (new-alert detect)
 var _layer: CanvasLayer = null
 var _strip: Control = null
@@ -98,16 +101,17 @@ func _ready() -> void:
 	DecisionState.pending_changed.connect(_queue_refresh)
 	DecisionState.decision_drawn.connect(_on_decision_drawn)
 	EventScheduler.active_events_changed.connect(_queue_refresh)
+	EventScheduler.event_fired.connect(_on_event_fired)
 	TurnManager.turn_advanced.connect(_on_turn_advanced)
 	TurnManager.commit_blocked_by_decisions.connect(_on_commit_blocked)
 	MatchState.money_changed.connect(_queue_refresh)
 	LoanState.loans_updated.connect(_queue_refresh)
 	SaveLoad.match_loaded.connect(_on_match_loaded)
+	UiPrefs.briefing_ds2_changed.connect(_on_ds2_changed)
 
 func reset() -> void:
 	_alert_dismissed.clear()
-	_storage_dismiss_levels.clear()
-	_acked.clear()
+	_silenced_windows.clear()
 	_last_alert_ids.clear()
 	_select_on_expand = ""
 	expanded = false
@@ -154,16 +158,13 @@ func _rebuild_items() -> void:
 	if _tutorial_active():
 		_items = out
 		return
-	# 2. Live critical states (self-clearing; dismiss = quiet until worsened).
+	# 2. Live critical states (self-clearing; silencing one turns its kind off for good, below).
 	var bankruptcy := _bankruptcy_item()
 	if not bankruptcy.is_empty():
 		out.append(bankruptcy)
 	var starved := _starved_item()
 	if not starved.is_empty():
 		out.append(starved)
-	var overflow := _storage_full_item()
-	if not overflow.is_empty():
-		out.append(overflow)
 	var undersized := _storage_undersized_item()
 	if not undersized.is_empty():
 		out.append(undersized)
@@ -179,26 +180,18 @@ func _rebuild_items() -> void:
 	var spliced := _input_splice_item()
 	if not spliced.is_empty():
 		out.append(spliced)
-	# 3+4. Bell events mapped into alerts / news / info (single source of truth:
-	# dismissing here dismisses in the bell too). Only the LATEST turn's events show —
-	# the briefing is a turn digest, not a running log (that's the bell's job).
-	# Resolution-phase events are stamped current_turn-1; post-resolution ones (bridge
-	# loan) the current turn — so the window is [current_turn-1, current_turn].
-	var min_turn: int = maxi(1, int(TurnManager.current_turn) - 1)
-	var research_events: Array = []
-	for ev: Dictionary in EventScheduler.active_events():
-		if int(ev.get("turn_fired", 0)) < min_turn:
-			continue
-		# All research unlocked this turn collapses into one aggregated update below.
-		if str(ev.get("kind", "")) == "research_unlocked":
-			research_events.append(ev)
-			continue
+	# 3. Bell events that are live alerts (a deposit exhausted) join them (single source of
+	# truth: dismissing here dismisses in the bell too). Every other event is one-off news,
+	# a row in the updates dock (_on_event_fired). Only the LATEST turn's events show:
+	# resolution-phase events are stamped current_turn-1, post-resolution ones the current
+	# turn, so the window is [current_turn-1, current_turn].
+	for ev: Dictionary in _recent_events():
 		var item := _event_item(ev)
 		if not item.is_empty():
 			out.append(item)
-	if not research_events.is_empty():
-		out.append(_research_aggregate_item(research_events))
-	# Order: decisions, then alerts by severity, then news, then info (newest first).
+	# A silenced kind of alert never shows again (its window stays dark).
+	out = out.filter(func(it) -> bool: return not _silenced_windows.has(window_kind_for(str((it as Dictionary).get("id", "")))))
+	# Order: decisions, then alerts by severity, then info.
 	var rank := {"decisions": 0, "alerts": 1, "news": 2, "info": 3}
 	var sev_rank := {"critical": 0, "warning": 1, "info": 2}
 	out.sort_custom(func(a, b) -> bool:
@@ -230,13 +223,17 @@ func _bankruptcy_item() -> Dictionary:
 	return {
 		"id": "alert:bankruptcy", "kind": "critical", "section": "alerts",
 		"severity": "critical", "dismissible": true, "magnitude": runway,
-		"title": "Bankruptcy looming", "icon": "warn",
-		"body": "Cash and borrowing capacity are nearly exhausted. Reduce losses or raise cash to avoid bankruptcy.",
+		"title": "Bankruptcy near", "icon": "warn",
+		"body": "Cash and loan capacity together are under £100. Cut losses or raise cash.",
 		"rows": [
-			["Cash on hand", "£%.0f" % MatchState.money, "bad" if MatchState.money < 0.0 else ""],
-			["Borrowing capacity left", "£%.0f" % LoanState.available_capacity(), ""],
-			["Net last turn", "%s£%.0f" % ["+" if net >= 0.0 else "−", absf(net)], "bad" if net < 0.0 else "ok"],
-			["Runway", "£%.0f" % runway, "bad"],
+			["Cash", "£%.0f" % MatchState.money, "bad" if MatchState.money < 0.0 else ""],
+			["Loan capacity", "£%.0f" % LoanState.available_capacity(), ""],
+			["Net last turn", "%s£%.0f" % ["+" if net >= 0.0 else "-", absf(net)], "bad" if net < 0.0 else "ok"],
+		],
+		"figures": [
+			{"caption": "Cash", "kind": "cash", "value": float(MatchState.money)},
+			{"caption": "Loan capacity", "kind": "cash", "value": LoanState.available_capacity()},
+			{"caption": "Net last turn", "kind": "cash", "value": net},
 		],
 	}
 
@@ -286,25 +283,26 @@ func _power_capped_item() -> Dictionary:
 			break
 		var d2: Dictionary = capped[iid2]
 		listed.append({
-			"instance_id": str(iid2), "tile_id": str(d2["tile_id"]),
-			"why": "output blocked: cable capacity reached",
+			"instance_id": str(iid2), "tile_id": str(d2["tile_id"]), "good_id": good_id_of("power"),
+			"why": "Cables full. No power sold.",
 		})
 	var total := capped.size()
 	if _alert_dismissed.has("alert:power_capped") and total <= int(_alert_dismissed["alert:power_capped"]):
 		return {}
-	var advice := "Upgrade the cables on those tiles to raise the export cap, or move generation to a tile with spare capacity."
+	var advice := "Upgrade the cables on those tiles, or build generation on another tile."
 	if at_max == tiles.size():
-		advice = "These tiles already have maximum cable capacity. Move generation to another tile."
+		advice = "Those tiles have the highest cable level. Build generation on another tile."
+	var rows: Array = [["Plants blocked", "%d" % total, "warn"]]
+	if mw_idle > 0:
+		rows.append(["Generation blocked", "%d MW/turn" % mw_idle, "warn"])
+	if at_max > 0:
+		rows.append(["Tiles at the highest cable level", "%d of %d" % [at_max, tiles.size()], "bad"])
 	return {
 		"id": "alert:power_capped", "kind": "critical", "section": "alerts",
 		"severity": "warning", "dismissible": true, "magnitude": total, "icon": "bolt",
-		"title": "%d power plant%s capped by cables" % [total, "" if total == 1 else "s"],
-		"body": "Cable capacity is limiting these plants. They still incur maintenance costs. " + advice,
-		"rows": [
-			["Plants blocked", "%d" % total, "warn"],
-			["Blocked generation", "%d MW / turn" % mw_idle, "warn" if mw_idle > 0 else ""],
-			["Tiles at maximum cable level", "%d of %d" % [at_max, tiles.size()], "bad" if at_max > 0 else ""],
-		],
+		"title": "%s blocked by full cables" % _count(total, "power plant"),
+		"body": "Full cables stopped these plants selling power. Their upkeep was still paid. " + advice,
+		"rows": rows,
 		"list": listed,
 		"list_more": maxi(0, total - listed.size()),
 	}
@@ -323,12 +321,19 @@ func _starved_item() -> Dictionary:
 			continue
 		var lacks_power := false
 		var missing: Array = Production.missing_by_building[iid]
+		var names: PackedStringArray = []
+		var first_good := ""
 		for m in missing:
-			if str((m as Dictionary).get("internal_name", "")) == "power":
+			var iname := str((m as Dictionary).get("internal_name", ""))
+			if iname == "power":
 				lacks_power = true
-		var why := "no power" if lacks_power else "missing " + ", ".join(PackedStringArray(
-			missing.map(func(m) -> String: return str((m as Dictionary).get("internal_name", "?")))))
-		var row := {"instance_id": str(iid), "tile_id": str(b.get("tile_id", "")), "why": why}
+			var gid := str((m as Dictionary).get("good_id", "")) if str((m as Dictionary).get("good_id", "")) != "" else good_id_of(iname)
+			if first_good == "":
+				first_good = gid
+			names.append(Catalog.get_display_name(gid) if gid != "" else iname.replace("_", " "))
+		var why := "No power." if lacks_power else "Missing %s." % ", ".join(names).to_lower()
+		var row := {"instance_id": str(iid), "tile_id": str(b.get("tile_id", "")), "why": why,
+			"good_id": good_id_of("power") if lacks_power else first_good}
 		if lacks_power:
 			power_starved.append(row)
 		else:
@@ -340,87 +345,31 @@ func _starved_item() -> Dictionary:
 	if _alert_dismissed.has("alert:starved") and total <= int(_alert_dismissed["alert:starved"]):
 		return {}
 	var listed: Array = (power_starved + input_starved).slice(0, STARVED_LIST_ROWS)
+	# The split only says something when both kinds are starved; one kind is the title again.
+	var rows: Array = []
+	if not power_starved.is_empty() and not input_starved.is_empty():
+		rows.append(["Without power", _count(power_starved.size(), "building"), "bad"])
+		rows.append(["Without inputs", _count(input_starved.size(), "building"), "warn"])
 	return {
 		"id": "alert:starved", "kind": "critical", "section": "alerts",
 		"severity": "critical" if not power_starved.is_empty() else "warning",
 		"dismissible": true, "magnitude": total, "icon": "box",
-		"title": "%d building%s starved" % [total, "" if total == 1 else "s"],
-		"body": "These buildings could not produce this turn because power or inputs were missing. Maintenance costs still apply.",
-		"rows": [
-			["Starved of power", "%d building%s" % [power_starved.size(), "" if power_starved.size() == 1 else "s"], "bad" if power_starved.size() > 0 else ""],
-			["Starved of inputs", "%d building%s" % [input_starved.size(), "" if input_starved.size() == 1 else "s"], "warn" if input_starved.size() > 0 else ""],
-		],
+		"title": "%s starved" % _count(total, "building"),
+		"body": "Power or inputs were missing, so they made nothing last turn. Their upkeep was still paid.",
+		"rows": rows,
 		"list": listed,
 		"list_more": maxi(0, total - listed.size()),
 	}
 
-## Tile storage full: arrived shipments waiting in overflow-hold (they retry each
-## turn but occupy no stockpile until space frees) and/or pipeline orders clipped
-## because the tile can't physically hold its input buffers. This is THE silent
-## deadlock: a jammed tile starves its buildings while goods
-## bounce outside. Fix: sell surplus, expand the warehouse, or spread buildings.
-func _storage_full_item() -> Dictionary:
-	var held_by_tile: Dictionary = {}   # tile_id -> units waiting
-	var held_total := 0
-	for r in TransportState.overflow_shipments:
-		var tile := str(r.get("destination_tile", ""))
-		var qty := int(r.get("qty", 0))
-		held_by_tile[tile] = int(held_by_tile.get(tile, 0)) + qty
-		held_total += qty
-	var capped: Array = Production.last_turn_summary.get("input_orders_capped", [])
-	var capped_units := 0
-	var capped_tiles: Dictionary = {}
-	for c in capped:
-		var d: Dictionary = c
-		capped_units += int(d.get("wanted", 0)) - int(d.get("placed", 0))
-		capped_tiles[str(d.get("tile_id", ""))] = true
-	if held_total == 0 and capped_units == 0:
-		_alert_dismissed.erase("alert:storage_full")
-		_storage_dismiss_levels.clear()
-		return {}
-	var magnitude := held_total + capped_units
-	if _alert_dismissed.has("alert:storage_full"):
-		# An upgrade is the player acting on this alert. If the tile is STILL jammed afterwards
-		# the upgrade did not solve it, and staying quiet would leave them believing it had.
-		var upgraded := false
-		for t_lvl in _storage_dismiss_levels:
-			if Stockpile.get_warehouse_level(str(t_lvl)) > int(_storage_dismiss_levels[t_lvl]):
-				upgraded = true
-				break
-		if upgraded:
-			_alert_dismissed.erase("alert:storage_full")
-			_storage_dismiss_levels.clear()
-		elif magnitude <= int(_alert_dismissed["alert:storage_full"]):
-			return {}
-	var listed: Array = []
-	for tile in held_by_tile:
-		if listed.size() >= STARVED_LIST_ROWS:
-			break
-		listed.append({
-			"instance_id": "", "tile_id": str(tile),
-			"why": "%d unit%s waiting to unload" % [int(held_by_tile[tile]), "" if int(held_by_tile[tile]) == 1 else "s"],
-		})
-	for tile2 in capped_tiles:
-		if listed.size() >= STARVED_LIST_ROWS or held_by_tile.has(tile2):
-			continue
-		listed.append({"instance_id": "", "tile_id": str(tile2), "why": "input orders reduced to fit storage"})
-	var tiles_affected: Dictionary = capped_tiles.duplicate()
-	for tile3 in held_by_tile:
-		tiles_affected[tile3] = true
-	return {
-		"id": "alert:storage_full", "kind": "critical", "section": "alerts",
-		"severity": "critical" if held_total > 0 else "warning",
-		"dismissible": true, "magnitude": magnitude, "icon": "gauge",
-		"tiles": tiles_affected.keys(),
-		"title": "Storage full on %d tile%s" % [tiles_affected.size(), "" if tiles_affected.size() == 1 else "s"],
-		"body": "Storage is full. Deliveries are waiting to unload. Sell or move goods, or expand storage from the Stockpile tab.",
-		"rows": [
-			["Goods waiting to unload", "%d unit%s" % [held_total, "" if held_total == 1 else "s"], "bad" if held_total > 0 else ""],
-			["Orders reduced to fit storage", "%d unit%s" % [capped_units, "" if capped_units == 1 else "s"], "warn" if capped_units > 0 else ""],
-		],
-		"list": listed,
-		"list_more": maxi(0, tiles_affected.size() - listed.size()),
-	}
+
+## "1 building", "3 buildings".
+static func _count(n: int, noun: String) -> String:
+	return "%d %s%s" % [n, noun, "" if n == 1 else "s"]
+
+
+## A good's id from its internal name ("power" → its id), "" when there is none.
+static func good_id_of(internal_name: String) -> String:
+	return str(Catalog.get_good_by_internal_name(internal_name).get("id", "")) if internal_name != "" else ""
 
 ## STRUCTURAL storage shortfall (Production.last_turn_summary.storage_overcommitted):
 ## the tile's warehouse is smaller than its buildings' steady-state working set —
@@ -440,24 +389,25 @@ func _storage_undersized_item() -> Dictionary:
 		if listed.size() < STARVED_LIST_ROWS:
 			listed.append({
 				"instance_id": "", "tile_id": str(d.get("tile_id", "")),
-				"why": "needs ≈%d, holds %d" % [int(d.get("required", 0)), int(d.get("capacity", 0))],
+				"why": "Needs %d. Holds %d." % [int(d.get("required", 0)), int(d.get("capacity", 0))],
 			})
 	if _alert_dismissed.has("alert:storage_undersized") and shortfall <= int(_alert_dismissed["alert:storage_undersized"]):
 		return {}
 	var first_tile := str((rows[0] as Dictionary).get("tile_id", ""))
-	var title := "%s lacks stockpile for its buildings" % _tile_display(first_tile) if rows.size() == 1 \
-		else "%d tiles lack stockpile for their buildings" % rows.size()
-	var body := "%s lacks the stockpile to support all the inputs and outputs for its buildings." % _tile_display(first_tile) if rows.size() == 1 \
-		else "These tiles lack the stockpile to support all the inputs and outputs of their buildings."
+	var title := "%s needs more stockpile" % place_name(first_tile) if rows.size() == 1 \
+		else "%d tiles need more stockpile" % rows.size()
+	var body := "Its buildings' inputs and outputs need more stockpile than the tile holds." if rows.size() == 1 \
+		else "Their buildings' inputs and outputs need more stockpile than the tiles hold."
+	# One tile's row already says what it needs and holds; several tiles add up.
+	var stat_rows: Array = []
+	if rows.size() > 1:
+		stat_rows = [["Short by", _count(shortfall, "unit"), "bad"], ["Tiles", "%d" % rows.size(), ""]]
 	return {
 		"id": "alert:storage_undersized", "kind": "critical", "section": "alerts",
 		"severity": "critical", "dismissible": true, "magnitude": shortfall, "icon": "box",
 		"title": title,
-		"body": body + " Expand storage from the Stockpile tab, sell surplus goods, or move some production to another tile.",
-		"rows": [
-			["Working set over capacity", "%d unit%s" % [shortfall, "" if shortfall == 1 else "s"], "bad"],
-			["Tiles affected", "%d" % rows.size(), ""],
-		],
+		"body": body + " Expand storage in the Stockpile tab, sell surplus goods or move production to another tile.",
+		"rows": stat_rows,
 		"list": listed,
 		"list_more": maxi(0, rows.size() - listed.size()),
 	}
@@ -488,31 +438,49 @@ func _deposit_running_out_item() -> Dictionary:
 			break
 		listed.append({
 			"instance_id": str(d.get("instance_id", "")), "tile_id": str(d.get("tile_id", "")),
-			"why": "%d turn%s of %s left" % [int(d.get("turns_left", 0)),
-				"" if int(d.get("turns_left", 0)) == 1 else "s", str(d.get("token", "")).replace("_", " ")],
+			"good_id": str(d.get("good_id", "")),
+			"why": "%s left of %s." % [_count(int(d.get("turns_left", 0)), "turn"), str(d.get("token", "")).replace("_", " ")],
 		})
-	var title := "%s deposit runs out in %d turn%s" % [
-		token.capitalize(), turns, "" if turns == 1 else "s"] if rows.size() == 1 \
-		else "%d deposits are running out" % rows.size()
+	var title := "%s deposit runs out in %s" % [token.capitalize(), _count(turns, "turn")] if rows.size() == 1 \
+		else "%d deposits running out" % rows.size()
 	return {
 		"id": "alert:deposit_running_out", "kind": "warning", "section": "alerts",
 		"severity": "warning", "dismissible": true, "magnitude": rows.size(),
 		"icon": "warn", "icon_good_id": str(soonest.get("good_id", "")),
 		"title": title,
-		"body": "The %s deposit at %s is nearly exhausted. Build a replacement mine before production stops." % [
-			token, _tile_display(str(soonest.get("tile_id", "")))],
+		"body": "The %s deposit at %s runs out in %s. Build a replacement mine." % [
+			token, place_name(str(soonest.get("tile_id", ""))), _count(turns, "turn")],
 		"rows": [
-			["Turns of ore left", "%d" % turns, "warn"],
-			["Remaining", "%d unit%s" % [int(soonest.get("remaining", 0)), "" if int(soonest.get("remaining", 0)) == 1 else "s"], ""],
-			["Extraction rate", "%d / turn" % int(soonest.get("per_turn", 0)), ""],
+			["Turns left", "%d" % turns, "warn"],
+			["Remaining", _count(int(soonest.get("remaining", 0)), "unit"), ""],
+			["Mined", "%d/turn" % int(soonest.get("per_turn", 0)), ""],
 		],
 		"list": listed,
 		"list_more": maxi(0, rows.size() - listed.size()),
 	}
 
-func _tile_display(tile_id: String) -> String:
+## A tile as the player knows it: its name, never its coordinates or id.
+static func place_name(tile_id: String) -> String:
 	var label := str(Catalog.tile_name(tile_id))
-	return label if label != "" else str(Catalog.tile_label(tile_id))
+	return label if label != "" else "Unnamed tile"
+
+
+## A row's own name: the building's name when the row is a building, else the place.
+static func row_title(entry: Dictionary) -> String:
+	var iid := str(entry.get("instance_id", ""))
+	if iid != "":
+		var b: Dictionary = BuildingState.get_building(iid)
+		if not b.is_empty():
+			return BuildingNaming.of(b)
+	return place_name(str(entry.get("tile_id", "")))
+
+
+## A row's line under its name: where a building stands, then why it is listed.
+static func row_detail(entry: Dictionary) -> String:
+	var why := str(entry.get("why", ""))
+	if str(entry.get("instance_id", "")) != "" and not BuildingState.get_building(str(entry.get("instance_id", ""))).is_empty():
+		return "%s. %s" % [place_name(str(entry.get("tile_id", ""))), why]
+	return why
 
 ## Input orders the market pipeline could not fully place for CASH last turn
 ## (Production.last_turn_summary.input_orders_short). Without this item
@@ -533,22 +501,24 @@ func _input_cash_short_item() -> Dictionary:
 		short_cost += float(d.get("short_cost", 0.0))
 		if listed.size() < STARVED_LIST_ROWS:
 			listed.append({
-				"instance_id": "", "tile_id": str(d.get("tile_id", "")),
-				"why": "%s ×%d of %d bought" % [Catalog.get_display_name(str(d.get("good_id", ""))),
+				"instance_id": "", "tile_id": str(d.get("tile_id", "")), "good_id": str(d.get("good_id", "")),
+				"why": "%s. Bought %d of %d." % [Catalog.get_display_name(str(d.get("good_id", ""))),
 					int(d.get("bought", 0)), int(d.get("requested", 0))],
 			})
 	if _alert_dismissed.has("alert:input_cash") and short.size() <= int(_alert_dismissed["alert:input_cash"]):
 		return {}
+	var stat_rows: Array = []
+	if skipped > 0:
+		stat_rows.append(["Orders skipped", "%d" % skipped, "bad"])
+	stat_rows.append(["Cash needed", "£%d" % int(ceil(short_cost)), "warn"])
 	return {
 		"id": "alert:input_cash", "kind": "critical", "section": "alerts",
 		"severity": "critical" if skipped > 0 else "warning",
 		"dismissible": true, "magnitude": short.size(), "icon": "coin",
-		"title": "%d input order%s short on cash" % [short.size(), "" if short.size() == 1 else "s"],
-		"body": "There was not enough cash to buy all required inputs. Production may stop when stock runs out. About £%d more is needed." % int(ceil(short_cost)),
-		"rows": [
-			["Orders skipped entirely", "%d" % skipped, "bad" if skipped > 0 else ""],
-			["Extra cash needed", "£%d" % int(ceil(short_cost)), "warn"],
-		],
+		"title": "%s short of cash" % _count(short.size(), "input order"),
+		"body": "Cash ran short for inputs last turn. £%d more was needed. Production stops when the stock runs out." % int(ceil(short_cost)),
+		"rows": stat_rows,
+		"figures": [{"caption": "Cash needed", "kind": "cost", "value": ceilf(short_cost)}],
 		"list": listed,
 		"list_more": maxi(0, short.size() - listed.size()),
 	}
@@ -568,36 +538,35 @@ func _input_splice_item() -> Dictionary:
 	for s in splices.slice(0, STARVED_LIST_ROWS):
 		var d: Dictionary = s
 		listed.append({
-			"instance_id": "", "tile_id": str(d.get("tile_id", "")),
-			"why": "%s: %d/turn local + %d/turn market" % [Catalog.get_display_name(str(d.get("good_id", ""))),
+			"instance_id": "", "tile_id": str(d.get("tile_id", "")), "good_id": str(d.get("good_id", "")),
+			"why": "%s. %d/turn made here, %d/turn bought." % [Catalog.get_display_name(str(d.get("good_id", ""))),
 				int(d.get("local", 0)), int(d.get("market", 0))],
 		})
 	return {
 		"id": "alert:input_splice", "kind": "info", "section": "info",
 		"severity": "info",
 		"dismissible": true, "magnitude": splices.size(), "icon": "truck",
-		"title": "%d input%s spliced: local production + market" % [splices.size(), "" if splices.size() == 1 else "s"],
-		"body": "Local production supplies part of these inputs. The rest are bought from the market and take time to arrive.",
+		"title": "%s partly bought" % _count(splices.size(), "input"),
+		"body": "These inputs are partly made on the tile and partly bought. What is bought takes time to arrive.",
 		"rows": [],
 		"list": listed,
 		"list_more": maxi(0, splices.size() - listed.size()),
 	}
 
-# Map a bell event into a briefing item. Kind → section; the bell stays the log.
-# "" = not shown in the briefing (still in the bell).
+# Bell events that are live alerts in the briefing, by kind → section. Every other kind is
+# one-off news and stays out of the briefing.
 const _EVENT_SECTIONS := {
-	"research_unlocked": "info",
-	"construction_completed": "info",
-	"decision_resolved": "info",
-	"decision_incoming": "info",
-	"bridge_loan": "info",
 	"deposit_exhausted": "alerts",
-	"tile_at_capacity": "alerts",
-	"sales_aggregate": "",        # too noisy for the briefing — bell only
-	"bankruptcy_warning": "",     # superseded by the live runway alert
-	"building_starved": "",       # superseded by the aggregated live alert
-	"policy_enacted": "news",     # CO2 tax / green subsidy now in effect (PolicyState)
-	"forewarn": "news",           # "coming in N turns" advance notice of a scheduled event
+}
+# Event kinds that never become a dock row from here: superseded by a live alert or the top
+# bar's storage lamp, too noisy, or already posted to the dock by their own source (the
+# research unlock by the top bar, the finished building, the answered decision, the bridge
+# loan, the tutorial top up and the survey by their own toasts).
+const _NO_DOCK_ROW := {
+	"deposit_exhausted": true, "tile_at_capacity": true, "sales_aggregate": true,
+	"bankruptcy_warning": true, "building_starved": true, "research_unlocked": true,
+	"construction_completed": true, "decision_resolved": true, "bridge_loan": true,
+	"tutorial_rescue": true, "survey_completed": true, "sales_arrived": true,
 }
 # Kind → icon glyph key (see ICON_GLYPHS). Announcement kinds we don't know fall back
 # to the flag in _event_item.
@@ -617,40 +586,78 @@ const _EVENT_ICONS := {
 
 func _event_item(ev: Dictionary) -> Dictionary:
 	var kind := str(ev.get("kind", ""))
-	var section: String = str(_EVENT_SECTIONS.get(kind, "news"))
+	var section: String = str(_EVENT_SECTIONS.get(kind, ""))
 	if section == "":
 		return {}
+	var dl: Dictionary = ev.get("deeplink", {})
+	var listed: Array = []
+	if str(dl.get("tile_id", "")) != "":
+		listed.append({"instance_id": "", "tile_id": str(dl.tile_id),
+			"good_id": good_id_of(str(ev.get("token", ""))), "why": "Mining has stopped."})
 	return {
 		"id": "ev:%s" % str(ev.id), "kind": "event", "event_kind": kind, "section": section,
+		"list": listed, "list_more": 0,
 		"severity": str(ev.get("severity", "info")),
 		"dismissible": true, "event_id": str(ev.id),
 		"icon": str(_EVENT_ICONS.get(kind, "flag")),
 		"title": str(ev.get("title", "")),
 		"body": str(ev.get("body", "")),
 		"deeplink": ev.get("deeplink", {}),
-		"acked": _acked.has(str(ev.id)),
-		"ackable": section == "news",
 	}
 
 
-# All research unlocked this turn, rolled into one "info" update. The panel renders
-# each entry (name / bold-green reward / condition line); the notch reads `magnitude`.
-func _research_aggregate_item(events: Array) -> Dictionary:
+## Bell events of the latest turn (see _rebuild_items for the window).
+func _recent_events() -> Array:
+	var min_turn: int = maxi(1, int(TurnManager.current_turn) - 1)
+	return EventScheduler.active_events().filter(func(ev) -> bool:
+		return int((ev as Dictionary).get("turn_fired", 0)) >= min_turn)
+
+
+## The research unlocked in the latest turn, one {name, reward, condition} each: the top bar
+## posts each to the updates dock once.
+func recent_research() -> Array:
 	var list: Array = []
-	for ev: Dictionary in events:
+	for ev: Dictionary in _recent_events():
+		if str(ev.get("kind", "")) != "research_unlocked":
+			continue
 		list.append({
 			"name": str(ev.get("research_name", "")),
 			"reward": str(ev.get("research_reward", "")),
 			"condition": str(ev.get("research_condition", "")),
 		})
-	var n := list.size()
-	return {
-		"id": "research_unlocked_agg", "kind": "event", "event_kind": "research_unlocked",
-		"section": "info", "severity": "info", "dismissible": false,
-		"icon": "beaker", "magnitude": n, "research": list,
-		"title": ("%d research unlocked" % n) if n != 1 else "Research unlocked",
-		"body": "",
-	}
+	return list
+
+
+## One-off news goes to the updates dock as a row, once, as it fires: its colour by its
+## severity, its words the event's title and body.
+func _on_event_fired(ev: Dictionary) -> void:
+	var text := news_row_text(ev)
+	if text == "":
+		return
+	MatchState.request_toast(text, news_row_type(str(ev.get("severity", "info"))))
+
+
+## The dock row's words for a one-off event, "" for a kind that makes no row.
+static func news_row_text(ev: Dictionary) -> String:
+	if _NO_DOCK_ROW.has(str(ev.get("kind", ""))) or _EVENT_SECTIONS.has(str(ev.get("kind", ""))):
+		return ""
+	var title := str(ev.get("title", "")).strip_edges()
+	var body := str(ev.get("body", "")).strip_edges()
+	if title == "":
+		return body
+	if body == "":
+		return title
+	if not (title.ends_with(".") or title.ends_with("!") or title.ends_with("?")):
+		title += "."
+	return "%s %s" % [title, body]
+
+
+## The toast type a one-off event's severity posts as: critical red, warning amber, else green.
+static func news_row_type(severity: String) -> String:
+	match severity:
+		"critical": return "warning"
+		"warning": return "caution"
+		_: return "info"
 
 
 # ---------------------------------------------------------------------------
@@ -661,22 +668,97 @@ func dismiss(item_id: String) -> void:
 	var item := _item_by_id(item_id)
 	if item.is_empty() or not bool(item.get("dismissible", false)):
 		return   # decisions land here too — never dismissible
+	# The alert's whole kind is silenced for good: "This will not trigger again."
+	var kind := window_kind_for(item_id)
+	if kind != "":
+		_silenced_windows[kind] = true
 	if item.has("magnitude"):
 		_alert_dismissed[item_id] = item.magnitude   # quiet until it worsens
-		if item_id == "alert:storage_full":
-			# Remember how big each jammed tile's warehouse was, so an upgrade re-arms the alert.
-			_storage_dismiss_levels.clear()
-			for t in (item.get("tiles", []) as Array):
-				_storage_dismiss_levels[str(t)] = Stockpile.get_warehouse_level(str(t))
 	elif item.has("event_id"):
 		EventScheduler.dismiss(str(item.event_id))   # bell syncs (one source of truth)
 	_queue_refresh()
 
-func acknowledge(item_id: String) -> void:
-	var item := _item_by_id(item_id)
-	if not item.is_empty() and item.has("event_id"):
-		_acked[str(item.event_id)] = true
-		_queue_refresh()
+## Whether the turn can end, in one line: the count `commit_turn` refuses on.
+func gate_line() -> String:
+	var n := unresolved_decisions().size()
+	if n == 0:
+		return "No decisions waiting. You can end the turn."
+	return "Answer %s before you end the turn." % _count(n, "decision")
+
+
+## The annunciator's windows, in their fixed order (docs/briefing-ds2-plan.md §4): one per kind of alert, the
+## legend it prints, and the items that light it.
+const WINDOWS := [
+	["starved", "STARVED", "alert:starved"],
+	["cash_short", "CASH SHORT", "alert:input_cash"],
+	["bankruptcy", "BANKRUPTCY", "alert:bankruptcy"],
+	["cables_full", "CABLES FULL", "alert:power_capped"],
+	["stockpile_small", "STOCKPILE SMALL", "alert:storage_undersized"],
+	["deposit_low", "DEPOSIT LOW", "alert:deposit_running_out"],
+	["deposit_out", "DEPOSIT OUT", "ev:deposit_exhausted:"],
+	["mixed_inputs", "MIXED INPUTS", "alert:input_splice"],
+]
+
+
+## The annunciator window an item lights ("" for none: decisions, news).
+static func window_kind_for(item_id: String) -> String:
+	for w: Array in WINDOWS:
+		if item_id == str(w[2]) or (str(w[2]).ends_with(":") and item_id.begins_with(str(w[2]))):
+			return str(w[0])
+	return ""
+
+
+## Whether a kind of alert has been silenced for the rest of the game.
+func is_silenced(kind: String) -> bool:
+	return _silenced_windows.has(kind)
+
+
+## Each window as the items light it: {kind, legend, tone ("bad" red, "warn" amber, "ok" green for
+## information, "" dark), count (the places its rows name, 0 for none shown), items (the item ids)}.
+## The pen's lamp and the panel read the same, so they cannot disagree.
+func alert_windows() -> Array:
+	var out: Array = []
+	for w: Array in WINDOWS:
+		var ids: Array = []
+		var tone := ""
+		var count := 0
+		for it: Dictionary in _items:
+			var id := str(it.get("id", ""))
+			if not (id == str(w[2]) or (str(w[2]).ends_with(":") and id.begins_with(str(w[2])))):
+				continue
+			ids.append(id)
+			count += (it.get("list", []) as Array).size() + int(it.get("list_more", 0))
+			tone = _worse_tone(tone, _severity_tone(str(it.get("severity", "info"))))
+		out.append({"kind": str(w[0]), "legend": str(w[1]), "tone": tone, "count": count, "items": ids})
+	return out
+
+
+## The worst tone lit on the annunciator: "bad", "warn", "ok" or "" with every window dark.
+func worst_window_tone() -> String:
+	var worst := ""
+	for w: Dictionary in alert_windows():
+		worst = _worse_tone(worst, str(w.tone))
+	return worst
+
+
+static func _severity_tone(severity: String) -> String:
+	match severity:
+		"critical": return "bad"
+		"warning": return "warn"
+		_: return "ok"
+
+
+static func _worse_tone(a: String, b: String) -> String:
+	var rank := {"": 0, "ok": 1, "warn": 2, "bad": 3}
+	return a if int(rank.get(a, 0)) >= int(rank.get(b, 0)) else b
+
+
+## What a choice's loan covers when the cash is short, from DecisionState.loan_needed_for.
+static func shortfall_line(shortfall: float) -> String:
+	if float(MatchState.money) < 0.0:
+		return "Cash is below zero. A loan covers the full £%.0f." % shortfall
+	return "Short £%.0f. A loan covers it." % shortfall
+
 
 func _item_by_id(item_id: String) -> Dictionary:
 	for it in _items:
@@ -781,28 +863,50 @@ func _sync_ui() -> void:
 		add_child(_layer)
 		_strip = StripScript.new()
 		_layer.add_child(_strip)
-		_panel = PanelScript.new()
+	if _panel == null or not is_instance_valid(_panel):
+		_panel = panel_script().new()
 		_layer.add_child(_panel)
-	if _items.is_empty():
+	# Today's panel has nothing to show when empty; the DS2 panel still says the turn can end and
+	# shows the annunciator dark, so the pen opens it either way.
+	if _items.is_empty() and not UiPrefs.use_briefing_ds2:
 		expanded = false
 	_strip.visible = strip_enabled and not expanded and not _items.is_empty()
 	if _strip.visible:
 		_strip.refresh()
-	if expanded and not _items.is_empty():
+	if expanded and (not _items.is_empty() or UiPrefs.use_briefing_ds2):
 		_panel.open(_select_on_expand)
 		_select_on_expand = ""
 	else:
 		_panel.visible = false
 
 
+## The panel the briefing shows: the DS2 clipboard with UiPrefs.use_briefing_ds2 on, today's otherwise.
+static func panel_script() -> GDScript:
+	return PanelDs2Script if UiPrefs.use_briefing_ds2 else PanelScript
+
+
+## The switch flipped: the open panel is replaced by the other look, open on the same state.
+func _on_ds2_changed(_on: bool) -> void:
+	if _panel != null and is_instance_valid(_panel):
+		var was_open := expanded
+		expanded = false   # the old panel's hide must not read as the player closing it
+		_panel.visible = false
+		_panel.get_parent().remove_child(_panel)
+		_panel.queue_free()
+		_panel = null
+		expanded = was_open
+	_sync_ui()
+
+
 # ---------------------------------------------------------------------------
-# Save / load — only the dismissal signatures persist (additive key, tolerant).
+# Save / load — the dismissal signatures and the silenced kinds persist (additive keys, tolerant).
 # ---------------------------------------------------------------------------
 
 func export_state() -> Dictionary:
-	return {"alert_dismissed": _alert_dismissed.duplicate(true)}
+	return {"alert_dismissed": _alert_dismissed.duplicate(true), "silenced_windows": _silenced_windows.duplicate(true)}
 
 func import_state(d: Dictionary) -> void:
 	_alert_dismissed = (d.get("alert_dismissed", {}) as Dictionary).duplicate(true)
-	_acked.clear()
+	# Saves from before permanent silencing have none: every alert can still light.
+	_silenced_windows = (d.get("silenced_windows", {}) as Dictionary).duplicate(true)
 	_queue_refresh()

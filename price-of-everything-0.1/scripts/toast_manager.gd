@@ -11,8 +11,11 @@ extends Control
 ## opens the turn briefing on them. The bells, green, amber and red, each count the rows of
 ## their colour that arrived since the player last looked at them; clicking a bell opens the
 ## slide-out on that colour's kept rows only (clicking the dock between them opens every row).
-## A slide-out opened from the dock takes the mouse, scrolls, and stays up while the mouse is
-## over it. Clicking the same place again closes it.
+##
+## Timing (owner ruling): rows are timed only the first time they appear, when the slide-out
+## opens by itself. A slide-out the player opened from the dock takes the mouse, scrolls, and
+## stays up with no timer until the player clicks a surface outside it: clicks on its rows, on
+## the dock, its bells or its pen leave it open.
 ##
 ## Besides the toasts, the top bar posts its research unlocks (green, above every other row)
 ## and its notices (amber). A row can be a link: it stays clickable even while the slide-out
@@ -24,7 +27,7 @@ const MAX_TOASTS := 6
 ## Rows kept for the dock to reopen.
 const HISTORY_MAX := 40
 const TOAST_DURATION := 5.0
-## How long a slide-out opened from the dock waits after the mouse leaves it.
+## How long a slide-out that opened by itself waits after the mouse leaves a link row it held.
 const HOVER_GRACE := 2.0
 const TOAST_WIDTH := 380.0
 const DOCK_LEFT := 12.0
@@ -47,6 +50,10 @@ const BELL_GAP := 18.0
 const BELL_ICON: Texture2D = preload("res://assets/icons/ui_icons/standalone/bell.png")
 const PEN_ICON: Texture2D = preload("res://assets/icons/ui_icons/standalone/fountain_pen.png")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
+const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
+## With the DS2 briefing, the pen carries a small pilot lamp lit in the worst live alert's colour (amber or red),
+## so an alert shows while the briefing is closed.
+const PEN_LAMP_SCALE := 0.42
 ## The pen's count pill: the briefing's colour for decisions.
 const PEN_PILL := Color("#F2A99C")
 ## What each bell's rows are called, in tooltips and the empty slide-out.
@@ -381,6 +388,14 @@ func _build_ui() -> void:
 	_dock.add_child(icons)
 	_pen = _make_icon("Decisions", PEN_ICON, PEN_PILL)
 	_pen.root.gui_input.connect(_on_icon_input.bind("pen"))
+	var lamp: Control = Lamp.new()
+	lamp.name = "AlertLamp"
+	lamp.lamp_scale = PEN_LAMP_SCALE
+	lamp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lamp.visible = false
+	(_pen.root as Control).add_child(lamp)
+	_pen["lamp"] = lamp
+	UiPrefs.briefing_ds2_changed.connect(func(_on: bool) -> void: _refresh_pen())
 	icons.add_child(_pen.root)
 	for tone: String in TONES:
 		var bell := _make_icon("Bell_%s" % tone, BELL_ICON, Color.WHITE)
@@ -457,6 +472,15 @@ func _refresh_pen() -> void:
 	_decisions = n
 	var tip := "No decisions to make" if n == 0 else "%d decision%s to make" % [n, "" if n == 1 else "s"]
 	_paint_icon(_pen, n, Color.WHITE, tip, more)
+	var lamp: Control = _pen.get("lamp")
+	if lamp != null:
+		var tone: String = TurnBriefing.worst_window_tone() if UiPrefs.use_briefing_ds2 else ""
+		lamp.visible = tone == "warn" or tone == "bad"
+		if lamp.visible:
+			lamp.call("set_tone", tone)
+			var side := lamp.get_combined_minimum_size()
+			lamp.size = side
+			lamp.position = Vector2(BELL_PX - side.x * 0.5 - 2.0, -side.y * 0.5 + 2.0)
 
 
 func _paint_icon(cell: Dictionary, n: int, colour: Color, tooltip: String, pulse: bool) -> void:
@@ -563,8 +587,9 @@ func _add_row(message: String, tone: String, style_type: String, key: String, on
 	if _open:
 		_after_rows_changed()
 		_scroll_to_newest.call_deferred()
-		_held = false
-		_timer.start(TOAST_DURATION)
+		if not _all:
+			_held = false
+			_timer.start(TOAST_DURATION)
 	else:
 		_open_slide(false)
 
@@ -591,7 +616,6 @@ func _on_row_input(event: InputEvent, row: Control) -> void:
 		return
 	row.accept_event()
 	var action: Callable = row.get_meta("on_click", Callable())
-	collapse()
 	if action.is_valid():
 		action.call()
 
@@ -704,7 +728,29 @@ func _open_slide(all_rows: bool, tone: String = "") -> void:
 	_update_dock_rim()
 	_scroll_to_newest.call_deferred()
 	_held = false
-	_timer.start(TOAST_DURATION)
+	if all_rows:
+		_timer.stop()
+	else:
+		_timer.start(TOAST_DURATION)
+
+
+## A slide-out the player opened stays up until a click lands outside it and outside the dock.
+## The click is not taken: it goes on to whatever it landed on.
+func _input(event: InputEvent) -> void:
+	var mb := event as InputEventMouseButton
+	if mb == null or not mb.pressed or not _open or not _all:
+		return
+	if mb.button_index != MOUSE_BUTTON_LEFT and mb.button_index != MOUSE_BUTTON_RIGHT:
+		return
+	if clicked_inside(mb.global_position):
+		return
+	collapse()
+
+
+## Whether a click at `at` lands on the slide-out or the dock (its pen and bells included).
+func clicked_inside(at: Vector2) -> bool:
+	return _dock.get_global_rect().has_point(at) or (_clip.get_global_rect().has_point(at) \
+		and _panel.get_global_rect().has_point(at))
 
 
 func _on_dock_input(event: InputEvent) -> void:
@@ -728,27 +774,30 @@ func _on_icon_input(event: InputEvent, key: String) -> void:
 		_toggle_rows(key)
 
 
-## Opens the slide-out on `tone`'s rows ("" for every row), or closes it when it already shows them.
+## Opens the slide-out on `tone`'s rows ("" for every row). Clicking what is already shown leaves it
+## open: only a click outside the dock and its slide-out puts it away.
 func _toggle_rows(tone: String) -> void:
 	if _open and _all and _filter == tone:
-		collapse()
-	else:
-		_open_slide(true, tone)
+		return
+	_open_slide(true, tone)
 
 
-## Opens the turn briefing on the first decision waiting; the pen closes it again.
+## Opens the turn briefing on the first decision waiting. The pen only opens it: the briefing's
+## own Close key is the one way to close it. Any open rows stay open.
 func _open_decisions() -> void:
-	collapse()
 	if TurnBriefing.expanded:
-		TurnBriefing.collapse()
+		var panel: Control = TurnBriefing.get("_panel")
+		if panel != null and is_instance_valid(panel) and panel.has_method("flash"):
+			panel.flash()
 		return
 	var waiting: Array = TurnBriefing.unresolved_decisions()
 	TurnBriefing.expand(str((waiting[0] as Dictionary).get("id", "")) if not waiting.is_empty() else "")
 
 
-## How much of the slide-out's time is left, 0 to 1: full while the mouse holds it up.
+## How much of the slide-out's time is left, 0 to 1: full while the mouse holds it up, none for a
+## slide-out the player opened (it has no timer).
 func countdown() -> float:
-	if not _open:
+	if not _open or _all:
 		return 0.0
 	if _held or _timer.is_stopped() or _timer.wait_time <= 0.0:
 		return 1.0
@@ -765,7 +814,7 @@ func _process(_delta: float) -> void:
 
 
 func _on_timer() -> void:
-	if not _open:
+	if not _open or _all:
 		return
 	if _hovered():
 		_held = true
@@ -778,12 +827,10 @@ func _on_timer() -> void:
 	collapse()
 
 
-## The mouse holds the slide-out up: anywhere on it once it was opened from the dock, only on a
-## link row while it lets clicks through (so reaching for a link doesn't lose it).
+## The mouse holds a slide-out that opened by itself up while it is on a link row, so reaching for
+## a link doesn't lose it.
 func _hovered() -> bool:
 	var mouse := get_global_mouse_position()
-	if _all:
-		return _panel.get_global_rect().has_point(mouse)
 	for row: Node in _rows.get_children():
 		var c := row as Control
 		if c.visible and c.has_meta("on_click") and c.get_global_rect().has_point(mouse):
@@ -847,11 +894,11 @@ func _on_materials_ordered(instance_id: String, tile_id: String) -> void:
 		max_turns = maxi(max_turns, int(s.get("turns_remaining", 0)))
 	if parts.is_empty():
 		return
-	var msg: String = "Ordered %s — arriving in %d turn%s" % [", ".join(parts), max_turns, "" if max_turns == 1 else "s"]
+	var msg: String = "Ordered %s. Arriving in %d turn%s." % [", ".join(parts), max_turns, "" if max_turns == 1 else "s"]
 	_push_toast(msg, TOAST_SUCCESS)
 
 func _on_construction_cancelled(_instance_id: String, tile_id: String) -> void:
-	_push_toast("Construction cancelled on tile %s — build cost refunded" % Catalog.tile_label(tile_id), TOAST_CAUTION)
+	_push_toast("Construction cancelled at %s. Build cost refunded." % TurnBriefing.place_name(tile_id), TOAST_CAUTION)
 
 func _on_construction_started(instance_id: String, tile_id: String) -> void:
 	var project: Dictionary = Construction.construction_projects.get(instance_id, {})
@@ -860,14 +907,14 @@ func _on_construction_started(instance_id: String, tile_id: String) -> void:
 	var who: String = BuildingNaming.label_for_tile(tile_id, instance_id, str(project.get("building_id", "")),
 		str(project.get("recipe_id", "")))
 	var duration: int = int(project.get("construction_duration", 0))
-	var msg: String = "Construction started for %s on tile %s. Will be complete in %d turn%s" % [
-		who, Catalog.tile_label(tile_id), duration, "" if duration == 1 else "s"
+	var msg: String = "Construction started for %s at %s. Complete in %d turn%s." % [
+		who, TurnBriefing.place_name(tile_id), duration, "" if duration == 1 else "s"
 	]
 	_push_toast(msg, TOAST_SUCCESS)
 
 func _on_money_changed(new_amount: float) -> void:
 	if _prev_money >= 0.0 and new_amount < 0.0:
-		_push_toast("!  Cash is in the red: £%.2f" % new_amount, TOAST_WARNING)
+		_push_toast("Cash is £%.2f below zero." % absf(new_amount), TOAST_WARNING)
 	_prev_money = new_amount
 
 func _format_building_message(instance: Dictionary) -> String:
@@ -893,14 +940,11 @@ func _format_building_message(instance: Dictionary) -> String:
 			var disp: String = good.get("display_name", iname)
 			parts.append("%d %s" % [qty, disp])
 		if not parts.is_empty():
-			line += " — produces %s/turn" % ", ".join(parts)
+			line += ". Makes %s/turn" % ", ".join(parts)
 
-	var meta: Array = []
 	if cost > 0:
-		meta.append("£%.0f" % cost)
-	if not meta.is_empty():
-		line += "  ·  " + "  ·  ".join(meta)
-	return line
+		line += ". Cost £%.0f" % cost
+	return line + "."
 
 func _on_stockpile_market_sale_completed(sale_record: Dictionary) -> void:
 	_pending_sales.append(sale_record.duplicate(true))

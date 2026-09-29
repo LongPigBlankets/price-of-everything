@@ -2185,7 +2185,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy.
+  // tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -3238,7 +3238,11 @@ async function exportLayers() {
   // fixed head ends, the requirement lamps, the cost, the materials yard with the source knob, the outlook,
   // and the lot last. Under the catalogue, the building icon three ways for comparison. On every LED the
   // point takes a cell of its own, and a figure drops a decimal from £100.
-  if (want('constructlot')) await withSeed(434, async () => {
+  // The construct panel's game layers (docs/construct-ds2-plan.md), exported with the study's own parts so they match
+  // it: constructhead (464), constructboard (465), constructyard (466), constructcat (467), constructkey (468),
+  // constructbox (469).
+  const CONSTRUCT_PARTS = ['constructhead', 'constructboard', 'constructyard', 'constructcat', 'constructkey', 'constructbox'];
+  if (want('constructlot') || CONSTRUCT_PARTS.some(want)) await withSeed(434, async () => {
     for (const f of ['500 30px "IBM Plex Sans"', '600 30px "IBM Plex Sans"', '700 30px "IBM Plex Sans"', '600 30px "Barlow Condensed"', '700 30px "Barlow Condensed"', `60px ${TITLE_FAMILY}`]) await document.fonts.load(f);
     const PW = 1125, FOLD = 1710, MX = 60, GAP = 300, MR = 260, CAPT = 110, FOOT = 120, SH1 = FOLD + 60;
     const CL = 80, CW = PW - 40 - CL, OX = [MX, MX + PW + GAP], OY = CAPT, W = OX[1] + PW + MR;
@@ -3451,9 +3455,10 @@ async function exportLayers() {
 
     // --- the crane: a heavy lattice tower standing just off the hoarding's left edge, so only its inner chord
     // and the ends of its struts and bracing show, cut by the panel's edge; the slewing unit on its top, the
-    // cab beside it carrying the title under its window, the lattice jib along the top with the site's name
-    // hung from it, and the trolley; `drop` lowers the striped hook block from it.
-    const CAB = { x: 70, y: 36, w: 268, h: 192 }, JIB = { x0: CAB.x + CAB.w, x1: PW - 120, t: 48, b: 128 };
+    // cab beside it carrying the settings key and the title under its window, the lattice jib along the top
+    // with the site's name hung from it, and the trolley; `drop` lowers the striped hook block from it.
+    // The cab is four panes wide: the settings key (CAB_KEY square) stands left of CONSTRUCT under them.
+    const CAB_KEY = 66, CAB = { x: 70, y: 36, w: 342, h: 192 }, JIB = { x0: CAB.x + CAB.w, x1: PW - 120, t: 48, b: 128 };
     const PLACARD = { x: JIB.x1 - NAMEPLATE.w, y: 152 };
     const crane = (ox, feat, sh, { trolley, drop = null, site = null }) => {
       const X = (x) => ox + x, Z = (z) => OY + z, cab = CAB, cy = T + 3, ctop = cy + 13;
@@ -3477,7 +3482,7 @@ async function exportLayers() {
       // The cab.
       add(shade(new THREE.Mesh(extrude(rrShape(cab.w, cab.h, 10), 8, 2.5, 2, 3), [painted(cab.w, cab.h, YELLOW, 0.9), yellowSide])), X(cab.x + cab.w / 2), Z(cab.y + cab.h / 2), cy);
       feat.buttons.push({ x: cab.x, y: cab.y, w: cab.w, h: cab.h, r: 10 });
-      // The window: dark glass in a rubber gasket, two mullions.
+      // The window: dark glass in a rubber gasket, three mullions (four panes).
       const win = { x: cab.x + 16, y: cab.y + 16, w: cab.w - 32, h: 62 };
       const glassC = canvas2d(win.w, win.h, (c) => {
         c.fillStyle = '#121a20'; c.fillRect(0, 0, win.w, win.h);
@@ -3488,8 +3493,8 @@ async function exportLayers() {
       add(new THREE.Mesh(extrude(rrShape(win.w, win.h, 4), 0.4), new THREE.MeshPhysicalMaterial({ map: faceTexture(glassC, win.w, win.h), roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.08, envMap: studioEnv, envMapIntensity: 0.5 })), X(win.x + win.w / 2), Z(win.y + win.h / 2), ctop + 0.05);
       const gasket = rrShape(win.w + 10, win.h + 10, 7); gasket.holes.push(rr(new THREE.Path(), win.w, win.h, 4));
       add(shade(new THREE.Mesh(extrude(gasket, 1.2, 1, 0.8, 2), rubber)), X(win.x + win.w / 2), Z(win.y + win.h / 2), ctop);
-      for (const k of [1, 2]) bar(X(win.x + k * win.w / 3), Z(win.y - 2), X(win.x + k * win.w / 3), Z(win.y + win.h + 2), 7, 4, ctop + 0.4);
-      namePlate(ox, cab.x + 12, PLACARD.y, 'CONSTRUCT', ctop);
+      for (const k of [1, 2, 3]) bar(X(win.x + k * win.w / 4), Z(win.y - 2), X(win.x + k * win.w / 4), Z(win.y + win.h + 2), 7, 4, ctop + 0.4);
+      namePlate(ox, cab.x + 12 + CAB_KEY + 8, PLACARD.y, 'CONSTRUCT', ctop);
       // The jib: top and bottom chords, Warren lacing, a root post and a sloped tip, bolted at its nodes.
       const { x0: jx0, x1: jx1, t: jt, b: jb } = JIB, tip = 70, yj = T + 7;
       bar(X(jx0 - 8), Z(jt), X(jx1 - tip), Z(jt), 11, 9, yj);
@@ -3511,9 +3516,20 @@ async function exportLayers() {
         feat.buttons.push({ x: px, y: py, w: NAMEPLATE.w, h: NAMEPLATE.h, r: 6 });
       }
       // The trolley on the bottom chord; with a drop, the hoist ropes and the hook block, striped yellow and black.
+      if (trolley == null) return null;
+      trolleyPart(ox, trolley);
+      if (drop == null) return null;
+      return hookPart(ox, trolley, drop);
+    };
+    /** The trolley on the jib's bottom chord at x. */
+    const trolleyPart = (ox, trolley) => {
+      const X = (x) => ox + x, Z = (z) => OY + z, { b: jb } = JIB, yj = T + 7;
       add(shade(new THREE.Mesh(extrude(rrShape(66, 30, 5), 7, 1.5, 1.2, 2), [painted(66, 30, YELLOW, 0.7), yellowSide])), X(trolley), Z(jb + 1), yj + 9);
       for (const dx of [-24, 24]) add(screw(3), X(trolley + dx), Z(jb + 1), yj + 19);
-      if (drop == null) return null;
+    };
+    /** The hoist ropes from the trolley at x down to the hook block, its top at `drop`, and the hook. */
+    const hookPart = (ox, trolley, drop) => {
+      const X = (x) => ox + x, Z = (z) => OY + z, { b: jb } = JIB;
       const ropeMat = new THREE.MeshStandardMaterial({ color: 0x70757b, metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 0.9 });
       const r0 = jb + 14, r1 = drop + 4;
       for (const dx of [-7, 7]) add(shade(new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, r1 - r0, 10).rotateX(Math.PI / 2), ropeMat)), X(trolley + dx), Z((r0 + r1) / 2), T + 12);
@@ -3561,7 +3577,7 @@ async function exportLayers() {
         for (let i = 0; i < w * h / 60; i++) { c.fillStyle = `rgba(58,46,30,${0.08 + rand() * 0.16})`; c.fillRect(rand() * w, rand() * h, 0.4 + rand(), 0.4 + rand()); }
         c.strokeStyle = ENAMEL_FIELD; c.lineWidth = 2.4; c.beginPath(); c.roundRect(6, 6, w - 12, h - 12, 7); c.stroke();
         c.fillStyle = ENAMEL_FIELD; c.beginPath(); c.roundRect(fx, fy, fs, fs, 6); c.fill();
-        if (style === 'flat') blueprintGrid(c, fx, fy, fs);
+        if (style === 'flat' || style === 'grid') blueprintGrid(c, fx, fy, fs);   // 'grid': the field alone, the game prints the icon
         if (style === 'relief') drawIconShadows(c, w, h, [{ height: 11, draw: (g, col) => stamp(g, mask, ex, ey, emblem, emblem, col) }]);
         else printIcon(c, mask, style, ex, ey, emblem);
         print?.(c);
@@ -3758,6 +3774,7 @@ async function exportLayers() {
       return c;
     })();
 
+    if (want('constructlot')) {
     // Shared by both stages: the rail, the crane with the site's name, the Close key.
     const feats = [0, 1].map(() => ({ icons: [], buttons: [], screws: [] }));
     for (const [i, ox] of OX.entries()) { cur = i; rail(ox); smallKey('x', ox + PW - 60, OY + 76); }
@@ -4141,6 +4158,326 @@ async function exportLayers() {
         text(g, '600 px wide', ox + PW / 2, y + 1, 250, 28, LIGHT, { align: 'center', weight: 500, family: PLEX });
       }
     }));
+    }
+
+    // ===== The game layers (docs/construct-ds2-plan.md §5), each in a render of its own at the panel's own
+    // layout, placed by the game at `origin` (layout px from the panel's top-left). Nothing is printed: the game
+    // prints the site's name, the building's name and every figure. A part gets a group of its own and a
+    // shadow catcher at the hoarding's face, so its shadow falls where the game draws it.
+    const HEAD_H = 244, MAST = { x0: 0, w: 120, period: 104, from: HEAD_H + 104 };
+    const partGroup = () => { groups.push(new THREE.Group()); cur = groups.length - 1; return groups[cur]; };
+    const noFeat = () => ({ icons: [], buttons: [], screws: [] });
+    /** Renders the current group over [x0, y0, x1, y1] (panel layout px) with a catcher at height y. */
+    const grabPart = (name, [x0, y0, x1, y1], y = T + 0.3, opacity = 0.5) => {
+      const g = groups[cur];
+      g.add(shadowCatcher(x1 - x0, y1 - y0, (x0 + x1) / 2, OY + (y0 + y1) / 2, y, opacity));
+      const st = stage([x0, OY + y0, x1, OY + y1], [g]);
+      st.scene.traverse((o) => { if (o.isDirectionalLight) o.shadow.mapSize.set(4096, 4096); });
+      return post(name, st.grab()).then(() => { layout[name] = { size: [x1 - x0, y1 - y0], origin: [x0, y0] }; });
+    };
+    const BO = { x: CL, y: 334, w: CW, h: 336 }, BO_TROLLEY = BO.x + BO.w / 2 + 3, BO_DROP = 196, BO_SPY = 296;
+
+    if (want('constructhead')) await withSeed(464, async () => {
+      // The head: the hoarding's top rail and the crane (tower, slewing unit, cab with CONSTRUCT, jib), no trolley.
+      partGroup(); rail(0); crane(0, noFeat(), HEAD_H + 4 * MAST.period + 18, { trolley: null });
+      await grabPart('construct_head', [0, 0, PW, HEAD_H]);
+      // One bay of the tower, to repeat down the hoarding's left edge from HEAD_H.
+      partGroup(); crane(0, noFeat(), HEAD_H + 6 * MAST.period + 18, { trolley: null });
+      await grabPart('construct_mast', [MAST.x0, MAST.from, MAST.x0 + MAST.w, MAST.from + MAST.period]);
+      layout.construct_mast.at = HEAD_H;
+      // The site's name plate, blank, on its two chains from the jib.
+      partGroup();
+      { const px = PLACARD.x, py = PLACARD.y, pb = T + 3;
+        for (const hx of [px + 38, px + NAMEPLATE.w - 38]) { chain(hx, OY + JIB.b + 3, OY + py + 11, T + 8); eyelet(hx, OY + py + 11, pb + 4.4); }
+        namePlate(0, px, py, '', pb); }
+      await grabPart('construct_placard', [PLACARD.x - 12, JIB.b, PLACARD.x + NAMEPLATE.w + 16, PLACARD.y + NAMEPLATE.h + 14]);
+      layout.construct_placard.face = [PLACARD.x + 14, PLACARD.y + 5, NAMEPLATE.w - 28, NAMEPLATE.h - 10];
+      // The trolley alone, placed on the jib by the game.
+      partGroup(); trolleyPart(0, 60);
+      await grabPart('construct_trolley', [18, JIB.b - 22, 102, JIB.b + 26]);
+      layout.construct_trolley.centre_x = 60;
+      // The rig for the build order: the ropes and hook from the trolley, the eye plate, the spreader beam and a
+      // chain from each end down to the site board's rings.
+      partGroup();
+      hookPart(0, BO_TROLLEY, BO_DROP);
+      { const [bx, bz] = [BO_TROLLEY - 3, BO_DROP + 67];
+        const eye = new THREE.Shape(), hy = BO_SPY - 7 - bz; eye.moveTo(-24, 0); eye.lineTo(24, 0); eye.lineTo(13, hy + 6); eye.quadraticCurveTo(0, hy + 22, -13, hy + 6); eye.closePath();
+        eye.holes.push(new THREE.Path().absarc(0, hy, 6, 0, Math.PI * 2, true));
+        add(shade(new THREE.Mesh(extrude(eye, 2, 1, 0.8, 2), [painted(48, 44, YELLOW, 0.5), yellowSide])), bx, OY + BO_SPY - 7, T + 4);
+        bar(BO.x + 30, OY + BO_SPY, BO.x + BO.w - 30, OY + BO_SPY, 14, 10, T + 5);
+        for (const ex of [BO.x + 40, BO.x + BO.w - 40]) { chain(ex, OY + BO_SPY + 4, OY + BO.y + 14, T + 16); add(screw(4), ex, OY + BO_SPY, T + 15); } }
+      await grabPart('construct_rig', [BO.x, JIB.b + 8, BO.x + BO.w, BO.y + 24]);
+      layout.construct_rig.trolley_x = BO_TROLLEY;
+      // The hoarding: three bolted sheets of navy steel, long enough for the tallest panel, cropped by the game.
+      partGroup();
+      { const n = 3, sw = PW / n, SH = 2250, screwsAt = [];
+        for (const x of [sw - 15, sw + 15, 2 * sw - 15, 2 * sw + 15, PW - 16]) for (let y = 58; y < SH - 20; y += 128) { screwsAt.push({ x, y }); add(screw(7), x, OY + y, T + 0.5); }
+        for (let k = 0; k < n; k++) {
+          const sx = k * sw, face = { base: NAVY_STEEL_CANVAS, rub: '120,136,160', icons: [], buttons: [],
+            screws: screwsAt.filter((q) => q.x > sx && q.x < sx + sw).map((q) => ({ x: q.x - sx - 4, y: q.y - 4 })) };
+          const side = new THREE.MeshStandardMaterial({ color: 0x3a4250, metalness: 1, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
+          const sheet = new THREE.Mesh(extrude(rrShape(sw - 8, SH - 8, 10), 4, 4.5, 3.6, 6), [plateMaterial(sw - 8, SH - 8, face), side]);
+          sheet.receiveShadow = true; add(sheet, sx + sw / 2, OY + SH / 2, 0);
+        }
+        await grabPart('construct_hoarding', [0, 0, PW, SH], 0.05, 0.42); }
+      layout.construct_panel = { width: PW, content_x: CL, content_w: CW, head_h: HEAD_H, cab: CAB, jib: JIB, placard: PLACARD, nameplate: NAMEPLATE, close: [PW - 60, 76], back: [PW - 60, 160] };
+    });
+
+    if (want('constructboard')) await withSeed(465, async () => {
+      // The site board for the build order: worn steel, a recess for the recipe's enamel sign (drawn by the game
+      // under it), the rings its chains hang from, and the blueprint tile blank (the game prints the icon).
+      partGroup();
+      const B = { x: 0, y: 0, w: BO.w, h: BO.h }, bBase = T + 9, bTop = bBase + 4 + 3.2, TILE = { x: 24, y: 94, s: 216 };
+      const EN = { x: TILE.x + TILE.s + 20, y: TILE.y, w: B.w - TILE.x - TILE.s - 20 - 24, h: TILE.s };
+      const bShape = rrShape(B.w, B.h, 12);
+      bShape.holes.push(rr(new THREE.Path(), EN.w, EN.h, ENAMEL.radius, EN.x + EN.w / 2 - B.w / 2, B.h / 2 - (EN.y + EN.h / 2)));
+      add(shade(new THREE.Mesh(extrude(bShape, 4, 1.6, 1.2, 3), [plateMaterial(B.w, B.h, { icons: [], buttons: [{ x: TILE.x, y: TILE.y, w: TILE.s, h: TILE.s, r: 8 }], screws: [] }), MAT.plateSide])), B.w / 2, OY + B.h / 2, bBase);
+      for (const ex of [40, B.w - 40]) ring(ex, OY + 14, bTop, 5.5, 1.8);
+      const ts = TILE.s, tileFace = canvas2d(ts, ts, (c) => { c.fillStyle = ENAMEL_FIELD; c.fillRect(0, 0, ts, ts); blueprintGrid(c, 0, 0, ts, 8); });
+      add(shade(new THREE.Mesh(extrude(rrShape(ts, ts, 8), 1.5, 1, 0.8, 2), [enamelMat(tileFace, ts, ts), MAT.plateSide])), TILE.x + ts / 2, OY + TILE.y + ts / 2, bTop);
+      for (const [rx, rz] of [[11, 11], [ts - 11, 11], [11, ts - 11], [ts - 11, ts - 11]]) {
+        const rv = new THREE.Mesh(new THREE.SphereGeometry(3.4, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), darkSteel); rv.scale.y = 0.55; add(shade(rv), TILE.x + rx, OY + TILE.y + rz, bTop + 3.5);
+      }
+      await grabPart('construct_board', [-8, -8, B.w + 14, B.h + 16], T + 0.3);
+      Object.assign(layout.construct_board, { board: [0, 0, B.w, B.h], tile: [TILE.x, TILE.y, ts, ts], icon_inset: 28, enamel: [EN.x, EN.y, EN.w, EN.h], title: [24, 8], ink: BLUEPRINT_INK });
+      // The guarded Build key: the amber cap with a hammer under its hinged clear cover, framed as People's guard.
+      { const FW = 240, FH = 150, S = 100, BY = (FH - S) / 2, HEAD = 64, x = 70, group = new THREE.Group();
+        const gb = guardButton(S, HAMMER, 0xffa412); gb.position.set(x + S / 2, PLATE_TOP, BY + S / 2); group.add(gb);
+        const catcher = new THREE.Mesh(new THREE.PlaneGeometry(FW, FH).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: 0.5 }));
+        catcher.position.set(FW / 2, PLATE_TOP + 0.4, FH / 2); catcher.receiveShadow = true; group.add(catcher);
+        const sf = stage([0, -HEAD, FW, FH], [group]);
+        catcher.visible = false; gb.userData.cover.visible = false;
+        await post('guard_build', sf.grab());
+        const cap = gb.userData.cap, y = cap.position.y; cap.position.y = y - 3.5; await post('guard_build_pressed', sf.grab()); cap.position.y = y;
+        catcher.visible = true;
+        gb.traverse((o) => { if (o.isMesh && !gb.userData.cover.getObjectById(o.id)) o.visible = false; });
+        gb.userData.cover.visible = true; gb.userData.cover.traverse((o) => { o.visible = true; });
+        await post('guard_build_cover', sf.grab());
+        gb.userData.cover.rotation.x = -COVER_OPEN; await post('guard_build_cover_open', sf.grab()); gb.userData.cover.rotation.x = 0;
+        layout.guard_build = { size: [FW, FH + HEAD], head: HEAD, button: [x, BY + HEAD, S, S], colour: 'amber', icon: 'hammer' }; }
+    });
+
+    if (want('constructyard')) await withSeed(466, async () => {
+      // The materials yard: one gravel laydown for two columns of three bays (the game places the pallets).
+      const LD = { w: CW, pad: 18, gap: 12, rows: [206, 206, 272] };
+      LD.h = 2 * LD.pad + LD.rows.reduce((a, b) => a + b, 0) + 2 * LD.gap;
+      partGroup(); ground(0, noFeat(), 0, 0, LD.w, LD.h);
+      await grabPart('construct_yard', [-6, -6, LD.w + 12, LD.h + 14]);
+      Object.assign(layout.construct_yard, { yard: [0, 0, LD.w, LD.h], pad: LD.pad, gap: LD.gap, rows: LD.rows, pallet: 176 });
+      // A timber pallet on the gravel, its deck's top where a good's well sits.
+      partGroup(); { const S = 176; pallet(S / 2 + 10, OY + S / 2 + 10, T + 5, S); }
+      await grabPart('construct_pallet', [0, 0, 176 + 30, 176 + 30], T + 5.3);
+      // The feeder pillar's face: painted green steel with vents at its right end; the game sets the lamps.
+      partGroup();
+      { const PL = { w: CW, h: 132 };
+        add(shade(new THREE.Mesh(extrude(rrShape(PL.w, PL.h, 14), 10, 2, 1.6, 3), [painted(PL.w, PL.h, '#2f3a35', 0.7), new THREE.MeshStandardMaterial({ color: 0x252d29, metalness: 0.3, roughness: 0.6, envMap: studioEnv, envMapIntensity: 0.5 })])), PL.w / 2, OY + PL.h / 2);
+        for (let i = 0; i < 4; i++) add(shade(new THREE.Mesh(extrude(rrShape(6, 50, 3), 0.4), MAT.gap)), PL.w - 74 + i * 13, OY + PL.h / 2, T + 14 - 0.2);
+        await grabPart('construct_pillar', [-6, -6, PL.w + 12, PL.h + 14]); }
+      // The land lot: a gravel patch, one concrete slab, a stake, and hazard tape laid along and across.
+      partGroup(); ground(0, noFeat(), 0, 0, 470, 206);
+      await grabPart('construct_lot', [-6, -6, 482, 220]);
+      partGroup(); add(shade(new THREE.Mesh(extrude(rrShape(30, 30, 3), 2, 1, 0.8, 2), [concreteMaterial(30, 30, '#b3aea4'), concreteSideC])), 25, OY + 25, T + 5);
+      await grabPart('construct_slab', [0, 0, 50, 50], T + 5.3);
+      layout.construct_slab.slab = [10, 10, 30, 30];
+      partGroup();
+      add(shade(new THREE.Mesh(new THREE.CylinderGeometry(4.5, 5, 12, 20), galv)), 20, OY + 20, T + 11);
+      add(shade(new THREE.Mesh(new THREE.SphereGeometry(5.8, 20, 10), painted(20, 20, YELLOW, 0.3))), 20, OY + 20, T + 17);
+      await grabPart('construct_stake', [0, 0, 40, 40], T + 5.3);
+      partGroup(); tape(0, OY + 20, 320, OY + 20, T + 14);
+      await grabPart('construct_tape', [0, 10, 320, 34], T + 5.3);
+      layout.construct_tape.period = 16;
+    });
+
+
+    if (want('constructcat')) await withSeed(467, async () => {
+      // The Construct settings on the crane's cab, left of CONSTRUCT and as tall as its plate: a white plastic
+      // key with a chamfered bevel in a moulded bezel, a navy gear printed on it, standing on the yellow cab.
+      const GP = { x: CAB.x + 12, y: PLACARD.y, w: CAB_KEY, h: NAMEPLATE.h }, GK = 62, gTop = T + 16;
+      const gear = (c, a, b) => {
+        const cx = a / 2, cy = b / 2, n = 8, ro = Math.min(a, b) * 0.44, ri = ro * 0.74, rh = ro * 0.34;
+        c.fillStyle = NAVY; c.beginPath();
+        for (let i = 0; i < n * 4; i++) {
+          const ang = (i / (n * 4)) * Math.PI * 2 - Math.PI / (n * 4), r = (i % 4 < 2) ? ro : ri;
+          const x = cx + Math.cos(ang) * r, y = cy + Math.sin(ang) * r; i ? c.lineTo(x, y) : c.moveTo(x, y);
+        }
+        c.closePath(); c.moveTo(cx + rh, cy); c.arc(cx, cy, rh, 0, Math.PI * 2, true); c.fill('evenodd');
+      };
+      const whiteKey = (w, h, r, paint) => {
+        const g = new THREE.Group(), frameGapRim = 1.6 + 5;
+        const cw = w - 2 * (SKIRT_S + frameGapRim), ch = h - 2 * (SKIRT_S + frameGapRim), cr = Math.max(3, r - SKIRT_S);
+        const face = canvas2d(cw, ch, (c) => {
+          c.fillStyle = '#f1efe8'; c.fillRect(0, 0, cw, ch);
+          for (let i = 0; i < cw * ch / 30; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '120,112,98'},${0.03 + rand() * 0.05})`; c.fillRect(rand() * cw, rand() * ch, 1, 1); }
+          paint(c, cw, ch);
+        });
+        const skirt = new THREE.MeshPhysicalMaterial({ color: 0xdedbd2, ...KNOB_PLASTIC });
+        const cap = new THREE.Mesh(extrude(rrShape(cw, ch, cr), 4, SKIRT_T, SKIRT_S, 1), [new THREE.MeshPhysicalMaterial({ map: faceTexture(face, cw, ch), ...KNOB_PLASTIC }), skirt]);
+        cap.castShadow = cap.receiveShadow = true; cap.position.y = 1.5;
+        g.add(mouldedFrame(cw + SKIRT_S * 2, ch + SKIRT_S * 2, cr + SKIRT_S), cap); g.userData.cap = cap;
+        return g;
+      };
+      partGroup();
+      const key = whiteKey(GK, GK, 9, gear); add(key, GP.x + GP.w / 2, OY + GP.y + GP.h / 2, gTop);
+      const gb = [GP.x - 10, GP.y - 10, GP.x + GP.w + 16, GP.y + GP.h + 18];
+      await grabPart('construct_settings', gb, gTop - 0.2);
+      const cap = key.userData.cap, cy0 = cap.position.y; cap.position.y = cy0 - 3.5;
+      groups[cur].children.filter((c) => c.isMesh && c.material?.isShadowMaterial).forEach((c) => groups[cur].remove(c));
+      await grabPart('construct_settings_pressed', gb, gTop - 0.2); cap.position.y = cy0;
+      Object.assign(layout.construct_settings, { key: [GP.x + (GP.w - GK) / 2, GP.y + (GP.h - GK) / 2, GK, GK] });
+
+      // The catalogue's control plate: black plastic moulded in one piece, its tab rising under the jib between the
+      // cab and the site's name to hold the search (a raised magnifier and a strip of dark glass, blank: the game
+      // types in it), the category keys (the tile view's latching keys, placed by the game) in two rows below.
+      const CPr = { x: CL, y: PLACARD.y, w: CW, n0: CAB.x + CAB.w + 16 - CL, n1: PLACARD.x - 16 - CL, pad: 18, kh: 84, gap: 10 };
+      CPr.nh = CAB.y + CAB.h + 16 - CPr.y; CPr.h = CPr.nh + 2 * CPr.pad + 2 * CPr.kh + CPr.gap;
+      const notched = (() => {
+        const { w: bw, h: bh, n0, n1, nh } = CPr, r = 12, f = 18, s = new THREE.Shape(), P = (x, y) => [x - bw / 2, bh / 2 - y];
+        const M = (x, y) => s.moveTo(...P(x, y)), L = (x, y) => s.lineTo(...P(x, y)), Q = (cx, cy, x, y) => s.quadraticCurveTo(...P(cx, cy), ...P(x, y));
+        M(r, nh); L(n0 - f, nh); Q(n0, nh, n0, nh - f); L(n0, r); Q(n0, 0, n0 + r, 0); L(n1 - r, 0); Q(n1, 0, n1, r); L(n1, nh - f); Q(n1, nh, n1 + f, nh);
+        L(bw - r, nh); Q(bw, nh, bw, nh + r); L(bw, bh - r); Q(bw, bh, bw - r, bh); L(r, bh); Q(0, bh, 0, bh - r); L(0, nh + r); Q(0, nh, r, nh);
+        return s;
+      })();
+      const MAG = { x: CPr.n0 + 22, y: CPr.nh / 2 - 27, s: 54 };
+      const drawMag = (g, col) => {
+        g.save(); g.strokeStyle = col; g.lineCap = 'round'; g.lineWidth = 7; g.beginPath(); g.arc(MAG.x + 22, MAG.y + 22, 15, 0, Math.PI * 2); g.stroke();
+        g.lineWidth = 10; g.beginPath(); g.moveTo(MAG.x + 34, MAG.y + 34); g.lineTo(MAG.x + 47, MAG.y + 47); g.stroke(); g.restore();
+      };
+      partGroup();
+      add(shade(new THREE.Mesh(extrude(notched, 4, 2.4, 2, 4), [blackPlastic(CPr.w, CPr.h, (c) => drawIconShadows(c, CPr.w, CPr.h, [{ height: 8, draw: drawMag }])), BLACK_PLASTIC_SIDE()])), CPr.w / 2, OY + CPr.h / 2);
+      const bedTop = T + 8.8;
+      add(relief(MAG.s, MAG.s, (g) => { g.save(); g.translate(-MAG.x, -MAG.y); drawMag(g, '#fff'); g.restore(); }, creamEnamel, { height: 8, soften: 1.2 }), MAG.x + MAG.s / 2, OY + MAG.y + MAG.s / 2, bedTop + 0.3);
+      const gx0 = MAG.x + MAG.s + 16, gx1 = CPr.n1 - 20, gh = 50, gw = gx1 - gx0 - 14;
+      const sface = canvas2d(gw, gh, (c) => {
+        c.fillStyle = '#060808'; c.fillRect(0, 0, gw, gh);
+        const top = c.createLinearGradient(0, 0, 0, 7); top.addColorStop(0, 'rgba(0,0,0,0.6)'); top.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = top; c.fillRect(0, 0, gw, 7);
+        const glare = c.createLinearGradient(0, 0, gw * 0.4, gh); glare.addColorStop(0.3, 'rgba(255,255,255,0)'); glare.addColorStop(0.45, 'rgba(255,255,255,0.06)'); glare.addColorStop(0.6, 'rgba(255,255,255,0)'); c.fillStyle = glare; c.fillRect(0, 0, gw, gh);
+      });
+      add(glassScreen(gw, gh, sface).group, (gx0 + gx1) / 2, OY + CPr.nh / 2, bedTop);
+      for (const [sx, sy] of [[CPr.n0 + 11, 11], [CPr.n1 - 11, 11], [10, CPr.nh + 10], [CPr.w - 10, CPr.nh + 10], [10, CPr.h - 10], [CPr.w - 10, CPr.h - 10]]) add(screw(4.6), sx, OY + sy, bedTop);
+      await grabPart('construct_catplate', [-8, -8, CPr.w + 12, CPr.h + 14]);
+      Object.assign(layout.construct_catplate, { at: [CPr.x, CPr.y], plate: [0, 0, CPr.w, CPr.h], tab: [CPr.n0, CPr.n1, CPr.nh], search: [gx0 + 7, CPr.nh / 2 - gh / 2, gw, gh],
+        keys: [CPr.pad, CPr.nh + CPr.pad, CPr.w - 2 * CPr.pad, CPr.kh, CPr.gap] });
+
+      // A site board for the catalogue: cream enamel on its steel sheet, the navy field with the blueprint grid (the
+      // game prints the building's icon, name and price), bolted at its corners; drawn as a horizontal three-slice.
+      const BW = (CW - 16) / 2, BH = 180, FIELD = [26, 20, 140];
+      partGroup(); await siteBoard(0, { x: 0, y: 0, w: BW, h: BH, file: 'b_002_furnace.png', field: FIELD, emblem: 116, style: 'grid' });
+      await grabPart('construct_card', [-6, -6, BW + 10, BH + 12]);
+      Object.assign(layout.construct_card, { board: [0, 0, BW, BH], field: FIELD, emblem: 116, text_x: 186, cap_left: 206, cap_right: 46 });
+
+      // A recipe tag hung under an opened board: the recipe sign's enamel (cream, navy band and pinstripe, chipped)
+      // with a tab rising from its top edge between the chains, 15 px in from each, to carry the recipe's name
+      // (owner: the name sits outside the diagram, the whole body is the diagram's); eyelets on its shoulders
+      // and a chain from each up to a ring on the board above. The game prints the name and draws the recipe.
+      const TAG = { h: 266, tab: 46, drop: 40, fx: 64, notch: 28, r: ENAMEL.radius, f: 14 };
+      TAG.x0 = TAG.fx + TAG.notch; TAG.x1 = CW - TAG.fx - TAG.notch;
+      /** The notched outline inset by d: the body below the tab's height, the tab above it between x0 and x1. */
+      const notchPath = (g, d, W = CW, H = TAG.h) => {
+        const { tab, x0, x1, f } = TAG, r = Math.max(2, TAG.r - d), top = tab + d;
+        g.beginPath();
+        g.moveTo(d + r, top);
+        g.lineTo(x0 - f + d, top); g.quadraticCurveTo(x0 + d, top, x0 + d, top - f);
+        g.lineTo(x0 + d, d + r); g.quadraticCurveTo(x0 + d, d, x0 + d + r, d);
+        g.lineTo(x1 - d - r, d); g.quadraticCurveTo(x1 - d, d, x1 - d, d + r);
+        g.lineTo(x1 - d, top - f); g.quadraticCurveTo(x1 - d, top, x1 - d + f, top);
+        g.lineTo(W - d - r, top); g.quadraticCurveTo(W - d, top, W - d, top + r);
+        g.lineTo(W - d, H - d - r); g.quadraticCurveTo(W - d, H - d, W - d - r, H - d);
+        g.lineTo(d + r, H - d); g.quadraticCurveTo(d, H - d, d, H - d - r);
+        g.lineTo(d, top + r); g.quadraticCurveTo(d, top, d + r, top);
+        g.closePath();
+      };
+      const notchShape = (() => {
+        const { tab, x0, x1, f, r } = TAG, W = CW, H = TAG.h, s = new THREE.Shape(), P = (x, y) => [x - W / 2, H / 2 - y];
+        const M = (x, y) => s.moveTo(...P(x, y)), L = (x, y) => s.lineTo(...P(x, y)), Q = (cx, cy, x, y) => s.quadraticCurveTo(...P(cx, cy), ...P(x, y));
+        M(r, tab); L(x0 - f, tab); Q(x0, tab, x0, tab - f); L(x0, r); Q(x0, 0, x0 + r, 0); L(x1 - r, 0); Q(x1, 0, x1, r); L(x1, tab - f); Q(x1, tab, x1 + f, tab);
+        L(W - r, tab); Q(W, tab, W, tab + r); L(W, H - r); Q(W, H, W - r, H); L(r, H); Q(0, H, 0, H - r); L(0, tab + r); Q(0, tab, r, tab);
+        return s;
+      })();
+      const face = canvas2d(CW, TAG.h, (g) => {
+        const { rim, band, gap, stripe } = ENAMEL;
+        g.save(); notchPath(g, 0); g.clip();
+        g.fillStyle = ENAMEL_CREAM; g.fillRect(0, 0, CW, TAG.h);
+        g.fillStyle = '#' + new THREE.Color(ENAMEL_NAVY).getHexString(); notchPath(g, rim); g.fill();
+        g.fillStyle = ENAMEL_CREAM; notchPath(g, rim + band); g.fill();
+        g.strokeStyle = '#' + new THREE.Color(ENAMEL_NAVY).getHexString(); g.lineWidth = stripe; notchPath(g, rim + band + gap + stripe / 2); g.stroke();
+        g.save(); notchPath(g, rim + band + gap + stripe); g.clip(); g.translate(0, 0); recipeGrunge(g); g.restore();
+        for (const [cx, cy, sx, sy] of [[0, TAG.tab, 1, 1], [CW, TAG.tab, -1, 1], [0, TAG.h, 1, -1], [CW, TAG.h, -1, -1], [TAG.x0, 0, 1, 1], [TAG.x1, 0, -1, 1]]) {
+          for (let i = 0, count = 1 + Math.floor(rand() * 3); i < count; i++) {
+            const x = cx + sx * (6 + rand() * 30), y = cy + sy * (6 + rand() * (i ? 24 : 10)), rr2 = 1.6 + rand() * 3.4;
+            const pts = Array.from({ length: 9 }, (_, k) => { const a = k / 9 * Math.PI * 2, q = rr2 * (0.55 + rand() * 0.6); return [x + Math.cos(a) * q, y + Math.sin(a) * q]; });
+            g.beginPath(); pts.forEach(([px, py], k) => (k ? g.lineTo(px, py) : g.moveTo(px, py))); g.closePath(); g.fillStyle = '#2a2521'; g.fill();
+            g.strokeStyle = 'rgba(255,250,236,0.55)'; g.lineWidth = 0.6; g.stroke();
+          }
+        }
+        g.restore();
+      });
+      partGroup();
+      add(shade(new THREE.Mesh(extrude(notchShape, 2, 1.6, 1.2, 3), [enamelMat(face, CW, TAG.h), MAT.plateSide])), CW / 2, OY + TAG.h / 2, T + 1);
+      const eyeY = TAG.tab + 26;
+      for (const fx of [TAG.fx, CW - TAG.fx]) {
+        ring(fx, OY - TAG.drop - 14, T + 7.2, 5, 1.7); chain(fx, OY - TAG.drop - 14, OY + eyeY, T + 6); eyelet(fx, OY + eyeY, T + 6.2);
+      }
+      await grabPart('construct_tag', [-6, -TAG.drop - 24, CW + 12, TAG.h + 14]);
+      Object.assign(layout.construct_tag, { tag: [0, 0, CW, TAG.h], tab: [TAG.x0, 0, TAG.x1 - TAG.x0, TAG.tab], body: [0, TAG.tab, CW, TAG.h - TAG.tab], drop: TAG.drop });
+    });
+
+    if (want('constructkey')) await withSeed(468, async () => {
+      // The Build key: the cabinet's cream key (tile_key's size and slices, so scripts/ds2/cream_key.gd draws it the
+      // same way) in a polished brass bezel instead of the gunmetal one; up, pressed and latched.
+      const { W: KW, H: KH, M: KM } = { W: 232, H: 116, M: 16 };
+      const brass = new THREE.MeshStandardMaterial({ color: 0xd2ab5c, map: noiseTexture(18, 40, 30), metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 1.0 });
+      const group = new THREE.Group(), k = keycap(KW - 2 * KM, KH - 2 * KM, 12, () => {});
+      k.traverse((o) => { if (o.isMesh && o.material === MAT.frame) o.material = brass; });
+      k.position.set(KW / 2, 0, KH / 2); group.add(k, shadowCatcher(KW, KH, KW / 2, KH / 2));
+      const st = stage([0, 0, KW, KH], [group]), cap = k.userData.cap, y = cap.position.y;
+      await post('construct_key_brass', st.grab());
+      cap.position.y = y - 5; await post('construct_key_brass_pressed', st.grab());
+      cap.position.y = y - 22; await post('construct_key_brass_latched', st.grab());
+      cap.position.y = y;
+      layout.construct_key_brass = { size: [KW, KH], like: 'tile_key' };
+    });
+
+    if (want('constructbox')) await withSeed(469, async () => {
+      // The catalogue's building card as a shipping container seen from its side (owner): blue painted corrugated
+      // steel between a darker top and bottom rail, a grey corner casting at each corner; long enough for an opened
+      // card and cropped by the game (its ribs never stretch). And its plate: the cream enamel sign with the navy
+      // blueprint field, bolted to the container's left end, the game printing the icon, the name and the price.
+      const BOX = { W: CW, H: 180, rail: 16, rib: 24, cast: 30, blue: '#2c5f92', railBlue: '#234d78' };
+      partGroup();
+      {
+        const { W, H, rail, rib } = BOX, p = weatheredPaint(W, H, BOX.blue, { wear: 0.55 });
+        const col = canvas2d(W, H, (g) => {
+          g.drawImage(p.colour, 0, 0, W, H);
+          for (let x = 0; x < W; x += rib) {
+            g.fillStyle = 'rgba(255,255,255,0.10)'; g.fillRect(x + 4, rail, 6, H - 2 * rail);
+            g.fillStyle = 'rgba(255,255,255,0.05)'; g.fillRect(x + 10, rail, 8, H - 2 * rail);
+            g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(x + 18, rail, 6, H - 2 * rail);
+          }
+          for (let i = 0; i < W * H / 900; i++) { const x = rand() * W, y = rail + rand() * (H - 2 * rail), l = 4 + rand() * 30; g.fillStyle = `rgba(${rand() < 0.5 ? '150,110,70' : '20,24,30'},${0.05 + rand() * 0.1})`; g.fillRect(x, y, 1 + rand() * 2, l); }
+        });
+        const bump = canvas2d(W, H, (g) => {
+          g.drawImage(p.bump, 0, 0, W, H);
+          for (let x = 0; x < W; x += rib) { g.fillStyle = 'rgba(210,210,210,0.8)'; g.fillRect(x + 6, rail, 12, H - 2 * rail); g.fillStyle = 'rgba(60,60,60,0.8)'; g.fillRect(x + 19, rail, 4, H - 2 * rail); }
+        });
+        const side = new THREE.MeshStandardMaterial({ color: 0x1f4368, metalness: 0.3, roughness: 0.6, envMap: studioEnv, envMapIntensity: 0.5 });
+        const mat = new THREE.MeshStandardMaterial({ map: faceTexture(col, W, H), bumpMap: faceTexture(bump, W, H, false), bumpScale: 1.4, metalness: 0.3, roughness: 0.55, envMap: studioEnv, envMapIntensity: 0.5 });
+        add(shade(new THREE.Mesh(extrude(rrShape(W, H, 4), 4, 2, 1.6, 3), [mat, side])), W / 2, OY + H / 2, 0);
+        for (const zc of [rail / 2, H - rail / 2]) add(shade(new THREE.Mesh(extrude(rrShape(W, rail, 2), 4, 1, 0.8, 2), [painted(W, rail, BOX.railBlue, 0.7), side])), W / 2, OY + zc, T - 1);
+        const castMat = new THREE.MeshStandardMaterial({ color: 0x6e737a, map: noiseTexture(20, 40, 30), metalness: 0.8, roughness: 0.5, envMap: studioEnv, envMapIntensity: 0.7 });
+        for (const [cx, cz] of [[BOX.cast / 2 + 2, 15], [W - BOX.cast / 2 - 2, 15], [BOX.cast / 2 + 2, H - 15], [W - BOX.cast / 2 - 2, H - 15]]) {
+          add(shade(new THREE.Mesh(extrude(rrShape(BOX.cast, 26, 3), 5, 1.4, 1.1, 2), castMat)), cx, OY + cz, T - 1);
+          const hole = new THREE.Mesh(new THREE.CircleGeometry(5, 20).rotateX(-Math.PI / 2), MAT.gap); hole.scale.set(1.5, 1, 1);
+          add(hole, cx, OY + cz, T + 6.6);
+        }
+      }
+      await grabPart('construct_container', [-6, -6, BOX.W + 12, BOX.H + 14], T + 0.3);
+      Object.assign(layout.construct_container, { box: [0, 0, BOX.W, BOX.H], cap_left: 44, cap_right: 44, rib: BOX.rib });
+
+      const PL = { x: 36, y: 15, w: 380, h: 150, field: [16, 15, 120], emblem: 100 };
+      partGroup(); await siteBoard(0, { x: 0, y: 0, w: PL.w, h: PL.h, file: 'b_002_furnace.png', field: PL.field, emblem: PL.emblem, style: 'grid' });
+      await grabPart('construct_card_plate', [-6, -6, PL.w + 10, PL.h + 12], T + 0.3);
+      Object.assign(layout.construct_card_plate, { at: [PL.x, PL.y], plate: [0, 0, PL.w, PL.h], field: PL.field, emblem: PL.emblem, text_x: PL.field[0] + PL.field[2] + 16 });
+    });
   });
 
   // --- a study for the Market panel (docs/market-ds2-plan.md), not a game layer: the commodities exchange.
@@ -6299,6 +6636,459 @@ async function exportLayers() {
     await post('guard_dismiss_cover', sf.grab());
     gb.userData.cover.rotation.x = -COVER_OPEN; await post('guard_dismiss_cover_open', sf.grab()); gb.userData.cover.rotation.x = 0;
     layout.guard_dismiss = { size: [FW, FH + HEAD], head: HEAD, button: [x, BY + HEAD, S, S], colour: 'red', icon: 'boot' };
+  });
+
+  // --- the turn briefing's concept study (docs/briefing-ds2-plan.md §5). A study, not a game layer: nothing in the
+  // game reads briefing_study. The briefing becomes the tray that rises from the updates dock at the screen's bottom
+  // left, one width (460 logical px) for every state: (1) a decision to answer, (2) alerts only. Each state is drawn
+  // over a transparent window the size of the screen's left 700 logical px; the capture of the real screen
+  // (artifacts/briefing_ds2/before/12_clean_screen.png, 1.875 capture px a logical px, so one capture px a layout px)
+  // is laid under those windows afterwards. Words and figures are the turn 4 captures'.
+  if (want('briefingstudy')) await withSeed(460, async () => {
+    for (const f of ['500 30px "IBM Plex Sans"', '600 30px "IBM Plex Sans"', '700 30px "IBM Plex Sans"', '600 30px "Barlow Condensed"', '700 30px "Barlow Condensed"', `60px ${TITLE_FAMILY}`]) await document.fonts.load(f);
+    const SW = 1312, SH = 2260, MX = 60, GAP = 90, CAPT = 120, FOOT = 40;
+    const OX = [MX, MX + SW + GAP], OY = CAPT, W = OX[1] + SW + MX, H = OY + SH + FOOT;
+    const T = PLATE_TOP, LIGHT = '#e8eef7', PLEX = '"IBM Plex Sans"', BARLOW = '"Barlow Condensed"';
+    // The dock stays where it is (12 px in, 12 px up, 60 tall); the tray is 460 logical px wide and rises from behind it.
+    const DOCK = { x: 22.5, y: 2124, w: 440, h: 112 }, TX = 22.5, TW = 862, PAD = 26, IW = TW - 2 * PAD;
+    const TRAY_BOTTOM = DOCK.y + 30;
+    const groups = [new THREE.Group(), new THREE.Group()], prints = [];
+    let cur = 0;
+    const add = (m, x, z, y = T) => { m.position.set(x, y, z); groups[cur].add(m); return m; };
+    const shade = (m) => { m.traverse((o) => { if (o.isMesh) o.castShadow = o.receiveShadow = true; }); return m; };
+    const rgbOf = (hex) => { const c = new THREE.Color(hex); return `${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)}`; };
+    const measure = (str, font) => { const c = document.createElement('canvas').getContext('2d'); c.font = font; return c.measureText(str).width; };
+    const wrapLines = (str, font, maxW) => {
+      const out = []; let line = '';
+      for (const w of str.split(' ')) { const t = line ? line + ' ' + w : w; if (line && measure(t, font) > maxW) { out.push(line); line = w; } else line = t; }
+      if (line) out.push(line); return out;
+    };
+    // The owner's screen rule (Digital displays): the point a cell of its own, five cells at most, never more than two decimals.
+    const moneyLed = (v) => {
+      const minus = v < 0 ? '-' : '', a = Math.abs(v);
+      for (const [div, suffix, d0, limit] of [[1, '', 2, 100], [1, '', 1, 1000], [1, '', 0, 10000], [1e3, 'K', 1, 1000], [1e6, 'M', 2, 1000]]) {
+        let d = d0, shown = (a / div).toFixed(d);
+        if (parseFloat(shown) >= limit) continue;
+        while (d > 0 && (minus + shown).length > 5) shown = (a / div).toFixed(--d);
+        return { figure: minus + shown, suffix };
+      }
+    };
+    const printWhite = (str, x, y, size, { weight = 500, family = PLEX, align = 'left', maxW = 900, colour = LIGHT } = {}) => prints.push((g) => {
+      g.save(); g.shadowColor = 'rgba(0,0,0,0.9)'; g.shadowOffsetX = 1.7; g.shadowOffsetY = 1.7; g.shadowBlur = 1.2;
+      text(g, str, x, y, maxW, size, colour, { align, weight, family }); g.restore();
+    });
+    const ink = (c, str, x, y, size, colour = NAVY, { weight = 500, family = PLEX, align = 'left', maxW = 900 } = {}) => {
+      c.save(); c.shadowColor = 'rgba(255,255,255,0.55)'; c.shadowOffsetX = 1; c.shadowOffsetY = 1;
+      text(c, str, x, y, maxW, size, colour, { align, weight, family }); c.restore();
+    };
+    const glow = (x, y, r, colour, a = 0.42) => prints.push((g) => {
+      const rgb = rgbOf(colour), grd = g.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, `rgba(${rgb},${a})`); grd.addColorStop(0.22, `rgba(${rgb},${a * 0.52})`); grd.addColorStop(0.5, `rgba(${rgb},${a * 0.16})`); grd.addColorStop(1, `rgba(${rgb},0)`);
+      g.save(); g.globalCompositeOperation = 'lighter'; g.fillStyle = grd; g.fillRect(x - r, y - r, 2 * r, 2 * r); g.restore();
+    });
+    const lamp = (tone, x, z, y, s = 0.6) => {
+      const colour = tone ? LAMP[tone] : null, l = pilotLamp(colour, !!tone); l.scale.setScalar(s); add(l, x, z, y);
+      if (tone) glow(x, z, 60 * s / 0.6, '#' + new THREE.Color(colour).getHexString());
+    };
+
+    // Seven segment figures, each digit and the point a cell of its own (the game's 12 x 21 logical px cell).
+    const CELL = [22.5, 39];
+    const DIGITS = { 0: 'abcdef', 1: 'bc', 2: 'abdeg', 3: 'abcdg', 4: 'bcfg', 5: 'acdfg', 6: 'acdefg', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg', '-': 'g', ' ': '' };
+    const SEGS = { a: [[0.2, 0.06], [0.8, 0.06]], b: [[0.8, 0.06], [0.8, 0.5]], c: [[0.8, 0.5], [0.8, 0.94]], d: [[0.2, 0.94], [0.8, 0.94]], e: [[0.2, 0.5], [0.2, 0.94]], f: [[0.2, 0.06], [0.2, 0.5]], g: [[0.2, 0.5], [0.8, 0.5]] };
+    const segment = (c, x0, y0, x1, y1, t) => {
+      const L = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / L, uy = (y1 - y0) / L, nx = -uy, ny = ux, h = t / 2, gap = t * 0.32;
+      const ax = x0 + ux * gap, ay = y0 + uy * gap, bx = x1 - ux * gap, by = y1 - uy * gap;
+      c.beginPath(); c.moveTo(ax, ay); c.lineTo(ax + ux * h + nx * h, ay + uy * h + ny * h); c.lineTo(bx - ux * h + nx * h, by - uy * h + ny * h);
+      c.lineTo(bx, by); c.lineTo(bx - ux * h - nx * h, by - uy * h - ny * h); c.lineTo(ax + ux * h - nx * h, ay + uy * h - ny * h); c.closePath(); c.fill();
+    };
+    const glassFinish = (c, iw, ih) => {
+      const top = c.createLinearGradient(0, 0, 0, 7); top.addColorStop(0, 'rgba(0,0,0,0.6)'); top.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = top; c.fillRect(0, 0, iw, 7);
+      const left = c.createLinearGradient(0, 0, 5, 0); left.addColorStop(0, 'rgba(0,0,0,0.45)'); left.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = left; c.fillRect(0, 0, 5, ih);
+      const glare = c.createLinearGradient(0, 0, iw * 0.5, ih); glare.addColorStop(0.3, 'rgba(255,255,255,0)'); glare.addColorStop(0.45, 'rgba(255,255,255,0.06)'); glare.addColorStop(0.6, 'rgba(255,255,255,0)');
+      c.fillStyle = glare; c.fillRect(0, 0, iw, ih);
+    };
+    const ledFace = (iw, ih, str, cells, colour) => canvas2d(iw, ih, (c) => {
+      const rgb = rgbOf(colour), padX = 7, padY = 6, cw = (iw - 2 * padX) / cells, ch = ih - 2 * padY, t = Math.min(cw * 0.2, ch * 0.12);
+      const list = [...str]; while (list.length < cells) list.unshift(' ');
+      c.fillStyle = '#060808'; c.fillRect(0, 0, iw, ih);
+      const cell = (i, k, style) => {
+        c.save(); c.translate(padX + i * cw + cw / 2, padY + ch / 2); c.transform(1, 0, -0.09, 1, 0, 0); c.translate(-cw / 2, -ch / 2); c.fillStyle = style;
+        if (k === '.') { c.beginPath(); c.arc(0.5 * cw, 0.92 * ch, t * 0.95, 0, Math.PI * 2); c.fill(); }
+        else for (const sg of (DIGITS[k] ?? '')) { const [[ax, ay], [bx, by]] = SEGS[sg]; segment(c, ax * cw, ay * ch, bx * cw, by * ch, t); }
+        c.restore();
+      };
+      list.forEach((_, i) => cell(i, '8', `rgba(${rgb},0.08)`));
+      c.save(); c.filter = 'blur(2.4px)'; c.globalAlpha = 0.75; list.forEach((k, i) => cell(i, k, colour)); c.restore();
+      list.forEach((k, i) => cell(i, k, colour));
+      glassFinish(c, iw, ih);
+    });
+    const glassScreen = (iw, ih, face) => {
+      const rim = 7, ow = iw + 2 * rim, oh = ih + 2 * rim, g = new THREE.Group();
+      const shape = rrShape(ow, oh, 5 + rim); shape.holes.push(rr(new THREE.Path(), iw, ih, 5));
+      g.add(shade(new THREE.Mesh(extrude(shape, 2.5, 1.2, 1, 3), MAT.frame)));
+      const tex = new THREE.CanvasTexture(face); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(iw + 1, ih + 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+      pane.position.y = 0.4; g.add(pane);
+      return { group: g, w: ow, h: oh };
+    };
+    const ledScreen = (str, cells, colour) => { const iw = Math.round(cells * CELL[0] + 14), ih = CELL[1] + 12; return glassScreen(iw, ih, ledFace(iw, ih, str, cells, colour)); };
+    /** A money figure on a dark surface: the £ printed, the screen from x (its left edge). */
+    const money = (value, colour, cells, x, cz, y) => {
+      const { figure, suffix } = moneyLed(value), scr = ledScreen(figure, cells, colour);
+      add(scr.group, x + scr.w / 2, cz, y);
+      printWhite('£', x - 8, cz + 1, 34, { weight: 600, align: 'right' });
+      if (suffix) printWhite(suffix, x + scr.w + 8, cz + 1, 34, { weight: 600 });
+      return scr.w;
+    };
+    /** A drum counter (Building Detail's), hgt tall, its left edge at x, centred on cz. */
+    const drum = (cells, str, x, cz, base, hgt = 64) => {
+      const { cap, cell, H: CH, win, drumR } = COUNTER, Wc = 2 * cap + cells * cell, k = hgt / CH, g = new THREE.Group();
+      const wy = (win[0] + win[1]) / 2, wh = win[1] - win[0];
+      const hs = rrShape(Wc - 4, CH - 4, 8); hs.holes.push(rr(new THREE.Path(), Wc - 2 * cap + 8, wh, 3, 0, wy - CH / 2));
+      const housing = new THREE.Mesh(extrude(hs, 2, 2, 1.6, 3), MAT.frame); housing.castShadow = housing.receiveShadow = true; housing.position.set(Wc / 2, 2, CH / 2); g.add(housing);
+      const dm = new THREE.MeshStandardMaterial({ color: 0x151618, roughness: 0.45, metalness: 0.2, envMap: studioEnv, envMapIntensity: 0.6 });
+      for (let i = 0; i < cells; i++) { const d = new THREE.Mesh(new THREE.CylinderGeometry(drumR, drumR, cell - 2.4, 48, 1).rotateZ(Math.PI / 2), dm); d.position.set(cap + i * cell + cell / 2, 4.6 - drumR, wy); d.receiveShadow = true; g.add(d); }
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(Wc - 2 * cap + 8, wh).rotateX(-Math.PI / 2), MAT.gap); floor.position.set(Wc / 2, -2, wy); g.add(floor);
+      g.scale.setScalar(k); const cz0 = cz - CH * k / 2;
+      add(g, x, cz0, base + 1);
+      const chars = str.padStart(cells, ' ');
+      prints.push((c) => {
+        [...chars].forEach((ch, i) => { if (ch !== ' ') text(c, ch, x + k * (cap + i * cell + cell / 2), cz0 + k * wy + 1, 40, k * 34, '#efede6', { align: 'center', weight: 600, family: BARLOW }); });
+        c.save(); c.translate(x, cz0); c.scale(k, k); paintCounterGlass(c, Wc); c.restore();
+      });
+      return Wc * k;
+    };
+
+    // Materials.
+    const darkSteel = new THREE.MeshStandardMaterial({ color: 0x3c4046, map: noiseTexture(20, 40, 40), metalness: 1, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.85 });
+    const chrome = new THREE.MeshStandardMaterial({ color: 0xb4b9c0, metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 1.0 });
+    const steelSide = new THREE.MeshStandardMaterial({ color: 0x5a6068, metalness: 1, roughness: 0.42, envMap: studioEnv, envMapIntensity: 0.8 });
+    const blackPlastic = (w, h, paint) => new THREE.MeshPhysicalMaterial({ map: faceTexture(canvas2d(w, h, (c) => { c.drawImage(blackPlasticFace(w, h, '#15171a', 0.06), 0, 0, w, h); paint?.(c); }), w, h), roughness: 0.5, clearcoat: 0.3, envMap: studioEnv, envMapIntensity: 0.4 });
+    /** Tempered hardboard, the clipboard's board: brown, fine fibre speckle, rubbed pale where hands hold it. */
+    const hardboard = (w, h) => new THREE.MeshPhysicalMaterial({ map: faceTexture(canvas2d(w, h, (c) => {
+      c.fillStyle = '#5e4128'; c.fillRect(0, 0, w, h);
+      for (let i = 0; i < w * h / 30; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '24,14,6' : '150,110,70'},${0.05 + rand() * 0.08})`; c.fillRect(rand() * w, rand() * h, 0.8 + rand() * 1.6, 0.6 + rand()); }
+      for (let i = 0; i < 26; i++) { const x = rand() * w, y = rand() * h, r = 30 + rand() * 90, grd = c.createRadialGradient(x, y, 0, x, y, r); grd.addColorStop(0, `rgba(${rand() < 0.5 ? '0,0,0' : '255,220,170'},${0.03 + rand() * 0.04})`); grd.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = grd; c.fillRect(x - r, y - r, 2 * r, 2 * r); }
+      for (const [x, y] of [[0, h * 0.55], [w, h * 0.55]]) { const grd = c.createRadialGradient(x, y, 0, x, y, 120); grd.addColorStop(0, 'rgba(210,180,140,0.16)'); grd.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = grd; c.fillRect(0, 0, w, h); }
+      c.save(); c.filter = 'blur(3px)'; c.strokeStyle = 'rgba(0,0,0,0.35)'; c.lineWidth = 8; c.beginPath(); c.roundRect(4, 4, w - 8, h - 8, 16); c.stroke(); c.restore();
+    }), w, h), roughness: 0.7, clearcoat: 0.15, clearcoatRoughness: 0.6, envMap: studioEnv, envMapIntensity: 0.3 });
+    const boardSide = new THREE.MeshStandardMaterial({ color: 0x3a2716, roughness: 0.8 });
+
+    const smallKey = (glyph, x, z, base) => {
+      const k = keycap(76, 76, 6, (g, a, b) => {
+        g.strokeStyle = NAVY; g.lineWidth = a * 0.13; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath();
+        if (glyph === 'down') { g.moveTo(a * 0.28, b * 0.38); g.lineTo(a * 0.5, b * 0.62); g.lineTo(a * 0.72, b * 0.38); }
+        g.stroke();
+      });
+      add(k, x, z, base);
+    };
+    /** A wide cream keycap with its words printed navy. */
+    const wideKey = (str, x, z, w, h, base, size = 28) => add(keycap(w, h, 8, (g, a, b) => text(g, str, a / 2, b / 2 + 1, a - 22, size, NAVY, { align: 'center', weight: 700, family: BARLOW })), x, z, base);
+    /** A plate of blackened gunmetal, silver screws in its corners; returns its top. */
+    const cabin = (x, y, w, h) => {
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 10), 4, 3, 2.4, 4), [plateMaterial(w, h, { icons: [], buttons: [], screws: [], base: DARK_STEEL_CANVAS, rub: '130,138,150' }), MAT.plateSide])), x + w / 2, y + h / 2);
+      for (const [sx, sy] of [[13, 13], [w - 13, 13], [13, h - 13], [w - 13, h - 13]]) { const s = silverScrew(); s.remove(s.children[s.children.length - 1]); add(s, x + sx - 15, y + sy - 15, T + 10); }
+      return T + 10;
+    };
+    /** A moulded case of black plastic, silver screws in its corners; returns its top. */
+    const plasticCase = (x, y, w, h) => {
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 12), 4, 2.4, 2, 4), [blackPlastic(w, h), BLACK_PLASTIC_SIDE()])), x + w / 2, y + h / 2);
+      for (const [sx, sy] of [[14, 14], [w - 14, 14], [14, h - 14], [w - 14, h - 14]]) { const s = silverScrew(); s.remove(s.children[s.children.length - 1]); add(s, x + sx - 15, y + sy - 15, T + 8.8); }
+      return T + 8.8;
+    };
+    /** The nameplate: black enamel, its words raised in white Bebas, a rivet at each corner. */
+    const namePlate = (x, y, w, h, str, base) => {
+      const tb = { x: 14, y: 5, w: w - 28, h: h - 10 };
+      const drawTitle = (g, col) => text(g, str, tb.w / 2, tb.h / 2 + 3, tb.w - 4, 56, col, { weight: 400, family: TITLE_FAMILY, align: 'center' });
+      const plateC = canvas2d(w, h, (c) => {
+        c.fillStyle = '#16181c'; c.fillRect(0, 0, w, h);
+        for (let i = 0; i < w * h / 120; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.015 + rand() * 0.025})`; c.fillRect(rand() * w, rand() * h, 1 + rand() * 2, 1 + rand() * 2); }
+        drawIconShadows(c, w, h, [{ height: 5, draw: (g, col) => { g.save(); g.translate(tb.x, tb.y); drawTitle(g, col); g.restore(); } }]);
+      });
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 6), 2, 1.2, 1, 3), [new THREE.MeshPhysicalMaterial({ map: faceTexture(plateC, w, h), roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.2, envMap: studioEnv, envMapIntensity: 0.5 }), darkSteel])), x + w / 2, y + h / 2, base);
+      add(relief(tb.w, tb.h, (g) => drawTitle(g, '#fff'), WHITE_LETTERS, { height: 5, soften: 0.7 }), x + tb.x + tb.w / 2, y + tb.y + tb.h / 2, base + 4.7);
+      for (const [rx, rz] of [[9, 9], [w - 9, 9], [9, h - 9], [w - 9, h - 9]]) {
+        const rv = new THREE.Mesh(new THREE.SphereGeometry(3, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), darkSteel); rv.scale.y = 0.55; add(shade(rv), x + rx, y + rz, base + 4.4);
+      }
+    };
+    /** A readout: dark glass in the screens' gunmetal bezel, a pilot lamp at its left, white print (BdpV3Readout). */
+    const readout = (x, y, w, h, tone, lines, base) => {
+      const scr = glassScreen(w - 14, h - 14, canvas2d(w - 14, h - 14, (c) => { c.fillStyle = '#080b0d'; c.fillRect(0, 0, w, h); glassFinish(c, w - 14, h - 14); }));
+      add(scr.group, x + w / 2, y + h / 2, base);
+      lamp(tone, x + 46, y + h / 2, base + 0.6, 0.62);
+      const lh = lines.length > 1 ? 40 : 0, y0 = y + h / 2 - lh * (lines.length - 1) / 2;
+      lines.forEach(([str, size, weight], k) => printWhite(str, x + 84, y0 + k * lh, size, { weight, maxW: w - 110 }));
+    };
+    /** A good's cream tile set under the icon well's thin metal frame, `px` square, centred at (cx, cz). */
+    const goodWell = (img, cx, cz, px, base) => {
+      const tile = canvas2d(px, px, (c) => {
+        c.fillStyle = '#f3e7cc'; c.beginPath(); c.roundRect(0, 0, px, px, 12); c.fill();
+        const k = 0.84, s = px * k; c.drawImage(img, (px - s) / 2, (px - s) / 2, s, s);
+      });
+      const tex = new THREE.CanvasTexture(tile); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+      add(new THREE.Mesh(new THREE.PlaneGeometry(px, px).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.7 })), cx, cz, base + 0.2);
+      const f = iconWell(), k = (px + 2 * WELL.rim + 4) / (WELL.W - 2 * WELL.M);
+      f.children.pop(); f.scale.setScalar(k); add(shade(f), cx - WELL.W * k / 2, cz - WELL.W * k / 2, base + 0.3);
+      prints.push((g) => { g.save(); g.translate(cx - WELL.W * k / 2, cz - WELL.W * k / 2); g.scale(k, k); paintWellShade(g); g.restore(); });
+    };
+
+    // The annunciator: one backlit window per kind of alert, lit amber or red with its count, dark when clear.
+    const ANN = { cols: 4, rows: 2, wh: 84, gap: 12, pad: 24 };
+    const KINDS = [['STARVED', 'amber', 2], ['CASH SHORT', null, 0], ['BANKRUPTCY', null, 0], ['CABLES FULL', null, 0],
+      ['STORAGE FULL', 'amber', 2], ['STOCKPILE SMALL', 'red', 1], ['DEPOSIT LOW', null, 0], ['DEPOSIT OUT', null, 0]];
+    const annunciator = (x, y, selected) => {
+      const w = IW, ww = (w - 2 * ANN.pad - (ANN.cols - 1) * ANN.gap) / ANN.cols, h = 2 * ANN.pad + ANN.rows * ANN.wh + (ANN.rows - 1) * ANN.gap;
+      const top = plasticCase(x, y, w, h);
+      KINDS.forEach(([name, tone, n], i) => {
+        const cx = x + ANN.pad + (i % ANN.cols) * (ww + ANN.gap), cy = y + ANN.pad + Math.floor(i / ANN.cols) * (ANN.wh + ANN.gap);
+        const lit = tone ? LAMP[tone] : null, hex = lit ? '#' + new THREE.Color(lit).getHexString() : null;
+        const face = canvas2d(ww - 10, ANN.wh - 10, (c) => {
+          const fw = ww - 10, fh = ANN.wh - 10;
+          if (lit) {
+            const grd = c.createRadialGradient(fw / 2, fh / 2, 4, fw / 2, fh / 2, fw * 0.62);
+            grd.addColorStop(0, '#' + new THREE.Color(lit).lerp(new THREE.Color(0xffffff), 0.45).getHexString()); grd.addColorStop(1, hex);
+            c.fillStyle = grd; c.fillRect(0, 0, fw, fh);
+          } else { c.fillStyle = '#1b1e22'; c.fillRect(0, 0, fw, fh); }
+          for (let k = 0; k < fw * fh / 40; k++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.02 + rand() * 0.03})`; c.fillRect(rand() * fw, rand() * fh, 1, 1); }
+          const ink2 = lit ? '#1e0f02' : '#e8eef7';
+          const lx = n ? fw / 2 - 18 : fw / 2, lw = fw - (n ? 54 : 16), parts = name.split(' ');
+          c.font = `700 25px ${BARLOW}`;
+          if (c.measureText(name).width > lw && parts.length > 1) parts.forEach((pt, k) => text(c, pt, lx, fh / 2 + (k - 0.5) * 26 + 1, lw, 24, ink2, { align: 'center', weight: 700, family: BARLOW }));
+          else text(c, name, lx, fh / 2 + 1, lw, 25, ink2, { align: 'center', weight: 700, family: BARLOW });
+          if (n) text(c, String(n), fw - 20, fh / 2 + 1, 30, 30, ink2, { align: 'center', weight: 700, family: BARLOW });
+          glassFinish(c, fw, fh);
+        });
+        const scr = glassScreen(ww - 10, ANN.wh - 10, face);
+        add(scr.group, cx + ww / 2, cy + ANN.wh / 2, top);
+        if (lit) glow(cx + ww / 2, cy + ANN.wh / 2, ww * 0.7, hex, 0.3);
+        if (selected === name) prints.push((g) => {
+          g.save(); g.strokeStyle = 'rgba(232,238,247,0.95)'; g.lineWidth = 3; g.beginPath(); g.roundRect(cx - 7, cy - 7, ww + 14, ANN.wh + 14, 10); g.stroke();
+          g.fillStyle = 'rgba(232,238,247,0.95)'; g.beginPath(); g.moveTo(cx + ww / 2 - 11, cy + ANN.wh + 8); g.lineTo(cx + ww / 2 + 11, cy + ANN.wh + 8); g.lineTo(cx + ww / 2, cy + ANN.wh + 19); g.closePath(); g.fill(); g.restore();
+        });
+      });
+      return h;
+    };
+
+    // The dock under the tray: navy steel, the pen and the three bells raised, each count on a navy pill.
+    const dock = (pen, bells) => {
+      const { w, h } = DOCK, x = OX[cur] + DOCK.x, y = OY + DOCK.y, feat = { icons: [], buttons: [], screws: [] }, cells = [70, 175, 275, 375], iconS = 64;
+      const dy = 18;
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 14), 4, 3, 2.4, 4), [plateMaterial(w, h, { ...feat, base: NAVY_STEEL_CANVAS, rub: '120,136,160' }), steelSide])), x + w / 2, y + h / 2, 8);
+      const tones = [null, '#3fb265', '#e6b85c', '#e66060'];
+      [pen, ...bells].forEach((n, i) => {
+        const img = i === 0 ? PEN : BELL, dim = i > 0 && !n.count, col = i > 0 ? new THREE.Color(tones[i]).multiplyScalar(dim ? 0.5 : 1) : null;
+        const mat = i === 0 ? MAT.plastic : new THREE.MeshPhysicalMaterial({ color: col, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+        const cx = x + cells[i], cz = y + h / 2 - 2, s = (i === 0 ? 1 : 0.9) * iconS;
+        if (i === 0 && pen.open) {   // the pen's cell is sunk while its tray is up
+          add(shade(new THREE.Mesh(extrude(rrShape(92, 92, 10), 1, 1, 0.8, 2), new THREE.MeshStandardMaterial({ color: 0x0c1016, roughness: 0.6 }))), cx, cz, dy - 1);
+        }
+        add(iconRelief(img, s, s, mat, { height: 7, soften: 1.1 }), cx, cz, dy + 0.3);
+        if (i === 0 && pen.lamp) lamp(pen.lamp, cx + 38, cz - 34, dy, 0.42);
+        if (n.count) prints.push((g) => {
+          const t = String(n.count), pw = 20 + t.length * 13, px = cx + 16, py = cz + 18;
+          g.save(); g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 4; g.shadowOffsetY = 2; g.fillStyle = NAVY; g.beginPath(); g.roundRect(px, py, pw, 30, 15); g.fill(); g.restore();
+          g.strokeStyle = 'rgba(232,238,247,0.55)'; g.lineWidth = 1.5; g.beginPath(); g.roundRect(px, py, pw, 30, 15); g.stroke();
+          text(g, t, px + pw / 2, py + 16, pw, 24, LIGHT, { align: 'center', weight: 700, family: BARLOW });
+        });
+      });
+    };
+
+    const PEN = keyOpaque(await loadImage('/icons/ui_icons/standalone/fountain_pen.png'));
+    const BELL = keyOpaque(await loadImage('/icons/ui_icons/standalone/bell.png'));
+    const SILICA = await loadImage('/icons/goods/medium/g_020_silica.png');
+    const ETHYLENE = await loadImage('/icons/goods/medium/g_024_ethylene.png');
+
+    // The two states. Each is laid out from its top; the tray's height follows its content and its foot tucks behind the dock.
+    const LETTER = {
+      kicker: 'DECISION', count: '1 of 1', title: 'A Retired Man Who Misses the Work',
+      body: ['Andrew Keeler ran a shipping firm for thirty years. He offers to serve as your CFO or COO for thirty turns without pay.',
+        '"I\'ve negotiated lots of deals with suppliers and banks in the past. But my specialty will always be transporting goods cheap."'],
+    };
+    const BOARD_W = IW, LW = BOARD_W - 44, LTX = 34, BODY_FONT = '500 27px "IBM Plex Sans"';
+    const bodyLines = LETTER.body.map((p) => wrapLines(p, BODY_FONT, LW - 2 * LTX));
+    const LH = 170 + bodyLines.reduce((s, ls) => s + ls.length * 38 + 18, 0) + 10, BH = LH + 70;
+    const REPLY_H = 66 + 2 * 124 + 16;
+    const ANN_H = 2 * ANN.pad + ANN.rows * ANN.wh + (ANN.rows - 1) * ANN.gap;
+    const HEAD = 96, GATE = 80, SP = 18;
+    const heights = [
+      PAD + HEAD + SP + GATE + SP + BH + SP + REPLY_H + SP + ANN_H + 58 + PAD + 30,
+      PAD + HEAD + SP + GATE + SP + ANN_H + SP + 126 + SP + (2 * 160 + 24) + SP + 104 + PAD + 30,
+    ];
+
+    for (const [i, ox] of OX.entries()) {
+      cur = i;
+      const TH = heights[i], ty = TRAY_BOTTOM - TH, X = (x) => ox + TX + x, Z = (y) => OY + ty + y;
+      // The tray: the dock's and the top bar's navy steel, no trim, screws in its top corners.
+      const feat = { icons: [], buttons: [], screws: [{ x: 22, y: 22 }, { x: TW - 22, y: 22 }] };
+      add(shade(new THREE.Mesh(extrude(rrShape(TW, TH, 14), 4, 4.5, 3.6, 6), [plateMaterial(TW, TH, { ...feat, base: NAVY_STEEL_CANVAS, rub: '120,136,160' }), steelSide])), X(TW / 2), Z(TH / 2), 0);
+      for (const s of feat.screws) add(screw(7), X(s.x), Z(s.y), T + 0.5);
+      let y = PAD;
+      namePlate(X(PAD + 18), Z(y + 10), 330, 76, 'THIS TURN', T);
+      smallKey('down', X(TW - PAD - 38 - 18), Z(y + 48), T);
+      y += HEAD + SP;
+      // The gate: whether the turn can end, the one line the old footer said.
+      if (i === 0) readout(X(PAD), Z(y), IW, GATE, 'amber', [['Answer 1 decision before you end the turn.', 28, 600]], T);
+      else readout(X(PAD), Z(y), IW, GATE, 'green', [['No decisions waiting. You can end the turn.', 28, 600]], T);
+      y += GATE + SP;
+      if (i === 0) {
+        // The letter, clipped to a hardboard clipboard: the story in navy on white plastic.
+        add(shade(new THREE.Mesh(extrude(rrShape(BOARD_W, BH, 18), 5, 2, 1.6, 3), [hardboard(BOARD_W, BH), boardSide])), X(PAD + BOARD_W / 2), Z(y + BH / 2), T);
+        const letter = canvas2d(LW, LH, (c) => {
+          paintPlastic(c, LW, LH);
+          ink(c, LETTER.kicker, LTX, 80, 24, NAVY, { weight: 700, family: BARLOW });
+          ink(c, LETTER.count, LW - LTX, 80, 24, NAVY, { weight: 600, family: BARLOW, align: 'right' });
+          ink(c, LETTER.title, LTX, 124, 40, NAVY, { weight: 700, family: BARLOW, maxW: LW - 2 * LTX });
+          c.fillStyle = 'rgba(11,35,64,0.5)'; c.fillRect(LTX, 150, LW - 2 * LTX, 2);
+          let ly = 186;
+          bodyLines.forEach((ls) => { ls.forEach((l) => { ink(c, l, LTX, ly, 27, NAVY, { weight: 500 }); ly += 38; }); ly += 18; });
+        });
+        const lt = T + 7;
+        add(shade(new THREE.Mesh(extrude(rrShape(LW, LH, 6), 1.2, 1, 0.8, 2), [new THREE.MeshPhysicalMaterial({ map: faceTexture(letter, LW, LH), ...KNOB_PLASTIC }), MAT.skirt])), X(PAD + BOARD_W / 2), Z(y + 48 + LH / 2), lt);
+        // The clip: a pressed steel jaw over the letter's head, its spring roll behind, two rivets into the board.
+        const cy0 = y + 30;
+        add(shade(new THREE.Mesh(extrude(rrShape(300, 58, 14), 4, 2, 1.6, 3), darkSteel)), X(PAD + BOARD_W / 2), Z(cy0 + 20), lt + 2.2);
+        add(shade(new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 262, 28).rotateZ(Math.PI / 2), chrome)), X(PAD + BOARD_W / 2), Z(cy0 - 12), T + 12);
+        for (const dx of [-100, 100]) add(shade(new THREE.Mesh(new THREE.SphereGeometry(6, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), darkSteel)), X(PAD + BOARD_W / 2 + dx), Z(cy0 + 22), lt + 8.5);
+        y += BH + SP;
+        // The answer: each choice a cream key on the gunmetal plate, what it brings beside it, figures on screens.
+        const ct = cabin(X(PAD), Z(y), IW, REPLY_H);
+        printWhite('Your answer', X(PAD + 30), Z(y + 38), 28, { weight: 700 });
+        const rows = [
+          { key: "Give him the CFO's chair", lines: ['Seat for 30 turns, unpaid.', 'Loan at 5%'], fig: () => money(200, LIGHT, 5, X(PAD + IW - 24) - (5 * CELL[0] + 28), Z(y + 66 + 62 + 22), ct) },
+          { key: "Give him the COO's chair", lines: ['Seat for 30 turns, unpaid.', 'Freight prepaid'], fig: () => drum(4, '1000', X(PAD + IW - 24) - 2 * COUNTER.cap * 58 / COUNTER.H - 4 * COUNTER.cell * 58 / COUNTER.H, Z(y + 66 + 124 + 62 + 22), ct, 58) },
+        ];
+        rows.forEach((r, k) => {
+          const ry = y + 66 + k * 124 + 62;
+          wideKey(r.key, X(PAD + 30 + 175), Z(ry), 350, 96, ct, 27);
+          printWhite(r.lines[0], X(PAD + 410), Z(ry - 22), 26);
+          printWhite(r.lines[1], X(PAD + 410), Z(ry + 22), 26);
+          r.fig();
+        });
+        y += REPLY_H + SP;
+        annunciator(X(PAD), Z(y), null);
+        y += ANN_H;
+        printWhite('3 alerts lit. Pick a lamp for the detail.', X(PAD + 6), Z(y + 30), 26);
+      } else {
+        annunciator(X(PAD), Z(y), 'STARVED');
+        y += ANN_H + SP;
+        readout(X(PAD), Z(y), IW, 126, 'amber', [['2 buildings starved', 30, 600], ['Inputs were missing, so they made nothing this turn.', 25, 500]], T);
+        y += 126 + SP;
+        const rh = 2 * 160 + 24, ct = cabin(X(PAD), Z(y), IW, rh);
+        [['Lightning Bourne', 'Missing silica', SILICA], ['Thistle River Valley', 'Missing ethylene', ETHYLENE]].forEach(([place, why, img], k) => {
+          const cz = Z(y + 12 + 80 + k * 160);
+          goodWell(img, X(PAD + 30 + 68), cz, 128, ct);
+          printWhite(place, X(PAD + 196), cz - 20, 30, { weight: 600 });
+          printWhite(why, X(PAD + 196), cz + 22, 26);
+          wideKey('Go to', X(TW - PAD - 30 - 85), cz, 170, 88, ct, 28);
+        });
+        y += rh + SP;
+        wideKey('Dismiss', X(PAD + 105), Z(y + 52), 210, 92, T, 28);
+        printWhite('It lights again if it gets worse.', X(PAD + 236), Z(y + 52), 26);
+      }
+      dock({ count: i === 0 ? 1 : 0, open: true, lamp: 'red' }, [{ count: 13 }, { count: 1 }, { count: 0 }]);   // the pen's lamp: the worst lit window
+    }
+
+    // Each state its own render, so the house light's shadow map covers it; laid over the transparent screens.
+    const shots = [0, 1].map((i) => {
+      const x0 = OX[i], x1 = OX[i] + TX + TW + 60, y0 = OY + TRAY_BOTTOM - heights[i] - 60, y1 = OY + DOCK.y + DOCK.h + 40;
+      groups[i].add(shadowCatcher(x1 - x0, y1 - y0, (x0 + x1) / 2, (y0 + y1) / 2, 0.05, 0.5));
+      const st = stage([x0, y0, x1, y1], [groups[i]]);
+      st.scene.traverse((o) => { if (o.isDirectionalLight) o.shadow.mapSize.set(4096, 4096); });
+      return { img: st.grab(), x0, y0, x1, y1 };
+    });
+    await post('briefing_study', frame2d(W, H, (g) => {
+      g.fillStyle = '#121820'; g.fillRect(0, 0, W, H);
+      for (const ox of OX) g.clearRect(ox, OY, SW, SH);   // the real screen goes under these windows
+      shots.forEach((s) => g.drawImage(s.img, s.x0, s.y0, s.x1 - s.x0, s.y1 - s.y0));
+      for (const p of prints) p(g);
+      [['1', 'A decision to answer'], ['2', 'Alerts only']].forEach(([n, s], i) => {
+        text(g, n, OX[i], 62, 40, 44, '#e9b81a', { weight: 700, family: PLEX });
+        text(g, s, OX[i] + 40, 62, 700, 38, LIGHT, { weight: 600, family: PLEX });
+        // One width for every state.
+        const yy = OY + TRAY_BOTTOM - heights[i] - 34, xa = OX[i] + TX, xb = xa + TW;
+        g.save(); g.shadowColor = 'rgba(0,0,0,0.9)'; g.shadowBlur = 6; g.strokeStyle = 'rgba(232,238,247,0.95)'; g.lineWidth = 2.5;
+        g.beginPath(); g.moveTo(xa, yy); g.lineTo(xb, yy); g.moveTo(xa, yy - 12); g.lineTo(xa, yy + 12); g.moveTo(xb, yy - 12); g.lineTo(xb, yy + 12); g.stroke();
+        g.fillStyle = 'rgba(18,24,32,0.92)'; g.fillRect(xa + TW / 2 - 110, yy - 20, 220, 40); g.restore();
+        text(g, '460 px wide', xa + TW / 2, yy + 1, 210, 28, LIGHT, { align: 'center', weight: 500, family: PLEX });
+      });
+    }));
+  });
+
+  // --- the turn briefing's parts (docs/briefing-ds2-plan.md §5, as studied in briefingstudy): the backing (the top
+  // bar's navy steel, no trim, a screw in each corner; one width, 540 logical px, cropped from the top by the game with
+  // its foot drawn whole), the foreman's clipboard (a tempered hardboard board, cropped the same way, and its pressed
+  // steel clip with the chrome spring roll), and the annunciator's windows (dark glass in the LED screens' gunmetal
+  // bezel, lit amber, red or green behind it or dark; a 9-slice, the legend printed by the game). Seeds 461 up.
+  const BRIEF_BACKING = { W: 1012, H: 2200, M: 24, foot: 80, screw: 22 };
+  const BRIEF_BOARD = { W: 920, H: 1200, M: 16, r: 18, foot: 60 };
+  const BRIEF_CLIP = { W: 360, H: 124, M: 20, jaw: [300, 58], roll: 262 };
+  const BRIEF_WINDOW = { W: 236, H: 96, M: 8, rim: 7, r: 5 };
+  if (want('briefback')) await withSeed(461, async () => {
+    const { W, H, M, screw: si } = BRIEF_BACKING, g = new THREE.Group();
+    const steelSide = new THREE.MeshStandardMaterial({ color: 0x3a4250, metalness: 1, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
+    const corners = [[si, si], [W - si, si], [si, H - si], [W - si, H - si]];
+    const feat = { icons: [], buttons: [], screws: corners.map(([x, y]) => ({ x: x - 4, y: y - 4 })), base: NAVY_STEEL_CANVAS, rub: '120,136,160' };
+    put(g, new THREE.Mesh(extrude(rrShape(W, H, 14), 4, 4.5, 3.6, 6), [plateMaterial(W, H, feat), steelSide]), M + W / 2, M + H / 2);
+    for (const [x, y] of corners) put(g, screw(7), M + x, M + y, PLATE_TOP + 0.5);
+    g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.5));
+    await post('brief_backing', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+    layout.brief_backing = { size: [W + 2 * M, H + 2 * M], margin: M, foot: BRIEF_BACKING.foot, corner: 40 };
+  });
+  if (want('briefclip')) await withSeed(462, async () => {
+    const darkSteel = new THREE.MeshStandardMaterial({ color: 0x3c4046, map: noiseTexture(20, 40, 40), metalness: 1, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.85 });
+    const chrome = new THREE.MeshStandardMaterial({ color: 0xb4b9c0, metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 1.0 });
+    { // the board: tempered hardboard, fine fibre speckle, rubbed pale where hands hold it, a darker rim
+      const { W, H, M, r } = BRIEF_BOARD, g = new THREE.Group();
+      const face = canvas2d(W, H, (c) => {
+        c.fillStyle = '#5e4128'; c.fillRect(0, 0, W, H);
+        for (let i = 0; i < W * H / 30; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '24,14,6' : '150,110,70'},${0.05 + rand() * 0.08})`; c.fillRect(rand() * W, rand() * H, 0.8 + rand() * 1.6, 0.6 + rand()); }
+        for (let i = 0; i < 30; i++) { const x = rand() * W, y = rand() * H, rr2 = 30 + rand() * 90, grd = c.createRadialGradient(x, y, 0, x, y, rr2); grd.addColorStop(0, `rgba(${rand() < 0.5 ? '0,0,0' : '255,220,170'},${0.03 + rand() * 0.04})`); grd.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = grd; c.fillRect(x - rr2, y - rr2, 2 * rr2, 2 * rr2); }
+        for (const [x, y] of [[0, 160], [W, 160]]) { const grd = c.createRadialGradient(x, y, 0, x, y, 120); grd.addColorStop(0, 'rgba(210,180,140,0.16)'); grd.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = grd; c.fillRect(0, 0, W, H); }
+        c.save(); c.filter = 'blur(3px)'; c.strokeStyle = 'rgba(0,0,0,0.35)'; c.lineWidth = 8; c.beginPath(); c.roundRect(4, 4, W - 8, H - 8, 16); c.stroke(); c.restore();
+      });
+      const board = new THREE.MeshPhysicalMaterial({ map: faceTexture(face, W, H), roughness: 0.7, clearcoat: 0.15, clearcoatRoughness: 0.6, envMap: studioEnv, envMapIntensity: 0.3 });
+      put(g, new THREE.Mesh(extrude(rrShape(W, H, r), 5, 2, 1.6, 3), [board, new THREE.MeshStandardMaterial({ color: 0x3a2716, roughness: 0.8 })]), M + W / 2, M + H / 2);
+      g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.5));
+      await post('brief_board', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      layout.brief_board = { size: [W + 2 * M, H + 2 * M], margin: M, foot: BRIEF_BOARD.foot, corner: 40 };
+    }
+    { // the clip: a pressed steel jaw, its chrome spring roll behind it, two rivets into the board
+      const { W, H, M, jaw: [jw, jh], roll } = BRIEF_CLIP, g = new THREE.Group(), cx = W / 2, top = 7;
+      put(g, new THREE.Mesh(extrude(rrShape(jw, jh, 14), 4, 2, 1.6, 3), darkSteel), cx, M + 32 + jh / 2, top + 2.2);
+      put(g, new THREE.Mesh(new THREE.CylinderGeometry(10, 10, roll, 28).rotateZ(Math.PI / 2), chrome), cx, M + 22, top + 12);
+      for (const dx of [-100, 100]) put(g, new THREE.Mesh(new THREE.SphereGeometry(6, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), darkSteel), cx + dx, M + 32 + jh / 2 + 2, top + 8.5);
+      g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.55));
+      await post('brief_clip', stage([0, 0, W, H], [g]).grab());
+      layout.brief_clip = { size: [W, H], margin: M, jaw: BRIEF_CLIP.jaw };
+    }
+  });
+  if (want('briefwin')) await withSeed(463, async () => {
+    const { W, H, M, rim, r } = BRIEF_WINDOW, ow = W - 2 * M, oh = H - 2 * M, iw = ow - 2 * rim, ih = oh - 2 * rim;
+    const tones = { dark: null, amber: LAMP.amber, red: LAMP.red, green: LAMP.green };
+    for (const [tone, lit] of Object.entries(tones)) {
+      const face = canvas2d(iw, ih, (c) => {
+        if (lit) {
+          const col = new THREE.Color(lit), hex = '#' + col.getHexString();
+          const grd = c.createRadialGradient(iw / 2, ih / 2, 4, iw / 2, ih / 2, iw * 0.62);
+          grd.addColorStop(0, '#' + col.clone().lerp(new THREE.Color(0xffffff), 0.45).getHexString()); grd.addColorStop(1, hex);
+          c.fillStyle = grd; c.fillRect(0, 0, iw, ih);
+        } else { c.fillStyle = '#1b1e22'; c.fillRect(0, 0, iw, ih); }
+        for (let k = 0; k < iw * ih / 40; k++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.02 + rand() * 0.03})`; c.fillRect(rand() * iw, rand() * ih, 1, 1); }
+        const topG = c.createLinearGradient(0, 0, 0, 7); topG.addColorStop(0, 'rgba(0,0,0,0.6)'); topG.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = topG; c.fillRect(0, 0, iw, 7);
+        const leftG = c.createLinearGradient(0, 0, 5, 0); leftG.addColorStop(0, 'rgba(0,0,0,0.45)'); leftG.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = leftG; c.fillRect(0, 0, 5, ih);
+        const glare = c.createLinearGradient(0, 0, iw * 0.5, ih); glare.addColorStop(0.3, 'rgba(255,255,255,0)'); glare.addColorStop(0.45, 'rgba(255,255,255,0.06)'); glare.addColorStop(0.6, 'rgba(255,255,255,0)');
+        c.fillStyle = glare; c.fillRect(0, 0, iw, ih);
+      });
+      const g = new THREE.Group();
+      const shape = rrShape(ow, oh, r + rim); shape.holes.push(rr(new THREE.Path(), iw, ih, r));
+      put(g, new THREE.Mesh(extrude(shape, 2.5, 1.2, 1, 3), MAT.frame), W / 2, H / 2);
+      const tex = new THREE.CanvasTexture(face); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(iw + 1, ih + 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+      pane.position.set(W / 2, 0.4, H / 2); g.add(pane);
+      g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
+      await post('brief_window_' + tone, stage([0, 0, W, H], [g]).grab());
+    }
+    layout.brief_window = { size: [W, H], margin: M, rim, radius: r, tones: Object.keys(tones) };
   });
 
   // --- the tile view's cabinet (docs/tile-view-ds2-plan.md §9): the stainless door with its black iron pipe

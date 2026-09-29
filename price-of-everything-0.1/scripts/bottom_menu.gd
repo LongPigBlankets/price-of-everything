@@ -112,10 +112,11 @@ var politics_panel: PanelContainer = null
 var construct_panel_v2: PanelContainer = null
 
 func _ready() -> void:
-	construct_panel_v2 = load("res://scripts/construct_panel_v2.gd").new()
+	construct_panel_v2 = load(_construct_v2_script()).new()
 	construct_panel.get_parent().add_child(construct_panel_v2)
 	construct_panel_v2.hide()
 	UiPrefs.construct_panel_v2_changed.connect(_on_construct_panel_v2_changed)
+	UiPrefs.construct_ds2_changed.connect(_on_construct_ds2_changed)
 	UiPrefs.empire_button_icon_changed.connect(_on_empire_button_icon_changed)
 	_apply_menu_icons()
 	%ConstructButton.pressed.connect(_on_construct_pressed)
@@ -465,6 +466,30 @@ func _active_construct_panel() -> PanelContainer:
 	if UiPrefs.use_construct_panel_v2 and is_instance_valid(construct_panel_v2):
 		return construct_panel_v2
 	return construct_panel
+
+## The construct panel's script: the construction lot (DS2) while `toggle construct ds2` is on, else today's.
+func _construct_v2_script() -> String:
+	return "res://scripts/construct_ds2/construct_ds2.gd" if UiPrefs.use_construct_ds2 else "res://scripts/construct_panel_v2.gd"
+
+
+## The DS2 look switched: the panel is rebuilt in the other look where it stood, under the same name, and
+## reopened on the catalogue if it was open.
+func _on_construct_ds2_changed(_enabled: bool) -> void:
+	if not is_instance_valid(construct_panel_v2):
+		return
+	var was_open := construct_panel_v2.visible
+	var parent := construct_panel_v2.get_parent()
+	var at := construct_panel_v2.get_index()
+	construct_panel_v2.hide()
+	parent.remove_child(construct_panel_v2)
+	construct_panel_v2.queue_free()
+	construct_panel_v2 = load(_construct_v2_script()).new()
+	parent.add_child(construct_panel_v2)
+	parent.move_child(construct_panel_v2, at)
+	construct_panel_v2.hide()
+	if was_open:
+		_hide_all_panels()
+		construct_panel_v2.call("open_browser")
 
 func _on_construct_panel_v2_changed(_enabled: bool) -> void:
 	var was_open: bool = construct_panel.visible or (is_instance_valid(construct_panel_v2) and construct_panel_v2.visible)

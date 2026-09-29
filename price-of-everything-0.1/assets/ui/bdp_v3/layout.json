@@ -1766,5 +1766,463 @@
    112
   ],
   "bezel": 44
+ },
+ "brief_backing": {
+  "size": [
+   1060,
+   2248
+  ],
+  "margin": 24,
+  "foot": 80,
+  "corner": 40
+ },
+ "brief_board": {
+  "size": [
+   952,
+   1232
+  ],
+  "margin": 16,
+  "foot": 60,
+  "corner": 40
+ },
+ "brief_clip": {
+  "size": [
+   360,
+   124
+  ],
+  "margin": 20,
+  "jaw": [
+   300,
+   58
+  ]
+ },
+ "brief_window": {
+  "size": [
+   236,
+   96
+  ],
+  "margin": 8,
+  "rim": 7,
+  "radius": 5,
+  "tones": [
+   "dark",
+   "amber",
+   "red",
+   "green"
+  ]
+ },
+ "construct_head": {
+  "size": [
+   1125,
+   244
+  ],
+  "origin": [
+   0,
+   0
+  ]
+ },
+ "construct_mast": {
+  "size": [
+   120,
+   104
+  ],
+  "origin": [
+   0,
+   348
+  ],
+  "at": 244
+ },
+ "construct_placard": {
+  "size": [
+   272,
+   104
+  ],
+  "origin": [
+   749,
+   128
+  ],
+  "face": [
+   775,
+   157,
+   216,
+   56
+  ]
+ },
+ "construct_trolley": {
+  "size": [
+   84,
+   48
+  ],
+  "origin": [
+   18,
+   106
+  ],
+  "centre_x": 60
+ },
+ "construct_rig": {
+  "size": [
+   1005,
+   222
+  ],
+  "origin": [
+   80,
+   136
+  ],
+  "trolley_x": 585.5
+ },
+ "construct_hoarding": {
+  "size": [
+   1125,
+   2250
+  ],
+  "origin": [
+   0,
+   0
+  ]
+ },
+ "construct_panel": {
+  "width": 1125,
+  "content_x": 80,
+  "content_w": 1005,
+  "head_h": 244,
+  "cab": {
+   "x": 70,
+   "y": 36,
+   "w": 342,
+   "h": 192
+  },
+  "jib": {
+   "x0": 412,
+   "x1": 1005,
+   "t": 48,
+   "b": 128
+  },
+  "placard": {
+   "x": 761,
+   "y": 152
+  },
+  "nameplate": {
+   "w": 244,
+   "h": 66
+  },
+  "close": [
+   1065,
+   76
+  ],
+  "back": [
+   1065,
+   160
+  ]
+ },
+ "construct_board": {
+  "size": [
+   1027,
+   360
+  ],
+  "origin": [
+   -8,
+   -8
+  ],
+  "board": [
+   0,
+   0,
+   1005,
+   336
+  ],
+  "tile": [
+   24,
+   94,
+   216,
+   216
+  ],
+  "icon_inset": 28,
+  "enamel": [
+   260,
+   94,
+   721,
+   216
+  ],
+  "title": [
+   24,
+   8
+  ],
+  "ink": "#e3ebf5"
+ },
+ "guard_build": {
+  "size": [
+   240,
+   214
+  ],
+  "head": 64,
+  "button": [
+   70,
+   89,
+   100,
+   100
+  ],
+  "colour": "amber",
+  "icon": "hammer"
+ },
+ "construct_yard": {
+  "size": [
+   1023,
+   764
+  ],
+  "origin": [
+   -6,
+   -6
+  ],
+  "yard": [
+   0,
+   0,
+   1005,
+   744
+  ],
+  "pad": 18,
+  "gap": 12,
+  "rows": [
+   206,
+   206,
+   272
+  ],
+  "pallet": 176
+ },
+ "construct_pallet": {
+  "size": [
+   206,
+   206
+  ],
+  "origin": [
+   0,
+   0
+  ]
+ },
+ "construct_pillar": {
+  "size": [
+   1023,
+   152
+  ],
+  "origin": [
+   -6,
+   -6
+  ]
+ },
+ "construct_lot": {
+  "size": [
+   488,
+   226
+  ],
+  "origin": [
+   -6,
+   -6
+  ]
+ },
+ "construct_slab": {
+  "size": [
+   50,
+   50
+  ],
+  "origin": [
+   0,
+   0
+  ],
+  "slab": [
+   10,
+   10,
+   30,
+   30
+  ]
+ },
+ "construct_stake": {
+  "size": [
+   40,
+   40
+  ],
+  "origin": [
+   0,
+   0
+  ]
+ },
+ "construct_tape": {
+  "size": [
+   320,
+   24
+  ],
+  "origin": [
+   0,
+   10
+  ],
+  "period": 16
+ },
+ "construct_settings": {
+  "size": [
+   92,
+   94
+  ],
+  "origin": [
+   72,
+   142
+  ],
+  "key": [
+   84,
+   154,
+   62,
+   62
+  ]
+ },
+ "construct_settings_pressed": {
+  "size": [
+   92,
+   94
+  ],
+  "origin": [
+   72,
+   142
+  ]
+ },
+ "construct_catplate": {
+  "size": [
+   1025,
+   328
+  ],
+  "origin": [
+   -8,
+   -8
+  ],
+  "at": [
+   80,
+   152
+  ],
+  "plate": [
+   0,
+   0,
+   1005,
+   306
+  ],
+  "tab": [
+   348,
+   665,
+   92
+  ],
+  "search": [
+   447,
+   21,
+   191,
+   50
+  ],
+  "keys": [
+   18,
+   110,
+   969,
+   84,
+   10
+  ]
+ },
+ "construct_card": {
+  "size": [
+   510.5,
+   198
+  ],
+  "origin": [
+   -6,
+   -6
+  ],
+  "board": [
+   0,
+   0,
+   494.5,
+   180
+  ],
+  "field": [
+   26,
+   20,
+   140
+  ],
+  "emblem": 116,
+  "text_x": 186,
+  "cap_left": 206,
+  "cap_right": 46
+ },
+ "construct_tag": {
+  "size": [
+   1023,
+   344
+  ],
+  "origin": [
+   -6,
+   -64
+  ],
+  "tag": [
+   0,
+   0,
+   1005,
+   266
+  ],
+  "tab": [
+   92,
+   0,
+   821,
+   46
+  ],
+  "body": [
+   0,
+   46,
+   1005,
+   220
+  ],
+  "drop": 40
+ },
+ "construct_key_brass": {
+  "size": [
+   232,
+   116
+  ],
+  "like": "tile_key"
+ },
+ "construct_container": {
+  "size": [
+   1023,
+   200
+  ],
+  "origin": [
+   -6,
+   -6
+  ],
+  "box": [
+   0,
+   0,
+   1005,
+   180
+  ],
+  "cap_left": 44,
+  "cap_right": 44,
+  "rib": 24
+ },
+ "construct_card_plate": {
+  "size": [
+   396,
+   168
+  ],
+  "origin": [
+   -6,
+   -6
+  ],
+  "at": [
+   36,
+   15
+  ],
+  "plate": [
+   0,
+   0,
+   380,
+   150
+  ],
+  "field": [
+   16,
+   15,
+   120
+  ],
+  "emblem": 100,
+  "text_x": 152
  }
 }

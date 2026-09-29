@@ -66,6 +66,7 @@ var _proj_transport_value: Label
 var _goods_purchased_value: Label
 var _proj_goods_purchased_value: Label
 var _warehousing_value: Label
+var _one_off_value: Label
 var _advisor_value: Label
 var _operating_loan_value: Label
 var _proj_warehousing_value: Label
@@ -364,6 +365,8 @@ func _ready() -> void:
 	_normalise_balance_rows()
 	_warehousing_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Warehousing")
 	_proj_warehousing_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Warehousing")
+	# A start's opening costs (MatchState.one_off_charges): only in the turn they are paid.
+	_one_off_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Opening costs")
 	_carbon_tax_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Carbon tax")
 	_proj_carbon_tax_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Carbon tax")
 	# Green subsidy is INCOME: insert into the revenue sections after the power-sales row.
@@ -578,7 +581,8 @@ static func operating_costs_of(s: Dictionary) -> float:
 	return float(s.get("maintenance_paid", 0.0)) + float(s.get("labour_paid", 0.0)) \
 		+ float(s.get("advisor_paid", 0.0)) + float(s.get("transport_paid", 0.0)) \
 		+ float(s.get("power_purchase_cost", 0.0)) + float(s.get("goods_purchased_cost", 0.0)) \
-		+ float(s.get("warehousing_paid", 0.0)) + float(s.get("carbon_tax_paid", 0.0))
+		+ float(s.get("warehousing_paid", 0.0)) + float(s.get("carbon_tax_paid", 0.0)) \
+		+ float(s.get("one_off_paid", 0.0))
 
 ## Must equal Production.cash_change_of: operating flows plus the intermediary's operating loans.
 static func net_cash_of(s: Dictionary) -> float:
@@ -634,6 +638,9 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	_render_transport_breakdown(transport, summary.get("transport_breakdown", {}))
 	_goods_purchased_value.text = "-£%.2f" % goods_purchased
 	_warehousing_value.text = "-£%.2f" % warehousing
+	var one_off := float(summary.get("one_off_paid", 0.0))
+	_one_off_value.text = "-£%.2f" % one_off
+	_one_off_value.get_parent().visible = one_off > 0.0
 	_carbon_tax_value.text = "-£%.2f" % carbon_tax
 	_green_subsidy_value.text = "+£%.2f" % green_subsidy
 	total_costs_value.text = "-£%.2f" % total_costs

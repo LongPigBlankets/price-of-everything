@@ -481,8 +481,9 @@ func _on_deposit_exhausted(tile_id: String, token: String) -> void:
 		"id": "deposit_exhausted:%s:%s" % [tile_id, token],
 		"kind": "deposit_exhausted",
 		"severity": SEVERITY_CRITICAL,
-		"title": "%s deposit exhausted" % token.capitalize(),
-		"body": "The %s deposit at %s is exhausted. Mining has stopped." % [token, Catalog.tile_label(tile_id)],
+		"title": "%s deposit exhausted" % token.replace("_", " ").capitalize(),
+		"tile_id": tile_id, "token": token,
+		"body": "The %s deposit at %s is exhausted. Mining has stopped." % [token.replace("_", " "), _place(tile_id)],
 		"source": "match_state",
 		"deeplink": {"panel": "tile", "tile_id": tile_id},
 		"persistent": true,
@@ -538,12 +539,17 @@ func _on_tile_reached_capacity(tile_id: String) -> void:
 		"id": "capacity:%s" % tile_id,
 		"kind": "tile_at_capacity",
 		"severity": SEVERITY_WARNING,
-		"title": "%s at capacity" % Catalog.tile_label(tile_id),
+		"title": "%s at capacity" % _place(tile_id),
 		"body": "Storage is full. Clear space for incoming goods.",
 		"source": "stockpile",
 		"deeplink": {"panel": "tile", "tile_id": tile_id},
 		"persistent": true,
 	})
+
+## A tile's name for the player, never its coordinates.
+func _place(tile_id: String) -> String:
+	var n := Catalog.tile_name(tile_id)
+	return n if n != "" else "an unnamed tile"
 
 func _on_bankruptcy_warning(money: float, floor: float) -> void:
 	emit_event({

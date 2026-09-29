@@ -387,13 +387,13 @@ func _test_briefing_items_and_dismissal() -> void:
 	TurnBriefing._rebuild_items()
 	_check(not TurnBriefing.items().any(func(it) -> bool: return str(it.id) == "alert:starved"),
 		"briefing: a dismissed alert leaves the list")
-	# Same magnitude → stays quiet; worsened (another building starves) → re-surfaces.
+	# Silenced for good (owner, 28 September): even when another building starves it stays dark.
 	BuildingState.buildings["tb_starved2"] = {"instance_id": "tb_starved2", "building_id": "b_001",
 		"recipe_id": "", "tile_id": "tile_1_2", "owner": MatchState.LOCAL_PLAYER}
 	Production.missing_by_building["tb_starved2"] = [{"internal_name": "power"}]
 	TurnBriefing._rebuild_items()
-	_check(TurnBriefing.items().any(func(it) -> bool: return str(it.id) == "alert:starved"),
-		"briefing: the starved alert re-surfaces when the count worsens")
+	_check(not TurnBriefing.items().any(func(it) -> bool: return str(it.id) == "alert:starved"),
+		"briefing: a silenced starved alert stays dark when the count worsens")
 	BuildingState.buildings.erase("tb_starved")
 	BuildingState.buildings.erase("tb_starved2")
 	Production.missing_by_building = missing_before
@@ -403,8 +403,8 @@ func _test_briefing_items_and_dismissal() -> void:
 	_decision_board_restore(snap)
 
 func _test_briefing_event_mapping() -> void:
-	# Bell events map into sections: research → info, unknown kinds → news; dismissing
-	# in the Briefing dismisses in the bell (one source of truth).
+	# One-off events are rows in the updates dock, not briefing items (owner ruling): research is read by
+	# the top bar from recent_research(), unknown announcement kinds post themselves as dock rows.
 	var snap := _decision_board_snapshot()
 	EventScheduler.reset()
 	TurnBriefing.reset()
@@ -414,19 +414,12 @@ func _test_briefing_event_mapping() -> void:
 	EventScheduler.emit_event({"id": "tb_ev_news", "kind": "carbon_announcement",
 		"title": "Carbon tax announced", "body": "x", "severity": "warning", "persistent": true})
 	TurnBriefing._rebuild_items()
-	var by_id := {}
-	for it in TurnBriefing.items():
-		by_id[str(it.id)] = it
-	# Research unlocks aggregate into a single "info" update that carries each entry.
-	var agg: Dictionary = by_id.get("research_unlocked_agg", {})
-	_check(not agg.is_empty() and str(agg.get("section", "")) == "info" \
-			and str((agg.get("research", [{}])[0] as Dictionary).get("reward", "")) == "Reward X",
-		"briefing: research events land in the info section")
-	_check(by_id.has("ev:tb_ev_news") and str(by_id["ev:tb_ev_news"].section) == "news",
-		"briefing: unknown announcement kinds land in the news section")
-	TurnBriefing.dismiss("ev:tb_ev_news")
-	_check(not EventScheduler._active.has("tb_ev_news"),
-		"briefing: dismissing an event item dismisses it in the bell too")
+	var ids: Array = TurnBriefing.items().map(func(it) -> String: return str(it.id))
+	_check(not ids.has("research_unlocked_agg") and str((TurnBriefing.recent_research()[0] as Dictionary).get("reward", "")) == "Reward X",
+		"briefing: research is not an item; the top bar reads it from recent_research")
+	_check(not ids.has("ev:tb_ev_news") and TurnBriefing.news_row_text({"kind": "carbon_announcement",
+		"title": "Carbon tax announced", "body": "x"}) == "Carbon tax announced. x",
+		"briefing: unknown announcement kinds are dock rows, not items")
 	EventScheduler.reset()
 	TurnBriefing.reset()
 	_decision_board_restore(snap)

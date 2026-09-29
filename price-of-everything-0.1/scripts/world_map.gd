@@ -984,14 +984,10 @@ func _build_dialogs_and_fx(paced: bool) -> void:
 	_dialogs_built = true
 	var t := Time.get_ticks_usec()
 
-	# Prompts the player when a tile first hits max storage.
-	_hud.add_child(load("res://scripts/capacity_dialog.gd").new())
-	_prof_us("  dialog: capacity", t)
-	if paced:
-		await get_tree().process_frame
+	# A tile reaching its storage limit asks nothing: the top bar's storage lamp shows it
+	# (owner ruling). capacity_dialog.gd is no longer mounted.
 
 	# Prompts when construction materials arrive at a full tile.
-	t = Time.get_ticks_usec()
 	var overflow_dialog: Node = load("res://scripts/overflow_dialog.gd").new()
 	_hud.add_child(overflow_dialog)
 	overflow_dialog.go_to_stockpile_requested.connect(_on_go_to_tile_stockpile)

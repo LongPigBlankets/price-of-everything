@@ -219,7 +219,7 @@ const UNLOCK_MODIFIERS := {
 	"research_inorg_002": {"id": "rn_pozzolanic_vitrification", "domain": "recipe_output", "target_match": {"good_internal": "concrete"}, "pct": 10.0, "label": "Pozzolanic Vitrification", "source": "research_node"},
 	"research_inorg_003": [  # Micro Silica Synthesis
 		{"id": "rn_micro_silica_concrete", "domain": "recipe_output", "target_match": {"good_internal": "concrete"}, "pct": 5.0, "label": "Micro Silica Synthesis", "source": "research_node"},
-		{"id": "rn_micro_silica_glass", "domain": "recipe_output", "target_match": {"good_internal": "glass"}, "pct": 15.0, "label": "Micro Silica Synthesis", "source": "research_node"},
+		{"id": "rn_micro_silica_glass", "domain": "recipe_output", "target_match": {"good_internal": "glass"}, "pct": 10.0, "label": "Micro Silica Synthesis", "source": "research_node"},
 	],
 	"research_biochem_001": {"id": "rn_crop_rotation_programmes", "domain": "recipe_output", "target_match": {"building_id": "b_014"}, "pct": 5.0, "label": "Crop Rotation Programmes: +5% farm output", "source": "research_node"},  # Crop Rotation Programmes
 	# Enzyme Screening (biochem_002) and Bioplastic Precursors (biochem_003) are demo-hidden

@@ -1251,19 +1251,16 @@ func _thousands(n: int) -> String:
 	return ("-" if n < 0 else "") + out
 
 
-## Posts each research unlock to the updates dock the first time it appears -- TurnBriefing can
-## rebuild its items more than once as unlocks land, and keeps each for two turns.
+## Posts each research unlock to the updates dock the first time it appears -- TurnBriefing reads
+## the unlocks of the latest turn, which it keeps for two turns.
 func _refresh_briefing() -> void:
 	var dock := _updates_dock()
-	for it in TurnBriefing.items():
-		if str(it.get("event_kind", "")) != "research_unlocked":
-			continue
-		for entry in (it.get("research", []) as Array):
-			var tech := str((entry as Dictionary).get("name", ""))
-			if tech != "" and not _research_toasted.has(tech):
-				_research_toasted[tech] = true
-				if dock != null:
-					dock.push_research(tech)
+	for entry in TurnBriefing.recent_research():
+		var tech := str((entry as Dictionary).get("name", ""))
+		if tech != "" and not _research_toasted.has(tech):
+			_research_toasted[tech] = true
+			if dock != null:
+				dock.push_research(tech)
 
 
 # ── 5 · Council: seated portraits with loyalty rings + number chips ─────────────
@@ -3482,6 +3479,7 @@ func _fly_treasury(vb: VBoxContainer) -> void:
 		["Transport costs", float(s.get("transport_paid", 0.0))],
 		["Goods purchased", float(s.get("goods_purchased_cost", 0.0))],
 		["Warehousing", float(s.get("warehousing_paid", 0.0))],
+		["Opening costs", float(s.get("one_off_paid", 0.0))],
 		["Loan repayments", float(s.get("interest_paid", 0.0))],
 		["Taxes & dividends", taxes_and_dividends],
 		["Carbon tax", float(s.get("carbon_tax_paid", 0.0))],
@@ -3732,6 +3730,7 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 		["Transport costs", float(s.get("transport_paid", 0.0))],
 		["Goods purchased", float(s.get("goods_purchased_cost", 0.0))],
 		["Warehousing", float(s.get("warehousing_paid", 0.0))],
+		["Opening costs", float(s.get("one_off_paid", 0.0))],
 		["Loan repayments", float(s.get("interest_paid", 0.0))],
 		["Taxes and dividends", float(s.get("taxes_paid", 0.0)) + float(s.get("dividends_paid", 0.0))],
 		["Carbon tax", float(s.get("carbon_tax_paid", 0.0))],

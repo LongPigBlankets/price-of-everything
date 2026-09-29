@@ -54,9 +54,13 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 ## Digital displays (26 September 2026, from the Construct studies; made the rule everywhere 27 September 2026)
 
 - **The decimal point takes a cell of its own** on every LED screen in the game, as wide as a digit's (`bdp_v3_led.gd`, the default).
-- **At most five cells, the point counted, and never more than two decimals.** Money on a screen: two decimals below £100 (1.15, 9.99, 99.99), one decimal from £100 (999.1), whole pounds from £1,000 (9999), then £15.6K (to 999.9K), £1.01M, £1.01B with the letter printed after the screen. A minus takes a cell, so a loss drops decimals to fit (-10.4). Other figures on screens follow the same cap; a figure is never given more decimals than it came with.
+- **At most five cells, the point counted, and never more than two decimals**, except **under £1, where three are allowed** (0.061; owner, 29 September: a power plant's cost a MW read 0.06 at both levels). Money on a screen: two decimals below £100 (1.15, 9.99, 99.99), one decimal from £100 (999.1), whole pounds from £1,000 (9999), then £15.6K (to 999.9K), £1.01M, £1.01B with the letter printed after the screen. A minus takes a cell, so a loss drops decimals to fit (-10.4). Other figures on screens follow the same cap; a figure is never given more decimals than it came with.
 - **A materials cost is whole pounds only** (it was too busy with pence).
 - Every LED fits its figure itself (`BdpV3Led.fit`, through `scripts/ds2/money_figure.gd` `screen`), so every panel (Building Detail, the top bar and its Treasury sheet, the tile view, the ledger, the upgrade panel, People) follows it; a group's screens are padded to the widest fitted figure, so they stay one width.
+
+## Market (29 September 2026; plan `docs/market-ds2-plan.md`)
+
+- **The commodities exchange is the default**; `toggle market ds2` switches back to today's panel.
 
 ## Construct (26 September 2026; plan `docs/construct-ds2-plan.md`)
 
@@ -68,6 +72,12 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **Materials**: no per good prices (the materials total speaks for them), the goods in a grid of two columns and three rows on one backing, the Materials from knob in the sixth cell. **The intermediary is the default source**, since it is faster.
 - **A recipe is drawn, not named**: on a building's board the icon on the left and the recipe diagram in enamel on the right, expanded or condensed as the Construct setting says.
 - **Names**: the building by what it makes, without its letter until built: "Iron Furnace", "Copper Furnace"; where several recipes make the same thing, the recipe tells them apart: "Motor Assembly Plant", "SynRM Motor Assembly Plant".
+- **The Build key** (27 September) stays high in the verdict, where it is quick to decide, but as a plain cream key, not the guarded cap: building is not that big a decision. Its rim is polished brass, not the black metal bezel. Refused, it prints red, and a press makes the part that blocks glow instead of building: the money (Cash after), or the land's row when auto buy land is off (the row then offers Buy land), or the requirement that blocks.
+- **Recipe diagrams** (27 September): a single row never draws goods under 48 px; three or more goods on a side go into two rows (the short row centred), a side of one or two beside them drawn larger. The recipe's name sits outside the diagram: on a catalogue tag in a tab rising between its chains, 15 px in from each.
+- **The catalogue's building card** (27 September) is a blue shipping container with a plate on its left end for the icon, the name and the price, the price level with the foot of the icon. A recipe's diagram glows while hovered. The construction lot is the default construct panel. A card that can't be built there or paid for is grey; a price is white while the cash covers it twice over, red below (the build order's Total too).
+- **The settings key** (27 September) is a white plastic key with a bevel and a navy gear. Since 28 September it stands on the crane's cab, left of CONSTRUCT, and the cab is four window panes wide to hold it.
+- **Turns to deliver** (28 September): the verdict shows the materials' delivery beside the build on drums ("Turns to deliver + build"), so a cheaper, slower source (the global market) shows its wait next to its price. Cash after sits on a second row under Total and the Build key sits low beside it.
+- **The Import/Export License** (28 September) needs £75 pre-tax profit a turn for 3 turns in a row (was £50 in one turn), so a start's free opening stock cannot unlock it on turn 1.
 - **Every name in `docs/building-names.md` is approved as the table proposed it**, including the 19 rows that were marked for a second look (Limestone Mine, Sand Mine, Hairpin Stator Motor Assembly Plant and the rest). Only the unloaded farm recipes remain open.
 - **Building icons**: the polished relief with its soft grey edge looked wrong; a simple emboss or flat print (a blueprint) is being compared.
 
@@ -84,3 +94,14 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **A CFO's worth is today's**: the interest her cut saves on the loans the company has now, nothing without loans.
 - **No reduced salary** for Vera; the promise is gone.
 
+
+## Briefing (27 September 2026; plan `docs/briefing-ds2-plan.md`)
+
+- **The turn briefing in DS2 is the default** (29 September): the clipboard and the annunciator replace today's panel. `toggle briefing ds2` switches back.
+- **Strict about copy.** The decision letters' story stays narrative; everything else is factual and brief. No hyphens, semicolons, dashes, middle dots or ellipses; places by name, never coordinates.
+- **One way to close the panel.** Dismiss, the caret and the X were one too many: the Close key only (Esc stays the keyboard's). Quieting an alert is Silence alert, a different action.
+- **The clipboard (or a folder of documents)** is the metaphor for decisions; the annunciator for live alerts.
+- **Width 540 px**, one width. **Placement: the middle of the screen**, since many decisions are mandatory. **It rises by itself** when a decision arrives.
+- **A tile jam shows on the top bar's transport LEDs** (storage), with no update of its own and no dialog.
+- **One-off news becomes toasts** (dock rows); the briefing keeps decisions and live alerts.
+- **Toasts are timed only the first time they appear in the turn.** Opened by the player, the updates stay until the player clicks any surface outside them; clicks on the toasts or on the briefing and updates controls in the bottom left do not close them.

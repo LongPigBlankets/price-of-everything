@@ -1,6 +1,6 @@
 # Market panel: how it is used, what it holds, and a DS2 arrangement
 
-Status: built behind `toggle market ds2` (`UiPrefs.use_market_ds2`, off by default), 27 September 2026: the numbers (§6), today's panel's fixes (§9.1) and the DS2 exchange, every tab (§9.2). The owner's decisions are in §8. Before that: planning, 26 September 2026. One concept study is rendered for the owner (§5): `artifacts/market_ds2/market_study_v1.png`, render set `marketstudy` (seed 435) in `tools/button_mockup/cluster.html`, a study and not a game layer.
+Status: the default since 29 September 2026 (owner); `toggle market ds2` (`UiPrefs.use_market_ds2`) switches back to today's panel. Built 27 September 2026: the numbers (§6), today's panel's fixes (§9.1) and the DS2 exchange, every tab (§9.2). The owner's decisions are in §8. Before that: planning, 26 September 2026. One concept study is rendered for the owner (§5): `artifacts/market_ds2/market_study_v1.png`, render set `marketstudy` (seed 435) in `tools/button_mockup/cluster.html`, a study and not a game layer.
 
 Read with `docs/ds2-theme.md` (the look, the kit, the method in §13 and §14) and `docs/ds2-owner-decisions.md` (settled rulings, including the new money rule under "Digital displays"). The tile view's plan (`docs/tile-view-ds2-plan.md`) and Construct's (`docs/construct-ds2-plan.md`) are the models for this one. Captures of today's panel, every tab paged top to bottom: `artifacts/market_ds2/before/`.
 

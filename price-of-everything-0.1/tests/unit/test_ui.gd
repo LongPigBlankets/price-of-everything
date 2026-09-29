@@ -1886,8 +1886,10 @@ func _test_updates_dock() -> void:
 		return row_list.get_children().filter(func(r: Node) -> bool: return (r as Control).visible).size()
 	_check(shown.call() == 4, "updates dock: opened from the dock, every kept row shows")
 	toasts._on_timer()
+	_check(toasts.is_open(), "updates dock: the dock's slide-out has no timer; it stays until a click outside it")
+	toasts.collapse()
 	_check(not toasts.is_open() and toasts._dock_style.border_color == toasts.DOCK_BORDER,
-		"updates dock: the dock's slide-out also closes when left alone, and its rim goes out")
+		"updates dock: put away, its rim goes out")
 
 	toasts._on_toast_requested("Ordered 5 Steel", "success")
 	_check(toasts.is_open() and shown.call() == 1, "updates dock: opened by itself, only rows it hasn't shown")
@@ -1936,7 +1938,7 @@ func _test_updates_dock_filters_and_decisions() -> void:
 	_check(toasts.is_open() and shown.call() == PackedStringArray(["Local opposition to density"]),
 		"updates dock: another bell switches the rows to its colour")
 	toasts.find_child("Bell_amber", true, false).gui_input.emit(click)
-	_check(not toasts.is_open() and toasts.filter() == "", "updates dock: the same bell again closes the rows")
+	_check(toasts.is_open() and toasts.filter() == "amber", "updates dock: the same bell again leaves its rows open")
 	toasts.find_child("UpdatesDock", true, false).gui_input.emit(click)
 	_check(shown.call().size() == 4, "updates dock: clicking the dock between its icons shows every row")
 	toasts.collapse(false)
@@ -1968,10 +1970,11 @@ func _test_updates_dock_filters_and_decisions() -> void:
 	TurnBriefing.expanded_changed.connect(on_expand)
 	toasts.open_all()
 	pen.gui_input.emit(click)
-	_check(opened[0] == "open" and TurnBriefing.expanded and not toasts.is_open(),
-		"updates dock: the pen opens the briefing on its decisions and puts the rows away")
+	_check(opened[0] == "open" and TurnBriefing.expanded and toasts.is_open(),
+		"updates dock: the pen opens the briefing on its decisions and leaves the rows open")
 	pen.gui_input.emit(click)
-	_check(opened[0] == "closed" and not TurnBriefing.expanded, "updates dock: the pen again closes the briefing")
+	_check(opened[0] == "open" and TurnBriefing.expanded, "updates dock: the pen only opens the briefing; its Close key closes it")
+	TurnBriefing.collapse()
 	TurnBriefing.expanded_changed.disconnect(on_expand)
 	DecisionState.hide_updates = saved_hide
 	TurnBriefing._items = items_before
@@ -2005,8 +2008,9 @@ func _test_updates_dock_research_and_notices() -> void:
 	MatchState.research_search_requested.connect(on_search)
 	research_row.gui_input.emit(click)
 	MatchState.research_search_requested.disconnect(on_search)
-	_check(searched[0] == "Interchangeable Tooling" and not toasts.is_open(),
-		"updates dock: clicking an unlock opens the Research panel on it and puts the rows away")
+	_check(searched[0] == "Interchangeable Tooling" and toasts.is_open(),
+		"updates dock: clicking an unlock opens the Research panel on it and leaves the rows up")
+	toasts.collapse(false)
 	toasts.push_research("Interchangeable Tooling")
 	_check(toasts.row_count() == 3, "updates dock: the same unlock twice keeps one row")
 
@@ -2743,3 +2747,27 @@ func _test_building_detail_title_shows_its_recipe_on_hover() -> void:
 		"bdp title: the v2 title's tooltip names the recipe and what it makes")
 	panel.queue_free()
 	BuildingState.remove_building(iid)
+
+
+## Under £1 a screen may show three decimals when the figure has them (owner, 29 September): a power plant's cost
+## a MW, £0.061 at level 1 and £0.057 at level 2, read 0.06 twice at two. From £1, and for a loss, it stays at two.
+func _test_led_three_decimals_under_a_pound() -> void:
+	var Led = load("res://scripts/bdp_v3_led.gd")
+	_check(str(Led.fit("0.061").figure) == "0.061" and str(Led.fit("0.057").figure) == "0.057",
+		"led: under £1 a figure keeps its third decimal")
+	_check(str(Led.fit("0.57").figure) == "0.57" and str(Led.fit("0.999").figure) == "0.999" and str(Led.fit("0.9996").figure) == "1.00",
+		"led: two decimals stay two, and 0.9996 rounds up to 1.00")
+	_check(str(Led.fit("1.234").figure) == "1.23" and str(Led.fit("-0.061").figure) == "-0.06",
+		"led: from £1, and for a loss, two decimals at most")
+	var Money := preload("res://scripts/ds2/money_figure.gd")
+	_check(Money.text(0.061) == "£0.06", "led: the money rule's own default stays at two")
+	var dialog: Control = load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd").new()
+	var row: Control = dialog.call("_estimate_row", "Estimated Cost per Unit", [40.0 / 660.0, 74.66 / 1320.0, 0.05], 1, 2, false, true)
+	var got: Array = row.find_children("Led", "", true, false).map(func(l: Node) -> String: return str(l.call("figure")).strip_edges())
+	_check(got == ["0.061", "0.057"], "upgrade: a power plant's cost a MW differs between levels (%s)" % str(got))
+	var dear: Control = dialog.call("_estimate_row", "Estimated Cost per Unit", [1.5, 1.25, 1.0], 1, 2, false, true)
+	var dear_got: Array = dear.find_children("Led", "", true, false).map(func(l: Node) -> String: return str(l.call("figure")).strip_edges())
+	_check(dear_got == ["1.50", "1.25"], "upgrade: a unit's cost of £1 or more keeps two places (%s)" % str(dear_got))
+	row.free()
+	dear.free()
+	dialog.free()

@@ -114,9 +114,15 @@ func _test_live_mine_grid_and_nontradeable_coproduct() -> void:
 	_check(Service.uses_inputs(plant) and not Service.uses_outputs(plant), "grid exclusion survives reload")
 	cleanup()
 
-func _test_demo_starts_open_with_two_batches_on_hand() -> void:
-	for start: String in ["metal_magnate", "glass_merchant"]:
+## Each demo start opens with its own free batches (data/starts/*.json "opening_batches", and a building entry's
+## own "opening_batches" for that building): none, and turn 1 buys the inputs; N, one batch held and N-1 more in
+## reserve. Metal Magnate has none (owner, 28 September). Glass Merchant stocks only its windows factory for one
+## turn, the rest buy on turn 1: the factory's batch is the dear one, and without it £300 cannot fund turn 1.
+func _test_demo_starts_open_with_their_batches() -> void:
+	var want := {"metal_magnate": {}, "glass_merchant": {"b_007": 1}}
+	for start: String in want:
 		var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/%s.json" % start))
+		_check(int(cfg.get("opening_batches", -1)) == 0, "%s opens with no free batches by default" % start)
 		var snap := SaveLoad.expand_start_config(cfg)
 		var match_state: Dictionary = snap.get("match", {})
 		_check(str((match_state.get("ruleset", {}) as Dictionary).get("logistics_model", "")) == "middleman_v1", "%s is an intermediary game" % start)
@@ -124,17 +130,31 @@ func _test_demo_starts_open_with_two_batches_on_hand() -> void:
 		_check(services.size() == (cfg.get("buildings", []) as Array).size(), "%s enrols every starting building" % start)
 		var exact := true
 		for iid in services:
+			var building_id := str(services[iid].get("building_id", str(iid).get_slice("_", 1) + "_" + str(iid).get_slice("_", 2)))
+			var batches := int((want[start] as Dictionary).get(building_id, 0))
 			var recipe := Catalog.get_recipe(str(services[iid].recipe_id))
-			var held: Dictionary = services[iid].inputs
+			var held: Dictionary = services[iid].get("inputs", {})
 			var reserve: Dictionary = services[iid].get("opening_inputs", {})
 			for input: Dictionary in recipe.get("inputs", []):
-				if Service.material_tradeable(str(input.good_id), "input") \
-						and (int(held.get(str(input.good_id), 0)) != int(input.qty) or int(reserve.get(str(input.good_id), 0)) != int(input.qty)):
+				if not Service.material_tradeable(str(input.good_id), "input"):
+					continue
+				var one := int(input.qty) if batches > 0 else 0
+				if int(held.get(str(input.good_id), 0)) != one or int(reserve.get(str(input.good_id), 0)) != int(input.qty) * maxi(0, batches - 1):
 					exact = false
 			if (recipe.get("inputs", []) as Array).is_empty() and not (held.is_empty() and reserve.is_empty()):
 				exact = false
-		_check(exact, "%s holds one batch and reserves a second per building, none for mines" % start)
+		_check(exact, "%s holds the free batches it names and nothing else (%s)" % [start, str(want[start])])
 		_check((cfg.get("stockpile", {}) as Dictionary).is_empty(), "%s has no tile stockpile to strand" % start)
+	# A building entry's own opening_batches overrides the start's.
+	var cfg2 := {"start": true, "ruleset": {"logistics_model": "middleman_v1", "middleman_new_buildings": true},
+		"opening_batches": 2, "money": 100, "buildings": [
+			{"building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_18_16"},
+			{"building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_18_16", "opening_batches": 0}]}
+	var services2: Dictionary = ((SaveLoad.expand_start_config(cfg2).get("match", {}) as Dictionary).get("middleman_service", {}) as Dictionary).get("buildings", {})
+	var stocked := 0
+	for iid in services2:
+		if not (services2[iid].get("inputs", {}) as Dictionary).is_empty(): stocked += 1
+	_check(services2.size() == 2 and stocked == 1, "a building's own opening_batches overrides the start's (%d of %d stocked)" % [stocked, services2.size()])
 
 func _test_opening_reserve_runs_two_turns_then_buys() -> void:
 	var iid := str(setup()[0])
@@ -163,4 +183,52 @@ func _test_opening_reserve_is_released_with_the_inputs() -> void:
 	e["opening_inputs"] = {"g_006": 32, "g_007": 32}
 	_check(Service.set_mode(iid, "input", "managed").ok, "take inputs in-house with a reserve on hand")
 	_check(Stockpile.get_at_tile("tile_5_4", "g_006") == 64 and Stockpile.get_at_tile("tile_5_4", "g_007") == 64, "held and reserved inputs both move to the tile stockpile")
+	cleanup()
+
+## Batches are funded all or nothing, so on a tight turn the most profitable batch goes first: with cash for
+## one batch and no credit, the better earner runs and the other waits, whatever order they were built in.
+func _test_intermediary_funds_the_most_profitable_batch_first() -> void:
+	var ids := setup(2)
+	var first := str(ids[0])
+	var better := str(ids[1])
+	Modifiers.add({"id": "test_better_output", "domain": "recipe_output", "target": "*",
+		"target_match": {"instance_id": better}, "pct": 50.0, "label": "test", "source": "test"})
+	var snapshot := Service.prices()
+	var m_first := Service.batch_margin(BuildingState.get_building(first), snapshot)
+	var m_better := Service.batch_margin(BuildingState.get_building(better), snapshot)
+	_check(m_better > m_first, "the boosted building's batch earns more (£%.1f against £%.1f)" % [m_better, m_first])
+	# No credit to borrow against, and cash for exactly one batch after the turn's bills.
+	LoanState.loans.append({"id": 99, "principal_initial": LoanState.capacity_total() + 10000.0,
+		"principal_remaining": 0.0, "payment_per_turn": 0.0, "turns_remaining": 0, "interest_paid": 0.0})
+	var p: Dictionary = Service.preview_building(BuildingState.get_building(better))
+	MatchState.money = float(p.upfront) + float(p.protected_commitments) + 1.0
+	Service.prepare(BuildingState.buildings.values(), summary())
+	_check(str(Service.entry(better).state) == "supplied" and str(Service.entry(first).state) == "rejected_before_supply",
+		"with cash for one batch the better earner is supplied and the first built waits (%s, %s)" % [
+			str(Service.entry(better).state), str(Service.entry(first).state)])
+	Modifiers.remove("test_better_output")
+	cleanup()
+
+## A start's one-off charge is paid once, in its turn, as a cost before tax; a later turn does not repeat it.
+func _test_start_one_off_charge_is_paid_once() -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/glass_merchant.json"))
+	var charges: Array = (SaveLoad.expand_start_config(cfg).get("match", {}) as Dictionary).get("one_off_charges", [])
+	_check(charges.size() == 1 and int(charges[0].turn) == 1 and is_equal_approx(float(charges[0].amount), 100.0)
+		and str(charges[0].label) == "Opening costs", "Glass Merchant books £100 of opening costs on turn 1")
+	_check(float(cfg.get("money", 0)) == 400.0 and float((cfg.get("loans", [{}]) as Array)[0].get("principal", 0)) == 2000.0,
+		"Glass Merchant opens with £400 and a £2,000 loan")
+	setup(1)
+	MatchState.one_off_charges = [{"turn": 1, "amount": 100.0, "label": "Opening costs"}]
+	var cash := MatchState.money
+	Production._process_production()
+	var s: Dictionary = Production.last_turn_summary
+	_check(is_equal_approx(float(s.get("one_off_paid", 0.0)), 100.0) and (s.get("one_off_lines", []) as Array).size() == 1,
+		"turn 1 pays the opening costs")
+	_check(absf(MatchState.money - cash - Production.cash_change_of(s)) < 0.0001, "the charge is in the turn's cash")
+	_check(absf(preload("res://scripts/money_panel.gd").net_cash_of(s) - Production.cash_change_of(s)) < 0.0001,
+		"the money panel counts it among the costs")
+	_check(MatchState.one_off_charges.is_empty(), "once paid, it is gone")
+	TurnManager.current_turn += 1
+	Production._process_production()
+	_check(float(Production.last_turn_summary.get("one_off_paid", 0.0)) == 0.0, "turn 2 does not charge it again")
 	cleanup()

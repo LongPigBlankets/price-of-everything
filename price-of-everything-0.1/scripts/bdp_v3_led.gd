@@ -7,7 +7,8 @@ extends Control
 ## Digits, "-", "." and spaces are shown.
 ##
 ## Every screen follows the owner's rule (docs/ds2-owner-decisions.md, Digital displays): the point takes a cell
-## of its own, a figure is at most five cells with the point counted, and never more than two decimals. A number
+## of its own, a figure is at most five cells with the point counted, and never more than two decimals, three
+## under £1 when the figure handed over has them (0.061). A number
 ## handed to set_figure (or measured by cells_for) is fitted to it here (fit): 9.99, 99.99, 999.1, 9999, then
 ## 15.6K, 1.01M with the letter printed after the screen; decimals are dropped, never added, and a minus takes a
 ## cell. Leading spaces (a group's padding to one width) are kept.
@@ -80,7 +81,7 @@ func _init() -> void:
 	add_child(_glass)
 
 
-## A figure fitted to the rule: its leading spaces kept, a number (with at most two decimals kept) re-cut to five
+## A figure fitted to the rule: its leading spaces kept, a number (with at most two decimals kept, three under 1) re-cut to five
 ## cells counting the point, scaled with K, M or B from 10,000. Returns {figure, suffix}; text that is not a
 ## number (a dash for no figure) is returned as it is.
 static func fit(figure: String) -> Dictionary:
@@ -90,7 +91,7 @@ static func fit(figure: String) -> Dictionary:
 	if t == "" or not t.is_valid_float():
 		return {"figure": figure, "suffix": ""}
 	var decimals := t.length() - t.find(".") - 1 if t.contains(".") else 0
-	var parts := MoneyFigure.screen(t.to_float(), mini(decimals, 2))
+	var parts := MoneyFigure.screen(t.to_float(), mini(decimals, 3))
 	return {"figure": " ".repeat(pad) + str(parts.figure), "suffix": str(parts.suffix)}
 
 
