@@ -20,6 +20,7 @@
     "electrical_components",
     "ethylene",
     "fibreglass",
+    "fuels",
     "glass",
     "graphite",
     "high_grade_silicon",
@@ -1429,6 +1430,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_033_pvc.png",
       "source": "goods_pvc/v15",
       "sha256": "eb7209e414a42fee844d5f5478ee385f997cb50bf8a35e185c26b29f7e4aee93",
+      "installed_default": true
+    },
+    {
+      "good": "fuels",
+      "good_id": "g_031",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_031_fuels.png",
+      "source": "goods_fuels/v9",
+      "sha256": "720dd5023f87b2b16318ea8f4a69337fdd52a354da55eb059d3e9a00cf4faf5f",
+      "installed_default": true
+    },
+    {
+      "good": "fuels",
+      "good_id": "g_031",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_031_fuels.png",
+      "source": "goods_fuels/v9",
+      "sha256": "9d571ea6c7ccaf0ae78f1c57877e9f5a8520ddfbfc2f8e1e255ac9c9752b1245",
+      "installed_default": true
+    },
+    {
+      "good": "fuels",
+      "good_id": "g_031",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_031_fuels.png",
+      "source": "goods_fuels/v9",
+      "sha256": "945d098bf9d41f801762873327a7f799d061132f0b1c00117032607d88def999",
       "installed_default": true
     }
   ]

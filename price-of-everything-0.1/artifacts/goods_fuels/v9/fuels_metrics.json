@@ -1,0 +1,352 @@
+{
+  "revision": "diesel_v9",
+  "objects": 108,
+  "structural_hosts": [
+    "plinth",
+    "pump_body",
+    "hose_left",
+    "diesel_can_body",
+    "diesel_can_neck",
+    "diesel_can_cap",
+    "nozzle_body",
+    "nozzle_guard",
+    "nozzle_lever",
+    "nozzle_collar",
+    "spout_collar",
+    "nozzle_spout",
+    "hose_right"
+  ],
+  "topology": "fuel pump on a plinth (display, holster hole with its hose, a second hose) with a pistol nozzle filling the ICE car's jerrycan",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 6
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shadowed_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "thresholds": [
+          0.65,
+          0.6,
+          0.35
+        ]
+      }
+    ]
+  },
+  "dimensions": {
+    "pump": [
+      0.0,
+      1.0,
+      0.0,
+      1.5,
+      0.15,
+      3.2
+    ],
+    "edge_radius": 0.15,
+    "rim_in": 0.08,
+    "plinth": [
+      -0.15,
+      1.2,
+      -0.35,
+      1.7,
+      0.0,
+      0.15
+    ],
+    "display": [
+      0.33,
+      1.17,
+      1.85,
+      2.78
+    ],
+    "bezel": [
+      0.3,
+      0.7,
+      1.7,
+      2.65
+    ],
+    "hole": [
+      0.38,
+      0.62,
+      1.8,
+      2.55,
+      0.25
+    ],
+    "can": {
+      "builder": "base_kit.build_reference_jerrycan (the ICE car, g_056)",
+      "D": 1.25,
+      "at": [
+        2.07,
+        0.6
+      ],
+      "yaw_deg": 90,
+      "cap_swing_deg": 158.0,
+      "colour": "the pump red",
+      "dark": 0.55
+    },
+    "nozzle": {
+      "tilt_deg": 22.0,
+      "spout": [
+        [
+          0.0,
+          -0.25,
+          -0.97
+        ],
+        0.4,
+        [
+          0.1,
+          -0.18
+        ]
+      ],
+      "body": [
+        [
+          0.05,
+          -0.18
+        ],
+        [
+          0.19,
+          -0.18
+        ],
+        [
+          0.26,
+          -0.1
+        ],
+        [
+          0.26,
+          0.06
+        ],
+        [
+          0.3,
+          0.1
+        ],
+        [
+          0.8,
+          0.1
+        ],
+        [
+          0.8,
+          0.24
+        ],
+        [
+          0.34,
+          0.24
+        ],
+        [
+          0.29,
+          0.27
+        ],
+        [
+          0.24,
+          0.3
+        ],
+        [
+          0.06,
+          0.3
+        ],
+        [
+          0.0,
+          0.22
+        ],
+        [
+          0.0,
+          -0.1
+        ]
+      ],
+      "guard": [
+        [
+          0.25,
+          -0.05
+        ],
+        [
+          0.29,
+          -0.18
+        ],
+        [
+          0.36,
+          -0.23
+        ],
+        [
+          0.62,
+          -0.21
+        ],
+        [
+          0.71,
+          -0.14
+        ],
+        [
+          0.76,
+          0.0
+        ],
+        [
+          0.77,
+          0.11
+        ],
+        [
+          0.7,
+          0.11
+        ],
+        [
+          0.69,
+          0.02
+        ],
+        [
+          0.65,
+          -0.1
+        ],
+        [
+          0.6,
+          -0.15
+        ],
+        [
+          0.38,
+          -0.16
+        ],
+        [
+          0.33,
+          -0.12
+        ],
+        [
+          0.31,
+          -0.05
+        ]
+      ],
+      "lever": [
+        [
+          0.36,
+          0.105
+        ],
+        [
+          0.62,
+          0.105
+        ],
+        [
+          0.6,
+          0.05
+        ],
+        [
+          0.38,
+          0.03
+        ]
+      ],
+      "widths": [
+        0.2,
+        0.08,
+        0.05
+      ]
+    },
+    "hose_radius": 0.085,
+    "spout_radius": 0.05
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 2.68 x 2.24 x 3.21"
+  ],
+  "mesh_checks": {
+    "plinth": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pump_body": {
+      "vertices": 184,
+      "faces": 168,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "hose_left": {
+      "vertices": 3108,
+      "faces": 3082,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "diesel_can_body": {
+      "vertices": 44,
+      "faces": 24,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "diesel_can_neck": {
+      "vertices": 96,
+      "faces": 50,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "diesel_can_cap": {
+      "vertices": 96,
+      "faces": 50,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "nozzle_body": {
+      "vertices": 26,
+      "faces": 15,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "nozzle_guard": {
+      "vertices": 28,
+      "faces": 16,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "nozzle_lever": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "nozzle_collar": {
+      "vertices": 80,
+      "faces": 42,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "spout_collar": {
+      "vertices": 64,
+      "faces": 34,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "nozzle_spout": {
+      "vertices": 868,
+      "faces": 842,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "hose_right": {
+      "vertices": 3108,
+      "faces": 3082,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 4.491,
+    "target": [
+      1.174,
+      0.5,
+      1.714
+    ]
+  }
+}
