@@ -1,5 +1,6 @@
 {
   "approved_goods": [
+    "alkaline_battery",
     "alloy_ingots",
     "alloy_ore",
     "alumina",
@@ -1317,6 +1318,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_010_power.png",
       "source": "goods_power/v13",
       "sha256": "fda84c7d1556a59d9cd351bad8e1184e12e48a6c5721dafc3fc2777a967f94f5",
+      "installed_default": true
+    },
+    {
+      "good": "alkaline_battery",
+      "good_id": "g_070",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_070_alkaline_battery.png",
+      "source": "goods_alkaline_battery/v4",
+      "sha256": "18919263894f16b5b2f57395eb6c0cce1cd083709c69b0c25ce31007b1a01a10",
+      "installed_default": true
+    },
+    {
+      "good": "alkaline_battery",
+      "good_id": "g_070",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_070_alkaline_battery.png",
+      "source": "goods_alkaline_battery/v4",
+      "sha256": "3e477994ac144e1ec68c18e2493d3917a2c0b56dee9a39baf6bedcd448f6e897",
+      "installed_default": true
+    },
+    {
+      "good": "alkaline_battery",
+      "good_id": "g_070",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_070_alkaline_battery.png",
+      "source": "goods_alkaline_battery/v4",
+      "sha256": "222eae500d9bb254246aa3b32da6b27867609bf879a2d06386e16349448d9545",
       "installed_default": true
     }
   ]
