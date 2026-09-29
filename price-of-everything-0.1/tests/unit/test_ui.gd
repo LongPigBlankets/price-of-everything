@@ -2747,3 +2747,27 @@ func _test_building_detail_title_shows_its_recipe_on_hover() -> void:
 		"bdp title: the v2 title's tooltip names the recipe and what it makes")
 	panel.queue_free()
 	BuildingState.remove_building(iid)
+
+
+## Under £1 a screen may show three decimals when the figure has them (owner, 29 September): a power plant's cost
+## a MW, £0.061 at level 1 and £0.057 at level 2, read 0.06 twice at two. From £1, and for a loss, it stays at two.
+func _test_led_three_decimals_under_a_pound() -> void:
+	var Led = load("res://scripts/bdp_v3_led.gd")
+	_check(str(Led.fit("0.061").figure) == "0.061" and str(Led.fit("0.057").figure) == "0.057",
+		"led: under £1 a figure keeps its third decimal")
+	_check(str(Led.fit("0.57").figure) == "0.57" and str(Led.fit("0.999").figure) == "0.999" and str(Led.fit("0.9996").figure) == "1.00",
+		"led: two decimals stay two, and 0.9996 rounds up to 1.00")
+	_check(str(Led.fit("1.234").figure) == "1.23" and str(Led.fit("-0.061").figure) == "-0.06",
+		"led: from £1, and for a loss, two decimals at most")
+	var Money := preload("res://scripts/ds2/money_figure.gd")
+	_check(Money.text(0.061) == "£0.06", "led: the money rule's own default stays at two")
+	var dialog: Control = load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd").new()
+	var row: Control = dialog.call("_estimate_row", "Estimated Cost per Unit", [40.0 / 660.0, 74.66 / 1320.0, 0.05], 1, 2, false, true)
+	var got: Array = row.find_children("Led", "", true, false).map(func(l: Node) -> String: return str(l.call("figure")).strip_edges())
+	_check(got == ["0.061", "0.057"], "upgrade: a power plant's cost a MW differs between levels (%s)" % str(got))
+	var dear: Control = dialog.call("_estimate_row", "Estimated Cost per Unit", [1.5, 1.25, 1.0], 1, 2, false, true)
+	var dear_got: Array = dear.find_children("Led", "", true, false).map(func(l: Node) -> String: return str(l.call("figure")).strip_edges())
+	_check(dear_got == ["1.50", "1.25"], "upgrade: a unit's cost of £1 or more keeps two places (%s)" % str(dear_got))
+	row.free()
+	dear.free()
+	dialog.free()

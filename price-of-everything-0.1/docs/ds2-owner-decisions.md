@@ -54,7 +54,7 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 ## Digital displays (26 September 2026, from the Construct studies; made the rule everywhere 27 September 2026)
 
 - **The decimal point takes a cell of its own** on every LED screen in the game, as wide as a digit's (`bdp_v3_led.gd`, the default).
-- **At most five cells, the point counted, and never more than two decimals.** Money on a screen: two decimals below £100 (1.15, 9.99, 99.99), one decimal from £100 (999.1), whole pounds from £1,000 (9999), then £15.6K (to 999.9K), £1.01M, £1.01B with the letter printed after the screen. A minus takes a cell, so a loss drops decimals to fit (-10.4). Other figures on screens follow the same cap; a figure is never given more decimals than it came with.
+- **At most five cells, the point counted, and never more than two decimals**, except **under £1, where three are allowed** (0.061; owner, 29 September: a power plant's cost a MW read 0.06 at both levels). Money on a screen: two decimals below £100 (1.15, 9.99, 99.99), one decimal from £100 (999.1), whole pounds from £1,000 (9999), then £15.6K (to 999.9K), £1.01M, £1.01B with the letter printed after the screen. A minus takes a cell, so a loss drops decimals to fit (-10.4). Other figures on screens follow the same cap; a figure is never given more decimals than it came with.
 - **A materials cost is whole pounds only** (it was too busy with pence).
 - Every LED fits its figure itself (`BdpV3Led.fit`, through `scripts/ds2/money_figure.gd` `screen`), so every panel (Building Detail, the top bar and its Treasury sheet, the tile view, the ledger, the upgrade panel, People) follows it; a group's screens are padded to the widest fitted figure, so they stay one width.
 

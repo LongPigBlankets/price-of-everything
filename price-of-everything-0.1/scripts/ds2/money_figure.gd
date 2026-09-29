@@ -1,7 +1,8 @@
 extends RefCounted
 ## A money figure for an LED screen, by the owner's rule (docs/ds2-owner-decisions.md, Digital displays): the
 ## point takes a cell of its own, a figure is at most five cells with the point counted, never more than two
-## decimals, and a printed £ before it and a printed K, M or B after it. Two decimals below £100 (9.99, 99.99),
+## decimals (three under £1, 0.061, when the caller asks for them), and a printed £ before it and a printed K, M
+## or B after it. Two decimals below £100 (9.99, 99.99),
 ## one from £100 (999.1), whole pounds from £1,000 (9999), then thousands with one decimal from £10,000 (15.6K,
 ## to 999.9K), then millions with two (1.01M), billions the same. A minus takes a cell, so a loss drops decimals
 ## to fit (-10.4). bdp_v3_led.gd fits every number it is handed to the same rule (Led.fit).
@@ -35,6 +36,7 @@ static func _fixed(v: float, decimals: int) -> String:
 ## The steps: the divisor, the printed suffix, the decimals, and the figure it must stay under once rounded (else
 ## the next step takes it).
 const SCREEN_STEPS := [
+	[1.0, "", 3, 1.0],
 	[1.0, "", 2, 100.0],
 	[1.0, "", 1, 1000.0],
 	[1.0, "", 0, 10000.0],
@@ -44,7 +46,8 @@ const SCREEN_STEPS := [
 ]
 
 ## `value` by the rule. `max_decimals` caps the pound steps' decimals (a figure kept whole stays whole); the scaled
-## steps (K, M, B) keep theirs.
+## steps (K, M, B) keep theirs. Under £1 a third decimal shows only when `max_decimals` is 3 (0.061 and 0.057 a MW
+## both read 0.06 at two); a loss there drops back to two to fit five cells.
 static func screen(value: float, max_decimals := 2) -> Dictionary:
 	var minus := "-" if value < 0.0 else ""
 	var a := absf(value)

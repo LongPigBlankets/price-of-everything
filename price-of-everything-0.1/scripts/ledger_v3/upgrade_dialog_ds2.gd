@@ -633,7 +633,7 @@ func _impact(from_level: int, target: int) -> Control:
 		if total:
 			# The net is the total: a cream rule over it, as a ledger rules off its sum.
 			vb.add_child(TotalRule.new())
-		var row := _estimate_row(str(spec[0]), est[spec[1]], from_level, target, bool(spec[2]))
+		var row := _estimate_row(str(spec[0]), est[spec[1]], from_level, target, bool(spec[2]), str(spec[1]) == "unit")
 		if total:
 			(row.get_child(0) as Label).add_theme_color_override("font_color", CREAM)
 		vb.add_child(row)
@@ -696,8 +696,10 @@ func _estimates(levels: Array) -> Dictionary:
 
 
 ## An estimate's row, a good's icon tall at the least: its name, and its figure at this level and the next on
-## LED screens, the next lit green where it helps and red where it costs.
-func _estimate_row(label: String, values: Array, from_level: int, target: int, more_is_better: bool) -> HBoxContainer:
+## LED screens, the next lit green where it helps and red where it costs. A unit's cost keeps a third decimal under
+## £1 (a power plant's £0.061 against £0.057 a MW read 0.06 twice at two); the screen drops it from £1.
+func _estimate_row(label: String, values: Array, from_level: int, target: int, more_is_better: bool,
+		per_unit := false) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.name = label.to_pascal_case()
 	row.custom_minimum_size.y = ESTIMATE_ROW_H
@@ -712,8 +714,9 @@ func _estimate_row(label: String, values: Array, from_level: int, target: int, m
 	var tone: Color = DS.PALETTE["TEXT"]
 	if not is_equal_approx(cur, nxt):
 		tone = DS.PALETTE["OK"] if (nxt > cur) == more_is_better else DS.PALETTE["DANGER"]
+	var fmt := "%.3f" if per_unit else "%.2f"
 	for pair: Array in [[cur, DS.PALETTE["TEXT"]], [nxt, tone]]:
-		var m := Parts.money("%.2f" % float(pair[0]), pair[1], MONEY_DIGITS)
+		var m := Parts.money(fmt % float(pair[0]), pair[1], MONEY_DIGITS)
 		m.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(m)
 	return row
