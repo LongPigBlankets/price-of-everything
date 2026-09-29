@@ -39,6 +39,7 @@
     "power",
     "processed_oil",
     "pure_water",
+    "pvc",
     "refined_ree",
     "sand",
     "silica",
@@ -1401,6 +1402,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_059_lithium_battery.png",
       "source": "goods_lithium_battery/v1",
       "sha256": "3f7ba19d225a7b3708f58db63b1dec65e32c783cfafd9eba25d7da5b37c03e38",
+      "installed_default": true
+    },
+    {
+      "good": "pvc",
+      "good_id": "g_033",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_033_pvc.png",
+      "source": "goods_pvc/v15",
+      "sha256": "35c0923e7bffed8f2889d1ee1c21825352c2ea31bcda4d2c6963b63f871a6ac4",
+      "installed_default": true
+    },
+    {
+      "good": "pvc",
+      "good_id": "g_033",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_033_pvc.png",
+      "source": "goods_pvc/v15",
+      "sha256": "22587bbbc37f36088caac6a09236840177f02e66a6b769f015287fbcbe4412d3",
+      "installed_default": true
+    },
+    {
+      "good": "pvc",
+      "good_id": "g_033",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_033_pvc.png",
+      "source": "goods_pvc/v15",
+      "sha256": "eb7209e414a42fee844d5f5478ee385f997cb50bf8a35e185c26b29f7e4aee93",
       "installed_default": true
     }
   ]

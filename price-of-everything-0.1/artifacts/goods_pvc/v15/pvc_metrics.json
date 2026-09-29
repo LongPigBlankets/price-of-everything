@@ -1,0 +1,261 @@
+{
+  "revision": "pvc_v15",
+  "objects": 92,
+  "structural_hosts": [
+    "pipe_c",
+    "pipe_0",
+    "pipe_1",
+    "pipe_2",
+    "pipe_3",
+    "pipe_4",
+    "pipe_5",
+    "strap_0",
+    "strap_1",
+    "frame_bottom",
+    "frame_upright"
+  ],
+  "topology": "seven hollow PVC pipes in a strapped hexagonal bundle; a PVC window-frame corner, its chambered profile cut at both ends (3 px section lines) and its double glazing shown by the two panes' cut edges",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 6
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shadowed_faces",
+        "labels": [
+          1,
+          2,
+          3
+        ],
+        "thresholds": [
+          0.65,
+          0.6,
+          0.35
+        ]
+      }
+    ]
+  },
+  "dimensions": {
+    "pipe": [
+      0.5,
+      0.4,
+      3.4
+    ],
+    "bundle_centre_z": 1.3960254037844386,
+    "straps": [
+      [
+        0.85,
+        1.07
+      ],
+      [
+        2.15,
+        2.37
+      ]
+    ],
+    "frame": [
+      1.55,
+      2.75,
+      0.6,
+      3.9,
+      3.0
+    ],
+    "rib": [
+      0.2,
+      [
+        0.37,
+        0.75
+      ],
+      0.08
+    ],
+    "profile": [
+      [
+        1.55,
+        0.0
+      ],
+      [
+        2.67,
+        0.0
+      ],
+      [
+        2.67,
+        0.37
+      ],
+      [
+        2.95,
+        0.37
+      ],
+      [
+        2.95,
+        0.75
+      ],
+      [
+        2.75,
+        0.75
+      ],
+      [
+        2.75,
+        1.13
+      ],
+      [
+        2.52,
+        1.13
+      ],
+      [
+        2.52,
+        0.8
+      ],
+      [
+        1.97,
+        0.8
+      ],
+      [
+        1.97,
+        1.4
+      ],
+      [
+        1.55,
+        1.4
+      ]
+    ],
+    "chambers": [
+      [
+        [
+          1.63,
+          2.08
+        ],
+        [
+          0.08,
+          0.72
+        ]
+      ],
+      [
+        [
+          2.17,
+          2.59
+        ],
+        [
+          0.08,
+          0.72
+        ]
+      ],
+      [
+        [
+          1.63,
+          1.89
+        ],
+        [
+          0.88,
+          1.32
+        ]
+      ]
+    ],
+    "section_ink_px": 3,
+    "panes": [
+      [
+        2.06,
+        2.18
+      ],
+      [
+        2.31,
+        2.43
+      ]
+    ],
+    "glass_cut": [
+      2.05,
+      2.62
+    ]
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 4.49 x 3.91 x 3.01"
+  ],
+  "mesh_checks": {
+    "pipe_c": {
+      "vertices": 512,
+      "faces": 512,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pipe_0": {
+      "vertices": 512,
+      "faces": 512,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pipe_1": {
+      "vertices": 512,
+      "faces": 512,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pipe_2": {
+      "vertices": 512,
+      "faces": 512,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pipe_3": {
+      "vertices": 512,
+      "faces": 512,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pipe_4": {
+      "vertices": 512,
+      "faces": 512,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pipe_5": {
+      "vertices": 512,
+      "faces": 512,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "strap_0": {
+      "vertices": 264,
+      "faces": 264,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "strap_1": {
+      "vertices": 264,
+      "faces": 264,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "frame_bottom": {
+      "vertices": 54,
+      "faces": 30,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "frame_upright": {
+      "vertices": 54,
+      "faces": 31,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 6.404,
+    "target": [
+      0.977,
+      1.556,
+      1.575
+    ]
+  }
+}
