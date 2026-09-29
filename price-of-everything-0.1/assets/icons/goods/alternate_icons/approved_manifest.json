@@ -30,6 +30,7 @@
     "iron_ingots",
     "iron_ore",
     "limestone",
+    "lithium_battery",
     "lithium_carbonate",
     "lithium_ore",
     "motor",
@@ -1373,6 +1374,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_060_sodium_battery.png",
       "source": "goods_sodium_battery/v12",
       "sha256": "80f08bb43d927b711187a97205d0f204e774c439ff7c30cc97a440a4facbeb09",
+      "installed_default": true
+    },
+    {
+      "good": "lithium_battery",
+      "good_id": "g_059",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_059_lithium_battery.png",
+      "source": "goods_lithium_battery/v1",
+      "sha256": "7800c36fd039fac0cdb96f9ff8bee6661eca024252495f5bbae414883c1f476b",
+      "installed_default": true
+    },
+    {
+      "good": "lithium_battery",
+      "good_id": "g_059",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_059_lithium_battery.png",
+      "source": "goods_lithium_battery/v1",
+      "sha256": "b2e9f9d90931ef7717ea49e36e5954b870fb2035cc17c78051bf3fb49ae381e7",
+      "installed_default": true
+    },
+    {
+      "good": "lithium_battery",
+      "good_id": "g_059",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_059_lithium_battery.png",
+      "source": "goods_lithium_battery/v1",
+      "sha256": "3f7ba19d225a7b3708f58db63b1dec65e32c783cfafd9eba25d7da5b37c03e38",
       "installed_default": true
     }
   ]

@@ -1,0 +1,1172 @@
+{
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "meshes": {
+    "crate": {
+      "faces": 1772,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.08528,
+      "min_z": 0.0,
+      "bbox": [
+        [
+          0.0,
+          1.0
+        ],
+        [
+          0.0,
+          1.11
+        ],
+        [
+          0.0,
+          0.54
+        ]
+      ]
+    },
+    "cell_00": {
+      "faces": 54,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.0358,
+      "min_z": 0.03,
+      "bbox": [
+        [
+          0.036,
+          0.2987
+        ],
+        [
+          0.09,
+          0.388
+        ],
+        [
+          0.03,
+          0.492
+        ]
+      ]
+    },
+    "cell_00_plate": {
+      "faces": 54,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.00047,
+      "min_z": 0.489,
+      "bbox": [
+        [
+          0.096,
+          0.2637
+        ],
+        [
+          0.204,
+          0.328
+        ],
+        [
+          0.489,
+          0.512
+        ]
+      ]
+    },
+    "cell_00_terminal_a": {
+      "faces": 600,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 8e-05,
+      "min_z": 0.488,
+      "bbox": [
+        [
+          0.078,
+          0.134
+        ],
+        [
+          0.128,
+          0.184
+        ],
+        [
+          0.488,
+          0.549
+        ]
+      ]
+    },
+    "cell_00_terminal_b": {
+      "faces": 600,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 8e-05,
+      "min_z": 0.488,
+      "bbox": [
+        [
+          0.2007,
+          0.2567
+        ],
+        [
+          0.128,
+          0.184
+        ],
+        [
+          0.488,
+          0.549
+        ]
+      ]
+    },
+    "cell_01": {
+      "faces": 54,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.0358,
+      "min_z": 0.03,
+      "bbox": [
+        [
+          0.036,
+          0.2987
+        ],
+        [
+          0.433,
+          0.731
+        ],
+        [
+          0.03,
+          0.492
+        ]
+      ]
+    },
+    "cell_01_plate": {
+      "faces": 54,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.00047,
+      "min_z": 0.489,
+      "bbox": [
+        [
+          0.096,
+          0.2637
+        ],
+        [
+          0.547,
+          0.671
+        ],
+        [
+          0.489,
+          0.512
+        ]
+      ]
+    },
+    "cell_01_terminal_a": {
+      "faces": 600,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 8e-05,
+      "min_z": 0.488,
+      "bbox": [
+        [
+          0.078,
+          0.134
+        ],
+        [
+          0.471,
+          0.527
+        ],
+        [
+          0.488,
+          0.549
+        ]
+      ]
+    },
+    "cell_01_terminal_b": {
+      "faces": 600,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 8e-05,
+      "min_z": 0.488,
+      "bbox": [
+        [
+          0.2007,
+          0.2567
+        ],
+        [
+          0.471,
+          0.527
+        ],
+        [
+          0.488,
+          0.549
+        ]
+      ]
+    },
+    "cell_02": {
+      "faces": 54,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.0358,
+      "min_z": 0.03,
+      "bbox": [
+        [
+          0.036,
+          0.2987
+        ],
+        [
+          0.776,
+          1.074
+        ],
+        [
+          0.03,
+          0.492
+        ]
+      ]
+    },
+    "cell_10": {
+      "faces": 54,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.0358,
+      "min_z": 0.03,
+      "bbox": [
+        [
+          0.3437,
+          0.6063
+        ],
+        [
+          0.09,
+          0.388
+        ],
+        [
+          0.03,
+          0.492
+        ]
+      ]
+    },
+    "cell_10_plate": {
+      "faces": 54,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.00047,
+      "min_z": 0.489,
+      "bbox": [
+        [
+          0.4037,
+          0.5713
+        ],
+        [
+          0.204,
+          0.328
+        ],
+        [
+          0.489,
+          0.512
+        ]
+      ]
+    },
+    "cell_10_terminal_a": {
+      "faces": 600,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 8e-05,
+      "min_z": 0.488,
+      "bbox": [
+        [
+          0.3857,
+          0.4417
+        ],
+        [
+          0.128,
+          0.184
+        ],
+        [
+          0.488,
+          0.549
+        ]
+      ]
+    },
+    "cell_10_terminal_b": {
+      "faces": 600,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 8e-05,
+      "min_z": 0.488,
+      "bbox": [
+        [
+          0.5083,
+          0.5643
+        ],
+        [
+          0.128,
+          0.184
+        ],
+        [
+          0.488,
+          0.549
+        ]
+      ]
+    },
+    "cell_11": {
+      "faces": 54,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.0358,
+      "min_z": 0.03,
+      "bbox": [
+        [
+          0.3437,
+          0.6063
+        ],
+        [
+          0.433,
+          0.731
+        ],
+        [
+          0.03,
+          0.492
+        ]
+      ]
+    },
+    "cell_11_plate": {
+      "faces": 54,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.00047,
+      "min_z": 0.489,
+      "bbox": [
+        [
+          0.4037,
+          0.5713
+        ],
+        [
+          0.547,
+          0.671
+        ],
+        [
+          0.489,
+          0.512
+        ]
+      ]
+    },
+    "cell_11_terminal_a": {
+      "faces": 600,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 8e-05,
+      "min_z": 0.488,
+      "bbox": [
+        [
+          0.3857,
+          0.4417
+        ],
+        [
+          0.471,
+          0.527
+        ],
+        [
+          0.488,
+          0.549
+        ]
+      ]
+    },
+    "cell_11_terminal_b": {
+      "faces": 600,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 8e-05,
+      "min_z": 0.488,
+      "bbox": [
+        [
+          0.5083,
+          0.5643
+        ],
+        [
+          0.471,
+          0.527
+        ],
+        [
+          0.488,
+          0.549
+        ]
+      ]
+    },
+    "cell_12": {
+      "faces": 54,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.0358,
+      "min_z": 0.03,
+      "bbox": [
+        [
+          0.3437,
+          0.6063
+        ],
+        [
+          0.776,
+          1.074
+        ],
+        [
+          0.03,
+          0.492
+        ]
+      ]
+    },
+    "cell_20": {
+      "faces": 54,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.0358,
+      "min_z": 0.03,
+      "bbox": [
+        [
+          0.6513,
+          0.914
+        ],
+        [
+          0.09,
+          0.388
+        ],
+        [
+          0.03,
+          0.492
+        ]
+      ]
+    },
+    "cell_20_plate": {
+      "faces": 54,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.00047,
+      "min_z": 0.489,
+      "bbox": [
+        [
+          0.7113,
+          0.879
+        ],
+        [
+          0.204,
+          0.328
+        ],
+        [
+          0.489,
+          0.512
+        ]
+      ]
+    },
+    "cell_20_terminal_a": {
+      "faces": 600,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 8e-05,
+      "min_z": 0.488,
+      "bbox": [
+        [
+          0.6933,
+          0.7493
+        ],
+        [
+          0.128,
+          0.184
+        ],
+        [
+          0.488,
+          0.549
+        ]
+      ]
+    },
+    "cell_20_terminal_b": {
+      "faces": 600,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 8e-05,
+      "min_z": 0.488,
+      "bbox": [
+        [
+          0.816,
+          0.872
+        ],
+        [
+          0.128,
+          0.184
+        ],
+        [
+          0.488,
+          0.549
+        ]
+      ]
+    },
+    "cell_21": {
+      "faces": 54,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.0358,
+      "min_z": 0.03,
+      "bbox": [
+        [
+          0.6513,
+          0.914
+        ],
+        [
+          0.433,
+          0.731
+        ],
+        [
+          0.03,
+          0.492
+        ]
+      ]
+    },
+    "cell_21_plate": {
+      "faces": 54,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.00047,
+      "min_z": 0.489,
+      "bbox": [
+        [
+          0.7113,
+          0.879
+        ],
+        [
+          0.547,
+          0.671
+        ],
+        [
+          0.489,
+          0.512
+        ]
+      ]
+    },
+    "cell_21_terminal_a": {
+      "faces": 600,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 8e-05,
+      "min_z": 0.488,
+      "bbox": [
+        [
+          0.6933,
+          0.7493
+        ],
+        [
+          0.471,
+          0.527
+        ],
+        [
+          0.488,
+          0.549
+        ]
+      ]
+    },
+    "cell_21_terminal_b": {
+      "faces": 600,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 8e-05,
+      "min_z": 0.488,
+      "bbox": [
+        [
+          0.816,
+          0.872
+        ],
+        [
+          0.471,
+          0.527
+        ],
+        [
+          0.488,
+          0.549
+        ]
+      ]
+    },
+    "cell_22": {
+      "faces": 54,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.0358,
+      "min_z": 0.03,
+      "bbox": [
+        [
+          0.6513,
+          0.914
+        ],
+        [
+          0.776,
+          1.074
+        ],
+        [
+          0.03,
+          0.492
+        ]
+      ]
+    },
+    "cover": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.01802,
+      "min_z": 0.49,
+      "bbox": [
+        [
+          0.055,
+          0.945
+        ],
+        [
+          0.605,
+          1.055
+        ],
+        [
+          0.49,
+          0.535
+        ]
+      ]
+    },
+    "cell_00_plus_washer": {
+      "faces": 360,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 4e-05,
+      "min_z": 0.489,
+      "bbox": [
+        [
+          0.0765,
+          0.1355
+        ],
+        [
+          0.1265,
+          0.1855
+        ],
+        [
+          0.489,
+          0.5045
+        ]
+      ]
+    },
+    "cell_01_plus_washer": {
+      "faces": 360,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 4e-05,
+      "min_z": 0.489,
+      "bbox": [
+        [
+          0.0765,
+          0.1355
+        ],
+        [
+          0.4695,
+          0.5285
+        ],
+        [
+          0.489,
+          0.5045
+        ]
+      ]
+    },
+    "cell_10_plus_washer": {
+      "faces": 360,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 4e-05,
+      "min_z": 0.489,
+      "bbox": [
+        [
+          0.3842,
+          0.4432
+        ],
+        [
+          0.1265,
+          0.1855
+        ],
+        [
+          0.489,
+          0.5045
+        ]
+      ]
+    },
+    "cell_11_plus_washer": {
+      "faces": 360,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 4e-05,
+      "min_z": 0.489,
+      "bbox": [
+        [
+          0.3842,
+          0.4432
+        ],
+        [
+          0.4695,
+          0.5285
+        ],
+        [
+          0.489,
+          0.5045
+        ]
+      ]
+    },
+    "cell_20_plus_washer": {
+      "faces": 360,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 4e-05,
+      "min_z": 0.489,
+      "bbox": [
+        [
+          0.6918,
+          0.7508
+        ],
+        [
+          0.1265,
+          0.1855
+        ],
+        [
+          0.489,
+          0.5045
+        ]
+      ]
+    },
+    "cell_21_plus_washer": {
+      "faces": 360,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 4e-05,
+      "min_z": 0.489,
+      "bbox": [
+        [
+          0.6918,
+          0.7508
+        ],
+        [
+          0.4695,
+          0.5285
+        ],
+        [
+          0.489,
+          0.5045
+        ]
+      ]
+    },
+    "cover_print": {
+      "faces": 7744,
+      "non_manifold": 1992,
+      "zero_area": 0,
+      "volume": 0.00594,
+      "min_z": 0.537,
+      "bbox": [
+        [
+          0.2166,
+          0.7834
+        ],
+        [
+          0.7525,
+          0.9125
+        ],
+        [
+          0.537,
+          0.537
+        ]
+      ]
+    }
+  },
+  "pairs": {
+    "cell_00_terminal_a/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_00_terminal_b/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_01_terminal_a/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_01_terminal_b/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_10_terminal_a/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_10_terminal_b/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_11_terminal_a/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_11_terminal_b/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_20_terminal_a/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_20_terminal_b/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_21_terminal_a/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_21_terminal_b/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cover/crate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cover_print/crate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_00_plate/cell_00_terminal_a": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_00_plate/cell_00_terminal_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_01_plate/cell_01_terminal_a": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_01_plate/cell_01_terminal_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_10_plate/cell_10_terminal_a": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_10_plate/cell_10_terminal_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_11_plate/cell_11_terminal_a": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_11_plate/cell_11_terminal_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_20_plate/cell_20_terminal_a": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_20_plate/cell_20_terminal_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_21_plate/cell_21_terminal_a": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_21_plate/cell_21_terminal_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_00_plus_washer/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_01_plus_washer/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_10_plus_washer/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_11_plus_washer/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_20_plus_washer/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_21_plus_washer/cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_00_plus_washer/cell_00_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_00_plus_washer/cell_01_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_00_plus_washer/cell_10_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_00_plus_washer/cell_11_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_00_plus_washer/cell_20_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_00_plus_washer/cell_21_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_01_plus_washer/cell_00_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_01_plus_washer/cell_01_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_01_plus_washer/cell_10_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_01_plus_washer/cell_11_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_01_plus_washer/cell_20_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_01_plus_washer/cell_21_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_10_plus_washer/cell_00_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_10_plus_washer/cell_01_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_10_plus_washer/cell_10_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_10_plus_washer/cell_11_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_10_plus_washer/cell_20_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_10_plus_washer/cell_21_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_11_plus_washer/cell_00_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_11_plus_washer/cell_01_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_11_plus_washer/cell_10_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_11_plus_washer/cell_11_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_11_plus_washer/cell_20_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_11_plus_washer/cell_21_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_20_plus_washer/cell_00_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_20_plus_washer/cell_01_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_20_plus_washer/cell_10_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_20_plus_washer/cell_11_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_20_plus_washer/cell_20_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_20_plus_washer/cell_21_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_21_plus_washer/cell_00_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_21_plus_washer/cell_01_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_21_plus_washer/cell_10_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_21_plus_washer/cell_11_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_21_plus_washer/cell_20_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_21_plus_washer/cell_21_plate": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "cell_00_plate/cell_00": {
+      "surface_intersections": 52,
+      "intended": true
+    },
+    "cell_01_plate/cell_01": {
+      "surface_intersections": 52,
+      "intended": true
+    },
+    "cell_10_plate/cell_10": {
+      "surface_intersections": 52,
+      "intended": true
+    },
+    "cell_11_plate/cell_11": {
+      "surface_intersections": 52,
+      "intended": true
+    },
+    "cell_20_plate/cell_20": {
+      "surface_intersections": 52,
+      "intended": true
+    },
+    "cell_21_plate/cell_21": {
+      "surface_intersections": 52,
+      "intended": true
+    },
+    "cell_00_terminal_a/cell_00": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_00_terminal_b/cell_00": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_01_terminal_a/cell_01": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_01_terminal_b/cell_01": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_10_terminal_a/cell_10": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_10_terminal_b/cell_10": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_11_terminal_a/cell_11": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_11_terminal_b/cell_11": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_20_terminal_a/cell_20": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_20_terminal_b/cell_20": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_21_terminal_a/cell_21": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_21_terminal_b/cell_21": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_00_plus_washer/cell_00_terminal_a": {
+      "surface_intersections": 339,
+      "intended": true
+    },
+    "cell_01_plus_washer/cell_01_terminal_a": {
+      "surface_intersections": 328,
+      "intended": true
+    },
+    "cell_10_plus_washer/cell_10_terminal_a": {
+      "surface_intersections": 327,
+      "intended": true
+    },
+    "cell_11_plus_washer/cell_11_terminal_a": {
+      "surface_intersections": 326,
+      "intended": true
+    },
+    "cell_20_plus_washer/cell_20_terminal_a": {
+      "surface_intersections": 325,
+      "intended": true
+    },
+    "cell_21_plus_washer/cell_21_terminal_a": {
+      "surface_intersections": 354,
+      "intended": true
+    },
+    "cell_00_plus_washer/cell_00": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_01_plus_washer/cell_01": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_10_plus_washer/cell_10": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_11_plus_washer/cell_11": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_20_plus_washer/cell_20": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cell_21_plus_washer/cell_21": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "cover/cell_01_plate": {
+      "surface_intersections": 30,
+      "intended": true
+    },
+    "cover/cell_11_plate": {
+      "surface_intersections": 30,
+      "intended": true
+    },
+    "cover/cell_21_plate": {
+      "surface_intersections": 30,
+      "intended": true
+    }
+  },
+  "failures": []
+}
