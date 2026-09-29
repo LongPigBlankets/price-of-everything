@@ -35,6 +35,7 @@
     "oxygen",
     "polysilicon",
     "processed_oil",
+    "pure_water",
     "refined_ree",
     "sand",
     "silica",
@@ -1261,6 +1262,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_051_lithium_carbonate.png",
       "source": "blender-good-icons:artifacts/goods_fibreglass_lithium/v13/lithium_carbonate_256.png",
       "sha256": "2130593d03df65afb84a1d55fa4af09ff02366a4d17b38e1bda128cea033d9c5",
+      "installed_default": true
+    },
+    {
+      "good": "pure_water",
+      "good_id": "g_009",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_009_pure_water.png",
+      "source": "goods_pure_water/v22",
+      "sha256": "c56068319702cdef010ea97aa704be385ba1381195ba4694a2ef62869b7db748",
+      "installed_default": true
+    },
+    {
+      "good": "pure_water",
+      "good_id": "g_009",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_009_pure_water.png",
+      "source": "goods_pure_water/v22",
+      "sha256": "2d6832081c938c559c5ea988b1fee5a0373550d712f342ac7bbe1fd4a0db7120",
+      "installed_default": true
+    },
+    {
+      "good": "pure_water",
+      "good_id": "g_009",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_009_pure_water.png",
+      "source": "goods_pure_water/v22",
+      "sha256": "245c7c0f6f4a6854aeaab030e5b360cacb102cf585f80d6c867e5e53fcfc5440",
       "installed_default": true
     }
   ]

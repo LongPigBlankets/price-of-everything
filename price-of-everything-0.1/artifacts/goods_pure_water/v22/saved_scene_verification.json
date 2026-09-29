@@ -1,0 +1,170 @@
+{
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "meshes": {
+    "pipe_shell": {
+      "faces": 1920,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 1.4274,
+      "min_z": 1.945
+    },
+    "post_collar": {
+      "faces": 360,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.0473,
+      "min_z": 1.81
+    },
+    "post_rod": {
+      "faces": 360,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.0859,
+      "min_z": 0.1
+    },
+    "post_foot": {
+      "faces": 360,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.0245,
+      "min_z": 0.0
+    },
+    "stream": {
+      "faces": 11522,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 1.661,
+      "min_z": 0.0399
+    },
+    "puddle": {
+      "faces": 4081,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.2487,
+      "min_z": 0.0
+    },
+    "crown": {
+      "faces": 8642,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.0453,
+      "min_z": 0.03
+    },
+    "tongue_0": {
+      "faces": 625,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.015,
+      "min_z": 0.0494
+    },
+    "tongue_1": {
+      "faces": 625,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.0089,
+      "min_z": 0.0496
+    }
+  },
+  "pairs": {
+    "stream/pipe_shell": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "stream/post_rod": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "stream/post_collar": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "stream/post_foot": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "puddle/post_foot": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "crown/post_foot": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "crown/stream": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tongue_0/stream": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tongue_1/stream": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tongue_0/tongue_1": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "stream/puddle": {
+      "surface_intersections": 334,
+      "intended": true,
+      "allowed": false
+    },
+    "crown/puddle": {
+      "surface_intersections": 882,
+      "intended": true,
+      "allowed": false
+    },
+    "tongue_0/puddle": {
+      "surface_intersections": 52,
+      "intended": true,
+      "allowed": false
+    },
+    "tongue_1/puddle": {
+      "surface_intersections": 48,
+      "intended": true,
+      "allowed": false
+    },
+    "post_rod/post_foot": {
+      "surface_intersections": 142,
+      "intended": true,
+      "allowed": false
+    },
+    "post_rod/post_collar": {
+      "surface_intersections": 156,
+      "intended": true,
+      "allowed": false
+    },
+    "post_collar/pipe_shell": {
+      "surface_intersections": 155,
+      "intended": true,
+      "allowed": false
+    },
+    "tongue_0/crown": {
+      "surface_intersections": 14,
+      "intended": false,
+      "allowed": true
+    },
+    "tongue_1/crown": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    }
+  },
+  "failures": []
+}
