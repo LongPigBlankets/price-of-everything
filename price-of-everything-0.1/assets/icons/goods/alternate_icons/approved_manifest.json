@@ -34,6 +34,7 @@
     "motor",
     "oxygen",
     "polysilicon",
+    "power",
     "processed_oil",
     "pure_water",
     "refined_ree",
@@ -1289,6 +1290,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_009_pure_water.png",
       "source": "goods_pure_water/v22",
       "sha256": "245c7c0f6f4a6854aeaab030e5b360cacb102cf585f80d6c867e5e53fcfc5440",
+      "installed_default": true
+    },
+    {
+      "good": "power",
+      "good_id": "g_010",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_010_power.png",
+      "source": "goods_power/v13",
+      "sha256": "2fda32b846139afa9e6fda4e1c4eb21ccf1e77c156c94f61a4a027b5b4381eec",
+      "installed_default": true
+    },
+    {
+      "good": "power",
+      "good_id": "g_010",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_010_power.png",
+      "source": "goods_power/v13",
+      "sha256": "2ee9d93519c88e4f6daeb48fd4e5b97a1de5064745f22d20f9fac6d49908f4dc",
+      "installed_default": true
+    },
+    {
+      "good": "power",
+      "good_id": "g_010",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_010_power.png",
+      "source": "goods_power/v13",
+      "sha256": "fda84c7d1556a59d9cd351bad8e1184e12e48a6c5721dafc3fc2777a967f94f5",
       "installed_default": true
     }
   ]
