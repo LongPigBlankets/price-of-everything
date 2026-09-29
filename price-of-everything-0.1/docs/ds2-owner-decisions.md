@@ -93,6 +93,7 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 
 ## Briefing (27 September 2026; plan `docs/briefing-ds2-plan.md`)
 
+- **The turn briefing in DS2 is the default** (29 September): the clipboard and the annunciator replace today's panel. `toggle briefing ds2` switches back.
 - **Strict about copy.** The decision letters' story stays narrative; everything else is factual and brief. No hyphens, semicolons, dashes, middle dots or ellipses; places by name, never coordinates.
 - **One way to close the panel.** Dismiss, the caret and the X were one too many: the Close key only (Esc stays the keyboard's). Quieting an alert is Silence alert, a different action.
 - **The clipboard (or a folder of documents)** is the metaphor for decisions; the annunciator for live alerts.

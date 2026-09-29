@@ -89,9 +89,9 @@ var use_people_ds2: bool = true
 # The market panel in DS2, the commodities exchange (docs/market-ds2-plan.md), behind the debug cheat
 # `toggle market ds2` while it is built. Off by default.
 var use_market_ds2: bool = false
-# The turn briefing in DS2, the foreman's clipboard and the annunciator (docs/briefing-ds2-plan.md), behind the
-# debug cheat `toggle briefing ds2` while it is built. Off by default. Session-only, never persisted.
-var use_briefing_ds2: bool = false
+# The turn briefing in DS2, the foreman's clipboard and the annunciator (docs/briefing-ds2-plan.md). The default;
+# the debug cheat `toggle briefing ds2` switches back to today's panel. Session-only, never persisted.
+var use_briefing_ds2: bool = true
 # The construct panel in DS2, the construction lot with its crane (docs/construct-ds2-plan.md). The default; the
 # debug cheat `toggle construct ds2` switches back to today's panel. Session-only, never persisted.
 var use_construct_ds2: bool = true

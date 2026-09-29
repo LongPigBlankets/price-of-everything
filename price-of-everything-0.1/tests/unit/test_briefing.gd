@@ -47,11 +47,13 @@ func _restore_board(snap: Dictionary) -> void:
 	_decision_board_restore(snap)
 
 
-## Off, TurnBriefing shows today's panel; on, the DS2 clipboard; off again, today's.
+## The DS2 clipboard is the default (owner, 29 September); switched off, TurnBriefing shows today's panel; on
+## again, the clipboard.
 func _test_briefing_ds2_switch() -> void:
 	var was: bool = UiPrefs.use_briefing_ds2
+	_check(was, "briefing ds2: on by default")
 	UiPrefs.set_use_briefing_ds2(false)
-	_check(TurnBriefing.panel_script().resource_path == OLD_SCRIPT, "briefing ds2: off by default path, today's panel")
+	_check(TurnBriefing.panel_script().resource_path == OLD_SCRIPT, "briefing ds2: switched off, today's panel")
 	UiPrefs.set_use_briefing_ds2(true)
 	_check(TurnBriefing.panel_script().resource_path == DS2_SCRIPT, "briefing ds2: on, the DS2 panel")
 	UiPrefs.set_use_briefing_ds2(false)
