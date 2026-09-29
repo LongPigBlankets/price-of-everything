@@ -25,7 +25,7 @@ extends CanvasLayer
 ##   toggle bdp v3                    switch building detail back to v2 (v3 is default), and again to return
 ##   toggle ledger ds2                switch the building ledger back to v2 (DS2 is default), and again to return
 ##   toggle people ds2                switch the People panel back to v2 (DS2 is default), and again to return
-##   toggle market ds2                switch the market panel to its DS2 look (in progress), and back
+##   toggle market ds2                switch the market panel back to v2 (DS2 is default), and again to return
 ##   toggle briefing ds2              switch the turn briefing to its DS2 look (in progress), and back
 ##   toggle upgrade ds2               switch the upgrade panel back to v2 (DS2 is default), and again to return
 ##   toggle routes ds2                switch Building Detail's input and output sheets back to v2 (DS2 is default), and again to return

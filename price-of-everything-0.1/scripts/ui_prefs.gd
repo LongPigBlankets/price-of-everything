@@ -86,9 +86,9 @@ var use_ledger_ds2: bool = true
 # The People panel in DS2 (docs/people-ds2-plan.md): the boardroom and the works. The default; the debug cheat
 # `toggle people ds2` switches back to today's panel, which is then exactly as it was. Session-only, never persisted.
 var use_people_ds2: bool = true
-# The market panel in DS2, the commodities exchange (docs/market-ds2-plan.md), behind the debug cheat
-# `toggle market ds2` while it is built. Off by default.
-var use_market_ds2: bool = false
+# The market panel in DS2, the commodities exchange (docs/market-ds2-plan.md). The default; the debug cheat
+# `toggle market ds2` switches back to today's panel, which is then exactly as it was. Session-only, never persisted.
+var use_market_ds2: bool = true
 # The turn briefing in DS2, the foreman's clipboard and the annunciator (docs/briefing-ds2-plan.md). The default;
 # the debug cheat `toggle briefing ds2` switches back to today's panel. Session-only, never persisted.
 var use_briefing_ds2: bool = true

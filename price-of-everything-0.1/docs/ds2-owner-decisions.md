@@ -58,6 +58,10 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **A materials cost is whole pounds only** (it was too busy with pence).
 - Every LED fits its figure itself (`BdpV3Led.fit`, through `scripts/ds2/money_figure.gd` `screen`), so every panel (Building Detail, the top bar and its Treasury sheet, the tile view, the ledger, the upgrade panel, People) follows it; a group's screens are padded to the widest fitted figure, so they stay one width.
 
+## Market (29 September 2026; plan `docs/market-ds2-plan.md`)
+
+- **The commodities exchange is the default**; `toggle market ds2` switches back to today's panel.
+
 ## Construct (26 September 2026; plan `docs/construct-ds2-plan.md`)
 
 - **The construction lot with its crane** is the concept (over the works office). One width for every stage.

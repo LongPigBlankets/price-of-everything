@@ -26,7 +26,7 @@ func _panel(ds2: bool) -> Control:
 
 func _done(panel: Control) -> void:
 	panel.queue_free()
-	UiPrefs.set_use_market_ds2(false)
+	UiPrefs.set_use_market_ds2(true)
 
 
 func _cleanup_trades(ships: int) -> void:
