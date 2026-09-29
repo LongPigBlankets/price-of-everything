@@ -1,0 +1,348 @@
+{
+  "revision": "fertiliser_v9",
+  "objects": 173,
+  "structural_hosts": [
+    "bed_front",
+    "bed_back",
+    "bed_left",
+    "bed_right",
+    "soil",
+    "stem",
+    "tomato0",
+    "tomato0_calyx",
+    "tomato1",
+    "tomato1_calyx",
+    "tomato2",
+    "tomato2_calyx",
+    "tomato3",
+    "tomato3_calyx",
+    "tomato4",
+    "tomato4_calyx",
+    "tomato5",
+    "tomato5_calyx",
+    "tomato6",
+    "tomato6_calyx",
+    "fert_bag"
+  ],
+  "topology": "wooden raised bed of heaped soil with a fruiting tomato plant; a plump green gusseted fertiliser bag leaning against it",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 6
+    },
+    "outer_by_label": {
+      "4": 6,
+      "5": 6
+    },
+    "component_weight_by_label": {
+      "5": 3
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shadowed_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "thresholds": [
+          0.65,
+          0.6,
+          0.35
+        ]
+      }
+    ]
+  },
+  "dimensions": {
+    "bed": [
+      0.0,
+      1.0,
+      0.0,
+      1.25,
+      0.0,
+      0.35
+    ],
+    "wall": 0.05,
+    "seam": 0.175,
+    "soil": [
+      0.31,
+      0.43,
+      0.42
+    ],
+    "stem_at": [
+      0.72,
+      0.52
+    ],
+    "stem_h": 1.02,
+    "bag": {
+      "W": 0.56,
+      "H": 0.83664,
+      "T": 0.39648,
+      "lean": 12.5,
+      "yaw": 3.0,
+      "p": 1.95,
+      "sag": 0.722,
+      "belly": 0.619,
+      "pinch": -0.134,
+      "seam": 0.05,
+      "ear": 0.3,
+      "ear_reach": 0.13
+    },
+    "tomatoes": [
+      [
+        -0.278,
+        0.561,
+        -0.02,
+        0.078
+      ],
+      [
+        -0.264,
+        0.373,
+        0.03,
+        0.08
+      ],
+      [
+        -0.118,
+        0.433,
+        0.08,
+        0.08
+      ],
+      [
+        0.125,
+        0.705,
+        -0.02,
+        0.08
+      ],
+      [
+        0.278,
+        0.679,
+        0.02,
+        0.078
+      ],
+      [
+        0.305,
+        0.815,
+        -0.06,
+        0.076
+      ],
+      [
+        0.1,
+        0.3,
+        0.16,
+        0.112
+      ]
+    ],
+    "leaves": [
+      [
+        0.14,
+        205,
+        0.44,
+        0.0
+      ],
+      [
+        0.2,
+        -22,
+        0.38,
+        -0.02
+      ],
+      [
+        0.44,
+        165,
+        0.42,
+        -0.1
+      ],
+      [
+        0.5,
+        10,
+        0.38,
+        -0.1
+      ],
+      [
+        0.66,
+        152,
+        0.46,
+        -0.04
+      ],
+      [
+        0.74,
+        26,
+        0.42,
+        -0.06
+      ],
+      [
+        0.88,
+        124,
+        0.36,
+        -0.02
+      ],
+      [
+        0.95,
+        60,
+        0.34,
+        -0.03
+      ],
+      [
+        0.58,
+        98,
+        0.26,
+        -0.12
+      ]
+    ]
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 1.11 x 1.67 x 1.41"
+  ],
+  "mesh_checks": {
+    "bed_front": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "bed_back": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "bed_left": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "bed_right": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "soil": {
+      "vertices": 2271,
+      "faces": 2181,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stem": {
+      "vertices": 100,
+      "faces": 82,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tomato0": {
+      "vertices": 1106,
+      "faces": 1152,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tomato0_calyx": {
+      "vertices": 20,
+      "faces": 12,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tomato1": {
+      "vertices": 1106,
+      "faces": 1152,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tomato1_calyx": {
+      "vertices": 20,
+      "faces": 12,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tomato2": {
+      "vertices": 1106,
+      "faces": 1152,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tomato2_calyx": {
+      "vertices": 20,
+      "faces": 12,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tomato3": {
+      "vertices": 1106,
+      "faces": 1152,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tomato3_calyx": {
+      "vertices": 20,
+      "faces": 12,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tomato4": {
+      "vertices": 1106,
+      "faces": 1152,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tomato4_calyx": {
+      "vertices": 20,
+      "faces": 12,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tomato5": {
+      "vertices": 1106,
+      "faces": 1152,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tomato5_calyx": {
+      "vertices": 20,
+      "faces": 12,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tomato6": {
+      "vertices": 1106,
+      "faces": 1152,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tomato6_calyx": {
+      "vertices": 20,
+      "faces": 12,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "fert_bag": {
+      "vertices": 5472,
+      "faces": 5378,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 1.98,
+    "target": [
+      0.748,
+      0.377,
+      0.622
+    ]
+  }
+}

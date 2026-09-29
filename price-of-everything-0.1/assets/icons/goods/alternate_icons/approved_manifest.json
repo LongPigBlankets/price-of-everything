@@ -19,6 +19,7 @@
     "crude_oil",
     "electrical_components",
     "ethylene",
+    "fertilisers",
     "fibreglass",
     "fuels",
     "glass",
@@ -1457,6 +1458,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_031_fuels.png",
       "source": "goods_fuels/v9",
       "sha256": "945d098bf9d41f801762873327a7f799d061132f0b1c00117032607d88def999",
+      "installed_default": true
+    },
+    {
+      "good": "fertilisers",
+      "good_id": "g_064",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_064_fertilisers.png",
+      "source": "goods_fertilisers/v9",
+      "sha256": "c435a370e9c812ed5ed69ecea354b47a06c2da68c74915762afc8e6026fab519",
+      "installed_default": true
+    },
+    {
+      "good": "fertilisers",
+      "good_id": "g_064",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_064_fertilisers.png",
+      "source": "goods_fertilisers/v9",
+      "sha256": "d507bf26c55f77d8200ffc0a7f877a088a4e904514b424883dfb150f6e4a0945",
+      "installed_default": true
+    },
+    {
+      "good": "fertilisers",
+      "good_id": "g_064",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_064_fertilisers.png",
+      "source": "goods_fertilisers/v9",
+      "sha256": "c5c03d16cf917c1b88e16fb4e7fe05c0ac9a9d411e678cfea2fa124182a1ce76",
       "installed_default": true
     }
   ]
