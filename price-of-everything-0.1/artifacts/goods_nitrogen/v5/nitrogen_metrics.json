@@ -1,0 +1,130 @@
+{
+  "revision": "nitrogen_v5",
+  "objects": 15,
+  "structural_hosts": [
+    "n2_shell",
+    "n2_collar",
+    "n2_valve_body",
+    "n2_outlet",
+    "n2_spindle",
+    "n2_handwheel"
+  ],
+  "topology": "dark blue-grey steel gas cylinder with green shoulders: a rounded white diamond with a thick green border and N2 in navy, valve with side outlet and handwheel",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 6
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shadowed_faces",
+        "labels": [
+          1,
+          3,
+          4,
+          5,
+          6
+        ],
+        "thresholds": [
+          0.65,
+          0.6,
+          0.35
+        ]
+      }
+    ]
+  },
+  "dimensions": {
+    "body_radius": 0.5,
+    "foot": 0.06,
+    "shoulder": 1.72,
+    "neck": [
+      0.17,
+      2.19
+    ],
+    "sheen": [
+      -84.0,
+      7.0
+    ],
+    "diamond": [
+      0.95,
+      0.96,
+      0.58
+    ],
+    "corner_r": [
+      0.075,
+      0.045
+    ],
+    "text": [
+      0.3,
+      0.2
+    ],
+    "green_linear": [
+      0.021,
+      0.262,
+      0.071
+    ],
+    "shoulders": "green"
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 1.01 x 1.01 x 2.73"
+  ],
+  "mesh_checks": {
+    "n2_shell": {
+      "vertices": 2722,
+      "faces": 2880,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "n2_collar": {
+      "vertices": 194,
+      "faces": 288,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "n2_valve_body": {
+      "vertices": 194,
+      "faces": 288,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "n2_outlet": {
+      "vertices": 128,
+      "faces": 66,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "n2_spindle": {
+      "vertices": 98,
+      "faces": 144,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "n2_handwheel": {
+      "vertices": 384,
+      "faces": 384,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 2.94,
+    "target": [
+      0.094,
+      -0.094,
+      1.375
+    ]
+  }
+}

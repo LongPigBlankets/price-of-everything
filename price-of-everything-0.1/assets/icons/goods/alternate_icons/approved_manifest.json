@@ -36,6 +36,7 @@
     "lithium_carbonate",
     "lithium_ore",
     "motor",
+    "nitrogen",
     "oxygen",
     "polysilicon",
     "power",
@@ -1485,6 +1486,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_064_fertilisers.png",
       "source": "goods_fertilisers/v9",
       "sha256": "c5c03d16cf917c1b88e16fb4e7fe05c0ac9a9d411e678cfea2fa124182a1ce76",
+      "installed_default": true
+    },
+    {
+      "good": "nitrogen",
+      "good_id": "g_068",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_068_nitrogen.png",
+      "source": "goods_nitrogen/v5",
+      "sha256": "2bc19cdbff910dcb82464d4006b8c9881691ae1d199b2dd915352665c802ec58",
+      "installed_default": true
+    },
+    {
+      "good": "nitrogen",
+      "good_id": "g_068",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_068_nitrogen.png",
+      "source": "goods_nitrogen/v5",
+      "sha256": "d6b0a890267266f19fcb1ad38022b9c8f7ff573a424766a94b138cdbb7be3f60",
+      "installed_default": true
+    },
+    {
+      "good": "nitrogen",
+      "good_id": "g_068",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_068_nitrogen.png",
+      "source": "goods_nitrogen/v5",
+      "sha256": "01308a198b38f50d9ed3531f3e8aad9baa63fcc223780480bd2ac138bd13b49f",
       "installed_default": true
     }
   ]
