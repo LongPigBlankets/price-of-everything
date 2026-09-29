@@ -41,6 +41,7 @@
     "refined_ree",
     "sand",
     "silica",
+    "sodium_battery",
     "sodium_hydroxide",
     "solar_panel",
     "steel",
@@ -1345,6 +1346,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_070_alkaline_battery.png",
       "source": "goods_alkaline_battery/v4",
       "sha256": "222eae500d9bb254246aa3b32da6b27867609bf879a2d06386e16349448d9545",
+      "installed_default": true
+    },
+    {
+      "good": "sodium_battery",
+      "good_id": "g_060",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_060_sodium_battery.png",
+      "source": "goods_sodium_battery/v12",
+      "sha256": "40f05a150f52ad549e369e066c79255cd1ce807c4fc5778d6eb2849aced27c6b",
+      "installed_default": true
+    },
+    {
+      "good": "sodium_battery",
+      "good_id": "g_060",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_060_sodium_battery.png",
+      "source": "goods_sodium_battery/v12",
+      "sha256": "9f44395fd272af28b49b86a2f35f96734e6a118f4cefa045d65ff974917c78eb",
+      "installed_default": true
+    },
+    {
+      "good": "sodium_battery",
+      "good_id": "g_060",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_060_sodium_battery.png",
+      "source": "goods_sodium_battery/v12",
+      "sha256": "80f08bb43d927b711187a97205d0f204e774c439ff7c30cc97a440a4facbeb09",
       "installed_default": true
     }
   ]
