@@ -186,8 +186,8 @@
       "good_id": "g_056",
       "tier": "medium",
       "path": "assets/icons/goods/alternate_icons/medium/g_056_ice_car.png",
-      "source": "goods_icon_diesel/passat_rebuild/windscreen_bow_final",
-      "sha256": "c4ac7bdbc614739272cea4fe93d7eb9bd7835c774ba267b7a09e805ca4fc5ddf",
+      "source": "goods_icon_diesel/passat_rebuild/can_pump_red",
+      "sha256": "45e9e464ac65c916704e930a5655811e967fbc6703a016a008c2363744c5f7f2",
       "installed_default": true
     },
     {
@@ -411,8 +411,8 @@
       "good_id": "g_056",
       "tier": "small",
       "path": "assets/icons/goods/alternate_icons/small/g_056_ice_car.png",
-      "source": "goods_icon_diesel/passat_rebuild/windscreen_bow_final",
-      "sha256": "916b6f57cd0dfa5994871e33f4b82f2cbc53a72bb7bac2cfac873e90bfe4f35e",
+      "source": "goods_icon_diesel/passat_rebuild/can_pump_red",
+      "sha256": "54f5866c9e10f9030d1a871162b3de9bcc9765937bd3b2bf1400dfdfed86f6b7",
       "installed_default": true
     },
     {
@@ -636,8 +636,8 @@
       "good_id": "g_056",
       "tier": "very_small",
       "path": "assets/icons/goods/alternate_icons/very_small/g_056_ice_car.png",
-      "source": "goods_icon_diesel/passat_rebuild/windscreen_bow_final",
-      "sha256": "25ccb41b7a88cd4b8539c05265b5f0f571b02aee024472bf5eca1456191a0e41",
+      "source": "goods_icon_diesel/passat_rebuild/can_pump_red",
+      "sha256": "9dc2a9d75b4db12860b2f32fe7d93987a392806b905bae444eec0f2506dff4a3",
       "installed_default": true
     },
     {
