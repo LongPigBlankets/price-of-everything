@@ -44,6 +44,7 @@
     "pure_water",
     "pvc",
     "refined_ree",
+    "rubber",
     "sand",
     "silica",
     "sodium_battery",
@@ -1513,6 +1514,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_068_nitrogen.png",
       "source": "goods_nitrogen/v5",
       "sha256": "01308a198b38f50d9ed3531f3e8aad9baa63fcc223780480bd2ac138bd13b49f",
+      "installed_default": true
+    },
+    {
+      "good": "rubber",
+      "good_id": "g_028",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_028_rubber.png",
+      "source": "goods_rubber/v15",
+      "sha256": "7b76a733e98941ae77c535d2adab842a69a896c784883c186aa7364f1fb09ce5",
+      "installed_default": true
+    },
+    {
+      "good": "rubber",
+      "good_id": "g_028",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_028_rubber.png",
+      "source": "goods_rubber/v15",
+      "sha256": "2ede3d2e8cb5de93a650241f69c27fa6a5f866ad5078624b5797e813867243c6",
+      "installed_default": true
+    },
+    {
+      "good": "rubber",
+      "good_id": "g_028",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_028_rubber.png",
+      "source": "goods_rubber/v15",
+      "sha256": "cb9d5c106c07eb58e1f776f047d12f9712adb1348e1a15cf816fa9b858b5a320",
       "installed_default": true
     }
   ]
