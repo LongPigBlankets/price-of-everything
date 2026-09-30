@@ -1,0 +1,326 @@
+{
+  "revision": "plastics_v33",
+  "objects": 271,
+  "structural_hosts": [
+    "chair_mesh",
+    "bottle",
+    "bottle_cap",
+    "bag",
+    "bag_handle_left",
+    "bag_handle_right"
+  ],
+  "topology": "cream monobloc armchair (Poly Haven's plastic_monobloc_chair_01, CC0: slotted back and seat, arms bending into the front legs); a PET bottle with a blue cap; a blue carrier bag brim-full of 71 cream pellets",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 4
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shaded_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "thresholds": [
+          0.575,
+          0.5,
+          0.3
+        ]
+      }
+    ]
+  },
+  "dimensions": {
+    "chair": {
+      "use": 1,
+      "file": "monobloc_chair.npz",
+      "s": 0.9002,
+      "yaw": 90.0,
+      "tx": 0.0484,
+      "ty": 0.0504,
+      "sharp": 45.0,
+      "crease": 50.0,
+      "min_line": 0.02,
+      "lines": 104
+    },
+    "bottle": {
+      "bx": 0.3587,
+      "by": -0.8452,
+      "R": 0.1243,
+      "H": 0.8217,
+      "hc": 0.062,
+      "rc": 0.0554,
+      "zs0": 0.5625,
+      "p": 1.6289,
+      "rb": 0.0195,
+      "pinch": 0.0941,
+      "zf": 0.0805
+    },
+    "bottle_rings": [
+      0.391,
+      0.473,
+      0.557
+    ],
+    "bag": {
+      "bx": 1.0115,
+      "by": 0.0289,
+      "yaw": 90.0,
+      "H": 1.1676,
+      "W": 0.9082,
+      "bulge": 0.12,
+      "D": 0.3824,
+      "bb": 0.5271,
+      "s1": 0.23,
+      "sq": 0.05,
+      "s2": 0.12,
+      "hL_c": 0.7187,
+      "hL_z": -0.05,
+      "hL_rx": 0.1227,
+      "hL_rz": 0.1944,
+      "hL_w": 0.0645,
+      "hL_psi": -14.2029,
+      "hL_y": 0.0511,
+      "hL_diag": 1,
+      "hL_in": -0.26,
+      "hR_c": 0.6226,
+      "hR_z": -0.1327,
+      "hR_rx": 0.1664,
+      "hR_rz": 0.2809,
+      "hR_w": 0.0645,
+      "hR_psi": -14.6658,
+      "hR_y": -0.0506,
+      "hR_outer_lip": 0,
+      "heap": [
+        [
+          0.13,
+          0.945,
+          0.28,
+          0.17
+        ],
+        [
+          -0.31,
+          0.925,
+          0.05,
+          0.05
+        ]
+      ],
+      "shoulders": 1,
+      "bn": 0.0,
+      "neck": 0.0,
+      "pe": 2.4,
+      "s3": 0.1,
+      "lips": {
+        "x": [
+          -0.454,
+          -0.2,
+          0.0,
+          0.18,
+          0.33,
+          0.454
+        ],
+        "back": [
+          0.9,
+          0.95,
+          0.98,
+          0.99,
+          0.9,
+          0.8
+        ],
+        "front": [
+          0.9,
+          0.85,
+          0.8,
+          0.8,
+          0.8,
+          0.8
+        ],
+        "side": [
+          0.9,
+          0.9,
+          0.9,
+          0.9,
+          0.85,
+          0.8
+        ]
+      },
+      "fill_dz": -0.8,
+      "fill_courses": 1
+    },
+    "bag_creases": {
+      "smile": [
+        [
+          0.92,
+          -2.18
+        ],
+        [
+          0.87,
+          -1.944
+        ],
+        [
+          0.787,
+          -1.7
+        ],
+        [
+          0.714,
+          -1.534
+        ],
+        [
+          0.682,
+          -1.368
+        ],
+        [
+          0.687,
+          -1.202
+        ],
+        [
+          0.697,
+          -1.079
+        ]
+      ],
+      "right": [
+        [
+          0.521,
+          -0.817
+        ],
+        [
+          0.501,
+          -1.027
+        ],
+        [
+          0.459,
+          -1.193
+        ],
+        [
+          0.401,
+          -1.315
+        ]
+      ],
+      "left": [
+        [
+          1.0,
+          -2.923
+        ],
+        [
+          0.902,
+          -2.853
+        ],
+        [
+          0.774,
+          -2.871
+        ],
+        [
+          0.591,
+          -3.037
+        ],
+        [
+          0.459,
+          -3.08
+        ],
+        [
+          0.401,
+          -3.037
+        ]
+      ],
+      "foot": [
+        [
+          0.306,
+          3.045
+        ],
+        [
+          0.336,
+          -2.958
+        ],
+        [
+          0.353,
+          -2.678
+        ],
+        [
+          0.348,
+          -2.364
+        ]
+      ],
+      "foot2": [
+        [
+          0.414,
+          2.976
+        ],
+        [
+          0.371,
+          3.133
+        ],
+        [
+          0.371,
+          -3.037
+        ]
+      ]
+    },
+    "pellets": 71
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 1.92 x 1.68 x 1.83"
+  ],
+  "mesh_checks": {
+    "chair_mesh": {
+      "vertices": 1660,
+      "faces": 3356,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "bottle": {
+      "vertices": 5402,
+      "faces": 5520,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "bottle_cap": {
+      "vertices": 146,
+      "faces": 216,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "bag": {
+      "vertices": 5904,
+      "faces": 5834,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "bag_handle_left": {
+      "vertices": 1040,
+      "faces": 1026,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "bag_handle_right": {
+      "vertices": 1040,
+      "faces": 1026,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 2.724,
+    "target": [
+      0.468,
+      -0.151,
+      1.062
+    ]
+  }
+}

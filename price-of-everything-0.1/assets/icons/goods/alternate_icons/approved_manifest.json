@@ -38,6 +38,7 @@
     "motor",
     "nitrogen",
     "oxygen",
+    "plastics",
     "polysilicon",
     "power",
     "processed_oil",
@@ -1541,6 +1542,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_028_rubber.png",
       "source": "goods_rubber/v15",
       "sha256": "cb9d5c106c07eb58e1f776f047d12f9712adb1348e1a15cf816fa9b858b5a320",
+      "installed_default": true
+    },
+    {
+      "good": "plastics",
+      "good_id": "g_027",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_027_plastics.png",
+      "source": "goods_plastics/v33",
+      "sha256": "fbba70ec8616fb26b5fc3b7e2f0d86cd6c02eca02ec668a1673cf4afb53ac5d0",
+      "installed_default": true
+    },
+    {
+      "good": "plastics",
+      "good_id": "g_027",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_027_plastics.png",
+      "source": "goods_plastics/v33",
+      "sha256": "4c240a84c38e22d70d0de2cf60e74604c416d07393891a8f681bf1a0143aa247",
+      "installed_default": true
+    },
+    {
+      "good": "plastics",
+      "good_id": "g_027",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_027_plastics.png",
+      "source": "goods_plastics/v33",
+      "sha256": "84f94bbdf849b08d16ebd80e1f7e5b195b5c1efbb959640b49112ed8abec8695",
       "installed_default": true
     }
   ]

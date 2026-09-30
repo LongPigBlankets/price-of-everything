@@ -1,0 +1,72 @@
+{
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "meshes": {
+    "chair_mesh": {
+      "faces": 3356,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": -0.0
+    },
+    "bottle": {
+      "faces": 5520,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0
+    },
+    "bottle_cap": {
+      "faces": 216,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7597
+    },
+    "bag": {
+      "faces": 5834,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0
+    },
+    "bag_handle_left": {
+      "faces": 1026,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.8551
+    },
+    "bag_handle_right": {
+      "faces": 1026,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.6628
+    }
+  },
+  "pairs": {
+    "bottle/chair_mesh": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "bottle_cap/chair_mesh": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "bag/chair_mesh": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "bag_handle_left/chair_mesh": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "bag_handle_right/chair_mesh": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "bottle_cap/bottle": {
+      "surface_intersections": 353,
+      "intended": true
+    }
+  },
+  "failures": []
+}
