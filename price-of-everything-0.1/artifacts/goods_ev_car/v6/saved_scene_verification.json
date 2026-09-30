@@ -1,0 +1,452 @@
+{
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "min_z": {
+    "ev_black": 0.2019,
+    "ev_body": 0.2035,
+    "ev_cabin": 0.1514,
+    "ev_cladding": 0.1514,
+    "ev_lamp_rear": 0.9364,
+    "ev_trim": 0.329,
+    "ev_black_wheel_r_f": 0.08,
+    "ev_rim_wheel_r_f": 0.078,
+    "ev_tyre_wheel_r_f": 0.0,
+    "ev_black_wheel_r_b": 0.08,
+    "ev_rim_wheel_r_b": 0.078,
+    "ev_tyre_wheel_r_b": 0.0,
+    "ev_black_wheel_l_f": 0.08,
+    "ev_rim_wheel_l_f": 0.078,
+    "ev_tyre_wheel_l_f": 0.0,
+    "ev_black_wheel_l_b": 0.08,
+    "ev_rim_wheel_l_b": 0.078,
+    "ev_tyre_wheel_l_b": 0.0,
+    "ev_body_roof": 1.3862,
+    "ev_body_nose_r": 0.679,
+    "ev_body_nose_l": 0.679,
+    "ev_lamp_front_lamp_r": 0.789,
+    "ev_lamp_front_lamp_l": 0.789,
+    "ev_body_grille_cover": 0.5289,
+    "ev_plinth": 0.0,
+    "ev_post": 0.07,
+    "ev_screen": 1.054,
+    "ev_bolt": 0.272,
+    "ev_holster": 0.612,
+    "ev_port": 0.69,
+    "ev_pistol": 0.3823,
+    "ev_cable": 0.0099
+  },
+  "pairs": {
+    "ev_post/ev_black": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_body": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_cabin": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_cladding": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_lamp_rear": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_trim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_black_wheel_r_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_rim_wheel_r_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_tyre_wheel_r_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_black_wheel_r_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_rim_wheel_r_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_tyre_wheel_r_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_black_wheel_l_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_rim_wheel_l_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_tyre_wheel_l_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_black_wheel_l_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_rim_wheel_l_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_tyre_wheel_l_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_body_roof": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_body_nose_r": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_body_nose_l": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_lamp_front_lamp_r": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_lamp_front_lamp_l": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_post/ev_body_grille_cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_black": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_body": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_cabin": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_cladding": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_lamp_rear": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_trim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_black_wheel_r_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_rim_wheel_r_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_tyre_wheel_r_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_black_wheel_r_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_rim_wheel_r_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_tyre_wheel_r_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_black_wheel_l_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_rim_wheel_l_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_tyre_wheel_l_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_black_wheel_l_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_rim_wheel_l_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_tyre_wheel_l_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_body_roof": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_body_nose_r": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_body_nose_l": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_lamp_front_lamp_r": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_lamp_front_lamp_l": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_plinth/ev_body_grille_cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_black": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_body": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_cabin": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_cladding": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_lamp_rear": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_trim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_black_wheel_r_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_rim_wheel_r_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_tyre_wheel_r_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_black_wheel_r_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_rim_wheel_r_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_tyre_wheel_r_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_black_wheel_l_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_rim_wheel_l_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_tyre_wheel_l_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_black_wheel_l_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_rim_wheel_l_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_tyre_wheel_l_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_body_roof": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_body_nose_r": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_body_nose_l": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_lamp_front_lamp_r": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_lamp_front_lamp_l": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_holster/ev_body_grille_cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_black": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_body": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_cabin": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_cladding": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_lamp_rear": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_trim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_black_wheel_r_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_rim_wheel_r_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_tyre_wheel_r_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_black_wheel_r_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_rim_wheel_r_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_tyre_wheel_r_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_black_wheel_l_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_rim_wheel_l_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_tyre_wheel_l_f": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_black_wheel_l_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_rim_wheel_l_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_tyre_wheel_l_b": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_body_roof": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_body_nose_r": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_body_nose_l": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_lamp_front_lamp_r": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_lamp_front_lamp_l": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_cable/ev_body_grille_cover": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "ev_port/ev_body": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "ev_pistol/ev_port": {
+      "surface_intersections": 17,
+      "intended": true
+    },
+    "ev_cable/ev_pistol": {
+      "surface_intersections": 10,
+      "intended": true
+    },
+    "ev_cable/ev_holster": {
+      "surface_intersections": 13,
+      "intended": true
+    },
+    "ev_holster/ev_post": {
+      "surface_intersections": 24,
+      "intended": true
+    },
+    "ev_post/ev_plinth": {
+      "surface_intersections": 4,
+      "intended": true
+    }
+  },
+  "failures": []
+}

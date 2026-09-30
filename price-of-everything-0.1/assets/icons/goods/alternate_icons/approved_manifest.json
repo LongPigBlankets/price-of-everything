@@ -19,6 +19,7 @@
     "crude_oil",
     "electrical_components",
     "ethylene",
+    "ev_car",
     "fertilisers",
     "fibreglass",
     "fuels",
@@ -1569,6 +1570,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_027_plastics.png",
       "source": "goods_plastics/v33",
       "sha256": "84f94bbdf849b08d16ebd80e1f7e5b195b5c1efbb959640b49112ed8abec8695",
+      "installed_default": true
+    },
+    {
+      "good": "ev_car",
+      "good_id": "g_057",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_057_ev_car.png",
+      "source": "goods_ev_car/v6",
+      "sha256": "556cb7e80c932f64d13c14432e63d6ecbc5333a0c9a207547271e1e5dd201818",
+      "installed_default": true
+    },
+    {
+      "good": "ev_car",
+      "good_id": "g_057",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_057_ev_car.png",
+      "source": "goods_ev_car/v6",
+      "sha256": "b125f4183d925fa1fb7f9c253306e71f218c321d12677cbdd8b35516b7b28e03",
+      "installed_default": true
+    },
+    {
+      "good": "ev_car",
+      "good_id": "g_057",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_057_ev_car.png",
+      "source": "goods_ev_car/v6",
+      "sha256": "ff3b554856c5e4602ecf1fccbdea9960c02fbf3c327a73108ea97cd1a216139f",
       "installed_default": true
     }
   ]
