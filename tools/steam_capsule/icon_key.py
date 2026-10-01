@@ -28,7 +28,13 @@ SRC = os.path.normpath(os.path.join(HERE, "..", "..", "price-of-everything-0.1",
                                     "buildings", "cleaned"))
 OUT = os.path.join(HERE, "icons")
 ICONS = {"factory": "b_007.png",          # b_007 industrial factory: chimney, smoke, sawtooth shed
-         "solar": "b_024.png"}            # b_024 solar farm: the panel on its post, and the sun
+         "solar": "b_024.png",            # b_024 solar farm: the panel on its post, and the sun
+         "windmills": "b_025.png"}        # b_025 onshore wind farm, made a pair (windmills_mask)
+# The windmills (owner, the three-hex logo): the onshore wind farm's turbine twice, a smaller
+# one at its right as on the offshore icon (b_026), each on its own plinth and both on one
+# ground line. The icon's turbine and plinth are the rows above PLINTH_FOOT; its ground bar,
+# GROUND_BAR rows deep, is drawn again under both.
+SMALL, APART, PLINTH_FOOT, GROUND_BAR, GROUND_OVER = 0.66, 196, 314, 10, 22
 KEY_RGB = (236, 226, 202)                 # the icons' own cream
 PALE = 150                                # luminance: an opaque pixel darker than this is ground
 SPECK = 40                                # px: islands and holes smaller than this are noise
@@ -49,6 +55,25 @@ def key(path):
     sizes = ndimage.sum(~m, holes, range(1, n + 1))
     m |= np.isin(holes, [i + 1 for i, s in enumerate(sizes) if s < SPECK])
     return m
+
+
+def windmills_mask(path):
+    """Two of the turbine on one ground bar, unioned as a mask so the outline traces as one."""
+    m = key(path)
+    turbine = m[:PLINTH_FOOT]
+    cols = np.nonzero(turbine.any(axis=0))[0]
+    turbine = turbine[:, cols[0]:cols[-1] + 1]
+    h, w = turbine.shape
+    sh, sw = round(h * SMALL), round(w * SMALL)
+    small = np.asarray(Image.fromarray(turbine.astype(np.uint8) * 255).resize((sw, sh), Image.BILINEAR)) > 127
+    hub = w // 2                                      # the turbine's mast is its middle
+    x_small = hub + APART - sw // 2
+    W = max(w, x_small + sw) + 2 * GROUND_OVER
+    out = np.zeros((h + GROUND_BAR + 4, W), bool)
+    out[2:2 + h, GROUND_OVER:GROUND_OVER + w] |= turbine
+    out[2 + h - sh:2 + h, GROUND_OVER + x_small:GROUND_OVER + x_small + sw] |= small
+    out[2 + h:2 + h + GROUND_BAR, :] = True
+    return out
 
 
 def march(f, level=0.5):
@@ -120,7 +145,7 @@ def thin(pts, eps):
 def main():
     os.makedirs(OUT, exist_ok=True)
     for name, file in ICONS.items():
-        m = key(os.path.join(SRC, file))
+        m = (windmills_mask if name == "windmills" else key)(os.path.join(SRC, file))
         keyed = np.zeros(m.shape + (4,), np.uint8)
         keyed[m] = (*KEY_RGB, 255)
         Image.fromarray(keyed).save(os.path.join(OUT, name + "_keyed.png"))

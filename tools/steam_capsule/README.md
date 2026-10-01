@@ -337,6 +337,104 @@ shadows and the stipple print pass.
     `BRASS_LAMP`). Renders portrait, 2200 tall. A flat-top hex was considered: its halves'
     sides slope so steeply that the letters would have to taper to about half their width
     at the top.
+  - **`--plate trio` (owner: three hexes, one over two):** the single hex's words on top,
+    brass with AND in silver, and under it, side by side, the game's factory (`b_007`) in
+    copper on the left and its onshore wind turbine (`b_025`) in silver on the right, made a
+    pair by `icon_key.py` (a smaller turbine at the right, both on one ground bar, as on
+    the offshore icon). All three are `SINGLE_A` wide and `TRIO_GAP` apart, each its own
+    navy plate with its own rim in its own metal. The copper is the copper wire icon's
+    (`g_007_copper_wiring.png`, lit tone (204, 126, 84); `COPPER` renders (206, 126, 80)), and
+    the copper and silver are polished (`TRIO_POLISH`). Polished, a flat face seen head-on
+    mirrors the dim world above it, so a strong lamp of their own over the bottom row
+    (`TRIO_LAMP`) lights them alone. Each icon is grown till it reaches `TRIO_ICON_REACH`
+    into its rim where it touches it, then slid between the two parallel sides that hold it
+    to a third touch (`fit_in(toward=...)`; owner): the factory down and to the right, so it
+    meets the rim at its smoke's tip and both ends of its foot; the windmills up, at the tall
+    blade's tip and both ends of the ground. Rim and icon are one piece, merged seamlessly
+    (owner): joined in plan first (tall blocks of each, staggered in height so no faces lie
+    in one plane, unioned and cut level, `section_loops`), then that one outline extruded to
+    `TRIO_TOP` and bevelled once (`TRIO_BEVEL`) as the words are, so the polished bevel runs
+    on round each join. Unioning the finished parts left a groove where the two chamfers
+    met; bevelling a union afterwards collapsed on the traced icon's short edges; and the
+    windmills' union needs `use_self`/`use_hole_tolerant`, as the trace is not watertight. At this size the trace's pixel steps showed through the bevel, so `smooth_outline`
+    simplifies each outline and rounds it again by corner-cutting, all but its long-edged
+    corners (the roofs, the windows). The single hex's lamps are stretched over all three.
+    Under each icon the hex is filled with its metal down to the bottom point (owner), joined
+    in the same union (`TRIO_FILL_OVER` up into the ground). The windmills' ground stands as
+    high in its hex as the factory's (`ground_as`; owner), so the silver under them is as
+    large as the copper under the factory; the ground's ends that then cross the rim are
+    trimmed to it (`clip_convex`), and the windmills keep only their two side touches. Level
+    faces are flat-shaded, as the fills streaked when smooth. AND is raised as high as the
+    words with their bevel, in the windmills' polished silver (`--and embossed`, the trio's
+    default; owner), and the trio's lamp covers it too.
+    The copper and silver shine under strip lights (owner): long thin lamps, parallel, at
+    -45 degrees (top left down to bottom right, with the light) every `TRIO_STRIP_GAP`, lit
+    for the trio's metals only, over a dimmer broad lamp (`TRIO_LAMP_UNDER`). Seen straight
+    down a flat polished face mirrors what hangs straight above it, so each strip lies across
+    the metal as a band of light. Softened (owner) they hang 4 up and 0.9 wide (2.5 and 0.45
+    were crisp; at 6 the polish blurred them to blobs). Their light is kept to
+    `TRIO_STRIP_SPREAD` round straight down, or it grazed the metal's sides and bounced a halo
+    onto the navy round every edge. AgX rolls their cores to near white at any brightness, so
+    `TRIO_STRIP` sets the bands' width more than their peak. The top hex's brass has strips
+    of its own in the same places (owner), `TRIO_STRIP_BRASS` as bright: rougher, it spreads
+    a strip across whole letters, and above about a tenth it went pale; at 0.04 the brass
+    keeps its gold (median (192, 164, 111), from (169, 136, 70) unlit). Made less reflective
+    (owner), the copper and silver are a little rough (`TRIO_POLISH` 0.18: at 0.10 they
+    mirrored the strips crisp and near white, at 0.25 the strips were gone, a satin);
+    rougher, they gather the lamps' light from far wider, so the strips and the lamp under
+    them are a tenth of what 0.10 wanted, and the brass's strips are rescaled to stay as they
+    were. Between the bands the copper stays the wire's (203, 132, 83).
+    Both are brushed (owner, after a brushed-steel reference; `brushed_mat`): the grain runs
+    level, a noise stretched `BRUSH_STRETCH` times along it with `BRUSH_LINES` streaks to a
+    unit across (a few pixels apart; the old silver's 1,260 averaged away to nothing), which
+    varies the roughness by `BRUSH_ROUGH`, darkens the colour by up to `BRUSH_SHADE` and
+    raises a faint bump, and the metal is anisotropic along it (`BRUSH_ANISO`), so the strips'
+    sheen smears across the grain. AND, in the same silver, is brushed too. Stronger, and on
+    all three hexes (owner): the brass is brushed the same way at its own roughness (0.21),
+    the streaks vary the roughness by 0.10, darken by up to 24% and bump at 0.045; and every
+    lamp on the trio is 10% down (`TRIO_LIGHT`), the copper's middle tone (194, 120, 67).
+    The navy is plastic (owner): satin (`TRIO_PLASTIC_ROUGH` 0.30) with no enamel coat, and it
+    sees the strips through a set of its own, `TRIO_STRIP_PLASTIC` as bright as the metals',
+    so faint diagonal sheens cross the navy in all three hexes. A plastic scatters a lamp as
+    well as mirroring it, so it greys fast: at 4 times that the navy went grey.
+    Back to one large lamp (owner, v17; `TRIO_STRIPS` False, the strips kept behind it): the
+    broad lamp over the whole logo lights the copper and silver alone (`TRIO_LAMP_METAL`), a
+    copy of it in its place the plastic navy (`TRIO_LAMP_PLASTIC`), and the brass its own wide
+    lamp, `TRIO_BRASS_GAIN` as bright; each set so every surface keeps its v16 level. Each
+    surface is lit by its one lamp only: linked to two at once (the copper and silver were on
+    the brass lamp too), a surface took far less of the second lamp's light than it should,
+    and the levels could not be set. Then 20% stronger and larger (owner, v18): every lamp on
+    the trio at `TRIO_LIGHT` 1.08, and the broad lamp and the brass's both `TRIO_LAMP_PAST` 4.0
+    past the logo all round (1.6 before), as bright to a unit of their area; the copper's
+    middle tone is the wire's again, (205, 129, 86), and no halo came back.
+    v19 (owner: 20% stronger again, `TRIO_LIGHT` 1.30; and the light larger, so the logo's
+    top-left third is almost evenly lit before it falls off from the middle third toward
+    the bottom right): the broad lamp, the navy's copy, the brass's lamp and the round plate
+    lamp (whose small hot spot in the corner had fallen off too soon) are each one large
+    rectangle turned 45 degrees over the top left, its far edge a diagonal a third of the way
+    along the logo (`TRIO_LAMP_CORNER`, `TRIO_LAMP_EDGE`), with `TRIO_FALL_BANDS` bands past it,
+    each dimmer, easing to `TRIO_FALL_FLOOR` at the far corner; the roughness blurs them into
+    one gradient. One edge alone dropped the silver hex and the copper's foot into the dark.
+    The plate lamp's link to the navy is set before the trio copies it, or its copies would
+    light everything.
+    Browner coppers to compare (owner): `--copper r,g,b` replaces `COPPER` (0.98, 0.31, 0.12).
+    v19b is 0.62,0.28,0.09, a warm brown copper (middle tone (180, 122, 62)); v19c is
+    0.45,0.20,0.06, a deeper aged brown (160, 101, 35); `renders/review/copper_compare_v19.png`
+    sets the three factories side by side. Lowering the red alone, with the blue left where
+    it was, turned it salmon rather than brown: brown wants it darker and the blue lower.
+    The owner chose v19b's: it is `COPPER` now (v20).
+    Redder takes on it (owner): v20r1 is 0.64,0.24,0.08 (middle tone (183, 113, 56)) and
+    v20r2 0.66,0.21,0.07 ((186, 105, 49)): the green pulled down so the brown leans red;
+    `renders/review/copper_compare_v20.png` sets them beside v20.
+    Aged copper (owner, after a photo of a worn copper sheet: "this colour, more grain"):
+    `--copper-aged on` gives the copper `COPPER_AGED`: its grain 1.6 times as strong, sparse
+    bright scratches along it (a noise stretched far further and thresholded, smoother and
+    a little lighter) and broad soft tarnish patches that turn duller rose brown and rougher.
+    v21a, `--copper 0.48,0.15,0.04` with tarnish 0.7: an even orange brown, the sheet's top,
+    middle tone (149, 82, 25) against the photo's (154, 81, 33). v21b, `--copper 0.48,0.15,0.06`
+    with tarnish 0.9 toward rose: the sheet's darker, rose lower half in patches. The owner
+    chose v21a: it is the default now (`COPPER`, `COPPER_AGED`; v21).
+    Render: `--plate trio --carbon brass --light topleft` (scene `nameplate_trio.blend`).
   - **`--plate honeycomb-wide` (the default; owner):** the emblem's honeycomb with the words
     across whole rows, so they have room: CARBON across the top row and CAPITAL across the
     bottom one; the middle row holds AND between the two icons, the factory in the left
