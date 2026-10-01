@@ -198,8 +198,9 @@ func _test_intermediary_funds_the_most_profitable_batch_first() -> void:
 	var m_better := Service.batch_margin(BuildingState.get_building(better), snapshot)
 	_check(m_better > m_first, "the boosted building's batch earns more (£%.1f against £%.1f)" % [m_better, m_first])
 	# No credit to borrow against, and cash for exactly one batch after the turn's bills.
-	LoanState.loans.append({"id": 99, "principal_initial": LoanState.capacity_total() + 10000.0,
-		"principal_remaining": 0.0, "payment_per_turn": 0.0, "turns_remaining": 0, "interest_paid": 0.0})
+	var exhausting := LoanState.capacity_total() + 10000.0
+	LoanState.loans.append({"id": 99, "principal_initial": exhausting, "total_repayment": exhausting,
+		"principal_remaining": exhausting, "payment_per_turn": 0.0, "turns_remaining": 0, "interest_paid": 0.0})
 	var p: Dictionary = Service.preview_building(BuildingState.get_building(better))
 	MatchState.money = float(p.upfront) + float(p.protected_commitments) + 1.0
 	Service.prepare(BuildingState.buildings.values(), summary())

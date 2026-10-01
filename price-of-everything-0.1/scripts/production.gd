@@ -658,7 +658,9 @@ func _process_production() -> void:
 	# borrowing capacity scales with the business. taxes_paid/dividends_paid are 0
 	# when the turn was a loss, so retained then equals the (negative) pre-tax profit.
 	var retained_profit: float = pre_tax_profit - summary.taxes_paid - summary.dividends_paid - profit_sharing
-	LoanState.record_turn_economics(retained_profit, revenue)
+	# Capacity is sized so a full facility's repayments fit within profit, so it reads profit before this
+	# turn's loan repayments: counting them as a cost too would let borrowing shrink its own limit.
+	LoanState.record_turn_economics(retained_profit + float(summary.get("interest_paid", 0.0)), revenue)
 
 	TurnProfiler.section_begin("cost_solve")
 	# Attribute each tile's warehousing fee across the buildings that ran there, so
