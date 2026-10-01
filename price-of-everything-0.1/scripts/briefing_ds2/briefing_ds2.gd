@@ -9,8 +9,8 @@ extends Control
 ## key; the gate, a screen that says whether the turn can end; then, scrolling on Building Detail's rail, the
 ## decision as a letter on the foreman's clipboard ("1 of 2"), the answers as cream keys on a gunmetal slab with
 ## their figures on LED screens and drums (DecisionState.choice_figures, the effects resolve applies), and the
-## annunciator: one window per kind of alert, lit amber or red when live, green for information, dark when clear.
-## A lit window picked shows its readout, its rows (a good in its well, the place, Go to) and Silence alert, which
+## annunciator: a window per kind of alert that is live, lit amber or red, green for information; with none live, a
+## line says there are no other updates. A lit window picked shows its readout, its rows (a good in its well, the place, Go to) and Silence alert, which
 ## quiets that alert until it gets worse. Read-only against the sim: answers go through DecisionState.resolve,
 ## silencing through TurnBriefing.dismiss.
 
@@ -53,6 +53,8 @@ const ANSWER_KEY_W := 196.0
 const GO_KEY_W := 84.0
 const SILENCE_KEY_W := 140.0
 const WINDOW_COLUMNS := 4
+## What the body says under the letter when no alert is live.
+const NO_UPDATES := "No other updates."
 
 var _card: Control
 var _head: HBoxContainer
@@ -222,8 +224,13 @@ func _rebuild() -> void:
 	# With no decision waiting the worst lit window opens by itself; with one, the letter keeps the room.
 	if _picked == "" and decisions.is_empty() and not lit.is_empty():
 		_picked = _worst(lit)
-	_body.add_child(_annunciator(windows))
-	# The dark annunciator says there is nothing wrong; lit windows not yet picked say how to see them.
+	# Only the kinds that are live: the annunciator shows the lit windows, and with none a line says so.
+	if lit.is_empty():
+		var none := Parts.body(NO_UPDATES)
+		none.name = "NoUpdatesLine"
+		_body.add_child(none)
+	else:
+		_body.add_child(_annunciator(lit))
 	if _picked == "" and not lit.is_empty():
 		var said := Parts.body("%s lit. Pick one for its detail." % _count(lit.size(), "alert"))
 		said.name = "AnnunciatorLine"
@@ -337,22 +344,26 @@ func _clipboard(it: Dictionary, index: int, total: int) -> Control:
 
 # --- the answers --------------------------------------------------------------------------------
 
-## The answers on a gunmetal slab: a cream key per choice with its label, and beside it what the choice brings,
-## its words (white) then its figures on screens and drums, with the loan a short purse needs and why a key is
-## locked.
+## The answers on a gunmetal slab: a cream key per choice with its label, centred on what the choice brings beside
+## it, its words (white) then its figures on screens and drums, with the loan a short purse needs and why a key is
+## locked. An engraved line between one choice and the next.
 func _answer(it: Dictionary) -> Control:
 	var view: Dictionary = it.get("view", {})
 	var slab := Parts.slab("Answer")
 	var col := Parts.content_of(slab)
 	col.add_theme_constant_override("separation", 14)
 	col.add_child(Parts.caption("Your answer"))
+	var first := true
 	for choice: Dictionary in view.get("choices", []):
+		if not first:
+			col.add_child(Parts.rule())
+		first = false
 		var row := HBoxContainer.new()
 		row.name = "Choice_%s" % str(choice.get("id", ""))
 		row.add_theme_constant_override("separation", 12)
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var key: Button = CreamKey.make("Answer_%s" % str(choice.get("id", "")), str(choice.get("label", "")), "", ANSWER_KEY_W)
-		key.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		key.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		var available := bool(choice.get("available", true))
 		if not available:
@@ -368,6 +379,7 @@ func _answer(it: Dictionary) -> Control:
 		var said := VBoxContainer.new()
 		said.name = "Brings"
 		said.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		said.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		said.add_theme_constant_override("separation", 6)
 		said.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_child(said)

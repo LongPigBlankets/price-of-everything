@@ -281,8 +281,9 @@ func _test_choice_figures_match_the_effects() -> void:
 	_check(words == ["The CFO's chair for 30 turns, unpaid."], "choice words: the seat in words, the loan left to its screen (%s)" % str(words))
 
 
-## The DS2 panel: one width, the letter and its answer keys, figures on screens, the annunciator's eight windows,
-## the readout shut while a decision waits and a picked window's detail.
+## The DS2 panel: one width, the letter and its answer keys (a line between choices, each key centred on what it
+## brings), figures on screens, the annunciator's lit windows only, the readout shut while a decision waits, a
+## picked window's detail, and "No other updates." once nothing is lit.
 func _test_briefing_ds2_panel() -> void:
 	var snap := _seed_board()
 	var panel: Control = load(DS2_SCRIPT).new()
@@ -309,9 +310,18 @@ func _test_briefing_ds2_panel() -> void:
 	_check(led != null and str(led.call("figure")).strip_edges() == "200.0", "briefing ds2: the CFO's loan on an LED screen, 200.0")
 	var coo_row: Node = panel.find_child("Choice_coo", true, false)
 	_check(coo_row != null and coo_row.find_child("Drum", true, false) != null, "briefing ds2: the COO's freight units on a drum")
+	var answer_col: Node = cfo_row.get_parent() if cfo_row != null else null
+	var between: Node = answer_col.get_child(cfo_row.get_index() + 1) if answer_col != null else null
+	_check(between != null and between.name.begins_with("Rule") and between.get_index() + 1 == coo_row.get_index(),
+		"briefing ds2: an engraved line between one choice's effects and the next")
+	var brings: Control = cfo_row.find_child("Brings", false, false)
+	var key_mid: float = (cfo as Control).get_rect().get_center().y
+	_check(brings != null and absf(key_mid - brings.get_rect().get_center().y) <= 1.0,
+		"briefing ds2: the answer key sits on the midline of its effects (%.1f vs %.1f)" % [key_mid, brings.get_rect().get_center().y if brings != null else -1.0])
 	var wins: Array = panel.call("windows")
 	var lit := wins.filter(func(w) -> bool: return str(w.tone) != "")
-	_check(wins.size() == 8 and lit.size() == 1 and str(lit[0].kind) == "starved", "briefing ds2: eight windows, STARVED lit")
+	_check(wins.size() == 1 and lit.size() == 1 and str(lit[0].kind) == "starved"
+		and panel.find_child("NoUpdatesLine", true, false) == null, "briefing ds2: only the lit window, STARVED")
 	_check(str(panel.call("picked")) == "" and panel.find_child("Readout", true, false) == null
 		and panel.find_child("AnnunciatorLine", true, false) != null, "briefing ds2: with a decision waiting the readout stays shut")
 	var gate: Label = panel.find_child("GateLine", true, false)
@@ -325,6 +335,15 @@ func _test_briefing_ds2_panel() -> void:
 		"briefing ds2: a picked window shows its readout and its rows")
 	var body: Control = panel.find_child("Body", true, false)
 	_check(body.get_combined_minimum_size().x <= panel.call("body_width") + 0.5, "briefing ds2: nothing widens the body")
+	for w: Dictionary in TurnBriefing.alert_windows():
+		for id in (w.items as Array):
+			TurnBriefing.dismiss(str(id))
+	panel.call("_rebuild")
+	for _i in 2:
+		await get_tree().process_frame
+	var none: Label = panel.find_child("NoUpdatesLine", true, false)
+	_check(none != null and none.text == "No other updates." and panel.find_child("Annunciator", true, false) == null
+		and (panel.call("windows") as Array).is_empty(), "briefing ds2: with nothing lit, no windows, just No other updates.")
 	panel.visible = false
 	panel.queue_free()
 	_restore_board(snap)
