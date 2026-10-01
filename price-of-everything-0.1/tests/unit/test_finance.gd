@@ -187,6 +187,18 @@ func _test_loan_collateral_capacity() -> void:
 	BuildingState.buildings.erase("test_collateral_b1")
 	_check(without_plant >= EconomyConfig.LOAN_BASE_CAPACITY,
 		"loan collateral: the base floor still holds with no plant")
+	# Surplus stock on a tile no building of the company uses counts in full, at half its sale value.
+	var stock_before := LoanState.capacity_total()
+	var stored := Stockpile.add("tile_1_1", "g_006", 100)
+	var with_stock := LoanState.capacity_total()
+	Stockpile.consume("tile_1_1", "g_006", stored)
+	_check(stored == 100 and absf((with_stock - stock_before) - EconomyConfig.LOAN_STOCK_COLLATERAL_LTV * 100.0 * preload("res://scripts/market_rules.gd").sale_price("g_006")) < 0.01,
+		"loan collateral: surplus stock adds half its sale value")
+	# What a loan holds back is the principal still owed: all of it in grace, then the share of the repayment left.
+	var half_paid := {"principal_initial": 100.0, "total_repayment": 120.0, "principal_remaining": 60.0, "grace_remaining": 0}
+	var in_grace := {"principal_initial": 100.0, "total_repayment": 120.0, "principal_remaining": 100.0, "grace_remaining": 3}
+	_check(absf(LoanState.principal_owed(half_paid) - 50.0) < 0.001 and absf(LoanState.principal_owed(in_grace) - 100.0) < 0.001,
+		"loan capacity: a half repaid loan holds back half its principal, a loan in grace all of it")
 	AdvisorState.advisor_seats = seats_before
 	LoanState._profit_history = profit_before
 	LoanState._revenue_history = revenue_before

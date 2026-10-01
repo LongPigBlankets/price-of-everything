@@ -490,6 +490,9 @@ const LOAN_REVENUE_BUFFER: float = 0.02    # Extra serviceable debt = this share
 # to 1.0 (LOAN_COLLATERAL_LTV_MAX) — the two do NOT stack past the max.
 const LOAN_COLLATERAL_LTV_BASE: float = 0.75  # Borrowable share of player buildings' sale value
 const LOAN_COLLATERAL_LTV_MAX: float = 1.0    # With a seated CFO or Chief Investment advisor
+# Surplus stock is collateral too: goods on the company's tiles beyond one turn of what the buildings there use,
+# at what a sale pays today. A deeper cut than plant, as stock sells off or loses value.
+const LOAN_STOCK_COLLATERAL_LTV: float = 0.5
 
 # --- Tax & Dividends ---
 const TAX_RATE: float = 0.20

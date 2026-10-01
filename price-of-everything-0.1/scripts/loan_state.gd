@@ -56,7 +56,7 @@ func loan_label(loan: Dictionary) -> String:
 # Rolling per-turn economics that drive the dynamic borrowing capacity. Production
 # pushes (net_profit, revenue) here each turn via record_turn_economics(); only the
 # last LOAN_PROFIT_WINDOW turns are kept.
-var _profit_history: Array = []   # retained net profit per turn (can be negative)
+var _profit_history: Array = []   # retained net profit per turn before loan repayments (can be negative)
 var _revenue_history: Array = []  # gross sales revenue per turn
 
 signal loans_updated
@@ -335,6 +335,7 @@ func record_turn_economics(net_profit: float, revenue: float) -> void:
 		_revenue_history.pop_front()
 
 const BuildingPrice := preload("res://scripts/building_price.gd")
+const MarketRules := preload("res://scripts/market_rules.gd")
 
 # Collateral: what the player's plant is worth to a lender = the SALE value of every
 # player building (BuildingPrice.sale_price — the same deterministic, level-aware
@@ -345,6 +346,22 @@ func collateral_value() -> float:
 		if not BuildingState.is_player_owned(b):
 			continue
 		total += float(BuildingPrice.sale_price(b))
+	return total
+
+# Surplus stock as collateral: goods on the company's tiles beyond one turn of what the buildings there use
+# (Production.compute_sell_reserve_for_tile, the same reserve the auto-sell keeps), at what a sale pays today.
+func stock_collateral_value() -> float:
+	var total: float = 0.0
+	for tile in Stockpile.tiles_with_stock():
+		var tile_id := str(tile)
+		if not tile_id.begins_with("tile_"):
+			continue
+		var reserve: Dictionary = Production.compute_sell_reserve_for_tile(tile_id)
+		var held: Dictionary = Stockpile.get_tile_totals(tile_id)
+		for gid in held:
+			var surplus: int = int(held[gid]) - int(reserve.get(gid, 0))
+			if surplus > 0:
+				total += float(surplus) * MarketRules.sale_price(str(gid))
 	return total
 
 # Loan-to-value on that collateral: 0.75, lifted to 1.0 by a seated CFO or Chief
@@ -368,12 +385,16 @@ func capacity_total() -> float:
 	# ~40 turns" affordance is baked in: debt service can exceed pure interest while
 	# the principal is whittled down over the term.
 	#
-	# Collateral leg (2026-07-08, owner-requested forgiveness): LTV x plant sale value.
+	# The profit is read before loan repayments (Production adds them back), so borrowing
+	# never shrinks its own limit.
+	#
+	# Collateral leg: LTV x plant sale value, plus LOAN_STOCK_COLLATERAL_LTV x surplus stock.
 	# The PROFIT GATE below still zeroes the cashflow leg for a loss-making firm —
 	# revenue alone must never unlock credit — but a firm with real assets can now
 	# borrow against them through a trough instead of spiralling on £0 headroom.
 	var base: float = EconomyConfig.LOAN_BASE_CAPACITY
-	var collateral: float = collateral_ltv() * collateral_value()
+	var collateral: float = collateral_ltv() * collateral_value() \
+		+ EconomyConfig.LOAN_STOCK_COLLATERAL_LTV * stock_collateral_value()
 	if _profit_history.is_empty():
 		return base + collateral
 	var avg_profit: float = _avg(_profit_history)
@@ -386,12 +407,23 @@ func capacity_total() -> float:
 	return maxf(base, scaled) + collateral
 
 func available_capacity() -> float:
-	# Headroom = dynamic total capacity minus initial principal of active loans.
-	# Once you fully repay a loan, its initial principal returns to capacity.
-	var initial_outstanding: float = 0.0
+	# Headroom = dynamic total capacity minus the principal still owed on active loans, so capacity
+	# comes back turn by turn as a loan is repaid rather than only when it is paid off.
+	var owed: float = 0.0
 	for loan in loans:
-		initial_outstanding += loan.principal_initial
-	return capacity_total() - initial_outstanding
+		owed += principal_owed(loan)
+	return capacity_total() - owed
+
+## The share of a loan's principal still to repay: all of it in grace, then the amount borrowed times the
+## share of the repayment still due (the books carry the whole repayment, interest included, after grace).
+func principal_owed(loan: Dictionary) -> float:
+	var initial: float = float(loan.get("principal_initial", 0.0))
+	if int(loan.get("grace_remaining", 0)) > 0:
+		return initial
+	var total: float = float(loan.get("total_repayment", initial * (1.0 + float(loan.get("interest_rate", EconomyConfig.LOAN_INTEREST_RATE)))))
+	if total <= 0.0:
+		return 0.0
+	return initial * clampf(float(loan.get("principal_remaining", total)) / total, 0.0, 1.0)
 
 func _avg(arr: Array) -> float:
 	if arr.is_empty():
