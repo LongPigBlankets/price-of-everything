@@ -393,13 +393,19 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 		var rate := float(entry.get("interest_rate", EconomyConfig.LOAN_INTEREST_RATE))
 		var term: int = maxi(1, int(entry.get("term_turns", EconomyConfig.LOAN_TERM_TURNS)))
 		var total := principal * (1.0 + rate)
+		# "grace_turns" defers the first payment (LoanState converts the loan when grace runs out),
+		# so a start can carry a second debt that falls due as the first is paid off.
+		var grace: int = maxi(0, int(entry.get("grace_turns", 0)))
 		loans.append({
 			"id": loans.size() + 1,
 			"principal_initial": principal,
-			"principal_remaining": total,
-			"payment_per_turn": total / float(term),
-			"turns_remaining": term,
+			"principal_remaining": principal if grace > 0 else total,
+			"payment_per_turn": 0.0 if grace > 0 else total / float(term),
+			"turns_remaining": term + grace,
 			"interest_paid": 0.0,
+			"interest_rate": rate,
+			"grace_remaining": grace,
+			"total_repayment": total,
 		})
 
 	var unlocked: Dictionary = {}
