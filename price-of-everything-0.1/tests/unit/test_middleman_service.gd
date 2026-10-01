@@ -107,6 +107,8 @@ func _test_live_funding_and_accounting() -> void:
 	_check(absf(MatchState.money-before-Production.cash_change_of(s))<0.0001,"financed cash reconciles without inflating operating revenue")
 	_check(absf(preload("res://scripts/money_panel.gd").net_cash_of(s)-Production.cash_change_of(s))<0.0001,"money panel includes financing separately")
 	_check(absf(float(s.money_in)-float(s.goods_sales_revenue))<0.0001,"loan proceeds do not inflate revenue")
+	_check(absf(Production.borrowed_of(s)-20.0)<0.0001 and absf(Production.net_of(s)-(Production.cash_change_of(s)-20.0))<0.0001,
+		"the turn's net leaves out what was borrowed; the cash change keeps it")
 	cleanup()
 
 func _test_blocked_output_retry_and_explicit_release() -> void:

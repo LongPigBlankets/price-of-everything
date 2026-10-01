@@ -50,7 +50,9 @@ func get_building_output_cost(instance_id: String, good_id: String) -> float:
 #       unit_cost,        # £/unit of the primary output
 #       output_costs,     # { good_id -> £/unit } allocated cost for every output
 #       total_cost,       # gross production cost this turn
-#       input_material_cost, power_cost, labour_cost, maintenance_cost, inbound_transport,
+#       input_material_cost, power_cost, labour_cost, maintenance_cost,
+#       inbound_transport,  # all the building's freight: its inputs' in, and selling its output (the
+#                           # intermediary's fee, or the global market's freight and port charge)
 #       output_qty,       # units of primary output produced this turn
 #       output_count,     # number of distinct outputs
 #   }}

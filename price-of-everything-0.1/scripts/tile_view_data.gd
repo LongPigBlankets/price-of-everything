@@ -558,7 +558,7 @@ static func _production_cost_text(instance_id: String, recipe: Dictionary) -> St
 		parts.append("£%.2f" % cost if cost >= 0.0 else "—")
 	return " | ".join(parts) if not parts.is_empty() else "—"
 
-# Transport cost paid to bring this building's inputs in last turn, or -1.
+# Transport the building's goods paid last turn, its inputs in and its output out, or -1.
 static func _inbound_transport(instance_id: String) -> float:
 	var bd: Dictionary = CostSolver.last_result.get("per_building", {}).get(instance_id, {})
 	return float(bd.get("inbound_transport", -1.0))
