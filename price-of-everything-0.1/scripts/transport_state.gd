@@ -1177,13 +1177,22 @@ func preview_sea_shipping(port_tile: String, good_id: String, qty: int, addition
 	var fixed_fee := seaport_base_fee(port_tile) * growth * surcharge if (not owned and first_shipment_of_good) else 0.0
 	var insurance_rate := seaport_insurance_rate(port_tile)
 	var insured_value := float(qty) * MarketState.get_buy_price(good_id)
-	var insurance_fee := insured_value * insurance_rate * growth * surcharge
+	# The port charge: its ad valorem, and in Logistics Intermediary games a charge per unit by weight.
+	var weight_fee := float(qty) * EconomyConfig.seaport_weight_fee(transport_class) * growth * surcharge
+	var insurance_fee := insured_value * insurance_rate * growth * surcharge + weight_fee
 	return {
 		"port": port_tile, "good_id": good_id, "qty": qty, "transport_class": transport_class,
 		"capacity": cap, "used_before": used_before, "projected_usage": projected,
 		"at_cap": at_cap, "surcharge": surcharge, "owned": owned, "growth": growth,
-		"base_fee": fixed_fee, "insurance_fee": insurance_fee, "total": fixed_fee + insurance_fee,
+		"base_fee": fixed_fee, "insurance_fee": insurance_fee, "weight_fee": weight_fee, "total": fixed_fee + insurance_fee,
 	}
+
+## The port charge on one unit at the port's base tariff: its ad valorem on the buy price and its weight
+## charge, with growth, before research or owning the port. The intermediary passes this on (middleman_service.gd).
+func base_port_charge_per_unit(good_id: String) -> float:
+	var rate := EconomyConfig.seaport_ad_valorem_rate(TurnManager.current_turn, keeps_introductory_port_rate())
+	var weight := EconomyConfig.seaport_weight_fee(Catalog.get_transport_class(good_id))
+	return (rate * MarketState.get_buy_price(good_id) + weight) * sea_shipping_growth_factor()
 
 func commit_sea_shipping(port_tile: String, good_id: String, qty: int, direction: String) -> Dictionary:
 	_ensure_sea_shipping_turn()

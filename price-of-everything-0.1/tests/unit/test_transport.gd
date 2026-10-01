@@ -428,7 +428,9 @@ func _test_middleman_port_rate_from_start() -> void:
 	for turn in [1, 10, 30, 31, 100]:
 		_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(turn), EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES), "intermediary games charge their port rate from turn %d" % turn)
 	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(1, true), EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES), "the intermediary ruleset supersedes tutorial port relief")
-	_check(is_equal_approx(EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES, 2.0 * EconomyConfig.SEAPORT_AD_VALOREM_LATE), "intermediary games pay twice the standard late port rate")
+	_check(is_equal_approx(EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES, 0.04), "intermediary games pay a 4% port rate")
+	_check(EconomyConfig.seaport_weight_fee("solid_heavy") > 0.0 and EconomyConfig.seaport_weight_fee("ultra_heavy") > EconomyConfig.seaport_weight_fee("solid_heavy"),
+		"intermediary games' ports also charge by weight, heavier classes more")
 	TurnManager.current_turn = 1
 	_check(is_equal_approx(TransportState.seaport_insurance_rate(""), EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES), "actual port billing uses the intermediary-game rate")
 	_check(is_equal_approx(float(TransportService.port_ad_valorem_per_unit("g_006").rate), EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES), "port quote agrees with billing")

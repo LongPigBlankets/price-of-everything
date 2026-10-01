@@ -1,6 +1,6 @@
 # Transport middleman: assessment and phasing plan
 
-Current build target: dynamic 1.5% independent-building middleman service (tariff `middleman_dynamic_v2`; v1, the 0.5% rate the phases below were planned on, is kept in the v1 reference snapshot). [Phase-0 readiness](middleman-phase-0-readiness.md) separates immediate contract work from deferred features. [Selected Logistics Hub design](logistics-hub-design.md) parks the original-input, level-specific 125/300-LC model for later phases. Historical tariff/hub experiments remain evidence, not active implementation instructions.
+Current build target: dynamic 0.5% independent-building middleman service. [Phase-0 readiness](middleman-phase-0-readiness.md) separates immediate contract work from deferred features. [Selected Logistics Hub design](logistics-hub-design.md) parks the original-input, level-specific 125/300-LC model for later phases. Historical tariff/hub experiments remain evidence, not active implementation instructions.
 
 Date: 19 September 2026.
 Proposal: [Transport middleman layer](transport-middleman-layer.md).

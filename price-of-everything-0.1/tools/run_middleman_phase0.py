@@ -49,7 +49,7 @@ def main():
         run('provider',[find_godot(),'--headless','--path',str(ROOT),'--log-file',str(OUT/'provider_godot.log'),'res://tools/pepper_middleman_benchmark.tscn'])
         provider=json.loads(Path('/tmp/pepper-middleman-phase1/report.json').read_text())
         assert provider['status']=='passed' and len(provider['rows'])==50
-        reference=json.loads((ROOT/'tests/snapshots/middleman_phase0_reference_v2.json').read_text())
+        reference=json.loads((ROOT/'tests/snapshots/middleman_phase0_reference_v1.json').read_text())
         assert abs(provider['mean_operating_contribution']-reference['expected']['contribution'])<1e-6,'Provider/reference contribution changed'
         (ROOT/'reports/balance/pepper_middleman_phase1_2026-09-19.json').write_text(json.dumps(provider,indent=2)+'\n')
     if args.phase2:

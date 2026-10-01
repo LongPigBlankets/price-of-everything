@@ -9,7 +9,7 @@ func _test_preview_matches_live_and_is_pure() -> void:
 	var before := JSON.stringify(SaveLoad.export_snapshot())
 	var p := Service.preview(str(ids[0]))
 	_check(bool(p.can_run),"service preview admits a funded batch")
-	_check(absf(float(p.fee)-46.2572445)<0.000001,"preview inclusive fee matches frozen tariff")
+	_check(absf(float(p.fee)-64.8362846)<0.000001,"preview inclusive fee matches frozen tariff")
 	_check(JSON.stringify(SaveLoad.export_snapshot())==before,"preview never changes money, goods, debt or receipts")
 	var b: Dictionary = BuildingState.get_building(str(ids[0]))
 	var e := Readout.economics(b,Catalog.get_recipe("r_009"),Catalog.get_building("b_007"))

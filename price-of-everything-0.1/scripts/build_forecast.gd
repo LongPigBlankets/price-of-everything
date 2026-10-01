@@ -112,6 +112,9 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 			# what the building actually sells and steps up at SEAPORT_AD_VALOREM_STEP_TURN.
 			# Owned ports charge half. (The flat per-good fee is retired — §4.2b.)
 			port_fee = revenue * TransportState.seaport_insurance_rate(str(sell_quote.get("port", "")))
+			for gid in outputs:
+				port_fee += float(outputs[gid]) * EconomyConfig.seaport_weight_fee(Catalog.get_transport_class(str(gid))) \
+					* TransportState.sea_shipping_growth_factor()
 
 	# --- Inputs: delivered cost (goods + inbound freight), and whether they can arrive ---
 	# An input the player already produces is NOT bought at retail. Charging the market buy

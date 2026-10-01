@@ -92,13 +92,15 @@ func freight_per_tile(good_id: String, mode: String, level: int) -> float:
 
 
 ## What one unit pays crossing a port this turn: {rate, cost}. The ad valorem on its market
-## value, at today's schedule and growth, after research relief. The port's flat per-good
-## fee is per SHIPMENT rather than per unit, so it is deliberately not folded in.
+## value, at today's schedule and growth, after research relief, and the port's weight charge.
+## The port's flat per-good fee is per SHIPMENT rather than per unit, so it is deliberately not folded in.
 func port_ad_valorem_per_unit(good_id: String) -> Dictionary:
 	var base := EconomyConfig.seaport_ad_valorem_rate(int(TurnManager.current_turn))
 	var rate: float = maxf(0.0, Modifiers.apply("port_ad_valorem_fee", "port", base))
-	rate *= TransportState.sea_shipping_growth_factor()
-	return {"rate": rate, "cost": rate * MarketState.get_price(good_id)}
+	var growth := TransportState.sea_shipping_growth_factor()
+	rate *= growth
+	var weight := EconomyConfig.seaport_weight_fee(Catalog.get_transport_class(good_id)) * growth
+	return {"rate": rate, "cost": rate * MarketState.get_price(good_id) + weight}
 
 
 func transport_cost_for_route(good_id: String, qty: int, route_data: Dictionary, surcharge: float = 1.0) -> float:
