@@ -80,6 +80,7 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **The Import/Export License** (28 September) needs £75 pre-tax profit a turn for 3 turns in a row (was £50 in one turn), so a start's free opening stock cannot unlock it on turn 1.
 - **Every name in `docs/building-names.md` is approved as the table proposed it**, including the 19 rows that were marked for a second look (Limestone Mine, Sand Mine, Hairpin Stator Motor Assembly Plant and the rest). Only the unloaded farm recipes remain open.
 - **Building icons**: the polished relief with its soft grey edge looked wrong; a simple emboss or flat print (a blueprint) is being compared.
+- **The hoarding's rim runs all the way round** (1 October): its foot is drawn at the panel's foot whatever the height, rounded corners and all, as along its top; the tower stands on it.
 
 ## Resources (27 September 2026; plan `docs/resources-ds2-plan.md`)
 
@@ -105,3 +106,5 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **A tile jam shows on the top bar's transport LEDs** (storage), with no update of its own and no dialog.
 - **One-off news becomes toasts** (dock rows); the briefing keeps decisions and live alerts.
 - **Toasts are timed only the first time they appear in the turn.** Opened by the player, the updates stay until the player clicks any surface outside them; clicks on the toasts or on the briefing and updates controls in the bottom left do not close them.
+- **The answers** (1 October): an engraved line between one choice's effects and the next, and each answer key centred on the midline of its effects.
+- **Only the live alerts** (1 October): the annunciator shows a window only for a kind that is lit (Starved when buildings are starved). With none lit there is no grid, just "No other updates."

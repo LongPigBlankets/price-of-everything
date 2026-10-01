@@ -64,6 +64,19 @@ static func draw_nine(ci: CanvasItem, t: Texture2D, rect: Rect2, margin: float, 
 	PeopleParts.draw_nine(ci, t, rect, margin, corner)
 
 
+## A thin engraved line across a plate: a dark cut with a light edge under it.
+static func rule() -> Control:
+	var line := Control.new()
+	line.name = "Rule"
+	line.custom_minimum_size.y = 4.0
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.draw.connect(func() -> void:
+		var y := line.size.y * 0.5
+		line.draw_line(Vector2(0.0, y), Vector2(line.size.x, y), Color(0, 0, 0, 0.55), 1.0)
+		line.draw_line(Vector2(0.0, y + 1.0), Vector2(line.size.x, y + 1.0), Color(1, 1, 1, 0.2), 1.0))
+	return line
+
+
 # --- print --------------------------------------------------------------------------------------
 
 ## White body print on a dark surface (DS.PALETTE.TEXT), wrapping.

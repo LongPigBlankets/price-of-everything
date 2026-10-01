@@ -39,6 +39,13 @@ const SETTINGS_AT := Vector2(72.0, 142.0) / CAPTURE_SCALE
 const SETTINGS_SIZE := Vector2(92.0, 94.0) / CAPTURE_SCALE
 ## Where the build order's site board hangs (under the hook, the spreader and its chains).
 const BOARD_Y := 334.0 / CAPTURE_SCALE
+## The hoarding's foot: its render's last 32 px (64 texels), the sheets' bottom rim and rounded corners, drawn at
+## the panel's foot whatever its height so the rim runs all the way round, as along its top.
+const FOOT_H := 32.0
+## The rim itself, the foot's last 8 px: the tower stands on it.
+const RIM_H := 8.0
+## The room the content keeps above the panel's foot: the rim and the gap the column kept before.
+const FOOT_PAD := 20
 ## The tower's bay under the head, repeated down the hoarding's left edge.
 const MAST_AT := 244.0 / CAPTURE_SCALE
 const MAST_SIZE := Vector2(120.0, 104.0) / CAPTURE_SCALE
@@ -155,7 +162,7 @@ func _build_shell() -> void:
 	column.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_theme_constant_override("margin_left", roundi(CONTENT_X))
 	column.add_theme_constant_override("margin_right", roundi(WIDTH - CONTENT_X - CONTENT_W))
-	column.add_theme_constant_override("margin_bottom", 14)
+	column.add_theme_constant_override("margin_bottom", FOOT_PAD)
 	root.add_child(column)
 	var body := VBoxContainer.new()
 	body.add_theme_constant_override("separation", 0)
@@ -454,14 +461,20 @@ func _draw() -> void:
 	var w := size.x
 	var h := size.y
 	var hoarding := Plate.tex("construct_hoarding")
+	var foot := minf(FOOT_H, h * 0.5)
 	if hoarding != null:
-		var src_h := minf(h * TEXELS, hoarding.get_height())
-		draw_texture_rect_region(hoarding, Rect2(0, 0, w, src_h / TEXELS), Rect2(0, 0, minf(w * TEXELS, hoarding.get_width()), src_h))
+		var tw := minf(w * TEXELS, hoarding.get_width())
+		var th := float(hoarding.get_height())
+		var top_h := minf(h - foot, (th - foot * TEXELS) / TEXELS)
+		draw_texture_rect_region(hoarding, Rect2(0, 0, w, top_h), Rect2(0, 0, tw, top_h * TEXELS))
+		draw_texture_rect_region(hoarding, Rect2(0, h - foot, w, foot), Rect2(0, th - foot * TEXELS, tw, foot * TEXELS))
 	var mast := Plate.tex("construct_mast")
 	if mast != null:
+		# The tower stands on the rim, which runs on under it.
+		var stand := h - minf(RIM_H, foot)
 		var y := MAST_AT
-		while y < h:
-			var part := minf(MAST_SIZE.y, h - y)
+		while y < stand:
+			var part := minf(MAST_SIZE.y, stand - y)
 			draw_texture_rect_region(mast, Rect2(0, y, MAST_SIZE.x, part), Rect2(0, 0, mast.get_width(), part * TEXELS))
 			y += MAST_SIZE.y
 	if _placard_label != null and _placard_label.visible:
