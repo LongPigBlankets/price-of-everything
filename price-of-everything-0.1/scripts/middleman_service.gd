@@ -568,7 +568,8 @@ static func sell_surplus(tile_id: String, totals: Dictionary, summary: Dictionar
 		MarketState.record_market_sale_volume(gid, sold)
 		ResearchState.note_middleman_shipment(gid, sold)
 		Production._add_summary_sale(summary, gid, sold, goods_value)
-		sale.items.append({"good_id":gid,"qty":sold,"revenue":goods_value})
+		var item_fee := float(item.get("fee", 0.0)) * float(sold) / maxf(1.0, float(item.get("quantity", 1)))
+		sale.items.append({"good_id":gid,"qty":sold,"revenue":goods_value,"fee":item_fee})
 		sale.total_qty += sold
 		sale.total_revenue += goods_value
 	if sale.total_qty <= 0: return {}

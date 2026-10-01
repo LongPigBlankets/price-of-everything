@@ -1678,6 +1678,14 @@ func _test_topbar_ds2_strip() -> void:
 	_check(coin != null and not coin.visible, "top bar ds2: no coin beside the cash, the £ and the screen say what it is")
 	MatchState.money = money_was
 	bar.call("_refresh_treasury")
+	var summary_was: Dictionary = Production.last_turn_summary
+	Production.last_turn_summary = {"money_in": 100.0, "money_out": 40.0, "middleman_financing": 20.0}
+	bar.call("_refresh_treasury")
+	var net_text: String = (bar.get("_net_label") as Label).text
+	_check(net_text.contains("60") and not net_text.contains("80"),
+		"top bar: last turn's net leaves out what the intermediary borrowed (%s)" % net_text)
+	Production.last_turn_summary = summary_was
+	bar.call("_refresh_treasury")
 	var pairs: Array = bar.get("_ds2_lamps")
 	var power_led = bar.get("_power_led")
 	var power_lamp: Control = null

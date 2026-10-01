@@ -27,6 +27,11 @@ var full_output_streak_by_building: Dictionary = {}  # instance_id -> consecutiv
 # screen's "most value created" superlative reads this.
 var lifetime_pl_by_building: Dictionary = {}
 var _building_turn_reports: Array = []  # BuildingTurnReport dicts for CostSolver
+# What selling output cost to ship this turn, for the cost readout: a building's own output sold at the global
+# market (its freight and the port charge), and a tile's stock sold at the global market or through the
+# intermediary, by good, shared among the tile's producers of that good (_attribute_sale_charges).
+var _sale_charges_by_building: Dictionary = {}   # instance_id -> £
+var _sale_charges_by_tile_good: Dictionary = {}  # tile_id -> {good_id: £}
 # Decarbonisation squeeze: taxed-good consumption accumulated during the production pass
 # (player buildings only), charged in the carbon_tax step after tax_dividends. The charge
 # breakdown persists until next turn so the Building Detail panel can show actuals.
@@ -157,6 +162,8 @@ func _process_production() -> void:
 	_just_constructed_this_turn.clear()
 	_warning_buy_preview_cache.clear()
 	_building_turn_reports.clear()
+	_sale_charges_by_building.clear()
+	_sale_charges_by_tile_good.clear()
 	_carbon_consumed_by_building.clear()
 	_inbound_delivery_this_turn.clear()
 	_own_delivery_this_turn.clear()
@@ -574,7 +581,9 @@ func _process_production() -> void:
 				surplus[good_id] = surplus_qty
 		if not surplus.is_empty():
 			if MatchState.get_sell_surplus_destination(str(tile_id)) == "middleman":
-				Middleman.sell_surplus(str(tile_id), surplus, summary)
+				var sold: Dictionary = Middleman.sell_surplus(str(tile_id), surplus, summary)
+				for item: Dictionary in sold.get("items", []):
+					_note_tile_sale_charge(str(tile_id), str(item.get("good_id", "")), float(item.get("fee", 0.0)))
 			else:
 				_sell_stockpile_totals(str(tile_id), surplus, summary, true)
 	TurnProfiler.section_end("sell_phase")
@@ -690,6 +699,7 @@ func _process_production() -> void:
 			report["inbound_transport"] = float(report.get("inbound_transport",0.0))+float(service_entry.receipts.get("output_fee",0.0))
 			if Middleman.fully_managed(str(report.instance_id)): report["warehousing_cost"] = 0.0
 		report["power_cost"] = Power.allocated_draw_cost(str(report.get("tile_id", "")), int(report.get("power_draw", 0)))
+	_attribute_sale_charges()
 	CostSolver.solve(_building_turn_reports)
 	TurnProfiler.section_end("cost_solve")
 
@@ -714,9 +724,9 @@ func _process_production() -> void:
 		])
 		print("[Production] Turn summary: produced=%s consumed=%s sold=%s starved=%d net=£%.2f passes=%d" % [
 			summary.produced, summary.consumed, summary.sold, summary.starved.size(),
-			cash_change_of(summary), pass_count
+			net_of(summary), pass_count
 		])
-		print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f goods_bought=£%.2f loan_payments=£%.2f tax=£%.2f div=£%.2f profit_share=£%.2f carbon_tax=£%.2f green_subsidy=£%.2f reported_net=£%.2f cash_delta=£%.2f" % [
+		print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f goods_bought=£%.2f loan_payments=£%.2f tax=£%.2f div=£%.2f profit_share=£%.2f carbon_tax=£%.2f green_subsidy=£%.2f reported_net=£%.2f borrowed=£%.2f cash_delta=£%.2f" % [
 			summary.goods_sales_revenue,
 			summary.power_sales_revenue,
 			summary.power_purchase_cost,
@@ -728,7 +738,8 @@ func _process_production() -> void:
 			summary.profit_sharing_paid,
 			summary.carbon_tax_paid,
 			summary.green_subsidy_received,
-			cash_change_of(summary),
+			net_of(summary),
+			borrowed_of(summary),
 			MatchState.money - cash_before_process
 		])
 		# Diagnostic: goods sitting in pending shipments (sales + moves). If a produced good
@@ -782,11 +793,19 @@ func _update_stockpile_input_gap_streaks(all_buildings: Array) -> void:
 
 # --- Helpers ---
 
-## Cash reporting includes financing movements excluded from the established profit/tax
-## calculation. Keep money_in/money_out semantics unchanged for economic consumers.
+## The turn's whole cash movement, borrowing included: what reconciles MatchState.money. Keep
+## money_in/money_out semantics unchanged for economic consumers.
 static func cash_change_of(summary: Dictionary) -> float:
-	return float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0)) \
-		+ float(summary.get("middleman_financing", 0.0))
+	return net_of(summary) + borrowed_of(summary)
+
+## What the turn earned: the cash change less what was borrowed during it. Borrowed money is cash in, not
+## earnings, so every "last turn" figure the player reads is this one; cash_change_of reconciles cash.
+static func net_of(summary: Dictionary) -> float:
+	return float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
+
+## What the intermediary borrowed during the turn to fund its purchases.
+static func borrowed_of(summary: Dictionary) -> float:
+	return float(summary.get("middleman_financing", 0.0))
 
 ## A start's one-off charges due this turn: paid as a cost before tax, listed by label, and dropped once
 ## paid so a reload cannot charge them again.
@@ -1211,6 +1230,8 @@ func _sell_output_to_market(building: Dictionary, good: Dictionary, qty: int, su
 		return
 	var transport_cost: float = float(result.get("transport_cost", 0.0))
 	if transport_cost > 0.0:
+		var iid := str(building.get("instance_id", ""))
+		_sale_charges_by_building[iid] = float(_sale_charges_by_building.get(iid, 0.0)) + transport_cost
 		summary.transport_paid += transport_cost
 		_record_transport_breakdown(summary, result.get("transport_breakdown", {}), transport_cost)
 		summary.money_out += transport_cost
@@ -1507,8 +1528,10 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 			continue
 		MarketState.record_market_sale_volume(good_key, sold_qty)
 		var sold_revenue: float = float(sold_qty) * price
-		transport_cost += stock_sale_charges(port_tile, route, good_key, sold_qty,
+		var good_charges := stock_sale_charges(port_tile, route, good_key, sold_qty,
 			in_port_range and bool(covered_goods.get(good_key, false)), true, transport_breakdown)
+		transport_cost += good_charges
+		_note_tile_sale_charge(source_tile, good_key, good_charges)
 		sale_record.items.append({
 			"good_id": good_key,
 			"qty": sold_qty,
@@ -1553,6 +1576,42 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 	if int(sale_record.total_qty) > 0:
 		MatchState.goods_movement_recorded.emit("sale", "", ship_turns)
 	return sale_record
+
+func _note_tile_sale_charge(tile_id: String, good_id: String, amount: float) -> void:
+	if tile_id == "" or good_id == "" or amount <= 0.0:
+		return
+	var by_good: Dictionary = _sale_charges_by_tile_good.get(tile_id, {})
+	by_good[good_id] = float(by_good.get(good_id, 0.0)) + amount
+	_sale_charges_by_tile_good[tile_id] = by_good
+
+
+## The cost readout's transport counts what selling a building's output cost to ship, as it already counts the
+## intermediary's fee on output the intermediary buys: its own output sold at the global market, and its share
+## by units made of what selling its tile's stock of that good cost. A tile's stock of a good no building there
+## made this turn is left unattributed. Cash is unchanged: these were paid in the sell phase.
+func _attribute_sale_charges() -> void:
+	if _sale_charges_by_building.is_empty() and _sale_charges_by_tile_good.is_empty():
+		return
+	var made: Dictionary = {}  # tile_id -> {good_id: units made this turn}
+	for r: Dictionary in _building_turn_reports:
+		var tile := str(r.get("tile_id", ""))
+		var by_good: Dictionary = made.get(tile, {})
+		var outputs: Dictionary = r.get("outputs_produced", {})
+		for gid in outputs:
+			by_good[gid] = int(by_good.get(gid, 0)) + int(outputs[gid])
+		made[tile] = by_good
+	for r: Dictionary in _building_turn_reports:
+		var tile := str(r.get("tile_id", ""))
+		var extra := float(_sale_charges_by_building.get(str(r.get("instance_id", "")), 0.0))
+		var charges: Dictionary = _sale_charges_by_tile_good.get(tile, {})
+		var outputs: Dictionary = r.get("outputs_produced", {})
+		for gid in outputs:
+			var total := int((made.get(tile, {}) as Dictionary).get(gid, 0))
+			if charges.has(gid) and total > 0:
+				extra += float(charges[gid]) * float(outputs[gid]) / float(total)
+		if extra > 0.0:
+			r["inbound_transport"] = float(r.get("inbound_transport", 0.0)) + extra
+
 
 func _add_summary_sale(summary: Dictionary, good_id: String, qty: int, revenue: float) -> void:
 	if not summary.has("sold"):

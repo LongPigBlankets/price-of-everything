@@ -1681,9 +1681,12 @@ func _ds2_show_readout() -> void:
 func _ds2_readout_content(mod: Control) -> Dictionary:
 	match str(mod.name):
 		"MoneyWidget":
-			var net := Production.cash_change_of(Production.last_turn_summary)
+			var net := Production.net_of(Production.last_turn_summary)
+			var borrowed := Production.borrowed_of(Production.last_turn_summary)
 			var runway := _runway_turns()
 			var detail := "%s%s last turn." % ["+" if net >= 0.0 else "−", _money_text(absf(net))]
+			if borrowed > 0.005:
+				detail += " %s borrowed." % _money_text(borrowed)
 			if runway > 0:
 				detail += " About %d turns before cash and borrowing run out." % runway
 			else:
@@ -3451,13 +3454,15 @@ func _fly_btn(text: String, primary: bool) -> Button:
 func _fly_treasury(vb: VBoxContainer) -> void:
 	var inner := _fly_pad(vb)
 	var s: Dictionary = Production.last_turn_summary
-	var net := Production.cash_change_of(s)
+	var net := Production.net_of(s)
 	inner.add_child(_fly_row("Cash on hand", _money_text(MatchState.money), C_BRIGHT, C_BRIGHT, "FlyRowCash"))
 	var upcoming := preload("res://scripts/cash_commitments_view.gd").make_link(func() -> void: _open_money_panel_tab("Upcoming"))
 	upcoming.name = "FlyUpcomingButton"
 	preload("res://scripts/cash_commitments_view.gd").update_link(upcoming, preload("res://scripts/cash_commitments.gd").snapshot())
 	inner.add_child(upcoming)
-	inner.add_child(_fly_row("Cash change last turn", _fly_signed_money(net), C_BRIGHT, C_BRIGHT, "FlyRowNet"))
+	inner.add_child(_fly_row("Net last turn", _fly_signed_money(net), C_BRIGHT, C_BRIGHT, "FlyRowNet"))
+	if Production.borrowed_of(s) > 0.005:
+		inner.add_child(_fly_row("Borrowed last turn", _fly_signed_money(Production.borrowed_of(s)), C_BRIGHT, C_BRIGHT, "FlyRowBorrowed"))
 	var runway := _runway_turns()
 	if runway > 0:
 		inner.add_child(_fly_row("Runway at current burn", "≈ %d turns" % runway, C_BRIGHT, C_BRIGHT, "FlyRowRunway"))
@@ -3469,7 +3474,6 @@ func _fly_treasury(vb: VBoxContainer) -> void:
 		["Goods sold", float(s.get("goods_sales_revenue", 0.0))],
 		["Power sold", float(s.get("power_sales_revenue", 0.0))],
 		["Green subsidy", float(s.get("green_subsidy_received", 0.0))],
-		["Middleman operating loan", float(s.get("middleman_financing", 0.0))],
 	]
 	var operating_costs := float(s.get("maintenance_paid", 0.0)) + float(s.get("labour_paid", 0.0)) + float(s.get("advisor_paid", 0.0))
 	var taxes_and_dividends := float(s.get("taxes_paid", 0.0)) + float(s.get("dividends_paid", 0.0))
@@ -3692,7 +3696,8 @@ func _ds2_sub_plate(parent: Control, plate_name: String) -> VBoxContainer:
 ## three darker plates (cash, the turn's money in and out, loans) with the actions below them.
 func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 	var s: Dictionary = Production.last_turn_summary
-	var net := Production.cash_change_of(s)
+	var net := Production.net_of(s)
+	var borrowed := Production.borrowed_of(s)
 	var sheet := VBoxContainer.new()
 	sheet.add_theme_constant_override("separation", 10)
 	vb.add_child(sheet)
@@ -3703,7 +3708,11 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 	for f: float in main_figures:
 		digits = maxi(digits, Led.cells_for("%.2f" % f).size())
 	body.add_child(_ds2_money_row("Cash on hand", MatchState.money, DS2_CASH_RED if MatchState.money < 0.0 else DS2_CASH_COLOUR, digits, "FlyRowCash"))
-	body.add_child(_ds2_money_row("Cash change last turn", net, DS2_LED_GOOD if net >= 0.0 else DS2_LED_BAD, digits, "FlyRowNet"))
+	body.add_child(_ds2_money_row("Net last turn", net, DS2_LED_GOOD if net >= 0.0 else DS2_LED_BAD, digits, "FlyRowNet"))
+	if borrowed > 0.005:
+		var borrowed_row := _ds2_money_row("Borrowed last turn", borrowed, DS2_CASH_COLOUR, digits, "FlyRowBorrowed")
+		borrowed_row.set_meta("cash_amount", borrowed)
+		body.add_child(borrowed_row)
 	if runway > 0:
 		var rw := HBoxContainer.new()
 		rw.name = "FlyRowRunway"
@@ -3722,7 +3731,6 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 		["Goods sold", float(s.get("goods_sales_revenue", 0.0))],
 		["Power sold", float(s.get("power_sales_revenue", 0.0))],
 		["Green subsidy", float(s.get("green_subsidy_received", 0.0))],
-		["Middleman operating loan", float(s.get("middleman_financing", 0.0))],
 	]
 	var costs := [
 		["Operating costs", float(s.get("maintenance_paid", 0.0)) + float(s.get("labour_paid", 0.0)) + float(s.get("advisor_paid", 0.0))],
@@ -3898,7 +3906,7 @@ func _fly_signed_money(amount: float) -> String:
 
 func _runway_turns() -> int:
 	var s: Dictionary = Production.last_turn_summary
-	var net := Production.cash_change_of(s)
+	var net := Production.net_of(s)
 	if net >= 0.0 or s.is_empty():
 		return 0
 	var turns := int(floor((MatchState.money + LoanState.available_capacity()) / -net))
@@ -4193,9 +4201,9 @@ func _refresh_treasury() -> void:
 	if not _flashing:
 		_cash_label.add_theme_color_override("font_color", _base_money_color())
 	var s: Dictionary = Production.last_turn_summary
-	var net := Production.cash_change_of(s)
+	var net := Production.net_of(s)
 	_net_label.text = ("+" if net >= 0.0 else "−") + _money_text(absf(net)) + " last turn"
-	_net_label.tooltip_text = "Last production settlement, including building-credit repayments and conversion loan proceeds. Purchases and borrowing between turns and later events are separate."
+	_net_label.tooltip_text = "What the last turn earned. Money borrowed is not counted."
 	var ds2_ink: bool = UiPrefs.use_topbar_ds2
 	_net_label.add_theme_color_override("font_color", (DS2_INK_GOOD if net >= 0.0 else DS2_INK_BAD) if ds2_ink
 		else (C_GOOD if net >= 0.0 else C_BAD))
@@ -4243,7 +4251,7 @@ func _refresh_power() -> void:
 		# Classic: buildings actually derated by intermittency, or the player buying
 		# grid power while losing money. The second lights the lamp HERE and not on the
 		# treasury, because power is the thing to go and fix.
-		var net: float = Production.cash_change_of(s)
+		var net: float = Production.net_of(s)
 		led.color = C_RED
 		led.blink = false
 		led.lit = (derated or (int(p.grid_draw) > 0 and net < 0.0))

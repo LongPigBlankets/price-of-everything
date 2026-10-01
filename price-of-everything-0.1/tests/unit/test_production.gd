@@ -260,6 +260,27 @@ func _test_building_category_key() -> void:
 		_check(TileViewData.category_key(prec) == "manufacturing",
 			"layout category_key: b_036 -> manufacturing")
 
+## Selling output's freight counts in the cost readout: a building's own global market sale whole, a tile's
+## stock sale of a good shared among the tile's producers of it by units made, nothing for a good the tile did
+## not make this turn.
+func _test_sale_charges_in_cost_readout() -> void:
+	var reports_before: Array = Production._building_turn_reports.duplicate(true)
+	Production._building_turn_reports = [
+		{"instance_id": "rd_a", "tile_id": "tile_rd", "outputs_produced": {"g_006": 30}, "inbound_transport": 1.0},
+		{"instance_id": "rd_b", "tile_id": "tile_rd", "outputs_produced": {"g_006": 10}, "inbound_transport": 0.0},
+		{"instance_id": "rd_c", "tile_id": "tile_rd", "outputs_produced": {"g_004": 5}},
+	]
+	Production._sale_charges_by_building = {"rd_c": 2.5}
+	Production._sale_charges_by_tile_good = {"tile_rd": {"g_006": 8.0, "g_001": 4.0}}
+	Production._attribute_sale_charges()
+	var t := func(i: int) -> float: return float((Production._building_turn_reports[i] as Dictionary).get("inbound_transport", 0.0))
+	_check(is_equal_approx(t.call(0), 7.0) and is_equal_approx(t.call(1), 2.0) and is_equal_approx(t.call(2), 2.5),
+		"cost readout: global sale charges land on the building that made the goods (%.2f, %.2f, %.2f)" % [t.call(0), t.call(1), t.call(2)])
+	Production._building_turn_reports = reports_before
+	Production._sale_charges_by_building = {}
+	Production._sale_charges_by_tile_good = {}
+
+
 func _test_output_market_route() -> void:
 	var mode_before: int = MatchState.sell_mode
 	SpecialOrderState.reset()
