@@ -48,6 +48,7 @@
     "processed_oil",
     "pure_water",
     "pvc",
+    "ree_ore",
     "refined_ree",
     "rubber",
     "sand",
@@ -1681,6 +1682,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_023_building_frame.png",
       "source": "goods_building_frame/v5",
       "sha256": "3da40f43b8a952aa4795c80560b73f2503cd932656eadbb689b405b75d665556",
+      "installed_default": true
+    },
+    {
+      "good": "ree_ore",
+      "good_id": "g_032",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_032_ree_ore.png",
+      "source": "goods_ree_ore/v19",
+      "sha256": "1f385f22a2054143be9b28c9122b6a100a033afb9ae8e9ca10fd939a93abbb89",
+      "installed_default": true
+    },
+    {
+      "good": "ree_ore",
+      "good_id": "g_032",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_032_ree_ore.png",
+      "source": "goods_ree_ore/v19",
+      "sha256": "c42a8bc84be89515f60b01378c758a3fe9220a3634431f872b3e09a93def1d2b",
+      "installed_default": true
+    },
+    {
+      "good": "ree_ore",
+      "good_id": "g_032",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_032_ree_ore.png",
+      "source": "goods_ree_ore/v19",
+      "sha256": "c51fe019995bf977a9fe5569633384d445456083224a2ac7e29328983762caf2",
       "installed_default": true
     }
   ]
