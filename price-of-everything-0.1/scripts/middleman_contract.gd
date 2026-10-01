@@ -2,8 +2,9 @@ extends RefCounted
 ## Phase-0 pure contract. No autoload, trade execution, loans, stock or turn hooks.
 ## Production integration and authoritative holdings/settlement remain phase 1.
 const VERSION := 1
-const TARIFF_ID := "middleman_dynamic_v1"
-const AD_VALOREM := 0.005
+const TARIFF_ID := "middleman_dynamic_v2"
+## The value part of the fee, a share of the good's market price.
+const AD_VALOREM := 0.015
 const CLASS_RATES := {"solid_light": 0.025, "solid_heavy": 0.08, "ultra_heavy": 0.6, "safe_liquid": 0.08, "hazard_liquid": 0.15, "gas": 0.2}
 const PROTOTYPE_GOODS := ["g_006", "g_007", "g_008"]
 const LOCATION_FACTORS := [1.05, 1.25, 1.5, 1.75, 2.0, 2.5]

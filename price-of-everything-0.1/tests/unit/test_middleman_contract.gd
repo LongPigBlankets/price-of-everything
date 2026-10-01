@@ -20,14 +20,14 @@ func _test_quote_uses_actual_market_prices_and_does_not_trade() -> void:
 	_check(buy.ok and sell.ok,"both ordinary market sides can be quoted")
 	_check(absf(buy.goods_value - 32.0*(MarketState.get_buy_price("g_006")+MarketState.get_buy_price("g_007")))<0.000001,"goods purchases match market API prices")
 	_check(absf(sell.goods_value-33.0*p.g_008.sale)<0.000001,"sale uses ordinary sale API including its modifier context")
-	var expected: float = 32*(.005*p.g_006.reference+.12)+32*(.005*p.g_007.reference+.12)
+	var expected: float = 32*(Contract.AD_VALOREM*p.g_006.reference+.12)+32*(Contract.AD_VALOREM*p.g_007.reference+.12)
 	_check(absf(buy.fee-expected)<0.000001,"fee excludes buying markup, includes full reference price")
 	_check(state==JSON.stringify([MatchState.money,Stockpile.export_state(),MarketState.export_state(),LoanState.export_state(),TransportState.export_fields()]),"quote has no cash, stock, volume, debt or shipment side effects")
 	p.g_006.reference = 12.0
 	p.g_006.buy = 12.6
 	p.g_006.sale = 12.3
 	var changed := Contract.quote("buy",[{"good":"g_006","quantity":2}],p,1.5)
-	_check(absf(changed.goods_value-25.2)<0.000001 and absf(changed.fee-.36)<0.000001,"changed market snapshot affects goods and fee separately")
+	_check(absf(changed.goods_value-25.2)<0.000001 and absf(changed.fee-2.0*(Contract.AD_VALOREM*12.0+.12))<0.000001,"changed market snapshot affects goods and fee separately")
 
 func _test_split_order_and_zero_quantity_are_fee_invariant() -> void:
 	var p := prices()
@@ -105,13 +105,13 @@ func _test_identity_and_private_holding_fixture_round_trip() -> void:
 func _test_versioned_contract_matches_pure_profile() -> void:
 	var spec: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/scenarios/middleman_phase0_contract.json"))
 	_check(int(spec.contract_version)==Contract.VERSION and spec.tariff.id==Contract.TARIFF_ID,"version and tariff identifiers are consistent")
-	_check(absf(float(spec.tariff.ad_valorem)-Contract.AD_VALOREM)<0.000001,"active fee is 0.5 percent")
+	_check(absf(float(spec.tariff.ad_valorem)-Contract.AD_VALOREM)<0.000001,"active fee matches the versioned tariff")
 	for cargo: String in spec.tariff.class_rates:
 		_check(spec.tariff.class_rates[cargo]==Contract.CLASS_RATES[cargo],"historical class rate matches executable quote: "+cargo)
 	_check(spec.prototype.goods==Contract.PROTOTYPE_GOODS,"prototype eligibility is explicit")
 
 func _test_pepper_golden_quote_and_cash_trace() -> void:
-	var f: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/snapshots/middleman_phase0_reference_v1.json"))
+	var f: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/snapshots/middleman_phase0_reference_v2.json"))
 	var b := budget(1000)
 	b.running_reserve=float(f.running_reserve)
 	var plan := Contract.plan_batch(f.required,{},f.prices,float(f.coefficient),b)

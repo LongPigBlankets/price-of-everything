@@ -2,8 +2,8 @@
   "contract_version": 1,
   "status": "Phase-0 pure quote/budget contract; gameplay settlement is phase 1",
   "tariff": {
-    "id": "middleman_dynamic_v1",
-    "ad_valorem": 0.005,
+    "id": "middleman_dynamic_v2",
+    "ad_valorem": 0.015,
     "class_rates": {
       "solid_light": 0.025,
       "solid_heavy": 0.08,

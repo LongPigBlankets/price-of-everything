@@ -18,7 +18,7 @@ func _test_new_tariffs_and_power_exclusion() -> void:
 	for item in [["solid_light", "cpu", 0.025], ["safe_liquid", "pure_water", 0.08], ["hazard_liquid", "chlorine", 0.15], ["gas", "oxygen", 0.2]]:
 		var gid := str(Catalog.get_good_by_internal_name(str(item[1])).id)
 		var quote := Service.Contract.quote("buy", [{"good":gid,"quantity":10}], snapshot, 1.5, Service.goods())
-		_check(quote.ok and absf(float(quote.fee)-10*(0.005*float(snapshot[gid].reference)+float(item[2])*1.5)) < 0.000001, "new cargo tariff: "+str(item[0]))
+		_check(quote.ok and absf(float(quote.fee)-10*(Service.Contract.AD_VALOREM*float(snapshot[gid].reference)+float(item[2])*1.5)) < 0.000001, "new cargo tariff: "+str(item[0]))
 	var electricity := str(Catalog.get_good_by_internal_name("power").id)
 	_check(not Service.goods().has(electricity), "grid electricity excluded from material price basket")
 	var waste := str(Catalog.get_good_by_internal_name("waste_water").id)
