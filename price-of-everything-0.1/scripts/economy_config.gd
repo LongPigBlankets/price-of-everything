@@ -155,7 +155,7 @@ const SEAPORT_AD_VALOREM_STEP_TURN: int = 31
 # Logistics Intermediary games charge this from turn 1, with the weight charge below. The intermediary
 # charges the same port charge plus its haulage (middleman_contract.gd), so the choice between them is the
 # freight to the port against the intermediary's haulage from the tile.
-const SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES: float = 0.04
+const SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES: float = 0.03
 ## Logistics Intermediary games: the port's charge per unit by weight class, on top of the ad valorem.
 const SEAPORT_WEIGHT_FEE_BY_CLASS := {
 	"standard": 0.02, "solid_light": 0.01, "solid_heavy": 0.02, "ultra_heavy": 0.04,
@@ -536,7 +536,7 @@ func transport_turns_for_tile_distance(tile_distance: int) -> int:
 	return maxi(1, ceili(float(maxi(tile_distance, 0)) / float(TRANSPORT_MAX_TILES_PER_TURN)))
 
 ## Every freight rate, on every mode (roads, rail, pipes), scaled by this: both parts of transport_rate_for_good.
-const TRANSPORT_COST_SCALE: float = 1.5
+const TRANSPORT_COST_SCALE: float = 1.4
 
 func transport_cost_per_unit_turn(weight_class: String) -> float:
 	var resolved_class := weight_class.strip_edges()
