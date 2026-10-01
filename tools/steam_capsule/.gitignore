@@ -1,0 +1,8 @@
+# Renders are rebuilt by the scripts. Only renders/review/ is kept: the images a
+# layout decision was made on.
+renders/*
+!renders/review/
+# Blender's backup copies of the saved scenes.
+*.blend1
+# The saved Blender scenes are kept off GitHub; the scripts rebuild them.
+*.blend
