@@ -1,0 +1,73 @@
+{
+  "revision": "ev_car_study_v4",
+  "objects": 431,
+  "structural_hosts": [
+    "ev_tyre_wheel_r_f"
+  ],
+  "topology": "blue electric SUV (the downloaded model brought to the shipped art: covered front, solid roof, open windows onto the cabin, five-spoke wheels, tan cladding)",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 4
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shaded_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "thresholds": [
+          0.575,
+          0.5,
+          0.3
+        ]
+      }
+    ]
+  },
+  "dimensions": {
+    "body_lines": 105,
+    "offset": [
+      -7.990411758422852,
+      0.10965561866760254,
+      0.6340000033378601
+    ]
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 3.09 x 4.51 x 1.70"
+  ],
+  "mesh_checks": {
+    "ev_tyre_wheel_r_f": {
+      "vertices": 1024,
+      "faces": 1024,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 4.39,
+    "target": [
+      0.164,
+      -0.134,
+      0.645
+    ]
+  }
+}

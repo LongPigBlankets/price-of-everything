@@ -1,0 +1,1394 @@
+{
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "meshes": {
+    "bed_front": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0
+    },
+    "bed_back": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0
+    },
+    "bed_left": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0
+    },
+    "bed_right": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0
+    },
+    "soil": {
+      "faces": 2181,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.001
+    },
+    "stem": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.399
+    },
+    "tomato0": {
+      "faces": 1152,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7817
+    },
+    "tomato0_calyx": {
+      "faces": 12,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9367
+    },
+    "tomato1": {
+      "faces": 1152,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.6506
+    },
+    "tomato1_calyx": {
+      "faces": 12,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.8096
+    },
+    "tomato2": {
+      "faces": 1152,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7299
+    },
+    "tomato2_calyx": {
+      "faces": 12,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.8889
+    },
+    "tomato3": {
+      "faces": 1152,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9007
+    },
+    "tomato3_calyx": {
+      "faces": 12,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.0597
+    },
+    "tomato4": {
+      "faces": 1152,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9039
+    },
+    "tomato4_calyx": {
+      "faces": 12,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.0589
+    },
+    "tomato5": {
+      "faces": 1152,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.974
+    },
+    "tomato5_calyx": {
+      "faces": 12,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.125
+    },
+    "tomato6": {
+      "faces": 1152,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.6324
+    },
+    "tomato6_calyx": {
+      "faces": 12,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.8554
+    },
+    "fert_bag": {
+      "faces": 5378,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0
+    },
+    "leaf0_leaflet0": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.3695
+    },
+    "leaf0_leaflet0_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.3696
+    },
+    "leaf0_leaflet0_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.3949
+    },
+    "leaf0_leaflet1": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.3616
+    },
+    "leaf0_leaflet1_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.3613
+    },
+    "leaf0_leaflet1_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.3849
+    },
+    "leaf0_leaflet2": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.4519
+    },
+    "leaf0_leaflet2_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.4517
+    },
+    "leaf0_leaflet2_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.4705
+    },
+    "leaf1_leaflet0": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.4369
+    },
+    "leaf1_leaflet0_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.4372
+    },
+    "leaf1_leaflet0_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.4619
+    },
+    "leaf1_leaflet1": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.5039
+    },
+    "leaf1_leaflet1_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.5036
+    },
+    "leaf1_leaflet1_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.5201
+    },
+    "leaf1_leaflet2": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.4254
+    },
+    "leaf1_leaflet2_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.4251
+    },
+    "leaf1_leaflet2_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.4466
+    },
+    "leaf2_leaflet0": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7377
+    },
+    "leaf2_leaflet0_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7374
+    },
+    "leaf2_leaflet0_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7684
+    },
+    "leaf2_leaflet1": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.6759
+    },
+    "leaf2_leaflet1_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.6756
+    },
+    "leaf2_leaflet1_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.6949
+    },
+    "leaf2_leaflet2": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7414
+    },
+    "leaf2_leaflet2_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7413
+    },
+    "leaf2_leaflet2_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7546
+    },
+    "leaf3_leaflet0": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7671
+    },
+    "leaf3_leaflet0_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7669
+    },
+    "leaf3_leaflet0_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7993
+    },
+    "leaf3_leaflet1": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7796
+    },
+    "leaf3_leaflet1_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7794
+    },
+    "leaf3_leaflet1_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7923
+    },
+    "leaf3_leaflet2": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7157
+    },
+    "leaf3_leaflet2_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7154
+    },
+    "leaf3_leaflet2_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7342
+    },
+    "leaf4_leaflet0": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.012
+    },
+    "leaf4_leaflet0_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.0118
+    },
+    "leaf4_leaflet0_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.037
+    },
+    "leaf4_leaflet1": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.934
+    },
+    "leaf4_leaflet1_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9341
+    },
+    "leaf4_leaflet1_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9551
+    },
+    "leaf4_leaflet2": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9916
+    },
+    "leaf4_leaflet2_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9914
+    },
+    "leaf4_leaflet2_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.0054
+    },
+    "leaf5_leaflet0": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.0548
+    },
+    "leaf5_leaflet0_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.0546
+    },
+    "leaf5_leaflet0_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.0793
+    },
+    "leaf5_leaflet1": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.0394
+    },
+    "leaf5_leaflet1_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.0392
+    },
+    "leaf5_leaflet1_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.0528
+    },
+    "leaf5_leaflet2": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9849
+    },
+    "leaf5_leaflet2_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.985
+    },
+    "leaf5_leaflet2_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.0045
+    },
+    "leaf6_leaflet0": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.267
+    },
+    "leaf6_leaflet0_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.2668
+    },
+    "leaf6_leaflet0_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.2812
+    },
+    "leaf6_leaflet1": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.1956
+    },
+    "leaf6_leaflet1_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.1957
+    },
+    "leaf6_leaflet1_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.2255
+    },
+    "leaf6_leaflet2": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.2207
+    },
+    "leaf6_leaflet2_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.2204
+    },
+    "leaf6_leaflet2_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.2331
+    },
+    "leaf7_leaflet0": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.3209
+    },
+    "leaf7_leaflet0_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.3206
+    },
+    "leaf7_leaflet0_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.3345
+    },
+    "leaf7_leaflet1": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.2742
+    },
+    "leaf7_leaflet1_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.274
+    },
+    "leaf7_leaflet1_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.2866
+    },
+    "leaf7_leaflet2": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.253
+    },
+    "leaf7_leaflet2_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.253
+    },
+    "leaf7_leaflet2_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.2831
+    },
+    "leaf8_leaflet0": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9513
+    },
+    "leaf8_leaflet0_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9511
+    },
+    "leaf8_leaflet0_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9636
+    },
+    "leaf8_leaflet1": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9024
+    },
+    "leaf8_leaflet1_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9023
+    },
+    "leaf8_leaflet1_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9194
+    },
+    "leaf8_leaflet2": {
+      "faces": 82,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9068
+    },
+    "leaf8_leaflet2_outline": {
+      "faces": 482,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9066
+    },
+    "leaf8_leaflet2_rib": {
+      "faces": 14,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.9201
+    }
+  },
+  "pairs": {
+    "fert_bag/bed_front": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "fert_bag/bed_back": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "fert_bag/bed_left": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "fert_bag/bed_right": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "fert_bag/soil": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato0/bed_front": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato0/bed_back": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato0/bed_left": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato0/bed_right": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato1/bed_front": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato1/bed_back": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato1/bed_left": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato1/bed_right": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato2/bed_front": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato2/bed_back": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato2/bed_left": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato2/bed_right": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato3/bed_front": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato3/bed_back": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato3/bed_left": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato3/bed_right": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato4/bed_front": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato4/bed_back": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato4/bed_left": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato4/bed_right": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato5/bed_front": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato5/bed_back": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato5/bed_left": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato5/bed_right": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato6/bed_front": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato6/bed_back": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato6/bed_left": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato6/bed_right": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato0/soil": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato1/soil": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato2/soil": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato3/soil": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato4/soil": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato5/soil": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato6/soil": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato0/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato1/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato2/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato3/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato4/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato5/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "tomato6/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf0_leaflet0/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf0_leaflet0_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf0_leaflet0_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf0_leaflet1/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf0_leaflet1_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf0_leaflet1_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf0_leaflet2/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf0_leaflet2_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf0_leaflet2_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf1_leaflet0/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf1_leaflet0_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf1_leaflet0_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf1_leaflet1/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf1_leaflet1_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf1_leaflet1_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf1_leaflet2/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf1_leaflet2_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf1_leaflet2_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf2_leaflet0/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf2_leaflet0_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf2_leaflet0_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf2_leaflet1/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf2_leaflet1_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf2_leaflet1_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf2_leaflet2/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf2_leaflet2_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf2_leaflet2_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf3_leaflet0/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf3_leaflet0_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf3_leaflet0_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf3_leaflet1/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf3_leaflet1_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf3_leaflet1_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf3_leaflet2/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf3_leaflet2_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf3_leaflet2_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf4_leaflet0/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf4_leaflet0_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf4_leaflet0_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf4_leaflet1/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf4_leaflet1_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf4_leaflet1_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf4_leaflet2/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf4_leaflet2_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf4_leaflet2_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf5_leaflet0/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf5_leaflet0_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf5_leaflet0_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf5_leaflet1/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf5_leaflet1_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf5_leaflet1_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf5_leaflet2/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf5_leaflet2_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf5_leaflet2_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf6_leaflet0/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf6_leaflet0_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf6_leaflet0_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf6_leaflet1/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf6_leaflet1_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf6_leaflet1_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf6_leaflet2/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf6_leaflet2_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf6_leaflet2_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf7_leaflet0/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf7_leaflet0_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf7_leaflet0_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf7_leaflet1/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf7_leaflet1_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf7_leaflet1_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf7_leaflet2/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf7_leaflet2_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf7_leaflet2_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf8_leaflet0/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf8_leaflet0_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf8_leaflet0_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf8_leaflet1/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf8_leaflet1_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf8_leaflet1_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf8_leaflet2/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf8_leaflet2_outline/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "leaf8_leaflet2_rib/fert_bag": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "stem/soil": {
+      "surface_intersections": 28,
+      "intended": true,
+      "allowed": false
+    },
+    "soil/bed_front": {
+      "surface_intersections": 43,
+      "intended": true,
+      "allowed": false
+    },
+    "soil/bed_back": {
+      "surface_intersections": 43,
+      "intended": true,
+      "allowed": false
+    },
+    "soil/bed_left": {
+      "surface_intersections": 51,
+      "intended": true,
+      "allowed": false
+    },
+    "soil/bed_right": {
+      "surface_intersections": 0,
+      "intended": true,
+      "allowed": false
+    },
+    "tomato0/tomato1": {
+      "surface_intersections": 116,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato0/tomato2": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato0/tomato3": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato0/tomato4": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato0/tomato5": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato0/tomato6": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato1/tomato2": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato1/tomato3": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato1/tomato4": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato1/tomato5": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato1/tomato6": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato2/tomato3": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato2/tomato4": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato2/tomato5": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato2/tomato6": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato3/tomato4": {
+      "surface_intersections": 12,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato3/tomato5": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato3/tomato6": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato4/tomato5": {
+      "surface_intersections": 144,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato4/tomato6": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    },
+    "tomato5/tomato6": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    }
+  },
+  "failures": []
+}

@@ -7,3 +7,5 @@ Replaced the almost straight cowl edge with a symmetric sampled parabolic arc, 0
 Master: diesel_car_800.png. Preview: diesel_car_400.png. Editable scene: diesel_car.blend. windscreen_comparison.png compares the original, previous and current glass. Source snapshots are beside the blend.
 
 Color and mask are pixel-identical after a clean second build. Camera and mask checks in verification.json. Independent review saved in review.md. Approved and installed in alternate medium/small/very_small tiers. Existing main diesel PNGs remain the first choice; the alternate is the missing-main fallback.
+
+Superseded on 2026-09-29 by ../can_pump_red (the can recoloured to the diesel fuel pump's red).

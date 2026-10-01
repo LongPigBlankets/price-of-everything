@@ -1,0 +1,139 @@
+{
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "meshes": {
+    "n2_shell": {
+      "faces": 2880,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0
+    },
+    "n2_collar": {
+      "faces": 288,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 2.17
+    },
+    "n2_valve_body": {
+      "faces": 288,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 2.28
+    },
+    "n2_outlet": {
+      "faces": 66,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 2.348
+    },
+    "n2_spindle": {
+      "faces": 144,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 2.58
+    },
+    "n2_handwheel": {
+      "faces": 384,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 2.6875
+    },
+    "n2_diamond": {
+      "faces": 784,
+      "non_manifold": 112,
+      "zero_area": 0,
+      "min_z": 0.5011
+    },
+    "n2_diamond_face": {
+      "faces": 784,
+      "non_manifold": 112,
+      "zero_area": 0,
+      "min_z": 0.6786
+    },
+    "n2_formula": {
+      "faces": 4512,
+      "non_manifold": 1144,
+      "zero_area": 0,
+      "min_z": 0.85
+    },
+    "n2_spoke_0": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 2.6925
+    },
+    "n2_spoke_1": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 2.6925
+    }
+  },
+  "pairs": {
+    "n2_diamond/n2_shell": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "n2_diamond_face/n2_shell": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "n2_formula/n2_shell": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "n2_diamond/n2_diamond_face": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "n2_diamond_face/n2_formula": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "n2_diamond/n2_formula": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "n2_collar/n2_shell": {
+      "surface_intersections": 248,
+      "intended": true
+    },
+    "n2_valve_body/n2_collar": {
+      "surface_intersections": 184,
+      "intended": true
+    },
+    "n2_outlet/n2_valve_body": {
+      "surface_intersections": 100,
+      "intended": true
+    },
+    "n2_spindle/n2_valve_body": {
+      "surface_intersections": 136,
+      "intended": true
+    },
+    "n2_spoke_0/n2_handwheel": {
+      "surface_intersections": 20,
+      "intended": true
+    },
+    "n2_spoke_1/n2_handwheel": {
+      "surface_intersections": 20,
+      "intended": true
+    },
+    "n2_spoke_0/n2_spindle": {
+      "surface_intersections": 56,
+      "intended": true
+    },
+    "n2_spoke_1/n2_spindle": {
+      "surface_intersections": 56,
+      "intended": true
+    }
+  },
+  "print_standoff": {
+    "n2_diamond": 0.005,
+    "n2_diamond_face": 0.008,
+    "n2_formula": 0.011
+  },
+  "failures": []
+}

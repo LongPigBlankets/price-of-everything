@@ -1,0 +1,13 @@
+{
+  "outer_px": 12.0,
+  "inner_px": 6.0,
+  "ore_taper": null,
+  "metric": "Exact Blender projected paths; supersampled ore wedge profiles and Euclidean exterior band",
+  "solid_frame": [
+    58,
+    65,
+    969,
+    963
+  ],
+  "scale": 0.7947310647639956
+}

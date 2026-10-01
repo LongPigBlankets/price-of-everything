@@ -1,0 +1,94 @@
+{
+  "revision": "power_v13",
+  "objects": 10,
+  "structural_hosts": [
+    "bolt"
+  ],
+  "topology": "extruded lightning bolt facing -Y, thickness on the right and top",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": false,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 6
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shadowed_faces",
+        "labels": [
+          1
+        ],
+        "thresholds": [
+          0.65,
+          0.6,
+          0.35
+        ]
+      }
+    ]
+  },
+  "dimensions": {
+    "depth": 0.35,
+    "psi_degrees": 90.0,
+    "outline": [
+      [
+        0.446,
+        2.594
+      ],
+      [
+        1.361,
+        2.594
+      ],
+      [
+        1.013,
+        1.685
+      ],
+      [
+        1.638,
+        1.685
+      ],
+      [
+        0.45,
+        0.02
+      ],
+      [
+        0.713,
+        1.338
+      ],
+      [
+        0.0,
+        1.338
+      ]
+    ],
+    "outline_source": "drawn on the grid after the shipped pose"
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 0.36 x 1.65 x 2.58"
+  ],
+  "mesh_checks": {
+    "bolt": {
+      "vertices": 14,
+      "faces": 9,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 2.944,
+    "target": [
+      -0.078,
+      0.722,
+      1.447
+    ]
+  }
+}

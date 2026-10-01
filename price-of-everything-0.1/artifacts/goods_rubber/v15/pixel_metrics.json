@@ -1,0 +1,27 @@
+{
+  "bbox": [
+    32,
+    37,
+    768,
+    763
+  ],
+  "aspect": 1.014,
+  "ink_mode": [
+    29,
+    31,
+    60
+  ],
+  "pure_black_px": 0,
+  "grey_luma_peaks": [
+    [
+      60,
+      1000
+    ],
+    [
+      76,
+      128914
+    ]
+  ],
+  "yellow_share": 0.07,
+  "cream_share": 0.0
+}

@@ -1,13 +1,16 @@
 {
   "approved_goods": [
+    "alkaline_battery",
     "alloy_ingots",
     "alloy_ore",
     "alumina",
     "aluminium",
     "ammonia",
     "basic_salt",
+    "building_frame",
     "chem_salts",
     "chlorine",
+    "circuit_board",
     "coal",
     "computer",
     "concrete",
@@ -15,10 +18,14 @@
     "copper_ore",
     "copper_pipe",
     "copper_wiring",
+    "cpu",
     "crude_oil",
     "electrical_components",
     "ethylene",
+    "ev_car",
+    "fertilisers",
     "fibreglass",
+    "fuels",
     "glass",
     "graphite",
     "high_grade_silicon",
@@ -29,15 +36,24 @@
     "iron_ingots",
     "iron_ore",
     "limestone",
+    "lithium_battery",
     "lithium_carbonate",
     "lithium_ore",
     "motor",
+    "nitrogen",
     "oxygen",
+    "plastics",
     "polysilicon",
+    "power",
     "processed_oil",
+    "pure_water",
+    "pvc",
+    "ree_ore",
     "refined_ree",
+    "rubber",
     "sand",
     "silica",
+    "sodium_battery",
     "sodium_hydroxide",
     "solar_panel",
     "steel",
@@ -179,8 +195,8 @@
       "good_id": "g_056",
       "tier": "medium",
       "path": "assets/icons/goods/alternate_icons/medium/g_056_ice_car.png",
-      "source": "goods_icon_diesel/passat_rebuild/windscreen_bow_final",
-      "sha256": "c4ac7bdbc614739272cea4fe93d7eb9bd7835c774ba267b7a09e805ca4fc5ddf",
+      "source": "goods_icon_diesel/passat_rebuild/can_pump_red",
+      "sha256": "45e9e464ac65c916704e930a5655811e967fbc6703a016a008c2363744c5f7f2",
       "installed_default": true
     },
     {
@@ -404,8 +420,8 @@
       "good_id": "g_056",
       "tier": "small",
       "path": "assets/icons/goods/alternate_icons/small/g_056_ice_car.png",
-      "source": "goods_icon_diesel/passat_rebuild/windscreen_bow_final",
-      "sha256": "916b6f57cd0dfa5994871e33f4b82f2cbc53a72bb7bac2cfac873e90bfe4f35e",
+      "source": "goods_icon_diesel/passat_rebuild/can_pump_red",
+      "sha256": "54f5866c9e10f9030d1a871162b3de9bcc9765937bd3b2bf1400dfdfed86f6b7",
       "installed_default": true
     },
     {
@@ -629,8 +645,8 @@
       "good_id": "g_056",
       "tier": "very_small",
       "path": "assets/icons/goods/alternate_icons/very_small/g_056_ice_car.png",
-      "source": "goods_icon_diesel/passat_rebuild/windscreen_bow_final",
-      "sha256": "25ccb41b7a88cd4b8539c05265b5f0f571b02aee024472bf5eca1456191a0e41",
+      "source": "goods_icon_diesel/passat_rebuild/can_pump_red",
+      "sha256": "9dc2a9d75b4db12860b2f32fe7d93987a392806b905bae444eec0f2506dff4a3",
       "installed_default": true
     },
     {
@@ -1261,6 +1277,438 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_051_lithium_carbonate.png",
       "source": "blender-good-icons:artifacts/goods_fibreglass_lithium/v13/lithium_carbonate_256.png",
       "sha256": "2130593d03df65afb84a1d55fa4af09ff02366a4d17b38e1bda128cea033d9c5",
+      "installed_default": true
+    },
+    {
+      "good": "pure_water",
+      "good_id": "g_009",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_009_pure_water.png",
+      "source": "goods_pure_water/v22",
+      "sha256": "c56068319702cdef010ea97aa704be385ba1381195ba4694a2ef62869b7db748",
+      "installed_default": true
+    },
+    {
+      "good": "pure_water",
+      "good_id": "g_009",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_009_pure_water.png",
+      "source": "goods_pure_water/v22",
+      "sha256": "2d6832081c938c559c5ea988b1fee5a0373550d712f342ac7bbe1fd4a0db7120",
+      "installed_default": true
+    },
+    {
+      "good": "pure_water",
+      "good_id": "g_009",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_009_pure_water.png",
+      "source": "goods_pure_water/v22",
+      "sha256": "245c7c0f6f4a6854aeaab030e5b360cacb102cf585f80d6c867e5e53fcfc5440",
+      "installed_default": true
+    },
+    {
+      "good": "power",
+      "good_id": "g_010",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_010_power.png",
+      "source": "goods_power/v13",
+      "sha256": "2fda32b846139afa9e6fda4e1c4eb21ccf1e77c156c94f61a4a027b5b4381eec",
+      "installed_default": true
+    },
+    {
+      "good": "power",
+      "good_id": "g_010",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_010_power.png",
+      "source": "goods_power/v13",
+      "sha256": "2ee9d93519c88e4f6daeb48fd4e5b97a1de5064745f22d20f9fac6d49908f4dc",
+      "installed_default": true
+    },
+    {
+      "good": "power",
+      "good_id": "g_010",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_010_power.png",
+      "source": "goods_power/v13",
+      "sha256": "fda84c7d1556a59d9cd351bad8e1184e12e48a6c5721dafc3fc2777a967f94f5",
+      "installed_default": true
+    },
+    {
+      "good": "alkaline_battery",
+      "good_id": "g_070",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_070_alkaline_battery.png",
+      "source": "goods_alkaline_battery/v4",
+      "sha256": "18919263894f16b5b2f57395eb6c0cce1cd083709c69b0c25ce31007b1a01a10",
+      "installed_default": true
+    },
+    {
+      "good": "alkaline_battery",
+      "good_id": "g_070",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_070_alkaline_battery.png",
+      "source": "goods_alkaline_battery/v4",
+      "sha256": "3e477994ac144e1ec68c18e2493d3917a2c0b56dee9a39baf6bedcd448f6e897",
+      "installed_default": true
+    },
+    {
+      "good": "alkaline_battery",
+      "good_id": "g_070",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_070_alkaline_battery.png",
+      "source": "goods_alkaline_battery/v4",
+      "sha256": "222eae500d9bb254246aa3b32da6b27867609bf879a2d06386e16349448d9545",
+      "installed_default": true
+    },
+    {
+      "good": "sodium_battery",
+      "good_id": "g_060",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_060_sodium_battery.png",
+      "source": "goods_sodium_battery/v12",
+      "sha256": "40f05a150f52ad549e369e066c79255cd1ce807c4fc5778d6eb2849aced27c6b",
+      "installed_default": true
+    },
+    {
+      "good": "sodium_battery",
+      "good_id": "g_060",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_060_sodium_battery.png",
+      "source": "goods_sodium_battery/v12",
+      "sha256": "9f44395fd272af28b49b86a2f35f96734e6a118f4cefa045d65ff974917c78eb",
+      "installed_default": true
+    },
+    {
+      "good": "sodium_battery",
+      "good_id": "g_060",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_060_sodium_battery.png",
+      "source": "goods_sodium_battery/v12",
+      "sha256": "80f08bb43d927b711187a97205d0f204e774c439ff7c30cc97a440a4facbeb09",
+      "installed_default": true
+    },
+    {
+      "good": "lithium_battery",
+      "good_id": "g_059",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_059_lithium_battery.png",
+      "source": "goods_lithium_battery/v1",
+      "sha256": "7800c36fd039fac0cdb96f9ff8bee6661eca024252495f5bbae414883c1f476b",
+      "installed_default": true
+    },
+    {
+      "good": "lithium_battery",
+      "good_id": "g_059",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_059_lithium_battery.png",
+      "source": "goods_lithium_battery/v1",
+      "sha256": "b2e9f9d90931ef7717ea49e36e5954b870fb2035cc17c78051bf3fb49ae381e7",
+      "installed_default": true
+    },
+    {
+      "good": "lithium_battery",
+      "good_id": "g_059",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_059_lithium_battery.png",
+      "source": "goods_lithium_battery/v1",
+      "sha256": "3f7ba19d225a7b3708f58db63b1dec65e32c783cfafd9eba25d7da5b37c03e38",
+      "installed_default": true
+    },
+    {
+      "good": "pvc",
+      "good_id": "g_033",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_033_pvc.png",
+      "source": "goods_pvc/v15",
+      "sha256": "35c0923e7bffed8f2889d1ee1c21825352c2ea31bcda4d2c6963b63f871a6ac4",
+      "installed_default": true
+    },
+    {
+      "good": "pvc",
+      "good_id": "g_033",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_033_pvc.png",
+      "source": "goods_pvc/v15",
+      "sha256": "22587bbbc37f36088caac6a09236840177f02e66a6b769f015287fbcbe4412d3",
+      "installed_default": true
+    },
+    {
+      "good": "pvc",
+      "good_id": "g_033",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_033_pvc.png",
+      "source": "goods_pvc/v15",
+      "sha256": "eb7209e414a42fee844d5f5478ee385f997cb50bf8a35e185c26b29f7e4aee93",
+      "installed_default": true
+    },
+    {
+      "good": "fuels",
+      "good_id": "g_031",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_031_fuels.png",
+      "source": "goods_fuels/v9",
+      "sha256": "720dd5023f87b2b16318ea8f4a69337fdd52a354da55eb059d3e9a00cf4faf5f",
+      "installed_default": true
+    },
+    {
+      "good": "fuels",
+      "good_id": "g_031",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_031_fuels.png",
+      "source": "goods_fuels/v9",
+      "sha256": "9d571ea6c7ccaf0ae78f1c57877e9f5a8520ddfbfc2f8e1e255ac9c9752b1245",
+      "installed_default": true
+    },
+    {
+      "good": "fuels",
+      "good_id": "g_031",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_031_fuels.png",
+      "source": "goods_fuels/v9",
+      "sha256": "945d098bf9d41f801762873327a7f799d061132f0b1c00117032607d88def999",
+      "installed_default": true
+    },
+    {
+      "good": "fertilisers",
+      "good_id": "g_064",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_064_fertilisers.png",
+      "source": "goods_fertilisers/v9",
+      "sha256": "c435a370e9c812ed5ed69ecea354b47a06c2da68c74915762afc8e6026fab519",
+      "installed_default": true
+    },
+    {
+      "good": "fertilisers",
+      "good_id": "g_064",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_064_fertilisers.png",
+      "source": "goods_fertilisers/v9",
+      "sha256": "d507bf26c55f77d8200ffc0a7f877a088a4e904514b424883dfb150f6e4a0945",
+      "installed_default": true
+    },
+    {
+      "good": "fertilisers",
+      "good_id": "g_064",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_064_fertilisers.png",
+      "source": "goods_fertilisers/v9",
+      "sha256": "c5c03d16cf917c1b88e16fb4e7fe05c0ac9a9d411e678cfea2fa124182a1ce76",
+      "installed_default": true
+    },
+    {
+      "good": "nitrogen",
+      "good_id": "g_068",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_068_nitrogen.png",
+      "source": "goods_nitrogen/v5",
+      "sha256": "2bc19cdbff910dcb82464d4006b8c9881691ae1d199b2dd915352665c802ec58",
+      "installed_default": true
+    },
+    {
+      "good": "nitrogen",
+      "good_id": "g_068",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_068_nitrogen.png",
+      "source": "goods_nitrogen/v5",
+      "sha256": "d6b0a890267266f19fcb1ad38022b9c8f7ff573a424766a94b138cdbb7be3f60",
+      "installed_default": true
+    },
+    {
+      "good": "nitrogen",
+      "good_id": "g_068",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_068_nitrogen.png",
+      "source": "goods_nitrogen/v5",
+      "sha256": "01308a198b38f50d9ed3531f3e8aad9baa63fcc223780480bd2ac138bd13b49f",
+      "installed_default": true
+    },
+    {
+      "good": "rubber",
+      "good_id": "g_028",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_028_rubber.png",
+      "source": "goods_rubber/v15",
+      "sha256": "7b76a733e98941ae77c535d2adab842a69a896c784883c186aa7364f1fb09ce5",
+      "installed_default": true
+    },
+    {
+      "good": "rubber",
+      "good_id": "g_028",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_028_rubber.png",
+      "source": "goods_rubber/v15",
+      "sha256": "2ede3d2e8cb5de93a650241f69c27fa6a5f866ad5078624b5797e813867243c6",
+      "installed_default": true
+    },
+    {
+      "good": "rubber",
+      "good_id": "g_028",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_028_rubber.png",
+      "source": "goods_rubber/v15",
+      "sha256": "cb9d5c106c07eb58e1f776f047d12f9712adb1348e1a15cf816fa9b858b5a320",
+      "installed_default": true
+    },
+    {
+      "good": "plastics",
+      "good_id": "g_027",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_027_plastics.png",
+      "source": "goods_plastics/v33",
+      "sha256": "fbba70ec8616fb26b5fc3b7e2f0d86cd6c02eca02ec668a1673cf4afb53ac5d0",
+      "installed_default": true
+    },
+    {
+      "good": "plastics",
+      "good_id": "g_027",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_027_plastics.png",
+      "source": "goods_plastics/v33",
+      "sha256": "4c240a84c38e22d70d0de2cf60e74604c416d07393891a8f681bf1a0143aa247",
+      "installed_default": true
+    },
+    {
+      "good": "plastics",
+      "good_id": "g_027",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_027_plastics.png",
+      "source": "goods_plastics/v33",
+      "sha256": "84f94bbdf849b08d16ebd80e1f7e5b195b5c1efbb959640b49112ed8abec8695",
+      "installed_default": true
+    },
+    {
+      "good": "ev_car",
+      "good_id": "g_057",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_057_ev_car.png",
+      "source": "goods_ev_car/v6",
+      "sha256": "556cb7e80c932f64d13c14432e63d6ecbc5333a0c9a207547271e1e5dd201818",
+      "installed_default": true
+    },
+    {
+      "good": "ev_car",
+      "good_id": "g_057",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_057_ev_car.png",
+      "source": "goods_ev_car/v6",
+      "sha256": "b125f4183d925fa1fb7f9c253306e71f218c321d12677cbdd8b35516b7b28e03",
+      "installed_default": true
+    },
+    {
+      "good": "ev_car",
+      "good_id": "g_057",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_057_ev_car.png",
+      "source": "goods_ev_car/v6",
+      "sha256": "ff3b554856c5e4602ecf1fccbdea9960c02fbf3c327a73108ea97cd1a216139f",
+      "installed_default": true
+    },
+    {
+      "good": "cpu",
+      "good_id": "g_041",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_041_cpu.png",
+      "source": "goods_cpu/v5",
+      "sha256": "c6114a329545f64494eb370a0eefe821c87ee200a4b63f40c34f40c550dfd6c5",
+      "installed_default": true
+    },
+    {
+      "good": "cpu",
+      "good_id": "g_041",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_041_cpu.png",
+      "source": "goods_cpu/v5",
+      "sha256": "c8db63543d387b2f98c2af560a1c733850ca9e6f3e2bc21c05230fa7cfb7293a",
+      "installed_default": true
+    },
+    {
+      "good": "cpu",
+      "good_id": "g_041",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_041_cpu.png",
+      "source": "goods_cpu/v5",
+      "sha256": "381b4e5acf4c9f37f17d38486d73bc9f611f1c71bbfae2b4a0b37b109a2b5d50",
+      "installed_default": true
+    },
+    {
+      "good": "circuit_board",
+      "good_id": "g_043",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_043_circuit_board.png",
+      "source": "goods_circuit_board/v6",
+      "sha256": "a9c2f8171f465cfc99e90d129503c037b91facedd86c71cc84a248ac61aa4917",
+      "installed_default": true
+    },
+    {
+      "good": "circuit_board",
+      "good_id": "g_043",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_043_circuit_board.png",
+      "source": "goods_circuit_board/v6",
+      "sha256": "af511a1dceb472a3d4c70ce3e729f234890389c908492628288e9112cc152264",
+      "installed_default": true
+    },
+    {
+      "good": "circuit_board",
+      "good_id": "g_043",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_043_circuit_board.png",
+      "source": "goods_circuit_board/v6",
+      "sha256": "71fa2b557ea3fcd53b40b9804207e99a4adfb616c492b4739847c2d79f1d8a33",
+      "installed_default": true
+    },
+    {
+      "good": "building_frame",
+      "good_id": "g_023",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_023_building_frame.png",
+      "source": "goods_building_frame/v5",
+      "sha256": "26dfc7eb07dc7758fced67a7a19656f93e516447813c0c7765d7c67bf14594ee",
+      "installed_default": true
+    },
+    {
+      "good": "building_frame",
+      "good_id": "g_023",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_023_building_frame.png",
+      "source": "goods_building_frame/v5",
+      "sha256": "076d7976f49d919022d4b207ba09ec811a2196142c82481fedfffce67be7d509",
+      "installed_default": true
+    },
+    {
+      "good": "building_frame",
+      "good_id": "g_023",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_023_building_frame.png",
+      "source": "goods_building_frame/v5",
+      "sha256": "3da40f43b8a952aa4795c80560b73f2503cd932656eadbb689b405b75d665556",
+      "installed_default": true
+    },
+    {
+      "good": "ree_ore",
+      "good_id": "g_032",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_032_ree_ore.png",
+      "source": "goods_ree_ore/v19",
+      "sha256": "1f385f22a2054143be9b28c9122b6a100a033afb9ae8e9ca10fd939a93abbb89",
+      "installed_default": true
+    },
+    {
+      "good": "ree_ore",
+      "good_id": "g_032",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_032_ree_ore.png",
+      "source": "goods_ree_ore/v19",
+      "sha256": "c42a8bc84be89515f60b01378c758a3fe9220a3634431f872b3e09a93def1d2b",
+      "installed_default": true
+    },
+    {
+      "good": "ree_ore",
+      "good_id": "g_032",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_032_ree_ore.png",
+      "source": "goods_ree_ore/v19",
+      "sha256": "c51fe019995bf977a9fe5569633384d445456083224a2ac7e29328983762caf2",
       "installed_default": true
     }
   ]

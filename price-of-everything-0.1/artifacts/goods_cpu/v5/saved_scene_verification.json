@@ -1,0 +1,52 @@
+{
+  "meshes": {
+    "tray_base": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    },
+    "tray_upper": {
+      "non_manifold": 0,
+      "min_z": 0.22
+    },
+    "tray_rim_back": {
+      "non_manifold": 0,
+      "min_z": 0.44
+    },
+    "tray_rim_br": {
+      "non_manifold": 0,
+      "min_z": 0.44
+    },
+    "tray_rim_tr": {
+      "non_manifold": 0,
+      "min_z": 0.44
+    },
+    "seated_board": {
+      "non_manifold": 0,
+      "min_z": 0.28
+    },
+    "seated_flange": {
+      "non_manifold": 0,
+      "min_z": 0.32
+    },
+    "seated_plateau": {
+      "non_manifold": 0,
+      "min_z": 0.35
+    },
+    "chip_board": {
+      "non_manifold": 0,
+      "min_z": -0.0
+    }
+  },
+  "pairs": {
+    "seated_board/tray_upper": 12,
+    "seated_flange/seated_board": 16,
+    "seated_plateau/seated_flange": 16,
+    "chip_board/tray_base": 0,
+    "chip_board/tray_upper": 0,
+    "chip_board/tray_rim_back": 0,
+    "chip_board/tray_rim_br": 7,
+    "chip_board/tray_rim_tr": 12
+  },
+  "tray_past_chip_back": 0.0,
+  "failures": []
+}

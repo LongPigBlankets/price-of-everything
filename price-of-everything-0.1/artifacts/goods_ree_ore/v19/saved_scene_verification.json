@@ -1,0 +1,43 @@
+{
+  "meshes": {
+    "rock_brown": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    },
+    "rock_mottled": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    },
+    "crystal": {
+      "non_manifold": 0,
+      "min_z": -0.0
+    },
+    "magnet": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    },
+    "magnet_pole_-1": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    },
+    "magnet_pole_1": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    }
+  },
+  "pairs": {
+    "crystal/rock_brown": 0,
+    "crystal/rock_mottled": 0,
+    "magnet/crystal": 0,
+    "magnet/rock_brown": 0,
+    "magnet/rock_mottled": 0,
+    "magnet_pole_-1/crystal": 0,
+    "magnet_pole_-1/rock_brown": 0,
+    "magnet_pole_-1/rock_mottled": 0,
+    "magnet_pole_1/crystal": 0,
+    "magnet_pole_1/rock_brown": 0,
+    "magnet_pole_1/rock_mottled": 0
+  },
+  "rock_brown/rock_mottled_hidden_overlap": 298,
+  "failures": []
+}

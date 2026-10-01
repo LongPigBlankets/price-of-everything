@@ -1,0 +1,140 @@
+{
+  "revision": "pure_water_v22",
+  "objects": 32,
+  "structural_hosts": [
+    "pipe_shell",
+    "post_collar",
+    "post_rod",
+    "post_foot",
+    "stream",
+    "puddle"
+  ],
+  "topology": "socket-mouthed pipe on a post pouring a curved stream into an oval pool with a tongued splash crown",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 6
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shadowed_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "thresholds": [
+          0.65,
+          0.53,
+          0.42
+        ]
+      }
+    ]
+  },
+  "dimensions": {
+    "D": 1.0,
+    "pipe_centre_height": 2.65,
+    "hub_outer": 1.41,
+    "bore": 1.11,
+    "band_outer": 1.2,
+    "pipe_length": 2.5999999999999996,
+    "post": 0.25,
+    "collar": 0.37,
+    "foot": 0.49,
+    "stream_lip": [
+      0.86,
+      0.7
+    ],
+    "stream_land": [
+      0.89,
+      0.86
+    ],
+    "dark_bore_above_stream": 0.38,
+    "stream_length": 3.101,
+    "stream_min_bend_radius": 0.605,
+    "landing_in_front_of_mouth": 0.9,
+    "pool_semi_axes": [
+      1.0,
+      0.66
+    ],
+    "ribbon_semi_axes": [
+      0.78,
+      0.52
+    ],
+    "tongues": [
+      [
+        -0.6,
+        0.84
+      ],
+      [
+        0.6,
+        0.58
+      ]
+    ]
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 1.79 x 4.56 x 3.36"
+  ],
+  "mesh_checks": {
+    "pipe_shell": {
+      "vertices": 1920,
+      "faces": 1920,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "post_collar": {
+      "vertices": 242,
+      "faces": 360,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "post_rod": {
+      "vertices": 242,
+      "faces": 360,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "post_foot": {
+      "vertices": 242,
+      "faces": 360,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stream": {
+      "vertices": 11592,
+      "faces": 11522,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "puddle": {
+      "vertices": 4081,
+      "faces": 4081,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 5.156,
+    "target": [
+      0.148,
+      -0.055,
+      1.642
+    ]
+  }
+}

@@ -1,0 +1,485 @@
+{
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "frame_to_bundle_gap_x": 0.02,
+  "meshes": {
+    "pipe_c": {
+      "faces": 512,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.896,
+      "bbox": [
+        [
+          -0.5,
+          0.5
+        ],
+        [
+          0.0,
+          3.4
+        ],
+        [
+          0.896,
+          1.896
+        ]
+      ]
+    },
+    "pipe_0": {
+      "faces": 512,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.896,
+      "bbox": [
+        [
+          0.5,
+          1.5
+        ],
+        [
+          0.0,
+          3.4
+        ],
+        [
+          0.896,
+          1.896
+        ]
+      ]
+    },
+    "pipe_1": {
+      "faces": 512,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.7621,
+      "bbox": [
+        [
+          0.0,
+          1.0
+        ],
+        [
+          0.0,
+          3.4
+        ],
+        [
+          1.7621,
+          2.7621
+        ]
+      ]
+    },
+    "pipe_2": {
+      "faces": 512,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.7621,
+      "bbox": [
+        [
+          -1.0,
+          0.0
+        ],
+        [
+          0.0,
+          3.4
+        ],
+        [
+          1.7621,
+          2.7621
+        ]
+      ]
+    },
+    "pipe_3": {
+      "faces": 512,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.896,
+      "bbox": [
+        [
+          -1.5,
+          -0.5
+        ],
+        [
+          0.0,
+          3.4
+        ],
+        [
+          0.896,
+          1.896
+        ]
+      ]
+    },
+    "pipe_4": {
+      "faces": 512,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.03,
+      "bbox": [
+        [
+          -1.0,
+          -0.0
+        ],
+        [
+          0.0,
+          3.4
+        ],
+        [
+          0.03,
+          1.03
+        ]
+      ]
+    },
+    "pipe_5": {
+      "faces": 512,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.03,
+      "bbox": [
+        [
+          0.0,
+          1.0
+        ],
+        [
+          0.0,
+          3.4
+        ],
+        [
+          0.03,
+          1.03
+        ]
+      ]
+    },
+    "strap_0": {
+      "faces": 264,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0,
+      "bbox": [
+        [
+          -1.53,
+          1.53
+        ],
+        [
+          0.85,
+          1.07
+        ],
+        [
+          0.0,
+          2.7921
+        ]
+      ]
+    },
+    "strap_1": {
+      "faces": 264,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0,
+      "bbox": [
+        [
+          -1.53,
+          1.53
+        ],
+        [
+          2.15,
+          2.37
+        ],
+        [
+          0.0,
+          2.7921
+        ]
+      ]
+    },
+    "frame_bottom": {
+      "faces": 30,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0,
+      "bbox": [
+        [
+          1.55,
+          2.95
+        ],
+        [
+          0.6,
+          3.9
+        ],
+        [
+          0.0,
+          1.4
+        ]
+      ]
+    },
+    "frame_upright": {
+      "faces": 31,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0,
+      "bbox": [
+        [
+          1.55,
+          2.95
+        ],
+        [
+          2.5,
+          3.9
+        ],
+        [
+          0.0,
+          3.0
+        ]
+      ]
+    },
+    "pane_0": {
+      "faces": 3,
+      "non_manifold": 8,
+      "zero_area": 0,
+      "min_z": 0.77,
+      "bbox": [
+        [
+          2.06,
+          2.18
+        ],
+        [
+          0.601,
+          3.13
+        ],
+        [
+          0.77,
+          2.999
+        ]
+      ]
+    },
+    "pane_1": {
+      "faces": 3,
+      "non_manifold": 8,
+      "zero_area": 0,
+      "min_z": 0.77,
+      "bbox": [
+        [
+          2.31,
+          2.43
+        ],
+        [
+          0.601,
+          3.13
+        ],
+        [
+          0.77,
+          2.999
+        ]
+      ]
+    }
+  },
+  "pairs": {
+    "frame_bottom/pipe_0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_bottom/pipe_1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_bottom/pipe_2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_bottom/pipe_3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_bottom/pipe_4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_bottom/pipe_5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_bottom/pipe_c": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_bottom/strap_0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_bottom/strap_1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_upright/pipe_0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_upright/pipe_1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_upright/pipe_2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_upright/pipe_3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_upright/pipe_4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_upright/pipe_5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_upright/pipe_c": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_upright/strap_0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "frame_upright/strap_1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_0/pipe_0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_0/pipe_1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_0/pipe_2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_0/pipe_3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_0/pipe_4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_0/pipe_5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_0/pipe_c": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_0/strap_0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_0/strap_1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_1/pipe_0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_1/pipe_1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_1/pipe_2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_1/pipe_3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_1/pipe_4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_1/pipe_5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_1/pipe_c": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_1/strap_0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "pane_1/strap_1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "strap_0/pipe_0": {
+      "surface_intersections": 78,
+      "intended": true
+    },
+    "strap_0/pipe_1": {
+      "surface_intersections": 76,
+      "intended": true
+    },
+    "strap_0/pipe_2": {
+      "surface_intersections": 76,
+      "intended": true
+    },
+    "strap_0/pipe_3": {
+      "surface_intersections": 78,
+      "intended": true
+    },
+    "strap_0/pipe_4": {
+      "surface_intersections": 76,
+      "intended": true
+    },
+    "strap_0/pipe_5": {
+      "surface_intersections": 76,
+      "intended": true
+    },
+    "strap_1/pipe_0": {
+      "surface_intersections": 78,
+      "intended": true
+    },
+    "strap_1/pipe_1": {
+      "surface_intersections": 76,
+      "intended": true
+    },
+    "strap_1/pipe_2": {
+      "surface_intersections": 76,
+      "intended": true
+    },
+    "strap_1/pipe_3": {
+      "surface_intersections": 78,
+      "intended": true
+    },
+    "strap_1/pipe_4": {
+      "surface_intersections": 76,
+      "intended": true
+    },
+    "strap_1/pipe_5": {
+      "surface_intersections": 76,
+      "intended": true
+    },
+    "frame_bottom/frame_upright": {
+      "surface_intersections": 15,
+      "intended": true
+    },
+    "pane_0/frame_bottom": {
+      "surface_intersections": 1,
+      "intended": true
+    },
+    "pane_0/frame_upright": {
+      "surface_intersections": 1,
+      "intended": true
+    },
+    "pane_1/frame_bottom": {
+      "surface_intersections": 1,
+      "intended": true
+    },
+    "pane_1/frame_upright": {
+      "surface_intersections": 1,
+      "intended": true
+    }
+  },
+  "failures": []
+}

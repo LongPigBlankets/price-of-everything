@@ -1,0 +1,164 @@
+{
+  "revision": "alkaline_v4",
+  "objects": 58,
+  "structural_hosts": [
+    "case",
+    "lid",
+    "panel",
+    "collar_plus",
+    "post_plus",
+    "collar_minus",
+    "post_minus"
+  ],
+  "topology": "starter battery: grey case, charcoal lid with a raised panel and two terminal wells on the label side, collared posts, green-framed label on the long (+X) face",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 6
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shadowed_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "thresholds": [
+          0.65,
+          0.6,
+          0.35
+        ]
+      }
+    ]
+  },
+  "dimensions": {
+    "case": [
+      1.0,
+      1.55,
+      1.1
+    ],
+    "lid": [
+      0.035,
+      0.13
+    ],
+    "panel": [
+      0.075,
+      0.1
+    ],
+    "wells": [
+      0.6,
+      0.415,
+      1.135
+    ],
+    "posts": [
+      [
+        "plus",
+        0.79,
+        0.215
+      ],
+      [
+        "minus",
+        0.79,
+        1.4
+      ]
+    ],
+    "terminal": [
+      0.09,
+      0.066,
+      0.052,
+      0.044,
+      0.135
+    ],
+    "label": {
+      "frame": [
+        0.17,
+        1.38,
+        0.21,
+        0.94
+      ],
+      "inner": [
+        0.215,
+        1.335,
+        0.255,
+        0.895
+      ],
+      "band": [
+        0.43,
+        0.81
+      ]
+    }
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 1.08 x 1.63 x 1.44"
+  ],
+  "mesh_checks": {
+    "case": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lid": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "panel": {
+      "vertices": 16,
+      "faces": 10,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "collar_plus": {
+      "vertices": 242,
+      "faces": 360,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "post_plus": {
+      "vertices": 362,
+      "faces": 480,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "collar_minus": {
+      "vertices": 242,
+      "faces": 360,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "post_minus": {
+      "vertices": 362,
+      "faces": 480,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 2.361,
+    "target": [
+      0.791,
+      0.484,
+      0.935
+    ]
+  }
+}

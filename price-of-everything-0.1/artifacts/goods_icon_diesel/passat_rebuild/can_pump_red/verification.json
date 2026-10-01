@@ -1,0 +1,12 @@
+{
+  "identical_pixels": {
+    "diesel_car_raw.png": true,
+    "diesel_car_raw_mask.png": true,
+    "diesel_car_800.png": true,
+    "diesel_car_450.png": true,
+    "diesel_car_400.png": true,
+    "diesel_car_256.png": true,
+    "diesel_car_60.png": true
+  },
+  "passed": true
+}

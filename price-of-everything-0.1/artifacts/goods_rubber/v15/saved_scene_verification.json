@@ -1,0 +1,1108 @@
+{
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "meshes": {
+    "layer0": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0
+    },
+    "layer1": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0445
+    },
+    "layer2": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0702
+    },
+    "layer3": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.1081
+    },
+    "layer4": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.1441
+    },
+    "layer5": {
+      "faces": 28,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.1877
+    },
+    "layer6": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.333
+    },
+    "layer7": {
+      "faces": 28,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.386
+    },
+    "layer8": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.5407
+    },
+    "layer9": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.5824
+    },
+    "layer10": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.6063
+    },
+    "layer11": {
+      "faces": 28,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.6583
+    },
+    "layer12": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.7414
+    },
+    "boot0": {
+      "faces": 3458,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.1084
+    },
+    "boot0_rim": {
+      "faces": 480,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.788
+    },
+    "boot0_midsole": {
+      "faces": 290,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0531
+    },
+    "boot0_outsole": {
+      "faces": 289,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0
+    },
+    "boot1": {
+      "faces": 3458,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.1084
+    },
+    "boot1_rim": {
+      "faces": 480,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.788
+    },
+    "boot1_midsole": {
+      "faces": 290,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0531
+    },
+    "boot1_outsole": {
+      "faces": 289,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0
+    },
+    "duck_body": {
+      "faces": 2048,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0
+    },
+    "duck_head": {
+      "faces": 2048,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.2723
+    },
+    "duck_beak": {
+      "faces": 2048,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.3537
+    },
+    "duck_beak_lower": {
+      "faces": 1152,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.3241
+    },
+    "duck_neck": {
+      "faces": 18,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0739
+    }
+  },
+  "pairs": {
+    "duck_body/boot0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/boot0_rim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/boot0_midsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/boot0_outsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/boot1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/boot1_rim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/boot1_midsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/boot1_outsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/boot0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/boot0_rim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/boot0_midsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/boot0_outsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/boot1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/boot1_rim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/boot1_midsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/boot1_outsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/boot0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/boot0_rim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/boot0_midsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/boot0_outsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/boot1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/boot1_rim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/boot1_midsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/boot1_outsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/boot0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/boot0_rim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/boot0_midsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/boot0_outsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/boot1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/boot1_rim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/boot1_midsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/boot1_outsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/boot0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/boot0_rim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/boot0_midsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/boot0_outsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/boot1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/boot1_rim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/boot1_midsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/boot1_outsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/boot1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/boot1_rim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/boot1_midsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/boot1_outsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/boot1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/boot1_rim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/boot1_midsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/boot1_outsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/boot1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/boot1_rim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/boot1_midsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/boot1_outsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/boot1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/boot1_rim": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/boot1_midsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/boot1_outsole": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/layer0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/layer1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/layer2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/layer3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/layer4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/layer5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/layer6": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/layer7": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/layer8": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/layer9": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/layer10": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/layer11": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/layer12": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/layer0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/layer1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/layer2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/layer3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/layer4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/layer5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/layer6": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/layer7": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/layer8": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/layer9": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/layer10": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/layer11": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_rim/layer12": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/layer0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/layer1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/layer2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/layer3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/layer4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/layer5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/layer6": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/layer7": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/layer8": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/layer9": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/layer10": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/layer11": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_midsole/layer12": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/layer0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/layer1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/layer2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/layer3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/layer4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/layer5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/layer6": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/layer7": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/layer8": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/layer9": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/layer10": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/layer11": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0_outsole/layer12": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1/layer0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1/layer1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1/layer2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1/layer3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1/layer4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1/layer5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1/layer6": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1/layer7": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1/layer8": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1/layer9": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1/layer10": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1/layer11": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1/layer12": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_rim/layer0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_rim/layer1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_rim/layer2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_rim/layer3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_rim/layer4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_rim/layer5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_rim/layer6": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_rim/layer7": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_rim/layer8": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_rim/layer9": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_rim/layer10": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_rim/layer11": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_rim/layer12": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_midsole/layer0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_midsole/layer1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_midsole/layer2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_midsole/layer3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_midsole/layer4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_midsole/layer5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_midsole/layer6": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_midsole/layer7": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_midsole/layer8": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_midsole/layer9": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_midsole/layer10": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_midsole/layer11": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_midsole/layer12": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_outsole/layer0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_outsole/layer1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_outsole/layer2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_outsole/layer3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_outsole/layer4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_outsole/layer5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_outsole/layer6": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_outsole/layer7": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_outsole/layer8": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_outsole/layer9": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_outsole/layer10": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_outsole/layer11": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot1_outsole/layer12": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/layer0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/layer1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/layer2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/layer3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/layer4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/layer5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/layer6": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/layer7": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/layer8": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/layer9": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/layer10": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/layer11": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_body/layer12": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/layer0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/layer1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/layer2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/layer3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/layer4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/layer5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/layer6": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/layer7": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/layer8": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/layer9": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/layer10": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/layer11": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_head/layer12": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/layer0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/layer1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/layer2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/layer3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/layer4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/layer5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/layer6": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/layer7": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/layer8": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/layer9": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/layer10": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/layer11": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak/layer12": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/layer0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/layer1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/layer2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/layer3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/layer4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/layer5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/layer6": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/layer7": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/layer8": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/layer9": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/layer10": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/layer11": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_beak_lower/layer12": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/layer0": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/layer1": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/layer2": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/layer3": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/layer4": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/layer5": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/layer6": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/layer7": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/layer8": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/layer9": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/layer10": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/layer11": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "duck_neck/layer12": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "boot0/boot0_rim": {
+      "surface_intersections": 262,
+      "intended": true
+    },
+    "boot0/boot0_midsole": {
+      "surface_intersections": 72,
+      "intended": true
+    },
+    "boot0_midsole/boot0_outsole": {
+      "surface_intersections": 144,
+      "intended": true
+    },
+    "boot1/boot1_rim": {
+      "surface_intersections": 260,
+      "intended": true
+    },
+    "boot1/boot1_midsole": {
+      "surface_intersections": 72,
+      "intended": true
+    },
+    "boot1_midsole/boot1_outsole": {
+      "surface_intersections": 144,
+      "intended": true
+    },
+    "duck_neck/duck_head": {
+      "surface_intersections": 58,
+      "intended": true
+    },
+    "duck_neck/duck_body": {
+      "surface_intersections": 44,
+      "intended": true
+    },
+    "duck_beak/duck_head": {
+      "surface_intersections": 157,
+      "intended": true
+    },
+    "duck_beak_lower/duck_beak": {
+      "surface_intersections": 122,
+      "intended": true
+    }
+  },
+  "failures": []
+}

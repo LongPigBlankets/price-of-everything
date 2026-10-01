@@ -1,0 +1,127 @@
+{
+  "revision": "circuit_board_v6",
+  "objects": 15,
+  "structural_hosts": [
+    "board",
+    "pad0",
+    "pad1",
+    "pad2",
+    "pad3",
+    "pad4"
+  ],
+  "topology": "a bare green circuit board with an edge connector (gold fingers, a key notch), its gold traces, vias and pads read off the shipped art",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 4
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shaded_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "thresholds": [
+          0.575,
+          0.5,
+          0.3
+        ]
+      }
+    ]
+  },
+  "dimensions": {
+    "board": {
+      "L": 2.0,
+      "t": 0.1,
+      "r": 0.06,
+      "tab": [
+        0.295,
+        0.955
+      ],
+      "tab_d": 0.19,
+      "notch": [
+        0.475,
+        0.54
+      ],
+      "notch_d": 0.15,
+      "tab_r": 0.012,
+      "finger_pitch": 0.0285,
+      "finger_w": 0.019,
+      "finger_v": [
+        -0.178,
+        -0.045
+      ]
+    },
+    "traces": 63,
+    "vias": 69,
+    "pads": 5
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 2.00 x 2.38 x 0.14"
+  ],
+  "mesh_checks": {
+    "board": {
+      "vertices": 180,
+      "faces": 236,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pad0": {
+      "vertices": 28,
+      "faces": 38,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pad1": {
+      "vertices": 30,
+      "faces": 41,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pad2": {
+      "vertices": 30,
+      "faces": 41,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pad3": {
+      "vertices": 22,
+      "faces": 29,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pad4": {
+      "vertices": 16,
+      "faces": 20,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 3.114,
+    "target": [
+      0.124,
+      -0.124,
+      0.084
+    ]
+  }
+}

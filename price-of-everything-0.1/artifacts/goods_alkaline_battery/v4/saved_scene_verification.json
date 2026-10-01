@@ -1,0 +1,460 @@
+{
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "meshes": {
+    "case": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 1.705,
+      "min_z": 0.0,
+      "bbox": [
+        [
+          0.0,
+          1.0
+        ],
+        [
+          0.0,
+          1.55
+        ],
+        [
+          0.0,
+          1.1
+        ]
+      ]
+    },
+    "lid": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.22534,
+      "min_z": 1.1,
+      "bbox": [
+        [
+          -0.035,
+          1.035
+        ],
+        [
+          -0.035,
+          1.585
+        ],
+        [
+          1.1,
+          1.23
+        ]
+      ]
+    },
+    "panel": {
+      "faces": 10,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.12989,
+      "min_z": 1.21,
+      "bbox": [
+        [
+          0.04,
+          0.96
+        ],
+        [
+          0.04,
+          1.51
+        ],
+        [
+          1.21,
+          1.33
+        ]
+      ]
+    },
+    "collar_plus": {
+      "faces": 360,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.00193,
+      "min_z": 1.22,
+      "bbox": [
+        [
+          0.7,
+          0.88
+        ],
+        [
+          0.125,
+          0.305
+        ],
+        [
+          1.22,
+          1.296
+        ]
+      ]
+    },
+    "post_plus": {
+      "faces": 480,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.00106,
+      "min_z": 1.286,
+      "bbox": [
+        [
+          0.738,
+          0.842
+        ],
+        [
+          0.163,
+          0.267
+        ],
+        [
+          1.286,
+          1.431
+        ]
+      ]
+    },
+    "collar_minus": {
+      "faces": 360,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.00193,
+      "min_z": 1.22,
+      "bbox": [
+        [
+          0.7,
+          0.88
+        ],
+        [
+          1.31,
+          1.49
+        ],
+        [
+          1.22,
+          1.296
+        ]
+      ]
+    },
+    "post_minus": {
+      "faces": 480,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.00106,
+      "min_z": 1.286,
+      "bbox": [
+        [
+          0.738,
+          0.842
+        ],
+        [
+          1.348,
+          1.452
+        ],
+        [
+          1.286,
+          1.431
+        ]
+      ]
+    },
+    "label_frame": {
+      "faces": 54,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.00529,
+      "min_z": 0.21,
+      "bbox": [
+        [
+          0.998,
+          1.004
+        ],
+        [
+          0.17,
+          1.38
+        ],
+        [
+          0.21,
+          0.94
+        ]
+      ]
+    },
+    "label_band": {
+      "faces": 10,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.00235,
+      "min_z": 0.35,
+      "bbox": [
+        [
+          1.002,
+          1.007
+        ],
+        [
+          0.215,
+          1.335
+        ],
+        [
+          0.35,
+          0.81
+        ]
+      ]
+    },
+    "label_tab_top": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.00023,
+      "min_z": 0.81,
+      "bbox": [
+        [
+          1.002,
+          1.007
+        ],
+        [
+          0.52,
+          1.106
+        ],
+        [
+          0.81,
+          0.895
+        ]
+      ]
+    },
+    "label_tab_bottom": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 0.00026,
+      "min_z": 0.255,
+      "bbox": [
+        [
+          1.002,
+          1.007
+        ],
+        [
+          0.47,
+          1.06
+        ],
+        [
+          0.255,
+          0.35
+        ]
+      ]
+    },
+    "disc_plus": {
+      "faces": 66,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 4e-05,
+      "min_z": 0.2905,
+      "bbox": [
+        [
+          1.002,
+          1.007
+        ],
+        [
+          0.278,
+          0.382
+        ],
+        [
+          0.2905,
+          0.3945
+        ]
+      ]
+    },
+    "disc_minus": {
+      "faces": 66,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 4e-05,
+      "min_z": 0.2905,
+      "bbox": [
+        [
+          1.002,
+          1.007
+        ],
+        [
+          1.173,
+          1.277
+        ],
+        [
+          0.2905,
+          0.3945
+        ]
+      ]
+    },
+    "lid_plus_0": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 1e-05,
+      "min_z": 1.23,
+      "bbox": [
+        [
+          0.8925,
+          0.9675
+        ],
+        [
+          0.34,
+          0.36
+        ],
+        [
+          1.23,
+          1.234
+        ]
+      ]
+    },
+    "lid_plus_1": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 1e-05,
+      "min_z": 1.23,
+      "bbox": [
+        [
+          0.92,
+          0.94
+        ],
+        [
+          0.3125,
+          0.3875
+        ],
+        [
+          1.23,
+          1.234
+        ]
+      ]
+    },
+    "lid_minus": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "volume": 1e-05,
+      "min_z": 1.23,
+      "bbox": [
+        [
+          0.9,
+          0.92
+        ],
+        [
+          1.4775,
+          1.5525
+        ],
+        [
+          1.23,
+          1.234
+        ]
+      ]
+    }
+  },
+  "pairs": {
+    "post_plus/panel": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "post_minus/panel": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "collar_plus/panel": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "collar_minus/panel": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "lid_plus_0/collar_plus": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "lid_plus_1/collar_plus": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "lid_plus_0/panel": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "lid_plus_1/panel": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "lid_minus/collar_minus": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "lid_minus/panel": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "label_frame/lid": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "label_band/lid": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "label_tab_top/lid": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "label_band/disc_plus": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "label_band/disc_minus": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "label_tab_bottom/disc_plus": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "label_tab_bottom/disc_minus": {
+      "surface_intersections": 0,
+      "intended": false
+    },
+    "panel/lid": {
+      "surface_intersections": 8,
+      "intended": true
+    },
+    "collar_plus/lid": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "collar_minus/lid": {
+      "surface_intersections": 120,
+      "intended": true
+    },
+    "post_plus/collar_plus": {
+      "surface_intersections": 136,
+      "intended": true
+    },
+    "post_minus/collar_minus": {
+      "surface_intersections": 175,
+      "intended": true
+    },
+    "label_frame/case": {
+      "surface_intersections": 52,
+      "intended": true
+    },
+    "label_band/label_frame": {
+      "surface_intersections": 8,
+      "intended": true
+    },
+    "label_tab_top/label_frame": {
+      "surface_intersections": 4,
+      "intended": true
+    },
+    "label_tab_bottom/label_frame": {
+      "surface_intersections": 4,
+      "intended": true
+    },
+    "disc_plus/label_frame": {
+      "surface_intersections": 64,
+      "intended": true
+    },
+    "disc_minus/label_frame": {
+      "surface_intersections": 64,
+      "intended": true
+    }
+  },
+  "failures": []
+}

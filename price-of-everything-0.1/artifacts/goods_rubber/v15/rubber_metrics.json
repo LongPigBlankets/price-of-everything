@@ -1,0 +1,450 @@
+{
+  "revision": "rubber_v15",
+  "objects": 122,
+  "structural_hosts": [
+    "layer0",
+    "layer1",
+    "layer2",
+    "layer3",
+    "layer4",
+    "layer5",
+    "layer6",
+    "layer7",
+    "layer8",
+    "layer9",
+    "layer10",
+    "layer11",
+    "layer12",
+    "boot0",
+    "boot0_rim",
+    "boot0_midsole",
+    "boot0_outsole",
+    "boot1",
+    "boot1_rim",
+    "boot1_midsole",
+    "boot1_outsole",
+    "duck_body",
+    "duck_head",
+    "duck_beak",
+    "duck_beak_lower",
+    "duck_neck"
+  ],
+  "topology": "a stack of folded dark rubber sheets with tan stitching; a pair of black wellingtons; a yellow rubber duck",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 6
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shadowed_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "thresholds": [
+          0.575,
+          0.5,
+          0.3
+        ]
+      }
+    ]
+  },
+  "dimensions": {
+    "stack": [
+      1.0,
+      1.4342,
+      0.782
+    ],
+    "layers": [
+      [
+        "thin",
+        0.0405,
+        0.02,
+        0.0,
+        0.01,
+        0.0
+      ],
+      [
+        "thin",
+        0.0217,
+        0.0,
+        0.02,
+        0.0,
+        0.02
+      ],
+      [
+        "thin",
+        0.0339,
+        0.01,
+        0.01,
+        0.02,
+        0.0
+      ],
+      [
+        "thin",
+        0.032,
+        0.0,
+        0.01,
+        0.01,
+        0.01
+      ],
+      [
+        "thin",
+        0.0396,
+        0.01,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        "fold",
+        0.1413,
+        -0.06,
+        -0.05,
+        0.0,
+        0.01
+      ],
+      [
+        "thin",
+        0.049,
+        0.0,
+        0.0,
+        0.0,
+        0.01
+      ],
+      [
+        "fold",
+        0.1507,
+        -0.07,
+        -0.03,
+        0.01,
+        0.0
+      ],
+      [
+        "thin",
+        0.0377,
+        0.01,
+        0.01,
+        0.01,
+        0.0
+      ],
+      [
+        "thin",
+        0.0199,
+        0.0,
+        0.01,
+        0.0,
+        0.01
+      ],
+      [
+        "thin",
+        0.048,
+        0.01,
+        0.0,
+        0.01,
+        0.0
+      ],
+      [
+        "fold",
+        0.0791,
+        -0.03,
+        -0.03,
+        0.0,
+        0.01
+      ],
+      [
+        "top",
+        0.0367,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "boots": [
+      [
+        1.2926,
+        0.4007
+      ],
+      [
+        1.2851,
+        0.702
+      ]
+    ],
+    "boot": {
+      "top_z": 0.8382,
+      "band_h": 0.0402,
+      "band_out": 0.006,
+      "ring_w": 0.0324,
+      "A_t": 0.1863,
+      "B_t": 0.1167,
+      "A_a": 0.1577,
+      "B_a": 0.109,
+      "p_sh": 2.0,
+      "z_ank": 0.2893,
+      "L_toe": 0.425,
+      "heel": 0.0799,
+      "W_foot": 0.1122,
+      "wk": 0.3253,
+      "m": 1.0313,
+      "n": 0.3266,
+      "p_ft": 2.8817,
+      "seam_mid": 0.2876,
+      "seam_amp": 0.105,
+      "seam_fb": 0.0269,
+      "h_out": 0.0531,
+      "h_mid": 0.0593,
+      "welt": 0.0083,
+      "out_in": 0.004,
+      "arch0": 0.0,
+      "arch1": 0.0,
+      "yaw": 9.0477,
+      "seam_hi": 0.415,
+      "seam_lo": 0.247,
+      "seam_tc": 37.5,
+      "seam_w": 15.0,
+      "seam_sh": 18.0,
+      "seam_hs": 0.045,
+      "seam_rw": 2.5,
+      "seam_bw": 3.0,
+      "seam_hb": 0.008,
+      "sole_bulge": 0.018,
+      "sole_tuck": 0.012
+    },
+    "lug": [
+      0.11,
+      0.022,
+      0.014
+    ],
+    "duck": {
+      "x": 1.2274,
+      "y": 0.026,
+      "yaw": 0.0454,
+      "s": 0.9065,
+      "rxf": 0.3336,
+      "rxb": 0.23,
+      "ry": 0.2095,
+      "rz": 0.105,
+      "tail": 0.31,
+      "tp": 2.5,
+      "tw": 0.4,
+      "fb": 0.6987,
+      "hx": 0.1656,
+      "hz": 0.4436,
+      "hr": 0.1432,
+      "hsz": 1.0,
+      "hsx": 1.0,
+      "kd": 1.035,
+      "kzr": -0.258,
+      "krx": 0.137,
+      "kry": 0.0727,
+      "krz": 0.0402,
+      "kup": 0.015,
+      "kw": 0.0176,
+      "kp": 15.7126,
+      "dip": 0.0,
+      "dip_x": -0.0421,
+      "dip_w": 0.1205,
+      "chest": 0.03,
+      "chest_x": 0.2,
+      "chest_w": 0.08,
+      "ktaper": 0.72,
+      "klow_pitch": 1.0,
+      "klow_len": 0.95,
+      "klow_h": 0.55,
+      "tx0": -0.03
+    },
+    "dash": [
+      0.045,
+      0.03,
+      0.012
+    ]
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 1.82 x 1.60 x 0.84"
+  ],
+  "mesh_checks": {
+    "layer0": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "layer1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "layer2": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "layer3": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "layer4": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "layer5": {
+      "vertices": 52,
+      "faces": 28,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "layer6": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "layer7": {
+      "vertices": 52,
+      "faces": 28,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "layer8": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "layer9": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "layer10": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "layer11": {
+      "vertices": 52,
+      "faces": 28,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "layer12": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "boot0": {
+      "vertices": 3528,
+      "faces": 3458,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "boot0_rim": {
+      "vertices": 480,
+      "faces": 480,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "boot0_midsole": {
+      "vertices": 384,
+      "faces": 290,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "boot0_outsole": {
+      "vertices": 289,
+      "faces": 289,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "boot1": {
+      "vertices": 3528,
+      "faces": 3458,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "boot1_rim": {
+      "vertices": 480,
+      "faces": 480,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "boot1_midsole": {
+      "vertices": 384,
+      "faces": 290,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "boot1_outsole": {
+      "vertices": 289,
+      "faces": 289,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "duck_body": {
+      "vertices": 1986,
+      "faces": 2048,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "duck_head": {
+      "vertices": 1986,
+      "faces": 2048,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "duck_beak": {
+      "vertices": 1986,
+      "faces": 2048,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "duck_beak_lower": {
+      "vertices": 1106,
+      "faces": 1152,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "duck_neck": {
+      "vertices": 32,
+      "faces": 18,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 2.078,
+    "target": [
+      0.895,
+      0.347,
+      0.657
+    ]
+  }
+}

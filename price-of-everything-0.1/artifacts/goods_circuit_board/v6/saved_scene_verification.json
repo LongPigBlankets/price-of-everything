@@ -1,0 +1,32 @@
+{
+  "meshes": {
+    "board": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    },
+    "pad0": {
+      "non_manifold": 0,
+      "min_z": 0.098
+    },
+    "pad1": {
+      "non_manifold": 0,
+      "min_z": 0.098
+    },
+    "pad2": {
+      "non_manifold": 0,
+      "min_z": 0.098
+    },
+    "pad3": {
+      "non_manifold": 0,
+      "min_z": 0.098
+    },
+    "pad4": {
+      "non_manifold": 0,
+      "min_z": 0.098
+    }
+  },
+  "traces": 63,
+  "vias": 69,
+  "lands": 17,
+  "failures": []
+}

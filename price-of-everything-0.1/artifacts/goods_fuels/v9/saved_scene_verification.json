@@ -1,0 +1,337 @@
+{
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "meshes": {
+    "plinth": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0
+    },
+    "pump_body": {
+      "faces": 168,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.15
+    },
+    "hose_left": {
+      "faces": 3082,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.2201
+    },
+    "diesel_can_body": {
+      "faces": 555,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.0
+    },
+    "diesel_can_neck": {
+      "faces": 50,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.2812
+    },
+    "diesel_can_cap": {
+      "faces": 50,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.3041
+    },
+    "nozzle_body": {
+      "faces": 15,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.7702
+    },
+    "nozzle_guard": {
+      "faces": 16,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.84
+    },
+    "nozzle_lever": {
+      "faces": 6,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 2.0885
+    },
+    "nozzle_collar": {
+      "faces": 42,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 2.2911
+    },
+    "spout_collar": {
+      "faces": 34,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.7533
+    },
+    "nozzle_spout": {
+      "faces": 842,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.3376
+    },
+    "hose_right": {
+      "faces": 3082,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 0.6131
+    },
+    "diesel_can_handle_bridge_0": {
+      "faces": 62,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.3515
+    },
+    "diesel_can_handle_bridge_1": {
+      "faces": 62,
+      "non_manifold": 0,
+      "zero_area": 0,
+      "min_z": 1.3515
+    }
+  },
+  "pairs": {
+    "hose_left/diesel_can_body": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "hose_left/plinth": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "hose_right/diesel_can_body": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "hose_right/plinth": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "hose_left/hose_right": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "hose_right/diesel_can_cap": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "hose_right/diesel_can_neck": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "diesel_can_body/pump_body": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "diesel_can_body/plinth": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "nozzle_spout/diesel_can_body": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "diesel_can_cap/diesel_can_body": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "diesel_can_cap/nozzle_spout": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "nozzle_body/diesel_can_body": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "nozzle_guard/diesel_can_body": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "nozzle_lever/diesel_can_body": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "nozzle_collar/diesel_can_body": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "spout_collar/diesel_can_body": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "nozzle_body/diesel_can_handle_bridge_0": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "nozzle_body/diesel_can_handle_bridge_1": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "nozzle_guard/diesel_can_handle_bridge_0": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "nozzle_guard/diesel_can_handle_bridge_1": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "nozzle_lever/diesel_can_handle_bridge_0": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "nozzle_lever/diesel_can_handle_bridge_1": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "nozzle_collar/diesel_can_handle_bridge_0": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "nozzle_collar/diesel_can_handle_bridge_1": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "spout_collar/diesel_can_handle_bridge_0": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "spout_collar/diesel_can_handle_bridge_1": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "diesel_can_cap/nozzle_body": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "diesel_can_cap/nozzle_guard": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "diesel_can_cap/nozzle_lever": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "diesel_can_cap/nozzle_collar": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "diesel_can_cap/spout_collar": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "hose_right/diesel_can_handle_bridge_0": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "hose_right/diesel_can_handle_bridge_1": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": false
+    },
+    "pump_body/plinth": {
+      "surface_intersections": 28,
+      "intended": true,
+      "allowed": false
+    },
+    "hose_left/pump_body": {
+      "surface_intersections": 43,
+      "intended": true,
+      "allowed": false
+    },
+    "hose_right/pump_body": {
+      "surface_intersections": 38,
+      "intended": true,
+      "allowed": false
+    },
+    "nozzle_spout/diesel_can_neck": {
+      "surface_intersections": 28,
+      "intended": true,
+      "allowed": false
+    },
+    "diesel_can_neck/diesel_can_body": {
+      "surface_intersections": 50,
+      "intended": true,
+      "allowed": false
+    },
+    "nozzle_guard/nozzle_body": {
+      "surface_intersections": 8,
+      "intended": true,
+      "allowed": false
+    },
+    "nozzle_lever/nozzle_body": {
+      "surface_intersections": 4,
+      "intended": true,
+      "allowed": false
+    },
+    "nozzle_collar/nozzle_body": {
+      "surface_intersections": 38,
+      "intended": true,
+      "allowed": false
+    },
+    "hose_right/nozzle_collar": {
+      "surface_intersections": 40,
+      "intended": true,
+      "allowed": false
+    },
+    "nozzle_spout/spout_collar": {
+      "surface_intersections": 28,
+      "intended": true,
+      "allowed": false
+    },
+    "spout_collar/nozzle_body": {
+      "surface_intersections": 26,
+      "intended": true,
+      "allowed": false
+    },
+    "nozzle_spout/nozzle_body": {
+      "surface_intersections": 42,
+      "intended": true,
+      "allowed": false
+    },
+    "diesel_can_cap/diesel_can_neck": {
+      "surface_intersections": 0,
+      "intended": false,
+      "allowed": true
+    }
+  },
+  "failures": []
+}

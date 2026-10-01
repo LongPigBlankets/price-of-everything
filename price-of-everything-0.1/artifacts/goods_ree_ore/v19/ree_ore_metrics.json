@@ -1,0 +1,100 @@
+{
+  "revision": "ree_ore_v19",
+  "objects": 110,
+  "structural_hosts": [
+    "rock_brown",
+    "rock_mottled",
+    "crystal",
+    "magnet",
+    "magnet_pole_-1",
+    "magnet_pole_1"
+  ],
+  "topology": "REE ore: a brown host rock, a tan rock mottled with blue-grey, purple and green mineral, a grey fluted crystal, and a red horseshoe magnet in front",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 4
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shaded_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "thresholds": [
+          0.575,
+          0.5,
+          0.3
+        ]
+      }
+    ]
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 3.22 x 2.64 x 1.53"
+  ],
+  "mesh_checks": {
+    "rock_brown": {
+      "vertices": 76,
+      "faces": 70,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "rock_mottled": {
+      "vertices": 20071,
+      "faces": 40137,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "crystal": {
+      "vertices": 182,
+      "faces": 269,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "magnet": {
+      "vertices": 84,
+      "faces": 82,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "magnet_pole_-1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "magnet_pole_1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 3.424,
+    "target": [
+      0.062,
+      0.04,
+      0.276
+    ]
+  }
+}
