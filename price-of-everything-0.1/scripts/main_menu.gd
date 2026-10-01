@@ -15,7 +15,10 @@ const MAP_SCENE := "res://scenes/main.tscn"
 const MAP_EDITOR_SCENE := "res://tools/map_editor/map_editor.tscn"
 const NAVY := Color(0, 0.07, 0.14)            # established theme background navy
 const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
-const TITLE_LOGO: Texture2D = preload("res://assets/ui/title_logo.png")
+## The three-hex logo (owner, 1 Oct 2026): brass CARBON AND CAPITAL over a copper factory and silver
+## windmills, rendered in Blender (tools/steam_capsule, --plate trio; game_logo.py makes this file).
+## It replaces the old Canva emblem, assets/ui/title_logo.png.
+const TITLE_LOGO: Texture2D = preload("res://assets/ui/title_logo_trio.png")
 # Preload (not a class_name) keeps the New Game panel out of the headless class cache.
 const NewGamePanelScene := preload("res://scripts/new_game_panel.gd")
 const TutorialPanelScene := preload("res://scripts/tutorial_intro_panel.gd")
@@ -39,7 +42,7 @@ const NEW_GAME_PANEL_W := 1396.0
 const NEW_GAME_PANEL_GAP := 20.0
 const SIDE_PAD := 30        # left/right padding inside the frame
 const EDGE_PAD := 44        # New Game from the top of the buttons / Quit from the bottom
-# The hexagonal metal logo floats above the button frame (outside it), inset in the left column.
+# The three-hex metal logo floats above the button frame (outside it), inset in the left column.
 const LOGO_TOP := 24.0        # gap from the top of the column down to the logo
 const LOGO_H := 313.0         # display height (10% smaller than before; width follows via aspect)
 const BUTTONS_TOP := 351.0    # the button frame starts here — below the logo (LOGO_TOP + LOGO_H + gap)
@@ -418,8 +421,8 @@ func _build_menu() -> void:
 	quit_btn.pressed.connect(TelemetryState.request_app_quit)
 	vbox.add_child(quit_btn)
 
-	# Hexagonal metal logo (the site emblem: navy plate, gold bolts, factory + solar icons
-	# and the three-row wordmark). It floats ABOVE the button frame, spanning the left column.
+	# The three-hex metal logo (TITLE_LOGO): the wordmark in brass on the top hex, the factory in
+	# copper and the windmills in silver below. It floats ABOVE the button frame, in the left column.
 	var logo := TextureRect.new()
 	logo.texture = TITLE_LOGO
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED

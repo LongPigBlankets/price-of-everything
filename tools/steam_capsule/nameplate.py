@@ -57,17 +57,20 @@ from mathutils import Matrix, Vector
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 ap = argparse.ArgumentParser()
 ap.add_argument("--out", required=True)
-ap.add_argument("--plate", choices=("hexbar", "single", "hex", "honeycomb", "honeycomb-wide"), default="honeycomb-wide",
+ap.add_argument("--plate", choices=("hexbar", "single", "trio", "hex", "honeycomb", "honeycomb-wide"),
+                default="honeycomb-wide",
                 help="hexbar: CARBON on a navy plate, a hex of coal with AND on a silver plaque, CAPITAL on a navy "
-                     "plate, in a row (owner); single: one regular hex, CARBON over AND over CAPITAL (owner)")
+                     "plate, in a row (owner); single: one regular hex, CARBON over AND over CAPITAL (owner); "
+                     "trio: the single hex over a copper factory hex and a silver windmills hex (owner)")
 ap.add_argument("--carbon", choices=("brass", "whitehot", "coals", "heat", "forge", "ember"), default="brass",
                 help="brass: raised brass as CAPITAL is (owner); whitehot: solid raised letters glowing white, a "
                      "little melted where they meet the plate (owner, after a player found the coal letters hard "
                      "to read); coals: built of lumps of coal")
-ap.add_argument("--and", dest="and_", choices=("coal", "silver", "stamped"), default=None,
+ap.add_argument("--and", dest="and_", choices=("coal", "silver", "stamped", "embossed"), default=None,
                 help="AND: built of coal in a bright silver dish sunk into the plate (the wide honeycomb's "
-                     "default; owner), raised brushed silver, or stamped into the plate in silver (the single "
-                     "hex's default; owner)")
+                     "default; owner), raised brushed silver, stamped into the plate in silver (the single "
+                     "hex's default; owner), or raised as high as the words in the trio's polished silver "
+                     "(the trio's default; owner)")
 ap.add_argument("--sun", choices=("low", "high"), default="low",
                 help="with --light topleft: low (about 39 degrees up, v11; owner's choice) or high (about "
                      "66, lighting the face head-on, v13)")
@@ -97,6 +100,10 @@ ap.add_argument("--light", choices=("right", "topleft"), default="right",
                 help="where all the light comes from: the right, or the top left")
 ap.add_argument("--res", default=None, help="default: 1900x2200 for the hex, 2200x1900 for the honeycomb")
 ap.add_argument("--samples", type=int, default=160)
+ap.add_argument("--copper-aged", choices=("on", "off"), default="on",
+                help="the copper aged as on the owner's worn copper sheet (v21); off: v20's plain brushing")
+ap.add_argument("--copper", default=None, help="the trio's copper as r,g,b (linear), in place of COPPER "
+                                                "(owner: browner versions to compare)")
 ap.add_argument("--save", default=None, help="also save the scene to this .blend")
 args = ap.parse_args(argv)
 
@@ -158,6 +165,95 @@ LETTER_BEVEL_BRASS = 0.036                     # CARBON's and CAPITAL's bevel (o
 # the words; and how deep AND is stamped
 SINGLE_A, SINGLE_AND_H, SINGLE_WORD_GAP, STAMP_DEPTH = 3.4, 0.62, 0.24, 0.035
 HEXBAR_AND = args.hexbar_and
+# the three hexes (--plate trio; owner): the gap between them; how far the icons keep inside
+# their rims; the copper. Copper is redder and paler than the brass, as real copper's
+# reflectance is (0.95, 0.64, 0.54), pushed to the copper wire icon's orange (owner).
+TRIO_GAP = 0.20
+# the icons and their rims one height, so they join flush (owner: merged seamlessly), and
+# bevelled together after they are joined
+TRIO_TOP, TRIO_BEVEL = 0.14, 0.032
+TRIO_FILL_OVER = 0.03                           # the fill under an icon's ground runs this far up into it
+TRIO_ICON_REACH = 0.5                           # the icons grown till they reach this share into their rims (owner)
+# the copper's and silver's roughness and its wear (owner: polished, then less reflective:
+# 0.10 mirrored the strips crisp and near white; at 0.25 they were gone, a satin)
+TRIO_POLISH = (0.18, (0.03, 0.03))
+# brushed (owner): streaks to a unit across the grain, how much longer than wide, and how
+# far they vary the roughness and darken the colour; the bump; the anisotropy
+# (owner: stronger, on all three; v14 had 0.06, 0.12 and 0.02, and the brass unbrushed)
+BRUSH_LINES, BRUSH_STRETCH, BRUSH_ROUGH, BRUSH_SHADE, BRUSH_BUMP, BRUSH_ANISO = 60.0, 40.0, 0.10, 0.24, 0.045, 0.5
+TRIO_LIGHT = 1.30                               # every lamp on the trio this strong (owner: 10% less, then 20% more twice)
+# The navy is plastic (owner: it should catch some light too): satin, no enamel coat, and it
+# sees the strips, through a set of its own TRIO_STRIP_PLASTIC as bright as the metals'. A
+# plastic scatters a lamp as well as mirroring it, so it greys fast: at 4 times this the
+# navy went grey.
+TRIO_PLASTIC_ROUGH, TRIO_STRIP_PLASTIC = 0.30, 0.40
+# Polished, a flat face seen head-on mostly mirrors the dim world above it, so a strong lamp
+# of their own over the bottom row lights the copper and silver alone: watts to a unit of its
+# area, set (with COPPER) so the copper's faces render as the copper wire's lit tone,
+# (204, 126, 84) in g_007_copper_wiring.png (owner: the copper wire's colour)
+TRIO_LAMP = 64.0
+# and this far past the metal all round. Further (5.0, brighter to match) its grazing light
+# bounced off the metal's sides and lit a halo round every edge on the navy; narrowing its
+# spread instead concentrated it and blew the metals out.
+TRIO_LAMP_PAST = 4.0                            # (owner: a larger light; 1.6 to v17)
+# The lamps over the top left (owner, v19: the top-left third of the logo almost evenly lit,
+# the light falling off from the middle third toward the bottom right): the broad lamp, the
+# navy's copy and the brass's lamp are one large rectangle turned 45 degrees, its far edge
+# a diagonal (bottom left to top right) TRIO_LAMP_EDGE of the way along the logo's diagonal
+# from its top-left corner, reaching TRIO_LAMP_DEPTH back from that edge and TRIO_LAMP_ALONG
+# along it, each as bright to a unit of its area as before. A polished face lights where
+# the lamp hangs over it, so the logo is lit evenly up to near that edge and falls off past
+# it, as softly as the metals' roughness and the lamp's height spread it.
+TRIO_LAMP_CORNER, TRIO_LAMP_EDGE, TRIO_LAMP_DEPTH, TRIO_LAMP_ALONG = True, 0.33, 30.0, 40.0
+# Past its edge the light falls off gradually, not at once (one edge left the silver hex and
+# the copper's foot dark): TRIO_FALL_BANDS bands abut it across the rest of the diagonal,
+# each dimmer, easing down to TRIO_FALL_FLOOR of its brightness at the far corner, and on
+# past it at that; the metals' roughness blurs the steps into one gradient.
+TRIO_FALL_BANDS, TRIO_FALL_FLOOR = 8, 0.35
+# The navy's top-left lamp (the round plate lamp, whose small hot spot in the corner was the
+# light the owner saw falling off too soon) is laid out the same way, TRIO_PLATE_GAIN as
+# bright to a unit of its area as it was.
+TRIO_PLATE_GAIN = 0.3
+# Strip lights over the copper and silver (owner): long thin lamps, parallel, running at
+# TRIO_STRIP_ANGLE (degrees from level; -45 runs from the top left down to the bottom right,
+# with the light), TRIO_STRIP_GAP apart and TRIO_STRIP_W wide, TRIO_STRIP_Z up, each this
+# bright to a unit of its area. Seen straight down, a flat polished face mirrors what is
+# straight above it, so each strip lies across the metal as a band of light where it hangs,
+# softened by the polish and the height; the bevels catch them as moving glints. The broad
+# lamp stays under them, dimmer (TRIO_LAMP_UNDER of TRIO_LAMP), for the metal between.
+# Low (2.5 up, 0.45 wide) the bands were crisp; the owner asked for them softer, so they
+# hang 4 up and 0.9 wide, and dimmer. Their light is kept to TRIO_STRIP_SPREAD degrees
+# round straight down, or its grazing light bounced off the metal's sides and lit a halo
+# round every edge. The top hex's brass has strips of its own in the same places, far
+# dimmer (TRIO_STRIP_BRASS of them): rougher, it spreads a strip across whole letters, and
+# much brighter than 0.5 W to a unit of area it turned them pale (owner: the strips on the
+# top hex too).
+# Rougher, the metal gathers the lamps' light from far wider, so both the strips and the
+# lamp under them are a tenth of what the 0.10 polish wanted (TRIO_STRIP 12, under 0.70).
+TRIO_STRIP_ANGLE, TRIO_STRIP_GAP, TRIO_STRIP_W, TRIO_STRIP_Z, TRIO_STRIP = -45.0, 2.6, 0.9, 4.0, 1.2
+TRIO_STRIP_BRASS = 0.40                         # of TRIO_STRIP: the brass's strips as bright as before
+TRIO_STRIP_SPREAD = 70.0
+TRIO_LAMP_UNDER = 0.07
+# One large lamp instead (owner, after v16: back to a single large lamp for the logo): the
+# strips are off, and the broad lamp alone lights the copper and silver (TRIO_LAMP_METAL, as
+# bright to a unit of its area), a copy of it in its place the plastic navy
+# (TRIO_LAMP_PLASTIC), and the brass keeps its own wide lamp, TRIO_BRASS_GAIN as bright.
+# Each surface is lit by that one lamp only: linked to two lamps at once (the copper and
+# silver were on the brass lamp too), a surface took far less of the second lamp's light
+# than it should, so the levels could not be set. TRIO_STRIPS brings the strips back.
+TRIO_STRIPS = False
+TRIO_LAMP_METAL, TRIO_LAMP_PLASTIC, TRIO_BRASS_GAIN = 2.1, 0.85, 1.9
+# the owner's worn copper sheet's orange brown (owner, v21, from v21a/v21b): its middle tone
+# (149, 82, 25) against the photo's (154, 81, 33). Before it v20's warm brown, (0.62, 0.28,
+# 0.09), and the copper wire's orange, (0.98, 0.31, 0.12).
+COPPER = (0.48, 0.15, 0.04)
+# the copper aged as on the owner's worn copper sheet (owner: that colour, more grain; v21a
+# chosen over v21b's stronger rose tarnish, 0.9 toward (0.50, 0.80, 2.6) times the copper):
+# its tarnish turns toward TARNISH times the copper; --copper-aged off gives v20's plain brushing
+COPPER_AGED = dict(grain=1.6, scratch=0.12, tarnish=0.7, tarnish_scale=0.8, tint=(0.55, 0.85, 1.8))
+TRIO_SILVER = (0.95, 0.97, 1.0, 1)
+TRIO_TRACE_EPS = 0.0045                         # the icons' traces simplified to this (their height 1): ~1.5 source px
+SINGLE = args.plate in ("single", "trio")       # the word hex as the single plate draws it
 # the hex bar (--plate hexbar; owner): the hex's side and the plates' height; CARBON's letters'
 # width; the words' gap from the hex; its coal's lumps; the silver plaque (width, height, cut
 # corners), its underside and top; AND's height on it and how deep it is engraved
@@ -353,6 +449,38 @@ def layout_single():
                                                        reach - 2 * w3, reach - w3, reach]),
                                           square=(("bl",), (), (), (), (), (), ()),
                                           base=floor, top=lambda x: -base, bends=floor_bends)))
+
+
+def layout_trio():
+    """Three regular hexes (owner): the single hex's words on top, and under it, side by side,
+    the game's factory in copper on the left and its wind turbines, made a pair, in silver
+    on the right. All three are SINGLE_A wide and TRIO_GAP apart, each its own navy plate
+    with its own rim in its own metal; the word hex keeps its brass and its silver AND."""
+    L_ = layout_single()
+    a = SINGLE_A
+    rv = a * 2 / math.sqrt(3)
+    step = 2 * a + TRIO_GAP                                   # centre to centre, neighbours
+    dx, dy = step / 2, -step * math.sqrt(3) / 2
+    # each icon slid to a third touch (owner): the factory down and to the right, along the
+    # sides its smoke and its foot touch, till its foot's right end meets the lower right
+    # side; the windmills up between the upright sides, till the tall blade meets the top
+    L_["trio"] = [dict(name="factory", cell=hex_cell(-dx, dy, a, rv), metal="copper", toward=(0.866, -0.5)),
+                  dict(name="windmills", cell=hex_cell(dx, dy, a, rv), metal="silver", toward=(0.0, 1.0),
+                       ground_as="factory")]
+    pts = L_["outline"] + [p for h in L_["trio"] for p in h["cell"]]
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    L_["frame_outline"] = pts
+    cx, cy, w, h = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, max(xs) - min(xs), max(ys) - min(ys)
+    L_["centre"] = (cx, cy)
+    # the single hex's lamps, over all three: the brass-only lamp as bright to a unit of its
+    # area, the plate lamp at the top left of the whole as it is of the one hex
+    (_, _, bz), (sx, sy), bw = BRASS_LAMP_SINGLE
+    m_ = 2 * TRIO_LAMP_PAST
+    L_["brass_lamp"] = ((cx, cy, bz), (w + m_, h + m_), bw / (sx * sy) * (w + m_) * (h + m_))
+    px, py, pz = PLATE_LAMP[0]
+    k = w / (2 * a)
+    L_["plate_lamp"] = ((cx + px * k, cy + py * k, pz), PLATE_LAMP[1] * k, PLATE_LAMP[2] * k * k)
+    return L_
 
 
 def layout_honeycomb_wide():
@@ -597,7 +725,7 @@ def grime(nt, rgb, into, dark=0.22, reach=0.12):
     nt.links.new(mix.outputs[2], into)
 
 
-def brass_mat(name="brass", rough=0.28, tone=1.0, vary=(0.08, 0.12), grain=18.0, metal=1.0):
+def brass_mat(name="brass", rough=0.28, tone=1.0, vary=(0.08, 0.12), grain=18.0, metal=1.0, rgb=None):
     """Brass: its roughness varies by `vary` below and above `rough`, in a noise of scale
     `grain`, as wear; a high light turns a wide variation blotchy, so it wants a narrow one.
     Wholly metallic (`metal` 1), a flat face seen head-on reflects only what is above it and
@@ -605,7 +733,7 @@ def brass_mat(name="brass", rough=0.28, tone=1.0, vary=(0.08, 0.12), grain=18.0,
     is lit the way the enamel beside it is."""
     m, nt, b = node_mat(name)
     b.inputs["Metallic"].default_value = metal
-    grime(nt, tuple(c * tone for c in BRASS), b.inputs["Base Color"])
+    grime(nt, tuple(c * tone for c in (rgb or BRASS)), b.inputs["Base Color"])
     noise = nt.nodes.new("ShaderNodeTexNoise")
     noise.inputs["Scale"].default_value = grain
     noise.inputs["Detail"].default_value = 8.0
@@ -621,12 +749,116 @@ def brass_mat(name="brass", rough=0.28, tone=1.0, vary=(0.08, 0.12), grain=18.0,
     return m
 
 
-def enamel_mat(name, rgb, rough=0.32):
+def brushed_mat(name, rgb, grime_it=False, rough=None, aged=None):
+    """The trio's metals, brushed (owner: a fine-grained brushed finish, as on a
+    brushed steel plate): wholly metal, its grain running level across the plate. Long, fine
+    streaks (a noise stretched BRUSH_STRETCH times along the grain, BRUSH_LINES of them to a
+    unit across it, a few pixels apart in the render) vary its roughness by BRUSH_ROUGH and
+    its colour by BRUSH_SHADE, and raise a faint bump; and it is anisotropic along the grain
+    (BRUSH_ANISO), so the strips' light smears across it as on brushed metal rather than
+    lying on it as a reflection. Copper takes the brass's grime in its crevices.
+
+    `aged` (owner, the copper, after a reference of a worn copper sheet): its grain `grain`
+    times as strong; sparse bright scratches along the grain (a noise stretched further and
+    thresholded), smoother by `scratch` and a little lighter; and broad soft tarnish, patches
+    `tarnish_scale` to a unit where up to `tarnish` of it turns a duller rose brown (the
+    reference's darker bands: redder dark, less saturated) and a little rougher."""
+    m, nt, b = node_mat(name)
+    b.inputs["Metallic"].default_value = 1.0
+    coord = nt.nodes.new("ShaderNodeTexCoord")
+    mapping = nt.nodes.new("ShaderNodeMapping")
+    mapping.inputs["Scale"].default_value = (BRUSH_LINES / BRUSH_STRETCH, BRUSH_LINES, 1.0)
+    nt.links.new(coord.outputs["Object"], mapping.inputs["Vector"])
+    streak = nt.nodes.new("ShaderNodeTexNoise")
+    streak.inputs["Scale"].default_value = 1.0
+    streak.inputs["Detail"].default_value = 12.0
+    streak.inputs["Roughness"].default_value = 0.65
+    nt.links.new(mapping.outputs["Vector"], streak.inputs["Vector"])
+
+    def spread(lo, hi):
+        r = nt.nodes.new("ShaderNodeMapRange")
+        r.inputs["From Min"].default_value, r.inputs["From Max"].default_value = 0.3, 0.7
+        r.inputs["To Min"].default_value, r.inputs["To Max"].default_value = lo, hi
+        nt.links.new(streak.outputs["Fac"], r.inputs["Value"])
+        return r.outputs["Result"]
+    rough_ = TRIO_POLISH[0] if rough is None else rough
+    g_ = aged["grain"] if aged else 1.0
+    rough_out = spread(rough_ - BRUSH_ROUGH * g_, rough_ + BRUSH_ROUGH * g_)
+    shade = nt.nodes.new("ShaderNodeMix")
+    shade.data_type, shade.blend_type = 'RGBA', 'MULTIPLY'
+    shade.inputs["Factor"].default_value = 1.0
+    nt.links.new(spread(1.0 - min(0.9, BRUSH_SHADE * g_), 1.0), shade.inputs[7])
+    if grime_it:
+        grime(nt, rgb, shade.inputs[6])
+    else:
+        shade.inputs[6].default_value = (*rgb[:3], 1)
+    colour = shade.outputs[2]
+    if aged:
+        def mrange(src, f0, f1, t0, t1):
+            r = nt.nodes.new("ShaderNodeMapRange")
+            r.clamp = True
+            r.inputs["From Min"].default_value, r.inputs["From Max"].default_value = f0, f1
+            r.inputs["To Min"].default_value, r.inputs["To Max"].default_value = t0, t1
+            nt.links.new(src, r.inputs["Value"])
+            return r.outputs["Result"]
+
+        def maths(op, a_, b_):
+            n_ = nt.nodes.new("ShaderNodeMath")
+            n_.operation = op
+            for sock, v in zip(n_.inputs, (a_, b_)):
+                if isinstance(v, float):
+                    sock.default_value = v
+                else:
+                    nt.links.new(v, sock)
+            return n_.outputs["Value"]
+        # the scratches: finer and far longer than the grain, and only their crests
+        smap = nt.nodes.new("ShaderNodeMapping")
+        smap.inputs["Scale"].default_value = (BRUSH_LINES * 1.7 / 240.0, BRUSH_LINES * 1.7, 1.0)
+        nt.links.new(coord.outputs["Object"], smap.inputs["Vector"])
+        snoise = nt.nodes.new("ShaderNodeTexNoise")
+        snoise.inputs["Scale"].default_value, snoise.inputs["Detail"].default_value = 1.0, 2.0
+        nt.links.new(smap.outputs["Vector"], snoise.inputs["Vector"])
+        scratch = mrange(snoise.outputs["Fac"], 0.64, 0.72, 0.0, 1.0)
+        rough_out = maths('SUBTRACT', rough_out, maths('MULTIPLY', scratch, aged["scratch"]))
+        lift = nt.nodes.new("ShaderNodeMix")
+        lift.data_type, lift.blend_type = 'RGBA', 'ADD'
+        nt.links.new(maths('MULTIPLY', scratch, 0.6), lift.inputs["Factor"])
+        nt.links.new(colour, lift.inputs[6])
+        lift.inputs[7].default_value = (rgb[0] * 0.35, rgb[1] * 0.35, rgb[2] * 0.35, 1)
+        # the tarnish: broad soft patches, duller and rose
+        tnoise = nt.nodes.new("ShaderNodeTexNoise")
+        tnoise.inputs["Scale"].default_value = aged["tarnish_scale"]
+        tnoise.inputs["Detail"].default_value = 3.0
+        nt.links.new(coord.outputs["Object"], tnoise.inputs["Vector"])
+        tarn = mrange(tnoise.outputs["Fac"], 0.42, 0.62, 0.0, aged["tarnish"])
+        dull = nt.nodes.new("ShaderNodeMix")
+        dull.data_type, dull.blend_type = 'RGBA', 'MIX'
+        nt.links.new(tarn, dull.inputs["Factor"])
+        nt.links.new(lift.outputs[2], dull.inputs[6])
+        tint = aged["tint"]
+        dull.inputs[7].default_value = (rgb[0] * tint[0], rgb[1] * tint[1], min(1.0, rgb[2] * tint[2]), 1)
+        colour = dull.outputs[2]
+        rough_out = maths('ADD', rough_out, maths('MULTIPLY', tarn, 0.12))
+    nt.links.new(rough_out, b.inputs["Roughness"])
+    nt.links.new(colour, b.inputs["Base Color"])
+    bump = nt.nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = BRUSH_BUMP * g_
+    nt.links.new(streak.outputs["Fac"], bump.inputs["Height"])
+    nt.links.new(bump.outputs["Normal"], b.inputs["Normal"])
+    b.inputs["Anisotropic"].default_value = BRUSH_ANISO
+    grain = nt.nodes.new("ShaderNodeCombineXYZ")
+    grain.inputs["X"].default_value = 1.0                       # the grain runs level
+    nt.links.new(grain.outputs["Vector"], b.inputs["Tangent"])
+    return m
+
+
+
+def enamel_mat(name, rgb, rough=0.32, coat=0.5):
     """Stove enamel: a glossy coat over a colour, with a faint orange peel and grime."""
     m, nt, b = node_mat(name)
     grime(nt, rgb, b.inputs["Base Color"], dark=0.45, reach=0.15)
     b.inputs["Roughness"].default_value = rough
-    b.inputs["Coat Weight"].default_value = 0.5
+    b.inputs["Coat Weight"].default_value = coat
     b.inputs["Coat Roughness"].default_value = 0.12
     peel = nt.nodes.new("ShaderNodeTexNoise")
     peel.inputs["Scale"].default_value = 90.0
@@ -2100,12 +2332,16 @@ else:
     # a little shinier than v26 (owner): smoother, with narrower wear
     brass = brass_mat(rough=0.21, vary=(0.05, 0.08))
     brass_dark = brass_mat("brass_dark", rough=0.32, tone=0.70, vary=(0.05, 0.08))
-navy = enamel_mat("navy_enamel", NAVY)
+if args.plate == "trio":
+    # the top hex's brass brushed as the copper and silver are (owner), at its own roughness
+    brass = brushed_mat("brass", BRASS, grime_it=True, rough=0.21)
+navy = (enamel_mat("navy_plastic", NAVY, rough=TRIO_PLASTIC_ROUGH, coat=0.0) if args.plate == "trio"
+        else enamel_mat("navy_enamel", NAVY))
 cream = enamel_mat("cream_enamel", CREAM, rough=0.28)
 soot = enamel_mat("soot", (0.02, 0.02, 0.025), rough=0.6)
-L = {"hexbar": layout_hexbar, "single": layout_single, "hex": layout_hex, "honeycomb": layout_honeycomb,
-     "honeycomb-wide": layout_honeycomb_wide}[args.plate]()
-AND_STYLE = args.and_ or ("stamped" if args.plate == "single" else "coal")
+L = {"hexbar": layout_hexbar, "single": layout_single, "trio": layout_trio, "hex": layout_hex,
+     "honeycomb": layout_honeycomb, "honeycomb-wide": layout_honeycomb_wide}[args.plate]()
+AND_STYLE = args.and_ or ("embossed" if args.plate == "trio" else "stamped" if SINGLE else "coal")
 SOLID = args.carbon in ("coals", "whitehot", "brass")         # CARBON with no brass outline
 ANGULAR = 1 if SOLID else None                                 # blockier, angular letters
 
@@ -2405,6 +2641,8 @@ elif L.get("silver_and") and AND_STYLE == "stamped":
     cutter.hide_render = cutter.hide_viewport = True
     word("AND", "AND", word_font, L["silver_and"], 0.004, 0.0, dish_silver_mat(), base=-STAMP_DEPTH,
          spacing=1.08, resolution=ANGULAR, fit=fit_)
+elif L.get("silver_and") and AND_STYLE == "embossed":
+    pass                                                       # with the trio's metals, below
 elif L.get("silver_and"):
     # AND in capitals, the words' own blocky, angular face, raised in brushed silver and
     # bevelled so its edges catch the light (owner).
@@ -2509,10 +2747,13 @@ def game_icon(name, cx, cy, box, depth, bevel, mat):
     return mob
 
 
-def fit_in(points, poly):
+def fit_in(points, poly, toward=None):
     """The largest scale k, and the move t, at which the points, scaled by k and moved by t,
     all lie in the convex polygon poly (counter-clockwise). By halving k: at each, the moves
-    that fit are the polygon pulled in, edge by edge, by the points' reach past it."""
+    that fit are the polygon pulled in, edge by edge, by the points' reach past it. Held by
+    two parallel sides, the points can still slide between them at that scale: the move is
+    the middle of the slide, or with `toward` (a direction) its far end that way, where they
+    touch a third side too."""
     edges = []
     for i in range(len(poly)):
         (ax, ay), (bx, by) = poly[i], poly[(i + 1) % len(poly)]
@@ -2533,6 +2774,8 @@ def fit_in(points, poly):
         mid = (lo + hi) / 2
         lo, hi = (mid, hi) if moves(mid) else (lo, mid)
     reg = moves(lo)
+    if toward:
+        return lo, max(reg, key=lambda p: p[0] * toward[0] + p[1] * toward[1])
     return lo, (sum(p[0] for p in reg) / len(reg), sum(p[1] for p in reg) / len(reg))
 
 
@@ -2587,6 +2830,193 @@ for i, (kind, cx, cy, scale) in enumerate(L["icons"]):
 
 
 # ------------------------------------------------------------------ light and camera
+def simplify_loop(pts, eps):
+    """Douglas-Peucker on a closed loop, split at its two farthest-apart points."""
+    def dp(seq):
+        if len(seq) < 3:
+            return seq
+        (x0, y0), (x1, y1) = seq[0], seq[-1]
+        L_ = math.hypot(x1 - x0, y1 - y0) or 1e-9
+        d = [abs((y1 - y0) * x - (x1 - x0) * y + x1 * y0 - y1 * x0) / L_ for x, y in seq]
+        k = max(range(len(seq)), key=d.__getitem__)
+        return dp(seq[:k + 1])[:-1] + dp(seq[k:]) if d[k] > eps else [seq[0], seq[-1]]
+    far = max(range(len(pts)), key=lambda k: (pts[k][0] - pts[0][0]) ** 2 + (pts[k][1] - pts[0][1]) ** 2)
+    out = dp(pts[:far + 1])[:-1] + dp(pts[far:] + [pts[0]])[:-1]
+    return out if len(out) >= 3 else pts
+
+
+def smooth_outline(poly, corner=50.0, long_=0.02, passes=3):
+    """A traced outline with the pixel steps taken out, for the trio, where the icons stand
+    four times the honeycomb's size and the trace's steps showed through the bevel: simplified
+    (TRIO_TRACE_EPS), which straightens each staircase, then rounded by corner-cutting
+    (Chaikin), all but its real corners: points that turn the outline more than `corner`
+    degrees between two edges both longer than `long_` (the roofs, the windows), which stay
+    sharp. The short-edged turns, the hubs and the smoke, come out round again."""
+    pts = simplify_loop([tuple(p) for p in poly], TRIO_TRACE_EPS)
+    n = len(pts)
+    keep = []
+    for i in range(n):
+        (ax, ay), (bx, by), (cx_, cy_) = pts[i - 1], pts[i], pts[(i + 1) % n]
+        d0, d1 = math.atan2(by - ay, bx - ax), math.atan2(cy_ - by, cx_ - bx)
+        turn = abs((math.degrees(d1 - d0) + 180.0) % 360.0 - 180.0)
+        keep.append(turn > corner and math.hypot(bx - ax, by - ay) > long_ and math.hypot(cx_ - bx, cy_ - by) > long_)
+    for _ in range(passes):
+        out, kout = [], []
+        n = len(pts)
+        for i in range(n):
+            (px, py), (qx, qy) = pts[i], pts[(i + 1) % n]
+            if keep[i]:
+                out.append((px, py))
+                kout.append(True)
+            out.append((0.75 * px + 0.25 * qx, 0.75 * py + 0.25 * qy))
+            out.append((0.25 * px + 0.75 * qx, 0.25 * py + 0.75 * qy))
+            kout += [False, False]
+        pts, keep = out, kout
+    return pts
+
+
+def section_loops(ob, z):
+    """The closed outlines where the plane at height z cuts a mesh object, as lists of (x, y)."""
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    cut = bmesh.ops.bisect_plane(bm, geom=list(bm.verts) + list(bm.edges) + list(bm.faces), dist=1e-6,
+                                 plane_co=(0.0, 0.0, z), plane_no=(0.0, 0.0, 1.0))
+    edges = [e for e in cut["geom_cut"] if isinstance(e, bmesh.types.BMEdge)]
+    nbr = {}
+    for e in edges:
+        a, b = e.verts
+        nbr.setdefault(a, []).append(b)
+        nbr.setdefault(b, []).append(a)
+    loops, seen = [], set()
+    for start in nbr:
+        if start in seen:
+            continue
+        loop, prev, v = [], None, start
+        while v not in seen:
+            seen.add(v)
+            loop.append((v.co.x, v.co.y))
+            nxt = [w for w in nbr[v] if w is not prev and w not in seen]
+            if not nxt:
+                break
+            prev, v = v, nxt[0]
+        if len(loop) >= 3:
+            loops.append(loop)
+    bm.free()
+    return loops
+
+
+TRIO_FEET = {}                                  # each trio icon's ground, above its hex's middle
+
+
+def clip_convex(poly, region):
+    """The part of a polygon inside a convex region (counter-clockwise), edge by edge."""
+    for i in range(len(region)):
+        (ax, ay), (bx, by) = region[i], region[(i + 1) % len(region)]
+        L_ = math.hypot(bx - ax, by - ay)
+        n = ((by - ay) / L_, -(bx - ax) / L_)                   # outward
+        poly = clip_halfplane(poly, n, n[0] * ax + n[1] * ay)
+        if len(poly) < 3:
+            return []
+    return poly
+
+
+def trio_piece(h, mat):
+    """One of the trio's lower hexes' metal (owner): its rim and its game icon as one piece,
+    merged seamlessly where they meet (owner). The icon is grown as large as it fits,
+    reaching TRIO_ICON_REACH into the rim where it touches it, and slid along h["toward"]
+    till it touches the rim in three places (owner: the factory down and to the right).
+    The two are joined in plan first: tall blocks of the rim and the icon, staggered in
+    height so no faces lie in one plane (which a boolean mishandles), are unioned and cut
+    level through the middle, and the cut's outlines are the joined shape. That shape is
+    then extruded and bevelled once, as the words are (curve_mesh), so its polished bevel
+    runs on unbroken round each join. A union of the finished parts left a groove where the
+    two chamfers met; bevelling the union afterwards failed on the traced icon's short edges."""
+    name, cell = h["name"], h["cell"]
+    J = json.load(open(os.path.join(ICON_DIR, name + ".json")))
+    polys = [smooth_outline(poly) for poly in J["polygons"]]
+    reach = inset(cell, RIM_W * (1 - TRIO_ICON_REACH))
+    k, (tx, ty) = fit_in([p for poly in polys for p in poly], reach, toward=h.get("toward"))
+    cy = sum(p[1] for p in cell) / len(cell)
+    y_low = min(y for poly in polys for _, y in poly)
+    if h.get("ground_as"):
+        # its ground as high in its hex as another's (owner: the windmills down, so the silver
+        # under them is as large as the copper under the factory), and whatever then crosses
+        # the rim (the ground's ends) trimmed to it, where it joins the rim anyway
+        ty = cy + TRIO_FEET[h["ground_as"]] - k * y_low
+    TRIO_FEET[name] = ty + k * y_low - cy
+    polys = [clip_convex([(tx + x * k, ty + y * k) for x, y in poly], reach) for poly in polys]
+    polys = [poly for poly in polys if poly]
+    tx, ty, k = 0.0, 0.0, 1.0                                   # the outlines are placed now
+    block = slab("join_" + name, cell, 0.0, 1.0, None, hole=inset(cell, RIM_W))
+    # the hex below the icon's ground filled with the metal (owner): from the ground's foot,
+    # a little up into it, down to the rim's middle
+    y_foot = min(ty + y * k for poly in polys for _, y in poly)
+    fill = slab("fill_" + name, clip_halfplane(inset(cell, RIM_W * (1 - TRIO_ICON_REACH)), (0.0, 1.0),
+                                               y_foot + TRIO_FILL_OVER), -0.3, 0.7, None)
+    cu = bpy.data.curves.new("icon_" + name, 'CURVE')
+    cu.dimensions = '2D'
+    cu.fill_mode = 'BOTH'
+    for poly in polys:
+        sp = cu.splines.new('POLY')
+        sp.points.add(len(poly) - 1)
+        for pt, (x, y) in zip(sp.points, poly):
+            pt.co = (tx + x * k, ty + y * k, 0.0, 1.0)
+        sp.use_cyclic_u = True
+    icon = curve_mesh("icon_" + name, cu, 0.0, 0.0, 1.0, 0.0, None, base=-0.5, weld=True)
+    # the plain fill first, then the icon: the other way round the windmills' rim was lost
+    for part in (fill, icon):
+        union = block.modifiers.new(part.name, 'BOOLEAN')
+        union.operation, union.object, union.solver = 'UNION', part, 'EXACT'
+        union.use_self = union.use_hole_tolerant = True      # the traced icons are not all watertight
+    bpy.context.view_layer.update()
+    me = bpy.data.meshes.new_from_object(block.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    block.modifiers.clear()
+    block.data = me
+    loops = section_loops(block, 0.25)
+    for ob in (block, icon, fill):
+        bpy.data.objects.remove(ob, do_unlink=True)
+    xs = [p[0] for lp in loops for p in lp]
+    hx = [p[0] for p in cell]
+    if not loops or abs(min(xs) - min(hx)) > 1e-3 or abs(max(xs) - max(hx)) > 1e-3:
+        raise RuntimeError("TRIO %s: the rim and icon did not join (%d outlines)" % (name, len(loops)))
+    shape = bpy.data.curves.new("trio_" + name, 'CURVE')
+    shape.dimensions = '2D'
+    shape.fill_mode = 'BOTH'
+    for lp in loops:
+        sp = shape.splines.new('POLY')
+        sp.points.add(len(lp) - 1)
+        for pt, (x, y) in zip(sp.points, lp):
+            pt.co = (x, y, 0.0, 1.0)
+        sp.use_cyclic_u = True
+    piece = curve_mesh("trio_" + name, shape, 0.0, 0.0, TRIO_TOP - BODY_Z0 - 2 * TRIO_BEVEL, TRIO_BEVEL, mat,
+                       base=BODY_Z0, offset=-TRIO_BEVEL, bevel_res=3)
+    # its level faces flat-shaded and only the bevel smooth: smooth, the fills' broad faces
+    # took the bevel's tilt across their long triangles and showed streaks
+    for p in piece.data.polygons:
+        p.use_smooth = abs(p.normal.z) < 0.999
+    print("TRIO %s, its ground %.2f below its hex's middle; one piece with its rim: %d outlines, %d faces" % (
+        name, -TRIO_FEET[name], len(loops), len(piece.data.polygons)))
+    return piece
+
+
+if L.get("trio"):
+    # polished (owner); the silver cooler than AND's, so the warm lamps leave it silver
+    # rather than pewter
+    copper_rgb = tuple(float(v) for v in args.copper.split(",")) if args.copper else COPPER
+    trio_mats = {"copper": brushed_mat("copper", copper_rgb, grime_it=True,
+                                       aged=COPPER_AGED if args.copper_aged == "on" else None),
+                 "silver": brushed_mat("trio_silver", TRIO_SILVER)}
+    for h in L["trio"]:
+        mat = trio_mats[h["metal"]]
+        slab("plate_body_" + h["name"], inset(h["cell"], RIM_W), BODY_Z0, 0.0, navy)
+        trio_piece(h, mat)
+    if AND_STYLE == "embossed":
+        # AND raised as high as the words, with their bevel, in the windmills' polished silver
+        # (owner), lit by the trio's lamp as the windmills are
+        word("AND", "AND", word_font, L["silver_and"], 0.16, cap_bevel, trio_mats["silver"], offset=-cap_in,
+             spacing=1.08, resolution=ANGULAR, bevel_res=cap_res)
+
+
 def area(name, loc, size_, energy, colour):
     lamp = bpy.data.lights.new(name, 'AREA')
     lamp.size, lamp.energy, lamp.color = size_, energy, colour
@@ -2633,7 +3063,7 @@ else:
         # two thirds, and every brass face under it mirrors the same, the right third still
         # falling off to the deeper gold. It lights only the brass (light linking, below), or
         # the navy under it would take a grey sheen; the round lamp keeps the navy's.
-        (bx, by, bz), (sx, sy), bw = L.get("brass_lamp") or (BRASS_LAMP_SINGLE if args.plate == "single"
+        (bx, by, bz), (sx, sy), bw = L.get("brass_lamp") or (BRASS_LAMP_SINGLE if SINGLE
                                                                else BRASS_LAMP)
         brass_lamp = bpy.data.lights.new("brass_lamp", 'AREA')
         brass_lamp.shape, brass_lamp.size, brass_lamp.size_y = 'RECTANGLE', sx, sy
@@ -2664,7 +3094,10 @@ if glowing:
 if "brass_lamp" in scene.objects:
     # the wide lamp lights the brass alone (and the hex bar's silver AND, whose flat faces, fully
     # metal, would otherwise mirror the dark above them and read grey), the round one the rest
-    BRASS_LAMP_LIGHTS = ("brass", "brass_dark") + (("brushed_silver",) if L.get("coal_hex") else ())
+    BRASS_LAMP_LIGHTS = (("brass", "brass_dark") + (("brushed_silver",) if L.get("coal_hex") else ())
+                         + (("copper", "trio_silver") if L.get("trio") and TRIO_STRIPS else ()))
+    if L.get("trio") and not TRIO_STRIPS:
+        scene.objects["brass_lamp"].data.energy *= TRIO_BRASS_GAIN
     brassy = {ob.name for ob in scene.objects if ob.type == 'MESH' and
               any(m and m.name.split(".")[0] in BRASS_LAMP_LIGHTS for m in ob.data.materials)}
     only_brass, but_brass = bpy.data.collections.new("brass_lit"), bpy.data.collections.new("plate_lit")
@@ -2672,7 +3105,114 @@ if "brass_lamp" in scene.objects:
         if ob.type == 'MESH':
             (only_brass if ob.name in brassy else but_brass).objects.link(ob)
     scene.objects["brass_lamp"].light_linking.receiver_collection = only_brass
-    scene.objects["plate_lamp"].light_linking.receiver_collection = but_brass
+    scene.objects["plate_lamp"].light_linking.receiver_collection = but_brass   # (before the trio copies it)
+    if L.get("trio"):
+        (bx, by, bz), (sx, sy), bw = L["brass_lamp"]
+        cells = L["frame_outline"] if AND_STYLE == "embossed" else [p for h in L["trio"] for p in h["cell"]]
+        xs, ys = [p[0] for p in cells], [p[1] for p in cells]
+        tw, th = max(xs) - min(xs) + 2 * TRIO_LAMP_PAST, max(ys) - min(ys) + 2 * TRIO_LAMP_PAST
+        trio_lamp = bpy.data.lights.new("trio_lamp", 'AREA')
+        trio_lamp.shape, trio_lamp.size, trio_lamp.size_y = 'RECTANGLE', tw, th
+        trio_lamp.energy = (TRIO_LAMP * TRIO_LAMP_UNDER if TRIO_STRIPS else TRIO_LAMP_METAL) * tw * th
+        mx, my = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+        lamps = [link(bpy.data.objects.new("trio_lamp", trio_lamp))]
+        lamps[0].location = (mx, my, bz)
+        brass_strips, plastic_strips = [], []
+        # the strips: across the whole of the metal, through its middle and every
+        # TRIO_STRIP_GAP either side of it, each long enough to cross it all
+        run = math.radians(TRIO_STRIP_ANGLE)
+        across = (-math.sin(run), math.cos(run))
+        reach = math.hypot(tw, th) / 2
+        n = int(reach / TRIO_STRIP_GAP)
+        if not TRIO_STRIPS:
+            # the one lamp's copies for the brass and the navy, where it hangs
+            for name_, radiance, group in (("plastic", TRIO_LAMP_PLASTIC, plastic_strips),):
+                copy_ = trio_lamp.copy()
+                copy_.name = "trio_lamp_" + name_
+                copy_.energy = radiance * tw * th
+                ob_c = link(bpy.data.objects.new(copy_.name, copy_))
+                ob_c.location = lamps[0].location
+                group.append(ob_c)
+        for i in (range(-n, n + 1) if TRIO_STRIPS else ()):
+            strip = bpy.data.lights.new("trio_strip%d" % (i + n), 'AREA')
+            strip.shape, strip.size, strip.size_y = 'RECTANGLE', 2 * reach, TRIO_STRIP_W
+            strip.energy = TRIO_STRIP * 2 * reach * TRIO_STRIP_W
+            strip.spread = math.radians(TRIO_STRIP_SPREAD)
+            ob_ = link(bpy.data.objects.new(strip.name, strip))
+            ob_.location = (mx + across[0] * i * TRIO_STRIP_GAP, my + across[1] * i * TRIO_STRIP_GAP, TRIO_STRIP_Z)
+            ob_.rotation_euler = (0.0, 0.0, run)                    # still facing straight down
+            lamps.append(ob_)
+            dim = strip.copy()
+            dim.name = strip.name + "_brass"
+            dim.energy = strip.energy * TRIO_STRIP_BRASS
+            ob_b = link(bpy.data.objects.new(dim.name, dim))
+            ob_b.location, ob_b.rotation_euler = ob_.location, ob_.rotation_euler
+            brass_strips.append(ob_b)
+            soft = strip.copy()
+            soft.name = strip.name + "_plastic"
+            soft.energy = strip.energy * TRIO_STRIP_PLASTIC
+            ob_p = link(bpy.data.objects.new(soft.name, soft))
+            ob_p.location, ob_p.rotation_euler = ob_.location, ob_.rotation_euler
+            plastic_strips.append(ob_p)
+        metals = bpy.data.collections.new("trio_lit")
+        for ob in scene.objects:
+            if ob.type == 'MESH' and any(m and m.name.split(".")[0] in ("copper", "trio_silver")
+                                         for m in ob.data.materials):
+                metals.objects.link(ob)
+        for ob_ in lamps:
+            ob_.light_linking.receiver_collection = metals
+        brass_lit = bpy.data.collections.new("trio_brass_lit")
+        for ob in scene.objects:
+            if ob.type == 'MESH' and any(m and m.name.split(".")[0] in ("brass", "brass_dark")
+                                         for m in ob.data.materials):
+                brass_lit.objects.link(ob)
+        for ob_ in brass_strips:
+            ob_.light_linking.receiver_collection = brass_lit
+        plastic_lit = bpy.data.collections.new("trio_plastic_lit")
+        for ob in scene.objects:
+            if ob.type == 'MESH' and ob.name.startswith("plate_body"):
+                plastic_lit.objects.link(ob)
+        for ob_ in plastic_strips:
+            ob_.light_linking.receiver_collection = plastic_lit
+        print("TRIO strips: %d, %.1f apart" % (len(lamps) - 1, TRIO_STRIP_GAP) if TRIO_STRIPS else "TRIO one lamp")
+        if TRIO_LAMP_CORNER and not TRIO_STRIPS:
+            dg = (math.sqrt(0.5), -math.sqrt(0.5))                    # top left toward bottom right
+            al = (math.sqrt(0.5), math.sqrt(0.5))                     # along the edge
+            us = [p[0] * dg[0] + p[1] * dg[1] for p in L["frame_outline"]]
+            vs = [p[0] * al[0] + p[1] * al[1] for p in L["frame_outline"]]
+            u_e = min(us) + TRIO_LAMP_EDGE * (max(us) - min(us))
+            v_c = (min(vs) + max(vs)) / 2
+            band = (max(us) - u_e) / TRIO_FALL_BANDS
+            # (from, to, share of the brightness) along the diagonal: the lamp, the bands, and
+            # a last one at the floor on past the corner
+            spans = [(u_e - TRIO_LAMP_DEPTH, u_e, 1.0)]
+            for i in range(TRIO_FALL_BANDS):
+                t = (i + 0.5) / TRIO_FALL_BANDS
+                spans.append((u_e + i * band, u_e + (i + 1) * band,
+                              1.0 - (1.0 - TRIO_FALL_FLOOR) * t * t * (3 - 2 * t)))
+            spans.append((max(us), max(us) + 10.0, TRIO_FALL_FLOOR))
+
+            def place(ob_, u0, u1, radiance):
+                d_ = ob_.data
+                d_.shape, d_.size, d_.size_y = 'RECTANGLE', TRIO_LAMP_ALONG, u1 - u0
+                d_.energy = radiance * TRIO_LAMP_ALONG * (u1 - u0)
+                u_ = (u0 + u1) / 2
+                ob_.location = (u_ * dg[0] + v_c * al[0], u_ * dg[1] + v_c * al[1], ob_.location.z)
+                ob_.rotation_euler = (0.0, 0.0, math.radians(45.0))   # its depth along the diagonal
+            for ob_ in [lamps[0]] + plastic_strips + [scene.objects["brass_lamp"], scene.objects["plate_lamp"]]:
+                d_ = ob_.data
+                area_ = d_.size * d_.size_y if d_.shape == 'RECTANGLE' else math.pi / 4 * d_.size ** 2
+                radiance = d_.energy / area_ * (TRIO_PLATE_GAIN if ob_.name == "plate_lamp" else 1.0)
+                receivers = ob_.light_linking.receiver_collection
+                place(ob_, *spans[0][:2], radiance)
+                for k_, (u0, u1, share) in enumerate(spans[1:]):
+                    nd = d_.copy()
+                    nd.name = "%s_fall%d" % (ob_.name, k_)
+                    nob = link(bpy.data.objects.new(nd.name, nd))
+                    nob.location.z = ob_.location.z
+                    place(nob, u0, u1, radiance * share)
+                    nob.light_linking.receiver_collection = receivers
+            print("TRIO lamps over the top left, edge %.2f along the diagonal" % TRIO_LAMP_EDGE)
     print("BRASS lit by the wide lamp:", len(brassy))
 world = bpy.data.worlds.new("world")
 scene.world = world
@@ -2680,12 +3220,16 @@ world.use_nodes = True
 world.node_tree.nodes["Background"].inputs[0].default_value = (0.12, 0.11, 0.10, 1)
 world.node_tree.nodes["Background"].inputs[1].default_value = 0.8
 
-res_x, res_y, ortho = framing(outline)
+if args.plate == "trio":
+    for ob in scene.objects:
+        if ob.type == 'LIGHT':
+            ob.data.energy *= TRIO_LIGHT
+res_x, res_y, ortho = framing(L.get("frame_outline", outline))
 cam_data = bpy.data.cameras.new("cam")
 cam_data.type = 'ORTHO'
 cam_data.ortho_scale = ortho
 cam = link(bpy.data.objects.new("cam", cam_data))
-cam.location = (0.0, 0.0, 30.0)
+cam.location = (*L.get("centre", (0.0, 0.0)), 30.0)
 scene.camera = cam
 scene.render.resolution_x, scene.render.resolution_y = res_x, res_y
 scene.render.film_transparent = True

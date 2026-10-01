@@ -11,6 +11,17 @@ and what is still open.
 
 ## Where it ended up
 
+- **The game's logo now: three hexes.** The owner's latest design (1 Oct 2026), and the one on
+  the main menu in place of the old Canva emblem. CARBON AND CAPITAL in brushed brass with a
+  silver AND on the top hex; below it, the game's own factory icon in an aged orange-brown
+  copper on the left and its wind turbine, made a pair, in silver on the right. Each icon is
+  one piece with its rim and with the metal that fills the hex under it; the navy is a satin
+  plastic; one large lamp over the top left lights it evenly across its top-left third and
+  falls off toward the bottom right. `--plate trio` in `nameplate.py`, and `game_logo.py`
+  makes the game's `assets/ui/title_logo_trio.png` from the render.
+  <img src="renders/review/nameplate_trio_v21_on_navy.png" width="45%"> <img src="renders/review/mock_trio_v21.png" width="53%">
+  ![The main menu with the three-hex logo](renders/review/main_menu_trio_logo.png)
+
 - **Nameplate, the key asset: the hex bar.** CARBON and CAPITAL in raised brass on two navy
   plates with octagonal ends, either side of a regular hex filled with coal, with AND in
   silver on the coal. One brass rim runs round the whole piece.
@@ -134,6 +145,13 @@ blender -b --factory-startup --python tools/steam_capsule/nameplate.py -- --plat
     --light topleft --res 3300x1020 --out "$PWD/tools/steam_capsule/renders/nameplate.png"
 python3 tools/steam_capsule/nameplate_finish.py tools/steam_capsule/renders/nameplate.png
 
+# the three-hex logo (the game's), laid on navy, and the game's title logo from it
+blender -b --factory-startup --python tools/steam_capsule/nameplate.py -- --plate trio \
+    --carbon brass --light topleft --out "$PWD/tools/steam_capsule/renders/nameplate_trio.png"
+python3 tools/steam_capsule/nameplate_finish.py tools/steam_capsule/renders/nameplate_trio.png
+python3 tools/steam_capsule/game_logo.py tools/steam_capsule/renders/nameplate_trio.png \
+    price-of-everything-0.1/assets/ui/title_logo_trio.png
+
 # the two together
 python3 tools/steam_capsule/compose_capsule.py tools/steam_capsule/renders/earth_plate_print.png \
     tools/steam_capsule/renders/nameplate.png tools/steam_capsule/renders/mock.png \
@@ -153,8 +171,8 @@ art and the version sheet.
 
 ## Open
 
-- Choose between the hex bar and the two badges, or keep one per slot: the bar for wide
-  slots, a badge for tall ones.
+- The three-hex logo is the game's now; choose whether the capsule uses it or keeps the hex
+  bar for wide slots.
 - An icon mark for the shortcut and app icons.
 - A wider backdrop for the library hero.
 - The words use a custom octagonal alphabet drawn in `nameplate.py`, so the lettering does
