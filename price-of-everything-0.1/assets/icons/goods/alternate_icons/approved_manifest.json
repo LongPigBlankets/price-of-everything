@@ -9,6 +9,7 @@
     "basic_salt",
     "chem_salts",
     "chlorine",
+    "circuit_board",
     "coal",
     "computer",
     "concrete",
@@ -1625,6 +1626,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_041_cpu.png",
       "source": "goods_cpu/v5",
       "sha256": "381b4e5acf4c9f37f17d38486d73bc9f611f1c71bbfae2b4a0b37b109a2b5d50",
+      "installed_default": true
+    },
+    {
+      "good": "circuit_board",
+      "good_id": "g_043",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_043_circuit_board.png",
+      "source": "goods_circuit_board/v6",
+      "sha256": "a9c2f8171f465cfc99e90d129503c037b91facedd86c71cc84a248ac61aa4917",
+      "installed_default": true
+    },
+    {
+      "good": "circuit_board",
+      "good_id": "g_043",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_043_circuit_board.png",
+      "source": "goods_circuit_board/v6",
+      "sha256": "af511a1dceb472a3d4c70ce3e729f234890389c908492628288e9112cc152264",
+      "installed_default": true
+    },
+    {
+      "good": "circuit_board",
+      "good_id": "g_043",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_043_circuit_board.png",
+      "source": "goods_circuit_board/v6",
+      "sha256": "71fa2b557ea3fcd53b40b9804207e99a4adfb616c492b4739847c2d79f1d8a33",
       "installed_default": true
     }
   ]
