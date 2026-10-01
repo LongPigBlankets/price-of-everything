@@ -18,7 +18,7 @@ func _test_new_tariffs_and_power_exclusion() -> void:
 	for item in [["solid_light", "cpu", 0.025], ["safe_liquid", "pure_water", 0.08], ["hazard_liquid", "chlorine", 0.15], ["gas", "oxygen", 0.2]]:
 		var gid := str(Catalog.get_good_by_internal_name(str(item[1])).id)
 		var quote := Service.Contract.quote("buy", [{"good":gid,"quantity":10}], snapshot, 1.5, Service.goods())
-		_check(quote.ok and absf(float(quote.fee)-10*(0.005*float(snapshot[gid].reference)+float(item[2])*1.5)) < 0.000001, "new cargo tariff: "+str(item[0]))
+		_check(quote.ok and absf(float(quote.fee)-10*(float(snapshot[gid].port_charge)+float(item[2])*1.5)) < 0.000001, "new cargo tariff: "+str(item[0]))
 	var electricity := str(Catalog.get_good_by_internal_name("power").id)
 	_check(not Service.goods().has(electricity), "grid electricity excluded from material price basket")
 	var waste := str(Catalog.get_good_by_internal_name("waste_water").id)
@@ -215,8 +215,8 @@ func _test_start_one_off_charge_is_paid_once() -> void:
 	var charges: Array = (SaveLoad.expand_start_config(cfg).get("match", {}) as Dictionary).get("one_off_charges", [])
 	_check(charges.size() == 1 and int(charges[0].turn) == 1 and is_equal_approx(float(charges[0].amount), 100.0)
 		and str(charges[0].label) == "Opening costs", "Glass Merchant books £100 of opening costs on turn 1")
-	_check(float(cfg.get("money", 0)) == 400.0 and float((cfg.get("loans", [{}]) as Array)[0].get("principal", 0)) == 2000.0,
-		"Glass Merchant opens with £400 and a £2,000 loan")
+	_check(float(cfg.get("money", 0)) == 600.0 and float((cfg.get("loans", [{}]) as Array)[0].get("principal", 0)) == 1200.0,
+		"Glass Merchant opens with £600 and a £1,200 loan")
 	setup(1)
 	MatchState.one_off_charges = [{"turn": 1, "amount": 100.0, "label": "Opening costs"}]
 	var cash := MatchState.money

@@ -58,7 +58,7 @@ func _test_two_part_freight_tariff() -> void:
 	for gid in ["g_006", "g_038", "g_027"]:
 		var cls := Catalog.get_transport_class(gid)
 		var flat: float = EconomyConfig.transport_cost_per_unit_turn(cls)
-		var av: float = float(EconomyConfig.TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS[cls])
+		var av: float = EconomyConfig.TRANSPORT_COST_SCALE * float(EconomyConfig.TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS[cls])
 		var want: float = flat + av * MarketState.get_base_price_now(gid)
 		_check(absf(EconomyConfig.transport_rate_for_good(gid) - want) < 0.0001,
 			"%s freight = flat %.3f + %.4f x base price" % [Catalog.get_internal_name(gid), flat, av])

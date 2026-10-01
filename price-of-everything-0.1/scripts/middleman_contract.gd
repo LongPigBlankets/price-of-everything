@@ -2,7 +2,7 @@ extends RefCounted
 ## Phase-0 pure contract. No autoload, trade execution, loans, stock or turn hooks.
 ## Production integration and authoritative holdings/settlement remain phase 1.
 const VERSION := 1
-const TARIFF_ID := "middleman_dynamic_v1"
+const TARIFF_ID := "middleman_port_plus_haulage_v2"
 const AD_VALOREM := 0.005
 const CLASS_RATES := {"solid_light": 0.025, "solid_heavy": 0.08, "ultra_heavy": 0.6, "safe_liquid": 0.08, "hazard_liquid": 0.15, "gas": 0.2}
 const PROTOTYPE_GOODS := ["g_006", "g_007", "g_008"]
@@ -51,7 +51,10 @@ static func quote(side: String, lines: Array, prices: Dictionary, coefficient: f
 		var qty := int(quantities[good])
 		var unit := float(p.buy if side == "buy" else p.sale)
 		var value := qty * unit
-		var service := qty * (AD_VALOREM * float(p.reference) + float(CLASS_RATES[cargo]) * coefficient)
+		# The port's base charge on the unit (its ad valorem and weight charge), then the intermediary's haulage by
+		# weight and the tile's remoteness. A snapshot without a port charge takes the ad valorem on its reference.
+		var port_part := float(p.port_charge) if p.has("port_charge") else AD_VALOREM * float(p.reference)
+		var service := qty * (port_part + float(CLASS_RATES[cargo]) * coefficient)
 		goods_value += value
 		fee += service
 		items.append({"good":good,"quantity":qty,"unit_price":unit,"fee_reference":float(p.reference),"goods_value":value,"fee":service})

@@ -305,6 +305,7 @@ static func prices() -> Dictionary:
 		var good: Dictionary = Catalog.get_good(gid)
 		result[gid] = {"reference":MarketState.get_price(gid),"buy":MarketState.get_buy_price(gid),
 			"sale":MarketState.get_sale_price(gid,{"good_id":gid,"good_internal":str(good.get("internal_name", ""))}),
+			"port_charge":TransportState.base_port_charge_per_unit(gid),
 			"transport_class":str(good.get("transport_class", "")), "is_buyable":bool(good.get("is_buyable", false)), "is_sellable":bool(good.get("is_sellable", false))}
 	return result
 
