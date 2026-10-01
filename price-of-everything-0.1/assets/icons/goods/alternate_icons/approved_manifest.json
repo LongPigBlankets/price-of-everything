@@ -7,6 +7,7 @@
     "aluminium",
     "ammonia",
     "basic_salt",
+    "building_frame",
     "chem_salts",
     "chlorine",
     "circuit_board",
@@ -1653,6 +1654,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_043_circuit_board.png",
       "source": "goods_circuit_board/v6",
       "sha256": "71fa2b557ea3fcd53b40b9804207e99a4adfb616c492b4739847c2d79f1d8a33",
+      "installed_default": true
+    },
+    {
+      "good": "building_frame",
+      "good_id": "g_023",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_023_building_frame.png",
+      "source": "goods_building_frame/v5",
+      "sha256": "26dfc7eb07dc7758fced67a7a19656f93e516447813c0c7765d7c67bf14594ee",
+      "installed_default": true
+    },
+    {
+      "good": "building_frame",
+      "good_id": "g_023",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_023_building_frame.png",
+      "source": "goods_building_frame/v5",
+      "sha256": "076d7976f49d919022d4b207ba09ec811a2196142c82481fedfffce67be7d509",
+      "installed_default": true
+    },
+    {
+      "good": "building_frame",
+      "good_id": "g_023",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_023_building_frame.png",
+      "source": "goods_building_frame/v5",
+      "sha256": "3da40f43b8a952aa4795c80560b73f2503cd932656eadbb689b405b75d665556",
       "installed_default": true
     }
   ]
