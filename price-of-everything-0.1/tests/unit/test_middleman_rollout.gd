@@ -216,8 +216,16 @@ func _test_start_one_off_charge_is_paid_once() -> void:
 	var charges: Array = (SaveLoad.expand_start_config(cfg).get("match", {}) as Dictionary).get("one_off_charges", [])
 	_check(charges.size() == 1 and int(charges[0].turn) == 1 and is_equal_approx(float(charges[0].amount), 100.0)
 		and str(charges[0].label) == "Opening costs", "Glass Merchant books £100 of opening costs on turn 1")
-	_check(float(cfg.get("money", 0)) == 600.0 and float((cfg.get("loans", [{}]) as Array)[0].get("principal", 0)) == 1200.0,
-		"Glass Merchant opens with £600 and a £1,200 loan")
+	var start_loans: Array = (SaveLoad.expand_start_config(cfg).get("loans", {}) as Dictionary).get("loans", [])
+	_check(float(cfg.get("money", 0)) == 600.0 and start_loans.size() == 2
+		and float(start_loans[0].principal_initial) == 1200.0 and int(start_loans[0].grace_remaining) == 0
+		and float(start_loans[1].principal_initial) == 1200.0 and int(start_loans[1].grace_remaining) == 36,
+		"Glass Merchant opens with £600, a £1,200 loan and a second £1,200 that falls due as the first is repaid")
+	# The deferred loan pays nothing in grace, then the same instalment the first one paid.
+	var deferred: Dictionary = start_loans[1]
+	_check(float(deferred.payment_per_turn) == 0.0 and is_equal_approx(float(deferred.principal_remaining), 1200.0)
+		and is_equal_approx(float(deferred.total_repayment), float(start_loans[0].principal_remaining)),
+		"a start loan with grace_turns pays nothing until its grace runs out")
 	setup(1)
 	MatchState.one_off_charges = [{"turn": 1, "amount": 100.0, "label": "Opening costs"}]
 	var cash := MatchState.money
