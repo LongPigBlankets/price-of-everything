@@ -215,8 +215,8 @@ func _test_start_one_off_charge_is_paid_once() -> void:
 	var charges: Array = (SaveLoad.expand_start_config(cfg).get("match", {}) as Dictionary).get("one_off_charges", [])
 	_check(charges.size() == 1 and int(charges[0].turn) == 1 and is_equal_approx(float(charges[0].amount), 100.0)
 		and str(charges[0].label) == "Opening costs", "Glass Merchant books £100 of opening costs on turn 1")
-	_check(float(cfg.get("money", 0)) == 400.0 and float((cfg.get("loans", [{}]) as Array)[0].get("principal", 0)) == 2000.0,
-		"Glass Merchant opens with £400 and a £2,000 loan")
+	_check(float(cfg.get("money", 0)) == 400.0 and float((cfg.get("loans", [{}]) as Array)[0].get("principal", 0)) == 1000.0,
+		"Glass Merchant opens with £400 and a £1,000 loan")
 	setup(1)
 	MatchState.one_off_charges = [{"turn": 1, "amount": 100.0, "label": "Opening costs"}]
 	var cash := MatchState.money

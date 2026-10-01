@@ -11,12 +11,11 @@
 	"opening_batches": 0,
 	"money": 400,
 	"one_off_charges": [{ "turn": 1, "amount": 100, "label": "Opening costs" }],
-	"steady_profit_per_turn": 29,
-	"loans": [ { "principal": 2000 } ],
+	"steady_profit_per_turn": 31,
+	"loans": [ { "principal": 1000 } ],
 	"buildings": [
 		{ "building_id": "b_001", "recipe_id": "r_018", "tile_id": "tile_19_15", "output_to": "market" },
-		{ "building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_18_16", "output_to": "market" },
-		{ "building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_18_16", "output_to": "market" },
+		{ "building_id": "b_001", "recipe_id": "r_018", "tile_id": "tile_19_15", "output_to": "market" },
 		{ "building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_18_16", "output_to": "market" },
 		{ "building_id": "b_007", "recipe_id": "r_056", "tile_id": "tile_18_16", "output_to": "market", "opening_batches": 1 }
 	],
