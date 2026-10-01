@@ -322,6 +322,9 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 			protected += Production._calculate_labour_cost(b, Catalog.get_recipe(str(b.recipe_id)))
 	var reserved_power := 0.0
 	var reserved_draw := {}
+	# What the turn's batches borrow, taken as one loan once every batch is planned. The first batch to borrow
+	# draws at least the minimum loan; the rest add only their shortfall, out of what is already drawn first.
+	var borrowed := 0.0
 	# Batches are funded all or nothing, so on a tight turn the order decides which buildings run. The one
 	# that earns most on its batch goes first (a windows factory before the furnaces that feed it), then the
 	# build order, so a shortfall stops the least profitable batch instead of the best one.
@@ -394,18 +397,14 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 			plan_required[gid] = int(bridge[gid])
 			plan_held[gid] = 0
 		var plan := Contract.plan_batch(plan_required,plan_held,snapshot,float(e.coefficient),{
-			"cash":MatchState.money,"credit_available":maxf(0.0,LoanState.available_capacity()),
-			"commitments":protected+reserved_power,"running_reserve":running,"minimum_loan":EconomyConfig.LOAN_MINIMUM},true,goods())
+			"cash":MatchState.money+borrowed,"credit_available":maxf(0.0,LoanState.available_capacity()-borrowed),
+			"commitments":protected+reserved_power,"running_reserve":running,
+			"minimum_loan":EconomyConfig.LOAN_MINIMUM if borrowed <= 0.0 else 0.0},true,goods())
 		if not bool(plan.ok):
 			e.reason = str(plan.reason)
 			if not bridge.is_empty(): e.bridge_reason = "Fallback purchase refused: " + str(plan.reason).replace("_", " ")
 			continue
-		if float(plan.funding_draw) > 0.0:
-			if not LoanState.take_loan(float(plan.funding_draw)):
-				e.reason = "Funding unavailable."
-				if not bridge.is_empty(): e.bridge_reason = "Fallback purchase refused: funding unavailable."
-				continue
-			summary["middleman_financing"] = float(summary.get("middleman_financing",0.0))+float(plan.funding_draw)
+		borrowed += float(plan.funding_draw)
 		reserved_power += running
 		reserved_draw[tile] = int(reserved_draw.get(tile,0))+draw
 		var q: Dictionary = plan.purchase
@@ -434,6 +433,13 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 		e.receipts.purchase = q.duplicate(true)
 		e.receipts.input_fee = float(q.fee)
 		e.state = "supplied"
+	if borrowed > 0.0:
+		# Every draw was planned inside the capacity left, so the one loan fits. Should capacity have moved under
+		# it, the purchases are already made: book the loan regardless rather than leave them unpaid.
+		if not LoanState.take_loan(borrowed):
+			push_warning("[Middleman] Funding loan of %.2f exceeded capacity; booked as a distress loan" % borrowed)
+			LoanState.take_distress_loan(borrowed)
+		summary["middleman_financing"] = float(summary.get("middleman_financing",0.0))+borrowed
 
 ## What one full batch of `b` earns through the intermediary at `snapshot` prices: the sale of its outputs,
 ## less buying all its inputs (fees included), its labour and its power at the grid price. Held inputs are
@@ -696,6 +702,7 @@ static func company_previews(completing: Array = []) -> Dictionary:
 		return str(a.instance_id)<str(b.instance_id) if ai==bi else ai<bi)
 	var cash := MatchState.money
 	var credit := maxf(0.0,LoanState.available_capacity())
+	var borrowed := 0.0
 	var power_reserved := 0.0
 	var draw_by_tile := {}
 	var snapshot := prices()
@@ -710,13 +717,14 @@ static func company_previews(completing: Array = []) -> Dictionary:
 		var tile := str(b.tile_id)
 		var draw: int = Production._effective_energy_req(b,Catalog.get_recipe(str(b.recipe_id)))
 		var feasible := bool(p.feasible) and int(draw_by_tile.get(tile,0))+draw <= Power.tile_power_cap(tile)
-		var plan := Contract.plan_batch(p.required,p.inputs,snapshot,coefficient(b),{"cash":cash,"credit_available":credit,"commitments":float(p.protected_commitments)+power_reserved,"running_reserve":float(p.labour)+float(p.maintenance)+float(p.power)+float(p.carbon_tax),"minimum_loan":EconomyConfig.LOAN_MINIMUM},feasible,goods())
+		var plan := Contract.plan_batch(p.required,p.inputs,snapshot,coefficient(b),{"cash":cash,"credit_available":credit,"commitments":float(p.protected_commitments)+power_reserved,"running_reserve":float(p.labour)+float(p.maintenance)+float(p.power)+float(p.carbon_tax),"minimum_loan":EconomyConfig.LOAN_MINIMUM if borrowed <= 0.0 else 0.0},feasible,goods())
 		p.can_run = bool(plan.ok)
 		p.reason = ready_message(iid) if bool(plan.ok) else str(plan.get("reason","Unavailable")).replace("_"," ").capitalize()
 		p.funding_draw = float(plan.get("funding_draw",0.0))
 		if bool(plan.ok):
 			cash += float(plan.funding_draw)-float(plan.purchase.cash_out)
 			credit -= float(plan.funding_draw)
+			borrowed += float(plan.funding_draw)
 			power_reserved += float(p.power)+float(p.carbon_tax)
 			draw_by_tile[tile] = int(draw_by_tile.get(tile,0))+draw
 	return result

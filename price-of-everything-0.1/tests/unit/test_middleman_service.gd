@@ -93,6 +93,20 @@ func _test_live_shortage_and_legacy_default() -> void:
 	_check(MatchState.middleman_service.is_empty(),"old port-rate flag never auto-enables middleman service")
 	cleanup()
 
+## Two batches short of cash in one turn borrow through one loan, sized to what both drew, and both still run.
+func _test_funding_draws_one_loan_per_turn() -> void:
+	setup(2)
+	MatchState.money = 0.0
+	var before := MatchState.money
+	Production._process_production()
+	var s: Dictionary = Production.last_turn_summary
+	var financing := float(s.get("middleman_financing", 0.0))
+	var loan_principal: float = float(LoanState.loans[0].principal_initial) if LoanState.loans.size() == 1 else -1.0
+	_check(int(s.sold.get("g_008", {}).get("qty", 0)) == 66 and LoanState.loans.size() == 1 and absf(loan_principal - financing) < 0.0001,
+		"two short batches borrow through one loan of what they drew (%d loans, £%.2f drawn, %d motors sold)" % [LoanState.loans.size(), financing, int(s.sold.get("g_008", {}).get("qty", 0))])
+	_check(absf(MatchState.money - before - Production.cash_change_of(s)) < 0.0001, "the one loan's cash reconciles")
+	cleanup()
+
 func _test_live_funding_and_accounting() -> void:
 	var ids := setup()
 	var b: Dictionary = BuildingState.get_building(str(ids[0]))
