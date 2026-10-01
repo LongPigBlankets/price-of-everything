@@ -16,6 +16,7 @@
     "copper_ore",
     "copper_pipe",
     "copper_wiring",
+    "cpu",
     "crude_oil",
     "electrical_components",
     "ethylene",
@@ -1597,6 +1598,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_057_ev_car.png",
       "source": "goods_ev_car/v6",
       "sha256": "ff3b554856c5e4602ecf1fccbdea9960c02fbf3c327a73108ea97cd1a216139f",
+      "installed_default": true
+    },
+    {
+      "good": "cpu",
+      "good_id": "g_041",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_041_cpu.png",
+      "source": "goods_cpu/v5",
+      "sha256": "c6114a329545f64494eb370a0eefe821c87ee200a4b63f40c34f40c550dfd6c5",
+      "installed_default": true
+    },
+    {
+      "good": "cpu",
+      "good_id": "g_041",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_041_cpu.png",
+      "source": "goods_cpu/v5",
+      "sha256": "c8db63543d387b2f98c2af560a1c733850ca9e6f3e2bc21c05230fa7cfb7293a",
+      "installed_default": true
+    },
+    {
+      "good": "cpu",
+      "good_id": "g_041",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_041_cpu.png",
+      "source": "goods_cpu/v5",
+      "sha256": "381b4e5acf4c9f37f17d38486d73bc9f611f1c71bbfae2b4a0b37b109a2b5d50",
       "installed_default": true
     }
   ]

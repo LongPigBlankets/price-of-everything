@@ -1,0 +1,145 @@
+{
+  "revision": "cpu_v5",
+  "objects": 105,
+  "structural_hosts": [
+    "tray_base",
+    "tray_upper",
+    "tray_rim_back",
+    "tray_rim_br",
+    "tray_rim_tr",
+    "seated_board",
+    "seated_flange",
+    "seated_plateau",
+    "chip_board"
+  ],
+  "topology": "a copper CPU socket tray with a CPU seated in it (silver heat spreader, green board) and a second CPU on its edge against the tray, its gold pad grid to the viewer",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 4
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shaded_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "thresholds": [
+          0.575,
+          0.5,
+          0.3
+        ]
+      }
+    ]
+  },
+  "dimensions": {
+    "tray": {
+      "L": 2.0,
+      "base": 0.22,
+      "top": 0.44,
+      "inset": 0.03,
+      "ring": 0.24,
+      "floor": 0.36,
+      "pocket": 1.22,
+      "pocket_z": 0.28,
+      "r": 0.12,
+      "lug": 0.58,
+      "lug_h": 0.12,
+      "rim_r": 0.3,
+      "arm": 0.3,
+      "notch": 0.08
+    },
+    "chip": {
+      "size": 1.32,
+      "t": 0.05,
+      "lean": 40.0,
+      "y0": -0.6
+    }
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 2.48 x 2.00 x 1.05"
+  ],
+  "mesh_checks": {
+    "tray_base": {
+      "vertices": 40,
+      "faces": 22,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tray_upper": {
+      "vertices": 121,
+      "faces": 66,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tray_rim_back": {
+      "vertices": 116,
+      "faces": 170,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tray_rim_br": {
+      "vertices": 64,
+      "faces": 92,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "tray_rim_tr": {
+      "vertices": 64,
+      "faces": 92,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "seated_board": {
+      "vertices": 24,
+      "faces": 14,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "seated_flange": {
+      "vertices": 32,
+      "faces": 18,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "seated_plateau": {
+      "vertices": 32,
+      "faces": 18,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "chip_board": {
+      "vertices": 40,
+      "faces": 56,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 3.271,
+    "target": [
+      0.306,
+      -0.172,
+      0.45
+    ]
+  }
+}
