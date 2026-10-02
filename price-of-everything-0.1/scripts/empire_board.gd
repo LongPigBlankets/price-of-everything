@@ -16,6 +16,11 @@ extends Control
 
 signal building_picked(iid: String)
 
+## The last three parts of the key art plate's look, each switchable so they can be judged apart.
+static var plate_lamps := true       # street lamps, pools of light before the works, lit windows, bloom
+static var plate_sea := true         # open water pale toward the sun and deep away from it
+static var plate_town := true        # housing on free slots and cars on the streets
+
 const Model := preload("res://scripts/empire_board_model.gd")
 const Pipes := preload("res://scripts/empire_board_pipes.gd")
 const Atlas := preload("res://scripts/empire_board_atlas.gd")
@@ -112,6 +117,16 @@ const _WARM_HUE := 0.17              # yellow-olive; greens beyond it are pulled
 const _WARM_PULL := 0.55
 const _GLINTS_PER_TILE := 16
 const _GLINT := Color(1.0, 0.96, 0.82)
+const _LAMP_GAP := 62.0              # between street lamps
+const _LAMP_HEIGHT := 13.0
+const _LAMP_LIGHT := Color(1.0, 0.70, 0.34)
+const _LAMP_HEAD := Color(1.0, 0.93, 0.72)
+const _CAR_GAP := 150.0              # a stretch carries one car each way for every this much road
+const _CAR_SPEED := 16.0             # map units a second
+const _SEA_PALE := Color(1.0, 0.93, 0.78)
+const _SEA_DEEP := Color(0.03, 0.06, 0.22)
+const _SEA_PALE_ALPHA := 0.26
+const _SEA_DEEP_ALPHA := 0.36
 const _SOOT := Color(0.09, 0.085, 0.08)
 const _WINDOW_DIR := "res://assets/fx/windows/"
 const _WINDOW_LIGHT := Color(1.0, 0.90, 0.66)     # amber-white
@@ -181,6 +196,10 @@ var _baking := false
 static var _ground_textures: Dictionary = {}
 var _fog: Array = []                         # [{at, r, a, phase}] wisps of dirty air, in board space
 var _lights: Array = []                      # [{tex, rect, col, phase}] lit windows and fires
+var _glows: Array = []                       # [{at, rx, ry, a}] pools and blooms of lamp light, in board space
+var _cars: Array = []                        # [{a, b, length, k, colour, phase, pace}]
+var _glow_layer: Control
+static var _glow_tex: GradientTexture2D = null
 static var _window_tex: Dictionary = {}
 static var _wisp: GradientTexture2D = null
 var _glints: Array = []                      # [{at, phase, rate}] where the sun catches water
@@ -221,6 +240,13 @@ class TokenLayer extends Control:
 	var board: Control
 	func _draw() -> void:
 		board.call("_draw_tokens", self)
+
+
+## Draws the lamps' light, added to the picture under it.
+class GlowLayer extends Control:
+	var board: Control
+	func _draw() -> void:
+		board.call("_draw_glows", self)
 
 
 ## Draws the baked pictures of the tiles, one to one with the screen.
@@ -287,6 +313,16 @@ func _ready() -> void:
 	premult.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
 	_bake_layer.material = premult
 	add_child(_bake_layer)
+	# Light is added to what lies under it, so it has a layer of its own.
+	_glow_layer = GlowLayer.new()
+	_glow_layer.set("board", self)
+	_glow_layer.name = "Glow"
+	_glow_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_glow_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var adding := CanvasItemMaterial.new()
+	adding.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	_glow_layer.material = adding
+	add_child(_glow_layer)
 	_tokens = TokenLayer.new()
 	_tokens.set("board", self)
 	_tokens.texture_repeat = CanvasItem.TEXTURE_REPEAT_DISABLED
@@ -328,12 +364,14 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 		return
 	var rivers: Dictionary = _rivers_by_tile(terrain)
 	_rivers = _river_lines(rivers)
-	_model = Model.build(terrain, graph, _true_positions(graph, terrain), _rivers)
+	_model = Model.build(terrain, graph, _true_positions(graph, terrain), _rivers, plate_town)
 	_build_ground(rivers)
 	_build_standing()
 	_build_lines()
 	_build_fog()
+	_build_lamps()
 	_build_trees()
+	_build_cars()
 	_sort_parts()
 	if not _fitted:
 		fit_view()
@@ -646,6 +684,14 @@ func _build_ground(rivers: Dictionary) -> void:
 		for e in rel["sea"]:
 			for piece in _within(e["p"], top_poly, sloped):
 				_poly(verts, cols, idx, piece, h, sea_cols[int(e["b"])])
+		if plate_sea:
+			# The sea takes the light too: pale and warm toward the sun, deep and cold away
+			# from it. Laid over the water only; the land's own pieces are painted after.
+			var sheets: Array = [top_poly] if is_sea else []
+			for e in rel["sea"]:
+				sheets.append_array(_within(e["p"], top_poly, sloped))
+			for sheet in sheets:
+				_poly_lit(verts, cols, idx, sheet, h)
 		if not is_sea:
 			for e in rel["land"]:
 				var col: Color = _warm(band_cols[clampi(int(e["b"]), 0, band_cols.size() - 1)])
@@ -812,6 +858,23 @@ static func _quad_cols(verts: PackedVector3Array, cols: PackedColorArray, idx: P
 		cols.append(colours[i])
 	for i in [0, 1, 2, 0, 2, 3]:
 		idx.append(base + i)
+
+
+## A polygon of open water, each corner coloured by how the light falls there.
+func _poly_lit(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
+		pts: PackedVector2Array, h: float) -> void:
+	var tris := Geometry2D.triangulate_polygon(pts)
+	if tris.is_empty():
+		return
+	var base := verts.size()
+	for p in pts:
+		var q := iso(p, h)
+		var t := _light_at(q)
+		verts.append(Vector3(q.x, q.y, 0.0))
+		cols.append(Color(_SEA_PALE.r, _SEA_PALE.g, _SEA_PALE.b, (t - 0.5) * 2.0 * _SEA_PALE_ALPHA) if t >= 0.5
+			else Color(_SEA_DEEP.r, _SEA_DEEP.g, _SEA_DEEP.b, (0.5 - t) * 2.0 * _SEA_DEEP_ALPHA))
+	for k in tris:
+		idx.append(base + k)
 
 
 ## A polygon already in board space.
@@ -1036,11 +1099,13 @@ func _build_standing() -> void:
 			d["rect"] = Rect2(origin + used.position * k, used.size * k)
 			# Its windows and fires, lit where the air on its tile is dirty.
 			var tile_d: Dictionary = (_model["tiles"] as Dictionary).get(d["tile"], {})
-			if int(tile_d.get("polluters", 0)) > 0 and str(d["kind"]) != "pylon":
+			if (plate_lamps or int(tile_d.get("polluters", 0)) > 0) and str(d["kind"]) != "pylon":
 				var win: Texture2D = _window_mask(tex)
 				if win != null:
-					_lights.append({"tex": win, "rect": d["tex_rect"], "col": _WINDOW_LIGHT,
-						"phase": float(_lights.size()) * 1.7})
+					# In clean air the windows show brightest where the light is failing.
+					var lit := 1.0 if int(tile_d.get("polluters", 0)) > 0 else lerpf(0.95, 0.4, _light_at(d["at"]))
+					_lights.append({"tex": win, "rect": d["tex_rect"], "phase": float(_lights.size()) * 1.7,
+						"col": Color(_WINDOW_LIGHT.r, _WINDOW_LIGHT.g, _WINDOW_LIGHT.b, lit)})
 				var fire: Texture2D = EmpireFx.light_mask_for(str(d.get("internal_name", "")),
 					EmpireFx.anchor_level(str(d.get("internal_name", "")), int(d["level"])))
 				if fire != null and str(d["kind"]) == "building":
@@ -1246,6 +1311,110 @@ func _build_fog() -> void:
 					continue
 				h = float(tiles[over]["height"])
 			_fog.append({"at": iso(p, h + lift), "r": r, "a": strength * f * _FOG_TILE_ALPHA, "phase": phase})
+
+
+## Street lamps along the streets in use, a pool of light before each works, and the glow of
+## lit windows. The lamp posts are part of a tile's picture; the light itself is drawn live,
+## added to what is under it, and is strongest where the sun's light is failing.
+func _build_lamps() -> void:
+	_glows.clear()
+	if not plate_lamps:
+		return
+	var tiles: Dictionary = _model.get("tiles", {})
+	for r in _model.get("roads", []):
+		if str(r["kind"]) == "spur":
+			continue
+		var a: Vector2 = r["a"]
+		var b: Vector2 = r["b"]
+		var length := a.distance_to(b)
+		var n := int(length / _LAMP_GAP)
+		if n < 1:
+			continue
+		var tile := str(r["tile"])
+		var h := float(tiles[tile]["height"])
+		var dir := (b - a) / length
+		# On the far side of the street, so the post stands behind the road it lights.
+		var side := dir.orthogonal()
+		if side.x + side.y > 0.0:
+			side = -side
+		var off := (_ROAD_HALF + 5.0) if int(r["level"]) > 1 else (_DRIVE_HALF + 4.0)
+		for i in range(n):
+			var p := a + dir * ((float(i) + 0.5) * length / float(n)) + side * off
+			if not Geometry2D.is_point_in_polygon(p, tiles[tile].get("top_poly", Model.hex_points(tiles[tile]["center"]))):
+				continue
+			var foot := iso(p, h)
+			var head := iso(p - side * 3.0, h + _LAMP_HEIGHT)
+			_pipe_items.append({"kind": "lamp", "foot": foot, "head": head, "depth": p.x + p.y, "tile": tile})
+			var dark := 1.0 - _light_at(foot)
+			_glows.append({"at": iso(p - side * (off * 0.7), h), "rx": 30.0, "ry": 17.0, "a": 0.20 + 0.34 * dark})
+			_glows.append({"at": head, "rx": 7.0, "ry": 7.0, "a": 0.55 + 0.35 * dark})
+	for s in _standing:
+		if not (str(s["kind"]) in ["building", "warehouse", "house", "port"]):
+			continue
+		var dark := 1.0 - _light_at(s["at"])
+		var side_len := float(s["side"])
+		# The yard before it, toward the street, and a softer bloom over its lit windows.
+		_glows.append({"at": iso((s["pos"] as Vector2) + Vector2(0.0, side_len * 0.62), float(s["h"])),
+			"rx": side_len * 0.85, "ry": side_len * 0.46, "a": (0.16 + 0.30 * dark) * (0.6 if str(s["kind"]) == "house" else 1.0)})
+		var r2: Rect2 = s["rect"]
+		_glows.append({"at": r2.get_center() + Vector2(0.0, r2.size.y * 0.12), "rx": r2.size.x * 0.5, "ry": r2.size.y * 0.42,
+			"a": 0.07 + 0.16 * dark})
+
+
+## Cars on the streets in use: each stretch carries a few, keeping to the left, at their own pace.
+func _build_cars() -> void:
+	_cars.clear()
+	if not plate_town or not _car_kit().ok():
+		return
+	var tiles: Dictionary = _model.get("tiles", {})
+	var n := 0
+	for r in _model.get("roads", []):
+		var a: Vector2 = r["a"]
+		var b: Vector2 = r["b"]
+		var length := a.distance_to(b)
+		if str(r["kind"]) == "spur" or length < _CAR_GAP * 0.6:
+			continue
+		var h := float(tiles[str(r["tile"])]["height"])
+		var dir := (b - a) / length
+		var lane := dir.orthogonal() * (2.6 if int(r["level"]) == 1 else 4.2)
+		for way in [1.0, -1.0]:
+			# One car to a stretch each way, more on a long one, none where the seed says so.
+			for i in range(maxi(1, int(length / _CAR_GAP))):
+				n += 1
+				if hash("car|%d" % n) % 5 < 2:
+					continue
+				var from: Vector2 = (a if way > 0.0 else b) - lane * float(way)
+				var to: Vector2 = (b if way > 0.0 else a) - lane * float(way)
+				_cars.append({"a": iso(from, h + 1.0), "b": iso(to, h + 1.0), "length": length,
+					"k": Pipes.k_of(dir * float(way)), "colour": hash("paint|%d" % n) % 4,
+					"phase": float(hash("start|%d" % n) % 1000) / 1000.0, "pace": _CAR_SPEED * (0.8 + 0.4 * float(n % 5) / 4.0)})
+
+
+static var _cars_atlas: Atlas = null
+static func _car_kit() -> Atlas:
+	if _cars_atlas == null:
+		_cars_atlas = Atlas.new("cars")
+	return _cars_atlas
+
+
+func _draw_cars(layer: Control, view: Rect2) -> void:
+	var kit: Atlas = _car_kit()
+	var tex: Texture2D = kit.texture()
+	if tex == null:
+		return
+	var ppu := kit.px_per_unit()
+	for c in _cars:
+		var t := fmod(float(c["phase"]) + _clock * float(c["pace"]) / float(c["length"]), 1.0)
+		var at: Vector2 = (c["a"] as Vector2).lerp(c["b"], t)
+		var p := at * _zoom + _offset
+		if not view.has_point(p):
+			continue
+		var src := kit.cell("car_%d_%d" % [int(c["colour"]), int(c["k"])])
+		var half := src.size.x * 0.5 / ppu * _zoom
+		# A car fades in and out at the ends of its stretch, where it meets a junction.
+		var fade := clampf(minf(t, 1.0 - t) * 8.0, 0.0, 1.0)
+		layer.draw_texture_rect_region(tex, Rect2(p - Vector2(half, half), Vector2(half, half) * 2.0), src,
+			Color(1.0, 1.0, 1.0, fade))
 
 
 ## Trees: some scattered over each tile, some along the roads. Where a tile's trees might stand
@@ -1621,6 +1790,7 @@ func _process(delta: float) -> void:
 	_clock += delta
 	if has_content():
 		_tokens.queue_redraw()
+		_glow_layer.queue_redraw()
 		if not _baking:
 			var tile := _next_bake()
 			if tile != "":
@@ -1736,7 +1906,8 @@ func _sort_parts() -> void:
 		var parts: Dictionary = _tile_parts[tid]
 		(parts["things"] as Array).sort_custom(func(x: Dictionary, y: Dictionary) -> bool:
 			return float(x["depth"]) < float(y["depth"]))
-		var made: Array = [str(tiles[tid].get("top_poly", "")), float(tiles[tid]["height"]), str(tiles[tid]["type"])]
+		var made: Array = [str(tiles[tid].get("top_poly", "")), float(tiles[tid]["height"]), str(tiles[tid]["type"]),
+			plate_lamps, plate_sea, plate_town]
 		for fit in parts["fits"]:
 			made.append([fit["name"], fit["at"], fit["tint"]])
 		for poly in parts["polys"]:
@@ -1751,7 +1922,7 @@ func _sort_parts() -> void:
 				"standing":
 					made.append([ref["iid"], ref["level"], ref["pos"], ref["side"], ref.get("tint"), ref.get("sprite")])
 				"item":
-					made.append([ref["kind"], ref.get("name", ""), ref.get("at", ref.get("rect", "")), ref.get("points", "")])
+					made.append([ref["kind"], ref.get("name", ""), ref.get("at", ref.get("rect", ref.get("foot", ""))), ref.get("points", "")])
 				"sign":
 					made.append([ref["foot"], ref["icon"]])
 		_tile_sig[tid] = hash(str(made))
@@ -1987,6 +2158,13 @@ func _draw_pipe_item(ci: CanvasItem, item: Dictionary) -> void:
 	if str(item["kind"]) == "tree":
 		ci.draw_texture_rect(item["tex"], item["rect"], false, item["tint"])
 		return
+	if str(item["kind"]) == "lamp":
+		var foot: Vector2 = item["foot"]
+		var head: Vector2 = item["head"]
+		ci.draw_line(foot, Vector2(foot.x, head.y), _INK, 1.3)
+		ci.draw_line(Vector2(foot.x, head.y), head, _INK, 1.3)
+		ci.draw_circle(head, 1.8, _LAMP_HEAD)
+		return
 	var kit: Atlas = item.get("atlas", Pipes.kit())
 	var tex: Texture2D = kit.texture()
 	if tex == null:
@@ -2112,6 +2290,7 @@ func _draw_tokens(layer: Control) -> void:
 	var font := get_theme_default_font()
 	_draw_pipe_flow(layer)
 	_draw_glints(layer, view)
+	_draw_cars(layer, view)
 	_draw_fog(layer, view)
 	_draw_lights(layer, view)
 	_draw_smoke(layer, view)
@@ -2166,6 +2345,31 @@ func _draw_tokens(layer: Control) -> void:
 	_draw_hover(layer)
 
 
+func _draw_glows(layer: Control) -> void:
+	if _glows.is_empty():
+		return
+	if _glow_tex == null:
+		var grad := Gradient.new()
+		grad.set_color(0, Color(1.0, 1.0, 1.0, 1.0))
+		grad.set_color(1, Color(1.0, 1.0, 1.0, 0.0))
+		grad.add_point(0.4, Color(1.0, 1.0, 1.0, 0.42))
+		_glow_tex = GradientTexture2D.new()
+		_glow_tex.gradient = grad
+		_glow_tex.fill = GradientTexture2D.FILL_RADIAL
+		_glow_tex.fill_from = Vector2(0.5, 0.5)
+		_glow_tex.fill_to = Vector2(1.0, 0.5)
+		_glow_tex.width = 128
+		_glow_tex.height = 128
+	var view := Rect2(Vector2.ZERO, size)
+	for g in _glows:
+		var p: Vector2 = (g["at"] as Vector2) * _zoom + _offset
+		var half := Vector2(float(g["rx"]), float(g["ry"])) * _zoom
+		if not view.grow(half.x).has_point(p):
+			continue
+		layer.draw_texture_rect(_glow_tex, Rect2(p - half, half * 2.0), false,
+			Color(_LAMP_LIGHT.r, _LAMP_LIGHT.g, _LAMP_LIGHT.b, float(g["a"])))
+
+
 ## The mist of dirty air: each wisp a soft-edged patch, drifting a little on its own beat.
 func _draw_fog(layer: Control, view: Rect2) -> void:
 	if _fog.is_empty():
@@ -2210,7 +2414,7 @@ func _draw_lights(layer: Control, view: Rect2) -> void:
 			continue
 		var col: Color = l["col"]
 		var glow := 0.86 + 0.14 * sin(_clock * 0.9 + float(l["phase"]))
-		layer.draw_texture_rect(l["tex"], sr, false, Color(col.r, col.g, col.b, glow))
+		layer.draw_texture_rect(l["tex"], sr, false, Color(col.r, col.g, col.b, col.a * glow))
 
 
 ## The sun catching the water: each glint flares and dies on its own beat.

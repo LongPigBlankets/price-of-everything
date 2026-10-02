@@ -35,6 +35,10 @@ func _ready() -> void:
 	ev.call("toggle")
 	await _settle(90)
 	var board: Control = ev.get_node("Board")
+	if OS.get_cmdline_user_args().has("--compare"):
+		await _compare(ev, board, dir)
+		get_tree().quit(0)
+		return
 	var model: Dictionary = board.get("_model")
 	print("BAKES ", (board.get("_bakes") as Dictionary).keys(), " zoom ", board.get("_zoom"),
 		" baking ", board.get("_baking"), " want ", board.call("_bake_zoom"), " next ", board.call("_next_bake"),
@@ -113,6 +117,30 @@ func _seed_movements() -> void:
 	MatchState.queue_buy("tile_10_10", "g_004", 30)
 	var port := str(Catalog.nearest_port_tile("tile_7_9"))
 	MatchState.log_market_sale("tile_7_9", port, "g_006", 25, 2, 100.0)
+
+
+## The same tiles with each of the plate's last three parts off, on alone, and all on.
+func _compare(ev: Node, board: Control, dir: String) -> void:
+	var script: GDScript = board.get_script()
+	var sets := {"none": [false, false, false], "lamps": [true, false, false], "sea": [false, true, false],
+		"town": [false, false, true], "all": [true, true, true]}
+	for frame in [["bench", ["tile_8_9", "tile_9_10", "tile_10_10"]], ["coast", ["tile_5_10", "tile_6_9"]]]:
+		for tag in sets:
+			script.set("plate_lamps", sets[tag][0])
+			script.set("plate_sea", sets[tag][1])
+			script.set("plate_town", sets[tag][2])
+			ev.call("refresh_graph")
+			await _settle(4)
+			var bounds := Rect2()
+			for tid in frame[1]:
+				var r: Rect2 = board.call("_tile_rect", tid)
+				bounds = r if bounds.size == Vector2.ZERO else bounds.merge(r)
+			var zoom := minf(minf((board.size.x - 80.0) / bounds.size.x, (board.size.y - 120.0) / bounds.size.y), 1.2)
+			board.set("_zoom", zoom)
+			board.set("_offset", board.size * 0.5 - bounds.get_center() * zoom)
+			board.call("_view_changed")
+			await _settle(140)
+			_shot("%s%s_%s.png" % [dir, frame[0], tag])
 
 
 func _settle(frames: int) -> void:

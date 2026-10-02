@@ -56,6 +56,8 @@ const RECENT_TURNS := 3
 ## Where the pylon stands: by the tile's far corner, behind the back row of slots.
 const PYLON_AT := Vector2(-121.0, -216.0)
 const PYLON_SIDE := 62.0
+## Homes stood on a tile that has works but is not a town.
+const HOMES_PER_TILE := 3
 ## What standing on a river costs a slot when buildings are placed: more than any distance.
 const WET_COST := 1.0e7
 ## How close a river may come to a pad's centre, beyond the pad's own half-width.
@@ -209,8 +211,9 @@ static func _pt(p: Vector2, tile: String, edge: bool = false) -> Dictionary:
 ## `true_pos` maps a building's iid to where it really stands on the map; it only steers which
 ## slot the building takes. `rivers_by_tile` is tile_id -> [PackedVector2Array]: nothing stands
 ## on a river while a dry place is free.
+## With `town`, housing stands on slots the works leave free.
 static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
-		rivers_by_tile: Dictionary = {}) -> Dictionary:
+		rivers_by_tile: Dictionary = {}, town: bool = false) -> Dictionary:
 	var tiles: Dictionary = {}
 	var by_tile: Dictionary = {}          # tile_id -> [standing dict]
 	var stores: Dictionary = {}           # tile_id -> true: the tile has a warehouse
@@ -443,6 +446,23 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 			door_of[str(td["iid"])] = Streets.nid(Streets.slot_door(int(place["slot"])))
 			spot_of[str(td["iid"])] = Streets.SLOTS[int(place["slot"])]
 			standing.append(td)
+		# Housing: where the works are there are homes. A town tile fills its free slots with
+		# them, any other tile with works takes a few. Each keeps to dry ground.
+		if town and bool(t["store"]) and things.size() <= Streets.SLOTS.size():
+			var homes := 0
+			var limit := Streets.SLOTS.size() if str(t["type"]) == "urban" else HOMES_PER_TILE
+			for place in free:
+				if homes >= limit:
+					break
+				if bool(place["wet"]):
+					continue
+				var hid := "house:%s:%d" % [str(tid), int(place["slot"])]
+				var variety := 1 + (hash(hid) % 3)
+				standing.append({"kind": "house", "iid": hid, "tile": tid, "pos": c + (place["pos"] as Vector2),
+					"sprite": BuildingSprites.texture_for("house", variety), "level": 3, "name": "Housing",
+					"side": float(place["side"]) * FOOT_SHARE, "pad": float(place["side"]), "polluting": false})
+				door_of[hid] = Streets.nid(Streets.slot_door(int(place["slot"])))
+				homes += 1
 		if t.has("pylon"):
 			standing.append({"kind": "pylon", "iid": "pylon:" + str(tid), "tile": tid,
 				"sprite": BuildingSprites.texture_for("pylon", 1), "level": 3, "pos": t["pylon"],
@@ -529,6 +549,12 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 	for f in feeds:
 		if tiles.has(str(f["tile"])) and bool(tiles[str(f["tile"])]["store"]):
 			add_feed.call(str(f["iid"]), str(f["tile"]), str(f["good"]), bool(f["out"]))
+
+	# A home has its own short way onto the street.
+	for st in standing:
+		if str(st["kind"]) == "house":
+			var door := str(door_of[str(st["iid"])])
+			walk.call(str(st["tile"]), route.call(str(st["tile"]), door, str(tiles[str(st["tile"])]["hub_node"])), "roads")
 
 	# Each real movement: its way from tile to tile, and the buildings at either end.
 	var lane_rows: Array = []

@@ -40,7 +40,7 @@ OUTLINE = 2
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--game", required=True)
-    ap.add_argument("--kind", default="pipes", choices=["pipes", "roads"])
+    ap.add_argument("--kind", default="pipes", choices=["pipes", "roads", "cars"])
     ap.add_argument("--raw", default="")
     ap.add_argument("--no-render", action="store_true")
     args = ap.parse_args()
@@ -60,13 +60,17 @@ def main():
     atlas = Image.new("RGBA", (COLS * frame, rows * frame), (0, 0, 0, 0))
     cells = {}
     for i, name in enumerate(names):
-        im = outer_contour(Image.open(os.path.join(raw, name + ".png")).convert("RGBA"), r_out=OUTLINE, rc=9)
+        im = Image.open(os.path.join(raw, name + ".png")).convert("RGBA")
+        if kind != "cars":
+            # A car is too small to carry the heavy outer line; its own fine ink is enough.
+            im = outer_contour(im, r_out=OUTLINE, rc=9)
         if im.size != (frame, frame):
             raise SystemExit("%s is %s, not %d square" % (name, im.size, frame))
         # Clear a border in every cell. Straights run to the edge of their frame, and at a small
         # scale that edge would bleed into the cell beside it; the game never draws this far out.
+        border = BORDER if frame > 128 else 3
         edge = Image.new("RGBA", im.size, (0, 0, 0, 0))
-        edge.paste(im.crop((BORDER, BORDER, frame - BORDER, frame - BORDER)), (BORDER, BORDER))
+        edge.paste(im.crop((border, border, frame - border, frame - border)), (border, border))
         atlas.paste(edge, ((i % COLS) * frame, (i // COLS) * frame))
         cells[name] = [i % COLS, i // COLS]
     out_dir = os.path.join(os.path.abspath(args.game), "assets", "iso", kind)

@@ -66,6 +66,8 @@ BUILDINGS = {
                              "BLDG_offshore_wind"),
     # Not a catalog building: the tile's store, drawn on the supply chain board.
     "warehouse":          _B("warehouse_builder.py", "build_warehouse", "BLDG_warehouse"),
+    # Not catalog buildings: housing the supply chain board stands on unused slots.
+    "house":              _B("housing.py", "build_house", "BLDG_house"),
     "pylon":              _B("pylon_builder.py", "build_pylon", "BLDG_pylon", levels=(), out=(1,)),
     # NOTE: `mine` ships three distinct sprites but has NO mine_builder.py in this checkout,
     # so it cannot be re-baked. SKILL.md documents the builder; the file is missing.
