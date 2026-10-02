@@ -152,3 +152,60 @@ func _test_tile_policy_applies_and_reads_back() -> void:
 	_check(bool(back.get("ok", false)) and Service.tile_policy_active(tile, "input", "middleman", ids), "inputs turned back to the intermediary")
 	_check(Service.active() and Service.global_market_open() == ResearchState.global_trade_license_available(), "the market opens with the license in an intermediary game")
 	cleanup()
+
+
+## Before their research, the routes off the intermediary are closed in the service itself, whatever a
+## control asks for. Each opens with its own unlock.
+func _test_routes_stay_locked_until_their_research() -> void:
+	var ids := setup()
+	var iid: String = ids[0]
+	open_routes(false, false)
+	var managed: Dictionary = Service.set_mode(iid, "output", "managed")
+	_check(not bool(managed.ok) and Service.side_all_middleman(iid, "output"), "outputs cannot leave the intermediary before any unlock (%s)" % str(managed.get("reason", "")))
+	_check(not bool(Service.set_good_mode(iid, "input", "g_006", "managed").ok), "one input cannot leave the intermediary either")
+	_check(not bool(Service.apply_tile_policy("tile_5_4", "input", "stockpile", ids).ok) and not bool(Service.apply_tile_policy("tile_5_4", "output", "market", ids).ok),
+		"the tile-wide switch is refused too")
+	_check(bool(Service.set_mode(iid, "output", "middleman").ok), "staying with the intermediary is always allowed")
+	open_routes(true, false)
+	_check(bool(Service.set_good_mode(iid, "input", "g_006", "managed").ok), "Open Logistics Contracts opens the tile stockpile")
+	var market: Dictionary = Service.set_input_route(iid, "g_006", "primary", "market")
+	_check(not bool(market.ok) and str(market.get("reason", "")).contains(ResearchState.GLOBAL_TRADE_LICENSE_TITLE), "the market still needs the license (%s)" % str(market.get("reason", "")))
+	open_routes(true, true)
+	_check(bool(Service.set_input_route(iid, "g_006", "primary", "market").ok), "the license opens the market")
+	MatchState.ruleset["logistics_model"] = "legacy"
+	_check(Service.route_lock("market") == "" and Service.route_lock("stockpile") == "", "a game without the intermediary has no locks")
+	cleanup()
+
+## With cash for one batch only, the preview names the same building the turn then funds: the one whose
+## batch earns most (here the later, larger factory), not the one built first.
+func _test_preview_funds_in_the_turns_order() -> void:
+	var ids := setup(2)
+	var later := str(ids[1])
+	BuildingState.get_building(later)["level"] = 2
+	var order: Array = Service.funding_order(BuildingState.buildings.values(), Service.prices())
+	_check(str((order[0] as Dictionary).instance_id) == later, "the larger factory's batch earns most and is funded first")
+	# No borrowing room, and cash for the larger batch alone.
+	LoanState.loans.append({"id": 999, "principal_initial": 1.0e9, "principal_remaining": 1.0e9, "payment_per_turn": 0.0, "turns_remaining": 99, "interest_paid": 0.0, "interest_rate": 0.0})
+	var one: Dictionary = Service.preview_building(BuildingState.get_building(later))
+	MatchState.money = float(one.upfront) + float(one.protected_commitments) + 1.0
+	var previews: Dictionary = Service.company_previews()
+	var ready: Array = ids.filter(func(i: String) -> bool: return bool(previews[i].can_run))
+	_check(ready == [later], "the preview funds the larger factory and refuses the first built (%s)" % str(ready))
+	Production._process_production()
+	var ran: Array = ids.filter(func(i: String) -> bool: return Production.last_turn_run.has(i))
+	_check(ready == ran, "the turn runs the buildings the preview said were ready (%s against %s)" % [str(ready), str(ran)])
+	cleanup()
+
+## What a turn borrows reaches the top bar's notices: the loan's principal is counted, and a loan the
+## intermediary drew for its batches is named as that.
+func _test_loan_notice_counts_the_turns_loan() -> void:
+	setup()
+	var bar: Node = load("res://scripts/top_bar.gd").new()
+	bar.call("_on_loan_taken", {"id": 1, "principal_initial": 55.0})
+	_check(is_equal_approx(float(bar.get("_loan_taken_this_turn")), 55.0), "the loan's principal is what the notice counts")
+	var funded: String = bar.call("loan_notice_text", 55.0, {"middleman_financing": 55.0})
+	var other: String = bar.call("loan_notice_text", 55.0, {"middleman_financing": 0.0})
+	_check(funded.contains("intermediary") and funded.contains("55") and not other.contains("intermediary"),
+		"a loan for the intermediary's batches says so (%s / %s)" % [funded, other])
+	bar.free()
+	cleanup()

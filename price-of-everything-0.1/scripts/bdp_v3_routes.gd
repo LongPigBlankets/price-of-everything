@@ -432,7 +432,8 @@ static func _all_module(panel: Control, building: Dictionary, recipe: Dictionary
 	var goods := "input" if inputs else "output"
 	var choices: Array = [
 		{"id": "each", "icon": _cream(BuildingIcon.clean_texture("b_007", "industrial_factory")), "name": "Each good its own",
-			"detail": "Each %s keeps the route set on its own knob below." % goods},
+			"enabled": Service.route_lock("managed") == "" or not Service.side_all_middleman(iid, side),
+			"detail": ("Each %s keeps the route set on its own knob below." % goods) if Service.route_lock("managed") == "" else Service.route_lock("managed")},
 		{"id": "middleman", "icon": ICON_INTERMEDIARY, "name": "Logistics Intermediary",
 			"detail": "Buys every input privately for this building." if inputs else "Buys all of this building's production. Transport and storage are included."},
 		{"id": "market", "icon": ICON_MARKET, "name": "Global market", "enabled": market_available,

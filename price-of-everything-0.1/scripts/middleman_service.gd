@@ -76,6 +76,7 @@ static func set_mode(iid: String, side: String, mode: String, validate_only: boo
 	if tradeable_goods.is_empty(): return {"ok":false,"reason":"This side has no tradeable materials."}
 	var current_all := tradeable_goods.all(func(gid: String) -> bool: return mode_for(iid, side, gid) == mode)
 	if current_all: return {"ok":true}
+	if mode == "managed" and route_lock("managed") != "": return {"ok":false,"reason":route_lock("managed")}
 	var key := "inputs" if side == "input" else "outputs"
 	var held: Dictionary = e.get(key,{})
 	var opening: Dictionary = e.get("opening_inputs", {}) if side == "input" else {}
@@ -134,6 +135,7 @@ static func set_good_mode(iid: String, side: String, gid: String, mode: String, 
 		e[mode_key] = initialized
 	var current := mode_for(iid, side, gid)
 	if current == mode: return {"ok":true}
+	if mode == "managed" and route_lock("managed") != "": return {"ok":false,"reason":route_lock("managed")}
 	var key := "inputs" if side == "input" else "outputs"
 	var held: Dictionary = e.get(key, {})
 	var opening: Dictionary = e.get("opening_inputs", {}) if side == "input" else {}
@@ -329,17 +331,7 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 	# Batches are funded all or nothing, so on a tight turn the order decides which buildings run. The one
 	# that earns most on its batch goes first (a windows factory before the furnaces that feed it), then the
 	# build order, so a shortfall stops the least profitable batch instead of the best one.
-	var margins := {}
-	for b: Dictionary in buildings:
-		margins[str(b.instance_id)] = batch_margin(b, snapshot)
-	var ordered := buildings.duplicate()
-	ordered.sort_custom(func(a: Dictionary,b: Dictionary) -> bool:
-		var am := float(margins.get(str(a.instance_id), 0.0))
-		var bm := float(margins.get(str(b.instance_id), 0.0))
-		if not is_equal_approx(am, bm): return am > bm
-		var ai := str(a.instance_id).get_slice("_",3).hex_to_int()
-		var bi := str(b.instance_id).get_slice("_",3).hex_to_int()
-		return str(a.instance_id)<str(b.instance_id) if ai==bi else ai<bi)
+	var ordered := funding_order(buildings, snapshot)
 	for b: Dictionary in ordered:
 		var iid := str(b.instance_id)
 		var bridge: Dictionary = bridges.get(iid, {})
@@ -692,22 +684,34 @@ static func enroll_completed(iid: String) -> void:
 		MatchState.middleman_service={"schema":1,"match_id":str(Time.get_unix_time_from_system())+":"+str(Time.get_ticks_usec()),"buildings":{}}
 	MatchState.middleman_service.buildings[iid]={"coefficient":coefficient(b),"recipe_id":str(b.recipe_id),"inputs":{},"outputs":{},"turn":-1,"state":"idle","receipts":{},"input_mode":"middleman","output_mode":"middleman","input_modes":{},"output_modes":{}}
 
-## Allocate previews in the same stable order as resolution; no sale proceeds enter cash.
-static func company_previews(completing: Array = []) -> Dictionary:
-	var result := {}
-	var ordered: Array = BuildingState.buildings.values().filter(func(b: Dictionary) -> bool: return enabled(str(b.instance_id)) and BuildingState.is_player_owned(b))
-	ordered.append_array(completing)
+## The order batches are funded in, for the turn and for its preview alike: the batch that earns most
+## first, then the build order.
+static func funding_order(buildings: Array, snapshot: Dictionary) -> Array:
+	var margins := {}
+	for b: Dictionary in buildings:
+		margins[str(b.instance_id)] = batch_margin(b, snapshot)
+	var ordered := buildings.duplicate()
 	ordered.sort_custom(func(a: Dictionary,b: Dictionary) -> bool:
+		var am := float(margins.get(str(a.instance_id), 0.0))
+		var bm := float(margins.get(str(b.instance_id), 0.0))
+		if not is_equal_approx(am, bm): return am > bm
 		var ai := str(a.instance_id).get_slice("_",3).hex_to_int()
 		var bi := str(b.instance_id).get_slice("_",3).hex_to_int()
 		return str(a.instance_id)<str(b.instance_id) if ai==bi else ai<bi)
+	return ordered
+
+## Allocate previews in the order the turn funds them (funding_order); no sale proceeds enter cash.
+static func company_previews(completing: Array = []) -> Dictionary:
+	var result := {}
+	var candidates: Array = BuildingState.buildings.values().filter(func(b: Dictionary) -> bool: return enabled(str(b.instance_id)) and BuildingState.is_player_owned(b))
+	candidates.append_array(completing)
 	var cash := MatchState.money
 	var credit := maxf(0.0,LoanState.available_capacity())
 	var borrowed := 0.0
 	var power_reserved := 0.0
 	var draw_by_tile := {}
 	var snapshot := prices()
-	for b: Dictionary in ordered:
+	for b: Dictionary in funding_order(candidates, snapshot):
 		var iid := str(b.instance_id)
 		var p := preview_building(b)
 		for upcoming: Dictionary in completing:
@@ -811,6 +815,9 @@ static func set_input_route(iid: String, gid: String, slot: String, source: Stri
 		var remote := source.trim_prefix("tile:")
 		if remote == "" or (not remote.begins_with("tile_")):
 			return {"ok":false, "reason":"Choose a real stockpile endpoint."}
+	if source != str(route.get(slot, "")):
+		var lock := route_lock("market") if source == "market" else (route_lock("stockpile") if source == "stockpile" or source.begins_with("tile:") else "")
+		if lock != "": return {"ok":false, "reason":lock}
 	var next := route.duplicate()
 	next[slot] = source
 	if str(next.get("fallback", "")) == "" and str(next.get("primary", "")) != "middleman" \
@@ -925,6 +932,22 @@ static func active() -> bool:
 static func global_market_open() -> bool:
 	return not active() or ResearchState.global_trade_license_available()
 
+## Why a route is closed in an intermediary game, or "" when it is open. `kind` is "market" (the global
+## market, with the Government Import/Export License), "stockpile" (a tile stockpile, with Open Logistics
+## Contracts) or "managed" (leaving the intermediary at all, which needs one of the two).
+static func route_lock(kind: String) -> String:
+	if not active(): return ""
+	var contracts := ResearchState.open_logistics_contracts_available()
+	var license := ResearchState.global_trade_license_available()
+	match kind:
+		"market":
+			return "" if license else "Needs the %s." % ResearchState.GLOBAL_TRADE_LICENSE_TITLE
+		"stockpile":
+			return "" if contracts else "Needs %s." % ResearchState.OPEN_LOGISTICS_CONTRACTS_TITLE
+		"managed":
+			return "" if contracts or license else "Needs %s or the %s." % [ResearchState.OPEN_LOGISTICS_CONTRACTS_TITLE, ResearchState.GLOBAL_TRADE_LICENSE_TITLE]
+	return ""
+
 ## True when a tile shows its tile-wide logistics controls: an intermediary game, a building here with a
 ## tradeable side (`sides` is tile_sides(tile)), and Open Logistics Contracts.
 static func tile_controls_available(sides: Dictionary) -> bool:
@@ -953,6 +976,8 @@ static func tile_policy_active(tile_id: String, side: String, mode: String, ids:
 ## Route one side of every building in `ids` on `tile_id` by `mode` (as tile_policy_active names them).
 ## A physical input route keeps the intermediary as its fallback. Returns {ok, reason}.
 static func apply_tile_policy(tile_id: String, side: String, mode: String, ids: Array) -> Dictionary:
+	if mode in ["market", "stockpile"] and route_lock(mode) != "":
+		return {"ok": false, "reason": route_lock(mode)}
 	var result: Dictionary = set_tile_mode(tile_id, side, "middleman" if mode == "middleman" else "managed")
 	if not bool(result.get("ok", false)):
 		return {"ok": false, "reason": str(result.get("reason", "Unable to change tile logistics."))}
