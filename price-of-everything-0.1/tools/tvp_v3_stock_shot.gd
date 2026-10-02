@@ -957,7 +957,7 @@ func _no_cover() -> bool:
 func _overlaps(tag: String) -> void:
 	var Section := load("res://scripts/bdp_v3_section.gd")
 	var Key := load("res://scripts/ds2/latch_key.gd")
-	var Parts := load("res://scripts/tvp_v3/stock_parts.gd")
+	var Parts := load("res://scripts/ds2/sheet_parts.gd")
 	var scroll: ScrollContainer = _panel.find_child("BodyScroll", true, false)
 	var pane: Node = (_panel.get("_panes") as Dictionary).get("stock")
 	var view := scroll.get_global_rect()

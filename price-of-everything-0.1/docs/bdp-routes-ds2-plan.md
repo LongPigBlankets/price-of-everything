@@ -29,7 +29,7 @@ Everything is an approved part; nothing new was rendered.
   - Your buildings that make or use it, each with a cream Go to key.
   - At the module's right, beside the words (owner, 26 September), the knob (`rotary_selector.gd`, 80 px, the Stock tab's logistics knobs' look): **Source** for an input, and **Fallback** under it in intermediary games (the primary's own option greyed); **Destination** for an output (Intermediary, Global market, Tile stockpile, Ship to another tile). Locked options are greyed and the readout says which research they need.
 - **All inputs / All outputs** (intermediary games): a first module with one knob, Each good its own, Intermediary, Global market, Tile stockpile, as the v2 sheet's All row.
-- **Split output**: a line a tile, its units a turn typed onto an LED screen's glass (`stock_parts.entry`); 0 shares what is left evenly, the share printed beside it.
+- **Split output**: a line a tile, its units a turn typed onto an LED screen's glass (`ds2/sheet_parts.gd` `entry`); 0 shares what is left evenly, the share printed beside it.
 - **Power**: one module, the bolt and two lines. No knob, no readout.
 - A knob asks for the change and stays where it was; the sheet is rebuilt with the change made, so a refused or cancelled change never leaves a knob pointing at something untrue. Every action is the v2 sheet's own call (`MiddlemanService.set_input_route`, `MatchState.route_output_to_market`, the intermediary confirmation).
 - The plates keep the scroll rail's room at its right whether the rail shows or not.

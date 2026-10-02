@@ -7,14 +7,14 @@ extends Control
 ## `disabled` the cover stays down, the cap is dimmed and unlit, and clicks do nothing.
 ## `cover_changed` says when the cover lifts or drops, so the figure the key spends can say so.
 ## The lifted cover stands `overhang(side)` above the cap: whatever holds the key leaves that much room over
-## it, so the cover never reaches past its module. Its hover is the tab's readout (buildings_tip.gd), in `tip`.
+## it, so the cover never reaches past its module. Its hover is the tab's readout (tip.gd), in `tip`.
 
 signal pressed
 signal cover_changed(open: bool)
 
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 const Light := preload("res://scripts/bdp_v3_light.gd")
-const Tip := preload("res://scripts/tvp_v3/buildings_tip.gd")
+const Tip := preload("res://scripts/ds2/tip.gd")
 ## In the footer's texture pixels (guard_sell*.png, 921 × 228): the cap, and the region drawn round it,
 ## from the lifted cover's top to the closed cover's foot.
 const CAP := Rect2(65, 85, 126, 126)

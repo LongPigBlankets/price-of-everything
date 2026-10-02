@@ -1,5 +1,5 @@
 extends RefCounted
-## Tile view v3, Buildings tab: the hover readout. Building Detail's diagnostics readout (BdpV3Readout: the
+## The DS2 kit's hover readout, first built for tile view v3's Buildings tab. Building Detail's diagnostics readout (BdpV3Readout: the
 ## dark glass screen in its gunmetal bezel) shown at the pointer as the tooltip of a module, a key or a
 ## figure, so what a check found is read where the pointer is, not at the foot of a long case:
 ## - a check: its lamp, "Motor - J: Starting" and the engine's sentence in full;
@@ -74,7 +74,7 @@ class Screen extends MarginContainer:
 	func _init() -> void:
 		name = "BuildingsTip"
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		add_theme_constant_override("margin_top", load("res://scripts/tvp_v3/buildings_tip.gd").DROP)
+		add_theme_constant_override("margin_top", load("res://scripts/ds2/tip.gd").DROP)
 
 	func _notification(what: int) -> void:
 		if what == NOTIFICATION_PARENTED:
@@ -87,25 +87,25 @@ class TipPanel extends PanelContainer:
 	var tip: Dictionary = {}
 
 	func _make_custom_tooltip(_for_text: String) -> Object:
-		return load("res://scripts/tvp_v3/buildings_tip.gd").make(tip) if not tip.is_empty() else null
+		return load("res://scripts/ds2/tip.gd").make(tip) if not tip.is_empty() else null
 
 
 class TipButton extends Button:
 	var tip: Dictionary = {}
 
 	func _make_custom_tooltip(_for_text: String) -> Object:
-		return load("res://scripts/tvp_v3/buildings_tip.gd").make(tip) if not tip.is_empty() else null
+		return load("res://scripts/ds2/tip.gd").make(tip) if not tip.is_empty() else null
 
 
 class TipHBox extends HBoxContainer:
 	var tip: Dictionary = {}
 
 	func _make_custom_tooltip(_for_text: String) -> Object:
-		return load("res://scripts/tvp_v3/buildings_tip.gd").make(tip) if not tip.is_empty() else null
+		return load("res://scripts/ds2/tip.gd").make(tip) if not tip.is_empty() else null
 
 
 class TipVBox extends VBoxContainer:
 	var tip: Dictionary = {}
 
 	func _make_custom_tooltip(_for_text: String) -> Object:
-		return load("res://scripts/tvp_v3/buildings_tip.gd").make(tip) if not tip.is_empty() else null
+		return load("res://scripts/ds2/tip.gd").make(tip) if not tip.is_empty() else null

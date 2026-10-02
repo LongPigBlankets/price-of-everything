@@ -13,7 +13,7 @@ extends "res://scripts/labour_policy_tab.gd"
 ## (Production.labour_overview, labour_charge).
 
 const Parts := preload("res://scripts/people_ds2/parts.gd")
-const Kit := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Kit := preload("res://scripts/ds2/parts.gd")
 const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const Scroll := preload("res://scripts/bdp_v3_scroll.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")

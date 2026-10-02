@@ -86,7 +86,7 @@ Four looks were weighed. **An audit clipboard or a stocktake sheet** puts 14 to 
 | Filters | latching keys on the black key bed, one row of six | `latch_key.gd`, `tile_keybed` |
 | Seam | the ribbed rubber nosing | `BdpV3Seam` |
 | Headings | metal labels; the sorted one cream with a drawn mark | the ledger's headings |
-| Table | black plastic case with silver screws; a raised module a good | `buildings_parts.gd` case and modules, `CARD_H` |
+| Table | black plastic case with silver screws; a raised module a good | `scripts/ds2/parts.gd` case and modules, `CARD_H` |
 | Good | cream tile in a thin gunmetal well, stock on the navy pill | `scripts/ds2/good_well.gd`, 72 px |
 | Status | pilot lamp and a word | `BdpV3Lamp`: green Enough, amber Low, red Short, off Held |
 | Money | printed £ and a five cell LED; cost red, market white, carbon tax red | `BdpV3Led`, `money_figure.gd` (after the point cell change) |

@@ -1,5 +1,6 @@
 extends RefCounted
-## Tile view v3, the Stock tab: the small parts its sections and sheets share, after Building Detail v3's
+## The DS2 kit's sheet parts, shared by tile view v3's Stock tab and Building Detail's route sheets, after
+## Building Detail v3's
 ## own (scripts/building_detail_panel_v2.gd): white print embossed on dark metal, metal-label captions, a
 ## good's icon set in a well, a raised icon trimmed to its art, money on LED screens and every other figure
 ## on a dot matrix, a typed figure on an LED screen's glass, and the steel sheet that slides in over the

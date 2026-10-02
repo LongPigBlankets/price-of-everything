@@ -23,7 +23,7 @@ extends RefCounted
 ## Turning a knob asks for the change; the knob stays where it was until the sheet is rebuilt with the
 ## change made, so a change refused or cancelled never leaves it pointing at something untrue.
 
-const Parts := preload("res://scripts/tvp_v3/stock_parts.gd")
+const Parts := preload("res://scripts/ds2/sheet_parts.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
 const Readout := preload("res://scripts/bdp_v3_readout.gd")
 const Rotary := preload("res://scripts/rotary_selector.gd")
@@ -432,7 +432,8 @@ static func _all_module(panel: Control, building: Dictionary, recipe: Dictionary
 	var goods := "input" if inputs else "output"
 	var choices: Array = [
 		{"id": "each", "icon": _cream(BuildingIcon.clean_texture("b_007", "industrial_factory")), "name": "Each good its own",
-			"detail": "Each %s keeps the route set on its own knob below." % goods},
+			"enabled": Service.route_lock("managed") == "" or not Service.side_all_middleman(iid, side),
+			"detail": ("Each %s keeps the route set on its own knob below." % goods) if Service.route_lock("managed") == "" else Service.route_lock("managed")},
 		{"id": "middleman", "icon": ICON_INTERMEDIARY, "name": "Logistics Intermediary",
 			"detail": "Buys every input privately for this building." if inputs else "Buys all of this building's production. Transport and storage are included."},
 		{"id": "market", "icon": ICON_MARKET, "name": "Global market", "enabled": market_available,
@@ -654,7 +655,7 @@ static func _digits(lines: Array, keys: Array) -> int:
 
 
 static func _market_available() -> bool:
-	return str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1" or ResearchState.global_trade_license_available()
+	return Service.global_market_open()
 
 
 static func _port_words(building: Dictionary) -> String:

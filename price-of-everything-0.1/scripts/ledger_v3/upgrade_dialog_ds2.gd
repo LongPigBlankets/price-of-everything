@@ -27,7 +27,7 @@ extends "res://scripts/upgrade_dialog.gd"
 ## The sheet opens in the same place every time, centred with its top on the screen; its head drags it, and
 ## it is kept on the screen.
 
-const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Parts := preload("res://scripts/ds2/parts.gd")
 const Metrics := preload("res://scripts/ds2/metrics.gd")
 const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
 const CreamKey := preload("res://scripts/ds2/cream_key.gd")

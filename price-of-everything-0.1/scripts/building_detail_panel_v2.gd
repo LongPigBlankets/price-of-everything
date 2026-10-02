@@ -994,7 +994,7 @@ func _build_port_card(building: Dictionary) -> PanelContainer:
 			vb.add_child(_port_activity_row(row, used_by_class))
 
 	_port_section(vb, "THE RATE CARD", false)
-	if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1":
+	if preload("res://scripts/middleman_service.gd").active():
 		vb.add_child(_port_metric("Ad valorem · all turns", "%s%% of market buy value" % String.num(EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES * 100.0, 1)))
 	elif TransportState.keeps_introductory_port_rate():
 		vb.add_child(_port_metric("Ad valorem · all turns", "0.5% of market buy value"))
@@ -3937,7 +3937,7 @@ func _open_input_sources_sheet(building: Dictionary, recipe: Dictionary) -> void
 				producers[g] = []
 			producers[g].append(s)
 		var inputs: Array = recipe.get("inputs", [])
-		var market_available := str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1" or ResearchState.global_trade_license_available()
+		var market_available := preload("res://scripts/middleman_service.gd").global_market_open()
 		for ii in inputs.size():
 			var inp: Dictionary = inputs[ii]
 			var gid := str(inp.get("good_id", ""))
@@ -4306,7 +4306,7 @@ func _add_output_good_options(vb: VBoxContainer, building: Dictionary, recipe: D
 			_open_output_sheet(building, recipe)))
 	# Selecting Market / Tile re-renders the sheet in place; shipping to another tile
 	# opens the map picker.
-	var market_available := str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1" or ResearchState.global_trade_license_available()
+	var market_available := preload("res://scripts/middleman_service.gd").global_market_open()
 	var market_detail := "Sell at market price via the nearest port." if market_available else "[Requires Government Import/Export License]"
 	row.add_child(_logistics_route_option(building, "output", "Global market", market_detail, is_market, func() -> void:
 		MatchState.route_output_to_market(iid, good_id)
@@ -4773,7 +4773,7 @@ func _add_logistics_options(vb: VBoxContainer, building: Dictionary, side: Strin
 	row.add_theme_constant_override("v_separation", 8)
 	var active: bool = service.side_all_middleman(iid, side)
 	row.add_child(_dest_option("All %s — Logistics Intermediary" % ("inputs" if side == "input" else "outputs"), "Buys inputs privately for this building." if side == "input" else "Buys this building's production. Transport and storage are included.",active,func() -> void: _request_logistics_mode(building,side,"middleman")))
-	var market_available := str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1" or ResearchState.global_trade_license_available()
+	var market_available := preload("res://scripts/middleman_service.gd").global_market_open()
 	var stockpile_available := ResearchState.open_logistics_contracts_available()
 	if market_available:
 		row.add_child(_dest_option("All %s — Global market" % ("inputs" if side == "input" else "outputs"), "Use the ordinary market route for every tradeable good on this side.", _all_managed_source(building, side, "market"), func() -> void: _request_all_managed_source(building, side, "market"), true))

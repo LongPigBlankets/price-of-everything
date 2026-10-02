@@ -931,7 +931,7 @@ func _gui_input(event: InputEvent) -> void:
 		accept_event()
 
 func _build_logistics_overview(list: VBoxContainer) -> void:
-	if str(MatchState.ruleset.get("logistics_model","")) != "middleman_v1": return
+	if not preload("res://scripts/middleman_service.gd").active(): return
 	var service = preload("res://scripts/middleman_service.gd")
 	list.add_child(_label("Building logistics"))
 	for b: Dictionary in BuildingState.buildings.values():
@@ -947,7 +947,7 @@ func _build_logistics_overview(list: VBoxContainer) -> void:
 
 func _build_global_logistics() -> void:
 	_clear(_global_logistics)
-	_global_logistics.visible = str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1"
+	_global_logistics.visible = preload("res://scripts/middleman_service.gd").active()
 	# The company-wide settings only exist in Logistics Intermediary games.
 	if _settings_button != null:
 		_settings_button.visible = _global_logistics.visible

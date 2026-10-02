@@ -11,7 +11,7 @@ extends "res://scripts/bdp_v3_section.gd"
 signal sell_requested(good_id: String)
 
 const MarketRules := preload("res://scripts/market_rules.gd")
-const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Parts := preload("res://scripts/ds2/parts.gd")
 const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
 const MParts := preload("res://scripts/market_ds2/parts.gd")
 const HISTORY_TURNS := 20

@@ -20,7 +20,7 @@ const Title := preload("res://scripts/bdp_v3_title.gd")
 const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const Enamel := preload("res://scripts/bdp_v3_enamel.gd")
 const Indicator := preload("res://scripts/bdp_v3_indicator.gd")
-const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Parts := preload("res://scripts/ds2/parts.gd")
 const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
 const CreamKey := preload("res://scripts/ds2/cream_key.gd")
 const InfrastructureInfo := preload("res://scripts/infrastructure_info.gd")
@@ -938,7 +938,7 @@ static func _ink_pair(word: String, figure: String) -> HBoxContainer:
 ## The Materials from knob: the four sources on its arc, those the research has not opened greyed.
 static func source_knob(panel: Control) -> Control:
 	var current := str(panel.call("_current_material_source"))
-	var intermediary := str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1"
+	var intermediary := preload("res://scripts/middleman_service.gd").active()
 	var options: Array = []
 	for spec: Array in SOURCES:
 		var id := str(spec[0])

@@ -108,15 +108,7 @@ static func quote(tile_id: String, building_id: String) -> Dictionary:
 ## Where a build's missing materials come from, as the map settles it at the press (without taking the
 ## one-off choice MatchState.consume_build_material_source would use up).
 static func material_source() -> String:
-	var src := MatchState.pending_build_material_source if MatchState.pending_build_material_source != "" else MatchState.construct_material_source
-	if src == "ask" or src == "":
-		src = "middleman"
-	if ResearchState.logistics_progression_active():
-		if src in ["same_tile", "any_tile"] and not ResearchState.open_logistics_contracts_available():
-			src = "middleman"
-		if src == "market" and not ResearchState.global_trade_license_available():
-			src = "middleman"
-	return src
+	return str(preload("res://scripts/construction_rules.gd").material_source().source)
 
 
 ## `q` refused for `refusal`: its total is what the build would cost once the reason is dealt with (the fee,

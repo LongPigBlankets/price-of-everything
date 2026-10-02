@@ -4410,7 +4410,7 @@ func _on_loan_taken(loan: Dictionary) -> void:
 	# notices have been evaluated.
 	if SolvencyState.bridging:
 		return
-	_loan_taken_this_turn += float(loan.get("amount", 0.0))
+	_loan_taken_this_turn += float(loan.get("principal_initial", 0.0))
 
 
 ## Judge the resolved turn, then fold it into the baseline for the next one.
@@ -4555,13 +4555,21 @@ func _refresh_money_notices(force: bool = false) -> void:
 			dock.remove_row("notice:upcoming:%d" % int(TurnManager.current_turn))
 
 
+## The notice for what was borrowed this turn. When the Logistics Intermediary drew all of it to fund the
+## turn's batches (one loan a turn, the summary's middleman_financing), the notice says so.
+func loan_notice_text(borrowed: float, s: Dictionary) -> String:
+	var financing := float(s.get("middleman_financing", 0.0))
+	if financing > 0.0 and financing >= borrowed - 0.005:
+		return "We've taken a %s loan to pay for the intermediary's batches this turn." % _money_text(borrowed)
+	return "We've taken a %s loan to cover this turn's bills." % _money_text(borrowed)
+
+
 ## Money triggers that fired this turn, unordered. Each is {id, text}.
 func _money_anomalies(current: Dictionary, s: Dictionary) -> Array:
 	var hits: Array = []
 
 	if _loan_taken_this_turn > 0.0 and _anomaly_ready("loan"):
-		hits.append({"id": "loan", "word": "loan", "tone": "bad",
-			"text": "We've taken a %s loan to cover this turn's bills." % _money_text(_loan_taken_this_turn)})
+		hits.append({"id": "loan", "word": "loan", "tone": "bad", "text": loan_notice_text(_loan_taken_this_turn, s)})
 
 	var revenue_base := _anomaly_baseline("revenue")
 	if revenue_base > 0.0 and float(current.revenue) >= revenue_base * ANOMALY_SPIKE_RATIO and _anomaly_ready("payment"):

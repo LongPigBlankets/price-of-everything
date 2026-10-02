@@ -14,6 +14,8 @@ func setup(count: int = 1, cables: bool = true) -> Array:
 	TurnManager.current_phase = TurnManager.Phase.DECIDE
 	MatchState.money = 10000.0
 	MatchState.ruleset["logistics_model"] = "middleman_v1"
+	# Routes off the intermediary need their research. The tests about the locks take it away again.
+	open_routes()
 	fake = Node.new()
 	var src := GDScript.new()
 	src.source_code = "extends Node\nvar tiles := {}\nfunc id_to_coord(_t): return Vector2i(5,4)\nfunc coord_to_id(_c): return 'tile_5_4'\n"
@@ -28,6 +30,12 @@ func setup(count: int = 1, cables: bool = true) -> Array:
 		_check(Service.enable(iid).ok,"explicit supported prototype opt-in")
 		ids.append(iid)
 	return ids
+
+func open_routes(contracts: bool = true, license: bool = true) -> void:
+	for pair: Array in [[ResearchState.OPEN_LOGISTICS_CONTRACTS_TITLE, contracts], [ResearchState.GLOBAL_TRADE_LICENSE_TITLE, license]]:
+		if bool(pair[1]): ResearchState.unlocked_titles[str(pair[0])] = true
+		else: ResearchState.unlocked_titles.erase(str(pair[0]))
+	ResearchState._global_trade_license_paid = license
 
 func cleanup() -> void:
 	fake.free()

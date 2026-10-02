@@ -8,7 +8,7 @@ extends Node
 const Catalogue := preload("res://scripts/construct_ds2/catalogue.gd")
 const BuildOrder := preload("res://scripts/construct_ds2/build_order.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
-const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Parts := preload("res://scripts/ds2/parts.gd")
 const RECIPES := ["r_005", "r_020", "r_029", "r_063", "r_205", "r_012", "r_107"]
 const SIGN := Vector2(721.0, 216.0) / 1.875
 const SIGN_ROOM := Vector2(721.0 / 1.875 - 20.0, 216.0 / 1.875 - 14.0)

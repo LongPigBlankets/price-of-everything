@@ -18,7 +18,7 @@ signal drag_input(event: InputEvent)
 
 const MarketRules := preload("res://scripts/market_rules.gd")
 const MParts := preload("res://scripts/market_ds2/parts.gd")
-const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Parts := preload("res://scripts/ds2/parts.gd")
 const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
 const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
 const LatchKey := preload("res://scripts/ds2/latch_key.gd")

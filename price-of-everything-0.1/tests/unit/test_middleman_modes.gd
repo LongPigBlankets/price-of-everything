@@ -232,13 +232,13 @@ func _test_supplier_handover_runs_until_the_first_market_delivery() -> void:
 	_check(Service.handover_turns(iid, "g_006") == 2, "the countdown reads the first market shipment on the road")
 	Production._process_production()
 	var s := Production.last_turn_summary
-	_check(int(s.purchased.get("g_006", 0)) == 32, "the intermediary supplies the batch while the market shipment travels")
+	_check(int(s.purchased.get("g_006", 0)) == 64, "the intermediary supplies the batch while the market order for the next one is placed (%s)" % str(s.purchased))
 	_check(Service.in_handover(iid, "g_006"), "the handover lasts until a market delivery lands")
 	TurnManager.current_turn += 1
 	Production._process_production()
 	s = Production.last_turn_summary
 	_check(not Service.in_handover(iid, "g_006"), "the first market delivery completes the handover")
-	_check(int(s.purchased.get("g_006", 0)) == 0, "the market batch replaces the intermediary's")
+	_check(int(s.purchased.get("g_006", 0)) == 32, "only the market buys once its delivery has landed (%s)" % str(s.purchased))
 	_check(int(s.sold.get("g_008", {}).get("qty", 0)) == 33, "production carries on across the handover")
 	_check(Service.set_input_route(iid, "g_006", "primary", "stockpile").ok and not Service.in_handover(iid, "g_006"), "leaving the market ends any handover")
 	cleanup()

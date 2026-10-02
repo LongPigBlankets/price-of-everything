@@ -31,7 +31,7 @@ extends RefCounted
 ## summary's thresholds (fill_tone), the forecast from the transport panel's (eta).
 
 const Metrics := preload("res://scripts/ds2/metrics.gd")
-const Parts := preload("res://scripts/tvp_v3/stock_parts.gd")
+const Parts := preload("res://scripts/ds2/sheet_parts.gd")
 const Sheets := preload("res://scripts/tvp_v3/stock_sheets.gd")
 const Gauge := preload("res://scripts/tvp_v3/stock_gauge.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
@@ -728,9 +728,7 @@ static func _cell(panel: Control, tile: String, g: Dictionary, gauge: Control) -
 # --- Logistics, in intermediary games ---------------------------------------------------------------------
 
 static func _has_logistics(logistics: Dictionary) -> bool:
-	return str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" \
-		and (not (logistics.input as Array).is_empty() or not (logistics.output as Array).is_empty()) \
-		and ResearchState.open_logistics_contracts_available()
+	return MiddlemanService.tile_controls_available(logistics)
 
 
 static func _logistics(panel: Control, logistics: Dictionary) -> Control:
