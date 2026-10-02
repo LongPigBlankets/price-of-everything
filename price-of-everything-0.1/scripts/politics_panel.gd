@@ -18,6 +18,16 @@ signal close_requested
 
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
+# The DS2 look (UiPrefs.use_politics_ds2): the ledger's shell and the kit's shared parts.
+const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
+const Parts := preload("res://scripts/ds2/parts.gd")
+const Metrics := preload("res://scripts/ds2/metrics.gd")
+const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
+const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
+const Nine := preload("res://scripts/bdp_v3_nine.gd")
+const Title := preload("res://scripts/bdp_v3_title.gd")
+const Key := preload("res://scripts/bdp_v3_key.gd")
+const Scroll := preload("res://scripts/bdp_v3_scroll.gd")
 
 # Tall enough for the whole six-beat record without scrolling at 1080p — the panel exists to
 # be read in one go, and a record that needs scrolling to reach the subsidy defeats that.
@@ -29,22 +39,28 @@ const ROW_GAP := 10
 ## The gavel the bottom menu already uses for this panel — a political act, not an
 ## industrial one.
 const GAVEL_ICON := "res://assets/icons/ui_icons/alt/politics.png"
+## DS2: the panel's size, and the title's size on an event's module.
+const DS2_SIZE := Vector2(640, 720)
+const DS2_TITLE_PX := 16
+const DS2_EMPTY := "No political events yet."
+const DS2_INK := Color("#0b2340")
 
 var _list: VBoxContainer = null
 var _empty_label: Label = null
 var _dragging := false
 var _drag_offset := Vector2.ZERO
+## Whether the DS2 look is built, and the size the panel is built at.
+var _ds2 := false
+var _panel_size := PANEL_SIZE
 
 func _ready() -> void:
 	name = "PoliticsPanel"
 	if DS and DS.theme:
 		theme = DS.theme
-	custom_minimum_size = PANEL_SIZE
-	size = PANEL_SIZE
-	_centre_in_viewport()
 	theme_type_variation = &"PanelContainer"
-	add_theme_stylebox_override("panel", preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(8.0))
-	_build()
+	_build_look()
+	_centre_in_viewport()
+	UiPrefs.politics_ds2_changed.connect(func(_on: bool) -> void: _build_look())
 	# The arc advances on turn resolution, so a panel left open stays current.
 	TurnManager.turn_resolution_completed.connect(_refresh)
 	visibility_changed.connect(func() -> void:
@@ -55,10 +71,162 @@ func _ready() -> void:
 func _centre_in_viewport() -> void:
 	var vp := get_viewport_rect().size
 	set_anchors_preset(Control.PRESET_TOP_LEFT)
-	offset_left = maxf(0.0, (vp.x - PANEL_SIZE.x) / 2.0)
-	offset_top = maxf(0.0, (vp.y - PANEL_SIZE.y) / 2.0)
-	offset_right = offset_left + PANEL_SIZE.x
-	offset_bottom = offset_top + PANEL_SIZE.y
+	offset_left = maxf(0.0, (vp.x - _panel_size.x) / 2.0)
+	offset_top = maxf(0.0, (vp.y - _panel_size.y) / 2.0)
+	offset_right = offset_left + _panel_size.x
+	offset_bottom = offset_top + _panel_size.y
+
+
+# ── Look: v2, or DS2 behind UiPrefs.use_politics_ds2 ─────────────────────────────────────
+## Builds the panel in the look the switch asks for, taking down the other first. It stays where it is.
+func _build_look() -> void:
+	LampOverlay.detach(self)
+	for c in get_children():
+		remove_child(c)
+		c.queue_free()
+	_list = null
+	_ds2 = UiPrefs.use_politics_ds2
+	_panel_size = DS2_SIZE if _ds2 else PANEL_SIZE
+	custom_minimum_size = _panel_size
+	size = _panel_size
+	if _ds2:
+		_build_ds2()
+		# The lamp over the whole panel (docs/ds2-theme.md §4).
+		LampOverlay.attach(self)
+	else:
+		add_theme_stylebox_override("panel", preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(8.0))
+		_build()
+
+
+## DS2: Building Detail's backing, the raised title and the Close key, the rubber seam, then one plastic
+## case of raised modules on the steel scroll rail, an event a module.
+func _build_ds2() -> void:
+	LedgerV3.dress(self)
+	var margin := MarginContainer.new()
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, LedgerV3.CONTENT_MARGIN)
+	add_child(margin)
+	var layout := VBoxContainer.new()
+	layout.add_theme_constant_override("separation", 12)
+	margin.add_child(layout)
+
+	var header := HBoxContainer.new()
+	header.name = "PoliticsTitleRow"
+	header.add_theme_constant_override("separation", 12)
+	header.mouse_filter = Control.MOUSE_FILTER_STOP
+	header.mouse_default_cursor_shape = Control.CURSOR_MOVE
+	header.gui_input.connect(_on_header_input)
+	layout.add_child(header)
+	var title: Control = Title.new()
+	title.call("set_text", "Politics")
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_child(title)
+	var close: TextureButton = Key.make("close", Title.line_height())
+	close.name = "CloseKey"
+	close.pressed.connect(func() -> void: close_requested.emit())
+	header.add_child(close)
+
+	layout.add_child(LedgerV3.seam())
+
+	var scroll := ScrollContainer.new()
+	scroll.name = "PoliticsScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	Scroll.apply(scroll, true)
+	layout.add_child(scroll)
+	var case := Parts.plastic_case("PoliticsCase")
+	scroll.add_child(case)
+	_list = case.get_child(0)
+	_refresh()
+
+
+## DS2: one event's module. Its icon on a cream tile in a well, its title over its words, and the turn it
+## happened on a dot display.
+func _entry_module(entry: Dictionary, index: int) -> Control:
+	var m := Parts.module("PoliticsEvent_%d" % index)
+	m.custom_minimum_size.y = Metrics.CARD_H
+	var row := Parts.row_of(m)
+	row.add_theme_constant_override("separation", 14)
+	var well := _ds2_icon(str(entry.get("icon", "")))
+	well.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	row.add_child(well)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 6)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(col)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(head)
+	var title := Parts.body(str(entry.get("title", "")))
+	title.name = "Title"
+	title.add_theme_font_override("font", Parts.FONT_TITLE)
+	title.add_theme_font_size_override("font_size", DS2_TITLE_PX)
+	head.add_child(title)
+	if int(entry.get("turn", 0)) > 0:
+		var when: Control = DotMatrix.new()
+		when.name = "Turn"
+		when.set("pitch", 1.6)
+		when.set("text", "TURN %d" % int(entry.turn))
+		when.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		head.add_child(when)
+	var body := Parts.body(str(entry.get("body", "")))
+	body.name = "Body"
+	col.add_child(body)
+	return m
+
+
+## DS2: an event's icon on the goods' cream tile under the icon well's frame.
+func _ds2_icon(kind: String) -> Control:
+	var px := float(Metrics.GOOD_ICON)
+	var good := "power" if kind == "power" else ("coal" if kind == "coal_banned" else "")
+	var holder: Control
+	if good != "":
+		holder = Parts.good_in_well(str(Catalog.get_good_by_internal_name(good).get("id", "")), -1, "")
+	else:
+		holder = Control.new()
+		holder.custom_minimum_size = Vector2(px, px)
+		holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		holder.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		var tile := Panel.new()
+		var paper := StyleBoxFlat.new()
+		paper.bg_color = UIHelpers.PILL_PAPER
+		paper.set_corner_radius_all(roundi(Parts.WELL_RADIUS))
+		tile.add_theme_stylebox_override("panel", paper)
+		tile.set_anchors_preset(Control.PRESET_FULL_RECT)
+		tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		holder.add_child(tile)
+		var art := TextureRect.new()
+		art.texture = load(GAVEL_ICON) as Texture2D
+		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		art.set_anchors_preset(Control.PRESET_FULL_RECT)
+		var inset := roundi(px * 0.12)
+		art.offset_left = inset
+		art.offset_top = inset
+		art.offset_right = -inset
+		art.offset_bottom = -inset
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		# The gavel is drawn in white for the navy menu. On the cream tile it is printed in the keys' navy.
+		art.self_modulate = DS2_INK
+		holder.add_child(art)
+		var frame := Control.new()
+		frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+		frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		frame.draw.connect(func() -> void:
+			Nine.paint(frame, Parts.WELL, Rect2(Vector2.ZERO, frame.size).grow(Parts.WELL_REACH), Parts.WELL_CORNER))
+		frame.resized.connect(frame.queue_redraw)
+		holder.add_child(frame)
+	if kind == "coal_banned":
+		var cross := Control.new()
+		cross.name = "Cross"
+		cross.set_anchors_preset(Control.PRESET_FULL_RECT)
+		cross.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cross.draw.connect(_draw_cross.bind(cross))
+		holder.add_child(cross)
+	return holder
 
 
 func _build() -> void:
@@ -119,12 +287,14 @@ func _entries() -> Array:
 		out.append({
 			"icon": "gavel",
 			"title": "A new government elected!",
+			"turn": PolicyState.beat("election_news"),
 			"body": "The Party of Markets is now in government. They are likely to pursue their agenda of reducing pollution through some sort of tax.",
 		})
 	if turn >= PolicyState.beat("tax_notice"):
 		out.append({
 			"icon": "coal_banned",
 			"title": "Carbon Tax announced",
+			"turn": PolicyState.beat("tax_notice"),
 			"body": "There will be a tax on carbon emissions. Any production or power generation that uses coal or crude oil (or their polluting byproducts) will be subject to a tax.",
 		})
 	# The ramp entry names the turn the levy reaches full rate, and is replaced by the
@@ -135,35 +305,61 @@ func _entries() -> Array:
 		out.append({
 			"icon": "coal_banned",
 			"title": "Carbon Tax ramping up until turn %d" % p1,
+			"turn": PolicyState.beat("ramp_first"),
 			"body": "The carbon tax will keep increasing until turn %d." % p1,
 		})
 	if turn >= p1:
 		out.append({
 			"icon": "coal_banned",
 			"title": "Carbon Tax in full effect",
+			"turn": PolicyState.beat("p1"),
 			"body": "Adapt or pay. The government insists it's here to stay. The Ministry of Finance is rather satisfied with the extra revenue too.",
 		})
 	if turn >= PolicyState.beat("subsidy_notice"):
 		out.append({
 			"icon": "power",
 			"title": "Subsidy for Green energy",
+			"turn": PolicyState.beat("subsidy_notice"),
 			"body": "A green subsidy has been announced. The objective is to push more companies to invest in green power.",
 		})
 	if turn >= PolicyState.beat("subsidy"):
 		out.append({
 			"icon": "power",
 			"title": "Green Power subsidy in full effect",
+			"turn": PolicyState.beat("subsidy"),
 			"body": "The green subsidy has taken effect. It is unknown how much longer the government will keep it around, as it's proving oversubscribed.",
 		})
 	return out
+
+
+## The entries in the order they happened, entries of one turn keeping their own order.
+static func by_turn(entries: Array) -> Array:
+	var keyed: Array = []
+	for i in entries.size():
+		keyed.append([int((entries[i] as Dictionary).get("turn", 0)), i])
+	keyed.sort()
+	return keyed.map(func(k: Array) -> Dictionary: return entries[int(k[1])])
 
 
 func _refresh(_a: Variant = null) -> void:
 	if _list == null or not is_instance_valid(_list):
 		return
 	for child in _list.get_children():
+		_list.remove_child(child)
 		child.queue_free()
 	var entries := _entries()
+	if _ds2:
+		# Each module prints its turn, so the record runs in the order things happened.
+		entries = by_turn(entries)
+		if entries.is_empty():
+			var none := Parts.module("PoliticsEmpty")
+			var words := Parts.body(DS2_EMPTY)
+			words.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			Parts.row_of(none).add_child(words)
+			_list.add_child(none)
+		for i in entries.size():
+			_list.add_child(_entry_module(entries[i], i))
+		return
 	if entries.is_empty():
 		# Nothing has happened yet, and saying so is the whole content of the panel until
 		# the election. An empty box would read as a broken panel.
