@@ -2264,5 +2264,32 @@
   "margin": 10,
   "tile": 135,
   "reach": 11
+ },
+ "dock_icons": {
+  "size": [
+   110,
+   110
+  ],
+  "icon": 86,
+  "names": [
+   "pen",
+   "bell"
+  ]
+ },
+ "dock_pad": {
+  "size": [
+   548,
+   160
+  ],
+  "margin": 14,
+  "corner": 34
+ },
+ "legend_pad": {
+  "size": [
+   548,
+   428
+  ],
+  "margin": 14,
+  "corner": 44
  }
 }
