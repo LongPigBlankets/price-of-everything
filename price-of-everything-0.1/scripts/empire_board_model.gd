@@ -15,7 +15,7 @@ extends RefCounted
 ## Returned shape (see build()):
 ##   tiles:    tile_id -> {id, center, type, height, store, label, level, paved, pylon?}
 ##   standing: [{kind, iid, tile, pos, sprite, level, name, side, pad}]  kind: building|site|warehouse|port|pylon
-##   roads:    [{tile, a, b, kind, level, paved, rail}]              the stretches of street in use
+##   roads:    [{tile, a, b, kind, level, paved}]                    the stretches of street in use
 ##   lines:    [{mode, good, kind, pts: [{p, tile, edge}], reverse}]  pipes, cables, and any way
 ##                                                                    that cannot follow the streets
 ##   flows:    [{good, icon, kind, mode, pts: [{p, tile, edge}], live}]  what travels them
@@ -34,6 +34,7 @@ extends RefCounted
 const BuildingSprites := preload("res://scripts/building_sprites.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const Streets := preload("res://scripts/empire_board_streets.gd")
+const Rails := preload("res://scripts/empire_board_rails.gd")
 
 ## A flat-topped hex of the map's tile size (assets/main_tileset.tres: 540 x 480).
 const HEX_HALF := Vector2(270.0, 240.0)
@@ -505,9 +506,17 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 				var kind: String = Streets.kind_of(a, b)
 				roads[rkey] = {"tile": tile, "a": c + Streets.node_pos(a), "b": c + Streets.node_pos(b),
 					"kind": kind, "level": 1 if kind == "spur" else int(t["level"]),
-					"paved": bool(t["paved"]), "rail": false}
-			if mode == "rail":
-				roads[rkey]["rail"] = true
+					"paved": bool(t["paved"])}
+		return pts
+
+	# Lay track along a tile's railway: returns the points, and keeps them as track to draw.
+	var track := func(tile: String, rels: Array) -> Array:
+		var c: Vector2 = tiles[tile]["center"]
+		var pts: Array = []
+		for rel in rels:
+			pts.append(_pt(c + (rel as Vector2), tile, Rails.is_exit(rel)))
+		if pts.size() >= 2:
+			lines.append({"mode": "rail", "good": "", "kind": "track", "pts": pts})
 		return pts
 
 	# A pipe's run from the thing at `iid` to its tile's warehouse, beside the streets.
@@ -599,7 +608,10 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 			continue
 		var pts: Array = []
 		var mode := "roads"
+		# Where the goods stand on the tile they are on: a street node, or a point on the railway.
 		var at: String = str(door_of["port:" + from_tile]) if from_port else (str(tiles[from_tile]["hub_node"]) if bool(tiles[from_tile]["store"]) else "")
+		var here := at                        # the door the goods wait at on this tile
+		var at_rail := Vector2.INF
 		for hop in hops:
 			var a := str(hop["a"])
 			var b := str(hop["b"])
@@ -614,15 +626,40 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 				lines.append({"mode": mode, "good": "", "kind": "way", "pts": jump})
 				pts.append_array(jump)
 				at = str(tiles[b]["hub_node"])
+				here = at
+				at_rail = Vector2.INF
 				continue
+			var hub_a := str(tiles[a]["hub_node"])
+			if mode == "rail":
+				if at_rail == Vector2.INF:
+					# Brought here by road: it goes to the warehouse and is loaded there.
+					if at != "" and at != here:
+						pts.append_array(walk.call(a, route.call(a, at, hub_a), "roads"))
+						here = hub_a
+					at_rail = Rails.stop(Streets.node_pos(here if here != "" else hub_a))
+				pts.append_array(track.call(a, Rails.path(at_rail, Rails.exit_point(off))))
+				at_rail = Rails.exit_point(-off)
+				pts.append(_pt((tiles[b]["center"] as Vector2) + at_rail, b, true))
+				at = ""
+				here = str(tiles[b]["hub_node"])
+				continue
+			if at_rail != Vector2.INF:
+				# Brought here by rail: unloaded at the warehouse, and on by road from there.
+				pts.append_array(track.call(a, Rails.path(at_rail, Rails.stop(Streets.node_pos(hub_a)))))
+				at_rail = Vector2.INF
+				at = hub_a
 			var out_id: String = Streets.nid(out_rel)
 			if at == "":
 				at = out_id
 			pts.append_array(walk.call(a, route.call(a, at, out_id), mode))
 			at = Streets.nid(Streets.exit_point(-off))
 			pts.append(_pt((tiles[b]["center"] as Vector2) + Streets.node_pos(at), b, true))
+			here = str(tiles[b]["hub_node"])
 		var goal: String = str(door_of["port:" + to_tile]) if to_port else (str(tiles[to_tile]["hub_node"]) if bool(tiles[to_tile]["store"]) else "")
-		if goal != "" and at != "":
+		if at_rail != Vector2.INF:
+			if goal != "":
+				pts.append_array(track.call(to_tile, Rails.path(at_rail, Rails.stop(Streets.node_pos(goal)))))
+		elif goal != "" and at != "":
 			pts.append_array(walk.call(to_tile, route.call(to_tile, at, goal), mode))
 		if pts.size() < 2:
 			continue

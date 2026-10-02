@@ -4,10 +4,16 @@ extends Node
 ##   AGENT_GODOT_WINDOW=1 godot --path . res://tools/empire_board_shot.tscn --quit-after 3000 -- --no-telemetry --shot=<dir>
 
 const SEED := [
-	["b_007", "tile_9_10", 1], ["b_008", "tile_9_10", 3], ["b_002", "tile_9_10", 2],
 	["b_003", "tile_10_10", 1], ["b_001", "tile_10_11", 2], ["b_009", "tile_8_9", 1],
 	["b_010", "tile_8_9", 3], ["b_011", "tile_10_10", 2], ["b_012", "tile_7_9", 1],
-	["b_013", "tile_10_11", 1], ["b_014", "tile_9_10", 1], ["b_020", "tile_7_9", 2],
+	["b_013", "tile_10_11", 1], ["b_020", "tile_7_9", 2],
+]
+## The busy tile: motors, hydraulic components and everything both are made from, each by its
+## own recipe. [recipe, level]
+const BUSY_TILE := "tile_9_10"
+const BUSY := [
+	["r_009", 1], ["r_236", 2], ["r_003", 2], ["r_005", 1], ["r_008", 1], ["r_007", 1],
+	["r_180", 2], ["r_028", 1], ["r_004", 1],
 ]
 
 
@@ -29,7 +35,16 @@ func _ready() -> void:
 		BuildingState.add_building(str(row[0]), str((recs[0] as Dictionary).get("recipe_id", "")), str(row[1]), "player_1", iid)
 		if BuildingState.buildings.has(iid):
 			BuildingState.buildings[iid]["level"] = int(row[2])
+	for row in BUSY:
+		var recipe: Dictionary = Catalog.get_recipe(str(row[0]))
+		var iid := "busy_%s" % str(row[0])
+		BuildingState.add_building(str(recipe.get("building_id", "")), str(row[0]), BUSY_TILE, "player_1", iid)
+		if BuildingState.buildings.has(iid):
+			BuildingState.buildings[iid]["level"] = int(row[1])
+		else:
+			print("BUSY not built ", row[0], " ", recipe.get("building_id", ""))
 	_seed_movements()
+	_seed_busy()
 	await _settle(4)
 	var ev: Node = game.get_node_or_null("UILayer/HUD/HUDContent/EmpireView")
 	ev.call("toggle")
@@ -50,13 +65,12 @@ func _ready() -> void:
 	for l in model.get("lanes", []):
 		print("  lane ", l["kind"], " ", l["good"], " ", l["from"], " -> ", l["to"], "  from ", l["sources"], " to ", l["dests"], "  live ", (l["live"] as Array).size(), "  hops ", l["hops"])
 	_shot(dir + "board.png")
-	# Close on the busiest tile: the junction, the pipes and their signs.
-	for st in board.call("standing_screen_rects"):
-		if str(st["iid"]) == "store:tile_8_9":
-			var at: Vector2 = (st["rect"] as Rect2).get_center()
-			board.set("_offset", (board.get("_offset") as Vector2) + board.size * 0.5 - at)
-	board.call("_zoom_at", board.size * 0.5, 3.4)
-	await _settle(90)
+	# Close on the busy tile: every kind of infrastructure, the pipes and their signs.
+	var busy: Rect2 = board.call("_tile_rect", BUSY_TILE)
+	board.set("_zoom", 1.5)
+	board.set("_offset", board.size * 0.5 - busy.get_center() * 1.5 - Vector2(0.0, 60.0))
+	board.call("_view_changed")
+	await _settle(140)
 	_shot(dir + "board_tile.png")
 	board.call("fit_view")
 	board.call("_zoom_at", board.size * 0.5, 2.2)
@@ -117,6 +131,54 @@ func _seed_movements() -> void:
 	MatchState.queue_buy("tile_10_10", "g_004", 30)
 	var port := str(Catalog.nearest_port_tile("tile_7_9"))
 	MatchState.log_market_sale("tile_7_9", port, "g_006", 25, 2, 100.0)
+
+
+## The busy tile's traffic over every kind of infrastructure: ore in and motors out by rail,
+## crude oil in down a pipe, hydraulic components to market, and its works fed from the stockpile.
+func _seed_busy() -> void:
+	var hm: Node = get_tree().get_first_node_in_group("hex_map")
+	var port := str(Catalog.nearest_port_tile(BUSY_TILE))
+	var way: Array = (TransportService.route(BUSY_TILE, port, "g_008") as Dictionary).get("tiles", [])
+	print("BUSY port ", port, " way ", way)
+	for tid in way:
+		for infra in ["rail", "pipes"]:
+			Catalog.add_tile_infrastructure(str(tid), infra)
+	for infra in ["reinf_pipes", "rail", "roads"]:
+		Catalog.add_tile_infrastructure(BUSY_TILE, infra)
+	var tile: Dictionary = hm.tiles.get(hm.id_to_coord(BUSY_TILE), {})
+	if not (tile.get("infrastructure_present", []) as Array).has("cables"):
+		(tile["infrastructure_present"] as Array).append("cables")
+	Catalog.set_tile_infra_level(BUSY_TILE, "roads", 3)
+	var back: Array = way.duplicate()
+	back.reverse()
+	var by := func(mode: String, tiles: Array) -> Array:
+		return [{"mode": mode, "from": str(tiles[0]), "to": str(tiles[tiles.size() - 1])}]
+	if way.size() >= 2:
+		# Motors go out by rail and are sold; iron ore and copper ore come in the same way.
+		TransportState.queue_transport_shipment({
+			"source_tile": BUSY_TILE, "destination_tile": port, "is_sale": true, "qty": 40,
+			"sale_record": {"items": [{"good_id": "g_008", "qty": 40}]},
+			"turns_remaining": 2, "transport_turns": 3, "transport_cost": 0.0,
+			"tiles": way, "path": way, "legs": by.call("rail", way)})
+		for ore in ["iron_ore", "copper_ore"]:
+			TransportState.queue_transport_shipment({
+				"source_tile": port, "destination_tile": BUSY_TILE, "is_purchase": true, "qty": 90,
+				"good_id": _good(ore), "turns_remaining": 1, "transport_turns": 3, "transport_cost": 0.0,
+				"tiles": back, "path": back, "legs": by.call("rail", back)})
+		TransportState.queue_transport_shipment({
+			"source_tile": port, "destination_tile": BUSY_TILE, "is_purchase": true, "qty": 120,
+			"good_id": _good("crude_oil"), "turns_remaining": 1, "transport_turns": 2, "transport_cost": 0.0,
+			"tiles": back, "path": back, "legs": by.call("pipes", back)})
+	MatchState.route_output_to_market("busy_r_236", _good("hydraulic_components"))
+	for g in ["steel", "rubber", "processed_oil", "copper_wiring", "coal"]:
+		Stockpile.add(BUSY_TILE, _good(g), 120)
+
+
+func _good(internal: String) -> String:
+	for g in Catalog.all_goods():
+		if str((g as Dictionary).get("internal_name", "")) == internal:
+			return str((g as Dictionary).get("id", (g as Dictionary).get("good_id", "")))
+	return ""
 
 
 ## The same tiles with each of the plate's last three parts off, on alone, and all on.

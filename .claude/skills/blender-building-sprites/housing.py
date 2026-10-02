@@ -146,7 +146,8 @@ def terrace(K, name, cx, cy, n, variant=0, w=0.80, d=0.85, floors=2):
 # ---------------------------------------------------------------- sprites for the game
 # The supply chain board stands housing on the slots a tile's works do not use. Three sets,
 # baked as house_lvl1..3 (bake_sprite.py): a short terrace, two terraces back to back, and a
-# block of flats with a terrace beside it. The number is a variety, not an upgrade.
+# block of flats with a terrace beside it. The number is a variety, not an upgrade. They stand
+# straight on the ground: a works has a concrete pad under it, a home does not.
 def build_house(level: int = 1) -> dict:
     setup_rig(target=(0.0, 0.0, 0.75))
     # Painted windows carry no ink: the linesets leave out faces marked for it.
@@ -156,7 +157,6 @@ def build_house(level: int = 1) -> dict:
         ls.face_mark_negation = 'EXCLUSIVE'
         ls.face_mark_condition = 'ONE'
     K = Kit(open_collection("BLDG_house"))
-    K.box("pad", 0.0, 0.0, -0.05, 3.3, 3.3, 0.10, K.mat("yard_pad"))
     if level == 1:
         terrace(K, "row", 0.0, 0.0, 3, variant=1)
     elif level == 2:

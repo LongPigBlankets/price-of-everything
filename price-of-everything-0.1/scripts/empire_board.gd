@@ -25,6 +25,7 @@ const Model := preload("res://scripts/empire_board_model.gd")
 const Pipes := preload("res://scripts/empire_board_pipes.gd")
 const Atlas := preload("res://scripts/empire_board_atlas.gd")
 const Streets := preload("res://scripts/empire_board_streets.gd")
+const Rails := preload("res://scripts/empire_board_rails.gd")
 const EmpireFx := preload("res://scripts/empire_fx.gd")
 
 const ISO_X := 0.70710678
@@ -58,6 +59,18 @@ const _DASH := Color("f4f1e6")
 const _BALLAST := Color("756a5c")
 const _TIE := Color("3d2f22")
 const _RAIL := Color("c9ccd0")
+const _GIRDER := Color("4a566e")
+const _GIRDER_DECK := Color("6b6558")
+const _BUFFER := Color("b5402c")
+const _RAIL_INK := 1.0               # the inked edge of the ballast
+const _RAIL_GAUGE := 5.2
+const _RAIL_TIE := 8.4
+const _RAIL_TIE_GAP := 4.6
+const _RAIL_TIE_W := 1.5
+const _RAIL_W := 0.8
+const _RAIL_CURVE := 26.0            # how far from a corner the track starts to turn
+const _RAIL_CURVE_STEPS := 7
+const _RAIL_SPAN := 20.0             # a girder deck reaches this far either side of the water
 const _PIPE := Color("b5763e")
 const _PIPE_REINF := Color("8f979e")
 const _PIPE_EDGE := Color("3a2a1c")
@@ -72,7 +85,7 @@ const _DRIVE_HALF := 4.0
 const _JUNCTION_GROW := 1.12         # a junction patch against the widest road into it
 const _ROAD_OVERLAP := 6.0           # a straight runs this far under a junction piece
 const _UNPAVED := Color(0.86, 0.74, 0.56)    # a way over bare ground: the same pieces, in earth
-const _PIPE_SLOT_GAP := 11.0         # between pipes that end side by side
+const _SIGN_MIN_RUN := 40.0          # a stretch shorter than this carries no sign of its own
 const _SIGN_OFFSET := 15.0
 const _SIGN_POST := 15.0
 const _SIGN_PLATE := 13.0
@@ -100,8 +113,8 @@ const SLOPE_W := 34.0
 ## stands in the SOUTH-EAST: on the board that is straight toward the viewer, so the near side
 ## is the gold one and shadows fall away up the screen, to the north-west.
 const _SUN_SCREEN := Vector2(0.0, 1.0)
-const _SHADOW := Color(0.04, 0.06, 0.14, 0.24)
-const _SHADOW_REACH := 0.5            # a building's shadow, as a share of its footprint
+const _SHADOW := Color(0.04, 0.06, 0.14, 0.12)
+const _SHADOW_REACH := 0.38           # a building's shadow, as a share of its footprint
 const _SHADOW_NW := Vector2(-0.70710678, -0.70710678)
 const _GOLD_LIGHT := Color(1.0, 0.80, 0.44)
 const _COOL_SHADE := Color(0.05, 0.08, 0.22)
@@ -127,16 +140,16 @@ const _SEA_PALE := Color(1.0, 0.93, 0.78)
 const _SEA_DEEP := Color(0.03, 0.06, 0.22)
 const _SEA_PALE_ALPHA := 0.26
 const _SEA_DEEP_ALPHA := 0.36
-const _SOOT := Color(0.09, 0.085, 0.08)
+const _SOOT := Color(0.055, 0.055, 0.065)
 const _WINDOW_DIR := "res://assets/fx/windows/"
 const _WINDOW_LIGHT := Color(1.0, 0.90, 0.66)     # amber-white
-const _FOG_PER_WORKS := 13
+const _FOG_PER_WORKS := 18
 const _FOG_ARMS := 4
 const _FOG_WIND := Vector2(-0.4, -1.0)   # in plan: the mist leans north, the way the smoke does
 const _FOG_WORKS_REACH := 95.0       # how far a dirty works' mist spreads round it
-const _FOG_WORKS_ALPHA := 0.20
-const _FOG_PER_TILE := 60            # wisps tried for a tile's pall and its spill
-const _FOG_TILE_ALPHA := 0.24
+const _FOG_WORKS_ALPHA := 0.36
+const _FOG_PER_TILE := 90            # wisps tried for a tile's pall and its spill
+const _FOG_TILE_ALPHA := 0.44
 const _SMOG_INSET := 0.10            # the pall is full to this share of a tile inside its edge
 const _SMOG_SPILL := 0.25            # and gone this share of a tile into a clean neighbour
 const _TILE_SPAN := 480.0
@@ -208,6 +221,7 @@ static var _glint_cache: Dictionary = {}     # tile_id -> [[plan point, phase, r
 static var _tree_cache: Dictionary = {}       # tile_id -> every place a tree might stand on it
 static var _tree_tex: Dictionary = {}
 var _standing: Array = []                    # model standing + {at: Vector2 board, h, rect}
+var _rails: Array = []                       # [{tile, pts: [{p, h}], stops}] track, tile by tile
 var _links: Array = []                       # road-like ways: [{mode, pts: PackedVector2Array board}]
 var _road_plan: Array = []                   # [{a, b, half}] road segments in plan, for pipes to cross
 var _junctions: Array = []                   # [{at, arms, width}] where roads and drives meet
@@ -346,6 +360,7 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 	_lights.clear()
 	_standing.clear()
 	_links.clear()
+	_rails.clear()
 	_road_plan.clear()
 	_junctions.clear()
 	_pipes.clear()
@@ -1135,10 +1150,14 @@ func _build_lines() -> void:
 	for s in _standing:
 		by_iid[str(s["iid"])] = s
 	_build_roads(tiles)
+	var laid_track: Dictionary = {}
 	# Any way that cannot follow the streets (two tiles that do not touch) is a plain line.
 	for l in _model.get("lines", []):
 		var mode := str(l["mode"])
 		if mode == Model.MODE_CABLE or Model.PIPE_MODES.has(mode):
+			continue
+		if str(l.get("kind", "")) == "track":
+			_lay_track(l["pts"], laid_track)
 			continue
 		var pts := PackedVector2Array()
 		for node in l["pts"]:
@@ -1146,48 +1165,73 @@ func _build_lines() -> void:
 		_links.append({"mode": mode, "pts": pts, "tile": str(l["pts"][0]["tile"])})
 
 	# Pipes, laid from baked pieces on a grid of directions; each end goes into the ground.
+	# Two goods piped the same way along the same line share ONE pipe for as far as they run
+	# together: the second is not laid over the first, it joins it, and the sign on that
+	# stretch shows both.
 	var kit: bool = Pipes.ready()
-	var slots: Dictionary = {}
+	var stretches: Array = []                 # [{a, b, mode, tile, goods}] what is laid, along the flow
 	for l in _model.get("lines", []):
 		var mode := str(l["mode"])
 		if not Model.PIPE_MODES.has(mode):
 			continue
-		var path: Array = l["pts"]
-		var sign_a: Vector2 = path[0]["p"]
-		var sign_b: Vector2 = path[1]["p"]
-		if kit:
-			var legs: Array = Pipes.plan(_pipe_waypoints(path, slots))
-			if legs.is_empty():
-				continue
-			var laid: Dictionary = Pipes.lay(legs, _road_plan, "s" if mode == "reinf_pipes" else "c", [true, true],
-				bool(l.get("reverse", false)))
-			for item in laid["items"]:
-				if str(item["kind"]) == "fit":
-					_pipe_items.append(item)
-					continue
-				# A run is drawn tile by tile, so each tile takes its own place in depth.
-				for poly in Pipes.kit().run_polys(item):
-					poly["kind"] = "run"
-					_pipe_items.append(poly)
-			sign_a = legs[0]["a"]
-			sign_b = legs[0]["b"]
-		else:
-			var plain := PackedVector2Array()
-			for node in path:
-				plain.append(iso(node["p"], float(tiles[str(node["tile"])]["height"]) + 4.0))
-			_pipes.append({"mode": mode, "pts": plain, "tile": str(path[0]["tile"])})
+		var path: Array = (l["pts"] as Array).duplicate()
+		if bool(l.get("reverse", false)):
+			path.reverse()                        # now in the order its contents flow
 		var good := str(l.get("good", ""))
-		if good != "":
-			var at: Vector2 = sign_a.lerp(sign_b, clampf(22.0 / maxf(1.0, sign_a.distance_to(sign_b)), 0.0, 0.5))
-			var side := (sign_b - sign_a).normalized().orthogonal()
-			if side.x + side.y < 0.0:
-				side = -side
-			var foot: Vector2 = at + side * _SIGN_OFFSET
-			var gh := float(tiles[str(path[0]["tile"])]["height"])
-			_signs.append({"foot": iso(foot, gh), "top": iso(foot, gh + _SIGN_POST),
-				"icon": Model.GoodIcons.texture_for(good, Model._internal_name(good)),
-				"depth": foot.x + foot.y, "tile": str(path[0]["tile"])})
-
+		for part in _unlaid(path, mode, good, stretches):
+			var nodes: Array = part["nodes"]
+			for n in range(nodes.size() - 1):
+				var a: Vector2 = nodes[n]["p"]
+				var b: Vector2 = nodes[n + 1]["p"]
+				if a.distance_to(b) > 0.5:
+					stretches.append({"a": a, "b": b, "mode": mode, "tile": str(nodes[n]["tile"]), "goods": [good]})
+			if kit:
+				var legs: Array = Pipes.plan(_pipe_waypoints(nodes))
+				if legs.is_empty():
+					continue
+				var laid: Dictionary = Pipes.lay(legs, _road_plan, "s" if mode == "reinf_pipes" else "c", part["enter"])
+				for item in laid["items"]:
+					if str(item["kind"]) == "fit":
+						_pipe_items.append(item)
+						continue
+					# A run is drawn tile by tile, so each tile takes its own place in depth.
+					for poly in Pipes.kit().run_polys(item):
+						poly["kind"] = "run"
+						_pipe_items.append(poly)
+			else:
+				var plain := PackedVector2Array()
+				for node in nodes:
+					plain.append(iso(node["p"], float(tiles[str(node["tile"])]["height"]) + 4.0))
+				_pipes.append({"mode": mode, "pts": plain, "tile": str(nodes[0]["tile"])})
+	# A sign at the start of every stretch whose contents differ from the stretch before it.
+	for st in stretches:
+		var a: Vector2 = st["a"]
+		var b: Vector2 = st["b"]
+		var length := a.distance_to(b)
+		if length < _SIGN_MIN_RUN:
+			continue
+		var goods: Array = st["goods"]
+		var carried_on := false
+		for other in stretches:
+			if (other["b"] as Vector2).distance_to(a) < 1.0 and other != st and _same_goods(other["goods"], goods) \
+					and ((other["b"] as Vector2) - (other["a"] as Vector2)).normalized().dot((b - a) / length) > 0.3:
+				carried_on = true
+		if carried_on:
+			continue
+		var at: Vector2 = a.lerp(b, clampf(20.0 / length, 0.0, 0.5))
+		var side := ((b - a) / length).orthogonal()
+		if side.x + side.y < 0.0:
+			side = -side
+		var foot: Vector2 = at + side * _SIGN_OFFSET
+		var gh := float(tiles[str(st["tile"])]["height"])
+		var icons: Array = []
+		for g in goods:
+			if str(g) != "":
+				icons.append(Model.GoodIcons.texture_for(str(g), Model._internal_name(str(g))))
+		if icons.is_empty():
+			continue
+		_signs.append({"foot": iso(foot, gh), "top": iso(foot, gh + _SIGN_POST), "icons": icons,
+			"depth": foot.x + foot.y, "tile": str(st["tile"])})
 
 	# Cables hang from a building to its tile's pylon and from pylon to pylon.
 	for l in _model.get("lines", []):
@@ -1591,8 +1635,6 @@ func _build_roads(tiles: Dictionary) -> void:
 		# A straight runs a little way under each junction piece, so the piece's cut ends are hidden.
 		var from := (arm - _ROAD_OVERLAP) if pieced.has(Vector2i(a.round())) else 0.0
 		var to := length - ((arm - _ROAD_OVERLAP) if pieced.has(Vector2i(b.round())) else 0.0)
-		if bool(s["rail"]):
-			_links.append({"mode": "rail", "tile": tile, "pts": PackedVector2Array([iso(a, h), iso(b, h)])})
 		if to - from < 0.5:
 			continue
 		var k6 := posmod(Pipes.k_of(dir), 6)
@@ -1686,38 +1728,89 @@ static func _road_kit() -> Atlas:
 
 ## A path along the streets as board points. Where it crosses to a tile of another height it
 ## runs down the higher tile's slope, as the road does.
-func _street_line(path: Array) -> PackedVector2Array:
+func _street_line(path: Array, info: Array = []) -> PackedVector2Array:
 	var pts := PackedVector2Array()
+	var put := func(p: Vector2, h: float, tile: String) -> void:
+		pts.append(iso(p, h))
+		info.append({"p": p, "h": h, "tile": tile})
 	for i in range(path.size()):
 		var node: Dictionary = path[i]
+		var tile := str(node["tile"])
 		var h := _ground_h(node)
 		if not bool(node["edge"]):
-			pts.append(iso(node["p"], h))
+			put.call(node["p"], h, tile)
 			continue
 		# The edge is given once per tile. Both stand at the lower tile's level, and the
 		# higher side comes down to it over its slope.
 		var other := h
 		for j in [i - 1, i + 1]:
 			if j >= 0 and j < path.size() and bool(path[j]["edge"]) \
-					and (path[j]["p"] as Vector2).is_equal_approx(node["p"]):
+					and (path[j]["p"] as Vector2).distance_to(node["p"]) < 0.5:
 				other = _ground_h(path[j])
 		var low := minf(h, other)
 		if h > low + 0.5:
 			var before: bool = i > 0 and not bool(path[i - 1]["edge"])
 			var inner: Dictionary = path[i - 1] if before else (path[i + 1] if i + 1 < path.size() else node)
 			var back: Vector2 = (inner["p"] as Vector2) - (node["p"] as Vector2)
-			var centre: Vector2 = (_model["tiles"] as Dictionary)[str(node["tile"])]["center"]
+			var centre: Vector2 = (_model["tiles"] as Dictionary)[tile]["center"]
 			var crest: Vector2 = (node["p"] as Vector2) + back.normalized() * minf(
 				_slope_run((node["p"] as Vector2) - centre, back.normalized()), back.length() * 0.8)
 			if before:
-				pts.append(iso(crest, h))
-				pts.append(iso(node["p"], low))
+				put.call(crest, h, tile)
+				put.call(node["p"], low, tile)
 			else:
-				pts.append(iso(node["p"], low))
-				pts.append(iso(crest, h))
+				put.call(node["p"], low, tile)
+				put.call(crest, h, tile)
 		else:
-			pts.append(iso(node["p"], low))
+			put.call(node["p"], low, tile)
 	return pts
+
+
+## Track for one railway run: its corners eased into curves, then cut into each tile's share.
+## Runs that share track are laid over each other exactly, so where two part they make points.
+func _lay_track(path: Array, laid: Dictionary) -> void:
+	var nodes: Array = []
+	for i in range(path.size()):
+		var node: Dictionary = path[i]
+		var corner := i > 0 and i < path.size() - 1 and not bool(node["edge"])
+		if not corner:
+			nodes.append(node)
+			continue
+		var b: Vector2 = node["p"]
+		var to_a: Vector2 = (path[i - 1]["p"] as Vector2) - b
+		var to_c: Vector2 = (path[i + 1]["p"] as Vector2) - b
+		var ease := minf(_RAIL_CURVE, minf(to_a.length(), to_c.length()) * 0.5)
+		if ease < 1.0 or absf(to_a.normalized().dot(to_c.normalized())) > 0.999:
+			nodes.append(node)
+			continue
+		var p0 := b + to_a.normalized() * ease
+		var p2 := b + to_c.normalized() * ease
+		for k in range(_RAIL_CURVE_STEPS + 1):
+			var t := float(k) / float(_RAIL_CURVE_STEPS)
+			nodes.append({"p": p0.lerp(b, t).lerp(b.lerp(p2, t), t), "tile": node["tile"], "edge": false})
+	var info: Array = []
+	_street_line(nodes, info)
+	if info.size() < 2:
+		return
+	var ends := [not bool(path[0]["edge"]), not bool(path[path.size() - 1]["edge"])]
+	var run: Array = []
+	for i in range(info.size() + 1):
+		if i < info.size() and (run.is_empty() or str(run[0]["tile"]) == str(info[i]["tile"])):
+			run.append(info[i])
+			continue
+		if run.size() >= 2:
+			var key := ""
+			for r in run:
+				key += "%d,%d;" % [int(round((r["p"] as Vector2).x)), int(round((r["p"] as Vector2).y))]
+			var first := i - run.size() == 0
+			var rail := {"tile": str(run[0]["tile"]), "pts": run, "key": key,
+				"stops": [first and ends[0], i == info.size() and ends[1]]}
+			if not laid.has(key):
+				laid[key] = true
+				_rails.append(rail)
+				for k in range(run.size() - 1):
+					_road_plan.append({"a": run[k]["p"], "b": run[k + 1]["p"], "half": Rails.HALF})
+		run = [info[i]] if i < info.size() else []
 
 
 ## The ground under a path point: a crossing sits on the tile's edge at the tile's own height,
@@ -1729,9 +1822,95 @@ func _ground_h(node: Dictionary) -> float:
 	return _height_at(tile, node["p"])
 
 
+static func _same_goods(a: Array, b: Array) -> bool:
+	if a.size() != b.size():
+		return false
+	for g in a:
+		if not b.has(g):
+			return false
+	return true
+
+
+## The parts of a pipe's path, given in the order of flow, that still have to be laid: those not
+## running along pipe of the same kind already laid the same way. Where the path does run along
+## such pipe, its good is added to what that stretch carries (the stretch is split so only the
+## shared part carries it). Returns [{nodes, enter: [start, end]}]; an end is entered into the
+## ground only where it is an end of the whole path, not where the pipe joins another.
+func _unlaid(path: Array, mode: String, good: String, stretches: Array) -> Array:
+	var out: Array = []
+	var cur: Array = []
+	var from_start := true
+	for i in range(path.size() - 1):
+		var n0: Dictionary = path[i]
+		var n1: Dictionary = path[i + 1]
+		var p: Vector2 = n0["p"]
+		var q: Vector2 = n1["p"]
+		var length := p.distance_to(q)
+		if cur.is_empty():
+			cur.append(n0)
+		if length < 0.5:
+			cur.append(n1)                        # a tile edge, given once for each tile
+			continue
+		var dir := (q - p) / length
+		# Where along this leg pipe is already laid the same way.
+		var shared: Array = []
+		for k in range(stretches.size() - 1, -1, -1):
+			var st: Dictionary = stretches[k]
+			if str(st["mode"]) != mode:
+				continue
+			var a: Vector2 = st["a"]
+			var b: Vector2 = st["b"]
+			var run := a.distance_to(b)
+			if ((b - a) / run).dot(dir) < 0.999 or absf((a - p).cross(dir)) > 0.6:
+				continue
+			var t0 := maxf(0.0, (a - p).dot(dir))
+			var t1 := minf(length, (b - p).dot(dir))
+			if t1 - t0 < 2.0:
+				continue
+			shared.append([t0, t1])
+			# Split the laid stretch so that only the part run together carries both goods.
+			var s0 := (p + dir * t0 - a).dot(dir)
+			var s1 := (p + dir * t1 - a).dot(dir)
+			var goods: Array = (st["goods"] as Array).duplicate()
+			stretches.remove_at(k)
+			if s0 > 1.0:
+				stretches.append({"a": a, "b": a + dir * s0, "mode": mode, "tile": st["tile"], "goods": goods.duplicate()})
+			if run - s1 > 1.0:
+				stretches.append({"a": a + dir * s1, "b": b, "mode": mode, "tile": st["tile"], "goods": goods.duplicate()})
+			if not goods.has(good):
+				goods.append(good)
+			stretches.append({"a": a + dir * s0, "b": a + dir * s1, "mode": mode, "tile": st["tile"], "goods": goods})
+		shared.sort_custom(func(x: Array, y: Array) -> bool: return float(x[0]) < float(y[0]))
+		var at := 0.0
+		for iv in shared:
+			if float(iv[1]) <= at:
+				continue
+			if float(iv[0]) > at + 1.0:
+				cur.append({"p": p + dir * float(iv[0]), "tile": n0["tile"], "edge": false})
+			if cur.size() >= 2 and _path_length(cur) > 1.0:
+				out.append({"nodes": cur, "enter": [from_start, false]})
+			cur = [{"p": p + dir * float(iv[1]), "tile": n0["tile"], "edge": false}]
+			from_start = false
+			at = float(iv[1])
+		if length - at > 1.0:
+			cur.append(n1)
+		else:
+			cur = [n1]
+	if cur.size() >= 2 and _path_length(cur) > 1.0:
+		out.append({"nodes": cur, "enter": [from_start, true]})
+	return out
+
+
+static func _path_length(nodes: Array) -> float:
+	var total := 0.0
+	for i in range(nodes.size() - 1):
+		total += (nodes[i]["p"] as Vector2).distance_to(nodes[i + 1]["p"])
+	return total
+
+
 ## A pipe line's route as the waypoints the pipe planner takes. Pipes keep to their tile's own
-## level, ignoring its terraces. Several pipes that end at one point are set side by side.
-func _pipe_waypoints(path: Array, slots: Dictionary) -> Array:
+## level, ignoring its terraces.
+func _pipe_waypoints(path: Array) -> Array:
 	var tiles: Dictionary = _model["tiles"]
 	var out: Array = []
 	for i in range(path.size()):
@@ -1744,11 +1923,6 @@ func _pipe_waypoints(path: Array, slots: Dictionary) -> Array:
 			var here: Vector2 = tiles[str(node["tile"])]["center"]
 			var there: Vector2 = tiles[str(twin["tile"])]["center"]
 			wp["normal"] = (there - here).normalized()
-		elif i == 0 or i == path.size() - 1:
-			var key := Vector2i(p.round())
-			var n := int(slots.get(key, 0))
-			slots[key] = n + 1
-			wp["p"] = p + Vector2(ISO_X, -ISO_X) * _PIPE_SLOT_GAP * float(n)
 		out.append(wp)
 	return out
 
@@ -1824,6 +1998,7 @@ func _draw_tile(ci: CanvasItem, tile: String, zoom: float) -> void:
 			tints.fill(poly["tint"])
 			ci.draw_polygon(poly["points"], tints, poly["uvs"], road_tex)
 	_draw_roads(ci, parts.get("links", []))
+	_draw_rails(ci, tile, parts.get("rails", []))
 	if gfx.get("light") != null:
 		ci.draw_mesh(gfx["light"], null)
 	# Shadows fall north-west, away from the sun: laid on the ground before anything stands.
@@ -1876,13 +2051,15 @@ func _draw_grade(ci: CanvasItem, tile: String) -> void:
 func _sort_parts() -> void:
 	var tiles: Dictionary = _model.get("tiles", {})
 	for tid in _tile_order:
-		_tile_parts[tid] = {"fits": [], "polys": [], "links": [], "pipes": [], "things": []}
+		_tile_parts[tid] = {"fits": [], "polys": [], "links": [], "rails": [], "pipes": [], "things": []}
 	for fit in _road_fits:
 		_part(fit, "fits", fit)
 	for poly in _road_polys:
 		_part(poly, "polys", poly)
 	for l in _links:
 		_part(l, "links", l)
+	for r in _rails:
+		_part(r, "rails", r)
 	for pl in _pipes:
 		_part(pl, "pipes", pl)
 	for st in _standing:
@@ -1905,6 +2082,8 @@ func _sort_parts() -> void:
 			made.append([poly["points"], poly["tint"]])
 		for l in parts["links"]:
 			made.append([l["mode"], l["pts"]])
+		for r in parts["rails"]:
+			made.append([r["key"], r["stops"]])
 		for pl in parts["pipes"]:
 			made.append([pl["mode"], pl["pts"]])
 		for thing in parts["things"]:
@@ -1915,7 +2094,7 @@ func _sort_parts() -> void:
 				"item":
 					made.append([ref["kind"], ref.get("name", ""), ref.get("at", ref.get("rect", ref.get("foot", ""))), ref.get("points", "")])
 				"sign":
-					made.append([ref["foot"], ref["icon"]])
+					made.append([ref["foot"], ref["icons"]])
 		_tile_sig[tid] = hash(str(made))
 	# Bakes of tiles that have gone or changed are let go.
 	for key in _bakes.keys():
@@ -2086,6 +2265,11 @@ func _draw_standing(ci: CanvasItem, s: Dictionary) -> void:
 	var h := float(s["h"])
 	var side := float(s["side"])
 	var half := float(s.get("pad", side * 1.12)) * 0.5
+	if str(s["kind"]) == "house":
+		# A home stands on the grass, not on a works' concrete.
+		if s.get("sprite") != null:
+			ci.draw_texture_rect(s["sprite"], s["tex_rect"], false, s.get("tint", Color.WHITE))
+		return
 	if str(s["kind"]) == "pylon":
 		if s.get("sprite") != null:
 			ci.draw_texture_rect(s["sprite"], s["tex_rect"], false, s.get("tint", Color.WHITE))
@@ -2139,10 +2323,109 @@ func _draw_roads(ci: CanvasItem, links: Array) -> void:
 				_thick(ci, l["pts"], _KERB, _DRIVE_HALF * 2.0 + 3.5)
 				_thick(ci, l["pts"], _ASPHALT, _DRIVE_HALF * 2.0)
 			"rail":
-				_thick(ci, l["pts"], _BALLAST, 15.0)
-				_draw_ties(ci, l["pts"], 10.0, 13.0, _TIE, 2.6)
-				_draw_offset_line(ci, l["pts"], 4.0, _RAIL, 1.5)
-				_draw_offset_line(ci, l["pts"], -4.0, _RAIL, 1.5)
+				# A railway between two tiles that do not touch: no track plan reaches, so a plain line.
+				_thick(ci, l["pts"], _BALLAST, 11.0)
+				_draw_ties(ci, l["pts"], 6.0, 8.0, _TIE, 1.6)
+				_draw_offset_line(ci, l["pts"], 2.6, _RAIL, 1.1)
+				_draw_offset_line(ci, l["pts"], -2.6, _RAIL, 1.1)
+
+
+## A band along a run of track, `half` wide either side, as quads in board space.
+func _rail_band(ci: CanvasItem, pts: Array, half: float, col: Color, from: int = 0, to: int = -1) -> void:
+	var last := pts.size() - 1 if to < 0 else to
+	for i in range(from, last):
+		var a: Vector2 = pts[i]["p"]
+		var b: Vector2 = pts[i + 1]["p"]
+		if a.distance_to(b) < 0.05:
+			continue
+		var n := (b - a).normalized().orthogonal() * half
+		var ha := float(pts[i]["h"])
+		var hb := float(pts[i + 1]["h"])
+		ci.draw_colored_polygon(PackedVector2Array([iso(a + n, ha), iso(b + n, hb), iso(b - n, hb), iso(a - n, ha)]), col)
+		if i > from:
+			# The joint, filled so a curve shows no notches.
+			var joint := PackedVector2Array()
+			for k in range(10):
+				var ang := TAU * float(k) / 10.0
+				joint.append(iso(a + Vector2(cos(ang), sin(ang)) * half, ha))
+			ci.draw_colored_polygon(joint, col)
+
+
+## A tile's railway: ballast with an inked edge, sleepers, two rails. Drawn in passes so tracks
+## that share ground or part at points lie in one bed. Over a river the bed is a girder deck.
+func _draw_rails(ci: CanvasItem, tile: String, rails: Array) -> void:
+	if rails.is_empty():
+		return
+	for band in [[Rails.HALF + _RAIL_INK, _INK], [Rails.HALF, _BALLAST]]:
+		for r in rails:
+			_rail_band(ci, r["pts"], float(band[0]), band[1])
+	# Girders where the track crosses water.
+	for r in rails:
+		var pts: Array = r["pts"]
+		for i in range(pts.size() - 1):
+			var a: Vector2 = pts[i]["p"]
+			var b: Vector2 = pts[i + 1]["p"]
+			for line in _rivers.get(tile, []):
+				var river: PackedVector2Array = line
+				for k in range(river.size() - 1):
+					var hit: Variant = Geometry2D.segment_intersects_segment(a, b, river[k], river[k + 1])
+					if hit == null:
+						continue
+					var dir := (b - a).normalized()
+					var h := float(pts[i]["h"])
+					var span: Array = [{"p": (hit as Vector2) - dir * _RAIL_SPAN, "h": h}, {"p": (hit as Vector2) + dir * _RAIL_SPAN, "h": h}]
+					_rail_band(ci, span, Rails.HALF + 2.6, _INK)
+					_rail_band(ci, span, Rails.HALF + 1.6, _GIRDER)
+					_rail_band(ci, span, Rails.HALF - 1.0, _GIRDER_DECK)
+	# Sleepers, placed by where they are on the ground so shared track carries one set.
+	for r in rails:
+		var pts: Array = r["pts"]
+		for i in range(pts.size() - 1):
+			var a: Vector2 = pts[i]["p"]
+			var b: Vector2 = pts[i + 1]["p"]
+			var length := a.distance_to(b)
+			if length < 0.05:
+				continue
+			var u := (b - a) / length
+			if u.x < -0.001 or (absf(u.x) <= 0.001 and u.y < 0.0):
+				u = -u
+			var sa := a.dot(u)
+			var sb := b.dot(u)
+			var n := u.orthogonal() * _RAIL_TIE * 0.5
+			var s := ceilf(minf(sa, sb) / _RAIL_TIE_GAP) * _RAIL_TIE_GAP
+			while s <= maxf(sa, sb):
+				var t := (s - sa) / (sb - sa)
+				var p := a.lerp(b, t)
+				var h := lerpf(float(pts[i]["h"]), float(pts[i + 1]["h"]), t)
+				var w := u * _RAIL_TIE_W * 0.5
+				ci.draw_colored_polygon(PackedVector2Array([iso(p - n - w, h), iso(p + n - w, h), iso(p + n + w, h), iso(p - n + w, h)]), _TIE)
+				s += _RAIL_TIE_GAP
+	for r in rails:
+		var pts: Array = r["pts"]
+		for side in [-1.0, 1.0]:
+			for i in range(pts.size() - 1):
+				var a: Vector2 = pts[i]["p"]
+				var b: Vector2 = pts[i + 1]["p"]
+				if a.distance_to(b) < 0.05:
+					continue
+				var n: Vector2 = (b - a).normalized().orthogonal() * _RAIL_GAUGE * 0.5 * side
+				var w: Vector2 = n.normalized() * _RAIL_W * 0.5
+				var ha := float(pts[i]["h"])
+				var hb := float(pts[i + 1]["h"])
+				ci.draw_colored_polygon(PackedVector2Array([iso(a + n - w, ha), iso(b + n - w, hb), iso(b + n + w, hb), iso(a + n + w, ha)]), _RAIL)
+		# Buffers where the track ends at what it serves.
+		for e in range(2):
+			if not bool(r["stops"][e]):
+				continue
+			var at: Dictionary = pts[0] if e == 0 else pts[pts.size() - 1]
+			var next: Dictionary = pts[1] if e == 0 else pts[pts.size() - 2]
+			var n: Vector2 = ((next["p"] as Vector2) - (at["p"] as Vector2)).normalized().orthogonal() * (Rails.HALF - 0.6)
+			var h := float(at["h"])
+			var p: Vector2 = at["p"]
+			ci.draw_line(iso(p - n, h + 2.6), iso(p + n, h + 2.6), _INK, 3.6)
+			ci.draw_line(iso(p - n, h + 2.6), iso(p + n, h + 2.6), _BUFFER, 2.0)
+			for side in [-1.0, 1.0]:
+				ci.draw_line(iso(p + n * side * 0.7, h), iso(p + n * side * 0.7, h + 2.6), _INK, 1.4)
 
 
 func _draw_pipe_item(ci: CanvasItem, item: Dictionary) -> void:
@@ -2171,14 +2454,17 @@ func _draw_pipe_item(ci: CanvasItem, item: Dictionary) -> void:
 func _draw_sign(ci: CanvasItem, s: Dictionary, zoom: float) -> void:
 	var foot: Vector2 = s["foot"]
 	var top: Vector2 = s["top"]
+	var icons: Array = s["icons"]
 	var plate := maxf(_SIGN_PLATE, _SIGN_MIN_PX / maxf(zoom, 0.001))
 	ci.draw_line(foot, top, _PIPE_EDGE, maxf(1.6, plate * 0.1))
-	var box := Rect2(top - Vector2(plate * 0.5, plate * 0.9), Vector2(plate, plate))
+	# One plate for everything the pipe carries here, the goods side by side on it.
+	var box := Rect2(top - Vector2(plate * 0.5 * float(icons.size()), plate * 0.9), Vector2(plate * float(icons.size()), plate))
 	ci.draw_rect(box.grow(plate * 0.09), _PIPE_EDGE)
 	ci.draw_rect(box, _CREAM)
-	var icon: Texture2D = s["icon"]
-	if icon != null:
-		ci.draw_texture_rect(icon, box.grow(-plate * 0.08), false)
+	for i in range(icons.size()):
+		var cell := Rect2(box.position + Vector2(plate * float(i), 0.0), Vector2(plate, plate))
+		if icons[i] != null:
+			ci.draw_texture_rect(icons[i], cell.grow(-plate * 0.08), false)
 
 
 ## A wide line drawn segment by segment with round joints. draw_polyline miters its joints,

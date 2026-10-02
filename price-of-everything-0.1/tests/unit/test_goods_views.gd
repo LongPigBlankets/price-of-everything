@@ -641,6 +641,30 @@ func _test_empire_board_model() -> void:
 		"board: mountains stand over hills, hills over lowland, land over sea")
 
 
+## The supply chain board's railway: one plan on every tile, so neighbours' tracks meet.
+func _test_empire_board_rails() -> void:
+	var Rails := preload("res://scripts/empire_board_rails.gd")
+	var met := true
+	var inside := true
+	for off in [Vector2(405, 240), Vector2(-405, 240), Vector2(405, -240), Vector2(-405, -240), Vector2(0, 480), Vector2(0, -480)]:
+		var out: Vector2 = Rails.exit_point(off)
+		if out == Vector2.ZERO or (out - off).distance_to(Rails.exit_point(-off)) > 0.01:
+			met = false
+		var way: Array = Rails.path(Rails.stop(Vector2(0.0, 34.0)), out)
+		if (way[0] as Vector2).distance_to(Vector2(0.0, Rails.LINE_Y)) > 0.01 or (way[way.size() - 1] as Vector2).distance_to(out) > 0.01:
+			inside = false
+		for i in range(way.size() - 1):
+			var d: Vector2 = (way[i + 1] as Vector2) - (way[i] as Vector2)
+			var deg := fposmod(rad_to_deg(d.angle()), 30.0)
+			if minf(deg, 30.0 - deg) > 0.1:
+				inside = false
+	_check(met, "rails: a track leaves a tile at the point its neighbour's track arrives")
+	_check(inside, "rails: a way from the warehouse's stop to any edge runs on the plan's directions")
+	_check(Rails.exit_point(Vector2(900.0, 0.0)) == Vector2.ZERO, "rails: no track to a tile that is not a neighbour")
+	_check(Rails.path(Vector2(-100.0, 91.0), Vector2(100.0, -91.0)).size() == 4,
+		"rails: between the two lines a train takes the cross track")
+
+
 ## The supply chain board's pipework: routes snapped onto twelve directions so baked pieces fit.
 func _test_empire_board_pipes() -> void:
 	var Pipes := preload("res://scripts/empire_board_pipes.gd")
