@@ -197,7 +197,7 @@ Contracts kept: `MarketPanel` (tutorial spotlight, `close_market_panel`), `open_
 
 | Part | Where | Reused / new |
 |---|---|---|
-| Backing, content margin, seam, sort marks, search screen, plastic case, modules, wells, captions | `ledger_v3.gd`, `tvp_v3/buildings_parts.gd` | reused |
+| Backing, content margin, seam, sort marks, search screen, plastic case, modules, wells, captions | `ledger_v3.gd`, `ds2/parts.gd` | reused |
 | Nameplate (MARKET, black enamel in brass), exchange bell (the arrow lamp's renders `lamp_arrow_up`/`lamp_arrow_down` are retired for the drawn trend arrow) | render set `marketparts`, seed 450: `market_nameplate`, `market_bell`, `lamp_arrow_up`, `lamp_arrow_down`; `scripts/market_ds2/parts.gd` | new |
 | Key bed and the strip of figures over five latching keys, the ticker | `market_ds2.gd` (the tile view's key bed pattern, `LatchKey`, `DotMatrix`) | reused parts; ▲ ▼ added to the dot matrix font |
 | Money screens under the display rule (the point in its own cell, five cells) | `bdp_v3_led.gd` `point_cell` (off by default, so every other panel is unchanged), `money_figure.gd` `display()` | kit change, opt in |

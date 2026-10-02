@@ -16,7 +16,7 @@ extends Control
 
 const Parts := preload("res://scripts/briefing_ds2/parts.gd")
 const AlertWindow := preload("res://scripts/briefing_ds2/annunciator.gd")
-const Kit := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Kit := preload("res://scripts/ds2/parts.gd")
 const Key := preload("res://scripts/bdp_v3_key.gd")
 const CreamKey := preload("res://scripts/ds2/cream_key.gd")
 const Scroll := preload("res://scripts/bdp_v3_scroll.gd")

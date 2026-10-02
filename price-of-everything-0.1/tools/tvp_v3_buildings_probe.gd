@@ -21,7 +21,7 @@ const GuardKey := preload("res://scripts/ds2/guard_key.gd")
 const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
 const BuildingReadout := preload("res://scripts/building_readout.gd")
 const TutorialDetectors := preload("res://scripts/tutorial/tutorial_detectors.gd")
-const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Parts := preload("res://scripts/ds2/parts.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
 const Led := preload("res://scripts/bdp_v3_led.gd")
 

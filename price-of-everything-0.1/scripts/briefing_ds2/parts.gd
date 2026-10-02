@@ -4,7 +4,7 @@ extends RefCounted
 ## are drawn, and the print on them. Presentation only.
 
 const PeopleParts := preload("res://scripts/people_ds2/parts.gd")
-const Kit := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Kit := preload("res://scripts/ds2/parts.gd")
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const Led := preload("res://scripts/bdp_v3_led.gd")

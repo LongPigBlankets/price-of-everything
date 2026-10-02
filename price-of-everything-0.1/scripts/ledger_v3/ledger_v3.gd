@@ -15,7 +15,7 @@ extends RefCounted
 ##   a printed £; its land; and an Upgrade key whose card is Building Detail's (the dot card).
 ## Clicking a module opens the building, as the v2 row does.
 
-const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Parts := preload("res://scripts/ds2/parts.gd")
 const Metrics := preload("res://scripts/ds2/metrics.gd")
 const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
 const LatchKey := preload("res://scripts/ds2/latch_key.gd")

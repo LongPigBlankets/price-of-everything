@@ -25,23 +25,23 @@ extends RefCounted
 ##   reads down one line as Building Detail's screens do. Each action sits beside the figure it changes.
 ##   The seven-segment screens show money only.
 ## - Hovering a module, a key or a figure shows Building Detail's readout at the pointer
-##   (buildings_tip.gd): what the worst check found, in the engine's full sentence.
+##   (scripts/ds2/tip.gd): what the worst check found, in the engine's full sentence.
 ## - Other companies' buildings in a second case, folded behind one wide key that counts them ("4 other
 ##   companies' buildings") and opens it: each company's buildings under a metal label with its name,
 ##   grouped and folded as yours are.
 ## - Woods and ruins last, in their own case under a raised heading, as features of the land rather than
 ##   anyone's company.
 ## Infrastructure (roads, cables, pipes, rail) is the Transport tab's: it is neither shown nor counted here.
-## The parts stand CASE_GAP apart in a column kept clear of the scroll rail (buildings_parts.gd Column), so
+## The parts stand CASE_GAP apart in a column kept clear of the scroll rail (scripts/ds2/parts.gd Column), so
 ## no case's edge, screws or shadow lies over another's or the rail.
 ##
 ## Open groups, the open drawer and the readings are kept on the panel (meta), so a refresh keeps them.
 
-const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Parts := preload("res://scripts/ds2/parts.gd")
 const Readings := preload("res://scripts/tvp_v3/buildings_readings.gd")
 const Recheck := preload("res://scripts/tvp_v3/buildings_recheck.gd")
 const Drum := preload("res://scripts/ds2/drum_figure.gd")
-const Tip := preload("res://scripts/tvp_v3/buildings_tip.gd")
+const Tip := preload("res://scripts/ds2/tip.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
 const Cable := preload("res://scripts/bdp_v3_cable.gd")
 const ModKey := preload("res://scripts/bdp_v3_mod_key.gd")

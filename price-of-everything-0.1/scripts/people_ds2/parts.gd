@@ -3,7 +3,7 @@ extends RefCounted
 ## (assets/ui/bdp_v3/people_*.png, from tools/button_mockup/cluster.html?export&only=peoplecab,…), how they are
 ## drawn, the print on them and the money screens. Presentation only.
 
-const Kit := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Kit := preload("res://scripts/ds2/parts.gd")
 const Led := preload("res://scripts/bdp_v3_led.gd")
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const Money := preload("res://scripts/ds2/money_figure.gd")

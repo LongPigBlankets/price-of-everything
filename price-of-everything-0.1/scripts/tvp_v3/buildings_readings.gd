@@ -18,7 +18,7 @@ extends RefCounted
 ## frames and refreshes the panel if anything shown has changed.
 
 const BuildingReadout := preload("res://scripts/building_readout.gd")
-const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Parts := preload("res://scripts/ds2/parts.gd")
 
 const META_READINGS := "tvp_bl_readings"
 const RANK := {"ok": 0, "warn": 1, "bad": 2}

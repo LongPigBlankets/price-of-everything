@@ -848,7 +848,7 @@ func _render_settings() -> void:
 		var choice := _settings_choice_button(
 			"%s  %s\n    %s" % [radio_text, str(option.get("title", "")), str(option.get("detail", ""))],
 			selected, source_group, true)
-		if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1":
+		if preload("res://scripts/middleman_service.gd").active():
 			if option_id == "market" and not ResearchState.global_trade_license_available():
 				choice.disabled = true
 				choice.tooltip_text = "Government Import/Export License is required for direct global-market construction purchases."
@@ -2209,7 +2209,7 @@ func _v3_materials_accordion() -> Control:
 		if oid == "middleman" and not ResearchState.logistics_progression_active():
 			continue
 		var b := _settings_choice_button(str(opt.get("label", "")), cur == oid, group)
-		if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1":
+		if preload("res://scripts/middleman_service.gd").active():
 			if oid == "market" and not ResearchState.global_trade_license_available():
 				b.disabled = true
 				b.tooltip_text = "Government Import/Export License is required for direct global-market construction purchases."

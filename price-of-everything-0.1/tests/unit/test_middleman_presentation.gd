@@ -134,3 +134,21 @@ func _test_diagnostics_keep_every_check_under_the_intermediary() -> void:
 	_check(Readout.intermediary_reason("Production Blocked") == Readout.intermediary_reason("production_blocked")
 		and not Readout.intermediary_reason("unreleased_holding").contains("_"), "contract codes never reach the player")
 	cleanup()
+
+## The tile-wide routing the tile view's knobs turn lives in the service: one call routes a side of every
+## building on the tile, and the same call reads back which choice is in force.
+func _test_tile_policy_applies_and_reads_back() -> void:
+	var ids := setup(2)
+	var tile := "tile_5_4"
+	_check(Service.tile_policy_active(tile, "input", "middleman", ids) and not Service.tile_policy_active(tile, "input", "managed", ids),
+		"a new intermediary tile reads as intermediary inputs")
+	var to_stock: Dictionary = Service.apply_tile_policy(tile, "input", "stockpile", ids)
+	_check(bool(to_stock.get("ok", false)) and Service.tile_policy_active(tile, "input", "stockpile", ids)
+		and not Service.tile_policy_active(tile, "input", "middleman", ids), "inputs turned to the tile stockpile read back as stockpile (%s)" % str(to_stock.get("reason", "")))
+	_check(str(Service.input_source_route(str(ids[0]), "g_006").get("fallback", "")) == "middleman", "a stockpile input keeps the intermediary as its fallback")
+	var to_market: Dictionary = Service.apply_tile_policy(tile, "output", "market", ids)
+	_check(bool(to_market.get("ok", false)) and Service.tile_policy_active(tile, "output", "market", ids), "outputs turned to the market read back as market")
+	var back: Dictionary = Service.apply_tile_policy(tile, "input", "middleman", ids)
+	_check(bool(back.get("ok", false)) and Service.tile_policy_active(tile, "input", "middleman", ids), "inputs turned back to the intermediary")
+	_check(Service.active() and Service.global_market_open() == ResearchState.global_trade_license_available(), "the market opens with the license in an intermediary game")
+	cleanup()

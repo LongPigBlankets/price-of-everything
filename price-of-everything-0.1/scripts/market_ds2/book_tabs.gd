@@ -10,7 +10,7 @@ extends RefCounted
 
 const MarketRules := preload("res://scripts/market_rules.gd")
 const MParts := preload("res://scripts/market_ds2/parts.gd")
-const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Parts := preload("res://scripts/ds2/parts.gd")
 const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
 const Metrics := preload("res://scripts/ds2/metrics.gd")
 const LedMeter := preload("res://scripts/ds2/led_meter.gd")

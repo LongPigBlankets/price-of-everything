@@ -18,7 +18,7 @@ extends "res://scripts/advisor_council_tab.gd"
 ## AdvisorChooseCandidateButton, AdvisorHireAssignButton, AdvisorHireCostLine) are kept.
 
 const Parts := preload("res://scripts/people_ds2/parts.gd")
-const Kit := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Kit := preload("res://scripts/ds2/parts.gd")
 const SeatStatus := preload("res://scripts/people_ds2/seat_status.gd")
 const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const Scroll := preload("res://scripts/bdp_v3_scroll.gd")

@@ -12,7 +12,7 @@ const BuildOrder := preload("res://scripts/construct_ds2/build_order.gd")
 const Rules := preload("res://scripts/construction_rules.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 const LatchKey := preload("res://scripts/ds2/latch_key.gd")
-const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Parts := preload("res://scripts/ds2/parts.gd")
 const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 

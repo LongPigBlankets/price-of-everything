@@ -2,7 +2,7 @@ extends RefCounted
 ## The market's DS2 parts (docs/market-ds2-plan.md §5): the MARKET nameplate, the exchange bell, the trend arrow
 ## (the nameplate and bell from render set `marketparts`, seed 450, in tools/button_mockup/cluster.html) and the money screens under the
 ## digital display rule (the point in a cell of its own, five cells at most: scripts/ds2/money_figure.gd
-## `display`). Everything else comes from the kit: tvp_v3/buildings_parts.gd (modules, wells, captions, body
+## `display`). Everything else comes from the kit: ds2/parts.gd (modules, wells, captions, body
 ## text), ledger_v3 (the backing, the seam, the search screen, sort marks), scripts/ds2 (dot matrix, latching
 ## keys, the guarded key, the dot card).
 
@@ -10,7 +10,7 @@ const Plate := preload("res://scripts/bdp_v3_plate.gd")
 const Light := preload("res://scripts/bdp_v3_light.gd")
 const Led := preload("res://scripts/bdp_v3_led.gd")
 const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
-const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Parts := preload("res://scripts/ds2/parts.gd")
 const DotCard := preload("res://scripts/ds2/dot_card.gd")
 const MarketRules := preload("res://scripts/market_rules.gd")
 

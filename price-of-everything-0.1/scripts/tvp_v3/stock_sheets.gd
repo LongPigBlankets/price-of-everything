@@ -1,6 +1,6 @@
 extends RefCounted
 ## Tile view v3, the Stock tab: its two action sheets, each a worn steel plate that slides in over the tab's
-## body as Building Detail's sheets do (docs/tile-view-ds2-plan.md §5, Phase 5; stock_parts.gd `sheet`).
+## body as Building Detail's sheets do (docs/tile-view-ds2-plan.md §5, Phase 5; scripts/ds2/sheet_parts.gd `sheet`).
 ##   Move or sell: the good picked in the bay or on the warehouse's bar, in its well with its quantity pill,
 ##   how many, where to (the market, a special order for it, or a tile picked on the map), once or every
 ##   turn, what that is worth (the sale after port charges, or the freight, a turn when it repeats), then
@@ -12,7 +12,7 @@ extends RefCounted
 ##   ways to pay.
 
 const Metrics := preload("res://scripts/ds2/metrics.gd")
-const Parts := preload("res://scripts/tvp_v3/stock_parts.gd")
+const Parts := preload("res://scripts/ds2/sheet_parts.gd")
 const Led := preload("res://scripts/bdp_v3_led.gd")
 const Toggle := preload("res://scripts/bdp_v3_toggle.gd")
 const Heading := preload("res://scripts/bdp_v3_heading.gd")

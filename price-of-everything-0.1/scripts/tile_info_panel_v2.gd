@@ -2906,9 +2906,7 @@ func _go_to_building(instance_id: String) -> void:
 func _build_stock_pane(pane: VBoxContainer) -> void:
 	var service = preload("res://scripts/middleman_service.gd")
 	var logistics: Dictionary = service.tile_sides(_current_tile_id)
-	var has_logistics: bool = str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" \
-		and (not logistics.input.is_empty() or not logistics.output.is_empty()) \
-		and ResearchState.open_logistics_contracts_available()
+	var has_logistics: bool = service.tile_controls_available(logistics)
 	# The two controls at the top of this pane are deliberately independent from the
 	# goods chart below: surplus is a tile-wide standing order, while Manage Logistics
 	# changes the input/output policy for every eligible building on this tile.
@@ -3357,69 +3355,17 @@ func _logistics_button_style(selected: bool, hovered: bool) -> StyleBoxFlat:
 	return style
 
 func _tile_logistics_choice_active(mode: String, side: String, ids: Array) -> bool:
-	if ids.is_empty():
-		return false
-	var service = preload("res://scripts/middleman_service.gd")
-	if mode == "middleman":
-		return ids.all(func(iid: String) -> bool: return service.side_all_middleman(iid, side))
-	if mode == "managed":
-		return not ids.all(func(iid: String) -> bool: return service.side_all_middleman(iid, side))
-	for iid: String in ids:
-		var items: Array = service._side_items(iid, side)
-		for item: Dictionary in items:
-			var gid := str(item.get("good_id", ""))
-			if not service.material_tradeable(gid, side):
-				continue
-			if side == "input":
-				var route := service.input_source_route(iid, gid)
-				if mode == "market" and str(route.get("primary", "")) != "market": return false
-				if mode == "stockpile" and (str(route.get("primary", "")) != "stockpile" or str(route.get("fallback", "")) != "middleman"): return false
-			else:
-				var destination := MatchState.get_output_stockpile_destination(iid, gid)
-				if mode == "market" and not MatchState.is_output_market(iid, gid): return false
-				if mode == "stockpile" and destination != _current_tile_id: return false
-	return true
+	return preload("res://scripts/middleman_service.gd").tile_policy_active(_current_tile_id, side, mode, ids)
 
 func _apply_tile_logistics_policy(side: String, mode: String, logistics: Dictionary) -> void:
 	var ids: Array = logistics.get(side, []) as Array
 	if ids.is_empty():
 		return
 	var apply := func() -> bool:
-		var service = preload("res://scripts/middleman_service.gd")
-		var broad_mode := "middleman" if mode == "middleman" else "managed"
-		var result: Dictionary = service.set_tile_mode(_current_tile_id, side, broad_mode)
+		var result: Dictionary = preload("res://scripts/middleman_service.gd").apply_tile_policy(_current_tile_id, side, mode, ids)
 		if not bool(result.get("ok", false)):
-			MatchState.request_toast(str(result.get("reason", "Unable to change tile logistics.")), "warning")
+			MatchState.request_toast(str(result.get("reason", "")), "warning")
 			return false
-		if side == "input":
-			if mode == "market" or mode == "stockpile":
-				var source := "market" if mode == "market" else "stockpile"
-				for iid: String in ids:
-					for item: Dictionary in service._side_items(iid, "input"):
-						var gid := str(item.get("good_id", ""))
-						if not service.material_tradeable(gid, "input"):
-							continue
-						var primary := service.set_input_route(iid, gid, "primary", source)
-						if not bool(primary.get("ok", false)):
-							MatchState.request_toast(str(primary.get("reason", "Unable to set input source.")), "warning")
-							return false
-						# Every physical route keeps the intermediary as its fallback. The
-						# fallback is a visible route choice, not a hidden "none" state.
-						var fallback := service.set_input_route(iid, gid, "fallback", "middleman")
-						if not bool(fallback.get("ok", false)):
-							MatchState.request_toast(str(fallback.get("reason", "Unable to set input fallback.")), "warning")
-							return false
-		elif side == "output" and (mode == "market" or mode == "stockpile"):
-			var tile_id := _current_tile_id
-			for iid: String in ids:
-				for item: Dictionary in service._side_items(iid, "output"):
-					var gid := str(item.get("good_id", ""))
-					if not service.material_tradeable(gid, "output"):
-						continue
-					if mode == "market":
-						MatchState.route_output_to_market(iid, gid)
-					else:
-						MatchState.set_output_stockpile_destination(iid, tile_id, gid)
 		_refresh_pane("stock")
 		return true
 	var confirmation := preload("res://scripts/logistics_confirmation.gd")

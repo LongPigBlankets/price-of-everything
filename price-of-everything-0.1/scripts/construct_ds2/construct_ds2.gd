@@ -22,7 +22,7 @@ const Key := preload("res://scripts/bdp_v3_key.gd")
 const Scroll := preload("res://scripts/bdp_v3_scroll.gd")
 const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
 const Light := preload("res://scripts/bdp_v3_light.gd")
-const Parts := preload("res://scripts/tvp_v3/buildings_parts.gd")
+const Parts := preload("res://scripts/ds2/parts.gd")
 
 const CAPTURE_SCALE := 1.875
 const TEXELS := 2.0

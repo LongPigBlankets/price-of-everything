@@ -31,7 +31,7 @@ Every figure is the row model the v2 ledger already computes (`_row_vm`: CostSol
 
 ## Built (first pass)
 
-`scripts/ledger_v3/ledger_v3.gd` builds the look from the kit (`scripts/tvp_v3/buildings_parts.gd` modules, case, captions, money, wells and emblems; `scripts/ds2/` dot matrix, latching keys, cream key, dot card; the BDP v3 backing, title, key, seam, lamp, LED and rail). `building_ledger_panel.gd` keeps the data, filters, sort and refresh, builds either look (`_build_look`) and rebuilds when the switch flips. Captures: `tools/ledger_ds2_shot.tscn` (v2, DS2, DS2 filtered and sorted), into `$LEDGER_SHOT_DIR`. Test: `_test_building_ledger_ds2`.
+`scripts/ledger_v3/ledger_v3.gd` builds the look from the kit (`scripts/ds2/parts.gd` modules, case, captions, money, wells and emblems; `scripts/ds2/` dot matrix, latching keys, cream key, dot card; the BDP v3 backing, title, key, seam, lamp, LED and rail). `building_ledger_panel.gd` keeps the data, filters, sort and refresh, builds either look (`_build_look`) and rebuilds when the switch flips. Captures: `tools/ledger_ds2_shot.tscn` (v2, DS2, DS2 filtered and sorted), into `$LEDGER_SHOT_DIR`. Test: `_test_building_ledger_ds2`.
 
 **Card height.** Each row is a DS2 building card, one height with the tile view's (`scripts/ds2/metrics.gd` CARD_H: a 72 px good in its well and 8 px above and below), its emblem and well the Buildings tab's.
 

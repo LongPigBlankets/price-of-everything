@@ -916,6 +916,64 @@ static func set_tile_mode(tile_id: String, side: String, mode: String) -> Dictio
 	if side not in ["input", "output"]: return {"ok":false, "reason":"Unknown logistics option."}
 	return set_modes(tile_sides(tile_id)[side], side, mode)
 
+## True in a game played with the Logistics Intermediary.
+static func active() -> bool:
+	return str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1"
+
+## True when buildings may trade on the global market: always outside an intermediary game, and with the
+## Government Import/Export License inside one.
+static func global_market_open() -> bool:
+	return not active() or ResearchState.global_trade_license_available()
+
+## True when a tile shows its tile-wide logistics controls: an intermediary game, a building here with a
+## tradeable side (`sides` is tile_sides(tile)), and Open Logistics Contracts.
+static func tile_controls_available(sides: Dictionary) -> bool:
+	return active() and (not (sides.get("input", []) as Array).is_empty() or not (sides.get("output", []) as Array).is_empty()) \
+		and ResearchState.open_logistics_contracts_available()
+
+## True when `mode` ("middleman", "market", "stockpile", or "managed" for anything else) is how every
+## building in `ids` on `tile_id` routes that side.
+static func tile_policy_active(tile_id: String, side: String, mode: String, ids: Array) -> bool:
+	if ids.is_empty(): return false
+	if mode == "middleman": return ids.all(func(iid: String) -> bool: return side_all_middleman(iid, side))
+	if mode == "managed": return not ids.all(func(iid: String) -> bool: return side_all_middleman(iid, side))
+	for iid: String in ids:
+		for item: Dictionary in _side_items(iid, side):
+			var gid := str(item.get("good_id", ""))
+			if not material_tradeable(gid, side): continue
+			if side == "input":
+				var route := input_source_route(iid, gid)
+				if mode == "market" and str(route.get("primary", "")) != "market": return false
+				if mode == "stockpile" and (str(route.get("primary", "")) != "stockpile" or str(route.get("fallback", "")) != "middleman"): return false
+			else:
+				if mode == "market" and not MatchState.is_output_market(iid, gid): return false
+				if mode == "stockpile" and MatchState.get_output_stockpile_destination(iid, gid) != tile_id: return false
+	return true
+
+## Route one side of every building in `ids` on `tile_id` by `mode` (as tile_policy_active names them).
+## A physical input route keeps the intermediary as its fallback. Returns {ok, reason}.
+static func apply_tile_policy(tile_id: String, side: String, mode: String, ids: Array) -> Dictionary:
+	var result: Dictionary = set_tile_mode(tile_id, side, "middleman" if mode == "middleman" else "managed")
+	if not bool(result.get("ok", false)):
+		return {"ok": false, "reason": str(result.get("reason", "Unable to change tile logistics."))}
+	if mode not in ["market", "stockpile"]: return {"ok": true}
+	for iid: String in ids:
+		for item: Dictionary in _side_items(iid, side):
+			var gid := str(item.get("good_id", ""))
+			if not material_tradeable(gid, side): continue
+			if side == "input":
+				var primary := set_input_route(iid, gid, "primary", mode)
+				if not bool(primary.get("ok", false)):
+					return {"ok": false, "reason": str(primary.get("reason", "Unable to set input source."))}
+				var fallback := set_input_route(iid, gid, "fallback", "middleman")
+				if not bool(fallback.get("ok", false)):
+					return {"ok": false, "reason": str(fallback.get("reason", "Unable to set input fallback."))}
+			elif mode == "market":
+				MatchState.route_output_to_market(iid, gid)
+			else:
+				MatchState.set_output_stockpile_destination(iid, tile_id, gid)
+	return {"ok": true}
+
 static func global_side(side: String) -> Dictionary:
 	var ids: Array = []
 	var intermediary := 0

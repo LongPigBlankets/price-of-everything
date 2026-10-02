@@ -23,7 +23,7 @@ extends RefCounted
 ## Turning a knob asks for the change; the knob stays where it was until the sheet is rebuilt with the
 ## change made, so a change refused or cancelled never leaves it pointing at something untrue.
 
-const Parts := preload("res://scripts/tvp_v3/stock_parts.gd")
+const Parts := preload("res://scripts/ds2/sheet_parts.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
 const Readout := preload("res://scripts/bdp_v3_readout.gd")
 const Rotary := preload("res://scripts/rotary_selector.gd")
@@ -654,7 +654,7 @@ static func _digits(lines: Array, keys: Array) -> int:
 
 
 static func _market_available() -> bool:
-	return str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1" or ResearchState.global_trade_license_available()
+	return Service.global_market_open()
 
 
 static func _port_words(building: Dictionary) -> String:
