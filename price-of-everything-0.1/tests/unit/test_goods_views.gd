@@ -562,3 +562,184 @@ func _test_group_card_content_fits() -> void:
 	_check(float(TVP.GROUP_CARD_H) - 2.0 * 20.0 < content,
 		"...and the old 20px inset genuinely did NOT fit (that was the misalignment)")
 	holder.queue_free()
+
+
+## The supply chain board's model: the street plan every tile shares, and how a route becomes hops.
+func _test_empire_board_model() -> void:
+	var Model := preload("res://scripts/empire_board_model.gd")
+	var Streets := preload("res://scripts/empire_board_streets.gd")
+	var hexp := Model.hex_points(Vector2.ZERO)
+	_check(Streets.SLOTS.size() == 10, "board: a tile has ten slots around its warehouse")
+	var inside := true
+	var apart := true
+	var half := Streets.SLOT_SIDE * 0.5
+	for i in range(Streets.SLOTS.size()):
+		var c: Vector2 = Streets.SLOTS[i]
+		for corner in [Vector2(-half, -half), Vector2(half, -half), Vector2(half, half), Vector2(-half, half)]:
+			inside = inside and Geometry2D.is_point_in_polygon(c + corner, hexp)
+		apart = apart and (absf(c.x) >= half + Streets.HUB_SIDE * 0.5 or absf(c.y) >= half + Streets.HUB_SIDE * 0.5)
+		for j in range(i + 1, Streets.SLOTS.size()):
+			var d: Vector2 = (Streets.SLOTS[j] as Vector2) - c
+			apart = apart and (absf(d.x) >= Streets.SLOT_SIDE or absf(d.y) >= Streets.SLOT_SIDE)
+	_check(inside, "board: every slot lies wholly on its tile")
+	_check(apart, "board: no slot overlaps another or the warehouse")
+	_check(Streets.SLOT_SIDE * Streets.SLOT_SIDE <= 0.05 * 194400.0, "board: a slot is at most a twentieth of a tile")
+	# Every slot's door reaches the warehouse's along the streets, and no street runs through a slot.
+	var hub: String = Streets.nid(Streets.hub_door())
+	var reached := true
+	var clear := true
+	for i in range(Streets.SLOTS.size()):
+		var ids: Array = Streets.path(Streets.nid(Streets.slot_door(i)), hub)
+		reached = reached and ids.size() >= 2 and str(ids[ids.size() - 1]) == hub
+		for n in range(1, ids.size()):
+			var mid: Vector2 = (Streets.node_pos(str(ids[n - 1])) + Streets.node_pos(str(ids[n]))) * 0.5
+			for s in Streets.SLOTS:
+				clear = clear and not (absf(mid.x - (s as Vector2).x) < half - 0.5 and absf(mid.y - (s as Vector2).y) < half - 0.5)
+	_check(reached, "board: every slot's spur leads to the warehouse along the streets")
+	_check(clear, "board: no street runs through a slot")
+	# Two neighbouring tiles meet at one point on their shared edge, whichever side asks.
+	var meets := true
+	for off in [Vector2(0.0, 480.0), Vector2(0.0, -480.0), Vector2(405.0, 240.0), Vector2(-405.0, 240.0),
+			Vector2(405.0, -240.0), Vector2(-405.0, -240.0)]:
+		var here: Vector2 = Streets.exit_point(off)
+		var there: Vector2 = Streets.exit_point(-off)
+		meets = meets and here != Vector2.ZERO and here.is_equal_approx(off + there) \
+			and Streets.has_node(Streets.nid(here)) and Streets.is_exit(here)
+	_check(meets, "board: neighbouring tiles' roads meet at the same point on their shared edge")
+	_check(Streets.exit_point(Vector2(810.0, 0.0)) == Vector2.ZERO, "board: a tile that is not a neighbour has no exit")
+	# Through traffic keeps to the front street: from one front corner to the other it never
+	# touches the back street, though going round the back is no longer.
+	var west: String = Streets.nid(Streets.exit_point(Vector2(-405.0, 240.0)))
+	var east: String = Streets.nid(Streets.exit_point(Vector2(405.0, 240.0)))
+	var front := true
+	for id in Streets.path(west, east):
+		front = front and Streets.node_pos(str(id)).y > 0.0
+	_check(front, "board: traffic along the front of a tile stays on the front street")
+	# One avenue joins the two streets, right of the warehouse. The gap left of it is the
+	# pipes' and the railway's, and no road runs there.
+	var back_west: String = Streets.nid(Streets.exit_point(Vector2(-405.0, -240.0)))
+	var by_avenue := false
+	var in_gap := false
+	var across: Array = Streets.path(back_west, west)
+	for n in range(1, across.size()):
+		var p0: Vector2 = Streets.node_pos(str(across[n - 1]))
+		var p1: Vector2 = Streets.node_pos(str(across[n]))
+		if absf(p0.x - p1.x) < 0.5 and absf(p0.y) <= Streets.STREET_Y + 0.5 and absf(p1.y) <= Streets.STREET_Y + 0.5 \
+				and absf(p0.y - p1.y) > Streets.STREET_Y:
+			by_avenue = by_avenue or absf(p0.x - Streets.AVENUE_X) < 0.5
+			in_gap = in_gap or p0.x < 0.0
+	_check(by_avenue and not in_gap, "board: a road crosses between the streets by the one avenue, never by the pipes' gap")
+	_check(Streets.pipe_point(Vector2.ZERO).x == Streets.PIPE_TRUNK_X and Streets.pipe_point(Streets.SLOTS[1]).x == Streets.PIPE_TRUNK_X,
+		"board: a building beside the trunk takes its pipes straight off it")
+	_check(Streets.places(10).size() == 10 and Streets.places(11).size() == 40
+		and float(Streets.places(11)[0]["side"]) < Streets.SLOT_SIDE,
+		"board: an eleventh building splits the slots into quarters")
+	# Two legs over four tiles: each tile pair takes the mode of the leg that covers it.
+	var hops: Array = Model.route_hops({
+		"tiles": ["a", "b", "c", "d"],
+		"legs": [{"mode": "rail", "from": "a", "to": "c"}, {"mode": "roads", "from": "c", "to": "d"}],
+	})
+	_check(hops.size() == 3 and str(hops[0]["mode"]) == "rail" and str(hops[1]["mode"]) == "rail"
+		and str(hops[2]["mode"]) == "roads" and str(hops[2]["a"]) == "c",
+		"board: a route's hops carry the mode of their own leg")
+	_check(Model.tile_height("mountain") > Model.tile_height("hill")
+		and Model.tile_height("hill") > Model.tile_height("rural")
+		and Model.tile_height("rural") > Model.tile_height("sea"),
+		"board: mountains stand over hills, hills over lowland, land over sea")
+
+
+## The supply chain board's railway: one plan on every tile, so neighbours' tracks meet.
+func _test_empire_board_rails() -> void:
+	var Rails := preload("res://scripts/empire_board_rails.gd")
+	var met := true
+	var inside := true
+	for off in [Vector2(405, 240), Vector2(-405, 240), Vector2(405, -240), Vector2(-405, -240), Vector2(0, 480), Vector2(0, -480)]:
+		var out: Vector2 = Rails.exit_point(off)
+		if out == Vector2.ZERO or (out - off).distance_to(Rails.exit_point(-off)) > 0.01:
+			met = false
+		var way: Array = Rails.path(Rails.stop(Vector2(0.0, 34.0)), out)
+		if (way[0] as Vector2).distance_to(Vector2(0.0, Rails.LINE_Y)) > 0.01 or (way[way.size() - 1] as Vector2).distance_to(out) > 0.01:
+			inside = false
+		for i in range(way.size() - 1):
+			var d: Vector2 = (way[i + 1] as Vector2) - (way[i] as Vector2)
+			var deg := fposmod(rad_to_deg(d.angle()), 30.0)
+			if minf(deg, 30.0 - deg) > 0.1:
+				inside = false
+	_check(met, "rails: a track leaves a tile at the point its neighbour's track arrives")
+	_check(inside, "rails: a way from the warehouse's stop to any edge runs on the plan's directions")
+	_check(Rails.exit_point(Vector2(900.0, 0.0)) == Vector2.ZERO, "rails: no track to a tile that is not a neighbour")
+	_check(Rails.path(Vector2(-100.0, Rails.LINE_Y), Vector2(100.0, -Rails.LINE_Y)).size() == 4,
+		"rails: between the two lines a train takes the cross track")
+
+
+## The supply chain board's visibility key: a tickbox for each of the board's switches.
+func _test_empire_board_visibility() -> void:
+	var Board := preload("res://scripts/empire_board.gd")
+	var Visibility := preload("res://scripts/empire_board_visibility.gd")
+	var state: Dictionary = (Board.show as Dictionary).duplicate()
+	var vis: Control = Visibility.new()
+	add_child(vis)
+	vis.setup(state)
+	var keys: Array = []
+	for row in Visibility.ROWS:
+		keys.append(str(row[0]))
+	var matched := keys.size() == 10 and state.size() == keys.size()
+	for k in state:
+		matched = matched and keys.has(str(k))
+	_check(matched, "visibility: one tickbox for each of the board's ten switches")
+	_check(not vis.is_open(), "visibility: the plate of tickboxes starts shut")
+	vis.key.pressed.emit()
+	_check(vis.is_open(), "visibility: the key opens it")
+	var heard: Array = []
+	vis.changed.connect(func(key: String, on: bool) -> void: heard.append([key, on]))
+	(vis.panel.find_child("Show_trees", true, false) as Button).pressed.emit()
+	_check(state["trees"] == false and heard == [["trees", false]], "visibility: a tickbox flips its switch and says so")
+	(vis.panel.find_child("Show_trees", true, false) as Button).pressed.emit()
+	_check(state["trees"] == true, "visibility: and flips it back")
+	vis.queue_free()
+
+
+## The supply chain board's pipework: routes snapped onto twelve directions so baked pieces fit.
+func _test_empire_board_pipes() -> void:
+	var Pipes := preload("res://scripts/empire_board_pipes.gd")
+	var v := Vector2(140.0, -55.0)
+	var parts: Array = Pipes.split(v)
+	var back: Vector2 = Pipes.dir_of(parts[0]) * float(parts[1]) + Pipes.dir_of(parts[2]) * float(parts[3])
+	_check(back.distance_to(v) < 0.01 and float(parts[1]) >= 0.0 and float(parts[3]) >= 0.0,
+		"pipes: a vector splits into the two grid directions either side of it")
+	_check(Pipes.turn(parts[0], parts[2]) == 1, "pipes: those two directions are one step, 30 degrees, apart")
+	_check(Pipes.k_of(Pipes.dir_of(7)) == 7, "pipes: a direction and its index round-trip")
+	_check(Pipes.bend_name(2, 5) == Pipes.bend_name(11, 8),
+		"pipes: a bend walked backwards is the same baked piece")
+	_check(Pipes.bend_name(2, 5) != Pipes.bend_name(5, 2), "pipes: the opposite bend is a different piece")
+	# A run that has to cross a tile edge lands exactly on the edge's line, and every leg lies
+	# on the grid and is long enough to carry its bends.
+	var edge := Vector2(200.0, 120.0)
+	var normal := Vector2(405.0, 240.0).normalized()
+	var legs: Array = Pipes.plan([
+		{"p": Vector2(10.0, -30.0), "base": 34.0, "edge": false},
+		{"p": edge, "base": 34.0, "edge": true, "normal": normal},
+		{"p": edge, "base": 66.0, "edge": true, "normal": -normal},
+		{"p": Vector2(420.0, 300.0), "base": 66.0, "edge": false},
+	])
+	var on_grid := true
+	var crossed := false
+	var joined := true
+	for i in range(legs.size()):
+		var leg: Dictionary = legs[i]
+		var d: Vector2 = ((leg["b"] as Vector2) - (leg["a"] as Vector2)).normalized()
+		on_grid = on_grid and d.distance_to(Pipes.dir_of(int(leg["k"]))) < 0.001
+		if i > 0:
+			joined = joined and (legs[i - 1]["b"] as Vector2).distance_to(leg["a"]) < 0.001
+			if not is_equal_approx(float(legs[i - 1]["base"]), float(leg["base"])):
+				crossed = absf(((leg["a"] as Vector2) - edge).dot(normal)) < 0.01 \
+					and int(legs[i - 1]["k"]) == int(leg["k"])
+	_check(legs.size() >= 2 and on_grid, "pipes: every planned leg runs along a grid direction")
+	_check(joined, "pipes: the legs join end to end")
+	_check(crossed, "pipes: the step between tiles stands on the tile edge, on a straight run")
+	_check((legs[legs.size() - 1]["b"] as Vector2).distance_to(Vector2(420.0, 300.0)) <= Pipes.MIN_LEG,
+		"pipes: the run ends within a short leg of where it was asked to")
+	var hit: Array = Pipes.road_spans(Vector2(0.0, 0.0), Vector2(100.0, 0.0),
+		[{"a": Vector2(50.0, -40.0), "b": Vector2(50.0, 40.0), "half": 8.0}])
+	_check(hit.size() == 1 and float(hit[0][0]) < 42.0 and float(hit[0][1]) > 58.0,
+		"pipes: a road across a leg gives a span wider than the road")

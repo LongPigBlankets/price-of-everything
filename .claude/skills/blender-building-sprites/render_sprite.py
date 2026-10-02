@@ -144,3 +144,28 @@ vl.use_freestyle = True
 scene.render.use_freestyle = True
 scene.view_settings.view_transform = prev_vt
 print("MASK_OK", mask_png, flush=True)
+
+# --- cut pass ------------------------------------------------------------------------------
+# Objects a builder has marked `cut` are rendered flat magenta, with no ink, into <out>_cut.png.
+# The baker removes those pixels from the finished sprite: they still hide what is behind them,
+# which a hidden object would not.
+cut = [ob for ob in mine_col.objects if ob.get("cut")]
+if cut:
+    key = bpy.data.materials.new("_cut_key")
+    key.use_nodes = True
+    nt = key.node_tree
+    for n in list(nt.nodes):
+        nt.nodes.remove(n)
+    emi = nt.nodes.new("ShaderNodeEmission")
+    emi.inputs["Color"].default_value = (1.0, 0.0, 1.0, 1.0)
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    nt.links.new(emi.outputs["Emission"], out.inputs["Surface"])
+    for ob in cut:
+        ob.data.materials.clear()
+        ob.data.materials.append(key)
+    scene.view_settings.view_transform = 'Standard'
+    vl.use_freestyle = False
+    scene.render.use_freestyle = False
+    scene.render.filepath = out_png.rsplit(".", 1)[0] + "_cut.png"
+    bpy.ops.render.render(write_still=True)
+    print("CUT_OK", len(cut), "objects", flush=True)

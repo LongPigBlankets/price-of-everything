@@ -131,6 +131,9 @@ static var opt_port_buses := true
 const _TRUNK_WIDTH := 3.6
 const _JUNCTION_R := 4.0
 var _chain_focus := false     # the open chart is a whole-chain chart (mass mode), not one hop
+## Set by the supply chain view when the board is the resting picture: a selection then always
+## opens the building's immediate network, however large the company is.
+var one_hop_focus := false
 var _frame: Dictionary = {"input": [], "sell": [], "market": [], "chips": []}
 const _CHIP_GAP := 8.0                       # clear space between chips in a gutter
 const _GUTTER_LANE := 84.0                   # = empire_layout.LANE_PITCH (the gutter was sized for it)
@@ -1217,7 +1220,7 @@ func _build_focus_layout() -> void:
 	if bool((_box_by_iid.get(sel, {}) as Dictionary).get("under_construction", false)):
 		_build_site_focus_layout(_box_by_iid[sel] as Dictionary)
 		return
-	if _mass:
+	if _mass and not one_hop_focus:
 		_build_chain_focus_layout(sel)
 		return
 	var ins: Array = []
