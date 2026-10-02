@@ -54,10 +54,29 @@ const _PIPE_EDGE := Color("3a2a1c")
 const _TRACK := Color("7a6444")
 const _CABLE := Color("e8c66a")
 
+const _CONCRETE := Color("a7a294")
+const _ROAD_HALF := 8.0
+const _DRIVE_HALF := 4.0
+const _JUNCTION_GROW := 1.12         # a junction patch against the widest road into it
+const _PIPE_REST := 5.0              # a pipe on the ground lies this far above it, on sleepers
+const _PIPE_RAISE := 20.0            # and this much higher where it bridges a road
+const _PIPE_CLEAR := 10.0            # room between a road's edge and the riser
+const _PIPE_BEND := 24.0             # bend radius
+const _PIPE_BEND_STEPS := 6
+const _PIPE_LEG_GAP := 34.0
+const _SIGN_OFFSET := 15.0
+const _SIGN_POST := 15.0
+const _SIGN_PLATE := 13.0
+const _SIGN_MIN_PX := 15.0
+const _CABLE_SAG := 0.06
+const _CABLE_STEPS := 10
+const _LIVE_CREEP_SECS := 4.0
+
 const _ZOOM_STEP := 1.12
 const _FIT_PAD := 90.0
 const _TOKEN_SPEED := 80.0          # board units per second
 const _TOKEN_SPACING := 1100.0      # between tokens of one flow
+const _PULSE_SPACING := 120.0       # between slugs in a pipe and pulses on a cable
 const _DRAG_SLOP := 5.0
 
 ## Sun in the south-east: the faces toward the camera are lit, east most.
@@ -71,7 +90,12 @@ static var _relief_cache: Dictionary = {}    # tile_id -> {base, sea: [], land: 
 var _model: Dictionary = {}
 var _ground: ArrayMesh = null                # every drawn tile, back to front, in board space
 var _standing: Array = []                    # model standing + {at: Vector2 board, h, rect}
-var _links: Array = []                       # [{mode, pts: PackedVector2Array board}]
+var _links: Array = []                       # road-like ways: [{mode, pts: PackedVector2Array board}]
+var _road_plan: Array = []                   # [{a, b, half}] road segments in plan, for pipes to cross
+var _junctions: Array = []                   # [{at, arms, width}] where roads and drives meet
+var _pipes: Array = []                       # [{mode, pts, legs, flanges, caps}]
+var _signs: Array = []                       # [{foot, top, icon, depth}] sorted far to near
+var _cables: Array = []                      # [PackedVector2Array board]
 var _flows: Array = []                       # [{pts, cum, total, icon, power, phase}]
 var _labels: Array = []                      # [{at: Vector2 board, text}]
 var _bounds := Rect2()
@@ -114,6 +138,11 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 	_ground = null
 	_standing.clear()
 	_links.clear()
+	_road_plan.clear()
+	_junctions.clear()
+	_pipes.clear()
+	_signs.clear()
+	_cables.clear()
 	_flows.clear()
 	_labels.clear()
 	_hover = {}
@@ -445,14 +474,20 @@ func _build_standing() -> void:
 			side = used.size.x * k / (2.0 * ISO_X)
 			d["side"] = side
 			var front: Vector2 = (d["at"] as Vector2) + Vector2(0.0, side * ISO_Y)
+			if str(d["kind"]) == "pylon":
+				# A pylon stands on its feet, which are far narrower than its arms.
+				front = (d["at"] as Vector2) + Vector2(0.0, side * 0.12)
 			var origin := Vector2(front.x - (used.position.x + used.size.x * 0.5) * k,
 				front.y - used.end.y * k)
 			d["tex_rect"] = Rect2(origin, Vector2(tex.get_width(), tex.get_height()) * k)
 			d["rect"] = Rect2(origin + used.position * k, used.size * k)
 		else:
-			var top := iso(pos, h + side * 0.6)
+			var rise := side * (1.6 if str(d["kind"]) == "pylon" else 0.6)
+			var top := iso(pos, h + rise)
 			d["rect"] = Rect2(top.x - side * ISO_X, top.y - side * ISO_Y,
-				side * 2.0 * ISO_X, side * 2.0 * ISO_Y + side * 0.6 * ISO_RISE)
+				side * 2.0 * ISO_X, side * 2.0 * ISO_Y + rise * ISO_RISE)
+			if str(d["kind"]) == "pylon":
+				d["rect"] = Rect2(top.x - side * 0.3, top.y, side * 0.6, rise * ISO_RISE)
 		_standing.append(d)
 	_standing.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return float(a["depth"]) < float(b["depth"]))
@@ -460,43 +495,89 @@ func _build_standing() -> void:
 
 func _build_lines() -> void:
 	var tiles: Dictionary = _model.get("tiles", {})
-	# A short drive from each standing thing to its tile's warehouse.
+	var by_iid: Dictionary = {}
 	for s in _standing:
-		var t: Dictionary = tiles.get(s["tile"], {})
-		if str(s["kind"]) == "warehouse" or not bool(t.get("store", false)):
+		by_iid[str(s["iid"])] = s
+	# Roads, drives, rail and tracks first: pipes have to know where they are to cross them.
+	_road_plan.clear()
+	var nodes: Dictionary = {}                # rounded board point -> {at, arms, width}
+	for l in _model.get("lines", []):
+		var mode := str(l["mode"])
+		if mode == Model.MODE_CABLE or Model.PIPE_MODES.has(mode):
 			continue
-		var hub: Vector2 = t["hub"]
-		_links.append({"mode": Model.MODE_DRIVE, "pts": PackedVector2Array([
-			iso(s["pos"], float(s["h"])), iso(hub, _height_at(str(s["tile"]), hub))])})
-	for l in _model.get("links", []):
-		var ta: Dictionary = tiles.get(l["a"], {})
-		var tb: Dictionary = tiles.get(l["b"], {})
-		if ta.is_empty() or tb.is_empty():
+		var plan := PackedVector2Array()
+		var pts := PackedVector2Array()
+		for node in l["pts"]:
+			plan.append(node["p"])
+			pts.append(iso(node["p"], _ground_h(node)))
+		_links.append({"mode": mode, "pts": pts})
+		var half := _ROAD_HALF if mode != Model.MODE_DRIVE else _DRIVE_HALF
+		for i in range(plan.size() - 1):
+			if plan[i].distance_squared_to(plan[i + 1]) > 0.01:
+				_road_plan.append({"a": plan[i], "b": plan[i + 1], "half": half})
+		if mode == "roads" or mode == Model.MODE_DRIVE:
+			for end in [pts[0], pts[pts.size() - 1]]:
+				var key := Vector2i(end.round())
+				var nd: Dictionary = nodes.get_or_add(key, {"at": end, "arms": 0, "width": 0.0})
+				nd["arms"] = int(nd["arms"]) + 1
+				nd["width"] = maxf(float(nd["width"]), half * 2.0)
+	_junctions = nodes.values()
+
+	# Pipes: rounded bends, a bridge over every road they have to cross, into the ground at ends.
+	for l in _model.get("lines", []):
+		var mode := str(l["mode"])
+		if not Model.PIPE_MODES.has(mode):
 			continue
-		var mid := Model.crossing(ta["center"], tb["center"], float(l["lane"]), true)
-		var ha: Vector2 = ta["hub"]
-		var hb: Vector2 = tb["hub"]
-		_links.append({"mode": str(l["mode"]), "pts": PackedVector2Array([
-			iso(ha, _height_at(str(l["a"]), ha)), iso(mid, float(ta["height"])),
-			iso(mid, float(tb["height"])), iso(hb, _height_at(str(l["b"]), hb))])})
-	# Roads last and drives first would bury the drives; draw order is by weight instead.
-	var weight := {Model.MODE_DRIVE: 0, "nothing": 1, Model.MODE_CABLE: 2, "pipes": 3,
-		"reinf_pipes": 4, "roads": 5, "rail": 6}
-	_links.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return int(weight.get(a["mode"], 1)) < int(weight.get(b["mode"], 1)))
+		var built: Dictionary = _pipe_geometry(l["pts"])
+		var ends: Array = l.get("ends", [false, false])
+		var path: Array = l["pts"]
+		var caps: Array = []
+		for e in range(2):
+			var node: Dictionary = path[0] if e == 0 else path[path.size() - 1]
+			# A pipe ends in the ground beside a building or port, and at a warehouse's manifold.
+			if bool(ends[e]) or (not bool(node["edge"]) and bool(tiles[str(node["tile"])]["store"])):
+				caps.append(iso(node["p"], _ground_h(node)))
+		_pipes.append({"mode": mode, "pts": built["pts"], "legs": built["legs"],
+			"flanges": built["flanges"], "caps": caps})
+		var good := str(l.get("good", ""))
+		if good != "":
+			var a: Vector2 = path[0]["p"]
+			var b: Vector2 = path[1]["p"]
+			var at: Vector2 = a.lerp(b, 0.12 if str(l["kind"]) == "feed" else 0.3)
+			var side := (b - a).normalized().orthogonal()
+			if side.x + side.y < 0.0:
+				side = -side
+			var foot: Vector2 = at + side * _SIGN_OFFSET
+			var gh := _height_at(str(path[0]["tile"]), foot)
+			_signs.append({"foot": iso(foot, gh), "top": iso(foot, gh + _SIGN_POST),
+				"icon": Model.GoodIcons.texture_for(good, Model._internal_name(good)),
+				"depth": foot.x + foot.y})
+
+	# Cables hang from a building to its tile's pylon and from pylon to pylon.
+	for l in _model.get("lines", []):
+		if str(l["mode"]) != Model.MODE_CABLE:
+			continue
+		var pts := _cable_between(by_iid, l["ids"])
+		if pts.size() >= 2:
+			_cables.append(pts)
+
+	_signs.sort_custom(func(x: Dictionary, y: Dictionary) -> bool: return float(x["depth"]) < float(y["depth"]))
+
 	var n := 0
 	for f in _model.get("flows", []):
+		var mode := str(f["mode"])
 		var pts := PackedVector2Array()
-		var path: Array = f["path"]
-		for i in range(path.size()):
-			var node: Dictionary = path[i]
-			var tile := str(node["tile"])
-			# A crossing sits on the tile's edge at the tile's own height; everything else is a
-			# standing position and rides its terrace.
-			var is_crossing := str(node["mode"]) != Model.MODE_DRIVE and i > 0 and i < path.size() - 1 \
-				and (node["p"] as Vector2) != (tiles[tile]["hub"] as Vector2)
-			var h := float(tiles[tile]["height"]) if is_crossing else _height_at(tile, node["p"])
-			pts.append(iso(node["p"], h))
+		if mode == Model.MODE_CABLE:
+			pts = _cable_between(by_iid, f["ids"])
+			if bool(f.get("reverse", false)):
+				pts.reverse()
+		elif Model.PIPE_MODES.has(mode) and _all_piped(f):
+			pts = _pipe_geometry(f["pts"])["pts"]
+		else:
+			for node in f["pts"]:
+				pts.append(iso(node["p"], _ground_h(node)))
+		if pts.size() < 2:
+			continue
 		var cum := PackedFloat32Array([0.0])
 		for i in range(1, pts.size()):
 			cum.append(cum[i - 1] + pts[i].distance_to(pts[i - 1]))
@@ -504,9 +585,156 @@ func _build_lines() -> void:
 		if total < 1.0:
 			continue
 		_flows.append({"pts": pts, "cum": cum, "total": total, "icon": f["icon"],
-			"good": f["good"], "power": Model._is_power(str(f["good"])),
+			"good": f["good"], "kind": str(f["kind"]), "live": f.get("live", []),
+			"style": "power" if mode == Model.MODE_CABLE else ("pipe" if Model.PIPE_MODES.has(mode) and _all_piped(f) else "goods"),
 			"phase": fmod(float(n) * 0.618034, 1.0) * _TOKEN_SPACING})
 		n += 1
+
+
+## The ground under a path point: a crossing sits on the tile's edge at the tile's own height,
+## anything else rides its terrace.
+func _ground_h(node: Dictionary) -> float:
+	var tile := str(node["tile"])
+	if bool(node["edge"]):
+		return float((_model["tiles"] as Dictionary)[tile]["height"])
+	return _height_at(tile, node["p"])
+
+
+## A flow drawn as fluid in a pipe, not as crates: its whole way is pipework.
+func _all_piped(f: Dictionary) -> bool:
+	return Catalog.requires_pipeline(str(f["good"]))
+
+
+## A pipe's run in board space. Corners are rounded into bends; where the run has to cross a
+## road it rises on a riser, runs raised on legs and comes back down the far side.
+## Returns {pts, legs: [[top, foot]], flanges: [[point, direction]]}.
+func _pipe_geometry(path: Array) -> Dictionary:
+	# Round the corners in plan. A crossing between two tiles is one point entered twice (once
+	# per tile, at each tile's height), so it is kept sharp.
+	var plan: Array = []                      # [{p, tile, edge}]
+	for i in range(path.size()):
+		var cur: Dictionary = path[i]
+		if i == 0 or i == path.size() - 1 or bool(cur["edge"]):
+			plan.append(cur)
+			continue
+		var a: Vector2 = path[i - 1]["p"]
+		var b: Vector2 = cur["p"]
+		var c: Vector2 = path[i + 1]["p"]
+		var r := minf(_PIPE_BEND, minf(a.distance_to(b), b.distance_to(c)) * 0.45)
+		if r < 2.0 or absf((b - a).normalized().dot((c - b).normalized())) > 0.995:
+			plan.append(cur)
+			continue
+		var p0 := b + (a - b).normalized() * r
+		var p1 := b + (c - b).normalized() * r
+		for k in range(_PIPE_BEND_STEPS + 1):
+			var t := float(k) / float(_PIPE_BEND_STEPS)
+			var q := p0.lerp(b, t).lerp(b.lerp(p1, t), t)
+			plan.append({"p": q, "tile": cur["tile"], "edge": false, "flange": k == 0 or k == _PIPE_BEND_STEPS})
+	# Walk it, lifting over every road in the way.
+	var pts := PackedVector2Array()
+	var legs: Array = []
+	var flanges: Array = []
+	var up := false
+	for i in range(plan.size() - 1):
+		var a: Dictionary = plan[i]
+		var b: Dictionary = plan[i + 1]
+		var pa: Vector2 = a["p"]
+		var pb: Vector2 = b["p"]
+		var ha := _ground_h(a) + _PIPE_REST
+		var hb := _ground_h(b) + _PIPE_REST
+		if i == 0:
+			pts.append(iso(pa, ha))
+		var seg := pa.distance_to(pb)
+		if seg < 0.01:
+			pts.append(iso(pb, hb + (_PIPE_RAISE if up else 0.0)))
+			continue
+		var spans: Array = _road_spans(pa, pb)
+		var dir_b := (iso(pb, hb) - iso(pa, ha)).normalized()
+		if up and (spans.is_empty() or float(spans[0][0]) > 0.02):
+			# Still raised from the last stretch with no road ahead: come down here.
+			pts.append(iso(pa, ha))
+			flanges.append([iso(pa, ha + _PIPE_RAISE), Vector2.UP])
+			flanges.append([iso(pa, ha), dir_b])
+			up = false
+		for span in spans:
+			var t0 := float(span[0])
+			var t1 := float(span[1])
+			var q0 := pa.lerp(pb, t0)
+			var q1 := pa.lerp(pb, t1)
+			var h0 := lerpf(ha, hb, t0)
+			var h1 := lerpf(ha, hb, t1)
+			if not up:
+				pts.append(iso(q0, h0))
+				flanges.append([iso(q0, h0), dir_b])
+				flanges.append([iso(q0, h0 + _PIPE_RAISE), Vector2.UP])
+			pts.append(iso(q0, h0 + _PIPE_RAISE))
+			legs.append([iso(q0, h0 + _PIPE_RAISE), iso(q0, h0 - _PIPE_REST)])
+			var steps := maxi(1, int(q0.distance_to(q1) / _PIPE_LEG_GAP))
+			for k in range(1, steps):
+				var tk := float(k) / float(steps)
+				var qk := q0.lerp(q1, tk)
+				var hk := lerpf(h0, h1, tk)
+				legs.append([iso(qk, hk + _PIPE_RAISE), iso(qk, hk - _PIPE_REST)])
+			pts.append(iso(q1, h1 + _PIPE_RAISE))
+			legs.append([iso(q1, h1 + _PIPE_RAISE), iso(q1, h1 - _PIPE_REST)])
+			up = t1 >= 0.999
+			if not up:
+				pts.append(iso(q1, h1))
+				flanges.append([iso(q1, h1 + _PIPE_RAISE), Vector2.UP])
+				flanges.append([iso(q1, h1), dir_b])
+		if not up:
+			pts.append(iso(pb, hb))
+		if bool(b.get("flange", false)):
+			flanges.append([iso(pb, hb + (_PIPE_RAISE if up else 0.0)), dir_b])
+	if up and not plan.is_empty():
+		var last: Dictionary = plan[plan.size() - 1]
+		pts.append(iso(last["p"], _ground_h(last) + _PIPE_REST))
+	return {"pts": pts, "legs": legs, "flanges": flanges}
+
+
+## The stretches of a pipe segment that lie over a road, as [t0, t1] along it, merged and with
+## room either side for the risers.
+func _road_spans(a: Vector2, b: Vector2) -> Array:
+	var length := a.distance_to(b)
+	var raw: Array = []
+	for r in _road_plan:
+		var hit: Variant = Geometry2D.segment_intersects_segment(a, b, r["a"], r["b"])
+		if hit == null:
+			continue
+		var along := (hit as Vector2).distance_to(a)
+		var road_dir := ((r["b"] as Vector2) - (r["a"] as Vector2)).normalized()
+		# A shallow crossing takes longer to clear the road's width.
+		var sine := maxf(0.35, absf((b - a).normalized().cross(road_dir)))
+		var reach := (float(r["half"]) + _PIPE_CLEAR) / sine
+		raw.append([clampf((along - reach) / length, 0.0, 1.0), clampf((along + reach) / length, 0.0, 1.0)])
+	raw.sort_custom(func(x: Array, y: Array) -> bool: return float(x[0]) < float(y[0]))
+	var out: Array = []
+	for span in raw:
+		if not out.is_empty() and float(span[0]) <= float(out[out.size() - 1][1]) + 0.02:
+			out[out.size() - 1][1] = maxf(float(out[out.size() - 1][1]), float(span[1]))
+		else:
+			out.append(span)
+	return out
+
+
+## A cable between two standing things: from high on one to high on the other, with a sag.
+func _cable_between(by_iid: Dictionary, ids: Array) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	if not by_iid.has(str(ids[0])) or not by_iid.has(str(ids[1])):
+		return pts
+	var ends: Array = []
+	for id in ids:
+		var s: Dictionary = by_iid[str(id)]
+		var r: Rect2 = s["rect"]
+		var share := 0.2 if str(s["kind"]) == "pylon" else 0.42
+		ends.append(Vector2(r.get_center().x, r.position.y + r.size.y * share))
+	var a: Vector2 = ends[0]
+	var b: Vector2 = ends[1]
+	var sag := a.distance_to(b) * _CABLE_SAG
+	for k in range(_CABLE_STEPS + 1):
+		var t := float(k) / float(_CABLE_STEPS)
+		pts.append(a.lerp(b, t) + Vector2(0.0, sag * 4.0 * t * (1.0 - t)))
+	return pts
 
 
 # ------------------------------------------------------------------ drawing
@@ -529,10 +757,22 @@ func _draw() -> void:
 	draw_set_transform(_offset, 0.0, Vector2(_zoom, _zoom))
 	if _ground != null:
 		draw_mesh(_ground, null)
-	for l in _links:
-		_draw_link(l)
+	_draw_roads()
+	for p in _pipes:
+		_draw_pipe(p)
+	# Signs stand on the ground among the buildings, so they take their place in depth.
+	var si := 0
 	for s in _standing:
+		while si < _signs.size() and float(_signs[si]["depth"]) <= float(s["depth"]):
+			_draw_sign(_signs[si])
+			si += 1
 		_draw_standing(s)
+	while si < _signs.size():
+		_draw_sign(_signs[si])
+		si += 1
+	for c in _cables:
+		draw_polyline(c, _PIPE_EDGE, 3.4)
+		draw_polyline(c, _CABLE, 1.6)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	_draw_labels()
 	_draw_hover()
@@ -543,6 +783,17 @@ func _draw_standing(s: Dictionary) -> void:
 	var h := float(s["h"])
 	var side := float(s["side"])
 	var half := side * 0.56
+	if str(s["kind"]) == "pylon":
+		if s.get("sprite") != null:
+			draw_texture_rect(s["sprite"], s["tex_rect"], false)
+		else:
+			var foot: Vector2 = s["at"]
+			var r: Rect2 = s["rect"]
+			draw_line(foot, Vector2(foot.x, r.position.y), _PIPE_EDGE, 3.0)
+			for arm in [0.18, 0.36]:
+				var y: float = r.position.y + r.size.y * float(arm)
+				draw_line(Vector2(r.position.x, y), Vector2(r.end.x, y), _PIPE_EDGE, 2.2)
+		return
 	var pad := PackedVector2Array([
 		iso(pos + Vector2(-half, -half), h), iso(pos + Vector2(half, -half), h),
 		iso(pos + Vector2(half, half), h), iso(pos + Vector2(-half, half), h)])
@@ -570,36 +821,106 @@ func _draw_standing(s: Dictionary) -> void:
 			Color(0.0, 0.12, 0.24))
 
 
-func _draw_link(l: Dictionary) -> void:
-	var pts: PackedVector2Array = l["pts"]
-	match str(l["mode"]):
-		"roads":
-			_thick(pts, _KERB, 21.0)
-			_thick(pts, _ASPHALT, 16.0)
-			_draw_dashes(pts, 12.0, 12.0, _DASH, 1.8)
-		Model.MODE_DRIVE:
-			_thick(pts, _KERB, 10.0)
-			_thick(pts, _ASPHALT, 7.0)
-		"rail":
-			_thick(pts, _BALLAST, 15.0)
-			_draw_ties(pts, 10.0, 13.0, _TIE, 2.6)
-			_draw_offset_line(pts, 4.0, _RAIL, 1.5)
-			_draw_offset_line(pts, -4.0, _RAIL, 1.5)
-		"pipes":
-			_thick(pts, _PIPE_EDGE, 9.0)
-			_thick(pts, _PIPE, 6.0)
-			_draw_offset_line(pts, -1.4, _PIPE.lightened(0.45), 1.2)
-		"reinf_pipes":
-			_thick(pts, _PIPE_EDGE, 12.0)
-			_thick(pts, _PIPE_REINF, 9.0)
-			_draw_ties(pts, 26.0, 12.0, _PIPE_EDGE, 2.4)
-			_draw_offset_line(pts, -2.2, _PIPE_REINF.lightened(0.5), 1.4)
-		Model.MODE_CABLE:
-			_thick(pts, _PIPE_EDGE, 4.5)
-			_thick(pts, _CABLE, 2.4)
-		_:
+## Every road-like way, in passes: all the kerbs, then all the asphalt, then the markings. Two
+## roads that meet therefore merge into one surface, and a junction is a plain patch of asphalt
+## with the centre lines stopping short of it.
+func _draw_roads() -> void:
+	for l in _links:
+		if str(l["mode"]) == "nothing":
 			# Bare ground: a cart track, no built way.
-			_draw_dashes(pts, 13.0, 9.0, _TRACK, 6.0)
+			_draw_dashes(l["pts"], 13.0, 9.0, _TRACK, 6.0, [])
+	for l in _links:
+		match str(l["mode"]):
+			"roads":
+				_thick(l["pts"], _KERB, _ROAD_HALF * 2.0 + 5.0)
+			Model.MODE_DRIVE:
+				_thick(l["pts"], _KERB, _DRIVE_HALF * 2.0 + 3.5)
+	for j in _junctions:
+		draw_circle(j["at"], float(j["width"]) * 0.5 * _JUNCTION_GROW + 2.5, _KERB)
+	for l in _links:
+		match str(l["mode"]):
+			"roads":
+				_thick(l["pts"], _ASPHALT, _ROAD_HALF * 2.0)
+			Model.MODE_DRIVE:
+				_thick(l["pts"], _ASPHALT, _DRIVE_HALF * 2.0)
+	var guards: Array = []
+	for j in _junctions:
+		draw_circle(j["at"], float(j["width"]) * 0.5 * _JUNCTION_GROW, _ASPHALT)
+		if int(j["arms"]) >= 2:
+			guards.append([j["at"], float(j["width"]) * 0.5 * _JUNCTION_GROW + 6.0])
+	for l in _links:
+		if str(l["mode"]) == "roads":
+			_draw_dashes(l["pts"], 12.0, 12.0, _DASH, 1.8, guards)
+	# A give-way line across each arm where it meets the junction.
+	for j in _junctions:
+		if int(j["arms"]) < 3:
+			continue
+		for l in _links:
+			if str(l["mode"]) != Model.MODE_DRIVE:
+				continue
+			var pts: PackedVector2Array = l["pts"]
+			for e in [[pts[0], pts[1]], [pts[pts.size() - 1], pts[pts.size() - 2]]]:
+				if (e[0] as Vector2).distance_to(j["at"]) > 1.0:
+					continue
+				var dir := ((e[1] as Vector2) - (e[0] as Vector2)).normalized()
+				var at: Vector2 = (j["at"] as Vector2) + dir * (float(j["width"]) * 0.5 * _JUNCTION_GROW + 1.0)
+				var across := dir.orthogonal() * _DRIVE_HALF * 0.8
+				draw_line(at - across, at + across, _DASH, 1.4)
+	for l in _links:
+		if str(l["mode"]) == "rail":
+			_thick(l["pts"], _BALLAST, 15.0)
+			_draw_ties(l["pts"], 10.0, 13.0, _TIE, 2.6)
+			_draw_offset_line(l["pts"], 4.0, _RAIL, 1.5)
+			_draw_offset_line(l["pts"], -4.0, _RAIL, 1.5)
+
+
+## One pipe: where it enters the ground, its legs, the tube, and a collar at every bend and riser.
+func _draw_pipe(p: Dictionary) -> void:
+	var reinforced := str(p["mode"]) == "reinf_pipes"
+	var body: Color = _PIPE_REINF if reinforced else _PIPE
+	var w := 8.5 if reinforced else 6.5
+	var pts: PackedVector2Array = p["pts"]
+	for cap in p["caps"]:
+		# The mouth of the sleeve the pipe drops into.
+		_ellipse(cap, w * 1.25, _PIPE_EDGE)
+		_ellipse(cap, w * 0.95, _CONCRETE)
+		_ellipse(cap, w * 0.62, _PIPE_EDGE)
+		draw_line(cap + Vector2(0.0, -_PIPE_REST * ISO_RISE), cap, _PIPE_EDGE, w + 2.6)
+		draw_line(cap + Vector2(0.0, -_PIPE_REST * ISO_RISE), cap, body, w)
+	for leg in p["legs"]:
+		draw_line(leg[0], leg[1], _PIPE_EDGE, 2.2)
+	_thick(pts, _PIPE_EDGE, w + 2.6)
+	_thick(pts, body, w)
+	_draw_offset_line(pts, -w * 0.22, body.lightened(0.45), 1.3)
+	for fl in p["flanges"]:
+		var dir: Vector2 = fl[1]
+		var across := dir.orthogonal() * (w * 0.5 + 2.2)
+		draw_line((fl[0] as Vector2) - across, (fl[0] as Vector2) + across, _PIPE_EDGE, 3.6)
+		draw_line((fl[0] as Vector2) - across * 0.8, (fl[0] as Vector2) + across * 0.8, body.darkened(0.15), 1.8)
+	if reinforced:
+		_draw_ties(pts, 26.0, w + 3.0, _PIPE_EDGE, 2.2)
+
+
+func _ellipse(at: Vector2, rx: float, col: Color) -> void:
+	var pts := PackedVector2Array()
+	for k in range(16):
+		var a := TAU * float(k) / 16.0
+		pts.append(at + Vector2(cos(a) * rx, sin(a) * rx * 0.577))
+	draw_colored_polygon(pts, col)
+
+
+## A small sign on a post in front of a pipe, showing what it carries.
+func _draw_sign(s: Dictionary) -> void:
+	var foot: Vector2 = s["foot"]
+	var top: Vector2 = s["top"]
+	var plate := maxf(_SIGN_PLATE, _SIGN_MIN_PX / maxf(_zoom, 0.001))
+	draw_line(foot, top, _PIPE_EDGE, maxf(1.6, plate * 0.1))
+	var box := Rect2(top - Vector2(plate * 0.5, plate * 0.9), Vector2(plate, plate))
+	draw_rect(box.grow(plate * 0.09), _PIPE_EDGE)
+	draw_rect(box, _CREAM)
+	var icon: Texture2D = s["icon"]
+	if icon != null:
+		draw_texture_rect(icon, box.grow(-plate * 0.08), false)
 
 
 ## A wide line drawn segment by segment with round joints. draw_polyline miters its joints,
@@ -626,8 +947,12 @@ func _walk(pts: PackedVector2Array, step: float, start: float, emit: Callable) -
 		done += seg
 
 
-func _draw_dashes(pts: PackedVector2Array, dash: float, gap: float, col: Color, width: float) -> void:
+## Dashes along a line, leaving out any that start inside a guard circle ([centre, radius]).
+func _draw_dashes(pts: PackedVector2Array, dash: float, gap: float, col: Color, width: float, guards: Array) -> void:
 	_walk(pts, dash + gap, gap * 0.5, func(p: Vector2, dir: Vector2) -> void:
+		for g in guards:
+			if p.distance_to(g[0]) < float(g[1]) or (p + dir * dash).distance_to(g[0]) < float(g[1]):
+				return
 		draw_line(p, p + dir * dash, col, width))
 
 
@@ -688,33 +1013,66 @@ func _draw_hover() -> void:
 			HORIZONTAL_ALIGNMENT_LEFT, -1, fs, DS.PALETTE.TEXT)
 
 
-## Goods on the move: each flow's icon travels its path, building to warehouse to route to
-## warehouse to building. Power is a pulse on the cable, not a crate.
+## Goods on the move. A shipment really in transit is one token with its quantity, sitting
+## where its turns put it along the route and creeping through the turn ahead. A way with
+## nothing in transit right now, and every run between a building and its warehouse, shows a
+## steady trickle. Fluid in a pipe is a bright slug in the tube; power is a pulse on the cable.
 func _draw_tokens(layer: Control) -> void:
 	var box := clampf(44.0 * _zoom + 10.0, 16.0, 40.0)
 	var view := Rect2(Vector2.ZERO, size).grow(box)
+	var font := get_theme_default_font()
 	for f in _flows:
 		var total := float(f["total"])
-		var pts: PackedVector2Array = f["pts"]
-		var cum: PackedFloat32Array = f["cum"]
+		var style := str(f["style"])
+		var live: Array = f["live"]
+		if not live.is_empty() and style == "goods":
+			for sh in live:
+				var duration := float(sh["duration"])
+				var done := duration - float(sh["remaining"])
+				var creep := 0.0 if bool(sh["waiting"]) else smoothstep(0.0, 1.0, fmod(_clock / _LIVE_CREEP_SECS, 1.0))
+				var at := _along(f, clampf((done + creep) / duration, 0.0, 1.0) * total) * _zoom + _offset
+				if view.has_point(at):
+					_token(layer, at, box * 1.12, f["icon"])
+					var text := str(int(sh["qty"]))
+					var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+					var pill := Rect2(at + Vector2(-w * 0.5 - 5.0, box * 0.5), Vector2(w + 10.0, 16.0))
+					layer.draw_rect(pill, _NAVY)
+					layer.draw_string(font, pill.position + Vector2(5.0, 12.0), text,
+						HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DS.PALETTE.TEXT)
+			continue
 		var d := fmod(_clock * _TOKEN_SPEED + float(f["phase"]), _TOKEN_SPACING)
-		var seg := 0
+		if style != "goods":
+			d = fmod(_clock * _TOKEN_SPEED * 1.6 + float(f["phase"]), _PULSE_SPACING)
 		while d < total:
-			while seg < cum.size() - 2 and cum[seg + 1] < d:
-				seg += 1
-			var span := maxf(0.001, cum[seg + 1] - cum[seg])
-			var p := pts[seg].lerp(pts[seg + 1], (d - cum[seg]) / span) * _zoom + _offset
+			var p := _along(f, d) * _zoom + _offset
 			if view.has_point(p):
-				if bool(f["power"]):
-					layer.draw_circle(p, box * 0.2, _CABLE)
-				else:
-					layer.draw_circle(p, box * 0.5 + 1.5, _NAVY)
-					layer.draw_circle(p, box * 0.5, _CREAM)
-					var icon: Texture2D = f["icon"]
-					if icon != null:
-						var isz := box * 0.74
-						layer.draw_texture_rect(icon, Rect2(p - Vector2(isz, isz) * 0.5, Vector2(isz, isz)), false)
-			d += _TOKEN_SPACING
+				match style:
+					"power":
+						layer.draw_circle(p, clampf(4.0 * _zoom + 1.5, 2.0, 5.0), _CABLE.lightened(0.4))
+					"pipe":
+						var q := _along(f, minf(total, d + 9.0)) * _zoom + _offset
+						layer.draw_line(p, q, Color(1.0, 1.0, 1.0, 0.75), clampf(3.0 * _zoom, 1.5, 4.0))
+					_:
+						_token(layer, p, box, f["icon"])
+			d += _TOKEN_SPACING if style == "goods" else _PULSE_SPACING
+
+
+func _along(f: Dictionary, d: float) -> Vector2:
+	var pts: PackedVector2Array = f["pts"]
+	var cum: PackedFloat32Array = f["cum"]
+	var seg := 0
+	while seg < cum.size() - 2 and cum[seg + 1] < d:
+		seg += 1
+	var span := maxf(0.001, cum[seg + 1] - cum[seg])
+	return pts[seg].lerp(pts[seg + 1], clampf((d - cum[seg]) / span, 0.0, 1.0))
+
+
+func _token(layer: Control, p: Vector2, box: float, icon: Texture2D) -> void:
+	layer.draw_circle(p, box * 0.5 + 1.5, _NAVY)
+	layer.draw_circle(p, box * 0.5, _CREAM)
+	if icon != null:
+		var isz := box * 0.74
+		layer.draw_texture_rect(icon, Rect2(p - Vector2(isz, isz) * 0.5, Vector2(isz, isz)), false)
 
 
 # ------------------------------------------------------------------ input

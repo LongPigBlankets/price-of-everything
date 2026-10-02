@@ -29,7 +29,7 @@ func _ready() -> void:
 		BuildingState.add_building(str(row[0]), str((recs[0] as Dictionary).get("recipe_id", "")), str(row[1]), "player_1", iid)
 		if BuildingState.buildings.has(iid):
 			BuildingState.buildings[iid]["level"] = int(row[2])
-	Stockpile.add("tile_9_10", "g_001", 120)
+	_seed_movements()
 	await _settle(4)
 	var ev: Node = game.get_node_or_null("UILayer/HUD/HUDContent/EmpireView")
 	ev.call("toggle")
@@ -38,11 +38,20 @@ func _ready() -> void:
 	var model: Dictionary = board.get("_model")
 	print("BOARD tiles=", (model.get("tiles", {}) as Dictionary).size(),
 		" standing=", (model.get("standing", []) as Array).size(),
-		" links=", (model.get("links", []) as Array).size(),
+		" lines=", (model.get("lines", []) as Array).size(),
 		" flows=", (model.get("flows", []) as Array).size())
-	for l in model.get("links", []):
-		print("  link ", l["a"], " ", l["b"], " ", l["mode"], " ", (l["goods"] as Dictionary).keys())
+	for l in model.get("lanes", []):
+		print("  lane ", l["kind"], " ", l["good"], " ", l["from"], " -> ", l["to"], "  from ", l["sources"], " to ", l["dests"], "  live ", (l["live"] as Array).size(), "  hops ", l["hops"])
 	_shot(dir + "board.png")
+	# Close on the busiest tile: the junction, the pipes and their signs.
+	for st in board.call("standing_screen_rects"):
+		if str(st["iid"]) == "store:tile_9_10":
+			var at: Vector2 = (st["rect"] as Rect2).get_center()
+			board.set("_offset", (board.get("_offset") as Vector2) + board.size * 0.5 - at)
+	board.call("_zoom_at", board.size * 0.5, 3.4)
+	await _settle(8)
+	_shot(dir + "board_tile.png")
+	board.call("fit_view")
 	board.call("_zoom_at", board.size * 0.5, 2.2)
 	await _settle(8)
 	_shot(dir + "board_close.png")
@@ -67,6 +76,36 @@ func _ready() -> void:
 	print("END focus=", gw.call("focus_iid"), " gw.visible=", gw.visible, " board.visible=", board.visible, " ev.processing=", ev.is_processing())
 	_shot(dir + "network.png")
 	get_tree().quit(0)
+
+
+## Real movements for the board to plot: a purchase and a sale through the port, a move
+## between two tiles, a fluid down a pipe that has to cross the road, and a cabled power run.
+func _seed_movements() -> void:
+	var hm: Node = get_tree().get_first_node_in_group("hex_map")
+	for tid in ["tile_8_9", "tile_9_10", "tile_10_10", "tile_10_11"]:
+		Catalog.add_tile_infrastructure(tid, "pipes")
+		var tile: Dictionary = hm.tiles.get(hm.id_to_coord(tid), {})
+		if not (tile.get("infrastructure_present", []) as Array).has("cables"):
+			(tile["infrastructure_present"] as Array).append("cables")
+	var fluid := "g_012"
+	print("FLUID ", fluid)
+	Stockpile.add("tile_9_10", "g_001", 200)
+	Stockpile.add("tile_8_9", "g_005", 200)
+	TransportState.queue_move("tile_9_10", "tile_10_11", {"g_001": 60})
+	TransportState.queue_move("tile_8_9", "tile_9_10", {"g_005": 40})
+	# A piped shipment, written out leg by leg so the tool does not depend on the router's choice.
+	TransportState.queue_transport_shipment({
+		"source_tile": "tile_8_9", "destination_tile": "tile_10_11", "good_id": fluid, "qty": 80,
+		"turns_remaining": 2, "transport_turns": 2, "transport_cost": 0.0,
+		"tiles": ["tile_8_9", "tile_9_10", "tile_10_10", "tile_10_11"],
+		"path": ["tile_8_9", "tile_10_10", "tile_10_11"],
+		"legs": [{"mode": "pipes", "from": "tile_8_9", "to": "tile_10_10"},
+			{"mode": "reinf_pipes", "from": "tile_10_10", "to": "tile_10_11"}],
+	})
+	MatchState.add_money(5000.0)
+	MatchState.queue_buy("tile_10_10", "g_004", 30)
+	var port := str(Catalog.nearest_port_tile("tile_7_9"))
+	MatchState.log_market_sale("tile_7_9", port, "g_006", 25, 2, 100.0)
 
 
 func _settle(frames: int) -> void:
