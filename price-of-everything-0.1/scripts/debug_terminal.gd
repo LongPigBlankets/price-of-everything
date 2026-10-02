@@ -25,6 +25,7 @@ extends CanvasLayer
 ##   toggle bdp v3                    switch building detail back to v2 (v3 is default), and again to return
 ##   toggle ledger ds2                switch the building ledger back to v2 (DS2 is default), and again to return
 ##   toggle resources ds2             switch the Resources panel back to v2 (DS2 is default), and again to return
+##   toggle politics ds2              switch the Politics panel to its DS2 look (v2 is default), and again to return
 ##   toggle people ds2                switch the People panel back to v2 (DS2 is default), and again to return
 ##   toggle market ds2                switch the market panel back to v2 (DS2 is default), and again to return
 ##   toggle briefing ds2              switch the turn briefing to its DS2 look (in progress), and back
@@ -384,6 +385,9 @@ func _run_command(text: String) -> String:
 			if " ".join(parts.slice(1)).to_lower() == "ledger ds2":
 				UiPrefs.toggle_use_ledger_ds2()
 				return "Building ledger → %s" % ("DS2" if UiPrefs.use_ledger_ds2 else "v2")
+			if " ".join(parts.slice(1)).to_lower() == "politics ds2":
+				UiPrefs.toggle_use_politics_ds2()
+				return "Politics → %s" % ("DS2" if UiPrefs.use_politics_ds2 else "v2")
 			if " ".join(parts.slice(1)).to_lower() == "resources ds2":
 				UiPrefs.toggle_use_resources_ds2()
 				return "Resources → %s" % ("DS2" if UiPrefs.use_resources_ds2 else "v2")
@@ -420,7 +424,7 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 2 and parts[1].to_lower() == "midcentury":
 				MapStyle.set_midcentury(not MapStyle.is_midcentury())
 				return "map style → %s" % _style_name()
-			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | bdp v3 | topbar ds2 | tvp v3 | ledger ds2 | resources ds2 | people ds2 | market ds2 | briefing ds2 | construct ds2 | upgrade ds2 | routes ds2"
+			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | bdp v3 | topbar ds2 | tvp v3 | ledger ds2 | resources ds2 | politics ds2 | people ds2 | market ds2 | briefing ds2 | construct ds2 | upgrade ds2 | routes ds2"
 		"anim":
 			# Cheat: cycle the Empire-view hex-field animation (1->2->3->4->1), or set it with `anim <n>`.
 			var bg := get_tree().get_first_node_in_group("empire_hex_bg")

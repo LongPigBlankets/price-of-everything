@@ -116,3 +116,11 @@ Owner, 2 October 2026:
 - **Toasts are timed only the first time they appear in the turn.** Opened by the player, the updates stay until the player clicks any surface outside them; clicks on the toasts or on the briefing and updates controls in the bottom left do not close them.
 - **The answers** (1 October): an engraved line between one choice's effects and the next, and each answer key centred on the midline of its effects.
 - **Only the live alerts** (1 October): the annunciator shows a window only for a kind that is lit (Starved when buildings are starved). With none lit there is no grid, just "No other updates."
+
+## Politics (2 October 2026)
+
+- The owner asked for the Politics panel in DS2 (it had been off limits since 26 September).
+- First build, awaiting review, behind `toggle politics ds2` (off by default): the same record and the same words on the kit's case and modules, an event a module with its icon in a well and its turn on a dot display, in the order things happened. No new renders. 640 wide. Captures: `artifacts/politics_ds2/`, made by `tools/politics_ds2_shot.tscn`.
+- Owner, after the first build: a wooden courtroom, with balustrades. Second build (`artifacts/politics_ds2/ds2_v2/`): the oak wall in its moulded frame, the bar of the court (a rail of turned balusters) under the title, an event a raised oak panel, its turn on a brass plate. Render set `court`, seed 470.
+- Owner, on the courtroom: the rows in dark leather, stitched, a small brass stud in each corner (`court_panel`). The panel is as tall as its rows up to five; past five the record scrolls with five in view. Captures: `artifacts/politics_ds2/ds2_v3/` (`politics_ds2_long.png` shows the scroll on a made up longer record).
+- Owner: the icons in a stitched leather frame, not the black metal well (`court_icon_frame`, a band of tan leather round the cream tile). Captures: `artifacts/politics_ds2/ds2_v4/`.
