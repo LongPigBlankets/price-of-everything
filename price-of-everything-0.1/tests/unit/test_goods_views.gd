@@ -607,6 +607,23 @@ func _test_empire_board_model() -> void:
 			and Streets.has_node(Streets.nid(here)) and Streets.is_exit(here)
 	_check(meets, "board: neighbouring tiles' roads meet at the same point on their shared edge")
 	_check(Streets.exit_point(Vector2(810.0, 0.0)) == Vector2.ZERO, "board: a tile that is not a neighbour has no exit")
+	# Through traffic keeps to the front street: from one front corner to the other it never
+	# touches the back street, though going round the back is no longer.
+	var west: String = Streets.nid(Streets.exit_point(Vector2(-405.0, 240.0)))
+	var east: String = Streets.nid(Streets.exit_point(Vector2(405.0, 240.0)))
+	var front := true
+	for id in Streets.path(west, east):
+		front = front and Streets.node_pos(str(id)).y > 0.0
+	_check(front, "board: traffic along the front of a tile stays on the front street")
+	# A river across the front street sends that traffic round the back instead of over it.
+	var a_id: String = Streets.nid(Vector2(0.0, Streets.STREET_Y))
+	var b_id: String = Streets.nid(Vector2(Streets.AVENUE_X, Streets.STREET_Y))
+	var dammed: Array = Streets.path(west, east, {a_id + "|" + b_id: Streets.RIVER_COST}, "test-river")
+	var crosses := false
+	for n in range(1, dammed.size()):
+		crosses = crosses or (str(dammed[n - 1]) == a_id and str(dammed[n]) == b_id) \
+			or (str(dammed[n - 1]) == b_id and str(dammed[n]) == a_id)
+	_check(dammed.size() >= 2 and not crosses, "board: a road goes round rather than bridge a river it need not cross")
 	_check(Streets.places(10).size() == 10 and Streets.places(11).size() == 40
 		and float(Streets.places(11)[0]["side"]) < Streets.SLOT_SIDE,
 		"board: an eleventh building splits the slots into quarters")

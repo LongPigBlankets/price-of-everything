@@ -27,6 +27,13 @@ const TOP_Y := 240.0
 ## Pipes run beside the streets: one line inside each street, nearer the warehouse, one outside.
 const PIPE_INNER := 48.0
 const PIPE_OUTER := 92.0
+## Travelling the back street, or an avenue between the two streets, costs this many times
+## its length.
+const BACK_COST := 2.5
+const CROSS_COST := 2.0
+## What crossing a river adds to a stretch: more than any way round inside a tile, so a road
+## only bridges a river when what it serves is on the far bank.
+const RIVER_COST := 1500.0
 
 ## Slot centres. Front row first, so a tile with few buildings shows them toward the camera.
 const SLOTS: Array[Vector2] = [
@@ -124,10 +131,34 @@ static func kind_of(a: String, b: String) -> String:
 	return ""
 
 
-## The shortest way along the streets from one node to another, as node ids.
-static func path(from: String, to: String) -> Array:
+## Every stretch of street as a pair of node ids.
+static func edges() -> Array:
 	_build()
-	var key := from + "|" + to
+	var out: Array = []
+	for a in _adj:
+		for e in _adj[a]:
+			if str(a) < str(e[0]):
+				out.append([str(a), str(e[0])])
+	return out
+
+
+## What a stretch costs to travel, per unit of its length. The front street is the tile's main
+## road: the back street and the avenues cost more, so traffic keeps to the front and only
+## turns off it for something that is actually on the other side.
+static func _weight(a: Vector2, b: Vector2, kind: String) -> float:
+	if kind == "street" and a.y < 0.0:
+		return BACK_COST
+	if kind == "avenue" and absf(a.y) <= STREET_Y + 1.0 and absf(b.y) <= STREET_Y + 1.0:
+		return CROSS_COST
+	return 1.0
+
+
+## The cheapest way along the streets from one node to another, as node ids. `extra` adds a
+## cost to particular stretches, keyed "a|b" with a < b (a river to cross, say); `cache` names
+## the set of extras, so each tile's own answers are worked out once.
+static func path(from: String, to: String, extra: Dictionary = {}, cache: String = "") -> Array:
+	_build()
+	var key := cache + "|" + from + "|" + to
 	if _paths.has(key):
 		return _paths[key]
 	var dist: Dictionary = {from: 0.0}
@@ -147,11 +178,14 @@ static func path(from: String, to: String) -> Array:
 		if cur == to:
 			break
 		for e in _adj.get(cur, []):
-			var nd := float(dist[cur]) + float(e[1])
-			if not dist.has(e[0]) or nd < float(dist[e[0]]) - 0.001:
-				dist[e[0]] = nd
-				prev[e[0]] = cur
-				open.append(e[0])
+			var nxt := str(e[0])
+			var ekey := (cur + "|" + nxt) if cur < nxt else (nxt + "|" + cur)
+			var nd := float(dist[cur]) + float(e[1]) * _weight(_nodes[cur], _nodes[nxt], str(e[2])) \
+				+ float(extra.get(ekey, 0.0))
+			if not dist.has(nxt) or nd < float(dist[nxt]) - 0.001:
+				dist[nxt] = nd
+				prev[nxt] = cur
+				open.append(nxt)
 	var out: Array = []
 	if dist.has(to):
 		var at := to

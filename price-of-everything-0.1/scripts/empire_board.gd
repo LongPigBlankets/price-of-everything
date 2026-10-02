@@ -1164,6 +1164,16 @@ func _draw_tokens(layer: Control) -> void:
 	var view := Rect2(Vector2.ZERO, size).grow(box)
 	var font := get_theme_default_font()
 	_draw_pipe_flow(layer)
+	# Power is shown on the pylons, not as something travelling.
+	var tiles: Dictionary = _model.get("tiles", {})
+	for s in _standing:
+		if str(s["kind"]) != "pylon":
+			continue
+		var icon: Texture2D = (tiles.get(s["tile"], {}) as Dictionary).get("power_icon")
+		var r: Rect2 = s["rect"]
+		var at := Vector2(r.get_center().x, r.position.y + r.size.y * 0.52) * _zoom + _offset
+		if icon != null and view.has_point(at):
+			_token(layer, at, box * 0.9, icon)
 	for f in _flows:
 		var total := float(f["total"])
 		var style := str(f["style"])

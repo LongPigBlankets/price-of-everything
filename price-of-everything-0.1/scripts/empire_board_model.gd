@@ -242,7 +242,7 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 			if g == "":
 				continue
 			if _is_power(g):
-				power_ends.append({"iid": iid, "tile": tile, "out": true})
+				power_ends.append({"iid": iid, "tile": tile, "out": true, "good": g})
 				continue
 			(makers.get_or_add(tile + "|" + g, []) as Array).append(iid)
 			outputs.append({"iid": iid, "tile": tile, "good": g})
@@ -321,6 +321,20 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 			if i > 0:
 				cable_links[mini_str(str(path[i - 1]), str(path[i])) + "|" + maxi_str(str(path[i - 1]), str(path[i]))] = true
 
+	# The icon the pylons carry: the power the company makes, or failing that any power good.
+	var power_good := ""
+	for pe in power_ends:
+		if str(pe.get("good", "")) != "":
+			power_good = str(pe["good"])
+			break
+	if power_good == "":
+		for g in Catalog.all_goods():
+			var gid := str((g as Dictionary).get("id", (g as Dictionary).get("good_id", "")))
+			if gid != "" and _is_power(gid):
+				power_good = gid
+				break
+	var power_icon: Texture2D = GoodIcons.texture_for(power_good, _internal_name(power_good)) if power_good != "" else null
+
 	for tid in drawn:
 		var coord: Vector2i = terrain.id_to_coord(str(tid))
 		if coord.x < 0:
@@ -336,6 +350,7 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 		}
 		if pylon_tiles.has(tid):
 			tiles[tid]["pylon"] = c + PYLON_AT
+			tiles[tid]["power_icon"] = power_icon
 
 	# Stand everything on the tile's street plan: the warehouse at the centre, and each building,
 	# site and port on the free slot nearest where it really is on the map.
@@ -416,6 +431,23 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 				"sprite": BuildingSprites.texture_for("pylon", 1), "level": 3, "pos": t["pylon"],
 				"side": PYLON_SIDE, "name": "Power line"})
 
+	# What each tile's rivers add to the stretches of street that cross them.
+	var river_cost: Dictionary = {}       # tile_id -> {"a|b": cost}
+	for tid in tiles:
+		var costs: Dictionary = {}
+		var c: Vector2 = tiles[tid]["center"]
+		for e in Streets.edges():
+			var a: Vector2 = c + Streets.node_pos(str(e[0]))
+			var b: Vector2 = c + Streets.node_pos(str(e[1]))
+			for line in rivers_by_tile.get(tid, []):
+				var pts: PackedVector2Array = line
+				for i in range(pts.size() - 1):
+					if Geometry2D.segment_intersects_segment(a, b, pts[i], pts[i + 1]) != null:
+						costs[str(e[0]) + "|" + str(e[1])] = Streets.RIVER_COST
+		river_cost[tid] = costs
+	var route := func(tile: String, from: String, to: String) -> Array:
+		return Streets.path(from, to, river_cost.get(tile, {}), tile)
+
 	var lines: Array = []                 # pipes, cables, and any way that cannot follow the plan
 	var flows: Array = []
 	var roads: Dictionary = {}            # "tile|a|b" -> the stretch of street between two nodes
@@ -472,7 +504,7 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 		if Catalog.requires_pipeline(good) and _pipe_mode(tile) != "":
 			pipe_feed.call(iid, tile, good, not out)
 			return
-		var ids: Array = Streets.path(str(door_of[iid]), str(tiles[tile]["hub_node"]))
+		var ids: Array = route.call(tile, str(door_of[iid]), str(tiles[tile]["hub_node"]))
 		var pts: Array = walk.call(tile, ids, "roads")
 		if not out:
 			pts.reverse()
@@ -544,27 +576,19 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 			var out_id: String = Streets.nid(out_rel)
 			if at == "":
 				at = out_id
-			pts.append_array(walk.call(a, Streets.path(at, out_id), mode))
+			pts.append_array(walk.call(a, route.call(a, at, out_id), mode))
 			at = Streets.nid(Streets.exit_point(-off))
 			pts.append(_pt((tiles[b]["center"] as Vector2) + Streets.node_pos(at), b, true))
 		var goal: String = str(door_of["port:" + to_tile]) if to_port else (str(tiles[to_tile]["hub_node"]) if bool(tiles[to_tile]["store"]) else "")
 		if goal != "" and at != "":
-			pts.append_array(walk.call(to_tile, Streets.path(at, goal), mode))
+			pts.append_array(walk.call(to_tile, route.call(to_tile, at, goal), mode))
 		if pts.size() < 2:
 			continue
 		flows.append({"good": good, "kind": str(lane["kind"]), "mode": mode, "pts": pts,
 			"live": lane["live"], "icon": GoodIcons.texture_for(good, _internal_name(good))})
 
-	# Cables: each power building to its tile's pylon, and pylon to pylon between tiles.
-	for pe in power_ends:
-		var tile := str(pe["tile"])
-		if not tiles.has(tile) or not tiles[tile].has("pylon") or not pos_of.has(str(pe["iid"])):
-			continue
-		var cpts: Array = [_pt(pos_of[str(pe["iid"])], tile), _pt(tiles[tile]["pylon"], tile)]
-		var ids2: Array = [str(pe["iid"]), "pylon:" + tile]
-		lines.append({"mode": MODE_CABLE, "good": "", "kind": "feed", "pts": cpts, "ids": ids2})
-		flows.append({"good": "", "kind": "power", "mode": MODE_CABLE, "pts": cpts, "ids": ids2,
-			"reverse": not bool(pe["out"]), "live": [], "icon": null})
+	# Cables run from pylon to pylon between tiles. A tile's own buildings are not wired up
+	# one by one: the pylon stands for the tile's connection.
 	for ck in cable_links:
 		var a := str(ck).get_slice("|", 0)
 		var b := str(ck).get_slice("|", 1)
