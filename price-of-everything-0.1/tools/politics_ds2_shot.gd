@@ -15,11 +15,18 @@ func _ready() -> void:
 	add_child(back)
 	var states := {"empty": maxi(1, PolicyState.beat("election_news") - 1), "ramping": PolicyState.beat("ramp_first"),
 		"all": maxi(PolicyState.beat("p1"), PolicyState.beat("subsidy"))}
+	# A longer record than the arc holds today, to show the scroll past five rows (DS2 only).
+	var long_script := GDScript.new()
+	long_script.source_code = "extends \"res://scripts/politics_panel.gd\"\nfunc _entries() -> Array:\n\tvar out: Array = super._entries()\n\tfor i in 3:\n\t\tout.append({\"icon\": \"gavel\", \"title\": \"A later act of the house\", \"body\": \"A made up entry, here to show the record scrolling past five rows.\", \"turn\": 110 + i * 5})\n\treturn out\n"
+	long_script.reload()
+	states["long"] = int(states["all"])
 	for ds2: bool in [false, true]:
 		UiPrefs.set_use_politics_ds2(ds2)
 		for state: String in states:
 			TurnManager.current_turn = int(states[state])
-			var panel: Control = (load("res://scripts/politics_panel.gd") as GDScript).new()
+			if state == "long" and not ds2:
+				continue
+			var panel: Control = (long_script if state == "long" else load("res://scripts/politics_panel.gd") as GDScript).new()
 			add_child(panel)
 			panel.show()
 			panel.call("_refresh")

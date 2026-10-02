@@ -635,6 +635,26 @@ func _test_politics_panel_ds2() -> void:
 	_check(first != null and first.find_child("Turn", true, false) != null
 		and str(first.find_child("Turn", true, false).get_meta("text", "")) == "TURN %d" % PolicyState.beat("election_news"), "politics DS2: a panel's brass plate prints its turn")
 	_check(panel.find_child("CourtWall", true, false) != null and panel.find_child("CourtRail", true, false) != null, "politics DS2: the oak wall and the bar of the court")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var scroll := panel.find_child("PoliticsScroll", true, false) as ScrollContainer
+	_check(scroll != null and scroll.vertical_scroll_mode == ScrollContainer.SCROLL_MODE_SHOW_NEVER and entries.size() <= 5
+		and scroll.custom_minimum_size.y >= (scroll.get_child(scroll.get_child_count() - 1) as Control).get_combined_minimum_size().y - 0.5,
+		"politics DS2: up to five rows show whole, with no scroll")
+	var long_script := GDScript.new()
+	long_script.source_code = "extends \"res://scripts/politics_panel.gd\"\nfunc _entries() -> Array:\n\tvar out: Array = []\n\tfor i in 7:\n\t\tout.append({\"icon\": \"gavel\", \"title\": \"Act %d\" % i, \"body\": \"Words.\", \"turn\": 10 + i})\n\treturn out\n"
+	long_script.reload()
+	var long_panel: Control = long_script.new()
+	add_child(long_panel)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var long_scroll := long_panel.find_child("PoliticsScroll", true, false) as ScrollContainer
+	var list := long_panel.find_child("PoliticsCase", true, false) as Control
+	_check(long_scroll.vertical_scroll_mode == ScrollContainer.SCROLL_MODE_AUTO and list.get_child_count() == 7
+		and long_scroll.custom_minimum_size.y < list.get_combined_minimum_size().y, "politics DS2: past five rows the record scrolls, five in view")
+	long_panel.free()
 	UiPrefs.set_use_politics_ds2(false)
 	_check(panel.find_child("PoliticsCase", true, false) == null and is_equal_approx(panel.custom_minimum_size.x, 560.0),
 		"politics: the switch off brings the v2 panel back")

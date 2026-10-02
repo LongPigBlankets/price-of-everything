@@ -7023,7 +7023,7 @@ async function exportLayers() {
   // The Politics courtroom, in layout px: the wall at the panel's size (640 x 720 logical), the rail across it inside
   // the frame, an event's panel near its drawn width, the turn's brass plate.
   const COURT = { BACKING: { W: 1200, H: 1350, M: 24, frame: 30 }, RAIL: { W: 1136, H: 112, M: 18, top: 22, foot: 18, pitch: 40 },
-    PANEL: { W: 1060, H: 200, M: 16, r: 8, bead: 12, corner: 26 }, PLATE: { W: 150, H: 44, M: 8, r: 5, corner: 14 } };
+    PANEL: { W: 1060, H: 200, M: 16, r: 12, stud: 19, corner: 34 }, PLATE: { W: 150, H: 44, M: 8, r: 5, corner: 14 } };
   const BRIEF_BOARD = { W: 920, H: 1200, M: 16, r: 18, foot: 60 };
   const BRIEF_CLIP = { W: 360, H: 124, M: 20, jaw: [300, 58], roll: 262 };
   const BRIEF_WINDOW = { W: 236, H: 96, M: 8, rim: 7, r: 5 };
@@ -7408,8 +7408,8 @@ async function exportLayers() {
 
   // The Politics panel as a courtroom (docs/ds2-owner-decisions.md, Politics): the panelled oak wall in its moulded
   // frame (the panel's backing, drawn at its own size), the bar of the court (a rail of turned balusters, drawn across
-  // the panel under the title), a raised oak panel for an event (a 9-slice rendered near its drawn width, so its
-  // grain barely stretches) and a small brass plate for the turn an event happened (a 9-slice, the turn printed by
+  // the panel under the title), a pad of dark leather with a brass stud in each corner for an event (a 9-slice rendered near
+  // its drawn width) and a small brass plate for the turn an event happened (a 9-slice, the turn printed by
   // the game).
   if (want('court')) await withSeed(470, async () => {
     /** Oak: a base colour under long wavy grain, darker and lighter strokes, running along x or along y. */
@@ -7454,12 +7454,11 @@ async function exportLayers() {
       await post('court_rail', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
       layout.court_rail = { size: [W + 2 * M, H + 2 * M], margin: M };
     }
-    { // an event's panel: a raised oak panel, a bead run round inside its edge
-      const { W, H, M, r, bead } = COURT.PANEL, g = new THREE.Group();
-      const face = oak(W, H, '#54361f', 'x'), c = face.getContext('2d');
-      c.strokeStyle = 'rgba(0,0,0,0.5)'; c.lineWidth = 2; c.beginPath(); c.roundRect(bead, bead, W - 2 * bead, H - 2 * bead, 5); c.stroke();
-      c.strokeStyle = 'rgba(255,214,160,0.16)'; c.lineWidth = 1.4; c.beginPath(); c.roundRect(bead + 2.2, bead + 2.2, W - 2 * bead - 4.4, H - 2 * bead - 4.4, 4); c.stroke();
-      put(g, new THREE.Mesh(extrude(rrShape(W, H, r), 4, 3.5, 2.8, 5), [polish(face, W, H), darkSide]), M + W / 2, M + H / 2);
+    { // an event's row: a padded pad of dark leather, stitched round its edge, a small domed brass stud in each corner
+      const { W, H, M, r, stud } = COURT.PANEL, g = new THREE.Group(), K = peopleKit();
+      put(g, new THREE.Mesh(extrude(rrShape(W, H, r), 3, 4.5, 3.6, 6), [K.leather(W, H, '#261713'), new THREE.MeshStandardMaterial({ color: 0x120a08, roughness: 0.7 })]), M + W / 2, M + H / 2);
+      const dome = new THREE.SphereGeometry(5, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.6, 1);
+      for (const [x, y] of [[stud, stud], [W - stud, stud], [stud, H - stud], [W - stud, H - stud]]) put(g, new THREE.Mesh(dome, K.brass), M + x, M + y, 11.5);
       g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.6));
       await post('court_panel', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
       layout.court_panel = { size: [W + 2 * M, H + 2 * M], margin: M, corner: COURT.PANEL.corner };

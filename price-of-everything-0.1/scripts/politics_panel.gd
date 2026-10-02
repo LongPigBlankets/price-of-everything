@@ -44,8 +44,8 @@ const DS2_TITLE_PX := 16
 const DS2_EMPTY := "No political events yet."
 const DS2_INK := Color("#0b2340")
 ## DS2, the courtroom (render set `court`, tools/button_mockup/cluster.html): the oak wall in its moulded frame at
-## the panel's size, the bar of the court (a rail of turned balusters) under the title, a raised oak panel for an
-## event and a brass plate for its turn. From layout.json, in layout px: each render's shadow room, the wall's
+## the panel's size, the bar of the court (a rail of turned balusters) under the title, a pad of dark leather with a
+## brass stud in each corner for an event and a brass plate for its turn. From layout.json, in layout px: each render's shadow room, the wall's
 ## frame, the rail's height, the 9-slices' corners.
 const COURT_WALL: Texture2D = preload("res://assets/ui/bdp_v3/court_backing.png")
 const COURT_RAIL: Texture2D = preload("res://assets/ui/bdp_v3/court_rail.png")
@@ -58,12 +58,19 @@ const WALL_FRAME := 30.0
 const RAIL_MARGIN := 18.0
 const RAIL_H := 112.0
 const PANEL_MARGIN := 16.0
-const PANEL_CORNER := 26.0
+const PANEL_CORNER := 34.0
 const PLATE_MARGIN := 8.0
 const PLATE_CORNER := 14.0
 ## The plate's print: the brass plates' dark ink.
 const PLATE_INK := Color("#2b170d")
 const PLATE_PX := 14
+## DS2: the rows shown before the record scrolls, the gap between rows, and the wall's 9-slice corner (its shadow
+## room, its frame and the frame's bead), so the wall follows the panel's height with its frame kept true.
+const MAX_ROWS := 5
+const ROW_GAP_DS2 := 10
+const WALL_CORNER := 60.0
+## The record's least height, so a short record leaves wall under it and the wall's sides are never squeezed.
+const MIN_LIST_H := 330.0
 
 var _list: VBoxContainer = null
 var _empty_label: Label = null
@@ -72,6 +79,7 @@ var _drag_offset := Vector2.ZERO
 ## Whether the DS2 look is built, and the size the panel is built at.
 var _ds2 := false
 var _panel_size := PANEL_SIZE
+var _scroll: ScrollContainer = null
 
 func _ready() -> void:
 	name = "PoliticsPanel"
@@ -105,6 +113,7 @@ func _build_look() -> void:
 		remove_child(c)
 		c.queue_free()
 	_list = null
+	_scroll = null
 	_ds2 = UiPrefs.use_politics_ds2
 	_panel_size = DS2_SIZE if _ds2 else PANEL_SIZE
 	custom_minimum_size = _panel_size
@@ -119,7 +128,7 @@ func _build_look() -> void:
 
 
 ## DS2, a courtroom: the oak wall in its moulded frame, the raised title and the Close key, the bar of the
-## court (a rail of turned balusters), then the record on raised oak panels, an event a panel.
+## court (a rail of turned balusters), then the record on leather pads, an event a pad.
 func _build_ds2() -> void:
 	add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	var wall := Control.new()
@@ -127,7 +136,8 @@ func _build_ds2() -> void:
 	wall.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	wall.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	wall.draw.connect(func() -> void:
-		wall.draw_texture_rect(COURT_WALL, Rect2(Vector2.ZERO, wall.size).grow(WALL_MARGIN / CAPTURE_SCALE), false))
+		Nine.paint(wall, COURT_WALL, Rect2(Vector2.ZERO, wall.size).grow(WALL_MARGIN / CAPTURE_SCALE),
+			(WALL_MARGIN + WALL_CORNER) * TEXELS_PER_PIXEL / CAPTURE_SCALE))
 	add_child(wall)
 	var margin := MarginContainer.new()
 	for side in ["left", "top", "right", "bottom"]:
@@ -168,26 +178,47 @@ func _build_ds2() -> void:
 	var scroll := ScrollContainer.new()
 	scroll.name = "PoliticsScroll"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	Scroll.apply(scroll, true)
 	layout.add_child(scroll)
+	_scroll = scroll
 	_list = VBoxContainer.new()
 	_list.name = "PoliticsCase"
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_list.add_theme_constant_override("separation", 10)
+	_list.add_theme_constant_override("separation", ROW_GAP_DS2)
 	scroll.add_child(_list)
 	_refresh()
 
 
-## DS2: a raised oak panel (the court's 9-slice), its parts in one row inside.
+## DS2: the panel is as tall as its rows, up to MAX_ROWS of them. Past that the record scrolls on the steel rail,
+## the first MAX_ROWS in view. The rows' heights follow their wrapped words, so they are read once laid out.
+func _fit_rows() -> void:
+	for _i in 2:
+		if not is_inside_tree():
+			return
+		await get_tree().process_frame
+	if not _ds2 or _scroll == null or not is_instance_valid(_scroll) or _list == null:
+		return
+	var rows := _list.get_child_count()
+	var shown := mini(MAX_ROWS, rows)
+	var h := float(ROW_GAP_DS2 * maxi(0, shown - 1))
+	for i in shown:
+		h += (_list.get_child(i) as Control).get_combined_minimum_size().y
+	_scroll.custom_minimum_size.y = maxf(h, MIN_LIST_H)
+	_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO if rows > MAX_ROWS else ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	custom_minimum_size = Vector2(DS2_SIZE.x, 0)
+	size = Vector2(DS2_SIZE.x, 0)
+
+
+## DS2: an event's row, a stitched pad of dark leather with a brass stud in each corner (the court's 9-slice),
+## its parts in one row inside.
 func _oak_panel(panel_name: String) -> PanelContainer:
 	var m := PanelContainer.new()
 	m.name = panel_name
 	var pad := StyleBoxEmpty.new()
-	pad.content_margin_left = 14
-	pad.content_margin_right = 14
-	pad.content_margin_top = 12
-	pad.content_margin_bottom = 12
+	pad.content_margin_left = 18
+	pad.content_margin_right = 18
+	pad.content_margin_top = 14
+	pad.content_margin_bottom = 14
 	m.add_theme_stylebox_override("panel", pad)
 	m.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	m.draw.connect(func() -> void:
@@ -228,7 +259,7 @@ func _turn_plate(turn: int) -> Control:
 	return plate
 
 
-## DS2: one event's oak panel. Its icon on a cream tile in a well, its title over its words, and the turn it
+## DS2: one event's leather pad. Its icon on a cream tile in a well, its title over its words, and the turn it
 ## happened on a brass plate.
 func _entry_module(entry: Dictionary, index: int) -> Control:
 	var m := _oak_panel("PoliticsEvent_%d" % index)
@@ -440,6 +471,7 @@ func _refresh(_a: Variant = null) -> void:
 			_list.add_child(none)
 		for i in entries.size():
 			_list.add_child(_entry_module(entries[i], i))
+		_fit_rows()
 		return
 	if entries.is_empty():
 		# Nothing has happened yet, and saying so is the whole content of the panel until
