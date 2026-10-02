@@ -2185,7 +2185,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin, court, dockicon. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
+  // tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin, court, dockicon, dockpad. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -2554,6 +2554,8 @@ async function exportLayers() {
   // --- the bar's icons raised as the Building Detail panel's are: the game's art keyed into a mask (light
   // pixels of the baked standalone icons, or the cream of a building icon), raised in the same cream
   // enamel under the house light, with the swept shadow as its own layer.
+  // In layout px: the updates pad (brushed silver) and the legends' pad (dark plastic, corners cut by `cut`).
+  const DOCK_PAD = { SILVER: { W: 520, H: 132, M: 14, r: 10, corner: 34 }, PLASTIC: { W: 520, H: 400, M: 14, cut: 26, corner: 44 } };
   const BAR_ICONS = { S: 110, icon: 86, height: 11, soften: 1.5, art: {
     coin: 'ui_icons/standalone/coin.png', power: 'ui_icons/standalone/power_icon.png', trophy: 'ui_icons/standalone/trophy.png',
     podium: 'ui_icons/standalone/podium.png', target: 'ui_icons/standalone/target.png', council: 'ui_icons/standalone/board-of-directors.png',
@@ -2588,6 +2590,39 @@ async function exportLayers() {
       await post('dock_icon_' + name + '_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height, draw: (tg, col) => stamp(tg, mask, o, o, icon, icon, col) }])));
     }
     layout.dock_icons = { size: [S, S], icon, names: Object.keys(art) };
+  });
+  // The updates pad: a plate of brushed silver, its grain along its length, a wide bevel round it (a 9-slice). And
+  // the legends' pad: dark moulded plastic with its four corners cut off (a 9-slice, its corner past the cut).
+  if (want('dockpad')) await withSeed(472, async () => {
+    { const { W, H, M, r } = DOCK_PAD.SILVER, g = new THREE.Group();
+      const brushed = canvas2d(W, H, (c) => {
+        c.fillStyle = '#b4babf'; c.fillRect(0, 0, W, H);
+        for (let i = 0; i < 26; i++) { c.fillStyle = `rgba(${rand() > 0.5 ? '255,255,255' : '0,0,0'},${0.015 + rand() * 0.03})`; c.fillRect(0, rand() * H, W, 2 + rand() * 12); }
+        for (let i = 0; i < Math.round(W * H / 30); i++) {
+          const y = rand() * H, x = rand() * W - 60, l = 30 + rand() * 260;
+          c.strokeStyle = `rgba(${rand() > 0.5 ? '248,250,252' : '40,44,50'},${0.03 + rand() * 0.07})`; c.lineWidth = 0.3 + rand() * 0.5;
+          c.beginPath(); c.moveTo(x, y); c.lineTo(x + l, y); c.stroke();
+        }
+      });
+      const silver = new THREE.MeshStandardMaterial({ map: faceTexture(brushed, W, H), metalness: 0.92, roughness: 0.34, envMap: studioEnv, envMapIntensity: 0.9 });
+      const edge = new THREE.MeshStandardMaterial({ color: 0xc4c9ce, metalness: 1, roughness: 0.28, envMap: studioEnv, envMapIntensity: 1.0 });
+      const m = new THREE.Mesh(extrude(rrShape(W - 16, H - 16, r), 3, 8, 8, 6), [silver, edge]);
+      m.castShadow = m.receiveShadow = true; m.position.set(M + W / 2, 0, M + H / 2); g.add(m);
+      g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.6));
+      await post('dock_pad', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      layout.dock_pad = { size: [W + 2 * M, H + 2 * M], margin: M, corner: DOCK_PAD.SILVER.corner };
+    }
+    { const { W, H, M, cut } = DOCK_PAD.PLASTIC, g = new THREE.Group();
+      const shape = new THREE.Shape(), x = W / 2, y = H / 2;
+      shape.moveTo(-x + cut, -y); shape.lineTo(x - cut, -y); shape.lineTo(x, -y + cut); shape.lineTo(x, y - cut);
+      shape.lineTo(x - cut, y); shape.lineTo(-x + cut, y); shape.lineTo(-x, y - cut); shape.lineTo(-x, -y + cut); shape.closePath();
+      const face = new THREE.MeshPhysicalMaterial({ map: faceTexture(blackPlasticFace(W, H, '#1c1e22'), W, H), roughness: 0.6, clearcoat: 0.3, clearcoatRoughness: 0.45, envMap: studioEnv, envMapIntensity: 0.35 });
+      const m = new THREE.Mesh(extrude(shape, 3, 2.5, 2, 4), [face, BLACK_PLASTIC_SIDE()]);
+      m.castShadow = m.receiveShadow = true; m.position.set(M + W / 2, 0, M + H / 2); g.add(m);
+      g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.6));
+      await post('legend_pad', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      layout.legend_pad = { size: [W + 2 * M, H + 2 * M], margin: M, corner: DOCK_PAD.PLASTIC.corner };
+    }
   });
 
   // --- a section frame: a narrow worn steel rim with a screw in each corner, drawn as a 9-slice

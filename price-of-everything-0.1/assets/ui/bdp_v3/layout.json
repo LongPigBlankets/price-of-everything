@@ -2275,5 +2275,21 @@
    "pen",
    "bell"
   ]
+ },
+ "dock_pad": {
+  "size": [
+   548,
+   160
+  ],
+  "margin": 14,
+  "corner": 34
+ },
+ "legend_pad": {
+  "size": [
+   548,
+   428
+  ],
+  "margin": 14,
+  "corner": 44
  }
 }

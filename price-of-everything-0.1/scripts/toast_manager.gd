@@ -51,15 +51,17 @@ const BELL_ICON: Texture2D = preload("res://assets/icons/ui_icons/standalone/bel
 const PEN_ICON: Texture2D = preload("res://assets/icons/ui_icons/standalone/fountain_pen.png")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
-# The DS2 look (UiPrefs.use_dock_ds2): the dock on the top bar's navy steel sheet with the pen and the bells
-# raised, and its slide-out as the turn briefing's clipboard (the hardboard and its steel clip), so the two read
+# The DS2 look (UiPrefs.use_dock_ds2): the dock a pad of brushed silver with a bevel, the pen and the bells
+# raised on it, and its slide-out as the turn briefing's clipboard (the hardboard and its steel clip), so the two read
 # as one surface. A row is a slip of the keycaps' cream plastic tinged in its tone, its words printed in navy.
 const Parts := preload("res://scripts/ds2/parts.gd")
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
-const SHEET: Texture2D = preload("res://assets/ui/bdp_v3/bar_sheet.png")
-## From layout.json (bar_sheet), in layout px: the render's shadow room and its 9-slice corner.
-const SHEET_MARGIN := 10.0
-const SHEET_CORNER := 60.0
+const SHEET: Texture2D = preload("res://assets/ui/bdp_v3/dock_pad.png")
+## From layout.json (dock_pad), in layout px: the render's shadow room and its 9-slice corner.
+const SHEET_MARGIN := 14.0
+const SHEET_CORNER := 34.0
+## The pen on the silver pad: navy with a decision waiting, a paler steel blue with none.
+const PEN_UNLIT := Color(0.36, 0.42, 0.5)
 const CAPTURE_SCALE := 1.875
 const TEXELS_PER_PIXEL := 2.0
 const Brief := preload("res://scripts/briefing_ds2/parts.gd")
@@ -299,11 +301,11 @@ func collapse(animate: bool = true) -> void:
 	_set_interactive(false)
 	_update_dock_rim()
 	if animate:
-		_tween_panel_to(_clip.size.y)
+		_tween_panel_to(_parked_y())
 	else:
 		if _slide != null and _slide.is_valid():
 			_slide.kill()
-		_panel.position.y = _clip.size.y
+		_panel.position.y = _parked_y()
 
 ## Drops every row and count and closes the slide-out at once (a new match, recording mode).
 func clear() -> void:
@@ -498,7 +500,7 @@ func _bare_copy(from: StyleBox) -> StyleBoxEmpty:
 	return bare
 
 
-## DS2: the top bar's navy steel sheet behind the dock; the briefing's clipboard, hardboard and steel clip,
+## DS2: the brushed silver pad behind the dock; the briefing's clipboard, hardboard and steel clip,
 ## behind the slide-out's slips.
 func _paint_sheet(ci: Control) -> void:
 	if not _ds2:
@@ -607,8 +609,12 @@ func _refresh_pen() -> void:
 func _paint_icon(cell: Dictionary, n: int, colour: Color, tooltip: String, pulse: bool) -> void:
 	(cell.tex as TextureRect).modulate = colour if n > 0 else Color(colour, 0.4)
 	if cell.has("raised"):
-		# Raised: lit in its colour with something to count, the same colour unlit with nothing.
-		(cell.raised as Control).modulate = colour if n > 0 else Color(colour.r * 0.5, colour.g * 0.5, colour.b * 0.5)
+		# Raised: lit in its colour with something to count, the same colour unlit with nothing. The pen, cream
+		# on the navy dock, is printed in navy on the silver pad.
+		if cell == _pen:
+			(cell.raised as Control).modulate = NAVY_PRINT if n > 0 else PEN_UNLIT
+		else:
+			(cell.raised as Control).modulate = colour if n > 0 else Color(colour.r * 0.5, colour.g * 0.5, colour.b * 0.5)
 	var pill: PanelContainer = cell.pill
 	pill.visible = n > 0
 	var text := str(n) if n < 100 else "99+"
@@ -637,8 +643,8 @@ func _update_dock_rim() -> void:
 	var hot := _dock_hover or (_open and _all)
 	_dock_style.border_color = DOCK_BORDER_HOT if hot else DOCK_BORDER
 	if _ds2:
-		# The steel catches a little more light, as a module under the pointer does.
-		_dock.self_modulate = Parts.HOT if hot else Color.WHITE
+		# The silver catches a little more light. It is bright already, so only a little.
+		_dock.self_modulate = Color(1.05, 1.05, 1.05) if hot else Color.WHITE
 
 
 ## Opened from the dock the slide-out takes the mouse (it scrolls, and hovering holds it up);
@@ -908,7 +914,7 @@ func _open_slide(all_rows: bool, tone: String = "") -> void:
 	_fit()
 	if not _open:
 		_open = true
-		_panel.position.y = _clip.size.y
+		_panel.position.y = _parked_y()
 		_tween_panel_to(0.0)
 	_update_dock_rim()
 	_scroll_to_newest.call_deferred()
@@ -1023,6 +1029,16 @@ func _hovered() -> bool:
 	return false
 
 
+## Where the slide-out waits behind the dock. The clipboard's render carries shadow room above its top edge, so
+## in DS2 it parks that much lower and nothing of it shows over the dock.
+func _parked_y() -> float:
+	return _clip.size.y + _park_room()
+
+
+func _park_room() -> float:
+	return 14.0 if _ds2 else 0.0
+
+
 func _tween_panel_to(y: float) -> void:
 	if _slide != null and _slide.is_valid():
 		_slide.kill()
@@ -1052,7 +1068,7 @@ func _fit() -> void:
 	_clip.offset_top = _clip.offset_bottom - h
 	_panel.size = Vector2(TOAST_WIDTH, h)
 	if not _open and not (_slide != null and _slide.is_valid() and _slide.is_running()):
-		_panel.position.y = h
+		_panel.position.y = h + _park_room()
 
 
 # ── Where toasts come from ────────────────────────────────────────────────────

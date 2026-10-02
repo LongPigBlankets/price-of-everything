@@ -2888,3 +2888,34 @@ func _test_updates_dock_ds2() -> void:
 	_check(rows.get_child_count() == 3 and not rows.get_child(1).has_meta("tinge"), "dock ds2: off again, v2 rows")
 	toasts.queue_free()
 	UiPrefs.set_use_dock_ds2(was)
+
+
+## The map legends on the DS2 pad: the flat box gives way to the plastic pad with the switch on, keeping at
+## least the pad's own room round its print, and comes back as it was with the switch off.
+func _test_legend_pad_ds2() -> void:
+	var was := UiPrefs.use_legend_ds2
+	UiPrefs.set_use_legend_ds2(false)
+	var Pad: GDScript = load("res://scripts/ds2/legend_pad.gd")
+	var panel := PanelContainer.new()
+	var box := StyleBoxFlat.new()
+	box.set_content_margin_all(4)
+	panel.add_theme_stylebox_override("panel", box)
+	add_child(panel)
+	Pad.dress(panel)
+	_check(panel.get_theme_stylebox("panel") == box, "legend pad: off, the legend keeps its box")
+	UiPrefs.set_use_legend_ds2(true)
+	Pad.dress(panel)
+	var bare := panel.get_theme_stylebox("panel")
+	_check(bare is StyleBoxEmpty and bare.content_margin_left >= 12.0, "legend pad: on, the pad replaces the box and keeps print clear of its cut corners")
+	Pad.dress(panel)
+	_check(panel.get_theme_stylebox("panel") == bare, "legend pad: dressing twice changes nothing")
+	UiPrefs.set_use_legend_ds2(false)
+	Pad.dress(panel)
+	_check(panel.get_theme_stylebox("panel") == box, "legend pad: off again, the box is back")
+	var legend: Control = (load("res://scenes/overlay_legend.tscn") as PackedScene).instantiate()
+	add_child(legend)
+	UiPrefs.set_use_legend_ds2(true)
+	_check(legend.get_theme_stylebox("panel") is StyleBoxEmpty, "legend pad: the map modes' legend follows the switch")
+	legend.queue_free()
+	panel.queue_free()
+	UiPrefs.set_use_legend_ds2(was)
