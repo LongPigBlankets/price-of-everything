@@ -3369,7 +3369,8 @@ func _apply_tile_logistics_policy(side: String, mode: String, logistics: Diction
 		_refresh_pane("stock")
 		return true
 	var confirmation := preload("res://scripts/logistics_confirmation.gd")
-	confirmation.request(self, "middleman" if mode == "middleman" else "managed", apply, func() -> void: _refresh_pane("stock"))
+	confirmation.request(self, "middleman" if mode == "middleman" else "managed", apply, func() -> void: _refresh_pane("stock"),
+		{"side": side, "destination": mode if mode in ["market", "stockpile"] else "", "tile": _current_tile_id})
 
 # Whole-tile surplus destination. This is deliberately separate from per-good
 # stockpile moves: it controls the standing destination for goods left after

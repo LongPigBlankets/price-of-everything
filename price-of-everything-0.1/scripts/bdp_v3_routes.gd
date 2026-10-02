@@ -349,7 +349,6 @@ static func _output_knob(panel: Control, building: Dictionary, recipe: Dictionar
 				elif choice == "stockpile":
 					MatchState.set_output_stockpile_destination(iid, tile, gid)
 					reopen.call()
-					preload("res://scripts/stockpile_route_prompt.gd").offer(panel.get_parent(), tile, gid)
 				elif choice == "other":
 					MatchState.begin_output_stockpile_selection(iid, gid, true)
 					panel.call("_close_sheet")
@@ -359,7 +358,7 @@ static func _output_knob(panel: Control, building: Dictionary, recipe: Dictionar
 					MatchState.request_toast(str(result.get("reason", "Unable to change output destination.")), "warning")
 				reopen.call()
 			elif state == "middleman":
-				panel.call("_request_logistics_mode", building, "output", "managed", go, gid)
+				panel.call("_request_logistics_mode", building, "output", "managed", go, gid, "tile" if choice == "other" else choice)
 			else:
 				go.call())
 	return knob

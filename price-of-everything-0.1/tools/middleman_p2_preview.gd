@@ -146,13 +146,13 @@ func _ready() -> void:
 		detail._request_logistics_mode(b, "input", "managed")
 		await settle(10)
 		await shot("p3-supplier-warning")
-		var prompt := detail.get_node("TransportSupplierConfirmation") as ConfirmationDialog
+		var prompt := detail.get_node("TransportSupplierConfirmation")
 		assert(preload("res://scripts/middleman_service.gd").uses_inputs(iid))
 		prompt.canceled.emit()
 		await settle(5)
 		assert(preload("res://scripts/middleman_service.gd").uses_inputs(iid))
 		detail._request_logistics_mode(b, "input", "managed")
-		prompt = detail.get_node("TransportSupplierConfirmation") as ConfirmationDialog
+		prompt = detail.get_node("TransportSupplierConfirmation")
 		(prompt.find_child("DontShowSupplierAgain", true, false) as CheckBox).button_pressed = true
 		prompt.confirmed.emit()
 		await settle(10)

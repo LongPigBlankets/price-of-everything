@@ -28,6 +28,7 @@ const STARVATION_RAMP_TURNS := 3  # amber on turn 1, critical from turn 3+
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 
 const SEVERITY_INFO := "info"
+const FIRST_MARKET_SALE_TITLE := "First sale to the market"
 const SEVERITY_WARNING := "warning"
 const SEVERITY_CRITICAL := "critical"
 
@@ -86,6 +87,8 @@ var _starvation_last_turn: Dictionary = {}
 
 # Monotonic id counter for events created without an explicit id.
 var _next_event_seq: int = 1
+## The first sale at the global market has been told (see _tell_first_market_sale). Saved.
+var _first_market_sale_told := false
 
 
 func _ready() -> void:
@@ -272,6 +275,7 @@ func history() -> Array:
 
 ## Hard reset (state_reset, scenario start, load).
 func reset() -> void:
+	_first_market_sale_told = false
 	_active.clear()
 	_history.clear()
 	_scheduled.clear()
@@ -507,9 +511,33 @@ func _on_unlock_granted(title: String, description: String, via_condition: bool)
 		"research_condition": ResearchState.unlock_condition_text(title),
 	})
 
-func _on_sale_arrived(_port_tile_id: String, revenue: float) -> void:
+func _on_sale_arrived(port_tile_id: String, revenue: float) -> void:
 	# Aggregated: one rolled-up "12 sales, £4,300" event per turn.
 	aggregate("sales_arrived", _SALES_AGG_TEMPLATE, 1, revenue)
+	_tell_first_market_sale(port_tile_id)
+
+
+## The company's first sale at the global market, told once a game as a news line naming the port. The
+## tutorial's own sales are part of its lesson and are not told.
+func _tell_first_market_sale(port_tile_id: String) -> void:
+	if _first_market_sale_told or Tutorial.active:
+		return
+	_first_market_sale_told = true
+	emit_event({
+		"id": "milestone:first_market_sale",
+		"kind": "milestone",
+		"severity": SEVERITY_INFO,
+		"title": FIRST_MARKET_SALE_TITLE,
+		"body": first_market_sale_body(port_tile_id),
+		"source": "market",
+		"deeplink": {"panel": "tile", "tile_id": port_tile_id},
+		"persistent": false,
+	})
+
+
+static func first_market_sale_body(port_tile_id: String) -> String:
+	var port := Catalog.tile_label(port_tile_id) if port_tile_id != "" else "the port"
+	return "Our company sold its first goods to the global market via %s. This is likely the first in many transactions that will put us on the map. Who knows where we'll go from here." % port
 
 func _on_survey_completed(tile_id: String, deposit_goods: Array) -> void:
 	var names: Array = []
@@ -582,6 +610,7 @@ func export_state() -> Dictionary:
 		"starvation_streaks": _starvation_streaks.duplicate(true),
 		"starvation_last_turn": _starvation_last_turn.duplicate(true),
 		"next_event_seq": _next_event_seq,
+		"first_market_sale_told": _first_market_sale_told,
 	}
 
 func import_state(d: Dictionary) -> void:
@@ -592,6 +621,9 @@ func import_state(d: Dictionary) -> void:
 	_starvation_streaks = d.get("starvation_streaks", {}).duplicate(true)
 	_starvation_last_turn = d.get("starvation_last_turn", {}).duplicate(true)
 	_next_event_seq = int(d.get("next_event_seq", 1))
+	# A save from before the line existed, with news already behind it, has most likely sold at the market:
+	# it is not told now. A new game (no news yet) starts untold.
+	_first_market_sale_told = bool(d.get("first_market_sale_told", not _history.is_empty()))
 	# Aggregators are mid-turn ephemera; intentionally not persisted.
 	_aggregators.clear()
 	active_events_changed.emit()
