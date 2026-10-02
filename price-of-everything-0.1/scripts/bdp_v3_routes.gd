@@ -349,10 +349,6 @@ static func _output_knob(panel: Control, building: Dictionary, recipe: Dictionar
 				elif choice == "stockpile":
 					MatchState.set_output_stockpile_destination(iid, tile, gid)
 					reopen.call()
-					# Leaving the intermediary, the destination sheet has already said the output will pile up
-					# and where to sell it: no second prompt.
-					if state != "middleman":
-						preload("res://scripts/stockpile_route_prompt.gd").offer(panel.get_parent(), tile, gid)
 				elif choice == "other":
 					MatchState.begin_output_stockpile_selection(iid, gid, true)
 					panel.call("_close_sheet")

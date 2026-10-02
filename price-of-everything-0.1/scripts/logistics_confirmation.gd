@@ -28,7 +28,7 @@ static func message_for(context: Dictionary) -> String:
 	return "The intermediary stops handling %s. Your own transport and the ports take over, which costs freight and port charges." % what
 
 
-## The sheet's title and its confirm key: a destination for outputs, a supplier for anything else.
+## The sheet's title: a destination for outputs, a supplier for anything else.
 static func title_for(context: Dictionary) -> String:
 	return "Change destination" if str(context.get("side", "")) == "output" else "Change supplier"
 
@@ -42,7 +42,6 @@ static func request(parent: Node, mode: String, apply: Callable, canceled: Calla
 	var sheet := Sheet.new()
 	sheet.name = "TransportSupplierConfirmation"
 	sheet.title_text = title_for(context)
-	sheet.confirm_text = sheet.title_text
 	sheet.message = message_for(context)
 	if sheet.message == OUTPUT_TO_STOCKPILE:
 		sheet.link_phrase = STOCKPILE_LINK

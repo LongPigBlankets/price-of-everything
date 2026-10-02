@@ -2,9 +2,10 @@ extends CanvasLayer
 ## DS2: the sheet that asks before a building's goods leave the Logistics Intermediary (scripts/
 ## logistics_confirmation.gd builds it). A scrim over the game and, centred on it, Building Detail's navy
 ## steel backing with a raised title, what the change means in white print, the "Do not show again" tick and
-## two cream keys. A phrase of the message can be a link (underlined, in the keys' cream): pressing it opens
-## the Stockpile tab of the tile the message is about and closes the sheet without changing anything.
-## Pressing the scrim or Escape cancels.
+## two cream keys, a small Cancel and Confirm. A phrase of the message can be a link (underlined, in the keys'
+## cream): pressing it opens the Stockpile tab of the tile the message is about and leaves the sheet up with
+## its decision still to make. The scrim then lets the game through, so the tab can be read and used, and the
+## sheet drags by its title out of the way. Pressing the scrim or Escape cancels.
 
 signal confirmed
 signal canceled
@@ -17,10 +18,12 @@ const UIHelpers := preload("res://scripts/ui_helpers.gd")
 
 const WIDTH := 600.0
 const LINK_META := "stockpile"
+## Cancel's width: the smaller key beside Confirm.
+const CANCEL_W := 130.0
 
 ## Set before the sheet enters the tree.
 var title_text := "Change destination"
-var confirm_text := "Change destination"
+var confirm_text := "Confirm"
 var message := ""
 ## The words of `message` that link to `link_tile`'s Stockpile tab; none when either is empty.
 var link_phrase := ""
@@ -29,11 +32,15 @@ var link_tile := ""
 var _sheet: PanelContainer = null
 var _dont_show: CheckBox = null
 var _done := false
+var _scrim: ColorRect = null
+var _dragging := false
+var _drag_offset := Vector2.ZERO
 
 
 func _ready() -> void:
 	layer = 130
 	var scrim := ColorRect.new()
+	_scrim = scrim
 	scrim.name = "Scrim"
 	scrim.color = Color(0, 0, 0, 0.5)
 	scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -43,17 +50,13 @@ func _ready() -> void:
 		if mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			canceled.emit())
 	add_child(scrim)
-	var centre := CenterContainer.new()
-	centre.set_anchors_preset(Control.PRESET_FULL_RECT)
-	centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(centre)
 	_sheet = PanelContainer.new()
 	_sheet.name = "Sheet"
 	# A CanvasLayer's children do not inherit the game's theme.
 	_sheet.theme = DS.theme
 	_sheet.custom_minimum_size.x = WIDTH
 	_sheet.mouse_filter = Control.MOUSE_FILTER_STOP
-	centre.add_child(_sheet)
+	add_child(_sheet)
 	LedgerV3.dress(_sheet)
 	var margin := MarginContainer.new()
 	for side in ["left", "top", "right", "bottom"]:
@@ -65,6 +68,9 @@ func _ready() -> void:
 
 	var title: Control = Title.new()
 	title.call("set_text", title_text)
+	title.mouse_filter = Control.MOUSE_FILTER_STOP
+	title.mouse_default_cursor_shape = Control.CURSOR_MOVE
+	title.gui_input.connect(_on_title_input)
 	col.add_child(title)
 	col.add_child(LedgerV3.seam())
 	col.add_child(_message())
@@ -76,7 +82,10 @@ func _ready() -> void:
 	var keys := HBoxContainer.new()
 	keys.add_theme_constant_override("separation", 12)
 	col.add_child(keys)
-	var cancel := Parts.key_button("Cancel", "CancelKey", 0.8)
+	var cancel := Parts.key_button("Cancel", "CancelKey", 0.7)
+	cancel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	cancel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	cancel.custom_minimum_size.x = CANCEL_W
 	cancel.pressed.connect(func() -> void: canceled.emit())
 	keys.add_child(cancel)
 	var ok := Parts.key_button(confirm_text, "ConfirmKey", 0.8)
@@ -91,6 +100,23 @@ func _ready() -> void:
 			canceled.emit())
 	confirmed.connect(func() -> void: _done = true)
 	canceled.connect(func() -> void: _done = true)
+	_centre.call_deferred()
+
+
+## The sheet in the middle of the screen, once it has its size.
+func _centre() -> void:
+	await get_tree().process_frame
+	if is_instance_valid(_sheet):
+		_sheet.reset_size()
+		_sheet.position = ((_sheet.get_viewport_rect().size - _sheet.size) * 0.5).floor()
+
+
+func _on_title_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		_dragging = event.pressed
+		_drag_offset = _sheet.global_position - _sheet.get_global_mouse_position()
+	elif event is InputEventMouseMotion and _dragging:
+		_sheet.global_position = _sheet.get_global_mouse_position() + _drag_offset
 
 
 ## True when the player ticked "Do not show again".
@@ -127,10 +153,12 @@ func _message() -> RichTextLabel:
 	return text
 
 
-## The link pressed: nothing changes, the sheet closes and the tile's Stockpile tab opens.
+## The link pressed: the tile's Stockpile tab opens and the sheet stays, its decision still to make. The scrim
+## clears and lets the pointer through, so the tab can be used behind the sheet.
 func open_link() -> void:
 	if link_tile == "":
 		return
-	var tile := link_tile
-	canceled.emit()
-	MatchState.tile_stockpile_requested.emit(tile)
+	if _scrim != null:
+		_scrim.color.a = 0.0
+		_scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	MatchState.tile_stockpile_requested.emit(link_tile)

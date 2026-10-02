@@ -124,7 +124,7 @@ func _test_global_switch_counts_and_checks_every_tile_before_changing() -> void:
 
 
 ## Leaving the intermediary says what changes for that side and destination, and never promises
-## a port sale for goods going to a stockpile. A stockpile move with nothing to ask still says so.
+## a port sale for goods going to a stockpile.
 func _test_supplier_change_wording() -> void:
 	var confirm := preload("res://scripts/logistics_confirmation.gd")
 	var coal := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
@@ -141,14 +141,6 @@ func _test_supplier_change_wording() -> void:
 		"supplier change: outputs change a destination, inputs a supplier")
 	for text: String in [to_stock, to_market, str(confirm.message_for({}))]:
 		_check(not text.contains(" — ") and not text.contains(";"), "supplier change: plain copy, no dashes or semicolons")
-	var toasts: Array = []
-	var catch := func(m: String, _t: String) -> void: toasts.append(m)
-	MatchState.toast_requested.connect(catch)
-	preload("res://scripts/stockpile_route_prompt.gd")._say_supplier_changed("tile_5_10", coal, {"supplier_changed": true})
-	preload("res://scripts/stockpile_route_prompt.gd")._say_supplier_changed("tile_5_10", coal, {})
-	MatchState.toast_requested.disconnect(catch)
-	_check(toasts.size() == 1 and str(toasts[0]).contains("no longer buys coal"),
-		"supplier change: with nothing to ask, one toast says the intermediary stopped buying")
 
 
 ## Building Detail: a good's output leaving the intermediary for its own stockpile changes at once,
@@ -205,7 +197,15 @@ func _test_supplier_change_one_dialog() -> void:
 		sheet.call("open_link")
 		await get_tree().process_frame
 	MatchState.tile_stockpile_requested.disconnect(note)
-	_check(asked == [str(building.get("tile_id", ""))] and service.buys_output(iid, gid), "supplier change: the link opens that tile's Stockpile tab and changes nothing")
+	sheet = panel.find_child("TransportSupplierConfirmation", true, false)
+	_check(asked == [str(building.get("tile_id", ""))] and service.buys_output(iid, gid) and sheet != null,
+		"supplier change: the link opens that tile's Stockpile tab, changes nothing and leaves the sheet up")
+	var confirm_key := sheet.find_child("ConfirmKey", true, false) as Control
+	var cancel_key := sheet.find_child("CancelKey", true, false) as Control
+	_check(str(sheet.get("confirm_text")) == "Confirm" and cancel_key.size.x < confirm_key.size.x, "supplier change: Confirm, and a smaller Cancel")
+	sheet.emit_signal("confirmed")
+	await get_tree().process_frame
+	_check(not service.buys_output(iid, gid), "supplier change: Confirm after the link still makes the change")
 	panel.queue_free()
 	await get_tree().process_frame
 	cleanup()
