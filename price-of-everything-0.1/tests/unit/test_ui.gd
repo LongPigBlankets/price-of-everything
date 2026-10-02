@@ -2779,3 +2779,72 @@ func _test_led_three_decimals_under_a_pound() -> void:
 	row.free()
 	dear.free()
 	dialog.free()
+
+
+## The Shipments and Stockpiles panel in DS2: the same three columns on the kit's cases, the routing objective
+## as keys, a stockpile and a shipment a module each; the v2 panel back, as it was, with the switch off.
+func _test_transport_panel_ds2() -> void:
+	var was := UiPrefs.use_transport_ds2
+	var was_route: int = MatchState.route_objective
+	var pending: Array = TransportState.pending_transport_shipments.duplicate(true)
+	UiPrefs.set_use_transport_ds2(true)
+	Stockpile.add("tile_5_10", "g_006", 40)
+	TransportState.queue_transport_shipment({"source_tile": "tile_5_10", "destination_tile": "tile_5_11", "good_id": "g_006", "qty": 9, "turns_remaining": 2})
+	var panel: Control = load("res://scripts/transport_panel.gd").new()
+	add_child(panel)
+	panel.call("open")
+	await get_tree().process_frame
+	_check(panel.find_child("TransportTitleRow", true, false) != null and panel.find_child("LedgerBacking", false, false) != null
+		and panel.find_child("Column_Stockpiles", true, false) != null and panel.find_child("Column_Infrastructure", true, false) != null
+		and panel.find_child("Column_Intransit", true, false) != null, "transport ds2: the ledger's shell and three columns")
+	var stock := panel.find_child("Stock_tile_5_10", true, false)
+	_check(stock != null and stock.find_child("TransportMeter", true, false) != null and stock.find_child("BuildingLamp", true, false) != null,
+		"transport ds2: a stockpile is a module with its lamp and its fill on a meter")
+	var words: String = (stock.find_child("Words", true, false) as Label).text if stock != null else ""
+	_check(words.contains("% full") and not words.contains("(") and not words.contains(" - "), "transport ds2: plain words, no coordinates (%s)" % words)
+	_check(words.ends_with("800.") or not words.contains("turn"), "transport ds2: no full in N turns in the words (%s)" % words)
+	var mark := stock.find_child("Trend", true, false) if stock != null else null
+	_check(mark != null and str(mark.get_meta("trend", "")) in ["up", "down", "steady"], "transport ds2: filling, draining or steady is a drawn mark")
+	_check(panel.find_child("Shipment_0", true, false) != null, "transport ds2: a shipment is a module")
+	var Panel: GDScript = load("res://scripts/transport_panel.gd")
+	var lone: Array = Panel.transit_flows([{"manifest": [{"good_id": "g_006", "qty": 9}], "units": 9, "turns": 2, "to_market": false, "destination": "tile_5_11"}])
+	_check(lone.size() == 1 and str(lone[0].when) == "Arrives in 2 turns.", "transport ds2: a lone shipment says when it arrives")
+	var flow: Array = Panel.transit_flows([
+		{"manifest": [{"good_id": "g_006", "qty": 30}], "units": 30, "turns": 1, "to_market": false, "destination": "tile_5_11"},
+		{"manifest": [{"good_id": "g_006", "qty": 30}], "units": 30, "turns": 2, "to_market": false, "destination": "tile_5_11"},
+		{"manifest": [{"good_id": "g_006", "qty": 30}], "units": 30, "turns": 3, "to_market": false, "destination": "tile_5_11"},
+		{"manifest": [{"good_id": "g_007", "qty": 5}], "units": 5, "turns": 1, "to_market": true, "destination": ""}])
+	_check(flow.size() == 2 and str(flow[0].when) == "30 units arrive each turn." and int(flow[0].manifest[0].qty) == 30
+		and str(flow[1].when) == "Arrives in 1 turn." and str(flow[1].where) == "To market",
+		"transport ds2: several shipments of a good to a place read as what arrives each turn (%s)" % str(flow.map(func(f: Dictionary) -> String: return str(f.when))))
+	var link_words := ""
+	for n in panel.find_children("Link_*", "", true, false):
+		link_words += ((n as Node).find_child("Words", true, false) as Label).text
+	_check(not link_words.contains("At capacity"), "transport ds2: a link's words leave out the at capacity count")
+	var link := stock.find_child("TileLink", true, false) as Label if stock != null else null
+	_check(link != null and link.tooltip_text == "Go to %s" % link.text and not link.text.contains("("), "transport ds2: a tile's name is a link that says Go to it (%s)" % (link.tooltip_text if link != null else ""))
+	_check(panel.find_child("Shipment_0", true, false).find_child("TileLink", true, false) != null, "transport ds2: a shipment's destination is a link")
+	var keys: Dictionary = panel.get("_routing_keys")
+	(keys[MatchState.RouteObjective.CHEAPEST] as Control).emit_signal("pressed")
+	_check(MatchState.route_objective == MatchState.RouteObjective.CHEAPEST and bool((keys[MatchState.RouteObjective.CHEAPEST] as Control).get("latched"))
+		and not bool((keys[MatchState.RouteObjective.FASTEST] as Control).get("latched")), "transport ds2: a routing key sets the objective and latches alone")
+	_check(panel.find_child("RoutingObjective", true, false) != null, "transport ds2: the routing objective keeps its name")
+	var went: Array = []
+	var note := func(tile: String) -> void: went.append(tile)
+	MatchState.focus_tile_requested.connect(note)
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	link = panel.find_child("Stock_tile_5_10", true, false).find_child("TileLink", true, false) as Label
+	link.call("_gui_input", press)
+	MatchState.focus_tile_requested.disconnect(note)
+	_check(went == ["tile_5_10"] and not panel.visible, "transport ds2: pressing the name goes to the tile and closes the panel")
+	UiPrefs.set_use_transport_ds2(false)
+	await get_tree().process_frame
+	_check(panel.find_child("TransportTitleRow", true, false) == null and panel.find_child("RoutingObjective", true, false) is OptionButton,
+		"transport ds2: off again, the v2 panel is back")
+	panel.queue_free()
+	MatchState.set_route_objective(was_route)
+	TransportState.pending_transport_shipments = pending
+	Stockpile.consume("tile_5_10", "g_006", 40)
+	UiPrefs.set_use_transport_ds2(was)
