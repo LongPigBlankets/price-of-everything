@@ -1,5 +1,7 @@
 extends RefCounted
 const Middleman := preload("res://scripts/middleman_service.gd")
+## The diagnostics row for a building the intermediary buys inputs for.
+const INTERMEDIARY_LABEL := "Logistics Intermediary"
 ## Shared, UI-agnostic READOUT of a building for the building detail panel.
 ## Aggregates the existing single-source-of-truth helpers (BuildingStatus, CostSolver,
 ## Modifiers, Catalog, EconomyConfig, MatchState) into plain data the panel renders — so the panel
@@ -354,9 +356,9 @@ static func power_state_text(state: String) -> String:
 static func diagnostics(building: Dictionary, recipe: Dictionary, building_data: Dictionary, is_infrastructure: bool) -> Array:
 	var rows: Array = []
 	var iid := str(building.get("instance_id", ""))
-	if Middleman.uses_inputs(iid):
-		var p := Middleman.preview(iid)
-		return [_row("ok" if bool(p.get("can_run",false)) else "warn","truck","Middleman service",str(p.get("reason","Unavailable")))]
+	# The intermediary holds this building's inputs itself, so the stock rows below would read
+	# an empty tile as a shortage. Its own row replaces them. Every other check still applies.
+	var managed := Middleman.uses_inputs(iid)
 	var exhausted := BuildingStatus.recipe_deposit_exhausted(building, recipe)
 	var ran := iid != "" and Production.last_turn_run.has(iid)
 	var missing := iid != "" and Production.missing_by_building.has(iid)
@@ -399,6 +401,9 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 		# a cheerful "Starting — production begins next turn" forever while actually
 		# throttled by the tile's cable capacity, never starting.
 		rows.append(_row("warn", "bolt", "Power output capped", _cable_cap_detail(building, recipe, tile_id)))
+	elif managed:
+		if needs_power and power_c == BuildingStatus.STATUS_RED:
+			rows.append(_row("bad", "warn", "Critical fault", "This building doesn't have power. It can't run."))
 	elif rs == "restarting":
 		if inbound_case:
 			rows.append(_row("warn", "clock", "Starting",
@@ -419,6 +424,8 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 	# red row hide a separate stalled project.
 	if upgrade_blocked and (rows.is_empty() or str((rows[0] as Dictionary).get("label", "")) != upgrade_fault_label):
 		rows.append(_row("bad", "box", upgrade_fault_label, str(upgrade_progress.get("error", "The upgrade is unable to continue."))))
+	if managed:
+		rows.append(_intermediary_row(iid))
 
 	# 2) power
 	if produces_power:
@@ -444,7 +451,7 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 		rows.append(intermit)
 
 	# 3) inputs
-	if has_inputs and not exhausted:
+	if has_inputs and not exhausted and not managed:
 		if inbound_case:
 			rows.append(_row("warn", "box", "Inputs on the way", _missing_inputs_detail(building, recipe)))
 		elif rs == "restarting" or input_c == BuildingStatus.STATUS_GREEN:
@@ -499,7 +506,10 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 	# 4) output destination — reachability band + transport-cost band. Uses the market-aware
 	# output_route so the bands also render for market-routed output (route to the nearest port).
 	# Skipped for buildings with no shippable output good (batteries, infra, power generators).
-	if not is_infrastructure and not produces_power and BuildingStatus.primary_output_good_id(recipe) != "":
+	var out_gid := BuildingStatus.primary_output_good_id(recipe)
+	if not is_infrastructure and not produces_power and out_gid != "" and Middleman.buys_output(iid, out_gid):
+		rows.append(_row("ok", "truck", "Output sold to the intermediary", "The logistics intermediary collects it at the building."))
+	elif not is_infrastructure and not produces_power and out_gid != "":
 		var route := output_route(building, recipe)
 		var turns := int(route.get("turns", 0))
 		var cost := float(route.get("cost", 0.0))
@@ -535,6 +545,44 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 				rows.append(_row("bad", "scale", "Dearer than market", "Producing at £%s / unit — %d%% above the £%s market price." % [_num(uc), absi(pct), _num(bp)]))
 
 	return rows
+
+## The intermediary's row for a building whose inputs it buys: green when the next batch is funded,
+## red with the reason when it is not, amber when last turn's batch was refused but the next is ready.
+static func _intermediary_row(iid: String) -> Dictionary:
+	var p := Middleman.preview(iid)
+	if not bool(p.get("can_run", false)):
+		var refused := _row("bad", "truck", INTERMEDIARY_LABEL, intermediary_reason(str(p.get("reason", ""))))
+		refused["cause"] = "intermediary cannot supply it"
+		return refused
+	var last: Dictionary = Production.blocked_reason_for_building(iid)
+	if str(last.get("code", "")) == "middleman" and not Production.last_turn_run.has(iid):
+		var missed := _row("warn", "truck", INTERMEDIARY_LABEL,
+			"No batch last turn. %s The next batch is ready." % intermediary_reason(str(last.get("message", ""))))
+		missed["cause"] = "no batch last turn"
+		return missed
+	return _row("ok", "truck", INTERMEDIARY_LABEL, str(p.get("reason", "")))
+
+## The intermediary's refusal as the player reads it. The service reports contract codes
+## ("insufficient_funding") and short notes. Both are matched here whatever their case or spacing.
+static func intermediary_reason(raw: String) -> String:
+	var key := raw.strip_edges().to_lower().replace(" ", "_").trim_suffix(".")
+	if key in ["insufficient_funding", "funding_unavailable"]:
+		return "Not enough cash or borrowing room to pay for this batch."
+	if key == "production_blocked" or key.begins_with("production_unavailable"):
+		return "The building cannot run, so the intermediary buys nothing."
+	if key == "input_imports_prohibited":
+		return "Imports of one of its inputs are prohibited."
+	if key == "insufficient_cable_capacity_for_another_batch":
+		return "The cables on this tile cannot carry another batch."
+	if key == "building_paused_or_recipe_changed":
+		return "The building is paused or its recipe changed."
+	if key == "sell_retained_output_before_starting_another_batch":
+		return "It holds unsold output. The next batch waits until that sells."
+	if key == "sale_unavailable_or_negative_net_proceeds":
+		return "The output cannot be sold for more than the fees."
+	if key in ["missing_price", "invalid_price", "not_tradeable", "unsupported_good", "unsupported_class", "unsupported_requirement"]:
+		return "The intermediary does not trade one of these goods."
+	return "The intermediary cannot supply this batch."
 
 # Green-power intermittency status row (or {} for no row). Shown for a GREEN power generator or a
 # building that CONSUMES green power. Green = fully safe (firmed by a battery, or steady renewable),

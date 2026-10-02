@@ -105,3 +105,32 @@ func _test_input_route_primary_and_fallback_persist() -> void:
 	_check(bool(cleared.get("ok", false)) and str(Service.input_source_route(iid, "g_006").get("fallback", "")) == "middleman", "a cleared fallback returns to the intermediary, never none")
 	_check(MatchState.is_input_tile_only(iid, "g_006"), "removing the market fallback stops market top-up")
 	cleanup()
+
+## A building the intermediary supplies keeps its power and output rows beside the intermediary's own,
+## and a refused batch says why in a sentence.
+func _test_diagnostics_keep_every_check_under_the_intermediary() -> void:
+	var ids := setup()
+	var iid: String = ids[0]
+	var Readout: GDScript = load("res://scripts/building_readout.gd")
+	var recipe: Dictionary = Catalog.get_recipe("r_009")
+	var data: Dictionary = Catalog.get_building("b_007")
+	var find := func(rows: Array, label: String) -> Dictionary:
+		for row: Dictionary in rows:
+			if str(row.get("label", "")) == label: return row
+		return {}
+	var rows: Array = Readout.diagnostics(BuildingState.get_building(iid), recipe, data, false)
+	var own: Dictionary = find.call(rows, Readout.INTERMEDIARY_LABEL)
+	_check(str(own.get("tone", "")) == "ok", "a funded batch lights the intermediary's row green")
+	_check(rows.any(func(row: Dictionary) -> bool: return str(row.get("ic", "")) == "bolt"), "the power row shows under the intermediary")
+	_check(not (find.call(rows, "Output sold to the intermediary") as Dictionary).is_empty(), "the output row names the intermediary")
+	_check(not rows.any(func(row: Dictionary) -> bool: return str(row.get("label", "")) in ["Cannot run", "Starved of inputs", "Inputs idle"]),
+		"an empty tile stockpile is not read as a shortage")
+	MatchState.money = -1000000.0
+	rows = Readout.diagnostics(BuildingState.get_building(iid), recipe, data, false)
+	own = find.call(rows, Readout.INTERMEDIARY_LABEL)
+	_check(str(own.get("tone", "")) == "bad" and str(own.get("detail", "")) == "Not enough cash or borrowing room to pay for this batch.",
+		"an unfunded batch is red and says why (%s)" % str(own.get("detail", "")))
+	_check(Readout.diagnostic_led_tone(rows) == "bad" and rows.size() > 1, "the lamp is red and the other rows stay")
+	_check(Readout.intermediary_reason("Production Blocked") == Readout.intermediary_reason("production_blocked")
+		and not Readout.intermediary_reason("unreleased_holding").contains("_"), "contract codes never reach the player")
+	cleanup()

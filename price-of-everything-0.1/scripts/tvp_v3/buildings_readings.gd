@@ -24,7 +24,7 @@ const META_READINGS := "tvp_bl_readings"
 const RANK := {"ok": 0, "warn": 1, "bad": 2}
 ## Diagnostics rows that already say why a building makes nothing.
 const STALL_EXPLAINED := ["Deposit exhausted", "Critical fault", "Cannot run", "Unpowered", "Starved of inputs",
-	"Middleman service"]
+	BuildingReadout.INTERMEDIARY_LABEL]
 const STALLED_DETAIL := "It makes nothing this turn."
 const PAUSED_DETAIL := "Paused. It makes nothing until it is resumed."
 
@@ -165,8 +165,6 @@ static func cause(row: Dictionary) -> String:
 			return "output not firmed"
 		"Partly firmed generation":
 			return "output partly firmed"
-		"Middleman service":
-			return "intermediary cannot supply it"
 	if label.begins_with("Output destination"):
 		return "slow route out"
 	if label.begins_with("Transport to destination is "):
