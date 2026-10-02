@@ -22,7 +22,6 @@ const GoodIcons := preload("res://scripts/good_icons.gd")
 const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
 const Parts := preload("res://scripts/ds2/parts.gd")
 const Metrics := preload("res://scripts/ds2/metrics.gd")
-const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
 const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const Title := preload("res://scripts/bdp_v3_title.gd")
@@ -44,6 +43,27 @@ const DS2_SIZE := Vector2(640, 720)
 const DS2_TITLE_PX := 16
 const DS2_EMPTY := "No political events yet."
 const DS2_INK := Color("#0b2340")
+## DS2, the courtroom (render set `court`, tools/button_mockup/cluster.html): the oak wall in its moulded frame at
+## the panel's size, the bar of the court (a rail of turned balusters) under the title, a raised oak panel for an
+## event and a brass plate for its turn. From layout.json, in layout px: each render's shadow room, the wall's
+## frame, the rail's height, the 9-slices' corners.
+const COURT_WALL: Texture2D = preload("res://assets/ui/bdp_v3/court_backing.png")
+const COURT_RAIL: Texture2D = preload("res://assets/ui/bdp_v3/court_rail.png")
+const COURT_PANEL: Texture2D = preload("res://assets/ui/bdp_v3/court_panel.png")
+const COURT_PLATE: Texture2D = preload("res://assets/ui/bdp_v3/court_plate.png")
+const CAPTURE_SCALE := 1.875
+const TEXELS_PER_PIXEL := 2.0
+const WALL_MARGIN := 24.0
+const WALL_FRAME := 30.0
+const RAIL_MARGIN := 18.0
+const RAIL_H := 112.0
+const PANEL_MARGIN := 16.0
+const PANEL_CORNER := 26.0
+const PLATE_MARGIN := 8.0
+const PLATE_CORNER := 14.0
+## The plate's print: the brass plates' dark ink.
+const PLATE_INK := Color("#2b170d")
+const PLATE_PX := 14
 
 var _list: VBoxContainer = null
 var _empty_label: Label = null
@@ -98,10 +118,17 @@ func _build_look() -> void:
 		_build()
 
 
-## DS2: Building Detail's backing, the raised title and the Close key, the rubber seam, then one plastic
-## case of raised modules on the steel scroll rail, an event a module.
+## DS2, a courtroom: the oak wall in its moulded frame, the raised title and the Close key, the bar of the
+## court (a rail of turned balusters), then the record on raised oak panels, an event a panel.
 func _build_ds2() -> void:
-	LedgerV3.dress(self)
+	add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	var wall := Control.new()
+	wall.name = "CourtWall"
+	wall.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wall.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	wall.draw.connect(func() -> void:
+		wall.draw_texture_rect(COURT_WALL, Rect2(Vector2.ZERO, wall.size).grow(WALL_MARGIN / CAPTURE_SCALE), false))
+	add_child(wall)
 	var margin := MarginContainer.new()
 	for side in ["left", "top", "right", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, LedgerV3.CONTENT_MARGIN)
@@ -127,7 +154,16 @@ func _build_ds2() -> void:
 	close.pressed.connect(func() -> void: close_requested.emit())
 	header.add_child(close)
 
-	layout.add_child(LedgerV3.seam())
+	# The bar of the court, from one side of the wall's frame to the other.
+	var rail := Control.new()
+	rail.name = "CourtRail"
+	rail.custom_minimum_size.y = RAIL_H / CAPTURE_SCALE
+	rail.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rail.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var reach := float(LedgerV3.CONTENT_MARGIN) - WALL_FRAME / CAPTURE_SCALE - 4.0
+	rail.draw.connect(func() -> void:
+		rail.draw_texture_rect(COURT_RAIL, Rect2(Vector2.ZERO, rail.size).grow_individual(reach, 0, reach, 0).grow(RAIL_MARGIN / CAPTURE_SCALE), false))
+	layout.add_child(rail)
 
 	var scroll := ScrollContainer.new()
 	scroll.name = "PoliticsScroll"
@@ -135,19 +171,69 @@ func _build_ds2() -> void:
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	Scroll.apply(scroll, true)
 	layout.add_child(scroll)
-	var case := Parts.plastic_case("PoliticsCase")
-	scroll.add_child(case)
-	_list = case.get_child(0)
+	_list = VBoxContainer.new()
+	_list.name = "PoliticsCase"
+	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_list.add_theme_constant_override("separation", 10)
+	scroll.add_child(_list)
 	_refresh()
 
 
-## DS2: one event's module. Its icon on a cream tile in a well, its title over its words, and the turn it
-## happened on a dot display.
-func _entry_module(entry: Dictionary, index: int) -> Control:
-	var m := Parts.module("PoliticsEvent_%d" % index)
-	m.custom_minimum_size.y = Metrics.CARD_H
-	var row := Parts.row_of(m)
+## DS2: a raised oak panel (the court's 9-slice), its parts in one row inside.
+func _oak_panel(panel_name: String) -> PanelContainer:
+	var m := PanelContainer.new()
+	m.name = panel_name
+	var pad := StyleBoxEmpty.new()
+	pad.content_margin_left = 14
+	pad.content_margin_right = 14
+	pad.content_margin_top = 12
+	pad.content_margin_bottom = 12
+	m.add_theme_stylebox_override("panel", pad)
+	m.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	m.draw.connect(func() -> void:
+		Nine.paint(m, COURT_PANEL, Rect2(Vector2.ZERO, m.size).grow(PANEL_MARGIN / CAPTURE_SCALE),
+			(PANEL_MARGIN + PANEL_CORNER) * TEXELS_PER_PIXEL / CAPTURE_SCALE))
+	var row := HBoxContainer.new()
+	row.name = "Row"
 	row.add_theme_constant_override("separation", 14)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	m.add_child(row)
+	return m
+
+
+## DS2: the turn an event happened, engraved on a small brass plate.
+func _turn_plate(turn: int) -> Control:
+	var plate := PanelContainer.new()
+	plate.name = "Turn"
+	plate.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	var pad := StyleBoxEmpty.new()
+	pad.content_margin_left = 14
+	pad.content_margin_right = 14
+	pad.content_margin_top = 2
+	pad.content_margin_bottom = 3
+	plate.add_theme_stylebox_override("panel", pad)
+	plate.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	plate.draw.connect(func() -> void:
+		Nine.paint(plate, COURT_PLATE, Rect2(Vector2.ZERO, plate.size).grow(PLATE_MARGIN / CAPTURE_SCALE),
+			(PLATE_MARGIN + PLATE_CORNER) * TEXELS_PER_PIXEL / CAPTURE_SCALE))
+	var l := Label.new()
+	l.name = "Print"
+	l.text = "TURN %d" % turn
+	l.add_theme_font_override("font", preload("res://scripts/bdp_v3_plate.gd").FONT_SEMI)
+	l.add_theme_font_size_override("font_size", PLATE_PX)
+	l.add_theme_color_override("font_color", PLATE_INK)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate.add_child(l)
+	plate.set_meta("text", l.text)
+	return plate
+
+
+## DS2: one event's oak panel. Its icon on a cream tile in a well, its title over its words, and the turn it
+## happened on a brass plate.
+func _entry_module(entry: Dictionary, index: int) -> Control:
+	var m := _oak_panel("PoliticsEvent_%d" % index)
+	m.custom_minimum_size.y = Metrics.CARD_H
+	var row := m.get_child(0) as HBoxContainer
 	var well := _ds2_icon(str(entry.get("icon", "")))
 	well.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	row.add_child(well)
@@ -166,12 +252,7 @@ func _entry_module(entry: Dictionary, index: int) -> Control:
 	title.add_theme_font_size_override("font_size", DS2_TITLE_PX)
 	head.add_child(title)
 	if int(entry.get("turn", 0)) > 0:
-		var when: Control = DotMatrix.new()
-		when.name = "Turn"
-		when.set("pitch", 1.6)
-		when.set("text", "TURN %d" % int(entry.turn))
-		when.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-		head.add_child(when)
+		head.add_child(_turn_plate(int(entry.turn)))
 	var body := Parts.body(str(entry.get("body", "")))
 	body.name = "Body"
 	col.add_child(body)
@@ -352,10 +433,10 @@ func _refresh(_a: Variant = null) -> void:
 		# Each module prints its turn, so the record runs in the order things happened.
 		entries = by_turn(entries)
 		if entries.is_empty():
-			var none := Parts.module("PoliticsEmpty")
+			var none := _oak_panel("PoliticsEmpty")
 			var words := Parts.body(DS2_EMPTY)
 			words.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			Parts.row_of(none).add_child(words)
+			none.get_child(0).add_child(words)
 			_list.add_child(none)
 		for i in entries.size():
 			_list.add_child(_entry_module(entries[i], i))

@@ -633,7 +633,8 @@ func _test_politics_panel_ds2() -> void:
 	_check(turns == sorted_turns and int(ordered[0].turn) == PolicyState.beat("election_news"), "politics DS2: the record runs in turn order from the election")
 	var first := panel.find_child("PoliticsEvent_0", true, false)
 	_check(first != null and first.find_child("Turn", true, false) != null
-		and str(first.find_child("Turn", true, false).get("text")) == "TURN %d" % PolicyState.beat("election_news"), "politics DS2: a module prints its turn")
+		and str(first.find_child("Turn", true, false).get_meta("text", "")) == "TURN %d" % PolicyState.beat("election_news"), "politics DS2: a panel's brass plate prints its turn")
+	_check(panel.find_child("CourtWall", true, false) != null and panel.find_child("CourtRail", true, false) != null, "politics DS2: the oak wall and the bar of the court")
 	UiPrefs.set_use_politics_ds2(false)
 	_check(panel.find_child("PoliticsCase", true, false) == null and is_equal_approx(panel.custom_minimum_size.x, 560.0),
 		"politics: the switch off brings the v2 panel back")

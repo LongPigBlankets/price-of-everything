@@ -121,3 +121,4 @@ Owner, 2 October 2026:
 
 - The owner asked for the Politics panel in DS2 (it had been off limits since 26 September).
 - First build, awaiting review, behind `toggle politics ds2` (off by default): the same record and the same words on the kit's case and modules, an event a module with its icon in a well and its turn on a dot display, in the order things happened. No new renders. 640 wide. Captures: `artifacts/politics_ds2/`, made by `tools/politics_ds2_shot.tscn`.
+- Owner, after the first build: a wooden courtroom, with balustrades. Second build (`artifacts/politics_ds2/ds2_v2/`): the oak wall in its moulded frame, the bar of the court (a rail of turned balusters) under the title, an event a raised oak panel, its turn on a brass plate. Render set `court`, seed 470.
