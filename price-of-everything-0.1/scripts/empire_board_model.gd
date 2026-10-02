@@ -13,11 +13,17 @@ extends RefCounted
 ## actually does.
 ##
 ## Returned shape (see build()):
-##   tiles:    tile_id -> {id, center, type, height, store, label}
-##   standing: [{kind, iid, tile, pos, sprite, level, name, side}]   kind: building|site|warehouse|port
-##   lines:    [{mode, good, kind, pts: [{p, tile, edge}], ends}]    every drawn way, in plan
+##   tiles:    tile_id -> {id, center, type, height, store, label, level, paved, pylon?}
+##   standing: [{kind, iid, tile, pos, sprite, level, name, side, pad}]  kind: building|site|warehouse|port|pylon
+##   roads:    [{tile, a, b, kind, level, paved, rail}]              the stretches of street in use
+##   lines:    [{mode, good, kind, pts: [{p, tile, edge}], reverse}]  pipes, cables, and any way
+##                                                                    that cannot follow the streets
 ##   flows:    [{good, icon, kind, mode, pts: [{p, tile, edge}], live}]  what travels them
-##   lanes:    [{kind, good, from, to, sources, dests, live}]         the real movements behind them
+##   lanes:    [{kind, good, from, to, sources, dests, live, hops}]   the real movements behind them
+##
+## THE STREET PLAN. Every tile is laid out the same way (empire_board_streets.gd): the
+## warehouse at the centre, ten slots around it, streets between. Goods travel the streets, and
+## only the stretches something travels are drawn.
 ##
 ## REAL MOVEMENTS. A line between two tiles is drawn only where goods really move: a shipment
 ## in transit, a trade or move the ledgers logged in the last few turns, a standing move
@@ -27,6 +33,7 @@ extends RefCounted
 
 const BuildingSprites := preload("res://scripts/building_sprites.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const Streets := preload("res://scripts/empire_board_streets.gd")
 
 ## A flat-topped hex of the map's tile size (assets/main_tileset.tres: 540 x 480).
 const HEX_HALF := Vector2(270.0, 240.0)
@@ -36,29 +43,21 @@ const TILE_HEIGHT := {
 	"deep_sea": 6.0, "sea": 10.0, "rural": 34.0, "urban": 34.0, "hill": 66.0, "mountain": 100.0,
 }
 const DEFAULT_HEIGHT := 34.0
-## Slot lattice: the pitch starts here and tightens until the tile's standing things all fit.
-const SLOT_PITCH_MAX := 190.0
-const SLOT_PITCH_MIN := 60.0
-const SLOT_PITCH_STEP := 10.0
-## A slot keeps this share of the pitch clear of the tile's edge.
-const SLOT_EDGE_SHARE := 0.34
-## A slot this close to a river is passed over while enough dry ones remain.
-const RIVER_CLEAR := 46.0
-## The footprint a standing thing gets, as a share of the slot pitch. Level 3 is the only one
-## that fills it: LEVEL_SHARE sizes a plain block, and a sprite carries its level's size itself.
-const FOOT_SHARE := 0.62
+## The footprint a standing thing gets, as a share of its slot. Level 3 is the only one that
+## fills it: LEVEL_SHARE sizes a plain block, and a sprite carries its level's size itself.
+const FOOT_SHARE := 0.9
 const LEVEL_SHARE := {1: 0.72, 2: 0.86, 3: 1.0}
-const WAREHOUSE_SHARE := 0.85
 const PORT_BUILDING_ID := "b_004"
 const WAREHOUSE_SPRITE := "warehouse"
 ## The mode drawn for power: cables carry it, and no goods route does.
 const MODE_CABLE := "cables"
 ## A ledger entry this many turns old still counts as a way goods move.
 const RECENT_TURNS := 3
-## The tile corner the pylon stands near: the far one, so it hides nothing.
-const PYLON_CORNER := Vector2(-135.0, -240.0)
-const PYLON_INSET := 0.74
-const PYLON_SIDE := 80.0
+## Where the pylon stands: by the tile's far corner, behind the back row of slots.
+const PYLON_AT := Vector2(-121.0, -216.0)
+const PYLON_SIDE := 62.0
+## A pipe crosses a tile edge this far along it from the road.
+const PIPE_EDGE_GAP := 26.0
 const PIPE_MODES := ["pipes", "reinf_pipes"]
 ## Neighbouring tile centres are 471 or 480 apart; anything further is not a neighbour.
 const ADJACENT_REACH := 500.0
@@ -82,63 +81,6 @@ static func tile_center(terrain: Object, tile_id: String) -> Vector2:
 
 static func tile_height(tile_type: String) -> float:
 	return float(TILE_HEIGHT.get(tile_type, DEFAULT_HEIGHT))
-
-
-## Candidate standing positions on one tile at lattice pitch `pitch`: a hex lattice through the
-## tile centre, kept clear of the tile's edge. Ordered centre outward, so the first is the hub.
-static func slot_candidates(center: Vector2, pitch: float) -> Array:
-	var keep := 1.0 - pitch * SLOT_EDGE_SHARE / HEX_HALF.y
-	var inner := PackedVector2Array()
-	for p in hex_points(Vector2.ZERO):
-		inner.append(p * keep)
-	var out: Array = []
-	var reach := int(ceil(HEX_HALF.x / pitch)) + 1
-	for j in range(-reach, reach + 1):
-		for i in range(-reach, reach + 1):
-			var p := Vector2((float(i) + (0.5 if (j & 1) != 0 else 0.0)) * pitch, float(j) * pitch * 0.8660254)
-			if Geometry2D.is_point_in_polygon(p, inner):
-				out.append(center + p)
-	out.sort_custom(func(a: Vector2, b: Vector2) -> bool:
-		var da := (a - center).length_squared()
-		var db := (b - center).length_squared()
-		if absf(da - db) > 0.5:
-			return da < db
-		return (a - center).angle() < (b - center).angle())
-	return out
-
-
-## The slots for `count` standing things on a tile: the widest lattice that holds them, with
-## slots on a river passed over while enough dry ones remain, and none beside an `avoid` point
-## (the tile's pylon). Returns {pitch, slots}.
-static func slots_for(center: Vector2, count: int, rivers: Array, avoid: Array = []) -> Dictionary:
-	var pitch := SLOT_PITCH_MAX
-	var slots: Array = []
-	while true:
-		var all: Array = []
-		for p in slot_candidates(center, pitch):
-			var clear := true
-			for a in avoid:
-				clear = clear and (p as Vector2).distance_to(a) >= pitch * 0.6
-			if clear:
-				all.append(p)
-		var dry: Array = []
-		for p in all:
-			if not _near_river(p, rivers):
-				dry.append(p)
-		slots = dry if dry.size() >= count else all
-		if slots.size() >= count or pitch <= SLOT_PITCH_MIN:
-			break
-		pitch -= SLOT_PITCH_STEP
-	return {"pitch": pitch, "slots": slots}
-
-
-static func _near_river(p: Vector2, rivers: Array) -> bool:
-	for line in rivers:
-		var pts: PackedVector2Array = line
-		for i in range(pts.size() - 1):
-			if Geometry2D.get_closest_point_to_segment(p, pts[i], pts[i + 1]).distance_to(p) < RIVER_CLEAR:
-				return true
-	return false
 
 
 ## Each consecutive tile pair of a route with the mode that carries it: [{a, b, mode}].
@@ -260,10 +202,9 @@ static func _pt(p: Vector2, tile: String, edge: bool = false) -> Dictionary:
 
 
 ## Build the board from the live sim. `terrain` is the HexMap, `graph` is empire_graph.build().
-## `rivers_by_tile` is tile_id -> [PackedVector2Array] and `true_pos` maps a building's iid to
-## where it really stands on the map (both optional: they only steer which slot a thing takes).
-static func build(terrain: Object, graph: Dictionary, rivers_by_tile: Dictionary = {},
-		true_pos: Dictionary = {}) -> Dictionary:
+## `true_pos` maps a building's iid to where it really stands on the map; it only steers which
+## slot the building takes.
+static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {}) -> Dictionary:
 	var tiles: Dictionary = {}
 	var by_tile: Dictionary = {}          # tile_id -> [standing dict]
 	var stores: Dictionary = {}           # tile_id -> true: the tile has a warehouse
@@ -383,24 +324,30 @@ static func build(terrain: Object, graph: Dictionary, rivers_by_tile: Dictionary
 		tiles[tid] = {
 			"id": tid, "center": c, "type": ttype,
 			"height": tile_height(ttype), "store": stores.has(tid),
-			"label": str(Catalog.tile_label(str(tid))),
-			"hub": c, "junction": c, "pipe_node": c + Vector2(34.0, -34.0),
+			"label": str(Catalog.tile_label(str(tid))), "hub": c,
+			"level": clampi(int(Catalog.tile_infra_level(str(tid), "roads")), 1, 3),
+			"paved": Catalog.tile_has_infrastructure(str(tid), "roads"),
 		}
 		if pylon_tiles.has(tid):
-			tiles[tid]["pylon"] = c + PYLON_CORNER * PYLON_INSET
+			tiles[tid]["pylon"] = c + PYLON_AT
 
-	# Stand everything: the warehouse takes the slot nearest the centre, then each building the
-	# free slot nearest where it really is on the map.
+	# Stand everything on the tile's street plan: the warehouse at the centre, and each building,
+	# site and port on the free slot nearest where it really is on the map.
 	var standing: Array = []
 	var pos_of: Dictionary = {}           # iid | "store:<tile>" | "port:<tile>" -> Vector2
-	var side_of: Dictionary = {}
+	var door_of: Dictionary = {}          # the same keys -> the street node at its spur's end
 	for tid in tiles:
 		var t: Dictionary = tiles[tid]
-		var things: Array = []
+		var c: Vector2 = t["center"]
 		if bool(t["store"]):
-			things.append({"kind": "warehouse", "iid": "store:" + str(tid), "tile": tid,
-				"sprite": BuildingSprites.texture_for(WAREHOUSE_SPRITE, Stockpile.get_warehouse_level(tid)),
-				"level": Stockpile.get_warehouse_level(tid), "name": "%s warehouse" % str(t["label"])})
+			var level: int = Stockpile.get_warehouse_level(tid)
+			standing.append({"kind": "warehouse", "iid": "store:" + str(tid), "tile": tid, "pos": c,
+				"sprite": BuildingSprites.texture_for(WAREHOUSE_SPRITE, level), "level": level,
+				"side": Streets.HUB_SIDE * FOOT_SHARE, "pad": Streets.HUB_SIDE,
+				"name": "%s warehouse" % str(t["label"])})
+			pos_of["store:" + str(tid)] = c
+			door_of["store:" + str(tid)] = Streets.nid(Streets.hub_door())
+		var things: Array = []
 		if port_node.has(tid):
 			var pn: Dictionary = port_node[tid]
 			things.append({"kind": "port", "iid": "port:" + str(tid), "tile": tid,
@@ -409,153 +356,107 @@ static func build(terrain: Object, graph: Dictionary, rivers_by_tile: Dictionary
 		var own: Array = by_tile.get(tid, [])
 		own.sort_custom(func(x: Dictionary, y: Dictionary) -> bool: return str(x["iid"]) < str(y["iid"]))
 		things.append_array(own)
-		if not things.is_empty():
-			var fit: Dictionary = slots_for(t["center"], things.size(), rivers_by_tile.get(tid, []),
-				[t["pylon"]] if t.has("pylon") else [])
-			var free: Array = (fit["slots"] as Array).duplicate()
-			var pitch := float(fit["pitch"])
-			t["pitch"] = pitch
-			for thing in things:
-				var td: Dictionary = thing
-				var want: Vector2 = t["center"]
-				if td["kind"] != "warehouse" and true_pos.has(str(td["iid"])):
-					want = true_pos[str(td["iid"])]
-				elif td["kind"] == "port":
-					want = (t["center"] as Vector2) + Vector2(HEX_HALF.x, HEX_HALF.y) * 0.5
-				var pos: Vector2 = want
-				if not free.is_empty():
-					var best := 0
-					for i in range(1, free.size()):
-						if (free[i] as Vector2).distance_squared_to(want) < (free[best] as Vector2).distance_squared_to(want):
-							best = i
-					pos = free[best]
-					free.remove_at(best)
-				td["pos"] = pos
-				# A sprite set shares one scale, so a level 1 sprite is already drawn smaller inside
-				# its frame; only a plain block needs the level's share applied here.
-				var share := 1.0
-				if td.get("sprite") == null:
-					share = float(LEVEL_SHARE.get(clampi(int(td["level"]), 1, 3), 1.0))
-				if td["kind"] == "warehouse":
-					share *= WAREHOUSE_SHARE
-				td["side"] = pitch * FOOT_SHARE * share
-				if td["kind"] == "warehouse":
-					# Roads meet on one side of the warehouse and pipes on another: in front of its
-					# dock and at its right hand when it stands at the tile's centre, and otherwise
-					# on whichever sides face the centre, so neither ends up off the tile.
-					t["hub"] = pos
-					var reach := float(td["side"]) * 0.95
-					var sides: Array = [Vector2(0.0, reach), Vector2(reach, 0.0), Vector2(-reach, 0.0), Vector2(0.0, -reach)]
-					var centre: Vector2 = t["center"]
-					var rank := func(o: Vector2) -> float: return (pos + o).distance_to(centre)
-					for i in range(sides.size()):
-						for j in range(i + 1, sides.size()):
-							if rank.call(sides[j]) < rank.call(sides[i]) - 0.5:
-								var swap: Vector2 = sides[i]
-								sides[i] = sides[j]
-								sides[j] = swap
-					t["junction"] = pos + sides[0]
-					t["pipe_node"] = pos + sides[1]
-				pos_of[str(td["iid"])] = pos
-				side_of[str(td["iid"])] = float(td["side"])
-				standing.append(td)
+		var free: Array = Streets.places(things.size())
+		for thing in things:
+			var td: Dictionary = thing
+			var want: Vector2 = Streets.SLOTS[0]
+			if true_pos.has(str(td["iid"])):
+				want = (true_pos[str(td["iid"])] as Vector2) - c
+			elif td["kind"] == "port":
+				want = Streets.SLOTS[2]
+			var best := 0
+			for i in range(1, free.size()):
+				if (free[i]["pos"] as Vector2).distance_squared_to(want) < (free[best]["pos"] as Vector2).distance_squared_to(want):
+					best = i
+			var place: Dictionary = free[best]
+			free.remove_at(best)
+			td["pos"] = c + (place["pos"] as Vector2)
+			td["pad"] = float(place["side"])
+			# A sprite set shares one scale, so a level 1 sprite is already drawn smaller inside
+			# its frame; only a plain block needs the level's share applied here.
+			var share := 1.0
+			if td.get("sprite") == null:
+				share = float(LEVEL_SHARE.get(clampi(int(td["level"]), 1, 3), 1.0))
+			td["side"] = float(place["side"]) * FOOT_SHARE * share
+			pos_of[str(td["iid"])] = td["pos"]
+			door_of[str(td["iid"])] = Streets.nid(Streets.slot_door(int(place["slot"])))
+			standing.append(td)
 		if t.has("pylon"):
 			standing.append({"kind": "pylon", "iid": "pylon:" + str(tid), "tile": tid,
 				"sprite": BuildingSprites.texture_for("pylon", 1), "level": 3, "pos": t["pylon"],
 				"side": PYLON_SIDE, "name": "Power line"})
 
-	# Lanes across each tile edge: every road-like mode shares one way; each piped good has its own.
-	var ways: Dictionary = {}             # "pair|mode|good" -> {a, b, mode, good}
-	var ways_by_pair: Dictionary = {}
-	for key in lanes:
-		var lane: Dictionary = lanes[key]
-		for hop in lane["hops"]:
-			var a := str(hop["a"])
-			var b := str(hop["b"])
-			if not tiles.has(a) or not tiles.has(b):
-				continue
-			var mode := str(hop["mode"])
-			var piped := PIPE_MODES.has(mode)
-			var pair := mini_str(a, b) + "|" + maxi_str(a, b)
-			var wkey := "%s|%s|%s" % [pair, mode, str(lane["good"]) if piped else ""]
-			hop["way"] = wkey
-			if not ways.has(wkey):
-				ways[wkey] = {"a": mini_str(a, b), "b": maxi_str(a, b), "mode": mode,
-					"good": str(lane["good"]) if piped else "", "pair": pair, "key": wkey,
-					"reverse": a != mini_str(a, b)}
-				(ways_by_pair.get_or_add(pair, []) as Array).append(wkey)
-	for pair in ways_by_pair:
-		var keys: Array = ways_by_pair[pair]
-		keys.sort()
-		for i in range(keys.size()):
-			ways[keys[i]]["lane"] = float(i) - float(keys.size() - 1) * 0.5
-
-	var lines: Array = []
+	var lines: Array = []                 # pipes, cables, and any way that cannot follow the plan
 	var flows: Array = []
-	var seen_line: Dictionary = {}
-	# The ways between tiles.
-	for wkey in ways:
-		var w: Dictionary = ways[wkey]
-		var ta: Dictionary = tiles[w["a"]]
-		var tb: Dictionary = tiles[w["b"]]
-		var node := "pipe_node" if PIPE_MODES.has(str(w["mode"])) else "junction"
-		# Two tiles that do not touch have no shared edge to cross: the way runs straight over.
-		if (ta["center"] as Vector2).distance_to(tb["center"]) > ADJACENT_REACH:
-			w["mid"] = null
-			lines.append({"mode": str(w["mode"]), "good": str(w["good"]), "kind": "way",
-				"reverse": bool(w["reverse"]),
-				"pts": [_pt(ta[node], str(w["a"])), _pt(tb[node], str(w["b"]))]})
-			continue
-		var mid := crossing(ta["center"], tb["center"], float(w["lane"]), true)
-		w["mid"] = mid
-		lines.append({"mode": str(w["mode"]), "good": str(w["good"]), "kind": "way",
-			"reverse": bool(w["reverse"]),
-			"pts": [_pt(ta[node], str(w["a"])), _pt(mid, str(w["a"]), true),
-				_pt(mid, str(w["b"]), true), _pt(tb[node], str(w["b"]))]})
-
-	# A building's own run to its tile's warehouse: a pipe for a fluid on a piped tile, a drive
-	# for everything else. One per building per good for pipes, one drive per building.
-	var feed_line := func(iid: String, tile: String, good: String, toward_thing: bool = false) -> Array:
-		if not tiles.has(tile) or not pos_of.has(iid):
-			return []
+	var roads: Dictionary = {}            # "tile|a|b" -> the stretch of street between two nodes
+	# Walk node ids along a tile's streets: marks each stretch as used and returns the points.
+	var walk := func(tile: String, ids: Array, mode: String) -> Array:
 		var t: Dictionary = tiles[tile]
-		var piped: bool = Catalog.requires_pipeline(good) and _tile_piped(tile)
-		var mode := "pipes" if piped else MODE_DRIVE
-		var from: Vector2 = pos_of[iid]
+		var c: Vector2 = t["center"]
+		var pts: Array = []
+		for i in range(ids.size()):
+			var rel: Vector2 = Streets.node_pos(str(ids[i]))
+			pts.append(_pt(c + rel, tile, Streets.is_exit(rel)))
+			if i == 0:
+				continue
+			var a := str(ids[i - 1])
+			var b := str(ids[i])
+			var rkey := "%s|%s|%s" % [tile, mini_str(a, b), maxi_str(a, b)]
+			if not roads.has(rkey):
+				var kind: String = Streets.kind_of(a, b)
+				roads[rkey] = {"tile": tile, "a": c + Streets.node_pos(a), "b": c + Streets.node_pos(b),
+					"kind": kind, "level": 1 if kind == "spur" else int(t["level"]),
+					"paved": bool(t["paved"]), "rail": false}
+			if mode == "rail":
+				roads[rkey]["rail"] = true
+		return pts
+	var hub_node: String = Streets.nid(Streets.hub_door())
+
+	# A pipe's run from the thing at `iid` to its tile's warehouse, beside the streets.
+	var seen_line: Dictionary = {}
+	var pipe_feed := func(iid: String, tile: String, good: String, toward_thing: bool) -> void:
+		var lkey := "%s|%s" % [iid, good]
+		if seen_line.has(lkey) or not door_of.has(iid):
+			return
+		seen_line[lkey] = true
+		var c: Vector2 = tiles[tile]["center"]
+		var door: Vector2 = Streets.node_pos(str(door_of[iid]))
+		var sy := 1.0 if door.y > 0.0 else -1.0
+		var manifold := Vector2(-20.0 * sy, Streets.PIPE_INNER * sy)
 		var pts: Array
-		if piped:
-			# The pipe leaves the ground beside the building, not from inside it.
-			var dir := ((t["pipe_node"] as Vector2) - from).normalized()
-			pts = [_pt(from + dir * float(side_of.get(iid, 40.0)) * 0.72, tile), _pt(t["pipe_node"], tile)]
+		if absf(door.y) > Streets.STREET_Y:
+			# A slot in the front or back row: along the outer line, then across the street.
+			pts = [_pt(c + Vector2(door.x - 26.0, Streets.PIPE_OUTER * sy), tile),
+				_pt(c + Vector2(manifold.x, Streets.PIPE_OUTER * sy), tile), _pt(c + manifold, tile)]
 		else:
-			pts = [_pt(from, tile), _pt(t["junction"], tile)]
-		var lkey := "%s|%s|%s" % [iid, mode, good if piped else ""]
-		if not seen_line.has(lkey):
-			seen_line[lkey] = true
-			# `reverse` says what the line carries runs against the order of its points.
-			lines.append({"mode": mode, "good": good if piped else "", "kind": "feed", "pts": pts,
-				"reverse": toward_thing})
-		return [mode, pts]
+			pts = [_pt(c + Vector2(door.x - signf(door.x) * 26.0, Streets.PIPE_INNER), tile), _pt(c + manifold, tile)]
+		lines.append({"mode": _pipe_mode(tile), "good": good, "kind": "feed", "pts": pts,
+			"reverse": toward_thing})
+
+	# Each building's own run to its tile's warehouse: a pipe for a fluid on a piped tile, the
+	# streets for everything else.
 	var seen_feed: Dictionary = {}
-	var add_feed := func(iid: String, tile: String, good: String, out: bool, kind: String) -> void:
+	var add_feed := func(iid: String, tile: String, good: String, out: bool) -> void:
 		var fkey := "%s|%s|%s" % [iid, good, out]
-		if seen_feed.has(fkey):
+		if seen_feed.has(fkey) or not tiles.has(tile) or not door_of.has(iid):
 			return
 		seen_feed[fkey] = true
-		var made: Array = feed_line.call(iid, tile, good, not out)
-		if made.is_empty():
+		if Catalog.requires_pipeline(good) and _pipe_mode(tile) != "":
+			pipe_feed.call(iid, tile, good, not out)
 			return
-		var pts: Array = (made[1] as Array).duplicate()
+		var ids: Array = Streets.path(str(door_of[iid]), hub_node)
+		var pts: Array = walk.call(tile, ids, "roads")
 		if not out:
 			pts.reverse()
-		flows.append({"good": good, "kind": kind, "mode": str(made[0]), "pts": pts, "live": [],
+		flows.append({"good": good, "kind": "feed", "mode": MODE_DRIVE, "pts": pts, "live": [],
 			"icon": GoodIcons.texture_for(good, _internal_name(good))})
 	for f in feeds:
 		if tiles.has(str(f["tile"])) and bool(tiles[str(f["tile"])]["store"]):
-			add_feed.call(str(f["iid"]), str(f["tile"]), str(f["good"]), bool(f["out"]), "feed")
+			add_feed.call(str(f["iid"]), str(f["tile"]), str(f["good"]), bool(f["out"]))
 
-	# Each real movement: its trunk from tile to tile, and the buildings at either end.
+	# Each real movement: its way from tile to tile, and the buildings at either end.
 	var lane_rows: Array = []
+	var seen_way: Dictionary = {}
 	for key in lanes:
 		var lane: Dictionary = lanes[key]
 		var from_tile := str(lane["from"])
@@ -568,47 +469,62 @@ static func build(terrain: Object, graph: Dictionary, rivers_by_tile: Dictionary
 		for sid in lane["sites"]:
 			if pos_of.has(str(sid)) and not dests.has(str(sid)):
 				dests.append(str(sid))
-				add_feed.call(str(sid), to_tile, good, false, "feed")
+				add_feed.call(str(sid), to_tile, good, false)
 		lane_rows.append({"kind": lane["kind"], "good": good, "from": from_tile, "to": to_tile,
 			"sources": sources, "dests": dests, "live": lane["live"], "hops": lane["hops"]})
+		var hops: Array = lane["hops"]
+		var from_port := str(lane["kind"]) == "buy" and door_of.has("port:" + from_tile)
+		var to_port := str(lane["kind"]) == "sell" and door_of.has("port:" + to_tile)
+		if not hops.is_empty() and PIPE_MODES.has(str(hops[0]["mode"])):
+			# Piped: one pipe per good between each pair of tiles, and into the port at the end.
+			for hop in hops:
+				var a := str(hop["a"])
+				var b := str(hop["b"])
+				if not tiles.has(a) or not tiles.has(b):
+					continue
+				var lo := mini_str(a, b)
+				var hi := maxi_str(a, b)
+				var wkey := "%s|%s|%s|%s" % [lo, hi, str(hop["mode"]), good]
+				if seen_way.has(wkey):
+					continue
+				seen_way[wkey] = true
+				lines.append({"mode": str(hop["mode"]), "good": good, "kind": "way", "reverse": a != lo,
+					"pts": _pipe_way(tiles[lo], tiles[hi])})
+			if from_port:
+				pipe_feed.call("port:" + from_tile, from_tile, good, false)
+			if to_port:
+				pipe_feed.call("port:" + to_tile, to_tile, good, true)
+			continue
 		var pts: Array = []
-		var first_mode := str(lane["hops"][0]["mode"]) if not (lane["hops"] as Array).is_empty() else MODE_DRIVE
-		var piped_first := PIPE_MODES.has(first_mode)
-		# A purchase starts at the port, a sale ends at one; everything else runs hub to hub.
-		var from_port := str(lane["kind"]) == "buy" and pos_of.has("port:" + from_tile)
-		var to_port := str(lane["kind"]) == "sell" and pos_of.has("port:" + to_tile)
-		if from_port:
-			var made: Array = feed_line.call("port:" + from_tile, from_tile, good) if not (lane["hops"] as Array).is_empty() and piped_first else []
-			if made.is_empty():
-				pts.append(_pt(pos_of["port:" + from_tile], from_tile))
-				_port_drive(lines, seen_line, tiles, pos_of, from_tile)
-			else:
-				pts.append_array(made[1])
-		if pts.is_empty() or not ((pts[pts.size() - 1]["p"] as Vector2).is_equal_approx(tiles[from_tile]["pipe_node" if piped_first else "junction"])):
-			pts.append(_pt(tiles[from_tile]["pipe_node" if piped_first else "junction"], from_tile))
-		var last_mode := first_mode
-		for hop in lane["hops"]:
-			if not hop.has("way"):
-				continue
-			var w: Dictionary = ways[hop["way"]]
+		var mode := "roads"
+		var at: String = str(door_of["port:" + from_tile]) if from_port else (hub_node if bool(tiles[from_tile]["store"]) else "")
+		for hop in hops:
+			var a := str(hop["a"])
 			var b := str(hop["b"])
-			last_mode = str(hop["mode"])
-			if w["mid"] != null:
-				pts.append(_pt(w["mid"], str(hop["a"]), true))
-				pts.append(_pt(w["mid"], b, true))
-			pts.append(_pt(tiles[b]["pipe_node" if PIPE_MODES.has(last_mode) else "junction"], b))
-		if to_port:
-			var piped_last := PIPE_MODES.has(last_mode)
-			if piped_last:
-				var made2: Array = feed_line.call("port:" + to_tile, to_tile, good, true)
-				if not made2.is_empty():
-					pts.append((made2[1] as Array)[0])
-			else:
-				pts.append(_pt(pos_of["port:" + to_tile], to_tile))
-				_port_drive(lines, seen_line, tiles, pos_of, to_tile)
+			if not tiles.has(a) or not tiles.has(b):
+				continue
+			mode = str(hop["mode"])
+			var off: Vector2 = (tiles[b]["center"] as Vector2) - (tiles[a]["center"] as Vector2)
+			var out_rel: Vector2 = Streets.exit_point(off)
+			if out_rel == Vector2.ZERO:
+				# Two tiles that do not touch: no street joins them, so the way runs straight over.
+				var jump: Array = [_pt(tiles[a]["center"], a), _pt(tiles[b]["center"], b)]
+				lines.append({"mode": mode, "good": "", "kind": "way", "pts": jump})
+				pts.append_array(jump)
+				at = hub_node
+				continue
+			var out_id: String = Streets.nid(out_rel)
+			if at == "":
+				at = out_id
+			pts.append_array(walk.call(a, Streets.path(at, out_id), mode))
+			at = Streets.nid(Streets.exit_point(-off))
+			pts.append(_pt((tiles[b]["center"] as Vector2) + Streets.node_pos(at), b, true))
+		var goal: String = str(door_of["port:" + to_tile]) if to_port else (hub_node if bool(tiles[to_tile]["store"]) else "")
+		if goal != "" and at != "":
+			pts.append_array(walk.call(to_tile, Streets.path(at, goal), mode))
 		if pts.size() < 2:
 			continue
-		flows.append({"good": good, "kind": str(lane["kind"]), "mode": last_mode, "pts": pts,
+		flows.append({"good": good, "kind": str(lane["kind"]), "mode": mode, "pts": pts,
 			"live": lane["live"], "icon": GoodIcons.texture_for(good, _internal_name(good))})
 
 	# Cables: each power building to its tile's pylon, and pylon to pylon between tiles.
@@ -616,10 +532,10 @@ static func build(terrain: Object, graph: Dictionary, rivers_by_tile: Dictionary
 		var tile := str(pe["tile"])
 		if not tiles.has(tile) or not tiles[tile].has("pylon") or not pos_of.has(str(pe["iid"])):
 			continue
-		var pts: Array = [_pt(pos_of[str(pe["iid"])], tile), _pt(tiles[tile]["pylon"], tile)]
-		var ids: Array = [str(pe["iid"]), "pylon:" + tile]
-		lines.append({"mode": MODE_CABLE, "good": "", "kind": "feed", "pts": pts, "ids": ids})
-		flows.append({"good": "", "kind": "power", "mode": MODE_CABLE, "pts": pts, "ids": ids,
+		var cpts: Array = [_pt(pos_of[str(pe["iid"])], tile), _pt(tiles[tile]["pylon"], tile)]
+		var ids2: Array = [str(pe["iid"]), "pylon:" + tile]
+		lines.append({"mode": MODE_CABLE, "good": "", "kind": "feed", "pts": cpts, "ids": ids2})
+		flows.append({"good": "", "kind": "power", "mode": MODE_CABLE, "pts": cpts, "ids": ids2,
 			"reverse": not bool(pe["out"]), "live": [], "icon": null})
 	for ck in cable_links:
 		var a := str(ck).get_slice("|", 0)
@@ -629,35 +545,46 @@ static func build(terrain: Object, graph: Dictionary, rivers_by_tile: Dictionary
 				"pts": [_pt(tiles[a]["pylon"], a), _pt(tiles[b]["pylon"], b)],
 				"ids": ["pylon:" + a, "pylon:" + b]})
 
-	return {"tiles": tiles, "standing": standing, "lines": lines, "flows": flows, "lanes": lane_rows}
+	return {"tiles": tiles, "standing": standing, "lines": lines, "roads": roads.values(),
+		"flows": flows, "lanes": lane_rows}
 
 
-## A port's own short road to its tile's junction, drawn once.
-static func _port_drive(lines: Array, seen: Dictionary, tiles: Dictionary, pos_of: Dictionary, tile: String) -> void:
-	var key := "port:%s|drive" % tile
-	if seen.has(key):
-		return
-	seen[key] = true
-	lines.append({"mode": MODE_DRIVE, "good": "", "kind": "feed",
-		"pts": [_pt(pos_of["port:" + tile], tile), _pt(tiles[tile]["junction"], tile)]})
+## A pipe between two neighbouring tiles' warehouses: out beside the streets to the shared
+## edge and in again the same way. It crosses the edge beside the road, not on it.
+static func _pipe_way(ta: Dictionary, tb: Dictionary) -> Array:
+	var ca: Vector2 = ta["center"]
+	var cb: Vector2 = tb["center"]
+	var off := cb - ca
+	var out_rel: Vector2 = Streets.exit_point(off)
+	if out_rel == Vector2.ZERO:
+		return [_pt(ca + Vector2(-20.0, Streets.PIPE_INNER), str(ta["id"])),
+			_pt(cb + Vector2(-20.0, Streets.PIPE_INNER), str(tb["id"]))]
+	var cross: Vector2
+	if absf(off.x) < 1.0:
+		cross = ca + Vector2(-Streets.AVENUE_X, out_rel.y)
+	else:
+		cross = ca + out_rel + off.normalized().orthogonal() * PIPE_EDGE_GAP
+	var pts: Array = []
+	for end in [[ca, str(ta["id"]), false], [cb, str(tb["id"]), true]]:
+		var c: Vector2 = end[0]
+		var rel: Vector2 = cross - c
+		var sy := 1.0 if rel.y > 0.0 else -1.0
+		var manifold := c + Vector2(-20.0 * sy, Streets.PIPE_INNER * sy)
+		var via := c + (Vector2(-Streets.AVENUE_X, Streets.PIPE_OUTER * sy) if absf(off.x) < 1.0
+			else Vector2(160.0 * signf(rel.x), Streets.PIPE_INNER * sy))
+		var part: Array = [_pt(manifold, str(end[1])), _pt(via, str(end[1])), _pt(cross, str(end[1]), true)]
+		if bool(end[2]):
+			part.reverse()
+		pts.append_array(part)
+	return pts
 
 
-static func _tile_piped(tile: String) -> bool:
+## The pipework a tile has: reinforced when that is all it has, plain otherwise, "" for none.
+static func _pipe_mode(tile: String) -> String:
 	for m in PIPE_MODES:
 		if Catalog.tile_has_infrastructure(tile, m):
-			return true
-	return false
-
-
-## Where a way crosses from one tile to the next: the midpoint of the shared edge, moved
-## sideways by its lane. `forward` says the hop runs in the pair's own order, so both
-## directions of a way share one crossing.
-const LANE_GAP := 30.0
-static func crossing(ca: Vector2, cb: Vector2, lane: float, forward: bool) -> Vector2:
-	var dir := (cb - ca).normalized()
-	if not forward:
-		dir = -dir
-	return (ca + cb) * 0.5 + dir.orthogonal() * lane * LANE_GAP
+			return m
+	return ""
 
 
 static func mini_str(a: String, b: String) -> String:

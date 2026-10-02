@@ -45,14 +45,14 @@ UNIT = 27.0            # map units per Blender unit (a works footprint is about 
 FRAME = 256            # pixels
 ORTHO = 2.4            # Blender units across the frame: 3.95 px per map unit
 DIMS = dict(
-    r=4.2,             # pipe radius
-    flange_r=6.3, flange_t=1.7,
-    bend_r=8.0,        # radius of a bend in plan
-    riser_r=8.0,       # radius of the turn between flat and vertical
-    rest=6.5,          # height of a ground run's centreline: it lies on sleepers
-    raise_=22.0,       # a raised run's centreline stands this far above a ground run's
+    r=2.7,             # pipe radius
+    flange_r=4.1, flange_t=1.2,
+    bend_r=6.0,        # radius of a bend in plan
+    riser_r=6.0,       # radius of the turn between flat and vertical
+    rest=4.4,          # height of a ground run's centreline: it lies on sleepers
+    raise_=17.0,       # a raised run's centreline stands this far above a ground run's
     tile=30.0,         # a straight's repeat length, and so the spacing of its sleepers
-    support_w=7.0,
+    support_w=4.8,
 )
 LIGHT = mathutils.Vector((-0.30, -0.62, 0.72)).normalized()
 SETS = {
@@ -199,9 +199,9 @@ def straight(s, k, raised):
         top = U(DIMS["rest"] - DIMS["r"] + 0.5)
         for i in range(-8, 9):
             p = d * (step * i)
-            a = p - side * U(DIMS["r"] + 2.0) + Z * (top / 2.0)
-            b = p + side * U(DIMS["r"] + 2.0) + Z * (top / 2.0)
-            K.dirbox("sleeper%d" % i, tuple(a), tuple(b), U(3.2), top, CONCRETE)
+            a = p - side * U(DIMS["r"] + 1.4) + Z * (top / 2.0)
+            b = p + side * U(DIMS["r"] + 1.4) + Z * (top / 2.0)
+            K.dirbox("sleeper%d" % i, tuple(a), tuple(b), U(2.4), top, CONCRETE)
     shoot("%s_%s_%d" % (s, "raised" if raised else "straight", k), c)
 
 
@@ -240,8 +240,8 @@ def entry(s, k):
     pts, p0, p1 = arc(corner, d, -Z, U(DIMS["rest"]) * 0.999)
     tube("turn", pts, s)
     flange("f0", p0, d, s)
-    K.cyl("collar", 0.0, 0.0, U(0.9), U(DIMS["flange_r"] + 2.2), U(1.8), CONCRETE, axis='Z')
-    K.washer("ring", (0.0, 0.0, U(1.9)), (0.0, 0.0, 1.0), U(DIMS["r"]) - 0.01, U(DIMS["flange_r"]),
+    K.cyl("collar", 0.0, 0.0, U(0.7), U(DIMS["flange_r"] + 1.6), U(1.4), CONCRETE, axis='Z')
+    K.washer("ring", (0.0, 0.0, U(1.5)), (0.0, 0.0, 1.0), U(DIMS["r"]) - 0.01, U(DIMS["flange_r"]),
              U(1.0), MATS[s]["flange"])
     shoot("%s_entry_%d" % (s, k), O)
 
@@ -253,12 +253,12 @@ def support(k):
     side = Z.cross(d)
     drop = U(DIMS["rest"] + DIMS["raise_"])
     w = U(DIMS["support_w"])
-    post = U(1.5)
+    post = U(1.1)
     for sgn, tag in ((-1.0, "a"), (1.0, "b")):
         foot = side * (sgn * w) - Z * drop
         head = side * (sgn * w) - Z * U(DIMS["r"] + 1.0)
         K.dirbox("post_" + tag, tuple(foot), tuple(head), post, post, STEEL)
-        K.box("foot_" + tag, foot.x, foot.y, foot.z + U(0.6), U(4.0), U(4.0), U(1.2), CONCRETE)
+        K.box("foot_" + tag, foot.x, foot.y, foot.z + U(0.6), U(2.8), U(2.8), U(1.0), CONCRETE)
     beam_z = -U(DIMS["r"] + 1.0)
     K.dirbox("beam", tuple(side * -(w + U(1.0)) + Z * beam_z), tuple(side * (w + U(1.0)) + Z * beam_z),
              post, U(1.6), STEEL)

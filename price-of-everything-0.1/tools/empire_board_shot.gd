@@ -45,7 +45,7 @@ func _ready() -> void:
 	_shot(dir + "board.png")
 	# Close on the busiest tile: the junction, the pipes and their signs.
 	for st in board.call("standing_screen_rects"):
-		if str(st["iid"]) == "store:tile_9_10":
+		if str(st["iid"]) == "store:tile_8_9":
 			var at: Vector2 = (st["rect"] as Rect2).get_center()
 			board.set("_offset", (board.get("_offset") as Vector2) + board.size * 0.5 - at)
 	board.call("_zoom_at", board.size * 0.5, 3.4)
@@ -87,6 +87,9 @@ func _seed_movements() -> void:
 		var tile: Dictionary = hm.tiles.get(hm.id_to_coord(tid), {})
 		if not (tile.get("infrastructure_present", []) as Array).has("cables"):
 			(tile["infrastructure_present"] as Array).append("cables")
+	# Roads of every level, so the wide streets and the narrowing between tiles both show.
+	for row in [["tile_8_9", 3], ["tile_9_10", 2], ["tile_7_9", 3], ["tile_6_9", 2]]:
+		Catalog.set_tile_infra_level(str(row[0]), "roads", int(row[1]))
 	var fluid := "g_012"
 	print("FLUID ", fluid)
 	Stockpile.add("tile_9_10", "g_001", 200)

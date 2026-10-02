@@ -564,30 +564,52 @@ func _test_group_card_content_fits() -> void:
 	holder.queue_free()
 
 
-## The supply chain board's model: where things stand on a tile and how a route becomes hops.
+## The supply chain board's model: the street plan every tile shares, and how a route becomes hops.
 func _test_empire_board_model() -> void:
 	var Model := preload("res://scripts/empire_board_model.gd")
-	var c := Vector2(1000.0, 1000.0)
-	var hexp := Model.hex_points(c)
-	var wide: Array = Model.slot_candidates(c, Model.SLOT_PITCH_MAX)
-	_check(wide.size() >= 7, "board: the widest lattice holds a hub and six around it (%d)" % wide.size())
-	_check((wide[0] as Vector2).is_equal_approx(c), "board: the first slot is the tile centre, the hub")
+	var Streets := preload("res://scripts/empire_board_streets.gd")
+	var hexp := Model.hex_points(Vector2.ZERO)
+	_check(Streets.SLOTS.size() == 10, "board: a tile has ten slots around its warehouse")
 	var inside := true
-	for p in wide:
-		inside = inside and Geometry2D.is_point_in_polygon(p, hexp)
-	_check(inside, "board: every slot stands on its own tile")
-	var few: Dictionary = Model.slots_for(c, 4, [])
-	var many: Dictionary = Model.slots_for(c, 16, [])
-	_check(is_equal_approx(float(few["pitch"]), Model.SLOT_PITCH_MAX), "board: a quiet tile keeps the widest pitch")
-	_check((many["slots"] as Array).size() >= 16 and float(many["pitch"]) < float(few["pitch"]),
-		"board: a busy tile tightens its lattice until everything fits")
-	# A river through the centre moves the hub off it while dry slots remain.
-	var river := [PackedVector2Array([c - Vector2(300.0, 0.0), c + Vector2(300.0, 0.0)])]
-	var dry: Dictionary = Model.slots_for(c, 3, river)
+	var apart := true
+	var half := Streets.SLOT_SIDE * 0.5
+	for i in range(Streets.SLOTS.size()):
+		var c: Vector2 = Streets.SLOTS[i]
+		for corner in [Vector2(-half, -half), Vector2(half, -half), Vector2(half, half), Vector2(-half, half)]:
+			inside = inside and Geometry2D.is_point_in_polygon(c + corner, hexp)
+		apart = apart and (absf(c.x) >= half + Streets.HUB_SIDE * 0.5 or absf(c.y) >= half + Streets.HUB_SIDE * 0.5)
+		for j in range(i + 1, Streets.SLOTS.size()):
+			var d: Vector2 = (Streets.SLOTS[j] as Vector2) - c
+			apart = apart and (absf(d.x) >= Streets.SLOT_SIDE or absf(d.y) >= Streets.SLOT_SIDE)
+	_check(inside, "board: every slot lies wholly on its tile")
+	_check(apart, "board: no slot overlaps another or the warehouse")
+	_check(Streets.SLOT_SIDE * Streets.SLOT_SIDE <= 0.05 * 194400.0, "board: a slot is at most a twentieth of a tile")
+	# Every slot's door reaches the warehouse's along the streets, and no street runs through a slot.
+	var hub: String = Streets.nid(Streets.hub_door())
+	var reached := true
 	var clear := true
-	for p in dry["slots"]:
-		clear = clear and absf((p as Vector2).y - c.y) >= Model.RIVER_CLEAR
-	_check(clear, "board: slots keep off a river while enough dry ones remain")
+	for i in range(Streets.SLOTS.size()):
+		var ids: Array = Streets.path(Streets.nid(Streets.slot_door(i)), hub)
+		reached = reached and ids.size() >= 2 and str(ids[ids.size() - 1]) == hub
+		for n in range(1, ids.size()):
+			var mid: Vector2 = (Streets.node_pos(str(ids[n - 1])) + Streets.node_pos(str(ids[n]))) * 0.5
+			for s in Streets.SLOTS:
+				clear = clear and not (absf(mid.x - (s as Vector2).x) < half - 0.5 and absf(mid.y - (s as Vector2).y) < half - 0.5)
+	_check(reached, "board: every slot's spur leads to the warehouse along the streets")
+	_check(clear, "board: no street runs through a slot")
+	# Two neighbouring tiles meet at one point on their shared edge, whichever side asks.
+	var meets := true
+	for off in [Vector2(0.0, 480.0), Vector2(0.0, -480.0), Vector2(405.0, 240.0), Vector2(-405.0, 240.0),
+			Vector2(405.0, -240.0), Vector2(-405.0, -240.0)]:
+		var here: Vector2 = Streets.exit_point(off)
+		var there: Vector2 = Streets.exit_point(-off)
+		meets = meets and here != Vector2.ZERO and here.is_equal_approx(off + there) \
+			and Streets.has_node(Streets.nid(here)) and Streets.is_exit(here)
+	_check(meets, "board: neighbouring tiles' roads meet at the same point on their shared edge")
+	_check(Streets.exit_point(Vector2(810.0, 0.0)) == Vector2.ZERO, "board: a tile that is not a neighbour has no exit")
+	_check(Streets.places(10).size() == 10 and Streets.places(11).size() == 40
+		and float(Streets.places(11)[0]["side"]) < Streets.SLOT_SIDE,
+		"board: an eleventh building splits the slots into quarters")
 	# Two legs over four tiles: each tile pair takes the mode of the leg that covers it.
 	var hops: Array = Model.route_hops({
 		"tiles": ["a", "b", "c", "d"],
@@ -596,12 +618,6 @@ func _test_empire_board_model() -> void:
 	_check(hops.size() == 3 and str(hops[0]["mode"]) == "rail" and str(hops[1]["mode"]) == "rail"
 		and str(hops[2]["mode"]) == "roads" and str(hops[2]["a"]) == "c",
 		"board: a route's hops carry the mode of their own leg")
-	var a := Vector2(0.0, 0.0)
-	var b := Vector2(405.0, 240.0)
-	_check(Model.crossing(a, b, 1.0, true).is_equal_approx(Model.crossing(b, a, 1.0, false)),
-		"board: both directions of a link cross the tile edge at one point")
-	_check(not Model.crossing(a, b, 1.0, true).is_equal_approx(Model.crossing(a, b, -1.0, true)),
-		"board: two modes on one tile pair take separate lanes")
 	_check(Model.tile_height("mountain") > Model.tile_height("hill")
 		and Model.tile_height("hill") > Model.tile_height("rural")
 		and Model.tile_height("rural") > Model.tile_height("sea"),

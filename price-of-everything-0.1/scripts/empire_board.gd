@@ -18,6 +18,7 @@ signal building_picked(iid: String)
 
 const Model := preload("res://scripts/empire_board_model.gd")
 const Pipes := preload("res://scripts/empire_board_pipes.gd")
+const Atlas := preload("res://scripts/empire_board_atlas.gd")
 
 const ISO_X := 0.70710678
 const ISO_Y := 0.40824829          # 0.7071 * tan(30 deg): a true isometric squash
@@ -62,7 +63,9 @@ const _CONCRETE := Color("a7a294")
 const _ROAD_HALF := 8.0
 const _DRIVE_HALF := 4.0
 const _JUNCTION_GROW := 1.12         # a junction patch against the widest road into it
-const _PIPE_SLOT_GAP := 17.0         # between pipes that end side by side
+const _ROAD_OVERLAP := 6.0           # a straight runs this far under a junction piece
+const _UNPAVED := Color(0.86, 0.74, 0.56)    # a way over bare ground: the same pieces, in earth
+const _PIPE_SLOT_GAP := 11.0         # between pipes that end side by side
 const _SIGN_OFFSET := 15.0
 const _SIGN_POST := 15.0
 const _SIGN_PLATE := 13.0
@@ -92,6 +95,9 @@ var _standing: Array = []                    # model standing + {at: Vector2 boa
 var _links: Array = []                       # road-like ways: [{mode, pts: PackedVector2Array board}]
 var _road_plan: Array = []                   # [{a, b, half}] road segments in plan, for pipes to cross
 var _junctions: Array = []                   # [{at, arms, width}] where roads and drives meet
+var _rivers: Dictionary = {}                  # tile_id -> [PackedVector2Array] in plan
+var _road_fits: Array = []                   # [{name, at, tint}] junction pieces
+var _road_polys: Array = []                  # [{points, uvs, tint}] the straights, tile by tile
 var _pipes: Array = []                       # plain lines, drawn only when the pieces are not baked
 var _pipe_items: Array = []                  # baked pieces and run tiles, far to near
 var _pipe_lines: Array = []                  # [{pts, cum, total}] centrelines, in the flow's direction
@@ -142,6 +148,8 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 	_road_plan.clear()
 	_junctions.clear()
 	_pipes.clear()
+	_road_fits.clear()
+	_road_polys.clear()
 	_pipe_items.clear()
 	_pipe_lines.clear()
 	_signs.clear()
@@ -153,7 +161,8 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 		queue_redraw()
 		return
 	var rivers: Dictionary = _rivers_by_tile(terrain)
-	_model = Model.build(terrain, graph, _river_lines(rivers), _true_positions(graph, terrain))
+	_rivers = _river_lines(rivers)
+	_model = Model.build(terrain, graph, _true_positions(graph, terrain))
 	_build_ground(rivers)
 	_build_standing()
 	_build_lines()
@@ -314,6 +323,9 @@ static func _area(pts: PackedVector2Array) -> float:
 
 ## How far the terraces lift the ground at a point of a tile.
 func _lift_at(tile_id: String, p: Vector2) -> float:
+	# A tile with a warehouse is built on: its streets and slots need level ground.
+	if bool(((_model.get("tiles", {}) as Dictionary).get(tile_id, {}) as Dictionary).get("store", false)):
+		return 0.0
 	var rel: Dictionary = _relief_cache.get(tile_id, {})
 	var lift := 0.0
 	for e in rel.get("land", []):
@@ -373,7 +385,7 @@ func _build_ground(rivers: Dictionary) -> void:
 		if not is_sea:
 			for e in rel["land"]:
 				var col: Color = band_cols[clampi(int(e["b"]), 0, band_cols.size() - 1)]
-				var lift := float(e["lift"])
+				var lift := 0.0 if bool(t["store"]) else float(e["lift"])
 				if lift > 0.0:
 					_risers(verts, cols, idx, e["p"], hexp, h + lift, col.darkened(0.3))
 				_poly(verts, cols, idx, e["p"], h + lift, col)
@@ -508,30 +520,16 @@ func _build_lines() -> void:
 	var by_iid: Dictionary = {}
 	for s in _standing:
 		by_iid[str(s["iid"])] = s
-	# Roads, drives, rail and tracks first: pipes have to know where they are to cross them.
-	_road_plan.clear()
-	var nodes: Dictionary = {}                # rounded board point -> {at, arms, width}
+	_build_roads(tiles)
+	# Any way that cannot follow the streets (two tiles that do not touch) is a plain line.
 	for l in _model.get("lines", []):
 		var mode := str(l["mode"])
 		if mode == Model.MODE_CABLE or Model.PIPE_MODES.has(mode):
 			continue
-		var plan := PackedVector2Array()
 		var pts := PackedVector2Array()
 		for node in l["pts"]:
-			plan.append(node["p"])
 			pts.append(iso(node["p"], _ground_h(node)))
 		_links.append({"mode": mode, "pts": pts})
-		var half := _ROAD_HALF if mode != Model.MODE_DRIVE else _DRIVE_HALF
-		for i in range(plan.size() - 1):
-			if plan[i].distance_squared_to(plan[i + 1]) > 0.01:
-				_road_plan.append({"a": plan[i], "b": plan[i + 1], "half": half})
-		if mode == "roads" or mode == Model.MODE_DRIVE:
-			for end in [pts[0], pts[pts.size() - 1]]:
-				var key := Vector2i(end.round())
-				var nd: Dictionary = nodes.get_or_add(key, {"at": end, "arms": 0, "width": 0.0})
-				nd["arms"] = int(nd["arms"]) + 1
-				nd["width"] = maxf(float(nd["width"]), half * 2.0)
-	_junctions = nodes.values()
 
 	# Pipes, laid from baked pieces on a grid of directions; each end goes into the ground.
 	var kit: bool = Pipes.ready()
@@ -553,7 +551,7 @@ func _build_lines() -> void:
 					_pipe_items.append(item)
 					continue
 				# A run is drawn tile by tile, so each tile takes its own place in depth.
-				for poly in Pipes.run_polys(item):
+				for poly in Pipes.kit().run_polys(item):
 					poly["kind"] = "run"
 					_pipe_items.append(poly)
 			_pipe_lines.append({"pts": laid["line"], "reverse": bool(l.get("reverse", false))})
@@ -625,6 +623,114 @@ func _build_lines() -> void:
 			"style": "power" if mode == Model.MODE_CABLE else "goods",
 			"phase": fmod(float(n) * 0.618034, 1.0) * _TOKEN_SPACING})
 		n += 1
+
+
+## The streets in use, as baked pieces: a junction piece wherever roads meet, turn or change
+## width, straights between them, and a truss bridge where a street crosses a river.
+func _build_roads(tiles: Dictionary) -> void:
+	_road_plan.clear()
+	var roads: Atlas = _road_kit()
+	var segs: Array = _model.get("roads", [])
+	var nodes: Dictionary = {}                # rounded plan point -> {p, arms: {k: {level, h, paved}}}
+	for s in segs:
+		var h := float(tiles[str(s["tile"])]["height"])
+		var level := int(s["level"])
+		var ends: Array = [s["a"], s["b"]]
+		for e in range(2):
+			var here: Vector2 = ends[e]
+			var there: Vector2 = ends[1 - e]
+			var nd: Dictionary = nodes.get_or_add(Vector2i(here.round()), {"p": here, "arms": {}})
+			var k: int = Pipes.k_of(there - here)
+			var arms: Dictionary = nd["arms"]
+			if not arms.has(k) or int(arms[k]["level"]) < level:
+				arms[k] = {"level": level, "h": h, "paved": bool(s["paved"])}
+		_road_plan.append({"a": s["a"], "b": s["b"],
+			"half": roads.dim("half_%d" % level) + roads.dim("walk_%d" % level) if roads.ok() else _ROAD_HALF})
+	if not roads.ok():
+		# The pieces are not baked: plain lines instead.
+		for s in segs:
+			var h2 := float(tiles[str(s["tile"])]["height"])
+			_links.append({"mode": "roads" if str(s["kind"]) != "spur" else Model.MODE_DRIVE,
+				"pts": PackedVector2Array([iso(s["a"], h2), iso(s["b"], h2)])})
+		return
+	var arm := roads.dim("arm")
+	var pieced: Dictionary = {}               # node key -> true: a junction piece stands there
+	for key in nodes:
+		var nd: Dictionary = nodes[key]
+		var arms: Dictionary = nd["arms"]
+		var ks: Array = arms.keys()
+		ks.sort()
+		if ks.size() < 2:
+			continue
+		var h0 := float(arms[ks[0]]["h"])
+		var level_ground := true
+		var paved := true
+		for k in ks:
+			level_ground = level_ground and is_equal_approx(float(arms[k]["h"]), h0)
+			paved = paved and bool(arms[k]["paved"])
+		if not level_ground:
+			# Two tiles of different heights meet here: the road climbs the wall between them.
+			var hi := h0
+			var lo := h0
+			for k in ks:
+				hi = maxf(hi, float(arms[k]["h"]))
+				lo = minf(lo, float(arms[k]["h"]))
+			_links.append({"mode": Model.MODE_DRIVE, "pts": PackedVector2Array([iso(nd["p"], lo), iso(nd["p"], hi)])})
+			continue
+		if ks.size() == 2 and posmod(int(ks[0]) + 6, 12) == int(ks[1]) \
+				and int(arms[ks[0]]["level"]) == int(arms[ks[1]]["level"]):
+			continue                              # straight on at one width: no piece
+		var parts: Array = []
+		for k in ks:
+			parts.append("%d.%d" % [int(k), int(arms[k]["level"])])
+		var name := "r_j_" + "_".join(parts)
+		if not roads.has(name):
+			continue
+		pieced[key] = true
+		_road_fits.append({"name": name, "at": iso(nd["p"], h0), "tint": Color.WHITE if paved else _UNPAVED})
+	for s in segs:
+		var tile := str(s["tile"])
+		var h := float(tiles[tile]["height"])
+		var a: Vector2 = s["a"]
+		var b: Vector2 = s["b"]
+		var length := a.distance_to(b)
+		var dir := (b - a) / maxf(length, 0.001)
+		# A straight runs a little way under each junction piece, so the piece's cut ends are hidden.
+		var from := (arm - _ROAD_OVERLAP) if pieced.has(Vector2i(a.round())) else 0.0
+		var to := length - ((arm - _ROAD_OVERLAP) if pieced.has(Vector2i(b.round())) else 0.0)
+		if bool(s["rail"]):
+			_links.append({"mode": "rail", "pts": PackedVector2Array([iso(a, h), iso(b, h)])})
+		if to - from < 0.5:
+			continue
+		var k6 := posmod(Pipes.k_of(dir), 6)
+		var level := int(s["level"])
+		var tint: Color = Color.WHITE if bool(s["paved"]) else _UNPAVED
+		for poly in roads.run_polys({"name": "r_straight_%d_%d" % [k6, level],
+				"a": iso(a + dir * from, h), "b": iso(a + dir * to, h),
+				"step": iso(Pipes.dir_of(k6) * roads.dim("tile"))}):
+			poly["tint"] = tint
+			_road_polys.append(poly)
+		# A truss bridge wherever this stretch crosses a river.
+		var span := roads.dim("bridge") * 0.5
+		for line in _rivers.get(tile, []):
+			var river: PackedVector2Array = line
+			for i in range(river.size() - 1):
+				var hit: Variant = Geometry2D.segment_intersects_segment(a, b, river[i], river[i + 1])
+				if hit == null:
+					continue
+				var along := (hit as Vector2).distance_to(a)
+				# Close to a junction the bridge is left out: its trusses would stand in the crossing.
+				if along < span * 0.5 or along > length - span * 0.5:
+					continue
+				_pipe_items.append({"kind": "fit", "name": "r_bridge_%d_%d" % [k6, level], "atlas": roads,
+					"at": iso(hit, h), "depth": (hit as Vector2).x + (hit as Vector2).y})
+
+
+static var _roads_atlas: Atlas = null
+static func _road_kit() -> Atlas:
+	if _roads_atlas == null:
+		_roads_atlas = Atlas.new("roads")
+	return _roads_atlas
 
 
 ## The ground under a path point: a crossing sits on the tile's edge at the tile's own height,
@@ -700,13 +806,23 @@ func _draw() -> void:
 	draw_set_transform(_offset, 0.0, Vector2(_zoom, _zoom))
 	if _ground != null:
 		draw_mesh(_ground, null)
+	var road_tex: Texture2D = _road_kit().texture()
+	if road_tex != null:
+		for fit in _road_fits:
+			var rr: Array = _road_kit().fit_rects(str(fit["name"]), fit["at"])
+			draw_texture_rect_region(road_tex, rr[0], rr[1], fit["tint"])
+		for poly in _road_polys:
+			var tints := PackedColorArray()
+			tints.resize((poly["points"] as PackedVector2Array).size())
+			tints.fill(poly["tint"])
+			draw_polygon(poly["points"], tints, poly["uvs"], road_tex)
 	_draw_roads()
 	for p in _pipes:
 		_thick(p["pts"], _PIPE_EDGE, 9.0)
 		_thick(p["pts"], _PIPE_REINF if str(p["mode"]) == "reinf_pipes" else _PIPE, 6.0)
 	# Pipe pieces and signs stand among the buildings, so all three are drawn in one order of
 	# depth, far to near.
-	var atlas: Texture2D = Pipes.atlas()
+	var atlas: Texture2D = Pipes.kit().texture()
 	var pi := 0
 	var si := 0
 	for s in _standing:
@@ -736,7 +852,7 @@ func _draw_standing(s: Dictionary) -> void:
 	var pos: Vector2 = s["pos"]
 	var h := float(s["h"])
 	var side := float(s["side"])
-	var half := side * 0.56
+	var half := float(s.get("pad", side * 1.12)) * 0.5
 	if str(s["kind"]) == "pylon":
 		if s.get("sprite") != null:
 			draw_texture_rect(s["sprite"], s["tex_rect"], false)
@@ -829,13 +945,15 @@ func _draw_roads() -> void:
 
 
 func _draw_pipe_item(item: Dictionary, atlas: Texture2D) -> void:
-	if atlas == null:
+	var kit: Atlas = item.get("atlas", Pipes.kit())
+	var tex: Texture2D = kit.texture() if item.has("atlas") else atlas
+	if tex == null:
 		return
 	if str(item["kind"]) == "run":
-		draw_colored_polygon(item["points"], Color.WHITE, item["uvs"], atlas)
+		draw_colored_polygon(item["points"], Color.WHITE, item["uvs"], tex)
 		return
-	var rects: Array = Pipes.fit_rects(item)
-	draw_texture_rect_region(atlas, rects[0], rects[1])
+	var rects: Array = kit.fit_rects(str(item["name"]), item["at"])
+	draw_texture_rect_region(tex, rects[0], rects[1])
 
 
 ## A small sign on a post in front of a pipe, showing what it carries.

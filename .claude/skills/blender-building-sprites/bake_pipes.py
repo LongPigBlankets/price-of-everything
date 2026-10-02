@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Bake the supply chain board's pipe pieces: render, outline, pack into one atlas, install.
+"""Bake the supply chain board's pipe or road pieces: render, outline, pack into one atlas,
+install.
 
-    python3 bake_pipes.py --game <price-of-everything-0.1 dir> [--raw DIR] [--no-render]
+    python3 bake_pipes.py --game <price-of-everything-0.1 dir> [--kind pipes|roads] [--raw DIR] [--no-render]
 
-pipe_pieces.py renders one frame per piece. Each gets the sprite set's heavy outer line
-(sprite_export.outer_contour), then all are packed into <game>/assets/iso/pipes/pipes.png,
-a grid of FRAME-sized cells, with pipes.json beside it:
+pipe_pieces.py (or road_pieces.py) renders one frame per piece. Each gets the sprite set's
+heavy outer line (sprite_export.outer_contour), then all are packed into
+<game>/assets/iso/<kind>/<kind>.png, a grid of FRAME-sized cells, with <kind>.json beside it:
 
     {"frame": px, "px_per_unit": px per map unit, "cols": n, "dims": {...map units...},
      "cells": {piece name: [column, row]}}
@@ -36,13 +37,15 @@ BORDER = 12
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--game", required=True)
-    ap.add_argument("--raw", default="/tmp/bake_pipes_raw")
+    ap.add_argument("--kind", default="pipes", choices=["pipes", "roads"])
+    ap.add_argument("--raw", default="")
     ap.add_argument("--no-render", action="store_true")
     args = ap.parse_args()
-    raw = os.path.abspath(args.raw)
+    kind = args.kind
+    raw = os.path.abspath(args.raw or "/tmp/bake_%s_raw" % kind)
     if not args.no_render:
         r = subprocess.run([RENDERER, "--background", "--factory-startup", "--python",
-                            os.path.join(HERE, "pipe_pieces.py"), "--", raw],
+                            os.path.join(HERE, "%s_pieces.py" % kind[:-1]), "--", raw],
                            capture_output=True, text=True)
         if "ALL_OK" not in r.stdout:
             print((r.stdout + r.stderr)[-3000:])
@@ -63,13 +66,13 @@ def main():
         edge.paste(im.crop((BORDER, BORDER, frame - BORDER, frame - BORDER)), (BORDER, BORDER))
         atlas.paste(edge, ((i % COLS) * frame, (i // COLS) * frame))
         cells[name] = [i % COLS, i // COLS]
-    out_dir = os.path.join(os.path.abspath(args.game), "assets", "iso", "pipes")
+    out_dir = os.path.join(os.path.abspath(args.game), "assets", "iso", kind)
     os.makedirs(out_dir, exist_ok=True)
-    atlas.save(os.path.join(out_dir, "pipes.png"))
+    atlas.save(os.path.join(out_dir, kind + ".png"))
     index = {"frame": frame, "cols": COLS,
              "px_per_unit": frame / (float(meta["ortho"]) * float(meta["unit"])),
              "dims": meta["dims"], "cells": cells}
-    json.dump(index, open(os.path.join(out_dir, "pipes.json"), "w"), indent=1, sort_keys=True)
+    json.dump(index, open(os.path.join(out_dir, kind + ".json"), "w"), indent=1, sort_keys=True)
     print("-> %s  %d pieces, %dx%d" % (out_dir, len(names), atlas.size[0], atlas.size[1]))
     return 0
 
