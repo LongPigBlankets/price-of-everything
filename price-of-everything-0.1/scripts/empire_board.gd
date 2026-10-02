@@ -77,9 +77,14 @@ const _CABLE_STEPS := 10
 const _LIVE_CREEP_SECS := 4.0
 
 ## A tile slopes down to a lower neighbour over this much of its own ground.
-const SLOPE_W := 22.0
-## The light of the key art's plate: a low golden sun off the top left, a cool shade away from it.
-const _SUN_SCREEN := Vector2(-0.8, -0.6)
+const SLOPE_W := 34.0
+## The light of the key art's plate, a low golden sun and a cool shade away from it. The sun
+## stands in the SOUTH-EAST: on the board that is straight toward the viewer, so the near side
+## is the gold one and shadows fall away up the screen, to the north-west.
+const _SUN_SCREEN := Vector2(0.0, 1.0)
+const _SHADOW := Color(0.04, 0.06, 0.14, 0.24)
+const _SHADOW_REACH := 0.5            # a building's shadow, as a share of its footprint
+const _SHADOW_NW := Vector2(-0.70710678, -0.70710678)
 const _GOLD_LIGHT := Color(1.0, 0.80, 0.44)
 const _COOL_SHADE := Color(0.05, 0.08, 0.22)
 const _LIGHT_GOLD_ALPHA := 0.20
@@ -89,9 +94,13 @@ const _TINT_SHADE := Color(0.80, 0.84, 0.97)
 const _GLINTS_PER_TILE := 16
 const _GLINT := Color(1.0, 0.96, 0.82)
 const _SOOT := Color(0.09, 0.085, 0.08)
-const _SOOT_REACH := 105.0           # how far a dirty building darkens the ground round it
-const _SOOT_ALPHA := 0.34
-const _SMOG_ALPHA := 0.30            # a tile with several dirty buildings, over its whole top
+const _WINDOW_DIR := "res://assets/fx/windows/"
+const _WINDOW_LIGHT := Color(1.0, 0.90, 0.66)     # amber-white
+const _FOG_PER_WORKS := 9
+const _FOG_WORKS_REACH := 95.0       # how far a dirty works' mist spreads round it
+const _FOG_WORKS_ALPHA := 0.20
+const _FOG_PER_TILE := 60            # wisps tried for a tile's pall and its spill
+const _FOG_TILE_ALPHA := 0.24
 const _SMOG_INSET := 0.10            # the pall is full to this share of a tile inside its edge
 const _SMOG_SPILL := 0.25            # and gone this share of a tile into a clean neighbour
 const _TILE_SPAN := 480.0
@@ -110,8 +119,8 @@ const _TOKEN_SPACING := 1100.0      # between tokens of one flow
 const _PULSE_SPACING := 120.0       # between slugs in a pipe and pulses on a cable
 const _DRAG_SLOP := 5.0
 
-## Sun in the south-east: the faces toward the camera are lit, east most.
-const _SUN := Vector2(0.8, 0.6)
+## The sun in the south-east, in plan: the faces toward the camera are the lit ones.
+const _SUN := Vector2(0.70710678, 0.70710678)
 
 static var _hill_polys: Array = []           # [{b, p, box}] parsed once
 static var _sea_polys: Array = []
@@ -121,7 +130,10 @@ static var _relief_cache: Dictionary = {}    # tile_id -> {base, sea: [], land: 
 var _model: Dictionary = {}
 var _ground: ArrayMesh = null                # every drawn tile, back to front, in board space
 var _light: ArrayMesh = null                 # the sun's wash over the tile tops
-var _soot: ArrayMesh = null                  # the ground darkened round dirty works
+var _fog: Array = []                         # [{at, r, a, phase}] wisps of dirty air, in board space
+var _lights: Array = []                      # [{tex, rect, col, phase}] lit windows and fires
+static var _window_tex: Dictionary = {}
+static var _wisp: GradientTexture2D = null
 var _glints: Array = []                      # [{at, phase, rate}] where the sun catches water
 var _stacks: Array = []                      # [{at, r, smoke, phase}] chimneys, in board space
 static var _glint_cache: Dictionary = {}     # tile_id -> [[plan point, phase, rate]]
@@ -180,9 +192,9 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 	_model = {}
 	_ground = null
 	_light = null
-	_soot = null
 	_glints.clear()
 	_stacks.clear()
+	_lights.clear()
 	_standing.clear()
 	_links.clear()
 	_road_plan.clear()
@@ -206,7 +218,7 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 	_build_ground(rivers)
 	_build_standing()
 	_build_lines()
-	_build_soot()
+	_build_fog()
 	_build_trees()
 	if not _fitted:
 		fit_view()
@@ -564,7 +576,7 @@ static func _poly_board(verts: PackedVector3Array, cols: PackedColorArray, idx: 
 		idx.append(base + k)
 
 
-## How lit a board point is, 0 to 1: the sun stands off the top left, as on the key art's plate.
+## How lit a board point is, 0 to 1: brightest nearest the south-east sun.
 func _light_at(board: Vector2) -> float:
 	var reach := maxf(1.0, absf(_bounds.size.x * _SUN_SCREEN.x) + absf(_bounds.size.y * _SUN_SCREEN.y))
 	return clampf(0.5 + (board - _bounds.get_center()).dot(_SUN_SCREEN) / reach, 0.0, 1.0)
@@ -709,6 +721,18 @@ func _build_standing() -> void:
 				front.y - used.end.y * k)
 			d["tex_rect"] = Rect2(origin, Vector2(tex.get_width(), tex.get_height()) * k)
 			d["rect"] = Rect2(origin + used.position * k, used.size * k)
+			# Its windows and fires, lit where the air on its tile is dirty.
+			var tile_d: Dictionary = (_model["tiles"] as Dictionary).get(d["tile"], {})
+			if int(tile_d.get("polluters", 0)) > 0 and str(d["kind"]) != "pylon":
+				var win: Texture2D = _window_mask(tex)
+				if win != null:
+					_lights.append({"tex": win, "rect": d["tex_rect"], "col": _WINDOW_LIGHT,
+						"phase": float(_lights.size()) * 1.7})
+				var fire: Texture2D = EmpireFx.light_mask_for(str(d.get("internal_name", "")),
+					EmpireFx.anchor_level(str(d.get("internal_name", "")), int(d["level"])))
+				if fire != null and str(d["kind"]) == "building":
+					_lights.append({"tex": fire, "rect": d["tex_rect"], "col": EmpireFx.FIRE_CORE,
+						"phase": float(_lights.size()) * 1.7})
 			# Its chimneys, from the same table the node view's plumes use. Grey smoke where the
 			# works is dirty, white steam where it is not.
 			if str(d["kind"]) == "building":
@@ -840,80 +864,66 @@ func _build_lines() -> void:
 		n += 1
 
 
-## The ground darkened by dirt. Round each dirty works a patch that fades out; and over a
-## tile with more than one of them a heavier pall, full across the tile to a tenth of a tile
-## inside its edge, thinning from there, and gone a quarter of a tile into a clean neighbour.
-func _build_soot() -> void:
+## The air darkened by dirt, as a thin mist that hangs over things and does not hide them.
+## It is patchy: many soft-edged wisps of different sizes and strengths, drifting. Round each
+## dirty works a small bank of it; and over a tile with more than one of them a wider, darker
+## bank, at full strength across the tile to a tenth of a tile inside its edge, thinning from
+## there, and gone a quarter of a tile into a clean neighbour.
+func _build_fog() -> void:
+	_fog.clear()
 	var tiles: Dictionary = _model.get("tiles", {})
-	var verts := PackedVector3Array()
-	var cols := PackedColorArray()
-	var idx := PackedInt32Array()
-	var clear := Color(_SOOT.r, _SOOT.g, _SOOT.b, 0.0)
 	for s in _standing:
 		if not bool(s.get("polluting", false)):
 			continue
-		var pos: Vector2 = s["pos"]
-		var h := float(tiles[str(s["tile"])]["height"])
-		var base := verts.size()
-		var centre := iso(pos, h)
-		verts.append(Vector3(centre.x, centre.y, 0.0))
-		cols.append(Color(_SOOT.r, _SOOT.g, _SOOT.b, _SOOT_ALPHA))
-		for k in range(24):
-			var q := iso(pos + Vector2.from_angle(TAU * float(k) / 24.0) * _SOOT_REACH, h)
-			verts.append(Vector3(q.x, q.y, 0.0))
-			cols.append(clear)
-		for k in range(24):
-			idx.append_array([base, base + 1 + k, base + 1 + (k + 1) % 24])
+		var rng := RandomNumberGenerator.new()
+		rng.seed = hash("fog|" + str(s["iid"]))
+		var h := float(s["h"])
+		for _n in range(_FOG_PER_WORKS):
+			var p: Vector2 = (s["pos"] as Vector2) + Vector2.from_angle(rng.randf() * TAU) * rng.randf() * _FOG_WORKS_REACH
+			var fall := 1.0 - p.distance_to(s["pos"]) / _FOG_WORKS_REACH
+			_fog.append({"at": iso(p, h + rng.randf_range(8.0, 34.0)), "r": rng.randf_range(34.0, 78.0),
+				"a": rng.randf_range(0.45, 1.0) * (0.35 + 0.65 * fall) * _FOG_WORKS_ALPHA, "phase": rng.randf() * TAU})
 	var by_center: Dictionary = {}
 	for tid in tiles:
 		by_center[Vector2i((tiles[tid]["center"] as Vector2).round())] = tid
-	var full := Color(_SOOT.r, _SOOT.g, _SOOT.b, _SMOG_ALPHA)
-	# At the tile's own edge the pall has already thinned by the inset's share of the whole fade.
-	var at_edge := Color(_SOOT.r, _SOOT.g, _SOOT.b, _SMOG_ALPHA * _SMOG_SPILL / (_SMOG_INSET + _SMOG_SPILL))
+	var inset := _SMOG_INSET * _TILE_SPAN
+	var spill := _SMOG_SPILL * _TILE_SPAN
 	for tid in tiles:
 		var t: Dictionary = tiles[tid]
 		if int(t.get("polluters", 0)) < 2:
 			continue
 		var c: Vector2 = t["center"]
-		var h := float(t["height"])
 		var hexp := Model.hex_points(c)
-		var inner := PackedVector2Array()
-		for p in hexp:
-			inner.append(c + (p - c) * (1.0 - _SMOG_INSET * _TILE_SPAN / Model.HEX_HALF.y))
-		var base := verts.size()
-		var centre := iso(c, h)
-		verts.append(Vector3(centre.x, centre.y, 0.0))
-		cols.append(full)
-		for p in inner:
-			var q := iso(p, h)
-			verts.append(Vector3(q.x, q.y, 0.0))
-			cols.append(full)
-		for k in range(6):
-			idx.append_array([base, base + 1 + k, base + 1 + (k + 1) % 6])
-		for k in range(6):
-			var a := hexp[k]
-			var b := hexp[(k + 1) % 6]
-			_quad_cols(verts, cols, idx, [iso(inner[k], h), iso(inner[(k + 1) % 6], h), iso(b, h), iso(a, h)],
-				[full, full, at_edge, at_edge])
-			# On into the tile beyond, if it is drawn and is not under a pall of its own.
-			var nb: Variant = by_center.get(Vector2i((c + ((a + b) * 0.5 - c) * 2.0).round()))
-			if nb == null or int(tiles[nb].get("polluters", 0)) >= 2:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = hash("pall|" + str(tid))
+		for _n in range(_FOG_PER_TILE):
+			var p := c + Vector2(rng.randf_range(-270.0 - spill, 270.0 + spill), rng.randf_range(-240.0 - spill, 240.0 + spill))
+			var r := rng.randf_range(48.0, 120.0)
+			var strength := rng.randf_range(0.4, 1.0)
+			var lift := rng.randf_range(10.0, 44.0)
+			var phase := rng.randf() * TAU
+			# How far outside the tile the wisp is; inside counts as negative.
+			var d := INF
+			for i in range(6):
+				d = minf(d, Geometry2D.get_closest_point_to_segment(p, hexp[i], hexp[(i + 1) % 6]).distance_to(p))
+			var within := Geometry2D.is_point_in_polygon(p, hexp)
+			if within:
+				d = -d
+			var f := clampf(1.0 - (d + inset) / (inset + spill), 0.0, 1.0)
+			if f <= 0.02:
 				continue
-			var out := ((a + b) * 0.5 - c).normalized() * _SMOG_SPILL * _TILE_SPAN
-			var nh := float(tiles[nb]["height"])
-			_quad_cols(verts, cols, idx, [iso(a, nh), iso(b, nh), iso(b + out, nh), iso(a + out, nh)],
-				[at_edge, at_edge, clear, clear])
-	_soot = _mesh_of(verts, cols, idx)
-
-
-static func _quad_cols(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
-		pts: Array, colours: Array) -> void:
-	var base := verts.size()
-	for i in range(4):
-		verts.append(Vector3((pts[i] as Vector2).x, (pts[i] as Vector2).y, 0.0))
-		cols.append(colours[i])
-	for i in [0, 1, 2, 0, 2, 3]:
-		idx.append(base + i)
+			var h := float(t["height"])
+			if not within:
+				# Beyond the edge it lies over whatever tile is drawn there, and stops short of
+				# one that has a pall of its own.
+				var over: Variant = null
+				for other in tiles:
+					if other != tid and Geometry2D.is_point_in_polygon(p, Model.hex_points(tiles[other]["center"])):
+						over = other
+				if over == null or int(tiles[over].get("polluters", 0)) >= 2:
+					continue
+				h = float(tiles[over]["height"])
+			_fog.append({"at": iso(p, h + lift), "r": r, "a": strength * f * _FOG_TILE_ALPHA, "phase": phase})
 
 
 ## Trees: some scattered over each tile, some along the roads. Where they stand is drawn afresh
@@ -1122,7 +1132,9 @@ func _build_roads(tiles: Dictionary) -> void:
 			if not climbs.has(key) or float(climbs[key]) >= h - 0.5:
 				continue
 			var drop := h - float(climbs[key])
-			var run := minf(SLOPE_W, length * 0.7)
+			# The road comes down over exactly the ground the tile's slope covers, so a road that
+			# meets the edge at an angle takes longer over it than one that meets it square.
+			var run := minf(_slope_run(end - (tiles[tile]["center"] as Vector2), dir), length * 0.8)
 			var r0 := (length - run) if e == 1 else run        # where the ramp meets the flat
 			var edge := length if e == 1 else 0.0
 			var crest := iso(a + dir * r0, h)
@@ -1177,6 +1189,13 @@ func _build_roads(tiles: Dictionary) -> void:
 				break
 
 
+## How far along a road heading `dir` the slope at a tile's edge runs, for an exit at `rel`
+## from the tile's centre. The slope is SLOPE_W deep measured square to the edge.
+static func _slope_run(rel: Vector2, dir: Vector2) -> float:
+	var n := Vector2(0.0, signf(rel.y)) if absf(absf(rel.y) - Streets.TOP_Y) < 1.0 else rel.normalized()
+	return SLOPE_W / maxf(0.35, absf(dir.dot(n)))
+
+
 static var _roads_atlas: Atlas = null
 static func _road_kit() -> Atlas:
 	if _roads_atlas == null:
@@ -1206,7 +1225,9 @@ func _street_line(path: Array) -> PackedVector2Array:
 			var before: bool = i > 0 and not bool(path[i - 1]["edge"])
 			var inner: Dictionary = path[i - 1] if before else (path[i + 1] if i + 1 < path.size() else node)
 			var back: Vector2 = (inner["p"] as Vector2) - (node["p"] as Vector2)
-			var crest: Vector2 = (node["p"] as Vector2) + back.normalized() * minf(SLOPE_W, back.length() * 0.7)
+			var centre: Vector2 = (_model["tiles"] as Dictionary)[str(node["tile"])]["center"]
+			var crest: Vector2 = (node["p"] as Vector2) + back.normalized() * minf(
+				_slope_run((node["p"] as Vector2) - centre, back.normalized()), back.length() * 0.8)
 			if before:
 				pts.append(iso(crest, h))
 				pts.append(iso(node["p"], low))
@@ -1302,10 +1323,30 @@ func _draw() -> void:
 			tints.fill(poly["tint"])
 			draw_polygon(poly["points"], tints, poly["uvs"], road_tex)
 	_draw_roads()
-	if _soot != null:
-		draw_mesh(_soot, null)
 	if _light != null:
 		draw_mesh(_light, null)
+	# Shadows fall north-west, away from the sun: laid on the ground before anything stands.
+	for s in _standing:
+		if str(s["kind"]) == "pylon":
+			continue
+		var half := float(s["side"]) * 0.5
+		var throw := _SHADOW_NW * float(s["side"]) * _SHADOW_REACH
+		var pos: Vector2 = s["pos"]
+		var h := float(s["h"])
+		draw_colored_polygon(PackedVector2Array([
+			iso(pos + Vector2(half, -half), h), iso(pos + Vector2(half, half), h), iso(pos + Vector2(-half, half), h),
+			iso(pos + Vector2(-half, half) + throw, h), iso(pos + Vector2(-half, -half) + throw, h),
+			iso(pos + Vector2(half, -half) + throw, h)]), _SHADOW)
+	for item in _pipe_items:
+		if str(item["kind"]) != "tree":
+			continue
+		var r: Rect2 = item["rect"]
+		var foot := Vector2(r.get_center().x, r.end.y - r.size.y * 0.04)
+		var oval := PackedVector2Array()
+		for k in range(14):
+			var a := TAU * float(k) / 14.0
+			oval.append(foot + Vector2(cos(a) * r.size.x * 0.36, -r.size.y * 0.2 + sin(a) * r.size.y * 0.22))
+		draw_colored_polygon(oval, _SHADOW)
 	for p in _pipes:
 		_thick(p["pts"], _PIPE_EDGE, 9.0)
 		_thick(p["pts"], _PIPE_REINF if str(p["mode"]) == "reinf_pipes" else _PIPE, 6.0)
@@ -1562,6 +1603,8 @@ func _draw_tokens(layer: Control) -> void:
 	var font := get_theme_default_font()
 	_draw_pipe_flow(layer)
 	_draw_glints(layer, view)
+	_draw_fog(layer, view)
+	_draw_lights(layer, view)
 	_draw_smoke(layer, view)
 	# Power is shown on the pylons, not as something travelling.
 	var tiles: Dictionary = _model.get("tiles", {})
@@ -1604,6 +1647,53 @@ func _draw_tokens(layer: Control) -> void:
 					_:
 						_token(layer, p, box, f["icon"])
 			d += _TOKEN_SPACING if style == "goods" else _PULSE_SPACING
+
+
+## The mist of dirty air: each wisp a soft-edged patch, drifting a little on its own beat.
+func _draw_fog(layer: Control, view: Rect2) -> void:
+	if _fog.is_empty():
+		return
+	if _wisp == null:
+		var grad := Gradient.new()
+		grad.set_color(0, Color(_SOOT.r, _SOOT.g, _SOOT.b, 1.0))
+		grad.set_color(1, Color(_SOOT.r, _SOOT.g, _SOOT.b, 0.0))
+		grad.add_point(0.45, Color(_SOOT.r, _SOOT.g, _SOOT.b, 0.55))
+		_wisp = GradientTexture2D.new()
+		_wisp.gradient = grad
+		_wisp.fill = GradientTexture2D.FILL_RADIAL
+		_wisp.fill_from = Vector2(0.5, 0.5)
+		_wisp.fill_to = Vector2(1.0, 0.5)
+		_wisp.width = 128
+		_wisp.height = 128
+	for w in _fog:
+		var drift := Vector2(sin(_clock * 0.11 + float(w["phase"])) * 14.0, cos(_clock * 0.07 + float(w["phase"]) * 1.7) * 5.0)
+		var p: Vector2 = ((w["at"] as Vector2) + drift) * _zoom + _offset
+		var r := float(w["r"]) * _zoom
+		if not view.grow(r).has_point(p):
+			continue
+		var breath := 0.82 + 0.18 * sin(_clock * 0.23 + float(w["phase"]) * 2.3)
+		layer.draw_texture_rect(_wisp, Rect2(p - Vector2(r, r * 0.62), Vector2(r, r * 0.62) * 2.0), false,
+			Color(1.0, 1.0, 1.0, float(w["a"]) * breath))
+
+
+## The mask of a sprite's windows (tools/bake_window_masks.py), or null when it has none.
+static func _window_mask(sprite: Texture2D) -> Texture2D:
+	var path := _WINDOW_DIR + sprite.resource_path.get_file()
+	if not _window_tex.has(path):
+		_window_tex[path] = load(path) if ResourceLoader.exists(path) else null
+	return _window_tex[path]
+
+
+## Windows and fires, drawn over the mist so they shine through it.
+func _draw_lights(layer: Control, view: Rect2) -> void:
+	for l in _lights:
+		var r: Rect2 = l["rect"]
+		var sr := Rect2(r.position * _zoom + _offset, r.size * _zoom)
+		if not view.intersects(sr):
+			continue
+		var col: Color = l["col"]
+		var glow := 0.86 + 0.14 * sin(_clock * 0.9 + float(l["phase"]))
+		layer.draw_texture_rect(l["tex"], sr, false, Color(col.r, col.g, col.b, glow))
 
 
 ## The sun catching the water: each glint flares and dies on its own beat.
