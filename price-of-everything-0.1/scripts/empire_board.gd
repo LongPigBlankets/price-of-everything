@@ -115,7 +115,9 @@ const _GLINT := Color(1.0, 0.96, 0.82)
 const _SOOT := Color(0.09, 0.085, 0.08)
 const _WINDOW_DIR := "res://assets/fx/windows/"
 const _WINDOW_LIGHT := Color(1.0, 0.90, 0.66)     # amber-white
-const _FOG_PER_WORKS := 9
+const _FOG_PER_WORKS := 13
+const _FOG_ARMS := 4
+const _FOG_WIND := Vector2(-0.4, -1.0)   # in plan: the mist leans north, the way the smoke does
 const _FOG_WORKS_REACH := 95.0       # how far a dirty works' mist spreads round it
 const _FOG_WORKS_ALPHA := 0.20
 const _FOG_PER_TILE := 60            # wisps tried for a tile's pall and its spill
@@ -658,30 +660,16 @@ func _build_ground(rivers: Dictionary) -> void:
 		for rec in rivers.get(tid, []):
 			var w := (float(rec["start_width"]) + float(rec["end_width"])) * 0.5
 			for part in Geometry2D.intersect_polyline_with_polygon(rec["points"], top_poly):
-				_stroke(verts, cols, idx, part, w, h, water)
+				for run in _on_land(rel, part):
+					_stroke(verts, cols, idx, run, w, h, water)
 		# The shore, as on the key art's plate: no hard line, but a beach. Dry sand on the land
 		# side, a darker wet strip at the water's edge, a thread of foam, and pale shallows
 		# running out into the deeper water.
 		if not is_sea and not (rel["sea"] as Array).is_empty():
-			var lowest := 99
-			for e in rel["land"]:
-				lowest = mini(lowest, int(e["b"]))
 			var shore: Array = []                 # [[p0, p1, outward normal]]
-			for e in rel["land"]:
-				if int(e["b"]) != lowest:
-					continue
-				for piece in _within(e["p"], top_poly, sloped):
-					var pts: PackedVector2Array = piece
-					var signed := 0.0
-					for k in range(pts.size()):
-						signed += pts[k].x * pts[(k + 1) % pts.size()].y - pts[(k + 1) % pts.size()].x * pts[k].y
-					for k in range(pts.size()):
-						var p0 := pts[k]
-						var p1 := pts[(k + 1) % pts.size()]
-						if p0.distance_squared_to(p1) < 0.01 or _on_border((p0 + p1) * 0.5, hexp) \
-								or not Geometry2D.is_point_in_polygon((p0 + p1) * 0.5, top_poly):
-							continue
-						shore.append([p0, p1, (p1 - p0).normalized().orthogonal() * (1.0 if signed >= 0.0 else -1.0)])
+			for seg in _shore_of(rel, hexp):
+				if Geometry2D.is_point_in_polygon(((seg[0] as Vector2) + (seg[1] as Vector2)) * 0.5, top_poly):
+					shore.append(seg)
 			# Laid widest first, so each band shows as a strip beside the next.
 			for band in [[_SHALLOWS_OUT, _SHALLOWS_W, water.lightened(0.14)], [_SHALLOWS_OUT * 0.45, _SHALLOWS_W * 0.6, water.lightened(0.3)],
 					[-_STRAND * 0.5, _STRAND, _SAND], [0.6, 3.4, _SAND.darkened(0.16)], [2.6, 1.1, _FOAM]]:
@@ -703,10 +691,11 @@ func _build_ground(rivers: Dictionary) -> void:
 		for rec in rivers.get(tid, []):
 			var half_w := (float(rec["start_width"]) + float(rec["end_width"])) * 0.25
 			for part in Geometry2D.intersect_polyline_with_polygon(rec["points"], top_poly):
-				_stroke(verts, cols, idx, part, half_w * 0.9, h, water.lightened(0.16))
-				for side in [-1.0, 1.0]:
-					_stroke(verts, cols, idx, _beside(part, (half_w + 1.4) * float(side)), 3.0, h, _BANK)
-					_stroke(verts, cols, idx, _beside(part, half_w * float(side)), 0.9, h, _INK_SOFT)
+				for run in _on_land(rel, part):
+					_stroke(verts, cols, idx, run, half_w * 0.9, h, water.lightened(0.16))
+					for side in [-1.0, 1.0]:
+						_stroke(verts, cols, idx, _beside(run, (half_w + 1.4) * float(side)), 3.0, h, _BANK)
+						_stroke(verts, cols, idx, _beside(run, half_w * float(side)), 0.9, h, _INK_SOFT)
 		# The plate's rim, inked where it ends in a cliff.
 		for rim_edge in rims:
 			_stroke(verts, cols, idx, PackedVector2Array([rim_edge[0], rim_edge[1]]), _INK_W * 1.3, float(rim_edge[2]), _INK)
@@ -887,6 +876,52 @@ static func _is_water(rel: Dictionary, p: Vector2) -> bool:
 		if Geometry2D.is_point_in_polygon(p, e["p"]):
 			return false
 	return true
+
+
+## A tile's shoreline: every edge of its land that has open water just beyond it, as
+## [[p0, p1, outward normal]]. Worked out once per tile and kept with its relief. The coast
+## is not one band's outline: wherever the lowest ground stops short of the water a higher
+## band meets it instead, so every band's edges are looked at.
+static func _shore_of(rel: Dictionary, hexp: PackedVector2Array) -> Array:
+	if rel.has("shore"):
+		return rel["shore"]
+	var shore: Array = []
+	for e in rel.get("land", []):
+		var pts: PackedVector2Array = e["p"]
+		var signed := 0.0
+		for k in range(pts.size()):
+			signed += pts[k].x * pts[(k + 1) % pts.size()].y - pts[(k + 1) % pts.size()].x * pts[k].y
+		var flip := 1.0 if signed >= 0.0 else -1.0
+		for k in range(pts.size()):
+			var p0 := pts[k]
+			var p1 := pts[(k + 1) % pts.size()]
+			if p0.distance_squared_to(p1) < 0.01:
+				continue
+			var mid := (p0 + p1) * 0.5
+			if _on_border(mid, hexp):
+				continue
+			var out := (p1 - p0).normalized().orthogonal() * flip
+			if _is_water(rel, mid + out * 3.0):
+				shore.append([p0, p1, out])
+	rel["shore"] = shore
+	return shore
+
+
+## A river's run with the stretches that lie in open water taken out: a river ends at its
+## mouth, where the map draws it running on in the sea's own colour.
+static func _on_land(rel: Dictionary, pts: PackedVector2Array) -> Array:
+	var runs: Array = []
+	var run := PackedVector2Array()
+	for p in pts:
+		if _is_water(rel, p):
+			if run.size() >= 2:
+				runs.append(run)
+			run = PackedVector2Array()
+		else:
+			run.append(p)
+	if run.size() >= 2:
+		runs.append(run)
+	return runs
 
 
 ## Points on a tile's water for the sun to catch. Fixed for the tile: the water never moves.
@@ -1156,11 +1191,20 @@ func _build_fog() -> void:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = hash("fog|" + str(s["iid"]))
 		var h := float(s["h"])
+		# A few uneven arms of mist, each its own length and leaning downwind, with the wisps
+		# strung along them and thinning toward the arm's end. A ring of wisps round the works
+		# would fade to a circle; this has no outline to fade to.
+		var arms: Array = []
+		for _a in range(_FOG_ARMS):
+			arms.append([_FOG_WIND.angle() + rng.randf_range(-1.5, 1.5), rng.randf_range(0.45, 1.35) * _FOG_WORKS_REACH])
 		for _n in range(_FOG_PER_WORKS):
-			var p: Vector2 = (s["pos"] as Vector2) + Vector2.from_angle(rng.randf() * TAU) * rng.randf() * _FOG_WORKS_REACH
-			var fall := 1.0 - p.distance_to(s["pos"]) / _FOG_WORKS_REACH
-			_fog.append({"at": iso(p, h + rng.randf_range(8.0, 34.0)), "r": rng.randf_range(34.0, 78.0),
-				"a": rng.randf_range(0.45, 1.0) * (0.35 + 0.65 * fall) * _FOG_WORKS_ALPHA, "phase": rng.randf() * TAU})
+			var arm: Array = arms[rng.randi() % arms.size()]
+			var along := pow(rng.randf(), 0.75)
+			var dir := Vector2.from_angle(float(arm[0]))
+			var p: Vector2 = (s["pos"] as Vector2) + dir * along * float(arm[1]) \
+				+ dir.orthogonal() * rng.randf_range(-1.0, 1.0) * (14.0 + 26.0 * along)
+			_fog.append({"at": iso(p, h + rng.randf_range(8.0, 34.0)), "r": rng.randf_range(30.0, 82.0),
+				"a": rng.randf_range(0.35, 1.0) * (1.0 - 0.6 * along) * _FOG_WORKS_ALPHA, "phase": rng.randf() * TAU})
 	var by_center: Dictionary = {}
 	for tid in tiles:
 		by_center[Vector2i((tiles[tid]["center"] as Vector2).round())] = tid
