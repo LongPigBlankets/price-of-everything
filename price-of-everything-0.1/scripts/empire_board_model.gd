@@ -59,6 +59,8 @@ const PYLON_AT := Vector2(-121.0, -216.0)
 const PYLON_SIDE := 62.0
 ## Homes stood on a tile that has works but is not a town.
 const HOMES_PER_TILE := 3
+## Housing keeps this far from a mine on the side nearer the eye.
+const MINE_CLEAR := 190.0
 ## What standing on a river costs a slot when buildings are placed: more than any distance.
 const WET_COST := 1.0e7
 ## How close a river may come to a pad's centre, beyond the pad's own half-width.
@@ -456,6 +458,16 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 				if homes >= limit:
 					break
 				if bool(place["wet"]):
+					continue
+				# Nothing decorative stands in front of a mine: its pit is in the ground and
+				# anything nearer the eye would cover it.
+				var hides := false
+				for thing in things:
+					if str((thing as Dictionary).get("internal_name", "")) != "mine":
+						continue
+					var gap: Vector2 = c + (place["pos"] as Vector2) - ((thing as Dictionary)["pos"] as Vector2)
+					hides = hides or (gap.x + gap.y > 0.0 and gap.length() < MINE_CLEAR)
+				if hides:
 					continue
 				var hid := "house:%s:%d" % [str(tid), int(place["slot"])]
 				var variety := 1 + (hash(hid) % 3)

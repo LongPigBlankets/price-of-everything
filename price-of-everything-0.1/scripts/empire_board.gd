@@ -162,6 +162,8 @@ const _ROADSIDE_GAP := 34.0
 const _ROADSIDE_KEEP := 0.55
 const _TREE_DIR := "res://assets/iso/trees/"
 const _MINE_DIR := "res://assets/iso/mine/"
+const _MINE_EARTH := Color("5a4c3d")
+const _MINE_EARTH_EDGE := Color("77684f")
 
 ## The zooms a tile's picture is baked at. The board zooms smoothly; a tile is drawn from the
 ## bake at or just above the present zoom, so it is only ever reduced, never enlarged, and by
@@ -1122,7 +1124,8 @@ func _build_standing() -> void:
 				d["tex_rect"] = Rect2(origin + Vector2(0.0, sink), Vector2(tex.get_width(), tex.get_height()) * k)
 			# Its windows and fires, lit where the air on its tile is dirty.
 			var tile_d: Dictionary = (_model["tiles"] as Dictionary).get(d["tile"], {})
-			if int(tile_d.get("polluters", 0)) > 0 and str(d["kind"]) != "pylon":
+			# A mine's lamps are down its shaft, which on the board is under the ground.
+			if int(tile_d.get("polluters", 0)) > 0 and str(d["kind"]) != "pylon" and not bool(d.get("sunk", false)):
 				var win: Texture2D = _window_mask(tex)
 				if win != null:
 					_lights.append({"tex": win, "rect": d["tex_rect"], "phase": float(_lights.size()) * 1.7,
@@ -1496,7 +1499,8 @@ func _build_trees() -> void:
 		used["%s|%s|%s" % [str(r["tile"]), ia if ia < ib else ib, ib if ia < ib else ia]] = true
 	var pads: Dictionary = {}                 # tile -> [Rect2] in plan
 	for s in _standing:
-		var half := float(s.get("pad", float(s["side"]))) * 0.5 + 8.0
+		# A mine's worked ground is wider than its slot, and no tree stands on it.
+		var half := float(s.get("pad", float(s["side"]))) * 0.5 + (34.0 if bool(s.get("sunk", false)) else 8.0)
 		(pads.get_or_add(str(s["tile"]), []) as Array).append(
 			Rect2((s["pos"] as Vector2) - Vector2(half, half), Vector2(half, half) * 2.0))
 	var pipe_segs: Array = []
@@ -2302,6 +2306,17 @@ func _draw_standing(ci: CanvasItem, s: Dictionary) -> void:
 		return
 	var tex: Texture2D = s.get("sprite")
 	if tex != null:
+		if bool(s.get("sunk", false)):
+			# Worked ground round the pit: dark trodden earth, ragged at its edge, so the pit
+			# reads against it and not against the grass.
+			var rng := RandomNumberGenerator.new()
+			rng.seed = hash(str(s["iid"]))
+			for ring in [[0.62, _MINE_EARTH_EDGE], [0.54, _MINE_EARTH]]:
+				var patch := PackedVector2Array()
+				for i in range(22):
+					var ang := TAU * float(i) / 22.0
+					patch.append(iso(pos + Vector2(cos(ang), sin(ang)) * side * float(ring[0]) * rng.randf_range(0.9, 1.08), h))
+				ci.draw_colored_polygon(patch, ring[1])
 		ci.draw_texture_rect(tex, s["tex_rect"], false, s.get("tint", Color.WHITE))
 		return
 	# No sprite yet: a plain block of the footprint, with the building's icon on its roof.
