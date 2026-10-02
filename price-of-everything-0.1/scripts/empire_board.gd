@@ -21,8 +21,8 @@ static var plate_lamps := true       # street lamps; and where the air is dirty,
 static var plate_sea := true         # open water pale toward the sun and deep away from it
 static var plate_town := true        # housing on free slots and cars on the streets
 ## What the player has chosen to see, set from the visibility key's tickboxes. Kept for the session.
-static var show := {"decor": true, "trees": true, "roads": true, "pipes": true, "reinf_pipes": true,
-	"cables": true, "goods": true, "pollution": true}
+static var show := {"decor": true, "trees": true, "roads": true, "rails": true, "pipes": true, "reinf_pipes": true,
+	"cables": true, "goods": true, "pollution": true, "names": true}
 
 const Model := preload("res://scripts/empire_board_model.gd")
 const Pipes := preload("res://scripts/empire_board_pipes.gd")
@@ -2060,7 +2060,8 @@ func _draw_tile(ci: CanvasItem, tile: String, zoom: float) -> void:
 			ci.draw_polygon(poly["points"], tints, poly["uvs"], road_tex)
 	if bool(show["roads"]):
 		_draw_roads(ci, parts.get("links", []))
-	_draw_rails(ci, tile, parts.get("rails", []))
+	if bool(show["rails"]):
+		_draw_rails(ci, tile, parts.get("rails", []))
 	if gfx.get("light") != null:
 		ci.draw_mesh(gfx["light"], null)
 	# Shadows fall north-west, away from the sun: laid on the ground before anything stands.
@@ -2378,6 +2379,8 @@ func _draw_roads(ci: CanvasItem, links: Array) -> void:
 				_thick(ci, l["pts"], _KERB, _DRIVE_HALF * 2.0 + 3.5)
 				_thick(ci, l["pts"], _ASPHALT, _DRIVE_HALF * 2.0)
 			"rail":
+				if not bool(show["rails"]):
+					continue
 				# A railway between two tiles that do not touch: no track plan reaches, so a plain line.
 				_thick(ci, l["pts"], _BALLAST, 11.0)
 				_draw_ties(ci, l["pts"], 6.0, 8.0, _TIE, 1.6)
@@ -2718,7 +2721,8 @@ func _draw_tokens(layer: Control) -> void:
 		layer.draw_polyline(c, _CABLE_DARK, 2.0, true)
 		layer.draw_polyline(c, _CABLE_STRIPE, 0.55, true)
 	layer.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	_draw_labels(layer)
+	if bool(show["names"]):
+		_draw_labels(layer)
 	_draw_hover(layer)
 
 

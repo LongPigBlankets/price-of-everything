@@ -13,8 +13,8 @@ const NAVY := Color("#0b2340")
 const CREAM := Color("#efe6cd")
 const ROWS := [
 	["decor", "See decorative buildings"], ["trees", "See trees"], ["roads", "See roads"],
-	["pipes", "See pipes"], ["reinf_pipes", "See reinforced pipes"], ["cables", "See cables"],
-	["goods", "See goods on tiles"], ["pollution", "See pollution"],
+	["rails", "See rails"], ["pipes", "See pipes"], ["reinf_pipes", "See reinforced pipes"], ["cables", "See cables"],
+	["goods", "See goods on tiles"], ["pollution", "See pollution"], ["names", "See tile names"],
 ]
 const MARGIN := 18.0
 ## The key is drawn in three slices across. This is its two end caps and no middle: the

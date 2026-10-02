@@ -683,10 +683,10 @@ func _test_empire_board_visibility() -> void:
 	var keys: Array = []
 	for row in Visibility.ROWS:
 		keys.append(str(row[0]))
-	var matched := keys.size() == 8 and state.size() == keys.size()
+	var matched := keys.size() == 10 and state.size() == keys.size()
 	for k in state:
 		matched = matched and keys.has(str(k))
-	_check(matched, "visibility: one tickbox for each of the board's eight switches")
+	_check(matched, "visibility: one tickbox for each of the board's ten switches")
 	_check(not vis.is_open(), "visibility: the plate of tickboxes starts shut")
 	vis.key.pressed.emit()
 	_check(vis.is_open(), "visibility: the key opens it")
