@@ -4810,7 +4810,7 @@ func _request_all_managed_source(building: Dictionary, side: String, source: Str
 	var service = preload("res://scripts/middleman_service.gd")
 	var action := func() -> bool: return _apply_all_managed_source(building, side, source)
 	if service.side_all_middleman(str(building.get("instance_id", "")), side):
-		preload("res://scripts/logistics_confirmation.gd").request(self, "managed", action, Callable(), {"side": side, "destination": "market" if source == "market" else "stockpile"})
+		preload("res://scripts/logistics_confirmation.gd").request(self, "managed", action, Callable(), {"side": side, "destination": "market" if source == "market" else "stockpile", "tile": str(building.get("tile_id", ""))})
 	else:
 		action.call()
 
@@ -4871,4 +4871,4 @@ func _request_logistics_mode(building: Dictionary, side: String, mode: String, a
 	if not confirm:
 		apply.call()
 		return
-	preload("res://scripts/logistics_confirmation.gd").request(self, mode, apply, Callable(), {"side": side, "good": good_id, "destination": destination})
+	preload("res://scripts/logistics_confirmation.gd").request(self, mode, apply, Callable(), {"side": side, "good": good_id, "destination": destination, "tile": str(building.get("tile_id", ""))})

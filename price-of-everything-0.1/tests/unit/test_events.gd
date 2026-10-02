@@ -423,3 +423,29 @@ func _test_briefing_event_mapping() -> void:
 	EventScheduler.reset()
 	TurnBriefing.reset()
 	_decision_board_restore(snap)
+
+
+## The first sale at the global market is told once a game, naming its port, and the flag is saved.
+func _test_first_market_sale_is_told_once() -> void:
+	var saved: Dictionary = EventScheduler.export_state().duplicate(true)
+	EventScheduler.reset()
+	var fired: Array = []
+	var catch := func(ev: Dictionary) -> void:
+		if str(ev.get("id", "")) == "milestone:first_market_sale": fired.append(ev)
+	EventScheduler.event_fired.connect(catch)
+	MatchState.market_sale_arrived_at_port.emit("tile_5_10", 40.0)
+	MatchState.market_sale_arrived_at_port.emit("tile_5_10", 25.0)
+	EventScheduler.event_fired.disconnect(catch)
+	_check(fired.size() == 1 and str(fired[0].title) == "First sale to the market", "first market sale: told once (%d)" % fired.size())
+	var body := str(fired[0].body) if fired.size() == 1 else ""
+	_check(body.begins_with("Our company sold its first goods to the global market via %s." % Catalog.tile_label("tile_5_10"))
+		and body.ends_with("Who knows where we'll go from here."), "first market sale: the copy names the port")
+	_check(load("res://scripts/turn_briefing.gd").news_row_text(fired[0] if fired.size() == 1 else {}).begins_with("First sale to the market. Our company"),
+		"first market sale: it makes a row in the updates dock")
+	var state: Dictionary = EventScheduler.export_state()
+	_check(bool(state.get("first_market_sale_told", false)), "first market sale: the flag is saved")
+	EventScheduler.import_state({})
+	_check(not bool(EventScheduler.export_state().first_market_sale_told), "first market sale: a new game starts untold")
+	EventScheduler.import_state({"history": [{"id": "old"}]})
+	_check(bool(EventScheduler.export_state().first_market_sale_told), "first market sale: an older save with news behind it is not told")
+	EventScheduler.import_state(saved)

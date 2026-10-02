@@ -124,3 +124,11 @@ Owner, 2 October 2026:
 - Owner, after the first build: a wooden courtroom, with balustrades. Second build (`artifacts/politics_ds2/ds2_v2/`): the oak wall in its moulded frame, the bar of the court (a rail of turned balusters) under the title, an event a raised oak panel, its turn on a brass plate. Render set `court`, seed 470.
 - Owner, on the courtroom: the rows in dark leather, stitched, a small brass stud in each corner (`court_panel`). The panel is as tall as its rows up to five; past five the record scrolls with five in view. Captures: `artifacts/politics_ds2/ds2_v3/` (`politics_ds2_long.png` shows the scroll on a made up longer record).
 - Owner: the icons in a stitched leather frame, not the black metal well (`court_icon_frame`, a band of tan leather round the cream tile). Captures: `artifacts/politics_ds2/ds2_v4/`.
+
+## Leaving the intermediary (2 October 2026)
+
+- One DS2 sheet asks before goods leave the Logistics Intermediary (`scripts/ds2/destination_sheet.gd`, built by `scripts/logistics_confirmation.gd`), in place of the system dialog. Titled Change destination for outputs, Change supplier for inputs.
+- Output to the global market: "The intermediary will no longer buy your output. A bridging loan will cover you during transit to the port, but long distances may be expensive unless served by advanced infrastructure. Invest in infrastructure to reduce travel times and increase capacity." The bridging loan is Advance port sales (`LoanState.transit_credit_enabled`, on by default).
+- Output to a tile stockpile, this tile's or another's: "The intermediary will no longer buy your output. This may decrease your revenue if you don't use the output in other recipes. If unused, the output will accumulate in the stockpile. If you want to sell the unused surplus, do so in the Stockpile tab." Stockpile tab is underlined and opens that tile's Stockpile tab.
+- "Do not show again" stays session wide.
+- News line, once a game, on the first sale to reach the global market: title "First sale to the market", body "Our company sold its first goods to the global market via [port]. This is likely the first in many transactions that will put us on the map. Who knows where we'll go from here."
