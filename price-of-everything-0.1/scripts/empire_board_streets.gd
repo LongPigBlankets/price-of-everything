@@ -164,17 +164,31 @@ static func path(from: String, to: String) -> Array:
 
 
 ## Positions for `count` things on a tile's slots: one per slot while they last, then each
-## slot split into four, then nine. Returns [{pos, side, slot}] for the first `count`.
-static func places(count: int) -> Array:
+## slot split into four, then nine. `skip` is a slot the warehouse has taken. Returns
+## [{pos, side, slot}], at least `count` of them.
+static func places(count: int, skip: int = -1) -> Array:
+	var usable := SLOTS.size() - (1 if skip >= 0 else 0)
 	var per := 1
-	while SLOTS.size() * per * per < count:
+	while usable * per * per < count:
 		per += 1
 	var out: Array = []
 	var side := SLOT_SIDE / float(per)
 	for i in range(SLOTS.size()):
+		if i == skip:
+			continue
 		for r in range(per):
 			for c in range(per):
 				out.append({"slot": i, "side": side,
 					"pos": SLOTS[i] + Vector2((float(c) + 0.5) * side - SLOT_SIDE * 0.5,
 						(float(r) + 0.5) * side - SLOT_SIDE * 0.5)})
 	return out
+
+
+## Where pipes meet the ground beside the thing whose spur ends at `door`.
+static func pipe_point(door: Vector2) -> Vector2:
+	var sy := 1.0 if door.y > 0.0 else -1.0
+	if absf(door.y) > STREET_Y:
+		return Vector2(door.x - 26.0, PIPE_OUTER * sy)
+	if absf(door.x) < 1.0:
+		return Vector2(-20.0, PIPE_INNER)
+	return Vector2(door.x - signf(door.x) * 26.0, PIPE_INNER)

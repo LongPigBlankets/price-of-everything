@@ -287,7 +287,7 @@ static func lay(legs: Array, roads: Array, set_id: String, enter: Array = [true,
 			var going_up: bool = mark[1]
 			var z0 := base + rest + (lift if up else 0.0)
 			_run(items, set_id, a + d * at, a + d * (s - riser), z0, k, up)
-			_supports(items, a, d, at, s - riser, z0, k, up, base)
+			_supports(items, a, d, at, s - riser, z0, k, up, roads)
 			var p := a + d * s
 			var low := base + rest
 			var high := low + lift
@@ -304,7 +304,7 @@ static func lay(legs: Array, roads: Array, set_id: String, enter: Array = [true,
 			at = s + riser
 		var z := base + rest + (lift if up else 0.0)
 		_run(items, set_id, a + d * at, a + d * (length - tail), z, k, up)
-		_supports(items, a, d, at, length - tail, z, k, up, base)
+		_supports(items, a, d, at, length - tail, z, k, up, roads)
 		line.append(iso(leg["b"], z))
 		# The fitting at this leg's far end.
 		if i < legs.size() - 1:
@@ -356,12 +356,30 @@ static func _vert(items: Array, set_id: String, p: Vector2, z0: float, z1: float
 
 
 static func _supports(items: Array, a: Vector2, d: Vector2, from: float, to: float, z: float,
-		k: int, up: bool, _base: float) -> void:
+		k: int, up: bool, roads: Array) -> void:
 	if not up or to - from < 4.0:
 		return
 	var n := maxi(1, int(round((to - from) / SUPPORT_GAP)))
 	for i in range(n):
-		var p := a + d * (from + (to - from) * (float(i) + 0.5) / float(n))
-		_fit(items, "x_support_%d" % posmod(k, 6), p, z)
+		var want := from + (to - from) * (float(i) + 0.5) / float(n)
+		# A trestle never stands on a road: it slides along the run to the nearest clear
+		# ground, and is left out when there is none.
+		var at := -1.0
+		for step in [0.0, 5.0, -5.0, 10.0, -10.0, 15.0, -15.0, 20.0, -20.0]:
+			var s := want + float(step)
+			if s >= from and s <= to and not _on_road(a + d * s, roads):
+				at = s
+				break
+		if at < 0.0:
+			continue
+		_fit(items, "x_support_%d" % posmod(k, 6), a + d * at, z)
 		# The trestle stands behind its run.
 		items[items.size() - 1]["depth"] = float(items[items.size() - 1]["depth"]) - 1.0
+
+
+static func _on_road(p: Vector2, roads: Array) -> bool:
+	var reach := dim("support_w") + 2.0
+	for r in roads:
+		if Geometry2D.get_closest_point_to_segment(p, r["a"], r["b"]).distance_to(p) < float(r["half"]) + reach:
+			return true
+	return false

@@ -98,6 +98,7 @@ var _junctions: Array = []                   # [{at, arms, width}] where roads a
 var _rivers: Dictionary = {}                  # tile_id -> [PackedVector2Array] in plan
 var _road_fits: Array = []                   # [{name, at, tint}] junction pieces
 var _road_polys: Array = []                  # [{points, uvs, tint}] the straights, tile by tile
+var _ramp_fills: Array = []                  # [PackedVector2Array] the banks under ramps
 var _pipes: Array = []                       # plain lines, drawn only when the pieces are not baked
 var _pipe_items: Array = []                  # baked pieces and run tiles, far to near
 var _pipe_lines: Array = []                  # [{pts, cum, total}] centrelines, in the flow's direction
@@ -150,6 +151,7 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 	_pipes.clear()
 	_road_fits.clear()
 	_road_polys.clear()
+	_ramp_fills.clear()
 	_pipe_items.clear()
 	_pipe_lines.clear()
 	_signs.clear()
@@ -162,7 +164,7 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 		return
 	var rivers: Dictionary = _rivers_by_tile(terrain)
 	_rivers = _river_lines(rivers)
-	_model = Model.build(terrain, graph, _true_positions(graph, terrain))
+	_model = Model.build(terrain, graph, _true_positions(graph, terrain), _rivers)
 	_build_ground(rivers)
 	_build_standing()
 	_build_lines()
@@ -608,8 +610,7 @@ func _build_lines() -> void:
 			# What is in a pipe is shown on the pipe itself, not as crates along the way.
 			continue
 		else:
-			for node in f["pts"]:
-				pts.append(iso(node["p"], _ground_h(node)))
+			pts = _street_line(f["pts"])
 		if pts.size() < 2:
 			continue
 		var cum := PackedFloat32Array([0.0])
@@ -655,6 +656,7 @@ func _build_roads(tiles: Dictionary) -> void:
 		return
 	var arm := roads.dim("arm")
 	var pieced: Dictionary = {}               # node key -> true: a junction piece stands there
+	var climbs: Dictionary = {}               # node key -> the height the road there has to reach
 	for key in nodes:
 		var nd: Dictionary = nodes[key]
 		var arms: Dictionary = nd["arms"]
@@ -669,13 +671,11 @@ func _build_roads(tiles: Dictionary) -> void:
 			level_ground = level_ground and is_equal_approx(float(arms[k]["h"]), h0)
 			paved = paved and bool(arms[k]["paved"])
 		if not level_ground:
-			# Two tiles of different heights meet here: the road climbs the wall between them.
+			# Two tiles of different heights meet here: the lower one's road ramps up to the edge.
 			var hi := h0
-			var lo := h0
 			for k in ks:
 				hi = maxf(hi, float(arms[k]["h"]))
-				lo = minf(lo, float(arms[k]["h"]))
-			_links.append({"mode": Model.MODE_DRIVE, "pts": PackedVector2Array([iso(nd["p"], lo), iso(nd["p"], hi)])})
+			climbs[key] = hi
 			continue
 		if ks.size() == 2 and posmod(int(ks[0]) + 6, 12) == int(ks[1]) \
 				and int(arms[ks[0]]["level"]) == int(arms[ks[1]]["level"]):
@@ -705,25 +705,84 @@ func _build_roads(tiles: Dictionary) -> void:
 		var k6 := posmod(Pipes.k_of(dir), 6)
 		var level := int(s["level"])
 		var tint: Color = Color.WHITE if bool(s["paved"]) else _UNPAVED
-		for poly in roads.run_polys({"name": "r_straight_%d_%d" % [k6, level],
-				"a": iso(a + dir * from, h), "b": iso(a + dir * to, h),
-				"step": iso(Pipes.dir_of(k6) * roads.dim("tile"))}):
+		var piece := "r_straight_%d_%d" % [k6, level]
+		var step := iso(Pipes.dir_of(k6) * roads.dim("tile"))
+		# Where this tile is the lower of two, the last stretch before the edge is a ramp. A
+		# ramp is the flat road sheared upward along its length, which is exactly how a slope
+		# projects, so the same piece draws it.
+		var flat_from := from
+		var flat_to := to
+		for e in range(2):
+			var end: Vector2 = b if e == 1 else a
+			var key := Vector2i(end.round())
+			if not climbs.has(key) or float(climbs[key]) <= h + 0.5:
+				continue
+			var rise := float(climbs[key]) - h
+			var run := ramp_length(length)
+			var r0 := (length - run) if e == 1 else run        # where the ramp meets the flat
+			var edge := length if e == 1 else 0.0
+			var foot := iso(a + dir * r0, h)
+			var top := iso(a + dir * edge, h)
+			var along := (top - foot).normalized()
+			var board_run := foot.distance_to(top)
+			var lift := Vector2(0.0, -rise * ISO_RISE)
+			for poly in roads.run_polys({"name": piece, "a": iso(a + dir * minf(r0, edge), h),
+					"b": iso(a + dir * maxf(r0, edge), h), "step": step}):
+				var pts: PackedVector2Array = poly["points"]
+				for i in range(pts.size()):
+					pts[i] += lift * clampf((pts[i] - foot).dot(along) / board_run, -0.2, 1.2)
+				poly["points"] = pts
+				poly["tint"] = tint
+				_road_polys.append(poly)
+			# The bank the ramp stands on, seen from the side that faces the camera.
+			var half := roads.dim("half_%d" % level) + roads.dim("walk_%d" % level)
+			var side := iso(dir.orthogonal() * half)
+			if side.y < 0.0:
+				side = -side
+			_ramp_fills.append(PackedVector2Array([foot + side, top + side, top + lift + side]))
+			_ramp_fills.append(PackedVector2Array([top - side, top + side, top + lift + side, top + lift - side]))
+			if e == 1:
+				flat_to = minf(flat_to, r0)
+			else:
+				flat_from = maxf(flat_from, r0)
+		if flat_to - flat_from < 0.5:
+			continue
+		for poly in roads.run_polys({"name": piece, "a": iso(a + dir * flat_from, h),
+				"b": iso(a + dir * flat_to, h), "step": step}):
 			poly["tint"] = tint
 			_road_polys.append(poly)
-		# A truss bridge wherever this stretch crosses a river.
-		var span := roads.dim("bridge") * 0.5
+		# A truss bridge where this stretch crosses a river. A bridge needs a clear straight its
+		# own length, so it slides along the stretch to find one; where the long bridge has no
+		# room the short one is tried, and with no room for that the road simply runs across.
+		var hits: Array = []
 		for line in _rivers.get(tile, []):
 			var river: PackedVector2Array = line
 			for i in range(river.size() - 1):
 				var hit: Variant = Geometry2D.segment_intersects_segment(a, b, river[i], river[i + 1])
-				if hit == null:
+				if hit != null:
+					hits.append((hit as Vector2).distance_to(a))
+		hits.sort()
+		var last := -INF
+		for along_hit in hits:
+			for kind in ["bridge", "bridge_short"]:
+				var span := roads.dim(kind) * 0.5 + 2.0
+				if flat_to - flat_from < span * 2.0:
 					continue
-				var along := (hit as Vector2).distance_to(a)
-				# Close to a junction the bridge is left out: its trusses would stand in the crossing.
-				if along < span * 0.5 or along > length - span * 0.5:
+				var at := clampf(float(along_hit), flat_from + span, flat_to - span)
+				# The river has to stay under the bridge, and one bridge serves a river that
+				# doubles back under the road.
+				if absf(at - float(along_hit)) > span * 0.6 or at - last < span * 2.0:
 					continue
-				_pipe_items.append({"kind": "fit", "name": "r_bridge_%d_%d" % [k6, level], "atlas": roads,
-					"at": iso(hit, h), "depth": (hit as Vector2).x + (hit as Vector2).y})
+				last = at
+				var p := a + dir * at
+				_pipe_items.append({"kind": "fit", "atlas": roads, "at": iso(p, h), "depth": p.x + p.y,
+					"name": "r_bridge_%s%d_%d" % ["s_" if kind == "bridge_short" else "", k6, level]})
+				break
+
+
+## How much of a stretch of road of this length is ramp where it climbs to a higher tile.
+static func ramp_length(length: float) -> float:
+	return minf(60.0, length * 0.7)
 
 
 static var _roads_atlas: Atlas = null
@@ -731,6 +790,40 @@ static func _road_kit() -> Atlas:
 	if _roads_atlas == null:
 		_roads_atlas = Atlas.new("roads")
 	return _roads_atlas
+
+
+## A path along the streets as board points. Where it crosses to a tile of another height it
+## takes the ramp on the lower side, as the road does.
+func _street_line(path: Array) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in range(path.size()):
+		var node: Dictionary = path[i]
+		var h := _ground_h(node)
+		if not bool(node["edge"]):
+			pts.append(iso(node["p"], h))
+			continue
+		# The edge is given once per tile. Both stand at the higher tile's level, and the
+		# lower side reaches it over a ramp.
+		var other := h
+		for j in [i - 1, i + 1]:
+			if j >= 0 and j < path.size() and bool(path[j]["edge"]) \
+					and (path[j]["p"] as Vector2).is_equal_approx(node["p"]):
+				other = _ground_h(path[j])
+		var top := maxf(h, other)
+		if h < top - 0.5:
+			var before: bool = i > 0 and not bool(path[i - 1]["edge"])
+			var inner: Dictionary = path[i - 1] if before else (path[i + 1] if i + 1 < path.size() else node)
+			var back: Vector2 = (inner["p"] as Vector2) - (node["p"] as Vector2)
+			var foot: Vector2 = (node["p"] as Vector2) + back.normalized() * ramp_length(back.length())
+			if before:
+				pts.append(iso(foot, h))
+				pts.append(iso(node["p"], top))
+			else:
+				pts.append(iso(node["p"], top))
+				pts.append(iso(foot, h))
+		else:
+			pts.append(iso(node["p"], top))
+	return pts
 
 
 ## The ground under a path point: a crossing sits on the tile's edge at the tile's own height,
@@ -811,6 +904,8 @@ func _draw() -> void:
 		for fit in _road_fits:
 			var rr: Array = _road_kit().fit_rects(str(fit["name"]), fit["at"])
 			draw_texture_rect_region(road_tex, rr[0], rr[1], fit["tint"])
+		for fill in _ramp_fills:
+			draw_colored_polygon(fill, _WALL.darkened(0.12))
 		for poly in _road_polys:
 			var tints := PackedColorArray()
 			tints.resize((poly["points"] as PackedVector2Array).size())

@@ -19,6 +19,7 @@ streets take the level of its roads.
 THE PIECES:
     r_straight_k_L   k in 0, 2, 3, 4     a run of road, repeating every TILE
     r_bridge_k_L     k in 0, 2, 3, 4     a truss bridge carrying that road over a river
+    r_bridge_s_k_L                       the same, shorter, for a crossing with little room
     r_j_<arms>                           a junction; <arms> is its arms as k.L, sorted by k and
                                          joined by "_". Two arms that are not in line make a
                                          bend; two in line at different levels make the road
@@ -51,6 +52,7 @@ DIMS = dict(
     tile=24.0,             # a straight's repeat length: one dash and one gap
     arm=20.0,              # how far a junction's arms reach from its centre
     bridge=50.0,           # a bridge's length
+    bridge_short=28.0,     # and the short one's, for a crossing with little straight road
     half_1=4.5, half_2=7.5, half_3=10.5,     # carriageway half-width, by level
     walk_1=1.6, walk_2=2.2, walk_3=2.6,      # pavement beyond it, each side
 )
@@ -237,7 +239,7 @@ def junction(arms):
     shoot("r_j_" + "_".join("%d.%d" % a for a in arms))
 
 
-def bridge(k, level):
+def bridge(k, level, short=False):
     """A Warren truss either side of the deck. The deck is the road itself, so the road's own
     straight carries on underneath and only the trusses and the abutments are new."""
     clear()
@@ -245,14 +247,14 @@ def bridge(k, level):
     side = Z.cross(d)
     half = DIMS["half_%d" % level]
     out = half + DIMS["walk_%d" % level]
-    length = DIMS["bridge"]
+    length = DIMS["bridge_short"] if short else DIMS["bridge"]
     plate("deck", strip(d, out + 0.6, length / 2.0), Z_WALK + 0.5, M_PAVING)
     carriageway("road", d, half, level, length / 2.0 - 0.01)
     for ob in K.col.objects:
         if ob.name == "road":
             ob.location.z += U(0.5)
-    height = 13.0
-    bays = 4
+    height = 10.0 if short else 13.0
+    bays = 2 if short else 4
     bar = U(1.1)
     prev_fine = K._fine_mode
     K._fine_mode = True
@@ -270,7 +272,7 @@ def bridge(k, level):
         c = d * U(end * (length / 2.0 - 1.5))
         K.dirbox("abut%d" % int(end), tuple(c - side * U(out + 1.6) - Z * U(0.2)),
                  tuple(c + side * U(out + 1.6) - Z * U(0.2)), U(3.4), U(1.6), M_PAVING)
-    shoot("r_bridge_%d_%d" % (k, level))
+    shoot("r_bridge_%s%d_%d" % ("s_" if short else "", k, level))
 
 
 def configs():
@@ -310,6 +312,7 @@ for level in (1, 2, 3):
     for k in (0, 2, 3, 4):
         straight(k, level)
         bridge(k, level)
+        bridge(k, level, True)
 for arms in configs():
     junction(list(arms))
 

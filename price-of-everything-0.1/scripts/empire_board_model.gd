@@ -56,6 +56,10 @@ const RECENT_TURNS := 3
 ## Where the pylon stands: by the tile's far corner, behind the back row of slots.
 const PYLON_AT := Vector2(-121.0, -216.0)
 const PYLON_SIDE := 62.0
+## What standing on a river costs a slot when buildings are placed: more than any distance.
+const WET_COST := 1.0e7
+## How close a river may come to a pad's centre, beyond the pad's own half-width.
+const RIVER_MARGIN := 10.0
 ## A pipe crosses a tile edge this far along it from the road.
 const PIPE_EDGE_GAP := 26.0
 const PIPE_MODES := ["pipes", "reinf_pipes"]
@@ -203,8 +207,10 @@ static func _pt(p: Vector2, tile: String, edge: bool = false) -> Dictionary:
 
 ## Build the board from the live sim. `terrain` is the HexMap, `graph` is empire_graph.build().
 ## `true_pos` maps a building's iid to where it really stands on the map; it only steers which
-## slot the building takes.
-static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {}) -> Dictionary:
+## slot the building takes. `rivers_by_tile` is tile_id -> [PackedVector2Array]: nothing stands
+## on a river while a dry place is free.
+static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
+		rivers_by_tile: Dictionary = {}) -> Dictionary:
 	var tiles: Dictionary = {}
 	var by_tile: Dictionary = {}          # tile_id -> [standing dict]
 	var stores: Dictionary = {}           # tile_id -> true: the tile has a warehouse
@@ -339,14 +345,33 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {})
 	for tid in tiles:
 		var t: Dictionary = tiles[tid]
 		var c: Vector2 = t["center"]
+		var rivers: Array = rivers_by_tile.get(tid, [])
+		var hub_slot := -1
+		t["hub_node"] = Streets.nid(Streets.hub_door())
+		t["manifold"] = Streets.pipe_point(Streets.hub_door())
 		if bool(t["store"]):
+			# The warehouse stands at the centre unless a river runs there; then it takes the
+			# dry slot nearest the centre, and that slot's spur.
+			var hub_rel := Vector2.ZERO
+			if _wet(c, Streets.HUB_SIDE, rivers):
+				var nearest: Array = range(Streets.SLOTS.size())
+				nearest.sort_custom(func(x: int, y: int) -> bool:
+					return (Streets.SLOTS[x] as Vector2).length_squared() < (Streets.SLOTS[y] as Vector2).length_squared())
+				for i in nearest:
+					if not _wet(c + Streets.SLOTS[i], Streets.SLOT_SIDE, rivers):
+						hub_slot = i
+						hub_rel = Streets.SLOTS[i]
+						t["hub_node"] = Streets.nid(Streets.slot_door(i))
+						t["manifold"] = Streets.pipe_point(Streets.slot_door(i))
+						break
+			t["hub"] = c + hub_rel
 			var level: int = Stockpile.get_warehouse_level(tid)
-			standing.append({"kind": "warehouse", "iid": "store:" + str(tid), "tile": tid, "pos": c,
+			standing.append({"kind": "warehouse", "iid": "store:" + str(tid), "tile": tid, "pos": c + hub_rel,
 				"sprite": BuildingSprites.texture_for(WAREHOUSE_SPRITE, level), "level": level,
 				"side": Streets.HUB_SIDE * FOOT_SHARE, "pad": Streets.HUB_SIDE,
 				"name": "%s warehouse" % str(t["label"])})
-			pos_of["store:" + str(tid)] = c
-			door_of["store:" + str(tid)] = Streets.nid(Streets.hub_door())
+			pos_of["store:" + str(tid)] = c + hub_rel
+			door_of["store:" + str(tid)] = str(t["hub_node"])
 		var things: Array = []
 		if port_node.has(tid):
 			var pn: Dictionary = port_node[tid]
@@ -356,7 +381,9 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {})
 		var own: Array = by_tile.get(tid, [])
 		own.sort_custom(func(x: Dictionary, y: Dictionary) -> bool: return str(x["iid"]) < str(y["iid"]))
 		things.append_array(own)
-		var free: Array = Streets.places(things.size())
+		var free: Array = Streets.places(things.size(), hub_slot)
+		for place in free:
+			place["wet"] = _wet(c + (place["pos"] as Vector2), float(place["side"]), rivers)
 		for thing in things:
 			var td: Dictionary = thing
 			var want: Vector2 = Streets.SLOTS[0]
@@ -365,8 +392,11 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {})
 			elif td["kind"] == "port":
 				want = Streets.SLOTS[2]
 			var best := 0
-			for i in range(1, free.size()):
-				if (free[i]["pos"] as Vector2).distance_squared_to(want) < (free[best]["pos"] as Vector2).distance_squared_to(want):
+			var best_cost := INF
+			for i in range(free.size()):
+				var cost := (free[i]["pos"] as Vector2).distance_squared_to(want) + (WET_COST if bool(free[i]["wet"]) else 0.0)
+				if cost < best_cost:
+					best_cost = cost
 					best = i
 			var place: Dictionary = free[best]
 			free.remove_at(best)
@@ -410,7 +440,6 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {})
 			if mode == "rail":
 				roads[rkey]["rail"] = true
 		return pts
-	var hub_node: String = Streets.nid(Streets.hub_door())
 
 	# A pipe's run from the thing at `iid` to its tile's warehouse, beside the streets.
 	var seen_line: Dictionary = {}
@@ -420,16 +449,15 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {})
 			return
 		seen_line[lkey] = true
 		var c: Vector2 = tiles[tile]["center"]
-		var door: Vector2 = Streets.node_pos(str(door_of[iid]))
-		var sy := 1.0 if door.y > 0.0 else -1.0
-		var manifold := Vector2(-20.0 * sy, Streets.PIPE_INNER * sy)
-		var pts: Array
-		if absf(door.y) > Streets.STREET_Y:
-			# A slot in the front or back row: along the outer line, then across the street.
-			pts = [_pt(c + Vector2(door.x - 26.0, Streets.PIPE_OUTER * sy), tile),
-				_pt(c + Vector2(manifold.x, Streets.PIPE_OUTER * sy), tile), _pt(c + manifold, tile)]
-		else:
-			pts = [_pt(c + Vector2(door.x - signf(door.x) * 26.0, Streets.PIPE_INNER), tile), _pt(c + manifold, tile)]
+		var entry: Vector2 = Streets.pipe_point(Streets.node_pos(str(door_of[iid])))
+		var manifold: Vector2 = tiles[tile]["manifold"]
+		if entry.distance_to(manifold) < 1.0:
+			return
+		# Along its own line beside the street, then across to the warehouse's.
+		var pts: Array = [_pt(c + entry, tile)]
+		if absf(entry.y - manifold.y) > 1.0:
+			pts.append(_pt(c + Vector2(manifold.x, entry.y), tile))
+		pts.append(_pt(c + manifold, tile))
 		lines.append({"mode": _pipe_mode(tile), "good": good, "kind": "feed", "pts": pts,
 			"reverse": toward_thing})
 
@@ -444,7 +472,7 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {})
 		if Catalog.requires_pipeline(good) and _pipe_mode(tile) != "":
 			pipe_feed.call(iid, tile, good, not out)
 			return
-		var ids: Array = Streets.path(str(door_of[iid]), hub_node)
+		var ids: Array = Streets.path(str(door_of[iid]), str(tiles[tile]["hub_node"]))
 		var pts: Array = walk.call(tile, ids, "roads")
 		if not out:
 			pts.reverse()
@@ -497,7 +525,7 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {})
 			continue
 		var pts: Array = []
 		var mode := "roads"
-		var at: String = str(door_of["port:" + from_tile]) if from_port else (hub_node if bool(tiles[from_tile]["store"]) else "")
+		var at: String = str(door_of["port:" + from_tile]) if from_port else (str(tiles[from_tile]["hub_node"]) if bool(tiles[from_tile]["store"]) else "")
 		for hop in hops:
 			var a := str(hop["a"])
 			var b := str(hop["b"])
@@ -511,7 +539,7 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {})
 				var jump: Array = [_pt(tiles[a]["center"], a), _pt(tiles[b]["center"], b)]
 				lines.append({"mode": mode, "good": "", "kind": "way", "pts": jump})
 				pts.append_array(jump)
-				at = hub_node
+				at = str(tiles[b]["hub_node"])
 				continue
 			var out_id: String = Streets.nid(out_rel)
 			if at == "":
@@ -519,7 +547,7 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {})
 			pts.append_array(walk.call(a, Streets.path(at, out_id), mode))
 			at = Streets.nid(Streets.exit_point(-off))
 			pts.append(_pt((tiles[b]["center"] as Vector2) + Streets.node_pos(at), b, true))
-		var goal: String = str(door_of["port:" + to_tile]) if to_port else (hub_node if bool(tiles[to_tile]["store"]) else "")
+		var goal: String = str(door_of["port:" + to_tile]) if to_port else (str(tiles[to_tile]["hub_node"]) if bool(tiles[to_tile]["store"]) else "")
 		if goal != "" and at != "":
 			pts.append_array(walk.call(to_tile, Streets.path(at, goal), mode))
 		if pts.size() < 2:
@@ -549,6 +577,16 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {})
 		"flows": flows, "lanes": lane_rows}
 
 
+## Does a river run under a pad of this side centred at p?
+static func _wet(p: Vector2, side: float, rivers: Array) -> bool:
+	for line in rivers:
+		var pts: PackedVector2Array = line
+		for i in range(pts.size() - 1):
+			if Geometry2D.get_closest_point_to_segment(p, pts[i], pts[i + 1]).distance_to(p) < side * 0.5 + RIVER_MARGIN:
+				return true
+	return false
+
+
 ## A pipe between two neighbouring tiles' warehouses: out beside the streets to the shared
 ## edge and in again the same way. It crosses the edge beside the road, not on it.
 static func _pipe_way(ta: Dictionary, tb: Dictionary) -> Array:
@@ -569,7 +607,8 @@ static func _pipe_way(ta: Dictionary, tb: Dictionary) -> Array:
 		var c: Vector2 = end[0]
 		var rel: Vector2 = cross - c
 		var sy := 1.0 if rel.y > 0.0 else -1.0
-		var manifold := c + Vector2(-20.0 * sy, Streets.PIPE_INNER * sy)
+		var tile: Dictionary = ta if not bool(end[2]) else tb
+		var manifold: Vector2 = c + (tile.get("manifold", Vector2(-20.0 * sy, Streets.PIPE_INNER * sy)) as Vector2)
 		var via := c + (Vector2(-Streets.AVENUE_X, Streets.PIPE_OUTER * sy) if absf(off.x) < 1.0
 			else Vector2(160.0 * signf(rel.x), Streets.PIPE_INNER * sy))
 		var part: Array = [_pt(manifold, str(end[1])), _pt(via, str(end[1])), _pt(cross, str(end[1]), true)]
