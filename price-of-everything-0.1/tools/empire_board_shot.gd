@@ -69,6 +69,7 @@ func _ready() -> void:
 				click.global_position = c
 				get_viewport().push_input(click)
 				await _settle(2)
+			print("CLICK at ", c, " window ", get_window().size, " board ", board.size)
 			print("PICKED ", s["iid"], " focus=", ev.get_node("GraphWorld").call("focus_iid"))
 			break
 	await _settle(40)

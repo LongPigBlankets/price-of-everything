@@ -76,6 +76,17 @@ const _CABLE_SAG := 0.06
 const _CABLE_STEPS := 10
 const _LIVE_CREEP_SECS := 4.0
 
+## The slab the tiles are cut from goes this far down below the lowest ground, showing strata.
+const SLAB_DEPTH := 150.0
+const _STRATA_TOP := 100.0           # the height the strata texture's top edge stands at
+const _TURF := 4.0                   # the dark lip of turf over a cut-away wall
+const _INK := Color("2f3b59")
+const _INK_W := 1.5
+const _SAND := Color("e6d6a6")
+const _STRAND := 11.0                # how wide the sand lies along a shore
+const _STIPPLE_PERIOD := 30.0        # board units to one repeat of the dot screen
+const _STIPPLE_FROM := 0.62          # light below this prints dots
+const _STIPPLE_ALPHA := 0.30
 ## A tile slopes down to a lower neighbour over this much of its own ground.
 const SLOPE_W := 34.0
 ## The light of the key art's plate, a low golden sun and a cool shade away from it. The sun
@@ -88,7 +99,7 @@ const _SHADOW_NW := Vector2(-0.70710678, -0.70710678)
 const _GOLD_LIGHT := Color(1.0, 0.80, 0.44)
 const _COOL_SHADE := Color(0.05, 0.08, 0.22)
 const _LIGHT_GOLD_ALPHA := 0.20
-const _LIGHT_SHADE_ALPHA := 0.26
+const _LIGHT_SHADE_ALPHA := 0.14
 const _TINT_SUN := Color(1.0, 0.97, 0.88)
 const _TINT_SHADE := Color(0.80, 0.84, 0.97)
 const _GLINTS_PER_TILE := 16
@@ -104,8 +115,9 @@ const _FOG_TILE_ALPHA := 0.24
 const _SMOG_INSET := 0.10            # the pall is full to this share of a tile inside its edge
 const _SMOG_SPILL := 0.25            # and gone this share of a tile into a clean neighbour
 const _TILE_SPAN := 480.0
-const _PUFFS := 6
-const _PUFF_SECS := 5.0
+const _PUFFS := 7
+const _PUFF_SECS := 7.0
+const _PUFF_RISE := 11.0             # how far a puff climbs in its life, in chimney radii
 const _TREES_PER_TILE := 26
 const _TREE_HEIGHT := {"large": 30.0, "small": 22.0, "fir": 32.0}
 const _ROADSIDE_GAP := 34.0
@@ -130,6 +142,9 @@ static var _relief_cache: Dictionary = {}    # tile_id -> {base, sea: [], land: 
 var _model: Dictionary = {}
 var _ground: ArrayMesh = null                # every drawn tile, back to front, in board space
 var _light: ArrayMesh = null                 # the sun's wash over the tile tops
+var _walls: ArrayMesh = null                 # the cut-away under the tiles
+var _stipple: ArrayMesh = null               # the printed shade over the tile tops
+static var _ground_textures: Dictionary = {}
 var _fog: Array = []                         # [{at, r, a, phase}] wisps of dirty air, in board space
 var _lights: Array = []                      # [{tex, rect, col, phase}] lit windows and fires
 static var _window_tex: Dictionary = {}
@@ -176,6 +191,8 @@ class TokenLayer extends Control:
 
 func _ready() -> void:
 	clip_contents = true
+	# The dot screen is one small tile laid across whole tiles of the board.
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	_tokens = TokenLayer.new()
 	_tokens.set("board", self)
 	_tokens.name = "Tokens"
@@ -192,6 +209,8 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 	_model = {}
 	_ground = null
 	_light = null
+	_walls = null
+	_stipple = null
 	_glints.clear()
 	_stacks.clear()
 	_lights.clear()
@@ -413,7 +432,7 @@ func _build_ground(rivers: Dictionary) -> void:
 		var t0: Dictionary = tiles[tid]
 		by_center[Vector2i((t0["center"] as Vector2).round())] = tid
 		for p in Model.hex_points(t0["center"]):
-			for hh in [float(t0["height"]) + TERRACE_STEP * TERRACE_MAX, 0.0]:
+			for hh in [float(t0["height"]) + TERRACE_STEP * TERRACE_MAX, -SLAB_DEPTH]:
 				var q := iso(p, hh)
 				if first:
 					_bounds = Rect2(q, Vector2.ZERO)
@@ -426,6 +445,15 @@ func _build_ground(rivers: Dictionary) -> void:
 	var lverts := PackedVector3Array()
 	var lcols := PackedColorArray()
 	var lidx := PackedInt32Array()
+	var wverts := PackedVector3Array()            # the cut-away walls, textured with the strata
+	var wcols := PackedColorArray()
+	var wuvs := PackedVector2Array()
+	var widx := PackedInt32Array()
+	var sverts := PackedVector3Array()            # the printed shade over the tile tops
+	var scols := PackedColorArray()
+	var suvs := PackedVector2Array()
+	var sidx := PackedInt32Array()
+	var rims: Array = []                          # per tile: [[a, b, h]] edges to ink once its top is laid
 	var band_cols: Array[Color] = MapStyle.band_colors()
 	var sea_cols: Array[Color] = MapStyle.sea_colors()
 	var water: Color = sea_cols[4]
@@ -469,10 +497,18 @@ func _build_ground(rivers: Dictionary) -> void:
 			var rim: Array = _on_line(top_poly, (a + b) * 0.5, n, a, b)
 			var ha := float(low[(i + 5) % 6]) if float(low[(i + 5) % 6]) >= 0.0 else h
 			var hb := float(low[(i + 1) % 6]) if float(low[(i + 1) % 6]) >= 0.0 else h
+			if not bool(beside[i]):
+				rims.append([rim[0], rim[1], h])
 			if n.x + n.y > 0.01:
-				var wall: Color = (_WALL_SEA if is_sea else _WALL).lightened(0.22 * maxf(0.0, n.dot(_SUN)))
-				_poly_board(verts, cols, idx, PackedVector2Array([iso(a, ha), iso(rim[0], h), iso(rim[1], h),
-					iso(b, hb), iso(b, 0.0), iso(a, 0.0)]), wall)
+				# The cut-away: the strata run level through the whole board, so a wall shows the
+				# part of them between its own top and the slab's foot.
+				var k := 0.74 + 0.26 * maxf(0.0, n.dot(_SUN))
+				_wall(wverts, wcols, wuvs, widx, [[a, ha], [rim[0], h], [rim[1], h], [b, hb],
+					[b, -SLAB_DEPTH], [a, -SLAB_DEPTH]], a, b, Color(k, k, k))
+				# The turf's edge over it.
+				if not is_sea:
+					_poly_board(verts, cols, idx, PackedVector2Array([iso(rim[0], h), iso(rim[1], h),
+						iso(rim[1], h - _TURF), iso(rim[0], h - _TURF)]), top.darkened(0.38))
 			elif bool(beside[i]):
 				# A neighbour of the same height stands behind: its side shows above the slope.
 				if ha < h:
@@ -498,8 +534,54 @@ func _build_ground(rivers: Dictionary) -> void:
 			var w := (float(rec["start_width"]) + float(rec["end_width"])) * 0.5
 			for part in Geometry2D.intersect_polyline_with_polygon(rec["points"], top_poly):
 				_stroke(verts, cols, idx, part, w, h, water)
+		# The shore: a strand of sand where the land meets open water, and ink along it.
+		if not is_sea and not (rel["sea"] as Array).is_empty():
+			var lowest := 99
+			for e in rel["land"]:
+				lowest = mini(lowest, int(e["b"]))
+			for e in rel["land"]:
+				if int(e["b"]) != lowest:
+					continue
+				for piece in _within(e["p"], top_poly, sloped):
+					var pts: PackedVector2Array = piece
+					for k in range(pts.size()):
+						var p0 := pts[k]
+						var p1 := pts[(k + 1) % pts.size()]
+						if _on_border((p0 + p1) * 0.5, hexp) or not Geometry2D.is_point_in_polygon((p0 + p1) * 0.5, top_poly):
+							continue
+						_stroke(verts, cols, idx, PackedVector2Array([p0, p1]), _STRAND, h, _SAND)
+						_stroke(verts, cols, idx, PackedVector2Array([p0, p1]), _INK_W, h, _INK)
+		for p in rel["lakes"]:
+			for piece in _within(p, top_poly, sloped):
+				var ring: PackedVector2Array = piece
+				ring.append(ring[0])
+				_stroke(verts, cols, idx, ring, _INK_W, h, _INK)
+		for rec in rivers.get(tid, []):
+			var half_w := (float(rec["start_width"]) + float(rec["end_width"])) * 0.25
+			for part in Geometry2D.intersect_polyline_with_polygon(rec["points"], top_poly):
+				for side in [-1.0, 1.0]:
+					_stroke(verts, cols, idx, _beside(part, half_w * float(side)), _INK_W, h, _INK)
+		# The plate's rim, inked where it ends in a cliff.
+		for rim_edge in rims:
+			_stroke(verts, cols, idx, PackedVector2Array([rim_edge[0], rim_edge[1]]), _INK_W * 1.3, float(rim_edge[2]), _INK)
+		rims.clear()
 		_labels.append({"at": iso(c + Vector2(135.0, 240.0) * 0.72, h), "text": str(t["label"])})
 		t["top_poly"] = top_poly
+		# Printed shade: the dot screen over ground the sun does not reach, none on open water.
+		if not is_sea:
+			var sbase := sverts.size()
+			var sc := iso(c, h)
+			for q in [sc]:
+				sverts.append(Vector3(q.x, q.y, 0.0))
+				suvs.append(q / _STIPPLE_PERIOD)
+				scols.append(Color(1.0, 1.0, 1.0, _shade_dots(_light_at(q))))
+			for p in top_poly:
+				var q2 := iso(p, h)
+				sverts.append(Vector3(q2.x, q2.y, 0.0))
+				suvs.append(q2 / _STIPPLE_PERIOD)
+				scols.append(Color(1.0, 1.0, 1.0, _shade_dots(_light_at(q2))))
+			for k in range(top_poly.size()):
+				sidx.append_array([sbase, sbase + 1 + k, sbase + 1 + (k + 1) % top_poly.size()])
 		# The light: golden toward the sun, cool away from it, laid over the tile's top.
 		var base := lverts.size()
 		var centre := iso(c, h)
@@ -516,9 +598,55 @@ func _build_ground(rivers: Dictionary) -> void:
 		return
 	_ground = _mesh_of(verts, cols, idx)
 	_light = _mesh_of(lverts, lcols, lidx)
+	_walls = _mesh_of(wverts, wcols, widx, wuvs)
+	_stipple = _mesh_of(sverts, scols, sidx, suvs)
 
 
-static func _mesh_of(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array) -> ArrayMesh:
+## How strongly the dot screen prints at a given light: none in the sun, full in deep shade.
+static func _shade_dots(t: float) -> float:
+	return clampf((_STIPPLE_FROM - t) / _STIPPLE_FROM, 0.0, 1.0) * _STIPPLE_ALPHA
+
+
+## One cut-away wall. `pts` is [[plan point, height]] round its outline; a and b are the ends
+## of the tile edge it stands under. The strata texture is one edge wide, and from top to
+## bottom spans the slab from the highest tile's top to its foot.
+static func _wall(verts: PackedVector3Array, cols: PackedColorArray, uvs: PackedVector2Array,
+		idx: PackedInt32Array, pts: Array, a: Vector2, b: Vector2, shade: Color) -> void:
+	var board := PackedVector2Array()
+	var uv := PackedVector2Array()
+	var along := (b - a).normalized()
+	var length := a.distance_to(b)
+	for e in pts:
+		var q := iso(e[0], float(e[1]))
+		if not board.is_empty() and board[board.size() - 1].is_equal_approx(q):
+			continue
+		board.append(q)
+		uv.append(Vector2(((e[0] as Vector2) - a).dot(along) / length, (_STRATA_TOP - float(e[1])) / (_STRATA_TOP + SLAB_DEPTH)))
+	if board.size() < 3:
+		return
+	var tris := Geometry2D.triangulate_polygon(board)
+	if tris.is_empty():
+		return
+	var base := verts.size()
+	for i in range(board.size()):
+		verts.append(Vector3(board[i].x, board[i].y, 0.0))
+		cols.append(shade)
+		uvs.append(uv[i])
+	for k in tris:
+		idx.append(base + k)
+
+
+## A polyline moved sideways by `off`.
+static func _beside(pts: PackedVector2Array, off: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for i in range(pts.size()):
+		var d := (pts[mini(i + 1, pts.size() - 1)] - pts[maxi(i - 1, 0)]).normalized()
+		out.append(pts[i] + d.orthogonal() * off)
+	return out
+
+
+static func _mesh_of(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
+		uvs: PackedVector2Array = PackedVector2Array()) -> ArrayMesh:
 	if idx.is_empty():
 		return null
 	var arrays: Array = []
@@ -526,6 +654,8 @@ static func _mesh_of(verts: PackedVector3Array, cols: PackedColorArray, idx: Pac
 	arrays[Mesh.ARRAY_VERTEX] = verts
 	arrays[Mesh.ARRAY_COLOR] = cols
 	arrays[Mesh.ARRAY_INDEX] = idx
+	if not uvs.is_empty():
+		arrays[Mesh.ARRAY_TEX_UV] = uvs
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
@@ -574,6 +704,13 @@ static func _poly_board(verts: PackedVector3Array, cols: PackedColorArray, idx: 
 		cols.append(col)
 	for k in tris:
 		idx.append(base + k)
+
+
+static func _ground_tex(name: String) -> Texture2D:
+	if not _ground_textures.has(name):
+		var path := "res://assets/iso/ground/%s.png" % name
+		_ground_textures[name] = load(path) if ResourceLoader.exists(path) else null
+	return _ground_textures[name]
 
 
 ## How lit a board point is, 0 to 1: brightest nearest the south-east sun.
@@ -1310,8 +1447,12 @@ func _draw() -> void:
 		draw_string(font, size * 0.5 - Vector2(w * 0.5, 0.0), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, DS.PALETTE.TEXT)
 		return
 	draw_set_transform(_offset, 0.0, Vector2(_zoom, _zoom))
+	if _walls != null:
+		draw_mesh(_walls, _ground_tex("strata"))
 	if _ground != null:
 		draw_mesh(_ground, null)
+	if _stipple != null:
+		draw_mesh(_stipple, _ground_tex("stipple"))
 	var road_tex: Texture2D = _road_kit().texture()
 	if road_tex != null:
 		for fit in _road_fits:
@@ -1711,20 +1852,30 @@ func _draw_glints(layer: Control, view: Rect2) -> void:
 		layer.draw_line(p - Vector2(0.0, arm * 0.7), p + Vector2(0.0, arm * 0.7), col, 1.2)
 
 
-## Chimneys: grey smoke from a dirty works, white steam from a clean one, rising and thinning.
+## Chimneys: grey smoke from a dirty works, white steam from a clean one, as the inked puffs
+## the sprites' own effects use, billowing up and leaning with the wind.
 func _draw_smoke(layer: Control, view: Rect2) -> void:
+	var n := 0
 	for st in _stacks:
+		n += 1
 		var mouth: Vector2 = (st["at"] as Vector2) * _zoom + _offset
-		if not view.grow(60.0).has_point(mouth):
+		if not view.grow(120.0).has_point(mouth):
 			continue
 		var r := float(st["r"]) * _zoom
-		var smoke: bool = st["smoke"]
-		var base: Color = EmpireFx.SMOKE_BASE if smoke else EmpireFx.STEAM_BASE
+		var texs: Array = EmpireFx.PUFF_SMOKE_TEX if bool(st["smoke"]) else EmpireFx.PUFF_STEAM_TEX
+		# Oldest first, so the fresh puff at the mouth sits on top of the plume.
 		for i in range(_PUFFS):
-			var age := fmod(_clock / _PUFF_SECS + float(i) / float(_PUFFS) + float(st["phase"]), 1.0)
-			var at := mouth + Vector2(-age * r * 5.0, -age * r * 9.0 - r * 0.4)
-			var fade := (1.0 - age) * (1.0 - age) * (0.78 if smoke else 0.62)
-			layer.draw_circle(at, r * (0.9 + 2.3 * age), Color(base.r, base.g, base.b, fade))
+			var p := fmod(_clock / _PUFF_SECS + float(i) / float(_PUFFS) + float(st["phase"]), 1.0)
+			var rose := 1.0 - pow(1.0 - p, 1.6)
+			var centre := mouth + Vector2(0.0, -r) + EmpireFx.DRIFT_DIR.normalized() * (_PUFF_RISE * r) * rose
+			var half := r * lerpf(1.2, 4.0, pow(p, 0.75)) * EmpireFx.PUFF_TEX_SPAN
+			var alpha := 0.95 * pow(1.0 - p, 1.1)
+			if alpha <= 0.01:
+				continue
+			layer.draw_set_transform(centre, p * EmpireFx.SPIN * (1.0 if (i + n) % 2 == 0 else -1.0), Vector2.ONE)
+			layer.draw_texture_rect(texs[(i + n) % texs.size()], Rect2(-half, -half, half * 2.0, half * 2.0), false,
+				Color(1.0, 1.0, 1.0, alpha))
+		layer.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 ## What a pipe carries, as bright slugs running along the tube the way the fluid goes.
