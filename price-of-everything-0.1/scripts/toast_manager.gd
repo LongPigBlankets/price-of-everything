@@ -51,8 +51,9 @@ const BELL_ICON: Texture2D = preload("res://assets/icons/ui_icons/standalone/bel
 const PEN_ICON: Texture2D = preload("res://assets/icons/ui_icons/standalone/fountain_pen.png")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
-# The DS2 look (UiPrefs.use_dock_ds2): the dock and its slide-out as the top bar's navy steel sheet, the pen and
-# the bells raised, a row a raised module with a pilot lamp in its tone.
+# The DS2 look (UiPrefs.use_dock_ds2): the dock on the top bar's navy steel sheet with the pen and the bells
+# raised, and its slide-out as the turn briefing's clipboard (the hardboard and its steel clip), so the two read
+# as one surface. A row is a slip of the keycaps' cream plastic tinged in its tone, its words printed in navy.
 const Parts := preload("res://scripts/ds2/parts.gd")
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const SHEET: Texture2D = preload("res://assets/ui/bdp_v3/bar_sheet.png")
@@ -61,9 +62,16 @@ const SHEET_MARGIN := 10.0
 const SHEET_CORNER := 60.0
 const CAPTURE_SCALE := 1.875
 const TEXELS_PER_PIXEL := 2.0
-const ROW_LAMP_SCALE := 0.6
-## The lamp a row's look lights: a warning red, a caution amber, the rest green.
-const STYLE_LAMP := {"warning": "bad", "caution": "warn"}
+const Brief := preload("res://scripts/briefing_ds2/parts.gd")
+## The clipboard: the board's edge round the slips, the room its clip takes above them, and the clip's scale.
+const BOARD_EDGE := 12.0
+const CLIP_ROOM := 34.0
+const CLIP_SCALE := 0.7
+## The sheet's 9-slice corner on a slip, in layout px: smaller than the letter's, so a one line slip's corners
+## never meet.
+const SLIP_CORNER := 12.0
+## A slip's tinge by its look: pastel green, amber and red over the cream sheet.
+const SLIP_TINGE := {"success": Color(0.80, 0.95, 0.80), "caution": Color(1.0, 0.90, 0.66), "warning": Color(1.0, 0.78, 0.76)}
 ## With the DS2 briefing, the pen carries a small pilot lamp lit in the worst live alert's colour (amber or red),
 ## so an alert shows while the briefing is closed.
 const PEN_LAMP_SCALE := 0.42
@@ -130,6 +138,8 @@ class RowCountdown extends Control:
 				queue_redraw()
 	## The row's padding round this control, so the sweep spans the whole row inside its border.
 	var pad := Vector2.ZERO
+	## The sweep's colour: white on a dark row, navy on a light slip.
+	var sweep := Color.WHITE
 	func _draw() -> void:
 		if remaining <= 0.0:
 			return
@@ -139,7 +149,7 @@ class RowCountdown extends Control:
 		var bottom := box.end.y
 		var left := box.position.x
 		draw_polygon(PackedVector2Array([Vector2(left, top), Vector2(right, top), Vector2(right, bottom), Vector2(left, bottom)]),
-			PackedColorArray([Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.12), Color(1, 1, 1, 0.12), Color(1, 1, 1, 0.0)]))
+			PackedColorArray([Color(sweep, 0.0), Color(sweep, 0.12), Color(sweep, 0.12), Color(sweep, 0.0)]))
 var _fit_queued := false
 var _dock_hover := false
 ## Arrival order across the kept rows; the oldest goes when HISTORY_MAX is reached, wherever
@@ -439,7 +449,12 @@ func _build_ui() -> void:
 func _apply_look() -> void:
 	_ds2 = UiPrefs.use_dock_ds2
 	_dock.add_theme_stylebox_override("panel", _bare_copy(_dock_style) if _ds2 else _dock_style)
-	_panel.add_theme_stylebox_override("panel", _bare_copy(_panel_style) if _ds2 else _panel_style)
+	var board := StyleBoxEmpty.new()
+	board.content_margin_left = BOARD_EDGE
+	board.content_margin_right = BOARD_EDGE
+	board.content_margin_top = BOARD_EDGE + CLIP_ROOM
+	board.content_margin_bottom = BOARD_EDGE + TUCK
+	_panel.add_theme_stylebox_override("panel", board if _ds2 else _panel_style)
 	_dock.self_modulate = Color.WHITE
 	for cell: Dictionary in [_pen] + _bells.values():
 		if cell.is_empty():
@@ -483,12 +498,19 @@ func _bare_copy(from: StyleBox) -> StyleBoxEmpty:
 	return bare
 
 
-## DS2: the top bar's navy steel sheet behind the dock or the slide-out.
+## DS2: the top bar's navy steel sheet behind the dock; the briefing's clipboard, hardboard and steel clip,
+## behind the slide-out's slips.
 func _paint_sheet(ci: Control) -> void:
 	if not _ds2:
 		return
-	Nine.paint(ci, SHEET, Rect2(Vector2.ZERO, ci.size).grow(SHEET_MARGIN / CAPTURE_SCALE),
-		(SHEET_MARGIN + SHEET_CORNER) * TEXELS_PER_PIXEL / CAPTURE_SCALE)
+	if ci == _dock:
+		Nine.paint(ci, SHEET, Rect2(Vector2.ZERO, ci.size).grow(SHEET_MARGIN / CAPTURE_SCALE),
+			(SHEET_MARGIN + SHEET_CORNER) * TEXELS_PER_PIXEL / CAPTURE_SCALE)
+		return
+	Brief.crop_v(ci, Brief.tex("brief_board"), Rect2(Vector2.ZERO, ci.size), Brief.BOARD_MARGIN, Brief.BOARD_FOOT)
+	var clip := Brief.tex("brief_clip")
+	var at := clip.get_size() / TEXELS_PER_PIXEL * CLIP_SCALE
+	ci.draw_texture_rect(clip, Rect2(Vector2((ci.size.x - at.x) * 0.5, -6.0), at), false)
 
 
 ## Rebuilds the kept rows in the current look, each keeping what it says and what it knows about itself.
@@ -498,7 +520,9 @@ func _restyle_rows() -> void:
 		var action: Callable = old.get_meta("on_click", Callable())
 		var row: PanelContainer = _make_toast(str(old.get_meta("toast_message", "")), style, action.is_valid())
 		for key: StringName in old.get_meta_list():
-			row.set_meta(key, old.get_meta(key))
+			# The tinge is the look's own: the new row has set its own, or has none.
+			if key != &"tinge":
+				row.set_meta(key, old.get_meta(key))
 		if action.is_valid():
 			row.gui_input.connect(_on_row_input.bind(row))
 		row.visible = (old as Control).visible
@@ -784,7 +808,8 @@ func _make_toast(message: String, toast_type: String, link: bool = false) -> Pan
 	return panel
 
 
-## DS2: a row as a raised module. A pilot lamp in its tone, its words in white print, and a link's fold mark.
+## DS2: a row as a slip on the clipboard. The cream sheet tinged in its tone, its words printed in navy, and a
+## link's chevron.
 func _make_module_row(message: String, toast_type: String, link: bool) -> PanelContainer:
 	var panel := PanelContainer.new()
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP if link else Control.MOUSE_FILTER_IGNORE
@@ -792,35 +817,37 @@ func _make_module_row(message: String, toast_type: String, link: bool) -> PanelC
 		panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	panel.size_flags_horizontal = Control.SIZE_FILL
 	var pad := StyleBoxEmpty.new()
-	pad.content_margin_left = ROW_PAD_X - 2.0
-	pad.content_margin_right = ROW_PAD_X - 2.0
+	pad.content_margin_left = ROW_PAD_X
+	pad.content_margin_right = ROW_PAD_X
 	pad.content_margin_top = 9
 	pad.content_margin_bottom = 9
 	panel.add_theme_stylebox_override("panel", pad)
 	panel.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	# The tinge is the slip's own: its print keeps its navy.
+	panel.self_modulate = SLIP_TINGE.get(toast_type, SLIP_TINGE["success"])
+	panel.set_meta("tinge", toast_type if SLIP_TINGE.has(toast_type) else "success")
 	panel.draw.connect(func() -> void:
-		Nine.paint(panel, Parts.MODULE, Rect2(Vector2.ZERO, panel.size).grow(Parts.MODULE_MARGIN), Parts.MODULE_CORNER))
+		Brief.draw_nine(panel, Brief.tex("sheet_white"), Rect2(Vector2.ZERO, panel.size), Brief.LETTER_MARGIN, SLIP_CORNER))
 	var countdown := RowCountdown.new()
 	countdown.name = "Countdown"
-	countdown.pad = Vector2(ROW_PAD_X - 2.0, 9)
+	countdown.pad = Vector2(ROW_PAD_X, 9)
+	countdown.sweep = NAVY_PRINT
 	countdown.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(countdown)
 	var line := HBoxContainer.new()
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	line.add_theme_constant_override("separation", 9)
+	line.add_theme_constant_override("separation", 6)
 	panel.add_child(line)
-	var lamp: Control = Lamp.new()
-	lamp.name = "RowLamp"
-	lamp.lamp_scale = ROW_LAMP_SCALE
-	lamp.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	lamp.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	lamp.call("set_tone", str(STYLE_LAMP.get(toast_type, "ok")))
-	lamp.set_meta("tone", str(STYLE_LAMP.get(toast_type, "ok")))
-	line.add_child(lamp)
-	var label := Parts.body(message)
+	var label := Label.new()
 	label.name = "Words"
+	label.text = message
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.add_theme_font_override("font", Parts.FONT_BODY)
-	label.custom_minimum_size.x = TOAST_WIDTH - 2.0 * PANEL_PAD - 2.0 * ROW_PAD_X - SCROLLBAR_ROOM - 26.0 - (LINK_CHEVRON_W if link else 0.0)
+	label.add_theme_font_size_override("font_size", 15)
+	label.add_theme_color_override("font_color", NAVY_PRINT)
+	label.custom_minimum_size.x = TOAST_WIDTH - 2.0 * BOARD_EDGE - 2.0 * ROW_PAD_X - SCROLLBAR_ROOM - (LINK_CHEVRON_W if link else 0.0)
 	line.add_child(label)
 	if link:
 		var chevron := Label.new()
@@ -830,7 +857,7 @@ func _make_module_row(message: String, toast_type: String, link: bool) -> PanelC
 		chevron.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		chevron.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		chevron.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		chevron.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+		chevron.add_theme_color_override("font_color", NAVY_PRINT)
 		chevron.add_theme_font_size_override("font_size", 22)
 		line.add_child(chevron)
 	return panel
