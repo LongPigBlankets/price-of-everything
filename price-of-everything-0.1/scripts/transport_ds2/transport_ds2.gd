@@ -166,6 +166,64 @@ static func _meter_line(used: float, cap: float, near: float, tone: String, labe
 	return line
 
 
+## A tile's name as a link: underlined, the pointer a hand, its hover "Go to <tile>". Pressing it runs `on_go`
+## (the panel closes and the map goes to the tile) and is the link's alone, never the module's round it.
+class TileLink extends Label:
+	var _on_go := Callable()
+
+	func _init(tile_name: String, on_go: Callable) -> void:
+		name = "TileLink"
+		text = tile_name
+		_on_go = on_go
+		theme_type_variation = "Body"
+		add_theme_font_override("font", Parts.FONT_TITLE)
+		add_theme_font_size_override("font_size", Parts.BODY_PX)
+		Parts.emboss(self)
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		tooltip_text = "Go to %s" % tile_name
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+
+	func _draw() -> void:
+		var y := size.y - 2.0
+		draw_line(Vector2(0, y), Vector2(size.x, y), DS.PALETTE["TEXT"], 1.5)
+
+	func _gui_input(event: InputEvent) -> void:
+		var mb := event as InputEventMouseButton
+		if mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			accept_event()
+			if _on_go.is_valid():
+				_on_go.call()
+
+
+## Parts.info with its title as `lead` (plain words, "" for none) followed by a tile's name as a link. With no
+## tile to go to (`on_go` invalid) the title is plain words.
+static func linked_info(lead: String, tile_name: String, on_go: Callable, tone: String, words: String) -> VBoxContainer:
+	if not on_go.is_valid():
+		return Parts.info(("%s %s" % [lead, tile_name]).strip_edges(), tone, words)
+	var info := Parts.info(tile_name, tone, words)
+	var plain := info.get_node("Title")
+	info.remove_child(plain)
+	plain.free()
+	var line := HFlowContainer.new()
+	line.name = "Title"
+	line.add_theme_constant_override("h_separation", 5)
+	line.add_theme_constant_override("v_separation", 0)
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if lead != "":
+		var said := Parts.body(lead)
+		said.name = "Lead"
+		said.add_theme_font_override("font", Parts.FONT_TITLE)
+		said.autowrap_mode = TextServer.AUTOWRAP_OFF
+		said.custom_minimum_size.x = 0
+		said.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		line.add_child(said)
+	line.add_child(TileLink.new(tile_name, on_go))
+	info.add_child(line)
+	info.move_child(line, 0)
+	return info
+
+
 ## Which way a stockpile is going, drawn beside its words (a font's arrows are missing on some machines): an
 ## amber arrow up while it fills, a green arrow down while it drains, a thick white line while it holds steady.
 class TrendMark extends Control:
@@ -192,8 +250,8 @@ class TrendMark extends Control:
 				draw_rect(Rect2(1, h * 0.5 - 2.0, w - 2, 4.0), DS.PALETTE["TEXT"])
 
 
-## A stockpile. `d`: {tile_id, name, level, used, cap, near, tone, words, trend (up, down or steady),
-## goods: [{good_id, qty}]}.
+## A stockpile. `d`: {tile_id, name, on_go, level, used, cap, near, tone, words, trend (up, down or steady),
+## goods: [{good_id, qty}]}. Its name is a link to the tile; the rest of the module opens its stockpile.
 static func stock_row(d: Dictionary, on_open: Callable) -> PanelContainer:
 	var s := _stacked("Stock_%s" % str(d.tile_id))
 	var m: PanelContainer = s.module
@@ -201,7 +259,7 @@ static func stock_row(d: Dictionary, on_open: Callable) -> PanelContainer:
 	m.tooltip_text = "Open this tile's stockpile"
 	Parts.on_click(m, on_open)
 	var col: VBoxContainer = s.col
-	var info := Parts.info(str(d.name), str(d.tone), str(d.words))
+	var info := linked_info("", str(d.name), d.get("on_go", Callable()), str(d.tone), str(d.words))
 	var status := info.get_node_or_null("Status") as HBoxContainer
 	if status != null:
 		# The words keep to their own width, so the mark stands right after them.
@@ -222,7 +280,7 @@ static func stock_row(d: Dictionary, on_open: Callable) -> PanelContainer:
 	return m
 
 
-## A link. `d`: {key, building_id, name, level, flow, cap, near, tone, words, cost_words}.
+## A link. `d`: {key, building_id, mode_name, place, on_go, level, flow, cap, near, tone, words, cost_words}.
 static func infra_row(d: Dictionary, on_open: Callable) -> PanelContainer:
 	var s := _stacked("Link_%s" % str(d.key), Parts.emblem(str(d.building_id), EMBLEM_PX))
 	var m: PanelContainer = s.module
@@ -230,7 +288,7 @@ static func infra_row(d: Dictionary, on_open: Callable) -> PanelContainer:
 	m.tooltip_text = "Open this infrastructure to inspect or upgrade it"
 	Parts.on_click(m, on_open)
 	var col: VBoxContainer = s.col
-	col.add_child(Parts.info(str(d.name), str(d.tone), str(d.words)))
+	col.add_child(linked_info("%s at" % str(d.mode_name), str(d.place), d.get("on_go", Callable()), str(d.tone), str(d.words)))
 	col.add_child(_meter_line(float(d.flow), float(d.cap), float(d.near), str(d.tone), "Lvl %d" % int(d.level)))
 	if str(d.get("cost_words", "")) != "":
 		var cost := Parts.body(str(d.cost_words))
@@ -240,7 +298,8 @@ static func infra_row(d: Dictionary, on_open: Callable) -> PanelContainer:
 	return m
 
 
-## A shipment. `d`: {manifest: [{good_id, qty}], where, when}.
+## A shipment. `d`: {manifest: [{good_id, qty}], where, when, place, on_go}: `place` is the tile it is bound
+## for, a link; a sale to the market has none and reads `where`.
 static func transit_row(d: Dictionary, index: int) -> PanelContainer:
 	var m := Parts.module("Shipment_%d" % index)
 	var row := Parts.row_of(m)
@@ -250,7 +309,10 @@ static func transit_row(d: Dictionary, index: int) -> PanelContainer:
 	for entry: Dictionary in d.manifest:
 		wells.add_child(Parts.good_in_well(str(entry.good_id), int(entry.qty), ""))
 	row.add_child(wells)
-	row.add_child(Parts.info(str(d.where), "", str(d.when)))
+	if str(d.get("place", "")) != "":
+		row.add_child(linked_info("To", str(d.place), d.get("on_go", Callable()), "", str(d.when)))
+	else:
+		row.add_child(Parts.info(str(d.where), "", str(d.when)))
 	return m
 
 

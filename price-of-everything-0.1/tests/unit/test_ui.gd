@@ -2821,11 +2821,24 @@ func _test_transport_panel_ds2() -> void:
 	for n in panel.find_children("Link_*", "", true, false):
 		link_words += ((n as Node).find_child("Words", true, false) as Label).text
 	_check(not link_words.contains("At capacity"), "transport ds2: a link's words leave out the at capacity count")
+	var link := stock.find_child("TileLink", true, false) as Label if stock != null else null
+	_check(link != null and link.tooltip_text == "Go to %s" % link.text and not link.text.contains("("), "transport ds2: a tile's name is a link that says Go to it (%s)" % (link.tooltip_text if link != null else ""))
+	_check(panel.find_child("Shipment_0", true, false).find_child("TileLink", true, false) != null, "transport ds2: a shipment's destination is a link")
 	var keys: Dictionary = panel.get("_routing_keys")
 	(keys[MatchState.RouteObjective.CHEAPEST] as Control).emit_signal("pressed")
 	_check(MatchState.route_objective == MatchState.RouteObjective.CHEAPEST and bool((keys[MatchState.RouteObjective.CHEAPEST] as Control).get("latched"))
 		and not bool((keys[MatchState.RouteObjective.FASTEST] as Control).get("latched")), "transport ds2: a routing key sets the objective and latches alone")
 	_check(panel.find_child("RoutingObjective", true, false) != null, "transport ds2: the routing objective keeps its name")
+	var went: Array = []
+	var note := func(tile: String) -> void: went.append(tile)
+	MatchState.focus_tile_requested.connect(note)
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	link = panel.find_child("Stock_tile_5_10", true, false).find_child("TileLink", true, false) as Label
+	link.call("_gui_input", press)
+	MatchState.focus_tile_requested.disconnect(note)
+	_check(went == ["tile_5_10"] and not panel.visible, "transport ds2: pressing the name goes to the tile and closes the panel")
 	UiPrefs.set_use_transport_ds2(false)
 	await get_tree().process_frame
 	_check(panel.find_child("TransportTitleRow", true, false) == null and panel.find_child("RoutingObjective", true, false) is OptionButton,

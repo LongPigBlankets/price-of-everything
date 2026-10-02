@@ -233,6 +233,14 @@ func _build_ds2() -> void:
 	call_deferred("_layout_settings_card")
 
 
+## DS2: a tile's name pressed. The panel closes and the map goes to the tile.
+func _go_to(tile_id: String) -> void:
+	if _settings_layer != null:
+		_settings_layer.visible = false
+	hide()
+	MatchState.focus_tile_requested.emit(tile_id)
+
+
 ## DS2: the title row drags the panel.
 func _on_ds2_drag(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -263,7 +271,7 @@ static func transit_flows(rows: Array) -> Array:
 		var where := "To market" if bool(first.to_market) else "To %s" % place(str(first.destination))
 		if members.size() == 1:
 			var turns := int(first.turns)
-			out.append({"manifest": first.manifest, "where": where, "units": int(first.units),
+			out.append({"manifest": first.manifest, "where": where, "units": int(first.units), "tile_id": "" if bool(first.to_market) else str(first.destination),
 				"when": "Arrives now." if turns <= 0 else "Arrives in %d turn%s." % [turns, "" if turns == 1 else "s"]})
 			continue
 		var arrival_turns := {}
@@ -279,7 +287,7 @@ static func transit_flows(rows: Array) -> Array:
 		for gid in by_good:
 			manifest.append({"good_id": gid, "qty": int(round(float(by_good[gid]) / float(spread)))})
 		var each := int(round(float(units) / float(spread)))
-		out.append({"manifest": manifest, "where": where, "units": units,
+		out.append({"manifest": manifest, "where": where, "units": units, "tile_id": "" if bool(first.to_market) else str(first.destination),
 			"when": "%s unit%s arrive each turn." % [_thousands(each), "" if each == 1 else "s"]})
 	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.units) > int(b.units))
 	return out
@@ -625,7 +633,7 @@ func _stockpile_row(row: Dictionary) -> Control:
 		var rate := Stockpile.fill_trend_per_turn(tile_id, TREND_TURNS)
 		var dead := maxf(1.0, cap * 0.01)
 		return Ds2.stock_row({
-			"tile_id": tile_id, "name": place(tile_id), "level": Stockpile.get_warehouse_level(tile_id),
+			"tile_id": tile_id, "name": place(tile_id), "on_go": _go_to.bind(tile_id), "level": Stockpile.get_warehouse_level(tile_id),
 			"used": float(row.used), "cap": cap, "near": NEAR_FULL,
 			"tone": worse(tone_of(_fill_color(fill)), tone_of(_eta_color(tile_id, fill)) if eta != "not filling" else "ok"),
 			"words": "%d%% full, %s of %s." % [int(round(fill * 100.0)), _money(float(row.used)), _money(cap)],
@@ -815,7 +823,7 @@ func _infra_row(link: Dictionary) -> Control:
 		var paid_so_far := TransportState.link_congestion_paid(str(link.key))
 		return Ds2.infra_row({
 			"key": str(link.key), "building_id": str(Catalog.get_building_by_internal_name(InfraIcons.normalise(mode)).get("id", "")),
-			"name": "%s at %s" % [_mode_label(mode), place(str(link.tile_id))], "level": int(link.level),
+			"mode_name": _mode_label(mode), "place": place(str(link.tile_id)), "on_go": _go_to.bind(str(link.tile_id)), "level": int(link.level),
 			"flow": float(link.flow), "cap": float(link.cap), "near": 0.85, "tone": tone_of(_load_color(ratio)),
 			"words": "%d%%, %s of %s units." % [int(round(ratio * 100.0)), _money(float(link.flow)), _money(float(link.cap))],
 			"cost_words": ("Congestion has added £%s so far." % _money(paid_so_far)) if paid_so_far > 0.0 else "",
@@ -1013,7 +1021,11 @@ func _build_transit() -> void:
 	if _ds2:
 		var flows := transit_flows(rows)
 		for i in flows.size():
-			_transit_list.add_child(Ds2.transit_row(flows[i], i))
+			var flow: Dictionary = flows[i]
+			if str(flow.get("tile_id", "")) != "":
+				flow["place"] = place(str(flow.tile_id))
+				flow["on_go"] = _go_to.bind(str(flow.tile_id))
+			_transit_list.add_child(Ds2.transit_row(flow, i))
 		return
 	for row: Dictionary in rows:
 		_transit_list.add_child(_transit_row(row))
