@@ -51,6 +51,7 @@ const COURT_WALL: Texture2D = preload("res://assets/ui/bdp_v3/court_backing.png"
 const COURT_RAIL: Texture2D = preload("res://assets/ui/bdp_v3/court_rail.png")
 const COURT_PANEL: Texture2D = preload("res://assets/ui/bdp_v3/court_panel.png")
 const COURT_PLATE: Texture2D = preload("res://assets/ui/bdp_v3/court_plate.png")
+const COURT_ICON_FRAME: Texture2D = preload("res://assets/ui/bdp_v3/court_icon_frame.png")
 const CAPTURE_SCALE := 1.875
 const TEXELS_PER_PIXEL := 2.0
 const WALL_MARGIN := 24.0
@@ -61,6 +62,9 @@ const PANEL_MARGIN := 16.0
 const PANEL_CORNER := 34.0
 const PLATE_MARGIN := 8.0
 const PLATE_CORNER := 14.0
+## The icon frame: how far the leather band stands out past the tile, and the render's shadow room.
+const ICON_FRAME_REACH := 11.0
+const ICON_FRAME_MARGIN := 10.0
 ## The plate's print: the brass plates' dark ink.
 const PLATE_INK := Color("#2b170d")
 const PLATE_PX := 14
@@ -226,7 +230,7 @@ func _oak_panel(panel_name: String) -> PanelContainer:
 			(PANEL_MARGIN + PANEL_CORNER) * TEXELS_PER_PIXEL / CAPTURE_SCALE))
 	var row := HBoxContainer.new()
 	row.name = "Row"
-	row.add_theme_constant_override("separation", 14)
+	row.add_theme_constant_override("separation", 18)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	m.add_child(row)
 	return m
@@ -259,7 +263,7 @@ func _turn_plate(turn: int) -> Control:
 	return plate
 
 
-## DS2: one event's leather pad. Its icon on a cream tile in a well, its title over its words, and the turn it
+## DS2: one event's leather pad. Its icon on a cream tile in a stitched leather frame, its title over its words, and the turn it
 ## happened on a brass plate.
 func _entry_module(entry: Dictionary, index: int) -> Control:
 	var m := _oak_panel("PoliticsEvent_%d" % index)
@@ -290,18 +294,17 @@ func _entry_module(entry: Dictionary, index: int) -> Control:
 	return m
 
 
-## DS2: an event's icon on the goods' cream tile under the icon well's frame.
+## DS2: an event's icon on the goods' cream tile, in a stitched band of tan leather (the court's icon frame).
 func _ds2_icon(kind: String) -> Control:
 	var px := float(Metrics.GOOD_ICON)
 	var good := "power" if kind == "power" else ("coal" if kind == "coal_banned" else "")
 	var holder: Control
 	if good != "":
-		holder = Parts.good_in_well(str(Catalog.get_good_by_internal_name(good).get("id", "")), -1, "")
+		holder = UIHelpers.make_plain_good_icon(str(Catalog.get_good_by_internal_name(good).get("id", "")), good, int(px))
 	else:
 		holder = Control.new()
 		holder.custom_minimum_size = Vector2(px, px)
 		holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		holder.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		var tile := Panel.new()
 		var paper := StyleBoxFlat.new()
 		paper.bg_color = UIHelpers.PILL_PAPER
@@ -324,13 +327,16 @@ func _ds2_icon(kind: String) -> Control:
 		# The gavel is drawn in white for the navy menu. On the cream tile it is printed in the keys' navy.
 		art.self_modulate = DS2_INK
 		holder.add_child(art)
-		var frame := Control.new()
-		frame.set_anchors_preset(Control.PRESET_FULL_RECT)
-		frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		frame.draw.connect(func() -> void:
-			Nine.paint(frame, Parts.WELL, Rect2(Vector2.ZERO, frame.size).grow(Parts.WELL_REACH), Parts.WELL_CORNER))
-		frame.resized.connect(frame.queue_redraw)
-		holder.add_child(frame)
+	holder.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var frame := Control.new()
+	frame.name = "StitchedFrame"
+	frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	frame.draw.connect(func() -> void:
+		frame.draw_texture_rect(COURT_ICON_FRAME, Rect2(Vector2.ZERO, frame.size).grow((ICON_FRAME_REACH + ICON_FRAME_MARGIN) / CAPTURE_SCALE), false))
+	frame.resized.connect(frame.queue_redraw)
+	holder.add_child(frame)
 	if kind == "coal_banned":
 		var cross := Control.new()
 		cross.name = "Cross"

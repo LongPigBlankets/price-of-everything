@@ -2255,5 +2255,14 @@
   ],
   "margin": 8,
   "corner": 14
+ },
+ "court_icon_frame": {
+  "size": [
+   177,
+   177
+  ],
+  "margin": 10,
+  "tile": 135,
+  "reach": 11
  }
 }

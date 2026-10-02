@@ -7023,7 +7023,8 @@ async function exportLayers() {
   // The Politics courtroom, in layout px: the wall at the panel's size (640 x 720 logical), the rail across it inside
   // the frame, an event's panel near its drawn width, the turn's brass plate.
   const COURT = { BACKING: { W: 1200, H: 1350, M: 24, frame: 30 }, RAIL: { W: 1136, H: 112, M: 18, top: 22, foot: 18, pitch: 40 },
-    PANEL: { W: 1060, H: 200, M: 16, r: 12, stud: 19, corner: 34 }, PLATE: { W: 150, H: 44, M: 8, r: 5, corner: 14 } };
+    PANEL: { W: 1060, H: 200, M: 16, r: 12, stud: 19, corner: 34 }, PLATE: { W: 150, H: 44, M: 8, r: 5, corner: 14 },
+    ICON: { tile: 135, S: 157, hole: 129, M: 10, r: 16 } };
   const BRIEF_BOARD = { W: 920, H: 1200, M: 16, r: 18, foot: 60 };
   const BRIEF_CLIP = { W: 360, H: 124, M: 20, jaw: [300, 58], roll: 262 };
   const BRIEF_WINDOW = { W: 236, H: 96, M: 8, rim: 7, r: 5 };
@@ -7462,6 +7463,14 @@ async function exportLayers() {
       g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.6));
       await post('court_panel', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
       layout.court_panel = { size: [W + 2 * M, H + 2 * M], margin: M, corner: COURT.PANEL.corner };
+    }
+    { // an icon's frame: a band of tan leather round the cream tile, stitched along its middle
+      const { S, hole, M, r } = COURT.ICON, g = new THREE.Group(), K = peopleKit();
+      const ring = rrShape(S, S, r); ring.holes.push(rr(new THREE.Path(), hole, hole, r - 5));
+      put(g, new THREE.Mesh(extrude(ring, 2, 1.6, 1.3, 4), [K.leather(S, S, '#7a4b2c'), new THREE.MeshStandardMaterial({ color: 0x3a2112, roughness: 0.7 })]), M + S / 2, M + S / 2);
+      g.add(shadowCatcher(S + 2 * M, S + 2 * M, S / 2 + M, S / 2 + M, 0.05, 0.6));
+      await post('court_icon_frame', stage([0, 0, S + 2 * M, S + 2 * M], [g]).grab());
+      layout.court_icon_frame = { size: [S + 2 * M, S + 2 * M], margin: M, tile: COURT.ICON.tile, reach: (S - COURT.ICON.tile) / 2 };
     }
     { // the turn's plate: brass, a pin at each end
       const { W, H, M, r } = COURT.PLATE, g = new THREE.Group();
