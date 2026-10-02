@@ -481,7 +481,8 @@ static func build(terrain: Object, graph: Dictionary, rivers_by_tile: Dictionary
 			hop["way"] = wkey
 			if not ways.has(wkey):
 				ways[wkey] = {"a": mini_str(a, b), "b": maxi_str(a, b), "mode": mode,
-					"good": str(lane["good"]) if piped else "", "pair": pair, "key": wkey}
+					"good": str(lane["good"]) if piped else "", "pair": pair, "key": wkey,
+					"reverse": a != mini_str(a, b)}
 				(ways_by_pair.get_or_add(pair, []) as Array).append(wkey)
 	for pair in ways_by_pair:
 		var keys: Array = ways_by_pair[pair]
@@ -502,17 +503,19 @@ static func build(terrain: Object, graph: Dictionary, rivers_by_tile: Dictionary
 		if (ta["center"] as Vector2).distance_to(tb["center"]) > ADJACENT_REACH:
 			w["mid"] = null
 			lines.append({"mode": str(w["mode"]), "good": str(w["good"]), "kind": "way",
+				"reverse": bool(w["reverse"]),
 				"pts": [_pt(ta[node], str(w["a"])), _pt(tb[node], str(w["b"]))]})
 			continue
 		var mid := crossing(ta["center"], tb["center"], float(w["lane"]), true)
 		w["mid"] = mid
 		lines.append({"mode": str(w["mode"]), "good": str(w["good"]), "kind": "way",
+			"reverse": bool(w["reverse"]),
 			"pts": [_pt(ta[node], str(w["a"])), _pt(mid, str(w["a"]), true),
 				_pt(mid, str(w["b"]), true), _pt(tb[node], str(w["b"]))]})
 
 	# A building's own run to its tile's warehouse: a pipe for a fluid on a piped tile, a drive
 	# for everything else. One per building per good for pipes, one drive per building.
-	var feed_line := func(iid: String, tile: String, good: String) -> Array:
+	var feed_line := func(iid: String, tile: String, good: String, toward_thing: bool = false) -> Array:
 		if not tiles.has(tile) or not pos_of.has(iid):
 			return []
 		var t: Dictionary = tiles[tile]
@@ -529,8 +532,9 @@ static func build(terrain: Object, graph: Dictionary, rivers_by_tile: Dictionary
 		var lkey := "%s|%s|%s" % [iid, mode, good if piped else ""]
 		if not seen_line.has(lkey):
 			seen_line[lkey] = true
+			# `reverse` says what the line carries runs against the order of its points.
 			lines.append({"mode": mode, "good": good if piped else "", "kind": "feed", "pts": pts,
-				"ends": [true, false] if piped else [false, false]})
+				"reverse": toward_thing})
 		return [mode, pts]
 	var seen_feed: Dictionary = {}
 	var add_feed := func(iid: String, tile: String, good: String, out: bool, kind: String) -> void:
@@ -538,7 +542,7 @@ static func build(terrain: Object, graph: Dictionary, rivers_by_tile: Dictionary
 		if seen_feed.has(fkey):
 			return
 		seen_feed[fkey] = true
-		var made: Array = feed_line.call(iid, tile, good)
+		var made: Array = feed_line.call(iid, tile, good, not out)
 		if made.is_empty():
 			return
 		var pts: Array = (made[1] as Array).duplicate()
@@ -596,7 +600,7 @@ static func build(terrain: Object, graph: Dictionary, rivers_by_tile: Dictionary
 		if to_port:
 			var piped_last := PIPE_MODES.has(last_mode)
 			if piped_last:
-				var made2: Array = feed_line.call("port:" + to_tile, to_tile, good)
+				var made2: Array = feed_line.call("port:" + to_tile, to_tile, good, true)
 				if not made2.is_empty():
 					pts.append((made2[1] as Array)[0])
 			else:

@@ -606,3 +606,49 @@ func _test_empire_board_model() -> void:
 		and Model.tile_height("hill") > Model.tile_height("rural")
 		and Model.tile_height("rural") > Model.tile_height("sea"),
 		"board: mountains stand over hills, hills over lowland, land over sea")
+
+
+## The supply chain board's pipework: routes snapped onto twelve directions so baked pieces fit.
+func _test_empire_board_pipes() -> void:
+	var Pipes := preload("res://scripts/empire_board_pipes.gd")
+	var v := Vector2(140.0, -55.0)
+	var parts: Array = Pipes.split(v)
+	var back: Vector2 = Pipes.dir_of(parts[0]) * float(parts[1]) + Pipes.dir_of(parts[2]) * float(parts[3])
+	_check(back.distance_to(v) < 0.01 and float(parts[1]) >= 0.0 and float(parts[3]) >= 0.0,
+		"pipes: a vector splits into the two grid directions either side of it")
+	_check(Pipes.turn(parts[0], parts[2]) == 1, "pipes: those two directions are one step, 30 degrees, apart")
+	_check(Pipes.k_of(Pipes.dir_of(7)) == 7, "pipes: a direction and its index round-trip")
+	_check(Pipes.bend_name(2, 5) == Pipes.bend_name(11, 8),
+		"pipes: a bend walked backwards is the same baked piece")
+	_check(Pipes.bend_name(2, 5) != Pipes.bend_name(5, 2), "pipes: the opposite bend is a different piece")
+	# A run that has to cross a tile edge lands exactly on the edge's line, and every leg lies
+	# on the grid and is long enough to carry its bends.
+	var edge := Vector2(200.0, 120.0)
+	var normal := Vector2(405.0, 240.0).normalized()
+	var legs: Array = Pipes.plan([
+		{"p": Vector2(10.0, -30.0), "base": 34.0, "edge": false},
+		{"p": edge, "base": 34.0, "edge": true, "normal": normal},
+		{"p": edge, "base": 66.0, "edge": true, "normal": -normal},
+		{"p": Vector2(420.0, 300.0), "base": 66.0, "edge": false},
+	])
+	var on_grid := true
+	var crossed := false
+	var joined := true
+	for i in range(legs.size()):
+		var leg: Dictionary = legs[i]
+		var d: Vector2 = ((leg["b"] as Vector2) - (leg["a"] as Vector2)).normalized()
+		on_grid = on_grid and d.distance_to(Pipes.dir_of(int(leg["k"]))) < 0.001
+		if i > 0:
+			joined = joined and (legs[i - 1]["b"] as Vector2).distance_to(leg["a"]) < 0.001
+			if not is_equal_approx(float(legs[i - 1]["base"]), float(leg["base"])):
+				crossed = absf(((leg["a"] as Vector2) - edge).dot(normal)) < 0.01 \
+					and int(legs[i - 1]["k"]) == int(leg["k"])
+	_check(legs.size() >= 2 and on_grid, "pipes: every planned leg runs along a grid direction")
+	_check(joined, "pipes: the legs join end to end")
+	_check(crossed, "pipes: the step between tiles stands on the tile edge, on a straight run")
+	_check((legs[legs.size() - 1]["b"] as Vector2).distance_to(Vector2(420.0, 300.0)) <= Pipes.MIN_LEG,
+		"pipes: the run ends within a short leg of where it was asked to")
+	var hit: Array = Pipes.road_spans(Vector2(0.0, 0.0), Vector2(100.0, 0.0),
+		[{"a": Vector2(50.0, -40.0), "b": Vector2(50.0, 40.0), "half": 8.0}])
+	_check(hit.size() == 1 and float(hit[0][0]) < 42.0 and float(hit[0][1]) > 58.0,
+		"pipes: a road across a leg gives a span wider than the road")
