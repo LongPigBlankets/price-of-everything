@@ -64,6 +64,22 @@ func _ready() -> void:
 		" flows=", (model.get("flows", []) as Array).size())
 	for l in model.get("lanes", []):
 		print("  lane ", l["kind"], " ", l["good"], " ", l["from"], " -> ", l["to"], "  from ", l["sources"], " to ", l["dests"], "  live ", (l["live"] as Array).size(), "  hops ", l["hops"])
+	for tid in ["tile_10_10", "tile_9_10"]:
+		var tc: Vector2 = model["tiles"][tid]["center"]
+		print("DUMP ", tid, " hub ", (model["tiles"][tid]["hub"] as Vector2) - tc, " manifold ", model["tiles"][tid]["manifold"])
+		for st in model["standing"]:
+			if str(st["tile"]) == tid:
+				print("DUMP   ", st["kind"], " ", st["iid"], " ", (st["pos"] as Vector2) - tc)
+		for l in model["lines"]:
+			var row: Array = []
+			for n in l["pts"]:
+				if str(n["tile"]) == tid:
+					row.append(((n["p"] as Vector2) - tc).round())
+			if not row.is_empty():
+				print("DUMP   line ", l["mode"], " ", l.get("good", ""), " ", l.get("kind", ""), " ", row)
+		for r in model["roads"]:
+			if str(r["tile"]) == tid:
+				print("DUMP   road ", r["kind"], " ", ((r["a"] as Vector2) - tc).round(), ((r["b"] as Vector2) - tc).round())
 	_shot(dir + "board.png")
 	# Close on the busy tile: every kind of infrastructure, the pipes and their signs.
 	var busy: Rect2 = board.call("_tile_rect", BUSY_TILE)
@@ -72,6 +88,11 @@ func _ready() -> void:
 	board.call("_view_changed")
 	await _settle(140)
 	_shot(dir + "board_tile.png")
+	var pit: Rect2 = board.call("_tile_rect", "tile_10_11")
+	board.set("_offset", board.size * 0.5 - pit.get_center() * 1.5 - Vector2(0.0, 60.0))
+	board.call("_view_changed")
+	await _settle(140)
+	_shot(dir + "board_mine.png")
 	board.call("fit_view")
 	board.call("_zoom_at", board.size * 0.5, 2.2)
 	await _settle(90)

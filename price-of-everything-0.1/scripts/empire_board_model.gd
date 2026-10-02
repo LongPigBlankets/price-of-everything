@@ -63,7 +63,7 @@ const HOMES_PER_TILE := 3
 const WET_COST := 1.0e7
 ## How close a river may come to a pad's centre, beyond the pad's own half-width.
 const RIVER_MARGIN := 10.0
-## A pipe crosses a tile edge this far along it from the road.
+## A pipe crosses a tile edge this far along it beyond the railway.
 const PIPE_EDGE_GAP := 26.0
 const PIPE_MODES := ["pipes", "reinf_pipes"]
 ## Neighbouring tile centres are 471 or 480 apart; anything further is not a neighbour.
@@ -704,7 +704,10 @@ static func _pipe_way(ta: Dictionary, tb: Dictionary) -> Array:
 	if absf(off.x) < 1.0:
 		cross = ca + Vector2(Streets.PIPE_TRUNK_X, out_rel.y)
 	else:
-		cross = ca + out_rel + off.normalized().orthogonal() * PIPE_EDGE_GAP
+		# Along the edge the road is in the middle and the railway to one side of it; the pipe
+		# crosses beyond the railway, the same gap again.
+		var rail: Vector2 = Rails.exit_point(off)
+		cross = ca + rail + (rail - out_rel).normalized() * PIPE_EDGE_GAP
 	var pts: Array = []
 	for end in [[ta, false], [tb, true]]:
 		var tile: Dictionary = end[0]

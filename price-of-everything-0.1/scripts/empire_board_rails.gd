@@ -14,9 +14,9 @@ extends RefCounted
 
 const Streets := preload("res://scripts/empire_board_streets.gd")
 
-const LINE_Y := 91.0
-const CROSS_X := -44.0
-const FRONT_X := 165.7           # where the front line turns off toward a neighbour
+const LINE_Y := 97.0
+const CROSS_X := -47.0
+const FRONT_X := 164.0           # where the front line turns off toward a neighbour
 const HALF := 5.5                # half the ballast's width
 const SIN60 := 0.8660254
 const TILE_STEP := Vector2(405.0, 240.0)

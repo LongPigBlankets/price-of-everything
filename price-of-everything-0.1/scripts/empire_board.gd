@@ -140,18 +140,18 @@ const _SEA_PALE := Color(1.0, 0.93, 0.78)
 const _SEA_DEEP := Color(0.03, 0.06, 0.22)
 const _SEA_PALE_ALPHA := 0.26
 const _SEA_DEEP_ALPHA := 0.36
-const _SOOT := Color(0.055, 0.055, 0.065)
+const _SOOT := Color(0.072, 0.07, 0.072)
 const _WINDOW_DIR := "res://assets/fx/windows/"
 const _WINDOW_LIGHT := Color(1.0, 0.90, 0.66)     # amber-white
-const _FOG_PER_WORKS := 18
+const _FOG_PER_WORKS := 26
 const _FOG_ARMS := 4
 const _FOG_WIND := Vector2(-0.4, -1.0)   # in plan: the mist leans north, the way the smoke does
-const _FOG_WORKS_REACH := 95.0       # how far a dirty works' mist spreads round it
-const _FOG_WORKS_ALPHA := 0.36
-const _FOG_PER_TILE := 90            # wisps tried for a tile's pall and its spill
-const _FOG_TILE_ALPHA := 0.44
+const _FOG_WORKS_REACH := 142.0      # how far a dirty works' mist spreads round it
+const _FOG_WORKS_ALPHA := 0.28
+const _FOG_PER_TILE := 130           # wisps tried for a tile's pall and its spill
+const _FOG_TILE_ALPHA := 0.34
 const _SMOG_INSET := 0.10            # the pall is full to this share of a tile inside its edge
-const _SMOG_SPILL := 0.25            # and gone this share of a tile into a clean neighbour
+const _SMOG_SPILL := 0.375           # and gone this share of a tile into a clean neighbour
 const _TILE_SPAN := 480.0
 const _PUFFS := 7
 const _PUFF_SECS := 7.0
@@ -161,6 +161,7 @@ const _TREE_HEIGHT := {"large": 30.0, "small": 22.0, "fir": 32.0}
 const _ROADSIDE_GAP := 34.0
 const _ROADSIDE_KEEP := 0.55
 const _TREE_DIR := "res://assets/iso/trees/"
+const _MINE_DIR := "res://assets/iso/mine/"
 
 ## The zooms a tile's picture is baked at. The board zooms smoothly; a tile is drawn from the
 ## bake at or just above the present zoom, so it is only ever reduced, never enlarged, and by
@@ -1110,6 +1111,15 @@ func _build_standing() -> void:
 				front.y - used.end.y * k)
 			d["tex_rect"] = Rect2(origin, Vector2(tex.get_width(), tex.get_height()) * k)
 			d["rect"] = Rect2(origin + used.position * k, used.size * k)
+			# A mine is a hole in the board's own ground: its sprite without the block of earth
+			# it is cut into, set down by that block's height so the pit's rim is at ground level.
+			var flush: Texture2D = _mine_flush(str(d.get("internal_name", "")), int(d["level"]))
+			if flush != null:
+				var sink := float(_mine_drop.get(str(clampi(int(d["level"]), 1, 3)), 0.0)) \
+					* float(tex.get_width()) / float(_mine_frame) * k
+				d["sprite"] = flush
+				d["sunk"] = true
+				d["tex_rect"] = Rect2(origin + Vector2(0.0, sink), Vector2(tex.get_width(), tex.get_height()) * k)
 			# Its windows and fires, lit where the air on its tile is dirty.
 			var tile_d: Dictionary = (_model["tiles"] as Dictionary).get(d["tile"], {})
 			if int(tile_d.get("polluters", 0)) > 0 and str(d["kind"]) != "pylon":
@@ -1142,6 +1152,27 @@ func _build_standing() -> void:
 		_standing.append(d)
 	_standing.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return float(a["depth"]) < float(b["depth"]))
+
+
+static var _mine_tex: Dictionary = {}
+static var _mine_drop: Dictionary = {}
+static var _mine_frame := 800
+
+
+## The ground-level picture of a mine at this level, or null for anything that is not a mine.
+static func _mine_flush(internal_name: String, level: int) -> Texture2D:
+	if internal_name != "mine":
+		return null
+	if _mine_drop.is_empty():
+		var meta: Variant = JSON.parse_string(FileAccess.get_file_as_string(_MINE_DIR + "mine_flush.json"))
+		if meta is Dictionary:
+			_mine_drop = (meta as Dictionary).get("drop", {})
+			_mine_frame = int((meta as Dictionary).get("frame", 800))
+	var lv := clampi(level, 1, 3)
+	if not _mine_tex.has(lv):
+		var path := "%smine_flush_lvl%d.png" % [_MINE_DIR, lv]
+		_mine_tex[lv] = load(path) if ResourceLoader.exists(path) else null
+	return _mine_tex[lv] if not _mine_drop.is_empty() else null
 
 
 func _build_lines() -> void:
@@ -2004,7 +2035,7 @@ func _draw_tile(ci: CanvasItem, tile: String, zoom: float) -> void:
 	# Shadows fall north-west, away from the sun: laid on the ground before anything stands.
 	for thing in parts.get("things", []):
 		var ref: Dictionary = thing["ref"]
-		if str(thing["what"]) == "standing" and str(ref["kind"]) != "pylon":
+		if str(thing["what"]) == "standing" and str(ref["kind"]) != "pylon" and not bool(ref.get("sunk", false)):
 			var half := float(ref["side"]) * 0.5
 			var throw := _SHADOW_NW * float(ref["side"]) * _SHADOW_REACH
 			var pos: Vector2 = ref["pos"]
@@ -2031,8 +2062,6 @@ func _draw_tile(ci: CanvasItem, tile: String, zoom: float) -> void:
 				_draw_standing(ci, thing["ref"])
 			"item":
 				_draw_pipe_item(ci, thing["ref"])
-			"sign":
-				_draw_sign(ci, thing["ref"], zoom)
 
 
 ## The grade over one tile's picture: a warm key and a cool fill, as on the key art's plate.
@@ -2068,8 +2097,6 @@ func _sort_parts() -> void:
 		if not item.has("tile"):
 			item["tile"] = _tile_of(item.get("plan", Vector2.ZERO))
 		_part(item, "things", {"what": "item", "depth": float(item["depth"]), "ref": item})
-	for sg in _signs:
-		_part(sg, "things", {"what": "sign", "depth": float(sg["depth"]), "ref": sg})
 	for tid in _tile_order:
 		var parts: Dictionary = _tile_parts[tid]
 		(parts["things"] as Array).sort_custom(func(x: Dictionary, y: Dictionary) -> bool:
@@ -2093,8 +2120,6 @@ func _sort_parts() -> void:
 					made.append([ref["iid"], ref["level"], ref["pos"], ref["side"], ref.get("tint"), ref.get("sprite")])
 				"item":
 					made.append([ref["kind"], ref.get("name", ""), ref.get("at", ref.get("rect", ref.get("foot", ""))), ref.get("points", "")])
-				"sign":
-					made.append([ref["foot"], ref["icons"]])
 		_tile_sig[tid] = hash(str(made))
 	# Bakes of tiles that have gone or changed are let go.
 	for key in _bakes.keys():
@@ -2264,12 +2289,6 @@ func _draw_standing(ci: CanvasItem, s: Dictionary) -> void:
 	var pos: Vector2 = s["pos"]
 	var h := float(s["h"])
 	var side := float(s["side"])
-	var half := float(s.get("pad", side * 1.12)) * 0.5
-	if str(s["kind"]) == "house":
-		# A home stands on the grass, not on a works' concrete.
-		if s.get("sprite") != null:
-			ci.draw_texture_rect(s["sprite"], s["tex_rect"], false, s.get("tint", Color.WHITE))
-		return
 	if str(s["kind"]) == "pylon":
 		if s.get("sprite") != null:
 			ci.draw_texture_rect(s["sprite"], s["tex_rect"], false, s.get("tint", Color.WHITE))
@@ -2281,12 +2300,6 @@ func _draw_standing(ci: CanvasItem, s: Dictionary) -> void:
 				var y: float = r.position.y + r.size.y * float(arm)
 				ci.draw_line(Vector2(r.position.x, y), Vector2(r.end.x, y), _PIPE_EDGE, 2.2)
 		return
-	var pad := PackedVector2Array([
-		iso(pos + Vector2(-half, -half), h), iso(pos + Vector2(half, -half), h),
-		iso(pos + Vector2(half, half), h), iso(pos + Vector2(-half, half), h)])
-	ci.draw_colored_polygon(pad, _PAD)
-	pad.append(pad[0])
-	ci.draw_polyline(pad, _PAD_EDGE, 1.2)
 	var tex: Texture2D = s.get("sprite")
 	if tex != null:
 		ci.draw_texture_rect(tex, s["tex_rect"], false, s.get("tint", Color.WHITE))
@@ -2451,20 +2464,25 @@ func _draw_pipe_item(ci: CanvasItem, item: Dictionary) -> void:
 
 
 ## A small sign on a post in front of a pipe, showing what it carries.
-func _draw_sign(ci: CanvasItem, s: Dictionary, zoom: float) -> void:
-	var foot: Vector2 = s["foot"]
-	var top: Vector2 = s["top"]
-	var icons: Array = s["icons"]
-	var plate := maxf(_SIGN_PLATE, _SIGN_MIN_PX / maxf(zoom, 0.001))
-	ci.draw_line(foot, top, _PIPE_EDGE, maxf(1.6, plate * 0.1))
-	# One plate for everything the pipe carries here, the goods side by side on it.
-	var box := Rect2(top - Vector2(plate * 0.5 * float(icons.size()), plate * 0.9), Vector2(plate * float(icons.size()), plate))
-	ci.draw_rect(box.grow(plate * 0.09), _PIPE_EDGE)
-	ci.draw_rect(box, _CREAM)
+## A pipe's sign, on the live layer in screen space: a post and one plate for everything the
+## pipe carries there, the goods side by side on it. `box` is where the plate has room.
+func _draw_sign(layer: Control, foot: Vector2, box: Rect2, icons: Array) -> void:
+	var plate := box.size.y
+	layer.draw_line(foot, Vector2(foot.x, box.end.y), _PIPE_EDGE, maxf(1.6, plate * 0.1))
+	layer.draw_rect(box.grow(plate * 0.09), _PIPE_EDGE)
+	layer.draw_rect(box, _CREAM)
 	for i in range(icons.size()):
 		var cell := Rect2(box.position + Vector2(plate * float(i), 0.0), Vector2(plate, plate))
 		if icons[i] != null:
-			ci.draw_texture_rect(icons[i], cell.grow(-plate * 0.08), false)
+			layer.draw_texture_rect(icons[i], cell.grow(-plate * 0.08), false)
+
+
+## Does this badge's box overlap one already placed?
+static func _taken(placed: Array, box: Rect2) -> bool:
+	for r in placed:
+		if (r as Rect2).intersects(box):
+			return true
+	return false
 
 
 ## A wide line drawn segment by segment with round joints. draw_polyline miters its joints,
@@ -2570,34 +2588,70 @@ func _draw_tokens(layer: Control) -> void:
 	_draw_fog(layer, view)
 	_draw_lights(layer, view)
 	_draw_smoke(layer, view)
-	# Power is shown on the pylons, not as something travelling.
+	# Every icon of a good is drawn here, over the light and the mist, and none over another.
+	# Shipments on their way are placed first, then the pylons' power, then the pipes' signs;
+	# the tokens that only show a route's traffic give way to all of them.
+	var placed: Array = []
 	var tiles: Dictionary = _model.get("tiles", {})
+	for f in _flows:
+		if (f["live"] as Array).is_empty() or str(f["style"]) != "goods":
+			continue
+		var total := float(f["total"])
+		for sh in f["live"]:
+			var duration := float(sh["duration"])
+			var done := duration - float(sh["remaining"])
+			var creep := 0.0 if bool(sh["waiting"]) else smoothstep(0.0, 1.0, fmod(_clock / _LIVE_CREEP_SECS, 1.0))
+			var at := _along(f, clampf((done + creep) / duration, 0.0, 1.0) * total) * _zoom + _offset
+			if not view.has_point(at):
+				continue
+			var big := box * 1.12
+			var text := str(int(sh["qty"]))
+			var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+			# Two shipments at one place on a route stand side by side.
+			var room := Rect2(at - Vector2(big, big) * 0.5, Vector2(big, big + 17.0)).grow(1.5)
+			var tries := 0
+			while _taken(placed, room) and tries < 6:
+				room.position.x += big + 3.0
+				at.x += big + 3.0
+				tries += 1
+			placed.append(room)
+			_token(layer, at, big, f["icon"])
+			var pill := Rect2(at + Vector2(-w * 0.5 - 5.0, box * 0.5), Vector2(w + 10.0, 16.0))
+			layer.draw_rect(pill, _NAVY)
+			layer.draw_string(font, pill.position + Vector2(5.0, 12.0), text,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DS.PALETTE.TEXT)
+	# Power is shown on the pylons, not as something travelling.
 	for s in _standing:
 		if str(s["kind"]) != "pylon":
 			continue
 		var icon: Texture2D = (tiles.get(s["tile"], {}) as Dictionary).get("power_icon")
 		var r: Rect2 = s["rect"]
 		var at := Vector2(r.get_center().x, r.position.y + r.size.y * 0.52) * _zoom + _offset
-		if icon != null and view.has_point(at):
+		var room := Rect2(at - Vector2(box, box) * 0.45, Vector2(box, box) * 0.9)
+		if icon != null and view.has_point(at) and not _taken(placed, room):
+			placed.append(room)
 			_token(layer, at, box * 0.9, icon)
+	# A sign whose place is taken stands on a taller post.
+	var plate := maxf(_SIGN_PLATE * _zoom, _SIGN_MIN_PX)
+	for sg in _signs:
+		var foot: Vector2 = (sg["foot"] as Vector2) * _zoom + _offset
+		if not view.has_point(foot):
+			continue
+		var icons: Array = sg["icons"]
+		var top: Vector2 = (sg["top"] as Vector2) * _zoom + _offset
+		var room := Rect2(top - Vector2(plate * 0.5 * float(icons.size()), plate * 0.9), Vector2(plate * float(icons.size()), plate))
+		var lifts := 0
+		while _taken(placed, room.grow(plate * 0.12)) and lifts < 5:
+			room.position.y -= plate * 1.2
+			lifts += 1
+		if _taken(placed, room.grow(plate * 0.12)):
+			continue
+		placed.append(room.grow(plate * 0.12))
+		_draw_sign(layer, foot, room, icons)
 	for f in _flows:
 		var total := float(f["total"])
 		var style := str(f["style"])
-		var live: Array = f["live"]
-		if not live.is_empty() and style == "goods":
-			for sh in live:
-				var duration := float(sh["duration"])
-				var done := duration - float(sh["remaining"])
-				var creep := 0.0 if bool(sh["waiting"]) else smoothstep(0.0, 1.0, fmod(_clock / _LIVE_CREEP_SECS, 1.0))
-				var at := _along(f, clampf((done + creep) / duration, 0.0, 1.0) * total) * _zoom + _offset
-				if view.has_point(at):
-					_token(layer, at, box * 1.12, f["icon"])
-					var text := str(int(sh["qty"]))
-					var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-					var pill := Rect2(at + Vector2(-w * 0.5 - 5.0, box * 0.5), Vector2(w + 10.0, 16.0))
-					layer.draw_rect(pill, _NAVY)
-					layer.draw_string(font, pill.position + Vector2(5.0, 12.0), text,
-						HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DS.PALETTE.TEXT)
+		if not (f["live"] as Array).is_empty() and style == "goods":
 			continue
 		var d := fmod(_clock * _TOKEN_SPEED + float(f["phase"]), _TOKEN_SPACING)
 		if style != "goods":
@@ -2605,10 +2659,12 @@ func _draw_tokens(layer: Control) -> void:
 		while d < total:
 			var p := _along(f, d) * _zoom + _offset
 			if view.has_point(p):
-				match style:
-					"power":
-						layer.draw_circle(p, clampf(4.0 * _zoom + 1.5, 2.0, 5.0), _CABLE.lightened(0.4))
-					_:
+				if style == "power":
+					layer.draw_circle(p, clampf(4.0 * _zoom + 1.5, 2.0, 5.0), _CABLE.lightened(0.4))
+				else:
+					var room := Rect2(p - Vector2(box, box) * 0.5, Vector2(box, box))
+					if not _taken(placed, room):
+						placed.append(room)
 						_token(layer, p, box, f["icon"])
 			d += _TOKEN_SPACING if style == "goods" else _PULSE_SPACING
 	# Cables hang between tiles, so they belong to no one tile's picture.

@@ -615,15 +615,22 @@ func _test_empire_board_model() -> void:
 	for id in Streets.path(west, east):
 		front = front and Streets.node_pos(str(id)).y > 0.0
 	_check(front, "board: traffic along the front of a tile stays on the front street")
-	# A river across the front street sends that traffic round the back instead of over it.
-	var a_id: String = Streets.nid(Vector2(0.0, Streets.STREET_Y))
-	var b_id: String = Streets.nid(Vector2(Streets.AVENUE_X, Streets.STREET_Y))
-	var dammed: Array = Streets.path(west, east, {a_id + "|" + b_id: Streets.RIVER_COST}, "test-river")
-	var crosses := false
-	for n in range(1, dammed.size()):
-		crosses = crosses or (str(dammed[n - 1]) == a_id and str(dammed[n]) == b_id) \
-			or (str(dammed[n - 1]) == b_id and str(dammed[n]) == a_id)
-	_check(dammed.size() >= 2 and not crosses, "board: a road goes round rather than bridge a river it need not cross")
+	# One avenue joins the two streets, right of the warehouse. The gap left of it is the
+	# pipes' and the railway's, and no road runs there.
+	var back_west: String = Streets.nid(Streets.exit_point(Vector2(-405.0, -240.0)))
+	var by_avenue := false
+	var in_gap := false
+	var across: Array = Streets.path(back_west, west)
+	for n in range(1, across.size()):
+		var p0: Vector2 = Streets.node_pos(str(across[n - 1]))
+		var p1: Vector2 = Streets.node_pos(str(across[n]))
+		if absf(p0.x - p1.x) < 0.5 and absf(p0.y) <= Streets.STREET_Y + 0.5 and absf(p1.y) <= Streets.STREET_Y + 0.5 \
+				and absf(p0.y - p1.y) > Streets.STREET_Y:
+			by_avenue = by_avenue or absf(p0.x - Streets.AVENUE_X) < 0.5
+			in_gap = in_gap or p0.x < 0.0
+	_check(by_avenue and not in_gap, "board: a road crosses between the streets by the one avenue, never by the pipes' gap")
+	_check(Streets.pipe_point(Vector2.ZERO).x == Streets.PIPE_TRUNK_X and Streets.pipe_point(Streets.SLOTS[1]).x == Streets.PIPE_TRUNK_X,
+		"board: a building beside the trunk takes its pipes straight off it")
 	_check(Streets.places(10).size() == 10 and Streets.places(11).size() == 40
 		and float(Streets.places(11)[0]["side"]) < Streets.SLOT_SIDE,
 		"board: an eleventh building splits the slots into quarters")
@@ -661,7 +668,7 @@ func _test_empire_board_rails() -> void:
 	_check(met, "rails: a track leaves a tile at the point its neighbour's track arrives")
 	_check(inside, "rails: a way from the warehouse's stop to any edge runs on the plan's directions")
 	_check(Rails.exit_point(Vector2(900.0, 0.0)) == Vector2.ZERO, "rails: no track to a tile that is not a neighbour")
-	_check(Rails.path(Vector2(-100.0, 91.0), Vector2(100.0, -91.0)).size() == 4,
+	_check(Rails.path(Vector2(-100.0, Rails.LINE_Y), Vector2(100.0, -Rails.LINE_Y)).size() == 4,
 		"rails: between the two lines a train takes the cross track")
 
 

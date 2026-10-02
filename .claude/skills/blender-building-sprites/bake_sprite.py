@@ -69,8 +69,10 @@ BUILDINGS = {
     # Not catalog buildings: housing the supply chain board stands on unused slots.
     "house":              _B("housing.py", "build_house", "BLDG_house"),
     "pylon":              _B("pylon_builder.py", "build_pylon", "BLDG_pylon", levels=(), out=(1,)),
-    # NOTE: `mine` ships three distinct sprites but has NO mine_builder.py in this checkout,
-    # so it cannot be re-baked. SKILL.md documents the builder; the file is missing.
+    "mine":               _B("mine_builder.py", "build_mine", "BLDG_mine"),
+    # The mine with its block of earth cut away, for the supply chain board. Baked by
+    # mine_flush.py, which needs the cut pass this renders; not installed as a sprite set.
+    "mine_flush":         _B("mine_builder.py", "build_mine_flush", "BLDG_mine"),
 }
 
 STYLIZE = dict(lit=0.86, dark=0.56, strength=0.22)
