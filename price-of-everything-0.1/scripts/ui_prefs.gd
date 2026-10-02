@@ -85,9 +85,9 @@ var use_tvp_v3: bool = true
 # The Building Ledger in DS2 (docs/building-ledger-ds2-plan.md). The default; the debug cheat `toggle ledger ds2`
 # switches back to the v2 ledger, exactly as it was. Session-only, never persisted.
 var use_ledger_ds2: bool = true
-# The Resources panel in DS2 (docs/resources-ds2-plan.md), the ledger's sibling. Off until the owner has
-# reviewed it; the debug cheat `toggle resources ds2` switches it on. Session-only, never persisted.
-var use_resources_ds2: bool = false
+# The Resources panel in DS2 (docs/resources-ds2-plan.md), the ledger's sibling. The default; the debug cheat
+# `toggle resources ds2` switches back to the v2 panel, exactly as it was. Session-only, never persisted.
+var use_resources_ds2: bool = true
 # The People panel in DS2 (docs/people-ds2-plan.md): the boardroom and the works. The default; the debug cheat
 # `toggle people ds2` switches back to today's panel, which is then exactly as it was. Session-only, never persisted.
 var use_people_ds2: bool = true

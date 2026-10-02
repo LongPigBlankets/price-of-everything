@@ -24,7 +24,7 @@ extends CanvasLayer
 ##   toggle tvp v3                    switch the tile view back to v2 (v3 is default), and again to return
 ##   toggle bdp v3                    switch building detail back to v2 (v3 is default), and again to return
 ##   toggle ledger ds2                switch the building ledger back to v2 (DS2 is default), and again to return
-##   toggle resources ds2             switch the Resources panel to its DS2 look (v2 is default), and again to return
+##   toggle resources ds2             switch the Resources panel back to v2 (DS2 is default), and again to return
 ##   toggle people ds2                switch the People panel back to v2 (DS2 is default), and again to return
 ##   toggle market ds2                switch the market panel back to v2 (DS2 is default), and again to return
 ##   toggle briefing ds2              switch the turn briefing to its DS2 look (in progress), and back
