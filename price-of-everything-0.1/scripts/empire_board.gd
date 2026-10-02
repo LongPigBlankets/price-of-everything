@@ -17,7 +17,7 @@ extends Control
 signal building_picked(iid: String)
 
 ## The last three parts of the key art plate's look, each switchable so they can be judged apart.
-static var plate_lamps := true       # street lamps, pools of light before the works, lit windows, bloom
+static var plate_lamps := true       # street lamps; and where the air is dirty, their light, pools before the works, bloom
 static var plate_sea := true         # open water pale toward the sun and deep away from it
 static var plate_town := true        # housing on free slots and cars on the streets
 
@@ -216,7 +216,6 @@ var _road_fits: Array = []                   # [{name, at, tint}] junction piece
 var _road_polys: Array = []                  # [{points, uvs, tint}] the straights, tile by tile
 var _pipes: Array = []                       # plain lines, drawn only when the pieces are not baked
 var _pipe_items: Array = []                  # baked pieces and run tiles, far to near
-var _pipe_lines: Array = []                  # [{pts, cum, total}] centrelines, in the flow's direction
 var _signs: Array = []                       # [{foot, top, icon, depth}] sorted far to near
 var _cables: Array = []                      # [PackedVector2Array board]
 var _flows: Array = []                       # [{pts, cum, total, icon, power, phase}]
@@ -353,7 +352,6 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 	_road_fits.clear()
 	_road_polys.clear()
 	_pipe_items.clear()
-	_pipe_lines.clear()
 	_signs.clear()
 	_cables.clear()
 	_flows.clear()
@@ -1099,13 +1097,11 @@ func _build_standing() -> void:
 			d["rect"] = Rect2(origin + used.position * k, used.size * k)
 			# Its windows and fires, lit where the air on its tile is dirty.
 			var tile_d: Dictionary = (_model["tiles"] as Dictionary).get(d["tile"], {})
-			if (plate_lamps or int(tile_d.get("polluters", 0)) > 0) and str(d["kind"]) != "pylon":
+			if int(tile_d.get("polluters", 0)) > 0 and str(d["kind"]) != "pylon":
 				var win: Texture2D = _window_mask(tex)
 				if win != null:
-					# In clean air the windows show brightest where the light is failing.
-					var lit := 1.0 if int(tile_d.get("polluters", 0)) > 0 else lerpf(0.95, 0.4, _light_at(d["at"]))
 					_lights.append({"tex": win, "rect": d["tex_rect"], "phase": float(_lights.size()) * 1.7,
-						"col": Color(_WINDOW_LIGHT.r, _WINDOW_LIGHT.g, _WINDOW_LIGHT.b, lit)})
+						"col": _WINDOW_LIGHT})
 				var fire: Texture2D = EmpireFx.light_mask_for(str(d.get("internal_name", "")),
 					EmpireFx.anchor_level(str(d.get("internal_name", "")), int(d["level"])))
 				if fire != null and str(d["kind"]) == "building":
@@ -1163,7 +1159,8 @@ func _build_lines() -> void:
 			var legs: Array = Pipes.plan(_pipe_waypoints(path, slots))
 			if legs.is_empty():
 				continue
-			var laid: Dictionary = Pipes.lay(legs, _road_plan, "s" if mode == "reinf_pipes" else "c")
+			var laid: Dictionary = Pipes.lay(legs, _road_plan, "s" if mode == "reinf_pipes" else "c", [true, true],
+				bool(l.get("reverse", false)))
 			for item in laid["items"]:
 				if str(item["kind"]) == "fit":
 					_pipe_items.append(item)
@@ -1172,7 +1169,6 @@ func _build_lines() -> void:
 				for poly in Pipes.kit().run_polys(item):
 					poly["kind"] = "run"
 					_pipe_items.append(poly)
-			_pipe_lines.append({"pts": laid["line"], "reverse": bool(l.get("reverse", false))})
 			sign_a = legs[0]["a"]
 			sign_b = legs[0]["b"]
 		else:
@@ -1180,7 +1176,6 @@ func _build_lines() -> void:
 			for node in path:
 				plain.append(iso(node["p"], float(tiles[str(node["tile"])]["height"]) + 4.0))
 			_pipes.append({"mode": mode, "pts": plain, "tile": str(path[0]["tile"])})
-			_pipe_lines.append({"pts": plain, "reverse": bool(l.get("reverse", false))})
 		var good := str(l.get("good", ""))
 		if good != "":
 			var at: Vector2 = sign_a.lerp(sign_b, clampf(22.0 / maxf(1.0, sign_a.distance_to(sign_b)), 0.0, 0.5))
@@ -1192,16 +1187,7 @@ func _build_lines() -> void:
 			_signs.append({"foot": iso(foot, gh), "top": iso(foot, gh + _SIGN_POST),
 				"icon": Model.GoodIcons.texture_for(good, Model._internal_name(good)),
 				"depth": foot.x + foot.y, "tile": str(path[0]["tile"])})
-	for pl in _pipe_lines:
-		var pts2: PackedVector2Array = pl["pts"]
-		if bool(pl["reverse"]):
-			pts2.reverse()
-		var cum2 := PackedFloat32Array([0.0])
-		for i in range(1, pts2.size()):
-			cum2.append(cum2[i - 1] + pts2[i].distance_to(pts2[i - 1]))
-		pl["pts"] = pts2
-		pl["cum"] = cum2
-		pl["total"] = cum2[cum2.size() - 1]
+
 
 	# Cables hang from a building to its tile's pylon and from pylon to pylon.
 	for l in _model.get("lines", []):
@@ -1314,8 +1300,9 @@ func _build_fog() -> void:
 
 
 ## Street lamps along the streets in use, a pool of light before each works, and the glow of
-## lit windows. The lamp posts are part of a tile's picture; the light itself is drawn live,
-## added to what is under it, and is strongest where the sun's light is failing.
+## lit windows. The posts stand on every tile and are part of its picture. The light is drawn
+## live, added to what is under it, and only on a tile whose air is dirty: it is daylight, and
+## lamps are lit where the smog has made it dark.
 func _build_lamps() -> void:
 	_glows.clear()
 	if not plate_lamps:
@@ -1344,12 +1331,16 @@ func _build_lamps() -> void:
 				continue
 			var foot := iso(p, h)
 			var head := iso(p - side * 3.0, h + _LAMP_HEIGHT)
-			_pipe_items.append({"kind": "lamp", "foot": foot, "head": head, "depth": p.x + p.y, "tile": tile})
+			var lit := int(tiles[tile].get("polluters", 0)) > 0
+			_pipe_items.append({"kind": "lamp", "foot": foot, "head": head, "depth": p.x + p.y, "tile": tile, "lit": lit})
+			if not lit:
+				continue
 			var dark := 1.0 - _light_at(foot)
 			_glows.append({"at": iso(p - side * (off * 0.7), h), "rx": 30.0, "ry": 17.0, "a": 0.20 + 0.34 * dark})
 			_glows.append({"at": head, "rx": 7.0, "ry": 7.0, "a": 0.55 + 0.35 * dark})
 	for s in _standing:
-		if not (str(s["kind"]) in ["building", "warehouse", "house", "port"]):
+		if not (str(s["kind"]) in ["building", "warehouse", "house", "port"]) \
+				or int(tiles[str(s["tile"])].get("polluters", 0)) <= 0:
 			continue
 		var dark := 1.0 - _light_at(s["at"])
 		var side_len := float(s["side"])
@@ -2163,7 +2154,7 @@ func _draw_pipe_item(ci: CanvasItem, item: Dictionary) -> void:
 		var head: Vector2 = item["head"]
 		ci.draw_line(foot, Vector2(foot.x, head.y), _INK, 1.3)
 		ci.draw_line(Vector2(foot.x, head.y), head, _INK, 1.3)
-		ci.draw_circle(head, 1.8, _LAMP_HEAD)
+		ci.draw_circle(head, 1.8, _LAMP_HEAD if bool(item.get("lit", false)) else _INK)
 		return
 	var kit: Atlas = item.get("atlas", Pipes.kit())
 	var tex: Texture2D = kit.texture()
@@ -2288,7 +2279,6 @@ func _draw_tokens(layer: Control) -> void:
 	var box := clampf(44.0 * _zoom + 10.0, 16.0, 40.0)
 	var view := Rect2(Vector2.ZERO, size).grow(box)
 	var font := get_theme_default_font()
-	_draw_pipe_flow(layer)
 	_draw_glints(layer, view)
 	_draw_cars(layer, view)
 	_draw_fog(layer, view)
@@ -2456,21 +2446,6 @@ func _draw_smoke(layer: Control, view: Rect2) -> void:
 			layer.draw_texture_rect(texs[(i + n) % texs.size()], Rect2(-half, -half, half * 2.0, half * 2.0), false,
 				Color(1.0, 1.0, 1.0, alpha))
 		layer.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-
-## What a pipe carries, as bright slugs running along the tube the way the fluid goes.
-func _draw_pipe_flow(layer: Control) -> void:
-	var view := Rect2(Vector2.ZERO, size).grow(8.0)
-	var width := clampf(3.2 * _zoom, 1.4, 4.0)
-	for pl in _pipe_lines:
-		var total := float(pl["total"])
-		var d := fmod(_clock * _TOKEN_SPEED * 1.3, _PULSE_SPACING)
-		while d < total:
-			var p := _along(pl, d) * _zoom + _offset
-			if view.has_point(p):
-				layer.draw_line(p, _along(pl, minf(total, d + 8.0)) * _zoom + _offset,
-					Color(1.0, 1.0, 1.0, 0.8), width)
-			d += _PULSE_SPACING
 
 
 func _along(f: Dictionary, d: float) -> Vector2:

@@ -184,10 +184,12 @@ static func road_spans(a: Vector2, b: Vector2, roads: Array) -> Array:
 
 
 ## Turn planned legs into pieces. `roads` is what the run has to bridge; `enter` says whether
-## each end goes into the ground. Returns {items, line}:
+## each end goes into the ground, and `against` that the contents flow against the order of
+## the legs, which turns the arrows on the straights round. Returns {items, line}:
 ##   items  [{kind: "run"|"vert"|"fit", ...}] each with `depth`, far to near
 ##   line   the run's centreline as board points, for what flows along it
-static func lay(legs: Array, roads: Array, set_id: String, enter: Array = [true, true]) -> Dictionary:
+static func lay(legs: Array, roads: Array, set_id: String, enter: Array = [true, true],
+		against: bool = false) -> Dictionary:
 	var items: Array = []
 	var line := PackedVector2Array()
 	if legs.is_empty():
@@ -286,7 +288,7 @@ static func lay(legs: Array, roads: Array, set_id: String, enter: Array = [true,
 			var s := float(mark[0])
 			var going_up: bool = mark[1]
 			var z0 := base + rest + (lift if up else 0.0)
-			_run(items, set_id, a + d * at, a + d * (s - riser), z0, k, up)
+			_run(items, set_id, a + d * at, a + d * (s - riser), z0, k, up, against)
 			_supports(items, a, d, at, s - riser, z0, k, up, roads)
 			var p := a + d * s
 			var low := base + rest
@@ -303,7 +305,7 @@ static func lay(legs: Array, roads: Array, set_id: String, enter: Array = [true,
 			line.append(iso(p, base + rest + (lift if up else 0.0)))
 			at = s + riser
 		var z := base + rest + (lift if up else 0.0)
-		_run(items, set_id, a + d * at, a + d * (length - tail), z, k, up)
+		_run(items, set_id, a + d * at, a + d * (length - tail), z, k, up, against)
 		_supports(items, a, d, at, length - tail, z, k, up, roads)
 		line.append(iso(leg["b"], z))
 		# The fitting at this leg's far end.
@@ -338,11 +340,15 @@ static func _fit(items: Array, name: String, p: Vector2, z: float) -> void:
 	items.append({"kind": "fit", "name": name, "at": iso(p, z), "depth": p.x + p.y + z * 0.02, "plan": p})
 
 
-static func _run(items: Array, set_id: String, a: Vector2, b: Vector2, z: float, k: int, up: bool) -> void:
+## A straight run. Its piece carries an arrow, so it is picked by the way the contents flow:
+## the run's own direction, or the opposite when they flow `against` it.
+static func _run(items: Array, set_id: String, a: Vector2, b: Vector2, z: float, k: int, up: bool,
+		against: bool) -> void:
 	if (b - a).dot(dir_of(k)) < 0.5:
 		return
 	var mid := (a + b) * 0.5
-	items.append({"kind": "run", "name": "%s_%s_%d" % [set_id, "raised" if up else "straight", posmod(k, 6)],
+	var flow := posmod(k + (6 if against else 0), 12)
+	items.append({"kind": "run", "name": "%s_%s_%d" % [set_id, "raised" if up else "straight", flow],
 		"a": iso(a, z), "b": iso(b, z), "step": iso(dir_of(posmod(k, 6)) * dim("tile")),
 		"depth": mid.x + mid.y + z * 0.02, "depth_a": a.x + a.y + z * 0.02, "depth_b": b.x + b.y + z * 0.02,
 		"plan_a": a, "plan_b": b})

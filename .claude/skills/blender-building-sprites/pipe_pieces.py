@@ -11,8 +11,11 @@ finite set of pieces covers every run. Direction index k is the Blender angle 30
 (Map y points down and Blender y up, so the game reads a map direction as k = -angle/30.)
 
 THE PIECES, per colour set (c = pipework, s = reinforced pipework):
-    straight_k   k 0..5    a run lying on the ground on sleepers, one sleeper per TILE length
-    raised_k     k 0..5    the same run in the air, no sleepers
+    straight_k   k 0..11   a run lying on the ground on sleepers, one sleeper per TILE length,
+                           with an off-white triangle on its top pointing the way k: the way
+                           its contents flow. A run is the same pipe either way round, so it
+                           is the arrow that makes twelve of these and not six.
+    raised_k     k 0..11   the same run in the air, no sleepers
     bend_i_j               a bend from travel direction i to travel direction j: 30, 60, 90
                            degrees either way. bend_i_j is the same object as bend_(j+6)_(i+6)
                            walked backwards, so only one of each pair is rendered.
@@ -31,6 +34,7 @@ import math
 import os
 import sys
 
+import bmesh
 import bpy
 import mathutils
 
@@ -53,6 +57,7 @@ DIMS = dict(
     raise_=17.0,       # a raised run's centreline stands this far above a ground run's
     tile=30.0,         # a straight's repeat length, and so the spacing of its sleepers
     support_w=4.8,
+    arrow_l=9.0, arrow_w=6.6,      # the flow marker on a straight: wider than the pipe is thick
 )
 LIGHT = mathutils.Vector((-0.30, -0.62, 0.72)).normalized()
 SETS = {
@@ -119,6 +124,12 @@ def banded(name, rgb):
 MATS = {s: dict(body=banded("pipe_body_" + s, v["body"]), flange=banded("pipe_flange_" + s, v["flange"]))
         for s, v in SETS.items()}
 CONCRETE = K.mat("slab")
+ARROW = bpy.data.materials.new("pipe_arrow")
+ARROW.use_nodes = True
+_bsdf = ARROW.node_tree.nodes.get("Principled BSDF")
+_bsdf.inputs["Base Color"].default_value = (0.78, 0.76, 0.68, 1.0)      # off-white
+_bsdf.inputs["Roughness"].default_value = 1.0
+_bsdf.inputs["Specular IOR Level"].default_value = 0.0
 STEEL = K.mat("darkmetal")
 
 
@@ -176,14 +187,43 @@ def arc(c0, d0, d1, radius, steps=10):
 
 
 def bands(name, along, s, centre, half):
-    """The hoops of reinforced pipework, three to a tile length, clear of the sleeper."""
+    """The hoops of reinforced pipework, two to a tile length, clear of the sleeper and of
+    the flow arrow."""
     if not SETS[s]["bands"]:
         return
     step = U(DIMS["tile"]) / 3.0
     n = int(half / step) + 1
     for i in range(-n, n):
+        if i % 3 == 1:
+            continue                               # the middle of each tile is the arrow's
         K.washer("%s_band%d" % (name, i), tuple(centre + along * (step * (i + 0.5))), tuple(along),
                  U(DIMS["r"]) - 0.01, U(DIMS["r"] + 0.9), U(1.0), MATS[s]["flange"])
+
+
+def arrows(d, c, half):
+    """The flow marker: a flat triangle lying on the pipe's top, pointing along d, one to a
+    tile length and midway between sleepers. Big for the pipe on purpose: it has to read at
+    the board's scale, where the pipe is a few pixels across."""
+    side = Z.cross(d)
+    step = U(DIMS["tile"])
+    top = c + Z * (U(DIMS["r"]) + 0.004)
+    length, width = U(DIMS["arrow_l"]), U(DIMS["arrow_w"])
+    n = int(half / step) + 1
+    m = bpy.data.meshes.new("arrows")
+    bm = bmesh.new()
+    for i in range(-n, n):
+        at = top + d * (step * (i + 0.5))
+        tip = at + d * (length / 2.0)
+        back = at - d * (length / 2.0)
+        bm.faces.new([bm.verts.new(tip), bm.verts.new(back + side * (width / 2.0)),
+                      bm.verts.new(back - side * (width / 2.0))])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(m)
+    bm.free()
+    ob = K.obj("arrows", m, ARROW)
+    for poly in ob.data.polygons:
+        if poly.normal.z < 0.0:
+            poly.flip()
 
 
 def straight(s, k, raised):
@@ -193,6 +233,7 @@ def straight(s, k, raised):
     half = 4.0
     tube("run", [c - d * half, c + d * half], s)
     bands("run", d, s, c, half)
+    arrows(d, c, half)
     if not raised:
         side = Z.cross(d)
         step = U(DIMS["tile"])
@@ -267,7 +308,7 @@ def support(k):
 
 names = []
 for s in SETS:
-    for k in range(6):
+    for k in range(12):
         straight(s, k, False)
         straight(s, k, True)
     for i in range(12):
