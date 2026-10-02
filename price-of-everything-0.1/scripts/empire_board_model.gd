@@ -60,6 +60,8 @@ const PYLON_SIDE := 62.0
 ## Homes stood on a tile that has works but is not a town.
 const HOMES_PER_TILE := 3
 const TOWERS_SPRITE := "towers"
+## A tower's footprint as a share of its slot: tall things on a whole slot would dwarf the tile.
+const TOWER_SHARE := 0.46
 ## Housing keeps this far from a mine on the side nearer the eye.
 const MINE_CLEAR := 190.0
 ## What standing on a river costs a slot when buildings are placed: more than any distance.
@@ -419,7 +421,22 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 		var own: Array = by_tile.get(tid, [])
 		own.sort_custom(func(x: Dictionary, y: Dictionary) -> bool: return str(x["iid"]) < str(y["iid"]))
 		things.append_array(own)
-		var free: Array = Streets.places(things.size(), hub_slot)
+		# A city's two towers stand either side of the avenue, the crossroads between them.
+		# Their slots are theirs whatever is built: the works take the others, and the
+		# housing gives way.
+		var tower_slots: Array = []
+		if town and str(t["type"]) == "urban":
+			for pair in Streets.TOWER_PAIRS:
+				var ok := true
+				for i in pair:
+					ok = ok and i != hub_slot and not _wet(c + Streets.SLOTS[i], Streets.SLOT_SIDE * TOWER_SHARE, rivers)
+				if ok:
+					tower_slots = pair
+					break
+		var taken: Array = tower_slots.duplicate()
+		if hub_slot >= 0:
+			taken.append(hub_slot)
+		var free: Array = Streets.places(things.size(), taken)
 		for place in free:
 			place["wet"] = _wet(c + (place["pos"] as Vector2), float(place["side"]), rivers)
 		for thing in things:
@@ -450,36 +467,22 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 			door_of[str(td["iid"])] = Streets.nid(Streets.slot_door(int(place["slot"])))
 			spot_of[str(td["iid"])] = Streets.SLOTS[int(place["slot"])]
 			standing.append(td)
+		for n in range(tower_slots.size()):
+			var slot: int = tower_slots[n]
+			var tower_id := "tower:%s:%d" % [str(tid), n]
+			# The glass tower, the taller, is the one nearer the tile's middle.
+			standing.append({"kind": "house", "iid": tower_id, "tile": tid, "pos": c + Streets.SLOTS[slot],
+				"sprite": BuildingSprites.texture_for(TOWERS_SPRITE, 2 - n), "level": 3, "name": "City",
+				"side": Streets.SLOT_SIDE * TOWER_SHARE, "pad": Streets.SLOT_SIDE, "polluting": false,
+				"tall": true})
+			door_of[tower_id] = Streets.nid(Streets.slot_door(slot))
+		if not tower_slots.is_empty():
+			t["crossroads"] = signf((Streets.SLOTS[int(tower_slots[0])] as Vector2).y)
 		# Housing: where the works are there are homes. A city tile fills its free slots with
 		# them, works or none; any other tile with works takes a few. Each keeps to dry ground.
 		if town and (bool(t["store"]) or str(t["type"]) == "urban") and things.size() <= Streets.SLOTS.size():
 			var homes := 0
 			var limit := Streets.SLOTS.size() if str(t["type"]) == "urban" else HOMES_PER_TILE
-			# A city has a pair of towers, on the dry free slot furthest from its works.
-			if str(t["type"]) == "urban":
-				var best_i := -1
-				var best_far := -1.0
-				for i in range(free.size()):
-					if bool(free[i]["wet"]):
-						continue
-					var far := 1.0e6
-					for thing in things:
-						far = minf(far, (c + (free[i]["pos"] as Vector2)).distance_to((thing as Dictionary)["pos"]))
-					# With no works to keep from, the back of the tile, so they hide nothing.
-					if things.is_empty():
-						far = -(free[i]["pos"] as Vector2).y - absf((free[i]["pos"] as Vector2).x) * 0.1
-					if far > best_far:
-						best_far = far
-						best_i = i
-				if best_i >= 0:
-					var spot: Dictionary = free[best_i]
-					free.remove_at(best_i)
-					var tid_towers := "towers:%s" % str(tid)
-					standing.append({"kind": "house", "iid": tid_towers, "tile": tid, "pos": c + (spot["pos"] as Vector2),
-						"sprite": BuildingSprites.texture_for(TOWERS_SPRITE, 1), "level": 3, "name": "City",
-						"side": float(spot["side"]) * FOOT_SHARE, "pad": float(spot["side"]), "polluting": false,
-						"tall": true})
-					door_of[tid_towers] = Streets.nid(Streets.slot_door(int(spot["slot"])))
 			for place in free:
 				if homes >= limit:
 					break
@@ -596,6 +599,17 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 	for f in feeds:
 		if tiles.has(str(f["tile"])) and bool(tiles[str(f["tile"])]["store"]):
 			add_feed.call(str(f["iid"]), str(f["tile"]), str(f["good"]), bool(f["out"]))
+
+	# The crossroads before a city's towers: the street past both, the avenue out to the
+	# tile's edge and across to the other street.
+	for tid in tiles:
+		if not tiles[tid].has("crossroads"):
+			continue
+		var sy := float(tiles[tid]["crossroads"])
+		var cross := Streets.nid(Vector2(Streets.AVENUE_X, Streets.STREET_Y * sy))
+		for other in [Vector2(Streets.AVENUE_X, Streets.TOP_Y * sy), Vector2(Streets.AVENUE_X, -Streets.STREET_Y * sy),
+				Vector2(0.0, Streets.STREET_Y * sy), Vector2(110.0, Streets.STREET_Y * sy)]:
+			walk.call(str(tid), [cross, Streets.nid(other)], "roads")
 
 	# A home has its own short way onto the street.
 	for st in standing:

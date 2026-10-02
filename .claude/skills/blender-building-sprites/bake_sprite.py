@@ -68,8 +68,8 @@ BUILDINGS = {
     "warehouse":          _B("warehouse_builder.py", "build_warehouse", "BLDG_warehouse"),
     # Not catalog buildings: housing the supply chain board stands on unused slots.
     "house":              _B("housing.py", "build_house", "BLDG_house"),
-    # Not a catalog building: a city tile's pair of towers on the supply chain board.
-    "towers":             _B("housing.py", "build_towers", "BLDG_house", levels=(), out=(1,)),
+    # Not a catalog building: a city tile's two towers on the supply chain board.
+    "towers":             _B("housing.py", "build_towers", "BLDG_house", levels=(1, 2), out=(1, 2)),
     "pylon":              _B("pylon_builder.py", "build_pylon", "BLDG_pylon", levels=(), out=(1,)),
     "mine":               _B("mine_builder.py", "build_mine", "BLDG_mine"),
     # The mine with its block of earth cut away, for the supply chain board. Baked by

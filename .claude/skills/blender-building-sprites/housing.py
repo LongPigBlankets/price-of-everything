@@ -243,9 +243,10 @@ def glass_tower(K, name, cx, cy, w, floors):
     return h + 0.28
 
 
-# A city tile's pair of towers on the supply chain board: ten floors of steel and concrete
-# under a flattened pyramid, and fourteen of glass with a flat roof.
-def build_towers() -> dict:
+# A city tile's two towers on the supply chain board, each its own sprite so a crossroads
+# can lie between them: 1 is ten floors of steel and concrete under a flattened pyramid, 2 is
+# fourteen of glass with a flat roof. One camera for both, so they share a scale.
+def build_towers(level: int = 1) -> dict:
     setup_rig(target=(0.0, 0.0, 3.3))
     fs = bpy.context.scene.view_layers[0].freestyle_settings
     for ls in fs.linesets:
@@ -253,7 +254,8 @@ def build_towers() -> dict:
         ls.face_mark_negation = 'EXCLUSIVE'
         ls.face_mark_condition = 'ONE'
     K = Kit(open_collection("BLDG_house"))
-    # Side by side on screen is apart along x + y; the stone tower is a little nearer the eye.
-    stone_tower(K, "stone", 0.98, 0.62, 1.30, 10)
-    glass_tower(K, "glass", -0.98, -0.62, 1.25, 14)
-    return {"building": "towers", "objects": len(K.col.objects)}
+    if level == 1:
+        stone_tower(K, "stone", 0.0, 0.0, 1.30, 10)
+    else:
+        glass_tower(K, "glass", 0.0, 0.0, 1.25, 14)
+    return {"building": "towers", "level": level, "objects": len(K.col.objects)}

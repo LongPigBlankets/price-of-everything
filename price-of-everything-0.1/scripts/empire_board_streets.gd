@@ -202,17 +202,17 @@ static func path(from: String, to: String, extra: Dictionary = {}, cache: String
 
 
 ## Positions for `count` things on a tile's slots: one per slot while they last, then each
-## slot split into four, then nine. `skip` is a slot the warehouse has taken. Returns
-## [{pos, side, slot}], at least `count` of them.
-static func places(count: int, skip: int = -1) -> Array:
-	var usable := SLOTS.size() - (1 if skip >= 0 else 0)
+## slot split into four, then nine. `skip` lists slots already taken (the warehouse's, a
+## city's towers'). Returns [{pos, side, slot}], at least `count` of them.
+static func places(count: int, skip: Array = []) -> Array:
+	var usable := maxi(1, SLOTS.size() - skip.size())
 	var per := 1
 	while usable * per * per < count:
 		per += 1
 	var out: Array = []
 	var side := SLOT_SIDE / float(per)
 	for i in range(SLOTS.size()):
-		if i == skip:
+		if skip.has(i):
 			continue
 		for r in range(per):
 			for c in range(per):
@@ -220,6 +220,11 @@ static func places(count: int, skip: int = -1) -> Array:
 					"pos": SLOTS[i] + Vector2((float(c) + 0.5) * side - SLOT_SIDE * 0.5,
 						(float(r) + 0.5) * side - SLOT_SIDE * 0.5)})
 	return out
+
+
+## The two slots a city's pair of towers can take, either side of the avenue with the
+## crossroads of avenue and street before them: at the back of the tile, or at the front.
+const TOWER_PAIRS := [[8, 9], [1, 2]]
 
 
 ## How far up or down the trunk a thing beside it takes its pipes, so two things facing each
