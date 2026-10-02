@@ -24,9 +24,12 @@ const END_X := 215.0             # a street's end, and the spur of the outermost
 const EDGE_X := 202.5            # the middle of a diagonal edge
 const EDGE_Y := 120.0
 const TOP_Y := 240.0
-## Pipes run beside the streets: one line inside each street, nearer the warehouse, one outside.
-const PIPE_INNER := 48.0
-const PIPE_OUTER := 92.0
+## Pipes keep off the streets' side of things. Each row of slots has a line along its back:
+## the front and back rows' along the tile's edge, the middle row's (and the warehouse's)
+## behind it. One trunk across the rows joins the three, in the gap the left avenue leaves.
+const PIPE_EDGE := 192.0
+const PIPE_MID := -50.0
+const PIPE_TRUNK_X := -56.0
 ## Travelling the back street, or an avenue between the two streets, costs this many times
 ## its length.
 const BACK_COST := 2.5
@@ -149,7 +152,8 @@ static func _weight(a: Vector2, b: Vector2, kind: String) -> float:
 	if kind == "street" and a.y < 0.0:
 		return BACK_COST
 	if kind == "avenue" and absf(a.y) <= STREET_Y + 1.0 and absf(b.y) <= STREET_Y + 1.0:
-		return CROSS_COST
+		# Of the two avenues the right-hand one is the road's: the left is the pipes' way across.
+		return CROSS_COST * (1.15 if a.x < 0.0 else 1.0)
 	return 1.0
 
 
@@ -218,11 +222,22 @@ static func places(count: int, skip: int = -1) -> Array:
 	return out
 
 
-## Where pipes meet the ground beside the thing whose spur ends at `door`.
-static func pipe_point(door: Vector2) -> Vector2:
-	var sy := 1.0 if door.y > 0.0 else -1.0
-	if absf(door.y) > STREET_Y:
-		return Vector2(door.x - 26.0, PIPE_OUTER * sy)
-	if absf(door.x) < 1.0:
-		return Vector2(-20.0, PIPE_INNER)
-	return Vector2(door.x - signf(door.x) * 26.0, PIPE_INNER)
+## Where pipes meet the ground behind the thing standing at `spot` (a slot's centre, or the
+## tile's centre for the warehouse): on the side away from its street.
+static func pipe_point(spot: Vector2) -> Vector2:
+	if absf(spot.y) > STREET_Y:
+		return Vector2(spot.x, PIPE_EDGE * signf(spot.y))
+	return Vector2(spot.x, PIPE_MID)
+
+
+## A pipe's way from one pipe point to another: along the row's own line, and by the trunk
+## when the two are on different lines. Relative points, the ends included.
+static func pipe_run(from: Vector2, to: Vector2) -> Array:
+	if absf(from.y - to.y) < 1.0:
+		return [from, to]
+	var out: Array = [from]
+	for p in [Vector2(PIPE_TRUNK_X, from.y), Vector2(PIPE_TRUNK_X, to.y)]:
+		if (out[out.size() - 1] as Vector2).distance_to(p) > 1.0 and p.distance_to(to) > 1.0:
+			out.append(p)
+	out.append(to)
+	return out

@@ -32,6 +32,9 @@ from sprite_export import outer_contour   # noqa: E402
 RENDERER = os.environ.get("BLENDER_EXE", "blender")
 COLS = 16
 BORDER = 12
+# The heavy outer line's width in pixels. The building sprites carry 4; these pieces are drawn
+# far smaller than a building, so they take a thinner one.
+OUTLINE = 2
 
 
 def main():
@@ -57,7 +60,7 @@ def main():
     atlas = Image.new("RGBA", (COLS * frame, rows * frame), (0, 0, 0, 0))
     cells = {}
     for i, name in enumerate(names):
-        im = outer_contour(Image.open(os.path.join(raw, name + ".png")).convert("RGBA"), r_out=3, rc=9)
+        im = outer_contour(Image.open(os.path.join(raw, name + ".png")).convert("RGBA"), r_out=OUTLINE, rc=9)
         if im.size != (frame, frame):
             raise SystemExit("%s is %s, not %d square" % (name, im.size, frame))
         # Clear a border in every cell. Straights run to the edge of their frame, and at a small

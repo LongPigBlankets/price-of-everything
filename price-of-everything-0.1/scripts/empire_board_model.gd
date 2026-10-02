@@ -219,6 +219,7 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 	var outputs: Array = []
 	var feeds: Array = []                 # [{iid, tile, good, out: bool}] building <-> warehouse
 	var power_ends: Array = []            # [{iid, tile, out: bool}]
+	var polluters: Dictionary = {}        # tile_id -> how many dirty buildings stand on it
 
 	for n in graph.get("nodes", []):
 		var nd: Dictionary = n
@@ -232,11 +233,24 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 			"kind": "site" if site else "building", "iid": iid, "tile": tile,
 			"sprite": nd.get("sprite"), "level": int(nd.get("level", 1)),
 			"name": str(nd.get("name", "")), "icon": nd.get("icon"),
+			"internal_name": str(nd.get("internal_name", "")), "polluting": false,
 		})
 		if site:
 			continue
 		var b: Dictionary = BuildingState.buildings.get(iid, {})
 		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+		# Dirty: it burns something the carbon levy bites (the map's own rule for grey smoke),
+		# or it digs coal.
+		var dirty := false
+		for ip in recipe.get("inputs", []):
+			if float(Catalog.get_good(str((ip as Dictionary).get("good_id", ""))).get("co2_tax_multiplier", 0.0)) > 0.0:
+				dirty = true
+		for o in recipe.get("outputs", []):
+			if _internal_name(str((o as Dictionary).get("good_id", ""))) == "coal":
+				dirty = true
+		((by_tile[tile] as Array)[(by_tile[tile] as Array).size() - 1] as Dictionary)["polluting"] = dirty
+		if dirty:
+			polluters[tile] = int(polluters.get(tile, 0)) + 1
 		for o in recipe.get("outputs", []):
 			var g := str((o as Dictionary).get("good_id", ""))
 			if g == "":
@@ -347,6 +361,7 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 			"label": str(Catalog.tile_label(str(tid))), "hub": c,
 			"level": clampi(int(Catalog.tile_infra_level(str(tid), "roads")), 1, 3),
 			"paved": Catalog.tile_has_infrastructure(str(tid), "roads"),
+			"polluters": int(polluters.get(tid, 0)),
 		}
 		if pylon_tiles.has(tid):
 			tiles[tid]["pylon"] = c + PYLON_AT
@@ -357,13 +372,14 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 	var standing: Array = []
 	var pos_of: Dictionary = {}           # iid | "store:<tile>" | "port:<tile>" -> Vector2
 	var door_of: Dictionary = {}          # the same keys -> the street node at its spur's end
+	var spot_of: Dictionary = {}          # the same keys -> its slot's centre, relative to the tile's
 	for tid in tiles:
 		var t: Dictionary = tiles[tid]
 		var c: Vector2 = t["center"]
 		var rivers: Array = rivers_by_tile.get(tid, [])
 		var hub_slot := -1
 		t["hub_node"] = Streets.nid(Streets.hub_door())
-		t["manifold"] = Streets.pipe_point(Streets.hub_door())
+		t["manifold"] = Streets.pipe_point(Vector2.ZERO)
 		if bool(t["store"]):
 			# The warehouse stands at the centre unless a river runs there; then it takes the
 			# dry slot nearest the centre, and that slot's spur.
@@ -377,7 +393,7 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 						hub_slot = i
 						hub_rel = Streets.SLOTS[i]
 						t["hub_node"] = Streets.nid(Streets.slot_door(i))
-						t["manifold"] = Streets.pipe_point(Streets.slot_door(i))
+						t["manifold"] = Streets.pipe_point(Streets.SLOTS[i])
 						break
 			t["hub"] = c + hub_rel
 			var level: int = Stockpile.get_warehouse_level(tid)
@@ -425,6 +441,7 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 			td["side"] = float(place["side"]) * FOOT_SHARE * share
 			pos_of[str(td["iid"])] = td["pos"]
 			door_of[str(td["iid"])] = Streets.nid(Streets.slot_door(int(place["slot"])))
+			spot_of[str(td["iid"])] = Streets.SLOTS[int(place["slot"])]
 			standing.append(td)
 		if t.has("pylon"):
 			standing.append({"kind": "pylon", "iid": "pylon:" + str(tid), "tile": tid,
@@ -477,19 +494,18 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 	var seen_line: Dictionary = {}
 	var pipe_feed := func(iid: String, tile: String, good: String, toward_thing: bool) -> void:
 		var lkey := "%s|%s" % [iid, good]
-		if seen_line.has(lkey) or not door_of.has(iid):
+		if seen_line.has(lkey) or not spot_of.has(iid):
 			return
 		seen_line[lkey] = true
 		var c: Vector2 = tiles[tile]["center"]
-		var entry: Vector2 = Streets.pipe_point(Streets.node_pos(str(door_of[iid])))
+		var entry: Vector2 = Streets.pipe_point(spot_of[iid])
 		var manifold: Vector2 = tiles[tile]["manifold"]
 		if entry.distance_to(manifold) < 1.0:
 			return
-		# Along its own line beside the street, then across to the warehouse's.
-		var pts: Array = [_pt(c + entry, tile)]
-		if absf(entry.y - manifold.y) > 1.0:
-			pts.append(_pt(c + Vector2(manifold.x, entry.y), tile))
-		pts.append(_pt(c + manifold, tile))
+		# Behind its own row, then by the trunk to the warehouse's line: never across a slot.
+		var pts: Array = []
+		for rel in Streets.pipe_run(entry, manifold):
+			pts.append(_pt(c + (rel as Vector2), tile))
 		lines.append({"mode": _pipe_mode(tile), "good": good, "kind": "feed", "pts": pts,
 			"reverse": toward_thing})
 
@@ -619,26 +635,33 @@ static func _pipe_way(ta: Dictionary, tb: Dictionary) -> Array:
 	var off := cb - ca
 	var out_rel: Vector2 = Streets.exit_point(off)
 	if out_rel == Vector2.ZERO:
-		return [_pt(ca + Vector2(-20.0, Streets.PIPE_INNER), str(ta["id"])),
-			_pt(cb + Vector2(-20.0, Streets.PIPE_INNER), str(tb["id"]))]
+		return [_pt(ca + (ta.get("manifold", Vector2.ZERO) as Vector2), str(ta["id"])),
+			_pt(cb + (tb.get("manifold", Vector2.ZERO) as Vector2), str(tb["id"]))]
 	var cross: Vector2
 	if absf(off.x) < 1.0:
-		cross = ca + Vector2(-Streets.AVENUE_X, out_rel.y)
+		cross = ca + Vector2(Streets.PIPE_TRUNK_X, out_rel.y)
 	else:
 		cross = ca + out_rel + off.normalized().orthogonal() * PIPE_EDGE_GAP
 	var pts: Array = []
-	for end in [[ca, str(ta["id"]), false], [cb, str(tb["id"]), true]]:
-		var c: Vector2 = end[0]
+	for end in [[ta, false], [tb, true]]:
+		var tile: Dictionary = end[0]
+		var c: Vector2 = tile["center"]
 		var rel: Vector2 = cross - c
-		var sy := 1.0 if rel.y > 0.0 else -1.0
-		var tile: Dictionary = ta if not bool(end[2]) else tb
-		var manifold: Vector2 = c + (tile.get("manifold", Vector2(-20.0 * sy, Streets.PIPE_INNER * sy)) as Vector2)
-		var via := c + (Vector2(-Streets.AVENUE_X, Streets.PIPE_OUTER * sy) if absf(off.x) < 1.0
-			else Vector2(160.0 * signf(rel.x), Streets.PIPE_INNER * sy))
-		var part: Array = [_pt(manifold, str(end[1])), _pt(via, str(end[1])), _pt(cross, str(end[1]), true)]
-		if bool(end[2]):
-			part.reverse()
-		pts.append_array(part)
+		var manifold: Vector2 = tile.get("manifold", Streets.pipe_point(Vector2.ZERO))
+		# Out by the trunk to the row's line nearest that edge, along it, and off to the edge.
+		var line_y := Streets.PIPE_EDGE * (1.0 if rel.y > 0.0 else -1.0)
+		var part: Array = []
+		if absf(off.x) < 1.0:
+			part = Streets.pipe_run(manifold, Vector2(Streets.PIPE_TRUNK_X, line_y))
+		else:
+			part = Streets.pipe_run(manifold, Vector2(150.0 * signf(rel.x), line_y))
+		var here: Array = []
+		for q in part:
+			here.append(_pt(c + (q as Vector2), str(tile["id"])))
+		here.append(_pt(cross, str(tile["id"]), true))
+		if bool(end[1]):
+			here.reverse()
+		pts.append_array(here)
 	return pts
 
 
