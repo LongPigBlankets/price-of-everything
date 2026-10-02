@@ -51,6 +51,19 @@ const BELL_ICON: Texture2D = preload("res://assets/icons/ui_icons/standalone/bel
 const PEN_ICON: Texture2D = preload("res://assets/icons/ui_icons/standalone/fountain_pen.png")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
+# The DS2 look (UiPrefs.use_dock_ds2): the dock and its slide-out as the top bar's navy steel sheet, the pen and
+# the bells raised, a row a raised module with a pilot lamp in its tone.
+const Parts := preload("res://scripts/ds2/parts.gd")
+const Nine := preload("res://scripts/bdp_v3_nine.gd")
+const SHEET: Texture2D = preload("res://assets/ui/bdp_v3/bar_sheet.png")
+## From layout.json (bar_sheet), in layout px: the render's shadow room and its 9-slice corner.
+const SHEET_MARGIN := 10.0
+const SHEET_CORNER := 60.0
+const CAPTURE_SCALE := 1.875
+const TEXELS_PER_PIXEL := 2.0
+const ROW_LAMP_SCALE := 0.6
+## The lamp a row's look lights: a warning red, a caution amber, the rest green.
+const STYLE_LAMP := {"warning": "bad", "caution": "warn"}
 ## With the DS2 briefing, the pen carries a small pilot lamp lit in the worst live alert's colour (amber or red),
 ## so an alert shows while the briefing is closed.
 const PEN_LAMP_SCALE := 0.42
@@ -86,6 +99,8 @@ var _prev_money: float = 0.0
 
 var _dock: PanelContainer
 var _dock_style: StyleBoxFlat
+var _panel_style: StyleBoxFlat
+var _ds2 := false
 var _bells := {}            # tone -> {"root", "clip", "tex", "pill", "count"}
 var _pen := {}              # the decisions cell, the same shape as a bell's
 var _decisions := 0
@@ -320,7 +335,10 @@ func _build_ui() -> void:
 	ps.content_margin_right = PANEL_PAD
 	ps.content_margin_top = PANEL_PAD
 	ps.content_margin_bottom = PANEL_PAD + TUCK
+	_panel_style = ps
 	_panel.add_theme_stylebox_override("panel", ps)
+	_panel.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_panel.draw.connect(_paint_sheet.bind(_panel))
 	_clip.add_child(_panel)
 
 	var column := VBoxContainer.new()
@@ -373,6 +391,8 @@ func _build_ui() -> void:
 	_dock_style.content_margin_top = (DOCK_HEIGHT - BELL_PX) / 2.0
 	_dock_style.content_margin_bottom = (DOCK_HEIGHT - BELL_PX) / 2.0
 	_dock.add_theme_stylebox_override("panel", _dock_style)
+	_dock.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_dock.draw.connect(_paint_sheet.bind(_dock))
 	_dock.gui_input.connect(_on_dock_input)
 	_dock.mouse_entered.connect(func() -> void:
 		_dock_hover = true
@@ -402,14 +422,91 @@ func _build_ui() -> void:
 		bell.root.gui_input.connect(_on_icon_input.bind(tone))
 		icons.add_child(bell.root)
 		_bells[tone] = bell
-	_refresh_bells()
-	_refresh_pen()
+	_apply_look()
+	UiPrefs.dock_ds2_changed.connect(func(_on: bool) -> void: _apply_look())
 
 	_timer = Timer.new()
 	_timer.one_shot = true
 	_timer.timeout.connect(_on_timer)
 	add_child(_timer)
 	_queue_fit()
+
+
+# ── Look: v2, or DS2 behind UiPrefs.use_dock_ds2 ────────────────────────────────────────
+
+## Dresses the dock, the slide-out, the icons and the kept rows in the look the switch asks for. What the dock
+## holds and how it behaves are the same in both.
+func _apply_look() -> void:
+	_ds2 = UiPrefs.use_dock_ds2
+	_dock.add_theme_stylebox_override("panel", _bare_copy(_dock_style) if _ds2 else _dock_style)
+	_panel.add_theme_stylebox_override("panel", _bare_copy(_panel_style) if _ds2 else _panel_style)
+	_dock.self_modulate = Color.WHITE
+	for cell: Dictionary in [_pen] + _bells.values():
+		if cell.is_empty():
+			continue
+		if _ds2 and not cell.has("raised"):
+			var raised := Parts.raised("dock_icon_pen" if cell == _pen else "dock_icon_bell", BELL_PX)
+			raised.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			(cell.clip as Control).add_child(raised)
+			cell["raised"] = raised
+		if cell.has("raised"):
+			(cell.raised as Control).visible = _ds2
+		(cell.tex as Control).visible = not _ds2
+		var pill := (cell.pill as PanelContainer).get_theme_stylebox("panel") as StyleBoxFlat
+		if not cell.has("pill_colour"):
+			cell["pill_colour"] = pill.bg_color
+		# DS2: the count on a navy pill with a thin cream rim, as a good's quantity is.
+		pill.bg_color = NAVY_PRINT if _ds2 else cell.pill_colour
+		pill.border_color = DS.PALETTE.ACCENT
+		pill.set_border_width_all(1 if _ds2 else 0)
+		(cell.count as Label).add_theme_color_override("font_color", DS.PALETTE.TEXT if _ds2 else NAVY_PRINT)
+	if _ds2:
+		_empty.add_theme_font_override("font", Parts.FONT_BODY)
+	else:
+		_empty.remove_theme_font_override("font")
+	_restyle_rows()
+	_refresh_bells()
+	_refresh_pen()
+	_update_dock_rim()
+	_dock.queue_redraw()
+	_panel.queue_redraw()
+	_queue_fit()
+
+
+## A stylebox with `from`'s content margins and nothing drawn: the sheet is painted under it.
+func _bare_copy(from: StyleBox) -> StyleBoxEmpty:
+	var bare := StyleBoxEmpty.new()
+	bare.content_margin_left = from.content_margin_left
+	bare.content_margin_right = from.content_margin_right
+	bare.content_margin_top = from.content_margin_top
+	bare.content_margin_bottom = from.content_margin_bottom
+	return bare
+
+
+## DS2: the top bar's navy steel sheet behind the dock or the slide-out.
+func _paint_sheet(ci: Control) -> void:
+	if not _ds2:
+		return
+	Nine.paint(ci, SHEET, Rect2(Vector2.ZERO, ci.size).grow(SHEET_MARGIN / CAPTURE_SCALE),
+		(SHEET_MARGIN + SHEET_CORNER) * TEXELS_PER_PIXEL / CAPTURE_SCALE)
+
+
+## Rebuilds the kept rows in the current look, each keeping what it says and what it knows about itself.
+func _restyle_rows() -> void:
+	for old: Node in _rows.get_children():
+		var style := str(TONE_STYLE.get(str(old.get_meta("tone", "green")), "success"))
+		var action: Callable = old.get_meta("on_click", Callable())
+		var row: PanelContainer = _make_toast(str(old.get_meta("toast_message", "")), style, action.is_valid())
+		for key: StringName in old.get_meta_list():
+			row.set_meta(key, old.get_meta(key))
+		if action.is_valid():
+			row.gui_input.connect(_on_row_input.bind(row))
+		row.visible = (old as Control).visible
+		var at := old.get_index()
+		_rows.remove_child(old)
+		old.queue_free()
+		_rows.add_child(row)
+		_rows.move_child(row, at)
 
 
 ## An icon cell: the art (clipped so the TextureRect keeps its box) with a count pill on its
@@ -485,6 +582,9 @@ func _refresh_pen() -> void:
 
 func _paint_icon(cell: Dictionary, n: int, colour: Color, tooltip: String, pulse: bool) -> void:
 	(cell.tex as TextureRect).modulate = colour if n > 0 else Color(colour, 0.4)
+	if cell.has("raised"):
+		# Raised: lit in its colour with something to count, the same colour unlit with nothing.
+		(cell.raised as Control).modulate = colour if n > 0 else Color(colour.r * 0.5, colour.g * 0.5, colour.b * 0.5)
 	var pill: PanelContainer = cell.pill
 	pill.visible = n > 0
 	var text := str(n) if n < 100 else "99+"
@@ -510,7 +610,11 @@ func _pulse(cell: Dictionary) -> void:
 
 ## The dock's rim lights while the mouse is on it, and while the slide-out it opened is up.
 func _update_dock_rim() -> void:
-	_dock_style.border_color = DOCK_BORDER_HOT if _dock_hover or (_open and _all) else DOCK_BORDER
+	var hot := _dock_hover or (_open and _all)
+	_dock_style.border_color = DOCK_BORDER_HOT if hot else DOCK_BORDER
+	if _ds2:
+		# The steel catches a little more light, as a module under the pointer does.
+		_dock.self_modulate = Parts.HOT if hot else Color.WHITE
 
 
 ## Opened from the dock the slide-out takes the mouse (it scrolls, and hovering holds it up);
@@ -622,6 +726,8 @@ func _on_row_input(event: InputEvent, row: Control) -> void:
 
 ## A row. A link row takes its own clicks (and a pointing hand) and ends in a chevron.
 func _make_toast(message: String, toast_type: String, link: bool = false) -> PanelContainer:
+	if _ds2:
+		return _make_module_row(message, toast_type, link)
 	var panel := PanelContainer.new()
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP if link else Control.MOUSE_FILTER_IGNORE
 	if link:
@@ -675,6 +781,58 @@ func _make_toast(message: String, toast_type: String, link: bool = false) -> Pan
 	chevron.add_theme_font_size_override("font_size", 22)
 	line.add_child(chevron)
 	panel.add_child(line)
+	return panel
+
+
+## DS2: a row as a raised module. A pilot lamp in its tone, its words in white print, and a link's fold mark.
+func _make_module_row(message: String, toast_type: String, link: bool) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP if link else Control.MOUSE_FILTER_IGNORE
+	if link:
+		panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	panel.size_flags_horizontal = Control.SIZE_FILL
+	var pad := StyleBoxEmpty.new()
+	pad.content_margin_left = ROW_PAD_X - 2.0
+	pad.content_margin_right = ROW_PAD_X - 2.0
+	pad.content_margin_top = 9
+	pad.content_margin_bottom = 9
+	panel.add_theme_stylebox_override("panel", pad)
+	panel.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	panel.draw.connect(func() -> void:
+		Nine.paint(panel, Parts.MODULE, Rect2(Vector2.ZERO, panel.size).grow(Parts.MODULE_MARGIN), Parts.MODULE_CORNER))
+	var countdown := RowCountdown.new()
+	countdown.name = "Countdown"
+	countdown.pad = Vector2(ROW_PAD_X - 2.0, 9)
+	countdown.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(countdown)
+	var line := HBoxContainer.new()
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_theme_constant_override("separation", 9)
+	panel.add_child(line)
+	var lamp: Control = Lamp.new()
+	lamp.name = "RowLamp"
+	lamp.lamp_scale = ROW_LAMP_SCALE
+	lamp.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	lamp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lamp.call("set_tone", str(STYLE_LAMP.get(toast_type, "ok")))
+	lamp.set_meta("tone", str(STYLE_LAMP.get(toast_type, "ok")))
+	line.add_child(lamp)
+	var label := Parts.body(message)
+	label.name = "Words"
+	label.add_theme_font_override("font", Parts.FONT_BODY)
+	label.custom_minimum_size.x = TOAST_WIDTH - 2.0 * PANEL_PAD - 2.0 * ROW_PAD_X - SCROLLBAR_ROOM - 26.0 - (LINK_CHEVRON_W if link else 0.0)
+	line.add_child(label)
+	if link:
+		var chevron := Label.new()
+		chevron.name = "Chevron"
+		chevron.text = "›"
+		chevron.custom_minimum_size.x = LINK_CHEVRON_W - 6.0
+		chevron.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		chevron.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		chevron.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		chevron.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+		chevron.add_theme_font_size_override("font_size", 22)
+		line.add_child(chevron)
 	return panel
 
 

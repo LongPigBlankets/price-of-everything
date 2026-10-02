@@ -2264,5 +2264,16 @@
   "margin": 10,
   "tile": 135,
   "reach": 11
+ },
+ "dock_icons": {
+  "size": [
+   110,
+   110
+  ],
+  "icon": 86,
+  "names": [
+   "pen",
+   "bell"
+  ]
  }
 }

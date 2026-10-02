@@ -32,6 +32,8 @@ signal ledger_ds2_changed(enabled: bool)
 ## The People panel's DS2 look (docs/people-ds2-plan.md) switched on or off.
 signal people_ds2_changed(enabled: bool)
 signal market_ds2_changed(enabled: bool)
+## The updates dock's DS2 look switched on or off.
+signal dock_ds2_changed(enabled: bool)
 ## The Shipments and Stockpiles panel's DS2 look switched on or off.
 signal transport_ds2_changed(enabled: bool)
 ## The Politics panel's DS2 look switched on or off.
@@ -89,6 +91,9 @@ var use_tvp_v3: bool = true
 # The Building Ledger in DS2 (docs/building-ledger-ds2-plan.md). The default; the debug cheat `toggle ledger ds2`
 # switches back to the v2 ledger, exactly as it was. Session-only, never persisted.
 var use_ledger_ds2: bool = true
+# The updates dock in DS2 (scripts/toast_manager.gd): navy steel, the pen and bells raised, a row a module with a
+# lamp. Off until the owner has reviewed it; the debug cheat `toggle dock ds2` switches it on. Session-only.
+var use_dock_ds2: bool = false
 # The Shipments and Stockpiles panel in DS2 (scripts/transport_ds2/). Off until the owner has reviewed it; the
 # debug cheat `toggle transport ds2` switches it on. Session-only, never persisted.
 var use_transport_ds2: bool = false
@@ -229,6 +234,16 @@ func set_use_ledger_ds2(enabled: bool) -> bool:
 
 func toggle_use_ledger_ds2() -> bool:
 	return set_use_ledger_ds2(not use_ledger_ds2)
+
+func set_use_dock_ds2(enabled: bool) -> bool:
+	if enabled == use_dock_ds2:
+		return use_dock_ds2
+	use_dock_ds2 = enabled
+	dock_ds2_changed.emit(use_dock_ds2)
+	return use_dock_ds2
+
+func toggle_use_dock_ds2() -> bool:
+	return set_use_dock_ds2(not use_dock_ds2)
 
 func set_use_transport_ds2(enabled: bool) -> bool:
 	if enabled == use_transport_ds2:

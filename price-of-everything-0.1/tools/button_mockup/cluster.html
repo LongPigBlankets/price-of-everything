@@ -2185,7 +2185,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin, court. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
+  // tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin, court, dockicon. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -2572,6 +2572,22 @@ async function exportLayers() {
       await post('bar_icon_' + name + '_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height, draw: (tg, col) => stamp(tg, mask, o, o, icon, icon, col) }])));
     }
     layout.bar_icons = { size: [S, S], icon, names: Object.keys(art) };
+  });
+  // The updates dock's raised icons, made as the bar's are: the fountain pen (decisions) and the bell (updates),
+  // which the game tints green, amber or red.
+  if (want('dockicon')) await withSeed(471, async () => {
+    const { S, icon, height, soften } = BAR_ICONS, o = (S - icon) / 2;
+    const enamel = new THREE.MeshPhysicalMaterial({ color: OFF_WHITE, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+    const art = { pen: 'ui_icons/standalone/fountain_pen.png', bell: 'ui_icons/standalone/bell.png' };
+    for (const [name, file] of Object.entries(art)) {
+      const img = await loadImage('/icons/' + file);
+      const mask = keyOpaque(img);
+      const rel = iconRelief(mask, icon, icon, enamel, { height, soften });
+      rel.position.set(S / 2, 0.3, S / 2);
+      await post('dock_icon_' + name, stage([0, 0, S, S], [rel]).grab());
+      await post('dock_icon_' + name + '_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height, draw: (tg, col) => stamp(tg, mask, o, o, icon, icon, col) }])));
+    }
+    layout.dock_icons = { size: [S, S], icon, names: Object.keys(art) };
   });
 
   // --- a section frame: a narrow worn steel rim with a screw in each corner, drawn as a 9-slice

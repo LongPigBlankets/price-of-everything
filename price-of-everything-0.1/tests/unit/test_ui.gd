@@ -2848,3 +2848,37 @@ func _test_transport_panel_ds2() -> void:
 	TransportState.pending_transport_shipments = pending
 	Stockpile.consume("tile_5_10", "g_006", 40)
 	UiPrefs.set_use_transport_ds2(was)
+
+
+## The updates dock in DS2: the same dock and rows in the kit's look, a row a module with a lamp in its tone;
+## the rows it kept come through the switch, and v2 is back as it was with it off.
+func _test_updates_dock_ds2() -> void:
+	var was := UiPrefs.use_dock_ds2
+	UiPrefs.set_use_dock_ds2(false)
+	var toasts: Control = load("res://scripts/toast_manager.gd").new()
+	add_child(toasts)
+	await get_tree().process_frame
+	toasts.call("push_row", "A green update.", "green")
+	toasts.call("push_row", "A red warning.", "red", "warn_key", func() -> void: pass)
+	var rows: Node = toasts.find_child("RowList", true, false)
+	_check(rows.get_child_count() == 2 and rows.get_child(0).find_child("RowLamp", true, false) == null, "dock ds2: off, the rows are v2's")
+	UiPrefs.set_use_dock_ds2(true)
+	await get_tree().process_frame
+	var texts: PackedStringArray = toasts.call("row_texts")
+	_check(rows.get_child_count() == 2 and texts[0] == "A green update." and texts[1] == "A red warning.", "dock ds2: the kept rows come through the switch")
+	var red := rows.get_child(1)
+	_check(red.find_child("RowLamp", true, false) != null and str(red.find_child("RowLamp", true, false).get_meta("tone", "")) == "bad"
+		and red.find_child("Chevron", true, false) != null and str(red.get_meta("key", "")) == "warn_key" and red.has_node("Countdown"),
+		"dock ds2: a row is a module with a lamp in its tone, a link keeps its mark and its key")
+	_check(rows.get_child(0).find_child("Chevron", true, false) == null and str(rows.get_child(0).find_child("RowLamp", true, false).get_meta("tone", "")) == "ok",
+		"dock ds2: a green row lights green and has no link mark")
+	_check(toasts.find_child("Bell_red", true, false).find_child("Raised", true, false) != null
+		and toasts.find_child("Decisions", true, false).find_child("Raised", true, false) != null, "dock ds2: the pen and the bells are raised")
+	_check(int(toasts.call("unread", "red")) == 1, "dock ds2: the bells count as before")
+	toasts.call("push_row", "Another.", "amber")
+	_check(rows.get_child(2).find_child("RowLamp", true, false) != null, "dock ds2: a new row arrives in the DS2 look")
+	UiPrefs.set_use_dock_ds2(false)
+	await get_tree().process_frame
+	_check(rows.get_child_count() == 3 and rows.get_child(1).find_child("RowLamp", true, false) == null, "dock ds2: off again, v2 rows")
+	toasts.queue_free()
+	UiPrefs.set_use_dock_ds2(was)
