@@ -2779,3 +2779,41 @@ func _test_led_three_decimals_under_a_pound() -> void:
 	row.free()
 	dear.free()
 	dialog.free()
+
+
+## The Shipments and Stockpiles panel in DS2: the same three columns on the kit's cases, the routing objective
+## as keys, a stockpile and a shipment a module each; the v2 panel back, as it was, with the switch off.
+func _test_transport_panel_ds2() -> void:
+	var was := UiPrefs.use_transport_ds2
+	var was_route: int = MatchState.route_objective
+	var pending: Array = TransportState.pending_transport_shipments.duplicate(true)
+	UiPrefs.set_use_transport_ds2(true)
+	Stockpile.add("tile_5_10", "g_006", 40)
+	TransportState.queue_transport_shipment({"source_tile": "tile_5_10", "destination_tile": "tile_5_11", "good_id": "g_006", "qty": 9, "turns_remaining": 2})
+	var panel: Control = load("res://scripts/transport_panel.gd").new()
+	add_child(panel)
+	panel.call("open")
+	await get_tree().process_frame
+	_check(panel.find_child("TransportTitleRow", true, false) != null and panel.find_child("LedgerBacking", false, false) != null
+		and panel.find_child("Column_Stockpiles", true, false) != null and panel.find_child("Column_Infrastructure", true, false) != null
+		and panel.find_child("Column_Intransit", true, false) != null, "transport ds2: the ledger's shell and three columns")
+	var stock := panel.find_child("Stock_tile_5_10", true, false)
+	_check(stock != null and stock.find_child("TransportMeter", true, false) != null and stock.find_child("BuildingLamp", true, false) != null,
+		"transport ds2: a stockpile is a module with its lamp and its fill on a meter")
+	var words: String = (stock.find_child("Words", true, false) as Label).text if stock != null else ""
+	_check(words.contains("% full") and not words.contains("(") and not words.contains(" - "), "transport ds2: plain words, no coordinates (%s)" % words)
+	_check(panel.find_child("Shipment_0", true, false) != null, "transport ds2: a shipment is a module")
+	var keys: Dictionary = panel.get("_routing_keys")
+	(keys[MatchState.RouteObjective.CHEAPEST] as Control).emit_signal("pressed")
+	_check(MatchState.route_objective == MatchState.RouteObjective.CHEAPEST and bool((keys[MatchState.RouteObjective.CHEAPEST] as Control).get("latched"))
+		and not bool((keys[MatchState.RouteObjective.FASTEST] as Control).get("latched")), "transport ds2: a routing key sets the objective and latches alone")
+	_check(panel.find_child("RoutingObjective", true, false) != null, "transport ds2: the routing objective keeps its name")
+	UiPrefs.set_use_transport_ds2(false)
+	await get_tree().process_frame
+	_check(panel.find_child("TransportTitleRow", true, false) == null and panel.find_child("RoutingObjective", true, false) is OptionButton,
+		"transport ds2: off again, the v2 panel is back")
+	panel.queue_free()
+	MatchState.set_route_objective(was_route)
+	TransportState.pending_transport_shipments = pending
+	Stockpile.consume("tile_5_10", "g_006", 40)
+	UiPrefs.set_use_transport_ds2(was)

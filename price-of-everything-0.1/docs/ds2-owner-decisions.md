@@ -133,3 +133,7 @@ Owner, 2 October 2026:
 - "Do not show again" stays session wide.
 - News line, once a game, on the first sale to reach the global market: title "First sale to the market", body "Our company sold its first goods to the global market via [port]. This is likely the first in many transactions that will put us on the map. Who knows where we'll go from here."
 - Owner, on the sheet: the keys read Cancel and Confirm, Cancel the smaller. The Stockpile tab link opens the tab and leaves the sheet up with its decision (the scrim clears so the tab can be used; the sheet drags by its title). The old "Surplus at" prompt (`stockpile_route_prompt.gd`) and the system Change supplier dialog are removed from the code.
+
+## Shipments and Stockpiles (2 October 2026)
+
+- The owner asked for the top bar's transport panel in DS2. First build, awaiting review, behind `toggle transport ds2` (off by default): `scripts/transport_ds2/transport_ds2.gd`, built into `scripts/transport_panel.gd`. The same three columns (Stockpiles, Infrastructure, In transit) as plastic cases of raised modules, a lamp and words for each row, fills and loads on LED meters, the routing objective and the infrastructure filter as latching keys, Logistics Settings as a sheet with three keys a side. No new renders. Captures: `artifacts/transport_ds2/`, made by `tools/transport_ds2_shot.tscn`.

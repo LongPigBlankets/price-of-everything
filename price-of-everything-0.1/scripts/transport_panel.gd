@@ -21,6 +21,11 @@ const BuildingIcon := preload("res://scripts/building_icon.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 ## The tile view's building card, shared so the two lists look like one game.
 const BrushedCard := preload("res://scripts/brushed_card.gd")
+# The DS2 look (UiPrefs.use_transport_ds2).
+const Ds2 := preload("res://scripts/transport_ds2/transport_ds2.gd")
+const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
+const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
+const Middleman := preload("res://scripts/middleman_service.gd")
 const ROUTE_STOCKPILE_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_stockpile.png")
 const ROUTE_MARKET_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_port.png")
 const ROUTE_MIDDLEMAN_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_lorry.png")
@@ -74,6 +79,9 @@ var _drag_offset := Vector2.ZERO
 var _refresh_queued := false
 var _infra_enabled: Dictionary = {}      # mode -> bool, driven by the filter chips
 var _route_icon_cache: Dictionary = {}
+## Whether the DS2 look is built, and its routing keys.
+var _ds2 := false
+var _routing_keys := {}
 
 
 func _ready() -> void:
@@ -84,19 +92,11 @@ func _ready() -> void:
 	custom_minimum_size = Vector2(PANEL_WIDTH, PANEL_HEIGHT)
 	size = Vector2(PANEL_WIDTH, PANEL_HEIGHT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	# Own copy of the shared navy stylebox: keep the fill, drop the cream border, and zero
-	# content_margin so the brass overlay can reach the panel edge (the money panel does the
-	# same — the frame straddles the border, so a border underneath it reads as a double line).
-	var base_sb := get_theme_stylebox("panel")
-	if base_sb is StyleBoxFlat:
-		var sb := (base_sb as StyleBoxFlat).duplicate() as StyleBoxFlat
-		sb.set_border_width_all(0)
-		sb.set_content_margin_all(0)
-		add_theme_stylebox_override("panel", sb)
-	_build()
-	# Last child, so the PanelContainer fits it to the whole rect and it paints over the
-	# content rather than under it.
-	add_child(preload("res://scripts/brass_pipe_frame.gd").new())
+	_build_look()
+	UiPrefs.transport_ds2_changed.connect(func(_on: bool) -> void:
+		_build_look()
+		if visible:
+			_refresh())
 	# Coalesced (the notification-bell pattern the other panels use): stockpile_changed
 	# fires per transaction during PROCESS — hundreds of times in one burst — and each
 	# would otherwise tear down and rebuild all three columns.
@@ -142,6 +142,125 @@ func _apply_refresh() -> void:
 	_refresh_queued = false
 	if visible:
 		_refresh()
+
+
+# ── Look: v2, or DS2 behind UiPrefs.use_transport_ds2 ────────────────────────────────────
+## Builds the panel in the look the switch asks for, taking down the other first.
+func _build_look() -> void:
+	LampOverlay.detach(self)
+	for c in get_children():
+		remove_child(c)
+		c.queue_free()
+	_settings_layer = null
+	_settings_card = null
+	_settings_button = null
+	_routing_keys.clear()
+	_infra_enabled.clear()
+	_ds2 = UiPrefs.use_transport_ds2
+	remove_theme_stylebox_override("panel")
+	if _ds2:
+		_build_ds2()
+		# The lamp over the whole panel (docs/ds2-theme.md §4).
+		LampOverlay.attach(self)
+		return
+	# Own copy of the shared navy stylebox: keep the fill, drop the cream border, and zero
+	# content_margin so the brass overlay can reach the panel edge (the money panel does the
+	# same — the frame straddles the border, so a border underneath it reads as a double line).
+	var base_sb := get_theme_stylebox("panel")
+	if base_sb is StyleBoxFlat:
+		var sb := (base_sb as StyleBoxFlat).duplicate() as StyleBoxFlat
+		sb.set_border_width_all(0)
+		sb.set_content_margin_all(0)
+		add_theme_stylebox_override("panel", sb)
+	_build()
+	# Last child, so the PanelContainer fits it to the whole rect and it paints over the
+	# content rather than under it.
+	add_child(preload("res://scripts/brass_pipe_frame.gd").new())
+
+
+## DS2: the ledger's shell, then the three columns as plastic cases of raised modules.
+func _build_ds2() -> void:
+	LedgerV3.dress(self)
+	var margin := MarginContainer.new()
+	for m in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		margin.add_theme_constant_override(m, LedgerV3.CONTENT_MARGIN)
+	add_child(margin)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 12)
+	margin.add_child(root)
+
+	var routing := Ds2.routing(MatchState.route_objective, func(id: int) -> void: MatchState.set_route_objective(id))
+	_routing_keys = routing.keys
+	_settings_button = Ds2.Parts.key_button("Logistics Settings", "LogisticsSettings", 0.8)
+	_settings_button.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_settings_button.custom_minimum_size.x = 190.0
+	_settings_button.pressed.connect(_toggle_settings)
+	root.add_child(Ds2.title_row("Shipments and Stockpiles", [routing.box, _settings_button], func() -> void:
+		if _settings_layer != null:
+			_settings_layer.visible = false
+		hide(), _on_ds2_drag))
+	root.add_child(LedgerV3.seam())
+
+	var columns := HBoxContainer.new()
+	columns.add_theme_constant_override("separation", Ds2.COLUMN_GAP)
+	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_child(columns)
+	var stock := Ds2.column("Stockpiles", "Fullest first")
+	columns.add_child(stock.wrap)
+	_stock_list = stock.list
+	var filters: Array = INFRA_FILTERS.map(func(f: Dictionary) -> Array: return [str(f.label), str(f.mode)])
+	for f: Dictionary in INFRA_FILTERS:
+		_infra_enabled[str(f.mode)] = str(f.mode) == str(INFRA_FILTERS[0].mode)
+	var filter_bed := Ds2.key_bed("InfraFilters", filters, str(INFRA_FILTERS[0].mode), func(mode: String) -> void:
+		for k in _infra_enabled:
+			_infra_enabled[k] = k == mode
+		_build_infra())
+	var infra := Ds2.column("Infrastructure", "Most congested first", filter_bed.bed)
+	columns.add_child(infra.wrap)
+	_infra_list = infra.list
+	var transit := Ds2.column("In transit", "Largest first")
+	columns.add_child(transit.wrap)
+	_transit_list = transit.list
+
+	_global_logistics = VBoxContainer.new()
+	_global_logistics.add_theme_constant_override("separation", 12)
+	var sheet := Ds2.settings_sheet(func() -> void: _settings_layer.visible = false)
+	_settings_layer = sheet.layer
+	_settings_card = sheet.card
+	(sheet.body as VBoxContainer).add_child(_global_logistics)
+	add_child(_settings_layer)
+	_settings_layer.resized.connect(_layout_settings_card)
+	call_deferred("_layout_settings_card")
+
+
+## DS2: the title row drags the panel.
+func _on_ds2_drag(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		_dragging = event.pressed
+		_drag_offset = global_position - get_global_mouse_position()
+	elif event is InputEventMouseMotion and _dragging:
+		global_position = get_global_mouse_position() + _drag_offset
+
+
+## A tile as DS2 copy names it: its name, without its coordinates.
+static func place(tile_id: String) -> String:
+	var nick := Catalog.tile_name(tile_id)
+	return nick if nick != "" else Catalog.tile_label(tile_id)
+
+
+## A fill or a load as a lamp's tone.
+static func tone_of(color: Color) -> String:
+	if color == DS.PALETTE.DANGER:
+		return "bad"
+	if color == DS.PALETTE.WARN:
+		return "warn"
+	return "ok"
+
+
+## The worse of two tones.
+static func worse(a: String, b: String) -> String:
+	var rank := {"ok": 0, "warn": 1, "bad": 2}
+	return a if int(rank.get(a, 0)) >= int(rank.get(b, 0)) else b
 
 
 # ── Chrome ────────────────────────────────────────────────────────────────────
@@ -286,6 +405,9 @@ func _layout_settings_card() -> void:
 		return
 	var available := _settings_layer.size
 	var target := Vector2(minf(760.0, maxf(0.0, available.x - 52.0)), minf(300.0, maxf(0.0, available.y - 80.0)))
+	if _ds2:
+		# As tall as its keys: three to a side under the title.
+		target = Vector2(minf(720.0, maxf(0.0, available.x - 52.0)), _settings_card.get_combined_minimum_size().y)
 	_settings_card.size = target
 	_settings_card.position = ((available - target) * 0.5).floor()
 
@@ -376,6 +498,9 @@ func _numeric(text: String, size: int = DS.FS.CAPTION, color: Color = DS.PALETTE
 
 
 func _empty_note(list: VBoxContainer, text: String) -> void:
+	if _ds2:
+		list.add_child(Ds2.note(text))
+		return
 	var l := _label(text, DS.FS.CAPTION, DS.PALETTE.TEXT)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	list.add_child(l)
@@ -390,6 +515,8 @@ func _clear(container: Node) -> void:
 
 
 func _refresh() -> void:
+	for id in _routing_keys:
+		(_routing_keys[id] as Control).set("latched", int(id) == MatchState.route_objective)
 	_build_stockpiles()
 	_build_infra()
 	_build_transit()
@@ -440,6 +567,15 @@ func _stockpile_row(row: Dictionary) -> Control:
 	var tile_id := str(row.tile_id)
 	var fill := float(row.fill)
 	var cap := float(row.cap)
+	if _ds2:
+		var eta := _full_eta_text(tile_id, fill)
+		return Ds2.stock_row({
+			"tile_id": tile_id, "name": place(tile_id), "level": Stockpile.get_warehouse_level(tile_id),
+			"used": float(row.used), "cap": cap, "near": NEAR_FULL,
+			"tone": worse(tone_of(_fill_color(fill)), tone_of(_eta_color(tile_id, fill)) if eta != "not filling" else "ok"),
+			"words": "%d%% full, %s of %s. %s." % [int(round(fill * 100.0)), _money(float(row.used)), _money(cap), "Full" if eta == "FULL" else eta.substr(0, 1).to_upper() + eta.substr(1)],
+			"goods": Stockpile.get_top_goods(tile_id, 3),
+		}, func() -> void: MatchState.tile_stockpile_requested.emit(tile_id))
 	var card := _row_card(true)
 	card.tooltip_text = "Open this tile's stockpile"
 	card.gui_input.connect(func(e: InputEvent) -> void:
@@ -618,6 +754,17 @@ func _build_infra() -> void:
 func _infra_row(link: Dictionary) -> Control:
 	var mode := str(link.mode)
 	var ratio := float(link.ratio)
+	if _ds2:
+		var over := TransportState.link_turns_over(str(link.key))
+		var paid_so_far := TransportState.link_congestion_paid(str(link.key))
+		return Ds2.infra_row({
+			"key": str(link.key), "building_id": str(Catalog.get_building_by_internal_name(InfraIcons.normalise(mode)).get("id", "")),
+			"name": "%s at %s" % [_mode_label(mode), place(str(link.tile_id))], "level": int(link.level),
+			"flow": float(link.flow), "cap": float(link.cap), "near": 0.85, "tone": tone_of(_load_color(ratio)),
+			"words": "%d%%, %s of %s units. At capacity %d of the last %d turns." % [int(round(ratio * 100.0)),
+				_money(float(link.flow)), _money(float(link.cap)), over, TransportState.LINK_HISTORY_TURNS],
+			"cost_words": ("Congestion has added £%s so far." % _money(paid_so_far)) if paid_so_far > 0.0 else "",
+		}, func() -> void: _open_infra_building(str(link.tile_id), mode))
 	# The same brushed card the tile view gives a building, because that is what this row
 	# leads to: clicking it opens exactly that building's detail panel.
 	var card := BrushedCard.new(DS.SP.SM, 6, 9.0)
@@ -808,8 +955,15 @@ func _build_transit() -> void:
 	if rows.is_empty():
 		_empty_note(_transit_list, "Nothing is on the move.")
 		return
-	for row: Dictionary in rows:
-		_transit_list.add_child(_transit_row(row))
+	for i in rows.size():
+		var row: Dictionary = rows[i]
+		if _ds2:
+			var turns := int(row.turns)
+			_transit_list.add_child(Ds2.transit_row({"manifest": row.manifest,
+				"where": "To market" if bool(row.to_market) else "To %s" % place(str(row.destination)),
+				"when": "Arrives now." if turns <= 0 else "Arrives in %d turn%s." % [turns, "" if turns == 1 else "s"]}, i))
+		else:
+			_transit_list.add_child(_transit_row(row))
 
 
 ## What a shipment is carrying, as [{good_id, qty}]. Sales carry an itemised
@@ -916,6 +1070,8 @@ func _money(amount: float) -> String:
 # ── Dragging (matches the other floating panels) ──────────────────────────────
 
 func _gui_input(event: InputEvent) -> void:
+	if _ds2:
+		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			if event.position.y > HEADER_HEIGHT:
@@ -933,10 +1089,17 @@ func _gui_input(event: InputEvent) -> void:
 func _build_logistics_overview(list: VBoxContainer) -> void:
 	if not preload("res://scripts/middleman_service.gd").active(): return
 	var service = preload("res://scripts/middleman_service.gd")
-	list.add_child(_label("Building logistics"))
+	list.add_child(Ds2.list_heading("Building logistics") if _ds2 else _label("Building logistics"))
 	for b: Dictionary in BuildingState.buildings.values():
 		if not service.eligible(b): continue
 		var iid := str(b.instance_id)
+		if _ds2:
+			list.add_child(Ds2.logistics_row(iid, BuildingNaming.of(b), "Inputs: %s. Outputs: %s." % [
+				"Intermediary" if service.uses_inputs(iid) else "Managed", "Intermediary" if service.uses_outputs(iid) else "Managed"],
+				func() -> void:
+					hide()
+					MatchState.focus_building_requested.emit(iid)))
+			continue
 		var button := Button.new()
 		button.text = "%s · In: %s / Out: %s" % [BuildingNaming.of(b),"Intermediary" if service.uses_inputs(iid) else "Managed","Intermediary" if service.uses_outputs(iid) else "Managed"]
 		button.tooltip_text = "Open building details to change logistics. Managed deliveries use generic carriers."
@@ -955,6 +1118,14 @@ func _build_global_logistics() -> void:
 		if _settings_layer != null:
 			_settings_layer.visible = false
 		return
+	if _ds2:
+		_global_logistics.add_child(Ds2.Parts.caption("For every building in the company"))
+		var sides := HBoxContainer.new()
+		sides.add_theme_constant_override("separation", 18)
+		_global_logistics.add_child(sides)
+		for side: String in ["input", "output"]:
+			sides.add_child(_ds2_settings_side(side))
+		return
 	var title := _label("All Buildings in the company", DS.FS.BODY + 4, DS.PALETTE.ACCENT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_global_logistics.add_child(title)
@@ -964,6 +1135,22 @@ func _build_global_logistics() -> void:
 	_global_logistics.add_child(columns)
 	columns.add_child(_global_logistics_side("input"))
 	columns.add_child(_global_logistics_side("output"))
+
+
+## DS2: one side's three keys, locked ones saying what they need.
+func _ds2_settings_side(side: String) -> Control:
+	var state: Dictionary = Middleman.global_side(side)
+	var inputs := side == "input"
+	var none: bool = (state.ids as Array).is_empty()
+	var choices: Array = []
+	for spec: Array in [
+			["middleman", "Logistics Intermediary", "The Logistics Intermediary handles every building's %s." % ("inputs" if inputs else "outputs"), ""],
+			["market", "Global market", "Buy all inputs at the global market through a port." if inputs else "Sell all outputs at the global market through a port.", Middleman.route_lock("market")],
+			["stockpile", "Tile stockpile", "Draw all inputs from each building's tile stockpile." if inputs else "Keep all outputs in each building's tile stockpile.", Middleman.route_lock("stockpile")]]:
+		var lock := str(spec[3])
+		choices.append({"id": str(spec[0]), "label": str(spec[1]), "tip": lock if lock != "" else str(spec[2]),
+			"enabled": not none and lock == "", "active": _global_logistics_choice_active(str(spec[0]), side, state.ids)})
+	return Ds2.settings_side("Inputs" if inputs else "Outputs", choices, func(destination: String) -> void: _request_global_logistics(side, destination))
 
 
 func _global_logistics_side(side: String) -> Control:
