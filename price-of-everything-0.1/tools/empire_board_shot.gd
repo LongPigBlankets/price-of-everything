@@ -36,7 +36,9 @@ func _ready() -> void:
 	await _settle(90)
 	var board: Control = ev.get_node("Board")
 	var model: Dictionary = board.get("_model")
-	print("BAKES ", (board.get("_bakes") as Dictionary).size(), " zoom ", board.get("_zoom"))
+	print("BAKES ", (board.get("_bakes") as Dictionary).keys(), " zoom ", board.get("_zoom"),
+		" baking ", board.get("_baking"), " want ", board.call("_bake_zoom"), " next ", board.call("_next_bake"),
+		" view ", board.get("_bake_view").get("size"))
 	print("BOARD tiles=", (model.get("tiles", {}) as Dictionary).size(),
 		" standing=", (model.get("standing", []) as Array).size(),
 		" lines=", (model.get("lines", []) as Array).size(),

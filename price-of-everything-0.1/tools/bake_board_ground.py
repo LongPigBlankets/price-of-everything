@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bake the two ground textures of the supply chain board.
+"""Bake the ground texture of the supply chain board.
 
     python3 tools/bake_board_ground.py            (from the project directory)
 
@@ -8,8 +8,6 @@ strata.png   the cut-away under the tiles, in the key art plate's manner: soil, 
              edge wide and repeats exactly, so the strata run on round a tile's corners and
              from one tile to the next. From top to bottom it spans the whole height of the
              board's slab, mountain top to the slab's foot.
-stipple.png  the print pass's dots, as a small repeating tile. The board lays it over ground
-             that is in shade, the way the sprites' own shading is printed.
 """
 import math
 import os
@@ -65,17 +63,6 @@ def strata():
     return im
 
 
-def stipple():
-    size, pitch = 48, 8
-    im = Image.new("RGBA", (size, size), (INK[0], INK[1], INK[2], 0))
-    draw = ImageDraw.Draw(im)
-    for row, gy in enumerate(range(0, size, pitch // 2)):
-        for gx in range((row % 2) * (pitch // 2), size, pitch):
-            draw.ellipse([gx - 1.1, gy - 1.1, gx + 1.1, gy + 1.1], fill=INK + (255,))
-    return im
-
-
 os.makedirs(OUT, exist_ok=True)
 strata().save(os.path.join(OUT, "strata.png"))
-stipple().save(os.path.join(OUT, "stipple.png"))
 print("baked", OUT)

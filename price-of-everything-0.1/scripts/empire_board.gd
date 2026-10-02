@@ -83,10 +83,12 @@ const _TURF := 4.0                   # the dark lip of turf over a cut-away wall
 const _INK := Color("2f3b59")
 const _INK_W := 1.5
 const _SAND := Color("e6d6a6")
-const _STRAND := 11.0                # how wide the sand lies along a shore
-const _STIPPLE_PERIOD := 30.0        # board units to one repeat of the dot screen
-const _STIPPLE_FROM := 0.62          # light below this prints dots
-const _STIPPLE_ALPHA := 0.30
+const _STRAND := 15.0                # how wide the sand lies along a shore
+const _SHALLOWS_OUT := 13.0          # how far out the pale shallows are centred
+const _SHALLOWS_W := 30.0
+const _FOAM := Color(0.97, 0.97, 0.93, 0.85)
+const _BANK := Color("c9c08f")       # a river's bank: pale, between the grass and the sand
+const _INK_SOFT := Color(0.18, 0.23, 0.35, 0.55)
 ## A tile slopes down to a lower neighbour over this much of its own ground.
 const SLOPE_W := 34.0
 ## The light of the key art's plate, a low golden sun and a cool shade away from it. The sun
@@ -99,7 +101,7 @@ const _SHADOW_NW := Vector2(-0.70710678, -0.70710678)
 const _GOLD_LIGHT := Color(1.0, 0.80, 0.44)
 const _COOL_SHADE := Color(0.05, 0.08, 0.22)
 const _LIGHT_GOLD_ALPHA := 0.20
-const _LIGHT_SHADE_ALPHA := 0.14
+const _LIGHT_SHADE_ALPHA := 0.20
 const _TINT_SUN := Color(1.0, 0.97, 0.88)
 const _TINT_SHADE := Color(0.80, 0.84, 0.97)
 const _GLINTS_PER_TILE := 16
@@ -124,17 +126,21 @@ const _ROADSIDE_GAP := 34.0
 const _ROADSIDE_KEEP := 0.55
 const _TREE_DIR := "res://assets/iso/trees/"
 
-## The zooms the board is shown at. Each tile's picture is baked for the zoom in use and laid
-## down one to one with the screen, which is what keeps it sharp; a zoom in between would
-## have to stretch one.
-const ZOOMS := [0.2, 0.3, 0.4, 0.6, 0.8, 1.2, 1.6]
-const _PINCH_STEP := 1.35
+## The zooms a tile's picture is baked at. The board zooms smoothly; a tile is drawn from the
+## bake at or just above the present zoom, so it is only ever reduced, never enlarged, and by
+## less than half. The change from one bake to the next happens as the zoom passes each of these.
+const BAKE_ZOOMS := [0.3, 0.6, 1.2]
+const _ZOOM_MIN := 0.1
+const _ZOOM_MAX := 1.5
+const _ZOOM_STEP := 1.12
+## Bakes are let go, least recently drawn first, once they hold more than this many bytes.
+const _BAKE_BUDGET := 280 * 1024 * 1024
 ## A tile is baked at this many times its shown size and reduced, so small things are drawn
 ## from more than one sample each.
 const _BAKE_OVERSAMPLE := 2.0
 const _TILE_HEADROOM := 150.0        # board units kept above a tile's top for what stands on it
 const _TILE_MARGIN := 34.0
-const _BAKE_GRID := 5.0              # board units; every zoom in ZOOMS takes this to whole pixels
+const _BAKE_GRID := 5.0              # board units a tile's picture is snapped to
 const _EDGE_PARTS := 18              # stretches a cliff edge is cut into, to tell land from water
 const _WATER_DEPTH := 22.0           # how deep the sea shows in the cut-away
 const _FIT_PAD := 90.0
@@ -153,7 +159,7 @@ static var _relief_cache: Dictionary = {}    # tile_id -> {base, sea: [], land: 
 
 var _model: Dictionary = {}
 var _tile_order: Array = []                  # the drawn tiles, far to near
-var _tile_gfx: Dictionary = {}               # tile_id -> {walls, ground, stipple, light}: its meshes, in board space
+var _tile_gfx: Dictionary = {}               # tile_id -> {walls, ground, light}: its meshes, in board space
 var _tile_parts: Dictionary = {}             # tile_id -> everything else that is drawn on it, see _sort_parts
 var _tile_sig: Dictionary = {}               # tile_id -> a hash of what its picture is made of
 ## Baked pictures of tiles: "tile|zoom" -> {tex, sig, rect}. A picture is kept for as long as
@@ -163,7 +169,6 @@ var _bake_view: SubViewport
 var _painter: Control
 var _bake_layer: Control
 var _baking := false
-var _pinch := 1.0
 static var _ground_textures: Dictionary = {}
 var _fog: Array = []                         # [{at, r, a, phase}] wisps of dirty air, in board space
 var _lights: Array = []                      # [{tex, rect, col, phase}] lit windows and fires
@@ -231,8 +236,6 @@ class Painter extends Control:
 
 func _ready() -> void:
 	clip_contents = true
-	# The dot screen is one small tile laid across whole tiles of the board.
-	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	_bake_view = SubViewport.new()
 	_bake_view.name = "BakeView"
 	_bake_view.transparent_bg = true
@@ -242,7 +245,6 @@ func _ready() -> void:
 	add_child(_bake_view)
 	_painter = Painter.new()
 	_painter.set("board", self)
-	_painter.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	_bake_view.add_child(_painter)
 	# A transparent viewport's picture comes out with its colour already multiplied by its
 	# alpha, so it is laid back down the same way; blended as ordinary colour its soft edges
@@ -252,7 +254,7 @@ func _ready() -> void:
 	_bake_layer.name = "Bakes"
 	_bake_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_bake_layer.texture_repeat = CanvasItem.TEXTURE_REPEAT_DISABLED
-	_bake_layer.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	_bake_layer.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	_bake_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var premult := CanvasItemMaterial.new()
 	premult.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
@@ -334,13 +336,8 @@ func fit_view() -> void:
 	if _bounds.size.x <= 0.0 or size.x <= 0.0:
 		return
 	var avail := size - Vector2(_FIT_PAD, _FIT_PAD) * 2.0
-	var fit := minf(avail.x / _bounds.size.x, avail.y / _bounds.size.y)
-	# The largest of the fixed zooms at which the whole board is in view.
-	_zoom = ZOOMS[0]
-	for z in ZOOMS:
-		if float(z) <= fit:
-			_zoom = float(z)
-	_offset = (size * 0.5 - _bounds.get_center() * _zoom).round()
+	_zoom = clampf(minf(avail.x / _bounds.size.x, avail.y / _bounds.size.y), _ZOOM_MIN, BAKE_ZOOMS[BAKE_ZOOMS.size() - 1])
+	_offset = size * 0.5 - _bounds.get_center() * _zoom
 	_fitted = true
 	_view_changed()
 
@@ -534,10 +531,6 @@ func _build_ground(rivers: Dictionary) -> void:
 		var wcols := PackedColorArray()
 		var wuvs := PackedVector2Array()
 		var widx := PackedInt32Array()
-		var sverts := PackedVector3Array()            # the printed shade over the tile tops
-		var scols := PackedColorArray()
-		var suvs := PackedVector2Array()
-		var sidx := PackedInt32Array()
 		var t: Dictionary = tiles[tid]
 		var c: Vector2 = t["center"]
 		var h := float(t["height"])
@@ -641,54 +634,60 @@ func _build_ground(rivers: Dictionary) -> void:
 			var w := (float(rec["start_width"]) + float(rec["end_width"])) * 0.5
 			for part in Geometry2D.intersect_polyline_with_polygon(rec["points"], top_poly):
 				_stroke(verts, cols, idx, part, w, h, water)
-		# The shore: a strand of sand where the land meets open water, and ink along it.
+		# The shore, as on the key art's plate: no hard line, but a beach. Dry sand on the land
+		# side, a darker wet strip at the water's edge, a thread of foam, and pale shallows
+		# running out into the deeper water.
 		if not is_sea and not (rel["sea"] as Array).is_empty():
 			var lowest := 99
 			for e in rel["land"]:
 				lowest = mini(lowest, int(e["b"]))
+			var shore: Array = []                 # [[p0, p1, outward normal]]
 			for e in rel["land"]:
 				if int(e["b"]) != lowest:
 					continue
 				for piece in _within(e["p"], top_poly, sloped):
 					var pts: PackedVector2Array = piece
+					var signed := 0.0
+					for k in range(pts.size()):
+						signed += pts[k].x * pts[(k + 1) % pts.size()].y - pts[(k + 1) % pts.size()].x * pts[k].y
 					for k in range(pts.size()):
 						var p0 := pts[k]
 						var p1 := pts[(k + 1) % pts.size()]
-						if _on_border((p0 + p1) * 0.5, hexp) or not Geometry2D.is_point_in_polygon((p0 + p1) * 0.5, top_poly):
+						if p0.distance_squared_to(p1) < 0.01 or _on_border((p0 + p1) * 0.5, hexp) \
+								or not Geometry2D.is_point_in_polygon((p0 + p1) * 0.5, top_poly):
 							continue
-						_stroke(verts, cols, idx, PackedVector2Array([p0, p1]), _STRAND, h, _SAND)
-						_stroke(verts, cols, idx, PackedVector2Array([p0, p1]), _INK_W, h, _INK)
+						shore.append([p0, p1, (p1 - p0).normalized().orthogonal() * (1.0 if signed >= 0.0 else -1.0)])
+			# Laid widest first, so each band shows as a strip beside the next.
+			for band in [[_SHALLOWS_OUT, _SHALLOWS_W, water.lightened(0.14)], [_SHALLOWS_OUT * 0.45, _SHALLOWS_W * 0.6, water.lightened(0.3)],
+					[-_STRAND * 0.5, _STRAND, _SAND], [0.6, 3.4, _SAND.darkened(0.16)], [2.6, 1.1, _FOAM]]:
+				for seg in shore:
+					var out: Vector2 = (seg[2] as Vector2) * float(band[0])
+					# A band that would run out over the tile's own edge is left off there.
+					if not Geometry2D.is_point_in_polygon(((seg[0] as Vector2) + (seg[1] as Vector2)) * 0.5
+							+ (seg[2] as Vector2) * (float(band[0]) + signf(float(band[0])) * float(band[1]) * 0.5), top_poly):
+						continue
+					_stroke(verts, cols, idx, PackedVector2Array([(seg[0] as Vector2) + out, (seg[1] as Vector2) + out]),
+						float(band[1]), h, band[2])
 		for p in rel["lakes"]:
 			for piece in _within(p, top_poly, sloped):
 				var ring: PackedVector2Array = piece
 				ring.append(ring[0])
-				_stroke(verts, cols, idx, ring, _INK_W, h, _INK)
+				_stroke(verts, cols, idx, ring, 4.0, h, _SAND.darkened(0.08))
+				_stroke(verts, cols, idx, ring, 1.6, h, water.lightened(0.3))
+		# A river: pale banks, the water lighter down its middle, and only a thin line to it.
 		for rec in rivers.get(tid, []):
 			var half_w := (float(rec["start_width"]) + float(rec["end_width"])) * 0.25
 			for part in Geometry2D.intersect_polyline_with_polygon(rec["points"], top_poly):
+				_stroke(verts, cols, idx, part, half_w * 0.9, h, water.lightened(0.16))
 				for side in [-1.0, 1.0]:
-					_stroke(verts, cols, idx, _beside(part, half_w * float(side)), _INK_W, h, _INK)
+					_stroke(verts, cols, idx, _beside(part, (half_w + 1.4) * float(side)), 3.0, h, _BANK)
+					_stroke(verts, cols, idx, _beside(part, half_w * float(side)), 0.9, h, _INK_SOFT)
 		# The plate's rim, inked where it ends in a cliff.
 		for rim_edge in rims:
 			_stroke(verts, cols, idx, PackedVector2Array([rim_edge[0], rim_edge[1]]), _INK_W * 1.3, float(rim_edge[2]), _INK)
 		rims.clear()
 		_labels.append({"at": iso(c + Vector2(135.0, 240.0) * 0.72, h), "text": str(t["label"])})
 		t["top_poly"] = top_poly
-		# Printed shade: the dot screen over ground the sun does not reach, none on open water.
-		if not is_sea:
-			var sbase := sverts.size()
-			var sc := iso(c, h)
-			for q in [sc]:
-				sverts.append(Vector3(q.x, q.y, 0.0))
-				suvs.append(q / _STIPPLE_PERIOD)
-				scols.append(Color(1.0, 1.0, 1.0, _shade_dots(_light_at(q))))
-			for p in top_poly:
-				var q2 := iso(p, h)
-				sverts.append(Vector3(q2.x, q2.y, 0.0))
-				suvs.append(q2 / _STIPPLE_PERIOD)
-				scols.append(Color(1.0, 1.0, 1.0, _shade_dots(_light_at(q2))))
-			for k in range(top_poly.size()):
-				sidx.append_array([sbase, sbase + 1 + k, sbase + 1 + (k + 1) % top_poly.size()])
 		# The light: golden toward the sun, cool away from it, laid over the tile's top.
 		var base := lverts.size()
 		var centre := iso(c, h)
@@ -702,12 +701,7 @@ func _build_ground(rivers: Dictionary) -> void:
 			lidx.append_array([base, base + 1 + k, base + 1 + (k + 1) % top_poly.size()])
 		_seed_glints(str(tid), t, rel, is_sea)
 		_tile_gfx[tid] = {"ground": _mesh_of(verts, cols, idx), "light": _mesh_of(lverts, lcols, lidx),
-			"walls": _mesh_of(wverts, wcols, widx, wuvs), "stipple": _mesh_of(sverts, scols, sidx, suvs)}
-
-
-## How strongly the dot screen prints at a given light: none in the sun, full in deep shade.
-static func _shade_dots(t: float) -> float:
-	return clampf((_STIPPLE_FROM - t) / _STIPPLE_FROM, 0.0, 1.0) * _STIPPLE_ALPHA
+			"walls": _mesh_of(wverts, wcols, widx, wuvs)}
 
 
 ## One cut-away wall. `pts` is [[plan point, height]] round its outline; a and b are the ends
@@ -1552,7 +1546,7 @@ func _process(delta: float) -> void:
 		if not _baking:
 			var tile := _next_bake()
 			if tile != "":
-				_bake(tile, _zoom)
+				_bake(tile, _bake_zoom())
 
 
 func _draw() -> void:
@@ -1566,7 +1560,7 @@ func _draw() -> void:
 	# blank while the bakes catch up.
 	draw_set_transform(_offset, 0.0, Vector2(_zoom, _zoom))
 	for tid in _tile_order:
-		if not _baked(str(tid)):
+		if _best_bake(str(tid)).is_empty():
 			_draw_tile(self, str(tid), _zoom)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
@@ -1580,8 +1574,6 @@ func _draw_tile(ci: CanvasItem, tile: String, zoom: float) -> void:
 		ci.draw_mesh(gfx["walls"], _ground_tex("strata"))
 	if gfx.get("ground") != null:
 		ci.draw_mesh(gfx["ground"], null)
-	if gfx.get("stipple") != null:
-		ci.draw_mesh(gfx["stipple"], _ground_tex("stipple"))
 	var road_tex: Texture2D = _road_kit().texture()
 	if road_tex != null:
 		for fit in parts.get("fits", []):
@@ -1703,7 +1695,7 @@ func _tile_of(p: Vector2) -> String:
 
 
 ## The part of the board a tile's picture covers: its top, its cut-away below, and room above
-## for what stands on it. Its corner sits on a grid that every zoom maps to whole pixels.
+## for what stands on it.
 func _tile_rect(tile: String) -> Rect2:
 	var t: Dictionary = (_model["tiles"] as Dictionary)[tile]
 	var hexp := Model.hex_points(t["center"])
@@ -1727,10 +1719,35 @@ func _bake_key(tile: String, zoom: float) -> String:
 	return "%s|%.2f|%.3f" % [tile, zoom, _px()]
 
 
-## Is there a good picture of this tile at the present zoom?
-func _baked(tile: String) -> bool:
-	var b: Dictionary = _bakes.get(_bake_key(tile, _zoom), {})
+## The bake zoom the present zoom is drawn from: the first at or above it, else the largest.
+func _bake_zoom() -> float:
+	for z in BAKE_ZOOMS:
+		if float(z) >= _zoom * 0.999:
+			return float(z)
+	return float(BAKE_ZOOMS[BAKE_ZOOMS.size() - 1])
+
+
+func _good(tile: String, zoom: float) -> bool:
+	var b: Dictionary = _bakes.get(_bake_key(tile, zoom), {})
 	return not b.is_empty() and int(b["sig"]) == int(_tile_sig.get(tile, 0))
+
+
+## Is there a picture of this tile from the bake the present zoom calls for?
+func _baked(tile: String) -> bool:
+	return _good(tile, _bake_zoom())
+
+
+## The picture to draw a tile from now: the one the zoom calls for, or while that is still
+## being baked, whichever other is at hand. Returns [bake, its zoom], or [] when there is none.
+func _best_bake(tile: String) -> Array:
+	var want := _bake_zoom()
+	if _good(tile, want):
+		return [_bakes[_bake_key(tile, want)], want]
+	var found: Array = []
+	for z in BAKE_ZOOMS:
+		if _good(tile, float(z)) and (found.is_empty() or absf(float(z) - want) < absf(float(found[1]) - want)):
+			found = [_bakes[_bake_key(tile, float(z))], float(z)]
+	return found
 
 
 ## Bake one tile's picture at one zoom: paint it oversized into the bake viewport, read it
@@ -1757,15 +1774,19 @@ func _bake(tile: String, zoom: float) -> void:
 	var img: Image = _bake_view.get_texture().get_image()
 	if img != null and not img.is_empty():
 		img.resize(maxi(1, want.x), maxi(1, want.y), Image.INTERPOLATE_LANCZOS)
-		_bakes[key] = {"tex": ImageTexture.create_from_image(img), "sig": sig, "rect": rect}
+		# Mipmaps, because between two bake zooms the picture is drawn reduced.
+		img.generate_mipmaps()
+		_bakes[key] = {"tex": ImageTexture.create_from_image(img), "sig": sig, "rect": rect,
+			"bytes": int(want.x * want.y * 4 * 1.34), "used": Engine.get_frames_drawn()}
+		_trim_bakes()
 	_painter.set("tile", "")
 	_baking = false
 	_view_changed()
 
 
-## The next tile wanting a bake at the present zoom: one in view first, far to near.
+## The next tile in view wanting a bake for the present zoom, far to near. Tiles out of view
+## are left until they are looked at.
 func _next_bake() -> String:
-	var later := ""
 	var view := Rect2(Vector2.ZERO, size)
 	for tid in _tile_order:
 		if _baked(str(tid)):
@@ -1773,21 +1794,39 @@ func _next_bake() -> String:
 		var r := _tile_rect(str(tid))
 		if view.intersects(Rect2(r.position * _zoom + _offset, r.size * _zoom)):
 			return str(tid)
-		if later == "":
-			later = str(tid)
-	return later
+	return ""
+
+
+## Keep the bakes within their budget, letting go of the ones drawn longest ago.
+func _trim_bakes() -> void:
+	var total := 0
+	for key in _bakes:
+		total += int(_bakes[key].get("bytes", 0))
+	while total > _BAKE_BUDGET and _bakes.size() > 1:
+		var oldest := ""
+		for key in _bakes:
+			if oldest == "" or int(_bakes[key].get("used", 0)) < int(_bakes[oldest].get("used", 0)):
+				oldest = str(key)
+		total -= int(_bakes[oldest].get("bytes", 0))
+		_bakes.erase(oldest)
 
 
 func _draw_bakes(layer: Control) -> void:
 	var px := _px()
+	var frame := Engine.get_frames_drawn()
 	for tid in _tile_order:
-		if not _baked(str(tid)):
+		var found: Array = _best_bake(str(tid))
+		if found.is_empty():
 			continue
-		var b: Dictionary = _bakes[_bake_key(str(tid), _zoom)]
+		var b: Dictionary = found[0]
+		b["used"] = frame
 		var tex: Texture2D = b["tex"]
-		# Placed on a whole screen pixel and drawn at one texel to one pixel.
-		var at := (((b["rect"] as Rect2).position * _zoom + _offset) * px).round() / px
-		layer.draw_texture_rect(tex, Rect2(at, Vector2(tex.get_width(), tex.get_height()) / px), false)
+		# A bake holds the tile at its own zoom; here it is drawn at the present one.
+		var shrink := _zoom / float(found[1])
+		var at := (b["rect"] as Rect2).position * _zoom + _offset
+		if is_equal_approx(shrink, 1.0):
+			at = (at * px).round() / px
+		layer.draw_texture_rect(tex, Rect2(at, Vector2(tex.get_width(), tex.get_height()) / px * shrink), false)
 
 
 func _draw_standing(ci: CanvasItem, s: Dictionary) -> void:
@@ -2164,9 +2203,9 @@ func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
-			_zoom_step(mb.position, 1)
+			_zoom_at(mb.position, _ZOOM_STEP)
 		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN and mb.pressed:
-			_zoom_step(mb.position, -1)
+			_zoom_at(mb.position, 1.0 / _ZOOM_STEP)
 		elif mb.button_index == MOUSE_BUTTON_LEFT or mb.button_index == MOUSE_BUTTON_MIDDLE:
 			if mb.pressed:
 				_press_pos = mb.position
@@ -2183,48 +2222,24 @@ func _gui_input(event: InputEvent) -> void:
 			if not _dragging and mm.position.distance_to(_press_pos) > _DRAG_SLOP:
 				_dragging = true
 			if _dragging:
-				_offset = (_offset + mm.relative).round()
+				_offset += mm.relative
 				_view_changed()
 		else:
 			_set_hover(_pick(mm.position))
 	elif event is InputEventMagnifyGesture:
-		# A pinch gathers until it amounts to a whole step between the fixed zooms.
-		_pinch *= (event as InputEventMagnifyGesture).factor
-		if _pinch > _PINCH_STEP or _pinch < 1.0 / _PINCH_STEP:
-			_zoom_step((event as InputEventMagnifyGesture).position, 1 if _pinch > 1.0 else -1)
-			_pinch = 1.0
+		_zoom_at((event as InputEventMagnifyGesture).position, (event as InputEventMagnifyGesture).factor)
 		accept_event()
 	elif event is InputEventPanGesture:
-		_offset = (_offset - (event as InputEventPanGesture).delta * 12.0).round()
+		_offset -= (event as InputEventPanGesture).delta * 12.0
 		_view_changed()
 		accept_event()
 
 
-## Zoom about a screen point to the fixed zoom nearest `factor` times the present one.
 func _zoom_at(screen_pos: Vector2, factor: float) -> void:
-	var want := _zoom * factor
-	var best: float = ZOOMS[0]
-	for z in ZOOMS:
-		if absf(log(float(z) / want)) < absf(log(best / want)):
-			best = float(z)
-	_set_zoom(screen_pos, best)
-
-
-## One step in or out through the fixed zooms.
-func _zoom_step(screen_pos: Vector2, dir: int) -> void:
-	var at := 0
-	for i in range(ZOOMS.size()):
-		if is_equal_approx(float(ZOOMS[i]), _zoom):
-			at = i
-	_set_zoom(screen_pos, float(ZOOMS[clampi(at + dir, 0, ZOOMS.size() - 1)]))
-
-
-func _set_zoom(screen_pos: Vector2, z: float) -> void:
-	if is_equal_approx(z, _zoom):
-		return
+	var z := clampf(_zoom * factor, _ZOOM_MIN, _ZOOM_MAX)
 	var board := (screen_pos - _offset) / _zoom
 	_zoom = z
-	_offset = (screen_pos - board * _zoom).round()
+	_offset = screen_pos - board * _zoom
 	_view_changed()
 
 
