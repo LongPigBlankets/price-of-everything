@@ -32,6 +32,8 @@ signal ledger_ds2_changed(enabled: bool)
 ## The People panel's DS2 look (docs/people-ds2-plan.md) switched on or off.
 signal people_ds2_changed(enabled: bool)
 signal market_ds2_changed(enabled: bool)
+## The Resources panel's DS2 look (docs/resources-ds2-plan.md) switched on or off.
+signal resources_ds2_changed(enabled: bool)
 signal briefing_ds2_changed(enabled: bool)
 ## The construct panel's DS2 look, the construction lot (docs/construct-ds2-plan.md), switched on or off.
 signal construct_ds2_changed(enabled: bool)
@@ -83,6 +85,9 @@ var use_tvp_v3: bool = true
 # The Building Ledger in DS2 (docs/building-ledger-ds2-plan.md). The default; the debug cheat `toggle ledger ds2`
 # switches back to the v2 ledger, exactly as it was. Session-only, never persisted.
 var use_ledger_ds2: bool = true
+# The Resources panel in DS2 (docs/resources-ds2-plan.md), the ledger's sibling. The default; the debug cheat
+# `toggle resources ds2` switches back to the v2 panel, exactly as it was. Session-only, never persisted.
+var use_resources_ds2: bool = true
 # The People panel in DS2 (docs/people-ds2-plan.md): the boardroom and the works. The default; the debug cheat
 # `toggle people ds2` switches back to today's panel, which is then exactly as it was. Session-only, never persisted.
 var use_people_ds2: bool = true
@@ -214,6 +219,16 @@ func set_use_ledger_ds2(enabled: bool) -> bool:
 
 func toggle_use_ledger_ds2() -> bool:
 	return set_use_ledger_ds2(not use_ledger_ds2)
+
+func set_use_resources_ds2(enabled: bool) -> bool:
+	if enabled == use_resources_ds2:
+		return use_resources_ds2
+	use_resources_ds2 = enabled
+	resources_ds2_changed.emit(use_resources_ds2)
+	return use_resources_ds2
+
+func toggle_use_resources_ds2() -> bool:
+	return set_use_resources_ds2(not use_resources_ds2)
 
 func set_use_people_ds2(enabled: bool) -> bool:
 	if enabled == use_people_ds2:

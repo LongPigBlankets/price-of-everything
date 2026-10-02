@@ -86,6 +86,14 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 
 - **No status lamps on goods.** Just in time play, and buying over a turn or two to sell straight away, hold little stock by design; a Low or Short lamp would call that a problem. The scenarios are too unclear for one lamp, so the table shows the figures and no verdict.
 
+Owner, 2 October 2026:
+
+- The ledger's sibling. 1080 wide to start, to be narrowed after review.
+- Counts: produced, used, sold, stored, in transit. Stored leaves out goods construction has claimed. In transit is goods on the way to another tile or a port, not the intermediary's deliveries.
+- Every good shows by default. Power has no row. No status lamps. No per building rows yet.
+- The Carbon tax column appears only once the levy is in force.
+- Selecting a good opens its costs under it: transport, storage and the intermediary's fee, each as a total and a unit, then its freight rates.
+
 ## People (27 September 2026; plan `docs/people-ds2-plan.md`)
 
 - **The boardroom and the works are the default**; `toggle people ds2` switches back to today's panel.
