@@ -24,10 +24,14 @@ const EmpireGraphScript := preload("res://scripts/empire_graph.gd")
 const EmpireLayout := preload("res://scripts/empire_layout.gd")
 const GraphWorldScript := preload("res://scripts/empire_graph_world.gd")
 const HexBgScript := preload("res://scripts/empire_hex_bg.gd")
+const BoardScript := preload("res://scripts/empire_board.gd")
 
 var _map_camera: Node = null                   # the map Camera2D (group "camera"); gated while we own the screen
 var _hidden_layers: Array[CanvasItem] = []     # world layers hidden on enter, restored on leave
 var _graph_world: Control                      # the node-graph drawing layer (empire_graph_world.gd)
+## The resting picture: the company on its tiles (empire_board.gd). The node graph above is
+## what a selected building opens, its immediate network with no tiles.
+var _board: Control
 var _back_to_company: Button
 var _bg: Control                               # the animated hex-field background (empire_hex_bg.gd)
 
@@ -74,12 +78,21 @@ func _build_ui() -> void:
 	# but it is not mounted here in either card style, so `_bg` stays null.
 	_bg = null
 
+	_board = BoardScript.new()
+	_board.name = "Board"
+	_board.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_board.mouse_filter = Control.MOUSE_FILTER_STOP
+	_board.connect("building_picked", _on_building_picked)
+	add_child(_board)
+
 	# The node-graph drawing layer (drawn above the backdrop, below the hint).
 	# MOUSE_FILTER_STOP so it receives drag-pan / scroll-zoom input.
 	_graph_world = GraphWorldScript.new()
 	_graph_world.name = "GraphWorld"
 	_graph_world.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_graph_world.mouse_filter = Control.MOUSE_FILTER_STOP
+	_graph_world.set("one_hop_focus", true)
+	_graph_world.visible = false
 	add_child(_graph_world)
 
 	if _bg != null:
@@ -87,11 +100,11 @@ func _build_ui() -> void:
 
 	var hint := Label.new()
 	hint.name = "Hint"
-	hint.text = "SUPPLY CHAIN VIEW  ·  drag to pan · scroll to zoom · Tab to return"
+	hint.text = "SUPPLY CHAIN VIEW  ·  drag to pan · scroll to zoom · click a building for its network · Tab to return"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hint.theme_type_variation = &"Caption"
-	hint.modulate = Color(_ACCENT.r, _ACCENT.g, _ACCENT.b, 0.6)
+	hint.modulate = _ACCENT
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	hint.offset_top = -36.0
 	add_child(hint)
@@ -110,7 +123,25 @@ func _build_ui() -> void:
 
 func _process(_delta: float) -> void:
 	if visible and _back_to_company != null:
-		_back_to_company.visible = _graph_world.focus_iid() != ""
+		var focused: bool = _graph_world.focus_iid() != ""
+		_back_to_company.visible = focused
+		_show_board(not focused)
+
+
+## The board at rest, the node graph while a building's network is open.
+func _show_board(on: bool) -> void:
+	if _board.visible != on:
+		_board.visible = on
+	if _graph_world.visible == on:
+		_graph_world.visible = not on
+
+
+func _on_building_picked(iid: String) -> void:
+	if not _graph_world.has_building(iid):
+		return
+	_show_board(false)
+	_graph_world.call("focus_on", iid, true)
+	TelemetryState.track_interaction("supply_chain_building_selected", "supply_chain", iid)
 
 
 func _on_visibility_changed() -> void:
@@ -148,7 +179,8 @@ func _rebuild_graph() -> void:
 	var was_focused := str(_graph_world.call("focus_iid"))
 	var camera: Dictionary = _graph_world.capture_camera()
 	var had_graph: bool = not _graph_world._nodes.is_empty()
-	EmpireGraphScript.populate(_graph_world, terrain)
+	var g: Dictionary = EmpireGraphScript.populate(_graph_world, terrain)
+	_board.call("set_graph", g, terrain)
 	if was_focused != "":
 		_graph_world.call("focus_on", was_focused, true)
 	if had_graph and (was_focused == "" or _graph_world.has_building(was_focused)):

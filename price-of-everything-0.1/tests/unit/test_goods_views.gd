@@ -562,3 +562,47 @@ func _test_group_card_content_fits() -> void:
 	_check(float(TVP.GROUP_CARD_H) - 2.0 * 20.0 < content,
 		"...and the old 20px inset genuinely did NOT fit (that was the misalignment)")
 	holder.queue_free()
+
+
+## The supply chain board's model: where things stand on a tile and how a route becomes hops.
+func _test_empire_board_model() -> void:
+	var Model := preload("res://scripts/empire_board_model.gd")
+	var c := Vector2(1000.0, 1000.0)
+	var hexp := Model.hex_points(c)
+	var wide: Array = Model.slot_candidates(c, Model.SLOT_PITCH_MAX)
+	_check(wide.size() >= 7, "board: the widest lattice holds a hub and six around it (%d)" % wide.size())
+	_check((wide[0] as Vector2).is_equal_approx(c), "board: the first slot is the tile centre, the hub")
+	var inside := true
+	for p in wide:
+		inside = inside and Geometry2D.is_point_in_polygon(p, hexp)
+	_check(inside, "board: every slot stands on its own tile")
+	var few: Dictionary = Model.slots_for(c, 4, [])
+	var many: Dictionary = Model.slots_for(c, 16, [])
+	_check(is_equal_approx(float(few["pitch"]), Model.SLOT_PITCH_MAX), "board: a quiet tile keeps the widest pitch")
+	_check((many["slots"] as Array).size() >= 16 and float(many["pitch"]) < float(few["pitch"]),
+		"board: a busy tile tightens its lattice until everything fits")
+	# A river through the centre moves the hub off it while dry slots remain.
+	var river := [PackedVector2Array([c - Vector2(300.0, 0.0), c + Vector2(300.0, 0.0)])]
+	var dry: Dictionary = Model.slots_for(c, 3, river)
+	var clear := true
+	for p in dry["slots"]:
+		clear = clear and absf((p as Vector2).y - c.y) >= Model.RIVER_CLEAR
+	_check(clear, "board: slots keep off a river while enough dry ones remain")
+	# Two legs over four tiles: each tile pair takes the mode of the leg that covers it.
+	var hops: Array = Model.route_hops({
+		"tiles": ["a", "b", "c", "d"],
+		"legs": [{"mode": "rail", "from": "a", "to": "c"}, {"mode": "roads", "from": "c", "to": "d"}],
+	})
+	_check(hops.size() == 3 and str(hops[0]["mode"]) == "rail" and str(hops[1]["mode"]) == "rail"
+		and str(hops[2]["mode"]) == "roads" and str(hops[2]["a"]) == "c",
+		"board: a route's hops carry the mode of their own leg")
+	var a := Vector2(0.0, 0.0)
+	var b := Vector2(405.0, 240.0)
+	_check(Model.crossing(a, b, 1.0, true).is_equal_approx(Model.crossing(b, a, 1.0, false)),
+		"board: both directions of a link cross the tile edge at one point")
+	_check(not Model.crossing(a, b, 1.0, true).is_equal_approx(Model.crossing(a, b, -1.0, true)),
+		"board: two modes on one tile pair take separate lanes")
+	_check(Model.tile_height("mountain") > Model.tile_height("hill")
+		and Model.tile_height("hill") > Model.tile_height("rural")
+		and Model.tile_height("rural") > Model.tile_height("sea"),
+		"board: mountains stand over hills, hills over lowland, land over sea")
