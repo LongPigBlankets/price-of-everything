@@ -1,6 +1,6 @@
 # Resources panel: how it is used, what it holds, and a DS2 arrangement
 
-Status: planning, 26 September 2026. Nothing is built. One concept study is rendered (§5). Read with `docs/ds2-theme.md` (the look, the kit, the method in §13 and §14), `docs/ds2-owner-decisions.md` (settled rulings, including the Digital displays money rule) and `docs/building-ledger-ds2-plan.md` (the sibling this panel borrows from). The tile view's plan is the model for this one.
+Status: first build, 2 October 2026, behind `toggle resources ds2` (off by default): the shell, the table and a good's costs opened under its row (§9). The owner's answers to §8 are recorded there. One concept study is rendered (§5). Read with `docs/ds2-theme.md` (the look, the kit, the method in §13 and §14), `docs/ds2-owner-decisions.md` (settled rulings, including the Digital displays money rule) and `docs/building-ledger-ds2-plan.md` (the sibling this panel borrows from). The tile view's plan is the model for this one.
 
 ## 0. The brief
 
@@ -142,3 +142,34 @@ Contracts kept: the node name `ResourcePanel` (tutorial, `bottom_menu.gd`, `sell
 8. **Market column**: the sale price (recommended), the buy price, or both on the card?
 9. **Freight table**: a Freight rates key on the bin card opening a sheet (the study), or move it to the Encyclopedia's good page? Its figures are three decimal pounds, past the money rule's two.
 10. **Made by and used by**: worth a new per building per good record (§6), or the card shows only totals?
+
+## 9. Owner decisions, 2 October 2026, and the first build
+
+**Decided.**
+
+1. **Look**: the ledger's sibling.
+2. **Width**: start at 1080 logical and work down from there.
+3. **Counts**: produced, used, sold and stored, with in transit beside them. Stored is what sits in the stockpiles that nothing sold or used, and leaves out goods construction has claimed. In transit counts goods on the way to another tile or to a port, never the intermediary's own deliveries.
+4. **Default filter**: every good.
+5. **Status lamps**: none (27 September).
+6. **Power**: no row.
+7. **Carbon tax column**: only once the levy is in force.
+9. **Freight and transport**: opened under a good when it is selected. It shows what moving it cost, what storing it cost and what the intermediary's fee was, each as a total and a unit.
+10. **Made by and used by**: not yet. No per building rows.
+
+Decision 8 (the Market column) was not answered. The build shows the sale price, the plan's recommendation.
+
+**Built.**
+
+- `scripts/goods_figures.gd`: every figure, read from the engine. `rows()`, `costs(good)`, `freight_rates(good)`, `transit_units()`, `reserved_units()`, `carbon_in_force()`.
+- `Production.note_good_cost`: the turn now books what it charged on each good in `last_turn_summary.good_costs` (transport, storage, intermediary, each with the units it was paid on). It splits charges the turn already makes and moves no money.
+- `scripts/resources_ds2/resources_ds2.gd`: the view. The ledger's backing, title row, count display, search, key bed, seam, sorting headings and case. A good a module; pressing it opens its costs and freight under it.
+- `scripts/resource_panel.gd` builds the view while `UiPrefs.use_resources_ds2` is on and keeps the v2 table untouched under it.
+- Captures: `PANEL_TOUR=resources PANEL_TOUR_RESOURCES_DS2=1` with `tools/panel_tour_shot.tscn`; the first set is in `artifacts/resources_ds2/ds2_v1/`.
+
+**Open.**
+
+- The width: 1080 holds every column with room to spare before the levy. Narrowing waits for the owner's review.
+- Transport on a deferred sale is booked when it is charged, so a good's transport total and its sold count can be a turn apart.
+- A purchase's freight counts the units ordered.
+- Telemetry counters (Phase 0) are not added.
