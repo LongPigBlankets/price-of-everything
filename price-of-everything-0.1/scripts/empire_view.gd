@@ -20,6 +20,9 @@ const _NAVY := Color(0.015686, 0.058824, 0.105882, 1.0)
 # DS.PALETTE["ACCENT"] gold, used for the placeholder label.
 const _ACCENT := Color(0.995234, 0.930806, 0.763265, 1.0)
 
+const _BOARD_NAVY := Color("2b3757")
+const _GRAPH_NAVY := Color(0.015, 0.058, 0.105, 1.0)   # loading_hex_bg NAVY
+
 const EmpireGraphScript := preload("res://scripts/empire_graph.gd")
 const EmpireLayout := preload("res://scripts/empire_layout.gd")
 const GraphWorldScript := preload("res://scripts/empire_graph_world.gd")
@@ -32,6 +35,7 @@ var _graph_world: Control                      # the node-graph drawing layer (e
 ## The resting picture: the company on its tiles (empire_board.gd). The node graph above is
 ## what a selected building opens, its immediate network with no tiles.
 var _board: Control
+var _flat: ColorRect
 var _back_to_company: Button
 var _bg: Control                               # the animated hex-field background (empire_hex_bg.gd)
 
@@ -67,7 +71,8 @@ func _build_ui() -> void:
 	# default-clear of the hidden world).
 	var flat := ColorRect.new()
 	flat.name = "FlatBg"
-	flat.color = Color(0.015, 0.058, 0.105, 1.0)   # loading_hex_bg NAVY
+	flat.color = _BOARD_NAVY
+	_flat = flat
 	flat.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	flat.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(flat)
@@ -130,6 +135,8 @@ func _process(_delta: float) -> void:
 
 ## The board at rest, the node graph while a building's network is open.
 func _show_board(on: bool) -> void:
+	# The board sits on the key art plate's mid navy; a building's network keeps the darker field.
+	_flat.color = _BOARD_NAVY if on else _GRAPH_NAVY
 	if _board.visible != on:
 		_board.visible = on
 	if _graph_world.visible == on:

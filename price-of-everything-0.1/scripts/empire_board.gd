@@ -100,10 +100,16 @@ const _SHADOW_REACH := 0.5            # a building's shadow, as a share of its f
 const _SHADOW_NW := Vector2(-0.70710678, -0.70710678)
 const _GOLD_LIGHT := Color(1.0, 0.80, 0.44)
 const _COOL_SHADE := Color(0.05, 0.08, 0.22)
-const _LIGHT_GOLD_ALPHA := 0.20
-const _LIGHT_SHADE_ALPHA := 0.20
-const _TINT_SUN := Color(1.0, 0.97, 0.88)
-const _TINT_SHADE := Color(0.80, 0.84, 0.97)
+const _LIGHT_GOLD_ALPHA := 0.26
+const _LIGHT_SHADE_ALPHA := 0.10
+## What stands in the light is left almost as it is: the grade over the whole tile does the colouring.
+const _TINT_SUN := Color(1.0, 1.0, 0.98)
+const _TINT_SHADE := Color(0.90, 0.92, 0.96)
+## The grade multiplied over a baked tile: amber in the sun, blue in the shade.
+const _GRADE_SUN := Color(1.0, 0.92, 0.72)
+const _GRADE_SHADE := Color(0.66, 0.74, 1.0)
+const _WARM_HUE := 0.17              # yellow-olive; greens beyond it are pulled back toward it
+const _WARM_PULL := 0.55
 const _GLINTS_PER_TILE := 16
 const _GLINT := Color(1.0, 0.96, 0.82)
 const _SOOT := Color(0.09, 0.085, 0.08)
@@ -167,6 +173,7 @@ var _tile_sig: Dictionary = {}               # tile_id -> a hash of what its pic
 static var _bakes: Dictionary = {}
 var _bake_view: SubViewport
 var _painter: Control
+var _grade: Control
 var _bake_layer: Control
 var _baking := false
 static var _ground_textures: Dictionary = {}
@@ -234,6 +241,18 @@ class Painter extends Control:
 		board.call("_draw_tile", self, tile, zoom)
 
 
+## Lays the light's colour over everything the painter drew, by multiplying: amber where the
+## sun reaches and blue where it does not, on ground, buildings and trees alike.
+class Grade extends Control:
+	var painter: Control
+	func _draw() -> void:
+		if str(painter.get("tile")) == "":
+			return
+		var zoom := float(painter.get("zoom"))
+		draw_set_transform(-(painter.get("origin") as Vector2) * zoom, 0.0, Vector2(zoom, zoom))
+		(painter.get("board") as Control).call("_draw_grade", self, str(painter.get("tile")))
+
+
 func _ready() -> void:
 	clip_contents = true
 	_bake_view = SubViewport.new()
@@ -246,6 +265,12 @@ func _ready() -> void:
 	_painter = Painter.new()
 	_painter.set("board", self)
 	_bake_view.add_child(_painter)
+	_grade = Grade.new()
+	_grade.set("painter", _painter)
+	var multiply := CanvasItemMaterial.new()
+	multiply.blend_mode = CanvasItemMaterial.BLEND_MODE_MUL
+	_grade.material = multiply
+	_painter.add_child(_grade)
 	# A transparent viewport's picture comes out with its colour already multiplied by its
 	# alpha, so it is laid back down the same way; blended as ordinary colour its soft edges
 	# would darken.
@@ -553,9 +578,9 @@ func _build_ground(rivers: Dictionary) -> void:
 				var n0 := (mid - c).normalized()
 				top_poly = Atlas.clip(top_poly, mid - n0 * SLOPE_W, -n0)
 		var sloped := top_poly.size() != 6 or not top_poly[0].is_equal_approx(hexp[0])
-		var top: Color = sea_cols[0 if str(t["type"]) == "deep_sea" else 2] if is_sea else sea_cols[5]
+		var top: Color = sea_cols[0 if str(t["type"]) == "deep_sea" else 2] if is_sea else _warm(sea_cols[5])
 		if high:
-			top = band_cols[clampi(int(HIGH_BAND[str(t["type"])]), 0, band_cols.size() - 1)]
+			top = _warm(band_cols[clampi(int(HIGH_BAND[str(t["type"])]), 0, band_cols.size() - 1)])
 		for i in range(6):
 			var a := hexp[i]
 			var b := hexp[(i + 1) % 6]
@@ -621,7 +646,7 @@ func _build_ground(rivers: Dictionary) -> void:
 				_poly(verts, cols, idx, piece, h, sea_cols[int(e["b"])])
 		if not is_sea:
 			for e in rel["land"]:
-				var col: Color = band_cols[clampi(int(e["b"]), 0, band_cols.size() - 1)]
+				var col: Color = _warm(band_cols[clampi(int(e["b"]), 0, band_cols.size() - 1)])
 				var lift := 0.0 if bool(t["store"]) else float(e["lift"])
 				for piece in _within(e["p"], top_poly, sloped):
 					if lift > 0.0:
@@ -756,6 +781,15 @@ static func _mesh_of(verts: PackedVector3Array, cols: PackedColorArray, idx: Pac
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
+
+
+## The map's land colour, warmed: the key art's grass is an olive that leans yellow, where
+## the map's own green is cooler. Hue is turned toward yellow and the colour deepened a little.
+static func _warm(col: Color) -> Color:
+	var hue := col.h
+	if hue > _WARM_HUE:
+		hue = lerpf(hue, _WARM_HUE, _WARM_PULL)
+	return Color.from_hsv(hue, minf(1.0, col.s * 1.12 + 0.03), col.v * 0.98, col.a)
 
 
 ## The two points of a polygon lying on the line through `origin` with normal `n`, ordered
@@ -1621,6 +1655,17 @@ func _draw_tile(ci: CanvasItem, tile: String, zoom: float) -> void:
 				_draw_sign(ci, thing["ref"], zoom)
 
 
+## The grade over one tile's picture: a warm key and a cool fill, as on the key art's plate.
+## One quad over the tile's whole picture, its corners coloured by how lit each is.
+func _draw_grade(ci: CanvasItem, tile: String) -> void:
+	var r := _tile_rect(tile)
+	var pts := PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])
+	var cols := PackedColorArray()
+	for p in pts:
+		cols.append(_GRADE_SHADE.lerp(_GRADE_SUN, _light_at(p)))
+	ci.draw_polygon(pts, cols)
+
+
 ## Sort everything that is drawn into the tile it belongs to, and take a hash of each tile's
 ## share: a tile's bake is good for as long as that hash stands.
 func _sort_parts() -> void:
@@ -1766,6 +1811,7 @@ func _bake(tile: String, zoom: float) -> void:
 	_painter.set("origin", rect.position)
 	_painter.size = Vector2(_bake_view.size)
 	_painter.queue_redraw()
+	_grade.queue_redraw()
 	_bake_view.render_target_update_mode = SubViewport.UPDATE_ONCE
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw
