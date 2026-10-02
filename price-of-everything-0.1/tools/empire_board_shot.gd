@@ -82,6 +82,19 @@ func _ready() -> void:
 			if str(r["tile"]) == tid:
 				print("DUMP   road ", r["kind"], " ", ((r["a"] as Vector2) - tc).round(), ((r["b"] as Vector2) - tc).round())
 	_shot(dir + "board.png")
+	# The visibility key: open its plate, then everything off, then back on.
+	var vis: Control = board.get_node("Visibility")
+	vis.call("set_open", true)
+	await _settle(20)
+	_shot(dir + "board_visibility.png")
+	for row in vis.get("ROWS"):
+		(vis.get_node("VisibilityPanel").find_child("Show_" + str(row[0]), true, false) as Button).pressed.emit()
+	await _settle(160)
+	_shot(dir + "board_all_off.png")
+	for row in vis.get("ROWS"):
+		(vis.get_node("VisibilityPanel").find_child("Show_" + str(row[0]), true, false) as Button).pressed.emit()
+	vis.call("set_open", false)
+	await _settle(160)
 	# Close on the busy tile: every kind of infrastructure, the pipes and their signs.
 	var busy: Rect2 = board.call("_tile_rect", BUSY_TILE)
 	board.set("_zoom", 1.5)

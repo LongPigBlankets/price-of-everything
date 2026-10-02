@@ -20,12 +20,16 @@ signal building_picked(iid: String)
 static var plate_lamps := true       # street lamps; and where the air is dirty, their light, pools before the works, bloom
 static var plate_sea := true         # open water pale toward the sun and deep away from it
 static var plate_town := true        # housing on free slots and cars on the streets
+## What the player has chosen to see, set from the visibility key's tickboxes. Kept for the session.
+static var show := {"decor": true, "trees": true, "roads": true, "pipes": true, "reinf_pipes": true,
+	"cables": true, "goods": true, "pollution": true}
 
 const Model := preload("res://scripts/empire_board_model.gd")
 const Pipes := preload("res://scripts/empire_board_pipes.gd")
 const Atlas := preload("res://scripts/empire_board_atlas.gd")
 const Streets := preload("res://scripts/empire_board_streets.gd")
 const Rails := preload("res://scripts/empire_board_rails.gd")
+const Visibility := preload("res://scripts/empire_board_visibility.gd")
 const EmpireFx := preload("res://scripts/empire_fx.gd")
 
 const ISO_X := 0.70710678
@@ -246,6 +250,9 @@ var _press_pos := Vector2.INF
 var _dragging := false
 var _hover: Dictionary = {}
 var _tokens: Control
+var _visibility: Control
+var _last_graph: Dictionary = {}
+var _last_terrain: Node
 
 
 static func iso(p: Vector2, h: float = 0.0) -> Vector2:
@@ -346,13 +353,25 @@ func _ready() -> void:
 	_tokens.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_tokens.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_tokens)
+	_visibility = Visibility.new()
+	add_child(_visibility)
+	_visibility.setup(show)
+	_visibility.changed.connect(func(_key: String, _on: bool) -> void: refresh())
 	resized.connect(func() -> void:
 		if not _fitted:
 			fit_view())
 
 
 ## Rebuild the board from the live sim. `graph` is empire_graph.build(); `terrain` the HexMap.
+## Build the board again from what it was last given: a visibility switch has changed.
+func refresh() -> void:
+	if _last_terrain != null and is_instance_valid(_last_terrain):
+		set_graph(_last_graph, _last_terrain)
+
+
 func set_graph(graph: Dictionary, terrain: Node) -> void:
+	_last_graph = graph
+	_last_terrain = terrain
 	_model = {}
 	_tile_order = []
 	_tile_gfx.clear()
@@ -380,7 +399,7 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 		return
 	var rivers: Dictionary = _rivers_by_tile(terrain)
 	_rivers = _river_lines(rivers)
-	_model = Model.build(terrain, graph, _true_positions(graph, terrain), _rivers, plate_town)
+	_model = Model.build(terrain, graph, _true_positions(graph, terrain), _rivers, plate_town and bool(show["decor"]))
 	_build_ground(rivers)
 	_build_standing()
 	_build_lines()
@@ -1087,6 +1106,8 @@ static func _stroke(verts: PackedVector3Array, cols: PackedColorArray, idx: Pack
 
 func _build_standing() -> void:
 	for s in _model.get("standing", []):
+		if str(s["kind"]) == "pylon" and not bool(show["cables"]):
+			continue
 		var d: Dictionary = (s as Dictionary).duplicate()
 		var pos: Vector2 = d["pos"]
 		var h := _height_at(str(d["tile"]), pos)
@@ -1209,7 +1230,7 @@ func _build_lines() -> void:
 	var stretches: Array = []                 # [{a, b, mode, tile, goods}] what is laid, along the flow
 	for l in _model.get("lines", []):
 		var mode := str(l["mode"])
-		if not Model.PIPE_MODES.has(mode):
+		if not Model.PIPE_MODES.has(mode) or not bool(show[mode]):
 			continue
 		var path: Array = (l["pts"] as Array).duplicate()
 		if bool(l.get("reverse", false)):
@@ -1272,7 +1293,7 @@ func _build_lines() -> void:
 
 	# Cables hang from a building to its tile's pylon and from pylon to pylon.
 	for l in _model.get("lines", []):
-		if str(l["mode"]) != Model.MODE_CABLE:
+		if str(l["mode"]) != Model.MODE_CABLE or not bool(show["cables"]):
 			continue
 		var pts := _cable_between(by_iid, l["ids"])
 		if pts.size() >= 2:
@@ -1386,7 +1407,7 @@ func _build_fog() -> void:
 ## lamps are lit where the smog has made it dark.
 func _build_lamps() -> void:
 	_glows.clear()
-	if not plate_lamps:
+	if not plate_lamps or not bool(show["roads"]):
 		return
 	var tiles: Dictionary = _model.get("tiles", {})
 	for r in _model.get("roads", []):
@@ -1436,7 +1457,7 @@ func _build_lamps() -> void:
 ## Cars on the streets in use: each stretch carries a few, keeping to the left, at their own pace.
 func _build_cars() -> void:
 	_cars.clear()
-	if not plate_town or not _car_kit().ok():
+	if not plate_town or not bool(show["roads"]) or not _car_kit().ok():
 		return
 	var tiles: Dictionary = _model.get("tiles", {})
 	var n := 0
@@ -1493,6 +1514,8 @@ func _draw_cars(layer: Control, view: Rect2) -> void:
 ## is fixed for the tile, so its baked picture holds from turn to turn; which of those places
 ## show depends on what is built and which roads are in use.
 func _build_trees() -> void:
+	if not bool(show["trees"]):
+		return
 	var tiles: Dictionary = _model.get("tiles", {})
 	var used: Dictionary = {}                 # "tile|a|b" -> the road's half-width
 	var roads_kit: Atlas = _road_kit()
@@ -2026,7 +2049,7 @@ func _draw_tile(ci: CanvasItem, tile: String, zoom: float) -> void:
 	if gfx.get("ground") != null:
 		ci.draw_mesh(gfx["ground"], null)
 	var road_tex: Texture2D = _road_kit().texture()
-	if road_tex != null:
+	if road_tex != null and bool(show["roads"]):
 		for fit in parts.get("fits", []):
 			var rr: Array = _road_kit().fit_rects(str(fit["name"]), fit["at"])
 			ci.draw_texture_rect_region(road_tex, rr[0], rr[1], fit["tint"])
@@ -2035,7 +2058,8 @@ func _draw_tile(ci: CanvasItem, tile: String, zoom: float) -> void:
 			tints.resize((poly["points"] as PackedVector2Array).size())
 			tints.fill(poly["tint"])
 			ci.draw_polygon(poly["points"], tints, poly["uvs"], road_tex)
-	_draw_roads(ci, parts.get("links", []))
+	if bool(show["roads"]):
+		_draw_roads(ci, parts.get("links", []))
 	_draw_rails(ci, tile, parts.get("rails", []))
 	if gfx.get("light") != null:
 		ci.draw_mesh(gfx["light"], null)
@@ -2109,7 +2133,7 @@ func _sort_parts() -> void:
 		(parts["things"] as Array).sort_custom(func(x: Dictionary, y: Dictionary) -> bool:
 			return float(x["depth"]) < float(y["depth"]))
 		var made: Array = [str(tiles[tid].get("top_poly", "")), float(tiles[tid]["height"]), str(tiles[tid]["type"]),
-			plate_lamps, plate_sea, plate_town]
+			plate_lamps, plate_sea, plate_town, str(show)]
 		for fit in parts["fits"]:
 			made.append([fit["name"], fit["at"], fit["tint"]])
 		for poly in parts["polys"]:
@@ -2472,7 +2496,8 @@ func _draw_pipe_item(ci: CanvasItem, item: Dictionary) -> void:
 		return
 	var kit: Atlas = item.get("atlas", Pipes.kit())
 	var tex: Texture2D = kit.texture()
-	if tex == null:
+	# A bridge is a road's piece, though it stands among the things on the tile.
+	if tex == null or (item.has("atlas") and not bool(show["roads"])):
 		return
 	if str(item["kind"]) == "run":
 		ci.draw_colored_polygon(item["points"], Color.WHITE, item["uvs"], tex)
@@ -2603,16 +2628,18 @@ func _draw_tokens(layer: Control) -> void:
 	var font := get_theme_default_font()
 	_draw_glints(layer, view)
 	_draw_cars(layer, view)
-	_draw_fog(layer, view)
-	_draw_lights(layer, view)
+	if bool(show["pollution"]):
+		_draw_fog(layer, view)
+		_draw_lights(layer, view)
 	_draw_smoke(layer, view)
 	# Every icon of a good is drawn here, over the light and the mist, and none over another.
 	# Shipments on their way are placed first, then the pylons' power, then the pipes' signs;
 	# the tokens that only show a route's traffic give way to all of them.
 	var placed: Array = []
 	var tiles: Dictionary = _model.get("tiles", {})
+	var goods: bool = show["goods"]
 	for f in _flows:
-		if (f["live"] as Array).is_empty() or str(f["style"]) != "goods":
+		if (f["live"] as Array).is_empty() or str(f["style"]) != "goods" or not goods:
 			continue
 		var total := float(f["total"])
 		for sh in f["live"]:
@@ -2653,7 +2680,7 @@ func _draw_tokens(layer: Control) -> void:
 	var plate := maxf(_SIGN_PLATE * _zoom, _SIGN_MIN_PX)
 	for sg in _signs:
 		var foot: Vector2 = (sg["foot"] as Vector2) * _zoom + _offset
-		if not view.has_point(foot):
+		if not goods or not view.has_point(foot):
 			continue
 		var icons: Array = sg["icons"]
 		var top: Vector2 = (sg["top"] as Vector2) * _zoom + _offset
@@ -2669,7 +2696,7 @@ func _draw_tokens(layer: Control) -> void:
 	for f in _flows:
 		var total := float(f["total"])
 		var style := str(f["style"])
-		if not (f["live"] as Array).is_empty() and style == "goods":
+		if style == "goods" and (not goods or not (f["live"] as Array).is_empty()):
 			continue
 		var d := fmod(_clock * _TOKEN_SPEED + float(f["phase"]), _TOKEN_SPACING)
 		if style != "goods":
@@ -2696,7 +2723,7 @@ func _draw_tokens(layer: Control) -> void:
 
 
 func _draw_glows(layer: Control) -> void:
-	if _glows.is_empty():
+	if _glows.is_empty() or not bool(show["pollution"]):
 		return
 	if _glow_tex == null:
 		var grad := Gradient.new()

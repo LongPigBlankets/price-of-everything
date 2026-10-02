@@ -672,6 +672,33 @@ func _test_empire_board_rails() -> void:
 		"rails: between the two lines a train takes the cross track")
 
 
+## The supply chain board's visibility key: a tickbox for each of the board's switches.
+func _test_empire_board_visibility() -> void:
+	var Board := preload("res://scripts/empire_board.gd")
+	var Visibility := preload("res://scripts/empire_board_visibility.gd")
+	var state: Dictionary = (Board.show as Dictionary).duplicate()
+	var vis: Control = Visibility.new()
+	add_child(vis)
+	vis.setup(state)
+	var keys: Array = []
+	for row in Visibility.ROWS:
+		keys.append(str(row[0]))
+	var matched := keys.size() == 8 and state.size() == keys.size()
+	for k in state:
+		matched = matched and keys.has(str(k))
+	_check(matched, "visibility: one tickbox for each of the board's eight switches")
+	_check(not vis.is_open(), "visibility: the plate of tickboxes starts shut")
+	vis.key.pressed.emit()
+	_check(vis.is_open(), "visibility: the key opens it")
+	var heard: Array = []
+	vis.changed.connect(func(key: String, on: bool) -> void: heard.append([key, on]))
+	(vis.panel.find_child("Show_trees", true, false) as Button).pressed.emit()
+	_check(state["trees"] == false and heard == [["trees", false]], "visibility: a tickbox flips its switch and says so")
+	(vis.panel.find_child("Show_trees", true, false) as Button).pressed.emit()
+	_check(state["trees"] == true, "visibility: and flips it back")
+	vis.queue_free()
+
+
 ## The supply chain board's pipework: routes snapped onto twelve directions so baked pieces fit.
 func _test_empire_board_pipes() -> void:
 	var Pipes := preload("res://scripts/empire_board_pipes.gd")
