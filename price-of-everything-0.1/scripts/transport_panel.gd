@@ -242,6 +242,59 @@ func _on_ds2_drag(event: InputEvent) -> void:
 		global_position = get_global_mouse_position() + _drag_offset
 
 
+## DS2: the shipments as the In transit column lists them, largest first. A lone shipment keeps its own row
+## ("Arrives in 2 turns."). Several carrying the same goods to the same place are one flow, read as what
+## lands a turn: its units spread over the turns it arrives on. Each: {manifest, where, when}.
+static func transit_flows(rows: Array) -> Array:
+	var groups := {}
+	var order: Array = []
+	for row: Dictionary in rows:
+		var goods: Array = (row.manifest as Array).map(func(e: Dictionary) -> String: return str(e.good_id))
+		goods.sort()
+		var key := "%s|%s|%s" % ["market" if bool(row.to_market) else str(row.destination), "+".join(goods), ""]
+		if not groups.has(key):
+			groups[key] = []
+			order.append(key)
+		(groups[key] as Array).append(row)
+	var out: Array = []
+	for key: String in order:
+		var members: Array = groups[key]
+		var first: Dictionary = members[0]
+		var where := "To market" if bool(first.to_market) else "To %s" % place(str(first.destination))
+		if members.size() == 1:
+			var turns := int(first.turns)
+			out.append({"manifest": first.manifest, "where": where, "units": int(first.units),
+				"when": "Arrives now." if turns <= 0 else "Arrives in %d turn%s." % [turns, "" if turns == 1 else "s"]})
+			continue
+		var arrival_turns := {}
+		var by_good := {}
+		var units := 0
+		for m: Dictionary in members:
+			arrival_turns[int(m.turns)] = true
+			units += int(m.units)
+			for e: Dictionary in m.manifest:
+				by_good[str(e.good_id)] = int(by_good.get(str(e.good_id), 0)) + int(e.qty)
+		var spread := maxi(1, arrival_turns.size())
+		var manifest: Array = []
+		for gid in by_good:
+			manifest.append({"good_id": gid, "qty": int(round(float(by_good[gid]) / float(spread)))})
+		var each := int(round(float(units) / float(spread)))
+		out.append({"manifest": manifest, "where": where, "units": units,
+			"when": "%s unit%s arrive each turn." % [_thousands(each), "" if each == 1 else "s"]})
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.units) > int(b.units))
+	return out
+
+
+static func _thousands(n: int) -> String:
+	var digits := str(absi(n))
+	var out := ""
+	for i in digits.length():
+		if i > 0 and (digits.length() - i) % 3 == 0:
+			out += ","
+		out += digits[i]
+	return out
+
+
 ## A tile as DS2 copy names it: its name, without its coordinates.
 static func place(tile_id: String) -> String:
 	var nick := Catalog.tile_name(tile_id)
@@ -569,11 +622,15 @@ func _stockpile_row(row: Dictionary) -> Control:
 	var cap := float(row.cap)
 	if _ds2:
 		var eta := _full_eta_text(tile_id, fill)
+		var rate := Stockpile.fill_trend_per_turn(tile_id, TREND_TURNS)
+		var dead := maxf(1.0, cap * 0.01)
 		return Ds2.stock_row({
 			"tile_id": tile_id, "name": place(tile_id), "level": Stockpile.get_warehouse_level(tile_id),
 			"used": float(row.used), "cap": cap, "near": NEAR_FULL,
 			"tone": worse(tone_of(_fill_color(fill)), tone_of(_eta_color(tile_id, fill)) if eta != "not filling" else "ok"),
-			"words": "%d%% full, %s of %s. %s." % [int(round(fill * 100.0)), _money(float(row.used)), _money(cap), "Full" if eta == "FULL" else eta.substr(0, 1).to_upper() + eta.substr(1)],
+			"words": "%d%% full, %s of %s." % [int(round(fill * 100.0)), _money(float(row.used)), _money(cap)],
+			# Filling, draining or steady, the band the v2 arrows use: a couple of units a turn is no trend.
+			"trend": "up" if rate > dead else ("down" if rate < -dead else "steady"),
 			"goods": Stockpile.get_top_goods(tile_id, 3),
 		}, func() -> void: MatchState.tile_stockpile_requested.emit(tile_id))
 	var card := _row_card(true)
@@ -755,14 +812,12 @@ func _infra_row(link: Dictionary) -> Control:
 	var mode := str(link.mode)
 	var ratio := float(link.ratio)
 	if _ds2:
-		var over := TransportState.link_turns_over(str(link.key))
 		var paid_so_far := TransportState.link_congestion_paid(str(link.key))
 		return Ds2.infra_row({
 			"key": str(link.key), "building_id": str(Catalog.get_building_by_internal_name(InfraIcons.normalise(mode)).get("id", "")),
 			"name": "%s at %s" % [_mode_label(mode), place(str(link.tile_id))], "level": int(link.level),
 			"flow": float(link.flow), "cap": float(link.cap), "near": 0.85, "tone": tone_of(_load_color(ratio)),
-			"words": "%d%%, %s of %s units. At capacity %d of the last %d turns." % [int(round(ratio * 100.0)),
-				_money(float(link.flow)), _money(float(link.cap)), over, TransportState.LINK_HISTORY_TURNS],
+			"words": "%d%%, %s of %s units." % [int(round(ratio * 100.0)), _money(float(link.flow)), _money(float(link.cap))],
 			"cost_words": ("Congestion has added £%s so far." % _money(paid_so_far)) if paid_so_far > 0.0 else "",
 		}, func() -> void: _open_infra_building(str(link.tile_id), mode))
 	# The same brushed card the tile view gives a building, because that is what this row
@@ -955,15 +1010,13 @@ func _build_transit() -> void:
 	if rows.is_empty():
 		_empty_note(_transit_list, "Nothing is on the move.")
 		return
-	for i in rows.size():
-		var row: Dictionary = rows[i]
-		if _ds2:
-			var turns := int(row.turns)
-			_transit_list.add_child(Ds2.transit_row({"manifest": row.manifest,
-				"where": "To market" if bool(row.to_market) else "To %s" % place(str(row.destination)),
-				"when": "Arrives now." if turns <= 0 else "Arrives in %d turn%s." % [turns, "" if turns == 1 else "s"]}, i))
-		else:
-			_transit_list.add_child(_transit_row(row))
+	if _ds2:
+		var flows := transit_flows(rows)
+		for i in flows.size():
+			_transit_list.add_child(Ds2.transit_row(flows[i], i))
+		return
+	for row: Dictionary in rows:
+		_transit_list.add_child(_transit_row(row))
 
 
 ## What a shipment is carrying, as [{good_id, qty}]. Sales carry an itemised

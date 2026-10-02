@@ -8,11 +8,13 @@ extends RefCounted
 ## the Close key and the rubber seam. In the title row, the routing objective as three latching keys and the
 ## Logistics Settings key. Under the seam three columns, each a raised heading over one plastic case of raised
 ## modules on the steel scroll rail:
-##   Stockpiles      a tile a module: its name, a lamp and how full it is in words, the fill on an LED meter,
-##                   its warehouse level, and its largest goods in their wells
+##   Stockpiles      a tile a module: its name, a lamp and how full it is in words, a mark for filling,
+##                   draining or steady, the fill on an LED meter, its warehouse level, and its largest goods
+##                   in their wells
 ##   Infrastructure  a link a module: its emblem in polished metal, its name, a lamp and its load in words, the
 ##                   load on an LED meter, and what congestion has cost when it has cost anything
-##   In transit      a shipment a module: its cargo in wells, where it is going and when it lands
+##   In transit      a shipment a module: its cargo in wells, where it is going and when it lands. Several
+##                   carrying the same goods to the same place are one module, read as what arrives a turn
 ## Logistics Settings is a sheet over the panel: for inputs and for outputs, three latching keys.
 
 const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
@@ -164,7 +166,34 @@ static func _meter_line(used: float, cap: float, near: float, tone: String, labe
 	return line
 
 
-## A stockpile. `d`: {tile_id, name, level, used, cap, near, tone, words, goods: [{good_id, qty}]}.
+## Which way a stockpile is going, drawn beside its words (a font's arrows are missing on some machines): an
+## amber arrow up while it fills, a green arrow down while it drains, a thick white line while it holds steady.
+class TrendMark extends Control:
+	var trend := "steady"
+
+	func _init(which: String) -> void:
+		trend = which
+		name = "Trend"
+		set_meta("trend", which)
+		custom_minimum_size = Vector2(16, 14)
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tooltip_text = {"up": "Filling", "down": "Draining"}.get(which, "Holding steady")
+
+	func _draw() -> void:
+		var w := size.x
+		var h := size.y
+		match trend:
+			"up":
+				draw_colored_polygon(PackedVector2Array([Vector2(1, h - 1), Vector2(w - 1, h - 1), Vector2(w * 0.5, 1)]), DS.PALETTE["WARN"])
+			"down":
+				draw_colored_polygon(PackedVector2Array([Vector2(1, 1), Vector2(w - 1, 1), Vector2(w * 0.5, h - 1)]), DS.PALETTE["OK"])
+			_:
+				draw_rect(Rect2(1, h * 0.5 - 2.0, w - 2, 4.0), DS.PALETTE["TEXT"])
+
+
+## A stockpile. `d`: {tile_id, name, level, used, cap, near, tone, words, trend (up, down or steady),
+## goods: [{good_id, qty}]}.
 static func stock_row(d: Dictionary, on_open: Callable) -> PanelContainer:
 	var s := _stacked("Stock_%s" % str(d.tile_id))
 	var m: PanelContainer = s.module
@@ -172,7 +201,15 @@ static func stock_row(d: Dictionary, on_open: Callable) -> PanelContainer:
 	m.tooltip_text = "Open this tile's stockpile"
 	Parts.on_click(m, on_open)
 	var col: VBoxContainer = s.col
-	col.add_child(Parts.info(str(d.name), str(d.tone), str(d.words)))
+	var info := Parts.info(str(d.name), str(d.tone), str(d.words))
+	var status := info.get_node_or_null("Status") as HBoxContainer
+	if status != null:
+		# The words keep to their own width, so the mark stands right after them.
+		var said := status.get_node("Words") as Label
+		said.autowrap_mode = TextServer.AUTOWRAP_OFF
+		said.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		status.add_child(TrendMark.new(str(d.get("trend", "steady"))))
+	col.add_child(info)
 	col.add_child(_meter_line(float(d.used), float(d.cap), float(d.near), str(d.tone), "Lvl %d" % int(d.level)))
 	var goods: Array = d.get("goods", [])
 	if not goods.is_empty():

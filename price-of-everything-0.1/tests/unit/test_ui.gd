@@ -2802,7 +2802,25 @@ func _test_transport_panel_ds2() -> void:
 		"transport ds2: a stockpile is a module with its lamp and its fill on a meter")
 	var words: String = (stock.find_child("Words", true, false) as Label).text if stock != null else ""
 	_check(words.contains("% full") and not words.contains("(") and not words.contains(" - "), "transport ds2: plain words, no coordinates (%s)" % words)
+	_check(words.ends_with("800.") or not words.contains("turn"), "transport ds2: no full in N turns in the words (%s)" % words)
+	var mark := stock.find_child("Trend", true, false) if stock != null else null
+	_check(mark != null and str(mark.get_meta("trend", "")) in ["up", "down", "steady"], "transport ds2: filling, draining or steady is a drawn mark")
 	_check(panel.find_child("Shipment_0", true, false) != null, "transport ds2: a shipment is a module")
+	var Panel: GDScript = load("res://scripts/transport_panel.gd")
+	var lone: Array = Panel.transit_flows([{"manifest": [{"good_id": "g_006", "qty": 9}], "units": 9, "turns": 2, "to_market": false, "destination": "tile_5_11"}])
+	_check(lone.size() == 1 and str(lone[0].when) == "Arrives in 2 turns.", "transport ds2: a lone shipment says when it arrives")
+	var flow: Array = Panel.transit_flows([
+		{"manifest": [{"good_id": "g_006", "qty": 30}], "units": 30, "turns": 1, "to_market": false, "destination": "tile_5_11"},
+		{"manifest": [{"good_id": "g_006", "qty": 30}], "units": 30, "turns": 2, "to_market": false, "destination": "tile_5_11"},
+		{"manifest": [{"good_id": "g_006", "qty": 30}], "units": 30, "turns": 3, "to_market": false, "destination": "tile_5_11"},
+		{"manifest": [{"good_id": "g_007", "qty": 5}], "units": 5, "turns": 1, "to_market": true, "destination": ""}])
+	_check(flow.size() == 2 and str(flow[0].when) == "30 units arrive each turn." and int(flow[0].manifest[0].qty) == 30
+		and str(flow[1].when) == "Arrives in 1 turn." and str(flow[1].where) == "To market",
+		"transport ds2: several shipments of a good to a place read as what arrives each turn (%s)" % str(flow.map(func(f: Dictionary) -> String: return str(f.when))))
+	var link_words := ""
+	for n in panel.find_children("Link_*", "", true, false):
+		link_words += ((n as Node).find_child("Words", true, false) as Label).text
+	_check(not link_words.contains("At capacity"), "transport ds2: a link's words leave out the at capacity count")
 	var keys: Dictionary = panel.get("_routing_keys")
 	(keys[MatchState.RouteObjective.CHEAPEST] as Control).emit_signal("pressed")
 	_check(MatchState.route_objective == MatchState.RouteObjective.CHEAPEST and bool((keys[MatchState.RouteObjective.CHEAPEST] as Control).get("latched"))
