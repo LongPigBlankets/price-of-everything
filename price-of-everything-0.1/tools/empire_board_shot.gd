@@ -33,9 +33,10 @@ func _ready() -> void:
 	await _settle(4)
 	var ev: Node = game.get_node_or_null("UILayer/HUD/HUDContent/EmpireView")
 	ev.call("toggle")
-	await _settle(20)
+	await _settle(90)
 	var board: Control = ev.get_node("Board")
 	var model: Dictionary = board.get("_model")
+	print("BAKES ", (board.get("_bakes") as Dictionary).size(), " zoom ", board.get("_zoom"))
 	print("BOARD tiles=", (model.get("tiles", {}) as Dictionary).size(),
 		" standing=", (model.get("standing", []) as Array).size(),
 		" lines=", (model.get("lines", []) as Array).size(),
@@ -49,14 +50,14 @@ func _ready() -> void:
 			var at: Vector2 = (st["rect"] as Rect2).get_center()
 			board.set("_offset", (board.get("_offset") as Vector2) + board.size * 0.5 - at)
 	board.call("_zoom_at", board.size * 0.5, 3.4)
-	await _settle(8)
+	await _settle(90)
 	_shot(dir + "board_tile.png")
 	board.call("fit_view")
 	board.call("_zoom_at", board.size * 0.5, 2.2)
-	await _settle(8)
+	await _settle(90)
 	_shot(dir + "board_close.png")
 	board.call("fit_view")
-	await _settle(4)
+	await _settle(30)
 	for s in board.call("standing_screen_rects"):
 		if str(s["kind"]) == "building" and str((board.call("_pick", (s["rect"] as Rect2).get_center()) as Dictionary).get("iid", "")) == str(s["iid"]):
 			# push_input takes window pixels; the board works in the stretched viewport's own.

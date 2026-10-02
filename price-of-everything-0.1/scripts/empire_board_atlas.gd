@@ -55,7 +55,7 @@ func cell(name: String) -> Rect2:
 	return Rect2(float(cells[name][0]) * f, float(cells[name][1]) * f, f, f)
 
 
-## The polygons that draw one straight run from tiles of its piece: [{points, uvs, depth}], in
+## The polygons that draw one straight run from tiles of its piece: [{points, uvs, depth, plan}], in
 ## board space with uvs into the atlas. `item` is {name, a, b, step, depth_a, depth_b}: the
 ## run's two ends, and `step` the board vector of one repeat of the piece. Each tile is the
 ## piece's own frame cut to the stretch of the run it covers, so whatever repeats along the
@@ -89,8 +89,10 @@ func run_polys(item: Dictionary) -> Array:
 		var uvs := PackedVector2Array()
 		for q in poly:
 			uvs.append((src.position + src.size * 0.5 + (q - anchor) * ppu) / asize)
-		out.append({"points": poly, "uvs": uvs, "depth": lerpf(float(item.get("depth_a", 0.0)),
-			float(item.get("depth_b", 0.0)), clampf((from + to) * 0.5 / length, 0.0, 1.0))})
+		var share := clampf((from + to) * 0.5 / length, 0.0, 1.0)
+		out.append({"points": poly, "uvs": uvs,
+			"depth": lerpf(float(item.get("depth_a", 0.0)), float(item.get("depth_b", 0.0)), share),
+			"plan": (item.get("plan_a", Vector2.ZERO) as Vector2).lerp(item.get("plan_b", Vector2.ZERO), share)})
 	return out
 
 

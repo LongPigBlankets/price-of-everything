@@ -335,7 +335,7 @@ static func lay(legs: Array, roads: Array, set_id: String, enter: Array = [true,
 static func _fit(items: Array, name: String, p: Vector2, z: float) -> void:
 	if not kit().has(name):
 		return
-	items.append({"kind": "fit", "name": name, "at": iso(p, z), "depth": p.x + p.y + z * 0.02})
+	items.append({"kind": "fit", "name": name, "at": iso(p, z), "depth": p.x + p.y + z * 0.02, "plan": p})
 
 
 static func _run(items: Array, set_id: String, a: Vector2, b: Vector2, z: float, k: int, up: bool) -> void:
@@ -344,7 +344,8 @@ static func _run(items: Array, set_id: String, a: Vector2, b: Vector2, z: float,
 	var mid := (a + b) * 0.5
 	items.append({"kind": "run", "name": "%s_%s_%d" % [set_id, "raised" if up else "straight", posmod(k, 6)],
 		"a": iso(a, z), "b": iso(b, z), "step": iso(dir_of(posmod(k, 6)) * dim("tile")),
-		"depth": mid.x + mid.y + z * 0.02, "depth_a": a.x + a.y + z * 0.02, "depth_b": b.x + b.y + z * 0.02})
+		"depth": mid.x + mid.y + z * 0.02, "depth_a": a.x + a.y + z * 0.02, "depth_b": b.x + b.y + z * 0.02,
+		"plan_a": a, "plan_b": b})
 
 
 static func _vert(items: Array, set_id: String, p: Vector2, z0: float, z1: float) -> void:
@@ -352,7 +353,8 @@ static func _vert(items: Array, set_id: String, p: Vector2, z0: float, z1: float
 		return
 	items.append({"kind": "run", "name": set_id + "_vert", "a": iso(p, z0), "b": iso(p, z1),
 		"step": Vector2(0.0, -dim("tile") * ISO_RISE),
-		"depth": p.x + p.y + (z0 + z1) * 0.01, "depth_a": p.x + p.y + z0 * 0.02, "depth_b": p.x + p.y + z1 * 0.02})
+		"depth": p.x + p.y + (z0 + z1) * 0.01, "depth_a": p.x + p.y + z0 * 0.02, "depth_b": p.x + p.y + z1 * 0.02,
+		"plan_a": p, "plan_b": p})
 
 
 static func _supports(items: Array, a: Vector2, d: Vector2, from: float, to: float, z: float,
