@@ -166,3 +166,94 @@ def build_house(level: int = 1) -> dict:
         apartment_block(K, "flats", -0.35, 0.45, 2.0, 1.25, 4, variant=1)
         terrace(K, "row", 0.45, -0.95, 2, variant=3)
     return {"building": "house", "level": level, "objects": len(K.col.objects)}
+
+
+# ---------------------------------------------------------------- a city's towers
+PALETTE["curtain"] = (0.120, 0.190, 0.290)         # a glass curtain wall: blue, lighter than a window
+PALETTE["curtain_dark"] = (0.075, 0.115, 0.190)
+
+
+def _frustum(K, name, cx, cy, z0, half0, half1, h, mat):
+    """A square pyramid with its top cut off: base half-width half0 at z0, half1 at z0 + h."""
+    me = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    lo = [bm.verts.new((cx + sx * half0, cy + sy * half0, z0)) for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+    hi = [bm.verts.new((cx + sx * half1, cy + sy * half1, z0 + h)) for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+    bm.faces.new(hi)
+    for i in range(4):
+        bm.faces.new([lo[i], lo[(i + 1) % 4], hi[(i + 1) % 4], hi[i]])
+    bm.to_mesh(me)
+    bm.free()
+    return K.obj(name, me, K.mat(mat))
+
+
+def stone_tower(K, name, cx, cy, w, floors):
+    """Steel and concrete: concrete piers at the corners and between bays, a dark steel
+    spandrel under every floor's windows, two setbacks and a flattened pyramid on top."""
+    h = floors * FLOOR
+    K.box(name + "_body", cx, cy, h / 2, w, w, h, K.mat("chalk"))
+    K.box(name + "_base", cx, cy, 0.20, w + 0.10, w + 0.10, 0.40, K.mat("shell"))
+    x0, x1, y0, y1 = cx - w / 2, cx + w / 2, cy - w / 2, cy + w / 2
+    wins, _ = _openings(x0, x1, y0, y1, 0.0, floors, door=False)
+    _painted(K, name + "_win", wins, "window_glass")
+    # Steel spandrels, a thin band at each floor line on the two walls the camera sees.
+    bands = []
+    for f in range(1, floors + 1):
+        z = f * FLOOR - 0.035
+        bands.append([(x0, y0 - PROUD, z), (x1, y0 - PROUD, z), (x1, y0 - PROUD, z + 0.07), (x0, y0 - PROUD, z + 0.07)])
+        bands.append([(x1 + PROUD, y0, z), (x1 + PROUD, y1, z), (x1 + PROUD, y1, z + 0.07), (x1 + PROUD, y0, z + 0.07)])
+    _painted(K, name + "_spandrel", bands, "steel_navy")
+    for i, (sx, sy) in enumerate(((-1, -1), (1, -1), (1, 1), (-1, 1))):
+        K.box("%s_pier%d" % (name, i), cx + sx * (w / 2 - 0.04), cy + sy * (w / 2 - 0.04), h / 2,
+              0.14, 0.14, h + 0.02, K.mat("shell"))
+    K.box(name + "_crown", cx, cy, h + 0.10, w + 0.06, w + 0.06, 0.20, K.mat("shell"))
+    K.box(name + "_set", cx, cy, h + 0.38, w * 0.74, w * 0.74, 0.36, K.mat("chalk"))
+    _frustum(K, name + "_cap", cx, cy, h + 0.56, w * 0.40, w * 0.13, 0.42, "steel_navy")
+    K.box(name + "_mast", cx, cy, h + 1.20, 0.035, 0.035, 0.46, K.mat("silver"))
+    return h + 1.43
+
+
+def glass_tower(K, name, cx, cy, w, floors):
+    """Glass outside: a curtain wall ruled by thin mullions and floor lines, a flat roof
+    with a parapet and a plant room."""
+    h = floors * FLOOR
+    K.box(name + "_body", cx, cy, h / 2, w, w, h, K.mat("curtain"))
+    K.box(name + "_lobby", cx, cy, 0.24, w + 0.02, w + 0.02, 0.48, K.mat("curtain_dark"))
+    x0, x1, y0, y1 = cx - w / 2, cx + w / 2, cy - w / 2, cy + w / 2
+    rules = []
+    t = 0.022
+    for f in range(1, floors):
+        z = f * FLOOR
+        rules.append([(x0, y0 - PROUD, z), (x1, y0 - PROUD, z), (x1, y0 - PROUD, z + t), (x0, y0 - PROUD, z + t)])
+        rules.append([(x1 + PROUD, y0, z), (x1 + PROUD, y1, z), (x1 + PROUD, y1, z + t), (x1 + PROUD, y0, z + t)])
+    n = 5
+    for i in range(1, n):
+        u = i / float(n)
+        xa = x0 + u * w
+        ya = y0 + u * w
+        rules.append([(xa - t / 2, y0 - PROUD, 0.48), (xa + t / 2, y0 - PROUD, 0.48), (xa + t / 2, y0 - PROUD, h), (xa - t / 2, y0 - PROUD, h)])
+        rules.append([(x1 + PROUD, ya - t / 2, 0.48), (x1 + PROUD, ya + t / 2, 0.48), (x1 + PROUD, ya + t / 2, h), (x1 + PROUD, ya - t / 2, h)])
+    _painted(K, name + "_rules", rules, "silver")
+    K.box(name + "_deck", cx, cy, h + 0.01, w - 0.08, w - 0.08, 0.02, K.mat("deck"))
+    pw, ph = 0.05, 0.10
+    for tag, px_, py_, sx, sy in (("s", cx, y0 + pw / 2, w, pw), ("n", cx, y1 - pw / 2, w, pw),
+                                  ("w", x0 + pw / 2, cy, pw, w - 2 * pw), ("e", x1 - pw / 2, cy, pw, w - 2 * pw)):
+        K.box("%s_lip_%s" % (name, tag), px_, py_, h + ph / 2, sx, sy, ph, K.mat("silver"))
+    K.box(name + "_plant", cx - w * 0.14, cy + w * 0.14, h + 0.14, w * 0.36, w * 0.36, 0.26, K.mat("annex_grey"))
+    return h + 0.28
+
+
+# A city tile's pair of towers on the supply chain board: ten floors of steel and concrete
+# under a flattened pyramid, and fourteen of glass with a flat roof.
+def build_towers() -> dict:
+    setup_rig(target=(0.0, 0.0, 3.3))
+    fs = bpy.context.scene.view_layers[0].freestyle_settings
+    for ls in fs.linesets:
+        ls.select_by_face_marks = True
+        ls.face_mark_negation = 'EXCLUSIVE'
+        ls.face_mark_condition = 'ONE'
+    K = Kit(open_collection("BLDG_house"))
+    # Side by side on screen is apart along x + y; the stone tower is a little nearer the eye.
+    stone_tower(K, "stone", 0.98, 0.62, 1.30, 10)
+    glass_tower(K, "glass", -0.98, -0.62, 1.25, 14)
+    return {"building": "towers", "objects": len(K.col.objects)}

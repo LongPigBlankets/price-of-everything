@@ -59,6 +59,7 @@ const PYLON_AT := Vector2(-121.0, -216.0)
 const PYLON_SIDE := 62.0
 ## Homes stood on a tile that has works but is not a town.
 const HOMES_PER_TILE := 3
+const TOWERS_SPRITE := "towers"
 ## Housing keeps this far from a mine on the side nearer the eye.
 const MINE_CLEAR := 190.0
 ## What standing on a river costs a slot when buildings are placed: more than any distance.
@@ -449,11 +450,36 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 			door_of[str(td["iid"])] = Streets.nid(Streets.slot_door(int(place["slot"])))
 			spot_of[str(td["iid"])] = Streets.SLOTS[int(place["slot"])]
 			standing.append(td)
-		# Housing: where the works are there are homes. A town tile fills its free slots with
-		# them, any other tile with works takes a few. Each keeps to dry ground.
-		if town and bool(t["store"]) and things.size() <= Streets.SLOTS.size():
+		# Housing: where the works are there are homes. A city tile fills its free slots with
+		# them, works or none; any other tile with works takes a few. Each keeps to dry ground.
+		if town and (bool(t["store"]) or str(t["type"]) == "urban") and things.size() <= Streets.SLOTS.size():
 			var homes := 0
 			var limit := Streets.SLOTS.size() if str(t["type"]) == "urban" else HOMES_PER_TILE
+			# A city has a pair of towers, on the dry free slot furthest from its works.
+			if str(t["type"]) == "urban":
+				var best_i := -1
+				var best_far := -1.0
+				for i in range(free.size()):
+					if bool(free[i]["wet"]):
+						continue
+					var far := 1.0e6
+					for thing in things:
+						far = minf(far, (c + (free[i]["pos"] as Vector2)).distance_to((thing as Dictionary)["pos"]))
+					# With no works to keep from, the back of the tile, so they hide nothing.
+					if things.is_empty():
+						far = -(free[i]["pos"] as Vector2).y - absf((free[i]["pos"] as Vector2).x) * 0.1
+					if far > best_far:
+						best_far = far
+						best_i = i
+				if best_i >= 0:
+					var spot: Dictionary = free[best_i]
+					free.remove_at(best_i)
+					var tid_towers := "towers:%s" % str(tid)
+					standing.append({"kind": "house", "iid": tid_towers, "tile": tid, "pos": c + (spot["pos"] as Vector2),
+						"sprite": BuildingSprites.texture_for(TOWERS_SPRITE, 1), "level": 3, "name": "City",
+						"side": float(spot["side"]) * FOOT_SHARE, "pad": float(spot["side"]), "polluting": false,
+						"tall": true})
+					door_of[tid_towers] = Streets.nid(Streets.slot_door(int(spot["slot"])))
 			for place in free:
 				if homes >= limit:
 					break

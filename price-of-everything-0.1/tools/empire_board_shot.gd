@@ -64,8 +64,9 @@ func _ready() -> void:
 		" flows=", (model.get("flows", []) as Array).size())
 	for l in model.get("lanes", []):
 		print("  lane ", l["kind"], " ", l["good"], " ", l["from"], " -> ", l["to"], "  from ", l["sources"], " to ", l["dests"], "  live ", (l["live"] as Array).size(), "  hops ", l["hops"])
-	for tid in ["tile_10_10", "tile_9_10"]:
+	for tid in model["tiles"]:
 		var tc: Vector2 = model["tiles"][tid]["center"]
+		print("TYPES ", tid, " ", model["tiles"][tid]["type"])
 		print("DUMP ", tid, " hub ", (model["tiles"][tid]["hub"] as Vector2) - tc, " manifold ", model["tiles"][tid]["manifold"])
 		for st in model["standing"]:
 			if str(st["tile"]) == tid:
@@ -93,6 +94,11 @@ func _ready() -> void:
 	board.call("_view_changed")
 	await _settle(140)
 	_shot(dir + "board_mine.png")
+	var city: Rect2 = board.call("_tile_rect", "tile_5_10")
+	board.set("_offset", board.size * 0.5 - city.get_center() * 1.5 - Vector2(0.0, 60.0))
+	board.call("_view_changed")
+	await _settle(140)
+	_shot(dir + "board_city.png")
 	board.call("fit_view")
 	board.call("_zoom_at", board.size * 0.5, 2.2)
 	await _settle(90)

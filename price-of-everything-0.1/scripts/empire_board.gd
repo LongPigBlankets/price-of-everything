@@ -1103,6 +1103,9 @@ func _build_standing() -> void:
 			# The frame, not the content, is what the slot's footprint scales: a level set shares
 			# one scale, so the lower levels sit smaller inside the same frame.
 			var k := side * 2.0 * ISO_X / (float(tex.get_width()) * SPRITE_FILL)
+			if bool(d.get("tall", false)):
+				# A tower's frame is filled by its height, not its footprint: scale by what is drawn.
+				k = side * 2.0 * ISO_X / used.size.x
 			side = used.size.x * k / (2.0 * ISO_X)
 			d["side"] = side
 			var front: Vector2 = (d["at"] as Vector2) + Vector2(0.0, side * ISO_Y)
