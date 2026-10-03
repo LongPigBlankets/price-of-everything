@@ -2274,5 +2274,22 @@
   ],
   "margin": 10,
   "corner": 54
+ },
+ "desk_plate": {
+  "size": [
+   1800,
+   150
+  ],
+  "margin": 10
+ },
+ "desk_bezel": {
+  "size": [
+   200,
+   200
+  ],
+  "ring": [
+   74,
+   84
+  ]
  }
 }

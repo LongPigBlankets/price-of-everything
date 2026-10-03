@@ -84,6 +84,22 @@ const ALT_COLORS := {
 	"EmpireButton":    ["#c49a28", "#fff2c9"],
 }
 
+# The control desk (UiPrefs.use_desk_ds2): the top bar's navy steel as a desk plate the bar's width, drawn at
+# its render's size (desk_plate.png, two texels a pixel) so its wear never stretches, each round button set in a
+# gunmetal collar (desk_bezel.png). The open panel's button sits pressed into its collar with a lit halo, where
+# the silver tray lifts it. Buttons are a little smaller on the desk, and the desk lower than the tray.
+const DESK_PLATE: Texture2D = preload("res://assets/ui/bdp_v3/desk_plate.png")
+const DESK_BEZEL: Texture2D = preload("res://assets/ui/bdp_v3/desk_bezel.png")
+const DESK_BUTTON := 80.0
+const DESK_GAP := 20
+const DESK_SHOWN := 50.0       # how much of the desk plate stands above the screen's foot
+const DESK_BUTTON_FOOT := 8.0  # the buttons' foot above the screen's foot
+const DESK_PRESS_PX := 3.0
+const DESK_HALO_W := 4.0
+var _desk: Control = null
+var _bezels: Control = null
+var _tray: Dictionary = {}     # the silver tray's layout, kept to put back when the desk is switched off
+
 # Selected button rises while its panel is open, then drops when it closes.
 const RISE_PX := 25.0
 const RISE_TIME := 0.12
@@ -119,6 +135,8 @@ func _ready() -> void:
 	UiPrefs.construct_ds2_changed.connect(_on_construct_ds2_changed)
 	UiPrefs.empire_button_icon_changed.connect(_on_empire_button_icon_changed)
 	_apply_menu_icons()
+	_apply_desk.call_deferred()
+	UiPrefs.desk_ds2_changed.connect(func(_on: bool) -> void: _apply_desk())
 	%ConstructButton.pressed.connect(_on_construct_pressed)
 	%ResourcesButton.pressed.connect(_on_resources_pressed)
 	%BuildingsButton.pressed.connect(_on_buildings_pressed)
@@ -397,7 +415,8 @@ func _raise_button(button: Button, raised: bool) -> void:
 	if not _button_home_y.has(button):
 		return  # never raised yet → nothing to drop
 	var home: float = _button_home_y[button]
-	var target: float = (home - RISE_PX) if raised else home
+	var lift := -DESK_PRESS_PX if UiPrefs.use_desk_ds2 else RISE_PX   # the desk presses in; the tray lifts
+	var target: float = (home - lift) if raised else home
 	if _rise_tween.has(button) and _rise_tween[button] != null and _rise_tween[button].is_valid():
 		_rise_tween[button].kill()
 	var tw := create_tween()
@@ -412,6 +431,12 @@ func _set_lifted(button: Button, lifted: bool) -> void:
 	if lifted == _lifted.get(button, false):
 		return
 	_lifted[button] = lifted
+	if UiPrefs.use_desk_ds2:
+		# Pressed into its collar: no longer shadow, the halo round the collar lights instead.
+		_update_glow(button)
+		if _bezels != null:
+			_bezels.queue_redraw()
+		return
 	if lifted:
 		_rest_styles[button] = {}
 		for s in ["normal", "hover", "pressed", "focus"]:
@@ -692,3 +717,105 @@ func _on_loan_confirmed(amount: float) -> void:
 	# Auto-switch Money panel to Loans tab.
 	money_panel.open_tab("Loans")
 	money_panel.show()
+
+
+
+# ── The control desk (UiPrefs.use_desk_ds2) ──────────────────────────────────
+
+## Puts the desk in place of the silver tray, or the tray back.
+func _apply_desk() -> void:
+	var panel := bottom_menu.get_parent().get_node_or_null("BottomMenuPanel") as PanelContainer
+	if panel == null:
+		return
+	var buttons: Array = bottom_menu.get_children().filter(func(n: Node) -> bool: return n is Button)
+	if _tray.is_empty():
+		_tray = {"panel": [panel.offset_left, panel.offset_top, panel.offset_right, panel.offset_bottom],
+			"style": panel.get_theme_stylebox("panel"),
+			"menu": [bottom_menu.offset_left, bottom_menu.offset_top, bottom_menu.offset_right, bottom_menu.offset_bottom],
+			"gap": bottom_menu.get_theme_constant("separation"),
+			"size": (buttons[0] as Button).custom_minimum_size if not buttons.is_empty() else Vector2(90, 90)}
+	var on: bool = UiPrefs.use_desk_ds2
+	for child_name: String in ["PlateSurface", "SilverFrame"]:
+		var n := panel.get_node_or_null(child_name) as CanvasItem
+		if n != null:
+			n.visible = not on
+	# Positions change, so every button settles home again before it is next pressed.
+	for b: Variant in buttons:
+		_raise_button(b as Button, false)
+	_button_home_y.clear()
+	if on:
+		var plate := DESK_PLATE.get_size() / 2.0
+		panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+		panel.offset_left = -plate.x * 0.5
+		panel.offset_right = plate.x * 0.5
+		panel.offset_top = -DESK_SHOWN
+		panel.offset_bottom = plate.y - DESK_SHOWN
+		if _desk == null:
+			_desk = Control.new()
+			_desk.name = "DeskPlate"
+			_desk.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			_desk.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+			_desk.draw.connect(func() -> void: _desk.draw_texture_rect(DESK_PLATE, Rect2(Vector2.ZERO, DESK_PLATE.get_size() / 2.0), false))
+			panel.add_child(_desk)
+		_desk.visible = true
+		var width := DESK_BUTTON * buttons.size() + DESK_GAP * maxi(0, buttons.size() - 1)
+		bottom_menu.add_theme_constant_override("separation", DESK_GAP)
+		bottom_menu.offset_left = -width * 0.5
+		bottom_menu.offset_right = width * 0.5
+		bottom_menu.offset_bottom = -DESK_BUTTON_FOOT
+		bottom_menu.offset_top = -DESK_BUTTON_FOOT - DESK_BUTTON
+		for b: Variant in buttons:
+			(b as Button).custom_minimum_size = Vector2(DESK_BUTTON, DESK_BUTTON)
+		if _bezels == null:
+			_bezels = Control.new()
+			_bezels.name = "DeskBezels"
+			_bezels.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			_bezels.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+			_bezels.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			_bezels.draw.connect(_draw_bezels)
+			var host := bottom_menu.get_parent()
+			host.add_child(_bezels)
+			host.move_child(_bezels, bottom_menu.get_index())
+			bottom_menu.sort_children.connect(func() -> void: _bezels.queue_redraw())
+			bottom_menu.resized.connect(func() -> void: _bezels.queue_redraw())
+		_bezels.visible = true
+		_bezels.queue_redraw.call_deferred()
+	else:
+		panel.add_theme_stylebox_override("panel", _tray.style)
+		panel.offset_left = _tray.panel[0]
+		panel.offset_top = _tray.panel[1]
+		panel.offset_right = _tray.panel[2]
+		panel.offset_bottom = _tray.panel[3]
+		bottom_menu.add_theme_constant_override("separation", int(_tray.gap))
+		bottom_menu.offset_left = _tray.menu[0]
+		bottom_menu.offset_top = _tray.menu[1]
+		bottom_menu.offset_right = _tray.menu[2]
+		bottom_menu.offset_bottom = _tray.menu[3]
+		for b: Variant in buttons:
+			(b as Button).custom_minimum_size = _tray.size
+		if _desk != null:
+			_desk.visible = false
+		if _bezels != null:
+			_bezels.visible = false
+
+
+## Each button's gunmetal collar, centred where the button rests, and a halo round the collar of the one whose
+## panel is open, in the button's own colour.
+func _draw_bezels() -> void:
+	if _bezels == null or not bottom_menu.visible:
+		return
+	var side := DESK_BEZEL.get_size() / 2.0
+	var origin := _bezels.get_global_rect().position
+	for b: Variant in bottom_menu.get_children():
+		var button := b as Button
+		if button == null or not button.visible:
+			continue
+		var rest := button.get_global_rect()
+		if _button_home_y.has(button):
+			rest.position.y = bottom_menu.global_position.y + float(_button_home_y[button])
+		var centre := rest.get_center() - origin
+		if bool(_lifted.get(button, false)):
+			var tint := Color(ALT_COLORS.get(str(button.name), ["#e9b81a"])[0]).lightened(0.45)
+			_bezels.draw_circle(centre, side.x * 0.5 + DESK_HALO_W * 2.0, Color(tint, 0.22))
+			_bezels.draw_arc(centre, side.x * 0.5 - 2.0, 0.0, TAU, 64, Color(tint, 0.9), DESK_HALO_W, true)
+		_bezels.draw_texture_rect(DESK_BEZEL, Rect2(centre - side * 0.5, side), false)
