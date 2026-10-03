@@ -200,7 +200,7 @@ Run `python3 tools/run_middleman_phase0.py --phase1 --full` to run all unit chec
 
 ### Middleman phase 2
 
-`python3 tools/run_middleman_phase0.py --phase2 --full` adds presentation/forecast checks and the real 50-turn public Pepper Valley introduction + second-factory construction exercise. See [P2 implementation](../docs/middleman-phase-2-implementation.md). Windowed screenshots: `res://tools/middleman_p2_preview.tscn`, with `-- --menu` for the selector.
+`python3 tools/run_middleman_phase0.py --phase2 --full` adds the presentation and forecast checks. See [P2 implementation](../docs/middleman-phase-2-implementation.md). The public Pepper Valley Motors start and its playable harness were removed; Pepper Valley remains an internal benchmark start only.
 
 ### Middleman phase 3
 
