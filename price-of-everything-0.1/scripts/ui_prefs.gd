@@ -119,6 +119,10 @@ var use_victory_ds2: bool = true
 # collars, the open panel's button pressed in with a lit halo. The default; the debug cheat `toggle desk ds2`
 # switches back to the silver tray. Session-only, never persisted.
 var use_desk_ds2: bool = true
+# The in-game menu (Esc) in DS2: a cabinet of cream keys (scripts/pause_menu.gd). The default; the debug cheat
+# `toggle pause ds2` switches back to the black rounded panel. Built per open, so no signal. Session-only, never
+# persisted.
+var use_pause_ds2: bool = true
 # Building Detail v3's diagnostics: the Visual view (true) or the Text rows. The player's choice on the
 # panel's switch, kept while the game runs (closing the panel or starting a match keeps it).
 var bdp_diag_visual: bool = false
@@ -284,6 +288,10 @@ func toggle_use_desk_ds2() -> bool:
 	use_desk_ds2 = not use_desk_ds2
 	desk_ds2_changed.emit(use_desk_ds2)
 	return use_desk_ds2
+
+func toggle_use_pause_ds2() -> bool:
+	use_pause_ds2 = not use_pause_ds2
+	return use_pause_ds2
 
 func toggle_use_victory_ds2() -> bool:
 	use_victory_ds2 = not use_victory_ds2

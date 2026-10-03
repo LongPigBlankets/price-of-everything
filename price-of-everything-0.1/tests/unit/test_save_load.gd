@@ -457,7 +457,9 @@ func _test_save_load_ui() -> void:
 	_collect_buttons(menu, menu_buttons)
 	# Return to game / Save / Load / Settings / Exit to Main Menu / Exit to Desktop
 	_check(menu_buttons.size() == 6, "pause menu: shows the 6 options")
-	var menu_labels: Array = menu_buttons.map(func(b: Button) -> String: return b.text)
+	# A DS2 cream key prints its own title; a v2 button its text.
+	var menu_labels: Array = menu_buttons.map(func(b: Button) -> String:
+		return str(b.get("title")) if b.get("title") != null else b.text)
 	_check(menu_labels.has("Exit to Main Menu"), "pause menu: has Exit to Main Menu")
 	_check(menu_labels.has("Exit to Desktop"), "pause menu: has Exit to Desktop")
 	_check(PanelStack.close_top() and not menu.visible, "pause menu: Esc path (close_top) closes it")
