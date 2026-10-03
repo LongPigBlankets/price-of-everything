@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://2k8qpkl4glh4"
-path="res://.godot/imported/end_turn_key_lit.png-b28db7b9a04515b752947de29d67e23c.ctex"
+uid="uid://g0gqpqn2d7ey"
+path="res://.godot/imported/end_turn_silver_pressed.png-09773bf99c433161f0f829eefa477520.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/bdp_v3/end_turn_key_lit.png"
-dest_files=["res://.godot/imported/end_turn_key_lit.png-b28db7b9a04515b752947de29d67e23c.ctex"]
+source_file="res://assets/ui/bdp_v3/end_turn_silver_pressed.png"
+dest_files=["res://.godot/imported/end_turn_silver_pressed.png-09773bf99c433161f0f829eefa477520.ctex"]
 
 [params]
 

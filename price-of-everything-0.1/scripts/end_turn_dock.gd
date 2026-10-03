@@ -12,9 +12,9 @@ extends Control
 ## navy plate with a gold rim + rivet, and an emissive gold END TURN face.
 ##
 ## On the DS2 control desk (UiPrefs.use_desk_ds2, with the bottom bar) the plate is the desk plate's left end
-## (desk_plate.png, the same navy steel, rail and screw as the bar's), the button an amber push button lit
-## from within (end_turn_key_lit / _pressed / _unlit.png, END TURN printed on it in navy), and the phase a
-## dot-matrix screen.
+## (desk_plate.png, the same navy steel, rail and screw as the bar's), the button a silver push button with
+## chamfered bevels and an arrow pointing right, in a black frame (end_turn_silver_up / _pressed / _dim.png),
+## END TURN engraved under it, and the phase on the roller in a black frame beside it.
 ##
 ## UI is read-only against the sim (CLAUDE.md rule #5): it observes
 ## TurnManager.phase_started and only reads state.
@@ -59,24 +59,22 @@ const BASE_RADIUS := 14.0 # squarish-rounded corner radius on the silver under-p
 const BASE_INSET := 6.0   # navy plate inset inside the silver plate
 
 # ── The DS2 control desk ─────────────────────────────────────────────────────
-const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
 const DESK_PLATE: Texture2D = preload("res://assets/ui/bdp_v3/desk_plate.png")
-const KEY_LIT: Texture2D = preload("res://assets/ui/bdp_v3/end_turn_key_lit.png")
-const KEY_PRESSED: Texture2D = preload("res://assets/ui/bdp_v3/end_turn_key_pressed.png")
-const KEY_UNLIT: Texture2D = preload("res://assets/ui/bdp_v3/end_turn_key_unlit.png")
-## The key's cap in px (its render less the bezel and shadow room), the desk's foot under it and the plate's
-## height over it, the phase screen's width.
-const DESK_BTN := Vector2(142.0, 40.0)
-const DESK_FOOT := 8.0
-const DESK_PLATE_TOP := 58.0
-const DESK_ROLLER_W := 104.0
-const DESK_INK := Color("#0b2340")
+const SILVER_UP: Texture2D = preload("res://assets/ui/bdp_v3/end_turn_silver_up.png")
+const SILVER_PRESSED: Texture2D = preload("res://assets/ui/bdp_v3/end_turn_silver_pressed.png")
+const SILVER_DIM: Texture2D = preload("res://assets/ui/bdp_v3/end_turn_silver_dim.png")
+const F_ENGRAVE: Font = preload("res://assets/fonts/BarlowCondensed-SemiBold.ttf")
+## The button's frame in px (its render less the shadow room), the label's height under it, the desk's
+## foot under the label and the plate's height over it all.
+const DESK_BTN := Vector2(69.0, 33.0)
+const DESK_LABEL := 15.0
+const DESK_FOOT := 5.0
+const DESK_PLATE_TOP := 74.0
 
 # ── State ────────────────────────────────────────────────────────────────────
 var _menu: Control
 var _roller: PhaseRoller
 var _base_block: Control
-var _phase_dots: Control
 
 # Cached layout rects (local space).
 var _r_button := Rect2()
@@ -103,11 +101,6 @@ func _ready() -> void:
 	add_child(_roller)
 	TurnManager.phase_started.connect(_on_phase_started)
 	_roller.set_phase(TurnManager.get_phase_name(TurnManager.current_phase), false)
-	_phase_dots = DotMatrix.new()
-	_phase_dots.name = "PhaseDots"
-	_phase_dots.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_phase_dots.set("text", TurnManager.get_phase_name(TurnManager.current_phase))
-	add_child(_phase_dots)
 	UiPrefs.desk_ds2_changed.connect(func(_on: bool) -> void: _update_layout())
 
 	resized.connect(_update_layout)
@@ -128,8 +121,6 @@ func _ready() -> void:
 
 func _on_phase_started(phase: int) -> void:
 	_roller.set_phase(TurnManager.get_phase_name(phase), true)
-	if _phase_dots != null:
-		_phase_dots.set("text", TurnManager.get_phase_name(phase))
 
 
 # ─── Setup ───────────────────────────────────────────────────────────────────
@@ -161,11 +152,7 @@ func _build_interactive_children() -> void:
 func _update_layout() -> void:
 	var w := size.x
 	var h := size.y
-	var desk: bool = UiPrefs.use_desk_ds2
-	_roller.visible = not desk
-	if _phase_dots != null:
-		_phase_dots.visible = desk
-	if desk:
+	if UiPrefs.use_desk_ds2:
 		_layout_desk(w, h)
 		return
 
@@ -196,18 +183,16 @@ func _update_layout() -> void:
 	queue_redraw()
 
 
-## The desk's layout: the push button on the desk's foot, the phase screen beside it, the plate over both
-## from DESK_PLATE_TOP, bleeding off the bottom and right as the navy plate does.
+## The desk's layout: the button over its engraved label on the desk's foot, the roller beside the button, the
+## plate over them all from DESK_PLATE_TOP, bleeding off the bottom and right as the navy plate does.
 func _layout_desk(w: float, h: float) -> void:
-	var left := maxf(w - (PAD * 2.0 + DESK_BTN.x + ROW_GAP + DESK_ROLLER_W + 18.0), _menu_right_local() + 12.0)
+	var left := maxf(w - (PAD * 2.0 + DESK_BTN.x + ROW_GAP + ROLLER_W + 18.0), _menu_right_local() + 12.0)
 	_r_base = Rect2(left, h - DESK_PLATE_TOP, (w + BASE_BLEED) - left, DESK_PLATE_TOP + BASE_BLEED)
-	_r_button = Rect2(left + PAD + 8.0, h - DESK_FOOT - DESK_BTN.y, DESK_BTN.x, DESK_BTN.y)
+	_r_button = Rect2(left + PAD + 6.0, h - DESK_FOOT - DESK_LABEL - DESK_BTN.y, DESK_BTN.x, DESK_BTN.y)
 	_end_turn_button.position = _r_button.position
 	_end_turn_button.size = _r_button.size
-	if _phase_dots != null:
-		var dh: float = _phase_dots.get_combined_minimum_size().y
-		_phase_dots.position = Vector2(_r_button.end.x + ROW_GAP, _r_button.get_center().y - dh * 0.5)
-		_phase_dots.size = Vector2(DESK_ROLLER_W, dh)
+	_roller.position = Vector2(_r_button.end.x + ROW_GAP, _r_button.get_center().y - ROLLER_H * 0.5)
+	_roller.size = Vector2(ROLLER_W, ROLLER_H)
 	_base_block.position = _r_base.position
 	_base_block.size = Vector2(minf(_r_base.size.x, w - _r_base.position.x), h - _r_base.position.y)
 	queue_redraw()
@@ -244,8 +229,8 @@ func _draw() -> void:
 	_draw_end_turn(_r_button)
 
 
-## The desk plate's left end over the dock, and the push button: lit, sunk while held, unlit while a turn
-## resolves, END TURN printed on its cap.
+## The desk plate's left end over the dock, and the silver button: at rest, sunk while held, dimmed while a
+## turn resolves.
 func _draw_desk() -> void:
 	var plate := DESK_PLATE.get_size()
 	var shown := Vector2(minf(_r_base.size.x, plate.x / 2.0), plate.y / 2.0)
@@ -255,14 +240,17 @@ func _draw_desk() -> void:
 		var rest := Rect2(_r_base.position + Vector2(shown.x, 0.0), Vector2(_r_base.size.x - shown.x, shown.y))
 		draw_texture_rect_region(DESK_PLATE, rest, Rect2(Vector2(plate.x * 0.5, 0.0), Vector2(rest.size.x * 2.0, plate.y)))
 	var disabled := _end_turn_button.disabled
-	var tex: Texture2D = KEY_UNLIT if disabled else (KEY_PRESSED if _btn_down else KEY_LIT)
+	var tex: Texture2D = SILVER_DIM if disabled else (SILVER_PRESSED if _btn_down else SILVER_UP)
 	var key := tex.get_size() / 2.0
-	var tint := Color(1.06, 1.06, 1.06) if _btn_hover and not disabled and not _btn_down else Color.WHITE
+	var tint := Color(1.08, 1.08, 1.08) if _btn_hover and not disabled and not _btn_down else Color.WHITE
 	draw_texture_rect(tex, Rect2(_r_button.get_center() - key * 0.5, key), false, tint)
-	var ink := DESK_INK if not disabled else Color(DESK_INK, 0.55)
-	var tw := _measure(F_HEAD, "END TURN", 22)
-	var top := _r_button.get_center() - Vector2(tw * 0.5, 11.0) + (Vector2(0.0, 1.0) if _btn_down else Vector2.ZERO)
-	_text(F_HEAD, top, "END TURN", 22, ink)
+	# The roller's black frame.
+	draw_rect(Rect2(_roller.position, _roller.size).grow(3.0), Color("#121316"))
+	# END TURN engraved under the button: off-white capitals over a dark cut shadow.
+	var tw := F_ENGRAVE.get_string_size("END TURN", HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+	var at := Vector2(_r_button.get_center().x - tw * 0.5, _r_button.end.y + 13.0)
+	draw_string(F_ENGRAVE, at + Vector2(1, 1), "END TURN", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0, 0, 0, 0.85))
+	draw_string(F_ENGRAVE, at, "END TURN", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, DS.PALETTE.TEXT)
 
 
 func _draw_base(r: Rect2) -> void:
