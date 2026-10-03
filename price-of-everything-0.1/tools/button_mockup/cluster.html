@@ -1485,22 +1485,19 @@ function darkMetalPlate() {
 
 /**
  * The bottom bar as a factory control desk: a plate of the top bar's weathered navy steel the bar's full width,
- * rendered at its size so its wear never stretches, with a polished steel rail along its far edge and a screw
+ * rendered at its size so its wear never stretches, with a screw
  * at each end; and the gunmetal collar each round push button sits in, a knurled ring round a dark recess.
  * The plate runs off the bottom of the screen, so only its top corners are rounded on screen.
  */
-const DESK = { W: 1800, H: 150, M: 10, rail: 10, railInset: 26, r: 22 };
+const DESK = { W: 1800, H: 150, M: 10, r: 22 };
 function deskPlate() {
-  const { W, H, M, rail, railInset, r } = DESK, g = new THREE.Group(), pw = W - 2 * M, ph = H - M + 30;
+  const { W, H, M, r } = DESK, g = new THREE.Group(), pw = W - 2 * M, ph = H - M + 30;
   const screws = [{ x: 34, y: 34 }, { x: pw - 34, y: 34 }];
   const face = { icons: [], buttons: [], screws, base: NAVY_STEEL_CANVAS, rub: '120,136,160' };
   const steelSide = new THREE.MeshStandardMaterial({ color: 0x3a4250, metalness: 1, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
   const plate = new THREE.Mesh(extrude(rrShape(pw, ph, r), 5, 3, 2.4, 5), [plateMaterial(pw, ph, face), steelSide]);
   plate.castShadow = plate.receiveShadow = true; plate.position.set(W / 2, 0, M + ph / 2); g.add(plate);
   for (const sc of screws) { const m = screw(5); m.position.set(M + sc.x, 8.2, M + sc.y); g.add(m); }
-  const chrome = new THREE.MeshStandardMaterial({ color: 0xb8bec6, map: noiseTexture(8, 24, 60), metalness: 1, roughness: 0.18, envMap: studioEnv, envMapIntensity: 1.05 });
-  const railMesh = new THREE.Mesh(extrude(rrShape(pw - 2 * railInset - 60, rail, rail / 2), 3, 1.4, 1.1, 4), chrome);
-  railMesh.castShadow = railMesh.receiveShadow = true; railMesh.position.set(W / 2, 8.2, M + 14 + rail / 2); g.add(railMesh);
   g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.55));
   return g;
 }
@@ -1519,36 +1516,6 @@ function deskBezel() {
   const recess = new THREE.Mesh(new THREE.CircleGeometry(rIn, 64).rotateX(-Math.PI / 2), MAT.gap);
   recess.position.set(c, 0.4, c); recess.receiveShadow = true; g.add(recess);
   g.add(shadowCatcher(S, S, c, c, 0.05, 0.6));
-  return g;
-}
-
-// End Turn on the control desk: a silver push button with pronounced chamfered bevels and a raised arrow
-// pointing right, sunk in a black frame. "up" at rest, "pressed" sunk while held, "dim" while a turn resolves.
-// The game engraves END TURN under it and rolls the phase beside it (end_turn_dock.gd).
-const ESILVER = { W: 144, H: 76, M: 8, r: 7 };
-function endTurnSilver(state) {
-  const { W, H, M, r } = ESILVER, g = new THREE.Group(), fw = W - 2 * M - 12, fh = H - 2 * M - 12;
-  const black = new THREE.MeshStandardMaterial({ color: 0x121316, map: noiseTexture(6, 10, 80), metalness: 0.35, roughness: 0.42, envMap: studioEnv, envMapIntensity: 0.5 });
-  const ring = rrShape(fw + 12, fh + 12, r + 5); ring.holes.push(rr(new THREE.Path(), fw + 2, fh + 2, r + 1));
-  const frame = new THREE.Mesh(extrude(ring, 7, 1.6, 1.3, 2), black); frame.position.set(W / 2, 0, H / 2);
-  frame.castShadow = frame.receiveShadow = true; g.add(frame);
-  const well = new THREE.Mesh(new THREE.PlaneGeometry(fw + 2, fh + 2).rotateX(-Math.PI / 2), MAT.gap); well.position.set(W / 2, 0.3, H / 2); g.add(well);
-  const dim = state === 'dim', held = state === 'pressed', tone = dim ? 0x6f757d : (held ? 0x8f959d : 0xa4aab2);
-  const silver = new THREE.MeshStandardMaterial({ color: tone, map: noiseTexture(14, 50, 50), metalness: 1, roughness: 0.34, envMap: studioEnv, envMapIntensity: dim ? 0.45 : 0.8 });
-  const sunk = held ? 3 : 0;
-  // The chamfer: a wide, flat bevel (one segment) so the button's edge reads as cut facets, not a round.
-  const cap = new THREE.Mesh(extrude(rrShape(fw - 16, fh - 16, r - 3), 3, 7, 7, 1), silver);
-  cap.position.set(W / 2, 1 - sunk, H / 2); cap.castShadow = cap.receiveShadow = true; g.add(cap);
-  // The arrow, pointing right, raised from the face in black enamel and chamfered the same way.
-  const aw = fh * 0.66, ah = fh * 0.5, shaft = ah * 0.38, head = aw * 0.44;
-  const arrow = new THREE.Shape();
-  arrow.moveTo(-aw / 2, -shaft / 2); arrow.lineTo(aw / 2 - head, -shaft / 2); arrow.lineTo(aw / 2 - head, -ah / 2);
-  arrow.lineTo(aw / 2, 0); arrow.lineTo(aw / 2 - head, ah / 2); arrow.lineTo(aw / 2 - head, shaft / 2);
-  arrow.lineTo(-aw / 2, shaft / 2); arrow.closePath();
-  const enamel = new THREE.MeshPhysicalMaterial({ color: dim ? 0x1d2026 : 0x14171c, roughness: 0.3, clearcoat: 0.7, clearcoatRoughness: 0.2, envMap: studioEnv, envMapIntensity: 0.6 });
-  const arrowMesh = new THREE.Mesh(extrude(arrow, 1, 1, 1, 1), enamel);
-  arrowMesh.position.set(W / 2, 1 - sunk + 3 + 14, H / 2); arrowMesh.castShadow = true; g.add(arrowMesh);
-  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.55));
   return g;
 }
 
@@ -2366,7 +2333,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // missionslot, missionboard, darkmetal, desk, endsilver, tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
+  // missionslot, missionboard, darkmetal, desk, tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -7500,13 +7467,6 @@ async function exportLayers() {
     await post('desk_bezel', stage([0, 0, DBEZEL.S, DBEZEL.S], [deskBezel()]).grab());
     layout.desk_plate = { size: [DESK.W, DESK.H], margin: DESK.M };
     layout.desk_bezel = { size: [DBEZEL.S, DBEZEL.S], ring: [DBEZEL.rIn, DBEZEL.rOut] };
-  });
-
-  // --- the desk's End Turn push button, lit, pressed and unlit.
-  // --- End Turn on the desk: the silver arrow button at rest, held, and while a turn resolves.
-  if (want('endsilver')) await withSeed(486, async () => {
-    for (const st of ['up', 'pressed', 'dim']) await post(`end_turn_silver_${st}`, stage([0, 0, ESILVER.W, ESILVER.H], [endTurnSilver(st)]).grab());
-    layout.end_turn_silver = { size: [ESILVER.W, ESILVER.H], margin: ESILVER.M };
   });
 
   // --- Labour and Wages' factory doors, the window dark and lit.

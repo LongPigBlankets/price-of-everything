@@ -34,7 +34,7 @@ func _ready() -> void:
 	await _shot("end_turn_held")
 	dock.set("_btn_down", false)
 	button.disabled = true
-	dock.get("_roller").set_phase("Process", true)
+	dock.call("_on_phase_started", TurnManager.Phase.PROCESS)
 	await _wait(0.4)
 	await _shot("end_turn_resolve")
 	button.disabled = false
