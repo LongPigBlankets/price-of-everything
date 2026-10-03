@@ -647,25 +647,18 @@ func _build_breakdown(turn: int, total: int) -> Dictionary:
 func _metric_text(key: String) -> String:
 	match key:
 		"crown":
-			return "%d / %d podium points banked: %d for first, %d second, %d third" % [
-				demo_crown_points, DEMO_CROWN_TARGET,
-				int(DEMO_CROWN_POINTS_BY_RANK.get(1, 0)),
-				int(DEMO_CROWN_POINTS_BY_RANK.get(2, 0)),
-				int(DEMO_CROWN_POINTS_BY_RANK.get(3, 0))]
+			return "Rise in the ranking to score more points."
 		"tiers":
-			return "%d%% this turn. %d units in each of the %d tiers fills it" % [
-				int(round(100.0 * _demo_tiers_progress())), DEMO_TIER_UNITS, DEMO_TIERS.size()]
+			return "Produce goods in each tier to score more points."
 		"distance":
-			return "%d / %d shipments over %d turns' travel" % [
+			return "%d / %d shipments over %d turns' travel." % [
 				demo_long_hauls, DEMO_LONG_HAULS, DEMO_LONG_HAUL_TURNS]
 		"green_demo":
-			return "%d / %d MW of wind and solar this turn. It does not carry over" % [
+			return "%d / %d MW of wind and solar this turn. It does not carry over." % [
 				int(round(float(_greenest_stats().green))), int(DEMO_GREEN_TARGET)]
 		"estate":
 			var e := demo_estate_counts()
-			return "%d / %d buildings, %d running. All %d running is worth another %d" % [
-				int(e.owned), DEMO_ESTATE_BUILDINGS, int(e.running), DEMO_ESTATE_BUILDINGS,
-				DEMO_ESTATE_RUNNING_BONUS]
+			return "%d / %d buildings, %d running." % [int(e.owned), DEMO_ESTATE_BUILDINGS, int(e.running)]
 		"autarkic":
 			if produced_units_lifetime < AUTARKIC_MIN_UNITS:
 				return "Produce %s / %s units to unlock (self-supply at scale first)" % [
