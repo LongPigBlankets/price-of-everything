@@ -34,6 +34,8 @@ const DRUM_H := 40.0
 ## The score plate's screen's dot pitch.
 const RULE_PITCH := 2.0
 const GAUGE_PX := 190.0
+## The dials mark their scale green from here up.
+const GREEN_FROM := 40.0
 ## The points display's height: its screen and bezel round one line of dots.
 const POINTS_H := 30.0
 ## A trend's lamp and word: up, down, flat.
@@ -201,6 +203,7 @@ func _track(t: Dictionary) -> Control:
 	gauge.set("gauge_size", GAUGE_PX)
 	gauge.set("green_percent", 100.0)
 	gauge.set("amber_percent", 0.0)
+	gauge.set("green_from_percent", GREEN_FROM)
 	gauge.set("led_mode", Gauge.LedMode.GREEN if best >= 1.0 else (Gauge.LedMode.AMBER if best > 0.0 else Gauge.LedMode.OFF))
 	gauge.set("value", best)
 	gauge.mouse_filter = Control.MOUSE_FILTER_IGNORE

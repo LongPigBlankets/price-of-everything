@@ -102,6 +102,12 @@ void fragment() {
 	set(v):
 		green_percent = clampf(v, 0.0, 100.0)
 		_refresh()
+## Where on the scale the green band begins, in percent; the scale below it is left bare. 0 for a band from
+## the start (a progress dial marks only its good end green).
+@export_range(0.0, 100.0) var green_from_percent: float = 0.0:
+	set(v):
+		green_from_percent = clampf(v, 0.0, 100.0)
+		_refresh()
 ## Share of the scale that is amber, after the green, in percent. Red takes the rest.
 @export_range(0.0, 100.0) var amber_percent: float = 29.2:
 	set(v):
@@ -316,6 +322,8 @@ func _refresh() -> void:
 	var bounds := zone_bounds(green_percent, amber_percent)
 	for zone: String in ZONES:
 		var b: Vector2 = bounds[zone]
+		if zone == "green":
+			b.x = maxf(b.x, green_from_percent / 100.0)
 		(_zone_materials[zone] as ShaderMaterial).set_shader_parameter("from_v", b.x)
 		(_zone_materials[zone] as ShaderMaterial).set_shader_parameter("to_v", b.y)
 		(_layers["band_" + zone] as TextureRect).visible = b.y > b.x
