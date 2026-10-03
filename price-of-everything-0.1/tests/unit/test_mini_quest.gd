@@ -200,3 +200,15 @@ func _test_discounted_kit_is_repaid_on_refund() -> void:
 		LoanState.loans.pop_back()
 	BuildingState.buildings.erase(iid)
 	MatchState.money = old_money
+
+
+func _test_new_games_open_with_the_tutorials_first_steps() -> void:
+	var Steps := preload("res://scripts/tutorial/tutorial_steps.gd")
+	var ids: Array = Steps.opener_steps().map(func(st: Dictionary) -> String: return str(st.get("id", "")))
+	_check(ids == Steps.OPENER_IDS, "the opener plays the welcome, the screen tour, tiles and the recipe diagram, in order")
+	_check(str((Steps.opener_steps()[0] as Dictionary).paragraphs[1]).contains("missions"), "the welcome says the missions take over")
+	var ruleset := MatchState.ruleset.duplicate(true)
+	MatchState.ruleset["opener_done"] = true
+	Tutorial.start_opener()
+	_check(not Tutorial.opener, "a match whose opener is done never plays it again")
+	MatchState.ruleset = ruleset

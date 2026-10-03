@@ -99,14 +99,11 @@ func _warm_map_assets() -> void:
 		ResourceLoader.load_threaded_request(path)
 
 
-# Clicking New Game no longer launches immediately — it opens the settings panel,
-# whose Start New Game button drives the load (see _on_start_requested). A player who
-# has never finished the tutorial first gets a nudge to do it.
+# Clicking New Game opens the settings panel, whose Start New Game button drives the load
+# (see _on_start_requested). Every new game opens with the tutorial's first steps
+# (Tutorial.start_opener), so there is no separate tutorial to nudge the player towards.
 func _on_new_game_pressed() -> void:
-	if PlayerProfile.has_done_tutorial():
-		_show_new_game_panel()
-	else:
-		_show_tutorial_prompt()
+	_show_new_game_panel()
 
 
 # ── "Play without the tutorial?" prompt ──────────────────────────────────────────
@@ -390,7 +387,10 @@ func _build_menu() -> void:
 	var new_game := _make_button("New Game", true)
 	new_game.pressed.connect(_on_new_game_pressed)
 	vbox.add_child(new_game)
+	# The separate tutorial game is hidden: its first steps open every new game instead.
 	var tutorial := _make_button("Tutorial", false)
+	tutorial.name = "TutorialButton"
+	tutorial.visible = false
 	tutorial.pressed.connect(_on_tutorial_pressed)
 	vbox.add_child(tutorial)
 	for label in ["Load Game", "Hall of Records", "Settings", "Credits", "Encyclopedia"]:

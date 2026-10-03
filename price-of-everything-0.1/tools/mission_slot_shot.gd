@@ -28,6 +28,7 @@ func _ready() -> void:
 	await get_tree().process_frame
 	get_tree().current_scene = world
 	await _settle(200)
+	MatchState.ruleset["opener_done"] = true   # these captures are of the missions, not the opening steps
 	Tutorial._on_overlay_skipped()
 	DecisionState.enabled = false
 	# The start's story intro dims the screen until dismissed: close it.

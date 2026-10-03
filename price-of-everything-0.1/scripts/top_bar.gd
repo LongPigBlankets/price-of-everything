@@ -1331,6 +1331,7 @@ func _build_quest() -> void:
 			if _ds2_readout != null:
 				_ds2_readout.visible = false)
 	UiPrefs.mission_slot_changed.connect(func(_on: bool) -> void: _refresh_quest())
+	Tutorial.opener_finished.connect(_on_opener_finished)
 	mod.pressed.connect(func() -> void: _toggle_fly("quest"))
 	# TOP-LEVEL, like the bankruptcy strip. The bar is a PanelContainer:
 	# an ordinary child is both stretched to fill it AND counted in its minimum size, and measured
@@ -1946,6 +1947,15 @@ func _refresh_quest() -> void:
 		_place_quest.call_deferred()   # the new label/icon decides the width
 	if _fly_open_id == "quest" and not _quest_celebrating:
 		_refresh_open_fly()
+
+
+## The opening steps are over: the missions appear and a shine sweeps across them.
+func _on_opener_finished() -> void:
+	_refresh_quest()
+	for i in 6:
+		await get_tree().process_frame
+	if _mission_slot_on() and _mission_slot.is_visible_in_tree():
+		_mission_slot.call("shine")
 
 
 ## True when the DS2 mission slot is the look, and shows `kind` in it: the key holds the title, the piston

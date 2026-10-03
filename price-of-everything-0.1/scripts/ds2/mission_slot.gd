@@ -9,6 +9,7 @@ extends Control
 signal celebration_finished
 
 const ModKey := preload("res://scripts/bdp_v3_mod_key.gd")
+const Light := preload("res://scripts/bdp_v3_light.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 const TRACK: Texture2D = preload("res://assets/ui/bdp_v3/mission_track.png")
 const ROD: Texture2D = preload("res://assets/ui/bdp_v3/mission_rod.png")
@@ -38,6 +39,12 @@ const TITLE_FADE_SEC := 0.15
 const SNAP_SEC := 0.12
 const KNOCK_SEC := 0.14
 const KNOCK := 0.035
+## The shine that points the player at the missions: a slanted band of light swept across the slot.
+const SHINE_SEC := 0.9
+const SHINE_GAP_SEC := 0.25
+const SHINE_PASSES := 2
+const SHINE_W := 64.0
+const SHINE_SLANT := 22.0
 
 var key: Control
 ## Collapsed, the key is hidden: the top bar shows the missions icon in `lead_width` at the left and the
@@ -53,6 +60,10 @@ var _anim: Tween
 var _steam: Array[Dictionary] = []
 var _venting := false
 var _fx: Control
+var _shine: Control
+## Where the shine's band is across the slot, 0 off its left edge to 1 off its right; -1 when not shining.
+var _shine_at := -1.0
+var _shine_anim: Tween
 var _puff: Texture2D
 ## Steam's own generator: cosmetic, and kept off the global one the sim must never share.
 var _rng := RandomNumberGenerator.new()
@@ -71,6 +82,12 @@ func _init() -> void:
 	_fx.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_fx.draw.connect(_draw_steam)
 	add_child(_fx)
+	_shine = Control.new()
+	_shine.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_shine.clip_contents = true
+	_shine.material = Light.across_material(Light.glow_material())
+	_shine.draw.connect(_draw_shine)
+	add_child(_shine)
 	_puff = _make_puff()
 	set_process(false)
 
@@ -160,6 +177,8 @@ func _notification(what: int) -> void:
 		key.size = Vector2(maxf(0.0, size.x - t.x - GAP), kh)
 		_fx.position = Vector2.ZERO
 		_fx.size = size
+		_shine.position = Vector2.ZERO
+		_shine.size = size
 		_fit_title()
 
 
@@ -184,6 +203,45 @@ func celebrate(swap: Callable) -> void:
 	_anim.tween_method(_set_stroke, 0.0, KNOCK, KNOCK_SEC * 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	_anim.tween_method(_set_stroke, KNOCK, 0.0, KNOCK_SEC * 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 	_anim.tween_callback(func() -> void: celebration_finished.emit())
+
+
+## Sweeps a band of light across the slot SHINE_PASSES times, to draw the eye to it.
+func shine() -> void:
+	if _shine_anim != null and _shine_anim.is_valid():
+		_shine_anim.kill()
+	_shine_anim = create_tween()
+	for i in SHINE_PASSES:
+		if i > 0:
+			_shine_anim.tween_interval(SHINE_GAP_SEC)
+		_shine_anim.tween_method(_set_shine, 0.0, 1.0, SHINE_SEC).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_shine_anim.tween_callback(_set_shine.bind(-1.0))
+
+
+func is_shining() -> bool:
+	return _shine_at >= 0.0
+
+
+func _set_shine(v: float) -> void:
+	_shine_at = v
+	_shine.queue_redraw()
+
+
+func _draw_shine() -> void:
+	if _shine_at < 0.0:
+		return
+	var h := size.y
+	var x := lerpf(-SHINE_W - SHINE_SLANT, size.x + SHINE_SLANT, _shine_at)
+	var clear := Color(1.0, 0.97, 0.88, 0.0)
+	var bright := Color(1.0, 0.97, 0.88, 0.8)
+	# Two quads, clear at the band's edges and bright down its middle, leaning right as they rise.
+	for half in 2:
+		var x0 := x + SHINE_W * 0.5 * float(half)
+		var x1 := x0 + SHINE_W * 0.5
+		var c0 := clear if half == 0 else bright
+		var c1 := bright if half == 0 else clear
+		_shine.draw_polygon(
+			PackedVector2Array([Vector2(x0, h), Vector2(x1, h), Vector2(x1 + SHINE_SLANT, 0.0), Vector2(x0 + SHINE_SLANT, 0.0)]),
+			PackedColorArray([c0, c1, c1, c0]))
 
 
 ## True while a completion is playing.
