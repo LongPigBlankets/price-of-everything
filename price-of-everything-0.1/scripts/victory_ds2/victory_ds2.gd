@@ -4,9 +4,10 @@ extends Control
 ##   the raised title and the Close key;
 ##   the score, on a plate of black moulded plastic: the total on a drum counter and a lamp, amber while the
 ##     race is on and green once won, beside a dot-matrix screen saying what it takes to win (or when it was);
-##   a row of five plates of the same plastic, one per track: its raised name, its points out of its maximum on
-##     a dot-matrix screen and, on another, what it measures or how to score more. How the track scores in
-##     full is the plate's hover readout.
+##   a bank of five dials, one per track, each on a dark metal plate (dark_metal_plate.png, blackened
+##     gunmetal edge to edge): its raised name, a panel gauge whose needle stands at the track's best progress
+##     and whose lamp is green when the track is full, its points on a dot-matrix display, a lamp for its trend,
+##     and what it measures or how to score more. How the track scores in full is the dial's hover readout.
 ## Read-only: everything comes from VictoryState.get_breakdown(), given to populate().
 
 signal close_requested
@@ -20,6 +21,7 @@ const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const Title := preload("res://scripts/bdp_v3_title.gd")
 const Key := preload("res://scripts/bdp_v3_key.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
+const Gauge := preload("res://scripts/panel_gauge.gd")
 
 ## Building Detail's backing: its 9-slice corner in texels and the content's margin inside the brass trim.
 const BACKING_CORNER := 64.0
@@ -29,12 +31,18 @@ const TRACK_W := 214.0
 const TRACK_GAP := 12
 const DRUMS := 4
 const DRUM_H := 40.0
-## The screens' dot pitches: the points large, the words small, the score plate's line between.
-const POINTS_PITCH := 3.0
-const WORDS_PITCH := 1.6
+## The score plate's screen's dot pitch.
 const RULE_PITCH := 2.0
-## Every track's words screen shows this many lines, so the five plates stand one height.
-const WORDS_LINES := 4
+const GAUGE_PX := 190.0
+## The points display's height: its screen and bezel round one line of dots.
+const POINTS_H := 30.0
+## A trend's lamp and word: up, down, flat.
+const TRENDS := {1: ["ok", "Rising"], -1: ["bad", "Falling"], 0: ["off", "Steady"]}
+## The dark metal plate (layout.json dark_metal_plate): its 9-slice corner in texels, the shadow room beyond the
+## slab in px, and the padding inside it.
+const PLATE_CORNER := (10.0 + 44.0) * 2.0 / 1.875
+const PLATE_OUTSET := 10.0 / 1.875
+const PLATE_PAD := 16
 
 var _cabinet: PanelContainer
 var _drum_slot: HBoxContainer
@@ -161,30 +169,62 @@ func _rule_text(b: Dictionary) -> String:
 		VictoryState.WIN_START_TURN + 2 * VictoryState.WIN_STEP_TURNS, max_turns]
 
 
-## One track's plastic plate: its name, its points and its words, each on a dot-matrix screen.
+## One track's dial on its dark metal plate.
 func _track(t: Dictionary) -> Control:
-	var plate: Control = Tip.TipVBox.new()
+	var plate := Tip.TipPanel.new()
 	plate.name = "Track_%s" % str(t.get("key", ""))
+	plate.custom_minimum_size.x = TRACK_W
+	plate.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	var best := clampf(float(t.get("progress", 0.0)), 0.0, 1.0)
 	Tip.attach(plate, {"stage": "Victory", "name": str(t.get("name", "")), "detail": str(t.get("explain", "")),
 		"tone": "ok" if best >= 1.0 else ("warn" if best > 0.0 else "off")})
-	var case: Control = Section.new()
-	case.set("style", "plastic")
-	case.custom_minimum_size.x = TRACK_W
-	case.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	plate.add_child(case)
-	var content := case.get("content") as VBoxContainer
-	content.add_theme_constant_override("separation", 10)
+	var metal: Control = Nine.make("dark_metal_plate", PLATE_CORNER, PLATE_OUTSET)
+	metal.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate.add_child(metal)
+	var pad := MarginContainer.new()
+	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for side: String in ["left", "right", "top", "bottom"]:
+		pad.add_theme_constant_override("margin_" + side, PLATE_PAD)
+	plate.add_child(pad)
+	var content := VBoxContainer.new()
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_theme_constant_override("separation", 8)
+	pad.add_child(content)
 	var head := Parts.heading(str(t.get("name", "")).to_upper())
 	head.alignment = BoxContainer.ALIGNMENT_CENTER
 	content.add_child(head)
-	var points := _screen(["%d / %d" % [int(t.get("contribution", 0)), int(t.get("max_score", 1000))]], POINTS_PITCH, 0.0)
+	var dial_centre := CenterContainer.new()
+	dial_centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(dial_centre)
+	var gauge: Control = Gauge.new()
+	gauge.name = "Dial"
+	gauge.set("gauge_size", GAUGE_PX)
+	gauge.set("green_percent", 100.0)
+	gauge.set("amber_percent", 0.0)
+	gauge.set("led_mode", Gauge.LedMode.GREEN if best >= 1.0 else (Gauge.LedMode.AMBER if best > 0.0 else Gauge.LedMode.OFF))
+	gauge.set("value", best)
+	gauge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dial_centre.add_child(gauge)
+	var points: Control = DotMatrix.new()
 	points.name = "Points"
+	points.set("text", "%d / %d" % [int(t.get("contribution", 0)), int(t.get("max_score", 1000))])
+	points.custom_minimum_size = Vector2(TRACK_W - 40.0, POINTS_H)
+	points.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	points.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(points)
-	var room := TRACK_W - 2.0 * Section.PADDING - 24.0
-	var words := _screen(_wrap(str(t.get("metric_text", "")), room, WORDS_PITCH), WORDS_PITCH, 0.0, WORDS_LINES)
-	words.name = "Words"
-	content.add_child(words)
+	var trend := _trend(t.get("trend", []))
+	var trend_row := HBoxContainer.new()
+	trend_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	trend_row.add_theme_constant_override("separation", 6)
+	trend_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	trend_row.add_child(SheetParts.lamp(str(TRENDS[trend][0])))
+	trend_row.add_child(Parts.caption(str(TRENDS[trend][1])))
+	content.add_child(trend_row)
+	var metric := SheetParts.body(str(t.get("metric_text", "")))
+	metric.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	metric.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	metric.custom_minimum_size.x = TRACK_W - 2.0 * PLATE_PAD
+	content.add_child(metric)
 	return plate
 
 
@@ -219,23 +259,6 @@ static func _screen(lines: Array, pitch: float, width: float, min_lines: int = 1
 		dots.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		stack.add_child(dots)
 	return screen
-
-
-## `text` broken into lines of whole words that fit `room` px of dots at `pitch`.
-static func _wrap(text: String, room: float, pitch: float) -> Array:
-	var per_line := maxi(1, int(floor((room + pitch) / (float(DotMatrix.COLUMNS + 1) * pitch))))
-	var out: Array = []
-	var line := ""
-	for word: String in text.split(" ", false):
-		var next := word if line == "" else line + " " + word
-		if next.length() > per_line and line != "":
-			out.append(line)
-			line = word
-		else:
-			line = next
-	if line != "":
-		out.append(line)
-	return out
 
 
 ## +1, -1 or 0: which way the track has gone over its recent turns.

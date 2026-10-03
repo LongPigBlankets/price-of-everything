@@ -968,10 +968,9 @@ func _test_victory_ds2_builds_a_plate_per_track() -> void:
 	]}
 	desk.call("populate", b)
 	var tracks := desk.find_child("Tracks", true, false) as HBoxContainer
-	_check(tracks != null and tracks.get_child_count() == 2, "the desk builds one plate per track")
-	var screen: Control = tracks.get_child(0).find_child("Points", true, false)
-	var shown: Array = screen.find_children("*", "", true, false).filter(func(n: Node) -> bool: return str(n.get("text")) == "650 / 1000") if screen != null else []
-	_check(not shown.is_empty(), "each track's points show on its screen")
-	var lines: Array = desk.call("_wrap", "Rise in the ranking to score more points.", 160.0, 1.6)
-	_check(lines.size() > 1 and " ".join(lines) == "Rise in the ranking to score more points.", "a track's words wrap onto the screen's lines whole")
+	_check(tracks != null and tracks.get_child_count() == 2, "the desk builds one dial plate per track")
+	var dots: Control = tracks.get_child(0).find_child("Points", true, false)
+	_check(dots != null and str(dots.get("text")) == "650 / 1000", "each dial's points show on its display")
+	_check(tracks.get_child(0).find_child("Dial", true, false) != null, "each track has its dial")
+	_check(desk.call("_trend", [0.1, 0.2]) == 1 and desk.call("_trend", [0.5, 0.5]) == 0, "the trend lamp reads rising and steady")
 	desk.free()

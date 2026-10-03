@@ -1467,6 +1467,23 @@ function pointsLever(dir) {
 }
 
 /**
+ * A dark metal plate whole: blackened gunmetal from edge to edge on a slab with a rounded, bevelled edge and a
+ * screw in each corner, for a panel's own sections (the Victory panel's tracks). A 9-slice: the corners keep
+ * the screws and the radius, the middle stretches; the wear is fine enough not to show the stretch.
+ */
+const DMETAL = { W: 400, H: 560, M: 10, r: 16, screwInset: 22 };
+function darkMetalPlate() {
+  const { W, H, M, r, screwInset } = DMETAL, g = new THREE.Group(), pw = W - 2 * M, ph = H - 2 * M;
+  const screws = [[screwInset, screwInset], [pw - screwInset, screwInset], [screwInset, ph - screwInset], [pw - screwInset, ph - screwInset]];
+  const mat = plateMaterial(pw, ph, { icons: [], buttons: [], screws: screws.map(([x, y]) => ({ x, y })), base: DARK_STEEL_CANVAS, rub: '130,138,150' });
+  const slab = new THREE.Mesh(extrude(rrShape(pw, ph, r), 4, 2, 1.6, 4), [mat, MAT.plateSide]);
+  slab.castShadow = slab.receiveShadow = true; slab.position.set(W / 2, 0, H / 2); g.add(slab);
+  for (const [x, y] of screws) { const sc = screw(4.2); sc.position.set(M + x, 6.2, M + y); g.add(sc); }
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
+  return g;
+}
+
+/**
  * A factory door for Labour and Wages, one per kind of worker: a painted steel leaf in a dark steel jamb,
  * a small wired-glass window near its top (dark, or lit warm from inside when that kind of worker is
  * employed), a lever handle, and a brushed steel kick plate across its foot, where the game engraves the
@@ -2280,7 +2297,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // missionslot, missionboard, tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
+  // missionslot, missionboard, darkmetal, tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -7400,6 +7417,12 @@ async function exportLayers() {
     for (const dir of ['mid', 'up', 'down']) await post(`points_lever_${dir}`, stage([0, 0, PLEVER.S, PLEVER.S], [pointsLever(dir)]).grab());
     layout.mission_board = { size: [MBOARD.W, MBOARD.H], margin: MBOARD.M };
     layout.points_lever = { size: [PLEVER.S, PLEVER.S] };
+  });
+
+  // --- a dark metal plate whole, edge to edge (the Victory panel's tracks).
+  if (want('darkmetal')) await withSeed(482, async () => {
+    await post('dark_metal_plate', stage([0, 0, DMETAL.W, DMETAL.H], [darkMetalPlate()]).grab());
+    layout.dark_metal_plate = { size: [DMETAL.W, DMETAL.H], margin: DMETAL.M, corner: DMETAL.M + 44 };
   });
 
   // --- Labour and Wages' factory doors, the window dark and lit.

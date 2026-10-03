@@ -2266,5 +2266,13 @@
    96,
    96
   ]
+ },
+ "dark_metal_plate": {
+  "size": [
+   400,
+   560
+  ],
+  "margin": 10,
+  "corner": 54
  }
 }
