@@ -176,6 +176,7 @@ func sell_building(instance_id: String) -> Dictionary:
 		return {"ok": false, "reason": "You don't own this building."}
 	var price: int = int(round(float(BuildingPrice.sale_price(buildings[instance_id]))))
 	MatchState.add_money(float(price))
+	Construction.repay_materials_discount(instance_id)
 	set_building_owner(instance_id, SOLD_TO_OWNER)  # emits building_owner_changed → UI refresh
 	MatchState.request_toast("Sold building for £%d" % price, "success")
 	return {"ok": true, "price": price}

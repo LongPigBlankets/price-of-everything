@@ -1152,6 +1152,7 @@ func tick_demolish() -> Array:
 			var cash: float = float(plan.get("cash_overflow", 0.0))
 			if cash > 0.0:
 				MatchState.add_money(cash)
+			Construction.repay_materials_discount(iid)
 			BuildingState.remove_building(iid)
 		demolish_queue.erase(iid)
 		completed.append(iid)

@@ -28,6 +28,7 @@ extends CanvasLayer
 ##   toggle market ds2                switch the market panel back to v2 (DS2 is default), and again to return
 ##   toggle briefing ds2              switch the turn briefing to its DS2 look (in progress), and back
 ##   toggle upgrade ds2               switch the upgrade panel back to v2 (DS2 is default), and again to return
+##   toggle mission slot              switch the top bar's mission back to its icon and text (the piston is default), and again to return
 ##   toggle routes ds2                switch Building Detail's input and output sheets back to v2 (DS2 is default), and again to return
 ##   research all                     unlock every research node (alias of `unlock all`)
 ##   unlock hidden_buildings          enable the three hidden prototype buildings
@@ -368,6 +369,9 @@ func _run_command(text: String) -> String:
 			if " ".join(parts.slice(1)).to_lower() == "upgrade ds2":
 				UiPrefs.toggle_use_upgrade_ds2()
 				return "Upgrade panel → %s" % ("DS2" if UiPrefs.use_upgrade_ds2 else "v2")
+			if " ".join(parts.slice(1)).to_lower() == "mission slot":
+				UiPrefs.toggle_use_mission_slot()
+				return "Top bar mission → %s" % ("piston" if UiPrefs.use_mission_slot else "icon and text")
 			if " ".join(parts.slice(1)).to_lower() == "routes ds2":
 				UiPrefs.toggle_use_routes_ds2()
 				return "Input and output sheets → %s" % ("DS2" if UiPrefs.use_routes_ds2 else "v2")
@@ -416,7 +420,7 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 2 and parts[1].to_lower() == "midcentury":
 				MapStyle.set_midcentury(not MapStyle.is_midcentury())
 				return "map style → %s" % _style_name()
-			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | bdp v3 | topbar ds2 | tvp v3 | ledger ds2 | people ds2 | market ds2 | briefing ds2 | construct ds2 | upgrade ds2 | routes ds2"
+			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | bdp v3 | topbar ds2 | tvp v3 | ledger ds2 | people ds2 | market ds2 | briefing ds2 | construct ds2 | upgrade ds2 | routes ds2 | mission slot"
 		"anim":
 			# Cheat: cycle the Empire-view hex-field animation (1->2->3->4->1), or set it with `anim <n>`.
 			var bg := get_tree().get_first_node_in_group("empire_hex_bg")
@@ -480,7 +484,7 @@ func _run_command(text: String) -> String:
 				return str(editor.call("procedural_central_buildings_command", cmd))
 			return str(editor.call("procedural_region_command", cmd, parts[2].to_lower()))
 		"help":
-			return "commands:  hide updates | show updates   |   cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap construct_panel_v3   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury|bdp v3|topbar ds2|tvp v3|ledger ds2|people ds2|market ds2|briefing ds2|construct ds2|upgrade ds2|routes ds2   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   enable|disable procedural <north|arin|vandel|capital|all>   |   enable|disable procedural central buildings  (map editor)   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  hide updates | show updates   |   cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap construct_panel_v3   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury|bdp v3|topbar ds2|tvp v3|ledger ds2|people ds2|market ds2|briefing ds2|construct ds2|upgrade ds2|routes ds2|mission slot   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   enable|disable procedural <north|arin|vandel|capital|all>   |   enable|disable procedural central buildings  (map editor)   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

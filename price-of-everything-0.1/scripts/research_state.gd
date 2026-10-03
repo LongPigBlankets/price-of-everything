@@ -91,6 +91,8 @@ const RESEARCH_GOOD_ALIASES := {
 ## A research unlock was granted. via_condition is true when earned by meeting its
 ## condition (shows the "Unlocked …" dialog); false for a free-chosen unlock.
 signal unlock_granted(title: String, description: String, via_condition: bool)
+## Free unlocks given beyond the turn schedule (a mission reward); the research panel adds them.
+signal free_unlocks_granted(count: int)
 
 # Research unlocks: which are unlocked (by free choice or by meeting a condition),
 # and progress toward the action+object+quantity conditions (e.g. "Survey|tiles").
@@ -134,6 +136,8 @@ var _advisors_hired_last_turn: int = -1
 ## Pre-tax profit of the last resolved turns, newest last, for "Profit" conditions held over several turns
 ## in a row (a Unit of "3 turns"). One entry per turn, so a single windfall turn cannot carry it alone.
 var _recent_profits: Array = []
+## Free unlocks granted beyond the research panel's turn schedule, kept for a reload.
+var bonus_free_unlocks := 0
 var _recent_profits_last_turn: int = -1
 const RECENT_PROFIT_TURNS := 12
 var _unlock_defs: Array = []   # [{research_node_id, title, action, object, qty, prereqs, description}]
@@ -175,6 +179,7 @@ func reset() -> void:
 	_advisors_hired_streaks.clear()
 	_advisors_hired_last_turn = -1
 	_recent_profits.clear()
+	bonus_free_unlocks = 0
 	_recent_profits_last_turn = -1
 	_global_trade_license_paid = false
 
@@ -195,6 +200,7 @@ func export_fields() -> Dictionary:
 		"advisors_hired_streaks": _advisors_hired_streaks.duplicate(true),
 		"advisors_hired_last_turn": _advisors_hired_last_turn,
 		"recent_profits": _recent_profits.duplicate(),
+		"bonus_free_unlocks": bonus_free_unlocks,
 		"recent_profits_last_turn": _recent_profits_last_turn,
 		"global_trade_license_paid": _global_trade_license_paid,
 	}
@@ -230,6 +236,7 @@ func import_fields(d: Dictionary) -> void:
 		_recent_profits.append(float(p))
 	_recent_profits_last_turn = int(d.get("recent_profits_last_turn", -1))
 	_global_trade_license_paid = bool(d.get("global_trade_license_paid", false))
+	bonus_free_unlocks = int(d.get("bonus_free_unlocks", 0))
 
 
 ## Once per resolved turn: extend the streak of every advisor count reached this turn and
@@ -265,6 +272,38 @@ func profit_held(need: float, turns: int) -> bool:
 		if float(_recent_profits[i]) < need:
 			return false
 	return true
+
+## Gives `count` extra free unlocks to choose in the research panel.
+func grant_free_unlocks(count: int) -> void:
+	if count <= 0:
+		return
+	bonus_free_unlocks += count
+	free_unlocks_granted.emit(count)
+
+
+## The turns in a row, up to last turn, with pre-tax profit at or above `need`.
+func profit_streak(need: float) -> int:
+	var n := 0
+	for i in range(_recent_profits.size() - 1, -1, -1):
+		if float(_recent_profits[i]) < need:
+			break
+		n += 1
+	return n
+
+
+## Progress towards a "Ship Through Logistics Intermediary" condition as Vector2i(have, need) in units:
+## each good counts up to `per_good`, and only the `goods` best goods count.
+func intermediary_shipping_progress(per_good: int, goods: int) -> Vector2i:
+	var counted: Array[int] = []
+	for shipped: Variant in _middleman_shipments_by_good.values():
+		counted.append(mini(int(shipped), per_good))
+	counted.sort()
+	counted.reverse()
+	var have := 0
+	for i in mini(goods, counted.size()):
+		have += counted[i]
+	return Vector2i(have, per_good * goods)
+
 
 ## This turn's loan payments as a share of its sales revenue; 0 with no revenue.
 func loan_payment_share_of_revenue() -> float:
@@ -510,7 +549,12 @@ func is_node_available(title: String) -> bool:
 ## wording the research panel shows on a node card. Empty when the node carries
 ## no real condition (Placeholder / missing fields).
 func unlock_condition_text(title: String) -> String:
-	var d := get_unlock_def(title)
+	return condition_text(get_unlock_def(title))
+
+
+## The plain words for a condition in the research vocabulary ({action, object, qty, quantity_raw, unit}),
+## for research and for missions that borrow its verbs.
+func condition_text(d: Dictionary) -> String:
 	if d.is_empty():
 		return ""
 	var action := str(d.get("action", "")).strip_edges()
@@ -700,6 +744,14 @@ func _check_unlock_conditions() -> void:
 		var key := (action + "|" + str(d.object)).to_lower()
 		if int(_unlock_progress.get(key, 0)) >= int(d.qty):
 			grant_unlock(title, true)
+
+## True when a condition in the research vocabulary holds right now. Missions use it for their own
+## conditions; "Use Infrastructure" is research-only, since its streak is kept per research title.
+func condition_met(d: Dictionary) -> bool:
+	if str(d.get("action", "")) == "Use Infrastructure":
+		return false
+	return _live_condition_met(d)
+
 
 # True when a research def's live condition is satisfied right now. Survey also
 # retains the legacy accumulator below, while all other shipped verbs resolve here.

@@ -36,6 +36,8 @@ signal briefing_ds2_changed(enabled: bool)
 ## The construct panel's DS2 look, the construction lot (docs/construct-ds2-plan.md), switched on or off.
 signal construct_ds2_changed(enabled: bool)
 signal empire_button_icon_changed(use_badge: bool)
+## The top bar's mission piston (scripts/ds2/mission_slot.gd), switched on or off.
+signal mission_slot_changed(enabled: bool)
 
 # Debug-only: verbose per-turn production / CostSolver logs. Off by default because
 # large empires can produce hundreds of console lines per turn in editor builds.
@@ -102,6 +104,10 @@ var use_upgrade_ds2: bool = true
 # docs/bdp-routes-ds2-plan.md), with Building Detail v3 on. The default; the debug cheat `toggle routes ds2`
 # switches back to the v2 sheets. Session-only, never persisted.
 var use_routes_ds2: bool = true
+# The DS2 top bar's mission as a cream key holding its title and a brass piston showing its count, which strokes
+# across with steam when the mission completes. The default; the debug cheat `toggle mission slot` switches back to
+# the icon and two lines of text. Session-only, never persisted.
+var use_mission_slot: bool = true
 # Building Detail v3's diagnostics: the Visual view (true) or the Text rows. The player's choice on the
 # panel's switch, kept while the game runs (closing the panel or starting a match keeps it).
 var bdp_diag_visual: bool = false
@@ -262,6 +268,11 @@ func toggle_use_upgrade_ds2() -> bool:
 func toggle_use_routes_ds2() -> bool:
 	use_routes_ds2 = not use_routes_ds2
 	return use_routes_ds2
+
+func toggle_use_mission_slot() -> bool:
+	use_mission_slot = not use_mission_slot
+	mission_slot_changed.emit(use_mission_slot)
+	return use_mission_slot
 
 func set_bdp_diag_visual(visual: bool) -> void:
 	bdp_diag_visual = visual

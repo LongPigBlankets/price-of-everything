@@ -166,7 +166,9 @@ func _ready() -> void:
 	_knowledge_grants = free_unlock_schedule(TurnManager.MAX_TURNS)
 	# Opening balance = everything earned up to the current turn (turn 1 for a new game,
 	# more if this panel came up after a load). Later milestones arrive via turn_advanced.
-	_free_unlocks = free_unlocks_earned_by(TurnManager.current_turn, TurnManager.MAX_TURNS)
+	_free_unlocks = free_unlocks_earned_by(TurnManager.current_turn, TurnManager.MAX_TURNS) + ResearchState.bonus_free_unlocks
+	if not ResearchState.free_unlocks_granted.is_connected(_on_free_unlocks_granted):
+		ResearchState.free_unlocks_granted.connect(_on_free_unlocks_granted)
 	if not TurnManager.turn_advanced.is_connected(_on_turn_advanced):
 		TurnManager.turn_advanced.connect(_on_turn_advanced)
 	_seat_research_shown = AdvisorState.advisors_unlocked
@@ -634,6 +636,11 @@ func _on_advisors_changed() -> void:
 	_seat_research_shown = AdvisorState.advisors_unlocked
 	_load_unlock_rows()
 	queue_redraw()
+
+func _on_free_unlocks_granted(count: int) -> void:
+	_free_unlocks += count
+	queue_redraw()
+
 
 func _on_turn_advanced(new_turn: int) -> void:
 	if _knowledge_grants.has(new_turn):

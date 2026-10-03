@@ -1,0 +1,1171 @@
+{
+  "_comment": "Themed mission boards (scripts/mini_quest.gd, the missions panel's tabs). Boards show in a match when enabled and their `starts` include its start (none listed: every start). Each node: col is its row (top to bottom) and lane its side (0 the main line, -1 left, 1 right); id (unique across boards), title, parents (all must be complete), optional choice (nodes sharing a choice id are alternatives: the player throws the points lever for one and the others close for good), condition in the research vocabulary (action, object, qty, unit, as data/research_unlocks.csv; plus the mission-only Acquire), and reward: text, and optionally a modifier {domain, target, pct, turns, target_match}. Rewards are balance: change them as balance.",
+  "boards": [
+    {
+      "id": "tutorial",
+      "title": "Tutorial",
+      "subtitle": "Learn the ropes.",
+      "starts": [
+        "metal_magnate"
+      ],
+      "nodes": [
+        {
+          "id": "t_open",
+          "title": "Open your building",
+          "col": 0,
+          "lane": 0,
+          "parents": [],
+          "condition": {
+            "action": "Open Building",
+            "qty": 1
+          },
+          "reward": {
+            "text": ""
+          }
+        },
+        {
+          "id": "t_sell",
+          "title": "Sell 100 units of your output",
+          "col": 1,
+          "lane": 0,
+          "parents": [
+            "t_open"
+          ],
+          "condition": {
+            "action": "Units Sold",
+            "qty": 100
+          },
+          "reward": {
+            "text": "+0.5% sale price for 10 turns",
+            "modifier": {
+              "domain": "market_price",
+              "target": "*",
+              "pct": 0.5,
+              "turns": 10
+            }
+          }
+        },
+        {
+          "id": "t_buy",
+          "title": "Buy another building",
+          "col": 2,
+          "lane": 0,
+          "parents": [
+            "t_sell"
+          ],
+          "condition": {
+            "action": "Acquire",
+            "object": "any",
+            "qty": 1
+          },
+          "reward": {
+            "text": "-10% land and building prices for 20 turns",
+            "modifier": {
+              "domain": "purchase_cost",
+              "target": "*",
+              "pct": -10.0,
+              "turns": 20
+            }
+          },
+          "detail": "Buy a building from another company. Open a tile and choose Buy buildings."
+        },
+        {
+          "id": "t_build",
+          "title": "Build a building",
+          "col": 3,
+          "lane": 0,
+          "parents": [
+            "t_buy"
+          ],
+          "condition": {
+            "action": "Build Any",
+            "qty": 1
+          },
+          "reward": {
+            "text": "-10% construction materials for 10 turns",
+            "modifier": {
+              "domain": "construction_materials",
+              "target": "*",
+              "pct": -10.0,
+              "turns": 10
+            }
+          },
+          "detail": "Build any building. Demolish or sell a building built at the discount and the discount is paid back."
+        },
+        {
+          "id": "t_infra",
+          "title": "Build 3 infrastructure",
+          "col": 4,
+          "lane": 0,
+          "parents": [
+            "t_build"
+          ],
+          "condition": {
+            "action": "Infrastructure",
+            "qty": 3
+          },
+          "reward": {
+            "text": "+5% transport throughput",
+            "modifier": {
+              "domain": "transport_throughput",
+              "target": "*",
+              "pct": 5.0
+            }
+          }
+        },
+        {
+          "id": "t_port",
+          "title": "Reach a port in under 2 turns",
+          "col": 5,
+          "lane": 0,
+          "parents": [
+            "t_infra"
+          ],
+          "condition": {
+            "action": "Fast To Port",
+            "qty": 2
+          },
+          "reward": {
+            "text": "+10% output for 10 turns",
+            "modifier": {
+              "domain": "recipe_output",
+              "target": "*",
+              "pct": 10.0,
+              "turns": 10
+            }
+          }
+        },
+        {
+          "id": "t_plant",
+          "title": "Build an advanced plant",
+          "col": 6,
+          "lane": 0,
+          "parents": [
+            "t_port"
+          ],
+          "condition": {
+            "action": "Build Any Of",
+            "object": "chem_plant|petro_refinery|poly_plant|assembly_plant|eaf",
+            "qty": 1
+          },
+          "reward": {
+            "text": "-10% labour cost for 20 turns",
+            "modifier": {
+              "domain": "labour_headcount",
+              "target": "*",
+              "pct": -10.0,
+              "turns": 20
+            }
+          },
+          "detail": "Build a chemical plant, a refinery, an assembly plant or an electric arc furnace."
+        },
+        {
+          "id": "t_research",
+          "title": "Unlock 5 research",
+          "col": 7,
+          "lane": 0,
+          "parents": [
+            "t_plant"
+          ],
+          "condition": {
+            "action": "Research Count",
+            "qty": 5
+          },
+          "reward": {
+            "text": "+1 free unlock",
+            "free_unlocks": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "magnate",
+      "title": "Metal Magnate",
+      "subtitle": "Build a domestic metals business.",
+      "starts": [
+        "metal_magnate"
+      ],
+      "nodes": [
+        {
+          "id": "mm_furnace",
+          "title": "Build a steel furnace",
+          "col": 0,
+          "lane": 0,
+          "parents": [],
+          "condition": {
+            "action": "Own Recipe",
+            "object": "r_003",
+            "qty": 1
+          },
+          "reward": {
+            "text": "+10% coal and iron ore output",
+            "modifiers": [
+              {
+                "domain": "recipe_output",
+                "target": "*",
+                "target_match": {
+                  "good_internal": "coal"
+                },
+                "pct": 10.0
+              },
+              {
+                "domain": "recipe_output",
+                "target": "*",
+                "target_match": {
+                  "good_internal": "iron_ore"
+                },
+                "pct": 10.0
+              }
+            ]
+          },
+          "detail": "Build a furnace that makes steel. Save for it over a few turns or take a loan. It needs 18 land on Greyroad."
+        },
+        {
+          "id": "mm_contracts",
+          "title": "Unlock stockpiling",
+          "col": 1,
+          "lane": 0,
+          "parents": [
+            "mm_furnace"
+          ],
+          "condition": {
+            "action": "Research",
+            "object": "Open Logistics Contracts",
+            "qty": 1
+          },
+          "reward": {
+            "text": ""
+          },
+          "detail": "Earn Open Logistics Contracts by trading through the intermediary, or take it as a free unlock."
+        },
+        {
+          "id": "mm_iron",
+          "title": "Supply your iron furnace yourself",
+          "col": 2,
+          "lane": 0,
+          "parents": [
+            "mm_contracts"
+          ],
+          "condition": {
+            "action": "Supply",
+            "object": "iron_ore>iron_ingots|coal>iron_ingots",
+            "qty": 1
+          },
+          "reward": {
+            "text": ""
+          },
+          "detail": "Send your own iron ore and coal to Greyroad so your iron furnace makes ingots from them."
+        },
+        {
+          "id": "mm_steel",
+          "title": "Supply your steel furnace yourself",
+          "col": 3,
+          "lane": 0,
+          "parents": [
+            "mm_iron"
+          ],
+          "condition": {
+            "action": "Supply",
+            "object": "iron_ingots>steel|coal>steel",
+            "qty": 1
+          },
+          "reward": {
+            "text": "-10% road and rail transport cost for 20 turns",
+            "modifier": {
+              "domain": "road_rail_transport_cost",
+              "target": "*",
+              "pct": -10.0,
+              "turns": 20
+            }
+          },
+          "detail": "Send your own iron ingots and coal to the steel furnace."
+        },
+        {
+          "id": "mm_license",
+          "title": "Unlock the global market",
+          "col": 4,
+          "lane": 0,
+          "parents": [
+            "mm_steel"
+          ],
+          "condition": {
+            "action": "Research",
+            "object": "Government Import/Export License",
+            "qty": 1
+          },
+          "reward": {
+            "text": ""
+          },
+          "detail": "Make £75 profit a turn for 3 turns in a row, then accept the government's license."
+        },
+        {
+          "id": "mm_sell",
+          "title": "Sell steel on the global market",
+          "col": 5,
+          "lane": 0,
+          "parents": [
+            "mm_license"
+          ],
+          "condition": {
+            "action": "Sell On Market",
+            "object": "steel",
+            "qty": 1
+          },
+          "reward": {
+            "text": ""
+          },
+          "detail": "Send your steel to the global market and complete a sale."
+        },
+        {
+          "id": "mm_port",
+          "title": "Reach the port a turn sooner",
+          "col": 6,
+          "lane": 0,
+          "parents": [
+            "mm_sell"
+          ],
+          "condition": {
+            "action": "Faster To Port",
+            "object": "steel",
+            "qty": 1
+          },
+          "reward": {
+            "text": "Loan interest 15% to 13% for 20 turns",
+            "modifier": {
+              "domain": "loan_interest",
+              "target": "*",
+              "pct": -13.333,
+              "turns": 20
+            }
+          },
+          "detail": "Get your steel to a port at least one turn sooner, with roads or rail."
+        },
+        {
+          "id": "mm_coal",
+          "title": "Mine an infinite coal deposit",
+          "col": 7,
+          "lane": 0,
+          "parents": [
+            "mm_port"
+          ],
+          "condition": {
+            "action": "Mine Infinite",
+            "object": "coal",
+            "qty": 1
+          },
+          "reward": {
+            "text": ""
+          },
+          "detail": "Survey for coal that never runs out and build a mine on it. The nearest is next to Greyroad."
+        },
+        {
+          "id": "mm_ship_coal",
+          "title": "Ship your coal to where it is used",
+          "col": 8,
+          "lane": 0,
+          "parents": [
+            "mm_coal"
+          ],
+          "condition": {
+            "action": "Supply From Infinite",
+            "object": "coal",
+            "qty": 1
+          },
+          "reward": {
+            "text": "+5% output on every recipe",
+            "modifier": {
+              "domain": "recipe_output",
+              "target": "*",
+              "pct": 5.0
+            }
+          },
+          "detail": "Send coal from that mine to a tile where your buildings use it."
+        },
+        {
+          "id": "mm_more",
+          "title": "Build three more buildings that use your goods",
+          "col": 9,
+          "lane": 0,
+          "parents": [
+            "mm_ship_coal"
+          ],
+          "condition": {
+            "action": "Build Consumers",
+            "qty": 3
+          },
+          "reward": {
+            "text": ""
+          },
+          "detail": "Build three more buildings whose recipes use a good you make."
+        },
+        {
+          "id": "mm_upgrade",
+          "title": "Upgrade a building",
+          "col": 10,
+          "lane": 0,
+          "parents": [
+            "mm_more"
+          ],
+          "condition": {
+            "action": "Upgrade",
+            "qty": 1
+          },
+          "reward": {
+            "text": ""
+          },
+          "detail": "Upgrade one of your buildings to Level 2. Infrastructure does not count."
+        },
+        {
+          "id": "mm_finished",
+          "title": "Make 20 finished goods",
+          "col": 11,
+          "lane": 0,
+          "parents": [
+            "mm_upgrade"
+          ],
+          "condition": {
+            "action": "Produce Tier",
+            "object": "finished|apex",
+            "qty": 20
+          },
+          "reward": {
+            "text": "+1% sale price for 20 turns",
+            "modifier": {
+              "domain": "market_price",
+              "target": "*",
+              "pct": 1.0,
+              "turns": 20
+            }
+          },
+          "detail": "Make 20 units of finished goods, such as car bodies."
+        }
+      ]
+    },
+    {
+      "id": "green_power",
+      "title": "Green power",
+      "subtitle": "Run your works on wind, sun and water.",
+      "nodes": [
+        {
+          "id": "gp_solar",
+          "title": "Build a solar farm",
+          "col": 0,
+          "lane": 0,
+          "parents": [],
+          "condition": {
+            "action": "Build",
+            "object": "solar_farm",
+            "qty": 1,
+            "unit": "units"
+          },
+          "reward": {
+            "text": ""
+          }
+        },
+        {
+          "id": "gp_battery",
+          "title": "Store power in a battery",
+          "col": 1,
+          "lane": 0,
+          "parents": [
+            "gp_solar"
+          ],
+          "condition": {
+            "action": "Build",
+            "object": "battery",
+            "qty": 1,
+            "unit": "units"
+          },
+          "reward": {
+            "text": "+5% output of power for 20 turns",
+            "modifier": {
+              "domain": "recipe_output",
+              "target": "*",
+              "target_match": {
+                "good_internal": "power"
+              },
+              "pct": 5.0,
+              "turns": 20
+            }
+          }
+        },
+        {
+          "id": "gp_wind",
+          "title": "Go big on wind",
+          "col": 2,
+          "lane": -1,
+          "parents": [
+            "gp_battery"
+          ],
+          "choice": "gp_path",
+          "condition": {
+            "action": "Build",
+            "object": "onshore_wind_farm",
+            "qty": 3,
+            "unit": "units"
+          },
+          "reward": {
+            "text": "+5% sale price for power to the grid",
+            "modifier": {
+              "domain": "grid_sell_price",
+              "target": "*",
+              "pct": 5.0
+            }
+          }
+        },
+        {
+          "id": "gp_firm",
+          "title": "Firm your supply",
+          "col": 2,
+          "lane": 1,
+          "parents": [
+            "gp_battery"
+          ],
+          "choice": "gp_path",
+          "condition": {
+            "action": "Firm Intermittency",
+            "object": "power",
+            "qty": 1000,
+            "unit": "power"
+          },
+          "reward": {
+            "text": "+5% output of power",
+            "modifier": {
+              "domain": "recipe_output",
+              "target": "*",
+              "target_match": {
+                "good_internal": "power"
+              },
+              "pct": 5.0
+            }
+          }
+        },
+        {
+          "id": "gp_wind_run",
+          "title": "Keep three wind farms turning",
+          "col": 3,
+          "lane": -1,
+          "parents": [
+            "gp_wind"
+          ],
+          "condition": {
+            "action": "Run",
+            "object": "onshore_wind_farm",
+            "qty": 3,
+            "unit": "10 turns"
+          },
+          "reward": {
+            "text": "+3% sale price for 20 turns",
+            "modifier": {
+              "domain": "market_price",
+              "target": "*",
+              "pct": 3.0,
+              "turns": 20
+            }
+          }
+        },
+        {
+          "id": "gp_hydro",
+          "title": "Dam a river",
+          "col": 3,
+          "lane": 1,
+          "parents": [
+            "gp_firm"
+          ],
+          "condition": {
+            "action": "Build",
+            "object": "hydro_power_plant",
+            "qty": 1,
+            "unit": "units"
+          },
+          "reward": {
+            "text": "+3% sale price for 20 turns",
+            "modifier": {
+              "domain": "market_price",
+              "target": "*",
+              "pct": 3.0,
+              "turns": 20
+            }
+          }
+        }
+      ],
+      "enabled": false
+    },
+    {
+      "id": "shipping",
+      "title": "Shipping",
+      "subtitle": "Move your goods to port faster and cheaper.",
+      "nodes": [
+        {
+          "id": "sh_ports",
+          "title": "Ship 500 units through ports",
+          "col": 0,
+          "lane": 0,
+          "parents": [],
+          "condition": {
+            "action": "Sell Through Ports",
+            "object": "ports",
+            "qty": 500,
+            "unit": "units"
+          },
+          "reward": {
+            "text": ""
+          }
+        },
+        {
+          "id": "sh_rails",
+          "title": "Ship 2,000 units through ports",
+          "col": 1,
+          "lane": 0,
+          "parents": [
+            "sh_ports"
+          ],
+          "condition": {
+            "action": "Sell Through Ports",
+            "object": "ports",
+            "qty": 2000,
+            "unit": "units"
+          },
+          "reward": {
+            "text": "-10% road and rail transport cost for 20 turns",
+            "modifier": {
+              "domain": "road_rail_transport_cost",
+              "target": "*",
+              "pct": -10.0,
+              "turns": 20
+            }
+          }
+        },
+        {
+          "id": "sh_own_port",
+          "title": "Own a port",
+          "col": 2,
+          "lane": -1,
+          "parents": [
+            "sh_rails"
+          ],
+          "choice": "sh_path",
+          "condition": {
+            "action": "Own Port At Level",
+            "object": "ports",
+            "qty": 1,
+            "unit": "level"
+          },
+          "reward": {
+            "text": "+2% sale price",
+            "modifier": {
+              "domain": "market_price",
+              "target": "*",
+              "pct": 2.0
+            }
+          }
+        },
+        {
+          "id": "sh_multimodal",
+          "title": "Move freight by road and rail",
+          "col": 2,
+          "lane": 1,
+          "parents": [
+            "sh_rails"
+          ],
+          "choice": "sh_path",
+          "condition": {
+            "action": "Ship Multimodal",
+            "object": "freight",
+            "qty": 300,
+            "unit": "units per turn"
+          },
+          "reward": {
+            "text": "-10% road and rail transport cost",
+            "modifier": {
+              "domain": "road_rail_transport_cost",
+              "target": "*",
+              "pct": -10.0
+            }
+          }
+        },
+        {
+          "id": "sh_bulk",
+          "title": "Ship 5,000 units through ports",
+          "col": 3,
+          "lane": -1,
+          "parents": [
+            "sh_own_port"
+          ],
+          "condition": {
+            "action": "Sell Through Ports",
+            "object": "ports",
+            "qty": 5000,
+            "unit": "units"
+          },
+          "reward": {
+            "text": "+3% sale price for 20 turns",
+            "modifier": {
+              "domain": "market_price",
+              "target": "*",
+              "pct": 3.0,
+              "turns": 20
+            }
+          }
+        },
+        {
+          "id": "sh_rail_net",
+          "title": "Move 600 units a turn by road and rail",
+          "col": 3,
+          "lane": 1,
+          "parents": [
+            "sh_multimodal"
+          ],
+          "condition": {
+            "action": "Ship Multimodal",
+            "object": "freight",
+            "qty": 600,
+            "unit": "units per turn"
+          },
+          "reward": {
+            "text": "+3% sale price for 20 turns",
+            "modifier": {
+              "domain": "market_price",
+              "target": "*",
+              "pct": 3.0,
+              "turns": 20
+            }
+          }
+        }
+      ],
+      "enabled": false
+    },
+    {
+      "id": "efficiency",
+      "title": "Output efficiency",
+      "subtitle": "Get more out of every building you run.",
+      "nodes": [
+        {
+          "id": "ef_profitable",
+          "title": "Run five buildings at a profit",
+          "col": 0,
+          "lane": 0,
+          "parents": [],
+          "condition": {
+            "action": "Run Profitable",
+            "object": "any",
+            "qty": 5,
+            "unit": "10 turns"
+          },
+          "reward": {
+            "text": ""
+          }
+        },
+        {
+          "id": "ef_upgrade",
+          "title": "Run a Level 2 building at a profit",
+          "col": 1,
+          "lane": 0,
+          "parents": [
+            "ef_profitable"
+          ],
+          "condition": {
+            "action": "Run Profitable L2",
+            "object": "any",
+            "qty": 1,
+            "unit": "buildings"
+          },
+          "reward": {
+            "text": "+3% output for 20 turns",
+            "modifier": {
+              "domain": "recipe_output",
+              "target": "*",
+              "pct": 3.0,
+              "turns": 20
+            }
+          }
+        },
+        {
+          "id": "ef_scale",
+          "title": "Run ten buildings at a profit",
+          "col": 2,
+          "lane": -1,
+          "parents": [
+            "ef_upgrade"
+          ],
+          "choice": "ef_path",
+          "condition": {
+            "action": "Run Profitable",
+            "object": "any",
+            "qty": 10,
+            "unit": "10 turns"
+          },
+          "reward": {
+            "text": "+3% output",
+            "modifier": {
+              "domain": "recipe_output",
+              "target": "*",
+              "pct": 3.0
+            }
+          }
+        },
+        {
+          "id": "ef_cluster",
+          "title": "Run five factories on one tile",
+          "col": 2,
+          "lane": 1,
+          "parents": [
+            "ef_upgrade"
+          ],
+          "choice": "ef_path",
+          "condition": {
+            "action": "Run Same Tile",
+            "object": "industrial_factory",
+            "qty": 5,
+            "unit": "10 turns"
+          },
+          "reward": {
+            "text": "-5% labour needed",
+            "modifier": {
+              "domain": "labour_headcount",
+              "target": "*",
+              "pct": -5.0
+            }
+          }
+        },
+        {
+          "id": "ef_scale_more",
+          "title": "Run fifteen buildings at a profit",
+          "col": 3,
+          "lane": -1,
+          "parents": [
+            "ef_scale"
+          ],
+          "condition": {
+            "action": "Run Profitable",
+            "object": "any",
+            "qty": 15,
+            "unit": "10 turns"
+          },
+          "reward": {
+            "text": "+3% sale price for 20 turns",
+            "modifier": {
+              "domain": "market_price",
+              "target": "*",
+              "pct": 3.0,
+              "turns": 20
+            }
+          }
+        },
+        {
+          "id": "ef_cluster_more",
+          "title": "Run three assembly plants on one tile",
+          "col": 3,
+          "lane": 1,
+          "parents": [
+            "ef_cluster"
+          ],
+          "condition": {
+            "action": "Run Same Tile",
+            "object": "assembly_plant",
+            "qty": 3,
+            "unit": "10 turns"
+          },
+          "reward": {
+            "text": "+3% sale price for 20 turns",
+            "modifier": {
+              "domain": "market_price",
+              "target": "*",
+              "pct": 3.0,
+              "turns": 20
+            }
+          }
+        }
+      ],
+      "enabled": false
+    },
+    {
+      "id": "acquisitions",
+      "title": "Acquisitions",
+      "subtitle": "Grow by buying what others built.",
+      "nodes": [
+        {
+          "id": "aq_first",
+          "title": "Buy a building",
+          "col": 0,
+          "lane": 0,
+          "parents": [],
+          "condition": {
+            "action": "Acquire",
+            "object": "any",
+            "qty": 1,
+            "unit": "buildings"
+          },
+          "reward": {
+            "text": ""
+          }
+        },
+        {
+          "id": "aq_land",
+          "title": "Own land on 5 tiles",
+          "col": 1,
+          "lane": 0,
+          "parents": [
+            "aq_first"
+          ],
+          "condition": {
+            "action": "Own",
+            "object": "land",
+            "qty": 5,
+            "unit": "units"
+          },
+          "reward": {
+            "text": "-5% land and building prices for 20 turns",
+            "modifier": {
+              "domain": "purchase_cost",
+              "target": "*",
+              "pct": -5.0,
+              "turns": 20
+            }
+          }
+        },
+        {
+          "id": "aq_buyer",
+          "title": "Buy three more buildings",
+          "col": 2,
+          "lane": -1,
+          "parents": [
+            "aq_land"
+          ],
+          "choice": "aq_path",
+          "condition": {
+            "action": "Acquire",
+            "object": "any",
+            "qty": 4,
+            "unit": "buildings"
+          },
+          "reward": {
+            "text": "-5% land and building prices",
+            "modifier": {
+              "domain": "purchase_cost",
+              "target": "*",
+              "pct": -5.0
+            }
+          }
+        },
+        {
+          "id": "aq_estate",
+          "title": "Own land on 12 tiles",
+          "col": 2,
+          "lane": 1,
+          "parents": [
+            "aq_land"
+          ],
+          "choice": "aq_path",
+          "condition": {
+            "action": "Own",
+            "object": "land",
+            "qty": 12,
+            "unit": "units"
+          },
+          "reward": {
+            "text": "+5% construction rebate",
+            "modifier": {
+              "domain": "construction_rebate",
+              "target": "*",
+              "pct": 5.0
+            }
+          }
+        },
+        {
+          "id": "aq_portfolio",
+          "title": "Own eight bought buildings",
+          "col": 3,
+          "lane": -1,
+          "parents": [
+            "aq_buyer"
+          ],
+          "condition": {
+            "action": "Acquire",
+            "object": "any",
+            "qty": 8,
+            "unit": "buildings"
+          },
+          "reward": {
+            "text": "+3% sale price for 20 turns",
+            "modifier": {
+              "domain": "market_price",
+              "target": "*",
+              "pct": 3.0,
+              "turns": 20
+            }
+          }
+        },
+        {
+          "id": "aq_landlord",
+          "title": "Own land on 20 tiles",
+          "col": 3,
+          "lane": 1,
+          "parents": [
+            "aq_estate"
+          ],
+          "condition": {
+            "action": "Own",
+            "object": "land",
+            "qty": 20,
+            "unit": "units"
+          },
+          "reward": {
+            "text": "+3% sale price for 20 turns",
+            "modifier": {
+              "domain": "market_price",
+              "target": "*",
+              "pct": 3.0,
+              "turns": 20
+            }
+          }
+        }
+      ],
+      "enabled": false
+    },
+    {
+      "id": "breadth",
+      "title": "Breadth of production",
+      "subtitle": "Make more kinds of goods.",
+      "nodes": [
+        {
+          "id": "br_four",
+          "title": "Make four different goods",
+          "col": 0,
+          "lane": 0,
+          "parents": [],
+          "condition": {
+            "action": "Produce Distinct",
+            "object": "goods",
+            "qty": 4,
+            "unit": "distinct goods"
+          },
+          "reward": {
+            "text": ""
+          }
+        },
+        {
+          "id": "br_eight",
+          "title": "Make eight different goods",
+          "col": 1,
+          "lane": 0,
+          "parents": [
+            "br_four"
+          ],
+          "condition": {
+            "action": "Produce Distinct",
+            "object": "goods",
+            "qty": 8,
+            "unit": "distinct goods"
+          },
+          "reward": {
+            "text": "+2% sale price for 20 turns",
+            "modifier": {
+              "domain": "market_price",
+              "target": "*",
+              "pct": 2.0,
+              "turns": 20
+            }
+          }
+        },
+        {
+          "id": "br_factory",
+          "title": "Run three recipes in factories",
+          "col": 2,
+          "lane": -1,
+          "parents": [
+            "br_eight"
+          ],
+          "choice": "br_path",
+          "condition": {
+            "action": "Run Distinct Recipes",
+            "object": "industrial_factory",
+            "qty": 3,
+            "unit": "recipes"
+          },
+          "reward": {
+            "text": "+3% output",
+            "modifier": {
+              "domain": "recipe_output",
+              "target": "*",
+              "pct": 3.0
+            }
+          }
+        },
+        {
+          "id": "br_chemistry",
+          "title": "Run three recipes in chemical plants",
+          "col": 2,
+          "lane": 1,
+          "parents": [
+            "br_eight"
+          ],
+          "choice": "br_path",
+          "condition": {
+            "action": "Run Distinct Recipes",
+            "object": "chem_plant",
+            "qty": 3,
+            "unit": "recipes"
+          },
+          "reward": {
+            "text": "+3% output",
+            "modifier": {
+              "domain": "recipe_output",
+              "target": "*",
+              "pct": 3.0
+            }
+          }
+        },
+        {
+          "id": "br_twelve",
+          "title": "Make twelve different goods",
+          "col": 3,
+          "lane": -1,
+          "parents": [
+            "br_factory"
+          ],
+          "condition": {
+            "action": "Produce Distinct",
+            "object": "goods",
+            "qty": 12,
+            "unit": "distinct goods"
+          },
+          "reward": {
+            "text": "+3% sale price for 20 turns",
+            "modifier": {
+              "domain": "market_price",
+              "target": "*",
+              "pct": 3.0,
+              "turns": 20
+            }
+          }
+        },
+        {
+          "id": "br_chem_twelve",
+          "title": "Make twelve different goods",
+          "col": 3,
+          "lane": 1,
+          "parents": [
+            "br_chemistry"
+          ],
+          "condition": {
+            "action": "Produce Distinct",
+            "object": "goods",
+            "qty": 12,
+            "unit": "distinct goods"
+          },
+          "reward": {
+            "text": "+3% sale price for 20 turns",
+            "modifier": {
+              "domain": "market_price",
+              "target": "*",
+              "pct": 3.0,
+              "turns": 20
+            }
+          }
+        }
+      ],
+      "enabled": false
+    }
+  ]
+}

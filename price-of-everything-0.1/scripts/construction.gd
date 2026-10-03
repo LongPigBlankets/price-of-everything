@@ -26,6 +26,9 @@ const STATUS_UNDER_CONSTRUCTION := "under_construction"
 const STATUS_AWAITING_MATERIALS := "awaiting_materials"
 
 var construction_projects: Dictionary = {}  # instance_id -> project dict
+## The building type of the construction that just completed, for listeners of construction_completed
+## (the instance may already be gone when it is infrastructure).
+var last_completed_building_id := ""
 
 
 func _ready() -> void:
@@ -268,6 +271,7 @@ func start_on_tile(building_id: String, recipe_id: String, tile_id: String, buil
 		construction_started.emit(instance_id, tile_id)
 		_complete_build(building_id, recipe_id, tile_id, instance_id,
 			MatchState.construct_start_half_capacity and recipe_id != "", output_destination)
+		last_completed_building_id = building_id
 		construction_completed.emit(instance_id, tile_id)
 		return instance_id
 
@@ -317,7 +321,13 @@ func estimate_middleman_cost(tile_id: String, building_id: String) -> float:
 		free_remaining -= free
 		var unit_cost := float(quote.get("cost", 0.0)) / float(maxi(1, qty))
 		total += unit_cost * float(qty - free)
-	return total
+	return total * materials_price_factor()
+
+
+## What a construction kit costs against its full price: a "construction_materials" modifier (the tutorial's
+## build reward) takes a share off. 1.0 with none.
+static func materials_price_factor() -> float:
+	return maxf(0.0, 1.0 + float(Modifiers.resolve_pct("construction_materials", "*", {}).get("net", 0.0)) / 100.0)
 
 
 # Begin a project whose materials aren't all on the tile: order the shortfall from the market
@@ -377,6 +387,9 @@ func start_awaiting_middleman(building_id: String, recipe_id: String, tile_id: S
 	var material_cost := estimate_middleman_cost(tile_id, building_id)
 	if MatchState.money + 0.0001 < material_cost and not TurnManager.is_resolving:
 		return ""
+	# A discounted kit carries what it saved, so a refund of the finished building can take it back.
+	var factor := materials_price_factor()
+	var materials_discount := material_cost / factor - material_cost if factor > 0.0 else 0.0
 	if material_cost > 0.0:
 		MatchState.add_money(-material_cost)
 	var free_remaining := MatchState.middleman_free_units
@@ -409,6 +422,7 @@ func start_awaiting_middleman(building_id: String, recipe_id: String, tile_id: S
 			"source": {"kind": "middleman", "turns": 1},
 			"build_cost": build_cost,
 			"material_cost": material_cost,
+			"materials_discount": materials_discount,
 			"startup_half_capacity": MatchState.construct_start_half_capacity and recipe_id != "",
 			"output_destination": output_destination,
 		}
@@ -612,6 +626,31 @@ func cancel(instance_id: String) -> bool:
 	return true
 
 
+## A building bought with discounted materials and then refunded (demolished or sold) gives the discount
+## back, so building and refunding can't make money. What cash can't cover is borrowed, and the briefing
+## says so. Returns the amount repaid.
+func repay_materials_discount(instance_id: String) -> float:
+	var inst: Dictionary = BuildingState.buildings.get(instance_id, {})
+	var owed := float(inst.get("materials_discount", 0.0))
+	if owed <= 0.0:
+		return 0.0
+	inst.erase("materials_discount")
+	var borrowed := maxf(0.0, owed - maxf(0.0, MatchState.money))
+	if borrowed > 0.0:
+		LoanState.take_distress_loan(borrowed)
+	MatchState.add_money(-owed)
+	var name := BuildingNaming.label_for_tile(str(inst.get("tile_id", "")), instance_id, str(inst.get("building_id", "")), str(inst.get("recipe_id", "")))
+	var body := "The %s was built with discounted materials, so its refund gave back the £%.0f discount." % [name, owed]
+	if borrowed > 0.0:
+		body += " £%.0f of it was borrowed." % borrowed
+	EventScheduler.emit_event({
+		"kind": "discount_repaid", "severity": "info",
+		"title": "Materials discount repaid: £%.0f" % owed, "body": body,
+		"source": "construction", "persistent": false, "auto_dismiss_turns": 3,
+	})
+	return owed
+
+
 # --- ETA helpers (computed live from inbound shipments) ---
 
 # Turns until a still-missing material reaches the tile (min over its inbound shipments).
@@ -686,6 +725,9 @@ func _promote(instance_id: String) -> void:
 	if not inst.is_empty():
 		inst["build_cost"] = float(project.get("build_cost", 0.0))
 		inst["build_materials"] = (project.get("required_materials", {}) as Dictionary).duplicate()
+		if float(project.get("materials_discount", 0.0)) > 0.0:
+			inst["materials_discount"] = float(project.materials_discount)
+	last_completed_building_id = str(project.get("building_id", ""))
 	construction_completed.emit(instance_id, str(project.get("tile_id", "")))
 
 
