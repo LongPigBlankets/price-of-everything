@@ -1523,6 +1523,31 @@ function deskBezel() {
 }
 
 /**
+ * The desk's End Turn push button: a wide amber cap of lit translucent plastic in a moulded gunmetal bezel,
+ * the guarded keys' glowing cap without its cover. Rendered blank (the game prints END TURN on it), lit, pressed
+ * (the cap sunk to its bezel) and unlit (while a turn resolves).
+ */
+const ENDKEY = { W: 300, H: 110, M: 12, r: 14, colour: 0xe9a227 };
+function endTurnKey(state) {
+  const { W, H, M, r, colour } = ENDKEY, g = new THREE.Group(), fw = W - 2 * M - 10, fh = H - 2 * M - 10;
+  const frame = mouldedFrame(fw + 4, fh + 4, r, { depth: 8, rim: 6 }); frame.position.set(W / 2, 0, H / 2); g.add(frame);
+  const lit = state !== 'unlit', base = new THREE.Color(colour), tone = lit ? base : base.clone().multiplyScalar(0.42);
+  const faceC = canvas2d(fw, fh, (c) => {
+    const grd = c.createRadialGradient(fw * 0.45, fh * 0.4, 0, fw / 2, fh / 2, fw * 0.62);
+    grd.addColorStop(0, '#' + tone.clone().lerp(new THREE.Color(0xffffff), lit ? 0.3 : 0.08).getHexString());
+    grd.addColorStop(0.6, '#' + tone.getHexString()); grd.addColorStop(1, '#' + tone.clone().multiplyScalar(0.62).getHexString());
+    c.fillStyle = grd; c.fillRect(0, 0, fw, fh);
+  });
+  const faceMat = new THREE.MeshStandardMaterial({ map: faceTexture(faceC, fw, fh), emissive: 0xffffff, roughness: 0.35 });
+  faceMat.emissiveMap = faceMat.map; faceMat.emissiveIntensity = lit ? 0.7 : 0.1;
+  const sideMat = new THREE.MeshStandardMaterial({ color: tone.clone().multiplyScalar(0.8), emissive: tone, emissiveIntensity: lit ? 0.45 : 0.05, roughness: 0.4 });
+  const cap = new THREE.Mesh(extrude(rrShape(fw - 4, fh - 4, r - 3), state === 'pressed' ? 2 : 6, 2.5, 2, 3), [faceMat, sideMat]);
+  cap.position.set(W / 2, 1, H / 2); cap.castShadow = cap.receiveShadow = true; g.add(cap);
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.55));
+  return g;
+}
+
+/**
  * A factory door for Labour and Wages, one per kind of worker: a painted steel leaf in a dark steel jamb,
  * a small wired-glass window near its top (dark, or lit warm from inside when that kind of worker is
  * employed), a lever handle, and a brushed steel kick plate across its foot, where the game engraves the
@@ -2336,7 +2361,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // missionslot, missionboard, darkmetal, desk, tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
+  // missionslot, missionboard, darkmetal, desk, endkey, tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -7470,6 +7495,12 @@ async function exportLayers() {
     await post('desk_bezel', stage([0, 0, DBEZEL.S, DBEZEL.S], [deskBezel()]).grab());
     layout.desk_plate = { size: [DESK.W, DESK.H], margin: DESK.M };
     layout.desk_bezel = { size: [DBEZEL.S, DBEZEL.S], ring: [DBEZEL.rIn, DBEZEL.rOut] };
+  });
+
+  // --- the desk's End Turn push button, lit, pressed and unlit.
+  if (want('endkey')) await withSeed(484, async () => {
+    for (const st of ['lit', 'pressed', 'unlit']) await post(`end_turn_key_${st}`, stage([0, 0, ENDKEY.W, ENDKEY.H], [endTurnKey(st)]).grab());
+    layout.end_turn_key = { size: [ENDKEY.W, ENDKEY.H], margin: ENDKEY.M + 5 };
   });
 
   // --- Labour and Wages' factory doors, the window dark and lit.

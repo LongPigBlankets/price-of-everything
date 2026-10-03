@@ -11,6 +11,11 @@ extends Control
 ## Drawn in the game's industrial language: a brushed-silver base, a beveled
 ## navy plate with a gold rim + rivet, and an emissive gold END TURN face.
 ##
+## On the DS2 control desk (UiPrefs.use_desk_ds2, with the bottom bar) the plate is the desk plate's left end
+## (desk_plate.png, the same navy steel, rail and screw as the bar's), the button an amber push button lit
+## from within (end_turn_key_lit / _pressed / _unlit.png, END TURN printed on it in navy), and the phase a
+## dot-matrix screen.
+##
 ## UI is read-only against the sim (CLAUDE.md rule #5): it observes
 ## TurnManager.phase_started and only reads state.
 
@@ -53,10 +58,25 @@ const BASE_BLEED := 20.0  # base bottom/right edges extend this far off-screen
 const BASE_RADIUS := 14.0 # squarish-rounded corner radius on the silver under-plate
 const BASE_INSET := 6.0   # navy plate inset inside the silver plate
 
+# ── The DS2 control desk ─────────────────────────────────────────────────────
+const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
+const DESK_PLATE: Texture2D = preload("res://assets/ui/bdp_v3/desk_plate.png")
+const KEY_LIT: Texture2D = preload("res://assets/ui/bdp_v3/end_turn_key_lit.png")
+const KEY_PRESSED: Texture2D = preload("res://assets/ui/bdp_v3/end_turn_key_pressed.png")
+const KEY_UNLIT: Texture2D = preload("res://assets/ui/bdp_v3/end_turn_key_unlit.png")
+## The key's cap in px (its render less the bezel and shadow room), the desk's foot under it and the plate's
+## height over it, the phase screen's width.
+const DESK_BTN := Vector2(142.0, 40.0)
+const DESK_FOOT := 8.0
+const DESK_PLATE_TOP := 58.0
+const DESK_ROLLER_W := 104.0
+const DESK_INK := Color("#0b2340")
+
 # ── State ────────────────────────────────────────────────────────────────────
 var _menu: Control
 var _roller: PhaseRoller
 var _base_block: Control
+var _phase_dots: Control
 
 # Cached layout rects (local space).
 var _r_button := Rect2()
@@ -83,6 +103,12 @@ func _ready() -> void:
 	add_child(_roller)
 	TurnManager.phase_started.connect(_on_phase_started)
 	_roller.set_phase(TurnManager.get_phase_name(TurnManager.current_phase), false)
+	_phase_dots = DotMatrix.new()
+	_phase_dots.name = "PhaseDots"
+	_phase_dots.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_phase_dots.set("text", TurnManager.get_phase_name(TurnManager.current_phase))
+	add_child(_phase_dots)
+	UiPrefs.desk_ds2_changed.connect(func(_on: bool) -> void: _update_layout())
 
 	resized.connect(_update_layout)
 
@@ -102,6 +128,8 @@ func _ready() -> void:
 
 func _on_phase_started(phase: int) -> void:
 	_roller.set_phase(TurnManager.get_phase_name(phase), true)
+	if _phase_dots != null:
+		_phase_dots.set("text", TurnManager.get_phase_name(phase))
 
 
 # ─── Setup ───────────────────────────────────────────────────────────────────
@@ -133,6 +161,13 @@ func _build_interactive_children() -> void:
 func _update_layout() -> void:
 	var w := size.x
 	var h := size.y
+	var desk: bool = UiPrefs.use_desk_ds2
+	_roller.visible = not desk
+	if _phase_dots != null:
+		_phase_dots.visible = desk
+	if desk:
+		_layout_desk(w, h)
+		return
 
 	# Navy plate anchored bottom-right, bleeding off the bottom + right edges and
 	# never overlapping the bottom menu.
@@ -161,6 +196,23 @@ func _update_layout() -> void:
 	queue_redraw()
 
 
+## The desk's layout: the push button on the desk's foot, the phase screen beside it, the plate over both
+## from DESK_PLATE_TOP, bleeding off the bottom and right as the navy plate does.
+func _layout_desk(w: float, h: float) -> void:
+	var left := maxf(w - (PAD * 2.0 + DESK_BTN.x + ROW_GAP + DESK_ROLLER_W + 18.0), _menu_right_local() + 12.0)
+	_r_base = Rect2(left, h - DESK_PLATE_TOP, (w + BASE_BLEED) - left, DESK_PLATE_TOP + BASE_BLEED)
+	_r_button = Rect2(left + PAD + 8.0, h - DESK_FOOT - DESK_BTN.y, DESK_BTN.x, DESK_BTN.y)
+	_end_turn_button.position = _r_button.position
+	_end_turn_button.size = _r_button.size
+	if _phase_dots != null:
+		var dh: float = _phase_dots.get_combined_minimum_size().y
+		_phase_dots.position = Vector2(_r_button.end.x + ROW_GAP, _r_button.get_center().y - dh * 0.5)
+		_phase_dots.size = Vector2(DESK_ROLLER_W, dh)
+	_base_block.position = _r_base.position
+	_base_block.size = Vector2(minf(_r_base.size.x, w - _r_base.position.x), h - _r_base.position.y)
+	queue_redraw()
+
+
 func _menu_right_local() -> float:
 	# Right edge of the bottom menu's visible buttons, in this control's space.
 	if _menu == null:
@@ -185,8 +237,32 @@ func _process(_dt: float) -> void:
 
 # ─── Drawing ─────────────────────────────────────────────────────────────────
 func _draw() -> void:
+	if UiPrefs.use_desk_ds2:
+		_draw_desk()
+		return
 	_draw_base(_r_base)
 	_draw_end_turn(_r_button)
+
+
+## The desk plate's left end over the dock, and the push button: lit, sunk while held, unlit while a turn
+## resolves, END TURN printed on its cap.
+func _draw_desk() -> void:
+	var plate := DESK_PLATE.get_size()
+	var shown := Vector2(minf(_r_base.size.x, plate.x / 2.0), plate.y / 2.0)
+	draw_texture_rect_region(DESK_PLATE, Rect2(_r_base.position, shown), Rect2(Vector2.ZERO, shown * 2.0))
+	if _r_base.size.x > shown.x:
+		# Past the plate's render, the plate runs on off the screen: its middle, without the far end's screw.
+		var rest := Rect2(_r_base.position + Vector2(shown.x, 0.0), Vector2(_r_base.size.x - shown.x, shown.y))
+		draw_texture_rect_region(DESK_PLATE, rest, Rect2(Vector2(plate.x * 0.5, 0.0), Vector2(rest.size.x * 2.0, plate.y)))
+	var disabled := _end_turn_button.disabled
+	var tex: Texture2D = KEY_UNLIT if disabled else (KEY_PRESSED if _btn_down else KEY_LIT)
+	var key := tex.get_size() / 2.0
+	var tint := Color(1.06, 1.06, 1.06) if _btn_hover and not disabled and not _btn_down else Color.WHITE
+	draw_texture_rect(tex, Rect2(_r_button.get_center() - key * 0.5, key), false, tint)
+	var ink := DESK_INK if not disabled else Color(DESK_INK, 0.55)
+	var tw := _measure(F_HEAD, "END TURN", 22)
+	var top := _r_button.get_center() - Vector2(tw * 0.5, 11.0) + (Vector2(0.0, 1.0) if _btn_down else Vector2.ZERO)
+	_text(F_HEAD, top, "END TURN", 22, ink)
 
 
 func _draw_base(r: Rect2) -> void:
