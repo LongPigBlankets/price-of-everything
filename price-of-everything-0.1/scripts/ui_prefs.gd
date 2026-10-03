@@ -38,6 +38,8 @@ signal construct_ds2_changed(enabled: bool)
 signal empire_button_icon_changed(use_badge: bool)
 ## The top bar's mission piston (scripts/ds2/mission_slot.gd), switched on or off.
 signal mission_slot_changed(enabled: bool)
+## The Victory panel's DS2 look (scripts/victory_ds2/victory_ds2.gd), switched on or off.
+signal victory_ds2_changed(enabled: bool)
 
 # Debug-only: verbose per-turn production / CostSolver logs. Off by default because
 # large empires can produce hundreds of console lines per turn in editor builds.
@@ -108,6 +110,9 @@ var use_routes_ds2: bool = true
 # across with steam when the mission completes. The default; the debug cheat `toggle mission slot` switches back to
 # the icon and two lines of text. Session-only, never persisted.
 var use_mission_slot: bool = true
+# The Victory panel in DS2: a control desk with a bank of five dials (scripts/victory_ds2/victory_ds2.gd). The
+# default; the debug cheat `toggle victory ds2` switches back to the v2 cards. Session-only, never persisted.
+var use_victory_ds2: bool = true
 # Building Detail v3's diagnostics: the Visual view (true) or the Text rows. The player's choice on the
 # panel's switch, kept while the game runs (closing the panel or starting a match keeps it).
 var bdp_diag_visual: bool = false
@@ -268,6 +273,11 @@ func toggle_use_upgrade_ds2() -> bool:
 func toggle_use_routes_ds2() -> bool:
 	use_routes_ds2 = not use_routes_ds2
 	return use_routes_ds2
+
+func toggle_use_victory_ds2() -> bool:
+	use_victory_ds2 = not use_victory_ds2
+	victory_ds2_changed.emit(use_victory_ds2)
+	return use_victory_ds2
 
 func toggle_use_mission_slot() -> bool:
 	use_mission_slot = not use_mission_slot

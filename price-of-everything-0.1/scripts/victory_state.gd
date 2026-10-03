@@ -109,10 +109,10 @@ const DEMO_TRACK_COLOR_KEYS := {
 	"green_demo": "OK", "estate": "BUTTON_RIM_LIGHT",
 }
 const DEMO_TRACK_EXPLAIN := {
-	"crown": "Points for ending a turn on the podium: 50 for first, 25 for second, 10 for third. Cumulative, and they mix — 1,000 fills it, so 20 turns leading, or 40 in second, or 100 in third, or any blend of the three.",
-	"tiers": "Units produced this turn in each tier, up to 5 a tier. Every tier pays, so a broad chain beats a deep one — five units of each of the five tiers fills it.",
+	"crown": "Points for ending a turn on the podium: 50 for first, 25 for second, 10 for third. They add up, and they mix. 1,000 fills it: 20 turns leading, or 40 in second, or 100 in third, or any blend of the three.",
+	"tiers": "Units produced this turn in each tier, up to 5 a tier. Every tier pays, so a broad chain beats a deep one. Five units of each of the five tiers fills it.",
 	"distance": "Shipments delivered over a journey of more than 10 turns. Cumulative, and long hauls only: ten of them fills the track.",
-	"green_demo": "Wind and solar generated THIS TURN. It does not accumulate between turns — your best single turn is what stands, and 4,000 MW fills it.",
+	"green_demo": "Wind and solar generated this turn. It does not add up between turns: your best single turn is what stands, and 4,000 MW fills it.",
 	"estate": "Non-infrastructure buildings you own, up to 30, plus a bonus once 30 or more are running at once.",
 }
 ## The demo's flat win bar: 2.5 maxed tracks, and it does not rise. A 100-turn
@@ -647,23 +647,23 @@ func _build_breakdown(turn: int, total: int) -> Dictionary:
 func _metric_text(key: String) -> String:
 	match key:
 		"crown":
-			return "%d / %d podium points — %d first, %d second, %d third, banked" % [
+			return "%d / %d podium points banked: %d for first, %d second, %d third" % [
 				demo_crown_points, DEMO_CROWN_TARGET,
 				int(DEMO_CROWN_POINTS_BY_RANK.get(1, 0)),
 				int(DEMO_CROWN_POINTS_BY_RANK.get(2, 0)),
 				int(DEMO_CROWN_POINTS_BY_RANK.get(3, 0))]
 		"tiers":
-			return "%d%% this turn — %d units in each of the %d tiers fills it" % [
+			return "%d%% this turn. %d units in each of the %d tiers fills it" % [
 				int(round(100.0 * _demo_tiers_progress())), DEMO_TIER_UNITS, DEMO_TIERS.size()]
 		"distance":
 			return "%d / %d shipments over %d turns' travel" % [
 				demo_long_hauls, DEMO_LONG_HAULS, DEMO_LONG_HAUL_TURNS]
 		"green_demo":
-			return "%d / %d MW of wind and solar THIS TURN (does not carry over)" % [
+			return "%d / %d MW of wind and solar this turn. It does not carry over" % [
 				int(round(float(_greenest_stats().green))), int(DEMO_GREEN_TARGET)]
 		"estate":
 			var e := demo_estate_counts()
-			return "%d / %d buildings, %d running (all %d running is worth another %d)" % [
+			return "%d / %d buildings, %d running. All %d running is worth another %d" % [
 				int(e.owned), DEMO_ESTATE_BUILDINGS, int(e.running), DEMO_ESTATE_BUILDINGS,
 				DEMO_ESTATE_RUNNING_BONUS]
 		"autarkic":
