@@ -7,8 +7,8 @@ class_name PauseMenu
 ## "Return to game" closes it.
 ##
 ## In DS2 (UiPrefs.use_pause_ds2) the menu is a cabinet on Building Detail's navy steel backing in its brass
-## trim, its raised title over two sections: the game's keys (Return to game, Save, Load, Settings) on a steel
-## plate, and the two ways out on a dark metal plate, printed in red ink. Each is one of the cabinet's cream
+## trim, its raised title over two groups of keys set straight on the steel: the game's (Return to game, Save,
+## Load, Settings), and below them the two ways out, printed in red ink. Each is one of the cabinet's cream
 ## keys (scripts/ds2/cream_key.gd). While a turn resolves Save and Load are greyed, their tooltip saying why.
 
 const PANEL_BLACK := Color(0.03, 0.03, 0.045)
@@ -132,7 +132,7 @@ func _build_ds2() -> void:
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(title)
 
-	var game := _key_section(col, "steel")
+	var game := _key_section(col)
 	game.add_child(_key("ReturnKey", "Return to game", _on_return_pressed))
 	_save_btn = _key("SaveKey", "Save Game", _on_save_pressed)
 	game.add_child(_save_btn)
@@ -140,7 +140,7 @@ func _build_ds2() -> void:
 	game.add_child(_load_btn)
 	game.add_child(_key("SettingsKey", "Settings", _on_settings_pressed))
 
-	var out := _key_section(col, "dark")
+	var out := _key_section(col)
 	for spec: Array in [["ExitToMenuKey", "Exit to Main Menu", _on_exit_to_menu_pressed],
 			["ExitToDesktopKey", "Exit to Desktop", _on_quit_pressed]]:
 		var key := _key(spec[0], spec[1], spec[2])
@@ -148,15 +148,14 @@ func _build_ds2() -> void:
 		out.add_child(key)
 
 
-## A section of the cabinet in `style`, its content a column of keys.
-func _key_section(col: VBoxContainer, style: String) -> VBoxContainer:
+## A group of keys straight on the backing (a bare section, inset as a framed one is).
+func _key_section(col: VBoxContainer) -> VBoxContainer:
 	var section: Control = Section.new()
-	section.set("style", style)
+	section.set("style", "bare")
 	col.add_child(section)
 	var keys: VBoxContainer = section.get("content")
 	keys.add_theme_constant_override("separation", 10)
 	return keys
-
 
 ## A cream key `KEY_W` wide printing `words`.
 func _key(node_name: String, words: String, handler: Callable) -> Button:
