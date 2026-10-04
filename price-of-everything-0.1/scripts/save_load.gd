@@ -407,6 +407,7 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			"interest_paid": 0.0,
 			"interest_rate": rate,
 			"grace_remaining": grace,
+			"grace_turns": grace,
 			"total_repayment": total,
 		})
 

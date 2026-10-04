@@ -225,12 +225,19 @@ func _test_loan_minimum_and_grace() -> void:
 	_check(absf(float(l.get("total_repayment", 0.0)) - expected) < 0.01,
 		"grace accrues interest: total is %.2fx principal, not %.2fx"
 			% [expected / float(l.principal_initial), 1.0 + EconomyConfig.LOAN_INTEREST_RATE])
-	# Repaying in grace costs the whole repayment: grace defers the interest, it does not waive it.
-	_check(absf(LoanState.payoff_amount(l) - expected) < 0.01, "grace: clearing the loan early costs the whole repayment")
-	LoanState.process_payments()
+	# Interest accrues evenly over the loan's life, grace included: clearing it in grace costs the principal
+	# plus the interest built up so far, not the whole term's.
+	var principal := float(l.principal_initial)
+	var life := float(EconomyConfig.LOAN_GRACE_TURNS + EconomyConfig.LOAN_TERM_TURNS)
+	_check(absf(LoanState.payoff_amount(l) - principal) < 0.01, "grace: clearing on the turn it is taken costs the principal")
+	for _i in 3:
+		LoanState.process_payments()
+	var accrued := principal + (expected - principal) * 3.0 / life
+	_check(absf(LoanState.payoff_amount(l) - accrued) < 0.01,
+		"grace: after 3 turns, clearing costs the principal plus 3 turns of interest (%.2f)" % accrued)
 	var cash := MatchState.money
-	_check(LoanState.repay_loan(int(l.id)) and absf(cash - MatchState.money - expected) < 0.01 and LoanState.loans.is_empty(),
-		"grace: repaying on a grace turn charges principal and interest, not the principal alone")
+	_check(LoanState.repay_loan(int(l.id)) and absf(cash - MatchState.money - accrued) < 0.01 and LoanState.loans.is_empty(),
+		"grace: repaying charges the interest accrued so far, not the whole term's")
 	_check(LoanState.take_loan(1.36), "a second loan for the grace run")
 	var before := MatchState.money
 	for _i in EconomyConfig.LOAN_GRACE_TURNS:

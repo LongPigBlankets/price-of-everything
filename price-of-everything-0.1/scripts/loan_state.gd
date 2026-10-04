@@ -147,6 +147,7 @@ func _create_loan(amount: float, rate: float, term: int, grace: int = 0) -> bool
 		"interest_paid": 0.0,
 		"interest_rate": rate,
 		"grace_remaining": grace,
+		"grace_turns": grace,
 		"total_repayment": total_repayment,
 	}
 	_next_loan_id += 1
@@ -305,12 +306,18 @@ func total_outstanding() -> float:
 		sum += payoff_amount(loan)
 	return sum
 
-## What clearing `loan` costs now. A standard loan in grace costs its whole repayment, interest
-## included, as it does once paying: grace defers the payments, it does not waive the interest. The
-## distressed-asset grace loan banks no repayment total and is interest-free in grace by design.
+## What clearing `loan` costs now. A standard loan's interest accrues evenly over its whole life, grace
+## included, so clearing it in grace costs the principal plus the interest built up over the grace turns
+## gone by: grace defers the payments, it does not waive the interest. The distressed-asset grace loan
+## banks no repayment total and is interest-free in grace by design.
 func payoff_amount(loan: Dictionary) -> float:
-	if int(loan.get("grace_remaining", 0)) > 0 and loan.has("total_repayment"):
-		return float(loan["total_repayment"])
+	var grace_left := int(loan.get("grace_remaining", 0))
+	if grace_left > 0 and loan.has("total_repayment"):
+		var principal := float(loan.get("principal_initial", 0.0))
+		var grace := maxi(grace_left, int(loan.get("grace_turns", EconomyConfig.LOAN_GRACE_TURNS)))
+		var life := float(int(loan.get("turns_remaining", 0)) + grace - grace_left)
+		var interest := float(loan["total_repayment"]) - principal
+		return principal + interest * float(grace - grace_left) / maxf(life, 1.0)
 	return float(loan.get("principal_remaining", 0.0))
 
 ## The interest in the active loans' payments each turn, split from each payment as process_payments splits it
