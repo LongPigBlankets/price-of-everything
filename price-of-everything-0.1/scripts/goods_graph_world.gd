@@ -1409,7 +1409,7 @@ func _draw_card(node: Dictionary, font: Font, tracing: bool, alpha_mul: float = 
 	elif id == _hover_id:
 		_draw_glow(rect, _CREAM, alpha * 0.8)
 	var plate := _PLATE_DIM if gated else Color.WHITE
-	_paint_plate(rect, Color(plate, alpha))
+	_paint_plate(rect, Color(plate, alpha), false)
 	# The good on an enamel tile across the top, a band of the category's colour under it.
 	var side := rect.size.x - 2.0 * _TILE_SIDE_PAD
 	var tile := Rect2(Vector2(rect.get_center().x - side * 0.5, rect.position.y + _TILE_TOP_PAD), Vector2(side, side))
@@ -1516,16 +1516,19 @@ func _draw_tier_plate(r: Rect2, tier: int, font: Font, alpha: float) -> void:
 const _TILE_TOP_PAD := 18.0
 
 
-## The dark metal plate over `rect` with silver screws set over its own four (the render's are dark).
+## The dark metal plate over `rect`; with `screws`, silver screws set over its own four (the render's are dark). The
+## tray under the selected good has them; the cards do not.
 const _SCREW: Texture2D = preload("res://assets/ui/bdp_v3/screw_silver.png")
 ## The render's screws: their centres this many texels in from its corners, this many texels across.
 const _PLATE_SCREW_AT := 34.0
 const _PLATE_SCREW_SIDE := 30.0
 
 
-func _paint_plate(rect: Rect2, tint: Color = Color.WHITE) -> void:
+func _paint_plate(rect: Rect2, tint: Color = Color.WHITE, screws: bool = true) -> void:
 	var dest := rect.grow(_PLATE_OUTSET * _PLATE_K)
 	_paint_scaled(_DARK_PLATE, dest, _PLATE_CORNER, _PLATE_K, tint)
+	if not screws:
+		return
 	var inset := _PLATE_SCREW_AT * 0.5 * _PLATE_K
 	var side := _PLATE_SCREW_SIDE * 0.5 * _PLATE_K
 	for c: Vector2 in [dest.position + Vector2(inset, inset), Vector2(dest.end.x - inset, dest.position.y + inset),
