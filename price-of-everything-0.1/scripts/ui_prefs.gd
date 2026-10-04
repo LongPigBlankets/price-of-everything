@@ -36,6 +36,12 @@ signal briefing_ds2_changed(enabled: bool)
 ## The construct panel's DS2 look, the construction lot (docs/construct-ds2-plan.md), switched on or off.
 signal construct_ds2_changed(enabled: bool)
 signal empire_button_icon_changed(use_badge: bool)
+## The top bar's mission piston (scripts/ds2/mission_slot.gd), switched on or off.
+signal mission_slot_changed(enabled: bool)
+## The Victory panel's DS2 look (scripts/victory_ds2/victory_ds2.gd), switched on or off.
+signal victory_ds2_changed(enabled: bool)
+## The bottom bar's DS2 look, the control desk (bottom_menu.gd), switched on or off.
+signal desk_ds2_changed(enabled: bool)
 
 # Debug-only: verbose per-turn production / CostSolver logs. Off by default because
 # large empires can produce hundreds of console lines per turn in editor builds.
@@ -102,6 +108,25 @@ var use_upgrade_ds2: bool = true
 # docs/bdp-routes-ds2-plan.md), with Building Detail v3 on. The default; the debug cheat `toggle routes ds2`
 # switches back to the v2 sheets. Session-only, never persisted.
 var use_routes_ds2: bool = true
+# The DS2 top bar's mission as a cream key holding its title and a brass piston showing its count, which strokes
+# across with steam when the mission completes. The default; the debug cheat `toggle mission slot` switches back to
+# the icon and two lines of text. Session-only, never persisted.
+var use_mission_slot: bool = true
+# The Victory panel in DS2: a control desk with a bank of five dials (scripts/victory_ds2/victory_ds2.gd). The
+# default; the debug cheat `toggle victory ds2` switches back to the v2 cards. Session-only, never persisted.
+var use_victory_ds2: bool = true
+# The bottom bar in DS2: a factory control desk of the top bar's navy steel, the round buttons set in chrome
+# collars, the open panel's button pressed in with a lit halo. The default; the debug cheat `toggle desk ds2`
+# switches back to the silver tray. Session-only, never persisted.
+var use_desk_ds2: bool = true
+# The in-game menu (Esc) in DS2: a cabinet of cream keys (scripts/pause_menu.gd). The default; the debug cheat
+# `toggle pause ds2` switches back to the black rounded panel. Built per open, so no signal. Session-only, never
+# persisted.
+var use_pause_ds2: bool = true
+# The main menu's column in DS2: the navy steel backing and cream keys (scripts/main_menu.gd). The default; the
+# debug cheat `toggle main menu ds2` switches back, from the next time the menu is built. Session-only, never
+# persisted.
+var use_main_menu_ds2: bool = true
 # Building Detail v3's diagnostics: the Visual view (true) or the Text rows. The player's choice on the
 # panel's switch, kept while the game runs (closing the panel or starting a match keeps it).
 var bdp_diag_visual: bool = false
@@ -262,6 +287,29 @@ func toggle_use_upgrade_ds2() -> bool:
 func toggle_use_routes_ds2() -> bool:
 	use_routes_ds2 = not use_routes_ds2
 	return use_routes_ds2
+
+func toggle_use_desk_ds2() -> bool:
+	use_desk_ds2 = not use_desk_ds2
+	desk_ds2_changed.emit(use_desk_ds2)
+	return use_desk_ds2
+
+func toggle_use_main_menu_ds2() -> bool:
+	use_main_menu_ds2 = not use_main_menu_ds2
+	return use_main_menu_ds2
+
+func toggle_use_pause_ds2() -> bool:
+	use_pause_ds2 = not use_pause_ds2
+	return use_pause_ds2
+
+func toggle_use_victory_ds2() -> bool:
+	use_victory_ds2 = not use_victory_ds2
+	victory_ds2_changed.emit(use_victory_ds2)
+	return use_victory_ds2
+
+func toggle_use_mission_slot() -> bool:
+	use_mission_slot = not use_mission_slot
+	mission_slot_changed.emit(use_mission_slot)
+	return use_mission_slot
 
 func set_bdp_diag_visual(visual: bool) -> void:
 	bdp_diag_visual = visual

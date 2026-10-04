@@ -557,6 +557,7 @@ func _input_splice_item() -> Dictionary:
 # one-off news and stays out of the briefing.
 const _EVENT_SECTIONS := {
 	"deposit_exhausted": "alerts",
+	"discount_repaid": "alerts",
 }
 # Event kinds that never become a dock row from here: superseded by a live alert or the top
 # bar's storage lamp, too noisy, or already posted to the dock by their own source (the
@@ -577,6 +578,7 @@ const _EVENT_ICONS := {
 	"decision_resolved": "scale",
 	"decision_incoming": "scale",
 	"bridge_loan": "coin",
+	"discount_repaid": "coin",
 	"deposit_exhausted": "warn",
 	"tile_at_capacity": "gauge",
 	"policy_enacted": "scale",

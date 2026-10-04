@@ -564,6 +564,8 @@ func finish_build(animate: bool) -> void:
 				_show_metal_magnate_intro()
 			"glass_merchant":
 				_show_glass_merchant_intro()
+			_:
+				_start_opener_when_ready()
 
 
 func _show_metal_magnate_intro() -> void:
@@ -573,6 +575,7 @@ func _show_metal_magnate_intro() -> void:
 		await get_tree().process_frame
 	_focus_camera_on_tile("tile_5_10")   # centre on Stoneshore Docks (the start's hub)
 	var intro: CanvasLayer = load("res://scripts/metal_magnate_intro.gd").new()
+	intro.tree_exited.connect(Tutorial.start_opener)   # the opening steps follow the story
 	add_child(intro)
 
 
@@ -581,7 +584,15 @@ func _show_glass_merchant_intro() -> void:
 		await get_tree().process_frame
 	_focus_camera_on_tile("tile_22_16")   # centre on Vandel's Skip (the start's hub)
 	var intro: CanvasLayer = load("res://scripts/glass_merchant_intro.gd").new()
+	intro.tree_exited.connect(Tutorial.start_opener)   # the opening steps follow the story
 	add_child(intro)
+
+
+## A fresh start without a story intro: the opening steps begin once the loading screen has gone.
+func _start_opener_when_ready() -> void:
+	while _loading_screen_active():
+		await get_tree().process_frame
+	Tutorial.start_opener()
 
 
 ## Preload the baked authored-map textures the opening camera will see. The rest stream in as

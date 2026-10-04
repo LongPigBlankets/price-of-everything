@@ -54,6 +54,10 @@ var audio_levels: Dictionary = {}
 ## tab lets anyone change. Validation lives in scripts/keybinds.gd.
 var keybinds: Dictionary = {}
 
+## The top bar's mission shown as only its icon and counter, the text on hover: the player's choice on the
+## missions panel's switch.
+var mission_bar_collapsed: bool = false
+
 
 func _ready() -> void:
 	_load()
@@ -203,6 +207,7 @@ func _load() -> void:
 		audio_levels = (lv as Dictionary) if lv is Dictionary else {}
 		telemetry_opt_out = bool((parsed as Dictionary).get("telemetry_opt_out", false))
 		telemetry_player_id = str((parsed as Dictionary).get("telemetry_player_id", ""))
+		mission_bar_collapsed = bool((parsed as Dictionary).get("mission_bar_collapsed", false))
 	_merge_legacy()
 
 
@@ -213,7 +218,7 @@ func _save() -> void:
 	if f == null:
 		push_warning("[PlayerProfile] could not write %s" % tmp_path)
 		return
-	f.store_string(JSON.stringify({"exit_feedback_submitted": exit_feedback_submitted, "games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y, "fullscreen": fullscreen, "screen_index": screen_index, "audio_levels": audio_levels, "keybinds": keybinds, "telemetry_opt_out": telemetry_opt_out, "telemetry_player_id": telemetry_player_id}, "\t"))
+	f.store_string(JSON.stringify({"exit_feedback_submitted": exit_feedback_submitted, "games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y, "fullscreen": fullscreen, "screen_index": screen_index, "audio_levels": audio_levels, "keybinds": keybinds, "telemetry_opt_out": telemetry_opt_out, "telemetry_player_id": telemetry_player_id, "mission_bar_collapsed": mission_bar_collapsed}, "\t"))
 	f.close()
 	var err := DirAccess.rename_absolute(tmp_path, _path())
 	if err != OK:
@@ -228,6 +233,13 @@ func set_display(is_fullscreen: bool, size: Vector2i, screen: int = -1) -> void:
 		window_size = size
 	screen_index = screen
 	_apply_display()
+	_save()
+
+
+func set_mission_bar_collapsed(value: bool) -> void:
+	if value == mission_bar_collapsed:
+		return
+	mission_bar_collapsed = value
 	_save()
 
 

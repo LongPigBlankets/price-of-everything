@@ -12,16 +12,24 @@ extends Control
 
 const MARGIN := 22
 const CARD_COLS := 3
+## The DS2 look (UiPrefs.use_victory_ds2): the control desk, built in place of the cards.
+const VictoryDs2 := preload("res://scripts/victory_ds2/victory_ds2.gd")
+const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
 
 var _total_label: Label
 var _base_label: Label
 var _hint_label: Label
 var _banner: Label
 var _grid: GridContainer
+var _ds2: Control
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	_build()
+	_apply_look()
+	UiPrefs.victory_ds2_changed.connect(func(_on: bool) -> void:
+		_apply_look()
+		if visible:
+			_populate())
 	VictoryState.score_changed.connect(_on_score_changed)
 	visibility_changed.connect(_on_visibility_changed)
 	# The victory-moment auto-open (spec §6) is driven by bottom_menu, which can hide
@@ -30,6 +38,21 @@ func _ready() -> void:
 		_populate()
 
 # ── Build the static skeleton once ──────────────────────────────────────────
+
+## Builds the panel in the look UiPrefs asks for, clearing the other.
+func _apply_look() -> void:
+	for c in get_children():
+		remove_child(c)
+		c.queue_free()
+	_ds2 = null
+	if UiPrefs.use_victory_ds2:
+		_ds2 = VictoryDs2.new()
+		_ds2.connect("close_requested", _close)
+		add_child(_ds2)
+		LampOverlay.attach(self)
+	else:
+		LampOverlay.detach(self)
+		_build()
 
 func _build() -> void:
 	var bg := PanelContainer.new()
@@ -106,6 +129,9 @@ func _build() -> void:
 func _populate() -> void:
 	var b := VictoryState.get_breakdown()
 	if b.is_empty():
+		return
+	if _ds2 != null:
+		_ds2.call("populate", b)
 		return
 	var total := int(b.get("total", 0))
 	var threshold := int(b.get("win_threshold", 4000))

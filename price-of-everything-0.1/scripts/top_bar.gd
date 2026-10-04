@@ -165,6 +165,8 @@ var _quest_shown_before := false    # v3.1 — has the module ever appeared this
 var _quest_v31_wide := false        # v3.1 — currently showing full text (intro / post-completion reveal)
 var _quest_v31_animating := false   # v3.1 — a width tween owns _quest_btn.size right now
 var _quest_width_anim: Tween
+## DS2: the mission as a key and a piston (scripts/ds2/mission_slot.gd), in place of the icon and text.
+var _mission_slot: Control
 var _victory_score: Label
 var _victory_target: Label   # "/ N" — the rising win threshold for the current turn
 var _victory_ratio: Label    # v3.1 — replaces the meters + two-line score/target
@@ -1313,6 +1315,23 @@ func _build_quest() -> void:
 	# centred in that extra room, rather than the icon stretching to fill it.
 	_quest_icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	pad.add_child(_quest_icon)
+	_mission_slot = MissionSlot.new()
+	_mission_slot.visible = false
+	pad.add_child(_mission_slot)
+	_mission_slot.celebration_finished.connect(func() -> void: _place_quest.call_deferred())
+	# Hovered, the slot shows its mission on the bar's readout, as the other DS2 modules do: collapsed,
+	# that is the only place the text is.
+	mod.mouse_entered.connect(func() -> void:
+		if _mission_slot_on() and _ds2_readout != null:
+			_ds2_hover = mod
+			_ds2_show_readout())
+	mod.mouse_exited.connect(func() -> void:
+		if _ds2_hover == mod:
+			_ds2_hover = null
+			if _ds2_readout != null:
+				_ds2_readout.visible = false)
+	UiPrefs.mission_slot_changed.connect(func(_on: bool) -> void: _refresh_quest())
+	Tutorial.opener_finished.connect(_on_opener_finished)
 	mod.pressed.connect(func() -> void: _toggle_fly("quest"))
 	# TOP-LEVEL, like the bankruptcy strip. The bar is a PanelContainer:
 	# an ordinary child is both stretched to fill it AND counted in its minimum size, and measured
@@ -1374,6 +1393,16 @@ func _place_quest() -> void:
 	if _quest_v31_animating:
 		return   # a width tween owns .size right now (see _quest_v31_collapse_to_icon)
 	var want_size := _quest_btn.get_combined_minimum_size()
+	if ds2 and _mission_slot_on():
+		# The module's own padding round the slot, measured once both are laid out (the pad's margins
+		# and the button's content margins).
+		var chrome := 24.0
+		if _mission_slot.size.x > 1.0 and _quest_btn.size.x > _mission_slot.size.x:
+			chrome = _quest_btn.size.x - _mission_slot.size.x
+		want_size.x = minf(float(_mission_slot.call("ideal_width")) + chrome, _ds2_quest_area.y - _ds2_quest_area.x)
+		_quest_btn.size = want_size
+		_quest_btn.position = Vector2(roundf(_ds2_quest_area.x), maxf(0.0, roundf((size.y - EDGE_H - want_size.y) * 0.5)))
+		return
 	if UiPrefs.use_topbar_v3_1 and not _quest_v31_wide:
 		want_size.x = maxf(want_size.x, QUEST_ICON_MODULE_W)
 	if ds2:
@@ -1482,6 +1511,8 @@ const DS2_READOUT_W := 360.0
 const DS2_READOUT_GAP := 8.0
 ## The bar's lamps in DS2: Building Detail's pilot lamp, at its diagnostics rows' scale.
 const Ds2Lamp := preload("res://scripts/bdp_v3_lamp.gd")
+const MissionSlot := preload("res://scripts/ds2/mission_slot.gd")
+const MissionsPanel := preload("res://scripts/missions_ds2/missions_panel.gd")
 const DS2_LAMP_SCALE := 0.72
 const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
 
@@ -1652,6 +1683,7 @@ func _ds2_apply() -> void:
 	_queue_refresh()   # Victory's counter and the other modules' DS2 faces
 	queue_redraw()
 	_ds2_queue_centre()
+	_refresh_quest()   # the mission slot is DS2's, so it comes and goes with it
 	_place_quest.call_deferred()
 
 
@@ -1725,6 +1757,8 @@ func _ds2_readout_content(mod: Control) -> Dictionary:
 			return {"stage": "", "name": "Encyclopedia (X)", "detail": "Every good, building and recipe.", "tone": ""}
 		"MenuModule":
 			return {"stage": "", "name": "Menu", "detail": "Save, load, settings and quit.", "tone": ""}
+		"QuestModule":
+			return {"stage": "Mission", "name": _quest_title.text, "detail": _quest_sub.text, "tone": ""}
 	return {"stage": "", "name": str(mod.name), "detail": "", "tone": "off"}
 
 
@@ -1889,6 +1923,8 @@ func _refresh_quest() -> void:
 	var kind: String = _quest_celebrating_kind if _quest_celebrating else MiniQuest.active_mission()
 	_quest_title.text = MiniQuest.title(kind)
 	_quest_sub.text = MiniQuest.subtitle(kind)
+	if _show_mission_slot(kind):
+		return
 	var v31: bool = UiPrefs.use_topbar_v3_1
 	# The tooltip carries the mission text once the label itself is hidden (mirrors
 	# the Transport module's icon+LED-with-tooltip pattern).
@@ -1911,6 +1947,45 @@ func _refresh_quest() -> void:
 		_place_quest.call_deferred()   # the new label/icon decides the width
 	if _fly_open_id == "quest" and not _quest_celebrating:
 		_refresh_open_fly()
+
+
+## The opening steps are over: the missions appear and a shine sweeps across them.
+func _on_opener_finished() -> void:
+	_refresh_quest()
+	for i in 6:
+		await get_tree().process_frame
+	if _mission_slot_on() and _mission_slot.is_visible_in_tree():
+		_mission_slot.call("shine")
+
+
+## True when the DS2 mission slot is the look, and shows `kind` in it: the key holds the title, the piston
+## the count, and the mission's text is the module's tooltip. Otherwise puts the icon and text back.
+func _mission_slot_on() -> bool:
+	return UiPrefs.use_topbar_ds2 and UiPrefs.use_mission_slot and _mission_slot != null
+
+
+func _show_mission_slot(kind: String) -> bool:
+	var on := _mission_slot_on()
+	if _mission_slot != null:
+		_mission_slot.visible = on
+	_quest_text_box.visible = not on
+	_quest_btn.clip_contents = not on
+	if not on:
+		return false
+	var collapsed := PlayerProfile.mission_bar_collapsed
+	_quest_icon.visible = collapsed
+	_quest_icon.modulate = Color.WHITE
+	_quest_icon.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_mission_slot.call("set_collapsed", collapsed, _quest_icon.get_combined_minimum_size().x)
+	var progress: Vector2i = MiniQuest.progress(kind)
+	if _quest_celebrating and progress.y > 1:
+		progress.x = progress.y
+	_mission_slot.call("set_mission", _quest_title.text, progress)
+	_quest_btn.tooltip_text = "%s. %s" % [_quest_title.text, _quest_sub.text]
+	_place_quest.call_deferred()
+	if _fly_open_id == "quest" and not _quest_celebrating:
+		_refresh_open_fly()
+	return true
 
 
 ## v3.1 stage 3, "expand to show the next mission": animate the module's width out to the full
@@ -2414,6 +2489,30 @@ func _fly_quest(vb: VBoxContainer) -> void:
 		var empty := _mini("No missions available yet.", C_TEXT, DS.FS.BODY)
 		empty.custom_minimum_size = Vector2(inner, 0)
 		col.add_child(empty)
+	if _mission_slot_on():
+		col.add_child(DS.section_rule())
+		col.add_child(_mission_collapse_row(inner))
+
+
+## The missions panel's last row: a slide switch that collapses the bar's mission to its icon and counter.
+func _mission_collapse_row(inner: int) -> Control:
+	var row := HBoxContainer.new()
+	row.name = "MissionCollapseRow"
+	row.custom_minimum_size = Vector2(inner, 0)
+	row.add_theme_constant_override("separation", 8)
+	var label := _quest_label("Collapse mission section in the top bar", C_TEXT, 13, true)
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(label)
+	var toggle: Control = Toggle.new()
+	toggle.name = "MissionCollapseToggle"
+	toggle.call("set_right", PlayerProfile.mission_bar_collapsed)
+	toggle.tooltip_text = "Show only the missions icon and the counter. The mission shows when you hover over it."
+	toggle.connect("toggled", func(on: bool) -> void:
+		PlayerProfile.set_mission_bar_collapsed(on)
+		_refresh_quest())
+	row.add_child(toggle)
+	return row
 
 
 ## A compact tree rather than an accordion: the shared Logistics branch and the start branch
@@ -2487,7 +2586,11 @@ func _mission_tree_node(node: Dictionary) -> Control:
 	body.add_child(title)
 	var detail := _quest_label(str(node.get("subtitle", "")), C_TEXT, QUEST_HINT_PT, true)
 	body.add_child(detail)
-	var reward := _quest_label("Reward: %s" % str(node.get("reward", "")), DS.PALETTE.BRASS, QUEST_HINT_PT, true)
+	# A start's missions keep their reward in MiniQuest's mission text, not in the tree definition.
+	var reward_text := str(node.get("reward", ""))
+	if reward_text == "":
+		reward_text = MiniQuest.reward_text(str(node.get("id", "")))
+	var reward := _quest_label("Reward: %s" % reward_text, DS.PALETTE.BRASS, QUEST_HINT_PT, true)
 	body.add_child(reward)
 	row.add_child(body)
 	return row
@@ -2608,6 +2711,9 @@ func _celebrate_mission(kind: String) -> void:
 		return
 	_quest_celebrating = true
 	_quest_celebrating_kind = kind
+	if _mission_slot_on():
+		_celebrate_mission_slot()
+		return
 	# The flash is on the bar, so the flyout has no part in it — close it if a prior celebration
 	# left it open, and do NOT open it now.
 	if _fly_open_id == "quest" and _quest_auto_opened:
@@ -2636,6 +2742,18 @@ func _celebrate_mission(kind: String) -> void:
 	_quest_anim.tween_property(mod, "tick_progress", 1.0, QUEST_TICK_SEC)
 	_quest_anim.tween_interval(QUEST_TICK_HOLD_SEC)
 	_quest_anim.tween_callback(_finish_celebration.bind(kind))
+
+
+## DS2's completion: the piston strokes across with steam, the key changes to the next mission, and the
+## piston snaps back (scripts/ds2/mission_slot.gd). The module itself neither fills nor ticks.
+func _celebrate_mission_slot() -> void:
+	if _fly_open_id == "quest" and _quest_auto_opened:
+		_close_fly()
+	_refresh_quest()   # the piston shows the finished mission's count in full
+	_mission_slot.call("celebrate", func() -> void:
+		_quest_celebrating = false
+		_quest_celebrating_kind = ""
+		_refresh_quest())
 
 
 ## Stage 1 of the completion sequence: the module's plate fills gold. No rim to touch — the
@@ -2948,7 +3066,7 @@ func _open_fly(id: String) -> void:
 	_fly_scrim.visible = true
 	_fly_panel = PanelContainer.new()
 	_fly_panel.name = "Flyout_%s" % id   # stable target (tutorial spotlight / e2e)
-	var ds2_sheet: bool = UiPrefs.use_topbar_ds2 and id in DS2_SHEET_FLYOUTS
+	var ds2_sheet: bool = UiPrefs.use_topbar_ds2 and (id in DS2_SHEET_FLYOUTS or (id == "quest" and _mission_slot_on()))
 	if ds2_sheet:
 		_ds2_sheet_frame(_fly_panel)
 	elif id == "rankings":
@@ -3022,8 +3140,14 @@ func _open_fly(id: String) -> void:
 			anchor = _council_btn
 			(_council_btn as _ModuleBtn).active = true
 		"quest":
-			# 120 tall as specced, and wide enough that the longest step sits on one line.
-			_fly_quest(vb)   # measures its own text and sets the panel width
+			if ds2_sheet:
+				# DS2: the missions panel, one mimic board per tab.
+				vb.add_child(_ds2_sheet_head("Missions"))
+				vb.add_child(MissionsPanel.new())
+				vb.add_child(_mission_collapse_row(int(MissionsPanel.WIDTH)))
+			else:
+				# 120 tall as specced, and wide enough that the longest step sits on one line.
+				_fly_quest(vb)   # measures its own text and sets the panel width
 			anchor = _quest_btn
 			(_quest_btn as _ModuleBtn).active = true
 	_fly_layer.add_child(_fly_panel)

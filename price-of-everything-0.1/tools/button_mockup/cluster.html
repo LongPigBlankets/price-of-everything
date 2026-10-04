@@ -1372,6 +1372,189 @@ function toggleKnob() {
 }
 
 /**
+ * The top bar's mission piston: a painted steel track with a slot down its length and a gland at its left
+ * end, a polished rod, and a brass piston head carrying a blank cream face the game prints the mission's
+ * progress on. Rendered apart so the game can drive the head along the slot and draw the rod behind it.
+ */
+const MSLOT = { W: 270, H: 70, M: 6, slotX0: 44, slotX1: 252, slotH: 40, glandX: 30, glandR: 13,
+  headW: 100, headH: 48, headPad: 8, faceW: 76, faceH: 28, rodL: 240, rodR: 6, rodH: 22 };
+function missionTrack() {
+  const { W, H, M, slotX0, slotX1, slotH, glandX, glandR } = MSLOT, g = new THREE.Group();
+  const pw = W - 2 * M, ph = H - 2 * M, slotW = slotX1 - slotX0;
+  const paint = weatheredPaint(pw, ph, '#3d6a4c', { wear: 0.55 });
+  const paintMat = new THREE.MeshStandardMaterial({ map: faceTexture(paint.colour, pw, ph), bumpMap: faceTexture(paint.bump, pw, ph, false), bumpScale: 0.7, metalness: 0.45, roughness: 0.55, envMap: studioEnv, envMapIntensity: 0.55 });
+  const plate = rrShape(pw, ph, 14);
+  plate.holes.push(rr(new THREE.Path(), slotW, slotH, 9, (slotX0 + slotX1) / 2 - W / 2, 0));
+  const body = new THREE.Mesh(extrude(plate, 5, 1.6, 1.3, 3), [paintMat, MAT.plateSide]);
+  body.castShadow = body.receiveShadow = true; body.position.set(W / 2, 0, H / 2); g.add(body);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(slotW + 2, slotH + 2).rotateX(-Math.PI / 2), MAT.gap);
+  floor.position.set((slotX0 + slotX1) / 2, 0.3, H / 2); floor.receiveShadow = true; g.add(floor);
+  // Two rails along the slot's floor that the head rides on.
+  const railMat = new THREE.MeshStandardMaterial({ color: 0x8e949b, map: noiseTexture(18, 60, 40), metalness: 1, roughness: 0.4, envMap: studioEnv, envMapIntensity: 0.8 });
+  for (const dz of [-slotH * 0.3, slotH * 0.3]) {
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, slotW - 6, 12).rotateZ(Math.PI / 2), railMat);
+    rail.position.set((slotX0 + slotX1) / 2, 1.6, H / 2 + dz); rail.castShadow = rail.receiveShadow = true; g.add(rail);
+  }
+  // The gland the rod leaves through: a turned steel collar on its side, bolted to the plate.
+  const collarMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, map: noiseTexture(18, 60, 40), metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 0.9 });
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(glandR, glandR, 18, 28).rotateZ(Math.PI / 2), collarMat);
+  collar.position.set(glandX, glandR * 0.55 + 5, H / 2); collar.castShadow = collar.receiveShadow = true; g.add(collar);
+  const lip = new THREE.Mesh(new THREE.CylinderGeometry(glandR + 2, glandR + 2, 4, 28).rotateZ(Math.PI / 2), collarMat);
+  lip.position.set(glandX + 9, glandR * 0.55 + 5, H / 2); lip.castShadow = lip.receiveShadow = true; g.add(lip);
+  for (const [x, z] of [[16, 15], [16, H - 15], [W - 16, 15], [W - 16, H - 15]]) {
+    const s = screw(3.2); s.position.set(x, 6.6, z); g.add(s);
+  }
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
+  return g;
+}
+function missionRod() {
+  const { rodL, rodR, rodH } = MSLOT, g = new THREE.Group();
+  const chrome = new THREE.MeshStandardMaterial({ color: 0xc9ced4, map: noiseTexture(6, 30, 70), metalness: 1, roughness: 0.12, envMap: studioEnv, envMapIntensity: 1.1 });
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(rodR, rodR, rodL + 40, 24).rotateZ(Math.PI / 2), chrome);
+  rod.position.set(rodL / 2, rodR + 2, rodH / 2); rod.castShadow = true; g.add(rod);
+  return g;
+}
+function missionHead() {
+  const { headW, headH, headPad, faceW, faceH } = MSLOT, W = headW + 2 * headPad, H = headH + 2 * headPad, g = new THREE.Group();
+  const tarnish = (r) => `rgba(${60 + r() * 20},${44 + r() * 14},${18 + r() * 10},${0.25 + r() * 0.35})`;
+  const brassSide = new THREE.MeshStandardMaterial({ color: 0xa8843f, metalness: 1, roughness: 0.4, envMap: studioEnv, envMapIntensity: 0.9 });
+  const brass = plateMaterial(headW, headH, { icons: [], buttons: [], screws: [], base: BRASS_TRIM_CANVAS, rub: '255,236,180', flecks: tarnish });
+  const block = new THREE.Mesh(extrude(rrShape(headW, headH, 9), 9, 2.4, 2, 4), [brass, brassSide]);
+  block.castShadow = block.receiveShadow = true; block.position.set(W / 2, 0, H / 2); g.add(block);
+  const top = new THREE.MeshPhysicalMaterial({ map: faceTexture(canvas2d(faceW, faceH, (c) => paintPlastic(c, faceW, faceH)), faceW, faceH), ...KNOB_PLASTIC });
+  const face = new THREE.Mesh(extrude(rrShape(faceW, faceH, 5), 1.2, 0.8, 0.6, 2), [top, MAT.skirt]);
+  face.castShadow = face.receiveShadow = true; face.position.set(W / 2, 11.2, H / 2); g.add(face);
+  for (const x of [headPad + 6.5, W - headPad - 6.5]) { const s = screw(2.6); s.position.set(x, 11.6, H / 2); g.add(s); }
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
+  return g;
+}
+
+/**
+ * The missions panel's mimic board: a broad plate of dark slate enamel, like a signal box's track diagram,
+ * with a screw in each corner. The game paints the lines, lamps and names on it and crops it to the board.
+ */
+const MBOARD = { W: 2000, H: 820, M: 8 };
+function missionBoardPlate() {
+  const { W, H, M } = MBOARD, g = new THREE.Group(), pw = W - 2 * M, ph = H - 2 * M;
+  const paint = weatheredPaint(pw, ph, '#26302e', { wear: 0.35 });
+  const mat = new THREE.MeshStandardMaterial({ map: faceTexture(paint.colour, pw, ph), bumpMap: faceTexture(paint.bump, pw, ph, false), bumpScale: 0.5, metalness: 0.15, roughness: 0.42, envMap: studioEnv, envMapIntensity: 0.45 });
+  const plate = new THREE.Mesh(extrude(rrShape(pw, ph, 18), 4, 1.6, 1.3, 3), [mat, MAT.plateSide]);
+  plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
+  for (const [x, z] of [[30, 30], [W - 30, 30], [30, H - 30], [W - 30, H - 30]]) { const sc = screw(5); sc.position.set(x, 5.8, z); g.add(sc); }
+  return g;
+}
+
+/**
+ * The points lever at a mission choice: a cast quadrant bolted to the board and a lever with a cream grip,
+ * rendered at rest in the middle (no branch taken) and thrown up or down (the branch above or below taken).
+ */
+const PLEVER = { S: 96 };
+function pointsLever(dir) {
+  const { S } = PLEVER, g = new THREE.Group(), c = S / 2;
+  const iron = new THREE.MeshStandardMaterial({ color: 0x4a4f55, map: noiseTexture(26, 50, 40), metalness: 0.75, roughness: 0.5, envMap: studioEnv, envMapIntensity: 0.6 });
+  const quad = new THREE.Shape(); quad.moveTo(-10, -30); quad.absarc(0, 0, 30, -Math.PI / 2, Math.PI / 2, false); quad.lineTo(-10, 30); quad.lineTo(-10, -30);
+  const base = new THREE.Mesh(extrude(quad, 5, 1.4, 1.1, 3), iron); base.castShadow = base.receiveShadow = true; base.position.set(c - 14, 0, c); g.add(base);
+  for (const dz of [-20, 20]) { const b = screw(3); b.position.set(c - 18, 6.6, c + dz); g.add(b); }
+  const steel = new THREE.MeshStandardMaterial({ color: 0xb3bac2, map: noiseTexture(8, 20, 60), metalness: 1, roughness: 0.2, envMap: studioEnv, envMapIntensity: 1.0 });
+  const angle = dir === 'up' ? -0.62 : dir === 'down' ? 0.62 : 0;
+  const arm = new THREE.Group(); arm.position.set(c - 14, 9, c); arm.rotation.y = -angle;
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(34, 4, 6), steel); bar.position.set(17, 0, 0); bar.castShadow = true; arm.add(bar);
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(6.5, 6.5, 10, 24), MAT.plastic); grip.position.set(36, 3, 0); grip.castShadow = true; arm.add(grip);
+  const pivot = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 6, 20), steel); pivot.castShadow = true; arm.add(pivot);
+  g.add(arm);
+  g.add(shadowCatcher(S, S, c, c, 0.05, 0.6));
+  return g;
+}
+
+/**
+ * A dark metal plate whole: blackened gunmetal from edge to edge on a slab with a rounded, bevelled edge and a
+ * screw in each corner, for a panel's own sections (the Victory panel's tracks). A 9-slice: the corners keep
+ * the screws and the radius, the middle stretches; the wear is fine enough not to show the stretch.
+ */
+const DMETAL = { W: 400, H: 560, M: 10, r: 16, screwInset: 22 };
+function darkMetalPlate() {
+  const { W, H, M, r, screwInset } = DMETAL, g = new THREE.Group(), pw = W - 2 * M, ph = H - 2 * M;
+  const screws = [[screwInset, screwInset], [pw - screwInset, screwInset], [screwInset, ph - screwInset], [pw - screwInset, ph - screwInset]];
+  const mat = plateMaterial(pw, ph, { icons: [], buttons: [], screws: screws.map(([x, y]) => ({ x, y })), base: DARK_STEEL_CANVAS, rub: '130,138,150' });
+  const slab = new THREE.Mesh(extrude(rrShape(pw, ph, r), 4, 2, 1.6, 4), [mat, MAT.plateSide]);
+  slab.castShadow = slab.receiveShadow = true; slab.position.set(W / 2, 0, H / 2); g.add(slab);
+  for (const [x, y] of screws) { const sc = screw(4.2); sc.position.set(M + x, 6.2, M + y); g.add(sc); }
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
+  return g;
+}
+
+/**
+ * The bottom bar as a factory control desk: a plate of the top bar's weathered navy steel the bar's full width,
+ * rendered at its size so its wear never stretches, with a screw
+ * at each end; and the gunmetal collar each round push button sits in, a knurled ring round a dark recess.
+ * The plate runs off the bottom of the screen, so only its top corners are rounded on screen.
+ */
+const DESK = { W: 1800, H: 150, M: 10, r: 22 };
+function deskPlate() {
+  const { W, H, M, r } = DESK, g = new THREE.Group(), pw = W - 2 * M, ph = H - M + 30;
+  const screws = [{ x: 34, y: 34 }, { x: pw - 34, y: 34 }];
+  const face = { icons: [], buttons: [], screws, base: NAVY_STEEL_CANVAS, rub: '120,136,160' };
+  const steelSide = new THREE.MeshStandardMaterial({ color: 0x3a4250, metalness: 1, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
+  const plate = new THREE.Mesh(extrude(rrShape(pw, ph, r), 5, 3, 2.4, 5), [plateMaterial(pw, ph, face), steelSide]);
+  plate.castShadow = plate.receiveShadow = true; plate.position.set(W / 2, 0, M + ph / 2); g.add(plate);
+  for (const sc of screws) { const m = screw(5); m.position.set(M + sc.x, 8.2, M + sc.y); g.add(m); }
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.55));
+  return g;
+}
+/**
+ * The main menu's plate: highly polished brushed steel, its grain across its width, a soft sheen band where it
+ * catches the light, a chamfered edge and a polished screw in each corner. Rendered at the menu column's size
+ * on a 1080p screen and drawn as a 9-slice (corner MPLATE.corner) so a taller screen stretches only its middle.
+ */
+const MPLATE = { W: 834, H: 1346, M: 12, r: 18, corner: 64 };
+function menuPlate() {
+  const { W, H, M, r } = MPLATE, g = new THREE.Group(), pw = W - 2 * M, ph = H - 2 * M;
+  const steel = canvas2d(pw, ph, (c) => {
+    const base = c.createLinearGradient(0, 0, pw, ph);
+    base.addColorStop(0, '#9aa1a9'); base.addColorStop(0.45, '#848b94'); base.addColorStop(1, '#6c737c');
+    c.fillStyle = base; c.fillRect(0, 0, pw, ph);
+    for (let i = 0; i < 60; i++) { c.fillStyle = `rgba(${rand() > 0.5 ? '255,255,255' : '0,0,0'},${0.012 + rand() * 0.025})`; c.fillRect(0, rand() * ph, pw, 1 + rand() * 14); }
+    for (let i = 0; i < Math.round(pw * ph / 30); i++) {
+      const y = rand() * ph, x = rand() * pw - 80, l = 40 + rand() * 320;
+      c.strokeStyle = `rgba(${rand() > 0.5 ? '250,251,253' : '30,34,40'},${0.04 + rand() * 0.08})`; c.lineWidth = 0.3 + rand() * 0.5;
+      c.beginPath(); c.moveTo(x, y); c.lineTo(x + l, y + (rand() - 0.5) * 0.3); c.stroke();
+    }
+    // The sheen: a broad soft band running down from the upper left, where the polish catches the light.
+    const sheen = c.createLinearGradient(0, ph * 0.05, pw * 0.9, ph * 0.5);
+    sheen.addColorStop(0, 'rgba(255,255,255,0)'); sheen.addColorStop(0.42, 'rgba(255,255,255,0.22)');
+    sheen.addColorStop(0.55, 'rgba(255,255,255,0.08)'); sheen.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = sheen; c.fillRect(0, 0, pw, ph);
+  });
+  const polished = new THREE.MeshPhysicalMaterial({ map: faceTexture(steel, pw, ph), metalness: 1, roughness: 0.26, anisotropy: 0.8, clearcoat: 0.4, clearcoatRoughness: 0.15, envMap: studioEnv, envMapIntensity: 0.4 });
+  const edge = new THREE.MeshStandardMaterial({ color: 0xb8bec5, metalness: 1, roughness: 0.18, envMap: studioEnv, envMapIntensity: 0.9 });
+  const plate = new THREE.Mesh(extrude(rrShape(pw - 8, ph - 8, r), 5, 4, 4, 1), [polished, edge]);
+  plate.castShadow = plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
+  const chrome = new THREE.MeshStandardMaterial({ color: 0xd2d7dd, map: noiseTexture(6, 20, 60), metalness: 1, roughness: 0.12, envMap: studioEnv, envMapIntensity: 1.15 });
+  for (const [x, z] of [[M + 30, M + 30], [W - M - 30, M + 30], [M + 30, H - M - 30], [W - M - 30, H - M - 30]]) {
+    const sc = screw(6); sc.traverse((o) => { if (o.isMesh) o.material = chrome; }); sc.position.set(x, 13, z); g.add(sc);
+  }
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.5));
+  return g;
+}
+const DBEZEL = { S: 200, rOut: 84, rIn: 74 };
+function deskBezel() {
+  const { S, rOut, rIn } = DBEZEL, g = new THREE.Group(), c = S / 2;
+  const ring = new THREE.Shape(); ring.absarc(0, 0, rOut, 0, Math.PI * 2, false);
+  const hole = new THREE.Path(); hole.absarc(0, 0, rIn, 0, Math.PI * 2, true); ring.holes.push(hole);
+  const chrome = MAT.frame;                                              // the DS2 bezels' worn gunmetal
+  const collar = new THREE.Mesh(extrude(ring, 5, 1.6, 1.3, 4), chrome);
+  collar.castShadow = collar.receiveShadow = true; collar.position.set(c, 0, c); g.add(collar);
+  for (let i = 0; i < 60; i++) {                                           // the knurling round its rim
+    const a = (i / 60) * Math.PI * 2, k = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.2, 5.5), chrome);
+    k.position.set(c + Math.cos(a) * (rOut - 4), 7.4, c + Math.sin(a) * (rOut - 4)); k.rotation.y = -a; k.castShadow = true; g.add(k);
+  }
+  const recess = new THREE.Mesh(new THREE.CircleGeometry(rIn, 64).rotateX(-Math.PI / 2), MAT.gap);
+  recess.position.set(c, 0.4, c); recess.receiveShadow = true; g.add(recess);
+  g.add(shadowCatcher(S, S, c, c, 0.05, 0.6));
+  return g;
+}
+
+/**
  * A factory door for Labour and Wages, one per kind of worker: a painted steel leaf in a dark steel jamb,
  * a small wired-glass window near its top (dark, or lit warm from inside when that kind of worker is
  * employed), a lever handle, and a brushed steel kick plate across its foot, where the game engraves the
@@ -2185,7 +2368,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
+  // missionslot, missionboard, darkmetal, desk, menuplate, tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -7287,6 +7470,44 @@ async function exportLayers() {
     await post('toggle_slot', stage([0, 0, TOGGLE.W, TOGGLE.H], [toggleSlot()]).grab());
     await post('toggle_knob', stage([0, 0, TOGGLE.knob, TOGGLE.knob], [toggleKnob()]).grab());
     layout.toggle = { size: [TOGGLE.W, TOGGLE.H], slot: [TOGGLE.slotW, TOGGLE.slotH], knob: TOGGLE.knob, knob_size: [TOGGLE.knobW, TOGGLE.knobH] };
+  });
+
+  // --- the top bar's mission piston: its track, its rod and its head.
+  if (want('missionslot')) await withSeed(480, async () => {
+    const { W, H, headW, headH, headPad, faceW, faceH, rodL, rodH } = MSLOT;
+    await post('mission_track', stage([0, 0, W, H], [missionTrack()]).grab());
+    await post('mission_rod', stage([0, 0, rodL, rodH], [missionRod()]).grab());
+    await post('mission_head', stage([0, 0, headW + 2 * headPad, headH + 2 * headPad], [missionHead()]).grab());
+    layout.mission_slot = { size: [W, H], slot: [MSLOT.slotX0, MSLOT.slotX1, MSLOT.slotH], gland: [MSLOT.glandX, MSLOT.glandR],
+      rod: [rodL, rodH, MSLOT.rodR], head: [headW + 2 * headPad, headH + 2 * headPad, headPad], face: [faceW, faceH] };
+  });
+
+  // --- the missions panel: its mimic board and the points lever at a choice.
+  if (want('missionboard')) await withSeed(481, async () => {
+    await post('mission_board', stage([0, 0, MBOARD.W, MBOARD.H], [missionBoardPlate()]).grab());
+    for (const dir of ['mid', 'up', 'down']) await post(`points_lever_${dir}`, stage([0, 0, PLEVER.S, PLEVER.S], [pointsLever(dir)]).grab());
+    layout.mission_board = { size: [MBOARD.W, MBOARD.H], margin: MBOARD.M };
+    layout.points_lever = { size: [PLEVER.S, PLEVER.S] };
+  });
+
+  // --- a dark metal plate whole, edge to edge (the Victory panel's tracks).
+  if (want('darkmetal')) await withSeed(482, async () => {
+    await post('dark_metal_plate', stage([0, 0, DMETAL.W, DMETAL.H], [darkMetalPlate()]).grab());
+    layout.dark_metal_plate = { size: [DMETAL.W, DMETAL.H], margin: DMETAL.M, corner: DMETAL.M + 44 };
+  });
+
+  // --- the bottom bar as a control desk: its plate and the push buttons' collars.
+  // --- the main menu's polished brushed steel plate.
+  if (want('menuplate')) await withSeed(487, async () => {
+    await post('menu_plate', stage([0, 0, MPLATE.W, MPLATE.H], [menuPlate()]).grab());
+    layout.menu_plate = { size: [MPLATE.W, MPLATE.H], margin: MPLATE.M, corner: MPLATE.corner };
+  });
+
+  if (want('desk')) await withSeed(483, async () => {
+    await post('desk_plate', stage([0, 0, DESK.W, DESK.H], [deskPlate()]).grab());
+    await post('desk_bezel', stage([0, 0, DBEZEL.S, DBEZEL.S], [deskBezel()]).grab());
+    layout.desk_plate = { size: [DESK.W, DESK.H], margin: DESK.M };
+    layout.desk_bezel = { size: [DBEZEL.S, DBEZEL.S], ring: [DBEZEL.rIn, DBEZEL.rOut] };
   });
 
   // --- Labour and Wages' factory doors, the window dark and lit.

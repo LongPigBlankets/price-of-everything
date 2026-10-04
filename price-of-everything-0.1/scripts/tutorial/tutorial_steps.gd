@@ -86,6 +86,27 @@ const STUB_TILE := "tile_6_8"     # hill, unsurveyed coal deposit (deeper integr
 ##   goto      : on advance, jump to this step id instead of the next (branch reconverge)
 ##   done      : {wake:[signals], decide:<predicate>} — empty decide = info step (Next)
 ##   advance   : "auto" (on decide) or "next" (info card)
+## The opening steps every new game plays before the missions take over: the welcome, the screen tour,
+## tiles and the recipe diagram. The welcome says what follows.
+const OPENER_IDS := ["welcome", "ui_primer", "tile_basics_select", "tile_basics_land", "tile_basics_features",
+	"recipe_inputs_intro", "recipe_outputs_intro"]
+
+
+static func opener_steps() -> Array:
+	var out: Array = []
+	for step: Variant in steps():
+		var st := (step as Dictionary).duplicate(true)
+		if not OPENER_IDS.has(str(st.get("id", ""))):
+			continue
+		if str(st.id) == "welcome":
+			st["paragraphs"] = [
+				"Carbon and Capital is an industrial simulator where you take over a business and expand it, integrating along the way until you are the biggest company in Taralia.",
+				"A few quick steps show you the screen, your tiles and how recipes work. After that you are in charge, and the missions at the top of the screen guide you.",
+			]
+		out.append(st)
+	return out
+
+
 static func steps() -> Array:
 	return [
 		{

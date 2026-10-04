@@ -182,12 +182,27 @@ var monetised_good := ""
 ## Does the deposits mission include "supply coal to your steel building"? -1 until the mission
 ## is triggered, then frozen. See _deposits_wants_coal_steel.
 var deposits_coal_step := -1
+## The themed boards (data/mission_boards.json): finished stations, rewards granted, the branch the player
+## chose at each choice point (choice id -> station id), and the board whose current station the top bar shows
+## ("" = the start's own missions, as before boards).
+var board_done: Dictionary = {}
+var board_granted: Dictionary = {}
+var board_choices: Dictionary = {}
+var followed_board := ""
+## What each counted station had already reached when it opened (station id -> value), and the running totals
+## the counted verbs read: units sold, buildings and infrastructure the player built, buildings opened.
+var board_baseline: Dictionary = {}
+var units_sold_total := 0
+var buildings_built := 0
+var infra_built := 0
+var buildings_opened := 0
 
 
 func _ready() -> void:
 	await get_tree().process_frame
 	MatchState.state_reset.connect(_on_state_reset)
 	Production.turn_processed.connect(_on_turn_processed)
+	Construction.construction_completed.connect(_on_construction_completed)
 	# Why TWO more hooks, not just turn_processed? A start whose chain is known up front should
 	# show the module on turn 1, not after the first turn resolves. The ruleset (with its
 	# start_id) is only in place once the snapshot is applied, which match_loaded announces — but
@@ -213,6 +228,15 @@ func _on_state_reset() -> void:
 	generic_granted = {}
 	monetised_good = ""
 	deposits_coal_step = -1
+	board_done = {}
+	board_granted = {}
+	board_choices = {}
+	followed_board = ""
+	board_baseline = {}
+	units_sold_total = 0
+	buildings_built = 0
+	infra_built = 0
+	buildings_opened = 0
 	quest_changed.emit()
 
 
@@ -228,6 +252,15 @@ func export_fields() -> Dictionary:
 		"generic_granted": generic_granted.duplicate(true),
 		"monetised_good": monetised_good,
 		"deposits_coal_step": deposits_coal_step,
+		"board_done": board_done.duplicate(true),
+		"board_granted": board_granted.duplicate(true),
+		"board_choices": board_choices.duplicate(true),
+		"followed_board": followed_board,
+		"board_baseline": board_baseline.duplicate(true),
+		"units_sold_total": units_sold_total,
+		"buildings_built": buildings_built,
+		"infra_built": infra_built,
+		"buildings_opened": buildings_opened,
 	}
 
 
@@ -239,6 +272,15 @@ func import_fields(fields: Dictionary) -> void:
 	generic_granted = (fields.get("generic_granted", {}) as Dictionary).duplicate(true)
 	monetised_good = str(fields.get("monetised_good", ""))
 	deposits_coal_step = int(fields.get("deposits_coal_step", -1))
+	board_done = (fields.get("board_done", {}) as Dictionary).duplicate(true)
+	board_granted = (fields.get("board_granted", {}) as Dictionary).duplicate(true)
+	board_choices = (fields.get("board_choices", {}) as Dictionary).duplicate(true)
+	followed_board = str(fields.get("followed_board", ""))
+	board_baseline = (fields.get("board_baseline", {}) as Dictionary).duplicate(true)
+	units_sold_total = int(fields.get("units_sold_total", 0))
+	buildings_built = int(fields.get("buildings_built", 0))
+	infra_built = int(fields.get("infra_built", 0))
+	buildings_opened = int(fields.get("buildings_opened", 0))
 	quest_changed.emit()
 
 
@@ -428,6 +470,13 @@ func missions() -> Array:
 
 ## The first unfinished mission, or the last one when they are all done.
 func active_mission() -> String:
+	if has_match_boards():
+		var board := effective_followed_board()
+		if board != "":
+			return board_current_station(board)
+		# Every board finished: rest on the last station of the last board.
+		var last: Array = (match_boards().back() as Dictionary).get("nodes", []) as Array
+		return str((last.back() as Dictionary).get("id", "")) if not last.is_empty() else ""
 	var list := missions()
 	for kind in list:
 		if not _all_done(str(kind)):
@@ -448,6 +497,9 @@ func active_mission() -> String:
 func title(kind := "") -> String:
 	if kind == "":
 		kind = active_mission()
+	var station := _board_node(kind)
+	if not station.is_empty():
+		return str(station.get("title", ""))
 	if kind in ["middleman_contracts", "tile_stockpile", "global_license", "global_surplus"]:
 		return str(_generic_node(kind).get("title", ""))
 	if kind == "monetise":
@@ -460,6 +512,9 @@ func title(kind := "") -> String:
 func subtitle(kind := "") -> String:
 	if kind == "":
 		kind = active_mission()
+	var station := _board_node(kind)
+	if not station.is_empty():
+		return station_condition_text(station)
 	if kind in ["middleman_contracts", "tile_stockpile", "global_license", "global_surplus"]:
 		return str(_generic_node(kind).get("subtitle", ""))
 	if _all_done(kind):
@@ -489,6 +544,36 @@ func steps(kind := "") -> Array:
 	return spec().get("steps", []) as Array
 
 
+## The mission's count for the top bar, as Vector2i(have, need), or Vector2i.ZERO when the mission asks
+## for one thing only. A research mission counts its condition; a mission of several steps counts steps.
+func progress(kind := "") -> Vector2i:
+	if kind == "":
+		kind = active_mission()
+	var station := _board_node(kind)
+	if not station.is_empty():
+		return _station_progress(station)
+	if kind in ["middleman_contracts", "tile_stockpile", "global_license", "global_surplus"]:
+		var d := ResearchState.get_unlock_def(str(_generic_node(kind).get("research", "")))
+		if d.is_empty() or ResearchState.is_unlocked(str(d.get("title", ""))):
+			return Vector2i.ZERO
+		var need := int(d.get("qty", 0))
+		var count := maxi(1, str(d.get("unit", "")).to_int())
+		match str(d.get("action", "")):
+			"Ship Through Logistics Intermediary":
+				return ResearchState.intermediary_shipping_progress(need, count)
+			"Profit":
+				return Vector2i(mini(ResearchState.profit_streak(float(need)), count), count) if count > 1 else Vector2i.ZERO
+		return Vector2i.ZERO
+	var list := steps(kind)
+	if list.size() < 2:
+		return Vector2i.ZERO
+	var done := 0
+	for i in list.size():
+		if step_done(i, kind):
+			done += 1
+	return Vector2i(done, list.size())
+
+
 func step_done(i: int, kind := "") -> bool:
 	var d := _slots(kind if kind != "" else active_mission())
 	return i < d.size() and bool(d[i])
@@ -497,6 +582,9 @@ func step_done(i: int, kind := "") -> bool:
 func reward_text(kind := "") -> String:
 	if kind == "":
 		kind = active_mission()
+	var station := _board_node(kind)
+	if not station.is_empty():
+		return str((station.get("reward", {}) as Dictionary).get("text", ""))
 	if kind in ["middleman_contracts", "tile_stockpile", "global_license", "global_surplus"]:
 		return str(_generic_node(kind).get("reward", ""))
 	if kind == "monetise":
@@ -544,6 +632,13 @@ func _on_turn_processed(summary: Dictionary) -> void:
 	var produced: Dictionary = summary.get("produced", {})
 	var consumed: Dictionary = summary.get("consumed", {})
 	var sold: Dictionary = summary.get("sold", {})
+	if has_match_boards():
+		# A start with its own boards runs on them alone: the legacy chain and the shared Logistics
+		# missions would grant their rewards a second time under other names.
+		_count_turn(summary)
+		_eval_boards(summary)
+		quest_changed.emit()
+		return
 	_eval_generic(summary)
 	if chain == "":
 		chain = _pick_chain(produced)
@@ -946,7 +1041,7 @@ func _announce(kind: String) -> void:
 	var mission := title(kind)
 	var reward := reward_text(kind)
 	mission_completed.emit(kind, mission, reward)
-	MatchState.request_toast("Mission complete: %s\nReward: %s" % [mission, reward], "success")
+	MatchState.request_toast(("Mission complete: %s\nReward: %s" % [mission, reward]) if reward != "" else "Mission complete: %s" % mission, "success")
 
 
 ## The modifier ids one mission's reward creates. Neither of the magnate rewards is a single id
@@ -974,3 +1069,486 @@ func _add(id: String, fields: Dictionary) -> void:
 	var m := fields.duplicate(true)
 	m["id"] = id
 	Modifiers.add(m)
+
+
+
+# ── Mission boards ───────────────────────────────────────────────────────────
+# The missions panel shows one board per tab. A start with boards in data/mission_boards.json (Metal Magnate:
+# its Tutorial and its own board) shows those; any other start shows its legacy missions as boards. A board is a
+# small graph of stations: each waits on all its parents, and stations that share a `choice` are alternatives
+# the player picks between by throwing the points lever (choose()); the others close for good, with every
+# station after them. A station that counts something counts from the turn it opened (board_baseline).
+
+const BOARDS_PATH := "res://data/mission_boards.json"
+## Where the legacy missions stand on their boards: [row, lane].
+const LEGACY_LAYOUT := {
+	"middleman_contracts": [0, 0], "tile_stockpile": [1, 0], "global_license": [0, 1], "global_surplus": [2, 0],
+	"steel": [0, 0], "deposits": [1, 0], "integrate": [0, 0], "monetise": [1, 0],
+}
+const BOARD_REWARD_PREFIX := "mission_board_"
+## Building types that count as infrastructure for "Infrastructure" (the port is a building, not track).
+const INFRA_BUILDINGS := ["b_005", "b_006", "b_017", "b_018", "b_019"]
+## Verbs measured from the turn their station opened: the value then is kept in board_baseline.
+const COUNTED_VERBS := ["Units Sold", "Build Any", "Infrastructure", "Research Count", "Build Consumers", "Produce Tier", "Open Building"]
+
+var _boards_cache: Array = []
+
+
+## Every board definition in the file, read once.
+func board_definitions() -> Array:
+	if _boards_cache.is_empty():
+		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(BOARDS_PATH))
+		if parsed is Dictionary:
+			_boards_cache = ((parsed as Dictionary).get("boards", []) as Array).duplicate(true)
+	return _boards_cache
+
+
+## The boards this match plays: enabled ones whose `starts` name the match's start (or that name none).
+func match_boards() -> Array:
+	var start := _effective_start_id()
+	var out: Array = []
+	for raw: Variant in board_definitions():
+		var def := raw as Dictionary
+		if not bool(def.get("enabled", true)):
+			continue
+		var starts: Array = def.get("starts", []) as Array
+		if not starts.is_empty() and not starts.has(start):
+			continue
+		out.append(def)
+	return out
+
+
+func has_match_boards() -> bool:
+	return not match_boards().is_empty()
+
+
+func _board_def(board_id: String) -> Dictionary:
+	for raw: Variant in board_definitions():
+		if str((raw as Dictionary).get("id", "")) == board_id:
+			return raw as Dictionary
+	return {}
+
+
+func _board_node(node_id: String) -> Dictionary:
+	if node_id == "":
+		return {}
+	for raw: Variant in board_definitions():
+		for node: Variant in (raw as Dictionary).get("nodes", []) as Array:
+			if str((node as Dictionary).get("id", "")) == node_id:
+				return node as Dictionary
+	return {}
+
+
+## The boards for the panel's tabs. Each node carries col (its row, top to bottom), lane (its side), parents,
+## choice, state and progress, so the panel only draws. States: complete, active, choice (its choice is still
+## to make), locked, closed (a branch not taken).
+func mission_boards() -> Array:
+	if not is_available():
+		return []
+	var out: Array = []
+	if not has_match_boards():
+		var trees := mission_trees()
+		trees.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return str(a.get("id", "")) != GENERIC_TREE_ID and str(b.get("id", "")) == GENERIC_TREE_ID)
+		for tree: Variant in trees:
+			out.append(_legacy_board(tree as Dictionary))
+		return out
+	for raw: Variant in match_boards():
+		var def := raw as Dictionary
+		var board := {"id": str(def.get("id", "")), "title": str(def.get("title", "")), "subtitle": str(def.get("subtitle", "")),
+			"themed": true, "nodes": []}
+		for node: Variant in def.get("nodes", []) as Array:
+			var n := (node as Dictionary).duplicate(true)
+			n["state"] = board_node_state(str(n.get("id", "")))
+			n["subtitle"] = station_condition_text(n)
+			n["reward"] = str((n.get("reward", {}) as Dictionary).get("text", ""))
+			n["progress"] = progress(str(n.get("id", "")))
+			(board.nodes as Array).append(n)
+		out.append(board)
+	return out
+
+
+func _legacy_board(tree: Dictionary) -> Dictionary:
+	var board := {"id": str(tree.get("id", "")), "title": str(tree.get("title", "")), "subtitle": str(tree.get("subtitle", "")),
+		"themed": false, "nodes": []}
+	for raw: Variant in tree.get("nodes", []) as Array:
+		var node := (raw as Dictionary).duplicate(true)
+		var id := str(node.get("id", ""))
+		var at: Array = LEGACY_LAYOUT.get(id, [0, 0]) as Array
+		var parents: Array = (node.get("parents", []) as Array).duplicate()
+		if parents.is_empty() and str(node.get("parent", "")) != "":
+			parents = [str(node.parent)]
+		node["col"] = int(at[0])
+		node["lane"] = int(at[1])
+		node["parents"] = parents
+		if str(node.get("reward", "")) == "":
+			node["reward"] = reward_text(str(node.get("kind", id)))
+		node["progress"] = progress(str(node.get("kind", id)))
+		(board.nodes as Array).append(node)
+	return board
+
+
+## A board station's state. See mission_boards().
+func board_node_state(node_id: String) -> String:
+	var node := _board_node(node_id)
+	if node.is_empty():
+		return "locked"
+	if bool(board_done.get(node_id, false)):
+		return "complete"
+	if _station_closed(node, 0):
+		return "closed"
+	for parent: Variant in node.get("parents", []) as Array:
+		if not bool(board_done.get(str(parent), false)):
+			return "locked"
+	var group := str(node.get("choice", ""))
+	if group != "" and not board_choices.has(group):
+		return "choice"
+	return "active"
+
+
+## True when this station, or one before it, lies on a branch the player did not choose.
+func _station_closed(node: Dictionary, depth: int) -> bool:
+	var group := str(node.get("choice", ""))
+	if group != "" and board_choices.has(group) and str(board_choices[group]) != str(node.get("id", "")):
+		return true
+	if depth > 16:
+		return false
+	for parent: Variant in node.get("parents", []) as Array:
+		var p := _board_node(str(parent))
+		if not p.is_empty() and _station_closed(p, depth + 1):
+			return true
+	return false
+
+
+## Throws the points: `node_id` is taken at its choice and the alternatives close for good. Only while the
+## choice is open and the station's parents are done.
+func choose(node_id: String) -> bool:
+	if board_node_state(node_id) != "choice":
+		return false
+	board_choices[str(_board_node(node_id).get("choice", ""))] = node_id
+	_baseline_station(_board_node(node_id))
+	quest_changed.emit()
+	return true
+
+
+## A board's current station: its first open one (active, or a choice to make), top to bottom; "" when the
+## board is finished.
+func board_current_station(board_id: String) -> String:
+	var best := ""
+	var best_key := Vector2i(1 << 20, 1 << 20)
+	for node: Variant in (_board_def(board_id).get("nodes", []) as Array):
+		var id := str((node as Dictionary).get("id", ""))
+		var state := board_node_state(id)
+		if state != "active" and state != "choice":
+			continue
+		var key := Vector2i(int((node as Dictionary).get("col", 0)), absi(int((node as Dictionary).get("lane", 0))))
+		if key.x < best_key.x or (key.x == best_key.x and key.y < best_key.y):
+			best_key = key
+			best = id
+	return best
+
+
+## Shows `board_id`'s current station on the top bar.
+func follow_board(board_id: String) -> void:
+	followed_board = board_id if not _board_def(board_id).is_empty() else ""
+	quest_changed.emit()
+
+
+## The board the top bar shows: the one the player follows while it has a station open, else the first of the
+## match's boards that has one (the Tutorial, then the start's own). "" without boards.
+func effective_followed_board() -> String:
+	if followed_board != "" and board_current_station(followed_board) != "":
+		return followed_board
+	for raw: Variant in match_boards():
+		var id := str((raw as Dictionary).get("id", ""))
+		if board_current_station(id) != "":
+			return id
+	return ""
+
+
+## A station's condition in plain words: its own `detail` when it has one, else from its verb.
+func station_condition_text(node: Dictionary) -> String:
+	if str(node.get("detail", "")) != "":
+		return str(node.detail)
+	var c := _station_condition(node)
+	var qty := int(c.qty)
+	match str(c.action):
+		"Acquire":
+			return "Buy %d %s from other companies." % [qty, "building" if qty == 1 else "buildings"]
+		"Open Building":
+			return "Open one of your buildings to see what it makes and what it needs."
+		"Units Sold":
+			return "Sell %d units of what you make." % qty
+		"Build Any":
+			return "Build %d %s." % [qty, "building" if qty == 1 else "buildings"]
+		"Infrastructure":
+			return "Build %d pieces of infrastructure: roads, rail, pipes or cables." % qty
+		"Fast To Port":
+			return "Have a building whose goods reach a port in under %d turns." % qty
+		"Research Count":
+			return "Unlock %d research." % qty
+		"Upgrade":
+			return "Upgrade %d of your buildings to Level 2." % qty
+	var text := ResearchState.condition_text(c)
+	return text if text != "" else str(node.get("title", ""))
+
+
+func _station_condition(node: Dictionary) -> Dictionary:
+	var c := (node.get("condition", {}) as Dictionary)
+	return {"action": str(c.get("action", "")), "object": str(c.get("object", "")), "qty": int(c.get("qty", 0)),
+		"quantity_raw": str(c.get("qty", "")), "unit": str(c.get("unit", "")), "title": str(node.get("id", ""))}
+
+
+## The running total a counted verb measures, now.
+func _metric(c: Dictionary) -> float:
+	match str(c.action):
+		"Units Sold": return float(units_sold_total)
+		"Build Any": return float(buildings_built)
+		"Infrastructure": return float(infra_built)
+		"Open Building": return float(buildings_opened)
+		"Research Count": return float(ResearchState.unlocked_titles.size())
+		"Build Consumers": return float(_consumer_count())
+		"Produce Tier":
+			var tiers := str(c.object).split("|", false)
+			var total := 0.0
+			for good: Variant in Catalog.all_goods():
+				if tiers.has(str((good as Dictionary).get("goods_graph_tier", ""))):
+					total += float(Production.lifetime_total(str((good as Dictionary).get("id", ""))))
+			return total
+	return 0.0
+
+
+## How far a counted station has come since it opened. A first station counts from the start of the match;
+## a later one from the moment the station before it finished (_open_children).
+func _counted(node: Dictionary) -> float:
+	var c := _station_condition(node)
+	var since := 0.0 if (node.get("parents", []) as Array).is_empty() else _metric(c)
+	return _metric(c) - float(board_baseline.get(str(node.get("id", "")), since))
+
+
+## Notes the baseline of every station that `done_id` finishing opens.
+func _open_children(done_id: String) -> void:
+	for raw: Variant in match_boards():
+		for node: Variant in (raw as Dictionary).get("nodes", []) as Array:
+			var n := node as Dictionary
+			var id := str(n.get("id", ""))
+			if (n.get("parents", []) as Array).has(done_id) and board_node_state(id) == "active":
+				_baseline_station(n)
+
+
+## Notes where a counted station starts counting from, the first time it opens.
+func _baseline_station(n: Dictionary) -> void:
+	var id := str(n.get("id", ""))
+	if board_baseline.has(id):
+		return
+	var c := _station_condition(n)
+	if COUNTED_VERBS.has(str(c.action)):
+		board_baseline[id] = _metric(c)
+	elif str(c.action) == "Faster To Port":
+		board_baseline[id] = float(_fastest_to_port(_good_id(str(c.object))))
+
+
+func _station_met(node: Dictionary, summary: Dictionary) -> bool:
+	var c := _station_condition(node)
+	var qty := int(c.qty)
+	var obj := str(c.object)
+	if COUNTED_VERBS.has(str(c.action)):
+		return _counted(node) >= float(maxi(1, qty))
+	match str(c.action):
+		"Acquire":
+			return _acquired_count() >= qty
+		"Fast To Port":
+			return _fastest_to_port("") < qty
+		"Faster To Port":
+			var base := float(board_baseline.get(str(node.get("id", "")), INF))
+			return float(_fastest_to_port(_good_id(obj))) < base
+		"Build Any Of":
+			var n := 0
+			var kinds := obj.split("|", false)
+			for b: Variant in BuildingState.buildings.values():
+				var inst := b as Dictionary
+				if BuildingState.is_player_owned(inst) and not bool(inst.get("acquired_from_npc", false)) \
+						and kinds.has(str(Catalog.get_building(str(inst.get("building_id", ""))).get("internal_name", ""))):
+					n += 1
+			return n >= maxi(1, qty)
+		"Own Recipe":
+			var runs := 0
+			for b: Variant in BuildingState.buildings.values():
+				if BuildingState.is_player_owned(b as Dictionary) and str((b as Dictionary).get("recipe_id", "")) == obj:
+					runs += 1
+			return runs >= maxi(1, qty)
+		"Research":
+			if obj == "Government Import/Export License":
+				return ResearchState.global_trade_license_available()
+			return ResearchState.is_unlocked(obj)
+		"Supply":
+			for pair: String in obj.split("|", false):
+				var parts := pair.split(">")
+				if parts.size() != 2 or not _supplied(_good_id(parts[0]), _good_id(parts[0]), _good_id(parts[1]), summary):
+					return false
+			return true
+		"Sell On Market":
+			# The global market, not the intermediary: the License in force, a building of the good's
+			# routed to the market rather than to the intermediary, and some of it sold this turn.
+			var gid := _good_id(obj)
+			if not ResearchState.global_trade_license_available() or int(((summary.get("sold", {}) as Dictionary).get(gid, {}) as Dictionary).get("qty", 0)) <= 0:
+				return false
+			for iid in _producers_of(gid):
+				if MatchState.is_output_market(str(iid), gid) and not MiddlemanService.buys_output(str(iid), gid):
+					return true
+			return false
+		"Mine Infinite":
+			return _mines_on_infinite(_good_id(obj), obj).size() >= maxi(1, qty)
+		"Supply From Infinite":
+			return _supplied_anywhere(_mines_on_infinite(_good_id(obj), obj), _good_id(obj), summary)
+		"Upgrade":
+			var upgraded := 0
+			for b: Variant in BuildingState.buildings.values():
+				var inst := b as Dictionary
+				if BuildingState.is_player_owned(inst) and int(inst.get("level", 1)) >= 2 and not INFRA_BUILDINGS.has(str(inst.get("building_id", ""))):
+					upgraded += 1
+			return upgraded >= maxi(1, qty)
+	return ResearchState.condition_met(c)
+
+
+## Player buildings bought from another company rather than built.
+func _acquired_count() -> int:
+	var n := 0
+	for b: Variant in BuildingState.buildings.values():
+		if b is Dictionary and BuildingState.is_player_owned(b as Dictionary) and bool((b as Dictionary).get("acquired_from_npc", false)):
+			n += 1
+	return n
+
+
+## Player buildings whose recipe uses a good the player also makes.
+func _consumer_count() -> int:
+	var made := {}
+	for b: Variant in BuildingState.buildings.values():
+		var inst := b as Dictionary
+		if BuildingState.is_player_owned(inst):
+			for out: Variant in Catalog.get_recipe(str(inst.get("recipe_id", ""))).get("outputs", []) as Array:
+				made[str((out as Dictionary).get("good_id", ""))] = true
+	var n := 0
+	for b: Variant in BuildingState.buildings.values():
+		var inst := b as Dictionary
+		if not BuildingState.is_player_owned(inst):
+			continue
+		for inp: Variant in Catalog.get_recipe(str(inst.get("recipe_id", ""))).get("inputs", []) as Array:
+			if made.has(str((inp as Dictionary).get("good_id", ""))):
+				n += 1
+				break
+	return n
+
+
+## The fewest turns any of the player's buildings making `good_id` ("" for any good) takes to reach a port.
+## 1 << 20 when none can.
+func _fastest_to_port(good_id: String) -> int:
+	var best := 1 << 20
+	for b: Variant in BuildingState.buildings.values():
+		var inst := b as Dictionary
+		if not BuildingState.is_player_owned(inst):
+			continue
+		for out: Variant in Catalog.get_recipe(str(inst.get("recipe_id", ""))).get("outputs", []) as Array:
+			var gid := str((out as Dictionary).get("good_id", ""))
+			if gid == "" or (good_id != "" and gid != good_id) or not Catalog.is_good_sellable(gid):
+				continue
+			var r := TransportService.route_to_nearest_port(str(inst.get("tile_id", "")), gid)
+			if TransportService.route_is_reachable(r):
+				best = mini(best, int(r.get("turns", best)))
+	return best
+
+
+## _supplied_from, to any tile where a building of the player's uses the good.
+func _supplied_anywhere(instances: Array, ship_good: String, summary: Dictionary) -> bool:
+	var supplied: Dictionary = summary.get("tile_supplied", {})
+	var consumed: Dictionary = summary.get("tile_consumed", {})
+	for iid in instances:
+		var tile := str(MatchState.get_output_stockpile_destination(str(iid), ship_good))
+		if tile == "":
+			continue
+		if float((supplied.get(tile, {}) as Dictionary).get(ship_good, 0)) > 0.0 \
+				and float((consumed.get(tile, {}) as Dictionary).get(ship_good, 0)) > 0.0:
+			return true
+	return false
+
+
+## Keeps the running totals the counted verbs read, from one resolved turn.
+func _count_turn(summary: Dictionary) -> void:
+	for gid: Variant in (summary.get("sold", {}) as Dictionary):
+		var row: Variant = (summary.sold as Dictionary)[gid]
+		units_sold_total += int((row as Dictionary).get("qty", 0)) if row is Dictionary else int(row)
+
+
+## A construction finished: count it as a building or as infrastructure.
+func _on_construction_completed(_instance_id: String, _tile_id: String) -> void:
+	var bid := Construction.last_completed_building_id
+	if INFRA_BUILDINGS.has(bid):
+		infra_built += 1
+	elif bid != "b_004":
+		buildings_built += 1
+
+
+## The player opened one of their buildings (Building Detail).
+func note_building_opened() -> void:
+	buildings_opened += 1
+	if has_match_boards():
+		_eval_boards({})
+		quest_changed.emit()
+
+
+## Ticks every open station whose condition holds, grants its reward and announces it. Notes the baseline of a
+## counted station the first time it is seen open.
+func _eval_boards(summary: Dictionary) -> void:
+	if not is_available():
+		return
+	for raw: Variant in match_boards():
+		for node: Variant in (raw as Dictionary).get("nodes", []) as Array:
+			var n := node as Dictionary
+			var id := str(n.get("id", ""))
+			if board_node_state(id) != "active":
+				continue
+			var c := _station_condition(n)
+			if not board_baseline.has(id) and str(c.action) == "Faster To Port":
+				board_baseline[id] = float(_fastest_to_port(_good_id(str(c.object))))
+			if not _station_met(n, summary):
+				continue
+			board_done[id] = true
+			_open_children(id)
+			if not bool(board_granted.get(id, false)):
+				board_granted[id] = true
+				_grant_station(n)
+				_announce(id)
+
+
+func _grant_station(node: Dictionary) -> void:
+	var reward := node.get("reward", {}) as Dictionary
+	var list: Array = (reward.get("modifiers", []) as Array).duplicate()
+	if reward.has("modifier"):
+		list.append(reward.modifier)
+	for i in list.size():
+		var m := list[i] as Dictionary
+		var fields := {"domain": str(m.get("domain", "")), "target": str(m.get("target", "*")), "pct": float(m.get("pct", 0.0)),
+			"label": str(node.get("title", "")), "source": "quest:%s" % str(node.get("id", ""))}
+		if m.has("target_match"):
+			fields["target_match"] = (m.target_match as Dictionary).duplicate(true)
+		if int(m.get("turns", 0)) > 0:
+			fields["duration_turns"] = int(m.turns)
+		_add(BOARD_REWARD_PREFIX + str(node.get("id", "")) + ("" if i == 0 else "_%d" % i), fields)
+	if int(reward.get("free_unlocks", 0)) > 0:
+		ResearchState.grant_free_unlocks(int(reward.free_unlocks))
+
+
+## A station's count, for the verbs that count something the player can watch grow.
+func _station_progress(node: Dictionary) -> Vector2i:
+	var c := _station_condition(node)
+	var need := int(c.qty)
+	var id := str(node.get("id", ""))
+	var state := board_node_state(id)
+	if need < 2 or state == "complete" or state == "closed":
+		return Vector2i.ZERO
+	if COUNTED_VERBS.has(str(c.action)):
+		var have := int(_counted(node)) if state == "active" else 0
+		return Vector2i(clampi(have, 0, need), need)
+	match str(c.action):
+		"Acquire":
+			return Vector2i(mini(_acquired_count(), need), need)
+	return Vector2i.ZERO

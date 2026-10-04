@@ -330,6 +330,8 @@ func show_building(building: Dictionary) -> void:
 	visible = true
 	PanelStack.push(self)
 	_size_and_position()
+	if BuildingState.is_player_owned(building):
+		MiniQuest.note_building_opened()   # the Tutorial's first mission
 
 func _rebuild(building: Dictionary) -> void:
 	for child in _body.get_children():

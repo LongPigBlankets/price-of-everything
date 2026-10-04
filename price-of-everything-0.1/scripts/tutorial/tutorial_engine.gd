@@ -18,8 +18,12 @@ const POLL_INTERVAL := 0.25   # s; re-evaluates the active step's decide predica
 const PORT_PURCHASE_DISABLED_TOOLTIP := "This option is disabled during the tutorial"
 
 signal step_changed(id: String)
+## The opening steps of a new game finished or were skipped: the missions take over.
+signal opener_finished
 
 var active: bool = false
+## True while the opening steps of a new game run (start_opener), not the full tutorial.
+var opener := false
 ## Did this run reach the point where the post-tutorial missions make sense?
 ##
 ## The missions assume the setup the last steps build — the recipe switch that leaves the
@@ -81,6 +85,33 @@ func _await_world_ready() -> void:
 
 
 # ── Lifecycle ──────────────────────────────────────────────────────────────────────
+
+## Every fresh new game opens with the tutorial's first steps (TutorialSteps.opener_steps), then hands over to
+## the missions. Nothing in the match changes: no board bounds, no lesson stock, no end of tutorial rules.
+## Once per match (ruleset.opener_done, saved), never in the full tutorial, never twice.
+func start_opener() -> void:
+	if active or not is_inside_tree() or bool(MatchState.ruleset.get("tutorial_enabled", false)) \
+			or bool(MatchState.ruleset.get("opener_done", false)):
+		return
+	var wm := get_tree().current_scene
+	if wm == null or wm.get("build_complete") != true:
+		return
+	_teardown_overlay()
+	_steps = TutorialSteps.opener_steps()
+	if _steps.is_empty():
+		return
+	opener = true
+	active = true
+	setup_reached = false
+	_index = -1
+	_visited = 0
+	_active_board_tiles = []
+	MiniQuest.quest_changed.emit()   # the missions stand aside until the opener ends
+	_ensure_overlay()
+	_wire_signals()
+	_ensure_poll()
+	_enter(0)
+
 
 func _start() -> void:
 	_coastal_delivery_finished = false
@@ -274,6 +305,11 @@ func _finish() -> void:
 		_poll.stop()
 	_restore_camera()
 	_teardown_overlay()
+	if opener:
+		opener = false
+		MatchState.ruleset["opener_done"] = true
+		MiniQuest.quest_changed.emit()
+		opener_finished.emit()
 
 
 ## The final End tutorial button is deliberately the only exit that changes the match.
