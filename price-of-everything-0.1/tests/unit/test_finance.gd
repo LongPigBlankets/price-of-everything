@@ -467,6 +467,9 @@ func _test_finance_research_conditions() -> void:
 func _test_transit_credit_books_the_sale_when_it_leaves() -> void:
 	var backup := SaveLoad.export_snapshot().duplicate(true)
 	MatchState.ruleset["logistics_model"] = "middleman_v1"
+	# Selling to the global market in an intermediary game needs the Import/Export License.
+	ResearchState.unlocked_titles[ResearchState.GLOBAL_TRADE_LICENSE_TITLE] = true
+	ResearchState._global_trade_license_paid = true
 	LoanState.transit_credit_enabled = true
 	LoanState.transit_credit_balance = 0.0
 	Production.last_turn_summary = {"sold": {}, "goods_sales_revenue": 0.0, "money_in": 0.0}

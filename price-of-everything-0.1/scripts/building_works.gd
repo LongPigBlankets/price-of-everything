@@ -729,6 +729,9 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 			"tile":
 				return {"ok": false, "reason": "Upgrade materials missing on the tile.", "missing": shortfall, "required": need_by_gid}
 			"market":
+				var locked := preload("res://scripts/middleman_service.gd").route_lock("market")
+				if locked != "":
+					return {"ok": false, "reason": "Buying upgrade materials from the global market. " + locked}
 				var total := 0.0
 				for gid in shortfall:
 					var quote: Dictionary = MatchState.preview_buy(tile_id, str(gid), int(shortfall[gid]))

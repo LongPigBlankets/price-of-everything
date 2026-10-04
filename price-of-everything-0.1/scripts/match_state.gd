@@ -1597,6 +1597,9 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 	# and upgrade materials, and the manual buy. One guard closes all of them.
 	if PolicyState.import_banned(good_id, TurnManager.current_turn):
 		return {}
+	# In an intermediary game the global market opens with the Import/Export License, for every route.
+	if not preload("res://scripts/middleman_service.gd").global_market_open():
+		return {}
 	if bool(extra.get("reserve_construction", false)) and not TurnManager.is_resolving:
 		return _reserve_construction_purchase(dest_tile, good_id, qty, extra)
 	var covered := TransportState.seaport_covers(good_id)
@@ -1889,6 +1892,9 @@ func queue_sell(source_tile: String, goods_qtys: Dictionary, log_oneoff: bool = 
 	# nearest port, pay out on arrival. All of that lives in MarketState.execute_sale
 	# now; this wrapper preserves the public API (note: returns `revenue`, not
 	# `total_revenue`, for back-compat with existing callers).
+	# In an intermediary game the global market opens with the Import/Export License, for every route.
+	if not preload("res://scripts/middleman_service.gd").global_market_open():
+		return {}
 	var result := MarketState.execute_sale(source_tile, goods_qtys, {"log_oneoff": log_oneoff})
 	if result.is_empty():
 		return {}

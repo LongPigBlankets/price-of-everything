@@ -143,6 +143,22 @@ func _test_refused_batch_alerts_the_briefing() -> void:
 	Production.last_turn_run = saved_run
 	cleanup()
 
+## Without the Import/Export License an intermediary game can't reach the global market by any route: the
+## buy and sell primitives every manual trade goes through refuse it, and so does an upgrade's market mode.
+func _test_global_market_needs_the_license() -> void:
+	var ids := setup(1)
+	open_routes(true, false)
+	Stockpile.add("tile_5_4", "g_008", 5)
+	_check(MatchState.queue_buy("tile_5_4", "g_006", 4).is_empty(), "license: no global-market buy without it")
+	_check(MatchState.queue_sell("tile_5_4", {"g_008": 5}).is_empty() and Stockpile.get_at_tile("tile_5_4", "g_008") == 5,
+		"license: no global-market sale without it, and the goods stay put")
+	ResearchState.unlocked_titles["Conveyor Mass Assembly"] = true   # the factory's level 2
+	var up: Dictionary = BuildingWorks.start_upgrade(str(ids[0]), "market")
+	_check(not bool(up.get("ok", true)) and str(up.get("reason", "")).contains(ResearchState.GLOBAL_TRADE_LICENSE_TITLE)
+		and not BuildingWorks.is_upgrading(str(ids[0])),
+		"license: an upgrade can't order its materials from the global market without it (%s)" % str(up.get("reason", "")))
+	cleanup()
+
 func _test_live_shortage_and_legacy_default() -> void:
 	var ids := setup()
 	MatchState.money = -1000000.0

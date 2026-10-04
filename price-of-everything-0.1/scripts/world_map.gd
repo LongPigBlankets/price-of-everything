@@ -1589,6 +1589,10 @@ func _on_buy_confirm() -> void:
 	var tiles: Array = _buy.get("tiles", [])
 	if tiles.is_empty() or qty <= 0:
 		return
+	var locked := preload("res://scripts/middleman_service.gd").route_lock("market")
+	if locked != "":
+		MatchState.request_toast("Buying from the global market. " + locked, "warning")
+		return
 	var recurring: bool = _buy_recurring != null and _buy_recurring.button_pressed
 	var bought := 0
 	for tid in tiles:
