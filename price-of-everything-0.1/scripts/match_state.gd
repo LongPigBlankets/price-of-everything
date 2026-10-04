@@ -911,7 +911,7 @@ func export_state() -> Dictionary:
 		"power_priority_wind_solar": power_priority_wind_solar,
 		"ghost_holdings": ghost_holdings.duplicate(true),
 		"advisor_rng_seed": match_rng_seed,
-		"advisor_rng_state": _match_rng.state,
+		"advisor_rng_state": SaveLoad.int64_out(_match_rng.state),
 		"cfo_tax_credit_pool": cfo_tax_credit_pool.duplicate(true),
 		"cfo_tax_credit_intro_shown": cfo_tax_credit_intro_shown,
 		"sell_mode": sell_mode,
@@ -989,7 +989,7 @@ func import_state(d: Dictionary) -> void:
 	ghost_holdings = (d.get("ghost_holdings", {}) as Dictionary).duplicate(true)
 	match_rng_seed = int(d.get("advisor_rng_seed", DEFAULT_MATCH_RNG_SEED))
 	_match_rng.seed = match_rng_seed
-	_match_rng.state = int(d.get("advisor_rng_state", _match_rng.state))
+	_match_rng.state = SaveLoad.int64_in(d.get("advisor_rng_state"), _match_rng.state)
 	sell_mode = int(d.get("sell_mode", SellMode.STOCKPILE_ALL))
 	route_objective = int(d.get("route_objective", RouteObjective.FASTEST))
 	output_stockpile_destinations = (d.get("output_stockpile_destinations", {}) as Dictionary).duplicate(true)

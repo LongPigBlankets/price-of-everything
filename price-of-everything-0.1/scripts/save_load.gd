@@ -894,6 +894,21 @@ func _migrate_v10_to_v11(snap: Dictionary) -> Dictionary:
 ## counts/turns/ids as ints (and int()-casts on read), so integral floats are
 ## folded back to ints recursively. Typed float vars (money, multipliers) accept
 ## ints on assignment, so this is safe across the board.
+## A 64-bit integer for a save, as a decimal string: a JSON number is a double and keeps only 53 bits, so a
+## random-number generator's state saved as a number came back changed and every draw after a load diverged.
+static func int64_out(value: int) -> String:
+	return str(value)
+
+
+## Reads int64_out's string back, or the number an older save holds (its lost bits can't be recovered).
+static func int64_in(value: Variant, fallback: int) -> int:
+	if value is String:
+		return (value as String).to_int()
+	if value == null:
+		return fallback
+	return int(value)
+
+
 func normalize_jsonish(value: Variant) -> Variant:
 	match typeof(value):
 		TYPE_FLOAT:

@@ -7,6 +7,7 @@ const TAGS := {
 	"_test_recording_toasts": ["decisions", "events", "save_load"],
 	"_test_cost_save_isolation": ["finance", "save_load"],
 	"_test_save_load_roundtrip": ["finance", "save_load", "special_orders", "stockpile"],
+	"_test_rng_state_survives_a_save_file": ["decisions", "save_load", "special_orders"],
 	"_test_start_config_applies_on_scene_ready": ["finance", "save_load", "stockpile"],
 	"_test_start_land_capacity": ["construction", "save_load"],
 	"_test_save_version_migration": ["save_load", "special_orders"],
@@ -106,6 +107,28 @@ func _test_cost_save_isolation() -> void:
 # Save/load round-trip: populate every save-relevant system, export → JSON → import
 # into the reset systems → export again; the two snapshots must agree section by
 # section. Catches any state field a later change forgets to serialize.
+## The random-number generators' 64-bit states survive a save file exactly: a JSON number keeps only 53 bits,
+## so saved as numbers they came back changed and every draw after a load diverged from an unbroken run.
+func _test_rng_state_survives_a_save_file() -> void:
+	var saved := [MatchState._match_rng.state, DecisionState._rng.state, SpecialOrderState._rng.state]
+	var big := [0x7FFF_FFFF_FFFF_FF13, -0x1234_5678_9ABC_DEF1, 0x0FED_CBA9_8765_4321]
+	MatchState._match_rng.state = big[0]
+	DecisionState._rng.state = big[1]
+	SpecialOrderState._rng.state = big[2]
+	var file_text := JSON.stringify(SaveLoad.export_snapshot())
+	MatchState._match_rng.state = 1
+	DecisionState._rng.state = 1
+	SpecialOrderState._rng.state = 1
+	SaveLoad.import_snapshot(SaveLoad.normalize_jsonish(JSON.parse_string(file_text)))
+	_check(MatchState._match_rng.state == big[0] and DecisionState._rng.state == big[1] and SpecialOrderState._rng.state == big[2],
+		"save file: the match, decision and special order RNG states come back exactly")
+	_check(SaveLoad.int64_in(1.0e15, 0) == 1000000000000000 and SaveLoad.int64_in(null, 7) == 7,
+		"save file: an older save's numeric state still loads")
+	MatchState._match_rng.state = saved[0]
+	DecisionState._rng.state = saved[1]
+	SpecialOrderState._rng.state = saved[2]
+
+
 func _test_save_load_roundtrip() -> void:
 	MatchState.add_money(123.0)
 	var inst: String = BuildingState.add_building("b_001", "r_001", "tile_12_4")

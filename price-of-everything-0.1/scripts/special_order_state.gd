@@ -139,7 +139,7 @@ func export_state() -> Dictionary:
 		"last_spawn_turn": last_spawn_turn,
 		"next_order_counter": _next_order_counter,
 		"rng_seed": _rng_seed,
-		"rng_state": _rng.state,
+		"rng_state": SaveLoad.int64_out(_rng.state),
 	}
 
 func import_state(d: Dictionary) -> void:
@@ -154,7 +154,7 @@ func import_state(d: Dictionary) -> void:
 	_next_order_counter = maxi(1, int(d.get("next_order_counter", 1)))
 	_rng_seed = int(d.get("rng_seed", DEFAULT_RNG_SEED))
 	_rng.seed = _rng_seed
-	_rng.state = int(d.get("rng_state", _rng.state))
+	_rng.state = SaveLoad.int64_in(d.get("rng_state"), _rng.state)
 	orders_changed.emit()
 
 func advance_turn(turn: int) -> Dictionary:
