@@ -14,6 +14,9 @@ func setup(count: int = 1, cables: bool = true) -> Array:
 	TurnManager.current_phase = TurnManager.Phase.DECIDE
 	MatchState.money = 10000.0
 	MatchState.ruleset["logistics_model"] = "middleman_v1"
+	# The Logistics missions' rewards (a tile stockpile's +5% output) would change the batches under test.
+	for node_id: String in ["middleman_contracts", "tile_stockpile", "global_license", "global_surplus"]:
+		MiniQuest.generic_granted[node_id] = true
 	# Routes off the intermediary need their research. The tests about the locks take it away again.
 	open_routes()
 	fake = Node.new()
