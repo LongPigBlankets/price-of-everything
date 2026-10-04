@@ -3155,7 +3155,7 @@ func _make_surplus_controls() -> Control:
 	var selected := MatchState.get_sell_surplus_destination(_current_tile_id)
 	var options := [
 		{"id":"none", "label":"Keep here", "icon":ROUTE_STOCKPILE_ICON, "tip":"Keep unused goods in this tile's stockpile."},
-		{"id":"middleman", "label":"Sell to Logistics Intermediary", "icon":ROUTE_MIDDLEMAN_ICON, "tip":"Offer unused goods to the local Logistics Intermediary."},
+		{"id":"middleman", "label":"Sell to Local Suppliers", "icon":ROUTE_MIDDLEMAN_ICON, "tip":"Offer unused goods to Local Suppliers."},
 		{"id":"market", "label":"Sell to Global Market via nearest Port", "icon":ROUTE_MARKET_ICON, "tip":"Sell unused goods through the nearest port."},
 	]
 	for option: Dictionary in options:
@@ -3194,7 +3194,7 @@ func _make_surplus_knob() -> Control:
 	if ResearchState.logistics_progression_active():
 		var ok := ResearchState.open_logistics_contracts_available()
 		routes.append({"id": "middleman", "icon": ROUTE_MIDDLEMAN_ICON, "enabled": ok,
-			"name": "Sell to the Logistics Intermediary" if ok else "Sell to the Logistics Intermediary: needs Open Logistics Contracts"})
+			"name": "Sell to Local Suppliers" if ok else "Sell to Local Suppliers: needs Open Logistics Contracts"})
 	var licensed := ResearchState.global_trade_license_available()
 	routes.append({"id": "market", "icon": ROUTE_MARKET_ICON, "enabled": licensed,
 		"name": "Sell on the global market through the nearest port" if licensed else "Sell through a port: needs the Government Import/Export License"})
@@ -3256,7 +3256,7 @@ func _make_tile_logistics_choice_row(side: String, logistics: Dictionary) -> HBo
 	var ids: Array = logistics.get(side, []) as Array
 	var choices := [
 		{"id":"managed", "tip":"Per Building", "texture":BuildingIcon.clean_texture("b_007", "industrial_factory")},
-		{"id":"middleman", "tip":"Logistics Intermediary", "texture":ROUTE_MIDDLEMAN_ICON},
+		{"id":"middleman", "tip":"Local Suppliers", "texture":ROUTE_MIDDLEMAN_ICON},
 		{"id":"market", "tip":"Global Market", "texture":ROUTE_MARKET_ICON},
 		{"id":"stockpile", "tip":"Tile Stockpile", "texture":ROUTE_STOCKPILE_ICON},
 	]
@@ -3390,7 +3390,7 @@ func _make_surplus_destination_select() -> Control:
 	select.add_theme_font_size_override("font_size", DS.FS["SMALLEST"])
 	select.add_item("Don't sell surplus")
 	select.add_item("Sell to global market")
-	select.add_item("Sell to Local Logistics Intermediary")
+	select.add_item("Sell to Local Suppliers")
 	var destination := MatchState.get_sell_surplus_destination(_current_tile_id)
 	select.selected = {"none":0, "market":1, "middleman":2}.get(destination, 0)
 	select.item_selected.connect(func(index: int) -> void:
@@ -5115,7 +5115,7 @@ func _open_tile_logistics() -> void:
 	scroll.add_child(vb)
 	var note := Label.new()
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note.text = "Owned storage: %d / %d units. Managed inputs share this stock; intermediary goods remain private to each building. Surplus sales reserve the tile's managed production inputs first." % [Stockpile.get_used_capacity(_current_tile_id),Stockpile.get_capacity(_current_tile_id)]
+	note.text = "Owned storage: %d / %d units. Managed inputs share this stock; goods Local Suppliers hold remain private to each building. Surplus sales reserve the tile's managed production inputs first." % [Stockpile.get_used_capacity(_current_tile_id),Stockpile.get_capacity(_current_tile_id)]
 	vb.add_child(note)
 	var storage_fee := 0.0
 	for gid in Stockpile.get_tile_totals(_current_tile_id):
@@ -5134,7 +5134,7 @@ func _open_tile_logistics() -> void:
 		if not BuildingState.is_player_owned(b) or str(b.get("recipe_id","")) == "": continue
 		var iid := str(b.instance_id)
 		var button := Button.new()
-		button.text = "%s — In: %s · Out: %s" % [BuildingNaming.of(b),"Intermediary" if service.uses_inputs(iid) else "Managed","Intermediary" if service.uses_outputs(iid) else "Managed"]
+		button.text = "%s — In: %s · Out: %s" % [BuildingNaming.of(b),"Local Suppliers" if service.uses_inputs(iid) else "Managed","Local Suppliers" if service.uses_outputs(iid) else "Managed"]
 		button.pressed.connect(func() -> void:
 			MatchState.focus_building_requested.emit(iid)
 			dialog.queue_free())

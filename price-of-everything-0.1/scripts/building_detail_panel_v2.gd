@@ -3339,7 +3339,7 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 			vb.add_child(_metric("Transport cost", "−£%.2f" % tc, DS.PALETTE["DANGER"], false))
 	var intermediary_fee := float(econ.get("logistics_intermediary_fee", econ.get("middleman_fee", 0.0)))
 	if intermediary_fee > 0.0:
-		vb.add_child(_metric("Logistics Intermediary Fee", "−£%.2f" % intermediary_fee, DS.PALETTE["DANGER"], false))
+		vb.add_child(_metric("Local Suppliers Fee", "−£%.2f" % intermediary_fee, DS.PALETTE["DANGER"], false))
 	var input_cost := float(econ.get("input_cost", 0.0))
 	if input_cost > 0.0:
 		vb.add_child(_metric("Inputs / turn", "−£%.2f" % input_cost, DS.PALETTE["DANGER"], false))
@@ -3717,7 +3717,7 @@ func _v3_ship_row(goods: Array) -> HBoxContainer:
 		var lamp := BdpV3Lamp.new()
 		lamp.name = "StockLamp"
 		lamp.lamp_scale = V3_SHIP_LAMP_SCALE
-		lamp.set_tone(v3_stock_tone(stored, need, inbound, supply == "Logistics intermediary"))
+		lamp.set_tone(v3_stock_tone(stored, need, inbound, supply == "Local Suppliers"))
 		lamp.tooltip_text = "Supplied by: %s" % supply
 		cell.add_child(lamp)
 	return row
@@ -3792,7 +3792,7 @@ func _logistics_side_control(building: Dictionary, recipe: Dictionary, side: Str
 func _input_summary(building: Dictionary, recipe: Dictionary) -> String:
 	var service = preload("res://scripts/middleman_service.gd")
 	var iid := str(building.instance_id)
-	if service.side_all_middleman(iid, "input"): return "Logistics intermediary"
+	if service.side_all_middleman(iid, "input"): return "Local Suppliers"
 	var handover_turns := -1
 	for item: Dictionary in recipe.get("inputs", []):
 		var gid := str(item.get("good_id", ""))
@@ -3813,7 +3813,7 @@ func _output_summary(building: Dictionary, recipe: Dictionary) -> String:
 	if str(recipe.get("output_name", "")) == "power": return "Electricity grid"
 	var service = preload("res://scripts/middleman_service.gd")
 	var iid_for_output := str(building.instance_id)
-	if service.side_all_middleman(iid_for_output, "output"): return "Logistics intermediary"
+	if service.side_all_middleman(iid_for_output, "output"): return "Local Suppliers"
 	if service.enabled(iid_for_output) and (recipe.get("outputs", []) as Array).any(func(item: Dictionary) -> bool: return service.buys_output(iid_for_output, str(item.get("good_id", "")))): return "Mixed logistics"
 	var iid := str(building.get("instance_id", ""))
 	var gid := BuildingStatus.primary_output_good_id(recipe)
@@ -3975,9 +3975,9 @@ func _input_route_choices(building: Dictionary, gid: String, slot: String, marke
 	var middleman_available := service.material_tradeable(gid, "input")
 	choices.append({
 		"source": "middleman",
-		"title": "Logistics Intermediary",
+		"title": "Local Suppliers",
 		"detail": ("Buys this input for the building each turn; transport and storage are in its fee." if slot == "primary"
-			else "Buys only what the tile stock does not cover this turn; its fee applies to those units.") if middleman_available else "Logistics Intermediary unavailable for this input.",
+			else "Buys only what the tile stock does not cover this turn; its fee applies to those units.") if middleman_available else "Local Suppliers don't trade this input.",
 		"enabled": middleman_available,
 	})
 	return choices
@@ -4019,7 +4019,7 @@ func _fallback_not_needed_note() -> Control:
 	box.add_child(heading)
 	var note := Label.new()
 	note.theme_type_variation = "Caption"
-	note.text = "Not needed: the Logistics Intermediary buys all of this input. Choose another primary to set a fallback."
+	note.text = "Not needed. Local Suppliers buy all of this input. Choose another primary to set a fallback."
 	note.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -4155,7 +4155,7 @@ func _route_source_description(building: Dictionary, _gid: String, source: Strin
 		var port := TransportService.nearest_port_tile(tile_id)
 		return "Global Market via %s" % (Catalog.tile_label(port) if port != "" else "nearest port")
 	if source == "middleman":
-		return "Logistics Intermediary"
+		return "Local Suppliers"
 	if source.begins_with("tile:"):
 		return Catalog.tile_label(source.trim_prefix("tile:"))
 	return source
@@ -4168,7 +4168,7 @@ func _open_output_sheet(building: Dictionary, recipe: Dictionary) -> void:
 		_open_sheet("Electricity output", func(vb: VBoxContainer) -> void:
 			var note := Label.new()
 			note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			note.text = "Electricity uses your power network and the grid. It is not stored in the tile stockpile or traded through the Logistics Intermediary. Existing power-priority settings determine local use and grid sales."
+			note.text = "Electricity uses your power network and the grid. It is not stored in the tile stockpile or traded through Local Suppliers. Existing power-priority settings determine local use and grid sales."
 			vb.add_child(note))
 		return
 	var iid := str(building.get("instance_id", ""))
@@ -4301,7 +4301,7 @@ func _add_output_good_options(vb: VBoxContainer, building: Dictionary, recipe: D
 	row.alignment = FlowContainer.ALIGNMENT_CENTER
 	# Only buildings the intermediary can serve (Logistics Intermediary games) offer it.
 	if service.eligible(building):
-		row.add_child(_dest_option("Logistics Intermediary", "Sell this output privately, including transport and storage.", service.buys_output(iid, good_id), func() -> void:
+		row.add_child(_dest_option("Local Suppliers", "Sell this output privately, including transport and storage.", service.buys_output(iid, good_id), func() -> void:
 			var result := service.set_good_mode(iid, "output", good_id, "middleman")
 			if not bool(result.get("ok", false)): MatchState.request_toast(str(result.get("reason", "Unable to change output destination.")), "warning")
 			_queue_refresh()
@@ -4373,7 +4373,7 @@ func _output_route_details_section(building: Dictionary, gid: String, qty: int, 
 	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var good_name := Catalog.get_display_name(gid)
 	if intermediary:
-		line.text = "%d %s/turn to Logistics Intermediary" % [qty, good_name]
+		line.text = "%d %s/turn to Local Suppliers" % [qty, good_name]
 	elif is_market:
 		var port := TransportService.nearest_port_tile(str(building.get("tile_id", "")))
 		line.text = "%d %s/turn to Global Market via %s" % [qty, good_name, Catalog.tile_label(port) if port != "" else "nearest port"]
@@ -4743,7 +4743,7 @@ func _open_logistics_sheet(building: Dictionary) -> void:
 	_open_sheet("Building logistics",func(vb: VBoxContainer) -> void:
 		var note := Label.new()
 		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		note.text = "Choose inputs and outputs independently. Manage logistics uses generic carriers for physical deliveries. Goods the intermediary holds stay private to this building. Goods it retains use your tile storage."
+		note.text = "Choose inputs and outputs independently. Manage logistics uses generic carriers for physical deliveries. Goods Local Suppliers hold stay private to this building. Goods they retain use your tile storage."
 		vb.add_child(note)
 		vb.add_child(_route_card("Inputs",_input_summary(building,recipe),func() -> void: _open_input_sources_sheet(building,recipe), INPUT_ICON))
 		vb.add_child(_route_card("Outputs",_output_summary(building,recipe),func() -> void: _open_output_sheet(building,recipe), OUTPUT_ICON))
@@ -4751,7 +4751,7 @@ func _open_logistics_sheet(building: Dictionary) -> void:
 		var iid := str(building.instance_id)
 		if service.enabled(iid):
 			var p: Dictionary = service.preview(iid)
-			for pair in [["Intermediary input purchases",float(p.buy.goods_value)],["Intermediary sale value",float(p.sale.goods_value)],["Upfront service + factory cash",float(p.upfront)],["Protected commitments",float(p.protected_commitments)],["Loan needed",float(p.funding_draw)]]:
+			for pair in [["Local Suppliers input purchases",float(p.buy.goods_value)],["Local Suppliers sale value",float(p.sale.goods_value)],["Upfront service + factory cash",float(p.upfront)],["Protected commitments",float(p.protected_commitments)],["Loan needed",float(p.funding_draw)]]:
 				vb.add_child(_metric(str(pair[0]),"£%.2f" % float(pair[1]),DS.PALETTE["TEXT"],false))
 			var status := Label.new()
 			status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -4774,7 +4774,7 @@ func _add_logistics_options(vb: VBoxContainer, building: Dictionary, side: Strin
 	row.add_theme_constant_override("h_separation", 8)
 	row.add_theme_constant_override("v_separation", 8)
 	var active: bool = service.side_all_middleman(iid, side)
-	row.add_child(_dest_option("All %s — Logistics Intermediary" % ("inputs" if side == "input" else "outputs"), "Buys inputs privately for this building." if side == "input" else "Buys this building's production. Transport and storage are included.",active,func() -> void: _request_logistics_mode(building,side,"middleman")))
+	row.add_child(_dest_option("All %s to Local Suppliers" % ("inputs" if side == "input" else "outputs"), "Buys inputs privately for this building." if side == "input" else "Buys this building's production. Transport and storage are included.",active,func() -> void: _request_logistics_mode(building,side,"middleman")))
 	var market_available := preload("res://scripts/middleman_service.gd").global_market_open()
 	var stockpile_available := ResearchState.open_logistics_contracts_available()
 	if market_available:

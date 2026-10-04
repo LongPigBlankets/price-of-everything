@@ -4684,7 +4684,7 @@ func _refresh_money_notices(force: bool = false) -> void:
 func loan_notice_text(borrowed: float, s: Dictionary) -> String:
 	var financing := float(s.get("middleman_financing", 0.0))
 	if financing > 0.0 and financing >= borrowed - 0.005:
-		return "We've taken a %s loan to pay for the intermediary's batches this turn." % _money_text(borrowed)
+		return "We've taken a %s loan to pay for Local Suppliers' batches this turn." % _money_text(borrowed)
 	return "We've taken a %s loan to cover this turn's bills." % _money_text(borrowed)
 
 

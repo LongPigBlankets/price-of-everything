@@ -1,7 +1,7 @@
 extends RefCounted
 const Middleman := preload("res://scripts/middleman_service.gd")
 ## The diagnostics row for a building the intermediary buys inputs for.
-const INTERMEDIARY_LABEL := "Logistics Intermediary"
+const INTERMEDIARY_LABEL := "Local Suppliers"
 ## Shared, UI-agnostic READOUT of a building for the building detail panel.
 ## Aggregates the existing single-source-of-truth helpers (BuildingStatus, CostSolver,
 ## Modifiers, Catalog, EconomyConfig, MatchState) into plain data the panel renders — so the panel
@@ -508,7 +508,7 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 	# Skipped for buildings with no shippable output good (batteries, infra, power generators).
 	var out_gid := BuildingStatus.primary_output_good_id(recipe)
 	if not is_infrastructure and not produces_power and out_gid != "" and Middleman.buys_output(iid, out_gid):
-		rows.append(_row("ok", "truck", "Output sold to the intermediary", "The logistics intermediary collects it at the building."))
+		rows.append(_row("ok", "truck", "Output sold to Local Suppliers", "Local Suppliers collect it at the building."))
 	elif not is_infrastructure and not produces_power and out_gid != "":
 		var route := output_route(building, recipe)
 		var turns := int(route.get("turns", 0))
@@ -552,7 +552,7 @@ static func _intermediary_row(iid: String) -> Dictionary:
 	var p := Middleman.preview(iid)
 	if not bool(p.get("can_run", false)):
 		var refused := _row("bad", "truck", INTERMEDIARY_LABEL, intermediary_reason(str(p.get("reason", ""))))
-		refused["cause"] = "intermediary cannot supply it"
+		refused["cause"] = "Local Suppliers cannot supply it"
 		return refused
 	var last: Dictionary = Production.blocked_reason_for_building(iid)
 	if str(last.get("code", "")) == "middleman" and not Production.last_turn_run.has(iid):
@@ -569,7 +569,7 @@ static func intermediary_reason(raw: String) -> String:
 	if key in ["insufficient_funding", "funding_unavailable"]:
 		return "Not enough cash or borrowing room to pay for this batch."
 	if key == "production_blocked" or key.begins_with("production_unavailable"):
-		return "The building cannot run, so the intermediary buys nothing."
+		return "The building cannot run, so Local Suppliers buy nothing."
 	if key == "input_imports_prohibited":
 		return "Imports of one of its inputs are prohibited."
 	if key == "insufficient_cable_capacity_for_another_batch":
@@ -581,8 +581,8 @@ static func intermediary_reason(raw: String) -> String:
 	if key == "sale_unavailable_or_negative_net_proceeds":
 		return "The output cannot be sold for more than the fees."
 	if key in ["missing_price", "invalid_price", "not_tradeable", "unsupported_good", "unsupported_class", "unsupported_requirement"]:
-		return "The intermediary does not trade one of these goods."
-	return "The intermediary cannot supply this batch."
+		return "Local Suppliers do not trade one of these goods."
+	return "Local Suppliers cannot supply this batch."
 
 # Green-power intermittency status row (or {} for no row). Shown for a GREEN power generator or a
 # building that CONSUMES green power. Green = fully safe (firmed by a battery, or steady renewable),
@@ -889,7 +889,7 @@ static func _source_check(building: Dictionary, recipe: Dictionary, is_infrastru
 		if short.has(gid):
 			per.append(_good_check(g, "source", "Source", "bad", "Not enough reaches it to run."))
 		elif Middleman.supplies_good(iid, gid):
-			per.append(_good_check(g, "source", "Source", "ok", "Brought by the logistics intermediary."))
+			per.append(_good_check(g, "source", "Source", "ok", "Brought by Local Suppliers."))
 		elif linked.has(gid):
 			per.append(_good_check(g, "source", "Source", "ok", "From your own buildings."))
 		else:
@@ -1020,7 +1020,7 @@ static func _input_routes(building: Dictionary, recipe: Dictionary) -> Array:
 			continue
 		var row := {"good_id": gid, "name": Catalog.get_display_name(gid).to_lower(), "turns": -1, "reachable": true, "from": "", "route": {}}
 		if Middleman.supplies_good(iid, gid):
-			row["from"] = "the logistics intermediary"
+			row["from"] = "Local Suppliers"
 		elif MatchState.is_input_tile_only(iid, gid):
 			row["from"] = "your own buildings"
 			for producer: Dictionary in _producers_for_input(inp, iid, tile):
@@ -1058,8 +1058,8 @@ static func _route_check(building: Dictionary, recipe: Dictionary, routes: Array
 		var g := {"gid": gid, "name": Catalog.get_display_name(gid).to_lower() if gid != "" else str(r.get("name", ""))}
 		var from := str(r.get("from", ""))
 		var modes := _route_modes(r.get("route", {}))
-		if from == "the logistics intermediary":
-			per.append(_good_check(g, "route", "Route and mode", "ok", "Brought by the logistics intermediary."))
+		if from == "Local Suppliers":
+			per.append(_good_check(g, "route", "Route and mode", "ok", "Brought by Local Suppliers."))
 		elif not bool(r.get("reachable", true)) or blocked.has(gid):
 			per.append(_good_check(g, "route", "Route and mode", "bad", "No route in. Connect the tile by %s." % _route_to_build(gid)))
 		elif from == "this tile":
@@ -1094,13 +1094,13 @@ static func _transit_check(routes: Array) -> Dictionary:
 	var worst: Dictionary = {}
 	var via_intermediary := false
 	for r: Dictionary in routes:
-		if str(r.get("from", "")) == "the logistics intermediary":
+		if str(r.get("from", "")) == "Local Suppliers":
 			via_intermediary = true
 		if int(r.get("turns", -1)) >= 0 and (worst.is_empty() or int(r.turns) > int(worst.turns)):
 			worst = r
 	if worst.is_empty():
 		if via_intermediary:
-			return _check("transit", "Transit time", "ok", "The logistics intermediary delivers its inputs.")
+			return _check("transit", "Transit time", "ok", "Local Suppliers deliver its inputs.")
 		return _check("transit", "Transit time", "off", "No route in yet.")
 	var t := int(worst.turns)
 	if t == 0 and routes.all(func(r: Dictionary) -> bool: return str(r.get("from", "")) == "this tile"):
@@ -1173,7 +1173,7 @@ static func output_checks(building: Dictionary, recipe: Dictionary, is_infrastru
 ## How an output route stands: "intermediary", "unreachable", "local" (it stays on this tile, or has
 ## no port to go to), or "shipped".
 static func _output_leg(route: Dictionary, building: Dictionary) -> String:
-	if str(route.get("destination", "")) == "Logistics Intermediary":
+	if str(route.get("destination", "")) == "Local Suppliers":
 		return "intermediary"
 	if not bool(route.get("reachable", true)):
 		return "unreachable"
@@ -1195,7 +1195,7 @@ static func _reach_check(route: Dictionary, building: Dictionary, g: Dictionary)
 	var gid := str(g.get("gid", ""))
 	match _output_leg(route, building):
 		"intermediary":
-			return _good_check(g, "reach", "Reach", "ok", "The logistics intermediary collects it.")
+			return _good_check(g, "reach", "Reach", "ok", "Local Suppliers collect it.")
 		"unreachable":
 			return _good_check(g, "reach", "Reach", "warn", "Cannot reach %s. Build a %s route out." % [_destination(route), _route_to_build(gid)])
 		"local":
@@ -1206,7 +1206,7 @@ static func _reach_check(route: Dictionary, building: Dictionary, g: Dictionary)
 static func _transit_out_check(route: Dictionary, building: Dictionary, g: Dictionary) -> Dictionary:
 	match _output_leg(route, building):
 		"intermediary":
-			return _good_check(g, "transit_out", "Transit time", "ok", "The logistics intermediary collects it.")
+			return _good_check(g, "transit_out", "Transit time", "ok", "Local Suppliers collect it.")
 		"unreachable":
 			return _good_check(g, "transit_out", "Transit time", "bad", "No route to %s. Never arrives." % _destination(route))
 		"local":
@@ -1218,7 +1218,7 @@ static func _transit_out_check(route: Dictionary, building: Dictionary, g: Dicti
 static func _freight_out_check(route: Dictionary, building: Dictionary, g: Dictionary) -> Dictionary:
 	match _output_leg(route, building):
 		"intermediary":
-			return _good_check(g, "freight_out", "Freight cost", "ok", "The logistics intermediary's fee covers it. See Economics.")
+			return _good_check(g, "freight_out", "Freight cost", "ok", "Local Suppliers' fee covers it. See Economics.")
 		"unreachable":
 			return _good_check(g, "freight_out", "Freight cost", "off", "No route out, so no freight.")
 		"local":
@@ -1241,7 +1241,7 @@ static func _output_port(building: Dictionary, route: Dictionary) -> String:
 static func _port_check(building: Dictionary, route: Dictionary, g: Dictionary) -> Dictionary:
 	var port := _output_port(building, route)
 	if port == "":
-		var why := "The logistics intermediary ships it. Its fee includes the port charge." if _output_leg(route, building) == "intermediary" else "Passes no port."
+		var why := "Local Suppliers ship it. Their fee includes the port charge." if _output_leg(route, building) == "intermediary" else "Passes no port."
 		return _good_check(g, "port", "Port charge", "ok", why)
 	var gid := str(g.get("gid", ""))
 	var kind := Catalog.get_transport_class(gid)
@@ -1286,7 +1286,7 @@ static func _sales_check(building: Dictionary, route: Dictionary, g: Dictionary)
 static func _glut_check(building: Dictionary, g: Dictionary) -> Dictionary:
 	var gid := str(g.get("gid", ""))
 	if Middleman.buys_output(str(building.get("instance_id", "")), gid):
-		return _good_check(g, "sales", "Sales", "ok", "The logistics intermediary buys it at a contract price.")
+		return _good_check(g, "sales", "Sales", "ok", "Local Suppliers buy it at a contract price.")
 	var impact := MarketState.get_impact_pct(gid)
 	var th := MarketState.impact_thresholds(gid)
 	var net := MarketState.rolling_net_volume(gid)
@@ -1729,7 +1729,7 @@ static func output_route(building: Dictionary, recipe: Dictionary, good_id: Stri
 	# intermediary has no shared-tile destination, even when STOCKPILE_ALL is the
 	# global fallback for buildings that have no explicit route.
 	if Middleman.buys_output(iid, gid):
-		return {"destination":"Logistics Intermediary","target":"","has_market":true,"cost":0.0,"turns":0}
+		return {"destination":"Local Suppliers","target":"","has_market":true,"cost":0.0,"turns":0}
 	var source_tile := str(building.get("tile_id", ""))
 	var qty := BuildingStatus.primary_output_qty(recipe)
 	for o: Dictionary in BuildingStatus.flow_output_items(recipe):

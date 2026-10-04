@@ -9,8 +9,8 @@ func _test_intermediary_output_is_not_rendered_as_tile_stockpile() -> void:
 	var recipe := Catalog.get_recipe(str(building.get("recipe_id", "")))
 	var label := TileViewData._output_route_label(iid, str(building.get("tile_id", "")), recipe, false)
 	var destination := TileViewData._destination_text(building, "g_008")
-	_check("logistics intermediary" in label and destination == "logistics intermediary",
-		"active intermediary output stays private in tile route labels")
+	_check("Local Suppliers" in label and destination == "Local Suppliers",
+		"active Local Suppliers output stays private in tile route labels")
 	cleanup()
 
 func _test_input_source_list_contains_endpoints_not_transit_tiles() -> void:
@@ -67,7 +67,7 @@ func _test_tile_switch_ownership_guards() -> void:
 func _test_ledger_routes_track_each_side_and_split_destinations() -> void:
 	var iid := str(setup()[0])
 	var b := BuildingState.get_building(iid)
-	_check(Routes.endpoints(b, "input")==[{"icon":"middleman", "label":"Logistics Intermediary"}], "private input icons deduplicated")
+	_check(Routes.endpoints(b, "input")==[{"icon":"middleman", "label":"Local Suppliers"}], "private input icons deduplicated")
 	Service.set_mode(iid, "output", "managed")
 	_check(Routes.endpoints(b, "output")[0].label=="Tile (5, 4) Stockpile", "managed output shows actual retained stockpile")
 	MatchState.route_output_to_market(iid, "g_008")
@@ -143,8 +143,8 @@ func _test_supplier_change_wording() -> void:
 	preload("res://scripts/stockpile_route_prompt.gd")._say_supplier_changed("tile_5_10", coal, {"supplier_changed": true})
 	preload("res://scripts/stockpile_route_prompt.gd")._say_supplier_changed("tile_5_10", coal, {})
 	MatchState.toast_requested.disconnect(catch)
-	_check(toasts.size() == 1 and str(toasts[0]).contains("no longer buys coal"),
-		"supplier change: with nothing to ask, one toast says the intermediary stopped buying")
+	_check(toasts.size() == 1 and str(toasts[0]).contains("no longer buy coal"),
+		"supplier change: with nothing to ask, one toast says Local Suppliers stopped buying")
 
 
 ## Building Detail: a good's output leaving the intermediary for its own stockpile changes at once,

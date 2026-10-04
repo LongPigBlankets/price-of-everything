@@ -43,7 +43,7 @@ const TREE_DEFINITIONS := {
 		"subtitle": "Open the routes that let your business trade on its own terms.",
 		"nodes": [
 			{"id": "middleman_contracts", "parent": "", "title": "Open Logistics Contracts",
-				"subtitle": "Ship at least 300 units of three goods through the Logistics Intermediary.",
+				"subtitle": "Ship at least 300 units of three goods through Local Suppliers.",
 				"reward": "Unlock tile-stockpile routes", "research": "Open Logistics Contracts"},
 			{"id": "tile_stockpile", "parent": "middleman_contracts", "title": "Use a tile stockpile",
 				"subtitle": "Move one input or output to a tile stockpile and complete a production cycle.",

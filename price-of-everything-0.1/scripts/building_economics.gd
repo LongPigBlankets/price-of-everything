@@ -27,7 +27,7 @@ const LAMP_RED_SHARE := 0.08
 const METHOD_NAMES := {
 	"roads": "Road", "rail": "Rail", "pipes": "Pipe", "reinf_pipes": "Pipe", "cables": "Cable",
 	"port_fees": "Port", "port_insurance": "Port", "port_inbound": "Port", "port_outbound": "Port",
-	"intermediary": "Logistics intermediary",
+	"intermediary": "Local Suppliers",
 }
 
 
@@ -113,7 +113,7 @@ static func transport_tone(cost: float, goods_value: float) -> String:
 static func input_supply(building: Dictionary, recipe: Dictionary, gid: String, inbound_from: String) -> String:
 	var iid := str(building.get("instance_id", ""))
 	if Middleman.supplies_good(iid, gid):
-		return "Logistics intermediary"
+		return "Local Suppliers"
 	var tile := str(building.get("tile_id", ""))
 	var other_tile := inbound_from != ""
 	for src: Dictionary in Readout.input_sources(building, recipe):

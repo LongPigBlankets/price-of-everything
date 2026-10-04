@@ -649,7 +649,7 @@ func condition_text(d: Dictionary) -> String:
 		"Run Recipe": return "Operate %d building%s using a %s recipe" % [qty, "" if qty == 1 else "s", object_name]
 		"Survey": return "Survey %d %s" % [qty, object_name]
 		"Stockpile filled": return "Supply one stockpile from %s for %d consecutive turns" % [object_name, qty]
-		"Ship Through Logistics Intermediary": return "Ship at least %d units of at least %s with a Logistics Intermediary" % [qty, unit]
+		"Ship Through Logistics Intermediary": return "Ship at least %d units of at least %s through Local Suppliers" % [qty, unit]
 		"Produce Distinct": return "Produce at least %d different goods" % qty
 		"Profit":
 			var profit_turns := _leading_int(unit, 0)

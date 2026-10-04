@@ -94,20 +94,20 @@ const LOGISTICS_KNOB := 100.0
 ## Where the surplus goes, by route: the raised icon, and the line under the bar.
 const SURPLUS_LINES := {
 	"none": ["warehouse", "Surplus stays in this stockpile"],
-	"middleman": ["freight", "Surplus goes to the intermediary each turn"],
+	"middleman": ["freight", "Surplus goes to Local Suppliers each turn"],
 	"market": ["port", "Surplus is sold at the port each turn"],
 }
 ## What each logistics setting does for every building on the tile, by side.
 const LOGISTICS_ROUTES := {
 	"input": {
 		"managed": ["Per building", "Each building keeps its own input routes."],
-		"middleman": ["Intermediary", "The Logistics Intermediary supplies every building's inputs."],
-		"market": ["Global market", "Every building buys its inputs on the market, the intermediary as fallback."],
-		"stockpile": ["Tile stockpile", "Every building draws its inputs from this tile's stockpile, the intermediary as fallback."],
+		"middleman": ["Local Suppliers", "Local Suppliers supply every building's inputs."],
+		"market": ["Global market", "Every building buys its inputs on the market, Local Suppliers as fallback."],
+		"stockpile": ["Tile stockpile", "Every building draws its inputs from this tile's stockpile, Local Suppliers as fallback."],
 	},
 	"output": {
 		"managed": ["Per building", "Each building keeps its own output routes."],
-		"middleman": ["Intermediary", "The Logistics Intermediary buys every building's outputs."],
+		"middleman": ["Local Suppliers", "Local Suppliers buy every building's outputs."],
 		"market": ["Global market", "Every building sells its outputs through the nearest port."],
 		"stockpile": ["Tile stockpile", "Every building stores its outputs in this tile's stockpile."],
 	},
@@ -779,7 +779,7 @@ static func _logistics_knob(panel: Control, side: String, logistics: Dictionary,
 	var choices := [
 		{"id": "managed", "icon": panel.call("_off_white_route_icon", BuildingIcon.clean_texture("b_007", "industrial_factory")),
 			"name": "Per building"},
-		{"id": "middleman", "icon": ROUTE_MIDDLEMAN_ICON, "name": "Logistics Intermediary"},
+		{"id": "middleman", "icon": ROUTE_MIDDLEMAN_ICON, "name": "Local Suppliers"},
 		{"id": "market", "icon": ROUTE_MARKET_ICON, "enabled": licensed,
 			"name": "Global Market" if licensed else "Global Market: needs the %s" % ResearchState.GLOBAL_TRADE_LICENSE_TITLE},
 		{"id": "stockpile", "icon": ROUTE_STOCKPILE_ICON, "name": "Tile Stockpile"},
