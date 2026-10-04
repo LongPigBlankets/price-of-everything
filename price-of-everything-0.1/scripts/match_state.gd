@@ -2056,15 +2056,21 @@ func purchase_kit_cost(building: Dictionary) -> float:
 
 ## The full asking price for an NPC building: the advisor-adjusted sale value plus the stock it
 ## comes with. One helper so the listing, the Buy button and the charge cannot disagree.
+## A building the player sold costs at least what they were paid for it (`player_sale_price`),
+## so a purchase discount cannot turn selling and buying it back into money.
 func building_purchase_price(building: Dictionary) -> int:
-	return int(round(
-		AdvisorState.purchase_cost_after_advisor(float(BuildingPrice.sale_price(building)))
-		+ purchase_kit_cost(building)))
+	var price := AdvisorState.purchase_cost_after_advisor(float(BuildingPrice.sale_price(building)))
+	if building.has("player_sale_price"):
+		price = maxf(price, float(building["player_sale_price"]))
+	return int(round(price + purchase_kit_cost(building)))
 
 
-## How many turns of inputs a purchase actually receives. The player pays for PURCHASE_SEED_
-## TURNS; a seated COO throws in one more (§5.4) — a gift of goods, not a discount on price.
-func purchase_seed_turns() -> int:
+## How many turns of inputs a purchase of `building` actually receives. The player pays for
+## PURCHASE_SEED_TURNS; a seated COO throws in one more (§5.4), a gift of goods, not a discount on
+## price. Buying back a building the player sold gets no gift, so the cycle can't farm stock.
+func purchase_seed_turns(building: Dictionary = {}) -> int:
+	if building.has("player_sale_price"):
+		return PURCHASE_SEED_TURNS
 	return PURCHASE_SEED_TURNS + (1 if AdvisorState.get_advisor_in_seat("coo") != "" else 0)
 
 
@@ -2084,7 +2090,7 @@ func seed_purchase_inventory(instance_id: String) -> int:
 	var seeded := 0
 	for input in inputs:
 		var gid := str(input.get("good_id", ""))
-		var qty := int(input.get("qty", 0)) * purchase_seed_turns()
+		var qty := int(input.get("qty", 0)) * purchase_seed_turns(building)
 		if gid == "" or qty <= 0:
 			continue
 		var placed: int = Stockpile.add(tile_id, gid, qty)

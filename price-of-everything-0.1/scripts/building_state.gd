@@ -159,6 +159,8 @@ func set_building_owner(instance_id: String, owner: String) -> void:
 		# than in the market panel because three separate surfaces transfer ownership (market
 		# panel, building detail, tile info) and the tutorial buys through one of them.
 		MatchState.seed_purchase_inventory(instance_id)
+		# Bought back: what the player was once paid for it no longer applies.
+		buildings[instance_id].erase("player_sale_price")
 	building_owner_changed.emit(instance_id)
 	# A newly player-owned building may satisfy a count condition after the turn
 	# settles; never trigger a full scan from an interaction callback.
@@ -177,6 +179,8 @@ func sell_building(instance_id: String) -> Dictionary:
 	var price: int = int(round(float(BuildingPrice.sale_price(buildings[instance_id]))))
 	MatchState.add_money(float(price))
 	Construction.repay_materials_discount(instance_id)
+	# Remembered so buying it back never costs less than this (MatchState.building_purchase_price).
+	buildings[instance_id]["player_sale_price"] = price
 	set_building_owner(instance_id, SOLD_TO_OWNER)  # emits building_owner_changed → UI refresh
 	MatchState.request_toast("Sold building for £%d" % price, "success")
 	return {"ok": true, "price": price}
@@ -195,6 +199,7 @@ func liquidate_all_buildings(price_mult: float) -> Dictionary:
 			continue
 		var price: int = int(round(float(BuildingPrice.sale_price(b)) * price_mult))
 		MatchState.add_money(float(price))
+		b["player_sale_price"] = price
 		set_building_owner(str(instance_id), SOLD_TO_OWNER)
 		total += price
 		count += 1

@@ -125,6 +125,20 @@ func _test_sell_and_demolish() -> void:
 	_check(MatchState.money >= before_money, "sell: value credited to the player")
 	_check(not bool(BuildingState.sell_building(sid).get("ok", false)), "sell: an NPC-owned building can't be player-sold again")
 
+	# Buying back a sold building: never cheaper than its sale, even with a purchase discount, and
+	# no gift of stock, so selling and rebuying makes nothing.
+	var paid := int(sres.get("price", 0))
+	_check(int(BuildingState.buildings[sid].get("player_sale_price", -1)) == paid, "sell: remembers what the player was paid")
+	Modifiers.add({"id": "test_rebuy_discount", "domain": "purchase_cost", "pct": -50.0})
+	var kit := MatchState.purchase_kit_cost(BuildingState.buildings[sid])
+	_check(MatchState.building_purchase_price(BuildingState.buildings[sid]) >= int(round(float(paid) + kit)),
+		"buy-back: costs at least the sale price plus its stock, discount or not")
+	_check(MatchState.purchase_seed_turns(BuildingState.buildings[sid]) == MatchState.PURCHASE_SEED_TURNS,
+		"buy-back: arrives with only the paid turns of stock")
+	Modifiers.remove("test_rebuy_discount")
+	BuildingState.set_building_owner(sid, MatchState.LOCAL_PLAYER)
+	_check(not BuildingState.buildings[sid].has("player_sale_price"), "buy-back: the sale price is forgotten once bought")
+
 	# Demolish: queued 1-turn job that removes the building on tick.
 	var did := "test_demo_1"
 	BuildingState.buildings[did] = {"instance_id": did, "building_id": "b_001", "recipe_id": "r_001", "tile_id": "tile_0_0", "level": 1, "owner": MatchState.LOCAL_PLAYER}
