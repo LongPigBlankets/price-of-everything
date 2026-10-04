@@ -50,13 +50,6 @@ func _test_forecast_excludes_provider_from_extra_alerts() -> void:
 	_check(absf(float(Service.entry(second).receipts.input_fee)+float(Service.entry(second).receipts.output_fee)-float(preview.fee))<0.0001,"new building service bill matches completion preview")
 	cleanup()
 
-func _test_playable_start_and_short_intro() -> void:
-	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/pepper_valley_motors_playable.json"))
-	var snap := SaveLoad.expand_start_config(cfg)
-	_check(float(snap.match.money)==1500 and snap.match.middleman_service.buildings.size()==1,"playable start contains funded operating business")
-	_check(not bool(snap.match.ruleset.get("tutorial_enabled", true)),
-		"Pepper Valley Motors starts as a campaign, without the five-step tutorial coach")
-
 func _test_temporary_sale_price_modifier_reaches_both_settlements() -> void:
 	var ids := setup()
 	var iid := str(ids[0])

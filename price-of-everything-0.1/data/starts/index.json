@@ -2,16 +2,6 @@
   "_comment": "Selectable starts for the New Game screen, shown as a single row of cards in display order. Each: id, file (res:// start config), title, blurb, description (expanded), tier (green|amber|red -> Beginner-friendly|Average|Challenging badge + hex colour), good_id+good_internal (the goods icon shown on the hex), optional recommended:true for the default. Fact bullets (cash/buildings/loans) are DERIVED from the start config file.",
   "starts": [
     {
-      "id": "pepper_valley_motors",
-      "file": "res://data/starts/pepper_valley_motors_playable.json",
-      "title": "Pepper Valley Motors",
-      "tier": "green",
-      "good_id": "g_008",
-      "good_internal": "motor",
-      "blurb": "Make motors. Let the middleman handle delivery.",
-      "description": "One powered inland motor factory and \u00a31,500. Buy steel and copper wiring, sell motors, and pay one fee for transport and operating storage. Expand with another factory when your cash can fund it."
-    },
-    {
       "id": "metal_magnate",
       "file": "res://data/starts/metal_magnate.json",
       "title": "Metal Magnate",
