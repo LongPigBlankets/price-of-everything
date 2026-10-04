@@ -91,7 +91,7 @@ func open_encyclopedia() -> void:
 	_show_encyclopedia_landing()
 
 ## Deep-link straight to a GOOD's entry (the Produced by / Used in recipe view).
-## Used by the Goods Graph's expanded-card "Encyclopedia entry" button.
+## Used by the Goods Graph's expanded-card Encyclopedia key.
 func open_encyclopedia_good(good_id: String) -> void:
 	if not visible:
 		TelemetryState.track_interaction("encyclopedia_opened", "encyclopedia")

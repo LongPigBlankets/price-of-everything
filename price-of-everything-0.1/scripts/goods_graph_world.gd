@@ -1601,84 +1601,120 @@ func _rounded_rect_points(rect: Rect2, radius: float, steps: int = 4) -> PackedV
 
 # --- expanded-card action tray ------------------------------------------------------
 
-## The selected card's dropdown: supported transport infrastructure on the first row,
-## then the two action pills side by side. Safe fluids show ordinary Pipework rather
-## than also repeating Reinforced Pipework, keeping the row to the intended maximum of
-## road + rail + one pipe type. Power is the exception and shows only Cables.
+## The selected card's tray, a DS2 plate under it: the dark metal plate the cards stand on, carrying the
+## transport the good can use along its top (its best way lit by a green lamp, "BEST" under it), then the actions
+## as square cream keys holding only their icon, each named underneath. Safe fluids show ordinary Pipework rather
+## than also repeating Reinforced Pipework; power shows only Cables.
+##
+## The tray must stay usable at any zoom: below ~0.77 zoom its world size is scaled up (s) so the keys never render
+## under ~34 px on screen. The same scaled rects are stored for hit-testing, so draw and hit-test always agree.
 func _draw_card_tray(node: Dictionary, font: Font) -> void:
 	var pos: Vector2 = node["pos"]
 	var half: Vector2 = node["half"]
 	var alt_count: int = (node.get("alt_recipe_ids", []) as Array).size()
 	var entries: Array = []
 	if alt_count > 0:
-		entries.append({"label": "See alternate recipes", "action": "alternates"})
-	entries.append({"label": "Encyclopedia entry", "action": "encyclopedia"})
-
-	# The tray must stay CLICKABLE at any zoom: below ~0.77 zoom the world-unit
-	# button height is scaled up so it never renders under ~34 px on screen. The
-	# same scaled rects are stored for hit-testing, and any zoom change redraws,
-	# so draw and hit-test can never disagree.
+		entries.append({"label": "Alternate recipes", "action": "alternates", "symbol": "merge"})
+	entries.append({"label": "Encyclopedia", "action": "encyclopedia", "symbol": "encyclopedia"})
 	var s := clampf(34.0 / (44.0 * _view_zoom), 1.0, 3.0)
-	var btn_h := 44.0 * s
-	var m := 10.0 * s
-	var gap := 8.0 * s
-	var transport_keys := focused_transport_infrastructure_keys(
-		str(node.get("good_id", "")), str(node.get("good_type", "")))
-	# Infrastructure icons remain approximately 40 screen pixels while zooming, up
-	# to the same 3x safety cap as the rest of the tray.
-	var icon_s := clampf(1.0 / maxf(_view_zoom, 0.001), 1.0, 3.0)
-	var icon_size := 40.0 * icon_s
-	var icon_gap := 6.0 * icon_s
-	var transport_h := icon_size + 12.0 * s
-	# The old card-width tray forced the actions into a vertical stack. A wider
-	# surface gives the three-icon row air and keeps both actions on one line.
-	var icon_run_w := float(transport_keys.size()) * icon_size \
-		+ float(maxi(0, transport_keys.size() - 1)) * icon_gap
-	var tray_w := maxf(520.0 * s, icon_run_w + m * 2.0)
-	var tray := Rect2(pos.x - tray_w * 0.5, pos.y + half.y + 8.0,
-		tray_w, m * 2.0 + transport_h + gap + btn_h)
-	draw_colored_polygon(_rounded_rect_points(tray, 10.0 * s), Color(_CARD_BG.r, _CARD_BG.g, _CARD_BG.b, 0.97))
-	var rim := _rounded_rect_points(tray, 10.0 * s)
-	rim.append(rim[0])
-	draw_polyline(rim, _GOLD, 1.8 * s, true)
+	var m := 16.0 * s
+	var gap := 10.0 * s
+	var label_px := int(round(15.0 * s))
+	var key_side := 56.0 * s
+	var good_id := str(node.get("good_id", ""))
+	var transport_keys := focused_transport_infrastructure_keys(good_id, str(node.get("good_type", "")))
+	var best := _best_transport(good_id, transport_keys)
+	var icon_size := 40.0 * s
+	var icon_gap := 14.0 * s
+	var transport_w := float(transport_keys.size()) * icon_size + float(maxi(0, transport_keys.size() - 1)) * icon_gap
+	var transport_h := icon_size + 6.0 * s + float(label_px)
+	# Each action is a column: its key, its name under it.
+	var col_w: Array = []
+	var actions_w := 0.0
+	for e: Dictionary in entries:
+		var w := maxf(key_side, font.get_string_size(str(e["label"]), HORIZONTAL_ALIGNMENT_LEFT, -1, label_px).x)
+		col_w.append(w)
+		actions_w += w
+	actions_w += gap * 2.0 * float(maxi(0, entries.size() - 1))
+	var actions_h := key_side + 6.0 * s + float(label_px)
+	var tray_w := maxf(half.x * 2.0, maxf(transport_w, actions_w) + m * 2.0)
+	var tray := Rect2(pos.x - tray_w * 0.5, pos.y + half.y + 10.0, tray_w, m * 2.0 + transport_h + gap * 1.6 + actions_h)
+	_paint_scaled(_DARK_PLATE, tray.grow(_PLATE_OUTSET * _PLATE_K), _PLATE_CORNER, _PLATE_K)
 
-	# Transport row — icons only, matching the infrastructure art already used by
-	# the build/map panels. It is informative rather than clickable.
-	var icon_x := tray.get_center().x - icon_run_w * 0.5
-	var icon_y := tray.position.y + m + (transport_h - icon_size) * 0.5
-	for key_value in transport_keys:
-		var key := str(key_value)
+	# Transport: the infrastructure art in a row, the best way lit.
+	var icon_x := tray.get_center().x - transport_w * 0.5
+	var icon_y := tray.position.y + m
+	for key: String in transport_keys:
 		var icon_rect := Rect2(Vector2(icon_x, icon_y), Vector2(icon_size, icon_size))
 		var building: Dictionary = Catalog.get_building_by_internal_name(key)
 		var texture := InfraIcons.texture_for(str(building.get("id", "")), key)
 		if texture != null:
 			draw_texture_rect(texture, icon_rect, false)
-		else:
-			draw_colored_polygon(_rounded_rect_points(icon_rect, 6.0 * s), Color(_PILL_NAVY, 0.96))
-			draw_string(font, Vector2(icon_rect.position.x, icon_rect.get_center().y + 6.0 * s),
-				key.left(1).to_upper(), HORIZONTAL_ALIGNMENT_CENTER, icon_rect.size.x,
-				int(round(17.0 * s)), _CREAM)
+		if key == best:
+			var lamp := Vector2(icon_rect.position.x + 5.0 * s, icon_rect.end.y + 4.0 * s + float(label_px) * 0.5)
+			draw_circle(lamp, 6.0 * s, Color(DS.PALETTE.OK, 0.35))
+			draw_circle(lamp, 3.6 * s, DS.PALETTE.OK)
+			_engrave(font, Vector2(lamp.x + 7.0 * s, icon_rect.end.y + 4.0 * s + float(label_px) * 0.82), "BEST", label_px)
 		icon_x += icon_size + icon_gap
 
-	var action_y := tray.position.y + m + transport_h + gap
-	var inner_w := tray.size.x - m * 2.0
-	var action_w := (inner_w - gap * float(maxi(0, entries.size() - 1))) / float(maxi(1, entries.size()))
+	# Actions: a square cream key holding only its icon, its name engraved under it.
+	var x := tray.get_center().x - actions_w * 0.5
+	var key_y := icon_y + transport_h + gap * 1.6
 	for i in range(entries.size()):
-		var btn := Rect2(Vector2(tray.position.x + m + float(i) * (action_w + gap), action_y),
-			Vector2(action_w, btn_h))
+		var w: float = col_w[i]
+		var key_rect := Rect2(Vector2(x + (w - key_side) * 0.5, key_y), Vector2(key_side, key_side))
 		var hovered := _hover_tray == i
-		var bg := Color("#15304a") if hovered else _PILL_NAVY
-		draw_colored_polygon(_rounded_rect_points(btn, 8.0 * s), bg)
-		var br := _rounded_rect_points(btn, 8.0 * s)
-		br.append(br[0])
-		draw_polyline(br, Color(_CREAM, 1.0 if hovered else 0.7), 1.4 * s, true)
-		var emblem_rect := Rect2(btn.position + Vector2(9.0 * s, (btn_h - 28.0 * s) * 0.5), Vector2(28, 28) * s)
-		EffectEmblem.draw_on(self, emblem_rect, "merge" if entries[i]["action"] == "alternates" else "encyclopedia")
-		draw_string(font, Vector2(btn.position.x + 43.0 * s, btn.get_center().y + 6.0 * s),
-			str((entries[i] as Dictionary)["label"]),
-			HORIZONTAL_ALIGNMENT_CENTER, btn.size.x - 49.0 * s, int(round(17.0 * s)),
-			Color("#f3f8fd") if hovered else _CREAM)
-		_tray_buttons.append({"rect": btn, "action": str((entries[i] as Dictionary)["action"])})
+		_draw_square_key(key_rect, hovered)
+		var art := EffectEmblem.texture(str(entries[i]["symbol"]))
+		if art != null:
+			draw_texture_rect(art, key_rect.grow(-key_side * 0.24), false, _KEY_INK)
+		var label := str(entries[i]["label"])
+		var lw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, label_px).x
+		_engrave(font, Vector2(x + (w - lw) * 0.5, key_rect.end.y + 4.0 * s + float(label_px) * 0.82), label, label_px)
+		_tray_buttons.append({"rect": Rect2(Vector2(x, key_y), Vector2(w, actions_h)), "action": str(entries[i]["action"])})
+		x += w + gap * 2.0
+
+
+## The best way to move `good_id` among `keys`: a pipe for a liquid, rail for a solid (half road's cost and
+## further a turn), cables for power.
+static func _best_transport(good_id: String, keys: Array[String]) -> String:
+	for preferred in ["cables", "reinf_pipes", "pipes", "rails", "roads"]:
+		if keys.has(preferred):
+			if preferred == "reinf_pipes" or preferred == "pipes":
+				return preferred if Catalog.requires_pipeline(good_id) else ("rails" if keys.has("rails") else preferred)
+			return preferred
+	return ""
+
+
+const _KEY_INK := Color("#0b2340")
+## The cream keycap (latch_key.gd's render, tile_key.png, a horizontal 3-slice) drawn square: its face at the
+## render's own height, scaled to `r`.
+const _LatchKey := preload("res://scripts/ds2/latch_key.gd")
+
+
+func _draw_square_key(r: Rect2, hovered: bool) -> void:
+	var face := (_LatchKey.HEIGHT - 2.0 * _LatchKey.KEY_INSET) / _LatchKey.CAPTURE_SCALE
+	var k := r.size.x / face
+	var tex: Texture2D = _LatchKey.PRESSED if hovered else _LatchKey.NORMAL
+	var out := _LatchKey.KEY_INSET / _LatchKey.CAPTURE_SCALE
+	var dest := Rect2(Vector2(-out, -out), Vector2(face + 2.0 * out, face + 2.0 * out))
+	var cap_px := minf(_LatchKey.CAP / _LatchKey.CAPTURE_SCALE, dest.size.x * 0.5)
+	var cap_tx := cap_px * _LatchKey.TEXELS_PER_PIXEL
+	var tw := float(tex.get_width())
+	var th := float(tex.get_height())
+	draw_set_transform(_view_offset + r.position * _view_zoom, 0.0, Vector2.ONE * _view_zoom * k)
+	draw_texture_rect_region(tex, Rect2(dest.position, Vector2(cap_px, dest.size.y)), Rect2(0, 0, cap_tx, th))
+	if dest.size.x > 2.0 * cap_px:
+		draw_texture_rect_region(tex, Rect2(dest.position.x + cap_px, dest.position.y, dest.size.x - 2.0 * cap_px, dest.size.y),
+			Rect2(cap_tx, 0, tw - 2.0 * cap_tx, th))
+	draw_texture_rect_region(tex, Rect2(dest.end.x - cap_px, dest.position.y, cap_px, dest.size.y), Rect2(tw - cap_tx, 0, cap_tx, th))
+	draw_set_transform(_view_offset, 0.0, Vector2(_view_zoom, _view_zoom))
+
+
+## Text engraved on a dark plate: off-white over a dark cut shadow.
+func _engrave(font: Font, at: Vector2, text: String, px: int) -> void:
+	draw_string(font, at + Vector2(1.0, 1.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, px, Color(0, 0, 0, 0.85))
+	draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, px, DS.PALETTE.TEXT)
 
 
 ## Canonical display keys for the selected good's transport row. Routing uses
