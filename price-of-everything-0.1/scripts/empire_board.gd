@@ -413,8 +413,39 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 	_sort_parts()
 	if not _fitted:
 		fit_view()
+	_hold_until_baked()
 	queue_redraw()
 	_bake_layer.queue_redraw()
+
+
+## Tiles not yet baked are drawn live under the baked ones, so a board opening with none baked would
+## shuffle its tiles in front of each other as the bakes land. Until every tile in view has a picture the
+## board is held back, then fades in; a board already baked shows at once.
+const _REVEAL_FADE := 0.15
+const _REVEAL_LIMIT := 2.0           # seconds: show the board anyway if the bakes are slow
+var _revealing := false
+var _reveal_wait := 0.0
+
+
+func _hold_until_baked() -> void:
+	var view := Rect2(Vector2.ZERO, size)
+	for tid in _tile_order:
+		var r := _tile_rect(str(tid))
+		if _best_bake(str(tid)).is_empty() and view.intersects(Rect2(r.position * _zoom + _offset, r.size * _zoom)):
+			_revealing = true
+			_reveal_wait = 0.0
+			modulate.a = 0.0
+			return
+
+
+func _reveal_when_baked(delta: float) -> void:
+	if not _revealing:
+		return
+	_reveal_wait += delta
+	if (_next_bake() != "" or _baking) and _reveal_wait < _REVEAL_LIMIT:
+		return
+	_revealing = false
+	create_tween().tween_property(self, "modulate:a", 1.0, _REVEAL_FADE)
 
 
 func has_content() -> bool:
@@ -2017,6 +2048,7 @@ func _process(delta: float) -> void:
 	if not is_visible_in_tree():
 		return
 	_clock += delta
+	_reveal_when_baked(delta)
 	if has_content():
 		_tokens.queue_redraw()
 		_glow_layer.queue_redraw()
@@ -2156,10 +2188,10 @@ func _sort_parts() -> void:
 				"item":
 					made.append([ref["kind"], ref.get("name", ""), ref.get("at", ref.get("rect", ref.get("foot", ""))), ref.get("points", "")])
 		_tile_sig[tid] = hash(str(made))
-	# Bakes of tiles that have gone or changed are let go.
+	# Bakes of tiles that have gone are let go. A changed tile keeps its old picture until the new one is
+	# baked, so it is never drawn live out of its place in the order (_best_bake).
 	for key in _bakes.keys():
-		var tile := str(key).get_slice("|", 0)
-		if not _tile_sig.has(tile) or int(_bakes[key]["sig"]) != int(_tile_sig[tile]):
+		if not _tile_sig.has(str(key).get_slice("|", 0)):
 			_bakes.erase(key)
 
 
@@ -2237,6 +2269,12 @@ func _best_bake(tile: String) -> Array:
 	for z in BAKE_ZOOMS:
 		if _good(tile, float(z)) and (found.is_empty() or absf(float(z) - want) < absf(float(found[1]) - want)):
 			found = [_bakes[_bake_key(tile, float(z))], float(z)]
+	if found.is_empty():
+		# Only a picture from before the tile changed: better than drawing it live.
+		for z in BAKE_ZOOMS:
+			var b: Dictionary = _bakes.get(_bake_key(tile, float(z)), {})
+			if not b.is_empty() and (found.is_empty() or absf(float(z) - want) < absf(float(found[1]) - want)):
+				found = [b, float(z)]
 	return found
 
 
@@ -2908,11 +2946,16 @@ func _zoom_at(screen_pos: Vector2, factor: float) -> void:
 	_view_changed()
 
 
-## The standing thing under a screen point, nearest the camera first.
+## What answers the pointer: the company's own buildings, sites and warehouses, and Local Suppliers' depot.
+## Housing, the city, ports and pylons are scenery.
+const _PICKABLE := ["building", "site", "warehouse", "suppliers"]
+
+
+## The company's or Local Suppliers' thing under a screen point, nearest the camera first.
 func _pick(screen_pos: Vector2) -> Dictionary:
 	var board := (screen_pos - _offset) / _zoom
 	for i in range(_standing.size() - 1, -1, -1):
-		if (_standing[i]["rect"] as Rect2).has_point(board):
+		if str(_standing[i]["kind"]) in _PICKABLE and (_standing[i]["rect"] as Rect2).has_point(board):
 			return _standing[i]
 	return {}
 
