@@ -357,8 +357,10 @@ func _reset_view() -> void:
 		_view_zoom = 1.0
 		_view_offset = view * 0.5
 		return
-	# Open closer than the floor, centred on the same point, and never past the max.
-	_view_zoom = clampf(_zoom_floor * _OPEN_ZOOM_MUL, _zoom_floor, _ZOOM_MAX)
+	# Open closer than the floor, centred on the same point, and never past the max. The alternate recipes grid
+	# opens fitted: it is a handful of islands, and opening closer cut them off at the edges.
+	var mul := 1.0 if _mode == _Mode.GRID else _OPEN_ZOOM_MUL
+	_view_zoom = clampf(_zoom_floor * mul, _zoom_floor, _ZOOM_MAX)
 	_view_offset = view * 0.5 - bb.get_center() * _view_zoom
 
 
