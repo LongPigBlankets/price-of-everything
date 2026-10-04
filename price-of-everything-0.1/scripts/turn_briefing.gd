@@ -171,6 +171,9 @@ func _rebuild_items() -> void:
 	var power_capped := _power_capped_item()
 	if not power_capped.is_empty():
 		out.append(power_capped)
+	var refused := _intermediary_refused_item()
+	if not refused.is_empty():
+		out.append(refused)
 	var deposit_low := _deposit_running_out_item()
 	if not deposit_low.is_empty():
 		out.append(deposit_low)
@@ -306,6 +309,41 @@ func _power_capped_item() -> Dictionary:
 		"list": listed,
 		"list_more": maxi(0, total - listed.size()),
 	}
+
+## Buildings whose batch the intermediary refused last turn (no cash or borrowing room, prohibited imports,
+## full cables), so they made nothing. Production records these apart from starved buildings, and only the
+## building's diagnostics showed them. A building paused or retooling by the player's choice isn't listed.
+func _intermediary_refused_item() -> Dictionary:
+	var listed: Array = []
+	var total := 0
+	for iid in Production.blocked_reason_by_building.keys():
+		var block: Dictionary = Production.blocked_reason_by_building[iid]
+		if str(block.get("code", "")) != "middleman" or Production.last_turn_run.has(iid):
+			continue
+		var b: Dictionary = BuildingState.get_building(str(iid))
+		if b.is_empty() or not BuildingState.is_player_owned(b):
+			continue
+		var why: String = preload("res://scripts/building_readout.gd").intermediary_reason(str(block.get("message", "")))
+		if why == "The building is paused or its recipe changed.":
+			continue
+		total += 1
+		if listed.size() < STARVED_LIST_ROWS:
+			listed.append({"instance_id": str(iid), "tile_id": str(b.get("tile_id", "")), "why": why})
+	if total == 0:
+		_alert_dismissed.erase("alert:intermediary_refused")
+		return {}
+	if _alert_dismissed.has("alert:intermediary_refused") and total <= int(_alert_dismissed["alert:intermediary_refused"]):
+		return {}
+	return {
+		"id": "alert:intermediary_refused", "kind": "critical", "section": "alerts",
+		"severity": "warning", "dismissible": true, "magnitude": total, "icon": "truck",
+		"title": ("1 batch" if total == 1 else "%d batches" % total) + " refused by the intermediary",
+		"body": "The intermediary bought no inputs for these buildings, so they made nothing last turn. Their upkeep was still paid.",
+		"rows": [],
+		"list": listed,
+		"list_more": maxi(0, total - listed.size()),
+	}
+
 
 # N buildings starved (power vs inputs), with deep-link rows to the worst offenders.
 func _starved_item() -> Dictionary:

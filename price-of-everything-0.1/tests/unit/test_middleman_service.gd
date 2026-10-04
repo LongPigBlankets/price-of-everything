@@ -121,6 +121,28 @@ func _test_retrofit_releases_private_goods() -> void:
 		"the service follows the new recipe")
 	cleanup()
 
+## A batch the intermediary refused shows in the turn briefing, worded as the building's diagnostics word it;
+## one held back by the player's own pause or retrofit does not.
+func _test_refused_batch_alerts_the_briefing() -> void:
+	var ids := setup(2)
+	TurnBriefing._alert_dismissed.erase("alert:intermediary_refused")
+	var saved_blocked: Dictionary = Production.blocked_reason_by_building.duplicate(true)
+	var saved_run: Dictionary = Production.last_turn_run.duplicate(true)
+	Production.last_turn_run = {}
+	Production.blocked_reason_by_building = {
+		str(ids[0]): {"code": "middleman", "message": "insufficient_funding"},
+		str(ids[1]): {"code": "middleman", "message": "Building paused or recipe changed."},
+	}
+	var item: Dictionary = TurnBriefing._intermediary_refused_item()
+	var listed: Array = item.get("list", [])
+	_check(str(item.get("id", "")) == "alert:intermediary_refused" and int(item.get("magnitude", 0)) == 1
+		and listed.size() == 1 and str((listed[0] as Dictionary).get("instance_id", "")) == str(ids[0]),
+		"briefing: a refused batch raises an alert, a paused building does not")
+	_check(str((listed[0] as Dictionary).get("why", "")).begins_with("Not enough cash"), "briefing: the refusal reads as the diagnostics read it")
+	Production.blocked_reason_by_building = saved_blocked
+	Production.last_turn_run = saved_run
+	cleanup()
+
 func _test_live_shortage_and_legacy_default() -> void:
 	var ids := setup()
 	MatchState.money = -1000000.0
