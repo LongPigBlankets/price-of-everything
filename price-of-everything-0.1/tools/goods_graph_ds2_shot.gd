@@ -8,6 +8,8 @@ const ShotHarness := preload("res://tools/shot_harness.gd")
 const GoodsFlowGraph := preload("res://scripts/goods_flow_graph.gd")
 const START := "res://data/starts/metal_magnate.json"
 const GOOD := "steel"
+## A good whose chain runs on liquids, for the pipes.
+const FLUID_GOOD := "plastics"
 
 var _out := "/tmp"
 
@@ -51,6 +53,9 @@ func _ready() -> void:
 	world.call("select_good", GOOD)
 	await _settle(80)
 	await _shot("focus")
+	world.call("select_good", FLUID_GOOD)
+	await _settle(80)
+	await _shot("focus_fluid")
 	get_tree().quit()
 
 

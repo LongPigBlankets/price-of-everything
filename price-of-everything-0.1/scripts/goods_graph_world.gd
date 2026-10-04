@@ -1273,18 +1273,95 @@ func _draw_focus_edge(fe: Dictionary, alpha_mul: float) -> void:
 	if wp.size() < 2:
 		return
 	var route := clampi(int(fe.get("route", 0)), 0, _ROUTE_COLORS.size() - 1)
-	var color := Color(_ROUTE_COLORS[route], alpha_mul)
 	var pts := _fillet_polyline(wp)
-	var w := _EDGE_WIDTH * (2.0 if bool(fe.get("in_use", false)) else 1.3)
-	if bool(fe.get("gated", false)):
-		_draw_dashed_polyline(pts, color, w)
-	else:
-		draw_polyline(pts, color, w, true)
+	# A research-locked route is the same run as a faint ghost: there, but not laid.
+	var a := alpha_mul * (0.38 if bool(fe.get("gated", false)) else 1.0)
+	var good_id := str((_by_id.get(str(fe["from"]), {}) as Dictionary).get("good_id", str(fe["from"])))
+	var carrier := _carrier_for(good_id)
+	var w := _CARRIER_W * (1.25 if bool(fe.get("in_use", false)) else 1.0)
+	match carrier:
+		"pipe":
+			_draw_pipe_run(pts, w, a)
+		"cable":
+			draw_polyline(pts, Color(_CABLE_INK, a), 3.0, true)
+		_:
+			_draw_conveyor_run(pts, w, a)
+	# An alternate route keeps its colour as a thin core line, so the routes into the selection still read apart.
+	if route > 0 and carrier != "cable":
+		draw_polyline(pts, Color(_ROUTE_COLORS[route], 0.9 * a), 2.0, true)
 	var tip := wp[wp.size() - 1]
 	var tip_dir := (pts[pts.size() - 1] - pts[pts.size() - 2]).normalized()
 	var nrm := Vector2(-tip_dir.y, tip_dir.x)
 	draw_colored_polygon(PackedVector2Array([
-		tip, tip - tip_dir * 9.0 + nrm * 5.4, tip - tip_dir * 9.0 - nrm * 5.4]), color)
+		tip, tip - tip_dir * 12.0 + nrm * 8.0, tip - tip_dir * 12.0 - nrm * 8.0]), Color(_BRASS_DARK, a))
+
+
+## The focused chain's runs in DS2: a good that needs pipework rides a brass pipe, a solid a brass-railed
+## conveyor, power a cable. Which a good takes follows its transport class (Catalog.requires_pipeline).
+const _CARRIER_W := 9.0
+const _BRASS := Color("c9a24a")
+const _BRASS_DARK := Color("6e5420")
+const _BRASS_LIGHT := Color("f2dc95")
+const _BELT := Color("2b2c30")
+const _SLAT := Color("4a4c52")
+const _CABLE_INK := Color("1b1d22")
+const _SLAT_STEP := 11.0
+const _FLANGE_STEP := 150.0
+
+
+static func _carrier_for(good_id: String) -> String:
+	if good_id == "power" or str(Catalog.get_good(good_id).get("good_type", "")) == "power":
+		return "cable"
+	return "pipe" if Catalog.requires_pipeline(good_id) else "conveyor"
+
+
+## A brass pipe along `pts`: a dark edge, the brass body, a highlight along its upper left, and a flange at each
+## end and every _FLANGE_STEP along it.
+func _draw_pipe_run(pts: PackedVector2Array, w: float, a: float) -> void:
+	draw_polyline(pts, Color(_BRASS_DARK, a), w + 3.0, true)
+	draw_polyline(pts, Color(_BRASS, a), w, true)
+	var lift := Vector2(-w * 0.2, -w * 0.2)
+	var shine := PackedVector2Array()
+	for pt in pts:
+		shine.append(pt + lift)
+	draw_polyline(shine, Color(_BRASS_LIGHT, 0.85 * a), maxf(1.5, w * 0.28), true)
+	_along(pts, _FLANGE_STEP, true, func(at: Vector2, dir: Vector2) -> void:
+		var n := Vector2(-dir.y, dir.x)
+		var half := n * (w * 0.5 + 3.0)
+		var d := dir * 2.5
+		draw_colored_polygon(PackedVector2Array([at - half - d, at + half - d, at + half + d, at - half + d]), Color(_BRASS_DARK, a)))
+
+
+## A conveyor along `pts`: brass rails either side of a dark belt, its slats across it.
+func _draw_conveyor_run(pts: PackedVector2Array, w: float, a: float) -> void:
+	draw_polyline(pts, Color(_BRASS_DARK, a), w + 5.0, true)
+	draw_polyline(pts, Color(_BRASS, a), w + 3.0, true)
+	draw_polyline(pts, Color(_BELT, a), w - 1.0, true)
+	_along(pts, _SLAT_STEP, false, func(at: Vector2, dir: Vector2) -> void:
+		var n := Vector2(-dir.y, dir.x) * (w * 0.5 - 1.0)
+		draw_line(at - n, at + n, Color(_SLAT, a), 1.6, true))
+
+
+## Calls `mark(point, direction)` every `step` along `pts` (and at both ends when `ends`).
+func _along(pts: PackedVector2Array, step: float, ends: bool, mark: Callable) -> void:
+	if pts.size() < 2:
+		return
+	if ends:
+		mark.call(pts[0], (pts[1] - pts[0]).normalized())
+		mark.call(pts[pts.size() - 1], (pts[pts.size() - 1] - pts[pts.size() - 2]).normalized())
+	var carry := step * 0.5
+	for i in range(pts.size() - 1):
+		var p0 := pts[i]
+		var p1 := pts[i + 1]
+		var seg := p0.distance_to(p1)
+		if seg <= 0.001:
+			continue
+		var dir := (p1 - p0) / seg
+		var t := carry
+		while t < seg:
+			mark.call(p0 + dir * t, dir)
+			t += step
+		carry = t - seg
 
 
 func _draw_card(node: Dictionary, font: Font, tracing: bool, alpha_mul: float = 1.0,
@@ -1323,7 +1400,6 @@ func _draw_card(node: Dictionary, font: Font, tracing: bool, alpha_mul: float = 
 	var side := rect.size.x - 2.0 * _TILE_SIDE_PAD
 	var tile := Rect2(Vector2(rect.get_center().x - side * 0.5, rect.position.y + _TILE_TOP_PAD), Vector2(side, side))
 	_draw_enamel_icon(tile, str(node.get("good_id", "")), id, alpha)
-	draw_rect(Rect2(Vector2(tile.position.x + 10.0, tile.end.y + 8.0), Vector2(tile.size.x - 20.0, 5.0)), Color(accent, accent.a * alpha))
 	# The +N pill and the lock in the tile's top right corner.
 	var corner := Vector2(tile.end.x - 10.0, tile.position.y + 26.0)
 	if gated or unlocked_now:
@@ -1341,7 +1417,10 @@ func _draw_card(node: Dictionary, font: Font, tracing: bool, alpha_mul: float = 
 	# The name engraved on the plate under the tile, up to two lines; on the selected card the recipe in
 	# use runs under it.
 	var name := str(node["display"])
-	var area := Rect2(Vector2(rect.position.x + 14.0, tile.end.y + 16.0), Vector2(rect.size.x - 28.0, rect.end.y - tile.end.y - 22.0))
+	# The name sits on a block of the category's colour, deepened so the off-white name reads on it.
+	var block := Rect2(Vector2(tile.position.x, tile.end.y + 10.0), Vector2(tile.size.x, rect.end.y - tile.end.y - 22.0))
+	draw_colored_polygon(_rounded_rect_points(block, 6.0), Color(accent.darkened(_NAME_BLOCK_DEEPEN), alpha))
+	var area := block.grow_individual(-8.0, -2.0, -8.0, -2.0)
 	# One line at 28; a name that needs two drops to 22 so both clear the band.
 	var fs := 28 if font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 28).x <= area.size.x else 22
 	var caption := ""
@@ -1377,6 +1456,7 @@ const _ENAMEL_MARGIN := 3.0 / 1.875
 ## A gated good's plate, a shade darker.
 const _PLATE_DIM := Color(0.72, 0.72, 0.72)
 const _TILE_SIDE_PAD := 28.0
+const _NAME_BLOCK_DEEPEN := 0.4
 const _TILE_TOP_PAD := 18.0
 
 
