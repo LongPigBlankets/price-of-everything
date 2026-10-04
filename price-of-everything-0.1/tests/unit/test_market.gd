@@ -146,9 +146,14 @@ func _test_sell_and_demolish() -> void:
 	_check(bool(dres.get("ok", false)) and BuildingWorks.is_demolishing(did) and BuildingWorks.demolish_turns_remaining(did) == 1,
 		"demolish: queued with a 1-turn countdown")
 	_check(not bool(BuildingWorks.start_demolish(did).get("ok", false)), "demolish: can't double-queue")
+	MatchState.output_split_destinations[did] = {"g_001": [{"tile_id": "tile_1_1", "qty": 0}]}
+	MatchState.output_ship_quantities[did] = {"g_001": 5}
+	MatchState.set_input_tile_only(did, "g_002", true)
 	BuildingWorks.tick_demolish()
 	_check(not BuildingState.buildings.has(did) and not BuildingWorks.is_demolishing(did),
 		"demolish: tick removes the building and clears the queue")
+	_check(not MatchState.output_split_destinations.has(did) and not MatchState.output_ship_quantities.has(did)
+		and not MatchState.input_tile_only.has(did + "|g_002"), "demolish: the building's routes go with it")
 
 	# Demolish queue survives a save round-trip (additive field, tolerant reader — no version bump).
 	var qid := "test_demo_rt"

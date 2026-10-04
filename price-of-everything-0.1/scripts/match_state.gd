@@ -1558,6 +1558,20 @@ func _move_row(good: String, qty: int, tile_from: String, tile_to: String, start
 func _input_key(instance_id: String, good_id: String) -> String:
 	return instance_id + "|" + good_id
 
+## Drops every route a removed building had set: its output destinations (single, split and to special
+## orders), its shipping caps and its tile-stock-only inputs.
+func forget_building_routes(instance_id: String) -> void:
+	output_stockpile_destinations.erase(instance_id)
+	output_split_destinations.erase(instance_id)
+	output_special_order_destinations.erase(instance_id)
+	output_ship_quantities.erase(instance_id)
+	var prefix := instance_id + "|"
+	for key: String in input_tile_only.keys():
+		if key.begins_with(prefix):
+			input_tile_only.erase(key)
+	if str(pending_output_stockpile_selection.get("instance_id", "")) == instance_id:
+		pending_output_stockpile_selection.clear()
+
 func set_input_tile_only(instance_id: String, good_id: String, tile_only: bool) -> void:
 	# Default (not set) = "stockpile then market" (buys the shortfall). tile_only = never buy.
 	if instance_id == "" or good_id == "":

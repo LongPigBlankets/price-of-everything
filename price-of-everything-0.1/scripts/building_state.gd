@@ -264,8 +264,7 @@ func remove_building(instance_id: String) -> bool:
 		MatchState.middleman_service.buildings.erase(instance_id)
 	buildings.erase(instance_id)
 	BuildingWorks.paused_buildings.erase(instance_id)
-	MatchState.output_stockpile_destinations.erase(instance_id)
-	MatchState.output_special_order_destinations.erase(instance_id)
+	MatchState.forget_building_routes(instance_id)
 	# Removing battery housing shrinks the tile's cell slots — refund any now-excess loaded cells.
 	if str(Catalog.get_building(str(instance.get("building_id", ""))).get("category", "")) == "battery":
 		Power.refund_battery_cells_over_slots(tile_id)
