@@ -1,7 +1,7 @@
 extends CanvasLayer
 ## One-time Glass Merchant start intro, mounted over the HUD by world_map on a fresh
 ## glass_merchant start: a glass hero icon + the "Glass Merchant" title, the lore,
-## the Vandel Glassworks bonus line, and a Begin button. Mirrors metal_magnate_intro.gd.
+## the Ashmouth Glassworks bonus line, and a Begin button. Mirrors metal_magnate_intro.gd.
 
 signal begin_pressed
 
@@ -12,13 +12,13 @@ const BONUS_FONT := preload("res://assets/fonts/IBMPlexSans-SemiBold.ttf")
 
 # Owner copy (2026-08-29).
 const LORE_PARAGRAPHS := [
-	"Nobody in Vandel thought there was money in sand. The dunes were where people walked dogs and dumped rubbish. But you stood in a furnace hall once and watched the harsh sand melt and turn red hot, then clear. You could never look at the sand dunes the same way again.",
+	"Nobody in Ashmouth thought there was money in sand. The dunes were where people walked dogs and dumped rubbish. But you stood in a furnace hall once and watched the harsh sand melt and turn red hot, then clear. You could never look at the sand dunes the same way again.",
 	"You saw what sand could become. So you borrowed. Heavily. Everyone doubted you. The quarry went up first, then the furnaces. Now they don't doubt you any longer. Now everyone you know whispers how they always saw the potential in you, how they knew you had it in you. You ignore the whispers and focus on the work.",
 	"Glass is an honest trade. It doesn't rust and it doesn't lie. But one flaw, and a sheet that survived a thousand degrees shatters into a thousand pieces. The weight of that work hangs heavy over you.",
-	"They've started calling you the Glass Merchant. In Vandel that isn't entirely a compliment. It means someone so plain you can see straight through. Fine. Let them look. The furnaces are lit and so are your eyes when you look to the future.",
+	"They've started calling you the Glass Merchant. In Ashmouth that isn't entirely a compliment. It means someone so plain you can see straight through. Fine. Let them look. The furnaces are lit and so are your eyes when you look to the future.",
 	"Where will you take this next? Will you stun everyone a second time?",
 ]
-const BONUS := "Vandel Glassworks Bonus: +5% glass output and +5% window output."
+const BONUS := "Ashmouth Glassworks Bonus: +5% glass output and +5% window output."
 
 var _input_blocked_parent: Node = null
 

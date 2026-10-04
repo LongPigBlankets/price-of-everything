@@ -4743,7 +4743,7 @@ func _open_logistics_sheet(building: Dictionary) -> void:
 	_open_sheet("Building logistics",func(vb: VBoxContainer) -> void:
 		var note := Label.new()
 		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		note.text = "Choose inputs and outputs independently. Manage logistics uses generic carriers for physical deliveries. Middleman goods stay private to this building; retained goods use your tile storage."
+		note.text = "Choose inputs and outputs independently. Manage logistics uses generic carriers for physical deliveries. Goods the intermediary holds stay private to this building. Goods it retains use your tile storage."
 		vb.add_child(note)
 		vb.add_child(_route_card("Inputs",_input_summary(building,recipe),func() -> void: _open_input_sources_sheet(building,recipe), INPUT_ICON))
 		vb.add_child(_route_card("Outputs",_output_summary(building,recipe),func() -> void: _open_output_sheet(building,recipe), OUTPUT_ICON))
