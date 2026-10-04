@@ -1403,13 +1403,13 @@ func _draw_card(node: Dictionary, font: Font, tracing: bool, alpha_mul: float = 
 	if gated and not (tracing and related):
 		alpha *= 0.6
 
+	# A glow behind the plate: gold round the selected card, cream round a hovered one.
+	if id == _selected_id:
+		_draw_glow(rect, _GOLD, alpha)
+	elif id == _hover_id:
+		_draw_glow(rect, _CREAM, alpha * 0.8)
 	var plate := _PLATE_DIM if gated else Color.WHITE
-	_paint_scaled(_DARK_PLATE, rect.grow(_PLATE_OUTSET * _PLATE_K), _PLATE_CORNER, _PLATE_K, Color(plate, alpha))
-	# The rim: gold round the selected card, the category's colour round a hovered one.
-	if id == _selected_id or id == _hover_id:
-		var rim := _rounded_rect_points(rect.grow(3.0), _CORNER_R + 3.0)
-		rim.append(rim[0])
-		draw_polyline(rim, Color(_GOLD if id == _selected_id else accent, alpha), 4.0, true)
+	_paint_plate(rect, Color(plate, alpha))
 	# The good on an enamel tile across the top, a band of the category's colour under it.
 	var side := rect.size.x - 2.0 * _TILE_SIDE_PAD
 	var tile := Rect2(Vector2(rect.get_center().x - side * 0.5, rect.position.y + _TILE_TOP_PAD), Vector2(side, side))
@@ -1516,6 +1516,38 @@ func _draw_tier_plate(r: Rect2, tier: int, font: Font, alpha: float) -> void:
 const _TILE_TOP_PAD := 18.0
 
 
+## The dark metal plate over `rect` with silver screws set over its own four (the render's are dark).
+const _SCREW: Texture2D = preload("res://assets/ui/bdp_v3/screw_silver.png")
+## The render's screws: their centres this many texels in from its corners, this many texels across.
+const _PLATE_SCREW_AT := 34.0
+const _PLATE_SCREW_SIDE := 30.0
+
+
+func _paint_plate(rect: Rect2, tint: Color = Color.WHITE) -> void:
+	var dest := rect.grow(_PLATE_OUTSET * _PLATE_K)
+	_paint_scaled(_DARK_PLATE, dest, _PLATE_CORNER, _PLATE_K, tint)
+	var inset := _PLATE_SCREW_AT * 0.5 * _PLATE_K
+	var side := _PLATE_SCREW_SIDE * 0.5 * _PLATE_K
+	for c: Vector2 in [dest.position + Vector2(inset, inset), Vector2(dest.end.x - inset, dest.position.y + inset),
+			Vector2(dest.position.x + inset, dest.end.y - inset), dest.end - Vector2(inset, inset)]:
+		draw_texture_rect(_SCREW, Rect2(c - Vector2(side, side) * 0.5, Vector2(side, side)), false, Color(1, 1, 1, tint.a))
+
+
+## A soft glow round `rect`: rings of `col` fading out as they widen.
+func _draw_glow(rect: Rect2, col: Color, alpha: float) -> void:
+	for i in _GLOW_RINGS:
+		var t := float(i) / float(_GLOW_RINGS)
+		var grow := 2.0 + float(i) * _GLOW_STEP
+		var ring := _rounded_rect_points(rect.grow(grow), _CORNER_R + grow)
+		ring.append(ring[0])
+		draw_polyline(ring, Color(col, alpha * _GLOW_ALPHA * (1.0 - t) * (1.0 - t)), _GLOW_STEP * 1.6, true)
+
+
+const _GLOW_RINGS := 16
+const _GLOW_STEP := 2.0
+const _GLOW_ALPHA := 0.2
+
+
 ## `tex` as a 9-slice over `dest` (world units), drawn at `k` times the panel's scale.
 func _paint_scaled(tex: Texture2D, dest: Rect2, corner: float, k: float, tint: Color = Color.WHITE) -> void:
 	draw_set_transform(_view_offset + dest.position * _view_zoom, 0.0, Vector2.ONE * _view_zoom * k)
@@ -1602,7 +1634,7 @@ func _rounded_rect_points(rect: Rect2, radius: float, steps: int = 4) -> PackedV
 # --- expanded-card action tray ------------------------------------------------------
 
 ## The selected card's tray, a DS2 plate under it: the dark metal plate the cards stand on, carrying the
-## transport the good can use along its top (its best way lit by a green lamp, "BEST" under it), then the actions
+## ways the good can travel along its top as a chain, best first (rail > road), then the actions
 ## as square cream keys holding only their icon, each named underneath. Safe fluids show ordinary Pipework rather
 ## than also repeating Reinforced Pipework; power shows only Cables.
 ##
@@ -1622,12 +1654,11 @@ func _draw_card_tray(node: Dictionary, font: Font) -> void:
 	var label_px := int(round(15.0 * s))
 	var key_side := 56.0 * s
 	var good_id := str(node.get("good_id", ""))
-	var transport_keys := focused_transport_infrastructure_keys(good_id, str(node.get("good_type", "")))
-	var best := _best_transport(good_id, transport_keys)
+	var transport_keys := _transport_chain(good_id, focused_transport_infrastructure_keys(good_id, str(node.get("good_type", ""))))
 	var icon_size := 40.0 * s
-	var icon_gap := 14.0 * s
+	var icon_gap := 30.0 * s
 	var transport_w := float(transport_keys.size()) * icon_size + float(maxi(0, transport_keys.size() - 1)) * icon_gap
-	var transport_h := icon_size + 6.0 * s + float(label_px)
+	var transport_h := icon_size
 	# Each action is a column: its key, its name under it.
 	var col_w: Array = []
 	var actions_w := 0.0
@@ -1639,22 +1670,21 @@ func _draw_card_tray(node: Dictionary, font: Font) -> void:
 	var actions_h := key_side + 6.0 * s + float(label_px)
 	var tray_w := maxf(half.x * 2.0, maxf(transport_w, actions_w) + m * 2.0)
 	var tray := Rect2(pos.x - tray_w * 0.5, pos.y + half.y + 10.0, tray_w, m * 2.0 + transport_h + gap * 1.6 + actions_h)
-	_paint_scaled(_DARK_PLATE, tray.grow(_PLATE_OUTSET * _PLATE_K), _PLATE_CORNER, _PLATE_K)
+	_paint_plate(tray)
 
-	# Transport: the infrastructure art in a row, the best way lit.
+	# Transport: the ways the good can travel, best first, ">" between them.
 	var icon_x := tray.get_center().x - transport_w * 0.5
 	var icon_y := tray.position.y + m
-	for key: String in transport_keys:
+	for n in transport_keys.size():
+		var key: String = transport_keys[n]
 		var icon_rect := Rect2(Vector2(icon_x, icon_y), Vector2(icon_size, icon_size))
 		var building: Dictionary = Catalog.get_building_by_internal_name(key)
 		var texture := InfraIcons.texture_for(str(building.get("id", "")), key)
 		if texture != null:
 			draw_texture_rect(texture, icon_rect, false)
-		if key == best:
-			var lamp := Vector2(icon_rect.position.x + 5.0 * s, icon_rect.end.y + 4.0 * s + float(label_px) * 0.5)
-			draw_circle(lamp, 6.0 * s, Color(DS.PALETTE.OK, 0.35))
-			draw_circle(lamp, 3.6 * s, DS.PALETTE.OK)
-			_engrave(font, Vector2(lamp.x + 7.0 * s, icon_rect.end.y + 4.0 * s + float(label_px) * 0.82), "BEST", label_px)
+		if n < transport_keys.size() - 1:
+			var chev_px := int(round(26.0 * s))
+			_engrave(font, Vector2(icon_rect.end.x, icon_rect.get_center().y + chev_px * 0.36), ">", chev_px, icon_gap)
 		icon_x += icon_size + icon_gap
 
 	# Actions: a square cream key holding only its icon, its name engraved under it.
@@ -1675,15 +1705,17 @@ func _draw_card_tray(node: Dictionary, font: Font) -> void:
 		x += w + gap * 2.0
 
 
-## The best way to move `good_id` among `keys`: a pipe for a liquid, rail for a solid (half road's cost and
-## further a turn), cables for power.
-static func _best_transport(good_id: String, keys: Array[String]) -> String:
-	for preferred in ["cables", "reinf_pipes", "pipes", "rails", "roads"]:
-		if keys.has(preferred):
-			if preferred == "reinf_pipes" or preferred == "pipes":
-				return preferred if Catalog.requires_pipeline(good_id) else ("rails" if keys.has("rails") else preferred)
-			return preferred
-	return ""
+## The ways `good_id` can travel among `keys`, best first: a liquid by pipe, then rail, then road (overland
+## a fluid costs 3x the pipe by rail, 6x by road); a solid by rail, then road (rail is half road's cost and
+## goes further a turn); power by cables.
+static func _transport_chain(good_id: String, keys: Array[String]) -> Array[String]:
+	var order: Array = ["cables", "pipes", "reinf_pipes", "rails", "roads"] if Catalog.requires_pipeline(good_id) \
+		else ["cables", "rails", "roads", "pipes", "reinf_pipes"]
+	var out: Array[String] = []
+	for k in order:
+		if keys.has(k):
+			out.append(k)
+	return out
 
 
 const _KEY_INK := Color("#0b2340")
@@ -1711,10 +1743,11 @@ func _draw_square_key(r: Rect2, hovered: bool) -> void:
 	draw_set_transform(_view_offset, 0.0, Vector2(_view_zoom, _view_zoom))
 
 
-## Text engraved on a dark plate: off-white over a dark cut shadow.
-func _engrave(font: Font, at: Vector2, text: String, px: int) -> void:
-	draw_string(font, at + Vector2(1.0, 1.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, px, Color(0, 0, 0, 0.85))
-	draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, px, DS.PALETTE.TEXT)
+## Text engraved on a dark plate: off-white over a dark cut shadow; centred in `width` when one is given.
+func _engrave(font: Font, at: Vector2, text: String, px: int, width: float = -1.0) -> void:
+	var align := HORIZONTAL_ALIGNMENT_CENTER if width > 0.0 else HORIZONTAL_ALIGNMENT_LEFT
+	draw_string(font, at + Vector2(1.0, 1.0), text, align, width, px, Color(0, 0, 0, 0.85))
+	draw_string(font, at, text, align, width, px, DS.PALETTE.TEXT)
 
 
 ## Canonical display keys for the selected good's transport row. Routing uses

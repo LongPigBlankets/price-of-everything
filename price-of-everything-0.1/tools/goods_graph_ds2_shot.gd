@@ -9,7 +9,7 @@ const GoodsFlowGraph := preload("res://scripts/goods_flow_graph.gd")
 const START := "res://data/starts/metal_magnate.json"
 const GOOD := "steel"
 ## A good whose chain runs on liquids, for the pipes.
-const FLUID_GOOD := "plastics"
+const FLUID_GOOD := "ethylene"
 
 var _out := "/tmp"
 
@@ -53,6 +53,11 @@ func _ready() -> void:
 	var node: Dictionary = (world.get("_by_id") as Dictionary).get(GOOD, {})
 	var plate: Rect2 = world.call("_tier_plate_rect", Rect2((node["pos"] as Vector2) - (node["half"] as Vector2), (node["half"] as Vector2) * 2.0))
 	print("[gg_shot] %s tier plate says: %s" % [GOOD, world.call("_tier_tooltip", GOOD, plate.get_center())])
+	world.set("_hover_id", "aluminium")
+	world.call("queue_redraw")
+	await _settle(4)
+	await _shot("hover")
+	world.set("_hover_id", "")
 	world.call("select_good", GOOD)
 	await _settle(80)
 	await _shot("focus")
