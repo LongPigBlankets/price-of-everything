@@ -835,7 +835,7 @@ func _render_settings() -> void:
 	source_box.add_child(source_note)
 	var source_group := ButtonGroup.new()
 	for option in [
-		{"id": "middleman", "title": "Logistics Intermediary — default", "detail": "Delivered to the site on the next turn"},
+		{"id": "middleman", "title": "Local Suppliers (default)", "detail": "Delivered to the site on the next turn"},
 		{"id": "market", "title": "Market — always buy in", "detail": "Never blocks; costs money"},
 		{"id": "same_tile", "title": "Same tile — always", "detail": "Uses local stockpile only"},
 		{"id": "any_tile", "title": "Any tile with surplus", "detail": "Pulls spare goods network-wide"},
@@ -1431,9 +1431,9 @@ func _render_confirm_v3() -> void:
 	if bool(_v3_forecast.get("middleman",false)):
 		var service_note := Label.new()
 		service_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		var materials_line := "Construction materials use the Logistics Intermediary and arrive on the next turn." \
+		var materials_line := "Construction materials come from Local Suppliers and arrive on the next turn." \
 			if _current_material_source() == "middleman" else "Construction materials follow the source chosen below."
-		service_note.text = "After completion: intermediary inputs and sales, with transport and operating storage included. %s Keep £%.2f for the first operating batch; anticipated sales cannot fund it." % [materials_line, float(_v3_forecast.cash_needed)]
+		service_note.text = "After completion: Local Suppliers inputs and sales, with transport and operating storage included. %s Keep £%.2f for the first operating batch; anticipated sales cannot fund it." % [materials_line, float(_v3_forecast.cash_needed)]
 		_content.add_child(service_note)
 	if _locked_tile_id != "" and not (_v3_forecast.get("phases", []) as Array).is_empty():
 		if BuildForecastTable.show_balance_impact():
@@ -2164,7 +2164,7 @@ func _effective_material_source(source: String) -> String:
 
 func _material_source_short(id: String) -> String:
 	match id:
-		"middleman": return "Logistics Intermediary"
+		"middleman": return "Local Suppliers"
 		"same_tile": return "this tile"
 		"any_tile": return "any surplus"
 		_: return "global market"
@@ -2200,7 +2200,7 @@ func _v3_materials_accordion() -> Control:
 	box.add_child(header)
 	var group := ButtonGroup.new()
 	for opt in [
-		{"id": "middleman", "label": "Logistics Intermediary"},
+		{"id": "middleman", "label": "Local Suppliers"},
 		{"id": "market", "label": "Buy from global market"},
 		{"id": "same_tile", "label": "This tile's stockpile"},
 		{"id": "any_tile", "label": "Any tile with surplus"},
@@ -3334,7 +3334,7 @@ func _material_source_note() -> String:
 	var where := Catalog.tile_label(_locked_tile_id) if _locked_tile_id != "" else "the tile you select next"
 	match _effective_material_source(MatchState.construct_material_source):
 		"middleman":
-			return "Materials will be bought through the Logistics Intermediary and delivered to %s on the next turn." % where
+			return "Materials will be bought from Local Suppliers and delivered to %s on the next turn." % where
 		"market":
 			return "Materials will be bought from the market when needed at %s." % where
 		"same_tile":

@@ -74,8 +74,8 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 		out.payback_turn = payback_turn(float(out.capex_total),float(p.upfront),float(p.net),first_sale)
 		out.no_supply = missing or not bool(p.feasible)
 		out["middleman"] = true
-		out.phases = [{"kind":PHASE_BUILDING,"label":"Construction materials use the Logistics Intermediary" if material_source == "middleman" else "Construction materials use normal delivery","range":"Until materials arrive and construction finishes","per_turn":0.0,"turns":first_sale},
-			{"kind":PHASE_SELLING,"label":"Intermediary: buy, produce and sell","range":"Each operating turn after completion","per_turn":float(p.net),"turns":-1}]
+		out.phases = [{"kind":PHASE_BUILDING,"label":"Construction materials come from Local Suppliers" if material_source == "middleman" else "Construction materials use normal delivery","range":"Until materials arrive and construction finishes","per_turn":0.0,"turns":first_sale},
+			{"kind":PHASE_SELLING,"label":"Local Suppliers: buy, produce and sell","range":"Each operating turn after completion","per_turn":float(p.net),"turns":-1}]
 		out.breakdown={"revenue":float(p.sale.goods_value)+float(p.grid_value),"inputs":float(p.buy.goods_value),"inbound_freight":float(p.buy.fee),"outbound_freight":float(p.sale.fee),"port_fee":0.0,"power":float(p.power),"carbon_tax":float(p.carbon_tax),"labour":float(p.labour),"maintenance":float(p.maintenance),"warehousing":0.0,"idle_standing":float(p.labour)+float(p.maintenance),"startup_inventory":float(p.buy.cash_out),"middleman_fee":float(p.fee)}
 		return out
 

@@ -621,7 +621,7 @@ static func retarget(iid: String) -> void:
 static func release_for_works(iid: String) -> String:
 	if not has_assets(iid): return ""
 	if bool(release_to_stock(iid).get("ok", false)): return ""
-	return "The intermediary's goods for this building don't fit in the tile's storage."
+	return "The goods Local Suppliers hold for this building don't fit in the tile's storage."
 
 static func disable(iid: String) -> Dictionary:
 	if TurnManager.current_phase != TurnManager.Phase.DECIDE or has_assets(iid):
@@ -814,7 +814,7 @@ static func input_source_route(iid: String, gid: String) -> Dictionary:
 	return route
 
 static func input_route_source_label(source: String, building: Dictionary = {}) -> String:
-	if source == "middleman": return "Logistics Intermediary"
+	if source == "middleman": return "Local Suppliers"
 	if source == "market": return "Global market"
 	if source == "stockpile": return "This tile's stockpile"
 	if source.begins_with("tile:"):
@@ -924,7 +924,7 @@ static func ready_message(iid: String) -> String:
 	if not enabled(iid) or fully_managed(iid): return "Ready to buy, produce and sell this turn."
 	if uses_inputs(iid): return "Ready to buy inputs. Output follows your managed destination."
 	if _side_items(iid, "input").any(func(item: Dictionary) -> bool: return supplies_good(iid, str(item.get("good_id", "")))): return "Ready to buy the selected inputs."
-	return "Ready to produce from shared stock and sell through the intermediary."
+	return "Ready to produce from shared stock and sell to Local Suppliers."
 
 ## Only material sides participate: grid power and buildings without recipes stay unchanged.
 static func tile_sides(tile_id: String) -> Dictionary:

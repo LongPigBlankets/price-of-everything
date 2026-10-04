@@ -938,7 +938,7 @@ func _build_logistics_overview(list: VBoxContainer) -> void:
 		if not service.eligible(b): continue
 		var iid := str(b.instance_id)
 		var button := Button.new()
-		button.text = "%s · In: %s / Out: %s" % [BuildingNaming.of(b),"Intermediary" if service.uses_inputs(iid) else "Managed","Intermediary" if service.uses_outputs(iid) else "Managed"]
+		button.text = "%s · In: %s / Out: %s" % [BuildingNaming.of(b),"Local Suppliers" if service.uses_inputs(iid) else "Managed","Local Suppliers" if service.uses_outputs(iid) else "Managed"]
 		button.tooltip_text = "Open building details to change logistics. Managed deliveries use generic carriers."
 		button.pressed.connect(func() -> void:
 			hide()
@@ -987,7 +987,7 @@ func _global_logistics_side(side: String) -> Control:
 	row.add_theme_constant_override("separation", 6)
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var choices := [
-		{"id":"middleman", "label":"Logistics Intermediary", "icon":ROUTE_MIDDLEMAN_ICON, "tip":"Use the Logistics Intermediary for all %s." % title.to_lower()},
+		{"id":"middleman", "label":"Local Suppliers", "icon":ROUTE_MIDDLEMAN_ICON, "tip":"Use Local Suppliers for all %s." % title.to_lower()},
 		{"id":"market", "label":"Sell to market", "icon":ROUTE_MARKET_ICON, "tip":("Buy all inputs from the Global Market via a port." if side == "input" else "Sell all outputs to the Global Market via a port.")},
 		{"id":"stockpile", "label":"Tile stockpile", "icon":ROUTE_STOCKPILE_ICON, "tip":("Draw all inputs from each building's tile stockpile." if side == "input" else "Retain all outputs in each building's tile stockpile.")},
 	]
@@ -1120,7 +1120,7 @@ func _global_source_icon(intermediary: bool) -> TextureRect:
 	icon.custom_minimum_size = Vector2(30, 30)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.tooltip_text = "Logistics Intermediary" if intermediary else "Your own source"
+	icon.tooltip_text = "Local Suppliers" if intermediary else "Your own source"
 	if intermediary:
 		icon.texture = preload("res://assets/icons/research/glyph/lorry.png")
 		var shader := Shader.new()

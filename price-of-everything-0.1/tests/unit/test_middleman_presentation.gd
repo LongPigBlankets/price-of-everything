@@ -115,7 +115,7 @@ func _test_diagnostics_keep_every_check_under_the_intermediary() -> void:
 	var own: Dictionary = find.call(rows, Readout.INTERMEDIARY_LABEL)
 	_check(str(own.get("tone", "")) == "ok", "a funded batch lights the intermediary's row green")
 	_check(rows.any(func(row: Dictionary) -> bool: return str(row.get("ic", "")) == "bolt"), "the power row shows under the intermediary")
-	_check(not (find.call(rows, "Output sold to the intermediary") as Dictionary).is_empty(), "the output row names the intermediary")
+	_check(not (find.call(rows, "Output sold to Local Suppliers") as Dictionary).is_empty(), "the output row names Local Suppliers")
 	_check(not rows.any(func(row: Dictionary) -> bool: return str(row.get("label", "")) in ["Cannot run", "Starved of inputs", "Inputs idle"]),
 		"an empty tile stockpile is not read as a shortage")
 	MatchState.money = -1000000.0
@@ -198,7 +198,7 @@ func _test_loan_notice_counts_the_turns_loan() -> void:
 	_check(is_equal_approx(float(bar.get("_loan_taken_this_turn")), 55.0), "the loan's principal is what the notice counts")
 	var funded: String = bar.call("loan_notice_text", 55.0, {"middleman_financing": 55.0})
 	var other: String = bar.call("loan_notice_text", 55.0, {"middleman_financing": 0.0})
-	_check(funded.contains("intermediary") and funded.contains("55") and not other.contains("intermediary"),
-		"a loan for the intermediary's batches says so (%s / %s)" % [funded, other])
+	_check(funded.contains("Local Suppliers") and funded.contains("55") and not other.contains("Local Suppliers"),
+		"a loan for Local Suppliers' batches says so (%s / %s)" % [funded, other])
 	bar.free()
 	cleanup()

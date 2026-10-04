@@ -104,7 +104,7 @@ const MIN_BALANCE_PANEL_HEIGHT := 360.0
 const BALANCE_ROW_FONT := 18
 const BALANCE_HEADER_FONT := 22
 const TRANSPORT_BREAKDOWN_ROWS := [
-	["middleman", "Intermediary fee (transport and storage)"],
+	["middleman", "Local Suppliers fee (transport and storage)"],
 	["port_inbound", "Port Charges — Imports"],
 	["port_outbound", "Port Charges — Exports"],
 	["nothing", "No infrastructure"],

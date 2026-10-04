@@ -2261,14 +2261,14 @@ func _on_construction_middleman_requested(building_id: String, recipe_id: String
 	var material_cost: float = Construction.estimate_middleman_cost(tile_id, building_id)
 	if MatchState.money < cost + material_cost:
 		MatchState.build_rejected_no_funds.emit(
-			"Not enough money — build £%.0f + intermediary materials £%.0f, you have £%.0f" % [cost, material_cost, MatchState.money])
+			"Not enough money — build £%.0f + Local Suppliers materials £%.0f, you have £%.0f" % [cost, material_cost, MatchState.money])
 		return false
 	if not MatchState.deduct_money(cost):
 		return false
 	var instance_id := Construction.start_awaiting_middleman(building_id, recipe_id, tile_id, cost)
 	if instance_id.is_empty():
 		MatchState.add_money(cost)
-		MatchState.build_rejected_no_funds.emit("Could not reserve the intermediary material order. No construction costs were charged.")
+		MatchState.build_rejected_no_funds.emit("Could not reserve the Local Suppliers material order. No construction costs were charged.")
 		return false
 	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
 	Audio.building_placed()

@@ -11,14 +11,14 @@ static func message_for(context: Dictionary) -> String:
 	var side := str(context.get("side", ""))
 	match [side, str(context.get("destination", ""))]:
 		["output", "market"]:
-			return "The intermediary stops buying %s. It will sell at the global market through the nearest port, paying freight and the port charge." % what
+			return "Local Suppliers stop buying %s. It will sell at the global market through the nearest port, paying freight and the port charge." % what
 		["output", "stockpile"], ["output", "tile"]:
-			return "The intermediary stops buying %s. It will go to the stockpile you choose, and you sell it or use it yourself." % what
+			return "Local Suppliers stop buying %s. It will go to the stockpile you choose, and you sell it or use it yourself." % what
 		["input", "market"]:
-			return "The intermediary stops supplying %s. You will buy it at the global market through a port, paying freight and the port charge." % what
+			return "Local Suppliers stop supplying %s. You will buy it at the global market through a port, paying freight and the port charge." % what
 		["input", "stockpile"]:
-			return "The intermediary stops supplying %s. It will come from your stockpile, so keep it stocked." % what
-	return "The intermediary stops handling %s. Your own transport and the ports take over, which costs freight and port charges." % what
+			return "Local Suppliers stop supplying %s. It will come from your stockpile, so keep it stocked." % what
+	return "Local Suppliers stop handling %s. Your own transport and the ports take over, which costs freight and port charges." % what
 
 
 static func request(parent: Node, mode: String, apply: Callable, canceled: Callable = Callable(), context: Dictionary = {}) -> void:

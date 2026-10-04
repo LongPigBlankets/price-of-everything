@@ -1387,7 +1387,7 @@ func _describe_effect(eff: Dictionary, target: Dictionary) -> String:
 		"freight_credit":
 			return "%d units of domestic freight, paid" % int(eff.get("units", 0))
 		"middleman_credit":
-			return "%d units of building materials delivered free by the Logistics Intermediary" % int(eff.get("units", 0))
+			return "%d units of building materials delivered free by Local Suppliers" % int(eff.get("units", 0))
 		"global_trade_license":
 			return "Direct trade on the global market"
 		"schedule_event":

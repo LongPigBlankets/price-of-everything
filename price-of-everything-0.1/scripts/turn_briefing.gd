@@ -337,8 +337,8 @@ func _intermediary_refused_item() -> Dictionary:
 	return {
 		"id": "alert:intermediary_refused", "kind": "critical", "section": "alerts",
 		"severity": "warning", "dismissible": true, "magnitude": total, "icon": "truck",
-		"title": ("1 batch" if total == 1 else "%d batches" % total) + " refused by the intermediary",
-		"body": "The intermediary bought no inputs for these buildings, so they made nothing last turn. Their upkeep was still paid.",
+		"title": ("1 batch" if total == 1 else "%d batches" % total) + " refused by Local Suppliers",
+		"body": "Local Suppliers bought no inputs for these buildings, so they made nothing last turn. Their upkeep was still paid.",
 		"rows": [],
 		"list": listed,
 		"list_more": maxi(0, total - listed.size()),

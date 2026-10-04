@@ -78,7 +78,7 @@ const BUILD_KEY_W := 112.0
 const LAND_BLOCKS := ["full", "cannot_buy_land", "land_short", "terrain"]
 ## The materials' sources on the knob, as the Construct setting names them.
 const SOURCES := [
-	["middleman", "res://assets/icons/ui_icons/route_lorry.png", "Logistics Intermediary"],
+	["middleman", "res://assets/icons/ui_icons/route_lorry.png", "Local Suppliers"],
 	["market", "res://assets/icons/ui_icons/route_port.png", "Global market"],
 	["same_tile", "res://assets/icons/ui_icons/ds2/source_this_tile.png", "This tile's stockpile"],
 	["any_tile", "res://assets/icons/ui_icons/ds2/source_other_tiles.png", "Any tile with surplus"],

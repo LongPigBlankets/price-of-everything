@@ -75,7 +75,7 @@ func _open() -> void:
 	margin.add_child(col)
 	_add_text(col, "Surplus at " + Catalog.tile_label(_tile), "Title")
 	if bool(_context.get("supplier_changed", false)):
-		_add_text(col, "The intermediary no longer buys %s. It goes to this stockpile." % Catalog.get_display_name(_good).to_lower(), "Body")
+		_add_text(col, "Local Suppliers no longer buy %s. It goes to this stockpile." % Catalog.get_display_name(_good).to_lower(), "Body")
 	_add_text(col, "%d units of %s will accumulate in stockpile each turn instead of selling, which will reduce your profit." % [projection.growth, Catalog.get_display_name(_good)], "Body")
 	_add_text(col, "Confirm if you want to sell the surplus your buildings on the tile don't need or keep all as stock.", "Body")
 	var buttons := HBoxContainer.new()
@@ -106,7 +106,7 @@ func _open() -> void:
 		back.text = "Undo"
 		back.pressed.connect(func() -> void:
 			undo.call()
-			MatchState.request_toast("The intermediary buys %s again." % Catalog.get_display_name(_good).to_lower(), "info")
+			MatchState.request_toast("Local Suppliers buy %s again." % Catalog.get_display_name(_good).to_lower(), "info")
 			_close())
 		buttons.add_child(back)
 	_dont_show = UIHelpers.make_custom_checkbox()
@@ -122,7 +122,7 @@ func _open() -> void:
 ## Nothing to ask (no surplus, or the prompt is switched off): still say the supplier changed.
 static func _say_supplier_changed(tile: String, good: String, context: Dictionary) -> void:
 	if bool(context.get("supplier_changed", false)):
-		MatchState.request_toast("The intermediary no longer buys %s. It goes to the stockpile at %s." % [
+		MatchState.request_toast("Local Suppliers no longer buy %s. It goes to the stockpile at %s." % [
 			Catalog.get_display_name(good).to_lower(), Catalog.tile_label(tile)], "info")
 
 

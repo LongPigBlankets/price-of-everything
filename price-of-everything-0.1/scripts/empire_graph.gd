@@ -255,7 +255,7 @@ static func build(terrain: Object) -> Dictionary:
 	# A shared market endpoint is an operator, never a link between its customers.
 	var service_nodes := nodes.filter(func(n: Dictionary) -> bool: return Middleman.enabled(str(n.iid)))
 	if not service_nodes.is_empty():
-		ports.append({"iid":"middleman","building_id":"","name":"Logistics Intermediary","level":1,
+		ports.append({"iid":"middleman","building_id":"","name":"Local Suppliers","level":1,
 			"output_good":"","output_qty":0,"tile_id":"","order":4,
 			"seed":service_nodes[0].seed,"half":PORT_HALF,"plate_half":PORT_HALF,
 			"is_port":true,"is_middleman":true,"icon":TRUCK_ICON})

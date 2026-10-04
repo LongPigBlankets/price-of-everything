@@ -13,11 +13,11 @@ static func endpoints(b: Dictionary, side: String) -> Array:
 		if str(Catalog.get_good(gid).get("internal_name", "")) == "power":
 			_add(result, "grid", "Electricity grid")
 		elif Service.supplies_good(iid, gid) if side == "input" else Service.buys_output(iid, gid):
-			_add(result, "middleman", "Logistics Intermediary")
+			_add(result, "middleman", "Local Suppliers")
 		elif side == "input":
 			# An intermediary fallback can supply this input too, so it is a real endpoint.
 			if Service.bridges_good(iid, gid):
-				_add(result, "middleman", "Logistics Intermediary (fallback)")
+				_add(result, "middleman", "Local Suppliers (fallback)")
 			var selected := str(b.get("logistics_input_sources", {}).get(gid, "auto"))
 			if selected != "auto":
 				_add(result, "stockpile", "Tile %s Stockpile" % tile_label(selected))
