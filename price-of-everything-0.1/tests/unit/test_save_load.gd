@@ -413,6 +413,8 @@ func _authored_building_footprint(building_id: String, level: int = 1) -> float:
 func _test_save_version_migration() -> void:
 	var snap: Dictionary = SaveLoad.export_snapshot()
 	snap["save_version"] = 1
+	# A version 1 save predates special orders: whatever the live match holds now isn't part of it.
+	snap.erase("special_orders")
 	(snap.get("match", {}) as Dictionary).erase("ruleset")
 	(snap.get("meta", {}) as Dictionary).erase("ruleset")
 	var legacy_infra: Dictionary = (snap.get("infrastructure", {}) as Dictionary).duplicate(true)
