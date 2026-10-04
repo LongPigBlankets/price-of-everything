@@ -1,5 +1,5 @@
 extends Control
-## The Local Suppliers panel, opened by clicking a Local Suppliers depot on the map (local_suppliers_depots.gd).
+## The Local Suppliers panel, opened by clicking Local Suppliers' depot (the white warehouse) on the supply chain board.
 ## A DS2 cabinet on Building Detail's navy steel backing: the raised title and the Close key, a pair of cream
 ## keys switching between Outputs (the buildings that send their outputs to Local Suppliers, the default) and
 ## Inputs (the buildings that still take inputs from them, as their route or as a fallback), and the list.

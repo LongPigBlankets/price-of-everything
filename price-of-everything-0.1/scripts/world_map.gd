@@ -455,11 +455,6 @@ func finish_build(animate: bool) -> void:
 	var t_pv := Time.get_ticks_usec()
 	port_visuals.setup(terrain_layer)
 	_prof_us("port_visuals.setup", t_pv)
-	# Local Suppliers' depots: a white warehouse in a corner of each tile they serve (drawn only).
-	var depots: Node2D = load("res://scripts/local_suppliers_depots.gd").new()
-	depots.name = "LocalSuppliersDepots"
-	terrain_layer.add_child(depots)
-	depots.setup(terrain_layer, building_visuals)
 	# Ships work the harbours on their own canvas, just above the quay so a hull reads as
 	# lying alongside it rather than under it. Animated, so it must not share the port
 	# layer, which repaints only when its plans change. Built AFTER setup(), so the

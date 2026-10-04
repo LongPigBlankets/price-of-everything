@@ -1,6 +1,6 @@
 extends Node
-## Captures of Local Suppliers' depots in a Metal Magnate game: a depot on the map with its hover card, and its
-## panel showing the buildings' outputs, then their inputs.
+## Captures of Local Suppliers' depot on the supply chain board in a Metal Magnate game: the white warehouse, its
+## hover card, and its panel showing the buildings' outputs, then their inputs.
 ##   AGENT_GODOT_WINDOW=1 godot --path . res://tools/local_suppliers_shot.tscn --quit-after 100000 -- --no-telemetry
 ## Writes local_suppliers_<view>.png into $SUPPLIERS_SHOT_DIR (or /tmp).
 
@@ -34,27 +34,44 @@ func _ready() -> void:
 		if sc != null and sc.resource_path.ends_with("_intro.gd"):
 			layer.queue_free()
 	await _settle(30)
-	var depots: Node = world.find_child("LocalSuppliersDepots", true, false)
-	var list: Array = depots.get("_depots") if depots != null else []
-	print("[suppliers_shot] depots: %d" % list.size())
-	if list.is_empty():
+	var ev: Node = world.find_child("EmpireView", true, false)
+	ev.call("toggle")
+	await _settle(90)
+	var board: Control = ev.get_node("Board")
+	var depot: Dictionary = {}
+	for st in (board.get("_standing") as Array):
+		if str((st as Dictionary).get("kind", "")) == "suppliers":
+			depot = st
+			break
+	print("[suppliers_shot] depot: %s" % str(depot.get("iid", "none")))
+	var model: Dictionary = board.get("_model")
+	for f in model.get("flows", []):
+		var pts: Array = (f as Dictionary).get("pts", [])
+		if pts.is_empty():
+			continue
+		var ends := [(pts[0] as Dictionary)["p"], (pts[pts.size() - 1] as Dictionary)["p"]]
+		for e in ends:
+			if (e as Vector2).distance_to(depot["pos"]) < 200.0:
+				print("[suppliers_shot] flow at depot: ", f["good"], " ", f["kind"], " pts ", pts.size())
+	if depot.is_empty():
 		get_tree().quit(1)
 		return
-	var tile_id := str(list[0].tile_id)
-	var cam: Camera2D = get_viewport().get_camera_2d()
-	cam.call("_apply_intro_zoom", 0.8)
-	cam.global_position = depots.to_global((list[0].rect as Rect2).get_center())
-	await _wait(0.6)
-	await _shot("map")
-	depots.set("_hovered", 0)
-	depots.queue_redraw()
+	var zoom := 0.9
+	board.set("_zoom", zoom)
+	board.set("_offset", board.size * 0.5 - (depot["rect"] as Rect2).get_center() * zoom)
+	board.call("_view_changed")
+	await _wait(1.5)
+	await _shot("board")
+	board.call("_set_hover", depot)
 	await _settle(4)
 	await _shot("hover")
-	depots.set("_hovered", -1)
-	var panel: Control = preload("res://scripts/local_suppliers_panel.gd").open(world.find_child("HUD", true, false), tile_id)
-	await _settle(6)
+	board.call("_set_hover", {})
+	board.call("_click", (depot["rect"] as Rect2).get_center() * zoom + (board.get("_offset") as Vector2))
+	await _settle(8)
 	await _shot("outputs")
-	panel.call("_show", "input")
+	var panel: Node = get_tree().root.find_child("LocalSuppliersPanel", true, false)
+	if panel != null:
+		panel.call("_show", "input")
 	await _settle(6)
 	await _shot("inputs")
 	get_tree().quit()

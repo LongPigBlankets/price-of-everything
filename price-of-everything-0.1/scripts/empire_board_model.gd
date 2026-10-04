@@ -14,7 +14,8 @@ extends RefCounted
 ##
 ## Returned shape (see build()):
 ##   tiles:    tile_id -> {id, center, type, height, store, label, level, paved, pylon?}
-##   standing: [{kind, iid, tile, pos, sprite, level, name, side, pad}]  kind: building|site|warehouse|port|pylon
+##   standing: [{kind, iid, tile, pos, sprite, level, name, side, pad}]  kind: building|site|warehouse|port|pylon|
+##             suppliers (Local Suppliers' depot: the white NPC warehouse on a tile they serve)
 ##   roads:    [{tile, a, b, kind, level, paved}]                    the stretches of street in use
 ##   lines:    [{mode, good, kind, pts: [{p, tile, edge}], reverse}]  pipes, cables, and any way
 ##                                                                    that cannot follow the streets
@@ -35,6 +36,7 @@ const BuildingSprites := preload("res://scripts/building_sprites.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const Streets := preload("res://scripts/empire_board_streets.gd")
 const Rails := preload("res://scripts/empire_board_rails.gd")
+const Service := preload("res://scripts/middleman_service.gd")
 
 ## A flat-topped hex of the map's tile size (assets/main_tileset.tres: 540 x 480).
 const HEX_HALF := Vector2(270.0, 240.0)
@@ -50,6 +52,9 @@ const FOOT_SHARE := 0.9
 const LEVEL_SHARE := {1: 0.72, 2: 0.86, 3: 1.0}
 const PORT_BUILDING_ID := "b_004"
 const WAREHOUSE_SPRITE := "warehouse"
+## Local Suppliers' depot: the level 1 warehouse as an NPC building, in a tile's front left corner.
+const SUPPLIERS_NAME := "Local Suppliers"
+const SUPPLIERS_CORNER := Vector2(-400.0, 300.0)
 ## The mode drawn for power: cables carry it, and no goods route does.
 const MODE_CABLE := "cables"
 ## A ledger entry this many turns old still counts as a way goods move.
@@ -229,7 +234,8 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 	var makers: Dictionary = {}           # "tile|good" -> [iid]
 	var users: Dictionary = {}            # "tile|good" -> [iid]
 	var outputs: Array = []
-	var feeds: Array = []                 # [{iid, tile, good, out: bool}] building <-> warehouse
+	var feeds: Array = []                 # [{iid, tile, good, out: bool, suppliers: bool}] building <-> warehouse or depot
+	var suppliers: Dictionary = {}        # tile_id -> true: Local Suppliers serve a building there
 	var power_ends: Array = []            # [{iid, tile, out: bool}]
 	var polluters: Dictionary = {}        # tile_id -> how many dirty buildings stand on it
 
@@ -272,7 +278,10 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 				continue
 			(makers.get_or_add(tile + "|" + g, []) as Array).append(iid)
 			outputs.append({"iid": iid, "tile": tile, "good": g})
-			feeds.append({"iid": iid, "tile": tile, "good": g, "out": true})
+			var sold := Service.buys_output(iid, g)
+			feeds.append({"iid": iid, "tile": tile, "good": g, "out": true, "suppliers": sold})
+			if sold:
+				suppliers[tile] = true
 		var draws := int(recipe.get("energy_req", 0)) > 0
 		for ip in recipe.get("inputs", []):
 			var gi := str((ip as Dictionary).get("good_id", ""))
@@ -282,7 +291,10 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 				draws = true
 				continue
 			(users.get_or_add(tile + "|" + gi, []) as Array).append(iid)
-			feeds.append({"iid": iid, "tile": tile, "good": gi, "out": false})
+			var supplied := Service.supplies_good(iid, gi) or Service.bridges_good(iid, gi)
+			feeds.append({"iid": iid, "tile": tile, "good": gi, "out": false, "suppliers": supplied})
+			if supplied:
+				suppliers[tile] = true
 		if draws:
 			power_ends.append({"iid": iid, "tile": tile, "out": false})
 	for key in Stockpile.tiles_with_stock():
@@ -421,6 +433,9 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 			things.append({"kind": "port", "iid": "port:" + str(tid), "tile": tid,
 				"sprite": BuildingSprites.texture_for("port", 1), "level": 3,
 				"name": str(pn.get("name", "Port")), "port_iid": str(pn["iid"])})
+		if suppliers.has(tid):
+			things.append({"kind": "suppliers", "iid": "suppliers:" + str(tid), "tile": tid,
+				"sprite": BuildingSprites.npc_texture_for(WAREHOUSE_SPRITE, 1), "level": 1, "name": SUPPLIERS_NAME})
 		var own: Array = by_tile.get(tid, [])
 		own.sort_custom(func(x: Dictionary, y: Dictionary) -> bool: return str(x["iid"]) < str(y["iid"]))
 		things.append_array(own)
@@ -449,6 +464,8 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 				want = (true_pos[str(td["iid"])] as Vector2) - c
 			elif td["kind"] == "port":
 				want = Streets.SLOTS[2]
+			elif td["kind"] == "suppliers":
+				want = SUPPLIERS_CORNER
 			var best := 0
 			var best_cost := INF
 			for i in range(free.size()):
@@ -585,11 +602,20 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 	# Each building's own run to its tile's warehouse: a pipe for a fluid on a piped tile, the
 	# streets for everything else.
 	var seen_feed: Dictionary = {}
-	var add_feed := func(iid: String, tile: String, good: String, out: bool) -> void:
+	# Goods Local Suppliers handle run between the building and their depot instead.
+	var add_feed := func(iid: String, tile: String, good: String, out: bool, by_suppliers: bool = false) -> void:
 		var fkey := "%s|%s|%s" % [iid, good, out]
 		if seen_feed.has(fkey) or not tiles.has(tile) or not door_of.has(iid):
 			return
 		seen_feed[fkey] = true
+		var depot := "suppliers:" + tile
+		if by_suppliers and door_of.has(depot):
+			var way: Array = walk.call(tile, route.call(tile, str(door_of[iid]), str(door_of[depot])), "roads")
+			if not out:
+				way.reverse()
+			flows.append({"good": good, "kind": "feed", "mode": MODE_DRIVE, "pts": way, "live": [],
+				"icon": GoodIcons.texture_for(good, _internal_name(good))})
+			return
 		if Catalog.requires_pipeline(good) and _pipe_mode(tile) != "":
 			pipe_feed.call(iid, tile, good, not out)
 			return
@@ -601,7 +627,7 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 			"icon": GoodIcons.texture_for(good, _internal_name(good))})
 	for f in feeds:
 		if tiles.has(str(f["tile"])) and bool(tiles[str(f["tile"])]["store"]):
-			add_feed.call(str(f["iid"]), str(f["tile"]), str(f["good"]), bool(f["out"]))
+			add_feed.call(str(f["iid"]), str(f["tile"]), str(f["good"]), bool(f["out"]), bool(f.get("suppliers", false)))
 
 	# The crossroads before a city's towers: the street past both, the avenue out to the
 	# tile's edge and across to the other street.

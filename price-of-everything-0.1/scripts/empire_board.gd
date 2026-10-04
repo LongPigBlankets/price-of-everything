@@ -248,6 +248,9 @@ var _fitted := false
 var _clock := 0.0
 var _press_pos := Vector2.INF
 var _dragging := false
+## Local Suppliers' depot on hover, under its name, as lines the card can hold.
+const SUPPLIERS_HOVER := ["Acts as the source of inputs when 'Local Suppliers'",
+	"is selected as a logistics provider and likewise", "the destination for outputs."]
 var _hover: Dictionary = {}
 var _tokens: Control
 var _visibility: Control
@@ -2606,6 +2609,8 @@ func _draw_hover(ci: CanvasItem) -> void:
 			lines.append("%s  %d" % [str(Catalog.get_display_name(str(row["good_id"]))), int(row["qty"])])
 	elif str(_hover["kind"]) == "site":
 		lines.append("Under construction")
+	elif str(_hover["kind"]) == "suppliers":
+		lines.append_array(SUPPLIERS_HOVER)
 	var fs := 14
 	var w := 0.0
 	for line in lines:
@@ -2916,7 +2921,7 @@ func _set_hover(s: Dictionary) -> void:
 	if str(s.get("iid", "")) == str(_hover.get("iid", "")):
 		return
 	_hover = s
-	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if str(s.get("kind", "")) in ["building", "site"] \
+	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if str(s.get("kind", "")) in ["building", "site", "suppliers"] \
 		else Control.CURSOR_ARROW
 	queue_redraw()
 
@@ -2925,3 +2930,9 @@ func _click(screen_pos: Vector2) -> void:
 	var s := _pick(screen_pos)
 	if str(s.get("kind", "")) in ["building", "site"]:
 		building_picked.emit(str(s["iid"]))
+	elif str(s.get("kind", "")) == "suppliers":
+		# The panel opens over the board, on the board's own layer.
+		var host: Node = self
+		while host.get_parent() != null and not (host.get_parent() is CanvasLayer):
+			host = host.get_parent()
+		preload("res://scripts/local_suppliers_panel.gd").open(host.get_parent() if host.get_parent() != null else self, str(s["tile"]))
