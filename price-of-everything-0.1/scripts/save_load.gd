@@ -48,8 +48,10 @@ var _pending_snapshot: Dictionary = {}
 func _ready() -> void:
 	# Registered last in [autoload], so TurnManager exists. resolution_completed
 	# fires with the turn counter already advanced and DECIDE restored — the one
-	# moment per turn the save guard is guaranteed to pass.
-	TurnManager.turn_resolution_completed.connect(_on_turn_resolution_completed)
+	# moment per turn the save guard is guaranteed to pass. Deferred, so the save
+	# comes after every other end-of-turn listener: SolvencyState connects a frame
+	# later, and saving before it missed the bridge loan and the bankruptcy clock.
+	TurnManager.turn_resolution_completed.connect(_on_turn_resolution_completed, CONNECT_DEFERRED)
 
 func _on_turn_resolution_completed() -> void:
 	if not autosave_enabled or TurnManager.game_ended:

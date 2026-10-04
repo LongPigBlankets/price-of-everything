@@ -460,6 +460,12 @@ func _test_autosave_rotation() -> void:
 	DirAccess.remove_absolute(AppPaths.saves_dir().path_join("autosave_2.json"))
 	TurnManager.current_turn = saved_turn
 	SaveLoad._autosave_index = saved_index
+	# The autosave runs after every other end-of-turn listener (the solvency check's bridge loan included).
+	var deferred := false
+	for c: Dictionary in TurnManager.turn_resolution_completed.get_connections():
+		if (c.callable as Callable).get_object() == SaveLoad:
+			deferred = (int(c.flags) & CONNECT_DEFERRED) != 0
+	_check(deferred, "autosave: runs deferred, after the turn's solvency check")
 
 # --- EventScheduler ----------------------------------------------------------
 # Substrate tests. The bell UI lives separately and has its own UI smoke test.
