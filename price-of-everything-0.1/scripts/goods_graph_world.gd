@@ -516,12 +516,26 @@ func _update_hover(screen_pos: Vector2) -> void:
 	var w := _screen_to_world(screen_pos)
 	var tray := _tray_button_at(w)
 	var id := "" if tray >= 0 else _node_at(screen_pos)
+	tooltip_text = _tier_tooltip(id, w)
 	if id != _hover_id or tray != _hover_tray:
 		_hover_id = id
 		_hover_tray = tray
 		var clickable := id != "" or tray >= 0
 		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if clickable else Control.CURSOR_ARROW
 		queue_redraw()
+
+
+## "Tier I (Raw)" when `world_pos` is over the tier plate of card `id`, else "".
+func _tier_tooltip(id: String, world_pos: Vector2) -> String:
+	if id == "" or not _by_id.has(id):
+		return ""
+	var node: Dictionary = _by_id[id]
+	var pos: Vector2 = _fpos[id] if _mode == _Mode.FOCUS and _fpos.has(id) else node["pos"]
+	var half: Vector2 = node["half"]
+	if not _tier_plate_rect(Rect2(pos - half, half * 2.0)).has_point(world_pos):
+		return ""
+	var tier := _tier_of(node)
+	return "Tier %s (%s)" % [_TIER_NUMERALS[tier], _TIER_NAMES[tier]]
 
 
 func _tray_button_at(world_pos: Vector2) -> int:
@@ -1417,10 +1431,11 @@ func _draw_card(node: Dictionary, font: Font, tracing: bool, alpha_mul: float = 
 	# The name engraved on the plate under the tile, up to two lines; on the selected card the recipe in
 	# use runs under it.
 	var name := str(node["display"])
-	# The name sits on a block of the category's colour, deepened so the off-white name reads on it.
-	var block := Rect2(Vector2(tile.position.x, tile.end.y + 10.0), Vector2(tile.size.x, rect.end.y - tile.end.y - 22.0))
-	draw_colored_polygon(_rounded_rect_points(block, 6.0), Color(accent.darkened(_NAME_BLOCK_DEEPEN), alpha))
-	var area := block.grow_individual(-8.0, -2.0, -8.0, -2.0)
+	# The tier on a small silver plate at the left of the name row, the name engraved beside it.
+	var plate_r := _tier_plate_rect(rect)
+	_draw_tier_plate(plate_r, _tier_of(node), font, alpha)
+	var row := _name_row(rect)
+	var area := Rect2(Vector2(plate_r.end.x + 6.0, row.position.y), Vector2(row.end.x - plate_r.end.x - 6.0, row.size.y))
 	# One line at 28; a name that needs two drops to 22 so both clear the band.
 	var fs := 28 if font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 28).x <= area.size.x else 22
 	var caption := ""
@@ -1456,7 +1471,48 @@ const _ENAMEL_MARGIN := 3.0 / 1.875
 ## A gated good's plate, a shade darker.
 const _PLATE_DIM := Color(0.72, 0.72, 0.72)
 const _TILE_SIDE_PAD := 28.0
-const _NAME_BLOCK_DEEPEN := 0.4
+## The tier plate: its size, its silver from top to foot, and the tiers' numerals and names (GoodsFlowGraph.TIER_BANDS).
+const _TIER_PLATE := Vector2(56.0, 42.0)
+const _SILVER_TOP := Color("e4e8ed")
+const _SILVER_FOOT := Color("9aa3ad")
+const _TIER_NUMERALS := ["I", "II", "III", "IV", "V"]
+const _TIER_NAMES := ["Raw", "Processed", "Intermediate", "Finished", "Apex"]
+
+
+## The good's tier, 0 (raw) to 4 (apex), from its goods_graph_tier band.
+static func _tier_of(node: Dictionary) -> int:
+	var band := str(Catalog.get_good(str(node.get("good_id", node.get("id", "")))).get("goods_graph_tier", ""))
+	return maxi(0, GoodsFlowGraph.TIER_BANDS.find(band))
+
+
+## The row under the enamel tile that holds the tier plate and the name, for a card at `rect`.
+func _name_row(rect: Rect2) -> Rect2:
+	var side := rect.size.x - 2.0 * _TILE_SIDE_PAD
+	var tile_end := rect.position.y + _TILE_TOP_PAD + side
+	return Rect2(Vector2(rect.position.x + _TILE_SIDE_PAD - 6.0, tile_end + 8.0),
+		Vector2(side + 12.0, rect.end.y - tile_end - 16.0))
+
+
+func _tier_plate_rect(rect: Rect2) -> Rect2:
+	var row := _name_row(rect)
+	return Rect2(Vector2(row.position.x, row.get_center().y - _TIER_PLATE.y * 0.5), _TIER_PLATE)
+
+
+## A small silver plate, lit from the top, its edge in shadow, the tier's numeral on it in navy.
+func _draw_tier_plate(r: Rect2, tier: int, font: Font, alpha: float) -> void:
+	var pts := _rounded_rect_points(r, 4.0)
+	draw_colored_polygon(_rounded_rect_points(Rect2(r.position + Vector2(1.5, 2.0), r.size), 4.0), Color(0, 0, 0, 0.5 * alpha))
+	var cols := PackedColorArray()
+	for pt in pts:
+		var t := clampf((pt.y - r.position.y) / r.size.y, 0.0, 1.0)
+		cols.append(Color(_SILVER_TOP.lerp(_SILVER_FOOT, t), alpha))
+	draw_polygon(pts, cols)
+	var edge := PackedVector2Array(pts)
+	edge.append(pts[0])
+	draw_polyline(edge, Color(0.25, 0.28, 0.33, alpha), 1.4, true)
+	var numeral: String = _TIER_NUMERALS[clampi(tier, 0, 4)]
+	draw_string(_BEBAS, Vector2(r.position.x, r.get_center().y + 13.0), numeral, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 36,
+		Color(DS.PALETTE.BG_PANEL, alpha))
 const _TILE_TOP_PAD := 18.0
 
 
