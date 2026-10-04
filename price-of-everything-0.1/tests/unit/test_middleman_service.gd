@@ -159,6 +159,19 @@ func _test_global_market_needs_the_license() -> void:
 		"license: an upgrade can't order its materials from the global market without it (%s)" % str(up.get("reason", "")))
 	cleanup()
 
+## The supply chain board draws no lane to a port for output the intermediary buys: it never goes there.
+func _test_board_draws_no_port_lane_for_intermediary_output() -> void:
+	var ids := setup(1)
+	var iid := str(ids[0])
+	# A start routes its buildings' output "to market" even where the intermediary buys it.
+	MatchState.output_stockpile_destinations[iid] = {"g_008": MatchState.MARKET_DESTINATION}
+	var lanes: Dictionary = preload("res://scripts/empire_board_model.gd").real_lanes([{"iid": iid, "tile": "tile_5_4", "good": "g_008"}])
+	var to_port := false
+	for key in lanes:
+		to_port = to_port or (str((lanes[key] as Dictionary).get("kind", "")) == "sell" and str((lanes[key] as Dictionary).get("good", "")) == "g_008")
+	_check(Service.buys_output(iid, "g_008") and not to_port, "board: no sell lane to a port for output the intermediary buys")
+	cleanup()
+
 func _test_live_shortage_and_legacy_default() -> void:
 	var ids := setup()
 	MatchState.money = -1000000.0
