@@ -66,6 +66,8 @@ var _link_congestion_paid: Dictionary = {}
 # couldn't unload. They wait here and retry each turn until there's room.
 # Record: {source_tile, destination_tile, good_id, qty, turns_waiting, construction_instance_id}
 var overflow_shipments: Array = []
+## Closed special orders' sale shipments waiting for the player's choice: order_id -> {order, shipments}.
+var awaiting_special_orders: Dictionary = {}
 var _shipment_id_counter: int = 0
 var recurring_moves: Array = []   # [{source, dest, goods}] re-issued every turn
 var scheduled_moves: Array = []   # [{source, dest, goods}] one-shot, fired next turn (e.g. split)
@@ -95,6 +97,7 @@ var freight_credit_units: int = 0
 ## Match-scoped: cleared by MatchState.reset() (new game / scenario start).
 func reset() -> void:
 	pending_transport_shipments.clear()
+	awaiting_special_orders.clear()
 	arrival_turns.clear()
 	_last_link_flow.clear()
 	_last_transit_shipments.clear()
@@ -127,6 +130,7 @@ func export_fields() -> Dictionary:
 		"link_over_history": _link_over_history.duplicate(true),
 		"link_congestion_paid": _link_congestion_paid.duplicate(),
 		"overflow_shipments": overflow_shipments.duplicate(true),
+		"awaiting_special_orders": awaiting_special_orders.duplicate(true),
 		"move_log": move_log.duplicate(true),
 		"freight_credit_units": freight_credit_units,
 		"seaport_auto_subscribe": seaport_auto_subscribe,
@@ -163,6 +167,7 @@ func import_fields(d: Dictionary) -> void:
 		_link_over_history.clear()
 	_link_congestion_paid = (d.get("link_congestion_paid", {}) as Dictionary).duplicate()
 	overflow_shipments = (d.get("overflow_shipments", []) as Array).duplicate(true)
+	awaiting_special_orders = (d.get("awaiting_special_orders", {}) as Dictionary).duplicate(true)
 	move_log = (d.get("move_log", []) as Array).duplicate(true)
 	freight_credit_units = int(d.get("freight_credit_units", 0))
 	seaport_auto_subscribe = bool(d.get("seaport_auto_subscribe", false))
@@ -487,7 +492,10 @@ func stockpile_special_order_overflow(record: Dictionary) -> bool:
 	var qty := int(record.get("qty", 0))
 	return Stockpile.add(port_tile, good_id, qty) == qty
 
-func take_pending_special_order_shipments(order_id: String) -> Array:
+## Takes a closed special order's sale shipments off the road to wait for the player's choice (sell, store at
+## the port, or reroute). They wait in awaiting_special_orders, which is saved, until settle_awaiting is
+## called once the choice has been carried out, so a save made before choosing doesn't lose them.
+func take_pending_special_order_shipments(order_id: String, order: Dictionary = {}) -> Array:
 	if order_id == "":
 		return []
 	var taken: Array = []
@@ -501,8 +509,14 @@ func take_pending_special_order_shipments(order_id: String) -> Array:
 	if taken.is_empty():
 		return []
 	pending_transport_shipments = remaining
+	awaiting_special_orders[order_id] = {"order": order.duplicate(true), "shipments": taken.duplicate(true)}
 	transport_shipments_changed.emit()
 	return taken
+
+
+## The player's choice for a closed order's shipments has been carried out: they no longer wait.
+func settle_awaiting(order_id: String) -> void:
+	awaiting_special_orders.erase(order_id)
 
 func special_order_shipments_manifest(shipments: Array) -> Dictionary:
 	var manifest: Dictionary = {}
@@ -558,9 +572,11 @@ func resolve_special_order_shipments(shipments: Array, action: String, destinati
 		"reroute":
 			if destination_tile == "":
 				return {"ok": false, "reason": "missing_destination"}
+			# Quote every shipment before moving any: one with no route to the destination refuses the whole
+			# reroute, rather than being dropped (its goods lost) while the rest go.
+			var quotes: Array = []
 			for shipment in shipments:
 				var s: Dictionary = shipment
-				var source_tile := str(s.get("source_tile", ""))
 				var manifest := _shipment_sale_manifest(s)
 				if manifest.is_empty():
 					continue
@@ -568,9 +584,20 @@ func resolve_special_order_shipments(shipments: Array, action: String, destinati
 				for good_key in manifest.keys():
 					route_good_id = str(good_key)
 					break
-				var quote := TransportService.quote_manifest(source_tile, destination_tile, manifest, {"route_good_id": route_good_id})
-				if quote.is_empty():
-					continue
+				var quote := TransportService.quote_manifest(str(s.get("source_tile", "")), destination_tile, manifest, {"route_good_id": route_good_id})
+				# The quote leaves out any good with no route (a fluid with no pipe), so check it covers every unit.
+				var quoted := 0
+				var wanted := 0
+				for item in quote.get("items", []):
+					quoted += int((item as Dictionary).get("qty", 0))
+				for qty in manifest.values():
+					wanted += int(qty)
+				if quoted < wanted:
+					return {"ok": false, "reason": "no_route"}
+				quotes.append([str(s.get("source_tile", "")), quote])
+			for pair: Array in quotes:
+				var source_tile: String = pair[0]
+				var quote: Dictionary = pair[1]
 				for item in quote.get("items", []):
 					var route: Dictionary = item.get("route", quote.get("route", {}))
 					var turns := int(item.get("turns", quote.get("turns", 0)))

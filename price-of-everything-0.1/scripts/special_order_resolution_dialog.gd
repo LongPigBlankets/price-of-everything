@@ -27,6 +27,9 @@ func _ready() -> void:
 	if MatchState != null and MatchState.has_signal("special_order_overflow_ready"):
 		if not TransportState.special_order_overflow_ready.is_connected(_on_overflow_ready):
 			TransportState.special_order_overflow_ready.connect(_on_overflow_ready)
+	# Shipments still waiting for a choice when the game was saved come back with it.
+	SaveLoad.match_loaded.connect(_on_match_loaded)
+	_restore_awaiting()
 
 func _build_ui() -> void:
 	anchor_left = 0.5
@@ -89,9 +92,28 @@ func _make_action_button(text: String) -> Button:
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	return button
 
+## A load replaces the match: drop the waiting orders it doesn't have, and queue the ones it does.
+func _on_match_loaded() -> void:
+	var waiting: Dictionary = TransportState.awaiting_special_orders
+	_queue = _queue.filter(func(e: Dictionary) -> bool:
+		return str(e.get("kind", "")) != "pending" or waiting.has(str(e.get("order_id", ""))))
+	if str(_current_entry.get("kind", "")) == "pending" and not waiting.has(str(_current_entry.get("order_id", ""))):
+		_finish_current()
+	_restore_awaiting()
+
+## Queues every closed order whose shipments wait for a choice and aren't queued already.
+func _restore_awaiting() -> void:
+	for order_id: String in TransportState.awaiting_special_orders:
+		if str(_current_entry.get("order_id", "")) == order_id \
+				or _queue.any(func(e: Dictionary) -> bool: return str(e.get("order_id", "")) == order_id):
+			continue
+		var waiting: Dictionary = TransportState.awaiting_special_orders[order_id]
+		_enqueue({"kind": "pending", "order_id": order_id, "order": (waiting.get("order", {}) as Dictionary).duplicate(true),
+			"shipments": (waiting.get("shipments", []) as Array).duplicate(true)}, false)
+
 func _on_order_closed(order: Dictionary, _reason: String) -> void:
 	var order_id := str(order.get("id", ""))
-	var shipments := TransportState.take_pending_special_order_shipments(order_id)
+	var shipments := TransportState.take_pending_special_order_shipments(order_id, order)
 	if shipments.is_empty():
 		return
 	_enqueue({
@@ -181,6 +203,7 @@ func _on_sell_pressed() -> void:
 	else:
 		var result := TransportState.resolve_special_order_shipments(_current_entry.get("shipments", []), "sell")
 		if bool(result.get("ok", false)):
+			TransportState.settle_awaiting(str(_current_entry.get("order_id", "")))
 			MatchState.request_toast("Special-order shipments will sell normally when they arrive", "success")
 	_finish_current()
 
@@ -198,6 +221,7 @@ func _on_stockpile_pressed() -> void:
 			MatchState.request_toast("The port stockpile does not have room for all remaining shipments", "warning")
 			_update_content()
 			return
+		TransportState.settle_awaiting(str(_current_entry.get("order_id", "")))
 		MatchState.request_toast("Special-order shipments will unload into the port stockpile", "success")
 	_finish_current()
 
@@ -219,6 +243,7 @@ func reroute_current_to(tile_id: String) -> void:
 		MatchState.request_toast("Could not reroute those shipments", "warning")
 		cancel_reroute()
 		return
+	TransportState.settle_awaiting(str(_current_entry.get("order_id", "")))
 	MatchState.request_toast("Special-order shipments rerouted to %s" % Catalog.tile_label(tile_id), "success")
 	_finish_current()
 
