@@ -19,6 +19,7 @@ signal good_selected(internal_name: String)   # focus / recipe-swap mode
 const LaneOrder := preload("res://scripts/lane_order.gd")
 const GoodsFlowGraph := preload("res://scripts/goods_flow_graph.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const InfraIcons := preload("res://scripts/infra_icons.gd")
 
 const _GOLD := Color(0.995, 0.931, 0.763, 1.0)
@@ -112,8 +113,8 @@ var _mode := _Mode.WEB
 # keep >= _F_CLEAR from cards, and no two edges share a collinear run — ports
 # fan along card edges, verticals take per-channel lanes, column-skipping edges
 # cross through card-free corridors.
-const _FCOL_W := 860.0            # CARD_W 520 + a 340 channel
-const _FROW_H := 260.0            # CARD_H 224 + air
+const _FCOL_W := 640.0            # CARD_W 300 + a 340 channel
+const _FROW_H := 386.0            # CARD_H 350 + air
 const _F_PORT_STEP := 24.0
 const _F_LANE_PAD := 24.0
 const _F_LANE_STEP := 14.0
@@ -1311,84 +1312,110 @@ func _draw_card(node: Dictionary, font: Font, tracing: bool, alpha_mul: float = 
 	if gated and not (tracing and related):
 		alpha *= 0.6
 
-	var outline := _rounded_rect_points(rect, _CORNER_R)
-	var bg := _CARD_BG_GATED if gated else _CARD_BG
-	draw_colored_polygon(outline, Color(bg, bg.a * alpha))
-	var rim_c := _GOLD if id == _selected_id else (Color(accent, accent.a * alpha))
-	var rim_w := 3.0 if (id == _selected_id or id == _hover_id) else 1.8
-	var rim := PackedVector2Array(outline)
-	rim.append(outline[0])
-	draw_polyline(rim, Color(rim_c, rim_c.a * alpha), rim_w, true)
-	# Category accent stripe down the left edge.
-	draw_rect(Rect2(rect.position + Vector2(2.0, 4.0), Vector2(5.0, rect.size.y - 8.0)),
-		Color(accent, accent.a * alpha))
-
-	# Good icon on a cream chip — 100x100 world units, reaching 150 px at max
-	# zoom-in (_ZOOM_MAX 1.5). Medium art: these chips are far above thumbnail size.
-	var pad := 6.0
-	var isz := rect.size.y - pad * 2.0
-	var chip := Rect2(rect.position + Vector2(13.0, pad), Vector2(isz, isz))
-	GoodHover.drawn(self, Rect2(chip.position * _view_zoom + _view_offset, chip.size * _view_zoom), str(node.get("good_id", "")))
-	var icon: Texture2D = GoodIcons.texture_for(str(node.get("good_id", "")), id)
-	draw_colored_polygon(_rounded_rect_points(chip, 8.0), Color(_CREAM, alpha))
-	if icon != null:
-		var tex_size := icon.get_size()
-		var fit := minf((chip.size.x - 8.0) / tex_size.x, (chip.size.y - 8.0) / tex_size.y)
-		var draw_size := tex_size * fit
-		draw_texture_rect(icon, Rect2(chip.get_center() - draw_size * 0.5, draw_size),
-			false, Color(1, 1, 1, alpha))
-
-	# Name, vertically centred beside the chip; alt-recipe pill on the right when the
-	# good has other routes (the phase-2 zoom targets).
-	# Right-hand column: the lock (research-gated) sits at the card's right edge,
-	# vertically centred; the alt-recipe pill sits just left of it.
+	var plate := _PLATE_DIM if gated else Color.WHITE
+	_paint_scaled(_DARK_PLATE, rect.grow(_PLATE_OUTSET * _PLATE_K), _PLATE_CORNER, _PLATE_K, Color(plate, alpha))
+	# The rim: gold round the selected card, the category's colour round a hovered one.
+	if id == _selected_id or id == _hover_id:
+		var rim := _rounded_rect_points(rect.grow(3.0), _CORNER_R + 3.0)
+		rim.append(rim[0])
+		draw_polyline(rim, Color(_GOLD if id == _selected_id else accent, alpha), 4.0, true)
+	# The good on an enamel tile across the top, a band of the category's colour under it.
+	var side := rect.size.x - 2.0 * _TILE_SIDE_PAD
+	var tile := Rect2(Vector2(rect.get_center().x - side * 0.5, rect.position.y + _TILE_TOP_PAD), Vector2(side, side))
+	_draw_enamel_icon(tile, str(node.get("good_id", "")), id, alpha)
+	draw_rect(Rect2(Vector2(tile.position.x + 10.0, tile.end.y + 8.0), Vector2(tile.size.x - 20.0, 5.0)), Color(accent, accent.a * alpha))
+	# The +N pill and the lock in the tile's top right corner.
+	var corner := Vector2(tile.end.x - 10.0, tile.position.y + 26.0)
+	if gated or unlocked_now:
+		_draw_lock_tag(corner + Vector2(-14.0, 0.0), alpha, 1.7, unlocked_now)
+		corner.x -= 46.0
 	var alt_count: int = (node.get("alt_recipe_ids", []) as Array).size()
-	var right_x := rect.end.x - 18.0
-	if gated:
-		_draw_lock_tag(Vector2(rect.end.x - 36.0, rect.get_center().y - 4.0), alpha, 1.7)
-		right_x = rect.end.x - 70.0
-	elif unlocked_now:
-		# Unlocked by research since the catalog was written: an OPEN padlock says so.
-		_draw_lock_tag(Vector2(rect.end.x - 36.0, rect.get_center().y - 4.0), alpha, 1.7, true)
-		right_x = rect.end.x - 70.0
-	var pill_w := 52.0
 	if alt_count > 0:
-		var pill := Rect2(Vector2(right_x - pill_w, rect.get_center().y - 18.0), Vector2(pill_w, 36.0))
+		var pill := Rect2(Vector2(corner.x - 52.0, corner.y - 18.0), Vector2(52.0, 36.0))
 		draw_colored_polygon(_rounded_rect_points(pill, 18.0), Color(_PILL_NAVY, alpha))
 		var pr := _rounded_rect_points(pill, 18.0)
 		pr.append(pr[0])
 		draw_polyline(pr, Color(_CREAM, 0.8 * alpha), 1.6, true)
 		draw_string(font, Vector2(pill.position.x, pill.get_center().y + 7.0), "+%d" % alt_count,
 			HORIZONTAL_ALIGNMENT_CENTER, pill.size.x, 20, Color(_CREAM, alpha))
-		right_x = pill.position.x
-	# Name beside the chip, up to two lines, vertically centred (the icon is the hero;
-	# the name reads at 34 px and wraps rather than shrinking).
-	var text_x := chip.end.x + 18.0
-	var text_w := right_x - 12.0 - text_x
+	# The name engraved on the plate under the tile, up to two lines; on the selected card the recipe in
+	# use runs under it.
 	var name := str(node["display"])
-	var fs := 34 if name.length() <= 26 else 28
+	var area := Rect2(Vector2(rect.position.x + 14.0, tile.end.y + 16.0), Vector2(rect.size.x - 28.0, rect.end.y - tile.end.y - 22.0))
+	# One line at 28; a name that needs two drops to 22 so both clear the band.
+	var fs := 28 if font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 28).x <= area.size.x else 22
 	var caption := ""
 	if id == _selected_id and not _in_use.is_empty():
 		var iu: Dictionary = _in_use[0]
 		caption = "USING %s" % str((iu["recipe"] as Dictionary).get("display_name", "")).to_upper()
 		if int(iu["count"]) > 1:
 			caption += " x%d" % int(iu["count"])
-		if _in_use.size() > 1:
-			caption += " +%d" % (_in_use.size() - 1)
-	var name_h := font.get_multiline_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, text_w, fs,
-		2, TextServer.BREAK_WORD_BOUND).y
-	# The in-use caption runs under the name across the card's full text width (the pill
-	# and lock sit on the centre line, so a two-line caption clears them), 2 lines max.
-	var cap_w := rect.end.x - 18.0 - text_x
-	var cap_fs := 15
-	var cap_h := (font.get_multiline_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, cap_w, cap_fs,
-		2, TextServer.BREAK_WORD_BOUND).y + 6.0) if caption != "" else 0.0
-	var top := rect.get_center().y - (name_h + cap_h) * 0.5
-	draw_multiline_string(font, Vector2(text_x, top + font.get_ascent(fs)), name,
-		HORIZONTAL_ALIGNMENT_LEFT, text_w, fs, 2, Color(_TEXT, alpha))
+	var name_h := font.get_multiline_string_size(name, HORIZONTAL_ALIGNMENT_CENTER, area.size.x, fs, 2, TextServer.BREAK_WORD_BOUND).y
+	var cap_fs := 14
+	var cap_h := (font.get_multiline_string_size(caption, HORIZONTAL_ALIGNMENT_CENTER, area.size.x, cap_fs, 1).y + 4.0) if caption != "" else 0.0
+	var top := area.get_center().y - (name_h + cap_h) * 0.5
+	var at := Vector2(area.position.x, top + font.get_ascent(fs))
+	draw_multiline_string(font, at + Vector2(1.5, 1.5), name, HORIZONTAL_ALIGNMENT_CENTER, area.size.x, fs, 2, Color(0, 0, 0, 0.8 * alpha))
+	draw_multiline_string(font, at, name, HORIZONTAL_ALIGNMENT_CENTER, area.size.x, fs, 2, Color(_TEXT, alpha))
 	if caption != "":
-		draw_multiline_string(font, Vector2(text_x, top + name_h + 6.0 + font.get_ascent(cap_fs)), caption,
-			HORIZONTAL_ALIGNMENT_LEFT, cap_w, cap_fs, 2, Color(_ROUTE_COLORS[1], alpha))
+		draw_string(font, Vector2(area.position.x, top + name_h + 4.0 + font.get_ascent(cap_fs)), caption,
+			HORIZONTAL_ALIGNMENT_CENTER, area.size.x, cap_fs, Color(_ROUTE_COLORS[1], alpha))
+
+
+## A good's card (CARD_W x CARD_H): a dark metal plate (dark_metal_plate.png, blackened gunmetal edge to edge, as
+## the Victory panel's dials stand on) carrying the good on an enamel tile (recipe_enamel.png, Building Detail's
+## vitreous enamel sign: cream enamel in a steel cut) with a gloss across it, and the name engraved under it.
+## Both renders are 9-slices drawn at _PLATE_K times their panel size, so their edges keep the panel's proportions
+## on a card this size.
+const _DARK_PLATE: Texture2D = preload("res://assets/ui/bdp_v3/dark_metal_plate.png")
+const _ENAMEL: Texture2D = preload("res://assets/ui/bdp_v3/recipe_enamel.png")
+const _PLATE_K := 1.4
+const _PLATE_CORNER := (10.0 + 44.0) * 2.0 / 1.875
+const _PLATE_OUTSET := 10.0 / 1.875
+const _ENAMEL_CORNER := 44.0 * 2.0 / 1.875
+const _ENAMEL_MARGIN := 3.0 / 1.875
+## A gated good's plate, a shade darker.
+const _PLATE_DIM := Color(0.72, 0.72, 0.72)
+const _TILE_SIDE_PAD := 28.0
+const _TILE_TOP_PAD := 18.0
+
+
+## `tex` as a 9-slice over `dest` (world units), drawn at `k` times the panel's scale.
+func _paint_scaled(tex: Texture2D, dest: Rect2, corner: float, k: float, tint: Color = Color.WHITE) -> void:
+	draw_set_transform(_view_offset + dest.position * _view_zoom, 0.0, Vector2.ONE * _view_zoom * k)
+	if tint != Color.WHITE:
+		var ts := tex.get_size()
+		var c := minf(corner, minf(ts.x, ts.y) * 0.5)
+		var d := minf(c / 2.0, minf(dest.size.x / k, dest.size.y / k) * 0.5)
+		var size := dest.size / k
+		var sx := [0.0, c, ts.x - c, ts.x]
+		var sy := [0.0, c, ts.y - c, ts.y]
+		var dx := [0.0, d, size.x - d, size.x]
+		var dy := [0.0, d, size.y - d, size.y]
+		for i in 3:
+			for j in 3:
+				var dst := Rect2(dx[i], dy[j], dx[i + 1] - dx[i], dy[j + 1] - dy[j])
+				if dst.size.x > 0.0 and dst.size.y > 0.0:
+					draw_texture_rect_region(tex, dst, Rect2(sx[i], sy[j], sx[i + 1] - sx[i], sy[j + 1] - sy[j]), tint)
+	else:
+		Nine.paint(self, tex, Rect2(Vector2.ZERO, dest.size / k), corner)
+	draw_set_transform(_view_offset, 0.0, Vector2(_view_zoom, _view_zoom))
+
+
+## The good on its enamel tile: the enamel sign as the tile, the icon on its cream field, and a glaze over
+## both, a soft highlight falling from the top left, so the icon reads as fired onto the enamel.
+func _draw_enamel_icon(tile: Rect2, good_id: String, id: String, alpha: float) -> void:
+	_paint_scaled(_ENAMEL, tile.grow(_ENAMEL_MARGIN * _PLATE_K), _ENAMEL_CORNER, _PLATE_K, Color(1, 1, 1, alpha))
+	GoodHover.drawn(self, Rect2(tile.position * _view_zoom + _view_offset, tile.size * _view_zoom), good_id)
+	var icon: Texture2D = GoodIcons.texture_for(good_id, id)
+	if icon != null:
+		var ts := icon.get_size()
+		var fit := minf(tile.size.x * 0.78 / ts.x, tile.size.y * 0.78 / ts.y)
+		draw_texture_rect(icon, Rect2(tile.get_center() - ts * fit * 0.5, ts * fit), false, Color(1, 1, 1, alpha))
+	var inner := tile.grow(-14.0)
+	var glaze := PackedVector2Array([inner.position, Vector2(inner.end.x, inner.position.y),
+		Vector2(inner.position.x, inner.end.y)])
+	draw_polygon(glaze, PackedColorArray([Color(1, 1, 1, 0.26 * alpha), Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.0)]))
 
 
 ## Small padlock tag: "this good's every producer is research-gated at game start". `open`
