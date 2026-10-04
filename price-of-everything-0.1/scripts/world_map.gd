@@ -582,7 +582,7 @@ func _show_metal_magnate_intro() -> void:
 func _show_glass_merchant_intro() -> void:
 	while _loading_screen_active():
 		await get_tree().process_frame
-	_focus_camera_on_tile("tile_22_16")   # centre on Vandel's Skip (the start's hub)
+	_focus_camera_on_tile("tile_18_16")   # centre on Ashmouth, the start's glassworks
 	var intro: CanvasLayer = load("res://scripts/glass_merchant_intro.gd").new()
 	intro.tree_exited.connect(Tutorial.start_opener)   # the opening steps follow the story
 	add_child(intro)
@@ -1588,6 +1588,10 @@ func _on_buy_confirm() -> void:
 	var qty := int(_buy.get("qty", 0))
 	var tiles: Array = _buy.get("tiles", [])
 	if tiles.is_empty() or qty <= 0:
+		return
+	var locked := preload("res://scripts/middleman_service.gd").route_lock("market")
+	if locked != "":
+		MatchState.request_toast("Buying from the global market. " + locked, "warning")
 		return
 	var recurring: bool = _buy_recurring != null and _buy_recurring.button_pressed
 	var bought := 0

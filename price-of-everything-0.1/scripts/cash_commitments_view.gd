@@ -29,7 +29,7 @@ func refresh() -> void:
 		text_line(hero, "No extra costs to plan for.")
 	text_line(hero, "Routine running costs, restocking and loan repayments are excluded.", "Caption")
 	if not (data.get("middleman",{}) as Dictionary).is_empty():
-		var service := section("middleman","Routine middleman operation","Next turn",RUNNING)
+		var service := section("middleman","Routine intermediary operation","Next turn",RUNNING)
 		for iid in data.middleman:
 			var p: Dictionary = data.middleman[iid]
 			line(service,Forecast._building_name(str(iid)),"Upfront £%.2f · fee £%.2f" % [float(p.get("upfront",0.0)),float(p.get("fee",0.0))])

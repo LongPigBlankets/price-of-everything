@@ -426,6 +426,33 @@ func _test_pending_special_order_shipment_resolution() -> void:
 		and str((pending[0] as Dictionary).get("destination_tile", "")) == "tile_12_4",
 		"special orders: pending tagged shipments can be rerouted to another tile stockpile")
 
+	# Waiting shipments are saved, and a reroute with no route moves none of them.
+	MatchState.reset()
+	Stockpile.clear_all()
+	TransportState.queue_transport_shipment(_fake_special_order_sale_shipment(order_id, 4, 40.0))
+	taken = TransportState.take_pending_special_order_shipments(order_id, {"id": order_id})
+	_check(TransportState.awaiting_special_orders.has(order_id), "special orders: shipments taken off the road wait in saved state")
+	var fields: Dictionary = JSON.parse_string(JSON.stringify(TransportState.export_fields()))
+	TransportState.awaiting_special_orders.clear()
+	TransportState.import_fields(fields)
+	_check((TransportState.awaiting_special_orders.get(order_id, {}).get("shipments", []) as Array).size() == 1,
+		"special orders: shipments waiting for a choice survive a save")
+	var fluid := ""
+	for g: Dictionary in Catalog.all_goods():
+		if Catalog.requires_pipeline(str(g.get("id", ""))):
+			fluid = str(g.get("id", ""))
+			break
+	if fluid != "":
+		# A fluid with no pipe to the destination has no route: the whole reroute is refused, the solid
+		# good with it, rather than the fluid being dropped.
+		var mixed: Dictionary = (taken[0] as Dictionary).duplicate(true)
+		(mixed.sale_record.items as Array).append({"good_id": fluid, "qty": 3, "revenue": 9.0})
+		var stranded := TransportState.resolve_special_order_shipments([mixed], "reroute", "tile_12_4")
+		_check(not bool(stranded.get("ok", true)) and TransportState.get_pending_transport_shipments().is_empty(),
+			"special orders: a reroute with no route for one good is refused whole, nothing dropped")
+	TransportState.settle_awaiting(order_id)
+	_check(not TransportState.awaiting_special_orders.has(order_id), "special orders: a carried-out choice clears the wait")
+
 	MatchState.reset()
 	Stockpile.clear_all()
 	MatchState.money = saved_money

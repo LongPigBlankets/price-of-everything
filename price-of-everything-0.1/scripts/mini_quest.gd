@@ -72,6 +72,9 @@ const TREE_DEFINITIONS := {
 const GENERIC_SALE_REWARD_ID := "mini_quest_global_surplus_sale_price"
 const GENERIC_SALE_REWARD_PCT := 2.0
 const GENERIC_SALE_REWARD_TURNS := 10
+const GENERIC_STOCKPILE_REWARD_ID := "mini_quest_tile_stockpile_output"
+const GENERIC_STOCKPILE_REWARD_PCT := 5.0
+const GENERIC_STOCKPILE_REWARD_TURNS := 20
 
 # ── Chain definitions ────────────────────────────────────────────────────────
 
@@ -663,7 +666,9 @@ func _on_turn_processed(summary: Dictionary) -> void:
 
 
 func _eval_generic(summary: Dictionary) -> void:
-	if not is_available() and str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1":
+	# The Logistics missions are the intermediary's progression. Outside it every route is open from the
+	# start, so they would all complete on turn one; they stay locked instead.
+	if not ResearchState.logistics_progression_active():
 		return
 	if ResearchState.open_logistics_contracts_available():
 		generic_done["middleman_contracts"] = true
@@ -689,7 +694,12 @@ func _eval_generic(summary: Dictionary) -> void:
 
 
 func _grant_generic(node_id: String) -> void:
-	if node_id == "global_surplus":
+	if node_id == "tile_stockpile":
+		_add(GENERIC_STOCKPILE_REWARD_ID, {
+			"domain": "recipe_output", "target": "*", "pct": GENERIC_STOCKPILE_REWARD_PCT,
+			"duration_turns": GENERIC_STOCKPILE_REWARD_TURNS, "label": "Tile stockpile in use",
+			"source": "quest:tile_stockpile"})
+	elif node_id == "global_surplus":
 		_add(GENERIC_SALE_REWARD_ID, {
 			"domain": "market_price", "target": "*", "pct": GENERIC_SALE_REWARD_PCT,
 			"duration_turns": GENERIC_SALE_REWARD_TURNS, "label": "Global surplus sale",

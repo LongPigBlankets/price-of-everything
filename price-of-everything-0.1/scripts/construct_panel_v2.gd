@@ -1433,7 +1433,7 @@ func _render_confirm_v3() -> void:
 		service_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		var materials_line := "Construction materials use the Logistics Intermediary and arrive on the next turn." \
 			if _current_material_source() == "middleman" else "Construction materials follow the source chosen below."
-		service_note.text = "After completion: middleman inputs and sales, with transport and operating storage included. %s Keep £%.2f for the first operating batch; anticipated sales cannot fund it." % [materials_line, float(_v3_forecast.cash_needed)]
+		service_note.text = "After completion: intermediary inputs and sales, with transport and operating storage included. %s Keep £%.2f for the first operating batch; anticipated sales cannot fund it." % [materials_line, float(_v3_forecast.cash_needed)]
 		_content.add_child(service_note)
 	if _locked_tile_id != "" and not (_v3_forecast.get("phases", []) as Array).is_empty():
 		if BuildForecastTable.show_balance_impact():

@@ -156,9 +156,16 @@ func _test_tutorial_engine() -> void:
 	_check(TutorialDetectors.poll(decide) == false, "tutorial: detector false while NPC-owned")
 	_check(TutorialDetectors.poll({"kind": "unknown_predicate"}) == false, "tutorial: unknown predicate never advances")
 	BuildingState.buildings = saved
-	# infra detectors read Catalog state; with no cables built they must be false.
+	# infra detectors read Catalog state; with no cables built they must be false. Earlier tests can leave
+	# cables on the board's tiles, so take them off for the check and put them back after.
+	var saved_infra: Dictionary = {}
+	for tile_id in TutorialSteps.BOARD_TILES:
+		saved_infra[tile_id] = (Catalog._tile_infra.get(tile_id, []) as Array).duplicate()
+		Catalog._tile_infra[tile_id] = (saved_infra[tile_id] as Array).filter(func(i: String) -> bool: return i != "cables")
 	_check(TutorialDetectors.poll({"kind": "board_has_infra", "infra": "cables"}) == false,
 		"tutorial: board_has_infra false before any cable is laid")
+	for tile_id in saved_infra:
+		Catalog._tile_infra[tile_id] = saved_infra[tile_id]
 	_check(TutorialDetectors.poll({"kind": "tile_has_infra", "tile": TutorialSteps.WINDOW_TILE, "infra": "cables"}) == false,
 		"tutorial: tile_has_infra false before any cable is laid")
 	# The core + Integration sequence is authored end-to-end.

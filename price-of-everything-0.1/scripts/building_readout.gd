@@ -1173,7 +1173,7 @@ static func output_checks(building: Dictionary, recipe: Dictionary, is_infrastru
 ## How an output route stands: "intermediary", "unreachable", "local" (it stays on this tile, or has
 ## no port to go to), or "shipped".
 static func _output_leg(route: Dictionary, building: Dictionary) -> String:
-	if str(route.get("destination", "")) == "Middleman":
+	if str(route.get("destination", "")) == "Logistics Intermediary":
 		return "intermediary"
 	if not bool(route.get("reachable", true)):
 		return "unreachable"
@@ -1241,7 +1241,7 @@ static func _output_port(building: Dictionary, route: Dictionary) -> String:
 static func _port_check(building: Dictionary, route: Dictionary, g: Dictionary) -> Dictionary:
 	var port := _output_port(building, route)
 	if port == "":
-		var why := "The logistics intermediary ships it. No port charge." if _output_leg(route, building) == "intermediary" else "Passes no port."
+		var why := "The logistics intermediary ships it. Its fee includes the port charge." if _output_leg(route, building) == "intermediary" else "Passes no port."
 		return _good_check(g, "port", "Port charge", "ok", why)
 	var gid := str(g.get("gid", ""))
 	var kind := Catalog.get_transport_class(gid)
@@ -1729,7 +1729,7 @@ static func output_route(building: Dictionary, recipe: Dictionary, good_id: Stri
 	# intermediary has no shared-tile destination, even when STOCKPILE_ALL is the
 	# global fallback for buildings that have no explicit route.
 	if Middleman.buys_output(iid, gid):
-		return {"destination":"Middleman","target":"","has_market":true,"cost":0.0,"turns":0}
+		return {"destination":"Logistics Intermediary","target":"","has_market":true,"cost":0.0,"turns":0}
 	var source_tile := str(building.get("tile_id", ""))
 	var qty := BuildingStatus.primary_output_qty(recipe)
 	for o: Dictionary in BuildingStatus.flow_output_items(recipe):

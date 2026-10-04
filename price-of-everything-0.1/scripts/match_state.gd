@@ -911,7 +911,7 @@ func export_state() -> Dictionary:
 		"power_priority_wind_solar": power_priority_wind_solar,
 		"ghost_holdings": ghost_holdings.duplicate(true),
 		"advisor_rng_seed": match_rng_seed,
-		"advisor_rng_state": _match_rng.state,
+		"advisor_rng_state": SaveLoad.int64_out(_match_rng.state),
 		"cfo_tax_credit_pool": cfo_tax_credit_pool.duplicate(true),
 		"cfo_tax_credit_intro_shown": cfo_tax_credit_intro_shown,
 		"sell_mode": sell_mode,
@@ -989,7 +989,7 @@ func import_state(d: Dictionary) -> void:
 	ghost_holdings = (d.get("ghost_holdings", {}) as Dictionary).duplicate(true)
 	match_rng_seed = int(d.get("advisor_rng_seed", DEFAULT_MATCH_RNG_SEED))
 	_match_rng.seed = match_rng_seed
-	_match_rng.state = int(d.get("advisor_rng_state", _match_rng.state))
+	_match_rng.state = SaveLoad.int64_in(d.get("advisor_rng_state"), _match_rng.state)
 	sell_mode = int(d.get("sell_mode", SellMode.STOCKPILE_ALL))
 	route_objective = int(d.get("route_objective", RouteObjective.FASTEST))
 	output_stockpile_destinations = (d.get("output_stockpile_destinations", {}) as Dictionary).duplicate(true)
@@ -1558,6 +1558,20 @@ func _move_row(good: String, qty: int, tile_from: String, tile_to: String, start
 func _input_key(instance_id: String, good_id: String) -> String:
 	return instance_id + "|" + good_id
 
+## Drops every route a removed building had set: its output destinations (single, split and to special
+## orders), its shipping caps and its tile-stock-only inputs.
+func forget_building_routes(instance_id: String) -> void:
+	output_stockpile_destinations.erase(instance_id)
+	output_split_destinations.erase(instance_id)
+	output_special_order_destinations.erase(instance_id)
+	output_ship_quantities.erase(instance_id)
+	var prefix := instance_id + "|"
+	for key: String in input_tile_only.keys():
+		if key.begins_with(prefix):
+			input_tile_only.erase(key)
+	if str(pending_output_stockpile_selection.get("instance_id", "")) == instance_id:
+		pending_output_stockpile_selection.clear()
+
 func set_input_tile_only(instance_id: String, good_id: String, tile_only: bool) -> void:
 	# Default (not set) = "stockpile then market" (buys the shortfall). tile_only = never buy.
 	if instance_id == "" or good_id == "":
@@ -1582,6 +1596,9 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 	# through this primitive: automated market top-up, recurring buys, construction
 	# and upgrade materials, and the manual buy. One guard closes all of them.
 	if PolicyState.import_banned(good_id, TurnManager.current_turn):
+		return {}
+	# In an intermediary game the global market opens with the Import/Export License, for every route.
+	if not preload("res://scripts/middleman_service.gd").global_market_open():
 		return {}
 	if bool(extra.get("reserve_construction", false)) and not TurnManager.is_resolving:
 		return _reserve_construction_purchase(dest_tile, good_id, qty, extra)
@@ -1875,6 +1892,9 @@ func queue_sell(source_tile: String, goods_qtys: Dictionary, log_oneoff: bool = 
 	# nearest port, pay out on arrival. All of that lives in MarketState.execute_sale
 	# now; this wrapper preserves the public API (note: returns `revenue`, not
 	# `total_revenue`, for back-compat with existing callers).
+	# In an intermediary game the global market opens with the Import/Export License, for every route.
+	if not preload("res://scripts/middleman_service.gd").global_market_open():
+		return {}
 	var result := MarketState.execute_sale(source_tile, goods_qtys, {"log_oneoff": log_oneoff})
 	if result.is_empty():
 		return {}
@@ -2056,15 +2076,21 @@ func purchase_kit_cost(building: Dictionary) -> float:
 
 ## The full asking price for an NPC building: the advisor-adjusted sale value plus the stock it
 ## comes with. One helper so the listing, the Buy button and the charge cannot disagree.
+## A building the player sold costs at least what they were paid for it (`player_sale_price`),
+## so a purchase discount cannot turn selling and buying it back into money.
 func building_purchase_price(building: Dictionary) -> int:
-	return int(round(
-		AdvisorState.purchase_cost_after_advisor(float(BuildingPrice.sale_price(building)))
-		+ purchase_kit_cost(building)))
+	var price := AdvisorState.purchase_cost_after_advisor(float(BuildingPrice.sale_price(building)))
+	if building.has("player_sale_price"):
+		price = maxf(price, float(building["player_sale_price"]))
+	return int(round(price + purchase_kit_cost(building)))
 
 
-## How many turns of inputs a purchase actually receives. The player pays for PURCHASE_SEED_
-## TURNS; a seated COO throws in one more (§5.4) — a gift of goods, not a discount on price.
-func purchase_seed_turns() -> int:
+## How many turns of inputs a purchase of `building` actually receives. The player pays for
+## PURCHASE_SEED_TURNS; a seated COO throws in one more (§5.4), a gift of goods, not a discount on
+## price. Buying back a building the player sold gets no gift, so the cycle can't farm stock.
+func purchase_seed_turns(building: Dictionary = {}) -> int:
+	if building.has("player_sale_price"):
+		return PURCHASE_SEED_TURNS
 	return PURCHASE_SEED_TURNS + (1 if AdvisorState.get_advisor_in_seat("coo") != "" else 0)
 
 
@@ -2084,7 +2110,7 @@ func seed_purchase_inventory(instance_id: String) -> int:
 	var seeded := 0
 	for input in inputs:
 		var gid := str(input.get("good_id", ""))
-		var qty := int(input.get("qty", 0)) * purchase_seed_turns()
+		var qty := int(input.get("qty", 0)) * purchase_seed_turns(building)
 		if gid == "" or qty <= 0:
 			continue
 		var placed: int = Stockpile.add(tile_id, gid, qty)

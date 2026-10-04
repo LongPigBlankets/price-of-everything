@@ -334,6 +334,8 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 	var ordered := funding_order(buildings, snapshot)
 	for b: Dictionary in ordered:
 		var iid := str(b.instance_id)
+		# A building changing recipe runs nothing, so the service buys nothing for it.
+		if BuildingWorks.is_retooling(iid): continue
 		var bridge: Dictionary = bridges.get(iid, {})
 		if not enabled(iid):
 			if bridge.is_empty(): continue
@@ -587,7 +589,7 @@ static func release_to_stock(iid: String) -> Dictionary:
 	if e.is_empty() or b.is_empty(): return {"ok":false,"reason":"No service building."}
 	var goods := {}
 	var total := 0
-	for key in ["inputs","outputs","opening_inputs"]:
+	for key in ["inputs","outputs","opening_inputs","bridge"]:
 		for gid in e.get(key, {}):
 			goods[gid] = int(goods.get(gid,0))+int(e[key][gid])
 			total += int(e[key][gid])
@@ -596,8 +598,30 @@ static func release_to_stock(iid: String) -> Dictionary:
 	e.inputs.clear()
 	e.outputs.clear()
 	e.erase("opening_inputs")
+	e["bridge"] = {}
 	e["holding_receipts"] = []
 	return {"ok":true}
+
+## After a retrofit the service runs the building's new recipe: the routes chosen for goods the new recipe
+## no longer uses are dropped, and its new goods take the side's route.
+static func retarget(iid: String) -> void:
+	var e := entry(iid)
+	var b: Dictionary = BuildingState.get_building(iid)
+	if e.is_empty() or b.is_empty(): return
+	e["recipe_id"] = str(b.get("recipe_id", ""))
+	for side in ["input", "output"]:
+		var used := _side_items(iid, side).map(func(item: Dictionary) -> String: return str(item.get("good_id", "")))
+		var modes: Dictionary = e.get(side + "_modes", {})
+		for gid in modes.keys():
+			if not used.has(gid): modes.erase(gid)
+	e["bridge"] = {}
+
+## Before works or a sale take the building out of service: move what the intermediary holds for it into the
+## tile's stock. Returns "" when nothing is held or it all moved, else why it can't move.
+static func release_for_works(iid: String) -> String:
+	if not has_assets(iid): return ""
+	if bool(release_to_stock(iid).get("ok", false)): return ""
+	return "The intermediary's goods for this building don't fit in the tile's storage."
 
 static func disable(iid: String) -> Dictionary:
 	if TurnManager.current_phase != TurnManager.Phase.DECIDE or has_assets(iid):

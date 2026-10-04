@@ -14,6 +14,9 @@ func setup(count: int = 1, cables: bool = true) -> Array:
 	TurnManager.current_phase = TurnManager.Phase.DECIDE
 	MatchState.money = 10000.0
 	MatchState.ruleset["logistics_model"] = "middleman_v1"
+	# The Logistics missions' rewards (a tile stockpile's +5% output) would change the batches under test.
+	for node_id: String in ["middleman_contracts", "tile_stockpile", "global_license", "global_surplus"]:
+		MiniQuest.generic_granted[node_id] = true
 	# Routes off the intermediary need their research. The tests about the locks take it away again.
 	open_routes()
 	fake = Node.new()
@@ -75,7 +78,6 @@ func _test_live_preflight_and_failure_recovery_save() -> void:
 	Service.settle(BuildingState.buildings.values(),s) # Production could not execute after acquisition.
 	_check(Service.entry(iid).state=="blocked_with_private_inputs","post-purchase failure retains paid inputs")
 	_check(not BuildingState.remove_building(iid),"removal cannot destroy paid goods")
-	_check(not BuildingWorks.start_retrofit(iid,"r_009").ok,"recipe changes cannot strand private goods")
 	var save: Dictionary = SaveLoad.export_snapshot()
 	SaveLoad.import_snapshot(JSON.parse_string(JSON.stringify(save)))
 	_check(Service.entry(iid).holding_receipts.size()==1 and int(Service.entry(iid).inputs.g_006)==32,"actual SaveLoad round trip preserves paid inputs and original receipt")
@@ -84,6 +86,90 @@ func _test_live_preflight_and_failure_recovery_save() -> void:
 	_check(Production.last_turn_summary.purchased.is_empty(),"next real production reuses retained ingredients without buying again")
 	_check(int(Production.last_turn_summary.sold.get("g_008",{}).get("qty",0))==33,"retained inputs produce and sell once")
 	_check(float(Service.entry(iid).receipts.get("input_fee",-1))==0,"no repeated input fee")
+	cleanup()
+
+## A building the intermediary runs can change recipe: the goods it holds move into the tile's stock, it buys
+## nothing while the building retools, and it follows the new recipe once it is in.
+func _test_retrofit_releases_private_goods() -> void:
+	var ids := setup(1)
+	var iid: String = ids[0]
+	var s := summary()
+	Service.prepare(BuildingState.buildings.values(), s)
+	Service.settle(BuildingState.buildings.values(), s)
+	_check(Service.has_assets(iid), "the service holds paid inputs for the building")
+	var other := ""
+	for r: Dictionary in Catalog.get_recipes_for_building("b_007"):
+		if str(r.get("recipe_id", "")) != "r_009" and Catalog.is_recipe_demo_available(r):
+			other = str(r.get("recipe_id", ""))
+			break
+	if other == "":
+		_check(true, "retrofit: skipped (no second recipe for the factory)")
+		cleanup()
+		return
+	var held := int(Service.entry(iid).inputs.get("g_006", 0))
+	var res: Dictionary = BuildingWorks.start_retrofit(iid, other)
+	_check(bool(res.get("ok", false)) and BuildingWorks.is_retooling(iid), "an intermediary building can start a retrofit")
+	_check(not Service.has_assets(iid) and Stockpile.get_at_tile("tile_5_4", "g_006") == held,
+		"its held goods move into the tile's stock")
+	TurnManager.current_turn += 1
+	var s2 := summary()
+	Service.prepare(BuildingState.buildings.values(), s2)
+	_check(float(s2.money_out) == 0.0 and Service.entry(iid).inputs.is_empty(), "nothing is bought while it retools")
+	for _i in 4:
+		BuildingWorks.tick_retrofits()
+	_check(str(BuildingState.get_building(iid).get("recipe_id", "")) == other and str(Service.entry(iid).get("recipe_id", "")) == other,
+		"the service follows the new recipe")
+	cleanup()
+
+## A batch the intermediary refused shows in the turn briefing, worded as the building's diagnostics word it;
+## one held back by the player's own pause or retrofit does not.
+func _test_refused_batch_alerts_the_briefing() -> void:
+	var ids := setup(2)
+	TurnBriefing._alert_dismissed.erase("alert:intermediary_refused")
+	var saved_blocked: Dictionary = Production.blocked_reason_by_building.duplicate(true)
+	var saved_run: Dictionary = Production.last_turn_run.duplicate(true)
+	Production.last_turn_run = {}
+	Production.blocked_reason_by_building = {
+		str(ids[0]): {"code": "middleman", "message": "insufficient_funding"},
+		str(ids[1]): {"code": "middleman", "message": "Building paused or recipe changed."},
+	}
+	var item: Dictionary = TurnBriefing._intermediary_refused_item()
+	var listed: Array = item.get("list", [])
+	_check(str(item.get("id", "")) == "alert:intermediary_refused" and int(item.get("magnitude", 0)) == 1
+		and listed.size() == 1 and str((listed[0] as Dictionary).get("instance_id", "")) == str(ids[0]),
+		"briefing: a refused batch raises an alert, a paused building does not")
+	_check(str((listed[0] as Dictionary).get("why", "")).begins_with("Not enough cash"), "briefing: the refusal reads as the diagnostics read it")
+	Production.blocked_reason_by_building = saved_blocked
+	Production.last_turn_run = saved_run
+	cleanup()
+
+## Without the Import/Export License an intermediary game can't reach the global market by any route: the
+## buy and sell primitives every manual trade goes through refuse it, and so does an upgrade's market mode.
+func _test_global_market_needs_the_license() -> void:
+	var ids := setup(1)
+	open_routes(true, false)
+	Stockpile.add("tile_5_4", "g_008", 5)
+	_check(MatchState.queue_buy("tile_5_4", "g_006", 4).is_empty(), "license: no global-market buy without it")
+	_check(MatchState.queue_sell("tile_5_4", {"g_008": 5}).is_empty() and Stockpile.get_at_tile("tile_5_4", "g_008") == 5,
+		"license: no global-market sale without it, and the goods stay put")
+	ResearchState.unlocked_titles["Conveyor Mass Assembly"] = true   # the factory's level 2
+	var up: Dictionary = BuildingWorks.start_upgrade(str(ids[0]), "market")
+	_check(not bool(up.get("ok", true)) and str(up.get("reason", "")).contains(ResearchState.GLOBAL_TRADE_LICENSE_TITLE)
+		and not BuildingWorks.is_upgrading(str(ids[0])),
+		"license: an upgrade can't order its materials from the global market without it (%s)" % str(up.get("reason", "")))
+	cleanup()
+
+## The supply chain board draws no lane to a port for output the intermediary buys: it never goes there.
+func _test_board_draws_no_port_lane_for_intermediary_output() -> void:
+	var ids := setup(1)
+	var iid := str(ids[0])
+	# A start routes its buildings' output "to market" even where the intermediary buys it.
+	MatchState.output_stockpile_destinations[iid] = {"g_008": MatchState.MARKET_DESTINATION}
+	var lanes: Dictionary = preload("res://scripts/empire_board_model.gd").real_lanes([{"iid": iid, "tile": "tile_5_4", "good": "g_008"}])
+	var to_port := false
+	for key in lanes:
+		to_port = to_port or (str((lanes[key] as Dictionary).get("kind", "")) == "sell" and str((lanes[key] as Dictionary).get("good", "")) == "g_008")
+	_check(Service.buys_output(iid, "g_008") and not to_port, "board: no sell lane to a port for output the intermediary buys")
 	cleanup()
 
 func _test_live_shortage_and_legacy_default() -> void:

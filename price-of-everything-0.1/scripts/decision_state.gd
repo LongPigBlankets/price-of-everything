@@ -1464,7 +1464,7 @@ func choice_words(def_id: String, choice_id: String, target: Dictionary) -> Arra
 func export_state() -> Dictionary:
 	return {
 		"rng_seed": _rng_seed,
-		"rng_state": _rng.state,
+		"rng_state": SaveLoad.int64_out(_rng.state),
 		"pending_queue": pending_queue.duplicate(true),
 		"cooldown_until": _cooldown_until.duplicate(true),
 		"fired_once": _fired_once.duplicate(true),
@@ -1480,7 +1480,7 @@ func export_state() -> Dictionary:
 func import_state(d: Dictionary) -> void:
 	_rng_seed = int(d.get("rng_seed", int(MatchState.match_rng_seed) ^ 0xDEC1DE5))
 	_rng.seed = _rng_seed
-	_rng.state = int(d.get("rng_state", _rng.state))
+	_rng.state = SaveLoad.int64_in(d.get("rng_state"), _rng.state)
 	pending_queue = (d.get("pending_queue", []) as Array).duplicate(true)
 	# Legacy saves carried a single "pending" dict — wrap it into the queue.
 	var legacy_pending: Dictionary = d.get("pending", {})

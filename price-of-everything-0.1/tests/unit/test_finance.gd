@@ -225,6 +225,20 @@ func _test_loan_minimum_and_grace() -> void:
 	_check(absf(float(l.get("total_repayment", 0.0)) - expected) < 0.01,
 		"grace accrues interest: total is %.2fx principal, not %.2fx"
 			% [expected / float(l.principal_initial), 1.0 + EconomyConfig.LOAN_INTEREST_RATE])
+	# Interest accrues evenly over the loan's life, grace included: clearing it in grace costs the principal
+	# plus the interest built up so far, not the whole term's.
+	var principal := float(l.principal_initial)
+	var life := float(EconomyConfig.LOAN_GRACE_TURNS + EconomyConfig.LOAN_TERM_TURNS)
+	_check(absf(LoanState.payoff_amount(l) - principal) < 0.01, "grace: clearing on the turn it is taken costs the principal")
+	for _i in 3:
+		LoanState.process_payments()
+	var accrued := principal + (expected - principal) * 3.0 / life
+	_check(absf(LoanState.payoff_amount(l) - accrued) < 0.01,
+		"grace: after 3 turns, clearing costs the principal plus 3 turns of interest (%.2f)" % accrued)
+	var cash := MatchState.money
+	_check(LoanState.repay_loan(int(l.id)) and absf(cash - MatchState.money - accrued) < 0.01 and LoanState.loans.is_empty(),
+		"grace: repaying charges the interest accrued so far, not the whole term's")
+	_check(LoanState.take_loan(1.36), "a second loan for the grace run")
 	var before := MatchState.money
 	for _i in EconomyConfig.LOAN_GRACE_TURNS:
 		LoanState.process_payments()
@@ -460,6 +474,9 @@ func _test_finance_research_conditions() -> void:
 func _test_transit_credit_books_the_sale_when_it_leaves() -> void:
 	var backup := SaveLoad.export_snapshot().duplicate(true)
 	MatchState.ruleset["logistics_model"] = "middleman_v1"
+	# Selling to the global market in an intermediary game needs the Import/Export License.
+	ResearchState.unlocked_titles[ResearchState.GLOBAL_TRADE_LICENSE_TITLE] = true
+	ResearchState._global_trade_license_paid = true
 	LoanState.transit_credit_enabled = true
 	LoanState.transit_credit_balance = 0.0
 	Production.last_turn_summary = {"sold": {}, "goods_sales_revenue": 0.0, "money_in": 0.0}

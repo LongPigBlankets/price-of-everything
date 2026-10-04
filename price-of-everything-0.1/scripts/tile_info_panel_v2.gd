@@ -3810,6 +3810,10 @@ func _confirm_stock_action() -> void:
 				"warning")
 			return
 	if _stock_dest == MARKET_DEST:
+		var locked := preload("res://scripts/middleman_service.gd").route_lock("market")
+		if locked != "":
+			MatchState.request_toast("Selling to the global market. " + locked, "warning")
+			return
 		MatchState.queue_sell(_current_tile_id, goods)
 		if recurring:
 			MatchState.add_recurring_sell(_current_tile_id, goods)

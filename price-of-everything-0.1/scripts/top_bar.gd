@@ -3637,7 +3637,7 @@ func _fly_treasury(vb: VBoxContainer) -> void:
 		var nm := _mini(LoanState.loan_label(l), C_BRIGHT, 12)
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(nm)
-		row.add_child(_mini(_money_text(float(l.get("principal_remaining", 0.0))), C_BRIGHT, 12))
+		row.add_child(_mini(_money_text(LoanState.payoff_amount(l)), C_BRIGHT, 12))
 		var info := VBoxContainer.new()
 		info.add_theme_constant_override("separation", 4)
 		info.add_child(row)
@@ -3896,7 +3896,7 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 	body = _ds2_sub_plate(sheet, "FlyPlateLoans")
 	body.add_child(_ds2_caption("Loans"))
 	for l in LoanState.loans:
-		var lrow := _ds2_money_row(LoanState.loan_label(l), float(l.get("principal_remaining", 0.0)), DS2_CASH_COLOUR, digits, "", DS2_SMALL_LED)
+		var lrow := _ds2_money_row(LoanState.loan_label(l), LoanState.payoff_amount(l), DS2_CASH_COLOUR, digits, "", DS2_SMALL_LED)
 		body.add_child(lrow)
 		body.add_child(_ds2_text(LoanState.repayment_label(l), DS2_BODY_PX))
 	if LoanState.loans.is_empty():

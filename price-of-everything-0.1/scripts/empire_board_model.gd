@@ -177,9 +177,12 @@ static func real_lanes(outputs: Array) -> Dictionary:
 			continue
 		for gid in (rd.get("goods", {}) as Dictionary):
 			_lane(lanes, "move", str(gid), rf, rt)
-	# Standing output routes: a building told to send its output to another tile, or to market.
+	# Standing output routes: a building told to send its output to another tile, or to market. Output the
+	# intermediary buys never travels to a port, so it has no lane.
 	for o in outputs:
 		var od: Dictionary = o
+		if preload("res://scripts/middleman_service.gd").buys_output(str(od["iid"]), str(od["good"])):
+			continue
 		var dest := str(MatchState.get_output_stockpile_destination(str(od["iid"]), str(od["good"])))
 		if dest.begins_with("tile_") and dest != str(od["tile"]):
 			_lane(lanes, "move", str(od["good"]), str(od["tile"]), dest)

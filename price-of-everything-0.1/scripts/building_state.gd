@@ -159,6 +159,8 @@ func set_building_owner(instance_id: String, owner: String) -> void:
 		# than in the market panel because three separate surfaces transfer ownership (market
 		# panel, building detail, tile info) and the tutorial buys through one of them.
 		MatchState.seed_purchase_inventory(instance_id)
+		# Bought back: what the player was once paid for it no longer applies.
+		buildings[instance_id].erase("player_sale_price")
 	building_owner_changed.emit(instance_id)
 	# A newly player-owned building may satisfy a count condition after the turn
 	# settles; never trigger a full scan from an interaction callback.
@@ -168,15 +170,18 @@ func set_building_owner(instance_id: String, owner: String) -> void:
 # at), flip ownership to the NPC — the building keeps standing and its land stays occupied, but it
 # stops running for you (production rebuilds the player-owned set each turn). Instantaneous.
 func sell_building(instance_id: String) -> Dictionary:
-	if preload("res://scripts/middleman_service.gd").has_assets(instance_id):
-		return {"ok":false,"reason":"Settle or release middleman holdings first."}
 	if not buildings.has(instance_id):
 		return {"ok": false, "reason": "No such building."}
 	if not is_player_owned(buildings[instance_id]):
 		return {"ok": false, "reason": "You don't own this building."}
+	var held := preload("res://scripts/middleman_service.gd").release_for_works(instance_id)
+	if held != "":
+		return {"ok": false, "reason": held}
 	var price: int = int(round(float(BuildingPrice.sale_price(buildings[instance_id]))))
 	MatchState.add_money(float(price))
 	Construction.repay_materials_discount(instance_id)
+	# Remembered so buying it back never costs less than this (MatchState.building_purchase_price).
+	buildings[instance_id]["player_sale_price"] = price
 	set_building_owner(instance_id, SOLD_TO_OWNER)  # emits building_owner_changed → UI refresh
 	MatchState.request_toast("Sold building for £%d" % price, "success")
 	return {"ok": true, "price": price}
@@ -195,6 +200,7 @@ func liquidate_all_buildings(price_mult: float) -> Dictionary:
 			continue
 		var price: int = int(round(float(BuildingPrice.sale_price(b)) * price_mult))
 		MatchState.add_money(float(price))
+		b["player_sale_price"] = price
 		set_building_owner(str(instance_id), SOLD_TO_OWNER)
 		total += price
 		count += 1
@@ -258,8 +264,7 @@ func remove_building(instance_id: String) -> bool:
 		MatchState.middleman_service.buildings.erase(instance_id)
 	buildings.erase(instance_id)
 	BuildingWorks.paused_buildings.erase(instance_id)
-	MatchState.output_stockpile_destinations.erase(instance_id)
-	MatchState.output_special_order_destinations.erase(instance_id)
+	MatchState.forget_building_routes(instance_id)
 	# Removing battery housing shrinks the tile's cell slots — refund any now-excess loaded cells.
 	if str(Catalog.get_building(str(instance.get("building_id", ""))).get("category", "")) == "battery":
 		Power.refund_battery_cells_over_slots(tile_id)

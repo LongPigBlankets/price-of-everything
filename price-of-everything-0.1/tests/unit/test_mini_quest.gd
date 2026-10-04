@@ -35,6 +35,31 @@ func _test_modular_logistics_and_metal_magnate_trees_are_parallel() -> void:
 	MiniQuest.generic_granted = old_generic_granted
 
 
+## The Logistics missions: their tile-stockpile reward is granted, and outside the intermediary ruleset (where
+## every route is open from the start) they stay locked instead of all completing on turn one.
+func _test_logistics_missions_grant_and_gate() -> void:
+	var ruleset := MatchState.ruleset.duplicate(true)
+	var old_generic_done := MiniQuest.generic_done.duplicate(true)
+	var old_generic_granted := MiniQuest.generic_granted.duplicate(true)
+	Modifiers.remove(MiniQuest.GENERIC_STOCKPILE_REWARD_ID)
+	MiniQuest._grant_generic("tile_stockpile")
+	var granted := false
+	for m: Dictionary in Modifiers.active():
+		if str(m.get("id", "")) == MiniQuest.GENERIC_STOCKPILE_REWARD_ID:
+			granted = str(m.get("domain", "")) == "recipe_output" and is_equal_approx(float(m.get("pct", 0.0)), 5.0)
+	_check(granted, "logistics: the tile stockpile mission grants its +5% output")
+	Modifiers.remove(MiniQuest.GENERIC_STOCKPILE_REWARD_ID)
+	MatchState.ruleset["logistics_model"] = "legacy"
+	MiniQuest.generic_done = {}
+	MiniQuest.generic_granted = {}
+	MiniQuest._eval_generic({})
+	_check(MiniQuest.generic_done.is_empty() and MiniQuest.generic_granted.is_empty(),
+		"logistics: a game without the intermediary completes none of its missions on turn one")
+	MatchState.ruleset = ruleset
+	MiniQuest.generic_done = old_generic_done
+	MiniQuest.generic_granted = old_generic_granted
+
+
 func _test_mission_progress_counts_steps_and_research() -> void:
 	var ruleset := MatchState.ruleset.duplicate(true)
 	var old_chain := MiniQuest.chain
