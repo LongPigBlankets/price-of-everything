@@ -111,7 +111,9 @@ signal turn_processed(summary: Dictionary)
 signal building_starved(starvation_record: Dictionary)
 
 # --- Save/load (orchestrated by the SaveLoad autoload; docs/save_load_spec.md) ---
-# Only lifetime stats persist; everything else here is rebuilt each PROCESS phase.
+# Lifetime stats persist, and the green-power derates last turn left for this one (applied a turn late, so
+# a load must carry them or the next turn runs at full output for free). Everything else is rebuilt each
+# PROCESS phase.
 
 func export_state() -> Dictionary:
 	return {
@@ -119,6 +121,8 @@ func export_state() -> Dictionary:
 		"lifetime_pl_by_building": lifetime_pl_by_building.duplicate(true),
 		"full_output_streak_by_building": full_output_streak_by_building.duplicate(true),
 		"direct_feed": _direct_feed.duplicate(true),
+		"intermittency_by_building": _intermittency_by_building.duplicate(true),
+		"intermittency_by_tile": _intermittency_by_tile.duplicate(true),
 	}
 
 func import_state(d: Dictionary) -> void:
@@ -126,6 +130,8 @@ func import_state(d: Dictionary) -> void:
 	lifetime_pl_by_building = (d.get("lifetime_pl_by_building", {}) as Dictionary).duplicate(true)
 	full_output_streak_by_building = (d.get("full_output_streak_by_building", {}) as Dictionary).duplicate(true)
 	_direct_feed = (d.get("direct_feed", {}) as Dictionary).duplicate(true)
+	_intermittency_by_building = (d.get("intermittency_by_building", {}) as Dictionary).duplicate(true)
+	_intermittency_by_tile = (d.get("intermittency_by_tile", {}) as Dictionary).duplicate(true)
 	_jit_fed_this_turn.clear()
 	last_turn_summary.clear()
 	_pending_external_sales.clear()
@@ -1735,6 +1741,9 @@ func reset_lifetime_research_metrics() -> void:
 	produced_by_building.clear()
 	full_output_streak_by_building.clear()
 	lifetime_pl_by_building.clear()
+	# Last turn's green-power derates belong to the match too: a new one must not inherit them.
+	_intermittency_by_building.clear()
+	_intermittency_by_tile.clear()
 
 func _capture_turn_report(building: Dictionary, recipe: Dictionary) -> void:
 	# A levelled building consumes/produces scaled quantities (see _consume_inputs /

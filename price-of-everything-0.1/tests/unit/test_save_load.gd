@@ -8,6 +8,7 @@ const TAGS := {
 	"_test_cost_save_isolation": ["finance", "save_load"],
 	"_test_save_load_roundtrip": ["finance", "save_load", "special_orders", "stockpile"],
 	"_test_rng_state_survives_a_save_file": ["decisions", "save_load", "special_orders"],
+	"_test_power_derate_survives_a_save_file": ["power", "production", "save_load"],
 	"_test_start_config_applies_on_scene_ready": ["finance", "save_load", "stockpile"],
 	"_test_start_land_capacity": ["construction", "save_load"],
 	"_test_save_version_migration": ["save_load", "special_orders"],
@@ -127,6 +128,24 @@ func _test_rng_state_survives_a_save_file() -> void:
 	MatchState._match_rng.state = saved[0]
 	DecisionState._rng.state = saved[1]
 	SpecialOrderState._rng.state = saved[2]
+
+
+## The green-power derate is applied a turn after it is worked out, so a save carries it: without it the turn
+## after a load ran wind- and solar-fed buildings at full output.
+func _test_power_derate_survives_a_save_file() -> void:
+	var saved_b: Dictionary = Production._intermittency_by_building.duplicate(true)
+	var saved_t: Dictionary = Production._intermittency_by_tile.duplicate(true)
+	Production._intermittency_by_building = {"test_derated": {"derate": 0.35, "green_consumed": 12.0}}
+	Production._intermittency_by_tile = {"tile_1_1": {"green_produced": 20.0}}
+	var file_text := JSON.stringify(SaveLoad.export_snapshot())
+	Production._intermittency_by_building = {}
+	Production._intermittency_by_tile = {}
+	SaveLoad.import_snapshot(SaveLoad.normalize_jsonish(JSON.parse_string(file_text)))
+	_check(is_equal_approx(float(Production.get_building_intermittency("test_derated").get("derate", 0.0)), 0.35),
+		"save file: a building's green-power derate is still due after a load")
+	_check(not Production.get_tile_intermittency("tile_1_1").is_empty(), "save file: the tile's green-power figures come back")
+	Production._intermittency_by_building = saved_b
+	Production._intermittency_by_tile = saved_t
 
 
 func _test_save_load_roundtrip() -> void:
