@@ -148,12 +148,7 @@ func _ready() -> void:
 	# this reset the next open pans on bare mouse motion.
 	visibility_changed.connect(func() -> void: _dragging = false)
 	# The grid mode's exit — a real Control (screen-space, above the drawn canvas).
-	_back_btn = Button.new()
-	_back_btn.text = "Back to Goods Graph"
-	_back_btn.theme_type_variation = &"Primary"
-	_back_btn.focus_mode = Control.FOCUS_NONE
-	_back_btn.custom_minimum_size = Vector2(280.0, 54.0)
-	_back_btn.add_theme_font_size_override("font_size", 20)
+	_back_btn = preload("res://scripts/ds2/cream_key.gd").make("BackToGoodsGraph", "Back to Goods Graph", "", 280.0)
 	# Top-LEFT: the top-centre slot belongs to the briefing notch. This control's
 	# rect starts under HUDContent (screen y ~36) while the top bar is ~78 px tall,
 	# so clear the remaining ~42 px of bar plus 20 px of air.
@@ -462,6 +457,8 @@ func _zoom_at(screen_pos: Vector2, factor: float) -> void:
 func _process(delta: float) -> void:
 	if not is_visible_in_tree():
 		return
+	if _mode == _Mode.GRID:
+		queue_redraw()   # the steam rises
 	if _focus_t != _focus_target:
 		_focus_t = move_toward(_focus_t, _focus_target, delta / 0.28)
 		if _focus_target <= 0.0 and _focus_t <= 0.0:
@@ -999,14 +996,16 @@ func _draw() -> void:
 	GoodHover.begin_draw(self)
 	if _nodes.is_empty():
 		return
-	# Everything below is drawn in WORLD coordinates under the camera transform;
-	# glyphs, icons and line widths all scale with zoom.
-	draw_set_transform(_view_offset, 0.0, Vector2(_view_zoom, _view_zoom))
+	# Everything below is drawn in WORLD coordinates under the camera transform (the grid's steam, behind it, in
+	# screen space); glyphs, icons and line widths all scale with zoom.
 	var font := get_theme_default_font()
 	if _mode == _Mode.GRID:
+		_draw_steam()
+		draw_set_transform(_view_offset, 0.0, Vector2(_view_zoom, _view_zoom))
 		_draw_grid(font)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		return
+	draw_set_transform(_view_offset, 0.0, Vector2(_view_zoom, _view_zoom))
 	# Focus reorg: while focused (or animating in/out), members tween between web
 	# and focus positions, everything else cross-fades, and edges swap between the
 	# ghost web and the on-demand focus routing.
@@ -1405,8 +1404,11 @@ func _draw_card(node: Dictionary, font: Font, tracing: bool, alpha_mul: float = 
 	if gated and not (tracing and related):
 		alpha *= 0.6
 
-	# A glow behind the plate: gold round the selected card, cream round a hovered one.
-	if id == _selected_id:
+	# A glow behind the plate: gold round the selected card, cream round a hovered one (none in the recipes grid,
+	# where every output card is the selected good).
+	if _mode == _Mode.GRID:
+		pass
+	elif id == _selected_id:
 		_draw_glow(rect, _GOLD, alpha)
 	elif id == _hover_id:
 		_draw_glow(rect, _CREAM, alpha * 0.8)
@@ -1775,16 +1777,27 @@ static func focused_transport_infrastructure_keys(good_id: String, good_type: St
 
 # --- alternate-recipes minigraph grid -----------------------------------------------
 
-const _MINI_W := 300.0        # input mini-card size
-const _MINI_H := 84.0
-const _MINI_GAP := 14.0
-const _ISL_ARROW_W := 190.0   # inputs -> output arrow band (carries the power draw)
-const _ISL_HEAD_H := 64.0     # island header (recipe name + gate caption)
-const _ISL_GAP_X := 280.0
-const _ISL_GAP_Y := 170.0
+## The alternate recipes grid in DS2: each recipe on a dark steel plate (an island), its name engraved at the top,
+## its inputs down the left on enamel tiles, each running to the output by the good's own carrier (a brass pipe
+## for a liquid, a conveyor for a solid), the output as the chart's portrait card with the building beside it,
+## and the power the recipe draws on a silver plate. Faint steam rises behind it all.
 const _GRID_MAX_ISLANDS := 5
-const _OUT_EXTRA_H := 30.0    # output card is taller: it carries the building too
-const _OUT_W := 715.0         # (CARD_W + 30) * 1.3 — room for both icons + the name
+const _ISL_PAD := 30.0
+const _ISL_HEAD_H := 80.0     # the recipe's name and, when locked, its research
+const _IN_TILE := 104.0       # an input's enamel tile
+const _IN_GAP := 22.0
+const _IN_NAME_W := 220.0     # an input's name beside its tile
+const _ISL_RUN_W := 240.0     # the runs from the inputs to the output
+const _RUN_LANE := 20.0       # each input's run turns in its own lane
+const _PORT_STEP := 36.0      # the runs' ports, fanned down the output card's left edge
+const _BLD_SIDE := 96.0       # the building's tile beside the output
+const _ISL_GAP_X := 150.0
+const _ISL_GAP_Y := 110.0
+## Steam: how many puffs rise behind the grid, their size range on screen, and how bright the brightest is.
+const _STEAM_PUFFS := 34
+const _STEAM_SIZE := Vector2(180.0, 420.0)
+const _STEAM_ALPHA := 0.09
+static var _steam_tex: Texture2D
 const _BuildingIcon := preload("res://scripts/building_icon.gd")
 
 ## Enter the per-recipe minigraph grid for a good: one island per producing recipe
@@ -1867,66 +1880,62 @@ func _exit_grid() -> void:
 	queue_redraw()
 
 
-## Pack up to 5 islands: a single column for <=3 recipes, two columns for 4-5.
-## Row-major with UNIFORM row heights (the tallest island in the row), so the
-## recipe titles of a row always sit on the same level.
+## Pack up to 5 islands: a single column for <=3 recipes, two columns for 4-5, row-major with each row as tall as its
+## tallest island so the recipe names of a row sit level.
 func _layout_grid(internal: String, routes: Array) -> void:
 	_grid_islands.clear()
 	var node: Dictionary = _by_id.get(internal, {})
 	var count := mini(routes.size(), _GRID_MAX_ISLANDS)
 	var cols := 1 if count <= 3 else 2
-	var island_w := _MINI_W + _ISL_ARROW_W + _OUT_W
-	var out_h := GoodsFlowGraph.CARD_H + _OUT_EXTRA_H
-	var heights := PackedFloat64Array()
+	var inputs_w := _IN_TILE + 14.0 + _IN_NAME_W
+	var island_w := _ISL_PAD * 2.0 + inputs_w + _ISL_RUN_W + GoodsFlowGraph.CARD_W + 24.0 + _BLD_SIDE
+	var bodies := PackedFloat64Array()
 	for i in range(count):
-		var inputs_n: int = (((routes[i] as Dictionary)["recipe"] as Dictionary).get("inputs", []) as Array).size()
-		heights.append(_ISL_HEAD_H + maxf(out_h,
-			maxf(1.0, float(inputs_n)) * (_MINI_H + _MINI_GAP) - _MINI_GAP))
+		var n: int = (((routes[i] as Dictionary)["recipe"] as Dictionary).get("inputs", []) as Array).size()
+		bodies.append(maxf(GoodsFlowGraph.CARD_H, float(maxi(1, n)) * (_IN_TILE + _IN_GAP) - _IN_GAP))
 	var row_y := 0.0
 	_grid_bbox = Rect2()
 	for i in range(count):
 		var route: Dictionary = routes[i]
 		var recipe: Dictionary = route["recipe"]
 		var inputs: Array = recipe.get("inputs", [])
-		var inputs_h := maxf(out_h,
-			maxf(1.0, float(inputs.size())) * (_MINI_H + _MINI_GAP) - _MINI_GAP)
-		var island_h := _ISL_HEAD_H + inputs_h
 		var c := i % cols
 		if c == 0 and i > 0:
-			var prev_row_h := 0.0
+			var prev := 0.0
 			for j in range(maxi(0, i - cols), i):
-				prev_row_h = maxf(prev_row_h, heights[j])
-			row_y += prev_row_h + _ISL_GAP_Y
-		var rect := Rect2(Vector2(c * (island_w + _ISL_GAP_X), row_y), Vector2(island_w, island_h))
-		var body_y := rect.position.y + _ISL_HEAD_H
+				prev = maxf(prev, bodies[j])
+			row_y += prev + _ISL_PAD * 2.0 + _ISL_HEAD_H + _ISL_GAP_Y
+		var body_h: float = bodies[i]
+		var rect := Rect2(Vector2(c * (island_w + _ISL_GAP_X), row_y),
+			Vector2(island_w, _ISL_PAD * 2.0 + _ISL_HEAD_H + body_h))
+		var body_y := rect.position.y + _ISL_PAD + _ISL_HEAD_H
+		var stack_h := float(inputs.size()) * (_IN_TILE + _IN_GAP) - _IN_GAP
 		var in_rects: Array = []
 		for j in range(inputs.size()):
 			var inp: Dictionary = inputs[j]
 			in_rects.append({
-				"rect": Rect2(Vector2(rect.position.x, body_y + j * (_MINI_H + _MINI_GAP)),
-					Vector2(_MINI_W, _MINI_H)),
+				"rect": Rect2(Vector2(rect.position.x + _ISL_PAD, body_y + (body_h - stack_h) * 0.5 + j * (_IN_TILE + _IN_GAP)),
+					Vector2(_IN_TILE, _IN_TILE)),
 				"good_id": str(inp.get("good_id", "")),
 				"internal": str(inp.get("internal_name", "")),
 				"qty": int(inp.get("qty", 0)),
 			})
-		var out_rect := Rect2(
-			Vector2(rect.position.x + _MINI_W + _ISL_ARROW_W,
-				body_y + inputs_h * 0.5 - out_h * 0.5),
-			Vector2(_OUT_W, out_h))
+		var card_c := Vector2(rect.position.x + _ISL_PAD + inputs_w + _ISL_RUN_W + GoodsFlowGraph.CARD_W * 0.5,
+			body_y + body_h * 0.5)
+		var card := Rect2(card_c - Vector2(GoodsFlowGraph.CARD_W, GoodsFlowGraph.CARD_H) * 0.5,
+			Vector2(GoodsFlowGraph.CARD_W, GoodsFlowGraph.CARD_H))
 		var bld: Dictionary = Catalog.get_building(str(recipe.get("building_id", "")))
-		var bpad := 6.0
-		var bisz := out_rect.size.y - bpad * 2.0
 		_grid_islands.append({
 			"recipe": recipe,
 			"gated": bool(route["gated"]) and not _recipe_unlocked(route["recipe"]),
 			"rect": rect,
 			"inputs": in_rects,
-			"out_rect": out_rect,
+			"out_rect": card,
+			"run_x": rect.position.x + _ISL_PAD + inputs_w,
 			"out_qty": Catalog.recipe_output_qty(recipe, str(node.get("good_id", ""))),
 			"internal": internal,
 			"building_name": str(bld.get("display_name", "")),
-			"bicon_rect": Rect2(Vector2(out_rect.end.x - 12.0 - bisz, out_rect.position.y + bpad),
-				Vector2(bisz, bisz)),
+			"bicon_rect": Rect2(Vector2(card.end.x + 24.0, card_c.y - _BLD_SIDE * 0.5), Vector2(_BLD_SIDE, _BLD_SIDE)),
 		})
 		_grid_bbox = rect if i == 0 else _grid_bbox.merge(rect)
 
@@ -1939,156 +1948,157 @@ func _draw_grid(font: Font) -> void:
 		var rect: Rect2 = island["rect"]
 		var recipe: Dictionary = island["recipe"]
 		var gated: bool = island["gated"]
-		# Header: recipe name (Bebas, gold) + research gate caption when locked.
+		_paint_plate(rect, _PLATE_DIM if gated else Color.WHITE, false)
+		# The recipe's name engraved at the top; a locked one has its padlock and research beside and under it.
 		var name := str(recipe.get("display_name", ""))
-		draw_string(_BEBAS, rect.position + Vector2(2.0, 34.0), name,
-			HORIZONTAL_ALIGNMENT_LEFT, rect.size.x, 30, _GOLD)
+		var head := rect.position + Vector2(_ISL_PAD, _ISL_PAD)
+		var name_w := _BEBAS.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 34).x
+		draw_string(_BEBAS, head + Vector2(1.5, 33.5), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 34, Color(0, 0, 0, 0.85))
+		draw_string(_BEBAS, head + Vector2(0.0, 32.0), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 34, DS.PALETTE.ACCENT)
 		var research := _recipe_research_title(recipe)
-		if research != "":
-			var underline_w := minf(rect.size.x, _BEBAS.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x)
-			draw_line(rect.position + Vector2(2.0, 37.0), rect.position + Vector2(2.0 + underline_w, 37.0), _GOLD, 1.5, true)
-		if not gated and research != "" and str(recipe.get("tech_unlock_req", "")) != "":
-			# Gated in the catalog, unlocked by research: the open padlock beside the name.
-			var name_w0 := _BEBAS.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
-			_draw_lock_tag(rect.position + Vector2(name_w0 + 26.0, 24.0), 1.0, 1.0, true)
 		if gated:
-			var name_w := _BEBAS.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
-			_draw_lock_tag(rect.position + Vector2(name_w + 26.0, 24.0), 1.0)
-			# tech_unlock_req stores a research_node_id — show the node's TITLE, or the
-			# raw value when it has no node (bare cheat tokens like "hydro").
+			_draw_lock_tag(head + Vector2(name_w + 24.0, 22.0), 1.0, 1.2)
 			var gate_raw := str(recipe.get("tech_unlock_req", ""))
 			var gate_name := ResearchState.research_title_for_node_id(gate_raw)
-			draw_string(font, rect.position + Vector2(2.0, 54.0),
-				"requires research: %s" % (gate_name if gate_name != "" else gate_raw),
-				HORIZONTAL_ALIGNMENT_LEFT, rect.size.x, 14, Color("#f3f8fd"))
+			var caption := "Requires research: %s" % (gate_name if gate_name != "" else gate_raw)
+			draw_string(font, head + Vector2(1.0, 61.0), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(0, 0, 0, 0.85))
+			draw_string(font, head + Vector2(0.0, 60.0), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, DS.PALETTE.WARN)
 			if research != "":
-				var caption := "requires research: " + research
-				var caption_w := minf(rect.size.x, font.get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x)
-				draw_line(rect.position + Vector2(2.0, 57.0), rect.position + Vector2(2.0 + caption_w, 57.0), Color("#f3f8fd"), 1.0, true)
-		# Inputs (or a note when the recipe takes none — wind, solar, hydro).
+				var cw := font.get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x
+				draw_line(head + Vector2(0.0, 64.0), head + Vector2(cw, 64.0), DS.PALETTE.WARN, 1.2, true)
+		elif research != "" and str(recipe.get("tech_unlock_req", "")) != "":
+			# Locked in the catalog, unlocked by research: the open padlock beside the name.
+			_draw_lock_tag(head + Vector2(name_w + 24.0, 22.0), 1.0, 1.2, true)
+		# The inputs, each running to the output by its carrier.
 		var inputs: Array = island["inputs"]
+		var card: Rect2 = island["out_rect"]
+		var run_x: float = island["run_x"]
 		if inputs.is_empty():
-			draw_string(font, Vector2(rect.position.x, rect.position.y + _ISL_HEAD_H + _MINI_H * 0.6),
-				"no inputs", HORIZONTAL_ALIGNMENT_LEFT, _MINI_W, 16, _MUTED)
-		for inp in inputs:
-			var entry: Dictionary = inp
-			_draw_grid_good(entry["rect"] as Rect2, str(entry["good_id"]), str(entry["internal"]),
-				Catalog.get_display_name(str(entry["good_id"])), int(entry["qty"]), font, false)
-		# Arrow: a thick body that CARRIES the power draw (bolt + MW, 5-unit padding
-		# above and below the content — the recipe-diagram treatment), pointing into
-		# the output card. Fuel-less recipes (wind, solar) keep a slim arrow.
-		var out_rect: Rect2 = island["out_rect"]
-		var a := Vector2(rect.position.x + _MINI_W + 12.0, out_rect.get_center().y)
-		var b := Vector2(out_rect.position.x - 10.0, out_rect.get_center().y)
+			_engrave(font, Vector2(rect.position.x + _ISL_PAD, card.get_center().y + 6.0), "No inputs", 18)
+		for j in inputs.size():
+			var entry: Dictionary = inputs[j]
+			var tile: Rect2 = entry["rect"]
+			var gid := str(entry["good_id"])
+			var port_y := card.get_center().y + (float(j) - float(inputs.size() - 1) * 0.5) * _PORT_STEP
+			var lane_x := run_x + _ISL_RUN_W * 0.35 + (float(j) - float(inputs.size() - 1) * 0.5) * _RUN_LANE
+			var wp := PackedVector2Array([Vector2(run_x - 6.0, tile.get_center().y), Vector2(lane_x, tile.get_center().y),
+				Vector2(lane_x, port_y), Vector2(card.position.x - 2.0, port_y)])
+			var pts := _fillet_polyline(wp)
+			if _carrier_for(gid) == "pipe":
+				_draw_pipe_run(pts, _CARRIER_W, 1.0)
+			else:
+				_draw_conveyor_run(pts, _CARRIER_W, 1.0)
+			var tip := wp[wp.size() - 1]
+			draw_colored_polygon(PackedVector2Array([tip, tip + Vector2(-12.0, -8.0), tip + Vector2(-12.0, 8.0)]), _BRASS_DARK)
+			_draw_enamel_icon(tile, gid, str(entry["internal"]), 1.0)
+			_draw_qty_pill(tile, int(entry["qty"]), font)
+			var label := Catalog.get_display_name(gid)
+			var lfs := 22 if font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x <= _IN_NAME_W else 18
+			draw_multiline_string(font, Vector2(tile.end.x + 15.0, tile.get_center().y + 1.0 + lfs * 0.36), label,
+				HORIZONTAL_ALIGNMENT_LEFT, _IN_NAME_W, lfs, 2, Color(0, 0, 0, 0.85))
+			draw_multiline_string(font, Vector2(tile.end.x + 14.0, tile.get_center().y + lfs * 0.36), label,
+				HORIZONTAL_ALIGNMENT_LEFT, _IN_NAME_W, lfs, 2, DS.PALETTE.TEXT)
+		# The power the recipe draws, on a silver plate over the runs.
 		var energy := int(recipe.get("energy_req", 0))
 		if energy > 0:
+			var plate := Rect2(Vector2(run_x + 26.0, card.position.y + 4.0), Vector2(_ISL_RUN_W - 52.0, 44.0))
+			_draw_silver_plate(plate)
 			var label := "%d MW" % energy
-			const LFS := 14
-			const BOLT_S := 22.0
-			var content_h := maxf(BOLT_S, float(LFS) + 4.0)
-			var band_h := content_h + 10.0            # 5 padding top + bottom
-			const HEAD := 30.0
-			var band := Rect2(a.x, a.y - band_h * 0.5, (b.x - HEAD) - a.x, band_h)
-			draw_colored_polygon(_rounded_rect_points(band, 6.0), _PILL_NAVY)
-			var br := _rounded_rect_points(band, 6.0)
-			br.append(br[0])
-			draw_polyline(br, Color(_GOLD, 0.85), 1.6, true)
-			draw_colored_polygon(PackedVector2Array([
-				b, Vector2(b.x - HEAD, a.y - band_h * 0.8),
-				Vector2(b.x - HEAD, a.y + band_h * 0.8)]), Color(_GOLD, 0.9))
-			var lw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, LFS).x
-			var cx := band.get_center().x - (BOLT_S + 6.0 + lw) * 0.5
-			# CONSUMPTION, not a good: this is the MW an arrow draws, so it wears the flat
-			# lightning glyph. The isometric power icon is reserved for power as an OUTPUT
-			# or a good icon — using it here reads as "power flows along
-			# this arrow" when it means "this step costs power".
-			var bolt: Texture2D = load("res://assets/icons/ui_icons/recipe_power_icon.png") as Texture2D
-			if bolt != null:
-				draw_texture_rect(bolt, Rect2(Vector2(cx, a.y - BOLT_S * 0.5), Vector2(BOLT_S, BOLT_S)), false)
-			draw_string(font, Vector2(cx + BOLT_S + 6.0, a.y + LFS * 0.36), label,
-				HORIZONTAL_ALIGNMENT_LEFT, lw + 8.0, LFS, _CREAM)
-		else:
-			draw_line(a, b + Vector2(-12.0, 0.0), Color(_GOLD, 0.85), 3.0, true)
-			draw_colored_polygon(PackedVector2Array([
-				b, b + Vector2(-12.0, -7.0), b + Vector2(-12.0, 7.0)]), Color(_GOLD, 0.85))
-		# The good itself: taller, wider card carrying the output qty and the
-		# recipe's building icon (its NAME shows on hover only).
-		var bld: Dictionary = Catalog.get_building(str(recipe.get("building_id", "")))
-		_draw_grid_good(out_rect, str(node.get("good_id", "")), str(island["internal"]),
-			str(node.get("display", "")), int(island["out_qty"]), font, true,
-			str(recipe.get("building_id", "")), str(bld.get("internal_name", "")))
-	# Hovered building icon: the building's name in a floating navy pill.
+			var lw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
+			var x0 := plate.get_center().x - (24.0 + 6.0 + lw) * 0.5
+			# The DS2 bolt (ds2/bolt_icon.gd's outline), in navy like the plate's print.
+			var bolt := PackedVector2Array()
+			for p: Vector2 in _BOLT_SHAPE:
+				bolt.append(Vector2(x0, plate.get_center().y - 13.0) + p * 26.0)
+			draw_colored_polygon(bolt, DS.PALETTE.BG_PANEL)
+			draw_string(font, Vector2(x0 + 30.0, plate.get_center().y + 7.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(DS.PALETTE.BG_PANEL))
+		# The output: the good's portrait card, its quantity on the tile, the building beside it.
+		if not node.is_empty():
+			var out: Dictionary = node.duplicate()
+			out["alt_recipe_ids"] = []
+			_draw_card(out, font, false, 1.0, card.get_center())
+			var side := card.size.x - 2.0 * _TILE_SIDE_PAD
+			_draw_qty_pill(Rect2(Vector2(card.get_center().x - side * 0.5, card.position.y + _TILE_TOP_PAD), Vector2(side, side)),
+				int(island["out_qty"]), font)
+		var bicon_rect: Rect2 = island["bicon_rect"]
+		_paint_scaled(_ENAMEL, bicon_rect.grow(_ENAMEL_MARGIN * _PLATE_K), _ENAMEL_CORNER, _PLATE_K)
+		var bicon: Texture2D = _BuildingIcon.clean_texture(str(recipe.get("building_id", "")),
+			str(Catalog.get_building(str(recipe.get("building_id", ""))).get("internal_name", "")))
+		if bicon != null:
+			draw_texture_rect(bicon, bicon_rect.grow(-14.0), false, Color(DS.PALETTE.BG_PANEL))
+	# Hovered building tile: the building's name over it, engraved on a small dark plate.
 	if _grid_hover >= 0 and _grid_hover < _grid_islands.size():
 		var isl: Dictionary = _grid_islands[_grid_hover]
 		var brect: Rect2 = isl["bicon_rect"]
 		var bname := str(isl["building_name"])
-		const TFS := 15
-		var tw := font.get_string_size(bname, HORIZONTAL_ALIGNMENT_LEFT, -1, TFS).x
-		var tip := Rect2(Vector2(brect.get_center().x - tw * 0.5 - 12.0, brect.position.y - 40.0),
-			Vector2(tw + 24.0, 32.0))
-		draw_colored_polygon(_rounded_rect_points(tip, 8.0), _PILL_NAVY)
-		var tr2 := _rounded_rect_points(tip, 8.0)
+		var tw := font.get_string_size(bname, HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x
+		var tip := Rect2(Vector2(brect.get_center().x - tw * 0.5 - 14.0, brect.position.y - 46.0), Vector2(tw + 28.0, 36.0))
+		draw_colored_polygon(_rounded_rect_points(tip, 6.0), Color(DS.PALETTE.BG_PANEL, 0.96))
+		var tr2 := _rounded_rect_points(tip, 6.0)
 		tr2.append(tr2[0])
-		draw_polyline(tr2, Color(_CREAM, 0.85), 1.4, true)
-		draw_string(font, Vector2(tip.position.x + 12.0, tip.get_center().y + TFS * 0.36), bname,
-			HORIZONTAL_ALIGNMENT_LEFT, tw + 6.0, TFS, _CREAM)
+		draw_polyline(tr2, Color(DS.PALETTE.ACCENT, 0.8), 1.4, true)
+		draw_string(font, Vector2(tip.position.x + 14.0, tip.get_center().y + 6.0), bname, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, DS.PALETTE.TEXT)
 
 
-## A good card inside a grid island: cream chip icon with the qty pill overlapping
-## the chip's bottom-right corner (the recipe-diagram / building-detail treatment),
-## name beside it using the full remaining width. The big (output) variant also
-## carries the recipe's BUILDING: its name under the good's, and its icon on the
-## right edge mirroring the goods chip's offsets.
-func _draw_grid_good(rect: Rect2, good_id: String, internal: String, display: String,
-		qty: int, font: Font, big: bool, building_id := "", building_internal := "") -> void:
-	var outline := _rounded_rect_points(rect, _CORNER_R)
-	draw_colored_polygon(outline, _CARD_BG)
-	var rim := PackedVector2Array(outline)
-	rim.append(outline[0])
-	draw_polyline(rim, Color(_CREAM, 0.75), 1.8, true)
-	var pad := 6.0 if big else 8.0
-	var isz := rect.size.y - pad * 2.0
-	var chip := Rect2(rect.position + Vector2(12.0, pad), Vector2(isz, isz))
-	draw_colored_polygon(_rounded_rect_points(chip, 8.0), _CREAM)
-	GoodHover.drawn(self, Rect2(chip.position * _view_zoom + _view_offset, chip.size * _view_zoom), good_id)
-	var icon: Texture2D = GoodIcons.texture_for_size(good_id, internal, isz)
-	if icon != null:
-		var tex_size := icon.get_size()
-		var fit := minf((chip.size.x - 8.0) / tex_size.x, (chip.size.y - 8.0) / tex_size.y)
-		var draw_size := tex_size * fit
-		draw_texture_rect(icon, Rect2(chip.get_center() - draw_size * 0.5, draw_size), false)
-	if qty > 0:
-		# Recipe-card style: navy pill with cream border riding the chip's
-		# bottom-right corner (overlapping ~4 units past the chip edge).
-		var text := "x%d" % qty
-		var ph := 26.0
-		var pw := maxf(ph, 14.0 + 9.0 * float(text.length()))
-		var pill := Rect2(chip.end - Vector2(pw - 4.0, ph - 4.0), Vector2(pw, ph))
-		draw_colored_polygon(_rounded_rect_points(pill, ph * 0.5), _PILL_NAVY)
-		var pr := _rounded_rect_points(pill, ph * 0.5)
-		pr.append(pr[0])
-		draw_polyline(pr, _CREAM, 1.6, true)
-		draw_string(font, Vector2(pill.position.x, pill.get_center().y + 5.0), text,
-			HORIZONTAL_ALIGNMENT_CENTER, pill.size.x, 14, _CREAM)
-	var fs := 20 if big else 16
-	var text_right := rect.end.x - 26.0
-	if big and building_id != "":
-		# Building icon on the right edge: same square size and top/bottom/right
-		# offsets as the goods chip has on the left (off-white line art, no chip).
-		var bicon: Texture2D = _BuildingIcon.clean_texture(building_id, building_internal)
-		var brect := Rect2(Vector2(rect.end.x - 12.0 - isz, pad), Vector2(isz, isz))
-		brect.position.y = rect.position.y + pad
-		if bicon != null:
-			draw_texture_rect(bicon, brect, false, Color(1, 1, 1, 0.95))
-		text_right = brect.position.x - 12.0
-		# Good name (up to two wrapped lines, clipped before the building icon);
-		# the building's name lives in the hover tooltip, not on the card.
-		var name_w := text_right - chip.end.x - 14.0
-		draw_multiline_string(font, Vector2(chip.end.x + 14.0, rect.get_center().y - fs * 0.5 + 8.0),
-			display, HORIZONTAL_ALIGNMENT_LEFT, name_w, fs, 2, _TEXT)
-	else:
-		draw_string(font, Vector2(chip.end.x + 14.0, rect.get_center().y + fs * 0.36), display,
-			HORIZONTAL_ALIGNMENT_LEFT, text_right - chip.end.x - 14.0, fs, _TEXT)
+const _BOLT_SHAPE := preload("res://scripts/ds2/bolt_icon.gd").SHAPE
+
+
+## A quantity on a navy pill riding the bottom right corner of an enamel tile.
+func _draw_qty_pill(tile: Rect2, qty: int, font: Font) -> void:
+	if qty <= 0:
+		return
+	var text := "x%d" % qty
+	var ph := 30.0
+	var pw := maxf(ph, 16.0 + 11.0 * float(text.length()))
+	var pill := Rect2(tile.end - Vector2(pw - 6.0, ph - 6.0), Vector2(pw, ph))
+	draw_colored_polygon(_rounded_rect_points(pill, ph * 0.5), _PILL_NAVY)
+	var pr := _rounded_rect_points(pill, ph * 0.5)
+	pr.append(pr[0])
+	draw_polyline(pr, _CREAM, 1.6, true)
+	draw_string(font, Vector2(pill.position.x, pill.get_center().y + 6.0), text, HORIZONTAL_ALIGNMENT_CENTER, pill.size.x, 17, _CREAM)
+
+
+## A silver plate, lit from the top, its edge in shadow (as the tier plates).
+func _draw_silver_plate(r: Rect2) -> void:
+	var pts := _rounded_rect_points(r, 5.0)
+	draw_colored_polygon(_rounded_rect_points(Rect2(r.position + Vector2(1.5, 2.0), r.size), 5.0), Color(0, 0, 0, 0.5))
+	var cols := PackedColorArray()
+	for pt in pts:
+		cols.append(_SILVER_TOP.lerp(_SILVER_FOOT, clampf((pt.y - r.position.y) / r.size.y, 0.0, 1.0)))
+	draw_polygon(pts, cols)
+	var edge := PackedVector2Array(pts)
+	edge.append(pts[0])
+	draw_polyline(edge, Color(0.25, 0.28, 0.33), 1.4, true)
+
+
+## Faint steam rising behind the grid, in screen space: soft puffs drifting up from below the screen, swelling and
+## fading as they rise. Each puff's path is fixed by its index, so the drift is the same every time it opens.
+func _draw_steam() -> void:
+	if _steam_tex == null:
+		var g := Gradient.new()
+		g.set_color(0, Color(1, 1, 1, 1))
+		g.set_color(1, Color(1, 1, 1, 0))
+		var gt := GradientTexture2D.new()
+		gt.gradient = g
+		gt.fill = GradientTexture2D.FILL_RADIAL
+		gt.fill_from = Vector2(0.5, 0.5)
+		gt.fill_to = Vector2(1.0, 0.5)
+		gt.width = 128
+		gt.height = 128
+		_steam_tex = gt
+	var view := get_rect().size
+	var t := float(Time.get_ticks_msec()) / 1000.0
+	for i in _STEAM_PUFFS:
+		var fi := float(i)
+		var speed := 0.018 + fposmod(fi * 0.371, 1.0) * 0.022
+		var f := fposmod(fposmod(fi * 0.913, 1.0) + t * speed, 1.0)
+		var size := lerpf(_STEAM_SIZE.x, _STEAM_SIZE.y, fposmod(fi * 0.577, 1.0)) * (0.6 + 0.8 * f)
+		var x := fposmod(fi * 0.618, 1.0) * view.x + sin(t * 0.25 + fi) * 40.0 + f * 60.0
+		var y := view.y * (1.15 - 1.4 * f)
+		var a := _STEAM_ALPHA * sin(PI * f)
+		draw_texture_rect(_steam_tex, Rect2(Vector2(x, y) - Vector2(size, size) * 0.5, Vector2(size, size)), false,
+			Color(0.92, 0.94, 0.97, a))
+
 
 ## Resolve only actual, visible research; base recipes and demo-hidden nodes have no link.
 func _recipe_research_title(recipe: Dictionary) -> String:
@@ -2103,9 +2113,9 @@ func _grid_research_at(world_pos: Vector2) -> String:
 		var recipe: Dictionary = island["recipe"]
 		var title := _recipe_research_title(recipe)
 		if title == "": continue
-		var rect: Rect2 = island["rect"]
-		var width := minf(rect.size.x, _BEBAS.get_string_size(str(recipe.get("display_name", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x)
-		var caption_width := minf(rect.size.x, get_theme_default_font().get_string_size("requires research: " + title, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x)
-		if Rect2(rect.position, Vector2(width + 4.0, 40.0)).has_point(world_pos) or Rect2(rect.position + Vector2(0, 40), Vector2(caption_width, 20)).has_point(world_pos):
+		var head: Vector2 = (island["rect"] as Rect2).position + Vector2(_ISL_PAD, _ISL_PAD)
+		var width := _BEBAS.get_string_size(str(recipe.get("display_name", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 34).x
+		var caption_width := get_theme_default_font().get_string_size("Requires research: " + title, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x
+		if Rect2(head, Vector2(width + 4.0, 40.0)).has_point(world_pos) or Rect2(head + Vector2(0, 42), Vector2(caption_width, 26)).has_point(world_pos):
 			return title
 	return ""
