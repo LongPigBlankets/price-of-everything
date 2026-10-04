@@ -225,6 +225,13 @@ func _test_loan_minimum_and_grace() -> void:
 	_check(absf(float(l.get("total_repayment", 0.0)) - expected) < 0.01,
 		"grace accrues interest: total is %.2fx principal, not %.2fx"
 			% [expected / float(l.principal_initial), 1.0 + EconomyConfig.LOAN_INTEREST_RATE])
+	# Repaying in grace costs the whole repayment: grace defers the interest, it does not waive it.
+	_check(absf(LoanState.payoff_amount(l) - expected) < 0.01, "grace: clearing the loan early costs the whole repayment")
+	LoanState.process_payments()
+	var cash := MatchState.money
+	_check(LoanState.repay_loan(int(l.id)) and absf(cash - MatchState.money - expected) < 0.01 and LoanState.loans.is_empty(),
+		"grace: repaying on a grace turn charges principal and interest, not the principal alone")
+	_check(LoanState.take_loan(1.36), "a second loan for the grace run")
 	var before := MatchState.money
 	for _i in EconomyConfig.LOAN_GRACE_TURNS:
 		LoanState.process_payments()

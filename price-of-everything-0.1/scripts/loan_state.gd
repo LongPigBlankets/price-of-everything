@@ -171,7 +171,7 @@ func repay_loan(loan_id: int) -> bool:
 		return false
 	
 	var loan: Dictionary = loans[idx]
-	var amount: float = loan.principal_remaining
+	var amount: float = payoff_amount(loan)
 	
 	if not MatchState.deduct_money(amount):
 		return false
@@ -299,11 +299,19 @@ func charge_transit_interest() -> float:
 # === Queries ===
 
 func total_outstanding() -> float:
-	# Total principal_remaining across all active loans (what you'd pay to clear all loans now)
+	# What you'd pay to clear all loans now.
 	var sum: float = 0.0
 	for loan in loans:
-		sum += loan.principal_remaining
+		sum += payoff_amount(loan)
 	return sum
+
+## What clearing `loan` costs now. A standard loan in grace costs its whole repayment, interest
+## included, as it does once paying: grace defers the payments, it does not waive the interest. The
+## distressed-asset grace loan banks no repayment total and is interest-free in grace by design.
+func payoff_amount(loan: Dictionary) -> float:
+	if int(loan.get("grace_remaining", 0)) > 0 and loan.has("total_repayment"):
+		return float(loan["total_repayment"])
+	return float(loan.get("principal_remaining", 0.0))
 
 ## The interest in the active loans' payments each turn, split from each payment as process_payments splits it
 ## (a quote for the council's bonus preview; books nothing). Loans still in their grace pay nothing yet.
