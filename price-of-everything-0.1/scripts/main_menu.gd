@@ -4,6 +4,10 @@ extends Control
 ## framed menu column on the left - a rounded off-white outline holding the
 ## buttons, with a 9-sliced ornate plate at the top carrying the centred navy
 ## "CARBON AND CAPITAL" title. Only New Game is wired up so far.
+##
+## In DS2 (UiPrefs.use_main_menu_ds2) the column is a plate of highly polished brushed steel (menu_plate.png, a
+## 9-slice, a polished screw in each corner), and its buttons are the cabinet's cream keys (scripts/ds2/cream_key.gd): New Game a larger key leading the
+## column, Quit printed in red ink at its foot, and the keys not built yet greyed, their tooltip saying so.
 
 const MAP_SCENE := "res://scenes/main.tscn"
 ## The map editor, revealed by `debug CandC` in the terminal below. Referenced BY PATH and
@@ -25,6 +29,15 @@ const TutorialPanelScene := preload("res://scripts/tutorial_intro_panel.gd")
 const HallOfRecordsPanelScene := preload("res://scripts/hall_of_records_panel.gd")
 const TutorialPromptScene := preload("res://scripts/tutorial_prompt_dialog.gd")
 const MenuChrome := preload("res://scripts/menu_chrome.gd")
+const CreamKey := preload("res://scripts/ds2/cream_key.gd")
+const Nine := preload("res://scripts/bdp_v3_nine.gd")
+## The polished steel plate (layout.json menu_plate): its 9-slice corner in texels (its shadow room, the rounded
+## corner and the screw) and the shadow room beyond the plate in px.
+const PLATE_CORNER := (12.0 + 52.0) * 2.0 / 1.875
+const PLATE_OUTSET := 12.0 / 1.875
+## New Game's key: its scale and print size.
+const LEAD_KEY_SCALE := 1.35
+const LEAD_KEY_PX := 24
 const TUTORIAL_START := "res://data/starts/tutorial.json"
 const NEW_GAME_BOTTOM_GAP := 90.0   # panel stops this far above the screen bottom (board peeks beneath); low enough that the Start CTA sits on the panel, not the board
 
@@ -369,7 +382,13 @@ func _build_menu() -> void:
 	panel.offset_right = -PANEL_INSET
 	panel.offset_bottom = -PANEL_INSET
 	add_child(panel)
-	MenuChrome.apply(panel)          # navy fill + the brass metallic edge (lit top-left → bottom-right)
+	if UiPrefs.use_main_menu_ds2:
+		panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+		var backing: Control = Nine.make("menu_plate", PLATE_CORNER, PLATE_OUTSET)
+		backing.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		panel.add_child(backing)
+	else:
+		MenuChrome.apply(panel)          # navy fill + the brass metallic edge (lit top-left → bottom-right)
 
 	# Button column: New Game at the top, Quit pinned to the bottom, the rest between.
 	var margin := MarginContainer.new()
@@ -418,6 +437,8 @@ func _build_menu() -> void:
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vbox.add_child(spacer)
 	var quit_btn := _make_button("Quit", false)
+	if UiPrefs.use_main_menu_ds2:
+		quit_btn.set("title_ink", CreamKey.RED_INK)
 	quit_btn.pressed.connect(TelemetryState.request_app_quit)
 	vbox.add_child(quit_btn)
 
@@ -441,6 +462,11 @@ func _build_menu() -> void:
 # we keep it enabled, mute it, kill the hover highlight and wire no handler.
 func _make_coming_soon(b: Button, tip: String) -> void:
 	b.tooltip_text = tip
+	if UiPrefs.use_main_menu_ds2:
+		# Greyed as a spent key, but left enabled so its tooltip still shows.
+		b.set("spent", true)
+		b.mouse_default_cursor_shape = Control.CURSOR_ARROW
+		return
 	b.focus_mode = Control.FOCUS_NONE
 	b.mouse_default_cursor_shape = Control.CURSOR_ARROW
 	b.add_theme_color_override("font_color", OFF_WHITE * Color(1, 1, 1, 0.38))
@@ -454,6 +480,13 @@ func _make_coming_soon(b: Button, tip: String) -> void:
 
 
 func _make_button(text: String, primary: bool) -> Button:
+	if UiPrefs.use_main_menu_ds2:
+		var k := LEAD_KEY_SCALE if primary else 1.0
+		var key: Button = CreamKey.make(text.replace(" ", "") + "Key", text, "", 0.0, false, false, k)
+		key.size_flags_horizontal = Control.SIZE_FILL
+		if primary:
+			key.set("title_px", LEAD_KEY_PX)
+		return key
 	var b := Button.new()
 	b.text = text
 	if primary:

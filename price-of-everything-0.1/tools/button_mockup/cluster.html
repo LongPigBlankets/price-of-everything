@@ -1501,6 +1501,41 @@ function deskPlate() {
   g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.55));
   return g;
 }
+/**
+ * The main menu's plate: highly polished brushed steel, its grain across its width, a soft sheen band where it
+ * catches the light, a chamfered edge and a polished screw in each corner. Rendered at the menu column's size
+ * on a 1080p screen and drawn as a 9-slice (corner MPLATE.corner) so a taller screen stretches only its middle.
+ */
+const MPLATE = { W: 834, H: 1346, M: 12, r: 18, corner: 64 };
+function menuPlate() {
+  const { W, H, M, r } = MPLATE, g = new THREE.Group(), pw = W - 2 * M, ph = H - 2 * M;
+  const steel = canvas2d(pw, ph, (c) => {
+    const base = c.createLinearGradient(0, 0, pw, ph);
+    base.addColorStop(0, '#9aa1a9'); base.addColorStop(0.45, '#848b94'); base.addColorStop(1, '#6c737c');
+    c.fillStyle = base; c.fillRect(0, 0, pw, ph);
+    for (let i = 0; i < 60; i++) { c.fillStyle = `rgba(${rand() > 0.5 ? '255,255,255' : '0,0,0'},${0.012 + rand() * 0.025})`; c.fillRect(0, rand() * ph, pw, 1 + rand() * 14); }
+    for (let i = 0; i < Math.round(pw * ph / 30); i++) {
+      const y = rand() * ph, x = rand() * pw - 80, l = 40 + rand() * 320;
+      c.strokeStyle = `rgba(${rand() > 0.5 ? '250,251,253' : '30,34,40'},${0.04 + rand() * 0.08})`; c.lineWidth = 0.3 + rand() * 0.5;
+      c.beginPath(); c.moveTo(x, y); c.lineTo(x + l, y + (rand() - 0.5) * 0.3); c.stroke();
+    }
+    // The sheen: a broad soft band running down from the upper left, where the polish catches the light.
+    const sheen = c.createLinearGradient(0, ph * 0.05, pw * 0.9, ph * 0.5);
+    sheen.addColorStop(0, 'rgba(255,255,255,0)'); sheen.addColorStop(0.42, 'rgba(255,255,255,0.22)');
+    sheen.addColorStop(0.55, 'rgba(255,255,255,0.08)'); sheen.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = sheen; c.fillRect(0, 0, pw, ph);
+  });
+  const polished = new THREE.MeshPhysicalMaterial({ map: faceTexture(steel, pw, ph), metalness: 1, roughness: 0.26, anisotropy: 0.8, clearcoat: 0.4, clearcoatRoughness: 0.15, envMap: studioEnv, envMapIntensity: 0.4 });
+  const edge = new THREE.MeshStandardMaterial({ color: 0xb8bec5, metalness: 1, roughness: 0.18, envMap: studioEnv, envMapIntensity: 0.9 });
+  const plate = new THREE.Mesh(extrude(rrShape(pw - 8, ph - 8, r), 5, 4, 4, 1), [polished, edge]);
+  plate.castShadow = plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
+  const chrome = new THREE.MeshStandardMaterial({ color: 0xd2d7dd, map: noiseTexture(6, 20, 60), metalness: 1, roughness: 0.12, envMap: studioEnv, envMapIntensity: 1.15 });
+  for (const [x, z] of [[M + 30, M + 30], [W - M - 30, M + 30], [M + 30, H - M - 30], [W - M - 30, H - M - 30]]) {
+    const sc = screw(6); sc.traverse((o) => { if (o.isMesh) o.material = chrome; }); sc.position.set(x, 13, z); g.add(sc);
+  }
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.5));
+  return g;
+}
 const DBEZEL = { S: 200, rOut: 84, rIn: 74 };
 function deskBezel() {
   const { S, rOut, rIn } = DBEZEL, g = new THREE.Group(), c = S / 2;
@@ -2333,7 +2368,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // missionslot, missionboard, darkmetal, desk, tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
+  // missionslot, missionboard, darkmetal, desk, menuplate, tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -7462,6 +7497,12 @@ async function exportLayers() {
   });
 
   // --- the bottom bar as a control desk: its plate and the push buttons' collars.
+  // --- the main menu's polished brushed steel plate.
+  if (want('menuplate')) await withSeed(487, async () => {
+    await post('menu_plate', stage([0, 0, MPLATE.W, MPLATE.H], [menuPlate()]).grab());
+    layout.menu_plate = { size: [MPLATE.W, MPLATE.H], margin: MPLATE.M, corner: MPLATE.corner };
+  });
+
   if (want('desk')) await withSeed(483, async () => {
     await post('desk_plate', stage([0, 0, DESK.W, DESK.H], [deskPlate()]).grab());
     await post('desk_bezel', stage([0, 0, DBEZEL.S, DBEZEL.S], [deskBezel()]).grab());

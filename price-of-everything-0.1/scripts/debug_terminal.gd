@@ -374,6 +374,9 @@ func _run_command(text: String) -> String:
 			if " ".join(parts.slice(1)).to_lower() == "desk ds2":
 				UiPrefs.toggle_use_desk_ds2()
 				return "Bottom bar → %s" % ("DS2 (control desk)" if UiPrefs.use_desk_ds2 else "silver tray")
+			if " ".join(parts.slice(1)).to_lower() == "main menu ds2":
+				UiPrefs.toggle_use_main_menu_ds2()
+				return "Main menu → %s (from the next time it opens)" % ("DS2" if UiPrefs.use_main_menu_ds2 else "v2")
 			if " ".join(parts.slice(1)).to_lower() == "pause ds2":
 				UiPrefs.toggle_use_pause_ds2()
 				return "In-game menu → %s" % ("DS2 (cabinet)" if UiPrefs.use_pause_ds2 else "v2")

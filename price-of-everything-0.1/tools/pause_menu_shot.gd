@@ -22,7 +22,7 @@ func _ready() -> void:
 	DecisionState.enabled = false
 	PauseMenu.open(game.find_child("HUD", true, false))
 	await _wait(0.5)
-	await RenderingServer.frame_post_draw
+	RenderingServer.force_draw(false)
 	get_viewport().get_texture().get_image().save_png(_out.path_join("pause_menu.png"))
 	get_tree().quit()
 

@@ -14,8 +14,8 @@ extends Control
 ## On the DS2 control desk (UiPrefs.use_desk_ds2, with the bottom bar) the plate is the desk plate's left end
 ## (desk_plate.png, the same navy steel and screw as the bar's), the button a stylised silver push button drawn
 ## here: a flat face, four shaded bevel facets, the shadow it casts into its black frame and an arrow pointing
-## right. END TURN is engraved under it, and the phase is on the roller in a black frame beside it, a cog on
-## the roller's end meshing with a pinion, both turning as the phase rolls over.
+## right. END TURN is engraved under it, and the phase is on the roller in a black frame beside it, a gear on
+## each end of the roller seen edge on, its teeth turning with the roller as the phase rolls over.
 ##
 ## UI is read-only against the sim (CLAUDE.md rule #5): it observes
 ## TurnManager.phase_started and only reads state.
@@ -83,18 +83,15 @@ const FACE_BOTTOM := Color("#b0b7c0")
 const ARROW_INK := Color("#22262d")
 ## A resolving turn dims the button to this.
 const DIMMED := Color(0.6, 0.6, 0.62)
-## The roller's gearing: the cog on its end and the pinion meshing with it, below and to the right.
-const COG_R := 17.0
-const COG_TEETH := 12
-const PINION_R := 8.0
-const PINION_TEETH := 7
-const PINION_AT := Vector2(18.0, 13.0)
-## How far the cog's axle stands out past the roller's end.
-const COG_OUT := 7.0
-const GEAR_STEEL := Color("#97a0ab")
-const GEAR_EDGE := Color("#2a2f37")
-## Teeth the cog turns each time the phase rolls over.
+## The roller's gears, one on each end, seen edge on: the rim's thickness, how far it stands above and below the
+## roller, its gap from the roller's frame, its teeth all round, and the teeth it turns as the phase rolls over.
+const GEAR_W := 10.0
+const GEAR_OVER := 5.0
+const GEAR_GAP := 2.0
+const GEAR_TEETH := 26
 const TEETH_PER_PHASE := 3
+const GEAR_STEEL := Color("#b9c1cb")
+const GEAR_GROOVE := Color("#4a525c")
 
 # ── State ────────────────────────────────────────────────────────────────────
 var _menu: Control
@@ -112,8 +109,8 @@ var _r_base := Rect2()
 var _btn_hover := false
 var _btn_down := false
 var _last_disabled := false
-var _cog_turn := 0.0
-var _cog_target := 0.0
+## Phase changes so far: the gears stand this many steps round, less the step the roller is still rolling.
+var _gear_steps := 0
 
 
 func _ready() -> void:
@@ -148,7 +145,7 @@ func _ready() -> void:
 
 func _on_phase_started(phase: int) -> void:
 	_roller.set_phase(TurnManager.get_phase_name(phase), true)
-	_cog_target += TAU / COG_TEETH * TEETH_PER_PHASE
+	_gear_steps += 1
 
 
 # ─── Setup ───────────────────────────────────────────────────────────────────
@@ -214,12 +211,13 @@ func _update_layout() -> void:
 ## The desk's layout: the button over its engraved label on the desk's foot, the roller beside the button, the
 ## plate over them all from DESK_PLATE_TOP, bleeding off the bottom and right as the navy plate does.
 func _layout_desk(w: float, h: float) -> void:
-	var left := maxf(w - (PAD * 2.0 + DESK_BTN.x + ROW_GAP + ROLLER_W + COG_OUT + COG_R + PINION_AT.x + 12.0), _menu_right_local() + 12.0)
+	var gear := 3.0 + GEAR_GAP + GEAR_W
+	var left := maxf(w - (PAD * 2.0 + DESK_BTN.x + ROW_GAP + gear * 2.0 + ROLLER_W + 18.0), _menu_right_local() + 12.0)
 	_r_base = Rect2(left, h - DESK_PLATE_TOP, (w + BASE_BLEED) - left, DESK_PLATE_TOP + BASE_BLEED)
 	_r_button = Rect2(left + PAD + 6.0, h - DESK_FOOT - DESK_LABEL - DESK_BTN.y, DESK_BTN.x, DESK_BTN.y)
 	_end_turn_button.position = _r_button.position
 	_end_turn_button.size = _r_button.size
-	_roller.position = Vector2(_r_button.end.x + ROW_GAP, _r_button.get_center().y - ROLLER_H * 0.5)
+	_roller.position = Vector2(_r_button.end.x + ROW_GAP + gear, _r_button.get_center().y - ROLLER_H * 0.5)
 	_roller.size = Vector2(ROLLER_W, ROLLER_H)
 	_base_block.position = _r_base.position
 	_base_block.size = Vector2(minf(_r_base.size.x, w - _r_base.position.x), h - _r_base.position.y)
@@ -241,15 +239,13 @@ func _menu_right_local() -> float:
 	return max_r - global_position.x
 
 
-func _process(dt: float) -> void:
+func _process(_dt: float) -> void:
 	# World map toggles end_turn_button.disabled during resolution; reflect it.
 	if _end_turn_button.disabled != _last_disabled:
 		_last_disabled = _end_turn_button.disabled
 		queue_redraw()
-	if not is_equal_approx(_cog_turn, _cog_target):
-		_cog_turn = move_toward(_cog_turn, _cog_target, maxf(abs(_cog_target - _cog_turn) * dt * 8.0, dt * 0.5))
-		if UiPrefs.use_desk_ds2:
-			queue_redraw()
+	if UiPrefs.use_desk_ds2 and _roller.rolling():
+		queue_redraw()
 
 
 # ─── Drawing ─────────────────────────────────────────────────────────────────
@@ -331,36 +327,46 @@ func _draw_desk_button(r: Rect2, dimmed: bool, held: bool, hover: bool) -> void:
 	draw_colored_polygon(arrow, Color(ARROW_INK, 0.55 if dimmed else 1.0))
 
 
-## The cog on the roller's right end, partly behind the roller, and the pinion meshing with it below.
+## A gear on each end of the roller, seen edge on beside its frame.
 func _draw_gearing() -> void:
-	var axle := Vector2(_roller.position.x + _roller.size.x + COG_OUT, _roller.position.y + _roller.size.y * 0.5)
-	var ratio := float(COG_TEETH) / float(PINION_TEETH)
-	_draw_gear(axle + PINION_AT, PINION_R, PINION_TEETH, -_cog_turn * ratio + PI / PINION_TEETH)
-	_draw_gear(axle, COG_R, COG_TEETH, _cog_turn)
+	var frame := Rect2(_roller.position, _roller.size).grow(3.0)
+	var turn := -(float(_gear_steps - 1) + _roller.progress()) * TAU / GEAR_TEETH * TEETH_PER_PHASE
+	for x: float in [frame.position.x - GEAR_GAP - GEAR_W, frame.end.x + GEAR_GAP]:
+		_draw_gear_edge(Rect2(x, frame.get_center().y - frame.size.y * 0.5 - GEAR_OVER, GEAR_W, frame.size.y + GEAR_OVER * 2.0), turn)
 
 
-## A stylised steel gear of `teeth` teeth, `radius` to their tips, turned to `angle`: its shadow on the desk,
-## the toothed rim, a recessed web, a highlight along its upper left and the dark hub.
-func _draw_gear(c: Vector2, radius: float, teeth: int, angle: float) -> void:
-	var root := radius - maxf(2.5, radius * 0.2)
-	var pts := PackedVector2Array()
-	var w := TAU / teeth
-	for i in teeth:
-		var a := angle + i * w
-		pts.append(c + Vector2.from_angle(a - 0.3 * w) * root)
-		pts.append(c + Vector2.from_angle(a - 0.17 * w) * radius)
-		pts.append(c + Vector2.from_angle(a + 0.17 * w) * radius)
-		pts.append(c + Vector2.from_angle(a + 0.3 * w) * root)
-	var shadow := PackedVector2Array()
-	for pt in pts:
-		shadow.append(pt + Vector2(1.5, 2.0))
-	draw_colored_polygon(shadow, Color(0, 0, 0, 0.45))
-	draw_colored_polygon(pts, GEAR_STEEL)
-	draw_polyline(pts + PackedVector2Array([pts[0]]), GEAR_EDGE, 1.0, true)
-	draw_circle(c, root * 0.72, GEAR_STEEL.darkened(0.18))
-	draw_arc(c, root * 0.86, PI * 1.05, PI * 1.7, 12, Color(1, 1, 1, 0.4), 1.2, true)
-	draw_circle(c, radius * 0.24, GEAR_EDGE)
-	draw_circle(c - Vector2(0.6, 0.6), radius * 0.09, Color(1, 1, 1, 0.35))
+## A steel gear seen edge on, its axle across the view, turned to `turn`: its shadow on the desk, the dark
+## grooves between its teeth, and the teeth on the near half as bands foreshortened toward its top and foot,
+## shaded by how squarely each faces the viewer and lit from above.
+func _draw_gear_edge(r: Rect2, turn: float) -> void:
+	var c := r.get_center().y
+	var radius := r.size.y * 0.5
+	draw_rect(Rect2(r.position + Vector2(1.5, 2.0), r.size), Color(0, 0, 0, 0.45))
+	# The body under the teeth: the grooves' steel, shaded as a cylinder turning away at its top and foot.
+	var bands := 24
+	for b in bands:
+		var a0 := -PI * 0.5 + PI * b / bands
+		var a1 := a0 + PI / bands
+		var shade := clampf(0.3 + 0.7 * cos((a0 + a1) * 0.5) - 0.15 * sin((a0 + a1) * 0.5), 0.12, 1.0)
+		draw_rect(Rect2(r.position.x + 1.0, c + radius * sin(a0), r.size.x - 2.0, radius * (sin(a1) - sin(a0)) + 0.5), Color(GEAR_GROOVE * shade, 1.0))
+	# The teeth: full width, standing proud of the grooves, foreshortened and shaded the same way.
+	var w := TAU / GEAR_TEETH
+	for i in GEAR_TEETH:
+		var a := wrapf(turn + i * w, -PI, PI)
+		var a0 := maxf(a - 0.26 * w, -PI * 0.5)
+		var a1 := minf(a + 0.26 * w, PI * 0.5)
+		if a1 <= a0:
+			continue
+		var y0 := c + radius * sin(a0)
+		var y1 := c + radius * sin(a1)
+		var lit := clampf(0.25 + 0.8 * cos(a) - 0.2 * sin(a), 0.12, 1.08)
+		draw_rect(Rect2(r.position.x, y0, r.size.x, maxf(y1 - y0, 0.5)), Color(GEAR_STEEL * lit, 1.0))
+		# Each tooth's upper edge catches the light.
+		if a < 0.2 and y1 - y0 > 1.2:
+			draw_line(Vector2(r.position.x, y0 + 0.5), Vector2(r.end.x, y0 + 0.5), Color(1, 1, 1, 0.3 * cos(a)), 1.0)
+	# The rim's edges: lit down its left side, dark down its right.
+	draw_line(Vector2(r.position.x + 0.5, r.position.y + 3.0), Vector2(r.position.x + 0.5, r.end.y - 3.0), Color(1, 1, 1, 0.18), 1.0)
+	draw_line(Vector2(r.end.x - 0.5, r.position.y + 3.0), Vector2(r.end.x - 0.5, r.end.y - 3.0), Color(0, 0, 0, 0.4), 1.0)
 
 
 func _draw_base(r: Rect2) -> void:
@@ -526,6 +532,13 @@ class PhaseRoller extends Control:
 		_cur = text
 		_t = 0.0 if animate else 1.0
 		queue_redraw()
+
+	## How far the current roll has gone, eased (1 once it has settled).
+	func progress() -> float:
+		return 1.0 - pow(1.0 - _t, 3.0)
+
+	func rolling() -> bool:
+		return _t < 1.0
 
 	func _process(delta: float) -> void:
 		if _t < 1.0:

@@ -42,7 +42,7 @@ func _ready() -> void:
 
 
 func _shot(name: String) -> void:
-	await RenderingServer.frame_post_draw
+	RenderingServer.force_draw(false)
 	var img := get_viewport().get_texture().get_image()
 	var k := float(img.get_width()) / get_viewport().get_visible_rect().size.x
 	var size := Vector2i(CROP * k)

@@ -56,6 +56,8 @@ var chosen := false:
 		chosen = v
 		queue_redraw()
 var key_scale := 1.0
+## The one-line print's size in px, for a key that leads its column (the main menu's New Game).
+var title_px := ONE_LINE_PX
 var _lamp: Control
 
 
@@ -194,7 +196,7 @@ func _draw() -> void:
 	var semi: Font = Plate.FONT_SEMI
 	if detail == "":
 		# One line, centred on the face as Building Detail's wide keys centre theirs.
-		var fs := maxi(MIN_PX, Plate._fit(bold, title, ONE_LINE_PX, room.size.x))
+		var fs := maxi(MIN_PX, Plate._fit(bold, title, title_px, room.size.x))
 		_print(bold, title, fs, room, room.get_center().y + (bold.get_ascent(fs) - bold.get_descent(fs)) * 0.5, ink)
 	else:
 		# Two lines, the pair of capitals centred on the face with LINE_GAP between them.
