@@ -135,6 +135,7 @@ var _saved_offset := Vector2.ZERO
 var _tray_buttons: Array = []      # [{rect (world), label, action}] for the expanded card
 var _hover_tray := -1
 var _grid_hover := -1              # island whose building icon is hovered (name tooltip)
+var _grid_key_hover := -1          # island whose See Research key is hovered
 var _back_btn: Button
 var _search_box: LineEdit          # WEB-mode good search (min 3 letters, substring)
 var _search_panel: PanelContainer  # dropdown holding up to 3 result buttons
@@ -508,8 +509,15 @@ func _update_hover(screen_pos: Vector2) -> void:
 			if ((_grid_islands[i] as Dictionary)["bicon_rect"] as Rect2).has_point(w2):
 				gh = i
 				break
-		if gh != _grid_hover:
+		var kh := -1
+		for i in range(_grid_islands.size()):
+			var key := _see_research_rect(_grid_islands[i] as Dictionary)
+			if key.has_area() and key.has_point(w2):
+				kh = i
+				break
+		if gh != _grid_hover or kh != _grid_key_hover:
 			_grid_hover = gh
+			_grid_key_hover = kh
 			queue_redraw()
 		return
 	var w := _screen_to_world(screen_pos)
@@ -1706,7 +1714,7 @@ func _draw_card_tray(node: Dictionary, font: Font) -> void:
 		var w: float = col_w[i]
 		var key_rect := Rect2(Vector2(x + (w - key_side) * 0.5, key_y), Vector2(key_side, key_side))
 		var hovered := _hover_tray == i
-		_draw_square_key(key_rect, hovered)
+		_draw_key(key_rect, hovered)
 		var art := EffectEmblem.texture(str(entries[i]["symbol"]))
 		if art != null:
 			draw_texture_rect(art, key_rect.grow(-key_side * 0.24), false, _KEY_INK)
@@ -1731,17 +1739,17 @@ static func _transport_chain(good_id: String, keys: Array[String]) -> Array[Stri
 
 
 const _KEY_INK := Color("#0b2340")
-## The cream keycap (latch_key.gd's render, tile_key.png, a horizontal 3-slice) drawn square: its face at the
-## render's own height, scaled to `r`.
+## The cream keycap (latch_key.gd's render, tile_key.png, a horizontal 3-slice) drawn in `r`: its face at the
+## render's own height, scaled to `r`'s height and stretched to its width.
 const _LatchKey := preload("res://scripts/ds2/latch_key.gd")
 
 
-func _draw_square_key(r: Rect2, hovered: bool) -> void:
+func _draw_key(r: Rect2, hovered: bool) -> void:
 	var face := (_LatchKey.HEIGHT - 2.0 * _LatchKey.KEY_INSET) / _LatchKey.CAPTURE_SCALE
-	var k := r.size.x / face
+	var k := r.size.y / face
 	var tex: Texture2D = _LatchKey.PRESSED if hovered else _LatchKey.NORMAL
 	var out := _LatchKey.KEY_INSET / _LatchKey.CAPTURE_SCALE
-	var dest := Rect2(Vector2(-out, -out), Vector2(face + 2.0 * out, face + 2.0 * out))
+	var dest := Rect2(Vector2(-out, -out), Vector2(r.size.x / k + 2.0 * out, face + 2.0 * out))
 	var cap_px := minf(_LatchKey.CAP / _LatchKey.CAPTURE_SCALE, dest.size.x * 0.5)
 	var cap_tx := cap_px * _LatchKey.TEXELS_PER_PIXEL
 	var tw := float(tex.get_width())
@@ -1789,7 +1797,10 @@ static func focused_transport_infrastructure_keys(good_id: String, good_type: St
 ## rises behind it all.
 const _GRID_MAX_ISLANDS := 5
 const _ISL_PAD := 30.0
-const _ISL_HEAD_H := 80.0     # the recipe's name and, when locked, its research
+const _ISL_HEAD_H := 126.0    # the recipe's name, and under it, when locked, its research
+const _ISL_RESEARCH_Y := 52.0 # the research row, below the name
+const _SEE_KEY := Vector2(250.0, 52.0)  # the See Research key, right of the research screen
+const _SEE_GAP := 18.0
 const _SIGN_H := 240.0        # the enamel sign
 const _SIGN_PAD := 30.0       # the sign's field inside its cut
 const _ISL_BLD := 150.0       # the building's embossed icon, left of the sign
@@ -1824,6 +1835,7 @@ func _enter_grid(internal: String) -> void:
 	_search_box.visible = false
 	_search_panel.visible = false
 	_grid_hover = -1
+	_grid_key_hover = -1
 	_tray_buttons.clear()
 	_hover_tray = -1
 	_hover_id = ""
@@ -1947,7 +1959,7 @@ func _draw_grid(font: Font) -> void:
 		var recipe: Dictionary = island["recipe"]
 		var gated: bool = island["gated"]
 		_paint_plate(rect, _PLATE_DIM if gated else Color.WHITE, false)
-		# The recipe's name engraved at the top; a locked one has its padlock and research beside and under it.
+		# The recipe's name engraved at the top with a locked one's padlock beside it; under it, the research it needs.
 		var name := str(recipe.get("display_name", ""))
 		var head := rect.position + Vector2(_ISL_PAD, _ISL_PAD)
 		var name_w := _BEBAS.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 34).x
@@ -1956,12 +1968,15 @@ func _draw_grid(font: Font) -> void:
 		var research := _recipe_research_title(recipe)
 		if gated:
 			_draw_lock_tag(head + Vector2(name_w + 24.0, 22.0), 1.0, 1.2)
-			# The research it needs on a dot-matrix screen beside the padlock, "REQUIRES" in amber, the research in
-			# white. Clicking it opens Research (_grid_research_at).
-			var gate_raw := str(recipe.get("tech_unlock_req", ""))
-			var gate_name := ResearchState.research_title_for_node_id(gate_raw)
-			_draw_dot_screen(_research_screen_rect(island), [{"text": "REQUIRES ", "colour": DS.PALETTE.WARN},
-				{"text": gate_name if gate_name != "" else gate_raw, "colour": Color.WHITE}])
+			# The research it needs on a dot-matrix screen, "REQUIRES" in amber, the research in white, and right of
+			# it the See Research key. Clicking either opens Research (_grid_research_at).
+			_draw_dot_screen(_research_screen_rect(island), _research_runs(recipe))
+			var key := _see_research_rect(island)
+			if key.has_area():
+				var i := _grid_islands.find(island)
+				_draw_key(key, i == _grid_key_hover)
+				draw_string(_BEBAS, Vector2(key.position.x, key.get_center().y + 9.0), "See Research",
+					HORIZONTAL_ALIGNMENT_CENTER, key.size.x, 28, _KEY_INK)
 		elif research != "" and str(recipe.get("tech_unlock_req", "")) != "":
 			# Locked in the catalog, unlocked by research: the open padlock beside the name.
 			_draw_lock_tag(head + Vector2(name_w + 24.0, 22.0), 1.0, 1.2, true)
@@ -2050,12 +2065,41 @@ const _DOT_TEX_PX := 6               # texture pixels per dot pitch
 static var _dot_cache: Dictionary = {}
 
 
-## Where an island's research screen sits: beside the padlock, after the recipe's name.
+## The research screen's runs for a locked recipe: "REQUIRES " in amber, the research in white.
+func _research_runs(recipe: Dictionary) -> Array:
+	var gate_raw := str(recipe.get("tech_unlock_req", ""))
+	var gate_name := ResearchState.research_title_for_node_id(gate_raw)
+	return [{"text": "REQUIRES ", "colour": DS.PALETTE.WARN},
+		{"text": gate_name if gate_name != "" else gate_raw, "colour": Color.WHITE}]
+
+
+## Where an island's research screen sits: on its own row under the name, as wide as its text, leaving room for
+## the See Research key at its right.
 func _research_screen_rect(island: Dictionary) -> Rect2:
-	var title := str((island["recipe"] as Dictionary).get("display_name", ""))
-	var head: Vector2 = (island["rect"] as Rect2).position + Vector2(_ISL_PAD, _ISL_PAD)
-	var x := head.x + _BEBAS.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 34).x + 56.0
-	return Rect2(Vector2(x, head.y - 2.0), Vector2((island["rect"] as Rect2).end.x - _ISL_PAD - x, 40.0))
+	var rect: Rect2 = island["rect"]
+	var at := rect.position + Vector2(_ISL_PAD, _ISL_PAD + _ISL_RESEARCH_Y)
+	var room := rect.end.x - _ISL_PAD - at.x - _SEE_KEY.x - _SEE_GAP
+	return Rect2(at, _dot_screen_size(_research_runs(island["recipe"] as Dictionary), room))
+
+
+## The See Research key right of the research screen; empty when the research can't be shown in Research.
+func _see_research_rect(island: Dictionary) -> Rect2:
+	if not bool(island["gated"]) or _recipe_research_title(island["recipe"] as Dictionary) == "":
+		return Rect2()
+	var screen := _research_screen_rect(island)
+	return Rect2(Vector2(screen.end.x + _SEE_GAP, screen.get_center().y - _SEE_KEY.y * 0.5), _SEE_KEY)
+
+
+const _DOT_SCREEN_PAD := Vector2(10.0, 8.0)
+
+
+## A dot-matrix screen's size for `runs`, no wider than `max_w`.
+func _dot_screen_size(runs: Array, max_w: float) -> Vector2:
+	var text := ""
+	for run: Dictionary in runs:
+		text += str(run.text)
+	var dots := Vector2(_DotMatrix.string_width(text, 1.0) * _DOT_PITCH, _DotMatrix.ROWS * _DOT_PITCH)
+	return Vector2(minf(max_w, dots.x + _DOT_SCREEN_PAD.x * 2.0), dots.y + _DOT_SCREEN_PAD.y * 2.0)
 
 
 ## `runs` ([{text, colour}]) on a dot-matrix screen fitted to `r`: the bezel, the pane, the dots left aligned.
@@ -2064,9 +2108,9 @@ func _draw_dot_screen(r: Rect2, runs: Array) -> void:
 	for run: Dictionary in runs:
 		text += str(run.text)
 	var tex := _dot_texture(runs)
-	var pad := Vector2(10.0, 8.0)
+	var pad := _DOT_SCREEN_PAD
 	var dots := Vector2(_DotMatrix.string_width(text, 1.0) * _DOT_PITCH, _DotMatrix.ROWS * _DOT_PITCH)
-	var screen := Rect2(r.position, Vector2(minf(r.size.x, dots.x + pad.x * 2.0), dots.y + pad.y * 2.0))
+	var screen := Rect2(r.position, _dot_screen_size(runs, r.size.x))
 	var k := 1.0
 	_paint_scaled(_DotMatrix.SCREEN, screen.grow(_DotMatrix.MARGIN / _DotMatrix.CAPTURE_SCALE * k),
 		(_DotMatrix.MARGIN + _DotMatrix.RIM + _DotMatrix.RADIUS + 2.0) * 2.0 / _DotMatrix.CAPTURE_SCALE, k)
@@ -2163,6 +2207,7 @@ func _grid_research_at(world_pos: Vector2) -> String:
 		if title == "": continue
 		var head: Vector2 = (island["rect"] as Rect2).position + Vector2(_ISL_PAD, _ISL_PAD)
 		var width := _BEBAS.get_string_size(str(recipe.get("display_name", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 34).x
-		if Rect2(head, Vector2(width + 4.0, 40.0)).has_point(world_pos) or _research_screen_rect(island).has_point(world_pos):
+		if Rect2(head, Vector2(width + 4.0, 40.0)).has_point(world_pos) or _research_screen_rect(island).has_point(world_pos) \
+				or _see_research_rect(island).has_point(world_pos):
 			return title
 	return ""
