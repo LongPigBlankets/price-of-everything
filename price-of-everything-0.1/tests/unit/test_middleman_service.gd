@@ -75,7 +75,6 @@ func _test_live_preflight_and_failure_recovery_save() -> void:
 	Service.settle(BuildingState.buildings.values(),s) # Production could not execute after acquisition.
 	_check(Service.entry(iid).state=="blocked_with_private_inputs","post-purchase failure retains paid inputs")
 	_check(not BuildingState.remove_building(iid),"removal cannot destroy paid goods")
-	_check(not BuildingWorks.start_retrofit(iid,"r_009").ok,"recipe changes cannot strand private goods")
 	var save: Dictionary = SaveLoad.export_snapshot()
 	SaveLoad.import_snapshot(JSON.parse_string(JSON.stringify(save)))
 	_check(Service.entry(iid).holding_receipts.size()==1 and int(Service.entry(iid).inputs.g_006)==32,"actual SaveLoad round trip preserves paid inputs and original receipt")
@@ -84,6 +83,39 @@ func _test_live_preflight_and_failure_recovery_save() -> void:
 	_check(Production.last_turn_summary.purchased.is_empty(),"next real production reuses retained ingredients without buying again")
 	_check(int(Production.last_turn_summary.sold.get("g_008",{}).get("qty",0))==33,"retained inputs produce and sell once")
 	_check(float(Service.entry(iid).receipts.get("input_fee",-1))==0,"no repeated input fee")
+	cleanup()
+
+## A building the intermediary runs can change recipe: the goods it holds move into the tile's stock, it buys
+## nothing while the building retools, and it follows the new recipe once it is in.
+func _test_retrofit_releases_private_goods() -> void:
+	var ids := setup(1)
+	var iid: String = ids[0]
+	var s := summary()
+	Service.prepare(BuildingState.buildings.values(), s)
+	Service.settle(BuildingState.buildings.values(), s)
+	_check(Service.has_assets(iid), "the service holds paid inputs for the building")
+	var other := ""
+	for r: Dictionary in Catalog.get_recipes_for_building("b_007"):
+		if str(r.get("recipe_id", "")) != "r_009" and Catalog.is_recipe_demo_available(r):
+			other = str(r.get("recipe_id", ""))
+			break
+	if other == "":
+		_check(true, "retrofit: skipped (no second recipe for the factory)")
+		cleanup()
+		return
+	var held := int(Service.entry(iid).inputs.get("g_006", 0))
+	var res: Dictionary = BuildingWorks.start_retrofit(iid, other)
+	_check(bool(res.get("ok", false)) and BuildingWorks.is_retooling(iid), "an intermediary building can start a retrofit")
+	_check(not Service.has_assets(iid) and Stockpile.get_at_tile("tile_5_4", "g_006") == held,
+		"its held goods move into the tile's stock")
+	TurnManager.current_turn += 1
+	var s2 := summary()
+	Service.prepare(BuildingState.buildings.values(), s2)
+	_check(float(s2.money_out) == 0.0 and Service.entry(iid).inputs.is_empty(), "nothing is bought while it retools")
+	for _i in 4:
+		BuildingWorks.tick_retrofits()
+	_check(str(BuildingState.get_building(iid).get("recipe_id", "")) == other and str(Service.entry(iid).get("recipe_id", "")) == other,
+		"the service follows the new recipe")
 	cleanup()
 
 func _test_live_shortage_and_legacy_default() -> void:

@@ -167,11 +167,9 @@ func retrofit_cost_tier() -> Dictionary:
 
 # Begin changing a built building's recipe. Charges the one-off fee up front; the
 # building produces nothing (reduced labour) until the countdown completes.
+## A building the intermediary runs can retool too: the goods the intermediary holds for it move into the
+## tile's stock first (refused if they don't fit), and the service follows the new recipe once it is in.
 func start_retrofit(instance_id: String, new_recipe_id: String) -> Dictionary:
-	if preload("res://scripts/middleman_service.gd").enabled(instance_id):
-		return {"ok":false,"reason":"Switch both logistics sides to Manage logistics before changing recipe."}
-	if preload("res://scripts/middleman_service.gd").has_assets(instance_id):
-		return {"ok":false,"reason":"Settle or release middleman holdings first."}
 	if not BuildingState.buildings.has(instance_id):
 		return {"ok": false, "reason": "No such building."}
 	if is_retooling(instance_id):
@@ -187,6 +185,11 @@ func start_retrofit(instance_id: String, new_recipe_id: String) -> Dictionary:
 	if new_recipe_id == str(inst.get("recipe_id", "")):
 		return {"ok": false, "reason": "Already running that recipe."}
 	var tier: Dictionary = retrofit_cost_tier()
+	if MatchState.money < float(tier.get("fee", 0.0)):
+		return {"ok": false, "reason": "Not enough money for the retooling fee."}
+	var held := preload("res://scripts/middleman_service.gd").release_for_works(instance_id)
+	if held != "":
+		return {"ok": false, "reason": held}
 	if not MatchState.deduct_money(float(tier.get("fee", 0.0))):
 		return {"ok": false, "reason": "Not enough money for the retooling fee."}
 	pending_retrofits.append({
@@ -212,6 +215,7 @@ func tick_retrofits() -> Array:
 		if int(p["turns_remaining"]) <= 0:
 			BuildingState.buildings[iid]["recipe_id"] = str(p.get("to_recipe", ""))
 			BuildingState.buildings[iid]["startup_inputs_pending"] = true
+			preload("res://scripts/middleman_service.gd").retarget(iid)
 			completed.append(iid)
 			building_retrofitted.emit(iid, str(p.get("to_recipe", "")))
 		else:
@@ -660,8 +664,9 @@ func _upgrade_cost_per_unit(instance_id: String, from_level: int, target: int) -
 ## The on-tile portion is always consumed immediately so production can't eat it; the
 ## countdown only begins once every material has been claimed. Returns {ok, reason, status}.
 func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
-	if preload("res://scripts/middleman_service.gd").has_assets(instance_id):
-		return {"ok":false,"reason":"Settle or release middleman holdings first."}
+	var held := preload("res://scripts/middleman_service.gd").release_for_works(instance_id)
+	if held != "":
+		return {"ok": false, "reason": held}
 	if not BuildingState.buildings.has(instance_id):
 		var tile_infra := _tile_backed_infra_instance(instance_id)
 		if tile_infra.is_empty():
@@ -1115,12 +1120,13 @@ func demolish_turns_remaining(instance_id: String) -> int:
 
 # Queue a player-owned building for demolition (completes in DEMOLISH_TURNS via tick_demolish).
 func start_demolish(instance_id: String) -> Dictionary:
-	if preload("res://scripts/middleman_service.gd").has_assets(instance_id):
-		return {"ok":false,"reason":"Settle or release middleman holdings first."}
 	if not BuildingState.buildings.has(instance_id):
 		return {"ok": false, "reason": "No such building."}
 	if not BuildingState.is_player_owned(BuildingState.buildings[instance_id]) and not BuildingState.is_land_owned_wood(BuildingState.buildings[instance_id]):
 		return {"ok": false, "reason": "You don't own this building."}
+	var held := preload("res://scripts/middleman_service.gd").release_for_works(instance_id)
+	if held != "":
+		return {"ok": false, "reason": held}
 	if demolish_queue.has(instance_id):
 		return {"ok": false, "reason": "Already demolishing."}
 	demolish_queue[instance_id] = {"turns_left": DEMOLISH_TURNS, "tile_id": str(BuildingState.buildings[instance_id].get("tile_id", ""))}

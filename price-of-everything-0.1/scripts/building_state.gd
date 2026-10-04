@@ -170,12 +170,13 @@ func set_building_owner(instance_id: String, owner: String) -> void:
 # at), flip ownership to the NPC — the building keeps standing and its land stays occupied, but it
 # stops running for you (production rebuilds the player-owned set each turn). Instantaneous.
 func sell_building(instance_id: String) -> Dictionary:
-	if preload("res://scripts/middleman_service.gd").has_assets(instance_id):
-		return {"ok":false,"reason":"Settle or release middleman holdings first."}
 	if not buildings.has(instance_id):
 		return {"ok": false, "reason": "No such building."}
 	if not is_player_owned(buildings[instance_id]):
 		return {"ok": false, "reason": "You don't own this building."}
+	var held := preload("res://scripts/middleman_service.gd").release_for_works(instance_id)
+	if held != "":
+		return {"ok": false, "reason": held}
 	var price: int = int(round(float(BuildingPrice.sale_price(buildings[instance_id]))))
 	MatchState.add_money(float(price))
 	Construction.repay_materials_discount(instance_id)
