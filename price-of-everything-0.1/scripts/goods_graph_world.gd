@@ -1783,15 +1783,16 @@ static func focused_transport_infrastructure_keys(good_id: String, good_type: St
 # --- alternate-recipes minigraph grid -----------------------------------------------
 
 ## The alternate recipes grid in DS2: each recipe on a dark steel plate (an island), its name engraved at the top,
-## and under it the recipe as Building Detail's diagram draws it: on the enamel sign, the building's icon at the
-## left, then the inputs with their quantities, a navy arrow carrying the power it draws, and the output with its
-## quantity. Faint steam rises behind it all.
+## and, when locked, the research it needs on a dot-matrix screen. Left of the recipe, the building's icon embossed
+## in silver on the plate; then the recipe as Building Detail's diagram draws it, on the enamel sign: the inputs
+## with their quantities, a navy arrow carrying the power it draws, and the output with its quantity. Faint steam
+## rises behind it all.
 const _GRID_MAX_ISLANDS := 5
 const _ISL_PAD := 30.0
 const _ISL_HEAD_H := 80.0     # the recipe's name and, when locked, its research
 const _SIGN_H := 240.0        # the enamel sign
 const _SIGN_PAD := 30.0       # the sign's field inside its cut
-const _SIGN_BLD := 140.0      # the building's icon
+const _ISL_BLD := 150.0       # the building's embossed icon, left of the sign
 const _SIGN_IN := 124.0       # an input's icon
 const _SIGN_IN_GAP := 26.0
 const _SIGN_ARROW := Vector2(230.0, 96.0)
@@ -1898,19 +1899,18 @@ func _layout_grid(internal: String, routes: Array) -> void:
 	var most := 1
 	for i in range(count):
 		most = maxi(most, (((routes[i] as Dictionary)["recipe"] as Dictionary).get("inputs", []) as Array).size())
-	var sign_w := _SIGN_PAD * 2.0 + _SIGN_BLD + _SIGN_GAP + float(most) * (_SIGN_IN + _SIGN_IN_GAP) - _SIGN_IN_GAP \
+	var sign_w := _SIGN_PAD * 2.0 + float(most) * (_SIGN_IN + _SIGN_IN_GAP) - _SIGN_IN_GAP \
 		+ _SIGN_GAP + _SIGN_ARROW.x + _SIGN_GAP + _SIGN_OUT
-	var island := Vector2(_ISL_PAD * 2.0 + sign_w, _ISL_PAD * 2.0 + _ISL_HEAD_H + _SIGN_H)
+	var island := Vector2(_ISL_PAD * 2.0 + _ISL_BLD + _SIGN_GAP + sign_w, _ISL_PAD * 2.0 + _ISL_HEAD_H + _SIGN_H)
 	_grid_bbox = Rect2()
 	for i in range(count):
 		var route: Dictionary = routes[i]
 		var recipe: Dictionary = route["recipe"]
 		var rect := Rect2(Vector2(float(i % cols) * (island.x + _ISL_GAP_X), float(i / cols) * (island.y + _ISL_GAP_Y)), island)
-		var sign := Rect2(rect.position + Vector2(_ISL_PAD, _ISL_PAD + _ISL_HEAD_H), Vector2(sign_w, _SIGN_H))
+		var sign := Rect2(rect.position + Vector2(_ISL_PAD + _ISL_BLD + _SIGN_GAP, _ISL_PAD + _ISL_HEAD_H), Vector2(sign_w, _SIGN_H))
 		var mid_y := sign.get_center().y
+		var bicon := Rect2(Vector2(rect.position.x + _ISL_PAD, mid_y - _ISL_BLD * 0.5), Vector2(_ISL_BLD, _ISL_BLD))
 		var x := sign.position.x + _SIGN_PAD
-		var bicon := Rect2(Vector2(x, mid_y - _SIGN_BLD * 0.5), Vector2(_SIGN_BLD, _SIGN_BLD))
-		x += _SIGN_BLD + _SIGN_GAP
 		var in_rects: Array = []
 		for inp: Dictionary in recipe.get("inputs", []):
 			in_rects.append({"rect": Rect2(Vector2(x, mid_y - _SIGN_IN * 0.5), Vector2(_SIGN_IN, _SIGN_IN)),
@@ -1956,14 +1956,12 @@ func _draw_grid(font: Font) -> void:
 		var research := _recipe_research_title(recipe)
 		if gated:
 			_draw_lock_tag(head + Vector2(name_w + 24.0, 22.0), 1.0, 1.2)
+			# The research it needs on a dot-matrix screen beside the padlock, "REQUIRES" in amber, the research in
+			# white. Clicking it opens Research (_grid_research_at).
 			var gate_raw := str(recipe.get("tech_unlock_req", ""))
 			var gate_name := ResearchState.research_title_for_node_id(gate_raw)
-			var caption := "Requires research: %s" % (gate_name if gate_name != "" else gate_raw)
-			draw_string(font, head + Vector2(1.0, 61.0), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(0, 0, 0, 0.85))
-			draw_string(font, head + Vector2(0.0, 60.0), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, DS.PALETTE.WARN)
-			if research != "":
-				var cw := font.get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x
-				draw_line(head + Vector2(0.0, 64.0), head + Vector2(cw, 64.0), DS.PALETTE.WARN, 1.2, true)
+			_draw_dot_screen(_research_screen_rect(island), [{"text": "REQUIRES ", "colour": DS.PALETTE.WARN},
+				{"text": gate_name if gate_name != "" else gate_raw, "colour": Color.WHITE}])
 		elif research != "" and str(recipe.get("tech_unlock_req", "")) != "":
 			# Locked in the catalog, unlocked by research: the open padlock beside the name.
 			_draw_lock_tag(head + Vector2(name_w + 24.0, 22.0), 1.0, 1.2, true)
@@ -1971,12 +1969,16 @@ func _draw_grid(font: Font) -> void:
 		var sign: Rect2 = island["sign"]
 		_paint_scaled(_ENAMEL, sign.grow(_ENAMEL_MARGIN * _PLATE_K), _ENAMEL_CORNER, _PLATE_K)
 		draw_texture_rect(_GRUNGE, sign.grow(-_SIGN_PAD * 0.6), false, Color(1, 1, 1, 0.5))
-		# The building at the sign's left, in the sign's navy.
+		# The building left of the sign, embossed in silver on the plate: a dark cut shadow below right, a bright
+		# edge above left, the silver face over both, and a shine across it.
 		var bicon_rect: Rect2 = island["bicon_rect"]
 		var bicon: Texture2D = _BuildingIcon.clean_texture(str(recipe.get("building_id", "")),
 			str(Catalog.get_building(str(recipe.get("building_id", ""))).get("internal_name", "")))
 		if bicon != null:
-			draw_texture_rect(bicon, bicon_rect, false, Color(DS.PALETTE.BG_PANEL))
+			draw_texture_rect(bicon, Rect2(bicon_rect.position + Vector2(3.0, 3.5), bicon_rect.size), false, Color(0, 0, 0, 0.8))
+			draw_texture_rect(bicon, Rect2(bicon_rect.position - Vector2(1.5, 1.5), bicon_rect.size), false, Color(1, 1, 1, 0.75))
+			draw_texture_rect(bicon, bicon_rect, false, _SILVER_FOOT)
+			draw_texture_rect(bicon, Rect2(bicon_rect.position - Vector2(0.6, 0.6), bicon_rect.size), false, Color(_SILVER_TOP, 0.55))
 		# The inputs, each with its quantity.
 		var inputs: Array = island["inputs"]
 		if inputs.is_empty():
@@ -2039,6 +2041,83 @@ func _draw_sign_good(r: Rect2, good_id: String, internal: String, qty: int, font
 
 
 const _SIGN_PILL := Color("#0d0f13")
+## The research line's screen: DotMatrix's mini screen (mini_screen.png, a gunmetal bezel round a dark pane) and
+## its dots at this pitch in world units, rendered once per text into a cached texture, since the grid redraws
+## every frame for its steam.
+const _DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
+const _DOT_PITCH := 3.4
+const _DOT_TEX_PX := 6               # texture pixels per dot pitch
+static var _dot_cache: Dictionary = {}
+
+
+## Where an island's research screen sits: beside the padlock, after the recipe's name.
+func _research_screen_rect(island: Dictionary) -> Rect2:
+	var title := str((island["recipe"] as Dictionary).get("display_name", ""))
+	var head: Vector2 = (island["rect"] as Rect2).position + Vector2(_ISL_PAD, _ISL_PAD)
+	var x := head.x + _BEBAS.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 34).x + 56.0
+	return Rect2(Vector2(x, head.y - 2.0), Vector2((island["rect"] as Rect2).end.x - _ISL_PAD - x, 40.0))
+
+
+## `runs` ([{text, colour}]) on a dot-matrix screen fitted to `r`: the bezel, the pane, the dots left aligned.
+func _draw_dot_screen(r: Rect2, runs: Array) -> void:
+	var text := ""
+	for run: Dictionary in runs:
+		text += str(run.text)
+	var tex := _dot_texture(runs)
+	var pad := Vector2(10.0, 8.0)
+	var dots := Vector2(_DotMatrix.string_width(text, 1.0) * _DOT_PITCH, _DotMatrix.ROWS * _DOT_PITCH)
+	var screen := Rect2(r.position, Vector2(minf(r.size.x, dots.x + pad.x * 2.0), dots.y + pad.y * 2.0))
+	var k := 1.0
+	_paint_scaled(_DotMatrix.SCREEN, screen.grow(_DotMatrix.MARGIN / _DotMatrix.CAPTURE_SCALE * k),
+		(_DotMatrix.MARGIN + _DotMatrix.RIM + _DotMatrix.RADIUS + 2.0) * 2.0 / _DotMatrix.CAPTURE_SCALE, k)
+	draw_rect(screen.grow(-_DotMatrix.RIM / _DotMatrix.CAPTURE_SCALE), _DotMatrix.PANE)
+	var shown := Vector2(minf(dots.x, screen.size.x - pad.x * 2.0), dots.y)
+	draw_texture_rect_region(tex, Rect2(screen.position + pad, shown),
+		Rect2(Vector2.ZERO, Vector2(shown.x / _DOT_PITCH * _DOT_TEX_PX, float(tex.get_height()))))
+
+
+## The dots of `runs` as a texture: lit dots with their glow in each run's colour over faint unlit ones, as
+## DotMatrix draws them, DOT_TEX_PX texture pixels a dot.
+func _dot_texture(runs: Array) -> Texture2D:
+	var key := str(runs)
+	if _dot_cache.has(key):
+		return _dot_cache[key]
+	var text := ""
+	for run: Dictionary in runs:
+		text += str(run.text)
+	var px := _DOT_TEX_PX
+	var w := int(ceil(_DotMatrix.string_width(text, 1.0) * px)) + px
+	var h := _DotMatrix.ROWS * px
+	var img := Image.create(maxi(w, 1), h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var cx := float(px) * 0.5
+	for run: Dictionary in runs:
+		var lit: Color = run.colour
+		for ch in str(run.text).to_upper():
+			var rows: Array = _DotMatrix.FONT.get(ch, _DotMatrix.FONT[" "])
+			var cols := _DotMatrix.THIN_COLUMNS if ch == _DotMatrix.THIN else _DotMatrix.COLUMNS
+			for row in _DotMatrix.ROWS:
+				var bits := int(rows[row]) if ch != _DotMatrix.THIN else 0
+				for col in cols:
+					var c := Vector2(cx + col * px, row * px + px * 0.5)
+					var on := (bits & (1 << (_DotMatrix.COLUMNS - 1 - col))) != 0
+					_dot(img, c, px * (0.48 if on else 0.32), lit if on else Color(1, 1, 1, _DotMatrix.UNLIT_ALPHA * 2.0))
+			cx += (cols + 1) * px
+	img.generate_mipmaps()
+	var tex := ImageTexture.create_from_image(img)
+	_dot_cache[key] = tex
+	return tex
+
+
+static func _dot(img: Image, c: Vector2, r: float, col: Color) -> void:
+	for y in range(int(c.y - r - 1.0), int(c.y + r + 2.0)):
+		for x in range(int(c.x - r - 1.0), int(c.x + r + 2.0)):
+			if x < 0 or y < 0 or x >= img.get_width() or y >= img.get_height():
+				continue
+			var d := Vector2(x + 0.5, y + 0.5).distance_to(c)
+			var a := clampf(r + 0.5 - d, 0.0, 1.0)
+			if a > 0.0:
+				img.set_pixel(x, y, Color(col, col.a * a))
 const _BOLT_SHAPE := preload("res://scripts/ds2/bolt_icon.gd").SHAPE
 ## Faint steam rising behind the grid, in screen space: soft puffs drifting up from below the screen, swelling and
 ## fading as they rise. Each puff's path is fixed by its index, so the drift is the same every time it opens.
@@ -2084,7 +2163,6 @@ func _grid_research_at(world_pos: Vector2) -> String:
 		if title == "": continue
 		var head: Vector2 = (island["rect"] as Rect2).position + Vector2(_ISL_PAD, _ISL_PAD)
 		var width := _BEBAS.get_string_size(str(recipe.get("display_name", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 34).x
-		var caption_width := get_theme_default_font().get_string_size("Requires research: " + title, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x
-		if Rect2(head, Vector2(width + 4.0, 40.0)).has_point(world_pos) or Rect2(head + Vector2(0, 42), Vector2(caption_width, 26)).has_point(world_pos):
+		if Rect2(head, Vector2(width + 4.0, 40.0)).has_point(world_pos) or _research_screen_rect(island).has_point(world_pos):
 			return title
 	return ""
