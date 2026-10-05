@@ -700,7 +700,7 @@ static func preview_building(b: Dictionary) -> Dictionary:
 static func default_for(recipe_id: String, tile: String) -> bool:
 	return bool(MatchState.ruleset.get("middleman_new_buildings",false)) and str(MatchState.ruleset.get("logistics_model",""))=="middleman_v1" and tile != "" and (recipe_side(Catalog.get_recipe(recipe_id), "input") or recipe_side(Catalog.get_recipe(recipe_id), "output"))
 
-## Only new completed construction, before any operating orders exist.
+## Only new completed construction and buildings just bought from an NPC, before any operating orders exist.
 static func enroll_completed(iid: String) -> void:
 	var b: Dictionary = BuildingState.get_building(iid)
 	if b.is_empty() or not default_for(str(b.recipe_id),str(b.tile_id)): return

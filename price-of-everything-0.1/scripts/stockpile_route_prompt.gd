@@ -5,6 +5,9 @@ const UIHelpers := preload("res://scripts/ui_helpers.gd")
 static var _pending: Array = []
 static var _active: WeakRef
 static var _dont_show_again := false # Session-only, like the tile surplus confirmation.
+## True while a confirmed supplier change is applied: logistics_confirmation.gd has already warned about the
+## stockpile, so no surplus prompt follows it.
+static var hold := false
 var _tile := ""
 var _good := ""
 ## {supplier_changed: bool, undo: Callable} when the prompt follows leaving the intermediary.
@@ -13,7 +16,7 @@ var _closing := false
 var _dont_show: CheckBox
 
 static func offer(host: Node, tile: String, good: String, context: Dictionary = {}) -> void:
-	if tile == "" or good == "":
+	if tile == "" or good == "" or hold:
 		return
 	if _dont_show_again or Tutorial.active or TurnManager.is_resolving:
 		_say_supplier_changed(tile, good, context)

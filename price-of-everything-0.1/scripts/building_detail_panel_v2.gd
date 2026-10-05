@@ -4316,8 +4316,8 @@ func _add_output_good_options(vb: VBoxContainer, building: Dictionary, recipe: D
 		_open_output_sheet(building, recipe), good_id, market_available, "market"))
 	var stockpile_available := ResearchState.open_logistics_contracts_available()
 	var stockpile_detail := "Store the output on this tile for later use." if stockpile_available else "[Requires Open Logistics Contracts]"
-	# Leaving the intermediary for this tile's stockpile asks one question, not two: the change
-	# is made at once and the surplus prompt says so, with an Undo (a toast when nothing piles up).
+	# Leaving Local Suppliers for this tile's stockpile asks once, on the supplier card, which warns about the
+	# surplus too. The surplus prompt with its Undo is left for a change made without that card.
 	var was_intermediary: bool = preload("res://scripts/middleman_service.gd").buys_output(iid, good_id)
 	var prior_tile := MatchState.get_output_stockpile_destination(iid, good_id)
 	row.add_child(_logistics_route_option(building, "output", "Tile stockpile", stockpile_detail, on_tile, func() -> void:
@@ -4333,10 +4333,10 @@ func _add_output_good_options(vb: VBoxContainer, building: Dictionary, recipe: D
 				else:
 					MatchState.clear_output_stockpile_destination(iid, good_id)
 				_queue_refresh()}
-		preload("res://scripts/stockpile_route_prompt.gd").offer(get_parent(), tile_id, good_id, context), good_id, stockpile_available, "stockpile", false))
+		preload("res://scripts/stockpile_route_prompt.gd").offer(get_parent(), tile_id, good_id, context), good_id, stockpile_available, "stockpile"))
 	row.add_child(_logistics_route_option(building, "output", "Ship to another tile", "Pick a tile on the shipping map to feed a downstream building you own." if stockpile_available else "[Requires Open Logistics Contracts]", other, func() -> void:
 		MatchState.begin_output_stockpile_selection(iid, good_id, true)
-		_close_sheet(), good_id, stockpile_available))
+		_close_sheet(), good_id, stockpile_available, "other"))
 	chooser.add_child(row)
 	group.add_child(chooser)
 	group.add_child(_output_route_details_section(building, good_id, output_qty, intermediary, is_market, on_tile, other))

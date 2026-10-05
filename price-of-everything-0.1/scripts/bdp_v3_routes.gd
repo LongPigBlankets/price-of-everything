@@ -359,7 +359,7 @@ static func _output_knob(panel: Control, building: Dictionary, recipe: Dictionar
 					MatchState.request_toast(str(result.get("reason", "Unable to change output destination.")), "warning")
 				reopen.call()
 			elif state == "middleman":
-				panel.call("_request_logistics_mode", building, "output", "managed", go, gid)
+				panel.call("_request_logistics_mode", building, "output", "managed", go, gid, choice)
 			else:
 				go.call())
 	return knob
