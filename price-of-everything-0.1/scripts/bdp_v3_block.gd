@@ -105,14 +105,19 @@ static func switch_recipes(building: Dictionary) -> Array:
 		func(recipe: Dictionary) -> bool: return str(recipe.get("recipe_id", "")) != current)
 
 
-## How many of the recipes this building can switch to earn more per turn than its current one, by the
-## panel's own net estimate (BuildingReadout.economics). Each recipe is valued on this building as it stands.
+## How many of the recipes this building can switch to make the same good as its current one and earn more
+## per turn, by the panel's own net estimate (BuildingReadout.economics). A recipe for another good is no
+## better way to make this one, so it never counts. Each recipe is valued on this building as it stands.
 static func better_recipe_count(building: Dictionary) -> int:
 	var bdata: Dictionary = Catalog.get_building(str(building.get("building_id", "")))
 	var current := str(building.get("recipe_id", ""))
-	var here := float(BuildingReadout.economics(building, Catalog.get_recipe(current), bdata).get("net", 0.0))
+	var current_recipe := Catalog.get_recipe(current)
+	var good := main_output_id(current_recipe)
+	var here := float(BuildingReadout.economics(building, current_recipe, bdata).get("net", 0.0))
 	var count := 0
 	for recipe: Dictionary in switch_recipes(building):
+		if good == "" or main_output_id(recipe) != good:
+			continue
 		var as_it := building.duplicate()
 		as_it["recipe_id"] = str(recipe.get("recipe_id", ""))
 		if float(BuildingReadout.economics(as_it, recipe, bdata).get("net", 0.0)) > here:
@@ -126,6 +131,12 @@ static func recipe_detail(alternatives: int, better: int, output_name: String) -
 	if alternatives <= 0:
 		return "No other recipes"
 	return "%d better for %s" % [better, truncate10(output_name)] if better > 0 else ""
+
+
+## The id of the first good the recipe makes, or "".
+static func main_output_id(recipe: Dictionary) -> String:
+	var outs: Array = recipe.get("outputs", [])
+	return str((outs[0] as Dictionary).get("good_id", "")) if not outs.is_empty() else ""
 
 
 ## The display name of the first good the recipe makes.

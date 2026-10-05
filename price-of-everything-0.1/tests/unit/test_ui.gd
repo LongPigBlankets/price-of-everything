@@ -966,9 +966,18 @@ func _test_bdp_recipe_key_and_route_counts() -> void:
 	_check(only_own and offered.size() == own.size() - (1 if runs_current else 0),
 		"bdp recipe key: the offered recipes are this building's own, less the current one (%d)" % offered.size())
 	var better: int = Block.better_recipe_count(b)
-	_check(better >= 0 and better <= offered.size(),
-		"bdp recipe key: the better count is among the recipes this building can switch to (%d of %d)" % [better, offered.size()])
+	var same_good: Array = offered.filter(func(r: Dictionary) -> bool:
+		return Block.main_output_id(r) == Block.main_output_id(Catalog.get_recipe("r_009")))
+	_check(better >= 0 and better <= same_good.size(),
+		"bdp recipe key: only recipes for the same good can be better (%d of %d)" % [better, same_good.size()])
 	BuildingState.buildings.erase(iid)
+	# A works with one recipe for its good has nothing better for it, however much its other recipes earn.
+	var motor_recipes: Array = own.filter(func(r: Dictionary) -> bool: return Block.main_output_id(r) == "g_008")
+	if motor_recipes.size() == 1:
+		var motor_iid := BuildingState.add_building("b_007", str(motor_recipes[0].get("recipe_id", "")), "tile_6_7", MatchState.LOCAL_PLAYER)
+		_check(Block.better_recipe_count(BuildingState.get_building(motor_iid)) == 0,
+			"bdp recipe key: a motor works with one motors recipe has none better for motors")
+		BuildingState.buildings.erase(motor_iid)
 
 	_check(Readout.places_label([]) == "" and Readout.places_label([{"tile_id": "t1", "instance_id": "a"}]) == ""
 		and Readout.places_label([{"tile_id": "t1", "instance_id": "a"}, {"tile_id": "t1", "instance_id": "a"}]) == "",
