@@ -1089,6 +1089,14 @@ func _on_overlay_choice(goto: String) -> void:
 
 ## Exposes the current tutorial beat to UI that must enforce a time-sensitive action
 ## order (for example, reading an advisor's bonus before enabling their hire button).
+## True while the opener runs and has not reached the step that hands over End Turn.
+func end_turn_locked() -> bool:
+	if not active or not opener:
+		return false
+	var at := _index_of_id(TutorialSteps.OPENER_END_TURN_STEP)
+	return at < 0 or _index < at
+
+
 func is_active_step(id: String) -> bool:
 	return active and _index >= 0 and _index < _steps.size() \
 		and str((_steps[_index] as Dictionary).get("id", "")) == id

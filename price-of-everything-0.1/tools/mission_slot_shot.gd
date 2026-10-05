@@ -101,7 +101,7 @@ func _ready() -> void:
 
 
 func _shot(view: String, height: float = CROP_LOGICAL.y) -> void:
-	await RenderingServer.frame_post_draw
+	RenderingServer.force_draw(false)
 	var img := get_viewport().get_texture().get_image()
 	var k := float(img.get_width()) / get_viewport().get_visible_rect().size.x
 	var crop := Rect2i(Vector2i.ZERO, Vector2i(Vector2(CROP_LOGICAL.x, height) * k))

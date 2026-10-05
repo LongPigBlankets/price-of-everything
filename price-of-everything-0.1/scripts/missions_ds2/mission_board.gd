@@ -170,10 +170,31 @@ func _draw() -> void:
 		var tex: Texture2D = LEVER[str(j.dir)]
 		var ts := tex.get_size() / TEXELS_PER_PIXEL
 		draw_texture_rect(tex, Rect2((j.at as Vector2) + Vector2(-ts.x - 8.0, -ts.y * 0.5), ts), false)
-	# The selected station: a brass ring round its lamp.
+	# The selected station: a warm glow round its lamp.
 	var sel := _node(selected)
 	if not sel.is_empty():
-		draw_arc(station_point(sel), 15.0, 0.0, TAU, 40, DS.PALETTE.BRASS, 2.0, true)
+		draw_texture_rect(_glow(), Rect2(station_point(sel) - Vector2.ONE * SELECT_GLOW, Vector2.ONE * SELECT_GLOW * 2.0), false)
+
+
+## The selected station's glow: its reach from the lamp's centre, and the light, brass at the lamp fading out.
+const SELECT_GLOW := 34.0
+static var _glow_tex: Texture2D
+
+
+static func _glow() -> Texture2D:
+	if _glow_tex == null:
+		var g := Gradient.new()
+		g.offsets = PackedFloat32Array([0.0, 0.35, 1.0])
+		g.colors = PackedColorArray([Color(DS.PALETTE.BRASS, 0.85), Color(DS.PALETTE.BRASS, 0.45), Color(DS.PALETTE.BRASS, 0.0)])
+		var t := GradientTexture2D.new()
+		t.gradient = g
+		t.fill = GradientTexture2D.FILL_RADIAL
+		t.fill_from = Vector2(0.5, 0.5)
+		t.fill_to = Vector2(1.0, 0.5)
+		t.width = 128
+		t.height = 128
+		_glow_tex = t
+	return _glow_tex
 
 
 func _track_colour(parent_state: String, child_state: String) -> Color:

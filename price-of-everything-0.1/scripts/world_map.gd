@@ -2068,6 +2068,14 @@ func _make_legend_row(color: Color, text: String) -> HBoxContainer:
 	return row
 
 func _on_end_turn_pressed() -> void:
+	# The tutorial's opener hands End Turn over at its own step; before that a press says so above the button.
+	if Tutorial.end_turn_locked():
+		var dock: Node = end_turn_button.get_parent()
+		while dock != null and not dock.has_method("show_note"):
+			dock = dock.get_parent()
+		if dock != null:
+			dock.call("show_note", preload("res://scripts/tutorial/tutorial_steps.gd").END_TURN_LOCKED)
+		return
 	# Arm verbose-log capture on the first End Turn of turn 1 (current_turn only
 	# increments once resolution runs, so it is still 1 here). arm() is idempotent.
 	if TurnManager.current_turn == 1:

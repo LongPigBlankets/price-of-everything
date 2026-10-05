@@ -56,6 +56,11 @@ var _welcome_body: VBoxContainer = null
 var _welcome_btn: Button = null
 var _recipe_flow_panel = null
 var _annot_items: Array = []            # [{ref, side, label}] — HUD-primer labels + their leader-line targets
+## A map_only step shades and blocks only the map: the shade sits under the HUD on the overlay's layer, so the
+## bottom bar, the updates, the top bar and any panel they open stay lit and live. This overlay then takes no
+## clicks but the card's, and the HUD labels stand aside while a panel is open.
+var _map_only := false
+var _map_shade: ColorRect = null
 var _hint_items: Array = []             # left-edge fixed hint Labels (no leader line)
 
 
@@ -77,6 +82,8 @@ func _ready() -> void:
 # Only "solid" (dimmed) area is hit — the spotlight hole passes clicks through to the
 # HUD beneath. The card is a child Control and is hit-tested independently.
 func _has_point(point: Vector2) -> bool:
+	if _map_only:
+		return false
 	# Some explanatory spotlights identify a control without asking the player to use it.
 	# Keep the cut-out visible, but let this overlay swallow clicks inside it.
 	if _hole.has_area() and not _spotlight_passthrough:
@@ -97,6 +104,10 @@ func _has_point(point: Vector2) -> bool:
 
 
 func _draw() -> void:
+	if _map_only:
+		if _mode == "annotate" and not _panel_open():
+			_draw_annotation_lines()
+		return
 	if _no_dim:
 		return   # card-only step: leave the map fully visible
 	var reveal := _reveal_eased()
@@ -179,6 +190,8 @@ func _process(dt: float) -> void:
 		_position_annotations()
 		_pulse += dt
 		_advance_reveal(dt)
+		if _map_shade != null and is_instance_valid(_map_shade):
+			_map_shade.color.a = DIM.a * _eased(_dim_level)
 		queue_redraw()
 		return
 	_advance_reveal(dt)
@@ -347,6 +360,8 @@ func show_step(step: Dictionary, index: int, total: int) -> void:
 	visible = true
 	_mode = str(step.get("mode", ""))
 	_no_dim = bool(step.get("no_dim", false))
+	_map_only = bool(step.get("map_only", false))
+	_sync_map_shade()
 	_spotlight_passthrough = bool(step.get("spotlight_passthrough", true))
 	_card_side = str(step.get("card_side", ""))   # "right" prefers the bottom-right corner
 	_clear_annotations()
@@ -849,6 +864,15 @@ func _build_annotations(step: Dictionary) -> void:
 
 
 func _position_annotations() -> void:
+	if _map_only and _panel_open():
+		for it in _annot_items:
+			(it["label"] as Label).visible = false
+			it["trect"] = Rect2()
+		for h in _hint_items:
+			(h as Control).visible = false
+		return
+	for h in _hint_items:
+		(h as Control).visible = true
 	var placed: Array[Rect2] = []
 	var scene := get_tree().current_scene
 	for it in _annot_items:
@@ -930,6 +954,35 @@ func _draw_annotation_lines() -> void:
 				to = Vector2(tr.get_center().x, tr.position.y)
 		draw_line(from, to, lc, 2.0, true)
 		draw_circle(to, 3.0, lc)
+
+
+## Is a panel open over the map (one the player opened from the HUD)?
+func _panel_open() -> bool:
+	return typeof(PanelStack) != TYPE_NIL and PanelStack.size() > 0
+
+
+## Put the map's shade under the HUD for a map_only step, and take it away for any other.
+func _sync_map_shade() -> void:
+	if not _map_only:
+		if _map_shade != null and is_instance_valid(_map_shade):
+			_map_shade.queue_free()
+		_map_shade = null
+		return
+	if (_map_shade != null and is_instance_valid(_map_shade)) or get_parent() == null:
+		return
+	_map_shade = ColorRect.new()
+	_map_shade.name = "TutorialMapShade"
+	_map_shade.color = Color(DIM.r, DIM.g, DIM.b, DIM.a * _eased(_dim_level))
+	_map_shade.mouse_filter = Control.MOUSE_FILTER_STOP   # the map takes no clicks; the HUD over it does
+	_map_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	get_parent().add_child(_map_shade)
+	get_parent().move_child(_map_shade, 0)
+
+
+func _exit_tree() -> void:
+	if _map_shade != null and is_instance_valid(_map_shade):
+		_map_shade.queue_free()
+	_map_shade = null
 
 
 func _clear_annotations() -> void:

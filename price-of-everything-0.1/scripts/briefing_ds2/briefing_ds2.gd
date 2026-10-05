@@ -53,7 +53,7 @@ const ANSWER_KEY_W := 196.0
 const GO_KEY_W := 84.0
 const SILENCE_KEY_W := 140.0
 const WINDOW_COLUMNS := 4
-## What the body says under the letter when no alert is live.
+## What the body says under a letter when no alert is live. With no letter the gate line says it all.
 const NO_UPDATES := "No other updates."
 
 var _card: Control
@@ -224,8 +224,12 @@ func _rebuild() -> void:
 	# With no decision waiting the worst lit window opens by itself; with one, the letter keeps the room.
 	if _picked == "" and decisions.is_empty() and not lit.is_empty():
 		_picked = _worst(lit)
-	# Only the kinds that are live: the annunciator shows the lit windows, and with none a line says so.
+	# Only the kinds that are live: the annunciator shows the lit windows, and with none under a letter a line
+	# says so.
 	if lit.is_empty():
+		if decisions.is_empty():
+			_queue_fit()
+			return
 		var none := Parts.body(NO_UPDATES)
 		none.name = "NoUpdatesLine"
 		_body.add_child(none)

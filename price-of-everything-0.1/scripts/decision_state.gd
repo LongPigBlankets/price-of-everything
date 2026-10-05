@@ -109,7 +109,7 @@ const DECISION_DEFINITIONS := {
 	# Verbatim line and gifts are owner-locked. See docs/early-game-onboarding-spec.md §5.4.
 	"family_friend": {
 		"title": "A Retired Man Who Misses the Work",
-		"body": "Andrew Keeler ran a shipping firm for thirty years. He offers to serve as your CFO or COO for thirty turns without pay.\n\n\"I've negotiated lots of deals with suppliers and banks in the past. But my specialty will always be transporting goods cheap.\"",
+		"body": "Andrew Keeler ran a shipping firm for thirty years. He's an old acquaintance and has always been happy to mentor you. He offers to serve as your CFO or COO for thirty turns without pay.\n\n\"I've negotiated lots of deals with suppliers and banks in the past. But my specialty will always be transporting goods cheap.\"",
 		"scope": "company", "category": "governance", "priority": PRIORITY_STORY,
 		"target_selector": "company",
 		"cooldown_turns": 9999, "weight": 0.0, "default_choice": "coo",

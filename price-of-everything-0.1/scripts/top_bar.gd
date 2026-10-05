@@ -2500,8 +2500,8 @@ func _mission_collapse_row(inner: int) -> Control:
 	row.name = "MissionCollapseRow"
 	row.custom_minimum_size = Vector2(inner, 0)
 	row.add_theme_constant_override("separation", 8)
-	var label := _quest_label("Collapse mission section in the top bar", C_TEXT, 13, true)
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# The label stands right beside its switch, so the two read as one control.
+	var label := _quest_label("Collapse mission section in the top bar", C_TEXT, 13, false)
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(label)
 	var toggle: Control = Toggle.new()

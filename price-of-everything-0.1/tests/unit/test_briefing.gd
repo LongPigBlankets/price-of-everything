@@ -283,7 +283,7 @@ func _test_choice_figures_match_the_effects() -> void:
 
 ## The DS2 panel: one width, the letter and its answer keys (a line between choices, each key centred on what it
 ## brings), figures on screens, the annunciator's lit windows only, the readout shut while a decision waits, a
-## picked window's detail, and "No other updates." once nothing is lit.
+## picked window's detail, and "No other updates." under a letter once nothing is lit.
 func _test_briefing_ds2_panel() -> void:
 	var snap := _seed_board()
 	var panel: Control = load(DS2_SCRIPT).new()
@@ -341,9 +341,12 @@ func _test_briefing_ds2_panel() -> void:
 	panel.call("_rebuild")
 	for _i in 2:
 		await get_tree().process_frame
+	# "No other updates." stands under a letter only; with nothing waiting the gate line already says it.
+	var waiting := not TurnBriefing.unresolved_decisions().is_empty()
 	var none: Label = panel.find_child("NoUpdatesLine", true, false)
-	_check(none != null and none.text == "No other updates." and panel.find_child("Annunciator", true, false) == null
-		and (panel.call("windows") as Array).is_empty(), "briefing ds2: with nothing lit, no windows, just No other updates.")
+	_check((none != null) == waiting and (none == null or none.text == "No other updates.")
+		and panel.find_child("Annunciator", true, false) == null and (panel.call("windows") as Array).is_empty(),
+		"briefing ds2: with nothing lit, no windows, and No other updates. only under a letter")
 	panel.visible = false
 	panel.queue_free()
 	_restore_board(snap)
