@@ -86,6 +86,14 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 
 - **No status lamps on goods.** Just in time play, and buying over a turn or two to sell straight away, hold little stock by design; a Low or Short lamp would call that a problem. The scenarios are too unclear for one lamp, so the table shows the figures and no verdict.
 
+Owner, 2 October 2026:
+
+- The ledger's sibling. 1080 wide to start, to be narrowed after review.
+- Counts: produced, used, sold, stored, in transit. Stored leaves out goods construction has claimed. In transit is goods on the way to another tile or a port, not the intermediary's deliveries.
+- Every good shows by default. Power has no row. No status lamps. No per building rows yet.
+- The Carbon tax column appears only once the levy is in force.
+- Selecting a good opens its costs under it: transport, storage and the intermediary's fee, each as a total and a unit, then its freight rates.
+
 ## People (27 September 2026; plan `docs/people-ds2-plan.md`)
 
 - **The boardroom and the works are the default**; `toggle people ds2` switches back to today's panel.
@@ -108,3 +116,32 @@ The rulings the owner made while the top bar, the updates dock and the tile view
 - **Toasts are timed only the first time they appear in the turn.** Opened by the player, the updates stay until the player clicks any surface outside them; clicks on the toasts or on the briefing and updates controls in the bottom left do not close them.
 - **The answers** (1 October): an engraved line between one choice's effects and the next, and each answer key centred on the midline of its effects.
 - **Only the live alerts** (1 October): the annunciator shows a window only for a kind that is lit (Starved when buildings are starved). With none lit there is no grid, just "No other updates."
+
+## Politics (2 October 2026)
+
+- The owner asked for the Politics panel in DS2 (it had been off limits since 26 September).
+- First build, awaiting review, behind `toggle politics ds2` (off by default): the same record and the same words on the kit's case and modules, an event a module with its icon in a well and its turn on a dot display, in the order things happened. No new renders. 640 wide. Captures: `artifacts/politics_ds2/`, made by `tools/politics_ds2_shot.tscn`.
+- Owner, after the first build: a wooden courtroom, with balustrades. Second build (`artifacts/politics_ds2/ds2_v2/`): the oak wall in its moulded frame, the bar of the court (a rail of turned balusters) under the title, an event a raised oak panel, its turn on a brass plate. Render set `court`, seed 470.
+- Owner, on the courtroom: the rows in dark leather, stitched, a small brass stud in each corner (`court_panel`). The panel is as tall as its rows up to five; past five the record scrolls with five in view. Captures: `artifacts/politics_ds2/ds2_v3/` (`politics_ds2_long.png` shows the scroll on a made up longer record).
+- Owner: the icons in a stitched leather frame, not the black metal well (`court_icon_frame`, a band of tan leather round the cream tile). Captures: `artifacts/politics_ds2/ds2_v4/`.
+
+## Leaving the intermediary (2 October 2026)
+
+- One DS2 sheet asks before goods leave the Logistics Intermediary (`scripts/ds2/destination_sheet.gd`, built by `scripts/logistics_confirmation.gd`), in place of the system dialog. Titled Change destination for outputs, Change supplier for inputs.
+- Output to the global market: "The intermediary will no longer buy your output. A bridging loan will cover you during transit to the port, but long distances may be expensive unless served by advanced infrastructure. Invest in infrastructure to reduce travel times and increase capacity." The bridging loan is Advance port sales (`LoanState.transit_credit_enabled`, on by default).
+- Output to a tile stockpile, this tile's or another's: "The intermediary will no longer buy your output. This may decrease your revenue if you don't use the output in other recipes. If unused, the output will accumulate in the stockpile. If you want to sell the unused surplus, do so in the Stockpile tab." Stockpile tab is underlined and opens that tile's Stockpile tab.
+- "Do not show again" stays session wide.
+- News line, once a game, on the first sale to reach the global market: title "First sale to the market", body "Our company sold its first goods to the global market via [port]. This is likely the first in many transactions that will put us on the map. Who knows where we'll go from here."
+- Owner, on the sheet: the keys read Cancel and Confirm, Cancel the smaller. The Stockpile tab link opens the tab and leaves the sheet up with its decision (the scrim clears so the tab can be used; the sheet drags by its title). The old "Surplus at" prompt (`stockpile_route_prompt.gd`) and the system Change supplier dialog are removed from the code.
+
+## Shipments and Stockpiles (2 October 2026)
+
+- The owner asked for the top bar's transport panel in DS2. First build, awaiting review, behind `toggle transport ds2` (off by default): `scripts/transport_ds2/transport_ds2.gd`, built into `scripts/transport_panel.gd`. The same three columns (Stockpiles, Infrastructure, In transit) as plastic cases of raised modules, a lamp and words for each row, fills and loads on LED meters, the routing objective and the infrastructure filter as latching keys, Logistics Settings as a sheet with three keys a side. No new renders. Captures: `artifacts/transport_ds2/`, made by `tools/transport_ds2_shot.tscn`.
+- Owner, on the first build: a stockpile shows which way it is going as a drawn mark, not as "full in N turns": an arrow up while it fills, an arrow down while it drains, a thick white line while it holds steady. In transit keeps a row for a lone shipment; several carrying the same goods to the same place are one row reading "N units arrive each turn". A link's words leave out the at capacity count. Captures: `artifacts/transport_ds2/ds2_v2/`.
+- Owner, on the transport panel: a tile's name is a link (underlined, its hover "Go to <tile>"); pressing it closes the panel and takes the map to the tile.
+
+## Updates dock (2 October 2026)
+
+- The owner asked for the notices at the bottom left to look more DS2. First build, awaiting review, behind `toggle dock ds2` (off by default), in `scripts/toast_manager.gd`: the dock and its slide-out on the top bar's navy steel sheet, the pen and the three bells raised (render set `dockicon`, seed 471; a bell lit in its colour with something to count, unlit with nothing), counts on navy pills, a row a raised module with a pilot lamp in its tone. What the dock holds, its timing and its clicks are unchanged. Captures: `artifacts/dock_ds2/`, made by `tools/dock_ds2_shot.tscn`.
+- Owner, on the first build: one surface with the briefing. The slide-out is the briefing's clipboard (its hardboard and steel clip); a row is a slip of the cream sheet tinged pastel green, amber or red, its words in navy. Timing as before: a row that shows by itself in a turn runs its timer and goes; opened by the player there is no timer. Capture: `artifacts/dock_ds2/clipboard/`.
+- Owner: the updates pad (the dock) is brushed silver with a bevel (`dock_pad`), the pen printed in navy on it. The bottom-left map legends sit on a dark plastic pad with cut off corners (`legend_pad`, `scripts/ds2/legend_pad.gd`), behind `toggle legend ds2`. Render set `dockpad`, seed 472. Captures: `artifacts/dock_ds2/silver_pad/`.

@@ -2779,3 +2779,143 @@ func _test_led_three_decimals_under_a_pound() -> void:
 	row.free()
 	dear.free()
 	dialog.free()
+
+
+## The Shipments and Stockpiles panel in DS2: the same three columns on the kit's cases, the routing objective
+## as keys, a stockpile and a shipment a module each; the v2 panel back, as it was, with the switch off.
+func _test_transport_panel_ds2() -> void:
+	var was := UiPrefs.use_transport_ds2
+	var was_route: int = MatchState.route_objective
+	var pending: Array = TransportState.pending_transport_shipments.duplicate(true)
+	UiPrefs.set_use_transport_ds2(true)
+	Stockpile.add("tile_5_10", "g_006", 40)
+	TransportState.queue_transport_shipment({"source_tile": "tile_5_10", "destination_tile": "tile_5_11", "good_id": "g_006", "qty": 9, "turns_remaining": 2})
+	var panel: Control = load("res://scripts/transport_panel.gd").new()
+	add_child(panel)
+	panel.call("open")
+	await get_tree().process_frame
+	_check(panel.find_child("TransportTitleRow", true, false) != null and panel.find_child("LedgerBacking", false, false) != null
+		and panel.find_child("Column_Stockpiles", true, false) != null and panel.find_child("Column_Infrastructure", true, false) != null
+		and panel.find_child("Column_Intransit", true, false) != null, "transport ds2: the ledger's shell and three columns")
+	var stock := panel.find_child("Stock_tile_5_10", true, false)
+	_check(stock != null and stock.find_child("TransportMeter", true, false) != null and stock.find_child("BuildingLamp", true, false) != null,
+		"transport ds2: a stockpile is a module with its lamp and its fill on a meter")
+	var words: String = (stock.find_child("Words", true, false) as Label).text if stock != null else ""
+	_check(words.contains("% full") and not words.contains("(") and not words.contains(" - "), "transport ds2: plain words, no coordinates (%s)" % words)
+	_check(words.ends_with("800.") or not words.contains("turn"), "transport ds2: no full in N turns in the words (%s)" % words)
+	var mark := stock.find_child("Trend", true, false) if stock != null else null
+	_check(mark != null and str(mark.get_meta("trend", "")) in ["up", "down", "steady"], "transport ds2: filling, draining or steady is a drawn mark")
+	_check(panel.find_child("Shipment_0", true, false) != null, "transport ds2: a shipment is a module")
+	var Panel: GDScript = load("res://scripts/transport_panel.gd")
+	var lone: Array = Panel.transit_flows([{"manifest": [{"good_id": "g_006", "qty": 9}], "units": 9, "turns": 2, "to_market": false, "destination": "tile_5_11"}])
+	_check(lone.size() == 1 and str(lone[0].when) == "Arrives in 2 turns.", "transport ds2: a lone shipment says when it arrives")
+	var flow: Array = Panel.transit_flows([
+		{"manifest": [{"good_id": "g_006", "qty": 30}], "units": 30, "turns": 1, "to_market": false, "destination": "tile_5_11"},
+		{"manifest": [{"good_id": "g_006", "qty": 30}], "units": 30, "turns": 2, "to_market": false, "destination": "tile_5_11"},
+		{"manifest": [{"good_id": "g_006", "qty": 30}], "units": 30, "turns": 3, "to_market": false, "destination": "tile_5_11"},
+		{"manifest": [{"good_id": "g_007", "qty": 5}], "units": 5, "turns": 1, "to_market": true, "destination": ""}])
+	_check(flow.size() == 2 and str(flow[0].when) == "30 units arrive each turn." and int(flow[0].manifest[0].qty) == 30
+		and str(flow[1].when) == "Arrives in 1 turn." and str(flow[1].where) == "To market",
+		"transport ds2: several shipments of a good to a place read as what arrives each turn (%s)" % str(flow.map(func(f: Dictionary) -> String: return str(f.when))))
+	var link_words := ""
+	for n in panel.find_children("Link_*", "", true, false):
+		link_words += ((n as Node).find_child("Words", true, false) as Label).text
+	_check(not link_words.contains("At capacity"), "transport ds2: a link's words leave out the at capacity count")
+	var link := stock.find_child("TileLink", true, false) as Label if stock != null else null
+	_check(link != null and link.tooltip_text == "Go to %s" % link.text and not link.text.contains("("), "transport ds2: a tile's name is a link that says Go to it (%s)" % (link.tooltip_text if link != null else ""))
+	_check(panel.find_child("Shipment_0", true, false).find_child("TileLink", true, false) != null, "transport ds2: a shipment's destination is a link")
+	var keys: Dictionary = panel.get("_routing_keys")
+	(keys[MatchState.RouteObjective.CHEAPEST] as Control).emit_signal("pressed")
+	_check(MatchState.route_objective == MatchState.RouteObjective.CHEAPEST and bool((keys[MatchState.RouteObjective.CHEAPEST] as Control).get("latched"))
+		and not bool((keys[MatchState.RouteObjective.FASTEST] as Control).get("latched")), "transport ds2: a routing key sets the objective and latches alone")
+	_check(panel.find_child("RoutingObjective", true, false) != null, "transport ds2: the routing objective keeps its name")
+	var went: Array = []
+	var note := func(tile: String) -> void: went.append(tile)
+	MatchState.focus_tile_requested.connect(note)
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	link = panel.find_child("Stock_tile_5_10", true, false).find_child("TileLink", true, false) as Label
+	link.call("_gui_input", press)
+	MatchState.focus_tile_requested.disconnect(note)
+	_check(went == ["tile_5_10"] and not panel.visible, "transport ds2: pressing the name goes to the tile and closes the panel")
+	UiPrefs.set_use_transport_ds2(false)
+	await get_tree().process_frame
+	_check(panel.find_child("TransportTitleRow", true, false) == null and panel.find_child("RoutingObjective", true, false) is OptionButton,
+		"transport ds2: off again, the v2 panel is back")
+	panel.queue_free()
+	MatchState.set_route_objective(was_route)
+	TransportState.pending_transport_shipments = pending
+	Stockpile.consume("tile_5_10", "g_006", 40)
+	UiPrefs.set_use_transport_ds2(was)
+
+
+## The updates dock in DS2: the dock in navy steel with its pen and bells raised, its slide-out a clipboard, a
+## row a slip tinged in its tone with navy print. The rows it kept come through the switch, a row that shows by
+## itself still runs its timer and one the player opened does not, and v2 is back as it was with it off.
+func _test_updates_dock_ds2() -> void:
+	var was := UiPrefs.use_dock_ds2
+	UiPrefs.set_use_dock_ds2(false)
+	var toasts: Control = load("res://scripts/toast_manager.gd").new()
+	add_child(toasts)
+	await get_tree().process_frame
+	toasts.call("push_row", "A green update.", "green")
+	toasts.call("push_row", "A red warning.", "red", "warn_key", func() -> void: pass)
+	var rows: Node = toasts.find_child("RowList", true, false)
+	_check(rows.get_child_count() == 2 and not rows.get_child(0).has_meta("tinge"), "dock ds2: off, the rows are v2's")
+	UiPrefs.set_use_dock_ds2(true)
+	await get_tree().process_frame
+	var texts: PackedStringArray = toasts.call("row_texts")
+	_check(rows.get_child_count() == 2 and texts[0] == "A green update." and texts[1] == "A red warning.", "dock ds2: the kept rows come through the switch")
+	var red := rows.get_child(1) as Control
+	var green := rows.get_child(0) as Control
+	_check(str(red.get_meta("tinge", "")) == "warning" and red.find_child("Chevron", true, false) != null and str(red.get_meta("key", "")) == "warn_key"
+		and red.has_node("Countdown"), "dock ds2: a red row is a red tinged slip, a link keeps its mark and its key")
+	_check(str(green.get_meta("tinge", "")) == "success" and green.find_child("Chevron", true, false) == null and green.self_modulate != red.self_modulate
+		and (green.find_child("Words", true, false) as Label).get_theme_color("font_color") == Color("#0b2340"), "dock ds2: a green slip is tinged green, its print navy")
+	_check(toasts.find_child("Bell_red", true, false).find_child("Raised", true, false) != null
+		and toasts.find_child("Decisions", true, false).find_child("Raised", true, false) != null, "dock ds2: the pen and the bells are raised")
+	_check(int(toasts.call("unread", "red")) == 1, "dock ds2: the bells count as before")
+	toasts.call("collapse", false)
+	toasts.call("push_row", "Another.", "amber")
+	_check(str(rows.get_child(2).get_meta("tinge", "")) == "caution", "dock ds2: a new row arrives as an amber slip")
+	_check(bool(toasts.call("is_open")) and float(toasts.call("countdown")) > 0.0, "dock ds2: a row that shows by itself runs its timer")
+	toasts.call("collapse", false)
+	toasts.call("open_all")
+	_check(bool(toasts.call("is_open")) and float(toasts.call("countdown")) <= 0.0, "dock ds2: opened by the player it has no timer")
+	UiPrefs.set_use_dock_ds2(false)
+	await get_tree().process_frame
+	_check(rows.get_child_count() == 3 and not rows.get_child(1).has_meta("tinge"), "dock ds2: off again, v2 rows")
+	toasts.queue_free()
+	UiPrefs.set_use_dock_ds2(was)
+
+
+## The map legends on the DS2 pad: the flat box gives way to the plastic pad with the switch on, keeping at
+## least the pad's own room round its print, and comes back as it was with the switch off.
+func _test_legend_pad_ds2() -> void:
+	var was := UiPrefs.use_legend_ds2
+	UiPrefs.set_use_legend_ds2(false)
+	var Pad: GDScript = load("res://scripts/ds2/legend_pad.gd")
+	var panel := PanelContainer.new()
+	var box := StyleBoxFlat.new()
+	box.set_content_margin_all(4)
+	panel.add_theme_stylebox_override("panel", box)
+	add_child(panel)
+	Pad.dress(panel)
+	_check(panel.get_theme_stylebox("panel") == box, "legend pad: off, the legend keeps its box")
+	UiPrefs.set_use_legend_ds2(true)
+	Pad.dress(panel)
+	var bare := panel.get_theme_stylebox("panel")
+	_check(bare is StyleBoxEmpty and bare.content_margin_left >= 12.0, "legend pad: on, the pad replaces the box and keeps print clear of its cut corners")
+	Pad.dress(panel)
+	_check(panel.get_theme_stylebox("panel") == bare, "legend pad: dressing twice changes nothing")
+	UiPrefs.set_use_legend_ds2(false)
+	Pad.dress(panel)
+	_check(panel.get_theme_stylebox("panel") == box, "legend pad: off again, the box is back")
+	var legend: Control = (load("res://scenes/overlay_legend.tscn") as PackedScene).instantiate()
+	add_child(legend)
+	UiPrefs.set_use_legend_ds2(true)
+	_check(legend.get_theme_stylebox("panel") is StyleBoxEmpty, "legend pad: the map modes' legend follows the switch")
+	legend.queue_free()
+	panel.queue_free()
+	UiPrefs.set_use_legend_ds2(was)

@@ -2368,7 +2368,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // missionslot, missionboard, darkmetal, desk, menuplate, tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
+  // missionslot, missionboard, darkmetal, desk, menuplate, tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin, court, dockicon, dockpad. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -2737,6 +2737,8 @@ async function exportLayers() {
   // --- the bar's icons raised as the Building Detail panel's are: the game's art keyed into a mask (light
   // pixels of the baked standalone icons, or the cream of a building icon), raised in the same cream
   // enamel under the house light, with the swept shadow as its own layer.
+  // In layout px: the updates pad (brushed silver) and the legends' pad (dark plastic, corners cut by `cut`).
+  const DOCK_PAD = { SILVER: { W: 520, H: 132, M: 14, r: 10, corner: 34 }, PLASTIC: { W: 520, H: 400, M: 14, cut: 26, corner: 44 } };
   const BAR_ICONS = { S: 110, icon: 86, height: 11, soften: 1.5, art: {
     coin: 'ui_icons/standalone/coin.png', power: 'ui_icons/standalone/power_icon.png', trophy: 'ui_icons/standalone/trophy.png',
     podium: 'ui_icons/standalone/podium.png', target: 'ui_icons/standalone/target.png', council: 'ui_icons/standalone/board-of-directors.png',
@@ -2755,6 +2757,55 @@ async function exportLayers() {
       await post('bar_icon_' + name + '_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height, draw: (tg, col) => stamp(tg, mask, o, o, icon, icon, col) }])));
     }
     layout.bar_icons = { size: [S, S], icon, names: Object.keys(art) };
+  });
+  // The updates dock's raised icons, made as the bar's are: the fountain pen (decisions) and the bell (updates),
+  // which the game tints green, amber or red.
+  if (want('dockicon')) await withSeed(471, async () => {
+    const { S, icon, height, soften } = BAR_ICONS, o = (S - icon) / 2;
+    const enamel = new THREE.MeshPhysicalMaterial({ color: OFF_WHITE, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+    const art = { pen: 'ui_icons/standalone/fountain_pen.png', bell: 'ui_icons/standalone/bell.png' };
+    for (const [name, file] of Object.entries(art)) {
+      const img = await loadImage('/icons/' + file);
+      const mask = keyOpaque(img);
+      const rel = iconRelief(mask, icon, icon, enamel, { height, soften });
+      rel.position.set(S / 2, 0.3, S / 2);
+      await post('dock_icon_' + name, stage([0, 0, S, S], [rel]).grab());
+      await post('dock_icon_' + name + '_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height, draw: (tg, col) => stamp(tg, mask, o, o, icon, icon, col) }])));
+    }
+    layout.dock_icons = { size: [S, S], icon, names: Object.keys(art) };
+  });
+  // The updates pad: a plate of brushed silver, its grain along its length, a wide bevel round it (a 9-slice). And
+  // the legends' pad: dark moulded plastic with its four corners cut off (a 9-slice, its corner past the cut).
+  if (want('dockpad')) await withSeed(472, async () => {
+    { const { W, H, M, r } = DOCK_PAD.SILVER, g = new THREE.Group();
+      const brushed = canvas2d(W, H, (c) => {
+        c.fillStyle = '#b4babf'; c.fillRect(0, 0, W, H);
+        for (let i = 0; i < 26; i++) { c.fillStyle = `rgba(${rand() > 0.5 ? '255,255,255' : '0,0,0'},${0.015 + rand() * 0.03})`; c.fillRect(0, rand() * H, W, 2 + rand() * 12); }
+        for (let i = 0; i < Math.round(W * H / 30); i++) {
+          const y = rand() * H, x = rand() * W - 60, l = 30 + rand() * 260;
+          c.strokeStyle = `rgba(${rand() > 0.5 ? '248,250,252' : '40,44,50'},${0.03 + rand() * 0.07})`; c.lineWidth = 0.3 + rand() * 0.5;
+          c.beginPath(); c.moveTo(x, y); c.lineTo(x + l, y); c.stroke();
+        }
+      });
+      const silver = new THREE.MeshStandardMaterial({ map: faceTexture(brushed, W, H), metalness: 0.92, roughness: 0.34, envMap: studioEnv, envMapIntensity: 0.9 });
+      const edge = new THREE.MeshStandardMaterial({ color: 0xc4c9ce, metalness: 1, roughness: 0.28, envMap: studioEnv, envMapIntensity: 1.0 });
+      const m = new THREE.Mesh(extrude(rrShape(W - 16, H - 16, r), 3, 8, 8, 6), [silver, edge]);
+      m.castShadow = m.receiveShadow = true; m.position.set(M + W / 2, 0, M + H / 2); g.add(m);
+      g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.6));
+      await post('dock_pad', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      layout.dock_pad = { size: [W + 2 * M, H + 2 * M], margin: M, corner: DOCK_PAD.SILVER.corner };
+    }
+    { const { W, H, M, cut } = DOCK_PAD.PLASTIC, g = new THREE.Group();
+      const shape = new THREE.Shape(), x = W / 2, y = H / 2;
+      shape.moveTo(-x + cut, -y); shape.lineTo(x - cut, -y); shape.lineTo(x, -y + cut); shape.lineTo(x, y - cut);
+      shape.lineTo(x - cut, y); shape.lineTo(-x + cut, y); shape.lineTo(-x, y - cut); shape.lineTo(-x, -y + cut); shape.closePath();
+      const face = new THREE.MeshPhysicalMaterial({ map: faceTexture(blackPlasticFace(W, H, '#1c1e22'), W, H), roughness: 0.6, clearcoat: 0.3, clearcoatRoughness: 0.45, envMap: studioEnv, envMapIntensity: 0.35 });
+      const m = new THREE.Mesh(extrude(shape, 3, 2.5, 2, 4), [face, BLACK_PLASTIC_SIDE()]);
+      m.castShadow = m.receiveShadow = true; m.position.set(M + W / 2, 0, M + H / 2); g.add(m);
+      g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.6));
+      await post('legend_pad', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      layout.legend_pad = { size: [W + 2 * M, H + 2 * M], margin: M, corner: DOCK_PAD.PLASTIC.corner };
+    }
   });
 
   // --- a section frame: a narrow worn steel rim with a screw in each corner, drawn as a 9-slice
@@ -7203,6 +7254,11 @@ async function exportLayers() {
   // steel clip with the chrome spring roll), and the annunciator's windows (dark glass in the LED screens' gunmetal
   // bezel, lit amber, red or green behind it or dark; a 9-slice, the legend printed by the game). Seeds 461 up.
   const BRIEF_BACKING = { W: 1012, H: 2200, M: 24, foot: 80, screw: 22 };
+  // The Politics courtroom, in layout px: the wall at the panel's size (640 x 720 logical), the rail across it inside
+  // the frame, an event's panel near its drawn width, the turn's brass plate.
+  const COURT = { BACKING: { W: 1200, H: 1350, M: 24, frame: 30 }, RAIL: { W: 1136, H: 112, M: 18, top: 22, foot: 18, pitch: 40 },
+    PANEL: { W: 1060, H: 200, M: 16, r: 12, stud: 19, corner: 34 }, PLATE: { W: 150, H: 44, M: 8, r: 5, corner: 14 },
+    ICON: { tile: 135, S: 157, hole: 129, M: 10, r: 16 } };
   const BRIEF_BOARD = { W: 920, H: 1200, M: 16, r: 18, foot: 60 };
   const BRIEF_CLIP = { W: 360, H: 124, M: 20, jaw: [300, 58], roll: 262 };
   const BRIEF_WINDOW = { W: 236, H: 96, M: 8, rim: 7, r: 5 };
@@ -7621,6 +7677,84 @@ async function exportLayers() {
     const all = (g, col) => { for (const [ch, [x, y, , , ox]] of Object.entries(at.cells)) titleLetter(ch, x + ox, y + at.baseline)(g, col); };
     await post('title_glyph_shadows', frame2d(at.W, at.H, (g) => drawIconShadows(g, at.W, at.H, [{ height: TITLE.height, draw: all }])));
     layout.title_glyphs = { size: [at.W, at.H], font_size: TITLE.size, baseline: at.baseline, glyphs: at.cells };
+  });
+
+  // The Politics panel as a courtroom (docs/ds2-owner-decisions.md, Politics): the panelled oak wall in its moulded
+  // frame (the panel's backing, drawn at its own size), the bar of the court (a rail of turned balusters, drawn across
+  // the panel under the title), a pad of dark leather with a brass stud in each corner for an event (a 9-slice rendered near
+  // its drawn width) and a small brass plate for the turn an event happened (a 9-slice, the turn printed by
+  // the game).
+  if (want('court')) await withSeed(470, async () => {
+    /** Oak: a base colour under long wavy grain, darker and lighter strokes, running along x or along y. */
+    const oak = (w, h, base, along = 'x', dark = '26,13,6', light = '150,100,58') => canvas2d(w, h, (c) => {
+      c.fillStyle = base; c.fillRect(0, 0, w, h);
+      const len = along === 'x' ? w : h, across = along === 'x' ? h : w;
+      for (let i = 0; i < across * 1.5; i++) {
+        const a = rand() * across, amp = 1.5 + rand() * 5, f = 90 + rand() * 280, ph = rand() * 6;
+        c.strokeStyle = `rgba(${rand() < 0.62 ? dark : light},${0.05 + rand() * 0.13})`; c.lineWidth = 0.5 + rand() * 1.5; c.beginPath();
+        for (let t = 0; t <= len; t += 16) { const o = a + Math.sin(t / f + ph) * amp; if (along === 'x') c.lineTo(t, o); else c.lineTo(o, t); }
+        c.stroke();
+      }
+      for (let i = 0; i < w * h / 26000; i++) { const x = rand() * w, y = rand() * h, r = 18 + rand() * 60, g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, `rgba(${rand() < 0.5 ? '0,0,0' : '255,214,160'},${0.03 + rand() * 0.04})`); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.fillRect(x - r, y - r, 2 * r, 2 * r); }
+    });
+    const polish = (map, w, h) => new THREE.MeshPhysicalMaterial({ map: faceTexture(map, w, h), roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.22, envMap: studioEnv, envMapIntensity: 0.3 });
+    const darkSide = new THREE.MeshStandardMaterial({ color: 0x24140a, roughness: 0.55 });
+    const turned = new THREE.MeshPhysicalMaterial({ color: 0x6a4226, map: noiseTexture(16, 0, 60), roughness: 0.38, clearcoat: 0.7, clearcoatRoughness: 0.2, envMap: studioEnv, envMapIntensity: 0.45 });
+    { // the wall: oak boards running up it, a board's joint every so often, in a darker moulded frame
+      const { W, H, M, frame } = COURT.BACKING, g = new THREE.Group();
+      const wall = oak(W, H, '#3d2616', 'y');
+      const wc = wall.getContext('2d');
+      for (let x = 150 + rand() * 30; x < W - 60; x += 150 + rand() * 40) { wc.fillStyle = 'rgba(0,0,0,0.42)'; wc.fillRect(x, 0, 1.6, H); wc.fillStyle = 'rgba(255,220,170,0.07)'; wc.fillRect(x + 1.6, 0, 1.2, H); }
+      put(g, new THREE.Mesh(extrude(rrShape(W, H, 14), 3, 3, 2.4, 4), [polish(wall, W, H), darkSide]), M + W / 2, M + H / 2);
+      const ring = rrShape(W, H, 14); ring.holes.push(rr(new THREE.Path(), W - 2 * frame, H - 2 * frame, 8));
+      put(g, new THREE.Mesh(extrude(ring, 9, 4.5, 3.6, 6), [polish(oak(W, H, '#2c1a0e', 'x'), W, H), darkSide]), M + W / 2, M + H / 2);
+      const bead = rrShape(W - 2 * frame + 6, H - 2 * frame + 6, 10); bead.holes.push(rr(new THREE.Path(), W - 2 * frame - 6, H - 2 * frame - 6, 6));
+      put(g, new THREE.Mesh(extrude(bead, 11, 2, 1.6, 4), [turned, darkSide]), M + W / 2, M + H / 2);
+      g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.5));
+      await post('court_backing', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      layout.court_backing = { size: [W + 2 * M, H + 2 * M], margin: M, frame };
+    }
+    { // the bar of the court: a top rail and a foot rail, turned balusters between them
+      const { W, H, M, top, foot, pitch } = COURT.RAIL, g = new THREE.Group();
+      const L = H - top - foot + 6, z0 = M + top - 3;
+      const profile = [[4.5, 0], [8, 0.03], [8, 0.1], [4.6, 0.14], [6.2, 0.2], [9, 0.33], [8.6, 0.45], [5.2, 0.62], [4, 0.72], [6.6, 0.8], [4.6, 0.85], [8, 0.9], [8, 0.97], [4.5, 1]];
+      const spindle = new THREE.LatheGeometry(profile.map(([r, t]) => new THREE.Vector2(r, t * L)), 28).rotateX(Math.PI / 2);
+      const n = Math.floor((W - 40) / pitch), x0 = M + (W - (n - 1) * pitch) / 2;
+      for (let i = 0; i < n; i++) put(g, new THREE.Mesh(spindle, turned), x0 + i * pitch, z0, 10);
+      put(g, new THREE.Mesh(extrude(rrShape(W, top, 6), 14, 4, 3.2, 5), [polish(oak(W, top, '#4a2d19', 'x'), W, top), darkSide]), M + W / 2, M + top / 2);
+      put(g, new THREE.Mesh(extrude(rrShape(W, foot, 5), 10, 3, 2.4, 4), [polish(oak(W, foot, '#3a2313', 'x'), W, foot), darkSide]), M + W / 2, M + H - foot / 2);
+      g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.6));
+      await post('court_rail', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      layout.court_rail = { size: [W + 2 * M, H + 2 * M], margin: M };
+    }
+    { // an event's row: a padded pad of dark leather, stitched round its edge, a small domed brass stud in each corner
+      const { W, H, M, r, stud } = COURT.PANEL, g = new THREE.Group(), K = peopleKit();
+      put(g, new THREE.Mesh(extrude(rrShape(W, H, r), 3, 4.5, 3.6, 6), [K.leather(W, H, '#261713'), new THREE.MeshStandardMaterial({ color: 0x120a08, roughness: 0.7 })]), M + W / 2, M + H / 2);
+      const dome = new THREE.SphereGeometry(5, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.6, 1);
+      for (const [x, y] of [[stud, stud], [W - stud, stud], [stud, H - stud], [W - stud, H - stud]]) put(g, new THREE.Mesh(dome, K.brass), M + x, M + y, 11.5);
+      g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.6));
+      await post('court_panel', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      layout.court_panel = { size: [W + 2 * M, H + 2 * M], margin: M, corner: COURT.PANEL.corner };
+    }
+    { // an icon's frame: a band of tan leather round the cream tile, stitched along its middle
+      const { S, hole, M, r } = COURT.ICON, g = new THREE.Group(), K = peopleKit();
+      const ring = rrShape(S, S, r); ring.holes.push(rr(new THREE.Path(), hole, hole, r - 5));
+      put(g, new THREE.Mesh(extrude(ring, 2, 1.6, 1.3, 4), [K.leather(S, S, '#7a4b2c'), new THREE.MeshStandardMaterial({ color: 0x3a2112, roughness: 0.7 })]), M + S / 2, M + S / 2);
+      g.add(shadowCatcher(S + 2 * M, S + 2 * M, S / 2 + M, S / 2 + M, 0.05, 0.6));
+      await post('court_icon_frame', stage([0, 0, S + 2 * M, S + 2 * M], [g]).grab());
+      layout.court_icon_frame = { size: [S + 2 * M, S + 2 * M], margin: M, tile: COURT.ICON.tile, reach: (S - COURT.ICON.tile) / 2 };
+    }
+    { // the turn's plate: brass, a pin at each end
+      const { W, H, M, r } = COURT.PLATE, g = new THREE.Group();
+      // A plate this small is all edge to plateMaterial's rubbed rim, which left it dark: plain brushed brass instead.
+      const brassSide = new THREE.MeshStandardMaterial({ color: 0xa8843f, metalness: 1, roughness: 0.4, envMap: studioEnv, envMapIntensity: 0.9 });
+      const brass = new THREE.MeshStandardMaterial({ color: 0xe2bd68, map: noiseTexture(14, 30, 80), metalness: 1, roughness: 0.42, envMap: studioEnv, envMapIntensity: 1.1 });
+      put(g, new THREE.Mesh(extrude(rrShape(W, H, r), 1.6, 1.2, 0.9, 3), [brass, brassSide]), M + W / 2, M + H / 2);
+      for (const dx of [9, W - 9]) put(g, screw(3), M + dx, M + H / 2, 3.2);
+      g.add(shadowCatcher(W + 2 * M, H + 2 * M, W / 2 + M, H / 2 + M, 0.05, 0.55));
+      await post('court_plate', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
+      layout.court_plate = { size: [W + 2 * M, H + 2 * M], margin: M, corner: COURT.PLATE.corner };
+    }
   });
 
   await fetch('/layers/layout.json', { method: 'POST', body: JSON.stringify(layout, null, 1) });

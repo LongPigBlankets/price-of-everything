@@ -436,6 +436,7 @@ func _make_build_legend(infrastructure_type: String = "") -> PanelContainer:
 	style.border_color = Color(0.55, 0.7, 0.82, 0.65)
 	style.set_content_margin_all(10)
 	panel.add_theme_stylebox_override("panel", style)
+	preload("res://scripts/ds2/legend_pad.gd").dress(panel)
 	if parent_control != null:
 		parent_control.add_child(panel)
 	else:

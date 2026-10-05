@@ -410,6 +410,7 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 		for item: Dictionary in q.items:
 			var gid := str(item.good)
 			if int(item.quantity) <= 0: continue
+			Production.note_good_cost(summary, gid, "intermediary", float(item.fee), int(item.quantity))
 			ResearchState.note_middleman_shipment(gid, int(item.quantity))
 			if bridge.has(gid):
 				if not e.has("bridge"): e["bridge"] = {}
@@ -540,6 +541,7 @@ static func settle(buildings: Array, summary: Dictionary) -> void:
 			ResearchState.note_middleman_shipment(gid, int(item.quantity))
 			MarketState.record_market_sale_volume(gid,int(item.quantity))
 			Production._add_summary_sale(summary,gid,int(item.quantity),float(item.goods_value))
+			Production.note_good_cost(summary, gid, "intermediary", float(item.fee), int(item.quantity))
 			sale.items.append({"good_id":gid,"qty":int(item.quantity),"revenue":float(item.goods_value)})
 			sale.total_qty += int(item.quantity)
 		MatchState.record_tile_sale(str(b.tile_id),int(sale.total_qty),float(q.goods_value))

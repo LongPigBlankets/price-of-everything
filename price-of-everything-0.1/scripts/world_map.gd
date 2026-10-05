@@ -1411,6 +1411,7 @@ func _make_bottom_left_legend(panel_name: String, title: String, width: float, h
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(4)
 	panel.add_theme_stylebox_override("panel", style)
+	preload("res://scripts/ds2/legend_pad.gd").dress(panel)
 
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
@@ -2011,6 +2012,7 @@ func _build_stockpile_legend() -> void:
 	style.corner_radius_bottom_left = 4
 	style.corner_radius_bottom_right = 4
 	_stockpile_legend.add_theme_stylebox_override("panel", style)
+	preload("res://scripts/ds2/legend_pad.gd").dress(_stockpile_legend)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 10)

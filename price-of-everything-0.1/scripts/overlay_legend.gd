@@ -3,6 +3,7 @@ extends PanelContainer
 const LegendEntryScene: PackedScene = preload("res://scenes/legend_entry.tscn")
 const LEGEND_LEFT := 12.0
 const ToastManager := preload("res://scripts/toast_manager.gd")
+const LegendPad := preload("res://scripts/ds2/legend_pad.gd")  # the DS2 look (UiPrefs.use_legend_ds2)
 ## Bottom-left legends stack on top of the updates dock.
 const LEGEND_BOTTOM := ToastManager.LEGEND_CLEARANCE
 const LEGEND_WIDTH := 240.0
@@ -59,6 +60,8 @@ const OWNERSHIP_LEGEND_ROWS: Array = [
 
 func _ready() -> void:
 	_pin_bottom_left()
+	LegendPad.dress(self)
+	UiPrefs.legend_ds2_changed.connect(func(_on: bool) -> void: LegendPad.dress(self))
 	MapMode.selections_changed.connect(_on_selections_changed)
 	MapMode.mode_cleared.connect(_on_mode_cleared)
 	call_deferred("hide")

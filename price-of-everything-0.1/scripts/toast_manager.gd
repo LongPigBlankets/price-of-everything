@@ -51,6 +51,29 @@ const BELL_ICON: Texture2D = preload("res://assets/icons/ui_icons/standalone/bel
 const PEN_ICON: Texture2D = preload("res://assets/icons/ui_icons/standalone/fountain_pen.png")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
+# The DS2 look (UiPrefs.use_dock_ds2): the dock a pad of brushed silver with a bevel, the pen and the bells
+# raised on it, and its slide-out as the turn briefing's clipboard (the hardboard and its steel clip), so the two read
+# as one surface. A row is a slip of the keycaps' cream plastic tinged in its tone, its words printed in navy.
+const Parts := preload("res://scripts/ds2/parts.gd")
+const Nine := preload("res://scripts/bdp_v3_nine.gd")
+const SHEET: Texture2D = preload("res://assets/ui/bdp_v3/dock_pad.png")
+## From layout.json (dock_pad), in layout px: the render's shadow room and its 9-slice corner.
+const SHEET_MARGIN := 14.0
+const SHEET_CORNER := 34.0
+## The pen on the silver pad: navy with a decision waiting, a paler steel blue with none.
+const PEN_UNLIT := Color(0.36, 0.42, 0.5)
+const CAPTURE_SCALE := 1.875
+const TEXELS_PER_PIXEL := 2.0
+const Brief := preload("res://scripts/briefing_ds2/parts.gd")
+## The clipboard: the board's edge round the slips, the room its clip takes above them, and the clip's scale.
+const BOARD_EDGE := 12.0
+const CLIP_ROOM := 34.0
+const CLIP_SCALE := 0.7
+## The sheet's 9-slice corner on a slip, in layout px: smaller than the letter's, so a one line slip's corners
+## never meet.
+const SLIP_CORNER := 12.0
+## A slip's tinge by its look: pastel green, amber and red over the cream sheet.
+const SLIP_TINGE := {"success": Color(0.80, 0.95, 0.80), "caution": Color(1.0, 0.90, 0.66), "warning": Color(1.0, 0.78, 0.76)}
 ## With the DS2 briefing, the pen carries a small pilot lamp lit in the worst live alert's colour (amber or red),
 ## so an alert shows while the briefing is closed.
 const PEN_LAMP_SCALE := 0.42
@@ -86,6 +109,8 @@ var _prev_money: float = 0.0
 
 var _dock: PanelContainer
 var _dock_style: StyleBoxFlat
+var _panel_style: StyleBoxFlat
+var _ds2 := false
 var _bells := {}            # tone -> {"root", "clip", "tex", "pill", "count"}
 var _pen := {}              # the decisions cell, the same shape as a bell's
 var _decisions := 0
@@ -115,6 +140,8 @@ class RowCountdown extends Control:
 				queue_redraw()
 	## The row's padding round this control, so the sweep spans the whole row inside its border.
 	var pad := Vector2.ZERO
+	## The sweep's colour: white on a dark row, navy on a light slip.
+	var sweep := Color.WHITE
 	func _draw() -> void:
 		if remaining <= 0.0:
 			return
@@ -124,7 +151,7 @@ class RowCountdown extends Control:
 		var bottom := box.end.y
 		var left := box.position.x
 		draw_polygon(PackedVector2Array([Vector2(left, top), Vector2(right, top), Vector2(right, bottom), Vector2(left, bottom)]),
-			PackedColorArray([Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.12), Color(1, 1, 1, 0.12), Color(1, 1, 1, 0.0)]))
+			PackedColorArray([Color(sweep, 0.0), Color(sweep, 0.12), Color(sweep, 0.12), Color(sweep, 0.0)]))
 var _fit_queued := false
 var _dock_hover := false
 ## Arrival order across the kept rows; the oldest goes when HISTORY_MAX is reached, wherever
@@ -274,11 +301,11 @@ func collapse(animate: bool = true) -> void:
 	_set_interactive(false)
 	_update_dock_rim()
 	if animate:
-		_tween_panel_to(_clip.size.y)
+		_tween_panel_to(_parked_y())
 	else:
 		if _slide != null and _slide.is_valid():
 			_slide.kill()
-		_panel.position.y = _clip.size.y
+		_panel.position.y = _parked_y()
 
 ## Drops every row and count and closes the slide-out at once (a new match, recording mode).
 func clear() -> void:
@@ -320,7 +347,10 @@ func _build_ui() -> void:
 	ps.content_margin_right = PANEL_PAD
 	ps.content_margin_top = PANEL_PAD
 	ps.content_margin_bottom = PANEL_PAD + TUCK
+	_panel_style = ps
 	_panel.add_theme_stylebox_override("panel", ps)
+	_panel.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_panel.draw.connect(_paint_sheet.bind(_panel))
 	_clip.add_child(_panel)
 
 	var column := VBoxContainer.new()
@@ -373,6 +403,8 @@ func _build_ui() -> void:
 	_dock_style.content_margin_top = (DOCK_HEIGHT - BELL_PX) / 2.0
 	_dock_style.content_margin_bottom = (DOCK_HEIGHT - BELL_PX) / 2.0
 	_dock.add_theme_stylebox_override("panel", _dock_style)
+	_dock.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_dock.draw.connect(_paint_sheet.bind(_dock))
 	_dock.gui_input.connect(_on_dock_input)
 	_dock.mouse_entered.connect(func() -> void:
 		_dock_hover = true
@@ -402,14 +434,105 @@ func _build_ui() -> void:
 		bell.root.gui_input.connect(_on_icon_input.bind(tone))
 		icons.add_child(bell.root)
 		_bells[tone] = bell
-	_refresh_bells()
-	_refresh_pen()
+	_apply_look()
+	UiPrefs.dock_ds2_changed.connect(func(_on: bool) -> void: _apply_look())
 
 	_timer = Timer.new()
 	_timer.one_shot = true
 	_timer.timeout.connect(_on_timer)
 	add_child(_timer)
 	_queue_fit()
+
+
+# ── Look: v2, or DS2 behind UiPrefs.use_dock_ds2 ────────────────────────────────────────
+
+## Dresses the dock, the slide-out, the icons and the kept rows in the look the switch asks for. What the dock
+## holds and how it behaves are the same in both.
+func _apply_look() -> void:
+	_ds2 = UiPrefs.use_dock_ds2
+	_dock.add_theme_stylebox_override("panel", _bare_copy(_dock_style) if _ds2 else _dock_style)
+	var board := StyleBoxEmpty.new()
+	board.content_margin_left = BOARD_EDGE
+	board.content_margin_right = BOARD_EDGE
+	board.content_margin_top = BOARD_EDGE + CLIP_ROOM
+	board.content_margin_bottom = BOARD_EDGE + TUCK
+	_panel.add_theme_stylebox_override("panel", board if _ds2 else _panel_style)
+	_dock.self_modulate = Color.WHITE
+	for cell: Dictionary in [_pen] + _bells.values():
+		if cell.is_empty():
+			continue
+		if _ds2 and not cell.has("raised"):
+			var raised := Parts.raised("dock_icon_pen" if cell == _pen else "dock_icon_bell", BELL_PX)
+			raised.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			(cell.clip as Control).add_child(raised)
+			cell["raised"] = raised
+		if cell.has("raised"):
+			(cell.raised as Control).visible = _ds2
+		(cell.tex as Control).visible = not _ds2
+		var pill := (cell.pill as PanelContainer).get_theme_stylebox("panel") as StyleBoxFlat
+		if not cell.has("pill_colour"):
+			cell["pill_colour"] = pill.bg_color
+		# DS2: the count on a navy pill with a thin cream rim, as a good's quantity is.
+		pill.bg_color = NAVY_PRINT if _ds2 else cell.pill_colour
+		pill.border_color = DS.PALETTE.ACCENT
+		pill.set_border_width_all(1 if _ds2 else 0)
+		(cell.count as Label).add_theme_color_override("font_color", DS.PALETTE.TEXT if _ds2 else NAVY_PRINT)
+	if _ds2:
+		_empty.add_theme_font_override("font", Parts.FONT_BODY)
+	else:
+		_empty.remove_theme_font_override("font")
+	_restyle_rows()
+	_refresh_bells()
+	_refresh_pen()
+	_update_dock_rim()
+	_dock.queue_redraw()
+	_panel.queue_redraw()
+	_queue_fit()
+
+
+## A stylebox with `from`'s content margins and nothing drawn: the sheet is painted under it.
+func _bare_copy(from: StyleBox) -> StyleBoxEmpty:
+	var bare := StyleBoxEmpty.new()
+	bare.content_margin_left = from.content_margin_left
+	bare.content_margin_right = from.content_margin_right
+	bare.content_margin_top = from.content_margin_top
+	bare.content_margin_bottom = from.content_margin_bottom
+	return bare
+
+
+## DS2: the brushed silver pad behind the dock; the briefing's clipboard, hardboard and steel clip,
+## behind the slide-out's slips.
+func _paint_sheet(ci: Control) -> void:
+	if not _ds2:
+		return
+	if ci == _dock:
+		Nine.paint(ci, SHEET, Rect2(Vector2.ZERO, ci.size).grow(SHEET_MARGIN / CAPTURE_SCALE),
+			(SHEET_MARGIN + SHEET_CORNER) * TEXELS_PER_PIXEL / CAPTURE_SCALE)
+		return
+	Brief.crop_v(ci, Brief.tex("brief_board"), Rect2(Vector2.ZERO, ci.size), Brief.BOARD_MARGIN, Brief.BOARD_FOOT)
+	var clip := Brief.tex("brief_clip")
+	var at := clip.get_size() / TEXELS_PER_PIXEL * CLIP_SCALE
+	ci.draw_texture_rect(clip, Rect2(Vector2((ci.size.x - at.x) * 0.5, -6.0), at), false)
+
+
+## Rebuilds the kept rows in the current look, each keeping what it says and what it knows about itself.
+func _restyle_rows() -> void:
+	for old: Node in _rows.get_children():
+		var style := str(TONE_STYLE.get(str(old.get_meta("tone", "green")), "success"))
+		var action: Callable = old.get_meta("on_click", Callable())
+		var row: PanelContainer = _make_toast(str(old.get_meta("toast_message", "")), style, action.is_valid())
+		for key: StringName in old.get_meta_list():
+			# The tinge is the look's own: the new row has set its own, or has none.
+			if key != &"tinge":
+				row.set_meta(key, old.get_meta(key))
+		if action.is_valid():
+			row.gui_input.connect(_on_row_input.bind(row))
+		row.visible = (old as Control).visible
+		var at := old.get_index()
+		_rows.remove_child(old)
+		old.queue_free()
+		_rows.add_child(row)
+		_rows.move_child(row, at)
 
 
 ## An icon cell: the art (clipped so the TextureRect keeps its box) with a count pill on its
@@ -485,6 +608,13 @@ func _refresh_pen() -> void:
 
 func _paint_icon(cell: Dictionary, n: int, colour: Color, tooltip: String, pulse: bool) -> void:
 	(cell.tex as TextureRect).modulate = colour if n > 0 else Color(colour, 0.4)
+	if cell.has("raised"):
+		# Raised: lit in its colour with something to count, the same colour unlit with nothing. The pen, cream
+		# on the navy dock, is printed in navy on the silver pad.
+		if cell == _pen:
+			(cell.raised as Control).modulate = NAVY_PRINT if n > 0 else PEN_UNLIT
+		else:
+			(cell.raised as Control).modulate = colour if n > 0 else Color(colour.r * 0.5, colour.g * 0.5, colour.b * 0.5)
 	var pill: PanelContainer = cell.pill
 	pill.visible = n > 0
 	var text := str(n) if n < 100 else "99+"
@@ -510,7 +640,11 @@ func _pulse(cell: Dictionary) -> void:
 
 ## The dock's rim lights while the mouse is on it, and while the slide-out it opened is up.
 func _update_dock_rim() -> void:
-	_dock_style.border_color = DOCK_BORDER_HOT if _dock_hover or (_open and _all) else DOCK_BORDER
+	var hot := _dock_hover or (_open and _all)
+	_dock_style.border_color = DOCK_BORDER_HOT if hot else DOCK_BORDER
+	if _ds2:
+		# The silver catches a little more light. It is bright already, so only a little.
+		_dock.self_modulate = Color(1.05, 1.05, 1.05) if hot else Color.WHITE
 
 
 ## Opened from the dock the slide-out takes the mouse (it scrolls, and hovering holds it up);
@@ -622,6 +756,8 @@ func _on_row_input(event: InputEvent, row: Control) -> void:
 
 ## A row. A link row takes its own clicks (and a pointing hand) and ends in a chevron.
 func _make_toast(message: String, toast_type: String, link: bool = false) -> PanelContainer:
+	if _ds2:
+		return _make_module_row(message, toast_type, link)
 	var panel := PanelContainer.new()
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP if link else Control.MOUSE_FILTER_IGNORE
 	if link:
@@ -678,6 +814,61 @@ func _make_toast(message: String, toast_type: String, link: bool = false) -> Pan
 	return panel
 
 
+## DS2: a row as a slip on the clipboard. The cream sheet tinged in its tone, its words printed in navy, and a
+## link's chevron.
+func _make_module_row(message: String, toast_type: String, link: bool) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP if link else Control.MOUSE_FILTER_IGNORE
+	if link:
+		panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	panel.size_flags_horizontal = Control.SIZE_FILL
+	var pad := StyleBoxEmpty.new()
+	pad.content_margin_left = ROW_PAD_X
+	pad.content_margin_right = ROW_PAD_X
+	pad.content_margin_top = 9
+	pad.content_margin_bottom = 9
+	panel.add_theme_stylebox_override("panel", pad)
+	panel.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	# The tinge is the slip's own: its print keeps its navy.
+	panel.self_modulate = SLIP_TINGE.get(toast_type, SLIP_TINGE["success"])
+	panel.set_meta("tinge", toast_type if SLIP_TINGE.has(toast_type) else "success")
+	panel.draw.connect(func() -> void:
+		Brief.draw_nine(panel, Brief.tex("sheet_white"), Rect2(Vector2.ZERO, panel.size), Brief.LETTER_MARGIN, SLIP_CORNER))
+	var countdown := RowCountdown.new()
+	countdown.name = "Countdown"
+	countdown.pad = Vector2(ROW_PAD_X, 9)
+	countdown.sweep = NAVY_PRINT
+	countdown.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(countdown)
+	var line := HBoxContainer.new()
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_theme_constant_override("separation", 6)
+	panel.add_child(line)
+	var label := Label.new()
+	label.name = "Words"
+	label.text = message
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.add_theme_font_override("font", Parts.FONT_BODY)
+	label.add_theme_font_size_override("font_size", 15)
+	label.add_theme_color_override("font_color", NAVY_PRINT)
+	label.custom_minimum_size.x = TOAST_WIDTH - 2.0 * BOARD_EDGE - 2.0 * ROW_PAD_X - SCROLLBAR_ROOM - (LINK_CHEVRON_W if link else 0.0)
+	line.add_child(label)
+	if link:
+		var chevron := Label.new()
+		chevron.name = "Chevron"
+		chevron.text = "›"
+		chevron.custom_minimum_size.x = LINK_CHEVRON_W - 6.0
+		chevron.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		chevron.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		chevron.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		chevron.add_theme_color_override("font_color", NAVY_PRINT)
+		chevron.add_theme_font_size_override("font_size", 22)
+		line.add_child(chevron)
+	return panel
+
+
 ## Opened by itself the slide-out shows the rows it hasn't shown yet, at most MAX_TOASTS:
 ## the priority rows first, then the newest others. Opened from the dock it shows every kept
 ## row. Returns how many rows show.
@@ -723,7 +914,7 @@ func _open_slide(all_rows: bool, tone: String = "") -> void:
 	_fit()
 	if not _open:
 		_open = true
-		_panel.position.y = _clip.size.y
+		_panel.position.y = _parked_y()
 		_tween_panel_to(0.0)
 	_update_dock_rim()
 	_scroll_to_newest.call_deferred()
@@ -838,6 +1029,16 @@ func _hovered() -> bool:
 	return false
 
 
+## Where the slide-out waits behind the dock. The clipboard's render carries shadow room above its top edge, so
+## in DS2 it parks that much lower and nothing of it shows over the dock.
+func _parked_y() -> float:
+	return _clip.size.y + _park_room()
+
+
+func _park_room() -> float:
+	return 14.0 if _ds2 else 0.0
+
+
 func _tween_panel_to(y: float) -> void:
 	if _slide != null and _slide.is_valid():
 		_slide.kill()
@@ -867,7 +1068,7 @@ func _fit() -> void:
 	_clip.offset_top = _clip.offset_bottom - h
 	_panel.size = Vector2(TOAST_WIDTH, h)
 	if not _open and not (_slide != null and _slide.is_valid() and _slide.is_running()):
-		_panel.position.y = h
+		_panel.position.y = h + _park_room()
 
 
 # ── Where toasts come from ────────────────────────────────────────────────────

@@ -123,20 +123,22 @@ func _test_global_switch_counts_and_checks_every_tile_before_changing() -> void:
 	cleanup()
 
 
-## Leaving Local Suppliers asks one card whose words fit the side and destination: a stockpile warns about the
+## Leaving Local Suppliers asks one sheet whose words fit the side and destination: a stockpile warns about the
 ## surplus and promises no port sale, the market names transport and port fees.
 func _test_supplier_change_wording() -> void:
 	var confirm := preload("res://scripts/logistics_confirmation.gd")
 	var coal := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
 	var to_stock: String = confirm.message_for({"side": "output", "destination": "stockpile", "good": coal})
-	_check(to_stock.contains("Stockpiles may accumulate") and not to_stock.contains("port"),
-		"supplier change: output to a stockpile warns about the surplus and names no port")
-	_check(str(confirm.message_for({"side": "output", "destination": "market", "good": coal})).contains("port fees"),
-		"supplier change: output to the market names the port fees")
-	_check(str(confirm.message_for({"side": "input", "destination": "stockpile"})).contains("source of your inputs")
-		and confirm.title_for({"side": "input"}) == "Change supplier" and confirm.title_for({"side": "output"}) == "Change destination",
-		"supplier change: inputs change their supplier, outputs their destination")
-	for text: String in [to_stock, str(confirm.message_for({}))]:
+	_check(to_stock.contains("Stockpiles may accumulate") and to_stock.contains(confirm.STOCKPILE_LINK) and not to_stock.contains("port"),
+		"supplier change: output to a stockpile says it will pile up, points at the Stockpile tab, and names no port sale")
+	_check(confirm.message_for({"side": "output", "destination": "tile"}) == to_stock, "supplier change: another tile's stockpile reads the same")
+	var to_market: String = confirm.message_for({"side": "output", "destination": "market", "good": coal})
+	_check(to_market.contains("port fees"), "supplier change: output to the market names the port fees")
+	_check(str(confirm.message_for({"side": "input", "destination": "stockpile"})).contains("source of your inputs"),
+		"supplier change: an input change names the source of the inputs")
+	_check(confirm.title_for({"side": "output"}) == "Change destination" and confirm.title_for({"side": "input"}) == "Change supplier",
+		"supplier change: outputs change a destination, inputs a supplier")
+	for text: String in [to_stock, to_market, str(confirm.message_for({}))]:
 		_check(not text.contains(" — ") and not text.contains(";"), "supplier change: plain copy, no dashes or semicolons")
 
 
@@ -160,28 +162,43 @@ func _test_supplier_change_one_dialog() -> void:
 		cleanup()
 		return
 	preload("res://scripts/logistics_confirmation.gd").skip_confirmation = false
-	var dialog: Control = null
-	for destination: String in ["stockpile", "market"]:
-		panel.call("_request_logistics_mode", building, "output", "managed", Callable(), gid, destination, true)
-		await get_tree().process_frame
-		dialog = panel.find_child("TransportSupplierConfirmation", true, false) as Control
-		var words := ""
-		if dialog != null:
-			for label: Node in dialog.find_children("*", "Label", true, false):
-				words += (label as Label).text
-		var expect := "Stockpiles may accumulate" if destination == "stockpile" else "port fees"
-		_check(dialog != null and words.contains(expect) and words.contains("Change destination") and service.buys_output(iid, gid)
-			and dialog.find_child("ConfirmSupplierChange", true, false) != null and dialog.find_child("CancelSupplierChange", true, false) != null,
-			"supplier change: to the %s it asks once on the card, and waits" % destination)
-		if destination == "stockpile" and dialog != null:
-			(dialog.find_child("CancelSupplierChange", true, false) as Button).pressed.emit()
-			await get_tree().process_frame
-			_check(service.buys_output(iid, gid) and panel.find_child("TransportSupplierConfirmation", true, false) == null,
-				"supplier change: Cancel closes the card and changes nothing")
+	panel.call("_request_logistics_mode", building, "output", "managed", Callable(), gid, "market", true)
+	await get_tree().process_frame
+	var dialog := panel.find_child("TransportSupplierConfirmation", true, false)
+	var words := ""
 	if dialog != null:
-		(dialog.find_child("ConfirmSupplierChange", true, false) as Button).pressed.emit()
+		words = str((dialog.find_child("Message", true, false) as RichTextLabel).get_meta("plain", ""))
+	_check(dialog != null and words.contains("port fees") and service.buys_output(iid, gid)
+		and dialog.find_child("Sheet", true, false) != null and str(dialog.get("title_text")) == "Change destination",
+		"supplier change: to the market the DS2 sheet asks once, naming the port fees, and waits")
+	if dialog != null:
+		dialog.emit_signal("canceled")
 		await get_tree().process_frame
-		_check(not service.buys_output(iid, gid), "supplier change: Confirm makes the change")
+	_check(service.buys_output(iid, gid) and panel.find_child("TransportSupplierConfirmation", true, false) == null, "supplier change: cancelled, nothing changes and the sheet goes")
+	# To a stockpile: the Stockpile tab is a link to the building's tile, and pressing it changes nothing.
+	panel.call("_request_logistics_mode", building, "output", "managed", Callable(), gid, "stockpile", true)
+	await get_tree().process_frame
+	var sheet := panel.find_child("TransportSupplierConfirmation", true, false)
+	var asked: Array = []
+	var note := func(tile: String) -> void: asked.append(tile)
+	MatchState.tile_stockpile_requested.connect(note)
+	_check(sheet != null and str(sheet.call("message_bbcode")).contains("[url=") and str(sheet.get("link_tile")) == str(building.get("tile_id", "")),
+		"supplier change: to a stockpile the Stockpile tab is a link to the building's tile")
+	if sheet != null:
+		sheet.call("open_link")
+		await get_tree().process_frame
+	MatchState.tile_stockpile_requested.disconnect(note)
+	sheet = panel.find_child("TransportSupplierConfirmation", true, false)
+	_check(asked == [str(building.get("tile_id", ""))] and service.buys_output(iid, gid) and sheet != null,
+		"supplier change: the link opens that tile's Stockpile tab, changes nothing and leaves the sheet up")
+	var confirm_key := sheet.find_child("ConfirmKey", true, false) as Control
+	var cancel_key := sheet.find_child("CancelKey", true, false) as Control
+	_check(str(sheet.get("confirm_text")) == "Confirm" and cancel_key.size.x < confirm_key.size.x
+		and cancel_key.global_position.x + cancel_key.size.x + 40.0 < confirm_key.global_position.x,
+		"supplier change: a smaller Cancel and Confirm at the two ends of the row")
+	sheet.emit_signal("confirmed")
+	await get_tree().process_frame
+	_check(not service.buys_output(iid, gid), "supplier change: Confirm after the link still makes the change")
 	panel.queue_free()
 	await get_tree().process_frame
 	cleanup()

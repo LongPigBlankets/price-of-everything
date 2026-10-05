@@ -1898,7 +1898,7 @@ func queue_sell(source_tile: String, goods_qtys: Dictionary, log_oneoff: bool = 
 	var result := MarketState.execute_sale(source_tile, goods_qtys, {"log_oneoff": log_oneoff})
 	if result.is_empty():
 		return {}
-	Production.record_external_transport_cost(float(result.get("transport_cost", 0.0)), result.get("transport_breakdown", {}))
+	Production.record_external_transport_cost(float(result.get("transport_cost", 0.0)), result.get("transport_breakdown", {}), goods_qtys)
 	if not bool(result.get("deferred", false)):
 		var sale_record: Dictionary = result.get("sale_record", {})
 		record_tile_sale(source_tile, int(result.get("total_qty", 0)), float(result.get("total_revenue", 0.0)))
