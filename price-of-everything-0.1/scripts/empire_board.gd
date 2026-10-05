@@ -114,6 +114,14 @@ const _FOAM := Color(0.97, 0.97, 0.93, 0.85)
 const _BANK := Color("c9c08f")       # a river's bank: pale, between the grass and the sand
 const _MOUTH := 4.0                  # how far past the shoreline a river runs on into the sea, over the foam
 const _MOUTH_SHORE_REACH := 8.0      # a shore edge this near where a river leaves the land is the one it crosses
+## A river's estuary: how far up from the shore it starts to widen (in river widths), how wide it is at the
+## shore and where it fans out into the shallows (in river widths), how far it runs on into the sea, and how
+## many steps each stretch is drawn in.
+const _ESTUARY_UP := 4.0
+const _ESTUARY_SHORE_W := 2.6
+const _ESTUARY_SEA_W := 4.2
+const _ESTUARY_OUT := 22.0
+const _ESTUARY_STEPS := 10
 const _INK_SOFT := Color(0.18, 0.23, 0.35, 0.55)
 ## A tile slopes down to a lower neighbour over this much of its own ground.
 const SLOPE_W := 34.0
@@ -836,6 +844,8 @@ func _build_ground(rivers: Dictionary) -> void:
 					for side in [-1.0, 1.0]:
 						_stroke_to(verts, cols, idx, _beside(pts, (half_w + 1.4) * float(side)), 3.0, h, _BANK, run["cuts"], 0.0)
 						_stroke_to(verts, cols, idx, _beside(pts, half_w * float(side)), 0.9, h, _INK_SOFT, run["cuts"], 0.0)
+					for cut in run["cuts"]:
+						_estuary(verts, cols, idx, pts, cut, half_w * 2.0, h, water, top_poly)
 		# The plate's rim, inked where it ends in a cliff.
 		for rim_edge in rims:
 			_stroke(verts, cols, idx, PackedVector2Array([rim_edge[0], rim_edge[1]]), _INK_W * 1.3, float(rim_edge[2]), _INK)
@@ -1122,6 +1132,82 @@ static func _mouth(rel: Dictionary, dry: Vector2, wet: Vector2, coast: Array, wi
 	# Far enough on that the whole width of the river reaches the line it is cut on.
 	var reach := minf((_MOUTH + width) / maxf(n.dot(dir), 0.3), at.distance_to(wet))
 	return [at + dir * reach, [at, n]]
+
+
+## Where a river meets the sea: over its last few widths it flares out, its banks turning to wet sand and its
+## water paling into the shallows' colour, and at the shoreline it fans on into the sea and fades there.
+## `cut` is the mouth ([shore point, outward normal]); `pts` the river's run; `width` its width.
+static func _estuary(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
+		pts: PackedVector2Array, cut: Array, width: float, h: float, water: Color, top_poly: PackedVector2Array) -> void:
+	var at: Vector2 = cut[0]
+	var n: Vector2 = cut[1]
+	# The run from the shore upstream: start at the end nearer the mouth, step in to the shore point.
+	var path := PackedVector2Array(pts)
+	if path[path.size() - 1].distance_to(at) < path[0].distance_to(at):
+		path.reverse()
+	var up := PackedVector2Array([at])
+	for p in path:
+		if (p - at).dot(n) < 0.0:           # on the land side of the shore
+			up.append(p)
+	if up.size() < 2:
+		return
+	var reach := width * _ESTUARY_UP
+	# Stations from upstream (t = 0) to the shore (t = 1), then out to sea (t = 2): centre, way and width.
+	var stations: Array = []
+	for k in range(_ESTUARY_STEPS + 1):
+		var t := float(k) / float(_ESTUARY_STEPS)
+		var d := reach * (1.0 - t)
+		var c := _point_along(up, d)
+		var dir := (_point_along(up, maxf(d - 1.0, 0.0)) - _point_along(up, d + 1.0)).normalized()
+		var w := width * lerpf(1.0, _ESTUARY_SHORE_W, smoothstep(0.0, 1.0, t))
+		stations.append([c, dir if dir != Vector2.ZERO else n, w, t])
+	for k in range(1, _ESTUARY_STEPS + 1):
+		var t := float(k) / float(_ESTUARY_STEPS)
+		stations.append([at + n * _ESTUARY_OUT * t, n, width * lerpf(_ESTUARY_SHORE_W, _ESTUARY_SEA_W, t), 1.0 + t])
+	var shallows := water.lightened(0.3)
+	for k in range(stations.size() - 1):
+		var a: Array = stations[k]
+		var b: Array = stations[k + 1]
+		if not Geometry2D.is_point_in_polygon(((a[0] as Vector2) + (b[0] as Vector2)) * 0.5, top_poly):
+			continue
+		var ta := float(a[3])
+		var tb := float(b[3])
+		# The banks turn to the beach's sand as they open out, solid, from halfway down to the shore.
+		if ta >= 0.5 and tb <= 1.0:
+			_estuary_quad(verts, cols, idx, a, b, 1.0, 3.0, h,
+				_BANK.lerp(_SAND, smoothstep(0.5, 1.0, ta)), _BANK.lerp(_SAND, smoothstep(0.5, 1.0, tb)))
+		_estuary_quad(verts, cols, idx, a, b, 1.0, 0.0, h, _estuary_colour(water, shallows, ta), _estuary_colour(water, shallows, tb))
+		# The river's paler middle runs on into the mouth and pales with it.
+		var middle := water.lightened(0.16)
+		_estuary_quad(verts, cols, idx, a, b, 0.45, 0.0, h, _estuary_colour(middle, shallows, ta), _estuary_colour(middle, shallows, tb))
+
+
+## The estuary's water at `t`: the river's own colour upstream, paling to the shallows' at the shore, then
+## fading out over the sea.
+static func _estuary_colour(water: Color, shallows: Color, t: float) -> Color:
+	if t <= 1.0:
+		return water.lerp(shallows, smoothstep(0.35, 1.0, t))
+	return Color(shallows, 1.0 - smoothstep(1.0, 2.0, t))
+
+
+## One step of the estuary between two stations ([centre, way, width, t]), `scale` times as wide plus `pad`.
+static func _estuary_quad(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
+		a: Array, b: Array, scale: float, pad: float, h: float, col_a: Color, col_b: Color) -> void:
+	var sa: Vector2 = (a[1] as Vector2).orthogonal() * (float(a[2]) * 0.5 * scale + pad)
+	var sb: Vector2 = (b[1] as Vector2).orthogonal() * (float(b[2]) * 0.5 * scale + pad)
+	_quad_cols(verts, cols, idx, [iso((a[0] as Vector2) + sa, h), iso((b[0] as Vector2) + sb, h),
+		iso((b[0] as Vector2) - sb, h), iso((a[0] as Vector2) - sa, h)], [col_a, col_b, col_b, col_a])
+
+
+## The point `d` along a polyline from its start (its end when it is shorter).
+static func _point_along(line: PackedVector2Array, d: float) -> Vector2:
+	var left := d
+	for i in range(line.size() - 1):
+		var seg := line[i].distance_to(line[i + 1])
+		if left <= seg and seg > 0.0:
+			return line[i].lerp(line[i + 1], left / seg)
+		left -= seg
+	return line[line.size() - 1]
 
 
 ## A stroke cut off at each of `cuts` ([point, outward normal]) a distance `reach` beyond it,
