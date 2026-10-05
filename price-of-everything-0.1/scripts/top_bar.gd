@@ -167,6 +167,10 @@ var _quest_v31_animating := false   # v3.1 — a width tween owns _quest_btn.siz
 var _quest_width_anim: Tween
 ## DS2: the mission as a key and a piston (scripts/ds2/mission_slot.gd), in place of the icon and text.
 var _mission_slot: Control
+## DS2: the plate that runs down out of the bar under the slot when a mission completes.
+var _mission_plate: Control
+var _completed_title := ""
+var _completed_reward := ""
 var _victory_score: Label
 var _victory_target: Label   # "/ N" — the rising win threshold for the current turn
 var _victory_ratio: Label    # v3.1 — replaces the meters + two-line score/target
@@ -1367,7 +1371,9 @@ func _build_quest() -> void:
 
 ## A mission landed. The toast MiniQuest raises says WHAT happened; the module — flashing up on
 ## the bar — says where. See _celebrate_mission for the sequence itself.
-func _on_quest_mission_completed(kind: String, _mission_title: String, _reward: String) -> void:
+func _on_quest_mission_completed(kind: String, mission_title: String, reward: String) -> void:
+	_completed_title = mission_title
+	_completed_reward = reward
 	_refresh_quest()   # the module may only now be earning its place on the bar
 	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
 		return
@@ -1512,6 +1518,7 @@ const DS2_READOUT_GAP := 8.0
 ## The bar's lamps in DS2: Building Detail's pilot lamp, at its diagnostics rows' scale.
 const Ds2Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const MissionSlot := preload("res://scripts/ds2/mission_slot.gd")
+const MissionCompletePlate := preload("res://scripts/ds2/mission_complete_plate.gd")
 const MissionsPanel := preload("res://scripts/missions_ds2/missions_panel.gd")
 const DS2_LAMP_SCALE := 0.72
 const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
@@ -2750,10 +2757,17 @@ func _celebrate_mission_slot() -> void:
 	if _fly_open_id == "quest" and _quest_auto_opened:
 		_close_fly()
 	_refresh_quest()   # the piston shows the finished mission's count in full
+	# The plate runs down under the slot; the piston holds at the end of its stroke until the plate goes back.
+	if _mission_plate == null or not is_instance_valid(_mission_plate):
+		_mission_plate = MissionCompletePlate.new()
+		add_child(_mission_plate)
+	var slot_rect: Rect2 = _mission_slot.get_global_rect()
+	var runs: float = _mission_plate.call("play", _completed_title, _completed_reward, slot_rect.get_center().x,
+		global_position.y + size.y - EDGE_H)
 	_mission_slot.call("celebrate", func() -> void:
 		_quest_celebrating = false
 		_quest_celebrating_kind = ""
-		_refresh_quest())
+		_refresh_quest(), maxf(0.35, runs - MissionCompletePlate.RETRACT_SEC - 0.55))
 
 
 ## Stage 1 of the completion sequence: the module's plate fills gold. No rim to touch — the

@@ -50,13 +50,19 @@ func _ready() -> void:
 	await _shot("count")
 	# The completion, timed against the slot's own tween.
 	MiniQuest.done["steel"] = [true, true]
+	bar.set("_completed_title", "Build a steel furnace")
+	bar.set("_completed_reward", "+10% coal and iron ore output")
 	bar.call("_celebrate_mission", "steel")
-	await _wait(0.35)
-	await _shot("stroke")
-	await _wait(0.3)
-	await _shot("full")
-	await _wait(1.2)
-	await _shot("next")
+	await _wait(0.2)
+	await _shot("plate_dropping", 260.0)
+	await _wait(0.45)
+	await _shot("full", 260.0)
+	await _wait(2.6)
+	await _shot("plate_holding", 260.0)
+	await _wait(2.2)
+	await _shot("plate_retracting", 260.0)
+	await _wait(1.0)
+	await _shot("next", 260.0)
 	# A title longer than the key allows: cut short at the cap.
 	var slot: Control = bar.get("_mission_slot")
 	bar.get("_quest_title").text = "Ship your coal from the new mine to every tile that burns it"
