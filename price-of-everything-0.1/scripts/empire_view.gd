@@ -155,11 +155,13 @@ func _build_ui() -> void:
 	_suppliers_keys.add_child(_suppliers_outputs)
 	_motion_key = CreamKey.make("GoodsMotionKey", "", "", 56.0)
 	_motion_key.z_index = 200
+	# Beside the board's visibility key, above the updates.
+	var Vis := preload("res://scripts/empire_board_visibility.gd")
 	_motion_key.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	_motion_key.offset_left = 16
-	_motion_key.offset_right = 72
-	_motion_key.offset_top = -150
-	_motion_key.offset_bottom = -150 + CreamKey.height_for()
+	_motion_key.offset_left = Vis.MARGIN + Vis.KEY_SIDE + 10.0
+	_motion_key.offset_right = _motion_key.offset_left + 56.0
+	_motion_key.offset_bottom = -Vis.BOTTOM_CLEAR
+	_motion_key.offset_top = -Vis.BOTTOM_CLEAR - CreamKey.height_for()
 	var glyph := Control.new()
 	glyph.name = "Glyph"
 	glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE

@@ -250,6 +250,11 @@ var _fitted := false
 var _clock := 0.0
 ## Goods on the move along their routes, or (false) the board at rest: each good on the building that makes it.
 var animate_goods := true
+## Moving goods: how far around a good its group reaches (in token widths), how alike two headings must be to
+## count as one way, and how faint a good gets while it crosses a bigger group.
+const MOVING_GROUP_REACH := 1.6
+const MOVING_SAME_WAY := 0.5
+const MOVING_FADED := 0.08
 var _press_pos := Vector2.INF
 var _dragging := false
 ## Local Suppliers' depot on hover, under its name, as lines the card can hold.
@@ -2682,41 +2687,15 @@ func _draw_tokens(layer: Control) -> void:
 		_draw_fog(layer, view)
 		_draw_lights(layer, view)
 	_draw_smoke(layer, view)
-	# Every icon of a good is drawn here, over the light and the mist, and none over another.
-	# Shipments on their way are placed first, then the pylons' power, then the pipes' signs;
-	# the tokens that only show a route's traffic give way to all of them.
+	# Every icon of a good is drawn here, over the light and the mist. What stands still is placed first: the
+	# pylons' power, then the pipes' signs, a sign whose place is taken on a taller post. Then the goods on the
+	# move, each where its route puts it. Where moving goods meet, the smaller group fades as they cross and
+	# comes back on the other side (_moving_alpha); none is pushed aside or dropped.
 	var placed: Array = []
 	var tiles: Dictionary = _model.get("tiles", {})
 	var goods: bool = show["goods"]
 	if goods and not animate_goods:
 		_draw_made(layer, view, box, placed)
-	for f in _flows:
-		if (f["live"] as Array).is_empty() or str(f["style"]) != "goods" or not goods or not animate_goods:
-			continue
-		var total := float(f["total"])
-		for sh in f["live"]:
-			var duration := float(sh["duration"])
-			var done := duration - float(sh["remaining"])
-			var creep := 0.0 if bool(sh["waiting"]) else smoothstep(0.0, 1.0, fmod(_clock / _LIVE_CREEP_SECS, 1.0))
-			var at := _along(f, clampf((done + creep) / duration, 0.0, 1.0) * total) * _zoom + _offset
-			if not view.has_point(at):
-				continue
-			var big := box * 1.12
-			var text := str(int(sh["qty"]))
-			var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-			# Two shipments at one place on a route stand side by side.
-			var room := Rect2(at - Vector2(big, big) * 0.5, Vector2(big, big + 17.0)).grow(1.5)
-			var tries := 0
-			while _taken(placed, room) and tries < 6:
-				room.position.x += big + 3.0
-				at.x += big + 3.0
-				tries += 1
-			placed.append(room)
-			_token(layer, at, big, f["icon"])
-			var pill := Rect2(at + Vector2(-w * 0.5 - 5.0, box * 0.5), Vector2(w + 10.0, 16.0))
-			layer.draw_rect(pill, _NAVY)
-			layer.draw_string(font, pill.position + Vector2(5.0, 12.0), text,
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DS.PALETTE.TEXT)
 	# Power is shown on the pylons, not as something travelling.
 	for s in _standing:
 		if str(s["kind"]) != "pylon":
@@ -2728,7 +2707,6 @@ func _draw_tokens(layer: Control) -> void:
 		if icon != null and view.has_point(at) and not _taken(placed, room):
 			placed.append(room)
 			_token(layer, at, box * 0.9, icon)
-	# A sign whose place is taken stands on a taller post.
 	var plate := maxf(_SIGN_PLATE * _zoom, _SIGN_MIN_PX)
 	for sg in _signs:
 		var foot: Vector2 = (sg["foot"] as Vector2) * _zoom + _offset
@@ -2745,12 +2723,36 @@ func _draw_tokens(layer: Control) -> void:
 			continue
 		placed.append(room.grow(plate * 0.12))
 		_draw_sign(layer, foot, room, icons)
-	for f in _flows:
+	# The goods on the move: [{p, dir, size, icon, qty, rank, flow}].
+	var moving: Array = []
+	for fi in _flows.size():
+		var f: Dictionary = _flows[fi]
 		var total := float(f["total"])
 		var style := str(f["style"])
 		if not animate_goods:
 			break
-		if style == "goods" and (not goods or not (f["live"] as Array).is_empty()):
+		if style == "goods" and not goods:
+			continue
+		if style == "goods" and not (f["live"] as Array).is_empty():
+			# A shipment really in transit, where its turns put it; two at one place stand side by side.
+			var beside: Array = []
+			for sh in f["live"]:
+				var duration := float(sh["duration"])
+				var done := duration - float(sh["remaining"])
+				var creep := 0.0 if bool(sh["waiting"]) else smoothstep(0.0, 1.0, fmod(_clock / _LIVE_CREEP_SECS, 1.0))
+				var d_at := clampf((done + creep) / duration, 0.0, 1.0) * total
+				var at := _along(f, d_at) * _zoom + _offset
+				var big := box * 1.12
+				var room := Rect2(at - Vector2(big, big) * 0.5, Vector2(big, big))
+				var tries := 0
+				while _taken(beside, room) and tries < 6:
+					room.position.x += big + 3.0
+					at.x += big + 3.0
+					tries += 1
+				beside.append(room)
+				if view.has_point(at):
+					moving.append({"p": at, "dir": _dir_at(f, d_at), "size": big, "icon": f["icon"],
+						"qty": int(sh["qty"]), "rank": 1, "flow": fi})
 			continue
 		var d := fmod(_clock * _TOKEN_SPEED + float(f["phase"]), _TOKEN_SPACING)
 		if style != "goods":
@@ -2761,11 +2763,23 @@ func _draw_tokens(layer: Control) -> void:
 				if style == "power":
 					layer.draw_circle(p, clampf(4.0 * _zoom + 1.5, 2.0, 5.0), _CABLE.lightened(0.4))
 				else:
-					var room := Rect2(p - Vector2(box, box) * 0.5, Vector2(box, box))
-					if not _taken(placed, room):
-						placed.append(room)
-						_token(layer, p, box, f["icon"])
+					moving.append({"p": p, "dir": _dir_at(f, d), "size": box, "icon": f["icon"], "qty": -1, "rank": 0, "flow": fi})
 			d += _TOKEN_SPACING if style == "goods" else _PULSE_SPACING
+	var alphas := _moving_alpha(moving, placed, box)
+	for i in moving.size():
+		var m: Dictionary = moving[i]
+		var a: float = alphas[i]
+		if a <= 0.01:
+			continue
+		var at: Vector2 = m["p"]
+		_token(layer, at, float(m["size"]), m["icon"], a)
+		if int(m["qty"]) >= 0:
+			var text := str(int(m["qty"]))
+			var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+			var pill := Rect2(at + Vector2(-w * 0.5 - 5.0, box * 0.5), Vector2(w + 10.0, 16.0))
+			layer.draw_rect(pill, Color(_NAVY, a))
+			layer.draw_string(font, pill.position + Vector2(5.0, 12.0), text,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(DS.PALETTE.TEXT, a))
 	# Cables hang between tiles, so they belong to no one tile's picture.
 	layer.draw_set_transform(_offset, 0.0, Vector2(_zoom, _zoom))
 	for c in _cables:
@@ -2925,12 +2939,61 @@ func _draw_made(layer: Control, view: Rect2, box: float, placed: Array) -> void:
 			_token(layer, at, box, Model.GoodIcons.texture_for(str(goods_made[i]), Model._internal_name(str(goods_made[i]))))
 
 
-func _token(layer: Control, p: Vector2, box: float, icon: Texture2D) -> void:
-	layer.draw_circle(p, box * 0.5 + 1.5, _NAVY, true, -1.0, true)
-	layer.draw_circle(p, box * 0.5, _CREAM, true, -1.0, true)
+func _token(layer: Control, p: Vector2, box: float, icon: Texture2D, alpha: float = 1.0) -> void:
+	layer.draw_circle(p, box * 0.5 + 1.5, Color(_NAVY, _NAVY.a * alpha), true, -1.0, true)
+	layer.draw_circle(p, box * 0.5, Color(_CREAM, _CREAM.a * alpha), true, -1.0, true)
 	if icon != null:
 		var isz := box * 0.74
-		layer.draw_texture_rect(icon, Rect2(p - Vector2(isz, isz) * 0.5, Vector2(isz, isz)), false)
+		layer.draw_texture_rect(icon, Rect2(p - Vector2(isz, isz) * 0.5, Vector2(isz, isz)), false, Color(1, 1, 1, alpha))
+
+
+## The way a route runs at distance `d` along it, on screen (a unit vector).
+func _dir_at(f: Dictionary, d: float) -> Vector2:
+	var total := float(f["total"])
+	var a := _along(f, clampf(d - 2.0, 0.0, total))
+	var b := _along(f, clampf(d + 2.0, 0.0, total))
+	return (b - a).normalized() if a.distance_squared_to(b) > 0.0001 else Vector2.RIGHT
+
+
+## How solid each moving good is drawn. A good's group is the goods near it heading the same way. Where two
+## overlap, the one in the smaller group fades, the more the closer they are, and is whole again once clear;
+## between equal groups a shipment outranks a route's traffic, then the earlier route. A good over a pylon's
+## power or a pipe's sign fades the same way.
+func _moving_alpha(moving: Array, still: Array, box: float) -> Array:
+	var n := moving.size()
+	var crowd: Array = []
+	crowd.resize(n)
+	for i in n:
+		var c := 0
+		for j in n:
+			if (moving[i]["p"] as Vector2).distance_to(moving[j]["p"]) < box * MOVING_GROUP_REACH \
+					and (moving[i]["dir"] as Vector2).dot(moving[j]["dir"]) > MOVING_SAME_WAY:
+				c += 1
+		crowd[i] = c
+	var out: Array = []
+	out.resize(n)
+	for i in n:
+		var a := 1.0
+		var pi: Vector2 = moving[i]["p"]
+		for j in n:
+			if j == i:
+				continue
+			var dist := pi.distance_to(moving[j]["p"])
+			var touch := (float(moving[i]["size"]) + float(moving[j]["size"])) * 0.5
+			if dist >= touch:
+				continue
+			var yields: bool = int(crowd[i]) < int(crowd[j]) or (int(crowd[i]) == int(crowd[j])
+				and (int(moving[i]["rank"]) < int(moving[j]["rank"])
+				or (int(moving[i]["rank"]) == int(moving[j]["rank"]) and int(moving[i]["flow"]) > int(moving[j]["flow"]))))
+			if yields:
+				a = minf(a, lerpf(MOVING_FADED, 1.0, smoothstep(0.35, 1.0, dist / touch)))
+		for r: Rect2 in still:
+			var reach := (r.size.x + float(moving[i]["size"])) * 0.5
+			var dist2 := pi.distance_to(r.get_center())
+			if dist2 < reach:
+				a = minf(a, lerpf(MOVING_FADED, 1.0, smoothstep(0.35, 1.0, dist2 / reach)))
+		out[i] = a
+	return out
 
 
 # ------------------------------------------------------------------ input
