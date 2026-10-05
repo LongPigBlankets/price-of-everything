@@ -255,6 +255,20 @@ static func covers(tile_id: String) -> bool:
 	return tile_index().has(tile_id)
 
 
+## Every settlement that names `tile_id` among its tiles, in key order. Two settlements can share a tile; the
+## first owns it (tile_index), but both may have drawn buildings on it.
+static func settlements_for_tile(tile_id: String) -> Array:
+	var out: Array = []
+	var all := settlements()
+	var keys := all.keys()
+	keys.sort()
+	for key in keys:
+		var value: Variant = all[key]
+		if typeof(value) == TYPE_DICTIONARY and _array(value as Dictionary, "tiles").has(tile_id):
+			out.append(value)
+	return out
+
+
 ## The settlement dictionary that authored `tile_id`, or an empty dictionary.
 static func settlement_for_tile(tile_id: String) -> Dictionary:
 	var key: String = str(tile_index().get(tile_id, ""))

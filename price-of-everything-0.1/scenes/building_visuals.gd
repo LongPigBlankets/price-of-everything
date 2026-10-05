@@ -1029,27 +1029,32 @@ func _authored_decor_local(tile_id: String, coord: Vector2i) -> Array:
 
 ## Authored decorative masses over this tile, in WORLD units — the frame both the placed
 ## footprint and the document itself are already in. Cached: the document does not change
-## during a run, and this is consulted per placement.
+## during a run, and this is consulted per placement. Every settlement that names the tile is read, not only
+## the one that owns it: the fabric draws them all, so a building must see them all to take one over or clear it.
 func _authored_decor_world(tile_id: String) -> Array:
 	if _decor_cache.has(tile_id):
 		return _decor_cache[tile_id]
 	var out: Array = []
 	if AuthoredMap.is_active() and AuthoredMap.covers(tile_id):
-		var settlement := AuthoredMap.settlement_for_tile(tile_id)
-		for record_value in (settlement.get("decor", []) as Array):
-			if typeof(record_value) != TYPE_DICTIONARY:
-				continue
-			var record: Dictionary = record_value
-			for poly in AuthoredFabricPainter.mass_polygons(record):
-				_append_local_poly(out, poly as PackedVector2Array, record, Vector2.ZERO)
-		for record_value in (settlement.get("specials", []) as Array):
-			if typeof(record_value) != TYPE_DICTIONARY:
-				continue
-			var record: Dictionary = record_value
-			_append_local_poly(out, AuthoredSpecialShapes.render_polygon(record), record,
-				Vector2.ZERO)
+		for settlement_value in AuthoredMap.settlements_for_tile(tile_id):
+			_append_settlement_decor(out, settlement_value as Dictionary)
 	_decor_cache[tile_id] = out
 	return out
+
+
+func _append_settlement_decor(out: Array, settlement: Dictionary) -> void:
+	for record_value in (settlement.get("decor", []) as Array):
+		if typeof(record_value) != TYPE_DICTIONARY:
+			continue
+		var record: Dictionary = record_value
+		for poly in AuthoredFabricPainter.mass_polygons(record):
+			_append_local_poly(out, poly as PackedVector2Array, record, Vector2.ZERO)
+	for record_value in (settlement.get("specials", []) as Array):
+		if typeof(record_value) != TYPE_DICTIONARY:
+			continue
+		var record: Dictionary = record_value
+		_append_local_poly(out, AuthoredSpecialShapes.render_polygon(record), record,
+			Vector2.ZERO)
 
 
 func _append_local_poly(out: Array, poly: PackedVector2Array, record: Dictionary,
@@ -4485,7 +4490,7 @@ const INK_ART_KEY := {
 	"power_plant": "power_plant", "water_pump": "water_pump", "mine": "mine",
 	"solar_farm": "solar_farm",
 	"onshore_wind_farm": "wind_farm", "offshore_wind_farm": "wind_farm",
-	"pipes": "pipes", "reinf_pipes": "pipes", "cables": "cables",
+	"pipes": "pipes", "reinf_pipes": "pipes", "cables": "cables", "rails": "rails",
 }
 const MIDCENTURY_COMPOUND_ART := {
 	"furnace": true, "eaf": true, "industrial_factory": true,

@@ -5812,3 +5812,15 @@ func _test_river_layer_is_one_mesh() -> void:
 	MapStyle.set_midcentury(was_mid)
 	inst.queue_free()
 	await get_tree().process_frame
+
+
+## Rails have their own small art, a signal hut by a short run of track, framed as wide as the pipes' cross so
+## the two infrastructure buildings take the same small lot.
+func _test_rails_art_matches_pipework_lot() -> void:
+	var visuals := preload("res://scenes/building_visuals.gd")
+	var ink := preload("res://scripts/ink_building_gen.gd")
+	var rails: Vector2 = ink.level_frame("rails", 3)
+	var pipes: Vector2 = ink.level_frame("pipes", 3)
+	_check(str(visuals.INK_ART_KEY.get("rails", "")) == "rails" and rails.x > 0.0
+		and is_equal_approx(maxf(rails.x, rails.y), maxf(pipes.x, pipes.y)),
+		"rails: own art, framed to the pipework's size (%s vs %s)" % [rails, pipes])

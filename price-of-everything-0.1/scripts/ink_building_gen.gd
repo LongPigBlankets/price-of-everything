@@ -394,6 +394,19 @@ static func _recipe(iname: String, l: int) -> Array:
 			p.append(_dot(112, 74, 2.2))
 			p.append(_flat(70, 62, 24, 24, 1))
 			return p
+		"rails":
+			# A small signal hut beside a short run of track: two rails on their sleepers, the ends running on
+			# under the map. As wide as the pipes' cross, so the two infrastructure lots are the same size.
+			var p := [_flat(70, 50, 22, 18, 1)]
+			var sleepers: Array = []
+			for i in 11:
+				var x := 54.0 + float(i) * 5.6
+				sleepers.append([Vector2(x, 78), Vector2(x, 94)])
+			p.append(_cable(sleepers))
+			p.append(_cable([[Vector2(52, 82), Vector2(112, 82)], [Vector2(52, 90), Vector2(112, 90)]]))
+			p.append(_dot(52, 86, 2.2))
+			p.append(_dot(112, 86, 2.2))
+			return p
 		"cables":
 			# Transformer station: apron, two transformer boxes with bushings,
 			# a power tower, and plenty of cable runs.
