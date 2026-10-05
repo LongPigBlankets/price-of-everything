@@ -190,7 +190,8 @@ func _test_live_shortage_and_legacy_default() -> void:
 ## Two batches short of cash in one turn borrow through one loan, sized to what both drew, and both still run.
 func _test_funding_draws_one_loan_per_turn() -> void:
 	setup(2)
-	MatchState.money = 0.0
+	# Each batch costs about £400 with its Pepper Valley haul, so both are short and their draws fit one loan.
+	MatchState.money = 200.0
 	var before := MatchState.money
 	Production._process_production()
 	var s: Dictionary = Production.last_turn_summary

@@ -9,7 +9,13 @@ func _test_preview_matches_live_and_is_pure() -> void:
 	var before := JSON.stringify(SaveLoad.export_snapshot())
 	var p := Service.preview(str(ids[0]))
 	_check(bool(p.can_run),"service preview admits a funded batch")
-	_check(absf(float(p.fee)-58.6222134)<0.000001,"preview inclusive fee matches frozen tariff")
+	var snapshot := Service.prices()
+	var haul := preload("res://scripts/middleman_locations.gd").coefficient("tile_5_4")
+	var expected_fee := 0.0
+	for item: Dictionary in (p.buy.items as Array) + (p.sale.items as Array):
+		var price: Dictionary = snapshot[str(item.good)]
+		expected_fee += int(item.quantity) * (float(price.port_charge) + EconomyConfig.transport_rate_for_good(str(item.good)) * haul)
+	_check(absf(float(p.fee)-expected_fee)<0.000001,"preview fee is the port charge plus the haul to the hub on every unit")
 	_check(JSON.stringify(SaveLoad.export_snapshot())==before,"preview never changes money, goods, debt or receipts")
 	var b: Dictionary = BuildingState.get_building(str(ids[0]))
 	var e := Readout.economics(b,Catalog.get_recipe("r_009"),Catalog.get_building("b_007"))
@@ -72,7 +78,8 @@ func _test_temporary_sale_price_modifier_reaches_both_settlements() -> void:
 	Service.settle([BuildingState.get_building(iid)], middleman_summary)
 	var receipt: Dictionary = Service.entry(iid).get("receipts", {}).get("sale", {})
 	var middleman_item: Dictionary = (receipt.get("items", []) as Array)[0] if not (receipt.get("items", []) as Array).is_empty() else {}
-	_check(is_equal_approx(float(middleman_item.get("goods_value", 0.0)), uplifted_price), "2% sale modifier reaches intermediary settlement")
+	var banded := minf(uplifted_price * 1.05, MarketState.get_buy_price(good_id))
+	_check(is_equal_approx(float(middleman_item.get("goods_value", 0.0)), banded), "2% sale modifier reaches intermediary settlement, under its +5% band and the buy price")
 
 	# The global route uses MarketState.execute_sale directly.  Its realised revenue must match
 	# the same uplifted unit sale price, proving the modifier is applied at settlement rather than

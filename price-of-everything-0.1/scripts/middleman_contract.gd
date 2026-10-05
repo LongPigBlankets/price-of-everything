@@ -2,11 +2,16 @@ extends RefCounted
 ## Phase-0 pure contract. No autoload, trade execution, loans, stock or turn hooks.
 ## Production integration and authoritative holdings/settlement remain phase 1.
 const VERSION := 1
-const TARIFF_ID := "middleman_port_plus_haulage_v2"
+const TARIFF_ID := "local_suppliers_hub_haulage_v3"
 const AD_VALOREM := 0.005
+## The cargo classes Local Suppliers trade, with the flat haulage per unit a snapshot without its own haul rate is
+## priced on.
 const CLASS_RATES := {"solid_light": 0.025, "solid_heavy": 0.08, "ultra_heavy": 0.6, "safe_liquid": 0.08, "hazard_liquid": 0.15, "gas": 0.2}
 const PROTOTYPE_GOODS := ["g_006", "g_007", "g_008"]
-const LOCATION_FACTORS := [1.05, 1.25, 1.5, 1.75, 2.0, 2.5]
+## What Local Suppliers pay against how much a hub area has sold of a good this turn, in multiples of the good's
+## band size (one building's base output, inflated as the market's impact thresholds are): [up to, price change].
+## Each unit is priced by the band it falls in, so selling more never lowers what the earlier units fetched.
+const SALE_BANDS := [[3.0, 0.05], [4.5, 0.0], [INF, -0.05]]
 const EPSILON := 0.00000001
 
 static func _reject(reason: String) -> Dictionary:
@@ -22,9 +27,12 @@ static func operation_id(match_id: String, turn: int, building_id: String) -> St
 ## prices[good] contains reference/get_price, buy/get_buy_price, sale/get_sale_price,
 ## and transport_class. Caller snapshots all three from the ordinary market APIs.
 ## Fee reference is BEFORE buying markup, including market impact and carbon.
-static func quote(side: String, lines: Array, prices: Dictionary, coefficient: float, allowed_goods: Array = PROTOTYPE_GOODS) -> Dictionary:
+## A live snapshot also carries haul_rate (the good's freight per leg) and band_units (its sale band size).
+## coefficient is the location's haul multiplier: trips to its hub times its settlement factor.
+## area_sold is what the selling tile's hub area has already sold this turn, by good; it places a sale in its bands.
+static func quote(side: String, lines: Array, prices: Dictionary, coefficient: float, allowed_goods: Array = PROTOTYPE_GOODS, area_sold: Dictionary = {}) -> Dictionary:
 	if side not in ["buy", "sell"]: return _reject("invalid_side")
-	if coefficient not in LOCATION_FACTORS: return _reject("unsupported_location")
+	if not is_finite(coefficient) or coefficient <= 0.0: return _reject("unsupported_location")
 	var quantities := {}
 	for line in lines:
 		if not line is Dictionary or not _quantity(line.get("quantity", null)): return _reject("invalid_quantity")
@@ -37,6 +45,7 @@ static func quote(side: String, lines: Array, prices: Dictionary, coefficient: f
 	goods.sort()
 	var goods_value := 0.0
 	var fee := 0.0
+	var band_adjustment := 0.0
 	var items := []
 	# Entire quote validates before callers can acquire anything. No live mutation.
 	for good in goods:
@@ -51,16 +60,37 @@ static func quote(side: String, lines: Array, prices: Dictionary, coefficient: f
 		var qty := int(quantities[good])
 		var unit := float(p.buy if side == "buy" else p.sale)
 		var value := qty * unit
-		# The port's base charge on the unit (its ad valorem and weight charge), then the intermediary's haulage by
-		# weight and the tile's remoteness. A snapshot without a port charge takes the ad valorem on its reference.
+		if side == "sell":
+			value = banded_sale_value(qty, unit, float(p.buy), float(p.get("band_units", 0.0)), int(area_sold.get(good, 0)))
+		# The port's base charge on the unit (its ad valorem and weight charge), then the haul between the tile
+		# and its hub. A snapshot without a port charge takes the ad valorem on its reference.
 		var port_part := float(p.port_charge) if p.has("port_charge") else AD_VALOREM * float(p.reference)
-		var service := qty * (port_part + float(CLASS_RATES[cargo]) * coefficient)
+		var haul := float(p.haul_rate) if p.has("haul_rate") else float(CLASS_RATES[cargo])
+		var service := qty * (port_part + haul * coefficient)
 		goods_value += value
 		fee += service
-		items.append({"good":good,"quantity":qty,"unit_price":unit,"fee_reference":float(p.reference),"goods_value":value,"fee":service})
+		band_adjustment += value - qty * unit
+		items.append({"good":good,"quantity":qty,"unit_price":unit,"fee_reference":float(p.reference),"goods_value":value,
+			"band_adjustment":value - qty * unit,"fee":service})
 	return {"ok":true,"contract_version":VERSION,"tariff_id":TARIFF_ID,"side":side,"coefficient":coefficient,
-		"items":items,"goods_value":goods_value,"fee":fee,"cash_out":goods_value+fee if side=="buy" else 0.0,
+		"items":items,"goods_value":goods_value,"band_adjustment":band_adjustment,"fee":fee,
+		"cash_out":goods_value+fee if side=="buy" else 0.0,
 		"net_receipt":goods_value-fee if side=="sell" else 0.0}
+
+## What `qty` units fetch at `unit` each when the hub area has already sold `sold_before` this turn: each unit takes
+## the price change of the band it falls in, never above the market's buy price. No band size means no bands.
+static func banded_sale_value(qty: int, unit: float, buy: float, band_units: float, sold_before: int) -> float:
+	if band_units <= 0.0 or qty <= 0: return qty * unit
+	var value := 0.0
+	var placed := 0
+	for band: Array in SALE_BANDS:
+		var top: float = float(band[0]) * band_units
+		var room: int = qty - placed if is_inf(top) else clampi(int(floorf(top)) - (sold_before + placed), 0, qty - placed)
+		if room <= 0: continue
+		value += room * minf(unit * (1.0 + float(band[1])), buy)
+		placed += room
+		if placed >= qty: break
+	return value
 
 ## Caller passes holdings for THIS building only and already-known feasibility.
 ## running_reserve is conservative batch labour+maintenance+grid obligations.

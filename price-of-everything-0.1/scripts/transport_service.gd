@@ -68,6 +68,10 @@ func route_is_reachable(route_data: Dictionary) -> bool:
 func transport_cost(good_id: String, qty: int, transport_turns: int, mode_mult: float = 1.0) -> float:
 	return EconomyConfig.transport_cost_for(good_id, qty, transport_turns, mode_mult)
 
+## One unit's freight for one road turn-move at the base rate, before research: what Local Suppliers haul on.
+func freight_rate(good_id: String) -> float:
+	return EconomyConfig.transport_rate_for_good(good_id)
+
 
 ## £ per unit per TILE for one good on one mode at one infrastructure level — the freight
 ## quote the Resources panel shows. Derived from the same model transport_cost_for_route
@@ -172,7 +176,7 @@ func _road_rail_share(route_data: Dictionary) -> float:
 ## Split a route's *actual* freight charge by infrastructure mode.  The base
 ## route price is used only as a weighting; the resulting rows include research
 ## discounts and congestion, and therefore add back to transport_cost_for_route.
-## A route with no built leg is the ordinary overland road haul.
+## A route with no built leg is a haul over bare ground.
 func transport_cost_breakdown_for_route(good_id: String, qty: int, route_data: Dictionary, surcharge: float = 1.0) -> Dictionary:
 	if not route_is_reachable(route_data) or qty <= 0:
 		return {}
@@ -181,7 +185,7 @@ func transport_cost_breakdown_for_route(good_id: String, qty: int, route_data: D
 	var class_rate := EconomyConfig.transport_rate_for_good(good_id)
 	if legs.is_empty():
 		var turns := maxi(int(route_data.get("turns", 0)), 0)
-		weights["roads"] = float(qty) * float(turns) * class_rate * surcharge
+		weights["nothing"] = float(qty) * float(turns) * class_rate * surcharge
 	else:
 		for leg: Dictionary in legs:
 			var mode := str(leg.get("mode", "roads"))

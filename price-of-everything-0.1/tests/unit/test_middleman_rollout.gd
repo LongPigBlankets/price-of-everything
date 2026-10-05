@@ -2,23 +2,27 @@ extends "res://tests/unit/test_middleman_service.gd"
 const Locations := preload("res://scripts/middleman_locations.gd")
 
 func _test_global_location_coefficients() -> void:
-	_check(Locations.classify("urban", 7, true, false) == 1.05, "large connected port city")
-	_check(Locations.classify("urban", 7, false, false) == 1.25, "large inland city uses ordinary city coefficient")
-	_check(Locations.classify("urban", 4, false, false) == 1.25, "four non-port urban tiles are medium")
-	_check(Locations.classify("urban", 3, true, false) == 1.05, "even a small urban port area receives 1.05")
-	_check(Locations.classify("rural", 0, false, true) == 1.75 and Locations.classify("hill", 0, false, true) == 1.75, "adjacent rural and hill tiles")
-	_check(Locations.classify("rural", 0, false, false) == 2.0, "remote countryside")
-	_check(Locations.classify("mountain", 0, true, true) == 2.5, "mountains always cost 2.5")
-	_check(Locations.coefficient("tile_5_4") == 1.5 and Locations.coefficient("tile_6_4") == 1.75, "Pepper benchmark factors unchanged")
+	_check(Locations.classify("urban", 7, true) == 1.1 and Locations.classify("urban", 1, true) == 1.1, "any urban area holding a hub is a hub city")
+	_check(Locations.classify("urban", 3, false) == 1.25, "three connected urban tiles make a city")
+	_check(Locations.classify("urban", 2, false) == 1.5 and Locations.classify("urban", 1, false) == 1.5, "smaller urban areas are towns")
+	_check(Locations.classify("rural", 0, false) == 1.75 and Locations.classify("hill", 0, false) == 1.75, "rural and hill tiles")
+	_check(Locations.classify("mountain", 0, false) == 2.0, "mountains")
+	_check(Locations.classify("sea", 0, false) == 0.0 and Locations.classify("deep_sea", 0, false) == 0.0, "no Local Suppliers at sea")
+	_check(Locations.settlement_factor("tile_13_2") == 1.1 and Locations.hub_for("tile_13_2") == "tile_14_2", "Port Lightning is an inland hub city")
+	_check(Locations.hub_for("tile_5_4") == "tile_5_10" and Locations.trips("tile_5_4") == 3, "Pepper Valley hauls three trips to Stoneshore")
+	_check(is_equal_approx(Locations.coefficient("tile_5_4"), 4.5) and is_equal_approx(Locations.coefficient("tile_6_4"), 5.25), "Pepper Valley town and farmland coefficients")
+	_check(Locations.coefficient("tile_5_10") == 1.1, "a port tile is one trip at the hub city factor")
+	_check(Locations.coefficient("tile_1_1") == 0.0 and Locations.hub_for("tile_1_1") == "", "deep sea has no Local Suppliers")
 	_check(Locations.factors().size() > 400, "full authored map classified")
 
 func _test_new_tariffs_and_power_exclusion() -> void:
 	setup()
 	var snapshot := Service.prices()
-	for item in [["solid_light", "cpu", 0.025], ["safe_liquid", "pure_water", 0.08], ["hazard_liquid", "chlorine", 0.15], ["gas", "oxygen", 0.2]]:
+	for item in [["solid_light", "cpu"], ["safe_liquid", "pure_water"], ["hazard_liquid", "chlorine"], ["gas", "oxygen"]]:
 		var gid := str(Catalog.get_good_by_internal_name(str(item[1])).id)
+		_check(is_equal_approx(float(snapshot[gid].haul_rate), EconomyConfig.transport_rate_for_good(gid)), "haul priced on the good's freight rate: "+str(item[0]))
 		var quote := Service.Contract.quote("buy", [{"good":gid,"quantity":10}], snapshot, 1.5, Service.goods())
-		_check(quote.ok and absf(float(quote.fee)-10*(float(snapshot[gid].port_charge)+float(item[2])*1.5)) < 0.000001, "new cargo tariff: "+str(item[0]))
+		_check(quote.ok and absf(float(quote.fee)-10*(float(snapshot[gid].port_charge)+float(snapshot[gid].haul_rate)*1.5)) < 0.000001, "port charge plus haul: "+str(item[0]))
 	var electricity := str(Catalog.get_good_by_internal_name("power").id)
 	_check(not Service.goods().has(electricity), "grid electricity excluded from material price basket")
 	var waste := str(Catalog.get_good_by_internal_name("waste_water").id)
@@ -80,13 +84,15 @@ func _test_all_recipe_locations_and_new_construction_defaults() -> void:
 
 func _test_completed_port_changes_urban_coefficient() -> void:
 	setup()
-	_check(Locations.coefficient("tile_5_4") == 1.5, "small inland town initially costs 1.5")
+	_check(is_equal_approx(Locations.coefficient("tile_5_4"), 4.5), "small inland town initially hauls three trips")
 	var port := BuildingState.add_building("b_004", "", "tile_5_4", MatchState.LOCAL_PLAYER)
-	_check(Locations.coefficient("tile_5_4") == 1.05, "completed port changes the whole urban area immediately")
+	_check(Locations.settlement_factor("tile_5_4") == 1.1 and Locations.hub_for("tile_5_4") == "tile_5_4", "completed port makes the urban area a hub city")
+	_check(Locations.coefficient("tile_5_4") == 1.1, "a hub city sells one trip at the hub factor")
 	BuildingState.buildings.erase(port)
-	_check(Locations.coefficient("tile_5_4") == 1.5, "removing runtime port invalidates location cache")
+	_check(is_equal_approx(Locations.coefficient("tile_5_4"), 4.5), "removing runtime port invalidates location cache")
 	var rural_port := BuildingState.add_building("b_004", "", "tile_6_4", MatchState.LOCAL_PLAYER)
-	_check(Locations.coefficient("tile_5_4") == 1.5, "adjacent non-urban port does not grant urban port rate")
+	_check(Locations.settlement_factor("tile_5_4") == 1.5, "adjacent non-urban port does not grant the hub city factor")
+	_check(Locations.hub_for("tile_5_4") == "tile_6_4" and Locations.trips("tile_5_4") == 1, "but it is the nearest hub")
 	BuildingState.buildings.erase(rural_port)
 	cleanup()
 
@@ -240,4 +246,44 @@ func _test_start_one_off_charge_is_paid_once() -> void:
 	TurnManager.current_turn += 1
 	Production._process_production()
 	_check(float(Production.last_turn_summary.get("one_off_paid", 0.0)) == 0.0, "turn 2 does not charge it again")
+	cleanup()
+
+## Sales are pooled per hub area: every tile selling into the same hub shares one turn's volume.
+func _test_sales_pool_per_hub_area() -> void:
+	setup()
+	Service.reset_area_sales()
+	Service.note_area_sale("tile_5_4", "g_008", 10)
+	_check(int(Service.area_sold("tile_6_4").get("g_008", 0)) == 10, "a farm selling into the same hub sees the town's sale")
+	_check(Service.area_sold("tile_13_2").is_empty(), "another hub's area starts clean")
+	Service.note_area_sale("tile_6_4", "g_008", 5)
+	_check(int(Service.area_sold("tile_5_4").get("g_008", 0)) == 15, "the area pools both tiles")
+	var turn := TurnManager.current_turn
+	TurnManager.current_turn = turn + 1
+	_check(Service.area_sold("tile_5_4").is_empty(), "a new turn starts the ledger afresh")
+	TurnManager.current_turn = turn
+	var snapshot := Service.prices()
+	_check(is_equal_approx(float(snapshot.g_008.band_units), Catalog.base_output_for_good("g_008") * EconomyConfig.impact_threshold_scale(turn)), "band size is one building's base output, inflated like the market's thresholds")
+	cleanup()
+
+## A second building's sale in the same hub area is placed after the first one's in the bands.
+func _test_settlement_places_later_sales_after_earlier_ones() -> void:
+	var ids := setup(2)
+	Production._process_production()
+	var report := Production.last_turn_summary
+	var sold := int(report.sold.get("g_008", {}).get("qty", 0))
+	_check(sold == 66, "both motor batches sold")
+	_check(int(Service.area_sold("tile_5_4").get("g_008", 0)) == sold, "the hub area's ledger holds both buildings' sales")
+	var first: Dictionary = Service.entry(str(ids[0])).receipts.sale
+	var second: Dictionary = Service.entry(str(ids[1])).receipts.sale
+	_check(float(first.band_adjustment) > 0.0 and is_equal_approx(float(first.band_adjustment), float(second.band_adjustment)),
+		"two batches, under three band sizes, both earn the full +5%% (£%.2f, £%.2f)" % [float(first.band_adjustment), float(second.band_adjustment)])
+	cleanup()
+
+## Sea tiles have no Local Suppliers: no quote, no enrollment, no surplus sale.
+func _test_sea_has_no_local_suppliers() -> void:
+	setup()
+	var b := {"instance_id": "offshore", "building_id": "b_007", "recipe_id": "r_009", "tile_id": "tile_1_1", "owner": MatchState.LOCAL_PLAYER, "level": 1}
+	_check(Service.coefficient(b) == 0.0 and not Service.eligible(b), "an offshore building cannot use Local Suppliers")
+	_check(not Service.default_for("r_009", "tile_1_1"), "new construction at sea does not join Local Suppliers")
+	_check(Service.sell_surplus("tile_1_1", {"g_008": 5}, summary()).is_empty(), "surplus at sea is not bought")
 	cleanup()

@@ -40,7 +40,7 @@ func _test_split_order_and_zero_quantity_are_fee_invariant() -> void:
 	_check(not Contract.quote("buy",[{"good":"g_006","quantity":.5}],p,1.5).ok,"fractional goods rejected")
 	_check(not Contract.quote("buy",[{"good":"g_001","quantity":1}],p,1.5).ok,"unsupported prototype good does not get silent service")
 	_check(not Contract.quote("buy",[{"good":"g_006","quantity":1}],{},1.5).ok,"missing price rejects entire quote")
-	_check(not Contract.quote("buy",[],p,9.0).ok,"unknown location cannot quote")
+	_check(not Contract.quote("buy",[],p,0.0).ok and not Contract.quote("buy",[],p,-1.5).ok and not Contract.quote("buy",[],p,NAN).ok,"a location without Local Suppliers cannot quote")
 
 func _test_complete_batch_funding_boundary_and_running_reserve() -> void:
 	var p := prices()
@@ -124,3 +124,42 @@ func _test_pepper_golden_quote_and_cash_trace() -> void:
 	_check(absf(close-f.funding_trace.closing_after_operating_costs)<0.000001,"reference cash trace reconciles without freight/port/storage double charge")
 	for g in f.prices:
 		_check(absf(float(Catalog.get_good(g).get("base_price",0))-float(f.prices[g].reference))<0.000001,"golden catalogue price stays versioned: "+str(g))
+
+## A live snapshot prices the haul on the good's own freight rate, times the location's trips and settlement factor.
+func _test_haul_rate_times_location_coefficient() -> void:
+	var p := prices()
+	p.g_006["haul_rate"] = 0.07
+	p.g_006["port_charge"] = 0.1
+	var q := Contract.quote("buy",[{"good":"g_006","quantity":10}],p,4.5)
+	_check(q.ok and absf(float(q.fee)-10*(0.1+0.07*4.5))<0.000001,"fee is the port charge plus the freight rate times trips and settlement")
+	var near := Contract.quote("buy",[{"good":"g_006","quantity":10}],p,1.1)
+	_check(float(near.fee) < float(q.fee),"a hub city pays less haul than a town three trips out")
+
+func _band_prices() -> Dictionary:
+	var p := prices()
+	p.g_008["sale"] = 1.0
+	p.g_008["buy"] = 1.05
+	p.g_008["band_units"] = 10.0
+	return p
+
+## +5% up to three band sizes, the plain price up to four and a half, then -5%; each unit by the band it falls in.
+func _test_sale_bands_are_marginal() -> void:
+	var p := _band_prices()
+	var whole := Contract.quote("sell",[{"good":"g_008","quantity":50}],p,1.5)
+	_check(whole.ok and absf(float(whole.goods_value)-(30*1.05+15*1.0+5*0.95))<0.000001,"50 units: 30 at +5%, 15 at the price, 5 at -5%")
+	_check(absf(float(whole.band_adjustment)-(30*0.05-5*0.05))<0.000001,"the band adjustment is what the bands added")
+	var first := Contract.quote("sell",[{"good":"g_008","quantity":20}],p,1.5)
+	var rest := Contract.quote("sell",[{"good":"g_008","quantity":30}],p,1.5,Contract.PROTOTYPE_GOODS,{"g_008":20})
+	_check(absf(float(first.goods_value)+float(rest.goods_value)-float(whole.goods_value))<0.000001,"splitting a turn's sales does not change what they fetch")
+	var late := Contract.quote("sell",[{"good":"g_008","quantity":10}],p,1.5,Contract.PROTOTYPE_GOODS,{"g_008":50})
+	_check(absf(float(late.goods_value)-9.5)<0.000001,"an area past four and a half band sizes sells at -5%")
+	_check(absf(float(Contract.quote("buy",[{"good":"g_008","quantity":5}],p,1.5).goods_value)-5*1.05)<0.000001,"purchases are never banded")
+	p.g_008.erase("band_units")
+	_check(absf(float(Contract.quote("sell",[{"good":"g_008","quantity":50}],p,1.5).goods_value)-50.0)<0.000001,"a snapshot without a band size sells at the plain price")
+
+## The +5% band never lifts a sale above what the same unit costs to buy, so nothing can be bought to resell.
+func _test_sale_band_capped_at_buy_price() -> void:
+	var p := _band_prices()
+	p.g_008["buy"] = 1.02
+	var q := Contract.quote("sell",[{"good":"g_008","quantity":10}],p,1.5)
+	_check(absf(float(q.goods_value)-10*1.02)<0.000001,"the bonus stops at the buy price")
