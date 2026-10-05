@@ -1675,6 +1675,24 @@ static func input_sources(building: Dictionary, recipe: Dictionary) -> Array:
 			})
 	return rows
 
+## A side's route summary when its goods come from, or go to, more than one place: the count of tiles
+## when the places span several ("3 tiles"), else the count of buildings on the one tile ("2 buildings").
+## Each entry is a place: an input_sources row, or an output split destination (a tile). Empty for one
+## place or none, where the side keeps its own label.
+static func places_label(places: Array) -> String:
+	var seen: Array = []
+	var tiles: Array = []
+	for place: Dictionary in places:
+		var tile := str(place.get("tile_id", ""))
+		var key := "%s|%s" % [tile, str(place.get("instance_id", ""))]
+		if not seen.has(key):
+			seen.append(key)
+		if not tiles.has(tile):
+			tiles.append(tile)
+	if seen.size() < 2:
+		return ""
+	return "%d tiles" % tiles.size() if tiles.size() > 1 else "%d buildings" % seen.size()
+
 # Player buildings that consume this building's primary output, fed from its routed destination tile.
 static func output_consumers(building: Dictionary, recipe: Dictionary) -> Array:
 	var out_gid := BuildingStatus.primary_output_good_id(recipe)

@@ -66,8 +66,8 @@ func _add_key(key: String, lines: Array, caret: bool, enabled: bool, tooltip: St
 # --- rules ---------------------------------------------------------------------------------------
 
 ## A route summary on the value key: one line, or two when it carries a bracketed qualifier
-## ("Tile stockpile (same tile)") or is already several lines (a split output; beyond two, the
-## second line ends in an ellipsis and the Outputs sheet has the rest).
+## ("Tile stockpile (same tile)") or is already several lines (a capped output route; beyond two,
+## the second line ends in an ellipsis and the Outputs sheet has the rest).
 static func value_lines(value: String) -> Array:
 	var face_h: float = KEYS.inputs[1].size.y
 	var parts := value.split("\n", false)
@@ -97,22 +97,35 @@ static func upgrade_detail(level: int) -> String:
 	return "+%d%% Output" % roundi((next / now - 1.0) * 100.0) if now > 0.0 else ""
 
 
-## How many of the building's other recipes earn more per turn than its current one, by the panel's
-## own net estimate (BuildingReadout.economics). Each recipe is valued on this building as it stands.
+## The recipes the Change recipes sheet offers this building to switch to: its own building type's
+## recipes (as research, the demo and prohibitions leave them), less the one it runs.
+static func switch_recipes(building: Dictionary) -> Array:
+	var current := str(building.get("recipe_id", ""))
+	return Catalog.get_recipes_for_building(str(building.get("building_id", ""))).filter(
+		func(recipe: Dictionary) -> bool: return str(recipe.get("recipe_id", "")) != current)
+
+
+## How many of the recipes this building can switch to earn more per turn than its current one, by the
+## panel's own net estimate (BuildingReadout.economics). Each recipe is valued on this building as it stands.
 static func better_recipe_count(building: Dictionary) -> int:
 	var bdata: Dictionary = Catalog.get_building(str(building.get("building_id", "")))
 	var current := str(building.get("recipe_id", ""))
 	var here := float(BuildingReadout.economics(building, Catalog.get_recipe(current), bdata).get("net", 0.0))
 	var count := 0
-	for recipe: Dictionary in Catalog.get_recipes_for_building(str(building.get("building_id", ""))):
-		var rid := str(recipe.get("recipe_id", ""))
-		if rid == current:
-			continue
+	for recipe: Dictionary in switch_recipes(building):
 		var as_it := building.duplicate()
-		as_it["recipe_id"] = rid
+		as_it["recipe_id"] = str(recipe.get("recipe_id", ""))
 		if float(BuildingReadout.economics(as_it, recipe, bdata).get("net", 0.0)) > here:
 			count += 1
 	return count
+
+
+## The Change recipes key's second line: how many of the recipes it offers beat the current one, for
+## the good it makes now. Blank when none do.
+static func recipe_detail(alternatives: int, better: int, output_name: String) -> String:
+	if alternatives <= 0:
+		return "No other recipes"
+	return "%d better for %s" % [better, truncate10(output_name)] if better > 0 else ""
 
 
 ## The display name of the first good the recipe makes.
