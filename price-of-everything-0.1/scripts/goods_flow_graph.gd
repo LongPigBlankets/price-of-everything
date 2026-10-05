@@ -63,10 +63,11 @@ static var _col_x: PackedFloat32Array = PackedFloat32Array()
 # somewhere to run. At rest no line is drawn any more, so every one of them was spending
 # 72u of the player's screen on nothing. They still have to EXIST, because a selected
 # good's chain is routed through them, but they can be a good deal thinner than a card.
-const ROW_H := 248.0        # clears the 224 card with air
+const ROW_H := 374.0        # clears the 350 card with air
 const DUMMY_ROW_H := 34.0
-const CARD_W := 520.0
-const CARD_H := 224.0
+## A good is a portrait card: its icon on an enamel tile filling the top, its name under it.
+const CARD_W := 300.0
+const CARD_H := 350.0
 const BARY_SWEEPS := 2     # barycentre sweeps per ordering round
 const ORDER_ROUNDS := 16   # sweeps+transpose rounds; stops early when crossings stall
 
@@ -74,7 +75,7 @@ const ORDER_ROUNDS := 16   # sweeps+transpose rounds; stops early when crossings
 # the channel (the CHANNEL_W gap between card edges); spans whose y-intervals overlap
 # are forced onto different lanes (greedy interval colouring), so parallel edges keep
 # clear separation instead of overdrawing.
-const CHANNEL_W := COL_W - CARD_W   # 440.0
+const CHANNEL_W := COL_W - CARD_W
 const LANE_PAD := 24.0              # channel inset before the first lane
 const LANE_GAP_MIN := 12.0
 const LANE_GAP_MAX := 26.0
