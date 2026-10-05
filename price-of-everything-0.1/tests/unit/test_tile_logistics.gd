@@ -138,14 +138,6 @@ func _test_supplier_change_wording() -> void:
 		"supplier change: inputs change their supplier, outputs their destination")
 	for text: String in [to_stock, str(confirm.message_for({}))]:
 		_check(not text.contains(" — ") and not text.contains(";"), "supplier change: plain copy, no dashes or semicolons")
-	var toasts: Array = []
-	var catch := func(m: String, _t: String) -> void: toasts.append(m)
-	MatchState.toast_requested.connect(catch)
-	preload("res://scripts/stockpile_route_prompt.gd")._say_supplier_changed("tile_5_10", coal, {"supplier_changed": true})
-	preload("res://scripts/stockpile_route_prompt.gd")._say_supplier_changed("tile_5_10", coal, {})
-	MatchState.toast_requested.disconnect(catch)
-	_check(toasts.size() == 1 and str(toasts[0]).contains("no longer buy coal"),
-		"supplier change: with nothing to ask, one toast says Local Suppliers stopped buying")
 
 
 ## Building Detail: a good's output leaving Local Suppliers asks once, on the one card, whether it goes to the

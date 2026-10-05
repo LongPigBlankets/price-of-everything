@@ -2,9 +2,7 @@ extends RefCounted
 ## The one question asked before a building's goods leave Local Suppliers: a card over the screen titled
 ## Change supplier (inputs) or Change destination (outputs), what the change may cost for the side and
 ## destination chosen, a Do not show again box, and Cancel and Confirm at the two ends of a row.
-## It also stands for the stockpile surplus prompt: a change it confirmed raises no second prompt.
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
-const StockpileRoutePrompt := preload("res://scripts/stockpile_route_prompt.gd")
 static var skip_confirmation := false
 
 const CARD_W := 540.0
@@ -82,11 +80,8 @@ static func request(parent: Node, mode: String, apply: Callable, canceled: Calla
 		state.done = true
 		PanelStack.remove(card)
 		if confirmed:
-			# The surplus prompt the change would raise is this card's to say, and it has.
-			StockpileRoutePrompt.hold = true
 			if apply.call():
 				skip_confirmation = dont_show.button_pressed
-			StockpileRoutePrompt.hold = false
 		elif canceled.is_valid():
 			canceled.call()
 		layer.queue_free()

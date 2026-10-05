@@ -1887,7 +1887,6 @@ func _on_stockpile_destination_selected(tile_data: Dictionary, ctrl: bool = fals
 			terrain_layer.end_stockpile_destination_selection()
 			_exit_stockpile_ui_mode()
 			_open_building_detail(BuildingState.get_building(instance_id))
-			preload("res://scripts/stockpile_route_prompt.gd").offer_split(_hud, instance_id, good_id)
 		else:
 			MatchState.request_toast("%d destination%s selected — Shift-click another, or release Shift and click to finish" % [count, "" if count == 1 else "s"], "info")
 		return
@@ -1898,7 +1897,6 @@ func _on_stockpile_destination_selected(tile_data: Dictionary, ctrl: bool = fals
 		_hide_stockpile_select_prompt()
 		_exit_stockpile_ui_mode()
 		_open_building_detail(BuildingState.get_building(instance_id))
-		preload("res://scripts/stockpile_route_prompt.gd").offer_split(_hud, instance_id, good_id)
 		return
 	if ctrl:
 		# CTRL+click: don't route yet — highlight the pick green and open the
@@ -1911,7 +1909,6 @@ func _on_stockpile_destination_selected(tile_data: Dictionary, ctrl: bool = fals
 	_pending_stockpile_selection.clear()
 	_hide_stockpile_select_prompt()
 	_exit_stockpile_ui_mode()
-	preload("res://scripts/stockpile_route_prompt.gd").offer(_hud, tile_id, good_id)
 
 # ----- CTRL+click ship-quantity flow -----
 
@@ -1938,7 +1935,6 @@ func _on_ship_qty_confirmed(qty: int) -> void:
 		MatchState.set_output_stockpile_destination(iid, _ship_qty_tile, gid)
 		MatchState.set_output_ship_quantity(iid, gid, qty)
 		MatchState.request_toast("Sending %d %s to %s every turn" % [qty, Catalog.get_display_name(gid), Catalog.tile_label(_ship_qty_tile)], "success")
-		preload("res://scripts/stockpile_route_prompt.gd").offer(_hud, _ship_qty_tile, gid)
 	_close_ship_quantity_flow()
 
 func _on_ship_qty_cancelled() -> void:

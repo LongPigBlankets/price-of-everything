@@ -60,6 +60,7 @@ var _annot_items: Array = []            # [{ref, side, label}] — HUD-primer la
 ## bottom bar, the updates, the top bar and any panel they open stay lit and live. This overlay then takes no
 ## clicks but the card's, and the HUD labels stand aside while a panel is open.
 var _map_only := false
+var _refit_queued := false
 var _map_shade: ColorRect = null
 var _hint_items: Array = []             # left-edge fixed hint Labels (no leader line)
 
@@ -447,6 +448,19 @@ func show_step(step: Dictionary, index: int, total: int) -> void:
 		Audio.hint()
 
 
+## Fit the card to its content again and put it back in its place.
+func _refit_card() -> void:
+	_refit_queued = false
+	if _card == null or not _card.visible or not is_inside_tree():
+		return
+	_card.reset_size()
+	if _mode == "annotate":
+		_center_card_for_annotate()
+	else:
+		_reposition_card()
+	queue_redraw()
+
+
 # Re-measure and reposition after the next layout pass, when the body Label has
 # re-wrapped to the new text and get_combined_minimum_size() is finally accurate.
 func _defer_reposition() -> void:
@@ -533,6 +547,12 @@ func _build_card() -> void:
 	_card.mouse_filter = Control.MOUSE_FILTER_STOP
 	_card.custom_minimum_size = Vector2(460, 0)
 	add_child(_card)
+	# A card first measured before its text has a width wraps that text a word to a line and stands far too tall.
+	# Whenever what it holds settles to a new size, fit the card to it again.
+	_card.minimum_size_changed.connect(func() -> void:
+		if not _refit_queued:
+			_refit_queued = true
+			_refit_card.call_deferred())
 
 	# CoachCard already supplies 24px horizontal / 20px vertical padding. Keep another
 	# 10px above the content and 20px below the footer for a roomier tutorial card.
