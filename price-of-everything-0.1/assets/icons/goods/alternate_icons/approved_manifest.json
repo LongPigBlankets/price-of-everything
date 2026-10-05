@@ -1662,8 +1662,8 @@
       "good_id": "g_023",
       "tier": "medium",
       "path": "assets/icons/goods/alternate_icons/medium/g_023_building_frame.png",
-      "source": "goods_building_frame/v5",
-      "sha256": "26dfc7eb07dc7758fced67a7a19656f93e516447813c0c7765d7c67bf14594ee",
+      "source": "goods_building_frame/v6",
+      "sha256": "f46f77fca574edeeb5a050c2109f4da3f0e74edc18b817f213d80722fd86e071",
       "installed_default": true
     },
     {
@@ -1671,8 +1671,8 @@
       "good_id": "g_023",
       "tier": "small",
       "path": "assets/icons/goods/alternate_icons/small/g_023_building_frame.png",
-      "source": "goods_building_frame/v5",
-      "sha256": "076d7976f49d919022d4b207ba09ec811a2196142c82481fedfffce67be7d509",
+      "source": "goods_building_frame/v6",
+      "sha256": "ee2a9484180eae39b79ec10b62326fbb106ccf8ca680a1880a4e81634d082f01",
       "installed_default": true
     },
     {
@@ -1680,8 +1680,8 @@
       "good_id": "g_023",
       "tier": "very_small",
       "path": "assets/icons/goods/alternate_icons/very_small/g_023_building_frame.png",
-      "source": "goods_building_frame/v5",
-      "sha256": "3da40f43b8a952aa4795c80560b73f2503cd932656eadbb689b405b75d665556",
+      "source": "goods_building_frame/v6",
+      "sha256": "64063cd1b8915cc159e1abd4785b89349610af1dad2e4831a89ced48224752e5",
       "installed_default": true
     },
     {
