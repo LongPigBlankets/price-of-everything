@@ -648,6 +648,78 @@ func _test_empire_board_model() -> void:
 		"board: mountains stand over hills, hills over lowland, land over sea")
 
 
+## A one-tile terrain for building the board's model: the tile stands at the origin.
+class _OneTile extends RefCounted:
+	var tile := ""
+
+	func id_to_coord(tid: String) -> Vector2i:
+		return Vector2i(0, 0) if tid == tile else Vector2i(-1, -1)
+
+	func map_coord_for_tile_coord(c: Vector2i) -> Vector2i:
+		return c
+
+	func map_to_local(_c: Vector2i) -> Vector2:
+		return Vector2.ZERO
+
+
+## The supply chain board by the sea: nothing stands on open water and no street runs over it
+## while dry ground is free, and a river runs on through the beach into the sea.
+func _test_empire_board_coast() -> void:
+	var Model := preload("res://scripts/empire_board_model.gd")
+	var Streets := preload("res://scripts/empire_board_streets.gd")
+	var Board := preload("res://scripts/empire_board.gd")
+	# A city tile whose west side is sea.
+	var terrain := _OneTile.new()
+	terrain.tile = "tile_7_11"
+	var graph := {"nodes": [{"tile_id": terrain.tile, "iid": "coast_test_works", "name": "Works", "level": 1}]}
+	var water := func(_tile: String, p: Vector2) -> bool: return p.x < -150.0
+	var on_water := func(model: Dictionary) -> Array:
+		var found: Array = []
+		for s in model["standing"]:
+			var half := float(s.get("pad", s["side"])) * 0.5
+			for gx in range(-2, 3):
+				for gy in range(-2, 3):
+					if water.call("", (s["pos"] as Vector2) + Vector2(gx, gy) * half * 0.5) and not found.has(s["iid"]):
+						found.append(s["iid"])
+		for r in model["roads"]:
+			for k in range(11):
+				if water.call("", (r["a"] as Vector2).lerp(r["b"], float(k) / 10.0)):
+					found.append("road %s-%s" % [r["a"], r["b"]])
+					break
+		return found
+	Streets._paths.clear()
+	var blind: Dictionary = Model.build(terrain, graph, {}, {}, true)
+	Streets._paths.clear()
+	var dry: Dictionary = Model.build(terrain, graph, {}, {}, true, water)
+	Streets._paths.clear()
+	_check(not (on_water.call(blind) as Array).is_empty(),
+		"board coast: without the sea test the city's homes and streets reach the water (the test can fail)")
+	var wet: Array = on_water.call(dry)
+	_check(wet.is_empty(), "board coast: nothing stands on the sea and no street runs over it (%s)" % [wet])
+	var works := false
+	var homes := 0
+	for s in dry["standing"]:
+		works = works or str(s["iid"]) == "coast_test_works"
+		homes += 1 if str(s["kind"]) == "house" else 0
+	_check(works and homes >= 4, "board coast: the works and the city still stand, on the dry slots (%d homes)" % homes)
+	# A river reaching the sea: land to the north of y = 0, open water south of it.
+	var rel := {"sea": [{"b": 4, "p": PackedVector2Array([Vector2(-100, -200), Vector2(100, -200), Vector2(100, 200), Vector2(-100, 200)])}],
+		"land": [{"b": 1, "lift": 0.0, "p": PackedVector2Array([Vector2(-100, -200), Vector2(100, -200), Vector2(100, 0), Vector2(-100, 0)])}],
+		"lakes": []}
+	var coast: Array = Board._shore_of(rel, Model.hex_points(Vector2.ZERO))
+	var river := PackedVector2Array([Vector2(-60, -100), Vector2(0, -20), Vector2(30, 60)])
+	var runs: Array = Board._to_mouth(rel, river, coast, 12.0)
+	var mouth_ok := runs.size() == 1
+	if mouth_ok:
+		var pts: PackedVector2Array = runs[0]["pts"]
+		var cut: Array = (runs[0]["cuts"] as Array)[0] if not (runs[0]["cuts"] as Array).is_empty() else [Vector2.INF, Vector2.ZERO]
+		mouth_ok = pts[pts.size() - 1].y >= Board._MOUTH and absf((cut[0] as Vector2).y) < 0.5 \
+			and (cut[1] as Vector2).is_equal_approx(Vector2(0.0, 1.0))
+	_check(mouth_ok, "board coast: a river runs on over the beach to the sea's water, its end along the shore")
+	var inland: Array = Board._to_mouth(rel, PackedVector2Array([Vector2(-60, -150), Vector2(40, -60)]), coast, 12.0)
+	_check(inland.size() == 1 and (inland[0]["cuts"] as Array).is_empty(), "board coast: a river that never reaches the sea is left as it is")
+
+
 ## The supply chain board's railway: one plan on every tile, so neighbours' tracks meet.
 func _test_empire_board_rails() -> void:
 	var Rails := preload("res://scripts/empire_board_rails.gd")

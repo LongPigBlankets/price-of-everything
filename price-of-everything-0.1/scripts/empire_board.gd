@@ -112,6 +112,8 @@ const _SHALLOWS_OUT := 13.0          # how far out the pale shallows are centred
 const _SHALLOWS_W := 30.0
 const _FOAM := Color(0.97, 0.97, 0.93, 0.85)
 const _BANK := Color("c9c08f")       # a river's bank: pale, between the grass and the sand
+const _MOUTH := 4.0                  # how far past the shoreline a river runs on into the sea, over the foam
+const _MOUTH_SHORE_REACH := 8.0      # a shore edge this near where a river leaves the land is the one it crosses
 const _INK_SOFT := Color(0.18, 0.23, 0.35, 0.55)
 ## A tile slopes down to a lower neighbour over this much of its own ground.
 const SLOPE_W := 34.0
@@ -411,7 +413,8 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 		return
 	var rivers: Dictionary = _rivers_by_tile(terrain)
 	_rivers = _river_lines(rivers)
-	_model = Model.build(terrain, graph, _true_positions(graph, terrain), _rivers, plate_town and bool(show["decor"]))
+	_model = Model.build(terrain, graph, _true_positions(graph, terrain), _rivers, plate_town and bool(show["decor"]),
+		_water_test(terrain))
 	_build_ground(rivers)
 	_build_standing()
 	_build_lines()
@@ -514,6 +517,19 @@ func _river_lines(rivers: Dictionary) -> Dictionary:
 			lines.append(rec["points"])
 		out[tid] = lines
 	return out
+
+
+## Is a point of a tile open water, as the ground draws it: (tile_id, point) -> bool, for the
+## model to keep what stands and the streets off the sea.
+static func _water_test(terrain: Node) -> Callable:
+	var centers: Dictionary = {}
+	return func(tile: String, p: Vector2) -> bool:
+		var kind := str(Catalog.tile_type(tile))
+		if kind == "sea" or kind == "deep_sea":
+			return true
+		if not centers.has(tile):
+			centers[tile] = Model.tile_center(terrain, tile)
+		return _is_water(_relief_of(tile, centers[tile], HIGH_BAND.has(kind)), p)
 
 
 func _true_positions(graph: Dictionary, terrain: Node) -> Dictionary:
@@ -781,17 +797,13 @@ func _build_ground(rivers: Dictionary) -> void:
 		for p in rel["lakes"]:
 			for piece in _within(p, top_poly, sloped):
 				_poly(verts, cols, idx, piece, h, water)
-		for rec in rivers.get(tid, []):
-			var w := (float(rec["start_width"]) + float(rec["end_width"])) * 0.5
-			for part in Geometry2D.intersect_polyline_with_polygon(rec["points"], top_poly):
-				for run in _on_land(rel, part):
-					_stroke(verts, cols, idx, run, w, h, water)
+		var coast: Array = [] if is_sea or (rel["sea"] as Array).is_empty() else _shore_of(rel, hexp)
 		# The shore, as on the key art's plate: no hard line, but a beach. Dry sand on the land
 		# side, a darker wet strip at the water's edge, a thread of foam, and pale shallows
 		# running out into the deeper water.
-		if not is_sea and not (rel["sea"] as Array).is_empty():
+		if not coast.is_empty():
 			var shore: Array = []                 # [[p0, p1, outward normal]]
-			for seg in _shore_of(rel, hexp):
+			for seg in coast:
 				if Geometry2D.is_point_in_polygon(((seg[0] as Vector2) + (seg[1] as Vector2)) * 0.5, top_poly):
 					shore.append(seg)
 			# Laid widest first, so each band shows as a strip beside the next.
@@ -812,14 +824,18 @@ func _build_ground(rivers: Dictionary) -> void:
 				_stroke(verts, cols, idx, ring, 4.0, h, _SAND.darkened(0.08))
 				_stroke(verts, cols, idx, ring, 1.6, h, water.lightened(0.3))
 		# A river: pale banks, the water lighter down its middle, and only a thin line to it.
+		# Laid after the beach, so at its mouth the water runs over the sand and into the sea;
+		# the banks stop at the shoreline.
 		for rec in rivers.get(tid, []):
 			var half_w := (float(rec["start_width"]) + float(rec["end_width"])) * 0.25
 			for part in Geometry2D.intersect_polyline_with_polygon(rec["points"], top_poly):
-				for run in _on_land(rel, part):
-					_stroke(verts, cols, idx, run, half_w * 0.9, h, water.lightened(0.16))
+				for run in _to_mouth(rel, part, coast, half_w * 2.0):
+					var pts: PackedVector2Array = run["pts"]
+					_stroke_to(verts, cols, idx, pts, half_w * 2.0, h, water, run["cuts"], _MOUTH)
+					_stroke_to(verts, cols, idx, pts, half_w * 0.9, h, water.lightened(0.16), run["cuts"], _MOUTH)
 					for side in [-1.0, 1.0]:
-						_stroke(verts, cols, idx, _beside(run, (half_w + 1.4) * float(side)), 3.0, h, _BANK)
-						_stroke(verts, cols, idx, _beside(run, half_w * float(side)), 0.9, h, _INK_SOFT)
+						_stroke_to(verts, cols, idx, _beside(pts, (half_w + 1.4) * float(side)), 3.0, h, _BANK, run["cuts"], 0.0)
+						_stroke_to(verts, cols, idx, _beside(pts, half_w * float(side)), 0.9, h, _INK_SOFT, run["cuts"], 0.0)
 		# The plate's rim, inked where it ends in a cliff.
 		for rim_edge in rims:
 			_stroke(verts, cols, idx, PackedVector2Array([rim_edge[0], rim_edge[1]]), _INK_W * 1.3, float(rim_edge[2]), _INK)
@@ -1048,21 +1064,85 @@ static func _shore_of(rel: Dictionary, hexp: PackedVector2Array) -> Array:
 	return shore
 
 
-## A river's run with the stretches that lie in open water taken out: a river ends at its
-## mouth, where the map draws it running on in the sea's own colour.
-static func _on_land(rel: Dictionary, pts: PackedVector2Array) -> Array:
+## A river's runs over land, each carried on through its mouth: past the last point on land to
+## the shoreline and on into the open water, where the map draws it running on in the sea's
+## own colour. Returns [{pts, cuts}]; `cuts` holds [shore point, outward normal] for each mouth,
+## the line along the shore its end is squared off on (see _stroke_to). `coast` is the tile's
+## shoreline (_shore_of); `width` the river's.
+static func _to_mouth(rel: Dictionary, pts: PackedVector2Array, coast: Array, width: float) -> Array:
 	var runs: Array = []
-	var run := PackedVector2Array()
+	var wet: Array = []
 	for p in pts:
-		if _is_water(rel, p):
-			if run.size() >= 2:
-				runs.append(run)
-			run = PackedVector2Array()
-		else:
-			run.append(p)
-	if run.size() >= 2:
-		runs.append(run)
+		wet.append(_is_water(rel, p))
+	var i := 0
+	while i < pts.size():
+		if bool(wet[i]):
+			i += 1
+			continue
+		var j := i
+		while j + 1 < pts.size() and not bool(wet[j + 1]):
+			j += 1
+		var run := pts.slice(i, j + 1)
+		var cuts: Array = []
+		if i > 0:
+			var m: Array = _mouth(rel, pts[i], pts[i - 1], coast, width)
+			run.insert(0, m[0])
+			cuts.append(m[1])
+		if j < pts.size() - 1:
+			var m2: Array = _mouth(rel, pts[j], pts[j + 1], coast, width)
+			run.append(m2[0])
+			cuts.append(m2[1])
+		if run.size() >= 2:
+			runs.append({"pts": run, "cuts": cuts})
+		i = j + 1
 	return runs
+
+
+## Where a river leaves the land between a point on land and the next in open water:
+## [the point its run is carried on to, [shore point, outward normal]]. The normal is the
+## shore's own where it crosses, so the river's end lies along the shore, not square across it.
+static func _mouth(rel: Dictionary, dry: Vector2, wet: Vector2, coast: Array, width: float) -> Array:
+	var lo := dry
+	var hi := wet
+	for _k in range(16):
+		var mid := (lo + hi) * 0.5
+		if _is_water(rel, mid):
+			hi = mid
+		else:
+			lo = mid
+	var at := (lo + hi) * 0.5
+	var dir := (wet - dry).normalized()
+	var n := dir
+	var best := _MOUTH_SHORE_REACH
+	for seg in coast:
+		var d := Geometry2D.get_closest_point_to_segment(at, seg[0], seg[1]).distance_to(at)
+		if d < best and (seg[2] as Vector2).dot(dir) > 0.1:
+			best = d
+			n = seg[2]
+	# Far enough on that the whole width of the river reaches the line it is cut on.
+	var reach := minf((_MOUTH + width) / maxf(n.dot(dir), 0.3), at.distance_to(wet))
+	return [at + dir * reach, [at, n]]
+
+
+## A stroke cut off at each of `cuts` ([point, outward normal]) a distance `reach` beyond it,
+## near that point; elsewhere it is _stroke's.
+static func _stroke_to(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
+		pts: PackedVector2Array, width: float, h: float, col: Color, cuts: Array, reach: float) -> void:
+	for i in range(pts.size() - 1):
+		var a := pts[i]
+		var b := pts[i + 1]
+		if a.distance_squared_to(b) < 0.01:
+			continue
+		var along := (b - a).normalized() * width * 0.5
+		var side := along.orthogonal()
+		var quad := PackedVector2Array([a - along + side, b + along + side, b + along - side, a - along - side])
+		for cut in cuts:
+			var at: Vector2 = cut[0]
+			var n: Vector2 = cut[1]
+			if Geometry2D.get_closest_point_to_segment(at, a, b).distance_to(at) < width + _MOUTH * 6.0:
+				quad = Atlas.clip(quad, at + n * reach, -n)
+		if quad.size() >= 3:
+			_poly(verts, cols, idx, quad, h, col)
 
 
 ## Points on a tile's water for the sun to catch. Fixed for the tile: the water never moves.
@@ -1470,10 +1550,13 @@ func _build_lamps() -> void:
 		if side.x + side.y > 0.0:
 			side = -side
 		var off := (_ROAD_HALF + 5.0) if int(r["level"]) > 1 else (_DRIVE_HALF + 4.0)
+		var rel: Dictionary = _relief_cache.get(tile, {})
 		for i in range(n):
 			var p := a + dir * ((float(i) + 0.5) * length / float(n)) + side * off
 			if not Geometry2D.is_point_in_polygon(p, tiles[tile].get("top_poly", Model.hex_points(tiles[tile]["center"]))):
 				continue
+			if _is_water(rel, p):
+				continue                          # no lamp stands in the sea
 			var foot := iso(p, h)
 			var head := iso(p - side * 3.0, h + _LAMP_HEIGHT)
 			var lit := int(tiles[tile].get("polluters", 0)) > 0

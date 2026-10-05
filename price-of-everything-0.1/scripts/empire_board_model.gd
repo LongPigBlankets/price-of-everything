@@ -73,6 +73,12 @@ const MINE_CLEAR := 190.0
 const WET_COST := 1.0e7
 ## How close a river may come to a pad's centre, beyond the pad's own half-width.
 const RIVER_MARGIN := 10.0
+## How far open water keeps from a pad, beyond the pad's own half-width: the beach.
+const SEA_MARGIN := 8.0
+## How finely a stretch of street is looked along for open water.
+const SEA_STEP := 8.0
+## Where else the pylon may stand when the sea covers its place: the tile's other corners.
+const PYLON_ALT: Array[Vector2] = [Vector2(121.0, -216.0), Vector2(-121.0, 216.0), Vector2(121.0, 216.0)]
 ## A pipe crosses a tile edge this far along it beyond the railway.
 const PIPE_EDGE_GAP := 26.0
 const PIPE_MODES := ["pipes", "reinf_pipes"]
@@ -224,10 +230,11 @@ static func _pt(p: Vector2, tile: String, edge: bool = false) -> Dictionary:
 ## Build the board from the live sim. `terrain` is the HexMap, `graph` is empire_graph.build().
 ## `true_pos` maps a building's iid to where it really stands on the map; it only steers which
 ## slot the building takes. `rivers_by_tile` is tile_id -> [PackedVector2Array]: nothing stands
-## on a river while a dry place is free.
+## on a river while a dry place is free. `water` is (tile_id, point) -> bool, open sea or lake at
+## a point: nothing stands on it either while a dry place is free, and the streets keep off it.
 ## With `town`, housing stands on slots the works leave free.
 static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
-		rivers_by_tile: Dictionary = {}, town: bool = false) -> Dictionary:
+		rivers_by_tile: Dictionary = {}, town: bool = false, water: Callable = Callable()) -> Dictionary:
 	var tiles: Dictionary = {}
 	var by_tile: Dictionary = {}          # tile_id -> [standing dict]
 	var stores: Dictionary = {}           # tile_id -> true: the tile has a warehouse
@@ -388,7 +395,12 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 			"polluters": int(polluters.get(tid, 0)),
 		}
 		if pylon_tiles.has(tid):
-			tiles[tid]["pylon"] = c + PYLON_AT
+			var at := PYLON_AT
+			for alt in [PYLON_AT] + PYLON_ALT:
+				if not _at_sea(str(tid), c + (alt as Vector2), PYLON_SIDE * 0.5, water):
+					at = alt
+					break
+			tiles[tid]["pylon"] = c + at
 			tiles[tid]["power_icon"] = power_icon
 
 	# Stand everything on the tile's street plan: the warehouse at the centre, and each building,
@@ -408,12 +420,13 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 			# The warehouse stands at the centre unless a river runs there; then it takes the
 			# dry slot nearest the centre, and that slot's spur.
 			var hub_rel := Vector2.ZERO
-			if _wet(c, Streets.HUB_SIDE, rivers):
+			if _wet(c, Streets.HUB_SIDE, rivers) or _at_sea(str(tid), c, Streets.HUB_SIDE, water):
 				var nearest: Array = range(Streets.SLOTS.size())
 				nearest.sort_custom(func(x: int, y: int) -> bool:
 					return (Streets.SLOTS[x] as Vector2).length_squared() < (Streets.SLOTS[y] as Vector2).length_squared())
 				for i in nearest:
-					if not _wet(c + Streets.SLOTS[i], Streets.SLOT_SIDE, rivers):
+					if not _wet(c + Streets.SLOTS[i], Streets.SLOT_SIDE, rivers) \
+							and not _at_sea(str(tid), c + Streets.SLOTS[i], Streets.SLOT_SIDE, water):
 						hub_slot = i
 						hub_rel = Streets.SLOTS[i]
 						t["hub_node"] = Streets.nid(Streets.slot_door(i))
@@ -447,7 +460,8 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 			for pair in Streets.TOWER_PAIRS:
 				var ok := true
 				for i in pair:
-					ok = ok and i != hub_slot and not _wet(c + Streets.SLOTS[i], Streets.SLOT_SIDE * TOWER_SHARE, rivers)
+					ok = ok and i != hub_slot and not _wet(c + Streets.SLOTS[i], Streets.SLOT_SIDE * TOWER_SHARE, rivers) \
+						and not _at_sea(str(tid), c + Streets.SLOTS[i], Streets.SLOT_SIDE, water)
 				if ok:
 					tower_slots = pair
 					break
@@ -456,7 +470,8 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 			taken.append(hub_slot)
 		var free: Array = Streets.places(things.size(), taken)
 		for place in free:
-			place["wet"] = _wet(c + (place["pos"] as Vector2), float(place["side"]), rivers)
+			place["wet"] = _wet(c + (place["pos"] as Vector2), float(place["side"]), rivers) \
+				or _at_sea(str(tid), c + (place["pos"] as Vector2), float(place["side"]), water)
 		for thing in things:
 			var td: Dictionary = thing
 			var want: Vector2 = Streets.SLOTS[0]
@@ -530,7 +545,8 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 				"sprite": BuildingSprites.texture_for("pylon", 1), "level": 3, "pos": t["pylon"],
 				"side": PYLON_SIDE, "name": "Power line"})
 
-	# What each tile's rivers add to the stretches of street that cross them.
+	# What each tile's rivers add to the stretches of street that cross them, and the sea to
+	# those that run over it.
 	var river_cost: Dictionary = {}       # tile_id -> {"a|b": cost}
 	for tid in tiles:
 		var costs: Dictionary = {}
@@ -538,6 +554,9 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 		for e in Streets.edges():
 			var a: Vector2 = c + Streets.node_pos(str(e[0]))
 			var b: Vector2 = c + Streets.node_pos(str(e[1]))
+			if _sea_between(str(tid), a, b, water):
+				costs[str(e[0]) + "|" + str(e[1])] = Streets.SEA_COST
+				continue
 			for line in rivers_by_tile.get(tid, []):
 				var pts: PackedVector2Array = line
 				for i in range(pts.size() - 1):
@@ -638,6 +657,10 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 		var cross := Streets.nid(Vector2(Streets.AVENUE_X, Streets.STREET_Y * sy))
 		for other in [Vector2(Streets.AVENUE_X, Streets.TOP_Y * sy), Vector2(Streets.AVENUE_X, -Streets.STREET_Y * sy),
 				Vector2(0.0, Streets.STREET_Y * sy), Vector2(110.0, Streets.STREET_Y * sy)]:
+			var ends: Array = [cross, Streets.nid(other)]
+			ends.sort()
+			if float((river_cost.get(tid, {}) as Dictionary).get("|".join(ends), 0.0)) >= Streets.SEA_COST:
+				continue                      # it would run out over the sea
 			walk.call(str(tid), [cross, Streets.nid(other)], "roads")
 
 	# A home has its own short way onto the street.
@@ -773,6 +796,29 @@ static func _wet(p: Vector2, side: float, rivers: Array) -> bool:
 		for i in range(pts.size() - 1):
 			if Geometry2D.get_closest_point_to_segment(p, pts[i], pts[i + 1]).distance_to(p) < side * 0.5 + RIVER_MARGIN:
 				return true
+	return false
+
+
+## Does open water lie under a pad of this side centred at p, or within SEA_MARGIN of it?
+static func _at_sea(tile: String, p: Vector2, side: float, water: Callable) -> bool:
+	if not water.is_valid():
+		return false
+	var r := side * 0.5 + SEA_MARGIN
+	for gx in range(-2, 3):
+		for gy in range(-2, 3):
+			if bool(water.call(tile, p + Vector2(float(gx), float(gy)) * r * 0.5)):
+				return true
+	return false
+
+
+## Does a stretch of street from a to b run over open water anywhere along it?
+static func _sea_between(tile: String, a: Vector2, b: Vector2, water: Callable) -> bool:
+	if not water.is_valid():
+		return false
+	var steps := maxi(1, ceili(a.distance_to(b) / SEA_STEP))
+	for i in range(steps + 1):
+		if bool(water.call(tile, a.lerp(b, float(i) / float(steps)))):
+			return true
 	return false
 
 
