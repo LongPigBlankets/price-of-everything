@@ -37,6 +37,7 @@ const _GLOW_HEIGHT_FRAC := 0.15             # selection halo reach as a fraction
 const _GLOW_ALPHA := 0.55                   # peak alpha at the halo's centre
 const _PORT_BADGE_FRAC := 0.17              # corner hex size as a fraction of the port sprite box
 const _PORT_MIN_SEP_SPRITES := 3.0          # lane a charted port reserves, in sprite-widths
+const _PORT_CLEAR := 90.0                   # least gap between a charted port and any building, layout px
 const _PORT_SPRITE_MULT := 2.0              # port sprite box = NodePanelScript.SPRITE_PX * this
 const _SHIPMENT_LOOKAHEAD := 5              # "expected in N turns" window
 const _COST_OK := 2.0                       # £/turn at or under which a line is cheap
@@ -360,6 +361,7 @@ func _reposition_panels() -> void:
 	var ids: Array = []
 	var pos: Dictionary = {}
 	var ext: Dictionary = {}     # iid -> Rect2 footprint relative to the panel CENTRE (screen px)
+	var ext_port: Dictionary = {}  # the same with the whole sprite, as zoom grows it: what a port keeps clear of
 	for pan in _panels:
 		var iid: String = pan["iid"]
 		ids.append(iid)
@@ -377,8 +379,13 @@ func _reposition_panels() -> void:
 		var fxr: Rect2 = fps.get("fx", Rect2())
 		if fxr.size.x > 0.0:
 			fp = fp.merge(fxr)
+		var whole := fp
+		var spr: Rect2 = fps.get("sprite", Rect2())
+		if spr.size.x > 0.0:
+			whole = whole.merge(spr)
 		fp = fp.grow(_MIN_GAP * 0.5)
 		ext[iid] = Rect2((fp.position - ctrl.size * 0.5) * sc, fp.size * sc)
+		ext_port[iid] = Rect2((whole.position - ctrl.size * 0.5) * sc, whole.size * sc)
 
 	# Port hexes are OBSTACLES, not participants: they hold the positions the layout gave them
 	# (their x carries the sector meaning) and panels give way. Without this the pass separated
@@ -401,19 +408,25 @@ func _reposition_panels() -> void:
 			var ph: Vector2 = (p2["half"] as Vector2) * sc
 			# A port in an open chart is drawn as that big sprite, not as its hex, so the
 			# footprint the panels give way to has to be the sprite's or they sit on top of it.
-			if in_chart:
+			# Local Suppliers stay their hex in a chart, so they keep the hex's footprint.
+			if in_chart and not bool(p2.get("is_middleman", false)):
 				ph = Vector2(maxf(ph.x, port_sep_half), maxf(ph.y, port_sprite_half))
+			# A charted port keeps _PORT_CLEAR of open ground round it, measured to the building's whole
+			# sprite, which zoom grows past its card.
+			var gap := (_PORT_CLEAR if in_chart else _MIN_GAP) * sc
 			port_rects.append({
 				"c": _world_to_screen(_focus_pos(pid2, p2["pos"] as Vector2)),
-				"h": ph + Vector2(_MIN_GAP * sc, _MIN_GAP * sc),
+				"h": ph + Vector2(gap, gap),
+				"whole": in_chart,
 			})
 
 	for _it in range(_SEP_ITERS):
 		var moved := false
 		for i in range(ids.size()):
 			var pid: String = ids[i]
-			var rp := Rect2((pos[pid] as Vector2) + (ext[pid] as Rect2).position, (ext[pid] as Rect2).size)
 			for pr in port_rects:
+				var foot: Rect2 = ext_port[pid] if bool(pr["whole"]) else ext[pid]
+				var rp := Rect2((pos[pid] as Vector2) + foot.position, foot.size)
 				var rr := Rect2((pr["c"] as Vector2) - (pr["h"] as Vector2), (pr["h"] as Vector2) * 2.0)
 				var ov := rp.intersection(rr)
 				if ov.size.x <= 0.0 or ov.size.y <= 0.0:
@@ -425,7 +438,6 @@ func _reposition_panels() -> void:
 					pos[pid] = (pos[pid] as Vector2) + Vector2(ov.size.x * (1.0 if dp.x >= 0.0 else -1.0), 0.0)
 				else:
 					pos[pid] = (pos[pid] as Vector2) + Vector2(0.0, ov.size.y * (1.0 if dp.y >= 0.0 else -1.0))
-				rp = Rect2((pos[pid] as Vector2) + (ext[pid] as Rect2).position, (ext[pid] as Rect2).size)
 		for i in range(ids.size()):
 			for j in range(i + 1, ids.size()):
 				var a: String = ids[i]
@@ -1239,15 +1251,28 @@ func _build_focus_layout() -> void:
 	var origin: Vector2 = _pos_by_iid[sel]
 	_focus_members[sel] = true
 	_fpos[sel] = origin
-	for col in [{"ids": ins, "dx": -_FOCUS_COL}, {"ids": outs, "dx": _FOCUS_COL}]:
+	# A port's column: half its lane (_PORT_MIN_SEP_SPRITES sprites wide), half a building and _PORT_CLEAR
+	# out from the building, so the port never stands on it.
+	var port_col := maxf(_FOCUS_COL, NodePanelScript.SPRITE_PX * (_PORT_MIN_SEP_SPRITES + 1.0) * 0.5 + _PORT_CLEAR + _MIN_GAP)
+	for col in [{"ids": ins, "side": -1.0}, {"ids": outs, "side": 1.0}]:
 		var ids: Array = col["ids"]
 		for i in range(ids.size()):
 			var id2: String = ids[i]
 			if not _pos_by_iid.has(id2):
 				continue
 			_focus_members[id2] = true
-			_fpos[id2] = origin + Vector2(float(col["dx"]),
+			var dx := port_col if _is_charted_port(id2) else _FOCUS_COL
+			_fpos[id2] = origin + Vector2(float(col["side"]) * dx,
 					(float(i) - (ids.size() - 1) * 0.5) * _FOCUS_ROW)
+
+
+## Is `iid` a port that a chart draws as its full sprite (not Local Suppliers' hex)?
+func _is_charted_port(iid: String) -> bool:
+	for arr in [_ports, _buy_ports]:
+		for p in arr:
+			if str(p["iid"]) == iid:
+				return not bool(p.get("is_middleman", false))
+	return false
 
 
 ## MASS mode's chart: the selection's WHOLE chain — every building reachable through input
