@@ -37,14 +37,13 @@ const GoodIcons := preload("res://scripts/good_icons.gd")
 const Streets := preload("res://scripts/empire_board_streets.gd")
 const Rails := preload("res://scripts/empire_board_rails.gd")
 const Service := preload("res://scripts/middleman_service.gd")
+const Relief := preload("res://scripts/empire_board_relief.gd")
 
 ## A flat-topped hex of the map's tile size (assets/main_tileset.tres: 540 x 480).
 const HEX_HALF := Vector2(270.0, 240.0)
-## How tall each kind of tile stands, in map units. Land is a plate over the dark; hills and
-## mountains are taller plates. Finer relief is the terraces the board draws on top.
-const TILE_HEIGHT := {
-	"deep_sea": 6.0, "sea": 10.0, "rural": 34.0, "urban": 34.0, "hill": 66.0, "mountain": 100.0,
-}
+## How tall open water stands, in map units. Land stands at the height of its own band of the
+## map's relief (empire_board_relief.gd), settled over the whole map; this is lowland's.
+const TILE_HEIGHT := {"deep_sea": 6.0, "sea": 10.0}
 const DEFAULT_HEIGHT := 34.0
 ## The footprint a standing thing gets, as a share of its slot. Level 3 is the only one that
 ## fills it: LEVEL_SHARE sizes a plain block, and a sprite carries its level's size itself.
@@ -104,6 +103,13 @@ static func tile_center(terrain: Object, tile_id: String) -> Vector2:
 
 static func tile_height(tile_type: String) -> float:
 	return float(TILE_HEIGHT.get(tile_type, DEFAULT_HEIGHT))
+
+
+## How high a tile's plate stands: open water at its own height, land at its settled plate.
+static func plate_height(tile_id: String, tile_type: String, plates: Dictionary) -> float:
+	if TILE_HEIGHT.has(tile_type):
+		return tile_height(tile_type)
+	return float(plates.get(tile_id, DEFAULT_HEIGHT))
 
 
 ## Each consecutive tile pair of a route with the mode that carries it: [{a, b, mode}].
@@ -380,6 +386,7 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 				break
 	var power_icon: Texture2D = GoodIcons.texture_for(power_good, _internal_name(power_good)) if power_good != "" else null
 
+	var plates: Dictionary = Relief.plates(terrain, rivers_by_tile)
 	for tid in drawn:
 		var coord: Vector2i = terrain.id_to_coord(str(tid))
 		if coord.x < 0:
@@ -388,7 +395,7 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 		var c: Vector2 = tile_center(terrain, str(tid))
 		tiles[tid] = {
 			"id": tid, "center": c, "type": ttype,
-			"height": tile_height(ttype), "store": stores.has(tid),
+			"height": plate_height(str(tid), ttype, plates), "store": stores.has(tid),
 			"label": str(Catalog.tile_label(str(tid))), "hub": c,
 			"level": clampi(int(Catalog.tile_infra_level(str(tid), "roads")), 1, 3),
 			"paved": Catalog.tile_has_infrastructure(str(tid), "roads"),
