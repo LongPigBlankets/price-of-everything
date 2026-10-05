@@ -122,6 +122,10 @@ const _ESTUARY_SHORE_W := 1.6
 const _ESTUARY_SEA_W := 4.2
 const _ESTUARY_OUT := 22.0
 const _ESTUARY_STEPS := 10
+## How a river meets the sea: its last stretch (in river widths) bends to cross the shoreline square on, by
+## at most this much, so its mouth opens straight onto the water and not along the beach or into a corner.
+const _MOUTH_AIM_STRETCH := 3.0
+const _MOUTH_AIM_MAX := deg_to_rad(30.0)
 const _INK_SOFT := Color(0.18, 0.23, 0.35, 0.55)
 ## A tile slopes down to a lower neighbour over this much of its own ground.
 const SLOPE_W := 34.0
@@ -841,7 +845,7 @@ func _build_ground(rivers: Dictionary) -> void:
 		for rec in rivers.get(tid, []):
 			var half_w := (float(rec["start_width"]) + float(rec["end_width"])) * 0.25
 			for part in Geometry2D.intersect_polyline_with_polygon(rec["points"], top_poly):
-				for run in _to_mouth(rel, part, coast, half_w * 2.0):
+				for run in _to_mouth(rel, _aim_mouth(rel, part, coast, half_w * 2.0), coast, half_w * 2.0):
 					var pts: PackedVector2Array = run["pts"]
 					_stroke_to(verts, cols, idx, pts, half_w * 2.0, h, water, run["cuts"], _MOUTH)
 					_stroke_to(verts, cols, idx, pts, half_w * 0.9, h, water.lightened(0.16), run["cuts"], _MOUTH)
@@ -1110,6 +1114,56 @@ static func _to_mouth(rel: Dictionary, pts: PackedVector2Array, coast: Array, wi
 			runs.append({"pts": run, "cuts": cuts})
 		i = j + 1
 	return runs
+
+
+## A river's line with its way into the sea straightened: where it runs from land into water, its last
+## _MOUTH_AIM_STRETCH widths before the shore bend round, smoothly, until it crosses the shoreline square on
+## (by at most _MOUTH_AIM_MAX). Everything up river of that stretch is left as it is; the line ends at its
+## first point in the water.
+static func _aim_mouth(rel: Dictionary, line: PackedVector2Array, coast: Array, width: float) -> PackedVector2Array:
+	if line.size() < 2 or coast.is_empty():
+		return line
+	var flipped := _is_water(rel, line[0]) and not _is_water(rel, line[line.size() - 1])
+	var pts := PackedVector2Array(line)
+	if flipped:
+		pts.reverse()
+	var wet := -1
+	for i in range(1, pts.size()):
+		if _is_water(rel, pts[i]) and not _is_water(rel, pts[i - 1]):
+			wet = i
+			break
+	if wet < 0:
+		return line
+	var m: Array = _mouth(rel, pts[wet - 1], pts[wet], coast, width)
+	var at: Vector2 = (m[1] as Array)[0]
+	var n: Vector2 = (m[1] as Array)[1]
+	var dir := (pts[wet] - pts[wet - 1]).normalized()
+	var turn := clampf(dir.angle_to(n), -_MOUTH_AIM_MAX, _MOUTH_AIM_MAX)
+	if absf(turn) < deg_to_rad(1.0):
+		return line
+	# The pivot: the stretch's length up river from the shore.
+	var stretch := width * _MOUTH_AIM_STRETCH
+	var back := at.distance_to(pts[wet - 1])
+	var k := wet - 1
+	while k > 0 and back + pts[k].distance_to(pts[k - 1]) < stretch:
+		back += pts[k].distance_to(pts[k - 1])
+		k -= 1
+	var pivot := pts[k]
+	if k > 0 and back < stretch:
+		pivot = pts[k].lerp(pts[k - 1], clampf((stretch - back) / maxf(pts[k].distance_to(pts[k - 1]), 0.001), 0.0, 1.0))
+	var out := pts.slice(0, k)
+	out.append(pivot)
+	var run := 0.0
+	var prev := pivot
+	# Only as far as its first point in the water: the sea draws the rest, and a line swung out over the sea
+	# could find land again at the tile's edge and open a second mouth there.
+	for i in range(k, wet + 1):
+		run += prev.distance_to(pts[i])
+		prev = pts[i]
+		out.append(pivot + (pts[i] - pivot).rotated(turn * smoothstep(0.0, 1.0, run / stretch)))
+	if flipped:
+		out.reverse()
+	return out
 
 
 ## Where a river leaves the land between a point on land and the next in open water:
