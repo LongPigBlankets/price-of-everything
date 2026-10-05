@@ -2628,6 +2628,8 @@ const V3_DIAG_STAGES := [["Inputs", 1], ["Inbound", 1], ["Power", 1], ["Plant", 
 const V3_DIAG_ROWS := 5
 ## The icons' side, and their lamps' size as a share of the status lamp's (the text rows' size).
 const V3_DIAG_ICON_PX := 56.0
+## A text row's good, beside its lamp.
+const V3_DIAG_GOOD_PX := 36
 const V3_DIAG_ICON_LAMP_SCALE := 0.72
 ## Each check's raised icon is res://assets/ui/bdp_v3/diag_icon_<key>.png and its shadow, or the one its
 ## `icon` names (Sales shows the pallet for unsold stock, the coin for glut); an output check that mirrors
@@ -2856,7 +2858,9 @@ func _diag_row(r: Dictionary, top_border: bool) -> Control:
 		lamp.set_tone(tone)
 		hb.add_child(lamp)
 		if str(r.get("good_id", "")) != "":
-			var good_icon := UIHelpers.make_framed_good_icon(str(r.get("good_id", "")), Catalog.get_internal_name(str(r.get("good_id", ""))), 18)
+			# The good itself, unframed and large enough to tell one from another (a framed 18 px icon read as
+			# an empty box).
+			var good_icon := UIHelpers.make_plain_good_icon(str(r.get("good_id", "")), Catalog.get_internal_name(str(r.get("good_id", ""))), V3_DIAG_GOOD_PX)
 			good_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			hb.add_child(good_icon)
 	else:
