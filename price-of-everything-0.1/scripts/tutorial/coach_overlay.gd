@@ -579,6 +579,9 @@ func _build_card() -> void:
 	_title.theme_type_variation = &"Section"
 	_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# As wide as the body from the start: a wrapping label with no width yet wraps a letter to a line, and a card
+	# measured then stands hundreds of pixels too tall.
+	_title.custom_minimum_size = Vector2(430, 0)
 	title_row.add_child(_title)
 
 	_body = Label.new()
