@@ -946,6 +946,86 @@ func _test_settings_test_gauge() -> void:
 	panel._on_back_pressed()
 
 
+# Building Detail: the Change recipes key counts only the recipes this building can switch to, and
+# says how many are better only when some are. A side fed from or shipping to several places names
+# the count of tiles, or of buildings when they share one tile.
+func _test_bdp_recipe_key_and_route_counts() -> void:
+	var Block = load("res://scripts/bdp_v3_block.gd")
+	var Readout = load("res://scripts/building_readout.gd")
+	_check(Block.recipe_detail(3, 0, "Coal") == "" and Block.recipe_detail(3, 2, "Coal") == "2 better for Coal"
+		and Block.recipe_detail(0, 0, "Coal") == "No other recipes"
+		and Block.recipe_detail(3, 1, "Heavy Vehicle") == "1 better for Heavy Vehi...",
+		"bdp recipe key: the better line shows only when one of the building's own recipes is better")
+	var iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "recipe_key")
+	var b: Dictionary = BuildingState.get_building(iid)
+	var own: Array = Catalog.get_recipes_for_building("b_007")
+	var runs_current := own.any(func(r: Dictionary) -> bool: return str(r.get("recipe_id", "")) == "r_009")
+	var offered: Array = Block.switch_recipes(b)
+	var only_own := offered.all(func(r: Dictionary) -> bool:
+		return str(r.get("building_id", "")) == "b_007" and str(r.get("recipe_id", "")) != "r_009")
+	_check(only_own and offered.size() == own.size() - (1 if runs_current else 0),
+		"bdp recipe key: the offered recipes are this building's own, less the current one (%d)" % offered.size())
+	var better: int = Block.better_recipe_count(b)
+	_check(better >= 0 and better <= offered.size(),
+		"bdp recipe key: the better count is among the recipes this building can switch to (%d of %d)" % [better, offered.size()])
+	BuildingState.buildings.erase(iid)
+
+	_check(Readout.places_label([]) == "" and Readout.places_label([{"tile_id": "t1", "instance_id": "a"}]) == ""
+		and Readout.places_label([{"tile_id": "t1", "instance_id": "a"}, {"tile_id": "t1", "instance_id": "a"}]) == "",
+		"bdp routes: one source keeps its own label")
+	_check(Readout.places_label([{"tile_id": "t1", "instance_id": "a"}, {"tile_id": "t1", "instance_id": "b"}]) == "2 buildings",
+		"bdp routes: several buildings on one tile read as a count of buildings")
+	_check(Readout.places_label([{"tile_id": "t1", "instance_id": "a"}, {"tile_id": "t1", "instance_id": "b"},
+		{"tile_id": "t2", "instance_id": "c"}]) == "2 tiles"
+		and Readout.places_label([{"tile_id": "t1"}, {"tile_id": "t2"}, {"tile_id": "t3"}]) == "3 tiles",
+		"bdp routes: places on several tiles read as a count of tiles")
+
+	# The panel's Inputs and Outputs keys, on a real consumer and its producers.
+	var recipe: Dictionary = Catalog.get_recipe("r_009")
+	var first_input: Dictionary = (recipe.get("inputs", []) as Array)[0]
+	var in_gid := str(first_input.get("good_id", ""))
+	var makers: Array = Catalog.recipes_producing(in_gid)
+	_check(not makers.is_empty(), "bdp routes: the test input %s has a producing recipe" % in_gid)
+	if makers.is_empty():
+		return
+	var maker: Dictionary = makers[0]
+	var home := "tile_20_20"
+	var away := "tile_22_20"
+	var panel: Node = load("res://scripts/building_detail_panel_v2.gd").new()
+	var consumer: String = BuildingState.add_building("b_007", "r_009", home, MatchState.LOCAL_PLAYER, "route_consumer")
+	var c: Dictionary = BuildingState.get_building(consumer)
+	var before: Array = Readout.input_sources(c, recipe)
+	_check(before.is_empty(), "bdp routes: the consumer's tile starts with no producers (%d)" % before.size())
+	var made: Array = []
+	for n in 2:
+		made.append(BuildingState.add_building(str(maker.get("building_id", "")), str(maker.get("recipe_id", "")), home,
+			MatchState.LOCAL_PLAYER, "route_maker_%d" % n))
+	var same_tile := str(panel.call("_input_summary", c, recipe))
+	_check(same_tile == "2 buildings", "bdp routes: two producers on the consumer's tile read as 2 buildings (%s)" % same_tile)
+	var far: String = BuildingState.add_building(str(maker.get("building_id", "")), str(maker.get("recipe_id", "")), away,
+		MatchState.LOCAL_PLAYER, "route_maker_far")
+	made.append(far)
+	MatchState.set_output_stockpile_destination(far, home, in_gid)
+	var two_tiles := str(panel.call("_input_summary", c, recipe))
+	_check(two_tiles == "2 tiles", "bdp routes: producers on two tiles read as 2 tiles (%s)" % two_tiles)
+
+	var out_gid: String = BuildingStatus.primary_output_good_id(recipe)
+	MatchState.add_output_split_destination(consumer, out_gid, away)
+	var single := str(panel.call("_output_summary", c, recipe))
+	_check(single.begins_with(Catalog.tile_label(away)), "bdp routes: one output destination keeps its tile name (%s)" % single)
+	MatchState.add_output_split_destination(consumer, out_gid, "tile_24_20")
+	MatchState.add_output_split_destination(consumer, out_gid, "tile_26_20")
+	var three := str(panel.call("_output_summary", c, recipe))
+	_check(three == "3 tiles", "bdp routes: an output split three ways reads as 3 tiles (%s)" % three)
+
+	made.append(consumer)
+	for id: String in made:
+		MatchState.output_split_destinations.erase(id)
+		MatchState.output_stockpile_destinations.erase(id)
+		BuildingState.buildings.erase(id)
+	panel.free()
+
+
 # Building Detail v3 (`toggle bdp v3`): the approved control plates. The rules behind the keys'
 # text, when the upgrade arrow lights, the cheat, and that the panel swaps its controls and the
 # keys open the same sheets as v2.

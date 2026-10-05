@@ -1742,7 +1742,6 @@ func _v3_emboss(l: Label) -> void:
 func _build_v3_block(building: Dictionary, recipe: Dictionary) -> Control:
 	var service = preload("res://scripts/middleman_service.gd")
 	var iid := str(building.get("instance_id", ""))
-	var building_id := str(building.get("building_id", ""))
 	var manage_unlocked: bool = service.eligible(building) and ResearchState.open_logistics_contracts_available()
 	var state := {
 		"input_value": _input_summary(building, recipe),
@@ -1751,7 +1750,7 @@ func _build_v3_block(building: Dictionary, recipe: Dictionary) -> Control:
 		"output_managed": manage_unlocked and service.side_all_middleman(iid, "output"),
 	}
 	state.merge(v3_upgrade_state(building))
-	var alt_count := maxi(0, Catalog.get_recipes_for_building(building_id).size() - 1)
+	var alt_count := BdpV3Block.switch_recipes(building).size()
 	if BuildingWorks.is_retooling(iid):
 		var t := BuildingWorks.retrofit_turns_remaining(iid)
 		state["recipe_title"] = "Retooling — %d turn%s" % [t, "" if t == 1 else "s"]
@@ -1759,8 +1758,8 @@ func _build_v3_block(building: Dictionary, recipe: Dictionary) -> Control:
 		state["recipe_enabled"] = true
 	else:
 		state["recipe_title"] = "Change recipes (%d)" % alt_count
-		state["recipe_detail"] = "%d better for %s" % [BdpV3Block.better_recipe_count(building),
-			BdpV3Block.truncate10(BdpV3Block.main_output_name(recipe))] if alt_count > 0 else "No other recipes"
+		state["recipe_detail"] = BdpV3Block.recipe_detail(alt_count,
+			BdpV3Block.better_recipe_count(building) if alt_count > 0 else 0, BdpV3Block.main_output_name(recipe))
 		state["recipe_enabled"] = alt_count > 0
 	var block: Control = BdpV3Block.new()
 	block.configure(state)
@@ -3806,8 +3805,12 @@ func _input_summary(building: Dictionary, recipe: Dictionary) -> String:
 	if handover_turns > 0:
 		return "Switching suppliers: first input from the market in %d turn%s" % [handover_turns, "" if handover_turns == 1 else "s"]
 	if service.enabled(iid) and (recipe.get("inputs", []) as Array).any(func(item: Dictionary) -> bool: return service.supplies_good(iid, str(item.get("good_id", "")))): return "Mixed logistics"
+	var sources := BuildingReadout.input_sources(building, recipe)
+	var many := BuildingReadout.places_label(sources)
+	if many != "":
+		return many
 	var names: Array = []
-	for s in BuildingReadout.input_sources(building, recipe):
+	for s in sources:
 		var nm := str(s.get("building_name", ""))
 		if not names.has(nm):
 			names.append(nm)
@@ -3821,30 +3824,9 @@ func _output_summary(building: Dictionary, recipe: Dictionary) -> String:
 	if service.enabled(iid_for_output) and (recipe.get("outputs", []) as Array).any(func(item: Dictionary) -> bool: return service.buys_output(iid_for_output, str(item.get("good_id", "")))): return "Mixed logistics"
 	var iid := str(building.get("instance_id", ""))
 	var gid := BuildingStatus.primary_output_good_id(recipe)
-	var split := MatchState.get_output_split_destinations(iid, gid)
-	if split.size() >= 2:
-		var produced := BuildingStatus.primary_output_qty(recipe)
-		var remaining := produced
-		var automatic: Array = []
-		var quantities: Dictionary = {}
-		for destination in split:
-			var requested := int((destination as Dictionary).get("qty", 0))
-			var tile_id := str((destination as Dictionary).get("tile_id", ""))
-			if requested > 0:
-				quantities[tile_id] = mini(requested, remaining)
-				remaining -= int(quantities[tile_id])
-			else:
-				automatic.append(destination)
-		for index in automatic.size():
-			var tile_id := str((automatic[index] as Dictionary).get("tile_id", ""))
-			var share := ceili(float(remaining) / float(automatic.size() - index)) if remaining > 0 else 0
-			quantities[tile_id] = share
-			remaining -= share
-		var lines: Array = []
-		for destination in split:
-			var tile_id := str((destination as Dictionary).get("tile_id", ""))
-			lines.append("%s: %d" % [Catalog.tile_label(tile_id), int(quantities.get(tile_id, 0))])
-		return "\n".join(lines)
+	var many := BuildingReadout.places_label(MatchState.get_output_split_destinations(iid, gid))
+	if many != "":
+		return many
 	var route := BuildingReadout.output_route(building, recipe)
 	var dest := str(route.get("destination", "—"))
 	if not bool(route.get("reachable", true)):
