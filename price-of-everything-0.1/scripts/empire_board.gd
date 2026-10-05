@@ -248,6 +248,8 @@ var _zoom := 1.0
 var _offset := Vector2.ZERO
 var _fitted := false
 var _clock := 0.0
+## Goods on the move along their routes, or (false) the board at rest: each good on the building that makes it.
+var animate_goods := true
 var _press_pos := Vector2.INF
 var _dragging := false
 ## Local Suppliers' depot on hover, under its name, as lines the card can hold.
@@ -2686,8 +2688,10 @@ func _draw_tokens(layer: Control) -> void:
 	var placed: Array = []
 	var tiles: Dictionary = _model.get("tiles", {})
 	var goods: bool = show["goods"]
+	if goods and not animate_goods:
+		_draw_made(layer, view, box, placed)
 	for f in _flows:
-		if (f["live"] as Array).is_empty() or str(f["style"]) != "goods" or not goods:
+		if (f["live"] as Array).is_empty() or str(f["style"]) != "goods" or not goods or not animate_goods:
 			continue
 		var total := float(f["total"])
 		for sh in f["live"]:
@@ -2744,6 +2748,8 @@ func _draw_tokens(layer: Control) -> void:
 	for f in _flows:
 		var total := float(f["total"])
 		var style := str(f["style"])
+		if not animate_goods:
+			break
 		if style == "goods" and (not goods or not (f["live"] as Array).is_empty()):
 			continue
 		var d := fmod(_clock * _TOKEN_SPEED + float(f["phase"]), _TOKEN_SPACING)
@@ -2896,6 +2902,27 @@ func _along(f: Dictionary, d: float) -> Vector2:
 		seg += 1
 	var span := maxf(0.001, cum[seg + 1] - cum[seg])
 	return pts[seg].lerp(pts[seg + 1], clampf((d - cum[seg]) / span, 0.0, 1.0))
+
+
+## The board at rest: over each building, a token for each good it makes, side by side.
+func _draw_made(layer: Control, view: Rect2, box: float, placed: Array) -> void:
+	var made: Dictionary = _model.get("made", {})
+	if made.is_empty():
+		return
+	for s in _standing:
+		var goods_made: Array = made.get(str(s["iid"]), [])
+		if goods_made.is_empty():
+			continue
+		var r: Rect2 = s["rect"]
+		var top := Vector2(r.get_center().x, r.position.y + r.size.y * 0.25) * _zoom + _offset
+		if not view.has_point(top):
+			continue
+		var step := box + 4.0
+		var x0 := top.x - step * float(goods_made.size() - 1) * 0.5
+		for i in goods_made.size():
+			var at := Vector2(x0 + step * float(i), top.y)
+			placed.append(Rect2(at - Vector2(box, box) * 0.5, Vector2(box, box)))
+			_token(layer, at, box, Model.GoodIcons.texture_for(str(goods_made[i]), Model._internal_name(str(goods_made[i]))))
 
 
 func _token(layer: Control, p: Vector2, box: float, icon: Texture2D) -> void:

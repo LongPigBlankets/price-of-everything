@@ -757,8 +757,13 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 				"pts": [_pt(tiles[a]["pylon"], a), _pt(tiles[b]["pylon"], b)],
 				"ids": ["pylon:" + a, "pylon:" + b]})
 
+	# What each building makes, for the board at rest: iid -> [good].
+	var made: Dictionary = {}
+	for f in feeds:
+		if bool(f["out"]) and not (made.get_or_add(str(f["iid"]), []) as Array).has(str(f["good"])):
+			(made[str(f["iid"])] as Array).append(str(f["good"]))
 	return {"tiles": tiles, "standing": standing, "lines": lines, "roads": roads.values(),
-		"flows": flows, "lanes": lane_rows}
+		"flows": flows, "lanes": lane_rows, "made": made}
 
 
 ## Does a river run under a pad of this side centred at p?

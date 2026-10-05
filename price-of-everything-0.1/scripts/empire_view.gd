@@ -39,6 +39,9 @@ var _flat: ColorRect
 var _back_to_company: Button
 ## Over Local Suppliers' chart: which side it shows, the buildings they supply (inputs) or buy from (outputs).
 var _suppliers_keys: HBoxContainer
+## Bottom left on the board: pause the goods (each sits on the building that makes it) or play them along their
+## routes again. Shows pause while they move, play while they rest.
+var _motion_key: Button
 var _suppliers_inputs: Button
 var _suppliers_outputs: Button
 var _bg: Control                               # the animated hex-field background (empire_hex_bg.gd)
@@ -150,6 +153,24 @@ func _build_ui() -> void:
 	_suppliers_outputs.pressed.connect(func() -> void: _show_suppliers("output"))
 	_suppliers_keys.add_child(_suppliers_inputs)
 	_suppliers_keys.add_child(_suppliers_outputs)
+	_motion_key = CreamKey.make("GoodsMotionKey", "", "", 56.0)
+	_motion_key.z_index = 200
+	_motion_key.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	_motion_key.offset_left = 16
+	_motion_key.offset_right = 72
+	_motion_key.offset_top = -150
+	_motion_key.offset_bottom = -150 + CreamKey.height_for()
+	var glyph := Control.new()
+	glyph.name = "Glyph"
+	glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	glyph.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	glyph.draw.connect(func() -> void: _draw_motion_glyph(glyph))
+	_motion_key.add_child(glyph)
+	_motion_key.pressed.connect(func() -> void:
+		_board.set("animate_goods", not bool(_board.get("animate_goods")))
+		_sync_motion_key())
+	add_child(_motion_key)
+	_sync_motion_key()
 
 func _process(_delta: float) -> void:
 	if visible and _back_to_company != null:
@@ -157,6 +178,7 @@ func _process(_delta: float) -> void:
 		var focused := focused_on != ""
 		_back_to_company.visible = focused
 		_suppliers_keys.visible = focused_on in [SUPPLIERS_INPUTS, SUPPLIERS_OUTPUTS]
+		_motion_key.visible = not focused
 		_show_board(not focused)
 
 
@@ -168,6 +190,27 @@ func _show_board(on: bool) -> void:
 		_board.visible = on
 	if _graph_world.visible == on:
 		_graph_world.visible = not on
+
+
+func _sync_motion_key() -> void:
+	var moving := bool(_board.get("animate_goods"))
+	_motion_key.tooltip_text = "Pause: show each good on the building that makes it" if moving \
+		else "Play: show the goods moving along their routes"
+	(_motion_key.get_node("Glyph") as Control).queue_redraw()
+
+
+## The key's print: two bars while the goods move, a triangle while they rest. Navy, as the cream keys print.
+func _draw_motion_glyph(c: Control) -> void:
+	var ink := Color("#0b2340")
+	var mid := c.size * 0.5
+	var h := minf(c.size.y * 0.42, 18.0)
+	if bool(_board.get("animate_goods")):
+		var w := h * 0.3
+		for dx: float in [-h * 0.3, h * 0.3]:
+			c.draw_rect(Rect2(Vector2(mid.x + dx - w * 0.5, mid.y - h * 0.5), Vector2(w, h)), ink)
+	else:
+		c.draw_colored_polygon(PackedVector2Array([Vector2(mid.x - h * 0.35, mid.y - h * 0.5),
+			Vector2(mid.x + h * 0.5, mid.y), Vector2(mid.x - h * 0.35, mid.y + h * 0.5)]), ink)
 
 
 ## Local Suppliers' two nodes in the chart: the one that supplies inputs and the one that buys outputs.

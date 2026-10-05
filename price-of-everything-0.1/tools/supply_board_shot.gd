@@ -44,7 +44,13 @@ func _ready() -> void:
 		frame = f
 		await _shot("open_%02d" % f)
 	await _settle(60)
+	# A covered window draws no frames, so the tile bakes stall and the board shows after its time limit.
+	await get_tree().create_timer(2.5).timeout
 	await _shot("board")
+	(view.find_child("GoodsMotionKey", true, false) as Button).pressed.emit()
+	await _settle(6)
+	await _shot("board_paused")
+	(view.find_child("GoodsMotionKey", true, false) as Button).pressed.emit()
 	var board: Control = view.find_child("Board", true, false)
 	# What the pointer finds over the middle of each standing thing.
 	var found: Dictionary = {}
