@@ -1,0 +1,411 @@
+{
+  "revision": "building_frame_v6",
+  "objects": 272,
+  "structural_hosts": [
+    "post_-1_-1",
+    "post_-1_1",
+    "post_1_-1",
+    "post_1_1",
+    "beam_x_0_-1",
+    "beam_x_0_1",
+    "beam_y_0_-1",
+    "beam_y_0_1",
+    "beam_x_1_-1",
+    "beam_x_1_1",
+    "beam_y_1_-1",
+    "beam_y_1_1",
+    "beam_x_2_-1",
+    "beam_x_2_1",
+    "beam_y_2_-1",
+    "beam_y_2_1",
+    "pane",
+    "cable_left_0",
+    "cable_left_1",
+    "cable_left_2",
+    "cable_left_3",
+    "cable_front_0",
+    "cable_front_1",
+    "cable_front_2",
+    "cable_front_3",
+    "cable_right_0",
+    "cable_right_1",
+    "cable_right_2",
+    "cable_right_3",
+    "ebox_left",
+    "ebox_left_lid",
+    "ebox_left_sleeve",
+    "ebox_left_band0",
+    "ebox_left_band1",
+    "ebox_front",
+    "ebox_front_lid",
+    "ebox_front_sleeve",
+    "ebox_front_band0",
+    "ebox_front_band1",
+    "ebox_right",
+    "ebox_right_lid",
+    "ebox_right_sleeve",
+    "ebox_right_band0",
+    "ebox_right_band1",
+    "pipe",
+    "pipe_coupling",
+    "pipe2",
+    "pipe2_coupling"
+  ],
+  "topology": "a steel cube frame (corner posts, three rings of beams) with a white pane on top, yellow striped cable bundles out of grey electrical boxes with yellow lids over three corners and two copper pipes through the beams by the front post",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 4
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shaded_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "thresholds": [
+          0.575,
+          0.5,
+          0.3
+        ]
+      }
+    ]
+  },
+  "dimensions": {
+    "frame": {
+      "h": 1.0,
+      "H": 2.0,
+      "post": 0.24,
+      "beam": 0.19,
+      "beam_h": 0.22,
+      "inset": 0.025,
+      "rings": [
+        0.0,
+        0.84,
+        1.78
+      ],
+      "slab_t": 0.06
+    }
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 2.08 x 2.07 x 2.34"
+  ],
+  "mesh_checks": {
+    "post_-1_-1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "post_-1_1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "post_1_-1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "post_1_1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "beam_x_0_-1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "beam_x_0_1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "beam_y_0_-1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "beam_y_0_1": {
+      "vertices": 208,
+      "faces": 106,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "beam_x_1_-1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "beam_x_1_1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "beam_y_1_-1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "beam_y_1_1": {
+      "vertices": 208,
+      "faces": 106,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "beam_x_2_-1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "beam_x_2_1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "beam_y_2_-1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "beam_y_2_1": {
+      "vertices": 208,
+      "faces": 106,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pane": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "cable_left_0": {
+      "vertices": 1824,
+      "faces": 1794,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "cable_left_1": {
+      "vertices": 1824,
+      "faces": 1794,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "cable_left_2": {
+      "vertices": 1824,
+      "faces": 1794,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "cable_left_3": {
+      "vertices": 1824,
+      "faces": 1794,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "cable_front_0": {
+      "vertices": 800,
+      "faces": 770,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "cable_front_1": {
+      "vertices": 800,
+      "faces": 770,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "cable_front_2": {
+      "vertices": 800,
+      "faces": 770,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "cable_front_3": {
+      "vertices": 800,
+      "faces": 770,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "cable_right_0": {
+      "vertices": 1312,
+      "faces": 1282,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "cable_right_1": {
+      "vertices": 1312,
+      "faces": 1282,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "cable_right_2": {
+      "vertices": 1312,
+      "faces": 1282,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "cable_right_3": {
+      "vertices": 1312,
+      "faces": 1282,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "ebox_left": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "ebox_left_lid": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "ebox_left_sleeve": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "ebox_left_band0": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "ebox_left_band1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "ebox_front": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "ebox_front_lid": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "ebox_front_sleeve": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "ebox_front_band0": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "ebox_front_band1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "ebox_right": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "ebox_right_lid": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "ebox_right_sleeve": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "ebox_right_band0": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "ebox_right_band1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pipe": {
+      "vertices": 768,
+      "faces": 768,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pipe_coupling": {
+      "vertices": 48,
+      "faces": 26,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pipe2": {
+      "vertices": 768,
+      "faces": 768,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pipe2_coupling": {
+      "vertices": 48,
+      "faces": 26,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 3.66,
+    "target": [
+      0.467,
+      -0.467,
+      1.467
+    ]
+  }
+}
