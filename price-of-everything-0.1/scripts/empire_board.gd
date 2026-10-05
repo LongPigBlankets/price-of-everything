@@ -15,6 +15,8 @@ extends Control
 ## Presentation only: it reads the sim and never changes it.
 
 signal building_picked(iid: String)
+## Local Suppliers' depot was clicked: the view opens their chart.
+signal suppliers_picked
 
 ## The last three parts of the key art plate's look, each switchable so they can be judged apart.
 static var plate_lamps := true       # street lamps; and where the air is dirty, their light, pools before the works, bloom
@@ -2850,10 +2852,14 @@ func _draw_glints(layer: Control, view: Rect2) -> void:
 		var beat := pow(maxf(0.0, sin(_clock * 1.6 * float(g["rate"]) + float(g["phase"]))), 6.0)
 		if beat < 0.04:
 			continue
+		# A thin pill of light lying along the water's grid line, growing and fading with its beat.
 		var arm := clampf(5.0 * _zoom + 1.5, 2.0, 6.0) * (0.5 + beat)
 		var col := Color(_GLINT.r, _GLINT.g, _GLINT.b, beat)
-		layer.draw_line(p - Vector2(arm, 0.0), p + Vector2(arm, 0.0), col, 1.2)
-		layer.draw_line(p - Vector2(0.0, arm * 0.7), p + Vector2(0.0, arm * 0.7), col, 1.2)
+		var along := Vector2(ISO_X, ISO_Y).normalized() * arm
+		var w := clampf(1.2 * _zoom + 0.8, 1.2, 2.2)
+		layer.draw_line(p - along, p + along, col, w, true)
+		layer.draw_circle(p - along, w * 0.5, col, true, -1.0, true)
+		layer.draw_circle(p + along, w * 0.5, col, true, -1.0, true)
 
 
 ## Chimneys: grey smoke from a dirty works, white steam from a clean one, as the inked puffs
@@ -2974,8 +2980,4 @@ func _click(screen_pos: Vector2) -> void:
 	if str(s.get("kind", "")) in ["building", "site"]:
 		building_picked.emit(str(s["iid"]))
 	elif str(s.get("kind", "")) == "suppliers":
-		# The panel opens over the board, on the board's own layer.
-		var host: Node = self
-		while host.get_parent() != null and not (host.get_parent() is CanvasLayer):
-			host = host.get_parent()
-		preload("res://scripts/local_suppliers_panel.gd").open(host.get_parent() if host.get_parent() != null else self, str(s["tile"]))
+		suppliers_picked.emit()

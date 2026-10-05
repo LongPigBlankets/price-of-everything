@@ -1248,6 +1248,14 @@ func _build_focus_layout() -> void:
 	for e in _sell_edges:                   # ...and an export port IS an output
 		if str(e["from"]) == sel and not outs.has(str(e["to"])):
 			outs.append(str(e["to"]))
+	# A port in focus (Local Suppliers): the buildings that sell to it are its inputs, the ones it supplies its
+	# outputs.
+	for e in _sell_edges:
+		if str(e["to"]) == sel and not ins.has(str(e["from"])):
+			ins.append(str(e["from"]))
+	for e in _market_edges:
+		if str(e["from"]) == sel and not outs.has(str(e["to"])):
+			outs.append(str(e["to"]))
 	var origin: Vector2 = _pos_by_iid[sel]
 	_focus_members[sel] = true
 	_fpos[sel] = origin

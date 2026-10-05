@@ -1,6 +1,7 @@
 extends Node
 ## Captures of Local Suppliers' depot on the supply chain board in a Metal Magnate game: the white warehouse, its
-## hover card, and its panel showing the buildings' outputs, then their inputs.
+## hover card, and the chart a click opens: the buildings Local Suppliers supply (inputs), then those that sell to
+## them (outputs).
 ##   AGENT_GODOT_WINDOW=1 godot --path . res://tools/local_suppliers_shot.tscn --quit-after 100000 -- --no-telemetry
 ## Writes local_suppliers_<view>.png into $SUPPLIERS_SHOT_DIR (or /tmp).
 
@@ -67,13 +68,15 @@ func _ready() -> void:
 	await _shot("hover")
 	board.call("_set_hover", {})
 	board.call("_click", (depot["rect"] as Rect2).get_center() * zoom + (board.get("_offset") as Vector2))
-	await _settle(8)
-	await _shot("outputs")
-	var panel: Node = get_tree().root.find_child("LocalSuppliersPanel", true, false)
-	if panel != null:
-		panel.call("_show", "input")
-	await _settle(6)
+	var graph: Node = board.get_parent().find_child("GraphWorld", false, false)
+	await _wait(2.0)
+	print("[suppliers_shot] chart open on: ", graph.call("focus_iid"))
 	await _shot("inputs")
+	var outputs_key: Button = board.get_parent().find_child("SuppliersOutputsKey", true, false)
+	outputs_key.pressed.emit()
+	await _wait(2.0)
+	print("[suppliers_shot] chart open on: ", graph.call("focus_iid"))
+	await _shot("outputs")
 	get_tree().quit()
 
 
