@@ -1819,8 +1819,32 @@ func _place_camera_at_play_zoom() -> void:
 	var z := lerpf(zmin, zmax, LoadingScreen.ZOOM_FRAC)
 	cam.zoom = Vector2.ONE * z
 	cam.set("_target_zoom", cam.zoom)
+	# A new game opens on the company's works: the tile with most of its buildings that aren't mines.
+	var home := start_focus_tile()
+	if home != "":
+		var coord := terrain_layer.id_to_coord(home)
+		if terrain_layer.tiles.has(coord):
+			cam.position = terrain_layer.to_global(terrain_layer.map_to_local(terrain_layer.map_coord_for_tile_coord(coord)))
 	if OS.get_environment("LOAD_PROF") != "":
 		print("LOADPROF camera placed at play zoom %.3f (was %.3f, max %.3f)" % [z, zmin, zmax])
+
+
+## The tile a new game's camera opens on: the one with most of the player's buildings that aren't mines (the
+## works, not the pits that feed them), the lowest tile id on a tie. "" when the player has none.
+static func start_focus_tile() -> String:
+	var count: Dictionary = {}
+	for b: Dictionary in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(b):
+			continue
+		if str(Catalog.get_building(str(b.get("building_id", ""))).get("internal_name", "")) == "mine":
+			continue
+		var tile := str(b.get("tile_id", ""))
+		count[tile] = int(count.get(tile, 0)) + 1
+	var best := ""
+	for tile: String in count:
+		if best == "" or int(count[tile]) > int(count[best]) or (int(count[tile]) == int(count[best]) and tile < best):
+			best = tile
+	return best
 
 
 func _focus_camera_on_tile(tile_id: String) -> Dictionary:

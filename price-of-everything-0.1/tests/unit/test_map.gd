@@ -5824,3 +5824,16 @@ func _test_rails_art_matches_pipework_lot() -> void:
 	_check(str(visuals.INK_ART_KEY.get("rails", "")) == "rails" and rails.x > 0.0
 		and is_equal_approx(maxf(rails.x, rails.y), maxf(pipes.x, pipes.y)),
 		"rails: own art, framed to the pipework's size (%s vs %s)" % [rails, pipes])
+
+
+## A new game's camera opens on the company's works: the tile with most of its non-mine buildings.
+func _test_start_camera_opens_on_the_works() -> void:
+	var saved := BuildingState.buildings.duplicate(true)
+	BuildingState.buildings.clear()
+	BuildingState.add_building("b_001", "r_001", "tile_6_8", MatchState.LOCAL_PLAYER)
+	BuildingState.add_building("b_001", "r_002", "tile_7_10", MatchState.LOCAL_PLAYER)
+	BuildingState.add_building("b_002", "r_005", "tile_9_9", MatchState.LOCAL_PLAYER)
+	BuildingState.add_building("b_003", "r_004", "tile_9_9", MatchState.LOCAL_PLAYER)
+	var WorldMapScript := preload("res://scripts/world_map.gd")
+	_check(WorldMapScript.start_focus_tile() == "tile_9_9", "start camera: Metal Magnate opens on Greyroad, its works, not the mines")
+	BuildingState.buildings = saved
