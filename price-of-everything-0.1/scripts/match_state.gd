@@ -17,8 +17,9 @@ var hidden_buildings_unlocked: bool = false
 
 # Recycling is off the table for the demo: the waste chain is a whole
 # second economy — collect it, sort it, feed it back — and a 100-turn demo has no room to
-# teach it. `unlock recycling` in the debug terminal puts it back for development.
-const RECYCLING_BUILDING_IDS := {"b_022": true, "b_036": true}
+# teach it. `unlock recycling` in the debug terminal puts it back for development, and `unlock demo` with it.
+# The landfill is where the waste chain ends, so it waits with the plants.
+const RECYCLING_BUILDING_IDS := {"b_022": true, "b_036": true, "b_023": true}
 # Waste Water, Scrap Metal, Bio Waste, Electronic Waste — the goods that only exist to be
 # recycled. Hidden alongside the plants, or the encyclopedia advertises a chain with no
 # building that can process it.

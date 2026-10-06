@@ -217,7 +217,7 @@ func _run_command(text: String) -> String:
 				return "Hidden buildings enabled for this match."
 			if parts[1].to_lower() == "recycling":
 				MatchState.cheat_unlock_recycling()
-				return "Recycling enabled: waste goods and both recycling plants are back."
+				return "Recycling enabled: waste goods, both recycling plants and the landfill are back."
 			if parts[1].to_lower() == "advisors":
 				MatchState.cheat_unlock_advisors()
 				return "All advisors and seats unlocked for this match."
@@ -226,7 +226,7 @@ func _run_command(text: String) -> String:
 				MatchState.hidden_buildings_enabled.emit()
 				AdvisorState.advisors_changed.emit()
 				DecisionState.pending_changed.emit()
-				return "Demo restrictions lifted: waste goods, recycling plants and recipes, advisor loyalty, advanced settings and all starts/difficulties/speeds. Reopen panels to refresh."
+				return "Demo restrictions lifted: waste goods, recycling plants, the landfill and recipes, advisor loyalty, advanced settings and all starts/difficulties/speeds. Reopen panels to refresh."
 			var title := " ".join(parts.slice(1))
 			ResearchState.grant_unlock(title)
 			return "Unlocked '%s'." % title
