@@ -40,6 +40,7 @@ const CLIMB_COST := 100.0
 
 static var _plates: Dictionary = {}          # tile_id -> settled tile height
 static var _plates_for := 0                  # the terrain they were settled for
+static var _levels: Dictionary = {}          # Vector2i(rounded tile centre) -> tile_level, read once
 
 
 static func band_level(band: int) -> float:
@@ -82,7 +83,10 @@ static func plates(terrain: Object, rivers_by_tile: Dictionary) -> Dictionary:
 ## `center` (open water left out), read off every SAMPLE_STRIDE-th cell of the map's routing grid
 ## and snapped to the nearest band's level. Lowland where the grid is missing or the hex holds no land.
 static func tile_level(center: Vector2) -> float:
-	return snap_level(land_average(center))
+	var key := Vector2i(center.round())
+	if not _levels.has(key):
+		_levels[key] = snap_level(land_average(center))
+	return float(_levels[key])
 
 
 ## The average band level over the land of the hex centred at `center`, unsnapped.

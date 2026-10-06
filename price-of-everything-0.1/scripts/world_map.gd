@@ -270,6 +270,7 @@ func _build_base() -> void:
 	empire_view.name = "EmpireView"
 	empire_view.visible = false
 	hud_content.add_child(empire_view)
+	tile_infrastructure_changed.connect(func(_tile: String, _infra: String) -> void: empire_view.sim_changed())
 	_prof("base: empire view")
 
 	# Goods Graph: full-screen goods-web view (G to toggle).
@@ -553,6 +554,11 @@ func finish_build(animate: bool) -> void:
 	# the work lands on the map instead. "Ready" has to mean ready.
 	await _warm_deferred_ui()
 	build_complete = true   # the loading screen may now offer "Begin"
+	# The supply chain view, built and baked behind the loading screen in the slack before "Begin"
+	# can be pressed, a little each frame, so its first opening is immediate. Fire and forget: if
+	# the player gets there first, opening it builds it as before.
+	if _loading_screen_active() and empire_view != null:
+		empire_view.prepare()
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", BuildingState.buildings.size())
 

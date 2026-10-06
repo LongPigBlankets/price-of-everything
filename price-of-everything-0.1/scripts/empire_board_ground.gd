@@ -23,8 +23,9 @@ extends RefCounted
 ## where its ground steps down it falls with it, and where its ground rises beside it it does not.
 ##
 ## THE LATTICE. The ground is worked out exactly at the nodes of one lattice over the whole map,
-## NODE apart; between nodes it is the bilinear blend of the four round it. The drawn ground and
-## everything standing on it read it the same way, so all agree, on both sides of every tile edge.
+## NODE apart, and smoothed between them by a cubic B-spline (cell()), so no slope shows the
+## lattice's squares. The drawn ground and everything standing on it read it the same way, so all
+## agree, on both sides of every tile edge.
 ##
 ## Pure data: nothing here reads the sim.
 
@@ -64,6 +65,9 @@ const _RIVER_BUCKET := 64.0
 const _RIVER_REACH := 20.0 + BANK + SLOPE_W
 ## Ground rising less than this per map unit counts as level.
 const LEVEL_SLOPE := 0.005
+## The spline's weights at a cell's near and far side.
+static var _corner_weights: Array[PackedFloat32Array] = [PackedFloat32Array([1.0 / 6.0, 4.0 / 6.0, 1.0 / 6.0, 0.0]),
+	PackedFloat32Array([0.0, 1.0 / 6.0, 4.0 / 6.0, 1.0 / 6.0])]
 ## Lattice nodes are looked at in blocks this many a side, and a block with nothing near it that
 ## changes the ground is all one level.
 const _BLOCK := 4
@@ -109,7 +113,6 @@ var _oriented: Dictionary = {}        # tile -> its steps, oriented for it
 var _nodes: Dictionary = {}           # Vector2i -> height
 var _cells: Dictionary = {}           # Vector2i -> cell()
 var _blocks: Dictionary = {}          # Vector2i -> _block_level()
-var _grads: Dictionary = {}           # Vector2i -> Vector2
 
 static var _shared: RefCounted = null
 static var _shared_for := 0
@@ -173,13 +176,7 @@ func height(p: Vector2) -> float:
 	var f := p / NODE
 	var i := floori(f.x)
 	var j := floori(f.y)
-	var u := f.x - float(i)
-	var v := f.y - float(j)
-	var h00 := node(i, j)
-	var h10 := node(i + 1, j)
-	var h01 := node(i, j + 1)
-	var h11 := node(i + 1, j + 1)
-	return lerpf(lerpf(h00, h10, u), lerpf(h01, h11, u), v)
+	return cell_height(cell(i, j), f.x - float(i), f.y - float(j))
 
 
 ## Which way and how steeply the ground rises at a map point: height per map unit.
@@ -187,41 +184,82 @@ func gradient(p: Vector2) -> Vector2:
 	var f := p / NODE
 	var i := floori(f.x)
 	var j := floori(f.y)
-	var u := f.x - float(i)
-	var v := f.y - float(j)
-	return _node_grad(i, j).lerp(_node_grad(i + 1, j), u).lerp(_node_grad(i, j + 1).lerp(_node_grad(i + 1, j + 1), u), v)
+	return cell_gradient(cell(i, j), f.x - float(i), f.y - float(j))
 
 
-## Is the lattice cell (i, j) level: all four of its corners at one height. Returns that height,
-## or NAN where it is not.
+## Is the lattice cell (i, j) level all over. Returns that height, or NAN where it is not.
 func cell_level(i: int, j: int) -> float:
 	return float(cell(i, j)[0])
 
 
-## The lattice cell (i, j), worked out once: [its level or NAN, then the height and the slope at its
-## corners (i, j), (i + 1, j), (i, j + 1), (i + 1, j + 1)]. For reading many points of one cell.
+## The lattice cell (i, j), worked out once: [its level or NAN, the heights of the sixteen nodes
+## round it row by row from (i - 1, j - 1), and the ground at its four corners (i, j), (i + 1, j),
+## (i, j + 1), (i + 1, j + 1)].
+##
+## The ground is the cubic B-spline of the nodes: smooth, its slope running on smoothly from cell to
+## cell, never above or below the nodes round it, and level wherever they are. Its height is read
+## off the spline at each cell's corners and blended between them, which is all the eye can tell
+## apart; its slope, which the shading shows, is read off the spline itself wherever it is wanted.
 func cell(i: int, j: int) -> Array:
 	var key := Vector2i(i, j)
 	var got: Variant = _cells.get(key)
 	if got != null:
 		return got
-	var h00 := node(i, j)
-	var h10 := node(i + 1, j)
-	var h01 := node(i, j + 1)
-	var h11 := node(i + 1, j + 1)
-	var grads: Array = [_node_grad(i, j), _node_grad(i + 1, j), _node_grad(i, j + 1), _node_grad(i + 1, j + 1)]
-	var level := h00
-	if absf(h10 - h00) > 0.001 or absf(h01 - h00) > 0.001 or absf(h11 - h00) > 0.001:
-		level = NAN
-	# A cell at the foot or the crest of a slope is level but shaded at its corners like the slope,
-	# so it is read point by point too and its shading runs on from the slope's.
-	for g in grads:
-		if (g as Vector2).length() > LEVEL_SLOPE:
-			level = NAN
-	var out: Array = [level, h00, h10, h01, h11]
-	out.append_array(grads)
+	var nodes := PackedFloat32Array()
+	var level := node(i, j)
+	for dy in range(-1, 3):
+		for dx in range(-1, 3):
+			var h := node(i + dx, j + dy)
+			nodes.append(h)
+			if absf(h - level) > 0.001:
+				level = NAN
+	var corners := PackedFloat32Array([level, level, level, level])
+	if is_nan(level):
+		for k in range(4):
+			corners[k] = _spline_at(nodes, _corner_weights[k % 2], _corner_weights[k / 2])
+	var out: Array = [level, nodes, corners]
 	_cells[key] = out
 	return out
+
+
+## The ground at (u, v) across a cell (cell()), each from 0 to 1.
+static func cell_height(cd: Array, u: float, v: float) -> float:
+	if not is_nan(float(cd[0])):
+		return float(cd[0])
+	var c: PackedFloat32Array = cd[2]
+	return lerpf(lerpf(c[0], c[1], u), lerpf(c[2], c[3], u), v)
+
+
+## The rise of the ground at (u, v) across a cell, per map unit, off the spline.
+static func cell_gradient(cd: Array, u: float, v: float) -> Vector2:
+	if not is_nan(float(cd[0])):
+		return Vector2.ZERO
+	var nodes: PackedFloat32Array = cd[1]
+	return Vector2(_spline_at(nodes, _spline_slope(u), _spline(v)), _spline_at(nodes, _spline(u), _spline_slope(v))) / NODE
+
+
+## The spline over sixteen nodes with weights `wu` across and `wv` down.
+static func _spline_at(nodes: PackedFloat32Array, wu: PackedFloat32Array, wv: PackedFloat32Array) -> float:
+	var h := 0.0
+	for y in range(4):
+		h += (nodes[y * 4] * wu[0] + nodes[y * 4 + 1] * wu[1] + nodes[y * 4 + 2] * wu[2] + nodes[y * 4 + 3] * wu[3]) * wv[y]
+	return h
+
+
+## The cubic B-spline's weights for the four nodes along one way, at `t` from 0 to 1 between the
+## middle two.
+static func _spline(t: float) -> PackedFloat32Array:
+	var t2 := t * t
+	var t3 := t2 * t
+	var r := 1.0 - t
+	return PackedFloat32Array([r * r * r / 6.0, (3.0 * t3 - 6.0 * t2 + 4.0) / 6.0,
+		(-3.0 * t3 + 3.0 * t2 + 3.0 * t + 1.0) / 6.0, t3 / 6.0])
+
+
+## The same weights' rate of change along the way.
+static func _spline_slope(t: float) -> PackedFloat32Array:
+	var r := 1.0 - t
+	return PackedFloat32Array([-r * r * 0.5, (3.0 * t * t - 4.0 * t) * 0.5, (-3.0 * t * t + 2.0 * t + 1.0) * 0.5, t * t * 0.5])
 
 
 ## The height at lattice node (i, j), worked out once.
@@ -262,36 +300,6 @@ static func _filed_near(buckets: Dictionary, lo: Vector2, hi: Vector2, reach: fl
 			if buckets.has(Vector2i(x, y)):
 				return true
 	return false
-
-
-func _node_grad(i: int, j: int) -> Vector2:
-	var key := Vector2i(i, j)
-	var g: Variant = _grads.get(key)
-	if g != null:
-		return g
-	# Read across three rows of nodes, the middle one counting twice, so a slope's shading runs
-	# smoothly along its crest and does not step from node to node.
-	var gx := 0.0
-	var gy := 0.0
-	for k in [-1, 0, 1]:
-		var w := 2.0 if k == 0 else 1.0
-		gx += (node(i + 1, j + k) - node(i - 1, j + k)) * w
-		gy += (node(i + k, j + 1) - node(i + k, j - 1)) * w
-	var value := Vector2(gx, gy) / (8.0 * NODE)
-	_grads[key] = value
-	return value
-
-
-## The highest ground over a tile's hex.
-func top_of(tile: String) -> float:
-	var c: Vector2 = tiles[tile]["center"]
-	var top := float(tiles[tile]["height"])
-	for j in range(floori((c.y - HEX_HALF.y) / NODE), ceili((c.y + HEX_HALF.y) / NODE) + 1):
-		for i in range(floori((c.x - HEX_HALF.x) / NODE), ceili((c.x + HEX_HALF.x) / NODE) + 1):
-			var d := Vector2(float(i), float(j)) * NODE - c
-			if absf(d.y) <= HEX_HALF.y + NODE and absf(d.x) <= HEX_HALF.x - absf(d.y) * 0.5625 + NODE:
-				top = maxf(top, node(i, j))
-	return top
 
 
 ## A tile's region: its hex, bounded by the steps to its neighbours instead of its edges.

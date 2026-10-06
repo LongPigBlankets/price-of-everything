@@ -812,7 +812,7 @@ func _relief_board() -> Control:
 	for tid in rivers:
 		lines[tid] = [rivers[tid][0]["points"]]
 	board.set("_rivers", lines)
-	board.call("_build_ground", rivers)
+	board.call("_build_ground", rivers, int(board.get("_build_gen")))
 	return board
 
 
@@ -877,9 +877,9 @@ func _test_empire_board_relief_seams() -> void:
 	_check(lobe == "tb_c" and plain == "tb_a" and off_edge > 15.0,
 		"board seams: the step between two heights follows the map's contour, not the hex edge (%s, %s, %.0f off the edge)" % [lobe, plain, off_edge])
 	var heart := float(board.call("_height_at", Vector2(-40, -70)))
-	var shoulder := float(board.call("_height_at", Vector2(80, -60)))
+	var shoulder := float(board.call("_height_at", Vector2(87, -70)))
 	var plainland := float(board.call("_height_at", Vector2(150, -150)))
-	_check(is_equal_approx(heart, 52.0) and is_equal_approx(shoulder, 43.0) and is_equal_approx(plainland, 34.0),
+	_check(absf(heart - 52.0) < 0.05 and absf(shoulder - 43.0) < 0.05 and absf(plainland - 34.0) < 0.05,
 		"board seams: a rise stands at its rungs inside the tile (%.1f, %.1f, %.1f)" % [heart, shoulder, plainland])
 	var built := true
 	for tid in tiles:
@@ -1054,6 +1054,110 @@ func _test_empire_board_coast() -> void:
 	_check(mouth_ok, "board coast: a river runs on over the beach to the sea's water, its end along the shore")
 	var inland: Array = Board._to_mouth(rel, PackedVector2Array([Vector2(-60, -150), Vector2(40, -60)]), coast, 12.0)
 	_check(inland.size() == 1 and (inland[0]["cuts"] as Array).is_empty(), "board coast: a river that never reaches the sea is left as it is")
+
+
+## The supply chain board's pictures, kept from one build to the next. Each tile is drawn in two
+## layers, every ground layer before any things layer, and a things layer takes in whole all that
+## stands on its tile. A layer's make-up changes, and the layer is baked again, only when what it
+## shows changes: a building's level, a building added, a tile's infrastructure; nothing else. A
+## change in the sim reaches a closed view in the background.
+func _test_empire_board_caches() -> void:
+	var Graph := preload("res://scripts/empire_graph.gd")
+	var inst: Node = (load("res://scenes/main.tscn") as PackedScene).instantiate()
+	add_child(inst)
+	for _i in range(600):
+		if bool(inst.get("build_complete")):
+			break
+		await get_tree().process_frame
+	var view: Node = inst.find_child("EmpireView", true, false)
+	var terrain: Node = get_tree().get_first_node_in_group("hex_map")
+	if view == null or terrain == null:
+		_check(false, "board caches: the map and the supply chain view load")
+		inst.queue_free()
+		return
+	var board: Control = view.find_child("Board", true, false)
+	var chart: Node = view.find_child("GraphWorld", true, false)
+	var a := "tile_9_9"
+	var made: Array = [BuildingState.add_building("b_001", "r_001", a, "player_1", "cache_test_a")]
+	var sigs := func() -> Dictionary:
+		board.call("set_graph", Graph.populate(chart, terrain), terrain)
+		return (board.get("_tile_sig") as Dictionary).duplicate()
+	var changed := func(was: Dictionary, now: Dictionary) -> Array:
+		var out: Array = []
+		for unit in now:
+			if int(was.get(unit, 0)) != int(now[unit]):
+				out.append(str(unit))
+		for unit in was:
+			if not now.has(unit):
+				out.append(str(unit))
+		out.sort()
+		return out
+	var base: Dictionary = sigs.call()
+	# Two layers a tile, every ground drawn before any things, and nothing standing cut off.
+	var units: Array = board.get("_units")
+	var last_ground := -1
+	var first_things := units.size()
+	for k in range(units.size()):
+		if str(units[k]).ends_with("#ground"):
+			last_ground = k
+		else:
+			first_things = mini(first_things, k)
+	var whole := true
+	for s in board.get("_standing"):
+		var drawn: Rect2 = (s as Dictionary).get("tex_rect", s["rect"])
+		whole = whole and (board.call("_unit_rect", str(s["tile"]) + "#things") as Rect2).encloses(drawn)
+	_check(units.size() == (board.get("_tile_order") as Array).size() * 2 and last_ground < first_things and whole,
+		"board caches: each tile in two layers, all ground under all things, everything standing drawn whole")
+	# Nothing the board shows: no layer changes.
+	MatchState.money += 1.0
+	var after: Dictionary = sigs.call()
+	_check((changed.call(base, after) as Array).is_empty(),
+		"board caches: a change the board does not show bakes nothing again %s" % [changed.call(base, after)])
+	# A building's level: its tile's things, and nothing else.
+	BuildingState.buildings[made[0]]["level"] = 2
+	var levelled: Array = changed.call(after, sigs.call())
+	_check(levelled == [a + "#things"], "board caches: a level reached bakes its tile's things again, alone %s" % [levelled])
+	after = sigs.call()
+	# A building added: its tile, and only its tile.
+	made.append(BuildingState.add_building("b_001", "r_001", a, "player_1", "cache_test_b"))
+	var added: Array = changed.call(after, sigs.call())
+	var own := true
+	for unit in added:
+		own = own and str(unit).begins_with(a + "#")
+	_check(added.has(a + "#things") and own, "board caches: a building added bakes its own tile again, alone %s" % [added])
+	after = sigs.call()
+	# Its streets' level: its tile's ground, and at most a neighbour's where their roads meet.
+	var was_level := Catalog.tile_infra_level(a, "roads")
+	Catalog.set_tile_infra_level(a, "roads", 3 if was_level < 3 else 2)
+	var paved: Array = changed.call(after, sigs.call())
+	var near := true
+	for unit in paved:
+		near = near and (str(unit).begins_with(a + "#")
+			or (str(unit).ends_with("#ground") and Catalog.tile_neighbours(a).has(str(unit).get_slice("#", 0))))
+	_check(paved.has(a + "#ground") and near,
+		"board caches: a tile's infrastructure bakes that tile again (its streets, and the lamps along them), and no more than a neighbour's ground where their roads meet %s" % [paved])
+	Catalog.set_tile_infra_level(a, "roads", was_level)
+	# Closed, the view takes a change in the sim in the background.
+	after = sigs.call()
+	view.call("prepare")
+	for _i in range(600):
+		if bool(view.get("_fresh")):
+			break
+		await get_tree().process_frame
+	BuildingState.buildings[made[0]]["level"] = 3
+	BuildingWorks.building_upgraded.emit(made[0], 3)
+	var stale := not bool(view.get("_fresh"))
+	for _i in range(600):
+		if bool(view.get("_fresh")):
+			break
+		await get_tree().process_frame
+	var background: Array = changed.call(after, (board.get("_tile_sig") as Dictionary))
+	_check(stale and bool(view.get("_fresh")) and background == [a + "#things"],
+		"board caches: a level reached while the view is closed is built in the background %s" % [background])
+	for iid in made:
+		BuildingState.remove_building(str(iid))
+	inst.queue_free()
+	await get_tree().process_frame
 
 
 ## The supply chain board's railway: one plan on every tile, so neighbours' tracks meet.

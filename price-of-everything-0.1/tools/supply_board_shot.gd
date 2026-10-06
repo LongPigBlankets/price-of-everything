@@ -46,6 +46,7 @@ func _ready() -> void:
 	await _settle(60)
 	# A covered window draws no frames, so the tile bakes stall and the board shows after its time limit.
 	await get_tree().create_timer(2.5).timeout
+	await ShotHarness.await_board_baked(self, view.find_child("Board", true, false))
 	await _shot("board")
 	(view.find_child("GoodsMotionKey", true, false) as Button).pressed.emit()
 	await _settle(6)

@@ -61,8 +61,9 @@ func _phase(view: Node, phase: String) -> void:
 	(view.find_child("Board", true, false) as Control).call("fit_view")
 	# A covered window draws no frames, so the tile bakes stall and the board shows after its time limit.
 	await get_tree().create_timer(3.0).timeout
-	await _shot("%s_board" % phase)
 	var board: Control = view.find_child("Board", true, false)
+	await ShotHarness.await_board_baked(self, board)
+	await _shot("%s_board" % phase)
 	var model: Dictionary = board.get("_model")
 	var tiles: Dictionary = model.get("tiles", {})
 	var rivers: Dictionary = board.get("_rivers")
@@ -102,6 +103,7 @@ func _phase(view: Node, phase: String) -> void:
 		board.call("_view_changed")
 		await _settle(4)
 		await get_tree().create_timer(1.0).timeout
+		await ShotHarness.await_board_baked(self, board)
 		print("[relief_shot] %s seam %s %s (%.0f) | %s %s (%.0f) river %s" % [phase, a, tiles[a]["type"],
 			float(tiles[a]["height"]), b, tiles[b]["type"], float(tiles[b]["height"]), s[3]])
 		await _shot("%s_%s_%s" % [phase, a.trim_prefix("tile_"), b.trim_prefix("tile_")])
@@ -119,6 +121,7 @@ func _phase(view: Node, phase: String) -> void:
 			board.call("_view_changed")
 			await _settle(4)
 			await get_tree().create_timer(1.0).timeout
+			await ShotHarness.await_board_baked(self, board)
 			print("[relief_shot] %s bridge on %s at %s deck %.1f" % [phase, tile, span["at"], float(span["deck"])])
 			await _shot("%s_bridge_%s_%d" % [phase, str(tile).trim_prefix("tile_"), bridges])
 	view.call("toggle")

@@ -45,6 +45,13 @@ var _motion_key: Button
 var _suppliers_inputs: Button
 var _suppliers_outputs: Button
 var _bg: Control                               # the animated hex-field background (empire_hex_bg.gd)
+## The board and the chart are kept built while the view is closed (prepare): behind the loading
+## screen once the world is built, and again in the background whenever what they show changes, so
+## the view opens at once on finished pictures. Fresh while they match the sim as it stands.
+var _fresh := false
+var _refresh_queued := false
+var _preparing := false
+var _changes := 0                              # changes seen in the sim, to tell a build that missed one
 
 
 func _ready() -> void:
@@ -58,7 +65,15 @@ func _ready() -> void:
 	# time. Left alone it would go stale the moment a turn landed under an open view — which is
 	# exactly when a player watching a build wants to see it move.
 	if TurnManager.has_signal("turn_advanced"):
-		TurnManager.turn_advanced.connect(func(_t: int) -> void: refresh_graph())
+		TurnManager.turn_advanced.connect(func(_t: int) -> void: sim_changed())
+	# What changes the board's pictures: a building added, removed, sold or bought, a level reached,
+	# a construction site started or finished. The world reports infrastructure (world_map).
+	BuildingState.building_added.connect(func(_inst: Dictionary) -> void: sim_changed())
+	BuildingState.building_removed.connect(func(_iid: String) -> void: sim_changed())
+	BuildingState.building_owner_changed.connect(func(_iid: String) -> void: sim_changed())
+	BuildingWorks.building_upgraded.connect(func(_iid: String, _level: int) -> void: sim_changed())
+	Construction.construction_started.connect(func(_iid: String, _tile: String) -> void: sim_changed())
+	Construction.construction_completed.connect(func(_iid: String, _tile: String) -> void: sim_changed())
 
 
 ## Toggle open/closed. Called from world_map on the `toggle_empire_view` (Tab) action.
@@ -71,6 +86,50 @@ func toggle() -> void:
 func refresh_graph() -> void:
 	if visible:
 		_rebuild_graph()
+
+
+## Something the board shows has changed in the sim. Open, the view rebuilds now; closed, it rebuilds
+## in the background (prepare), once for any number of changes in one frame. Only the layers whose
+## make-up changed are baked again (empire_board.gd _sort_parts).
+func sim_changed() -> void:
+	_changes += 1
+	_fresh = false
+	if visible:
+		_rebuild_graph()
+		_fresh = true
+		return
+	if _preparing or _refresh_queued or not _board.call("has_content"):
+		return
+	_refresh_queued = true
+	prepare.call_deferred()
+
+
+## Build the chart and the board while the view is closed, the board a little each frame, then bake
+## what the view will open on (empire_board.gd build_async). A change while it builds sends it round
+## again; opening the view meanwhile builds it there and then instead.
+func prepare() -> void:
+	_refresh_queued = false
+	if _preparing or visible or not is_inside_tree():
+		return
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	if terrain == null:
+		return
+	_preparing = true
+	while true:
+		var seen := _changes
+		var g: Dictionary = EmpireGraphScript.populate(_graph_world, terrain)
+		await _board.call("build_async", g, terrain)
+		if visible or not is_inside_tree():
+			break
+		if seen == _changes:
+			_fresh = true
+			break
+	_preparing = false
+
+
+## Is the view built and baked, ready to open at once.
+func is_prepared() -> bool:
+	return _fresh and bool(_board.call("is_ready"))
 
 
 func _build_ui() -> void:
@@ -258,7 +317,13 @@ func _enter() -> void:
 	_hide_world()
 	_set_camera_blocked(true)
 	PanelStack.push(self)
-	_rebuild_graph()
+	# Built in the background and nothing changed since: open on it as it is, held back until any
+	# picture still baking is done.
+	if _fresh:
+		_board.call("_hold_until_baked")
+	else:
+		_rebuild_graph()
+		_fresh = true
 
 
 ## Build the node/edge graph from the live sim and pack it. Cheap for ~50 buildings; rebuilt on

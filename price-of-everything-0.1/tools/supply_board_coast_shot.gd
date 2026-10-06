@@ -41,8 +41,9 @@ func _ready() -> void:
 	await _settle(30)
 	# A covered window draws no frames, so the tile bakes stall and the board shows after its time limit.
 	await get_tree().create_timer(3.0).timeout
-	await _shot("board")
 	var board: Control = view.find_child("Board", true, false)
+	await ShotHarness.await_board_baked(self, board)
+	await _shot("board")
 	var model: Dictionary = board.get("_model")
 	var tiles: Dictionary = model.get("tiles", {})
 	var coast: Array = []
@@ -84,6 +85,7 @@ func _ready() -> void:
 		board.call("_view_changed")
 		await _settle(10)
 		await get_tree().create_timer(3.0).timeout
+		await ShotHarness.await_board_baked(self, board)
 		await _shot(tid)
 	get_tree().quit()
 

@@ -200,6 +200,12 @@ const _MINE_DIR := "res://assets/iso/mine/"
 const _MINE_EARTH := Color("5a4c3d")
 const _MINE_EARTH_EDGE := Color("77684f")
 
+## A tile's two layers (_draw_tile), named by these after the tile's id; and how far every things
+## layer's depth stands over every ground layer's, more than the whole board's depth.
+const _GROUND := "#ground"
+const _THINGS := "#things"
+const _THINGS_Z := 1.0e7
+
 ## The zooms a tile's picture is baked at. The board zooms smoothly; a tile is drawn from the
 ## bake at or just above the present zoom, so it is only ever reduced, never enlarged, and by
 ## less than half. The change from one bake to the next happens as the zoom passes each of these.
@@ -239,6 +245,14 @@ const _GROUND_MESHES_KEPT := 240
 const _SKIRT := 2.0
 
 var _model: Dictionary = {}
+## A build under way (_build): which one, and whether it hands frames back as it goes.
+var _build_gen := 0
+var _building := false
+var _paced := false
+var _slice_from := 0
+const _PACE_MS := 6
+## Bake the layers in view at the board's zoom while the view is closed (after build_async).
+var bake_while_hidden := false
 var _ground: Ground                          # the one ground everything stands on (empire_board_ground.gd)
 var _spans: Dictionary = {}                  # tile_id -> [bridge deck]: where a street crosses a river's valley
 var _near_tiles: Dictionary = {}             # tile_id -> it and the drawn tiles beside it
@@ -246,7 +260,10 @@ var _piers: Array = []                       # [{tile, polys: [[points, colour]]
 var _tile_order: Array = []                  # the drawn tiles, far to near
 var _tile_gfx: Dictionary = {}               # tile_id -> {walls, ground, light}: its meshes, in board space
 var _tile_parts: Dictionary = {}             # tile_id -> everything else that is drawn on it, see _sort_parts
-var _tile_sig: Dictionary = {}               # tile_id -> a hash of what its picture is made of
+var _tile_sig: Dictionary = {}               # layer (_unit) -> a hash of what its picture is made of
+var _units: Array = []                       # every tile's two layers, "tile_id" + _GROUND or _THINGS, in the order drawn
+var _unit_z: Dictionary = {}                 # layer -> its depth: drawn in order of it, far to near
+var _things_rects: Dictionary = {}           # tile_id -> the part of the board its things layer covers
 ## Baked pictures of tiles: "tile|zoom" -> {tex, sig, rect}. A picture is kept for as long as
 ## what the tile is made of does not change, across turns and across openings of the view.
 static var _bakes: Dictionary = {}
@@ -333,7 +350,7 @@ class BakeLayer extends Control:
 		board.call("_draw_bakes", self)
 
 
-## Draws ONE tile's standing picture into the bake viewport, at the zoom being baked.
+## Draws ONE layer of a tile (_unit) into the bake viewport, at the zoom being baked.
 class Painter extends Control:
 	var board: Control
 	var tile := ""
@@ -424,6 +441,39 @@ func refresh() -> void:
 
 
 func set_graph(graph: Dictionary, terrain: Node) -> void:
+	_paced = false
+	_build(graph, terrain)
+
+
+## The same build as set_graph, spread over frames a few milliseconds at a time, so it can run
+## behind the loading screen or while the view is closed without the game missing a frame; then
+## every layer in view at the zoom the board will open at is baked, one a frame. A set_graph, or
+## another build, while it runs takes over from it. Returns once the build is done; the bakes
+## carry on in _process.
+func build_async(graph: Dictionary, terrain: Node) -> void:
+	_paced = true
+	_slice_from = Time.get_ticks_msec()
+	await _build(graph, terrain)
+	bake_while_hidden = true
+
+
+## Is the board built from the latest graph it was given, and every layer in view baked.
+func is_ready() -> bool:
+	return not _building and has_content() and _next_bake() == "" and not _baking
+
+
+## Hand a frame back to the game when the present build is paced and has had its time this frame.
+func _pace() -> void:
+	if not _paced or Time.get_ticks_msec() - _slice_from < _PACE_MS:
+		return
+	await get_tree().process_frame
+	_slice_from = Time.get_ticks_msec()
+
+
+func _build(graph: Dictionary, terrain: Node) -> void:
+	_build_gen += 1
+	var gen := _build_gen
+	_building = true
 	_last_graph = graph
 	_last_terrain = terrain
 	_model = {}
@@ -454,27 +504,61 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 	_near_tiles.clear()
 	_piers.clear()
 	if terrain == null or not terrain.has_method("id_to_coord"):
+		_building = false
 		queue_redraw()
 		return
 	var rivers: Dictionary = _rivers_by_tile(terrain)
 	_rivers = _river_lines(rivers)
+	if _paced:
+		# Every tile's height, read off the map a few at a time before they are settled together.
+		for tid in Catalog.all_tile_ids():
+			var coord: Vector2i = terrain.id_to_coord(str(tid))
+			if coord.x >= 0:
+				Relief.tile_level(Model.tile_center(terrain, str(tid)))
+				await _pace()
+				if gen != _build_gen:
+					return
+	var plates: Dictionary = Relief.plates(terrain, _rivers)
+	await _pace()
+	if gen != _build_gen:
+		return
 	_model = Model.build(terrain, graph, _true_positions(graph, terrain), _rivers, plate_town and bool(show["decor"]),
 		_water_test(terrain))
-	_ground = Ground.for_map(terrain, rivers, Relief.plates(terrain, _rivers),
-		Callable(get_script(), "_relief_of")) as Ground
-	_build_ground(rivers)
+	await _pace()
+	if gen != _build_gen:
+		return
+	_ground = Ground.for_map(terrain, rivers, plates, Callable(get_script(), "_relief_of")) as Ground
+	await _pace()
+	if gen != _build_gen:
+		return
+	await _build_ground(rivers, gen)
+	if gen != _build_gen:
+		return
 	_mark_bridges()
+	await _pace()
+	if gen != _build_gen:
+		return
 	_build_standing()
-	_build_lines()
+	await _pace()
+	if gen != _build_gen:
+		return
+	await _build_lines(gen)
+	if gen != _build_gen:
+		return
+	await _pace()
+	if gen != _build_gen:
+		return
 	_build_fog()
 	_build_lamps()
 	_build_trees()
 	_build_cars()
 	_build_piers()
 	_sort_parts()
+	_building = false
 	if not _fitted:
 		fit_view()
-	_hold_until_baked()
+	if is_visible_in_tree():
+		_hold_until_baked()
 	queue_redraw()
 	_bake_layer.queue_redraw()
 
@@ -490,9 +574,9 @@ var _reveal_wait := 0.0
 
 func _hold_until_baked() -> void:
 	var view := Rect2(Vector2.ZERO, size)
-	for tid in _tile_order:
-		var r := _tile_rect(str(tid))
-		if _best_bake(str(tid)).is_empty() and view.intersects(Rect2(r.position * _zoom + _offset, r.size * _zoom)):
+	for unit in _units:
+		var r := _unit_rect(str(unit))
+		if _best_bake(str(unit)).is_empty() and view.intersects(Rect2(r.position * _zoom + _offset, r.size * _zoom)):
 			_revealing = true
 			_reveal_wait = 0.0
 			modulate.a = 0.0
@@ -857,7 +941,7 @@ func _build_piers() -> void:
 
 # ------------------------------------------------------------------ building the picture
 
-func _build_ground(rivers: Dictionary) -> void:
+func _build_ground(rivers: Dictionary, gen: int) -> void:
 	var tiles: Dictionary = _model.get("tiles", {})
 	_bounds = Rect2()
 	if tiles.is_empty():
@@ -874,7 +958,9 @@ func _build_ground(rivers: Dictionary) -> void:
 	for tid in order:
 		var t0: Dictionary = tiles[tid]
 		by_center[Vector2i((t0["center"] as Vector2).round())] = tid
-		t0["top"] = _ground.top_of(str(tid))
+		t0["top"] = await _tile_top(str(tid))
+		if gen != _build_gen:
+			return
 		for p in Model.hex_points(t0["center"]):
 			for hh in [float(t0["top"]), -SLAB_DEPTH]:
 				var q := iso(p, hh)
@@ -892,6 +978,9 @@ func _build_ground(rivers: Dictionary) -> void:
 	if _light_meshes.size() > _GROUND_MESHES_KEPT:
 		_light_meshes.clear()
 	for tid in order:
+		await _pace()
+		if gen != _build_gen:
+			return
 		var t: Dictionary = tiles[tid]
 		var c: Vector2 = t["center"]
 		var hexp := Model.hex_points(c)
@@ -953,6 +1042,9 @@ func _build_ground(rivers: Dictionary) -> void:
 				for q in [q0, q1, q1 + n * _SKIRT, q0 + n * _SKIRT]:
 					board.append(iso(q, _height_at(q)))
 				_quad_cols(verts, cols, idx, board, [c0, c1, c1, c0])
+		await _pace()
+		if gen != _build_gen:
+			return
 		var coast: Array = [] if is_sea or (rel["sea"] as Array).is_empty() else _shore_of(rel, hexp)
 		# The shore, as on the key art's plate: no hard line, but a beach. Dry sand on the land
 		# side, a darker wet strip at the water's edge, a thread of foam, and pale shallows
@@ -1013,7 +1105,11 @@ func _build_ground(rivers: Dictionary) -> void:
 			if n.x + n.y > 0.01:
 				_cliff(verts, cols, idx, wverts, wcols, wuvs, widx, rel, is_sea, rim, rim_h, a, b, n, top, water, sea_cols)
 			_stroke_on(verts, cols, idx, rim, _INK_W * 1.3, _INK)
-		_ground_meshes[key] = {"ground": _mesh_of(verts, cols, idx), "walls": _mesh_of(wverts, wcols, widx, wuvs)}
+		await _pace()
+		if gen != _build_gen:
+			return
+		_ground_meshes[key] = {"ground": _mesh_of(verts, cols, idx), "walls": _mesh_of(wverts, wcols, widx, wuvs),
+			"shade": _build_shade(hexp, beside)}
 		_tile_gfx[tid] = (_ground_meshes[key] as Dictionary).merged({"light": _light_meshes[light_key]}, true)
 
 
@@ -1079,7 +1175,7 @@ static func _skirted(hexp: PackedVector2Array, beside: Array) -> PackedVector2Ar
 
 
 ## The colour the ground is drawn in at a point of a tile: its river, its lake, its band of land, its
-## sea or its plate, in the order they are laid, shaded by the ground's slope.
+## sea or its plate, in the order they are laid.
 func _ground_colour(rel: Dictionary, p: Vector2, top: Color, is_sea: bool, band_cols: Array[Color],
 		sea_cols: Array[Color], water: Color, river_recs: Array) -> Color:
 	for rec in river_recs:
@@ -1099,7 +1195,23 @@ func _ground_colour(rel: Dictionary, p: Vector2, top: Color, is_sea: bool, band_
 		for e in rel["land"]:
 			if Geometry2D.is_point_in_polygon(p, e["p"]):
 				col = _warm(band_cols[clampi(int(e["b"]), 0, band_cols.size() - 1)])
-	return _slope_shade(col, p)
+	return col
+
+
+## The highest ground over a tile's hex, the ground's lattice over it worked out row by row (a paced
+## build hands a frame back between rows when its time is up).
+func _tile_top(tile: String) -> float:
+	var t: Dictionary = (_model["tiles"] as Dictionary)[tile]
+	var c: Vector2 = t["center"]
+	var top := float(t["height"])
+	var g := Ground.NODE
+	for j in range(floori((c.y - Ground.HEX_HALF.y) / g) - 1, ceili((c.y + Ground.HEX_HALF.y) / g) + 2):
+		for i in range(floori((c.x - Ground.HEX_HALF.x) / g) - 1, ceili((c.x + Ground.HEX_HALF.x) / g) + 2):
+			var d := Vector2(float(i), float(j)) * g - c
+			if absf(d.y) <= Ground.HEX_HALF.y + g * 2.0 and absf(d.x) <= Ground.HEX_HALF.x - absf(d.y) * 0.5625 + g * 2.0:
+				top = maxf(top, Ground.cell_height(_ground.cell(i, j), 0.0, 0.0))
+		await _pace()
+	return top
 
 
 ## The points along a tile edge from `a` to `b` where it crosses the ground's lattice, ends included:
@@ -1167,16 +1279,19 @@ func _cliff(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32A
 					iso(p0, h0 - _TURF)]), top.darkened(0.38))
 
 
-## How a polygon is laid over the ground: in its own colour, shaded where the ground slopes; as the
-## sea's light; or as the light's wash over the whole tile.
+## How a polygon is laid over the ground: in its own colour; as the sea's light; or as the light's
+## wash over the whole tile.
 const _DRAPE_SHADED := 0
+## Each sloping cell of the lattice is shaded cut this many ways each way.
+const _SHADE_SUB := 2
 const _DRAPE_SEA_LIGHT := 1
 const _DRAPE_LIGHT := 2
 
 
-## Lay a polygon over the ground. It is cut row by row along the ground's lattice; where a run of
-## lattice cells is level it is laid in one piece at that height, and elsewhere cell by cell, every
-## corner at the ground's height there, so it lies on the ground exactly as everything else reads it.
+## Lay a polygon over the ground, in its own colour: the ground's slopes are shaded over it after
+## (_build_shade). It is cut row by row along the ground's lattice; where a run of lattice cells is
+## level it is laid in one piece at that height, and elsewhere cell by cell, every corner at the
+## ground's height there, so it lies on the ground as everything else reads it.
 func _drape(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array, poly: PackedVector2Array,
 		col: Color, mode: int = _DRAPE_SHADED) -> void:
 	if poly.size() < 3:
@@ -1244,13 +1359,10 @@ func _drape_part(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedI
 	var corner := Vector2(at) * Ground.NODE
 	for p in pts:
 		var h := level
-		var grad := Vector2.ZERO
 		if not flat:
-			# Read off the cell's own corners, as the ground's height is.
-			var u := clampf((p.x - corner.x) / Ground.NODE, 0.0, 1.0)
-			var v := clampf((p.y - corner.y) / Ground.NODE, 0.0, 1.0)
-			h = lerpf(lerpf(float(cd[1]), float(cd[2]), u), lerpf(float(cd[3]), float(cd[4]), u), v)
-			grad = (cd[5] as Vector2).lerp(cd[6], u).lerp((cd[7] as Vector2).lerp(cd[8], u), v)
+			# Read off the cell, as the ground's height is.
+			h = Ground.cell_height(cd, clampf((p.x - corner.x) / Ground.NODE, 0.0, 1.0),
+				clampf((p.y - corner.y) / Ground.NODE, 0.0, 1.0))
 		var q := iso(p, h)
 		verts.append(Vector3(q.x, q.y, 0.0))
 		match mode:
@@ -1261,24 +1373,101 @@ func _drape_part(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedI
 			_DRAPE_LIGHT:
 				cols.append(_light_wash(_light_at(q)))
 			_:
-				cols.append(col if flat else _shaded(col, grad))
+				cols.append(col)
 	for k in tris:
 		idx.append(base + k)
 
 
-## A colour on a slope: darker the steeper it is, and least where it faces the sun, as the slopes
-## between tiles have always been shaded.
-func _slope_shade(col: Color, p: Vector2) -> Color:
-	return _shaded(col, _ground.gradient(p))
-
-
-## A colour on ground rising by `grad` (height per map unit).
-static func _shaded(col: Color, grad: Vector2) -> Color:
+## How much of its colour ground rising by `grad` (height per map unit) keeps: less the steeper it
+## is, and most where it faces the sun, as the slopes between tiles have always been shaded.
+static func _shade_of(grad: Vector2) -> float:
 	var steep := grad.length()
 	if steep < Ground.LEVEL_SLOPE:
-		return col
+		return 1.0
 	var downhill := -grad / steep
-	return col.darkened(clampf(steep / SLOPE_SHADE_FULL, 0.0, 1.0) * (0.2 - 0.16 * maxf(0.0, downhill.dot(_SUN))))
+	return 1.0 - clampf(steep / SLOPE_SHADE_FULL, 0.0, 1.0) * (0.2 - 0.16 * maxf(0.0, downhill.dot(_SUN)))
+
+
+## A tile's shading, multiplied over its ground layer (_draw_grade): every sloping cell of the
+## lattice over the tile and its skirts, cut _SHADE_SUB ways each way, each corner as dark as the
+## ground's slope there (_shade_of). The slope is read off the ground's smooth spline, so the shading
+## runs on smoothly from cell to cell and shows no squares. Level ground keeps its colour.
+func _build_shade(hexp: PackedVector2Array, beside: Array) -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	var area := _skirted(hexp, beside)
+	var box := _box_of(area)
+	var g := Ground.NODE
+	var w := _SHADE_SUB + 1
+	for j in range(floori(box.position.y / g), ceili(box.end.y / g)):
+		for i in range(floori(box.position.x / g), ceili(box.end.x / g)):
+			var cd: Array = _ground.cell(i, j)
+			if not is_nan(float(cd[0])):
+				continue
+			var o := Vector2(float(i), float(j)) * g
+			var square := PackedVector2Array([o, o + Vector2(g, 0.0), o + Vector2(g, g), o + Vector2(0.0, g)])
+			var inside := true
+			for q in square:
+				inside = inside and Geometry2D.is_point_in_polygon(q, area)
+			if inside:
+				var base := verts.size()
+				for sy in range(w):
+					for sx in range(w):
+						_shade_vertex(verts, cols, cd, o, sx, sy)
+				for sy in range(_SHADE_SUB):
+					for sx in range(_SHADE_SUB):
+						var a := base + sy * w + sx
+						idx.append_array([a, a + 1, a + w + 1, a, a + w + 1, a + w])
+				continue
+			# A cell at the edge of the tile: its fine squares cut to the tile, each corner read off the cell.
+			var step := g / float(_SHADE_SUB)
+			for sy in range(_SHADE_SUB):
+				for sx in range(_SHADE_SUB):
+					var so := o + Vector2(float(sx), float(sy)) * step
+					var sub := PackedVector2Array([so, so + Vector2(step, 0.0), so + Vector2(step, step), so + Vector2(0.0, step)])
+					for piece in Geometry2D.intersect_polygons(sub, area):
+						var tris := Geometry2D.triangulate_polygon(piece)
+						if Geometry2D.is_polygon_clockwise(piece) or tris.is_empty():
+							continue
+						var base := verts.size()
+						for p in piece:
+							var u := clampf((p.x - o.x) / g, 0.0, 1.0)
+							var v := clampf((p.y - o.y) / g, 0.0, 1.0)
+							var m := _shade_of(Ground.cell_gradient(cd, u, v))
+							var q := iso(p, Ground.cell_height(cd, u, v))
+							verts.append(Vector3(q.x, q.y, 0.0))
+							cols.append(Color(m, m, m))
+						for k in tris:
+							idx.append(base + k)
+	return _mesh_of(verts, cols, idx)
+
+
+## One corner (sx, sy) of the fine squares of a sloping cell whose near corner is `o`, its slope read
+## off weights worked out once (_shade_weights).
+func _shade_vertex(verts: PackedVector3Array, cols: PackedColorArray, cd: Array, o: Vector2, sx: int, sy: int) -> void:
+	var tw: Array = _shade_weights()
+	var nodes: PackedFloat32Array = cd[1]
+	var grad := Vector2(Ground._spline_at(nodes, tw[1][sx], tw[0][sy]), Ground._spline_at(nodes, tw[0][sx], tw[1][sy])) / Ground.NODE
+	var m := _shade_of(grad)
+	var u := float(sx) / float(_SHADE_SUB)
+	var v := float(sy) / float(_SHADE_SUB)
+	var q := iso(o + Vector2(u, v) * Ground.NODE, Ground.cell_height(cd, u, v))
+	verts.append(Vector3(q.x, q.y, 0.0))
+	cols.append(Color(m, m, m))
+
+
+static var _shade_w: Array = []
+## The spline's weights, and their rates of change, at each of the fine squares' corners across a cell.
+static func _shade_weights() -> Array:
+	if _shade_w.is_empty():
+		var w: Array = []
+		var dw: Array = []
+		for k in range(_SHADE_SUB + 1):
+			w.append(Ground._spline(float(k) / float(_SHADE_SUB)))
+			dw.append(Ground._spline_slope(float(k) / float(_SHADE_SUB)))
+		_shade_w = [w, dw]
+	return _shade_w
 
 
 ## A stroke laid on the ground: every corner at the ground's height there.
@@ -1939,15 +2128,20 @@ static func _mine_flush(internal_name: String, level: int) -> Texture2D:
 	return _mine_tex[lv] if not _mine_drop.is_empty() else null
 
 
-func _build_lines() -> void:
+func _build_lines(gen: int) -> void:
 	var tiles: Dictionary = _model.get("tiles", {})
 	var by_iid: Dictionary = {}
 	for s in _standing:
 		by_iid[str(s["iid"])] = s
-	_build_roads(tiles)
+	await _build_roads(tiles, gen)
+	if gen != _build_gen:
+		return
 	var laid_track: Dictionary = {}
 	# Any way that cannot follow the streets (two tiles that do not touch) is a plain line.
 	for l in _model.get("lines", []):
+		await _pace()
+		if gen != _build_gen:
+			return
 		var mode := str(l["mode"])
 		if mode == Model.MODE_CABLE or Model.PIPE_MODES.has(mode):
 			continue
@@ -2373,7 +2567,7 @@ static func _tree_texture(kind: String) -> Texture2D:
 
 ## The streets in use, as baked pieces: a junction piece wherever roads meet, turn or change
 ## width, straights between them, and a truss bridge where a street crosses a river.
-func _build_roads(tiles: Dictionary) -> void:
+func _build_roads(tiles: Dictionary, gen: int) -> void:
 	_road_plan.clear()
 	var roads: Atlas = _road_kit()
 	var segs: Array = _model.get("roads", [])
@@ -2433,6 +2627,9 @@ func _build_roads(tiles: Dictionary) -> void:
 		_road_fits.append({"name": name, "at": iso(nd["p"], h0), "tint": Color.WHITE if paved else _UNPAVED,
 			"tile": str(arms[ks[0]]["tile"])})
 	for s in segs:
+		await _pace()
+		if gen != _build_gen:
+			return
 		var tile := str(s["tile"])
 		var a: Vector2 = s["a"]
 		var b: Vector2 = s["b"]
@@ -2814,6 +3011,14 @@ func _cable_between(by_iid: Dictionary, ids: Array) -> PackedVector2Array:
 
 func _process(delta: float) -> void:
 	if not is_visible_in_tree():
+		# Closed, the board only bakes what a build in the background has asked for, one layer at
+		# a time, so the view opens on finished pictures.
+		if bake_while_hidden and not _building and not _baking and has_content():
+			var unit := _next_bake()
+			if unit == "":
+				bake_while_hidden = false
+			else:
+				_bake(unit, _bake_zoom())
 		return
 	_clock += delta
 	_reveal_when_baked(delta)
@@ -2836,15 +3041,25 @@ func _draw() -> void:
 	# A tile whose picture is not baked yet for this zoom is drawn live, so the board is never
 	# blank while the bakes catch up.
 	draw_set_transform(_offset, 0.0, Vector2(_zoom, _zoom))
-	for tid in _tile_order:
-		if _best_bake(str(tid)).is_empty():
-			_draw_tile(self, str(tid), _zoom)
+	for unit in _units:
+		if _best_bake(str(unit)).is_empty():
+			_draw_tile(self, str(unit), _zoom)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
-## Everything about one tile that does not move: its slab and ground, its roads and pipes,
-## what stands on it, its trees. This is what a bake holds.
-func _draw_tile(ci: CanvasItem, tile: String, zoom: float) -> void:
+## Everything about one tile that does not move, in two layers (_unit), each baked on its own: the
+## ground layer, its slab and ground, its roads and railways and the light over them; and the things
+## layer, everything that stands on the ground, buildings, pipes, trees and lamps. Every tile's
+## ground layer is drawn before any tile's things (_units), so what stands near a tile's edge is
+## never covered by the ground of the tile beside it.
+func _draw_tile(ci: CanvasItem, unit: String, zoom: float) -> void:
+	if unit.ends_with(_THINGS):
+		_draw_things(ci, unit.trim_suffix(_THINGS))
+	else:
+		_draw_ground(ci, unit.trim_suffix(_GROUND))
+
+
+func _draw_ground(ci: CanvasItem, tile: String) -> void:
 	var gfx: Dictionary = _tile_gfx.get(tile, {})
 	var parts: Dictionary = _tile_parts.get(tile, {})
 	if gfx.get("walls") != null:
@@ -2877,6 +3092,10 @@ func _draw_tile(ci: CanvasItem, tile: String, zoom: float) -> void:
 	if bool(show["roads"]):
 		for lit in parts.get("lit", []):
 			ci.draw_polygon(lit["points"], lit["colours"])
+
+
+func _draw_things(ci: CanvasItem, tile: String) -> void:
+	var parts: Dictionary = _tile_parts.get(tile, {})
 	# Shadows fall north-west, away from the sun: laid on the ground before anything stands.
 	for thing in parts.get("things", []):
 		var ref: Dictionary = thing["ref"]
@@ -2909,15 +3128,21 @@ func _draw_tile(ci: CanvasItem, tile: String, zoom: float) -> void:
 				_draw_pipe_item(ci, thing["ref"])
 
 
-## The grade over one tile's picture: a warm key and a cool fill, as on the key art's plate.
-## One quad over the tile's whole picture, its corners coloured by how lit each is.
-func _draw_grade(ci: CanvasItem, tile: String) -> void:
-	var r := _tile_rect(tile)
+## The grade over one layer of a tile's picture: a warm key and a cool fill, as on the key art's
+## plate. One quad over the layer's whole picture, its corners coloured by how lit each is; and over
+## the ground layer, the shading of its slopes (_build_shade), which roads and railways on a slope
+## take too.
+func _draw_grade(ci: CanvasItem, unit: String) -> void:
+	var r := _unit_rect(unit)
 	var pts := PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])
 	var cols := PackedColorArray()
 	for p in pts:
 		cols.append(_GRADE_SHADE.lerp(_GRADE_SUN, _light_at(p)))
 	ci.draw_polygon(pts, cols)
+	if unit.ends_with(_GROUND):
+		var shade: Variant = (_tile_gfx.get(unit.trim_suffix(_GROUND), {}) as Dictionary).get("shade")
+		if shade != null:
+			ci.draw_mesh(shade, null)
 
 
 ## Sort everything that is drawn into the tile it belongs to, and take a hash of each tile's
@@ -2949,14 +3174,19 @@ func _sort_parts() -> void:
 		if not item.has("tile"):
 			item["tile"] = _tile_of(item.get("plan", Vector2.ZERO))
 		_part(item, "things", {"what": "item", "depth": float(item["depth"]), "ref": item})
+	_units.clear()
+	_unit_z.clear()
+	_things_rects.clear()
 	for tid in _tile_order:
 		var parts: Dictionary = _tile_parts[tid]
 		(parts["things"] as Array).sort_custom(func(x: Dictionary, y: Dictionary) -> bool:
 			return float(x["depth"]) < float(y["depth"]))
-		# The ground: its heights, the tiles drawn beside it, and the board it is lit on.
+		_things_rects[tid] = _things_rect(str(tid), parts)
+		# What each layer is made of. The ground: its heights, the tiles drawn beside it, the board it
+		# is lit on, and the ways laid over it. The things: everything standing on it.
+		var looks: Array = [_bounds, plate_lamps, plate_sea, plate_town, str(show)]
 		var made: Array = [float(tiles[tid]["height"]), float(tiles[tid].get("top", 0.0)), str(tiles[tid]["type"]),
-			str(tiles[tid].get("beside", [])), _bounds,
-			plate_lamps, plate_sea, plate_town, str(show)]
+			str(tiles[tid].get("beside", []))] + looks
 		for fit in parts["fits"]:
 			made.append([fit["name"], fit["at"], fit["tint"]])
 		for poly in parts["polys"]:
@@ -2967,18 +3197,27 @@ func _sort_parts() -> void:
 			made.append([l["mode"], l["pts"]])
 		for r in parts["rails"]:
 			made.append([r["key"], r["stops"]])
-		for pl in parts["pipes"]:
-			made.append([pl["mode"], pl["pts"]])
 		for pier in parts["piers"]:
 			made.append(pier["key"])
+		var stood: Array = looks.duplicate()
+		for pl in parts["pipes"]:
+			stood.append([pl["mode"], pl["pts"]])
 		for thing in parts["things"]:
 			var ref: Dictionary = thing["ref"]
 			match str(thing["what"]):
 				"standing":
-					made.append([ref["iid"], ref["level"], ref["pos"], ref["side"], ref.get("tint"), ref.get("sprite")])
+					stood.append([ref["iid"], ref["level"], ref["pos"], ref["side"], ref.get("tint"), ref.get("sprite")])
 				"item":
-					made.append([ref["kind"], ref.get("name", ""), ref.get("at", ref.get("rect", ref.get("foot", ""))), ref.get("points", "")])
-		_tile_sig[tid] = hash(str(made))
+					stood.append([ref["kind"], ref.get("name", ""), ref.get("at", ref.get("rect", ref.get("foot", ""))), ref.get("points", "")])
+		# Every tile's two layers, each with its depth: a tile's own by how far back it lies, and every
+		# things layer over every ground layer.
+		var depth := (tiles[tid]["center"] as Vector2).x + (tiles[tid]["center"] as Vector2).y
+		for layer in [[_GROUND, 0.0, made], [_THINGS, _THINGS_Z, stood]]:
+			var unit := str(tid) + str(layer[0])
+			_tile_sig[unit] = hash(str(layer[2]))
+			_unit_z[unit] = float(layer[1]) + depth
+			_units.append(unit)
+	_units.sort_custom(func(x: String, y: String) -> bool: return float(_unit_z[x]) < float(_unit_z[y]))
 	# Bakes of tiles that have gone are let go. A changed tile keeps its old picture until the new one is
 	# baked, so it is never drawn live out of its place in the order (_best_bake).
 	for key in _bakes.keys():
@@ -3007,7 +3246,43 @@ func _tile_of(p: Vector2) -> String:
 	return best
 
 
-## The part of the board a tile's picture covers: its top, its cut-away below, and room above
+## The part of the board one layer of a tile covers (_unit).
+func _unit_rect(unit: String) -> Rect2:
+	if unit.ends_with(_THINGS):
+		return _things_rects.get(unit.trim_suffix(_THINGS), _tile_rect(unit.trim_suffix(_THINGS)))
+	return _tile_rect(unit.trim_suffix(_GROUND))
+
+
+## The part of the board a tile's things layer covers: the tile's own, grown to take in everything
+## standing on it whole, however far a building, a pylon or a tree reaches past the tile's edge or
+## up over the tile behind.
+func _things_rect(tile: String, parts: Dictionary) -> Rect2:
+	var r := _tile_rect(tile)
+	for thing in parts.get("things", []):
+		var ref: Dictionary = thing["ref"]
+		if str(thing["what"]) == "standing":
+			r = r.merge(ref.get("tex_rect", ref["rect"])).merge(ref["rect"])
+			continue
+		match str(ref["kind"]):
+			"tree":
+				r = r.merge(ref["rect"])
+			"lamp":
+				r = r.merge(Rect2(ref["foot"], Vector2.ZERO).expand(ref["head"]).grow(3.0))
+			"run":
+				r = r.merge(_box_of(ref["points"]))
+			_:
+				var kit: Atlas = ref.get("atlas", Pipes.kit())
+				if kit.ok():
+					r = r.merge((kit.fit_rects(str(ref["name"]), ref["at"]) as Array)[0])
+	for p in parts.get("pipes", []):
+		r = r.merge(_box_of(p["pts"]).grow(6.0))
+	r = r.grow(4.0)
+	var lo := (r.position / _BAKE_GRID).floor() * _BAKE_GRID
+	var hi := (r.end / _BAKE_GRID).ceil() * _BAKE_GRID
+	return Rect2(lo, hi - lo)
+
+
+## The part of the board a tile's ground layer covers: its top, its cut-away below, and room above
 ## for what stands on it.
 func _tile_rect(tile: String) -> Rect2:
 	var t: Dictionary = (_model["tiles"] as Dictionary)[tile]
@@ -3075,7 +3350,7 @@ func _best_bake(tile: String) -> Array:
 func _bake(tile: String, zoom: float) -> void:
 	_baking = true
 	var sig := int(_tile_sig.get(tile, 0))
-	var rect := _tile_rect(tile)
+	var rect := _unit_rect(tile)
 	var px := _px()
 	var key := _bake_key(tile, zoom)
 	var scale_up := zoom * px * _BAKE_OVERSAMPLE
@@ -3109,12 +3384,12 @@ func _bake(tile: String, zoom: float) -> void:
 ## are left until they are looked at.
 func _next_bake() -> String:
 	var view := Rect2(Vector2.ZERO, size)
-	for tid in _tile_order:
-		if _baked(str(tid)):
+	for unit in _units:
+		if _baked(str(unit)):
 			continue
-		var r := _tile_rect(str(tid))
+		var r := _unit_rect(str(unit))
 		if view.intersects(Rect2(r.position * _zoom + _offset, r.size * _zoom)):
-			return str(tid)
+			return str(unit)
 	return ""
 
 
@@ -3135,8 +3410,8 @@ func _trim_bakes() -> void:
 func _draw_bakes(layer: Control) -> void:
 	var px := _px()
 	var frame := Engine.get_frames_drawn()
-	for tid in _tile_order:
-		var found: Array = _best_bake(str(tid))
+	for unit in _units:
+		var found: Array = _best_bake(str(unit))
 		if found.is_empty():
 			continue
 		var b: Dictionary = found[0]
