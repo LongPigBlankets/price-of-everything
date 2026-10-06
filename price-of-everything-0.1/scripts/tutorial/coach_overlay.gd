@@ -11,6 +11,10 @@ signal skipped            # "Skip Tutorial" pressed
 signal choice_made(goto)  # a branch choice button pressed (goto = target step id)
 
 const RecipeFlowPanelScript := preload("res://scripts/tutorial/tutorial_recipe_flow_panel.gd")
+const CoachPlate := preload("res://scripts/tutorial/coach_plate.gd")
+const CreamKey := preload("res://scripts/ds2/cream_key.gd")
+## The card's keys are never narrower than this.
+const KEY_MIN_W := 120.0
 const DIM := Color(0, 0, 0, 0.6)
 const GLOW := Color(0.98, 0.80, 0.42)  # warm gold spotlight glow
 
@@ -404,17 +408,15 @@ func show_step(step: Dictionary, index: int, total: int) -> void:
 	for ch in choices:
 		if not (ch is Dictionary):
 			continue
-		var b := Button.new()
-		b.text = str((ch as Dictionary).get("label", "Choose"))
-		b.theme_type_variation = &"Primary"
-		b.custom_minimum_size = Vector2(0, 42)
+		var label := str((ch as Dictionary).get("label", "Choose"))
+		var b := CreamKey.make("CoachChoice", label, "", KEY_MIN_W)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var goto := str((ch as Dictionary).get("goto", ""))
 		b.pressed.connect(func() -> void: choice_made.emit(goto))
 		_choices_box.add_child(b)
 	# Next is for plain info steps only (hidden when this is a choice step).
 	_skip_btn.visible = not bool(step.get("hide_skip", false))
-	_next_btn.text = str(step.get("next_label", "Next"))
+	_set_key(_next_btn, str(step.get("next_label", "Next")))
 	_next_btn.visible = str(step.get("advance", "auto")) == "next" and choices.is_empty()
 
 	# "annotate": a HUD primer — full dim, the corner card centred, plus labels + leader
@@ -544,6 +546,9 @@ func _tile_screen_rect(tile_id: String) -> Rect2:
 func _build_card() -> void:
 	_card = PanelContainer.new()
 	_card.theme_type_variation = &"CoachCard"
+	# The card is the dark metal plate in its silver frame (coach_plate.gd); the content's margins clear the frame.
+	_card.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	_card.add_child(CoachPlate.new())
 	_card.mouse_filter = Control.MOUSE_FILTER_STOP
 	_card.custom_minimum_size = Vector2(460, 0)
 	add_child(_card)
@@ -557,8 +562,10 @@ func _build_card() -> void:
 	# CoachCard already supplies 24px horizontal / 20px vertical padding. Keep another
 	# 10px above the content and 20px below the footer for a roomier tutorial card.
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_top", 10)
-	margin.add_theme_constant_override("margin_bottom", 20)
+	margin.add_theme_constant_override("margin_left", 24 + int(CoachPlate.FRAME))
+	margin.add_theme_constant_override("margin_right", 24 + int(CoachPlate.FRAME))
+	margin.add_theme_constant_override("margin_top", 26 + int(CoachPlate.FRAME))
+	margin.add_theme_constant_override("margin_bottom", 22 + int(CoachPlate.FRAME))
 	_card.add_child(margin)
 
 	var col := VBoxContainer.new()
@@ -619,11 +626,8 @@ func _build_card() -> void:
 	nav_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_footer.add_child(nav_spacer)
 
-	_next_btn = Button.new()
-	_next_btn.name = "CoachNextButton"
-	_next_btn.text = "Next"
-	_next_btn.theme_type_variation = &"Silver"
-	_next_btn.custom_minimum_size = Vector2(86, 40)
+	_next_btn = CreamKey.make("CoachNextButton", "Next", "", KEY_MIN_W)
+	_next_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_next_btn.pressed.connect(func() -> void: advanced.emit())
 	_footer.add_child(_next_btn)
 
@@ -636,10 +640,8 @@ func _build_card() -> void:
 func _build_welcome_panel() -> void:
 	_welcome_card = PanelContainer.new()
 	_welcome_card.theme_type_variation = &"CoachCard"
-	var welcome_style := DS.theme.get_stylebox("panel", "CoachCard").duplicate() as StyleBox
-	welcome_style.content_margin_top = 30
-	welcome_style.content_margin_bottom = 30
-	_welcome_card.add_theme_stylebox_override("panel", welcome_style)
+	_welcome_card.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	_welcome_card.add_child(CoachPlate.new())
 	_welcome_card.mouse_filter = Control.MOUSE_FILTER_STOP
 	_welcome_card.custom_minimum_size = Vector2(600, 0)
 	_welcome_card.visible = false
@@ -647,7 +649,7 @@ func _build_welcome_panel() -> void:
 
 	var margin := MarginContainer.new()
 	for s in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + s, 30)
+		margin.add_theme_constant_override("margin_" + s, 54 + int(CoachPlate.FRAME))
 	_welcome_card.add_child(margin)
 
 	var col := VBoxContainer.new()
@@ -681,12 +683,18 @@ func _build_welcome_panel() -> void:
 	wspacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	wbtns.add_child(wspacer)
 
-	_welcome_btn = Button.new()
-	_welcome_btn.text = "Begin"
-	_welcome_btn.theme_type_variation = &"Silver"
-	_welcome_btn.custom_minimum_size = Vector2(0, 44)
+	_welcome_btn = CreamKey.make("CoachBeginButton", "Begin", "", KEY_MIN_W)
+	_welcome_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_welcome_btn.pressed.connect(func() -> void: advanced.emit())
 	wbtns.add_child(_welcome_btn)
+
+
+## A cream key's print, and the width it needs for it.
+static func _set_key(key: Button, label: String) -> void:
+	key.set("title", label)
+	key.text = ""
+	key.custom_minimum_size.x = maxf(KEY_MIN_W, CreamKey.width_for(label, "", false, false))
+	key.queue_redraw()
 
 
 func _build_recipe_flow_panel() -> void:
@@ -815,7 +823,7 @@ func _show_welcome(step: Dictionary) -> void:
 		pl.custom_minimum_size = Vector2(540, 0)
 		pl.text = str(p)
 		_welcome_body.add_child(pl)
-	_welcome_btn.text = str(step.get("cta", "Begin"))
+	_set_key(_welcome_btn, str(step.get("cta", "Begin")))
 	_center_welcome()
 	_defer_center_welcome()
 

@@ -245,7 +245,7 @@ func _test_tutorial_engine() -> void:
 		and is_equal_approx(coach_overlay._card.position.y, 72.0),
 		"tutorial: Step 14 renders centre-top below the top bar, clear of the Construct panel")
 	coach_overlay.show_step(terminal_step, 58, 59)
-	_check(coach_next.text == "End tutorial" and coach_next.visible and not coach_skip.visible,
+	_check(str(coach_next.get("title")) == "End tutorial" and coach_next.visible and not coach_skip.visible,
 		"tutorial: terminal coach card replaces Next with End tutorial and removes the ordinary Skip link")
 	coach_overlay.free()
 	var fluids_body := str((by_id.get("capital_fluids", {}) as Dictionary).get("body", ""))
