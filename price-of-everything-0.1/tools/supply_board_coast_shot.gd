@@ -5,6 +5,7 @@ extends Node
 ## Writes coast_board.png and coast_<tile>.png into $SB_SHOT_DIR (or /tmp).
 
 const ShotHarness := preload("res://tools/shot_harness.gd")
+const Ground := preload("res://scripts/empire_board_ground.gd")
 const START := "res://data/starts/metal_magnate.json"
 const ZOOM := 1.6
 
@@ -61,7 +62,7 @@ func _ready() -> void:
 			var over := false
 			for gx in range(-2, 3):
 				for gy in range(-2, 3):
-					over = over or bool(board.call("_is_water", rel, (s["pos"] as Vector2) + Vector2(gx, gy) * half * 0.5))
+					over = over or Ground.is_water(rel, (s["pos"] as Vector2) + Vector2(gx, gy) * half * 0.5)
 			if over:
 				wet += 1
 				print("[coast_shot] %s %s %s stands on water at %s" % [tid, s["kind"], s["iid"], (s["pos"] as Vector2) - (t["center"] as Vector2)])
@@ -70,7 +71,7 @@ func _ready() -> void:
 				continue
 			for k in range(11):
 				var p: Vector2 = (r["a"] as Vector2).lerp(r["b"], float(k) / 10.0)
-				if bool(board.call("_is_water", rel, p)):
+				if Ground.is_water(rel, p):
 					wet += 1
 					print("[coast_shot] %s road %s on water at %s" % [tid, r["kind"], p - (t["center"] as Vector2)])
 					break

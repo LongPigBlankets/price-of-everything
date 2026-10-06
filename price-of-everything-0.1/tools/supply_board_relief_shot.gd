@@ -1,8 +1,9 @@
 extends Node
 ## Close captures of the supply chain board's relief in a Metal Magnate game: the seams where tiles
-## of different kinds or heights meet, and the edges rivers cross.
+## of different kinds or heights meet, the edges rivers cross, and the bridges over rivers' valleys.
 ##   AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_board_relief_shot.tscn -- --no-telemetry
-## Writes relief_<phase>_board.png and relief_<phase>_<tile>_<tile>.png into $SB_SHOT_DIR (or /tmp).
+## Writes relief_<phase>_board.png, relief_<phase>_<tile>_<tile>.png and relief_<phase>_bridge_<tile>_<n>.png
+## into $SB_SHOT_DIR (or /tmp).
 ##
 ## Phase "start" is the opening board. Phase "far" adds works on high ground and a standing move
 ## out to it, so hill and mountain tiles, and tiles the goods only pass through, come onto the board.
@@ -11,6 +12,7 @@ const ShotHarness := preload("res://tools/shot_harness.gd")
 const START := "res://data/starts/metal_magnate.json"
 const ZOOM := 1.2
 const MAX_SEAMS := 16
+const MAX_BRIDGES := 4
 ## Works stood on high ground and by rivers for the second phase, and the moves that reach them.
 const FAR_WORKS := ["tile_10_8", "tile_10_6", "tile_8_4", "tile_12_9"]
 const FAR_MOVES := [["tile_9_9", "tile_12_9"], ["tile_6_8", "tile_8_4"]]
@@ -103,6 +105,22 @@ func _phase(view: Node, phase: String) -> void:
 		print("[relief_shot] %s seam %s %s (%.0f) | %s %s (%.0f) river %s" % [phase, a, tiles[a]["type"],
 			float(tiles[a]["height"]), b, tiles[b]["type"], float(tiles[b]["height"]), s[3]])
 		await _shot("%s_%s_%s" % [phase, a.trim_prefix("tile_"), b.trim_prefix("tile_")])
+	# Every bridge a way crosses a river's valley on.
+	var spans: Dictionary = board.get("_spans")
+	var bridges := 0
+	for tile in spans:
+		for span in spans[tile]:
+			if not bool(span["used"]) or bridges >= MAX_BRIDGES:
+				continue
+			bridges += 1
+			var at: Vector2 = board.call("iso", span["at"], float(span["deck"]))
+			board.set("_zoom", ZOOM * 1.5)
+			board.set("_offset", board.size * 0.5 - at * ZOOM * 1.5)
+			board.call("_view_changed")
+			await _settle(4)
+			await get_tree().create_timer(1.0).timeout
+			print("[relief_shot] %s bridge on %s at %s deck %.1f" % [phase, tile, span["at"], float(span["deck"])])
+			await _shot("%s_bridge_%s_%d" % [phase, str(tile).trim_prefix("tile_"), bridges])
 	view.call("toggle")
 	await _settle(20)
 

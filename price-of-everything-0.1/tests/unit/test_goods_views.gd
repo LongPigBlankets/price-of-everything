@@ -642,11 +642,9 @@ func _test_empire_board_model() -> void:
 	_check(hops.size() == 3 and str(hops[0]["mode"]) == "rail" and str(hops[1]["mode"]) == "rail"
 		and str(hops[2]["mode"]) == "roads" and str(hops[2]["a"]) == "c",
 		"board: a route's hops carry the mode of their own leg")
-	_check(Model.tile_height("rural") > Model.tile_height("sea") and Model.tile_height("sea") > Model.tile_height("deep_sea"),
-		"board: land stands over the sea, the sea over the deep")
 
 
-## The board's plates settled: never above their own band's level, never more than the cap above a
+## The board's tile heights settled: never above their own level, never more than the cap above a
 ## neighbour, never above the tile upstream on a river; and only lowered.
 func _test_empire_board_relief_settle() -> void:
 	var Relief := preload("res://scripts/empire_board_relief.gd")
@@ -656,6 +654,9 @@ func _test_empire_board_relief_settle() -> void:
 	for b in range(1, 12):
 		rising = rising and Relief.band_level(b) >= Relief.band_level(b - 1)
 	_check(rising, "board relief: every band stands at least as high as the one below it")
+	_check(Relief.snap_level(37.0) == 34.0 and Relief.snap_level(40.0) == 43.0 and Relief.snap_level(56.0) == 58.0,
+		"board relief: a tile's average snaps to the nearest band's level")
+	_check(Relief.SEA_LEVEL < Relief.band_level(0), "board relief: open water stands below the lowland")
 	# A row a - b - c - d: a mountain beside lowland, and a river running from b down into c.
 	var raw := {"a": 34.0, "b": 34.0, "c": 52.0, "d": 94.0}
 	var near := {"a": ["b"], "b": ["a", "c"], "c": ["b", "d"], "d": ["c"]}
@@ -666,11 +667,12 @@ func _test_empire_board_relief_settle() -> void:
 	var lowered := true
 	for t in raw:
 		lowered = lowered and float(h[t]) <= float(raw[t]) + 0.001
-	_check(lowered and is_equal_approx(float(h["a"]), 34.0), "board relief: plates are only ever lowered")
+	_check(lowered and is_equal_approx(float(h["a"]), 34.0), "board relief: tile heights are only ever lowered")
 
 
-## The board's plates over the real map: a river never climbs from tile to tile, followed down from
-## any tile toward its mouth; no two neighbours differ by more than the cap; high ground stands higher.
+## The board's tile heights over the real map: each is its land's average band level, snapped; a
+## river never climbs from tile to tile, followed down toward its mouth; no two neighbours differ by
+## more than the cap; high ground stands higher.
 func _test_empire_board_relief_map() -> void:
 	var Relief := preload("res://scripts/empire_board_relief.gd")
 	var Model := preload("res://scripts/empire_board_model.gd")
@@ -693,6 +695,33 @@ func _test_empire_board_relief_map() -> void:
 	for tid in Catalog.all_tile_ids():
 		if (terrain.call("id_to_coord", str(tid)) as Vector2i).x >= 0:
 			centers[str(tid)] = Model.tile_center(terrain, str(tid))
+	# A tile's own height, worked out here from the routing grid: the mean level of its land cells.
+	var grid := NavGrid.instance()
+	var checked := 0
+	var wrong: Array = []
+	for tid in ["tile_6_9", "tile_7_11", "tile_9_10", "tile_10_8", "tile_11_7"]:
+		if not centers.has(tid):
+			continue
+		var c: Vector2 = centers[tid]
+		var sum := 0.0
+		var count := 0
+		var lo := grid.cell_of(c - Relief.HEX_HALF)
+		var hi := grid.cell_of(c + Relief.HEX_HALF)
+		for iy in range(lo.y, hi.y + 1, Relief.SAMPLE_STRIDE):
+			for ix in range(lo.x, hi.x + 1, Relief.SAMPLE_STRIDE):
+				var d := grid.world_of(ix, iy) - c
+				if absf(d.y) > 240.0 or absf(d.x) > 270.0 - absf(d.y) * 0.5625:
+					continue
+				if grid.water(ix, iy) == NavGrid.WATER_SEA or grid.water(ix, iy) == NavGrid.WATER_LAKE:
+					continue
+				sum += Relief.band_level(grid.band(ix, iy))
+				count += 1
+		var mean := sum / float(maxi(count, 1))
+		checked += 1
+		if not is_equal_approx(Relief.tile_level(c), Relief.snap_level(mean)) or float(plates[tid]) > Relief.tile_level(c) + 0.001:
+			wrong.append("%s mean %.1f level %.0f settled %.0f" % [tid, mean, Relief.tile_level(c), float(plates[tid])])
+	_check(checked == 5 and wrong.is_empty(),
+		"board relief map: a tile's height is its land's average band level, snapped, and only ever settled lower %s" % [wrong])
 	var flows: Array = Relief.river_flows(rivers, centers)
 	var climbs: Array = []
 	for f in flows:
@@ -703,60 +732,82 @@ func _test_empire_board_relief_map() -> void:
 	var worst := 0.0
 	var by_kind: Dictionary = {}
 	for tid in plates:
-		for nb in Catalog.tile_neighbours(str(tid)):
-			if plates.has(str(nb)):
-				worst = maxf(worst, absf(float(plates[tid]) - float(plates[str(nb)])))
 		var kind := str(Catalog.tile_type(str(tid)))
+		if Relief.WATER_TILES.has(kind):
+			continue
+		for nb in Catalog.tile_neighbours(str(tid)):
+			if plates.has(str(nb)) and not Relief.WATER_TILES.has(str(Catalog.tile_type(str(nb)))):
+				worst = maxf(worst, absf(float(plates[tid]) - float(plates[str(nb)])))
 		var sum: Array = by_kind.get_or_add(kind, [0.0, 0])
 		sum[0] = float(sum[0]) + float(plates[tid])
 		sum[1] = int(sum[1]) + 1
-	_check(worst <= Relief.STEP_CAP + 0.001, "board relief map: no neighbouring plates differ by more than the cap (%.0f)" % worst)
-	var mean := func(kind: String) -> float:
+	_check(worst <= Relief.STEP_CAP + 0.001, "board relief map: no neighbouring tiles differ by more than the cap (%.0f)" % worst)
+	var mean_of := func(kind: String) -> float:
 		var s: Array = by_kind.get(kind, [0.0, 1])
 		return float(s[0]) / float(maxi(1, int(s[1])))
-	_check(mean.call("mountain") > mean.call("hill") and mean.call("hill") > mean.call("rural")
-		and absf(float(mean.call("rural")) - 34.0) < 3.0,
-		"board relief map: mountains stand over hills, hills over lowland, lowland about 34 (%.0f, %.0f, %.0f)"
-			% [mean.call("mountain"), mean.call("hill"), mean.call("rural")])
+	_check(mean_of.call("mountain") > mean_of.call("hill") + 4.0 and mean_of.call("hill") > mean_of.call("rural") + 4.0
+		and absf(float(mean_of.call("rural")) - 34.0) < 4.0,
+		"board relief map: mountains stand well over hills, hills over lowland, lowland about 34 (%.0f, %.0f, %.0f)"
+			% [mean_of.call("mountain"), mean_of.call("hill"), mean_of.call("rural")])
 	inst.queue_free()
 	await get_tree().process_frame
 
 
-## A small board drawn from made-up relief, to pin down its ground: tile a (lowland, 34) with
-## neighbours b (lowland, 34) to the south-east, c (43) to the south, d (a warehouse tile, 34) to the
-## north-east and e (a hill, 52) to the south-west. A band at 43 and another at 52 lie over the
-## corner where a, b and c meet; a river runs from c down into a, and a street from c into a.
+## A small board on made-up relief, to pin down its ground. Tile a (lowland, 34) with neighbours
+## b (34) to the south-east, c (43) to the south, d (a warehouse tile, 34) to the north-east and e (a
+## hill, 52) to the south-west. In the middle of a the map rises to 43 and in its heart to 52; c's
+## higher ground reaches over the edge into a in a lobe. A river runs from c down into a, through
+## the edge of a's rise.
 func _relief_board() -> Control:
 	var Board := preload("res://scripts/empire_board.gd")
 	var Model := preload("res://scripts/empire_board_model.gd")
+	var Ground := preload("res://scripts/empire_board_ground.gd")
+	var Relief := preload("res://scripts/empire_board_relief.gd")
 	var board: Control = Board.new()
 	add_child(board)
-	var spots := {"tb_a": [Vector2.ZERO, "rural", 34.0, false], "tb_b": [Vector2(405, 240), "rural", 34.0, false],
-		"tb_c": [Vector2(0, 480), "rural", 43.0, false], "tb_d": [Vector2(405, -240), "rural", 34.0, true],
-		"tb_e": [Vector2(-405, 240), "hill", 52.0, false]}
+	var spots := {"tb_a": [Vector2.ZERO, "rural", 34.0, false, 2], "tb_b": [Vector2(405, 240), "rural", 34.0, false, 2],
+		"tb_c": [Vector2(0, 480), "rural", 43.0, false, 3], "tb_d": [Vector2(405, -240), "rural", 34.0, true, 2],
+		"tb_e": [Vector2(-405, 240), "hill", 52.0, false, 4]}
+	var disc := func(at: Vector2, r: float) -> PackedVector2Array:
+		var pts := PackedVector2Array()
+		for k in range(40):
+			pts.append(at + Vector2.from_angle(TAU * float(k) / 40.0) * r)
+		return pts
+	var bands: Array = []
+	for tid in spots:
+		bands.append({"b": int(spots[tid][4]), "p": Model.hex_points(spots[tid][0])})
+	bands.append({"b": 3, "p": disc.call(Vector2(40, 240), 40.0)})
+	bands.append({"b": 3, "p": disc.call(Vector2(-40, -70), 150.0)})
+	bands.append({"b": 4, "p": disc.call(Vector2(-40, -70), 70.0)})
 	var tiles: Dictionary = {}
-	var rivers: Dictionary = {}
+	var ground: Variant = Ground.new()
 	for tid in spots:
 		var s: Array = spots[tid]
 		var c: Vector2 = s[0]
 		tiles[tid] = {"id": tid, "center": c, "type": s[1], "height": s[2], "store": s[3], "label": tid,
 			"hub": c, "level": 1, "paved": true, "polluters": 0}
-		var hexp := Model.hex_points(c)
+		ground.tiles[tid] = {"center": c, "height": s[2], "water": false}
 		var land: Array = []
-		if str(s[1]) != "hill":
-			land.append({"b": 2, "p": hexp})
-			for band in [[3, 210.0], [4, 110.0]]:
-				var disc := PackedVector2Array()
-				for k in range(32):
-					disc.append(Vector2(120, 260) + Vector2.from_angle(TAU * float(k) / 32.0) * float(band[1]))
-				for piece in Board._clip(disc, hexp):
-					land.append({"b": int(band[0]), "p": piece})
+		for e in bands:
+			for piece in Board._clip(e["p"], Model.hex_points(c)):
+				land.append({"b": int(e["b"]), "p": piece})
 		Board._relief_cache[tid] = {"sea": [], "land": land, "lakes": []}
-	rivers["tb_c"] = [{"points": PackedVector2Array([Vector2(-60, 470), Vector2(-30, 240)]), "start_width": 15.0, "end_width": 15.0}]
-	rivers["tb_a"] = [{"points": PackedVector2Array([Vector2(-30, 240), Vector2(-90, 60), Vector2(-260, 20)]), "start_width": 15.0, "end_width": 15.0}]
-	board.set("_model", {"tiles": tiles, "standing": [], "lines": [], "flows": [], "lanes": [],
-		"roads": [{"tile": "tb_c", "a": Vector2(53, 405), "b": Vector2(53, 240), "kind": "avenue", "level": 1, "paved": true},
-			{"tile": "tb_a", "a": Vector2(53, 240), "b": Vector2(53, 75), "kind": "avenue", "level": 1, "paved": true}]})
+	var rivers := {
+		"tb_c": [{"points": PackedVector2Array([Vector2(-60, 470), Vector2(-30, 240)]), "start_width": 15.0, "end_width": 15.0}],
+		"tb_a": [{"points": PackedVector2Array([Vector2(-30, 240), Vector2(-120, 80), Vector2(-262, 20)]), "start_width": 15.0, "end_width": 15.0}]}
+	ground.bands = bands
+	ground.rivers = rivers
+	ground.flows = [["tb_c", "tb_a"]]
+	ground.level_at = func(p: Vector2) -> float:
+		var top := Relief.band_level(2)
+		for e in bands:
+			if Geometry2D.is_point_in_polygon(p, e["p"]):
+				top = maxf(top, Relief.band_level(int(e["b"])))
+		return top
+	ground.relief = func(tile: String, center: Vector2) -> Dictionary: return Board._relief_of(tile, center)
+	ground.setup()
+	board.set("_ground", ground)
+	board.set("_model", {"tiles": tiles, "standing": [], "lines": [], "flows": [], "lanes": [], "roads": []})
 	var lines: Dictionary = {}
 	for tid in rivers:
 		lines[tid] = [rivers[tid][0]["points"]]
@@ -765,18 +816,14 @@ func _relief_board() -> Control:
 	return board
 
 
-## The board's ground meets itself at every edge: a band stands at the same height on both sides
-## of a shared edge, a slope comes down onto the ground of the tile below, a built-on or high
-## neighbour meets level ground, so no edge is left open.
+## The board's ground meets itself at every shared edge; two neighbours of one height meet with no
+## step; a step between two heights follows the map's contour, not the hex edge; the made-up rise
+## stands at its rungs; every tile has its ground built.
 func _test_empire_board_relief_seams() -> void:
 	var Model := preload("res://scripts/empire_board_model.gd")
 	var board := _relief_board()
+	var ground: Variant = board.get("_ground")
 	var tiles: Dictionary = (board.get("_model") as Dictionary)["tiles"]
-	var terraced := 0
-	for e in tiles["tb_a"]["terraces"]:
-		terraced += 1 if float(e["lift"]) > 0.0 else 0
-	_check(terraced > 0 and (tiles["tb_d"]["terraces"] as Array).is_empty() and (tiles["tb_e"]["terraces"] as Array).is_empty(),
-		"board seams: lowland shows its terraces, a warehouse tile and a hill do not")
 	var open: Array = []
 	var ids: Array = tiles.keys()
 	var edges := 0
@@ -798,61 +845,142 @@ func _test_empire_board_relief_seams() -> void:
 					n = -n
 				for k in range(1, 40):
 					var p := e0.lerp(e1, float(k) / 40.0)
-					var ha := float(board.call("_height_at", a, p - n * 0.3))
-					var hb := float(board.call("_height_at", b, p + n * 0.3))
-					if absf(ha - hb) > 1.0:
+					var ha := float(board.call("_height_at", p - n * 0.02))
+					var hb := float(board.call("_height_at", p + n * 0.02))
+					if absf(ha - hb) > 0.5:
 						open.append("%s|%s at %s: %.1f vs %.1f" % [a, b, p, ha, hb])
 	_check(edges == 7, "board seams: the made-up board has its seven shared edges (%d)" % edges)
-	_check(open.is_empty(), "board seams: the ground meets at one height all along every shared edge %s" % [open.slice(0, 4)])
-	# The band at 43 runs on from a into b at 43, as the map's band does.
-	var on_a := float(board.call("_height_at", "tb_a", Vector2(175.0, 150.0)))
-	var on_b := float(board.call("_height_at", "tb_b", Vector2(198.0, 150.0)))
-	_check(is_equal_approx(on_a, on_b) and on_a > 34.0,
-		"board seams: a band stands at the same height either side of a shared edge (%.0f, %.0f)" % [on_a, on_b])
+	_check(open.is_empty(), "board seams: the ground meets at one height either side of every shared edge %s" % [open.slice(0, 4)])
+	# a and b stand at one height: no step along their edge, the ground level across it.
+	var level := true
+	var stepped := false
+	var hexa := Model.hex_points(Vector2.ZERO)
+	for i in range(6):
+		var e: Dictionary = ground.call("_edge_of", "tb_a", i)
+		var mid := (hexa[i] + hexa[(i + 1) % 6]) * 0.5
+		if mid.distance_to(Vector2(202.5, 120.0)) < 1.0:
+			stepped = not e.is_empty()
+			var n := (mid - Vector2.ZERO).normalized()
+			for k in range(2, 15):
+				var p := hexa[i].lerp(hexa[(i + 1) % 6], float(k) / 20.0)
+				for off in [-30.0, -10.0, 10.0, 30.0]:
+					level = level and absf(float(board.call("_height_at", p + n * float(off))) - 34.0) < 0.01
+	_check(not stepped and level, "board seams: two neighbours of one height meet with no step, level across their edge")
+	# The step from a down... up to c follows c's ground where it reaches over the edge into a.
+	var lobe := str(ground.call("region_at", Vector2(40, 230)))
+	var plain := str(ground.call("region_at", Vector2(110, 215)))
+	var region: PackedVector2Array = ground.call("region", "tb_a")
+	var off_edge := 0.0
+	for p in region:
+		off_edge = maxf(off_edge, Geometry2D.get_closest_point_to_segment(p, Vector2(135, 240), Vector2(-135, 240)).distance_to(p)
+			if absf(p.y - 240.0) < 60.0 and absf(p.x) < 135.0 else 0.0)
+	_check(lobe == "tb_c" and plain == "tb_a" and off_edge > 15.0,
+		"board seams: the step between two heights follows the map's contour, not the hex edge (%s, %s, %.0f off the edge)" % [lobe, plain, off_edge])
+	var heart := float(board.call("_height_at", Vector2(-40, -70)))
+	var shoulder := float(board.call("_height_at", Vector2(80, -60)))
+	var plainland := float(board.call("_height_at", Vector2(150, -150)))
+	_check(is_equal_approx(heart, 52.0) and is_equal_approx(shoulder, 43.0) and is_equal_approx(plainland, 34.0),
+		"board seams: a rise stands at its rungs inside the tile (%.1f, %.1f, %.1f)" % [heart, shoulder, plainland])
+	var built := true
+	for tid in tiles:
+		built = built and ((board.get("_tile_gfx") as Dictionary).get(tid, {}) as Dictionary).get("ground") != null
+	_check(built, "board seams: every tile has its ground built")
 	board.queue_free()
 
 
-## Everything on the board stands on one ground: a street, a river and a railway over the same
-## stretch read the same heights, the river runs down the slope from the higher tile into the lower
-## one and never climbs, and a street through terraces runs on the plate.
+## Rivers run in valleys and never rise downstream; a bridge's deck stands over the valley above the
+## river; a way over a step climbs over the slope's width; a building on a step stands on a plinth.
 func _test_empire_board_relief_one_ground() -> void:
+	var Ground := preload("res://scripts/empire_board_ground.gd")
 	var board := _relief_board()
-	var tiles: Dictionary = (board.get("_model") as Dictionary)["tiles"]
-	# The river leaving c for a, read as a river, as a railway over the same points, and point by point.
-	var line := PackedVector2Array([Vector2(-60, 470), Vector2(-30, 240)])
-	var ground: Array = board.call("_ground_line", "tb_c", line)
-	var path: Array = [{"p": line[0], "tile": "tb_c", "edge": false}, {"p": line[1], "tile": "tb_c", "edge": true}]
-	var info: Array = []
-	board.call("_street_line", path, info)
-	var same := (ground[0] as PackedVector2Array).size() == info.size()
-	var falls := true
-	for i in range(info.size()):
-		if same:
-			same = ((ground[0] as PackedVector2Array)[i]).distance_to(info[i]["p"]) < 0.01 \
-				and absf((ground[1] as PackedFloat32Array)[i] - float(info[i]["h"])) < 0.01 \
-				and absf(float(info[i]["h"]) - float(board.call("_height_at", "tb_c", info[i]["p"]))) < 0.6
-		if i > 0:
-			falls = falls and float(info[i]["h"]) <= float(info[i - 1]["h"]) + 0.001
-	_check(same, "board ground: a river and a railway over the same stretch stand on the same ground")
-	var hs: PackedFloat32Array = ground[1]
-	_check(falls and is_equal_approx(hs[0], 43.0) and absf(hs[hs.size() - 1] - float(board.call("_height_at", "tb_a", Vector2(-30, 239.7)))) < 0.6,
-		"board ground: the river runs down the slope into the lower tile, meeting it at its own level (%.1f -> %.1f)" % [hs[0], hs[hs.size() - 1]])
-	# The street through a's terraces: kept clear of them, it runs on the plate.
-	var prof: Array = board.call("_profile", "tb_a", Vector2(53, 230), Vector2(53, 80))
-	var flat := true
-	for q in prof:
-		flat = flat and absf(float(q[1]) - 34.0) < 0.01
-	var lifted := float(board.call("_height_at", "tb_a", Vector2(90, 200)))
-	_check(flat and lifted > 34.0, "board ground: a street runs on the plate through terraces kept clear of it (beside it %.0f)" % lifted)
-	# A way crossing a terrace's edge ramps over it rather than stepping.
-	var ramp: Array = board.call("_profile", "tb_a", Vector2(-150, 150), Vector2(150, 150))
+	var ground: Variant = board.get("_ground")
+	# Followed downstream, from c into a, the river never rises, and it meets itself at the edge.
+	var runs: Array = []
+	for tid in ["tb_c", "tb_a"]:
+		runs.append_array(ground.call("river_runs", tid))
+	var rises := false
+	var prev := INF
+	var gap := 0.0
+	for run in runs:
+		var levels: PackedFloat32Array = run["levels"]
+		if prev < INF:
+			gap = absf(levels[0] - prev)
+		for k in range(levels.size()):
+			rises = rises or (k > 0 and levels[k] > levels[k - 1] + 0.001)
+		prev = levels[levels.size() - 1]
+	_check(runs.size() == 2 and not rises and gap < 0.001,
+		"board ground: a river never rises followed downstream, and meets itself at a tile edge (gap %.2f)" % gap)
+	# Its valley: the river on the ground at its own level, no higher than the ground a bank's width
+	# either side, and the land a full step above it beyond the valley's wall (as the ground's lattice
+	# blends it, so within a little of the step). Its ends, where it comes down the step from c, are
+	# left out.
+	var wet: Array = []
+	for run in runs:
+		var pts: PackedVector2Array = run["pts"]
+		var levels: PackedFloat32Array = run["levels"]
+		for k in range(1, pts.size() - 1):
+			if pts[k].distance_to(pts[0]) < 50.0 or pts[k].distance_to(pts[pts.size() - 1]) < 50.0:
+				continue
+			var across := (pts[k + 1] - pts[k - 1]).normalized().orthogonal()
+			var bank := float(run["half"]) + Ground.BANK
+			var on := float(board.call("_height_at", pts[k]))
+			if absf(on - levels[k]) > 0.6:
+				wet.append("%s: %.1f on %.1f" % [pts[k], levels[k], on])
+			for side in [-1.0, 1.0]:
+				var at_bank := float(board.call("_height_at", pts[k] + across * bank * float(side)))
+				var far: Vector2 = pts[k] + across * (bank + Ground.SLOPE_W + 9.0) * float(side)
+				var beyond := float(board.call("_height_at", far))
+				var clear := true                 # not inside the valley of another stretch, round a bend
+				for other in runs:
+					for q in (other["pts"] as PackedVector2Array):
+						clear = clear and q.distance_to(far) >= bank + Ground.SLOPE_W + 4.0
+				if on > at_bank + 0.01 or (clear and beyond < levels[k] + Ground.VALLEY_DEPTH - 1.2):
+					wet.append("%s: %.1f bank %.1f beyond %.1f" % [pts[k], levels[k], at_bank, beyond])
+	_check(wet.is_empty(), "board ground: a river's ground is at its level within a bank's width, the land a step above beyond %s" % [wet.slice(0, 3)])
+	# A bridge: the street that crosses the river does so on a level deck above it.
+	var spans: Array = board.call("_spans_of", "tb_a")
+	var decks := not spans.is_empty()
+	var streets: Array = []
+	for span in spans:
+		streets.append({"tile": "tb_a", "a": (span["at"] as Vector2) - (span["dir"] as Vector2) * 70.0,
+			"b": (span["at"] as Vector2) + (span["dir"] as Vector2) * 70.0, "kind": "avenue", "level": 1, "paved": true})
+	(board.get("_model") as Dictionary)["roads"] = streets
+	board.call("_mark_bridges")
+	for span in spans:
+		var dir: Vector2 = span["dir"]
+		var a: Vector2 = (span["at"] as Vector2) - dir * 70.0
+		var b: Vector2 = (span["at"] as Vector2) + dir * 70.0
+		decks = decks and bool(span["used"])
+		var prof: Array = board.call("_profile", a, b, "tb_a")
+		var on_deck := 0.0
+		for i in range(1, prof.size()):
+			if float(prof[i][0]) >= 0.5:
+				on_deck = lerpf(float(prof[i - 1][1]), float(prof[i][1]),
+					(0.5 - float(prof[i - 1][0])) / maxf(float(prof[i][0]) - float(prof[i - 1][0]), 0.0001))
+				break
+		var river := float(board.call("_height_at", span["at"]))
+		decks = decks and float(span["deck"]) > river + 5.0 and absf(on_deck - float(span["deck"])) < 0.01
+	_check(decks, "board ground: a bridge's deck stands level over the valley, above the river (%d bridges)" % spans.size())
+	# A way across the step from a up to c: it climbs the step's height over the slope, never in a jump.
+	var ramp: Array = board.call("_profile", Vector2(100, 120), Vector2(100, 360))
 	var steepest := 0.0
 	for i in range(1, ramp.size()):
-		var run := (float(ramp[i][0]) - float(ramp[i - 1][0])) * 300.0
+		var run := (float(ramp[i][0]) - float(ramp[i - 1][0])) * 240.0
 		if run > 0.001:
 			steepest = maxf(steepest, absf(float(ramp[i][1]) - float(ramp[i - 1][1])) / run)
-	_check(steepest > 0.0 and steepest <= 1.0,
-		"board ground: a way over a terrace's edge ramps, never steps (steepest %.2f)" % steepest)
+	var climb := float(ramp[ramp.size() - 1][1]) - float(ramp[0][1])
+	_check(absf(climb - 9.0) < 0.01 and steepest > 0.0 and steepest <= 0.45,
+		"board ground: a way over a step climbs it over the slope's width, never in one jump (climb %.1f, steepest %.2f)" % [climb, steepest])
+	# A building over the step stands level on its highest ground, on a plinth.
+	(board.get("_model") as Dictionary)["standing"] = [{"kind": "building", "iid": "plinth_test", "tile": "tb_a",
+		"pos": Vector2(100, 238), "side": 40.0, "level": 1, "name": "Works"}]
+	board.call("_build_standing")
+	var stood: Dictionary = (board.get("_standing") as Array)[0]
+	var high := 0.0
+	for corner in [Vector2(-20, -20), Vector2(20, -20), Vector2(20, 20), Vector2(-20, 20)]:
+		high = maxf(high, float(board.call("_height_at", Vector2(100, 238) + corner)))
+	_check(stood.has("plinth") and is_equal_approx(float(stood["h"]), high),
+		"board ground: a building over a step stands level on a plinth (%.1f)" % float(stood["h"]))
 	board.queue_free()
 
 

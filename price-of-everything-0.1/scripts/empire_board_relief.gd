@@ -3,42 +3,42 @@ extends RefCounted
 ##
 ## The board takes its heights from the world map's own: the baked height bands (HillBaked, the
 ## field the map paints its contours from, read here through its routing grid). Every band stands
-## at one height wherever it lies, BAND_LEVEL, so a band that runs on from one tile into the next
-## stands level on both sides of their edge. A tile's plate stands at the level of its own band,
-## the highest that covers most of it; the bands above that are its terraces.
+## at one height wherever it lies, BAND_LEVEL. A tile's own height is the average of those levels
+## over its land, snapped to the nearest band's level (tile_level); the ground drawn on it stands
+## there except where the map's relief steps up or down from it (empire_board_ground.gd).
 ##
-## The plates are then settled over the whole map at once, so a tile stands at the same height
-## whichever other tiles the board shows:
-##   - no plate stands more than STEP_CAP above a neighbour's, so no seam drops several levels;
+## The tile heights are then settled over the whole map at once, so a tile stands at the same
+## height whichever other tiles the board shows:
+##   - no tile stands more than STEP_CAP above a neighbour, so no step drops several levels;
 ##   - a river never climbs: followed up from its mouth, every tile stands at least as high as
 ##     the one below it. Which way a river drains is read off the map (river_flows).
 ## Both are met by lowering only: lowland keeps its level and high ground gives way, so a hill a
-## river runs down into from lowland stands at the lowland's level.
+## river runs down into from lowland stands at the lowland's level. Open water is not settled: it
+## stands at SEA_LEVEL.
 ##
 ## Pure data: nothing here reads the sim.
 
 ## The height each band stands at, in map units, from band 0 (the map's level -1) to band 11
-## (snow). Bands 0 to 2 are the lowland the plates have always stood at. A lowland terrace is
-## a full step; above the hills' band the steps are smaller, so mountains stand clear of hills
-## without towering over them.
+## (snow). Bands 0 to 2 are lowland. A lowland step is a full one; above the hills' band the steps
+## are smaller, so mountains stand clear of hills without towering over them.
 const BAND_LEVEL: Array[float] = [34.0, 34.0, 34.0, 43.0, 52.0, 58.0, 64.0, 70.0, 76.0, 82.0, 88.0, 94.0]
-## The most one plate stands above a neighbour's: short of three lowland terraces, so a mountain
-## beside lowland still stands clear of a hill (52) and no seam drops several levels at once.
+## The most one tile stands above a neighbour: short of three lowland steps, so a mountain beside
+## lowland still stands clear of a hill (52) and no step drops several levels at once.
 const STEP_CAP := 24.0
-## The band a tile counts as its own covers at least this share of it.
-const BASE_BAND_SHARE := 0.55
-## Every second cell of the routing grid is enough to tell a tile's own band.
-const SAMPLE_STRIDE := 2
+## Open water, one lowland step below the lowland, so a river can run to the sea in a valley.
+const SEA_LEVEL := 25.0
+## Tiles of open water.
+const WATER_TILES := ["sea", "deep_sea"]
 const HEX_HALF := Vector2(270.0, 240.0)
-## Open water: these stand at their own fixed heights, below the land, and are not settled.
-const WATER_HEIGHT := {"deep_sea": 6.0, "sea": 10.0}
+## Every second cell of the routing grid is enough to tell a tile's average.
+const SAMPLE_STRIDE := 2
 ## A river's end this close to a tile edge crosses into the neighbour there.
 const EDGE_REACH := 2.0
 ## Finding which way a river drains: a step up river onto a band lower than the one below it
 ## costs this many tiles of length.
 const CLIMB_COST := 100.0
 
-static var _plates: Dictionary = {}          # tile_id -> settled plate height
+static var _plates: Dictionary = {}          # tile_id -> settled tile height
 static var _plates_for := 0                  # the terrain they were settled for
 
 
@@ -46,9 +46,9 @@ static func band_level(band: int) -> float:
 	return BAND_LEVEL[clampi(band, 0, BAND_LEVEL.size() - 1)]
 
 
-## The settled plate height of every tile on the map, worked out once per map. `terrain` gives
-## tile centres (id_to_coord etc.); `rivers_by_tile` is tile_id -> [PackedVector2Array] in map
-## space, every river on the map.
+## The settled height of every tile on the map, open water included, worked out once per map.
+## `terrain` gives tile centres (id_to_coord etc.); `rivers_by_tile` is tile_id -> [PackedVector2Array]
+## in map space, every river on the map.
 static func plates(terrain: Object, rivers_by_tile: Dictionary) -> Dictionary:
 	if _plates_for == terrain.get_instance_id() and not _plates.is_empty():
 		return _plates
@@ -60,10 +60,9 @@ static func plates(terrain: Object, rivers_by_tile: Dictionary) -> Dictionary:
 			continue
 		var c: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
 		centers[str(tid)] = c
-		var kind := str(Catalog.tile_type(str(tid)))
-		if WATER_HEIGHT.has(kind):
+		if WATER_TILES.has(str(Catalog.tile_type(str(tid)))):
 			continue
-		raw[str(tid)] = band_level(base_band(c))
+		raw[str(tid)] = tile_level(c)
 	var neighbours: Dictionary = {}
 	for tid in raw:
 		var near: Array = []
@@ -72,20 +71,27 @@ static func plates(terrain: Object, rivers_by_tile: Dictionary) -> Dictionary:
 				near.append(str(nb))
 		neighbours[tid] = near
 	_plates = settle(raw, neighbours, river_flows(rivers_by_tile, centers))
+	for tid in centers:
+		if not _plates.has(tid):
+			_plates[tid] = SEA_LEVEL
 	_plates_for = terrain.get_instance_id()
 	return _plates
 
 
-## A tile's own band: the highest band that covers at least BASE_BAND_SHARE of the hex centred
-## at `center`, read off the map's routing grid. 2 (lowland) where the grid is missing.
-static func base_band(center: Vector2) -> int:
+## A tile's own height: the average level of the bands over the land of the hex centred at
+## `center` (open water left out), read off every SAMPLE_STRIDE-th cell of the map's routing grid
+## and snapped to the nearest band's level. Lowland where the grid is missing or the hex holds no land.
+static func tile_level(center: Vector2) -> float:
+	return snap_level(land_average(center))
+
+
+## The average band level over the land of the hex centred at `center`, unsnapped.
+static func land_average(center: Vector2) -> float:
 	var grid := NavGrid.instance()
 	if not grid.is_ready():
-		return 2
-	var at_least: Array[int] = []
-	at_least.resize(12)
-	at_least.fill(0)
-	var total := 0
+		return band_level(2)
+	var sum := 0.0
+	var count := 0
 	var lo := grid.cell_of(center - HEX_HALF)
 	var hi := grid.cell_of(center + HEX_HALF)
 	for iy in range(lo.y, hi.y + 1, SAMPLE_STRIDE):
@@ -93,14 +99,50 @@ static func base_band(center: Vector2) -> int:
 			var d := grid.world_of(ix, iy) - center
 			if absf(d.y) > HEX_HALF.y or absf(d.x) > HEX_HALF.x - absf(d.y) * 0.5625:
 				continue
-			total += 1
-			for b in range(grid.band(ix, iy) + 1):
-				at_least[b] += 1
-	var base := 1
-	for b in range(1, 12):
-		if total > 0 and float(at_least[b]) >= float(total) * BASE_BAND_SHARE:
-			base = b
-	return base
+			var w := grid.water(ix, iy)
+			if w == NavGrid.WATER_SEA or w == NavGrid.WATER_LAKE:
+				continue
+			sum += band_level(grid.band(ix, iy))
+			count += 1
+	return sum / float(count) if count > 0 else band_level(2)
+
+
+## Does the hex centred at `center` hold any open water (sea or lake) on the routing grid, or within
+## a cell of its edge. True where the grid is missing.
+static func hex_has_water(center: Vector2) -> bool:
+	var grid := NavGrid.instance()
+	if not grid.is_ready():
+		return true
+	var reach := HEX_HALF + Vector2(grid.step, grid.step)
+	var lo := grid.cell_of(center - reach)
+	var hi := grid.cell_of(center + reach)
+	for iy in range(lo.y, hi.y + 1):
+		for ix in range(lo.x, hi.x + 1):
+			var w := grid.water(ix, iy)
+			if w != NavGrid.WATER_SEA and w != NavGrid.WATER_LAKE:
+				continue
+			var d := grid.world_of(ix, iy) - center
+			if absf(d.y) <= reach.y and absf(d.x) <= reach.x - absf(d.y) * 0.5625:
+				return true
+	return false
+
+
+## The band level nearest a height.
+static func snap_level(h: float) -> float:
+	var best := BAND_LEVEL[0]
+	for lv in BAND_LEVEL:
+		if absf(lv - h) < absf(best - h):
+			best = lv
+	return best
+
+
+## The map's own level at a point, as its band stands (band_level); lowland off the grid.
+static func map_level(p: Vector2) -> float:
+	var grid := NavGrid.instance()
+	if not grid.is_ready():
+		return band_level(2)
+	var cell := grid.cell_of(p)
+	return band_level(grid.band(cell.x, cell.y))
 
 
 ## Which way the rivers flow from tile to tile: [[upstream, downstream]], found by following
@@ -204,7 +246,7 @@ static func river_links(rivers_by_tile: Dictionary, centers: Dictionary) -> Dict
 				var nb: Variant = by_center.get(Vector2i((c + (mid - c) * 2.0).round()))
 				if nb == null:
 					continue
-				if WATER_HEIGHT.has(str(Catalog.tile_type(str(nb)))):
+				if WATER_TILES.has(str(Catalog.tile_type(str(nb)))):
 					mouths.append(str(tid))
 					continue
 				(links.get_or_add(str(tid), {}) as Dictionary)[str(nb)] = true
@@ -212,7 +254,7 @@ static func river_links(rivers_by_tile: Dictionary, centers: Dictionary) -> Dict
 	return {"links": links, "mouths": mouths}
 
 
-## Settle raw plate heights: each at most its raw height, at most STEP_CAP above any neighbour,
+## Settle raw tile heights: each at most its raw height, at most STEP_CAP above any neighbour,
 ## and never above the tile upstream of it on a river. The highest heights that meet all three,
 ## found by lowering until nothing changes. `neighbours` is tile -> [tile]; `flows` is
 ## [[upstream, downstream]].

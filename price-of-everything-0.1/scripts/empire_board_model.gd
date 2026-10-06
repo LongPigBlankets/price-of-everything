@@ -41,9 +41,8 @@ const Relief := preload("res://scripts/empire_board_relief.gd")
 
 ## A flat-topped hex of the map's tile size (assets/main_tileset.tres: 540 x 480).
 const HEX_HALF := Vector2(270.0, 240.0)
-## How tall open water stands, in map units. Land stands at the height of its own band of the
-## map's relief (empire_board_relief.gd), settled over the whole map; this is lowland's.
-const TILE_HEIGHT := {"deep_sea": 6.0, "sea": 10.0}
+## A tile stands at its tile height (empire_board_relief.gd plates), settled over the whole map;
+## this is lowland's, for a tile the map does not hold.
 const DEFAULT_HEIGHT := 34.0
 ## The footprint a standing thing gets, as a share of its slot. Level 3 is the only one that
 ## fills it: LEVEL_SHARE sizes a plain block, and a sprite carries its level's size itself.
@@ -99,17 +98,6 @@ static func hex_points(center: Vector2) -> PackedVector2Array:
 static func tile_center(terrain: Object, tile_id: String) -> Vector2:
 	var coord: Vector2i = terrain.id_to_coord(tile_id)
 	return terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
-
-
-static func tile_height(tile_type: String) -> float:
-	return float(TILE_HEIGHT.get(tile_type, DEFAULT_HEIGHT))
-
-
-## How high a tile's plate stands: open water at its own height, land at its settled plate.
-static func plate_height(tile_id: String, tile_type: String, plates: Dictionary) -> float:
-	if TILE_HEIGHT.has(tile_type):
-		return tile_height(tile_type)
-	return float(plates.get(tile_id, DEFAULT_HEIGHT))
 
 
 ## Each consecutive tile pair of a route with the mode that carries it: [{a, b, mode}].
@@ -395,7 +383,7 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 		var c: Vector2 = tile_center(terrain, str(tid))
 		tiles[tid] = {
 			"id": tid, "center": c, "type": ttype,
-			"height": plate_height(str(tid), ttype, plates), "store": stores.has(tid),
+			"height": float(plates.get(str(tid), DEFAULT_HEIGHT)), "store": stores.has(tid),
 			"label": str(Catalog.tile_label(str(tid))), "hub": c,
 			"level": clampi(int(Catalog.tile_infra_level(str(tid), "roads")), 1, 3),
 			"paved": Catalog.tile_has_infrastructure(str(tid), "roads"),
