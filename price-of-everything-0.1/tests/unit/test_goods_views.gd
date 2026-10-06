@@ -999,7 +999,9 @@ class _OneTile extends RefCounted:
 
 
 ## The supply chain board by the sea: nothing stands on open water and no street runs over it
-## while dry ground is free, and a river runs on through the beach into the sea.
+## while dry ground is free; a home may stand on the beach, right down to the water's edge; a home
+## the plan's streets reach only over the water has a street along the beach, itself kept off the
+## water; and a river runs on through the beach into the sea.
 func _test_empire_board_coast() -> void:
 	var Model := preload("res://scripts/empire_board_model.gd")
 	var Streets := preload("res://scripts/empire_board_streets.gd")
@@ -1009,20 +1011,27 @@ func _test_empire_board_coast() -> void:
 	terrain.tile = "tile_7_11"
 	var graph := {"nodes": [{"tile_id": terrain.tile, "iid": "coast_test_works", "name": "Works", "level": 1}]}
 	var water := func(_tile: String, p: Vector2) -> bool: return p.x < -150.0
-	var on_water := func(model: Dictionary) -> Array:
+	# Everything standing, over its footprint, and every street, kerb to kerb, against a water test.
+	var wet_in := func(model: Dictionary, test: Callable) -> Array:
 		var found: Array = []
 		for s in model["standing"]:
-			var half := float(s.get("pad", s["side"])) * 0.5
-			for gx in range(-2, 3):
-				for gy in range(-2, 3):
-					if water.call("", (s["pos"] as Vector2) + Vector2(gx, gy) * half * 0.5) and not found.has(s["iid"]):
+			var half := float(s["side"]) * 0.5
+			for gx in range(-4, 5):
+				for gy in range(-4, 5):
+					if test.call("", (s["pos"] as Vector2) + Vector2(gx, gy) * half * 0.25) and not found.has(s["iid"]):
 						found.append(s["iid"])
 		for r in model["roads"]:
-			for k in range(11):
-				if water.call("", (r["a"] as Vector2).lerp(r["b"], float(k) / 10.0)):
-					found.append("road %s-%s" % [r["a"], r["b"]])
+			var a: Vector2 = r["a"]
+			var b: Vector2 = r["b"]
+			var across := (b - a).normalized().orthogonal() * 6.0
+			var steps := maxi(1, ceili(a.distance_to(b) / 2.0))
+			for k in range(steps + 1):
+				var q := a.lerp(b, float(k) / float(steps))
+				if test.call("", q) or test.call("", q + across) or test.call("", q - across):
+					found.append("%s road %s-%s" % [r["kind"], a, b])
 					break
 		return found
+	var on_water := func(model: Dictionary) -> Array: return wet_in.call(model, water)
 	Streets._paths.clear()
 	var blind: Dictionary = Model.build(terrain, graph, {}, {}, true)
 	Streets._paths.clear()
@@ -1038,6 +1047,29 @@ func _test_empire_board_coast() -> void:
 		works = works or str(s["iid"]) == "coast_test_works"
 		homes += 1 if str(s["kind"]) == "house" else 0
 	_check(works and homes >= 4, "board coast: the works and the city still stand, on the dry slots (%d homes)" % homes)
+	# A home on the beach: the slot whose plot reaches to within a few units of the water is built on.
+	var edge_home := false
+	for s in dry["standing"]:
+		var left := (s["pos"] as Vector2).x - float(s["side"]) * 0.5
+		edge_home = edge_home or (str(s["kind"]) == "house" and left > -150.0 and left < -140.0)
+	_check(edge_home and not Model._at_sea("", Vector2(-110, 0), 72.0, water) and Model._at_sea("", Vector2(-120, 0), 72.0, water),
+		"board coast: a home stands on the sand right up to the water's edge, never over it")
+	# A bay over the west end of the front street: the plot behind it is dry, but its way onto the street
+	# runs into the water, so a street along the beach takes it round.
+	var bay := func(_tile: String, p: Vector2) -> bool: return p.x < -150.0 and p.y > 60.0
+	Streets._paths.clear()
+	var shored: Dictionary = Model.build(terrain, graph, {}, {}, true, bay)
+	Streets._paths.clear()
+	var shore_streets := 0
+	var shore_home := false
+	for r in shored["roads"]:
+		shore_streets += 1 if str(r["kind"]) == "shore" else 0
+	for s in shored["standing"]:
+		shore_home = shore_home or (s as Dictionary).has("shore")
+	var bay_wet: Array = wet_in.call(shored, bay)
+	_check(shore_streets > 0 and shore_home and bay_wet.is_empty(),
+		"board coast: a home reached only over the water has a street along the beach, and nothing runs over the water (%d stretches) %s"
+			% [shore_streets, bay_wet])
 	# A river reaching the sea: land to the north of y = 0, open water south of it.
 	var rel := {"sea": [{"b": 4, "p": PackedVector2Array([Vector2(-100, -200), Vector2(100, -200), Vector2(100, 200), Vector2(-100, 200)])}],
 		"land": [{"b": 1, "lift": 0.0, "p": PackedVector2Array([Vector2(-100, -200), Vector2(100, -200), Vector2(100, 0), Vector2(-100, 0)])}],

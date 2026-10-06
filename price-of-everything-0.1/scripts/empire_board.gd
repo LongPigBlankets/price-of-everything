@@ -317,6 +317,8 @@ var _junctions: Array = []                   # [{at, arms, width}] where roads a
 var _rivers: Dictionary = {}                  # tile_id -> [PackedVector2Array] in plan
 var _road_ways: Dictionary = {}              # tile -> [{tile, a, b, level, paved, prof, clear, edge, round}] its streets
 var _road_meshes: Dictionary = {}            # tile -> its streets as one surface (_road_mesh)
+var _sea_tests: Array = []                   # [water test, shoreline] for the model (_water_test, _shore_test)
+var _sea_tests_for := 0
 var _road_lights: Dictionary = {}            # tile -> [{points, colours}] light over its streets run on past its edge
 var _road_bridges: Array = []                # [{tile, name, at, keep, ...}] the truss bridges the streets cross on
 var _pipes: Array = []                       # plain lines, drawn only when the pieces are not baked
@@ -571,8 +573,12 @@ func _build(graph: Dictionary, terrain: Node) -> void:
 	await _pace()
 	if gen != _build_gen:
 		return
+	# The same tests from one build to the next, so what the model works out from them is kept.
+	if _sea_tests_for != terrain.get_instance_id():
+		_sea_tests_for = terrain.get_instance_id()
+		_sea_tests = [_water_test(terrain), _shore_test(terrain)]
 	_model = Model.build(terrain, graph, _true_positions(graph, terrain), _rivers, plate_town and bool(show["decor"]),
-		_water_test(terrain))
+		_sea_tests[0], _sea_tests[1])
 	await _pace()
 	if gen != _build_gen:
 		return
@@ -716,6 +722,25 @@ static func _water_test(terrain: Node) -> Callable:
 		if not centers.has(tile):
 			centers[tile] = Model.tile_center(terrain, tile)
 		return Ground.is_water(_relief_of(tile, centers[tile]), p)
+
+
+## The edges between a tile's land and its open water, [[p0, p1]] in plan: its shoreline and its lakes'
+## rings, for the model to measure what stands and the streets against.
+static func _shore_test(terrain: Node) -> Callable:
+	return func(tile: String) -> Array:
+		var kind := str(Catalog.tile_type(tile))
+		if kind == "sea" or kind == "deep_sea":
+			return []
+		var c := Model.tile_center(terrain, tile)
+		var rel: Dictionary = _relief_of(tile, c)
+		var out: Array = []
+		for seg in _shore_of(rel, Model.hex_points(c)):
+			out.append([seg[0], seg[1]])
+		for lake in rel.get("lakes", []):
+			var ring: PackedVector2Array = lake
+			for k in range(ring.size()):
+				out.append([ring[k], ring[(k + 1) % ring.size()]])
+		return out
 
 
 func _true_positions(graph: Dictionary, terrain: Node) -> Dictionary:
