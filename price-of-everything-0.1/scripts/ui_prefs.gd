@@ -105,9 +105,9 @@ var use_legend_ds2: bool = false
 # The updates dock in DS2 (scripts/toast_manager.gd): navy steel, the pen and bells raised, a row a module with a
 # lamp. Off until the owner has reviewed it; the debug cheat `toggle dock ds2` switches it on. Session-only.
 var use_dock_ds2: bool = false
-# The Shipments and Stockpiles panel in DS2 (scripts/transport_ds2/). Off until the owner has reviewed it; the
-# debug cheat `toggle transport ds2` switches it on. Session-only, never persisted.
-var use_transport_ds2: bool = false
+# The Shipments and Stockpiles panel in DS2 (scripts/transport_ds2/). The default; the debug cheat
+# `toggle transport ds2` switches back to the v2 panel. Session-only, never persisted.
+var use_transport_ds2: bool = true
 # The Politics panel in DS2: the record of the decarbonisation arc as a wooden courtroom. The default; the debug
 # cheat `toggle politics ds2` switches back to the v2 panel. Session-only, never persisted.
 var use_politics_ds2: bool = true
