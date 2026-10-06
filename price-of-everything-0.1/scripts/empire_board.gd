@@ -51,8 +51,6 @@ const RAPIDS_DROP := 10.0
 ## A slope is shaded fully from this steepness up: half a lowland step over a slope's width, so even
 ## the gentlest step is shaded fully across its width and its crest and foot stay sharp.
 const SLOPE_SHADE_FULL := 4.5 / 34.0
-## A junction piece lies flat where the ground round it is no more off level than this.
-const JUNCTION_TILT := 1.5
 ## A building whose footprint's ground differs by more than this stands on a plinth.
 const PLINTH_MIN := 0.75
 ## A bridge: how far beyond its valley's reach its banks are looked for, how wide its deck is, the
@@ -106,7 +104,30 @@ const _CONCRETE := Color("a7a294")
 const _ROAD_HALF := 8.0
 const _DRIVE_HALF := 4.0
 const _JUNCTION_GROW := 1.12         # a junction patch against the widest road into it
-const _ROAD_OVERLAP := 6.0           # a straight runs this far under a junction piece
+## A truss bridge's piece is drawn over its deck this much either side of the street, and up to this
+## height above the deck, which holds its trusses.
+const _BRIDGE_SIDE := 4.0
+const _BRIDGE_TALL := 18.0
+## A street's surface (_road_mesh): its inked edge and the line inside its kerb, how wide its markings
+## are and how they are dashed, how finely a rounded end is drawn, and how finely it is sliced along its
+## length to follow the ground. Its colours are the baked road pieces' own.
+const _ROAD_INK_W := 1.0
+const _ROAD_KERB_LINE := 0.35
+const _ROAD_KERB_OUT := 0.4          # how far the inked edge reaches past the pieces' walk
+const _ROAD_MARK_W := 0.22
+const _ROAD_DASH := 8.0
+const _ROAD_DASH_GAP := 8.0
+const _ROAD_ROUND := 8
+const _ROAD_DRAPE := 3.0
+## A street that leaves for a tile drawn beside runs on this far past the edge, over the same street of
+## that tile, on the same ground: past this tile's skirt of ground, which, lower than a street raised
+## over the ground, would otherwise show over the street beside.
+const _ROAD_RUN_ON := 8.0
+const _ROAD_EDGE := Color8(47, 59, 89)
+const _ROAD_KERB := Color8(134, 132, 127)
+const _ROAD_EDGE_IN := Color8(61, 72, 99)
+const _ROAD_ASPHALT := Color8(66, 68, 70)
+const _ROAD_MARK := Color8(160, 159, 155)
 const _UNPAVED := Color(0.86, 0.74, 0.56)    # a way over bare ground: the same pieces, in earth
 const _SIGN_MIN_RUN := 40.0          # a stretch shorter than this carries no sign of its own
 const _SIGN_OFFSET := 15.0
@@ -270,13 +291,15 @@ static var _bakes: Dictionary = {}
 var _bake_view: SubViewport
 var _painter: Control
 var _grade: Control
-var _bake_layer: Control
+var _bake_layer: Control                     # the ground layers' bakes
+var _street_layer: Control                   # the cars, and the things of a tile not baked yet
+var _things_layer: Control                   # the things layers' bakes
 var _baking := false
 static var _ground_textures: Dictionary = {}
 var _fog: Array = []                         # [{at, r, a, phase}] wisps of dirty air, in board space
 var _lights: Array = []                      # [{tex, rect, col, phase}] lit windows and fires
 var _glows: Array = []                       # [{at, rx, ry, a}] pools and blooms of lamp light, in board space
-var _cars: Array = []                        # [{a, b, length, k, colour, phase, pace}]
+var _cars: Array = []                        # [{pts, shares, length, k, colour, phase, pace}]
 var _glow_layer: Control
 static var _glow_tex: GradientTexture2D = null
 static var _window_tex: Dictionary = {}
@@ -292,10 +315,10 @@ var _links: Array = []                       # road-like ways: [{mode, pts: Pack
 var _road_plan: Array = []                   # [{a, b, half}] road segments in plan, for pipes to cross
 var _junctions: Array = []                   # [{at, arms, width}] where roads and drives meet
 var _rivers: Dictionary = {}                  # tile_id -> [PackedVector2Array] in plan
-var _road_fits: Array = []                   # [{name, at, tint}] junction pieces
-var _road_polys: Array = []                  # [{points, uvs, tint}] the straights, tile by tile
-var _road_joints: Array = []                 # [{tile, points, colour}] where roads turn on a slope
-var _road_lights: Array = []                 # [{tile, points, colours}] light over roads run on past an edge
+var _road_ways: Dictionary = {}              # tile -> [{tile, a, b, level, paved, prof, clear, edge, round}] its streets
+var _road_meshes: Dictionary = {}            # tile -> its streets as one surface (_road_mesh)
+var _road_lights: Dictionary = {}            # tile -> [{points, colours}] light over its streets run on past its edge
+var _road_bridges: Array = []                # [{tile, name, at, keep, ...}] the truss bridges the streets cross on
 var _pipes: Array = []                       # plain lines, drawn only when the pieces are not baked
 var _pipe_items: Array = []                  # baked pieces and run tiles, far to near
 var _signs: Array = []                       # [{foot, top, icon, depth}] sorted far to near
@@ -343,11 +366,20 @@ class GlowLayer extends Control:
 		board.call("_draw_glows", self)
 
 
-## Draws the baked pictures of the tiles, one to one with the screen.
+## Draws the baked pictures of the tiles, one to one with the screen: the ground layers, or the things.
 class BakeLayer extends Control:
 	var board: Control
+	var things := false
 	func _draw() -> void:
-		board.call("_draw_bakes", self)
+		board.call("_draw_bakes", self, things)
+
+
+## Draws what moves along the streets, over every tile's ground and under everything that stands, so
+## a building, a tree or a lamp in front of a car hides it; then the things of any tile not baked yet.
+class StreetLayer extends Control:
+	var board: Control
+	func _draw() -> void:
+		board.call("_draw_street", self)
 
 
 ## Draws ONE layer of a tile (_unit) into the bake viewport, at the zoom being baked.
@@ -407,6 +439,23 @@ func _ready() -> void:
 	premult.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
 	_bake_layer.material = premult
 	add_child(_bake_layer)
+	_street_layer = StreetLayer.new()
+	_street_layer.set("board", self)
+	_street_layer.name = "Street"
+	_street_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_street_layer.texture_repeat = CanvasItem.TEXTURE_REPEAT_DISABLED
+	_street_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_street_layer)
+	_things_layer = BakeLayer.new()
+	_things_layer.set("board", self)
+	_things_layer.set("things", true)
+	_things_layer.name = "ThingsBakes"
+	_things_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_things_layer.texture_repeat = CanvasItem.TEXTURE_REPEAT_DISABLED
+	_things_layer.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_things_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_things_layer.material = premult
+	add_child(_things_layer)
 	# Light is added to what lies under it, so it has a layer of its own.
 	_glow_layer = GlowLayer.new()
 	_glow_layer.set("board", self)
@@ -490,10 +539,10 @@ func _build(graph: Dictionary, terrain: Node) -> void:
 	_road_plan.clear()
 	_junctions.clear()
 	_pipes.clear()
-	_road_fits.clear()
-	_road_polys.clear()
-	_road_joints.clear()
+	_road_ways.clear()
+	_road_meshes.clear()
 	_road_lights.clear()
+	_road_bridges.clear()
 	_pipe_items.clear()
 	_signs.clear()
 	_cables.clear()
@@ -561,6 +610,8 @@ func _build(graph: Dictionary, terrain: Node) -> void:
 		_hold_until_baked()
 	queue_redraw()
 	_bake_layer.queue_redraw()
+	_street_layer.queue_redraw()
+	_things_layer.queue_redraw()
 
 
 ## Tiles not yet baked are drawn live under the baked ones, so a board opening with none baked would
@@ -624,6 +675,8 @@ func fit_view() -> void:
 func _view_changed() -> void:
 	queue_redraw()
 	_bake_layer.queue_redraw()
+	_street_layer.queue_redraw()
+	_things_layer.queue_redraw()
 
 
 # ------------------------------------------------------------------ source data
@@ -1155,7 +1208,7 @@ func _build_light(c: Vector2, hexp: PackedVector2Array, beside: Array, rel: Dict
 
 
 ## A tile's hex with each edge it shares with a tile drawn beside it moved out by the skirt.
-static func _skirted(hexp: PackedVector2Array, beside: Array) -> PackedVector2Array:
+static func _skirted(hexp: PackedVector2Array, beside: Array, skirt: float = _SKIRT) -> PackedVector2Array:
 	var c := (hexp[0] + hexp[3]) * 0.5
 	var lines: Array = []                         # per edge: [a point on it, its direction]
 	for i in range(6):
@@ -1164,7 +1217,7 @@ static func _skirted(hexp: PackedVector2Array, beside: Array) -> PackedVector2Ar
 		var n := (b - a).orthogonal().normalized()
 		if n.dot((a + b) * 0.5 - c) < 0.0:
 			n = -n
-		lines.append([a + n * (_SKIRT if bool(beside[i]) else 0.0), b - a])
+		lines.append([a + n * (skirt if bool(beside[i]) else 0.0), b - a])
 	var out := PackedVector2Array()
 	for i in range(6):
 		var l0: Array = lines[(i + 5) % 6]
@@ -2429,12 +2482,9 @@ static func _car_kit() -> Atlas:
 	return _cars_atlas
 
 
-func _draw_cars(layer: Control, view: Rect2) -> void:
-	var kit: Atlas = _car_kit()
-	var tex: Texture2D = kit.texture()
-	if tex == null:
-		return
-	var ppu := kit.px_per_unit()
+## The cars, where the clock puts each on its way. [{car, at: board point, t: how far along its stretch}]
+func _cars_now() -> Array:
+	var out: Array = []
 	for c in _cars:
 		var t := fmod(float(c["phase"]) + _clock * float(c["pace"]) / float(c["length"]), 1.0)
 		var way_pts: PackedVector2Array = c["pts"]
@@ -2442,8 +2492,23 @@ func _draw_cars(layer: Control, view: Rect2) -> void:
 		var k := 0
 		while k < shares.size() - 2 and shares[k + 1] < t:
 			k += 1
-		var at := way_pts[k].lerp(way_pts[k + 1], clampf((t - shares[k]) / maxf(shares[k + 1] - shares[k], 0.0001), 0.0, 1.0))
-		var p := at * _zoom + _offset
+		out.append({"car": c, "t": t,
+			"at": way_pts[k].lerp(way_pts[k + 1], clampf((t - shares[k]) / maxf(shares[k + 1] - shares[k], 0.0001), 0.0, 1.0))})
+	return out
+
+
+## The cars, drawn on the street layer: over the ground, its streets and its bridges, and under everything
+## that stands, so a building, a tree or a lamp in front of a car hides it as it passes.
+func _draw_cars(layer: Control, view: Rect2) -> void:
+	var kit: Atlas = _car_kit()
+	var tex: Texture2D = kit.texture()
+	if tex == null:
+		return
+	var ppu := kit.px_per_unit()
+	for now in _cars_now():
+		var c: Dictionary = now["car"]
+		var t := float(now["t"])
+		var p: Vector2 = (now["at"] as Vector2) * _zoom + _offset
 		if not view.has_point(p):
 			continue
 		var src := kit.cell("car_%d_%d" % [int(c["colour"]), int(c["k"])])
@@ -2565,67 +2630,31 @@ static func _tree_texture(kind: String) -> Texture2D:
 	return _tree_tex[kind]
 
 
-## The streets in use, as baked pieces: a junction piece wherever roads meet, turn or change
-## width, straights between them, and a truss bridge where a street crosses a river.
+## The streets in use. Each tile's streets are laid as one surface (_road_mesh): every stretch is a band
+## with rounded ends, and the bands are laid colour by colour, the ink edge of them all, then the kerb,
+## then the asphalt, then the markings, so where streets meet, cross or turn they run into one another
+## with no edge between them. A truss bridge stands where a street crosses a river.
 func _build_roads(tiles: Dictionary, gen: int) -> void:
 	_road_plan.clear()
 	var roads: Atlas = _road_kit()
 	var segs: Array = _model.get("roads", [])
-	var nodes: Dictionary = {}                # rounded plan point -> {p, arms: {k: {level, h, paved}}}
 	for s in segs:
-		var level := int(s["level"])
-		var ends: Array = [s["a"], s["b"]]
-		for e in range(2):
-			var here: Vector2 = ends[e]
-			var there: Vector2 = ends[1 - e]
-			var nd: Dictionary = nodes.get_or_add(Vector2i(here.round()), {"p": here, "arms": {}})
-			var k: int = Pipes.k_of(there - here)
-			var arms: Dictionary = nd["arms"]
-			if not arms.has(k) or int(arms[k]["level"]) < level:
-				arms[k] = {"level": level, "h": _way_h(str(s["tile"]), here), "paved": bool(s["paved"]),
-					"tile": str(s["tile"]), "sloped": not _level_round(str(s["tile"]), here, roads.dim("arm"))}
-		_road_plan.append({"a": s["a"], "b": s["b"],
-			"half": roads.dim("half_%d" % level) + roads.dim("walk_%d" % level) if roads.ok() else _ROAD_HALF})
+		_road_plan.append({"a": s["a"], "b": s["b"], "half": float(_road_widths(int(s["level"]))[0])})
 	if not roads.ok():
-		# The pieces are not baked: plain lines instead.
+		# The bridges are not baked: plain lines instead.
 		for s in segs:
 			_links.append({"mode": "roads" if str(s["kind"]) != "spur" else Model.MODE_DRIVE, "tile": str(s["tile"]),
 				"pts": _street_line([{"p": s["a"], "tile": s["tile"], "edge": false}, {"p": s["b"], "tile": s["tile"], "edge": false}])})
 		return
-	var arm := roads.dim("arm")
-	var pieced: Dictionary = {}               # node key -> true: a junction piece stands there
-	for key in nodes:
-		var nd: Dictionary = nodes[key]
-		var arms: Dictionary = nd["arms"]
-		var ks: Array = arms.keys()
-		ks.sort()
-		if ks.size() < 2:
-			continue
-		var h0 := float(arms[ks[0]]["h"])
-		var level_ground := true
-		var paved := true
-		for k in ks:
-			level_ground = level_ground and absf(float(arms[k]["h"]) - h0) < 0.05 and not bool(arms[k]["sloped"])
-			paved = paved and bool(arms[k]["paved"])
-		var straight := ks.size() == 2 and posmod(int(ks[0]) + 6, 12) == int(ks[1])
-		if not level_ground:
-			# The ground is not level here: the roads run on up or down the slope, and no flat
-			# piece would lie on it. Where they turn, the corner between them is filled with road.
-			if not straight:
-				_road_joint(roads, nd, arms, ks, paved)
-			continue
-		if straight and int(arms[ks[0]]["level"]) == int(arms[ks[1]]["level"]):
-			continue                              # straight on at one width: no piece
-		var parts: Array = []
-		for k in ks:
-			parts.append("%d.%d" % [int(k), int(arms[k]["level"])])
-		var name := "r_j_" + "_".join(parts)
-		if not roads.has(name):
-			_road_joint(roads, nd, arms, ks, paved)
-			continue
-		pieced[key] = true
-		_road_fits.append({"name": name, "at": iso(nd["p"], h0), "tint": Color.WHITE if paved else _UNPAVED,
-			"tile": str(arms[ks[0]]["tile"])})
+	# Where stretches meet: the markings stop short of a corner or a junction, clear of the streets into it.
+	var nodes: Dictionary = {}                # rounded plan point -> {ks: {k: true}, reach}
+	for s in segs:
+		for e in [[s["a"], s["b"]], [s["b"], s["a"]]]:
+			var here: Vector2 = e[0]
+			var nd: Dictionary = nodes.get_or_add(Vector2i(here.round()), {"ks": {}, "reach": 0.0})
+			(nd["ks"] as Dictionary)[Pipes.k_of((e[1] as Vector2) - here)] = true
+			nd["reach"] = maxf(float(nd["reach"]), float(_road_widths(int(s["level"]))[0]))
+	var by_tile: Dictionary = {}              # tile -> [{a, b, level, paved, prof, clear: [at a, at b]}]
 	for s in segs:
 		await _pace()
 		if gen != _build_gen:
@@ -2634,32 +2663,27 @@ func _build_roads(tiles: Dictionary, gen: int) -> void:
 		var a: Vector2 = s["a"]
 		var b: Vector2 = s["b"]
 		var length := a.distance_to(b)
-		var dir := (b - a) / maxf(length, 0.001)
-		# A straight runs a little way under each junction piece, so the piece's cut ends are hidden.
-		var from := (arm - _ROAD_OVERLAP) if pieced.has(Vector2i(a.round())) else 0.0
-		var to := length - ((arm - _ROAD_OVERLAP) if pieced.has(Vector2i(b.round())) else 0.0)
-		var level := int(s["level"])
-		# Where it leaves for a tile drawn beside, it runs on under that tile's own road, past the edge of
-		# that tile's skirt of ground however slantwise it crosses the edge.
-		var under := _SKIRT + roads.dim("half_%d" % level) + _ROAD_OVERLAP
-		var road_half := roads.dim("half_%d" % level) + roads.dim("walk_%d" % level)
-		if _at_shared_edge(tile, a):
-			from = -under
-			_road_lit(tile, a, -dir, road_half, under)
-		if _at_shared_edge(tile, b):
-			to = length + under
-			_road_lit(tile, b, dir, road_half, under)
-		if to - from < 0.5:
+		if length < 0.5:
 			continue
-		var k6 := posmod(Pipes.k_of(dir), 6)
-		var tint: Color = Color.WHITE if bool(s["paved"]) else _UNPAVED
-		var piece := "r_straight_%d_%d" % [k6, level]
-		var step := iso(Pipes.dir_of(k6) * roads.dim("tile"))
-		# The straight follows the ground: level where it is level, and where it runs up or down a
-		# slope, the flat road sheared along its length, which is exactly how a slope projects, so
-		# the same piece draws it. Over a river's valley it runs level on its bridge's deck.
-		var prof: Array = _profile(a + dir * from, a + dir * to, tile)
-		var flats: Array = []                 # [[from, to, height]] the level stretches, for bridges
+		var dir := (b - a) / length
+		var level := int(s["level"])
+		var prof: Array = _profile(a, b, tile)
+		var clear: Array = []
+		var edge: Array = []
+		var rounded: Array = []
+		for end in [a, b]:
+			var nd: Dictionary = nodes[Vector2i((end as Vector2).round())]
+			var ks: Array = (nd["ks"] as Dictionary).keys()
+			var through := ks.size() == 2 and posmod(int(ks[0]) - int(ks[1]), 12) == 6
+			edge.append(_at_shared_edge(tile, end))
+			rounded.append(not through and not bool(edge[edge.size() - 1]))
+			clear.append(0.0 if not bool(rounded[rounded.size() - 1]) else float(nd["reach"]) + 2.0)
+		(by_tile.get_or_add(tile, []) as Array).append({"tile": tile, "a": a, "b": b, "level": level, "paved": bool(s["paved"]),
+			"prof": prof, "clear": clear, "edge": edge, "round": rounded})
+		# A truss bridge where this stretch crosses a river. A bridge needs a clear straight its
+		# own length, so it slides along a level stretch to find one; where the long bridge has no
+		# room the short one is tried, and with no room for that the road simply runs across.
+		var flats: Array = []                 # [[from, to, height]] the level stretches
 		var k := 0
 		while k < prof.size() - 1:
 			var h0 := float(prof[k][1])
@@ -2667,16 +2691,8 @@ func _build_roads(tiles: Dictionary, gen: int) -> void:
 			if absf(float(prof[j][1]) - h0) < 0.05:
 				while j + 1 < prof.size() and absf(float(prof[j + 1][1]) - h0) < 0.05:
 					j += 1
-			var d0 := from + float(prof[k][0]) * (to - from)
-			var d1 := from + float(prof[j][0]) * (to - from)
-			var h1 := float(prof[j][1])
-			_road_run(roads, piece, a + dir * d0, a + dir * d1, h0, h1, step, tint, tile)
-			if absf(h1 - h0) < 0.05:
-				flats.append([d0, d1, h0])
+				flats.append([float(prof[k][0]) * length, float(prof[j][0]) * length, h0])
 			k = j
-		# A truss bridge where this stretch crosses a river. A bridge needs a clear straight its
-		# own length, so it slides along a level stretch to find one; where the long bridge has no
-		# room the short one is tried, and with no room for that the road simply runs across.
 		var hits: Array = []
 		for line in _rivers.get(tile, []):
 			var river: PackedVector2Array = line
@@ -2685,6 +2701,7 @@ func _build_roads(tiles: Dictionary, gen: int) -> void:
 				if hit != null:
 					hits.append((hit as Vector2).distance_to(a))
 		hits.sort()
+		var k6 := posmod(Pipes.k_of(dir), 6)
 		var last := -INF
 		for along_hit in hits:
 			var placed := false
@@ -2701,40 +2718,183 @@ func _build_roads(tiles: Dictionary, gen: int) -> void:
 					last = at
 					placed = true
 					var p := a + dir * at
-					_pipe_items.append({"kind": "fit", "atlas": roads, "at": iso(p, float(flat[2])), "depth": p.x + p.y,
-						"tile": tile, "name": "r_bridge_%s%d_%d" % ["s_" if kind == "bridge_short" else "", k6, level]})
+					# With the street it carries, in the tile's ground layer: a car crossing is drawn over it.
+					_road_bridges.append({"kind": "fit", "atlas": roads, "at": iso(p, float(flat[2])), "tile": tile,
+						"name": "r_bridge_%s%d_%d" % ["s_" if kind == "bridge_short" else "", k6, level],
+						"keep": _bridge_keep(p, dir, span, float(_road_widths(level)[0]) + _BRIDGE_SIDE, float(flat[2]))})
+	for tile in by_tile:
+		await _pace()
+		if gen != _build_gen:
+			return
+		var t: Dictionary = tiles[tile]
+		_road_ways[tile] = by_tile[tile]
+		_road_meshes[tile] = _road_mesh(by_tile[tile], _skirted(Model.hex_points(t["center"]), t.get("beside", []), _ROAD_RUN_ON))
+		# The light over a street's run on past the tile's edge, beyond its skirt: the tile's light mesh
+		# stops at the skirt, and the run lies over the light of the tile beside it.
+		for w in by_tile[tile]:
+			var a: Vector2 = w["a"]
+			var b: Vector2 = w["b"]
+			var half := float(_road_widths(int(w["level"]))[0])
+			for end in [[a, (a - b).normalized(), 0], [b, (b - a).normalized(), 1]]:
+				if not bool(w["edge"][int(end[2])]):
+					continue
+				var at: Vector2 = end[0]
+				var dir: Vector2 = end[1]
+				var side := dir.orthogonal() * half
+				var pts := PackedVector2Array()
+				var lit := PackedColorArray()
+				for q in [at + dir * _SKIRT + side, at + dir * _ROAD_RUN_ON + side, at + dir * _ROAD_RUN_ON - side,
+						at + dir * _SKIRT - side]:
+					var bq := iso(q, _road_height(w, q))
+					pts.append(bq)
+					lit.append(_light_wash(_light_at(bq)))
+				(_road_lights.get_or_add(tile, []) as Array).append({"points": pts, "colours": lit})
 
 
-## The light over a road's run on past its tile's edge, beyond the tile's own skirt, `half` wide: the
-## tile's light mesh stops at the skirt, and the run lies over the light of the tile beside it.
-func _road_lit(tile: String, at: Vector2, dir: Vector2, half: float, reach: float) -> void:
-	var side := dir.orthogonal() * half
+## The part of the board a truss bridge's piece is drawn over: its deck, from `p` `span` either way along
+## `dir` and `half` either side, and everything standing on the deck up to the top of its trusses. The
+## piece's deck runs on past its trusses to the edge of its frame, and there, level, it would lie over the
+## street climbing or falling away from the bridge.
+static func _bridge_keep(p: Vector2, dir: Vector2, span: float, half: float, deck: float) -> PackedVector2Array:
 	var pts := PackedVector2Array()
+	for along in [-span, span]:
+		for side in [-half, half]:
+			var q: Vector2 = p + dir * float(along) + dir.orthogonal() * float(side)
+			pts.append(iso(q, deck - 2.0))
+			pts.append(iso(q, deck + _BRIDGE_TALL))
+	return Geometry2D.convex_hull(pts)
+
+
+## How far a street of a level reaches from its middle to the outside of each of its bands: its inked
+## edge, its kerb, the thin line inside the kerb, and its asphalt.
+static func _road_widths(level: int) -> Array:
+	var roads: Atlas = _road_kit()
+	var half := roads.dim("half_%d" % level) if roads.ok() else _ROAD_HALF
+	var walk := roads.dim("walk_%d" % level) if roads.ok() else 2.0
+	return [half + walk + _ROAD_KERB_OUT, half + walk + _ROAD_KERB_OUT - _ROAD_INK_W, half + _ROAD_KERB_LINE, half]
+
+
+## One tile's streets as one mesh over its skirted hex `area`. Each band is laid for every stretch before
+## the next band is laid for any, so the bands of stretches that meet run together and an edge shows only
+## round the outside of the streets as a whole. Each point is at the height of the ground under the
+## middle of its street there (_road_height), so a street is level from kerb to kerb and climbs and falls
+## along its length, one surface up a slope as on the flat. A band is triangulated in plan, where it is
+## a plain convex shape, and only then raised and projected, so no slope can fold it.
+func _road_mesh(ways: Array, area: PackedVector2Array) -> ArrayMesh:
+	var verts := PackedVector3Array()
 	var cols := PackedColorArray()
-	for q in [at + dir * _SKIRT + side, at + dir * reach + side, at + dir * reach - side, at + dir * _SKIRT - side]:
-		var bq := iso(q, _way_h(tile, q))
-		pts.append(bq)
-		cols.append(_light_wash(_light_at(bq)))
-	_road_lights.append({"tile": tile, "points": pts, "colours": cols})
+	var idx := PackedInt32Array()
+	var bands: Array[Color] = [_ROAD_EDGE, _ROAD_KERB, _ROAD_EDGE_IN, _ROAD_ASPHALT]
+	for band in range(bands.size()):
+		for w in ways:
+			var tint: Color = Color.WHITE if bool(w["paved"]) else _UNPAVED
+			var r := float(_road_widths(int(w["level"]))[band])
+			# Where a street leaves for a tile drawn beside, it runs on over that tile's street, full width
+			# however slantwise it crosses the edge (_ROAD_RUN_ON).
+			var a: Vector2 = w["a"]
+			var b: Vector2 = w["b"]
+			var dir := (b - a).normalized()
+			var run_on := r + _ROAD_RUN_ON + 1.0
+			_road_band(verts, cols, idx, w, _capsule(a - dir * (run_on if bool(w["edge"][0]) else 0.0),
+				b + dir * (run_on if bool(w["edge"][1]) else 0.0), r, w["round"]), area, bands[band] * tint)
+	# The markings: none on a lane, a dashed line down the middle of a street, and on an avenue a double
+	# line down the middle and a dashed line along each side. They stop short of a corner or a junction.
+	for w in ways:
+		var level := int(w["level"])
+		var tint: Color = Color.WHITE if bool(w["paved"]) else _UNPAVED
+		var a: Vector2 = w["a"]
+		var b: Vector2 = w["b"]
+		var length := a.distance_to(b)
+		var dir := (b - a) / length
+		var across := dir.orthogonal()
+		var from := float(w["clear"][0])
+		var to := length - float(w["clear"][1])
+		var lines: Array = []                     # [offset across, dashed]
+		if level == 2:
+			lines = [[0.0, true]]
+		elif level >= 3:
+			var half := float(_road_widths(level)[3])
+			lines = [[-0.55, false], [0.55, false], [-half * 0.5, true], [half * 0.5, true]]
+		for line in lines:
+			var off := across * float(line[0])
+			var d := from
+			while d < to - 0.5:
+				var e := minf(to, d + _ROAD_DASH) if bool(line[1]) else to
+				var w0 := a + dir * d + off
+				var w1 := a + dir * e + off
+				_road_band(verts, cols, idx, w, PackedVector2Array([w0 + across * _ROAD_MARK_W, w1 + across * _ROAD_MARK_W,
+					w1 - across * _ROAD_MARK_W, w0 - across * _ROAD_MARK_W]), area, _ROAD_MARK * tint)
+				d = e + _ROAD_DASH_GAP
+	return _mesh_of(verts, cols, idx)
 
 
-## Where roads meet with no junction piece to lie there, the corner between them filled with road: a
-## disc as wide as the widest of them, at the ground's height.
-func _road_joint(roads: Atlas, nd: Dictionary, arms: Dictionary, ks: Array, paved: bool) -> void:
-	var widest := 0
-	for k in ks:
-		widest = maxi(widest, int(arms[k]["level"]))
-	var half := roads.dim("half_%d" % widest)
-	var p: Vector2 = nd["p"]
-	var h := _way_h(str(arms[ks[0]]["tile"]), p)
-	var disc := PackedVector2Array()
-	for n in range(16):
-		disc.append(iso(p + Vector2.from_angle(TAU * float(n) / 16.0) * half, h))
-	var on: Dictionary = {}
-	for k in ks:
-		on[str(arms[k]["tile"])] = true
-	for tile in on:
-		_road_joints.append({"tile": tile, "points": disc, "colour": _ASPHALT if paved else _ASPHALT * _UNPAVED})
+## A band `r` either side of the stretch from `a` to `b`, in plan: its ends rounded where `rounded` says
+## ([at a, at b]), so the streets that meet there at an angle are joined with no gap; square where the
+## street runs straight on into the next stretch, or on into the tile beside.
+static func _capsule(a: Vector2, b: Vector2, r: float, rounded: Array = [true, true]) -> PackedVector2Array:
+	var n := (b - a).normalized().orthogonal()
+	var out := PackedVector2Array()
+	var steps := _ROAD_ROUND if bool(rounded[1]) else 1
+	for k in range(steps + 1):
+		out.append(b + n.rotated(PI * float(k) / float(steps)) * r)
+	steps = _ROAD_ROUND if bool(rounded[0]) else 1
+	for k in range(steps + 1):
+		out.append(a - n.rotated(PI * float(k) / float(steps)) * r)
+	return out
+
+
+## Lay one convex plan shape of a street into the mesh: cut to the tile's `area`, then across the street
+## into slices short enough to lie flat on the ground, each laid as a fan from its middle. Across the
+## street the height does not change, so a slice raised to the ground keeps its shape.
+func _road_band(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array, way: Dictionary,
+		shape: PackedVector2Array, area: PackedVector2Array, col: Color) -> void:
+	var a: Vector2 = way["a"]
+	var along := ((way["b"] as Vector2) - a).normalized()
+	for part in Geometry2D.intersect_polygons(shape, area):
+		var poly: PackedVector2Array = part
+		if poly.size() < 3:
+			continue
+		var lo := INF
+		var hi := -INF
+		for p in poly:
+			lo = minf(lo, (p - a).dot(along))
+			hi = maxf(hi, (p - a).dot(along))
+		var n := maxi(1, ceili((hi - lo) / _ROAD_DRAPE))
+		for i in range(n):
+			var slice := Atlas.clip(poly, a + along * lerpf(lo, hi, float(i) / float(n)), along)
+			slice = Atlas.clip(slice, a + along * lerpf(lo, hi, float(i + 1) / float(n)), -along)
+			if slice.size() < 3:
+				continue
+			var mid := Vector2.ZERO
+			for p in slice:
+				mid += p
+			mid /= float(slice.size())
+			var base := verts.size()
+			for p in [mid] + Array(slice):
+				var at := iso(p, _road_height(way, p))
+				verts.append(Vector3(at.x, at.y, 0.0))
+				cols.append(col)
+			for k in range(slice.size()):
+				idx.append_array([base, base + 1 + k, base + 1 + (k + 1) % slice.size()])
+
+
+## The height of a street at a plan point on it: the ground under the middle of the street across from
+## the point, as the street's profile reads it. Past an end, where it runs on into the tile beside or
+## rounds off into the streets turning there, the ground (or a bridge's deck) under its middle carried on
+## past the end, as the street beyond reads it: level from kerb to kerb still, and not left level at the
+## end's height where the ground falls away.
+func _road_height(way: Dictionary, p: Vector2) -> float:
+	var a: Vector2 = way["a"]
+	var b: Vector2 = way["b"]
+	var t := (p - a).dot(b - a) / maxf(a.distance_squared_to(b), 0.0001)
+	if t < 0.0 or t > 1.0:
+		return _way_h(str(way["tile"]), a.lerp(b, t))
+	var prof: Array = way["prof"]
+	for i in range(1, prof.size()):
+		if float(prof[i][0]) >= t:
+			var t0 := float(prof[i - 1][0])
+			return lerpf(float(prof[i - 1][1]), float(prof[i][1]), (t - t0) / maxf(float(prof[i][0]) - t0, 0.0001))
+	return float(prof[prof.size() - 1][1])
 
 
 ## Does a point lie on an edge a tile shares with a tile drawn beside it.
@@ -2746,29 +2906,6 @@ func _at_shared_edge(tile: String, p: Vector2) -> bool:
 		if bool(beside[i]) and Geometry2D.get_closest_point_to_segment(p, hexp[i], hexp[(i + 1) % 6]).distance_to(p) < 0.5:
 			return true
 	return false
-
-
-## One run of a straight road from `p0` (ground at h0) to `p1` (at h1): laid level at h0, then,
-## where the ground climbs or falls, sheared down its length to h1.
-func _road_run(roads: Atlas, piece: String, p0: Vector2, p1: Vector2, h0: float, h1: float, step: Vector2,
-		tint: Color, tile: String) -> void:
-	var start := iso(p0, h0)
-	var end := iso(p1, h0)
-	var along := (end - start).normalized()
-	var run := maxf(start.distance_to(end), 0.001)
-	var fall := Vector2(0.0, (h0 - h1) * ISO_RISE)
-	for poly in roads.run_polys({"name": piece, "a": start, "b": end, "step": step}):
-		var pts: PackedVector2Array = poly["points"]
-		if absf(h1 - h0) >= 0.05:
-			for i in range(pts.size()):
-				pts[i] += fall * clampf((pts[i] - start).dot(along) / run, -0.2, 1.2)
-			poly["points"] = pts
-		# A sliver of a piece, or a stretch seen edge on up a slope as steep as the view: nothing shows.
-		if Geometry2D.triangulate_polygon(pts).is_empty():
-			continue
-		poly["tint"] = tint
-		poly["tile"] = tile
-		_road_polys.append(poly)
 
 
 static var _roads_atlas: Atlas = null
@@ -2852,16 +2989,6 @@ func _lay_track(path: Array, laid: Dictionary) -> void:
 ## The ground under a path point, or the deck of the bridge it stands on.
 func _ground_h(node: Dictionary) -> float:
 	return _way_h(str(node["tile"]), node["p"])
-
-
-## Is the ground near enough level round a point, as far as `reach` every way, for a junction piece to
-## lie flat on it: a little off level is hidden under the piece, and is better than a gap in the road.
-func _level_round(tile: String, p: Vector2, reach: float) -> bool:
-	var h := _way_h(tile, p)
-	for k in range(8):
-		if absf(_way_h(tile, p + Vector2.from_angle(TAU * float(k) / 8.0) * reach) - h) > JUNCTION_TILT:
-			return false
-	return true
 
 
 static func _same_goods(a: Array, b: Array) -> bool:
@@ -3024,6 +3151,7 @@ func _process(delta: float) -> void:
 	_reveal_when_baked(delta)
 	if has_content():
 		_tokens.queue_redraw()
+		_street_layer.queue_redraw()
 		_glow_layer.queue_redraw()
 		if not _baking:
 			var tile := _next_bake()
@@ -3040,18 +3168,32 @@ func _draw() -> void:
 		return
 	# A tile whose picture is not baked yet for this zoom is drawn live, so the board is never
 	# blank while the bakes catch up.
-	draw_set_transform(_offset, 0.0, Vector2(_zoom, _zoom))
+	_draw_live(self, false)
+
+
+## The layers of one kind, ground or things, that have no bake yet, drawn as they are.
+func _draw_live(ci: CanvasItem, things: bool) -> void:
+	ci.draw_set_transform(_offset, 0.0, Vector2(_zoom, _zoom))
 	for unit in _units:
-		if _best_bake(str(unit)).is_empty():
-			_draw_tile(self, str(unit), _zoom)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		if str(unit).ends_with(_THINGS) == things and _best_bake(str(unit)).is_empty():
+			_draw_tile(ci, str(unit), _zoom)
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## The street layer (StreetLayer): the cars, then the things of any tile not baked yet.
+func _draw_street(layer: Control) -> void:
+	if not has_content():
+		return
+	var box := clampf(44.0 * _zoom + 10.0, 16.0, 40.0)
+	_draw_cars(layer, Rect2(Vector2.ZERO, size).grow(box))
+	_draw_live(layer, true)
 
 
 ## Everything about one tile that does not move, in two layers (_unit), each baked on its own: the
-## ground layer, its slab and ground, its roads and railways and the light over them; and the things
-## layer, everything that stands on the ground, buildings, pipes, trees and lamps. Every tile's
-## ground layer is drawn before any tile's things (_units), so what stands near a tile's edge is
-## never covered by the ground of the tile beside it.
+## ground layer, its slab and ground, its roads, their bridges and its railways and the light over them;
+## and the things layer, everything that stands on the ground, buildings, pipes, trees and lamps. Every
+## tile's ground layer is drawn before any tile's things (_units), so what stands near a tile's edge is
+## never covered by the ground of the tile beside it; the cars go between the two (_draw_street).
 func _draw_tile(ci: CanvasItem, unit: String, zoom: float) -> void:
 	if unit.ends_with(_THINGS):
 		_draw_things(ci, unit.trim_suffix(_THINGS))
@@ -3071,18 +3213,10 @@ func _draw_ground(ci: CanvasItem, tile: String) -> void:
 		for poly in pier["polys"]:
 			ci.draw_colored_polygon(poly[0], poly[1])
 			ci.draw_polyline(poly[0] + PackedVector2Array([(poly[0] as PackedVector2Array)[0]]), _INK, 0.8)
-	var road_tex: Texture2D = _road_kit().texture()
-	if road_tex != null and bool(show["roads"]):
-		for joint in parts.get("joints", []):
-			ci.draw_colored_polygon(joint["points"], joint["colour"])
-		for fit in parts.get("fits", []):
-			var rr: Array = _road_kit().fit_rects(str(fit["name"]), fit["at"])
-			ci.draw_texture_rect_region(road_tex, rr[0], rr[1], fit["tint"])
-		for poly in parts.get("polys", []):
-			var tints := PackedColorArray()
-			tints.resize((poly["points"] as PackedVector2Array).size())
-			tints.fill(poly["tint"])
-			ci.draw_polygon(poly["points"], tints, poly["uvs"], road_tex)
+	if bool(show["roads"]) and _road_meshes.get(tile) != null:
+		ci.draw_mesh(_road_meshes[tile], null)
+	for br in parts.get("bridges", []):
+		_draw_pipe_item(ci, br)
 	if bool(show["roads"]):
 		_draw_roads(ci, parts.get("links", []))
 	if bool(show["rails"]):
@@ -3090,7 +3224,7 @@ func _draw_ground(ci: CanvasItem, tile: String) -> void:
 	if gfx.get("light") != null:
 		ci.draw_mesh(gfx["light"], null)
 	if bool(show["roads"]):
-		for lit in parts.get("lit", []):
+		for lit in _road_lights.get(tile, []):
 			ci.draw_polygon(lit["points"], lit["colours"])
 
 
@@ -3150,16 +3284,9 @@ func _draw_grade(ci: CanvasItem, unit: String) -> void:
 func _sort_parts() -> void:
 	var tiles: Dictionary = _model.get("tiles", {})
 	for tid in _tile_order:
-		_tile_parts[tid] = {"fits": [], "polys": [], "joints": [], "lit": [], "links": [], "rails": [], "pipes": [], "piers": [],
-			"things": []}
-	for fit in _road_fits:
-		_part(fit, "fits", fit)
-	for poly in _road_polys:
-		_part(poly, "polys", poly)
-	for joint in _road_joints:
-		_part(joint, "joints", joint)
-	for lit in _road_lights:
-		_part(lit, "lit", lit)
+		_tile_parts[tid] = {"links": [], "rails": [], "pipes": [], "piers": [], "bridges": [], "things": []}
+	for br in _road_bridges:
+		_part(br, "bridges", br)
 	for l in _links:
 		_part(l, "links", l)
 	for r in _rails:
@@ -3187,12 +3314,10 @@ func _sort_parts() -> void:
 		var looks: Array = [_bounds, plate_lamps, plate_sea, plate_town, str(show)]
 		var made: Array = [float(tiles[tid]["height"]), float(tiles[tid].get("top", 0.0)), str(tiles[tid]["type"]),
 			str(tiles[tid].get("beside", []))] + looks
-		for fit in parts["fits"]:
-			made.append([fit["name"], fit["at"], fit["tint"]])
-		for poly in parts["polys"]:
-			made.append([poly["points"], poly["tint"]])
-		for joint in parts["joints"]:
-			made.append(joint["points"])
+		for w in _road_ways.get(tid, []):
+			made.append([w["a"], w["b"], w["level"], w["paved"], w["prof"]])
+		for br in parts["bridges"]:
+			made.append([br["name"], br["at"]])
 		for l in parts["links"]:
 			made.append([l["mode"], l["pts"]])
 		for r in parts["rails"]:
@@ -3292,6 +3417,14 @@ func _tile_rect(tile: String) -> Rect2:
 	for p in hexp:
 		r = r.expand(iso(p, top)).expand(iso(p, -SLAB_DEPTH))
 	r = r.grow_individual(_TILE_MARGIN, _TILE_HEADROOM, _TILE_MARGIN, 6.0)
+	# A street raised on its way up to a bridge's deck can stand above the ground's highest point, and the
+	# bridge's trusses above that.
+	var streets: Variant = _road_meshes.get(tile)
+	if streets != null:
+		var box: AABB = (streets as ArrayMesh).get_aabb()
+		r = r.merge(Rect2(box.position.x, box.position.y, box.size.x, box.size.y).grow(2.0))
+	for br in (_tile_parts.get(tile, {}) as Dictionary).get("bridges", []):
+		r = r.merge((_road_kit().fit_rects(str(br["name"]), br["at"]) as Array)[0])
 	var lo := (r.position / _BAKE_GRID).floor() * _BAKE_GRID
 	var hi := (r.end / _BAKE_GRID).ceil() * _BAKE_GRID
 	return Rect2(lo, hi - lo)
@@ -3407,10 +3540,12 @@ func _trim_bakes() -> void:
 		_bakes.erase(oldest)
 
 
-func _draw_bakes(layer: Control) -> void:
+func _draw_bakes(layer: Control, things: bool) -> void:
 	var px := _px()
 	var frame := Engine.get_frames_drawn()
 	for unit in _units:
+		if str(unit).ends_with(_THINGS) != things:
+			continue
 		var found: Array = _best_bake(str(unit))
 		if found.is_empty():
 			continue
@@ -3627,13 +3762,25 @@ func _draw_pipe_item(ci: CanvasItem, item: Dictionary) -> void:
 		return
 	var kit: Atlas = item.get("atlas", Pipes.kit())
 	var tex: Texture2D = kit.texture()
-	# A bridge is a road's piece, though it stands among the things on the tile.
+	# A bridge is a road's piece, and goes with the roads.
 	if tex == null or (item.has("atlas") and not bool(show["roads"])):
 		return
 	if str(item["kind"]) == "run":
 		ci.draw_colored_polygon(item["points"], Color.WHITE, item["uvs"], tex)
 		return
 	var rects: Array = kit.fit_rects(str(item["name"]), item["at"])
+	if item.has("keep"):
+		# Only over the part of the board it stands on (_bridge_keep).
+		var r: Rect2 = rects[0]
+		var frame := PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])
+		var size_px := Vector2(tex.get_width(), tex.get_height())
+		var src: Rect2 = rects[1]
+		for part in Geometry2D.intersect_polygons(frame, item["keep"]):
+			var uvs := PackedVector2Array()
+			for q in (part as PackedVector2Array):
+				uvs.append((src.position + (q - r.position) / r.size * src.size) / size_px)
+			ci.draw_colored_polygon(part, Color.WHITE, uvs, tex)
+		return
 	ci.draw_texture_rect_region(tex, rects[0], rects[1])
 
 
@@ -3760,7 +3907,6 @@ func _draw_tokens(layer: Control) -> void:
 	var view := Rect2(Vector2.ZERO, size).grow(box)
 	var font := get_theme_default_font()
 	_draw_glints(layer, view)
-	_draw_cars(layer, view)
 	if bool(show["pollution"]):
 		_draw_fog(layer, view)
 		_draw_lights(layer, view)

@@ -1056,6 +1056,128 @@ func _test_empire_board_coast() -> void:
 	_check(inland.size() == 1 and (inland[0]["cuts"] as Array).is_empty(), "board coast: a river that never reaches the sea is left as it is")
 
 
+## A tile's streets are one surface. Where two stretches turn a corner or cross, on the flat and up a
+## slope, the middle of the street shows asphalt all the way through the join, and no edge or kerb of
+## one stretch is laid over another's asphalt; the inked edge shows only round the outside of the
+## streets as a whole. A street leaving for the tile beside runs on over the edge.
+func _test_empire_board_streets_one_surface() -> void:
+	var Board := preload("res://scripts/empire_board.gd")
+	var board := _relief_board()
+	var tiles: Dictionary = (board.get("_model") as Dictionary)["tiles"]
+	# In a: a corner on the slope of its rise, a corner and a crossing on the flat, and a street out to
+	# the edge with b.
+	var plan := [[Vector2(-160, -150), Vector2(-40, -150)], [Vector2(-40, -150), Vector2(-40, 0)],
+		[Vector2(-40, 0), Vector2(60, 0)], [Vector2(60, 0), Vector2(140, 0)], [Vector2(60, -100), Vector2(60, 0)],
+		[Vector2(60, 0), Vector2(60, 100)], [Vector2(140, 0), Vector2(202.5, 120)]]
+	var roads: Array = []
+	for s in plan:
+		roads.append({"tile": "tb_a", "a": s[0], "b": s[1], "kind": "street", "level": 2, "paved": true})
+	(board.get("_model") as Dictionary)["roads"] = roads
+	await board.call("_build_roads", tiles, int(board.get("_build_gen")))
+	var mesh: ArrayMesh = (board.get("_road_meshes") as Dictionary).get("tb_a")
+	var ways: Array = (board.get("_road_ways") as Dictionary).get("tb_a", [])
+	if mesh == null or ways.size() != plan.size():
+		_check(false, "board streets: a tile's streets are built as one mesh (%d stretches)" % ways.size())
+		board.queue_free()
+		return
+	var arrays: Array = mesh.surface_get_arrays(0)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var cols: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+	var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var rank := {Board._ROAD_EDGE.to_rgba32(): 0, Board._ROAD_KERB.to_rgba32(): 1, Board._ROAD_EDGE_IN.to_rgba32(): 2,
+		Board._ROAD_ASPHALT.to_rgba32(): 3, Board._ROAD_MARK.to_rgba32(): 4}
+	# Laid band by band: nothing is laid over a band that comes after it.
+	var last := 0
+	var in_order := true
+	for i in range(0, idx.size(), 3):
+		var r := int(rank.get(cols[idx[i]].to_rgba32(), -1))
+		in_order = in_order and r >= last
+		last = maxi(last, r)
+	_check(in_order, "board streets: every stretch's edge, then kerb, then asphalt, then markings, so none is laid over another's asphalt")
+	# The band on top at a point of the picture: 0 the edge .. 4 the markings, -1 none.
+	var top := func(q: Vector2) -> int:
+		var found := -1
+		for i in range(0, idx.size(), 3):
+			var v0 := Vector2(verts[idx[i]].x, verts[idx[i]].y)
+			var v1 := Vector2(verts[idx[i + 1]].x, verts[idx[i + 1]].y)
+			var v2 := Vector2(verts[idx[i + 2]].x, verts[idx[i + 2]].y)
+			if Geometry2D.point_is_inside_triangle(q, v0, v1, v2):
+				found = int(rank.get(cols[idx[i]].to_rgba32(), -1))
+		return found
+	var widths: Array = Board._road_widths(2)
+	var holes: Array = []
+	var edges: Array = []
+	var climbs := 0.0
+	for w in ways:
+		var a: Vector2 = w["a"]
+		var b: Vector2 = w["b"]
+		var dir := (b - a).normalized()
+		var across := dir.orthogonal()
+		climbs = maxf(climbs, absf(float(board.call("_road_height", w, b)) - float(board.call("_road_height", w, a))))
+		var length := a.distance_to(b)
+		# Off the points the mesh is laid from, which lie on the edges of its triangles.
+		var d := 0.41
+		while d <= length:
+			for off in [0.3, float(widths[3]) - 1.0, 1.0 - float(widths[3])]:
+				var p: Vector2 = a + dir * d + across * float(off)
+				if int(top.call(Board.iso(p, float(board.call("_road_height", w, p))))) < 3:
+					holes.append("%s" % p.round())
+			d += 2.0
+		# The edge, at the middle of a stretch, clear of the others.
+		for side in [-1.0, 1.0]:
+			var p: Vector2 = a.lerp(b, 0.5) + across * float(side) * (float(widths[0]) - Board._ROAD_INK_W * 0.5)
+			if int(top.call(Board.iso(p, float(board.call("_road_height", w, p))))) != 0:
+				edges.append("%s" % p.round())
+	_check(holes.is_empty() and climbs > 2.0,
+		"board streets: asphalt all the way along and across every stretch, through every corner and crossing, up a slope (climb %.1f) %s"
+			% [climbs, holes.slice(0, 4)])
+	_check(edges.is_empty(), "board streets: the inked edge shows along the outside of each street %s" % [edges.slice(0, 4)])
+	var out: Dictionary = ways[ways.size() - 1]
+	var beyond: Vector2 = Vector2(202.5, 120) + ((out["b"] as Vector2) - (out["a"] as Vector2)).normalized() * 4.0
+	var run_on := int(top.call(Board.iso(beyond, float(board.call("_road_height", out, beyond)))))
+	_check(bool(out["edge"][1]) and run_on >= 3,
+		"board streets: a street leaving for the tile beside runs on over the edge")
+	board.queue_free()
+
+
+## A car is drawn under everything that stands: on the street layer, between the bakes of the ground and
+## those of the things, so a building in front of it hides it as it passes. A bridge goes with the
+## streets in the ground layer, so a car crossing one is drawn over it.
+func _test_empire_board_cars_behind_things() -> void:
+	var Board := preload("res://scripts/empire_board.gd")
+	var board: Control = Board.new()
+	add_child(board)
+	var order: Array = []
+	for name in ["Bakes", "Street", "ThingsBakes", "Glow", "Tokens"]:
+		var layer := board.get_node_or_null(name)
+		order.append(layer.get_index() if layer != null else -1)
+	var stacked := not order.has(-1)
+	for i in range(1, order.size()):
+		stacked = stacked and int(order[i]) > int(order[i - 1])
+	_check(stacked and bool(board.get_node("ThingsBakes").get("things")) and not bool(board.get_node("Bakes").get("things")),
+		"board cars: the ground's bakes, then the street layer, then the things' bakes, then the tokens %s" % [order])
+	board.queue_free()
+	# Bridges are laid with the streets, in the ground layer, and nothing of them among the things.
+	var relief := _relief_board()
+	var tiles: Dictionary = (relief.get("_model") as Dictionary)["tiles"]
+	var spans: Array = relief.call("_spans_of", "tb_a")
+	var roads: Array = []
+	for span in spans:
+		roads.append({"tile": "tb_a", "a": (span["at"] as Vector2) - (span["dir"] as Vector2) * 70.0,
+			"b": (span["at"] as Vector2) + (span["dir"] as Vector2) * 70.0, "kind": "avenue", "level": 1, "paved": true})
+	(relief.get("_model") as Dictionary)["roads"] = roads
+	relief.call("_mark_bridges")
+	await relief.call("_build_roads", tiles, int(relief.get("_build_gen")))
+	relief.call("_sort_parts")
+	var bridges: Array = ((relief.get("_tile_parts") as Dictionary)["tb_a"] as Dictionary).get("bridges", [])
+	var among_things := 0
+	for thing in ((relief.get("_tile_parts") as Dictionary)["tb_a"] as Dictionary)["things"]:
+		among_things += 1 if str((thing["ref"] as Dictionary).get("name", "")).begins_with("r_bridge") else 0
+	_check(not spans.is_empty() and bridges.size() >= 1 and among_things == 0,
+		"board cars: a street's bridge is laid in the ground layer, under the cars (%d bridges)" % bridges.size())
+	relief.queue_free()
+
+
 ## The supply chain board's pictures, kept from one build to the next. Each tile is drawn in two
 ## layers, every ground layer before any things layer, and a things layer takes in whole all that
 ## stands on its tile. A layer's make-up changes, and the layer is baked again, only when what it
