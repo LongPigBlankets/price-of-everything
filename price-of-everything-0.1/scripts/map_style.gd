@@ -641,9 +641,11 @@ func extrude_outline_width() -> float:
 ## ── P2 road stroke: geometry post-pass + dashed symbology ───────────────────
 
 ## Roads are DRAWN at this fraction of their style width, both the procedural network and the
-## authored strokes (AuthoredRoadStyle reads it too). Only the picture narrows: road_width and
-## road_casing_width stay the widths layout clears buildings and fabric against, so nothing
-## moves. Pipes, cables and rails are separate art and keep their size.
+## authored strokes (AuthoredRoadStyle reads it too), and so are the lanes and tracks drawn like
+## roads: service lanes and farm tracks. Their ink lines (casings, bridge rails, the trunk
+## centre dash) narrow with them. Only the picture narrows: road_width and road_casing_width
+## stay the widths layout clears buildings and fabric against, so nothing moves. Pipes, cables
+## and rails are separate art and keep their size.
 const ROAD_DRAW_SCALE := 0.75
 
 func road_width(trunk: bool) -> float:
@@ -721,3 +723,7 @@ func trunk_center_width() -> float:
 	if is_midcentury():
 		return 1.0
 	return 1.2
+
+## The centre dash as drawn, narrowed with the road (ROAD_DRAW_SCALE).
+func trunk_center_draw_width() -> float:
+	return trunk_center_width() * ROAD_DRAW_SCALE

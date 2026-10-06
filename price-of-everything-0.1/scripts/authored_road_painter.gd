@@ -18,6 +18,8 @@ const AuthoredRoadGeometry := preload("res://scripts/authored_road_geometry.gd")
 ## crossing reads like every other crossing on the map.
 const BRIDGE_DECK_SCALE := 1.15
 const BRIDGE_RAIL_WIDTH := 1.4
+## The deck line as drawn: twice the rail weight, narrowed with the road (AuthoredRoadStyle.DRAW_SCALE).
+const BRIDGE_DECK_LINE_WIDTH := BRIDGE_RAIL_WIDTH * 2.0 * AuthoredRoadStyle.DRAW_SCALE
 
 
 ## Paint `strokes` (already filtered to what should be visible) onto `canvas`.
@@ -77,4 +79,4 @@ static func draw_bridges(canvas: CanvasItem, stroke: Dictionary) -> void:
 		tangent = tangent.normalized()
 		var across := Vector2(-tangent.y, tangent.x) * half
 		canvas.draw_line(centre - across, centre + across, MapStyle.road_bridge(),
-			BRIDGE_RAIL_WIDTH * 2.0, true)
+			BRIDGE_DECK_LINE_WIDTH, true)

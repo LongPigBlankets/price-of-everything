@@ -70,6 +70,10 @@ const SHADOW_OFFSET := Vector2(2.2, 2.8)
 ## wears its FULL outline as its footprint, eviction and slot cost test against it, and the
 ## editor selects by it. Harbour shapes (`port`) are drawn by draw_port_group and never scaled.
 const DECOR_DRAW_SCALE := 0.75
+## A shrunk decorative block keeps its proportions: its ink outline and its SE shadow offset
+## scale with it. Harbours keep SHADOW_OFFSET and their own line weight.
+const DECOR_OUTLINE_WIDTH := 1.0 * DECOR_DRAW_SCALE
+const DECOR_SHADOW_OFFSET := SHADOW_OFFSET * DECOR_DRAW_SCALE
 
 
 ## A farm: the outline filled with parcel strips in its own long-axis frame, each tinted from
@@ -562,17 +566,18 @@ static func draw_mass(canvas: CanvasItem, mass: Dictionary,
 			_block(canvas, piece_value as PackedVector2Array, colour)
 
 
-## One built block: SE micro-shadow, fill, ink outline. Shared so a mass and a special that
-## have been cut by a keep-out region are finished exactly like one that has not.
+## One decorative block: SE micro-shadow, fill, ink outline, all at the decorative draw scale.
+## Shared so a mass and a special that have been cut by a keep-out region are finished exactly
+## like one that has not.
 static func _block(canvas: CanvasItem, polygon: PackedVector2Array, colour: Color) -> void:
 	if polygon.size() < 3:
 		return
 	var shadow := PackedVector2Array()
 	for point in polygon:
-		shadow.append(point + SHADOW_OFFSET)
+		shadow.append(point + DECOR_SHADOW_OFFSET)
 	canvas.draw_colored_polygon(shadow, MidcenturyStyle.SHADOW)
 	canvas.draw_colored_polygon(polygon, colour)
-	canvas.draw_polyline(_closed(polygon), MidcenturyStyle.INK, 1.0, true)
+	canvas.draw_polyline(_closed(polygon), MidcenturyStyle.INK, DECOR_OUTLINE_WIDTH, true)
 
 
 ## `polygon` minus every keep-out region, as the pieces that survive.

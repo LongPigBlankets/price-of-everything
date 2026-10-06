@@ -3360,6 +3360,80 @@ func _test_road_draw_width_three_quarters() -> void:
 	bv.free()
 
 
+func _test_line_weights_follow_the_draw_scale() -> void:
+	# The ink lines of the shrunk decor and the narrowed roads keep their proportion: outline,
+	# shadow offset, casing edge, bridge rails and centre dash all draw at 0.75. Harbours,
+	# gameplay buildings and farms keep their own line weights.
+	_check(is_equal_approx(AuthoredFabricPainter.DECOR_OUTLINE_WIDTH, 0.75),
+		"line scale: a decorative block's ink outline draws at 0.75 (got %.3f)" % AuthoredFabricPainter.DECOR_OUTLINE_WIDTH)
+	_check(AuthoredFabricPainter.DECOR_SHADOW_OFFSET.is_equal_approx(Vector2(2.2, 2.8) * 0.75),
+		"line scale: a decorative block's SE shadow offset is 0.75 of the harbour one (got %s)" % str(AuthoredFabricPainter.DECOR_SHADOW_OFFSET))
+	_check(AuthoredFabricPainter.SHADOW_OFFSET.is_equal_approx(Vector2(2.2, 2.8)),
+		"line scale: harbour shapes keep the full shadow offset")
+	_check(AuthoredFabricPainter.DECOR_SHADOW_OFFSET.x > 0.0 and AuthoredFabricPainter.DECOR_SHADOW_OFFSET.y > 0.0,
+		"line scale: decor shadows still fall south east")
+	for stroke_class in ["major", "mid", "minor"]:
+		var edge := (AuthoredRoadStyle.casing_width(stroke_class) - AuthoredRoadStyle.bed_width(stroke_class)) * 0.5
+		var full_edge := float(AuthoredRoadStyle.CASING_DELTA[stroke_class]) * 0.5
+		_check(is_equal_approx(edge, full_edge * 0.75),
+			"line scale: the authored %s casing edge draws at 0.75 (%.3f of %.3f)" % [stroke_class, edge, full_edge])
+	var road_painter := preload("res://scripts/authored_road_painter.gd")
+	_check(is_equal_approx(road_painter.BRIDGE_DECK_LINE_WIDTH, 1.4 * 2.0 * 0.75),
+		"line scale: an authored bridge deck line draws at 0.75 (got %.2f)" % road_painter.BRIDGE_DECK_LINE_WIDTH)
+	var rnv := preload("res://scripts/road_network_visuals.gd")
+	_check(is_equal_approx(rnv.BRIDGE_RAIL_WIDTH_TRUNK, 1.4 * 0.75) and is_equal_approx(rnv.BRIDGE_RAIL_WIDTH_LOCAL, 1.6 * 0.75),
+		"line scale: procedural bridge rails draw at 0.75")
+	_check(is_equal_approx(MapStyle.trunk_center_draw_width(), MapStyle.trunk_center_width() * 0.75),
+		"line scale: the trunk centre dash draws at 0.75")
+	for trunk in [true, false]:
+		var edge := (MapStyle.road_draw_casing_width(trunk) - MapStyle.road_draw_width(trunk)) * 0.5
+		var full_edge := (MapStyle.road_casing_width(trunk) - MapStyle.road_width(trunk)) * 0.5
+		_check(is_equal_approx(edge, full_edge * 0.75),
+			"line scale: the procedural %s casing edge draws at 0.75" % ("trunk" if trunk else "local"))
+	# Unchanged: gameplay building ink, farm and harbour pipe weights.
+	var bv_script := preload("res://scenes/building_visuals.gd")
+	_check(is_equal_approx(bv_script.INK_W, 1.3), "line scale: gameplay building ink stays 1.3")
+	_check(is_equal_approx(AuthoredFabricPainter.PIPE_WIDTH, 3.2), "line scale: harbour pipes stay 3.2")
+
+
+func _test_service_lanes_and_farm_tracks_draw_narrower() -> void:
+	var bv_script := preload("res://scenes/building_visuals.gd")
+	# Service lanes: drawn at 0.75, clearance unchanged.
+	_check(is_equal_approx(bv_script.SERVICE_DRAW_WIDTH, 2.0 * 0.75)
+		and is_equal_approx(bv_script.SERVICE_DRAW_CASING_WIDTH, (2.0 + 2.0) * 0.75),
+		"lane scale: a service lane bed and casing draw at 0.75 (%.2f, %.2f)"
+		% [bv_script.SERVICE_DRAW_WIDTH, bv_script.SERVICE_DRAW_CASING_WIDTH])
+	_check(is_equal_approx(bv_script.SERVICE_WIDTH, 2.0) and is_equal_approx(bv_script.SERVICE_CLEAR, 4.0),
+		"lane scale: service lane width and clearance used by placement are unchanged")
+	# Classic farm lanes and their bridges.
+	_check(is_equal_approx(bv_script.FARM_LANE_DRAW_W, 5.0 * 0.75) and is_equal_approx(bv_script.FARM_LANE_W, 5.0),
+		"lane scale: a farm lane draws at 0.75 of its 5 u width")
+	_check(is_equal_approx(bv_script.FARM_BRIDGE_DRAW_W, 6.0 * 0.75) and is_equal_approx(bv_script.FARM_BRIDGE_RAIL_DRAW_W, 2.0 * 0.75),
+		"lane scale: a farm lane bridge deck and rails draw at 0.75")
+	# Ink farm tracks: the gap between parcels. Two laid-out parcels 2 x PARCEL_INSET apart draw
+	# 2 x FARM_TRACK_DRAW_INSET apart, and the laid-out parcels themselves do not change.
+	_check(is_equal_approx(bv_script.FARM_TRACK_DRAW_INSET, bv_script.PARCEL_INSET * 0.75)
+		and is_equal_approx(bv_script.PARCEL_INSET, 2.2),
+		"lane scale: the farm track inset draws at 0.75 while the layout inset stays 2.2")
+	var inset := float(bv_script.PARCEL_INSET)
+	var left := PackedVector2Array([Vector2(0, 0), Vector2(50, 0), Vector2(50, 40), Vector2(0, 40)])
+	var right := PackedVector2Array([Vector2(50, 0), Vector2(100, 0), Vector2(100, 40), Vector2(50, 40)])
+	var laid_left: PackedVector2Array = Geometry2D.offset_polygon(left, -inset, Geometry2D.JOIN_MITER)[0]
+	var laid_right: PackedVector2Array = Geometry2D.offset_polygon(right, -inset, Geometry2D.JOIN_MITER)[0]
+	var drawn_left: PackedVector2Array = bv_script.drawn_farm_parcel(laid_left)
+	var drawn_right: PackedVector2Array = bv_script.drawn_farm_parcel(laid_right)
+	var max_x := -INF
+	for p in drawn_left:
+		max_x = maxf(max_x, p.x)
+	var min_x := INF
+	for p in drawn_right:
+		min_x = minf(min_x, p.x)
+	var laid_gap := 2.0 * inset
+	var drawn_gap := min_x - max_x
+	_check(absf(drawn_gap - laid_gap * 0.75) < 0.01,
+		"lane scale: the farm track between parcels draws at 0.75 (%.3f of %.3f)" % [drawn_gap, laid_gap])
+
+
 ## The near bake tier exists to serve the camera's maximum zoom without magnifying a texture.
 ## These are the two numbers that have to agree — the bake scale and the camera's tile count —
 ## so changing `zoomed_in_tile_count` again fails HERE rather than as a soft picture in play.

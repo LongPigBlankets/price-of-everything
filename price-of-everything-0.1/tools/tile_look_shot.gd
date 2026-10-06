@@ -4,8 +4,12 @@ extends Node
 ##   AGENT_GODOT_WINDOW=1 godot --path . res://tools/tile_look_shot.tscn -- --no-telemetry
 ## TILE picks the tile (Greyroad, tile_9_9, by default). Writes tile_<tile>_<view>.png into $TILE_SHOT_DIR (or /tmp).
 ## ZOOMS, a comma list such as "1.1,2.4", adds a start capture per zoom (tile_<tile>_start_z<zoom>.png).
+## BUILDS, a comma list of building ids, places them on the tile after the start captures and
+## shoots tile_<tile>_built[_z<zoom>].png. NO_AUTHORED=1 boots with no authored document, so
+## the procedural fabric, roads and service lanes draw (and the start layout is placed live).
 
 const ShotHarness := preload("res://tools/shot_harness.gd")
+const AuthoredMap := preload("res://scripts/authored_map.gd")
 
 var _out := "/tmp"
 
@@ -18,7 +22,10 @@ func _ready() -> void:
 	if tile == "":
 		tile = "tile_9_9"
 	DirAccess.make_dir_recursive_absolute(_out)
-	ShotHarness.arm_watchdog(self, 240.0)
+	var no_authored := OS.get_environment("NO_AUTHORED") == "1"
+	if no_authored:
+		AuthoredMap.set_override("__tile_look_shot_blind__")
+	ShotHarness.arm_watchdog(self, 600.0 if no_authored else 240.0)
 	ShotHarness.prepare_window(get_window(), Vector2i(1920, 1080))
 	TelemetryState.enabled = false
 	SaveLoad.autosave_enabled = false
@@ -55,6 +62,26 @@ func _ready() -> void:
 	cam.zoom = Vector2.ONE * 1.1
 	cam.set("_target_zoom", cam.zoom)
 	await _wait(0.5)
+	var builds := OS.get_environment("BUILDS").split(",", false)
+	for building_id in builds:
+		var built_iid := BuildingState.add_building(building_id.strip_edges(), "", tile, MatchState.LOCAL_PLAYER)
+		main.emit_signal("building_placed", tile, building_id.strip_edges(), "", built_iid, coord)
+		await _wait(0.5)
+	if not builds.is_empty():
+		await _wait(1.5)
+		var visuals: Node = main.find_child("BuildingVisuals", true, false)
+		if visuals != null:
+			var lane: Variant = (visuals.get("_service_world") as Dictionary).get(tile, null)
+			print("[tile_look_shot] service lane on %s: %s" % [tile, str(lane)])
+		await _shot("%s_built" % tile)
+		for zoom_text in OS.get_environment("ZOOMS").split(",", false):
+			cam.zoom = Vector2.ONE * float(zoom_text)
+			cam.set("_target_zoom", cam.zoom)
+			await _wait(1.5)
+			await _shot("%s_built_z%s" % [tile, zoom_text.strip_edges()])
+		cam.zoom = Vector2.ONE * 1.1
+		cam.set("_target_zoom", cam.zoom)
+		await _wait(0.5)
 	# Built as the build flow does: the building, then the map told where it stands.
 	var iid := BuildingState.add_building("b_019", "", tile, MatchState.LOCAL_PLAYER)
 	main.emit_signal("building_placed", tile, "b_019", "", iid, coord)
