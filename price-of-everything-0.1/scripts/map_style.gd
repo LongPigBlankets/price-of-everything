@@ -640,6 +640,12 @@ func extrude_outline_width() -> float:
 
 ## ── P2 road stroke: geometry post-pass + dashed symbology ───────────────────
 
+## Roads are DRAWN at this fraction of their style width, both the procedural network and the
+## authored strokes (AuthoredRoadStyle reads it too). Only the picture narrows: road_width and
+## road_casing_width stay the widths layout clears buildings and fabric against, so nothing
+## moves. Pipes, cables and rails are separate art and keep their size.
+const ROAD_DRAW_SCALE := 0.75
+
 func road_width(trunk: bool) -> float:
 	if is_midcentury():
 		return 8.2 if trunk else 5.0
@@ -657,6 +663,13 @@ func road_casing_width(trunk: bool) -> float:
 	if is_plate():
 		return road_width(trunk) + 3.0   # ~1.5u of street edge each side
 	return road_width(trunk) + (3.2 if ink else 2.5)
+
+## What the road layer DRAWS: the bed and casing at ROAD_DRAW_SCALE.
+func road_draw_width(trunk: bool) -> float:
+	return road_width(trunk) * ROAD_DRAW_SCALE
+
+func road_draw_casing_width(trunk: bool) -> float:
+	return road_casing_width(trunk) * ROAD_DRAW_SCALE
 
 ## Drawn-polyline restyle (ink only, spec §3c Class 2): RDP simplify kills the
 ## A*-grid meander, then a seeded hand wobble goes back on top. The LOGIC

@@ -61,6 +61,16 @@ const PARCEL_INSET := 2.2
 ## prism does. Matches the fabric's own BLOCK_SHADOW_OFFSET.
 const SHADOW_OFFSET := Vector2(2.2, 2.8)
 
+## Decorative buildings — town masses and non-harbour specials — are DRAWN at this fraction of
+## their authored size, each scaled about its own centre, so the town reads smaller beside the
+## gameplay buildings without moving.
+##
+## DRAWING ONLY. `mass_polygons` and `AuthoredSpecialShapes.render_polygon` keep returning the
+## authored size, because that is what placement measures: a building that takes over a mass
+## wears its FULL outline as its footprint, eviction and slot cost test against it, and the
+## editor selects by it. Harbour shapes (`port`) are drawn by draw_port_group and never scaled.
+const DECOR_DRAW_SCALE := 0.75
+
 
 ## A farm: the outline filled with parcel strips in its own long-axis frame, each tinted from
 ## the farm palette. The strips are what make a field read as worked ground rather than a
@@ -248,8 +258,8 @@ static func _signed_depth(outline: PackedVector2Array, point: Vector2) -> float:
 static func draw_special(canvas: CanvasItem, special: Dictionary,
 		keep_out: Array = []) -> void:
 	# The DRAWN polygon, which for a ring is a band around the four corners the designer
-	# edits — see AuthoredSpecialShapes.render_polygon.
-	var outline := AuthoredSpecialShapes.render_polygon(special)
+	# edits — see AuthoredSpecialShapes.render_polygon — at the decorative draw scale.
+	var outline := drawn_special_polygon(special)
 	if outline.size() < 3:
 		return
 	var colour := MidcenturyStyle.urban_block(str(special.get("id", "")), 0.6)
@@ -547,7 +557,7 @@ static func draw_mass(canvas: CanvasItem, mass: Dictionary,
 		keep_out: Array = []) -> void:
 	var id := str(mass.get("id", ""))
 	var colour := MidcenturyStyle.urban_block(id, 0.6)
-	for polygon in mass_polygons(mass):
+	for polygon in drawn_mass_polygons(mass):
 		for piece_value in _subtract(polygon as PackedVector2Array, keep_out):
 			_block(canvas, piece_value as PackedVector2Array, colour)
 
@@ -593,7 +603,10 @@ static func _subtract(polygon: PackedVector2Array, keep_out: Array) -> Array:
 		for piece_value in pieces:
 			for result_value in Geometry2D.clip_polygons(piece_value as PackedVector2Array, region):
 				var result: PackedVector2Array = result_value
-				if result.size() >= 3 and not Geometry2D.is_polygon_clockwise(result):
+				# A cut can leave a sliver too thin to triangulate; the fill call would only
+				# log an error for it, so it is dropped here like any other empty piece.
+				if result.size() >= 3 and not Geometry2D.is_polygon_clockwise(result) \
+						and not Geometry2D.triangulate_polygon(result).is_empty():
 					next.append(result)
 		pieces = next
 		if pieces.is_empty():
@@ -616,6 +629,59 @@ static func mass_polygons(mass: Dictionary) -> Array:
 	var built: Dictionary = MassFormShapes.build_form(
 		str(mass.get("form", "solid")), parcel, 0, str(mass.get("id", "")))
 	return built.get("polys", []) as Array
+
+
+## The polygons a mass is DRAWN as: its authored form scaled by DECOR_DRAW_SCALE about the
+## centre of its parcel. Every piece of a form shares that one centre, so a courtyard or a
+## terrace shrinks as one building rather than as separate blocks drifting apart.
+static func drawn_mass_polygons(mass: Dictionary) -> Array:
+	var polys := mass_polygons(mass)
+	if polys.is_empty():
+		return polys
+	var centre := area_centre(mass_parcel(mass))
+	var out: Array = []
+	for poly_value in polys:
+		out.append(scaled_about(poly_value as PackedVector2Array, centre, DECOR_DRAW_SCALE))
+	return out
+
+
+## The polygon a non-harbour special is DRAWN as: its render polygon scaled by
+## DECOR_DRAW_SCALE about its own area centre. A ring's band scales with it, so the courtyard
+## keeps its proportions.
+static func drawn_special_polygon(special: Dictionary) -> PackedVector2Array:
+	var outline := AuthoredSpecialShapes.render_polygon(special)
+	if outline.size() < 3:
+		return outline
+	return scaled_about(outline, area_centre(outline), DECOR_DRAW_SCALE)
+
+
+static func scaled_about(polygon: PackedVector2Array, centre: Vector2, factor: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	out.resize(polygon.size())
+	for i in polygon.size():
+		out[i] = centre + (polygon[i] - centre) * factor
+	return out
+
+
+## Area-weighted centre of a polygon. A ring's band (outer loop, then the inner loop wound the
+## other way) comes out at the centre of the courtyard block, because the slit edges cancel.
+## Falls back to the vertex mean for a degenerate outline.
+static func area_centre(polygon: PackedVector2Array) -> Vector2:
+	var twice_area := 0.0
+	var sum := Vector2.ZERO
+	var n := polygon.size()
+	for i in n:
+		var a := polygon[i]
+		var b := polygon[(i + 1) % n]
+		var cross := a.x * b.y - b.x * a.y
+		twice_area += cross
+		sum += (a + b) * cross
+	if absf(twice_area) < 0.0001:
+		var mean := Vector2.ZERO
+		for point in polygon:
+			mean += point
+		return mean / float(maxi(n, 1))
+	return sum / (3.0 * twice_area)
 
 
 ## The oriented box a stamp occupies — its footprint for hit-testing and selection, and the

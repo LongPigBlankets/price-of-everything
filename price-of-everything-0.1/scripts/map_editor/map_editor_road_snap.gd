@@ -13,7 +13,7 @@ extends RefCounted
 ## an authored building that sat by a different rule would look wrong next to a built one.
 
 const AuthoredRoadGeometry := preload("res://scripts/authored_road_geometry.gd")
-const AuthoredRoadStyle := preload("res://scripts/authored_road_style.gd")
+const AuthoredMap := preload("res://scripts/authored_map.gd")
 const MapEditorSelection := preload("res://scripts/map_editor/map_editor_selection.gd")
 
 ## How near the seated position a drag must finish for the snap to take, in world units.
@@ -65,7 +65,9 @@ static func seat_for(document: Dictionary, item: Dictionary) -> Dictionary:
 	# ACROSS the road to work out where its edge falls.
 	var angle := _turn_to(item, tangent)
 	var depth := MapEditorSelection.half_extent_along(item, normal)
-	var offset := AuthoredRoadStyle.bed_width(str(best["class"])) * 0.5 + KERB_PAD + depth
+	# Seated against the AUTHORED class width, not the narrower drawn bed, so a new mass lines
+	# up with the street the rest of the town was laid out along.
+	var offset := AuthoredMap.road_width(str(best["class"])) * 0.5 + KERB_PAD + depth
 	var seated := closest + normal * offset
 	if centre.distance_to(seated) > SNAP_BAND:
 		return {}

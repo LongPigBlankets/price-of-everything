@@ -580,15 +580,19 @@ func visible_mass_polygons() -> Array:
 		for record in _list(settlement, "decor"):
 			if _sacrificed.has(str(record.get("id", ""))):
 				continue
-			for poly_value in AuthoredFabricPainter.mass_polygons(record):
+			for poly_value in AuthoredFabricPainter.drawn_mass_polygons(record):
 				for piece in AuthoredFabricPainter.surviving_pieces(
 						poly_value as PackedVector2Array, _keep_out):
 					_append_visible(out, piece as PackedVector2Array, record)
 		for record in _list(settlement, "specials"):
 			if _sacrificed.has(str(record.get("id", ""))) or _tutorial_hides_port_warehouse(record):
 				continue
-			for piece in AuthoredFabricPainter.surviving_pieces(
-					AuthoredSpecialShapes.render_polygon(record), _keep_out):
+			# Harbour shapes are drawn at full size by draw_port_group; everything else at the
+			# decorative draw scale. Either way, what the screen shows.
+			var drawn: PackedVector2Array = AuthoredSpecialShapes.render_polygon(record) \
+				if str(record.get("port", "")) != "" \
+				else AuthoredFabricPainter.drawn_special_polygon(record)
+			for piece in AuthoredFabricPainter.surviving_pieces(drawn, _keep_out):
 				_append_visible(out, piece as PackedVector2Array, record)
 	return out
 
