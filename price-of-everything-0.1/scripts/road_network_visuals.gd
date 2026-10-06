@@ -256,6 +256,9 @@ const BRIDGE_PROBE_STEP := 2.0
 ## road, so they narrow with it (MapStyle.ROAD_DRAW_SCALE).
 const BRIDGE_DECK_WIDTH := 9.0 * MapStyleScript.ROAD_DRAW_SCALE
 const BRIDGE_RAIL_OFFSET := 5.4 * MapStyleScript.ROAD_DRAW_SCALE
+## The rails' ink line weights, narrowed with the road like every other road line.
+const BRIDGE_RAIL_WIDTH_TRUNK := 1.4 * MapStyleScript.ROAD_DRAW_SCALE
+const BRIDGE_RAIL_WIDTH_LOCAL := 1.6 * MapStyleScript.ROAD_DRAW_SCALE
 
 ## Half-length the deck may run along `dir` before it reaches dry ground, or -1.0
 ## when there is no landfall within BRIDGE_HALF_MAX (so this end is open water).
@@ -298,12 +301,12 @@ func _draw_bridge_deck(canvas: CanvasItem, point: Vector2, tangent: Vector2,
 		canvas.draw_line(a, b, MapStyle.road_trunk(), BRIDGE_DECK_WIDTH, true)
 		for ps in [-1.0, 1.0]:
 			var rail: Vector2 = n * (BRIDGE_RAIL_OFFSET * float(ps))
-			canvas.draw_line(a + rail, b + rail, MapStyle.road_casing_trunk(), 1.4, true)
+			canvas.draw_line(a + rail, b + rail, MapStyle.road_casing_trunk(), BRIDGE_RAIL_WIDTH_TRUNK, true)
 		return
 	canvas.draw_line(point - tangent * back, point + tangent * fwd, MapStyle.road_local(), BRIDGE_DECK_WIDTH, true)
 	for s in [-1.0, 1.0]:
 		var off: Vector2 = n * (BRIDGE_RAIL_OFFSET * float(s))
-		canvas.draw_line(point - tangent * back + off, point + tangent * fwd + off, MapStyle.road_casing(), 1.6, true)
+		canvas.draw_line(point - tangent * back + off, point + tangent * fwd + off, MapStyle.road_casing(), BRIDGE_RAIL_WIDTH_LOCAL, true)
 
 ## Ink-mode run renderer: dashes for every run are accumulated per tier and
 ## submitted as ONE draw_multiline each; the solid near-parchment beds go on
@@ -369,7 +372,7 @@ func _draw_runs_ink(canvas: CanvasItem, runs_by_edge: Dictionary, network: RoadN
 			MapStyle.road_trunk() if b[1] else MapStyle.road_local()])
 	add_ribbons(canvas, bed_strokes)
 	if center_trunk.size() >= 2:
-		canvas.draw_multiline(center_trunk, MapStyle.trunk_center_color(), MapStyle.trunk_center_width(), true)
+		canvas.draw_multiline(center_trunk, MapStyle.trunk_center_color(), MapStyle.trunk_center_draw_width(), true)
 
 ## Simplify-then-wobble the DRAWN polyline (endpoints and simplified corners
 ## stay exact, so junction joints and network connectivity read unchanged).

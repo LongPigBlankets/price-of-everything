@@ -216,7 +216,11 @@ const MASK_ROAD_CLEAR := 5.0
 ## a lane 4u. A lane therefore opens far more frontage than the ground it costs —
 ## which is the test any new street has to pass before it earns its land.
 const SERVICE_CLEAR := 4.0           # buildings keep only this off a lane centreline
-const SERVICE_WIDTH := 2.0           # drawn carriageway width (vs 7u for a local road)
+const SERVICE_WIDTH := 2.0           # carriageway width (vs 7u for a local road)
+## A service lane as DRAWN: bed and hairline casing narrowed with the roads
+## (MapStyle.ROAD_DRAW_SCALE). Clearance still measures SERVICE_CLEAR off the centreline.
+const SERVICE_DRAW_WIDTH := SERVICE_WIDTH * MapStyleScript.ROAD_DRAW_SCALE
+const SERVICE_DRAW_CASING_WIDTH := (SERVICE_WIDTH + 2.0) * MapStyleScript.ROAD_DRAW_SCALE
 const SERVICE_MIN_BUILDINGS := 3     # a tile earns its lane only once this many buildings stand on it
 const SERVICE_VOID_RADIUS := 60.0    # a cell further than this from every road centres a ~120u roadless pocket
 const SERVICE_ANCHOR_KEEP := 30.0    # the lane leaves the road this far from any junction or stub
@@ -338,6 +342,12 @@ const FOREST_HEP_MARGIN := 6.0        # heptagon ring sits this far outside the 
 const FARM_BRIDGE_COLOR := Color(0.42, 0.36, 0.30)   # deck where a lane crosses a river
 const FARM_BRIDGE_W := 6.0
 const FARM_BRIDGE_LEN := 20.0
+## Farm tracks as DRAWN, narrowed with the roads (MapStyle.ROAD_DRAW_SCALE): the classic dirt
+## lanes and their bridge decks, and in ink the path-tan gap between parcels, whose drawn width
+## is 2 x FARM_TRACK_DRAW_INSET instead of 2 x PARCEL_INSET.
+const FARM_LANE_DRAW_W := FARM_LANE_W * MapStyleScript.ROAD_DRAW_SCALE
+const FARM_BRIDGE_DRAW_W := FARM_BRIDGE_W * MapStyleScript.ROAD_DRAW_SCALE
+const FARM_BRIDGE_RAIL_DRAW_W := 2.0 * MapStyleScript.ROAD_DRAW_SCALE
 const FARM_ROAD_MERGE_MAX := 120.0    # connect the farm tracks to a real road within this gap (no new road)
 
 ## Viewport culling: when no more than this many footprints are on screen (zoomed
@@ -346,6 +356,7 @@ const CULL_CAP := 160
 const CULL_MARGIN := 600.0
 const ViewStream := preload("res://scripts/view_stream.gd")
 const CanvasBatch := preload("res://scripts/canvas_batch.gd")
+const MapStyleScript := preload("res://scripts/map_style.gd")
 
 ## FAR LOD. Below this many screen pixels across a typical footprint, its drop shadow, prism
 ## sides, ink outline, roof motifs and shape-language art are all sub-pixel — about 19.5 draw
@@ -4474,6 +4485,7 @@ const PARCEL_CUT_MIN := 40.0     # cross-cut spacing range along the long axis
 const PARCEL_CUT_MAX := 80.0
 const PARCEL_SHEAR_DEG := 3.0    # per-cut tilt so cells are trapezoids, not graph paper
 const PARCEL_INSET := 2.2        # gap: the base path-tan shows through = the little roads
+const FARM_TRACK_DRAW_INSET := PARCEL_INSET * MapStyleScript.ROAD_DRAW_SCALE   # the gap as drawn
 const PARCEL_MIN_AREA := 250.0   # drop boundary slivers (base shows = path widening)
 const FURROW_SPACING := 7.0      # ink furrow pitch (denser than the classic 12u hatch)
 
@@ -5671,13 +5683,13 @@ func _lp_draw_inner() -> void:
 				draw_circle(_poly_centroid(verts), 2.4, MapStyle.ink_color())
 			elif verts.size() == 4:
 				_draw_roof_motifs(str(placement.cat), str(placement.instance_id), verts, bool(placement.is_npc), top)
-	# Service lanes: SERVICE_WIDTH of carriageway and a hairline casing. Deliberately
-	# far thinner than a local road — the eye should read them as access, not route,
-	# and the thinness is the visual promise that they cost almost no land.
+	# Service lanes: a thin carriageway and a hairline casing, at the road draw scale.
+	# Deliberately far thinner than a local road — the eye should read them as access,
+	# not route, and the thinness is the visual promise that they cost almost no land.
 	for tid_v in _service_world:
-		draw_polyline(_service_world[tid_v] as PackedVector2Array, MapStyle.road_casing(), SERVICE_WIDTH + 2.0, true)
+		draw_polyline(_service_world[tid_v] as PackedVector2Array, MapStyle.road_casing(), SERVICE_DRAW_CASING_WIDTH, true)
 	for tid_v2 in _service_world:
-		draw_polyline(_service_world[tid_v2] as PackedVector2Array, MapStyle.road_local(), SERVICE_WIDTH, true)
+		draw_polyline(_service_world[tid_v2] as PackedVector2Array, MapStyle.road_local(), SERVICE_DRAW_WIDTH, true)
 	# Round tanks on top (they sit off their building). Farm barns/silos are part of the
 	# farm layer and draw with it, under the canopy.
 	for sc in _subcomponents:
@@ -5713,8 +5725,11 @@ func draw_farm_layer(c: CanvasItem) -> void:
 			# insets as the little farm roads; NO outer outline (the parcel
 			# edges carry the boundary — kills the chunky-blob read).
 			c.draw_colored_polygon(verts, MapStyle.farm_path_color())
-			for pc in (parcel_src.get("parcels", []) as Array):
-				var pp: PackedVector2Array = pc.p
+			var parcel_list: Array = parcel_src.get("parcels", []) as Array
+			var drawn_parcels := _drawn_farm_parcels(fid, parcel_list)
+			for parcel_i in parcel_list.size():
+				var pc: Dictionary = parcel_list[parcel_i]
+				var pp: PackedVector2Array = drawn_parcels[parcel_i]
 				if pp.size() < 3:
 					continue
 				c.draw_colored_polygon(pp, MapStyle.farm_parcel_tint(int(pc.t)))
@@ -5764,12 +5779,12 @@ func draw_farm_layer(c: CanvasItem) -> void:
 	# farms are parcel blocks sitting beside the roads, not lane-connected
 	# blobs. Classic keeps the dirt tracks + their river bridge decks.
 	if not MapStyle.uses_ink_linework():
-		var joint_r := FARM_LANE_W * 0.5
+		var joint_r := FARM_LANE_DRAW_W * 0.5
 		for tid in _farm_lanes:
 			for seg in (_farm_lanes[tid] as Array):
 				var ls: PackedVector2Array = seg
 				if ls.size() >= 2:
-					c.draw_polyline(ls, FARM_LANE_COLOR, FARM_LANE_W)
+					c.draw_polyline(ls, FARM_LANE_COLOR, FARM_LANE_DRAW_W)
 					for v in ls:
 						c.draw_circle(v, joint_r, FARM_LANE_COLOR)   # fill each corner/junction
 		# Bridge decks where a lane crosses a river.
@@ -5780,14 +5795,43 @@ func draw_farm_layer(c: CanvasItem) -> void:
 				var bpr := Vector2(-bd.y, bd.x)
 				var e0 := bp - bd * (FARM_BRIDGE_LEN * 0.5)
 				var e1 := bp + bd * (FARM_BRIDGE_LEN * 0.5)
-				c.draw_line(e0, e1, FARM_BRIDGE_COLOR, FARM_BRIDGE_W)            # deck
-				c.draw_line(e0 - bpr * 5.0, e0 + bpr * 5.0, FARM_BRIDGE_COLOR, 2.0)   # abutment rails
-				c.draw_line(e1 - bpr * 5.0, e1 + bpr * 5.0, FARM_BRIDGE_COLOR, 2.0)
+				var half_span := 5.0 * MapStyleScript.ROAD_DRAW_SCALE
+				c.draw_line(e0, e1, FARM_BRIDGE_COLOR, FARM_BRIDGE_DRAW_W)            # deck
+				c.draw_line(e0 - bpr * half_span, e0 + bpr * half_span, FARM_BRIDGE_COLOR, FARM_BRIDGE_RAIL_DRAW_W)   # abutment rails
+				c.draw_line(e1 - bpr * half_span, e1 + bpr * half_span, FARM_BRIDGE_COLOR, FARM_BRIDGE_RAIL_DRAW_W)
 	# Farm outbuildings sit ON the field, so they belong to this layer too.
 	for sc in _subcomponents:
 		var k := str(sc.kind)
 		if k == "farm_barn" or k == "farm_silo":
 			_draw_subcomponent(sc, c)
+
+## The ink parcels of one farm as DRAWN: each grown back by PARCEL_INSET - FARM_TRACK_DRAW_INSET,
+## so the path-tan track between them narrows to the road draw scale while the parcels, their
+## furrows and the outbuildings snapped inside them stay as laid out (and as the start layout
+## baked them). Cached per farm against the parcel list it was built from, so a repaint costs
+## nothing and a relayout, which builds a new list, rebuilds it.
+var _farm_parcel_draw: Dictionary = {}
+func _drawn_farm_parcels(fid: String, parcels: Array) -> Array:
+	var cached: Dictionary = _farm_parcel_draw.get(fid, {})
+	if not cached.is_empty() and is_same(cached.src, parcels):
+		return cached.polys
+	var polys: Array = []
+	for pc in parcels:
+		polys.append(drawn_farm_parcel((pc as Dictionary).p as PackedVector2Array))
+	_farm_parcel_draw[fid] = {"src": parcels, "polys": polys}
+	return polys
+
+
+## One laid-out parcel grown to its drawn size; the parcel itself when growing fails.
+static func drawn_farm_parcel(parcel: PackedVector2Array) -> PackedVector2Array:
+	if parcel.size() < 3:
+		return parcel
+	var grown := Geometry2D.offset_polygon(parcel, PARCEL_INSET - FARM_TRACK_DRAW_INSET,
+		Geometry2D.JOIN_MITER)
+	if grown.size() != 1 or (grown[0] as PackedVector2Array).size() < 3:
+		return parcel
+	return grown[0]
+
 
 ## Draw ancillary buildings in the parent's wash; farm outbuildings carry ownership colour.
 func _draw_subcomponent(sc: Dictionary, canvas: CanvasItem = null) -> void:
