@@ -1,5 +1,6 @@
 extends Control
-## Shared two-row encyclopedia hover and click target for goods only.
+## Shared two-row encyclopedia hover and right-click target for goods only. A left click passes through to
+## whatever the icon sits on; a right click opens the good's encyclopedia entry.
 const Emblem := preload("res://scripts/effect_emblem.gd")
 var good_id := ""
 var texture_source: TextureRect
@@ -8,7 +9,6 @@ var detail_lines := PackedStringArray()
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
-	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 
 func resolved_good_id() -> String:
 	if is_instance_valid(texture_source):
@@ -43,7 +43,7 @@ static func make_tooltip(good_name: String, details: PackedStringArray = PackedS
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 4)
 	col.add_child(row)
-	row.add_child(_label("Click to open"))
+	row.add_child(_label("Right click to open"))
 	var book := TextureRect.new()
 	book.texture = Emblem.texture("encyclopedia")
 	book.self_modulate = Color("#f6e8c6")
@@ -62,7 +62,7 @@ static func _label(value: String) -> Label:
 	return label
 
 func _gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 		var id := resolved_good_id()
 		if id != "":
 			accept_event()

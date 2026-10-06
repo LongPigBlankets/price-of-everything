@@ -39,12 +39,20 @@ func _ready() -> void:
 	for frame in 3: await get_tree().process_frame
 	var sent := []
 	MatchState.encyclopedia_good_requested.connect(func(id): sent.append(id))
+	var left := InputEventMouseButton.new()
+	left.button_index = MOUSE_BUTTON_LEFT
+	left.pressed = true
+	left.position = tex.get_global_rect().get_center()
+	get_viewport().push_input(left, true)
+	left.pressed = false
+	get_viewport().push_input(left, true)
+	check(sent.is_empty(), "A left click on a good passes through and opens no entry")
 	var click := InputEventMouseButton.new()
-	click.button_index = MOUSE_BUTTON_LEFT
+	click.button_index = MOUSE_BUTTON_RIGHT
 	click.pressed = true
 	click.position = tex.get_global_rect().get_center()
 	get_viewport().push_input(click, true)
-	check(sent == ["g_004"], "Goods clicks dispatch their encyclopedia entry")
+	check(sent == ["g_004"], "A right click on a good opens its encyclopedia entry")
 	click.pressed = false
 	get_viewport().push_input(click, true)
 	click.pressed = true
@@ -54,11 +62,15 @@ func _ready() -> void:
 	get_viewport().push_input(motion, true)
 	await get_tree().process_frame
 	get_viewport().push_input(click, true)
-	check(sent == ["g_004", "g_004"], "Framed icon link opens encyclopedia once without opening the graph")
+	check(sent == ["g_004", "g_004"], "A right click on a framed icon opens the entry once without opening the graph")
 	var tip = target._make_custom_tooltip(target._get_tooltip(Vector2.ZERO))
 	tip.position = Vector2(145,45)
 	add_child(tip)
 	check(tip.get_theme_stylebox("panel").bg_color == Color("#051a2e"), "Goods-only hover has dark navy background")
+	var words := ""
+	for label in tip.find_children("*", "Label", true, false):
+		words += (label as Label).text + " "
+	check(words.contains("Right click to open"), "The hover says a right click opens the entry")
 	var image := Emblem.texture("merge").get_image()
 	var expected: Image = load("res://assets/icons/research/glyph/merge.png").get_image()
 	expected.rotate_90(CLOCKWISE)
