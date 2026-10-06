@@ -3193,6 +3193,173 @@ func _test_hijack_mass_claim() -> void:
 	terrain.queue_free()
 
 
+func _poly_list_area(polys: Array) -> float:
+	var total := 0.0
+	for poly_value in polys:
+		var poly: PackedVector2Array = poly_value
+		var twice := 0.0
+		for i in poly.size():
+			var a := poly[i]
+			var b := poly[(i + 1) % poly.size()]
+			twice += a.x * b.y - b.x * a.y
+		total += absf(twice) * 0.5
+	return total
+
+
+func _test_decor_draws_at_three_quarter_size() -> void:
+	# Decorative buildings DRAW at 0.75 of their authored size, about their own centre. The
+	# authored polygons are untouched: placement and the editor still measure those.
+	var factor := AuthoredFabricPainter.DECOR_DRAW_SCALE
+	_check(is_equal_approx(factor, 0.75), "decor scale: decorative buildings draw at 0.75 (got %.3f)" % factor)
+	var bad := PackedStringArray()
+	for form_value in MassFormShapes.ALL_FORMS:
+		var mass := {"id": "d:test:%s" % str(form_value), "form": str(form_value),
+			"pos": [1000.0, 1000.0], "rot": 0.6, "size": [90.0, 58.0]}
+		var authored := _poly_list_area(AuthoredFabricPainter.mass_polygons(mass))
+		var drawn_polys: Array = AuthoredFabricPainter.drawn_mass_polygons(mass)
+		var drawn := _poly_list_area(drawn_polys)
+		if authored <= 0.0 or absf(drawn / authored - factor * factor) > 0.001:
+			bad.append("%s area %.1f of %.1f" % [str(form_value), drawn, authored])
+			continue
+		# Shrunk toward the centre of its box, never moved out of it.
+		var parcel: PackedVector2Array = AuthoredFabricPainter.mass_parcel(mass)
+		for poly_value in drawn_polys:
+			for point in (poly_value as PackedVector2Array):
+				if not Geometry2D.is_point_in_polygon(point, _grow_quad(parcel, 2.0)):
+					bad.append("%s escapes its box" % str(form_value))
+					break
+	_check(bad.is_empty(), "decor scale: every mass form draws at 0.75 linear size (%s)" % ", ".join(bad))
+
+	var shapes := preload("res://scripts/authored_special_shapes.gd")
+	for kind_value in shapes.kinds():
+		var kind := str(kind_value)
+		var special: Dictionary = shapes.record("s:test:%s" % kind, kind, Vector2(500.0, 400.0))
+		if kind == "poly":
+			special["outline"] = [[470.0, 380.0], [540.0, 385.0], [535.0, 430.0], [480.0, 420.0]]
+		var authored_poly: PackedVector2Array = shapes.render_polygon(special)
+		var drawn_poly := AuthoredFabricPainter.drawn_special_polygon(special)
+		var ratio := _poly_list_area([drawn_poly]) / maxf(_poly_list_area([authored_poly]), 0.001)
+		_check(drawn_poly.size() == authored_poly.size() and absf(ratio - 0.5625) < 0.001,
+			"decor scale: a '%s' special draws at 0.75 linear size (area ratio %.4f)" % [kind, ratio])
+		var shift := AuthoredFabricPainter.area_centre(drawn_poly).distance_to(
+			AuthoredFabricPainter.area_centre(authored_poly))
+		_check(shift < 0.01, "decor scale: a '%s' special shrinks about its own centre (moved %.3f u)" % [kind, shift])
+
+	# The fabric layer's read-only seam reports the same: town masses and specials at their
+	# drawn size, harbour shapes at full size.
+	var mass_record := {"id": "d:vis", "form": "solid", "pos": [100.0, 100.0], "rot": 0.0,
+		"size": [60.0, 40.0]}
+	var doc := {
+		"version": AuthoredMap.SCHEMA_VERSION,
+		"settlements": {"s": {
+			"tiles": ["tile_9_10"],
+			"decor": [mass_record],
+			"specials": [
+				{"id": "s:vis", "kind": "poly", "outline": _rect_outline(Vector2(300.0, 100.0), 50.0, 30.0), "sides": []},
+				{"id": "s:quay", "kind": "poly", "outline": _rect_outline(Vector2(500.0, 100.0), 80.0, 40.0),
+					"sides": [], "port": "tile_9_10"},
+			],
+		}},
+	}
+	AuthoredMap.set_document_for_tests(doc)
+	var fabric: Node2D = preload("res://scripts/authored_fabric_visuals.gd").new()
+	add_child(fabric)
+	var areas := {}
+	for entry_value in fabric.visible_mass_polygons():
+		var entry: Dictionary = entry_value
+		areas[str(entry.id)] = float(areas.get(str(entry.id), 0.0)) + _poly_list_area([entry.poly])
+	var mass_full := _poly_list_area(AuthoredFabricPainter.mass_polygons(mass_record))
+	_check(absf(float(areas.get("d:vis", 0.0)) - mass_full * 0.5625) < 0.5,
+		"decor scale: the fabric layer reports the town mass at its drawn size (%.1f of %.1f)"
+		% [float(areas.get("d:vis", 0.0)), mass_full])
+	_check(absf(float(areas.get("s:vis", 0.0)) - 50.0 * 30.0 * 0.5625) < 0.5,
+		"decor scale: the fabric layer reports the special at its drawn size (%.1f)" % float(areas.get("s:vis", 0.0)))
+	_check(absf(float(areas.get("s:quay", 0.0)) - 80.0 * 40.0) < 0.5,
+		"decor scale: harbour shapes keep their full size (%.1f)" % float(areas.get("s:quay", 0.0)))
+	fabric.queue_free()
+	AuthoredMap.set_document_for_tests({})
+
+
+func _test_hijacked_decor_keeps_full_footprint() -> void:
+	# A building that takes over a decorative mass wears the mass's AUTHORED outline, not the
+	# smaller one the fabric draws, so player and NPC buildings keep their size.
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		bv.queue_free(); terrain.queue_free(); return
+	var c: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+	var mass := {"id": "d:hj", "form": "solid", "pos": [c.x - 60.0, c.y], "rot": 0.3,
+		"size": [64.0, 44.0], "hijack": true}
+	var doc := {
+		"version": AuthoredMap.SCHEMA_VERSION,
+		"settlements": {"s": {"tiles": [tile_id], "decor": [mass]}},
+	}
+	var problems := AuthoredMap.validate(doc)
+	_check(problems.is_empty(), "hijack size: the fixture document is valid (%s)" % str(problems))
+	AuthoredMap.set_document_for_tests(doc)
+
+	var full := _poly_list_area(AuthoredFabricPainter.mass_polygons(mass))
+	var drawn := _poly_list_area(AuthoredFabricPainter.drawn_mass_polygons(mass))
+	var claim: Dictionary = bv._claim_hijack_mass(tile_id, coord, full)
+	_check(str(claim.get("hijack_id", "")) == "d:hj",
+		"hijack size: the building takes over the marked mass (got '%s')" % str(claim.get("hijack_id", "")))
+	if not claim.is_empty():
+		var footprint := _poly_list_area([claim.verts])
+		_check(absf(footprint - full) < 0.5,
+			"hijack size: the footprint is the full authored mass (%.1f u2, mass %.1f, drawn decor %.1f)"
+			% [footprint, full, drawn])
+		_check(footprint > drawn * 1.7,
+			"hijack size: the building is not shrunk with the decor (%.1f vs drawn %.1f)" % [footprint, drawn])
+
+	AuthoredMap.set_document_for_tests({})
+	bv.queue_free()
+	terrain.queue_free()
+
+
+func _test_road_draw_width_three_quarters() -> void:
+	# Roads DRAW 25% narrower. The authored class widths and the layout widths are unchanged,
+	# and pipes and cables keep their size.
+	_check(is_equal_approx(MapStyle.ROAD_DRAW_SCALE, 0.75),
+		"road scale: roads draw at 0.75 width (got %.3f)" % MapStyle.ROAD_DRAW_SCALE)
+	for stroke_class in ["major", "mid", "minor"]:
+		var authored := AuthoredMap.road_width(stroke_class)
+		_check(is_equal_approx(AuthoredRoadStyle.bed_width(stroke_class), authored * 0.75),
+			"road scale: an authored %s bed draws at 0.75 of %.1f (got %.2f)"
+			% [stroke_class, authored, AuthoredRoadStyle.bed_width(stroke_class)])
+		var casing := (authored + float(AuthoredRoadStyle.CASING_DELTA[stroke_class])) * 0.75
+		_check(is_equal_approx(AuthoredRoadStyle.casing_width(stroke_class), casing),
+			"road scale: an authored %s casing draws at 0.75 (got %.2f)"
+			% [stroke_class, AuthoredRoadStyle.casing_width(stroke_class)])
+	_check(is_equal_approx(AuthoredMap.road_width("major"), 18.0),
+		"road scale: the authored class width the editor seats buildings against is unchanged")
+	for trunk in [true, false]:
+		_check(is_equal_approx(MapStyle.road_draw_width(trunk), MapStyle.road_width(trunk) * 0.75)
+			and is_equal_approx(MapStyle.road_draw_casing_width(trunk), MapStyle.road_casing_width(trunk) * 0.75),
+			"road scale: the procedural %s road draws at 0.75 of its layout width" % ("trunk" if trunk else "local"))
+	var rnv := preload("res://scripts/road_network_visuals.gd")
+	_check(is_equal_approx(rnv.BRIDGE_DECK_WIDTH, 9.0 * 0.75) and is_equal_approx(rnv.BRIDGE_RAIL_OFFSET, 5.4 * 0.75),
+		"road scale: bridge decks narrow with the road")
+	# Pipes and cables are not roads: their art and plumbing widths do not move.
+	_check(is_equal_approx(AuthoredFabricPainter.PIPE_WIDTH, 3.2)
+		and is_equal_approx(preload("res://scripts/port_visuals.gd").PIPE_WIDTH, 3.2),
+		"road scale: harbour pipe widths are unchanged")
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	for key in ["pipes", "cables"]:
+		_check(is_equal_approx(bv._art_size_for(1, key), 30.0),
+			"road scale: %s art keeps its drawn size (%.1f)" % [key, bv._art_size_for(1, key)])
+	bv.free()
+
+
 ## The near bake tier exists to serve the camera's maximum zoom without magnifying a texture.
 ## These are the two numbers that have to agree — the bake scale and the camera's tile count —
 ## so changing `zoomed_in_tile_count` again fails HERE rather than as a soft picture in play.

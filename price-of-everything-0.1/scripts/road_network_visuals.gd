@@ -18,6 +18,7 @@ extends Node2D
 ## Hand-authored tiles draw their own roads; this layer stands down on them.
 const AuthoredMap := preload("res://scripts/authored_map.gd")
 const ViewStream := preload("res://scripts/view_stream.gd")
+const MapStyleScript := preload("res://scripts/map_style.gd")
 
 ## THE SAME BUG THE RIVERS HAD (they are one mesh now: river_mesh_builder.gd). _draw walked EVERY edge of the whole
 ## 728-edge network — twice, casing under bed — and the renderer replays that command buffer
@@ -216,9 +217,9 @@ func _lp_draw_inner() -> void:
 				if (run as PackedVector2Array).size() < 2:
 					continue
 				classic_casing.append(["%s|%d|cc" % [edge_id4, classic_beds.size()], run,
-					MapStyle.road_casing_width(trunk4), MapStyle.road_casing()])
+					MapStyle.road_draw_casing_width(trunk4), MapStyle.road_casing()])
 				classic_beds.append(["%s|%d|cb" % [edge_id4, classic_beds.size()], run,
-					MapStyle.road_width(trunk4),
+					MapStyle.road_draw_width(trunk4),
 					MapStyle.road_trunk() if trunk4 else MapStyle.road_local()])
 		add_ribbons(self, classic_casing)
 		add_ribbons(self, classic_beds)
@@ -251,6 +252,10 @@ func _lp_draw_inner() -> void:
 const BRIDGE_HALF_MAX := 21.0
 const BRIDGE_HALF_MIN := 6.0
 const BRIDGE_PROBE_STEP := 2.0
+## The deck's width across the road and its rails' offset from the centre line. Sized to the
+## road, so they narrow with it (MapStyle.ROAD_DRAW_SCALE).
+const BRIDGE_DECK_WIDTH := 9.0 * MapStyleScript.ROAD_DRAW_SCALE
+const BRIDGE_RAIL_OFFSET := 5.4 * MapStyleScript.ROAD_DRAW_SCALE
 
 ## Half-length the deck may run along `dir` before it reaches dry ground, or -1.0
 ## when there is no landfall within BRIDGE_HALF_MAX (so this end is open water).
@@ -278,7 +283,8 @@ func _draw_bridge_glyph(canvas: CanvasItem, point: Vector2, tangent: Vector2) ->
 func _draw_bridge_deck(canvas: CanvasItem, point: Vector2, tangent: Vector2,
 		fwd: float, back: float) -> void:
 	if not MapStyle.uses_ink_linework():
-		canvas.draw_line(point - tangent * back, point + tangent * fwd, MapStyle.road_bridge(), 10.0, true)
+		canvas.draw_line(point - tangent * back, point + tangent * fwd, MapStyle.road_bridge(),
+			10.0 * MapStyleScript.ROAD_DRAW_SCALE, true)
 		return
 	var n := Vector2(-tangent.y, tangent.x)
 	if MapStyle.has_cartographic_depth():
@@ -287,15 +293,16 @@ func _draw_bridge_deck(canvas: CanvasItem, point: Vector2, tangent: Vector2,
 		var off := MapStyle.extrude_offset(MapStyle.Extrude.MILD)
 		var a := point - tangent * back
 		var b := point + tangent * fwd
-		canvas.draw_line(a + off, b + off, MapStyle.extrude_side(MapStyle.road_trunk(), MapStyle.Extrude.MILD), 9.0, true)
-		canvas.draw_line(a, b, MapStyle.road_trunk(), 9.0, true)
+		canvas.draw_line(a + off, b + off, MapStyle.extrude_side(MapStyle.road_trunk(), MapStyle.Extrude.MILD),
+			BRIDGE_DECK_WIDTH, true)
+		canvas.draw_line(a, b, MapStyle.road_trunk(), BRIDGE_DECK_WIDTH, true)
 		for ps in [-1.0, 1.0]:
-			var rail: Vector2 = n * (5.4 * float(ps))
+			var rail: Vector2 = n * (BRIDGE_RAIL_OFFSET * float(ps))
 			canvas.draw_line(a + rail, b + rail, MapStyle.road_casing_trunk(), 1.4, true)
 		return
-	canvas.draw_line(point - tangent * back, point + tangent * fwd, MapStyle.road_local(), 9.0, true)
+	canvas.draw_line(point - tangent * back, point + tangent * fwd, MapStyle.road_local(), BRIDGE_DECK_WIDTH, true)
 	for s in [-1.0, 1.0]:
-		var off: Vector2 = n * (5.4 * float(s))
+		var off: Vector2 = n * (BRIDGE_RAIL_OFFSET * float(s))
 		canvas.draw_line(point - tangent * back + off, point + tangent * fwd + off, MapStyle.road_casing(), 1.6, true)
 
 ## Ink-mode run renderer: dashes for every run are accumulated per tier and
@@ -339,9 +346,9 @@ func _draw_runs_ink(canvas: CanvasItem, runs_by_edge: Dictionary, network: RoadN
 			beds.append([pts2, is_trunk, ("%s|%d" % [edge_id, run_i]) if cacheable else null])
 			run_i += 1
 	if dash_local.size() >= 2:
-		canvas.draw_multiline(dash_local, MapStyle.road_casing(), MapStyle.road_casing_width(false), true)
+		canvas.draw_multiline(dash_local, MapStyle.road_casing(), MapStyle.road_draw_casing_width(false), true)
 	if dash_trunk.size() >= 2:
-		canvas.draw_multiline(dash_trunk, MapStyle.road_casing(), MapStyle.road_casing_width(true), true)
+		canvas.draw_multiline(dash_trunk, MapStyle.road_casing(), MapStyle.road_draw_casing_width(true), true)
 	# City plate: streets are cream CHANNELS, so the casing is a solid hairline
 	# edge under the bed rather than the survey-map dash. Trunk edges take the
 	# heavier alpha — in this idiom that line is the block frontage.
@@ -352,13 +359,13 @@ func _draw_runs_ink(canvas: CanvasItem, runs_by_edge: Dictionary, network: RoadN
 		for b0 in beds:
 			var trunk0: bool = b0[1]
 			casings.append([("%s|c" % b0[2]) if b0[2] != null else null, b0[0],
-				MapStyle.road_casing_width(trunk0),
+				MapStyle.road_draw_casing_width(trunk0),
 				MapStyle.road_casing_trunk() if trunk0 else MapStyle.road_casing()])
 		add_ribbons(canvas, casings)
 	var bed_strokes: Array = []
 	for b in beds:
 		bed_strokes.append([("%s|b" % b[2]) if b[2] != null else null, b[0],
-			MapStyle.road_width(b[1]),
+			MapStyle.road_draw_width(b[1]),
 			MapStyle.road_trunk() if b[1] else MapStyle.road_local()])
 	add_ribbons(canvas, bed_strokes)
 	if center_trunk.size() >= 2:
@@ -626,9 +633,9 @@ func _draw_terminus_glyphs(network: RoadNetwork, terrain: HexMap, flagged: Dicti
 		var is_trunk := tier == RoadNetwork.TIER_TRUNK
 		var core: Color = MapStyle.road_trunk() if is_trunk else MapStyle.road_local()
 		for a in arms:
-			draw_line(tip, a, MapStyle.road_casing(), MapStyle.road_casing_width(is_trunk), true)
+			draw_line(tip, a, MapStyle.road_casing(), MapStyle.road_draw_casing_width(is_trunk), true)
 		for a2 in arms:
-			draw_line(tip, a2, core, MapStyle.road_width(is_trunk), true)
+			draw_line(tip, a2, core, MapStyle.road_draw_width(is_trunk), true)
 
 ## Every arm endpoint must sit at least TERMINUS_EDGE_INSET inside the hex of
 ## the tile that owns the TIP, so a terminus bar never dangles over a tile seam.
@@ -787,9 +794,9 @@ func _draw_edge_polyline(canvas: CanvasItem, pts: PackedVector2Array, tier: Stri
 	var is_trunk := tier == RoadNetwork.TIER_TRUNK
 	# No cache key: the only caller is the reveal layer, whose geometry moves every frame.
 	if pass_i == 0:
-		add_ribbons(canvas, [[null, pts, MapStyle.road_casing_width(is_trunk), MapStyle.road_casing()]])
+		add_ribbons(canvas, [[null, pts, MapStyle.road_draw_casing_width(is_trunk), MapStyle.road_casing()]])
 	else:
-		add_ribbons(canvas, [[null, pts, MapStyle.road_width(is_trunk),
+		add_ribbons(canvas, [[null, pts, MapStyle.road_draw_width(is_trunk),
 			MapStyle.road_trunk() if is_trunk else MapStyle.road_local()]])
 
 

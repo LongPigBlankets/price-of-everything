@@ -3,6 +3,7 @@ extends Node
 ## what stands on the tile and how big the infrastructure's building is.
 ##   AGENT_GODOT_WINDOW=1 godot --path . res://tools/tile_look_shot.tscn -- --no-telemetry
 ## TILE picks the tile (Greyroad, tile_9_9, by default). Writes tile_<tile>_<view>.png into $TILE_SHOT_DIR (or /tmp).
+## ZOOMS, a comma list such as "1.1,2.4", adds a start capture per zoom (tile_<tile>_start_z<zoom>.png).
 
 const ShotHarness := preload("res://tools/shot_harness.gd")
 
@@ -46,6 +47,14 @@ func _ready() -> void:
 	cam.global_position = (terrain as Node2D).to_global(terrain.call("map_to_local", cell))
 	await _wait(1.2)
 	await _shot("%s_start" % tile)
+	for zoom_text in OS.get_environment("ZOOMS").split(",", false):
+		cam.zoom = Vector2.ONE * float(zoom_text)
+		cam.set("_target_zoom", cam.zoom)
+		await _wait(1.5)
+		await _shot("%s_start_z%s" % [tile, zoom_text.strip_edges()])
+	cam.zoom = Vector2.ONE * 1.1
+	cam.set("_target_zoom", cam.zoom)
+	await _wait(0.5)
 	# Built as the build flow does: the building, then the map told where it stands.
 	var iid := BuildingState.add_building("b_019", "", tile, MatchState.LOCAL_PLAYER)
 	main.emit_signal("building_placed", tile, "b_019", "", iid, coord)

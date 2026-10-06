@@ -8,7 +8,7 @@ extends RefCounted
 ## change flows straight through, and curates only what has to differ per class.
 ##
 ## WHAT IS CURATED, AND WHY:
-##   * bed width — the ruled 18 / 12.6 / 6.3 world units.
+##   * bed width — the ruled 18 / 12.6 / 6.3 world units, drawn at DRAW_SCALE.
 ##   * casing delta — how far the ink edge stands proud of the bed. Constant deltas would
 ##     make a minor road look like a hairline beside a major; these scale with the class.
 ##   * paper tone — majors take the warmer trunk paper, mids and minors the plain paper, so
@@ -25,6 +25,7 @@ extends RefCounted
 
 const AuthoredMap := preload("res://scripts/authored_map.gd")
 const MidcenturyStyle := preload("res://scripts/map_midcentury_style.gd")
+const MapStyleScript := preload("res://scripts/map_style.gd")
 
 ## How far the casing stands proud of the bed, per class (total, so half each side).
 ## Midcentury uses +4.0 on its trunk and +2.2 on its local; these keep that feel across a
@@ -62,12 +63,20 @@ const SIMPLIFY_EPS := 0.0
 const CURVE_SAMPLE := 6.0
 
 
+## The DRAWN carriageway and casing are this fraction of the class widths, so the road reads
+## narrower without the network moving. Shared with the procedural road layer through
+## MapStyle.ROAD_DRAW_SCALE. `AuthoredMap.road_width` stays the authored class width, which the
+## editor seats buildings against.
+const DRAW_SCALE := MapStyleScript.ROAD_DRAW_SCALE
+
+
 static func bed_width(stroke_class: String) -> float:
-	return AuthoredMap.road_width(stroke_class)
+	return AuthoredMap.road_width(stroke_class) * DRAW_SCALE
 
 
 static func casing_width(stroke_class: String) -> float:
-	return bed_width(stroke_class) + float(CASING_DELTA.get(stroke_class, 3.4))
+	return (AuthoredMap.road_width(stroke_class) + float(CASING_DELTA.get(stroke_class, 3.4))) \
+		* DRAW_SCALE
 
 
 ## The carriageway fill. Majors take the trunk paper so the hierarchy reads by tone as well

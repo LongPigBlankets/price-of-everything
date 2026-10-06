@@ -223,10 +223,11 @@ func _render(viewport: SubViewport, painter: Node2D, layer: String, records: Dic
 		tier: String = BakeLayout.TIER_FAR) -> int:
 	painter.configure(layer, records, BakeLayout.bake_transform_for(rect, tier), keep_out)
 	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
-	# The handshake `hill_visuals._bake_to_texture` uses: let the viewport run its single
-	# frame, then take the pixels only after the draw has actually landed.
+	# Let the viewport take its single update, then draw it ourselves. Awaiting
+	# frame_post_draw instead stalls the bake for good whenever the window is covered,
+	# because a covered window draws no frames.
 	await get_tree().process_frame
-	await RenderingServer.frame_post_draw
+	RenderingServer.force_draw(false)
 	var image := viewport.get_texture().get_image()
 	if image == null or image.is_empty():
 		return -1
