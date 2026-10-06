@@ -2,7 +2,7 @@
   "contract_version": 1,
   "status": "Phase-0 pure quote/budget contract; gameplay settlement is phase 1",
   "tariff": {
-    "id": "middleman_port_plus_haulage_v2",
+    "id": "local_suppliers_hub_haulage_v3",
     "ad_valorem": 0.005,
     "class_rates": {
       "solid_light": 0.025,

@@ -12,6 +12,8 @@ Non-tradeable goods such as wastewater cannot be fabricated as purchases or sold
 
 ## Fee per traded unit
 
+Superseded: the haul is now the good's freight rate × trips to the nearest hub × settlement factor, with sale bands per hub area. See [Local Suppliers: hub haulage and sale bands](local-suppliers-hub-pricing.md).
+
 `0.005 × current market reference price + cargo tariff × location coefficient`
 
 | Cargo class | Tariff |
@@ -30,6 +32,8 @@ The user explicitly retained a high gas rate after reviewing oxygen: at base pri
 At coefficient 1.5, fees as a percentage of base value are approximately 0.63–0.79% for current light solids, 4.05–21.95% for safe liquids, 3.74–22.40% for hazardous liquids, 23.32% for nitrogen and 109.50% for oxygen. These are per-side material-fee checks, not a broader balance study. The authoritative current schedule and Pepper Valley check are in [the current benchmark review](reviews/pepper-three-chain-integrated-vs-middleman-2026-09-20.md); the older full-catalogue report retains the previous-rate sensitivity run.
 
 ## Geography
+
+Superseded by the hub and settlement factors in [local-suppliers-hub-pricing.md](local-suppliers-hub-pricing.md).
 
 Urban areas are connected components of urban hexes, using the game's existing hex neighbours. Sparse city-name metadata is not used to guess their extent.
 
