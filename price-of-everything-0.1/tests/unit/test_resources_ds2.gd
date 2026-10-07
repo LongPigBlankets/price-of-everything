@@ -79,17 +79,10 @@ func _test_view_filters_sorts_and_opens() -> void:
 	view.free()
 	cleanup()
 
-## The panel keeps its v2 table with the switch off, and builds the DS2 view with it on.
-func _test_panel_switches_look() -> void:
-	var was := UiPrefs.use_resources_ds2
-	UiPrefs.set_use_resources_ds2(false)
+## The panel builds the DS2 view, 1080 wide.
+func _test_panel_builds_the_ds2_view() -> void:
 	var panel: Control = load("res://scenes/resource_panel.tscn").instantiate()
 	get_tree().root.add_child(panel)
-	_check(panel.find_child("ResourcesDs2", true, false) == null and (panel.get_node("MarginContainer") as Control).visible, "off: the v2 table")
-	UiPrefs.set_use_resources_ds2(true)
-	_check(panel.find_child("ResourcesDs2", true, false) != null and not (panel.get_node("MarginContainer") as Control).visible
-		and is_equal_approx(panel.custom_minimum_size.x, View.WIDTH), "on: the DS2 view, 1080 wide")
-	UiPrefs.set_use_resources_ds2(false)
-	_check(panel.find_child("ResourcesDs2", true, false) == null and (panel.get_node("MarginContainer") as Control).visible, "off again: the v2 table is back")
+	_check(panel.find_child("ResourcesDs2", true, false) != null and is_equal_approx(panel.custom_minimum_size.x, View.WIDTH),
+		"the DS2 view, 1080 wide")
 	panel.free()
-	UiPrefs.set_use_resources_ds2(was)

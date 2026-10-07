@@ -1,8 +1,7 @@
 extends RefCounted
-## The Shipments and Stockpiles panel in DS2, built into the transport panel (scripts/transport_panel.gd) while
-## UiPrefs.use_transport_ds2 is on. With the switch off the panel builds its v2 look itself. Everything here is
-## presentation: the panel keeps the rows' figures, the filters and the refresh wiring, and asks this script
-## for the parts.
+## The Shipments and Stockpiles panel in DS2, built into the transport panel (scripts/transport_panel.gd).
+## Everything here is presentation: the panel keeps the rows' figures, the filters and the refresh wiring, and
+## asks this script for the parts.
 ##
 ## The shell is the Building Ledger's: Building Detail's navy steel backing in its brass trim, the raised title,
 ## the Close key and the rubber seam. In the title row, the routing objective as three latching keys and the

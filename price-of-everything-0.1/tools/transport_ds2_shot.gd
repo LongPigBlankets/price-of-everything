@@ -1,8 +1,8 @@
 extends Node
-## Captures of the Shipments and Stockpiles panel in the real HUD, v2 beside DS2, after a few turns of a seeded
-## empire, and the DS2 Logistics Settings sheet in an intermediary game.
+## Captures of the Shipments and Stockpiles panel in the real HUD after a few turns of a seeded empire, and its
+## Logistics Settings sheet in an intermediary game.
 ##   TRANSPORT_SHOT_DIR=<dir> <godot> --path . res://tools/transport_ds2_shot.tscn --quit-after 20000 -- --no-telemetry
-## Writes transport_<look>.png and transport_ds2_settings.png.
+## Writes transport_ds2.png and transport_ds2_settings.png.
 
 var _wm: Node
 var _dir := ""
@@ -37,28 +37,24 @@ func _ready() -> void:
 		if TurnManager.is_resolving:
 			await TurnManager.turn_resolution_completed
 		await _settle(6)
-	for ds2: bool in [false, true]:
-		UiPrefs.set_use_transport_ds2(ds2)
-		MatchState.transport_panel_requested.emit()
-		await _settle(20)
-		var panel := _wm.find_child("TransportPanel", true, false) as Control
-		_hide_overlays(_wm)
-		await _settle(4)
-		await _shot(panel, "transport_%s" % ("ds2" if ds2 else "v2"))
+	MatchState.transport_panel_requested.emit()
+	await _settle(20)
+	var panel := _wm.find_child("TransportPanel", true, false) as Control
+	_hide_overlays(_wm)
+	await _settle(4)
+	await _shot(panel, "transport_ds2")
 	# The settings sheet exists only in an intermediary game.
 	MatchState.ruleset["logistics_model"] = "middleman_v1"
-	var panel := _wm.find_child("TransportPanel", true, false) as Control
 	panel.call("_refresh")
 	await _settle(4)
 	panel.call("_toggle_settings")
 	_hide_overlays(_wm)
 	await _settle(12)
 	await _shot(panel, "transport_ds2_settings")
-	UiPrefs.set_use_transport_ds2(false)
 	get_tree().quit(0)
 
 
-const OVERLAY_SCRIPTS := ["turn_briefing_panel.gd", "turn_briefing.gd", "cfo_intro_popup.gd", "briefing_ds2.gd"]
+const OVERLAY_SCRIPTS := ["turn_briefing.gd","cfo_intro_popup.gd", "briefing_ds2.gd"]
 
 func _hide_overlays(n: Node) -> void:
 	if n == _wm:

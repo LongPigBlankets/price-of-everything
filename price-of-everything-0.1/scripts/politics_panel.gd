@@ -17,8 +17,7 @@ extends PanelContainer
 signal close_requested
 
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
-const GoodIcons := preload("res://scripts/good_icons.gd")
-# The DS2 look (UiPrefs.use_politics_ds2): the ledger's shell and the kit's shared parts.
+# The ledger's shell and the DS2 kit's shared parts.
 const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
 const Parts := preload("res://scripts/ds2/parts.gd")
 const Metrics := preload("res://scripts/ds2/metrics.gd")
@@ -28,22 +27,16 @@ const Title := preload("res://scripts/bdp_v3_title.gd")
 const Key := preload("res://scripts/bdp_v3_key.gd")
 const Scroll := preload("res://scripts/bdp_v3_scroll.gd")
 
-# Tall enough for the whole six-beat record without scrolling at 1080p — the panel exists to
-# be read in one go, and a record that needs scrolling to reach the subsidy defeats that.
-const PANEL_SIZE := Vector2(560, 720)
-const HEADER_HEIGHT := 56.0
-const ICON_BOX := 46.0
-const ROW_GAP := 10
-
 ## The gavel the bottom menu already uses for this panel — a political act, not an
 ## industrial one.
 const GAVEL_ICON := "res://assets/icons/ui_icons/alt/politics.png"
-## DS2: the panel's size, and the title's size on an event's module.
-const DS2_SIZE := Vector2(640, 720)
-const DS2_TITLE_PX := 16
-const DS2_EMPTY := "No political events yet."
-const DS2_INK := Color("#0b2340")
-## DS2, the courtroom (render set `court`, tools/button_mockup/cluster.html): the oak wall in its moulded frame at
+## The panel's size, and the title's size on an event's module.
+const PANEL_SIZE := Vector2(640, 720)
+const TITLE_PX := 16
+const EMPTY_TEXT := "No political events yet."
+## The navy the gavel is printed in on its cream tile.
+const INK := Color("#0b2340")
+## The courtroom (render set `court`, tools/button_mockup/cluster.html): the oak wall in its moulded frame at
 ## the panel's size, the bar of the court (a rail of turned balusters) under the title, a pad of dark leather with a
 ## brass stud in each corner for an event and a brass plate for its turn. From layout.json, in layout px: each render's shadow room, the wall's
 ## frame, the rail's height, the 9-slices' corners.
@@ -68,21 +61,17 @@ const ICON_FRAME_MARGIN := 10.0
 ## The plate's print: the brass plates' dark ink.
 const PLATE_INK := Color("#2b170d")
 const PLATE_PX := 14
-## DS2: the rows shown before the record scrolls, the gap between rows, and the wall's 9-slice corner (its shadow
+## The rows shown before the record scrolls, the gap between rows, and the wall's 9-slice corner (its shadow
 ## room, its frame and the frame's bead), so the wall follows the panel's height with its frame kept true.
 const MAX_ROWS := 5
-const ROW_GAP_DS2 := 10
+const ROW_GAP := 10
 const WALL_CORNER := 60.0
 ## The record's least height, so a short record leaves wall under it and the wall's sides are never squeezed.
 const MIN_LIST_H := 330.0
 
 var _list: VBoxContainer = null
-var _empty_label: Label = null
 var _dragging := false
 var _drag_offset := Vector2.ZERO
-## Whether the DS2 look is built, and the size the panel is built at.
-var _ds2 := false
-var _panel_size := PANEL_SIZE
 var _scroll: ScrollContainer = null
 
 func _ready() -> void:
@@ -90,9 +79,12 @@ func _ready() -> void:
 	if DS and DS.theme:
 		theme = DS.theme
 	theme_type_variation = &"PanelContainer"
-	_build_look()
+	custom_minimum_size = PANEL_SIZE
+	size = PANEL_SIZE
+	_build()
+	# The lamp over the whole panel (docs/ds2-theme.md §4).
+	LampOverlay.attach(self)
 	_centre_in_viewport()
-	UiPrefs.politics_ds2_changed.connect(func(_on: bool) -> void: _build_look())
 	# The arc advances on turn resolution, so a panel left open stays current.
 	TurnManager.turn_resolution_completed.connect(_refresh)
 	visibility_changed.connect(func() -> void:
@@ -103,37 +95,15 @@ func _ready() -> void:
 func _centre_in_viewport() -> void:
 	var vp := get_viewport_rect().size
 	set_anchors_preset(Control.PRESET_TOP_LEFT)
-	offset_left = maxf(0.0, (vp.x - _panel_size.x) / 2.0)
-	offset_top = maxf(0.0, (vp.y - _panel_size.y) / 2.0)
-	offset_right = offset_left + _panel_size.x
-	offset_bottom = offset_top + _panel_size.y
+	offset_left = maxf(0.0, (vp.x - PANEL_SIZE.x) / 2.0)
+	offset_top = maxf(0.0, (vp.y - PANEL_SIZE.y) / 2.0)
+	offset_right = offset_left + PANEL_SIZE.x
+	offset_bottom = offset_top + PANEL_SIZE.y
 
 
-# ── Look: v2, or DS2 behind UiPrefs.use_politics_ds2 ─────────────────────────────────────
-## Builds the panel in the look the switch asks for, taking down the other first. It stays where it is.
-func _build_look() -> void:
-	LampOverlay.detach(self)
-	for c in get_children():
-		remove_child(c)
-		c.queue_free()
-	_list = null
-	_scroll = null
-	_ds2 = UiPrefs.use_politics_ds2
-	_panel_size = DS2_SIZE if _ds2 else PANEL_SIZE
-	custom_minimum_size = _panel_size
-	size = _panel_size
-	if _ds2:
-		_build_ds2()
-		# The lamp over the whole panel (docs/ds2-theme.md §4).
-		LampOverlay.attach(self)
-	else:
-		add_theme_stylebox_override("panel", preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(8.0))
-		_build()
-
-
-## DS2, a courtroom: the oak wall in its moulded frame, the raised title and the Close key, the bar of the
+## A courtroom: the oak wall in its moulded frame, the raised title and the Close key, the bar of the
 ## court (a rail of turned balusters), then the record on leather pads, an event a pad.
-func _build_ds2() -> void:
+func _build() -> void:
 	add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	var wall := Control.new()
 	wall.name = "CourtWall"
@@ -188,32 +158,32 @@ func _build_ds2() -> void:
 	_list = VBoxContainer.new()
 	_list.name = "PoliticsCase"
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_list.add_theme_constant_override("separation", ROW_GAP_DS2)
+	_list.add_theme_constant_override("separation", ROW_GAP)
 	scroll.add_child(_list)
 	_refresh()
 
 
-## DS2: the panel is as tall as its rows, up to MAX_ROWS of them. Past that the record scrolls on the steel rail,
+## The panel is as tall as its rows, up to MAX_ROWS of them. Past that the record scrolls on the steel rail,
 ## the first MAX_ROWS in view. The rows' heights follow their wrapped words, so they are read once laid out.
 func _fit_rows() -> void:
 	for _i in 2:
 		if not is_inside_tree():
 			return
 		await get_tree().process_frame
-	if not _ds2 or _scroll == null or not is_instance_valid(_scroll) or _list == null:
+	if _scroll == null or not is_instance_valid(_scroll) or _list == null:
 		return
 	var rows := _list.get_child_count()
 	var shown := mini(MAX_ROWS, rows)
-	var h := float(ROW_GAP_DS2 * maxi(0, shown - 1))
+	var h := float(ROW_GAP * maxi(0, shown - 1))
 	for i in shown:
 		h += (_list.get_child(i) as Control).get_combined_minimum_size().y
 	_scroll.custom_minimum_size.y = maxf(h, MIN_LIST_H)
 	_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO if rows > MAX_ROWS else ScrollContainer.SCROLL_MODE_SHOW_NEVER
-	custom_minimum_size = Vector2(DS2_SIZE.x, 0)
-	size = Vector2(DS2_SIZE.x, 0)
+	custom_minimum_size = Vector2(PANEL_SIZE.x, 0)
+	size = Vector2(PANEL_SIZE.x, 0)
 
 
-## DS2: an event's row, a stitched pad of dark leather with a brass stud in each corner (the court's 9-slice),
+## An event's row, a stitched pad of dark leather with a brass stud in each corner (the court's 9-slice),
 ## its parts in one row inside.
 func _oak_panel(panel_name: String) -> PanelContainer:
 	var m := PanelContainer.new()
@@ -236,7 +206,7 @@ func _oak_panel(panel_name: String) -> PanelContainer:
 	return m
 
 
-## DS2: the turn an event happened, engraved on a small brass plate.
+## The turn an event happened, engraved on a small brass plate.
 func _turn_plate(turn: int) -> Control:
 	var plate := PanelContainer.new()
 	plate.name = "Turn"
@@ -263,13 +233,13 @@ func _turn_plate(turn: int) -> Control:
 	return plate
 
 
-## DS2: one event's leather pad. Its icon on a cream tile in a stitched leather frame, its title over its words, and the turn it
+## One event's leather pad. Its icon on a cream tile in a stitched leather frame, its title over its words, and the turn it
 ## happened on a brass plate.
 func _entry_module(entry: Dictionary, index: int) -> Control:
 	var m := _oak_panel("PoliticsEvent_%d" % index)
 	m.custom_minimum_size.y = Metrics.CARD_H
 	var row := m.get_child(0) as HBoxContainer
-	var well := _ds2_icon(str(entry.get("icon", "")))
+	var well := _icon(str(entry.get("icon", "")))
 	well.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	row.add_child(well)
 	var col := VBoxContainer.new()
@@ -284,7 +254,7 @@ func _entry_module(entry: Dictionary, index: int) -> Control:
 	var title := Parts.body(str(entry.get("title", "")))
 	title.name = "Title"
 	title.add_theme_font_override("font", Parts.FONT_TITLE)
-	title.add_theme_font_size_override("font_size", DS2_TITLE_PX)
+	title.add_theme_font_size_override("font_size", TITLE_PX)
 	head.add_child(title)
 	if int(entry.get("turn", 0)) > 0:
 		head.add_child(_turn_plate(int(entry.turn)))
@@ -294,8 +264,8 @@ func _entry_module(entry: Dictionary, index: int) -> Control:
 	return m
 
 
-## DS2: an event's icon on the goods' cream tile, in a stitched band of tan leather (the court's icon frame).
-func _ds2_icon(kind: String) -> Control:
+## An event's icon on the goods' cream tile, in a stitched band of tan leather (the court's icon frame).
+func _icon(kind: String) -> Control:
 	var px := float(Metrics.GOOD_ICON)
 	var good := "power" if kind == "power" else ("coal" if kind == "coal_banned" else "")
 	var holder: Control
@@ -325,7 +295,7 @@ func _ds2_icon(kind: String) -> Control:
 		art.offset_bottom = -inset
 		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		# The gavel is drawn in white for the navy menu. On the cream tile it is printed in the keys' navy.
-		art.self_modulate = DS2_INK
+		art.self_modulate = INK
 		holder.add_child(art)
 	holder.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	var frame := Control.new()
@@ -346,50 +316,6 @@ func _ds2_icon(kind: String) -> Control:
 		holder.add_child(cross)
 	return holder
 
-
-func _build() -> void:
-	var margin := MarginContainer.new()
-	for side in ["left", "top", "right", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 12)
-	add_child(margin)
-
-	var layout := VBoxContainer.new()
-	layout.add_theme_constant_override("separation", 10)
-	margin.add_child(layout)
-
-	var header := HBoxContainer.new()
-	header.mouse_filter = Control.MOUSE_FILTER_STOP
-	header.gui_input.connect(_on_header_input)
-	layout.add_child(header)
-
-	var title := Label.new()
-	title.text = "Politics"
-	title.theme_type_variation = &"Title"
-	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(title)
-
-	var close_button := Button.new()
-	close_button.text = "X"
-	close_button.custom_minimum_size = Vector2(32, 32)
-	close_button.pressed.connect(func() -> void: close_requested.emit())
-	header.add_child(close_button)
-
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	layout.add_child(scroll)
-
-	_list = VBoxContainer.new()
-	_list.add_theme_constant_override("separation", ROW_GAP)
-	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	# Fill the scroll's viewport even when the content is shorter than it, so the empty-state
-	# line can centre itself in the panel instead of clinging to the top of a tall blank box.
-	_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.add_child(_list)
-
-	_refresh()
 
 
 ## The entries whose turn has arrived, oldest first — the arc reads as a story, and a player
@@ -465,121 +391,19 @@ func _refresh(_a: Variant = null) -> void:
 	for child in _list.get_children():
 		_list.remove_child(child)
 		child.queue_free()
-	var entries := _entries()
-	if _ds2:
-		# Each module prints its turn, so the record runs in the order things happened.
-		entries = by_turn(entries)
-		if entries.is_empty():
-			var none := _oak_panel("PoliticsEmpty")
-			var words := Parts.body(DS2_EMPTY)
-			words.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			none.get_child(0).add_child(words)
-			_list.add_child(none)
-		for i in entries.size():
-			_list.add_child(_entry_module(entries[i], i))
-		_fit_rows()
-		return
+	# Each module prints its turn, so the record runs in the order things happened.
+	var entries := by_turn(_entries())
 	if entries.is_empty():
-		# Nothing has happened yet, and saying so is the whole content of the panel until
-		# the election. An empty box would read as a broken panel.
-		_empty_label = Label.new()
-		_empty_label.text = "No Political Events yet"
-		_empty_label.theme_type_variation = &"Body"
-		_empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_empty_label.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
-		_empty_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		_empty_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		_list.add_child(_empty_label)
-		return
-	for e: Dictionary in entries:
-		_list.add_child(_entry_card(e))
-
-
-## One event: its icon on the left, title and body stacked beside it, on the DS inset card
-## the other panels use for a self-contained item.
-func _entry_card(entry: Dictionary) -> Control:
-	var card := PanelContainer.new()
-	card.theme_type_variation = &"Inset"
-	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-
-	var pad := MarginContainer.new()
-	for side in ["left", "top", "right", "bottom"]:
-		pad.add_theme_constant_override("margin_" + side, 10)
-	card.add_child(pad)
-
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	pad.add_child(row)
-
-	var icon := _icon_for(str(entry.get("icon", "")))
-	icon.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	row.add_child(icon)
-
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 4)
-	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(col)
-
-	var title := Label.new()
-	title.text = str(entry.get("title", ""))
-	title.theme_type_variation = &"Section"
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	col.add_child(title)
-
-	var body := Label.new()
-	body.text = str(entry.get("body", ""))
-	body.theme_type_variation = &"Body"
-	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
-	col.add_child(body)
-	return card
-
-
-func _icon_for(kind: String) -> Control:
-	match kind:
-		"power":
-			# Power AS A GOOD (what the subsidy pays for), so the isometric good icon — the
-			# flat lightning is the energy-cost mark. See the 2026-08-29 icon ruling.
-			# "power" (g_010), not "green_power": the EA catalog carries one power good, and
-			# asking for a green_power that does not exist returned a blank icon box.
-			var pw := Catalog.get_good_by_internal_name("power")
-			var gid := str(pw.get("id", ""))
-			var tex: Texture2D = GoodIcons.texture_for_size(gid, "power", ICON_BOX) if gid != "" else null
-			return _texture_box(tex)
-		"coal_banned":
-			return _coal_banned_icon()
-		_:
-			return _texture_box(load(GAVEL_ICON) as Texture2D)
-
-
-func _texture_box(tex: Texture2D) -> Control:
-	var holder := Control.new()
-	holder.custom_minimum_size = Vector2(ICON_BOX, ICON_BOX)
-	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if tex != null:
-		var tr := TextureRect.new()
-		tr.texture = tex
-		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tr.set_anchors_preset(Control.PRESET_FULL_RECT)
-		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		holder.add_child(tr)
-	return holder
-
-
-## Coal struck through in red: the levy's subject, and the mark the coal prohibition uses
-## conceptually. Drawn rather than baked so there is no new asset to keep in step with the
-## goods art, and so the cross scales with ICON_BOX.
-func _coal_banned_icon() -> Control:
-	var coal := Catalog.get_good_by_internal_name("coal")
-	var gid := str(coal.get("id", ""))
-	var holder := _texture_box(GoodIcons.texture_for_size(gid, "coal", ICON_BOX) if gid != "" else null)
-	var cross := Control.new()
-	cross.set_anchors_preset(Control.PRESET_FULL_RECT)
-	cross.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	cross.draw.connect(_draw_cross.bind(cross))
-	holder.add_child(cross)
-	return holder
+		# Nothing has happened yet, and saying so is the whole content of the panel until the
+		# election. An empty box would read as a broken panel.
+		var none := _oak_panel("PoliticsEmpty")
+		var words := Parts.body(EMPTY_TEXT)
+		words.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		none.get_child(0).add_child(words)
+		_list.add_child(none)
+	for i in entries.size():
+		_list.add_child(_entry_module(entries[i], i))
+	_fit_rows()
 
 
 func _draw_cross(host: Control) -> void:
