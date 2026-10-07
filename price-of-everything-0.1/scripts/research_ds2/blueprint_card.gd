@@ -23,6 +23,8 @@ const EffectEmblem := preload("res://scripts/effect_emblem.gd")
 
 const SIZE := Vector2(236, 228)
 const PAD := 14.0
+## The padlock on a locked sheet, its height in px.
+const LOCK_PX := 30.0
 const NOTE_SIDE := 52.0
 const TITLE_PX := 16
 const TITLE_MIN_PX := 12
@@ -207,7 +209,7 @@ func _draw() -> void:
 	if not is_granted() and progress != Vector2i.ZERO:
 		_draw_scale(Rect2(PAD, maxf(foot - 28.0, reward_bottom + 2.0), w, 28.0))
 	if state == "locked":
-		Ink.padlock(self, Vector2(size.x - PAD - 6.0, PAD + 9.0), 15.0, Color(1, 1, 1, 0.9))
+		Ink.padlock(self, Vector2(size.x - PAD - 13.0, PAD + 12.0), LOCK_PX, Color(1, 1, 1, 0.9))
 	if is_granted():
 		var licensed := state == "licensed"
 		var turn := STAMP_ANGLE + float(absi(hash(title)) % 7 - 3) * 0.012
@@ -268,7 +270,7 @@ func _draw_border(r: Rect2) -> void:
 
 func _draw_title() -> void:
 	var left := PAD + NOTE_SIDE + 12.0
-	var w := size.x - left - PAD - (16.0 if state == "locked" else 0.0)
+	var w := size.x - left - PAD - (LOCK_PX + 2.0 if state == "locked" else 0.0)
 	var text := title.to_upper()
 	var font := Ink.title_font()
 	var px := Ink.fit(font, text, w, TITLE_PX, TITLE_MIN_PX, 3)
