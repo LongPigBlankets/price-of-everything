@@ -706,7 +706,7 @@ func _detail_data(card: Control) -> Dictionary:
 			leads.append(str(r.get("title", "")))
 	var rank := _rank_of(row)
 	var category := str(row.get("category", ""))
-	var state_text := "Open: being earned by doing"
+	var state_text := ""
 	match state:
 		"granted":
 			state_text = "Granted"

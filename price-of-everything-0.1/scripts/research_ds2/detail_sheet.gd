@@ -6,7 +6,7 @@ extends Control
 ##
 ## The sheet: two pins; the icon on a larger sticky note; the title, its rank and category, and its state; what
 ## it grants in full on the label strip; the condition in full with its count on a large scale, and each part's
-## count for a condition of several parts; what it needs, granted or not; what it leads to; and a title block in
+## count for a condition of several parts; its prerequisites, granted or not; what it leads to; and a title block in
 ## the corner as on an engineering drawing (its drawing number, the research id, and its rank).
 
 const Ink := preload("res://scripts/research_ds2/ink.gd")
@@ -176,11 +176,11 @@ func _draw_sheet(r: Rect2) -> void:
 			Card.draw_scale(self, Rect2(left + w * 0.6, y, w * 0.4, 26.0), pp, pr, 13)
 		y += maxf(30.0, 15.0 * float(pt.size()) + 10.0)
 	y += 14.0
-	# What it needs, and what it leads to.
+	# Its prerequisites, and what it leads to.
 	var needs: Array = data.get("needs", [])
-	y = _heading("Needs", left, y, w, pr)
+	y = _heading("Prerequisites", left, y, w, pr)
 	if needs.is_empty():
-		Ink.print_lines(self, cf, PackedStringArray(["Nothing before it."]), left, y, w, 15, 0.0, pr)
+		Ink.print_lines(self, cf, PackedStringArray(["Nothing"]), left, y, w, 15, 0.0, pr)
 		y += 22.0
 	for n: Dictionary in needs:
 		var got := bool(n.get("granted", false))
