@@ -365,9 +365,6 @@ func _run() -> void:
 	var bar := node_named("TopBar")
 	bar._refresh_council()
 	check(not bar._council_led.visible, "council lamp is hidden")
-	var portrait: Control = bar._portrait_chip("vera", 30)
-	check(not portrait.tooltip_text.contains("loyalty"), "council portraits hide loyalty tooltips")
-	portrait.free()
 	Tutorial._finish()
 	people.hide()
 	DecisionState.enabled = true

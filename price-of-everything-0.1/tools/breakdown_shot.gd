@@ -52,8 +52,7 @@ func _ready() -> void:
 	# player actually sees is the code-built detail panel (the v1 scene node is gone), built
 	# lazily off WorldMap.building_panel_v2. Go through that property, not the node.
 	# main.tscn's ROOT node runs world_map.gd — `game` (its instantiated root) IS the
-	# WorldMap, not a container holding one (topbar_v31_shot.gd's game.get_node("UILayer/…")
-	# confirms this same layout: UILayer is one of game's own direct children).
+	# WorldMap, not a container holding one: UILayer is one of game's own direct children.
 	var panel: Control = game.building_panel_v2
 	panel.show_building(BuildingState.get_building(iid))
 	await _settle(10)

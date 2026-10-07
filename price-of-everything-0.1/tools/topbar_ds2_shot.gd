@@ -1,11 +1,10 @@
 extends Node2D
-## Captures of the top bar for the DS2 work (docs/top-bar-ds2-plan.md), in the real HUD, in fixed
-## SubViewports at two pixels per logical pixel so captures match whatever display runs them:
-## 1920 × 1080, 2520 × 1080 (ultrawide) and 1920 × 1200. For each size and each look (v3.1, and DS2
-## via UiPrefs.use_topbar_ds2): the bar calm, in crisis (cash below zero after a loss), with long
-## numbers, with the Power module hovered, with the mission's text open, and with the Treasury flyout open.
+## Captures of the DS2 top bar (docs/top-bar-ds2-plan.md), in the real HUD, in fixed SubViewports at
+## two pixels per logical pixel so captures match whatever display runs them: 1920 × 1080, 2520 × 1080
+## (ultrawide) and 1920 × 1200. For each size: the bar calm, in crisis (cash below zero after a loss),
+## with long numbers, with modules hovered (their readouts under the bar), and with the Treasury sheet open.
 ##   Godot --path . res://tools/topbar_ds2_shot.tscn --quit-after 12000 -- --no-telemetry
-## Writes topbar_<look>_<size>_<view>.png into $TOPBAR_SHOT_DIR (or /tmp).
+## Writes topbar_<size>_<view>.png into $TOPBAR_SHOT_DIR (or /tmp).
 
 const SIZES := [Vector2i(1920, 1080), Vector2i(2520, 1080), Vector2i(1920, 1200)]
 ## How much of the screen's top each view keeps, in logical px: the bar alone, or the flyout under it.
@@ -39,15 +38,10 @@ func _ready() -> void:
 		toasts.call("clear")
 	TurnManager.current_turn = 12
 	var bar: Control = _wm.get_node("UILayer/HUD/TopBar")
-	var was: bool = UiPrefs.use_topbar_ds2
 	for logical: Vector2i in SIZES:
 		_set_size(logical)
-		await _settle(20)
-		for look: String in ["v31", "ds2"]:
-			UiPrefs.set_use_topbar_ds2(look == "ds2")
-			await _settle(10)
-			await _views(bar, "%s_%dx%d" % [look, logical.x, logical.y])
-	UiPrefs.set_use_topbar_ds2(was)
+		await _settle(30)
+		await _views(bar, "%dx%d" % [logical.x, logical.y])
 	print("[TOPBAR_SHOT] done")
 	get_tree().quit(0)
 
@@ -63,21 +57,15 @@ func _views(bar: Control, tag: String) -> void:
 	await _settle(8)
 	_save(tag + "_long", BAR_CROP)
 	_money(5717.0, -555.0)
-	# Hovered modules: the v3.1 hover sheen, and in DS2 the readout under the bar.
-	for mod_name: String in ["PowerModule", "MoneyWidget", "VictoryModule", "TransportModule"]:
+	# Hovered modules: the readout under the bar.
+	for mod_name: String in ["PowerModule", "MoneyWidget", "VictoryModule", "TransportModule", "QuestModule"]:
 		var mod: Control = bar.find_child(mod_name, true, false)
-		if mod == null:
+		if mod == null or not mod.is_visible_in_tree():
 			continue
 		mod.mouse_entered.emit()
 		await _settle(6)
 		_save("%s_hover_%s" % [tag, mod_name.trim_suffix("Module").to_lower()], HOVER_CROP)
 		mod.mouse_exited.emit()
-	# The mission opening its text (it folds back to the icon on its own after a few seconds).
-	var quest: Control = bar.get("_quest_btn")
-	if quest != null and quest.visible:
-		bar.call("_quest_v31_reveal_then_collapse")
-		await get_tree().create_timer(0.9).timeout
-		_save(tag + "_mission", BAR_CROP)
 	bar.call("_toggle_fly", "treasury")
 	await _settle(12)
 	_save(tag + "_treasury", FLYOUT_CROP)

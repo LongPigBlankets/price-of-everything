@@ -29,7 +29,6 @@ func _ready() -> void:
 	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_vp.gui_embed_subwindows = true
 	add_child(_vp)
-	UiPrefs.set_use_topbar_ds2(true)
 	_wm = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	_vp.add_child(_wm)
 	await _settle(140)
@@ -54,7 +53,7 @@ func _ready() -> void:
 	var dock: Node = _wm.find_child("EndTurnDock", true, false)
 	if dock != null and dock.get("_expanded") == true:
 		dock.call("_collapse")
-	# The league shows from its reveal turn: jump there so Rankings has its module and flyout.
+	# The league shows from its reveal turn: jump there so Rankings has its module and panel.
 	TurnManager.current_turn = maxi(int(TurnManager.current_turn), int(CompanyRankings.REVEAL_TURN))
 	CompanyRankings.rankings_updated.emit()
 	bar.call("_queue_refresh")
@@ -80,7 +79,7 @@ func _ready() -> void:
 			await _settle(4)
 	bar.set("ds2_readout_cell", "")
 
-	# Rankings is a panel of its own on the DS2 bar: both of its tabs.
+	# Rankings is a panel of its own: both of its tabs.
 	for tab: String in ["revenue", "goods"]:
 		bar.call("_set_rankings_tab", tab)
 		if not (bar.get("_rankings_panel") != null and (bar.get("_rankings_panel") as Control).visible):

@@ -1,12 +1,12 @@
 extends PanelContainer
-## Top Bar — built from the React prototype "Top Bar (offline).html".
+## Top Bar — the DS2 steel strip (docs/top-bar-ds2-plan.md).
 ## Modules left→right:
-##   Treasury (cash + net/turn + runway) · Power net · Victory (5 track meters + score)
-##   · [flex] · Briefing (merged bell: decisions + updates) · [flex]
-##   · Council (seated portraits w/ loyalty rings) · Encyclopedia · | · Turn/date · Menu.
-## Treasury / Victory / Council open quick-glance FLYOUTS anchored under the bar whose
-## buttons deep-link into the full panels (Money / Victory / People); the Briefing
-## module expands the Turn Briefing hub directly.
+##   Power · Transport · Mission (key and piston) · Treasury (cash on an LED screen, centred on the
+##   concrete) · [flex] · Victory (drum counter) · Rankings · Council · Goods Graph · Encyclopedia
+##   · | · Turn/date · Menu.
+## Treasury, Power and the mission open steel sheets under the bar whose keys deep-link into the
+## full panels; Victory, Council and Rankings open their own panels. Hovering a module shows its
+## readout under the bar.
 ##
 ## External contracts kept: the MoneyWidget Button's node path (e2e drives it),
 ## %EncyclopediaButton + %TurnCounter unique names (world_map + tutorial spotlights),
@@ -38,13 +38,9 @@ const NEAR_FULL_FRACTION := 0.95
 # literal number, so the bar grows around MOD_H without anything else changing.
 const BAR_H := 60.0
 const MOD_H := 45.0
-# v3.1 icon faces — Goods Graph / Encyclopedia / Mission / Power /
-# Victory / Rankings swap their text/vector-glyph faces for these baked standalone
-# icons: the bottom-menu button treatment (cream emboss + bevel + drop shadow) minus
-# the round disc and outer ring, since these sit flat on the bar rather than in a
-# socket. Unlike _freight_cell's cleaned building icons, these are NOT modulated at
-# display time — they are already coloured to the building-icon off-white and
-# re-tinting would pull them off that match.
+# The modules' icons: baked standalone icons in the bottom-menu button treatment (cream emboss +
+# bevel + drop shadow) minus the round disc and outer ring, since these sit flat on the bar rather
+# than in a socket. Each one with a raised render (DS2_BAR_ICONS) is drawn as that instead.
 const ICON_GOODS_GRAPH: Texture2D = preload("res://assets/icons/ui_icons/standalone/sankey.png")
 ## The menu glyph, baked by tools/bake_menu_icon.py. A texture rather than the text "☰", so it
 ## takes the cream tint, sheen and hover glow like every other control on the bar -- those
@@ -56,7 +52,6 @@ const ICON_POWER: Texture2D = preload("res://assets/icons/ui_icons/standalone/po
 const ICON_VICTORY: Texture2D = preload("res://assets/icons/ui_icons/standalone/trophy.png")
 const ICON_RANKINGS: Texture2D = preload("res://assets/icons/ui_icons/standalone/podium.png")
 const ICON_COUNCIL: Texture2D = preload("res://assets/icons/ui_icons/standalone/board-of-directors.png")
-const ICON_COIN: Texture2D = preload("res://assets/icons/ui_icons/standalone/coin.png")
 const SPECULAR_TEX: Texture2D = preload("res://assets/icons/ui_icons/alt/_specular.png")
 # A soft radial burst (bright centre, fades to nothing) — the same "glow behind the
 # object" idea as bottom_menu.gd's per-button _glow_<key>.png, just one shared
@@ -66,7 +61,7 @@ const GLOW_TEX: Texture2D = preload("res://assets/icons/ui_icons/standalone/_glo
 const GLOW_SCALE := 2.0   # glow diameter relative to the icon's own px size
 const GLOW_TINT := Color(1.0, 0.92, 0.75, 0.6)
 # Every icon on the bar is fitted by its drawn art, not its canvas: the art is ICON_CAP tall
-# (or ICON_MAX_W wide, for a wide icon), centred on the module row's midline. See _v31_icon.
+# (or ICON_MAX_W wide, for a wide icon), centred on the module row's midline. See _bar_icon.
 const ICON_CAP := 34.0
 const ICON_MAX_W := 42.0
 ## Icons that read light at the cap, drawn larger by this factor. Nothing else sizes an icon.
@@ -76,46 +71,26 @@ const ICON_OPTICAL := {
 	# All thin strokes and no solid mass: beside the council table and the book it reads small.
 	"res://assets/icons/ui_icons/standalone/sankey.png": 1.12,
 }
-# Metallic bottom bezel (the end-turn dock's machined-silver family), lit from the left.
+# The strip's beam along the bar's foot, which the modules keep off.
 const EDGE_H := 7.0
-# Pixels the bar's ground is painted ABOVE its top edge, burying the sub-pixel seam
+# Pixels the strip is painted ABOVE the bar's top edge, burying the sub-pixel seam
 # that non-integer window stretching leaves on the top row (see _style_bar).
 const TOP_BLEED := 8.0
-const SILVER_LT := Color("#b3bcc6")
-const SILVER_MD := Color("#8b95a1")
-const SILVER_DK := Color("#5b636e")
-const EDGE_SEAM := Color("#3a4048")
-const C_BAR_BG := Color("#0c1c2e")
-const C_BAR_EDGE := Color("#1c3149")
-# Bar ground = the END TURN dock's container navy (BarNavy.TL/TR/BL/BR), stretched
-# across the bar's full span instead of the dock's small face (spec §1.4). Both
-# surfaces read the same four constants so they can never drift apart.
-const BarNavy := preload("res://scripts/bar_navy.gd")
-const C_MOD_BG := Color(0.055, 0.125, 0.204, 0.85)     # rgba(14,32,52,.85)
-const C_MOD_BORDER := Color("#22384f")
 const C_ACTIVE_BG := Color("#15304a")
-const C_ACTIVE_BORDER := Color("#2f5578")
-const C_WARN_BORDER := Color(0.886, 0.376, 0.29, 0.55) # rgba(226,96,74,.55)
 # Spec §1.5: the bar's body text is the SAME off-white the panels use — anything greyer
 # reads as grey on this navy, and the standing rule (ds.gd:50) is that grey never goes
 # on a dark ground. Colour that carries
 # MEANING is untouched: good/bad green and red, amber warnings, the cream victory score.
 const C_TEXT := Color("#E8EEF7")        # = DS.PALETTE.TEXT
-# Resting colour for the icon-and-label modules (Encyclopedia, Goods Graph, Menu).
-# They brighten to C_BRIGHT on hover, so the affordance survives the contrast fix.
+# The menu icon's tint.
 const C_LABEL := Color("#E8EEF7")
 const C_BRIGHT := Color("#f3f8fd")
 const C_GOOD := Color("#7ec98a")
-const C_BAD := Color("#e6917f")
 const C_RED := Color("#e2604a")
 const C_AMBER := Color("#e6b34a")
 const C_CREAM := Color("#f2e6c8")
-const C_TRACK_BG := Color("#0a1623")
 const C_TRACK_EDGE := Color("#1c3149")
 
-const _COUNCIL_GOOD := Color("#5FBF6B")
-const _COUNCIL_WARN := Color("#E6B34A")
-const _COUNCIL_BAD := Color("#E2604A")
 const DISLOYAL_BELOW := -3.4   # loyalty (−10..+10) under this = disloyal
 
 const CFOIntroPopup := preload("res://scripts/cfo_intro_popup.gd")
@@ -125,60 +100,40 @@ var _flashing := false
 var _bankruptcy_strip: PanelContainer
 
 # Treasury module labels (inside the MoneyWidget Button)
-var _cash_label: Label
 var _net_label: Label
 var _runway_label: Label
 var _money_inner: HBoxContainer
-var _money_glyph: Label      # the classic "£"
-var _money_coin_icon: Control   # v3.1
 
-# Status LEDs (spec §1.3): Treasury / Power / Transport only. Rankings,
-# Encyclopedia and the Goods Graph carry none, and Victory /
-# Council / Briefing have no defined red condition — a lamp that can never light
-# is noise, so those modules simply have none.
+# Status lamps (spec §1.3), each shown as Building Detail's pilot lamp (_ds2_add_lamp).
+# Encyclopedia, the Goods Graph and the Menu carry none.
 var _treasury_led: Control
 var _power_led: Control
-# v3.1 only — Victory/Rankings have no lamp in the classic bar (no red condition is
-# defined for either), so these exist only once the icon face is built.
 var _victory_led: Control
 var _rankings_led: Control
 
 # Power module
 var _power_btn: Control
-var _power_glyph: Label
-var _power_icon: Control   # v3.1
-var _power_head: Label
-var _power_sub: Label
 
-# Victory module
-var _victory_btn: Control
-var _victory_glyph: Label
-var _victory_icon: Control   # v3.1
-var _victory_meters: HBoxContainer
+# Mission module
 var _quest_btn: Control
-var _quest_title: Label
-var _quest_sub: Label
-var _quest_text_box: MarginContainer   # the text's margin: room for the icon at its left in DS2
-var _quest_text_col: VBoxContainer
-var _quest_icon: Control   # v3.1
-var _quest_shown_before := false    # v3.1 — has the module ever appeared this session
-var _quest_v31_wide := false        # v3.1 — currently showing full text (intro / post-completion reveal)
-var _quest_v31_animating := false   # v3.1 — a width tween owns _quest_btn.size right now
-var _quest_width_anim: Tween
-## DS2: the mission as a key and a piston (scripts/ds2/mission_slot.gd), in place of the icon and text.
+## The mission's title and its subtitle, from MiniQuest: the key prints the title, the readout both.
+var _quest_title := ""
+var _quest_sub := ""
+## The missions icon, shown at the slot's left while the mission section is collapsed.
+var _quest_icon: Control
+## The mission as a key and a piston (scripts/ds2/mission_slot.gd).
 var _mission_slot: Control
-## DS2: the plate that runs down out of the bar under the slot when a mission completes.
+## The plate that runs down out of the bar under the slot when a mission completes.
 var _mission_plate: Control
 var _completed_title := ""
 var _completed_reward := ""
-var _victory_score: Label
-var _victory_target: Label   # "/ N" — the rising win threshold for the current turn
-var _victory_ratio: Label    # v3.1 — replaces the meters + two-line score/target
-var _ds2_victory: HBoxContainer   # DS2: the score's drum counter and the printed target
+
+# Victory module
+var _ds2_victory: HBoxContainer   # the score's drum counter and the printed target
 var _ds2_victory_counter: Control
 var _ds2_victory_target: Label
 
-# Transport module (v3)
+# Transport module
 var _transport_btn: Control
 var _store_led: Control      # tiles refusing goods
 var _road_led: Control       # links over capacity
@@ -187,8 +142,6 @@ var _port_led: Control       # freight riding to market
 # Company rankings module
 var _rankings_btn: Control
 var _rankings_head: Label
-var _rankings_sub: Label
-var _rankings_icon: Control   # v3.1
 
 ## Tech names already posted to the updates dock THIS MATCH -- deliberately not this turn.
 ## Each is its own row there ("Unlocked: <name>"): a single "N research unlocked" line for
@@ -204,11 +157,9 @@ var _research_toasted: Dictionary = {}
 
 # Council module
 var _council_btn: Control
-var _council_tag: Label
-var _council_status: Label
-var _council_stack: HBoxContainer
-var _council_icon: Control   # v3.1
-var _council_led: Control        # v3.1 only — no lamp in the classic bar
+## The seats in a line ("2 seated", "1 DISLOYAL"), for the readout.
+var _council_status := ""
+var _council_led: Control
 
 # Turn/date
 var _date_label: Label
@@ -223,12 +174,6 @@ var _rankings_tab := "revenue"
 # Coalesced refresh (notification-bell doctrine): sim signals mark dirty; ONE
 # deferred refresh per frame updates every module label.
 var _refresh_queued := false
-
-# v3.1: [classic_node, icon_node] pairs for modules with
-# no refresh cycle of their own (Goods Graph, Encyclopedia) — toggled on build and
-# again whenever the flag flips. Power/Victory/Rankings/Quest instead toggle inline
-# in their own _refresh_* since they already run one every _apply_refresh.
-var _v31_pairs: Array[Array] = []
 
 
 func _ready() -> void:
@@ -266,8 +211,6 @@ func _ready() -> void:
 
 	MatchState.build_rejected_no_funds.connect(_on_build_rejected_no_funds)
 	MatchState.cfo_tax_credit_filed.connect(_on_cfo_tax_credit_filed)
-	UiPrefs.topbar_v3_1_changed.connect(_on_topbar_v3_1_changed)
-	UiPrefs.topbar_ds2_changed.connect(func(_on: bool) -> void: _ds2_apply())
 	AdvisorState.advisors_changed.connect(_queue_refresh)
 	AdvisorState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
 	Production.turn_processed.connect(func(_s: Dictionary) -> void: _queue_refresh())
@@ -283,7 +226,7 @@ func _ready() -> void:
 	TurnBriefing.strip_enabled = false
 	get_tree().root.child_entered_tree.connect(_on_notice_root_child_entered)
 	call_deferred("_refresh_notices_after_loading")
-	resized.connect(queue_redraw)   # the metallic edge spans the live width
+	resized.connect(queue_redraw)   # the strip spans the live width
 	_queue_refresh()
 
 
@@ -292,10 +235,10 @@ func _ready() -> void:
 func _style_bar() -> void:
 	custom_minimum_size = Vector2(0, BAR_H)
 	offset_bottom = BAR_H
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	var sb := StyleBoxFlat.new()
-	# The ground is PAINTED in _draw (the dock's 4-corner navy, stretched across the
-	# bar), so the stylebox carries padding and shadow only — a fill here would sit on top
-	# of the gradient and flatten it straight back out.
+	# The ground is the DS2 strip PAINTED in _draw, which carries its own shadow, so the stylebox
+	# carries padding only.
 	#
 	# _draw also paints TOP_BLEED px above y=0 to bury a shimmering 1–3px seam
 	# along the very top row (the window is stretched by a non-integer factor — canvas_items
@@ -305,10 +248,7 @@ func _style_bar() -> void:
 	sb.content_margin_left = 12
 	sb.content_margin_right = 12
 	sb.content_margin_top = 4   # modules have no boxes, so they need little room
-	sb.content_margin_bottom = 4 + EDGE_H   # keep modules off the metallic rim
-	sb.shadow_color = Color(0, 0, 0, 0.35)
-	sb.shadow_size = 8
-	sb.shadow_offset = Vector2(0, 4)
+	sb.content_margin_bottom = 4 + EDGE_H   # keep modules off the beam
 	add_theme_stylebox_override("panel", sb)
 	# The scene's MarginContainer reserves 276px on the right for the OLD
 	# encyclopedia overlay — kill it so the module row spans the full bar.
@@ -317,50 +257,41 @@ func _style_bar() -> void:
 	var hbox := money_widget.get_parent() as HBoxContainer
 	hbox.add_theme_constant_override("separation", 10)
 
-## The bar's ground colour at canvas x, along its BOTTOM edge — what anything docked
-## under the bar must paint itself to continue the gradient rather than interrupt it.
-func bar_ground_at(canvas_x: float) -> Color:
-	var vw := maxf(1.0, get_viewport_rect().size.x)
-	return BarNavy.BL.lerp(BarNavy.BR, clampf(canvas_x / vw, 0.0, 1.0))
-
-## Sample the bar's left→right metal lighting at canvas x (0 = lit, right = shadowed).
-func _silver_at(canvas_x: float) -> Color:
-	var vw := maxf(1.0, get_viewport_rect().size.x)
-	return SILVER_LT.lerp(SILVER_DK, clampf(canvas_x / vw, 0.0, 1.0))
-
+## The strip: the backing's weathered navy steel cropped from the middle of its render, the concrete
+## behind the money, and the silver pipes running beneath the bar between the two dividers.
 func _draw() -> void:
-	if UiPrefs.use_topbar_ds2:
-		_ds2_draw_strip()
-		return
-	var w := size.x
-	var y1 := size.y
-	var y0 := y1 - EDGE_H
-	# GROUND: the END TURN dock's container navy, spread over the bar's full span — the
-	# gradient that covers the dock's small face travels the whole width, so the two
-	# surfaces read as one material (spec §1.4).
-	#
-	# Drawn from -TOP_BLEED, not 0: _draw is unclipped (clip_contents is false), so the
-	# gradient covers the same few pixels above the bar that the old opaque fill's
-	# expand_margin_top did — that bleed is what buries the sub-pixel seam on the top row.
-	draw_polygon(
-		PackedVector2Array([Vector2(0, -TOP_BLEED), Vector2(w, -TOP_BLEED), Vector2(w, y0), Vector2(0, y0)]),
-		BarNavy.corner_colors())
-	# Machined metallic BEZEL along the bar's bottom (end-turn dock silver):
-	# lit left → right along its length, and bevelled through its depth — dark
-	# seam against the navy, bright top lip, mid body, shadowed lower return.
-	draw_line(Vector2(0, y0 - 0.5), Vector2(w, y0 - 0.5), EDGE_SEAM, 1.0)
-	draw_polygon(
-		PackedVector2Array([Vector2(0, y0), Vector2(w, y0), Vector2(w, y1), Vector2(0, y1)]),
-		PackedColorArray([SILVER_LT, SILVER_DK, SILVER_DK, SILVER_LT]))
-	# Top lip highlight, fading down (the raised face of the bezel).
-	draw_polygon(
-		PackedVector2Array([Vector2(0, y0), Vector2(w, y0), Vector2(w, y0 + 2.8), Vector2(0, y0 + 2.8)]),
-		PackedColorArray([Color(1, 1, 1, 0.55), Color(1, 1, 1, 0.16), Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.0)]))
-	# Lower return falling into shadow + crisp dark base line.
-	draw_polygon(
-		PackedVector2Array([Vector2(0, y1 - 3.0), Vector2(w, y1 - 3.0), Vector2(w, y1), Vector2(0, y1)]),
-		PackedColorArray([Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.45), Color(0, 0, 0, 0.38)]))
-	draw_line(Vector2(0, y1 - 0.5), Vector2(w, y1 - 0.5), Color(0.05, 0.07, 0.10, 0.9), 1.0)
+	var strip: Texture2D = DS2_STRIP
+	var tex := strip.get_size()
+	var src_w := minf(size.x * DS2_TEXELS, tex.x)
+	var src_x := (tex.x - src_w) * 0.5
+	draw_texture_rect_region(strip, Rect2(0, 0, size.x, tex.y / DS2_TEXELS), Rect2(src_x, 0, src_w, tex.y))
+	# The few pixels above the bar (see TOP_BLEED): the strip's top rows again.
+	draw_texture_rect_region(strip, Rect2(0, -TOP_BLEED, size.x, TOP_BLEED), Rect2(src_x, 0, src_w, TOP_BLEED * DS2_TEXELS))
+	# The concrete behind the money, on the money's centre line, with its top rows carried above the bar too.
+	var slab := DS2_CONCRETE.get_size() / DS2_TEXELS
+	var slab_x := roundf(money_widget.get_global_rect().get_center().x - global_position.x - slab.x * 0.5)
+	draw_texture_rect(DS2_CONCRETE, Rect2(slab_x, 0, slab.x, slab.y), false)
+	draw_texture_rect_region(DS2_CONCRETE, Rect2(slab_x, -TOP_BLEED, slab.x, TOP_BLEED),
+		Rect2(0, 0, DS2_CONCRETE.get_width(), TOP_BLEED * DS2_TEXELS))
+	# The silver pipes: down at one divider, along beneath the bar, back up at the other.
+	var dividers := _ds2_divider_xs()
+	if dividers.size() == 2:
+		var left := DS2_PIPES_LEFT.get_size() / DS2_TEXELS
+		var right := DS2_PIPES_RIGHT.get_size() / DS2_TEXELS
+		var lx := dividers[0] - DS2_PIPES_LEFT_AXIS
+		var rx := dividers[1] - DS2_PIPES_RIGHT_AXIS
+		var run_from := lx + left.x
+		var run_w := rx - run_from
+		if run_w > 0.0:
+			var run_tex := DS2_PIPES_RUN.get_size()
+			var run_src_x := (run_tex.x - run_w * DS2_TEXELS) * 0.5
+			draw_texture_rect_region(DS2_PIPES_RUN, Rect2(run_from, 0, run_w, run_tex.y / DS2_TEXELS), Rect2(run_src_x, 0, run_w * DS2_TEXELS, run_tex.y))
+		for piece: Array in [[DS2_PIPES_LEFT, lx, left], [DS2_PIPES_RIGHT, rx, right]]:
+			var tex_p: Texture2D = piece[0]
+			var at: float = piece[1]
+			var sz: Vector2 = piece[2]
+			draw_texture_rect(tex_p, Rect2(at, 0, sz.x, sz.y), false)
+			draw_texture_rect_region(tex_p, Rect2(at, -TOP_BLEED, sz.x, TOP_BLEED), Rect2(0, 0, tex_p.get_width(), TOP_BLEED * DS2_TEXELS))
 
 ## Modules are flat text on the bar — no outline, no shading (spec §1.2).
 ## `active` (an open flyout) keeps a fill so the player can see which module the
@@ -378,14 +309,6 @@ func _module_box(active: bool, _warn: bool = false) -> StyleBoxFlat:
 	sb.content_margin_bottom = 2
 	return sb
 
-## Small uppercase module tag ("COUNCIL").
-func _tag(text: String) -> Label:
-	var l := Label.new()
-	l.text = text.to_upper()
-	l.add_theme_font_size_override("font_size", 10)
-	l.add_theme_color_override("font_color", C_TEXT)
-	return l
-
 func _mini(text: String, color: Color, size: int = 10) -> Label:
 	var l := Label.new()
 	l.text = text
@@ -394,12 +317,12 @@ func _mini(text: String, color: Color, size: int = 10) -> Label:
 	return l
 
 ## Clickable bar module: PanelContainer (sizes to children, unlike Button) that
-## emits "pressed" and swaps active/warn chrome. Buttons can't hold containers.
+## emits "pressed" and swaps active chrome. Buttons can't hold containers.
 class _ModuleBtn extends PanelContainer:
 	signal pressed
-	## DS2's readout under the bar says what the tooltip would, so the tooltip stands down there.
+	## The readout under the bar says what a tooltip would, so the modules show none.
 	func _get_tooltip(_at: Vector2) -> String:
-		return "" if UiPrefs.use_topbar_ds2 else tooltip_text
+		return ""
 	var warn := false:
 		set(v):
 			warn = v
@@ -408,32 +331,6 @@ class _ModuleBtn extends PanelContainer:
 		set(v):
 			active = v
 			_restyle()
-	## Optional thin border, re-applied by _restyle so hover cannot wipe it. Transparent (the
-	## default) leaves a module exactly as it was.
-	var rim := Color(0, 0, 0, 0):
-		set(v):
-			rim = v
-			_restyle()
-	## Completion glow, 0–1. Washes the fill brass and lifts a brass shadow — the mission-done
-	## flash happens HERE, on the bar, rather than down in the flyout.
-	var glow := 0.0:
-		set(v):
-			glow = v
-			_restyle()
-	## A checkmark drawn straight onto the module over 0–1, so completion is marked where the
-	## player is already looking. It draws only while the label has faded away (see
-	## _celebrate_mission), so it has the module to itself rather than sitting over the text.
-	var tick_progress := 0.0:
-		set(v):
-			tick_progress = clampf(v, 0.0, 1.0)
-			queue_redraw()
-	## The tick is NEGATIVE SPACE: it is drawn in the navy of the bar directly behind the module,
-	## so it reads as a checkmark cut out of the brass plate rather than a mark laid on top. The
-	## bar sets this to a sample of its own gradient at the module's position.
-	var tick_color := Color(0, 0, 0, 0):
-		set(v):
-			tick_color = v
-			queue_redraw()
 	var _hover := false
 	var _bar: Node
 	func _init(bar: Node) -> void:
@@ -449,87 +346,7 @@ class _ModuleBtn extends PanelContainer:
 		var sb: StyleBoxFlat = _bar._module_box(active, warn)
 		if _hover and not active:
 			sb.bg_color = Color(1, 1, 1, 0.05)
-		if rim.a > 0.0:
-			sb.border_color = rim
-			sb.set_border_width_all(1)
-			sb.set_corner_radius_all(8)
-		if glow > 0.0:
-			var brass: Color = DS.PALETTE.BRASS
-			# Near-opaque, so the navy tick punched through it reads as a hole rather than a
-			# tint. Alpha climbs fast and caps, so even the trough between flashes stays solid
-			# enough for the negative space to hold.
-			sb.bg_color = Color(brass.r, brass.g, brass.b, minf(1.0, glow * 1.7))
-			sb.shadow_color = Color(brass.r, brass.g, brass.b, 0.6 * glow)
-			sb.shadow_size = int(round(16.0 * glow))
-			sb.set_corner_radius_all(8)
 		add_theme_stylebox_override("panel", sb)
-	## The tick, drawn OVER the panel. A PanelContainer paints its stylebox from a C++
-	## notification and then still calls this script _draw, so the checkmark lands on top of
-	## the brass fill. Drawn in the bar's own navy (tick_color), it reads as a hole cut through
-	## the plate to the bar behind — negative space, not a mark laid on.
-	##
-	## It is a single FILLED outline, not two strokes. Two draw_line segments met at the bottom
-	## vertex with square end-caps that left a notch — "two lines that don't quite meet" — so the
-	## shape is built as one polygon whose bottom is a short flat edge. It reveals
-	## left to right: x rises monotonically along the stroke, so a vertical wipe reads as drawing.
-	func _draw() -> void:
-		if tick_progress <= 0.0 or tick_color.a <= 0.0:
-			return
-		var s: float = minf(size.x, size.y) * 0.72
-		var ox: float = (size.x - s) * 0.5
-		var oy: float = (size.y - s) * 0.5
-		var x0: float = ox + 0.06 * s
-		var x1: float = ox + 0.98 * s
-		var cut: float = x0 + (x1 - x0) * tick_progress
-		var clip := PackedVector2Array([
-			Vector2(x0 - s, oy - s), Vector2(cut, oy - s),
-			Vector2(cut, oy + 2.0 * s), Vector2(x0 - s, oy + 2.0 * s)])
-		# Each piece is convex, so clipping keeps it convex and draw_colored_polygon fills it
-		# correctly. The area guard drops the near-zero slivers the wipe front throws off — even
-		# draw_colored_polygon triangulates internally and errors on a degenerate one.
-		for piece: PackedVector2Array in _tick_pieces(s, ox, oy):
-			for shown: PackedVector2Array in Geometry2D.intersect_polygons(piece, clip):
-				if shown.size() >= 3 and absf(_poly_area(shown)) >= 0.5:
-					draw_colored_polygon(shown, tick_color)
-
-	## The checkmark as three CONVEX pieces that tile it exactly — the two arms and the wedge
-	## between them — with a FLAT bottom (bl → br). Two draw_line strokes met at a point whose
-	## square end-caps left a notch ("two lines that don't quite meet"); this closes it and the
-	## bottom is a short horizontal edge instead of a vanishing point. Centreline a → b → c.
-	func _tick_pieces(s: float, ox: float, oy: float) -> Array:
-		var a := Vector2(ox + 0.16 * s, oy + 0.52 * s)
-		var b := Vector2(ox + 0.44 * s, oy + 0.80 * s)
-		var c := Vector2(ox + 0.90 * s, oy + 0.16 * s)
-		var half: float = maxf(1.5, s * 0.17) * 0.5
-		var d1 := (b - a).normalized()
-		var d2 := (c - b).normalized()
-		var n1 := Vector2(d1.y, -d1.x)   # up-normal (points to −y)
-		var n2 := Vector2(d2.y, -d2.x)
-		var a_top := a + n1 * half
-		var a_bot := a - n1 * half
-		var c_top := c + n2 * half
-		var c_bot := c - n2 * half
-		var top_v = Geometry2D.line_intersects_line(a_top, d1, c_top, d2)   # inner concave notch
-		var bot_v = Geometry2D.line_intersects_line(a_bot, d1, c_bot, d2)   # would-be sharp point
-		if not (top_v is Vector2) or not (bot_v is Vector2):
-			return []
-		# The flat, cut a little above the sharp point, where it crosses each bottom edge.
-		var y_flat: float = (bot_v as Vector2).y - half * 0.9
-		var bl := a_bot + d1 * ((y_flat - a_bot.y) / d1.y)
-		var br := c_bot + d2 * ((y_flat - c_bot.y) / d2.y)
-		return [
-			PackedVector2Array([a_top, top_v, bl, a_bot]),    # short arm
-			PackedVector2Array([top_v, c_top, c_bot, br]),    # long arm
-			PackedVector2Array([bl, top_v, br]),              # the wedge, closing the flat bottom
-		]
-
-	func _poly_area(poly: PackedVector2Array) -> float:
-		var acc := 0.0
-		for i in poly.size():
-			var p := poly[i]
-			var q := poly[(i + 1) % poly.size()]
-			acc += p.x * q.y - q.x * p.y
-		return acc * 0.5
 	func _gui_input(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			accept_event()
@@ -574,18 +391,16 @@ func _hbox() -> HBoxContainer:
 	return money_widget.get_parent() as HBoxContainer
 
 
-# ── v3.1 — shared icon-face helpers ────────────────────────────────────────────
+# ── Shared icon helpers ────────────────────────────────────────────────────────
 
-## A module-face icon, fitted by its art: the baked PNGs carry their own cream fill, bevel and
-## shadow, and their art fills their canvases unevenly, so the canvas is scaled until the art
-## (every pixel with any alpha, shadow included) is ICON_CAP tall, or ICON_MAX_W wide for a wide
-## icon, and centred in a box of exactly that size. The box centres on the module row, so every
-## icon on the bar shares one cap height and one midline. They are not modulated here: that
-## would pull them off the building-icon off-white they were colour-matched to.
-## .modulate/.visible on the returned Control reach the texture underneath.
-## `hover_source`: the Control whose mouse_entered/exited should light the icon with the
-## bottom menu's specular sheen and a soft glow behind it.
-func _v31_icon(tex: Texture2D, hover_source: Control = null) -> Control:
+## A module-face icon, fitted by its art into a box ICON_CAP tall (or ICON_MAX_W wide, for a wide
+## icon) that centres on the module row, so every icon on the bar shares one cap height and one
+## midline. An icon with a raised render (DS2_BAR_ICONS) is drawn as that render and its swept
+## shadow, as Building Detail's are, the face brightening on hover; one without is drawn as the baked
+## PNG itself, catching the bottom menu's specular sheen on hover. Either way a soft glow lights
+## behind it on hover. .modulate/.visible on the returned Control reach the art underneath.
+## `hover_source`: the Control whose mouse_entered/exited light the icon.
+func _bar_icon(tex: Texture2D, hover_source: Control = null) -> Control:
 	var fit := _icon_fit(tex)
 	var box: Vector2 = fit.box
 	var wrap := Control.new()
@@ -593,10 +408,13 @@ func _v31_icon(tex: Texture2D, hover_source: Control = null) -> Control:
 	wrap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# Glow goes in BEHIND the icon (added first: children draw in add order).
-	var glow: TextureRect = null
 	if hover_source != null:
-		glow = _v31_glow(box)
+		var glow := _icon_glow(box)
 		wrap.add_child(glow)
+		hover_source.mouse_entered.connect(func() -> void: glow.visible = true)
+		hover_source.mouse_exited.connect(func() -> void: glow.visible = false)
+	if _add_raised_face(wrap, tex, box, hover_source):
+		return wrap
 	var icon := TextureRect.new()
 	icon.texture = tex
 	# The expand mode first: until it is set, the texture's own size is the minimum size.
@@ -607,7 +425,6 @@ func _v31_icon(tex: Texture2D, hover_source: Control = null) -> Control:
 	icon.size = dest.size
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	wrap.add_child(icon)
-	_ds2_add_face(wrap, icon, tex, box, hover_source)
 	if hover_source != null:
 		var spec := TextureRect.new()
 		spec.texture = SPECULAR_TEX
@@ -617,23 +434,23 @@ func _v31_icon(tex: Texture2D, hover_source: Control = null) -> Control:
 		spec.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		spec.visible = false
 		icon.add_child(spec)
-		hover_source.mouse_entered.connect(func() -> void: spec.visible = true; glow.visible = true)
-		hover_source.mouse_exited.connect(func() -> void: spec.visible = false; glow.visible = false)
+		hover_source.mouse_entered.connect(func() -> void: spec.visible = true)
+		hover_source.mouse_exited.connect(func() -> void: spec.visible = false)
 	return wrap
 
 
-## DS2: the raised face and its shadow for a bar icon, fitted by the face's own art into the icon's box, hidden
-## until _ds2_apply shows them in place of the v3.1 art.
-func _ds2_add_face(wrap: Control, icon: TextureRect, tex: Texture2D, box: Vector2, hover_source: Control = null) -> void:
+## The raised face and its shadow for a bar icon, fitted by the face's own art into the icon's box. False
+## when the icon has no raised render.
+func _add_raised_face(wrap: Control, tex: Texture2D, box: Vector2, hover_source: Control = null) -> bool:
 	var face_name: String = DS2_BAR_ICONS.get(tex.resource_path, "")
 	if face_name == "":
-		return
+		return false
 	var face: Texture2D = load("res://assets/ui/bdp_v3/bar_icon_%s.png" % face_name)
 	var shadow: Texture2D = load("res://assets/ui/bdp_v3/bar_icon_%s_shadow.png" % face_name)
 	var art: Rect2 = BdpV3Indicator.art_rect(face)
 	var k: float = minf(box.x / art.size.x, box.y / art.size.y)
 	var at := (box - art.size * k) * 0.5 - art.position * k
-	var rects: Array[TextureRect] = []
+	var face_rect: TextureRect = null
 	for t: Texture2D in [shadow, face]:
 		var r := TextureRect.new()
 		r.name = "Ds2Shadow" if t == shadow else "Ds2Face"
@@ -643,15 +460,13 @@ func _ds2_add_face(wrap: Control, icon: TextureRect, tex: Texture2D, box: Vector
 		r.position = at
 		r.size = face.get_size() * k
 		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		r.visible = false
 		wrap.add_child(r)
-		rects.append(r)
-	_ds2_faces.append([icon, rects[1], rects[0]])
+		face_rect = r
 	# Hovered, the raised face brightens, as a Building Detail indicator does.
 	if hover_source != null:
-		var face_rect := rects[1]
 		hover_source.mouse_entered.connect(func() -> void: face_rect.modulate = BdpV3Indicator.HOT_MODULATE)
 		hover_source.mouse_exited.connect(func() -> void: face_rect.modulate = Color.WHITE)
+	return true
 
 
 ## Where a bar icon's canvas is drawn so its art fills the cap: `box` is the art's size on the
@@ -664,12 +479,12 @@ static func _icon_fit(tex: Texture2D) -> Dictionary:
 	var at := (box - art.size * k) * 0.5
 	return {"box": box, "dest": Rect2(at - art.position * k, tex.get_size() * k)}
 
-## A radial glow (GLOW_TEX) centred on a px-tall icon slot, sized GLOW_SCALE larger
+## A radial glow (GLOW_TEX) centred on an icon's box, sized GLOW_SCALE larger
 ## than it so it radiates past the icon's own edges — the ADD-blend "glow behind
 ## the object" bottom_menu.gd's per-button glow does, generalised to a shared
 ## texture since these icons don't sit on a disc for a shape-cut glow to read
 ## against. Hidden by default; the caller wires .visible to hover.
-func _v31_glow(box: Vector2) -> TextureRect:
+func _icon_glow(box: Vector2) -> TextureRect:
 	var glow := TextureRect.new()
 	glow.texture = GLOW_TEX
 	glow.modulate = GLOW_TINT
@@ -688,32 +503,11 @@ func _v31_glow(box: Vector2) -> TextureRect:
 	glow.visible = false
 	return glow
 
-## Registers a [classic, v3.1] face pair for a module with no refresh cycle of its own
-## (Goods Graph, Encyclopedia) and applies the current look immediately.
-func _register_v31_pair(classic: Control, v31: Control) -> void:
-	_v31_pairs.append([classic, v31])
-	_apply_v31_pair(classic, v31)
-
-func _apply_v31_pair(classic: Control, v31: Control) -> void:
-	var on: bool = UiPrefs.use_topbar_v3_1
-	classic.visible = not on
-	v31.visible = on
-
-## The v3.1 flag flipped. Static modules swap their face pair directly; Quest
-## has its own refresh already; everything else re-reads the flag inside the
-## coalesced _apply_refresh pass.
-func _on_topbar_v3_1_changed(_enabled: bool) -> void:
-	for pair: Array in _v31_pairs:
-		_apply_v31_pair(pair[0], pair[1])
-	_refresh_quest()
-	_queue_refresh()
-
 
 # ── 1 · Treasury (the MoneyWidget Button, restyled — node path is an e2e contract) ──
 
 func _build_treasury() -> void:
 	money_widget.text = ""
-	money_widget.tooltip_text = "Treasury — money & loans"
 	money_widget.focus_mode = Control.FOCUS_NONE
 	money_widget.custom_minimum_size = Vector2(0, MOD_H)
 	for state in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
@@ -729,33 +523,16 @@ func _build_treasury() -> void:
 	money_widget.add_child(_money_inner)
 	_treasury_led = StatusLed.new()
 	_money_inner.add_child(_treasury_led)
-	_money_glyph = _mini("£", C_AMBER, 21)
-	_money_inner.add_child(_money_glyph)
-	_money_coin_icon = _v31_icon(ICON_COIN, money_widget)
-	_money_coin_icon.visible = false
-	_money_inner.add_child(_money_coin_icon)
-	# v3.1: brighten the coin on hover, matching Goods Graph/Encyclopedia's icon+label
-	# brighten-on-hover — the Button's native stylebox swap alone is not icon-level feedback.
-	money_widget.mouse_entered.connect(func() -> void:
-		_money_coin_icon.modulate = Color(1.18, 1.18, 1.05))
-	money_widget.mouse_exited.connect(func() -> void:
-		_money_coin_icon.modulate = Color.WHITE)
 	var col := VBoxContainer.new()
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_theme_constant_override("separation", 1)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_money_inner.add_child(col)
-	_cash_label = Label.new()
-	_cash_label.theme_type_variation = "Numeric"
-	_cash_label.add_theme_font_size_override("font_size", 20)
-	_cash_label.add_theme_color_override("font_color", C_BRIGHT)
-	col.add_child(_cash_label)
-	# DS2: the cash on an LED screen, the £ printed before it and a K or M after it (_refresh_treasury).
+	# The cash on an LED screen, the £ printed before it and a K or M after it (_ds2_refresh_cash).
 	_ds2_cash = HBoxContainer.new()
 	_ds2_cash.name = "Ds2Cash"
 	_ds2_cash.add_theme_constant_override("separation", 4)
 	_ds2_cash.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_ds2_cash.visible = false
 	_ds2_cash.add_child(_ds2_print("£", DS2_POUND_PX))
 	_ds2_cash_holder = Control.new()
 	_ds2_cash_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -766,27 +543,19 @@ func _build_treasury() -> void:
 	_ds2_cash_suffix = _ds2_print("", 18)
 	_ds2_cash.add_child(_ds2_cash_suffix)
 	col.add_child(_ds2_cash)
-	col.move_child(_ds2_cash, _cash_label.get_index())
-	var sub := HBoxContainer.new()
-	sub.add_theme_constant_override("separation", 6)
-	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_child(sub)
-	_money_sub = sub
-	_net_label = _mini("", C_GOOD, 13)
-	sub.add_child(_net_label)
-	_runway_label = _mini("", C_RED, 11)
-	sub.add_child(_runway_label)
-	# DS2: the profit line and the runway stand in a column to the right of the cash (_ds2_money_layout).
+	# The profit line and the runway stand in a column to the right of the cash, printed on the concrete.
 	_ds2_money_side = VBoxContainer.new()
 	_ds2_money_side.name = "Ds2MoneySide"
 	_ds2_money_side.alignment = BoxContainer.ALIGNMENT_CENTER
 	_ds2_money_side.add_theme_constant_override("separation", 0)
 	_ds2_money_side.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_ds2_money_side.visible = false
 	_money_inner.add_child(_ds2_money_side)
-	money_widget.resized.connect(func() -> void:
-		if UiPrefs.use_topbar_ds2:
-			_ds2_refresh_cash())
+	_net_label = _mini("", DS2_INK_GOOD, 13)
+	_runway_label = _mini("", DS2_INK_BAD, DS2_BAR_MIN_PX)
+	for label: Label in [_net_label, _runway_label]:
+		_ds2_print_on_concrete(label)
+		_ds2_money_side.add_child(label)
+	money_widget.resized.connect(func() -> void: _ds2_refresh_cash())
 	money_widget.pressed.connect(func() -> void: _toggle_fly("treasury"))
 
 func _money_text(n: float) -> String:
@@ -812,24 +581,11 @@ func _build_power() -> void:
 	var row := _module_row(mod)
 	_power_led = StatusLed.new()
 	row.add_child(_power_led)
-	_power_glyph = _mini("⚡", C_GOOD, 19)
-	row.add_child(_power_glyph)
-	_power_icon = _v31_icon(ICON_POWER, mod)
-	row.add_child(_power_icon)
-	var col := VBoxContainer.new()
-	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", 2)
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(col)
-	_power_head = _mini("Powered", C_GOOD, 15)
-	col.add_child(_power_head)
-	_power_sub = _mini("self-sufficient", C_TEXT, 12)
-	col.add_child(_power_sub)
+	row.add_child(_bar_icon(ICON_POWER, mod))
 	_hbox().add_child(mod)
 	_power_btn = mod
-	# Opens the Supply Priority flyout rather than jumping straight to the map overlay —
-	# matches every other module (Treasury/Victory/Rankings/Council all open a flyout on
-	# click). The direct overlay toggle survives as a button inside the flyout, see _fly_power.
+	# Opens the Supply Priority sheet rather than jumping straight to the map overlay; the
+	# direct overlay toggle survives as a key on the sheet, see _ds2_fly_power.
 	mod.pressed.connect(func() -> void: _toggle_fly("power"))
 
 func _on_power_pressed() -> void:
@@ -843,67 +599,31 @@ func _power_stats() -> Dictionary:
 	return TopBarStatus.power_stats()
 
 
-# ── 3 · Victory: five mini track meters + score ─────────────────────────────────
+# ── 3 · Victory: the score on a drum counter ────────────────────────────────────
 
 func _build_victory() -> void:
 	var mod := _ModuleBtn.new(self)
 	mod.name = "VictoryModule"
-	mod.tooltip_text = "Victory tracks"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
 	_victory_led = StatusLed.new()
 	row.add_child(_victory_led)
-	_victory_led.visible = false   # v3.1 only — see the var's own comment
-	_victory_glyph = _mini("★", C_CREAM.darkened(0.15), 16)
-	row.add_child(_victory_glyph)
-	_victory_icon = _v31_icon(ICON_VICTORY, mod)
-	_victory_icon.visible = false
-	row.add_child(_victory_icon)
-	# v3.1: replaces the meters + two-line score/target with a single "X/Y".
-	_victory_ratio = _mini("", C_CREAM, 15)
-	_victory_ratio.visible = false
-	row.add_child(_victory_ratio)
-	# DS2: the score on a drum counter, the target printed after it ("/1,000").
+	row.add_child(_bar_icon(ICON_VICTORY, mod))
+	# The score on a drum counter, the target printed after it ("/1,000").
 	_ds2_victory = HBoxContainer.new()
 	_ds2_victory.name = "Ds2Victory"
 	_ds2_victory.add_theme_constant_override("separation", 4)
 	_ds2_victory.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_ds2_victory.visible = false
 	_ds2_victory_counter = Counter.new()
 	_ds2_victory_counter.call("configure", 4, 0)
 	_ds2_victory.add_child(_ds2_victory_counter)
 	_ds2_victory_target = _mini("", C_TEXT, 15)
 	_ds2_victory.add_child(_ds2_victory_target)
 	row.add_child(_ds2_victory)
-	_victory_meters = HBoxContainer.new()
-	_victory_meters.add_theme_constant_override("separation", 6)
-	_victory_meters.alignment = BoxContainer.ALIGNMENT_END
-	_victory_meters.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(_victory_meters)
-	var col := VBoxContainer.new()
-	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", 2)
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(col)
-	_victory_score = Label.new()
-	_victory_score.theme_type_variation = "Numeric"
-	_victory_score.add_theme_font_size_override("font_size", 15)
-	_victory_score.add_theme_color_override("font_color", C_CREAM)
-	col.add_child(_victory_score)
-	# Second line: the points needed to win. Just the threshold — see below for why there is
-	# no turn estimate here.
-	_victory_target = _mini("", C_TEXT, 11)
-	# Text set on refresh (_victory_bar_tip) — at build time the ruleset has not landed yet,
-	# so the bar's shape is not yet known.
-	col.add_child(_victory_target)
 	mod.pressed.connect(func() -> void: _module_pressed("victory"))
 	_hbox().add_child(mod)
-	_victory_btn = mod
 
-func _track_color(entry: Dictionary) -> Color:
-	return DS.PALETTE.get(str(entry.get("color_key", "")), C_CREAM)
-
-## v3.1's Victory light: green when MOST tracks have risen against their own recent
+## The Victory light: green when MOST tracks have risen against their own recent
 ## trend (last sample vs ~3 turns back). VictoryState has no "on track to win"
 ## concept to read instead — the spec's own explicit ruling was "no red condition
 ## defined" for this module — so this is a momentum read, not a distance-to-bar one
@@ -938,7 +658,7 @@ func _victory_trending_up(bd: Dictionary) -> bool:
 ## off-white shapes on nothing. Roads and the port are building icons; the warehouse has
 ## no building behind it, so its cleaned PNG is checked in beside the other UI icons.
 const BuildingIcon := preload("res://scripts/building_icon.gd")
-## The Power and Transport modules' judgements, shared by their lamps and the DS2 hover readouts.
+## The Power and Transport modules' judgements, shared by their lamps and the hover readouts.
 const TopBarStatus := preload("res://scripts/top_bar_status.gd")
 ## Measures an icon's drawn art (its used rect), cached per texture.
 const BdpV3Indicator := preload("res://scripts/bdp_v3_indicator.gd")
@@ -957,9 +677,9 @@ func _infra_texture(internal_name: String) -> Texture2D:
 
 ## One freight icon with its lamp BESIDE it, as a single pair.
 ##
-## The icon goes through `_v31_icon`, the same builder Power, Victory, Rankings and Council
-## use, so it is fitted to the same cap height, centred on the same midline and catches the
-## same hover sheen. The lamp centres on that midline too.
+## The icon goes through `_bar_icon`, the same builder Power, Victory, Rankings and Council
+## use, so it is fitted to the same cap height, centred on the same midline and lights the
+## same way on hover. The lamp centres on that midline too.
 func _freight_cell(texture: Texture2D, tip: String, hover_source: Control) -> Dictionary:
 	var pair := HBoxContainer.new()
 	pair.add_theme_constant_override("separation", FREIGHT_LED_GAP)
@@ -976,11 +696,7 @@ func _freight_cell(texture: Texture2D, tip: String, hover_source: Control) -> Di
 	led.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	led_slot.add_child(led)
 	pair.add_child(led_slot)
-	var icon := _v31_icon(texture, hover_source)
-	# The art is cream; the bar's other labels are the off-white, so match them (DS2 keeps the cream).
-	icon.modulate = C_LABEL
-	_ds2_freight_wraps.append(icon)
-	pair.add_child(icon)
+	pair.add_child(_bar_icon(texture, hover_source))
 	return {"root": pair, "led": led, "led_slot": led_slot}
 
 
@@ -1015,7 +731,6 @@ func _refresh_transport() -> void:
 	if _transport_btn == null:
 		return
 	var status := TopBarStatus.transport()
-	var t: Dictionary = status.stats
 	# Each lamp owns one failure (TopBarStatus.transport). Splitting them is the point: the single
 	# count this replaced read '0 units → market' in any game shipping tile-to-tile, which is most of
 	# them, so the module spent the early game reporting nothing at all. The port lamp watches
@@ -1024,13 +739,6 @@ func _refresh_transport() -> void:
 		var led := pair[0] as StatusLed
 		led.color = C_AMBER if str((pair[1] as Dictionary).tone) == "warn" else C_RED
 		led.lit = TopBarStatus.lit(pair[1])
-	_transport_btn.tooltip_text = "Transport — %d tile%s at 95%%+ storage (%d refusing), %d link%s over capacity, %s unit%s riding to market" % [
-		int(t.full), "" if int(t.full) == 1 else "s", int(t.rejecting),
-		int(t.over), "" if int(t.over) == 1 else "s",
-		_thousands(int(t.to_market)), "" if int(t.to_market) == 1 else "s"]
-	if TransportState.overflow_shipments.size() > 0:
-		_transport_btn.tooltip_text += "
-%d shipment(s) stuck with nowhere to unload" % TransportState.overflow_shipments.size()
 
 
 # ── 4 · Rankings: player position in the cosmetic company league ────────────
@@ -1039,30 +747,18 @@ func _build_rankings() -> void:
 	var mod := _ModuleBtn.new(self)
 	mod.name = "RankingsModule"
 	mod.visible = CompanyRankings.available()
-	mod.tooltip_text = "Company rankings — league position and the goods you lead"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
-	# Classic: no leading glyph — the head line carries its own movement arrow, and a
-	# second static triangle beside it read as a claim about the goods line
-	# underneath. v3.1 trades the text-only face for the podium icon, so that
-	# objection does not apply: the icon reads as "rankings", not as a second
-	# movement claim.
 	_rankings_led = StatusLed.new()
-	_rankings_led.visible = false   # v3.1 only — no lamp in the classic bar
 	row.add_child(_rankings_led)
-	_rankings_icon = _v31_icon(ICON_RANKINGS, mod)
-	_rankings_icon.visible = false
-	row.add_child(_rankings_icon)
+	row.add_child(_bar_icon(ICON_RANKINGS, mod))
 	var col := VBoxContainer.new()
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", 2)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(col)
-	# Two lines only: no "RANKINGS" tag row, since modules have no boxes.
-	_rankings_head = _mini("10TH OF 10", C_BRIGHT, 14)
+	# The player's position only: no movement arrow and no "OF N".
+	_rankings_head = _mini(_ordinal(10), C_BRIGHT, 14)
 	col.add_child(_rankings_head)
-	_rankings_sub = _mini("", DS.PALETTE.TEXT, 11)
-	col.add_child(_rankings_sub)
 	mod.pressed.connect(func() -> void: _module_pressed("rankings"))
 	_hbox().add_child(mod)
 	_rankings_btn = mod
@@ -1074,36 +770,17 @@ func _refresh_rankings() -> void:
 	if _rankings_btn != null:
 		_rankings_btn.visible = available
 	if not available:
-		if _fly_open_id == "rankings":
-			_close_fly()
 		return
 	var rows: Array[Dictionary] = CompanyRankings.standings()
 	for row: Dictionary in rows:
 		if not bool(row.get("is_player", false)):
 			continue
-		var movement: int = int(row.get("rank_change", 0))
 		var rank: int = int(row.get("rank", 10))
-		var v31: bool = UiPrefs.use_topbar_v3_1
-		if v31:
-			# v3.1: position only — no movement arrow (nothing else on the face carries
-			# a movement claim) and no "OF N".
-			_rankings_head.text = _ordinal(rank)
-			_rankings_head.add_theme_color_override("font_color", C_BRIGHT)
-		else:
-			_rankings_head.text = "%s %s OF %d" % [_ranking_arrow(movement), _ordinal(rank), rows.size()]
-			_rankings_head.add_theme_color_override("font_color", C_GOOD if movement > 0 else (C_BAD if movement < 0 else C_BRIGHT))
-		# The sub-line answers "am I winning at anything?", which a revenue total never
-		# did — it counts the goods where the player outproduces all nine rivals.
-		var led := _goods_led_count()
-		_rankings_sub.text = "%d good%s you lead in" % [led, "" if led == 1 else "s"]
-		_rankings_sub.visible = not v31
-		_rankings_icon.visible = v31
-		if _rankings_led != null:
-			# Amber warns of an imminent lost place; green marks a safe league lead.
-			_rankings_led.visible = v31
-			var at_risk := _ranking_position_at_risk(rows)
-			(_rankings_led as StatusLed).color = C_AMBER if at_risk else C_GOOD
-			(_rankings_led as StatusLed).lit = at_risk or rank == 1
+		_rankings_head.text = _ordinal(rank)
+		# Amber warns of an imminent lost place; green marks a safe league lead.
+		var at_risk := _ranking_position_at_risk(rows)
+		(_rankings_led as StatusLed).color = C_AMBER if at_risk else C_GOOD
+		(_rankings_led as StatusLed).lit = at_risk or rank == 1
 		return
 
 ## Warn when the next rival would overtake if each company's latest revenue
@@ -1118,23 +795,6 @@ func _ranking_position_at_risk(rows: Array[Dictionary]) -> bool:
 		var rival_next := maxf(0.0, float(rival.revenue) + float(rival.get("revenue_change", 0.0)))
 		return rival_next > player_next
 	return false
-
-## Goods where the player outproduces every rival. goods_standings() returns one row
-## per GOOD, each carrying a nested `producers` league — the player is one entry in it.
-##
-## Zero output never counts as leading. Apex goods have no rivals generated at all, so
-## the player is trivially rank 1 on every one of them; without the quantity test the
-## bar would boast about goods the player has never made a single unit of.
-func _goods_led_count() -> int:
-	var led := 0
-	for good: Dictionary in CompanyRankings.goods_standings():
-		for producer: Dictionary in (good.get("producers", []) as Array):
-			if not bool(producer.get("is_player", false)):
-				continue
-			if int(producer.get("rank", 0)) == 1 and int(producer.get("quantity", 0)) > 0:
-				led += 1
-			break
-	return led
 
 func _ranking_arrow(change: int) -> String:
 	if change > 0:
@@ -1152,96 +812,25 @@ func _ordinal(value: int) -> String:
 			3: suffix = "rd"
 	return "%d%s" % [value, suffix]
 
-## queue_free() is DEFERRED: the old children live until the end of the frame while the new ones
-## are added immediately, so for one frame the container holds BOTH sets and the HBox lays out
-## double the widgets — which is the flicker. remove_child() first takes them out of the layout
-## in the same frame. (Same pattern advisor_council_tab._rebuild already uses.)
-func _clear_now(container: Node) -> void:
-	for c in container.get_children():
-		container.remove_child(c)
-		c.queue_free()
-
-
 func _refresh_victory() -> void:
 	var bd: Dictionary = VictoryState.get_breakdown()
-	_clear_now(_victory_meters)
-	for t in (bd.get("tracks", []) as Array):
-		var cell := VBoxContainer.new()
-		cell.add_theme_constant_override("separation", 2)
-		cell.alignment = BoxContainer.ALIGNMENT_END
-		cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		cell.tooltip_text = "%s — %d%%" % [str(t.get("name", "")), int(round(float(t.get("progress", 0.0)) * 100.0))]
-		var meter := Panel.new()
-		meter.custom_minimum_size = Vector2(15, 30)
-		var msb := StyleBoxFlat.new()
-		msb.bg_color = C_TRACK_BG
-		msb.border_color = C_TRACK_EDGE
-		msb.set_border_width_all(1)
-		msb.set_corner_radius_all(3)
-		meter.add_theme_stylebox_override("panel", msb)
-		var fill := Panel.new()
-		var fsb := StyleBoxFlat.new()
-		fsb.bg_color = _track_color(t)
-		fsb.set_corner_radius_all(2)
-		fill.add_theme_stylebox_override("panel", fsb)
-		fill.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-		var frac: float = clampf(float(t.get("progress", 0.0)), 0.0, 1.0)
-		fill.offset_top = -28.0 * frac
-		fill.offset_bottom = -1
-		fill.offset_left = 1
-		fill.offset_right = -1
-		meter.add_child(fill)
-		cell.add_child(meter)
-		var letter := _mini(str(t.get("name", "?")).substr(0, 1), C_TEXT, 9)
-		letter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		letter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		cell.add_child(letter)
-		_victory_meters.add_child(cell)
 	var total := int(bd.get("total", 0))
-	_victory_score.text = "%s Victory Point%s" % [_thousands(total), "" if total == 1 else "s"]
-	if _victory_target != null:
-		_victory_target.text = "of %s to win" % _thousands(int(bd.get("win_threshold", 4000)))
-		_victory_target.tooltip_text = _victory_bar_tip(bd)
-	var v31: bool = UiPrefs.use_topbar_v3_1
-	_victory_glyph.visible = not v31
-	_victory_icon.visible = v31
-	_victory_meters.visible = not v31
-	(_victory_score.get_parent() as Control).visible = not v31
-	var ds2: bool = UiPrefs.use_topbar_ds2
-	_victory_ratio.visible = v31 and not ds2
-	_ds2_victory.visible = ds2
-	if v31:
-		_victory_ratio.text = "%s/%s" % [_thousands(total), _thousands(int(bd.get("win_threshold", 4000)))]
-		_victory_ratio.tooltip_text = _victory_bar_tip(bd)
-	if ds2:
-		var drums: int = Counter.drums_for(float(total), 0, 4)
-		if int(_ds2_victory_counter.get("drums")) != drums:
-			_ds2_victory_counter.call("configure", drums, 0)
-		var shown: float = float(_ds2_victory_counter.get("value"))
-		_ds2_victory_counter.call("set_value", float(total), shown)
-		_ds2_victory_target.text = "/%s" % _thousands(int(bd.get("win_threshold", 4000)))
-	if _victory_led != null:
-		_victory_led.visible = v31
-		# Green: more than half the tracks rising. (It was never given a colour and lit red.)
-		(_victory_led as StatusLed).color = C_GOOD
-		(_victory_led as StatusLed).lit = _victory_trending_up(bd)
-
-## What the win bar does, in one line. A campaign bar climbs with the turn; the demo's is
-## flat, and a demo player told to hold out for turn 300 has been told something false.
-func _victory_bar_tip(bd: Dictionary) -> String:
-	var max_turns := int(bd.get("max_turns", 300))
-	if VictoryState.win_threshold_for_turn(1) == VictoryState.win_threshold_for_turn(max_turns):
-		return "%s points wins, on any turn — the bar does not rise." % _thousands(
-			int(bd.get("win_threshold", 0)))
-	return "Points needed to win rise over the game — 1 track from turn %d up to 4 tracks by turn %d." % [
-		VictoryState.WIN_START_TURN, max_turns]
+	var drums: int = Counter.drums_for(float(total), 0, 4)
+	if int(_ds2_victory_counter.get("drums")) != drums:
+		_ds2_victory_counter.call("configure", drums, 0)
+	var shown: float = float(_ds2_victory_counter.get("value"))
+	_ds2_victory_counter.call("set_value", float(total), shown)
+	_ds2_victory_target.text = "/%s" % _thousands(int(bd.get("win_threshold", 4000)))
+	# Green: more than half the tracks rising.
+	(_victory_led as StatusLed).color = C_GOOD
+	(_victory_led as StatusLed).lit = _victory_trending_up(bd)
 
 ## NO TURN FORECAST HERE, DELIBERATELY. Extrapolating a points-per-turn rate from recent
 ## turns into "N turns until victory" is wrong: Victory has no rate of its own — the tracks
 ## report where they ARE, not how fast they are moving — so the estimate is a straight-line
-## guess over a curve, and the win threshold itself RISES with the turn (see _victory_bar_tip),
-## which such an extrapolation never models. It reads as a promise and is routinely wrong.
-## The second line states the threshold and nothing else; the score above it is the progress.
+## guess over a curve, and the win threshold itself RISES with the turn, which such an
+## extrapolation never models. It reads as a promise and is routinely wrong.
+## The target printed after the counter is the threshold and nothing else; the counter is the progress.
 ## Do not introduce an ETA without a real model of the tracks.
 
 
@@ -1269,20 +858,15 @@ func _refresh_briefing() -> void:
 				dock.push_research(tech)
 
 
-# ── 5 · Council: seated portraits with loyalty rings + number chips ─────────────
+# ── 4b · Mission: a key and a piston ──────────────────────────────────────────────
 
-## The modular mission tree (scripts/mini_quest.gd). Sits in the middle of the bar.
-## Hidden only while the explicit tutorial coach owns the screen; the generic branch is available
-## from the opening campaign turn even when its first unlock is still locked.
+## The modular mission tree (scripts/mini_quest.gd), as a key and a piston (scripts/ds2/mission_slot.gd)
+## in its own section between the works and the left pipes. Hidden only while the explicit tutorial coach
+## owns the screen; the generic branch is available from the opening campaign turn even when its first
+## unlock is still locked.
 func _build_quest() -> void:
 	var mod := _ModuleBtn.new(self)
 	mod.name = "QuestModule"
-	mod.tooltip_text = "Mini quest"
-	# No rim: the fixed 120 px resting width does the "marks this out from its neighbours" job.
-	# v3.1: the collapse-to-icon animation shrinks mod.size.x with the full-width text
-	# still visible underneath (see _quest_v31_collapse_to_icon) — clip so the text
-	# is cropped by the shrinking edge instead of overflowing it.
-	mod.clip_contents = true
 	var pad := MarginContainer.new()
 	pad.add_theme_constant_override("margin_left", 12)
 	pad.add_theme_constant_override("margin_right", 12)
@@ -1290,43 +874,18 @@ func _build_quest() -> void:
 	pad.add_theme_constant_override("margin_bottom", 6)
 	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	mod.add_child(pad)
-	# The text sits in its own margin so DS2 can keep the icon showing at the left, the text to its right.
-	_quest_text_box = MarginContainer.new()
-	_quest_text_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pad.add_child(_quest_text_box)
-	var col := VBoxContainer.new()
-	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", 2)
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_quest_text_box.add_child(col)
-	_quest_title = _mini("", C_CREAM, 13)
-	col.add_child(_quest_title)
-	_quest_sub = _mini("", C_TEXT, 11)
-	col.add_child(_quest_sub)
-	# The whole text block, kept so the completion flash can fade it away and the tick can take
-	# the module to itself. Fading modulate (not visibility) leaves the layout — and so the
-	# module's width — untouched while the label is gone.
-	_quest_text_col = col
-	# v3.1: icon-only face, a sibling of the text column inside the same pad — hiding
-	# one and showing the other is what gives the module its "narrower" v3.1 shape
-	# (MarginContainer excludes invisible children from its own minimum size), and
-	# the tick/glow celebration keeps working unchanged since it is drawn on the
-	# _ModuleBtn itself, not on whichever content sits inside it.
-	_quest_icon = _v31_icon(ICON_QUEST, mod)
+	# The missions icon at the slot's left, shown while the section is collapsed (_refresh_quest).
+	_quest_icon = _bar_icon(ICON_QUEST, mod)
 	_quest_icon.visible = false
-	# The module's resting width (QUEST_ICON_MODULE_W, 120) is wider than the icon+padding
-	# would size to on its own (~68) — SHRINK_CENTER keeps the icon at its natural size and
-	# centred in that extra room, rather than the icon stretching to fill it.
-	_quest_icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_quest_icon.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	pad.add_child(_quest_icon)
 	_mission_slot = MissionSlot.new()
-	_mission_slot.visible = false
 	pad.add_child(_mission_slot)
 	_mission_slot.celebration_finished.connect(func() -> void: _place_quest.call_deferred())
-	# Hovered, the slot shows its mission on the bar's readout, as the other DS2 modules do: collapsed,
+	# Hovered, the slot shows its mission on the bar's readout, as the other modules do: collapsed,
 	# that is the only place the text is.
 	mod.mouse_entered.connect(func() -> void:
-		if _mission_slot_on() and _ds2_readout != null:
+		if _ds2_readout != null:
 			_ds2_hover = mod
 			_ds2_show_readout())
 	mod.mouse_exited.connect(func() -> void:
@@ -1334,7 +893,6 @@ func _build_quest() -> void:
 			_ds2_hover = null
 			if _ds2_readout != null:
 				_ds2_readout.visible = false)
-	UiPrefs.mission_slot_changed.connect(func(_on: bool) -> void: _refresh_quest())
 	Tutorial.opener_finished.connect(_on_opener_finished)
 	mod.pressed.connect(func() -> void: _toggle_fly("quest"))
 	# TOP-LEVEL, like the bankruptcy strip. The bar is a PanelContainer:
@@ -1344,10 +902,9 @@ func _build_quest() -> void:
 	mod.top_level = true
 	add_child(mod)
 	_quest_btn = mod
-	# DS2 keeps the mission inside its own section, between the works and the left pipes, even while
-	# its width tweens.
+	# The mission keeps inside its own section, between the works and the left pipes, whatever its width.
 	mod.resized.connect(func() -> void:
-		if UiPrefs.use_topbar_ds2 and _ds2_quest_area.y > _ds2_quest_area.x:
+		if _ds2_quest_area.y > _ds2_quest_area.x:
 			mod.position.x = roundf(_ds2_quest_area.x)
 			var room := _ds2_quest_area.y - _ds2_quest_area.x
 			if mod.size.x > room + 0.5:
@@ -1369,8 +926,8 @@ func _build_quest() -> void:
 	_refresh_quest()
 
 
-## A mission landed. The toast MiniQuest raises says WHAT happened; the module — flashing up on
-## the bar — says where. See _celebrate_mission for the sequence itself.
+## A mission landed. The toast MiniQuest raises says WHAT happened; the module — the piston striking
+## on the bar — says where. See _celebrate_mission for the sequence itself.
 func _on_quest_mission_completed(kind: String, mission_title: String, reward: String) -> void:
 	_completed_title = mission_title
 	_completed_reward = reward
@@ -1380,52 +937,26 @@ func _on_quest_mission_completed(kind: String, mission_title: String, reward: St
 	_celebrate_mission(kind)
 
 
-## v3.1: the module's fixed resting width while showing icon-only. Wider than
-## the icon+padding would size to on their own (~68 px) — see _build_quest's SHRINK_CENTER note.
-const QUEST_ICON_MODULE_W := 120.0
-
-## Its resting icon module is centred on the bar, so a wider reveal grows to the right; top_level,
-## so the container will not touch it. Centred vertically in what the bar actually DRAWS — its live height
-## less the metallic bezel along the bottom — rather than in BAR_H, which is the offset the bar
+## Sizes the mission to its slot and keeps it inside its own section, between the works and the left
+## pipes; top_level, so the container will not touch it. Centred vertically in what the bar actually DRAWS —
+## its live height less the beam along the bottom — rather than in BAR_H, which is the offset the bar
 ## is anchored by and is smaller than the height its styleboxes give it (53 vs a measured 64).
 func _place_quest() -> void:
-	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
+	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible or _ds2_left_gap == null:
 		return
-	var ds2: bool = UiPrefs.use_topbar_ds2 and _ds2_left_gap != null
-	if ds2:
-		# DS2: the mission keeps to its own section, between the works and the left pipes.
-		_ds2_quest_area = _ds2_quest_span()
-		_quest_btn.position.x = roundf(_ds2_quest_area.x)
-	if _quest_v31_animating:
-		return   # a width tween owns .size right now (see _quest_v31_collapse_to_icon)
+	_ds2_quest_area = _ds2_quest_span()
 	var want_size := _quest_btn.get_combined_minimum_size()
-	if ds2 and _mission_slot_on():
-		# The module's own padding round the slot, measured once both are laid out (the pad's margins
-		# and the button's content margins).
-		var chrome := 24.0
-		if _mission_slot.size.x > 1.0 and _quest_btn.size.x > _mission_slot.size.x:
-			chrome = _quest_btn.size.x - _mission_slot.size.x
-		want_size.x = minf(float(_mission_slot.call("ideal_width")) + chrome, _ds2_quest_area.y - _ds2_quest_area.x)
-		_quest_btn.size = want_size
-		_quest_btn.position = Vector2(roundf(_ds2_quest_area.x), maxf(0.0, roundf((size.y - EDGE_H - want_size.y) * 0.5)))
-		return
-	if UiPrefs.use_topbar_v3_1 and not _quest_v31_wide:
-		want_size.x = maxf(want_size.x, QUEST_ICON_MODULE_W)
-	if ds2:
-		if _quest_v31_wide:
-			want_size.x = _ds2_quest_text_width()
-		want_size.x = minf(want_size.x, _ds2_quest_area.y - _ds2_quest_area.x)
+	# The module's own padding round the slot, measured once both are laid out (the pad's margins
+	# and the button's content margins).
+	var chrome := 24.0
+	if _mission_slot.size.x > 1.0 and _quest_btn.size.x > _mission_slot.size.x:
+		chrome = _quest_btn.size.x - _mission_slot.size.x
+	want_size.x = minf(float(_mission_slot.call("ideal_width")) + chrome, _ds2_quest_area.y - _ds2_quest_area.x)
 	_quest_btn.size = want_size
-	# DS2 gives the centre to the money, so the mission sits after the works on the left.
-	var quest_x := roundf((get_viewport_rect().size.x - QUEST_ICON_MODULE_W) * 0.5)
-	if ds2:
-		quest_x = roundf(_ds2_quest_area.x)
-	_quest_btn.position = Vector2(quest_x,
-		maxf(0.0, roundf((size.y - EDGE_H - want_size.y) * 0.5)))
+	_quest_btn.position = Vector2(roundf(_ds2_quest_area.x), maxf(0.0, roundf((size.y - EDGE_H - want_size.y) * 0.5)))
 
 
-# ── DS2 (docs/top-bar-ds2-plan.md), behind UiPrefs.use_topbar_ds2 ─────────────────
-# With the flag off none of this draws and the modules keep the v3.1 order.
+# ── DS2 strip (docs/top-bar-ds2-plan.md) ───────────────────────────────────────
 
 const Ds2Light := preload("res://scripts/bdp_v3_light.gd")
 ## The strip: the backing's weathered navy steel, a riveted steel beam along its foot and its shadow on the map, rendered
@@ -1454,7 +985,6 @@ const DS2_PIPES_OFF_SLAB := 17.0
 ## The bar's icons raised as Building Detail's are (set `baricon`): res://assets/ui/bdp_v3/bar_icon_<name>.png
 ## and its _shadow, by the art they replace.
 const DS2_BAR_ICONS := {
-	"res://assets/icons/ui_icons/standalone/coin.png": "coin",
 	"res://assets/icons/ui_icons/standalone/power_icon.png": "power",
 	"res://assets/icons/ui_icons/standalone/trophy.png": "trophy",
 	"res://assets/icons/ui_icons/standalone/podium.png": "podium",
@@ -1490,8 +1020,6 @@ const ModKey := preload("res://scripts/bdp_v3_mod_key.gd")
 const Toggle := preload("res://scripts/bdp_v3_toggle.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
-## The flyouts that are DS2 steel sheets; the others keep their card until they are decided.
-const DS2_SHEET_FLYOUTS := ["treasury", "power"]
 ## The sheet: Building Detail's action sheet shape in the bar's own weathered navy steel, no trim (set
 ## `barsheet`), nine-sliced. From layout.json in layout px: the render's shadow room and its corner.
 const DS2_SHEET: Texture2D = preload("res://assets/ui/bdp_v3/bar_sheet.png")
@@ -1515,7 +1043,7 @@ const DS2_BODY_BOLD: FontFile = preload("res://assets/fonts/IBMPlexSans-SemiBold
 ## The hover readout under the bar: its width and its gap below the bar.
 const DS2_READOUT_W := 360.0
 const DS2_READOUT_GAP := 8.0
-## The bar's lamps in DS2: Building Detail's pilot lamp, at its diagnostics rows' scale.
+## The bar's lamps: Building Detail's pilot lamp, at its diagnostics rows' scale.
 const Ds2Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const MissionSlot := preload("res://scripts/ds2/mission_slot.gd")
 const MissionCompletePlate := preload("res://scripts/ds2/mission_complete_plate.gd")
@@ -1527,24 +1055,14 @@ const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
 var _ds2_shade: Node2D
 ## Space before the money, sized so the money sits on the screen's centre line.
 var _ds2_left_gap: Control
-var _ds2_flex: Control
-var _v31_order: Array[Node] = []
-## [v3.1 icon, DS2 raised face, its shadow] per bar icon that has a raised render.
-var _ds2_faces: Array[Array] = []
-## The freight cells' wraps, tinted off-white in v3.1 and left cream in DS2.
-var _ds2_freight_wraps: Array[Control] = []
-## [StatusLed, its Building Detail pilot lamp] per lamp on the bar.
-var _ds2_lamps: Array[Array] = []
-## The mission's section in DS2, as [left, right] screen x: from the works' end to the left pipes.
+## The mission's section, as [left, right] screen x: from the works' end to the left pipes.
 var _ds2_quest_area := Vector2.ZERO
 ## For tools and tests: the Transport lamp the readout reads ("storage", "links", "freight"), in place of
 ## the one under the pointer. Empty in play.
 var ds2_readout_cell := ""
-## DS2: the readout under the bar and the module it is reading.
+## The readout under the bar and the module it is reading.
 var _ds2_readout: Control
 var _ds2_hover: Control = null
-## The Treasury and Encyclopedia buttons' own tooltips, held while DS2's readout stands in for them.
-var _ds2_held_tips := {}
 ## True while an open flyout is being rebuilt in place (a switch flipped), so it does not drop in again.
 var _fly_refreshing := false
 ## The printed £, the LED screen (in a holder sized to its scale) and the printed K / M after it.
@@ -1552,27 +1070,38 @@ var _ds2_cash: HBoxContainer
 var _ds2_cash_led: Control
 var _ds2_cash_holder: Control
 var _ds2_cash_suffix: Label
-## v3.1's line under the cash, and DS2's column to its right that takes its labels.
-var _money_sub: HBoxContainer
+## The column to the cash's right that holds the profit line and the runway.
 var _ds2_money_side: VBoxContainer
 
 
+## Lays the bar out on the strip: the works to the left of the money, which sits on the screen's centre
+## line, Victory and the office to its right; the lamps, the light across the strip and the hover readouts.
 func _ds2_setup() -> void:
 	var hbox := _hbox()
-	_v31_order.assign(hbox.get_children())
-	for child: Node in _v31_order:
+	var built: Array[Node] = []
+	built.assign(hbox.get_children())
+	var flex: Control = null
+	for child: Node in built:
 		if child.get_class() == "Control" and (child as Control).size_flags_horizontal & Control.SIZE_EXPAND:
-			_ds2_flex = child as Control
+			flex = child as Control
 			break
 	_ds2_left_gap = Control.new()
 	_ds2_left_gap.name = "Ds2CentreGap"
 	_ds2_left_gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_ds2_left_gap.visible = false
 	hbox.add_child(_ds2_left_gap)
+	var order: Array[Node] = [_hbox_child("PowerModule"), _hbox_child("TransportModule"), _ds2_left_gap,
+		money_widget, flex, _hbox_child("VictoryModule"), _hbox_child("RankingsModule")]
+	for child: Node in built.slice(built.find(flex) + 1):
+		if not order.has(child):
+			order.append(child)
+	var at := 0
+	for child: Node in order:
+		if child != null:
+			hbox.move_child(child, at)
+			at += 1
 	_ds2_shade = Node2D.new()
 	_ds2_shade.name = "Ds2Shade"
 	_ds2_shade.material = Ds2Light.across_material(Ds2Light.shade_material())
-	_ds2_shade.visible = false
 	_ds2_shade.draw.connect(func() -> void: _ds2_shade.draw_rect(Rect2(0, -TOP_BLEED, size.x, size.y + TOP_BLEED), Color.WHITE))
 	add_child(_ds2_shade)
 	resized.connect(func() -> void:
@@ -1606,102 +1135,26 @@ func _ds2_setup() -> void:
 			mod.gui_input.connect(func(e: InputEvent) -> void:
 				if e is InputEventMouseMotion and _ds2_hover == mod:
 					_ds2_show_readout())
-	hbox.resized.connect(_ds2_queue_centre)
-	money_widget.resized.connect(_ds2_queue_centre)
-	hbox.sort_children.connect(_ds2_queue_centre)
-	_ds2_apply()
-
-
-func _ds2_apply() -> void:
-	var on: bool = UiPrefs.use_topbar_ds2
-	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS if on else CanvasItem.TEXTURE_FILTER_PARENT_NODE
-	var sb := get_theme_stylebox("panel") as StyleBoxFlat
-	if sb != null:
-		sb.shadow_size = 0 if on else 8   # the strip's render carries its own shadow
-	_ds2_shade.visible = on
-	_ds2_left_gap.visible = on
-	for label: Label in [_net_label, _runway_label]:
-		_ds2_print_on_concrete(label, on)
-	_ds2_money_layout(on)
-	# The bar's floor: nothing under DS2_BAR_MIN_PX (v3.1 keeps its 11 px lines).
-	var small: Array[Label] = [_quest_sub, _runway_label]
-	if _bankruptcy_strip != null:
-		for l: Node in _bankruptcy_strip.find_children("*", "Label", true, false):
-			small.append(l as Label)
-	for label: Label in small:
-		if label != null:
-			label.add_theme_font_size_override("font_size", DS2_BAR_MIN_PX if on else 11)
-	var hbox := _hbox()
-	if on:
-		var order: Array[Node] = [_hbox_child("PowerModule"), _hbox_child("TransportModule"), _ds2_left_gap,
-			money_widget, _ds2_flex, _hbox_child("VictoryModule"), _hbox_child("RankingsModule")]
-		for child: Node in _v31_order.slice(_v31_order.find(_ds2_flex) + 1):
-			if not order.has(child):
-				order.append(child)
-		var at := 0
-		for child: Node in order:
-			if child != null:
-				hbox.move_child(child, at)
-				at += 1
-	else:
-		for i in _v31_order.size():
-			hbox.move_child(_v31_order[i], i)
-		hbox.move_child(_ds2_left_gap, hbox.get_child_count() - 1)
-	var text_light: Material = Ds2Light.across_material(Ds2Light.text_material()) if on else null
+	var text_light: Material = Ds2Light.across_material(Ds2Light.text_material())
 	for label: Node in find_children("*", "Label", true, false):
 		(label as Label).material = text_light
 	for node: Node in find_children("*", "CanvasItem", true, false):
 		_ds2_light_across(node)
-	# The icons: raised cream enamel with its swept shadow, as on Building Detail.
-	for trio: Array in _ds2_faces:
-		(trio[0] as Control).visible = not on
-		(trio[1] as Control).visible = on
-		(trio[2] as Control).visible = on
-	for wrap: Control in _ds2_freight_wraps:
-		wrap.modulate = Color.WHITE if on else C_LABEL
-	if not on and _ds2_readout != null:
-		_ds2_readout.visible = false
-	if not on:
-		_close_rankings_panel()   # v3.1 shows Rankings as its flyout
-	for button: Button in [money_widget, _enc_button]:
-		if button == null:
-			continue
-		if on and not _ds2_held_tips.has(button):
-			_ds2_held_tips[button] = button.tooltip_text
-			button.tooltip_text = ""
-		elif not on and _ds2_held_tips.has(button):
-			button.tooltip_text = str(_ds2_held_tips[button])
-			_ds2_held_tips.erase(button)
-	for pair: Array in _ds2_lamps:
-		var led := pair[0] as StatusLed
-		(pair[1] as Control).visible = on
-		led.self_modulate.a = 0.0 if on else 1.0
-		led.queue_redraw()
-	# The mission: its icon at the left, the text opening to its right, cut short with an ellipsis where
-	# its section ends (the tooltip has it in full).
-	if _quest_icon != null:
-		_quest_icon.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN if on else Control.SIZE_SHRINK_CENTER
-		_quest_text_box.add_theme_constant_override("margin_left", int(_quest_icon.get_combined_minimum_size().x + 10.0) if on else 0)
-		for label: Label in [_quest_title, _quest_sub]:
-			label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS if on else TextServer.OVERRUN_NO_TRIMMING
-		if on and _quest_v31_wide:
-			_quest_icon.visible = true
-	_refresh_treasury()
-	_queue_refresh()   # Victory's counter and the other modules' DS2 faces
-	queue_redraw()
+	hbox.resized.connect(_ds2_queue_centre)
+	money_widget.resized.connect(_ds2_queue_centre)
+	hbox.sort_children.connect(_ds2_queue_centre)
 	_ds2_queue_centre()
-	_refresh_quest()   # the mission slot is DS2's, so it comes and goes with it
 	_place_quest.call_deferred()
 
 
-## The modules that show a readout when hovered in DS2.
+## The modules that show a readout when hovered.
 const DS2_READOUT_MODULES := ["MoneyWidget", "PowerModule", "TransportModule", "VictoryModule", "RankingsModule",
 	"CouncilModule", "GoodsGraphModule", "EncyclopediaButton", "MenuModule"]
 
 
 ## Shows the hovered module's readout under the bar, centred on the module and kept on the screen.
 func _ds2_show_readout() -> void:
-	if not UiPrefs.use_topbar_ds2 or _ds2_hover == null or _fly_open_id != "":
+	if _ds2_hover == null or _fly_open_id != "":
 		_ds2_readout.visible = false
 		return
 	var r := _ds2_readout_content(_ds2_hover)
@@ -1756,7 +1209,7 @@ func _ds2_readout_content(mod: Control) -> Dictionary:
 			return {"stage": "Rankings", "name": _rankings_head.text if _rankings_head != null else "",
 				"detail": "How you rank compared to your competitors in revenue and goods production.", "tone": "off"}
 		"CouncilModule":
-			return {"stage": "Council", "name": _council_status.text if _council_status != null else "Your advisors",
+			return {"stage": "Council", "name": _council_status if _council_status != "" else "Your advisors",
 				"detail": "Your advisors, their seats and their loyalty.", "tone": "off"}
 		"GoodsGraphModule":
 			return {"stage": "", "name": "Goods Graph (G)", "detail": "How every good is made and what it goes into.", "tone": ""}
@@ -1765,11 +1218,11 @@ func _ds2_readout_content(mod: Control) -> Dictionary:
 		"MenuModule":
 			return {"stage": "", "name": "Menu", "detail": "Save, load, settings and quit.", "tone": ""}
 		"QuestModule":
-			return {"stage": "Mission", "name": _quest_title.text, "detail": _quest_sub.text, "tone": ""}
+			return {"stage": "Mission", "name": _quest_title, "detail": _quest_sub, "tone": ""}
 	return {"stage": "", "name": str(mod.name), "detail": "", "tone": "off"}
 
 
-## The mission's section in DS2, as [left, right] screen x: from the works' end to the left pipes.
+## The mission's section, as [left, right] screen x: from the works' end to the left pipes.
 func _ds2_quest_span() -> Vector2:
 	var left := _ds2_left_gap.global_position.x + 8.0
 	var transport := _hbox_child("TransportModule") as Control
@@ -1779,48 +1232,33 @@ func _ds2_quest_span() -> Vector2:
 	return Vector2(left, maxf(left, right))
 
 
-## The mission's full width with its text showing: the icon, the gap, the longer line, the padding. The
-## labels trim in DS2, so their own minimum sizes no longer say how long the text is.
-func _ds2_quest_text_width() -> float:
-	var w := 0.0
-	for label: Label in [_quest_title, _quest_sub]:
-		var font := label.get_theme_font("font")
-		w = maxf(w, font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.get_theme_font_size("font_size")).x)
-	return ceilf(w + _quest_text_box.get_theme_constant("margin_left") + 24.0 + 2.0)
-
-
 ## A pilot lamp inside a StatusLed, following it: lit in its colour's tone, off when it is off or blinked
-## off. The StatusLed stops drawing in DS2 (self_modulate) and the lamp shows; its visibility, lit state,
-## colour and blink stay with the code that already sets them.
+## off. The StatusLed stops drawing (self_modulate) and the lamp shows; its visibility, lit state, colour
+## and blink stay with the code that already sets them.
 func _ds2_add_lamp(led: StatusLed) -> void:
 	var lamp: Control = Ds2Lamp.new()
+	lamp.name = "Ds2Lamp"
 	lamp.lamp_scale = DS2_LAMP_SCALE
-	lamp.visible = false
 	led.add_child(lamp)
 	var place := func() -> void:
 		lamp.size = lamp.custom_minimum_size
 		lamp.position = ((led.size - lamp.size) * 0.5).round()
 	led.resized.connect(place)
 	place.call()
-	led.draw.connect(func() -> void:
-		if lamp.visible:
-			lamp.call("set_tone", _ds2_lamp_tone(led)))
-	_ds2_lamps.append([led, lamp])
+	led.draw.connect(func() -> void: lamp.call("set_tone", _ds2_lamp_tone(led)))
+	led.self_modulate.a = 0.0
+	led.queue_redraw()
 
 
-## Under DS2 the bar is lit from the screen's left edge, not the corner lamp's diagonal: its text, its lights and
-## its glows take their share against that light (bdp_v3_light.gd across_material), and back again with it off.
+## The bar is lit from the screen's left edge, not the corner lamp's diagonal: its text, its lights and its
+## glows take their share against that light (bdp_v3_light.gd across_material).
 func _ds2_light_across(n: Node) -> void:
 	var item := n as CanvasItem
 	if item == null or not (item.material is ShaderMaterial):
 		return
-	var on: bool = UiPrefs.use_topbar_ds2
 	for base: ShaderMaterial in [Ds2Light.text_material(), Ds2Light.emissive_material(), Ds2Light.glow_material()]:
-		var twin := Ds2Light.across_material(base)
-		if on and item.material == base:
-			item.material = twin
-		elif not on and item.material == twin:
-			item.material = base
+		if item.material == base:
+			item.material = Ds2Light.across_material(base)
 
 
 func _on_ds2_node_added(n: Node) -> void:
@@ -1843,13 +1281,12 @@ func _hbox_child(node_name: String) -> Node:
 
 
 func _ds2_queue_centre() -> void:
-	if UiPrefs.use_topbar_ds2:
-		_ds2_centre_money.call_deferred()
+	_ds2_centre_money.call_deferred()
 
 
 ## Sizes the gap before the money so the money's middle is the screen's middle.
 func _ds2_centre_money() -> void:
-	if not UiPrefs.use_topbar_ds2 or _ds2_left_gap == null:
+	if _ds2_left_gap == null:
 		return
 	var hbox := _hbox()
 	var sep := float(hbox.get_theme_constant("separation"))
@@ -1869,89 +1306,31 @@ func _ds2_divider_xs() -> Array[float]:
 	return [roundf(c - d - global_position.x), roundf(c + d - global_position.x)]
 
 
-func _ds2_draw_strip() -> void:
-	var strip: Texture2D = DS2_STRIP
-	var tex := strip.get_size()
-	var src_w := minf(size.x * DS2_TEXELS, tex.x)
-	var src_x := (tex.x - src_w) * 0.5
-	draw_texture_rect_region(strip, Rect2(0, 0, size.x, tex.y / DS2_TEXELS), Rect2(src_x, 0, src_w, tex.y))
-	# The few pixels above the bar (see TOP_BLEED): the strip's top rows again.
-	draw_texture_rect_region(strip, Rect2(0, -TOP_BLEED, size.x, TOP_BLEED), Rect2(src_x, 0, src_w, TOP_BLEED * DS2_TEXELS))
-	# The concrete behind the money, on the money's centre line, with its top rows carried above the bar too.
-	var slab := DS2_CONCRETE.get_size() / DS2_TEXELS
-	var slab_x := roundf(money_widget.get_global_rect().get_center().x - global_position.x - slab.x * 0.5)
-	draw_texture_rect(DS2_CONCRETE, Rect2(slab_x, 0, slab.x, slab.y), false)
-	draw_texture_rect_region(DS2_CONCRETE, Rect2(slab_x, -TOP_BLEED, slab.x, TOP_BLEED),
-		Rect2(0, 0, DS2_CONCRETE.get_width(), TOP_BLEED * DS2_TEXELS))
-	# The silver pipes: down at one divider, along beneath the bar, back up at the other.
-	var dividers := _ds2_divider_xs()
-	if dividers.size() == 2:
-		var left := DS2_PIPES_LEFT.get_size() / DS2_TEXELS
-		var right := DS2_PIPES_RIGHT.get_size() / DS2_TEXELS
-		var lx := dividers[0] - DS2_PIPES_LEFT_AXIS
-		var rx := dividers[1] - DS2_PIPES_RIGHT_AXIS
-		var run_from := lx + left.x
-		var run_w := rx - run_from
-		if run_w > 0.0:
-			var run_tex := DS2_PIPES_RUN.get_size()
-			var run_src_x := (run_tex.x - run_w * DS2_TEXELS) * 0.5
-			draw_texture_rect_region(DS2_PIPES_RUN, Rect2(run_from, 0, run_w, run_tex.y / DS2_TEXELS), Rect2(run_src_x, 0, run_w * DS2_TEXELS, run_tex.y))
-		for piece: Array in [[DS2_PIPES_LEFT, lx, left], [DS2_PIPES_RIGHT, rx, right]]:
-			var tex_p: Texture2D = piece[0]
-			var at: float = piece[1]
-			var sz: Vector2 = piece[2]
-			draw_texture_rect(tex_p, Rect2(at, 0, sz.x, sz.y), false)
-			draw_texture_rect_region(tex_p, Rect2(at, -TOP_BLEED, sz.x, TOP_BLEED), Rect2(0, 0, tex_p.get_width(), TOP_BLEED * DS2_TEXELS))
-
-
-
-## Text and visibility both come from MiniQuest; the bar never decides either for itself.
+## Text and visibility both come from MiniQuest; the bar never decides either for itself. The key holds
+## the title and the piston the count; collapsed, the key goes and the missions icon stands at the left.
 func _refresh_quest() -> void:
 	if _quest_btn == null or not is_instance_valid(_quest_btn):
 		return
 	var on: bool = MiniQuest.is_available()
-	# v3.1: the FIRST turn the module has anything to show at all — game start, or the
-	# tutorial finishing and handing off to a real mission — gets the intro reveal
-	# Latched once per session; never replayed when the flag flips later.
-	var just_appeared := on and not _quest_shown_before
-	_quest_shown_before = _quest_shown_before or on
 	_quest_btn.visible = on
 	if not on:
 		if _fly_open_id == "quest":
 			_close_fly()
 		return
-	# Recover the label's opacity outside a celebration: if one was interrupted (a state reset
-	# mid-flash) the fade could otherwise leave the module reading blank.
-	if not _quest_celebrating and _quest_text_col != null and is_instance_valid(_quest_text_col):
-		_quest_text_col.modulate.a = 1.0
 	# MiniQuest decides which of its missions is showing; the bar just renders it — EXCEPT
 	# during the completion sequence, which holds the module on the mission that just finished
-	# (reading "Complete — <reward>") until the flash is over and it hands over deliberately.
+	# until the piston has struck and it hands over deliberately.
 	var kind: String = _quest_celebrating_kind if _quest_celebrating else MiniQuest.active_mission()
-	_quest_title.text = MiniQuest.title(kind)
-	_quest_sub.text = MiniQuest.subtitle(kind)
-	if _show_mission_slot(kind):
-		return
-	var v31: bool = UiPrefs.use_topbar_v3_1
-	# The tooltip carries the mission text once the label itself is hidden (mirrors
-	# the Transport module's icon+LED-with-tooltip pattern).
-	_quest_btn.tooltip_text = ("%s — %s" % [_quest_title.text, _quest_sub.text]) if v31 else "Mini quest"
-	if not v31:
-		_quest_text_col.visible = true
-		if _quest_icon != null:
-			_quest_icon.visible = false
-	elif not _quest_celebrating and not _quest_v31_animating:
-		# Steady v3.1 state: an active animation (intro / celebration handoff) owns the
-		# text/icon visibility itself and must not be stomped by an unrelated refresh
-		# landing mid-sequence (money changing, a turn advancing, etc).
-		if just_appeared:
-			_quest_v31_reveal_then_collapse()
-		elif not _quest_v31_wide:
-			_quest_text_col.visible = false
-			if _quest_icon != null:
-				_quest_icon.visible = true
-	if not _quest_v31_animating:
-		_place_quest.call_deferred()   # the new label/icon decides the width
+	_quest_title = MiniQuest.title(kind)
+	_quest_sub = MiniQuest.subtitle(kind)
+	var collapsed := PlayerProfile.mission_bar_collapsed
+	_quest_icon.visible = collapsed
+	_mission_slot.call("set_collapsed", collapsed, _quest_icon.get_combined_minimum_size().x)
+	var progress: Vector2i = MiniQuest.progress(kind)
+	if _quest_celebrating and progress.y > 1:
+		progress.x = progress.y
+	_mission_slot.call("set_mission", _quest_title, progress)
+	_place_quest.call_deferred()
 	if _fly_open_id == "quest" and not _quest_celebrating:
 		_refresh_open_fly()
 
@@ -1961,95 +1340,11 @@ func _on_opener_finished() -> void:
 	_refresh_quest()
 	for i in 6:
 		await get_tree().process_frame
-	if _mission_slot_on() and _mission_slot.is_visible_in_tree():
+	if _mission_slot.is_visible_in_tree():
 		_mission_slot.call("shine")
 
 
-## True when the DS2 mission slot is the look, and shows `kind` in it: the key holds the title, the piston
-## the count, and the mission's text is the module's tooltip. Otherwise puts the icon and text back.
-func _mission_slot_on() -> bool:
-	return UiPrefs.use_topbar_ds2 and UiPrefs.use_mission_slot and _mission_slot != null
-
-
-func _show_mission_slot(kind: String) -> bool:
-	var on := _mission_slot_on()
-	if _mission_slot != null:
-		_mission_slot.visible = on
-	_quest_text_box.visible = not on
-	_quest_btn.clip_contents = not on
-	if not on:
-		return false
-	var collapsed := PlayerProfile.mission_bar_collapsed
-	_quest_icon.visible = collapsed
-	_quest_icon.modulate = Color.WHITE
-	_quest_icon.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	_mission_slot.call("set_collapsed", collapsed, _quest_icon.get_combined_minimum_size().x)
-	var progress: Vector2i = MiniQuest.progress(kind)
-	if _quest_celebrating and progress.y > 1:
-		progress.x = progress.y
-	_mission_slot.call("set_mission", _quest_title.text, progress)
-	_quest_btn.tooltip_text = "%s. %s" % [_quest_title.text, _quest_sub.text]
-	_place_quest.call_deferred()
-	if _fly_open_id == "quest" and not _quest_celebrating:
-		_refresh_open_fly()
-	return true
-
-
-## v3.1 stage 3, "expand to show the next mission": animate the module's width out to the full
-## mission text, symmetric to stage 4's collapse tween below (a snap here would read as
-## unfinished next to that one) — hold it, then collapse to the icon (stage 4). Used both for
-## the mission's first appearance and for the mission a completion hands off to.
-func _quest_v31_reveal_then_collapse() -> void:
-	if _quest_btn == null or not is_instance_valid(_quest_btn):
-		return
-	var mod := _quest_btn as _ModuleBtn
-	_quest_icon.visible = UiPrefs.use_topbar_ds2   # DS2 keeps the icon, the text opening to its left
-	_quest_icon.modulate = Color.WHITE
-	_quest_text_col.visible = true
-	_quest_text_col.modulate.a = 1.0
-	_quest_v31_wide = true
-	var want: float = _quest_text_box.get_combined_minimum_size().x + 24.0   # pad's L/R margins
-	if UiPrefs.use_topbar_ds2 and _ds2_quest_area.y > _ds2_quest_area.x:
-		want = minf(_ds2_quest_text_width(), _ds2_quest_area.y - _ds2_quest_area.x)
-	if _quest_width_anim != null and _quest_width_anim.is_valid():
-		_quest_width_anim.kill()
-	_quest_v31_animating = true
-	_quest_width_anim = create_tween()
-	_quest_width_anim.tween_property(mod, "size:x", want, QUEST_V31_COLLAPSE_SEC)
-	_quest_width_anim.tween_callback(func() -> void:
-		_quest_v31_animating = false
-		_place_quest.call_deferred())
-	# Only collapse if we're still resting on the mission this was raised for — a real
-	# completion landing mid-hold replaces this with its own sequence instead.
-	var expected_kind := (_quest_celebrating_kind if _quest_celebrating else MiniQuest.active_mission())
-	get_tree().create_timer(QUEST_V31_HOLD_SEC).timeout.connect(func() -> void:
-		if UiPrefs.use_topbar_v3_1 and not _quest_celebrating \
-				and MiniQuest.active_mission() == expected_kind:
-			_quest_v31_collapse_to_icon())
-
-
-## v3.1: animate the module's width down from the full text to the icon's, text
-## clipped by the shrinking edge (mod.clip_contents, set in _build_quest), then swap
-## to the icon once the tween lands — swapping earlier would show the icon stretched
-## to fill the still-wide rect for the last stretch of the shrink.
-func _quest_v31_collapse_to_icon() -> void:
-	if _quest_btn == null or not is_instance_valid(_quest_btn):
-		return
-	var mod := _quest_btn as _ModuleBtn
-	var icon_w: float = maxf(_quest_icon.get_combined_minimum_size().x + 24.0, QUEST_ICON_MODULE_W)
-	if _quest_width_anim != null and _quest_width_anim.is_valid():
-		_quest_width_anim.kill()
-	_quest_v31_animating = true
-	_quest_width_anim = create_tween()
-	_quest_width_anim.tween_property(mod, "size:x", icon_w, QUEST_V31_COLLAPSE_SEC)
-	_quest_width_anim.tween_callback(func() -> void:
-		_quest_text_col.visible = false
-		_quest_icon.visible = true
-		_quest_icon.modulate = Color.WHITE
-		_quest_v31_wide = false
-		_quest_v31_animating = false
-		_place_quest.call_deferred())
-
+# ── 5 · Council ──────────────────────────────────────────────────────────────────
 
 func _build_council() -> void:
 	# Everything from Council rightwards is anchored to the far right edge (the mission is
@@ -2057,38 +1352,15 @@ func _build_council() -> void:
 	_hbox().add_child(_flex())
 	var mod := _ModuleBtn.new(self)
 	mod.name = "CouncilModule"
-	mod.tooltip_text = "Council"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
 	_council_led = StatusLed.new()
-	_council_led.visible = false   # v3.1 only — no lamp in the classic bar
+	_council_led.visible = false   # no lamp: the readout carries the seats
 	row.add_child(_council_led)
-	_council_icon = _v31_icon(ICON_COUNCIL, mod)
-	_council_icon.visible = false
-	row.add_child(_council_icon)
-	var col := VBoxContainer.new()
-	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", 3)
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(col)
-	_council_tag = _tag("Council")
-	col.add_child(_council_tag)
-	_council_status = _mini("", C_TEXT, 12)
-	col.add_child(_council_status)
-	_council_stack = HBoxContainer.new()
-	_council_stack.add_theme_constant_override("separation", 6)
-	_council_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(_council_stack)
+	row.add_child(_bar_icon(ICON_COUNCIL, mod))
 	mod.pressed.connect(func() -> void: _module_pressed("council"))
 	_hbox().add_child(mod)
 	_council_btn = mod
-
-func _loyalty_tone(v: float) -> Color:
-	if v >= 3.4:
-		return _COUNCIL_GOOD
-	if v > DISLOYAL_BELOW:
-		return _COUNCIL_WARN
-	return _COUNCIL_BAD
 
 func _refresh_council() -> void:
 	var seated: Array = AdvisorState.advisor_seats.values()
@@ -2103,33 +1375,19 @@ func _refresh_council() -> void:
 		disloyal = 0
 	(_council_btn as _ModuleBtn).warn = disloyal > 0
 	if seated.is_empty():
-		_council_status.text = "no seats filled"
-		_council_status.add_theme_color_override("font_color", C_TEXT)
+		_council_status = "no seats filled"
 	elif disloyal > 0:
-		_council_status.text = "%d DISLOYAL" % disloyal
-		_council_status.add_theme_color_override("font_color", C_RED)
+		_council_status = "%d DISLOYAL" % disloyal
 	else:
-		_council_status.text = "%d seated" % seated.size()
-		_council_status.add_theme_color_override("font_color", C_TEXT)
-	_clear_now(_council_stack)
-	for aid in seated:
-		_council_stack.add_child(_portrait_chip(str(aid), 36))
-	var v31: bool = UiPrefs.use_topbar_v3_1
-	# v3.1: icon + light only — the tag/status text and the portrait stack both go,
-	# with the status line folded into the tooltip instead.
-	(_council_tag.get_parent() as Control).visible = not v31
-	_council_stack.visible = not v31
-	_council_icon.visible = v31
-	_council_btn.tooltip_text = ("Council — %s" % _council_status.text) if v31 else "Council"
+		_council_status = "%d seated" % seated.size()
 	if _council_led != null:
 		_council_led.visible = false
 		var led := _council_led as StatusLed
 		led.blink = false
 		led.lit = true
-		# v3.1's own thresholds — separate from the classic DISLOYAL_BELOW (-3.4) the
-		# status text/warn tint use above. An empty seat list leaves min_loyalty at
-		# its sentinel, which clears both checks below and reads green — no seats
-		# filled is not a problem.
+		# The lamp's own thresholds — separate from DISLOYAL_BELOW (-3.4), which the status
+		# line uses above. An empty seat list leaves min_loyalty at its sentinel, which clears
+		# both checks below and reads green — no seats filled is not a problem.
 		if min_loyalty < -5.0:
 			led.color = C_RED
 		elif min_loyalty < 0.0:
@@ -2137,134 +1395,15 @@ func _refresh_council() -> void:
 		else:
 			led.color = C_GOOD
 
-## A portrait clipped to an ACTUAL circle, in a loyalty-toned ring, with a number chip
-## bottom-right. clip_contents only ever clips to the RECT, so the round ring used to hold
-## a square portrait — the mask has to BE the drawing, which is what the UV'd circle below
-## is: one polygon, the portrait mapped across it, no shader and no render target.
-class _PortraitCircle extends Control:
-	const SEGMENTS := 48
-	var texture: Texture2D = null
-	var ring := Color.WHITE
-	func _init(px: float) -> void:
-		custom_minimum_size = Vector2(px, px)
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-	func _draw() -> void:
-		var r: float = minf(size.x, size.y) * 0.5
-		var c: Vector2 = size * 0.5
-		if texture != null:
-			var pts := PackedVector2Array()
-			var uvs := PackedVector2Array()
-			for i in SEGMENTS:
-				var a := TAU * float(i) / float(SEGMENTS)
-				var dir := Vector2(cos(a), sin(a))
-				pts.append(c + dir * (r - 1.0))
-				# The art is square, so the circle samples the middle of it.
-				uvs.append(Vector2(0.5, 0.5) + dir * 0.5)
-			draw_colored_polygon(pts, Color.WHITE, uvs, texture)
-		else:
-			draw_circle(c, r - 1.0, Color("#0a1623"))
-		draw_arc(c, r - 1.0, 0.0, TAU, SEGMENTS, ring, 2.0, true)
-
-func _portrait_chip(aid: String, size: float) -> Control:
-	var show_loyalty := preload("res://scripts/debug_terminal.gd").demo_is_unlocked()
-	var v := AdvisorState.advisor_loyalty_value(aid)
-	var tone := _loyalty_tone(v)
-	var adv: Dictionary = AdvisorState.get_advisor(aid)
-	var holder := Control.new()
-	holder.custom_minimum_size = Vector2(size + 4, size + 4)
-	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	holder.tooltip_text = "%s — %+.1f loyalty" % [str(adv.get("name", aid)), v] if show_loyalty else str(adv.get("name", aid))
-	var circle := _PortraitCircle.new(size)
-	circle.ring = tone if show_loyalty else C_TEXT
-	var path := str(adv.get("portrait_path", ""))
-	if path != "" and ResourceLoader.exists(path):
-		circle.texture = load(path) as Texture2D
-	circle.size = Vector2(size, size)
-	holder.add_child(circle)
-	if circle.texture == null:
-		var initials := Label.new()
-		initials.text = str(adv.get("initials", "?"))
-		initials.add_theme_font_size_override("font_size", int(size * 0.38))
-		initials.add_theme_color_override("font_color", adv.get("portrait_color", C_TEXT))
-		initials.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		initials.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		initials.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		initials.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		circle.add_child(initials)
-	var chip := Label.new()
-	chip.text = "%+d" % int(round(v))
-	chip.add_theme_font_size_override("font_size", 9)
-	chip.add_theme_color_override("font_color", tone)
-	var csb := StyleBoxFlat.new()
-	csb.bg_color = Color("#0a1521")
-	csb.border_color = tone
-	csb.set_border_width_all(1)
-	csb.set_corner_radius_all(6)
-	csb.content_margin_left = 3
-	csb.content_margin_right = 3
-	var chip_holder := PanelContainer.new()
-	chip_holder.add_theme_stylebox_override("panel", csb)
-	chip_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	chip_holder.add_child(chip)
-	chip_holder.position = Vector2(size - 12, size - 8)
-	holder.add_child(chip_holder)
-	chip_holder.visible = show_loyalty
-	return holder
-
 
 # ── 5b · Goods Graph ─────────────────────────────────────────────────────────────
-
-## Small goods-web vector icon: tiered flow nodes joined by edges (drawn — no
-## suitable glyph in the bundled font). Mirrors the _BookIcon pattern.
-class _WebIcon extends Control:
-	var color := Color("#E8EEF7")   # C_LABEL; inner classes can't read outer consts
-	func _init(c: Color) -> void:
-		color = c
-		custom_minimum_size = Vector2(19, 16)
-		size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-	func set_color(c: Color) -> void:
-		color = c
-		queue_redraw()
-	func _draw() -> void:
-		var w := size.x
-		var h := size.y
-		# Left source node -> two mid nodes -> right sink node (a mini flow chart).
-		var src := Vector2(2.5, h * 0.5)
-		var mid_a := Vector2(w * 0.5, 3.0)
-		var mid_b := Vector2(w * 0.5, h - 3.0)
-		var sink := Vector2(w - 2.5, h * 0.5)
-		for pair: Array in [[src, mid_a], [src, mid_b], [mid_a, sink], [mid_b, sink]]:
-			draw_line(pair[0], pair[1], Color(color, 0.7), 1.2, true)
-		for p: Vector2 in [src, mid_a, mid_b, sink]:
-			draw_circle(p, 2.4, Color(color, 0.25))
-			draw_arc(p, 2.4, 0.0, TAU, 10, color, 1.2, true)
 
 func _build_goods_graph() -> void:
 	var mod := _ModuleBtn.new(self)
 	mod.name = "GoodsGraphModule"
-	mod.tooltip_text = "Goods Graph (G) — how every good is made and what it feeds"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
-	var classic_row := HBoxContainer.new()
-	classic_row.add_theme_constant_override("separation", 9)
-	classic_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	classic_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(classic_row)
-	var icon := _WebIcon.new(C_LABEL)
-	classic_row.add_child(icon)
-	var lbl := _mini("GOODS GRAPH", C_LABEL, 13)
-	lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	classic_row.add_child(lbl)
-	mod.mouse_entered.connect(func() -> void:
-		icon.set_color(C_BRIGHT)
-		lbl.add_theme_color_override("font_color", C_BRIGHT))
-	mod.mouse_exited.connect(func() -> void:
-		icon.set_color(C_LABEL)
-		lbl.add_theme_color_override("font_color", C_LABEL))
-	var v31_icon := _v31_icon(ICON_GOODS_GRAPH, mod)
-	row.add_child(v31_icon)
-	_register_v31_pair(classic_row, v31_icon)
+	row.add_child(_bar_icon(ICON_GOODS_GRAPH, mod))
 	mod.pressed.connect(func() -> void:
 		_close_fly()
 		MatchState.goods_graph_requested.emit())
@@ -2273,40 +1412,8 @@ func _build_goods_graph() -> void:
 
 # ── 6/7/8 · Encyclopedia (adopted) · Turn/date · Menu ───────────────────────────
 
-## Small open-book vector icon (drawn — the bundled font has no book glyph).
-class _BookIcon extends Control:
-	var color := Color("#E8EEF7")   # C_LABEL; inner classes can't read outer consts
-	func _init(c: Color) -> void:
-		color = c
-		custom_minimum_size = Vector2(19, 16)
-		size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-	func set_color(c: Color) -> void:
-		color = c
-		queue_redraw()
-	func _draw() -> void:
-		var w := size.x
-		var h := size.y
-		var cx := w * 0.5
-		# Two open pages meeting at a spine, covers dipping at the outer edges.
-		var left := PackedVector2Array([
-			Vector2(1, 2.5), Vector2(cx - 1, 4.5), Vector2(cx - 1, h - 1.5), Vector2(1, h - 3.5)])
-		var right := PackedVector2Array([
-			Vector2(w - 1, 2.5), Vector2(cx + 1, 4.5), Vector2(cx + 1, h - 1.5), Vector2(w - 1, h - 3.5)])
-		draw_colored_polygon(left, Color(color, 0.20))
-		draw_colored_polygon(right, Color(color, 0.20))
-		for page: PackedVector2Array in [left, right]:
-			var outline: PackedVector2Array = page.duplicate()
-			outline.append(page[0])
-			draw_polyline(outline, color, 1.2, true)
-		draw_line(Vector2(cx, 4.5), Vector2(cx, h - 1.0), color, 1.2, true)
-		# A text line on each page.
-		draw_line(Vector2(3.5, h * 0.42), Vector2(cx - 3.5, h * 0.5), Color(color, 0.7), 1.0, true)
-		draw_line(Vector2(cx + 3.5, h * 0.5), Vector2(w - 3.5, h * 0.42), Color(color, 0.7), 1.0, true)
-
 var _enc_inner: HBoxContainer
 var _enc_button: Button
-var _enc_v31_inner: HBoxContainer   # v3.1
 
 func _adopt_encyclopedia_and_turn() -> void:
 	# The scene-authored EncyclopediaButton + TurnCounter live in a right-anchored
@@ -2319,40 +1426,18 @@ func _adopt_encyclopedia_and_turn() -> void:
 		enc.reparent(_hbox())
 		enc.custom_minimum_size = Vector2(0, MOD_H)
 		enc.focus_mode = Control.FOCUS_NONE
-		enc.tooltip_text = "Encyclopedia (X)"
 		for state in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
 			enc.add_theme_stylebox_override(state, _module_box(state != "normal", false))
-		# Book icon + label inside the button (Buttons don't size to child
-		# containers — min width is synced in _refresh_treasury's sibling below).
+		# The book icon inside the button, in a full-rect inner row (Buttons don't size to child
+		# containers — min width is synced in _apply_refresh).
 		enc.text = ""
 		_enc_inner = HBoxContainer.new()
 		_enc_inner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		_enc_inner.alignment = BoxContainer.ALIGNMENT_CENTER
-		_enc_inner.add_theme_constant_override("separation", 8)
 		_enc_inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		enc.add_child(_enc_inner)
-		var book := _BookIcon.new(C_LABEL)
-		_enc_inner.add_child(book)
-		var lbl := _mini("ENCYCLOPEDIA", C_LABEL, 13)
-		lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		_enc_inner.add_child(lbl)
-		enc.mouse_entered.connect(func() -> void:
-			book.set_color(C_BRIGHT)
-			lbl.add_theme_color_override("font_color", C_BRIGHT))
-		enc.mouse_exited.connect(func() -> void:
-			book.set_color(C_LABEL)
-			lbl.add_theme_color_override("font_color", C_LABEL))
+		_enc_inner.add_child(_bar_icon(ICON_ENCYCLOPEDIA, enc))
 		_enc_button = enc
-		# v3.1: a second full-rect inner row, built the same way as _enc_inner so it
-		# centres identically, holding just the icon. Only one of the two is ever
-		# visible — see _register_v31_pair.
-		_enc_v31_inner = HBoxContainer.new()
-		_enc_v31_inner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		_enc_v31_inner.alignment = BoxContainer.ALIGNMENT_CENTER
-		_enc_v31_inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		enc.add_child(_enc_v31_inner)
-		_enc_v31_inner.add_child(_v31_icon(ICON_ENCYCLOPEDIA, enc))
-		_register_v31_pair(_enc_inner, _enc_v31_inner)
 	_hbox().add_child(_divider())
 	if turn != null:
 		var col := VBoxContainer.new()
@@ -2386,10 +1471,9 @@ func _turn_date(turn: int) -> String:
 func _build_menu() -> void:
 	var mod := _ModuleBtn.new(self)
 	mod.name = "MenuModule"
-	mod.tooltip_text = "Main menu — save, settings, quit"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
-	var icon := _v31_icon(ICON_MENU, mod)
+	var icon := _bar_icon(ICON_MENU, mod)
 	icon.modulate = C_LABEL
 	row.add_child(icon)
 	mod.pressed.connect(func() -> void:
@@ -2398,110 +1482,18 @@ func _build_menu() -> void:
 	_hbox().add_child(mod)
 
 
-# ── Flyouts (Treasury · Council · Victory), anchored under their modules ────────
+# ── Flyouts (Treasury · Power · Missions), steel sheets under their modules ─────
 
-## The quest panel: two independent mission trees, their rewards, and where to look if lost.
-## No heading — at 120 px a title would spend a third of the panel repeating the module the
-## player just clicked.
-## ── The mission flyout ───────────────────────────────────────────────────────
-##
-## The shared Logistics tree and the selected start tree stay visible together. Brass connectors
-## make the parent/child sequence explicit without hiding completed branches.
-##
-## WIDTH IS THE MODULE'S, not the text's: measuring its own longest line is correct in
-## isolation and visibly misaligned in place — the panel hangs off
-## the module and the two have to read as one object. Steps wrap to fit;
-## the module is the ruler.
-const QUEST_FLY_FALLBACK_W := 320   # only if the module has not been laid out yet
-const QUEST_FLY_PAD := 20           # this panel's left+right margins, which the text cannot use
-## The flyout stylebox's 1 px border, both sides. A PanelContainer's minimum is its content plus
-## its stylebox, so without subtracting this the panel lands 2 px wider than the module and the
-## two edges visibly disagree.
-const QUEST_FLY_BORDER := 2
-const QUEST_STEP_PT := 13
-const QUEST_HINT_PT := 12
-const QUEST_BOX := 12.0             # the per-step tickbox, per spec
+## The modules that open a sheet under the bar. Victory, Council and Rankings open panels of their own
+## (_module_pressed).
+const FLYOUTS := ["treasury", "power", "quest"]
 
-## Completion sequence, in seconds: gold fill, then a tick wipes across it as a navy hole cut
-## through the plate — sequential, never concurrent.
-## The label fades away first, then: fill → hold → tick → hold, then the next mission pops open
-## (classic: the flyout; v3.1: the module itself expands — see QUEST_V31_* below).
-const QUEST_FILL_SEC := 0.35        # stage 1: gold fill
-const QUEST_FILL_HOLD_SEC := 0.25   # stage 1: hold on solid gold before the tick starts cutting in
-const QUEST_TICK_SEC := 0.45        # stage 2: tick wipes across as a hole in the gold
-const QUEST_TICK_HOLD_SEC := 0.45   # stage 2: hold on the finished tick before handing off
-const QUEST_NEXT_OPEN_SEC := 3.0
-## How long the label takes to fade out at the start (and the next one to fade in at the end,
-## classic mode only). The fill waits this out before it starts, so it never shares the module
-## with text.
-const QUEST_TEXT_FADE := 0.18
-
-## v3.1: the module's own expand/collapse, independent of the
-## flyout — first appearance and each post-celebration handoff hold the full mission text
-## for QUEST_V31_HOLD_SEC, then animate down to the icon over QUEST_V31_COLLAPSE_SEC.
-const QUEST_V31_HOLD_SEC := 3.0
-const QUEST_V31_COLLAPSE_SEC := 1.0
-
-## Which section is open, by mission kind; "" is all-collapsed. It lives on the bar rather than
-## on the built nodes because _refresh_open_fly throws the whole flyout away and rebuilds it.
-var _quest_open := ""
-var _quest_sections: Dictionary = {}
-var _quest_anim: Tween = null
-var _quest_text_anim: Tween = null
-## Did the completion sequence open this flyout by itself? If so it closes it again afterwards,
-## rather than leaving a panel over the map that the player never asked for.
-var _quest_auto_opened := false
-## While true, the module holds the finished mission's text and nothing rebuilds the flyout.
+## While true, the module holds the finished mission and nothing rebuilds the missions sheet.
 var _quest_celebrating := false
 var _quest_celebrating_kind := ""
-## Widest the mission readout has ever been; the flyout's fixed width. See _quest_fly_width.
-var _quest_fly_w := 0
 
 
-## ONE WIDTH, ALWAYS. The module's width ANIMATES -- it opens at the full
-## mission readout and collapses to the icon a few seconds later -- so following its current
-## size would make the flyout a different width depending on when you happened to open it. The FULL
-## readout is the ruler, and the value only ever grows, so a longer mission later never makes
-## the panel jump back and forth.
-func _quest_fly_width() -> int:
-	if _quest_text_col != null and is_instance_valid(_quest_text_col):
-		var full := int(_quest_text_col.get_combined_minimum_size().x + 24.0)
-		_quest_fly_w = maxi(_quest_fly_w, full)
-	if _quest_btn != null and is_instance_valid(_quest_btn) and _quest_btn.size.x > 1.0:
-		_quest_fly_w = maxi(_quest_fly_w, int(_quest_btn.size.x))
-	return maxi(_quest_fly_w, QUEST_FLY_FALLBACK_W)
-
-
-func _fly_quest(vb: VBoxContainer) -> void:
-	var width := _quest_fly_width()
-	if _fly_panel != null and is_instance_valid(_fly_panel):
-		_fly_panel.custom_minimum_size = Vector2(width - QUEST_FLY_BORDER, 0)
-	var pad := MarginContainer.new()
-	pad.add_theme_constant_override("margin_left", 10)
-	pad.add_theme_constant_override("margin_right", 10)
-	pad.add_theme_constant_override("margin_top", 10)
-	pad.add_theme_constant_override("margin_bottom", 10)
-	vb.add_child(pad)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 6)
-	pad.add_child(col)
-	_quest_sections = {}
-	var inner: int = width - QUEST_FLY_PAD - QUEST_FLY_BORDER
-	var trees: Array = MiniQuest.mission_trees()
-	for i in trees.size():
-		if i > 0:
-			col.add_child(DS.section_rule())
-		col.add_child(_mission_tree_card(trees[i] as Dictionary, inner))
-	if trees.is_empty():
-		var empty := _mini("No missions available yet.", C_TEXT, DS.FS.BODY)
-		empty.custom_minimum_size = Vector2(inner, 0)
-		col.add_child(empty)
-	if _mission_slot_on():
-		col.add_child(DS.section_rule())
-		col.add_child(_mission_collapse_row(inner))
-
-
-## The missions panel's last row: a slide switch that collapses the bar's mission to its icon and counter.
+## The missions sheet's last row: a slide switch that collapses the bar's mission to its icon and counter.
 func _mission_collapse_row(inner: int) -> Control:
 	var row := HBoxContainer.new()
 	row.name = "MissionCollapseRow"
@@ -2522,173 +1514,7 @@ func _mission_collapse_row(inner: int) -> Control:
 	return row
 
 
-## A compact tree rather than an accordion: the shared Logistics branch and the start branch
-## remain visible together, with brass pipe connectors showing their parent/child order.
-func _mission_tree_card(tree: Dictionary, inner: int) -> Control:
-	var card := VBoxContainer.new()
-	card.custom_minimum_size = Vector2(inner, 0)
-	card.add_theme_constant_override("separation", 5)
-	var head := _quest_label(str(tree.get("title", "Missions")), DS.PALETTE.BRASS, 16, false)
-	head.theme_type_variation = "SectionRuled"
-	card.add_child(head)
-	var subtitle := _quest_label(str(tree.get("subtitle", "")), C_TEXT, 12, true)
-	card.add_child(subtitle)
-	var nodes: Array = tree.get("nodes", []) as Array
-	for i in nodes.size():
-		var node := (nodes[i] as Dictionary).duplicate(true)
-		node["last_sibling"] = _mission_tree_is_last_sibling(nodes, i)
-		node["has_children"] = _mission_tree_has_children(nodes, i)
-		card.add_child(_mission_tree_node(node))
-	return card
-
-
-func _mission_tree_is_last_sibling(nodes: Array, index: int) -> bool:
-	var node := nodes[index] as Dictionary
-	var depth := int(node.get("depth", 0))
-	if depth <= 0: return true
-	var parent := str(node.get("parent", ""))
-	for j in range(index + 1, nodes.size()):
-		var later := nodes[j] as Dictionary
-		if int(later.get("depth", 0)) < depth: break
-		if int(later.get("depth", 0)) == depth and str(later.get("parent", "")) == parent:
-			return false
-	return true
-
-
-func _mission_tree_has_children(nodes: Array, index: int) -> bool:
-	var node := nodes[index] as Dictionary
-	var node_id := str(node.get("id", ""))
-	for j in range(index + 1, nodes.size()):
-		var later := nodes[j] as Dictionary
-		if int(later.get("depth", 0)) <= int(node.get("depth", 0)): break
-		if str(later.get("parent", "")) == node_id: return true
-	return false
-
-
-func _mission_tree_node(node: Dictionary) -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var depth := int(node.get("depth", 0))
-	# Draw a continuous brass pipe from each parent through its child rows. The old text-only
-	# elbows were technically hierarchical but read as a list once the labels wrapped.
-	var pipe := _MissionTreePipe.new()
-	pipe.depth = depth
-	pipe.last_sibling = bool(node.get("last_sibling", true))
-	pipe.has_children = bool(node.get("has_children", false))
-	pipe.custom_minimum_size = Vector2(34.0 + float(maxi(0, depth - 1)) * 15.0, 0)
-	pipe.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	row.add_child(pipe)
-	var status := str(node.get("state", "locked"))
-	var marker := Label.new()
-	marker.text = "✓" if status == "complete" else ("•" if status == "active" else "○")
-	marker.theme_type_variation = "Caption"
-	marker.add_theme_color_override("font_color", DS.PALETTE.BRASS if status != "locked" else C_TEXT)
-	row.add_child(marker)
-	var body := VBoxContainer.new()
-	body.add_theme_constant_override("separation", 1)
-	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var title := _quest_label(str(node.get("title", "")), C_TEXT, QUEST_STEP_PT, true)
-	if status == "complete": title.add_theme_color_override("font_color", DS.PALETTE.BRASS)
-	body.add_child(title)
-	var detail := _quest_label(str(node.get("subtitle", "")), C_TEXT, QUEST_HINT_PT, true)
-	body.add_child(detail)
-	# A start's missions keep their reward in MiniQuest's mission text, not in the tree definition.
-	var reward_text := str(node.get("reward", ""))
-	if reward_text == "":
-		reward_text = MiniQuest.reward_text(str(node.get("id", "")))
-	var reward := _quest_label("Reward: %s" % reward_text, DS.PALETTE.BRASS, QUEST_HINT_PT, true)
-	body.add_child(reward)
-	row.add_child(body)
-	return row
-
-
-## One accordion section: its header always, its steps and reward only while it is the open one.
-func _quest_section(kind: String, inner: int) -> Control:
-	var done: bool = MiniQuest.is_mission_complete(kind)
-	var open: bool = _quest_open == kind
-	var section := _QuestSection.new()
-	section.custom_minimum_size = Vector2(inner, 0)
-	section.pressed.connect(_toggle_quest_section.bind(kind))
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 5)
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	section.add_child(col)
-
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 6)
-	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	head.add_child(_quest_label("▾" if open else "▸", C_TEXT, QUEST_STEP_PT, false))
-	# A finished mission's title goes brass, because a COLLAPSED section shows nothing else —
-	# neither its filled boxes nor its ticked reward — and "which of these have I done" is the
-	# question an accordion has to answer while shut.
-	var title := _quest_label(MiniQuest.title(kind),
-		DS.PALETTE.BRASS if done else C_TEXT, QUEST_STEP_PT, true)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(title)
-	col.add_child(head)
-	if not open:
-		return section
-
-	var steps: Array = MiniQuest.steps(kind)
-	for i in steps.size():
-		col.add_child(_quest_step_row(str(steps[i]), MiniQuest.step_done(i, kind)))
-
-	var reward_row := HBoxContainer.new()
-	reward_row.add_theme_constant_override("separation", 6)
-	reward_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var tick := _TickMark.new()
-	tick.custom_minimum_size = Vector2(QUEST_BOX + 2.0, QUEST_BOX + 2.0)
-	tick.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	tick.progress = 1.0 if done else 0.0
-	reward_row.add_child(tick)
-	section.tick = tick
-	var reward := Label.new()
-	reward.theme_type_variation = "Reward"   # brass + semibold, from DS
-	reward.text = "Reward: %s" % MiniQuest.reward_text(kind)
-	reward.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	reward.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	reward.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	reward_row.add_child(reward)
-	col.add_child(reward_row)
-
-	var hint: String = MiniQuest.hint(kind)
-	if hint != "":
-		col.add_child(_quest_label(hint, C_TEXT, QUEST_HINT_PT, true))
-	return section
-
-
-## A step: the 12 px tickbox the spec asks for, then the text. The box is empty until the step
-## is met and fills brass when it is; the text stays off-white either way, because dimming a
-## completed step would be the grey-on-navy the house rule forbids.
-func _quest_step_row(text: String, done: bool) -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 7)
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# The box hangs off the FIRST line of a wrapped step, not the middle of the block.
-	var box_pad := MarginContainer.new()
-	box_pad.add_theme_constant_override("margin_top", 3)
-	box_pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box_pad.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	var box := Panel.new()
-	box.custom_minimum_size = Vector2(QUEST_BOX, QUEST_BOX)
-	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var sb := StyleBoxFlat.new()
-	sb.set_corner_radius_all(3)
-	sb.bg_color = DS.PALETTE.BRASS if done else Color(0, 0, 0, 0)
-	sb.border_color = DS.PALETTE.BRASS if done else Color(C_TEXT.r, C_TEXT.g, C_TEXT.b, 0.55)
-	sb.set_border_width_all(1)
-	box.add_theme_stylebox_override("panel", sb)
-	box_pad.add_child(box)
-	row.add_child(box_pad)
-	var label := _quest_label(text, C_TEXT, QUEST_STEP_PT, true)
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(label)
-	return row
-
-
-## Off-white by default and never anything quieter (CLAUDE.md); IGNORE so every click inside a
-## section reaches the section itself, which is the whole hit target.
+## Off-white by default and never anything quieter (CLAUDE.md); IGNORE so a click reaches the row.
 func _quest_label(text: String, color: Color, pt: int, wrap: bool) -> Label:
 	var l := _mini(text, color, pt)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -2697,65 +1523,14 @@ func _quest_label(text: String, color: Color, pt: int, wrap: bool) -> Label:
 	return l
 
 
-func _toggle_quest_section(kind: String) -> void:
-	_quest_open = "" if _quest_open == kind else kind
-	_quest_auto_opened = false   # they are driving now; do not close it out from under them
-	if _fly_open_id == "quest":
-		_refresh_open_fly()
-
-
-## The completion sequence, and it happens ON THE BAR. The module itself fills solid gold,
-## then a tick wipes across it as a navy hole
-## cut through the plate; the flyout stays SHUT through all of that. Only when the tick's hold is
-## done does the module hand off to the next mission — v3.1 expands the module itself to reveal
-## it (see _finish_celebration_v31); classic pops the flyout open for three seconds instead.
-##
-## Driving the module rather than a flyout section is also what makes the timing trustworthy:
-## the module is a permanent node, so nothing the turn-resolution does can free the tween's
-## target mid-flight — which would collapse the whole sequence into an instant.
+## The completion: the piston strokes across with steam, the key changes to the next mission, and the
+## piston snaps back (scripts/ds2/mission_slot.gd), while a plate runs down under the slot naming the
+## mission and its reward. The module itself neither fills nor ticks.
 func _celebrate_mission(kind: String) -> void:
 	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
 		return
 	_quest_celebrating = true
 	_quest_celebrating_kind = kind
-	if _mission_slot_on():
-		_celebrate_mission_slot()
-		return
-	# The flash is on the bar, so the flyout has no part in it — close it if a prior celebration
-	# left it open, and do NOT open it now.
-	if _fly_open_id == "quest" and _quest_auto_opened:
-		_close_fly()
-	_refresh_quest()   # the module holds on the finished mission ("Complete — <reward>")
-	var mod := _quest_btn as _ModuleBtn
-	mod.tick_progress = 0.0
-	mod.glow = 0.0
-	# The tick is the navy of the bar directly behind the module, so it reads as a hole in the
-	# gold. Sampled once — the module does not move during the sequence.
-	mod.tick_color = _bar_navy_at(mod.position + mod.size * 0.5)
-	_kill_quest_anim()
-	# Stage 0: the label (or v3.1 icon) fades away first, so the fill has the module to itself
-	# Both are tweened — whichever is currently hidden just no-ops.
-	_quest_text_anim = create_tween()
-	if _quest_text_col != null and is_instance_valid(_quest_text_col):
-		_quest_text_anim.tween_property(_quest_text_col, "modulate:a", 0.0, QUEST_TEXT_FADE)
-	if _quest_icon != null and is_instance_valid(_quest_icon):
-		_quest_text_anim.parallel().tween_property(_quest_icon, "modulate:a", 0.0, QUEST_TEXT_FADE)
-	# Stage 1 (gold fill) then stage 2 (tick wipes across as a hole in it), one after the other on
-	# a single timeline — the plate reads as filling, THEN as marked complete, not both at once.
-	_quest_anim = create_tween()
-	_quest_anim.tween_interval(QUEST_TEXT_FADE)
-	_quest_anim.tween_method(_set_quest_glow, 0.0, 1.0, QUEST_FILL_SEC)
-	_quest_anim.tween_interval(QUEST_FILL_HOLD_SEC)
-	_quest_anim.tween_property(mod, "tick_progress", 1.0, QUEST_TICK_SEC)
-	_quest_anim.tween_interval(QUEST_TICK_HOLD_SEC)
-	_quest_anim.tween_callback(_finish_celebration.bind(kind))
-
-
-## DS2's completion: the piston strokes across with steam, the key changes to the next mission, and the
-## piston snaps back (scripts/ds2/mission_slot.gd). The module itself neither fills nor ticks.
-func _celebrate_mission_slot() -> void:
-	if _fly_open_id == "quest" and _quest_auto_opened:
-		_close_fly()
 	_refresh_quest()   # the piston shows the finished mission's count in full
 	# The plate runs down under the slot; the piston holds at the end of its stroke until the plate goes back.
 	if _mission_plate == null or not is_instance_valid(_mission_plate):
@@ -2768,199 +1543,6 @@ func _celebrate_mission_slot() -> void:
 		_quest_celebrating = false
 		_quest_celebrating_kind = ""
 		_refresh_quest(), maxf(0.35, runs - MissionCompletePlate.RETRACT_SEC - 0.55))
-
-
-## Stage 1 of the completion sequence: the module's plate fills gold. No rim to touch — the
-## module has none; the fill alone carries the beat.
-func _set_quest_glow(t: float) -> void:
-	if _quest_btn == null or not is_instance_valid(_quest_btn):
-		return
-	(_quest_btn as _ModuleBtn).glow = t
-
-
-## The bar's own ground gradient, sampled at a canvas point — bilinear across the four BarNavy
-## corners, the same fill _draw lays down. Used to colour the negative-space completion tick so
-## it matches the bar exactly rather than approximating it.
-func _bar_navy_at(pos: Vector2) -> Color:
-	var w: float = maxf(1.0, size.x)
-	var y0: float = size.y - EDGE_H
-	var u: float = clampf(pos.x / w, 0.0, 1.0)
-	var v: float = clampf((pos.y + TOP_BLEED) / maxf(1.0, y0 + TOP_BLEED), 0.0, 1.0)
-	return BarNavy.TL.lerp(BarNavy.TR, u).lerp(BarNavy.BL.lerp(BarNavy.BR, u), v)
-
-
-func _kill_quest_anim() -> void:
-	for t: Tween in [_quest_anim, _quest_text_anim]:
-		if t != null and t.is_valid():
-			t.kill()
-	_quest_anim = null
-	_quest_text_anim = null
-
-
-## The gold-fill+tick sequence is over. Clear the module back to its resting look, switch it to
-## the next mission, and THEN — not before — hand off: classic pops the flyout open on it for
-## three seconds; v3.1 expands the module itself (_finish_celebration_v31).
-func _finish_celebration(finished_kind: String) -> void:
-	if _quest_btn != null and is_instance_valid(_quest_btn):
-		var mod := _quest_btn as _ModuleBtn
-		mod.glow = 0.0
-		mod.tick_progress = 0.0
-	_quest_celebrating = false
-	_quest_celebrating_kind = ""
-	var list: Array = MiniQuest.missions()
-	var idx: int = list.find(finished_kind)
-	# Generic-tree nodes are independent of the legacy linear chain, so they do not have a
-	# positional successor in `missions()`.  Refresh the module and leave the tree open rather
-	# than treating the generic completion as the end of the start mission.
-	if idx < 0:
-		_quest_open = ""
-		_refresh_quest()
-		if _quest_text_col != null and is_instance_valid(_quest_text_col):
-			_quest_text_col.modulate.a = 1.0
-		return
-	var next := str(list[idx + 1]) if idx >= 0 and idx + 1 < list.size() else ""
-	_quest_open = next
-	var v31: bool = UiPrefs.use_topbar_v3_1
-	if v31:
-		_quest_v31_animating = true   # hold _refresh_quest's steady-state branch off below
-	_refresh_quest()   # the module now reads the next mission (or hides, if the chain is done)
-	if v31:
-		_finish_celebration_v31(next)
-		return
-	# Fade the (new) label back in — it was faded to nothing for the tick. If the chain is done
-	# the module is hidden anyway, but restore the alpha so a fresh match starts opaque.
-	if _quest_text_col != null and is_instance_valid(_quest_text_col):
-		if next == "":
-			_quest_text_col.modulate.a = 1.0
-		else:
-			_quest_text_anim = create_tween()
-			_quest_text_anim.tween_property(_quest_text_col, "modulate:a", 1.0, QUEST_TEXT_FADE)
-	if next == "":
-		return
-	# The reveal: the next mission pops open, and folds itself away after three seconds.
-	if _fly_open_id != "quest":
-		_quest_auto_opened = true
-		_open_fly("quest")
-	else:
-		_refresh_open_fly()
-	get_tree().create_timer(QUEST_NEXT_OPEN_SEC).timeout.connect(
-		_collapse_quest_accordion.bind(next))
-
-
-## v3.1's half of _finish_celebration (classic instead pops the flyout open, above). Stages 1-2
-## (gold fill, tick) already played out on the bar in _celebrate_mission, so this just hands
-## straight to stage 3 — the module itself expanding to reveal the next mission — with no second
-## gold moment of its own. With no next mission, it just rests on the icon in white (stage 4,
-## "retract to just the target icon", never had anything to expand FROM in that case).
-func _finish_celebration_v31(next: String) -> void:
-	if _quest_icon == null or not is_instance_valid(_quest_icon):
-		_quest_v31_animating = false
-		return
-	_quest_text_col.visible = false
-	_quest_icon.visible = true
-	_quest_icon.modulate = Color.WHITE
-	if next == "":
-		_quest_v31_wide = false
-		_quest_v31_animating = false
-		_place_quest.call_deferred()
-		return
-	_quest_v31_animating = false
-	_quest_v31_reveal_then_collapse()
-
-
-## Fold the accordion shut — but only if the player has not since opened something else, and
-## only close the flyout itself if the celebration is what opened it.
-func _collapse_quest_accordion(expected: String) -> void:
-	if _quest_open != expected:
-		return
-	_quest_open = ""
-	if _fly_open_id != "quest":
-		return
-	if _quest_auto_opened:
-		_quest_auto_opened = false
-		_close_fly()
-	else:
-		_refresh_open_fly()
-
-
-## One accordion section: the whole block is the click target that toggles it. It still holds a
-## `tick` for the reward line's static checkmark, but the completion FLASH is not here —
-## that plays on the module up on the bar (see _celebrate_mission), where the eye already is.
-class _QuestSection extends PanelContainer:
-	signal pressed
-	var tick: Control = null
-	var _hover := false
-
-	func _init() -> void:
-		mouse_filter = Control.MOUSE_FILTER_STOP
-		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		mouse_entered.connect(func() -> void: _hover = true; _restyle())
-		mouse_exited.connect(func() -> void: _hover = false; _restyle())
-		_restyle()
-
-	func _restyle() -> void:
-		var sb := StyleBoxFlat.new()
-		sb.set_corner_radius_all(8)
-		sb.content_margin_left = 9
-		sb.content_margin_right = 9
-		sb.content_margin_top = 7
-		sb.content_margin_bottom = 7
-		sb.bg_color = Color(1, 1, 1, 0.09 if _hover else 0.035)
-		sb.set_border_width_all(1)
-		sb.border_color = Color(1, 1, 1, 0.13)
-		add_theme_stylebox_override("panel", sb)
-
-	func _gui_input(e: InputEvent) -> void:
-		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			accept_event()
-			pressed.emit()
-
-
-## Thin brass connectors for the mission graph. Parent rows draw down to their children; child
-## rows draw in from above and continue down when another sibling follows.
-class _MissionTreePipe extends Control:
-	var depth := 0
-	var last_sibling := true
-	var has_children := false
-	const PIPE := Color("#d9a83d")
-
-	func _draw() -> void:
-		var x := 13.0 + float(maxi(0, depth - 1)) * 15.0
-		var mid := size.y * 0.5
-		if depth <= 0:
-			draw_circle(Vector2(x, mid), 3.0, PIPE)
-			if has_children:
-				draw_line(Vector2(x, mid), Vector2(x, size.y), PIPE, 1.2, true)
-			return
-		# The incoming segment joins the parent's outgoing line.
-		draw_line(Vector2(x, 0.0), Vector2(x, mid), PIPE, 1.2, true)
-		draw_line(Vector2(x, mid), Vector2(x + 12.0, mid), PIPE, 1.2, true)
-		if not last_sibling:
-			draw_line(Vector2(x, mid), Vector2(x, size.y), PIPE, 1.2, true)
-
-
-## A checkmark that DRAWS itself over `progress` 0→1, so the completion sequence has a tick
-## being drawn rather than a glyph that blinks into existence. Two strokes: the short one takes
-## the first third, the long one the rest.
-class _TickMark extends Control:
-	const SHORT_STROKE := 0.35
-	var progress := 0.0:
-		set(v):
-			progress = clampf(v, 0.0, 1.0)
-			queue_redraw()
-
-	func _draw() -> void:
-		if progress <= 0.0:
-			return
-		var s: float = minf(size.x, size.y)
-		var a := Vector2(0.16, 0.52) * s
-		var b := Vector2(0.40, 0.80) * s
-		var c := Vector2(0.88, 0.18) * s
-		var w: float = maxf(1.5, s * 0.15)
-		var col: Color = DS.PALETTE.BRASS
-		draw_line(a, a.lerp(b, minf(progress / SHORT_STROKE, 1.0)), col, w, true)
-		if progress > SHORT_STROKE:
-			draw_line(b, b.lerp(c, (progress - SHORT_STROKE) / (1.0 - SHORT_STROKE)), col, w, true)
 
 
 func _build_fly_layer() -> void:
@@ -3004,8 +1586,6 @@ class _FlyScrim extends Control:
 
 
 func _toggle_fly(id: String) -> void:
-	if id == "rankings" and not CompanyRankings.available():
-		return
 	if _fly_open_id == id:
 		_close_fly()
 	else:
@@ -3023,21 +1603,17 @@ func _refresh_open_fly() -> void:
 	_fly_refreshing = false
 
 
-## Victory and Council: on the DS2 bar they open their full panels (the flyouts only repeated them), and
-## Rankings opens its own panel; on v3.1 all three open their flyouts.
+## Victory and Council open their full panels, and Rankings its own panel.
 func _module_pressed(id: String) -> void:
-	if UiPrefs.use_topbar_ds2:
-		_close_fly()
-		if _ds2_readout != null:
-			_ds2_readout.visible = false
-		if id == "victory":
-			victory_widget_clicked.emit()
-		elif id == "council":
-			council_widget_clicked.emit()
-		elif id == "rankings":
-			_toggle_rankings_panel()
-		return
-	_toggle_fly(id)
+	_close_fly()
+	if _ds2_readout != null:
+		_ds2_readout.visible = false
+	if id == "victory":
+		victory_widget_clicked.emit()
+	elif id == "council":
+		council_widget_clicked.emit()
+	elif id == "rankings":
+		_toggle_rankings_panel()
 
 
 func _close_fly() -> void:
@@ -3049,26 +1625,21 @@ func _close_fly() -> void:
 		_fly_panel.queue_free()
 	_fly_panel = null
 	_fly_open_id = ""
-	if _victory_btn != null:
-		(_victory_btn as _ModuleBtn).active = false
 	if _rankings_btn != null:
 		(_rankings_btn as _ModuleBtn).active = false
-	if _council_btn != null:
-		(_council_btn as _ModuleBtn).active = false
 	if _quest_btn != null and is_instance_valid(_quest_btn):
 		(_quest_btn as _ModuleBtn).active = false
 	if _power_btn != null and is_instance_valid(_power_btn):
 		(_power_btn as _ModuleBtn).active = false
 
 func _open_fly(id: String) -> void:
-	if id == "rankings" and not CompanyRankings.available():
+	if not id in FLYOUTS:
 		return
 	if _ds2_readout != null:
-		_ds2_readout.visible = false   # the flyout says more than the readout
+		_ds2_readout.visible = false   # the sheet says more than the readout
 	if id == "treasury" and _fly_open_id != id:
 		TelemetryState.track_interaction("money_panel_opened", "treasury")
 	_close_fly()
-	_fly_scroll = null
 	if TurnBriefing.expanded:
 		TurnBriefing.collapse()
 	_fly_open_id = id
@@ -3080,34 +1651,7 @@ func _open_fly(id: String) -> void:
 	_fly_scrim.visible = true
 	_fly_panel = PanelContainer.new()
 	_fly_panel.name = "Flyout_%s" % id   # stable target (tutorial spotlight / e2e)
-	var ds2_sheet: bool = UiPrefs.use_topbar_ds2 and (id in DS2_SHEET_FLYOUTS or (id == "quest" and _mission_slot_on()))
-	if ds2_sheet:
-		_ds2_sheet_frame(_fly_panel)
-	elif id == "rankings":
-		# CanvasLayer children do not consistently inherit the viewport's theme.
-		# Assign it here so this expanded panel genuinely uses DS Card/Outlined styles.
-		_fly_panel.theme = DS.theme
-		_fly_panel.theme_type_variation = "Card"
-	else:
-		# The quest panel needs the DS theme for the same reason the rankings one does: a
-		# CanvasLayer child does not reliably inherit the viewport's, so its Labels fall back to
-		# the ENGINE default font. Off-brand, and it made this panel unmeasurable — the width was
-		# computed in the DS face and rendered in a wider one, so steps kept wrapping at what was
-		# supposedly a generous width. Setting it took the panel from 228 px tall to 165.
-		#
-		# The OTHER flyouts here (treasury, council, victory) have the same gap and are left
-		# alone deliberately: none of them was in scope, and each would want its own look at.
-		if id == "quest":
-			_fly_panel.theme = DS.theme
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color("#0d1e31")
-		# Mission cards use the DS brass pipe rim; the other flyouts retain their active blue rim.
-		sb.border_color = DS.PALETTE.BRASS if id == "quest" else C_ACTIVE_BORDER
-		sb.set_border_width_all(1)
-		sb.set_corner_radius_all(10 if id == "quest" else 12)
-		sb.shadow_color = Color(0, 0, 0, 0.55)
-		sb.shadow_size = 18
-		_fly_panel.add_theme_stylebox_override("panel", sb)
+	_ds2_sheet_frame(_fly_panel)
 	_fly_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 0)
@@ -3115,81 +1659,38 @@ func _open_fly(id: String) -> void:
 	var anchor: Control = money_widget
 	match id:
 		"treasury":
-			# This is the compact money mini-panel. Keep it distinct from the
-			# full Money panel, which the buttons below open.
-			_fly_panel.custom_minimum_size = Vector2(600 if ds2_sheet else 510, 0)
-			if ds2_sheet:
-				vb.add_child(_ds2_sheet_head("Treasury"))
-				_ds2_fly_treasury(vb)
-			else:
-				vb.add_child(_fly_head("Treasury"))
-				_fly_treasury(vb)
-			anchor = money_widget
+			# This is the compact money sheet. Keep it distinct from the
+			# full Money panel, which the keys below open.
+			_fly_panel.custom_minimum_size = Vector2(600, 0)
+			vb.add_child(_ds2_sheet_head("Treasury"))
+			_ds2_fly_treasury(vb)
 		"power":
-			_fly_panel.custom_minimum_size = Vector2(380 if ds2_sheet else 300, 0)
-			if ds2_sheet:
-				vb.add_child(_ds2_sheet_head("Power"))
-				_ds2_fly_power(vb)
-			else:
-				vb.add_child(_fly_head("Power"))
-				_fly_power(vb)
+			_fly_panel.custom_minimum_size = Vector2(380, 0)
+			vb.add_child(_ds2_sheet_head("Power"))
+			_ds2_fly_power(vb)
 			anchor = _power_btn
 			(_power_btn as _ModuleBtn).active = true
-		"victory":
-			_fly_panel.custom_minimum_size = Vector2(330, 0)
-			vb.add_child(_fly_head("Victory"))
-			_fly_victory(vb)
-			anchor = _victory_btn
-			(_victory_btn as _ModuleBtn).active = true
-		"rankings":
-			_fly_panel.custom_minimum_size = Vector2(560, 0)
-			vb.add_child(_fly_head("Company rankings"))
-			_fly_rankings(vb)
-			anchor = _rankings_btn
-			(_rankings_btn as _ModuleBtn).active = true
-		"council":
-			_fly_panel.custom_minimum_size = Vector2(352, 0)
-			vb.add_child(_fly_head("Council"))
-			_fly_council(vb)
-			anchor = _council_btn
-			(_council_btn as _ModuleBtn).active = true
 		"quest":
-			if ds2_sheet:
-				# DS2: the missions panel, one mimic board per tab.
-				vb.add_child(_ds2_sheet_head("Missions"))
-				vb.add_child(MissionsPanel.new())
-				vb.add_child(_mission_collapse_row(int(MissionsPanel.WIDTH)))
-			else:
-				# 120 tall as specced, and wide enough that the longest step sits on one line.
-				_fly_quest(vb)   # measures its own text and sets the panel width
+			# The missions panel, one mimic board per tab.
+			vb.add_child(_ds2_sheet_head("Missions"))
+			vb.add_child(MissionsPanel.new())
+			vb.add_child(_mission_collapse_row(int(MissionsPanel.WIDTH)))
 			anchor = _quest_btn
 			(_quest_btn as _ModuleBtn).active = true
 	_fly_layer.add_child(_fly_panel)
-	# Position after layout: left-align to the module, clamped to the viewport.
+	# Position after layout: centred under the module, clamped to the viewport.
 	var place := func() -> void:
 		if _fly_panel == null or not is_instance_valid(_fly_panel):
 			return
 		# CanvasLayer children do not participate in a parent Container layout.
-		# Give the mini-panel its measured content height explicitly, otherwise it
+		# Give the sheet its measured content height explicitly, otherwise it
 		# retains the viewport height and leaves an empty panel below its actions.
 		_fly_panel.size = _fly_panel.get_combined_minimum_size()
-		# Now that there IS a real rect, hand any overshoot back to the scroller: the panel ends
-		# above the screen edge and the rows that no longer fit scroll inside it, rather than
-		# sitting below the bottom of the display where nothing can reach them.
-		var vh: float = get_viewport().get_visible_rect().size.y
-		var max_h: float = vh - (BAR_H + 8.0) - FLY_BOTTOM_MARGIN
-		if _fly_panel.size.y > max_h and _fly_scroll != null and is_instance_valid(_fly_scroll):
-			var overflow: float = _fly_panel.size.y - max_h
-			_fly_scroll.custom_minimum_size.y = maxf(
-				FLY_LIST_MIN_H, _fly_scroll.custom_minimum_size.y - overflow)
-			_fly_panel.size.y = minf(_fly_panel.size.y, max_h)
 		var vw := get_viewport().get_visible_rect().size.x
-		var x := 12.0 if id == "rankings" else anchor.global_position.x
-		if ds2_sheet:
-			x = anchor.get_global_rect().get_center().x - _fly_panel.size.x * 0.5   # under the module's middle
+		var x := anchor.get_global_rect().get_center().x - _fly_panel.size.x * 0.5
 		x = clampf(x, 8.0, vw - _fly_panel.size.x - 8.0)
 		_fly_panel.global_position = Vector2(x, BAR_H + 8.0)
-		if ds2_sheet and not _fly_refreshing:
+		if not _fly_refreshing:
 			# The sheet drops a little into place from under the bar.
 			_fly_panel.position.y -= DS2_SHEET_DROP
 			_fly_panel.modulate.a = 0.0
@@ -3197,36 +1698,6 @@ func _open_fly(id: String) -> void:
 			t.tween_property(_fly_panel, "position:y", _fly_panel.position.y + DS2_SHEET_DROP, DS2_SHEET_SECONDS).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 			t.tween_property(_fly_panel, "modulate:a", 1.0, DS2_SHEET_SECONDS * 0.7)
 	place.call_deferred()
-
-func _fly_head(title: String) -> Control:
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 8)
-	var pad := MarginContainer.new()
-	pad.add_theme_constant_override("margin_left", 14)
-	pad.add_theme_constant_override("margin_right", 10)
-	pad.add_theme_constant_override("margin_top", 10)
-	pad.add_theme_constant_override("margin_bottom", 8)
-	var t := Label.new()
-	t.theme_type_variation = "Section"
-	t.text = title
-	head.add_child(t)
-	head.add_child(_flex())
-	var x := Button.new()
-	x.text = "✕"
-	x.focus_mode = Control.FOCUS_NONE
-	x.add_theme_font_size_override("font_size", 11)
-	x.pressed.connect(_close_fly)
-	head.add_child(x)
-	pad.add_child(head)
-	var wrap := VBoxContainer.new()
-	wrap.add_child(pad)
-	var line := Panel.new()
-	line.custom_minimum_size = Vector2(0, 1)
-	var lsb := StyleBoxFlat.new()
-	lsb.bg_color = C_TRACK_EDGE
-	line.add_theme_stylebox_override("panel", lsb)
-	wrap.add_child(line)
-	return wrap
 
 func _fly_pad(vb: VBoxContainer, sep: int = 7) -> VBoxContainer:
 	var pad := MarginContainer.new()
@@ -3239,22 +1710,6 @@ func _fly_pad(vb: VBoxContainer, sep: int = 7) -> VBoxContainer:
 	pad.add_child(inner)
 	vb.add_child(pad)
 	return inner
-
-func _fly_row(label: String, value: String, tone: Color = C_TEXT, label_tone: Color = DS.PALETTE.TEXT_DIM, row_name: String = "") -> Control:
-	var row := HBoxContainer.new()
-	if row_name != "":
-		row.name = row_name   # stable target for the tutorial's money primer
-	row.add_theme_constant_override("separation", 12)
-	var l := _mini(label, label_tone, 12)
-	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(l)
-	var v := Label.new()
-	v.theme_type_variation = "Numeric"
-	v.text = value
-	v.add_theme_font_size_override("font_size", 12)
-	v.add_theme_color_override("font_color", tone)
-	row.add_child(v)
-	return row
 
 func _fly_sep() -> Control:
 	var line := Panel.new()
@@ -3291,22 +1746,19 @@ func _rankings_tabs() -> Control:
 		row.add_child(button)
 	return pad
 
+## Shows a tab of the Rankings panel; with the panel shut, it opens on that tab next time.
 func _set_rankings_tab(tab: String) -> void:
 	if tab == _rankings_tab:
 		return
 	_rankings_tab = tab
 	if _rankings_panel != null and is_instance_valid(_rankings_panel) and _rankings_panel.visible:
 		_fill_rankings_panel()
-		return
-	_close_fly()
-	_open_fly("rankings")
 
 
-# ── Rankings panel (DS2): the league as a panel of its own ─────────────────────
+# ── Rankings panel: the league as a panel of its own ───────────────────────────
 
 ## The Rankings panel: docked at the left under the bar, as the Market panel is, closing on Esc. It holds
-## the same two tables the flyout did (the builders are shared), in a panel sized to stop above the
-## bottom menu.
+## two tables (revenue and goods), in a panel sized to stop above the bottom menu.
 var _rankings_panel: PanelContainer
 const RANKINGS_PANEL_W := 600.0
 ## Room kept below the panel for the bottom menu.
@@ -3400,8 +1852,6 @@ func _fill_rankings_panel() -> void:
 ## unreachable — and a constant chosen to fit 1080p would waste half of a taller one.
 const FLY_LIST_CHROME := 260.0
 const FLY_LIST_MIN_H := 360.0
-## Clearance kept between the bottom of a flyout and the bottom of the screen.
-const FLY_BOTTOM_MARGIN := 16.0
 
 func _fly_list_height() -> float:
 	var vp := get_viewport()
@@ -3409,8 +1859,8 @@ func _fly_list_height() -> float:
 	return maxf(FLY_LIST_MIN_H, vh - FLY_LIST_CHROME)
 
 
-## The scroller of whichever flyout is open, so _open_fly's deferred placement can hand back
-## any height the panel overshot the screen by. Null for the flyouts that hold no list.
+## The scroller of the rankings list being built, so _fill_rankings_panel's deferred placement can
+## hand back any height the panel overshot the screen by.
 var _fly_scroll: ScrollContainer = null
 
 ## A scroller sized by _fly_list_height, with the list inside it. Both rankings tabs use it: the
@@ -3418,8 +1868,8 @@ var _fly_scroll: ScrollContainer = null
 ##
 ## _fly_list_height is only an OPENING BID — it subtracts an ESTIMATE of this panel's chrome,
 ## and an estimate is what left the revenue table hanging off the bottom of a 1440 px screen
-## with its last rows unreachable. The correction is measured in _open_fly's placement, once
-## the panel has a real rect.
+## with its last rows unreachable. The correction is measured in _fill_rankings_panel's placement,
+## once the panel has a real rect.
 func _fly_list_scroll(vb: VBoxContainer, separation: int) -> VBoxContainer:
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(0, _fly_list_height())
@@ -3574,131 +2024,7 @@ func _ranking_row(entry: Dictionary) -> Control:
 	row.add_child(average)
 	return card
 
-func _fly_btn(text: String, primary: bool) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.focus_mode = Control.FOCUS_NONE
-	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	b.custom_minimum_size = Vector2(0, 30)
-	# CanvasLayer children do not inherit the viewport theme reliably, so apply
-	# the DS theme directly to keep the flyout CTAs in the metal-button family.
-	b.theme = DS.theme
-	if primary:
-		b.theme_type_variation = "Primary"
-	return b
-
-# Treasury mini-panel: cash / net / runway, last-turn two-column breakdown,
-# loans + capacity, then deep-links into the full Money panel.
-func _fly_treasury(vb: VBoxContainer) -> void:
-	var inner := _fly_pad(vb)
-	var s: Dictionary = Production.last_turn_summary
-	var net := Production.net_of(s)
-	inner.add_child(_fly_row("Cash on hand", _money_text(MatchState.money), C_BRIGHT, C_BRIGHT, "FlyRowCash"))
-	var upcoming := preload("res://scripts/cash_commitments_view.gd").make_link(func() -> void: _open_money_panel_tab("Upcoming"))
-	upcoming.name = "FlyUpcomingButton"
-	preload("res://scripts/cash_commitments_view.gd").update_link(upcoming, preload("res://scripts/cash_commitments.gd").snapshot())
-	inner.add_child(upcoming)
-	inner.add_child(_fly_row("Net last turn", _fly_signed_money(net), C_BRIGHT, C_BRIGHT, "FlyRowNet"))
-	if Production.borrowed_of(s) > 0.005:
-		inner.add_child(_fly_row("Borrowed last turn", _fly_signed_money(Production.borrowed_of(s)), C_BRIGHT, C_BRIGHT, "FlyRowBorrowed"))
-	var runway := _runway_turns()
-	if runway > 0:
-		inner.add_child(_fly_row("Runway at current burn", "≈ %d turns" % runway, C_BRIGHT, C_BRIGHT, "FlyRowRunway"))
-	inner.add_child(_fly_sep())
-
-	# Mirror the expanded turn summary: revenue and outgoings read side by side,
-	# using its precise monetary values rather than the top bar's rounded format.
-	var revenue := [
-		["Goods sold", float(s.get("goods_sales_revenue", 0.0))],
-		["Power sold", float(s.get("power_sales_revenue", 0.0))],
-		["Green subsidy", float(s.get("green_subsidy_received", 0.0))],
-	]
-	var operating_costs := float(s.get("maintenance_paid", 0.0)) + float(s.get("labour_paid", 0.0)) + float(s.get("advisor_paid", 0.0))
-	var taxes_and_dividends := float(s.get("taxes_paid", 0.0)) + float(s.get("dividends_paid", 0.0))
-	var costs := [
-		["Operating costs", operating_costs],
-		["Power bought", float(s.get("power_purchase_cost", 0.0))],
-		["Transport costs", float(s.get("transport_paid", 0.0))],
-		["Goods purchased", float(s.get("goods_purchased_cost", 0.0))],
-		["Warehousing", float(s.get("warehousing_paid", 0.0))],
-		["Opening costs", float(s.get("one_off_paid", 0.0))],
-		["Loan repayments", float(s.get("interest_paid", 0.0))],
-		["Taxes & dividends", taxes_and_dividends],
-		["Carbon tax", float(s.get("carbon_tax_paid", 0.0))],
-		["Profit sharing", float(s.get("profit_sharing_paid", 0.0))],
-	]
-	inner.add_child(_fly_money_breakdown(revenue, costs))
-	vb.add_child(_fly_sep())
-	var loans := _fly_pad(vb, 8)
-	var loans_pad := loans.get_parent() as MarginContainer
-	loans_pad.add_theme_constant_override("margin_bottom", 20)
-	var tag := _fly_money_column_header("Loans")
-	loans.add_child(tag)
-	for l in LoanState.loans:
-		var card := PanelContainer.new()
-		var csb := StyleBoxFlat.new()
-		csb.bg_color = Color(0.902, 0.702, 0.29, 0.07)
-		csb.border_color = Color(0.902, 0.702, 0.29, 0.3)
-		csb.set_border_width_all(1)
-		csb.set_corner_radius_all(8)
-		csb.content_margin_left = 10
-		csb.content_margin_right = 10
-		csb.content_margin_top = 6
-		csb.content_margin_bottom = 6
-		card.add_theme_stylebox_override("panel", csb)
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
-		var nm := _mini(LoanState.loan_label(l), C_BRIGHT, 12)
-		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(nm)
-		row.add_child(_mini(_money_text(LoanState.payoff_amount(l)), C_BRIGHT, 12))
-		var info := VBoxContainer.new()
-		info.add_theme_constant_override("separation", 4)
-		info.add_child(row)
-		info.add_child(_mini(LoanState.repayment_label(l), C_BRIGHT, 12))
-		card.add_child(info)
-		loans.add_child(card)
-	if LoanState.loans.is_empty():
-		loans.add_child(_mini("No loans outstanding.", C_BRIGHT, 11))
-	loans.add_child(_fly_row("Borrowing capacity left", _money_text(LoanState.available_capacity()), C_BRIGHT, C_BRIGHT))
-	if LoanState.transit_credit_available():
-		_add_transit_credit_rows(loans)
-	var actions := HBoxContainer.new()
-	actions.add_theme_constant_override("separation", 8)
-	var take := _fly_btn("Take loan", true)
-	take.name = "FlyTakeLoanButton"   # stable target: the e2e loan flow presses this
-	take.pressed.connect(func() -> void:
-		_open_money_panel_tab("Loans"))
-	actions.add_child(take)
-	var balance := _fly_btn("Balance", false)
-	balance.name = "FlyBalanceButton"
-	balance.pressed.connect(func() -> void:
-		_open_money_panel_tab("Balance"))
-	actions.add_child(balance)
-	var charts := _fly_btn("Charts", false)
-	charts.name = "FlyChartsButton"
-	charts.pressed.connect(func() -> void:
-		_open_money_panel_tab("Charts"))
-	actions.add_child(charts)
-	loans.add_child(actions)
-
-## Port sales advanced when they leave: what is on the road, what it costs, and the switch.
-func _add_transit_credit_rows(parent: VBoxContainer) -> void:
-	var rate_pct := LoanState.transit_credit_rate_per_turn() * 100.0
-	var balance := LoanState.transit_credit_balance
-	parent.add_child(_fly_row("Transit credit on the road", "%s · %s/turn" % [_money_text(balance), _money_text(balance * rate_pct / 100.0)], C_BRIGHT, C_BRIGHT, "FlyRowTransitCredit"))
-	var toggle := _fly_btn("", false)
-	toggle.name = "FlyTransitCreditToggle"
-	toggle.tooltip_text = "Port sales are paid when the goods reach the port. With this on, the bank pays you when they leave and charges %.2f%%/turn on what is still on the road. Turn it off to wait for payment and save the interest." % rate_pct
-	var label_for := func() -> String:
-		return "Advance port sales: %s" % ("On" if LoanState.transit_credit_enabled else "Off")
-	toggle.text = label_for.call()
-	toggle.pressed.connect(func() -> void:
-		LoanState.set_transit_credit_enabled(not LoanState.transit_credit_enabled)
-		toggle.text = label_for.call())
-	parent.add_child(toggle)
-
-# ── DS2 flyout sheets (Treasury, Power) ─────────────────────────────────────────
+# ── The steel sheets (Treasury, Power) ──────────────────────────────────────────
 
 ## A flyout as Building Detail's steel sheet: the plate painted behind its content, the content inset
 ## inside the plate's trim.
@@ -3985,63 +2311,6 @@ func _open_money_panel_tab(tab_name: String) -> void:
 	_close_fly()
 	money_panel_tab_requested.emit(tab_name)
 
-func _fly_money_breakdown(revenue: Array, costs: Array) -> Control:
-	var columns := HBoxContainer.new()
-	columns.add_theme_constant_override("separation", 12)
-	columns.add_child(_fly_money_column("Cash in & credits", revenue, true))
-	var divider := Panel.new()
-	divider.custom_minimum_size = Vector2(1, 0)
-	var divider_box := StyleBoxFlat.new()
-	divider_box.bg_color = C_TRACK_EDGE
-	divider.add_theme_stylebox_override("panel", divider_box)
-	columns.add_child(divider)
-	columns.add_child(_fly_money_column("Costs", costs, false))
-	return columns
-
-func _fly_money_column(title: String, entries: Array, is_revenue: bool) -> VBoxContainer:
-	var column := VBoxContainer.new()
-	column.name = "%sColumn" % title
-	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	column.add_theme_constant_override("separation", 5)
-	column.add_child(_fly_money_column_header(title))
-	var has_entries := false
-	for entry in entries:
-		var amount := float(entry[1])
-		if amount <= 0.005:
-			continue
-		has_entries = true
-		column.add_child(_fly_money_row(str(entry[0]), amount, is_revenue))
-	if not has_entries:
-		column.add_child(_mini("None last turn", C_BRIGHT, 11))
-	return column
-
-func _fly_money_column_header(text: String) -> Label:
-	var header := Label.new()
-	header.text = text.to_upper()
-	header.theme_type_variation = "Numeric"
-	header.add_theme_font_size_override("font_size", 12)
-	header.add_theme_color_override("font_color", C_BRIGHT)
-	return header
-
-func _fly_money_row(label: String, amount: float, is_revenue: bool) -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	row.set_meta("cash_amount", amount if is_revenue else -amount)
-	var name := _mini(label, C_BRIGHT, 11)
-	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	row.add_child(name)
-	var value := Label.new()
-	value.theme_type_variation = "Numeric"
-	value.text = _fly_signed_money(amount if is_revenue else -amount)
-	value.add_theme_font_size_override("font_size", 11)
-	value.add_theme_color_override("font_color", C_GOOD if is_revenue else C_BAD)
-	row.add_child(value)
-	return row
-
-func _fly_signed_money(amount: float) -> String:
-	return "%s£%.2f" % ["+" if amount >= 0.0 else "−", absf(amount)]
-
 func _runway_turns() -> int:
 	var s: Dictionary = Production.last_turn_summary
 	var net := Production.net_of(s)
@@ -4049,179 +2318,6 @@ func _runway_turns() -> int:
 		return 0
 	var turns := int(floor((MatchState.money + LoanState.available_capacity()) / -net))
 	return turns if turns <= 12 else 0   # only surface when it's actually alarming
-
-# Victory: five labelled progress bars + total, deep-link to the full panel.
-func _fly_victory(vb: VBoxContainer) -> void:
-	var inner := _fly_pad(vb, 10)
-	var bd: Dictionary = VictoryState.get_breakdown()
-	for t in (bd.get("tracks", []) as Array):
-		var block := VBoxContainer.new()
-		block.add_theme_constant_override("separation", 4)
-		var head := HBoxContainer.new()
-		var nm := _mini(str(t.get("name", "")), C_TEXT, 12)
-		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		head.add_child(nm)
-		head.add_child(_mini("%d / %d" % [int(t.get("contribution", 0)), int(t.get("max_score", 1000))], _track_color(t), 11))
-		block.add_child(head)
-		var meter := Panel.new()
-		meter.custom_minimum_size = Vector2(0, 8)
-		var msb := StyleBoxFlat.new()
-		msb.bg_color = C_TRACK_BG
-		msb.border_color = Color("#16273a")
-		msb.set_border_width_all(1)
-		msb.set_corner_radius_all(4)
-		meter.add_theme_stylebox_override("panel", msb)
-		var fill := Panel.new()
-		var fsb := StyleBoxFlat.new()
-		fsb.bg_color = _track_color(t)
-		fsb.set_corner_radius_all(3)
-		fill.add_theme_stylebox_override("panel", fsb)
-		fill.set_anchors_preset(Control.PRESET_LEFT_WIDE)
-		fill.offset_top = 1
-		fill.offset_bottom = -1
-		fill.offset_left = 1
-		meter.add_child(fill)
-		meter.resized.connect(func() -> void:
-			fill.offset_right = -1.0 - (1.0 - clampf(float(t.get("progress", 0.0)), 0.0, 1.0)) * (meter.size.x - 2.0))
-		block.add_child(meter)
-		inner.add_child(block)
-	vb.add_child(_fly_sep())
-	var foot := _fly_pad(vb)
-	var frow := HBoxContainer.new()
-	frow.add_theme_constant_override("separation", 8)
-	var total := _mini("Total %s / %s to win" % [_thousands(int(bd.get("total", 0))),
-	_thousands(int(bd.get("win_threshold", 4000)))], C_TEXT, 11)
-	total.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	frow.add_child(total)
-	var full := _fly_btn("Full breakdown", true)
-	full.size_flags_horizontal = Control.SIZE_SHRINK_END
-	full.pressed.connect(func() -> void:
-		_close_fly()
-		victory_widget_clicked.emit())
-	frow.add_child(full)
-	foot.add_child(frow)
-
-# Power: two Supply Priority toggles, then the direct map-overlay shortcut as a CTA
-# button, so that behaviour survives the module living in a flyout like every other one.
-func _fly_power(vb: VBoxContainer) -> void:
-	var inner := _fly_pad(vb, 14)
-	_fly_priority_row(inner, "Supply Priority — Coal & Gas",
-		"Runs your coal/gas plants first; only buys from the grid if they can't cover demand.",
-		"Sells your coal/gas output to the grid; demand is met by grid purchase instead.",
-		MatchState.power_priority_coal_gas,
-		func(v: String) -> void: MatchState.set_power_priority("coal_gas", v))
-	_fly_priority_row(inner, "Supply Priority — Wind & Solar",
-		"Runs your wind/solar first — exposes buildings to derating when it's not generating.",
-		"Sells your wind/solar output to the grid; buildings draw firm grid power instead (default — avoids intermittency).",
-		MatchState.power_priority_wind_solar,
-		func(v: String) -> void: MatchState.set_power_priority("wind_solar", v))
-	vb.add_child(_fly_sep())
-	var foot := _fly_pad(vb)
-	var map_btn := _fly_btn("View power balance map", true)
-	map_btn.pressed.connect(func() -> void:
-		_close_fly()
-		_on_power_pressed())
-	foot.add_child(map_btn)
-
-## One "Grid" / "Your buildings" toggle row: label, then two ButtonGroup-linked
-## pill buttons — same two-way-choice idiom construct_panel_v2.gd's
-## _settings_choice_button uses for its own material/destination settings,
-## restyled to this bar's flyout look (that helper isn't reachable from here).
-func _fly_priority_row(vb: VBoxContainer, title: String, self_tip: String, grid_tip: String,
-		current: String, on_pick: Callable) -> void:
-	var row := VBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	vb.add_child(row)
-	row.add_child(_mini(title, C_TEXT, 12))
-	var btn_row := HBoxContainer.new()
-	btn_row.add_theme_constant_override("separation", 8)
-	row.add_child(btn_row)
-	var group := ButtonGroup.new()
-	for opt: Array in [["grid", "Grid", grid_tip], ["self", "Your buildings", self_tip]]:
-		var key: String = opt[0]
-		var selected := current == key
-		var btn := Button.new()
-		btn.text = str(opt[1])
-		btn.tooltip_text = str(opt[2])
-		btn.toggle_mode = true
-		btn.button_group = group
-		btn.button_pressed = selected
-		btn.focus_mode = Control.FOCUS_NONE
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.add_theme_font_size_override("font_size", 12)
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = C_ACTIVE_BG if selected else Color(1, 1, 1, 0.05)
-		sb.border_color = C_BRIGHT if selected else C_MOD_BORDER
-		sb.set_border_width_all(1)
-		sb.set_corner_radius_all(6)
-		sb.content_margin_left = 10
-		sb.content_margin_right = 10
-		sb.content_margin_top = 6
-		sb.content_margin_bottom = 6
-		for state in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
-			btn.add_theme_stylebox_override(state, sb)
-		btn.add_theme_color_override("font_color", C_BRIGHT if selected else C_TEXT)
-		for state in ["font_hover_color", "font_pressed_color", "font_focus_color"]:
-			btn.add_theme_color_override(state, C_BRIGHT if selected else C_TEXT)
-		btn.pressed.connect(func() -> void:
-			on_pick.call(key)
-			_refresh_open_fly())
-		btn_row.add_child(btn)
-
-# Council: one row per seated advisor (portrait · name/seat · loyalty bar · value).
-func _fly_council(vb: VBoxContainer) -> void:
-	var inner := _fly_pad(vb, 3)
-	var seats: Dictionary = AdvisorState.advisor_seats
-	if seats.is_empty():
-		inner.add_child(_mini("No advisors seated — open People to hire.", DS.PALETTE.TEXT_DIM, 11))
-	for seat_id in seats:
-		var aid := str(seats[seat_id])
-		var v := AdvisorState.advisor_loyalty_value(aid)
-		var tone := _loyalty_tone(v)
-		var adv: Dictionary = AdvisorState.get_advisor(aid)
-		var row_btn := _ModuleBtn.new(self)
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 10)
-		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row_btn.add_child(row)
-		row.add_child(_portrait_chip(aid, 30))
-		var col := VBoxContainer.new()
-		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		col.alignment = BoxContainer.ALIGNMENT_CENTER
-		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(col)
-		col.add_child(_mini(str(adv.get("name", aid)), Color("#eef4fb"), 12))
-		col.add_child(_mini(AdvisorState._seat_display_name(str(seat_id)), DS.PALETTE.TEXT_DIM, 10))
-		var meter := Panel.new()
-		meter.custom_minimum_size = Vector2(58, 5)
-		meter.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		var msb := StyleBoxFlat.new()
-		msb.bg_color = C_TRACK_BG
-		msb.border_color = Color("#16273a")
-		msb.set_border_width_all(1)
-		msb.set_corner_radius_all(3)
-		meter.add_theme_stylebox_override("panel", msb)
-		var fill := Panel.new()
-		var fsb := StyleBoxFlat.new()
-		fsb.bg_color = tone
-		fill.add_theme_stylebox_override("panel", fsb)
-		fill.set_anchors_preset(Control.PRESET_LEFT_WIDE)
-		var frac := clampf((v + 10.0) / 20.0, 0.0, 1.0)
-		fill.offset_left = 1
-		fill.offset_top = 1
-		fill.offset_bottom = -1
-		fill.offset_right = -57.0 + 56.0 * frac
-		meter.add_child(fill)
-		row.add_child(meter)
-		meter.visible = preload("res://scripts/debug_terminal.gd").demo_is_unlocked()
-		var val := _mini("%+.1f" % v, tone, 11)
-		row.add_child(val)
-		val.visible = meter.visible
-		row_btn.pressed.connect(func() -> void:
-			_close_fly()
-			council_widget_clicked.emit())
-		inner.add_child(row_btn)
-
 
 # ── Coalesced refresh ─────────────────────────────────────────────────────────
 
@@ -4245,8 +2341,7 @@ func _apply_refresh() -> void:
 	if _date_label != null:
 		_date_label.text = _turn_date(int(TurnManager.current_turn))
 	if _enc_button != null and _enc_inner != null:
-		var enc_face: Control = _enc_v31_inner if (UiPrefs.use_topbar_v3_1 and _enc_v31_inner != null) else _enc_inner
-		_enc_button.custom_minimum_size = Vector2(enc_face.get_combined_minimum_size().x + 28.0, MOD_H)
+		_enc_button.custom_minimum_size = Vector2(_enc_inner.get_combined_minimum_size().x + 28.0, MOD_H)
 	_refresh_bankruptcy_warning()
 	if _upcoming_notice_dirty and not TurnManager.is_resolving and not Tutorial.active:
 		_refresh_money_notices()
@@ -4258,7 +2353,7 @@ func _ds2_print(text: String, font_px: int) -> Label:
 	l.text = text
 	l.add_theme_font_size_override("font_size", font_px)
 	l.add_theme_color_override("font_color", DS2_CASH_COLOUR)
-	_ds2_ink(l, true)
+	_ds2_ink(l)
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -4266,48 +2361,25 @@ func _ds2_print(text: String, font_px: int) -> Label:
 
 
 ## Dark ink printed on the light concrete: no outline, a faint light shadow below so it reads as printed
-## into the surface. Off again for v3.1.
-func _ds2_print_on_concrete(label: Label, on: bool) -> void:
-	_ds2_ink(label, false)
-	if on:
-		label.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.35))
-		label.add_theme_constant_override("shadow_offset_x", 0)
-		label.add_theme_constant_override("shadow_offset_y", 1)
+## into the surface.
+func _ds2_print_on_concrete(label: Label) -> void:
+	label.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.35))
+	label.add_theme_constant_override("shadow_offset_x", 0)
+	label.add_theme_constant_override("shadow_offset_y", 1)
 
 
-## A dark outline and a shadow down and to the right, so a figure stands out on the light concrete; off
-## again for v3.1.
-func _ds2_ink(label: Label, on: bool) -> void:
-	if on:
-		label.add_theme_color_override("font_outline_color", DS2_INK_OUTLINE)
-		label.add_theme_constant_override("outline_size", 1)
-		label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.5))
-		label.add_theme_constant_override("shadow_outline_size", 2)
-		label.add_theme_constant_override("shadow_offset_x", 1)
-		label.add_theme_constant_override("shadow_offset_y", 1)
-	else:
-		for key: String in ["font_outline_color", "font_shadow_color"]:
-			label.remove_theme_color_override(key)
-		for key: String in ["outline_size", "shadow_outline_size", "shadow_offset_x", "shadow_offset_y"]:
-			label.remove_theme_constant_override(key)
+## A dark outline and a shadow down and to the right, so a figure stands out on the strip.
+func _ds2_ink(label: Label) -> void:
+	label.add_theme_color_override("font_outline_color", DS2_INK_OUTLINE)
+	label.add_theme_constant_override("outline_size", 1)
+	label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.5))
+	label.add_theme_constant_override("shadow_outline_size", 2)
+	label.add_theme_constant_override("shadow_offset_x", 1)
+	label.add_theme_constant_override("shadow_offset_y", 1)
 
 
-## DS2 prints the profit line and the runway in a column to the right of the cash, which then takes the
-## money module's full height; v3.1 keeps them on a line under the cash.
-func _ds2_money_layout(on: bool) -> void:
-	if _money_sub == null or _ds2_money_side == null:
-		return
-	var home: Container = _ds2_money_side if on else _money_sub
-	for label: Label in [_net_label, _runway_label]:
-		if label.get_parent() != home:
-			label.get_parent().remove_child(label)
-			home.add_child(label)
-	_money_sub.visible = not on
-	_ds2_money_side.visible = on
-
-
-## The cash on the LED screen, always five cells (blank ones unlit) so the screen never changes width. In
-## DS2 the screen takes the money module's height, DS2_CASH_PAD clear of its top and its foot.
+## The cash on the LED screen, always five cells (blank ones unlit) so the screen never changes width. The
+## screen takes the money module's height, DS2_CASH_PAD clear of its top and its foot.
 func _ds2_refresh_cash(colour: Color = Color(0, 0, 0, 0)) -> void:
 	if colour.a == 0.0:
 		colour = DS2_CASH_RED if MatchState.money < 0.0 else DS2_CASH_COLOUR
@@ -4330,30 +2402,16 @@ func _ds2_refresh_cash(colour: Color = Color(0, 0, 0, 0)) -> void:
 
 
 func _refresh_treasury() -> void:
-	var ds2: bool = UiPrefs.use_topbar_ds2
-	_cash_label.visible = not ds2
-	_ds2_cash.visible = ds2
-	if ds2:
-		_ds2_refresh_cash()
-	_cash_label.text = _money_text(MatchState.money)
-	if not _flashing:
-		_cash_label.add_theme_color_override("font_color", _base_money_color())
+	_ds2_refresh_cash()
 	var s: Dictionary = Production.last_turn_summary
 	var net := Production.net_of(s)
 	_net_label.text = ("+" if net >= 0.0 else "−") + _money_text(absf(net)) + " last turn"
 	_net_label.tooltip_text = "What the last turn earned. Money borrowed is not counted."
-	var ds2_ink: bool = UiPrefs.use_topbar_ds2
-	_net_label.add_theme_color_override("font_color", (DS2_INK_GOOD if net >= 0.0 else DS2_INK_BAD) if ds2_ink
-		else (C_GOOD if net >= 0.0 else C_BAD))
-	_runway_label.add_theme_color_override("font_color", DS2_INK_BAD if ds2_ink else C_RED)
+	_net_label.add_theme_color_override("font_color", DS2_INK_GOOD if net >= 0.0 else DS2_INK_BAD)
 	# LED: overdrawn AND still losing money. Either alone is survivable — a negative
 	# balance with a profitable turn is climbing out, and a loss with cash in hand is
 	# affordable. Together they are the shape that ends runs (spec §1.3).
 	(_treasury_led as StatusLed).lit = MatchState.money < 0.0 and net < 0.0
-	var v31: bool = UiPrefs.use_topbar_v3_1
-	_money_glyph.visible = not v31 and not ds2
-	# DS2: the printed £ and the screen say what the figure is; no coin.
-	_money_coin_icon.visible = v31 and not ds2
 	var runway := _runway_turns()
 	_runway_label.visible = runway > 0
 	if runway > 0:
@@ -4361,51 +2419,20 @@ func _refresh_treasury() -> void:
 	# Buttons don't size to non-container children: min width = inner row + padding.
 	money_widget.custom_minimum_size = Vector2(_money_inner.get_combined_minimum_size().x + 26.0, MOD_H)
 
+## The power lamp: amber for drawing from the grid, that same amber BLINKING once a second when a
+## building is actually being derated by intermittency (independent of whether the empire is also
+## grid-buying), red when a building has no power at all. Red beats blink beats steady.
+## TopBarStatus.power judges it, so the lamp and the hover readout say the same thing.
 func _refresh_power() -> void:
 	var status := TopBarStatus.power()
-	var p: Dictionary = status.stats
-	var s: Dictionary = Production.last_turn_summary
-	var starved: bool = int(p.unpowered) > 0
-	var gridding: bool = not starved and int(p.grid_draw) > 0
-	var derated: bool = int(p.derated) > 0
-	var c := C_RED if starved else (C_AMBER if gridding else C_GOOD)
-	(_power_btn as _ModuleBtn).warn = starved
-	var v31: bool = UiPrefs.use_topbar_v3_1
-	_power_glyph.visible = not v31
-	_power_icon.visible = v31
+	(_power_btn as _ModuleBtn).warn = int(status.stats.unpowered) > 0
 	var led := _power_led as StatusLed
-	if v31:
-		# v3.1: green when everything is good, amber for drawing from the grid, that
-		# same amber BLINKS once a second when a building is actually being derated
-		# by intermittency (independent of whether the empire is also grid-buying),
-		# red when a building has no power at all. Red beats blink beats steady beats
-		# green — this supersedes the classic LED's own narrower (grid-draw AND
-		# losing money) condition below. TopBarStatus.power judges it, so the lamp and the
-		# DS2 hover readout say the same thing.
-		led.blink = bool(status.blink)
-		led.color = C_RED if str(status.tone) == "bad" else C_AMBER
-		led.lit = TopBarStatus.lit(status)
-	else:
-		# Classic: buildings actually derated by intermittency, or the player buying
-		# grid power while losing money. The second lights the lamp HERE and not on the
-		# treasury, because power is the thing to go and fix.
-		var net: float = Production.net_of(s)
-		led.color = C_RED
-		led.blink = false
-		led.lit = (derated or (int(p.grid_draw) > 0 and net < 0.0))
-	_power_glyph.add_theme_color_override("font_color", c)
-	_power_head.add_theme_color_override("font_color", c)
-	_power_head.text = ("%d unpowered" % int(p.unpowered)) if starved else (("Grid −%d" % int(p.grid_draw)) if gridding else "Powered")
-	_power_sub.text = "buildings lack power" if starved else ("all buildings powered" if gridding else "self-sufficient")
-	# v3.1: icon + light only — the "Powered / self-sufficient" text goes to the
-	# tooltip below instead (same head is still colour-coded for the classic bar).
-	(_power_head.get_parent() as Control).visible = not v31
-	_power_btn.tooltip_text = "Power — %d self-generated%s%s" % [int(p.self_gen),
-		(" · %d drawn from grid" % int(p.grid_draw)) if int(p.grid_draw) > 0 else "",
-		(" · %d buildings unpowered" % int(p.unpowered)) if starved else ""]
+	led.blink = bool(status.blink)
+	led.color = C_RED if str(status.tone) == "bad" else C_AMBER
+	led.lit = TopBarStatus.lit(status)
 
 
-# ── Shared bits kept from v1 (CFO popup · bankruptcy strip · money flash) ───────
+# ── CFO popup · bankruptcy strip · money flash ─────────────────────────────────
 
 func _on_cfo_tax_credit_filed(_amount: float) -> void:
 	if DisplayServer.get_name() == "headless":
@@ -4438,7 +2465,7 @@ func _add_bankruptcy_warning() -> void:
 	lbl.text = "Bankruptcy imminent"
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.clip_text = true
-	lbl.add_theme_font_size_override("font_size", 11)
+	lbl.add_theme_font_size_override("font_size", DS2_BAR_MIN_PX)
 	lbl.add_theme_color_override("font_color", Color(1, 1, 1))
 	_bankruptcy_strip.add_child(lbl)
 	add_child(_bankruptcy_strip)
@@ -4469,9 +2496,7 @@ func _base_money_color() -> Color:
 	return C_BRIGHT
 
 func _set_money_color(c: Color) -> void:
-	_cash_label.add_theme_color_override("font_color", c)
-	if UiPrefs.use_topbar_ds2:
-		_ds2_refresh_cash(Color(0, 0, 0, 0) if c == _base_money_color() else c)
+	_ds2_refresh_cash(Color(0, 0, 0, 0) if c == _base_money_color() else c)
 
 func flash_red() -> void:
 	if _flashing:

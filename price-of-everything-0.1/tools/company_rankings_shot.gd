@@ -21,14 +21,12 @@ func _ready() -> void:
 		push_error("no TopBar found")
 		get_tree().quit(1)
 		return
-	top_bar.call("_open_fly", "rankings")
+	top_bar.call("_open_rankings_panel")
 	for _i: int in range(12):
 		await get_tree().process_frame
 	get_viewport().get_texture().get_image().save_png("res://company_rankings_shot.png")
 	print("[SHOT] saved company_rankings_shot.png")
-	top_bar.set("_rankings_tab", "goods")
-	top_bar.call("_close_fly")
-	top_bar.call("_open_fly", "rankings")
+	top_bar.call("_set_rankings_tab", "goods")
 	for _i: int in range(12):
 		await get_tree().process_frame
 	get_viewport().get_texture().get_image().save_png("res://company_rankings_goods_shot.png")
