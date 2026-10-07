@@ -114,7 +114,6 @@ func _ready() -> void:
 	await _settle(30)
 
 	var panel: Control = _wm.find_child("TileInfoPanel", true, false)
-	UiPrefs.set_use_tvp_v3(true)
 	await _settle(6)
 	var views := {"busy": BUSY, "deposits": DEPOSITS, "loss": str(Catalog.tile_neighbours(DEPOSITS)[0])}
 	var up := _going_up_tile(str(views.loss))
@@ -207,7 +206,6 @@ func _ready() -> void:
 	if go != null:
 		go.emit_signal("pressed")
 	print("[TVP_GOODS] key %s opened: %s" % [go.name if go != null else "(none)", str(opened)])
-	UiPrefs.set_use_tvp_v3(false)
 	print("[TVP_SHOT] done")
 	get_tree().quit(0)
 

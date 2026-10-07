@@ -66,7 +66,6 @@ func _ready() -> void:
 	await _settle(30)
 
 	_panel = _wm.find_child("TileInfoPanel", true, false)
-	UiPrefs.set_use_tvp_v3(true)
 	await _settle(6)
 	var td := _tile_data(TILE)
 	var only := OS.get_environment("TVP_STOCK_CASES")
@@ -393,7 +392,6 @@ func _ready() -> void:
 	if "flow" in cases:
 		await _flow(td)
 
-	UiPrefs.set_use_tvp_v3(false)
 	print("[TVP_CHECK] all cases: %d failed" % _failed)
 	print("[TVP_SHOT] done")
 	get_tree().quit(0)

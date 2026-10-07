@@ -26,7 +26,6 @@ func _ready() -> void:
 	_vp.add_child(wm)
 	for _i in 140:
 		await get_tree().process_frame
-	UiPrefs.set_use_tvp_v3(true)
 	var panel: Control = wm.find_child("TileInfoPanel", true, false)
 	var terrain: Node = wm.get("terrain_layer")
 	for tile: String in TILES:
@@ -40,7 +39,6 @@ func _ready() -> void:
 			await get_tree().process_frame
 		var r := panel.get_global_rect()
 		_save(Rect2(r.position - Vector2(16, 16), Vector2(r.size.x + 32, 300)), "tvp_v3_deposits_%s" % tile)
-	UiPrefs.set_use_tvp_v3(false)
 	print("[DEPOSITS_SHOT] done")
 	get_tree().quit(0)
 

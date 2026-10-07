@@ -6,7 +6,7 @@ extends RefCounted
 ##   turn, what that is worth (the sale after port charges, or the freight, a turn when it repeats), then
 ##   the key that does it; under it the good's standing order, selling all but a set amount every turn.
 ##   The panel keeps the choice (_stock_sel, _stock_qty, _stock_dest, _stock_recurring) and carries it out
-##   (_confirm_stock_action), as v2 does.
+##   (_confirm_stock_action).
 ##   Upgrade the warehouse: its capacity now and at the next level on a dot matrix, the materials the works
 ##   use with what you hold and what the market charges (MatchState.warehouse_upgrade_quote), and the two
 ##   ways to pay.

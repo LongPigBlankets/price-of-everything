@@ -167,7 +167,6 @@ func _ready() -> void:
 	_staged = tiles
 	# First with wind and solar selling to the grid (the game's default): the busy tile as a new player sees it.
 	await _turns(3)
-	UiPrefs.set_use_tvp_v3(true)
 	await _settle(6)
 	for scenario: String in GRID_PHASE:
 		var tid := str(tiles.get(scenario.trim_suffix("grid"), ""))
@@ -175,7 +174,6 @@ func _ready() -> void:
 			continue
 		await _shoot(panel, terrain, tid, "tvp_v3_power_%s" % scenario)
 		await _scenario_checks(panel, tid, scenario, EXPECTED_LAMP.get(scenario, null))
-	UiPrefs.set_use_tvp_v3(false)
 	# Then with wind and solar running first for your own buildings: intermittency.
 	MatchState.set_power_priority("wind_solar", "self")
 	await _turns(3)
@@ -199,7 +197,6 @@ func _ready() -> void:
 			(n as Control).hide()
 	await _settle(30)
 
-	UiPrefs.set_use_tvp_v3(true)
 	await _settle(6)
 	for scenario: String in wanted:
 		var tid := str(tiles.get(scenario, ""))
@@ -226,7 +223,6 @@ func _ready() -> void:
 		await _checks(panel, terrain, green, deficit, bare)
 	if only == "" or wanted.has("crowd"):
 		await _crowd()
-	UiPrefs.set_use_tvp_v3(false)
 	print("[TVP_SHOT] done")
 	get_tree().quit(0)
 

@@ -1,6 +1,5 @@
 extends RefCounted
-## Tile view v3: the Transport tab's body (docs/tile-view-ds2-plan.md §4.3 and §9), built into `pane` on each
-## refresh while UiPrefs.use_tvp_v3 is on. With the switch off the v2 panel builds the tab itself.
+## Tile view v3: the Transport tab's body (docs/tile-view-ds2-plan.md §4.3 and §9), built into `pane` on each refresh.
 ## `panel` is the tile view (scripts/tile_info_panel_v2.gd): its tile, its signals and its helpers.
 ##
 ## The site's services, as the cabinet's concept has them, in one plastic case like Building Detail's
@@ -13,9 +12,9 @@ extends RefCounted
 ## out as a table: how many tiles it reaches, its throughput, what laying it takes, and a Build key. The
 ## only keys are Build and Upgrade; hovering a key lights its card (dot_card.gd): what building or
 ## raising the link costs and what it brings. HVDC, which no building
-## provides yet, stays hidden. Building and raising links wait for Infrastructure Tendering, as the v2
-## section always has: until then the links built here show read only, their Upgrade keys greyed, with a
-## line saying so under them, and none can be added.
+## provides yet, stays hidden. Building and raising links wait for Infrastructure Tendering: until then
+## the links built here show read only, their Upgrade keys greyed, with a line saying so under them, and
+## none can be added.
 ##
 ## One column grid runs through the case, the same in every state: the headings stand over the modules'
 ## left edge, and the emblems, the names, the drums and the keys line up in both groups; every meter's
@@ -91,7 +90,7 @@ const FIGURE_TEMPLATES := ["8,888 of 8,888 MW", "888 of 888/turn"]
 const BODY_GAP := 7
 ## The least width a wrapping sentence asks for.
 const LINE_MIN_W := 160.0
-## Names where the v2 grid had to abbreviate.
+## Full names for the links the infrastructure data abbreviates.
 const NAMES := {"reinf_pipes": "Reinforced pipes"}
 ## A build card's note past the planning limit: the map charges half the fee again there
 ## (transport_quote.gd PLANNING_CHARGE); the materials a link takes don't change.
@@ -119,8 +118,7 @@ static func build(panel: Control, pane: VBoxContainer) -> void:
 	var tile_data: Dictionary = panel.get("_current_tile_data")
 	if tile_id == "":
 		return
-	# The research gating the v2 section has always had: in a logistics game the links are a tendered
-	# capability. Until Infrastructure Tendering the links built here show read only and none can be added.
+	# In a logistics game the links are a tendered capability. Until Infrastructure Tendering the links built here show read only and none can be added.
 	var open := ResearchState.infrastructure_tendering_available()
 	var near := near_share(panel)
 	var links: Array = []
@@ -341,7 +339,7 @@ static func _link_module(panel: Control, s: Dictionary, figure_w: float, last: D
 	if float(s.paid) >= 0.005:
 		body.add_child(_overages(float(s.paid)))
 
-	# The whole module opens the link too, as the v2 cell did, and brightens its emblem under the pointer.
+	# The whole module opens the link too, and brightens its emblem under the pointer.
 	module.mouse_filter = Control.MOUSE_FILTER_STOP
 	module.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	module.gui_input.connect(func(e: InputEvent) -> void:
@@ -575,7 +573,7 @@ static func _spare_module(panel: Control, tile_id: String, slot: Dictionary, pro
 
 ## The Build key. It says only Build: its card says what the press spends and what the link brings. Red
 ## when the map would refuse it or the cash won't cover it (its card says why); never disabled, since the
-## map has the last word, as with the v2 cell.
+## map has the last word.
 static func _build_key(panel: Control, slot: Dictionary, q: Dictionary, card: Dictionary, module: Control) -> Button:
 	var key := str(slot.get("key", ""))
 	var b: Button = Key.make("InfraBuild_%s" % key, "Build", "", key_width(), false, false, KEY_SCALE)
@@ -584,7 +582,7 @@ static func _build_key(panel: Control, slot: Dictionary, q: Dictionary, card: Di
 	Tip.attach(b, card)
 	b.set_meta("tvp_transport_quote", q)
 	var internal := str(slot.get("internal_name", key))
-	# The v2 cell's helper: it asks the map to build, then flashes the row. It fades in a built icon only
+	# The panel's helper (_on_infra_add_pressed): it asks the map to build, then flashes the row. It fades in a built icon only
 	# when the overlay has one, and this row has none.
 	var overlay := TextureRect.new()
 	overlay.visible = false

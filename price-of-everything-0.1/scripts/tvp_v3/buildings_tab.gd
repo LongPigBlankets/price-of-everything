@@ -1,6 +1,5 @@
 extends RefCounted
-## Tile view v3: the Buildings tab's body (docs/tile-view-ds2-plan.md §4.3 and §9), built into `pane` on each
-## refresh while UiPrefs.use_tvp_v3 is on. With the switch off the v2 panel builds the tab itself.
+## Tile view v3: the Buildings tab's body (docs/tile-view-ds2-plan.md §4.3 and §9), built into `pane` on each refresh.
 ## `panel` is the tile view (scripts/tile_info_panel_v2.gd): its tile, its signals and its helpers.
 ##
 ## The site's equipment racked in dark cases, as Building Detail racks its diagnostics:
@@ -630,7 +629,7 @@ static func _their_head(first: Dictionary, count: int, grid: Dictionary) -> Pane
 
 ## The port another company owns, in the port's own case: whose it is, the price the Buildings market asks
 ## on an LED screen in the house money format (MoneyFigure: £10.0K), and beside it a Buy key; pressing it
-## opens the confirmation the v2 card used.
+## opens the panel's buy confirmation (_open_port_buy).
 static func _port_module(panel: Control, port: Dictionary) -> PanelContainer:
 	var module := Parts.module("PortBuildingCard")
 	var row := Parts.row_of(module)

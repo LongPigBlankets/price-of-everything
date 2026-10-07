@@ -1,9 +1,8 @@
 extends Node2D
-## Captures of the tile view for the v3 work (docs/tile-view-ds2-plan.md), in the real HUD at 1920 × 1080
-## (two pixels each), after three turns of a busy tile you own: each tab, with the v3 look off and on
-## (UiPrefs.use_tvp_v3), cropped to the panel.
+## Captures of the tile view (docs/tile-view-ds2-plan.md), in the real HUD at 1920 × 1080 (two pixels
+## each), after three turns of a busy tile you own: each tab, cropped to the panel.
 ##   Godot --path . res://tools/tvp_v3_shot.tscn --quit-after 20000 -- --no-telemetry
-## Writes tvp_<look>_<tab>.png into $TVP_SHOT_DIR (or /tmp). With TVP_SHOT_TABS set, v3 tabs only, paged
+## Writes tvp_v3_<tab>.png into $TVP_SHOT_DIR (or /tmp). With TVP_SHOT_TABS set, those tabs only, paged
 ## down their whole body (see _shoot_tabs).
 
 const LOGICAL := Vector2i(1920, 1080)
@@ -59,7 +58,7 @@ func _ready() -> void:
 	var td: Dictionary = {"id": TILE}
 	if terrain != null and terrain.has_method("id_to_coord"):
 		td = terrain.tiles.get(terrain.id_to_coord(TILE), td)
-	# TVP_SHOT_TABS=bl,power (any of bl, power, prod, stock, transport): v3 only, each tab on the busy tile a
+	# TVP_SHOT_TABS=bl,power (any of bl, power, prod, stock, transport): each tab on the busy tile a
 	# screen at a time down its whole body (tvp_v3_<tab>_busy_p1.png, _p2 ...), then on the empty mountain
 	# tile (tvp_v3_<tab>_empty.png).
 	var only := OS.get_environment("TVP_SHOT_TABS")
@@ -67,14 +66,10 @@ func _ready() -> void:
 		await _shoot_tabs(panel, terrain, td, only.split(","))
 		get_tree().quit(0)
 		return
-	for look: String in ["v2", "v3"]:
-		UiPrefs.set_use_tvp_v3(look == "v3")
-		for tab: String in TABS:
-			if tab == "transport" and look == "v2":
-				continue
-			panel.call("show_tile", td, tab)
-			await _settle(12)
-			_save(panel.get_global_rect().grow(16.0), "tvp_%s_%s" % [look, tab])
+	for tab: String in TABS:
+		panel.call("show_tile", td, tab)
+		await _settle(12)
+		_save(panel.get_global_rect().grow(16.0), "tvp_v3_%s" % tab)
 	# The land in full on the busy tile.
 	panel.call("show_tile", td, "bl")
 	await _settle(6)
@@ -91,7 +86,7 @@ func _ready() -> void:
 	_save(panel.get_global_rect().grow(16.0), "tvp_v3_land_yellow")
 	MatchState.ruleset["company_colour"] = livery_was
 	panel.call("_set_land_open", false)
-	# v3 on an empty, unsurveyed tile: Survey beside the land, nothing of yours.
+	# An empty, unsurveyed tile: Survey beside the land, nothing of yours.
 	var empty: Dictionary = {"id": EMPTY_TILE}
 	if terrain != null and terrain.has_method("id_to_coord"):
 		empty = terrain.tiles.get(terrain.id_to_coord(EMPTY_TILE), empty)
@@ -102,14 +97,11 @@ func _ready() -> void:
 	await _settle(12)
 	_save(panel.get_global_rect().grow(16.0), "tvp_v3_empty_land")
 	panel.call("_set_land_open", false)
-	UiPrefs.set_use_tvp_v3(false)
 	print("[TVP_SHOT] done")
 	get_tree().quit(0)
 
 
 func _shoot_tabs(panel: Control, terrain: Node, td: Dictionary, tabs: PackedStringArray) -> void:
-	UiPrefs.set_use_tvp_v3(true)
-	await _settle(6)
 	var empty: Dictionary = {"id": EMPTY_TILE}
 	if terrain != null and terrain.has_method("id_to_coord"):
 		empty = terrain.tiles.get(terrain.id_to_coord(EMPTY_TILE), empty)
@@ -130,7 +122,6 @@ func _shoot_tabs(panel: Control, terrain: Node, td: Dictionary, tabs: PackedStri
 		panel.call("show_tile", empty, tab)
 		await _settle(12)
 		_save(panel.get_global_rect().grow(16.0), "tvp_v3_%s_empty" % tab)
-	UiPrefs.set_use_tvp_v3(false)
 	print("[TVP_SHOT] done")
 
 

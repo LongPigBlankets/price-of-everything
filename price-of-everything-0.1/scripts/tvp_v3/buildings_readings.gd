@@ -333,7 +333,7 @@ static func digest(r: Dictionary) -> String:
 		"%.2f" % float(c.get("unit_cost", -1.0)), "%.2f" % float(c.get("market_price", -1.0)), str(c.get("color", ""))])
 
 
-## The chemistry most loaded in the tile's batteries, as the v2 card shows it.
+## The chemistry most loaded in the tile's batteries.
 static func _battery_chem(tile_id: String) -> Dictionary:
 	var cells: Dictionary = Power.get_tile_battery_cells(tile_id)
 	var best := ""
