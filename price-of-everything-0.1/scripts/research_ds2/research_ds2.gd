@@ -6,8 +6,10 @@ extends Control
 ## Close key, then the rubber seam. Under it, down the left, the plan chest (plan_chest.gd): a drawer per
 ## research category. To its right, over the board, the licence office (the knowledge sharing offers: when the
 ## next comes, the free licences in hand, and the key that starts choosing) beside a readout of the drawing
-## pointed at. Then the patent board (patent_board.gd) in its steel frame: the open drawer's research pinned up
-## as patent drawings (blueprint_card.gd), rank by rank.
+## pointed at. Then the patent board (patent_board.gd) in its steel frame, seen through board_view.gd, which
+## zooms and pans it: the open drawer's research pinned up as patent drawings (blueprint_card.gd), rank by rank.
+## Resting the pointer on a drawing a moment dims the panel round it and shows it large (detail_sheet.gd).
+## The panel is lit by the DS2 lamp from the top left (scripts/ds2/lamp_overlay.gd).
 ##
 ## Everything the view shows is the research panel's state and ResearchState's: the open category, the search
 ## (the panel's own box, moved onto this screen while the view is up and handed back after), the free unlocks
@@ -20,7 +22,9 @@ const PatentBoard := preload("res://scripts/research_ds2/patent_board.gd")
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const Title := preload("res://scripts/bdp_v3_title.gd")
 const Key := preload("res://scripts/bdp_v3_key.gd")
-const Scroll := preload("res://scripts/bdp_v3_scroll.gd")
+const BoardView := preload("res://scripts/research_ds2/board_view.gd")
+const DetailSheet := preload("res://scripts/research_ds2/detail_sheet.gd")
+const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
 const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
 const CreamKey := preload("res://scripts/ds2/cream_key.gd")
 const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
@@ -42,13 +46,18 @@ const SEARCH_H := 36.0
 const PLACEHOLDER := "Search research by name or reward"
 ## The old canvas's print colour (research_panel.gd RESEARCH_TEXT), put back on the search box when it is handed back.
 const OLD_PRINT := Color("#f6eedc")
+## How long the pointer rests on a drawing before the detail sheet shows, so a sweep across the board does not flicker.
+const DETAIL_DELAY := 0.25
 
 var _host: Control
 var _search: LineEdit
 var _search_placeholder := ""
 var _chest: Control
 var _board: Control
-var _scroll: ScrollContainer
+var _view: Control
+var _detail: Control
+var _detail_for: Control = null
+var _detail_wait := 0
 var _licence_turns: Control
 var _licence_count: Control
 var _licence_key: Button
@@ -121,9 +130,12 @@ func _ready() -> void:
 	strip.add_child(_licence_office())
 	strip.add_child(_readout_screen())
 	right.add_child(_board_frame())
+	_detail = DetailSheet.new()
+	add_child(_detail)
 	resized.connect(_size_chest)
 	_size_chest()
 	refresh()
+	LampOverlay.attach(self)
 
 
 ## Hands the panel's search box back as it was found.
@@ -278,10 +290,6 @@ func _dots(node_name: String) -> Control:
 	d.set("pitch", 1.8)
 	d.set("align", HORIZONTAL_ALIGNMENT_LEFT)
 	d.custom_minimum_size.x = 150.0
-	# No lamp lights this cabinet, so the dots take no lamp's give back.
-	var dots := d.get_node_or_null("Dots") as CanvasItem
-	if dots != null:
-		dots.material = null
 	return d
 
 
@@ -361,7 +369,7 @@ func _draw_steel_plate(ci: CanvasItem, r: Rect2) -> void:
 # --- the board -----------------------------------------------------------------------------------
 
 ## The board in its steel frame: a gunmetal rim, lit along the edges facing the light, screwed at its corners;
-## the board scrolls inside it on Building Detail's rail.
+## the board is zoomed and panned inside it (board_view.gd).
 func _board_frame() -> MarginContainer:
 	var frame := MarginContainer.new()
 	frame.name = "BoardFrame"
@@ -372,18 +380,13 @@ func _board_frame() -> MarginContainer:
 		frame.add_theme_constant_override(side, int(FRAME))
 	frame.draw.connect(func() -> void: _draw_frame(frame))
 	frame.resized.connect(frame.queue_redraw)
-	_scroll = ScrollContainer.new()
-	_scroll.name = "BoardScroll"
-	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	Scroll.apply(_scroll, true)
-	frame.add_child(_scroll)
-	_board = PatentBoard.new()
-	_board.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_view = BoardView.new()
+	_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_view.connect("interacted", _hide_detail)
+	frame.add_child(_view)
+	_board = _view.get("board")
 	_board.connect("card_hover", _on_card_hover)
 	_board.connect("card_picked", _on_card_picked)
-	_scroll.add_child(_board)
-	_scroll.resized.connect(Callable(_board, "_lay_out"))
 	return frame
 
 
@@ -439,8 +442,9 @@ func refresh() -> void:
 	var key := "%s|%s|%s" % [selected, _narrow, query]
 	if key != _shown_key:
 		_shown_key = key
-		_scroll.scroll_vertical = 0
+		_view.call("reset")
 	_hovered = null
+	_hide_detail()
 	_refresh_office(choosing)
 	_show_readout(null)
 
@@ -649,9 +653,83 @@ func _on_card_hover(card: Control, on: bool) -> void:
 	if on:
 		_hovered = card
 		_show_readout(card)
+		_detail_wait += 1
+		var wait := _detail_wait
+		get_tree().create_timer(DETAIL_DELAY).timeout.connect(func() -> void:
+			if wait == _detail_wait and _hovered == card and is_instance_valid(card) and card.is_visible_in_tree():
+				show_detail(card))
 	elif _hovered == card:
 		_hovered = null
 		_show_readout(null)
+		_hide_detail()
+
+
+## Shows `card`'s research large, the panel dimmed round the card.
+func show_detail(card: Control) -> void:
+	if _detail == null or card == null:
+		return
+	_detail_for = card
+	var r := card.get_global_rect()
+	var local := Rect2(r.position - get_global_rect().position, r.size)
+	var top := _view.get_global_rect().position.y - get_global_rect().position.y - 96.0
+	_detail.call("show_for", _detail_data(card), local, maxf(top, 60.0))
+
+
+func _hide_detail() -> void:
+	_detail_wait += 1
+	_detail_for = null
+	if _detail != null and _detail.visible:
+		_detail.call("hide_sheet")
+
+
+## Everything the detail sheet shows for `card`'s research, from the research panel and ResearchState.
+func _detail_data(card: Control) -> Dictionary:
+	var title := str(card.get("title"))
+	var row: Dictionary = {}
+	for r: Dictionary in _host.get("_unlock_rows"):
+		if str(r.get("title", "")) == title:
+			row = r
+			break
+	var state := str(card.get("state"))
+	var needs: Array = []
+	var waiting := ""
+	for p: String in _host.call("_prereq_titles", row):
+		var got := ResearchState.is_unlocked(p)
+		needs.append({"title": p, "granted": got})
+		if not got and waiting == "":
+			waiting = p
+	var leads: Array = []
+	for r: Dictionary in _host.get("_unlock_rows"):
+		if not ResearchState.is_research_visible(r):
+			continue
+		if (_host.call("_prereq_titles", r) as Array).has(title):
+			leads.append(str(r.get("title", "")))
+	var rank := _rank_of(row)
+	var category := str(row.get("category", ""))
+	var state_text := "Open: being earned by doing"
+	match state:
+		"granted":
+			state_text = "Granted"
+		"licensed":
+			state_text = "Licensed free from a knowledge sharing offer"
+		"locked":
+			if not ResearchState.is_tier_available(category, rank):
+				state_text = "Locked: Rank %s is closed" % rank
+			elif waiting != "":
+				state_text = "Locked: needs %s" % waiting
+			else:
+				state_text = "Locked"
+	var spec: Dictionary = _host.call("_presentation", row)
+	return {
+		"title": title, "rank": rank, "category": category, "node_id": str(row.get("research_node_id", "")),
+		"description": str(row.get("description", "")),
+		"condition": str(_host.call("_condition_text", row)),
+		"progress": card.get("progress"),
+		"parts": ResearchState.condition_parts(title),
+		"needs": needs, "leads": leads, "state": state, "state_text": state_text,
+		"icon_kind": str(spec.get("kind", "system")), "icon_base": str(spec.get("base", "")),
+		"icon_glyph": str(spec.get("glyph", "gears")),
+	}
 
 
 func _on_card_picked(card: Control) -> void:
@@ -690,8 +768,12 @@ func board() -> Control:
 	return _board
 
 
-func board_scroll() -> ScrollContainer:
-	return _scroll
+func board_view() -> Control:
+	return _view
+
+
+func detail_sheet() -> Control:
+	return _detail
 
 
 func drawers() -> Array:
@@ -712,7 +794,7 @@ func card_rect(title: String) -> Rect2:
 	var card := card_for(title)
 	if card == null:
 		return Rect2()
-	_scroll.ensure_control_visible(card)
+	_view.call("ensure_visible", card)
 	return card.get_global_rect().grow(8.0)
 
 
@@ -721,6 +803,6 @@ func card_visible(title: String) -> bool:
 	var card := card_for(title)
 	if card == null or not card.is_visible_in_tree():
 		return false
-	var view := _scroll.get_global_rect()
+	var view := _view.get_global_rect()
 	var r := card.get_global_rect()
 	return view.has_point(r.get_center()) and view.intersection(r).get_area() >= r.get_area() * 0.5

@@ -968,7 +968,51 @@ func _live_condition_met(d: Dictionary) -> bool:
 ## live check reads. Vector2i.ZERO for a condition with no count a player can watch grow (a compound gate, a
 ## rate, a share) or no condition. `have` is clamped to `need`. A quote: nothing is recorded.
 func condition_progress(title: String) -> Vector2i:
+	return progress_of(get_unlock_def(title), title)
+
+
+## The parts of a condition made of several (an All Of gate, a list of goods or buildings), each with its own
+## count: [{text, progress: Vector2i}]. Empty for a condition of one part. A quote, as condition_progress.
+func condition_parts(title: String) -> Array:
 	var d := get_unlock_def(title)
+	var out: Array = []
+	if d.is_empty():
+		return out
+	var obj := str(d.get("object", ""))
+	var need := int(d.get("qty", 0))
+	var raw := str(d.get("quantity_raw", "")).split("|", false)
+	match str(d.get("action", "")):
+		"All Of":
+			for spec in obj.split(";", false):
+				var sub := _parse_sub_condition(str(spec))
+				if not sub.is_empty():
+					out.append({"text": _sub_condition_text(sub), "progress": progress_of(sub)})
+		"Produce All", "Produce Any":
+			var goods := obj.split("|", false)
+			for i in goods.size():
+				var want := int(str(raw[i])) if raw.size() == goods.size() and str(raw[i]).is_valid_int() else need
+				var got := Production.lifetime_total(_research_good_id(str(goods[i])))
+				out.append({"text": "Produce %d %s" % [want, _condition_good_label(str(goods[i]))], "progress": Vector2i(mini(got, want), want)})
+		"Own All":
+			var names := obj.split("|", false)
+			for i in names.size():
+				var want := int(str(raw[i])) if raw.size() == names.size() and str(raw[i]).is_valid_int() else need
+				var got := _count_buildings(str(names[i]), -1, false, 0)
+				out.append({"text": "Own %d %s" % [want, _condition_building_label(str(names[i]), want)], "progress": Vector2i(mini(got, want), want)})
+		"Run Multiple":
+			var targets := obj.split("|", false)
+			var turns := _leading_int(str(d.get("unit", "")), 0)
+			if targets.size() == raw.size() and turns > 0:
+				for i in targets.size():
+					var want := int(str(raw[i]))
+					var got := _count_buildings(str(targets[i]), -1, false, turns)
+					out.append({"text": "Run %d %s for %d turns" % [want, _condition_building_label(str(targets[i]), want), turns], "progress": Vector2i(mini(got, want), want)})
+	return out
+
+
+## progress_of: condition_progress for a condition in the research vocabulary ({action, object, qty,
+## quantity_raw, unit}); `title` names the research for the streaks kept per research.
+func progress_of(d: Dictionary, title: String = "") -> Vector2i:
 	if d.is_empty() or str(d.get("action", "")) == "Placeholder":
 		return Vector2i.ZERO
 	var need := int(d.get("qty", 0))

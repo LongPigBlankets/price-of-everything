@@ -1,9 +1,10 @@
 extends Node
 ## Boots a Metal Magnate game windowed with the Research panel's DS2 look on (UiPrefs.use_research_ds2) and
-## captures it: Extraction with a mix of states (some granted, one licensed, progress on others), the big
-## drawers (Chemistry, Infrastructure, Renewable Power), a search and a search narrowed to one drawer, licence
-## choosing, a drawing pointed at with its threads, close crops of a granted and an in progress drawing, and the
-## same panel in a 1280 x 720 window.
+## captures it: Extraction with a mix of states (some granted, one licensed, progress on others) at the opening
+## zoom, zoomed out to the whole board and zoomed in; crops of drawings with a good, a building and a glyph on
+## their notes and of a granted and a licensed copy; the detail sheet for an open, a locked, a licensed and a
+## multi part research; a drawing's threads; Chemistry and Renewable Power at both zooms; licence choosing; a
+## search; and the panel in a 1280 x 720 window.
 ##   AGENT_GODOT_WINDOW=1 godot --path . res://tools/research_ds2_shot.tscn -- --no-telemetry
 ## Writes <nn>_<view>.png to RESEARCH_SHOT_DIR (default user://research_ds2).
 
@@ -44,52 +45,68 @@ func _ready() -> void:
 	_dismiss_intro(get_tree().root)
 	await _sleep(0.4)
 	_stage_states()
+	# The real pointer may sit over the window: it must not hover drawings the captures did not ask for.
+	get_viewport().gui_disable_input = true
 	_panel = _world.get_node("UILayer/HUD/HUDContent/ResearchPanel")
 	PanelStack.push(_panel)
 	_panel.show()
 	_view = _panel.call("ds2_view")
 	print("[RESEARCH] ds2 view: %s" % str(_view))
 	_panel.call("select_category", "Extraction")
+	var bv: Control = _view.call("board_view")
 	await _shot("extraction")
-	var granted: Control = _view.call("card_for", "Reinforced Shaft Tunnels")
-	var going: Control = _view.call("card_for", "Improved Coal Mining")
-	var locked: Control = _view.call("card_for", "Reservoir Stimulation")
-	await _crop("cards_granted_and_in_progress", [granted, going])
-	await _crop("cards_licensed", [_view.call("card_for", "Composite Drill Bits")])
-	if locked != null:
-		_view.call("card_rect", "Reservoir Stimulation")
-		await _crop("card_locked_needs", [locked])
-	var scroll0: ScrollContainer = _view.call("board_scroll")
-	scroll0.scroll_vertical = 0
+	bv.call("zoom_to_fit")
+	await _shot("extraction_zoomed_out")
+	bv.call("reset")
+	bv.call("zoom_at", Vector2(420, 260), 2.0)
+	await _shot("extraction_zoomed_in")
+	bv.call("reset")
+	# A drawing of each icon kind: a good, a building, a glyph; then the granted and licensed copies.
+	var kinds := {}
+	for c: Control in (_view.call("board") as Control).call("cards"):
+		var k := str(c.get("icon_kind"))
+		if not kinds.has(k) and str(c.get("state")) == "open":
+			kinds[k] = c
+	await _crop("cards_good_building_glyph", kinds.values())
+	await _crop("cards_granted_and_licensed", [_view.call("card_for", "Reinforced Shaft Tunnels"), _view.call("card_for", "Composite Drill Bits")])
+	for t in ["Improved Coal Mining", "Reservoir Stimulation", "Composite Drill Bits"]:
+		var card: Control = _view.call("card_for", t)
+		if card == null:
+			continue
+		bv.call("ensure_visible", card)
+		await _sleep(0.3)
+		(_view.call("board") as Control).call("_on_card_hover", card, true)
+		await _shot("detail_" + t.to_lower().replace(" ", "_"))
+		(_view.call("board") as Control).call("_on_card_hover", card, false)
+	bv.call("reset")
 	var pointed: Control = _view.call("card_for", "Microseismic Monitoring")
 	if pointed != null:
+		bv.call("ensure_visible", pointed)
 		(_view.call("board") as Control).call("_on_card_hover", pointed, true)
+		await _sleep(0.05)
+		_view.call("_hide_detail")
 		await _shot("extraction_threads")
 		(_view.call("board") as Control).call("_on_card_hover", pointed, false)
-	var scroll: ScrollContainer = _view.call("board_scroll")
-	scroll.scroll_vertical = 100000
-	await _shot("extraction_scrolled")
-	for cat in ["Chemistry", "Infrastructure", "Renewable Power"]:
+	_panel.call("open_with_search", "Carbon Substitution", true)
+	await _sleep(0.3)
+	var multi: Control = _view.call("card_for", "Carbon Substitution")
+	if multi != null:
+		(_view.call("board") as Control).call("_on_card_hover", multi, true)
+		await _shot("detail_multi_part")
+		(_view.call("board") as Control).call("_on_card_hover", multi, false)
+	_panel.call("open_with_search", "")
+	for cat in ["Chemistry", "Renewable Power"]:
 		_panel.call("select_category", cat)
 		await _shot(cat.to_lower().replace(" ", "_"))
-		scroll.scroll_vertical = 100000
-		await _shot(cat.to_lower().replace(" ", "_") + "_scrolled")
-	_panel.call("open_with_search", "steel")
-	await _shot("search_steel")
-	_view.call("open_drawer", "Metallurgy")
-	await _shot("search_steel_metallurgy")
-	_panel.call("open_with_search", "")
+		bv.call("zoom_to_fit")
+		await _shot(cat.to_lower().replace(" ", "_") + "_zoomed_out")
 	_panel.call("select_category", "Extraction")
 	ResearchState.grant_free_unlocks(2)
 	_panel.call("begin_free_unlock_choice")
 	await _shot("licence_choosing")
-	var pick: Control = _view.call("card_for", "Beneficiated Iron Mining")
-	if pick != null:
-		(_view.call("board") as Control).call("_on_card_hover", pick, true)
-		await _shot("licence_choosing_pointed")
 	_panel.call("end_free_unlock_choice")
-	_panel.call("open_with_search", "Bauxite Carbochlorination", true)
-	await _shot("link_exact")
+	_panel.call("open_with_search", "steel")
+	await _shot("search_steel")
 	_panel.call("open_with_search", "")
 	_panel.call("select_category", "Extraction")
 	get_window().size = Vector2i(1280, 720)

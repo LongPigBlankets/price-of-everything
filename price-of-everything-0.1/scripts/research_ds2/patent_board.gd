@@ -1,6 +1,6 @@
 extends Control
-## The Research panel in DS2: the patent board, a cork board the open drawer's research is pinned to, scrolled
-## up and down inside its metal frame (research_ds2.gd holds the frame and the scroll).
+## The Research panel in DS2: the patent board the open drawer's research is pinned to, zoomed and panned inside
+## its metal frame by board_view.gd, which also draws the cork under it.
 ##
 ## The board is ruled into the three ranks, I at the top, each a row of patent drawings (blueprint_card.gd) that
 ## wraps onto as many lines as it needs, a brass rank plate at its left with the rank's count granted. Between
@@ -162,12 +162,9 @@ func _lay_out() -> void:
 	var total := y + 10.0
 	if _rows.is_empty():
 		total = NOTICE_SIZE.y + 80.0
-	# The cork reaches the frame's foot however few drawings are pinned.
-	var view := get_parent() as Control
-	if view != null:
-		total = maxf(total, view.size.y)
-	if absf(custom_minimum_size.y - total) > 0.5:
-		custom_minimum_size.y = total
+	# The board is as tall as what is pinned to it; the view (board_view.gd) zooms and pans it.
+	if absf(size.y - total) > 0.5:
+		size.y = total
 	if _threads != null:
 		_threads.position = Vector2.ZERO
 		_threads.size = size
@@ -199,7 +196,6 @@ func ties(title: String) -> Array:
 
 
 func _draw() -> void:
-	_draw_cork(Rect2(Vector2.ZERO, size))
 	for i in _row_rects.size():
 		var rr: Dictionary = _row_rects[i]
 		var rect: Rect2 = rr.rect
@@ -212,19 +208,20 @@ func _draw() -> void:
 		Grille.notice_card(self, r, {"heading": _empty_text, "line": "", "count": ""})
 
 
-func _draw_cork(r: Rect2) -> void:
+## The cork under board rect `r` (in board px), its tiles laid from the board's origin so they move with it.
+static func draw_cork(ci: CanvasItem, r: Rect2) -> void:
 	var t := Ink.tex("people_cork")
 	if t == null:
-		draw_rect(r, Color("#8a6a45"))
+		ci.draw_rect(r, Color("#8a6a45"))
 		return
 	var tile := CORK_INSIDE.size / 2.0
-	var y := 0.0
-	while y < r.size.y:
-		var x := 0.0
-		var th := minf(tile.y, r.size.y - y)
-		while x < r.size.x:
-			var tw := minf(tile.x, r.size.x - x)
-			draw_texture_rect_region(t, Rect2(x, y, tw, th), Rect2(CORK_INSIDE.position, Vector2(tw, th) * 2.0), CORK_TINT)
+	var y0 := floorf(r.position.y / tile.y) * tile.y
+	var x0 := floorf(r.position.x / tile.x) * tile.x
+	var y := y0
+	while y < r.end.y:
+		var x := x0
+		while x < r.end.x:
+			ci.draw_texture_rect_region(t, Rect2(x, y, tile.x, tile.y), CORK_INSIDE, CORK_TINT)
 			x += tile.x
 		y += tile.y
 
@@ -249,10 +246,10 @@ func _draw_rank_plate(at: Vector2, rank: String, granted: int, total: int) -> vo
 		for p in [Vector2(r.get_center().x, r.position.y + 7.0), Vector2(r.get_center().x, r.end.y - 7.0)]:
 			draw_texture_rect(screw, Rect2(p - Vector2(5.5, 5.5), Vector2(11, 11)), false)
 	var navy := Ink.NAVY
-	var small := Ink.LABEL_FONT
+	var small := Ink.label_font()
 	var w := small.get_string_size("RANK", HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
 	draw_string(small, Vector2(r.get_center().x - w * 0.5, r.position.y + 25.0), "RANK", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, navy)
-	var big := Ink.STAMP_FONT
+	var big := Ink.stamp_font()
 	var nw := big.get_string_size(rank, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
 	draw_string(big, Vector2(r.get_center().x - nw * 0.5 + 0.8, r.position.y + 52.8), rank, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color(1, 0.92, 0.7, 0.45))
 	draw_string(big, Vector2(r.get_center().x - nw * 0.5, r.position.y + 52.0), rank, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, navy)
@@ -316,16 +313,16 @@ class Grille extends Control:
 		NineRef.paint(ci, InkRef.tex("people_card_white"), card.grow(10.0 / 1.875), (76.0 + 10.0) * 2.0 / 1.875)
 		var navy := InkRef.NAVY
 		var heading := str(n.get("heading", ""))
-		var f: Font = InkRef.STAMP_FONT
+		var f: Font = InkRef.stamp_font()
 		ci.draw_string(f, Vector2(card.position.x + 16, card.position.y + 34), heading, HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 32, 26, navy)
 		var line := str(n.get("line", ""))
 		if line != "":
-			var lf: Font = InkRef.BODY_SEMI
+			var lf: Font = InkRef.body_semi()
 			var lines := InkRef.wrap(lf, line, card.size.x - 32, 14, 2)
 			InkRef.print_lines(ci, lf, lines, card.position.x + 16, card.position.y + 42, card.size.x - 32, 14, 17.0, navy)
 		var count := str(n.get("count", ""))
 		if count != "":
-			var cf: Font = InkRef.LABEL_FONT
+			var cf: Font = InkRef.label_font()
 			var cw := cf.get_string_size(count, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
 			ci.draw_string(cf, Vector2(card.end.x - 16 - cw, card.position.y + 32), count, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, navy)
 		InkRef.pin(ci, Vector2(card.get_center().x, card.position.y + 6.0), "people_pin_yellow")

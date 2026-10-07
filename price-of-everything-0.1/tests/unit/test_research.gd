@@ -1257,6 +1257,14 @@ func _test_research_condition_progress() -> void:
 	MatchState.reset()
 
 
+func _ds2_button(at: Vector2, pressed: bool) -> InputEventMouseButton:
+	var e := InputEventMouseButton.new()
+	e.button_index = MOUSE_BUTTON_LEFT
+	e.pressed = pressed
+	e.position = at
+	return e
+
+
 func _ds2_notices(view: Control) -> Array:
 	var out: Array = []
 	for g: Control in (view.call("board") as Control).call("grilles"):
@@ -1311,6 +1319,41 @@ func _test_research_ds2_panel() -> void:
 	_check(coal != null and coal.get("progress") == Vector2i(212, 500) and str(coal.get("state")) == "open"
 		and str(coal.get("spec")).to_lower().contains("500 coal"),
 		"research ds2: a drawing shows its condition and its count (%s)" % (str(coal.get("progress")) if coal != null else "none"))
+	# The reward on the drawing itself, in short; the full text on the detail sheet.
+	_check(coal != null and str(coal.get("reward")) == "+15% coal mining output"
+		and str(coal.get("reward_full")).begins_with("Increases coal mining output by 15%"),
+		"research ds2: a drawing shows what it grants (%s)" % (str(coal.get("reward")) if coal != null else "none"))
+	# The icon on its sticky note: a good in its own colours, a building printed navy.
+	var GoodIconsRef := preload("res://scripts/good_icons.gd")
+	var coal_good: Dictionary = Catalog.get_good_by_internal_name("coal")
+	var want_tex: Texture2D = GoodIconsRef.texture_for_size(str(coal_good.get("id", "")), "coal", 160.0)
+	_check(coal != null and str(coal.get("icon_kind")) == "good" and coal.call("icon_texture") == want_tex and want_tex != null
+		and coal.call("icon_tint") == Color.WHITE, "research ds2: a good's note carries the good's own colour icon")
+	var blast: Control = view.call("card_for", "Bench Blasting Expansion")
+	_check(blast != null and str(blast.get("icon_kind")) == "building" and blast.call("icon_texture") != null
+		and (blast.call("icon_tint") as Color).is_equal_approx(Color("#0b2340")), "research ds2: a building's note is printed navy")
+	# Zoom stays inside its clamp and scales the board.
+	var bview: Control = view.call("board_view")
+	var mid: Vector2 = bview.size * 0.5
+	bview.call("zoom_at", mid, 50.0)
+	var zmax := float(bview.get("zoom"))
+	bview.call("zoom_at", mid, 0.001)
+	var zmin := float(bview.get("zoom"))
+	const BoardViewRef := preload("res://scripts/research_ds2/board_view.gd")
+	_check(is_equal_approx(zmax, BoardViewRef.ZOOM_MAX) and zmin >= BoardViewRef.ZOOM_FLOOR and zmin < 1.0
+		and ((bview.get("board") as Control).scale.x - zmin) < 0.001,
+		"research ds2: zoom runs from %.2f to %.2f and scales the board" % [zmin, zmax])
+	bview.call("reset")
+	# Resting on a drawing shows it large, with its full reward; leaving hides it.
+	var board_ref: Control = view.call("board")
+	board_ref.call("_on_card_hover", coal, true)
+	await get_tree().create_timer(0.4).timeout
+	var sheet: Control = view.call("detail_sheet")
+	_check(sheet != null and sheet.visible and str((sheet.get("data") as Dictionary).get("description", "")).begins_with("Increases coal mining output by 15%")
+		and not (sheet.get("sheet") as Rect2).intersects((sheet.get("hole") as Rect2)),
+		"research ds2: resting on a drawing shows the detail sheet with the full reward, clear of the drawing")
+	board_ref.call("_on_card_hover", coal, false)
+	_check(sheet != null and not sheet.visible, "research ds2: leaving the drawing hides the detail sheet")
 	var notices := _ds2_notices(view)
 	_check(notices.has("Rank II closed") and notices.has("Rank III closed"),
 		"research ds2: closed ranks sit behind a grille with their notice (%s)" % str(notices))
@@ -1367,11 +1410,23 @@ func _test_research_ds2_panel() -> void:
 	var shut: Control = view.call("card_for", "Reservoir Stimulation")
 	_check(iron != null and bool(iron.get("eligible")) and shut != null and not bool(shut.get("eligible")),
 		"research ds2: while choosing, open research is eligible and locked research is not")
+	var bv: Control = view.call("board_view")
 	if iron != null:
-		var click := InputEventMouseButton.new()
-		click.button_index = MOUSE_BUTTON_LEFT
-		click.pressed = true
-		iron.call("_gui_input", click)
+		# A drag that starts on the drawing pans the board and licenses nothing.
+		var at: Vector2 = bv.get("offset") + (iron.position + iron.size * 0.5) * float(bv.get("zoom"))
+		bv.call("_gui_input", _ds2_button(at, true))
+		var move := InputEventMouseMotion.new()
+		move.position = at + Vector2(0, 40)
+		move.relative = Vector2(0, 40)
+		bv.call("_gui_input", move)
+		bv.call("_gui_input", _ds2_button(at + Vector2(0, 40), false))
+		await get_tree().process_frame
+		_check(not ResearchState.is_unlocked("Beneficiated Iron Mining") and int(panel.get("_free_unlocks")) == 1,
+			"research ds2: a drag that starts on a drawing does not license it")
+		bv.call("reset")
+		at = bv.get("offset") + (iron.position + iron.size * 0.5) * float(bv.get("zoom"))
+		bv.call("_gui_input", _ds2_button(at, true))
+		bv.call("_gui_input", _ds2_button(at, false))
 		await get_tree().process_frame
 		await get_tree().process_frame
 	_check(ResearchState.is_unlocked("Beneficiated Iron Mining") and int(panel.get("_free_unlocks")) == 0

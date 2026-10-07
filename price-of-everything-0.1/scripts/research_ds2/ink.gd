@@ -1,14 +1,15 @@
 extends RefCounted
 ## The Research panel in DS2: the inks, papers and small drawn things the patent board shares (the blueprint's
-## colours, the rubber stamp, the padlock, the drawing pin, the red thread, the cast shadow). Presentation only.
+## colours, the rubber stamp, the padlock, the drawing pin, the red thread, the sticky note an icon is drawn on, the
+## cast shadow, the board's fonts). Presentation only.
 ##
-## Light: the sun stands south east, so a raised thing's shadow falls north west and its lit edges are its lower
-## and right ones. Every shadow and bevel here reads LIGHT_FROM, so the direction is one constant.
+## Light: the DS2 house light, from the top left (docs/ds2-theme.md rule 2), so a raised thing's shadow falls down
+## and to the right and its lit edges are its upper and left ones. Every shadow and bevel here reads LIGHT_FROM.
 
 const UIFonts := preload("res://scripts/ui_fonts.gd")
 
-## Where the light comes from, as a unit step on screen (south east), and how far a card's shadow falls from it.
-const LIGHT_FROM := Vector2(0.7071, 0.7071)
+## Where the light comes from, as a unit step on screen (the top left), and how far a card's shadow falls from it.
+const LIGHT_FROM := Vector2(-0.7071, -0.7071)
 const SHADOW_REACH := 4.0
 
 const TITLE_FONT: Font = preload("res://assets/fonts/IBMPlexSansCondensed-SemiBold.ttf")
@@ -37,7 +38,131 @@ const PICK_GLOW := Color("#f2c14e")
 ## Text on a dark surface (the plates, the screens).
 const TEXT := Color("#E8EEF7")
 
+## The sticky note under a research's icon, and the navy a building or a glyph is printed in on it.
+const NOTE := Color("#ecdcae")
+const NOTE_EDGE := Color("#cdb982")
+const ICON_NAVY := Color("#0b2340")
+
 static var _held := {}
+static var _msdf := {}
+static var _mono: FontVariation
+static var _building_masks := {}
+
+
+## The board's fonts as signed distance fields, so print stays sharp at any zoom.
+static func board_font(f: Font) -> Font:
+	var key := f.resource_path
+	if _msdf.has(key):
+		return _msdf[key]
+	var out := f
+	if f is FontFile:
+		var d := (f as FontFile).duplicate() as FontFile
+		d.multichannel_signed_distance_field = true
+		d.msdf_pixel_range = 8
+		d.msdf_size = 48
+		out = d
+	_msdf[key] = out
+	return out
+
+
+static func title_font() -> Font:
+	return board_font(TITLE_FONT)
+
+
+static func spec_font() -> Font:
+	return board_font(SPEC_FONT)
+
+
+static func label_font() -> Font:
+	return board_font(LABEL_FONT)
+
+
+static func body_font() -> Font:
+	return board_font(BODY_FONT)
+
+
+static func body_semi() -> Font:
+	return board_font(BODY_SEMI)
+
+
+static func stamp_font() -> Font:
+	return board_font(STAMP_FONT)
+
+
+## Tabular figures (the counts on the scales), as a distance field.
+static func mono_font() -> Font:
+	if _mono == null:
+		_mono = FontVariation.new()
+		_mono.base_font = board_font(UIFonts.PLEX_SEMI)
+		var ts := TextServerManager.get_primary_interface()
+		_mono.opentype_features = {ts.name_to_tag("tnum"): 1}
+	return _mono
+
+
+## A research's reward in a few words: "Increases coal mining output by 15% permanently." reads "+15% coal mining
+## output". Other wordings are kept, less "permanently" and the full stop.
+static func short_reward(description: String) -> String:
+	var s := description.strip_edges().trim_suffix(".").replace(" permanently", "")
+	var up := RegEx.create_from_string("^Increases (.+?) by (\\d+%)(.*)$")
+	var m := up.search(s)
+	if m != null:
+		return "+%s %s%s" % [m.get_string(2), m.get_string(1), m.get_string(3)]
+	var down := RegEx.create_from_string("^Reduces (.+?) by (\\d+%)(.*)$")
+	m = down.search(s)
+	if m != null:
+		return "%s less %s%s" % [m.get_string(2), m.get_string(1).to_lower(), m.get_string(3)]
+	return s.replace("Unlocks new recipe: ", "New recipe: ")
+
+
+## A building's art as a white mask, its navy plate keyed out (keyed_building_icon.gd's key, without its emboss),
+## to be printed navy on a sticky note.
+static func building_mask(bd: Dictionary) -> Texture2D:
+	var id := str(bd.get("id", ""))
+	if _building_masks.has(id):
+		return _building_masks[id]
+	var tex: Texture2D = load("res://scripts/keyed_building_icon.gd").raw_texture(bd)
+	if tex == null:
+		_building_masks[id] = null
+		return null
+	var img: Image = tex.get_image().duplicate()
+	if img.is_compressed():
+		img.decompress()
+	img.convert(Image.FORMAT_RGBA8)
+	if img.get_width() > 200:
+		img.resize(200, int(round(img.get_height() * 200.0 / float(img.get_width()))), Image.INTERPOLATE_LANCZOS)
+	var bg := img.get_pixel(2, 2)
+	for y in img.get_height():
+		for x in img.get_width():
+			var c := img.get_pixel(x, y)
+			var dist := absf(c.r - bg.r) + absf(c.g - bg.g) + absf(c.b - bg.b)
+			img.set_pixel(x, y, Color(1, 1, 1, clampf((dist - 0.28) / 0.45, 0.0, 1.0) * c.a))
+	img.generate_mipmaps()
+	var out := ImageTexture.create_from_image(img)
+	_building_masks[id] = out
+	return out
+
+
+## A square sticky note `rect` stuck to a sheet, turned `angle` radians, its glue strip along the top and its foot
+## lifting a little, with `icon` drawn on it in `tint` (white keeps a good's own colours; navy prints a mask).
+static func sticky_note(ci: CanvasItem, rect: Rect2, angle: float, icon: Texture2D, tint: Color) -> void:
+	var c := rect.get_center()
+	var half := rect.size * 0.5
+	ci.draw_set_transform(c + shadow_offset(2.5), angle, Vector2.ONE)
+	ci.draw_rect(Rect2(-half, rect.size).grow(0.5), Color(0, 0, 0, 0.30))
+	ci.draw_rect(Rect2(-half + shadow_offset(1.5), rect.size), Color(0, 0, 0, 0.14))
+	ci.draw_set_transform(c, angle, Vector2.ONE)
+	var r := Rect2(-half, rect.size)
+	ci.draw_rect(r, NOTE)
+	ci.draw_rect(Rect2(r.position, Vector2(r.size.x, r.size.y * 0.18)), Color(NOTE_EDGE, 0.35))
+	ci.draw_rect(Rect2(Vector2(r.position.x, r.end.y - r.size.y * 0.12), Vector2(r.size.x, r.size.y * 0.12)), Color(1, 1, 1, 0.18))
+	ci.draw_rect(r, Color(NOTE_EDGE, 0.8), false, 1.0)
+	if icon != null:
+		var inner := r.grow(-rect.size.x * 0.12)
+		var ts := icon.get_size()
+		var k := minf(inner.size.x / ts.x, inner.size.y / ts.y)
+		var d := ts * k
+		ci.draw_texture_rect(icon, Rect2(inner.get_center() - d * 0.5, d), false, tint)
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 ## A kit layer from assets/ui/bdp_v3/, held once loaded (a texture dropped when a draw returns draws blank).
@@ -100,13 +225,14 @@ static func stamp(ci: CanvasItem, centre: Vector2, size: Vector2, word: String, 
 	var ink_a := Color(ink, 0.86)
 	ci.draw_rect(r, ink_a, false, 3.0)
 	ci.draw_rect(r.grow(-5.0), ink_a, false, 1.4)
+	var sf := stamp_font()
 	var fs := int(size.y * 0.66)
-	var w := STAMP_FONT.get_string_size(word, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var w := sf.get_string_size(word, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 	while w > size.x - 16.0 and fs > 10:
 		fs -= 1
-		w = STAMP_FONT.get_string_size(word, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-	var base := (STAMP_FONT.get_ascent(fs) - STAMP_FONT.get_descent(fs)) * 0.5
-	ci.draw_string(STAMP_FONT, Vector2(-w * 0.5, base), word, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, ink_a)
+		w = sf.get_string_size(word, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var base := (sf.get_ascent(fs) - sf.get_descent(fs)) * 0.5
+	ci.draw_string(sf, Vector2(-w * 0.5, base), word, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, ink_a)
 	# Where the rubber missed: small flecks of bare paper through the ink, the same for every draw of this sheet.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = mark_seed
