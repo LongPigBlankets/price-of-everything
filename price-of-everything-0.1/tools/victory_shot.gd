@@ -32,8 +32,7 @@ func _seed_victory() -> void:
 	# Widest: 140 distinct player non-infra tiles -> live 0.55.
 	for i in range(140):
 		BuildingState.buildings["vshot%d" % i] = {"building_id": "b_001", "tile_id": "vshot_t%d" % i, "owner": "player_1"}
-	# Best-ever per track. Richest's best (0.62) sits above its live (0.54) to show
-	# the ghosted "locked-in but now lower" meter segment.
+	# Best-ever per track. Richest's best (0.62) sits above its live (0.54).
 	v.track_best = {"autarkic": 0.60, "logistics": 0.50, "richest": 0.62, "widest": 0.55, "greenest": 0.2625}
 	# Streak alive this turn (nothing bought) + a lifetime buy history for the tally.
 	v.purchases_this_turn = {"input": 0, "building": 0, "upgrade": 0, "other": 0}

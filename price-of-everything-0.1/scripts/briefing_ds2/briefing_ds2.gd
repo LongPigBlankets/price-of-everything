@@ -1,8 +1,7 @@
 extends Control
 ## The turn briefing in DS2 (docs/briefing-ds2-plan.md; the owner's rulings in docs/ds2-owner-decisions.md,
-## "Briefing"), shown by TurnBriefing in place of turn_briefing_panel.gd while UiPrefs.use_briefing_ds2 is on. The
-## same contract: open(select_id), flash(), and closing it (the Close key, Esc through PanelStack) collapses the
-## briefing.
+## "Briefing"), the panel TurnBriefing shows. Its contract: open(select_id), flash(), and closing it (the Close key,
+## Esc through PanelStack) collapses the briefing.
 ##
 ## One width, 540 logical px, in the middle of the screen under the top bar (many decisions are mandatory), opening
 ## by itself when a decision arrives. A plate of the top bar's navy steel: the THIS TURN nameplate and the one Close

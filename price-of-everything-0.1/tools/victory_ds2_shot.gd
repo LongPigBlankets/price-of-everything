@@ -1,8 +1,7 @@
 extends Node
-## Captures of the Victory panel under the demo rules, part filled, in today's look and in DS2
-## (UiPrefs.use_victory_ds2): the panel open, and with a track won.
+## Captures of the Victory panel under the demo rules, part filled: the panel open, and with a track won.
 ##   AGENT_GODOT_WINDOW=1 godot --path . res://tools/victory_ds2_shot.tscn --quit-after 20000 -- --no-telemetry
-## Writes victory_<look>_<view>.png into $VICTORY_SHOT_DIR (or /tmp).
+## Writes victory_ds2_<view>.png into $VICTORY_SHOT_DIR (or /tmp).
 
 const ShotHarness := preload("res://tools/shot_harness.gd")
 
@@ -42,28 +41,20 @@ func _ready() -> void:
 		push_error("victory_ds2_shot: no VictoryPanel")
 		get_tree().quit(1)
 		return
-	for look: String in ["v2", "ds2"]:
-		print("[VICTORY_SHOT] look ", look)
-		if "use_victory_ds2" in UiPrefs:
-			UiPrefs.set("use_victory_ds2", look == "ds2")
-			if UiPrefs.has_signal("victory_ds2_changed"):
-				UiPrefs.emit_signal("victory_ds2_changed", look == "ds2")
-		elif look == "ds2":
-			break
-		panel.show()
-		PanelStack.push(panel)
-		await _wait(0.8)
-		await _shot("victory_%s_open" % look)
-		VictoryState.won = true
-		VictoryState.won_turn = 64
-		VictoryState._emit_refresh()
-		await _wait(0.5)
-		await _shot("victory_%s_won" % look)
-		VictoryState.won = false
-		VictoryState._emit_refresh()
-		PanelStack.remove(panel)
-		panel.hide()
-		await _settle(10)
+	panel.show()
+	PanelStack.push(panel)
+	await _wait(0.8)
+	await _shot("victory_ds2_open")
+	VictoryState.won = true
+	VictoryState.won_turn = 64
+	VictoryState._emit_refresh()
+	await _wait(0.5)
+	await _shot("victory_ds2_won")
+	VictoryState.won = false
+	VictoryState._emit_refresh()
+	PanelStack.remove(panel)
+	panel.hide()
+	await _settle(10)
 	get_tree().quit()
 
 

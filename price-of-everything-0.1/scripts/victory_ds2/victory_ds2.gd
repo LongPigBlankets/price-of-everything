@@ -1,6 +1,6 @@
 extends Control
-## The Victory panel in DS2, built into the Victory panel (scripts/victory_panel.gd) while UiPrefs.use_victory_ds2
-## is on. A control desk on Building Detail's navy steel backing in its brass trim, over a dimmed map:
+## The Victory panel in DS2, built into the Victory panel (scripts/victory_panel.gd). A control desk on Building
+## Detail's navy steel backing in its brass trim, over a dimmed map:
 ##   the raised title and the Close key;
 ##   the score, on a plate of black moulded plastic: the total on a drum counter and a lamp, amber while the
 ##     race is on and green once won, beside a dot-matrix screen saying what it takes to win (or when it was);

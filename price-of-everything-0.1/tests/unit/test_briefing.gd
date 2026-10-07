@@ -1,12 +1,10 @@
 extends "res://tests/test_base.gd"
 ## The turn briefing: the owner's rulings (one way to close it, one-off news to the updates dock, a full tile on the
-## top bar's storage lamp only, the dock's timing) and its DS2 look behind UiPrefs.use_briefing_ds2
-## (docs/briefing-ds2-plan.md).
+## top bar's storage lamp only, the dock's timing) and its DS2 look (docs/briefing-ds2-plan.md).
 
 const FEATURE := "briefing"
 ## Tests that also belong to other features (run under any of their tags).
 const TAGS := {
-	"_test_briefing_ds2_switch": ["briefing", "ui"],
 	"_test_briefing_one_close_path": ["briefing", "ui"],
 	"_test_updates_dock_timing_rule": ["briefing", "ui"],
 	"_test_tile_jam_on_storage_lamp_only": ["briefing", "stockpile", "transport", "events"],
@@ -17,7 +15,6 @@ const TAGS := {
 }
 
 const DS2_SCRIPT := "res://scripts/briefing_ds2/briefing_ds2.gd"
-const OLD_SCRIPT := "res://scripts/turn_briefing_panel.gd"
 
 
 ## A founder decision waiting and one building starved of inputs, as TurnBriefing assembles them.
@@ -47,57 +44,28 @@ func _restore_board(snap: Dictionary) -> void:
 	_decision_board_restore(snap)
 
 
-## The DS2 clipboard is the default (owner, 29 September); switched off, TurnBriefing shows today's panel; on
-## again, the clipboard.
-func _test_briefing_ds2_switch() -> void:
-	var was: bool = UiPrefs.use_briefing_ds2
-	_check(was, "briefing ds2: on by default")
-	UiPrefs.set_use_briefing_ds2(false)
-	_check(TurnBriefing.panel_script().resource_path == OLD_SCRIPT, "briefing ds2: switched off, today's panel")
-	UiPrefs.set_use_briefing_ds2(true)
-	_check(TurnBriefing.panel_script().resource_path == DS2_SCRIPT, "briefing ds2: on, the DS2 panel")
-	UiPrefs.set_use_briefing_ds2(false)
-	_check(TurnBriefing.panel_script().resource_path == OLD_SCRIPT, "briefing ds2: off again, today's panel back")
-	var snap := _seed_board()
-	var old: Control = load(OLD_SCRIPT).new()
-	add_child(old)
-	await get_tree().process_frame
-	old.open("")
-	await get_tree().process_frame
-	_check(old.get("_card") != null and old.find_child("Card", true, false) == null,
-		"briefing ds2: off, today's navy card with its list and detail")
-	_check(_tree_has_label_text(old, "This Turn") and old.find_child("Letter", true, false) == null,
-		"briefing ds2: off, today's title and no clipboard")
-	old.visible = false
-	old.queue_free()
-	_restore_board(snap)
-	UiPrefs.set_use_briefing_ds2(was)
-	await get_tree().process_frame
-
-
-## Exactly one way to close the panel with the mouse, its Close key, in both looks; the pen only opens it.
+## Exactly one way to close the panel with the mouse, its Close key; the pen only opens it.
 func _test_briefing_one_close_path() -> void:
 	var snap := _seed_board()
-	for path: String in [OLD_SCRIPT, DS2_SCRIPT]:
-		var panel: Control = load(path).new()
-		add_child(panel)
-		await get_tree().process_frame
-		panel.open("alert:starved")
-		await get_tree().process_frame
-		await get_tree().process_frame
-		var closers: Array = []
-		for b: Node in panel.find_children("*", "BaseButton", true, false):
-			var words := str(b.get("text")) + " " + str(b.get("title")) + " " + str((b as Control).tooltip_text)
-			if b.name == "CloseKey" or words.contains("Collapse") or words.contains("Close") \
-					or words.contains("▴") or words.contains("✕") or words.contains("Dismiss"):
-				closers.append(str(b.name))
-		_check(closers == ["CloseKey"], "%s: one way to close, the Close key (%s)" % [path.get_file(), ", ".join(closers)])
-		var silence := panel.find_child("SilenceKey", true, false)
-		_check(silence != null and (str(silence.get("text")) + str(silence.get("title"))).contains("Silence alert"),
-			"%s: quieting an alert is labelled Silence alert, not a close" % path.get_file())
-		panel.visible = false
-		panel.queue_free()
-		await get_tree().process_frame
+	var panel: Control = load(DS2_SCRIPT).new()
+	add_child(panel)
+	await get_tree().process_frame
+	panel.open("alert:starved")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var closers: Array = []
+	for b: Node in panel.find_children("*", "BaseButton", true, false):
+		var words := str(b.get("text")) + " " + str(b.get("title")) + " " + str((b as Control).tooltip_text)
+		if b.name == "CloseKey" or words.contains("Collapse") or words.contains("Close") \
+				or words.contains("▴") or words.contains("✕") or words.contains("Dismiss"):
+			closers.append(str(b.name))
+	_check(closers == ["CloseKey"], "briefing: one way to close, the Close key (%s)" % ", ".join(closers))
+	var silence := panel.find_child("SilenceKey", true, false)
+	_check(silence != null and (str(silence.get("text")) + str(silence.get("title"))).contains("Silence alert"),
+		"briefing: quieting an alert is labelled Silence alert, not a close")
+	panel.visible = false
+	panel.queue_free()
+	await get_tree().process_frame
 	# The pen only opens the briefing: pressed again with it up, it stays up.
 	var toasts: Control = load("res://scripts/toast_manager.gd").new()
 	add_child(toasts)
