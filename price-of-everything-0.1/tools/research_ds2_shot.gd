@@ -3,8 +3,8 @@ extends Node
 ## captures it: Extraction with a mix of states (some granted, one licensed, progress on others) at the opening
 ## zoom, zoomed out to the whole board and zoomed in; crops of drawings with a good, a building and a glyph on
 ## their notes and of a granted and a licensed copy; the detail sheet for an open, a locked, a licensed and a
-## multi part research; a drawing's threads; Chemistry and Renewable Power at both zooms; licence choosing; a
-## search; and the panel in a 1280 x 720 window.
+## multi part research; a prerequisite's link pointed at and followed; a drawing's threads; Chemistry and
+## Renewable Power at both zooms; licence choosing; a search; and the panel in a 1280 x 720 window.
 ##   AGENT_GODOT_WINDOW=1 godot --path . res://tools/research_ds2_shot.tscn -- --no-telemetry
 ## Writes <nn>_<view>.png to RESEARCH_SHOT_DIR (default user://research_ds2).
 
@@ -78,6 +78,19 @@ func _ready() -> void:
 		(_view.call("board") as Control).call("_on_card_hover", card, true)
 		await _shot("detail_" + t.to_lower().replace(" ", "_"))
 		(_view.call("board") as Control).call("_on_card_hover", card, false)
+	# A prerequisite's link, pointed at, then followed.
+	var needy: Control = _view.call("card_for", "Reservoir Stimulation")
+	if needy != null:
+		bv.call("ensure_visible", needy)
+		await _sleep(0.3)
+		_view.call("show_detail", needy)
+		var sheet: Control = _view.call("detail_sheet")
+		await _sleep(0.1)
+		sheet.call("_set_hover_link", "Microseismic Monitoring")
+		await _shot("detail_link_pointed")
+		sheet.emit_signal("link_pressed", "Microseismic Monitoring")
+		await _shot("detail_link_followed")
+		_view.call("_hide_detail")
 	bv.call("reset")
 	var pointed: Control = _view.call("card_for", "Microseismic Monitoring")
 	if pointed != null:

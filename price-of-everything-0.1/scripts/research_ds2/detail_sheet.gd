@@ -1,8 +1,10 @@
 extends Control
 ## The Research panel in DS2: the research pointed at, drawn large. It covers the whole panel: the panel dimmed
 ## round the drawing under the pointer (left clear, so the pointer stays on it), and a large patent drawing on
-## the side away from it, about a third of the panel wide. It takes no clicks: a click goes through to the board,
-## and the shell (research_ds2.gd) hides it on any click, wheel turn or gesture.
+## the side away from it, about a third of the panel wide. Only the drawing takes the pointer: the pointer can
+## move onto it, and each prerequisite on it is a link that shows that research's drawing instead. Off the
+## drawing a click goes through to the board, and the shell (research_ds2.gd) hides it on any click, wheel turn
+## or gesture there.
 ##
 ## The sheet: two pins; the icon on a larger sticky note; the title, its rank and category, and its state; what
 ## it grants in full on the label strip; the condition in full with its count on a large scale, and each part's
@@ -11,6 +13,11 @@ extends Control
 
 const Ink := preload("res://scripts/research_ds2/ink.gd")
 const Card := preload("res://scripts/research_ds2/blueprint_card.gd")
+
+## A prerequisite's link was clicked: show `title`'s drawing.
+signal link_pressed(title: String)
+## The pointer left the drawing.
+signal pointer_left
 
 const SCRIM := Color(0.01, 0.02, 0.04, 0.62)
 const MARGIN := 24.0
@@ -29,6 +36,11 @@ var data: Dictionary = {}
 var hole := Rect2()
 var sheet := Rect2()
 var _icon: Texture2D
+## The drawing's own hit area, the one part of this control that takes the pointer.
+var _hit: Control
+## The prerequisites' links as last drawn: [{rect, title}], and the one under the pointer.
+var _links: Array = []
+var _hover_link := ""
 
 
 func _init() -> void:
@@ -37,10 +49,20 @@ func _init() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	visible = false
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_hit = Control.new()
+	_hit.name = "SheetHit"
+	_hit.mouse_filter = Control.MOUSE_FILTER_STOP
+	_hit.gui_input.connect(_on_hit_input)
+	_hit.mouse_exited.connect(func() -> void:
+		_set_hover_link("")
+		pointer_left.emit())
+	add_child(_hit)
 
 
 ## Shows `d` for the drawing at `card_rect` (this control's frame), the sheet on the side away from it.
-func show_for(d: Dictionary, card_rect: Rect2, top: float) -> void:
+## `keep_side` keeps the sheet on the side it is on when that leaves the drawing clear, as when a link is followed.
+func show_for(d: Dictionary, card_rect: Rect2, top: float, keep_side := false) -> void:
+	var was_left := visible and sheet.position.x < size.x * 0.5
 	data = d
 	hole = card_rect
 	_icon = Card.icon_texture_for(str(d.get("icon_kind", "system")), str(d.get("icon_base", "")), str(d.get("icon_glyph", "gears")))
@@ -50,11 +72,55 @@ func show_for(d: Dictionary, card_rect: Rect2, top: float) -> void:
 	var left := Rect2(Vector2(MARGIN, top), Vector2(w, h))
 	var overlap_right := right.intersection(card_rect).get_area()
 	var overlap_left := left.intersection(card_rect).get_area()
-	if card_rect.get_center().x < size.x * 0.5:
+	if keep_side and (overlap_left if was_left else overlap_right) <= 0.0:
+		sheet = left if was_left else right
+	elif card_rect.get_center().x < size.x * 0.5:
 		sheet = right if overlap_right <= overlap_left else left
 	else:
 		sheet = left if overlap_left <= overlap_right else right
+	_hit.position = sheet.position
+	_hit.size = sheet.size
+	_links = []
+	_hover_link = ""
+	_hit.mouse_default_cursor_shape = Control.CURSOR_ARROW
 	visible = true
+	queue_redraw()
+
+
+## True when the pointer is over the drawing.
+func pointer_inside() -> bool:
+	return visible and sheet.has_point(get_local_mouse_position())
+
+
+## The prerequisites' links as drawn, in this control's frame: [{rect, title}].
+func links() -> Array:
+	return _links
+
+
+func _on_hit_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		_set_hover_link(_link_at(_hit.position + (event as InputEventMouseMotion).position))
+	elif event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
+			var t := _link_at(_hit.position + mb.position)
+			if t != "":
+				link_pressed.emit(t)
+	_hit.accept_event()
+
+
+func _link_at(at: Vector2) -> String:
+	for l: Dictionary in _links:
+		if (l["rect"] as Rect2).has_point(at):
+			return str(l["title"])
+	return ""
+
+
+func _set_hover_link(t: String) -> void:
+	if t == _hover_link:
+		return
+	_hover_link = t
+	_hit.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if t != "" else Control.CURSOR_ARROW
 	queue_redraw()
 
 
@@ -85,6 +151,8 @@ func _content_height(w: float) -> float:
 func hide_sheet() -> void:
 	visible = false
 	data = {}
+	_links = []
+	_hover_link = ""
 
 
 func is_granted() -> bool:
@@ -155,8 +223,7 @@ func _draw_sheet(r: Rect2) -> void:
 	var strip := Rect2(Vector2(left, y), Vector2(w, 22.0 * float(maxi(dl.size(), 1)) + 16.0))
 	draw_rect(Rect2(strip.position + Ink.shadow_offset(2.0), strip.size), Color(0, 0, 0, 0.3))
 	draw_rect(strip, Card.STRIP_INK)
-	draw_rect(Rect2(strip.position, Vector2(8.0, strip.size.y)), Ink.NAVY)
-	Ink.print_lines(self, bf, dl, left + 18.0, y + 7.0, w - 24.0, 17, 22.0, Ink.NAVY)
+	Ink.print_lines(self, bf, dl, left + 12.0, y + 7.0, w - 24.0, 17, 22.0, Ink.NAVY)
 	y = strip.end.y + 22.0
 	# The condition: in full, its count on a large scale, its parts each counted.
 	y = _heading("Condition", left, y, w, pr)
@@ -176,7 +243,8 @@ func _draw_sheet(r: Rect2) -> void:
 			Card.draw_scale(self, Rect2(left + w * 0.6, y, w * 0.4, 26.0), pp, pr, 13)
 		y += maxf(30.0, 15.0 * float(pt.size()) + 10.0)
 	y += 14.0
-	# Its prerequisites, and what it leads to.
+	# Its prerequisites, each a link to its own drawing, and what it leads to.
+	_links = []
 	var needs: Array = data.get("needs", [])
 	y = _heading("Prerequisites", left, y, w, pr)
 	if needs.is_empty():
@@ -188,7 +256,12 @@ func _draw_sheet(r: Rect2) -> void:
 		draw_rect(box, pr, false, 1.5)
 		if got:
 			draw_rect(box.grow(-3.0), pr)
-		Ink.print_lines(self, cf, PackedStringArray([str(n.get("title", ""))]), left + 24.0, y, w * 0.7, 15, 0.0, pr)
+		var nt := str(n.get("title", ""))
+		Ink.print_lines(self, cf, PackedStringArray([nt]), left + 24.0, y, w * 0.7, 15, 0.0, pr)
+		var nw := minf(cf.get_string_size(nt, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x, w * 0.7)
+		var base := y + cf.get_ascent(15) + 3.0
+		draw_line(Vector2(left + 24.0, base), Vector2(left + 24.0 + nw, base), pr, 2.0 if nt == _hover_link else 1.0)
+		_links.append({"rect": Rect2(left + 20.0, y - 2.0, nw + 8.0, 22.0), "title": nt})
 		var tag := "GRANTED" if got else "NOT YET"
 		var tfw := Ink.label_font().get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
 		draw_string(Ink.label_font(), Vector2(r.end.x - PAD - tfw, y + 15.0), tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 14,
