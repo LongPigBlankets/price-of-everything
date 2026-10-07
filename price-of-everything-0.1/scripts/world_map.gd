@@ -270,6 +270,7 @@ func _build_base() -> void:
 	empire_view.name = "EmpireView"
 	empire_view.visible = false
 	hud_content.add_child(empire_view)
+	tile_infrastructure_changed.connect(func(_tile: String, _infra: String) -> void: empire_view.sim_changed())
 	_prof("base: empire view")
 
 	# Goods Graph: full-screen goods-web view (G to toggle).
@@ -553,6 +554,11 @@ func finish_build(animate: bool) -> void:
 	# the work lands on the map instead. "Ready" has to mean ready.
 	await _warm_deferred_ui()
 	build_complete = true   # the loading screen may now offer "Begin"
+	# The supply chain view, built and baked behind the loading screen in the slack before "Begin"
+	# can be pressed, a little each frame, so its first opening is immediate. Fire and forget: if
+	# the player gets there first, opening it builds it as before.
+	if _loading_screen_active() and empire_view != null:
+		empire_view.prepare()
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", BuildingState.buildings.size())
 
@@ -1411,6 +1417,7 @@ func _make_bottom_left_legend(panel_name: String, title: String, width: float, h
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(4)
 	panel.add_theme_stylebox_override("panel", style)
+	preload("res://scripts/ds2/legend_pad.gd").dress(panel)
 
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
@@ -1812,8 +1819,32 @@ func _place_camera_at_play_zoom() -> void:
 	var z := lerpf(zmin, zmax, LoadingScreen.ZOOM_FRAC)
 	cam.zoom = Vector2.ONE * z
 	cam.set("_target_zoom", cam.zoom)
+	# A new game opens on the company's works: the tile with most of its buildings that aren't mines.
+	var home := start_focus_tile()
+	if home != "":
+		var coord := terrain_layer.id_to_coord(home)
+		if terrain_layer.tiles.has(coord):
+			cam.position = terrain_layer.to_global(terrain_layer.map_to_local(terrain_layer.map_coord_for_tile_coord(coord)))
 	if OS.get_environment("LOAD_PROF") != "":
 		print("LOADPROF camera placed at play zoom %.3f (was %.3f, max %.3f)" % [z, zmin, zmax])
+
+
+## The tile a new game's camera opens on: the one with most of the player's buildings that aren't mines (the
+## works, not the pits that feed them), the lowest tile id on a tie. "" when the player has none.
+static func start_focus_tile() -> String:
+	var count: Dictionary = {}
+	for b: Dictionary in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(b):
+			continue
+		if str(Catalog.get_building(str(b.get("building_id", ""))).get("internal_name", "")) == "mine":
+			continue
+		var tile := str(b.get("tile_id", ""))
+		count[tile] = int(count.get(tile, 0)) + 1
+	var best := ""
+	for tile: String in count:
+		if best == "" or int(count[tile]) > int(count[best]) or (int(count[tile]) == int(count[best]) and tile < best):
+			best = tile
+	return best
 
 
 func _focus_camera_on_tile(tile_id: String) -> Dictionary:
@@ -1887,7 +1918,6 @@ func _on_stockpile_destination_selected(tile_data: Dictionary, ctrl: bool = fals
 			terrain_layer.end_stockpile_destination_selection()
 			_exit_stockpile_ui_mode()
 			_open_building_detail(BuildingState.get_building(instance_id))
-			preload("res://scripts/stockpile_route_prompt.gd").offer_split(_hud, instance_id, good_id)
 		else:
 			MatchState.request_toast("%d destination%s selected — Shift-click another, or release Shift and click to finish" % [count, "" if count == 1 else "s"], "info")
 		return
@@ -1898,7 +1928,6 @@ func _on_stockpile_destination_selected(tile_data: Dictionary, ctrl: bool = fals
 		_hide_stockpile_select_prompt()
 		_exit_stockpile_ui_mode()
 		_open_building_detail(BuildingState.get_building(instance_id))
-		preload("res://scripts/stockpile_route_prompt.gd").offer_split(_hud, instance_id, good_id)
 		return
 	if ctrl:
 		# CTRL+click: don't route yet — highlight the pick green and open the
@@ -1911,7 +1940,6 @@ func _on_stockpile_destination_selected(tile_data: Dictionary, ctrl: bool = fals
 	_pending_stockpile_selection.clear()
 	_hide_stockpile_select_prompt()
 	_exit_stockpile_ui_mode()
-	preload("res://scripts/stockpile_route_prompt.gd").offer(_hud, tile_id, good_id)
 
 # ----- CTRL+click ship-quantity flow -----
 
@@ -1938,7 +1966,6 @@ func _on_ship_qty_confirmed(qty: int) -> void:
 		MatchState.set_output_stockpile_destination(iid, _ship_qty_tile, gid)
 		MatchState.set_output_ship_quantity(iid, gid, qty)
 		MatchState.request_toast("Sending %d %s to %s every turn" % [qty, Catalog.get_display_name(gid), Catalog.tile_label(_ship_qty_tile)], "success")
-		preload("res://scripts/stockpile_route_prompt.gd").offer(_hud, _ship_qty_tile, gid)
 	_close_ship_quantity_flow()
 
 func _on_ship_qty_cancelled() -> void:
@@ -2015,6 +2042,7 @@ func _build_stockpile_legend() -> void:
 	style.corner_radius_bottom_left = 4
 	style.corner_radius_bottom_right = 4
 	_stockpile_legend.add_theme_stylebox_override("panel", style)
+	preload("res://scripts/ds2/legend_pad.gd").dress(_stockpile_legend)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 10)
@@ -2068,6 +2096,14 @@ func _make_legend_row(color: Color, text: String) -> HBoxContainer:
 	return row
 
 func _on_end_turn_pressed() -> void:
+	# The tutorial's opener hands End Turn over at its own step; before that a press says so above the button.
+	if Tutorial.end_turn_locked():
+		var dock: Node = end_turn_button.get_parent()
+		while dock != null and not dock.has_method("show_note"):
+			dock = dock.get_parent()
+		if dock != null:
+			dock.call("show_note", preload("res://scripts/tutorial/tutorial_steps.gd").END_TURN_LOCKED)
+		return
 	# Arm verbose-log capture on the first End Turn of turn 1 (current_turn only
 	# increments once resolution runs, so it is still 1 here). arm() is idempotent.
 	if TurnManager.current_turn == 1:

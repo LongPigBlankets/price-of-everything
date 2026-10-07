@@ -7,6 +7,7 @@ extends Node
 
 const ShotHarness := preload("res://tools/shot_harness.gd")
 const START := "res://data/starts/metal_magnate.json"
+const TutorialDetectors := preload("res://scripts/tutorial/tutorial_detectors.gd")
 
 var _out := "/tmp"
 
@@ -39,12 +40,48 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 	var n := 0
+	var end_turn: Button = world.find_child("EndTurnButton", true, false)
 	while Tutorial.active:
-		var id := str((Tutorial._steps[Tutorial._index] as Dictionary).get("id", ""))
+		var at: int = Tutorial._index
+		var id := str((Tutorial._steps[at] as Dictionary).get("id", ""))
 		await _wait(0.6)
 		await _shot("opener_%02d_%s" % [n, id])
 		n += 1
-		Tutorial._advance()
+		# The steps that wait on the player are played as the player would; the rest take Next.
+		match id:
+			"ui_primer":
+				end_turn.pressed.emit()
+				await _wait(0.4)
+				print("[opener_shot] end turn locked: %s, turn still %d" % [Tutorial.end_turn_locked(), TurnManager.current_turn])
+				await _shot("opener_%02d_%s_end_turn_note" % [n - 1, id])
+				(world.find_child("BuildingsButton", true, false) as BaseButton).pressed.emit()
+				await _wait(0.8)
+				await _shot("opener_%02d_%s_panel_open" % [n - 1, id])
+				PanelStack.close_top()
+				await _wait(0.4)
+				Tutorial._advance()
+			"opener_movement":
+				print("[opener_shot] own buildings shown before: %s" % TutorialDetectors.poll({"kind": "own_buildings_shown"}))
+				(world.find_child("BuildingsButton", true, false) as BaseButton).pressed.emit()
+			"opener_your_buildings":
+				PanelStack.close_top()
+				for iid: String in BuildingState.buildings:
+					if BuildingState.is_player_owned(BuildingState.buildings[iid]):
+						MatchState.focus_building_requested.emit(iid)
+						break
+			"opener_your_turn":
+				print("[opener_shot] end turn locked at its step: %s" % Tutorial.end_turn_locked())
+				PanelStack.close_top()
+				end_turn.pressed.emit()
+			_:
+				Tutorial._advance()
+		var guard := 0
+		while Tutorial.active and Tutorial._index == at and guard < 900:
+			guard += 1
+			await get_tree().process_frame
+		if Tutorial.active and Tutorial._index == at:
+			print("[opener_shot] %s did not complete by itself" % id)
+			Tutorial._advance()
 		await _settle(10)
 	# The missions appear and the shine sweeps across them.
 	await _wait(0.45)
@@ -57,7 +94,7 @@ func _ready() -> void:
 
 
 func _shot(name: String) -> void:
-	await RenderingServer.frame_post_draw
+	RenderingServer.force_draw(false)
 	get_viewport().get_texture().get_image().save_png(_out.path_join(name + ".png"))
 	await get_tree().process_frame
 

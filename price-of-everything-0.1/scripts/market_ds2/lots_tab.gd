@@ -30,8 +30,10 @@ const COLUMNS := [
 	["owner", "Owner", 150.0, true],
 	["output", "Makes", float(Metrics.GOOD_ICON), false],
 	["price", "Price", 0.0, true],
-	["buy", "", 52.0, false],
+	["buy", "Buy", 52.0, false],
 ]
+## The column that takes the row's spare width: the Buy key stands centred in it.
+const FILL_COLUMN := "buy"
 const RED := Color("#ff4d3d")
 
 var _search := ""
@@ -156,6 +158,8 @@ func _headings() -> MarginContainer:
 		var cell := HBoxContainer.new()
 		cell.custom_minimum_size.x = column_width(col)
 		cell.alignment = BoxContainer.ALIGNMENT_CENTER
+		if key == FILL_COLUMN:
+			cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		cell.add_theme_constant_override("separation", 4)
 		var l := Parts.caption(str(col[1]), Parts.CAPTION_PX, HORIZONTAL_ALIGNMENT_CENTER)
 		cell.add_child(l)
@@ -292,9 +296,13 @@ func _cell(key: String, w: float, vm: Dictionary) -> Control:
 			guard.set("tip", {"stage": "Buy", "name": str(vm.name), "detail": "Lift the cover, then press to buy for %s." % MParts.MoneyFigure.display_text(float(vm.price)), "tone": ""})
 			guard.set_meta("instance_id", str(vm.instance_id))
 			guard.connect("pressed", func() -> void: buy(str(vm.instance_id)))
+			# Centred in its column both ways: the room the lifted cover needs above is matched below, so the
+			# key itself sits on the row's middle.
 			var holder := MarginContainer.new()
 			holder.custom_minimum_size.x = w
 			holder.add_theme_constant_override("margin_top", ceili(GuardKey.overhang(GUARD_PX)))
+			holder.add_theme_constant_override("margin_bottom", ceili(GuardKey.overhang(GUARD_PX)))
+			holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			var c := CenterContainer.new()
 			c.add_child(guard)

@@ -39,6 +39,9 @@ const CROSS_COST := 2.0
 ## What crossing a river adds to a stretch: more than any way round inside a tile, so a road
 ## only bridges a river when what it serves is on the far bank.
 const RIVER_COST := 1500.0
+## What a stretch over open sea costs: more than any way round on dry ground, rivers bridged
+## included, so a road only runs out over the water when nothing else reaches what it serves.
+const SEA_COST := 1.0e6
 
 ## Slot centres. Front row first, so a tile with few buildings shows them toward the camera.
 const SLOTS: Array[Vector2] = [

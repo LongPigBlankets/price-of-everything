@@ -1,6 +1,6 @@
 {
   "forests_imported": true,
-  "hills_hash": "4bcf485b831bb32c5c7c5078d6dbfe01",
+  "hills_hash": "9b5a8a106b53a5bffc3cafe73e0cf2c4",
   "settlements": {
     "procedural": {
       "forests": [
@@ -139015,6 +139015,7 @@
           "sides": []
         },
         {
+          "hijack": true,
           "id": "s:untitled:2000",
           "kind": "poly",
           "outline": [
@@ -139134,6 +139135,7 @@
           "sides": []
         },
         {
+          "hijack": true,
           "id": "s:untitled:2005",
           "kind": "poly",
           "outline": [
@@ -139303,6 +139305,7 @@
           "sides": []
         },
         {
+          "hijack": true,
           "id": "s:untitled:2012",
           "kind": "poly",
           "outline": [
@@ -139481,6 +139484,7 @@
           "sides": []
         },
         {
+          "hijack": true,
           "id": "s:untitled:2019",
           "kind": "poly",
           "outline": [
@@ -139857,6 +139861,7 @@
           "sides": []
         },
         {
+          "hijack": true,
           "id": "s:untitled:2035",
           "kind": "poly",
           "outline": [
@@ -139888,6 +139893,7 @@
           "sides": []
         },
         {
+          "hijack": true,
           "id": "s:untitled:2036",
           "kind": "poly",
           "outline": [

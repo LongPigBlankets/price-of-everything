@@ -3,8 +3,11 @@ extends Control
 ##
 ## Draws the model (empire_board_model.gd) as an isometric plate over dark space: only the
 ## tiles the company stands on, stores in or routes through, each at the map's own tile size
-## and place. A lowland tile shows its rivers, its water and a rough terrace of its relief;
-## hills and mountains are flat plates that stand taller, in a higher band's colour. On the tiles stand the company's buildings, each tile's warehouse
+## and place. The board's ground is one surface over all of them (empire_board_ground.gd): each
+## tile at its own height, stepping up or down to a neighbour of another height along the map's own
+## contours, rising where the map's bands stand well above it, and with its rivers in valleys.
+## Everything stands on that one ground (_height_at), and its colours are the map's own bands,
+## water and shores laid over it. On the tiles stand the company's buildings, each tile's warehouse
 ## and any port it trades through. The lines between them are the transport routes, drawn as
 ## the road, rail, pipe or cable that carries them, with goods travelling along.
 ##
@@ -15,6 +18,8 @@ extends Control
 ## Presentation only: it reads the sim and never changes it.
 
 signal building_picked(iid: String)
+## Local Suppliers' depot was clicked: the view opens their chart.
+signal suppliers_picked
 
 ## The last three parts of the key art plate's look, each switchable so they can be judged apart.
 static var plate_lamps := true       # street lamps; and where the air is dirty, their light, pools before the works, bloom
@@ -31,19 +36,31 @@ const Streets := preload("res://scripts/empire_board_streets.gd")
 const Rails := preload("res://scripts/empire_board_rails.gd")
 const Visibility := preload("res://scripts/empire_board_visibility.gd")
 const EmpireFx := preload("res://scripts/empire_fx.gd")
+const Relief := preload("res://scripts/empire_board_relief.gd")
+const Ground := preload("res://scripts/empire_board_ground.gd")
 
 const ISO_X := 0.70710678
 const ISO_Y := 0.40824829          # 0.7071 * tan(30 deg): a true isometric squash
 const ISO_RISE := 0.81649658
 
-## Rough relief: each band above the tile's own level steps up by this much, three steps at most.
-const TERRACE_STEP := 9.0
-const TERRACE_MAX := 3
-## The band a tile counts as its own level covers at least this share of it.
-const BASE_BAND_SHARE := 0.55
-const HEX_AREA := 194400.0
-## Hill and mountain tiles carry no relief: a taller plate in the colour of a higher band.
-const HIGH_BAND := {"hill": 7, "mountain": 9}
+## How finely the ground under a way is read, and how closely the reading is kept.
+const PROFILE_STEP := 3.0
+const PROFILE_KEEP := 0.25
+## A river that falls this much on its way down a slope runs white.
+const RAPIDS_DROP := 10.0
+## A slope is shaded fully from this steepness up: half a lowland step over a slope's width, so even
+## the gentlest step is shaded fully across its width and its crest and foot stay sharp.
+const SLOPE_SHADE_FULL := 4.5 / 34.0
+## A building whose footprint's ground differs by more than this stands on a plinth.
+const PLINTH_MIN := 0.75
+## A bridge: how far beyond its valley's reach its banks are looked for, how wide its deck is, the
+## least its deck stands over the river (a street along the valley's floor has no bridge to raise),
+## and how deep the deck's edge hangs.
+const BRIDGE_LOOK := 8.0
+const BRIDGE_HALF := 12.0
+const BRIDGE_MIN_RISE := 4.0
+const BRIDGE_FASCIA := 3.0
+const _PIER := Color("5a6273")
 
 ## How much of its frame's width a level 3 sprite fills (sprite_export pads 6 px a side).
 const SPRITE_FILL := 0.985
@@ -87,7 +104,30 @@ const _CONCRETE := Color("a7a294")
 const _ROAD_HALF := 8.0
 const _DRIVE_HALF := 4.0
 const _JUNCTION_GROW := 1.12         # a junction patch against the widest road into it
-const _ROAD_OVERLAP := 6.0           # a straight runs this far under a junction piece
+## A truss bridge's piece is drawn over its deck this much either side of the street, and up to this
+## height above the deck, which holds its trusses.
+const _BRIDGE_SIDE := 4.0
+const _BRIDGE_TALL := 18.0
+## A street's surface (_road_mesh): its inked edge and the line inside its kerb, how wide its markings
+## are and how they are dashed, how finely a rounded end is drawn, and how finely it is sliced along its
+## length to follow the ground. Its colours are the baked road pieces' own.
+const _ROAD_INK_W := 1.0
+const _ROAD_KERB_LINE := 0.35
+const _ROAD_KERB_OUT := 0.4          # how far the inked edge reaches past the pieces' walk
+const _ROAD_MARK_W := 0.22
+const _ROAD_DASH := 8.0
+const _ROAD_DASH_GAP := 8.0
+const _ROAD_ROUND := 8
+const _ROAD_DRAPE := 3.0
+## A street that leaves for a tile drawn beside runs on this far past the edge, over the same street of
+## that tile, on the same ground: past this tile's skirt of ground, which, lower than a street raised
+## over the ground, would otherwise show over the street beside.
+const _ROAD_RUN_ON := 8.0
+const _ROAD_EDGE := Color8(47, 59, 89)
+const _ROAD_KERB := Color8(134, 132, 127)
+const _ROAD_EDGE_IN := Color8(61, 72, 99)
+const _ROAD_ASPHALT := Color8(66, 68, 70)
+const _ROAD_MARK := Color8(160, 159, 155)
 const _UNPAVED := Color(0.86, 0.74, 0.56)    # a way over bare ground: the same pieces, in earth
 const _SIGN_MIN_RUN := 40.0          # a stretch shorter than this carries no sign of its own
 const _SIGN_OFFSET := 15.0
@@ -110,9 +150,21 @@ const _SHALLOWS_OUT := 13.0          # how far out the pale shallows are centred
 const _SHALLOWS_W := 30.0
 const _FOAM := Color(0.97, 0.97, 0.93, 0.85)
 const _BANK := Color("c9c08f")       # a river's bank: pale, between the grass and the sand
+const _MOUTH := 4.0                  # how far past the shoreline a river runs on into the sea, over the foam
+const _MOUTH_SHORE_REACH := 8.0      # a shore edge this near where a river leaves the land is the one it crosses
+## A river's estuary: how far up from the shore it starts to widen (in river widths), how wide it is at the
+## shore and where it fans out into the shallows (in river widths), how far it runs on into the sea, and how
+## many steps each stretch is drawn in.
+const _ESTUARY_UP := 3.0
+const _ESTUARY_SHORE_W := 1.6
+const _ESTUARY_SEA_W := 4.2
+const _ESTUARY_OUT := 22.0
+const _ESTUARY_STEPS := 10
+## How a river meets the sea: its last stretch (in river widths) bends to cross the shoreline square on, by
+## at most this much, so its mouth opens straight onto the water and not along the beach or into a corner.
+const _MOUTH_AIM_STRETCH := 3.0
+const _MOUTH_AIM_MAX := deg_to_rad(30.0)
 const _INK_SOFT := Color(0.18, 0.23, 0.35, 0.55)
-## A tile slopes down to a lower neighbour over this much of its own ground.
-const SLOPE_W := 34.0
 ## The light of the key art's plate, a low golden sun and a cool shade away from it. The sun
 ## stands in the SOUTH-EAST: on the board that is straight toward the viewer, so the near side
 ## is the gold one and shadows fall away up the screen, to the north-west.
@@ -169,6 +221,12 @@ const _MINE_DIR := "res://assets/iso/mine/"
 const _MINE_EARTH := Color("5a4c3d")
 const _MINE_EARTH_EDGE := Color("77684f")
 
+## A tile's two layers (_draw_tile), named by these after the tile's id; and how far every things
+## layer's depth stands over every ground layer's, more than the whole board's depth.
+const _GROUND := "#ground"
+const _THINGS := "#things"
+const _THINGS_Z := 1.0e7
+
 ## The zooms a tile's picture is baked at. The board zooms smoothly; a tile is drawn from the
 ## bake at or just above the present zoom, so it is only ever reduced, never enlarged, and by
 ## less than half. The change from one bake to the next happens as the zoom passes each of these.
@@ -198,26 +256,50 @@ const _SUN := Vector2(0.70710678, 0.70710678)
 static var _hill_polys: Array = []           # [{b, p, box}] parsed once
 static var _sea_polys: Array = []
 static var _lake_polys: Array = []
-static var _relief_cache: Dictionary = {}    # tile_id -> {base, sea: [], land: [], lakes: []}
+static var _relief_cache: Dictionary = {}    # tile_id -> {sea: [], land: [], lakes: []}
+## Each tile's ground meshes, kept from one opening of the board to the next while nothing round
+## them changes: "tile|what the meshes depend on" -> {walls, ground}; and its light, -> ArrayMesh.
+static var _ground_meshes: Dictionary = {}
+static var _light_meshes: Dictionary = {}
+const _GROUND_MESHES_KEPT := 240
+## How far a tile's ground runs on under a neighbour drawn over it.
+const _SKIRT := 2.0
 
 var _model: Dictionary = {}
+## A build under way (_build): which one, and whether it hands frames back as it goes.
+var _build_gen := 0
+var _building := false
+var _paced := false
+var _slice_from := 0
+const _PACE_MS := 6
+## Bake the layers in view at the board's zoom while the view is closed (after build_async).
+var bake_while_hidden := false
+var _ground: Ground                          # the one ground everything stands on (empire_board_ground.gd)
+var _spans: Dictionary = {}                  # tile_id -> [bridge deck]: where a street crosses a river's valley
+var _near_tiles: Dictionary = {}             # tile_id -> it and the drawn tiles beside it
+var _piers: Array = []                       # [{tile, polys: [[points, colour]]}] what holds the decks up
 var _tile_order: Array = []                  # the drawn tiles, far to near
 var _tile_gfx: Dictionary = {}               # tile_id -> {walls, ground, light}: its meshes, in board space
 var _tile_parts: Dictionary = {}             # tile_id -> everything else that is drawn on it, see _sort_parts
-var _tile_sig: Dictionary = {}               # tile_id -> a hash of what its picture is made of
+var _tile_sig: Dictionary = {}               # layer (_unit) -> a hash of what its picture is made of
+var _units: Array = []                       # every tile's two layers, "tile_id" + _GROUND or _THINGS, in the order drawn
+var _unit_z: Dictionary = {}                 # layer -> its depth: drawn in order of it, far to near
+var _things_rects: Dictionary = {}           # tile_id -> the part of the board its things layer covers
 ## Baked pictures of tiles: "tile|zoom" -> {tex, sig, rect}. A picture is kept for as long as
 ## what the tile is made of does not change, across turns and across openings of the view.
 static var _bakes: Dictionary = {}
 var _bake_view: SubViewport
 var _painter: Control
 var _grade: Control
-var _bake_layer: Control
+var _bake_layer: Control                     # the ground layers' bakes
+var _street_layer: Control                   # the cars, and the things of a tile not baked yet
+var _things_layer: Control                   # the things layers' bakes
 var _baking := false
 static var _ground_textures: Dictionary = {}
 var _fog: Array = []                         # [{at, r, a, phase}] wisps of dirty air, in board space
 var _lights: Array = []                      # [{tex, rect, col, phase}] lit windows and fires
 var _glows: Array = []                       # [{at, rx, ry, a}] pools and blooms of lamp light, in board space
-var _cars: Array = []                        # [{a, b, length, k, colour, phase, pace}]
+var _cars: Array = []                        # [{pts, shares, length, k, colour, phase, pace}]
 var _glow_layer: Control
 static var _glow_tex: GradientTexture2D = null
 static var _window_tex: Dictionary = {}
@@ -233,8 +315,12 @@ var _links: Array = []                       # road-like ways: [{mode, pts: Pack
 var _road_plan: Array = []                   # [{a, b, half}] road segments in plan, for pipes to cross
 var _junctions: Array = []                   # [{at, arms, width}] where roads and drives meet
 var _rivers: Dictionary = {}                  # tile_id -> [PackedVector2Array] in plan
-var _road_fits: Array = []                   # [{name, at, tint}] junction pieces
-var _road_polys: Array = []                  # [{points, uvs, tint}] the straights, tile by tile
+var _road_ways: Dictionary = {}              # tile -> [{tile, a, b, level, paved, prof, clear, edge, round}] its streets
+var _road_meshes: Dictionary = {}            # tile -> its streets as one surface (_road_mesh)
+var _sea_tests: Array = []                   # [water test, shoreline] for the model (_water_test, _shore_test)
+var _sea_tests_for := 0
+var _road_lights: Dictionary = {}            # tile -> [{points, colours}] light over its streets run on past its edge
+var _road_bridges: Array = []                # [{tile, name, at, keep, ...}] the truss bridges the streets cross on
 var _pipes: Array = []                       # plain lines, drawn only when the pieces are not baked
 var _pipe_items: Array = []                  # baked pieces and run tiles, far to near
 var _signs: Array = []                       # [{foot, top, icon, depth}] sorted far to near
@@ -246,6 +332,13 @@ var _zoom := 1.0
 var _offset := Vector2.ZERO
 var _fitted := false
 var _clock := 0.0
+## Goods on the move along their routes, or (false) the board at rest: each good on the building that makes it.
+var animate_goods := true
+## Moving goods: how far around a good its group reaches (in token widths), how alike two headings must be to
+## count as one way, and how faint a good gets while it crosses a bigger group.
+const MOVING_GROUP_REACH := 1.6
+const MOVING_SAME_WAY := 0.5
+const MOVING_FADED := 0.08
 var _press_pos := Vector2.INF
 var _dragging := false
 ## Local Suppliers' depot on hover, under its name, as lines the card can hold.
@@ -275,14 +368,23 @@ class GlowLayer extends Control:
 		board.call("_draw_glows", self)
 
 
-## Draws the baked pictures of the tiles, one to one with the screen.
+## Draws the baked pictures of the tiles, one to one with the screen: the ground layers, or the things.
 class BakeLayer extends Control:
 	var board: Control
+	var things := false
 	func _draw() -> void:
-		board.call("_draw_bakes", self)
+		board.call("_draw_bakes", self, things)
 
 
-## Draws ONE tile's standing picture into the bake viewport, at the zoom being baked.
+## Draws what moves along the streets, over every tile's ground and under everything that stands, so
+## a building, a tree or a lamp in front of a car hides it; then the things of any tile not baked yet.
+class StreetLayer extends Control:
+	var board: Control
+	func _draw() -> void:
+		board.call("_draw_street", self)
+
+
+## Draws ONE layer of a tile (_unit) into the bake viewport, at the zoom being baked.
 class Painter extends Control:
 	var board: Control
 	var tile := ""
@@ -339,6 +441,23 @@ func _ready() -> void:
 	premult.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
 	_bake_layer.material = premult
 	add_child(_bake_layer)
+	_street_layer = StreetLayer.new()
+	_street_layer.set("board", self)
+	_street_layer.name = "Street"
+	_street_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_street_layer.texture_repeat = CanvasItem.TEXTURE_REPEAT_DISABLED
+	_street_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_street_layer)
+	_things_layer = BakeLayer.new()
+	_things_layer.set("board", self)
+	_things_layer.set("things", true)
+	_things_layer.name = "ThingsBakes"
+	_things_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_things_layer.texture_repeat = CanvasItem.TEXTURE_REPEAT_DISABLED
+	_things_layer.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_things_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_things_layer.material = premult
+	add_child(_things_layer)
 	# Light is added to what lies under it, so it has a layer of its own.
 	_glow_layer = GlowLayer.new()
 	_glow_layer.set("board", self)
@@ -373,6 +492,39 @@ func refresh() -> void:
 
 
 func set_graph(graph: Dictionary, terrain: Node) -> void:
+	_paced = false
+	_build(graph, terrain)
+
+
+## The same build as set_graph, spread over frames a few milliseconds at a time, so it can run
+## behind the loading screen or while the view is closed without the game missing a frame; then
+## every layer in view at the zoom the board will open at is baked, one a frame. A set_graph, or
+## another build, while it runs takes over from it. Returns once the build is done; the bakes
+## carry on in _process.
+func build_async(graph: Dictionary, terrain: Node) -> void:
+	_paced = true
+	_slice_from = Time.get_ticks_msec()
+	await _build(graph, terrain)
+	bake_while_hidden = true
+
+
+## Is the board built from the latest graph it was given, and every layer in view baked.
+func is_ready() -> bool:
+	return not _building and has_content() and _next_bake() == "" and not _baking
+
+
+## Hand a frame back to the game when the present build is paced and has had its time this frame.
+func _pace() -> void:
+	if not _paced or Time.get_ticks_msec() - _slice_from < _PACE_MS:
+		return
+	await get_tree().process_frame
+	_slice_from = Time.get_ticks_msec()
+
+
+func _build(graph: Dictionary, terrain: Node) -> void:
+	_build_gen += 1
+	var gen := _build_gen
+	_building = true
 	_last_graph = graph
 	_last_terrain = terrain
 	_model = {}
@@ -389,32 +541,113 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 	_road_plan.clear()
 	_junctions.clear()
 	_pipes.clear()
-	_road_fits.clear()
-	_road_polys.clear()
+	_road_ways.clear()
+	_road_meshes.clear()
+	_road_lights.clear()
+	_road_bridges.clear()
 	_pipe_items.clear()
 	_signs.clear()
 	_cables.clear()
 	_flows.clear()
 	_labels.clear()
 	_hover = {}
+	_spans.clear()
+	_near_tiles.clear()
+	_piers.clear()
 	if terrain == null or not terrain.has_method("id_to_coord"):
+		_building = false
 		queue_redraw()
 		return
 	var rivers: Dictionary = _rivers_by_tile(terrain)
 	_rivers = _river_lines(rivers)
-	_model = Model.build(terrain, graph, _true_positions(graph, terrain), _rivers, plate_town and bool(show["decor"]))
-	_build_ground(rivers)
+	if _paced:
+		# Every tile's height, read off the map a few at a time before they are settled together.
+		for tid in Catalog.all_tile_ids():
+			var coord: Vector2i = terrain.id_to_coord(str(tid))
+			if coord.x >= 0:
+				Relief.tile_level(Model.tile_center(terrain, str(tid)))
+				await _pace()
+				if gen != _build_gen:
+					return
+	var plates: Dictionary = Relief.plates(terrain, _rivers)
+	await _pace()
+	if gen != _build_gen:
+		return
+	# The same tests from one build to the next, so what the model works out from them is kept.
+	if _sea_tests_for != terrain.get_instance_id():
+		_sea_tests_for = terrain.get_instance_id()
+		_sea_tests = [_water_test(terrain), _shore_test(terrain)]
+	_model = Model.build(terrain, graph, _true_positions(graph, terrain), _rivers, plate_town and bool(show["decor"]),
+		_sea_tests[0], _sea_tests[1])
+	await _pace()
+	if gen != _build_gen:
+		return
+	_ground = Ground.for_map(terrain, rivers, plates, Callable(get_script(), "_relief_of")) as Ground
+	await _pace()
+	if gen != _build_gen:
+		return
+	await _build_ground(rivers, gen)
+	if gen != _build_gen:
+		return
+	_mark_bridges()
+	await _pace()
+	if gen != _build_gen:
+		return
 	_build_standing()
-	_build_lines()
+	await _pace()
+	if gen != _build_gen:
+		return
+	await _build_lines(gen)
+	if gen != _build_gen:
+		return
+	await _pace()
+	if gen != _build_gen:
+		return
 	_build_fog()
 	_build_lamps()
 	_build_trees()
 	_build_cars()
+	_build_piers()
 	_sort_parts()
+	_building = false
 	if not _fitted:
 		fit_view()
+	if is_visible_in_tree():
+		_hold_until_baked()
 	queue_redraw()
 	_bake_layer.queue_redraw()
+	_street_layer.queue_redraw()
+	_things_layer.queue_redraw()
+
+
+## Tiles not yet baked are drawn live under the baked ones, so a board opening with none baked would
+## shuffle its tiles in front of each other as the bakes land. Until every tile in view has a picture the
+## board is held back, then fades in; a board already baked shows at once.
+const _REVEAL_FADE := 0.15
+const _REVEAL_LIMIT := 2.0           # seconds: show the board anyway if the bakes are slow
+var _revealing := false
+var _reveal_wait := 0.0
+
+
+func _hold_until_baked() -> void:
+	var view := Rect2(Vector2.ZERO, size)
+	for unit in _units:
+		var r := _unit_rect(str(unit))
+		if _best_bake(str(unit)).is_empty() and view.intersects(Rect2(r.position * _zoom + _offset, r.size * _zoom)):
+			_revealing = true
+			_reveal_wait = 0.0
+			modulate.a = 0.0
+			return
+
+
+func _reveal_when_baked(delta: float) -> void:
+	if not _revealing:
+		return
+	_reveal_wait += delta
+	if (_next_bake() != "" or _baking) and _reveal_wait < _REVEAL_LIMIT:
+		return
+	_revealing = false
+	create_tween().tween_property(self, "modulate:a", 1.0, _REVEAL_FADE)
 
 
 func has_content() -> bool:
@@ -448,6 +681,8 @@ func fit_view() -> void:
 func _view_changed() -> void:
 	queue_redraw()
 	_bake_layer.queue_redraw()
+	_street_layer.queue_redraw()
+	_things_layer.queue_redraw()
 
 
 # ------------------------------------------------------------------ source data
@@ -474,6 +709,38 @@ func _river_lines(rivers: Dictionary) -> Dictionary:
 			lines.append(rec["points"])
 		out[tid] = lines
 	return out
+
+
+## Is a point of a tile open water, as the ground draws it: (tile_id, point) -> bool, for the
+## model to keep what stands and the streets off the sea.
+static func _water_test(terrain: Node) -> Callable:
+	var centers: Dictionary = {}
+	return func(tile: String, p: Vector2) -> bool:
+		var kind := str(Catalog.tile_type(tile))
+		if kind == "sea" or kind == "deep_sea":
+			return true
+		if not centers.has(tile):
+			centers[tile] = Model.tile_center(terrain, tile)
+		return Ground.is_water(_relief_of(tile, centers[tile]), p)
+
+
+## The edges between a tile's land and its open water, [[p0, p1]] in plan: its shoreline and its lakes'
+## rings, for the model to measure what stands and the streets against.
+static func _shore_test(terrain: Node) -> Callable:
+	return func(tile: String) -> Array:
+		var kind := str(Catalog.tile_type(tile))
+		if kind == "sea" or kind == "deep_sea":
+			return []
+		var c := Model.tile_center(terrain, tile)
+		var rel: Dictionary = _relief_of(tile, c)
+		var out: Array = []
+		for seg in _shore_of(rel, Model.hex_points(c)):
+			out.append([seg[0], seg[1]])
+		for lake in rel.get("lakes", []):
+			var ring: PackedVector2Array = lake
+			for k in range(ring.size()):
+				out.append([ring[k], ring[(k + 1) % ring.size()]])
+		return out
 
 
 func _true_positions(graph: Dictionary, terrain: Node) -> Dictionary:
@@ -510,14 +777,10 @@ static func _box_of(pts: PackedVector2Array) -> Rect2:
 	return r
 
 
-## The tile's rough relief: its water and its land bands clipped to the hex, each land band
-## with the step it stands on. Cached for good; the relief never changes in a game.
-static func _relief_of(tile_id: String, center: Vector2, flat: bool = false) -> Dictionary:
+## The tile's relief: its water and its land bands clipped to the hex, in the map's paint order:
+## the colours its ground is drawn in. Cached for good; the relief never changes in a game.
+static func _relief_of(tile_id: String, center: Vector2) -> Dictionary:
 	if _relief_cache.has(tile_id):
-		return _relief_cache[tile_id]
-	if flat:
-		# High ground is one flat plate: its height and its colour say what it is.
-		_relief_cache[tile_id] = {"base": 1, "sea": [], "land": [], "lakes": []}
 		return _relief_cache[tile_id]
 	_load_relief()
 	var hexp := Model.hex_points(center)
@@ -527,27 +790,17 @@ static func _relief_of(tile_id: String, center: Vector2, flat: bool = false) -> 
 		if (e["box"] as Rect2).intersects(box):
 			for piece in _clip(e["p"], hexp):
 				sea.append({"b": int(e["b"]), "p": piece})
-	var land_raw: Array = []
-	var area: Dictionary = {}
+	var land: Array = []
 	for e in _hill_polys:
 		if not (e["box"] as Rect2).intersects(box):
 			continue
 		for piece in _clip(e["p"], hexp):
-			land_raw.append({"b": int(e["b"]), "p": piece})
-			area[int(e["b"])] = float(area.get(int(e["b"]), 0.0)) + _area(piece)
-	var base := 1
-	for b in area:
-		if int(b) > base and float(area[b]) >= HEX_AREA * BASE_BAND_SHARE:
-			base = int(b)
-	var land: Array = []
-	for e in land_raw:
-		land.append({"b": int(e["b"]), "p": e["p"],
-			"lift": float(clampi(int(e["b"]) - base, 0, TERRACE_MAX)) * TERRACE_STEP})
+			land.append({"b": int(e["b"]), "p": piece})
 	var lakes: Array = []
 	for e in _lake_polys:
 		if (e["box"] as Rect2).intersects(box):
 			lakes.append_array(_clip(e["p"], hexp))
-	var rel := {"base": base, "sea": sea, "land": land, "lakes": lakes}
+	var rel := {"sea": sea, "land": land, "lakes": lakes}
 	_relief_cache[tile_id] = rel
 	return rel
 
@@ -563,36 +816,210 @@ static func _clip(poly: PackedVector2Array, hexp: PackedVector2Array) -> Array:
 	return out
 
 
-static func _area(pts: PackedVector2Array) -> float:
-	var a := 0.0
-	for i in range(pts.size()):
-		var p := pts[i]
-		var q := pts[(i + 1) % pts.size()]
-		a += p.x * q.y - q.x * p.y
-	return absf(a) * 0.5
+## The ground at a map point, the one height everything on the board stands on.
+func _height_at(p: Vector2) -> float:
+	return _ground.height(p)
 
 
-## How far the terraces lift the ground at a point of a tile.
-func _lift_at(tile_id: String, p: Vector2) -> float:
-	# A tile with a warehouse is built on: its streets and slots need level ground.
-	if bool(((_model.get("tiles", {}) as Dictionary).get(tile_id, {}) as Dictionary).get("store", false)):
-		return 0.0
-	var rel: Dictionary = _relief_cache.get(tile_id, {})
-	var lift := 0.0
-	for e in rel.get("land", []):
-		if Geometry2D.is_point_in_polygon(p, e["p"]):
-			lift = float(e["lift"])
-	return lift
+## The height a way stands at, at a point of a tile: the ground, or a bridge's deck over a valley.
+## Only the decks a way crosses on are built (_mark_bridges); one reaching on over a tile edge carries
+## the way on the other side too.
+func _way_h(tile: String, p: Vector2) -> float:
+	var h := _height_at(p)
+	for t in _with_neighbours(tile):
+		for span in _spans_of(str(t)):
+			if bool(span["used"]) and Geometry2D.get_closest_point_to_segment(p, span["a"], span["b"]).distance_to(p) <= float(span["half"]):
+				h = maxf(h, float(span["deck"]))
+	return h
 
 
-func _height_at(tile_id: String, p: Vector2) -> float:
-	var t: Dictionary = (_model["tiles"] as Dictionary).get(tile_id, {})
-	return float(t.get("height", 0.0)) + _lift_at(tile_id, p)
+## Put in use every deck a street in use or a railway crosses a river on: those, and only those, are
+## built, with their piers.
+func _mark_bridges() -> void:
+	var runs: Array = []                      # [tile, a, b]
+	for r in _model.get("roads", []):
+		runs.append([str(r["tile"]), r["a"], r["b"]])
+	for l in _model.get("lines", []):
+		var mode := str(l["mode"])
+		if mode == Model.MODE_CABLE or Model.PIPE_MODES.has(mode):
+			continue
+		var path: Array = l["pts"]
+		for i in range(path.size() - 1):
+			if str(path[i]["tile"]) == str(path[i + 1]["tile"]):
+				runs.append([str(path[i]["tile"]), path[i]["p"], path[i + 1]["p"]])
+	for run in runs:
+		var a: Vector2 = run[1]
+		var b: Vector2 = run[2]
+		if a.distance_to(b) < 0.01:
+			continue
+		for span in _spans_of(str(run[0])):
+			if Geometry2D.get_closest_point_to_segment(span["at"], a, b).distance_to(span["at"]) < 1.0 \
+					and absf((b - a).normalized().dot(span["dir"])) > 0.9:
+				span["used"] = true
+
+
+## A drawn tile and the drawn tiles beside it.
+func _with_neighbours(tile: String) -> Array:
+	if _near_tiles.has(tile):
+		return _near_tiles[tile]
+	var tiles: Dictionary = _model.get("tiles", {})
+	var out: Array = [tile]
+	if tiles.has(tile):
+		var c: Vector2 = tiles[tile]["center"]
+		for other in tiles:
+			if str(other) != tile and (tiles[other]["center"] as Vector2).distance_to(c) < Model.ADJACENT_REACH:
+				out.append(str(other))
+	_near_tiles[tile] = out
+	return out
+
+
+## Does a plan point lie on a tile the board draws.
+func _drawn_at(p: Vector2) -> bool:
+	var tiles: Dictionary = _model.get("tiles", {})
+	for t in tiles:
+		if Geometry2D.is_point_in_polygon(p, Model.hex_points(tiles[t]["center"])):
+			return true
+	return false
+
+
+## The ground under a straight way from `a` to `b`, as [[share of the way, height]]: it follows the
+## ground up and down every slope, and with `tile` given, it crosses a river's valley on a bridge.
+func _profile(a: Vector2, b: Vector2, tile: String = "") -> Array:
+	var length := a.distance_to(b)
+	var at := func(p: Vector2) -> float: return _way_h(tile, p) if tile != "" else _height_at(p)
+	if length < 0.01:
+		var h0: float = at.call(a)
+		return [[0.0, h0], [1.0, h0]]
+	var n := maxi(1, ceili(length / PROFILE_STEP))
+	var out: Array = []
+	for i in range(n + 1):
+		var t := float(i) / float(n)
+		out.append([t, at.call(a.lerp(b, t))])
+	return _simplify(out)
+
+
+## A profile with the points that lie near the line between their neighbours left out.
+static func _simplify(prof: Array) -> Array:
+	if prof.size() <= 2:
+		return prof
+	var out: Array = [prof[0]]
+	for i in range(1, prof.size() - 1):
+		var p0: Array = out[out.size() - 1]
+		var p1: Array = prof[i + 1]
+		var t := (float(prof[i][0]) - float(p0[0])) / maxf(float(p1[0]) - float(p0[0]), 0.000001)
+		if absf(float(prof[i][1]) - lerpf(float(p0[1]), float(p1[1]), t)) > PROFILE_KEEP:
+			out.append(prof[i])
+	out.append(prof[prof.size() - 1])
+	return out
+
+
+## Where a tile's streets cross its rivers, the decks that carry them over the valley: for every
+## stretch of the street plan that crosses a river, a level deck at the height of the lower of its
+## two banks, reaching from where the ground drops below that on one side to where it rises back on
+## the other. [{a, b, deck, half, at, dir, river_half, used}] in plan; worked out once per tile, so
+## a road, a railway and the goods on them all cross on one deck.
+func _spans_of(tile: String) -> Array:
+	if _spans.has(tile):
+		return _spans[tile]
+	var out: Array = []
+	_spans[tile] = out
+	var tiles: Dictionary = _model.get("tiles", {})
+	if not tiles.has(tile):
+		return out
+	var c: Vector2 = tiles[tile]["center"]
+	var runs: Array = _ground.river_runs(tile)
+	for e in Streets.edges():
+		var a: Vector2 = c + Streets.node_pos(str(e[0]))
+		var b: Vector2 = c + Streets.node_pos(str(e[1]))
+		var dir := (b - a).normalized()
+		for run in runs:
+			var river: PackedVector2Array = run["pts"]
+			for i in range(river.size() - 1):
+				var hit: Variant = Geometry2D.segment_intersects_segment(a, b, river[i], river[i + 1])
+				if hit == null:
+					continue
+				var x: Vector2 = hit
+				var sine := maxf(absf(dir.cross((river[i + 1] - river[i]).normalized())), 0.4)
+				var reach := (float(run["half"]) + Ground.BANK + Ground.SLOPE_W) / sine + BRIDGE_LOOK
+				var banks: Array = []
+				for way in [-1.0, 1.0]:
+					var top := -INF
+					var s := 0.0
+					while s <= reach:
+						top = maxf(top, _height_at(x + dir * s * float(way)))
+						s += 2.0
+					banks.append(top)
+				var deck := minf(float(banks[0]), float(banks[1]))
+				if deck < _height_at(x) + BRIDGE_MIN_RISE:
+					continue                          # a street along the valley's floor: no deck to raise
+				var ends: Array = []
+				for way in [-1.0, 1.0]:
+					# No further than the stretch of street it carries.
+					var limit := minf(reach, x.distance_to(a if way < 0.0 else b))
+					var s := 0.0
+					while s < limit and _height_at(x + dir * s * float(way)) < deck - 0.05:
+						s += 1.0
+					ends.append(x + dir * s * float(way))
+				out.append({"a": ends[0], "b": ends[1], "deck": deck, "half": BRIDGE_HALF, "at": x, "dir": dir,
+					"river_half": float(run["half"]) / sine, "used": false, "tile": tile})
+	return out
+
+
+## What holds up every deck a way crosses on: a pier each side of the river, down to the valley's
+## floor, and the deck's edge on the side toward the viewer; none of it out over the dark beyond the
+## board's rim.
+func _build_piers() -> void:
+	for tile in _spans:
+		for span in _spans[tile]:
+			if not bool(span["used"]):
+				continue
+			var deck := float(span["deck"])
+			var dir: Vector2 = span["dir"]
+			var side := dir.orthogonal()
+			if side.x + side.y < 0.0:
+				side = -side
+			var polys: Array = []
+			var a: Vector2 = span["a"]
+			var b: Vector2 = span["b"]
+			var off_a := not _drawn_at(a)
+			var off_b := not _drawn_at(b)
+			if off_a or off_b:
+				var own := Model.hex_points((_model["tiles"] as Dictionary)[span["tile"]]["center"])
+				for piece in Geometry2D.intersect_polyline_with_polygon(PackedVector2Array([a, b]), own):
+					var kept: PackedVector2Array = piece
+					if kept.size() < 2 or Geometry2D.get_closest_point_to_segment(span["at"], kept[0], kept[kept.size() - 1]) \
+							.distance_to(span["at"]) > 0.5:
+						continue
+					if off_a:
+						a = kept[0]
+					if off_b:
+						b = kept[kept.size() - 1]
+			if a.distance_to(b) < 1.0:
+				continue
+			for way in [-1.0, 1.0]:
+				var at: Vector2 = (span["at"] as Vector2) + dir * (float(span["river_half"]) + 3.0) * float(way)
+				var foot := _height_at(at)
+				if deck - foot < 1.0 or not _drawn_at(at):
+					continue
+				for across in [-0.6, 0.6]:
+					var p: Vector2 = at + side * _ROAD_HALF * float(across)
+					var hs := 1.8
+					var corners := [p + Vector2(-hs, -hs), p + Vector2(hs, -hs), p + Vector2(hs, hs), p + Vector2(-hs, hs)]
+					# The faces toward the viewer, south and east, the sunlit one paler.
+					polys.append([PackedVector2Array([iso(corners[3], deck), iso(corners[2], deck), iso(corners[2], foot),
+						iso(corners[3], foot)]), _PIER.darkened(0.15)])
+					polys.append([PackedVector2Array([iso(corners[2], deck), iso(corners[1], deck), iso(corners[1], foot),
+						iso(corners[2], foot)]), _PIER.lightened(0.12)])
+			var front_a := a + side * _ROAD_HALF
+			var front_b := b + side * _ROAD_HALF
+			polys.append([PackedVector2Array([iso(front_a, deck), iso(front_b, deck), iso(front_b, deck - BRIDGE_FASCIA),
+				iso(front_a, deck - BRIDGE_FASCIA)]), _GIRDER])
+			_piers.append({"tile": str(span["tile"]), "polys": polys, "key": "%s|%s" % [a.round(), b.round()]})
 
 
 # ------------------------------------------------------------------ building the picture
 
-func _build_ground(rivers: Dictionary) -> void:
+func _build_ground(rivers: Dictionary, gen: int) -> void:
 	var tiles: Dictionary = _model.get("tiles", {})
 	_bounds = Rect2()
 	if tiles.is_empty():
@@ -609,8 +1036,11 @@ func _build_ground(rivers: Dictionary) -> void:
 	for tid in order:
 		var t0: Dictionary = tiles[tid]
 		by_center[Vector2i((t0["center"] as Vector2).round())] = tid
+		t0["top"] = await _tile_top(str(tid))
+		if gen != _build_gen:
+			return
 		for p in Model.hex_points(t0["center"]):
-			for hh in [float(t0["height"]) + TERRACE_STEP * TERRACE_MAX, -SLAB_DEPTH]:
+			for hh in [float(t0["top"]), -SLAB_DEPTH]:
 				var q := iso(p, hh)
 				if first:
 					_bounds = Rect2(q, Vector2.ZERO)
@@ -618,188 +1048,521 @@ func _build_ground(rivers: Dictionary) -> void:
 				else:
 					_bounds = _bounds.expand(q)
 	_tile_order = order
-	var rims: Array = []                          # per tile: [[a, b, h]] edges to ink once its top is laid
 	var band_cols: Array[Color] = MapStyle.band_colors()
 	var sea_cols: Array[Color] = MapStyle.sea_colors()
 	var water: Color = sea_cols[4]
+	if _ground_meshes.size() > _GROUND_MESHES_KEPT:
+		_ground_meshes.clear()
+	if _light_meshes.size() > _GROUND_MESHES_KEPT:
+		_light_meshes.clear()
 	for tid in order:
+		await _pace()
+		if gen != _build_gen:
+			return
+		var t: Dictionary = tiles[tid]
+		var c: Vector2 = t["center"]
+		var hexp := Model.hex_points(c)
+		var is_sea := str(t["type"]) == "sea" or str(t["type"]) == "deep_sea"
+		var rel: Dictionary = _relief_of(str(tid), c)
+		var beside: Array = []                        # per edge: a tile is drawn there
+		for i in range(6):
+			var mid := (hexp[i] + hexp[(i + 1) % 6]) * 0.5
+			beside.append(by_center.has(Vector2i((c + (mid - c) * 2.0).round())))
+		t["beside"] = beside
+		var label_at := c + Vector2(135.0, 240.0) * 0.72
+		_labels.append({"at": iso(label_at, _height_at(label_at)), "text": str(t["label"])})
+		_seed_glints(str(tid), t, rel, is_sea)
+		var top: Color = sea_cols[0 if str(t["type"]) == "deep_sea" else 2] if is_sea else _warm(sea_cols[5])
+		# A tile's ground stays as it is for as long as the tiles drawn beside it do; its light, for as
+		# long as the board's extent does too.
+		var key := "%s|%s|%d|%d" % [tid, beside, _ground.get_instance_id(), hash([band_cols, sea_cols])]
+		var light_key := "%s|%s|%s" % [key, _bounds, plate_sea]
+		if not _light_meshes.has(light_key):
+			_light_meshes[light_key] = _build_light(c, hexp, beside, rel, is_sea)
+		if _ground_meshes.has(key):
+			_tile_gfx[tid] = (_ground_meshes[key] as Dictionary).merged({"light": _light_meshes[light_key]}, true)
+			continue
 		# Each tile has its own meshes, so one tile can be drawn, and baked, without the rest.
 		var verts := PackedVector3Array()
 		var cols := PackedColorArray()
 		var idx := PackedInt32Array()
-		var lverts := PackedVector3Array()
-		var lcols := PackedColorArray()
-		var lidx := PackedInt32Array()
 		var wverts := PackedVector3Array()            # the cut-away walls, textured with the strata
 		var wcols := PackedColorArray()
 		var wuvs := PackedVector2Array()
 		var widx := PackedInt32Array()
-		var t: Dictionary = tiles[tid]
-		var c: Vector2 = t["center"]
-		var h := float(t["height"])
-		var hexp := Model.hex_points(c)
-		var is_sea := str(t["type"]) == "sea" or str(t["type"]) == "deep_sea"
-		var high := HIGH_BAND.has(str(t["type"]))
-		var rel: Dictionary = _relief_of(str(tid), c, high)
-		# Where a lower tile is drawn next door, this tile slopes down to it; elsewhere its edge
-		# is a cliff over the dark.
-		var low: Array = []                   # per edge: the neighbour's height, or -1 for no slope
-		var beside: Array = []                # per edge: a tile is drawn there at all
-		var top_poly := hexp
-		for i in range(6):
-			var mid := (hexp[i] + hexp[(i + 1) % 6]) * 0.5
-			var nb: Variant = by_center.get(Vector2i((c + (mid - c) * 2.0).round()))
-			beside.append(nb != null)
-			var nh := float(tiles[nb]["height"]) if nb != null else h
-			low.append(nh if nh < h - 0.5 else -1.0)
-			if float(low[i]) >= 0.0:
-				var n0 := (mid - c).normalized()
-				top_poly = Atlas.clip(top_poly, mid - n0 * SLOPE_W, -n0)
-		var sloped := top_poly.size() != 6 or not top_poly[0].is_equal_approx(hexp[0])
-		var top: Color = sea_cols[0 if str(t["type"]) == "deep_sea" else 2] if is_sea else _warm(sea_cols[5])
-		if high:
-			top = _warm(band_cols[clampi(int(HIGH_BAND[str(t["type"])]), 0, band_cols.size() - 1)])
-		for i in range(6):
-			var a := hexp[i]
-			var b := hexp[(i + 1) % 6]
-			var n := ((a + b) * 0.5 - c).normalized()
-			if float(low[i]) >= 0.0:
-				# The slope: from the edge, at the neighbour's height, up to this tile's own.
-				var crest: Array = _on_line(top_poly, (a + b) * 0.5 - n * SLOPE_W, n, a, b)
-				_poly_board(verts, cols, idx, PackedVector2Array([iso(a, float(low[i])), iso(b, float(low[i])),
-					iso(crest[1], h), iso(crest[0], h)]), top.darkened(0.2 - 0.16 * maxf(0.0, n.dot(_SUN))))
-				continue
-			# A cliff's top follows the slope beside it down to the corner they share.
-			var rim: Array = _on_line(top_poly, (a + b) * 0.5, n, a, b)
-			var ha := float(low[(i + 5) % 6]) if float(low[(i + 5) % 6]) >= 0.0 else h
-			var hb := float(low[(i + 1) % 6]) if float(low[(i + 1) % 6]) >= 0.0 else h
-			if not bool(beside[i]):
-				rims.append([rim[0], rim[1], h])
-			if n.x + n.y > 0.01:
-				# The cut-away: the strata run level through the whole board, so a wall shows the
-				# part of them between its own top and the slab's foot.
-				var k := 0.74 + 0.26 * maxf(0.0, n.dot(_SUN))
-				var shade := Color(k, k, k)
-				if ha < h or hb < h:
-					_wall(wverts, wcols, wuvs, widx, [[a, ha], [rim[0], h], [rim[1], h], [b, hb],
-						[b, -SLAB_DEPTH], [a, -SLAB_DEPTH]], a, b, shade)
-				else:
-					# Along the edge, stretch by stretch: under land the rock comes up to a lip of
-					# turf; under open water the cut shows the water's depth over the rock.
-					var runs: Array = []          # [[from, to, wet]] as shares of the edge
-					for part in range(_EDGE_PARTS):
-						var mid_p := a.lerp(b, (float(part) + 0.5) / float(_EDGE_PARTS)) - n * 3.0
-						var wet: bool = is_sea or _is_water(rel, mid_p)
-						if not runs.is_empty() and bool(runs[runs.size() - 1][2]) == wet:
-							runs[runs.size() - 1][1] = float(part + 1) / float(_EDGE_PARTS)
-						else:
-							runs.append([float(part) / float(_EDGE_PARTS), float(part + 1) / float(_EDGE_PARTS), wet])
-					for run in runs:
-						var ra := a.lerp(b, float(run[0]))
-						var rb := a.lerp(b, float(run[1]))
-						var bed := h - (_WATER_DEPTH if bool(run[2]) else 0.0)
-						_wall(wverts, wcols, wuvs, widx, [[ra, bed], [rb, bed], [rb, -SLAB_DEPTH], [ra, -SLAB_DEPTH]], a, b, shade)
-						if bool(run[2]):
-							var shallow := water.lightened(0.12)
-							var deep: Color = sea_cols[1]
-							_quad_cols(verts, cols, idx, [iso(ra, h), iso(rb, h), iso(rb, bed), iso(ra, bed)],
-								[shallow, shallow, deep, deep])
-							_poly_board(verts, cols, idx, PackedVector2Array([iso(ra, bed), iso(rb, bed),
-								iso(rb, bed - 1.6), iso(ra, bed - 1.6)]), _INK)
-						else:
-							_poly_board(verts, cols, idx, PackedVector2Array([iso(ra, h), iso(rb, h),
-								iso(rb, h - _TURF), iso(ra, h - _TURF)]), top.darkened(0.38))
-				if (ha < h or hb < h) and not is_sea:
-					_poly_board(verts, cols, idx, PackedVector2Array([iso(rim[0], h), iso(rim[1], h),
-						iso(rim[1], h - _TURF), iso(rim[0], h - _TURF)]), top.darkened(0.38))
-			elif bool(beside[i]):
-				# A neighbour of the same height stands behind: its side shows above the slope.
-				if ha < h:
-					_poly_board(verts, cols, idx, PackedVector2Array([iso(a, ha), iso(rim[0], h), iso(a, h)]), _WALL)
-				if hb < h:
-					_poly_board(verts, cols, idx, PackedVector2Array([iso(b, hb), iso(b, h), iso(rim[1], h)]), _WALL)
-		_poly(verts, cols, idx, top_poly, h, top)
+		# The ground first, laid over its shape: the plate's colour, the sea under the land, then
+		# every band of the land and the lakes, each where the map has it.
+		_drape(verts, cols, idx, hexp, top)
 		for e in rel["sea"]:
-			for piece in _within(e["p"], top_poly, sloped):
-				_poly(verts, cols, idx, piece, h, sea_cols[int(e["b"])])
-		if plate_sea:
-			# The sea takes the light too: pale and warm toward the sun, deep and cold away
-			# from it. Laid over the water only; the land's own pieces are painted after.
-			var sheets: Array = [top_poly] if is_sea else []
-			for e in rel["sea"]:
-				sheets.append_array(_within(e["p"], top_poly, sloped))
-			for sheet in sheets:
-				_poly_lit(verts, cols, idx, sheet, h)
+			_drape(verts, cols, idx, e["p"], sea_cols[int(e["b"])])
 		if not is_sea:
 			for e in rel["land"]:
-				var col: Color = _warm(band_cols[clampi(int(e["b"]), 0, band_cols.size() - 1)])
-				var lift := 0.0 if bool(t["store"]) else float(e["lift"])
-				for piece in _within(e["p"], top_poly, sloped):
-					if lift > 0.0:
-						_risers(verts, cols, idx, piece, hexp, h + lift, col.darkened(0.3))
-					_poly(verts, cols, idx, piece, h + lift, col)
+				_drape(verts, cols, idx, e["p"], _warm(band_cols[clampi(int(e["b"]), 0, band_cols.size() - 1)]))
 		for p in rel["lakes"]:
-			for piece in _within(p, top_poly, sloped):
-				_poly(verts, cols, idx, piece, h, water)
-		for rec in rivers.get(tid, []):
-			var w := (float(rec["start_width"]) + float(rec["end_width"])) * 0.5
-			for part in Geometry2D.intersect_polyline_with_polygon(rec["points"], top_poly):
-				for run in _on_land(rel, part):
-					_stroke(verts, cols, idx, run, w, h, water)
+			_drape(verts, cols, idx, p, water)
+		# Over each edge it shares with a tile drawn beside it, a skirt of this tile's own ground runs on a
+		# little way, so the two pictures overlap where they meet and no gap shows between them.
+		for i in range(6):
+			if not bool(beside[i]):
+				continue
+			var a := hexp[i]
+			var b := hexp[(i + 1) % 6]
+			var n := (b - a).orthogonal().normalized()
+			if n.dot((a + b) * 0.5 - c) < 0.0:
+				n = -n
+			var along := _edge_points(a, b)
+			for k in range(along.size() - 1):
+				var q0 := along[k]
+				var q1 := along[k + 1]
+				var c0 := _ground_colour(rel, q0.lerp(q1, 0.02) - n * 0.6, top, is_sea, band_cols, sea_cols, water, rivers.get(tid, []))
+				var c1 := _ground_colour(rel, q1.lerp(q0, 0.02) - n * 0.6, top, is_sea, band_cols, sea_cols, water, rivers.get(tid, []))
+				var board: Array = []
+				for q in [q0, q1, q1 + n * _SKIRT, q0 + n * _SKIRT]:
+					board.append(iso(q, _height_at(q)))
+				_quad_cols(verts, cols, idx, board, [c0, c1, c1, c0])
+		await _pace()
+		if gen != _build_gen:
+			return
+		var coast: Array = [] if is_sea or (rel["sea"] as Array).is_empty() else _shore_of(rel, hexp)
 		# The shore, as on the key art's plate: no hard line, but a beach. Dry sand on the land
 		# side, a darker wet strip at the water's edge, a thread of foam, and pale shallows
 		# running out into the deeper water.
-		if not is_sea and not (rel["sea"] as Array).is_empty():
-			var shore: Array = []                 # [[p0, p1, outward normal]]
-			for seg in _shore_of(rel, hexp):
-				if Geometry2D.is_point_in_polygon(((seg[0] as Vector2) + (seg[1] as Vector2)) * 0.5, top_poly):
-					shore.append(seg)
+		if not coast.is_empty():
 			# Laid widest first, so each band shows as a strip beside the next.
 			for band in [[_SHALLOWS_OUT, _SHALLOWS_W, water.lightened(0.14)], [_SHALLOWS_OUT * 0.45, _SHALLOWS_W * 0.6, water.lightened(0.3)],
 					[-_STRAND * 0.5, _STRAND, _SAND], [0.6, 3.4, _SAND.darkened(0.16)], [2.6, 1.1, _FOAM]]:
-				for seg in shore:
+				for seg in coast:
 					var out: Vector2 = (seg[2] as Vector2) * float(band[0])
 					# A band that would run out over the tile's own edge is left off there.
 					if not Geometry2D.is_point_in_polygon(((seg[0] as Vector2) + (seg[1] as Vector2)) * 0.5
-							+ (seg[2] as Vector2) * (float(band[0]) + signf(float(band[0])) * float(band[1]) * 0.5), top_poly):
+							+ (seg[2] as Vector2) * (float(band[0]) + signf(float(band[0])) * float(band[1]) * 0.5), hexp):
 						continue
-					_stroke(verts, cols, idx, PackedVector2Array([(seg[0] as Vector2) + out, (seg[1] as Vector2) + out]),
-						float(band[1]), h, band[2])
+					_stroke_on(verts, cols, idx, PackedVector2Array([(seg[0] as Vector2) + out, (seg[1] as Vector2) + out]),
+						float(band[1]), band[2])
 		for p in rel["lakes"]:
-			for piece in _within(p, top_poly, sloped):
-				var ring: PackedVector2Array = piece
-				ring.append(ring[0])
-				_stroke(verts, cols, idx, ring, 4.0, h, _SAND.darkened(0.08))
-				_stroke(verts, cols, idx, ring, 1.6, h, water.lightened(0.3))
+			var ring: PackedVector2Array = p
+			ring.append(ring[0])
+			_stroke_on(verts, cols, idx, ring, 4.0, _SAND.darkened(0.08))
+			_stroke_on(verts, cols, idx, ring, 1.6, water.lightened(0.3))
+		# The open water on this tile, for an estuary to run out over and no further.
+		var sea_pieces: Array = []
+		for e in rel["sea"]:
+			sea_pieces.append(e["p"])
 		# A river: pale banks, the water lighter down its middle, and only a thin line to it.
+		# Laid after the beach, so at its mouth the water runs over the sand and into the sea;
+		# the banks stop at the shoreline. It runs on the floor of its valley, falling where the
+		# valley steps down, white where the fall is steep.
+		var skirted := _skirted(hexp, beside)
 		for rec in rivers.get(tid, []):
 			var half_w := (float(rec["start_width"]) + float(rec["end_width"])) * 0.25
-			for part in Geometry2D.intersect_polyline_with_polygon(rec["points"], top_poly):
-				for run in _on_land(rel, part):
-					_stroke(verts, cols, idx, run, half_w * 0.9, h, water.lightened(0.16))
+			for part in Geometry2D.intersect_polyline_with_polygon(rec["points"], skirted):
+				for run in _to_mouth(rel, _aim_mouth(rel, part, coast, half_w * 2.0), coast, half_w * 2.0):
+					var ground: Array = _ground_line(run["pts"])
+					var pts: PackedVector2Array = ground[0]
+					var hs: PackedFloat32Array = ground[1]
+					_stroke_to(verts, cols, idx, pts, half_w * 2.0, water, run["cuts"], _MOUTH, hs)
+					_stroke_to(verts, cols, idx, pts, half_w * 0.9, water.lightened(0.16), run["cuts"], _MOUTH, hs)
 					for side in [-1.0, 1.0]:
-						_stroke(verts, cols, idx, _beside(run, (half_w + 1.4) * float(side)), 3.0, h, _BANK)
-						_stroke(verts, cols, idx, _beside(run, half_w * float(side)), 0.9, h, _INK_SOFT)
-		# The plate's rim, inked where it ends in a cliff.
-		for rim_edge in rims:
-			_stroke(verts, cols, idx, PackedVector2Array([rim_edge[0], rim_edge[1]]), _INK_W * 1.3, float(rim_edge[2]), _INK)
-		rims.clear()
-		_labels.append({"at": iso(c + Vector2(135.0, 240.0) * 0.72, h), "text": str(t["label"])})
-		t["top_poly"] = top_poly
-		# The light: golden toward the sun, cool away from it, laid over the tile's top.
-		var base := lverts.size()
-		var centre := iso(c, h)
-		lverts.append(Vector3(centre.x, centre.y, 0.0))
-		lcols.append(_light_wash(_light_at(centre)))
-		for p in top_poly:
-			var q := iso(p, h)
-			lverts.append(Vector3(q.x, q.y, 0.0))
-			lcols.append(_light_wash(_light_at(q)))
-		for k in range(top_poly.size()):
-			lidx.append_array([base, base + 1 + k, base + 1 + (k + 1) % top_poly.size()])
-		_seed_glints(str(tid), t, rel, is_sea)
-		_tile_gfx[tid] = {"ground": _mesh_of(verts, cols, idx), "light": _mesh_of(lverts, lcols, lidx),
-			"walls": _mesh_of(wverts, wcols, widx, wuvs)}
+						_stroke_to(verts, cols, idx, _beside(pts, (half_w + 1.4) * float(side)), 3.0, _BANK, run["cuts"], 0.0, hs)
+						_stroke_to(verts, cols, idx, _beside(pts, half_w * float(side)), 0.9, _INK_SOFT, run["cuts"], 0.0, hs)
+					_white_water(verts, cols, idx, pts, hs, half_w * 2.0)
+					for cut in run["cuts"]:
+						_estuary(verts, cols, idx, pts, cut, half_w * 2.0, water, hexp, sea_pieces)
+		# The board's rim: a cliff down to the slab's foot wherever no tile is drawn beyond an edge,
+		# its top following the ground along the edge, and inked.
+		for i in range(6):
+			if bool(beside[i]):
+				continue
+			var a := hexp[i]
+			var b := hexp[(i + 1) % 6]
+			var n := ((a + b) * 0.5 - c).normalized()
+			var rim := _edge_points(a, b)
+			var rim_h := PackedFloat32Array()
+			for q in rim:
+				rim_h.append(_height_at(q))
+			if n.x + n.y > 0.01:
+				_cliff(verts, cols, idx, wverts, wcols, wuvs, widx, rel, is_sea, rim, rim_h, a, b, n, top, water, sea_cols)
+			_stroke_on(verts, cols, idx, rim, _INK_W * 1.3, _INK)
+		await _pace()
+		if gen != _build_gen:
+			return
+		_ground_meshes[key] = {"ground": _mesh_of(verts, cols, idx), "walls": _mesh_of(wverts, wcols, widx, wuvs),
+			"shade": _build_shade(hexp, beside)}
+		_tile_gfx[tid] = (_ground_meshes[key] as Dictionary).merged({"light": _light_meshes[light_key]}, true)
+
+
+## A tile's light, laid over everything on its ground: golden toward the sun and cool away from it,
+## over its skirts too; and where plate_sea is on, its open water pale toward the sun and deep away.
+func _build_light(c: Vector2, hexp: PackedVector2Array, beside: Array, rel: Dictionary, is_sea: bool) -> ArrayMesh:
+	var lverts := PackedVector3Array()
+	var lcols := PackedColorArray()
+	var lidx := PackedInt32Array()
+	if plate_sea:
+		var open: Array = [hexp] if is_sea else []
+		if not is_sea:
+			for e in rel["sea"]:
+				open.append(e["p"])
+			for e in rel["land"]:
+				var cut: Array = []
+				for w in open:
+					for piece in Geometry2D.clip_polygons(w, e["p"]):
+						if not Geometry2D.is_polygon_clockwise(piece):
+							cut.append(piece)
+				open = cut
+		for sheet in open:
+			_drape(lverts, lcols, lidx, sheet, Color.WHITE, _DRAPE_SEA_LIGHT)
+	_drape(lverts, lcols, lidx, hexp, Color.WHITE, _DRAPE_LIGHT)
+	for i in range(6):
+		if not bool(beside[i]):
+			continue
+		var a := hexp[i]
+		var b := hexp[(i + 1) % 6]
+		var n := (b - a).orthogonal().normalized()
+		if n.dot((a + b) * 0.5 - c) < 0.0:
+			n = -n
+		var along := _edge_points(a, b)
+		for k in range(along.size() - 1):
+			var board: Array = []
+			var wash: Array = []
+			for q in [along[k], along[k + 1], along[k + 1] + n * _SKIRT, along[k] + n * _SKIRT]:
+				var bq := iso(q, _height_at(q))
+				board.append(bq)
+				wash.append(_light_wash(_light_at(bq)))
+			_quad_cols(lverts, lcols, lidx, board, wash)
+	return _mesh_of(lverts, lcols, lidx)
+
+
+## A tile's hex with each edge it shares with a tile drawn beside it moved out by the skirt.
+static func _skirted(hexp: PackedVector2Array, beside: Array, skirt: float = _SKIRT) -> PackedVector2Array:
+	var c := (hexp[0] + hexp[3]) * 0.5
+	var lines: Array = []                         # per edge: [a point on it, its direction]
+	for i in range(6):
+		var a := hexp[i]
+		var b := hexp[(i + 1) % 6]
+		var n := (b - a).orthogonal().normalized()
+		if n.dot((a + b) * 0.5 - c) < 0.0:
+			n = -n
+		lines.append([a + n * (skirt if bool(beside[i]) else 0.0), b - a])
+	var out := PackedVector2Array()
+	for i in range(6):
+		var l0: Array = lines[(i + 5) % 6]
+		var l1: Array = lines[i]
+		var hit: Variant = Geometry2D.line_intersects_line(l0[0], l0[1], l1[0], l1[1])
+		out.append(hit if hit != null else hexp[i])
+	return out
+
+
+## The colour the ground is drawn in at a point of a tile: its river, its lake, its band of land, its
+## sea or its plate, in the order they are laid.
+func _ground_colour(rel: Dictionary, p: Vector2, top: Color, is_sea: bool, band_cols: Array[Color],
+		sea_cols: Array[Color], water: Color, river_recs: Array) -> Color:
+	for rec in river_recs:
+		var line: PackedVector2Array = rec["points"]
+		var half := (float(rec["start_width"]) + float(rec["end_width"])) * 0.25
+		for k in range(line.size() - 1):
+			if Geometry2D.get_closest_point_to_segment(p, line[k], line[k + 1]).distance_to(p) < half:
+				return water
+	for lake in rel["lakes"]:
+		if Geometry2D.is_point_in_polygon(p, lake):
+			return water
+	var col := top
+	for e in rel["sea"]:
+		if Geometry2D.is_point_in_polygon(p, e["p"]):
+			col = sea_cols[int(e["b"])]
+	if not is_sea:
+		for e in rel["land"]:
+			if Geometry2D.is_point_in_polygon(p, e["p"]):
+				col = _warm(band_cols[clampi(int(e["b"]), 0, band_cols.size() - 1)])
+	return col
+
+
+## The highest ground over a tile's hex, the ground's lattice over it worked out row by row (a paced
+## build hands a frame back between rows when its time is up).
+func _tile_top(tile: String) -> float:
+	var t: Dictionary = (_model["tiles"] as Dictionary)[tile]
+	var c: Vector2 = t["center"]
+	var top := float(t["height"])
+	var g := Ground.NODE
+	for j in range(floori((c.y - Ground.HEX_HALF.y) / g) - 1, ceili((c.y + Ground.HEX_HALF.y) / g) + 2):
+		for i in range(floori((c.x - Ground.HEX_HALF.x) / g) - 1, ceili((c.x + Ground.HEX_HALF.x) / g) + 2):
+			var d := Vector2(float(i), float(j)) * g - c
+			if absf(d.y) <= Ground.HEX_HALF.y + g * 2.0 and absf(d.x) <= Ground.HEX_HALF.x - absf(d.y) * 0.5625 + g * 2.0:
+				top = maxf(top, Ground.cell_height(_ground.cell(i, j), 0.0, 0.0))
+		await _pace()
+	return top
+
+
+## The points along a tile edge from `a` to `b` where it crosses the ground's lattice, ends included:
+## where the ground drawn on the edge has its corners, so a cliff's top meets it exactly.
+static func _edge_points(a: Vector2, b: Vector2) -> PackedVector2Array:
+	var shares: Array = [0.0, 1.0]
+	var g := Ground.NODE
+	for axis in [0, 1]:
+		var lo := minf(a[axis], b[axis])
+		var hi := maxf(a[axis], b[axis])
+		if hi - lo < 0.001:
+			continue
+		var k := ceilf(lo / g) * g
+		while k < hi:
+			shares.append((k - a[axis]) / (b[axis] - a[axis]))
+			k += g
+	shares.sort()
+	var out := PackedVector2Array()
+	for s in shares:
+		var p := a.lerp(b, float(s))
+		if out.is_empty() or out[out.size() - 1].distance_to(p) > 0.05:
+			out.append(p)
+	return out
+
+
+## One cliff of the board's rim, under the edge from `a` to `b` facing the viewer: the strata run
+## level through the whole board, so the wall shows the part of them between the ground along its
+## top and the slab's foot. Along the edge, stretch by stretch: under land the rock comes up to a lip
+## of turf; under open water the cut shows the water's depth over the rock.
+func _cliff(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array, wverts: PackedVector3Array,
+		wcols: PackedColorArray, wuvs: PackedVector2Array, widx: PackedInt32Array, rel: Dictionary, is_sea: bool,
+		rim: PackedVector2Array, rim_h: PackedFloat32Array, a: Vector2, b: Vector2, n: Vector2, top: Color,
+		water: Color, sea_cols: Array[Color]) -> void:
+	var k := 0.74 + 0.26 * maxf(0.0, n.dot(_SUN))
+	var shade := Color(k, k, k)
+	var runs: Array = []                          # [[first point, last point, wet]]
+	for i in range(rim.size() - 1):
+		var wet: bool = is_sea or Ground.is_water(rel, (rim[i] + rim[i + 1]) * 0.5 - n * 3.0)
+		if not runs.is_empty() and bool(runs[runs.size() - 1][2]) == wet:
+			runs[runs.size() - 1][1] = i + 1
+		else:
+			runs.append([i, i + 1, wet])
+	for run in runs:
+		var wet := bool(run[2])
+		var outline: Array = []
+		for i in range(int(run[0]), int(run[1]) + 1):
+			outline.append([rim[i], rim_h[i] - (_WATER_DEPTH if wet else 0.0)])
+		outline.append([rim[int(run[1])], -SLAB_DEPTH])
+		outline.append([rim[int(run[0])], -SLAB_DEPTH])
+		_wall(wverts, wcols, wuvs, widx, outline, a, b, shade)
+		for i in range(int(run[0]), int(run[1])):
+			var p0 := rim[i]
+			var p1 := rim[i + 1]
+			var h0 := rim_h[i]
+			var h1 := rim_h[i + 1]
+			if wet:
+				var shallow := water.lightened(0.12)
+				var deep: Color = sea_cols[1]
+				_quad_cols(verts, cols, idx, [iso(p0, h0), iso(p1, h1), iso(p1, h1 - _WATER_DEPTH), iso(p0, h0 - _WATER_DEPTH)],
+					[shallow, shallow, deep, deep])
+				_poly_board(verts, cols, idx, PackedVector2Array([iso(p0, h0 - _WATER_DEPTH), iso(p1, h1 - _WATER_DEPTH),
+					iso(p1, h1 - _WATER_DEPTH - 1.6), iso(p0, h0 - _WATER_DEPTH - 1.6)]), _INK)
+			else:
+				_poly_board(verts, cols, idx, PackedVector2Array([iso(p0, h0), iso(p1, h1), iso(p1, h1 - _TURF),
+					iso(p0, h0 - _TURF)]), top.darkened(0.38))
+
+
+## How a polygon is laid over the ground: in its own colour; as the sea's light; or as the light's
+## wash over the whole tile.
+const _DRAPE_SHADED := 0
+## Each sloping cell of the lattice is shaded cut this many ways each way.
+const _SHADE_SUB := 2
+const _DRAPE_SEA_LIGHT := 1
+const _DRAPE_LIGHT := 2
+
+
+## Lay a polygon over the ground, in its own colour: the ground's slopes are shaded over it after
+## (_build_shade). It is cut row by row along the ground's lattice; where a run of lattice cells is
+## level it is laid in one piece at that height, and elsewhere cell by cell, every corner at the
+## ground's height there, so it lies on the ground as everything else reads it.
+func _drape(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array, poly: PackedVector2Array,
+		col: Color, mode: int = _DRAPE_SHADED) -> void:
+	if poly.size() < 3:
+		return
+	var g := Ground.NODE
+	var box := _box_of(poly)
+	for j in range(floori(box.position.y / g), ceili(box.end.y / g)):
+		var y0 := float(j) * g
+		var row := PackedVector2Array([Vector2(box.position.x - 1.0, y0), Vector2(box.end.x + 1.0, y0),
+			Vector2(box.end.x + 1.0, y0 + g), Vector2(box.position.x - 1.0, y0 + g)])
+		for piece in Geometry2D.intersect_polygons(poly, row):
+			if Geometry2D.is_polygon_clockwise(piece):
+				continue
+			var pb := _box_of(piece)
+			var i0 := floori(pb.position.x / g)
+			var i1 := ceili(pb.end.x / g)
+			var i := i0
+			while i < i1:
+				var level := _ground.cell_level(i, j)
+				var k := i + 1
+				if not is_nan(level):
+					while k < i1 and absf(_ground.cell_level(k, j) - level) < 0.001:
+						k += 1
+				if i == i0 and k == i1:
+					_drape_part(verts, cols, idx, piece, col, mode, level, Vector2i(i, j))
+				else:
+					var cell := PackedVector2Array([Vector2(float(i) * g, y0 - 0.5), Vector2(float(k) * g, y0 - 0.5),
+						Vector2(float(k) * g, y0 + g + 0.5), Vector2(float(i) * g, y0 + g + 0.5)])
+					for part in Geometry2D.intersect_polygons(piece, cell):
+						if not Geometry2D.is_polygon_clockwise(part):
+							_drape_part(verts, cols, idx, part, col, mode, level, Vector2i(i, j))
+				i = k
+
+
+## One piece of a draped polygon: at `level` throughout, or where that is NAN on the ground point
+## by point, within lattice cell `at`.
+func _drape_part(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array, pts: PackedVector2Array,
+		col: Color, mode: int, level: float, at: Vector2i, cut: bool = true) -> void:
+	var flat := not is_nan(level)
+	if flat and cut and mode != _DRAPE_SHADED:
+		# The light turns from shade to sun along one line across the board: a level piece is cut
+		# there, so neither side's colour is blended across it.
+		var across := (_bounds.get_center().y + level * ISO_RISE) / ISO_Y   # x + y of that line in plan
+		var lo := INF
+		var hi := -INF
+		for p in pts:
+			lo = minf(lo, p.x + p.y)
+			hi = maxf(hi, p.x + p.y)
+		if lo < across - 0.01 and hi > across + 0.01:
+			var big := 1.0e6
+			for side in [-1.0, 1.0]:
+				var half := PackedVector2Array([Vector2(across * 0.5, across * 0.5) + Vector2(big, -big),
+					Vector2(across * 0.5, across * 0.5) + Vector2(-big, big),
+					Vector2(across * 0.5, across * 0.5) + Vector2(-big, big) + Vector2(big, big) * side,
+					Vector2(across * 0.5, across * 0.5) + Vector2(big, -big) + Vector2(big, big) * side])
+				for part in Geometry2D.intersect_polygons(pts, half):
+					if not Geometry2D.is_polygon_clockwise(part):
+						_drape_part(verts, cols, idx, part, col, mode, level, at, false)
+			return
+	var tris := Geometry2D.triangulate_polygon(pts)
+	if tris.is_empty():
+		return
+	var base := verts.size()
+	var cd: Array = [] if flat else _ground.cell(at.x, at.y)
+	var corner := Vector2(at) * Ground.NODE
+	for p in pts:
+		var h := level
+		if not flat:
+			# Read off the cell, as the ground's height is.
+			h = Ground.cell_height(cd, clampf((p.x - corner.x) / Ground.NODE, 0.0, 1.0),
+				clampf((p.y - corner.y) / Ground.NODE, 0.0, 1.0))
+		var q := iso(p, h)
+		verts.append(Vector3(q.x, q.y, 0.0))
+		match mode:
+			_DRAPE_SEA_LIGHT:
+				var t := _light_at(q)
+				cols.append(Color(_SEA_PALE.r, _SEA_PALE.g, _SEA_PALE.b, (t - 0.5) * 2.0 * _SEA_PALE_ALPHA) if t >= 0.5
+					else Color(_SEA_DEEP.r, _SEA_DEEP.g, _SEA_DEEP.b, (0.5 - t) * 2.0 * _SEA_DEEP_ALPHA))
+			_DRAPE_LIGHT:
+				cols.append(_light_wash(_light_at(q)))
+			_:
+				cols.append(col)
+	for k in tris:
+		idx.append(base + k)
+
+
+## How much of its colour ground rising by `grad` (height per map unit) keeps: less the steeper it
+## is, and most where it faces the sun, as the slopes between tiles have always been shaded.
+static func _shade_of(grad: Vector2) -> float:
+	var steep := grad.length()
+	if steep < Ground.LEVEL_SLOPE:
+		return 1.0
+	var downhill := -grad / steep
+	return 1.0 - clampf(steep / SLOPE_SHADE_FULL, 0.0, 1.0) * (0.2 - 0.16 * maxf(0.0, downhill.dot(_SUN)))
+
+
+## A tile's shading, multiplied over its ground layer (_draw_grade): every sloping cell of the
+## lattice over the tile and its skirts, cut _SHADE_SUB ways each way, each corner as dark as the
+## ground's slope there (_shade_of). The slope is read off the ground's smooth spline, so the shading
+## runs on smoothly from cell to cell and shows no squares. Level ground keeps its colour.
+func _build_shade(hexp: PackedVector2Array, beside: Array) -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	var area := _skirted(hexp, beside)
+	var box := _box_of(area)
+	var g := Ground.NODE
+	var w := _SHADE_SUB + 1
+	for j in range(floori(box.position.y / g), ceili(box.end.y / g)):
+		for i in range(floori(box.position.x / g), ceili(box.end.x / g)):
+			var cd: Array = _ground.cell(i, j)
+			if not is_nan(float(cd[0])):
+				continue
+			var o := Vector2(float(i), float(j)) * g
+			var square := PackedVector2Array([o, o + Vector2(g, 0.0), o + Vector2(g, g), o + Vector2(0.0, g)])
+			var inside := true
+			for q in square:
+				inside = inside and Geometry2D.is_point_in_polygon(q, area)
+			if inside:
+				var base := verts.size()
+				for sy in range(w):
+					for sx in range(w):
+						_shade_vertex(verts, cols, cd, o, sx, sy)
+				for sy in range(_SHADE_SUB):
+					for sx in range(_SHADE_SUB):
+						var a := base + sy * w + sx
+						idx.append_array([a, a + 1, a + w + 1, a, a + w + 1, a + w])
+				continue
+			# A cell at the edge of the tile: its fine squares cut to the tile, each corner read off the cell.
+			var step := g / float(_SHADE_SUB)
+			for sy in range(_SHADE_SUB):
+				for sx in range(_SHADE_SUB):
+					var so := o + Vector2(float(sx), float(sy)) * step
+					var sub := PackedVector2Array([so, so + Vector2(step, 0.0), so + Vector2(step, step), so + Vector2(0.0, step)])
+					for piece in Geometry2D.intersect_polygons(sub, area):
+						var tris := Geometry2D.triangulate_polygon(piece)
+						if Geometry2D.is_polygon_clockwise(piece) or tris.is_empty():
+							continue
+						var base := verts.size()
+						for p in piece:
+							var u := clampf((p.x - o.x) / g, 0.0, 1.0)
+							var v := clampf((p.y - o.y) / g, 0.0, 1.0)
+							var m := _shade_of(Ground.cell_gradient(cd, u, v))
+							var q := iso(p, Ground.cell_height(cd, u, v))
+							verts.append(Vector3(q.x, q.y, 0.0))
+							cols.append(Color(m, m, m))
+						for k in tris:
+							idx.append(base + k)
+	return _mesh_of(verts, cols, idx)
+
+
+## One corner (sx, sy) of the fine squares of a sloping cell whose near corner is `o`, its slope read
+## off weights worked out once (_shade_weights).
+func _shade_vertex(verts: PackedVector3Array, cols: PackedColorArray, cd: Array, o: Vector2, sx: int, sy: int) -> void:
+	var tw: Array = _shade_weights()
+	var nodes: PackedFloat32Array = cd[1]
+	var grad := Vector2(Ground._spline_at(nodes, tw[1][sx], tw[0][sy]), Ground._spline_at(nodes, tw[0][sx], tw[1][sy])) / Ground.NODE
+	var m := _shade_of(grad)
+	var u := float(sx) / float(_SHADE_SUB)
+	var v := float(sy) / float(_SHADE_SUB)
+	var q := iso(o + Vector2(u, v) * Ground.NODE, Ground.cell_height(cd, u, v))
+	verts.append(Vector3(q.x, q.y, 0.0))
+	cols.append(Color(m, m, m))
+
+
+static var _shade_w: Array = []
+## The spline's weights, and their rates of change, at each of the fine squares' corners across a cell.
+static func _shade_weights() -> Array:
+	if _shade_w.is_empty():
+		var w: Array = []
+		var dw: Array = []
+		for k in range(_SHADE_SUB + 1):
+			w.append(Ground._spline(float(k) / float(_SHADE_SUB)))
+			dw.append(Ground._spline_slope(float(k) / float(_SHADE_SUB)))
+		_shade_w = [w, dw]
+	return _shade_w
+
+
+## A stroke laid on the ground: every corner at the ground's height there.
+func _stroke_on(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
+		pts: PackedVector2Array, width: float, col: Color) -> void:
+	for i in range(pts.size() - 1):
+		var a := pts[i]
+		var b := pts[i + 1]
+		if a.distance_squared_to(b) < 0.01:
+			continue
+		var along := (b - a).normalized() * width * 0.5
+		var side := along.orthogonal()
+		var corners := [a - along + side, b + along + side, b + along - side, a - along - side]
+		var board: Array = []
+		for q in corners:
+			board.append(iso(q, _height_at(q)))
+		_quad(verts, cols, idx, board[0], board[1], board[2], board[3], col)
 
 
 ## One cut-away wall. `pts` is [[plan point, height]] round its outline; a and b are the ends
@@ -865,29 +1628,6 @@ static func _warm(col: Color) -> Color:
 	return Color.from_hsv(hue, minf(1.0, col.s * 1.12 + 0.03), col.v * 0.98, col.a)
 
 
-## The two points of a polygon lying on the line through `origin` with normal `n`, ordered
-## from the `a` end to the `b` end; a and b themselves when the polygon does not reach it.
-static func _on_line(poly: PackedVector2Array, origin: Vector2, n: Vector2, a: Vector2, b: Vector2) -> Array:
-	var dir := (b - a).normalized()
-	var lo := INF
-	var hi := -INF
-	for p in poly:
-		if absf((p - origin).dot(n)) < 0.05:
-			var s := (p - origin).dot(dir)
-			lo = minf(lo, s)
-			hi = maxf(hi, s)
-	if lo > hi:
-		return [a, b]
-	return [origin + dir * lo, origin + dir * hi]
-
-
-## A polygon, or when the tile's top has been cut back for a slope, its parts inside the top.
-static func _within(pts: PackedVector2Array, top_poly: PackedVector2Array, sloped: bool) -> Array:
-	if not sloped:
-		return [pts]
-	return _clip(pts, top_poly)
-
-
 static func _quad_cols(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
 		pts: Array, colours: Array) -> void:
 	var base := verts.size()
@@ -896,23 +1636,6 @@ static func _quad_cols(verts: PackedVector3Array, cols: PackedColorArray, idx: P
 		cols.append(colours[i])
 	for i in [0, 1, 2, 0, 2, 3]:
 		idx.append(base + i)
-
-
-## A polygon of open water, each corner coloured by how the light falls there.
-func _poly_lit(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
-		pts: PackedVector2Array, h: float) -> void:
-	var tris := Geometry2D.triangulate_polygon(pts)
-	if tris.is_empty():
-		return
-	var base := verts.size()
-	for p in pts:
-		var q := iso(p, h)
-		var t := _light_at(q)
-		verts.append(Vector3(q.x, q.y, 0.0))
-		cols.append(Color(_SEA_PALE.r, _SEA_PALE.g, _SEA_PALE.b, (t - 0.5) * 2.0 * _SEA_PALE_ALPHA) if t >= 0.5
-			else Color(_SEA_DEEP.r, _SEA_DEEP.g, _SEA_DEEP.b, (0.5 - t) * 2.0 * _SEA_DEEP_ALPHA))
-	for k in tris:
-		idx.append(base + k)
 
 
 ## A polygon already in board space.
@@ -962,23 +1685,6 @@ static func _light_tint(t: float) -> Color:
 	return _TINT_SHADE.lerp(_TINT_SUN, t)
 
 
-## Is a point of a tile open water: in a lake, or in the sea where no land lies over it. The
-## sea's sheets run on under the land, which is painted over them.
-static func _is_water(rel: Dictionary, p: Vector2) -> bool:
-	for w in rel.get("lakes", []):
-		if Geometry2D.is_point_in_polygon(p, w):
-			return true
-	var in_sea := false
-	for e in rel.get("sea", []):
-		in_sea = in_sea or Geometry2D.is_point_in_polygon(p, e["p"])
-	if not in_sea:
-		return false
-	for e in rel.get("land", []):
-		if Geometry2D.is_point_in_polygon(p, e["p"]):
-			return false
-	return true
-
-
 ## A tile's shoreline: every edge of its land that has open water just beyond it, as
 ## [[p0, p1, outward normal]]. Worked out once per tile and kept with its relief. The coast
 ## is not one band's outline: wherever the lowest ground stops short of the water a higher
@@ -999,30 +1705,352 @@ static func _shore_of(rel: Dictionary, hexp: PackedVector2Array) -> Array:
 			if p0.distance_squared_to(p1) < 0.01:
 				continue
 			var mid := (p0 + p1) * 0.5
-			if _on_border(mid, hexp):
+			if Ground._on_border(mid, hexp):
 				continue
 			var out := (p1 - p0).normalized().orthogonal() * flip
-			if _is_water(rel, mid + out * 3.0):
+			if Ground.is_water(rel, mid + out * 3.0):
 				shore.append([p0, p1, out])
 	rel["shore"] = shore
 	return shore
 
 
-## A river's run with the stretches that lie in open water taken out: a river ends at its
-## mouth, where the map draws it running on in the sea's own colour.
-static func _on_land(rel: Dictionary, pts: PackedVector2Array) -> Array:
+## A river's runs over land, each carried on through its mouth: past the last point on land to
+## the shoreline and on into the open water, where the map draws it running on in the sea's
+## own colour. Returns [{pts, cuts}]; `cuts` holds [shore point, outward normal] for each mouth,
+## the line along the shore its end is squared off on (see _stroke_to). `coast` is the tile's
+## shoreline (_shore_of); `width` the river's.
+static func _to_mouth(rel: Dictionary, pts: PackedVector2Array, coast: Array, width: float) -> Array:
 	var runs: Array = []
-	var run := PackedVector2Array()
+	var wet: Array = []
 	for p in pts:
-		if _is_water(rel, p):
-			if run.size() >= 2:
-				runs.append(run)
-			run = PackedVector2Array()
-		else:
-			run.append(p)
-	if run.size() >= 2:
-		runs.append(run)
+		wet.append(Ground.is_water(rel, p))
+	var i := 0
+	while i < pts.size():
+		if bool(wet[i]):
+			i += 1
+			continue
+		var j := i
+		while j + 1 < pts.size() and not bool(wet[j + 1]):
+			j += 1
+		var run := pts.slice(i, j + 1)
+		var cuts: Array = []
+		if i > 0:
+			var m: Array = _mouth(rel, pts[i], pts[i - 1], coast, width)
+			run.insert(0, m[0])
+			cuts.append(m[1])
+		if j < pts.size() - 1:
+			var m2: Array = _mouth(rel, pts[j], pts[j + 1], coast, width)
+			run.append(m2[0])
+			cuts.append(m2[1])
+		if run.size() >= 2:
+			runs.append({"pts": run, "cuts": cuts})
+		i = j + 1
 	return runs
+
+
+## A river's line with its way into the sea straightened: where it runs from land into water, its last
+## _MOUTH_AIM_STRETCH widths before the shore bend round, smoothly, until it crosses the shoreline square on
+## (by at most _MOUTH_AIM_MAX). Everything up river of that stretch is left as it is; the line ends at its
+## first point in the water.
+static func _aim_mouth(rel: Dictionary, line: PackedVector2Array, coast: Array, width: float) -> PackedVector2Array:
+	if line.size() < 2 or coast.is_empty():
+		return line
+	var flipped := Ground.is_water(rel, line[0]) and not Ground.is_water(rel, line[line.size() - 1])
+	var pts := PackedVector2Array(line)
+	if flipped:
+		pts.reverse()
+	var wet := -1
+	for i in range(1, pts.size()):
+		if Ground.is_water(rel, pts[i]) and not Ground.is_water(rel, pts[i - 1]):
+			wet = i
+			break
+	if wet < 0:
+		return line
+	var m: Array = _mouth(rel, pts[wet - 1], pts[wet], coast, width)
+	var at: Vector2 = (m[1] as Array)[0]
+	var n: Vector2 = (m[1] as Array)[1]
+	var dir := (pts[wet] - pts[wet - 1]).normalized()
+	var turn := clampf(dir.angle_to(n), -_MOUTH_AIM_MAX, _MOUTH_AIM_MAX)
+	if absf(turn) < deg_to_rad(1.0):
+		return line
+	# The pivot: the stretch's length up river from the shore.
+	var stretch := width * _MOUTH_AIM_STRETCH
+	var back := at.distance_to(pts[wet - 1])
+	var k := wet - 1
+	while k > 0 and back + pts[k].distance_to(pts[k - 1]) < stretch:
+		back += pts[k].distance_to(pts[k - 1])
+		k -= 1
+	var pivot := pts[k]
+	if k > 0 and back < stretch:
+		pivot = pts[k].lerp(pts[k - 1], clampf((stretch - back) / maxf(pts[k].distance_to(pts[k - 1]), 0.001), 0.0, 1.0))
+	var out := pts.slice(0, k)
+	out.append(pivot)
+	var run := 0.0
+	var prev := pivot
+	# Only as far as its first point in the water: the sea draws the rest, and a line swung out over the sea
+	# could find land again at the tile's edge and open a second mouth there.
+	for i in range(k, wet + 1):
+		run += prev.distance_to(pts[i])
+		prev = pts[i]
+		out.append(pivot + (pts[i] - pivot).rotated(turn * smoothstep(0.0, 1.0, run / stretch)))
+	if flipped:
+		out.reverse()
+	return out
+
+
+## Where a river leaves the land between a point on land and the next in open water:
+## [the point its run is carried on to, [shore point, outward normal]]. The normal is the
+## shore's own where it crosses, so the river's end lies along the shore, not square across it.
+static func _mouth(rel: Dictionary, dry: Vector2, wet: Vector2, coast: Array, width: float) -> Array:
+	var lo := dry
+	var hi := wet
+	for _k in range(16):
+		var mid := (lo + hi) * 0.5
+		if Ground.is_water(rel, mid):
+			hi = mid
+		else:
+			lo = mid
+	var at := (lo + hi) * 0.5
+	var dir := (wet - dry).normalized()
+	var n := dir
+	var best := _MOUTH_SHORE_REACH
+	for seg in coast:
+		var d := Geometry2D.get_closest_point_to_segment(at, seg[0], seg[1]).distance_to(at)
+		if d < best and (seg[2] as Vector2).dot(dir) > 0.1:
+			best = d
+			n = seg[2]
+	# Far enough on that the whole width of the river reaches the line it is cut on.
+	var reach := minf((_MOUTH + width) / maxf(n.dot(dir), 0.3), at.distance_to(wet))
+	return [at + dir * reach, [at, n]]
+
+
+## Where a river meets the sea: over its last few widths it flares out, its banks turning to the beach's sand
+## and its water paling into the shallows' colour, and at the shoreline it fans on into the sea and fades
+## there. Near the shore the flare turns to lie along the shoreline, so both banks reach the beach evenly
+## however the river meets it, and what runs out to sea is kept to the open water (`sea`), never the beach.
+## `cut` is the mouth ([shore point, outward normal]); `pts` the river's run; `width` its width.
+func _estuary(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
+		pts: PackedVector2Array, cut: Array, width: float, water: Color, hexp: PackedVector2Array,
+		sea: Array) -> void:
+	var at: Vector2 = cut[0]
+	var n: Vector2 = cut[1]
+	# The run from the shore upstream: start at the end nearer the mouth, step in to the shore point.
+	var path := PackedVector2Array(pts)
+	if path[path.size() - 1].distance_to(at) < path[0].distance_to(at):
+		path.reverse()
+	var up := PackedVector2Array([at])
+	for p in path:
+		if (p - at).dot(n) < 0.0:           # on the land side of the shore
+			up.append(p)
+	if up.size() < 2:
+		return
+	var reach := width * _ESTUARY_UP
+	# Stations from upstream (t = 0) to the shore (t = 1), then out to sea (t = 2): [centre, across, width, t],
+	# `across` the unit way the width is laid. Up the river it is square to the river; by the shore it lies
+	# along the shoreline.
+	var along_shore := n.orthogonal()
+	var stations: Array = []
+	for k in range(_ESTUARY_STEPS + 1):
+		var t := float(k) / float(_ESTUARY_STEPS)
+		var d := reach * (1.0 - t)
+		var c := _point_along(up, d)
+		var dir := (_point_along(up, maxf(d - 1.0, 0.0)) - _point_along(up, d + 1.0)).normalized()
+		if dir == Vector2.ZERO:
+			dir = n
+		var square := dir.orthogonal()
+		var shore := along_shore if along_shore.dot(square) >= 0.0 else -along_shore
+		var across := square.slerp(shore, smoothstep(0.4, 1.0, t)).normalized()
+		var w := width * lerpf(1.0, _ESTUARY_SHORE_W, smoothstep(0.0, 1.0, t))
+		stations.append([c, across, w, t])
+	var shore_across: Vector2 = stations[stations.size() - 1][1]
+	for k in range(1, _ESTUARY_STEPS + 1):
+		var t := float(k) / float(_ESTUARY_STEPS)
+		stations.append([at + n * _ESTUARY_OUT * t, shore_across, width * lerpf(_ESTUARY_SHORE_W, _ESTUARY_SEA_W, t), 1.0 + t])
+	var shallows := water.lightened(0.3)
+	for k in range(stations.size() - 1):
+		var a: Array = stations[k]
+		var b: Array = stations[k + 1]
+		if not Geometry2D.is_point_in_polygon(((a[0] as Vector2) + (b[0] as Vector2)) * 0.5, hexp):
+			continue
+		var ta := float(a[3])
+		var tb := float(b[3])
+		# The banks turn to the beach's sand as they open out, solid, from halfway down to the shore.
+		var to_sea := tb > 1.0
+		var clip: Array = sea if to_sea else []
+		if ta >= 0.5 and not to_sea:
+			_estuary_quad(verts, cols, idx, a, b, 1.0, 3.0,
+				_BANK.lerp(_SAND, smoothstep(0.5, 1.0, ta)), _BANK.lerp(_SAND, smoothstep(0.5, 1.0, tb)), clip)
+		_estuary_quad(verts, cols, idx, a, b, 1.0, 0.0, _estuary_colour(water, shallows, ta), _estuary_colour(water, shallows, tb), clip)
+		# The river's paler middle runs on into the mouth and pales with it.
+		var middle := water.lightened(0.16)
+		_estuary_quad(verts, cols, idx, a, b, 0.45, 0.0, _estuary_colour(middle, shallows, ta), _estuary_colour(middle, shallows, tb), clip)
+
+
+## The estuary's water at `t`: the river's own colour upstream, paling to the shallows' at the shore, then
+## fading out over the sea.
+static func _estuary_colour(water: Color, shallows: Color, t: float) -> Color:
+	if t <= 1.0:
+		return water.lerp(shallows, smoothstep(0.35, 1.0, t))
+	return Color(shallows, 1.0 - smoothstep(1.0, 2.0, t))
+
+
+## One step of the estuary between two stations ([centre, across, width, t]), `scale` times as wide plus
+## `pad`, on the ground. With `clip`, only what lies over those polygons is laid, each corner coloured by how
+## far along it is.
+func _estuary_quad(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
+		a: Array, b: Array, scale: float, pad: float, col_a: Color, col_b: Color, clip: Array = []) -> void:
+	var sa: Vector2 = (a[1] as Vector2) * (float(a[2]) * 0.5 * scale + pad)
+	var sb: Vector2 = (b[1] as Vector2) * (float(b[2]) * 0.5 * scale + pad)
+	var ca: Vector2 = a[0]
+	var cb: Vector2 = b[0]
+	if clip.is_empty():
+		var corners := [ca + sa, cb + sb, cb - sb, ca - sa]
+		var board: Array = []
+		for q in corners:
+			board.append(iso(q, _height_at(q)))
+		_quad_cols(verts, cols, idx, board, [col_a, col_b, col_b, col_a])
+		return
+	var quad := PackedVector2Array([ca + sa, cb + sb, cb - sb, ca - sa])
+	var run := cb - ca
+	var span := maxf(run.length_squared(), 0.0001)
+	for piece in clip:
+		for part in Geometry2D.intersect_polygons(quad, piece):
+			var tri := Geometry2D.triangulate_polygon(part)
+			if tri.is_empty():
+				continue
+			var base := verts.size()
+			for p in part:
+				var p2 := iso(p, _height_at(p))
+				verts.append(Vector3(p2.x, p2.y, 0.0))
+				cols.append(col_a.lerp(col_b, clampf((p - ca).dot(run) / span, 0.0, 1.0)))
+			for k in tri:
+				idx.append(base + k)
+
+
+## The point `d` along a polyline from its start (its end when it is shorter).
+static func _point_along(line: PackedVector2Array, d: float) -> Vector2:
+	var left := d
+	for i in range(line.size() - 1):
+		var seg := line[i].distance_to(line[i + 1])
+		if left <= seg and seg > 0.0:
+			return line[i].lerp(line[i + 1], left / seg)
+		left -= seg
+	return line[line.size() - 1]
+
+
+## A stroke along a line whose every point stands at its own height (`hs`), sheared from one to the
+## next as a slope projects, cut off at each of `cuts` ([point, outward normal]) a distance `reach`
+## beyond it, near that point.
+static func _stroke_to(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
+		pts: PackedVector2Array, width: float, col: Color, cuts: Array, reach: float,
+		hs: PackedFloat32Array) -> void:
+	for i in range(pts.size() - 1):
+		var a := pts[i]
+		var b := pts[i + 1]
+		if a.distance_squared_to(b) < 0.01:
+			continue
+		var along := (b - a).normalized() * width * 0.5
+		var side := along.orthogonal()
+		var quad := PackedVector2Array([a - along + side, b + along + side, b + along - side, a - along - side])
+		for cut in cuts:
+			var at: Vector2 = cut[0]
+			var n: Vector2 = cut[1]
+			if Geometry2D.get_closest_point_to_segment(at, a, b).distance_to(at) < width + _MOUTH * 6.0:
+				quad = Atlas.clip(quad, at + n * reach, -n)
+		if quad.size() >= 3:
+			_poly_along(verts, cols, idx, quad, a, b, hs[i], hs[i + 1], col)
+
+
+## A polygon laid along a stretch from `a` (at height ha) to `b` (at hb): each corner at the height
+## of the stretch where it lies square across from it.
+static func _poly_along(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
+		pts: PackedVector2Array, a: Vector2, b: Vector2, ha: float, hb: float, col: Color) -> void:
+	var tris := Geometry2D.triangulate_polygon(pts)
+	if tris.is_empty():
+		return
+	var run := b - a
+	var span := maxf(run.length_squared(), 0.000001)
+	var base := verts.size()
+	for p in pts:
+		var q := iso(p, lerpf(ha, hb, clampf((p - a).dot(run) / span, 0.0, 1.0)))
+		verts.append(Vector3(q.x, q.y, 0.0))
+		cols.append(col)
+	for k in tris:
+		idx.append(base + k)
+
+
+## A line over a tile's ground: its points, with every place the ground changes under it added, and
+## the height there. Returns [PackedVector2Array, PackedFloat32Array].
+func _ground_line(line: PackedVector2Array) -> Array:
+	var pts := PackedVector2Array()
+	var hs := PackedFloat32Array()
+	for i in range(line.size()):
+		if i == 0:
+			pts.append(line[0])
+			hs.append(_height_at(line[0]))
+			continue
+		var a := line[i - 1]
+		var b := line[i]
+		if a.distance_to(b) < 0.01:
+			continue
+		var prof: Array = _profile(a, b)
+		for k in range(1, prof.size()):
+			pts.append(a.lerp(b, float(prof[k][0])))
+			hs.append(float(prof[k][1]))
+	return [pts, hs]
+
+
+## White water where a river falls down a slope: broken foam down the fall, and at its foot a
+## bar of foam over a thin line of shadow. Only where the fall is RAPIDS_DROP or more.
+static func _white_water(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
+		pts: PackedVector2Array, hs: PackedFloat32Array, width: float) -> void:
+	var i := 0
+	while i < pts.size() - 1:
+		if absf(hs[i + 1] - hs[i]) < 0.05:
+			i += 1
+			continue
+		var j := i
+		while j < pts.size() - 1 and absf(hs[j + 1] - hs[j]) >= 0.05:
+			j += 1
+		var fall := absf(hs[j] - hs[i])
+		if fall >= RAPIDS_DROP:
+			# Down the fall: short streaks of foam, staggered either side of the middle.
+			var n := 0
+			for k in range(i, j):
+				var a := pts[k]
+				var b := pts[k + 1]
+				var length := a.distance_to(b)
+				var dir := (b - a) / maxf(length, 0.001)
+				var d := 1.5
+				while d < length - 1.0:
+					var off := dir.orthogonal() * width * (0.18 if n % 2 == 0 else -0.18)
+					var p0 := a + dir * d + off
+					var p1 := a + dir * minf(d + 4.0, length) + off
+					var t0 := d / length
+					var t1 := minf(d + 4.0, length) / length
+					_poly_along(verts, cols, idx, _bar(p0, p1, width * 0.22), p0, p1,
+						lerpf(hs[k], hs[k + 1], t0), lerpf(hs[k], hs[k + 1], t1), _FOAM)
+					d += 6.5
+					n += 1
+			# The foot: the lower end of the fall, which may be the tile's own edge, so the mark is
+			# laid just up the fall from it.
+			var foot := j if hs[j] < hs[i] else i
+			var up := foot - 1 if foot == j else foot + 1
+			var back := pts[up] - pts[foot]
+			var run := maxf(back.length(), 0.001)
+			var across := back.orthogonal().normalized() * width * 0.62
+			for mark in [[1.0, 1.0, _INK_SOFT], [3.5, 3.0, _FOAM]]:
+				var d := minf(float(mark[0]), run)
+				var at := pts[foot] + back / run * d
+				_stroke(verts, cols, idx, PackedVector2Array([at - across, at + across]), float(mark[1]),
+					lerpf(hs[foot], hs[up], d / run), mark[2])
+		i = j
+
+
+## A bar of the given width along a stretch, as a polygon.
+static func _bar(a: Vector2, b: Vector2, width: float) -> PackedVector2Array:
+	var side := (b - a).normalized().orthogonal() * width * 0.5
+	return PackedVector2Array([a + side, b + side, b - side, a - side])
 
 
 ## Points on a tile's water for the sun to catch. Fixed for the tile: the water never moves.
@@ -1038,12 +2066,11 @@ func _seed_glints(tile_id: String, t: Dictionary, rel: Dictionary, is_sea: bool)
 			var p := c + Vector2(rng.randf_range(-270.0, 270.0), rng.randf_range(-240.0, 240.0))
 			if not Geometry2D.is_point_in_polygon(p, Model.hex_points(c)):
 				continue
-			if is_sea or _is_water(rel, p):
+			if is_sea or Ground.is_water(rel, p):
 				found.append([p, rng.randf() * TAU, rng.randf_range(0.7, 1.3)])
 		_glint_cache[tile_id] = found
 	for g in _glint_cache[tile_id]:
-		if Geometry2D.is_point_in_polygon(g[0], t.get("top_poly", PackedVector2Array())):
-			_glints.append({"at": iso(g[0], float(t["height"])), "phase": float(g[1]), "rate": float(g[2])})
+		_glints.append({"at": iso(g[0], _height_at(g[0])), "phase": float(g[1]), "rate": float(g[2])})
 
 
 static func _quad(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
@@ -1054,44 +2081,6 @@ static func _quad(verts: PackedVector3Array, cols: PackedColorArray, idx: Packed
 		cols.append(col)
 	for i in [0, 1, 2, 0, 2, 3]:
 		idx.append(base + i)
-
-
-static func _poly(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
-		pts: PackedVector2Array, h: float, col: Color) -> void:
-	var tris := Geometry2D.triangulate_polygon(pts)
-	if tris.is_empty():
-		return
-	var base := verts.size()
-	for p in pts:
-		var q := iso(p, h)
-		verts.append(Vector3(q.x, q.y, 0.0))
-		cols.append(col)
-	for i in tris:
-		idx.append(base + i)
-
-
-## The camera-facing step faces of a terrace. Edges lying on the tile's own border are left
-## out: the band carries on into the next tile there, so a face would draw a seam.
-static func _risers(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
-		pts: PackedVector2Array, hexp: PackedVector2Array, h: float, col: Color) -> void:
-	var signed := 0.0
-	for i in range(pts.size()):
-		signed += pts[i].x * pts[(i + 1) % pts.size()].y - pts[(i + 1) % pts.size()].x * pts[i].y
-	var flip := 1.0 if signed >= 0.0 else -1.0
-	for i in range(pts.size()):
-		var a := pts[i]
-		var b := pts[(i + 1) % pts.size()]
-		var n := (b - a).orthogonal() * flip
-		if n.x + n.y <= 0.0 or _on_border((a + b) * 0.5, hexp):
-			continue
-		_quad(verts, cols, idx, iso(a, h), iso(b, h), iso(b, h - TERRACE_STEP), iso(a, h - TERRACE_STEP), col)
-
-
-static func _on_border(p: Vector2, hexp: PackedVector2Array) -> bool:
-	for i in range(6):
-		if Geometry2D.get_closest_point_to_segment(p, hexp[i], hexp[(i + 1) % 6]).distance_squared_to(p) < 1.0:
-			return true
-	return false
 
 
 static func _stroke(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array,
@@ -1113,8 +2102,20 @@ func _build_standing() -> void:
 			continue
 		var d: Dictionary = (s as Dictionary).duplicate()
 		var pos: Vector2 = d["pos"]
-		var h := _height_at(str(d["tile"]), pos)
 		var side := float(d["side"])
+		var h := _height_at(pos)
+		if str(d["kind"]) != "pylon" and not (_mine_flush(str(d.get("internal_name", "")), int(d["level"])) != null):
+			# A building stands level on the highest ground of its footprint: where that ground
+			# is not level, on a plinth down to it.
+			var foot: Array = []
+			var low := h
+			for corner in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
+				var ch := _height_at(pos + corner * side * 0.5)
+				foot.append(ch)
+				h = maxf(h, ch)
+				low = minf(low, ch)
+			if h - low > PLINTH_MIN:
+				d["plinth"] = foot
 		d["h"] = h
 		d["at"] = iso(pos, h)
 		d["tint"] = _light_tint(_light_at(d["at"]))
@@ -1205,15 +2206,20 @@ static func _mine_flush(internal_name: String, level: int) -> Texture2D:
 	return _mine_tex[lv] if not _mine_drop.is_empty() else null
 
 
-func _build_lines() -> void:
+func _build_lines(gen: int) -> void:
 	var tiles: Dictionary = _model.get("tiles", {})
 	var by_iid: Dictionary = {}
 	for s in _standing:
 		by_iid[str(s["iid"])] = s
-	_build_roads(tiles)
+	await _build_roads(tiles, gen)
+	if gen != _build_gen:
+		return
 	var laid_track: Dictionary = {}
 	# Any way that cannot follow the streets (two tiles that do not touch) is a plain line.
 	for l in _model.get("lines", []):
+		await _pace()
+		if gen != _build_gen:
+			return
 		var mode := str(l["mode"])
 		if mode == Model.MODE_CABLE or Model.PIPE_MODES.has(mode):
 			continue
@@ -1262,7 +2268,7 @@ func _build_lines() -> void:
 			else:
 				var plain := PackedVector2Array()
 				for node in nodes:
-					plain.append(iso(node["p"], float(tiles[str(node["tile"])]["height"]) + 4.0))
+					plain.append(iso(node["p"], _ground_h(node) + 4.0))
 				_pipes.append({"mode": mode, "pts": plain, "tile": str(nodes[0]["tile"])})
 	# A sign at the start of every stretch whose contents differ from the stretch before it.
 	for st in stretches:
@@ -1284,7 +2290,7 @@ func _build_lines() -> void:
 		if side.x + side.y < 0.0:
 			side = -side
 		var foot: Vector2 = at + side * _SIGN_OFFSET
-		var gh := float(tiles[str(st["tile"])]["height"])
+		var gh := _height_at(foot)
 		var icons: Array = []
 		for g in goods:
 			if str(g) != "":
@@ -1423,17 +2429,20 @@ func _build_lamps() -> void:
 		if n < 1:
 			continue
 		var tile := str(r["tile"])
-		var h := float(tiles[tile]["height"])
 		var dir := (b - a) / length
 		# On the far side of the street, so the post stands behind the road it lights.
 		var side := dir.orthogonal()
 		if side.x + side.y > 0.0:
 			side = -side
 		var off := (_ROAD_HALF + 5.0) if int(r["level"]) > 1 else (_DRIVE_HALF + 4.0)
+		var rel: Dictionary = _relief_cache.get(tile, {})
 		for i in range(n):
 			var p := a + dir * ((float(i) + 0.5) * length / float(n)) + side * off
-			if not Geometry2D.is_point_in_polygon(p, tiles[tile].get("top_poly", Model.hex_points(tiles[tile]["center"]))):
+			if not Geometry2D.is_point_in_polygon(p, Model.hex_points(tiles[tile]["center"])):
 				continue
+			if Ground.is_water(rel, p):
+				continue                          # no lamp stands in the sea
+			var h := _height_at(p)
 			var foot := iso(p, h)
 			var head := iso(p - side * 3.0, h + _LAMP_HEIGHT)
 			var lit := int(tiles[tile].get("polluters", 0)) > 0
@@ -1462,7 +2471,6 @@ func _build_cars() -> void:
 	_cars.clear()
 	if not plate_town or not bool(show["roads"]) or not _car_kit().ok():
 		return
-	var tiles: Dictionary = _model.get("tiles", {})
 	var n := 0
 	for r in _model.get("roads", []):
 		var a: Vector2 = r["a"]
@@ -1470,7 +2478,7 @@ func _build_cars() -> void:
 		var length := a.distance_to(b)
 		if str(r["kind"]) == "spur" or length < _CAR_GAP * 0.6:
 			continue
-		var h := float(tiles[str(r["tile"])]["height"])
+		var tile := str(r["tile"])
 		var dir := (b - a) / length
 		var lane := dir.orthogonal() * (2.6 if int(r["level"]) == 1 else 4.2)
 		for way in [1.0, -1.0]:
@@ -1481,7 +2489,13 @@ func _build_cars() -> void:
 					continue
 				var from: Vector2 = (a if way > 0.0 else b) - lane * float(way)
 				var to: Vector2 = (b if way > 0.0 else a) - lane * float(way)
-				_cars.append({"a": iso(from, h + 1.0), "b": iso(to, h + 1.0), "length": length,
+				# Its way over the ground, as board points and how far along each lies.
+				var way_pts := PackedVector2Array()
+				var shares := PackedFloat32Array()
+				for q in _profile(from, to, tile):
+					way_pts.append(iso(from.lerp(to, float(q[0])), float(q[1]) + 1.0))
+					shares.append(float(q[0]))
+				_cars.append({"pts": way_pts, "shares": shares, "length": length,
 					"k": Pipes.k_of(dir * float(way)), "colour": hash("paint|%d" % n) % 4,
 					"phase": float(hash("start|%d" % n) % 1000) / 1000.0, "pace": _CAR_SPEED * (0.8 + 0.4 * float(n % 5) / 4.0)})
 
@@ -1493,16 +2507,33 @@ static func _car_kit() -> Atlas:
 	return _cars_atlas
 
 
+## The cars, where the clock puts each on its way. [{car, at: board point, t: how far along its stretch}]
+func _cars_now() -> Array:
+	var out: Array = []
+	for c in _cars:
+		var t := fmod(float(c["phase"]) + _clock * float(c["pace"]) / float(c["length"]), 1.0)
+		var way_pts: PackedVector2Array = c["pts"]
+		var shares: PackedFloat32Array = c["shares"]
+		var k := 0
+		while k < shares.size() - 2 and shares[k + 1] < t:
+			k += 1
+		out.append({"car": c, "t": t,
+			"at": way_pts[k].lerp(way_pts[k + 1], clampf((t - shares[k]) / maxf(shares[k + 1] - shares[k], 0.0001), 0.0, 1.0))})
+	return out
+
+
+## The cars, drawn on the street layer: over the ground, its streets and its bridges, and under everything
+## that stands, so a building, a tree or a lamp in front of a car hides it as it passes.
 func _draw_cars(layer: Control, view: Rect2) -> void:
 	var kit: Atlas = _car_kit()
 	var tex: Texture2D = kit.texture()
 	if tex == null:
 		return
 	var ppu := kit.px_per_unit()
-	for c in _cars:
-		var t := fmod(float(c["phase"]) + _clock * float(c["pace"]) / float(c["length"]), 1.0)
-		var at: Vector2 = (c["a"] as Vector2).lerp(c["b"], t)
-		var p := at * _zoom + _offset
+	for now in _cars_now():
+		var c: Dictionary = now["car"]
+		var t := float(now["t"])
+		var p: Vector2 = (now["at"] as Vector2) * _zoom + _offset
 		if not view.has_point(p):
 			continue
 		var src := kit.cell("car_%d_%d" % [int(c["colour"]), int(c["k"])])
@@ -1543,15 +2574,14 @@ func _build_trees() -> void:
 		if kind == "sea" or kind == "deep_sea" or kind == "mountain":
 			continue
 		var c: Vector2 = t["center"]
-		var h := float(t["height"])
 		var spots: Array = _tree_spots(str(tid), kind)
 		var rel: Dictionary = _relief_cache.get(tid, {})
-		var top_poly: PackedVector2Array = t.get("top_poly", Model.hex_points(c))
+		var hexp := Model.hex_points(c)
 		for spot in spots:
 			var p: Vector2 = c + (spot["p"] as Vector2)
 			if str(spot["edge"]) != "" and not used.has("%s|%s" % [str(tid), str(spot["edge"])]):
 				continue
-			if not Geometry2D.is_point_in_polygon(p, top_poly):
+			if not Geometry2D.is_point_in_polygon(p, hexp):
 				continue
 			var blocked := false
 			for pad in pads.get(tid, []):
@@ -1560,7 +2590,7 @@ func _build_trees() -> void:
 				blocked = blocked or Geometry2D.get_closest_point_to_segment(p, r["a"], r["b"]).distance_to(p) < float(r["half"]) + 4.0
 			for seg in pipe_segs:
 				blocked = blocked or Geometry2D.get_closest_point_to_segment(p, seg[0], seg[1]).distance_to(p) < 9.0
-			blocked = blocked or _is_water(rel, p)
+			blocked = blocked or Ground.is_water(rel, p)
 			for line in _rivers.get(tid, []):
 				var river: PackedVector2Array = line
 				for i in range(river.size() - 1):
@@ -1573,7 +2603,7 @@ func _build_trees() -> void:
 				continue
 			var tall := float(_TREE_HEIGHT[name]) * float(spot["scale"])
 			var wide := tall * float(tex.get_width()) / float(tex.get_height())
-			var foot := iso(p, h)
+			var foot := iso(p, _height_at(p))
 			_pipe_items.append({"kind": "tree", "tex": tex, "depth": p.x + p.y, "tile": str(tid),
 				"rect": Rect2(foot.x - wide * 0.5, foot.y - tall * 0.96, wide, tall),
 				"tint": _light_tint(_light_at(foot))})
@@ -1625,131 +2655,69 @@ static func _tree_texture(kind: String) -> Texture2D:
 	return _tree_tex[kind]
 
 
-## The streets in use, as baked pieces: a junction piece wherever roads meet, turn or change
-## width, straights between them, and a truss bridge where a street crosses a river.
-func _build_roads(tiles: Dictionary) -> void:
+## The streets in use. Each tile's streets are laid as one surface (_road_mesh): every stretch is a band
+## with rounded ends, and the bands are laid colour by colour, the ink edge of them all, then the kerb,
+## then the asphalt, then the markings, so where streets meet, cross or turn they run into one another
+## with no edge between them. A truss bridge stands where a street crosses a river.
+func _build_roads(tiles: Dictionary, gen: int) -> void:
 	_road_plan.clear()
 	var roads: Atlas = _road_kit()
 	var segs: Array = _model.get("roads", [])
-	var nodes: Dictionary = {}                # rounded plan point -> {p, arms: {k: {level, h, paved}}}
 	for s in segs:
-		var h := float(tiles[str(s["tile"])]["height"])
-		var level := int(s["level"])
-		var ends: Array = [s["a"], s["b"]]
-		for e in range(2):
-			var here: Vector2 = ends[e]
-			var there: Vector2 = ends[1 - e]
-			var nd: Dictionary = nodes.get_or_add(Vector2i(here.round()), {"p": here, "arms": {}})
-			var k: int = Pipes.k_of(there - here)
-			var arms: Dictionary = nd["arms"]
-			if not arms.has(k) or int(arms[k]["level"]) < level:
-				arms[k] = {"level": level, "h": h, "paved": bool(s["paved"]), "tile": str(s["tile"])}
-		_road_plan.append({"a": s["a"], "b": s["b"],
-			"half": roads.dim("half_%d" % level) + roads.dim("walk_%d" % level) if roads.ok() else _ROAD_HALF})
+		_road_plan.append({"a": s["a"], "b": s["b"], "half": float(_road_widths(int(s["level"]))[0])})
 	if not roads.ok():
-		# The pieces are not baked: plain lines instead.
+		# The bridges are not baked: plain lines instead.
 		for s in segs:
-			var h2 := float(tiles[str(s["tile"])]["height"])
 			_links.append({"mode": "roads" if str(s["kind"]) != "spur" else Model.MODE_DRIVE, "tile": str(s["tile"]),
-				"pts": PackedVector2Array([iso(s["a"], h2), iso(s["b"], h2)])})
+				"pts": _street_line([{"p": s["a"], "tile": s["tile"], "edge": false}, {"p": s["b"], "tile": s["tile"], "edge": false}])})
 		return
-	var arm := roads.dim("arm")
-	var pieced: Dictionary = {}               # node key -> true: a junction piece stands there
-	var climbs: Dictionary = {}               # node key -> the height the road comes down to there
-	for key in nodes:
-		var nd: Dictionary = nodes[key]
-		var arms: Dictionary = nd["arms"]
-		var ks: Array = arms.keys()
-		ks.sort()
-		if ks.size() < 2:
-			continue
-		var h0 := float(arms[ks[0]]["h"])
-		var level_ground := true
-		var paved := true
-		for k in ks:
-			level_ground = level_ground and is_equal_approx(float(arms[k]["h"]), h0)
-			paved = paved and bool(arms[k]["paved"])
-		if not level_ground:
-			# Two tiles of different heights meet here: the higher one's road runs down its
-			# slope to the lower one's level at the edge.
-			var lo := h0
-			for k in ks:
-				lo = minf(lo, float(arms[k]["h"]))
-			climbs[key] = lo
-			continue
-		if ks.size() == 2 and posmod(int(ks[0]) + 6, 12) == int(ks[1]) \
-				and int(arms[ks[0]]["level"]) == int(arms[ks[1]]["level"]):
-			continue                              # straight on at one width: no piece
-		var parts: Array = []
-		for k in ks:
-			parts.append("%d.%d" % [int(k), int(arms[k]["level"])])
-		var name := "r_j_" + "_".join(parts)
-		if not roads.has(name):
-			continue
-		pieced[key] = true
-		_road_fits.append({"name": name, "at": iso(nd["p"], h0), "tint": Color.WHITE if paved else _UNPAVED,
-			"tile": str(arms[ks[0]]["tile"])})
+	# Where stretches meet: the markings stop short of a corner or a junction, clear of the streets into it.
+	var nodes: Dictionary = {}                # rounded plan point -> {ks: {k: true}, reach}
 	for s in segs:
+		for e in [[s["a"], s["b"]], [s["b"], s["a"]]]:
+			var here: Vector2 = e[0]
+			var nd: Dictionary = nodes.get_or_add(Vector2i(here.round()), {"ks": {}, "reach": 0.0})
+			(nd["ks"] as Dictionary)[Pipes.k_of((e[1] as Vector2) - here)] = true
+			nd["reach"] = maxf(float(nd["reach"]), float(_road_widths(int(s["level"]))[0]))
+	var by_tile: Dictionary = {}              # tile -> [{a, b, level, paved, prof, clear: [at a, at b]}]
+	for s in segs:
+		await _pace()
+		if gen != _build_gen:
+			return
 		var tile := str(s["tile"])
-		var h := float(tiles[tile]["height"])
 		var a: Vector2 = s["a"]
 		var b: Vector2 = s["b"]
 		var length := a.distance_to(b)
-		var dir := (b - a) / maxf(length, 0.001)
-		# A straight runs a little way under each junction piece, so the piece's cut ends are hidden.
-		var from := (arm - _ROAD_OVERLAP) if pieced.has(Vector2i(a.round())) else 0.0
-		var to := length - ((arm - _ROAD_OVERLAP) if pieced.has(Vector2i(b.round())) else 0.0)
-		if to - from < 0.5:
+		if length < 0.5:
 			continue
-		var k6 := posmod(Pipes.k_of(dir), 6)
+		var dir := (b - a) / length
 		var level := int(s["level"])
-		var tint: Color = Color.WHITE if bool(s["paved"]) else _UNPAVED
-		var piece := "r_straight_%d_%d" % [k6, level]
-		var step := iso(Pipes.dir_of(k6) * roads.dim("tile"))
-		# Where this tile is the higher of two, the last stretch before the edge runs down the
-		# tile's slope. A ramp is the flat road sheared along its length, which is exactly how
-		# a slope projects, so the same piece draws it.
-		var flat_from := from
-		var flat_to := to
-		for e in range(2):
-			var end: Vector2 = b if e == 1 else a
-			var key := Vector2i(end.round())
-			if not climbs.has(key) or float(climbs[key]) >= h - 0.5:
-				continue
-			var drop := h - float(climbs[key])
-			# The road comes down over exactly the ground the tile's slope covers, so a road that
-			# meets the edge at an angle takes longer over it than one that meets it square.
-			var run := minf(_slope_run(end - (tiles[tile]["center"] as Vector2), dir), length * 0.8)
-			var r0 := (length - run) if e == 1 else run        # where the ramp meets the flat
-			var edge := length if e == 1 else 0.0
-			var crest := iso(a + dir * r0, h)
-			var foot := iso(a + dir * edge, h)
-			var along := (foot - crest).normalized()
-			var board_run := crest.distance_to(foot)
-			var fall := Vector2(0.0, drop * ISO_RISE)
-			for poly in roads.run_polys({"name": piece, "a": iso(a + dir * minf(r0, edge), h),
-					"b": iso(a + dir * maxf(r0, edge), h), "step": step}):
-				var pts: PackedVector2Array = poly["points"]
-				for i in range(pts.size()):
-					pts[i] += fall * clampf((pts[i] - crest).dot(along) / board_run, -0.2, 1.2)
-				poly["points"] = pts
-				poly["tint"] = tint
-				poly["tile"] = tile
-				_road_polys.append(poly)
-			if e == 1:
-				flat_to = minf(flat_to, r0)
-			else:
-				flat_from = maxf(flat_from, r0)
-		if flat_to - flat_from < 0.5:
-			continue
-		for poly in roads.run_polys({"name": piece, "a": iso(a + dir * flat_from, h),
-				"b": iso(a + dir * flat_to, h), "step": step}):
-			poly["tint"] = tint
-			poly["tile"] = tile
-			_road_polys.append(poly)
+		var prof: Array = _profile(a, b, tile)
+		var clear: Array = []
+		var edge: Array = []
+		var rounded: Array = []
+		for end in [a, b]:
+			var nd: Dictionary = nodes[Vector2i((end as Vector2).round())]
+			var ks: Array = (nd["ks"] as Dictionary).keys()
+			var through := ks.size() == 2 and posmod(int(ks[0]) - int(ks[1]), 12) == 6
+			edge.append(_at_shared_edge(tile, end))
+			rounded.append(not through and not bool(edge[edge.size() - 1]))
+			clear.append(0.0 if not bool(rounded[rounded.size() - 1]) else float(nd["reach"]) + 2.0)
+		(by_tile.get_or_add(tile, []) as Array).append({"tile": tile, "a": a, "b": b, "level": level, "paved": bool(s["paved"]),
+			"prof": prof, "clear": clear, "edge": edge, "round": rounded})
 		# A truss bridge where this stretch crosses a river. A bridge needs a clear straight its
-		# own length, so it slides along the stretch to find one; where the long bridge has no
+		# own length, so it slides along a level stretch to find one; where the long bridge has no
 		# room the short one is tried, and with no room for that the road simply runs across.
+		var flats: Array = []                 # [[from, to, height]] the level stretches
+		var k := 0
+		while k < prof.size() - 1:
+			var h0 := float(prof[k][1])
+			var j := k + 1
+			if absf(float(prof[j][1]) - h0) < 0.05:
+				while j + 1 < prof.size() and absf(float(prof[j + 1][1]) - h0) < 0.05:
+					j += 1
+				flats.append([float(prof[k][0]) * length, float(prof[j][0]) * length, h0])
+			k = j
 		var hits: Array = []
 		for line in _rivers.get(tile, []):
 			var river: PackedVector2Array = line
@@ -1758,29 +2726,211 @@ func _build_roads(tiles: Dictionary) -> void:
 				if hit != null:
 					hits.append((hit as Vector2).distance_to(a))
 		hits.sort()
+		var k6 := posmod(Pipes.k_of(dir), 6)
 		var last := -INF
 		for along_hit in hits:
-			for kind in ["bridge", "bridge_short"]:
-				var span := roads.dim(kind) * 0.5 + 2.0
-				if flat_to - flat_from < span * 2.0:
+			var placed := false
+			for flat in flats:
+				for kind in ["bridge", "bridge_short"]:
+					var span := roads.dim(kind) * 0.5 + 2.0
+					if placed or float(flat[1]) - float(flat[0]) < span * 2.0:
+						continue
+					var at := clampf(float(along_hit), float(flat[0]) + span, float(flat[1]) - span)
+					# The river has to stay under the bridge, and one bridge serves a river that
+					# doubles back under the road.
+					if absf(at - float(along_hit)) > span * 0.6 or at - last < span * 2.0:
+						continue
+					last = at
+					placed = true
+					var p := a + dir * at
+					# With the street it carries, in the tile's ground layer: a car crossing is drawn over it.
+					_road_bridges.append({"kind": "fit", "atlas": roads, "at": iso(p, float(flat[2])), "tile": tile,
+						"name": "r_bridge_%s%d_%d" % ["s_" if kind == "bridge_short" else "", k6, level],
+						"keep": _bridge_keep(p, dir, span, float(_road_widths(level)[0]) + _BRIDGE_SIDE, float(flat[2]))})
+	for tile in by_tile:
+		await _pace()
+		if gen != _build_gen:
+			return
+		var t: Dictionary = tiles[tile]
+		_road_ways[tile] = by_tile[tile]
+		_road_meshes[tile] = _road_mesh(by_tile[tile], _skirted(Model.hex_points(t["center"]), t.get("beside", []), _ROAD_RUN_ON))
+		# The light over a street's run on past the tile's edge, beyond its skirt: the tile's light mesh
+		# stops at the skirt, and the run lies over the light of the tile beside it.
+		for w in by_tile[tile]:
+			var a: Vector2 = w["a"]
+			var b: Vector2 = w["b"]
+			var half := float(_road_widths(int(w["level"]))[0])
+			for end in [[a, (a - b).normalized(), 0], [b, (b - a).normalized(), 1]]:
+				if not bool(w["edge"][int(end[2])]):
 					continue
-				var at := clampf(float(along_hit), flat_from + span, flat_to - span)
-				# The river has to stay under the bridge, and one bridge serves a river that
-				# doubles back under the road.
-				if absf(at - float(along_hit)) > span * 0.6 or at - last < span * 2.0:
-					continue
-				last = at
-				var p := a + dir * at
-				_pipe_items.append({"kind": "fit", "atlas": roads, "at": iso(p, h), "depth": p.x + p.y, "tile": tile,
-					"name": "r_bridge_%s%d_%d" % ["s_" if kind == "bridge_short" else "", k6, level]})
-				break
+				var at: Vector2 = end[0]
+				var dir: Vector2 = end[1]
+				var side := dir.orthogonal() * half
+				var pts := PackedVector2Array()
+				var lit := PackedColorArray()
+				for q in [at + dir * _SKIRT + side, at + dir * _ROAD_RUN_ON + side, at + dir * _ROAD_RUN_ON - side,
+						at + dir * _SKIRT - side]:
+					var bq := iso(q, _road_height(w, q))
+					pts.append(bq)
+					lit.append(_light_wash(_light_at(bq)))
+				(_road_lights.get_or_add(tile, []) as Array).append({"points": pts, "colours": lit})
 
 
-## How far along a road heading `dir` the slope at a tile's edge runs, for an exit at `rel`
-## from the tile's centre. The slope is SLOPE_W deep measured square to the edge.
-static func _slope_run(rel: Vector2, dir: Vector2) -> float:
-	var n := Vector2(0.0, signf(rel.y)) if absf(absf(rel.y) - Streets.TOP_Y) < 1.0 else rel.normalized()
-	return SLOPE_W / maxf(0.35, absf(dir.dot(n)))
+## The part of the board a truss bridge's piece is drawn over: its deck, from `p` `span` either way along
+## `dir` and `half` either side, and everything standing on the deck up to the top of its trusses. The
+## piece's deck runs on past its trusses to the edge of its frame, and there, level, it would lie over the
+## street climbing or falling away from the bridge.
+static func _bridge_keep(p: Vector2, dir: Vector2, span: float, half: float, deck: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for along in [-span, span]:
+		for side in [-half, half]:
+			var q: Vector2 = p + dir * float(along) + dir.orthogonal() * float(side)
+			pts.append(iso(q, deck - 2.0))
+			pts.append(iso(q, deck + _BRIDGE_TALL))
+	return Geometry2D.convex_hull(pts)
+
+
+## How far a street of a level reaches from its middle to the outside of each of its bands: its inked
+## edge, its kerb, the thin line inside the kerb, and its asphalt.
+static func _road_widths(level: int) -> Array:
+	var roads: Atlas = _road_kit()
+	var half := roads.dim("half_%d" % level) if roads.ok() else _ROAD_HALF
+	var walk := roads.dim("walk_%d" % level) if roads.ok() else 2.0
+	return [half + walk + _ROAD_KERB_OUT, half + walk + _ROAD_KERB_OUT - _ROAD_INK_W, half + _ROAD_KERB_LINE, half]
+
+
+## One tile's streets as one mesh over its skirted hex `area`. Each band is laid for every stretch before
+## the next band is laid for any, so the bands of stretches that meet run together and an edge shows only
+## round the outside of the streets as a whole. Each point is at the height of the ground under the
+## middle of its street there (_road_height), so a street is level from kerb to kerb and climbs and falls
+## along its length, one surface up a slope as on the flat. A band is triangulated in plan, where it is
+## a plain convex shape, and only then raised and projected, so no slope can fold it.
+func _road_mesh(ways: Array, area: PackedVector2Array) -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	var bands: Array[Color] = [_ROAD_EDGE, _ROAD_KERB, _ROAD_EDGE_IN, _ROAD_ASPHALT]
+	for band in range(bands.size()):
+		for w in ways:
+			var tint: Color = Color.WHITE if bool(w["paved"]) else _UNPAVED
+			var r := float(_road_widths(int(w["level"]))[band])
+			# Where a street leaves for a tile drawn beside, it runs on over that tile's street, full width
+			# however slantwise it crosses the edge (_ROAD_RUN_ON).
+			var a: Vector2 = w["a"]
+			var b: Vector2 = w["b"]
+			var dir := (b - a).normalized()
+			var run_on := r + _ROAD_RUN_ON + 1.0
+			_road_band(verts, cols, idx, w, _capsule(a - dir * (run_on if bool(w["edge"][0]) else 0.0),
+				b + dir * (run_on if bool(w["edge"][1]) else 0.0), r, w["round"]), area, bands[band] * tint)
+	# The markings: none on a lane, a dashed line down the middle of a street, and on an avenue a double
+	# line down the middle and a dashed line along each side. They stop short of a corner or a junction.
+	for w in ways:
+		var level := int(w["level"])
+		var tint: Color = Color.WHITE if bool(w["paved"]) else _UNPAVED
+		var a: Vector2 = w["a"]
+		var b: Vector2 = w["b"]
+		var length := a.distance_to(b)
+		var dir := (b - a) / length
+		var across := dir.orthogonal()
+		var from := float(w["clear"][0])
+		var to := length - float(w["clear"][1])
+		var lines: Array = []                     # [offset across, dashed]
+		if level == 2:
+			lines = [[0.0, true]]
+		elif level >= 3:
+			var half := float(_road_widths(level)[3])
+			lines = [[-0.55, false], [0.55, false], [-half * 0.5, true], [half * 0.5, true]]
+		for line in lines:
+			var off := across * float(line[0])
+			var d := from
+			while d < to - 0.5:
+				var e := minf(to, d + _ROAD_DASH) if bool(line[1]) else to
+				var w0 := a + dir * d + off
+				var w1 := a + dir * e + off
+				_road_band(verts, cols, idx, w, PackedVector2Array([w0 + across * _ROAD_MARK_W, w1 + across * _ROAD_MARK_W,
+					w1 - across * _ROAD_MARK_W, w0 - across * _ROAD_MARK_W]), area, _ROAD_MARK * tint)
+				d = e + _ROAD_DASH_GAP
+	return _mesh_of(verts, cols, idx)
+
+
+## A band `r` either side of the stretch from `a` to `b`, in plan: its ends rounded where `rounded` says
+## ([at a, at b]), so the streets that meet there at an angle are joined with no gap; square where the
+## street runs straight on into the next stretch, or on into the tile beside.
+static func _capsule(a: Vector2, b: Vector2, r: float, rounded: Array = [true, true]) -> PackedVector2Array:
+	var n := (b - a).normalized().orthogonal()
+	var out := PackedVector2Array()
+	var steps := _ROAD_ROUND if bool(rounded[1]) else 1
+	for k in range(steps + 1):
+		out.append(b + n.rotated(PI * float(k) / float(steps)) * r)
+	steps = _ROAD_ROUND if bool(rounded[0]) else 1
+	for k in range(steps + 1):
+		out.append(a - n.rotated(PI * float(k) / float(steps)) * r)
+	return out
+
+
+## Lay one convex plan shape of a street into the mesh: cut to the tile's `area`, then across the street
+## into slices short enough to lie flat on the ground, each laid as a fan from its middle. Across the
+## street the height does not change, so a slice raised to the ground keeps its shape.
+func _road_band(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array, way: Dictionary,
+		shape: PackedVector2Array, area: PackedVector2Array, col: Color) -> void:
+	var a: Vector2 = way["a"]
+	var along := ((way["b"] as Vector2) - a).normalized()
+	for part in Geometry2D.intersect_polygons(shape, area):
+		var poly: PackedVector2Array = part
+		if poly.size() < 3:
+			continue
+		var lo := INF
+		var hi := -INF
+		for p in poly:
+			lo = minf(lo, (p - a).dot(along))
+			hi = maxf(hi, (p - a).dot(along))
+		var n := maxi(1, ceili((hi - lo) / _ROAD_DRAPE))
+		for i in range(n):
+			var slice := Atlas.clip(poly, a + along * lerpf(lo, hi, float(i) / float(n)), along)
+			slice = Atlas.clip(slice, a + along * lerpf(lo, hi, float(i + 1) / float(n)), -along)
+			if slice.size() < 3:
+				continue
+			var mid := Vector2.ZERO
+			for p in slice:
+				mid += p
+			mid /= float(slice.size())
+			var base := verts.size()
+			for p in [mid] + Array(slice):
+				var at := iso(p, _road_height(way, p))
+				verts.append(Vector3(at.x, at.y, 0.0))
+				cols.append(col)
+			for k in range(slice.size()):
+				idx.append_array([base, base + 1 + k, base + 1 + (k + 1) % slice.size()])
+
+
+## The height of a street at a plan point on it: the ground under the middle of the street across from
+## the point, as the street's profile reads it. Past an end, where it runs on into the tile beside or
+## rounds off into the streets turning there, the ground (or a bridge's deck) under its middle carried on
+## past the end, as the street beyond reads it: level from kerb to kerb still, and not left level at the
+## end's height where the ground falls away.
+func _road_height(way: Dictionary, p: Vector2) -> float:
+	var a: Vector2 = way["a"]
+	var b: Vector2 = way["b"]
+	var t := (p - a).dot(b - a) / maxf(a.distance_squared_to(b), 0.0001)
+	if t < 0.0 or t > 1.0:
+		return _way_h(str(way["tile"]), a.lerp(b, t))
+	var prof: Array = way["prof"]
+	for i in range(1, prof.size()):
+		if float(prof[i][0]) >= t:
+			var t0 := float(prof[i - 1][0])
+			return lerpf(float(prof[i - 1][1]), float(prof[i][1]), (t - t0) / maxf(float(prof[i][0]) - t0, 0.0001))
+	return float(prof[prof.size() - 1][1])
+
+
+## Does a point lie on an edge a tile shares with a tile drawn beside it.
+func _at_shared_edge(tile: String, p: Vector2) -> bool:
+	var t: Dictionary = (_model["tiles"] as Dictionary)[tile]
+	var hexp := Model.hex_points(t["center"])
+	var beside: Array = t.get("beside", [])
+	for i in range(mini(6, beside.size())):
+		if bool(beside[i]) and Geometry2D.get_closest_point_to_segment(p, hexp[i], hexp[(i + 1) % 6]).distance_to(p) < 0.5:
+			return true
+	return false
 
 
 static var _roads_atlas: Atlas = null
@@ -1790,8 +2940,9 @@ static func _road_kit() -> Atlas:
 	return _roads_atlas
 
 
-## A path along the streets as board points. Where it crosses to a tile of another height it
-## runs down the higher tile's slope, as the road does.
+## A path along the streets as board points, on the ground: every stretch follows _profile, so it
+## runs up and down the slopes as the road does, and over a river's valley on the bridge's deck. A
+## tile edge is given once per tile, at one height from both.
 func _street_line(path: Array, info: Array = []) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	var put := func(p: Vector2, h: float, tile: String) -> void:
@@ -1800,33 +2951,16 @@ func _street_line(path: Array, info: Array = []) -> PackedVector2Array:
 	for i in range(path.size()):
 		var node: Dictionary = path[i]
 		var tile := str(node["tile"])
-		var h := _ground_h(node)
-		if not bool(node["edge"]):
-			put.call(node["p"], h, tile)
+		var p: Vector2 = node["p"]
+		if i > 0 and str(path[i - 1]["tile"]) == tile:
+			var from: Vector2 = path[i - 1]["p"]
+			if from.distance_to(p) < 0.01:
+				continue
+			var prof: Array = _profile(from, p, tile)
+			for k in range(1, prof.size()):
+				put.call(from.lerp(p, float(prof[k][0])), float(prof[k][1]), tile)
 			continue
-		# The edge is given once per tile. Both stand at the lower tile's level, and the
-		# higher side comes down to it over its slope.
-		var other := h
-		for j in [i - 1, i + 1]:
-			if j >= 0 and j < path.size() and bool(path[j]["edge"]) \
-					and (path[j]["p"] as Vector2).distance_to(node["p"]) < 0.5:
-				other = _ground_h(path[j])
-		var low := minf(h, other)
-		if h > low + 0.5:
-			var before: bool = i > 0 and not bool(path[i - 1]["edge"])
-			var inner: Dictionary = path[i - 1] if before else (path[i + 1] if i + 1 < path.size() else node)
-			var back: Vector2 = (inner["p"] as Vector2) - (node["p"] as Vector2)
-			var centre: Vector2 = (_model["tiles"] as Dictionary)[tile]["center"]
-			var crest: Vector2 = (node["p"] as Vector2) + back.normalized() * minf(
-				_slope_run((node["p"] as Vector2) - centre, back.normalized()), back.length() * 0.8)
-			if before:
-				put.call(crest, h, tile)
-				put.call(node["p"], low, tile)
-			else:
-				put.call(node["p"], low, tile)
-				put.call(crest, h, tile)
-		else:
-			put.call(node["p"], low, tile)
+		put.call(p, _way_h(tile, p), tile)
 	return pts
 
 
@@ -1877,13 +3011,9 @@ func _lay_track(path: Array, laid: Dictionary) -> void:
 		run = [info[i]] if i < info.size() else []
 
 
-## The ground under a path point: a crossing sits on the tile's edge at the tile's own height,
-## anything else rides its terrace.
+## The ground under a path point, or the deck of the bridge it stands on.
 func _ground_h(node: Dictionary) -> float:
-	var tile := str(node["tile"])
-	if bool(node["edge"]):
-		return float((_model["tiles"] as Dictionary)[tile]["height"])
-	return _height_at(tile, node["p"])
+	return _way_h(str(node["tile"]), node["p"])
 
 
 static func _same_goods(a: Array, b: Array) -> bool:
@@ -1972,15 +3102,33 @@ static func _path_length(nodes: Array) -> float:
 	return total
 
 
-## A pipe line's route as the waypoints the pipe planner takes. Pipes keep to their tile's own
-## level, ignoring its terraces.
+## A pipe line's route as the waypoints the pipe planner takes. Across each tile a pipe keeps one
+## level on its supports, that of the highest ground it passes over there, so it never sinks into a
+## rise, and it steps to the next tile's level on the edge itself.
 func _pipe_waypoints(path: Array) -> Array:
 	var tiles: Dictionary = _model["tiles"]
 	var out: Array = []
+	var levels: Dictionary = {}               # index of a run's first node -> its level
+	var run_of: Array = []
+	var start := 0
+	for i in range(path.size()):
+		if i > 0 and str(path[i]["tile"]) != str(path[i - 1]["tile"]):
+			start = i
+		run_of.append(start)
+		var top := float(levels.get(start, -INF))
+		var p: Vector2 = path[i]["p"]
+		top = maxf(top, _height_at(p))
+		if i > start:
+			var from: Vector2 = path[i - 1]["p"]
+			var steps := ceili(from.distance_to(p) / Ground.NODE)
+			for k in range(1, steps):
+				top = maxf(top, _height_at(from.lerp(p, float(k) / float(steps))))
+		levels[start] = top
 	for i in range(path.size()):
 		var node: Dictionary = path[i]
 		var p: Vector2 = node["p"]
-		var wp := {"p": p, "base": float(tiles[str(node["tile"])]["height"]), "edge": bool(node["edge"])}
+		var base := float(levels[run_of[i]])
+		var wp := {"p": p, "base": base, "edge": bool(node["edge"])}
 		if bool(node["edge"]):
 			var twin: Dictionary = path[i + 1] if i + 1 < path.size() and bool(path[i + 1]["edge"]) \
 				and (path[i + 1]["p"] as Vector2).is_equal_approx(p) else path[i - 1]
@@ -2015,10 +3163,20 @@ func _cable_between(by_iid: Dictionary, ids: Array) -> PackedVector2Array:
 
 func _process(delta: float) -> void:
 	if not is_visible_in_tree():
+		# Closed, the board only bakes what a build in the background has asked for, one layer at
+		# a time, so the view opens on finished pictures.
+		if bake_while_hidden and not _building and not _baking and has_content():
+			var unit := _next_bake()
+			if unit == "":
+				bake_while_hidden = false
+			else:
+				_bake(unit, _bake_zoom())
 		return
 	_clock += delta
+	_reveal_when_baked(delta)
 	if has_content():
 		_tokens.queue_redraw()
+		_street_layer.queue_redraw()
 		_glow_layer.queue_redraw()
 		if not _baking:
 			var tile := _next_bake()
@@ -2035,38 +3193,68 @@ func _draw() -> void:
 		return
 	# A tile whose picture is not baked yet for this zoom is drawn live, so the board is never
 	# blank while the bakes catch up.
-	draw_set_transform(_offset, 0.0, Vector2(_zoom, _zoom))
-	for tid in _tile_order:
-		if _best_bake(str(tid)).is_empty():
-			_draw_tile(self, str(tid), _zoom)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	_draw_live(self, false)
 
 
-## Everything about one tile that does not move: its slab and ground, its roads and pipes,
-## what stands on it, its trees. This is what a bake holds.
-func _draw_tile(ci: CanvasItem, tile: String, zoom: float) -> void:
+## The layers of one kind, ground or things, that have no bake yet, drawn as they are.
+func _draw_live(ci: CanvasItem, things: bool) -> void:
+	ci.draw_set_transform(_offset, 0.0, Vector2(_zoom, _zoom))
+	for unit in _units:
+		if str(unit).ends_with(_THINGS) == things and _best_bake(str(unit)).is_empty():
+			_draw_tile(ci, str(unit), _zoom)
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## The street layer (StreetLayer): the cars, then the things of any tile not baked yet.
+func _draw_street(layer: Control) -> void:
+	if not has_content():
+		return
+	var box := clampf(44.0 * _zoom + 10.0, 16.0, 40.0)
+	_draw_cars(layer, Rect2(Vector2.ZERO, size).grow(box))
+	_draw_live(layer, true)
+
+
+## Everything about one tile that does not move, in two layers (_unit), each baked on its own: the
+## ground layer, its slab and ground, its roads, their bridges and its railways and the light over them;
+## and the things layer, everything that stands on the ground, buildings, pipes, trees and lamps. Every
+## tile's ground layer is drawn before any tile's things (_units), so what stands near a tile's edge is
+## never covered by the ground of the tile beside it; the cars go between the two (_draw_street).
+func _draw_tile(ci: CanvasItem, unit: String, zoom: float) -> void:
+	if unit.ends_with(_THINGS):
+		_draw_things(ci, unit.trim_suffix(_THINGS))
+	else:
+		_draw_ground(ci, unit.trim_suffix(_GROUND))
+
+
+func _draw_ground(ci: CanvasItem, tile: String) -> void:
 	var gfx: Dictionary = _tile_gfx.get(tile, {})
 	var parts: Dictionary = _tile_parts.get(tile, {})
 	if gfx.get("walls") != null:
 		ci.draw_mesh(gfx["walls"], _ground_tex("strata"))
 	if gfx.get("ground") != null:
 		ci.draw_mesh(gfx["ground"], null)
-	var road_tex: Texture2D = _road_kit().texture()
-	if road_tex != null and bool(show["roads"]):
-		for fit in parts.get("fits", []):
-			var rr: Array = _road_kit().fit_rects(str(fit["name"]), fit["at"])
-			ci.draw_texture_rect_region(road_tex, rr[0], rr[1], fit["tint"])
-		for poly in parts.get("polys", []):
-			var tints := PackedColorArray()
-			tints.resize((poly["points"] as PackedVector2Array).size())
-			tints.fill(poly["tint"])
-			ci.draw_polygon(poly["points"], tints, poly["uvs"], road_tex)
+	# What holds the bridges up, under their decks.
+	for pier in parts.get("piers", []):
+		for poly in pier["polys"]:
+			ci.draw_colored_polygon(poly[0], poly[1])
+			ci.draw_polyline(poly[0] + PackedVector2Array([(poly[0] as PackedVector2Array)[0]]), _INK, 0.8)
+	if bool(show["roads"]) and _road_meshes.get(tile) != null:
+		ci.draw_mesh(_road_meshes[tile], null)
+	for br in parts.get("bridges", []):
+		_draw_pipe_item(ci, br)
 	if bool(show["roads"]):
 		_draw_roads(ci, parts.get("links", []))
 	if bool(show["rails"]):
 		_draw_rails(ci, tile, parts.get("rails", []))
 	if gfx.get("light") != null:
 		ci.draw_mesh(gfx["light"], null)
+	if bool(show["roads"]):
+		for lit in _road_lights.get(tile, []):
+			ci.draw_polygon(lit["points"], lit["colours"])
+
+
+func _draw_things(ci: CanvasItem, tile: String) -> void:
+	var parts: Dictionary = _tile_parts.get(tile, {})
 	# Shadows fall north-west, away from the sun: laid on the ground before anything stands.
 	for thing in parts.get("things", []):
 		var ref: Dictionary = thing["ref"]
@@ -2099,15 +3287,21 @@ func _draw_tile(ci: CanvasItem, tile: String, zoom: float) -> void:
 				_draw_pipe_item(ci, thing["ref"])
 
 
-## The grade over one tile's picture: a warm key and a cool fill, as on the key art's plate.
-## One quad over the tile's whole picture, its corners coloured by how lit each is.
-func _draw_grade(ci: CanvasItem, tile: String) -> void:
-	var r := _tile_rect(tile)
+## The grade over one layer of a tile's picture: a warm key and a cool fill, as on the key art's
+## plate. One quad over the layer's whole picture, its corners coloured by how lit each is; and over
+## the ground layer, the shading of its slopes (_build_shade), which roads and railways on a slope
+## take too.
+func _draw_grade(ci: CanvasItem, unit: String) -> void:
+	var r := _unit_rect(unit)
 	var pts := PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])
 	var cols := PackedColorArray()
 	for p in pts:
 		cols.append(_GRADE_SHADE.lerp(_GRADE_SUN, _light_at(p)))
 	ci.draw_polygon(pts, cols)
+	if unit.ends_with(_GROUND):
+		var shade: Variant = (_tile_gfx.get(unit.trim_suffix(_GROUND), {}) as Dictionary).get("shade")
+		if shade != null:
+			ci.draw_mesh(shade, null)
 
 
 ## Sort everything that is drawn into the tile it belongs to, and take a hash of each tile's
@@ -2115,51 +3309,69 @@ func _draw_grade(ci: CanvasItem, tile: String) -> void:
 func _sort_parts() -> void:
 	var tiles: Dictionary = _model.get("tiles", {})
 	for tid in _tile_order:
-		_tile_parts[tid] = {"fits": [], "polys": [], "links": [], "rails": [], "pipes": [], "things": []}
-	for fit in _road_fits:
-		_part(fit, "fits", fit)
-	for poly in _road_polys:
-		_part(poly, "polys", poly)
+		_tile_parts[tid] = {"links": [], "rails": [], "pipes": [], "piers": [], "bridges": [], "things": []}
+	for br in _road_bridges:
+		_part(br, "bridges", br)
 	for l in _links:
 		_part(l, "links", l)
 	for r in _rails:
 		_part(r, "rails", r)
 	for pl in _pipes:
 		_part(pl, "pipes", pl)
+	for pier in _piers:
+		_part(pier, "piers", pier)
 	for st in _standing:
 		_part(st, "things", {"what": "standing", "depth": float(st["depth"]), "ref": st})
 	for item in _pipe_items:
 		if not item.has("tile"):
 			item["tile"] = _tile_of(item.get("plan", Vector2.ZERO))
 		_part(item, "things", {"what": "item", "depth": float(item["depth"]), "ref": item})
+	_units.clear()
+	_unit_z.clear()
+	_things_rects.clear()
 	for tid in _tile_order:
 		var parts: Dictionary = _tile_parts[tid]
 		(parts["things"] as Array).sort_custom(func(x: Dictionary, y: Dictionary) -> bool:
 			return float(x["depth"]) < float(y["depth"]))
-		var made: Array = [str(tiles[tid].get("top_poly", "")), float(tiles[tid]["height"]), str(tiles[tid]["type"]),
-			plate_lamps, plate_sea, plate_town, str(show)]
-		for fit in parts["fits"]:
-			made.append([fit["name"], fit["at"], fit["tint"]])
-		for poly in parts["polys"]:
-			made.append([poly["points"], poly["tint"]])
+		_things_rects[tid] = _things_rect(str(tid), parts)
+		# What each layer is made of. The ground: its heights, the tiles drawn beside it, the board it
+		# is lit on, and the ways laid over it. The things: everything standing on it.
+		var looks: Array = [_bounds, plate_lamps, plate_sea, plate_town, str(show)]
+		var made: Array = [float(tiles[tid]["height"]), float(tiles[tid].get("top", 0.0)), str(tiles[tid]["type"]),
+			str(tiles[tid].get("beside", []))] + looks
+		for w in _road_ways.get(tid, []):
+			made.append([w["a"], w["b"], w["level"], w["paved"], w["prof"]])
+		for br in parts["bridges"]:
+			made.append([br["name"], br["at"]])
 		for l in parts["links"]:
 			made.append([l["mode"], l["pts"]])
 		for r in parts["rails"]:
 			made.append([r["key"], r["stops"]])
+		for pier in parts["piers"]:
+			made.append(pier["key"])
+		var stood: Array = looks.duplicate()
 		for pl in parts["pipes"]:
-			made.append([pl["mode"], pl["pts"]])
+			stood.append([pl["mode"], pl["pts"]])
 		for thing in parts["things"]:
 			var ref: Dictionary = thing["ref"]
 			match str(thing["what"]):
 				"standing":
-					made.append([ref["iid"], ref["level"], ref["pos"], ref["side"], ref.get("tint"), ref.get("sprite")])
+					stood.append([ref["iid"], ref["level"], ref["pos"], ref["side"], ref.get("tint"), ref.get("sprite")])
 				"item":
-					made.append([ref["kind"], ref.get("name", ""), ref.get("at", ref.get("rect", ref.get("foot", ""))), ref.get("points", "")])
-		_tile_sig[tid] = hash(str(made))
-	# Bakes of tiles that have gone or changed are let go.
+					stood.append([ref["kind"], ref.get("name", ""), ref.get("at", ref.get("rect", ref.get("foot", ""))), ref.get("points", "")])
+		# Every tile's two layers, each with its depth: a tile's own by how far back it lies, and every
+		# things layer over every ground layer.
+		var depth := (tiles[tid]["center"] as Vector2).x + (tiles[tid]["center"] as Vector2).y
+		for layer in [[_GROUND, 0.0, made], [_THINGS, _THINGS_Z, stood]]:
+			var unit := str(tid) + str(layer[0])
+			_tile_sig[unit] = hash(str(layer[2]))
+			_unit_z[unit] = float(layer[1]) + depth
+			_units.append(unit)
+	_units.sort_custom(func(x: String, y: String) -> bool: return float(_unit_z[x]) < float(_unit_z[y]))
+	# Bakes of tiles that have gone are let go. A changed tile keeps its old picture until the new one is
+	# baked, so it is never drawn live out of its place in the order (_best_bake).
 	for key in _bakes.keys():
-		var tile := str(key).get_slice("|", 0)
-		if not _tile_sig.has(tile) or int(_bakes[key]["sig"]) != int(_tile_sig[tile]):
+		if not _tile_sig.has(str(key).get_slice("|", 0)):
 			_bakes.erase(key)
 
 
@@ -2184,15 +3396,60 @@ func _tile_of(p: Vector2) -> String:
 	return best
 
 
-## The part of the board a tile's picture covers: its top, its cut-away below, and room above
+## The part of the board one layer of a tile covers (_unit).
+func _unit_rect(unit: String) -> Rect2:
+	if unit.ends_with(_THINGS):
+		return _things_rects.get(unit.trim_suffix(_THINGS), _tile_rect(unit.trim_suffix(_THINGS)))
+	return _tile_rect(unit.trim_suffix(_GROUND))
+
+
+## The part of the board a tile's things layer covers: the tile's own, grown to take in everything
+## standing on it whole, however far a building, a pylon or a tree reaches past the tile's edge or
+## up over the tile behind.
+func _things_rect(tile: String, parts: Dictionary) -> Rect2:
+	var r := _tile_rect(tile)
+	for thing in parts.get("things", []):
+		var ref: Dictionary = thing["ref"]
+		if str(thing["what"]) == "standing":
+			r = r.merge(ref.get("tex_rect", ref["rect"])).merge(ref["rect"])
+			continue
+		match str(ref["kind"]):
+			"tree":
+				r = r.merge(ref["rect"])
+			"lamp":
+				r = r.merge(Rect2(ref["foot"], Vector2.ZERO).expand(ref["head"]).grow(3.0))
+			"run":
+				r = r.merge(_box_of(ref["points"]))
+			_:
+				var kit: Atlas = ref.get("atlas", Pipes.kit())
+				if kit.ok():
+					r = r.merge((kit.fit_rects(str(ref["name"]), ref["at"]) as Array)[0])
+	for p in parts.get("pipes", []):
+		r = r.merge(_box_of(p["pts"]).grow(6.0))
+	r = r.grow(4.0)
+	var lo := (r.position / _BAKE_GRID).floor() * _BAKE_GRID
+	var hi := (r.end / _BAKE_GRID).ceil() * _BAKE_GRID
+	return Rect2(lo, hi - lo)
+
+
+## The part of the board a tile's ground layer covers: its top, its cut-away below, and room above
 ## for what stands on it.
 func _tile_rect(tile: String) -> Rect2:
 	var t: Dictionary = (_model["tiles"] as Dictionary)[tile]
 	var hexp := Model.hex_points(t["center"])
-	var r := Rect2(iso(hexp[0], float(t["height"])), Vector2.ZERO)
+	var top := float(t.get("top", t["height"]))
+	var r := Rect2(iso(hexp[0], top), Vector2.ZERO)
 	for p in hexp:
-		r = r.expand(iso(p, float(t["height"]))).expand(iso(p, -SLAB_DEPTH))
+		r = r.expand(iso(p, top)).expand(iso(p, -SLAB_DEPTH))
 	r = r.grow_individual(_TILE_MARGIN, _TILE_HEADROOM, _TILE_MARGIN, 6.0)
+	# A street raised on its way up to a bridge's deck can stand above the ground's highest point, and the
+	# bridge's trusses above that.
+	var streets: Variant = _road_meshes.get(tile)
+	if streets != null:
+		var box: AABB = (streets as ArrayMesh).get_aabb()
+		r = r.merge(Rect2(box.position.x, box.position.y, box.size.x, box.size.y).grow(2.0))
+	for br in (_tile_parts.get(tile, {}) as Dictionary).get("bridges", []):
+		r = r.merge((_road_kit().fit_rects(str(br["name"]), br["at"]) as Array)[0])
 	var lo := (r.position / _BAKE_GRID).floor() * _BAKE_GRID
 	var hi := (r.end / _BAKE_GRID).ceil() * _BAKE_GRID
 	return Rect2(lo, hi - lo)
@@ -2237,6 +3494,12 @@ func _best_bake(tile: String) -> Array:
 	for z in BAKE_ZOOMS:
 		if _good(tile, float(z)) and (found.is_empty() or absf(float(z) - want) < absf(float(found[1]) - want)):
 			found = [_bakes[_bake_key(tile, float(z))], float(z)]
+	if found.is_empty():
+		# Only a picture from before the tile changed: better than drawing it live.
+		for z in BAKE_ZOOMS:
+			var b: Dictionary = _bakes.get(_bake_key(tile, float(z)), {})
+			if not b.is_empty() and (found.is_empty() or absf(float(z) - want) < absf(float(found[1]) - want)):
+				found = [b, float(z)]
 	return found
 
 
@@ -2245,7 +3508,7 @@ func _best_bake(tile: String) -> Array:
 func _bake(tile: String, zoom: float) -> void:
 	_baking = true
 	var sig := int(_tile_sig.get(tile, 0))
-	var rect := _tile_rect(tile)
+	var rect := _unit_rect(tile)
 	var px := _px()
 	var key := _bake_key(tile, zoom)
 	var scale_up := zoom * px * _BAKE_OVERSAMPLE
@@ -2264,7 +3527,7 @@ func _bake(tile: String, zoom: float) -> void:
 		return
 	var img: Image = _bake_view.get_texture().get_image()
 	if img != null and not img.is_empty():
-		img.resize(maxi(1, want.x), maxi(1, want.y), Image.INTERPOLATE_LANCZOS)
+		img.resize(maxi(1, want.x), maxi(1, want.y), Image.INTERPOLATE_BILINEAR)
 		# Mipmaps, because between two bake zooms the picture is drawn reduced.
 		img.generate_mipmaps()
 		_bakes[key] = {"tex": ImageTexture.create_from_image(img), "sig": sig, "rect": rect,
@@ -2279,12 +3542,12 @@ func _bake(tile: String, zoom: float) -> void:
 ## are left until they are looked at.
 func _next_bake() -> String:
 	var view := Rect2(Vector2.ZERO, size)
-	for tid in _tile_order:
-		if _baked(str(tid)):
+	for unit in _units:
+		if _baked(str(unit)):
 			continue
-		var r := _tile_rect(str(tid))
+		var r := _unit_rect(str(unit))
 		if view.intersects(Rect2(r.position * _zoom + _offset, r.size * _zoom)):
-			return str(tid)
+			return str(unit)
 	return ""
 
 
@@ -2302,11 +3565,13 @@ func _trim_bakes() -> void:
 		_bakes.erase(oldest)
 
 
-func _draw_bakes(layer: Control) -> void:
+func _draw_bakes(layer: Control, things: bool) -> void:
 	var px := _px()
 	var frame := Engine.get_frames_drawn()
-	for tid in _tile_order:
-		var found: Array = _best_bake(str(tid))
+	for unit in _units:
+		if str(unit).ends_with(_THINGS) != things:
+			continue
+		var found: Array = _best_bake(str(unit))
 		if found.is_empty():
 			continue
 		var b: Dictionary = found[0]
@@ -2335,6 +3600,8 @@ func _draw_standing(ci: CanvasItem, s: Dictionary) -> void:
 				var y: float = r.position.y + r.size.y * float(arm)
 				ci.draw_line(Vector2(r.position.x, y), Vector2(r.end.x, y), _PIPE_EDGE, 2.2)
 		return
+	if s.has("plinth"):
+		_draw_plinth(ci, pos, side, h, s["plinth"])
 	var tex: Texture2D = s.get("sprite")
 	if tex != null:
 		if bool(s.get("sunk", false)):
@@ -2365,6 +3632,24 @@ func _draw_standing(ci: CanvasItem, s: Dictionary) -> void:
 		var isz := side * 0.8
 		ci.draw_texture_rect(icon, Rect2(iso(pos, top) - Vector2(isz, isz) * 0.5, Vector2(isz, isz)), false,
 			Color(0.0, 0.12, 0.24))
+
+
+## The plinth a building stands on where the ground under it is not level: its footprint at `h`,
+## and its south and east faces, the sides toward the viewer, down to the ground at each corner
+## (`foot`, from the north-west corner round by the north-east).
+func _draw_plinth(ci: CanvasItem, pos: Vector2, side: float, h: float, foot: Array) -> void:
+	var hs := side * 0.5
+	var c: Array = [pos + Vector2(-hs, -hs), pos + Vector2(hs, -hs), pos + Vector2(hs, hs), pos + Vector2(-hs, hs)]
+	for face in [[3, 2, _CONCRETE.darkened(0.22)], [2, 1, _CONCRETE.darkened(0.06)]]:
+		var a := int(face[0])
+		var b := int(face[1])
+		if h - float(foot[a]) + h - float(foot[b]) < 0.2:
+			continue                              # level with the ground along this side
+		ci.draw_colored_polygon(PackedVector2Array([iso(c[a], h), iso(c[b], h), iso(c[b], float(foot[b])),
+			iso(c[a], float(foot[a]))]), face[2])
+	ci.draw_colored_polygon(PackedVector2Array([iso(c[0], h), iso(c[1], h), iso(c[2], h), iso(c[3], h)]), _PAD)
+	ci.draw_polyline(PackedVector2Array([iso(c[3], float(foot[3])), iso(c[3], h), iso(c[2], h), iso(c[1], h),
+		iso(c[1], float(foot[1]))]), _PAD_EDGE, 0.8)
 
 
 ## Ways drawn as plain lines: one that cannot follow the streets, a rail line laid over its
@@ -2502,13 +3787,25 @@ func _draw_pipe_item(ci: CanvasItem, item: Dictionary) -> void:
 		return
 	var kit: Atlas = item.get("atlas", Pipes.kit())
 	var tex: Texture2D = kit.texture()
-	# A bridge is a road's piece, though it stands among the things on the tile.
+	# A bridge is a road's piece, and goes with the roads.
 	if tex == null or (item.has("atlas") and not bool(show["roads"])):
 		return
 	if str(item["kind"]) == "run":
 		ci.draw_colored_polygon(item["points"], Color.WHITE, item["uvs"], tex)
 		return
 	var rects: Array = kit.fit_rects(str(item["name"]), item["at"])
+	if item.has("keep"):
+		# Only over the part of the board it stands on (_bridge_keep).
+		var r: Rect2 = rects[0]
+		var frame := PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])
+		var size_px := Vector2(tex.get_width(), tex.get_height())
+		var src: Rect2 = rects[1]
+		for part in Geometry2D.intersect_polygons(frame, item["keep"]):
+			var uvs := PackedVector2Array()
+			for q in (part as PackedVector2Array):
+				uvs.append((src.position + (q - r.position) / r.size * src.size) / size_px)
+			ci.draw_colored_polygon(part, Color.WHITE, uvs, tex)
+		return
 	ci.draw_texture_rect_region(tex, rects[0], rects[1])
 
 
@@ -2635,44 +3932,19 @@ func _draw_tokens(layer: Control) -> void:
 	var view := Rect2(Vector2.ZERO, size).grow(box)
 	var font := get_theme_default_font()
 	_draw_glints(layer, view)
-	_draw_cars(layer, view)
 	if bool(show["pollution"]):
 		_draw_fog(layer, view)
 		_draw_lights(layer, view)
 	_draw_smoke(layer, view)
-	# Every icon of a good is drawn here, over the light and the mist, and none over another.
-	# Shipments on their way are placed first, then the pylons' power, then the pipes' signs;
-	# the tokens that only show a route's traffic give way to all of them.
+	# Every icon of a good is drawn here, over the light and the mist. What stands still is placed first: the
+	# pylons' power, then the pipes' signs, a sign whose place is taken on a taller post. Then the goods on the
+	# move, each where its route puts it. Where moving goods meet, the smaller group fades as they cross and
+	# comes back on the other side (_moving_alpha); none is pushed aside or dropped.
 	var placed: Array = []
 	var tiles: Dictionary = _model.get("tiles", {})
 	var goods: bool = show["goods"]
-	for f in _flows:
-		if (f["live"] as Array).is_empty() or str(f["style"]) != "goods" or not goods:
-			continue
-		var total := float(f["total"])
-		for sh in f["live"]:
-			var duration := float(sh["duration"])
-			var done := duration - float(sh["remaining"])
-			var creep := 0.0 if bool(sh["waiting"]) else smoothstep(0.0, 1.0, fmod(_clock / _LIVE_CREEP_SECS, 1.0))
-			var at := _along(f, clampf((done + creep) / duration, 0.0, 1.0) * total) * _zoom + _offset
-			if not view.has_point(at):
-				continue
-			var big := box * 1.12
-			var text := str(int(sh["qty"]))
-			var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-			# Two shipments at one place on a route stand side by side.
-			var room := Rect2(at - Vector2(big, big) * 0.5, Vector2(big, big + 17.0)).grow(1.5)
-			var tries := 0
-			while _taken(placed, room) and tries < 6:
-				room.position.x += big + 3.0
-				at.x += big + 3.0
-				tries += 1
-			placed.append(room)
-			_token(layer, at, big, f["icon"])
-			var pill := Rect2(at + Vector2(-w * 0.5 - 5.0, box * 0.5), Vector2(w + 10.0, 16.0))
-			layer.draw_rect(pill, _NAVY)
-			layer.draw_string(font, pill.position + Vector2(5.0, 12.0), text,
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DS.PALETTE.TEXT)
+	if goods and not animate_goods:
+		_draw_made(layer, view, box, placed)
 	# Power is shown on the pylons, not as something travelling.
 	for s in _standing:
 		if str(s["kind"]) != "pylon":
@@ -2684,7 +3956,6 @@ func _draw_tokens(layer: Control) -> void:
 		if icon != null and view.has_point(at) and not _taken(placed, room):
 			placed.append(room)
 			_token(layer, at, box * 0.9, icon)
-	# A sign whose place is taken stands on a taller post.
 	var plate := maxf(_SIGN_PLATE * _zoom, _SIGN_MIN_PX)
 	for sg in _signs:
 		var foot: Vector2 = (sg["foot"] as Vector2) * _zoom + _offset
@@ -2701,10 +3972,36 @@ func _draw_tokens(layer: Control) -> void:
 			continue
 		placed.append(room.grow(plate * 0.12))
 		_draw_sign(layer, foot, room, icons)
-	for f in _flows:
+	# The goods on the move: [{p, dir, size, icon, qty, rank, flow}].
+	var moving: Array = []
+	for fi in _flows.size():
+		var f: Dictionary = _flows[fi]
 		var total := float(f["total"])
 		var style := str(f["style"])
-		if style == "goods" and (not goods or not (f["live"] as Array).is_empty()):
+		if not animate_goods:
+			break
+		if style == "goods" and not goods:
+			continue
+		if style == "goods" and not (f["live"] as Array).is_empty():
+			# A shipment really in transit, where its turns put it; two at one place stand side by side.
+			var beside: Array = []
+			for sh in f["live"]:
+				var duration := float(sh["duration"])
+				var done := duration - float(sh["remaining"])
+				var creep := 0.0 if bool(sh["waiting"]) else smoothstep(0.0, 1.0, fmod(_clock / _LIVE_CREEP_SECS, 1.0))
+				var d_at := clampf((done + creep) / duration, 0.0, 1.0) * total
+				var at := _along(f, d_at) * _zoom + _offset
+				var big := box * 1.12
+				var room := Rect2(at - Vector2(big, big) * 0.5, Vector2(big, big))
+				var tries := 0
+				while _taken(beside, room) and tries < 6:
+					room.position.x += big + 3.0
+					at.x += big + 3.0
+					tries += 1
+				beside.append(room)
+				if view.has_point(at):
+					moving.append({"p": at, "dir": _dir_at(f, d_at), "size": big, "icon": f["icon"],
+						"qty": int(sh["qty"]), "rank": 1, "flow": fi})
 			continue
 		var d := fmod(_clock * _TOKEN_SPEED + float(f["phase"]), _TOKEN_SPACING)
 		if style != "goods":
@@ -2715,11 +4012,23 @@ func _draw_tokens(layer: Control) -> void:
 				if style == "power":
 					layer.draw_circle(p, clampf(4.0 * _zoom + 1.5, 2.0, 5.0), _CABLE.lightened(0.4))
 				else:
-					var room := Rect2(p - Vector2(box, box) * 0.5, Vector2(box, box))
-					if not _taken(placed, room):
-						placed.append(room)
-						_token(layer, p, box, f["icon"])
+					moving.append({"p": p, "dir": _dir_at(f, d), "size": box, "icon": f["icon"], "qty": -1, "rank": 0, "flow": fi})
 			d += _TOKEN_SPACING if style == "goods" else _PULSE_SPACING
+	var alphas := _moving_alpha(moving, placed, box)
+	for i in moving.size():
+		var m: Dictionary = moving[i]
+		var a: float = alphas[i]
+		if a <= 0.01:
+			continue
+		var at: Vector2 = m["p"]
+		_token(layer, at, float(m["size"]), m["icon"], a)
+		if int(m["qty"]) >= 0:
+			var text := str(int(m["qty"]))
+			var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+			var pill := Rect2(at + Vector2(-w * 0.5 - 5.0, box * 0.5), Vector2(w + 10.0, 16.0))
+			layer.draw_rect(pill, Color(_NAVY, a))
+			layer.draw_string(font, pill.position + Vector2(5.0, 12.0), text,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(DS.PALETTE.TEXT, a))
 	# Cables hang between tiles, so they belong to no one tile's picture.
 	layer.draw_set_transform(_offset, 0.0, Vector2(_zoom, _zoom))
 	for c in _cables:
@@ -2812,10 +4121,14 @@ func _draw_glints(layer: Control, view: Rect2) -> void:
 		var beat := pow(maxf(0.0, sin(_clock * 1.6 * float(g["rate"]) + float(g["phase"]))), 6.0)
 		if beat < 0.04:
 			continue
+		# A thin pill of light lying along the water's grid line, growing and fading with its beat.
 		var arm := clampf(5.0 * _zoom + 1.5, 2.0, 6.0) * (0.5 + beat)
 		var col := Color(_GLINT.r, _GLINT.g, _GLINT.b, beat)
-		layer.draw_line(p - Vector2(arm, 0.0), p + Vector2(arm, 0.0), col, 1.2)
-		layer.draw_line(p - Vector2(0.0, arm * 0.7), p + Vector2(0.0, arm * 0.7), col, 1.2)
+		var along := Vector2(ISO_X, ISO_Y).normalized() * arm
+		var w := clampf(1.2 * _zoom + 0.8, 1.2, 2.2)
+		layer.draw_line(p - along, p + along, col, w, true)
+		layer.draw_circle(p - along, w * 0.5, col, true, -1.0, true)
+		layer.draw_circle(p + along, w * 0.5, col, true, -1.0, true)
 
 
 ## Chimneys: grey smoke from a dirty works, white steam from a clean one, as the inked puffs
@@ -2854,12 +4167,82 @@ func _along(f: Dictionary, d: float) -> Vector2:
 	return pts[seg].lerp(pts[seg + 1], clampf((d - cum[seg]) / span, 0.0, 1.0))
 
 
-func _token(layer: Control, p: Vector2, box: float, icon: Texture2D) -> void:
-	layer.draw_circle(p, box * 0.5 + 1.5, _NAVY, true, -1.0, true)
-	layer.draw_circle(p, box * 0.5, _CREAM, true, -1.0, true)
+## The board at rest: over each building, a token for each good it makes, side by side.
+func _draw_made(layer: Control, view: Rect2, box: float, placed: Array) -> void:
+	var made: Dictionary = _model.get("made", {})
+	if made.is_empty():
+		return
+	for s in _standing:
+		var goods_made: Array = made.get(str(s["iid"]), [])
+		if goods_made.is_empty():
+			continue
+		var r: Rect2 = s["rect"]
+		var top := Vector2(r.get_center().x, r.position.y + r.size.y * 0.25) * _zoom + _offset
+		if not view.has_point(top):
+			continue
+		var step := box + 4.0
+		var x0 := top.x - step * float(goods_made.size() - 1) * 0.5
+		for i in goods_made.size():
+			var at := Vector2(x0 + step * float(i), top.y)
+			placed.append(Rect2(at - Vector2(box, box) * 0.5, Vector2(box, box)))
+			_token(layer, at, box, Model.GoodIcons.texture_for(str(goods_made[i]), Model._internal_name(str(goods_made[i]))))
+
+
+func _token(layer: Control, p: Vector2, box: float, icon: Texture2D, alpha: float = 1.0) -> void:
+	layer.draw_circle(p, box * 0.5 + 1.5, Color(_NAVY, _NAVY.a * alpha), true, -1.0, true)
+	layer.draw_circle(p, box * 0.5, Color(_CREAM, _CREAM.a * alpha), true, -1.0, true)
 	if icon != null:
 		var isz := box * 0.74
-		layer.draw_texture_rect(icon, Rect2(p - Vector2(isz, isz) * 0.5, Vector2(isz, isz)), false)
+		layer.draw_texture_rect(icon, Rect2(p - Vector2(isz, isz) * 0.5, Vector2(isz, isz)), false, Color(1, 1, 1, alpha))
+
+
+## The way a route runs at distance `d` along it, on screen (a unit vector).
+func _dir_at(f: Dictionary, d: float) -> Vector2:
+	var total := float(f["total"])
+	var a := _along(f, clampf(d - 2.0, 0.0, total))
+	var b := _along(f, clampf(d + 2.0, 0.0, total))
+	return (b - a).normalized() if a.distance_squared_to(b) > 0.0001 else Vector2.RIGHT
+
+
+## How solid each moving good is drawn. A good's group is the goods near it heading the same way. Where two
+## overlap, the one in the smaller group fades, the more the closer they are, and is whole again once clear;
+## between equal groups a shipment outranks a route's traffic, then the earlier route. A good over a pylon's
+## power or a pipe's sign fades the same way.
+func _moving_alpha(moving: Array, still: Array, box: float) -> Array:
+	var n := moving.size()
+	var crowd: Array = []
+	crowd.resize(n)
+	for i in n:
+		var c := 0
+		for j in n:
+			if (moving[i]["p"] as Vector2).distance_to(moving[j]["p"]) < box * MOVING_GROUP_REACH \
+					and (moving[i]["dir"] as Vector2).dot(moving[j]["dir"]) > MOVING_SAME_WAY:
+				c += 1
+		crowd[i] = c
+	var out: Array = []
+	out.resize(n)
+	for i in n:
+		var a := 1.0
+		var pi: Vector2 = moving[i]["p"]
+		for j in n:
+			if j == i:
+				continue
+			var dist := pi.distance_to(moving[j]["p"])
+			var touch := (float(moving[i]["size"]) + float(moving[j]["size"])) * 0.5
+			if dist >= touch:
+				continue
+			var yields: bool = int(crowd[i]) < int(crowd[j]) or (int(crowd[i]) == int(crowd[j])
+				and (int(moving[i]["rank"]) < int(moving[j]["rank"])
+				or (int(moving[i]["rank"]) == int(moving[j]["rank"]) and int(moving[i]["flow"]) > int(moving[j]["flow"]))))
+			if yields:
+				a = minf(a, lerpf(MOVING_FADED, 1.0, smoothstep(0.35, 1.0, dist / touch)))
+		for r: Rect2 in still:
+			var reach := (r.size.x + float(moving[i]["size"])) * 0.5
+			var dist2 := pi.distance_to(r.get_center())
+			if dist2 < reach:
+				a = minf(a, lerpf(MOVING_FADED, 1.0, smoothstep(0.35, 1.0, dist2 / reach)))
+		out[i] = a
+	return out
 
 
 # ------------------------------------------------------------------ input
@@ -2908,11 +4291,16 @@ func _zoom_at(screen_pos: Vector2, factor: float) -> void:
 	_view_changed()
 
 
-## The standing thing under a screen point, nearest the camera first.
+## What answers the pointer: the company's own buildings, sites and warehouses, and Local Suppliers' depot.
+## Housing, the city, ports and pylons are scenery.
+const _PICKABLE := ["building", "site", "warehouse", "suppliers"]
+
+
+## The company's or Local Suppliers' thing under a screen point, nearest the camera first.
 func _pick(screen_pos: Vector2) -> Dictionary:
 	var board := (screen_pos - _offset) / _zoom
 	for i in range(_standing.size() - 1, -1, -1):
-		if (_standing[i]["rect"] as Rect2).has_point(board):
+		if str(_standing[i]["kind"]) in _PICKABLE and (_standing[i]["rect"] as Rect2).has_point(board):
 			return _standing[i]
 	return {}
 
@@ -2931,8 +4319,4 @@ func _click(screen_pos: Vector2) -> void:
 	if str(s.get("kind", "")) in ["building", "site"]:
 		building_picked.emit(str(s["iid"]))
 	elif str(s.get("kind", "")) == "suppliers":
-		# The panel opens over the board, on the board's own layer.
-		var host: Node = self
-		while host.get_parent() != null and not (host.get_parent() is CanvasLayer):
-			host = host.get_parent()
-		preload("res://scripts/local_suppliers_panel.gd").open(host.get_parent() if host.get_parent() != null else self, str(s["tile"]))
+		suppliers_picked.emit()

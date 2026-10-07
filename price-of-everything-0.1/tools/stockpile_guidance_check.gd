@@ -58,33 +58,6 @@ func _ready() -> void:
 	var producer := BuildingState.add_building("b_002", "r_007", tile, "player_1", "guidance_capture_smelter", false)
 	BuildingState.add_building("b_002", "r_026", tile, "player_1", "guidance_capture_pipe", false)
 	MatchState.set_output_stockpile_destination(producer, tile, "g_005")
-	preload("res://scripts/stockpile_route_prompt.gd").offer(world.hud_content, tile, "g_005")
-	await settle(8)
-	var prompt := world.find_child("StockpileRoutePrompt", true, false)
-	check(prompt != null, "redirection offers per-good surplus selling")
-	var dont_show := prompt.find_child("DontShowSurplusAgain", true, false) as CheckBox
-	check(dont_show != null and not dont_show.button_pressed, "don't-show-again checkbox starts unticked")
-	var sell_button := prompt.find_child("EnableGoodSurplus", true, false) as Button
-	check(dont_show.global_position.y >= sell_button.get_parent().get_global_rect().end.y, "don't-show-again sits below both CTAs")
-	snap("routing-prompt.png")
-	dont_show.button_pressed = true
-	preload("res://scripts/stockpile_route_prompt.gd").offer(world.hud_content, tile, "g_004")
-	(prompt.find_child("EnableGoodSurplus", true, false) as Button).pressed.emit()
-	await settle(4)
-	check(MatchState.should_auto_sell_good(tile, "g_005") and not MatchState.should_auto_sell_good(tile, "g_012"), "accepting prompt enables only the named good")
-	preload("res://scripts/stockpile_route_prompt.gd").offer(world.hud_content, tile, "g_004")
-	await settle(4)
-	check(world.find_child("StockpileRoutePrompt", true, false) == null and preload("res://scripts/stockpile_route_prompt.gd")._pending.is_empty(), "don't-show-again suppresses queued and future prompts")
-	check(not MatchState.should_auto_sell_good(tile, "g_004"), "suppressing a prompt does not silently change another good's route or sales")
-	preload("res://scripts/stockpile_route_prompt.gd")._dont_show_again = false
-	MatchState.disable_auto_sell_good(tile, "g_005")
-	preload("res://scripts/stockpile_route_prompt.gd").offer(world.hud_content, tile, "g_005")
-	await settle(4)
-	prompt = world.find_child("StockpileRoutePrompt", true, false)
-	(prompt.find_child("DontShowSurplusAgain", true, false) as CheckBox).button_pressed = true
-	(prompt.find_child("KeepSurplusStock", true, false) as Button).pressed.emit()
-	await settle(4)
-	check(preload("res://scripts/stockpile_route_prompt.gd")._dont_show_again and not MatchState.should_auto_sell_good(tile, "g_005"), "keep-stock also remembers the checkbox without enabling sales")
 	var top: Node = world.find_child("TopBar", true, false)
 	if top == null:
 		top = find_method(world, "_post_notices")

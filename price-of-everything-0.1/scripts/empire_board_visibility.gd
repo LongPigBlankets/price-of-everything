@@ -1,5 +1,5 @@
 extends Control
-## Supply chain board: what is shown on it. A cream key in the bottom right corner, an eye with
+## Supply chain board: what is shown on it. A cream key in the bottom left corner, above the updates, an eye with
 ## a cog at its corner, opens a small dark plate of tickboxes above it. Each tickbox is one of
 ## the board's `show` switches; `changed` says one was flipped.
 
@@ -17,6 +17,8 @@ const ROWS := [
 	["goods", "See goods on tiles"], ["pollution", "See pollution"], ["names", "See tile names"],
 ]
 const MARGIN := 18.0
+## How far above the screen's foot the key stands: clear of the updates in the bottom left corner.
+const BOTTOM_CLEAR := 96.0
 ## The key is drawn in three slices across. This is its two end caps and no middle: the
 ## smallest it can be, and near enough square.
 const KEY_SIDE := (2.0 * 60.0 - 2.0 * 16.0) / 1.875
@@ -102,11 +104,11 @@ func setup(state: Dictionary) -> void:
 	key = CreamKey.make("VisibilityKey", "", "", KEY_SIDE)
 	var tall: float = CreamKey.height_for()
 	key.tooltip_text = "What the board shows"
-	key.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	key.offset_left = -MARGIN - KEY_SIDE
-	key.offset_top = -MARGIN - tall
-	key.offset_right = -MARGIN
-	key.offset_bottom = -MARGIN
+	key.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	key.offset_left = MARGIN
+	key.offset_top = -BOTTOM_CLEAR - tall
+	key.offset_right = MARGIN + KEY_SIDE
+	key.offset_bottom = -BOTTOM_CLEAR
 	var icon := Icon.new()
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -151,10 +153,10 @@ func is_open() -> bool:
 	return panel.visible
 
 
-## The plate stands above the key, its right edge on the key's.
+## The plate stands above the key, its left edge on the key's.
 func _place() -> void:
 	if panel == null:
 		return
 	var want := panel.get_combined_minimum_size()
 	panel.size = want
-	panel.position = Vector2(size.x - MARGIN - want.x, size.y - MARGIN - KEY_SIDE - 10.0 - want.y)
+	panel.position = Vector2(MARGIN, size.y - BOTTOM_CLEAR - CreamKey.height_for() - 10.0 - want.y)

@@ -78,6 +78,10 @@ static func poll(decide: Dictionary) -> bool:
 			# True when the player has opened the tile panel on a specific tile (pan/zoom +
 			# click). Poll-driven (no signal): the engine's 0.25s poll catches the click.
 			return _tile_panel_showing(str(decide.get("tile", "")))
+		"own_buildings_shown":
+			# The player has found their buildings: the tile panel is open on a tile where they own one,
+			# or the Building Ledger is open.
+			return _own_buildings_shown()
 		"node_visible":
 			return _node_visible(str(decide.get("ref", "")))
 		"node_hidden":
@@ -128,6 +132,22 @@ static func _tile_panel_showing(tile_id: String) -> bool:
 		return false
 	var p := tree.current_scene.find_child("TileInfoPanel", true, false)
 	return p is Control and (p as Control).is_visible_in_tree() and str(p.get("_current_tile_id")) == tile_id
+
+
+static func _own_buildings_shown() -> bool:
+	if _node_visible("BuildingLedgerPanel"):
+		return true
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null or tree.current_scene == null:
+		return false
+	var p := tree.current_scene.find_child("TileInfoPanel", true, false)
+	if not (p is Control and (p as Control).is_visible_in_tree()):
+		return false
+	var tile := str(p.get("_current_tile_id"))
+	for b: Dictionary in BuildingState.buildings.values():
+		if str(b.get("tile_id", "")) == tile and BuildingState.is_player_owned(b):
+			return true
+	return false
 
 
 ## True when a named Control exists in the scene and is visible (e.g. a panel opened).

@@ -161,6 +161,8 @@ func set_building_owner(instance_id: String, owner: String) -> void:
 		MatchState.seed_purchase_inventory(instance_id)
 		# Bought back: what the player was once paid for it no longer applies.
 		buildings[instance_id].erase("player_sale_price")
+		# Like a building just constructed, it starts on Local Suppliers for its inputs and outputs.
+		preload("res://scripts/middleman_service.gd").enroll_completed(instance_id)
 	building_owner_changed.emit(instance_id)
 	# A newly player-owned building may satisfy a count condition after the turn
 	# settles; never trigger a full scan from an interaction callback.

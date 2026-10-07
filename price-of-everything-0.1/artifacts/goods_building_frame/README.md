@@ -5,7 +5,15 @@ approved alternate, `assets/icons/goods/alternate_icons/{medium,small,very_small
 and 256 px), and listed in `approved_manifest.json` with source `goods_building_frame/v5`. The shipped main art is
 unchanged; the alternate takes priority at runtime.
 
-## v5 (installed)
+## v6 (installed)
+
+- **Change:** the owner asked for the cables to "come out of grey electrical boxes with yellow lids" with "a little
+  wrapping" where they meet the boxes. Each bundle now leaves a light grey box with a yellow lid, sitting on the pane
+  where the bundle used to start, through a black taped wrap with a raised band at each end.
+- **Files:** the same set as v5, with `frame_kit_v6.py` as the builder. `saved_scene_verification.json` shows no
+  failures. v6 replaces v5 in the three tiers and in `approved_manifest.json` (source `goods_building_frame/v6`).
+
+## v5
 
 - **Master and tiers:** `building_frame_800.png` is the master. The 450, 256 and 60 px files are LANCZOS downsizes of it,
   and the 800, 450 and 256 px ones are the installed tiers.

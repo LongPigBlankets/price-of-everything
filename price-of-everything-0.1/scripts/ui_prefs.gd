@@ -32,6 +32,16 @@ signal ledger_ds2_changed(enabled: bool)
 ## The People panel's DS2 look (docs/people-ds2-plan.md) switched on or off.
 signal people_ds2_changed(enabled: bool)
 signal market_ds2_changed(enabled: bool)
+## The map legends' DS2 pad switched on or off.
+signal legend_ds2_changed(enabled: bool)
+## The updates dock's DS2 look switched on or off.
+signal dock_ds2_changed(enabled: bool)
+## The Shipments and Stockpiles panel's DS2 look switched on or off.
+signal transport_ds2_changed(enabled: bool)
+## The Politics panel's DS2 look switched on or off.
+signal politics_ds2_changed(enabled: bool)
+## The Resources panel's DS2 look (docs/resources-ds2-plan.md) switched on or off.
+signal resources_ds2_changed(enabled: bool)
 signal briefing_ds2_changed(enabled: bool)
 ## The construct panel's DS2 look, the construction lot (docs/construct-ds2-plan.md), switched on or off.
 signal construct_ds2_changed(enabled: bool)
@@ -89,6 +99,21 @@ var use_tvp_v3: bool = true
 # The Building Ledger in DS2 (docs/building-ledger-ds2-plan.md). The default; the debug cheat `toggle ledger ds2`
 # switches back to the v2 ledger, exactly as it was. Session-only, never persisted.
 var use_ledger_ds2: bool = true
+# The bottom-left map legends on the DS2 pad (scripts/ds2/legend_pad.gd): dark plastic with cut corners. Off until
+# the owner has reviewed it; the debug cheat `toggle legend ds2` switches it on. Session-only.
+var use_legend_ds2: bool = false
+# The updates dock in DS2 (scripts/toast_manager.gd): navy steel, the pen and bells raised, a row a module with a
+# lamp. Off until the owner has reviewed it; the debug cheat `toggle dock ds2` switches it on. Session-only.
+var use_dock_ds2: bool = false
+# The Shipments and Stockpiles panel in DS2 (scripts/transport_ds2/). The default; the debug cheat
+# `toggle transport ds2` switches back to the v2 panel. Session-only, never persisted.
+var use_transport_ds2: bool = true
+# The Politics panel in DS2: the record of the decarbonisation arc as a wooden courtroom. The default; the debug
+# cheat `toggle politics ds2` switches back to the v2 panel. Session-only, never persisted.
+var use_politics_ds2: bool = true
+# The Resources panel in DS2 (docs/resources-ds2-plan.md), the ledger's sibling. The default; the debug cheat
+# `toggle resources ds2` switches back to the v2 panel, exactly as it was. Session-only, never persisted.
+var use_resources_ds2: bool = true
 # The People panel in DS2 (docs/people-ds2-plan.md): the boardroom and the works. The default; the debug cheat
 # `toggle people ds2` switches back to today's panel, which is then exactly as it was. Session-only, never persisted.
 var use_people_ds2: bool = true
@@ -239,6 +264,56 @@ func set_use_ledger_ds2(enabled: bool) -> bool:
 
 func toggle_use_ledger_ds2() -> bool:
 	return set_use_ledger_ds2(not use_ledger_ds2)
+
+func set_use_legend_ds2(enabled: bool) -> bool:
+	if enabled == use_legend_ds2:
+		return use_legend_ds2
+	use_legend_ds2 = enabled
+	legend_ds2_changed.emit(use_legend_ds2)
+	return use_legend_ds2
+
+func toggle_use_legend_ds2() -> bool:
+	return set_use_legend_ds2(not use_legend_ds2)
+
+func set_use_dock_ds2(enabled: bool) -> bool:
+	if enabled == use_dock_ds2:
+		return use_dock_ds2
+	use_dock_ds2 = enabled
+	dock_ds2_changed.emit(use_dock_ds2)
+	return use_dock_ds2
+
+func toggle_use_dock_ds2() -> bool:
+	return set_use_dock_ds2(not use_dock_ds2)
+
+func set_use_transport_ds2(enabled: bool) -> bool:
+	if enabled == use_transport_ds2:
+		return use_transport_ds2
+	use_transport_ds2 = enabled
+	transport_ds2_changed.emit(use_transport_ds2)
+	return use_transport_ds2
+
+func toggle_use_transport_ds2() -> bool:
+	return set_use_transport_ds2(not use_transport_ds2)
+
+func set_use_politics_ds2(enabled: bool) -> bool:
+	if enabled == use_politics_ds2:
+		return use_politics_ds2
+	use_politics_ds2 = enabled
+	politics_ds2_changed.emit(use_politics_ds2)
+	return use_politics_ds2
+
+func toggle_use_politics_ds2() -> bool:
+	return set_use_politics_ds2(not use_politics_ds2)
+
+func set_use_resources_ds2(enabled: bool) -> bool:
+	if enabled == use_resources_ds2:
+		return use_resources_ds2
+	use_resources_ds2 = enabled
+	resources_ds2_changed.emit(use_resources_ds2)
+	return use_resources_ds2
+
+func toggle_use_resources_ds2() -> bool:
+	return set_use_resources_ds2(not use_resources_ds2)
 
 func set_use_people_ds2(enabled: bool) -> bool:
 	if enabled == use_people_ds2:

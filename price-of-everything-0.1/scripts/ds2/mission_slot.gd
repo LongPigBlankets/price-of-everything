@@ -182,9 +182,9 @@ func _notification(what: int) -> void:
 		_fit_title()
 
 
-## Plays the completion: the stroke with steam, a hold, `swap` (which sets the next mission) behind a
-## fade of the key's print, and the snap back. Emits celebration_finished at the end.
-func celebrate(swap: Callable) -> void:
+## Plays the completion: the stroke with steam, a hold of `hold` seconds, `swap` (which sets the next mission)
+## behind a fade of the key's print, and the snap back. Emits celebration_finished at the end.
+func celebrate(swap: Callable, hold: float = HOLD_SEC) -> void:
 	if _anim != null and _anim.is_valid():
 		_anim.kill()
 	_venting = true
@@ -194,7 +194,7 @@ func celebrate(swap: Callable) -> void:
 	_anim.tween_callback(func() -> void:
 		_venting = false
 		_burst(_head_rect().get_center() + Vector2(_head_rect().size.x * 0.5, 0.0), 5))
-	_anim.tween_interval(HOLD_SEC)
+	_anim.tween_interval(hold)
 	_anim.tween_property(key, "modulate:a", 0.0, TITLE_FADE_SEC)
 	_anim.tween_callback(swap)
 	_anim.tween_property(key, "modulate:a", 1.0, TITLE_FADE_SEC)

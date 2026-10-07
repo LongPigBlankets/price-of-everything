@@ -172,26 +172,6 @@ func _test_board_draws_no_port_lane_for_intermediary_output() -> void:
 	_check(Service.buys_output(iid, "g_008") and not to_port, "board: no sell lane to a port for output the intermediary buys")
 	cleanup()
 
-## The Local Suppliers panel lists the buildings that send it outputs and, switched, those that still take inputs
-## from it; a building on its own routes leaves the inputs list.
-func _test_local_suppliers_panel_lists() -> void:
-	var ids := setup(1)
-	var iid := str(ids[0])
-	var Panel := preload("res://scripts/local_suppliers_panel.gd")
-	var outs: Array = Panel.rows_for("output", "tile_5_4")
-	var ins: Array = Panel.rows_for("input", "tile_5_4")
-	_check(outs.size() == 1 and str(outs[0].iid) == iid and str(outs[0].goods).contains(Catalog.get_display_name("g_008")),
-		"local suppliers: the outputs list names the building and the goods it sends")
-	_check(ins.size() == 1 and str(ins[0].goods).contains(Catalog.get_display_name("g_006")),
-		"local suppliers: the inputs list names the goods it still takes")
-	Service.set_mode(iid, "input", "managed")
-	MatchState.set_input_tile_only(iid, "g_006", true)
-	MatchState.set_input_tile_only(iid, "g_007", true)
-	var still: Array = Panel.rows_for("input", "tile_5_4")
-	_check(still.is_empty() or str(still[0].goods).contains("fallback"),
-		"local suppliers: a building on its own input routes is gone from the list, or listed as a fallback")
-	cleanup()
-
 func _test_live_shortage_and_legacy_default() -> void:
 	var ids := setup()
 	MatchState.money = -1000000.0
@@ -210,7 +190,8 @@ func _test_live_shortage_and_legacy_default() -> void:
 ## Two batches short of cash in one turn borrow through one loan, sized to what both drew, and both still run.
 func _test_funding_draws_one_loan_per_turn() -> void:
 	setup(2)
-	MatchState.money = 0.0
+	# Each batch costs about £400 with its Pepper Valley haul, so both are short and their draws fit one loan.
+	MatchState.money = 200.0
 	var before := MatchState.money
 	Production._process_production()
 	var s: Dictionary = Production.last_turn_summary

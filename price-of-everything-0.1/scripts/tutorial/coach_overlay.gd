@@ -11,6 +11,10 @@ signal skipped            # "Skip Tutorial" pressed
 signal choice_made(goto)  # a branch choice button pressed (goto = target step id)
 
 const RecipeFlowPanelScript := preload("res://scripts/tutorial/tutorial_recipe_flow_panel.gd")
+const CoachPlate := preload("res://scripts/tutorial/coach_plate.gd")
+const CreamKey := preload("res://scripts/ds2/cream_key.gd")
+## The card's keys are never narrower than this.
+const KEY_MIN_W := 120.0
 const DIM := Color(0, 0, 0, 0.6)
 const GLOW := Color(0.98, 0.80, 0.42)  # warm gold spotlight glow
 
@@ -56,6 +60,12 @@ var _welcome_body: VBoxContainer = null
 var _welcome_btn: Button = null
 var _recipe_flow_panel = null
 var _annot_items: Array = []            # [{ref, side, label}] — HUD-primer labels + their leader-line targets
+## A map_only step shades and blocks only the map: the shade sits under the HUD on the overlay's layer, so the
+## bottom bar, the updates, the top bar and any panel they open stay lit and live. This overlay then takes no
+## clicks but the card's, and the HUD labels stand aside while a panel is open.
+var _map_only := false
+var _refit_queued := false
+var _map_shade: ColorRect = null
 var _hint_items: Array = []             # left-edge fixed hint Labels (no leader line)
 
 
@@ -77,6 +87,8 @@ func _ready() -> void:
 # Only "solid" (dimmed) area is hit — the spotlight hole passes clicks through to the
 # HUD beneath. The card is a child Control and is hit-tested independently.
 func _has_point(point: Vector2) -> bool:
+	if _map_only:
+		return false
 	# Some explanatory spotlights identify a control without asking the player to use it.
 	# Keep the cut-out visible, but let this overlay swallow clicks inside it.
 	if _hole.has_area() and not _spotlight_passthrough:
@@ -97,6 +109,10 @@ func _has_point(point: Vector2) -> bool:
 
 
 func _draw() -> void:
+	if _map_only:
+		if _mode == "annotate" and not _panel_open():
+			_draw_annotation_lines()
+		return
 	if _no_dim:
 		return   # card-only step: leave the map fully visible
 	var reveal := _reveal_eased()
@@ -179,6 +195,8 @@ func _process(dt: float) -> void:
 		_position_annotations()
 		_pulse += dt
 		_advance_reveal(dt)
+		if _map_shade != null and is_instance_valid(_map_shade):
+			_map_shade.color.a = DIM.a * _eased(_dim_level)
 		queue_redraw()
 		return
 	_advance_reveal(dt)
@@ -347,6 +365,8 @@ func show_step(step: Dictionary, index: int, total: int) -> void:
 	visible = true
 	_mode = str(step.get("mode", ""))
 	_no_dim = bool(step.get("no_dim", false))
+	_map_only = bool(step.get("map_only", false))
+	_sync_map_shade()
 	_spotlight_passthrough = bool(step.get("spotlight_passthrough", true))
 	_card_side = str(step.get("card_side", ""))   # "right" prefers the bottom-right corner
 	_clear_annotations()
@@ -388,17 +408,15 @@ func show_step(step: Dictionary, index: int, total: int) -> void:
 	for ch in choices:
 		if not (ch is Dictionary):
 			continue
-		var b := Button.new()
-		b.text = str((ch as Dictionary).get("label", "Choose"))
-		b.theme_type_variation = &"Primary"
-		b.custom_minimum_size = Vector2(0, 42)
+		var label := str((ch as Dictionary).get("label", "Choose"))
+		var b := CreamKey.make("CoachChoice", label, "", KEY_MIN_W)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var goto := str((ch as Dictionary).get("goto", ""))
 		b.pressed.connect(func() -> void: choice_made.emit(goto))
 		_choices_box.add_child(b)
 	# Next is for plain info steps only (hidden when this is a choice step).
 	_skip_btn.visible = not bool(step.get("hide_skip", false))
-	_next_btn.text = str(step.get("next_label", "Next"))
+	_set_key(_next_btn, str(step.get("next_label", "Next")))
 	_next_btn.visible = str(step.get("advance", "auto")) == "next" and choices.is_empty()
 
 	# "annotate": a HUD primer — full dim, the corner card centred, plus labels + leader
@@ -430,6 +448,19 @@ func show_step(step: Dictionary, index: int, total: int) -> void:
 	# Cue the player's eye to a freshly-highlighted element with the hint sound.
 	if _hole.has_area() and typeof(Audio) != TYPE_NIL and Audio.has_method("hint"):
 		Audio.hint()
+
+
+## Fit the card to its content again and put it back in its place.
+func _refit_card() -> void:
+	_refit_queued = false
+	if _card == null or not _card.visible or not is_inside_tree():
+		return
+	_card.reset_size()
+	if _mode == "annotate":
+		_center_card_for_annotate()
+	else:
+		_reposition_card()
+	queue_redraw()
 
 
 # Re-measure and reposition after the next layout pass, when the body Label has
@@ -515,15 +546,26 @@ func _tile_screen_rect(tile_id: String) -> Rect2:
 func _build_card() -> void:
 	_card = PanelContainer.new()
 	_card.theme_type_variation = &"CoachCard"
+	# The card is the dark metal plate in its silver frame (coach_plate.gd); the content's margins clear the frame.
+	_card.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	_card.add_child(CoachPlate.new())
 	_card.mouse_filter = Control.MOUSE_FILTER_STOP
 	_card.custom_minimum_size = Vector2(460, 0)
 	add_child(_card)
+	# A card first measured before its text has a width wraps that text a word to a line and stands far too tall.
+	# Whenever what it holds settles to a new size, fit the card to it again.
+	_card.minimum_size_changed.connect(func() -> void:
+		if not _refit_queued:
+			_refit_queued = true
+			_refit_card.call_deferred())
 
 	# CoachCard already supplies 24px horizontal / 20px vertical padding. Keep another
 	# 10px above the content and 20px below the footer for a roomier tutorial card.
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_top", 10)
-	margin.add_theme_constant_override("margin_bottom", 20)
+	margin.add_theme_constant_override("margin_left", 24 + int(CoachPlate.FRAME))
+	margin.add_theme_constant_override("margin_right", 24 + int(CoachPlate.FRAME))
+	margin.add_theme_constant_override("margin_top", 26 + int(CoachPlate.FRAME))
+	margin.add_theme_constant_override("margin_bottom", 22 + int(CoachPlate.FRAME))
 	_card.add_child(margin)
 
 	var col := VBoxContainer.new()
@@ -544,6 +586,9 @@ func _build_card() -> void:
 	_title.theme_type_variation = &"Section"
 	_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# As wide as the body from the start: a wrapping label with no width yet wraps a letter to a line, and a card
+	# measured then stands hundreds of pixels too tall.
+	_title.custom_minimum_size = Vector2(430, 0)
 	title_row.add_child(_title)
 
 	_body = Label.new()
@@ -581,11 +626,8 @@ func _build_card() -> void:
 	nav_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_footer.add_child(nav_spacer)
 
-	_next_btn = Button.new()
-	_next_btn.name = "CoachNextButton"
-	_next_btn.text = "Next"
-	_next_btn.theme_type_variation = &"Silver"
-	_next_btn.custom_minimum_size = Vector2(86, 40)
+	_next_btn = CreamKey.make("CoachNextButton", "Next", "", KEY_MIN_W)
+	_next_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_next_btn.pressed.connect(func() -> void: advanced.emit())
 	_footer.add_child(_next_btn)
 
@@ -598,10 +640,8 @@ func _build_card() -> void:
 func _build_welcome_panel() -> void:
 	_welcome_card = PanelContainer.new()
 	_welcome_card.theme_type_variation = &"CoachCard"
-	var welcome_style := DS.theme.get_stylebox("panel", "CoachCard").duplicate() as StyleBox
-	welcome_style.content_margin_top = 30
-	welcome_style.content_margin_bottom = 30
-	_welcome_card.add_theme_stylebox_override("panel", welcome_style)
+	_welcome_card.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	_welcome_card.add_child(CoachPlate.new())
 	_welcome_card.mouse_filter = Control.MOUSE_FILTER_STOP
 	_welcome_card.custom_minimum_size = Vector2(600, 0)
 	_welcome_card.visible = false
@@ -609,7 +649,7 @@ func _build_welcome_panel() -> void:
 
 	var margin := MarginContainer.new()
 	for s in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + s, 30)
+		margin.add_theme_constant_override("margin_" + s, 54 + int(CoachPlate.FRAME))
 	_welcome_card.add_child(margin)
 
 	var col := VBoxContainer.new()
@@ -643,12 +683,18 @@ func _build_welcome_panel() -> void:
 	wspacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	wbtns.add_child(wspacer)
 
-	_welcome_btn = Button.new()
-	_welcome_btn.text = "Begin"
-	_welcome_btn.theme_type_variation = &"Silver"
-	_welcome_btn.custom_minimum_size = Vector2(0, 44)
+	_welcome_btn = CreamKey.make("CoachBeginButton", "Begin", "", KEY_MIN_W)
+	_welcome_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_welcome_btn.pressed.connect(func() -> void: advanced.emit())
 	wbtns.add_child(_welcome_btn)
+
+
+## A cream key's print, and the width it needs for it.
+static func _set_key(key: Button, label: String) -> void:
+	key.set("title", label)
+	key.text = ""
+	key.custom_minimum_size.x = maxf(KEY_MIN_W, CreamKey.width_for(label, "", false, false))
+	key.queue_redraw()
 
 
 func _build_recipe_flow_panel() -> void:
@@ -777,7 +823,7 @@ func _show_welcome(step: Dictionary) -> void:
 		pl.custom_minimum_size = Vector2(540, 0)
 		pl.text = str(p)
 		_welcome_body.add_child(pl)
-	_welcome_btn.text = str(step.get("cta", "Begin"))
+	_set_key(_welcome_btn, str(step.get("cta", "Begin")))
 	_center_welcome()
 	_defer_center_welcome()
 
@@ -849,6 +895,15 @@ func _build_annotations(step: Dictionary) -> void:
 
 
 func _position_annotations() -> void:
+	if _map_only and _panel_open():
+		for it in _annot_items:
+			(it["label"] as Label).visible = false
+			it["trect"] = Rect2()
+		for h in _hint_items:
+			(h as Control).visible = false
+		return
+	for h in _hint_items:
+		(h as Control).visible = true
 	var placed: Array[Rect2] = []
 	var scene := get_tree().current_scene
 	for it in _annot_items:
@@ -930,6 +985,35 @@ func _draw_annotation_lines() -> void:
 				to = Vector2(tr.get_center().x, tr.position.y)
 		draw_line(from, to, lc, 2.0, true)
 		draw_circle(to, 3.0, lc)
+
+
+## Is a panel open over the map (one the player opened from the HUD)?
+func _panel_open() -> bool:
+	return typeof(PanelStack) != TYPE_NIL and PanelStack.size() > 0
+
+
+## Put the map's shade under the HUD for a map_only step, and take it away for any other.
+func _sync_map_shade() -> void:
+	if not _map_only:
+		if _map_shade != null and is_instance_valid(_map_shade):
+			_map_shade.queue_free()
+		_map_shade = null
+		return
+	if (_map_shade != null and is_instance_valid(_map_shade)) or get_parent() == null:
+		return
+	_map_shade = ColorRect.new()
+	_map_shade.name = "TutorialMapShade"
+	_map_shade.color = Color(DIM.r, DIM.g, DIM.b, DIM.a * _eased(_dim_level))
+	_map_shade.mouse_filter = Control.MOUSE_FILTER_STOP   # the map takes no clicks; the HUD over it does
+	_map_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	get_parent().add_child(_map_shade)
+	get_parent().move_child(_map_shade, 0)
+
+
+func _exit_tree() -> void:
+	if _map_shade != null and is_instance_valid(_map_shade):
+		_map_shade.queue_free()
+	_map_shade = null
 
 
 func _clear_annotations() -> void:

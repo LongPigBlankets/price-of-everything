@@ -123,33 +123,27 @@ func _test_global_switch_counts_and_checks_every_tile_before_changing() -> void:
 	cleanup()
 
 
-## Leaving the intermediary says what changes for that side and destination, and never promises
-## a port sale for goods going to a stockpile. A stockpile move with nothing to ask still says so.
+## Leaving Local Suppliers asks one sheet whose words fit the side and destination: a stockpile warns about the
+## surplus and promises no port sale, the market names transport and port fees.
 func _test_supplier_change_wording() -> void:
 	var confirm := preload("res://scripts/logistics_confirmation.gd")
 	var coal := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
 	var to_stock: String = confirm.message_for({"side": "output", "destination": "stockpile", "good": coal})
-	_check(to_stock.contains("coal") and not to_stock.contains("port"),
-		"supplier change: output to a stockpile names the good and no port sale")
-	_check(str(confirm.message_for({"side": "output", "destination": "market", "good": coal})).contains("port charge"),
-		"supplier change: output to the market names the port charge")
-	_check(str(confirm.message_for({"side": "input", "destination": "stockpile"})).contains("stockpile"),
-		"supplier change: input from a stockpile says where it comes from")
-	for text: String in [to_stock, str(confirm.message_for({}))]:
+	_check(to_stock.contains("Stockpiles may accumulate") and to_stock.contains(confirm.STOCKPILE_LINK) and not to_stock.contains("port"),
+		"supplier change: output to a stockpile says it will pile up, points at the Stockpile tab, and names no port sale")
+	_check(confirm.message_for({"side": "output", "destination": "tile"}) == to_stock, "supplier change: another tile's stockpile reads the same")
+	var to_market: String = confirm.message_for({"side": "output", "destination": "market", "good": coal})
+	_check(to_market.contains("port fees"), "supplier change: output to the market names the port fees")
+	_check(str(confirm.message_for({"side": "input", "destination": "stockpile"})).contains("source of your inputs"),
+		"supplier change: an input change names the source of the inputs")
+	_check(confirm.title_for({"side": "output"}) == "Change destination" and confirm.title_for({"side": "input"}) == "Change supplier",
+		"supplier change: outputs change a destination, inputs a supplier")
+	for text: String in [to_stock, to_market, str(confirm.message_for({}))]:
 		_check(not text.contains(" — ") and not text.contains(";"), "supplier change: plain copy, no dashes or semicolons")
-	var toasts: Array = []
-	var catch := func(m: String, _t: String) -> void: toasts.append(m)
-	MatchState.toast_requested.connect(catch)
-	preload("res://scripts/stockpile_route_prompt.gd")._say_supplier_changed("tile_5_10", coal, {"supplier_changed": true})
-	preload("res://scripts/stockpile_route_prompt.gd")._say_supplier_changed("tile_5_10", coal, {})
-	MatchState.toast_requested.disconnect(catch)
-	_check(toasts.size() == 1 and str(toasts[0]).contains("no longer buy coal"),
-		"supplier change: with nothing to ask, one toast says Local Suppliers stopped buying")
 
 
-## Building Detail: a good's output leaving the intermediary for its own stockpile changes at once,
-## with no supplier dialog (the surplus prompt carries it); other routes still ask once, in words
-## that fit the side and destination.
+## Building Detail: a good's output leaving Local Suppliers asks once, on the one card, whether it goes to the
+## tile's stockpile or the market, and nothing changes until it is confirmed.
 func _test_supplier_change_one_dialog() -> void:
 	var iid := str(setup()[0])
 	var building := BuildingState.get_building(iid)
@@ -167,25 +161,59 @@ func _test_supplier_change_one_dialog() -> void:
 		panel.queue_free()
 		cleanup()
 		return
-	var ran := {"after": false}
-	panel.call("_request_logistics_mode", building, "output", "managed", func() -> void: ran["after"] = true, gid, "stockpile", false)
-	await get_tree().process_frame
-	_check(panel.find_child("TransportSupplierConfirmation", true, false) == null and bool(ran["after"])
-		and not service.buys_output(iid, gid),
-		"supplier change: to its own stockpile it changes at once, with no supplier dialog")
-	service.set_good_mode(iid, "output", gid, "middleman")
 	preload("res://scripts/logistics_confirmation.gd").skip_confirmation = false
 	panel.call("_request_logistics_mode", building, "output", "managed", Callable(), gid, "market", true)
 	await get_tree().process_frame
-	var dialog := panel.find_child("TransportSupplierConfirmation", true, false) as ConfirmationDialog
+	var dialog := panel.find_child("TransportSupplierConfirmation", true, false)
 	var words := ""
 	if dialog != null:
-		for label: Node in dialog.find_children("*", "Label", true, false):
-			words += (label as Label).text
-	_check(dialog != null and words.contains("port charge") and service.buys_output(iid, gid),
-		"supplier change: to the market it asks once, naming the port charge, and waits")
+		words = str((dialog.find_child("Message", true, false) as RichTextLabel).get_meta("plain", ""))
+	_check(dialog != null and words.contains("port fees") and service.buys_output(iid, gid)
+		and dialog.find_child("Sheet", true, false) != null and str(dialog.get("title_text")) == "Change destination",
+		"supplier change: to the market the DS2 sheet asks once, naming the port fees, and waits")
 	if dialog != null:
-		dialog.queue_free()
+		dialog.emit_signal("canceled")
+		await get_tree().process_frame
+	_check(service.buys_output(iid, gid) and panel.find_child("TransportSupplierConfirmation", true, false) == null, "supplier change: cancelled, nothing changes and the sheet goes")
+	# To a stockpile: the Stockpile tab is a link to the building's tile, and pressing it changes nothing.
+	panel.call("_request_logistics_mode", building, "output", "managed", Callable(), gid, "stockpile", true)
+	await get_tree().process_frame
+	var sheet := panel.find_child("TransportSupplierConfirmation", true, false)
+	var asked: Array = []
+	var note := func(tile: String) -> void: asked.append(tile)
+	MatchState.tile_stockpile_requested.connect(note)
+	_check(sheet != null and str(sheet.call("message_bbcode")).contains("[url=") and str(sheet.get("link_tile")) == str(building.get("tile_id", "")),
+		"supplier change: to a stockpile the Stockpile tab is a link to the building's tile")
+	if sheet != null:
+		sheet.call("open_link")
+		await get_tree().process_frame
+	MatchState.tile_stockpile_requested.disconnect(note)
+	sheet = panel.find_child("TransportSupplierConfirmation", true, false)
+	_check(asked == [str(building.get("tile_id", ""))] and service.buys_output(iid, gid) and sheet != null,
+		"supplier change: the link opens that tile's Stockpile tab, changes nothing and leaves the sheet up")
+	var confirm_key := sheet.find_child("ConfirmKey", true, false) as Control
+	var cancel_key := sheet.find_child("CancelKey", true, false) as Control
+	_check(str(sheet.get("confirm_text")) == "Confirm" and cancel_key.size.x < confirm_key.size.x
+		and cancel_key.global_position.x + cancel_key.size.x + 40.0 < confirm_key.global_position.x,
+		"supplier change: a smaller Cancel and Confirm at the two ends of the row")
+	sheet.emit_signal("confirmed")
+	await get_tree().process_frame
+	_check(not service.buys_output(iid, gid), "supplier change: Confirm after the link still makes the change")
 	panel.queue_free()
 	await get_tree().process_frame
+	cleanup()
+
+
+## A building bought from an NPC starts on Local Suppliers for its inputs and outputs, as a building just
+## constructed does.
+func _test_bought_building_starts_on_local_suppliers() -> void:
+	setup(0)
+	MatchState.ruleset["middleman_new_buildings"] = true
+	var service = preload("res://scripts/middleman_service.gd")
+	var iid := BuildingState.add_building("b_002", "r_003", "tile_5_4", "npc_market", "bought_furnace")
+	_check(not service.enabled(iid), "bought building: an NPC's building is not on Local Suppliers")
+	BuildingState.set_building_owner(iid, MatchState.LOCAL_PLAYER)
+	var entry: Dictionary = MatchState.middleman_service.get("buildings", {}).get(iid, {})
+	_check(service.enabled(iid) and str(entry.get("input_mode", "")) == "middleman" and str(entry.get("output_mode", "")) == "middleman",
+		"bought building: it starts on Local Suppliers for inputs and outputs")
 	cleanup()

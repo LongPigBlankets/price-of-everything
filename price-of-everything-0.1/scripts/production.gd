@@ -233,6 +233,10 @@ func _process_production() -> void:
 	# Per-turn storage fee on stockpiled goods (per unit, by transport class —
 	# EconomyConfig.WAREHOUSING_COST_PER_UNIT_BY_CLASS).
 	"warehousing_paid": 0.0,
+	# What moving, storing and selling each good cost this turn, for the Resources panel:
+	# good_id -> {transport, transport_units, storage, storage_units, intermediary, intermediary_units}.
+	# A split of charges already counted above, never a charge of its own (note_good_cost).
+	"good_costs": {},
 	# A start's one-off charges booked this turn (MatchState.one_off_charges), and their labels.
 	"one_off_paid": 0.0,
 	"one_off_lines": [],
@@ -536,6 +540,7 @@ func _process_production() -> void:
 		summary.transport_paid += freight
 		summary.money_out += freight
 		_record_transport_breakdown(summary,move.get("transport_breakdown",{}),freight)
+		note_goods_cost(summary, move.get("goods", {}), "transport", freight)
 	TurnProfiler.section_end("recurring_moves")
 
 	# Top up market-sourced building inputs (bought from the nearest port, arrive in N turns).
@@ -590,6 +595,7 @@ func _process_production() -> void:
 				var sold: Dictionary = Middleman.sell_surplus(str(tile_id), surplus, summary)
 				for item: Dictionary in sold.get("items", []):
 					_note_tile_sale_charge(str(tile_id), str(item.get("good_id", "")), float(item.get("fee", 0.0)))
+					note_good_cost(summary, str(item.get("good_id", "")), "intermediary", float(item.get("fee", 0.0)), int(item.get("qty", 0)))
 			else:
 				_sell_stockpile_totals(str(tile_id), surplus, summary, true)
 	TurnProfiler.section_end("sell_phase")
@@ -632,7 +638,9 @@ func _process_production() -> void:
 		var wtotals: Dictionary = Stockpile.get_tile_totals(wtile)
 		var tile_fee := 0.0
 		for wgood in wtotals:
-			tile_fee += float(wtotals[wgood]) * EconomyConfig.warehousing_cost_per_unit(str(wgood))
+			var good_fee := float(wtotals[wgood]) * EconomyConfig.warehousing_cost_per_unit(str(wgood))
+			tile_fee += good_fee
+			note_good_cost(summary, str(wgood), "storage", good_fee, int(wtotals[wgood]))
 		if tile_fee > 0.0:
 			warehousing += tile_fee
 			_warehousing_by_tile[str(wtile)] = tile_fee
@@ -1090,6 +1098,7 @@ func _process_transport_arrivals(summary: Dictionary) -> void:
 			summary.goods_purchased_cost += goods_cost
 			summary.transport_paid += freight
 			_record_transport_breakdown(summary, shipment.get("transport_breakdown", {}), freight)
+			note_good_cost(summary, str(good_id), "transport", freight, int(shipment.get("qty", 0)))
 			summary.money_out += purchase_cost
 			summary.purchased_cost[good_id] = float(summary.purchased_cost.get(good_id, 0.0)) + goods_cost
 			_accumulate_by_type(summary.goods_purchased_by_type, str(shipment.get("buy_building_id", "")), goods_cost, 0)
@@ -1240,6 +1249,7 @@ func _sell_output_to_market(building: Dictionary, good: Dictionary, qty: int, su
 		_sale_charges_by_building[iid] = float(_sale_charges_by_building.get(iid, 0.0)) + transport_cost
 		summary.transport_paid += transport_cost
 		_record_transport_breakdown(summary, result.get("transport_breakdown", {}), transport_cost)
+		note_good_cost(summary, str(good_id), "transport", transport_cost, qty)
 		summary.money_out += transport_cost
 	# Deferred sales credit the summary on arrival via _process_transport_arrivals;
 	# immediate sales (no route, 0-turn) and sales the transit credit line paid on
@@ -1313,6 +1323,7 @@ func _dispatch_output_to_destination(building: Dictionary, good: Dictionary, qty
 		MatchState.add_money(-transport_cost)
 		summary.transport_paid += transport_cost
 		_record_transport_breakdown(summary, TransportService.transport_cost_breakdown_for_route(good.id, qty, route), transport_cost)
+		note_good_cost(summary, str(good.id), "transport", transport_cost, qty)
 		summary.money_out += transport_cost
 
 	if int(route.turns) >= 1:
@@ -1538,6 +1549,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 			in_port_range and bool(covered_goods.get(good_key, false)), true, transport_breakdown)
 		transport_cost += good_charges
 		_note_tile_sale_charge(source_tile, good_key, good_charges)
+		note_good_cost(summary, good_key, "transport", good_charges, sold_qty)
 		sale_record.items.append({
 			"good_id": good_key,
 			"qty": sold_qty,
@@ -1641,12 +1653,40 @@ func record_external_goods_sale(sale_record: Dictionary) -> void:
 	if not last_turn_summary.is_empty() and _apply_sale_record_to_summary(last_turn_summary, sale_record):
 		turn_processed.emit(last_turn_summary)
 
-func record_external_transport_cost(cost: float, breakdown: Dictionary = {}) -> void:
+## `goods` (good_id -> units) says what the freight carried, so the Resources panel can show it by good.
+func record_external_transport_cost(cost: float, breakdown: Dictionary = {}, goods: Dictionary = {}) -> void:
 	if cost <= 0.0 or _active_turn_summary.is_empty():
 		return
 	_active_turn_summary.transport_paid += cost
 	_record_transport_breakdown(_active_turn_summary, breakdown, cost)
 	_active_turn_summary.money_out += cost
+	note_goods_cost(_active_turn_summary, goods, "transport", cost)
+
+
+## Books `amount` of a charge already paid against one good in the turn's summary (good_costs), with the
+## units it was paid on. `kind` is "transport", "storage" or "intermediary". It moves no money.
+func note_good_cost(summary: Dictionary, good_id: String, kind: String, amount: float, units: int) -> void:
+	if good_id == "" or (amount <= 0.0 and units <= 0):
+		return
+	var all: Dictionary = summary.get("good_costs", {})
+	var row: Dictionary = all.get(good_id, {})
+	row[kind] = float(row.get(kind, 0.0)) + maxf(amount, 0.0)
+	row[kind + "_units"] = int(row.get(kind + "_units", 0)) + maxi(units, 0)
+	all[good_id] = row
+	summary["good_costs"] = all
+
+
+## A charge paid on several goods at once, shared between them by units (good_id -> units).
+func note_goods_cost(summary: Dictionary, goods: Dictionary, kind: String, amount: float) -> void:
+	var total := 0
+	for gid in goods:
+		total += maxi(int(goods[gid]), 0)
+	if total <= 0:
+		return
+	for gid in goods:
+		var units := maxi(int(goods[gid]), 0)
+		if units > 0:
+			note_good_cost(summary, str(gid), kind, amount * float(units) / float(total), units)
 
 
 func _record_transport_breakdown(summary: Dictionary, breakdown: Dictionary, total: float) -> void:
@@ -2944,6 +2984,7 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 					summary.goods_purchased_cost += float(bought.get("goods_cost", 0.0))
 					summary.transport_paid += float(bought.get("transport_cost", 0.0))
 					_record_transport_breakdown(summary, bought.get("transport_breakdown", {}), float(bought.get("transport_cost", 0.0)))
+					note_good_cost(summary, str(good_id), "transport", float(bought.get("transport_cost", 0.0)), int(bought.get("qty", 0)))
 					summary.money_out += float(bought.get("cost", 0.0))
 					summary.purchased_cost[good_id] = float(summary.purchased_cost.get(good_id, 0.0)) + float(bought.get("goods_cost", 0.0))
 					_accumulate_by_type(summary.goods_purchased_by_type, str(rep_building[good_id]), float(bought.get("goods_cost", 0.0)), 0)
@@ -2957,6 +2998,7 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 			summary.goods_purchased_cost += float(rbought.get("goods_cost", 0.0))
 			summary.transport_paid += float(rbought.get("transport_cost", 0.0))
 			_record_transport_breakdown(summary, rbought.get("transport_breakdown", {}), float(rbought.get("transport_cost", 0.0)))
+			note_good_cost(summary, rgood, "transport", float(rbought.get("transport_cost", 0.0)), int(rbought.get("qty", 0)))
 			summary.money_out += float(rbought.get("cost", 0.0))
 			summary.purchased_cost[rgood] = float(summary.purchased_cost.get(rgood, 0.0)) + float(rbought.get("goods_cost", 0.0))
 			_accumulate_by_type(summary.goods_purchased_by_type, "", float(rbought.get("goods_cost", 0.0)), 0)

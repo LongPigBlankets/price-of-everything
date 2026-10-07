@@ -13,6 +13,9 @@ extends PanelContainer
 
 const PipeFrame := preload("res://scripts/pipe_frame.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
+const ResourcesDs2 := preload("res://scripts/resources_ds2/resources_ds2.gd")  # the DS2 look (UiPrefs.use_resources_ds2)
+const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
+const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
 
 @onready var title_label: Label = $MarginContainer/VBoxContainer/HeaderRow/TitleLabel
 @onready var close_button: Button = $MarginContainer/VBoxContainer/HeaderRow/CloseButton
@@ -34,6 +37,11 @@ var _drag_offset := Vector2.ZERO
 var _expanded: Dictionary = {}       # good_id -> bool
 var _detail_boxes: Dictionary = {}   # good_id -> the detail Control under its row (lazy)
 var _good_data: Dictionary = {}      # good_id -> the catalog row, for building that detail
+# The DS2 look: its view, the nodes it added (the backing, the view's margin), and the v2 size to go back to.
+var _ds2: Control = null
+var _ds2_extra: Array[Node] = []
+var _v2_min_size := Vector2.ZERO
+var _ds2_dirty := false
 
 func _ready() -> void:
 	close_button.pressed.connect(hide)
@@ -46,6 +54,55 @@ func _ready() -> void:
 	Stockpile.stockpile_changed.connect(_refresh_values)
 	CostSolver.costs_updated.connect(_refresh_values)
 	TurnManager.turn_advanced.connect(func(_t: int) -> void: _refresh_values())
+	_v2_min_size = custom_minimum_size
+	_build_look()
+	UiPrefs.resources_ds2_changed.connect(func(_on: bool) -> void: _build_look())
+	visibility_changed.connect(func() -> void:
+		if visible and _ds2 != null:
+			_ds2.call("refresh"))
+
+
+# ── Look: v2, or DS2 behind UiPrefs.use_resources_ds2 ────────────────────────────────────
+## Shows the panel in the look the switch asks for. The v2 table stays built and hidden under the DS2 view,
+## so switching back shows it exactly as it was.
+func _build_look() -> void:
+	for n in _ds2_extra:
+		if is_instance_valid(n):
+			n.get_parent().remove_child(n)
+			n.queue_free()
+	_ds2_extra.clear()
+	_ds2 = null
+	var v2 := $MarginContainer as Control
+	v2.visible = not UiPrefs.use_resources_ds2
+	if not UiPrefs.use_resources_ds2:
+		LampOverlay.detach(self)
+		custom_minimum_size = _v2_min_size
+		add_theme_stylebox_override("panel", PipeFrame.dark_brown_stylebox(10.0))
+		reset_size()
+		return
+	_ds2_extra.append(LedgerV3.dress(self))
+	var margin := MarginContainer.new()
+	margin.name = "Ds2Margin"
+	for side in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(side, LedgerV3.CONTENT_MARGIN)
+	add_child(margin)
+	_ds2_extra.append(margin)
+	_ds2 = ResourcesDs2.new()
+	_ds2.set("on_close", Callable(self, "hide"))
+	_ds2.set("on_drag", Callable(self, "_on_ds2_drag"))
+	margin.add_child(_ds2)
+	custom_minimum_size = Vector2(ResourcesDs2.WIDTH, ResourcesDs2.HEIGHT)
+	# The lamp over the whole panel (docs/ds2-theme.md §4).
+	LampOverlay.attach(self)
+
+
+## The DS2 title row drags the panel, as the v2 header strip does.
+func _on_ds2_drag(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		_dragging = event.pressed
+		_drag_offset = global_position - get_global_mouse_position()
+	elif event is InputEventMouseMotion and _dragging:
+		global_position = get_global_mouse_position() + _drag_offset
 
 ## Header shortcut into the full-screen Goods Graph (the web this table is a flat
 ## view of). Routed through MatchState so this panel needs no reference to the view.
@@ -183,6 +240,15 @@ func _toggle_good(gid: String) -> void:
 
 # ── The row's five figures ───────────────────────────────────────────────────────────
 func _refresh_values() -> void:
+	if _ds2 != null:
+		# The DS2 table is redrawn once a frame at most, and only while it is on screen.
+		if visible and not _ds2_dirty:
+			_ds2_dirty = true
+			(func() -> void:
+				_ds2_dirty = false
+				if _ds2 != null and visible:
+					_ds2.call("refresh")).call_deferred()
+		return
 	for child in content_vbox.get_children():
 		var gid := str(child.name).trim_prefix("Good_")
 		if gid != "":
@@ -307,6 +373,8 @@ func _num(n: int) -> String:
 
 
 func _gui_input(event: InputEvent) -> void:
+	if _ds2 != null:
+		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			# Only start drag if click is in the top strip

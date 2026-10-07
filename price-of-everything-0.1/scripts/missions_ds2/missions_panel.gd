@@ -3,9 +3,8 @@ extends VBoxContainer
 ## (MiniQuest.mission_boards(): Metal Magnate's Tutorial and its own board), the board itself as a mimic
 ## board running top to bottom (mission_board.gd) in a scroller that opens on the selected station, and under
 ## it a readout of the selected station: its lamp, name, what it asks
-## and what it pays, its count on the piston, a key to show the board on the top bar, and at a choice the
-## guarded key that takes this branch for good.
-## Commands go to MiniQuest (choose, follow_board); everything shown comes from MiniQuest.mission_boards().
+## and what it pays, its count on the piston, and at a choice the guarded key that takes this branch for good.
+## Commands go to MiniQuest (choose); everything shown comes from MiniQuest.mission_boards().
 
 const Board := preload("res://scripts/missions_ds2/mission_board.gd")
 const TabKey := preload("res://scripts/ds2/latch_key.gd")
@@ -31,7 +30,6 @@ var _board: Control
 var _scroll: ScrollContainer
 var _readout: Control
 var _piston: Control
-var _follow: Control
 var _reward: Label
 var _take: Control
 var _take_label: Label
@@ -75,12 +73,6 @@ func _init() -> void:
 	_reward.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_reward.add_theme_color_override("font_color", DS.PALETTE.TEXT)
 	keys.add_child(_reward)
-	_follow = TabKey.new()
-	_follow.name = "FollowBoardKey"
-	_follow.set("text", "On the top bar")
-	_follow.tooltip_text = "Show this board's current mission in the top bar."
-	_follow.connect("pressed", _on_follow)
-	keys.add_child(_follow)
 	var take_row := HBoxContainer.new()
 	take_row.add_theme_constant_override("separation", 8)
 	keys.add_child(take_row)
@@ -188,16 +180,8 @@ func _show_station(id: String) -> void:
 	var progress: Vector2i = n.get("progress", Vector2i.ZERO)
 	_piston.call("set_mission", "", progress)
 	_piston.visible = progress.y > 1
-	var themed := bool(board.get("themed", false))
-	var followed := MiniQuest.effective_followed_board() == open_board if themed else MiniQuest.followed_board == ""
-	_follow.set("latched", followed)
 	var choosing := state == "choice"
 	_take.get_parent().visible = choosing
-
-
-func _on_follow() -> void:
-	var board := _board_dict(open_board)
-	MiniQuest.follow_board(open_board if bool(board.get("themed", false)) else "")
 
 
 func _on_take() -> void:

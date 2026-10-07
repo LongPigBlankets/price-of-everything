@@ -1084,6 +1084,12 @@ func _test_recycling_gate() -> void:
 	_check(not MatchState.is_building_available("b_022")
 		and not MatchState.is_building_available("b_036"),
 		"recycling: both recycling plants are hidden by default")
+	_check(not MatchState.is_building_available("b_023")
+		and not preload("res://scripts/construction_rules.gd").building_offer("b_023").get("offered", true),
+		"recycling: the landfill is hidden by default and not offered to build")
+	terminal._demo_unlocked = true
+	_check(MatchState.is_building_available("b_023"), "recycling: `unlock demo` brings the landfill back")
+	terminal._demo_unlocked = false
 	_check(MatchState.visible_goods().size()
 		== Catalog.all_goods().size() - MatchState.RECYCLING_GOOD_IDS.size(),
 		"recycling: exactly the waste goods are removed, nothing else")

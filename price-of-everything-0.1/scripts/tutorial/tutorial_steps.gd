@@ -87,9 +87,13 @@ const STUB_TILE := "tile_6_8"     # hill, unsurveyed coal deposit (deeper integr
 ##   done      : {wake:[signals], decide:<predicate>} — empty decide = info step (Next)
 ##   advance   : "auto" (on decide) or "next" (info card)
 ## The opening steps every new game plays before the missions take over: the welcome, the screen tour,
-## tiles and the recipe diagram. The welcome says what follows.
+## tiles and the recipe diagram, then the player's own buildings, their costs, a first turn and what to
+## do next. The welcome says what follows.
 const OPENER_IDS := ["welcome", "ui_primer", "tile_basics_select", "tile_basics_land", "tile_basics_features",
 	"recipe_inputs_intro", "recipe_outputs_intro"]
+## The opener step from which End Turn works. Before it a press is refused with END_TURN_LOCKED.
+const OPENER_END_TURN_STEP := "opener_your_turn"
+const END_TURN_LOCKED := "Please click 'Next' in the tutorial to enable this."
 
 
 static func opener_steps() -> Array:
@@ -101,10 +105,78 @@ static func opener_steps() -> Array:
 		if str(st.id) == "welcome":
 			st["paragraphs"] = [
 				"Carbon and Capital is an industrial simulator where you take over a business and expand it, integrating along the way until you are the biggest company in Taralia.",
-				"A few quick steps show you the screen, your tiles and how recipes work. After that you are in charge, and the missions at the top of the screen guide you.",
+				"The first few steps will show you how to use the interface and then we'll dive into running your business.",
 			]
+		elif str(st.id) == "ui_primer":
+			# The screen tour leaves the HUD lit and live: only the map is shaded and blocked.
+			st["body"] = "A quick tour of the interface. Click on any of them to open up the panels. You can always hit 'Esc' to close panels or swap which panel is in focus by clicking on it."
+			st["map_only"] = true
 		out.append(st)
+	out.append_array(_opener_business_steps())
 	return out
+
+
+## After the recipe diagram: find the company's buildings, what they cost to run, a first turn, and where the
+## money is.
+static func _opener_business_steps() -> Array:
+	var start := str(MatchState.ruleset.get("start_id", "")).strip_edges()
+	if start == "":
+		start = str(MatchState.scenario_name)
+	var own_inputs := "the sand" if start.contains("glass") else "the coal and iron"
+	return [
+		{
+			"id": "opener_movement", "chapter": "Your business",
+			"title": "Movement",
+			"body": "Navigate around the map by clicking and panning. WASD keys also allow you to move around.\n\nFind your company's buildings. They're the ones in your company's livery.",
+			"setup": [{"action": "close_tile_panel"}],
+			"spotlight": {"kind": "none", "ref": ""}, "no_dim": true,
+			"done": {"wake": [], "decide": {"kind": "own_buildings_shown"}},
+			"advance": "auto",
+		},
+		{
+			"id": "opener_your_buildings", "chapter": "Your business",
+			"title": "Select your buildings",
+			"body": "These are your buildings. A humble start but enough to get started. Select them to see more.",
+			"setup": [],
+			"spotlight": {"kind": "none", "ref": ""}, "no_dim": true,
+			"done": {"wake": [], "decide": {"kind": "building_detail_open"}},
+			"advance": "auto",
+		},
+		{
+			"id": "opener_costs", "chapter": "Your business",
+			"title": "What your buildings cost",
+			"body": "Your buildings have four cost components: inputs, maintenance, power and labour. Additionally you may take loans, manage transport and stockpiling for your goods. You can integrate inputs, transport and power to bring more in house and control your costs.",
+			"setup": [],
+			"spotlight": {"kind": "none", "ref": ""}, "no_dim": true,
+			"done": {"wake": [], "decide": {}}, "advance": "next",
+		},
+		{
+			"id": OPENER_END_TURN_STEP, "chapter": "Your business",
+			"title": "Your turn",
+			"body": "End your turn for your buildings to run, goods to move and sales to happen.",
+			"setup": [],
+			"spotlight": {"kind": "none", "ref": ""}, "no_dim": true,
+			"done": {"wake": [], "decide": {"kind": "turn_advanced"}},
+			"advance": "auto",
+		},
+		{
+			"id": "opener_next_opportunity", "chapter": "Your business",
+			"title": "The next opportunity",
+			"body": "You made revenue by buying from and selling to local suppliers. They'll do for now but they take a big cut. In your case, you could make more money if you used %s directly in your furnaces." % own_inputs,
+			"setup": [],
+			"spotlight": {"kind": "none", "ref": ""}, "no_dim": true,
+			"done": {"wake": [], "decide": {}}, "advance": "next",
+		},
+		{
+			"id": "opener_own_pace", "chapter": "Your business",
+			"title": "Grow at your own pace",
+			"body": "Now it's all up to you. The missions in the top bar will recommend you where to go next and grant some small rewards, but how you expand from here is entirely your choice. Good luck!",
+			"setup": [],
+			"spotlight": {"kind": "none", "ref": ""}, "no_dim": true,
+			"next_label": "Finish",
+			"done": {"wake": [], "decide": {}}, "advance": "next",
+		},
+	]
 
 
 static func steps() -> Array:
@@ -170,7 +242,7 @@ static func steps() -> Array:
 		{
 			"id": "tile_basics_land", "chapter": "Your tiles",
 			"title": "The Land Chart",
-			"body": "Here you see how much room there is on this tile. Once you cross into the red hatched section, building will become more expensive due to local opposition. Rural tiles have more space than others.",
+			"body": "The hexagon shows how much land is available to build on the tile. It also shows how much land you already own in the colour of your company's livery. Above the dashed line in the hexagon there is more local opposition to construction so it will get more expensive to build. Rural tiles have more space than others. Mountain tiles have the least space.",
 			"setup": [], "spotlight": {"kind": "node_name", "ref": "TileLandChart"},
 			"lock_panel": true, "spotlight_passthrough": false,
 			"done": {"wake": [], "decide": {}}, "advance": "next",
@@ -178,7 +250,7 @@ static func steps() -> Array:
 		{
 			"id": "tile_basics_features", "chapter": "Your tiles",
 			"title": "Inside the tile panel",
-			"body": "The tile panel is where you can see and select the buildings on that tile, as well as power generation, the goods produced on this tile by YOUR BUILDINGS ONLY, and the stockpile.",
+			"body": "The tile panel is where you can see and select the buildings on that tile, as well as power generation, the goods produced on this tile by YOUR BUILDINGS ONLY, the stockpile as well as the infrastructure and transport for the tile.",
 			"setup": [], "spotlight": {"kind": "node_name", "ref": "TileInfoPanel"},
 			"lock_panel": true, "spotlight_passthrough": false,
 			"done": {"wake": [], "decide": {}}, "advance": "next",

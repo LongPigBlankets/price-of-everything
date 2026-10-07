@@ -38,8 +38,8 @@ const GAUGE_PX := 190.0
 const GREEN_FROM := 40.0
 ## The points display's height: its screen and bezel round one line of dots.
 const POINTS_H := 30.0
-## A trend's lamp and word: up, down, flat.
-const TRENDS := {1: ["ok", "Rising"], -1: ["bad", "Falling"], 0: ["off", "Steady"]}
+## A trend's lamp and word: up, down, flat. A flat track says nothing; its lamp stays dark.
+const TRENDS := {1: ["ok", "Increasing"], -1: ["bad", "Decreasing"], 0: ["off", ""]}
 ## The dark metal plate (layout.json dark_metal_plate): its 9-slice corner in texels, the shadow room beyond the
 ## slab in px, and the padding inside it.
 const PLATE_CORNER := (10.0 + 44.0) * 2.0 / 1.875
@@ -221,7 +221,8 @@ func _track(t: Dictionary) -> Control:
 	trend_row.add_theme_constant_override("separation", 6)
 	trend_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	trend_row.add_child(SheetParts.lamp(str(TRENDS[trend][0])))
-	trend_row.add_child(Parts.caption(str(TRENDS[trend][1])))
+	if str(TRENDS[trend][1]) != "":
+		trend_row.add_child(Parts.caption(str(TRENDS[trend][1])))
 	content.add_child(trend_row)
 	var metric := SheetParts.body(str(t.get("metric_text", "")))
 	metric.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

@@ -2299,5 +2299,72 @@
   ],
   "margin": 12,
   "corner": 64
+ },
+ "court_backing": {
+  "size": [
+   1248,
+   1398
+  ],
+  "margin": 24,
+  "frame": 30
+ },
+ "court_rail": {
+  "size": [
+   1172,
+   148
+  ],
+  "margin": 18
+ },
+ "court_panel": {
+  "size": [
+   1092,
+   232
+  ],
+  "margin": 16,
+  "corner": 34
+ },
+ "court_plate": {
+  "size": [
+   166,
+   60
+  ],
+  "margin": 8,
+  "corner": 14
+ },
+ "court_icon_frame": {
+  "size": [
+   177,
+   177
+  ],
+  "margin": 10,
+  "tile": 135,
+  "reach": 11
+ },
+ "dock_icons": {
+  "size": [
+   110,
+   110
+  ],
+  "icon": 86,
+  "names": [
+   "pen",
+   "bell"
+  ]
+ },
+ "dock_pad": {
+  "size": [
+   548,
+   160
+  ],
+  "margin": 14,
+  "corner": 34
+ },
+ "legend_pad": {
+  "size": [
+   548,
+   428
+  ],
+  "margin": 14,
+  "corner": 44
  }
 }

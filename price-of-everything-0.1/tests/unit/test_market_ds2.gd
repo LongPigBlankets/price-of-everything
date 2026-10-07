@@ -392,3 +392,19 @@ func _test_ds2_panels_lamp_overlay() -> void:
 	tvp.queue_free()
 	UiPrefs.set_use_tvp_v3(was_tvp)
 
+
+
+## The ticker names each moving good once, and a short list stands still rather than repeating to fill the board.
+func _test_ticker_names_each_good_once() -> void:
+	var Market := preload("res://scripts/market_ds2/market_ds2.gd")
+	var runs: Array = Market.ticker_runs(MatchState.visible_goods().map(func(g: Dictionary) -> String: return str(g.get("id", ""))))
+	var names: Dictionary = {}
+	var repeated := false
+	for r: Dictionary in runs:
+		var t := str(r.text).strip_edges()
+		if t == "" or t in ["▲", "▼", "●"]:
+			continue
+		if names.has(t):
+			repeated = true
+		names[t] = true
+	_check(not repeated, "market ticker: each good and order is named once")

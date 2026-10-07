@@ -24,6 +24,11 @@ extends CanvasLayer
 ##   toggle tvp v3                    switch the tile view back to v2 (v3 is default), and again to return
 ##   toggle bdp v3                    switch building detail back to v2 (v3 is default), and again to return
 ##   toggle ledger ds2                switch the building ledger back to v2 (DS2 is default), and again to return
+##   toggle resources ds2             switch the Resources panel back to v2 (DS2 is default), and again to return
+##   toggle politics ds2              switch the Politics panel to its DS2 look (v2 is default), and again to return
+##   toggle transport ds2             switch the Shipments and Stockpiles panel to its DS2 look (v2 is default), and again to return
+##   toggle dock ds2                  switch the updates dock to its DS2 look (v2 is default), and again to return
+##   toggle legend ds2                put the map legends on the DS2 plastic pad (v2 is default), and again to return
 ##   toggle people ds2                switch the People panel back to v2 (DS2 is default), and again to return
 ##   toggle market ds2                switch the market panel back to v2 (DS2 is default), and again to return
 ##   toggle briefing ds2              switch the turn briefing to its DS2 look (in progress), and back
@@ -212,7 +217,7 @@ func _run_command(text: String) -> String:
 				return "Hidden buildings enabled for this match."
 			if parts[1].to_lower() == "recycling":
 				MatchState.cheat_unlock_recycling()
-				return "Recycling enabled: waste goods and both recycling plants are back."
+				return "Recycling enabled: waste goods, both recycling plants and the landfill are back."
 			if parts[1].to_lower() == "advisors":
 				MatchState.cheat_unlock_advisors()
 				return "All advisors and seats unlocked for this match."
@@ -221,7 +226,7 @@ func _run_command(text: String) -> String:
 				MatchState.hidden_buildings_enabled.emit()
 				AdvisorState.advisors_changed.emit()
 				DecisionState.pending_changed.emit()
-				return "Demo restrictions lifted: waste goods, recycling plants and recipes, advisor loyalty, advanced settings and all starts/difficulties/speeds. Reopen panels to refresh."
+				return "Demo restrictions lifted: waste goods, recycling plants, the landfill and recipes, advisor loyalty, advanced settings and all starts/difficulties/speeds. Reopen panels to refresh."
 			var title := " ".join(parts.slice(1))
 			ResearchState.grant_unlock(title)
 			return "Unlocked '%s'." % title
@@ -401,6 +406,21 @@ func _run_command(text: String) -> String:
 			if " ".join(parts.slice(1)).to_lower() == "ledger ds2":
 				UiPrefs.toggle_use_ledger_ds2()
 				return "Building ledger → %s" % ("DS2" if UiPrefs.use_ledger_ds2 else "v2")
+			if " ".join(parts.slice(1)).to_lower() == "legend ds2":
+				UiPrefs.toggle_use_legend_ds2()
+				return "Map legends → %s" % ("DS2 pad" if UiPrefs.use_legend_ds2 else "v2")
+			if " ".join(parts.slice(1)).to_lower() == "dock ds2":
+				UiPrefs.toggle_use_dock_ds2()
+				return "Updates dock → %s" % ("DS2" if UiPrefs.use_dock_ds2 else "v2")
+			if " ".join(parts.slice(1)).to_lower() == "transport ds2":
+				UiPrefs.toggle_use_transport_ds2()
+				return "Shipments and Stockpiles → %s" % ("DS2" if UiPrefs.use_transport_ds2 else "v2")
+			if " ".join(parts.slice(1)).to_lower() == "politics ds2":
+				UiPrefs.toggle_use_politics_ds2()
+				return "Politics → %s" % ("DS2" if UiPrefs.use_politics_ds2 else "v2")
+			if " ".join(parts.slice(1)).to_lower() == "resources ds2":
+				UiPrefs.toggle_use_resources_ds2()
+				return "Resources → %s" % ("DS2" if UiPrefs.use_resources_ds2 else "v2")
 			if " ".join(parts.slice(1)).to_lower() == "people ds2":
 				UiPrefs.toggle_use_people_ds2()
 				return "People panel → %s" % ("DS2" if UiPrefs.use_people_ds2 else "v2")
@@ -434,7 +454,7 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 2 and parts[1].to_lower() == "midcentury":
 				MapStyle.set_midcentury(not MapStyle.is_midcentury())
 				return "map style → %s" % _style_name()
-			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | bdp v3 | topbar ds2 | tvp v3 | ledger ds2 | people ds2 | market ds2 | briefing ds2 | construct ds2 | upgrade ds2 | routes ds2 | mission slot | victory ds2 | desk ds2"
+			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | bdp v3 | topbar ds2 | tvp v3 | ledger ds2 | resources ds2 | politics ds2 | transport ds2 | dock ds2 | legend ds2 | people ds2 | market ds2 | briefing ds2 | construct ds2 | upgrade ds2 | routes ds2 | mission slot | victory ds2 | desk ds2"
 		"anim":
 			# Cheat: cycle the Empire-view hex-field animation (1->2->3->4->1), or set it with `anim <n>`.
 			var bg := get_tree().get_first_node_in_group("empire_hex_bg")

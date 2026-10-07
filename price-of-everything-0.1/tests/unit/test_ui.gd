@@ -946,6 +946,95 @@ func _test_settings_test_gauge() -> void:
 	panel._on_back_pressed()
 
 
+# Building Detail: the Change recipes key counts only the recipes this building can switch to, and
+# says how many are better only when some are. A side fed from or shipping to several places names
+# the count of tiles, or of buildings when they share one tile.
+func _test_bdp_recipe_key_and_route_counts() -> void:
+	var Block = load("res://scripts/bdp_v3_block.gd")
+	var Readout = load("res://scripts/building_readout.gd")
+	_check(Block.recipe_detail(3, 0, "Coal") == "" and Block.recipe_detail(3, 2, "Coal") == "2 better for Coal"
+		and Block.recipe_detail(0, 0, "Coal") == "No other recipes"
+		and Block.recipe_detail(3, 1, "Heavy Vehicle") == "1 better for Heavy Vehi...",
+		"bdp recipe key: the better line shows only when one of the building's own recipes is better")
+	var iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "recipe_key")
+	var b: Dictionary = BuildingState.get_building(iid)
+	var own: Array = Catalog.get_recipes_for_building("b_007")
+	var runs_current := own.any(func(r: Dictionary) -> bool: return str(r.get("recipe_id", "")) == "r_009")
+	var offered: Array = Block.switch_recipes(b)
+	var only_own := offered.all(func(r: Dictionary) -> bool:
+		return str(r.get("building_id", "")) == "b_007" and str(r.get("recipe_id", "")) != "r_009")
+	_check(only_own and offered.size() == own.size() - (1 if runs_current else 0),
+		"bdp recipe key: the offered recipes are this building's own, less the current one (%d)" % offered.size())
+	var better: int = Block.better_recipe_count(b)
+	var same_good: Array = offered.filter(func(r: Dictionary) -> bool:
+		return Block.main_output_id(r) == Block.main_output_id(Catalog.get_recipe("r_009")))
+	_check(better >= 0 and better <= same_good.size(),
+		"bdp recipe key: only recipes for the same good can be better (%d of %d)" % [better, same_good.size()])
+	BuildingState.buildings.erase(iid)
+	# A works with one recipe for its good has nothing better for it, however much its other recipes earn.
+	var motor_recipes: Array = own.filter(func(r: Dictionary) -> bool: return Block.main_output_id(r) == "g_008")
+	if motor_recipes.size() == 1:
+		var motor_iid := BuildingState.add_building("b_007", str(motor_recipes[0].get("recipe_id", "")), "tile_6_7", MatchState.LOCAL_PLAYER)
+		_check(Block.better_recipe_count(BuildingState.get_building(motor_iid)) == 0,
+			"bdp recipe key: a motor works with one motors recipe has none better for motors")
+		BuildingState.buildings.erase(motor_iid)
+
+	_check(Readout.places_label([]) == "" and Readout.places_label([{"tile_id": "t1", "instance_id": "a"}]) == ""
+		and Readout.places_label([{"tile_id": "t1", "instance_id": "a"}, {"tile_id": "t1", "instance_id": "a"}]) == "",
+		"bdp routes: one source keeps its own label")
+	_check(Readout.places_label([{"tile_id": "t1", "instance_id": "a"}, {"tile_id": "t1", "instance_id": "b"}]) == "2 buildings",
+		"bdp routes: several buildings on one tile read as a count of buildings")
+	_check(Readout.places_label([{"tile_id": "t1", "instance_id": "a"}, {"tile_id": "t1", "instance_id": "b"},
+		{"tile_id": "t2", "instance_id": "c"}]) == "2 tiles"
+		and Readout.places_label([{"tile_id": "t1"}, {"tile_id": "t2"}, {"tile_id": "t3"}]) == "3 tiles",
+		"bdp routes: places on several tiles read as a count of tiles")
+
+	# The panel's Inputs and Outputs keys, on a real consumer and its producers.
+	var recipe: Dictionary = Catalog.get_recipe("r_009")
+	var first_input: Dictionary = (recipe.get("inputs", []) as Array)[0]
+	var in_gid := str(first_input.get("good_id", ""))
+	var makers: Array = Catalog.recipes_producing(in_gid)
+	_check(not makers.is_empty(), "bdp routes: the test input %s has a producing recipe" % in_gid)
+	if makers.is_empty():
+		return
+	var maker: Dictionary = makers[0]
+	var home := "tile_20_20"
+	var away := "tile_22_20"
+	var panel: Node = load("res://scripts/building_detail_panel_v2.gd").new()
+	var consumer: String = BuildingState.add_building("b_007", "r_009", home, MatchState.LOCAL_PLAYER, "route_consumer")
+	var c: Dictionary = BuildingState.get_building(consumer)
+	var before: Array = Readout.input_sources(c, recipe)
+	_check(before.is_empty(), "bdp routes: the consumer's tile starts with no producers (%d)" % before.size())
+	var made: Array = []
+	for n in 2:
+		made.append(BuildingState.add_building(str(maker.get("building_id", "")), str(maker.get("recipe_id", "")), home,
+			MatchState.LOCAL_PLAYER, "route_maker_%d" % n))
+	var same_tile := str(panel.call("_input_summary", c, recipe))
+	_check(same_tile == "2 buildings", "bdp routes: two producers on the consumer's tile read as 2 buildings (%s)" % same_tile)
+	var far: String = BuildingState.add_building(str(maker.get("building_id", "")), str(maker.get("recipe_id", "")), away,
+		MatchState.LOCAL_PLAYER, "route_maker_far")
+	made.append(far)
+	MatchState.set_output_stockpile_destination(far, home, in_gid)
+	var two_tiles := str(panel.call("_input_summary", c, recipe))
+	_check(two_tiles == "2 tiles", "bdp routes: producers on two tiles read as 2 tiles (%s)" % two_tiles)
+
+	var out_gid: String = BuildingStatus.primary_output_good_id(recipe)
+	MatchState.add_output_split_destination(consumer, out_gid, away)
+	var single := str(panel.call("_output_summary", c, recipe))
+	_check(single.begins_with(Catalog.tile_label(away)), "bdp routes: one output destination keeps its tile name (%s)" % single)
+	MatchState.add_output_split_destination(consumer, out_gid, "tile_24_20")
+	MatchState.add_output_split_destination(consumer, out_gid, "tile_26_20")
+	var three := str(panel.call("_output_summary", c, recipe))
+	_check(three == "3 tiles", "bdp routes: an output split three ways reads as 3 tiles (%s)" % three)
+
+	made.append(consumer)
+	for id: String in made:
+		MatchState.output_split_destinations.erase(id)
+		MatchState.output_stockpile_destinations.erase(id)
+		BuildingState.buildings.erase(id)
+	panel.free()
+
+
 # Building Detail v3 (`toggle bdp v3`): the approved control plates. The rules behind the keys'
 # text, when the upgrade arrow lights, the cheat, and that the panel swaps its controls and the
 # keys open the same sheets as v2.
@@ -2779,3 +2868,143 @@ func _test_led_three_decimals_under_a_pound() -> void:
 	row.free()
 	dear.free()
 	dialog.free()
+
+
+## The Shipments and Stockpiles panel in DS2: the same three columns on the kit's cases, the routing objective
+## as keys, a stockpile and a shipment a module each; the v2 panel back, as it was, with the switch off.
+func _test_transport_panel_ds2() -> void:
+	var was := UiPrefs.use_transport_ds2
+	var was_route: int = MatchState.route_objective
+	var pending: Array = TransportState.pending_transport_shipments.duplicate(true)
+	UiPrefs.set_use_transport_ds2(true)
+	Stockpile.add("tile_5_10", "g_006", 40)
+	TransportState.queue_transport_shipment({"source_tile": "tile_5_10", "destination_tile": "tile_5_11", "good_id": "g_006", "qty": 9, "turns_remaining": 2})
+	var panel: Control = load("res://scripts/transport_panel.gd").new()
+	add_child(panel)
+	panel.call("open")
+	await get_tree().process_frame
+	_check(panel.find_child("TransportTitleRow", true, false) != null and panel.find_child("LedgerBacking", false, false) != null
+		and panel.find_child("Column_Stockpiles", true, false) != null and panel.find_child("Column_Infrastructure", true, false) != null
+		and panel.find_child("Column_Intransit", true, false) != null, "transport ds2: the ledger's shell and three columns")
+	var stock := panel.find_child("Stock_tile_5_10", true, false)
+	_check(stock != null and stock.find_child("TransportMeter", true, false) != null and stock.find_child("BuildingLamp", true, false) != null,
+		"transport ds2: a stockpile is a module with its lamp and its fill on a meter")
+	var words: String = (stock.find_child("Words", true, false) as Label).text if stock != null else ""
+	_check(words.contains("% full") and not words.contains("(") and not words.contains(" - "), "transport ds2: plain words, no coordinates (%s)" % words)
+	_check(words.ends_with("800.") or not words.contains("turn"), "transport ds2: no full in N turns in the words (%s)" % words)
+	var mark := stock.find_child("Trend", true, false) if stock != null else null
+	_check(mark != null and str(mark.get_meta("trend", "")) in ["up", "down", "steady"], "transport ds2: filling, draining or steady is a drawn mark")
+	_check(panel.find_child("Shipment_0", true, false) != null, "transport ds2: a shipment is a module")
+	var Panel: GDScript = load("res://scripts/transport_panel.gd")
+	var lone: Array = Panel.transit_flows([{"manifest": [{"good_id": "g_006", "qty": 9}], "units": 9, "turns": 2, "to_market": false, "destination": "tile_5_11"}])
+	_check(lone.size() == 1 and str(lone[0].when) == "Arrives in 2 turns.", "transport ds2: a lone shipment says when it arrives")
+	var flow: Array = Panel.transit_flows([
+		{"manifest": [{"good_id": "g_006", "qty": 30}], "units": 30, "turns": 1, "to_market": false, "destination": "tile_5_11"},
+		{"manifest": [{"good_id": "g_006", "qty": 30}], "units": 30, "turns": 2, "to_market": false, "destination": "tile_5_11"},
+		{"manifest": [{"good_id": "g_006", "qty": 30}], "units": 30, "turns": 3, "to_market": false, "destination": "tile_5_11"},
+		{"manifest": [{"good_id": "g_007", "qty": 5}], "units": 5, "turns": 1, "to_market": true, "destination": ""}])
+	_check(flow.size() == 2 and str(flow[0].when) == "30 units arrive each turn." and int(flow[0].manifest[0].qty) == 30
+		and str(flow[1].when) == "Arrives in 1 turn." and str(flow[1].where) == "To market",
+		"transport ds2: several shipments of a good to a place read as what arrives each turn (%s)" % str(flow.map(func(f: Dictionary) -> String: return str(f.when))))
+	var link_words := ""
+	for n in panel.find_children("Link_*", "", true, false):
+		link_words += ((n as Node).find_child("Words", true, false) as Label).text
+	_check(not link_words.contains("At capacity"), "transport ds2: a link's words leave out the at capacity count")
+	var link := stock.find_child("TileLink", true, false) as Label if stock != null else null
+	_check(link != null and link.tooltip_text == "Go to %s" % link.text and not link.text.contains("("), "transport ds2: a tile's name is a link that says Go to it (%s)" % (link.tooltip_text if link != null else ""))
+	_check(panel.find_child("Shipment_0", true, false).find_child("TileLink", true, false) != null, "transport ds2: a shipment's destination is a link")
+	var keys: Dictionary = panel.get("_routing_keys")
+	(keys[MatchState.RouteObjective.CHEAPEST] as Control).emit_signal("pressed")
+	_check(MatchState.route_objective == MatchState.RouteObjective.CHEAPEST and bool((keys[MatchState.RouteObjective.CHEAPEST] as Control).get("latched"))
+		and not bool((keys[MatchState.RouteObjective.FASTEST] as Control).get("latched")), "transport ds2: a routing key sets the objective and latches alone")
+	_check(panel.find_child("RoutingObjective", true, false) != null, "transport ds2: the routing objective keeps its name")
+	var went: Array = []
+	var note := func(tile: String) -> void: went.append(tile)
+	MatchState.focus_tile_requested.connect(note)
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	link = panel.find_child("Stock_tile_5_10", true, false).find_child("TileLink", true, false) as Label
+	link.call("_gui_input", press)
+	MatchState.focus_tile_requested.disconnect(note)
+	_check(went == ["tile_5_10"] and not panel.visible, "transport ds2: pressing the name goes to the tile and closes the panel")
+	UiPrefs.set_use_transport_ds2(false)
+	await get_tree().process_frame
+	_check(panel.find_child("TransportTitleRow", true, false) == null and panel.find_child("RoutingObjective", true, false) is OptionButton,
+		"transport ds2: off again, the v2 panel is back")
+	panel.queue_free()
+	MatchState.set_route_objective(was_route)
+	TransportState.pending_transport_shipments = pending
+	Stockpile.consume("tile_5_10", "g_006", 40)
+	UiPrefs.set_use_transport_ds2(was)
+
+
+## The updates dock in DS2: the dock in navy steel with its pen and bells raised, its slide-out a clipboard, a
+## row a slip tinged in its tone with navy print. The rows it kept come through the switch, a row that shows by
+## itself still runs its timer and one the player opened does not, and v2 is back as it was with it off.
+func _test_updates_dock_ds2() -> void:
+	var was := UiPrefs.use_dock_ds2
+	UiPrefs.set_use_dock_ds2(false)
+	var toasts: Control = load("res://scripts/toast_manager.gd").new()
+	add_child(toasts)
+	await get_tree().process_frame
+	toasts.call("push_row", "A green update.", "green")
+	toasts.call("push_row", "A red warning.", "red", "warn_key", func() -> void: pass)
+	var rows: Node = toasts.find_child("RowList", true, false)
+	_check(rows.get_child_count() == 2 and not rows.get_child(0).has_meta("tinge"), "dock ds2: off, the rows are v2's")
+	UiPrefs.set_use_dock_ds2(true)
+	await get_tree().process_frame
+	var texts: PackedStringArray = toasts.call("row_texts")
+	_check(rows.get_child_count() == 2 and texts[0] == "A green update." and texts[1] == "A red warning.", "dock ds2: the kept rows come through the switch")
+	var red := rows.get_child(1) as Control
+	var green := rows.get_child(0) as Control
+	_check(str(red.get_meta("tinge", "")) == "warning" and red.find_child("Chevron", true, false) != null and str(red.get_meta("key", "")) == "warn_key"
+		and red.has_node("Countdown"), "dock ds2: a red row is a red tinged slip, a link keeps its mark and its key")
+	_check(str(green.get_meta("tinge", "")) == "success" and green.find_child("Chevron", true, false) == null and green.self_modulate != red.self_modulate
+		and (green.find_child("Words", true, false) as Label).get_theme_color("font_color") == Color("#0b2340"), "dock ds2: a green slip is tinged green, its print navy")
+	_check(toasts.find_child("Bell_red", true, false).find_child("Raised", true, false) != null
+		and toasts.find_child("Decisions", true, false).find_child("Raised", true, false) != null, "dock ds2: the pen and the bells are raised")
+	_check(int(toasts.call("unread", "red")) == 1, "dock ds2: the bells count as before")
+	toasts.call("collapse", false)
+	toasts.call("push_row", "Another.", "amber")
+	_check(str(rows.get_child(2).get_meta("tinge", "")) == "caution", "dock ds2: a new row arrives as an amber slip")
+	_check(bool(toasts.call("is_open")) and float(toasts.call("countdown")) > 0.0, "dock ds2: a row that shows by itself runs its timer")
+	toasts.call("collapse", false)
+	toasts.call("open_all")
+	_check(bool(toasts.call("is_open")) and float(toasts.call("countdown")) <= 0.0, "dock ds2: opened by the player it has no timer")
+	UiPrefs.set_use_dock_ds2(false)
+	await get_tree().process_frame
+	_check(rows.get_child_count() == 3 and not rows.get_child(1).has_meta("tinge"), "dock ds2: off again, v2 rows")
+	toasts.queue_free()
+	UiPrefs.set_use_dock_ds2(was)
+
+
+## The map legends on the DS2 pad: the flat box gives way to the plastic pad with the switch on, keeping at
+## least the pad's own room round its print, and comes back as it was with the switch off.
+func _test_legend_pad_ds2() -> void:
+	var was := UiPrefs.use_legend_ds2
+	UiPrefs.set_use_legend_ds2(false)
+	var Pad: GDScript = load("res://scripts/ds2/legend_pad.gd")
+	var panel := PanelContainer.new()
+	var box := StyleBoxFlat.new()
+	box.set_content_margin_all(4)
+	panel.add_theme_stylebox_override("panel", box)
+	add_child(panel)
+	Pad.dress(panel)
+	_check(panel.get_theme_stylebox("panel") == box, "legend pad: off, the legend keeps its box")
+	UiPrefs.set_use_legend_ds2(true)
+	Pad.dress(panel)
+	var bare := panel.get_theme_stylebox("panel")
+	_check(bare is StyleBoxEmpty and bare.content_margin_left >= 12.0, "legend pad: on, the pad replaces the box and keeps print clear of its cut corners")
+	Pad.dress(panel)
+	_check(panel.get_theme_stylebox("panel") == bare, "legend pad: dressing twice changes nothing")
+	UiPrefs.set_use_legend_ds2(false)
+	Pad.dress(panel)
+	_check(panel.get_theme_stylebox("panel") == box, "legend pad: off again, the box is back")
+	var legend: Control = (load("res://scenes/overlay_legend.tscn") as PackedScene).instantiate()
+	add_child(legend)
+	UiPrefs.set_use_legend_ds2(true)
+	_check(legend.get_theme_stylebox("panel") is StyleBoxEmpty, "legend pad: the map modes' legend follows the switch")
+	legend.queue_free()
+	panel.queue_free()
+	UiPrefs.set_use_legend_ds2(was)

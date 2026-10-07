@@ -66,6 +66,19 @@ static func arm_watchdog(host: Node, seconds: float = DEFAULT_TIMEOUT_S) -> void
 		tree.quit(124))
 
 
+## Wait, up to `limit` seconds of wall clock, until the supply chain board has baked every layer of
+## every tile in view at the present zoom. A covered window draws no frames of its own, so a frame is
+## drawn by hand every tenth of a second to let the bakes go on.
+static func await_board_baked(host: Node, board: Control, limit: float = 8.0) -> void:
+	var waited := 0.0
+	while waited < limit:
+		if str(board.call("_next_bake")) == "" and not bool(board.get("_baking")):
+			return
+		RenderingServer.force_draw(false)
+		await host.get_tree().create_timer(0.1).timeout
+		waited += 0.1
+
+
 ## One capture: draw, read back, crop, write, release. The explicit `null` matters — an Image
 ## is refcounted, and a loop that keeps the last one alive while taking the next holds two
 ## full framebuffers at once for no reason.

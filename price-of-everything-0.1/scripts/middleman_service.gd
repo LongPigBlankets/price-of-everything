@@ -1,6 +1,11 @@
 extends RefCounted
 ## Phase-1 building-private operating service. Authoritative state lives in MatchState.
 const Contract := preload("res://scripts/middleman_contract.gd")
+const Locations := preload("res://scripts/middleman_locations.gd")
+
+## This turn's Local Suppliers sales by hub area, {"turn", "areas": {hub_tile: {good_id: qty}}}. A sale is priced in
+## its bands against what its hub area has already sold this turn, so the ledger starts afresh every turn.
+static var _area_sales := {"turn": -1, "areas": {}}
 
 static func enabled(iid: String) -> bool:
 	return int(MatchState.middleman_service.get("schema", 0)) == 1 and MatchState.middleman_service.get("buildings", {}).has(iid)
@@ -53,10 +58,25 @@ static func fully_managed(iid: String) -> bool:
 	return enabled(iid) and (uses_inputs(iid) or not recipe_side(recipe, "input")) and uses_outputs(iid) and (recipe.get("inputs", []) as Array).all(func(i: Dictionary) -> bool: return not material_tradeable(str(i.good_id), "input") or supplies_good(iid, str(i.good_id))) and (recipe.get("outputs", []) as Array).all(func(o: Dictionary) -> bool: return not material_tradeable(str(o.good_id), "output") or buys_output(iid, str(o.good_id)))
 
 static func eligible(b: Dictionary) -> bool:
-	return BuildingState.is_player_owned(b) and (recipe_side(Catalog.get_recipe(str(b.get("recipe_id", ""))), "input") or recipe_side(Catalog.get_recipe(str(b.get("recipe_id", ""))), "output")) and str(MatchState.ruleset.get("logistics_model","")) == "middleman_v1"
+	return BuildingState.is_player_owned(b) and coefficient(b) > 0.0 and (recipe_side(Catalog.get_recipe(str(b.get("recipe_id", ""))), "input") or recipe_side(Catalog.get_recipe(str(b.get("recipe_id", ""))), "output")) and str(MatchState.ruleset.get("logistics_model","")) == "middleman_v1"
 
 static func coefficient(b: Dictionary) -> float:
-	return preload("res://scripts/middleman_locations.gd").coefficient(str(b.get("tile_id", "")))
+	return Locations.coefficient(str(b.get("tile_id", "")))
+
+## What the hub area `tile_id` sells into has already sold through Local Suppliers this turn, by good.
+static func area_sold(tile_id: String) -> Dictionary:
+	if int(_area_sales.turn) != TurnManager.current_turn: return {}
+	return (_area_sales.areas.get(Locations.hub_for(tile_id), {}) as Dictionary).duplicate()
+
+static func note_area_sale(tile_id: String, gid: String, qty: int) -> void:
+	if qty <= 0: return
+	if int(_area_sales.turn) != TurnManager.current_turn: reset_area_sales()
+	var hub := Locations.hub_for(tile_id)
+	if not _area_sales.areas.has(hub): _area_sales.areas[hub] = {}
+	_area_sales.areas[hub][gid] = int(_area_sales.areas[hub].get(gid, 0)) + qty
+
+static func reset_area_sales() -> void:
+	_area_sales = {"turn": TurnManager.current_turn, "areas": {}}
 
 ## Change one side atomically; release only that side's paid goods. Existing
 ## shipments keep their owner/destination and are never cancelled or rewritten.
@@ -308,10 +328,13 @@ static func prices() -> Dictionary:
 		result[gid] = {"reference":MarketState.get_price(gid),"buy":MarketState.get_buy_price(gid),
 			"sale":MarketState.get_sale_price(gid,{"good_id":gid,"good_internal":str(good.get("internal_name", ""))}),
 			"port_charge":TransportState.base_port_charge_per_unit(gid),
+			"haul_rate":TransportService.freight_rate(gid),
+			"band_units":float(Catalog.base_output_for_good(gid)) * EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn)),
 			"transport_class":str(good.get("transport_class", "")), "is_buyable":bool(good.get("is_buyable", false)), "is_sellable":bool(good.get("is_sellable", false))}
 	return result
 
 static func prepare(buildings: Array, summary: Dictionary) -> void:
+	reset_area_sales()
 	var bridges := _plan_bridges(buildings)
 	if MatchState.middleman_service.is_empty() and bridges.is_empty(): return
 	var snapshot := prices()
@@ -410,6 +433,7 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 		for item: Dictionary in q.items:
 			var gid := str(item.good)
 			if int(item.quantity) <= 0: continue
+			Production.note_good_cost(summary, gid, "intermediary", float(item.fee), int(item.quantity))
 			ResearchState.note_middleman_shipment(gid, int(item.quantity))
 			if bridge.has(gid):
 				if not e.has("bridge"): e["bridge"] = {}
@@ -456,7 +480,7 @@ static func batch_margin(b: Dictionary, snapshot: Dictionary) -> float:
 		single.outputs = [output]
 		sell_lines.append({"good": str(output.good_id), "quantity": preload("res://scripts/building_status.gd").effective_output_qty(b, single, true)})
 	var buy := Contract.quote("buy", buy_lines, snapshot, factor, goods())
-	var sale := Contract.quote("sell", sell_lines, snapshot, factor, goods())
+	var sale := Contract.quote("sell", sell_lines, snapshot, factor, goods(), area_sold(str(b.get("tile_id", ""))))
 	var grid_value := 0.0
 	if str(recipe.get("output_name", "")) == "power":
 		grid_value = Production._effective_power_output(b, recipe) * Power.grid_export_price()
@@ -521,7 +545,7 @@ static func settle(buildings: Array, summary: Dictionary) -> void:
 			continue
 		var lines := []
 		for gid in e.outputs: lines.append({"good":gid,"quantity":int(e.outputs[gid])})
-		var q := Contract.quote("sell",lines,e.prices,float(e.coefficient),goods())
+		var q := Contract.quote("sell",lines,e.prices,float(e.coefficient),goods(),area_sold(str(b.tile_id)))
 		if not bool(q.ok) or float(q.net_receipt) < 0.0:
 			e.state = "blocked_with_private_output"
 			e.reason = "Sale unavailable or negative net proceeds."
@@ -537,9 +561,11 @@ static func settle(buildings: Array, summary: Dictionary) -> void:
 		var sale := {"tile_id":str(b.tile_id),"items":[],"total_qty":0,"total_revenue":float(q.goods_value),"middleman":true}
 		for item: Dictionary in q.items:
 			var gid := str(item.good)
+			note_area_sale(str(b.tile_id), gid, int(item.quantity))
 			ResearchState.note_middleman_shipment(gid, int(item.quantity))
 			MarketState.record_market_sale_volume(gid,int(item.quantity))
 			Production._add_summary_sale(summary,gid,int(item.quantity),float(item.goods_value))
+			Production.note_good_cost(summary, gid, "intermediary", float(item.fee), int(item.quantity))
 			sale.items.append({"good_id":gid,"qty":int(item.quantity),"revenue":float(item.goods_value)})
 			sale.total_qty += int(item.quantity)
 		MatchState.record_tile_sale(str(b.tile_id),int(sale.total_qty),float(q.goods_value))
@@ -557,7 +583,7 @@ static func sell_surplus(tile_id: String, totals: Dictionary, summary: Dictionar
 			lines.append({"good":good_id,"quantity":qty})
 	if lines.is_empty(): return {}
 	var tile_b: Dictionary = {"tile_id":tile_id}
-	var q := Contract.quote("sell", lines, prices(), coefficient(tile_b), goods())
+	var q := Contract.quote("sell", lines, prices(), coefficient(tile_b), goods(), area_sold(tile_id))
 	if not bool(q.get("ok", false)) or float(q.get("net_receipt", 0.0)) < 0.0: return {}
 	var sale := {"tile_id":tile_id,"items":[],"total_qty":0,"total_revenue":0.0,"middleman":true}
 	for item: Dictionary in q.get("items", []):
@@ -565,6 +591,7 @@ static func sell_surplus(tile_id: String, totals: Dictionary, summary: Dictionar
 		var sold := Stockpile.consume(tile_id, gid, int(item.get("quantity", 0)))
 		if sold <= 0: continue
 		var goods_value := float(item.get("goods_value", 0.0)) * float(sold) / maxf(1.0, float(item.get("quantity", 1)))
+		note_area_sale(tile_id, gid, sold)
 		MarketState.record_market_sale_volume(gid, sold)
 		ResearchState.note_middleman_shipment(gid, sold)
 		Production._add_summary_sale(summary, gid, sold, goods_value)
@@ -666,7 +693,7 @@ static func preview_building(b: Dictionary) -> Dictionary:
 		output_lines.clear()
 		for gid in e.outputs: output_lines.append({"good":gid,"quantity":int(e.outputs[gid])})
 		buy = Contract.quote("buy",[],snapshot,factor,goods())
-	var sale := Contract.quote("sell",output_lines if output_service else [],snapshot,factor,goods())
+	var sale := Contract.quote("sell",output_lines if output_service else [],snapshot,factor,goods(),area_sold(str(b.get("tile_id",""))))
 	if not bool(buy.ok) or not bool(sale.ok): return {"ok":false,"reason":"Unsupported service quote."}
 	var power := 0.0 if selling_held else Production._effective_energy_req(b,recipe)*Power.grid_import_price()
 	var grid_value := 0.0
@@ -698,9 +725,9 @@ static func preview_building(b: Dictionary) -> Dictionary:
 		"net":grid_value+float(sale.net_receipt)-float(buy.cash_out)-labour-maintenance-power-carbon}
 
 static func default_for(recipe_id: String, tile: String) -> bool:
-	return bool(MatchState.ruleset.get("middleman_new_buildings",false)) and str(MatchState.ruleset.get("logistics_model",""))=="middleman_v1" and tile != "" and (recipe_side(Catalog.get_recipe(recipe_id), "input") or recipe_side(Catalog.get_recipe(recipe_id), "output"))
+	return bool(MatchState.ruleset.get("middleman_new_buildings",false)) and str(MatchState.ruleset.get("logistics_model",""))=="middleman_v1" and tile != "" and Locations.coefficient(tile) > 0.0 and (recipe_side(Catalog.get_recipe(recipe_id), "input") or recipe_side(Catalog.get_recipe(recipe_id), "output"))
 
-## Only new completed construction, before any operating orders exist.
+## Only new completed construction and buildings just bought from an NPC, before any operating orders exist.
 static func enroll_completed(iid: String) -> void:
 	var b: Dictionary = BuildingState.get_building(iid)
 	if b.is_empty() or not default_for(str(b.recipe_id),str(b.tile_id)): return

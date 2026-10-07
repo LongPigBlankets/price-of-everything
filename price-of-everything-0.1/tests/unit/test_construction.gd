@@ -263,9 +263,18 @@ func _test_build_forecast() -> void:
 	_check(own_supply > 0.0,
 		"forecast: the integrated smelter projects a positive margin (%.2f)" % own_supply)
 
+	# The coal field's road to Stoneshore: earlier tests can leave the map without its roads, and bare
+	# ground costs twice a road, so lay the road the check is about.
+	var laid: Array[String] = []
+	for road_tile: String in ["tile_6_8", "tile_6_9", "tile_5_10"]:
+		if not Catalog.tile_has_infrastructure(road_tile, "roads"):
+			Catalog.add_tile_infrastructure(road_tile, "roads")
+			laid.append(road_tile)
 	var mine: Dictionary = BuildForecast.project("b_001", "r_001", "tile_6_8")
+	for road_tile: String in laid:
+		Catalog.remove_tile_infrastructure(road_tile, "roads")
 	_check(float(mine.get("steady_net", 0.0)) > 0.0,
-		"forecast: coal mining projects a positive steady margin (%.2f)"
+		"forecast: coal mining on its road to the port projects a positive steady margin (%.2f)"
 			% float(mine.get("steady_net", 0.0)))
 
 	# An unknown building or recipe returns an empty, non-crashing projection.

@@ -37,7 +37,21 @@ var _graph_world: Control                      # the node-graph drawing layer (e
 var _board: Control
 var _flat: ColorRect
 var _back_to_company: Button
+## Over Local Suppliers' chart: which side it shows, the buildings they supply (inputs) or buy from (outputs).
+var _suppliers_keys: HBoxContainer
+## Bottom left on the board: pause the goods (each sits on the building that makes it) or play them along their
+## routes again. Shows pause while they move, play while they rest.
+var _motion_key: Button
+var _suppliers_inputs: Button
+var _suppliers_outputs: Button
 var _bg: Control                               # the animated hex-field background (empire_hex_bg.gd)
+## The board and the chart are kept built while the view is closed (prepare): behind the loading
+## screen once the world is built, and again in the background whenever what they show changes, so
+## the view opens at once on finished pictures. Fresh while they match the sim as it stands.
+var _fresh := false
+var _refresh_queued := false
+var _preparing := false
+var _changes := 0                              # changes seen in the sim, to tell a build that missed one
 
 
 func _ready() -> void:
@@ -51,7 +65,15 @@ func _ready() -> void:
 	# time. Left alone it would go stale the moment a turn landed under an open view — which is
 	# exactly when a player watching a build wants to see it move.
 	if TurnManager.has_signal("turn_advanced"):
-		TurnManager.turn_advanced.connect(func(_t: int) -> void: refresh_graph())
+		TurnManager.turn_advanced.connect(func(_t: int) -> void: sim_changed())
+	# What changes the board's pictures: a building added, removed, sold or bought, a level reached,
+	# a construction site started or finished. The world reports infrastructure (world_map).
+	BuildingState.building_added.connect(func(_inst: Dictionary) -> void: sim_changed())
+	BuildingState.building_removed.connect(func(_iid: String) -> void: sim_changed())
+	BuildingState.building_owner_changed.connect(func(_iid: String) -> void: sim_changed())
+	BuildingWorks.building_upgraded.connect(func(_iid: String, _level: int) -> void: sim_changed())
+	Construction.construction_started.connect(func(_iid: String, _tile: String) -> void: sim_changed())
+	Construction.construction_completed.connect(func(_iid: String, _tile: String) -> void: sim_changed())
 
 
 ## Toggle open/closed. Called from world_map on the `toggle_empire_view` (Tab) action.
@@ -64,6 +86,50 @@ func toggle() -> void:
 func refresh_graph() -> void:
 	if visible:
 		_rebuild_graph()
+
+
+## Something the board shows has changed in the sim. Open, the view rebuilds now; closed, it rebuilds
+## in the background (prepare), once for any number of changes in one frame. Only the layers whose
+## make-up changed are baked again (empire_board.gd _sort_parts).
+func sim_changed() -> void:
+	_changes += 1
+	_fresh = false
+	if visible:
+		_rebuild_graph()
+		_fresh = true
+		return
+	if _preparing or _refresh_queued or not _board.call("has_content"):
+		return
+	_refresh_queued = true
+	prepare.call_deferred()
+
+
+## Build the chart and the board while the view is closed, the board a little each frame, then bake
+## what the view will open on (empire_board.gd build_async). A change while it builds sends it round
+## again; opening the view meanwhile builds it there and then instead.
+func prepare() -> void:
+	_refresh_queued = false
+	if _preparing or visible or not is_inside_tree():
+		return
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	if terrain == null:
+		return
+	_preparing = true
+	while true:
+		var seen := _changes
+		var g: Dictionary = EmpireGraphScript.populate(_graph_world, terrain)
+		await _board.call("build_async", g, terrain)
+		if visible or not is_inside_tree():
+			break
+		if seen == _changes:
+			_fresh = true
+			break
+	_preparing = false
+
+
+## Is the view built and baked, ready to open at once.
+func is_prepared() -> bool:
+	return _fresh and bool(_board.call("is_ready"))
 
 
 func _build_ui() -> void:
@@ -88,6 +154,7 @@ func _build_ui() -> void:
 	_board.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_board.mouse_filter = Control.MOUSE_FILTER_STOP
 	_board.connect("building_picked", _on_building_picked)
+	_board.connect("suppliers_picked", func() -> void: _show_suppliers("input"))
 	add_child(_board)
 
 	# The node-graph drawing layer (drawn above the backdrop, below the hint).
@@ -125,11 +192,54 @@ func _build_ui() -> void:
 	_back_to_company.offset_bottom = -52
 	_back_to_company.pressed.connect(func() -> void: _graph_world.clear_focus())
 	add_child(_back_to_company)
+	_suppliers_keys = HBoxContainer.new()
+	_suppliers_keys.name = "SuppliersSideKeys"
+	_suppliers_keys.z_index = 200
+	_suppliers_keys.add_theme_constant_override("separation", 10)
+	_suppliers_keys.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_suppliers_keys.offset_top = 84
+	_suppliers_keys.offset_left = -160
+	_suppliers_keys.offset_right = 160
+	_suppliers_keys.alignment = BoxContainer.ALIGNMENT_CENTER
+	_suppliers_keys.visible = false
+	add_child(_suppliers_keys)
+	var CreamKey := preload("res://scripts/ds2/cream_key.gd")
+	_suppliers_inputs = CreamKey.make("SuppliersInputsKey", "Inputs", "", 150.0)
+	_suppliers_outputs = CreamKey.make("SuppliersOutputsKey", "Outputs", "", 150.0)
+	_suppliers_inputs.tooltip_text = "The buildings Local Suppliers supply with inputs"
+	_suppliers_outputs.tooltip_text = "The buildings that sell their outputs to Local Suppliers"
+	_suppliers_inputs.pressed.connect(func() -> void: _show_suppliers("input"))
+	_suppliers_outputs.pressed.connect(func() -> void: _show_suppliers("output"))
+	_suppliers_keys.add_child(_suppliers_inputs)
+	_suppliers_keys.add_child(_suppliers_outputs)
+	_motion_key = CreamKey.make("GoodsMotionKey", "", "", 56.0)
+	_motion_key.z_index = 200
+	# Beside the board's visibility key, above the updates.
+	var Vis := preload("res://scripts/empire_board_visibility.gd")
+	_motion_key.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	_motion_key.offset_left = Vis.MARGIN + Vis.KEY_SIDE + 10.0
+	_motion_key.offset_right = _motion_key.offset_left + 56.0
+	_motion_key.offset_bottom = -Vis.BOTTOM_CLEAR
+	_motion_key.offset_top = -Vis.BOTTOM_CLEAR - CreamKey.height_for()
+	var glyph := Control.new()
+	glyph.name = "Glyph"
+	glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	glyph.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	glyph.draw.connect(func() -> void: _draw_motion_glyph(glyph))
+	_motion_key.add_child(glyph)
+	_motion_key.pressed.connect(func() -> void:
+		_board.set("animate_goods", not bool(_board.get("animate_goods")))
+		_sync_motion_key())
+	add_child(_motion_key)
+	_sync_motion_key()
 
 func _process(_delta: float) -> void:
 	if visible and _back_to_company != null:
-		var focused: bool = _graph_world.focus_iid() != ""
+		var focused_on := str(_graph_world.focus_iid())
+		var focused := focused_on != ""
 		_back_to_company.visible = focused
+		_suppliers_keys.visible = focused_on in [SUPPLIERS_INPUTS, SUPPLIERS_OUTPUTS]
+		_motion_key.visible = not focused
 		_show_board(not focused)
 
 
@@ -141,6 +251,49 @@ func _show_board(on: bool) -> void:
 		_board.visible = on
 	if _graph_world.visible == on:
 		_graph_world.visible = not on
+
+
+func _sync_motion_key() -> void:
+	var moving := bool(_board.get("animate_goods"))
+	_motion_key.tooltip_text = "Pause: show each good on the building that makes it" if moving \
+		else "Play: show the goods moving along their routes"
+	(_motion_key.get_node("Glyph") as Control).queue_redraw()
+
+
+## The key's print: two bars while the goods move, a triangle while they rest. Navy, as the cream keys print.
+func _draw_motion_glyph(c: Control) -> void:
+	var ink := Color("#0b2340")
+	var mid := c.size * 0.5
+	var h := minf(c.size.y * 0.42, 18.0)
+	if bool(_board.get("animate_goods")):
+		var w := h * 0.3
+		for dx: float in [-h * 0.3, h * 0.3]:
+			c.draw_rect(Rect2(Vector2(mid.x + dx - w * 0.5, mid.y - h * 0.5), Vector2(w, h)), ink)
+	else:
+		c.draw_colored_polygon(PackedVector2Array([Vector2(mid.x - h * 0.35, mid.y - h * 0.5),
+			Vector2(mid.x + h * 0.5, mid.y), Vector2(mid.x - h * 0.35, mid.y + h * 0.5)]), ink)
+
+
+## Local Suppliers' two nodes in the chart: the one that supplies inputs and the one that buys outputs.
+const SUPPLIERS_INPUTS := "buy_middleman"
+const SUPPLIERS_OUTPUTS := "middleman"
+
+
+## Local Suppliers' chart on `side`: "input", the buildings they supply, or "output", the ones that sell to
+## them. A side nobody uses falls back to the other.
+func _show_suppliers(side: String) -> void:
+	var want := SUPPLIERS_INPUTS if side == "input" else SUPPLIERS_OUTPUTS
+	if not _graph_world.has_building(want):
+		want = SUPPLIERS_OUTPUTS if want == SUPPLIERS_INPUTS else SUPPLIERS_INPUTS
+	if not _graph_world.has_building(want):
+		return
+	_show_board(false)
+	_graph_world.call("focus_on", want, true)
+	_suppliers_inputs.set("chosen", want == SUPPLIERS_INPUTS)
+	_suppliers_outputs.set("chosen", want == SUPPLIERS_OUTPUTS)
+	_suppliers_inputs.disabled = not _graph_world.has_building(SUPPLIERS_INPUTS)
+	_suppliers_outputs.disabled = not _graph_world.has_building(SUPPLIERS_OUTPUTS)
+	TelemetryState.track_interaction("supply_chain_suppliers_selected", "supply_chain", want)
 
 
 func _on_building_picked(iid: String) -> void:
@@ -164,7 +317,13 @@ func _enter() -> void:
 	_hide_world()
 	_set_camera_blocked(true)
 	PanelStack.push(self)
-	_rebuild_graph()
+	# Built in the background and nothing changed since: open on it as it is, held back until any
+	# picture still baking is done.
+	if _fresh:
+		_board.call("_hold_until_baked")
+	else:
+		_rebuild_graph()
+		_fresh = true
 
 
 ## Build the node/edge graph from the live sim and pack it. Cheap for ~50 buildings; rebuilt on

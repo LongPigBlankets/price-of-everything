@@ -128,8 +128,7 @@ const PLATE_H := 72.0
 ## trusted to fit: Bebas 26 puts it at 154 px inside 190 px of clear navy, but a longer wording
 ## would silently run under the bolts, so _build_begin_button steps the size down until it fits.
 const BEGIN_TEXT := "Begin your legacy"
-const BEGIN_FONT_SIZE := 26
-const BEGIN_FONT_MIN := 14
+const CreamKey := preload("res://scripts/ds2/cream_key.gd")
 
 var _from_scene: Node
 var _elapsed := 0.0
@@ -533,45 +532,22 @@ func _build_plate() -> void:
 ## so it tracks the plate and stays clear of the bolts by construction rather than by a
 ## second set of numbers that has to be kept in step.
 func _build_begin_button() -> void:
-	_begin = Button.new()
-	_begin.text = BEGIN_TEXT
-	# THE DESIGN SYSTEM'S CTA, not a local imitation of one. "Primary" is what every other
-	# call to action in the game uses — Buy, Upgrade, New Game — so the button that starts the
-	# match is the same object the player will meet everywhere else.
-	_begin.theme_type_variation = &"Primary"
+	# The DS2 cream key, the call to action every DS2 panel uses, sized to fit the plate's face.
+	var box: Rect2 = _plate.content_rect()
+	var k := clampf(box.size.y / CreamKey.height_for(), 0.6, 1.0)
+	_begin = CreamKey.make("BeginKey", BEGIN_TEXT, "", box.size.x, false, false, k)
 	_begin.z_index = 11
 	_begin.visible = false
 	_begin.modulate.a = 0.0
-	_begin.focus_mode = Control.FOCUS_NONE              # no focus ring inside the panel
+	_begin.focus_mode = Control.FOCUS_NONE
 	_begin.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_plate.add_child(_begin)                           # in the tree first, or the theme lookups miss
-
-	var box: Rect2 = _plate.content_rect()
-	# Fit the DS CTA to the plate rather than the other way round, and MEASURE it against the
-	# theme's own font and padding instead of assuming: the variation brings its own typeface
-	# and its own content margins, and both move if the design system changes.
-	var f: Font = _begin.get_theme_font("font")
-	var sb: StyleBox = _begin.get_theme_stylebox("normal")
-	var pad := 8.0
-	if sb != null:
-		pad = sb.content_margin_left + sb.content_margin_right + 4.0
-	var avail := box.size.x - pad
-	var fsize := BEGIN_FONT_SIZE
-	if f != null:
-		while fsize > BEGIN_FONT_MIN and f.get_string_size(
-				BEGIN_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize).x > avail:
-			fsize -= 1
-	_begin.add_theme_font_size_override("font_size", fsize)
-	if OS.get_environment("LOAD_PROF") != "":
-		print("LOADPROF begin CTA: %.0f px of %.0f available at size %d"
-			% [f.get_string_size(BEGIN_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize).x
-				if f != null else 0.0, avail, fsize])
-
+	_plate.add_child(_begin)
+	var h := CreamKey.height_for(k)
 	_begin.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	_begin.offset_left = box.position.x
-	_begin.offset_top = box.position.y
 	_begin.offset_right = box.position.x + box.size.x
-	_begin.offset_bottom = box.position.y + box.size.y
+	_begin.offset_top = box.position.y + (box.size.y - h) * 0.5
+	_begin.offset_bottom = _begin.offset_top + h
 	_begin.pressed.connect(_on_begin_pressed)
 
 
@@ -727,32 +703,25 @@ func _start_camera_intro() -> void:
 
 
 # ── The metallic "Loading…" plate ─────────────────────────────────────────────
-## Replicates the End Turn dock's treatment: a squarish silver under-plate with a
-## navy panel inset on top (so the silver reads as a riveted frame), diagonal
-## lighting, and a cream rim. It says "Loading" and nothing else — it is a caption
-## under a film now, not a place to put reading matter.
+## The DS2 panel's look, as the tutorial card's: a dark metal face with a faint brushed grain in a polished
+## silver frame, its bevel lit from the top left. It says "Loading" and nothing else (it is a caption under a
+## film, not a place to put reading matter), then holds the Begin key.
 class LoadingPlate extends Control:
 	const F_HEAD := preload("res://assets/fonts/BebasNeue-Regular.ttf")
-	const NAVY_TL := Color(0.025, 0.18, 0.34)
-	const NAVY_TR := Color(0.0, 0.12156863, 0.24313726)
-	const NAVY_BL := Color(0.0, 0.105, 0.215)
-	const NAVY_BR := Color(0.0, 0.067, 0.145)
 	const SILVER_LT := Color("#b3bcc6")
 	const SILVER_MD := Color("#8b95a1")
 	const SILVER_DK := Color("#5b636e")
+	const SILVER_HI := Color("#eef1f4")
+	const FACE_TOP := Color("#2a2e35")
+	const FACE_FOOT := Color("#15181c")
 	const RIM := Color("#f4e6c0")          # cream metallic rim / header
 	const ACCENT := Color("#e6b34a")       # gold
-	const INSET := 5.0                     # navy inset inside the silver plate (= silver band width)
+	const INSET := 6.0                     # the dark face's inset inside the silver frame (= the frame's width)
 	const RADIUS := 14.0                   # rounded-rect corner radius
 	const FONT_SIZE := 26
-	const RIVET_R := 4.0
-	## Bolt centres, in from each edge. They sit ON THE NAVY PANEL, not on the silver band:
-	## INSET + RIVET_R is where a bolt would just clear the band, and the rest is the gap that
-	## keeps it looking seated rather than balanced on the edge.
-	const RIVET_EDGE := INSET + RIVET_R + 8.0
-	## Text keeps clear of the bolts — their outer edge plus a breath. With the word centred
-	## this is the minimum the plate has to be wide enough for, not where the text starts.
-	const TEXT_PAD := RIVET_EDGE + RIVET_R + 9.0
+	## Text keeps clear of the frame. With the word centred this is the minimum the plate has to be wide
+	## enough for, not where the text starts.
+	const TEXT_PAD := INSET + 14.0
 	## The longest the header ever gets. The text is centred on THIS so the dots do not move it.
 	const WIDEST_HEADER := "Loading..."
 
@@ -762,9 +731,9 @@ class LoadingPlate extends Control:
 	## the word, not the panel it is written on.
 	var text_alpha := 1.0
 
-	## The navy area clear of the bolts: where the header is centred, and exactly where the
+	## The face clear of the frame: where the header is centred, and exactly where the
 	## Begin button goes. ONE definition, so the button cannot land somewhere the text never
-	## was, or overlap a rivet if the plate is ever resized.
+	## was, or overlap the frame if the plate is ever resized.
 	func content_rect() -> Rect2:
 		return Rect2(Vector2(TEXT_PAD, INSET + 3.0),
 			Vector2(size.x - TEXT_PAD * 2.0, size.y - (INSET + 3.0) * 2.0))
@@ -787,25 +756,29 @@ class LoadingPlate extends Control:
 		# Drop shadow under the whole plate.
 		draw_colored_polygon(_round_rect(Rect2(r.position + Vector2(0, 4), r.size), RADIUS), Color(0, 0, 0, 0.35))
 
-		# Silver under-plate (the riveted frame) — a rounded rectangle so its corners
-		# extend out under the bolts (an octagon chamfered them away).
+		# Silver under-plate (the frame), a rounded rectangle.
 		var sp := _round_rect(r, RADIUS)
 		draw_polygon(sp, _grad(sp, r, SILVER_LT, SILVER_MD, SILVER_DK, SILVER_MD))
 		var so := sp.duplicate()
 		so.append(sp[0])
 		draw_polyline(so, Color("#3a4048"), 1.5, true)
 
-		# Navy plate on top, inset, with diagonal lighting + sheen + cream rim.
+		# The silver frame's bevel: lit along the top and left, shaded along the bottom and right.
+		draw_polyline(_round_rect(r.grow(-1.0), RADIUS - 1.0).slice(6, 14), Color(SILVER_HI, 0.85), 1.5, true)
+		draw_polyline(_round_rect(r.grow(-1.0), RADIUS - 1.0).slice(20, 28), Color(SILVER_DK, 0.9), 1.5, true)
+
+		# The dark metal face, set into the frame: a shade lighter at the top, a faint brushed grain, a dark cut
+		# where the frame overhangs it. The DS2 panels' metal (the tutorial card's), clean of scuffs.
 		var nr := r.grow(-INSET)
 		var np := _round_rect(nr, RADIUS - INSET)
-		draw_polygon(np, _grad(np, nr, NAVY_TL, NAVY_TR, NAVY_BR, NAVY_BL))
-		draw_polygon(np, _grad(np, nr, Color(1, 1, 1, 0.10), Color(1, 1, 1, 0.03), Color(0, 0, 0, 0.0), Color(1, 1, 1, 0.02)))
+		draw_polygon(np, _grad(np, nr, FACE_TOP, FACE_TOP, FACE_FOOT, FACE_FOOT))
+		var y := nr.position.y + 3.0
+		while y < nr.end.y - 3.0:
+			draw_line(Vector2(nr.position.x + RADIUS * 0.5, y), Vector2(nr.end.x - RADIUS * 0.5, y), Color(1, 1, 1, 0.03), 1.0)
+			y += 3.0
 		var no := np.duplicate()
 		no.append(np[0])
-		draw_polyline(no, Color(RIM, 0.6), 1.5, true)
-
-		# Four corner bolts, seated on the navy.
-		_rivets(r)
+		draw_polyline(no, Color("#0e1013"), 1.2, true)
 
 		# Header — Bebas, cream, with a soft drop shadow. Centred on the WIDEST state the
 		# word ever reaches, not on itself: the trailing dots animate, and centring each
@@ -851,18 +824,3 @@ class LoadingPlate extends Control:
 			var v := (p.y - r.position.y) / maxf(1.0, r.size.y)
 			cols.append(tl.lerp(tr, u).lerp(bl.lerp(br, u), v))
 		return cols
-
-	func _rivets(r: Rect2) -> void:
-		# Four corners only. The mid-edge pair read well across a 740 px plate and crowd a
-		# 250 px one, where they would sit almost on top of the word.
-		var e := RIVET_EDGE
-		for c in [
-			Vector2(e, e), Vector2(r.size.x - e, e),
-			Vector2(e, r.size.y - e), Vector2(r.size.x - e, r.size.y - e),
-		]:
-			_rivet(r.position + c, RIVET_R)
-
-	func _rivet(c: Vector2, rad: float) -> void:
-		draw_circle(c, rad, Color("#5a636e"))
-		draw_circle(c - Vector2(rad * 0.3, rad * 0.3), rad * 0.55, Color("#c9d4df"))
-		draw_arc(c, rad, 0, TAU, 16, Color(0, 0, 0, 0.5), 1.0)

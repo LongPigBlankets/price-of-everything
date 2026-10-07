@@ -17,8 +17,9 @@ var hidden_buildings_unlocked: bool = false
 
 # Recycling is off the table for the demo: the waste chain is a whole
 # second economy — collect it, sort it, feed it back — and a 100-turn demo has no room to
-# teach it. `unlock recycling` in the debug terminal puts it back for development.
-const RECYCLING_BUILDING_IDS := {"b_022": true, "b_036": true}
+# teach it. `unlock recycling` in the debug terminal puts it back for development, and `unlock demo` with it.
+# The landfill is where the waste chain ends, so it waits with the plants.
+const RECYCLING_BUILDING_IDS := {"b_022": true, "b_036": true, "b_023": true}
 # Waste Water, Scrap Metal, Bio Waste, Electronic Waste — the goods that only exist to be
 # recycled. Hidden alongside the plants, or the encyclopedia advertises a chain with no
 # building that can process it.
@@ -1898,7 +1899,7 @@ func queue_sell(source_tile: String, goods_qtys: Dictionary, log_oneoff: bool = 
 	var result := MarketState.execute_sale(source_tile, goods_qtys, {"log_oneoff": log_oneoff})
 	if result.is_empty():
 		return {}
-	Production.record_external_transport_cost(float(result.get("transport_cost", 0.0)), result.get("transport_breakdown", {}))
+	Production.record_external_transport_cost(float(result.get("transport_cost", 0.0)), result.get("transport_breakdown", {}), goods_qtys)
 	if not bool(result.get("deferred", false)):
 		var sale_record: Dictionary = result.get("sale_record", {})
 		record_tile_sale(source_tile, int(result.get("total_qty", 0)), float(result.get("total_revenue", 0.0)))

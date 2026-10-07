@@ -767,3 +767,13 @@ func _test_fluids_by_road_and_rail() -> void:
 
 	Catalog._tile_infra = saved_infra
 	Catalog._route_cache.clear()
+
+## Bare ground costs twice a road per turn-move, on a built route's bare legs and on a straight-line haul alike.
+func _test_bare_ground_costs_twice_a_road() -> void:
+	var gid := "g_004"
+	var road := EconomyConfig.transport_cost_for_route(gid, 10, {"legs": [{"mode": "roads"}, {"mode": "roads"}]})
+	var bare := EconomyConfig.transport_cost_for_route(gid, 10, {"legs": [{"mode": "nothing"}, {"mode": "nothing"}]})
+	_check(is_equal_approx(bare, 2.0 * road), "two bare legs cost twice two road legs")
+	var straight := EconomyConfig.transport_cost_for_route(gid, 10, {"legs": [], "turns": 2})
+	_check(is_equal_approx(straight, bare), "a straight-line haul is charged as bare ground")
+	_check(is_equal_approx(EconomyConfig.transport_cost_per_unit_turn("gas"), EconomyConfig.TRANSPORT_COST_SCALE * 0.05), "gas flat rate is 0.05 per turn-move before scaling")

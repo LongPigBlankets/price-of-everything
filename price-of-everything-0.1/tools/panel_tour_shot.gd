@@ -4,6 +4,7 @@ extends Node
 ##   PANEL_TOUR=market,resources,people PANEL_TOUR_DIR=<dir> \
 ##     <godot> --path . res://tools/panel_tour_shot.tscn --quit-after 20000 -- --no-telemetry
 ## Writes <panel>_<nn>_<tab>_p<page>.png (panel crops) and <panel>_full.png per panel.
+## PANEL_TOUR_RESOURCES_DS2=1 switches the Resources panel to its DS2 look first, and opens the first good held.
 
 var _wm: Node
 var _dir := ""
@@ -17,6 +18,8 @@ func _ready() -> void:
 	var which := OS.get_environment("PANEL_TOUR").split(",", false)
 	if which.is_empty():
 		which = PackedStringArray(["market", "resources", "people"])
+	if OS.get_environment("PANEL_TOUR_RESOURCES_DS2") == "1":
+		UiPrefs.set_use_resources_ds2(true)
 	_wm = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	add_child(_wm)
 	await _settle(140)
@@ -60,6 +63,13 @@ func _ready() -> void:
 		if panel == null or not panel.visible:
 			print("[TOUR] %s did not open" % name)
 			continue
+		var ds2 := panel.find_child("ResourcesDs2", true, false)
+		if name == "resources" and ds2 != null:
+			ds2.call("sort_by", "stored")
+			var held: Array = ds2.call("shown_rows")
+			if not held.is_empty():
+				ds2.call("toggle_good", str(held[0].good_id))
+			await _settle(8)
 		_clear_overlays(_wm)
 		await _settle(4)
 		_full(name)

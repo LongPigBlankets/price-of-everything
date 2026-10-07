@@ -1,50 +1,56 @@
 extends RefCounted
-const UIHelpers := preload("res://scripts/ui_helpers.gd")
+## The one question asked before a building's goods leave Local Suppliers, on the DS2 sheet
+## (scripts/ds2/destination_sheet.gd): titled Change supplier (inputs) or Change destination (outputs), what the
+## change may cost for the side and destination chosen, Do not show again, and Cancel and Confirm at the two ends
+## of the row. Nothing else asks: the old surplus prompt is gone.
+const Sheet := preload("res://scripts/ds2/destination_sheet.gd")
+## Ticked on the sheet: no supplier change asks again this session.
 static var skip_confirmation := false
 
-## What leaving the intermediary means, for the side and destination the player chose:
-##   context {side: "input"|"output", destination: "market"|"stockpile"|"tile", good: good_id}
-## Anything not given reads as the whole building or tile, both sides.
+const OUTPUT_TO_STOCKPILE := "Stockpiles may accumulate your goods if you don't sell the surplus. View the Tile stockpile to change that, because by default it does not sell surplus."
+const OUTPUT_TO_MARKET := "Selling to market is a great way to integrate but be aware that transport and port fees may eat into your profit. Improve the infrastructure and use the right transport method to keep costs low."
+## The words of OUTPUT_TO_STOCKPILE that link to the tile's Stockpile tab.
+const STOCKPILE_LINK := "Tile stockpile"
+
+
+static func title_for(context: Dictionary) -> String:
+	return "Change supplier" if str(context.get("side", "")) == "input" else "Change destination"
+
+
+## The sheet's words for the side and destination the player chose:
+##   context {side: "input"|"output", destination: "market"|"stockpile"|"tile"|"other", good: good_id, tile: tile_id}
+## Anything not given reads as the building's goods, both sides.
 static func message_for(context: Dictionary) -> String:
-	var good := str(context.get("good", ""))
-	var what := Catalog.get_display_name(good).to_lower() if good != "" else "these goods"
 	var side := str(context.get("side", ""))
-	match [side, str(context.get("destination", ""))]:
-		["output", "market"]:
-			return "Local Suppliers stop buying %s. It will sell at the global market through the nearest port, paying freight and the port charge." % what
-		["output", "stockpile"], ["output", "tile"]:
-			return "Local Suppliers stop buying %s. It will go to the stockpile you choose, and you sell it or use it yourself." % what
-		["input", "market"]:
-			return "Local Suppliers stop supplying %s. You will buy it at the global market through a port, paying freight and the port charge." % what
-		["input", "stockpile"]:
-			return "Local Suppliers stop supplying %s. It will come from your stockpile, so keep it stocked." % what
-	return "Local Suppliers stop handling %s. Your own transport and the ports take over, which costs freight and port charges." % what
+	var destination := str(context.get("destination", ""))
+	var what := str({"input": "the source of your inputs", "output": "the destination of your outputs"}.get(side,
+		"the source or destination of your goods"))
+	var parts: Array = ["You're about to change %s. This could impact your profit." % what]
+	if side == "output" and destination in ["stockpile", "tile", "other"]:
+		parts.append(OUTPUT_TO_STOCKPILE)
+	elif side == "output" and destination == "market":
+		parts.append(OUTPUT_TO_MARKET)
+	parts.append("Do you want to continue?")
+	return "\n\n".join(parts)
 
 
+## Asks before leaving Local Suppliers (returning to them never asks). `apply` makes the change and answers
+## whether it took; `canceled` runs when the player backs out.
 static func request(parent: Node, mode: String, apply: Callable, canceled: Callable = Callable(), context: Dictionary = {}) -> void:
 	if mode == "middleman" or skip_confirmation:
 		apply.call()
 		return
-	var dialog := ConfirmationDialog.new()
-	dialog.name = "TransportSupplierConfirmation"
-	dialog.title = "Change supplier"
-	dialog.get_ok_button().text = "Change supplier"
-	var content := VBoxContainer.new()
-	content.add_theme_constant_override("separation", 18)
-	var message := Label.new()
-	message.custom_minimum_size.x = 520
-	message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	message.text = message_for(context)
-	content.add_child(message)
-	var dont_show := UIHelpers.make_custom_checkbox()
-	dont_show.name = "DontShowSupplierAgain"
-	content.add_child(UIHelpers.make_setting_row("Do not show again", dont_show))
-	dialog.add_child(content)
-	dialog.confirmed.connect(func() -> void:
-		if apply.call(): skip_confirmation = dont_show.button_pressed
-		dialog.queue_free())
-	dialog.canceled.connect(func() -> void:
+	var sheet := Sheet.new()
+	sheet.name = "TransportSupplierConfirmation"
+	sheet.title_text = title_for(context)
+	sheet.message = message_for(context)
+	if sheet.message.contains(STOCKPILE_LINK):
+		sheet.link_phrase = STOCKPILE_LINK
+		sheet.link_tile = str(context.get("tile", ""))
+	sheet.confirmed.connect(func() -> void:
+		if apply.call(): skip_confirmation = sheet.dont_show_again()
+		sheet.queue_free(), CONNECT_ONE_SHOT)
+	sheet.canceled.connect(func() -> void:
 		if canceled.is_valid(): canceled.call()
-		dialog.queue_free())
-	parent.add_child(dialog)
-	dialog.popup_centered(Vector2i(560, 230))
+		sheet.queue_free(), CONNECT_ONE_SHOT)
+	parent.add_child(sheet)

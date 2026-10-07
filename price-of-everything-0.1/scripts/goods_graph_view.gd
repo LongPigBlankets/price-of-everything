@@ -87,7 +87,7 @@ func _build_ui() -> void:
 
 	var hint := Label.new()
 	hint.name = "Hint"
-	hint.text = "GOODS GRAPH  ·  base recipes at game start · dashed = research-locked  ·  click a good: trace its chain, see alternate recipes, open its encyclopedia entry  ·  drag to pan · scroll to zoom · G to return"
+	hint.text = "GOODS GRAPH  ·  base recipes at game start · pipes carry liquids, conveyors solids, faint = research-locked  ·  click a good: trace its chain, see alternate recipes, open its encyclopedia entry  ·  drag to pan · scroll to zoom · G to return"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hint.theme_type_variation = &"Caption"

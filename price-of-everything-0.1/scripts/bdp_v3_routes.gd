@@ -62,9 +62,9 @@ const SPLIT_MAX := 999
 
 ## What the readout says with the pointer on no option: the sheet's name line over how its choices buy or sell.
 const HINT_INPUTS := "Change the Input source for goods."
-const HINT_INPUTS_DETAIL := "The market sells only what you ship in from a port but grants more control, while Local Suppliers deliver right away but take a bigger slice."
+const HINT_INPUTS_DETAIL := "The market sells only what you ship in from a port but grants more control, while logistics intermediaries deliver right away but take a bigger slice."
 const HINT_OUTPUTS := "Change the Output destination for goods."
-const HINT_OUTPUTS_DETAIL := "The market pays only if you ship it to a port but grants more control, while Local Suppliers pay right away but take a bigger slice."
+const HINT_OUTPUTS_DETAIL := "The market pays only if you ship it to a port but grants more control, while logistics intermediaries pay right away but take a bigger slice."
 ## The readout's height with three lines of detail (the hint needs three at this width), and those lines.
 const READOUT_H := 92.0
 const READOUT_LINES := 3
@@ -152,7 +152,7 @@ static func _input_module(panel: Control, building: Dictionary, recipe: Dictiona
 	if service_game and str(route.get("primary", "")) != "middleman":
 		knobs.add_child(_input_knob(panel, building, recipe, gid, route, "fallback", market_available, readout))
 	elif service_game:
-		words.add_child(_words("No fallback needed. Local Suppliers buy all of it.", "FallbackNotNeeded"))
+		words.add_child(_words("No fallback needed. The Logistics Intermediary buys all of it.", "FallbackNotNeeded"))
 	return module
 
 
@@ -178,10 +178,10 @@ static func _input_knob(panel: Control, building: Dictionary, recipe: Dictionary
 	]
 	if service_game:
 		var tradeable := Service.material_tradeable(gid, "input")
-		choices.append({"id": "middleman", "icon": ICON_INTERMEDIARY, "name": "Local Suppliers", "enabled": tradeable,
+		choices.append({"id": "middleman", "icon": ICON_INTERMEDIARY, "name": "Logistics Intermediary", "enabled": tradeable,
 			"detail": (("Buys only what this tile's stock does not cover. Its fee applies to those units." if fallback
 				else "Buys this input for the building each turn. Transport and storage are in its fee.")
-				if tradeable else "Local Suppliers do not trade this good.")})
+				if tradeable else "The Logistics Intermediary does not trade this good.")})
 	if fallback:
 		for ch: Dictionary in choices:
 			var same := str(ch.id) == primary or (str(ch.id) == "stockpile" and primary.begins_with("tile:"))
@@ -213,7 +213,7 @@ static func _input_source_words(building: Dictionary, route: Dictionary, service
 	var primary := str(route.get("primary", ""))
 	var fallback := str(route.get("fallback", ""))
 	if primary == "middleman":
-		return "Local Suppliers supply it."
+		return "The Logistics Intermediary supplies it."
 	if not service_game:
 		if primary == "market" or fallback == "market":
 			return "From this tile's stockpile first. The rest is bought at market through %s." % _port_words(building)
@@ -230,7 +230,7 @@ static func _source_words(building: Dictionary, source: String) -> String:
 	match source:
 		"stockpile": return "this tile's stockpile"
 		"market": return "the market through %s" % _port_words(building)
-		"middleman": return "Local Suppliers"
+		"middleman": return "the Logistics Intermediary"
 	if source.begins_with("tile:"):
 		return "the stockpile at %s" % _tile(source.trim_prefix("tile:"))
 	return source
@@ -298,7 +298,7 @@ static func _output_destination_words(building: Dictionary, recipe: Dictionary, 
 	var target := str(route.get("target", ""))
 	match state:
 		"middleman":
-			return {"tone": "ok", "text": "Local Suppliers buy it."}
+			return {"tone": "ok", "text": "The Logistics Intermediary buys it."}
 		"market":
 			if not reachable:
 				return {"tone": "bad", "text": "No route to the port. It can't be sold."}
@@ -325,7 +325,7 @@ static func _output_knob(panel: Control, building: Dictionary, recipe: Dictionar
 	var stockpile_available := ResearchState.open_logistics_contracts_available()
 	var choices: Array = []
 	if Service.eligible(building):
-		choices.append({"id": "middleman", "icon": ICON_INTERMEDIARY, "name": "Local Suppliers",
+		choices.append({"id": "middleman", "icon": ICON_INTERMEDIARY, "name": "Logistics Intermediary",
 			"detail": "Sells this output privately. Transport and storage are included."})
 	choices.append({"id": "market", "icon": ICON_MARKET, "name": "Global market", "enabled": market_available,
 		"detail": "Sells it at market price through the nearest port." if market_available else LICENCE_NOTE})
@@ -349,7 +349,6 @@ static func _output_knob(panel: Control, building: Dictionary, recipe: Dictionar
 				elif choice == "stockpile":
 					MatchState.set_output_stockpile_destination(iid, tile, gid)
 					reopen.call()
-					preload("res://scripts/stockpile_route_prompt.gd").offer(panel.get_parent(), tile, gid)
 				elif choice == "other":
 					MatchState.begin_output_stockpile_selection(iid, gid, true)
 					panel.call("_close_sheet")
@@ -359,7 +358,7 @@ static func _output_knob(panel: Control, building: Dictionary, recipe: Dictionar
 					MatchState.request_toast(str(result.get("reason", "Unable to change output destination.")), "warning")
 				reopen.call()
 			elif state == "middleman":
-				panel.call("_request_logistics_mode", building, "output", "managed", go, gid)
+				panel.call("_request_logistics_mode", building, "output", "managed", go, gid, "tile" if choice == "other" else choice)
 			else:
 				go.call())
 	return knob
@@ -410,7 +409,7 @@ static func _power_module(panel: Control) -> Control:
 	var module := _module(panel, "Output_power")
 	var col: VBoxContainer = module.get("content")
 	var words := _top_row(col, BoltIcon.new(Metrics.GOOD_ICON), "Electricity")
-	words.add_child(_words("It goes to your power network and the national grid. It is never stored or traded through Local Suppliers.", "PowerWords"))
+	words.add_child(_words("It goes to your power network and the national grid. It is never stored or traded through the Logistics Intermediary.", "PowerWords"))
 	words.add_child(_words("Your power priority settings decide what is used here and what is sold.", "PowerPriority"))
 	return module
 
@@ -434,7 +433,7 @@ static func _all_module(panel: Control, building: Dictionary, recipe: Dictionary
 		{"id": "each", "icon": _cream(BuildingIcon.clean_texture("b_007", "industrial_factory")), "name": "Each good its own",
 			"enabled": Service.route_lock("managed") == "" or not Service.side_all_middleman(iid, side),
 			"detail": ("Each %s keeps the route set on its own knob below." % goods) if Service.route_lock("managed") == "" else Service.route_lock("managed")},
-		{"id": "middleman", "icon": ICON_INTERMEDIARY, "name": "Local Suppliers",
+		{"id": "middleman", "icon": ICON_INTERMEDIARY, "name": "Logistics Intermediary",
 			"detail": "Buys every input privately for this building." if inputs else "Buys all of this building's production. Transport and storage are included."},
 		{"id": "market", "icon": ICON_MARKET, "name": "Global market", "enabled": market_available,
 			"detail": ("All %ss go to the global market via a port." % goods) if market_available else LICENCE_NOTE},
@@ -448,7 +447,7 @@ static func _all_module(panel: Control, building: Dictionary, recipe: Dictionary
 		current = 2
 	elif bool(panel.call("_all_managed_source", building, side, "tile")):
 		current = 3
-	var now := ["Each %s keeps its own route." % goods, "Local Suppliers handle every %s." % goods,
+	var now := ["Each %s keeps its own route." % goods, "The Logistics Intermediary handles every %s." % goods,
 		"All %ss go to the global market via a port." % goods, "Every %s uses this tile's stockpile." % goods]
 	words.add_child(_words(str(now[current]), "AllWords"))
 	var knobs := _knob_column(words)

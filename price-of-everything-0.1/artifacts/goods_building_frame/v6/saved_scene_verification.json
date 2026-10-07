@@ -1,0 +1,515 @@
+{
+  "meshes": {
+    "post_-1_-1": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    },
+    "post_-1_1": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    },
+    "post_1_-1": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    },
+    "post_1_1": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    },
+    "beam_x_0_-1": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    },
+    "beam_x_0_1": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    },
+    "beam_y_0_-1": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    },
+    "beam_y_0_1": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    },
+    "beam_x_1_-1": {
+      "non_manifold": 0,
+      "min_z": 0.84
+    },
+    "beam_x_1_1": {
+      "non_manifold": 0,
+      "min_z": 0.84
+    },
+    "beam_y_1_-1": {
+      "non_manifold": 0,
+      "min_z": 0.84
+    },
+    "beam_y_1_1": {
+      "non_manifold": 0,
+      "min_z": 0.84
+    },
+    "beam_x_2_-1": {
+      "non_manifold": 0,
+      "min_z": 1.78
+    },
+    "beam_x_2_1": {
+      "non_manifold": 0,
+      "min_z": 1.78
+    },
+    "beam_y_2_-1": {
+      "non_manifold": 0,
+      "min_z": 1.78
+    },
+    "beam_y_2_1": {
+      "non_manifold": 0,
+      "min_z": 1.78
+    },
+    "pane": {
+      "non_manifold": 0,
+      "min_z": 2.0
+    },
+    "cable_left_0": {
+      "non_manifold": 0,
+      "min_z": 0.061
+    },
+    "cable_left_1": {
+      "non_manifold": 0,
+      "min_z": 0.0601
+    },
+    "cable_left_2": {
+      "non_manifold": 0,
+      "min_z": 0.0591
+    },
+    "cable_left_3": {
+      "non_manifold": 0,
+      "min_z": 0.0581
+    },
+    "cable_front_0": {
+      "non_manifold": 0,
+      "min_z": 0.06
+    },
+    "cable_front_1": {
+      "non_manifold": 0,
+      "min_z": 0.06
+    },
+    "cable_front_2": {
+      "non_manifold": 0,
+      "min_z": 0.06
+    },
+    "cable_front_3": {
+      "non_manifold": 0,
+      "min_z": 0.06
+    },
+    "cable_right_0": {
+      "non_manifold": 0,
+      "min_z": 1.352
+    },
+    "cable_right_1": {
+      "non_manifold": 0,
+      "min_z": 1.352
+    },
+    "cable_right_2": {
+      "non_manifold": 0,
+      "min_z": 1.352
+    },
+    "cable_right_3": {
+      "non_manifold": 0,
+      "min_z": 1.352
+    },
+    "ebox_left": {
+      "non_manifold": 0,
+      "min_z": 2.06
+    },
+    "ebox_left_lid": {
+      "non_manifold": 0,
+      "min_z": 2.31
+    },
+    "ebox_left_sleeve": {
+      "non_manifold": 0,
+      "min_z": 2.06
+    },
+    "ebox_left_band0": {
+      "non_manifold": 0,
+      "min_z": 2.06
+    },
+    "ebox_left_band1": {
+      "non_manifold": 0,
+      "min_z": 2.06
+    },
+    "ebox_front": {
+      "non_manifold": 0,
+      "min_z": 2.06
+    },
+    "ebox_front_lid": {
+      "non_manifold": 0,
+      "min_z": 2.31
+    },
+    "ebox_front_sleeve": {
+      "non_manifold": 0,
+      "min_z": 2.06
+    },
+    "ebox_front_band0": {
+      "non_manifold": 0,
+      "min_z": 2.06
+    },
+    "ebox_front_band1": {
+      "non_manifold": 0,
+      "min_z": 2.06
+    },
+    "ebox_right": {
+      "non_manifold": 0,
+      "min_z": 2.06
+    },
+    "ebox_right_lid": {
+      "non_manifold": 0,
+      "min_z": 2.31
+    },
+    "ebox_right_sleeve": {
+      "non_manifold": 0,
+      "min_z": 2.06
+    },
+    "ebox_right_band0": {
+      "non_manifold": 0,
+      "min_z": 2.06
+    },
+    "ebox_right_band1": {
+      "non_manifold": 0,
+      "min_z": 2.06
+    },
+    "pipe": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    },
+    "pipe_coupling": {
+      "non_manifold": 0,
+      "min_z": 0.49
+    },
+    "pipe2": {
+      "non_manifold": 0,
+      "min_z": 0.0
+    },
+    "pipe2_coupling": {
+      "non_manifold": 0,
+      "min_z": 0.49
+    }
+  },
+  "pairs": {
+    "pipe/post_-1_-1": 0,
+    "pipe/post_-1_1": 0,
+    "pipe/post_1_-1": 0,
+    "pipe/post_1_1": 0,
+    "pipe/beam_x_0_-1": 0,
+    "pipe/beam_x_0_1": 0,
+    "pipe/beam_y_0_-1": 0,
+    "pipe/beam_y_0_1": 0,
+    "pipe/beam_x_1_-1": 0,
+    "pipe/beam_x_1_1": 0,
+    "pipe/beam_y_1_-1": 0,
+    "pipe/beam_y_1_1": 0,
+    "pipe/beam_x_2_-1": 0,
+    "pipe/beam_x_2_1": 0,
+    "pipe/beam_y_2_-1": 0,
+    "pipe/beam_y_2_1": 0,
+    "pipe_coupling/post_-1_-1": 0,
+    "pipe_coupling/post_-1_1": 0,
+    "pipe_coupling/post_1_-1": 0,
+    "pipe_coupling/post_1_1": 0,
+    "pipe_coupling/beam_x_0_-1": 0,
+    "pipe_coupling/beam_x_0_1": 0,
+    "pipe_coupling/beam_y_0_-1": 0,
+    "pipe_coupling/beam_y_0_1": 0,
+    "pipe_coupling/beam_x_1_-1": 0,
+    "pipe_coupling/beam_x_1_1": 0,
+    "pipe_coupling/beam_y_1_-1": 0,
+    "pipe_coupling/beam_y_1_1": 0,
+    "pipe_coupling/beam_x_2_-1": 0,
+    "pipe_coupling/beam_x_2_1": 0,
+    "pipe_coupling/beam_y_2_-1": 0,
+    "pipe_coupling/beam_y_2_1": 0,
+    "pipe2/post_-1_-1": 0,
+    "pipe2/post_-1_1": 0,
+    "pipe2/post_1_-1": 0,
+    "pipe2/post_1_1": 0,
+    "pipe2/beam_x_0_-1": 0,
+    "pipe2/beam_x_0_1": 0,
+    "pipe2/beam_y_0_-1": 0,
+    "pipe2/beam_y_0_1": 0,
+    "pipe2/beam_x_1_-1": 0,
+    "pipe2/beam_x_1_1": 0,
+    "pipe2/beam_y_1_-1": 0,
+    "pipe2/beam_y_1_1": 0,
+    "pipe2/beam_x_2_-1": 0,
+    "pipe2/beam_x_2_1": 0,
+    "pipe2/beam_y_2_-1": 0,
+    "pipe2/beam_y_2_1": 0,
+    "pipe2_coupling/post_-1_-1": 0,
+    "pipe2_coupling/post_-1_1": 0,
+    "pipe2_coupling/post_1_-1": 0,
+    "pipe2_coupling/post_1_1": 0,
+    "pipe2_coupling/beam_x_0_-1": 0,
+    "pipe2_coupling/beam_x_0_1": 0,
+    "pipe2_coupling/beam_y_0_-1": 0,
+    "pipe2_coupling/beam_y_0_1": 0,
+    "pipe2_coupling/beam_x_1_-1": 0,
+    "pipe2_coupling/beam_x_1_1": 0,
+    "pipe2_coupling/beam_y_1_-1": 0,
+    "pipe2_coupling/beam_y_1_1": 0,
+    "pipe2_coupling/beam_x_2_-1": 0,
+    "pipe2_coupling/beam_x_2_1": 0,
+    "pipe2_coupling/beam_y_2_-1": 0,
+    "pipe2_coupling/beam_y_2_1": 0,
+    "cable_left_0/post_-1_-1": 0,
+    "cable_left_0/post_-1_1": 0,
+    "cable_left_0/post_1_-1": 0,
+    "cable_left_0/post_1_1": 0,
+    "cable_left_0/beam_x_0_-1": 0,
+    "cable_left_0/beam_x_0_1": 0,
+    "cable_left_0/beam_y_0_-1": 0,
+    "cable_left_0/beam_y_0_1": 0,
+    "cable_left_0/beam_x_1_-1": 0,
+    "cable_left_0/beam_x_1_1": 0,
+    "cable_left_0/beam_y_1_-1": 0,
+    "cable_left_0/beam_y_1_1": 0,
+    "cable_left_0/beam_x_2_-1": 0,
+    "cable_left_0/beam_x_2_1": 0,
+    "cable_left_0/beam_y_2_-1": 0,
+    "cable_left_0/beam_y_2_1": 0,
+    "cable_left_0/pane": 0,
+    "cable_left_0/pipe": 0,
+    "cable_left_0/pipe_coupling": 0,
+    "cable_left_0/pipe2": 0,
+    "cable_left_0/pipe2_coupling": 0,
+    "cable_left_1/post_-1_-1": 0,
+    "cable_left_1/post_-1_1": 0,
+    "cable_left_1/post_1_-1": 0,
+    "cable_left_1/post_1_1": 0,
+    "cable_left_1/beam_x_0_-1": 0,
+    "cable_left_1/beam_x_0_1": 0,
+    "cable_left_1/beam_y_0_-1": 0,
+    "cable_left_1/beam_y_0_1": 0,
+    "cable_left_1/beam_x_1_-1": 0,
+    "cable_left_1/beam_x_1_1": 0,
+    "cable_left_1/beam_y_1_-1": 0,
+    "cable_left_1/beam_y_1_1": 0,
+    "cable_left_1/beam_x_2_-1": 0,
+    "cable_left_1/beam_x_2_1": 0,
+    "cable_left_1/beam_y_2_-1": 0,
+    "cable_left_1/beam_y_2_1": 0,
+    "cable_left_1/pane": 0,
+    "cable_left_1/pipe": 0,
+    "cable_left_1/pipe_coupling": 0,
+    "cable_left_1/pipe2": 0,
+    "cable_left_1/pipe2_coupling": 0,
+    "cable_left_2/post_-1_-1": 0,
+    "cable_left_2/post_-1_1": 0,
+    "cable_left_2/post_1_-1": 0,
+    "cable_left_2/post_1_1": 0,
+    "cable_left_2/beam_x_0_-1": 0,
+    "cable_left_2/beam_x_0_1": 0,
+    "cable_left_2/beam_y_0_-1": 0,
+    "cable_left_2/beam_y_0_1": 0,
+    "cable_left_2/beam_x_1_-1": 0,
+    "cable_left_2/beam_x_1_1": 0,
+    "cable_left_2/beam_y_1_-1": 0,
+    "cable_left_2/beam_y_1_1": 0,
+    "cable_left_2/beam_x_2_-1": 0,
+    "cable_left_2/beam_x_2_1": 0,
+    "cable_left_2/beam_y_2_-1": 0,
+    "cable_left_2/beam_y_2_1": 0,
+    "cable_left_2/pane": 0,
+    "cable_left_2/pipe": 0,
+    "cable_left_2/pipe_coupling": 0,
+    "cable_left_2/pipe2": 0,
+    "cable_left_2/pipe2_coupling": 0,
+    "cable_left_3/post_-1_-1": 0,
+    "cable_left_3/post_-1_1": 0,
+    "cable_left_3/post_1_-1": 0,
+    "cable_left_3/post_1_1": 0,
+    "cable_left_3/beam_x_0_-1": 0,
+    "cable_left_3/beam_x_0_1": 0,
+    "cable_left_3/beam_y_0_-1": 0,
+    "cable_left_3/beam_y_0_1": 0,
+    "cable_left_3/beam_x_1_-1": 0,
+    "cable_left_3/beam_x_1_1": 0,
+    "cable_left_3/beam_y_1_-1": 0,
+    "cable_left_3/beam_y_1_1": 0,
+    "cable_left_3/beam_x_2_-1": 0,
+    "cable_left_3/beam_x_2_1": 0,
+    "cable_left_3/beam_y_2_-1": 0,
+    "cable_left_3/beam_y_2_1": 0,
+    "cable_left_3/pane": 0,
+    "cable_left_3/pipe": 0,
+    "cable_left_3/pipe_coupling": 0,
+    "cable_left_3/pipe2": 0,
+    "cable_left_3/pipe2_coupling": 0,
+    "cable_front_0/post_-1_-1": 0,
+    "cable_front_0/post_-1_1": 0,
+    "cable_front_0/post_1_-1": 0,
+    "cable_front_0/post_1_1": 0,
+    "cable_front_0/beam_x_0_-1": 0,
+    "cable_front_0/beam_x_0_1": 0,
+    "cable_front_0/beam_y_0_-1": 0,
+    "cable_front_0/beam_y_0_1": 0,
+    "cable_front_0/beam_x_1_-1": 0,
+    "cable_front_0/beam_x_1_1": 0,
+    "cable_front_0/beam_y_1_-1": 0,
+    "cable_front_0/beam_y_1_1": 0,
+    "cable_front_0/beam_x_2_-1": 0,
+    "cable_front_0/beam_x_2_1": 0,
+    "cable_front_0/beam_y_2_-1": 0,
+    "cable_front_0/beam_y_2_1": 0,
+    "cable_front_0/pane": 0,
+    "cable_front_0/pipe": 0,
+    "cable_front_0/pipe_coupling": 0,
+    "cable_front_0/pipe2": 0,
+    "cable_front_0/pipe2_coupling": 0,
+    "cable_front_1/post_-1_-1": 0,
+    "cable_front_1/post_-1_1": 0,
+    "cable_front_1/post_1_-1": 0,
+    "cable_front_1/post_1_1": 0,
+    "cable_front_1/beam_x_0_-1": 0,
+    "cable_front_1/beam_x_0_1": 0,
+    "cable_front_1/beam_y_0_-1": 0,
+    "cable_front_1/beam_y_0_1": 0,
+    "cable_front_1/beam_x_1_-1": 0,
+    "cable_front_1/beam_x_1_1": 0,
+    "cable_front_1/beam_y_1_-1": 0,
+    "cable_front_1/beam_y_1_1": 0,
+    "cable_front_1/beam_x_2_-1": 0,
+    "cable_front_1/beam_x_2_1": 0,
+    "cable_front_1/beam_y_2_-1": 0,
+    "cable_front_1/beam_y_2_1": 0,
+    "cable_front_1/pane": 0,
+    "cable_front_1/pipe": 0,
+    "cable_front_1/pipe_coupling": 0,
+    "cable_front_1/pipe2": 0,
+    "cable_front_1/pipe2_coupling": 0,
+    "cable_front_2/post_-1_-1": 0,
+    "cable_front_2/post_-1_1": 0,
+    "cable_front_2/post_1_-1": 0,
+    "cable_front_2/post_1_1": 0,
+    "cable_front_2/beam_x_0_-1": 0,
+    "cable_front_2/beam_x_0_1": 0,
+    "cable_front_2/beam_y_0_-1": 0,
+    "cable_front_2/beam_y_0_1": 0,
+    "cable_front_2/beam_x_1_-1": 0,
+    "cable_front_2/beam_x_1_1": 0,
+    "cable_front_2/beam_y_1_-1": 0,
+    "cable_front_2/beam_y_1_1": 0,
+    "cable_front_2/beam_x_2_-1": 0,
+    "cable_front_2/beam_x_2_1": 0,
+    "cable_front_2/beam_y_2_-1": 0,
+    "cable_front_2/beam_y_2_1": 0,
+    "cable_front_2/pane": 0,
+    "cable_front_2/pipe": 0,
+    "cable_front_2/pipe_coupling": 0,
+    "cable_front_2/pipe2": 0,
+    "cable_front_2/pipe2_coupling": 0,
+    "cable_front_3/post_-1_-1": 0,
+    "cable_front_3/post_-1_1": 0,
+    "cable_front_3/post_1_-1": 0,
+    "cable_front_3/post_1_1": 0,
+    "cable_front_3/beam_x_0_-1": 0,
+    "cable_front_3/beam_x_0_1": 0,
+    "cable_front_3/beam_y_0_-1": 0,
+    "cable_front_3/beam_y_0_1": 0,
+    "cable_front_3/beam_x_1_-1": 0,
+    "cable_front_3/beam_x_1_1": 0,
+    "cable_front_3/beam_y_1_-1": 0,
+    "cable_front_3/beam_y_1_1": 0,
+    "cable_front_3/beam_x_2_-1": 0,
+    "cable_front_3/beam_x_2_1": 0,
+    "cable_front_3/beam_y_2_-1": 0,
+    "cable_front_3/beam_y_2_1": 0,
+    "cable_front_3/pane": 0,
+    "cable_front_3/pipe": 0,
+    "cable_front_3/pipe_coupling": 0,
+    "cable_front_3/pipe2": 0,
+    "cable_front_3/pipe2_coupling": 0,
+    "cable_right_0/post_-1_-1": 0,
+    "cable_right_0/post_-1_1": 0,
+    "cable_right_0/post_1_-1": 0,
+    "cable_right_0/post_1_1": 0,
+    "cable_right_0/beam_x_0_-1": 0,
+    "cable_right_0/beam_x_0_1": 0,
+    "cable_right_0/beam_y_0_-1": 0,
+    "cable_right_0/beam_y_0_1": 0,
+    "cable_right_0/beam_x_1_-1": 0,
+    "cable_right_0/beam_x_1_1": 0,
+    "cable_right_0/beam_y_1_-1": 0,
+    "cable_right_0/beam_y_1_1": 0,
+    "cable_right_0/beam_x_2_-1": 0,
+    "cable_right_0/beam_x_2_1": 0,
+    "cable_right_0/beam_y_2_-1": 0,
+    "cable_right_0/beam_y_2_1": 0,
+    "cable_right_0/pane": 0,
+    "cable_right_0/pipe": 0,
+    "cable_right_0/pipe_coupling": 0,
+    "cable_right_0/pipe2": 0,
+    "cable_right_0/pipe2_coupling": 0,
+    "cable_right_1/post_-1_-1": 0,
+    "cable_right_1/post_-1_1": 0,
+    "cable_right_1/post_1_-1": 0,
+    "cable_right_1/post_1_1": 0,
+    "cable_right_1/beam_x_0_-1": 0,
+    "cable_right_1/beam_x_0_1": 0,
+    "cable_right_1/beam_y_0_-1": 0,
+    "cable_right_1/beam_y_0_1": 0,
+    "cable_right_1/beam_x_1_-1": 0,
+    "cable_right_1/beam_x_1_1": 0,
+    "cable_right_1/beam_y_1_-1": 0,
+    "cable_right_1/beam_y_1_1": 0,
+    "cable_right_1/beam_x_2_-1": 0,
+    "cable_right_1/beam_x_2_1": 0,
+    "cable_right_1/beam_y_2_-1": 0,
+    "cable_right_1/beam_y_2_1": 0,
+    "cable_right_1/pane": 0,
+    "cable_right_1/pipe": 0,
+    "cable_right_1/pipe_coupling": 0,
+    "cable_right_1/pipe2": 0,
+    "cable_right_1/pipe2_coupling": 0,
+    "cable_right_2/post_-1_-1": 0,
+    "cable_right_2/post_-1_1": 0,
+    "cable_right_2/post_1_-1": 0,
+    "cable_right_2/post_1_1": 0,
+    "cable_right_2/beam_x_0_-1": 0,
+    "cable_right_2/beam_x_0_1": 0,
+    "cable_right_2/beam_y_0_-1": 0,
+    "cable_right_2/beam_y_0_1": 0,
+    "cable_right_2/beam_x_1_-1": 0,
+    "cable_right_2/beam_x_1_1": 0,
+    "cable_right_2/beam_y_1_-1": 0,
+    "cable_right_2/beam_y_1_1": 0,
+    "cable_right_2/beam_x_2_-1": 0,
+    "cable_right_2/beam_x_2_1": 0,
+    "cable_right_2/beam_y_2_-1": 0,
+    "cable_right_2/beam_y_2_1": 0,
+    "cable_right_2/pane": 0,
+    "cable_right_2/pipe": 0,
+    "cable_right_2/pipe_coupling": 0,
+    "cable_right_2/pipe2": 0,
+    "cable_right_2/pipe2_coupling": 0,
+    "cable_right_3/post_-1_-1": 0,
+    "cable_right_3/post_-1_1": 0,
+    "cable_right_3/post_1_-1": 0,
+    "cable_right_3/post_1_1": 0,
+    "cable_right_3/beam_x_0_-1": 0,
+    "cable_right_3/beam_x_0_1": 0,
+    "cable_right_3/beam_y_0_-1": 0,
+    "cable_right_3/beam_y_0_1": 0,
+    "cable_right_3/beam_x_1_-1": 0,
+    "cable_right_3/beam_x_1_1": 0,
+    "cable_right_3/beam_y_1_-1": 0,
+    "cable_right_3/beam_y_1_1": 0,
+    "cable_right_3/beam_x_2_-1": 0,
+    "cable_right_3/beam_x_2_1": 0,
+    "cable_right_3/beam_y_2_-1": 0,
+    "cable_right_3/beam_y_2_1": 0,
+    "cable_right_3/pane": 0,
+    "cable_right_3/pipe": 0,
+    "cable_right_3/pipe_coupling": 0,
+    "cable_right_3/pipe2": 0,
+    "cable_right_3/pipe2_coupling": 0
+  },
+  "failures": []
+}

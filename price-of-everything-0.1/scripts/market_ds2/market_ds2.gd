@@ -56,6 +56,8 @@ var _bell: Control
 var _ticker_clip: Control
 var _ticker_text: Control
 var _ticker_x := 0.0
+## True when the ticker's words are longer than its board, written twice over and crawling.
+var _ticker_crawls := false
 var _pending_tile := ""
 
 
@@ -274,6 +276,10 @@ func _ticker() -> PanelContainer:
 	_ticker_clip.custom_minimum_size.y = DotMatrix.ROWS * TICKER_PITCH + 6.0
 	screen.add_child(_ticker_clip)
 	screen.move_child(_ticker_clip, 0)
+	# Whether the words fit is only known once the board has its width.
+	_ticker_clip.resized.connect(func() -> void:
+		if _ticker_text != null:
+			_refresh_ticker())
 	_ticker_text = DotMatrix.new()
 	_ticker_text.name = "TickerText"
 	_ticker_text.set("framed", false)
@@ -287,7 +293,11 @@ func _ticker() -> PanelContainer:
 ## stays on the LEDs.
 static func ticker_runs(goods: Array) -> Array:
 	var runs: Array = []
+	var named: Dictionary = {}
 	for m: Dictionary in MarketRules.movers(goods):
+		if named.has(str(m.name)):
+			continue
+		named[str(m.name)] = true
 		runs.append({"text": "▲ " if int(m.dir) > 0 else "▼ ", "colour": MARK_UP if int(m.dir) > 0 else MARK_DOWN})
 		runs.append({"text": "%s    " % str(m.name), "colour": Color.WHITE})
 	for o: Dictionary in MarketRules.orders_due(TICKER_DUE_TURNS):
@@ -304,8 +314,12 @@ func ticker_text() -> String:
 
 func _refresh_ticker() -> void:
 	var runs := ticker_runs(_visible_goods())
-	# Twice over, so the crawl wraps without a gap.
-	_ticker_text.call("set_runs", runs + runs)
+	# Each good once. Only words longer than the board crawl, and those are written twice over so the crawl
+	# wraps without a gap.
+	_ticker_text.call("set_runs", runs)
+	_ticker_crawls = _ticker_clip.size.x > 0.0 and _ticker_text.get_combined_minimum_size().x > _ticker_clip.size.x
+	if _ticker_crawls:
+		_ticker_text.call("set_runs", runs + runs)
 	_ticker_text.size = _ticker_text.get_combined_minimum_size()
 
 
@@ -313,8 +327,8 @@ func _process(delta: float) -> void:
 	if _ticker_text == null:
 		return
 	var half: float = _ticker_text.size.x * 0.5
-	if half <= 0.0 or half < _ticker_clip.size.x * 0.5:
-		_ticker_text.position.x = 0.0
+	if not _ticker_crawls or half <= 0.0:
+		_ticker_text.position = Vector2(0.0, (_ticker_clip.size.y - _ticker_text.size.y) * 0.5)
 		return
 	_ticker_x = fmod(_ticker_x + delta * TICKER_SPEED, half)
 	_ticker_text.position = Vector2(-_ticker_x, (_ticker_clip.size.y - _ticker_text.size.y) * 0.5)

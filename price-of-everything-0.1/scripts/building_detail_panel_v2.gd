@@ -1742,7 +1742,6 @@ func _v3_emboss(l: Label) -> void:
 func _build_v3_block(building: Dictionary, recipe: Dictionary) -> Control:
 	var service = preload("res://scripts/middleman_service.gd")
 	var iid := str(building.get("instance_id", ""))
-	var building_id := str(building.get("building_id", ""))
 	var manage_unlocked: bool = service.eligible(building) and ResearchState.open_logistics_contracts_available()
 	var state := {
 		"input_value": _input_summary(building, recipe),
@@ -1751,7 +1750,7 @@ func _build_v3_block(building: Dictionary, recipe: Dictionary) -> Control:
 		"output_managed": manage_unlocked and service.side_all_middleman(iid, "output"),
 	}
 	state.merge(v3_upgrade_state(building))
-	var alt_count := maxi(0, Catalog.get_recipes_for_building(building_id).size() - 1)
+	var alt_count := BdpV3Block.switch_recipes(building).size()
 	if BuildingWorks.is_retooling(iid):
 		var t := BuildingWorks.retrofit_turns_remaining(iid)
 		state["recipe_title"] = "Retooling — %d turn%s" % [t, "" if t == 1 else "s"]
@@ -1759,8 +1758,8 @@ func _build_v3_block(building: Dictionary, recipe: Dictionary) -> Control:
 		state["recipe_enabled"] = true
 	else:
 		state["recipe_title"] = "Change recipes (%d)" % alt_count
-		state["recipe_detail"] = "%d better for %s" % [BdpV3Block.better_recipe_count(building),
-			BdpV3Block.truncate10(BdpV3Block.main_output_name(recipe))] if alt_count > 0 else "No other recipes"
+		state["recipe_detail"] = BdpV3Block.recipe_detail(alt_count,
+			BdpV3Block.better_recipe_count(building) if alt_count > 0 else 0, BdpV3Block.main_output_name(recipe))
 		state["recipe_enabled"] = alt_count > 0
 	var block: Control = BdpV3Block.new()
 	block.configure(state)
@@ -2628,6 +2627,8 @@ const V3_DIAG_STAGES := [["Inputs", 1], ["Inbound", 1], ["Power", 1], ["Plant", 
 const V3_DIAG_ROWS := 5
 ## The icons' side, and their lamps' size as a share of the status lamp's (the text rows' size).
 const V3_DIAG_ICON_PX := 56.0
+## A text row's good, beside its lamp.
+const V3_DIAG_GOOD_PX := 36
 const V3_DIAG_ICON_LAMP_SCALE := 0.72
 ## Each check's raised icon is res://assets/ui/bdp_v3/diag_icon_<key>.png and its shadow, or the one its
 ## `icon` names (Sales shows the pallet for unsold stock, the coin for glut); an output check that mirrors
@@ -2856,7 +2857,9 @@ func _diag_row(r: Dictionary, top_border: bool) -> Control:
 		lamp.set_tone(tone)
 		hb.add_child(lamp)
 		if str(r.get("good_id", "")) != "":
-			var good_icon := UIHelpers.make_framed_good_icon(str(r.get("good_id", "")), Catalog.get_internal_name(str(r.get("good_id", ""))), 18)
+			# The good itself, unframed and large enough to tell one from another (a framed 18 px icon read as
+			# an empty box).
+			var good_icon := UIHelpers.make_plain_good_icon(str(r.get("good_id", "")), Catalog.get_internal_name(str(r.get("good_id", ""))), V3_DIAG_GOOD_PX)
 			good_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			hb.add_child(good_icon)
 	else:
@@ -3802,8 +3805,12 @@ func _input_summary(building: Dictionary, recipe: Dictionary) -> String:
 	if handover_turns > 0:
 		return "Switching suppliers: first input from the market in %d turn%s" % [handover_turns, "" if handover_turns == 1 else "s"]
 	if service.enabled(iid) and (recipe.get("inputs", []) as Array).any(func(item: Dictionary) -> bool: return service.supplies_good(iid, str(item.get("good_id", "")))): return "Mixed logistics"
+	var sources := BuildingReadout.input_sources(building, recipe)
+	var many := BuildingReadout.places_label(sources)
+	if many != "":
+		return many
 	var names: Array = []
-	for s in BuildingReadout.input_sources(building, recipe):
+	for s in sources:
 		var nm := str(s.get("building_name", ""))
 		if not names.has(nm):
 			names.append(nm)
@@ -3817,30 +3824,9 @@ func _output_summary(building: Dictionary, recipe: Dictionary) -> String:
 	if service.enabled(iid_for_output) and (recipe.get("outputs", []) as Array).any(func(item: Dictionary) -> bool: return service.buys_output(iid_for_output, str(item.get("good_id", "")))): return "Mixed logistics"
 	var iid := str(building.get("instance_id", ""))
 	var gid := BuildingStatus.primary_output_good_id(recipe)
-	var split := MatchState.get_output_split_destinations(iid, gid)
-	if split.size() >= 2:
-		var produced := BuildingStatus.primary_output_qty(recipe)
-		var remaining := produced
-		var automatic: Array = []
-		var quantities: Dictionary = {}
-		for destination in split:
-			var requested := int((destination as Dictionary).get("qty", 0))
-			var tile_id := str((destination as Dictionary).get("tile_id", ""))
-			if requested > 0:
-				quantities[tile_id] = mini(requested, remaining)
-				remaining -= int(quantities[tile_id])
-			else:
-				automatic.append(destination)
-		for index in automatic.size():
-			var tile_id := str((automatic[index] as Dictionary).get("tile_id", ""))
-			var share := ceili(float(remaining) / float(automatic.size() - index)) if remaining > 0 else 0
-			quantities[tile_id] = share
-			remaining -= share
-		var lines: Array = []
-		for destination in split:
-			var tile_id := str((destination as Dictionary).get("tile_id", ""))
-			lines.append("%s: %d" % [Catalog.tile_label(tile_id), int(quantities.get(tile_id, 0))])
-		return "\n".join(lines)
+	var many := BuildingReadout.places_label(MatchState.get_output_split_destinations(iid, gid))
+	if many != "":
+		return many
 	var route := BuildingReadout.output_route(building, recipe)
 	var dest := str(route.get("destination", "—"))
 	if not bool(route.get("reachable", true)):
@@ -4316,27 +4302,15 @@ func _add_output_good_options(vb: VBoxContainer, building: Dictionary, recipe: D
 		_open_output_sheet(building, recipe), good_id, market_available, "market"))
 	var stockpile_available := ResearchState.open_logistics_contracts_available()
 	var stockpile_detail := "Store the output on this tile for later use." if stockpile_available else "[Requires Open Logistics Contracts]"
-	# Leaving the intermediary for this tile's stockpile asks one question, not two: the change
-	# is made at once and the surplus prompt says so, with an Undo (a toast when nothing piles up).
-	var was_intermediary: bool = preload("res://scripts/middleman_service.gd").buys_output(iid, good_id)
-	var prior_tile := MatchState.get_output_stockpile_destination(iid, good_id)
+	# Leaving Local Suppliers for this tile's stockpile asks once, on the supplier card, which warns about the
+	# surplus too.
 	row.add_child(_logistics_route_option(building, "output", "Tile stockpile", stockpile_detail, on_tile, func() -> void:
 		MatchState.set_output_stockpile_destination(iid, tile_id, good_id)
 		_queue_refresh()
-		_open_output_sheet(building, recipe)
-		var context := {}
-		if was_intermediary:
-			context = {"supplier_changed": true, "undo": func() -> void:
-				preload("res://scripts/middleman_service.gd").set_good_mode(iid, "output", good_id, "middleman")
-				if prior_tile != "":
-					MatchState.set_output_stockpile_destination(iid, prior_tile, good_id)
-				else:
-					MatchState.clear_output_stockpile_destination(iid, good_id)
-				_queue_refresh()}
-		preload("res://scripts/stockpile_route_prompt.gd").offer(get_parent(), tile_id, good_id, context), good_id, stockpile_available, "stockpile", false))
+		_open_output_sheet(building, recipe), good_id, stockpile_available, "stockpile"))
 	row.add_child(_logistics_route_option(building, "output", "Ship to another tile", "Pick a tile on the shipping map to feed a downstream building you own." if stockpile_available else "[Requires Open Logistics Contracts]", other, func() -> void:
 		MatchState.begin_output_stockpile_selection(iid, good_id, true)
-		_close_sheet(), good_id, stockpile_available))
+		_close_sheet(), good_id, stockpile_available, "other"))
 	chooser.add_child(row)
 	group.add_child(chooser)
 	group.add_child(_output_route_details_section(building, good_id, output_qty, intermediary, is_market, on_tile, other))
@@ -4812,7 +4786,7 @@ func _request_all_managed_source(building: Dictionary, side: String, source: Str
 	var service = preload("res://scripts/middleman_service.gd")
 	var action := func() -> bool: return _apply_all_managed_source(building, side, source)
 	if service.side_all_middleman(str(building.get("instance_id", "")), side):
-		preload("res://scripts/logistics_confirmation.gd").request(self, "managed", action, Callable(), {"side": side, "destination": "market" if source == "market" else "stockpile"})
+		preload("res://scripts/logistics_confirmation.gd").request(self, "managed", action, Callable(), {"side": side, "destination": "market" if source == "market" else "stockpile", "tile": str(building.get("tile_id", ""))})
 	else:
 		action.call()
 
@@ -4873,4 +4847,4 @@ func _request_logistics_mode(building: Dictionary, side: String, mode: String, a
 	if not confirm:
 		apply.call()
 		return
-	preload("res://scripts/logistics_confirmation.gd").request(self, mode, apply, Callable(), {"side": side, "good": good_id, "destination": destination})
+	preload("res://scripts/logistics_confirmation.gd").request(self, mode, apply, Callable(), {"side": side, "good": good_id, "destination": destination, "tile": str(building.get("tile_id", ""))})

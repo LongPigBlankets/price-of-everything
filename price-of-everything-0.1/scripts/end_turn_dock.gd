@@ -173,6 +173,46 @@ func _build_interactive_children() -> void:
 	add_child(_base_block)
 
 
+# ─── Note ────────────────────────────────────────────────────────────────────
+## How long a note above the button stays, and how long it takes to fade.
+const NOTE_SEC := 2.6
+const NOTE_FADE_SEC := 0.3
+var _note: PanelContainer
+
+
+## A small note just above the End Turn button, saying why a press did nothing. It fades by itself.
+func show_note(text: String) -> void:
+	if _note != null and is_instance_valid(_note):
+		_note.queue_free()
+	_note = PanelContainer.new()
+	_note.name = "EndTurnNote"
+	_note.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(DS.PALETTE.BG_PANEL, 0.96)
+	box.border_color = DS.PALETTE.ACCENT
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(6)
+	box.content_margin_left = 12.0
+	box.content_margin_right = 12.0
+	box.content_margin_top = 7.0
+	box.content_margin_bottom = 7.0
+	_note.add_theme_stylebox_override("panel", box)
+	var label := Label.new()
+	label.text = text
+	label.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+	label.add_theme_font_size_override("font_size", 14)
+	_note.add_child(label)
+	add_child(_note)
+	var ns := _note.get_combined_minimum_size()
+	var r := Rect2(_end_turn_button.position, _end_turn_button.size)
+	_note.position = Vector2(clampf(r.get_center().x - ns.x * 0.5, 8.0, maxf(8.0, size.x - ns.x - 8.0)), r.position.y - ns.y - 48.0)
+	var note := _note
+	var fade := create_tween()
+	fade.tween_interval(NOTE_SEC)
+	fade.tween_property(note, "modulate:a", 0.0, NOTE_FADE_SEC)
+	fade.tween_callback(note.queue_free)
+
+
 # ─── Layout ──────────────────────────────────────────────────────────────────
 func _update_layout() -> void:
 	var w := size.x

@@ -152,9 +152,9 @@ const SEAPORT_BASE_FEE_PER_GOOD: float = 0.0
 const SEAPORT_AD_VALOREM_EARLY: float = 0.005   # t1-30: learning window
 const SEAPORT_AD_VALOREM_LATE: float = 0.03     # t31+: the squeeze
 const SEAPORT_AD_VALOREM_STEP_TURN: int = 31
-# Logistics Intermediary games charge this from turn 1, with the weight charge below. The intermediary
-# charges the same port charge plus its haulage (middleman_contract.gd), so the choice between them is the
-# freight to the port against the intermediary's haulage from the tile.
+# Logistics Intermediary games charge this from turn 1, with the weight charge below. Local Suppliers
+# charge the same port charge plus their haul to the tile's market hub (middleman_contract.gd), so the
+# choice between them is your freight to the port against their haul over bare ground.
 const SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES: float = 0.03
 ## Logistics Intermediary games: the port's charge per unit by weight class, on top of the ad valorem.
 const SEAPORT_WEIGHT_FEE_BY_CLASS := {
@@ -292,7 +292,7 @@ const TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS := {
 	"safe_liquid": 0.03,
 	"hazard_liquid": 0.03,
 	"liquid": 0.03,
-	"gas": 0.30,        # ~10x safe_liquid — compression/cryogenics
+	"gas": 0.05,        # cylinders and compression; the cost of handling gas rides on its value (below)
 	"electricity": 0.02,
 }
 # AD-VALOREM component of the freight tariff: £/unit/turn per £1 of the good's value.
@@ -322,13 +322,14 @@ const TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS := {
 }
 
 # Per-mode multiplier on the weight-class rate. Rail is half the per-unit cost of
-# roads/overland (and also faster — see infrastructure.csv range 4 vs 2).
+# roads (and also faster — see infrastructure.csv range 4 vs 2). Bare ground costs twice a road, so
+# hauling your own goods only beats Local Suppliers once you have built something to haul them on.
 const TRANSPORT_MODE_COST_MULT := {
 	"rail": 0.5,
 	"roads": 1.0,
 	"pipes": 1.0,        # pipe cost is flat (PIPE_COST_PER_UNIT_PER_TURN), not class-scaled
 	"reinf_pipes": 1.0,
-	"nothing": 1.0,
+	"nothing": 2.0,
 }
 # Liquids and gases hauled OVERLAND — road tankers and rail tank wagons instead of a line
 # that just flows. Fluids may leave the pipe network, but the
@@ -565,12 +566,12 @@ func transport_cost_for(good_id: String, qty: int, transport_turns: int, mode_mu
 func transport_cost_for_route(good_id: String, qty: int, route: Dictionary) -> float:
 	# Leg-aware cost. Each leg is one turn-move; pipe legs charge the flat liquid rate,
 	# rail/road legs charge weight-class * mode multiplier. Falls back to a turns-based
-	# overland charge when the route has no infra legs (straight-line haul).
+	# bare-ground charge when the route has no infra legs (straight-line haul).
 	var legs: Array = route.get("legs", [])
 	var class_rate := transport_rate_for_good(good_id)
 	if legs.is_empty():
 		var turns: int = int(route.get("turns", 0))
-		return float(qty) * float(maxi(turns, 0)) * class_rate
+		return float(qty) * float(maxi(turns, 0)) * class_rate * float(TRANSPORT_MODE_COST_MULT["nothing"])
 	var total := 0.0
 	var is_fluid := Catalog.requires_pipeline(good_id)
 	for leg in legs:
