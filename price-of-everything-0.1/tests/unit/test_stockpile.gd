@@ -82,7 +82,7 @@ func _test_building_ledger() -> void:
 		await get_tree().process_frame
 		ok = panel.get_child_count() > 0
 		panel.queue_free()
-	_check(ok, "building_ledger_panel instantiates (routing dropdown builds)")
+	_check(ok, "building_ledger_panel instantiates")
 
 func _test_queue_move() -> void:
 	Stockpile.add("tile_12_4", "g_001", 10)

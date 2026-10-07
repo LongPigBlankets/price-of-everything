@@ -7,7 +7,6 @@ const TAGS := {
 	"_test_capacity_dialog_expand": ["stockpile", "ui"],
 	"_test_tile_view_special_order_route": ["events", "production", "special_orders", "stockpile", "ui"],
 	"_test_tile_good_breakdown": ["research", "transport", "ui"],
-	"_test_tile_view_player_building_filter": ["stockpile", "ui"],
 }
 
 func _test_capacity_dialog_expand() -> void:
@@ -57,22 +56,22 @@ func _test_tile_view_special_order_route() -> void:
 	var order_id := str(order.get("id", ""))
 	var panel: Control = load("res://scripts/tile_info_panel_v2.gd").new()
 	add_child(panel)
-	panel.set("_current_tile_id", "tile_3_8")
-	panel.set("_active_tab", "stock")
-	panel.set("_stock_sel", {"good_id": "g_001", "name": "Coal", "qty": 6})
-	panel.set("_stock_qty", 6)
-	var menu: Control = panel.call("_make_stock_context_menu")
-	_check(_node_tree_contains_text(menu, "Special Order"),
-		"tile view: matching active order shows Special Order destination")
-	menu.queue_free()
-	panel.set("_stock_sel", {"good_id": "g_002", "name": "Iron Ore", "qty": 6})
-	var other_menu: Control = panel.call("_make_stock_context_menu")
-	_check(not _node_tree_contains_text(other_menu, "Special Order"),
-		"tile view: non-matching goods do not show Special Order destination")
-	other_menu.queue_free()
-	panel.queue_free()
-
+	await get_tree().process_frame
 	Stockpile.add("tile_3_8", "g_001", 6)
+	Stockpile.add("tile_3_8", "g_002", 6)
+	panel.show_tile({"id": "tile_3_8"}, "stock")
+	panel.call("select_stock_good", "g_001")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(panel.find_child("DestSpecialOrder", true, false) != null,
+		"tile view: matching active order shows Special Order destination")
+	panel.call("select_stock_good", "g_002")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(panel.find_child("DestSpecialOrder", true, false) == null,
+		"tile view: non-matching goods do not show Special Order destination")
+	panel.queue_free()
+	Stockpile.consume("tile_3_8", "g_002", 6)
 	var ships_before := TransportState.get_pending_transport_shipments().size()
 	var result: Dictionary = SpecialOrderState.queue_from_tile("tile_3_8", order_id, "g_001", 6, false)
 	_check(not result.is_empty()
@@ -280,9 +279,7 @@ func _test_rotary_selector_options() -> void:
 	_check(buttons[0].position.y < knob.call("_centre").y and buttons[2].position.x > buttons[0].position.x,
 		"knob options: the icons stand on the arc above the knob, in order left to right")
 	knob.queue_free()
-	# v3's Stock tab: the surplus route on the knob, the port route still the tutorial's SellSurplusToggle.
-	var was: bool = UiPrefs.use_tvp_v3
-	UiPrefs.set_use_tvp_v3(true)
+	# The Stock tab: the surplus route on the knob, the port route still the tutorial's SellSurplusToggle.
 	var panel: Control = load("res://scripts/tile_info_panel_v2.gd").new()
 	add_child(panel)
 	await get_tree().process_frame
@@ -304,7 +301,6 @@ func _test_rotary_selector_options() -> void:
 	_check(MatchState.get_sell_surplus_destination(tile) == "none", "tile view v3: clicking the keep icon sets the route to keep")
 	MatchState.set_sell_surplus_destination(tile, dest_was)
 	panel.queue_free()
-	UiPrefs.set_use_tvp_v3(was)
 
 func _test_tile_land_hex() -> void:
 	# The tile's land as a hex: exactly as many squares as the tile holds, on an aligned grid in a hex's rows;
@@ -483,24 +479,20 @@ func _test_tile_view_cables_missing() -> void:
 
 func _test_tile_view_cabinet() -> void:
 	# Tile view v3's shell: the stainless door with its engraved nameplate (the name, the coordinates on hover),
-	# five latching keys with Transport added, the pressed key latched and its tab open, and the v2 panel back
-	# exactly as it was when the switch goes off.
-	var was: bool = UiPrefs.use_tvp_v3
-	UiPrefs.set_use_tvp_v3(false)
+	# five latching keys with Transport added, the pressed key latched and its tab open.
 	var panel: Control = load("res://scripts/tile_info_panel_v2.gd").new()
 	add_child(panel)
 	await get_tree().process_frame
 	var tile := "tile_5_10"
 	panel.show_tile({"id": tile}, "stock")
-	UiPrefs.set_use_tvp_v3(true)
 	await get_tree().process_frame
 	var keys: Array = []
 	for id: String in ["bl", "power", "prod", "stock", "transport"]:
 		keys.append(panel.find_child("TabKey_" + id, true, false))
 	_check(not keys.has(null) and panel.find_child("Nameplate", true, false) != null and panel.find_child("KeyBed", true, false) != null,
-		"tile view v3: the switch rebuilds the panel as the cabinet, a nameplate and five keys on their bed")
+		"tile view v3: the panel is the cabinet, a nameplate and five keys on their bed")
 	_check(str(panel.get("_active_tab")) == "stock" and bool(keys[3].get("latched")) and not bool(keys[0].get("latched")),
-		"tile view v3: the open tab survives the rebuild and its key stays latched")
+		"tile view v3: the tab asked for is open and its key latched")
 	_check(panel.find_child("TileLandChart", true, false) != null and panel.find_child("BLBuyLandButton", true, false) != null
 		and panel.find_child("LocationKey", true, false) != null and panel.find_child("OwnerLamp", true, false) != null
 		and panel.find_child("RailSheet", true, false) == null and (panel as Control).custom_minimum_size.x == 655.0,
@@ -551,13 +543,7 @@ func _test_tile_view_cabinet() -> void:
 		"tile view v3: pressing a key opens its tab and latches it, releasing the last")
 	_check(panel.find_child("InfraCell_cables", true, false) != null or not ResearchState.infrastructure_tendering_available(),
 		"tile view v3: the infrastructure lives in Transport")
-	UiPrefs.set_use_tvp_v3(false)
-	await get_tree().process_frame
-	_check(panel.find_child("Nameplate", true, false) == null and panel.find_child("TabKey_bl", true, false) == null
-		and (panel.get("_panes") as Dictionary).size() == 4 and str(panel.get("_active_tab")) == "bl",
-		"tile view v3: off again, the v2 panel returns with its four tabs")
 	panel.queue_free()
-	UiPrefs.set_use_tvp_v3(was)
 
 func _test_tile_view_numbers_and_links() -> void:
 	# The tile view's Goods and Power are the engine's figures for your buildings only; a link opens the
@@ -596,68 +582,6 @@ func _test_tile_view_numbers_and_links() -> void:
 	panel.queue_free()
 	BuildingState.buildings.erase(mine)
 	BuildingState.buildings.erase("tvn_npc")
-
-func _test_tile_view_player_building_filter() -> void:
-	# The filter is the v2 panel's; v3 has no NPC section of its own yet.
-	var was_v3: bool = UiPrefs.use_tvp_v3
-	UiPrefs.set_use_tvp_v3(false)
-	MatchState.reset()
-	Stockpile.clear_all()
-	var terrain := TileMapLayer.new()
-	terrain.name = "TerrainLayer"
-	terrain.unique_name_in_owner = false
-	terrain.tile_set = load("res://assets/main_tileset.tres")
-	terrain.set_script(load("res://scripts/hex_map.gd"))
-	add_child(terrain)
-	await get_tree().process_frame
-	var panel: Control = load("res://scripts/tile_info_panel_v2.gd").new()
-	add_child(panel)
-	await get_tree().process_frame
-	var tile_id := "tile_5_7"
-	var coord: Vector2i = terrain.id_to_coord(tile_id)
-	if not terrain.tiles.has(coord):
-		_check(false, "tile view filter: fixture tile exists")
-		panel.queue_free()
-		terrain.queue_free()
-		await get_tree().process_frame
-		UiPrefs.set_use_tvp_v3(was_v3)
-		return
-	BuildingState.add_building("b_001", "r_001", tile_id, MatchState.LOCAL_PLAYER, "tv_filter_player")
-	BuildingState.add_building("b_001", "r_001", tile_id, "npc", "tv_filter_npc_1")
-	BuildingState.add_building("b_001", "r_001", tile_id, "npc", "tv_filter_npc_2")
-	panel.show_tile(terrain.tiles[coord])
-	await get_tree().process_frame
-	var checkbox: CheckBox = panel.find_child("PlayerBuildingsOnlyCheckbox", true, false)
-	_check(checkbox != null and not checkbox.button_pressed,
-		"tile view filter: checkbox starts off")
-	_check(_node_tree_contains_text(panel, "Show your buildings only"),
-		"tile view filter: label is inline with the buildings header")
-	_check(_node_tree_contains_text(panel, "Your Buildings")
-			and _node_tree_contains_text(panel, "NPC Buildings")
-			and _node_tree_contains_text(panel, "(1)") and _node_tree_contains_text(panel, "(2)")
-			and _node_tree_contains_text(panel, "Owned by"),
-		"tile view filter: off state splits into Your Buildings (1) + NPC Buildings (2)")
-	if checkbox != null:
-		checkbox.button_pressed = true
-		await get_tree().process_frame
-	_check(bool(panel.get("_show_player_buildings_only"))
-			and _node_tree_contains_text(panel, "(1)")
-			and not _node_tree_contains_text(panel, "NPC Buildings")
-			and not _node_tree_contains_text(panel, "Owned by"),
-		"tile view filter: on state hides the NPC Buildings section")
-	var other_coord: Vector2i = terrain.id_to_coord("tile_5_8")
-	if terrain.tiles.has(other_coord):
-		panel.show_tile(terrain.tiles[other_coord])
-		await get_tree().process_frame
-		var persisted: CheckBox = panel.find_child("PlayerBuildingsOnlyCheckbox", true, false)
-		_check(persisted != null and persisted.button_pressed and bool(panel.get("_show_player_buildings_only")),
-			"tile view filter: choice persists when opening another tile")
-	MatchState.reset()
-	Stockpile.clear_all()
-	panel.queue_free()
-	terrain.queue_free()
-	await get_tree().process_frame
-	UiPrefs.set_use_tvp_v3(was_v3)
 
 ## Chimney counts per industry (owner spec 2026-08-27), pinned because they are a design
 ## decision rather than a derived number — nothing else in the code would notice if a
@@ -1035,9 +959,8 @@ func _test_bdp_recipe_key_and_route_counts() -> void:
 	panel.free()
 
 
-# Building Detail v3 (`toggle bdp v3`): the approved control plates. The rules behind the keys'
-# text, when the upgrade arrow lights, the cheat, and that the panel swaps its controls and the
-# keys open the same sheets as v2.
+# Building Detail v3: the approved control plates. The rules behind the keys' text and when the upgrade
+# arrow lights.
 func _test_bdp_v3_rules() -> void:
 	var Block = load("res://scripts/bdp_v3_block.gd")
 	var Panel = load("res://scripts/building_detail_panel_v2.gd")
@@ -1222,27 +1145,12 @@ func _test_bdp_v3_rules() -> void:
 		"bdp v3: the rail is 16 px wide and keeps its ends (%s)" % str(rail.get_minimum_size()))
 
 
-## Building Detail's Input sources and Output destination sheets in DS2 (UiPrefs.use_routes_ds2): off, the v2
-## sheets exactly; on, the readout fixed under the title, a module a good on the plastic case with its figures
+## Building Detail's Input sources and Output destination sheets in DS2: the readout fixed under the title, a module a good on the plastic case with its figures
 ## quoted by the economics, knobs whose options say what they do on the readout, turning a knob changing the
 ## route and the rebuilt knob showing it, and no coordinates in the words.
 func _test_bdp_routes_ds2() -> void:
 	MatchState.reset()
 	Stockpile.clear_all()
-	var was_v3: bool = UiPrefs.use_bdp_v3
-	var was: bool = UiPrefs.use_routes_ds2
-	var fresh: Object = UiPrefs.get_script().new()
-	_check(fresh.get("use_routes_ds2") == true, "routes ds2: the DS2 input and output sheets are the default")
-	fresh.free()
-	UiPrefs.set_use_bdp_v3(true)
-	var terminal: Node = load("res://scripts/debug_terminal.gd").new()
-	add_child(terminal)
-	await get_tree().process_frame
-	terminal._cheats_unlocked = true
-	UiPrefs.use_routes_ds2 = false
-	var reply: String = terminal._run_command("toggle routes ds2")
-	_check(UiPrefs.use_routes_ds2 and reply.contains("DS2"), "routes ds2: `toggle routes ds2` switches the sheets to DS2 (%s)" % reply)
-	terminal.queue_free()
 	var tile := "tile_5_10"
 	var iid: String = BuildingState.add_building("b_007", "r_009", tile, MatchState.LOCAL_PLAYER, "routes_ds2")
 	var b: Dictionary = BuildingState.get_building(iid)
@@ -1256,12 +1164,6 @@ func _test_bdp_routes_ds2() -> void:
 	panel.show_building(b)
 	await get_tree().process_frame
 
-	UiPrefs.use_routes_ds2 = false
-	panel._open_input_sources_sheet(b, recipe)
-	await get_tree().process_frame
-	_check(panel.find_child("InputPlates", true, false) == null and panel.find_child("RoutesReadout", true, false) == null,
-		"routes ds2: off, the v2 input sheet exactly")
-	UiPrefs.use_routes_ds2 = true
 	panel._open_input_sources_sheet(b, recipe)
 	await get_tree().process_frame
 	var readout: Control = panel.find_child("RoutesReadout", true, false)
@@ -1327,24 +1229,12 @@ func _test_bdp_routes_ds2() -> void:
 
 	panel._close_sheet()
 	panel.queue_free()
-	UiPrefs.use_routes_ds2 = was
-	UiPrefs.set_use_bdp_v3(was_v3)
 	MatchState.reset()
 	Stockpile.clear_all()
 	await get_tree().process_frame
 
 
 func _test_bdp_v3_panel() -> void:
-	var was: bool = UiPrefs.use_bdp_v3
-	UiPrefs.set_use_bdp_v3(false)
-	var terminal: Node = load("res://scripts/debug_terminal.gd").new()
-	add_child(terminal)
-	await get_tree().process_frame
-	terminal._cheats_unlocked = true
-	var reply: String = terminal._run_command("toggle bdp v3")
-	_check(UiPrefs.use_bdp_v3 and reply.contains("v3"), "bdp v3: `toggle bdp v3` switches the panel to v3 (%s)" % reply)
-	terminal.queue_free()
-
 	var iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "v3_panel")
 	var b: Dictionary = BuildingState.get_building(iid)
 	# A cost-to-produce reading, as the cost solver would leave it, so the cost section is built.
@@ -1360,15 +1250,15 @@ func _test_bdp_v3_panel() -> void:
 	var block: Control = panel.find_child("BdpV3Block", true, false)
 	var footer: Control = panel.find_child("BdpV3Footer", true, false)
 	_check(block != null and footer != null and panel.find_child("UpgradeButton", true, false) == null,
-		"bdp v3: the control block and footer replace the v2 route cards and buttons")
-	_check(panel._close_key.visible and not panel._close_button.visible, "bdp v3: the close keycap replaces the X button")
+		"bdp v3: the control block and footer")
+	_check(panel._close_key.visible, "bdp v3: the close keycap")
 	_check(is_equal_approx(panel._close_key.size.x, panel._close_key.size.y), "bdp v3: the close key stays square (%s)" % str(panel._close_key.size))
-	_check(panel._backing.visible and not panel._pipe_frame.visible, "bdp v3: the backing plate replaces the pipe border")
+	_check(panel._backing.visible, "bdp v3: the backing plate")
 	var st: Dictionary = load("res://scripts/building_readout.gd").status(b, Catalog.get_recipe("r_009"), false)
 	var Lamp = load("res://scripts/bdp_v3_lamp.gd")
-	_check(panel._status_v3.visible and not panel._badge.visible and panel._status_v3_label.text == str(st.label)
+	_check(panel._status_v3.visible and panel._status_v3_label.text == str(st.label)
 		and panel._status_lamp.colour == Lamp.colour_for(str(st.tone)),
-		"bdp v3: a lamp lit for the status replaces the badge (%s, %s)" % [str(st.label), panel._status_lamp.colour])
+		"bdp v3: a lamp lit for the status (%s, %s)" % [str(st.label), panel._status_lamp.colour])
 	var Scroll = load("res://scripts/bdp_v3_scroll.gd")
 	var bar: VScrollBar = panel._scroll.get_v_scroll_bar()
 	_check(Scroll.is_applied(panel._scroll) and is_equal_approx(bar.get_combined_minimum_size().x, 16.0),
@@ -1393,8 +1283,8 @@ func _test_bdp_v3_panel() -> void:
 		_check(head.size == Vector2(35, 58) and is_equal_approx(body.size.y, 41.0) and absf(new_w / old_w - 0.9) < 0.02
 			and bst.corner_radius_top_left == 0 and bst.corner_radius_bottom_left == 0,
 			"bdp v3: the recipe arrow's head is 25%% larger (35 x 58) and its square body 10%% smaller round the same content (%.0f -> %.0f px)" % [old_w, new_w])
-	_check(panel._pin_key.visible and not panel._subtitle_label.visible and panel._pin_key.tooltip_text.contains("(5, 10)"),
-		"bdp v3: the Location key under Close replaces the level and location line (%s)" % panel._pin_key.tooltip_text)
+	_check(panel._pin_key.visible and panel._pin_key.tooltip_text.contains("(5, 10)"),
+		"bdp v3: the Location key under Close (%s)" % panel._pin_key.tooltip_text)
 	var focused: Array = []
 	var on_focus := func(id: String) -> void: focused.append(id)
 	MatchState.focus_building_requested.connect(on_focus)
@@ -1642,40 +1532,9 @@ func _test_bdp_v3_panel() -> void:
 		_check(panel._sheet != null and str(panel._sheet.find_child("SheetTitle", true, false).text).to_lower().contains("recipe"),
 			"bdp v3: clicking the Change recipes key opens the recipe sheet")
 		panel._close_sheet()
-	UiPrefs.set_use_bdp_v3(false)
-	await get_tree().process_frame
-	await get_tree().process_frame
-	_check(panel.find_child("BdpV3Block", true, false) == null and panel.find_child("UpgradeButton", true, false) != null,
-		"bdp v3: switching it off brings the v2 controls straight back")
-	_check(panel._badge.visible and not panel._status_v3.visible and not Scroll.is_applied(panel._scroll)
-		and not panel._seam.visible and is_equal_approx(panel._scroll.offset_top, 0.0)
-		and panel._title_label.visible and not panel._title_v3.visible
-		and panel.find_child("BdpV3Enamel", true, false) == null
-		and panel._subtitle_label.visible and not panel._pin_key.visible and load("res://scripts/ds2/lamp_overlay.gd").find(panel) == null
-		and panel._body.find_children("*", "Label", true, false)[0].material == null,
-		"bdp v3: switching it off brings back the plain title, the badge and location line, the plain scrollbar, the unedged body, the plain diagram and unshaded text")
 	panel.queue_free()
 	CostSolver.last_result = saved_cost
 	BuildingState.buildings.erase(iid)
-	UiPrefs.set_use_bdp_v3(was)
-
-func _test_topbar_ds2_flag() -> void:
-	# The DS2 bar is built behind a session flag, off by default, switched by the debug cheat.
-	var was: bool = UiPrefs.use_topbar_ds2
-	UiPrefs.set_use_topbar_ds2(false)
-	var seen := []
-	var on_change := func(on: bool) -> void: seen.append(on)
-	UiPrefs.topbar_ds2_changed.connect(on_change)
-	var term: Node = load("res://scripts/debug_terminal.gd").new()
-	term.set("_cheats_unlocked", true)
-	var reply: String = str(term.call("_run_command", "toggle topbar ds2"))
-	_check(UiPrefs.use_topbar_ds2 and seen == [true] and reply.contains("DS2"),
-		"top bar ds2: the cheat switches the DS2 bar on and says so")
-	UiPrefs.toggle_use_topbar_ds2()
-	_check(not UiPrefs.use_topbar_ds2 and seen == [true, false], "top bar ds2: and off again")
-	UiPrefs.topbar_ds2_changed.disconnect(on_change)
-	term.free()
-	UiPrefs.set_use_topbar_ds2(was)
 
 func _test_top_bar_status() -> void:
 	# Power and Transport are judged once (TopBarStatus): the lamps light from the tone the readout shows.
@@ -1717,9 +1576,7 @@ func _test_top_bar_status() -> void:
 
 func _test_topbar_ds2_strip() -> void:
 	# The DS2 strip: the money on the screen's centre line, the works to its left, the office to its
-	# right, the lamp over the strip; switched off, the bar is v3.1 exactly.
-	var was: bool = UiPrefs.use_topbar_ds2
-	UiPrefs.set_use_topbar_ds2(false)
+	# right, the lamp over the strip.
 	var inst: Node = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	add_child(inst)
 	for _i in 4:
@@ -1732,8 +1589,6 @@ func _test_topbar_ds2_strip() -> void:
 			if (c as Control).visible:
 				out.append(str(c.name))
 		return out
-	var v31_names: PackedStringArray = names.call()
-	UiPrefs.set_use_topbar_ds2(true)
 	for _i in 6:
 		await get_tree().process_frame
 	var money: Control = bar.get_node("MarginContainer/HBoxContainer/MoneyWidget")
@@ -1763,8 +1618,6 @@ func _test_topbar_ds2_strip() -> void:
 	var red: Color = led.get("colour") if led != null else Color.BLACK
 	_check(red.r > red.g + 0.2 and white.r > 0.9 and white.g > 0.9,
 		"top bar ds2: the cash is white, and red below zero")
-	var coin: Control = bar.get("_money_coin_icon")
-	_check(coin != null and not coin.visible, "top bar ds2: no coin beside the cash, the £ and the screen say what it is")
 	MatchState.money = money_was
 	bar.call("_refresh_treasury")
 	var summary_was: Dictionary = Production.last_turn_summary
@@ -1775,12 +1628,9 @@ func _test_topbar_ds2_strip() -> void:
 		"top bar: last turn's net leaves out what the intermediary borrowed (%s)" % net_text)
 	Production.last_turn_summary = summary_was
 	bar.call("_refresh_treasury")
-	var pairs: Array = bar.get("_ds2_lamps")
 	var power_led = bar.get("_power_led")
-	var power_lamp: Control = null
-	for pair: Array in pairs:
-		if pair[0] == power_led:
-			power_lamp = pair[1]
+	var power_lamp: Control = power_led.get_node_or_null("Ds2Lamp")
+	var pairs: Array = bar.find_children("Ds2Lamp", "", true, false)
 	var power_was: bool = power_led.lit
 	var power_colour: Color = power_led.color
 	var power_blink: bool = power_led.blink
@@ -1803,10 +1653,8 @@ func _test_topbar_ds2_strip() -> void:
 		var area: Vector2 = bar.get("_ds2_quest_area")
 		var r: Rect2 = quest.get_global_rect()
 		var qicon: Control = bar.get("_quest_icon")
-		var text_col: Control = bar.get("_quest_text_col")
-		_check(absf(r.position.x - area.x) <= 1.0 and r.end.x <= area.y + 1.0
-			and (not text_col.is_visible_in_tree() or qicon.get_global_rect().end.x <= text_col.get_global_rect().position.x + 1.0),
-			"top bar ds2: the mission keeps to its section, icon first and its text to the right (%s in %s)" % [r, area])
+		_check(absf(r.position.x - area.x) <= 1.0 and r.end.x <= area.y + 1.0 and qicon != null,
+			"top bar ds2: the mission keeps to its section (%s in %s)" % [r, area])
 	var Light = load("res://scripts/bdp_v3_light.gd")
 	var bar_shade: ShaderMaterial = (bar.get("_ds2_shade") as CanvasItem).material
 	var bar_led_lit: bool = led != null and led.find_children("*", "", true, false).any(func(n: Node) -> bool:
@@ -1879,15 +1727,8 @@ func _test_topbar_ds2_strip() -> void:
 	var shade: Node2D = bar.get_node_or_null("Ds2Shade")
 	_check(shade != null and shade.visible and bar.get_child(bar.get_child_count() - 1) == shade,
 		"top bar ds2: the lamp's shade is over the strip, drawn last")
-	UiPrefs.set_use_topbar_ds2(false)
-	for _i in 4:
-		await get_tree().process_frame
-	_check(names.call() == v31_names and not shade.visible and not cash.visible
-		and power_lamp != null and not power_lamp.visible and power_led.self_modulate.a == 1.0,
-		"top bar ds2: switched off, the v3.1 order and look come back")
 	inst.queue_free()
 	await get_tree().process_frame
-	UiPrefs.set_use_topbar_ds2(was)
 
 func _test_money_figure_format() -> void:
 	# The owner's LED money rule: at most five cells with the point counted, never more than two decimals, K/M/B
@@ -1914,7 +1755,7 @@ func _test_top_bar_icon_fit() -> void:
 	var Ind := preload("res://scripts/bdp_v3_indicator.gd")
 	var ok := true
 	var bad := PackedStringArray()
-	for tex: Texture2D in [Bar.ICON_COIN, Bar.ICON_POWER, Bar.ICON_VICTORY, Bar.ICON_RANKINGS, Bar.ICON_QUEST,
+	for tex: Texture2D in [Bar.ICON_POWER, Bar.ICON_VICTORY, Bar.ICON_RANKINGS, Bar.ICON_QUEST,
 			Bar.ICON_COUNCIL, Bar.ICON_GOODS_GRAPH, Bar.ICON_ENCYCLOPEDIA, Bar.ICON_MENU, Bar.WAREHOUSE_ICON]:
 		var fit: Dictionary = Bar._icon_fit(tex)
 		var box: Vector2 = fit.box
@@ -2147,8 +1988,6 @@ func _test_bdp_v3_diag_visual() -> void:
 	# The diagnostics' Visual / Text switch: the visual view's stage columns of icons over lamps, the readout
 	# that names the icon under the pointer (else the worst check), and the readout kept in sight when the
 	# case's foot is below the fold.
-	var was: bool = UiPrefs.use_bdp_v3
-	UiPrefs.set_use_bdp_v3(true)
 	var iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "v3_diag_visual")
 	var b: Dictionary = BuildingState.get_building(iid)
 	var panel = load("res://scripts/building_detail_panel_v2.gd").new()
@@ -2324,7 +2163,6 @@ func _test_bdp_v3_diag_visual() -> void:
 	panel.queue_free()
 	BuildingState.buildings.erase(other_iid)
 	BuildingState.buildings.erase(iid)
-	UiPrefs.set_use_bdp_v3(was)
 
 
 func _test_bdp_v3_power_checks() -> void:
@@ -2604,29 +2442,19 @@ func _test_bdp_v3_output_checks() -> void:
 	BuildingState.buildings.erase(iid)
 
 
-## The Building Ledger's DS2 look (UiPrefs.use_ledger_ds2): off, the v2 chrome exactly; on, the raised title,
-## the dot count, filter keys that latch (Running and Starved exclusive), sort marks, a module per building
-## named in the new style with its tile's name, Source and Destination, the Upgrade key and its DS2 panel;
-## the routing objective on the Shipments and Stockpiles panel; off again, v2 back.
+## The Building Ledger in DS2: the raised title, the dot count, filter keys that latch (Running and Starved
+## exclusive), sort marks, a module per building named in the new style with its tile's name, Source and
+## Destination, the Upgrade key and its DS2 panel; the routing objective on the Shipments and Stockpiles panel.
 func _test_building_ledger_ds2() -> void:
 	MatchState.reset()
-	var fresh: Object = UiPrefs.get_script().new()
-	_check(fresh.get("use_ledger_ds2") == true, "ledger ds2: the DS2 ledger is the default")
-	fresh.free()
-	var was: bool = UiPrefs.use_ledger_ds2
-	UiPrefs.set_use_ledger_ds2(false)
 	var a := BuildingState.add_building("b_007", "r_009", "tile_13_2", MatchState.LOCAL_PLAYER, "ledger_ds2_a")
 	var b := BuildingState.add_building("b_003", "r_004", "tile_10_2", MatchState.LOCAL_PLAYER, "ledger_ds2_b")
 	var panel: PanelContainer = (load("res://scenes/building_ledger_panel.tscn") as PackedScene).instantiate()
 	add_child(panel)
 	await get_tree().process_frame
-	_check(panel.find_child("LedgerTitleRow", true, false) == null and (panel.get("header") as Control).visible,
-		"ledger ds2: off, the v2 header and no DS2 parts")
-	UiPrefs.set_use_ledger_ds2(true)
 	await get_tree().process_frame
-	await get_tree().process_frame
-	_check(panel.find_child("LedgerTitleRow", true, false) != null and not (panel.get("header") as Control).visible
-		and panel.find_child("LedgerBacking", false, false) != null, "ledger ds2: on, Building Detail's title and backing")
+	_check(panel.find_child("LedgerTitleRow", true, false) != null and panel.find_child("LedgerBacking", false, false) != null,
+		"ledger ds2: Building Detail's title and backing")
 	var rows: Control = panel.get("_body")
 	var names: Array[String] = []
 	for m in rows.get_children():
@@ -2656,7 +2484,7 @@ func _test_building_ledger_ds2() -> void:
 	panel.call("_open_upgrade", a)
 	await get_tree().process_frame
 	var dialog: Control = panel.get("_upgrade_dialog")
-	_check(dialog != null and dialog.visible and bool(dialog.get_meta("ds2", false)) and dialog.find_child("UpgradeHead", true, false) != null
+	_check(dialog != null and dialog.visible and dialog.find_child("UpgradeHead", true, false) != null
 		and dialog.find_child("UpgradeKeys", true, false) != null, "ledger ds2: Upgrade opens the DS2 upgrade panel")
 	if dialog != null:
 		dialog.call("close")
@@ -2665,11 +2493,6 @@ func _test_building_ledger_ds2() -> void:
 	await get_tree().process_frame
 	_check(transport.find_child("RoutingObjective", true, false) != null, "the routing objective is on the Shipments and Stockpiles panel")
 	transport.queue_free()
-	UiPrefs.set_use_ledger_ds2(false)
-	await get_tree().process_frame
-	_check(panel.find_child("LedgerTitleRow", true, false) == null and panel.find_child("LedgerBacking", false, false) == null
-		and (panel.get("header") as Control).visible, "ledger ds2: off again, v2 back")
-	UiPrefs.set_use_ledger_ds2(was)
 	panel.queue_free()
 	BuildingState.remove_building(a)
 	BuildingState.remove_building(b)
@@ -2753,12 +2576,11 @@ func _test_upgrade_ds2_land_place_and_bars() -> void:
 	await get_tree().process_frame
 
 
-## The DS2 upgrade panel is the default, and its Upgrade key starts the upgrade: a building with its kit on the
+## The DS2 upgrade panel's Upgrade key starts the upgrade: a building with its kit on the
 ## tile, its research and its land, the panel opened for it, the key pressed.
 func _test_upgrade_ds2_commits() -> void:
 	MatchState.reset()
 	Stockpile.clear_all()
-	_check(UiPrefs.use_upgrade_ds2, "upgrade ds2: the DS2 upgrade panel is the default")
 	var levels := load("res://scripts/building_levels.gd")
 	var tile := "tile_12_2"
 	BuildingState.tile_land_owned[tile] = 200
@@ -2871,12 +2693,10 @@ func _test_led_three_decimals_under_a_pound() -> void:
 
 
 ## The Shipments and Stockpiles panel in DS2: the same three columns on the kit's cases, the routing objective
-## as keys, a stockpile and a shipment a module each; the v2 panel back, as it was, with the switch off.
+## as keys, a stockpile and a shipment a module each.
 func _test_transport_panel_ds2() -> void:
-	var was := UiPrefs.use_transport_ds2
 	var was_route: int = MatchState.route_objective
 	var pending: Array = TransportState.pending_transport_shipments.duplicate(true)
-	UiPrefs.set_use_transport_ds2(true)
 	Stockpile.add("tile_5_10", "g_006", 40)
 	TransportState.queue_transport_shipment({"source_tile": "tile_5_10", "destination_tile": "tile_5_11", "good_id": "g_006", "qty": 9, "turns_remaining": 2})
 	var panel: Control = load("res://scripts/transport_panel.gd").new()
@@ -2928,15 +2748,10 @@ func _test_transport_panel_ds2() -> void:
 	link.call("_gui_input", press)
 	MatchState.focus_tile_requested.disconnect(note)
 	_check(went == ["tile_5_10"] and not panel.visible, "transport ds2: pressing the name goes to the tile and closes the panel")
-	UiPrefs.set_use_transport_ds2(false)
-	await get_tree().process_frame
-	_check(panel.find_child("TransportTitleRow", true, false) == null and panel.find_child("RoutingObjective", true, false) is OptionButton,
-		"transport ds2: off again, the v2 panel is back")
 	panel.queue_free()
 	MatchState.set_route_objective(was_route)
 	TransportState.pending_transport_shipments = pending
 	Stockpile.consume("tile_5_10", "g_006", 40)
-	UiPrefs.set_use_transport_ds2(was)
 
 
 ## The updates dock in DS2: the dock in navy steel with its pen and bells raised, its slide-out a clipboard, a

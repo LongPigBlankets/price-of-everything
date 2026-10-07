@@ -11,32 +11,13 @@ extends CanvasLayer
 ##   cash <int>                       add that much cash (negative allowed)
 ##   sellmode <stockpile|market|building>  set the global production sell mode
 ##   logs                             toggle verbose production / CostSolver logs
-##   swap tvp                         toggle between the classic and alternate Tile View Panel
-##   swap bdp                         toggle to the classic v1 building-detail panel (v2 is default)
-##   swap construct_panel             toggle the construct-panel redesign
-##   swap construct_panel_v3          toggle the in-progress confirm-screen v3 redesign
 ##   swap loading_screen              toggle the slow pre-optimization new-game build (for recordings)
 ##   swap goods_graph                 toggle the legacy no-swimlane/fixed-card Goods Graph
 ##   swap empire view sprite          toggle the empire view sprite style (big 2.5D sprites, no backdrop)
 ##   swap port badge                 gold port hex on selling buildings <-> lines to the port row
 ##   swap empire button               toggle the Empire View button's two icon treatments
-##   toggle topbar ds2                switch the top bar back to v3.1 (DS2 is default), and again to return
-##   toggle tvp v3                    switch the tile view back to v2 (v3 is default), and again to return
-##   toggle bdp v3                    switch building detail back to v2 (v3 is default), and again to return
-##   toggle ledger ds2                switch the building ledger back to v2 (DS2 is default), and again to return
-##   toggle resources ds2             switch the Resources panel back to v2 (DS2 is default), and again to return
-##   toggle politics ds2              switch the Politics panel to its DS2 look (v2 is default), and again to return
-##   toggle transport ds2             switch the Shipments and Stockpiles panel to its DS2 look (v2 is default), and again to return
-##   toggle dock ds2                  switch the updates dock to its DS2 look (v2 is default), and again to return
-##   toggle legend ds2                put the map legends on the DS2 plastic pad (v2 is default), and again to return
-##   toggle people ds2                switch the People panel back to v2 (DS2 is default), and again to return
-##   toggle market ds2                switch the market panel back to v2 (DS2 is default), and again to return
-##   toggle briefing ds2              switch the turn briefing to its DS2 look (in progress), and back
-##   toggle upgrade ds2               switch the upgrade panel back to v2 (DS2 is default), and again to return
-##   toggle desk ds2                  switch the bottom bar back to the silver tray (the control desk is default), and again to return
-##   toggle victory ds2               switch the Victory panel back to its v2 cards (DS2 is default), and again to return
-##   toggle mission slot              switch the top bar's mission back to its icon and text (the piston is default), and again to return
-##   toggle routes ds2                switch Building Detail's input and output sheets back to v2 (DS2 is default), and again to return
+##   toggle dock ds2                  switch the updates dock to its DS2 look (in review; v2 is default), and again to return
+##   toggle legend ds2                put the map legends on the DS2 plastic pad (in review; v2 is default), and again to return
 ##   research all                     unlock every research node (alias of `unlock all`)
 ##   unlock hidden_buildings          enable the three hidden prototype buildings
 ##   unlock advisors                 open the full advisor roster, all seats + seat research
@@ -248,12 +229,6 @@ func _run_command(text: String) -> String:
 		"swap":
 			if parts.size() >= 2 and parts[1].to_lower() == "song":
 				return "Now playing: %s" % Audio.swap_song()
-			if parts.size() >= 2 and parts[1].to_lower() == "construct_panel":
-				UiPrefs.toggle_use_construct_panel_v2()
-				return "Construct panel → %s" % ("v2 (redesign)" if UiPrefs.use_construct_panel_v2 else "v1 (classic)")
-			if parts.size() >= 2 and parts[1].to_lower() == "construct_panel_v3":
-				UiPrefs.toggle_use_construct_panel_v3()
-				return "Construct panel v3 (confirm redesign) → %s" % ("ON" if UiPrefs.use_construct_panel_v3 else "OFF")
 			if parts.size() >= 2 and parts[1].to_lower() == "loading_screen":
 				var legacy: bool = LoadPacing.toggle_legacy_load()
 				return "New-game load → %s  (takes effect on the next New Game)" % (
@@ -279,10 +254,7 @@ func _run_command(text: String) -> String:
 				if empire != null:
 					empire.call("refresh_graph")
 				return "Empire view → %s" % ("SPRITE style (big sprites, plates below, no backdrop)" if sprite_view_on else "classic cards")
-			if " ".join(parts.slice(1)).to_lower() == "topbar v3.1":
-				UiPrefs.toggle_use_topbar_v3_1()
-				return "Top bar → %s" % ("v3.1 (icon faces)" if UiPrefs.use_topbar_v3_1 else "classic")
-			return "usage: swap song  |  swap bdp  |  swap construct_panel  |  swap construct_panel_v3  |  swap loading_screen  |  swap goods_graph  |  swap empire button  |  swap empire view sprite  |  swap port badge  |  swap topbar v3.1"
+			return "usage: swap song  |  swap loading_screen  |  swap goods_graph  |  swap empire button  |  swap empire view sprite  |  swap port badge"
 		"survey":
 			if parts.size() >= 2 and parts[1].to_lower() == "limit":
 				MatchState.cheat_survey_within_limits()
@@ -367,66 +339,12 @@ func _run_command(text: String) -> String:
 		"toggle":
 			if parts.size() >= 2 and parts[1].to_lower() == "logs":
 				return _toggle_debug_logs()
-			if " ".join(parts.slice(1)).to_lower() == "tvp v3":
-				UiPrefs.toggle_use_tvp_v3()
-				return "Tile view → %s" % ("v3 (control cabinet)" if UiPrefs.use_tvp_v3 else "v2")
-			if " ".join(parts.slice(1)).to_lower() == "topbar ds2":
-				UiPrefs.toggle_use_topbar_ds2()
-				return "Top bar → %s" % ("DS2 (steel strip)" if UiPrefs.use_topbar_ds2 else "v3.1")
-			if " ".join(parts.slice(1)).to_lower() == "upgrade ds2":
-				UiPrefs.toggle_use_upgrade_ds2()
-				return "Upgrade panel → %s" % ("DS2" if UiPrefs.use_upgrade_ds2 else "v2")
-			if " ".join(parts.slice(1)).to_lower() == "desk ds2":
-				UiPrefs.toggle_use_desk_ds2()
-				return "Bottom bar → %s" % ("DS2 (control desk)" if UiPrefs.use_desk_ds2 else "silver tray")
-			if " ".join(parts.slice(1)).to_lower() == "main menu ds2":
-				UiPrefs.toggle_use_main_menu_ds2()
-				return "Main menu → %s (from the next time it opens)" % ("DS2" if UiPrefs.use_main_menu_ds2 else "v2")
-			if " ".join(parts.slice(1)).to_lower() == "pause ds2":
-				UiPrefs.toggle_use_pause_ds2()
-				return "In-game menu → %s" % ("DS2 (cabinet)" if UiPrefs.use_pause_ds2 else "v2")
-			if " ".join(parts.slice(1)).to_lower() == "victory ds2":
-				UiPrefs.toggle_use_victory_ds2()
-				return "Victory panel → %s" % ("DS2 (control desk)" if UiPrefs.use_victory_ds2 else "v2")
-			if " ".join(parts.slice(1)).to_lower() == "mission slot":
-				UiPrefs.toggle_use_mission_slot()
-				return "Top bar mission → %s" % ("piston" if UiPrefs.use_mission_slot else "icon and text")
-			if " ".join(parts.slice(1)).to_lower() == "routes ds2":
-				UiPrefs.toggle_use_routes_ds2()
-				return "Input and output sheets → %s" % ("DS2" if UiPrefs.use_routes_ds2 else "v2")
-			if " ".join(parts.slice(1)).to_lower() == "briefing ds2":
-				UiPrefs.toggle_use_briefing_ds2()
-				return "Turn briefing → %s" % ("DS2 (the clipboard)" if UiPrefs.use_briefing_ds2 else "v2")
-			if " ".join(parts.slice(1)).to_lower() == "construct ds2":
-				UiPrefs.toggle_use_construct_ds2()
-				return "Construct → %s" % ("DS2 (the construction lot)" if UiPrefs.use_construct_ds2 else "v2")
-			if " ".join(parts.slice(1)).to_lower() == "market ds2":
-				UiPrefs.toggle_use_market_ds2()
-				return "Market → %s" % ("DS2 (the exchange)" if UiPrefs.use_market_ds2 else "v2")
-			if " ".join(parts.slice(1)).to_lower() == "ledger ds2":
-				UiPrefs.toggle_use_ledger_ds2()
-				return "Building ledger → %s" % ("DS2" if UiPrefs.use_ledger_ds2 else "v2")
 			if " ".join(parts.slice(1)).to_lower() == "legend ds2":
 				UiPrefs.toggle_use_legend_ds2()
 				return "Map legends → %s" % ("DS2 pad" if UiPrefs.use_legend_ds2 else "v2")
 			if " ".join(parts.slice(1)).to_lower() == "dock ds2":
 				UiPrefs.toggle_use_dock_ds2()
 				return "Updates dock → %s" % ("DS2" if UiPrefs.use_dock_ds2 else "v2")
-			if " ".join(parts.slice(1)).to_lower() == "transport ds2":
-				UiPrefs.toggle_use_transport_ds2()
-				return "Shipments and Stockpiles → %s" % ("DS2" if UiPrefs.use_transport_ds2 else "v2")
-			if " ".join(parts.slice(1)).to_lower() == "politics ds2":
-				UiPrefs.toggle_use_politics_ds2()
-				return "Politics → %s" % ("DS2" if UiPrefs.use_politics_ds2 else "v2")
-			if " ".join(parts.slice(1)).to_lower() == "resources ds2":
-				UiPrefs.toggle_use_resources_ds2()
-				return "Resources → %s" % ("DS2" if UiPrefs.use_resources_ds2 else "v2")
-			if " ".join(parts.slice(1)).to_lower() == "people ds2":
-				UiPrefs.toggle_use_people_ds2()
-				return "People panel → %s" % ("DS2" if UiPrefs.use_people_ds2 else "v2")
-			if " ".join(parts.slice(1)).to_lower() == "bdp v3":
-				UiPrefs.toggle_use_bdp_v3()
-				return "Building detail → %s" % ("v3 (control plates)" if UiPrefs.use_bdp_v3 else "v2")
 			if parts.size() >= 2 and parts[1].to_lower() in ["roads", "roadsv2"]:
 				# Phase-5 cutover: roads-v2 is the only system. This just shows/hides
 				# the road VISUALS — the network/logic runs regardless.
@@ -454,7 +372,7 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 2 and parts[1].to_lower() == "midcentury":
 				MapStyle.set_midcentury(not MapStyle.is_midcentury())
 				return "map style → %s" % _style_name()
-			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | bdp v3 | topbar ds2 | tvp v3 | ledger ds2 | resources ds2 | politics ds2 | transport ds2 | dock ds2 | legend ds2 | people ds2 | market ds2 | briefing ds2 | construct ds2 | upgrade ds2 | routes ds2 | mission slot | victory ds2 | desk ds2"
+			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | dock ds2 | legend ds2"
 		"anim":
 			# Cheat: cycle the Empire-view hex-field animation (1->2->3->4->1), or set it with `anim <n>`.
 			var bg := get_tree().get_first_node_in_group("empire_hex_bg")
@@ -518,7 +436,7 @@ func _run_command(text: String) -> String:
 				return str(editor.call("procedural_central_buildings_command", cmd))
 			return str(editor.call("procedural_region_command", cmd, parts[2].to_lower()))
 		"help":
-			return "commands:  hide updates | show updates   |   cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap construct_panel_v3   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury|bdp v3|topbar ds2|tvp v3|ledger ds2|people ds2|market ds2|briefing ds2|construct ds2|upgrade ds2|routes ds2|mission slot|victory ds2|desk ds2   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   enable|disable procedural <north|arin|vandel|capital|all>   |   enable|disable procedural central buildings  (map editor)   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  hide updates | show updates   |   cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury|dock ds2|legend ds2   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   enable|disable procedural <north|arin|vandel|capital|all>   |   enable|disable procedural central buildings  (map editor)   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 
