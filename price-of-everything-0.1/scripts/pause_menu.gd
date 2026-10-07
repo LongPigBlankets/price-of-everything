@@ -2,18 +2,13 @@ extends Control
 class_name PauseMenu
 ## In-game menu opened by Esc when no other panel is left to close (see
 ## world_map._unhandled_input → PanelStack.close_top() returning false).
-## Centered black rounded panel with: Return to game / Save Game / Load Game /
-## Settings (placeholder) / Exit to Main Menu / Exit to Desktop. Esc or
-## "Return to game" closes it.
+## Esc or "Return to game" closes it.
 ##
-## In DS2 (UiPrefs.use_pause_ds2) the menu is a cabinet on Building Detail's navy steel backing in its brass
-## trim, its raised title over two groups of keys set straight on the steel: the game's (Return to game, Save,
-## Load, Settings), and below them the two ways out, printed in red ink. Each is one of the cabinet's cream
-## keys (scripts/ds2/cream_key.gd). While a turn resolves Save and Load are greyed, their tooltip saying why.
+## A cabinet on Building Detail's navy steel backing in its brass trim, its raised title over two groups of
+## keys set straight on the steel: the game's (Return to game, Save, Load, Settings), and below them the two
+## ways out, printed in red ink. Each is one of the cabinet's cream keys (scripts/ds2/cream_key.gd). While a
+## turn resolves Save and Load are greyed, their tooltip saying why.
 
-const PANEL_BLACK := Color(0.03, 0.03, 0.045)
-const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
-const PANEL_SIZE := Vector2(420, 480)
 const RESOLVING_TOOLTIP := "Please wait until the turn resolves"
 const MAIN_MENU_SCENE := "res://scenes/main_menu.tscn"  # matches bottom_menu.gd
 
@@ -46,10 +41,7 @@ func _ready() -> void:
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
 
-	if UiPrefs.use_pause_ds2:
-		_build_ds2()
-	else:
-		_build_v2()
+	_build()
 	# Saving mid-resolution is refused by SaveLoad, and loading mid-resolution
 	# would let the suspended resolution coroutine resume over the loaded state —
 	# grey both out until the turn re-enters DECIDE. (The menu can be opened
@@ -62,54 +54,7 @@ func _ready() -> void:
 	visibility_changed.connect(_on_visibility_changed)
 
 
-func _build_v2() -> void:
-	var panel := Panel.new()
-	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	panel.custom_minimum_size = PANEL_SIZE
-	panel.offset_left = -PANEL_SIZE.x / 2
-	panel.offset_top = -PANEL_SIZE.y / 2
-	panel.offset_right = PANEL_SIZE.x / 2
-	panel.offset_bottom = PANEL_SIZE.y / 2
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = PANEL_BLACK
-	sb.border_color = OFF_WHITE
-	sb.set_border_width_all(2)
-	sb.set_corner_radius_all(24)
-	panel.add_theme_stylebox_override("panel", sb)
-	add_child(panel)
-
-	var margin := MarginContainer.new()
-	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
-		margin.add_theme_constant_override(side, 30)
-	panel.add_child(margin)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 14)
-	margin.add_child(vbox)
-
-	var title := Label.new()
-	title.text = "MENU"
-	title.theme_type_variation = &"Title"
-	title.add_theme_font_size_override("font_size", 36)
-	title.add_theme_color_override("font_color", OFF_WHITE)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(title)
-
-	vbox.add_child(_make_button("Return to game", true, _on_return_pressed))
-	_save_btn = _make_button("Save Game", false, _on_save_pressed)
-	vbox.add_child(_save_btn)
-	_load_btn = _make_button("Load Game", false, _on_load_pressed)
-	vbox.add_child(_load_btn)
-	vbox.add_child(_make_button("Settings", false, _on_settings_pressed))
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vbox.add_child(spacer)
-	vbox.add_child(_make_button("Exit to Main Menu", false, _on_exit_to_menu_pressed))
-	vbox.add_child(_make_button("Exit to Desktop", false, _on_quit_pressed))
-
-
-func _build_ds2() -> void:
+func _build() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	var centre := CenterContainer.new()
 	centre.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -165,24 +110,10 @@ func _key(node_name: String, words: String, handler: Callable) -> Button:
 	return key
 
 
-func _make_button(text: String, primary: bool, handler: Callable) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.custom_minimum_size = Vector2(0, 56 if primary else 48)
-	if primary:
-		b.theme_type_variation = &"Primary"
-	if not handler.is_null():
-		b.pressed.connect(handler)
-	return b
-
-
 func _refresh_locks() -> void:
 	var locked: bool = TurnManager.is_resolving
 	for b: Button in [_save_btn, _load_btn]:
-		if b.has_method("set_spent"):
-			b.call("set_spent", locked)
-		else:
-			b.disabled = locked
+		b.call("set_spent", locked)
 		b.tooltip_text = RESOLVING_TOOLTIP if locked else ""
 
 

@@ -103,7 +103,7 @@ func _test_politics_panel_entries() -> void:
 
 	TurnManager.current_turn = maxi(1, election - 1)
 	_check((panel.call("_entries") as Array).is_empty(),
-		"politics: nothing before the election — the panel says 'No Political Events yet'")
+		"politics: nothing before the election — the panel says so")
 
 	TurnManager.current_turn = election
 	var at_election: Array = panel.call("_entries")
@@ -609,12 +609,10 @@ func _test_insider_tip() -> void:
 	AdvisorState.advisor_seats = seats_before
 	TurnManager.current_turn = turn_before
 
-## The Politics panel in DS2: the same record on the kit's modules, an event a module with its turn, in the
-## order things happened; the v2 panel back, as it was, when the switch is off.
+## The Politics panel in DS2: the record on the kit's modules, an event a module with its turn, in the
+## order things happened.
 func _test_politics_panel_ds2() -> void:
-	var was := UiPrefs.use_politics_ds2
 	var saved_turn: int = TurnManager.current_turn
-	UiPrefs.set_use_politics_ds2(true)
 	var panel: Control = load("res://scripts/politics_panel.gd").new()
 	add_child(panel)
 	TurnManager.current_turn = maxi(1, PolicyState.beat("election_news") - 1)
@@ -655,9 +653,5 @@ func _test_politics_panel_ds2() -> void:
 	_check(long_scroll.vertical_scroll_mode == ScrollContainer.SCROLL_MODE_AUTO and list.get_child_count() == 7
 		and long_scroll.custom_minimum_size.y < list.get_combined_minimum_size().y, "politics DS2: past five rows the record scrolls, five in view")
 	long_panel.free()
-	UiPrefs.set_use_politics_ds2(false)
-	_check(panel.find_child("PoliticsCase", true, false) == null and is_equal_approx(panel.custom_minimum_size.x, 560.0),
-		"politics: the switch off brings the v2 panel back")
 	panel.free()
 	TurnManager.current_turn = saved_turn
-	UiPrefs.set_use_politics_ds2(was)

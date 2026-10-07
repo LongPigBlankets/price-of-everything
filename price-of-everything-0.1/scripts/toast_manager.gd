@@ -74,7 +74,7 @@ const CLIP_SCALE := 0.7
 const SLIP_CORNER := 12.0
 ## A slip's tinge by its look: pastel green, amber and red over the cream sheet.
 const SLIP_TINGE := {"success": Color(0.80, 0.95, 0.80), "caution": Color(1.0, 0.90, 0.66), "warning": Color(1.0, 0.78, 0.76)}
-## With the DS2 briefing, the pen carries a small pilot lamp lit in the worst live alert's colour (amber or red),
+## The pen carries a small pilot lamp lit in the worst live alert's colour (amber or red),
 ## so an alert shows while the briefing is closed.
 const PEN_LAMP_SCALE := 0.42
 ## The pen's count pill: the briefing's colour for decisions.
@@ -427,7 +427,6 @@ func _build_ui() -> void:
 	lamp.visible = false
 	(_pen.root as Control).add_child(lamp)
 	_pen["lamp"] = lamp
-	UiPrefs.briefing_ds2_changed.connect(func(_on: bool) -> void: _refresh_pen())
 	icons.add_child(_pen.root)
 	for tone: String in TONES:
 		var bell := _make_icon("Bell_%s" % tone, BELL_ICON, Color.WHITE)
@@ -597,7 +596,7 @@ func _refresh_pen() -> void:
 	_paint_icon(_pen, n, Color.WHITE, tip, more)
 	var lamp: Control = _pen.get("lamp")
 	if lamp != null:
-		var tone: String = TurnBriefing.worst_window_tone() if UiPrefs.use_briefing_ds2 else ""
+		var tone: String = TurnBriefing.worst_window_tone()
 		lamp.visible = tone == "warn" or tone == "bad"
 		if lamp.visible:
 			lamp.call("set_tone", tone)

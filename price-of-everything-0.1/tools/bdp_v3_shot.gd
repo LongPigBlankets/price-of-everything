@@ -1,5 +1,5 @@
 extends Node2D
-## Building Detail v3 (`toggle bdp v3`) screenshots, each cropped to the panel: its top with the
+## Building Detail screenshots, each cropped to the panel: its top with the
 ## status lamp (and again without the lamp's overlay, and without the lamp at all), the cost gauges, the lamp in each state, the body scrolled partway and to the end (the scrollbar's
 ## slider along its rail), the Sell and Demolish outcomes slid out of the footer, the recipe sheet sliding in and
 ## settled, the Modifiers open, the economics (the motor factory's, closed and open, a coal power plant's, a coal
@@ -19,7 +19,6 @@ var _vp: SubViewport
 
 
 func _ready() -> void:
-	UiPrefs.set_use_bdp_v3(true)
 	_vp = SubViewport.new()
 	_vp.size = LOGICAL * 2
 	_vp.size_2d_override = LOGICAL

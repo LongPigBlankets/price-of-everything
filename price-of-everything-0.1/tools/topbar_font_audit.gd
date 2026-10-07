@@ -8,8 +8,6 @@ var _wm
 
 
 func _ready() -> void:
-	UiPrefs.set_use_topbar_ds2(true)
-	UiPrefs.set_use_bdp_v3(true)
 	_wm = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	add_child(_wm)
 	for _i in 60:

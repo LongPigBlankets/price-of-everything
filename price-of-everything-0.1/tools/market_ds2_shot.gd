@@ -1,12 +1,11 @@
 extends Node
-## Captures of the market panel, today's look and the DS2 look (`toggle market ds2`), each cropped to the
-## panel: every tab paged top to bottom, the sell panel in each quantity mode, one off and recurring, and
-## (DS2) the impact hover card and the slip's chart hover. Seeds a working empire first: the tour's
+## Captures of the market panel, cropped to the panel: every tab paged top to bottom, the sell panel in each
+## quantity mode, one off and recurring, and the impact hover card and the slip's chart hover. Seeds a working empire first: the tour's
 ## buildings with stock on their tiles, a few turns played with sales and purchases each turn so the price
 ## history carries quantities, recurring sales, buys and moves, and special orders.
-##   MARKET_SHOT_DIR=<dir> [MARKET_SHOT_LOOKS=v2,ds2] \
+##   MARKET_SHOT_DIR=<dir> \
 ##     <godot> --path . res://tools/market_ds2_shot.tscn --quit-after 60000 -- --no-telemetry
-## Writes <look>_<nn>_<view>.png into $MARKET_SHOT_DIR (default /tmp/poe_market_shot).
+## Writes <nn>_<view>.png into $MARKET_SHOT_DIR (default /tmp/poe_market_shot).
 ## The game runs in a SubViewport of a fixed size, LOGICAL at two pixels each, so every capture has the
 ## same pixels whatever the display. Briefings, popups and the map are hidden for each capture
 ## (_isolate, as tools/panel_tour_shot.gd), so the crop is the panel alone.
@@ -18,7 +17,6 @@ var _vp: SubViewport
 var _wm: Node
 var _dir := ""
 var _n := 0
-var _look := ""
 
 
 func _ready() -> void:
@@ -26,9 +24,6 @@ func _ready() -> void:
 	if _dir == "":
 		_dir = "/tmp/poe_market_shot"
 	DirAccess.make_dir_recursive_absolute(_dir)
-	var looks := OS.get_environment("MARKET_SHOT_LOOKS").split(",", false)
-	if looks.is_empty():
-		looks = PackedStringArray(["v2", "ds2"])
 	_vp = SubViewport.new()
 	_vp.size = LOGICAL * 2
 	_vp.size_2d_override = LOGICAL
@@ -43,15 +38,7 @@ func _ready() -> void:
 	if cam != null:
 		cam.set("edge_pan_enabled", false)
 	await _seed_empire()
-	for look: String in looks:
-		_look = look
-		_n = 0
-		if "use_market_ds2" in UiPrefs:
-			UiPrefs.call("set_use_market_ds2", look == "ds2")
-		elif look == "ds2":
-			print("[MARKET_SHOT] no DS2 look yet")
-			continue
-		await _tour()
+	await _tour()
 	print("[MARKET_SHOT] done, %s" % _dir)
 	get_tree().quit(0)
 
@@ -104,16 +91,15 @@ func _tour() -> void:
 		print("[MARKET_SHOT] the market did not open")
 		return
 	await _shot(panel, "open")
-	var keys: Array = panel.call("tab_keys") if panel.has_method("tab_keys") else []
+	var keys: Array = panel.call("tab_keys")
 	for key: String in keys:
 		panel.call("show_tab", key)
 		await _settle(12)
 		await _pages(panel, key)
-	panel.call("show_tab", keys[0] if not keys.is_empty() else "prices")
+	panel.call("show_tab", keys[0])
 	await _settle(8)
-	if panel.has_method("capture_views"):
-		for view: Dictionary in panel.call("capture_views"):
-			await _view(panel, view)
+	for view: Dictionary in panel.call("capture_views"):
+		await _view(panel, view)
 	# The sell panel, each quantity mode, one off and recurring.
 	panel.call("open_sell_panel", COAL)
 	await _settle(10)
@@ -135,7 +121,7 @@ func _tour() -> void:
 	hud.call("_hide_all_panels")
 
 
-## One named view the panel offers for captures (DS2: hovers), each a {name, show: Callable, hide: Callable}.
+## One named view the panel offers for captures (hovers), each a {name, show: Callable, hide: Callable}.
 func _view(panel: Control, view: Dictionary) -> void:
 	await (view.show as Callable).call()
 	await _settle(8)
@@ -184,7 +170,7 @@ func _shot(panel: Control, view: String) -> void:
 	var g := panel.get_global_rect().grow(8)
 	var r := Rect2i(Vector2i(g.position * k), Vector2i(g.size * k)).intersection(Rect2i(Vector2i.ZERO, img.get_size()))
 	_n += 1
-	img.get_region(r).save_png(_dir.path_join("%s_%02d_%s.png" % [_look, _n, view]))
+	img.get_region(r).save_png(_dir.path_join("%02d_%s.png" % [_n, view]))
 	_restore(hidden)
 
 

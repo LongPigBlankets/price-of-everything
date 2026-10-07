@@ -54,36 +54,6 @@ func _test_market_price_history_and_layout() -> void:
 	_check(MarketState.export_state().price_history == snapshot.price_history, "market history: save/load preserves observations")
 	MarketState._record_price_history()
 	_check(MarketState.history_for("g_008").size() == 2, "market history: duplicate refresh does not append a turn")
-	var chart = load("res://scripts/market_price_chart.gd").new()
-	chart.good_id = "g_008"
-	CostSolver.last_result = {"per_good": {}}
-	_check(chart._cost_for_sample({"cost_basis": 1.25}) < 0.0, "market chart: hides past costs for goods not produced")
-	CostSolver.last_result = {"per_good": {"g_008": {"unit_cost": 1.75}}}
-	_check(is_equal_approx(chart._cost_for_sample({"cost_basis": 1.25}), 1.25), "market chart: produced goods retain hovered historical cost")
-	CostSolver.last_result = saved_costs
-	CostSolver.last_result = {"per_good": {"g_008": {"unit_cost": 1.75}}}
-	chart.size = Vector2(600, 170)
-	add_child(chart)
-	_check(chart.sample_at_x(chart._plot_rect().position.x) == 0 and chart.sample_at_x(chart._plot_rect().end.x) == 1, "market chart: hover maps to first and last recorded turn")
-	_check(chart._hover_lines(0) == PackedStringArray(["Turn 1", "Price £%.2f" % base, "Your cost basis £1.25"]), "market chart: hover shows historical turn price and cost")
-	CostSolver.last_result = saved_costs
-	MarketState.price_history["g_008"].append({"turn": 3, "price": 999.0})
-	chart.refresh()
-	_check(chart._samples.size() == 2, "market chart: future observations never render")
-	chart.queue_free()
-	var row = load("res://scenes/market_row.tscn").instantiate()
-	row.setup(Catalog.get_good("g_008"))
-	add_child(row)
-	row.size.x = 1000
-	row._toggle_expand()
-	await get_tree().process_frame
-	row._layout_details()
-	var details: Control = row.find_child("MarketGoodDetails", true, false)
-	var actions: Control = row.find_child("MarketActions", true, false)
-	var graph: Control = row.find_child("PriceHistoryChart", true, false)
-	_check(absf(actions.size.x + 6 - details.size.x * 0.25) < 1.0, "market details: actions occupy one quarter")
-	_check(absf(graph.size.x + 6 - details.size.x * 0.75) < 1.0, "market details: chart occupies three quarters")
-	row.queue_free()
 	TurnManager.current_turn = 40
 	MarketState.import_state({})
 	_check(MarketState.history_for("g_008").size() == 1 and int(MarketState.history_for("g_008")[0].turn) == 40, "market history: old saves never invent earlier prices")
@@ -764,69 +734,6 @@ func _test_buy_price() -> void:
 	if not prev.is_empty():
 		_check(absf(float(prev.get("goods_cost", 0.0)) - 10.0 * buy) < 0.01,
 			"preview_buy values goods at the buy price")
-
-## The GOOD PRICES tab, which the special-orders test never builds — it jumps straight to
-## tab 2, which is how a null-deref in _build_prices_tab shipped unnoticed.
-##
-## HONEST SCOPE: this does NOT catch that class of bug, and it was checked against the
-## broken code to be sure. A GDScript runtime error prints and execution CONTINUES, so the
-## bad `_detach(null)` left no observable state difference — every assertion below passed
-## either way. What catches it is scanning a windowed run's output for "SCRIPT ERROR"
-## (tools/market_shot.tscn reproduces it in one line); state assertions cannot.
-##
-## What this DOES cover, both previously untested: that the prices tab builds and rebuilds
-## with the header wrapped in a zero-min-width clip (the fix that keeps the widened table
-## from forcing the panel off-screen), and the column contract the owner set — the rate is
-## the header, each cell carries that good's own quantity.
-func _test_market_prices_tab_impact_columns() -> void:
-	var panel: Control = load("res://scenes/market_panel.tscn").instantiate()
-	add_child(panel)
-	panel.call("_ensure_built")
-	var tabs: TabContainer = panel.get("_tabs")
-	tabs.current_tab = 0
-	panel.call("_ensure_current_tab_built")
-
-	# The header must live inside the clipping wrapper, and the wrapper must report NO
-	# minimum width — that is what stops the widened table forcing the panel off-screen.
-	var clip: Control = panel.get("_header_clip")
-	var header: Control = panel.get("header_static")
-	_check(clip != null and header != null and header.get_parent() == clip,
-		"market prices tab: the header is wrapped in its clipping container")
-	_check(clip != null and clip.custom_minimum_size.x == 0.0,
-		"market prices tab: the header clip reports no minimum width")
-	_check(header != null and header.get_combined_minimum_size().x > 0.0,
-		"market prices tab: the header itself still sizes to its columns")
-
-	# Toggling the ladder rebuilds the tab — the path that used to deref a null clip.
-	panel.call("_set_impact_expanded", true)
-	_check(panel.get("_impact_expanded"), "market prices tab: impact columns expand")
-	_check(header.get_parent() == panel.get("_header_clip"),
-		"market prices tab: the header survives an expand rebuild inside its clip")
-	panel.call("_set_impact_expanded", false)
-	_check(not panel.get("_impact_expanded"), "market prices tab: impact columns collapse again")
-	_check(header.get_parent() == panel.get("_header_clip"),
-		"market prices tab: the header survives a collapse rebuild inside its clip")
-
-	# Column contract (owner 2026-08-29): the RATE is the header, and each cell carries that
-	# good's own unit threshold — not the percentage.
-	panel.call("_set_impact_expanded", true)
-	var rows: Array = panel.get("rows")
-	var checked := false
-	for row in rows:
-		if not is_instance_valid(row) or str(row.get("good_id")) == "":
-			continue
-		var thresholds: PackedInt32Array = MarketState.impact_thresholds(str(row.get("good_id")))
-		if thresholds.is_empty():
-			continue
-		var cells: Array = row.get("_rung_cells")
-		_check(cells.size() == EconomyConfig.PRICE_IMPACT_LADDER.size(),
-			"market prices tab: one rung cell per ladder step")
-		_check(str((cells[0] as Label).text) == row.call("_thousands", thresholds[0]),
-			"market prices tab: a rung cell shows the good's quantity, not the rate")
-		checked = true
-		break
-	_check(checked, "market prices tab: at least one produced good exercised the rung cells")
-	panel.queue_free()
 
 ## Base output is the yardstick every price-impact threshold is a multiple of, so WHICH
 ## recipe defines it is load-bearing. It is the good's best BASE recipe — one with an empty

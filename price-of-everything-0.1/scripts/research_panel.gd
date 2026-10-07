@@ -13,6 +13,9 @@ var _presentation_rows := {}
 const EffectEmblem := preload("res://scripts/effect_emblem.gd")
 
 const KeyedBuildingIcon := preload("res://scripts/keyed_building_icon.gd")
+## The DS2 look (scripts/research_ds2/): the patent board and the plan chest, behind UiPrefs.use_research_ds2. This panel
+## keeps the state, the search and the free unlocks either way; the DS2 view reads them and asks it to act.
+const ResearchDs2 := preload("res://scripts/research_ds2/research_ds2.gd")
 
 const RESEARCH_UNLOCKS_PATH := "res://data/research_unlocks.csv"
 var _seat_research_shown := false
@@ -131,6 +134,9 @@ var _free_unlocked_titles := {}
 var _expanded_requirement_titles := {}
 # turn -> free unlocks granted that turn; built from the cadence above in _ready.
 var _knowledge_grants: Dictionary = {}
+## The DS2 view while UiPrefs.use_research_ds2 is on, else null.
+var _ds2: Control = null
+var _ds2_refresh_queued := false
 
 ## The cadence as a {turn: grant} table. Pure — MAX_TURNS is the only input — so the
 ## schedule can be unit-tested without standing the panel up.
@@ -175,7 +181,82 @@ func _ready() -> void:
 	if not AdvisorState.advisors_changed.is_connected(_on_advisors_changed):
 		AdvisorState.advisors_changed.connect(_on_advisors_changed)
 	resized.connect(_on_resized)
+	if not UiPrefs.research_ds2_changed.is_connected(_on_research_ds2_changed):
+		UiPrefs.research_ds2_changed.connect(_on_research_ds2_changed)
+	if not ResearchState.unlock_granted.is_connected(_on_research_unlock_granted):
+		ResearchState.unlock_granted.connect(_on_research_unlock_granted)
+	visibility_changed.connect(_on_visibility_changed)
+	_apply_look()
 	call_deferred("_sync_close_button_layout")
+
+
+func _on_research_ds2_changed(_enabled: bool) -> void:
+	_apply_look()
+
+
+## Builds or removes the DS2 view to match UiPrefs.use_research_ds2. The old canvas is untouched when it is off:
+## the view hands the search box back and the panel draws itself as before.
+func _apply_look() -> void:
+	var on := UiPrefs.use_research_ds2
+	if on and _ds2 == null:
+		_ds2 = ResearchDs2.new()
+		_ds2.call("bind", self)
+		add_child(_ds2)
+	elif not on and _ds2 != null:
+		_ds2.call("release")
+		remove_child(_ds2)
+		_ds2.queue_free()
+		_ds2 = null
+	if _close_button != null:
+		_close_button.visible = _ds2 == null and visible
+	_sync_search_input_layout()
+	queue_redraw()
+
+
+func is_ds2() -> bool:
+	return _ds2 != null
+
+
+func ds2_view() -> Control:
+	return _ds2
+
+
+## The DS2 view redraws from this panel's state once, at the end of the frame, however many changes asked for it.
+func _refresh_ds2() -> void:
+	if _ds2 == null or _ds2_refresh_queued:
+		return
+	_ds2_refresh_queued = true
+	call_deferred("_flush_ds2_refresh")
+
+
+func _flush_ds2_refresh() -> void:
+	_ds2_refresh_queued = false
+	if _ds2 != null:
+		_ds2.call("refresh")
+
+
+func _on_visibility_changed() -> void:
+	if visible:
+		_refresh_ds2()
+
+
+func _on_research_unlock_granted(_title: String, _description: String, _via_condition: bool) -> void:
+	_refresh_ds2()
+
+
+func categories() -> Array:
+	return CATEGORIES
+
+
+## Opens category `category`'s research (a tab, or the DS2 plan chest's drawer).
+func select_category(category: String) -> void:
+	if not CATEGORIES.has(category):
+		return
+	_selected_category = category
+	_category_view_state[_selected_category] = _default_view_state(_selected_category)
+	_hover_unlock_title = ""
+	queue_redraw()
+	_refresh_ds2()
 
 func _create_close_button() -> void:
 	_close_button = Button.new()
@@ -219,6 +300,7 @@ func open_with_search(query: String, exact_title: bool = false) -> void:
 	# After _on_search_changed, which clears it — a link sets it, typing never does.
 	_search_exact_title = query if exact_title else ""
 	queue_redraw()
+	_refresh_ds2()
 
 func _on_search_changed(text: String) -> void:
 	_search_query = text
@@ -228,6 +310,7 @@ func _on_search_changed(text: String) -> void:
 	# per-category pan/zoom would leave them off-screen. Reset the view each keystroke.
 	_category_view_state.erase(_selected_category)
 	queue_redraw()
+	_refresh_ds2()
 
 func begin_free_unlock_choice() -> void:
 	if _free_unlocks <= 0:
@@ -235,12 +318,23 @@ func begin_free_unlock_choice() -> void:
 	_choosing_free_unlock = true
 	_hover_unlock_title = ""
 	queue_redraw()
+	_refresh_ds2()
+
+
+## Stops choosing free unlocks without spending one.
+func end_free_unlock_choice() -> void:
+	_choosing_free_unlock = false
+	_hover_unlock_title = ""
+	queue_redraw()
+	_refresh_ds2()
 
 ## Tutorial/coach hook: the exact on-screen rectangle of a searched research node.
 ## The tree is custom drawn, so it cannot otherwise be spotlighted like a normal Control.
 func tutorial_unlock_rect(title: String) -> Rect2:
 	if title == "" or not is_visible_in_tree():
 		return Rect2()
+	if _ds2 != null:
+		return _ds2.call("card_rect", title)
 	var unlocks := _category_unlocks(_selected_category)
 	var layout := _layout_unlocks(unlocks)
 	if not layout.has(title):
@@ -253,6 +347,8 @@ func tutorial_unlock_rect(title: String) -> Rect2:
 
 
 func tutorial_research_visible(title: String) -> bool:
+	if _ds2 != null:
+		return is_visible_in_tree() and bool(_ds2.call("card_visible", title))
 	var card := tutorial_unlock_rect(title)
 	var viewport_rect := Rect2(global_position + _tree_rect().position, _tree_rect().size)
 	return (card.has_area() and viewport_rect.has_point(card.get_center())
@@ -269,7 +365,7 @@ func _search_input_rect() -> Rect2:
 
 
 func _sync_search_input_layout() -> void:
-	if _search_input == null:
+	if _search_input == null or _ds2 != null:
 		return
 	if DS.theme != null and _search_input.theme != DS.theme:
 		_search_input.theme = DS.theme
@@ -288,12 +384,10 @@ func _input(event: InputEvent) -> void:
 	# Esc cancels free-unlock picking and must work even while the search LineEdit has focus.
 	if _choosing_free_unlock and event is InputEventKey and event.pressed \
 			and not event.echo and event.keycode == KEY_ESCAPE:
-		_choosing_free_unlock = false
-		_hover_unlock_title = ""
-		queue_redraw()
+		end_free_unlock_choice()
 		get_viewport().set_input_as_handled()
 		return
-	if not visible or not _event_inside_panel(event):
+	if _ds2 != null or not visible or not _event_inside_panel(event):
 		return
 
 	if event is InputEventMagnifyGesture:
@@ -310,6 +404,8 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 func _gui_input(event: InputEvent) -> void:
+	if _ds2 != null:
+		return
 	if event is InputEventMouseButton:
 		var mouse_event := event as InputEventMouseButton
 		if mouse_event.button_index == MOUSE_BUTTON_WHEEL_UP or mouse_event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
@@ -372,7 +468,7 @@ func _gui_input(event: InputEvent) -> void:
 
 func _draw() -> void:
 	GoodHover.begin_draw(self)
-	if size.x <= 0.0 or size.y <= 0.0:
+	if _ds2 != null or size.x <= 0.0 or size.y <= 0.0:
 		return
 
 	_draw_navy_fill()
@@ -636,16 +732,19 @@ func _on_advisors_changed() -> void:
 	_seat_research_shown = AdvisorState.advisors_unlocked
 	_load_unlock_rows()
 	queue_redraw()
+	_refresh_ds2()
 
 func _on_free_unlocks_granted(count: int) -> void:
 	_free_unlocks += count
 	queue_redraw()
+	_refresh_ds2()
 
 
 func _on_turn_advanced(new_turn: int) -> void:
 	if _knowledge_grants.has(new_turn):
 		_free_unlocks += int(_knowledge_grants[new_turn])
 	queue_redraw()
+	_refresh_ds2()
 
 func _csv_value(row: PackedStringArray, column_index: Dictionary, key: String, fallback: String = "") -> String:
 	if not column_index.has(key):
@@ -677,6 +776,9 @@ func _close_button_rect() -> Rect2:
 
 func _sync_close_button_layout() -> void:
 	if _close_button == null:
+		return
+	if _ds2 != null:
+		_close_button.visible = false
 		return
 	if DS.theme != null and _close_button.theme != DS.theme:
 		_close_button.theme = DS.theme
@@ -793,8 +895,19 @@ func _update_hover_unlock(position: Vector2) -> void:
 		queue_redraw()
 
 func _try_choose_free_unlock(position: Vector2) -> bool:
-	var title := _unlock_title_at_position(position)
-	if title.is_empty():
+	return choose_free_unlock(_unlock_title_at_position(position))
+
+
+## True when `title` can be taken as a free unlock now: one is in hand, the node is open (its rank and its
+## prerequisites) and not already unlocked.
+func can_choose_free_unlock(title: String) -> bool:
+	return _free_unlocks > 0 and title != "" and not _free_unlocked_titles.has(title) \
+		and not ResearchState.is_unlocked(title) and ResearchState.is_node_available(title)
+
+
+## Spends a free unlock on `title`. Returns false when it can't be taken (see can_choose_free_unlock).
+func choose_free_unlock(title: String) -> bool:
+	if title.is_empty() or _free_unlocked_titles.has(title):
 		return false
 	if not ResearchState.is_node_available(title):
 		return false   # greyed (tier- or prereq-locked) node — can't be free-picked either
@@ -805,6 +918,7 @@ func _try_choose_free_unlock(position: Vector2) -> bool:
 	if _free_unlocks <= 0:
 		_choosing_free_unlock = false
 	queue_redraw()
+	_refresh_ds2()
 	return true
 
 func _unlock_title_at_position(position: Vector2) -> String:

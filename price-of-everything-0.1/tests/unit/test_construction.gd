@@ -8,14 +8,7 @@ const TAGS := {
 	"_test_build_forecast": ["construction", "market", "production", "research"],
 	"_test_construct_v3_sim": ["construction", "market", "stockpile"],
 	"_test_construction_rules": ["construction", "market", "research"],
-	"_test_construct_browse_building_header": ["construction", "market"],
-	"_test_construct_browse_recipe_card": ["construction", "market"],
-	"_test_construct_browse_mini_recipe_card": ["construction", "market"],
-	"_test_construct_v3_confirm_layout": ["construction", "market"],
-	"_test_construct_v3_1_iteration": ["construction", "market", "stockpile", "ui"],
-	"_test_construct_v3_2_iteration": ["construction", "market"],
-	"_test_construct_v3_3_iteration": ["construction", "market"],
-	"_test_construct_v3_4_iteration": ["construction", "market"],
+	"_test_construct_ledger_and_esc": ["construction", "market", "stockpile", "ui"],
 	"_test_build_cost_hover_preview": ["construction", "market"],
 	"_test_construction": ["construction", "stockpile"],
 	"_test_construction_awaiting": ["construction", "stockpile"],
@@ -42,29 +35,6 @@ func _drain_road_works(max_frames: int) -> void:
 				break
 		if not pending:
 			return
-
-## Small helper: every PanelContainer under `root`, recursively — a quantity pill
-## (UIHelpers.make_quantity_pill) is always a PanelContainer, so "none anywhere"
-## is a real structural check that the mini diagram never builds one.
-func _all_panel_containers(root: Node) -> Array:
-	var out: Array = []
-	for child in root.get_children():
-		if child is PanelContainer:
-			out.append(child)
-		out.append_array(_all_panel_containers(child))
-	return out
-
-
-## Small helper: every Label under `root`, recursively. GDScript has no built-in
-## "find all of type" — get_children() is one level, find_child() finds only one.
-func _all_labels(root: Node) -> Array:
-	var out: Array = []
-	for child in root.get_children():
-		if child is Label:
-			out.append(child)
-		out.append_array(_all_labels(child))
-	return out
-
 
 ## A refused build has to be distinguishable from a placed one, or the construct panel cannot
 ## know whether to close. It used to close either way — four units short of land threw away the
@@ -328,10 +298,9 @@ func _test_build_forecast() -> void:
 	MatchState.reset()
 
 func _test_construct_v3_sim() -> void:
-	# Phase-1 sim layer for the Construct V3 confirm redesign (gated in the UI behind
-	# the `swap construct_panel_v3` cheat): payback and affordability as shared
+	# The sim layer under the build order: payback and affordability as shared
 	# helpers, the forecast's exported turn facts, the materials ledger the verdict
-	# strip reconciles against, and the single-intent buy-land build flag.
+	# reconciles against, and the single-intent buy-land build flag.
 
 	# Payback math: £100 build + £50 pre-revenue hole at +£50/turn from turn 10
 	# → three selling turns → paid back by the end of turn 12.
@@ -455,272 +424,10 @@ func _test_construct_v3_ds() -> void:
 		"v3 DS: ruled section heads are a rule over a small-caps SectionRuled title")
 	head.free()
 
-	# The gated tone swap: the panel's secondary labels raise one step under V3
-	# (DS.TEXT_MUTED), and drop back to the legacy grey with the cheat off.
-	var panel_script: Variant = load("res://scripts/construct_panel_v2.gd")
-	var probe: Control = panel_script.new()
-	var saved_v3 := UiPrefs.use_construct_panel_v3
-	UiPrefs.use_construct_panel_v3 = true
-	var raised: Color = probe._muted_tone()
-	UiPrefs.use_construct_panel_v3 = false
-	var legacy: Color = probe._muted_tone()
-	UiPrefs.use_construct_panel_v3 = saved_v3
-	probe.free()
-	_check(raised == DS.PALETTE["TEXT_MUTED"] and legacy == Color("#8da0b6"),
-		"v3 tone: secondary labels raise one contrast step under the cheat only")
 
-
-## The BROWSE building card header (2026-08-27 restructure): a bigger name, cost
-## moved onto the name row instead of a full second line, and no bare "N recipes"
-## tally — a recipe count reads as redundant once every recipe gets its own full
-## diagram in the branch below (see _test_construct_browse_recipe_card).
-func _test_construct_browse_building_header() -> void:
-	MatchState.reset()
-	MarketState._init_prices_from_catalog()
-	MatchState.money = 100000.0
-	var panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
-	add_child(panel)
-	panel.open_for_tile("tile_5_10", {"type": ""})
-	await get_tree().process_frame
-
-	var card: Control = panel.find_child("BuildingCard_b_007", true, false)
-	_check(card != null, "browse header: b_007's card is in the (unexpanded) list")
-	if card == null:
-		panel.queue_free()
-		return
-
-	var name_lbl: Label = null
-	var cost_lbl: Label = null
-	for lbl in _all_labels(card):
-		if lbl.text == "Industrial Goods Factory":
-			name_lbl = lbl
-		elif lbl.text.begins_with("£"):
-			cost_lbl = lbl
-	_check(name_lbl != null and int(name_lbl.get_theme_font_size("font_size")) == 19,
-		"browse header: building name renders at the shared larger size (19px, was 15px)")
-	_check(cost_lbl != null, "browse header: a plain £-figure label exists (cost moved out of a 'CONSTRUCTION COST' line)")
-	if name_lbl != null and cost_lbl != null:
-		_check(name_lbl.get_parent() == cost_lbl.get_parent(),
-			"browse header: name and cost are on the SAME row (cost sits to its right, not stacked below)")
-	for lbl in _all_labels(card):
-		_check(not lbl.text.to_lower().contains("recipe"),
-			"browse header: no label anywhere mentions a recipe count (found %s)" % lbl.text)
-	panel.queue_free()
-
-
-## Recipe cards under an expanded building, EXPANDED mode (2026-08-27 rewrite, then
-## two same-day follow-ups): the full recipe diagram instead of one output icon + a
-## text summary; the name ABOVE the diagram (moved off a cramped side-by-side column
-## once icons grew — see below) at the building header's own font size; Building
-## Details' own flow-card height (156px, _build_recipe_strip). Expanded mode is now
-## an opt-in toggle (Construct Settings → "Expanded mode") rather than the only
-## mode — see _test_construct_browse_mini_recipe_card for the (now default) MINI
-## diagram this rewrite originally replaced entirely, before that toggle existed.
-func _test_construct_browse_recipe_card() -> void:
-	MatchState.reset()
-	MarketState._init_prices_from_catalog()
-	MatchState.money = 100000.0
-	UiPrefs.set_construct_expanded_recipe_mode(true, false)
-	var panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
-	add_child(panel)
-	panel.open_for_tile("tile_5_10", {"type": ""})
-	panel._on_building_pressed("b_007")
-	await get_tree().process_frame
-
-	var row: Control = panel.find_child("RecipeRow_r_033", true, false)
-	_check(row != null, "recipe card: r_033's row exists once b_007 is expanded")
-	if row == null:
-		panel.queue_free()
-		return
-	var diagram: Control = row.find_child("RecipeDiagramCard", true, false)
-	_check(diagram != null, "recipe card: the full recipe diagram renders (not just the output icon)")
-	_check(diagram != null and absf(diagram.get_combined_minimum_size().y - 156.0) < 0.5,
-		"recipe card: diagram height matches Building Details' own flow-card height (156px)")
-	var name_lbl: Label = null
-	for lbl in _all_labels(row):
-		if lbl.text == "Construction Equipment ICE Factory":   # the building's name on this recipe (BuildingNaming)
-			name_lbl = lbl
-	_check(name_lbl != null, "recipe card: the building's name on the recipe is present")
-	if name_lbl != null and diagram != null:
-		_check(int(name_lbl.get_theme_font_size("font_size")) == 19,
-			"recipe card: name matches the building header's font size (19px)")
-		_check(name_lbl.global_position.y < diagram.global_position.y,
-			"recipe card: name sits ABOVE the diagram, not beside it")
-	if diagram != null:
-		# The whole recipe row must be at least as wide as the diagram needs — the
-		# concrete regression this fix targets: a 5-input diagram silently claiming
-		# less than its own content required, clipping the output cell off-panel.
-		_check(row.size.x + 0.5 >= diagram.get_combined_minimum_size().x,
-			"recipe card: the row is wide enough for the diagram's own reported minimum (got row=%.1f, diagram min=%.1f)" % [row.size.x, diagram.get_combined_minimum_size().x])
-	var has_chevron := false
-	for lbl in _all_labels(row):
-		if lbl.text == "›":
-			has_chevron = true
-	_check(not has_chevron, "recipe card: the chevron/caret is gone — the diagram is the only thing in the row now")
-	panel.queue_free()
-	UiPrefs.set_construct_expanded_recipe_mode(false, false)
-
-
-## Recipe cards under an expanded building, MINI mode (2026-08-27, the SAME-day
-## third follow-up as the toggle itself) — the default now: bare good icons in a
-## row, "+" between same-side items, an arrow to the outputs, no quantities, no
-## power-cost badge. Cream, rounded corners, one icon tall + a little padding —
-## MINI_ICON_SIZE regardless of item count (unlike the expanded diagram's
-## hero/pair/grid tiers, since there's no qty pill competing for room here).
-func _test_construct_browse_mini_recipe_card() -> void:
-	MatchState.reset()
-	MarketState._init_prices_from_catalog()
-	MatchState.money = 100000.0
-	_check(not UiPrefs.construct_expanded_recipe_mode, "mini recipe: expanded mode defaults OFF — mini is the default")
-	var panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
-	add_child(panel)
-	panel.open_for_tile("tile_5_10", {"type": ""})
-	panel._on_building_pressed("b_007")
-	await get_tree().process_frame
-
-	var row: Control = panel.find_child("RecipeRow_r_033", true, false)
-	_check(row != null, "mini recipe: r_033's row exists once b_007 is expanded")
-	if row == null:
-		panel.queue_free()
-		return
-	var mini: Control = row.find_child("MiniRecipeDiagramCard", true, false)
-	_check(mini != null, "mini recipe: the mini diagram renders by default")
-	_check(row.find_child("RecipeDiagramCard", true, false) == null,
-		"mini recipe: the full diagram does NOT render when expanded mode is off")
-	if mini != null:
-		# Goods icons are TextureRects; the arrow is UIHelpers.MiniRecipeArrow (a
-		# drawn, filled-navy shape, not a texture — see the arrow/plus follow-up
-		# below), found by its own stable name rather than find_children's type
-		# match — an inner class's get_class() reports its base (Control), not its
-		# own script class name.
-		var icons := mini.find_children("*", "TextureRect", true, false)
-		# r_033 has 6 inputs + 1 output = 7 icons, all the SAME mini size — no
-		# hero/pair/grid tiering here, unlike the expanded diagram.
-		_check(icons.size() == 7, "mini recipe: one icon per input/output, 6+1=7 for r_033 (got %d)" % icons.size())
-		for icon in icons:
-			_check(absf((icon as TextureRect).custom_minimum_size.x - 40.0) < 0.5,
-				"mini recipe: every icon is the same 40px size regardless of item count")
-		_check(mini.find_child("MiniRecipeArrow", true, false) != null,
-			"mini recipe: exactly one (filled, drawn) arrow between the inputs and outputs groups")
-		var plus_count := 0
-		for lbl in _all_labels(mini):
-			if lbl.text == "+":
-				plus_count += 1
-		# 6 inputs -> 5 "+" between them; 1 output -> 0 "+"; 5 total.
-		_check(plus_count == 5, "mini recipe: '+' separates each side's own items (5 for 6 inputs + 1 output, got %d)" % plus_count)
-		var pills := 0
-		for child in _all_panel_containers(mini):
-			pills += 1
-		_check(pills == 0, "mini recipe: no quantity pills anywhere (the mini diagram never shows qty)")
-	panel.queue_free()
-
-
-func _test_construct_v3_confirm_layout() -> void:
-	# Phase-3 V3 confirm: the verdict strip pins above the scroll and reads sim
-	# state, and a blocked Confirm always states its reason — then re-enables on
-	# live recompute. (v3.1 brought the land toggle back — see the dedicated
-	# land-toggle assertions below and _test_construct_v3_1_iteration.)
-	MatchState.reset()
-	MarketState._init_prices_from_catalog()
-	var saved_v3 := UiPrefs.use_construct_panel_v3
-	UiPrefs.use_construct_panel_v3 = true
-	var panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
-	add_child(panel)
-	panel.open_for_tile("tile_5_10", {"type": ""})
-	panel._on_recipe_pressed("b_002", "r_005")
-	# Renders queue_free their predecessors; let a frame pass so find_child never
-	# sees a stale, deletion-pending node ahead of the live one.
-	await get_tree().process_frame
-
-	var pinned: Control = panel.get("_pinned")
-	_check(pinned != null and pinned.visible
-		and panel.find_child("V3VerdictStrip", true, false) != null,
-		"v3 confirm: the verdict strip pins above the scroll")
-	var total_label: Label = panel.find_child("V3Total", true, false)
-	_check(total_label != null and total_label.text == panel._money(panel._v3_total_cost()),
-		"v3 confirm: the verdict total is the ledger-based grand total")
-	# The affordability chip was removed (owner 2026-08-26: it projected into the
-	# future and cost space it didn't earn) — confirm it's genuinely gone.
-	_check(panel.find_child("V3AffordChip", true, false) == null,
-		"v3.1 confirm: the affordability chip is gone")
-	var subtotal: Label = panel.find_child("V3MaterialsSubtotal", true, false)
-	_check(subtotal != null
-		and subtotal.text == panel._money(float(panel.get("_v3_ledger").get("subtotal", -1.0))),
-		"v3 confirm: the materials subtotal reconciles to the ledger the verdict reads")
-
-	# Land toggle (v3.1, owner 2026-08-26: "add the toggle in but always ticked by
-	# default"). tile_5_10 owns no land on a fresh match, so b_002's footprint is a
-	# real, purchasable shortfall here — exactly the case the toggle governs.
-	var land_toggle: Button = panel.find_child("V3LandToggle", true, false)
-	_check(land_toggle != null and land_toggle.button_pressed and panel.get("_buy_land_wanted"),
-		"v3.1 land toggle: renders for a purchasable shortfall, ticked by default")
-	_check(bool(panel.get("_v3_land").get("covered", false)),
-		"v3.1 land toggle: ticked reads as covered — matches the old auto-include")
-
-	land_toggle.button_pressed = false
-	land_toggle.toggled.emit(false)
-	await get_tree().process_frame
-	_check(not bool(panel.get("_buy_land_wanted")) and bool(panel.get("_land_toggle_touched")),
-		"v3.1 land toggle: unticking is tracked as touched")
-	_check(not bool(panel.get("_v3_land").get("covered", true)),
-		"v3.1 land toggle: unticked reads as NOT covered")
-	var untick_reason: Label = panel.find_child("V3ConfirmReason", true, false)
-	_check(untick_reason != null and untick_reason.text.begins_with("Short")
-		and untick_reason.text.contains("Land"),
-		"v3.1 land toggle: unticking blocks Confirm with a land-specific reason")
-	var total_without_land: float = panel._v3_total_cost()
-
-	# A live recompute (money/price change) must NOT silently re-tick a box the
-	# player just unticked — the exact regression _land_toggle_touched exists for.
-	# The bank balance itself has no bearing on the confirm's spend total; bumping
-	# it here is purely the recompute TRIGGER (mirrors _on_money_changed), and the
-	# total should be exactly what it was — land cost still excluded.
-	MatchState.money = MatchState.money + 1.0
-	panel._render()
-	await get_tree().process_frame
-	_check(not bool(panel.get("_buy_land_wanted")),
-		"v3.1 land toggle: a live recompute does not silently re-tick an unticked box")
-	_check(is_equal_approx(panel._v3_total_cost(), total_without_land),
-		"v3.1 land toggle: unticked land cost stays out of the total across recomputes")
-
-	# Re-ticking restores the covered/affordable state.
-	land_toggle = panel.find_child("V3LandToggle", true, false)
-	land_toggle.button_pressed = true
-	land_toggle.toggled.emit(true)
-	await get_tree().process_frame
-	_check(bool(panel.get("_buy_land_wanted"))
-		and bool(panel.get("_v3_land").get("covered", false))
-		and panel.find_child("V3ConfirmReason", true, false) == null,
-		"v3.1 land toggle: re-ticking restores covered and clears the block reason")
-
-	var money_saved := MatchState.money
-	MatchState.money = 0.0
-	panel._render()
-	await get_tree().process_frame
-	var confirm_btn: Button = panel.find_child("BuildConfirmButton", true, false)
-	var reason: Label = panel.find_child("V3ConfirmReason", true, false)
-	_check(confirm_btn != null and confirm_btn.disabled and reason != null
-		and reason.text.contains("Insufficient funds"),
-		"v3 confirm: a dead Confirm explains itself")
-	MatchState.money = money_saved
-	panel._render()
-	await get_tree().process_frame
-	confirm_btn = panel.find_child("BuildConfirmButton", true, false)
-	_check(confirm_btn != null and not confirm_btn.disabled
-		and panel.find_child("V3ConfirmReason", true, false) == null,
-		"v3 confirm: affordable again re-enables Confirm on recompute")
-
-	remove_child(panel)
-	panel.free()
-	UiPrefs.use_construct_panel_v3 = saved_v3
-	MatchState.reset()
-
-
-func _test_construct_v3_1_iteration() -> void:
-	# v3.1: the confirm screen re-read against the designer's V4 mockup —
-	# network-surplus-backed "elsewhere" ledger column, the recipe collapsing by
-	# default, and a priority-supply preview that is decoration only (owner
-	# 2026-08-26: "stub the control, no sim wiring").
+## The build order's materials ledger: the network surplus behind its "elsewhere" figures,
+## and market_price as a reference figure. Then Esc closes the panel.
+func _test_construct_ledger_and_esc() -> void:
 	MatchState.reset()
 	MarketState._init_prices_from_catalog()
 
@@ -756,492 +463,17 @@ func _test_construct_v3_1_iteration() -> void:
 		"v3.1 ledger: market_price stays populated as a reference even when the line is fully stocked")
 	Stockpile.clear_all()
 
-	var saved_v3 := UiPrefs.use_construct_panel_v3
-	UiPrefs.use_construct_panel_v3 = true
-	var panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
+	# Esc closes the construct panel: it pairs PanelStack.push() on show with remove()
+	# on hide, so world_map's Esc handler finds it registered.
+	var panel: Control = load("res://scripts/construct_ds2/construct_ds2.gd").new()
 	add_child(panel)
-	panel.open_for_tile("tile_5_10", {"type": ""})
-	panel._on_recipe_pressed("b_002", "r_005")
+	panel.call("open_for_tile", "tile_5_10", {"type": ""})
 	await get_tree().process_frame
-
-	# Recipe: shown open by default, no collapse toggle (owner 2026-08-26 — the
-	# v3.1 collapse-by-default was reverted; it read as hiding the recipe, not
-	# demoting it).
-	_check(panel.find_child("V3RecipeToggle", true, false) == null,
-		"v3.1 recipe: no collapse toggle — the diagram is not hidden behind one")
-	var diagram: Control = panel.find_child("RecipeDiagramCard", true, false)
-	_check(diagram != null and diagram.visible,
-		"v3.1 recipe: the diagram renders open by default")
-
-	# Materials: icons carrying the name as a tooltip (not row text), and
-	# every header/value column centred (owner 2026-08-26).
-	var mat_icon: Control = diagram.get_parent().find_child("*", false, false)   # placeholder, replaced below
-	var icon_row: HBoxContainer = null
-	for child in panel.find_child("ConstructionMaterialsSection", true, false).get_children():
-		if child is HBoxContainer and (child as HBoxContainer).get_child_count() >= 4 \
-				and (child as HBoxContainer).get_child(0) is Control \
-				and not ((child as HBoxContainer).get_child(0) is Label):
-			icon_row = child
-			break
-	_check(icon_row != null, "v3.1 materials: a material row was found to inspect")
-	if icon_row != null:
-		var icon_ctrl: Control = icon_row.get_child(0)
-		var icon_size := float(panel.V3_MAT_ICON_SIZE)
-		_check(is_equal_approx(icon_ctrl.custom_minimum_size.x, icon_size)
-			and is_equal_approx(icon_ctrl.custom_minimum_size.y, icon_size),
-			"v3.1 materials: the good icon matches V3_MAT_ICON_SIZE")
-		_check(icon_ctrl.tooltip_text != "" and icon_ctrl.mouse_filter == Control.MOUSE_FILTER_PASS,
-			"v3.1 materials: the good name is a hover tooltip on the icon, not row text")
-		var has_left_label := false
-		for grandchild in icon_row.get_children():
-			if grandchild is Label and (grandchild as Label).horizontal_alignment == HORIZONTAL_ALIGNMENT_LEFT:
-				has_left_label = true
-		_check(not has_left_label, "v3.1 materials: no left-aligned name label remains in the row")
-		for grandchild in icon_row.get_children():
-			if grandchild is Label:
-				_check((grandchild as Label).horizontal_alignment == HORIZONTAL_ALIGNMENT_CENTER,
-					"v3.1 materials: every value column is centred (%s)" % (grandchild as Label).text)
-
-	# Materials totals: subtotal (unchanged reconciliation), a Cash fee line, a
-	# conditional Land line (owner 2026-08-26: moved down from the verdict
-	# strip), and a Total that now includes land too — so it still reconciles
-	# to the big number at the top, which no longer itemises anything itself.
-	var subtotal_label: Label = panel.find_child("V3MaterialsSubtotal", true, false)
-	_check(subtotal_label != null
-		and subtotal_label.text == panel._money(float(panel.get("_v3_ledger").get("subtotal", -1.0))),
-		"v3.1 materials totals: the subtotal still reconciles to the ledger")
-	var total_label: Label = panel.find_child("V3MaterialsTotal", true, false)
-	_check(total_label != null and total_label.text == panel._money(panel._v3_total_cost()),
-		"v3.1 materials totals: Total (now including land) reconciles to the verdict strip's big number")
-	var land_line: Label = panel.find_child("V3MaterialsLand", true, false)
-	_check(bool(panel.get("_buy_land_wanted")) == (land_line != null),
-		"v3.1 materials totals: the Land line appears exactly when land is being bought")
-	if land_line != null:
-		_check(land_line.text == panel._money(panel.get("_land_purchase_cost")),
-			"v3.1 materials totals: Land's line matches the actual purchase cost")
-
-	# The inaccurate "you choose each delivery" line is gone.
-	var stray_note := false
-	for child in panel._content.get_children():
-		if child is Label and (child as Label).text.contains("choose each delivery"):
-			stray_note = true
-	_check(not stray_note, "v3.1 materials: the inaccurate sourcing note is removed")
-
-	# "sold in lots of 10" removed (owner 2026-08-26) from the land toggle.
-	var land_toggle_label_has_lots := false
-	var v3_land_toggle: Control = panel.find_child("V3LandToggle", true, false)
-	if v3_land_toggle != null:
-		for grandchild in v3_land_toggle.find_children("*", "Label", true, false):
-			if (grandchild as Label).text.contains("lots of"):
-				land_toggle_label_has_lots = true
-	_check(not land_toggle_label_has_lots, "v3.1 land toggle: \"sold in lots of 10\" is gone")
-
-	# Text standardisation (owner 2026-08-26): every verdict/cash fact reads at
-	# the one standard size/font — no bold/oversized treatment outside the three
-	# call-outs ("the amount": the grand total, materials Total, Cash after;
-	# plus the building/recipe name and section headers, styled separately).
-	_check(int(panel.V3_TEXT_SIZE) == 14,
-		"v3.1 text standardisation: the standard size is 14 (owner 2026-08-26, was 12)")
-	var plain_subtotal_label: Label = panel.find_child("V3MaterialsSubtotal", true, false)
-	_check(plain_subtotal_label != null
-		and plain_subtotal_label.get_theme_font_size("font_size") == panel.V3_TEXT_SIZE
-		and plain_subtotal_label.theme_type_variation != &"Numeric",
-		"v3.1 text standardisation: Materials subtotal is no longer bold (Total alone is)")
-	var v3_total: Label = panel.find_child("V3Total", true, false)
-	var materials_total: Label = panel.find_child("V3MaterialsTotal", true, false)
-	var cash_after: Label = panel.find_child("BuildCostValue", true, false)
-	_check(v3_total != null and v3_total.theme_type_variation == &"Numeric"
-		and materials_total != null and materials_total.theme_type_variation == &"Numeric"
-		and cash_after != null and cash_after.theme_type_variation == &"Numeric",
-		"v3.1 text standardisation: the three \"amount\" call-outs (verdict total, materials Total, cash after) keep the bold treatment")
-
-	# Footer: "cash after" (bank minus the confirm's total), not a bare restated total.
-	var footer_value: Label = panel.find_child("BuildCostValue", true, false)
-	var expected_after: String = panel._money(MatchState.money - panel._v3_total_cost())
-	_check(footer_value != null and footer_value.text == expected_after,
-		"v3.1 footer: shows cash AFTER the build, not the total again")
-
-	# No power-intermittent building selected — no priority-supply band at all.
-	_check(v3_total != null,   # sanity: confirm actually rendered
-		"v3.1 priority supply: sanity — confirm rendered for the non-power fixture")
-
-	# Esc closes the construct panel (owner 2026-08-26): it had remove() but was
-	# missing push() entirely, so world_map's Esc handler never found it
-	# registered — every other panel pairs the two.
 	_check(PanelStack.top() == panel, "construct panel: registers with PanelStack on show")
 	_check(PanelStack.close_top() and not panel.visible,
 		"construct panel: Esc (PanelStack.close_top) closes it")
-
 	remove_child(panel)
 	panel.free()
-
-	# Priority supply: renders ONLY for an intermittent-power building, defaults
-	# to "grid", and is genuinely decorative — never read by the forecast.
-	var solar_recipe_id := ""
-	for recipe in Catalog.all_recipes():
-		if str(recipe.get("building_id", "")) == "b_024":
-			solar_recipe_id = str(recipe.get("recipe_id", ""))
-			break
-	if solar_recipe_id != "":
-		var solar_panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
-		add_child(solar_panel)
-		UiPrefs.use_construct_panel_v3 = true
-		solar_panel._on_recipe_pressed("b_024", solar_recipe_id)
-		await get_tree().process_frame
-		_check(str(solar_panel.get("_v3_priority_supply")) == "grid",
-			"v3.1 priority supply: defaults to grid")
-		var grid_forecast: Dictionary = BuildForecast.project("b_024", solar_recipe_id, "")
-		solar_panel.call("_on_v3_priority_supply_selected", "buildings")
-		await get_tree().process_frame
-		_check(str(solar_panel.get("_v3_priority_supply")) == "buildings",
-			"v3.1 priority supply: the segmented control updates panel-local state")
-		var after_forecast: Dictionary = BuildForecast.project("b_024", solar_recipe_id, "")
-		_check(is_equal_approx(float(grid_forecast.get("steady_net", 0.0)), float(after_forecast.get("steady_net", 0.0))),
-			"v3.1 priority supply: switching it never changes what the forecast/sim computes (stub only)")
-		remove_child(solar_panel)
-		solar_panel.free()
-
-	UiPrefs.use_construct_panel_v3 = saved_v3
-	MatchState.reset()
-
-
-func _test_construct_v3_2_iteration() -> void:
-	# v3.1 second designer review pass (owner 2026-08-26): Buffer/Run rate
-	# removed, Payback reworded, the cash timeline's row alignment fixed
-	# structurally, cost separated from time in the verdict strip (materials-
-	# arrival + build-duration lines, land's cost moved to Materials), "sold in
-	# lots of 10" and the affordability chip removed, and the header icon on a
-	# real metal plate.
-	MatchState.reset()
-	MarketState._init_prices_from_catalog()
-	var saved_v3 := UiPrefs.use_construct_panel_v3
-	UiPrefs.use_construct_panel_v3 = true
-	var panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
-	add_child(panel)
-	panel.open_for_tile("tile_5_10", {"type": ""})
-	panel._on_recipe_pressed("b_002", "r_005")
-	await get_tree().process_frame
-
-	# Buffer and Run rate are gone; Payback reads "Turn N", not "pays back ~turn N".
-	var has_buffer := false
-	var has_run_rate := false
-	var payback_value: Label = null
-	for label in panel._content.find_children("*", "Label", true, false):
-		var text: String = (label as Label).text
-		if text == "Buffer":
-			has_buffer = true
-		elif text == "Run rate":
-			has_run_rate = true
-		elif text.begins_with("Payback: "):
-			payback_value = label as Label
-	_check(not has_buffer and not has_run_rate,
-		"v3.1 cash facts: Buffer and Run rate rows are gone")
-	_check(payback_value != null and not payback_value.text.to_lower().contains("pays back"),
-		"cash facts: payback uses a broad outlook band")
-
-	_check(payback_value != null and payback_value.get_theme_font_size("font_size") == 20,
-		"forecast payback is larger and carries its assumptions on hover")
-	_check(payback_value != null and payback_value.tooltip_text.contains("current prices"),
-		"forecast explains uncertainty in a tooltip")
-	var timeline_grid: GridContainer = panel._content.find_child("RevenueTimeline", true, false)
-	_check(timeline_grid != null and timeline_grid.columns == 3,
-		"forecast uses a compact three-column timeline")
-	if timeline_grid != null:
-		for label in timeline_grid.get_children():
-			_check(not label.text.contains("£"), "forecast timeline has no money amounts")
-
-	# Verdict strip: cost separated from time. On tile_5_10 (the fixture used
-	# throughout — the player's own port) the "Build time" fact row is simply
-	# gone, replaced by a duration sentence; no itemisation caption remains.
-	var verdict_strip: Control = panel.find_child("V3VerdictStrip", true, false)
-	var strip_labels: Array = []
-	for label in verdict_strip.find_children("*", "Label", true, false):
-		strip_labels.append((label as Label).text)
-	var build_index := -1
-	for i in strip_labels.size():
-		if str(strip_labels[i]).contains("to build"):
-			build_index = i
-	_check(build_index >= 0, "v3.1 verdict strip: the build-duration sentence renders")
-	_check(not strip_labels.has("Build time"),
-		"v3.1 verdict strip: the old Build time key/value fact row is gone")
-	var has_itemised_caption := false
-	for text in strip_labels:
-		if str(text).begins_with("Construction"):
-			has_itemised_caption = true
-	_check(not has_itemised_caption,
-		"v3.1 verdict strip: no itemisation caption — just cost and duration now")
-
-	# The materials-arrival line specifically needs a tile where delivery isn't
-	# instant — tile_5_10 IS the port, so buying-in construction materials
-	# there is a same-turn (0 delivery turns) affair; tile_1_1 is the existing
-	# "away from the port, pays real freight" fixture (_test_build_forecast)
-	# and should show a genuine multi-turn wait before the build-duration line.
-	var remote_panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
-	add_child(remote_panel)
-	remote_panel.open_for_tile("tile_1_1", {"type": ""})
-	remote_panel._on_recipe_pressed("b_002", "r_005")
-	await get_tree().process_frame
-	var remote_ledger: Dictionary = remote_panel.get("_v3_ledger")
-	var remote_arrival := 0
-	for entry in remote_ledger.get("rows", []):
-		remote_arrival = maxi(remote_arrival, int((entry as Dictionary).get("market_turns", 0)))
-	if remote_arrival > 0:
-		var remote_strip: Control = remote_panel.find_child("V3VerdictStrip", true, false)
-		var remote_labels: Array = []
-		for label in remote_strip.find_children("*", "Label", true, false):
-			remote_labels.append((label as Label).text)
-		var remote_arrival_index := -1
-		var remote_build_index := -1
-		for i in remote_labels.size():
-			if str(remote_labels[i]).contains("for materials to arrive"):
-				remote_arrival_index = i
-			elif str(remote_labels[i]).contains("to build"):
-				remote_build_index = i
-		_check(remote_arrival_index >= 0 and remote_build_index >= 0 and remote_arrival_index < remote_build_index,
-			"v3.1 verdict strip: materials-arrival line precedes the build-duration line on a tile with real delivery lag")
-	else:
-		# Market conditions can shift which routes quote a lead time; the ledger
-		# computation itself (_v3_materials_arrival_turns) is what matters, and
-		# it's exercised directly regardless of which tile happens to be instant.
-		print("[test] v3.1 verdict strip: tile_1_1 also quoted 0 delivery turns this run — skipping the precedence assertion, arrival-turns math is still covered by the ledger's own ordering logic")
-	remove_child(remote_panel)
-	remote_panel.free()
-
-	# Materials: Land's cost is down here now (this fixture needs land, so the
-	# toggle defaults on and the line should be present), and the header icon
-	# sits on an actual metal plate (TileBuildingCard), not bare.
-	_check(bool(panel.get("_buy_land_wanted"))
-		and panel.find_child("V3MaterialsLand", true, false) != null,
-		"v3.1 materials: Land's cost line is present for a tile that needs it")
-	# The icon now lives in the verdict strip's own hero row (owner 2026-08-26 —
-	# _v3_header_band() is just the back link above it these days), so search
-	# the whole pinned area rather than assuming which sibling holds it.
-	var pinned: Control = panel.get("_pinned")
-	var icon_holder: Node = null
-	for child in pinned.find_children("*", "PanelContainer", true, false):
-		if (child as PanelContainer).get("radius") != null:
-			icon_holder = child
-	_check(icon_holder != null,
-		"v3.1 header: the building icon sits on the same metal-plate card (TileBuildingCard) as Tile View")
-
-	# No-tile flow: nothing to quote a materials-arrival delay against, so only
-	# the build-duration line should render. open_browser() (unlike
-	# _on_back_to_browse) clears _locked_tile_id via _reset_to_browse — needed
-	# so re-selecting the same recipe actually lands in the tile-independent flow.
-	panel.open_browser()
-	await get_tree().process_frame
-	panel._on_recipe_pressed("b_002", "r_005")
-	await get_tree().process_frame
-	var no_tile_strip: Control = panel.find_child("V3VerdictStrip", true, false)
-	var no_tile_has_arrival := false
-	for label in no_tile_strip.find_children("*", "Label", true, false):
-		if (label as Label).text.contains("for materials to arrive"):
-			no_tile_has_arrival = true
-	_check(not no_tile_has_arrival,
-		"v3.1 verdict strip: no materials-arrival line when no tile is chosen yet")
-
-	remove_child(panel)
-	panel.free()
-	UiPrefs.use_construct_panel_v3 = saved_v3
-	MatchState.reset()
-
-
-func _test_construct_v3_3_iteration() -> void:
-	# v3.1 third designer review pass (owner 2026-08-26): the site sits on the
-	# left of band 1, next to "< Recipe" on the right (blank until a tile is
-	# chosen) — a correction after a first pass put it in the verdict strip
-	# instead. The verdict strip below carries icon/title/building name on the
-	# left and the grand total + duration right-anchored on the right, under
-	# one single rule now (was double — that heavier emphasis made sense when
-	# the strip also carried the site, less so now it's back to just the
-	# decision). The cash-timeline name row centres on a shared axis regardless
-	# of line count (checked above, in _test_construct_v3_2_iteration, since it
-	# reuses that function's rect-alignment scaffolding). Materials icons grew
-	# to match the recipe diagram's art size, and the table's own figures are
-	# bold again.
-	MatchState.reset()
-	MarketState._init_prices_from_catalog()
-	var saved_v3 := UiPrefs.use_construct_panel_v3
-	UiPrefs.use_construct_panel_v3 = true
-	var panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
-	add_child(panel)
-	panel.open_for_tile("tile_5_10", {"type": ""})
-	panel._on_recipe_pressed("b_002", "r_005")
-	await get_tree().process_frame
-
-	# The panel's own subtitle line is blank — the site lives in band 1 now.
-	_check(str(panel.get("_header_subtitle").text) == "",
-		"v3.1 header band: the panel subtitle is blank — the site sits with < Recipe now")
-	var site_label: Label = panel.find_child("V3Site", true, false)
-	_check(site_label != null and site_label.text == Catalog.tile_label("tile_5_10"),
-		"v3.1 header band: the site label names the locked tile")
-	# "next to < Recipe" means a sibling under the same row, not just anywhere
-	# in the panel.
-	var back_button: Button = null
-	for button in panel.find_children("*", "Button", true, false):
-		if (button as Button).text == "< Recipe":
-			back_button = button as Button
-	_check(back_button != null and site_label != null
-		and site_label.get_parent() == back_button.get_parent(),
-		"v3.1 header band: the site and < Recipe share one row")
-
-	# No tile chosen yet: the site is blank, not a placeholder sentence.
-	panel.open_browser()
-	await get_tree().process_frame
-	panel._on_recipe_pressed("b_002", "r_005")
-	await get_tree().process_frame
-	var no_tile_site: Label = panel.find_child("V3Site", true, false)
-	_check(no_tile_site != null and no_tile_site.text == "",
-		"v3.1 header band: the site is blank (not a placeholder sentence) with no tile chosen")
-	# Back to a locked tile for the rest of this pass.
-	panel.open_for_tile("tile_5_10", {"type": ""})
-	panel._on_recipe_pressed("b_002", "r_005")
-	await get_tree().process_frame
-
-	# The verdict strip's own rule is single now, not double (owner 2026-08-26).
-	var verdict_box: Control = panel.find_child("V3VerdictStrip", true, false)
-	var rule: Control = verdict_box.get_child(0) as Control
-	_check(rule != null and bool(rule.get("double_rule")) == false,
-		"v3.1 verdict strip: the rule above it is single now, not double")
-
-	# Cost and duration both right-anchor inside the strip.
-	var total_label: Label = panel.find_child("V3Total", true, false)
-	_check(total_label != null and total_label.horizontal_alignment == HORIZONTAL_ALIGNMENT_RIGHT,
-		"v3.1 hero band: the grand total is right-anchored")
-	var duration_box: Control = panel.find_child("V3DurationBox", true, false)
-	var duration_labels: Array = duration_box.find_children("*", "Label", true, false) if duration_box != null else []
-	var durations_right_anchored := not duration_labels.is_empty()
-	for label in duration_labels:
-		if (label as Label).horizontal_alignment != HORIZONTAL_ALIGNMENT_RIGHT:
-			durations_right_anchored = false
-	_check(durations_right_anchored,
-		"v3.1 hero band: the duration line(s) right-anchor under the total")
-
-	# Materials icons grew to match the recipe diagram's ~56px art (74px
-	# plate, 12%-of-size inset) — and the table's own figures are bold again.
-	_check(int(panel.V3_MAT_ICON_SIZE) == 74,
-		"v3.1 materials: the icon size matches the recipe diagram's art size")
-	var figure_label: Label = panel._v3_mat_figure(5, 60)
-	_check(figure_label.theme_type_variation == &"Numeric",
-		"v3.1 materials: on tile/elsewhere figures are bold (Numeric) again")
-	var market_numeric := false
-	for label in panel._content.find_children("*", "Label", true, false):
-		if str((label as Label).text).begins_with("~") and (label as Label).theme_type_variation == &"Numeric":
-			market_numeric = true
-	_check(market_numeric,
-		"v3.1 materials: the market-price column is bold (Numeric) again")
-
-	remove_child(panel)
-	panel.free()
-	UiPrefs.use_construct_panel_v3 = saved_v3
-	MatchState.reset()
-
-
-func _test_construct_v3_4_iteration() -> void:
-	# v3.1 fourth designer review pass (owner 2026-08-26): the hero band's icon
-	# grew to 60px (was 40) and building name/recipe swapped which is the big
-	# text, both top-aligned so the name lines up with the total; the
-	# priority-supply toggle went cream+navy (was gold+navy); cash-timeline
-	# markers read "Turn 1-3" (was "t1-t3"), the now-redundant "· N turns"
-	# suffix dropped; "How is this calculated?" moved onto Payback's row,
-	# right-anchored, with a thin outline.
-	MatchState.reset()
-	MarketState._init_prices_from_catalog()
-	var saved_v3 := UiPrefs.use_construct_panel_v3
-	UiPrefs.use_construct_panel_v3 = true
-	var panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
-	add_child(panel)
-	panel.open_for_tile("tile_5_10", {"type": ""})
-	panel._on_recipe_pressed("b_002", "r_005")
-	await get_tree().process_frame
-
-	var verdict_box: Control = panel.find_child("V3VerdictStrip", true, false)
-	var building_name := "Iron Furnace"   # the building's name on its recipe (BuildingNaming), not its type's
-	var recipe_name := str(panel.get("_selected_recipe").get("display_name", ""))
-	var name_label: Label = null
-	var recipe_label: Label = null
-	for label in verdict_box.find_children("*", "Label", true, false):
-		var l := label as Label
-		if l.text == building_name and int(l.get_theme_font_size("font_size")) == 17:
-			name_label = l
-		elif l.text == recipe_name and int(l.get_theme_font_size("font_size")) == 11:
-			recipe_label = l
-	_check(name_label != null and recipe_label != null,
-		"v3.1 hero band: building name is the big (17px) text, recipe the small (11px) text")
-
-	# Building name and the total line up (owner 2026-08-26: both top-align
-	# within row1, regardless of the icon's height).
-	var total_label: Label = panel.find_child("V3Total", true, false)
-	_check(name_label != null and total_label != null
-		and is_equal_approx(name_label.get_global_rect().position.y, total_label.get_global_rect().position.y),
-		"v3.1 hero band: the building name and the total share the same row")
-
-	# Icon grew 40 -> 60px.
-	var icon_found := false
-	for control in verdict_box.find_children("*", "Control", true, false):
-		if (control as Control).custom_minimum_size == Vector2(60, 60):
-			icon_found = true
-	_check(icon_found, "v3.1 hero band: the building icon is 60x60 now (was 40x40)")
-
-	# Priority-supply toggle: cream + navy for the selected state, not gold.
-	var solar_recipe_id := ""
-	for recipe in Catalog.all_recipes():
-		if str(recipe.get("building_id", "")) == "b_024":
-			solar_recipe_id = str(recipe.get("recipe_id", ""))
-			break
-	var solar_panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
-	add_child(solar_panel)
-	solar_panel.open_for_tile("tile_5_10", {"type": ""})
-	solar_panel._on_recipe_pressed("b_024", solar_recipe_id)
-	await get_tree().process_frame
-	var grid_button: Button = null
-	var grid_note: Label = null
-	for button in solar_panel.find_children("*", "Button", true, false):
-		if (button as Button).text == "Grid":
-			grid_button = button as Button
-	for label in solar_panel._content.find_children("*", "Label", true, false):
-		if (label as Label).text.contains("unaffected by intermittency"):
-			grid_note = label as Label
-	var grid_style: StyleBoxFlat = null
-	if grid_button != null:
-		grid_style = grid_button.get_theme_stylebox("normal") as StyleBoxFlat
-	_check(grid_style != null and grid_style.bg_color == panel.CREAM,
-		"v3.1 priority supply: the selected toggle is cream, not gold")
-	_check(grid_note != null and grid_note.text == "Selling power to the grid is unaffected by intermittency.",
-		"v3.1 priority supply: the grid-selling explanation reads the new exact sentence")
-	remove_child(solar_panel)
-	solar_panel.free()
-
-	# Cash-timeline markers: "Turn 1-3", not "t1-t3", and no "· N turns" suffix.
-	_check(panel._v3_turn_marker("t1") == "Turn 1"
-		and panel._v3_turn_marker("t1–t3") == "Turn 1–3"
-		and panel._v3_turn_marker("t6 onwards") == "Turn 6 onwards"
-		and panel._v3_turn_marker("") == "",
-		"v3.1 cash timeline: _v3_turn_marker reworks t-prefixed ranges into \"Turn N\" form")
-	var has_turn_marker := false
-	var has_old_marker := false
-	var has_turns_suffix := false
-	for label in panel._content.find_children("*", "Label", true, false):
-		var text := str((label as Label).text)
-		if text.begins_with("Turn "):
-			has_turn_marker = true
-		if text.begins_with("t") and text.length() > 1 and text[1].is_valid_int():
-			has_old_marker = true
-		if text.contains("· ") and text.contains("turns"):
-			has_turns_suffix = true
-	_check(has_turn_marker and not has_old_marker,
-		"v3.1 cash timeline: markers read \"Turn N\", the old \"tN\" form is gone")
-	_check(not has_turns_suffix,
-		"v3.1 cash timeline: the redundant \"· N turns\" suffix is gone")
-
-	var facts_row: Control = panel._v3_cash_facts_row()
-	_check(facts_row is Label and facts_row.name == "ForecastPayback",
-		"forecast ends with just the prominent payback label")
-	facts_row.free()
-
-	remove_child(panel)
-	panel.free()
-	UiPrefs.use_construct_panel_v3 = saved_v3
 	MatchState.reset()
 
 
@@ -2327,45 +1559,42 @@ func _test_upgrade_buys_land() -> void:
 	Stockpile.clear_all()
 
 # ── Construct confirm: buying the land is part of the decision (owner 2026-08-23) ──
-func _test_construct_land_tickbox() -> void:
+## The land a build buys on a tile short of it: none on a tile with room; the shortfall in whole patches,
+## priced, while the player buys it; enough for the build to pass the land gate.
+func _test_construct_land_purchase() -> void:
 	MatchState.reset()
 	var tile := "tile_5_10"
-	var panel: Object = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
+	var panel: Object = (load("res://scripts/construct_ds2/construct_ds2.gd") as GDScript).new()
 	var building: Dictionary = Catalog.get_building("b_009")   # assembly plant, 15 land
 	panel.set("_selected_building", building)
 	panel.set("_locked_tile_id", tile)
-	var build_cost: float = panel.call("_construction_display_cost", "b_009")
+	panel.set("_land_toggle_touched", true)
+	panel.set("_buy_land_wanted", true)
 
-	# Plenty of land: no tickbox, nothing added to the total.
+	# Plenty of land: nothing to buy.
 	BuildingState.tile_land_owned[tile] = 90
-	var roomy: Object = panel.call("_land_row", building)
-	_check(int(panel.get("_land_purchase_units")) == 0
-		and not bool(panel.get("_buy_land_wanted"))
-		and absf(float(panel.call("_confirm_total_cost")) - build_cost) < 0.01,
-		"construct land: a tile with room shows no tickbox and adds nothing to the total")
-	(roomy as Node).free()
+	var roomy: Dictionary = panel.call("_v3_compute_land")
+	_check(int(panel.get("_land_purchase_units")) == 0 and not bool(panel.get("_buy_land_wanted"))
+		and bool(roomy.get("covered", false)),
+		"construct land: a tile with room buys nothing")
 
-	# Not enough land: ticked already, priced, and the shortfall rounded up to whole patches.
+	# Not enough land, and the player buys it: priced, and the shortfall rounded up to whole patches.
 	BuildingState.tile_land_owned[tile] = 5
-	var short: Object = panel.call("_land_row", building)
+	panel.set("_buy_land_wanted", true)
+	var short: Dictionary = panel.call("_v3_compute_land")
 	var units: int = int(panel.get("_land_purchase_units"))
-	var land_cost: float = float(panel.get("_land_purchase_cost"))
-	_check(bool(panel.get("_buy_land_wanted")),
-		"construct land: the box is ticked already when the player cannot build without it")
+	_check(bool(short.get("purchasable", false)) and bool(short.get("covered", false)),
+		"construct land: buying covers the shortfall")
 	_check(units >= 15 - 5 and units % BuildingState.LAND_PATCH_SIZE == 0,
 		"construct land: it buys at least the shortfall, in whole patches")
-	_check(land_cost > 0.0
-		and absf(float(panel.call("_confirm_total_cost")) - (build_cost + land_cost)) < 0.01,
-		"construct land: the Confirm total includes the land it is about to buy")
+	_check(float(panel.get("_land_purchase_cost")) > 0.0, "construct land: the land is priced")
 
-	# Unticking is allowed, and takes the land back out of the total.
-	panel.call("_on_buy_land_toggled", false)
-	_check(absf(float(panel.call("_confirm_total_cost")) - build_cost) < 0.01,
-		"construct land: unticking drops the land back out of the total")
-	(short as Node).free()
+	# Not buying leaves the shortfall uncovered.
+	panel.set("_buy_land_wanted", false)
+	_check(not bool((panel.call("_v3_compute_land") as Dictionary).get("covered", true)),
+		"construct land: not buying leaves the build short")
 
-	# Enough land bought means the build gate would now pass — the tickbox buys the right
-	# amount, not merely some.
+	# Enough land bought means the build gate would now pass: it buys the right amount, not merely some.
 	BuildingState.tile_land_owned[tile] = 5 + units
 	var needed: float = float(building.get("tile_size_used", 1))
 	_check(BuildingState.get_tile_player_space_used(tile) + needed

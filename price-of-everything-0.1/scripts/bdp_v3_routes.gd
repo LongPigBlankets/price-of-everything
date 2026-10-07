@@ -1,8 +1,7 @@
 extends RefCounted
 ## Building Detail v3's Input sources and Output destination sheets in DS2 (docs/bdp-routes-ds2-plan.md),
-## built into the sheet's rows while UiPrefs.use_routes_ds2 is on. With the switch off the panel builds the
-## v2 sheets itself. `panel` is Building Detail (scripts/building_detail_panel_v2.gd): its sheet, its
-## refresh and the logistics requests the v2 sheets make, so the two can't disagree about what a choice does.
+## built into the sheet's rows. `panel` is Building Detail (scripts/building_detail_panel_v2.gd): its sheet,
+## its refresh and its logistics requests, which ask before leaving the intermediary.
 ##
 ## On the sheet's steel plate, under Back and the title:
 ##   the readout   the diagnostics' dark glass screen, fixed under the title (it never scrolls away): the
@@ -317,7 +316,7 @@ static func _output_destination_words(building: Dictionary, recipe: Dictionary, 
 
 
 ## The output's Destination knob: the intermediary where it works, the global market, this tile's stockpile,
-## or another tile (picked on the shipping map). Leaving the intermediary asks first, as the v2 sheet did.
+## or another tile (picked on the shipping map). Leaving the intermediary asks first.
 static func _output_knob(panel: Control, building: Dictionary, recipe: Dictionary, gid: String, tile: String, state: String,
 		readout: Control) -> Control:
 	var iid := str(building.get("instance_id", ""))
@@ -417,7 +416,7 @@ static func _power_module(panel: Control) -> Control:
 # --- every good at once -------------------------------------------------------------------------
 
 ## In intermediary games, one knob for every good on the side: each good its own source, the intermediary,
-## the global market or this tile's stockpile. The v2 sheet's All inputs / All outputs row, as a knob.
+## the global market or this tile's stockpile.
 static func _all_module(panel: Control, building: Dictionary, recipe: Dictionary, side: String, readout: Control) -> Control:
 	var iid := str(building.get("instance_id", ""))
 	var inputs := side == "input"
@@ -551,7 +550,7 @@ static func _knob_column(words: VBoxContainer) -> VBoxContainer:
 
 
 ## A knob of `choices` ({id, icon, name, detail, enabled}), set to `current`. Its option buttons are named
-## RouteOption_<Name> (as the v2 sheet's cards were, for tutorial spotlights and harnesses); pointing at one
+## RouteOption_<Name> (for tutorial spotlights and harnesses); pointing at one
 ## shows its name and what it does on the readout. Turning it calls `apply` with the option's id and leaves the
 ## knob where it was: the sheet is rebuilt with the change made.
 static func _knob(node_name: String, label: String, choices: Array, current: int, readout: Control, stage: String,

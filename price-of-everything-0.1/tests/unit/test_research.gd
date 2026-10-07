@@ -10,6 +10,7 @@ const TAGS := {
 	"_test_modifiers_production_recipe_output": ["production", "research", "stockpile"],
 	"_test_live_unlock_conditions": ["market", "production", "research", "stockpile"],
 	"_test_embodied_carbon": ["decisions", "research"],
+	"_test_research_ds2_panel": ["research", "ui"],
 }
 
 func _csv_dicts(path: String) -> Array:
@@ -30,7 +31,7 @@ func _csv_dicts(path: String) -> Array:
 
 
 func _construct_panel_has_recipe(panel: Node, building_id: String, recipe_id: String) -> bool:
-	var by_building: Dictionary = panel.get("recipes_by_building")
+	var by_building: Dictionary = panel.get("_recipes_by_building")
 	for recipe in by_building.get(building_id, []):
 		if str(recipe.get("recipe_id", "")) == recipe_id:
 			return true
@@ -291,34 +292,22 @@ func _test_research_unlock_promotes_construct_panel_recipes() -> void:
 	var building_id := str(recipe.get("building_id", ""))
 	var saved_unlocks := ResearchState.unlocked_titles.duplicate(true)
 	var saved_land := BuildingState.tile_land_owned.duplicate(true)
-	var saved_construct_v2 := UiPrefs.use_construct_panel_v2
-	# This fixture explicitly instantiates the legacy panel and calls its tile-open
-	# API, so do not let the live v2 routing toggle make that API return early.
-	UiPrefs.use_construct_panel_v2 = false
 	# r_020 is gated on Flash Copper Smelting (its own node since 2026-09-06), which
 	# auto-unlocks on Produce All 200 industrial acids + 300 copper ingots; a fresh fixture
 	# has produced neither, so it stays unmet while this test isolates panel filtering.
 	# (tile_land_owned cleared too, harmless, in case an owned-land gate returns.)
 	BuildingState.tile_land_owned.clear()
 	ResearchState.unlocked_titles.erase("Flash Copper Smelting")
-	var packed: PackedScene = load("res://scenes/construct_panel.tscn")
-	if packed == null or recipe.is_empty() or building_id == "":
+	if recipe.is_empty() or building_id == "":
 		_check(false, "research unlock: construct panel fixture resolves")
 		_replace_dict(ResearchState.unlocked_titles, saved_unlocks)
 		_replace_dict(BuildingState.tile_land_owned, saved_land)
-		UiPrefs.use_construct_panel_v2 = saved_construct_v2
 		return
-	var panel: Control = packed.instantiate() as Control
-	if panel == null:
-		_check(false, "research unlock: construct panel instantiates as Control")
-		_replace_dict(ResearchState.unlocked_titles, saved_unlocks)
-		_replace_dict(BuildingState.tile_land_owned, saved_land)
-		UiPrefs.use_construct_panel_v2 = saved_construct_v2
-		return
+	var panel: Control = load("res://scripts/construct_ds2/construct_ds2.gd").new()
 	add_child(panel)
 	await get_tree().process_frame
 
-	panel.show()
+	panel.call("open_browser")
 	await get_tree().process_frame
 	_check(not _construct_panel_has_recipe(panel, building_id, "r_020"),
 		"construct panel hides recipe-gated research before unlock")
@@ -341,7 +330,6 @@ func _test_research_unlock_promotes_construct_panel_recipes() -> void:
 	await get_tree().process_frame
 	_replace_dict(ResearchState.unlocked_titles, saved_unlocks)
 	_replace_dict(BuildingState.tile_land_owned, saved_land)
-	UiPrefs.use_construct_panel_v2 = saved_construct_v2
 
 func _test_limestone_concrete() -> void:
 	_check(not Catalog.get_good_by_internal_name("limestone").is_empty(), "limestone good exists")
@@ -1253,3 +1241,206 @@ func _test_upgrade_gates_resolve_and_refinery_level_two_unlocks() -> void:
 	_check(str(BuildingWorks.preview_upgrade(iid).research_gate) == "Deep Conversion Units", "refinery L3 retains its existing research requirement")
 	MatchState.reset()
 	Stockpile.clear_all()
+
+
+# ── Research panel DS2 (UiPrefs.use_research_ds2): the plan chest and the patent board ──
+
+## A condition's count, as the DS2 board's scale shows it, comes from the live check's own counters.
+func _test_research_condition_progress() -> void:
+	MatchState.reset()
+	_check(ResearchState.condition_progress("Improved Coal Mining") == Vector2i(0, 500), "research progress: nothing produced reads 0/500")
+	Production.produced_by_building["progress_test"] = {"coal": 212}
+	_check(ResearchState.condition_progress("Improved Coal Mining") == Vector2i(212, 500), "research progress: 212 coal produced reads 212/500")
+	Production.produced_by_building["progress_test"] = {"coal": 900}
+	_check(ResearchState.condition_progress("Improved Coal Mining") == Vector2i(500, 500), "research progress: the count stops at the target")
+	_check(ResearchState.condition_progress("No Such Research") == Vector2i.ZERO, "research progress: an unknown title has no count")
+	MatchState.reset()
+
+
+func _ds2_button(at: Vector2, pressed: bool) -> InputEventMouseButton:
+	var e := InputEventMouseButton.new()
+	e.button_index = MOUSE_BUTTON_LEFT
+	e.pressed = pressed
+	e.position = at
+	return e
+
+
+func _ds2_notices(view: Control) -> Array:
+	var out: Array = []
+	for g: Control in (view.call("board") as Control).call("grilles"):
+		out.append(str((g.get("notice") as Dictionary).get("heading", "")))
+	return out
+
+
+func _test_research_ds2_panel() -> void:
+	MatchState.reset()
+	var was := UiPrefs.use_research_ds2
+	UiPrefs.set_use_research_ds2(true)
+	var panel: Control = (load("res://scripts/research_panel.gd") as GDScript).new()
+	panel.name = "ResearchPanelDs2Test"
+	panel.size = Vector2(1900, 914)
+	add_child(panel)
+	panel.show()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var view: Control = panel.call("ds2_view")
+	_check(view != null and bool(panel.call("is_ds2")), "research ds2: the flag builds the DS2 view in the research panel")
+	if view == null:
+		panel.queue_free()
+		UiPrefs.set_use_research_ds2(was)
+		return
+	var search: LineEdit = panel.get("_search_input")
+	_check(search != null and view.is_ancestor_of(search) and search.name == "ResearchSearchInput",
+		"research ds2: the panel's own search box sits on the DS2 screen, its name kept for the tutorial")
+
+	# The plan chest: a drawer a category; opening one opens that category.
+	var drawers: Array = view.call("drawers")
+	_check(drawers.size() == (panel.call("categories") as Array).size() and drawers.size() == 12, "research ds2: the plan chest has a drawer per shown category, 12 with Recycling hidden (%d)" % drawers.size())
+	var chem: Button = null
+	for d: Button in drawers:
+		if str(d.get_meta("category", "")) == "Chemistry":
+			chem = d
+	_check(chem != null, "research ds2: a Chemistry drawer")
+	if chem != null:
+		chem.pressed.emit()
+		await get_tree().process_frame
+		await get_tree().process_frame
+		_check(str(panel.get("_selected_category")) == "Chemistry" and bool(chem.get("open")),
+			"research ds2: opening the Chemistry drawer selects Chemistry and slides the drawer out")
+		_check(view.call("card_for", "Fractional Distillation") != null and view.call("card_for", "Improved Coal Mining") == null,
+			"research ds2: the board shows the open drawer's research only")
+
+	# A card's condition progress, a granted card's stamp, a closed rank's notice.
+	panel.call("select_category", "Extraction")
+	Production.produced_by_building["ds2_test"] = {"coal": 212}
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var coal: Control = view.call("card_for", "Improved Coal Mining")
+	_check(coal != null and coal.get("progress") == Vector2i(212, 500) and str(coal.get("state")) == "open"
+		and str(coal.get("spec")).to_lower().contains("500 coal"),
+		"research ds2: a drawing shows its condition and its count (%s)" % (str(coal.get("progress")) if coal != null else "none"))
+	# The reward on the drawing itself, in short; the full text on the detail sheet.
+	_check(coal != null and str(coal.get("reward")) == "+15% coal mining output"
+		and str(coal.get("reward_full")).begins_with("Increases coal mining output by 15%"),
+		"research ds2: a drawing shows what it grants (%s)" % (str(coal.get("reward")) if coal != null else "none"))
+	# The icon on its sticky note: a good in its own colours, a building printed navy.
+	var GoodIconsRef := preload("res://scripts/good_icons.gd")
+	var coal_good: Dictionary = Catalog.get_good_by_internal_name("coal")
+	var want_tex: Texture2D = GoodIconsRef.texture_for_size(str(coal_good.get("id", "")), "coal", 160.0)
+	_check(coal != null and str(coal.get("icon_kind")) == "good" and coal.call("icon_texture") == want_tex and want_tex != null
+		and coal.call("icon_tint") == Color.WHITE, "research ds2: a good's note carries the good's own colour icon")
+	var blast: Control = view.call("card_for", "Bench Blasting Expansion")
+	_check(blast != null and str(blast.get("icon_kind")) == "building" and blast.call("icon_texture") != null
+		and (blast.call("icon_tint") as Color).is_equal_approx(Color("#0b2340")), "research ds2: a building's note is printed navy")
+	# Zoom stays inside its clamp and scales the board.
+	var bview: Control = view.call("board_view")
+	var mid: Vector2 = bview.size * 0.5
+	bview.call("zoom_at", mid, 50.0)
+	var zmax := float(bview.get("zoom"))
+	bview.call("zoom_at", mid, 0.001)
+	var zmin := float(bview.get("zoom"))
+	const BoardViewRef := preload("res://scripts/research_ds2/board_view.gd")
+	_check(is_equal_approx(zmax, BoardViewRef.ZOOM_MAX) and zmin >= BoardViewRef.ZOOM_FLOOR and zmin < 1.0
+		and ((bview.get("board") as Control).scale.x - zmin) < 0.001,
+		"research ds2: zoom runs from %.2f to %.2f and scales the board" % [zmin, zmax])
+	bview.call("reset")
+	# Resting on a drawing shows it large, with its full reward; leaving hides it.
+	var board_ref: Control = view.call("board")
+	board_ref.call("_on_card_hover", coal, true)
+	await get_tree().create_timer(0.4).timeout
+	var sheet: Control = view.call("detail_sheet")
+	_check(sheet != null and sheet.visible and str((sheet.get("data") as Dictionary).get("description", "")).begins_with("Increases coal mining output by 15%")
+		and not (sheet.get("sheet") as Rect2).intersects((sheet.get("hole") as Rect2)),
+		"research ds2: resting on a drawing shows the detail sheet with the full reward, clear of the drawing")
+	board_ref.call("_on_card_hover", coal, false)
+	_check(sheet != null and not sheet.visible, "research ds2: leaving the drawing hides the detail sheet")
+	var notices := _ds2_notices(view)
+	_check(notices.has("Rank II closed") and notices.has("Rank III closed"),
+		"research ds2: closed ranks sit behind a grille with their notice (%s)" % str(notices))
+	ResearchState.grant_unlock("Reinforced Shaft Tunnels", false)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var granted: Control = view.call("card_for", "Reinforced Shaft Tunnels")
+	_check(granted != null and str(granted.get("state")) == "granted" and bool(granted.call("is_granted")),
+		"research ds2: a granted research is stamped GRANTED")
+	notices = _ds2_notices(view)
+	_check(not notices.has("Rank II closed") and notices.has("Rank III closed"), "research ds2: a granted rank I patent opens rank II (%s)" % str(notices))
+	var dependent: Control = view.call("card_for", "Reservoir Stimulation")
+	_check(dependent != null and str(dependent.get("state")) == "locked" and str(dependent.get("note")).begins_with("Needs "),
+		"research ds2: a research waiting on another is locked and says what it needs (%s)" % (str(dependent.get("note")) if dependent != null else "none"))
+
+	# Search lights the drawers holding matches and dims the rest.
+	search.text = "steel"
+	search.text_changed.emit("steel")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var lit := 0
+	var dim := 0
+	var metallurgy_lit := false
+	for d: Button in view.call("drawers"):
+		if bool(d.get("lit")):
+			lit += 1
+			if str(d.get_meta("category", "")) == "Metallurgy":
+				metallurgy_lit = true
+		if bool(d.get("dim")):
+			dim += 1
+	_check(metallurgy_lit and lit + dim == drawers.size() and dim > 0, "research ds2: a search lights the drawers holding matches (%d lit, %d dim)" % [lit, dim])
+	_check(str(panel.get("_search_query")) == "steel", "research ds2: typing searches as before")
+
+	# The external entry point: a link opens the panel on the one research it names, in its drawer.
+	panel.hide()
+	panel.call("open_with_search", "Bauxite Carbochlorination", true)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var shown: Array = (view.call("board") as Control).call("cards")
+	_check(panel.visible and search.text == "Bauxite Carbochlorination" and shown.size() == 1
+		and str((shown[0] as Control).get("title")) == "Bauxite Carbochlorination",
+		"research ds2: a research link opens the panel showing that research alone")
+	var spot: Rect2 = panel.call("tutorial_unlock_rect", "Bauxite Carbochlorination")
+	_check(spot.has_area(), "research ds2: the tutorial can spotlight a linked drawing")
+	panel.call("open_with_search", "")
+	panel.call("select_category", "Extraction")
+
+	# Choosing a free licence: an open research glows, a click licenses it.
+	panel.set("_free_unlocks", 1)
+	panel.call("begin_free_unlock_choice")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var iron: Control = view.call("card_for", "Beneficiated Iron Mining")
+	var shut: Control = view.call("card_for", "Reservoir Stimulation")
+	_check(iron != null and bool(iron.get("eligible")) and shut != null and not bool(shut.get("eligible")),
+		"research ds2: while choosing, open research is eligible and locked research is not")
+	var bv: Control = view.call("board_view")
+	if iron != null:
+		# A drag that starts on the drawing pans the board and licenses nothing.
+		var at: Vector2 = bv.get("offset") + (iron.position + iron.size * 0.5) * float(bv.get("zoom"))
+		bv.call("_gui_input", _ds2_button(at, true))
+		var move := InputEventMouseMotion.new()
+		move.position = at + Vector2(0, 40)
+		move.relative = Vector2(0, 40)
+		bv.call("_gui_input", move)
+		bv.call("_gui_input", _ds2_button(at + Vector2(0, 40), false))
+		await get_tree().process_frame
+		_check(not ResearchState.is_unlocked("Beneficiated Iron Mining") and int(panel.get("_free_unlocks")) == 1,
+			"research ds2: a drag that starts on a drawing does not license it")
+		bv.call("reset")
+		at = bv.get("offset") + (iron.position + iron.size * 0.5) * float(bv.get("zoom"))
+		bv.call("_gui_input", _ds2_button(at, true))
+		bv.call("_gui_input", _ds2_button(at, false))
+		await get_tree().process_frame
+		await get_tree().process_frame
+	_check(ResearchState.is_unlocked("Beneficiated Iron Mining") and int(panel.get("_free_unlocks")) == 0
+		and not bool(panel.get("_choosing_free_unlock")),
+		"research ds2: clicking an eligible drawing licenses it and spends the free unlock")
+	var licensed: Control = view.call("card_for", "Beneficiated Iron Mining")
+	_check(licensed != null and str(licensed.get("state")) == "licensed", "research ds2: a licensed research is stamped LICENSED")
+
+	# Switched off, the old canvas is back as it was.
+	UiPrefs.set_use_research_ds2(false)
+	await get_tree().process_frame
+	_check(panel.call("ds2_view") == null and search.get_parent() == panel and search.placeholder_text.begins_with("Search research"),
+		"research ds2: switched off, the view goes and the search box returns to the old panel")
+	panel.queue_free()
+	UiPrefs.set_use_research_ds2(was)
+	MatchState.reset()
+	await get_tree().process_frame

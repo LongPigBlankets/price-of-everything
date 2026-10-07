@@ -83,7 +83,6 @@ func _ready() -> void:
 	var panel: Control = _wm.find_child("TileInfoPanel", true, false)
 	var terrain: Node = _wm.get("terrain_layer")
 	var td := _tile(terrain, TILE)
-	UiPrefs.set_use_tvp_v3(true)
 	await _settle(6)
 
 	await _shoot(panel, td, "transport_busy")
@@ -247,7 +246,6 @@ func _ready() -> void:
 				float(cq.get("total", -1.0)), float(cq.get("fee", -1.0)), int(cq.get("land_units", 0)), float(cq.get("land_cost", 0.0)),
 				str(cq.get("materials", "")), float(cq.get("materials_cost", 0.0)), cash_before - MatchState.money,
 				Construction.projects_on_tile(bare).size()])
-	UiPrefs.set_use_tvp_v3(false)
 	print("[TVP_SHOT] done")
 	get_tree().quit(0)
 

@@ -1,6 +1,5 @@
 extends RefCounted
-## Tile view v3: the Stock tab's body (docs/tile-view-ds2-plan.md §4.3 and §9), built into `pane` on each
-## refresh while UiPrefs.use_tvp_v3 is on. With the switch off the v2 panel builds the tab itself.
+## Tile view v3: the Stock tab's body (docs/tile-view-ds2-plan.md §4.3 and §9), built into `pane` on each refresh.
 ## `panel` is the tile view (scripts/tile_info_panel_v2.gd): its tile, its signals and its helpers.
 ##
 ## The yard, top to bottom, each part in Building Detail v3's kit:
@@ -771,8 +770,8 @@ static func _logistics(panel: Control, logistics: Dictionary) -> Control:
 
 
 ## Every building's inputs, or outputs, on this tile on one knob: per building, the intermediary, the
-## global market or this tile's stockpile (the v2 logistics buttons' four choices). Turning it asks for
-## confirmation, as the buttons did (_apply_tile_logistics_policy); cancelled, the rebuild turns it back.
+## global market or this tile's stockpile. Turning it asks for confirmation
+## (_apply_tile_logistics_policy); cancelled, the rebuild turns it back.
 static func _logistics_knob(panel: Control, side: String, logistics: Dictionary, readout: Control) -> Dictionary:
 	var ids: Array = logistics.get(side, [])
 	var licensed := ResearchState.global_trade_license_available()

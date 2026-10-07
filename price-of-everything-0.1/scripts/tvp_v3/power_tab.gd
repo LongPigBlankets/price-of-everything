@@ -1,6 +1,5 @@
 extends RefCounted
-## Tile view v3: the Power tab's body (docs/tile-view-ds2-plan.md §4.3 and §9), built into `pane` on each
-## refresh while UiPrefs.use_tvp_v3 is on. With the switch off the v2 panel builds the tab itself.
+## Tile view v3: the Power tab's body (docs/tile-view-ds2-plan.md §4.3 and §9), built into `pane` on each refresh.
 ## `panel` is the tile view (scripts/tile_info_panel_v2.gd): its tile, its signals and its helpers.
 ##
 ## The site's meter panel, top to bottom:
@@ -121,8 +120,7 @@ static func build(panel: Control, pane: VBoxContainer) -> void:
 ## `search`.
 static func _open_construct(panel: Control, search: String) -> void:
 	panel.call("_on_bl_build_pressed")
-	var cp_name := "ConstructPanelV2" if UiPrefs.use_construct_panel_v2 else "ConstructPanel"
-	var cp := panel.get_tree().root.find_child(cp_name, true, false)
+	var cp := panel.get_tree().root.find_child("ConstructPanelV2", true, false)
 	if cp == null or not (cp as CanvasItem).visible:
 		return
 	if cp.has_method("_on_filter_toggled"):

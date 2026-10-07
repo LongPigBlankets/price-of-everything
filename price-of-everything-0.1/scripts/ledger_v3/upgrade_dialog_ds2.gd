@@ -1,7 +1,7 @@
 extends "res://scripts/upgrade_dialog.gd"
-## The upgrade dialog in DS2 (docs/building-ledger-ds2-plan.md), opened from the ledger's Upgrade key while
-## UiPrefs.use_ledger_ds2 is on. Everything the v2 dialog shows, laid out in the kit's parts; what the keys
-## do is the v2 dialog's own code (_commit, _cancel, the preview), so the two can't disagree.
+## The upgrade dialog in DS2 (docs/building-ledger-ds2-plan.md), opened from the ledger's Upgrade key and
+## Building Detail's, laid out in the kit's parts; what the keys do is the base dialog's code
+## (scripts/upgrade_dialog.gd: _commit, _cancel, the preview).
 ##
 ## On Building Detail's backing, top to bottom:
 ##   the head      the building's emblem, the raised title ("Upgrade Motor Factory A"), the level it goes

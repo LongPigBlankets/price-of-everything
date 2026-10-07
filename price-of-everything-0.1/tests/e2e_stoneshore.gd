@@ -38,7 +38,6 @@ var _turn_times_ms: Array[float] = []
 var _turn_wall_records: Array[Dictionary] = []
 var _main: Node = null
 var _terrain: HexMap = null
-var _construct_panel: Control = null
 var _construct_panel_v2: Control = null
 var _money_panel: Control = null
 var _loan_dialog: Control = null
@@ -408,12 +407,9 @@ func _parse_cmdline_args() -> void:
 	#   <name> <turn>   e.g. open_field_1 60
 	#   <name>          scenario name, default turn
 	#   <turn>          (back-compat) turn only, default scenario
-	#   --topbar-ds2    anywhere: with the DS2 top bar
 	var args := OS.get_cmdline_user_args()
-	# `--topbar-ds2` anywhere: run with the DS2 top bar, which keeps the MoneyWidget path the loan
-	# flow presses.
+	# `--topbar-ds2` is accepted and ignored: the DS2 top bar is the only one.
 	if args.has("--topbar-ds2"):
-		UiPrefs.set_use_topbar_ds2(true)
 		args.remove_at(args.find("--topbar-ds2"))
 	_scenario_name = DEFAULT_SCENARIO
 	_target_turn = DEFAULT_TARGET_TURN
@@ -1776,14 +1772,13 @@ func _load_main_scene() -> void:
 	await get_tree().process_frame
 	_ready_ms = float(Time.get_ticks_usec() - ready_start) / 1000.0
 	_terrain = _main.get_node("%TerrainLayer") as HexMap
-	_construct_panel = _main.get_node("%ConstructPanel") as Control
-	# By name: the DS2 construct panel (the default) extends the v2 script under the same name.
+	# By name: the construct panel is built at runtime by BottomMenu, with no %unique path.
 	_construct_panel_v2 = _main.find_child("ConstructPanelV2", true, false) as Control
 	_money_panel = _main.get_node("%MoneyPanel") as Control
 	_loan_dialog = _main.get_node("%TakeLoanDialog") as Control
 	_terminal = _find_by_script(_main, "res://scripts/debug_terminal.gd")
 	_check(_terrain != null, "E2E found real HexMap")
-	_check(_construct_panel != null, "E2E found real ConstructPanel")
+	_check(_construct_panel_v2 != null, "E2E found real ConstructPanel")
 	_check(_money_panel != null, "E2E found real MoneyPanel")
 	_check(_loan_dialog != null, "E2E found real TakeLoanDialog")
 	_check(_terminal != null, "E2E found debug terminal for cash harness setup")
@@ -1791,7 +1786,7 @@ func _load_main_scene() -> void:
 
 func _check_ui_loaded() -> void:
 	_check((_main.get_node("%BottomMenu") as Control).visible, "bottom menu starts visible")
-	_check(not _construct_panel.visible, "construct panel starts hidden")
+	_check(not _construct_panel_v2.visible, "construct panel starts hidden")
 	_check(not _money_panel.visible, "money panel starts hidden")
 	_check(BuildingState.get_buildings_on_tile("tile_5_10").size() > 0, "NPC Stoneshore port placed")
 	_check(BuildingState.get_buildings_on_tile("tile_11_17").size() > 0, "NPC Arin port placed")
@@ -1950,13 +1945,7 @@ func _open_construct_panel_via_bottom_menu() -> void:
 	if button != null:
 		button.pressed.emit()
 	await get_tree().process_frame
-	# %ConstructButton opens the v2 panel when use_construct_panel_v2 is set (default
-	# true); v2 is built at runtime by BottomMenu with no %unique path, so it's found
-	# by script above. Fall back to v1 if the flag is ever flipped off.
-	var active_panel: Control = _construct_panel
-	if UiPrefs.use_construct_panel_v2 and _construct_panel_v2 != null:
-		active_panel = _construct_panel_v2
-	_check(active_panel != null and active_panel.visible, "construct panel opened from bottom menu")
+	_check(_construct_panel_v2 != null and _construct_panel_v2.visible, "construct panel opened from bottom menu")
 
 
 func _land_path(source_tile: String, dest_tile: String) -> Array:

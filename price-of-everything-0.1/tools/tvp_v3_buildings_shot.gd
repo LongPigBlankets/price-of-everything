@@ -89,7 +89,6 @@ func _ready() -> void:
 
 	var panel: Control = _wm.find_child("TileInfoPanel", true, false)
 	var terrain: Node = _wm.get("terrain_layer")
-	UiPrefs.set_use_tvp_v3(true)
 	await _settle(6)
 
 	# As a player first sees it: every group folded, other companies shut.
@@ -161,7 +160,6 @@ func _ready() -> void:
 
 	await _open(panel, terrain, EMPTY_TILE)
 	_save(panel.get_global_rect().grow(16.0), "bls_empty")
-	UiPrefs.set_use_tvp_v3(false)
 	print("[TVP_SHOT] done")
 	get_tree().quit(0)
 
@@ -252,8 +250,7 @@ func _open(panel: Control, terrain: Node, tile_id: String) -> void:
 
 
 ## How long one rebuild of the tab takes (it runs on every refresh): from the readings kept on the panel,
-## and with none kept; then v2's, and the width discipline (docs/ds2-theme.md §7.12), and how tall the
-## body is.
+## and with none kept; then the width discipline (docs/ds2-theme.md §7.12), and how tall the body is.
 func _timings(panel: Control, tile_id: String) -> void:
 	var t0 := Time.get_ticks_usec()
 	for _i in 5:
@@ -263,13 +260,6 @@ func _timings(panel: Control, tile_id: String) -> void:
 	t0 = Time.get_ticks_usec()
 	panel.call("_refresh_pane", "bl")
 	print("[TVP_SHOT] %s bl rebuild %.1f ms with none kept" % [tile_id, (Time.get_ticks_usec() - t0) / 1000.0])
-	var scratch := VBoxContainer.new()
-	add_child(scratch)
-	t0 = Time.get_ticks_usec()
-	for _i in 3:
-		panel.call("_build_bl_pane", scratch)
-	print("[TVP_SHOT] %s v2 bl build %.1f ms" % [tile_id, (Time.get_ticks_usec() - t0) / 3000.0])
-	scratch.queue_free()
 	var body_scroll: ScrollContainer = panel.find_child("BodyScroll", true, false)
 	var panes: Dictionary = panel.get("_panes")
 	var bl_pane: Control = panes.get("bl")

@@ -22,8 +22,6 @@ func _ready() -> void:
 	add_child(game)
 	await _settle(120)
 	DecisionState.enabled = false
-	if not UiPrefs.use_desk_ds2:
-		UiPrefs.toggle_use_desk_ds2()
 	var dock := game.find_child("EndTurnDock", true, false)
 	var button := game.find_child("EndTurnButton", true, false) as Button
 	await _wait(0.4)

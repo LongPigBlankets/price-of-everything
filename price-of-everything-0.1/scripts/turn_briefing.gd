@@ -18,8 +18,7 @@ extends Node
 # No class_name on building_status.gd, so an autoload must preload it to reach the helpers.
 const BuildingStatus := preload("res://scripts/building_status.gd")
 const StripScript := preload("res://scripts/turn_briefing_strip.gd")
-const PanelScript := preload("res://scripts/turn_briefing_panel.gd")
-const PanelDs2Script := preload("res://scripts/briefing_ds2/briefing_ds2.gd")
+const PanelScript := preload("res://scripts/briefing_ds2/briefing_ds2.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 
 # A dismissed live alert re-surfaces when its magnitude worsens by at least this much
@@ -27,7 +26,7 @@ const BuildingNaming := preload("res://scripts/building_naming.gd")
 const BANKRUPTCY_RESURFACE_BAND := 50.0
 const STARVED_LIST_ROWS := 4
 
-# Shared by the strip + panel: decision-category tints and severity colours
+# The strip's decision-category tints and severity colours
 # (severity keys mirror EventScheduler's).
 const CATEGORY_COLORS := {
 	"labour": Color("#D96AA0"), "market": Color("#E6B34A"),
@@ -107,7 +106,6 @@ func _ready() -> void:
 	MatchState.money_changed.connect(_queue_refresh)
 	LoanState.loans_updated.connect(_queue_refresh)
 	SaveLoad.match_loaded.connect(_on_match_loaded)
-	UiPrefs.briefing_ds2_changed.connect(_on_ds2_changed)
 
 func reset() -> void:
 	_alert_dismissed.clear()
@@ -904,38 +902,18 @@ func _sync_ui() -> void:
 		_strip = StripScript.new()
 		_layer.add_child(_strip)
 	if _panel == null or not is_instance_valid(_panel):
-		_panel = panel_script().new()
+		_panel = PanelScript.new()
 		_layer.add_child(_panel)
-	# Today's panel has nothing to show when empty; the DS2 panel still says the turn can end and
-	# shows the annunciator dark, so the pen opens it either way.
-	if _items.is_empty() and not UiPrefs.use_briefing_ds2:
-		expanded = false
+	# The panel opens even with nothing to show: it still says the turn can end and shows the
+	# annunciator dark, so the pen opens it either way.
 	_strip.visible = strip_enabled and not expanded and not _items.is_empty()
 	if _strip.visible:
 		_strip.refresh()
-	if expanded and (not _items.is_empty() or UiPrefs.use_briefing_ds2):
+	if expanded:
 		_panel.open(_select_on_expand)
 		_select_on_expand = ""
 	else:
 		_panel.visible = false
-
-
-## The panel the briefing shows: the DS2 clipboard with UiPrefs.use_briefing_ds2 on, today's otherwise.
-static func panel_script() -> GDScript:
-	return PanelDs2Script if UiPrefs.use_briefing_ds2 else PanelScript
-
-
-## The switch flipped: the open panel is replaced by the other look, open on the same state.
-func _on_ds2_changed(_on: bool) -> void:
-	if _panel != null and is_instance_valid(_panel):
-		var was_open := expanded
-		expanded = false   # the old panel's hide must not read as the player closing it
-		_panel.visible = false
-		_panel.get_parent().remove_child(_panel)
-		_panel.queue_free()
-		_panel = null
-		expanded = was_open
-	_sync_ui()
 
 
 # ---------------------------------------------------------------------------

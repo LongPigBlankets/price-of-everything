@@ -1,8 +1,8 @@
 extends Node
-## Captures of the bottom bar as the DS2 control desk (UiPrefs.use_desk_ds2) and as the silver tray: at rest,
-## and with a panel open (its button pressed in, or lifted on the tray). Crops the screen's foot.
+## Captures of the bottom bar as the DS2 control desk: at rest, and with a panel open (its button pressed in).
+## Crops the screen's foot.
 ##   AGENT_GODOT_WINDOW=1 godot --path . res://tools/desk_ds2_shot.tscn --quit-after 100000 -- --no-telemetry
-## Writes desk_<look>_<view>.png into $DESK_SHOT_DIR (or /tmp).
+## Writes desk_<view>.png into $DESK_SHOT_DIR (or /tmp).
 
 const ShotHarness := preload("res://tools/shot_harness.gd")
 const CROP_H := 170.0
@@ -23,16 +23,13 @@ func _ready() -> void:
 	await _settle(120)
 	DecisionState.enabled = false
 	var research := game.find_child("TechButton", true, false) as Button
-	for look: String in ["desk", "tray"]:
-		if (look == "desk") != UiPrefs.use_desk_ds2:
-			UiPrefs.toggle_use_desk_ds2()
-		await _wait(0.4)
-		await _shot("desk_%s_rest" % look)
-		research.pressed.emit()
-		await _wait(0.6)
-		await _shot("desk_%s_open" % look)
-		research.pressed.emit()
-		await _wait(0.4)
+	await _wait(0.4)
+	await _shot("desk_rest")
+	research.pressed.emit()
+	await _wait(0.6)
+	await _shot("desk_open")
+	research.pressed.emit()
+	await _wait(0.4)
 	get_tree().quit()
 
 

@@ -114,8 +114,7 @@ func _run() -> void:
 
 	# --- Bottom-menu buttons TOGGLE their panel (open on first press, close on the second).
 	var cbtn := _main.find_child("ConstructButton", true, false) as BaseButton
-	var cpanel_name := "ConstructPanelV2" if UiPrefs.use_construct_panel_v2 else "ConstructPanel"
-	var cpanel := _main.find_child(cpanel_name, true, false) as Control
+	var cpanel := _main.find_child("ConstructPanelV2", true, false) as Control
 	if cbtn != null and cpanel != null:
 		if cpanel.visible:
 			cbtn.pressed.emit()
@@ -147,7 +146,7 @@ func _run() -> void:
 		bbtn.pressed.emit()
 		await get_tree().process_frame
 		await get_tree().process_frame
-		var active_construct := _main.find_child(cpanel_name, true, false)
+		var active_construct := _main.find_child("ConstructPanelV2", true, false)
 		if active_construct != null and active_construct.has_method("expand_building"):
 			active_construct.expand_building("b_007")
 			await get_tree().process_frame

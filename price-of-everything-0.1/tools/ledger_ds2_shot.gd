@@ -1,10 +1,10 @@
 extends Node
-## Captures of the Building Ledger in its v2 and DS2 looks (UiPrefs.use_ledger_ds2), in the real HUD, cropped
+## Captures of the Building Ledger in DS2, in the real HUD, cropped
 ## to the panel: the same seeded buildings (producers and consumers, levels one to three, running, starved
-## and idle, a cost and a net each where the solver has one), then in DS2 the Starved filter on and the table
+## and idle, a cost and a net each where the solver has one), then the Starved filter on and the table
 ## sorted by net per turn, and the DS2 upgrade panel for a factory. Needs a window:
 ##   <godot> --path . res://tools/ledger_ds2_shot.tscn --quit-after 3000 -- --no-telemetry
-## Writes ledger_<look>_<state>.png into $LEDGER_SHOT_DIR (or the user data folder).
+## Writes ledger_ds2*.png into $LEDGER_SHOT_DIR (or the user data folder).
 
 func _ready() -> void:
 	var dir := OS.get_environment("LEDGER_SHOT_DIR")
@@ -43,11 +43,6 @@ func _ready() -> void:
 	var hud: Control = game.get_node("UILayer/HUD")
 	var ledger: Control = (load("res://scenes/building_ledger_panel.tscn") as PackedScene).instantiate()
 	hud.add_child(ledger)
-	await _settle(12)
-	UiPrefs.set_use_ledger_ds2(false)
-	await _settle(8)
-	_shot(ledger, dir.path_join("ledger_v2.png"))
-	UiPrefs.set_use_ledger_ds2(true)
 	await _settle(12)
 	_shot(ledger, dir.path_join("ledger_ds2.png"))
 	ledger.call("_on_chip", "starved", true)

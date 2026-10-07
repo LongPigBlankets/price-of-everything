@@ -612,7 +612,7 @@ func _make_result_row(result: Dictionary) -> PanelContainer:
 	return panel
 
 func _result_has_build_action(result: Dictionary) -> bool:
-	# Mirror the construct panel's research gate (construct_panel._load_data):
+	# Mirror the construct panel's research gate:
 	# gated recipes/buildings stay searchable as encyclopedia entries, but only
 	# grow a Build button once their tech is unlocked. Without this, search was
 	# a research bypass — any gated recipe was buildable from turn 1.

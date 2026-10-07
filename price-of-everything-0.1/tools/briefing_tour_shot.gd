@@ -1,18 +1,14 @@
 extends Node
-## Captures of the turn briefing ("THIS TURN") and the updates dock as they look today: the
-## "before" for the briefing's DS2 move (docs/briefing-ds2-plan.md). Boots the real game, seeds a
-## small empire with one crowded tile and one tile short of its inputs, and plays turns until the
-## turn 3 decision ("A Retired Man Who Misses the Work") arrives, then walks the briefing through
-## its states: decision only, decision with alerts, collapsed (the pen), reopened from the pen,
-## alerts only with the footer "All caught up", each alert's detail, and empty.
+## Captures of the turn briefing ("THIS TURN") and the updates dock (docs/briefing-ds2-plan.md). Boots the real
+## game, seeds a small empire with one crowded tile and one tile short of its inputs, and plays turns until the
+## turn 3 decision ("A Retired Man Who Misses the Work") arrives, then walks the briefing through its states: a
+## decision with figures and alerts lit, two decisions queued, a three choice decision with a locked choice, a
+## window picked, alerts only, each lit window, the rows timed as they arrive and opened by the player with the
+## pen's lamp, and nothing waiting.
 ##   BRIEFING_TOUR_DIR=<dir> <godot> --path . res://tools/briefing_tour_shot.tscn --quit-after 40000 -- --no-telemetry
-## Writes NN_<state>_full.png (the whole screen, half size), NN_<state>_panel.png (the briefing's
-## card) and NN_<state>_dock.png (the bottom left corner with the dock) into the directory.
-##
-## With --ds2 after the `--` (or BRIEFING_DS2=1) it tours the DS2 briefing instead (UiPrefs.use_briefing_ds2),
-## into artifacts/briefing_ds2/ds2_v1/ by default: a decision with figures and alerts lit, two decisions
-## queued, a three choice decision with a locked choice, a window picked, alerts only, each lit window, the
-## rows timed as they arrive and opened by the player with the pen's lamp, and nothing waiting.
+## Writes NN_<state>_full.png (the whole screen, half size), NN_<state>_panel.png (the briefing's card) and
+## NN_<state>_dock.png (the bottom left corner with the dock) into the directory, artifacts/briefing_ds2/ds2_v1/
+## by default.
 
 var _wm: Node
 var _dir := ""
@@ -20,10 +16,9 @@ var _n := 0
 
 
 func _ready() -> void:
-	var ds2 := OS.get_environment("BRIEFING_DS2") == "1" or OS.get_cmdline_user_args().has("--ds2")
 	_dir = OS.get_environment("BRIEFING_TOUR_DIR")
 	if _dir == "":
-		_dir = ProjectSettings.globalize_path("res://artifacts/briefing_ds2/%s" % ("ds2_v1" if ds2 else "before"))
+		_dir = ProjectSettings.globalize_path("res://artifacts/briefing_ds2/ds2_v1")
 	DirAccess.make_dir_recursive_absolute(_dir)
 	_wm = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	add_child(_wm)
@@ -45,97 +40,12 @@ func _ready() -> void:
 		_log_items("after commit")
 	await _settle(20)
 	_log_items("decision turn")
-	if ds2:
-		await _ds2_tour()
-		get_tree().quit(0)
-		return
-
-	# 1. The decision alone: the alerts quietened for this view, brought back after it.
-	var alert_ids: Array = []
-	for it: Dictionary in TurnBriefing.items():
-		if str(it.id).begins_with("alert:") and bool(it.get("dismissible", false)):
-			alert_ids.append(str(it.id))
-	for id: String in alert_ids:
-		TurnBriefing.dismiss(id)
-	await _settle(4)
-	TurnBriefing.expand()
-	await _settle(16)
-	await _capture("decision_only", true)
-	TurnBriefing._alert_dismissed.clear()
-	TurnBriefing._queue_refresh()
-	await _settle(6)
-
-	# 2. The decision with the alerts, as the turn actually opened.
-	TurnBriefing.expand()
-	await _settle(16)
-	await _capture("decision_and_alerts", true)
-
-	# 3. Collapsed: the panel goes; the dock's pen keeps the count.
-	TurnBriefing.collapse()
-	await _settle(12)
-	await _capture("collapsed", false)
-
-	# 4. The dock's slide-out opened on every row (the toasts of the turn).
-	var dock := _dock()
-	if dock != null:
-		dock.call("open_all", "")
-		await _settle(30)
-		await _capture("dock_open", false)
-		dock.call("collapse", false)
-		await _settle(6)
-
-	# 5. The pen reopens the briefing on its decision.
-	if dock != null:
-		dock.call("_open_decisions")
-	else:
-		TurnBriefing.expand()
-	await _settle(16)
-	await _capture("reopened_from_pen", true)
-
-	# 6. The decision answered: alerts only, the footer says the turn can end.
-	var uid := ""
-	for it2: Dictionary in TurnBriefing.items():
-		if str(it2.kind) == "decision":
-			uid = str(it2.uid)
-			break
-	if uid != "":
-		var err := DecisionState.resolve("coo", uid)
-		print("[BRIEF] resolve coo -> '%s'" % err)
-	await _settle(10)
-	TurnBriefing.expand()
-	await _settle(16)
-	_log_items("after resolve")
-	await _capture("alerts_caught_up", true)
-
-	# 7. Each alert or update in the detail pane.
-	for it3: Dictionary in TurnBriefing.items():
-		TurnBriefing.expand(str(it3.id))
-		await _settle(12)
-		await _capture("item_%s" % str(it3.id).replace(":", "_").replace("/", "_"), true)
-
-	# 8. Everything dismissed: nothing left to show.
-	for it4: Dictionary in TurnBriefing.items().duplicate():
-		TurnBriefing.dismiss(str(it4.id))
-	await _settle(12)
-	_log_items("after dismiss all")
-	TurnBriefing.expand()
-	await _settle(12)
-	await _capture("empty", false)
-
-	# 9. A clean screen at full size, no dialog and the dock closed: the ground a study is laid on.
-	_hide_scripted(get_tree().root, "capacity_dialog.gd")
-	if dock != null:
-		dock.call("collapse", false)
-	await _settle(12)
-	RenderingServer.force_draw(false)
-	get_viewport().get_texture().get_image().save_png(_dir.path_join("%02d_clean_screen.png" % (_n + 1)))
-	print("[BRIEF] captured clean screen")
+	await _tour()
 	get_tree().quit(0)
 
 
-## The DS2 briefing's states (UiPrefs.use_briefing_ds2).
-func _ds2_tour() -> void:
-	UiPrefs.set_use_briefing_ds2(true)
+## The briefing's states.
+func _tour() -> void:
 	var dock := _dock()
 	if dock != null:
 		dock.call("collapse", false)
@@ -222,14 +132,6 @@ func _ds2_tour() -> void:
 		TurnBriefing.expand()
 	await _settle(20)
 	await _capture("nothing_waiting", true)
-
-
-func _hide_scripted(n: Node, file: String) -> void:
-	var sc: Script = n.get_script() as Script
-	if sc != null and n is CanvasItem and str(sc.resource_path).get_file() == file:
-		(n as CanvasItem).visible = false
-	for c in n.get_children():
-		_hide_scripted(c, file)
 
 
 ## Six going buildings on their own tiles, three more crowded onto one small tile so its store

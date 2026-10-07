@@ -15,22 +15,13 @@ extends PanelContainer
 ##
 ## See docs/top-bar-v3-spec.md §3.
 
-const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const InfraIcons := preload("res://scripts/infra_icons.gd")
-const BuildingIcon := preload("res://scripts/building_icon.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
-## The tile view's building card, shared so the two lists look like one game.
-const BrushedCard := preload("res://scripts/brushed_card.gd")
-# The DS2 look (UiPrefs.use_transport_ds2).
+# The DS2 parts the panel is built from.
 const Ds2 := preload("res://scripts/transport_ds2/transport_ds2.gd")
 const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
 const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
 const Middleman := preload("res://scripts/middleman_service.gd")
-const ROUTE_STOCKPILE_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_stockpile.png")
-const ROUTE_MARKET_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_port.png")
-const ROUTE_MIDDLEMAN_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_lorry.png")
-const INPUT_ICON: Texture2D = preload("res://assets/icons/ui_icons/construction_materials.png")
-const OUTPUT_ICON: Texture2D = preload("res://assets/icons/research/glyph/output.png")
 
 const PANEL_WIDTH := 1220.0     # +40 over the original, 20 a side, for the infra cards
 const PANEL_HEIGHT := 620.0
@@ -40,17 +31,8 @@ const PANEL_GROWTH := 60.0
 ## Rows the base height already shows comfortably, and what each extra one is worth.
 const ROWS_BEFORE_GROWTH := 4
 const ROW_GROWTH_PX := 20.0
-const COLUMN_MIN_WIDTH := 356.0
-const HEADER_HEIGHT := 52.0
-## The panel's own name, in Bebas — larger than the column headings under it.
-const TITLE_SIZE := 40
-## Content inset from the panel edge, clearing the brass pipe frame.
-const FRAME_INSET := 26
-const GOOD_ICON := 56           # the frameless cream tile; the usual size for a good
-const INFRA_ICON := 32          # the infrastructure's own art, on the same cream chip as a good
-const PILL_HEIGHT := 22
 
-## The filter chips over the infrastructure column, in build order. Cables carry power
+## The filter keys over the infrastructure column, in build order. Cables carry power
 ## rather than freight, so they are listed for completeness and simply never have rows.
 const INFRA_FILTERS: Array[Dictionary] = [
 	{"mode": "roads", "label": "Roads"},
@@ -59,7 +41,6 @@ const INFRA_FILTERS: Array[Dictionary] = [
 	{"mode": "reinf_pipes", "label": "Reinf."},
 	{"mode": "cables", "label": "Cables"},
 ]
-const ROW_SEPARATION := 6
 
 ## A tile at or above this share of capacity counts as "full" — the same threshold the
 ## top bar counts with, so the module badge and this panel can never disagree.
@@ -77,10 +58,8 @@ var _transit_list: VBoxContainer
 var _dragging := false
 var _drag_offset := Vector2.ZERO
 var _refresh_queued := false
-var _infra_enabled: Dictionary = {}      # mode -> bool, driven by the filter chips
-var _route_icon_cache: Dictionary = {}
-## Whether the DS2 look is built, and its routing keys.
-var _ds2 := false
+var _infra_enabled: Dictionary = {}      # mode -> bool, driven by the filter keys
+## The routing objective's keys, by objective id.
 var _routing_keys := {}
 
 
@@ -92,11 +71,9 @@ func _ready() -> void:
 	custom_minimum_size = Vector2(PANEL_WIDTH, PANEL_HEIGHT)
 	size = Vector2(PANEL_WIDTH, PANEL_HEIGHT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	_build_look()
-	UiPrefs.transport_ds2_changed.connect(func(_on: bool) -> void:
-		_build_look()
-		if visible:
-			_refresh())
+	_build()
+	# The lamp over the whole panel (docs/ds2-theme.md §4).
+	LampOverlay.attach(self)
 	# Coalesced (the notification-bell pattern the other panels use): stockpile_changed
 	# fires per transaction during PROCESS — hundreds of times in one burst — and each
 	# would otherwise tear down and rebuild all three columns.
@@ -144,42 +121,8 @@ func _apply_refresh() -> void:
 		_refresh()
 
 
-# ── Look: v2, or DS2 behind UiPrefs.use_transport_ds2 ────────────────────────────────────
-## Builds the panel in the look the switch asks for, taking down the other first.
-func _build_look() -> void:
-	LampOverlay.detach(self)
-	for c in get_children():
-		remove_child(c)
-		c.queue_free()
-	_settings_layer = null
-	_settings_card = null
-	_settings_button = null
-	_routing_keys.clear()
-	_infra_enabled.clear()
-	_ds2 = UiPrefs.use_transport_ds2
-	remove_theme_stylebox_override("panel")
-	if _ds2:
-		_build_ds2()
-		# The lamp over the whole panel (docs/ds2-theme.md §4).
-		LampOverlay.attach(self)
-		return
-	# Own copy of the shared navy stylebox: keep the fill, drop the cream border, and zero
-	# content_margin so the brass overlay can reach the panel edge (the money panel does the
-	# same — the frame straddles the border, so a border underneath it reads as a double line).
-	var base_sb := get_theme_stylebox("panel")
-	if base_sb is StyleBoxFlat:
-		var sb := (base_sb as StyleBoxFlat).duplicate() as StyleBoxFlat
-		sb.set_border_width_all(0)
-		sb.set_content_margin_all(0)
-		add_theme_stylebox_override("panel", sb)
-	_build()
-	# Last child, so the PanelContainer fits it to the whole rect and it paints over the
-	# content rather than under it.
-	add_child(preload("res://scripts/brass_pipe_frame.gd").new())
-
-
-## DS2: the ledger's shell, then the three columns as plastic cases of raised modules.
-func _build_ds2() -> void:
+## The ledger's shell, then the three columns as plastic cases of raised modules.
+func _build() -> void:
 	LedgerV3.dress(self)
 	var margin := MarginContainer.new()
 	for m in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
@@ -198,7 +141,7 @@ func _build_ds2() -> void:
 	root.add_child(Ds2.title_row("Shipments and Stockpiles", [routing.box, _settings_button], func() -> void:
 		if _settings_layer != null:
 			_settings_layer.visible = false
-		hide(), _on_ds2_drag))
+		hide(), _on_drag))
 	root.add_child(LedgerV3.seam())
 
 	var columns := HBoxContainer.new()
@@ -233,7 +176,7 @@ func _build_ds2() -> void:
 	call_deferred("_layout_settings_card")
 
 
-## DS2: a tile's name pressed. The panel closes and the map goes to the tile.
+## A tile's name pressed. The panel closes and the map goes to the tile.
 func _go_to(tile_id: String) -> void:
 	if _settings_layer != null:
 		_settings_layer.visible = false
@@ -241,8 +184,8 @@ func _go_to(tile_id: String) -> void:
 	MatchState.focus_tile_requested.emit(tile_id)
 
 
-## DS2: the title row drags the panel.
-func _on_ds2_drag(event: InputEvent) -> void:
+## The title row drags the panel.
+func _on_drag(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		_dragging = event.pressed
 		_drag_offset = global_position - get_global_mouse_position()
@@ -250,7 +193,7 @@ func _on_ds2_drag(event: InputEvent) -> void:
 		global_position = get_global_mouse_position() + _drag_offset
 
 
-## DS2: the shipments as the In transit column lists them, largest first. A lone shipment keeps its own row
+## The shipments as the In transit column lists them, largest first. A lone shipment keeps its own row
 ## ("Arrives in 2 turns."). Several carrying the same goods to the same place are one flow, read as what
 ## lands a turn: its units spread over the turns it arrives on. Each: {manifest, where, when}.
 static func transit_flows(rows: Array) -> Array:
@@ -303,7 +246,7 @@ static func _thousands(n: int) -> String:
 	return out
 
 
-## A tile as DS2 copy names it: its name, without its coordinates.
+## A tile as the panel's copy names it: its name, without its coordinates.
 static func place(tile_id: String) -> String:
 	var nick := Catalog.tile_name(tile_id)
 	return nick if nick != "" else Catalog.tile_label(tile_id)
@@ -326,149 +269,12 @@ static func worse(a: String, b: String) -> String:
 
 # ── Chrome ────────────────────────────────────────────────────────────────────
 
-func _build() -> void:
-	var margin := MarginContainer.new()
-	# Wide enough that the content clears the brass frame, which straddles the panel edge.
-	for m in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
-		margin.add_theme_constant_override(m, FRAME_INSET)
-	add_child(margin)
-
-	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", DS.SP.SM)
-	margin.add_child(root)
-
-	root.add_child(_header())
-
-	var columns := HBoxContainer.new()
-	columns.add_theme_constant_override("separation", DS.SP.MD)
-	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	root.add_child(columns)
-
-	_stock_list = _column(columns, "Stockpiles", "Fullest first")
-	_infra_list = _column(columns, "Infrastructure", "Most congested first", _infra_filter_bar())
-	_transit_list = _column(columns, "Units in transit", "Largest shipment first")
-	_global_logistics = VBoxContainer.new()
-	_global_logistics.add_theme_constant_override("separation", 6)
-	_global_logistics.custom_minimum_size = Vector2(0, 138)
-	_build_settings_overlay()
-
-
-func _header() -> Control:
-	var row := HBoxContainer.new()
-	row.custom_minimum_size = Vector2(0, HEADER_HEIGHT)
-	row.add_theme_constant_override("separation", DS.SP.SM)
-	var title := Label.new()
-	# Bebas at title size — this is the panel's name, not a section heading inside it.
-	title.theme_type_variation = "Title"
-	title.add_theme_font_size_override("font_size", TITLE_SIZE)
-	title.text = "Shipments and Stockpiles"
-	row.add_child(title)
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(spacer)
-	row.add_child(_build_routing_control())
-	_settings_button = Button.new()
-	_settings_button.name = "LogisticsSettings"
-	_settings_button.text = "Logistics Settings"
-	_settings_button.theme_type_variation = "Primary"
-	_settings_button.custom_minimum_size = Vector2(190, 38)
-	_settings_button.focus_mode = Control.FOCUS_NONE
-	_settings_button.pressed.connect(_toggle_settings)
-	row.add_child(_settings_button)
-	var close := Button.new()
-	close.text = "✕"
-	close.focus_mode = Control.FOCUS_NONE
-	close.pressed.connect(func() -> void:
-		if _settings_layer != null:
-			_settings_layer.visible = false
-		hide())
-	row.add_child(close)
-	return row
-
-
-## The company's routing objective for shipments (how routes between tiles are chosen), every game.
-func _build_routing_control() -> Control:
-	var box := HBoxContainer.new()
-	box.name = "Routing"
-	box.add_theme_constant_override("separation", DS.SP["SM"])
-	var lbl := Label.new()
-	lbl.theme_type_variation = "Caption"
-	lbl.text = "Routing"
-	lbl.add_theme_color_override("font_color", DS.PALETTE.TEXT)
-	lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	box.add_child(lbl)
-	var dd := OptionButton.new()
-	dd.name = "RoutingObjective"
-	dd.focus_mode = Control.FOCUS_NONE
-	dd.custom_minimum_size = Vector2(130, 38)
-	dd.add_item("Fastest", MatchState.RouteObjective.FASTEST)
-	dd.add_item("Cheapest", MatchState.RouteObjective.CHEAPEST)
-	dd.add_item("Blended", MatchState.RouteObjective.BLENDED)
-	dd.select(dd.get_item_index(MatchState.route_objective))
-	dd.item_selected.connect(func(idx: int) -> void: MatchState.set_route_objective(dd.get_item_id(idx)))
-	dd.visibility_changed.connect(func() -> void:
-		if dd.is_visible_in_tree():
-			dd.select(dd.get_item_index(MatchState.route_objective)))
-	box.add_child(dd)
-	return box
-
-
-func _build_settings_overlay() -> void:
-	_settings_layer = Control.new()
-	_settings_layer.name = "LogisticsSettingsOverlay"
-	_settings_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_settings_layer.mouse_filter = Control.MOUSE_FILTER_STOP
-	_settings_layer.visible = false
-	add_child(_settings_layer)
-
-	_settings_card = PanelContainer.new()
-	_settings_card.name = "LogisticsSettingsCard"
-	_settings_card.theme_type_variation = "Card"
-	var base_sb := get_theme_stylebox("panel")
-	if base_sb is StyleBoxFlat:
-		var sb := (base_sb as StyleBoxFlat).duplicate() as StyleBoxFlat
-		sb.set_border_width_all(0)
-		sb.set_content_margin_all(0)
-		_settings_card.add_theme_stylebox_override("panel", sb)
-	_settings_layer.add_child(_settings_card)
-
-	var margin := MarginContainer.new()
-	for m in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
-		margin.add_theme_constant_override(m, FRAME_INSET)
-	_settings_card.add_child(margin)
-	var body := VBoxContainer.new()
-	body.add_theme_constant_override("separation", DS.SP.SM)
-	margin.add_child(body)
-	var heading := HBoxContainer.new()
-	heading.add_theme_constant_override("separation", DS.SP.SM)
-	body.add_child(heading)
-	var title := Label.new()
-	title.theme_type_variation = "Section"
-	title.add_theme_font_size_override("font_size", DS.FS.BODY + 6)
-	title.text = "Logistics Settings"
-	heading.add_child(title)
-	var gap := Control.new()
-	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	heading.add_child(gap)
-	var dismiss := Button.new()
-	dismiss.text = "✕"
-	dismiss.focus_mode = Control.FOCUS_NONE
-	dismiss.pressed.connect(func() -> void: _settings_layer.visible = false)
-	heading.add_child(dismiss)
-	body.add_child(_global_logistics)
-	_settings_card.add_child(preload("res://scripts/brass_pipe_frame.gd").new())
-	_settings_layer.resized.connect(_layout_settings_card)
-	call_deferred("_layout_settings_card")
-
-
 func _layout_settings_card() -> void:
 	if _settings_layer == null or _settings_card == null:
 		return
 	var available := _settings_layer.size
-	var target := Vector2(minf(760.0, maxf(0.0, available.x - 52.0)), minf(300.0, maxf(0.0, available.y - 80.0)))
-	if _ds2:
-		# As tall as its keys: three to a side under the title.
-		target = Vector2(minf(720.0, maxf(0.0, available.x - 52.0)), _settings_card.get_combined_minimum_size().y)
+	# As tall as its keys: three to a side under the title.
+	var target := Vector2(minf(720.0, maxf(0.0, available.x - 52.0)), _settings_card.get_combined_minimum_size().y)
 	_settings_card.size = target
 	_settings_card.position = ((available - target) * 0.5).floor()
 
@@ -483,88 +289,8 @@ func _toggle_settings() -> void:
 		_settings_layer.move_to_front()
 
 
-## One titled, scrolling column. The subtitle is the sort order, and it rides on the
-## RIGHT of the title's own row rather than taking a second line — three columns of
-## two-line headers pushed the actual content down for no information gained.
-##
-## `extra` is dropped between the header and the list (the infrastructure filters).
-func _column(parent: HBoxContainer, title: String, subtitle: String, extra: Control = null) -> VBoxContainer:
-	var wrap := VBoxContainer.new()
-	wrap.custom_minimum_size = Vector2(COLUMN_MIN_WIDTH, 0)
-	wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	wrap.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	wrap.add_theme_constant_override("separation", 4)
-	parent.add_child(wrap)
-
-	var head_row := HBoxContainer.new()
-	head_row.add_theme_constant_override("separation", DS.SP.SM)
-	wrap.add_child(head_row)
-	var head := Label.new()
-	head.theme_type_variation = "Section"
-	head.add_theme_font_size_override("font_size", DS.FS.BODY + 4)
-	head.text = title
-	head_row.add_child(head)
-	var gap := Control.new()
-	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head_row.add_child(gap)
-	var sub := Label.new()
-	sub.theme_type_variation = "Body"
-	sub.add_theme_font_size_override("font_size", DS.FS.CAPTION - 1)
-	sub.add_theme_color_override("font_color", DS.PALETTE.TEXT)
-	sub.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	sub.text = subtitle
-	head_row.add_child(sub)
-
-	if extra != null:
-		wrap.add_child(extra)
-
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	wrap.add_child(scroll)
-
-	var list := VBoxContainer.new()
-	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	list.add_theme_constant_override("separation", ROW_SEPARATION)
-	scroll.add_child(list)
-	return list
-
-
-## Card behind one row. `clickable` gives it the hand cursor.
-func _row_card(clickable: bool = false) -> PanelContainer:
-	var card := PanelContainer.new()
-	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	card.theme_type_variation = "Inset"
-	if clickable:
-		card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	return card
-
-
-func _label(text: String, size: int = DS.FS.BODY, color: Color = DS.PALETTE.TEXT) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.theme_type_variation = "Body"
-	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", color)
-	return l
-
-
-func _numeric(text: String, size: int = DS.FS.CAPTION, color: Color = DS.PALETTE.TEXT) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.theme_type_variation = "Numeric"
-	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", color)
-	return l
-
-
 func _empty_note(list: VBoxContainer, text: String) -> void:
-	if _ds2:
-		list.add_child(Ds2.note(text))
-		return
-	var l := _label(text, DS.FS.CAPTION, DS.PALETTE.TEXT)
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	list.add_child(l)
+	list.add_child(Ds2.note(text))
 
 
 func _clear(container: Node) -> void:
@@ -628,106 +354,18 @@ func _stockpile_row(row: Dictionary) -> Control:
 	var tile_id := str(row.tile_id)
 	var fill := float(row.fill)
 	var cap := float(row.cap)
-	if _ds2:
-		var eta := _full_eta_text(tile_id, fill)
-		var rate := Stockpile.fill_trend_per_turn(tile_id, TREND_TURNS)
-		var dead := maxf(1.0, cap * 0.01)
-		return Ds2.stock_row({
-			"tile_id": tile_id, "name": place(tile_id), "on_go": _go_to.bind(tile_id), "level": Stockpile.get_warehouse_level(tile_id),
-			"used": float(row.used), "cap": cap, "near": NEAR_FULL,
-			"tone": worse(tone_of(_fill_color(fill)), tone_of(_eta_color(tile_id, fill)) if eta != "not filling" else "ok"),
-			"words": "%d%% full, %s of %s." % [int(round(fill * 100.0)), _money(float(row.used)), _money(cap)],
-			# Filling, draining or steady, the band the v2 arrows use: a couple of units a turn is no trend.
-			"trend": "up" if rate > dead else ("down" if rate < -dead else "steady"),
-			"goods": Stockpile.get_top_goods(tile_id, 3),
-		}, func() -> void: MatchState.tile_stockpile_requested.emit(tile_id))
-	var card := _row_card(true)
-	card.tooltip_text = "Open this tile's stockpile"
-	card.gui_input.connect(func(e: InputEvent) -> void:
-		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			card.accept_event()
-			MatchState.tile_stockpile_requested.emit(tile_id))
-
-	var col := _card_body(card)
-
-	# Line 1 — name, warehouse level, fill %, trend.
-	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", DS.SP.SM)
-	col.add_child(top)
-	var name_label := _label(Catalog.tile_label(tile_id), DS.FS.BODY)
-	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_label.clip_text = true
-	top.add_child(name_label)
-	top.add_child(_label("L%d" % Stockpile.get_warehouse_level(tile_id), DS.FS.CAPTION - 1, DS.PALETTE.TEXT))
-	top.add_child(_numeric("%d%%" % int(round(fill * 100.0)), DS.FS.CAPTION, _fill_color(fill)))
-	var trend := Stockpile.fill_trend_per_turn(tile_id, TREND_TURNS)
-	top.add_child(_label(_trend_glyph(trend, cap), DS.FS.CAPTION, _trend_color(trend, cap)))
-
-	# Line 2 — the bar, then the raw numbers and how long the room lasts.
-	col.add_child(_fill_bar(fill, _fill_color(fill)))
-
-	var bottom := HBoxContainer.new()
-	bottom.add_theme_constant_override("separation", DS.SP.SM)
-	col.add_child(bottom)
-	bottom.add_child(_numeric("%d / %d" % [int(row.used), int(cap)], DS.FS.CAPTION - 1, DS.PALETTE.TEXT))
-	var gap := Control.new()
-	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bottom.add_child(gap)
-	bottom.add_child(_label(_full_eta_text(tile_id, fill), DS.FS.CAPTION - 1, _eta_color(tile_id, fill)))
-
-	# Top goods, as the framed icons used everywhere else goods appear.
-	var goods := Stockpile.get_top_goods(tile_id, 3)
-	if not goods.is_empty():
-		var icons := HBoxContainer.new()
-		icons.add_theme_constant_override("separation", 4)
-		col.add_child(icons)
-		for g: Dictionary in goods:
-			icons.add_child(_good_chip(str(g.good_id), int(g.qty)))
-	return card
-
-
-## Padded VBox inside a row card — the shared body layout for all three columns.
-func _card_body(card: PanelContainer) -> VBoxContainer:
-	var pad := MarginContainer.new()
-	for m in ["margin_left", "margin_right"]:
-		pad.add_theme_constant_override(m, DS.SP.SM)
-	for m in ["margin_top", "margin_bottom"]:
-		pad.add_theme_constant_override(m, 6)
-	card.add_child(pad)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 3)
-	pad.add_child(col)
-	return col
-
-
-## A good as the frameless cream tile, with its count as the navy pill overhanging the
-## bottom-right — the placement the recipe cards use, so a good reads the same wherever
-## it appears.
-func _good_chip(good_id: String, qty: int) -> Control:
-	var icon := UIHelpers.make_plain_good_icon(good_id, Catalog.get_internal_name(good_id), GOOD_ICON)
-	icon.add_child(UIHelpers.make_overlaid_quantity_pill(_short_qty(qty), PILL_HEIGHT))
-	return icon
-
-
-func _fill_bar(fill: float, color: Color) -> Control:
-	var track := Panel.new()
-	track.custom_minimum_size = Vector2(0, 6)
-	var tsb := StyleBoxFlat.new()
-	tsb.bg_color = DS.PALETTE.BG_INSET
-	tsb.set_corner_radius_all(3)
-	track.add_theme_stylebox_override("panel", tsb)
-	var bar := Panel.new()
-	var bsb := StyleBoxFlat.new()
-	bsb.bg_color = color
-	bsb.set_corner_radius_all(3)
-	bar.add_theme_stylebox_override("panel", bsb)
-	bar.set_anchors_preset(Control.PRESET_LEFT_WIDE)
-	bar.anchor_right = clampf(fill, 0.0, 1.0)
-	bar.offset_right = 0.0
-	bar.offset_top = 0.0
-	bar.offset_bottom = 0.0
-	track.add_child(bar)
-	return track
+	var eta := _full_eta_text(tile_id, fill)
+	var rate := Stockpile.fill_trend_per_turn(tile_id, TREND_TURNS)
+	var dead := maxf(1.0, cap * 0.01)
+	return Ds2.stock_row({
+		"tile_id": tile_id, "name": place(tile_id), "on_go": _go_to.bind(tile_id), "level": Stockpile.get_warehouse_level(tile_id),
+		"used": float(row.used), "cap": cap, "near": NEAR_FULL,
+		"tone": worse(tone_of(_fill_color(fill)), tone_of(_eta_color(tile_id, fill)) if eta != "not filling" else "ok"),
+		"words": "%d%% full, %s of %s." % [int(round(fill * 100.0)), _money(float(row.used)), _money(cap)],
+		# Filling, draining or steady: a couple of units a turn is no trend.
+		"trend": "up" if rate > dead else ("down" if rate < -dead else "steady"),
+		"goods": Stockpile.get_top_goods(tile_id, 3),
+	}, func() -> void: MatchState.tile_stockpile_requested.emit(tile_id))
 
 
 func _fill_color(fill: float) -> Color:
@@ -736,26 +374,6 @@ func _fill_color(fill: float) -> Color:
 	if fill >= 0.75:
 		return DS.PALETTE.WARN
 	return DS.PALETTE.OK
-
-
-## ▲ filling · ▼ draining · — steady. Steady is a BAND, not an exact zero: a tile
-## drifting a couple of units a turn is not a trend the player should act on.
-func _trend_glyph(rate: float, cap: float) -> String:
-	var dead := maxf(1.0, cap * 0.01)
-	if rate > dead:
-		return "▲"
-	if rate < -dead:
-		return "▼"
-	return "—"
-
-
-func _trend_color(rate: float, cap: float) -> Color:
-	var dead := maxf(1.0, cap * 0.01)
-	if rate > dead:
-		return DS.PALETTE.WARN
-	if rate < -dead:
-		return DS.PALETTE.OK
-	return DS.PALETTE.TEXT
 
 
 func _full_eta_text(tile_id: String, fill: float) -> String:
@@ -819,75 +437,16 @@ func _build_infra() -> void:
 func _infra_row(link: Dictionary) -> Control:
 	var mode := str(link.mode)
 	var ratio := float(link.ratio)
-	if _ds2:
-		var paid_so_far := TransportState.link_congestion_paid(str(link.key))
-		return Ds2.infra_row({
-			"key": str(link.key), "building_id": str(Catalog.get_building_by_internal_name(InfraIcons.normalise(mode)).get("id", "")),
-			"mode_name": _mode_label(mode), "place": place(str(link.tile_id)), "on_go": _go_to.bind(str(link.tile_id)), "level": int(link.level),
-			"flow": float(link.flow), "cap": float(link.cap), "near": 0.85, "tone": tone_of(_load_color(ratio)),
-			"words": "%d%%, %s of %s units." % [int(round(ratio * 100.0)), _money(float(link.flow)), _money(float(link.cap))],
-			"cost_words": ("Congestion has added £%s so far." % _money(paid_so_far)) if paid_so_far > 0.0 else "",
-		}, func() -> void: _open_infra_building(str(link.tile_id), mode))
-	# The same brushed card the tile view gives a building, because that is what this row
-	# leads to: clicking it opens exactly that building's detail panel.
-	var card := BrushedCard.new(DS.SP.SM, 6, 9.0)
-	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	card.mouse_filter = Control.MOUSE_FILTER_STOP
-	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	card.tooltip_text = "Open this infrastructure to inspect or upgrade it"
-	card.mouse_entered.connect(func() -> void: card.hovered = true)
-	card.mouse_exited.connect(func() -> void: card.hovered = false)
-	card.gui_input.connect(func(e: InputEvent) -> void:
-		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			card.accept_event()
-			_open_infra_building(str(link.tile_id), mode))
-
-	# The icon runs down the LEFT of the whole card rather than sitting in the first text
-	# row: at a glance the column then reads as a list of ROADS and PIPES, and the three
-	# lines beside each one are that link's detail.
-	var outer := HBoxContainer.new()
-	outer.add_theme_constant_override("separation", DS.SP.SM)
-	card.add_child(outer)   # the card carries its own content margins
-	var icon := _infra_icon(mode)
-	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	outer.add_child(icon)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 3)
-	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	outer.add_child(col)
-
-	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", DS.SP.SM)
-	col.add_child(top)
-	var name_label := _label("%s · %s" % [_mode_label(mode), Catalog.tile_label(str(link.tile_id))], DS.FS.CAPTION)
-	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_label.clip_text = true
-	top.add_child(name_label)
-	top.add_child(_label("L%d" % int(link.level), DS.FS.CAPTION - 1, DS.PALETTE.TEXT))
-	top.add_child(_numeric("%d%%" % int(round(ratio * 100.0)), DS.FS.CAPTION, _load_color(ratio)))
-
-	# Over-capacity links pin the bar full; the % beside it carries the overshoot.
-	col.add_child(_fill_bar(minf(ratio, 1.0), _load_color(ratio)))
-
-	var bottom := HBoxContainer.new()
-	bottom.add_theme_constant_override("separation", DS.SP.SM)
-	col.add_child(bottom)
-	bottom.add_child(_numeric("%d / %d units" % [int(round(float(link.flow))), int(round(float(link.cap)))],
-		DS.FS.CAPTION - 1, DS.PALETTE.TEXT))
-	var gap := Control.new()
-	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bottom.add_child(gap)
-	var over_turns := TransportState.link_turns_over(str(link.key))
-	bottom.add_child(_label("at cap %d of last %d" % [over_turns, TransportState.LINK_HISTORY_TURNS],
-		DS.FS.CAPTION - 1, DS.PALETTE.WARN if over_turns > 0 else DS.PALETTE.TEXT))
-
-	# Shown only once congestion has actually cost money — a £0 line on every clear
-	# link would bury the ones that are really billing.
-	var paid := TransportState.link_congestion_paid(str(link.key))
-	if paid > 0.0:
-		col.add_child(_label("congestion has added £%s so far" % _money(paid),
-			DS.FS.CAPTION - 1, DS.PALETTE.DANGER))
-	return card
+	# What congestion has cost, shown only once it has cost money: a £0 line on every clear link would bury
+	# the ones that are really billing.
+	var paid_so_far := TransportState.link_congestion_paid(str(link.key))
+	return Ds2.infra_row({
+		"key": str(link.key), "building_id": str(Catalog.get_building_by_internal_name(InfraIcons.normalise(mode)).get("id", "")),
+		"mode_name": _mode_label(mode), "place": place(str(link.tile_id)), "on_go": _go_to.bind(str(link.tile_id)), "level": int(link.level),
+		"flow": float(link.flow), "cap": float(link.cap), "near": 0.85, "tone": tone_of(_load_color(ratio)),
+		"words": "%d%%, %s of %s units." % [int(round(ratio * 100.0)), _money(float(link.flow)), _money(float(link.cap))],
+		"cost_words": ("Congestion has added £%s so far." % _money(paid_so_far)) if paid_so_far > 0.0 else "",
+	}, func() -> void: _open_infra_building(str(link.tile_id), mode))
 
 
 ## Open the Building Detail panel for the infrastructure this row is about, so the player
@@ -938,62 +497,6 @@ func _mode_label(mode: String) -> String:
 	return mode.capitalize()
 
 
-## The infrastructure's own building icon, so a road row is recognisably the thing the
-## player built. Falls back to nothing rather than to a coloured square: the swatch this
-## replaced said only 'road' twice, once in colour and once in words.
-func _infra_icon(mode: String) -> Control:
-	var key := InfraIcons.normalise(mode)
-	var building: Dictionary = Catalog.get_building_by_internal_name(key)
-	# CLEANED, not the raw source: the raw building PNGs carry an opaque navy block, which on a
-	# card of its own navy read as a slightly-wrong square behind every icon. And on the SAME
-	# cream chip the goods in this panel wear — pipes and reinforced pipes were the only art
-	# here sitting bare on the navy, so they read as a different class of thing.
-	var texture: Texture2D = BuildingIcon.clean_texture(str(building.get("id", "")), key)
-	var chip := UIHelpers.make_plain_texture_icon(texture, INFRA_ICON)
-	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	return chip
-
-
-## The filter chips above the infrastructure list — single-select, via a shared ButtonGroup so the engine itself
-## handles the exclusivity: clicking the already-selected chip does nothing rather than
-## clearing it (ButtonGroup.allow_unpress defaults false) — there is always exactly one
-## filter active, never zero. Roads starts selected, so the column opens already showing
-## one real filter instead of an unfiltered dump of every mode at once.
-##
-## The selected chip gets DS's "ChoiceSelected" variation (off-white fill, navy text) —
-## a genuinely different LOOK, not the old plain-Button pressed state, which was only a
-## shade darker within the same steel-blue family and read as barely-there.
-func _infra_filter_bar() -> Control:
-	var bar := HBoxContainer.new()
-	bar.add_theme_constant_override("separation", 4)
-	var group := ButtonGroup.new()
-	var chips: Array[Button] = []
-	var restyle := func() -> void:
-		for c in chips:
-			c.theme_type_variation = "ChoiceSelected" if c.button_pressed else "Button"
-	for i in INFRA_FILTERS.size():
-		var row: Dictionary = INFRA_FILTERS[i]
-		var mode := str(row.mode)
-		var selected := i == 0
-		_infra_enabled[mode] = selected
-		var chip := Button.new()
-		chip.text = str(row.label)
-		chip.toggle_mode = true
-		chip.button_group = group
-		chip.button_pressed = selected
-		chip.theme_type_variation = "ChoiceSelected" if selected else "Button"
-		chip.focus_mode = Control.FOCUS_NONE
-		chip.add_theme_font_size_override("font_size", DS.FS.CAPTION - 2)
-		chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		chip.toggled.connect(func(on: bool) -> void:
-			_infra_enabled[mode] = on
-			restyle.call()
-			_build_infra())
-		chips.append(chip)
-		bar.add_child(chip)
-	return bar
-
-
 # ── Column 3 · Units in transit ───────────────────────────────────────────────
 
 func _build_transit() -> void:
@@ -1018,17 +521,13 @@ func _build_transit() -> void:
 	if rows.is_empty():
 		_empty_note(_transit_list, "Nothing is on the move.")
 		return
-	if _ds2:
-		var flows := transit_flows(rows)
-		for i in flows.size():
-			var flow: Dictionary = flows[i]
-			if str(flow.get("tile_id", "")) != "":
-				flow["place"] = place(str(flow.tile_id))
-				flow["on_go"] = _go_to.bind(str(flow.tile_id))
-			_transit_list.add_child(Ds2.transit_row(flow, i))
-		return
-	for row: Dictionary in rows:
-		_transit_list.add_child(_transit_row(row))
+	var flows := transit_flows(rows)
+	for i in flows.size():
+		var flow: Dictionary = flows[i]
+		if str(flow.get("tile_id", "")) != "":
+			flow["place"] = place(str(flow.tile_id))
+			flow["on_go"] = _go_to.bind(str(flow.tile_id))
+		_transit_list.add_child(Ds2.transit_row(flow, i))
 
 
 ## What a shipment is carrying, as [{good_id, qty}]. Sales carry an itemised
@@ -1048,76 +547,7 @@ func _manifest(ship: Dictionary) -> Array:
 	return out
 
 
-func _transit_row(row: Dictionary) -> Control:
-	var card := _row_card()
-	var col := _card_body(card)
-	var outer := HBoxContainer.new()
-	outer.add_theme_constant_override("separation", DS.SP.SM)
-	col.add_child(outer)
-
-	# The cargo itself: one framed icon per good, each with its count pill. A
-	# multi-good shipment simply grows wider — the row is sized by what it carries.
-	var goods := HBoxContainer.new()
-	goods.add_theme_constant_override("separation", 6)
-	goods.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	outer.add_child(goods)
-	for entry: Dictionary in row.manifest:
-		goods.add_child(_good_chip(str(entry.good_id), int(entry.qty)))
-
-	var right := VBoxContainer.new()
-	right.alignment = BoxContainer.ALIGNMENT_CENTER
-	right.add_theme_constant_override("separation", 2)
-	outer.add_child(right)
-
-	var dest := HBoxContainer.new()
-	dest.add_theme_constant_override("separation", 4)
-	dest.alignment = BoxContainer.ALIGNMENT_END
-	right.add_child(dest)
-	if bool(row.to_market):
-		dest.add_child(_PortIcon.new(DS.PALETTE.ACCENT))
-		dest.add_child(_label("Market", DS.FS.CAPTION - 1, DS.PALETTE.ACCENT))
-	else:
-		dest.add_child(_label(Catalog.tile_label(str(row.destination)), DS.FS.CAPTION - 1, DS.PALETTE.TEXT))
-
-	var turns := int(row.turns)
-	var eta := _numeric(("arrives now" if turns <= 0 else "%d turn%s" % [turns, "" if turns == 1 else "s"]),
-		DS.FS.CAPTION, DS.PALETTE.TEXT)
-	eta.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	right.add_child(eta)
-	return card
-
-
-## Small harbour mark — a quay with a bollard, water beneath — flagging freight bound
-## for the global market rather than another tile. Drawn: no port glyph in the font.
-class _PortIcon extends Control:
-	var color := Color.WHITE
-	func _init(c: Color) -> void:
-		color = c
-		custom_minimum_size = Vector2(14, 14)
-		size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-	func _draw() -> void:
-		var w := size.x
-		var h := size.y
-		draw_line(Vector2(1.0, h * 0.62), Vector2(w * 0.62, h * 0.62), color, 1.4, true)
-		draw_line(Vector2(w * 0.30, h * 0.62), Vector2(w * 0.30, h * 0.22), color, 1.4, true)
-		draw_circle(Vector2(w * 0.30, h * 0.20), 1.8, color)
-		for i in 2:
-			var y := h * (0.78 + 0.14 * float(i))
-			draw_line(Vector2(1.0, y), Vector2(w - 1.0, y), Color(color, 0.45), 1.0, true)
-
-
 # ── Formatting ────────────────────────────────────────────────────────────────
-
-## Compact count for the quantity pill: 1200 -> "1.2k". The pill is a small capsule and
-## a five-digit run would stretch it out of proportion with the icon beside it.
-func _short_qty(qty: int) -> String:
-	if qty < 1000:
-		return str(qty)
-	if qty < 10000:
-		return "%.1fk" % (float(qty) / 1000.0)
-	return "%dk" % int(round(float(qty) / 1000.0))
-
 
 func _money(amount: float) -> String:
 	var v := int(round(amount))
@@ -1132,46 +562,20 @@ func _money(amount: float) -> String:
 	return ("−" if v < 0 else "") + out
 
 
-# ── Dragging (matches the other floating panels) ──────────────────────────────
-
-func _gui_input(event: InputEvent) -> void:
-	if _ds2:
-		return
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		if event.pressed:
-			if event.position.y > HEADER_HEIGHT:
-				return
-			_dragging = true
-			_drag_offset = global_position - get_global_mouse_position()
-			accept_event()
-		else:
-			_dragging = false
-			accept_event()
-	elif event is InputEventMouseMotion and _dragging:
-		global_position = get_global_mouse_position() + _drag_offset
-		accept_event()
+# ── Logistics ─────────────────────────────────────────────────────────────────
 
 func _build_logistics_overview(list: VBoxContainer) -> void:
 	if not preload("res://scripts/middleman_service.gd").active(): return
 	var service = preload("res://scripts/middleman_service.gd")
-	list.add_child(Ds2.list_heading("Building logistics") if _ds2 else _label("Building logistics"))
+	list.add_child(Ds2.list_heading("Building logistics"))
 	for b: Dictionary in BuildingState.buildings.values():
 		if not service.eligible(b): continue
 		var iid := str(b.instance_id)
-		if _ds2:
-			list.add_child(Ds2.logistics_row(iid, BuildingNaming.of(b), "Inputs: %s. Outputs: %s." % [
-				"Intermediary" if service.uses_inputs(iid) else "Managed", "Intermediary" if service.uses_outputs(iid) else "Managed"],
-				func() -> void:
-					hide()
-					MatchState.focus_building_requested.emit(iid)))
-			continue
-		var button := Button.new()
-		button.text = "%s · In: %s / Out: %s" % [BuildingNaming.of(b),"Local Suppliers" if service.uses_inputs(iid) else "Managed","Local Suppliers" if service.uses_outputs(iid) else "Managed"]
-		button.tooltip_text = "Open building details to change logistics. Managed deliveries use generic carriers."
-		button.pressed.connect(func() -> void:
-			hide()
-			MatchState.focus_building_requested.emit(iid))
-		list.add_child(button)
+		list.add_child(Ds2.logistics_row(iid, BuildingNaming.of(b), "Inputs: %s. Outputs: %s." % [
+			"Intermediary" if service.uses_inputs(iid) else "Managed", "Intermediary" if service.uses_outputs(iid) else "Managed"],
+			func() -> void:
+				hide()
+				MatchState.focus_building_requested.emit(iid)))
 
 func _build_global_logistics() -> void:
 	_clear(_global_logistics)
@@ -1183,27 +587,16 @@ func _build_global_logistics() -> void:
 		if _settings_layer != null:
 			_settings_layer.visible = false
 		return
-	if _ds2:
-		_global_logistics.add_child(Ds2.Parts.caption("For every building in the company"))
-		var sides := HBoxContainer.new()
-		sides.add_theme_constant_override("separation", 18)
-		_global_logistics.add_child(sides)
-		for side: String in ["input", "output"]:
-			sides.add_child(_ds2_settings_side(side))
-		return
-	var title := _label("All Buildings in the company", DS.FS.BODY + 4, DS.PALETTE.ACCENT)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_global_logistics.add_child(title)
-	var columns := HBoxContainer.new()
-	columns.add_theme_constant_override("separation", DS.SP.MD)
-	columns.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_global_logistics.add_child(columns)
-	columns.add_child(_global_logistics_side("input"))
-	columns.add_child(_global_logistics_side("output"))
+	_global_logistics.add_child(Ds2.Parts.caption("For every building in the company"))
+	var sides := HBoxContainer.new()
+	sides.add_theme_constant_override("separation", 18)
+	_global_logistics.add_child(sides)
+	for side: String in ["input", "output"]:
+		sides.add_child(_settings_side(side))
 
 
-## DS2: one side's three keys, locked ones saying what they need.
-func _ds2_settings_side(side: String) -> Control:
+## One side's three keys, locked ones saying what they need.
+func _settings_side(side: String) -> Control:
 	var state: Dictionary = Middleman.global_side(side)
 	var inputs := side == "input"
 	var none: bool = (state.ids as Array).is_empty()
@@ -1216,94 +609,6 @@ func _ds2_settings_side(side: String) -> Control:
 		choices.append({"id": str(spec[0]), "label": str(spec[1]), "tip": lock if lock != "" else str(spec[2]),
 			"enabled": not none and lock == "", "active": _global_logistics_choice_active(str(spec[0]), side, state.ids)})
 	return Ds2.settings_side("Inputs" if inputs else "Outputs", choices, func(destination: String) -> void: _request_global_logistics(side, destination))
-
-
-func _global_logistics_side(side: String) -> Control:
-	var service = preload("res://scripts/middleman_service.gd")
-	var state: Dictionary = service.global_side(side)
-	var title := "Inputs" if side == "input" else "Outputs"
-	var column := VBoxContainer.new()
-	column.name = "GlobalLogistics%s" % title
-	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	column.add_theme_constant_override("separation", 5)
-	var heading := HBoxContainer.new()
-	heading.alignment = BoxContainer.ALIGNMENT_CENTER
-	heading.add_theme_constant_override("separation", 6)
-	heading.add_child(_global_logistics_section_icon(side))
-	var label := _label(title, DS.FS.BODY, DS.PALETTE.TEXT)
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	heading.add_child(label)
-	column.add_child(heading)
-	var row := HBoxContainer.new()
-	row.name = "Choices"
-	row.add_theme_constant_override("separation", 6)
-	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var choices := [
-		{"id":"middleman", "label":"Local Suppliers", "icon":ROUTE_MIDDLEMAN_ICON, "tip":"Use Local Suppliers for all %s." % title.to_lower()},
-		{"id":"market", "label":"Sell to market", "icon":ROUTE_MARKET_ICON, "tip":("Buy all inputs from the Global Market via a port." if side == "input" else "Sell all outputs to the Global Market via a port.")},
-		{"id":"stockpile", "label":"Tile stockpile", "icon":ROUTE_STOCKPILE_ICON, "tip":("Draw all inputs from each building's tile stockpile." if side == "input" else "Retain all outputs in each building's tile stockpile.")},
-	]
-	for choice: Dictionary in choices:
-		var destination := str(choice.id)
-		var button := _global_logistics_choice_button(destination, side, state, str(choice.label), choice.icon as Texture2D, str(choice.tip))
-		button.name = destination.capitalize()
-		if state.ids.is_empty():
-			button.disabled = true
-		elif destination == "market" and not ResearchState.global_trade_license_available():
-			button.disabled = true
-			button.tooltip_text = "Government Import/Export License required to use the Global Market."
-		elif destination == "stockpile" and not ResearchState.open_logistics_contracts_available():
-			button.disabled = true
-			button.tooltip_text = "Open Logistics Contracts research required to use tile stockpiles here."
-		if not button.disabled:
-			button.pressed.connect(func() -> void: _request_global_logistics(side, destination))
-		row.add_child(button)
-	column.add_child(row)
-	return column
-
-
-func _global_logistics_section_icon(side: String) -> TextureRect:
-	var icon := TextureRect.new()
-	icon.custom_minimum_size = Vector2(24, 24)
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.texture = _off_white_route_icon(INPUT_ICON if side == "input" else OUTPUT_ICON)
-	icon.tooltip_text = "Inputs" if side == "input" else "Outputs"
-	return icon
-
-
-func _global_logistics_choice_button(destination: String, side: String, state: Dictionary, text: String, texture: Texture2D, tip: String) -> Button:
-	var button := Button.new()
-	button.text = ""
-	button.icon = _off_white_route_icon(texture)
-	button.tooltip_text = "%s\n%s" % [text, tip] if tip != "" else text
-	button.focus_mode = Control.FOCUS_NONE
-	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button.custom_minimum_size = Vector2(58, 52)
-	button.expand_icon = true
-	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	button.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
-	button.add_theme_constant_override("icon_max_width", 34)
-	button.add_theme_color_override("font_color", DS.PALETTE.TEXT)
-	button.add_theme_color_override("font_hover_color", DS.PALETTE.TEXT)
-	button.add_theme_color_override("font_pressed_color", DS.PALETTE.TEXT)
-	var active := _global_logistics_choice_active(destination, side, state.ids as Array)
-	button.add_theme_stylebox_override("normal", _global_logistics_button_style(active, false))
-	button.add_theme_stylebox_override("hover", _global_logistics_button_style(active, true))
-	button.add_theme_stylebox_override("pressed", _global_logistics_button_style(true, true))
-	button.add_theme_stylebox_override("disabled", _global_logistics_button_style(false, false))
-	return button
-
-
-func _global_logistics_button_style(selected: bool, hovered: bool) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
-	style.bg_color = DS.PALETTE.BG_HIGHLIGHT if hovered else DS.PALETTE.BG_INSET
-	style.border_color = DS.PALETTE.ACCENT if selected else DS.PALETTE.BORDER_SOFT
-	style.set_border_width_all(2 if selected else 1)
-	style.set_corner_radius_all(7)
-	style.set_content_margin_all(6)
-	return style
 
 
 func _global_logistics_choice_active(destination: String, side: String, ids: Array) -> bool:
@@ -1366,49 +671,3 @@ func _apply_global_logistics(side: String, destination: String) -> bool:
 					MatchState.set_output_stockpile_destination(iid, str(BuildingState.get_building(iid).get("tile_id", "")), gid)
 	_refresh()
 	return true
-
-func _global_source_icon(intermediary: bool) -> TextureRect:
-	var icon := TextureRect.new()
-	icon.custom_minimum_size = Vector2(30, 30)
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.tooltip_text = "Local Suppliers" if intermediary else "Your own source"
-	if intermediary:
-		icon.texture = preload("res://assets/icons/research/glyph/lorry.png")
-		var shader := Shader.new()
-		shader.code = "shader_type canvas_item; void fragment(){ COLOR = vec4(0.94, 0.89, 0.76, texture(TEXTURE, UV).a); }"
-		var ink := ShaderMaterial.new()
-		ink.shader = shader
-		icon.material = ink
-	else: icon.texture = BuildingIcon.clean_texture("b_004", "port")
-	return icon
-
-
-func _off_white_route_icon(texture: Texture2D) -> Texture2D:
-	if texture == null:
-		return texture
-	var key := texture.resource_path
-	if key == "":
-		return texture
-	if _route_icon_cache.has(key):
-		return _route_icon_cache[key] as Texture2D
-	var image := texture.get_image()
-	if image == null:
-		return texture
-	image = image.duplicate()
-	if image.is_compressed():
-		image.decompress()
-	image.convert(Image.FORMAT_RGBA8)
-	image.clear_mipmaps()
-	var data := image.get_data()
-	var cream := Color(0.995234, 0.930806, 0.763265, 1.0)
-	for offset in range(0, data.size(), 4):
-		if data[offset + 3] > 0:
-			data[offset] = int(round(cream.r * 255.0))
-			data[offset + 1] = int(round(cream.g * 255.0))
-			data[offset + 2] = int(round(cream.b * 255.0))
-	var recoloured := Image.create_from_data(image.get_width(), image.get_height(), false, Image.FORMAT_RGBA8, data)
-	recoloured.generate_mipmaps()
-	var result := ImageTexture.create_from_image(recoloured)
-	_route_icon_cache[key] = result
-	return result

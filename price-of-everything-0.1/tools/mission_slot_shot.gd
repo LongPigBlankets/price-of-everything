@@ -65,7 +65,7 @@ func _ready() -> void:
 	await _shot("next", 260.0)
 	# A title longer than the key allows: cut short at the cap.
 	var slot: Control = bar.get("_mission_slot")
-	bar.get("_quest_title").text = "Ship your coal from the new mine to every tile that burns it"
+	bar.set("_quest_title", "Ship your coal from the new mine to every tile that burns it")
 	slot.call("set_mission", "Ship your coal from the new mine to every tile that burns it", Vector2i(3, 10))
 	bar.call("_place_quest")
 	await _settle(6)

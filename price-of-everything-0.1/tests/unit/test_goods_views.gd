@@ -532,38 +532,6 @@ func _test_empire_rag() -> void:
 	_check(keys == ["power", "input", "duration", "cost", "produce_cost", "modifier"], "empire rag: keys in detail-panel order")
 	_check(all_colors, "empire rag: every indicator carries a Color")
 
-func _test_group_card_content_fits() -> void:
-	# A TVP group card stacks name (BuildingName 22) + "Cost Basis" (13) + value (14) inside
-	# GROUP_CARD_H. With a 20px inset top and bottom the content was ~7px taller than the space
-	# left, so the expanding pusher collapsed and the value row sat on the card's bottom edge.
-	# Measure with the real theme rather than trusting the arithmetic.
-	var TVP := preload("res://scripts/tile_info_panel_v2.gd")
-	var v_inset := 8   # must match tile_info_panel_v2._add_group_card
-	var name_lbl := Label.new()
-	name_lbl.theme_type_variation = &"BuildingName"
-	name_lbl.text = "Onshore wind generation"
-	var head_lbl := Label.new()
-	head_lbl.theme_type_variation = &"Body"
-	head_lbl.add_theme_font_size_override("font_size", 13)
-	head_lbl.text = "Cost Basis"
-	var val_lbl := Label.new()
-	val_lbl.theme_type_variation = &"Numeric"
-	val_lbl.add_theme_font_size_override("font_size", 14)
-	val_lbl.text = "0.4213"
-	var holder := Control.new()
-	add_child(holder)
-	for l in [name_lbl, head_lbl, val_lbl]:
-		holder.add_child(l)
-	var content: float = name_lbl.get_minimum_size().y + head_lbl.get_minimum_size().y \
-		+ val_lbl.get_minimum_size().y + 2.0 * 2.0   # VBox separation = 2, two gaps
-	var available: float = float(TVP.GROUP_CARD_H) - 2.0 * float(v_inset)
-	_check(content <= available,
-		"TVP group card: %.0fpx of rows fits the %.0fpx left by a %dpx inset" % [content, available, v_inset])
-	_check(float(TVP.GROUP_CARD_H) - 2.0 * 20.0 < content,
-		"...and the old 20px inset genuinely did NOT fit (that was the misalignment)")
-	holder.queue_free()
-
-
 ## The supply chain board's model: the street plan every tile shares, and how a route becomes hops.
 func _test_empire_board_model() -> void:
 	var Model := preload("res://scripts/empire_board_model.gd")

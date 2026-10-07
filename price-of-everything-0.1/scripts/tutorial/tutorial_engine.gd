@@ -360,7 +360,6 @@ func _run_setup(actions: Array) -> void:
 					MatchState.focus_building_requested.emit(iid)
 			"focus_tile_stock":
 				# Open the tile panel on its Stock tab (so the surplus destination selector exists).
-				load("res://scripts/tile_info_panel_v2.gd").set("_skip_sell_surplus_confirm", true)
 				MatchState.focus_tile_requested.emit(str(a.get("tile", "")))
 				var tp := _find("TileInfoPanel")
 				if tp != null and tp.has_method("_select_tab"):
@@ -403,10 +402,9 @@ func _run_setup(actions: Array) -> void:
 				if tile_panel != null and tile_panel is Control:
 					(tile_panel as Control).hide()
 			"close_construct":
-				for cp_name in ["ConstructPanel", "ConstructPanelV2"]:
-					var cp := _find(cp_name)
-					if cp != null and cp is Control:
-						(cp as Control).hide()
+				var cp := _find("ConstructPanelV2")
+				if cp != null and cp is Control:
+					(cp as Control).hide()
 			"expand_construct_building":
 				# Reveal a building's recipe rows in construct panel v2 so the next
 				# step can spotlight a specific RecipeRow_<id>.

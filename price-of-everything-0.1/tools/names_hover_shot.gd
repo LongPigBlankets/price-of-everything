@@ -18,7 +18,6 @@ func _ready() -> void:
 	var dir := OS.get_environment("NAMES_SHOT_DIR")
 	if dir != "":
 		_out = dir
-	UiPrefs.set_use_bdp_v3(true)
 	_vp = SubViewport.new()
 	_vp.size = LOGICAL * 2
 	_vp.size_2d_override = LOGICAL
@@ -55,8 +54,7 @@ func _ready() -> void:
 	bdp.hide()
 	await _settle(6)
 
-	# Tile view v3's Buildings tab on the farm tile.
-	UiPrefs.set_use_tvp_v3(true)
+	# The tile view's Buildings tab on the farm tile.
 	var panel: Control = _wm.find_child("TileInfoPanel", true, false)
 	var terrain: Node = _wm.get("terrain_layer")
 	var td: Dictionary = terrain.tiles.get(terrain.id_to_coord(FARM_TILE), {"id": FARM_TILE})

@@ -27,16 +27,6 @@ func _tile_types_from_csv() -> Dictionary:
 	file.close()
 	return out
 
-func _find_node_by_script(node: Node, script_path: String) -> Node:
-	var s: Script = node.get_script() as Script
-	if s != null and s.resource_path == script_path:
-		return node
-	for child in node.get_children():
-		var hit := _find_node_by_script(child, script_path)
-		if hit != null:
-			return hit
-	return null
-
 func _gd_files_in(directory: String) -> PackedStringArray:
 	var out := PackedStringArray()
 	var dir := DirAccess.open(directory)
@@ -83,13 +73,10 @@ func _test_scripts_parse() -> void:
 		"res://scripts/search_overlay.gd",
 		"res://scripts/good_icons.gd",
 		"res://scripts/catalog.gd",
-		"res://scripts/construct_panel.gd",
 		"res://scripts/construct_panel_v2.gd",
 		"res://scripts/building_detail_panel_v2.gd",
 		"res://scripts/infrastructure_info.gd",
 		"res://scripts/build_mode.gd",
-		"res://scripts/building_row.gd",
-		"res://scripts/recipe_row.gd",
 		"res://scripts/logistics_overlay.gd",
 		"res://scripts/mapmodes_panel.gd",
 		"res://scripts/overlay_legend.gd",
@@ -202,166 +189,31 @@ func _test_widgets_instantiate() -> void:
 	var _saved_adv_unlocked := AdvisorState.advisors_unlocked
 	AdvisorState.advisors_unlocked = true
 	AdvisorState.advisors_changed.emit()
-	# This fixture drives today's (v2) tabs; the DS2 look is the default and has its own tests (test_people_ds2.gd).
-	var was_people_ds2: bool = UiPrefs.use_people_ds2
-	UiPrefs.set_use_people_ds2(false)
+	# The panel builds its DS2 shell; the boardroom and the works have their own tests (test_people_ds2.gd).
 	var pp: Node = load("res://scripts/people_panel.gd").new()
 	add_child(pp)
-	_check(
-		_tree_has_label_text(pp, "Labour") and _tree_has_label_text(pp, "Advisors")
-		and _tree_has_label_text(pp, "0.8x") and _tree_has_label_text(pp, "WORKFORCE POLICIES"),
-		"PeoplePanel builds Labour and Advisors tabs")
-	# The Advisors tab is now the ROLE-FIRST council view: one card per SEAT.
-	# Hiring opens at the founder's decision turn; this fixture exercises the hire flow.
+	_check(pp.find_child("PeopleDs2", true, false) != null, "PeoplePanel builds its DS2 shell")
+	pp.queue_free()
+	# The hire and fire flow the boardroom drives, on AdvisorState itself.
 	TurnManager.current_turn = maxi(TurnManager.current_turn, DecisionState.FOUNDER_DECISION_TURN)
-	var council_tab: Node = _find_node_by_script(pp, "res://scripts/advisor_council_tab.gd")
-	_check(council_tab != null and _tree_has_label_text(pp, "COUNCIL SEATS")
-		and _tree_has_label_text(pp, "CFO") and _tree_has_label_text(pp, "VP Logistics"),
-		"PeoplePanel shows advisor payroll at the top")
-	_check(pp.find_child("AdvisorAddNewButton", true, false) != null,
-		"PeoplePanel exposes a stable Add new advisor button for the tutorial spotlight")
 	_check(AdvisorState.available_advisors().size() == AdvisorState.advisor_pool().size()
 		and AdvisorState.permanent_advisors().is_empty(),
-		"PeoplePanel starts with all advisors available and none permanent")
-	council_tab.call("_set_view", {"mode": "picker", "hire_seat": "cfo", "back": "roster"})
-	_check(_tree_has_label_text(pp, "Vera Ashby") and _tree_has_label_text(pp, "Rufus Ashby")
-		and _tree_has_label_text(pp, "Hiring for"),
-		"PeoplePanel plus slot opens the available advisor pool")
+		"advisors: all available and none permanent to start")
 	var first_advisor: Dictionary = AdvisorState.available_advisors()[0]
-	var first_id := str(first_advisor.get("id", ""))
-	council_tab.call("_set_view", {"mode": "detail", "sel_id": first_id, "hire_seat": "cfo", "back": "picker"})
-	_check(_tree_has_label_text(pp, str(first_advisor.get("name", "")))
-		and not AdvisorState.permanent_advisor_ids.has(first_id),
-		"PeoplePanel clicking an available advisor opens the profile, not an instant hire")
-	var default_confirm := pp.find_child("AdvisorHireAssignButton", true, false) as Button
-	var default_cfo := pp.find_child("AdvisorSeatChoice_cfo", true, false) as Button
-	var default_coo := pp.find_child("AdvisorSeatChoice_coo", true, false) as Button
-	_check(pp.find_child("AdvisorBonusPrompt", true, false) != null
-		and pp.find_child("AdvisorBonusSection", true, false) == null
-		and default_confirm != null and default_confirm.disabled
-		and default_cfo != null and not default_cfo.button_pressed
-		and default_coo != null and not default_coo.button_pressed,
-		"PeoplePanel candidate profile starts with no position or bonus preview selected")
-	var cfo_rows: Array = council_tab.call("_advisor_bonus_rows", first_id, "cfo")
-	var coo_rows: Array = council_tab.call("_advisor_bonus_rows", first_id, "coo")
-	default_cfo.pressed.emit()
-	var cfo_bonus := pp.find_child("AdvisorBonusSection", true, false) as Label
-	var cfo_bonus_value := pp.find_child("AdvisorBonusValue", true, false) as Label
-	var cfo_salary_value := pp.find_child("AdvisorSalaryValue", true, false) as Label
-	var selected_cfo := pp.find_child("AdvisorSeatChoice_cfo", true, false) as Button
-	var selected_cfo_style := selected_cfo.get_theme_stylebox("normal") if selected_cfo != null else null
-	_check(cfo_bonus != null and cfo_bonus.text.contains("CFO")
-		and selected_cfo != null and selected_cfo.button_pressed,
-		"PeoplePanel selecting CFO rebuilds the CFO bonus preview")
-	_check(cfo_bonus_value != null and cfo_bonus_value.text.begins_with("Preview bonuses: £")
-		and cfo_salary_value != null and cfo_salary_value.text.begins_with("Salary: £")
-		and cfo_bonus_value.text.ends_with(" per turn")
-		and cfo_salary_value.text.ends_with(" per turn"),
-		"PeoplePanel selected position compares snapshot bonuses with salary")
-	_check(selected_cfo != null and selected_cfo.theme_type_variation == &"ChoiceSelected"
-		and selected_cfo_style is StyleBoxFlat,
-		"PeoplePanel selected position uses the dedicated selected-choice surface")
-	_check(selected_cfo_style is StyleBoxFlat
-		and (selected_cfo_style as StyleBoxFlat).bg_color.is_equal_approx(DS.PALETTE["ACCENT"]),
-		"PeoplePanel selected-choice surface is off-white (got %s, want %s)" % [
-			str((selected_cfo_style as StyleBoxFlat).bg_color) if selected_cfo_style is StyleBoxFlat else "not flat",
-			str(DS.PALETTE["ACCENT"]),
-		])
-	_check(selected_cfo.get_theme_color("font_color").is_equal_approx(DS.PALETTE["BG_PANEL"])
-		and selected_cfo.get_theme_color("font_pressed_color").is_equal_approx(DS.PALETTE["BG_PANEL"]),
-		"PeoplePanel selected-choice text is navy (got %s/%s, want %s)" % [
-			str(selected_cfo.get_theme_color("font_color")),
-			str(selected_cfo.get_theme_color("font_pressed_color")),
-			str(DS.PALETTE["BG_PANEL"]),
-		])
-	var cfo_state_coo := pp.find_child("AdvisorSeatChoice_coo", true, false) as Button
-	cfo_state_coo.pressed.emit()
-	var coo_bonus := pp.find_child("AdvisorBonusSection", true, false) as Label
-	var selected_coo := pp.find_child("AdvisorSeatChoice_coo", true, false) as Button
-	var unselected_cfo := pp.find_child("AdvisorSeatChoice_cfo", true, false) as Button
-	_check(coo_bonus != null and coo_bonus.text.contains("COO")
-		and cfo_rows != coo_rows
-		and selected_coo != null and selected_coo.button_pressed
-		and unselected_cfo != null and not unselected_cfo.button_pressed
-		and unselected_cfo.theme_type_variation == &"",
-		"PeoplePanel changes the bonus preview and selected button with each position")
-	_check(pp.find_child("AdvisorHireAssignButton", true, false) != null
-		and not (pp.find_child("AdvisorHireAssignButton", true, false) as Button).disabled,
-		"PeoplePanel enables Hire & assign only after a position is selected")
-	# The Hire & assign confirm runs exactly this hire + seat-assign pair.
-	var hired_ok := AdvisorState.hire_advisor(first_id) and AdvisorState.assign_advisor_to_seat("cfo", first_id)
-	council_tab.call("_set_view", {"mode": "roster"})
-	_check(hired_ok and AdvisorState.permanent_advisor_ids.has(first_id)
-		and _tree_has_label_text(pp, str(first_advisor.get("name", ""))),
-		"PeoplePanel Confirm Hire from the profile hires a permanent advisor and updates payroll")
-	_check(pp.find_child("AdvisorBonusValue", true, false) != null
-		and pp.find_child("AdvisorSalaryValue", true, false) != null,
-		"PeoplePanel keeps the bonus-versus-salary comparison after hiring")
-	# Fire flow: the profile footer for an employed advisor benches them.
-	pp.call("_open_advisor_detail", first_advisor)
-	var fire_footer: Control = pp.call("_advisor_detail_footer", first_advisor, true, false) as Control
-	_check(fire_footer is Button and (fire_footer as Button).text == "Fire Advisor",
-		"PeoplePanel employed-advisor footer offers Fire Advisor")
 	var fid := str(first_advisor.get("id", ""))
-	# Net-modifiers readout + the "See all advisor modifiers" DS panel.
-	AdvisorState.assign_advisor_to_seat("cfo", fid)
-	_check((pp.call("_advisor_net_modifiers") as Array).size() > 0,
-		"PeoplePanel net-modifiers aggregates seated advisor effects")
-	pp.call("_open_advisor_modifiers_panel")
-	var modpanel: Node = pp.get("_advisor_modifiers_panel")
-	_check(is_instance_valid(modpanel) and (modpanel as Control).visible,
-		"PeoplePanel See-all opens the DS modifiers panel")
-	if is_instance_valid(modpanel):
-		PanelStack.remove(modpanel)
-		modpanel.queue_free()
+	var hired_ok := AdvisorState.hire_advisor(fid) and AdvisorState.assign_advisor_to_seat("cfo", fid)
+	_check(hired_ok and AdvisorState.permanent_advisor_ids.has(fid), "advisors: hire and assign makes a permanent advisor")
 	AdvisorState.fire_advisor(fid)
 	_check(not AdvisorState.permanent_advisor_ids.has(fid)
 		and AdvisorState.is_fired(fid)
 		and AdvisorState.fire_cooldown_remaining(fid) == AdvisorState.FIRE_COOLDOWN_TURNS
 		and not AdvisorState.hire_advisor(fid),
-		"PeoplePanel firing benches the advisor for the cooldown and blocks re-hire")
+		"advisors: firing benches the advisor for the cooldown and blocks re-hire")
 	# Cooldown counts down each turn; the advisor returns to the pool at 0.
 	for _i in AdvisorState.FIRE_COOLDOWN_TURNS:
 		AdvisorState._tick_fire_cooldowns()
 	_check(not AdvisorState.is_fired(fid) and AdvisorState.hire_advisor(fid),
-		"PeoplePanel fired advisor returns to the pool after the cooldown and can be re-hired")
-	pp.call("_close_advisor_detail")
-	var permanent: Array = pp.get("_permanent_advisors")
-	var card: Control = pp.call("_advisor_card", permanent[0], true, false) as Control
-	var portrait: Control = card.find_child("AdvisorPortrait", true, false) as Control
-	_check(card.mouse_filter == Control.MOUSE_FILTER_STOP and portrait != null
-		and portrait.mouse_filter == Control.MOUSE_FILTER_IGNORE,
-		"PeoplePanel advisor card click surface includes the portrait")
-	_check(card.find_child("AssignedAdvisorRole", true, false) == null,
-		"PeoplePanel advisor card leaves role blank until the advisor is assigned")
-	card.free()
-	AdvisorState.assign_advisor_to_seat("cfo", str((permanent[0] as Dictionary).get("id", "")))
-	var assigned_card: Control = pp.call("_advisor_card", permanent[0], true, false) as Control
-	_check(_tree_has_label_text(assigned_card, "CFO")
-			and assigned_card.find_child("AssignedAdvisorRole", true, false) != null,
-		"PeoplePanel advisor card shows the assigned seat once assigned")
-	assigned_card.free()
-	if not permanent.is_empty():
-		pp.call("_open_advisor_detail", permanent[0])
-	var detail: Node = pp.get("_advisor_detail_panel")
-	_check(detail != null and detail.visible and _tree_has_label_text(detail, "Impact") and _tree_has_label_text(detail, "Seats"),
-		"PeoplePanel opens advisor detail shell")
-	var demo_terminal := preload("res://scripts/debug_terminal.gd")
-	var was_demo_unlocked: bool = demo_terminal._demo_unlocked
-	demo_terminal._demo_unlocked = false
-	pp.call("_open_advisor_detail", permanent[0])
-	_check(not _tree_has_label_text(detail, "Agenda") and not _tree_has_label_text(detail, "Missions"),
-		"demo advisor detail hides loyalty agenda and missions")
-	demo_terminal._demo_unlocked = true
-	pp.call("_open_advisor_detail", permanent[0])
-	_check(_tree_has_label_text(detail, "Agenda") and _tree_has_label_text(detail, "Missions"),
-		"unlock demo restores advisor loyalty concepts")
-	demo_terminal._demo_unlocked = was_demo_unlocked
-	pp.call("_close_advisor_detail")
-	if detail != null:
-		detail.queue_free()
-	pp.queue_free()
-	UiPrefs.set_use_people_ds2(was_people_ds2)
+		"advisors: a fired advisor returns to the pool after the cooldown and can be re-hired")
 	AdvisorState.advisors_unlocked = _saved_adv_unlocked
 	AdvisorState.permanent_advisor_ids = saved_advisors
 	AdvisorState.recruited_advisor_ids = saved_recruited
@@ -396,13 +248,10 @@ func _test_main_scene_instantiates() -> void:
 			if str(child.name).begins_with("TileInfoPanel"):
 				panel_count += 1
 	_check(panel_count == 1, "exactly one tile panel lives under HUDContent (found %d)" % panel_count)
-	# Guards the theme-cascade fix: DS variations must actually resolve on panels. The v3 cabinet
-	# (the default) paints its name on the nameplate, so there the Title variation is read off the panel.
-	var tl = panel.get("_title_label") if panel != null else null
+	# Guards the theme-cascade fix: DS variations must actually resolve on panels. The cabinet paints
+	# its name on the nameplate, so the Title variation is read off the panel.
 	var title_fs: int = -1
-	if tl != null:
-		title_fs = tl.get_theme_font_size("font_size")
-	elif panel != null and panel.find_child("Nameplate", true, false) != null:
+	if panel != null and panel.find_child("Nameplate", true, false) != null:
 		title_fs = (panel as Control).get_theme_font_size("font_size", &"Title")
 	_check(title_fs == DS.FS["H1"],
 		"DS theme reaches the tile panel (title uses the DS Title font)")
@@ -960,9 +809,6 @@ func _test_core_panels_open() -> void:
 	# [handler, the property holding the panel it opens, human name]. Politics is absent on
 	# purpose: _on_politics_pressed is a print stub, and asserting it opened something would
 	# be asserting a feature that does not exist.
-	# Construct is the exception: the handler opens whichever panel _active_construct_panel()
-	# picks (v2 when MatchState.use_construct_panel_v2), so asking for the v1 property finds a
-	# panel that legitimately stayed hidden. Checked separately, below.
 	var via_menu := [
 		["_on_politics_pressed", "politics_panel", "Politics"],
 		["_on_resources_pressed", "resource_panel", "Resources"],
@@ -982,11 +828,11 @@ func _test_core_panels_open() -> void:
 		menu.call(str(entry[0]))          # toggle shut so the next opens on a clean HUD
 		await get_tree().process_frame
 
-	# Construct, against whichever panel version is live.
+	# Construct.
 	menu.call("_on_construct_pressed")
 	await get_tree().process_frame
 	await get_tree().process_frame
-	var construct: Control = menu.call("_active_construct_panel")
+	var construct: Control = menu.get("construct_panel_v2")
 	_check(construct != null and construct.visible,
 		"core panels: Construct opens from its bottom-menu button")
 	menu.call("_on_construct_pressed")

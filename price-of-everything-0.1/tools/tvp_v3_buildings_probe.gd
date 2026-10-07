@@ -76,7 +76,6 @@ func _ready() -> void:
 	_panel = _wm.get("info_panel")
 	if _panel == null:
 		_panel = _wm.find_child("TileInfoPanel", true, false)
-	UiPrefs.set_use_tvp_v3(true)
 	await _frames(4)
 
 	await _open(TILE)
@@ -114,7 +113,6 @@ func _ready() -> void:
 	await _check_hover_readout()
 	await _check_cancel_press()
 
-	UiPrefs.set_use_tvp_v3(false)
 	print("[BL_CHECK] %d passed, %d failed" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 

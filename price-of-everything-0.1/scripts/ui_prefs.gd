@@ -1,7 +1,7 @@
 extends Node
-## UiPrefs: presentation-only switches — the panel/top-bar variant toggles the debug terminal
-## flips (`swap` / `toggle`), the empire-view sprite and badge choices, the construct panel's
-## cost display and expanded-recipe view, and the per-turn debug log flag. None of it is
+## UiPrefs: presentation-only switches — the DS2 looks still under review (map legends, updates dock, research),
+## which the debug terminal flips (`toggle`), the empire-view sprite and badge choices, the construct
+## panel's cost display and expanded-recipe view, and the per-turn debug log flag. None of it is
 ## simulation state: nothing here changes an economic outcome, so it lives outside MatchState
 ## and is NOT written to saves (moved out on 2026-09-12; the two keys older saves may carry,
 ## construct_cost_display and construct_expanded_recipe_mode, are ignored on load).
@@ -11,47 +11,13 @@ extends Node
 ## reset to defaults with the match like before.
 
 
-# The Building Detail v2 dev-toggle flipped; world_map re-renders the
-# active detail panel. Session-only.
-signal construct_panel_v2_changed(enabled: bool)
-# The confirm-screen v3 dev-toggle flipped; the V2
-# panel re-renders so the gated visuals apply immediately. Session-only.
-signal construct_panel_v3_changed(enabled: bool)
-# The top-bar icon redesign dev-toggle flipped; top_bar.gd
-# re-renders the affected modules so the gated visuals apply immediately. Session-only.
-signal topbar_v3_1_changed(enabled: bool)
-# The Building Detail v3 dev-toggle flipped (skeuomorphic control plates);
-# the detail panel re-renders. Session-only.
-signal bdp_v3_changed(enabled: bool)
-## The DS2 top bar (docs/top-bar-ds2-plan.md) switched on or off.
-signal topbar_ds2_changed(enabled: bool)
-## The tile view's v3 look (docs/tile-view-ds2-plan.md) switched on or off.
-signal tvp_v3_changed(enabled: bool)
-## The Building Ledger's DS2 look (docs/building-ledger-ds2-plan.md) switched on or off.
-signal ledger_ds2_changed(enabled: bool)
-## The People panel's DS2 look (docs/people-ds2-plan.md) switched on or off.
-signal people_ds2_changed(enabled: bool)
-signal market_ds2_changed(enabled: bool)
 ## The map legends' DS2 pad switched on or off.
 signal legend_ds2_changed(enabled: bool)
 ## The updates dock's DS2 look switched on or off.
 signal dock_ds2_changed(enabled: bool)
-## The Shipments and Stockpiles panel's DS2 look switched on or off.
-signal transport_ds2_changed(enabled: bool)
-## The Politics panel's DS2 look switched on or off.
-signal politics_ds2_changed(enabled: bool)
-## The Resources panel's DS2 look (docs/resources-ds2-plan.md) switched on or off.
-signal resources_ds2_changed(enabled: bool)
-signal briefing_ds2_changed(enabled: bool)
-## The construct panel's DS2 look, the construction lot (docs/construct-ds2-plan.md), switched on or off.
-signal construct_ds2_changed(enabled: bool)
+## The Research panel's DS2 look switched on or off.
+signal research_ds2_changed(enabled: bool)
 signal empire_button_icon_changed(use_badge: bool)
-## The top bar's mission piston (scripts/ds2/mission_slot.gd), switched on or off.
-signal mission_slot_changed(enabled: bool)
-## The Victory panel's DS2 look (scripts/victory_ds2/victory_ds2.gd), switched on or off.
-signal victory_ds2_changed(enabled: bool)
-## The bottom bar's DS2 look, the control desk (bottom_menu.gd), switched on or off.
-signal desk_ds2_changed(enabled: bool)
 
 # Debug-only: verbose per-turn production / CostSolver logs. Off by default because
 # large empires can produce hundreds of console lines per turn in editor builds.
@@ -69,89 +35,16 @@ var show_port_badge: bool = true
 ## Debug-only: alternates the bottom-menu Empire View icon
 ## between the badge-centre default and the skyline alternative. Session-only.
 var use_empire_button_badge: bool = true
-# Debug-only: keeps the classic construct panel available
-# for comparison. The redesigned construct panel is the normal default.
-# Session-only; only changes the active match.
-var use_construct_panel_v2: bool = true
-# Debug-only: keeps the pre-redesign confirm screen
-# available for comparison (designer spec "Confirm Construction Panel v2",
-# tracked as v3 here) inside the V2 panel. The redesigned confirm screen is
-# the normal default. Session-only, never persisted.
-var use_construct_panel_v3: bool = true
-# Debug-only: keeps the pre-redesign top bar (Goods Graph,
-# Encyclopedia, Mission, Power, Victory, Rankings as text/vector-glyph faces)
-# available for comparison inside the existing top_bar.gd — same "render branch
-# behind a flag, not a second scene" shape as use_construct_panel_v3. The
-# icon-faced redesign (baked standalone icons in assets/icons/ui_icons/standalone/)
-# is the normal default. Session-only, never persisted.
-var use_topbar_v3_1: bool = true
-# The Building Detail v3 look, where the main controls sit on worn steel plates as cream keycaps
-# with raised icons (assets/ui/bdp_v3/, rendered by tools/button_mockup). The default; the debug
-# cheat `toggle bdp v3` switches back to v2. Session-only, never persisted.
-var use_bdp_v3: bool = true
-# The DS2 top bar: a worn steel strip with LED money and lamps (docs/top-bar-ds2-plan.md). The
-# default; the debug cheat `toggle topbar ds2` switches back to v3.1, which is then exactly as it
-# was. Session-only, never persisted.
-var use_topbar_ds2: bool = true
-# The tile view v3: the site's control cabinet (docs/tile-view-ds2-plan.md §9). The default; the debug
-# cheat `toggle tvp v3` switches back to v2, which is then exactly as it was. Session-only, never persisted.
-var use_tvp_v3: bool = true
-# The Building Ledger in DS2 (docs/building-ledger-ds2-plan.md). The default; the debug cheat `toggle ledger ds2`
-# switches back to the v2 ledger, exactly as it was. Session-only, never persisted.
-var use_ledger_ds2: bool = true
 # The bottom-left map legends on the DS2 pad (scripts/ds2/legend_pad.gd): dark plastic with cut corners. Off until
 # the owner has reviewed it; the debug cheat `toggle legend ds2` switches it on. Session-only.
 var use_legend_ds2: bool = false
 # The updates dock in DS2 (scripts/toast_manager.gd): navy steel, the pen and bells raised, a row a module with a
 # lamp. Off until the owner has reviewed it; the debug cheat `toggle dock ds2` switches it on. Session-only.
 var use_dock_ds2: bool = false
-# The Shipments and Stockpiles panel in DS2 (scripts/transport_ds2/). The default; the debug cheat
-# `toggle transport ds2` switches back to the v2 panel. Session-only, never persisted.
-var use_transport_ds2: bool = true
-# The Politics panel in DS2: the record of the decarbonisation arc as a wooden courtroom. The default; the debug
-# cheat `toggle politics ds2` switches back to the v2 panel. Session-only, never persisted.
-var use_politics_ds2: bool = true
-# The Resources panel in DS2 (docs/resources-ds2-plan.md), the ledger's sibling. The default; the debug cheat
-# `toggle resources ds2` switches back to the v2 panel, exactly as it was. Session-only, never persisted.
-var use_resources_ds2: bool = true
-# The People panel in DS2 (docs/people-ds2-plan.md): the boardroom and the works. The default; the debug cheat
-# `toggle people ds2` switches back to today's panel, which is then exactly as it was. Session-only, never persisted.
-var use_people_ds2: bool = true
-# The market panel in DS2, the commodities exchange (docs/market-ds2-plan.md). The default; the debug cheat
-# `toggle market ds2` switches back to today's panel, which is then exactly as it was. Session-only, never persisted.
-var use_market_ds2: bool = true
-# The turn briefing in DS2, the foreman's clipboard and the annunciator (docs/briefing-ds2-plan.md). The default;
-# the debug cheat `toggle briefing ds2` switches back to today's panel. Session-only, never persisted.
-var use_briefing_ds2: bool = true
-# The construct panel in DS2, the construction lot with its crane (docs/construct-ds2-plan.md). The default; the
-# debug cheat `toggle construct ds2` switches back to today's panel. Session-only, never persisted.
-var use_construct_ds2: bool = true
-# The upgrade panel in DS2 (scripts/ledger_v3/upgrade_dialog_ds2.gd), opened from Building Detail and the ledger.
-# The default; the debug cheat `toggle upgrade ds2` switches back to the v2 dialog. Session-only, never persisted.
-var use_upgrade_ds2: bool = true
-# Building Detail's Input sources and Output destination sheets in DS2 (scripts/bdp_v3_routes.gd,
-# docs/bdp-routes-ds2-plan.md), with Building Detail v3 on. The default; the debug cheat `toggle routes ds2`
-# switches back to the v2 sheets. Session-only, never persisted.
-var use_routes_ds2: bool = true
-# The DS2 top bar's mission as a cream key holding its title and a brass piston showing its count, which strokes
-# across with steam when the mission completes. The default; the debug cheat `toggle mission slot` switches back to
-# the icon and two lines of text. Session-only, never persisted.
-var use_mission_slot: bool = true
-# The Victory panel in DS2: a control desk with a bank of five dials (scripts/victory_ds2/victory_ds2.gd). The
-# default; the debug cheat `toggle victory ds2` switches back to the v2 cards. Session-only, never persisted.
-var use_victory_ds2: bool = true
-# The bottom bar in DS2: a factory control desk of the top bar's navy steel, the round buttons set in chrome
-# collars, the open panel's button pressed in with a lit halo. The default; the debug cheat `toggle desk ds2`
-# switches back to the silver tray. Session-only, never persisted.
-var use_desk_ds2: bool = true
-# The in-game menu (Esc) in DS2: a cabinet of cream keys (scripts/pause_menu.gd). The default; the debug cheat
-# `toggle pause ds2` switches back to the black rounded panel. Built per open, so no signal. Session-only, never
-# persisted.
-var use_pause_ds2: bool = true
-# The main menu's column in DS2: the navy steel backing and cream keys (scripts/main_menu.gd). The default; the
-# debug cheat `toggle main menu ds2` switches back, from the next time the menu is built. Session-only, never
-# persisted.
-var use_main_menu_ds2: bool = true
+# The Research panel in DS2 (scripts/research_ds2/): the patent office's board of blueprints and the drawing office's
+# plan chest of drawers. Off until the owner has reviewed it; the debug cheat `toggle research ds2` switches it on.
+# Session-only.
+var use_research_ds2: bool = false
 # Building Detail v3's diagnostics: the Visual view (true) or the Text rows. The player's choice on the
 # panel's switch, kept while the game runs (closing the panel or starting a match keeps it).
 var bdp_diag_visual: bool = false
@@ -195,76 +88,6 @@ func toggle_use_empire_button_badge() -> bool:
 	empire_button_icon_changed.emit(use_empire_button_badge)
 	return use_empire_button_badge
 
-func set_use_construct_panel_v2(enabled: bool) -> bool:
-	if enabled == use_construct_panel_v2:
-		return use_construct_panel_v2
-	use_construct_panel_v2 = enabled
-	construct_panel_v2_changed.emit(use_construct_panel_v2)
-	return use_construct_panel_v2
-
-func toggle_use_construct_panel_v2() -> bool:
-	return set_use_construct_panel_v2(not use_construct_panel_v2)
-
-func set_use_construct_panel_v3(enabled: bool) -> bool:
-	if enabled == use_construct_panel_v3:
-		return use_construct_panel_v3
-	use_construct_panel_v3 = enabled
-	construct_panel_v3_changed.emit(use_construct_panel_v3)
-	return use_construct_panel_v3
-
-func toggle_use_construct_panel_v3() -> bool:
-	return set_use_construct_panel_v3(not use_construct_panel_v3)
-
-func set_use_topbar_v3_1(enabled: bool) -> bool:
-	if enabled == use_topbar_v3_1:
-		return use_topbar_v3_1
-	use_topbar_v3_1 = enabled
-	topbar_v3_1_changed.emit(use_topbar_v3_1)
-	return use_topbar_v3_1
-
-func toggle_use_topbar_v3_1() -> bool:
-	return set_use_topbar_v3_1(not use_topbar_v3_1)
-
-func set_use_bdp_v3(enabled: bool) -> bool:
-	if enabled == use_bdp_v3:
-		return use_bdp_v3
-	use_bdp_v3 = enabled
-	bdp_v3_changed.emit(use_bdp_v3)
-	return use_bdp_v3
-
-func toggle_use_bdp_v3() -> bool:
-	return set_use_bdp_v3(not use_bdp_v3)
-
-func set_use_topbar_ds2(enabled: bool) -> bool:
-	if enabled == use_topbar_ds2:
-		return use_topbar_ds2
-	use_topbar_ds2 = enabled
-	topbar_ds2_changed.emit(use_topbar_ds2)
-	return use_topbar_ds2
-
-func toggle_use_topbar_ds2() -> bool:
-	return set_use_topbar_ds2(not use_topbar_ds2)
-
-func set_use_tvp_v3(enabled: bool) -> bool:
-	if enabled == use_tvp_v3:
-		return use_tvp_v3
-	use_tvp_v3 = enabled
-	tvp_v3_changed.emit(use_tvp_v3)
-	return use_tvp_v3
-
-func toggle_use_tvp_v3() -> bool:
-	return set_use_tvp_v3(not use_tvp_v3)
-
-func set_use_ledger_ds2(enabled: bool) -> bool:
-	if enabled == use_ledger_ds2:
-		return use_ledger_ds2
-	use_ledger_ds2 = enabled
-	ledger_ds2_changed.emit(use_ledger_ds2)
-	return use_ledger_ds2
-
-func toggle_use_ledger_ds2() -> bool:
-	return set_use_ledger_ds2(not use_ledger_ds2)
-
 func set_use_legend_ds2(enabled: bool) -> bool:
 	if enabled == use_legend_ds2:
 		return use_legend_ds2
@@ -285,106 +108,15 @@ func set_use_dock_ds2(enabled: bool) -> bool:
 func toggle_use_dock_ds2() -> bool:
 	return set_use_dock_ds2(not use_dock_ds2)
 
-func set_use_transport_ds2(enabled: bool) -> bool:
-	if enabled == use_transport_ds2:
-		return use_transport_ds2
-	use_transport_ds2 = enabled
-	transport_ds2_changed.emit(use_transport_ds2)
-	return use_transport_ds2
+func set_use_research_ds2(enabled: bool) -> bool:
+	if enabled == use_research_ds2:
+		return use_research_ds2
+	use_research_ds2 = enabled
+	research_ds2_changed.emit(use_research_ds2)
+	return use_research_ds2
 
-func toggle_use_transport_ds2() -> bool:
-	return set_use_transport_ds2(not use_transport_ds2)
-
-func set_use_politics_ds2(enabled: bool) -> bool:
-	if enabled == use_politics_ds2:
-		return use_politics_ds2
-	use_politics_ds2 = enabled
-	politics_ds2_changed.emit(use_politics_ds2)
-	return use_politics_ds2
-
-func toggle_use_politics_ds2() -> bool:
-	return set_use_politics_ds2(not use_politics_ds2)
-
-func set_use_resources_ds2(enabled: bool) -> bool:
-	if enabled == use_resources_ds2:
-		return use_resources_ds2
-	use_resources_ds2 = enabled
-	resources_ds2_changed.emit(use_resources_ds2)
-	return use_resources_ds2
-
-func toggle_use_resources_ds2() -> bool:
-	return set_use_resources_ds2(not use_resources_ds2)
-
-func set_use_people_ds2(enabled: bool) -> bool:
-	if enabled == use_people_ds2:
-		return use_people_ds2
-	use_people_ds2 = enabled
-	people_ds2_changed.emit(use_people_ds2)
-	return use_people_ds2
-
-func toggle_use_people_ds2() -> bool:
-	return set_use_people_ds2(not use_people_ds2)
-
-func set_use_market_ds2(enabled: bool) -> bool:
-	if enabled == use_market_ds2:
-		return use_market_ds2
-	use_market_ds2 = enabled
-	market_ds2_changed.emit(use_market_ds2)
-	return use_market_ds2
-
-func set_use_briefing_ds2(enabled: bool) -> bool:
-	if enabled == use_briefing_ds2:
-		return use_briefing_ds2
-	use_briefing_ds2 = enabled
-	briefing_ds2_changed.emit(use_briefing_ds2)
-	return use_briefing_ds2
-
-func toggle_use_briefing_ds2() -> bool:
-	return set_use_briefing_ds2(not use_briefing_ds2)
-
-func toggle_use_market_ds2() -> bool:
-	return set_use_market_ds2(not use_market_ds2)
-
-func set_use_construct_ds2(enabled: bool) -> bool:
-	if enabled == use_construct_ds2:
-		return use_construct_ds2
-	use_construct_ds2 = enabled
-	construct_ds2_changed.emit(use_construct_ds2)
-	return use_construct_ds2
-
-func toggle_use_construct_ds2() -> bool:
-	return set_use_construct_ds2(not use_construct_ds2)
-
-func toggle_use_upgrade_ds2() -> bool:
-	use_upgrade_ds2 = not use_upgrade_ds2
-	return use_upgrade_ds2
-
-func toggle_use_routes_ds2() -> bool:
-	use_routes_ds2 = not use_routes_ds2
-	return use_routes_ds2
-
-func toggle_use_desk_ds2() -> bool:
-	use_desk_ds2 = not use_desk_ds2
-	desk_ds2_changed.emit(use_desk_ds2)
-	return use_desk_ds2
-
-func toggle_use_main_menu_ds2() -> bool:
-	use_main_menu_ds2 = not use_main_menu_ds2
-	return use_main_menu_ds2
-
-func toggle_use_pause_ds2() -> bool:
-	use_pause_ds2 = not use_pause_ds2
-	return use_pause_ds2
-
-func toggle_use_victory_ds2() -> bool:
-	use_victory_ds2 = not use_victory_ds2
-	victory_ds2_changed.emit(use_victory_ds2)
-	return use_victory_ds2
-
-func toggle_use_mission_slot() -> bool:
-	use_mission_slot = not use_mission_slot
-	mission_slot_changed.emit(use_mission_slot)
-	return use_mission_slot
+func toggle_use_research_ds2() -> bool:
+	return set_use_research_ds2(not use_research_ds2)
 
 func set_bdp_diag_visual(visual: bool) -> void:
 	bdp_diag_visual = visual

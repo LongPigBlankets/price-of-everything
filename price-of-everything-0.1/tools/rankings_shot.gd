@@ -1,5 +1,5 @@
 extends Node2D
-## The goods-rankings flyout: does a good's card show the podium plus the player, and does it
+## The goods rankings panel: does a good's card show the podium plus the player, and does it
 ## grow by exactly one row when the player is off that podium?
 ##
 ## Driven through CompanyRankings.import_state rather than by playing turns, so the two cases
@@ -89,7 +89,7 @@ func _shoot_goods_tab() -> void:
 	if bar == null:
 		print("[RANKCARD] top bar not found")
 		return
-	bar._toggle_fly("rankings")
+	bar._open_rankings_panel()
 	await _settle(8)
 	bar._set_rankings_tab("goods")
 	await _settle(12)

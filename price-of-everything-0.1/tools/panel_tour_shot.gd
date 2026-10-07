@@ -4,7 +4,7 @@ extends Node
 ##   PANEL_TOUR=market,resources,people PANEL_TOUR_DIR=<dir> \
 ##     <godot> --path . res://tools/panel_tour_shot.tscn --quit-after 20000 -- --no-telemetry
 ## Writes <panel>_<nn>_<tab>_p<page>.png (panel crops) and <panel>_full.png per panel.
-## PANEL_TOUR_RESOURCES_DS2=1 switches the Resources panel to its DS2 look first, and opens the first good held.
+## The Resources panel opens the first good held.
 
 var _wm: Node
 var _dir := ""
@@ -18,8 +18,6 @@ func _ready() -> void:
 	var which := OS.get_environment("PANEL_TOUR").split(",", false)
 	if which.is_empty():
 		which = PackedStringArray(["market", "resources", "people"])
-	if OS.get_environment("PANEL_TOUR_RESOURCES_DS2") == "1":
-		UiPrefs.set_use_resources_ds2(true)
 	_wm = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	add_child(_wm)
 	await _settle(140)
@@ -89,7 +87,7 @@ func _ready() -> void:
 
 
 ## The turn briefing and advisor popups sit over the panels; the captures are of the panel.
-const OVERLAY_SCRIPTS := ["turn_briefing_panel.gd", "turn_briefing.gd", "cfo_intro_popup.gd"]
+const OVERLAY_SCRIPTS := ["turn_briefing.gd", "briefing_ds2.gd", "cfo_intro_popup.gd"]
 
 func _clear_overlays(n: Node) -> void:
 	var sc: Script = n.get_script() as Script

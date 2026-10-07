@@ -1,6 +1,6 @@
 extends VBoxContainer
 ## The market panel in DS2, the commodities exchange (docs/market-ds2-plan.md §5 and §8), built into the market
-## panel (scripts/market_panel.gd) while UiPrefs.use_market_ds2 is on. One width for every tab (WIDTH).
+## panel (scripts/market_panel.gd). One width for every tab (WIDTH).
 ##
 ## The head is fixed on every tab: the MARKET nameplate and the exchange bell (it rings as a turn's prices are
 ## set), Close; five latching tab keys on the tile view's key bed under one dot matrix strip that carries each

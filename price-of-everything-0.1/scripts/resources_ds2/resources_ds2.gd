@@ -1,7 +1,7 @@
 extends VBoxContainer
 ## The Resources panel in DS2 (docs/resources-ds2-plan.md), the Building Ledger's sibling: built into the
-## Resources panel (scripts/resource_panel.gd) while UiPrefs.use_resources_ds2 is on. With the switch off the
-## panel is its v2 self. Every figure comes from scripts/goods_figures.gd; nothing here adds up.
+## Resources panel (scripts/resource_panel.gd). Every figure comes from scripts/goods_figures.gd; nothing here
+## adds up.
 ##
 ## The shell is the ledger's: Building Detail's backing, the raised title with the Goods Graph and Close
 ## keys, the count on a dot display beside the search screen, latching filter keys on the key bed, the

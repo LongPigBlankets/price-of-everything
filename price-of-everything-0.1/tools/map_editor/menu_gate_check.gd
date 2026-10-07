@@ -50,7 +50,7 @@ func _ready() -> void:
 
 
 func _find_button(node: Node, text: String) -> Button:
-	if node is Button and (node as Button).text == text:
+	if node is Button and str(node.get("title")) == text:
 		return node
 	for child in node.get_children():
 		var found := _find_button(child, text)

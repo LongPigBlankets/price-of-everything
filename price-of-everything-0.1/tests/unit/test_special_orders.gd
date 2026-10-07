@@ -500,46 +500,21 @@ func _test_market_special_orders_tab() -> void:
 
 	var panel: Control = load("res://scenes/market_panel.tscn").instantiate()
 	add_child(panel)
-	panel.call("_ensure_built")
-	var tabs: TabContainer = panel.get("_tabs")
-	_check(tabs != null
-		and tabs.get_child_count() >= 3
-		and tabs.get_tab_title(2) == "Special Orders",
-		"market panel: Special Orders is the third tab")
-	tabs.current_tab = 2
-	panel.call("_ensure_current_tab_built")
-	var count_label: Label = panel.get("_special_orders_count_label")
-	var body: VBoxContainer = panel.get("_special_orders_body")
-	_check(count_label != null
-		and count_label.text == "Active special orders: 1"
-		and body != null
-		and body.get_child_count() == 1,
-		"market panel: Special Orders tab renders active order rows")
-	_check(_node_tree_contains_text(body, "Coal")
-		and _node_tree_contains_text(body, "3")
-		and _node_tree_contains_text(body, "+40%"),
-		"market panel: active special order row exposes good, committed qty and premium")
-	var row := body.get_child(0)
-	var row_main := row.get_child(0) as HBoxContainer
-	var product_button: Button = null
-	var target_cell: Label = null
-	if row_main != null and row_main.get_child_count() > 2:
-		product_button = row_main.get_child(1) as Button
-		target_cell = row_main.get_child(2) as Label
-	_check(row_main != null
-		and int(row_main.custom_minimum_size.y) == 98
-		and product_button != null
-		and int(product_button.custom_minimum_size.x) == 240
-		and int(product_button.custom_minimum_size.y) == 98
-		and target_cell != null
-		and int(target_cell.custom_minimum_size.y) == 98
-		and target_cell.horizontal_alignment == HORIZONTAL_ALIGNMENT_CENTER,
-		"market panel: Special Orders rows match goods row height and centered column cells")
+	var ds2: Control = panel.call("ds2")
+	_check((ds2.call("tab_keys") as Array).find("special_orders") == 2, "market panel: Special Orders is the third tab")
+	ds2.call("show_tab", "special_orders")
+	var tab: Control = ds2.call("tab", "special_orders")
+	var tickets := tab.find_children("Order_*", "", true, false)
+	_check(tickets.size() == 1, "market panel: Special Orders tab renders active order tickets")
+	var said := tab.find_child("Delivered", true, false) as Label
+	_check(_node_tree_contains_text(tab, "Coal")
+		and said != null and said.text.contains("3 committed")
+		and _node_tree_contains_text(tab, "+40%"),
+		"market panel: active special order ticket exposes good, committed qty and premium")
 
 	SpecialOrderState.reset()
-	panel.call("_refresh_special_orders")
-	_check(count_label.text == "Active special orders: 0"
-		and _node_tree_contains_text(body, "No active special orders"),
+	tab.call("refresh")
+	_check(tab.find_children("Order_*", "", true, false).is_empty() and tab.find_child("Empty", true, false) != null,
 		"market panel: Special Orders tab renders the empty state")
 
 	panel.queue_free()

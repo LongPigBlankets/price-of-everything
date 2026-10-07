@@ -1,6 +1,5 @@
 extends Node
-## Captures of the construct panel in DS2, the construction lot (`toggle construct ds2`), each cropped to the
-## panel: the catalogue (whole, the Furnace opened condensed and expanded, Metallurgy picked, the goods filter),
+## Captures of the construct panel in DS2, the construction lot, each cropped to the panel: the catalogue (whole, the Furnace opened condensed and expanded, Metallurgy picked, the goods filter),
 ## the settings; the build order for a Furnace's Pig Iron Smelting on Stoneshore (or CONSTRUCT_SHOT_TILE),
 ## at its top, its middle and its foot; the build order with no site chosen.
 ##   CONSTRUCT_SHOT_DIR=<dir> [CONSTRUCT_SHOT_BUILD=b_002] [CONSTRUCT_SHOT_RECIPE=r_005] \
@@ -28,7 +27,6 @@ func _ready() -> void:
 		bid = "b_002"
 	if rid == "":
 		rid = "r_005"
-	UiPrefs.set_use_construct_ds2(true)
 	_vp = SubViewport.new()
 	_vp.size = LOGICAL * 2
 	_vp.size_2d_override = LOGICAL

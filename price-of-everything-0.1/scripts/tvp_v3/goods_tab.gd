@@ -1,6 +1,5 @@
 extends RefCounted
-## Tile view v3: the Goods tab's body (docs/tile-view-ds2-plan.md §4.3 and §9), built into `pane` on each
-## refresh while UiPrefs.use_tvp_v3 is on. With the switch off the v2 panel builds the tab itself.
+## Tile view v3: the Goods tab's body (docs/tile-view-ds2-plan.md §4.3 and §9), built into `pane` on each refresh.
 ## `panel` is the tile view (scripts/tile_info_panel_v2.gd): its tile, its signals and its helpers.
 ##
 ## In the order a player asks of a site: what it earns, what it makes, and what the ground holds.
@@ -477,8 +476,8 @@ static func deposit_size_line(size_text: String, size_qty: int) -> String:
 
 
 ## The project going up on the tile that would work this deposit, or {}: one of the deposit's build
-## options (`opts`, TileViewData.deposit_build_options, read here when not given), matched as the panel's
-## `_deposit_under_construction` matches them.
+## options (`opts`, TileViewData.deposit_build_options, read here when not given), matched by building and
+## recipe.
 static func deposit_project(tile: String, token: String, opts: Variant = null) -> Dictionary:
 	var pairs := {}
 	for o: Dictionary in (opts if opts is Array else TileViewData.deposit_build_options(token)):

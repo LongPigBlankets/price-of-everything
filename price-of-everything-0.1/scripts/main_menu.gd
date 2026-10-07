@@ -1,13 +1,10 @@
 extends Control
 
-## Title screen: navy backdrop, the animated goods board on the right, and a
-## framed menu column on the left - a rounded off-white outline holding the
-## buttons, with a 9-sliced ornate plate at the top carrying the centred navy
-## "CARBON AND CAPITAL" title. Only New Game is wired up so far.
-##
-## In DS2 (UiPrefs.use_main_menu_ds2) the column is a plate of highly polished brushed steel (menu_plate.png, a
-## 9-slice, a polished screw in each corner), and its buttons are the cabinet's cream keys (scripts/ds2/cream_key.gd): New Game a larger key leading the
-## column, Quit printed in red ink at its foot, and the keys not built yet greyed, their tooltip saying so.
+## Title screen: navy backdrop, the animated goods board on the right, the logo floating above a menu
+## column on the left. The column is a plate of highly polished brushed steel (menu_plate.png, a 9-slice, a
+## polished screw in each corner), and its buttons are the cabinet's cream keys (scripts/ds2/cream_key.gd): New
+## Game a larger key leading the column, Quit printed in red ink at its foot, and the keys not built yet greyed,
+## their tooltip saying so.
 
 const MAP_SCENE := "res://scenes/main.tscn"
 ## The map editor, revealed by `debug CandC` in the terminal below. Referenced BY PATH and
@@ -17,8 +14,6 @@ const MAP_SCENE := "res://scenes/main.tscn"
 ## never appears where the scene was not shipped. Pinned by
 ## `_test_shipped_code_avoids_editor_only_paths`.
 const MAP_EDITOR_SCENE := "res://tools/map_editor/map_editor.tscn"
-const NAVY := Color(0, 0.07, 0.14)            # established theme background navy
-const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
 ## The three-hex logo (owner, 1 Oct 2026): brass CARBON AND CAPITAL over a copper factory and silver
 ## windmills, rendered in Blender (tools/steam_capsule, --plate trio; game_logo.py makes this file).
 ## It replaces the old Canva emblem, assets/ui/title_logo.png.
@@ -28,7 +23,6 @@ const NewGamePanelScene := preload("res://scripts/new_game_panel.gd")
 const TutorialPanelScene := preload("res://scripts/tutorial_intro_panel.gd")
 const HallOfRecordsPanelScene := preload("res://scripts/hall_of_records_panel.gd")
 const TutorialPromptScene := preload("res://scripts/tutorial_prompt_dialog.gd")
-const MenuChrome := preload("res://scripts/menu_chrome.gd")
 const CreamKey := preload("res://scripts/ds2/cream_key.gd")
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 ## The polished steel plate (layout.json menu_plate): its 9-slice corner in texels (its shadow room, the rounded
@@ -382,13 +376,10 @@ func _build_menu() -> void:
 	panel.offset_right = -PANEL_INSET
 	panel.offset_bottom = -PANEL_INSET
 	add_child(panel)
-	if UiPrefs.use_main_menu_ds2:
-		panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
-		var backing: Control = Nine.make("menu_plate", PLATE_CORNER, PLATE_OUTSET)
-		backing.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		panel.add_child(backing)
-	else:
-		MenuChrome.apply(panel)          # navy fill + the brass metallic edge (lit top-left → bottom-right)
+	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	var backing: Control = Nine.make("menu_plate", PLATE_CORNER, PLATE_OUTSET)
+	backing.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	panel.add_child(backing)
 
 	# Button column: New Game at the top, Quit pinned to the bottom, the rest between.
 	var margin := MarginContainer.new()
@@ -437,8 +428,7 @@ func _build_menu() -> void:
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vbox.add_child(spacer)
 	var quit_btn := _make_button("Quit", false)
-	if UiPrefs.use_main_menu_ds2:
-		quit_btn.set("title_ink", CreamKey.RED_INK)
+	quit_btn.set("title_ink", CreamKey.RED_INK)
 	quit_btn.pressed.connect(TelemetryState.request_app_quit)
 	vbox.add_child(quit_btn)
 
@@ -457,42 +447,19 @@ func _build_menu() -> void:
 	add_child(logo)
 
 
-# Grey a menu button into a "not available yet" state that STILL shows its tooltip
-# on hover. A truly disabled Button (disabled=true) doesn't surface its tooltip, so
-# we keep it enabled, mute it, kill the hover highlight and wire no handler.
+# Grey a menu key into a "not available yet" state that STILL shows its tooltip on
+# hover: greyed as a spent key, but left enabled (a truly disabled Button doesn't
+# surface its tooltip) and wired to no handler.
 func _make_coming_soon(b: Button, tip: String) -> void:
 	b.tooltip_text = tip
-	if UiPrefs.use_main_menu_ds2:
-		# Greyed as a spent key, but left enabled so its tooltip still shows.
-		b.set("spent", true)
-		b.mouse_default_cursor_shape = Control.CURSOR_ARROW
-		return
-	b.focus_mode = Control.FOCUS_NONE
+	b.set("spent", true)
 	b.mouse_default_cursor_shape = Control.CURSOR_ARROW
-	b.add_theme_color_override("font_color", OFF_WHITE * Color(1, 1, 1, 0.38))
-	b.add_theme_color_override("font_hover_color", OFF_WHITE * Color(1, 1, 1, 0.38))
-	b.add_theme_color_override("font_pressed_color", OFF_WHITE * Color(1, 1, 1, 0.38))
-	var muted := StyleBoxFlat.new()
-	muted.bg_color = Color(NAVY, 0.0)   # no fill — reads as inert text, not a button
-	muted.set_corner_radius_all(6)
-	for st in ["normal", "hover", "pressed", "focus"]:
-		b.add_theme_stylebox_override(st, muted)
 
 
 func _make_button(text: String, primary: bool) -> Button:
-	if UiPrefs.use_main_menu_ds2:
-		var k := LEAD_KEY_SCALE if primary else 1.0
-		var key: Button = CreamKey.make(text.replace(" ", "") + "Key", text, "", 0.0, false, false, k)
-		key.size_flags_horizontal = Control.SIZE_FILL
-		if primary:
-			key.set("title_px", LEAD_KEY_PX)
-		return key
-	var b := Button.new()
-	b.text = text
+	var k := LEAD_KEY_SCALE if primary else 1.0
+	var key: Button = CreamKey.make(text.replace(" ", "") + "Key", text, "", 0.0, false, false, k)
+	key.size_flags_horizontal = Control.SIZE_FILL
 	if primary:
-		b.theme_type_variation = &"Primary"
-		b.custom_minimum_size = Vector2(0, 62)
-		b.add_theme_font_size_override("font_size", 26)
-	else:
-		b.custom_minimum_size = Vector2(0, 46)
-	return b
+		key.set("title_px", LEAD_KEY_PX)
+	return key
