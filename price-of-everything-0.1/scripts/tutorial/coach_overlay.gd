@@ -795,7 +795,7 @@ func _visible_ui_rects() -> Array[Rect2]:
 	# remain readable through the cut-out and should not disqualify an entire side.
 	for node_name in [
 		"TopBar", "BottomMenuPanel", "BuildingDetailPanelV2",
-		"TileInfoPanel", "ConstructPanel", "ConstructPanelV2", "ResourcePanel",
+		"TileInfoPanel", "ConstructPanelV2", "ResourcePanel",
 		"MarketPanel", "MapModesPanel", "MoneyPanel", "ResearchPanel",
 		"BuildingLedgerPanel", "PeoplePanel", "EmpireView", "SearchOverlay",
 	]:

@@ -29,20 +29,6 @@ func _ready() -> void:
 	var camera := get_viewport().get_camera_2d()
 	camera.set("edge_pan_enabled", false)
 	camera.set_process(false)
-	var panel = world.get_node("UILayer/HUD").construct_panel_v2
-	UiPrefs.set_use_construct_panel_v3(true)
-	panel.open_browser()
-	panel._on_recipe_pressed("b_002", "r_005")
-	await settle()
-	check(panel.find_child("V3CashTimeline", true, false) == null, "Unselected-site confirm omits the cash timeline")
-	var duration: Control = panel.find_child("V3DurationBox", true, false)
-	var total: Control = panel.find_child("V3Total", true, false)
-	check(duration.get_parent() == total.get_parent(), "Build duration shares the total's column inside the hero row")
-	panel.open_for_tile("tile_5_10", {"type": ""})
-	panel._on_recipe_pressed("b_002", "r_005")
-	await settle()
-	check(panel.find_child("V3CashTimeline", true, false) != null, "Selected-site confirm retains the cash timeline")
-	panel.hide()
 	var cash := MatchState.money
 	for tile_id in ["tile_5_10", "tile_23_8"]:
 		var data := Preview.preview(tile_id, "b_002", "r_005")
@@ -109,12 +95,12 @@ func _ready() -> void:
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png("/tmp/construction_hover_demo.png")
 	hover.card.hide()
+	var panel = world.get_node("UILayer/HUD").construct_panel_v2
 	panel.open_for_tile("tile_5_10", {"type": "urban"})
 	panel._on_recipe_pressed("b_002", "r_005")
 	await settle()
 	check(panel.find_child("RevenueTimeline", true, false) == null, "Demo confirm hides balance impact")
 	check(panel.find_child("ForecastPayback", true, false) != null, "Demo confirm retains payback")
-	check(not panel.find_child("BuildCostValue", true, false).is_visible_in_tree(), "Demo confirm hides cash-after balance")
 	if DisplayServer.get_name() != "headless":
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png("/tmp/construction_confirm_demo.png")

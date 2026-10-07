@@ -1,20 +1,21 @@
 extends "res://scripts/construct_panel_v2.gd"
-## The construct panel in DS2, the construction lot with its crane (docs/construct-ds2-plan.md), behind
-## `toggle construct ds2` (UiPrefs.use_construct_ds2). The same panel as construct_panel_v2.gd, its ways in,
-## its state, its Confirm and every handle the tutorial and the tests look up (ConstructPanelV2,
-## BuildConfirmButton, RecipeRow_<id>, ConstructionMaterialsSection), in the lot's look: a navy steel hoarding,
-## the yellow tower crane along its top with the settings key and CONSTRUCT on its cab and the site's name on a plate hung from its
-## jib, one width for every stage.
+## The construct panel in DS2, the construction lot with its crane (docs/construct-ds2-plan.md). The base,
+## construct_panel_v2.gd, keeps the panel's ways in, its state and its Confirm; the lot builds the shell and draws
+## every stage, under the handles the tutorial and the tests look up (ConstructPanelV2, BuildConfirmButton,
+## RecipeRow_<id>, ConstructionMaterialsSection): a navy steel hoarding, the yellow tower crane along its top with
+## the settings key and CONSTRUCT on its cab and the site's name on a plate hung from its jib, one width for every
+## stage.
 ##
 ## The build order (build_order.gd) hangs the site board from the hook: what is built, then the verdict, then
 ## the requirements, the cost, the materials yard, the outlook and the land. Its figures and its refusal are
-## ConstructionRules.quote()'s. The catalogue and the settings keep today's bodies inside the hoarding until
-## their own DS2 bodies are built (plan §7, phases 4 and 5).
+## ConstructionRules.quote()'s. The settings keep the base panel's body inside the hoarding until their own DS2
+## body is built (plan §7, phase 5).
 ##
 ## The parts are renders (tools/button_mockup/cluster.html, sets constructhead, constructboard, constructyard)
 ## placed at the layout's own coordinates: layout px from the panel's top-left, divided by CAPTURE_SCALE.
 
 const BuildOrder := preload("res://scripts/construct_ds2/build_order.gd")
+const BuildForecast := preload("res://scripts/build_forecast.gd")
 const Catalogue := preload("res://scripts/construct_ds2/catalogue.gd")
 const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
@@ -88,19 +89,18 @@ func _ready() -> void:
 	var bare := StyleBoxEmpty.new()
 	add_theme_stylebox_override("panel", bare)
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	_set_panel_width(false)
+	_set_panel_width()
 	LampOverlay.attach(self)
 
 
-## One width for every stage (plan §4), whatever the stage asks for.
-func _set_panel_width(_narrow: bool) -> void:
+## One width for every stage (plan §4).
+func _set_panel_width() -> void:
 	offset_right = offset_left + WIDTH
 	custom_minimum_size.x = WIDTH
 
 
-## The shell: the head (the crane's room, the keys, the site's name), then today's search, filters and pinned
-## band, the scrolling body and the footer, in the content column. Every member the panel's code reads is
-## built, so its stages render into it unchanged.
+## The shell: the head (the crane's room, the keys, the site's name), then the catalogue's control plate (the
+## search set into it), the pinned band, the scrolling body and the footer, in the content column.
 func _build_shell() -> void:
 	var root := VBoxContainer.new()
 	root.name = "LotRoot"
@@ -168,24 +168,6 @@ func _build_shell() -> void:
 	body.add_theme_constant_override("separation", 0)
 	column.add_child(body)
 
-	# What the panel's code reads, kept but not shown in DS2: the header labels, the gear and the mode row.
-	_header_title = Label.new()
-	_header_subtitle = Label.new()
-	_close_button = Button.new()
-	_close_button.pressed.connect(hide)
-	_settings_button = Button.new()
-	_settings_button.name = "SettingsButton"
-	_settings_button.pressed.connect(_on_settings_pressed)
-	_mode_toggle = HBoxContainer.new()
-	_mode_toggle.visible = false
-	for n: Control in [_header_title, _header_subtitle, _close_button, _settings_button]:
-		n.visible = false
-		_mode_toggle.add_child(n)
-	body.add_child(_mode_toggle)
-
-	_search_margin = MarginContainer.new()
-	_search_margin.add_theme_constant_override("margin_top", 4)
-	body.add_child(_search_margin)
 	_search_input = LineEdit.new()
 	_search_input.placeholder_text = "Search buildings and recipes"
 	_search_input.clear_button_enabled = true
@@ -193,20 +175,6 @@ func _build_shell() -> void:
 	_search_input.add_theme_font_size_override("font_size", 13)
 	_search_input.text_changed.connect(_on_search_changed)
 	_search_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_search_margin.add_child(_search_input)
-
-	_filter_margin = MarginContainer.new()
-	_filter_margin.add_theme_constant_override("margin_top", 10)
-	_filter_margin.add_theme_constant_override("margin_bottom", 12)
-	body.add_child(_filter_margin)
-	_filter_scroll = ScrollContainer.new()
-	_filter_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	_filter_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_filter_scroll.custom_minimum_size = Vector2(0, 45)
-	_filter_margin.add_child(_filter_scroll)
-	_filter_row = HBoxContainer.new()
-	_filter_row.add_theme_constant_override("separation", 6)
-	_filter_scroll.add_child(_filter_row)
 
 	# The catalogue's control plate: the search set into its tab, the category keys.
 	_catplate = Catalogue.control_plate(_search_input, _pick_category)
@@ -231,23 +199,12 @@ func _build_shell() -> void:
 	_content.add_theme_constant_override("separation", 8)
 	_scroll.add_child(_content)
 
-	_footer_rule = Control.new()
-	_footer_rule.visible = false
-	body.add_child(_footer_rule)
-	_footer_panel = PanelContainer.new()
-	_footer_panel.visible = false
-	_footer_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
-	_footer = HBoxContainer.new()
-	_footer.custom_minimum_size = Vector2(0, 54)
-	_footer.add_theme_constant_override("separation", 10)
-	_footer_panel.add_child(_footer)
-	body.add_child(_footer_panel)
-
 
 func _render() -> void:
 	# A glow belongs to the view it pointed into.
 	if _flash != null and is_instance_valid(_flash):
 		_flash.stop()
+	_set_panel_width()
 	super._render()
 	_sync_head()
 
@@ -262,9 +219,6 @@ func _sync_head() -> void:
 	_head.custom_minimum_size.y = BOARD_Y if order else (PLATE_Y if browsing else HEAD_H)
 	_back_key.visible = _view == View.CONFIRM
 	_catplate.visible = browsing
-	_mode_toggle.visible = false
-	_search_margin.visible = false
-	_filter_margin.visible = false
 	var site := _site_name()
 	_placard_label.text = site.to_upper()
 	_placard_label.visible = site != ""
@@ -284,7 +238,6 @@ func _site_name() -> String:
 ## The catalogue: the control plate under the crane, then the site boards two to a row; the building opened
 ## across the width with its recipe tags hung under it.
 func _render_browse() -> void:
-	_set_panel_width(false)
 	_search_input.visible = true
 	Catalogue.show_filter(_catplate, _active_filters)
 	_content.add_theme_constant_override("separation", roundi(Catalogue.CARD_GAP))
@@ -362,20 +315,11 @@ func _goods_tag() -> Control:
 	return row
 
 
-## Every confirm is the build order, whatever the v3 confirm toggle says: a recipe's, and infrastructure's with
-## its purpose on the sign and its levels in place of the outlook.
+## Every confirm is the build order: a recipe's, and infrastructure's with its purpose on the sign and its levels
+## in place of the outlook.
 func _render_confirm() -> void:
-	_render_confirm_v3()
-
-
-func _render_confirm_v3() -> void:
-	_set_panel_width(false)
 	_search_input.visible = false
-	_search_margin.visible = false
-	_filter_scroll.visible = false
-	_filter_margin.visible = false
-	_confirm_flash_pending = false
-	# The state Confirm reads (the land to buy, the ledger, the forecast), as the v3 confirm computes it.
+	# The state Confirm reads (the land to buy, the ledger, the forecast).
 	var building_id := str(_selected_building.get("id", ""))
 	var recipe_id := str(_selected_recipe.get("recipe_id", ""))
 	_v3_land = _v3_compute_land()

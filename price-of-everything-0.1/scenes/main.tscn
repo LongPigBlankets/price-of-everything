@@ -18,13 +18,8 @@
 [ext_resource type="Script" uid="uid://bt2kwldefvxx1" path="res://scripts/camera_controller.gd" id="5_tbgi4"]
 [ext_resource type="Script" uid="uid://dvo2xw2gwx3y4" path="res://scripts/map_overlay.gd" id="6_eb6dy"]
 [ext_resource type="Script" uid="uid://dpavib658u0dd" path="res://scripts/bottom_menu.gd" id="8_85g3d"]
-[ext_resource type="Script" path="res://scripts/inner_outline.gd" id="8_inoutl"]
-[ext_resource type="Script" path="res://scripts/button_sockets.gd" id="8_sockets"]
-[ext_resource type="Script" path="res://scripts/plate_surface.gd" id="8_plate"]
 [ext_resource type="Script" path="res://scripts/end_turn_dock.gd" id="8_etdock"]
 [ext_resource type="StyleBox" uid="uid://lwmbvk8gve6r" path="res://assets/navy_opaque_style_box.tres" id="8_tipki"]
-[ext_resource type="StyleBox" path="res://assets/ui/silver_frame.tres" id="8_silvfrm"]
-[ext_resource type="PackedScene" uid="uid://qvtflfd45g0d" path="res://scenes/construct_panel.tscn" id="9_85g3d"]
 [ext_resource type="PackedScene" uid="uid://c8o4a3033eoqq" path="res://scenes/mapmodes_panel.tscn" id="10_jbj1t"]
 [ext_resource type="PackedScene" uid="uid://cp8eoe568wruq" path="res://scenes/resource_panel.tscn" id="11_ya4ey"]
 [ext_resource type="PackedScene" uid="uid://bth2p1re62hjc" path="res://scenes/overlay_legend.tscn" id="13_trceg"]
@@ -323,12 +318,6 @@ offset_bottom = 310.0
 text = "Phase: Decide"
 horizontal_alignment = 1
 
-[node name="ConstructPanel" parent="UILayer/HUD/HUDContent" unique_id=1084051515 instance=ExtResource("9_85g3d")]
-unique_name_in_owner = true
-layout_mode = 1
-offset_left = 16.0
-offset_top = 36.0
-
 [node name="MapModesPanel" parent="UILayer/HUD/HUDContent" unique_id=2117327633 instance=ExtResource("10_jbj1t")]
 unique_name_in_owner = true
 layout_mode = 0
@@ -363,36 +352,6 @@ grow_horizontal = 2
 grow_vertical = 0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_bottom_navy_fill")
-
-[node name="PlateSurface" type="Control" parent="UILayer/HUD/HUDContent/BottomMenuPanel"]
-layout_mode = 2
-mouse_filter = 2
-script = ExtResource("8_plate")
-
-[node name="SilverFrame" type="Panel" parent="UILayer/HUD/HUDContent/BottomMenuPanel"]
-layout_mode = 2
-mouse_filter = 2
-theme_override_styles/panel = ExtResource("8_silvfrm")
-
-[node name="Sockets" type="Control" parent="UILayer/HUD/HUDContent/BottomMenuPanel/SilverFrame"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-mouse_filter = 2
-script = ExtResource("8_sockets")
-
-[node name="InnerOutline" type="Control" parent="UILayer/HUD/HUDContent/BottomMenuPanel/SilverFrame"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 20.0
-offset_top = 20.0
-offset_right = -20.0
-offset_bottom = -20.0
-mouse_filter = 2
-script = ExtResource("8_inoutl")
 
 [node name="BottomMenu" type="HBoxContainer" parent="UILayer/HUD/HUDContent" unique_id=1999718027]
 unique_name_in_owner = true

@@ -30,7 +30,7 @@ func _csv_dicts(path: String) -> Array:
 
 
 func _construct_panel_has_recipe(panel: Node, building_id: String, recipe_id: String) -> bool:
-	var by_building: Dictionary = panel.get("recipes_by_building")
+	var by_building: Dictionary = panel.get("_recipes_by_building")
 	for recipe in by_building.get(building_id, []):
 		if str(recipe.get("recipe_id", "")) == recipe_id:
 			return true
@@ -291,34 +291,22 @@ func _test_research_unlock_promotes_construct_panel_recipes() -> void:
 	var building_id := str(recipe.get("building_id", ""))
 	var saved_unlocks := ResearchState.unlocked_titles.duplicate(true)
 	var saved_land := BuildingState.tile_land_owned.duplicate(true)
-	var saved_construct_v2 := UiPrefs.use_construct_panel_v2
-	# This fixture explicitly instantiates the legacy panel and calls its tile-open
-	# API, so do not let the live v2 routing toggle make that API return early.
-	UiPrefs.use_construct_panel_v2 = false
 	# r_020 is gated on Flash Copper Smelting (its own node since 2026-09-06), which
 	# auto-unlocks on Produce All 200 industrial acids + 300 copper ingots; a fresh fixture
 	# has produced neither, so it stays unmet while this test isolates panel filtering.
 	# (tile_land_owned cleared too, harmless, in case an owned-land gate returns.)
 	BuildingState.tile_land_owned.clear()
 	ResearchState.unlocked_titles.erase("Flash Copper Smelting")
-	var packed: PackedScene = load("res://scenes/construct_panel.tscn")
-	if packed == null or recipe.is_empty() or building_id == "":
+	if recipe.is_empty() or building_id == "":
 		_check(false, "research unlock: construct panel fixture resolves")
 		_replace_dict(ResearchState.unlocked_titles, saved_unlocks)
 		_replace_dict(BuildingState.tile_land_owned, saved_land)
-		UiPrefs.use_construct_panel_v2 = saved_construct_v2
 		return
-	var panel: Control = packed.instantiate() as Control
-	if panel == null:
-		_check(false, "research unlock: construct panel instantiates as Control")
-		_replace_dict(ResearchState.unlocked_titles, saved_unlocks)
-		_replace_dict(BuildingState.tile_land_owned, saved_land)
-		UiPrefs.use_construct_panel_v2 = saved_construct_v2
-		return
+	var panel: Control = load("res://scripts/construct_ds2/construct_ds2.gd").new()
 	add_child(panel)
 	await get_tree().process_frame
 
-	panel.show()
+	panel.call("open_browser")
 	await get_tree().process_frame
 	_check(not _construct_panel_has_recipe(panel, building_id, "r_020"),
 		"construct panel hides recipe-gated research before unlock")
@@ -341,7 +329,6 @@ func _test_research_unlock_promotes_construct_panel_recipes() -> void:
 	await get_tree().process_frame
 	_replace_dict(ResearchState.unlocked_titles, saved_unlocks)
 	_replace_dict(BuildingState.tile_land_owned, saved_land)
-	UiPrefs.use_construct_panel_v2 = saved_construct_v2
 
 func _test_limestone_concrete() -> void:
 	_check(not Catalog.get_good_by_internal_name("limestone").is_empty(), "limestone good exists")

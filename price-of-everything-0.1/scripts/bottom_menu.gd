@@ -15,7 +15,7 @@ extends Control
 # so reopening a panel never reaches the loader at all: it is a visibility toggle.
 #
 # The bottom menu's own chrome is untouched by this. Its script compiles with the map (it
-# is a node in main.tscn) and its button icons are fetched by path at runtime, so the tray
+# is a node in main.tscn) and its button icons are fetched by path at runtime, so the desk
 # the player sees on the first frame is exactly as before.
 static var _ledger_scene: PackedScene = null
 static var _people_script: GDScript = null
@@ -53,7 +53,7 @@ var _end_screen: CanvasLayer = null
 
 # Bottom-menu icons — single-resolution object PNGs under
 # assets/icons/ui_icons/alt/, each button recoloured to its own scheme (see
-# ALT_COLORS) and set into a drilled socket on the metal tray.
+# ALT_COLORS) and set into a gunmetal collar on the control desk.
 const ALT_MENU_ICONS := {
 	"ConstructButton": "construct",
 	"ResourcesButton": "goods",
@@ -84,10 +84,9 @@ const ALT_COLORS := {
 	"EmpireButton":    ["#c49a28", "#fff2c9"],
 }
 
-# The control desk (UiPrefs.use_desk_ds2): the top bar's navy steel as a desk plate the bar's width, drawn at
-# its render's size (desk_plate.png, two texels a pixel) so its wear never stretches, each round button set in a
-# gunmetal collar (desk_bezel.png). The open panel's button sits pressed into its collar with a lit halo, where
-# the silver tray lifts it. Buttons are a little smaller on the desk, and the desk lower than the tray.
+# The control desk: the top bar's navy steel as a desk plate the bar's width, drawn at its render's size
+# (desk_plate.png, two texels a pixel) so its wear never stretches, each round button set in a gunmetal collar
+# (desk_bezel.png). The open panel's button sits pressed into its collar with a lit halo.
 const DESK_PLATE: Texture2D = preload("res://assets/ui/bdp_v3/desk_plate.png")
 const DESK_BEZEL: Texture2D = preload("res://assets/ui/bdp_v3/desk_bezel.png")
 const DESK_BUTTON := 80.0
@@ -98,19 +97,16 @@ const DESK_PRESS_PX := 3.0
 const DESK_HALO_W := 4.0
 var _desk: Control = null
 var _bezels: Control = null
-var _tray: Dictionary = {}     # the silver tray's layout, kept to put back when the desk is switched off
 
-# Selected button rises while its panel is open, then drops when it closes.
-const RISE_PX := 25.0
+# Selected button presses into its collar while its panel is open, then comes back up when it closes.
 const RISE_TIME := 0.12
-var _button_home_y := {}  # button -> resting y (captured on first rise)
-var _rise_tween := {}     # button -> active rise/drop tween
-var _lifted := {}         # button -> true while raised (longer shadow + specular)
-var _rest_styles := {}    # button -> resting styleboxes captured while lifting
+var _button_home_y := {}  # button -> resting y (captured on first press)
+var _rise_tween := {}     # button -> active press/release tween
+var _lifted := {}         # button -> true while pressed in (lit halo)
 var _hovered := {}        # button -> true while the mouse is over it
 
 @onready var bottom_menu = %BottomMenu
-@onready var construct_panel = %ConstructPanel
+@onready var hud_content: Control = $HUDContent
 @onready var resource_panel: PanelContainer = %ResourcePanel
 @onready var market_panel: PanelContainer = %MarketPanel
 @onready var mapmodes_button: Button = %MapmodesButton
@@ -128,15 +124,12 @@ var politics_panel: PanelContainer = null
 var construct_panel_v2: PanelContainer = null
 
 func _ready() -> void:
-	construct_panel_v2 = load(_construct_v2_script()).new()
-	construct_panel.get_parent().add_child(construct_panel_v2)
+	construct_panel_v2 = load("res://scripts/construct_ds2/construct_ds2.gd").new()
+	hud_content.add_child(construct_panel_v2)
 	construct_panel_v2.hide()
-	UiPrefs.construct_panel_v2_changed.connect(_on_construct_panel_v2_changed)
-	UiPrefs.construct_ds2_changed.connect(_on_construct_ds2_changed)
 	UiPrefs.empire_button_icon_changed.connect(_on_empire_button_icon_changed)
 	_apply_menu_icons()
 	_apply_desk.call_deferred()
-	UiPrefs.desk_ds2_changed.connect(func(_on: bool) -> void: _apply_desk())
 	%ConstructButton.pressed.connect(_on_construct_pressed)
 	%ResourcesButton.pressed.connect(_on_resources_pressed)
 	%BuildingsButton.pressed.connect(_on_buildings_pressed)
@@ -157,8 +150,6 @@ func _ready() -> void:
 	take_loan_dialog.loan_confirmed.connect(_on_loan_confirmed)
 	take_loan_dialog.hide()
 
-	construct_panel.hide()
-	construct_panel_v2.hide()
 	resource_panel.hide()
 	market_panel.hide()
 	research_panel.hide()
@@ -181,9 +172,8 @@ func _ready() -> void:
 	# Tile-view "Buy Buildings" → open the Market on the Buildings tab, filtered to that tile.
 	MatchState.buildings_market_for_tile_requested.connect(_on_buildings_market_for_tile)
 
-	# A button rises while its panel is open and drops when it closes. Buttons
-	# with no panel (Politics/People) and disabled buttons never rise.
-	_link_rise(construct_panel, %ConstructButton)
+	# A button presses into its collar while its panel is open and comes back up when it
+	# closes. Disabled buttons never move.
 	_link_rise(construct_panel_v2, %ConstructButton)
 	_link_rise(resource_panel, %ResourcesButton)
 	_link_rise(market_panel, %MarketButton)
@@ -192,7 +182,7 @@ func _ready() -> void:
 
 
 # Keyboard shortcuts for the bottom-menu tools. Emitting the button's own `pressed` keeps
-# behaviour identical to a click (panel toggle + rise tween + audio cue). Runs in
+# behaviour identical to a click (panel toggle + press tween + audio cue). Runs in
 # _unhandled_key_input so it fires only for keys not already consumed by a focused widget /
 # _input (Tab=empire, G=goods graph) / _unhandled_input (X=encyclopedia), and it skips
 # modified/repeat keys and never fires while a text field (market/ledger search) has focus.
@@ -266,15 +256,9 @@ func _is_text_entry_focused() -> bool:
 	return fo is LineEdit or fo is TextEdit
 
 func _apply_menu_icons() -> void:
-	# Re-applying styles drops any lifted tracking; reset the per-button Specular.
+	# Re-applying styles drops any pressed-in tracking.
 	_lifted.clear()
-	_rest_styles.clear()
 	for button_name in ALT_MENU_ICONS:
-		var b := get_node_or_null("%" + button_name) as Button
-		if b != null:
-			var sp := b.get_node_or_null("Specular")
-			if sp != null:
-				sp.visible = false
 		var icon_key := _icon_key_for_button(button_name)
 		_set_button_icon(button_name, "res://assets/icons/ui_icons/alt/%s.png" % icon_key)
 		_apply_alt_button_style(button_name)
@@ -357,7 +341,6 @@ func _set_button_icon(button_name: String, path: String) -> void:
 	button.icon = load(path)
 
 func _hide_all_panels() -> void:
-	_set_panel_visible(construct_panel, false)
 	_set_panel_visible(construct_panel_v2, false)
 	_set_panel_visible(resource_panel, false)
 	_set_panel_visible(market_panel, false)
@@ -403,7 +386,7 @@ func hide_bottom_menu() -> void:
 func show_bottom_menu() -> void:
 	bottom_menu.show()
 
-# Raise a button while its panel is visible; drop it when hidden. 120ms each way.
+# Press a button in while its panel is visible; let it back up when hidden. 120ms each way.
 func _link_rise(panel: Control, button: Button) -> void:
 	panel.visibility_changed.connect(func(): _raise_button(button, panel.visible))
 
@@ -415,8 +398,7 @@ func _raise_button(button: Button, raised: bool) -> void:
 	if not _button_home_y.has(button):
 		return  # never raised yet → nothing to drop
 	var home: float = _button_home_y[button]
-	var lift := -DESK_PRESS_PX if UiPrefs.use_desk_ds2 else RISE_PX   # the desk presses in; the tray lifts
-	var target: float = (home - lift) if raised else home
+	var target: float = (home + DESK_PRESS_PX) if raised else home
 	if _rise_tween.has(button) and _rise_tween[button] != null and _rise_tween[button].is_valid():
 		_rise_tween[button].kill()
 	var tw := create_tween()
@@ -425,104 +407,21 @@ func _raise_button(button: Button, raised: bool) -> void:
 	_rise_tween[button] = tw
 	_set_lifted(button, raised)
 
-# Lifted look for the selected button: a longer/softer drop shadow (it's higher
-# off the plate) and a faint specular highlight on the top of the disc.
+# Pressed into its collar: the button glows and the halo round its collar lights.
 func _set_lifted(button: Button, lifted: bool) -> void:
 	if lifted == _lifted.get(button, false):
 		return
 	_lifted[button] = lifted
-	if UiPrefs.use_desk_ds2:
-		# Pressed into its collar: no longer shadow, the halo round the collar lights instead.
-		_update_glow(button)
-		if _bezels != null:
-			_bezels.queue_redraw()
-		return
-	if lifted:
-		_rest_styles[button] = {}
-		for s in ["normal", "hover", "pressed", "focus"]:
-			var sb := button.get_theme_stylebox(s)
-			_rest_styles[button][s] = sb
-			if sb is StyleBoxFlat:
-				var lf: StyleBoxFlat = sb.duplicate()
-				lf.shadow_size = 10
-				# Offset > blur so the shadow falls only to the bottom-right
-				# (diagonal with the top-left light), not straight down on the left.
-				lf.shadow_offset = Vector2(13, 13)
-				lf.shadow_color = Color(0, 0, 0, 0.55)
-				button.add_theme_stylebox_override(s, lf)
-		_ensure_specular(button).visible = true
-	else:
-		if _rest_styles.has(button):
-			for s in _rest_styles[button]:
-				if _rest_styles[button][s] != null:
-					button.add_theme_stylebox_override(s, _rest_styles[button][s])
-			_rest_styles.erase(button)
-		var sp := button.get_node_or_null("Specular")
-		if sp != null:
-			sp.visible = false
-	_update_glow(button)  # keep glowing while selected; drop when deselected
-
-func _ensure_specular(button: Button) -> TextureRect:
-	var sp := button.get_node_or_null("Specular") as TextureRect
-	if sp == null:
-		sp = TextureRect.new()
-		sp.name = "Specular"
-		sp.texture = load("res://assets/icons/ui_icons/alt/_specular.png")
-		sp.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		sp.stretch_mode = TextureRect.STRETCH_SCALE
-		sp.set_anchors_preset(Control.PRESET_FULL_RECT)
-		sp.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		button.add_child(sp)
-		sp.visible = false
-	return sp
+	_update_glow(button)
+	if _bezels != null:
+		_bezels.queue_redraw()
 
 func _on_construct_pressed() -> void:
-	var panel := _active_construct_panel()
-	if panel.visible:
-		_set_panel_visible(panel, false)
+	if construct_panel_v2.visible:
+		_set_panel_visible(construct_panel_v2, false)
 		return
 	_hide_all_panels()
-	if panel == construct_panel_v2 and panel.has_method("open_browser"):
-		panel.open_browser()
-	else:
-		_set_panel_visible(panel, true)
-
-func _active_construct_panel() -> PanelContainer:
-	if UiPrefs.use_construct_panel_v2 and is_instance_valid(construct_panel_v2):
-		return construct_panel_v2
-	return construct_panel
-
-## The construct panel's script: the construction lot (DS2) while `toggle construct ds2` is on, else today's.
-func _construct_v2_script() -> String:
-	return "res://scripts/construct_ds2/construct_ds2.gd" if UiPrefs.use_construct_ds2 else "res://scripts/construct_panel_v2.gd"
-
-
-## The DS2 look switched: the panel is rebuilt in the other look where it stood, under the same name, and
-## reopened on the catalogue if it was open.
-func _on_construct_ds2_changed(_enabled: bool) -> void:
-	if not is_instance_valid(construct_panel_v2):
-		return
-	var was_open := construct_panel_v2.visible
-	var parent := construct_panel_v2.get_parent()
-	var at := construct_panel_v2.get_index()
-	construct_panel_v2.hide()
-	parent.remove_child(construct_panel_v2)
-	construct_panel_v2.queue_free()
-	construct_panel_v2 = load(_construct_v2_script()).new()
-	parent.add_child(construct_panel_v2)
-	parent.move_child(construct_panel_v2, at)
-	construct_panel_v2.hide()
-	if was_open:
-		_hide_all_panels()
-		construct_panel_v2.call("open_browser")
-
-func _on_construct_panel_v2_changed(_enabled: bool) -> void:
-	var was_open: bool = construct_panel.visible or (is_instance_valid(construct_panel_v2) and construct_panel_v2.visible)
-	_set_panel_visible(construct_panel, false)
-	if is_instance_valid(construct_panel_v2):
-		_set_panel_visible(construct_panel_v2, false)
-	if was_open:
-		_set_panel_visible(_active_construct_panel(), true)
+	construct_panel_v2.open_browser()
 
 func _on_resources_pressed() -> void:
 	_toggle_panel(resource_panel)
@@ -561,7 +460,7 @@ func _show_building_ledger(allow_toggle: bool = true) -> void:
 	if not is_instance_valid(building_ledger_panel):
 		building_ledger_panel = _ledger_panel_scene().instantiate()
 		# Add as sibling to the other panels so it lives in HUDContent.
-		construct_panel.get_parent().add_child(building_ledger_panel)
+		hud_content.add_child(building_ledger_panel)
 		building_ledger_panel.hide()
 		building_ledger_panel.close_requested.connect(
 			func(): _set_panel_visible(building_ledger_panel, false)
@@ -586,7 +485,7 @@ func _on_politics_pressed() -> void:
 	_hide_all_panels()
 	if not is_instance_valid(politics_panel):
 		politics_panel = _politics_panel_script().new()
-		construct_panel.get_parent().add_child(politics_panel)
+		hud_content.add_child(politics_panel)
 		politics_panel.hide()
 		politics_panel.close_requested.connect(
 			func(): _set_panel_visible(politics_panel, false)
@@ -604,7 +503,7 @@ func _on_people_pressed() -> void:
 	_hide_all_panels()
 	if not is_instance_valid(people_panel):
 		people_panel = _people_panel_script().new()
-		construct_panel.get_parent().add_child(people_panel)
+		hud_content.add_child(people_panel)
 		people_panel.hide()
 		people_panel.close_requested.connect(
 			func(): _set_panel_visible(people_panel, false)
@@ -720,84 +619,50 @@ func _on_loan_confirmed(amount: float) -> void:
 
 
 
-# ── The control desk (UiPrefs.use_desk_ds2) ──────────────────────────────────
+# ── The control desk ──────────────────────────────────
 
-## Puts the desk in place of the silver tray, or the tray back.
+## Lays the bottom bar out as the desk: the plate, the buttons at desk size and their collars.
 func _apply_desk() -> void:
 	var panel := bottom_menu.get_parent().get_node_or_null("BottomMenuPanel") as PanelContainer
 	if panel == null:
 		return
 	var buttons: Array = bottom_menu.get_children().filter(func(n: Node) -> bool: return n is Button)
-	if _tray.is_empty():
-		_tray = {"panel": [panel.offset_left, panel.offset_top, panel.offset_right, panel.offset_bottom],
-			"style": panel.get_theme_stylebox("panel"),
-			"menu": [bottom_menu.offset_left, bottom_menu.offset_top, bottom_menu.offset_right, bottom_menu.offset_bottom],
-			"gap": bottom_menu.get_theme_constant("separation"),
-			"size": (buttons[0] as Button).custom_minimum_size if not buttons.is_empty() else Vector2(90, 90)}
-	var on: bool = UiPrefs.use_desk_ds2
-	for child_name: String in ["PlateSurface", "SilverFrame"]:
-		var n := panel.get_node_or_null(child_name) as CanvasItem
-		if n != null:
-			n.visible = not on
 	# Positions change, so every button settles home again before it is next pressed.
 	for b: Variant in buttons:
 		_raise_button(b as Button, false)
 	_button_home_y.clear()
-	if on:
-		var plate := DESK_PLATE.get_size() / 2.0
-		panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
-		panel.offset_left = -plate.x * 0.5
-		panel.offset_right = plate.x * 0.5
-		panel.offset_top = -DESK_SHOWN
-		panel.offset_bottom = plate.y - DESK_SHOWN
-		if _desk == null:
-			_desk = Control.new()
-			_desk.name = "DeskPlate"
-			_desk.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			_desk.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-			_desk.draw.connect(func() -> void: _desk.draw_texture_rect(DESK_PLATE, Rect2(Vector2.ZERO, DESK_PLATE.get_size() / 2.0), false))
-			panel.add_child(_desk)
-		_desk.visible = true
-		var width := DESK_BUTTON * buttons.size() + DESK_GAP * maxi(0, buttons.size() - 1)
-		bottom_menu.add_theme_constant_override("separation", DESK_GAP)
-		bottom_menu.offset_left = -width * 0.5
-		bottom_menu.offset_right = width * 0.5
-		bottom_menu.offset_bottom = -DESK_BUTTON_FOOT
-		bottom_menu.offset_top = -DESK_BUTTON_FOOT - DESK_BUTTON
-		for b: Variant in buttons:
-			(b as Button).custom_minimum_size = Vector2(DESK_BUTTON, DESK_BUTTON)
-		if _bezels == null:
-			_bezels = Control.new()
-			_bezels.name = "DeskBezels"
-			_bezels.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			_bezels.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-			_bezels.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-			_bezels.draw.connect(_draw_bezels)
-			var host := bottom_menu.get_parent()
-			host.add_child(_bezels)
-			host.move_child(_bezels, bottom_menu.get_index())
-			bottom_menu.sort_children.connect(func() -> void: _bezels.queue_redraw())
-			bottom_menu.resized.connect(func() -> void: _bezels.queue_redraw())
-		_bezels.visible = true
-		_bezels.queue_redraw.call_deferred()
-	else:
-		panel.add_theme_stylebox_override("panel", _tray.style)
-		panel.offset_left = _tray.panel[0]
-		panel.offset_top = _tray.panel[1]
-		panel.offset_right = _tray.panel[2]
-		panel.offset_bottom = _tray.panel[3]
-		bottom_menu.add_theme_constant_override("separation", int(_tray.gap))
-		bottom_menu.offset_left = _tray.menu[0]
-		bottom_menu.offset_top = _tray.menu[1]
-		bottom_menu.offset_right = _tray.menu[2]
-		bottom_menu.offset_bottom = _tray.menu[3]
-		for b: Variant in buttons:
-			(b as Button).custom_minimum_size = _tray.size
-		if _desk != null:
-			_desk.visible = false
-		if _bezels != null:
-			_bezels.visible = false
-
+	var plate := DESK_PLATE.get_size() / 2.0
+	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	panel.offset_left = -plate.x * 0.5
+	panel.offset_right = plate.x * 0.5
+	panel.offset_top = -DESK_SHOWN
+	panel.offset_bottom = plate.y - DESK_SHOWN
+	_desk = Control.new()
+	_desk.name = "DeskPlate"
+	_desk.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_desk.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_desk.draw.connect(func() -> void: _desk.draw_texture_rect(DESK_PLATE, Rect2(Vector2.ZERO, DESK_PLATE.get_size() / 2.0), false))
+	panel.add_child(_desk)
+	var width := DESK_BUTTON * buttons.size() + DESK_GAP * maxi(0, buttons.size() - 1)
+	bottom_menu.add_theme_constant_override("separation", DESK_GAP)
+	bottom_menu.offset_left = -width * 0.5
+	bottom_menu.offset_right = width * 0.5
+	bottom_menu.offset_bottom = -DESK_BUTTON_FOOT
+	bottom_menu.offset_top = -DESK_BUTTON_FOOT - DESK_BUTTON
+	for b: Variant in buttons:
+		(b as Button).custom_minimum_size = Vector2(DESK_BUTTON, DESK_BUTTON)
+	_bezels = Control.new()
+	_bezels.name = "DeskBezels"
+	_bezels.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_bezels.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_bezels.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_bezels.draw.connect(_draw_bezels)
+	var host := bottom_menu.get_parent()
+	host.add_child(_bezels)
+	host.move_child(_bezels, bottom_menu.get_index())
+	bottom_menu.sort_children.connect(func() -> void: _bezels.queue_redraw())
+	bottom_menu.resized.connect(func() -> void: _bezels.queue_redraw())
+	_bezels.queue_redraw.call_deferred()
 
 ## Each button's gunmetal collar, centred where the button rests, and a halo round the collar of the one whose
 ## panel is open, in the button's own colour.

@@ -1,8 +1,7 @@
 extends "res://tests/test_base.gd"
-## The construct panel in DS2, the construction lot (UiPrefs.use_construct_ds2, `toggle construct ds2`):
-## behaviour, not looks. Off by default; one width in every stage; the build order's figures and its refusal
-## are ConstructionRules.quote()'s; the handles the tutorial and the tests look up are there; the source knob
-## sets this build's source.
+## The construct panel in DS2, the construction lot: behaviour, not looks. One width in every stage; the build
+## order's figures and its refusal are ConstructionRules.quote()'s; the handles the tutorial and the tests look
+## up are there; the source knob sets this build's source.
 
 const FEATURE := "construction"
 
@@ -33,13 +32,6 @@ func _order(panel: Control, tile: String) -> void:
 func _led_figure(host: Node) -> String:
 	var led: Node = host.find_child("Led", true, false)
 	return str(led.call("figure")) if led != null else ""
-
-
-func _test_construct_ds2_on_by_default() -> void:
-	_check(UiPrefs.use_construct_ds2, "construct ds2: on by default")
-	UiPrefs.set_use_construct_ds2(false)
-	_check(not UiPrefs.use_construct_ds2, "construct ds2: the cheat's setter turns it off")
-	UiPrefs.set_use_construct_ds2(true)
 
 
 func _test_construct_ds2_one_width() -> void:
@@ -112,16 +104,6 @@ func _test_construct_ds2_source_knob() -> void:
 		"build order: the quote follows the knob")
 	MatchState.pending_build_material_source = saved
 	panel.queue_free()
-
-
-func _test_construct_ds2_bottom_menu_picks() -> void:
-	var menu: Object = load("res://scripts/bottom_menu.gd").new()
-	UiPrefs.set_use_construct_ds2(true)
-	_check(str(menu.call("_construct_v2_script")) == PANEL, "bottom menu: the flag on builds the construction lot")
-	UiPrefs.set_use_construct_ds2(false)
-	_check(str(menu.call("_construct_v2_script")) == "res://scripts/construct_panel_v2.gd", "bottom menu: the flag off builds today's panel")
-	UiPrefs.set_use_construct_ds2(true)
-	menu.free()
 
 
 func _test_construct_ds2_catalogue() -> void:

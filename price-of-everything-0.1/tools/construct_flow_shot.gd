@@ -2,8 +2,8 @@ extends Node
 ## Captures of every stage and state of the construct flow (docs/construct-ds2-plan.md §1.2, §2):
 ## the catalogue (open, a building opened, a category, a search, a goods filter, locked to a tile,
 ## short of cash), settings, the confirm for a factory, short of land, short of cash, a power plant,
-## a battery, infrastructure, no site yet, the map pick after it, and the old confirm. Each stage is
-## paged top to bottom. Needs a window:
+## a battery, infrastructure, no site yet, and the map pick after it. Each stage is paged top to bottom.
+## Needs a window:
 ##   <godot> --path . res://tools/construct_flow_shot.tscn --quit-after 8000 -- --no-telemetry
 ## Writes cf_<nn>_<name>.png (panel crops) and full_<name>.png (whole screen, half size) into
 ## $CONSTRUCT_SHOT_DIR (or the user data folder).
@@ -140,14 +140,6 @@ func _ready() -> void:
 	_full("after_confirm_no_tile")
 	var bm := get_node_or_null("/root/BuildMode")
 	print("[CF] build mode node=", bm != null, " ", (str(bm.get("active")) if bm != null else ""))
-
-	# 13. The v2 confirm for comparison.
-	UiPrefs.set_use_construct_panel_v3(false)
-	_panel.call("open_for_tile", "tile_5_10", td)
-	_panel.call("_on_recipe_pressed", "b_002", "r_005")
-	await _settle(14)
-	await _pages("confirm_v2_factory")
-	UiPrefs.set_use_construct_panel_v3(true)
 
 	print("[CF] done, ", _n, " captures")
 	get_tree().quit(0)
