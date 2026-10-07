@@ -1,10 +1,10 @@
 extends "res://tests/test_base.gd"
-## The People panel's DS2 look (docs/people-ds2-plan.md, UiPrefs.use_people_ds2) and the figures it shows.
+## The People panel's DS2 look (docs/people-ds2-plan.md) and the figures it shows.
 
 const FEATURE := "people"
 ## Tests that also belong to other features (run under any of their tags).
 const TAGS := {
-	"_test_people_ds2_switch": ["people", "ui"],
+	"_test_people_ds2_panel": ["people", "ui"],
 	"_test_labour_headcount": ["people", "production"],
 	"_test_people_ds2_advisors": ["people", "advisors", "ui"],
 	"_test_people_ds2_labour": ["people", "production", "ui"],
@@ -14,44 +14,18 @@ const TAGS := {
 }
 
 
-## Off, today's panel exactly: the copper pipe frame, the title, a TabContainer with Advisors then Labour, the
-## old tabs' scripts and the tutorial's handles, 1220 wide. On, the DS2 shell in their place. Off again, back.
-func _test_people_ds2_switch() -> void:
-	var was: bool = UiPrefs.use_people_ds2
-	UiPrefs.set_use_people_ds2(false)
+## The panel is the DS2 shell, no TabContainer, under its name for the tutorial, one width of 800.
+func _test_people_ds2_panel() -> void:
 	var pp: PanelContainer = load("res://scripts/people_panel.gd").new()
 	add_child(pp)
 	await get_tree().process_frame
-	_check(_is_v2(pp), "people ds2: off, today's panel (pipe frame, TabContainer Advisors then Labour, the old tabs)")
-	_check(pp.find_child("AdvisorAddNewButton", true, false) != null and pp.name == "PeoplePanel",
-		"people ds2: off, the tutorial's handles are where they were")
+	await get_tree().process_frame
 	var vp := pp.get_viewport_rect().size
-	_check(is_equal_approx(pp.offset_right - pp.offset_left, minf(1220.0, vp.x - 60.0)), "people ds2: off, today's width")
-	UiPrefs.set_use_people_ds2(true)
-	await get_tree().process_frame
-	await get_tree().process_frame
 	_check(pp.find_child("PeopleDs2", false, false) != null and pp.find_children("*", "TabContainer", true, false).is_empty()
-		and pp.name == "PeoplePanel", "people ds2: on, the DS2 shell in place of the tabs")
-	_check(is_equal_approx(pp.offset_right - pp.offset_left, minf(800.0, vp.x - 24.0)), "people ds2: on, one width of 800")
-	UiPrefs.set_use_people_ds2(false)
-	await get_tree().process_frame
-	await get_tree().process_frame
-	_check(_is_v2(pp) and pp.find_child("PeopleDs2", false, false) == null, "people ds2: off again, today's panel back")
-	UiPrefs.set_use_people_ds2(was)
+		and pp.name == "PeoplePanel", "people ds2: the DS2 shell, no tabs")
+	_check(is_equal_approx(pp.offset_right - pp.offset_left, minf(800.0, vp.x - 24.0)), "people ds2: one width of 800")
 	pp.queue_free()
 	await get_tree().process_frame
-
-
-func _is_v2(pp: PanelContainer) -> bool:
-	var sb := pp.get_theme_stylebox("panel")
-	var tabs := pp.find_children("*", "TabContainer", true, false)
-	if tabs.size() != 1 or sb == null or sb is StyleBoxEmpty:
-		return false
-	var tc := tabs[0] as TabContainer
-	return tc.get_tab_count() == 2 and tc.get_tab_title(0) == "Advisors" and tc.get_tab_title(1) == "Labour" \
-		and (tc.get_child(0).get_script() as Script).resource_path == "res://scripts/advisor_council_tab.gd" \
-		and (tc.get_child(1).get_script() as Script).resource_path == "res://scripts/labour_policy_tab.gd" \
-		and _tree_has_label_text(pp, "People")
 
 
 ## A seated advisor's card names every effect of the seat, not only the first.
@@ -97,9 +71,8 @@ func _test_labour_headcount() -> void:
 ## green when the seat returns more than it costs, amber otherwise; every effect in words; the bonus, salary and
 ## net on screens by the owner's rule), a padlock only on a seat not yet opened, an open seat's Assign key; Add
 ## advisor slides the picker in over the table; a candidate's dossier takes a seat key and hires through the
-## same confirm as today's tab; the body is never wider than its scroll.
+## council tab's confirm; the body is never wider than its scroll.
 func _test_people_ds2_advisors() -> void:
-	var was: bool = UiPrefs.use_people_ds2
 	var saved := {"ids": AdvisorState.permanent_advisor_ids.duplicate(), "seats": AdvisorState.advisor_seats.duplicate(),
 		"recruited": AdvisorState.recruited_advisor_ids.duplicate(), "all": AdvisorState.all_seats_unlocked,
 		"cap": AdvisorState.max_advisor_slots, "turn": TurnManager.current_turn}
@@ -111,7 +84,6 @@ func _test_people_ds2_advisors() -> void:
 	AdvisorState.max_advisor_slots = 3
 	AdvisorState.assign_advisor_to_seat("cfo", "vera")
 	AdvisorState.assign_advisor_to_seat("coo", "tom")
-	UiPrefs.set_use_people_ds2(true)
 	var pp: PanelContainer = load("res://scripts/people_panel.gd").new()
 	add_child(pp)
 	pp.size = Vector2(800, 1000)
@@ -121,7 +93,6 @@ func _test_people_ds2_advisors() -> void:
 	var room: Control = pp.find_child("Boardroom", true, false)
 	_check(tab != null and room != null, "people ds2 advisors: the boardroom is built")
 	if tab == null or room == null:
-		UiPrefs.set_use_people_ds2(was)
 		pp.queue_free()
 		return
 	var status := preload("res://scripts/people_ds2/seat_status.gd")
@@ -231,7 +202,6 @@ func _test_people_ds2_advisors() -> void:
 		await get_tree().process_frame
 		_check(AdvisorState.get_advisor_in_seat("technical_director") == "gerald" and not bool(tab.call("sheet_open")),
 			"people ds2 advisors: Hire and assign seats the advisor and the sheet goes")
-	UiPrefs.set_use_people_ds2(was)
 	pp.queue_free()
 	await get_tree().process_frame
 	AdvisorState.advisor_seats = saved.seats
@@ -258,12 +228,10 @@ func _folder_locked(place: Node) -> int:
 ## pointer; the lockers of policies not yet open are padlocked and their switches dead; the body fits its scroll.
 func _test_people_ds2_labour() -> void:
 	MatchState.reset()
-	var was: bool = UiPrefs.use_people_ds2
 	var ids: Array[String] = []
 	for sp: Array in [["b_003", "r_004", "tile_10_2"], ["b_007", "r_009", "tile_13_2"]]:
 		BuildingState.tile_land_owned[str(sp[2])] = 200
 		ids.append(BuildingState.add_building(str(sp[0]), str(sp[1]), str(sp[2]), MatchState.LOCAL_PLAYER, ""))
-	UiPrefs.set_use_people_ds2(true)
 	var pp: PanelContainer = load("res://scripts/people_panel.gd").new()
 	add_child(pp)
 	pp.size = Vector2(800, 1000)
@@ -330,7 +298,6 @@ func _test_people_ds2_labour() -> void:
 	_check(bool(Production.labour_overview().at_floor) and floor_lamp != null and bool(floor_lamp.get_meta("lit")),
 		"people ds2 labour: at the floor the bell's lamp is lit")
 	Modifiers.remove("test_people_floor")
-	UiPrefs.set_use_people_ds2(was)
 	pp.queue_free()
 	await get_tree().process_frame
 	for iid in ids:
@@ -341,8 +308,6 @@ func _test_people_ds2_labour() -> void:
 ## The DS2 shell: two latching tab keys (the open one latched), Close asks the panel to close, the lamp's overlay
 ## is drawn last, and every label under the panel takes back part of its shade.
 func _test_people_ds2_shell() -> void:
-	var was: bool = UiPrefs.use_people_ds2
-	UiPrefs.set_use_people_ds2(true)
 	var pp: PanelContainer = load("res://scripts/people_panel.gd").new()
 	add_child(pp)
 	pp.size = Vector2(800, 1000)
@@ -382,7 +347,6 @@ func _test_people_ds2_shell() -> void:
 		"people ds2 shell: the dossier sheet lies under the lamp, its print given back, its screens undimmed")
 	tab.call("_set_view", {"mode": "roster"})
 	shell.call("show_tab", 0)
-	UiPrefs.set_use_people_ds2(was)
 	pp.queue_free()
 	await get_tree().process_frame
 

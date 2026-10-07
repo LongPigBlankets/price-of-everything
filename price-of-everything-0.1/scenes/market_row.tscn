@@ -1,6 +1,0 @@
-[gd_scene format=3 uid="uid://6mw4oeurekpg"]
-
-[ext_resource type="Script" uid="uid://bxfhdrarwjvti" path="res://scripts/market_row.gd" id="1_glg24"]
-
-[node name="MarketRow" type="VBoxContainer"]
-script = ExtResource("1_glg24")

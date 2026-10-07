@@ -5,7 +5,7 @@ extends VBoxContainer
 ## any other sort there are no headings and the Owner column names each lot's owner. A lot is a module: the building's emblem in polished metal, its name
 ## over its place, its owner, what it makes in a well with the quantity on its pill, its price on a red LED
 ## (whole pounds, as charged) and a guarded Buy key (decision 13): the first click lifts the cover, the second
-## buys, at the price shown (building_market_panel.gd buy_lot, the Buildings tab's own buy). Clicking a lot
+## buys, at the price shown (building_market_panel.gd buy_lot). Clicking a lot
 ## opens the building. Over the list, the search on a screen and, when opened from a tile's Buy Buildings, a tag
 ## naming the tile with a key that clears it. The list shows PAGE lots at a time, Show more under it.
 

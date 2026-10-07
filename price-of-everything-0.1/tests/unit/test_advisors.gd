@@ -73,27 +73,6 @@ func _test_advisor_seat_requires_hire() -> void:
 	AdvisorState.fired_advisor_cooldowns = saved_fired
 	AdvisorState.max_advisor_slots = saved_slots
 
-func _test_people_panel_seat_ui() -> void:
-	var saved_hired: Array = AdvisorState.permanent_advisor_ids.duplicate(true)
-	var saved_seats: Dictionary = AdvisorState.advisor_seats.duplicate(true)
-	AdvisorState.permanent_advisor_ids = ["vera"]
-	AdvisorState.advisor_seats = {}
-	var pp: Node = load("res://scripts/people_panel.gd").new()
-	add_child(pp)
-	var vera: Dictionary = AdvisorState.get_advisor("vera")
-	var section: Control = pp.call("_seat_assignment_section", vera)
-	_check(section != null and str(section.name) == "SeatAssignmentSection",
-		"seat UI: seat-assignment section builds for a hired advisor")
-	var pent: Control = pp.call("_stat_pentagon", AdvisorState.get_advisor("vera"))
-	_check(pent != null and str(pent.name) == "StatPentagon",
-		"seat UI: stat pentagon builds")
-	pp.call("_on_discipline_label", "fin", "vera")
-	_check(pp.get("_shown_discipline") == "fin",
-		"seat UI: tapping a discipline label opens its info section")
-	pp.queue_free()
-	AdvisorState.permanent_advisor_ids = saved_hired
-	AdvisorState.advisor_seats = saved_seats
-
 func _test_advisor_star_derivation() -> void:
 	var expected := {"vera": 5, "alexandra": 5, "gerald": 4, "eleanor": 4, "sloane": 3, "priya": 3, "hitomi": 3, "hal": 3, "tom": 2, "marcus": 2, "idris": 2, "rufus": 1}
 	for aid in expected:
@@ -596,43 +575,6 @@ func _test_advisor_mission_update_signals() -> void:
 	AdvisorState.reconcile_advisor_modifiers()
 	demo_terminal._demo_unlocked = saved_demo
 
-
-func _test_people_panel_mission_ui() -> void:
-	var pp: Node = load("res://scripts/people_panel.gd").new()
-	var quests := [
-		{"roman": "I", "title": "Onboard", "state": "completed", "color": Color("#CDA349"), "reward": "First reward", "req_text": "at loyalty 2"},
-		{"roman": "II", "title": "Prove", "state": "next", "color": Color("#536C92"), "reward": "Second reward", "req_text": "at loyalty 5"},
-		{"roman": "III", "title": "Expand", "state": "locked", "color": Color("#4F6B58"), "reward": "Third reward", "req_text": "at loyalty 7"},
-		{"roman": "IV", "title": "Master", "state": "locked", "color": Color("#765742"), "reward": "Fourth reward", "req_text": "at loyalty 9"},
-		{"roman": "V", "title": "Legacy", "state": "locked", "color": Color("#6B6077"), "reward": "Legacy reward", "req_text": "loyalty 9+ for 20 turns (3/20)"},
-	]
-	var plaque: Control = pp.call("_mission_plaque", quests[1]) as Control
-	_check(_tree_has_label_text(plaque, "II")
-		and not _tree_has_label_text(plaque, "Prove")
-		and not _tree_has_label_text(plaque, "Second reward")
-		and not _tree_has_label_text(plaque, "at loyalty"),
-		"PeoplePanel missions: plaques show only the roman numeral")
-
-	var rewards: Control = pp.call("_mission_rewards_row", quests) as Control
-	_check(_tree_has_label_text(rewards, "Reward") and _tree_has_label_text(rewards, "Legacy reward"),
-		"PeoplePanel missions: rewards render in the separate row")
-	var rewards_margin: MarginContainer = rewards.find_child("MissionRewardsMargin", true, false) as MarginContainer
-	var rewards_row: HBoxContainer = rewards.find_child("MissionRewardsRow", true, false) as HBoxContainer
-	var first_reward: Control = rewards.find_child("MissionReward_I", true, false) as Control
-	_check(rewards is ScrollContainer
-			and rewards_margin != null
-			and rewards_row != null
-			and first_reward != null
-			and rewards_margin.get_theme_constant("margin_left") >= 10
-			and rewards_margin.get_theme_constant("margin_right") >= 10
-			and rewards_row.get_theme_constant("separation") >= 20
-			and first_reward.custom_minimum_size.x <= 164.0,
-		"PeoplePanel missions: reward cards keep max width, edge padding, and 20px gaps")
-
-	var bar: Control = pp.call("_loyalty_bar", 5.0, quests) as Control
-	_check(_tree_has_label_text(bar, "V: loyalty 9+ for 20 turns (3/20)")
-		and _tree_has_label_text(bar, "9+ 20t"),
-		"PeoplePanel missions: loyalty milestones live on the bar")
 
 func _test_advisor_seats_save_roundtrip() -> void:
 	var saved_seats: Dictionary = AdvisorState.advisor_seats.duplicate(true)

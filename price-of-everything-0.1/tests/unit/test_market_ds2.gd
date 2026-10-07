@@ -1,7 +1,7 @@
 extends "res://tests/test_base.gd"
-## The market's DS2 look (UiPrefs.use_market_ds2, `toggle market ds2`): behaviour, not looks. The switch off
-## restores today's panel; the figures on the board are MarketRules'; every tab keeps to the one width; the
-## sell panel in DS2 sells what it previews; the slip's chart hover reads the history; Cancel and a lot's Buy work.
+## The market panel, the exchange: behaviour, not looks. The figures on the board are MarketRules'; every tab
+## keeps to the one width; the sell panel sells what it previews; the slip's chart hover reads the history;
+## Cancel and a lot's Buy work.
 
 const FEATURE := "market"
 const TAGS := {
@@ -17,16 +17,10 @@ const COAL := "g_001"
 const INLAND := "tile_3_8"
 
 
-func _panel(ds2: bool) -> Control:
-	UiPrefs.set_use_market_ds2(ds2)
+func _panel() -> Control:
 	var panel: Control = load("res://scenes/market_panel.tscn").instantiate()
 	add_child(panel)
 	return panel
-
-
-func _done(panel: Control) -> void:
-	panel.queue_free()
-	UiPrefs.set_use_market_ds2(true)
 
 
 func _cleanup_trades(ships: int) -> void:
@@ -53,29 +47,20 @@ func _test_market_ds2_money_display_rule() -> void:
 	led.free()
 
 
-## With the switch off the panel is today's; on, the exchange; off again, today's once more.
-func _test_market_ds2_switch_restores_today() -> void:
-	var panel := _panel(false)
-	var v2 := panel.get_node("MarginContainer") as Control
-	var v2_box := panel.get_theme_stylebox("panel")
-	_check(panel.call("ds2") == null and v2.visible, "switch off: today's panel")
-	UiPrefs.set_use_market_ds2(true)
+## The panel is the exchange, with its five tabs.
+func _test_market_ds2_tabs() -> void:
+	var panel := _panel()
 	var ds2: Control = panel.call("ds2")
-	_check(ds2 != null and not v2.visible and ds2.is_inside_tree(), "switch on: the exchange over today's panel, which is hidden")
-	_check((ds2.call("tab_keys") as Array) == ["prices", "buildings", "special_orders", "recurring", "history"], "switch on: the five tabs")
-	_check((panel.call("tab_keys") as Array).size() == 5, "switch on: the panel's tabs are the exchange's")
-	UiPrefs.set_use_market_ds2(false)
-	_check(panel.call("ds2") == null and v2.visible, "switch off again: today's panel is back")
-	_check(panel.find_child("MarketDs2", true, false) == null and panel.find_child("MarketBacking", true, false) == null,
-		"switch off again: nothing of the exchange is left")
-	_check(panel.get_theme_stylebox("panel").get_class() == v2_box.get_class(), "switch off again: today's frame")
-	_check((panel.call("tab_keys") as Array).size() == 6, "switch off again: today's six tabs")
-	_done(panel)
+	_check(ds2 != null and ds2.is_inside_tree() and panel.find_child("MarketBacking", true, false) != null,
+		"panel: the exchange over its backing")
+	_check((ds2.call("tab_keys") as Array) == ["prices", "buildings", "special_orders", "recurring", "history"], "panel: the five tabs")
+	_check((panel.call("tab_keys") as Array).size() == 5, "panel: the panel's tabs are the exchange's")
+	panel.queue_free()
 
 
 ## The board's figures are MarketRules'.
 func _test_market_ds2_board_figures() -> void:
-	var panel := _panel(true)
+	var panel := _panel()
 	panel.show()
 	await get_tree().process_frame
 	var ds2: Control = panel.call("ds2")
@@ -117,7 +102,7 @@ func _test_market_ds2_board_figures() -> void:
 	prices.call("sort_by", "sell")
 	var shown: Array = prices.call("shown_rows")
 	_check(shown.size() > 1 and float(shown[0].sell) >= float(shown[1].sell), "board: Sell sorts, dearest first")
-	_done(panel)
+	panel.queue_free()
 
 
 ## The trend arrow is red when the price goes against the player's own trade, green when with it, plain when
@@ -129,7 +114,7 @@ func _test_market_ds2_trend_arrow() -> void:
 	_check(MParts.trend_tone(-1, -20.0) == "ok", "arrow: buying while it falls is green")
 	_check(MParts.trend_tone(1, 20.0) == "ok", "arrow: selling while it rises is green")
 	_check(MParts.trend_tone(1, 0.0) == "" and MParts.trend_tone(0, 20.0) == "", "arrow: plain when not trading or holding")
-	var panel := _panel(true)
+	var panel := _panel()
 	panel.show()
 	await get_tree().process_frame
 	var row: Control = (panel.call("ds2") as Control).call("tab", "prices").call("row_for", COAL)
@@ -138,12 +123,12 @@ func _test_market_ds2_trend_arrow() -> void:
 	var card: Dictionary = MParts.ladder_card(COAL)
 	for line: Dictionary in card.rows:
 		_check(str(line.caption).ends_with("/ TURN"), "impact card: %s counts / TURN" % str(line.caption))
-	_done(panel)
+	panel.queue_free()
 
 
 ## Every tab keeps to the one width: nothing in a tab asks for more than the panel's width allows.
 func _test_market_ds2_width_discipline() -> void:
-	var panel := _panel(true)
+	var panel := _panel()
 	panel.show()
 	await get_tree().process_frame
 	var ds2: Control = panel.call("ds2")
@@ -161,19 +146,19 @@ func _test_market_ds2_width_discipline() -> void:
 	await get_tree().process_frame
 	var sell: Control = panel.call("sell_panel")
 	_check(sell.get_combined_minimum_size().x <= MarketDs2.WIDTH + 0.5, "width: the sell panel fits")
-	_done(panel)
+	panel.queue_free()
 
 
-## In DS2 the sell panel is skinned and still sells exactly what it previews.
+## The sell panel is skinned and sells exactly what it previews.
 func _test_market_ds2_sell_panel() -> void:
 	var ships := TransportState.pending_transport_shipments.size()
 	var saved_money := MatchState.money
-	var panel := _panel(true)
+	var panel := _panel()
 	Stockpile.consume(INLAND, COAL, 1 << 30)
 	Stockpile.add(INLAND, COAL, 25)
 	panel.call("open_sell_panel", COAL)
 	var sell: Control = panel.call("sell_panel")
-	_check(bool(sell.get("ds2")) and sell.find_child("SellBacking", true, false) != null, "sell panel: the DS2 skin")
+	_check(sell.find_child("SellBacking", true, false) != null, "sell panel: the DS2 skin")
 	sell.call("set_tile_selected", INLAND, true)
 	for s: Dictionary in sell.get("sources"):
 		if str(s.tile) != INLAND:
@@ -187,9 +172,7 @@ func _test_market_ds2_sell_panel() -> void:
 	guard.call("lift")
 	guard.emit_signal("pressed")
 	_check(Stockpile.get_at_tile(INLAND, COAL) == 5, "sell panel: the guarded key sold what the preview said")
-	UiPrefs.set_use_market_ds2(false)
-	_check(not bool(sell.get("ds2")) and sell.find_child("SellTable", true, false) != null, "sell panel: back to today's look with the switch")
-	_done(panel)
+	panel.queue_free()
 	_cleanup_trades(ships)
 	MatchState.money = saved_money
 
@@ -205,7 +188,7 @@ func _test_market_ds2_slip_chart_hover() -> void:
 	TurnManager.current_turn = 4
 	MarketState.tick_turn()
 	MarketState._record_price_history()
-	var panel := _panel(true)
+	var panel := _panel()
 	panel.show()
 	await get_tree().process_frame
 	var prices: Control = panel.call("ds2").call("tab", "prices")
@@ -220,7 +203,7 @@ func _test_market_ds2_slip_chart_hover() -> void:
 	var chart: Control = slip.get("chart")
 	var i: int = chart.call("sample_at_x", chart.size.x)
 	_check(i == h.size() - 1, "slip: the chart's right edge is the latest turn")
-	_done(panel)
+	panel.queue_free()
 	TurnManager.current_turn = saved_turn
 	MarketState.import_state(saved)
 
@@ -229,7 +212,7 @@ func _test_market_ds2_slip_chart_hover() -> void:
 func _test_market_ds2_recurring_cancel() -> void:
 	MatchState.add_recurring_buy(INLAND, COAL, 3)
 	var entry: Dictionary = MatchState.recurring_buys[MatchState.recurring_buys.size() - 1]
-	var panel := _panel(true)
+	var panel := _panel()
 	panel.show()
 	await get_tree().process_frame
 	var ds2: Control = panel.call("ds2")
@@ -243,7 +226,7 @@ func _test_market_ds2_recurring_cancel() -> void:
 	if cancel != null:
 		cancel.pressed.emit()
 	_check(not MatchState.recurring_buys.has(entry), "recurring: Cancel stops the buy")
-	_done(panel)
+	panel.queue_free()
 
 
 ## A lot's guarded Buy key buys it at the price on its row.
@@ -252,7 +235,7 @@ func _test_market_ds2_lot_buy() -> void:
 	var tile := "ds2_lot_tile"
 	var iid: String = BuildingState.add_building("b_007", "", tile, "Test NPC Co", "", false)
 	MatchState.money = 100000.0
-	var panel := _panel(true)
+	var panel := _panel()
 	panel.show()
 	await get_tree().process_frame
 	panel.call("open_buildings_for_tile", tile)
@@ -270,7 +253,7 @@ func _test_market_ds2_lot_buy() -> void:
 	_check(absf((before - MatchState.money) - float(price)) < 0.01, "lots: at the price shown")
 	panel.hide()
 	_check(str(lots.call("tile_filter")) == "", "lots: the tile filter drops when the panel closes")
-	_done(panel)
+	panel.queue_free()
 	BuildingState.remove_building(iid)
 	BuildingState.tile_land_owned.erase(tile)
 	MatchState.money = saved_money
@@ -283,7 +266,7 @@ func _test_market_ds2_lots_sort_by_owner() -> void:
 	var made: Array = []
 	for spec: Array in [["b_007", "Zeta Works Co."], ["b_002", "Alpha Holdings Co."], ["b_007", "Alpha Holdings Co."]]:
 		made.append(BuildingState.add_building(str(spec[0]), "", tile, str(spec[1]), "", false))
-	var panel := _panel(true)
+	var panel := _panel()
 	panel.show()
 	await get_tree().process_frame
 	panel.call("open_buildings_for_tile", tile)
@@ -313,7 +296,7 @@ func _test_market_ds2_lots_sort_by_owner() -> void:
 	_check(str(lots.call("sort_key")) == "name" and lots.find_children("*", "MarginContainer", true, false).filter(
 		func(n: Node) -> bool: return n.has_meta("owner")).is_empty(),
 		"lots sort: pressed again, back to names without headings")
-	_done(panel)
+	panel.queue_free()
 	for iid in made:
 		BuildingState.remove_building(str(iid))
 	BuildingState.tile_land_owned.erase(tile)
@@ -321,10 +304,10 @@ func _test_market_ds2_lots_sort_by_owner() -> void:
 
 ## The lamp over the DS2 market (docs/ds2-theme.md §4): every part darkened by it, the sell panel's sheet and tabs
 ## built later too, the text taking back half, LED segments, dot matrix dots and meter cells not darkened at all,
-## glows at full strength; gone with the switch off, every part back to its own material.
+## glows at full strength.
 func _test_market_ds2_lamp_overlay() -> void:
 	var Overlay: GDScript = load("res://scripts/ds2/lamp_overlay.gd")
-	var panel := _panel(true)
+	var panel := _panel()
 	panel.show()
 	await get_tree().process_frame
 	_check(Overlay.find(panel) != null and panel.material == Overlay.shade_material(), "lamp: on, the panel's own plate darkened")
@@ -352,45 +335,28 @@ func _test_market_ds2_lamp_overlay() -> void:
 	var hist := (ds2.call("tab", "history") as Node).find_children("*", "Label", true, false)
 	_check(not hist.is_empty() and hist.all(func(l: Node) -> bool: return (l as Label).material == Overlay.text_material()),
 		"lamp: a tab built later is lit too")
-	UiPrefs.set_use_market_ds2(false)
-	_check(Overlay.find(panel) == null and panel.material == null, "lamp: gone with the switch off")
-	var left := panel.find_children("*", "CanvasItem", true, false).filter(func(n: Node) -> bool: return (n as CanvasItem).has_meta(Overlay.ORIGINAL))
-	_check(left.is_empty(), "lamp: every part has its own material back")
-	var v2_labels := panel.find_children("*", "Label", true, false).filter(func(l: Node) -> bool: return (l as Label).material != null)
-	_check(v2_labels.is_empty(), "lamp: today's labels keep no material")
-	_done(panel)
+	panel.queue_free()
 
 
-## The ledger DS2, its upgrade sheet and the tile view v3 carry the lamp too; the ledger's v2 look does not.
+## The ledger, its upgrade sheet and the tile view carry the lamp too.
 func _test_ds2_panels_lamp_overlay() -> void:
 	var Overlay: GDScript = load("res://scripts/ds2/lamp_overlay.gd")
-	var was_ledger: bool = UiPrefs.use_ledger_ds2
-	UiPrefs.set_use_ledger_ds2(true)
 	var ledger: Control = load("res://scenes/building_ledger_panel.tscn").instantiate()
 	add_child(ledger)
 	await get_tree().process_frame
 	_check(Overlay.find(ledger) != null, "lamp: the ledger DS2 has the overlay")
-	UiPrefs.set_use_ledger_ds2(false)
-	_check(Overlay.find(ledger) == null, "lamp: the ledger v2 has none")
 	ledger.queue_free()
-	UiPrefs.set_use_ledger_ds2(was_ledger)
 	var dialog: Control = load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd").new()
 	add_child(dialog)
 	await get_tree().process_frame
 	var card := dialog.find_child("UpgradeSheet", true, false) as Control
 	_check(card != null and Overlay.find(card) != null, "lamp: the DS2 upgrade sheet has the overlay")
 	dialog.queue_free()
-	var was_tvp: bool = UiPrefs.use_tvp_v3
-	UiPrefs.set_use_tvp_v3(true)
 	var tvp: Control = load("res://scripts/tile_info_panel_v2.gd").new()
 	add_child(tvp)
 	await get_tree().process_frame
 	_check(Overlay.find(tvp) != null, "lamp: the tile view v3 has the overlay")
-	UiPrefs.set_use_tvp_v3(false)
-	await get_tree().process_frame
-	_check(Overlay.find(tvp) == null, "lamp: the tile view v2 has none")
 	tvp.queue_free()
-	UiPrefs.set_use_tvp_v3(was_tvp)
 
 
 

@@ -1,11 +1,11 @@
 extends Node
-## Captures of the People panel in its v2 and DS2 looks (UiPrefs.use_people_ds2), in the real HUD, cropped to
-## the panel: an empire with something to show (the ledger shot's buildings, stock on their tiles, cash, Vera
-## seated as CFO and Tom as COO, four turns played), each tab paged top to bottom in each look; then, in DS2,
-## the council's sheets (the picker, a candidate's dossier), Labour at its extremes and at its floor.
+## Captures of the People panel in the real HUD, cropped to the panel: an empire with something to show (the
+## ledger shot's buildings, stock on their tiles, cash, Vera seated as CFO and Tom as COO, four turns played),
+## each tab paged top to bottom; then the council's sheets (the picker, a candidate's dossier), Labour at its
+## extremes and at its floor.
 ## Needs a window:
 ##   PEOPLE_SHOT_DIR=<dir> <godot> --path . res://tools/people_ds2_shot.tscn --quit-after 20000 -- --no-telemetry
-## Writes people_<look>_<tab>_p<page>.png and the named DS2 views into $PEOPLE_SHOT_DIR (or the user data folder).
+## Writes people_ds2_<tab>_p<page>.png and the named views into $PEOPLE_SHOT_DIR (or the user data folder).
 
 var _wm: Node
 var _dir := ""
@@ -54,23 +54,20 @@ func _ready() -> void:
 		print("[PEOPLE_SHOT] the panel did not open")
 		get_tree().quit(1)
 		return
-	for look in ["v2", "ds2"]:
-		UiPrefs.set_use_people_ds2(look == "ds2")
-		await _settle(20)
-		for t in 2:
-			_show_tab(panel, t)
-			await _settle(14)
-			await _pages(panel, "people_%s_%s" % [look, ["advisors", "labour"][t]])
-	await _ds2_views(panel)
+	var shell: Control = panel.find_child("PeopleDs2", false, false)
+	for t in 2:
+		shell.call("show_tab", t)
+		await _settle(14)
+		await _pages(panel, "people_ds2_%s" % ["advisors", "labour"][t])
+	await _advisor_views(panel)
 	await _labour_views(panel)
 	print("[PEOPLE_SHOT] panel %s, min width %.0f" % [str(panel.get_global_rect()), panel.get_combined_minimum_size().x])
-	UiPrefs.set_use_people_ds2(false)
 	get_tree().quit(0)
 
 
-## The DS2 Advisors tab's other views: the seats not yet opened (padlocks), a council with room (an open seat),
+## The Advisors tab's other views: the seats not yet opened (padlocks), a council with room (an open seat),
 ## the picker with candidates, a candidate's dossier with a seat chosen, a seated advisor's dossier.
-func _ds2_views(panel: Control) -> void:
+func _advisor_views(panel: Control) -> void:
 	var shell: Control = panel.find_child("PeopleDs2", false, false)
 	if shell == null:
 		return
@@ -129,7 +126,7 @@ func _ds2_views(panel: Control) -> void:
 		await _settle(6)
 
 
-## The DS2 Labour tab's other views, where the look has them.
+## The Labour tab's other views.
 func _labour_views(panel: Control) -> void:
 	var shell: Control = panel.find_child("PeopleDs2", false, false)
 	if shell == null:
@@ -143,16 +140,6 @@ func _labour_views(panel: Control) -> void:
 		setup.call()
 		await _settle(int(v.get("frames", 16)))
 		await _pages(panel, "people_ds2_labour_%s" % str(v.name))
-
-
-func _show_tab(panel: Control, t: int) -> void:
-	var shell: Control = panel.find_child("PeopleDs2", false, false)
-	if shell != null:
-		shell.call("show_tab", t)
-		return
-	for c in panel.find_children("*", "TabContainer", true, false):
-		(c as TabContainer).current_tab = t
-		return
 
 
 ## Page the tallest visible scroll in the panel from top to bottom, one crop a page.

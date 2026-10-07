@@ -9,7 +9,7 @@ extends "res://scripts/labour_policy_tab.gd"
 ## under the pointer and every policy in force. Then automation, a slide switch on a plastic case between hands
 ## and machines, and the other policies in the workers' lockers, a padlock through the hasp of one not yet open.
 ##
-## The choices go through LabourState as today's tab's do (it is this tab's base); the figures are the engine's
+## The choices go through LabourState as its base tab's do (labour_policy_tab.gd); the figures are the engine's
 ## (Production.labour_overview, labour_charge).
 
 const Parts := preload("res://scripts/people_ds2/parts.gd")

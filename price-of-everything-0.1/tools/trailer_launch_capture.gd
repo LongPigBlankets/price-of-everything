@@ -28,7 +28,6 @@ func run(owner_node: Node) -> void:
 		print("RESEARCH_CAPTURE_DONE")
 		return
 	await build_and_site()
-	await market()
 	await research()
 	var file := FileAccess.open(OUT + "/evidence.json", FileAccess.WRITE)
 	file.store_string(JSON.stringify(evidence, "\t"))
@@ -180,55 +179,6 @@ func shot(name: String) -> void:
 	assert(im.save_png(OUT + "/" + name + ".png") == OK)
 	im = null
 	print("LAUNCH_SHOT ", name)
-
-func market() -> void:
-	var panel: Control = host.world.find_child("MarketPanel", true, false)
-	expose(panel, Rect2(55, 70, 1810, 900))
-	await wait_frames()
-	panel._set_impact_expanded(true)
-	panel.size = Vector2(1810, 850)
-	panel.position = Vector2(55, 75)
-	panel._search.text = "iron ore"
-	panel._search.text_changed.emit("iron ore")
-	await wait_frames()
-	var good: String = str(Catalog.get_good_by_internal_name("iron_ore").id)
-	var chart: Control
-	for row: Control in panel.rows:
-		if str(row.get("good_id")) == good:
-			row._toggle_expand()
-			# Enlarge the native, read-only history chart for trailer readability.
-			chart = row._price_chart
-			chart.reparent(layer)
-			chart.set_anchors_preset(Control.PRESET_TOP_LEFT)
-			chart.position = Vector2(525, 377)
-			chart.custom_minimum_size = Vector2(1300, 505)
-			chart.size = Vector2(1300, 505)
-			chart.show()
-	var qty: int = Catalog.base_output_for_good(good) * 8
-	var records: Array = []
-	for i in 16:
-		qty = Catalog.base_output_for_good(good) * (2 + i)
-		if i > 0:
-			var result: Dictionary = MatchState.queue_buy("tile_5_10", good, qty)
-			assert(int(result.get("qty", 0)) == qty, "Trailer market purchase must really succeed")
-			TurnManager.current_turn += 1
-			MarketState.tick_turn()
-			MarketState._record_price_history()
-			MarketState.prices_updated.emit()
-		panel._queue_refresh()
-		await wait_frames(3)
-		# The row refresh also lays out its chart; restore the capture framing
-		# after that native refresh has settled, without altering the chart data.
-		chart.position = Vector2(525, 377)
-		chart.size = Vector2(1300, 505)
-		records.append({"turn":TurnManager.current_turn,"price":MarketState.get_buy_price(good),"impact":MarketState.get_impact_pct(good),"buy_qty":qty if i > 0 else 0})
-		await shot("market_%02d" % i)
-	evidence.market = records
-	assert(float(records[-1].price) > float(records[0].price))
-	for child: Node in layer.get_children():
-		if child.name == "PriceHistoryChart":
-			(child as Control).hide()
-	panel.hide()
 
 func build_and_site() -> void:
 	var menu: Node = host.world.get_node("UILayer/HUD")

@@ -2,8 +2,6 @@ extends Node2D
 # Dev-only: render the People panel's advisor DETAIL view — the bonuses table (heading, and the
 # green/red signed percentages) and the agenda beside it.
 #   Godot --path . res://tools/advisor_shot.tscn --quit-after 600
-# The old version drove people_panel._open_advisor_detail (legacy, since removed) and selected
-# tab 1, which is Labour — it rendered the wrong tab with a half-built detail on top of it.
 var _frame := 0
 var _panel
 
@@ -19,15 +17,11 @@ func _ready() -> void:
 
 	var layer := CanvasLayer.new()
 	add_child(layer)
-	UiPrefs.set_use_people_ds2(false)  # this tool shows today's (v2) panel
 	_panel = load("res://scripts/people_panel.gd").new()
 	layer.add_child(_panel)
 	await get_tree().process_frame
 	_panel.position = Vector2(20, 20)
 	_panel.size = Vector2(1240, 860)
-	var tcs: Array = _panel.find_children("*", "TabContainer", true, false)
-	if not tcs.is_empty():
-		(tcs[0] as TabContainer).current_tab = 0        # Advisors
 	await get_tree().process_frame
 	var councils: Array = _panel.find_children("*", "AdvisorCouncilTab", true, false)
 	if councils.is_empty():

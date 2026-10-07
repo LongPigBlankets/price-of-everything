@@ -1,5 +1,5 @@
 extends RefCounted
-## The sell panel's DS2 look (scripts/market_sell_panel.gd, `ds2`): a sheet of the panel's navy steel over the
+## The sell panel's DS2 look (scripts/market_sell_panel.gd): a sheet of the panel's navy steel over the
 ## market, as a sell ticket:
 ##   the raised title (Sell Coal) and the Back key;
 ##   on the key bed, the quantity keys (All, All but X, Only X) with X on a screen, and One off or Recurring;

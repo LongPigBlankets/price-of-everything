@@ -11,8 +11,8 @@ extends "res://scripts/advisor_council_tab.gd"
 ## scripts/people_ds2/seat_status.gd.
 ##
 ## The picker and an advisor's dossier are steel sheets that slide in over the table, not views that replace it.
-## The view state, the candidates, the tutorial's checks and the hire itself are today's tab's
-## (advisor_council_tab.gd), so both looks hire the same way; the node names the tutorial and tests look up
+## The view state, the candidates, the tutorial's checks and the hire itself are the base tab's
+## (advisor_council_tab.gd); the node names the tutorial and tests look up
 ## (AdvisorAddNewButton, AdvisorSeatChoice_<seat>, AdvisorBonusPrompt, AdvisorBonusSection,
 ## AdvisorFinancialPreview, AdvisorBonusValue, AdvisorSalaryValue, AdvisorNetBenefitValue,
 ## AdvisorChooseCandidateButton, AdvisorHireAssignButton, AdvisorHireCostLine) are kept.

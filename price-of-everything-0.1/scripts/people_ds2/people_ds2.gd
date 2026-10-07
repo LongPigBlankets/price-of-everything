@@ -1,6 +1,5 @@
 extends Control
-## The People panel in DS2 (docs/people-ds2-plan.md), built into the panel (scripts/people_panel.gd) while
-## UiPrefs.use_people_ds2 is on. With the switch off the panel builds today's look itself.
+## The People panel in DS2 (docs/people-ds2-plan.md), built into the panel (scripts/people_panel.gd).
 ##
 ## The shell is a painted steel cabinet in machinery green (people_backing: three bolted sheets, two hinges down
 ## the left), one width for both tabs. A fixed head: the PEOPLE nameplate (the tile view's black enamel, the name
@@ -9,7 +8,7 @@ extends Control
 ## by part (scripts/ds2/lamp_overlay.gd), its sheets and parts added later too, as Building Detail's.
 
 signal close_requested
-## A press or drag on the head, which moves the panel as the v2 title bar does.
+## A press or drag on the head, which moves the panel.
 signal drag_input(event: InputEvent)
 
 const Parts := preload("res://scripts/people_ds2/parts.gd")
