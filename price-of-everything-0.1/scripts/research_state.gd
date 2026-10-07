@@ -964,6 +964,141 @@ func _live_condition_met(d: Dictionary) -> bool:
 	return false
 
 
+## How far a research title's condition has come, as Vector2i(have, need), read from the same counters the
+## live check reads. Vector2i.ZERO for a condition with no count a player can watch grow (a compound gate, a
+## rate, a share) or no condition. `have` is clamped to `need`. A quote: nothing is recorded.
+func condition_progress(title: String) -> Vector2i:
+	var d := get_unlock_def(title)
+	if d.is_empty() or str(d.get("action", "")) == "Placeholder":
+		return Vector2i.ZERO
+	var need := int(d.get("qty", 0))
+	if need <= 0:
+		return Vector2i.ZERO
+	var obj := str(d.get("object", ""))
+	var unit := str(d.get("unit", ""))
+	var have := -1
+	match str(d.get("action", "")):
+		"Produce":
+			var gid := _research_good_id(obj)
+			if gid != "":
+				have = Production.lifetime_total(gid)
+		"Produce All":
+			var goods := obj.split("|", false)
+			var quantities := str(d.get("quantity_raw", "")).split("|", false)
+			if goods.is_empty() or goods.size() != quantities.size():
+				return Vector2i.ZERO
+			var sum_have := 0
+			var sum_need := 0
+			for i in goods.size():
+				var want := int(str(quantities[i]))
+				sum_need += want
+				sum_have += mini(Production.lifetime_total(_research_good_id(str(goods[i]))), want)
+			return Vector2i(mini(sum_have, sum_need), sum_need) if sum_need > 0 else Vector2i.ZERO
+		"Produce Any":
+			var any_goods := obj.split("|", false)
+			var any_qtys := str(d.get("quantity_raw", "")).split("|", false)
+			var best := Vector2i.ZERO
+			var best_share := -1.0
+			for i in any_goods.size():
+				var want := need
+				if any_qtys.size() == any_goods.size() and str(any_qtys[i]).is_valid_int():
+					want = int(str(any_qtys[i]))
+				var got := mini(Production.lifetime_total(_research_good_id(str(any_goods[i]))), want)
+				var share := float(got) / float(maxi(want, 1))
+				if share > best_share:
+					best_share = share
+					best = Vector2i(got, want)
+			return best
+		"Sell":
+			if _research_key(obj) == "freight":
+				have = MarketState.lifetime_sold_total()
+			else:
+				var sell_good := _research_good_id(obj)
+				if sell_good != "":
+					have = MarketState.lifetime_sold(sell_good)
+		"Sell Through Ports":
+			have = _port_sale_total
+		"Purchase Ports":
+			have = TransportState._owned_port_count()
+		"Build":
+			have = _count_buildings(obj, -1, false, 0)
+		"Own":
+			if _research_key(obj) == "land":
+				have = _research_owned_land_units()
+			elif _research_key(obj) == "offshore_oil_land":
+				have = _owned_offshore_oil_land()
+			else:
+				have = _count_buildings(obj, -1, false, 0)
+		"Run":
+			var run_turns := _leading_int(unit, 0)
+			if run_turns > 0:
+				have = _count_buildings(obj, -1, false, run_turns)
+			else:
+				# One building held at full output for `need` turns: the longest streak counts.
+				have = _best_full_output_streak(obj)
+		"Run L1":
+			have = _count_buildings(obj, 1, false, _leading_int(unit, 20))
+		"Run Profitable":
+			have = _count_buildings(obj, -1, true, _leading_int(unit, 0))
+		"Run Profitable L1":
+			have = _count_buildings(obj, 1, true, _leading_int(unit, 0))
+		"Run Profitable L2":
+			have = _count_buildings(obj, 2, true, 0)
+		"Run Same Tile":
+			have = _max_same_tile_count(obj, _leading_int(unit, 0))
+		"Own On Tiles":
+			have = _tiles_with_building(obj)
+		"Run Distinct Recipes":
+			have = _distinct_recipes_running(obj)
+		"Run Producing":
+			have = _count_running_producing(_research_good_id(obj), _leading_int(unit, 0))
+		"Run Recipe":
+			have = _count_buildings_running_recipe_type(obj, _leading_int(unit, 0))
+		"Run Recipe Profitable":
+			have = _count_buildings_running_recipe_type(obj, 1, true)
+		"Produce Distinct":
+			have = 0
+			for good in Catalog.all_goods():
+				if Production.lifetime_total(str(good.get("id", ""))) > 0:
+					have += 1
+		"Survey":
+			have = int(_unlock_progress.get(("Survey|" + obj).to_lower(), 0))
+		"Fulfil Special Orders":
+			have = SpecialOrderState.fulfilled_count
+		"Keep Hired":
+			have = advisors_hired_streak(maxi(1, _leading_int(obj, 1)))
+		"Stockpile filled":
+			have = max_stockpile_feed_streak()
+		"Produce Per Turn":
+			have = int((Production.last_turn_summary.get("produced", {}) as Dictionary).get(_research_good_id(obj), 0))
+		"Profit":
+			var profit_turns := _leading_int(unit, 0)
+			if profit_turns > 1:
+				return Vector2i(mini(profit_streak(float(need)), profit_turns), profit_turns)
+		"Ship Through Logistics Intermediary":
+			return intermediary_shipping_progress(need, maxi(1, _leading_int(unit, 1)))
+		"Use Infrastructure":
+			var duration := _leading_int(unit.get_slice("for", 1), 5) if "for" in unit else 1
+			return Vector2i(mini(int(_infrastructure_usage_streaks.get(title, 0)), duration), duration)
+	if have < 0:
+		return Vector2i.ZERO
+	return Vector2i(clampi(have, 0, need), need)
+
+
+## The longest full-output streak among the player's buildings of `internal` (any level).
+func _best_full_output_streak(internal: String) -> int:
+	var any_type: bool = _research_key(internal) == "any" or internal == ""
+	var targets := _research_building_targets(internal)
+	var best := 0
+	for inst in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(inst):
+			continue
+		if not any_type and not targets.has(_building_internal(inst)):
+			continue
+		best = maxi(best, int(Production.full_output_streak_by_building.get(str(inst.get("instance_id", "")), 0)))
+	return best
+
+
 func _run_multiple_buildings_met(d: Dictionary) -> bool:
 	var targets := str(d.get("object", "")).split("|", false)
 	var quantities := str(d.get("quantity_raw", "")).split("|", false)

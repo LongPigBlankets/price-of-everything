@@ -18,6 +18,7 @@ extends CanvasLayer
 ##   swap empire button               toggle the Empire View button's two icon treatments
 ##   toggle dock ds2                  switch the updates dock to its DS2 look (in review; v2 is default), and again to return
 ##   toggle legend ds2                put the map legends on the DS2 plastic pad (in review; v2 is default), and again to return
+##   toggle research ds2              switch the Research panel to its DS2 look, the patent board and plan chest (in review), and back
 ##   research all                     unlock every research node (alias of `unlock all`)
 ##   unlock hidden_buildings          enable the three hidden prototype buildings
 ##   unlock advisors                 open the full advisor roster, all seats + seat research
@@ -345,6 +346,9 @@ func _run_command(text: String) -> String:
 			if " ".join(parts.slice(1)).to_lower() == "dock ds2":
 				UiPrefs.toggle_use_dock_ds2()
 				return "Updates dock → %s" % ("DS2" if UiPrefs.use_dock_ds2 else "v2")
+			if " ".join(parts.slice(1)).to_lower() == "research ds2":
+				UiPrefs.toggle_use_research_ds2()
+				return "Research → %s" % ("DS2 (patent board and plan chest)" if UiPrefs.use_research_ds2 else "v2")
 			if parts.size() >= 2 and parts[1].to_lower() in ["roads", "roadsv2"]:
 				# Phase-5 cutover: roads-v2 is the only system. This just shows/hides
 				# the road VISUALS — the network/logic runs regardless.
@@ -372,7 +376,7 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 2 and parts[1].to_lower() == "midcentury":
 				MapStyle.set_midcentury(not MapStyle.is_midcentury())
 				return "map style → %s" % _style_name()
-			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | dock ds2 | legend ds2"
+			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | dock ds2 | legend ds2 | research ds2"
 		"anim":
 			# Cheat: cycle the Empire-view hex-field animation (1->2->3->4->1), or set it with `anim <n>`.
 			var bg := get_tree().get_first_node_in_group("empire_hex_bg")
@@ -436,7 +440,7 @@ func _run_command(text: String) -> String:
 				return str(editor.call("procedural_central_buildings_command", cmd))
 			return str(editor.call("procedural_region_command", cmd, parts[2].to_lower()))
 		"help":
-			return "commands:  hide updates | show updates   |   cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury|dock ds2|legend ds2   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   enable|disable procedural <north|arin|vandel|capital|all>   |   enable|disable procedural central buildings  (map editor)   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  hide updates | show updates   |   cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury|dock ds2|legend ds2|research ds2   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   enable|disable procedural <north|arin|vandel|capital|all>   |   enable|disable procedural central buildings  (map editor)   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

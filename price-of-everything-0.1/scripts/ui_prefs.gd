@@ -1,5 +1,5 @@
 extends Node
-## UiPrefs: presentation-only switches — the DS2 looks still under review (map legends, updates dock),
+## UiPrefs: presentation-only switches — the DS2 looks still under review (map legends, updates dock, research),
 ## which the debug terminal flips (`toggle`), the empire-view sprite and badge choices, the construct
 ## panel's cost display and expanded-recipe view, and the per-turn debug log flag. None of it is
 ## simulation state: nothing here changes an economic outcome, so it lives outside MatchState
@@ -15,6 +15,8 @@ extends Node
 signal legend_ds2_changed(enabled: bool)
 ## The updates dock's DS2 look switched on or off.
 signal dock_ds2_changed(enabled: bool)
+## The Research panel's DS2 look switched on or off.
+signal research_ds2_changed(enabled: bool)
 signal empire_button_icon_changed(use_badge: bool)
 
 # Debug-only: verbose per-turn production / CostSolver logs. Off by default because
@@ -39,6 +41,10 @@ var use_legend_ds2: bool = false
 # The updates dock in DS2 (scripts/toast_manager.gd): navy steel, the pen and bells raised, a row a module with a
 # lamp. Off until the owner has reviewed it; the debug cheat `toggle dock ds2` switches it on. Session-only.
 var use_dock_ds2: bool = false
+# The Research panel in DS2 (scripts/research_ds2/): the patent office's board of blueprints and the drawing office's
+# plan chest of drawers. Off until the owner has reviewed it; the debug cheat `toggle research ds2` switches it on.
+# Session-only.
+var use_research_ds2: bool = false
 # Building Detail v3's diagnostics: the Visual view (true) or the Text rows. The player's choice on the
 # panel's switch, kept while the game runs (closing the panel or starting a match keeps it).
 var bdp_diag_visual: bool = false
@@ -101,6 +107,16 @@ func set_use_dock_ds2(enabled: bool) -> bool:
 
 func toggle_use_dock_ds2() -> bool:
 	return set_use_dock_ds2(not use_dock_ds2)
+
+func set_use_research_ds2(enabled: bool) -> bool:
+	if enabled == use_research_ds2:
+		return use_research_ds2
+	use_research_ds2 = enabled
+	research_ds2_changed.emit(use_research_ds2)
+	return use_research_ds2
+
+func toggle_use_research_ds2() -> bool:
+	return set_use_research_ds2(not use_research_ds2)
 
 func set_bdp_diag_visual(visual: bool) -> void:
 	bdp_diag_visual = visual
