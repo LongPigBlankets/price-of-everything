@@ -3,7 +3,7 @@ extends "res://scripts/bdp_v3_plate.gd"
 ## width of the control block. Each is a glowing cap (amber with coins, red with a bulldozer) under a
 ## hinged clear cover, with its name in white raised letters beside it. The first click lifts the
 ## cover, which stands up over the plate's top edge; the second presses the button and opens the
-## supply-chain review, as in v2. An untouched lifted cover drops again after OPEN_SECONDS.
+## supply-chain review. An untouched lifted cover drops again after OPEN_SECONDS.
 ## cover_changed tells the panel when a cover lifts or drops, so it can show what the button would do.
 
 signal cover_changed(key: String, open: bool)

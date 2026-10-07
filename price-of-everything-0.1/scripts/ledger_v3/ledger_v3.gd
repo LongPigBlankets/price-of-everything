@@ -1,7 +1,6 @@
 extends RefCounted
 ## The Building Ledger in DS2 (docs/building-ledger-ds2-plan.md), built into the ledger panel
-## (scripts/building_ledger_panel.gd) while UiPrefs.use_ledger_ds2 is on. With the switch off the panel builds
-## its v2 look itself. Everything here is presentation: the panel keeps the rows' figures (its row models),
+## (scripts/building_ledger_panel.gd). Everything here is presentation: the panel keeps the rows' figures (its row models),
 ## the filters, the sort and the refresh wiring, and asks this script for the parts.
 ##
 ## The panel is Building Detail's: its navy steel backing in its brass trim, the raised title and the Close
@@ -13,7 +12,7 @@ extends RefCounted
 ##   the pill; its inputs' and outputs' routes; its power (a lamp, the MW, and where the power comes from);
 ##   its status (a lamp and a word); what a unit costs to make and what it nets a turn, on LED screens after
 ##   a printed £; its land; and an Upgrade key whose card is Building Detail's (the dot card).
-## Clicking a module opens the building, as the v2 row does.
+## Clicking a module opens the building.
 
 const Parts := preload("res://scripts/ds2/parts.gd")
 const Metrics := preload("res://scripts/ds2/metrics.gd")
@@ -100,7 +99,7 @@ static func dress(panel: PanelContainer) -> Control:
 	return backing
 
 
-## The raised title and the Close key; the row drags the panel as the v2 header does.
+## The raised title and the Close key; the row drags the panel.
 static func title_row(on_close: Callable, on_drag: Callable) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.name = "LedgerTitleRow"

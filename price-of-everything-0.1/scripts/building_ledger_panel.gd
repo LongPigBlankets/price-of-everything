@@ -1,58 +1,30 @@
 extends PanelContainer
 ## Building Ledger — a read-only table of all the player's buildings with live status/cost
-## columns, plus search, filter chips and click-to-sort headers. Clicking a row pans the
-## camera to that building and opens its detail panel (the ledger hides itself first). The
-## multi-select action bar comes in a later phase.
+## columns, plus search, filter keys and click-to-sort headings, in DS2 (scripts/ledger_v3/ledger_v3.gd
+## builds the parts). Clicking a row pans the camera to that building and opens its detail panel (the
+## ledger hides itself first).
 ##
-## Opened by the BuildingsButton (factory icon) in the bottom menu. Header is drag-to-move.
+## Opened by the BuildingsButton (factory icon) in the bottom menu. The title row is drag-to-move.
 
 const BuildingStatus := preload("res://scripts/building_status.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
-const UIHelpers := preload("res://scripts/ui_helpers.gd")
-const BuildingIcon := preload("res://scripts/building_icon.gd")  # navy-keyed, square-cropped building icons
-const LedgerRowStyle := preload("res://scripts/ledger_row_style.gd")  # metallic, top-left-lit row plate
 const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
-const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")  # the DS2 look (UiPrefs.use_ledger_ds2)
-
-const ROW_INSET := 12  # row cell inset (LedgerRowStyle BORDER 5 + PAD_H 7); header inset matches it
-
-const ICON_SIZE := 76   # framed goods-icon size in the Output column (sets the row height)
-const BICON_SIZE := 56  # building-type icon in the leading column
-const BICON_CELL_W := BICON_SIZE + 30  # icon centred in a wider cell → ~15px padding each side
+const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
 
 signal close_requested
 
 @onready var _layout: VBoxContainer = $MarginContainer/Layout
 @onready var header: HBoxContainer = $MarginContainer/Layout/Header
-@onready var title_label: Label = $MarginContainer/Layout/Header/Title
-@onready var close_button: Button = %CloseButton
-
-# key → VM field; label; column width (px); text alignment; sortable?
-const COLUMNS := [
-	{"key": "bicon",   "label": "",         "w": 86.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": false},  # == BICON_CELL_W
-	{"key": "name",    "label": "Building", "w": 196.0, "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
-	{"key": "tile",    "label": "Tile",     "w": 90.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
-	{"key": "output",  "label": "Produces",   "w": 76.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
-	{"key": "logistics_inputs", "label": "Inputs", "w": 80.0, "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": false},
-	{"key": "logistics_outputs", "label": "Outputs", "w": 80.0, "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": false},
-	{"key": "power",   "label": "Power",    "w": 110.0, "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
-	{"key": "status",  "label": "Status",   "w": 90.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
-	{"key": "cost",    "label": "Cost/u",   "w": 82.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
-	{"key": "net",     "label": "Net/t",    "w": 92.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
-	{"key": "land",    "label": "Land",     "w": 50.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
-	{"key": "upgrade", "label": "Upg",      "w": 52.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": false},
-]
 
 var _body: VBoxContainer = null
-var _count_label: Label = null
 var _all_vms: Array = []         # cached row-model; recomputed on data change, re-rendered on filter/sort
 var _dirty := false
 
 # Filters.
 var _search: LineEdit = null
 var _search_text := ""
-var _chips := {}                 # name -> Button
+var _chips := {}                 # name -> latching key
 var _f := {
 	"running": false, "starved": false, "unpowered": false, "loss": false,
 	"profitable": false, "upgradable": false,
@@ -63,20 +35,16 @@ var _f := {
 # Sort.
 var _sort_key := "name"
 var _sort_asc := true
-var _header_cells := {}          # key -> Label (click-to-sort)
+var _header_cells := {}          # key -> heading (click-to-sort)
 
 # Upgrade dialog (lazily built on a high CanvasLayer, as the detail panel does).
 var _upgrade_dialog: Control = null
 var _upgrade_dialog_layer: CanvasLayer = null
 
-# The DS2 look: whether it is built, the nodes it added outside the layout (the backing), its count display,
-# its headings' sort marks and the cells every money screen takes.
-var _v3 := false
-var _v3_extra: Array[Node] = []
+# The count display, the headings' sort marks and the cells every money screen takes.
 var _count_display: Control = null
 var _sort_marks := {}
 var _money_digits := 4
-var _v2_margins := {}
 
 # Header drag state.
 var _dragging := false
@@ -86,16 +54,7 @@ var _drag_mouse_start := Vector2.ZERO
 func _ready() -> void:
 	if DS and DS.theme:
 		theme = DS.theme
-	title_label.text = "Buildings"
-	close_button.pressed.connect(func() -> void: close_requested.emit())
-	header.gui_input.connect(_on_header_gui_input)
-	var margin := $MarginContainer as MarginContainer
-	for side in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
-		_v2_margins[side] = margin.get_theme_constant(side)
-	_build_look()
-	UiPrefs.ledger_ds2_changed.connect(func(_on: bool) -> void:
-		_build_look()
-		_rebuild())
+	_build_chrome()
 
 	# Refresh wiring: structural changes + per-turn. The status/power/cost columns are
 	# recomputed on every rebuild, and turn_resolution_completed fires once per turn — so
@@ -119,48 +78,14 @@ func _ready() -> void:
 	call_deferred("_center_on_screen")
 	_rebuild()
 
-# ── Look: v2, or DS2 behind UiPrefs.use_ledger_ds2 ───────────────────────────────────────
-## Builds the panel's chrome in the look the switch asks for, taking down the other first. The filters,
-## the sort and the search carry over.
-func _build_look() -> void:
-	for n in _v3_extra:
-		if is_instance_valid(n):
-			n.get_parent().remove_child(n)
-			n.queue_free()
-	_v3_extra.clear()
-	for c in _layout.get_children():
-		if c != header:
-			_layout.remove_child(c)
-			c.queue_free()
-	_chips.clear()
-	_header_cells.clear()
-	_sort_marks.clear()
-	_count_label = null
-	_count_display = null
-	_v3 = UiPrefs.use_ledger_ds2
+# ── Chrome (title, toolbar, filter keys, headings and the scrolling table) ──────────────
+## The scene's plain header gives way to the raised title row; the backing goes behind the panel.
+func _build_chrome() -> void:
+	header.visible = false
 	var margin := $MarginContainer as MarginContainer
-	header.visible = not _v3
-	if not _v3:
-		LampOverlay.detach(self)
-		for side in _v2_margins:
-			margin.add_theme_constant_override(side, int(_v2_margins[side]))
-		add_theme_stylebox_override("panel", preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(8.0))
-		_build_chrome()
-	else:
-		for side in _v2_margins:
-			margin.add_theme_constant_override(side, LedgerV3.CONTENT_MARGIN)
-		_v3_extra.append(LedgerV3.dress(self))
-		_build_v3_chrome()
-		# The lamp over the whole panel, its upgrade sheet's too (docs/ds2-theme.md §4).
-		LampOverlay.attach(self)
-	if _search != null:
-		_search.text = _search_text
-	for k in _f:
-		_set_chip(k, bool(_f[k]))
-	_update_header_labels()
-
-
-func _build_v3_chrome() -> void:
+	for side in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(side, LedgerV3.CONTENT_MARGIN)
+	LedgerV3.dress(self)
 	_layout.add_theme_constant_override("separation", 12)
 	_layout.add_child(LedgerV3.title_row(func() -> void: close_requested.emit(), _on_header_gui_input))
 	var bar := LedgerV3.toolbar(func(t: String) -> void:
@@ -180,132 +105,17 @@ func _build_v3_chrome() -> void:
 	var t := LedgerV3.table()
 	_layout.add_child(t.scroll)
 	_body = t.rows
+	_update_header_labels()
+	# The lamp over the whole panel, its upgrade sheet's too (docs/ds2-theme.md §4).
+	LampOverlay.attach(self)
 
 
-## A filter chip or key on or off, without running its handler.
+## A filter key on or off, without running its handler.
 func _set_chip(key: String, on: bool) -> void:
 	if not _chips.has(key):
 		return
-	var c: Control = _chips[key]
-	if c is Button:
-		(c as Button).set_pressed_no_signal(on)
-	else:
-		c.set("latched", on)
+	(_chips[key] as Control).set("latched", on)
 
-
-# ── Chrome (toolbar + filter bar + header row + scrolling body) ─────────────────────────
-func _build_chrome() -> void:
-	# Toolbar: building count on the left, routing-objective selector on the right.
-	var toolbar := HBoxContainer.new()
-	toolbar.add_theme_constant_override("separation", DS.SP["MD"])
-	_count_label = Label.new()
-	_count_label.theme_type_variation = "Caption"
-	_count_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	toolbar.add_child(_count_label)
-	toolbar.add_child(_build_routing_control())
-	_layout.add_child(toolbar)
-
-	_layout.add_child(_build_filters())
-	# Inset the header to match each data row's content margin (the metallic plate's rim + pad),
-	# so header labels line up exactly over the row cells below them.
-	var header_wrap := MarginContainer.new()
-	header_wrap.add_theme_constant_override("margin_left", ROW_INSET)
-	header_wrap.add_theme_constant_override("margin_right", ROW_INSET)
-	header_wrap.add_child(_build_header_row())
-	_layout.add_child(header_wrap)
-
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_body = VBoxContainer.new()
-	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_body.add_theme_constant_override("separation", 7)  # gap between row plates
-	scroll.add_child(_body)
-	_layout.add_child(scroll)
-
-func _build_routing_control() -> Control:
-	var box := HBoxContainer.new()
-	box.add_theme_constant_override("separation", DS.SP["SM"])
-	var lbl := Label.new()
-	lbl.theme_type_variation = "Caption"
-	lbl.text = "Routing:"
-	box.add_child(lbl)
-	var dd := OptionButton.new()
-	dd.add_item("Fastest", MatchState.RouteObjective.FASTEST)
-	dd.add_item("Cheapest", MatchState.RouteObjective.CHEAPEST)
-	dd.add_item("Blended", MatchState.RouteObjective.BLENDED)
-	dd.select(dd.get_item_index(MatchState.route_objective))
-	dd.item_selected.connect(func(idx: int) -> void: MatchState.set_route_objective(dd.get_item_id(idx)))
-	box.add_child(dd)
-	return box
-
-# ── Filter bar (two rows) ───────────────────────────────────────────────────────────────
-func _build_filters() -> VBoxContainer:
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 6)
-
-	# Row 1: search + state/cost chips.
-	var r1 := HBoxContainer.new()
-	r1.add_theme_constant_override("separation", 8)
-	_search = LineEdit.new()
-	_search.placeholder_text = "Search name or output…"
-	_search.clear_button_enabled = true
-	_search.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_search.custom_minimum_size = Vector2(200, 0)
-	_search.text_changed.connect(func(t: String) -> void:
-		_search_text = t.strip_edges().to_lower()
-		_render())
-	r1.add_child(_search)
-	for spec in [["running", "Running"], ["starved", "Starved"], ["unpowered", "Unpowered"],
-			["loss", "Loss-making"], ["upgradable", "Upgradable"]]:
-		var chip := _make_chip(str(spec[1]), str(spec[0]))
-		_chips[str(spec[0])] = chip
-		r1.add_child(chip)
-	col.add_child(r1)
-
-	# Row 2: profitability + category chips, right-aligned under row 1's chips.
-	var r2 := HBoxContainer.new()
-	r2.add_theme_constant_override("separation", 8)
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	r2.add_child(spacer)
-	for spec in [["profitable", "Profitable"], ["cat_production", "Production"],
-			["cat_power", "Power"], ["cat_infrastructure", "Infrastructure"],
-			["green_intermittent", "Intermittent green power"], ["green_steady", "Steady green power"]]:
-		var chip := _make_chip(str(spec[1]), str(spec[0]))
-		_chips[str(spec[0])] = chip
-		r2.add_child(chip)
-	col.add_child(r2)
-	return col
-
-func _make_chip(text: String, key: String) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.toggle_mode = true
-	b.focus_mode = Control.FOCUS_NONE
-	b.size_flags_horizontal = Control.SIZE_SHRINK_END
-	b.add_theme_stylebox_override("normal", _chip_box(DS.PALETTE.BG_INSET, DS.PALETTE.BORDER_SOFT))
-	b.add_theme_stylebox_override("hover", _chip_box(DS.PALETTE.BG_HIGHLIGHT, DS.PALETTE.ACCENT))
-	b.add_theme_stylebox_override("pressed", _chip_box(DS.PALETTE.ACCENT, DS.PALETTE.ACCENT))
-	b.add_theme_stylebox_override("hover_pressed", _chip_box(DS.PALETTE.ACCENT, DS.PALETTE.ACCENT))
-	b.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
-	b.add_theme_color_override("font_hover_color", DS.PALETTE.TEXT)
-	b.add_theme_color_override("font_pressed_color", Color.WHITE)
-	b.add_theme_color_override("font_hover_pressed_color", Color.WHITE)
-	b.toggled.connect(func(pressed: bool) -> void: _on_chip(key, pressed))
-	return b
-
-func _chip_box(bg: Color, border: Color) -> StyleBoxFlat:
-	var s := StyleBoxFlat.new()
-	s.bg_color = bg
-	s.border_color = border
-	s.set_border_width_all(1)
-	s.set_corner_radius_all(6)
-	s.content_margin_left = 10
-	s.content_margin_right = 10
-	s.content_margin_top = 5
-	s.content_margin_bottom = 5
-	return s
 
 func _on_chip(key: String, pressed: bool) -> void:
 	_f[key] = pressed
@@ -362,36 +172,7 @@ func _passes_filters(vm: Dictionary) -> bool:
 			return false
 	return true
 
-# ── Sortable header row ─────────────────────────────────────────────────────────────────
-func _build_header_row() -> HBoxContainer:
-	# Headers are plain Labels (NOT Buttons) so their text geometry — width, alignment,
-	# zero internal padding — matches the data cells exactly and the columns line up.
-	# Click-to-sort is wired via gui_input.
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	_header_cells.clear()
-	for col in COLUMNS:
-		var key: String = str(col.key)
-		var l := Label.new()
-		l.custom_minimum_size = Vector2(float(col.w), 0)
-		l.horizontal_alignment = int(col.align)
-		l.theme_type_variation = "Caption"
-		l.clip_text = true
-		_header_cells[key] = l
-		if bool(col.get("sort", true)):
-			l.mouse_filter = Control.MOUSE_FILTER_STOP
-			l.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-			l.gui_input.connect(_on_header_sort_input.bind(key))
-		else:
-			l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(l)
-	_update_header_labels()
-	return row
-
-func _on_header_sort_input(event: InputEvent, key: String) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		_on_sort_pressed(key)
-
+# ── Sorting ─────────────────────────────────────────────────────────────────────────────
 func _on_sort_pressed(key: String) -> void:
 	if _sort_key == key:
 		_sort_asc = not _sort_asc
@@ -402,28 +183,12 @@ func _on_sort_pressed(key: String) -> void:
 	_render()
 
 func _update_header_labels() -> void:
-	if _v3:
-		LedgerV3.show_sort(_header_cells, _sort_marks, _sort_key, _sort_asc)
-		return
-	for col in COLUMNS:
-		var key: String = str(col.key)
-		var l: Label = _header_cells.get(key)
-		if l == null:
-			continue
-		var active := _sort_key == key
-		var arrow := ""
-		if active:
-			arrow = " ▲" if _sort_asc else " ▼"
-		l.text = str(col.label) + arrow
-		l.add_theme_color_override("font_color", DS.PALETTE.ACCENT if active else DS.PALETTE.TEXT_MUTED)
+	LedgerV3.show_sort(_header_cells, _sort_marks, _sort_key, _sort_asc)
 
 func _sort_value(vm: Dictionary):
 	match _sort_key:
 		"name":   return vm.name
-		"tile":   return vm.sort_tile
-		"type":   return vm.type
 		"output": return vm.output
-		"level":  return vm.level
 		"power":  return vm.sort_power
 		"status": return vm.sort_status
 		"cost":   return vm.sort_cost
@@ -479,17 +244,10 @@ func _render() -> void:
 		c.queue_free()
 	var shown: Array = _all_vms.filter(_passes_filters)
 	shown.sort_custom(_compare)
-	if _v3:
-		_money_digits = LedgerV3.money_digits(shown)
+	_money_digits = LedgerV3.money_digits(shown)
 	for vm in shown:
-		_body.add_child(_build_v3_row(vm) if _v3 else _build_row(vm))
-	if _count_display != null:
-		_count_display.set("text", LedgerV3.count_text(shown.size(), _all_vms.size()))
-	if _count_label != null:
-		if shown.size() == _all_vms.size():
-			_count_label.text = "%d building%s" % [_all_vms.size(), "" if _all_vms.size() == 1 else "s"]
-		else:
-			_count_label.text = "%d of %d buildings" % [shown.size(), _all_vms.size()]
+		_body.add_child(_build_row(vm))
+	_count_display.set("text", LedgerV3.count_text(shown.size(), _all_vms.size()))
 
 func _collect_vms() -> Array:
 	var out: Array = []
@@ -534,33 +292,28 @@ func _row_vm(b: Dictionary) -> Dictionary:
 		out_qty = 0
 
 	# Net per turn (gross margin) = (sale price − unit cost) × output qty, when a cost is solved.
-	var net_text: String = "—"
 	var net_color: Color = BuildingStatus.STATUS_GREY
 	var sort_net: float = -1.0e18
 	if uc >= 0.0 and icon_gid != "" and out_qty > 0:
 		var net: float = (MarketState.get_price(icon_gid) - uc) * float(out_qty)
 		sort_net = net
 		net_color = BuildingStatus.STATUS_GREEN if net > 0.0 else (BuildingStatus.STATUS_RED if net < 0.0 else DS.PALETTE.TEXT)
-		net_text = "%s£%.0f" % ["+" if net >= 0.0 else "−", absf(net)]
 
 	# Intermittency: did this building draw unfirmed intermittent (taking a hit) / steady green?
 	var im: Dictionary = Production.get_building_intermittency(instance_id)
 
 	return {
 		"instance_id": instance_id,
-		"building_id": building_id, "binternal": str(bdata.get("internal_name", "")),
+		"building_id": building_id,
 		"name": name_str, "name_l": name_str.to_lower(),
-		"tile": _tile_short(tile_id), "sort_tile": _tile_sort(tile_id),
 		"tile_name": _tile_name(tile_id),
-		"type": _type_label(category),
 		"output": output_str, "output_l": output_str.to_lower(),
-		"out_good_id": icon_gid, "out_internal": icon_internal, "out_qty": out_qty,
+		"out_good_id": icon_gid, "out_qty": out_qty,
 		"level": level,
 		"power": power, "status": status,
-		"cost_text": ("£%.2f" % uc) if uc >= 0.0 else "—",
 		"cost_value": uc, "net_value": sort_net if sort_net > -1.0e17 else NAN,
 		"cost_color": cost_color,
-		"net_text": net_text, "net_color": net_color, "sort_net": sort_net,
+		"net_color": net_color, "sort_net": sort_net,
 		"land": "%.1f" % land, "land_value": land,
 		# Derived for filters / sort.
 		"category": category,
@@ -622,9 +375,10 @@ func _status_rank(text: String) -> int:
 		"Running": return 2
 		_: return 3
 
-# ── Row widgets ──────────────────────────────────────────────────────────────────────────
-## A DS2 row (scripts/ledger_v3/ledger_v3.gd): clicking it opens the building, as the v2 row does.
-func _build_v3_row(vm: Dictionary) -> Control:
+# ── Rows ─────────────────────────────────────────────────────────────────────────────────
+## A row (scripts/ledger_v3/ledger_v3.gd): clicking it opens the building; its route icons open its logistics,
+## its Upgrade key the upgrade dialog.
+func _build_row(vm: Dictionary) -> Control:
 	var iid := str(vm.instance_id)
 	return LedgerV3.row(vm, func() -> void:
 		close_requested.emit()
@@ -632,190 +386,20 @@ func _build_v3_row(vm: Dictionary) -> Control:
 		MatchState.focus_building_requested.emit(iid)
 		close_requested.emit(), _open_upgrade)
 
-func _build_row(vm: Dictionary) -> Control:
-	var row := PanelContainer.new()
-	row.mouse_filter = Control.MOUSE_FILTER_STOP
-	row.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	row.add_theme_stylebox_override("panel", _row_style(false))
-	row.gui_input.connect(_on_row_gui_input.bind(str(vm.instance_id)))
-	row.mouse_entered.connect(func() -> void: row.add_theme_stylebox_override("panel", _row_style(true)))
-	row.mouse_exited.connect(func() -> void: row.add_theme_stylebox_override("panel", _row_style(false)))
-
-	var hbox := HBoxContainer.new()
-	hbox.add_theme_constant_override("separation", 8)
-	hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(hbox)
-	for col in COLUMNS:
-		hbox.add_child(_build_cell(col, vm))
-	return row
-
-func _build_cell(col: Dictionary, vm: Dictionary) -> Control:
-	var key: String = str(col.key)
-	var w: float = float(col.w)
-	var align: int = int(col.align)
-	if key in ["logistics_inputs", "logistics_outputs"]:
-		return _logistics_cell(vm, "input" if key == "logistics_inputs" else "output", w)
-	if key == "bicon":
-		return _bicon_cell(vm)
-	if key == "output":
-		return _output_cell(vm)
-	if key == "upgrade":
-		return _upgrade_cell(vm)
-	# Power and Status are coloured text (the word/number carries its own RAG colour).
-	if key == "power":
-		return _text_cell(str(vm["power"].text), w, align, vm["power"].color)
-	if key == "status":
-		return _text_cell(str(vm["status"].text), w, align, vm["status"].color)
-	if key == "cost":
-		return _text_cell(str(vm.cost_text), w, align, vm.cost_color)
-	if key == "net":
-		return _text_cell(str(vm.net_text), w, align, vm.net_color)
-	return _text_cell(str(vm.get(key, "")), w, align)
-
-func _text_cell(text: String, w: float, align: int, color: Color = Color.TRANSPARENT) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.custom_minimum_size = Vector2(w, 0)
-	l.horizontal_alignment = align
-	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	l.theme_type_variation = "Body"
-	l.clip_text = true
-	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	l.add_theme_color_override("font_color", DS.PALETTE.TEXT if color.a == 0.0 else color)
-	return l
-
-# Leading column: the building-type icon (same art as the build menu / map), embossed — a dark
-# drop to the bottom-right + a light lift to the top-left under the off-white art, so it reads
-# as a raised, metallic engraving lit from the top-left (matching the row plate). Empty if missing.
-func _bicon_cell(vm: Dictionary) -> Control:
-	var holder := Control.new()
-	# Wider than the icon so the centred art gets padding left and right.
-	holder.custom_minimum_size = Vector2(BICON_CELL_W, BICON_SIZE)
-	holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var tex: Texture2D = BuildingIcon.clean_texture(str(vm.building_id), str(vm.binternal))
-	if tex == null:
-		return holder
-	# Strong cast shade like the bottom-menu icons: a stacked dark drop to the bottom-right (light
-	# from the top-left), in the bottom menu's shadow colour. A top-left lift keeps the emboss.
-	holder.add_child(_emboss_layer(tex, Vector2(6.0, 6.0), Color(0.02, 0.035, 0.045, 0.38)))   # soft outer shade
-	holder.add_child(_emboss_layer(tex, Vector2(3.5, 3.5), Color(0.01, 0.02, 0.03, 0.65)))     # mid shade
-	holder.add_child(_emboss_layer(tex, Vector2(2.0, 2.0), Color(0.0, 0.0, 0.0, 0.85)))        # core shade (strong)
-	holder.add_child(_emboss_layer(tex, Vector2(-1.0, -1.0), Color(1, 1, 1, 0.45)))            # top-left lift
-	holder.add_child(_emboss_layer(tex, Vector2.ZERO, Color(0.93, 0.96, 1.0)))                 # the icon
-	return holder
-
-func _emboss_layer(tex: Texture2D, offset: Vector2, tint: Color) -> TextureRect:
-	var t := TextureRect.new()
-	t.set_anchors_preset(Control.PRESET_FULL_RECT)
-	t.offset_left = offset.x
-	t.offset_top = offset.y
-	t.offset_right = offset.x
-	t.offset_bottom = offset.y
-	t.texture = tex
-	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	t.modulate = tint
-	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return t
-
-# Output column: the market panel's framed goods icon with a quantity pill showing the
-# building's post-modifier output. Empty for power/infra (no goods output).
-func _output_cell(vm: Dictionary) -> Control:
-	var holder := Control.new()
-	holder.custom_minimum_size = Vector2(ICON_SIZE, ICON_SIZE)
-	holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var gid: String = str(vm.out_good_id)
-	if gid == "":
-		return holder
-	var icon := UIHelpers.make_framed_good_icon(gid, str(vm.out_internal), ICON_SIZE)
-	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
-	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	holder.add_child(icon)
-	var qty: int = int(vm.out_qty)
-	if qty > 0:
-		holder.add_child(_qty_pill(qty))
-	return holder
-
-func _qty_pill(qty: int) -> Control:
-	var lbl := Label.new()
-	lbl.text = str(qty)
-	lbl.add_theme_font_size_override("font_size", 12)
-	lbl.add_theme_color_override("font_color", Color.WHITE)
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var box := StyleBoxFlat.new()
-	box.bg_color = Color(0.02, 0.06, 0.12, 0.92)
-	box.border_color = DS.PALETTE.BORDER_SOFT
-	box.set_border_width_all(1)
-	box.set_corner_radius_all(7)
-	box.content_margin_left = 5
-	box.content_margin_right = 5
-	box.content_margin_top = 1
-	box.content_margin_bottom = 1
-	lbl.add_theme_stylebox_override("normal", box)
-	# Pin to the icon's bottom-right corner.
-	var w: float = maxf(16.0, 9.0 + float(str(qty).length()) * 8.0)
-	lbl.custom_minimum_size = Vector2(w, 17)
-	lbl.position = Vector2(float(ICON_SIZE) - w - 1.0, float(ICON_SIZE) - 18.0)
-	return lbl
-
-# Per-row upgrade button: shows the level it would reach (L1 → "2", L2 → "3"); "MAX" and
-# disabled at L3. Clicking opens the shared upgrade dialog for that building.
-func _upgrade_cell(vm: Dictionary) -> Control:
-	var holder := CenterContainer.new()
-	holder.custom_minimum_size = Vector2(52, 0)
-	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE  # padding clicks fall through to the row
-	var btn := Button.new()
-	btn.focus_mode = Control.FOCUS_NONE
-	btn.custom_minimum_size = Vector2(42, 34)
-	var level: int = int(vm.level)
-	if level >= BuildingLevels.MAX_LEVEL:
-		btn.text = "MAX"
-		btn.disabled = true
-		btn.tooltip_text = "Already at maximum level"
-	else:
-		btn.text = str(level + 1)
-		btn.tooltip_text = "Upgrade to level %d" % (level + 1)
-		btn.pressed.connect(_open_upgrade.bind(str(vm.instance_id)))
-	holder.add_child(btn)
-	return holder
-
 func _open_upgrade(instance_id: String) -> void:
 	_ensure_upgrade_dialog()
 	_upgrade_dialog.open(instance_id)
 
 func _ensure_upgrade_dialog() -> void:
-	# The DS2 upgrade panel (scripts/ledger_v3/upgrade_dialog_ds2.gd) unless `toggle upgrade ds2` switched it back;
-	# a switch replaces the one built for the other.
 	if _upgrade_dialog != null and is_instance_valid(_upgrade_dialog):
-		if bool(_upgrade_dialog.get_meta("ds2", false)) == UiPrefs.use_upgrade_ds2:
-			return
-		_upgrade_dialog.queue_free()
-		_upgrade_dialog = null
+		return
 	if _upgrade_dialog_layer == null or not is_instance_valid(_upgrade_dialog_layer):
 		_upgrade_dialog_layer = CanvasLayer.new()
 		_upgrade_dialog_layer.layer = 128
 		get_tree().root.add_child(_upgrade_dialog_layer)
-	_upgrade_dialog = (load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd" if UiPrefs.use_upgrade_ds2 else "res://scripts/upgrade_dialog.gd") as Script).new()
-	_upgrade_dialog.set_meta("ds2", UiPrefs.use_upgrade_ds2)
+	_upgrade_dialog = (load("res://scripts/ledger_v3/upgrade_dialog_ds2.gd") as Script).new()
 	_upgrade_dialog_layer.add_child(_upgrade_dialog)
 	_upgrade_dialog.committed.connect(func(_id: String) -> void: _request_refresh())
-
-func _row_style(hover: bool) -> StyleBox:
-	var s := LedgerRowStyle.new()
-	s.hover = hover
-	return s
-
-func _on_row_gui_input(event: InputEvent, instance_id: String) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		# Deep-link to the building: pan + open its detail panel, then hide the ledger so
-		# the focused tile/detail panel aren't hidden behind us (world_map.gd:983).
-		MatchState.focus_building_requested.emit(instance_id)
-		close_requested.emit()
 
 # ── Helpers ─────────────────────────────────────────────────────────────────────────────
 func _tile_short(tile_id: String) -> String:
@@ -828,19 +412,6 @@ func _tile_name(tile_id: String) -> String:
 		return named
 	var parts := _tile_short(tile_id).split("_")
 	return "Coordinates %s, %s" % [parts[0], parts[1]] if parts.size() == 2 else tile_id
-
-func _tile_sort(tile_id: String) -> int:
-	var parts := _tile_short(tile_id).split("_")
-	if parts.size() == 2 and parts[0].is_valid_int() and parts[1].is_valid_int():
-		return int(parts[0]) * 10000 + int(parts[1])
-	return 0
-
-func _type_label(category: String) -> String:
-	match category:
-		"power": return "Power"
-		"infrastructure": return "Infra"
-		"battery": return "Battery"
-		_: return "Production"
 
 func _center_on_screen() -> void:
 	# Centred horizontally; biased 20px up so the added height sits toward the top
@@ -858,57 +429,3 @@ func _on_header_gui_input(event: InputEvent) -> void:
 			_dragging = false
 	elif event is InputEventMouseMotion and _dragging:
 		position = _drag_panel_start + (get_global_mouse_position() - _drag_mouse_start)
-
-func _logistics_cell(vm: Dictionary, side: String, width: float) -> Control:
-	var cell := VBoxContainer.new()
-	cell.custom_minimum_size.x = width
-	cell.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var routes: Array = preload("res://scripts/logistics_routes_view.gd").endpoints(BuildingState.get_building(str(vm.instance_id)), side)
-	if routes.is_empty():
-		# DS2 leaves an empty route blank (no dashes in its copy).
-		cell.add_child(Control.new() if _v3 else _text_cell("—", width, HORIZONTAL_ALIGNMENT_CENTER))
-		return cell
-	# Two icons per line keep multi-good routes within their column.
-	var row: HBoxContainer
-	for index in range(routes.size()):
-		if index % 2 == 0:
-			row = HBoxContainer.new()
-			row.alignment = BoxContainer.ALIGNMENT_CENTER
-			cell.add_child(row)
-		var route: Dictionary = routes[index]
-		var button := Button.new()
-		button.name = "Logistics"+side.capitalize()+str(index)
-		button.custom_minimum_size = Vector2(34, 34)
-		button.tooltip_text = str(route.label)
-		button.mouse_filter = Control.MOUSE_FILTER_STOP
-		button.flat = true
-		row.add_child(button)
-		var icon := TextureRect.new()
-		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		icon.offset_left = 4
-		icon.offset_top = 4
-		icon.offset_right = -4
-		icon.offset_bottom = -4
-		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		match str(route.icon):
-			"middleman":
-				icon.texture = preload("res://assets/icons/research/glyph/lorry.png")
-				var shader := Shader.new()
-				shader.code = "shader_type canvas_item; void fragment(){ COLOR = vec4(0.94, 0.89, 0.76, texture(TEXTURE, UV).a); }"
-				var ink := ShaderMaterial.new()
-				ink.shader = shader
-				icon.material = ink
-			"port": icon.texture = BuildingIcon.clean_texture("b_004", "port")
-			"stockpile": icon.texture = preload("res://assets/icons/ui_icons/warehouse.png")
-			"grid":
-				button.text = "⚡"
-			_:
-				var data := Catalog.get_building(str(route.icon))
-				icon.texture = BuildingIcon.clean_texture(str(route.icon), str(data.get("internal_name", "")))
-		button.add_child(icon)
-		button.pressed.connect(func() -> void:
-			close_requested.emit()
-			MatchState.building_logistics_requested.emit(str(vm.instance_id)))
-	return cell

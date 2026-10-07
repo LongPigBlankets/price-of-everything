@@ -1,7 +1,6 @@
 extends Node2D
-## Building Detail v3's Input sources and Output destination sheets in DS2 (UiPrefs.use_routes_ds2,
-## scripts/bdp_v3_routes.gd), cropped to the panel: a motor factory's inputs and output; an option hovered;
-## the output split between two tiles; the same factory in a Logistics Intermediary game (Source and
+## Building Detail's Input sources and Output destination sheets in DS2 (scripts/bdp_v3_routes.gd), cropped
+## to the panel: a motor factory's inputs and output; an option hovered; the output split between two tiles; the same factory in a Logistics Intermediary game (Source and
 ## Fallback knobs, the All inputs and All outputs knobs); a coal power plant's output.
 ##   Godot --path . res://tools/bdp_routes_shot.tscn --quit-after 4000 -- --no-telemetry
 ## Writes poe_bdp_routes_*.png into $BDP_SHOT_DIR (or /tmp).
@@ -15,8 +14,6 @@ var _vp: SubViewport
 
 
 func _ready() -> void:
-	UiPrefs.set_use_bdp_v3(true)
-	UiPrefs.use_routes_ds2 = true
 	_vp = SubViewport.new()
 	_vp.size = LOGICAL * 2
 	_vp.size_2d_override = LOGICAL
