@@ -94,7 +94,7 @@ func _ready() -> void:
 	MatchState.empire_view_requested.emit()
 	await _shot("supply_chain")
 	_close_all()
-	PauseMenu.open(_world)
+	PauseMenu.open(_world.get("_hud"))
 	await _shot("pause_menu")
 	print("[SMOKE] done, %d captures" % _n)
 	get_tree().quit(0)
