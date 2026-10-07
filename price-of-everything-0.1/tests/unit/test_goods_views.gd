@@ -644,30 +644,28 @@ func _test_empire_board_model() -> void:
 		"board: a route's hops carry the mode of their own leg")
 
 
-## The board's tile heights settled: never above their own level, never more than the cap above a
-## neighbour, never above the tile upstream on a river; and only lowered.
+## The board's tile heights settled: never more than the cap above a neighbour, never above the tile upstream on
+## a river; a river that would climb raises the land it comes from rather than lowering the high ground.
 func _test_empire_board_relief_settle() -> void:
 	var Relief := preload("res://scripts/empire_board_relief.gd")
-	_check(Relief.band_level(2) == 34.0 and Relief.band_level(4) == 52.0 and Relief.band_level(7) == 70.0,
-		"board relief: lowland at 34, the hills' band at 52, the mountains' at 70")
+	_check(Relief.band_level(2) == 34.0 and Relief.band_level(4) == 66.0 and Relief.band_level(7) == 99.0,
+		"board relief: lowland at 34, the hills' band at 66, the mountains' at 99")
 	var rising := true
 	for b in range(1, 12):
 		rising = rising and Relief.band_level(b) >= Relief.band_level(b - 1)
 	_check(rising, "board relief: every band stands at least as high as the one below it")
-	_check(Relief.snap_level(37.0) == 34.0 and Relief.snap_level(40.0) == 43.0 and Relief.snap_level(56.0) == 58.0,
+	_check(Relief.snap_level(37.0) == 34.0 and Relief.snap_level(45.0) == 50.0 and Relief.snap_level(74.0) == 77.0,
 		"board relief: a tile's average snaps to the nearest band's level")
 	_check(Relief.SEA_LEVEL < Relief.band_level(0), "board relief: open water stands below the lowland")
-	# A row a - b - c - d: a mountain beside lowland, and a river running from b down into c.
-	var raw := {"a": 34.0, "b": 34.0, "c": 52.0, "d": 94.0}
+	# A row a - b - c - d: lowland, a river running from lowland b up into hill c, and a mountain beside it.
+	var raw := {"a": 34.0, "b": 34.0, "c": 66.0, "d": 143.0}
 	var near := {"a": ["b"], "b": ["a", "c"], "c": ["b", "d"], "d": ["c"]}
 	var h: Dictionary = Relief.settle(raw, near, [["b", "c"]])
-	_check(is_equal_approx(float(h["c"]), 34.0), "board relief: a river never climbs: the tile below it comes down (%.0f)" % float(h["c"]))
-	_check(is_equal_approx(float(h["d"]), 34.0 + Relief.STEP_CAP),
+	_check(is_equal_approx(float(h["c"]), 66.0) and is_equal_approx(float(h["b"]), 66.0),
+		"board relief: a river never climbs: the land it comes from is raised and the hill keeps its height (%.0f, %.0f)" % [float(h["b"]), float(h["c"])])
+	_check(is_equal_approx(float(h["d"]), 66.0 + Relief.STEP_CAP),
 		"board relief: high ground stands at most the cap above its neighbour (%.0f)" % float(h["d"]))
-	var lowered := true
-	for t in raw:
-		lowered = lowered and float(h[t]) <= float(raw[t]) + 0.001
-	_check(lowered and is_equal_approx(float(h["a"]), 34.0), "board relief: tile heights are only ever lowered")
+	_check(is_equal_approx(float(h["a"]), 34.0), "board relief: lowland away from the river keeps its level")
 
 
 ## The board's tile heights over the real map: each is its land's average band level, snapped; a
@@ -718,10 +716,10 @@ func _test_empire_board_relief_map() -> void:
 				count += 1
 		var mean := sum / float(maxi(count, 1))
 		checked += 1
-		if not is_equal_approx(Relief.tile_level(c), Relief.snap_level(mean)) or float(plates[tid]) > Relief.tile_level(c) + 0.001:
+		if not is_equal_approx(Relief.tile_level(c), Relief.snap_level(mean)):
 			wrong.append("%s mean %.1f level %.0f settled %.0f" % [tid, mean, Relief.tile_level(c), float(plates[tid])])
 	_check(checked == 5 and wrong.is_empty(),
-		"board relief map: a tile's height is its land's average band level, snapped, and only ever settled lower %s" % [wrong])
+		"board relief map: a tile's height is its land's average band level, snapped %s" % [wrong])
 	var flows: Array = Relief.river_flows(rivers, centers)
 	var climbs: Array = []
 	for f in flows:
@@ -879,7 +877,7 @@ func _test_empire_board_relief_seams() -> void:
 	var heart := float(board.call("_height_at", Vector2(-40, -70)))
 	var shoulder := float(board.call("_height_at", Vector2(87, -70)))
 	var plainland := float(board.call("_height_at", Vector2(150, -150)))
-	_check(absf(heart - 52.0) < 0.05 and absf(shoulder - 43.0) < 0.05 and absf(plainland - 34.0) < 0.05,
+	_check(absf(heart - 66.0) < 0.05 and absf(shoulder - 50.0) < 0.05 and absf(plainland - 34.0) < 0.05,
 		"board seams: a rise stands at its rungs inside the tile (%.1f, %.1f, %.1f)" % [heart, shoulder, plainland])
 	var built := true
 	for tid in tiles:
@@ -928,13 +926,13 @@ func _test_empire_board_relief_one_ground() -> void:
 				wet.append("%s: %.1f on %.1f" % [pts[k], levels[k], on])
 			for side in [-1.0, 1.0]:
 				var at_bank := float(board.call("_height_at", pts[k] + across * bank * float(side)))
-				var far: Vector2 = pts[k] + across * (bank + Ground.SLOPE_W + 9.0) * float(side)
+				var far: Vector2 = pts[k] + across * (bank + Ground.SLOPE_W + Ground.NODE) * float(side)
 				var beyond := float(board.call("_height_at", far))
 				var clear := true                 # not inside the valley of another stretch, round a bend
 				for other in runs:
 					for q in (other["pts"] as PackedVector2Array):
 						clear = clear and q.distance_to(far) >= bank + Ground.SLOPE_W + 4.0
-				if on > at_bank + 0.01 or (clear and beyond < levels[k] + Ground.VALLEY_DEPTH - 1.2):
+				if on > at_bank + 0.01 or (clear and beyond < levels[k] + Ground.VALLEY_DEPTH - 1.5):
 					wet.append("%s: %.1f bank %.1f beyond %.1f" % [pts[k], levels[k], at_bank, beyond])
 	_check(wet.is_empty(), "board ground: a river's ground is at its level within a bank's width, the land a step above beyond %s" % [wet.slice(0, 3)])
 	# A bridge: the street that crosses the river does so on a level deck above it.

@@ -12,19 +12,18 @@ extends RefCounted
 ##   - no tile stands more than STEP_CAP above a neighbour, so no step drops several levels;
 ##   - a river never climbs: followed up from its mouth, every tile stands at least as high as
 ##     the one below it. Which way a river drains is read off the map (river_flows).
-## Both are met by lowering only: lowland keeps its level and high ground gives way, so a hill a
-## river runs down into from lowland stands at the lowland's level. Open water is not settled: it
-## stands at SEA_LEVEL.
+## A river that would climb raises the land it comes from to meet the higher ground, so hills keep their
+## height; the cap is then met by lowering. Open water is not settled: it stands at SEA_LEVEL.
 ##
 ## Pure data: nothing here reads the sim.
 
 ## The height each band stands at, in map units, from band 0 (the map's level -1) to band 11
-## (snow). Bands 0 to 2 are lowland. A lowland step is a full one; above the hills' band the steps
-## are smaller, so mountains stand clear of hills without towering over them.
-const BAND_LEVEL: Array[float] = [34.0, 34.0, 34.0, 43.0, 52.0, 58.0, 64.0, 70.0, 76.0, 82.0, 88.0, 94.0]
+## (snow). Bands 0 to 2 are lowland. The first two steps up are the tallest, so hills read clearly above
+## the lowland; above the hills' band each step is a little smaller.
+const BAND_LEVEL: Array[float] = [34.0, 34.0, 34.0, 50.0, 66.0, 77.0, 88.0, 99.0, 110.0, 121.0, 132.0, 143.0]
 ## The most one tile stands above a neighbour: short of three lowland steps, so a mountain beside
 ## lowland still stands clear of a hill (52) and no step drops several levels at once.
-const STEP_CAP := 24.0
+const STEP_CAP := 44.0
 ## Open water, one lowland step below the lowland, so a river can run to the sea in a valley.
 const SEA_LEVEL := 25.0
 ## Tiles of open water.
@@ -258,12 +257,22 @@ static func river_links(rivers_by_tile: Dictionary, centers: Dictionary) -> Dict
 	return {"links": links, "mouths": mouths}
 
 
-## Settle raw tile heights: each at most its raw height, at most STEP_CAP above any neighbour,
-## and never above the tile upstream of it on a river. The highest heights that meet all three,
-## found by lowering until nothing changes. `neighbours` is tile -> [tile]; `flows` is
+## Settle raw tile heights: never above the tile upstream of it on a river, and at most STEP_CAP above any
+## neighbour. A river that would climb first raises the tile it comes from to the higher one; then heights
+## are lowered until the cap and the rivers both hold. `neighbours` is tile -> [tile]; `flows` is
 ## [[upstream, downstream]].
 static func settle(raw: Dictionary, neighbours: Dictionary, flows: Array, cap: float = STEP_CAP) -> Dictionary:
 	var h: Dictionary = raw.duplicate()
+	# A river that would climb raises the land it comes from to meet it, before any lowering.
+	var raised := true
+	while raised:
+		raised = false
+		for f in flows:
+			var up := str(f[0])
+			var dn := str(f[1])
+			if h.has(up) and h.has(dn) and float(h[dn]) > float(h[up]) + 0.001:
+				h[up] = float(h[dn])
+				raised = true
 	var downs: Dictionary = {}                # upstream -> [downstream]
 	for f in flows:
 		if h.has(str(f[0])) and h.has(str(f[1])):

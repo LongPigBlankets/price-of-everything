@@ -32,14 +32,14 @@ extends RefCounted
 const Relief := preload("res://scripts/empire_board_relief.gd")
 
 const NODE := 12.0
-const SLOPE_W := 34.0
+const SLOPE_W := 22.0
 const SEA_LEVEL := Relief.SEA_LEVEL
 const VALLEY_DEPTH := 9.0
 ## The level floor beside a river, beyond its own half-width, before its valley wall.
 const BANK := 8.0
 ## The heights rises stand at, and how far above the tile height a rung must be to rise.
-const RISE_LEVELS: Array[float] = [43.0, 52.0, 64.0, 76.0, 88.0]
-const RISE_MIN := 6.0
+const RISE_LEVELS: Array[float] = [50.0, 66.0, 88.0, 110.0, 132.0]
+const RISE_MIN := 10.0
 ## Rises are rounded off by this much, and those left smaller than this are dropped.
 const RISE_ROUND := 16.0
 const RISE_MIN_AREA := 3000.0
