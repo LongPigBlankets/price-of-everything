@@ -964,6 +964,64 @@ class _OneTile extends RefCounted:
 		return Vector2.ZERO
 
 
+## Two neighbouring tiles for building the board's model: the first at the origin, the second
+## south-east of it.
+class _TwoTiles extends RefCounted:
+	var tiles: Array = []
+	var centres: Array = [Vector2.ZERO, Vector2(405.0, 240.0)]
+
+	func id_to_coord(tid: String) -> Vector2i:
+		var i := tiles.find(tid)
+		return Vector2i(i, 0) if i >= 0 else Vector2i(-1, -1)
+
+	func map_coord_for_tile_coord(c: Vector2i) -> Vector2i:
+		return c
+
+	func map_to_local(c: Vector2i) -> Vector2:
+		return centres[c.x]
+
+
+## Neighbouring tiles that both have roads are joined by them on the board though no goods move
+## between them: each tile's streets run out to the point on the edge they share. A tile without
+## roads is not joined.
+func _test_empire_board_road_links() -> void:
+	var Model := preload("res://scripts/empire_board_model.gd")
+	var Streets := preload("res://scripts/empire_board_streets.gd")
+	var terrain := _TwoTiles.new()
+	terrain.tiles = ["tile_3_3", "tile_4_3"]
+	var had: Array = []
+	for t in terrain.tiles:
+		had.append(Catalog.tile_has_infrastructure(str(t), "roads"))
+		Catalog.add_tile_infrastructure(str(t), "roads")
+	var graph := {"nodes": [
+		{"tile_id": terrain.tiles[0], "iid": "links_test_a", "name": "Works", "level": 1},
+		{"tile_id": terrain.tiles[1], "iid": "links_test_b", "name": "Works", "level": 1}]}
+	var off: Vector2 = terrain.centres[1] - terrain.centres[0]
+	var meet: Vector2 = terrain.centres[0] + Streets.exit_point(off)
+	# Which tiles have a street reaching the shared edge.
+	var reaching := func(model: Dictionary) -> Array:
+		var found: Array = []
+		for r in model["roads"]:
+			if ((r["a"] as Vector2).is_equal_approx(meet) or (r["b"] as Vector2).is_equal_approx(meet)) \
+					and not found.has(str(r["tile"])):
+				found.append(str(r["tile"]))
+		found.sort()
+		return found
+	Streets._paths.clear()
+	var joined: Array = reaching.call(Model.build(terrain, graph))
+	_check(joined == terrain.tiles, "board road links: two neighbouring tiles with roads both reach their shared edge (%s)" % [joined])
+	Catalog.remove_tile_infrastructure(str(terrain.tiles[1]), "roads")
+	Streets._paths.clear()
+	var apart: Array = reaching.call(Model.build(terrain, graph))
+	Streets._paths.clear()
+	_check(apart.is_empty(), "board road links: no street runs to the edge of a neighbour without roads (%s)" % [apart])
+	for i in range(terrain.tiles.size()):
+		if bool(had[i]):
+			Catalog.add_tile_infrastructure(str(terrain.tiles[i]), "roads")
+		else:
+			Catalog.remove_tile_infrastructure(str(terrain.tiles[i]), "roads")
+
+
 ## The supply chain board by the sea: nothing stands on open water and no street runs over it
 ## while dry ground is free; a home may stand on the beach, right down to the water's edge; a home
 ## the plan's streets reach only over the water has a street along the beach, itself kept off the
@@ -1274,6 +1332,40 @@ func _test_empire_board_caches() -> void:
 	var background: Array = changed.call(after, (board.get("_tile_sig") as Dictionary))
 	_check(stale and bool(view.get("_fresh")) and background == [a + "#things"],
 		"board caches: a level reached while the view is closed is built in the background %s" % [background])
+	# Over budget, the bakes let go are the ones off screen, even newer ones, and never a picture
+	# in view: let go, it would be drawn live until baked again and the tiles in view would
+	# flicker as they took turns.
+	var Board := preload("res://scripts/empire_board.gd")
+	made.append(BuildingState.add_building("b_001", "r_001", "tile_13_9", "player_1", "cache_test_far"))
+	board.call("set_graph", Graph.populate(chart, terrain), terrain)
+	units = board.get("_units")
+	var kept: Dictionary = Board._bakes.duplicate()
+	var was_size: Vector2 = board.size
+	var was_zoom: float = board.get("_zoom")
+	var was_offset: Vector2 = board.get("_offset")
+	board.size = Vector2(200.0, 150.0)
+	board.set("_zoom", 0.6)
+	var on := a + "#ground"
+	board.set("_offset", board.size * 0.5 - (board.call("_unit_rect", on) as Rect2).get_center() * 0.6)
+	var off := ""
+	for unit in units:
+		var r: Rect2 = board.call("_unit_rect", str(unit))
+		if not Rect2(Vector2.ZERO, board.size).intersects(Rect2(r.position * 0.6 + board.get("_offset"), r.size * 0.6)):
+			off = str(unit)
+			break
+	Board._bakes.clear()
+	var zoom: float = board.call("_bake_zoom")
+	Board._bakes[board.call("_bake_key", on, zoom)] = {"bytes": Board._BAKE_BUDGET, "used": 1, "sig": 0}
+	Board._bakes[board.call("_bake_key", off, zoom)] = {"bytes": Board._BAKE_BUDGET, "used": 2, "sig": 0}
+	board.call("_trim_bakes")
+	var left: Array = Board._bakes.keys()
+	_check(off != "" and left == [board.call("_bake_key", on, zoom)],
+		"board caches: over budget, a picture off screen (%s) goes and the one in view stays %s" % [off, left])
+	Board._bakes.clear()
+	Board._bakes.merge(kept)
+	board.size = was_size
+	board.set("_zoom", was_zoom)
+	board.set("_offset", was_offset)
 	for iid in made:
 		BuildingState.remove_building(str(iid))
 	inst.queue_free()
