@@ -3551,16 +3551,34 @@ func _next_bake() -> String:
 	return ""
 
 
-## Keep the bakes within their budget, letting go of the ones drawn longest ago.
+## Keep the bakes within their budget, letting go of the ones drawn longest ago. The pictures
+## on screen are kept whatever they cost: one let go would be drawn live until baked again, and
+## that bake would let go of another, the tiles in view flickering as they took turns.
 func _trim_bakes() -> void:
 	var total := 0
 	for key in _bakes:
 		total += int(_bakes[key].get("bytes", 0))
-	while total > _BAKE_BUDGET and _bakes.size() > 1:
+	if total <= _BAKE_BUDGET:
+		return
+	var showing: Dictionary = {}
+	var view := Rect2(Vector2.ZERO, size)
+	for unit in _units:
+		var r := _unit_rect(str(unit))
+		if not view.intersects(Rect2(r.position * _zoom + _offset, r.size * _zoom)):
+			continue
+		showing[_bake_key(str(unit), _bake_zoom())] = true
+		var found: Array = _best_bake(str(unit))
+		if not found.is_empty():
+			showing[_bake_key(str(unit), float(found[1]))] = true
+	while total > _BAKE_BUDGET:
 		var oldest := ""
 		for key in _bakes:
+			if showing.has(key):
+				continue
 			if oldest == "" or int(_bakes[key].get("used", 0)) < int(_bakes[oldest].get("used", 0)):
 				oldest = str(key)
+		if oldest == "":
+			break
 		total -= int(_bakes[oldest].get("bytes", 0))
 		_bakes.erase(oldest)
 
