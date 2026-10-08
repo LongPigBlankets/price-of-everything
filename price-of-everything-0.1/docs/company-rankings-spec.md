@@ -142,15 +142,17 @@ bare `queue_free()`, which is deferred and lays out both sets of children for a 
 
 ### 6.2 Expanded panel
 
-Standard `DS` theme, `Card` variation — do not invent panel styling. Ten rows, sorted by revenue
-descending, the player's row emphasised:
+A DS2 panel since 7 October 2026 (`docs/top-bar-ds2-plan.md`, Phase 5): the Treasury's navy steel
+sheet, a raised title, Revenue and Goods on latching keys, each table on a dark plate. Every company
+is a row on a raised black module with its figures on green LED screens; the player's row is an
+annunciator window lit amber. Rows sorted by revenue descending (RIVAL_COUNT + 1 of them):
 
 | col | content |
 |---|---|
-| rank | 1–10, with the movement arrow |
+| rank | the place, with a drawn movement mark (up, down, or a line for no change) |
 | company | name (player's own company name for their row) |
-| revenue | £/turn, `Numeric` variation |
-| trend | last-5-turn direction |
+| revenue last turn | £ on a green LED screen |
+| 5 turn average | £ on a green LED screen |
 
 Keep a 5-turn revenue history per company purely for the trend column — in memory only, rebuilt on
 load like everything else.
@@ -159,8 +161,8 @@ load like everything else.
 
 A second **Goods** tab shows every catalogued good with its framed good icon and a compact producer
 table. Ordinary goods list the top three rival producers plus **Your Company**, sorted by quantity;
-each quantity is displayed in brackets. Apex goods list **Your Company** only — rivals never produce
-them in this cosmetic view.
+each quantity is on a small green LED screen, the player's line lit amber. Apex goods list **Your
+Company** only — rivals never produce them in this cosmetic view.
 
 For a rival and good, start output at `Catalog.base_output_for_good(good_id)`. Every five completed
 turns, add one seeded integer increment chosen from `0`, `base × 0.2`, `base × 0.5`, or `base`. The
