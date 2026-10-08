@@ -57,7 +57,7 @@ func _ready() -> void:
 	var first := str(tiles.keys()[0])
 	var builder: RefCounted = board.get("_builder")
 	var camera: Camera3D = board.get("_camera")
-	await _click(camera.unproject_position(builder.point(tiles[first].center)))
+	await _click(board.call("screen_point", builder.point(tiles[first].center)))
 	if str(board.get("_selected_tile")) != first:
 		push_error("GUI Shift-click must select the projected tile")
 		get_tree().quit(1)
@@ -74,6 +74,7 @@ func _ready() -> void:
 	board.call("restore_camera", close)
 	await _shot("close")
 	print("[3D] drawcalls ", Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), " triangles ", Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
+	if "--detail-review" in OS.get_cmdline_user_args(): await _detail_review(board, home)
 	get_tree().quit()
 func _shot(label: String) -> void:
 	for i in 5: await get_tree().process_frame
@@ -101,6 +102,16 @@ func _exercise_pointer(board: Control) -> bool:
 		get_tree().quit(1)
 		return false
 	print("[3D] GUI right drag changed yaw and pitch")
+	var pinch := InputEventMagnifyGesture.new()
+	pinch.position = board.size * 0.5
+	pinch.factor = 1.15
+	get_viewport().push_input(pinch, true)
+	await get_tree().process_frame
+	if not is_equal_approx(board.call("capture_camera").span, after.span / 1.15):
+		push_error("GUI pinch must zoom the 3D camera")
+		get_tree().quit(1)
+		return false
+	print("[3D] GUI trackpad pinch changed zoom")
 	return true
 
 func _click(position: Vector2) -> void:
@@ -113,3 +124,64 @@ func _click(position: Vector2) -> void:
 	event.pressed = false
 	get_viewport().push_input(event, true)
 	await get_tree().process_frame
+
+func _detail_review(board: Control, home: Dictionary) -> void:
+	var focus: Vector3 = home.target
+	for tile in board.get("_model").tiles.values():
+		if "Snare Harbour Coast" in str(tile.label):
+			focus = board.get("_builder").point(tile.center)
+			break
+	board.call("_select_tile", "")
+	var texture_bytes := 0.0
+	for item in board.get("_builder").terrain_lods:
+		for texture in item.data.textures: texture_bytes += texture.get_width() * texture.get_height() * 4.0 * 4.0 / 3.0
+	print("[LOD] retained terrain texture MiB=", texture_bytes / 1048576.0)
+	for tier in 3:
+		var state := home.duplicate()
+		state.target = focus if tier > 0 else home.target
+		state.span = [2200.0, 1100.0, 560.0][tier]
+		board.call("restore_camera", state)
+		await _shot("detail_%s" % ["far", "medium", "near"][tier])
+		for warm in 60:
+			RenderingServer.force_draw(false)
+			await get_tree().process_frame
+		var samples: Array[float] = []
+		for frame in 45:
+			var start := Time.get_ticks_usec()
+			RenderingServer.force_draw(false)
+			await get_tree().process_frame
+			samples.append((Time.get_ticks_usec() - start) / 1000.0)
+		samples.sort()
+		print("[LOD] tier=", board.get("_detail"), " median_ms=", samples[22], " p95_ms=", samples[42],
+			" draws=", Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+			" triangles=", Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME),
+			" texture_MiB=", Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0)
+	# Rotation must retain the print pattern and directional volume at near detail.
+	var close: Dictionary = board.call("capture_camera")
+	close.yaw += PI * 0.65
+	board.call("restore_camera", close)
+	await _shot("detail_near_rotated")
+	board.get_parent().set_process(false)
+	board.hide()
+	var wrapper := Control.new()
+	board.get_parent().add_child(wrapper)
+	wrapper.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var background := ColorRect.new()
+	background.color = Color("2b3757")
+	wrapper.add_child(background)
+	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var original := preload("res://scripts/empire_board.gd").new()
+	wrapper.add_child(original)
+	original.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	board.hide()
+	await original.build_async(board.get("_last_graph"), board.get("_last_terrain"))
+	for tier in [0, 1]:
+		var span: float = [2200.0, 1100.0][tier]
+		var target: Vector3 = home.target if tier == 0 else focus
+		original.set("_zoom", original.size.y / span)
+		original.set("_offset", original.size * 0.5 - original.iso(Vector2(target.x, target.z), target.y) * original.size.y / span)
+		original.call("_view_changed")
+		await Harness.await_board_baked(self, original, 20.0)
+		original.modulate = Color.WHITE
+		await _shot("reference_%s" % ["far", "medium"][tier])
+	original.queue_free()

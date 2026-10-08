@@ -1,0 +1,43 @@
+{
+  "scene": "Metal Magnate, eight company tiles / 38 standing objects",
+  "renderer": "Godot 4.6.2 OpenGL compatibility, Apple M5 Pro",
+  "window": [
+    1920,
+    1080
+  ],
+  "warmup_forced_draw_frames": 60,
+  "measured_forced_draw_frames": 45,
+  "terrain_texture_cache_mib_approx": 199.5,
+  "measurements": [
+    {
+      "tier": "far",
+      "median_frame_interval_ms": 6.925,
+      "p95_frame_interval_ms": 7.108,
+      "frame_draw_calls": 392,
+      "frame_primitives": 163336,
+      "whole_game_texture_monitor_mib": 2570.46245670319
+    },
+    {
+      "tier": "medium",
+      "median_frame_interval_ms": 6.911,
+      "p95_frame_interval_ms": 7.108,
+      "frame_draw_calls": 386,
+      "frame_primitives": 259232,
+      "whole_game_texture_monitor_mib": 2570.46245670319
+    },
+    {
+      "tier": "near",
+      "median_frame_interval_ms": 6.907,
+      "p95_frame_interval_ms": 7.131,
+      "frame_draw_calls": 300,
+      "frame_primitives": 305534,
+      "whole_game_texture_monitor_mib": 2570.46245670319
+    }
+  ],
+  "notes": [
+    "Frame intervals include HUD and forced rendering; these are not isolated GPU timings.",
+    "Near framing culls more tiles, so it has fewer draw calls.",
+    "The whole-game texture monitor includes the regular map and prewarmed building sprites.",
+    "Initial cold captures included approximately 150 ms spikes."
+  ]
+}

@@ -11,6 +11,8 @@ const Model := preload("res://scripts/empire_board_model.gd")
 const Legacy := preload("res://scripts/empire_board.gd")
 const Relief := preload("res://scripts/empire_board_relief.gd")
 const Ground := preload("res://scripts/empire_board_ground.gd")
+const Detail := preload("res://scripts/supply_chain_3d/detail.gd")
+const Tokens := preload("res://scripts/supply_chain_3d/tokens.gd")
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
 var animate_goods := true
 var _viewport: SubViewport
@@ -36,20 +38,25 @@ var _last_terrain: Node
 var _last_show: Dictionary = {}
 var _effects: Array = []
 var _labels: Control
+var _detail := -1
+var _tokens := Tokens.new()
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	var container := SubViewportContainer.new()
+	var container := TextureRect.new()
 	container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	container.stretch = true
+	container.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(container)
 	_viewport = SubViewport.new()
 	_viewport.own_world_3d = true
 	_viewport.handle_input_locally = false
 	_viewport.gui_disable_input = true
-	_viewport.msaa_3d = Viewport.MSAA_2X
+	_viewport.msaa_3d = Viewport.MSAA_4X
 	container.add_child(_viewport)
+	container.texture = _viewport.get_texture()
+	resized.connect(_resize_viewport)
+	_resize_viewport()
 	_world = Node3D.new()
 	_viewport.add_child(_world)
 	var environment := WorldEnvironment.new()
@@ -65,7 +72,7 @@ func _ready() -> void:
 	sun.rotation_degrees = Vector3(-55, -30, 0)
 	sun.light_color = Color("fff0d0")
 	sun.light_energy = 0.85
-	# The approved sprite rig disables cast shadows; the printed shading belongs on faces.
+	# Illustrated face lighting and feathered terrain shadows follow the legacy board.
 	sun.shadow_enabled = false
 	sun.directional_shadow_max_distance = 20000.0
 	_world.add_child(sun)
@@ -154,8 +161,11 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	builder.ground = Ground.for_map(terrain, rivers, Relief.plates(terrain, river_lines), Callable(Legacy, "_relief_of"))
 	# Stable origin: expanding the company does not move existing terrain under the camera.
 	builder.origin = Vector2.ZERO
+	builder.configure_grade()
 	var first := true
 	for tid in builder.tiles:
+		await builder.prepare_tile(self, str(tid))
+		if generation != _generation: next.free(); return
 		next.add_child(builder.tile_node(str(tid)))
 		for p in Model.hex_points(builder.tiles[tid].center):
 			var v: Vector3 = builder.point(p)
@@ -168,13 +178,14 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	for s in model.get("standing", []): next.add_child(builder.standing_node(s))
 	if Legacy.show.trees:
 		for tid in builder.tiles: next.add_child(builder.trees_node(str(tid), model.get("standing", [])))
+	next.add_child(builder.shadows_node())
 	builder.prepare_flows(model)
 	var goods: Array = []
 	if Legacy.show.goods:
 		for flow in builder.flows:
 			if not flow.icon is Texture2D: continue
 			var sprite := Sprite3D.new()
-			sprite.texture = flow.icon
+			sprite.texture = _tokens.texture_for(flow.icon)
 			sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 			sprite.no_depth_test = false
 			sprite.shaded = false
@@ -187,7 +198,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 			for i in output.size():
 				var sprite := Sprite3D.new()
 				var good := str(output[i])
-				sprite.texture = GoodIcons.texture_for(good, str(Catalog.get_good(good).get("internal_name", "")))
+				sprite.texture = _tokens.texture_for(GoodIcons.texture_for(good, str(Catalog.get_good(good).get("internal_name", ""))))
 				if sprite.texture == null: sprite.free(); continue
 				sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 				sprite.position = item.top + Vector3((i - (output.size() - 1) * 0.5) * 22.0, 8.0, 0)
@@ -201,6 +212,13 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	_content = next
 	_world.add_child(_content)
 	_builder = builder
+	# Retain only this company's current terrain. Released tiles/old height fields
+	# cannot accumulate their three texture tiers across rebuilds.
+	var keep: Dictionary = {}
+	for tid in builder.tiles: keep[builder.terrain_key(str(tid))] = true
+	for key in _terrain_cache.keys():
+		if not keep.has(key): _terrain_cache.erase(key)
+	_detail = -1
 	_model = model
 	_last_show = Legacy.show.duplicate()
 	_goods = goods
@@ -208,6 +226,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	_building = false
 	if not _fitted and has_content(): fit_view()
 	_select_tile(_selected_tile)
+	_update_detail()
 	_update_goods()
 	_update_cars()
 	if _labels != null: _labels.queue_redraw()
@@ -257,8 +276,27 @@ func capture_camera() -> Dictionary:
 func restore_camera(state: Dictionary) -> void:
 	_rig.restore(state)
 	_rig.apply(_camera)
+	_update_detail()
+
+func _resize_viewport() -> void:
+	if _viewport == null: return
+	var density := get_viewport().get_final_transform().get_scale().abs()
+	var pixels := Vector2i((size * density).ceil()).max(Vector2i(1, 1))
+	if _viewport.size != pixels: _viewport.size = pixels
+
+func screen_point(world: Vector3) -> Vector2:
+	return _camera.unproject_position(world) * size / Vector2(_viewport.size)
+
+func _render_point(screen: Vector2) -> Vector2:
+	return screen * Vector2(_viewport.size) / size.max(Vector2.ONE)
+
+func _update_detail() -> void:
+	if _builder == null: return
+	_detail = Detail.choose(size.y / _rig.span, _detail)
+	_builder.set_detail(_detail)
 
 func pick_at(screen: Vector2, tiles_only: bool = false) -> Dictionary:
+	screen = _render_point(screen)
 	if not has_content(): return {}
 	var space := _viewport.find_world_3d().direct_space_state
 	# A long orthographic ray exactly on a shared triangle edge can miss in Jolt.
@@ -299,14 +337,7 @@ func _select_tile(tile: String) -> void:
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] and event.pressed:
-			var before := pick_at(event.position, true)
-			_rig.span = clampf(_rig.span * (0.88 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / 0.88), Rig.MIN_SIZE, Rig.MAX_SIZE)
-			_rig.apply(_camera)
-			if not before.is_empty():
-				var plane := Plane(Vector3.UP, (before.position as Vector3).y)
-				var after = plane.intersects_ray(_camera.project_ray_origin(event.position), _camera.project_ray_normal(event.position))
-				if after is Vector3: _rig.target += before.position - after
-				_rig.apply(_camera)
+			_zoom_at(event.position, 1.0 / 0.88 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.88)
 		elif event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
 			if event.pressed:
 				_drag_button = event.button_index
@@ -327,6 +358,27 @@ func _gui_input(event: InputEvent) -> void:
 			_rig.apply(_camera)
 		accept_event()
 
+	elif event is InputEventMagnifyGesture:
+		_zoom_at(event.position, event.factor)
+		accept_event()
+	elif event is InputEventPanGesture:
+		_rig.pan(-event.delta * 12.0, size.y)
+		_rig.apply(_camera)
+		accept_event()
+
+func _zoom_at(screen: Vector2, factor: float) -> void:
+	if factor <= 0.0 or not is_finite(factor): return
+	var before := pick_at(screen, true)
+	_rig.span = clampf(_rig.span / factor, Rig.MIN_SIZE, Rig.MAX_SIZE)
+	_rig.apply(_camera)
+	if not before.is_empty():
+		var plane := Plane(Vector3.UP, (before.position as Vector3).y)
+		var pixel := _render_point(screen)
+		var after = plane.intersects_ray(_camera.project_ray_origin(pixel), _camera.project_ray_normal(pixel))
+		if after is Vector3: _rig.target += before.position - after
+		_rig.apply(_camera)
+	_update_detail()
+
 func _unhandled_key_input(event: InputEvent) -> void:
 	if not event is InputEventKey or not event.pressed or event.echo: return
 	if event.keycode == KEY_HOME: reset_view()
@@ -337,7 +389,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	get_viewport().set_input_as_handled()
 
 func _process(delta: float) -> void:
+	_resize_viewport()
 	if animate_goods: _time += delta
+	_update_detail()
 	_update_goods()
 	_update_cars()
 	if _labels != null: _labels.queue_redraw()
@@ -346,7 +400,9 @@ func _update_goods() -> void:
 	for item in _goods:
 		var stationary := bool(item.get("stationary", false))
 		item.sprite.visible = not animate_goods if stationary else animate_goods
-		item.sprite.pixel_size = clampf(_rig.span / maxf(1.0, size.y), 0.3, 2.0) * 22.0 / maxf(1, item.sprite.texture.get_width())
+		var units_per_pixel := _rig.span / maxf(1.0, size.y)
+		var token_pixels := clampf(44.0 / units_per_pixel + 10.0, 16.0, 40.0)
+		item.sprite.pixel_size = units_per_pixel * token_pixels / maxf(1, item.sprite.texture.get_width())
 		if stationary: continue
 		var flow: Dictionary = item.flow
 		var at := fposmod(_time * 38.0, float(flow.length)) if animate_goods else 0.0
@@ -359,26 +415,50 @@ func _draw_labels() -> void:
 	if _builder == null or not Legacy.show.names: return
 	var font := ThemeDB.fallback_font
 	for label in _builder.labels:
-		var p: Vector3 = label.point + Vector3(0, 0, 140)
+		var p: Vector3 = label.point
 		if _camera.is_position_behind(p): continue
-		var screen := _camera.unproject_position(p)
+		var screen := screen_point(p)
 		if not Rect2(Vector2.ZERO, size).has_point(screen): continue
 		var title := str(label.text)
-		var width := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
-		var start := screen - Vector2(width * 0.5, 0)
-		_labels.draw_string_outline(font, start, title, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, 4, Color("23304d"))
-		_labels.draw_string(font, start, title, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("fff1cf"))
+		var width := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+		var box := Rect2(screen - Vector2(width * 0.5 + 8, 11), Vector2(width + 16, 22))
+		_labels.draw_rect(box, Color(0.015, 0.058, 0.105, 0.86))
+		_labels.draw_string(font, box.position + Vector2(8, 16), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, DS.PALETTE.TEXT)
 
 func standing_screen_rects() -> Array:
 	var out: Array = []
 	if _builder == null: return out
 	for item in _builder.pickables:
-		var p := _camera.unproject_position(item.point)
+		var p := screen_point(item.point)
 		out.append({"iid": item.iid, "kind": item.kind, "rect": Rect2(p - Vector2(12, 12), Vector2(24, 24))})
 	return out
 
 
 func _build_effects(builder: RefCounted, parent: Node3D) -> Array:
+	# The old view lights windows and yards in polluted districts. Shared additive
+	# cards reproduce its soft bloom without allocating a realtime light per lamp.
+	var glow := GradientTexture2D.new()
+	glow.width = 64
+	glow.height = 64
+	glow.fill = GradientTexture2D.FILL_RADIAL
+	glow.fill_from = Vector2(0.5, 0.5)
+	glow.fill_to = Vector2(1.0, 0.5)
+	glow.gradient = Gradient.new()
+	glow.gradient.colors = PackedColorArray([Color(1, 1, 1, 0.35), Color(1, 1, 1, 0)])
+	var glow_material := StandardMaterial3D.new()
+	glow_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	glow_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glow_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	glow_material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	glow_material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	glow_material.albedo_texture = glow
+	glow_material.albedo_color = Color(1.0, 0.70, 0.34, 0.6)
+	for item in builder.glows:
+		var quad := QuadMesh.new()
+		quad.size = item.size
+		var node := Geo.instance(quad, glow_material)
+		node.position = item.point
+		parent.add_child(node)
 	var cars: Array = []
 	var car := Geo.Batch.new()
 	car.box(Vector3(0, 2, 0), Vector3(4, 3, 9), Color("dbb963"))

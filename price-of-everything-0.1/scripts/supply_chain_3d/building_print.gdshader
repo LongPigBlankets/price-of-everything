@@ -1,16 +1,22 @@
 shader_type spatial;
 render_mode unshaded, cull_back, fog_disabled;
 // The sprite pipeline uses material colours, navy crease ink and face-driven stipple,
-// not cast shadows. Keep the pattern attached to the model as the camera orbits.
+// with directional face lighting. Grounding shadows are drawn on the terrain.
 uniform vec4 ink : source_color = vec4(0.20, 0.25, 0.36, 1.0);
 uniform float ink_pixels = 1.6;
 uniform float spacing = 0.014;
 uniform float stipple_strength = 0.22;
 varying vec3 model_position;
 varying vec3 face_normal;
+varying vec3 world_point;
+uniform vec2 grade_range = vec2(-100000.0, 100000.0);
+uniform int detail_level = 2;
+uniform bool lit_windows = false;
+uniform bool curtain_wall = false;
 
 void vertex() {
 	model_position = VERTEX;
+	world_point = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	face_normal = normalize(MODEL_NORMAL_MATRIX * NORMAL);
 }
 
@@ -54,15 +60,36 @@ void fragment() {
 	if (darkness > 0.45) { dot_mask = max(dot_mask, dots(grid, 1.0, vec2(0.5, 0.0))); }
 	if (darkness > 0.78) { dot_mask = max(dot_mask, dots(grid, 2.0, vec2(0.0, 0.5))); }
 	if (!glass && luma > 0.1) { paint *= 1.0 - dot_mask * darkness * stipple_strength; }
+	// Matte directional light is separate from the printed dot mask. A fixed sun
+	// makes different faces read as volumes throughout an orbit, without gloss.
+	float diffuse = dot(normalize(face_normal), normalize(vec3(0.50, 0.74, 0.45)));
+	vec3 face_light = mix(vec3(0.63, 0.70, 0.84), vec3(1.08, 1.04, 0.96), smoothstep(-0.45, 0.8, diffuse));
+	paint *= face_light;
+	float projected_y = (world_point.x + world_point.z) * 0.40824829 - world_point.y * 0.81649658;
+	float t = clamp((projected_y - grade_range.x) / max(1.0, grade_range.y - grade_range.x), 0.0, 1.0);
+	paint *= mix(vec3(0.66, 0.74, 1.0), vec3(1.0, 0.92, 0.72), t);
 	// UV contains triangle barycentrics (glTF flips V). UV2.x holds the three
 	// opposite-edge bits. Only modelled creases/borders carry ink, never mesh diagonals.
 	vec3 barycentric = vec3(UV.x, 1.0 - UV.y, UV.y - UV.x);
 	vec3 aa = max(fwidth(barycentric), vec3(0.00001));
-	vec3 lines = 1.0 - smoothstep(vec3(0.0), aa * ink_pixels, barycentric);
+	vec3 lines = 1.0 - smoothstep(vec3(0.0), aa * (detail_level == 0 ? ink_pixels * 0.70 : ink_pixels), barycentric);
 	float bits = floor(UV2.x + 0.5);
 	vec3 edges = vec3(mod(bits, 2.0), mod(floor(bits / 2.0), 2.0), mod(floor(bits / 4.0), 2.0));
 	float stroke = max(max(lines.x * edges.x, lines.y * edges.y), lines.z * edges.z);
 	vec3 ink_srgb = OUTPUT_IS_SRGB ? ink.rgb : linear_to_srgb(ink.rgb);
 	paint = mix(paint, ink_srgb, stroke * 0.88);
+	if (lit_windows && glass) {
+		float lit = 1.0;
+		if (curtain_wall) {
+			vec2 panes = vec2(abs(face_normal.x) > abs(face_normal.z) ? model_position.z : model_position.x, model_position.y) * vec2(14.0, 16.0);
+			vec2 cell = floor(panes);
+			vec2 within = fract(panes);
+			float random = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+			vec2 aa = fwidth(panes);
+			vec2 inside = smoothstep(vec2(0.16) - aa, vec2(0.16) + aa, within) * (1.0 - smoothstep(vec2(0.80) - aa, vec2(0.80) + aa, within));
+			lit = inside.x * inside.y * step(0.64, random);
+		}
+		paint = mix(paint, vec3(1.0, 0.87, 0.57) * (1.0 - stroke * 0.50), 0.86 * lit);
+	}
 	ALBEDO = OUTPUT_IS_SRGB ? paint : srgb_to_linear(paint);
 }

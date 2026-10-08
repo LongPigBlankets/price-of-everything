@@ -5,6 +5,7 @@ class Batch:
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
+	var uvs := PackedVector2Array()
 
 	func triangle(a: Vector3, b: Vector3, c: Vector3, color: Color, normal := Vector3.ZERO) -> void:
 		if (b - a).cross(c - a).length_squared() < 0.000001:
@@ -44,7 +45,7 @@ class Batch:
 		for face in [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]]:
 			quad(p[face[0]], p[face[1]], p[face[2]], p[face[3]], color)
 
-	func mesh() -> ArrayMesh:
+	func mesh(uv_rect := Rect2()) -> ArrayMesh:
 		var result := ArrayMesh.new()
 		if vertices.is_empty():
 			return result
@@ -53,6 +54,10 @@ class Batch:
 		arrays[Mesh.ARRAY_VERTEX] = vertices
 		arrays[Mesh.ARRAY_NORMAL] = normals
 		arrays[Mesh.ARRAY_COLOR] = colors
+		if uv_rect.has_area():
+			uvs.clear()
+			for v in vertices: uvs.append((Vector2(v.x, v.z) - uv_rect.position) / uv_rect.size)
+		if uvs.size() == vertices.size(): arrays[Mesh.ARRAY_TEX_UV] = uvs
 		result.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		return result
 
@@ -68,7 +73,7 @@ static func material(unshaded: bool = false) -> StandardMaterial3D:
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	return mat
 
-static func instance(mesh: ArrayMesh, mat: Material) -> MeshInstance3D:
+static func instance(mesh: Mesh, mat: Material) -> MeshInstance3D:
 	var node := MeshInstance3D.new()
 	node.mesh = mesh
 	node.material_override = mat

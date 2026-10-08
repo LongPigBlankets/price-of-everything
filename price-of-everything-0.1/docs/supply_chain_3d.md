@@ -1,103 +1,127 @@
-# Supply-chain 3D overview: first iteration
+# Supply-chain 3D overview
 
-Branch `codex/supply-chain-3d` starts at PR #197 (`6266b19a`) and also merges the
-supply-chain work in PR #196 (`86cb0e02`). The regular map is unchanged.
+Branch `codex/supply-chain-3d` starts at PR #197 (`6266b19a`) and merges the
+supply-chain work in PR #196 (`86cb0e02`). The regular map remains unchanged.
 
-The overview now uses an isolated World3D and orthographic Camera3D. Terrain is
-meshed from the existing supply-chain height field; 53 building/level meshes are
-exported from the existing Blender sprite builders. Rotation changes the camera,
-not the geometry. Building networks still open in the existing graph view.
+The company overview uses an isolated World3D and an orthographic orbit camera.
+The existing board model and smooth height field remain authoritative. Its 53
+building meshes come from the original Blender sprite builders. Buildings still
+open their supply-chain graphs; terrain clicks open the existing tile panel.
 
 ## Controls
 
-- Left drag: pan. Right or middle drag: orbit and tilt.
-- Scroll: zoom about the terrain under the pointer.
-- Q/E or the arrow buttons: rotate; Home or Reset view: frame the company.
-- Click terrain or a warehouse: open that tile's existing detail panel.
-- Click a building: open its supply-chain network; Shift-click selects its tile.
-- Tab: return to the regular map. Escape follows the existing panel stack.
+- Left drag / two-finger trackpad pan: pan.
+- Right or middle drag: orbit and tilt.
+- Mouse wheel / trackpad pinch: zoom around the terrain under the pointer.
+- Q/E or arrow buttons: rotate. Home / Reset view: frame the company.
+- Click terrain or a warehouse: select its tile; Shift-click selects through buildings.
+- Click a building: open its network. Tab returns to the regular map.
 
-Tile selection also forwards active destination-selection and construction actions.
-The original motion key and visibility switches remain available. Pausing goods
-shows outputs above their producers. Terrain selection is highlighted in the scene.
+Tile selection also forwards active construction and destination-selection actions.
+The motion key pauses moving goods and shows outputs above their producers.
 
-## Implementation and limits
+## Matching the original artwork
 
-`scripts/supply_chain_3d/board.gd` owns the viewport, picking, overlays and lifecycle;
-`orbit_camera.gd` owns the rig; `world_builder.gd` builds the static meshes. Existing
-model, river, relief and graph data remain authoritative. Source sprite builders,
-regular-map assets, Camera2D and map scripts have not been modified.
+Terrain colours are now painted from the original contour polygons into **plan-space**
+textures. The camera is not part of a bake, so orbiting never changes or rebakes the
+artwork. All tiers retain the original layered beaches, wet sand, foam, lake edges
+and riverbanks, plus subtle deterministic vegetation marks and water strokes.
+Smooth vertex normals follow the shared spline. The cutaway uses the original
+printed strata texture rather than four solid colour bands.
 
-The viewport and its processing stop while hidden. Mesh resources are shared per
-building type/level, glTF imports generate mesh LODs, terrain meshes are cached per
-tile/height field, and unchanged models retain their whole scene. Geometry is
-frustum-culled by Godot. Camera movements do not rebuild or rebake terrain. Static
-terrain/trees are batched per tile; infrastructure is currently one shared batch.
+The ground shader reproduces the source slope shading and warm-sun/cool-shade grade.
+Building paint has fixed world-space directional face lighting, navy crease ink and
+object-anchored stippling. Separate feathered ground shadows match the source board's
+illustrated grounding. The sprite exporter disabling cast shadows does **not** mean
+the original board lacked shadows: it drew them as a separate layer.
 
-Buildings use a shared, single-pass illustrated shader: navy crease ink, muted
-paint and object-anchored face stippling. Cast shadows are disabled to match the
-existing sprite rig. The exporter preserves smooth normals and emissive paint,
-and supplies edge masks so triangulation diagonals do not acquire ink. This
-approximates the sprites' Blender/AgX/Freestyle finish; it is not a pixel-identical
-transfer of their baked textures. The extra per-corner data increases the 53 source
-GLBs from about 38 to 67 MiB. It adds no outline draw pass, but imported memory and
-distant LOD quality still need profiling before expanding to the whole map.
+Decorative house and tower meshes follow the exact sprite variety chosen by the
+model, rather than the footprint-sizing level. Windows and inexpensive additive
+lamp/yard glows light polluted districts. Glass towers light individual panes rather
+than their whole facade. Foundations are added where ground is uneven. Cream goods
+tokens with navy borders and the old label plates are restored.
 
-This remains the company-only overview. It does not add the whole-world toggle,
-procedural city blocks, chunk streaming or distant impostors. Changed models rebuild
-the standing objects/infrastructure; a later large-company pass should make those
-updates incremental. Terrain colour boundaries currently follow a 12-unit mesh and
-could use exact shoreline clipping. Types without an exported builder use simple
-solid placeholders. This is the first playable 3D pass, not final marketing art.
+The 3D viewport follows physical screen resolution, with 4× MSAA. Projection/picking
+converts between physical viewport pixels and logical UI coordinates. Lighting is
+an illustrated approximation of the original Blender/AgX/Freestyle rendering, not a
+pixel-identical transfer of the sprites. Some source models have simpler rear faces;
+mines still use raised solid pit geometry rather than cutting the terrain surface.
 
-## Verification
+## Three detail levels
 
-- Map, goods-view and 3D tests: **2,322 checks passed**, 235 tests, no script errors.
-- Final parse sweep: **772 scripts, 0 failures**, 47 skipped by the existing checker.
-- The threaded main-menu → New Game → loading screen → Begin path passes for both
-  Metal Magnate and the default start headlessly. The rendered capture also uses
-  this path and dismisses the introductory modal before checking pointer input.
-- A native shutdown abort was traced to the existing session logger receiving late
-  diagnostics after GDScript teardown. The autoload now unregisters its logger on
-  exit; the rendered loading/input capture subsequently exited successfully. The
-  existing ObjectDB leak warning still appears at shutdown.
-- Rendered four yaw angles and the tile panel with Godot 4.6.2, OpenGL compatibility,
-  Apple M5 Pro, 1920 × 1080. Routed GUI right-drag changes both yaw and pitch;
-  routed Shift-click opens the tile panel.
-- The captured Metal Magnate start has 8 tiles and 38 standing objects. The final
-  close views report roughly 370–570 frame draw calls and 95,000–97,000 primitives including
-  the HUD. This is a scene-count observation, not a GPU timing or full-map benchmark.
-- Regression coverage includes four-direction ray picking, triangle-edge precision,
-  drag-versus-click separation, graph drilldown, unchanged-build reuse, all exported
-  meshes and print metadata, and restoration of the regular map camera/input.
+LOD is selected from logical screen pixels per world unit, with hysteresis so a slow
+pinch near a threshold does not flicker between tiers. The selected mesh and material
+are cached resources; no terrain generation or image readback happens during zoom.
 
-Run tests from the game directory:
+| Tier | Typical span at 1080px height | Ground mesh spacing | Terrain artwork width | Detail |
+| --- | --- | --- | --- | --- |
+| Far | Above ~1420 units | 12 units | 512px + mipmaps | Accurate contours/beaches, textured strata, denser rounded trees and bushes, roads, lamps, buildings, shadows and tokens |
+| Medium | ~675–1420 units | 8 units | 1024px + mipmaps | Finer slopes, canopy lobes and branches, railway sleepers, increased building mesh detail |
+| Near | Below ~675 units | 4 units | 2048px + mipmaps | Fine slope geometry, kerb markings, ground tufts and stones, highest building detail |
+
+The far tier's surface paint has roughly 512 samples across a tile, versus about 45
+triangle-colour samples in the first 3D pass. It also has up to 84 tree candidates per
+tile versus 26, with placement excluding buildings, streets and riverbanks. All tiers
+use the same deterministic positions. Medium and near add details to those positions.
+Imported glTF LODs handle building meshes; tier-specific biases preserve more geometry
+as the view approaches. Colliders remain stable across visual LOD changes.
+
+## Performance and limits
+
+Geometry is frustum-culled by Godot. Ground, vegetation and infrastructure details are
+batched; lighting accents use shared materials and glow cards instead of an individual
+real-time light for every lamp. The viewport and processing stop when the board is hidden.
+Unchanged models retain their scene. Obsolete terrain cache entries are released on
+rebuild, including tiles no longer in the company and old height fields.
+
+Three complete terrain texture tiers for the eight-tile Metal Magnate company retain
+approximately **199.5 MiB** including mipmaps. Keeping them resident avoids decode/upload
+work while zooming. This is a quality-first company-view implementation: a whole-world
+view needs visibility-driven texture residency/streaming and a fixed memory budget
+before extending it to hundreds of tiles. Initial build/baking is paced during loading;
+changed standing objects/infrastructure still rebuild rather than update incrementally.
+
+Rendered measurements: Godot 4.6.2, OpenGL compatibility, Apple M5 Pro, 1920×1080,
+eight tiles / 38 standing objects. After 60 forced-draw warm-up frames, 45 frame samples:
+
+| Tier | Median frame interval | p95 | Frame draw calls | Primitives |
+| --- | --- | --- | --- | --- |
+| Far | 6.93 ms | 7.11 ms | 392 | 163,336 |
+| Medium | 6.91 ms | 7.11 ms | 386 | 259,232 |
+| Near | 6.91 ms | 7.13 ms | 300 | 305,534 |
+
+These are local end-to-end frame intervals with forced draws, including HUD work, not
+isolated GPU timings or a full-map benchmark. Near framing culls more tiles, hence fewer
+draw calls. Initial cold captures included ~150ms spikes; those are not hidden by the
+steady-state figures. The engine's total texture monitor also includes the main game's
+prewarmed sprites and regular-map assets, so it is not the supply-chain cache size.
+
+## Verification and captures
+
+- Map, goods-view and 3D regression: **2,334 checks passed**, 236 tests, no script errors.
+- The focused interaction test passes **19 checks**, including added high-DPI picking and house-variety regressions.
+- Complete parse sweep: **775 scripts, 0 failures**, 47 excluded by the existing checker.
+- Rendered New Game → Begin → supply chain, routed mouse orbit, routed trackpad pinch,
+  tile selection, all three LODs, a rotated near view, and the original 2D renderer at
+  matched far/medium framing. Captures live in `outputs/supply-chain-3d` at repo root.
+- The default New Game start is also covered by the headless loading-path smoke tool.
+- Headless logs retain fixture-level missing-node/dummy-texture diagnostics; the parse
+  checker also reports its existing live-script reload diagnostic. No script parse
+  failures or assertion failures were reported.
+- The existing ObjectDB leak warning still appears on exit; the previous native logger
+  shutdown abort remains fixed.
+
+From the game directory:
 
 ```sh
 python3 tools/run_tests.py --tags goods_views,map,supply_chain_3d --no-telemetry
 godot --headless --path . res://tools/parse_check.tscn --quit-after 600 -- --no-telemetry
-godot --headless --path . res://tools/supply_chain_3d/new_game_smoke.tscn -- --no-telemetry
 godot --headless --path . res://tools/supply_chain_3d/new_game_smoke.tscn \
   -- --no-telemetry --start=res://data/starts/default.json
-```
-
-Render the disposable, autosave-disabled capture scenario:
-
-```sh
 AGENT_GODOT_WINDOW=1 godot --path . --windowed --resolution 1920x1080 \
-  res://tools/supply_chain_3d/capture.tscn -- --no-telemetry
+  res://tools/supply_chain_3d/capture.tscn -- --no-telemetry --detail-review
 ```
 
-It writes `/private/tmp/supply3d_*.png`. Selected reviewed captures are stored under
-`outputs/supply-chain-3d` at the repository root.
-
-`tools/supply_chain_3d/material_probe.tscn` renders a close comparison of the existing
-factory sprite and its 3D mesh to `/private/tmp/supply3d_material_comparison.png`.
-Run it with `AGENT_GODOT_WINDOW=1 godot` as above.
-
-To regenerate the assets from the repository root:
-
-```sh
-blender --background --factory-startup \
-  --python price-of-everything-0.1/tools/supply_chain_3d/export_models.py
-```
+The dummy headless renderer cannot bake viewport images; its tests exercise the same
+meshes, lifecycle, picking and LOD policy with placeholder textures. Windowed captures
+verify the actual shaders, terrain artwork and token composition.
