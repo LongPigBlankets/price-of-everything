@@ -1254,6 +1254,17 @@ func _test_empire_board_caches() -> void:
 		inst.queue_free()
 		return
 	var board: Control = view.find_child("Board", true, false)
+	# Exercise the retained 2D bake cache explicitly; the live overview now uses 3D.
+	while bool(view.get("_preparing")):
+		await get_tree().process_frame
+	var previous := board
+	view.remove_child(previous)
+	previous.queue_free()
+	board = preload("res://scripts/empire_board.gd").new()
+	board.name = "Board"
+	board.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	view.add_child(board)
+	view.set("_board", board)
 	var chart: Node = view.find_child("GraphWorld", true, false)
 	var a := "tile_9_9"
 	var made: Array = [BuildingState.add_building("b_001", "r_001", a, "player_1", "cache_test_a")]

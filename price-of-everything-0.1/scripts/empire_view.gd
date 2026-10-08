@@ -27,7 +27,7 @@ const EmpireGraphScript := preload("res://scripts/empire_graph.gd")
 const EmpireLayout := preload("res://scripts/empire_layout.gd")
 const GraphWorldScript := preload("res://scripts/empire_graph_world.gd")
 const HexBgScript := preload("res://scripts/empire_hex_bg.gd")
-const BoardScript := preload("res://scripts/empire_board.gd")
+const BoardScript := preload("res://scripts/supply_chain_3d/board.gd")
 
 var _map_camera: Node = null                   # the map Camera2D (group "camera"); gated while we own the screen
 var _hidden_layers: Array[CanvasItem] = []     # world layers hidden on enter, restored on leave
@@ -154,6 +154,7 @@ func _build_ui() -> void:
 	_board.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_board.mouse_filter = Control.MOUSE_FILTER_STOP
 	_board.connect("building_picked", _on_building_picked)
+	_board.connect("tile_picked", _on_tile_picked)
 	_board.connect("suppliers_picked", func() -> void: _show_suppliers("input"))
 	add_child(_board)
 
@@ -172,7 +173,7 @@ func _build_ui() -> void:
 
 	var hint := Label.new()
 	hint.name = "Hint"
-	hint.text = "SUPPLY CHAIN VIEW  ·  drag to pan · scroll to zoom · click a building for its network · Tab to return"
+	hint.text = "SUPPLY CHAIN  ·  drag to pan · right-drag to orbit · scroll to zoom · click terrain for tile · Shift-click through buildings · Tab to return"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hint.theme_type_variation = &"Caption"
@@ -294,6 +295,31 @@ func _show_suppliers(side: String) -> void:
 	_suppliers_inputs.disabled = not _graph_world.has_building(SUPPLIERS_INPUTS)
 	_suppliers_outputs.disabled = not _graph_world.has_building(SUPPLIERS_OUTPUTS)
 	TelemetryState.track_interaction("supply_chain_suppliers_selected", "supply_chain", want)
+
+
+## Reuse the tile panel and destination actions, without passing screen coordinates to
+## the hidden 2D map. Its projection and Camera2D remain completely independent.
+func _on_tile_picked(tile_id: String) -> void:
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	if terrain == null: return
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	var tiles: Dictionary = terrain.get("tiles")
+	if not tiles.has(coord): return
+	if Tutorial.active and not Tutorial.tile_allowed(tile_id):
+		MatchState.request_toast("Let's stay on the tutorial area for now.", "info")
+		return
+	var data: Dictionary = tiles[coord]
+	if bool(terrain.get("_stockpile_destination_selection_active")):
+		var shift := Input.is_key_pressed(KEY_SHIFT)
+		terrain.stockpile_destination_selected.emit(data, Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META), shift)
+		if not shift: terrain.end_stockpile_destination_selection()
+	elif BuildMode.is_active:
+		BuildMode.attempt_build(tile_id)
+	else:
+		terrain.tile_selected.emit(data)
+		var world := terrain.get_parent()
+		var panel: Control = world.get("info_panel")
+		if panel != null: panel.move_to_front()
 
 
 func _on_building_picked(iid: String) -> void:
