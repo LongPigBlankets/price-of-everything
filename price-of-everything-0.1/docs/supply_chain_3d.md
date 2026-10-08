@@ -34,6 +34,15 @@ tile/height field, and unchanged models retain their whole scene. Geometry is
 frustum-culled by Godot. Camera movements do not rebuild or rebake terrain. Static
 terrain/trees are batched per tile; infrastructure is currently one shared batch.
 
+Buildings use a shared, single-pass illustrated shader: navy crease ink, muted
+paint and object-anchored face stippling. Cast shadows are disabled to match the
+existing sprite rig. The exporter preserves smooth normals and emissive paint,
+and supplies edge masks so triangulation diagonals do not acquire ink. This
+approximates the sprites' Blender/AgX/Freestyle finish; it is not a pixel-identical
+transfer of their baked textures. The extra per-corner data increases the 53 source
+GLBs from about 38 to 67 MiB. It adds no outline draw pass, but imported memory and
+distant LOD quality still need profiling before expanding to the whole map.
+
 This remains the company-only overview. It does not add the whole-world toggle,
 procedural city blocks, chunk streaming or distant impostors. Changed models rebuild
 the standing objects/infrastructure; a later large-company pass should make those
@@ -43,23 +52,33 @@ solid placeholders. This is the first playable 3D pass, not final marketing art.
 
 ## Verification
 
-- Map, goods-view and 3D tests: **2,320 checks passed**, 235 tests, no script errors.
-- Final parse sweep: **770 scripts, 0 failures**, 47 skipped by the existing checker.
+- Map, goods-view and 3D tests: **2,322 checks passed**, 235 tests, no script errors.
+- Final parse sweep: **772 scripts, 0 failures**, 47 skipped by the existing checker.
+- The threaded main-menu → New Game → loading screen → Begin path passes for both
+  Metal Magnate and the default start headlessly. The rendered capture also uses
+  this path and dismisses the introductory modal before checking pointer input.
+- A native shutdown abort was traced to the existing session logger receiving late
+  diagnostics after GDScript teardown. The autoload now unregisters its logger on
+  exit; the rendered loading/input capture subsequently exited successfully. The
+  existing ObjectDB leak warning still appears at shutdown.
 - Rendered four yaw angles and the tile panel with Godot 4.6.2, OpenGL compatibility,
   Apple M5 Pro, 1920 × 1080. Routed GUI right-drag changes both yaw and pitch;
   routed Shift-click opens the tile panel.
 - The captured Metal Magnate start has 8 tiles and 38 standing objects. The final
-  close view reports roughly 493 frame draw calls and 139,000 primitives including
+  close views report roughly 370–570 frame draw calls and 95,000–97,000 primitives including
   the HUD. This is a scene-count observation, not a GPU timing or full-map benchmark.
 - Regression coverage includes four-direction ray picking, triangle-edge precision,
   drag-versus-click separation, graph drilldown, unchanged-build reuse, all exported
-  meshes, and restoration of the regular map camera/input.
+  meshes and print metadata, and restoration of the regular map camera/input.
 
 Run tests from the game directory:
 
 ```sh
 python3 tools/run_tests.py --tags goods_views,map,supply_chain_3d --no-telemetry
 godot --headless --path . res://tools/parse_check.tscn --quit-after 600 -- --no-telemetry
+godot --headless --path . res://tools/supply_chain_3d/new_game_smoke.tscn -- --no-telemetry
+godot --headless --path . res://tools/supply_chain_3d/new_game_smoke.tscn \
+  -- --no-telemetry --start=res://data/starts/default.json
 ```
 
 Render the disposable, autosave-disabled capture scenario:
@@ -71,6 +90,10 @@ AGENT_GODOT_WINDOW=1 godot --path . --windowed --resolution 1920x1080 \
 
 It writes `/private/tmp/supply3d_*.png`. Selected reviewed captures are stored under
 `outputs/supply-chain-3d` at the repository root.
+
+`tools/supply_chain_3d/material_probe.tscn` renders a close comparison of the existing
+factory sprite and its 3D mesh to `/private/tmp/supply3d_material_comparison.png`.
+Run it with `AGENT_GODOT_WINDOW=1 godot` as above.
 
 To regenerate the assets from the repository root:
 

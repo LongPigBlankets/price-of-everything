@@ -1,6 +1,8 @@
 extends RefCounted
 ## Only the supply-chain renderer uses these meshes. Existing sprite/map assets are untouched.
 const DIRECTORY := "res://assets/supply_chain_3d/"
+const PrintShader := preload("res://scripts/supply_chain_3d/building_print.gdshader")
+static var _print: ShaderMaterial
 static var _meshes: Dictionary = {}
 static var _manifest: Dictionary = {}
 
@@ -27,6 +29,12 @@ static func mesh_for(key: String) -> Mesh:
 			nodes.push_front(root)
 		_meshes[key] = (nodes[0] as MeshInstance3D).mesh if not nodes.is_empty() else null
 		root.free()
+		if _meshes[key] != null:
+			if _print == null:
+				_print = ShaderMaterial.new()
+				_print.shader = PrintShader
+			for surface in _meshes[key].get_surface_count():
+				_meshes[key].surface_set_material(surface, _print)
 	return _meshes[key]
 
 static func dimensions(key: String) -> Vector3:

@@ -65,7 +65,8 @@ func _ready() -> void:
 	sun.rotation_degrees = Vector3(-55, -30, 0)
 	sun.light_color = Color("fff0d0")
 	sun.light_energy = 0.85
-	sun.shadow_enabled = true
+	# The approved sprite rig disables cast shadows; the printed shading belongs on faces.
+	sun.shadow_enabled = false
 	sun.directional_shadow_max_distance = 20000.0
 	_world.add_child(sun)
 	_camera = Camera3D.new()

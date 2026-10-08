@@ -3,318 +3,371 @@
     "height": 0.39630680572249277,
     "width": 0.3849431762860489,
     "depth": 0.6306818083682955,
-    "triangles": 1076
+    "triangles": 1076,
+    "ink_edges": true
   },
   "industrial_factory_lvl2": {
     "height": 0.7578124838606035,
     "width": 0.4595170344143324,
     "depth": 0.9900568279472354,
-    "triangles": 1216
+    "triangles": 1216,
+    "ink_edges": true
   },
   "industrial_factory_lvl3": {
     "height": 0.7578124838606035,
     "width": 0.6471945974080582,
     "depth": 1.0,
-    "triangles": 2332
+    "triangles": 2332,
+    "ink_edges": true
   },
   "furnace_lvl1": {
     "height": 0.6958620794888201,
     "width": 0.6813792853519834,
     "depth": 0.4862069097058526,
-    "triangles": 5712
+    "triangles": 5712,
+    "ink_edges": true
   },
   "furnace_lvl2": {
     "height": 0.6958620794888201,
     "width": 0.7137930968712116,
     "depth": 0.6758620821196457,
-    "triangles": 8428
+    "triangles": 8428,
+    "ink_edges": true
   },
   "furnace_lvl3": {
     "height": 1.0103448382739364,
     "width": 1.0,
     "depth": 0.6758620821196457,
-    "triangles": 12000
+    "triangles": 12000,
+    "ink_edges": true
   },
   "power_plant_lvl1": {
     "height": 0.5707656566324101,
     "width": 0.9814384963425521,
     "depth": 0.6210363511433176,
-    "triangles": 4604
+    "triangles": 4604,
+    "ink_edges": true
   },
   "power_plant_lvl2": {
     "height": 0.5746326473172323,
     "width": 0.9907192297320979,
     "depth": 0.6320374598542213,
-    "triangles": 12284
+    "triangles": 12284,
+    "ink_edges": true
   },
   "power_plant_lvl3": {
     "height": 0.5746326473172323,
     "width": 1.0,
     "depth": 0.796424134435475,
-    "triangles": 15288
+    "triangles": 15288,
+    "ink_edges": true
   },
   "petro_refinery_lvl1": {
     "height": 0.5921807020500389,
     "width": 0.6913551808066759,
     "depth": 0.5709699552138278,
-    "triangles": 13798
+    "triangles": 13798,
+    "ink_edges": true
   },
   "petro_refinery_lvl2": {
     "height": 0.5921807020500389,
     "width": 0.8784682221551596,
     "depth": 0.750974517477104,
-    "triangles": 33360
+    "triangles": 33360,
+    "ink_edges": true
   },
   "petro_refinery_lvl3": {
     "height": 0.6896354019739375,
     "width": 1.0,
     "depth": 0.8988763547379747,
-    "triangles": 50060
+    "triangles": 50060,
+    "ink_edges": true
   },
   "poly_plant_lvl1": {
     "height": 0.4691817338254975,
     "width": 1.0,
     "depth": 0.5207226345450376,
-    "triangles": 18052
+    "triangles": 18052,
+    "ink_edges": true
   },
   "poly_plant_lvl2": {
     "height": 0.5669500726036507,
     "width": 1.0,
     "depth": 0.7640807515865666,
-    "triangles": 25184
+    "triangles": 25184,
+    "ink_edges": true
   },
   "poly_plant_lvl3": {
     "height": 0.5669500726036507,
     "width": 1.0,
     "depth": 0.8289054198065942,
-    "triangles": 31668
+    "triangles": 31668,
+    "ink_edges": true
   },
   "port_lvl1": {
     "height": 0.2175342514090342,
     "width": 1.0,
     "depth": 0.9041095890410958,
-    "triangles": 6724
+    "triangles": 6724,
+    "ink_edges": true
   },
   "construction_site_lvl1": {
     "height": 0.830760942546088,
     "width": 1.0,
     "depth": 0.7127293574612626,
-    "triangles": 8768
+    "triangles": 8768,
+    "ink_edges": true
   },
   "eaf_lvl1": {
     "height": 0.7398208949586713,
     "width": 0.6145494155275686,
     "depth": 0.5336542078240749,
-    "triangles": 7120
+    "triangles": 7120,
+    "ink_edges": true
   },
   "eaf_lvl2": {
     "height": 0.7398208949586713,
     "width": 0.9586319411844895,
     "depth": 0.639196552130652,
-    "triangles": 9074
+    "triangles": 9074,
+    "ink_edges": true
   },
   "eaf_lvl3": {
     "height": 0.7398208949586713,
     "width": 1.0,
     "depth": 0.6471227147474556,
-    "triangles": 10606
+    "triangles": 10606,
+    "ink_edges": true
   },
   "electrolyser_lvl1": {
     "height": 0.3608472320915979,
     "width": 0.7566779897156948,
     "depth": 0.8836160698984445,
-    "triangles": 14310
+    "triangles": 14310,
+    "ink_edges": true
   },
   "electrolyser_lvl2": {
     "height": 0.3608472320915979,
     "width": 0.8576979441579459,
     "depth": 0.8836160698984445,
-    "triangles": 27260
+    "triangles": 27260,
+    "ink_edges": true
   },
   "electrolyser_lvl3": {
     "height": 0.3608472320915979,
     "width": 0.8576979441579459,
     "depth": 1.0,
-    "triangles": 44376
+    "triangles": 44376,
+    "ink_edges": true
   },
   "solar_farm_lvl1": {
     "height": 0.2697302596856992,
     "width": 0.6389324768457185,
     "depth": 0.5216244487952819,
-    "triangles": 1944
+    "triangles": 1944,
+    "ink_edges": true
   },
   "solar_farm_lvl2": {
     "height": 0.2697302596856992,
     "width": 0.8315969699234989,
     "depth": 0.767093262492587,
-    "triangles": 3760
+    "triangles": 3760,
+    "ink_edges": true
   },
   "solar_farm_lvl3": {
     "height": 0.2697302596856992,
     "width": 1.0,
     "depth": 0.9126619724487214,
-    "triangles": 5200
+    "triangles": 5200,
+    "ink_edges": true
   },
   "assembly_plant_lvl1": {
     "height": 0.36202057256533704,
     "width": 0.7754911054704462,
     "depth": 0.38821327913418147,
-    "triangles": 3548
+    "triangles": 3548,
+    "ink_edges": true
   },
   "assembly_plant_lvl2": {
     "height": 0.41534144895545233,
     "width": 1.0,
     "depth": 0.38821327913418147,
-    "triangles": 4780
+    "triangles": 4780,
+    "ink_edges": true
   },
   "assembly_plant_lvl3": {
     "height": 0.41534144895545233,
     "width": 1.0,
     "depth": 0.7296539183725267,
-    "triangles": 7448
+    "triangles": 7448,
+    "ink_edges": true
   },
   "chem_plant_lvl1": {
     "height": 0.5261813246051432,
     "width": 0.5300127564590574,
     "depth": 0.9348658744836776,
-    "triangles": 9822
+    "triangles": 9822,
+    "ink_edges": true
   },
   "chem_plant_lvl2": {
     "height": 0.5261813246051432,
     "width": 0.759897765631321,
     "depth": 0.9348658744836776,
-    "triangles": 15380
+    "triangles": 15380,
+    "ink_edges": true
   },
   "chem_plant_lvl3": {
     "height": 0.690293684972706,
     "width": 1.0,
     "depth": 0.9348658744836776,
-    "triangles": 22330
+    "triangles": 22330,
+    "ink_edges": true
   },
   "high_tech_manufactory_lvl1": {
     "height": 0.5029392521098799,
     "width": 0.901371668341722,
     "depth": 0.6544742010696164,
-    "triangles": 7476
+    "triangles": 7476,
+    "ink_edges": true
   },
   "high_tech_manufactory_lvl2": {
     "height": 0.5029392521098799,
     "width": 0.901371668341722,
     "depth": 0.8393207023291237,
-    "triangles": 10088
+    "triangles": 10088,
+    "ink_edges": true
   },
   "high_tech_manufactory_lvl3": {
     "height": 0.6649249154135728,
     "width": 1.0,
     "depth": 0.9418680685949098,
-    "triangles": 13068
+    "triangles": 13068,
+    "ink_edges": true
   },
   "onshore_wind_farm_lvl1": {
     "height": 0.6207916680867773,
     "width": 0.9834899455365562,
     "depth": 0.7351678122759325,
-    "triangles": 1924
+    "triangles": 1924,
+    "ink_edges": true
   },
   "onshore_wind_farm_lvl2": {
     "height": 0.6207916680867773,
     "width": 0.9834899455365562,
     "depth": 0.7351678122759325,
-    "triangles": 4052
+    "triangles": 4052,
+    "ink_edges": true
   },
   "onshore_wind_farm_lvl3": {
     "height": 0.7530860084617793,
     "width": 1.0,
     "depth": 0.739365163333527,
-    "triangles": 7104
+    "triangles": 7104,
+    "ink_edges": true
   },
   "offshore_wind_farm_lvl1": {
     "height": 0.545612385230405,
     "width": 1.0,
     "depth": 0.6571428435189384,
-    "triangles": 1516
+    "triangles": 1516,
+    "ink_edges": true
   },
   "offshore_wind_farm_lvl2": {
     "height": 0.6053686301623072,
     "width": 1.0,
     "depth": 0.6630849838256836,
-    "triangles": 3020
+    "triangles": 3020,
+    "ink_edges": true
   },
   "offshore_wind_farm_lvl3": {
     "height": 0.8308186690722194,
     "width": 1.0,
     "depth": 0.8058394023350307,
-    "triangles": 4524
+    "triangles": 4524,
+    "ink_edges": true
   },
   "warehouse_lvl1": {
     "height": 0.36090909215536987,
     "width": 0.6818181818181818,
     "depth": 0.6363636580380526,
-    "triangles": 464
+    "triangles": 464,
+    "ink_edges": true
   },
   "warehouse_lvl2": {
     "height": 0.36090909215536987,
     "width": 0.8636363636363636,
     "depth": 0.6363636580380526,
-    "triangles": 644
+    "triangles": 644,
+    "ink_edges": true
   },
   "warehouse_lvl3": {
     "height": 0.36090909215536987,
     "width": 0.9363636537031694,
     "depth": 1.0,
-    "triangles": 1000
+    "triangles": 1000,
+    "ink_edges": true
   },
   "house_lvl1": {
     "height": 0.47388890198934197,
     "width": 1.0,
     "depth": 0.3725485197034247,
-    "triangles": 252
+    "triangles": 252,
+    "ink_edges": true
   },
   "house_lvl2": {
     "height": 0.47388890198934197,
     "width": 1.0,
     "depth": 0.9199937732724595,
-    "triangles": 504
+    "triangles": 504,
+    "ink_edges": true
   },
   "house_lvl3": {
     "height": 0.7737226702915572,
     "width": 0.9963503684567696,
     "depth": 0.9289750185187715,
-    "triangles": 404
+    "triangles": 404,
+    "ink_edges": true
   },
   "towers_lvl1": {
     "height": 4.24285708568534,
     "width": 1.0,
     "depth": 1.0,
-    "triangles": 478
+    "triangles": 478,
+    "ink_edges": true
   },
   "towers_lvl2": {
     "height": 4.692857345391296,
     "width": 0.9071428589674891,
     "depth": 0.9071428589674891,
-    "triangles": 164
+    "triangles": 164,
+    "ink_edges": true
   },
   "pylon_lvl1": {
     "height": 2.4293810406587526,
     "width": 0.5038643288520974,
     "depth": 1.0,
-    "triangles": 2284
+    "triangles": 2284,
+    "ink_edges": true
   },
   "mine_flush_lvl1": {
     "height": 0.4282616838245615,
     "width": 0.9987351407363265,
     "depth": 0.8492952434588048,
-    "triangles": 1416
+    "triangles": 1416,
+    "ink_edges": true
   },
   "mine_flush_lvl2": {
     "height": 0.756234189259204,
     "width": 1.0,
     "depth": 0.8492952434588048,
-    "triangles": 3156
+    "triangles": 3156,
+    "ink_edges": true
   },
   "mine_flush_lvl3": {
     "height": 0.8014094699998854,
     "width": 1.0,
     "depth": 0.8492952434588048,
-    "triangles": 3712
+    "triangles": 3712,
+    "ink_edges": true
   }
 }

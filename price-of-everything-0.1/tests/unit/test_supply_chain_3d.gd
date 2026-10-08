@@ -27,6 +27,23 @@ func _test_exported_3d_meshes() -> void:
 			var box := mesh.get_aabb()
 			all_valid = all_valid and box.size.y > 0 and absf(box.position.y) < 0.01
 	_check(manifest.size() >= 50 and all_valid, "3D assets: all exported levels load as one grounded solid mesh")
+	var factory := Assets.mesh_for("industrial_factory_lvl3")
+	var arrays := factory.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var uv: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
+	var edge_bits: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2]
+	var print_data_valid := uv.size() == vertices.size() and edge_bits.size() == vertices.size()
+	var suppressed_diagonal := false
+	for i in uv.size():
+		var bary := Vector3(uv[i].x, 1.0 - uv[i].y, uv[i].y - uv[i].x)
+		print_data_valid = print_data_valid and bary.x >= -0.001 and bary.y >= -0.001 and bary.z >= -0.001
+		if i < edge_bits.size():
+			var bits := edge_bits[i].x
+			print_data_valid = print_data_valid and bits >= -0.001 and bits <= 7.001 and absf(bits - roundf(bits)) < 0.001
+			suppressed_diagonal = suppressed_diagonal or bits < 7
+	_check(print_data_valid and suppressed_diagonal, "3D print: imported barycentrics and edge masks preserve creases without inking mesh diagonals")
+	_check(factory.surface_get_material(0) is ShaderMaterial,
+		"3D print: building uses its illustrated material")
 	_check(Assets.key_for("mine", 3) == "mine_flush_lvl3", "3D mine uses its surface geometry")
 
 func _test_3d_overview_interaction() -> void:
