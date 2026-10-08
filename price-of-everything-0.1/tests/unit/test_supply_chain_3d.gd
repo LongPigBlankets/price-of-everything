@@ -3,6 +3,13 @@ const FEATURE := "supply_chain_3d"
 const Rig := preload("res://scripts/supply_chain_3d/orbit_camera.gd")
 const Detail := preload("res://scripts/supply_chain_3d/detail.gd")
 const Assets := preload("res://scripts/supply_chain_3d/assets.gd")
+const Builder := preload("res://scripts/supply_chain_3d/world_builder.gd")
+const RoadSurface := preload("res://scripts/supply_chain_3d/road_surface.gd")
+const Legacy := preload("res://scripts/empire_board.gd")
+
+class SlopedGround extends RefCounted:
+	func height(p: Vector2) -> float: return 30.0 + p.x * 0.08 + p.y * 0.03
+	func gradient(_p: Vector2) -> Vector2: return Vector2(0.08, 0.03)
 
 func _test_orbit_limits_and_pan() -> void:
 	var rig := Rig.new()
@@ -166,3 +173,92 @@ func _test_detail_hysteresis() -> void:
 	_check(Detail.choose(0.78, 0) == 0 and Detail.choose(0.72, 1) == 1 and Detail.choose(1.50, 2) == 2,
 		"3D LOD: hysteresis prevents flicker near zoom boundaries")
 	_check(Detail.choose(2.5, 0) == 2 and Detail.choose(0.2, 2) == 0, "3D LOD: large pinch jumps reach the correct tier")
+
+func _test_3d_artwork_ink_exclusions() -> void:
+	for key in ["house_lvl1", "house_lvl2", "house_lvl3", "towers_lvl1", "towers_lvl2"]:
+		var arrays := Assets.mesh_for(key).surface_get_arrays(0)
+		var ink: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2]
+		var unoutlined := 0
+		var source_widths := true
+		for i in ink.size():
+			if int(roundf(ink[i].x)) == 0: unoutlined += 1
+			var width := 1.0 - ink[i].y
+			source_widths = source_widths and width > 0.0001 and width < 0.03
+		_check(unoutlined > 30 and source_widths,
+			"3D source ink: %s retains painted faces without outlines and scales the source stroke widths" % key)
+
+func _test_3d_artwork_joined_roads() -> void:
+	var road := RoadSurface.new()
+	var ground := SlopedGround.new()
+	road.configure([
+		{"tile": "left", "a": Vector2(-60, 0), "b": Vector2.ZERO, "level": 2, "paved": true},
+		{"tile": "right", "a": Vector2.ZERO, "b": Vector2(45, 45), "level": 2, "paved": true},
+		{"tile": "right", "a": Vector2.ZERO, "b": Vector2(0, -60), "level": 2, "paved": true}], ground.height)
+	var meshes := [road.mesh_for("left"), road.mesh_for("right")]
+	var joined := true
+	# Probe the centre, inner corner and outer turn where strip ends used to leave
+	# gaps or draw a kerb through the crossing. Test two independently culled tiles.
+	for p in [Vector2(0.2, 0.4), Vector2(3, -2), Vector2(-3, 3), Vector2(3, 3)]:
+		var top := _road_top_at(meshes, p)
+		joined = joined and not top.is_empty() and (top.colour as Color).is_equal_approx(Legacy._ROAD_ASPHALT)
+	_check(joined, "3D roads: asphalt joins across angled, sloped and cross-tile junctions with no internal kerb")
+	var first: Dictionary = road.nodes[Vector2i.ZERO]
+	_check(float(first.reach) > 0.0 and road.ways[0].clear[1] > first.reach,
+		"3D roads: centre markings stop outside the whole junction")
+
+func _road_top_at(meshes: Array, p: Vector2) -> Dictionary:
+	var out := {}
+	for mesh in meshes:
+		var arrays: Array = mesh.surface_get_arrays(0)
+		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var colours: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+		for i in range(0, vertices.size(), 3):
+			var a := Vector2(vertices[i].x, vertices[i].z)
+			var b := Vector2(vertices[i + 1].x, vertices[i + 1].z)
+			var c := Vector2(vertices[i + 2].x, vertices[i + 2].z)
+			if not Geometry2D.is_point_in_polygon(p, PackedVector2Array([a, b, c])): continue
+			var det := (b - a).cross(c - a)
+			if absf(det) < 0.000001: continue
+			var u := (p - a).cross(c - a) / det
+			var v := (b - a).cross(p - a) / det
+			var h := vertices[i].y * (1.0 - u - v) + vertices[i + 1].y * u + vertices[i + 2].y * v
+			if out.is_empty() or h > float(out.height): out = {"height": h, "colour": colours[i]}
+	return out
+
+func _test_3d_artwork_submerged_mines() -> void:
+	Assets._manifest = {}
+	_check(not Assets.pit_for(1).is_empty(), "3D mines: first metadata lookup after a cold start includes the opening")
+	for level in [1, 2, 3]:
+		var builder := Builder.new()
+		builder.ground = SlopedGround.new()
+		builder.tiles = {"mine": {"center": Vector2.ZERO}}
+		var mine := {"iid": "pit", "kind": "building", "internal_name": "mine", "level": level,
+			"side": 120.0, "tile": "mine", "pos": Vector2.ZERO}
+		builder.configure_pits([mine])
+		var pit: Dictionary = builder.pits.pit
+		var rim_level := true
+		for p in pit.rim: rim_level = rim_level and is_equal_approx(builder.surface_height(p), float(pit.height))
+		_check(rim_level, "3D mine L%d: steep ground is graded to the rim datum, never through the upper benches" % level)
+		var cut := true
+		for cell in Detail.CELLS:
+			var mesh: ArrayMesh = builder._surface("mine", cell)
+			var vertices: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+			for i in range(0, vertices.size(), 3):
+				var p := (vertices[i] + vertices[i + 1] + vertices[i + 2]) / 3.0
+				if Geometry2D.is_point_in_polygon(Vector2(p.x, p.z), pit.rim): cut = false
+		_check(cut, "3D mine L%d: all three terrain LODs leave the excavated pit open" % level)
+		var standing := builder.standing_node(mine)
+		_check(is_equal_approx(standing.position.y + float(pit.sink), float(pit.height)),
+			"3D mine L%d: source ground datum meets the terrain, with workings below it" % level)
+		var body := standing.find_children("*", "StaticBody3D", true, false)[0] as StaticBody3D
+		_check(body.collision_layer == 3, "3D mine L%d: excavated ground supports both building and tile picking" % level)
+		standing.free()
+
+func _test_3d_artwork_builder_lifetime() -> void:
+	var builder := Builder.new()
+	builder.ground = SlopedGround.new()
+	var alive: WeakRef = weakref(builder)
+	var infrastructure := builder.infrastructure({"roads": [], "lines": []}, {"roads": true})
+	infrastructure.free()
+	builder = null
+	_check(alive.get_ref() == null, "3D roads: finished infrastructure does not retain its builder through the height callback")

@@ -10,6 +10,7 @@ const CELL := 12.0
 const Detail := preload("res://scripts/supply_chain_3d/detail.gd")
 const Paint := preload("res://scripts/supply_chain_3d/terrain_paint.gd")
 const GroundShader := preload("res://scripts/supply_chain_3d/ground.gdshader")
+const RoadSurface := preload("res://scripts/supply_chain_3d/road_surface.gd")
 var terrain_lods: Array = []
 var detail_nodes: Array = []
 var building_visuals: Array = []
@@ -31,9 +32,74 @@ var cars: Array = []
 var smoke: Array = []
 var glows: Array = []
 var roads: Array = []
+var road_surface := RoadSurface.new()
+var pits: Dictionary = {}
+
+func configure_pits(standing: Array) -> void:
+	pits.clear()
+	for s in standing:
+		if str(s.get("internal_name", "")) != "mine": continue
+		var data := Assets.pit_for(int(s.get("level", 1)))
+		if data.is_empty(): continue
+		var rim := PackedVector2Array()
+		var side := float(s.get("side", 80.0))
+		for xy in data.rim: rim.append((s.pos as Vector2) + Vector2(xy[0], xy[1]) * side)
+		var area := Rect2(rim[0], Vector2.ZERO)
+		for p in rim: area = area.expand(p)
+		pits[str(s.iid)] = {"rim": rim, "area": area, "tile": str(s.tile), "height": ground.height(s.pos),
+			"sink": float(data.sink) * side, "step": float(data.step) * side, "pos": s.pos, "side": side, "seed": hash(str(s.iid))}
+
+func _mine_grade(p: Vector2) -> Vector2:
+	var result := Vector2.ZERO # weight, mine datum
+	for pit in pits.values():
+		var distance := p.distance_to(pit.pos) / float(pit.side)
+		if distance >= 0.80: continue
+		var weight := 1.0 - smoothstep(0.62, 0.80, distance)
+		if weight > result.x: result = Vector2(weight, pit.height)
+	return result
+
+func surface_height(p: Vector2) -> float:
+	var grade := _mine_grade(p)
+	return lerpf(ground.height(p), grade.y, grade.x)
+
+func surface_gradient(p: Vector2) -> Vector2:
+	var grade := _mine_grade(p)
+	if grade.x == 0.0: return ground.gradient(p)
+	if grade.x == 1.0: return Vector2.ZERO
+	return Vector2(surface_height(p + Vector2.RIGHT) - surface_height(p - Vector2.RIGHT),
+		surface_height(p + Vector2.DOWN) - surface_height(p - Vector2.DOWN)) * 0.5
+
+func _cut_pits(poly: PackedVector2Array) -> Array[PackedVector2Array]:
+	var parts: Array[PackedVector2Array] = [poly]
+	var bounds := Rect2(poly[0], Vector2.ZERO)
+	for p in poly: bounds = bounds.expand(p)
+	for pit in pits.values():
+		if not bounds.intersects(pit.area): continue
+		var cut: Array[PackedVector2Array] = []
+		for part in parts: cut.append_array(Geometry2D.clip_polygons(part, pit.rim))
+		parts = cut
+	return parts
+
+func mine_rims_node() -> MeshInstance3D:
+	# The sprite cut pass kept the first inward-facing wall of the removed earth
+	# block. In 3D it joins the terrain opening to the first submerged bench.
+	var batch := Geo.Batch.new()
+	for pit in pits.values():
+		var rim: PackedVector2Array = pit.rim
+		for i in rim.size():
+			var a := rim[i]
+			var b := rim[(i + 1) % rim.size()]
+			var steps := maxi(1, ceili(a.distance_to(b) / 3.0))
+			for j in steps:
+				var p := a.lerp(b, float(j) / steps)
+				var q := a.lerp(b, float(j + 1) / steps)
+				var h: float = pit.height - pit.step
+				batch.quad(point(p, 0.08), point(q, 0.08), at_height(q, h), at_height(p, h), Color(0.310, 0.273, 0.226))
+	var material := Assets.mesh_for(Assets.key_for("mine", 1)).surface_get_material(0)
+	return Geo.instance(batch.mesh(), material)
 
 func point(p: Vector2, lift: float = 0.0) -> Vector3:
-	return Vector3(p.x - origin.x, ground.height(p) + lift, p.y - origin.y)
+	return Vector3(p.x - origin.x, surface_height(p) + lift, p.y - origin.y)
 
 func at_height(p: Vector2, height: float) -> Vector3:
 	return Vector3(p.x - origin.x, height, p.y - origin.y)
@@ -50,12 +116,18 @@ func configure_grade() -> void:
 	Assets.set_grade(grade_range)
 
 func terrain_key(tid: String) -> String:
-	return "%s:%s:%s" % [tid, ground.get_instance_id(), hash([MapStyle.band_colors(), MapStyle.sea_colors()])]
+	var holes: Array = []
+	var bounds := Rect2((tiles[tid].center as Vector2) - Model.HEX_HALF, Model.HEX_HALF * 2.0)
+	for pit in pits.values():
+		var reach := float(pit.side) * 0.80
+		if bounds.intersects(Rect2((pit.pos as Vector2) - Vector2.ONE * reach, Vector2.ONE * reach * 2.0)):
+			holes.append([pit.rim, pit.height, pit.seed])
+	return "%s:%s:%s" % [tid, ground.get_instance_id(), hash([MapStyle.band_colors(), MapStyle.sea_colors(), holes])]
 
 func prepare_tile(host: Node, tid: String) -> void:
 	var key := terrain_key(tid)
 	if terrain_cache.has(key): return
-	var textures := await Paint.bake(host, tiles[tid], Legacy._relief_of(tid, tiles[tid].center), rivers.get(tid, []))
+	var textures := await Paint.bake(host, tiles[tid], Legacy._relief_of(tid, tiles[tid].center), rivers.get(tid, []), pits.values())
 	var meshes: Array = []
 	for cell in Detail.CELLS:
 		meshes.append(_surface(tid, cell))
@@ -72,14 +144,16 @@ func _surface(tid: String, cell: float) -> ArrayMesh:
 		for x in range(int(low.x), int(high.x)):
 			var a := Vector2(x, y) * cell
 			var square := PackedVector2Array([a, a + Vector2(cell, 0), a + Vector2(cell, cell), a + Vector2(0, cell)])
-			for poly in Geometry2D.intersect_polygons(square, hex):
-				for i in range(1, poly.size() - 1):
-					var before := batch.vertices.size()
-					batch.triangle(point(poly[0]), point(poly[i + 1]), point(poly[i]), Color.WHITE)
-					for j in range(before, batch.vertices.size()):
-						var v: Vector3 = batch.vertices[j]
-						var grad: Vector2 = ground.gradient(Vector2(v.x, v.z) + origin)
-						batch.normals[j] = Vector3(-grad.x, 1, -grad.y).normalized()
+			for tile_part in Geometry2D.intersect_polygons(square, hex):
+				for poly in _cut_pits(tile_part):
+					var indices := Geometry2D.triangulate_polygon(poly)
+					for i in range(0, indices.size(), 3):
+						var before := batch.vertices.size()
+						batch.triangle(point(poly[indices[i]]), point(poly[indices[i + 2]]), point(poly[indices[i + 1]]), Color.WHITE)
+						for j in range(before, batch.vertices.size()):
+							var v: Vector3 = batch.vertices[j]
+							var grad := surface_gradient(Vector2(v.x, v.z) + origin)
+							batch.normals[j] = Vector3(-grad.x, 1, -grad.y).normalized()
 	return batch.mesh(Rect2(center - origin - Paint.EXTENT * 0.5, Paint.EXTENT))
 
 func tile_node(tid: String) -> Node3D:
@@ -118,8 +192,8 @@ func tile_node(tid: String) -> Node3D:
 		for j in steps:
 			var pa := a.lerp(b, float(j) / steps)
 			var pb := a.lerp(b, float(j + 1) / steps)
-			var ah: float = ground.height(pa)
-			var bh: float = ground.height(pb)
+			var ah := surface_height(pa)
+			var bh := surface_height(pb)
 			rim.quad(at_height(pa, ah), at_height(pb, bh), at_height(pb, -150.0), at_height(pa, -150.0), Color.WHITE)
 			var ua := float(j) / steps
 			var ub := float(j + 1) / steps
@@ -197,7 +271,7 @@ func ribbon(batch: RefCounted, path: PackedVector2Array, width: float, color: Co
 
 ## Keep streets and traffic over a river valley rather than diving into its water.
 func road_height(p: Vector2) -> float:
-	var h: float = ground.height(p)
+	var h := surface_height(p)
 	for tid in rivers:
 		if not tiles.has(tid) or (tiles[tid].center as Vector2).distance_squared_to(p) > 360000.0: continue
 		for rec in rivers[tid]:
@@ -215,38 +289,29 @@ func infrastructure(model: Dictionary, show: Dictionary) -> Node3D:
 	root.name = "Infrastructure"
 	var streets := Geo.Batch.new()
 	var details := Geo.Batch.new()
-	var fine := Geo.Batch.new()
 	roads = model.get("roads", [])
 	if bool(show["roads"]):
+		road_surface.configure(roads, road_height, origin)
+		for tid in tiles:
+			var surface := Geo.instance(road_surface.mesh_for(str(tid)), mat)
+			surface.name = "JoinedRoads_" + str(tid).validate_node_name()
+			root.add_child(surface)
+		road_surface.finish_build()
 		for rec in roads:
-			var path := PackedVector2Array([rec.a, rec.b])
-			var width := 8.0 if str(rec.get("kind", "")) == "drive" else 15.0
-			var paved := bool(rec.get("paved", true))
-			ribbon(streets, path, width + 3.0, Color("b9b4a6"), 1.0, true)
-			ribbon(streets, path, width, Color("555957") if paved else Color("9c855f"), 1.3, true)
-			if width > 10.0 and paved:
-				var a: Vector2 = rec.a
-				var b: Vector2 = rec.b
-				var length := a.distance_to(b)
-				for j in range(int(length / 18.0)):
-					var pa := a.move_toward(b, j * 18.0)
-					var pb := a.move_toward(b, minf(length, j * 18.0 + 8.0))
-					ribbon(streets, PackedVector2Array([pa, pb]), 0.8, Color("d5cfaf"), 1.6, true)
-			if width > 10 and paved:
-				var a: Vector2 = rec.a
-				var b: Vector2 = rec.b
-				var across := (b - a).orthogonal().normalized()
+			var a: Vector2 = rec.a
+			var b: Vector2 = rec.b
+			var across := (b - a).orthogonal().normalized()
+			var half := float(Legacy._road_widths(int(rec.level))[0])
+			if int(rec.level) > 1 and bool(rec.get("paved", true)):
 				for k in range(1, int(a.distance_to(b) / 55.0)):
-					var p := a.move_toward(b, k * 55.0) + across * 10.0
+					var p := a.move_toward(b, k * 55.0) + across * (half + 1.5)
 					var foot := at_height(p, road_height(p) + 1.0)
 					streets.tube(foot, foot + Vector3.UP * 14, 0.55, Color("50565e"), 5)
 					streets.box(foot + Vector3(0, 14, 0), Vector3(2.5, 1.3, 2.5), Color("efd68e"))
 					if int(tiles.get(str(rec.get("tile", "")), {}).get("polluters", 0)) > 0:
 						glows.append({"point": foot + Vector3.UP * 14, "size": Vector2(15, 15)})
-				for sign_v in [-1.0, 1.0]:
-					ribbon(fine, PackedVector2Array([a + across * 8.2 * sign_v, b + across * 8.2 * sign_v]), 0.6, Color("ddd5b1"), 1.9, true)
-			if (rec.a as Vector2).distance_to(rec.b) > 80.0:
-				cars.append({"a": rec.a, "b": rec.b, "phase": fmod(absf(float(hash(str(rec.a)))), 100.0) / 100.0})
+			if a.distance_to(b) > 80.0:
+				cars.append({"a": a, "b": b, "phase": fmod(absf(float(hash(str(a)))), 100.0) / 100.0})
 	root.add_child(Geo.instance(streets.mesh(), mat))
 	var tubes := Geo.Batch.new()
 	for rec in model.get("lines", []):
@@ -278,7 +343,6 @@ func infrastructure(model: Dictionary, show: Dictionary) -> Node3D:
 					previous = current
 	root.add_child(Geo.instance(tubes.mesh(), mat))
 	add_detail(root, details.mesh(), 1)
-	add_detail(root, fine.mesh(), 2)
 	return root
 
 func standing_node(s: Dictionary) -> Node3D:
@@ -302,14 +366,16 @@ func standing_node(s: Dictionary) -> Node3D:
 	var mesh: Mesh = Assets.mesh_for(key)
 	var side := float(s.get("side", 80.0))
 	var p: Vector2 = s.pos
-	var floor_h: float = ground.height(p)
+	var floor_h := surface_height(p)
 	var low_h := floor_h
 	var half := side * 0.42
 	for off in [Vector2(-half, -half), Vector2(half, -half), Vector2(half, half), Vector2(-half, half)]:
-		var h: float = ground.height(p + off)
+		var h := surface_height(p + off)
 		floor_h = maxf(floor_h, h)
 		low_h = minf(low_h, h)
-	root.position = at_height(p, floor_h + 1.0)
+	var pit: Dictionary = pits.get(str(s.iid), {})
+	if not pit.is_empty(): floor_h = float(pit.height)
+	root.position = at_height(p, floor_h - float(pit.sink) if not pit.is_empty() else floor_h + 1.0)
 	var dimension := Assets.dimensions(key) * side
 	var visual := MeshInstance3D.new()
 	if mesh != null:
@@ -330,10 +396,10 @@ func standing_node(s: Dictionary) -> Node3D:
 		glows.append({"point": root.position + Vector3(0, dimension.y * 0.3, side * 0.45), "size": Vector2(side * 1.3, side * 0.7)})
 	root.add_child(visual)
 	building_visuals.append(visual)
-	if kind != "pylon": shadow(p, side)
+	if kind != "pylon" and pit.is_empty(): shadow(p, side)
 	# Match the source board: foundations bridge uneven ground, rather than adding
 	# a concrete square under every building whose asset already contains its footing.
-	if floor_h - low_h > 0.75:
+	if pit.is_empty() and floor_h - low_h > 0.75:
 		var plinth := Geo.Batch.new()
 		var depth := floor_h - low_h + 1.0
 		plinth.box(Vector3(0, -depth * 0.5, 0), Vector3(side * 0.96, depth, side * 0.96), Color("999786"))
@@ -341,15 +407,16 @@ func standing_node(s: Dictionary) -> Node3D:
 
 	if kind in ["building", "site", "warehouse", "suppliers"]:
 		var body := StaticBody3D.new()
-		body.collision_layer = 2
+		body.collision_layer = 2 if pit.is_empty() else 3
 		body.collision_mask = 0
 		body.set_meta("standing", s)
 		body.set_meta("tile_id", str(s.tile))
 		var shape := BoxShape3D.new()
 		shape.size = dimension.max(Vector3.ONE * 6.0)
+		if not pit.is_empty(): shape.size.y = maxf(shape.size.y, float(pit.sink) + 3.0)
 		var collider := CollisionShape3D.new()
 		collider.shape = shape
-		collider.position.y = dimension.y * 0.5
+		collider.position.y = shape.size.y * 0.5
 		body.add_child(collider)
 		root.add_child(body)
 	pickables.append({"iid": s.iid, "kind": kind, "tile": s.tile, "point": root.position + Vector3.UP * dimension.y * 0.5, "top": root.position + Vector3.UP * (dimension.y + 12.0), "size": dimension})

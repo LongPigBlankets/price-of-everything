@@ -31,11 +31,18 @@ for name, spec in specs.items():
         ns[spec['fn']](level) if level else ns[spec['fn']]()
         col = bpy.data.collections[spec['col']]
         deps = bpy.context.evaluated_depsgraph_get()
-        verts, faces, colours, normals, edge_masks = [], [], [], [], []
+        verts, faces, colours, normals, edge_masks, ink_widths = [], [], [], [], [], []
+        # Keep the source framing even when a mine's cut-pass earth is omitted.
+        frame_points = []
+        fine = bpy.data.collections.get('FINE_INK')
         for ob in col.all_objects:
             if ob.type != 'MESH': continue
             evaluated = ob.evaluated_get(deps)
             me = evaluated.to_mesh(); me.calc_loop_triangles()
+            frame_points.extend(tuple(ob.matrix_world @ v.co) for v in me.vertices)
+            if ob.get('cut'):
+                evaluated.to_mesh_clear()
+                continue
             offset = len(verts)
             verts.extend(tuple(ob.matrix_world @ v.co) for v in me.vertices)
             # Keep modelled creases and material boundaries, never triangulation diagonals.
@@ -44,14 +51,23 @@ for name, spec in specs.items():
                 for edge in poly.edge_keys:
                     adjacent.setdefault(tuple(sorted(edge)), []).append(poly)
             ink = set()
+            marks = me.attributes.get('freestyle_face')
             for edge, polys in adjacent.items():
+                # Housing's painted windows, doors, spandrels and silver rules are
+                # deliberately excluded by the original Freestyle face-mark rule.
+                if marks and any(marks.data[p.index].value for p in polys):
+                    continue
                 if len(polys) != 2 or polys[0].material_index != polys[1].material_index or polys[0].normal.dot(polys[1].normal) < 0.70:
                     ink.add(edge)
+            lineset = 'ink_fine' if fine and ob.name in fine.objects else 'ink'
+            source_width = bpy.context.scene.view_layers[0].freestyle_settings.linesets[lineset].linestyle.thickness
+            model_width = source_width * bpy.context.scene.camera.data.ortho_scale / bpy.context.scene.render.resolution_x
             normal_matrix = ob.matrix_world.to_3x3().inverted().transposed()
             for tri in me.loop_triangles:
                 indices = list(tri.vertices)
                 edge_masks.append(sum(1 << j for j in range(3)
                     if tuple(sorted((indices[(j+1)%3], indices[(j+2)%3]))) in ink))
+                ink_widths.append(model_width)
                 normals.extend(tuple((normal_matrix @ me.corner_normals[j].vector).normalized()) for j in tri.loops)
                 faces.append(tuple(offset+i for i in tri.vertices))
                 mat = me.materials[tri.material_index] if tri.material_index < len(me.materials) else None
@@ -68,11 +84,17 @@ for name, spec in specs.items():
                 colours.append(colour)
             evaluated.to_mesh_clear()
         if not verts: raise RuntimeError('Empty asset: '+name)
-        lo = [min(v[i] for v in verts) for i in range(3)]
-        hi = [max(v[i] for v in verts) for i in range(3)]
-        family.append((level or 1, verts, faces, colours, lo, hi, normals, edge_masks))
+        lo = [min(v[i] for v in frame_points) for i in range(3)]
+        hi = [max(v[i] for v in frame_points) for i in range(3)]
+        pit = None
+        if name == 'mine_flush':
+            p = ns['MINE_LEVELS'][level]
+            rim = ns['Kit'].poly_bean(*ns['PC'], p['rx'], p['ry'], n=ns['SEG'],
+                                     lobe=0.10, dent=0.14, phase=math.radians(28))
+            pit = {'ground': p['ground'], 'step': p['depth'] / (p['benches'] + 1), 'rim': rim}
+        family.append((level or 1, verts, faces, colours, lo, hi, normals, edge_masks, ink_widths, pit))
     span = max(max(f[5][0]-f[4][0],f[5][1]-f[4][1]) for f in family)
-    for level, verts, faces, colours, lo, hi, normals, edge_masks in family:
+    for level, verts, faces, colours, lo, hi, normals, edge_masks, ink_widths, pit in family:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         center = ((lo[0]+hi[0])/2, (lo[1]+hi[1])/2)
         vertices = [((v[0]-center[0])/span,(v[1]-center[1])/span,(v[2]-lo[2])/span) for v in verts]
@@ -81,10 +103,10 @@ for name, spec in specs.items():
         me.normals_split_custom_set(normals)
         bary = me.uv_layers.new(name='Barycentric')
         edges = me.uv_layers.new(name='InkEdges')
-        for poly, mask in zip(me.polygons, edge_masks):
+        for poly, mask, width in zip(me.polygons, edge_masks, ink_widths):
             for corner, loop in enumerate(poly.loop_indices):
                 bary.data[loop].uv = ((1, 0), (0, 1), (0, 0))[corner]
-                edges.data[loop].uv = (mask, 0)
+                edges.data[loop].uv = (mask, width / span)
         me.uv_layers.active_index = 0
         attr = me.color_attributes.new(name='Color',type='FLOAT_COLOR',domain='CORNER')
         for poly, colour in zip(me.polygons,colours):
@@ -101,6 +123,10 @@ for name, spec in specs.items():
         key = f'{name}_lvl{level}'
         bpy.ops.export_scene.gltf(filepath=str(OUT/(key+'.glb')),export_format='GLB',use_selection=True,export_yup=True,export_materials='EXPORT',export_normals=True,export_cameras=False,export_lights=False)
         manifest[key] = {'height':(hi[2]-lo[2])/span,'width':(hi[0]-lo[0])/span,'depth':(hi[1]-lo[1])/span,'triangles':len(faces),'ink_edges':True}
+        manifest[key]['source_ink_widths'] = True
+        if pit:
+            manifest[key]['pit'] = {'sink': (pit['ground'] - lo[2]) / span, 'step': pit['step'] / span,
+                'rim': [[(p[0]-center[0])/span, -(p[1]-center[1])/span] for p in pit['rim']]}
         print('EXPORTED',key,len(faces),'triangles',flush=True)
 (OUT/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 print('EXPORTED_TOTAL',len(manifest),flush=True)

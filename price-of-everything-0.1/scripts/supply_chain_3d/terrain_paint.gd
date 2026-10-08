@@ -11,6 +11,7 @@ class Painter extends Node2D:
 	var relief: Dictionary
 	var tile: Dictionary
 	var rivers: Array
+	var mines: Array
 	func _draw() -> void:
 		var sea := MapStyle.sea_colors()
 		var bands := MapStyle.band_colors()
@@ -55,6 +56,16 @@ class Painter extends Node2D:
 			else:
 				var ink := Color(0.24, 0.30, 0.18, rng.randf_range(0.045, 0.10))
 				draw_line(p, p + Vector2(0.6, -rng.randf_range(0.5, 1.8)), ink, 0.32, true)
+		# The source board's two ragged rings of worked earth, now baked in plan
+		# around the real opening rather than painted over unbroken terrain.
+		for mine in mines:
+			rng.seed = int(mine.seed)
+			for ring in [[0.62, Legacy._MINE_EARTH_EDGE], [0.54, Legacy._MINE_EARTH]]:
+				var patch := PackedVector2Array()
+				for i in 22:
+					var angle := TAU * i / 22.0
+					patch.append((mine.pos as Vector2) + Vector2(cos(angle), sin(angle)) * float(mine.side) * float(ring[0]) * rng.randf_range(0.9, 1.08))
+				_polygon(patch, ring[1])
 
 	func _polygon(points: PackedVector2Array, color: Color) -> void:
 		# Source clipping can leave touching loops or repeated vertices. Merge through
@@ -73,7 +84,7 @@ class Painter extends Node2D:
 			var colors := PackedColorArray([color])
 			RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), indices, part, colors, PackedVector2Array())
 
-static func bake(host: Node, tile: Dictionary, relief: Dictionary, rivers: Array) -> Array:
+static func bake(host: Node, tile: Dictionary, relief: Dictionary, rivers: Array, mines: Array = []) -> Array:
 	var textures: Array = []
 	if DisplayServer.get_name() == "headless":
 		# Dummy renderer cannot read a viewport. Geometry and input tests still run.
@@ -90,6 +101,7 @@ static func bake(host: Node, tile: Dictionary, relief: Dictionary, rivers: Array
 	painter.tile = tile
 	painter.relief = relief
 	painter.rivers = rivers
+	painter.mines = mines
 	var scale := Vector2(viewport.size) / EXTENT
 	painter.scale = scale
 	painter.position = -(tile.center - EXTENT * 0.5) * scale

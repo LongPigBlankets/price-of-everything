@@ -162,6 +162,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	# Stable origin: expanding the company does not move existing terrain under the camera.
 	builder.origin = Vector2.ZERO
 	builder.configure_grade()
+	builder.configure_pits(model.get("standing", []))
 	var first := true
 	for tid in builder.tiles:
 		await builder.prepare_tile(self, str(tid))
@@ -174,6 +175,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 		if paced:
 			await get_tree().process_frame
 			if generation != _generation: next.free(); return
+	next.add_child(builder.mine_rims_node())
 	next.add_child(builder.infrastructure(model, Legacy.show))
 	for s in model.get("standing", []): next.add_child(builder.standing_node(s))
 	if Legacy.show.trees:

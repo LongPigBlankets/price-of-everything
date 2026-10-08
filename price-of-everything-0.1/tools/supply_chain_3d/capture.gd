@@ -74,6 +74,9 @@ func _ready() -> void:
 	board.call("restore_camera", close)
 	await _shot("close")
 	print("[3D] drawcalls ", Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), " triangles ", Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
+	if "--artwork-review" in OS.get_cmdline_user_args() and not await _mine_review(board):
+		get_tree().quit(1)
+		return
 	if "--detail-review" in OS.get_cmdline_user_args(): await _detail_review(board, home)
 	get_tree().quit()
 func _shot(label: String) -> void:
@@ -175,13 +178,79 @@ func _detail_review(board: Control, home: Dictionary) -> void:
 	original.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	board.hide()
 	await original.build_async(board.get("_last_graph"), board.get("_last_terrain"))
-	for tier in [0, 1]:
-		var span: float = [2200.0, 1100.0][tier]
+	for tier in [0, 1, 2]:
+		var span: float = [2200.0, 1100.0, 560.0][tier]
 		var target: Vector3 = home.target if tier == 0 else focus
 		original.set("_zoom", original.size.y / span)
 		original.set("_offset", original.size * 0.5 - original.iso(Vector2(target.x, target.z), target.y) * original.size.y / span)
 		original.call("_view_changed")
 		await Harness.await_board_baked(self, original, 20.0)
 		original.modulate = Color.WHITE
-		await _shot("reference_%s" % ["far", "medium"][tier])
-	original.queue_free()
+		await _shot("reference_%s" % ["far", "medium", "near"][tier])
+	wrapper.queue_free()
+	board.get_parent().set_process(true)
+	board.show()
+	board.call("restore_camera", home)
+
+func _mine_review(board: Control) -> bool:
+	# Disposable three-level fixture on the same terrain and rendering path as play.
+	var source: RefCounted = board.get("_builder")
+	var mine := {}
+	for standing in board.get("_model").standing:
+		if str(standing.get("internal_name", "")) == "mine": mine = standing; break
+	if mine.is_empty(): push_error("Mine review needs a company mine"); return false
+	var builder := preload("res://scripts/supply_chain_3d/world_builder.gd").new()
+	var tid := str(mine.tile)
+	var center: Vector2 = source.tiles[tid].center
+	builder.tiles = {tid: source.tiles[tid]}
+	builder.ground = source.ground
+	builder.rivers = source.rivers
+	var standing: Array = []
+	for level in [1, 2, 3]:
+		var item: Dictionary = mine.duplicate()
+		item.level = level
+		item.iid = "review_mine_%d" % level
+		item.side = 120.0
+		item.pos = center + Vector2(145, -60) * (level - 2)
+		standing.append(item)
+	builder.configure_grade()
+	builder.configure_pits(standing)
+	await builder.prepare_tile(self, tid)
+	var fixture := Node3D.new()
+	fixture.add_child(builder.tile_node(tid))
+	fixture.add_child(builder.mine_rims_node())
+	for item in standing: fixture.add_child(builder.standing_node(item))
+	builder.set_detail(2)
+	var content: Node3D = board.get("_content")
+	var layers: Dictionary = {}
+	for body in content.find_children("*", "CollisionObject3D", true, false):
+		layers[body] = body.collision_layer
+		body.collision_layer = 0
+	board.call("_select_tile", "")
+	content.hide()
+	board.get("_labels").hide()
+	board.get("_world").add_child(fixture)
+	var camera: Camera3D = board.get("_camera")
+	var home: Dictionary = board.call("capture_camera")
+	var state := home.duplicate()
+	state.target = builder.point(center)
+	state.span = 440.0
+	board.call("restore_camera", state)
+	await get_tree().physics_frame
+	var mine_picks := 0
+	for item in standing:
+		var hit: Dictionary = board.call("pick_at", board.call("screen_point", builder.point(item.pos)))
+		if not hit.is_empty() and str(hit.collider.get_meta("standing", {}).get("iid", "")) == item.iid: mine_picks += 1
+	print("[3D] mine fixture picking ", mine_picks, "/3")
+	if mine_picks != 3: push_error("All submerged mine levels must remain pickable")
+	await _shot("mine_levels")
+	state.yaw += PI
+	board.call("restore_camera", state)
+	await _shot("mine_levels_rotated")
+	fixture.queue_free()
+	for body in layers: body.collision_layer = layers[body]
+	content.show()
+	board.get("_labels").show()
+	source.configure_grade()
+	board.call("restore_camera", home)
+	return mine_picks == 3

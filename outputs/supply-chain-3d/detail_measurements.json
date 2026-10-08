@@ -11,33 +11,34 @@
   "measurements": [
     {
       "tier": "far",
-      "median_frame_interval_ms": 6.925,
-      "p95_frame_interval_ms": 7.108,
-      "frame_draw_calls": 392,
-      "frame_primitives": 163336,
-      "whole_game_texture_monitor_mib": 2570.46245670319
+      "median_frame_interval_ms": 4.667,
+      "p95_frame_interval_ms": 5.648,
+      "frame_draw_calls": 389,
+      "frame_primitives": 271931,
+      "whole_game_texture_monitor_mib": 2619.25410366058
     },
     {
       "tier": "medium",
-      "median_frame_interval_ms": 6.911,
-      "p95_frame_interval_ms": 7.108,
+      "median_frame_interval_ms": 4.435,
+      "p95_frame_interval_ms": 5.004,
       "frame_draw_calls": 386,
-      "frame_primitives": 259232,
-      "whole_game_texture_monitor_mib": 2570.46245670319
+      "frame_primitives": 369208,
+      "whole_game_texture_monitor_mib": 2619.25410366058
     },
     {
       "tier": "near",
-      "median_frame_interval_ms": 6.907,
-      "p95_frame_interval_ms": 7.131,
-      "frame_draw_calls": 300,
-      "frame_primitives": 305534,
-      "whole_game_texture_monitor_mib": 2570.46245670319
+      "median_frame_interval_ms": 3.997,
+      "p95_frame_interval_ms": 4.753,
+      "frame_draw_calls": 303,
+      "frame_primitives": 353553,
+      "whole_game_texture_monitor_mib": 2619.25410366058
     }
   ],
   "notes": [
     "Frame intervals include HUD and forced rendering; these are not isolated GPU timings.",
     "Near framing culls more tiles, so it has fewer draw calls.",
     "The whole-game texture monitor includes the regular map and prewarmed building sprites.",
-    "Initial cold captures included approximately 150 ms spikes."
+    "Initial cold captures included approximately 150 ms spikes.",
+    "Across these revision captures, medians varied from about 4.0 to 6.8 ms and p95 reached 14.3 ms. OS/window scheduling affects these forced-draw intervals; do not interpret them as a GPU speed-up."
   ]
 }

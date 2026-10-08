@@ -42,6 +42,10 @@ static func dimensions(key: String) -> Vector3:
 	var data: Dictionary = _manifest.get(key, {})
 	return Vector3(float(data.get("width", 1.0)), float(data.get("height", 0.65)), float(data.get("depth", 1.0)))
 
+static func pit_for(level: int) -> Dictionary:
+	var key := key_for("mine", level)
+	return _manifest.get(key, {}).get("pit", {})
+
 static func set_grade(value: Vector2) -> void:
 	if _print == null:
 		_print = ShaderMaterial.new()
