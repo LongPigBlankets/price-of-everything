@@ -14,6 +14,7 @@ uniform vec2 grade_range = vec2(-100000.0, 100000.0);
 uniform int detail_level = 2;
 uniform bool lit_windows = false;
 uniform bool curtain_wall = false;
+uniform vec3 foliage_tint = vec3(1.0);
 
 void vertex() {
 	model_position = VERTEX;
@@ -41,6 +42,9 @@ void fragment() {
 	// approximates its AgX sprite render without the glossy PBR/default-sun treatment.
 	vec3 paint = clamp(pow(max(COLOR.rgb, vec3(0.0)), vec3(0.60)) + 0.025, vec3(0.0), vec3(0.86));
 	paint *= 1.0 - 0.18 * smoothstep(0.35, 0.85, max(max(paint.r, paint.g), paint.b));
+	// The tree PNGs have a more muted green response than the building palette's
+	// approximation. Species materials calibrate leaves; bark and building paint stay intact.
+	if (COLOR.g > COLOR.r * 1.15) { paint *= foliage_tint; }
 	// Preserve the source palette: cream walls and silver mullions are paint, not ink.
 	float luma = dot(paint, vec3(0.2126, 0.7152, 0.0722));
 	bool glass = paint.b > paint.r * 1.45 && luma < 0.38;

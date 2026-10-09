@@ -6,6 +6,7 @@ const Assets := preload("res://scripts/supply_chain_3d/assets.gd")
 const Builder := preload("res://scripts/supply_chain_3d/world_builder.gd")
 const RoadSurface := preload("res://scripts/supply_chain_3d/road_surface.gd")
 const Legacy := preload("res://scripts/empire_board.gd")
+const WaterArt := preload("res://scripts/supply_chain_3d/water_art.gd")
 
 class SlopedGround extends RefCounted:
 	func height(p: Vector2) -> float: return 30.0 + p.x * 0.08 + p.y * 0.03
@@ -75,6 +76,7 @@ func _test_3d_overview_interaction() -> void:
 	_check(viewport.render_target_update_mode == SubViewport.UPDATE_ALWAYS, "3D viewport wakes when opened")
 	var builder: RefCounted = board.get("_builder")
 	var model: Dictionary = board.get("_model")
+	_check_source_tree_layout(builder, model)
 	var tid := str(model.tiles.keys()[0])
 	var center: Vector2 = model.tiles[tid].center
 	var target: Vector3 = builder.point(center)
@@ -262,3 +264,81 @@ func _test_3d_artwork_builder_lifetime() -> void:
 	infrastructure.free()
 	builder = null
 	_check(alive.get_ref() == null, "3D roads: finished infrastructure does not retain its builder through the height callback")
+
+func _check_source_tree_layout(builder: RefCounted, model: Dictionary) -> void:
+	# Compare the actual source renderer's accepted placements, not a second copy
+	# of the candidate/clearance algorithm. Tree sprites encode their foot at 96%.
+	var original := Legacy.new()
+	original._model = model
+	original._ground = builder.ground
+	for tid in builder.rivers:
+		original._rivers[tid] = []
+		for rec in builder.rivers[tid]: original._rivers[tid].append(rec.points)
+	for road in model.roads:
+		original._road_plan.append({"a": road.a, "b": road.b, "half": Legacy._road_widths(int(road.level))[0]})
+	original._build_standing()
+	original._build_trees()
+	var expected: Array[Vector2] = []
+	var expected_kinds: Array[String] = []
+	for tree in original._pipe_items:
+		if tree.kind != "tree": continue
+		var r: Rect2 = tree.rect
+		expected.append(Vector2(r.get_center().x, r.end.y - r.size.y * 0.04))
+		expected_kinds.append((tree.tex as Texture2D).resource_path.get_file().get_basename().trim_prefix("tree_"))
+	var actual: Array[Vector2] = []
+	var actual_kinds: Array[String] = []
+	for placement in builder.tree_placements.values():
+		for tree in placement:
+			actual.append(Legacy.iso(tree.pos, builder.ground.height(tree.pos)))
+			actual_kinds.append(str(tree.kind))
+	var matches := actual.size() == expected.size()
+	for i in actual.size():
+		var found := false
+		for j in expected.size(): found = found or (actual[i].distance_to(expected[j]) < 0.01 and actual_kinds[i] == expected_kinds[j])
+		matches = matches and found
+	_check(matches and actual.size() > 30, "3D trees: species layout and roadside clearance keep all %d original tree positions (%d actual)" % [expected.size(), actual.size()])
+	original.free()
+
+func _test_3d_artwork_river_mouth() -> void:
+	var hex := Legacy.Model.hex_points(Vector2.ZERO)
+	var dry := Geometry2D.intersect_polygons(hex, PackedVector2Array([Vector2(-1000, -1000), Vector2(0, -1000), Vector2(0, 1000), Vector2(-1000, 1000)]))[0]
+	var wet := Geometry2D.intersect_polygons(hex, PackedVector2Array([Vector2(0, -1000), Vector2(1000, -1000), Vector2(1000, 1000), Vector2(0, 1000)]))[0]
+	var relief := {"land": [{"p": dry, "b": 0}], "sea": [{"p": wet, "b": 4}], "lakes": []}
+	var painter := WaterArt.new()
+	var mesh := painter.artwork({"center": Vector2.ZERO, "type": "plain"}, relief,
+		[{"points": PackedVector2Array([Vector2(-100, 0), Vector2(-10, 0), Vector2(80, 0)]), "start_width": 12.0, "end_width": 12.0}], func(_p: Vector2) -> float: return 0.0)
+	var arrays := mesh.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+	var banks_stop := true
+	var has_fade := false
+	var mouth_span := 0.0
+	for i in vertices.size():
+		var p := vertices[i]
+		if colors[i].is_equal_approx(Legacy._BANK) and p.x > 0.01: banks_stop = false
+		if p.x > 5.0 and colors[i].a > 0.0 and colors[i].a < 0.95: has_fade = true
+		if p.x > 1.0 and p.x < 23.0 and colors[i].a < 1.0: mouth_span = maxf(mouth_span, absf(p.y) * 2.0)
+	_check(banks_stop, "3D river mouth: riverbank ink/earth stops on the shoreline")
+	_check(has_fade and mouth_span > 30.0, "3D river mouth: estuary flares beyond the river width and fades into open water")
+	painter.free()
+	var foam_verts := PackedVector3Array()
+	var foam_cols := PackedColorArray()
+	var foam_idx := PackedInt32Array()
+	var fall := PackedVector2Array([Vector2(-60, 0), Vector2(-30, 0), Vector2.ZERO])
+	WaterArt._plan_white_water(foam_verts, foam_cols, foam_idx, fall, PackedFloat32Array([9, 5, 0]), 12.0)
+	_check(foam_verts.is_empty(), "3D river: shallow gradients do not become rapids")
+	WaterArt._plan_white_water(foam_verts, foam_cols, foam_idx, fall, PackedFloat32Array([25, 12, 0]), 12.0)
+	_check(foam_verts.size() > 20 and foam_cols.has(Legacy._FOAM), "3D river: steep falls carry the original broken foam and foot splash")
+
+func _test_3d_artwork_contour_meshes() -> void:
+	var valid := true
+	for key in [Assets.key_for("house", 1), Assets.key_for("towers", 2), Assets.key_for("pylon", 1), Assets.key_for("tree", 3)]:
+		var mesh := Assets.contour_for(key)
+		if mesh == null: valid = false; continue
+		var arrays := mesh.surface_get_arrays(0)
+		for width in arrays[Mesh.ARRAY_TEX_UV]: valid = valid and width.x > 0.0 and width.x < 0.1
+		for normal in arrays[Mesh.ARRAY_NORMAL]: valid = valid and absf((normal as Vector3).length() - 1.0) < 0.001
+	_check(valid, "3D contours: buildings and source trees carry normalized shell normals and scale-dependent source line widths")
+	for level in [1, 2, 3]:
+		var key := Assets.key_for("tree", level)
+		_check(Assets.mesh_for(key) != null and Assets.projected_height(key) > 0.0, "3D trees: original species %d has real rotatable geometry and sprite-height framing" % level)

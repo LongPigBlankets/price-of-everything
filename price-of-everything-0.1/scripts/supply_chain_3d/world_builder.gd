@@ -10,6 +10,8 @@ const CELL := 12.0
 const Detail := preload("res://scripts/supply_chain_3d/detail.gd")
 const Paint := preload("res://scripts/supply_chain_3d/terrain_paint.gd")
 const GroundShader := preload("res://scripts/supply_chain_3d/ground.gdshader")
+const TreeLayout := preload("res://scripts/supply_chain_3d/tree_layout.gd")
+const GlintShader := preload("res://scripts/supply_chain_3d/water_glints.gdshader")
 const RoadSurface := preload("res://scripts/supply_chain_3d/road_surface.gd")
 var terrain_lods: Array = []
 var detail_nodes: Array = []
@@ -32,6 +34,8 @@ var cars: Array = []
 var smoke: Array = []
 var glows: Array = []
 var roads: Array = []
+var lines: Array = []
+var tree_placements: Dictionary = {}
 var road_surface := RoadSurface.new()
 var pits: Dictionary = {}
 
@@ -127,7 +131,7 @@ func terrain_key(tid: String) -> String:
 func prepare_tile(host: Node, tid: String) -> void:
 	var key := terrain_key(tid)
 	if terrain_cache.has(key): return
-	var textures := await Paint.bake(host, tiles[tid], Legacy._relief_of(tid, tiles[tid].center), rivers.get(tid, []), pits.values())
+	var textures := await Paint.bake(host, tiles[tid], Legacy._relief_of(tid, tiles[tid].center), rivers.get(tid, []), pits.values(), surface_height)
 	var meshes: Array = []
 	for cell in Detail.CELLS:
 		meshes.append(_surface(tid, cell))
@@ -181,6 +185,10 @@ func tile_node(tid: String) -> Node3D:
 	body.add_child(collider)
 	root.add_child(body)
 	var rim := Geo.Batch.new()
+	var lip := Geo.Batch.new()
+	var relief: Dictionary = Legacy._relief_of(tid, center)
+	var is_sea := str(tile.type) in ["sea", "deep_sea"]
+	var sea := MapStyle.sea_colors()
 	var hex := Model.hex_points(center)
 	var centers: Dictionary = {}
 	for t in tiles.values(): centers[Vector2i((t.center as Vector2).round())] = true
@@ -194,6 +202,26 @@ func tile_node(tid: String) -> Node3D:
 			var pb := a.lerp(b, float(j + 1) / steps)
 			var ah := surface_height(pa)
 			var bh := surface_height(pb)
+			# Coast cutaways keep the original blue water depth above the strata;
+			# dry land has a thin turf lip. Both follow the real surface at every edge.
+			var inward := (center - (pa + pb) * 0.5).normalized()
+			var edge_width := (b - a).orthogonal().normalized() * Legacy._INK_W * 0.65
+			lip.quad(point(pa - edge_width, 0.12), point(pb - edge_width, 0.12),
+				point(pb + edge_width, 0.12), point(pa + edge_width, 0.12), Legacy._INK)
+			var wet := is_sea or Ground.is_water(relief, (pa + pb) * 0.5 + inward * 3.0)
+			var depth := Legacy._WATER_DEPTH if wet else Legacy._TURF
+			var first_lip := lip.vertices.size()
+			lip.quad(at_height(pa, ah), at_height(pb, bh), at_height(pb, bh - depth), at_height(pa, ah - depth),
+				sea[4].lightened(0.12) if wet else Legacy._warm(sea[5]).darkened(0.38))
+			if wet:
+				for k in range(first_lip, lip.vertices.size()):
+					var v: Vector3 = lip.vertices[k]
+					var h := surface_height(Vector2(v.x, v.z) + origin)
+					lip.colors[k] = sea[4].lightened(0.12).lerp(sea[1], clampf((h - v.y) / depth, 0.0, 1.0))
+				lip.quad(at_height(pa, ah - depth), at_height(pb, bh - depth),
+					at_height(pb, bh - depth - 1.6), at_height(pa, ah - depth - 1.6), Legacy._INK)
+			ah -= depth
+			bh -= depth
 			rim.quad(at_height(pa, ah), at_height(pb, bh), at_height(pb, -150.0), at_height(pa, -150.0), Color.WHITE)
 			var ua := float(j) / steps
 			var ub := float(j + 1) / steps
@@ -205,8 +233,34 @@ func tile_node(tid: String) -> Node3D:
 	strata.set_shader_parameter("strata", true)
 	strata.set_shader_parameter("artwork", load("res://assets/iso/ground/strata.png"))
 	root.add_child(Geo.instance(rim.mesh(), strata))
+	root.add_child(Geo.instance(lip.mesh(), mat))
+	root.add_child(water_glints(tid, tile, relief))
 	labels.append({"tile": tid, "text": tile.label, "point": point(center + Vector2(135, 240) * 0.72, 4.0)})
 	return root
+
+func water_glints(tid: String, tile: Dictionary, relief: Dictionary) -> MeshInstance3D:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("glint|" + tid)
+	var batch := Geo.Batch.new()
+	var found := 0
+	var ocean := str(tile.type) in ["sea", "deep_sea"]
+	for attempt in 140:
+		if found >= Legacy._GLINTS_PER_TILE: break
+		var p: Vector2 = tile.center + Vector2(rng.randf_range(-270, 270), rng.randf_range(-240, 240))
+		if not Geometry2D.is_point_in_polygon(p, Model.hex_points(tile.center)): continue
+		if not ocean and not Ground.is_water(relief, p): continue
+		var phase := rng.randf() * TAU
+		var rate := rng.randf_range(0.7, 1.3)
+		# A rounded pill on the water, not a camera-facing billboard.
+		var polygon := Legacy._capsule(p - Vector2(5, 0), p + Vector2(5, 0), 0.8, [true, true])
+		var tris := Geometry2D.triangulate_polygon(polygon)
+		for i in range(0, tris.size(), 3):
+			batch.triangle(point(polygon[tris[i]], 0.35), point(polygon[tris[i + 1]], 0.35), point(polygon[tris[i + 2]], 0.35), Color.WHITE)
+		while batch.uvs.size() < batch.vertices.size(): batch.uvs.append(Vector2(phase, rate))
+		found += 1
+	var material := ShaderMaterial.new()
+	material.shader = GlintShader
+	return Geo.instance(batch.mesh(), material)
 
 func set_detail(tier: int) -> void:
 	if tier == active_lod: return
@@ -290,6 +344,7 @@ func infrastructure(model: Dictionary, show: Dictionary) -> Node3D:
 	var streets := Geo.Batch.new()
 	var details := Geo.Batch.new()
 	roads = model.get("roads", [])
+	lines = model.get("lines", [])
 	if bool(show["roads"]):
 		road_surface.configure(roads, road_height, origin)
 		for tid in tiles:
@@ -396,6 +451,14 @@ func standing_node(s: Dictionary) -> Node3D:
 		glows.append({"point": root.position + Vector3(0, dimension.y * 0.3, side * 0.45), "size": Vector2(side * 1.3, side * 0.7)})
 	root.add_child(visual)
 	building_visuals.append(visual)
+	var contour := Assets.contour_for(key)
+	if contour != null:
+		var outline := MeshInstance3D.new()
+		outline.name = "OuterContour"
+		outline.mesh = contour
+		outline.scale = visual.scale
+		root.add_child(outline)
+		building_visuals.append(outline)
 	if kind != "pylon" and pit.is_empty(): shadow(p, side)
 	# Match the source board: foundations bridge uneven ground, rather than adding
 	# a concrete square under every building whose asset already contains its footing.
@@ -427,46 +490,57 @@ func standing_node(s: Dictionary) -> Node3D:
 func trees_node(tid: String, standing: Array) -> Node3D:
 	var root := Node3D.new()
 	root.name = "LandscapeDetail"
-	var base := Geo.Batch.new()
-	var medium := Geo.Batch.new()
 	var near := Geo.Batch.new()
 	var c: Vector2 = tiles[tid].center
 	var rel: Dictionary = Legacy._relief_of(tid, c)
+	var placements := TreeLayout.placements(tid, tiles[tid], rel, standing, roads, lines, rivers.get(tid, []))
+	tree_placements[tid] = placements
+	for kind in ["small", "fir", "large"]:
+		var level: int = {"small": 1, "fir": 2, "large": 3}[kind]
+		var key := Assets.key_for("tree", level)
+		# Godot selects a MultiMesh's mesh LOD from the node transform. Keep the
+		# species' main scale there, rather than hiding a 20x scale in each instance;
+		# otherwise tiny LODs and their contour shells diverge even at close zoom.
+		var species_scale := float(Legacy._TREE_HEIGHT[kind]) / Assets.projected_height(key)
+		var transforms: Array[Transform3D] = []
+		for tree in placements:
+			if tree.kind != kind: continue
+			var scale := float(tree.height) / Assets.projected_height(key)
+			transforms.append(Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * scale / species_scale), point(tree.pos) / species_scale))
+			var radius := Assets.dimensions(key).x * scale * 0.5
+			shadow(tree.pos, radius * 2.0, true)
+		if transforms.is_empty(): continue
+		for mesh in [Assets.mesh_for(key), Assets.contour_for(key)]:
+			if mesh == null: continue
+			var multi := MultiMesh.new()
+			multi.transform_format = MultiMesh.TRANSFORM_3D
+			multi.mesh = mesh
+			multi.instance_count = transforms.size()
+			for i in transforms.size(): multi.set_instance_transform(i, transforms[i])
+			var node := MultiMeshInstance3D.new()
+			node.name = "Trees_" + kind
+			node.multimesh = multi
+			node.scale = Vector3.ONE * species_scale
+			if mesh == Assets.mesh_for(key): node.material_override = Assets.tree_material(kind == "fir")
+			root.add_child(node)
+			building_visuals.append(node)
+	# Retain close-up ground detail without replacing the source tree composition.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(tid)
-	# Every tier has a denser landscape than the first 3D pass. Medium adds branches
-	# and crown lobes; near adds ground tufts and stones without replacing tree positions.
-	for i in 84:
-		var p := c + Vector2(rng.randf_range(-235, 235), rng.randf_range(-220, 220))
-		if not _plantable(p, tid, rel, standing): continue
-		var foot := point(p)
-		var h := rng.randf_range(17, 31)
-		base.tube(foot, foot + Vector3.UP * h * 0.65, 1.15, Color("645743"), 6)
-		var r := h * 0.29
-		var leaf := Color("66784c").lerp(Color("92924d"), rng.randf_range(0, 0.5))
-		_crown(base, foot + Vector3.UP * h * 0.66, Vector3(r, h * 0.40, r), leaf, 7)
-		shadow(p, r * 2.4, true)
-		for j in 3:
-			var angle := float(j) * TAU / 3.0 + float(i)
-			var branch := foot + Vector3(cos(angle) * r * 0.6, h * 0.57, sin(angle) * r * 0.6)
-			medium.tube(foot + Vector3.UP * h * 0.37, branch, 0.55, Color("675c44"), 5)
-			_crown(medium, branch + Vector3.UP * r * 0.4, Vector3(r * 0.75, r, r * 0.75), leaf.lightened(0.06), 7)
-		# Low bushes remain visible at far zoom and anchor the larger canopy.
-		if i % 3 == 0:
-			_crown(base, foot + Vector3(r, 2.8, r * 0.7), Vector3(3.5, 3.5, 3.5), leaf.darkened(0.08), 6)
-	for i in 260:
+	for i in 130:
 		var p := c + Vector2(rng.randf_range(-260, 260), rng.randf_range(-235, 235))
 		if not _plantable(p, tid, rel, standing, 6.0): continue
 		var foot := point(p, 0.2)
 		if i % 7 == 0:
-			_crown(near, foot + Vector3.UP * 0.8, Vector3(2.0, 1.6, 1.5), Color("a6a08a"), 5)
+			# Sparse stones belong on exposed slopes; uniformly scattered grey
+			# pebbles made the source board's clear grass read as visual noise.
+			if i % 21 != 0 or surface_gradient(p).length() < 0.25: continue
+			_crown(near, foot + Vector3.UP * 0.55, Vector3(1.5, 1.1, 1.2), Color("85816b"), 5)
 		else:
 			for j in 3:
 				var angle := float(j) * PI / 3.0
 				var side := Vector3(cos(angle), 0, sin(angle)) * 0.6
 				near.triangle(foot - side, foot + Vector3.UP * rng.randf_range(1.5, 3.2), foot + side, Color("81834c"))
-	root.add_child(Geo.instance(base.mesh(), mat))
-	add_detail(root, medium.mesh(), 1)
 	add_detail(root, near.mesh(), 2)
 	return root
 

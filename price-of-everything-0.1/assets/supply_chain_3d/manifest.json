@@ -5,7 +5,9 @@
     "depth": 0.6306818083682955,
     "triangles": 1076,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.7289319501983083,
+    "contour": true
   },
   "industrial_factory_lvl2": {
     "height": 0.7578124838606035,
@@ -13,7 +15,9 @@
     "depth": 0.9900568279472354,
     "triangles": 1216,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.9694747320032188,
+    "contour": true
   },
   "industrial_factory_lvl3": {
     "height": 0.7578124838606035,
@@ -21,7 +25,9 @@
     "depth": 1.0,
     "triangles": 2332,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.9694747320032188,
+    "contour": true
   },
   "furnace_lvl1": {
     "height": 0.6958620794888201,
@@ -29,7 +35,9 @@
     "depth": 0.4862069097058526,
     "triangles": 5712,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.7943209942338731,
+    "contour": true
   },
   "furnace_lvl2": {
     "height": 0.6958620794888201,
@@ -37,7 +45,9 @@
     "depth": 0.6758620821196457,
     "triangles": 8428,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.8153703788947197,
+    "contour": true
   },
   "furnace_lvl3": {
     "height": 1.0103448382739364,
@@ -45,7 +55,9 @@
     "depth": 0.6758620821196457,
     "triangles": 12000,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 1.0815025523494062,
+    "contour": true
   },
   "power_plant_lvl1": {
     "height": 0.5707656566324101,
@@ -53,7 +65,9 @@
     "depth": 0.6210363511433176,
     "triangles": 4604,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 1.0210337357141739,
+    "contour": true
   },
   "power_plant_lvl2": {
     "height": 0.5746326473172323,
@@ -61,7 +75,9 @@
     "depth": 0.6320374598542213,
     "triangles": 12284,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 1.0248225792504018,
+    "contour": true
   },
   "power_plant_lvl3": {
     "height": 0.5746326473172323,
@@ -69,7 +85,9 @@
     "depth": 0.796424134435475,
     "triangles": 15288,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 1.0286114378421558,
+    "contour": true
   },
   "petro_refinery_lvl1": {
     "height": 0.5921807020500389,
@@ -77,7 +95,9 @@
     "depth": 0.5709699552138278,
     "triangles": 13798,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.6074249030852988,
+    "contour": true
   },
   "petro_refinery_lvl2": {
     "height": 0.5921807020500389,
@@ -85,7 +105,9 @@
     "depth": 0.750974517477104,
     "triangles": 33360,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.7926830435871782,
+    "contour": true
   },
   "petro_refinery_lvl3": {
     "height": 0.6896354019739375,
@@ -93,7 +115,9 @@
     "depth": 0.8988763547379747,
     "triangles": 50060,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.9130905115917941,
+    "contour": true
   },
   "poly_plant_lvl1": {
     "height": 0.4691817338254975,
@@ -101,7 +125,9 @@
     "depth": 0.5207226345450376,
     "triangles": 18052,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.5510258410184946,
+    "contour": true
   },
   "poly_plant_lvl2": {
     "height": 0.5669500726036507,
@@ -109,7 +135,9 @@
     "depth": 0.7640807515865666,
     "triangles": 25184,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.7725189186133409,
+    "contour": true
   },
   "poly_plant_lvl3": {
     "height": 0.5669500726036507,
@@ -117,7 +145,9 @@
     "depth": 0.8289054198065942,
     "triangles": 31668,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.8074580717073342,
+    "contour": true
   },
   "port_lvl1": {
     "height": 0.2175342514090342,
@@ -125,7 +155,9 @@
     "depth": 0.9041095890410958,
     "triangles": 6724,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.8059827894485913,
+    "contour": true
   },
   "construction_site_lvl1": {
     "height": 0.830760942546088,
@@ -133,7 +165,9 @@
     "depth": 0.7127293574612626,
     "triangles": 8768,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 1.079595146724788,
+    "contour": true
   },
   "eaf_lvl1": {
     "height": 0.7398208949586713,
@@ -141,7 +175,9 @@
     "depth": 0.5336542078240749,
     "triangles": 7120,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.9227371179085035,
+    "contour": true
   },
   "eaf_lvl2": {
     "height": 0.7398208949586713,
@@ -149,7 +185,9 @@
     "depth": 0.639196552130652,
     "triangles": 9074,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.9958760581927818,
+    "contour": true
   },
   "eaf_lvl3": {
     "height": 0.7398208949586713,
@@ -157,7 +195,9 @@
     "depth": 0.6471227147474556,
     "triangles": 10606,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.9958760581927818,
+    "contour": true
   },
   "electrolyser_lvl1": {
     "height": 0.3608472320915979,
@@ -165,7 +205,9 @@
     "depth": 0.8836160698984445,
     "triangles": 14310,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.8097682258751959,
+    "contour": true
   },
   "electrolyser_lvl2": {
     "height": 0.3608472320915979,
@@ -173,7 +215,9 @@
     "depth": 0.8836160698984445,
     "triangles": 27260,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.8097682258751959,
+    "contour": true
   },
   "electrolyser_lvl3": {
     "height": 0.3608472320915979,
@@ -181,7 +225,9 @@
     "depth": 1.0,
     "triangles": 44376,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.8097682258751959,
+    "contour": true
   },
   "solar_farm_lvl1": {
     "height": 0.2697302596856992,
@@ -189,7 +235,9 @@
     "depth": 0.5216244487952819,
     "triangles": 1944,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.5137637391267165,
+    "contour": true
   },
   "solar_farm_lvl2": {
     "height": 0.2697302596856992,
@@ -197,7 +245,9 @@
     "depth": 0.767093262492587,
     "triangles": 3760,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.6926308985187279,
+    "contour": true
   },
   "solar_farm_lvl3": {
     "height": 0.2697302596856992,
@@ -205,7 +255,9 @@
     "depth": 0.9126619724487214,
     "triangles": 5200,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.8208093244953759,
+    "contour": true
   },
   "assembly_plant_lvl1": {
     "height": 0.36202057256533704,
@@ -213,7 +265,9 @@
     "depth": 0.38821327913418147,
     "triangles": 3548,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.7063378135973261,
+    "contour": true
   },
   "assembly_plant_lvl2": {
     "height": 0.41534144895545233,
@@ -221,7 +275,9 @@
     "depth": 0.38821327913418147,
     "triangles": 4780,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.8680527027227973,
+    "contour": true
   },
   "assembly_plant_lvl3": {
     "height": 0.41534144895545233,
@@ -229,7 +285,9 @@
     "depth": 0.7296539183725267,
     "triangles": 7448,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.9489530939679096,
+    "contour": true
   },
   "chem_plant_lvl1": {
     "height": 0.5261813246051432,
@@ -237,7 +295,9 @@
     "depth": 0.9348658744836776,
     "triangles": 9822,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.7966837410597697,
+    "contour": true
   },
   "chem_plant_lvl2": {
     "height": 0.5261813246051432,
@@ -245,7 +305,9 @@
     "depth": 0.9348658744836776,
     "triangles": 15380,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.8905339184896097,
+    "contour": true
   },
   "chem_plant_lvl3": {
     "height": 0.690293684972706,
@@ -253,7 +315,9 @@
     "depth": 0.9348658744836776,
     "triangles": 22330,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 1.2543230706783406,
+    "contour": true
   },
   "high_tech_manufactory_lvl1": {
     "height": 0.5029392521098799,
@@ -261,7 +325,9 @@
     "depth": 0.6544742010696164,
     "triangles": 7476,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.9610233971433988,
+    "contour": true
   },
   "high_tech_manufactory_lvl2": {
     "height": 0.5029392521098799,
@@ -269,7 +335,9 @@
     "depth": 0.8393207023291237,
     "triangles": 10088,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 1.0431530508830824,
+    "contour": true
   },
   "high_tech_manufactory_lvl3": {
     "height": 0.6649249154135728,
@@ -277,7 +345,9 @@
     "depth": 0.9418680685949098,
     "triangles": 13068,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 1.1602824072195732,
+    "contour": true
   },
   "onshore_wind_farm_lvl1": {
     "height": 0.6207916680867773,
@@ -285,7 +355,9 @@
     "depth": 0.7351678122759325,
     "triangles": 1924,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.8844528499632363,
+    "contour": true
   },
   "onshore_wind_farm_lvl2": {
     "height": 0.6207916680867773,
@@ -293,7 +365,9 @@
     "depth": 0.7351678122759325,
     "triangles": 4052,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.8844528499632363,
+    "contour": true
   },
   "onshore_wind_farm_lvl3": {
     "height": 0.7530860084617793,
@@ -301,7 +375,9 @@
     "depth": 0.739365163333527,
     "triangles": 7104,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 1.1268033628082808,
+    "contour": true
   },
   "offshore_wind_farm_lvl1": {
     "height": 0.545612385230405,
@@ -309,7 +385,9 @@
     "depth": 0.6571428435189384,
     "triangles": 1516,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.8137085099252523,
+    "contour": true
   },
   "offshore_wind_farm_lvl2": {
     "height": 0.6053686301623072,
@@ -317,7 +395,9 @@
     "depth": 0.6630849838256836,
     "triangles": 3020,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.8656942882054003,
+    "contour": true
   },
   "offshore_wind_farm_lvl3": {
     "height": 0.8308186690722194,
@@ -325,7 +405,9 @@
     "depth": 0.8058394023350307,
     "triangles": 4524,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 1.192114164270503,
+    "contour": true
   },
   "warehouse_lvl1": {
     "height": 0.36090909215536987,
@@ -333,7 +415,9 @@
     "depth": 0.6363636580380526,
     "triangles": 464,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.7303933078745692,
+    "contour": true
   },
   "warehouse_lvl2": {
     "height": 0.36090909215536987,
@@ -341,7 +425,9 @@
     "depth": 0.6363636580380526,
     "triangles": 644,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.8046202696927509,
+    "contour": true
   },
   "warehouse_lvl3": {
     "height": 0.36090909215536987,
@@ -349,7 +435,9 @@
     "depth": 1.0,
     "triangles": 1000,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.9827649563774561,
+    "contour": true
   },
   "house_lvl1": {
     "height": 0.47388890198934197,
@@ -357,7 +445,9 @@
     "depth": 0.3725485197034247,
     "triangles": 252,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 0.8438946269343869,
+    "contour": true
   },
   "house_lvl2": {
     "height": 0.47388890198934197,
@@ -365,7 +455,9 @@
     "depth": 0.9199937732724595,
     "triangles": 504,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 1.0673882089119338,
+    "contour": true
   },
   "house_lvl3": {
     "height": 0.7737226702915572,
@@ -373,7 +465,9 @@
     "depth": 0.9289750185187715,
     "triangles": 404,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 1.3201021145925456,
+    "contour": true
   },
   "towers_lvl1": {
     "height": 4.24285708568534,
@@ -381,7 +475,9 @@
     "depth": 1.0,
     "triangles": 478,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 3.87690068439216,
+    "contour": true
   },
   "towers_lvl2": {
     "height": 4.692857345391296,
@@ -389,7 +485,9 @@
     "depth": 0.9071428589674891,
     "triangles": 164,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 4.467402842422606,
+    "contour": true
   },
   "pylon_lvl1": {
     "height": 2.4293810406587526,
@@ -397,7 +495,9 @@
     "depth": 1.0,
     "triangles": 2284,
     "ink_edges": true,
-    "source_ink_widths": true
+    "source_ink_widths": true,
+    "projected_height": 2.1916483083418656,
+    "contour": true
   },
   "mine_flush_lvl1": {
     "height": 0.4282616838245615,
@@ -406,6 +506,8 @@
     "triangles": 1008,
     "ink_edges": true,
     "source_ink_widths": true,
+    "projected_height": 0.5059160385228197,
+    "contour": true,
     "pit": {
       "sink": 0.23491145985154285,
       "step": 0.05601734811844483,
@@ -468,6 +570,8 @@
     "triangles": 2652,
     "ink_edges": true,
     "source_ink_widths": true,
+    "projected_height": 0.6746573057984566,
+    "contour": true,
     "pit": {
       "sink": 0.28008674059222416,
       "step": 0.04969280881474945,
@@ -530,6 +634,8 @@
     "triangles": 3160,
     "ink_edges": true,
     "source_ink_widths": true,
+    "projected_height": 0.7603516294401489,
+    "contour": true,
     "pit": {
       "sink": 0.3252620213329055,
       "step": 0.04878930319993583,
@@ -584,5 +690,35 @@
         ]
       ]
     }
+  },
+  "tree_lvl1": {
+    "height": 0.6960330872722333,
+    "width": 0.6711617770540631,
+    "depth": 0.6845945805396738,
+    "triangles": 5592,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.6424145698023304,
+    "contour": true
+  },
+  "tree_lvl2": {
+    "height": 1.186978800483303,
+    "width": 0.4772747197081624,
+    "depth": 0.5410671421107243,
+    "triangles": 272,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.9868545657101983,
+    "contour": true
+  },
+  "tree_lvl3": {
+    "height": 1.1100054613452983,
+    "width": 1.0,
+    "depth": 0.9131939800700636,
+    "triangles": 6912,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 1.0640706698019606,
+    "contour": true
   }
 }

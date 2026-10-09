@@ -7,6 +7,11 @@ func _ready() -> void:
 	Harness.arm_watchdog(self, 90)
 	TelemetryState.enabled = false
 	AudioServer.set_bus_mute(0, true)
+	var key := "industrial_factory_lvl3"
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--asset="): key = argument.trim_prefix("--asset=")
+	Assets.key_for(key.get_slice("_lvl", 0), key.get_slice("_lvl", 1).to_int())
+	Assets.set_grade(Vector2(-100000, 100000))
 	var root := Control.new()
 	add_child(root)
 	var bg := ColorRect.new()
@@ -24,7 +29,7 @@ func _ready() -> void:
 	reference.size = Vector2(780, 780)
 	reference.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	reference.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	reference.texture = load("res://assets/icons/buildings/sprites/industrial_factory_lvl3.png")
+	reference.texture = load("res://assets/icons/buildings/sprites/%s.png" % key)
 	root.add_child(reference)
 	var container := SubViewportContainer.new()
 	container.position = Vector2(910, 140)
@@ -37,8 +42,12 @@ func _ready() -> void:
 	viewport.msaa_3d = Viewport.MSAA_4X
 	container.add_child(viewport)
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = Assets.mesh_for("industrial_factory_lvl3")
+	mesh.mesh = Assets.mesh_for(key)
 	viewport.add_child(mesh)
+	var contour := MeshInstance3D.new()
+	contour.mesh = Assets.contour_for(key)
+	contour.visible = not "--no-contours" in OS.get_cmdline_user_args()
+	viewport.add_child(contour)
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.size = 1.28
@@ -48,5 +57,6 @@ func _ready() -> void:
 	for i in 12: await get_tree().process_frame
 	Harness.prepare_window(get_window(), Vector2i(1600, 900))
 	for i in 5: await get_tree().process_frame
-	Harness.capture(self, "/private/tmp/supply3d_material_comparison.png", get_window().size)
+	var suffix := "_no_contours" if not contour.visible else ""
+	Harness.capture(self, "/private/tmp/supply3d_material_%s%s.png" % [key, suffix], get_window().size)
 	get_tree().quit()
