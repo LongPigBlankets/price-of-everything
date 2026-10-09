@@ -57,6 +57,11 @@ var keybinds: Dictionary = {}
 ## The top bar's mission shown as only its icon and counter, the text on hover: the player's choice on the
 ## missions panel's switch.
 var mission_bar_collapsed: bool = false
+var supply_chain_all_tiles: bool = false
+
+func set_supply_chain_all_tiles(value: bool) -> void:
+	supply_chain_all_tiles = value
+	_save()
 
 
 func _ready() -> void:
@@ -208,6 +213,7 @@ func _load() -> void:
 		telemetry_opt_out = bool((parsed as Dictionary).get("telemetry_opt_out", false))
 		telemetry_player_id = str((parsed as Dictionary).get("telemetry_player_id", ""))
 		mission_bar_collapsed = bool((parsed as Dictionary).get("mission_bar_collapsed", false))
+		supply_chain_all_tiles = bool((parsed as Dictionary).get("supply_chain_all_tiles", false))
 	_merge_legacy()
 
 
@@ -218,7 +224,7 @@ func _save() -> void:
 	if f == null:
 		push_warning("[PlayerProfile] could not write %s" % tmp_path)
 		return
-	f.store_string(JSON.stringify({"exit_feedback_submitted": exit_feedback_submitted, "games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y, "fullscreen": fullscreen, "screen_index": screen_index, "audio_levels": audio_levels, "keybinds": keybinds, "telemetry_opt_out": telemetry_opt_out, "telemetry_player_id": telemetry_player_id, "mission_bar_collapsed": mission_bar_collapsed}, "\t"))
+	f.store_string(JSON.stringify({"exit_feedback_submitted": exit_feedback_submitted, "games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y, "fullscreen": fullscreen, "screen_index": screen_index, "audio_levels": audio_levels, "keybinds": keybinds, "telemetry_opt_out": telemetry_opt_out, "telemetry_player_id": telemetry_player_id, "mission_bar_collapsed": mission_bar_collapsed, "supply_chain_all_tiles": supply_chain_all_tiles}, "\t"))
 	f.close()
 	var err := DirAccess.rename_absolute(tmp_path, _path())
 	if err != OK:

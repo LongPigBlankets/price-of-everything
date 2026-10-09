@@ -38,6 +38,17 @@ var lines: Array = []
 var tree_placements: Dictionary = {}
 var road_surface := RoadSurface.new()
 var pits: Dictionary = {}
+var streamed := false
+const CONTINENT_TEXTURE := 256
+const RESIDENT_TILES := 24
+var tree_nodes: Array = []
+var far_nodes: Array = []
+var decor_nodes: Array = []
+var _overview := false
+var _river_buckets: Dictionary = {}
+var _road_height_cache: Dictionary = {}
+var road_mat: ShaderMaterial
+var glint_nodes: Array = []
 
 func configure_pits(standing: Array) -> void:
 	pits.clear()
@@ -126,17 +137,49 @@ func terrain_key(tid: String) -> String:
 		var reach := float(pit.side) * 0.80
 		if bounds.intersects(Rect2((pit.pos as Vector2) - Vector2.ONE * reach, Vector2.ONE * reach * 2.0)):
 			holes.append([pit.rim, pit.height, pit.seed])
-	return "%s:%s:%s" % [tid, ground.get_instance_id(), hash([MapStyle.band_colors(), MapStyle.sea_colors(), holes])]
+	return "%s:%s:%s:%s" % [tid, ground.get_instance_id(), hash([MapStyle.band_colors(), MapStyle.sea_colors(), holes]), streamed]
 
 func prepare_tile(host: Node, tid: String) -> void:
 	var key := terrain_key(tid)
 	if terrain_cache.has(key): return
+	if streamed:
+		var textures := await Paint.bake(host, tiles[tid], Legacy._relief_of(tid, tiles[tid].center), rivers.get(tid, []), pits.values(), surface_height, [CONTINENT_TEXTURE])
+		var mesh := _surface(tid, 24.0)
+		terrain_cache[key] = {"textures": [textures[0], null, null], "meshes": [mesh, null, null], "streamed": true, "ground_id": ground.get_instance_id()}
+		return
 	var textures := await Paint.bake(host, tiles[tid], Legacy._relief_of(tid, tiles[tid].center), rivers.get(tid, []), pits.values(), surface_height)
 	var meshes: Array = []
 	for cell in Detail.CELLS:
 		meshes.append(_surface(tid, cell))
 		await host.get_tree().process_frame
 	terrain_cache[key] = {"textures": textures, "meshes": meshes}
+
+func refine_tile(host: Node, item: Dictionary, tier: int) -> void:
+	if item.data.meshes[tier] != null: return
+	var tid := str(item.tile)
+	var textures := await Paint.bake(host, tiles[tid], Legacy._relief_of(tid, tiles[tid].center), rivers.get(tid, []), pits.values(), surface_height, [Detail.TEXTURES[tier]])
+	if textures.is_empty() or not is_instance_valid(item.node): return
+	item.data.textures[tier] = textures[0]
+	item.data.meshes[tier] = _surface(tid, Detail.CELLS[tier])
+	apply_tile_detail(item, tier)
+
+func apply_tile_detail(item: Dictionary, tier: int) -> void:
+	while tier > 0 and item.data.meshes[tier] == null: tier -= 1
+	item.node.mesh = item.data.meshes[tier]
+	item.material.set_shader_parameter("artwork", item.data.textures[tier])
+	# Picking follows the displayed surface, including higher-detail river banks.
+	if streamed and int(item.get("collision_tier", -1)) != tier and item.has("collider"):
+		item.collider.shape = (item.node.mesh as Mesh).create_trimesh_shape()
+		item.collision_tier = tier
+
+func release_detail(keep: Dictionary) -> void:
+	for item in terrain_lods:
+		if keep.has(str(item.tile)): continue
+		if item.data.meshes[1] == null and item.data.meshes[2] == null: continue
+		apply_tile_detail(item, 0)
+		for tier in [1, 2]:
+			item.data.meshes[tier] = null
+			item.data.textures[tier] = null
 
 func _surface(tid: String, cell: float) -> ArrayMesh:
 	var center: Vector2 = tiles[tid].center
@@ -173,7 +216,6 @@ func tile_node(tid: String) -> Node3D:
 	var land := Geo.instance(surface, paint)
 	land.name = "Terrain"
 	root.add_child(land)
-	terrain_lods.append({"node": land, "material": paint, "data": data})
 	# Picking remains the same through LOD changes; the shared spline is authoritative.
 	var body := StaticBody3D.new()
 	body.name = "TilePick"
@@ -184,6 +226,7 @@ func tile_node(tid: String) -> Node3D:
 	collider.shape = surface.create_trimesh_shape()
 	body.add_child(collider)
 	root.add_child(body)
+	terrain_lods.append({"node": land, "material": paint, "data": data, "tile": tid, "collider": collider, "collision_tier": 0})
 	var rim := Geo.Batch.new()
 	var lip := Geo.Batch.new()
 	var relief: Dictionary = Legacy._relief_of(tid, center)
@@ -234,7 +277,9 @@ func tile_node(tid: String) -> Node3D:
 	strata.set_shader_parameter("artwork", load("res://assets/iso/ground/strata.png"))
 	root.add_child(Geo.instance(rim.mesh(), strata))
 	root.add_child(Geo.instance(lip.mesh(), mat))
-	root.add_child(water_glints(tid, tile, relief))
+	var glints := water_glints(tid, tile, relief)
+	root.add_child(glints)
+	glint_nodes.append(glints)
 	labels.append({"tile": tid, "text": tile.label, "point": point(center + Vector2(135, 240) * 0.72, 4.0)})
 	return root
 
@@ -266,12 +311,37 @@ func set_detail(tier: int) -> void:
 	if tier == active_lod: return
 	active_lod = tier
 	for item in terrain_lods:
-		item.node.mesh = item.data.meshes[tier]
-		if item.data.textures.size() == 3: item.material.set_shader_parameter("artwork", item.data.textures[tier])
+		apply_tile_detail(item, tier)
 	for item in detail_nodes: item.node.visible = tier >= int(item.minimum)
 	# Imported glTF mesh LODs handle individual buildings as projected size changes.
 	for visual in building_visuals: visual.lod_bias = [0.8, 1.2, 2.0][tier]
 	Assets.set_detail(tier)
+
+func set_overview_scale(ppu: float) -> void:
+	var overview := streamed and ppu < (0.33 if _overview else 0.27)
+	if road_mat != null: road_mat.set_shader_parameter("road_fade", 0.78 if overview else (0.18 if streamed and ppu < 1.5 else 0.0))
+	if overview == _overview: return
+	_overview = overview
+	for node in tree_nodes: node.visible = not overview
+	for node in decor_nodes: node.visible = not overview
+	for node in far_nodes: node.visible = overview
+	for node in glint_nodes: node.visible = not overview
+
+func distant_towns(standing: Array) -> Node3D:
+	var root := Node3D.new()
+	var batches := {}
+	for s in standing:
+		if str(s.kind) != "house": continue
+		var batch: RefCounted = batches.get_or_add(str(s.tile), Geo.Batch.new())
+		var side := float(s.side)
+		var high := side * (2.0 if bool(s.get("tall", false)) else 0.52)
+		var colour := Color("677785") if bool(s.get("tall", false)) else Color("b39a77")
+		batch.box(point(s.pos) + Vector3.UP * high * 0.5, Vector3(side * 0.8, high, side * 0.7), colour)
+		batch.box(point(s.pos) + Vector3.UP * high, Vector3(side * 0.84, 3.0, side * 0.75), Color("765e4c"))
+	for batch in batches.values(): root.add_child(Geo.instance(batch.mesh(), mat))
+	root.visible = false
+	far_nodes.append(root)
+	return root
 
 func add_detail(parent: Node3D, mesh: Mesh, minimum: int) -> void:
 	var node := Geo.instance(mesh, mat)
@@ -283,10 +353,11 @@ func shadow(p: Vector2, side: float, tree: bool = false) -> void:
 	var throw := Vector2(-0.70710678, -0.70710678) * side * 0.38
 	var center := p + throw * 0.45
 	var radii := Vector2(side * 0.62, side * 0.48) if tree else Vector2(side * 0.69, side * 0.69)
-	var count := 16
-	for ring in 4:
-		var r0 := float(ring) / 4.0
-		var r1 := float(ring + 1) / 4.0
+	var count := 8 if streamed and tree else 16
+	var rings := 2 if streamed and tree else 4
+	for ring in rings:
+		var r0 := float(ring) / rings
+		var r1 := float(ring + 1) / rings
 		for j in count:
 			var a := TAU * j / count
 			var b := TAU * (j + 1) / count
@@ -325,33 +396,51 @@ func ribbon(batch: RefCounted, path: PackedVector2Array, width: float, color: Co
 
 ## Keep streets and traffic over a river valley rather than diving into its water.
 func road_height(p: Vector2) -> float:
+	if _road_height_cache.has(p): return _road_height_cache[p]
 	var h := surface_height(p)
-	for tid in rivers:
-		if not tiles.has(tid) or (tiles[tid].center as Vector2).distance_squared_to(p) > 360000.0: continue
-		for rec in rivers[tid]:
-			var line: PackedVector2Array = rec.points
-			var half := (float(rec.start_width) + float(rec.end_width)) * 0.25 + 17.0
-			for k in range(line.size() - 1):
-				var closest := Geometry2D.get_closest_point_to_segment(p, line[k], line[k + 1])
-				if closest.distance_squared_to(p) < half * half:
-					var n := (line[k + 1] - line[k]).orthogonal().normalized() * (half + 20.0)
-					h = maxf(h, maxf(ground.height(closest - n), ground.height(closest + n)) + 2.0)
+	for segment in _river_buckets.get(Vector2i((p / 128.0).floor()), []):
+		var closest := Geometry2D.get_closest_point_to_segment(p, segment.a, segment.b)
+		if closest.distance_squared_to(p) < float(segment.half) * float(segment.half):
+			var n: Vector2 = (segment.b - segment.a).orthogonal().normalized() * (float(segment.half) + 20.0)
+			h = maxf(h, maxf(ground.height(closest - n), ground.height(closest + n)) + 2.0)
+	_road_height_cache[p] = h
 	return h
 
-func infrastructure(model: Dictionary, show: Dictionary) -> Node3D:
+func _index_rivers() -> void:
+	_river_buckets.clear()
+	_road_height_cache.clear()
+	for tid in rivers:
+		for rec in rivers[tid]:
+			var half := (float(rec.start_width) + float(rec.end_width)) * 0.25 + 17.0
+			for i in range(rec.points.size() - 1):
+				var segment := {"a": rec.points[i], "b": rec.points[i + 1], "half": half}
+				var bounds := Rect2(segment.a, Vector2.ZERO).expand(segment.b).grow(half)
+				var low := Vector2i((bounds.position / 128.0).floor())
+				var high := Vector2i((bounds.end / 128.0).floor())
+				for y in range(low.y, high.y + 1):
+					for x in range(low.x, high.x + 1): (_river_buckets.get_or_add(Vector2i(x, y), []) as Array).append(segment)
+
+func append_road(parent: Node3D, tid: String) -> void:
+	var surface := Geo.instance(road_surface.mesh_for(tid), road_mat)
+	surface.name = "JoinedRoads_" + tid.validate_node_name()
+	parent.add_child(surface)
+
+func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = true) -> Node3D:
 	var root := Node3D.new()
 	root.name = "Infrastructure"
 	var streets := Geo.Batch.new()
 	var details := Geo.Batch.new()
 	roads = model.get("roads", [])
 	lines = model.get("lines", [])
+	_index_rivers()
+	road_mat = mat.duplicate()
 	if bool(show["roads"]):
+		road_surface.cell_size = 6.0 if streamed else RoadSurface.CELL
 		road_surface.configure(roads, road_height, origin)
-		for tid in tiles:
-			var surface := Geo.instance(road_surface.mesh_for(str(tid)), mat)
-			surface.name = "JoinedRoads_" + str(tid).validate_node_name()
-			root.add_child(surface)
-		road_surface.finish_build()
+		if build_roads:
+			for tid in tiles: append_road(root, str(tid))
+			road_surface.finish_build()
+			_road_height_cache.clear()
 		for rec in roads:
 			var a: Vector2 = rec.a
 			var b: Vector2 = rec.b
@@ -367,7 +456,7 @@ func infrastructure(model: Dictionary, show: Dictionary) -> Node3D:
 						glows.append({"point": foot + Vector3.UP * 14, "size": Vector2(15, 15)})
 			if a.distance_to(b) > 80.0:
 				cars.append({"a": a, "b": b, "phase": fmod(absf(float(hash(str(a)))), 100.0) / 100.0})
-	root.add_child(Geo.instance(streets.mesh(), mat))
+	add_detail(root, streets.mesh(), 1 if streamed else 0)
 	var tubes := Geo.Batch.new()
 	for rec in model.get("lines", []):
 		var mode := str(rec.get("mode", ""))
@@ -450,6 +539,7 @@ func standing_node(s: Dictionary) -> Node3D:
 		visual.material_override = Assets.lit_material(family == "towers")
 		glows.append({"point": root.position + Vector3(0, dimension.y * 0.3, side * 0.45), "size": Vector2(side * 1.3, side * 0.7)})
 	root.add_child(visual)
+	if streamed and kind == "house": decor_nodes.append(root)
 	building_visuals.append(visual)
 	var contour := Assets.contour_for(key)
 	if contour != null:
@@ -474,12 +564,16 @@ func standing_node(s: Dictionary) -> Node3D:
 		body.collision_mask = 0
 		body.set_meta("standing", s)
 		body.set_meta("tile_id", str(s.tile))
-		var shape := BoxShape3D.new()
-		shape.size = dimension.max(Vector3.ONE * 6.0)
-		if not pit.is_empty(): shape.size.y = maxf(shape.size.y, float(pit.sink) + 3.0)
 		var collider := CollisionShape3D.new()
-		collider.shape = shape
-		collider.position.y = shape.size.y * 0.5
+		if mesh != null and pit.is_empty():
+			collider.shape = mesh.create_trimesh_shape()
+			collider.scale = visual.scale
+		else:
+			var shape := BoxShape3D.new()
+			shape.size = dimension.max(Vector3.ONE * 6.0)
+			if not pit.is_empty(): shape.size.y = maxf(shape.size.y, float(pit.sink) + 3.0)
+			collider.shape = shape
+			collider.position.y = shape.size.y * 0.5
 		body.add_child(collider)
 		root.add_child(body)
 	pickables.append({"iid": s.iid, "kind": kind, "tile": s.tile, "point": root.position + Vector3.UP * dimension.y * 0.5, "top": root.position + Vector3.UP * (dimension.y + 12.0), "size": dimension})
@@ -490,10 +584,27 @@ func standing_node(s: Dictionary) -> Node3D:
 func trees_node(tid: String, standing: Array) -> Node3D:
 	var root := Node3D.new()
 	root.name = "LandscapeDetail"
+	if str(tiles[tid].type) in ["sea", "deep_sea"]: return root
+	# Tree shadows are batched with their tile so the renderer can cull them.
+	var saved_shadows := shadow_batch
+	if streamed: shadow_batch = Geo.Batch.new()
 	var near := Geo.Batch.new()
 	var c: Vector2 = tiles[tid].center
 	var rel: Dictionary = Legacy._relief_of(tid, c)
-	var placements := TreeLayout.placements(tid, tiles[tid], rel, standing, roads, lines, rivers.get(tid, []))
+	var area := Rect2(c - Model.HEX_HALF, Model.HEX_HALF * 2.0).grow(30.0)
+	var local_roads: Array = []
+	for road in roads:
+		if area.intersects(Rect2(road.a, Vector2.ZERO).expand(road.b).grow(20.0)): local_roads.append(road)
+	var local_standing: Array = []
+	for item in standing:
+		if (item.pos as Vector2).distance_squared_to(c) < 500000.0: local_standing.append(item)
+	var placements := TreeLayout.placements(tid, tiles[tid], rel, local_standing, local_roads, lines, rivers.get(tid, []))
+	var distant := Geo.Batch.new()
+	if streamed:
+		for tree in placements:
+			if tree.kind == "small" and posmod(hash(str(tree.pos)), 3) != 0: continue
+			var h := float(tree.height)
+			_crown(distant, point(tree.pos) + Vector3.UP * h * 0.67, Vector3(h * 0.32, h * 0.42, h * 0.32), Color("66784c"), 5)
 	tree_placements[tid] = placements
 	for kind in ["small", "fir", "large"]:
 		var level: int = {"small": 1, "fir": 2, "large": 3}[kind]
@@ -529,7 +640,7 @@ func trees_node(tid: String, standing: Array) -> Node3D:
 	rng.seed = hash(tid)
 	for i in 130:
 		var p := c + Vector2(rng.randf_range(-260, 260), rng.randf_range(-235, 235))
-		if not _plantable(p, tid, rel, standing, 6.0): continue
+		if not _plantable(p, tid, rel, local_standing, 6.0, local_roads): continue
 		var foot := point(p, 0.2)
 		if i % 7 == 0:
 			# Sparse stones belong on exposed slopes; uniformly scattered grey
@@ -542,13 +653,26 @@ func trees_node(tid: String, standing: Array) -> Node3D:
 				var side := Vector3(cos(angle), 0, sin(angle)) * 0.6
 				near.triangle(foot - side, foot + Vector3.UP * rng.randf_range(1.5, 3.2), foot + side, Color("81834c"))
 	add_detail(root, near.mesh(), 2)
+	if streamed:
+		root.add_child(shadows_node())
+		shadow_batch = saved_shadows
+	tree_nodes.append(root)
+	if streamed:
+		# A sibling, so hiding the detailed grove leaves its grouped canopy visible.
+		var far := Geo.instance(distant.mesh(), mat)
+		far.visible = false
+		far_nodes.append(far)
+		var group := Node3D.new()
+		group.add_child(root)
+		group.add_child(far)
+		return group
 	return root
 
-func _plantable(p: Vector2, tid: String, rel: Dictionary, standing: Array, road_margin: float = 19.0) -> bool:
+func _plantable(p: Vector2, tid: String, rel: Dictionary, standing: Array, road_margin: float, nearby_roads: Array) -> bool:
 	if not Geometry2D.is_point_in_polygon(p, Model.hex_points(tiles[tid].center)) or Ground.is_water(rel, p): return false
 	for s in standing:
 		if (s.pos as Vector2).distance_to(p) < float(s.get("side", 80)) * 0.74 + 12.0: return false
-	for road in roads:
+	for road in nearby_roads:
 		if Geometry2D.get_closest_point_to_segment(p, road.a, road.b).distance_to(p) < road_margin: return false
 	for rec in rivers.get(tid, []):
 		for j in range(rec.points.size() - 1):

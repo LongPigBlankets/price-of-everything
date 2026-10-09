@@ -40,8 +40,16 @@ var _effects: Array = []
 var _labels: Control
 var _detail := -1
 var _tokens := Tokens.new()
+var show_all_tiles := false
+var _last_all_tiles := false
+var _coverage: OptionButton
+var _progress: Label
+var _fit_after_build := false
+var _streaming := false
+var _stream_clock := 0.0
 
 func _ready() -> void:
+	show_all_tiles = PlayerProfile.supply_chain_all_tiles
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var container := TextureRect.new()
 	container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -90,6 +98,25 @@ func _ready() -> void:
 	var visibility := preload("res://scripts/empire_board_visibility.gd").new()
 	add_child(visibility)
 	visibility.setup(Legacy.show)
+	var controls: VBoxContainer = visibility.panel.get("content")
+	controls.add_child(HSeparator.new())
+	_coverage = OptionButton.new()
+	_coverage.name = "TileCoverage"
+	_coverage.add_item("Show player owned tiles only")
+	_coverage.add_item("Show all tiles")
+	_coverage.selected = 1 if show_all_tiles else 0
+	_coverage.focus_mode = Control.FOCUS_NONE
+	_coverage.item_selected.connect(func(index: int) -> void: set_all_tiles(index == 1))
+	controls.add_child(_coverage)
+	_progress = Label.new()
+	_progress.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_progress.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_progress.offset_top = 92
+	_progress.offset_left = -160
+	_progress.offset_right = 160
+	_progress.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_progress.visible = false
+	add_child(_progress)
 	visibility.changed.connect(func(_key: String, _on: bool) -> void:
 		if is_instance_valid(_last_terrain): set_graph(_last_graph, _last_terrain))
 	var keys := HBoxContainer.new()
@@ -135,6 +162,14 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 func build_async(graph: Dictionary, terrain: Node) -> void:
 	await _build(graph, terrain, true)
 
+func set_all_tiles(value: bool, persist: bool = true) -> void:
+	if show_all_tiles == value: return
+	show_all_tiles = value
+	if persist: PlayerProfile.set_supply_chain_all_tiles(value)
+	if _coverage != null: _coverage.selected = 1 if value else 0
+	_fit_after_build = true
+	if is_instance_valid(_last_terrain): await _build(_last_graph, _last_terrain, true)
+
 func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	_last_graph = graph
 	_last_terrain = terrain
@@ -144,16 +179,31 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	var next := Node3D.new()
 	next.name = "Company"
 	var builder := Builder.new()
+	builder.streamed = show_all_tiles
 	builder.terrain_cache = _terrain_cache
 	var rivers := _rivers_by_tile(terrain)
 	var river_lines: Dictionary = {}
 	for tid in rivers:
 		river_lines[tid] = []
 		for rec in rivers[tid]: river_lines[tid].append(rec.points)
+	var extra_tiles: Array = []
+	if show_all_tiles:
+		for coord in terrain.get("tiles"):
+			extra_tiles.append("tile_%d_%d" % [coord.x + 1, coord.y + 1])
+	else:
+		for tid in BuildingState.tile_land_owned:
+			if BuildingState.get_tile_land_owned(str(tid)) > 0: extra_tiles.append(str(tid))
+	if _progress != null:
+		_progress.text = "Preparing continent…" if show_all_tiles else "Preparing company tiles…"
+		_progress.show()
+		await get_tree().process_frame
+		if generation != _generation: next.free(); return
 	var model := Model.build(terrain, graph, _true_positions(graph, terrain), river_lines, Legacy.plate_town and Legacy.show.decor,
-		Legacy._water_test(terrain), Legacy._shore_test(terrain))
-	if model == _model and Legacy.show == _last_show:
+		Legacy._water_test(terrain), Legacy._shore_test(terrain), extra_tiles)
+	if show_all_tiles: print("[CONTINENT BUILD] model ready ", Time.get_ticks_msec())
+	if model == _model and Legacy.show == _last_show and show_all_tiles == _last_all_tiles:
 		_building = false
+		if _progress != null: _progress.hide()
 		next.free()
 		return
 	builder.tiles = model.get("tiles", {})
@@ -164,23 +214,51 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	builder.configure_grade()
 	builder.configure_pits(model.get("standing", []))
 	var first := true
+	var built := 0
 	for tid in builder.tiles:
 		await builder.prepare_tile(self, str(tid))
 		if generation != _generation: next.free(); return
 		next.add_child(builder.tile_node(str(tid)))
+		built += 1
+		if _progress != null: _progress.text = "Preparing map · %d / %d tiles" % [built, builder.tiles.size()]
 		for p in Model.hex_points(builder.tiles[tid].center):
 			var v: Vector3 = builder.point(p)
 			if first: builder.bounds = AABB(v, Vector3.ONE); first = false
 			else: builder.bounds = builder.bounds.expand(v)
-		if paced:
+		if paced and built % 8 == 0:
 			await get_tree().process_frame
 			if generation != _generation: next.free(); return
 	next.add_child(builder.mine_rims_node())
-	next.add_child(builder.infrastructure(model, Legacy.show))
+	if show_all_tiles: print("[CONTINENT BUILD] terrain ready ", Time.get_ticks_msec())
+	var infrastructure := builder.infrastructure(model, Legacy.show, not show_all_tiles)
+	next.add_child(infrastructure)
+	if show_all_tiles and Legacy.show.roads:
+		var roads_built := 0
+		for tid in builder.tiles:
+			builder.append_road(infrastructure, str(tid))
+			roads_built += 1
+			if roads_built % 8 == 0:
+				_progress.text = "Preparing roads · %d / %d tiles" % [roads_built, builder.tiles.size()]
+				await get_tree().process_frame
+				if generation != _generation:
+					builder.road_surface.finish_build()
+					next.free()
+					return
+		builder.road_surface.finish_build()
+		builder._road_height_cache.clear()
+	if show_all_tiles: print("[CONTINENT BUILD] roads ready ", Time.get_ticks_msec())
 	for s in model.get("standing", []): next.add_child(builder.standing_node(s))
+	if show_all_tiles: next.add_child(builder.distant_towns(model.get("standing", [])))
 	if Legacy.show.trees:
-		for tid in builder.tiles: next.add_child(builder.trees_node(str(tid), model.get("standing", [])))
+		var groves := 0
+		for tid in builder.tiles:
+			next.add_child(builder.trees_node(str(tid), model.get("standing", [])))
+			groves += 1
+			if paced and groves % 8 == 0:
+				await get_tree().process_frame
+				if generation != _generation: next.free(); return
 	next.add_child(builder.shadows_node())
+	if show_all_tiles: print("[CONTINENT BUILD] trees ready ", Time.get_ticks_msec())
 	builder.prepare_flows(model)
 	var goods: Array = []
 	if Legacy.show.goods:
@@ -219,14 +297,25 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	var keep: Dictionary = {}
 	for tid in builder.tiles: keep[builder.terrain_key(str(tid))] = true
 	for key in _terrain_cache.keys():
-		if not keep.has(key): _terrain_cache.erase(key)
+		if keep.has(key): continue
+		var cached: Dictionary = _terrain_cache[key]
+		if not show_all_tiles and cached.get("streamed", false) and cached.get("ground_id", 0) == builder.ground.get_instance_id():
+			# Keep just the small base continent across coverage switches. Fine
+			# tiers are released; a new map/height field clears the old base too.
+			for tier in [1, 2]:
+				cached.meshes[tier] = null
+				cached.textures[tier] = null
+		else: _terrain_cache.erase(key)
 	_detail = -1
 	_model = model
 	_last_show = Legacy.show.duplicate()
+	_last_all_tiles = show_all_tiles
 	_goods = goods
 	_effects = effects
 	_building = false
-	if not _fitted and has_content(): fit_view()
+	if _progress != null: _progress.hide()
+	if (not _fitted or _fit_after_build) and has_content(): fit_view()
+	_fit_after_build = false
 	_select_tile(_selected_tile)
 	_update_detail()
 	_update_goods()
@@ -264,7 +353,8 @@ func fit_view() -> void:
 	for i in 8:
 		var p: Vector3 = inverse * (_builder.bounds.get_endpoint(i) - _rig.target)
 		extent = extent.max(Vector2(absf(p.x), absf(p.y)))
-	var home_span := clampf(maxf(extent.y * 2.0 + 220.0, (extent.x * 2.0 + 180.0) / maxf(0.5, size.x / maxf(1, size.y))) * 1.2, Rig.MIN_SIZE, Rig.MAX_SIZE)
+	var margin := 1.15 if show_all_tiles else 1.2
+	var home_span := clampf(maxf(extent.y * 2.0 + 220.0, (extent.x * 2.0 + 180.0) / maxf(0.5, size.x / maxf(1, size.y))) * margin, Rig.MIN_SIZE, Rig.MAX_SIZE)
 	_rig.span = home_span
 	_rig.apply(_camera)
 	_fitted = true
@@ -296,6 +386,7 @@ func _update_detail() -> void:
 	if _builder == null: return
 	_detail = Detail.choose(size.y / _rig.span, _detail)
 	_builder.set_detail(_detail)
+	_builder.set_overview_scale(size.y / _rig.span)
 
 func pick_at(screen: Vector2, tiles_only: bool = false) -> Dictionary:
 	screen = _render_point(screen)
@@ -308,7 +399,20 @@ func pick_at(screen: Vector2, tiles_only: bool = false) -> Dictionary:
 		var ray := PhysicsRayQueryParameters3D.create(from, from + _camera.project_ray_normal(screen + offset) * _camera.far, 1 if tiles_only else 3)
 		ray.hit_back_faces = true
 		var hit := space.intersect_ray(ray)
-		if not hit.is_empty(): return hit
+		if not hit.is_empty():
+			if tiles_only or hit.collider.has_meta("standing"): return hit
+			# A two-world-unit halo helps hit fine building edges without swallowing
+			# the yard in a tall rectangular box. Terrain, trees and roads select tiles.
+			var halo := 2.0 * float(_viewport.size.y) / _rig.span
+			for direction in [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN]:
+				var pixel: Vector2 = screen + direction * halo
+				var start := _camera.project_ray_origin(pixel)
+				var near_ray := PhysicsRayQueryParameters3D.create(start, start + _camera.project_ray_normal(pixel) * _camera.far, 3)
+				near_ray.hit_back_faces = true
+				var neighbour := space.intersect_ray(near_ray)
+				if not neighbour.is_empty() and neighbour.collider.has_meta("standing") and neighbour.collider.get_meta("tile_id", "") == hit.collider.get_meta("tile_id", ""):
+					return neighbour
+			return hit
 	return {}
 
 func _activate_at(screen: Vector2, tiles_only: bool = false) -> void:
@@ -396,7 +500,41 @@ func _process(delta: float) -> void:
 	_update_detail()
 	_update_goods()
 	_update_cars()
+	_stream_clock += delta
+	if show_all_tiles and not _building and not _streaming and _stream_clock >= 0.25:
+		_stream_clock = 0.0
+		_stream_visible()
 	if _labels != null: _labels.queue_redraw()
+
+func _stream_visible() -> void:
+	if _builder == null or not _builder.streamed: return
+	_streaming = true
+	var generation := _generation
+	var builder: RefCounted = _builder
+	var tier := _detail
+	var wanted: Array = []
+	if tier > 0:
+		var view := Rect2(Vector2.ZERO, size).grow(120.0)
+		for item in builder.terrain_lods:
+			var at: Vector3 = builder.point(builder.tiles[item.tile].center)
+			if _camera.is_position_behind(at): continue
+			var bounds := Rect2(screen_point(at), Vector2.ZERO)
+			for p in Model.hex_points(builder.tiles[item.tile].center): bounds = bounds.expand(screen_point(builder.point(p)))
+			if bounds.intersects(view): wanted.append(item)
+		wanted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			return (builder.point(builder.tiles[a.tile].center) - _rig.target).length_squared() < (builder.point(builder.tiles[b.tile].center) - _rig.target).length_squared())
+		if wanted.size() > Builder.RESIDENT_TILES: wanted.resize(Builder.RESIDENT_TILES)
+	var keep := {}
+	for item in wanted: keep[str(item.tile)] = true
+	builder.release_detail(keep)
+	var camera_state := capture_camera()
+	for item in wanted:
+		await builder.refine_tile(self, item, tier)
+		if generation != _generation or camera_state != capture_camera(): break
+	_streaming = false
+
+func detail_ready() -> bool:
+	return not _building and not _streaming
 
 func _update_goods() -> void:
 	for item in _goods:
@@ -416,15 +554,37 @@ func _update_goods() -> void:
 func _draw_labels() -> void:
 	if _builder == null or not Legacy.show.names: return
 	var font := ThemeDB.fallback_font
-	for label in _builder.labels:
+	var distant := show_all_tiles and size.y / _rig.span < 0.30
+	var label_limit := 8 if size.y / _rig.span < 0.15 else 14
+	var occupied: Array[Rect2] = []
+	var candidates: Array = _builder.labels.duplicate()
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if (str(a.tile) == _selected_tile) != (str(b.tile) == _selected_tile): return str(a.tile) == _selected_tile
+		return str(a.tile) < str(b.tile))
+	for label in candidates:
+		if distant and occupied.size() >= label_limit: break
+		var selected := str(label.tile) == _selected_tile
+		var tile: Dictionary = _builder.tiles[label.tile]
+		# At continent scale only cities and the selected tile need labels.
+		if show_all_tiles and size.y / _rig.span < 0.3 and not selected and str(tile.type) != "urban": continue
 		var p: Vector3 = label.point
 		if _camera.is_position_behind(p): continue
 		var screen := screen_point(p)
 		if not Rect2(Vector2.ZERO, size).has_point(screen): continue
 		var title := str(label.text)
+		if title.begins_with("(") and not selected: continue
+		if distant: title = title.get_slice(" - (", 0)
 		var width := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
 		var box := Rect2(screen - Vector2(width * 0.5 + 8, 11), Vector2(width + 16, 22))
-		_labels.draw_rect(box, Color(0.015, 0.058, 0.105, 0.86))
+		var crowded := false
+		for previous in occupied: crowded = crowded or box.grow(80.0 if distant else 8.0).intersects(previous)
+		if crowded: continue
+		occupied.append(box)
+		if distant:
+			_labels.draw_circle(screen + Vector2(0, -9), 3.5, Color("e6d9b4"))
+			_labels.draw_circle(screen + Vector2(0, -9), 1.6, Color("6f6253"))
+			_labels.draw_string_outline(font, box.position + Vector2(8, 16), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, 4, Color("293852"))
+		else: _labels.draw_rect(box, Color(0.015, 0.058, 0.105, 0.86))
 		_labels.draw_string(font, box.position + Vector2(8, 16), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, DS.PALETTE.TEXT)
 
 func standing_screen_rects() -> Array:
@@ -505,6 +665,8 @@ func _build_effects(builder: RefCounted, parent: Node3D) -> Array:
 
 func _update_cars() -> void:
 	for car in _effects:
+		car.node.visible = not show_all_tiles or size.y / _rig.span >= 0.30
+		if not car.node.visible: continue
 		var at := fposmod(_time * 0.06 + float(car.phase), 1.0) * 16.0
 		var index := mini(15, int(at))
 		var a: Vector3 = car.points[index]

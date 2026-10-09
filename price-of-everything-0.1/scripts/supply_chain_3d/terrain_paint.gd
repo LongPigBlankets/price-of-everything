@@ -50,8 +50,16 @@ class Painter extends Node2D:
 		# the polygon clipper, and submit explicit triangles rather than asking Canvas
 		# to triangulate a self-touching contour.
 		var clean := PackedVector2Array()
+		var hex := Model.hex_points(tile.center)
 		for p in points:
-			if clean.is_empty() or not p.is_equal_approx(clean[-1]): clean.append(p)
+			var bleed := p
+			# Extend only clipped tile edges into the texture gutter. Otherwise
+			# filtering samples the base colour outside the hex and draws pale seams.
+			for i in hex.size():
+				if Geometry2D.get_closest_point_to_segment(p, hex[i], hex[(i + 1) % hex.size()]).distance_squared_to(p) < 0.0025:
+					bleed += (p - (tile.center as Vector2)).normalized() * 6.0
+					break
+			if clean.is_empty() or not bleed.is_equal_approx(clean[-1]): clean.append(bleed)
 		if clean.size() > 1 and clean[0].is_equal_approx(clean[-1]): clean.remove_at(clean.size() - 1)
 		if clean.size() < 3: return
 		var parts: Array[PackedVector2Array] = [clean]
@@ -62,16 +70,18 @@ class Painter extends Node2D:
 			var colors := PackedColorArray([color])
 			RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), indices, part, colors, PackedVector2Array())
 
-static func bake(host: Node, tile: Dictionary, relief: Dictionary, rivers: Array, mines: Array, height: Callable) -> Array:
+static func bake(host: Node, tile: Dictionary, relief: Dictionary, rivers: Array, mines: Array, height: Callable,
+		widths: Array = Detail.TEXTURES) -> Array:
 	var textures: Array = []
 	if DisplayServer.get_name() == "headless":
 		# Dummy renderer cannot read a viewport. Geometry and input tests still run.
 		var image := Image.create(8, 8, false, Image.FORMAT_RGBA8)
 		image.fill(Legacy._warm(MapStyle.band_colors()[2]))
-		for i in 3: textures.append(ImageTexture.create_from_image(image))
+		for i in widths.size(): textures.append(ImageTexture.create_from_image(image))
 		return textures
 	var viewport := SubViewport.new()
-	viewport.size = Vector2i(2048, 1824)
+	var bake_width: int = widths.max()
+	viewport.size = Vector2i(bake_width, roundi(bake_width * EXTENT.y / EXTENT.x))
 	viewport.disable_3d = true
 	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 	host.add_child(viewport)
@@ -92,7 +102,7 @@ static func bake(host: Node, tile: Dictionary, relief: Dictionary, rivers: Array
 	RenderingServer.force_draw(false)
 	var source := viewport.get_texture().get_image()
 	if source != null and not source.is_empty():
-		for width in Detail.TEXTURES:
+		for width in widths:
 			var image := source.duplicate() as Image
 			image.resize(width, roundi(width * EXTENT.y / EXTENT.x), Image.INTERPOLATE_LANCZOS)
 			image.generate_mipmaps()

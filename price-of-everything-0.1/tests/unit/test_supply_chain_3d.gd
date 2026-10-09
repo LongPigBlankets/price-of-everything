@@ -77,6 +77,18 @@ func _test_3d_overview_interaction() -> void:
 	var builder: RefCounted = board.get("_builder")
 	var model: Dictionary = board.get("_model")
 	_check_source_tree_layout(builder, model)
+	var terrain_node: Node = board.get("_last_terrain")
+	var background := ""
+	for coord in terrain_node.get("tiles"):
+		var candidate := "tile_%d_%d" % [coord.x + 1, coord.y + 1]
+		if not model.tiles.has(candidate): background = candidate; break
+	var expanded: Dictionary = preload("res://scripts/empire_board_model.gd").build(terrain_node, board.get("_last_graph"), {}, {}, false, Callable(), Callable(), [background])
+	_check(expanded.tiles.has(background) and not expanded.tiles[background].store,
+		"3D coverage: background tile renders without creating a company stockpile")
+	var invented := false
+	for item in expanded.standing:
+		if str(item.tile) == background and str(item.kind) in ["building", "warehouse"]: invented = true
+	_check(not invented, "3D coverage: adding map context does not invent player buildings")
 	var tid := str(model.tiles.keys()[0])
 	var center: Vector2 = model.tiles[tid].center
 	var target: Vector3 = builder.point(center)
@@ -190,7 +202,11 @@ func _test_3d_artwork_ink_exclusions() -> void:
 			"3D source ink: %s retains painted faces without outlines and scales the source stroke widths" % key)
 
 func _test_3d_artwork_joined_roads() -> void:
+	for spacing in [3.0, 6.0]: _check_joined_roads(spacing)
+
+func _check_joined_roads(spacing: float) -> void:
 	var road := RoadSurface.new()
+	road.cell_size = spacing
 	var ground := SlopedGround.new()
 	road.configure([
 		{"tile": "left", "a": Vector2(-60, 0), "b": Vector2.ZERO, "level": 2, "paved": true},
@@ -203,10 +219,11 @@ func _test_3d_artwork_joined_roads() -> void:
 	for p in [Vector2(0.2, 0.4), Vector2(3, -2), Vector2(-3, 3), Vector2(3, 3)]:
 		var top := _road_top_at(meshes, p)
 		joined = joined and not top.is_empty() and (top.colour as Color).is_equal_approx(Legacy._ROAD_ASPHALT)
-	_check(joined, "3D roads: asphalt joins across angled, sloped and cross-tile junctions with no internal kerb")
+	_check(joined, "3D roads at %du: asphalt joins across angled, sloped and cross-tile junctions with no internal kerb" % spacing)
 	var first: Dictionary = road.nodes[Vector2i.ZERO]
 	_check(float(first.reach) > 0.0 and road.ways[0].clear[1] > first.reach,
 		"3D roads: centre markings stop outside the whole junction")
+	road.finish_build()
 
 func _road_top_at(meshes: Array, p: Vector2) -> Dictionary:
 	var out := {}
@@ -342,3 +359,71 @@ func _test_3d_artwork_contour_meshes() -> void:
 	for level in [1, 2, 3]:
 		var key := Assets.key_for("tree", level)
 		_check(Assets.mesh_for(key) != null and Assets.projected_height(key) > 0.0, "3D trees: original species %d has real rotatable geometry and sprite-height framing" % level)
+
+func _test_3d_continent_residency() -> void:
+	var builder := Builder.new()
+	builder.streamed = true
+	builder.ground = SlopedGround.new()
+	builder.tiles = {"sample": {"center": Vector2.ZERO, "type": "rural", "label": "Sample"}}
+	await builder.prepare_tile(self, "sample")
+	var node := builder.tile_node("sample")
+	add_child(node)
+	var item: Dictionary = builder.terrain_lods[0]
+	_check(item.data.meshes[0] != null and item.data.meshes[1] == null and item.data.meshes[2] == null,
+		"3D continent: distant tiles allocate only their base terrain")
+	await builder.refine_tile(self, item, 2)
+	_check(item.data.meshes[2] != null and item.node.mesh == item.data.meshes[2],
+		"3D continent: near tile gains real fine geometry on demand")
+	builder.release_detail({})
+	_check(item.node.mesh == item.data.meshes[0] and item.data.meshes[2] == null and item.data.textures[2] == null,
+		"3D continent: leaving the camera releases fine meshes and textures")
+	_check(Rig.MAX_SIZE >= 24000.0 and Builder.RESIDENT_TILES <= 24,
+		"3D continent: wide zoom and explicit fine-terrain budget")
+	node.queue_free()
+	await get_tree().process_frame
+
+func _test_3d_building_silhouette_picking() -> void:
+	var board := preload("res://scripts/supply_chain_3d/board.gd").new()
+	board.size = Vector2(1280, 720)
+	add_child(board)
+	board.set_process(false)
+	var builder := Builder.new()
+	builder.ground = SlopedGround.new()
+	builder.tiles = {"pick": {"center": Vector2.ZERO, "type": "rural", "label": "Picking"}}
+	await builder.prepare_tile(self, "pick")
+	board._world.add_child(builder.tile_node("pick"))
+	var standing := builder.standing_node({"kind": "building", "iid": "factory", "tile": "pick", "pos": Vector2.ZERO,
+		"internal_name": "industrial_factory", "level": 3, "side": 80.0})
+	board._world.add_child(standing)
+	board._builder = builder
+	board._model = {"tiles": builder.tiles}
+	board.restore_camera({"yaw": PI / 4.0, "pitch": 0.7, "span": 240.0, "target": builder.point(Vector2.ZERO) + Vector3.UP * 20.0})
+	var box := BoxShape3D.new()
+	box.size = builder.pickables[0].size
+	var old_bounds := StaticBody3D.new()
+	old_bounds.collision_layer = 4
+	old_bounds.position = standing.position + Vector3.UP * box.size.y * 0.5
+	var collision := CollisionShape3D.new()
+	collision.shape = box
+	old_bounds.add_child(collision)
+	board._world.add_child(old_bounds)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var building_hits := 0
+	var freed_ground_hits := 0
+	var space := board._viewport.find_world_3d().direct_space_state
+	for y in range(220, 490, 8):
+		for x in range(450, 830, 8):
+			var screen := Vector2(x, y)
+			var pixel := board._render_point(screen)
+			var start := board._camera.project_ray_origin(pixel)
+			var old_ray := PhysicsRayQueryParameters3D.create(start, start + board._camera.project_ray_normal(pixel) * board._camera.far, 4)
+			if space.intersect_ray(old_ray).is_empty(): continue
+			var hit := board.pick_at(screen)
+			if hit.is_empty(): continue
+			if hit.collider.has_meta("standing"): building_hits += 1
+			elif hit.collider.get_meta("tile_id", "") == "pick": freed_ground_hits += 1
+	_check(building_hits > 10, "3D picking: visible building remains easy to select")
+	_check(freed_ground_hits > 5, "3D picking: empty space inside the old oversized box now selects the tile")
+	board.queue_free()
+	await get_tree().process_frame

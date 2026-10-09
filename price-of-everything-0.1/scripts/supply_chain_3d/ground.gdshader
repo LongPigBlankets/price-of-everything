@@ -3,6 +3,7 @@ render_mode unshaded, cull_disabled;
 uniform sampler2D artwork : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
 uniform bool textured = false;
 uniform bool strata = false;
+uniform float road_fade = 0.0;
 uniform vec2 grade_range = vec2(0.0, 1.0);
 varying vec3 world_point;
 varying vec3 world_normal;
@@ -15,6 +16,7 @@ void vertex() {
 void fragment() {
 	vec3 paint = textured ? texture(artwork, UV).rgb : COLOR.rgb;
 	if (textured && !OUTPUT_IS_SRGB) paint = to_srgb(paint);
+	paint = mix(paint, vec3(0.50, 0.52, 0.35), road_fade);
 	vec3 n = normalize(world_normal);
 	float slope = length(n.xz) / max(0.08, n.y);
 	float facing = dot(normalize(n.xz + vec2(0.00001)), vec2(0.70710678));

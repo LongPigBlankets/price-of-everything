@@ -13,9 +13,11 @@ open their supply-chain graphs; terrain clicks open the existing tile panel.
 - Left drag / two-finger trackpad pan: pan.
 - Right or middle drag: orbit and tilt.
 - Mouse wheel / trackpad pinch: zoom around the terrain under the pointer.
-- Q/E or arrow buttons: rotate. Home / Reset view: frame the company.
+- Q/E or arrow buttons: rotate. Home / Reset view: frame the current coverage.
 - Click terrain or a warehouse: select its tile; Shift-click selects through buildings.
-- Click a building: open its network. Tab returns to the regular map.
+- Click a building: open its network. Hitboxes follow the visible mesh, with a two-world-unit edge tolerance; empty space around the building selects the tile. Tab returns to the regular map.
+- Visibility → **Show player owned tiles only** (default) / **Show all tiles**. This preference is saved in the player profile. Owned coverage includes company routes, goods and purchased empty land; all coverage includes every real terrain tile, without inventing stockpiles or player buildings.
+- The maximum camera span is 28,000 units. The 600-tile test continent fits within it, exceeding the requested 50-tile minimum.
 
 Tile selection also forwards active construction and destination-selection actions.
 The motion key pauses moving goods and shows outputs above their producers.
@@ -58,7 +60,7 @@ faces (for example, the glass tower's mullion grid is authored on two walls).
 
 Roads port the original `_capsule`, `_road_widths`, colour bands, level-specific lane
 markings and junction clearance. Bands overlap by colour across the whole network,
-with one shared 3-unit triangulated height field, so raised kerbs cannot slice through
+with one shared triangulated height field (3-unit company / 6-unit continent spacing), so raised kerbs cannot slice through
 an adjoining road on a slope. Geometry is batched per tile for culling. It adds roughly
 109k primitives in the far company framing; the source widths and joins are retained at every LOD. The old 3D
 rectangular strips and separate kerb lines are removed.
@@ -75,8 +77,8 @@ Changes to mine placement/level invalidate the affected terrain cache entries.
 ## Three detail levels
 
 LOD is selected from logical screen pixels per world unit, with hysteresis so a slow
-pinch near a threshold does not flicker between tiers. The selected mesh and material
-are cached resources; no terrain generation or image readback happens during zoom.
+pinch near a threshold does not flicker between tiers. Company coverage keeps all three terrain tiers cached. Continent coverage keeps a small
+base for every tile and refines visible tiles progressively as the camera approaches.
 
 | Tier | Typical span at 1080px height | Ground mesh spacing | Terrain artwork width | Detail |
 | --- | --- | --- | --- | --- |
@@ -89,7 +91,9 @@ triangle-colour samples in the first 3D pass. It also has up to 84 tree candidat
 tile versus 26, with placement excluding buildings, streets and riverbanks. All tiers
 use the same deterministic positions. Medium and near add details to those positions.
 Imported glTF LODs handle building meshes; tier-specific biases preserve more geometry
-as the view approaches. Colliders remain stable across visual LOD changes.
+as the view approaches. Continent terrain colliders follow the currently displayed mesh.
+Fine ground decoration is intentionally sparse: warm stones appear only on exposed
+slopes, with fewer grass marks, rather than grey specks across every flat tile.
 
 ## Performance and limits
 
@@ -97,14 +101,30 @@ Geometry is frustum-culled by Godot. Ground, vegetation and infrastructure detai
 batched; lighting accents use shared materials and glow cards instead of an individual
 real-time light for every lamp. The viewport and processing stop when the board is hidden.
 Unchanged models retain their scene. Obsolete terrain cache entries are released on
-rebuild, including tiles no longer in the company and old height fields.
+rebuild, including tiles no longer in the company and old height fields. The small
+continent base survives a coverage switch within the same map; its finer tiers do not.
 
 Three complete terrain texture tiers for the eight-tile Metal Magnate company retain
 approximately **199.5 MiB** including mipmaps. Keeping them resident avoids decode/upload
-work while zooming. This is a quality-first company-view implementation: a whole-world
-view needs visibility-driven texture residency/streaming and a fixed memory budget
-before extending it to hundreds of tiles. Initial build/baking is paced during loading;
-changed standing objects/infrastructure still rebuild rather than update incrementally.
+work while zooming. In continent mode each tile starts with a 256px paint texture
+and 24-unit mesh; at most 24 camera-adjacent tiles retain the 1024px/8-unit or
+2048px/4-unit tiers. Offscreen fine meshes, collision shapes and textures are released.
+The 600-tile base is about 178 MiB of terrain textures; worst-case residency with both
+fine tiers on 24 tiles is about 748 MiB. These figures exclude building assets, terrain
+meshes, collision data and the regular map. Company coverage can retain the 178 MiB
+base after switching back so it need not be repainted on the next switch.
+
+At very wide framing, trees become batched simplified canopies, decorative settlements
+use grouped masses, roads soften, and tiny traffic, lamps and water glints disappear.
+City labels are limited and spaced to avoid obscuring the terrain. Nearby tiles restore
+the source trees and buildings. Paint bleeds into texture gutters to prevent pale tile
+seams. Roads and river crossings use spatial lookups instead of scanning the whole
+network for every mesh vertex.
+
+Initial terrain and road generation is paced with visible progress. Changes to standing
+objects/infrastructure still rebuild rather than update incrementally. This is not yet
+an instant-loading whole-world renderer: cold generation remains a noticeable wait,
+and a disk bake cache plus incremental scene updates would be the next performance work.
 
 Rendered measurements: Godot 4.6.2, OpenGL compatibility, Apple M5 Pro, 1920×1080,
 eight tiles / 38 standing objects. After 60 forced-draw warm-up frames, 45 frame samples:
@@ -123,13 +143,39 @@ Near framing culls more tiles, hence fewer draw calls. Initial cold captures inc
 steady-state figures. The engine's total texture monitor also includes the main game's
 prewarmed sprites and regular-map assets, so it is not the supply-chain cache size.
 
+
+The 600-tile continent was rendered through three Sol-reviewed iterations. Spatial
+road/river indexing reduced the first build from 957 seconds to **45 seconds**;
+wide-view batching and detail suppression reduced draw calls from **7,070 to 1,891**.
+The final 1920×1080 capture (same hardware/renderer) measured:
+
+| Continent framing | Fine tiles resident | Terrain textures | Draw calls | Primitives |
+| --- | --- | --- | --- | --- |
+| Far, entire continent | 0 | 178 MiB | 1,891 | 3,453,479 |
+| Medium, 1,100-unit span | 24 | 292 MiB | 757 | 1,065,692 |
+| Near, 560-unit span | 15 | 534 MiB | 423 | 888,792 |
+
+Sixty process-frame samples after streaming settled gave approximately 6.9ms median
+and 7.1–7.5ms p95. These include desktop scheduling/vsync and are **not isolated GPU
+measurements**, nor directly comparable to the earlier forced-draw company benchmark.
+Performance on lower-end hardware is unmeasured. High-detail streaming can still
+introduce short generation/upload hitches during travel; first generation is not instant.
+
+The reviewer approved the final three LODs as a coherent in-game map. The stepped
+outer ocean border and subdued distant city silhouettes remain candidates for future
+marketing-art work. Captures and measurement methodology are in
+`outputs/supply-chain-3d/continent_{far,medium,near}.png` and
+`outputs/supply-chain-3d/continent_measurements.json` at repo root.
+
 ## Verification and captures
 
-- Map, goods-view and 3D regression: **2,355 checks passed**, 239 tests, no script errors.
-- The final artwork/geometry tests pass **21 checks**, covering no-ink faces, source
-  widths, junction seams, all mine levels/LODs, cold metadata loading and builder cleanup.
-- The focused interaction test passes **19 checks**, including added high-DPI picking and house-variety regressions.
-- Complete parse sweep: **776 scripts, 0 failures**, 47 excluded by the existing checker.
+- Map, goods-view and 3D regression: **2,376 checks passed**, 244 tests, no script errors.
+- Includes **70 3D checks** covering coverage without invented assets, screen-space LOD
+  hysteresis, release of streamed terrain, silhouette picking, high-DPI input,
+  source trees/ink, joined roads at both mesh spacings and all mine levels/LODs.
+- Complete parse sweep: **780 scripts, 0 failures**, 47 excluded by the existing checker.
+- Windowed continent run: all 600 tiles present and visible at maximum zoom,
+  unowned-tile picking succeeded, and owned coverage restored its original eight tiles.
 - Rendered New Game → Begin → supply chain, routed mouse orbit, routed trackpad pinch,
   tile selection, all three LODs, a rotated near view, and the original 2D renderer at
   matched far/medium/near framing. All three mine levels are rendered from opposite
@@ -155,3 +201,11 @@ AGENT_GODOT_WINDOW=1 godot --path . --windowed --resolution 1920x1080 \
 The dummy headless renderer cannot bake viewport images; its tests exercise the same
 meshes, lifecycle, picking and LOD policy with placeholder textures. Windowed captures
 verify the actual shaders, terrain artwork and token composition.
+
+Whole-continent visual capture and residency/zoom/picking checks:
+
+```sh
+AGENT_GODOT_WINDOW=1 godot --path . --windowed --resolution 1920x1080 \
+  res://tools/supply_chain_3d/capture.tscn -- --no-telemetry \
+  --continent-review --review-tag=continent_review
+```

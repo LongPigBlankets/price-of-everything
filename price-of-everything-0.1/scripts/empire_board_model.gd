@@ -250,7 +250,7 @@ static func _pt(p: Vector2, tile: String, edge: bool = false) -> Dictionary:
 ## it, the water test is sampled. With `town`, housing stands on slots the works leave free.
 static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 		rivers_by_tile: Dictionary = {}, town: bool = false, water: Callable = Callable(),
-		shores: Callable = Callable()) -> Dictionary:
+		shores: Callable = Callable(), extra_tiles: Array = []) -> Dictionary:
 	_shores = shores
 	_shore_cache.clear()
 	var tiles: Dictionary = {}
@@ -399,6 +399,9 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 	var power_icon: Texture2D = GoodIcons.texture_for(power_good, _internal_name(power_good)) if power_good != "" else null
 
 	var plates: Dictionary = Relief.plates(terrain, rivers_by_tile)
+	# Optional coverage for the 3D continent. The default company model and its
+	# goods routes remain unchanged; background tiles do not invent warehouses.
+	for tid in extra_tiles: drawn[str(tid)] = true
 	for tid in drawn:
 		var coord: Vector2i = terrain.id_to_coord(str(tid))
 		if coord.x < 0:

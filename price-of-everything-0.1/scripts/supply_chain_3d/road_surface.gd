@@ -5,11 +5,15 @@ extends RefCounted
 const Legacy := preload("res://scripts/empire_board.gd")
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
 const CELL := 3.0
+var cell_size := CELL
 var ways: Array = []
 var nodes: Dictionary = {}
 var _height_cache: Dictionary = {}
 var _height: Callable
 var _origin := Vector2.ZERO
+const BUCKET := 64.0
+var _way_buckets: Dictionary = {}
+var _by_tile: Dictionary = {}
 
 func finish_build() -> void:
 	# The owning builder supplies its height method. Drop that bound Callable so
@@ -20,6 +24,8 @@ func finish_build() -> void:
 func configure(roads: Array, height: Callable, origin := Vector2.ZERO) -> void:
 	ways.clear()
 	nodes.clear()
+	_way_buckets.clear()
+	_by_tile.clear()
 	_height_cache.clear()
 	_height = height
 	_origin = origin
@@ -28,6 +34,13 @@ func configure(roads: Array, height: Callable, origin := Vector2.ZERO) -> void:
 		var w: Dictionary = rec.duplicate()
 		w.widths = Legacy._road_widths(int(w.level))
 		ways.append(w)
+		(_by_tile.get_or_add(str(w.tile), []) as Array).append(w)
+		var bounds := Rect2(w.a, Vector2.ZERO).expand(w.b).grow(float(w.widths[0]) + 3.0)
+		var low := Vector2i((bounds.position / BUCKET).floor())
+		var high := Vector2i((bounds.end / BUCKET).floor())
+		for y in range(low.y, high.y + 1):
+			for x in range(low.x, high.x + 1):
+				(_way_buckets.get_or_add(Vector2i(x, y), []) as Array).append(w)
 		for ends in [[w.a, w.b], [w.b, w.a]]:
 			var nd: Dictionary = nodes.get_or_add(Vector2i((ends[0] as Vector2).round()), {"directions": [], "reach": 0.0})
 			var direction: Vector2 = ((ends[1] as Vector2) - ends[0]).normalized()
@@ -46,14 +59,12 @@ func mesh_for(tile: String) -> ArrayMesh:
 	var batch := Geo.Batch.new()
 	var colours := [Legacy._ROAD_EDGE, Legacy._ROAD_KERB, Legacy._ROAD_EDGE_IN, Legacy._ROAD_ASPHALT]
 	for band in 4:
-		for w in ways:
-			if str(w.tile) != tile: continue
+		for w in _by_tile.get(tile, []):
 			var tint: Color = Color.WHITE if bool(w.paved) else Legacy._UNPAVED
 			var polygon := Legacy._capsule(w.a, w.b, w.widths[band], w.round)
 			_add_band(batch, polygon, colours[band] * tint, band)
 	# Reuse the source markings and their junction clearance. No line crosses a bend.
-	for w in ways:
-		if str(w.tile) != tile: continue
+	for w in _by_tile.get(tile, []):
 		var level := int(w.level)
 		var tint: Color = Color.WHITE if bool(w.paved) else Legacy._UNPAVED
 		var a: Vector2 = w.a
@@ -80,12 +91,12 @@ func mesh_for(tile: String) -> ArrayMesh:
 
 func _sample(grid: Vector2i) -> float:
 	if _height_cache.has(grid): return _height_cache[grid]
-	var p := Vector2(grid) * CELL
+	var p := Vector2(grid) * cell_size
 	var sum := 0.0
 	var weight := 0.0
 	# Profiles blend into one junction. Independent centreline heights left lifted
 	# strips crossing through one another on bends and on slopes.
-	for w in ways:
+	for w in _way_buckets.get(Vector2i((p / BUCKET).floor()), []):
 		var q := Geometry2D.get_closest_point_to_segment(p, w.a, w.b)
 		var reach := float(w.widths[0]) + 3.0
 		var distance := q.distance_to(p)
@@ -101,8 +112,8 @@ func _sample(grid: Vector2i) -> float:
 func _add_band(batch: RefCounted, polygon: PackedVector2Array, colour: Color, band: int) -> void:
 	var bounds := Rect2(polygon[0], Vector2.ZERO)
 	for p in polygon: bounds = bounds.expand(p)
-	var low := Vector2i((bounds.position / CELL).floor())
-	var high := Vector2i((bounds.end / CELL).ceil())
+	var low := Vector2i((bounds.position / cell_size).floor())
+	var high := Vector2i((bounds.end / cell_size).ceil())
 	for y in range(low.y, high.y):
 		for x in range(low.x, high.x):
 			var cell := Vector2i(x, y)
@@ -112,9 +123,9 @@ func _add_band(batch: RefCounted, polygon: PackedVector2Array, colour: Color, ba
 				var g0: Vector2i = cell + offsets[0]
 				var g1: Vector2i = cell + offsets[1]
 				var g2: Vector2i = cell + offsets[2]
-				var a := Vector2(g0) * CELL
-				var b := Vector2(g1) * CELL
-				var c := Vector2(g2) * CELL
+				var a := Vector2(g0) * cell_size
+				var b := Vector2(g1) * cell_size
+				var c := Vector2(g2) * cell_size
 				for part in Geometry2D.intersect_polygons(polygon, PackedVector2Array([a, b, c])):
 					if part.size() < 3: continue
 					var vertices := PackedVector3Array()

@@ -5,7 +5,7 @@ const HOME_PITCH := 0.6154797
 const MIN_PITCH := 0.30
 const MAX_PITCH := 1.35
 const MIN_SIZE := 240.0
-const MAX_SIZE := 14000.0
+const MAX_SIZE := 28000.0
 var yaw := HOME_YAW
 var pitch := HOME_PITCH
 var span := 1800.0
@@ -16,9 +16,9 @@ func apply(camera: Camera3D) -> void:
 	camera.keep_aspect = Camera3D.KEEP_HEIGHT
 	camera.size = span
 	camera.near = 1.0
-	camera.far = 40000.0
+	camera.far = 100000.0
 	var direction := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch))
-	camera.position = target + direction * 16000.0
+	camera.position = target + direction * 40000.0
 	camera.look_at(target, Vector3.UP)
 	camera.force_update_transform()
 
