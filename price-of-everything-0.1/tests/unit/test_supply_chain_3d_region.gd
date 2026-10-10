@@ -76,10 +76,10 @@ func _test_stoneshore_scoped_authored_import() -> void:
 	var model := {"tiles": {"tile_4_9": {"center": Vector2.ZERO}, "tile_9_9": {"center": Vector2(600, 0)}},
 		"roads": [{"tile": "tile_4_9", "a": Vector2.ZERO, "b": Vector2(100, 0)}, outside.duplicate()],
 		"standing": [{"kind": "house", "tile": "tile_4_9"}, {"kind": "house", "tile": "tile_9_9"}], "flows": []}
-	Region.apply(model, terrain, null)
+	Region.apply(model, terrain, null, {}, Callable(), Region.tile_ids())
 	_check(model.roads.has(outside), "Stoneshore: roads outside the pilot retain their original geometry")
 	_check(model.authored_region.paths.size() == 1 and model.authored_region.paths[0].id == "visible", "Stoneshore: locked roads stay hidden exactly as on the regular map")
-	_check(model.standing.size() == 1 and model.standing[0].tile == "tile_9_9", "Stoneshore: only regional decorative buildings are hidden")
+	_check(model.standing.size() == 2, "Stoneshore: decorative buildings remain available for frontage fitting")
 	_check(AuthoredMap.data() == document, "Stoneshore: importing never mutates the authored document")
 	terrain.free()
 	AuthoredMap.reset_for_tests()

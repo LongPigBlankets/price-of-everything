@@ -104,8 +104,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	root.metadata = root.metadata.duplicate()
 	root.metadata.visibility = builder.visibility_bake()
 	writer.write(builder._continent_key, root)
-	writer.write(builder._scenery_key, {"trees": builder.tree_placements, "shadows": builder.static_shadows,
-		"standing": builder.standing_frames, "grade": builder.grade_range})
+	writer.write(builder._scenery_key, builder.scenery_data())
 	for key in [builder._continent_key, builder._scenery_key]: manifest.resources[key] = Package.file_record(writer.directory, key)
 	FileAccess.open(writer.directory.path_join("source_fingerprints.json"), FileAccess.WRITE).store_string(JSON.stringify(Package.Cache.source_fingerprints(), "\t") + "\n")
 	manifest.complete = true

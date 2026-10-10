@@ -21,6 +21,11 @@ static func placements(tid: String, tile: Dictionary, relief: Dictionary, standi
 		if s.has("harbour"):
 			pads.append((s.harbour.bounds as Rect2).grow(8.0))
 			continue # piers and yards can occupy a neighbouring tile
+		if s.has("footprint") and not s.footprint.is_empty():
+			var box := Rect2(s.footprint[0], Vector2.ZERO)
+			for p in s.footprint: box = box.expand(p)
+			pads.append(box.grow(34.0 if str(s.get("internal_name", "")) == "mine" else 8.0))
+			continue
 		if str(s.tile) != tid: continue
 		var half := float(s.get("pad", s.side)) * 0.5 + (34.0 if str(s.get("internal_name", "")) == "mine" else 8.0)
 		pads.append(Rect2(s.pos - Vector2.ONE * half, Vector2.ONE * half * 2.0))
@@ -35,7 +40,7 @@ static func placements(tid: String, tile: Dictionary, relief: Dictionary, standi
 		var blocked := false
 		for pad in pads: blocked = blocked or pad.has_point(p)
 		for road in roads:
-			blocked = blocked or Geometry2D.get_closest_point_to_segment(p, road.a, road.b).distance_to(p) < float(Legacy._road_widths(int(road.level))[0]) + 4.0
+			blocked = blocked or Geometry2D.get_closest_point_to_segment(p, road.a, road.b).distance_to(p) < float(road.get("widths", Legacy._road_widths(int(road.level)))[0]) + 4.0
 		for seg in pipes: blocked = blocked or Geometry2D.get_closest_point_to_segment(p, seg[0], seg[1]).distance_to(p) < 9.0
 		for river in rivers:
 			for i in range(river.points.size() - 1):

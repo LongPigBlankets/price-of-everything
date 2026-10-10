@@ -3,16 +3,21 @@ extends RefCounted
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
 const Region := preload("res://scripts/supply_chain_3d/authored_region.gd")
 const Model := preload("res://scripts/empire_board_model.gd")
+const Index := preload("res://scripts/supply_chain_3d/road_index.gd")
 const STEP := 6.0
 const BUCKET := 64.0
 var segments: Array = []
 var crossings: Array = []
 var buckets := {}
 var region := {}
+var tile_index := {}
+var bridge_tiles := {}
+var unresolved: Array = []
 
-func configure(data: Dictionary, rivers: Dictionary, ground: Callable) -> void:
-	segments.clear(); crossings.clear(); buckets.clear()
+func configure(data: Dictionary, rivers: Dictionary, ground: Callable, open_water: Callable = Callable()) -> void:
+	segments.clear(); crossings.clear(); buckets.clear(); bridge_tiles.clear(); unresolved.clear()
 	region = data.get("tiles", {})
+	tile_index = Index.tiles(region)
 	var water := {}
 	for recs in rivers.values():
 		for rec in recs:
@@ -21,6 +26,10 @@ func configure(data: Dictionary, rivers: Dictionary, ground: Callable) -> void:
 				var river := {"a": rec.points[i - 1], "b": rec.points[i], "half": half}
 				_index(water, river, half)
 	for path in data.get("paths", []):
+		var markers := PackedVector2Array()
+		for bridge in path.get("bridges", []):
+			if bridge is Array and bridge.size() >= 2: markers.append(Vector2(float(bridge[0]), float(bridge[1])))
+			elif bridge is Dictionary and bridge.get("point") is Vector2: markers.append(bridge.point)
 		var points := PackedVector2Array([path.points[0]])
 		for i in range(1, path.points.size()):
 			var a: Vector2 = path.points[i - 1]
@@ -31,10 +40,14 @@ func configure(data: Dictionary, rivers: Dictionary, ground: Callable) -> void:
 		var wet: Array[bool] = []
 		for p in points:
 			heights.append(float(ground.call(p)))
-			var on_water := false
+			var on_water: bool = open_water.is_valid() and bool(open_water.call(p))
 			for river in water.get(Vector2i((p / BUCKET).floor()), []):
 				if p.distance_to(Geometry2D.get_closest_point_to_segment(p, river.a, river.b)) < river.half:
-					on_water = true; break
+						on_water = true; break
+			# The authored annotation is authoritative even when narrow rivers
+			# fall between the terrain samples. Wider water still sets the span.
+			for marker in markers:
+				if p.distance_to(marker) < 12.0: on_water = true; break
 			wet.append(on_water)
 		var half := float(Region.road_widths(path.class)[0])
 		var spans: Array = []
@@ -46,6 +59,7 @@ func configure(data: Dictionary, rivers: Dictionary, ground: Callable) -> void:
 			var end := mini(points.size() - 1, i + 2)
 			# A polyline ending IN the river cannot produce a safe half bridge.
 			if not wet[start] and not wet[end]: spans.append([start, end])
+			else: unresolved.append({"source": path.id, "a": points[start], "b": points[end]})
 			i += 1
 		var bridge_at := {}
 		var starts := {}
@@ -82,9 +96,32 @@ func configure(data: Dictionary, rivers: Dictionary, ground: Callable) -> void:
 		for k in range(1, points.size()):
 			var rec := {"a": points[k - 1], "b": points[k], "ha": heights[k - 1], "hb": heights[k],
 				"half": half, "bridge": bridge_at.has(k - 1), "post": k % 3 == 0,
-				"start": starts.has(k - 1), "end": ends.has(k - 1)}
+				"start": starts.has(k - 1), "end": ends.has(k - 1), "wet_a": wet[k - 1], "wet_b": wet[k]}
 			segments.append(rec)
 			_index(buckets, rec, half + 8.0)
+			if rec.bridge:
+				for tid in Index.query(tile_index, Index.bounds(rec.a, rec.b, half), Index.TILE_CELL):
+					(bridge_tiles.get_or_add(tid, []) as Array).append(rec)
+	var completed := preload("res://scripts/supply_chain_3d/bridge_network.gd").complete(segments, ground)
+	crossings.append_array(completed.crossings)
+	unresolved = completed.unresolved
+	restore(packed())
+
+func packed() -> Dictionary:
+	return {"region": region, "segments": segments, "crossings": crossings, "unresolved": unresolved}
+
+func restore(data: Dictionary) -> void:
+	region = data.region
+	segments = data.segments
+	crossings = data.crossings
+	unresolved = data.get("unresolved", [])
+	tile_index = Index.tiles(region)
+	buckets.clear(); bridge_tiles.clear()
+	for rec in segments:
+		_index(buckets, rec, float(rec.half) + 8.0)
+		if rec.bridge:
+			for tid in Index.query(tile_index, Index.bounds(rec.a, rec.b, float(rec.half)), Index.TILE_CELL):
+				(bridge_tiles.get_or_add(tid, []) as Array).append(rec)
 
 static func _index(index: Dictionary, segment: Dictionary, reach: float) -> void:
 	var box := Rect2(segment.a, Vector2.ZERO).expand(segment.b).grow(reach)
@@ -94,10 +131,7 @@ static func _index(index: Dictionary, segment: Dictionary, reach: float) -> void
 		for x in range(low.x, high.x + 1): (index.get_or_add(Vector2i(x, y), []) as Array).append(segment)
 
 func height_at(p: Vector2) -> float:
-	var inside := false
-	for center in region.values():
-		if Geometry2D.is_point_in_polygon(p, Model.hex_points(center)): inside = true; break
-	if not inside: return -INF
+	if Index.tile_at(tile_index, region, p) == "": return -INF
 	var result := -INF
 	for rec in buckets.get(Vector2i((p / BUCKET).floor()), []):
 		var q := Geometry2D.get_closest_point_to_segment(p, rec.a, rec.b)
@@ -111,8 +145,7 @@ func mesh_for(tid: String, ground: Callable, origin: Vector2) -> ArrayMesh:
 	var batch := Geo.Batch.new()
 	if not region.has(tid): return batch.mesh()
 	var hex := Model.hex_points(region[tid])
-	for rec in segments:
-		if not rec.bridge: continue
+	for rec in bridge_tiles.get(tid, []):
 		var clipped := Region.clip_segment(rec.a, rec.b, hex)
 		if clipped.size() != 2: continue
 		var length: float = (rec.a as Vector2).distance_to(rec.b)

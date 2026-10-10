@@ -1606,3 +1606,101 @@ take 0.022 ms per frame on the CPU (600 samples; excludes GPU rendering).
 Show all tiles was ready in 2992.248 ms, with three bundled cache hits, zero
 misses and zero runtime writes. The refreshed static package validates all
 600 tiles/1,803 resources and reuses every medium/near terrain texture.
+
+### Authored roads beyond Stoneshore — first iteration
+
+The follow-up branch `codex/supply-chain-road-rollout` builds on checkpoint PR
+#200. `authored_region.gd` now imports every visible stroke from the active
+regular-map document, including its infrastructure unlock conditions. Built
+RoadNetwork geometry is the fallback outside authored coverage. The regular
+map, simulation transport costs, save format and building tile membership are
+unchanged.
+
+Topology is resolved across the complete map before clipping into visible
+hexes. `road_index.gd` uses deterministic spatial buckets for endpoint joins,
+T-junction insertion, crossings and tile lookup. Endpoint movement is bounded
+to 2u; joins across water, steep height differences, or different road layers
+are rejected. The prepared network persists in the layout bake. Company and
+continent frontage variants are retained separately, so opening one does not
+discard the other.
+
+Road profiles follow the display terrain, including exaggerated highlands.
+Authored bridge markers supplement sampled river/open-water crossings.
+`bridge_network.gd` completes connected strokes which meet in the water into
+one bank-to-bank deck, with graph-based approach ramps. A crossing without
+opposing dry banks, or spanning more than 400u, is reported for review rather
+than given an invented half bridge. Road-profile samples are included in the
+scenery cache and their small spatial indexes are restored on load; bridge
+construction and height sampling are not repeated on a cached opening.
+
+NPC and player buildings use their regular-map footprint centres, orientation
+and fitted scale. Warehouses, supplier depots and the existing decorative
+house/tower assets are placed beside nearby streets. All LODs share their
+positions and rotation. Plot tests reject water, steep slopes, roads and
+overlapping lots; impossible decorative plots are omitted. Foundations sample
+the rotated footprint, and baked visibility/picking extents cover the rotated
+asset. Lamps and tree clearance use each authored road's actual width.
+
+Dry access roads join building entrances to the road graph, splitting the
+receiving street into a T-junction. Goods animations follow that graph; a
+missing connection suppresses its visual flow instead of drawing over land
+or water. This does not change deliveries in the simulation. The initial
+continent review imported 848 strokes / 12,264 clipped segments, joined 136
+nearby endpoints, restored 686 decorative assets, omitted 79 unsuitable plots,
+and made 1,059 access roads. Forty-seven non-decorative entrances need a more
+capable detour or an authored adjustment. Exact authored decorative building
+polygons, density tuning and engineered mountain cuttings remain further art
+iterations.
+
+Use `review_stoneshore.tscn -- --continent-review --road-rollout --no-telemetry`
+for four regions at all three LODs, including coastal and mountain terrain.
+The report includes frontage exceptions and unfinished water crossings. The
+package builder now carries prepared road profiles in its scenery resource.
+The first uncached review took 80.1 seconds including new baking; it is not a
+cached-load benchmark. Packaged-load measurements are recorded below.
+
+Validation: 35 focused rollout assertions cover bounded/spatial joins,
+cross-tile seams, safe frontage, connected access roads, identical cached
+placements, joined bridge halves and goods routing. The broader supply-chain
+suite passed 1,521 assertions with three existing asset-version failures and
+no script errors. The parse sweep passed all 847 checked scripts.
+The checkpoint already lacks oil/fracking well atlases and has stale source
+hashes for farm, water-pump, forest and desalination atlases. Animated ship
+components are intentionally excluded from those standalone building checks:
+they use near/medium meshes and do not render at far LOD. The final 100-turn
+end-to-end run passed 723 checks.
+
+The final road layout has 189 bridge records, including 33 completed across
+joined strokes. Thirty-five water-connection components still lack suitable
+opposing banks; these and the 47 entrance exceptions remain the next targeted
+art pass. Four visual goods paths cannot currently find a connected route.
+
+A first packaged-load profile took 7.05 seconds despite three bundled hits
+and zero misses/writes. Instrumentation attributed about 1.6 seconds each to
+infrastructure mesh construction and live building-shadow geometry. Both now
+persist as optional mesh resources in the scenery bake. Loading older bakes
+can generate those additions once; the production package carries them.
+Infrastructure cache identity includes line geometry, lighting state and
+pylon anchors. Road indexing remains lazy for actual generation/repair.
+Cache tests check zero terrain samples, retained traffic metadata, no duplicate
+shadows and invalidation when pollution lighting changes.
+
+Higher-detail building assets now follow tile residency too. Remote NPC/player
+buildings keep their far cards until their tile is loaded, instead of preparing
+medium/near assets for the whole continent. Panning and global LOD handovers
+refresh that choice while retaining a far fallback outside the detail area.
+
+Final fresh-process Forward+/Metal result on M5 Pro: **4,899.313 ms** from
+Show all tiles to ready, including **4,075.615 ms** board construction.
+The continent resource took 354.563 ms; cached infrastructure setup took
+7.448 ms and cached frontage fitting took 96.911 ms. All three cache reads hit
+bundled resources, with zero misses and zero runtime writes. This is within
+the five-second target on the measured machine, with limited headroom;
+standing-object creation still accounts for 1,335.299 ms.
+
+The complete package validates 600 tiles / 1,803 resources, with zero errors,
+at **1,034,937,774 bytes**. The prepared scene meshes added 1,007,641 bytes
+without regenerating any medium/near terrain textures. Final captures and
+metrics are in `outputs/supply-chain-3d/road-rollout/resident-assets/` (four
+regions, each at far/medium/near). Roads, coast crossings, rotated decoration
+and NPC placement were checked in those captures.

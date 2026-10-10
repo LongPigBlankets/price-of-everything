@@ -5,10 +5,10 @@ const SCHEMA := 2
 const BUNDLED := "res://assets/supply_chain_3d/bakes"
 ## Bump the relevant revision when world_builder changes generated data. Runtime
 ## visibility/loading edits must not invalidate unrelated terrain artwork.
-const REVISIONS := {"terrain": 2, "roads": 1, "scenery": 1, "continent": 2, "detail": 1, "layout": 1}
+const REVISIONS := {"terrain": 2, "roads": 1, "scenery": 2, "continent": 2, "detail": 1, "layout": 1}
 const SOURCES := {
 	"terrain": ["coast.gd", "terrain_paint.gd", "water_art.gd", "geometry.gd", "detail.gd", "shadow_art.gd", "relief.gd"],
-	"roads": ["road_surface.gd", "geometry.gd", "authored_region.gd", "authored_road_profile.gd"],
+	"roads": ["road_surface.gd", "geometry.gd", "authored_region.gd", "authored_road_profile.gd", "road_index.gd", "road_placement.gd", "bridge_network.gd"],
 	"scenery": ["harbour.gd", "tree_layout.gd", "shadow_art.gd"],
 	"continent": ["geometry.gd"],
 	"detail": ["local_detail.gd", "geometry.gd"],

@@ -22,7 +22,11 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 	board.animate_goods = false
 	var builder: RefCounted = board._builder
 	var report := {"ready_ms": ready_ms, "load": board.load_profile.duplicate(), "region": board._model.authored_region.duplicate(true),
-		"crossings": builder.authored_profile.crossings, "npcs": [], "views": []}
+		"crossings": builder.authored_profile.crossings, "unresolved_crossings": builder.authored_profile.unresolved, "npcs": [], "views": []}
+	if "--load-only" in OS.get_cmdline_user_args():
+		FileAccess.open(output.path_join("report.json"), FileAccess.WRITE).store_string(JSON.stringify(report, "\t"))
+		print("[ROAD LOAD] ready_ms=", ready_ms, " bridges=", report.crossings.size(), " unresolved=", report.unresolved_crossings.size())
+		return
 	report.harbour_poses = []
 	for s in board._model.standing:
 		if s.get("npc", false): report.npcs.append(s)
@@ -36,8 +40,6 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 				get_tree().quit(1)
 				return
 			report.harbour_poses.append({"tile": s.tile, "shore_shift": frame.harbour_shore_shift, "deck": frame.harbour_deck, "ships_afloat": afloat})
-	for s in board._model.standing:
-		assert(not (s.kind == "house" and s.tile in Region.tile_ids()))
 	for road in board._model.roads:
 		if road.tile in Region.tile_ids(): assert(road.kind == "authored")
 	var footprints := get_tree().get_first_node_in_group("building_footprints")
@@ -61,11 +63,17 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 		{"name": "harbour-medium", "point": Vector2(2640, 5840), "span": board.size.y / 1.1, "pitch": 0.85, "yaw": 0.0},
 		{"name": "harbour-near", "point": Vector2(2640, 5840), "span": 370.0, "pitch": 0.85, "yaw": 0.0},
 		{"name": "harbour-reverse", "point": Vector2(2640, 5840), "span": 370.0, "pitch": 0.70, "yaw": 2.8}])
+	if "--road-rollout" in OS.get_cmdline_user_args():
+		views.clear()
+		for tid in ["tile_4_9", "tile_23_8", "tile_11_17", "tile_22_3"]:
+			for lod in 3:
+				views.append({"name": "%s-lod%d" % [tid, lod], "point": board._model.tiles[tid].center,
+					"span": [board.size.y / 0.24, board.size.y / 1.1, 370.0][lod], "pitch": 0.95, "yaw": 0.0})
 	if "--all-harbours" in OS.get_cmdline_user_args():
 		for s in board._model.standing:
 			if s.has("harbour") and s.tile != "tile_5_10":
 				views.append({"name": "harbour-" + str(s.tile), "point": s.pos, "span": 600.0, "pitch": 0.90, "yaw": 0.0})
-	for crossing in builder.authored_profile.crossings:
+	for crossing in ([] if "--road-rollout" in OS.get_cmdline_user_args() else builder.authored_profile.crossings):
 		var middle: Vector2 = (crossing.a + crossing.b) * 0.5
 		if builder.tile_at(builder.point(middle)) not in Region.tile_ids(): continue
 		views.append({"name": "bridge-" + str(views.size()), "point": middle, "span": 120.0, "pitch": 0.25, "yaw": 2.00})
