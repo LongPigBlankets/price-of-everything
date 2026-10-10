@@ -1730,6 +1730,122 @@ func _test_topbar_ds2_strip() -> void:
 	inst.queue_free()
 	await get_tree().process_frame
 
+func _test_topbar_ds2_rankings_panel() -> void:
+	# The Company Rankings panel in DS2: the Treasury's steel sheet under the panels' lamp, its title raised and the
+	# Close key beside it, the tabs on latching keys, every company a row on a plate of its own with its revenue on
+	# green screens and its movement marked, the player's row lit, the goods on cards with the player's line lit,
+	# white print on the dark plates and dark print on the lit ones, and the panel refilling when the table changes.
+	var Money := preload("res://scripts/ds2/money_figure.gd")
+	var inst: Node = (load("res://scenes/main.tscn") as PackedScene).instantiate()
+	add_child(inst)
+	for _i in 4:
+		await get_tree().process_frame
+	var bar: Control = inst.get_node("UILayer/HUD/TopBar")
+	var turn_was: int = TurnManager.current_turn
+	var league_was: Dictionary = CompanyRankings.export_state()
+	var tab_was: String = bar.get("_rankings_tab")
+	TurnManager.current_turn = maxi(turn_was, int(CompanyRankings.REVEAL_TURN))
+	CompanyRankings.import_state({"player_revenue_history": [100.0, 100.0, 100.0, 100.0, 100.0]})
+	bar.call("_set_rankings_tab", "revenue")
+	bar.call("_open_rankings_panel")
+	for _i in 2:
+		await get_tree().process_frame
+	var rp: Control = bar.get("_rankings_panel")
+	_check(rp != null and rp.name == "RankingsPanel" and rp.visible and rp.theme_type_variation == ""
+		and rp.get_node_or_null("Ds2LampOverlay") != null and rp.find_child("BdpV3Heading", true, false) != null
+		and rp.find_child("RankingsCloseButton", true, false) is BaseButton,
+		"rankings ds2: a steel sheet under the lamp, its title raised and the Close key beside it")
+	var vh: float = rp.get_viewport_rect().size.y
+	_check(is_equal_approx(rp.size.x, float(bar.RANKINGS_PANEL_W)) and rp.global_position == Vector2(16.0, bar.BAR_H + 12.0)
+		and rp.get_global_rect().end.y <= vh - float(bar.RANKINGS_PANEL_BOTTOM) + 1.0,
+		"rankings ds2: docked at the left under the bar, its rows no wider than the sheet, stopping above the bottom menu (%s in %.0f)" % [rp.get_global_rect(), vh])
+	var rev_key: Control = rp.find_child("RankingsTabRevenue", true, false)
+	var goods_key: Control = rp.find_child("RankingsTabGoods", true, false)
+	_check(rev_key != null and goods_key != null and bool(rev_key.get("latched")) and not bool(goods_key.get("latched")),
+		"rankings ds2: Revenue and Goods on latching keys, the tab showing latched")
+	var standings: Array[Dictionary] = CompanyRankings.standings()
+	var rows: Node = rp.find_child("RankingsList", true, false).get("rows")
+	var lit: PackedStringArray = []
+	var wrong: PackedStringArray = []
+	for i in rows.get_child_count():
+		var row: Control = rows.get_child(i)
+		var entry: Dictionary = standings[i] if i < standings.size() else {}
+		if bool(row.get_meta("lit", false)):
+			lit.append(str(row.name))
+		var want_move := "up" if int(entry.get("rank_change", 0)) > 0 else ("down" if int(entry.get("rank_change", 0)) < 0 else "steady")
+		var move: Control = row.find_child("Move", true, false)
+		for key: String in ["Revenue", "Average"]:
+			var cell: Control = row.find_child(key, true, false)
+			var led: Control = cell.find_child("BdpV3Led", true, false) if cell != null else null
+			var parts: Dictionary = Money.screen(float(entry.get("revenue" if key == "Revenue" else "trend_average", -1.0)))
+			if led == null or str(led.call("figure")).strip_edges() != str(parts.figure) or str(cell.get_meta("figure", "")) != str(parts.figure) + str(parts.suffix) \
+					or not (led.get("colour") as Color).is_equal_approx(Color("#5bd180")) or move == null or str(move.get_meta("move", "")) != want_move:
+				wrong.append("%s %s" % [row.name, key])
+	_check(rows.get_child_count() == CompanyRankings.TOTAL_COMPANIES and wrong.is_empty(),
+		"rankings ds2: every company a row, its revenue last turn and 5 turn average on green screens, its movement marked %s" % [wrong])
+	_check(lit == PackedStringArray(["RankRow_player"]), "rankings ds2: only the player's row is lit (%s)" % [lit])
+	var contrast := func() -> PackedStringArray:
+		var bad: PackedStringArray = []
+		for n: Node in rp.find_children("*", "Label", true, false):
+			var l := n as Label
+			if not l.is_visible_in_tree() or l.text.strip_edges() == "":
+				continue
+			var on_lit := false
+			var up := l.get_parent()
+			while up != null and up != rp:
+				if bool(up.get_meta("lit", false)):
+					on_lit = true
+					break
+				up = up.get_parent()
+			var lum := l.get_theme_color("font_color").get_luminance()
+			if (on_lit and lum > 0.2) or (not on_lit and lum < 0.8):
+				bad.append(l.text)
+		return bad
+	var bad_print: PackedStringArray = contrast.call()
+	_check(bad_print.is_empty(), "rankings ds2: white print on the dark plates, dark print on the lit row %s" % [bad_print])
+	# A new table while the panel is open (a resolved turn): it refills, the player now on top.
+	CompanyRankings.import_state({"player_revenue_history": [100.0, 100.0, 100.0, 100.0, 99999.0]})
+	for _i in 2:
+		await get_tree().process_frame
+	rows = rp.find_child("RankingsList", true, false).get("rows")
+	var top_row: Control = rows.get_child(0) if rows.get_child_count() > 0 else null
+	var top_move: Control = top_row.find_child("Move", true, false) if top_row != null else null
+	_check(top_row != null and top_row.name == "RankRow_player" and bool(top_row.get_meta("lit", false))
+		and top_move != null and str(top_move.get_meta("move", "")) == "up",
+		"rankings ds2: the panel refills when the rankings update, the player's lit row climbing to the top")
+	# The Goods tab (the refill built new keys: look them up again).
+	goods_key = rp.find_child("RankingsTabGoods", true, false)
+	goods_key.emit_signal("pressed")
+	for _i in 2:
+		await get_tree().process_frame
+	rev_key = rp.find_child("RankingsTabRevenue", true, false)
+	goods_key = rp.find_child("RankingsTabGoods", true, false)
+	var goods: Array[Dictionary] = CompanyRankings.goods_standings()
+	var cards: Node = rp.find_child("RankingsList", true, false).get("rows")
+	var cards_wrong: PackedStringArray = []
+	for card: Node in cards.get_children():
+		var well: Node = card.find_child("IconWell", true, false)
+		var icon := well.get_parent() as Control if well != null else null
+		var lit_lines: PackedStringArray = []
+		for line: Node in card.find_children("Producer_*", "", true, false):
+			if bool(line.get_meta("lit", false)):
+				lit_lines.append(str(line.name))
+		if icon == null or icon.custom_minimum_size.x < 72.0 or lit_lines != PackedStringArray(["Producer_player"]) \
+				or card.find_child("Quantity", true, false) == null:
+			cards_wrong.append(str(card.name))
+	_check(str(bar.get("_rankings_tab")) == "goods" and bool(goods_key.get("latched")) and not bool(rev_key.get("latched"))
+		and rp.find_child("RankingsPlateGoods", true, false) != null and cards.get_child_count() == goods.size() and cards_wrong.is_empty(),
+		"rankings ds2: the Goods key shows a card a good, its icon in a well at least 72 px, the player's line lit %s" % [cards_wrong.slice(0, 4)])
+	bad_print = contrast.call()
+	_check(bad_print.is_empty(), "rankings ds2: the goods tab's print follows the same contrast %s" % [bad_print.slice(0, 6)])
+	(rp.find_child("RankingsCloseButton", true, false) as BaseButton).pressed.emit()
+	_check(not rp.visible, "rankings ds2: the Close key closes the panel")
+	bar.call("_set_rankings_tab", tab_was)
+	CompanyRankings.import_state(league_was)
+	TurnManager.current_turn = turn_was
+	inst.queue_free()
+	await get_tree().process_frame
+
 func _test_money_figure_format() -> void:
 	# The owner's LED money rule: at most five cells with the point counted, never more than two decimals, K/M/B
 	# printed after (docs/ds2-owner-decisions.md, Digital displays).

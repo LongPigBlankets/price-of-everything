@@ -215,6 +215,7 @@ func _ready() -> void:
 	AdvisorState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
 	Production.turn_processed.connect(func(_s: Dictionary) -> void: _queue_refresh())
 	CompanyRankings.rankings_updated.connect(_queue_refresh)
+	CompanyRankings.rankings_updated.connect(_on_rankings_updated)
 	# The research gate is NOT reset here -- see _research_toasted.
 	TurnManager.turn_advanced.connect(func(_t: int) -> void: _queue_refresh())
 	LoanState.loans_updated.connect(_queue_refresh)
@@ -1726,25 +1727,22 @@ func _fly_rankings(vb: VBoxContainer) -> void:
 	else:
 		_fly_revenue_rankings(vb)
 
+## The tabs as the tile view's latching keys (scripts/ds2/latch_key.gd): the tab showing stays latched down,
+## the other is pressed to show its table.
 func _rankings_tabs() -> Control:
-	var pad := MarginContainer.new()
-	pad.add_theme_constant_override("margin_left", 14)
-	pad.add_theme_constant_override("margin_right", 14)
-	pad.add_theme_constant_override("margin_top", 10)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	pad.add_child(row)
+	row.name = "RankingsTabs"
+	row.add_theme_constant_override("separation", 10)
 	for tab: String in ["revenue", "goods"]:
-		var button := Button.new()
-		button.theme = DS.theme
-		button.text = "Revenue" if tab == "revenue" else "Goods"
-		# Keep both tabs clickable; the primary treatment, rather than a disabled
-		# button, marks the tab currently being shown.
-		button.theme_type_variation = "Primary" if tab == _rankings_tab else ""
-		button.custom_minimum_size = Vector2(110, 30)
-		button.pressed.connect(func() -> void: _set_rankings_tab(tab))
-		row.add_child(button)
-	return pad
+		var key: Control = LatchKey.new()
+		key.name = "RankingsTab%s" % tab.capitalize()
+		key.set("text", "Revenue" if tab == "revenue" else "Goods")
+		key.set("latched", tab == _rankings_tab)
+		key.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		key.custom_minimum_size.x = RANKINGS_TAB_W
+		key.connect("pressed", func() -> void: _set_rankings_tab(tab))
+		row.add_child(key)
+	return row
 
 ## Shows a tab of the Rankings panel; with the panel shut, it opens on that tab next time.
 func _set_rankings_tab(tab: String) -> void:
@@ -1757,12 +1755,24 @@ func _set_rankings_tab(tab: String) -> void:
 
 # ── Rankings panel: the league as a panel of its own ───────────────────────────
 
-## The Rankings panel: docked at the left under the bar, as the Market panel is, closing on Esc. It holds
-## two tables (revenue and goods), in a panel sized to stop above the bottom menu.
+## The Rankings panel: docked at the left under the bar, as the Market panel is, closing on Esc. It is a sheet in
+## the bar's navy steel, as the Treasury is (_ds2_sheet_frame), under the DS2 panels' lamp
+## (scripts/ds2/lamp_overlay.gd): its title raised, Building Detail's Close key beside it, the Revenue and Goods
+## tabs on latching keys, and each table on one of the Treasury's dark plates (_ds2_sub_plate). It is sized to
+## stop above the bottom menu.
 var _rankings_panel: PanelContainer
-const RANKINGS_PANEL_W := 600.0
+const RANKINGS_PANEL_W := 640.0
 ## Room kept below the panel for the bottom menu.
 const RANKINGS_PANEL_BOTTOM := 120.0
+const RANKINGS_TAB_W := 128.0
+## A refill asked for by CompanyRankings.rankings_updated, run once at the end of the frame, and dropped when the
+## panel was filled directly in the meantime.
+var _rankings_refill_queued := false
+
+const LatchKey := preload("res://scripts/ds2/latch_key.gd")
+const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
+const Ds2Parts := preload("res://scripts/ds2/parts.gd")
+const Ds2Scroll := preload("res://scripts/bdp_v3_scroll.gd")
 
 
 func _toggle_rankings_panel() -> void:
@@ -1779,11 +1789,11 @@ func _open_rankings_panel() -> void:
 	if _rankings_panel == null or not is_instance_valid(_rankings_panel):
 		_rankings_panel = PanelContainer.new()
 		_rankings_panel.name = "RankingsPanel"
-		_rankings_panel.theme = DS.theme
-		_rankings_panel.theme_type_variation = "Card"
+		_ds2_sheet_frame(_rankings_panel)
 		_rankings_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 		var host: Control = get_parent().get_node_or_null("HUDContent") as Control
 		(host if host != null else get_parent()).add_child(_rankings_panel)
+		LampOverlay.attach(_rankings_panel)
 		_rankings_panel.visibility_changed.connect(func() -> void:
 			if not _rankings_panel.visible:
 				PanelStack.remove(_rankings_panel)
@@ -1800,32 +1810,44 @@ func _close_rankings_panel() -> void:
 		_rankings_panel.visible = false
 
 
-## Builds the panel's content for the tab showing and fits it between the bar and the bottom menu.
+## A new table (a resolved turn, a loaded game) refills the panel while it is open. The refill waits for the end of
+## the frame, so a burst of updates builds the panel once.
+func _on_rankings_updated() -> void:
+	if _rankings_panel == null or not is_instance_valid(_rankings_panel) or not _rankings_panel.visible:
+		return
+	if not CompanyRankings.available():
+		_close_rankings_panel()
+		return
+	if _rankings_refill_queued:
+		return
+	_rankings_refill_queued = true
+	(func() -> void:
+		if _rankings_refill_queued:
+			_fill_rankings_panel()).call_deferred()
+
+
+## Builds the panel's content for the tab showing and fits it between the bar and the bottom menu. A refill of the
+## same tab keeps the list where the player had scrolled it, and the revenue list scrolls the player's row into view.
 func _fill_rankings_panel() -> void:
+	_rankings_refill_queued = false
+	if _rankings_panel == null or not is_instance_valid(_rankings_panel):
+		return
+	var old_scroll := _rankings_panel.find_child("RankingsScroll", true, false) as ScrollContainer
+	var keep_at := 0
+	if old_scroll != null and str(_rankings_panel.get_meta("tab", "")) == _rankings_tab:
+		keep_at = old_scroll.scroll_vertical
+	var lamp := LampOverlay.find(_rankings_panel)
 	for child: Node in _rankings_panel.get_children():
+		if child == lamp:
+			continue
 		_rankings_panel.remove_child(child)
 		child.queue_free()
+	_rankings_panel.set_meta("tab", _rankings_tab)
 	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 0)
+	vb.name = "RankingsSheet"
+	vb.add_theme_constant_override("separation", 10)
 	_rankings_panel.add_child(vb)
-	var head := HBoxContainer.new()
-	var pad := MarginContainer.new()
-	for side: String in ["left", "right"]:
-		pad.add_theme_constant_override("margin_" + side, 14)
-	pad.add_theme_constant_override("margin_top", 10)
-	pad.add_child(head)
-	var title := Label.new()
-	title.theme_type_variation = "Title"
-	title.text = "Company rankings"
-	head.add_child(title)
-	head.add_child(_flex())
-	var close := Button.new()
-	close.name = "RankingsCloseButton"
-	close.text = "✕"
-	close.focus_mode = Control.FOCUS_NONE
-	close.pressed.connect(_close_rankings_panel)
-	head.add_child(close)
-	vb.add_child(pad)
+	vb.add_child(_ds2_sheet_head("Company rankings", "RankingsCloseButton", _close_rankings_panel))
 	_fly_scroll = null
 	_fly_rankings(vb)
 	var scroll := _fly_scroll
@@ -1837,10 +1859,32 @@ func _fill_rankings_panel() -> void:
 		var top: float = BAR_H + 12.0
 		var room: float = vh - top - RANKINGS_PANEL_BOTTOM
 		_rankings_panel.custom_minimum_size = Vector2(RANKINGS_PANEL_W, 0)
+		if scroll != null and is_instance_valid(scroll) and scroll.get_child_count() > 0:
+			# The list as tall as its rows, or as the room the bar, the bottom menu and the panel's own chrome
+			# leave it, whichever is less.
+			scroll.custom_minimum_size.y = 0.0
+			var chrome: float = _rankings_panel.get_combined_minimum_size().y
+			var rows_h: float = (scroll.get_child(0) as Control).get_combined_minimum_size().y
+			scroll.custom_minimum_size.y = clampf(room - chrome, minf(rows_h, FLY_LIST_MIN_H * 0.5), rows_h)
+			# The column headings keep clear of the rail as the rows do (Ds2Parts.Column).
+			var heads := _rankings_panel.find_child("RankingsHeads", true, false) as MarginContainer
+			if heads != null:
+				heads.add_theme_constant_override("margin_right", _rank_heads_right(scroll))
+			# Where the list was, moved only as far as it takes to keep the player's row in view, so the row can be
+			# found at a glance wherever it stands (the rows are laid out by now; the scroll's own size is not).
+			var at := keep_at
+			var mine := scroll.find_child("RankRow_player", true, false) as Control
+			if mine != null:
+				var row_y: float = mine.position.y + (mine.get_parent() as Control).position.y
+				at = maxi(at, ceili(row_y + mine.size.y - scroll.custom_minimum_size.y))
+				at = mini(at, floori(row_y))
+			if at > 0:
+				scroll.set_deferred("scroll_vertical", at)
+				# Again once the frame's layout has settled, as the scroll's range may still be the old one.
+				get_tree().process_frame.connect(func() -> void:
+					if is_instance_valid(scroll):
+						scroll.scroll_vertical = at, CONNECT_ONE_SHOT)
 		_rankings_panel.size = _rankings_panel.get_combined_minimum_size()
-		if _rankings_panel.size.y > room and scroll != null and is_instance_valid(scroll):
-			scroll.custom_minimum_size.y = maxf(FLY_LIST_MIN_H * 0.5, scroll.custom_minimum_size.y - (_rankings_panel.size.y - room))
-			_rankings_panel.size = _rankings_panel.get_combined_minimum_size()
 		_rankings_panel.global_position = Vector2(16.0, top)
 	place.call_deferred()
 
@@ -1863,8 +1907,9 @@ func _fly_list_height() -> float:
 ## hand back any height the panel overshot the screen by.
 var _fly_scroll: ScrollContainer = null
 
-## A scroller sized by _fly_list_height, with the list inside it. Both rankings tabs use it: the
-## goods tab has always been longer than the screen, and the revenue tab now is too.
+## A scroller sized by _fly_list_height, with the list inside it, on Building Detail's steel rail and rubber grip.
+## Both rankings tabs use it: the goods tab has always been longer than the screen, and the revenue tab now is too.
+## The list keeps the rail's room whether it shows or not (Ds2Parts.Column), so the rows never reflow under it.
 ##
 ## _fly_list_height is only an OPENING BID — it subtracts an ESTIMATE of this panel's chrome,
 ## and an estimate is what left the revenue table hanging off the bottom of a 1440 px screen
@@ -1872,157 +1917,346 @@ var _fly_scroll: ScrollContainer = null
 ## once the panel has a real rect.
 func _fly_list_scroll(vb: VBoxContainer, separation: int) -> VBoxContainer:
 	var scroll := ScrollContainer.new()
+	scroll.name = "RankingsScroll"
 	scroll.custom_minimum_size = Vector2(0, _fly_list_height())
 	_fly_scroll = scroll
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	var list := VBoxContainer.new()
-	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	list.add_theme_constant_override("separation", separation)
-	scroll.add_child(list)
+	Ds2Scroll.apply(scroll, true)
+	var column: MarginContainer = Ds2Parts.Column.new(separation)
+	column.name = "RankingsList"
+	column.set("reserve", true)
+	scroll.add_child(column)
 	vb.add_child(scroll)
-	return list
+	return column.get("rows")
 
 
+# ── The tables ─────────────────────────────────────────────────────────────────
+
+## A row's padding inside its plate, the gap between its columns and between rows, and the rank column's width
+## (the movement mark and the place).
+const RANK_PAD := Vector2(10.0, 7.0)
+const RANK_GAP := 10
+const RANK_ROW_GAP := 6
+const RANK_COL_W := 62.0
+## A producer's line on a good's card: room round its screen inside the lit window.
+const RANK_LINE_PAD := Vector2(8.0, 4.0)
+## The player's row: the turn briefing annunciator's window (layout.json brief_window), lit amber from behind, and
+## the print it carries on a lit window (scripts/briefing_ds2/annunciator.gd).
+const RANK_LIT_PLATE: Texture2D = preload("res://assets/ui/bdp_v3/brief_window_amber.png")
+const RANK_LIT_MARGIN := 8.0
+const RANK_LIT_CORNER := 7.0 + 5.0 + 2.0
+const RANK_LIT_INK := Color("#1e0f02")
+## The darker inks for figures that judge on a light surface (docs/ds2-owner-decisions.md, Everywhere).
+const RANK_LIT_UP := Color("#1d6b3a")
+const RANK_LIT_DOWN := Color("#8f1f19")
+## The goods tab's quantities, on screens a little smaller than the revenue's.
+const RANK_QTY_LED := 0.7
+const RANK_MONEY_HEADS := ["Revenue last turn", "5 turn average"]
+
+
+## The revenue table on one of the Treasury's dark plates: column headings over every company, each on a plate of
+## its own (_ranking_row), its revenue last turn and its 5 turn average on green screens like the Treasury's cash
+## in. The screens are one width down the table, so the £ signs line up.
 func _fly_revenue_rankings(vb: VBoxContainer) -> void:
-	var inner := _fly_pad(vb, 5)
-	var hint := Label.new()
-	hint.theme_type_variation = "Caption"
-	hint.text = "REVENUE LAST TURN AND OVER THE LAST 5 TURNS"
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	inner.add_child(hint)
-	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 10)
-	var rank_head := _mini("RANK", DS.PALETTE.TEXT_DIM, 10)
-	rank_head.custom_minimum_size = Vector2(68, 0)
-	header.add_child(rank_head)
-	var company_head := _mini("COMPANY", DS.PALETTE.TEXT_DIM, 10)
+	var standings: Array[Dictionary] = CompanyRankings.standings()
+	var digits := 1
+	var suffix_room := false
+	for entry: Dictionary in standings:
+		for key: String in ["revenue", "trend_average"]:
+			var parts: Dictionary = MoneyFigure.screen(float(entry.get(key, 0.0)))
+			digits = maxi(digits, MoneyFigure.cells(str(parts.figure)))
+			suffix_room = suffix_room or str(parts.suffix) != ""
+	var money_w := _rank_figure_width(digits, true, suffix_room, DS2_SMALL_LED)
+	for head: String in RANK_MONEY_HEADS:
+		money_w = maxf(money_w, ceilf(Plate.FONT_SEMI.get_string_size(head.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, DS2_CAPTION_PX).x))
+	var plate := _ds2_sub_plate(vb, "RankingsPlateRevenue")
+	var heads := MarginContainer.new()
+	heads.name = "RankingsHeads"
+	heads.add_theme_constant_override("margin_left", roundi(RANK_PAD.x))
+	heads.add_theme_constant_override("margin_right", _rank_heads_right(null))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", RANK_GAP)
+	heads.add_child(row)
+	var rank_head := _ds2_caption("Rank")
+	rank_head.custom_minimum_size.x = RANK_COL_W
+	row.add_child(rank_head)
+	var company_head := _ds2_caption("Company")
 	company_head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(company_head)
-	var revenue_head := _mini("REVENUE", DS.PALETTE.TEXT_DIM, 10)
-	revenue_head.custom_minimum_size = Vector2(112, 0)
-	revenue_head.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	header.add_child(revenue_head)
-	var average_head := _mini("5T AVG", DS.PALETTE.TEXT_DIM, 10)
-	average_head.custom_minimum_size = Vector2(112, 0)
-	average_head.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	header.add_child(average_head)
-	inner.add_child(header)
-	inner.add_child(_fly_sep())
-	# The rows go in a scroller, not in `inner`: twenty of them are taller than the screen.
-	var rows := _fly_list_scroll(vb, 5)
-	var pad := MarginContainer.new()
-	pad.add_theme_constant_override("margin_left", 14)
-	pad.add_theme_constant_override("margin_right", 14)
-	pad.add_theme_constant_override("margin_bottom", 12)
-	pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var stack := VBoxContainer.new()
-	stack.add_theme_constant_override("separation", 5)
-	stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pad.add_child(stack)
-	rows.add_child(pad)
-	for entry: Dictionary in CompanyRankings.standings():
-		stack.add_child(_ranking_row(entry))
+	row.add_child(company_head)
+	for head: String in RANK_MONEY_HEADS:
+		var money_head := _ds2_caption(head)
+		money_head.custom_minimum_size.x = money_w
+		money_head.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		row.add_child(money_head)
+	plate.add_child(heads)
+	var rows := _fly_list_scroll(plate, RANK_ROW_GAP)
+	for entry: Dictionary in standings:
+		rows.add_child(_ranking_row(entry, digits, suffix_room, money_w))
 
+
+## The column headings' right margin: as far in as the rows' figures, past the rail's room and the gutter the list
+## keeps from it, and the row's own padding.
+func _rank_heads_right(scroll: ScrollContainer) -> int:
+	var rail := Ds2Scroll.RAIL.get_width() / Ds2Scroll.TEXELS_PER_PIXEL
+	if scroll != null and scroll.is_inside_tree():
+		rail = scroll.get_v_scroll_bar().get_combined_minimum_size().x
+	return roundi(RANK_PAD.x + Ds2Parts.GUTTER + rail)
+
+
+## The goods table on a dark plate: every good on a plate of its own (_goods_ranking_card), its quantities on
+## screens one width down the table.
 func _fly_goods_rankings(vb: VBoxContainer) -> void:
-	var hint_pad := MarginContainer.new()
-	hint_pad.add_theme_constant_override("margin_left", 14)
-	hint_pad.add_theme_constant_override("margin_right", 14)
-	hint_pad.add_theme_constant_override("margin_top", 4)
-	hint_pad.add_theme_constant_override("margin_bottom", 8)
-	var hint := Label.new()
-	hint.theme_type_variation = "Caption"
-	hint.text = "THE TOP 3 PRODUCERS OF EACH GOOD AND YOUR OUTPUT LAST TURN. ONLY YOU MAKE APEX GOODS."
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint_pad.add_child(hint)
-	vb.add_child(hint_pad)
-	var list := _fly_list_scroll(vb, 8)
-	for good: Dictionary in CompanyRankings.goods_standings():
-		list.add_child(_goods_ranking_card(good))
+	var goods: Array[Dictionary] = CompanyRankings.goods_standings()
+	var digits := 1
+	var suffix_room := false
+	for good: Dictionary in goods:
+		for producer: Dictionary in (good.get("producers", []) as Array):
+			var parts: Dictionary = MoneyFigure.screen(float(producer.get("quantity", 0)), 0)
+			digits = maxi(digits, MoneyFigure.cells(str(parts.figure)))
+			suffix_room = suffix_room or str(parts.suffix) != ""
+	# Two set lines rather than a wrapping one: a wrapping label measures its height at the width it last had,
+	# which before the first layout is none, and the list's height is fitted from that measure.
+	var note := _ds2_text("The top 3 producers of each good and your output last turn.\nOnly you make apex goods.", DS2_BODY_PX)
+	note.name = "RankingsGoodsNote"
+	vb.add_child(note)
+	var plate := _ds2_sub_plate(vb, "RankingsPlateGoods")
+	var list := _fly_list_scroll(plate, RANK_ROW_GAP)
+	for good: Dictionary in goods:
+		list.add_child(_goods_ranking_card(good, digits, suffix_room))
 
-## One good: its icon, its name, and the podium with the player under it.
+## One good on a raised module: its icon in Building Detail's well, its name, and the podium with the player under
+## it, the player's line lit as the player's row is on the revenue table.
 ##
 ## The card has NO fixed height. It carries three rows when the player is on the podium and four
 ## when they are not, and it is meant to grow by exactly that one row — a fixed height would
 ## either clip the fourth or leave a hole under the third. What IS pinned is the floor: the
-## 60 px icon, so a three-row card cannot shrink below its own artwork.
-const GOOD_CARD_ICON := 60
+## good's icon, so a short card cannot shrink below its own artwork. The icon is never drawn smaller than a good's
+## icon is anywhere in DS2 (scripts/ds2/metrics.gd GOOD_ICON).
+const GOOD_CARD_ICON := 72
 const GOOD_RANK_W := 42.0
 
-func _goods_ranking_card(good: Dictionary) -> Control:
-	var card := PanelContainer.new()
-	card.theme_type_variation = "Card"
+func _goods_ranking_card(good: Dictionary, digits: int = 3, suffix_room: bool = false) -> Control:
+	var gid := str(good.get("good_id", ""))
+	var card := _rank_plate("GoodRank_%s" % gid, "module", Ds2Parts.PAD)
 	var body := HBoxContainer.new()
 	body.add_theme_constant_override("separation", 12)
+	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(body)
-	# Unframed: the plate-and-bevel treatment is the market shelf's, and a scrolling column of it
-	# read as chrome. Same art, same cream, rounded corners, no rim.
-	body.add_child(DS.good_icon_plain(
-		str(good.get("good_id", "")), str(good.get("internal_name", "")), GOOD_CARD_ICON))
+	var icon := Ds2Parts.good_in_well(gid, -1, "", true, GOOD_CARD_ICON)
+	icon.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	body.add_child(icon)
 	var details := VBoxContainer.new()
 	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	details.add_theme_constant_override("separation", 4)
+	details.add_theme_constant_override("separation", 3)
+	details.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	body.add_child(details)
-	var name := Label.new()
-	name.theme_type_variation = "BuildingName"
-	name.text = str(good.get("display_name", ""))
-	details.add_child(name)
+	var title := _rank_text(str(good.get("display_name", "")), false, true)
+	title.name = "GoodName"
+	details.add_child(title)
 	for producer: Dictionary in (good.get("producers", []) as Array):
+		# The player's own rank is the one number on the card worth finding at a glance, so their line is lit. Rank
+		# is measured against the WHOLE field, which is why it can read 7th on a card that lists four rows.
 		var mine: bool = bool(producer.get("is_player", false))
-		var producer_row := HBoxContainer.new()
-		# The player's own rank is the one number on the card worth finding at a glance, so it is
-		# cream where the rivals' are quiet. Rank is measured against the WHOLE field, which is
-		# why it can read 7th on a card that lists four rows.
-		var rank := _mini(_ordinal(int(producer.get("rank", 0))),
-			C_CREAM if mine else DS.PALETTE.TEXT_DIM, 12)
-		rank.custom_minimum_size = Vector2(GOOD_RANK_W, 0)
-		producer_row.add_child(rank)
-		var producer_name := Label.new()
-		producer_name.theme_type_variation = "Body"
-		producer_name.text = str(producer.get("name", ""))
-		producer_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		if mine:
-			producer_name.add_theme_color_override("font_color", C_CREAM)
-		producer_row.add_child(producer_name)
-		var quantity := Label.new()
-		quantity.theme_type_variation = "Numeric"
-		quantity.text = "(%d)" % int(producer.get("quantity", 0))
-		if mine:
-			quantity.add_theme_color_override("font_color", C_CREAM)
-		producer_row.add_child(quantity)
-		details.add_child(producer_row)
+		var line := _rank_plate("Producer_%s" % str(producer.get("id", "")), "lit" if mine else "bare", RANK_LINE_PAD)
+		var hb := HBoxContainer.new()
+		hb.add_theme_constant_override("separation", RANK_GAP)
+		hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		line.add_child(hb)
+		var rank := _rank_text(_ordinal(int(producer.get("rank", 0))), mine, true)
+		rank.name = "Place"
+		rank.custom_minimum_size.x = GOOD_RANK_W
+		hb.add_child(rank)
+		var who := _rank_text(str(producer.get("name", "")), mine, false)
+		who.name = "Company"
+		who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		who.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		who.custom_minimum_size.x = 40.0
+		hb.add_child(who)
+		var qty := _rank_figure(float(producer.get("quantity", 0)), 0, false, digits, suffix_room, mine, RANK_QTY_LED)
+		qty.name = "Quantity"
+		hb.add_child(qty)
+		details.add_child(line)
 	return card
 
-func _ranking_row(entry: Dictionary) -> Control:
-	var card := PanelContainer.new()
-	card.theme_type_variation = "Outlined" if bool(entry.get("is_player", false)) else "Card"
-	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+## One company in the revenue table, on a plate of its own: Building Detail's raised black module for a rival, the
+## annunciator's window lit amber for the player, so the player's row reads at a glance wherever it stands. The
+## movement mark and the place, the name, then revenue last turn and its 5 turn average on green screens, each
+## `money_w` wide and padded to `digits` cells.
+func _ranking_row(entry: Dictionary, digits: int = 5, suffix_room: bool = false, money_w: float = 0.0) -> Control:
+	var mine := bool(entry.get("is_player", false))
+	var change := int(entry.get("rank_change", 0))
+	var plate := _rank_plate("RankRow_%s" % str(entry.get("id", "")), "lit" if mine else "module", RANK_PAD)
+	plate.set_meta("rank", int(entry.get("rank", 0)))
+	plate.tooltip_text = _rank_move_words(change)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	card.add_child(row)
-	var rank := Label.new()
-	rank.theme_type_variation = "Numeric"
-	rank.text = "%s %s" % [_ranking_arrow(int(entry.get("rank_change", 0))), _ordinal(int(entry.get("rank", 0)))]
-	rank.custom_minimum_size = Vector2(68, 0)
-	row.add_child(rank)
-	var company := Label.new()
-	company.theme_type_variation = "Body"
-	company.text = str(entry.get("name", ""))
+	row.add_theme_constant_override("separation", RANK_GAP)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate.add_child(row)
+	var rank_cell := HBoxContainer.new()
+	rank_cell.name = "Rank"
+	rank_cell.add_theme_constant_override("separation", 6)
+	rank_cell.custom_minimum_size.x = RANK_COL_W
+	rank_cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rank_cell.add_child(_RankMark.new(change, mine))
+	var place := _rank_text(_ordinal(int(entry.get("rank", 0))), mine, true)
+	place.name = "Place"
+	rank_cell.add_child(place)
+	row.add_child(rank_cell)
+	# The name is the row's own title, so it is set semibold (the text standard), as the place is.
+	var company := _rank_text(str(entry.get("name", "")), mine, true)
+	company.name = "Company"
 	company.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	company.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	company.custom_minimum_size.x = 40.0
 	row.add_child(company)
-	var revenue := Label.new()
-	revenue.theme_type_variation = "Numeric"
-	revenue.text = "%s / turn" % _money_text(float(entry.get("revenue", 0.0)))
-	revenue.custom_minimum_size = Vector2(112, 0)
-	revenue.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	row.add_child(revenue)
-	var average := Label.new()
-	average.theme_type_variation = "Numeric"
-	average.text = "%s / turn" % _money_text(float(entry.get("trend_average", 0.0)))
-	average.custom_minimum_size = Vector2(112, 0)
-	average.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	row.add_child(average)
-	return card
+	for key: String in ["revenue", "trend_average"]:
+		var cell := _rank_figure(float(entry.get(key, 0.0)), 2, true, digits, suffix_room, mine, DS2_SMALL_LED)
+		cell.name = "Revenue" if key == "revenue" else "Average"
+		cell.custom_minimum_size.x = money_w
+		row.add_child(cell)
+	return plate
+
+
+## What a row's movement mark means, for its hover.
+static func _rank_move_words(change: int) -> String:
+	if change > 0:
+		return "Up %d %s since last turn." % [change, "place" if change == 1 else "places"]
+	if change < 0:
+		return "Down %d %s since last turn." % [-change, "place" if change == -1 else "places"]
+	return "Same place as last turn."
+
+
+## The plate a row of the tables sits on, its content inset by `pad`. `surface` "module" is Building Detail's raised
+## black plastic module (its diagnostics' rows); "lit" is the briefing annunciator's window lit amber from behind;
+## "bare" draws nothing, so a line keeps the lit line's insets and its columns line up with it.
+func _rank_plate(plate_name: String, surface: String, pad: Vector2) -> PanelContainer:
+	var plate := PanelContainer.new()
+	plate.name = plate_name
+	var inset := StyleBoxEmpty.new()
+	inset.content_margin_left = pad.x
+	inset.content_margin_right = pad.x
+	inset.content_margin_top = pad.y
+	inset.content_margin_bottom = pad.y
+	plate.add_theme_stylebox_override("panel", inset)
+	plate.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	# PASS: the wheel still reaches the list's scroll over a row.
+	plate.mouse_filter = Control.MOUSE_FILTER_PASS
+	plate.set_meta("lit", surface == "lit")
+	if surface == "bare":
+		return plate
+	plate.draw.connect(func() -> void:
+		var at := Rect2(Vector2.ZERO, plate.size)
+		if surface == "lit":
+			Nine.paint(plate, RANK_LIT_PLATE, at.grow(RANK_LIT_MARGIN / 1.875), (RANK_LIT_MARGIN + RANK_LIT_CORNER) * 2.0 / 1.875)
+		else:
+			Nine.paint(plate, Ds2Parts.MODULE, at.grow(Ds2Parts.MODULE_MARGIN), Ds2Parts.MODULE_CORNER))
+	plate.resized.connect(plate.queue_redraw)
+	return plate
+
+
+## Print on a row: white with the embossed shadow on the dark plates, and on the lit plate the annunciator's dark
+## print with a faint light shadow (DS2 rule 3: white on anything dark, dark on anything light). `bold` sets it
+## semibold, as a row's own title.
+func _rank_text(text: String, lit: bool, bold: bool) -> Label:
+	var l := _ds2_text(text, DS2_BODY_PX)
+	if bold:
+		l.add_theme_font_override("font", DS2_BODY_BOLD)
+	_rank_ink(l, lit)
+	return l
+
+
+func _rank_ink(l: Label, lit: bool) -> void:
+	if not lit:
+		return
+	l.add_theme_color_override("font_color", RANK_LIT_INK)
+	l.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.3))
+	l.add_theme_constant_override("shadow_offset_x", 0)
+	l.add_theme_constant_override("shadow_offset_y", 1)
+
+
+## A figure on an LED screen at `k` of its size, by the owner's screen rule (MoneyFigure.screen, `decimals` at most):
+## the £ printed before it for money, the screen padded to `digits` cells, and the K or M printed after it in a slot
+## every screen of the table keeps (`suffix_room`), so the screens are one width and line up. Its print is white
+## on a dark plate and dark on the lit one; the digits are green on both.
+func _rank_figure(value: float, decimals: int, money: bool, digits: int, suffix_room: bool, lit: bool, k: float) -> HBoxContainer:
+	var parts: Dictionary = MoneyFigure.screen(value, decimals)
+	var figure := str(parts.figure)
+	var hb := HBoxContainer.new()
+	hb.alignment = BoxContainer.ALIGNMENT_END
+	hb.add_theme_constant_override("separation", 3)
+	hb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hb.set_meta("figure", figure + str(parts.suffix))
+	var print_px := roundi(DS2_POUND_PX * k)
+	if money:
+		var pound := _ds2_caption("£")
+		pound.add_theme_font_size_override("font_size", print_px)
+		_rank_ink(pound, lit)
+		hb.add_child(pound)
+	var led: Control = Led.new()
+	led.call("set_figure", " ".repeat(maxi(0, digits - MoneyFigure.cells(figure))) + figure, DS2_LED_GOOD)
+	var holder := Control.new()
+	holder.name = "Screen"
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	led.scale = Vector2.ONE * k
+	holder.add_child(led)
+	holder.custom_minimum_size = (led.get_combined_minimum_size() * k).ceil()
+	led.size = led.get_combined_minimum_size()
+	hb.add_child(holder)
+	if suffix_room:
+		var suffix := _ds2_caption(str(parts.suffix))
+		suffix.name = "Suffix"
+		suffix.add_theme_font_size_override("font_size", print_px)
+		suffix.custom_minimum_size.x = ceilf(Plate.FONT_SEMI.get_string_size("M", HORIZONTAL_ALIGNMENT_LEFT, -1, print_px).x)
+		_rank_ink(suffix, lit)
+		hb.add_child(suffix)
+	return hb
+
+
+## How wide _rank_figure is for `digits` cells, to set its column's width before any is built.
+func _rank_figure_width(digits: int, money: bool, suffix_room: bool, k: float) -> float:
+	var print_px := roundi(DS2_POUND_PX * k)
+	var w := ceilf(Led.width_for_cells(digits) * k)
+	if money:
+		w += ceilf(Plate.FONT_SEMI.get_string_size("£", HORIZONTAL_ALIGNMENT_LEFT, -1, print_px).x) + 3.0
+	if suffix_room:
+		w += ceilf(Plate.FONT_SEMI.get_string_size("M", HORIZONTAL_ALIGNMENT_LEFT, -1, print_px).x) + 3.0
+	return w
+
+
+## Which way a company moved in the table since last turn, drawn rather than typed (a font's arrows are missing on
+## some machines), as the transport panel marks a stockpile: an arrow up when it climbed, down when it fell, a
+## short thick line when it held its place. Green, red and white on the dark plates; the darker inks on the lit one.
+class _RankMark extends Control:
+	var change := 0
+	var ink := Color.WHITE
+
+	func _init(moved: int, lit: bool) -> void:
+		change = moved
+		name = "Move"
+		set_meta("move", "up" if moved > 0 else ("down" if moved < 0 else "steady"))
+		custom_minimum_size = Vector2(14, 12)
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if moved > 0:
+			ink = RANK_LIT_UP if lit else DS.PALETTE["OK"]
+		elif moved < 0:
+			ink = RANK_LIT_DOWN if lit else DS.PALETTE["DANGER"]
+		else:
+			ink = RANK_LIT_INK if lit else DS.PALETTE["TEXT"]
+
+	func _draw() -> void:
+		var w := size.x
+		var h := size.y
+		if change > 0:
+			draw_colored_polygon(PackedVector2Array([Vector2(1, h - 1), Vector2(w - 1, h - 1), Vector2(w * 0.5, 1)]), ink)
+		elif change < 0:
+			draw_colored_polygon(PackedVector2Array([Vector2(1, 1), Vector2(w - 1, 1), Vector2(w * 0.5, h - 1)]), ink)
+		else:
+			draw_rect(Rect2(2, h * 0.5 - 1.5, w - 4, 3.0), ink)
+
 
 # ── The steel sheets (Treasury, Power) ──────────────────────────────────────────
 
@@ -2039,8 +2273,9 @@ func _ds2_sheet_frame(panel: PanelContainer) -> void:
 			(DS2_SHEET_MARGIN + DS2_SHEET_CORNER) * 2.0 / 1.875))
 
 
-## The sheet's head: its name in raised lettering and Building Detail's close key.
-func _ds2_sheet_head(title: String) -> Control:
+## The sheet's head: its name in raised lettering and Building Detail's close key (`close_name`, closing the
+## flyout unless `on_close` is given: the Rankings panel's closes the panel).
+func _ds2_sheet_head(title: String, close_name: String = "FlyCloseKey", on_close: Callable = Callable()) -> Control:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 8)
 	if Heading.can_show(title.to_upper()):
@@ -2051,8 +2286,8 @@ func _ds2_sheet_head(title: String) -> Control:
 		head.add_child(_ds2_text(title.to_upper(), 16))
 	head.add_child(_flex())
 	var close: TextureButton = SmallKey.make("close", 26.0)
-	close.name = "FlyCloseKey"
-	close.pressed.connect(_close_fly)
+	close.name = close_name
+	close.pressed.connect(on_close if on_close.is_valid() else _close_fly)
 	head.add_child(close)
 	var wrap := VBoxContainer.new()
 	wrap.add_theme_constant_override("separation", 8)

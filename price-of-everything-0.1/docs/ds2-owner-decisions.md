@@ -31,6 +31,7 @@ The rulings the owner made while the top bar, the updates dock and the tile view
   - Treasury: "Loan capacity", not "borrowing room".
   - Victory: "To win, score as many points as you can across the five tracks."
 - **Flyouts**: Treasury and Power are **sheets in the bar's navy steel** (no trim). Treasury's figures sit in **three all-dark plates** (cash; cash in and costs; loans), no light edge, Building Detail's silver screws set in near each corner; its keys' labels centred. Power is two slide switches and a key. **Victory and Council open their full panels**; **Rankings is its own panel**. The mission's flyout goes to the dock with the mission.
+- **Rankings in DS2** (7 October 2026): the owner asked for the league table in DS2, matching the Treasury sheet. First build, awaiting review: the Treasury's sheet, plates and green screens, the tabs on latching keys, every company a row on a raised module with its movement drawn, **the player's row lit amber** (the annunciator's window) so it reads as it climbs; the goods tab the same way. See `docs/top-bar-ds2-plan.md`, Phase 5.
 
 ## Updates dock (bottom left)
 
