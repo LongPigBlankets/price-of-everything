@@ -173,7 +173,7 @@ func _build_ui() -> void:
 
 	var hint := Label.new()
 	hint.name = "Hint"
-	hint.text = "SUPPLY CHAIN  ·  drag to pan · right-drag to orbit · scroll to zoom · click terrain for tile · Shift-click through buildings · Tab to return"
+	hint.text = "SUPPLY CHAIN  ·  drag to pan · middle-drag / hold 0 + trackpad pan to orbit · scroll / pinch to zoom · Shift-click for tile · Tab to return"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hint.theme_type_variation = &"Caption"
@@ -324,6 +324,8 @@ func _on_tile_picked(tile_id: String) -> void:
 
 func _on_building_picked(iid: String) -> void:
 	if not _graph_world.has_building(iid):
+		# Regional NPCs have a real building panel but no player supply graph.
+		if not BuildingState.get_building(iid).is_empty(): MatchState.focus_building_requested.emit(iid)
 		return
 	_show_board(false)
 	_graph_world.call("focus_on", iid, true)
@@ -342,6 +344,7 @@ func _enter() -> void:
 	move_to_front()
 	_hide_world()
 	_set_camera_blocked(true)
+	_board.open_at_map_camera()
 	PanelStack.push(self)
 	# Built in the background and nothing changed since: open on it as it is, held back until any
 	# picture still baking is done.

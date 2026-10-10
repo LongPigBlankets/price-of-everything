@@ -5,13 +5,14 @@ const SCHEMA := 2
 const BUNDLED := "res://assets/supply_chain_3d/bakes"
 ## Bump the relevant revision when world_builder changes generated data. Runtime
 ## visibility/loading edits must not invalidate unrelated terrain artwork.
-const REVISIONS := {"terrain": 2, "roads": 1, "scenery": 1, "continent": 2, "detail": 1}
+const REVISIONS := {"terrain": 2, "roads": 1, "scenery": 1, "continent": 2, "detail": 1, "layout": 1}
 const SOURCES := {
-	"terrain": ["terrain_paint.gd", "water_art.gd", "geometry.gd", "detail.gd", "shadow_art.gd", "relief.gd"],
-	"roads": ["road_surface.gd", "geometry.gd"],
-	"scenery": ["tree_layout.gd", "shadow_art.gd"],
+	"terrain": ["coast.gd", "terrain_paint.gd", "water_art.gd", "geometry.gd", "detail.gd", "shadow_art.gd", "relief.gd"],
+	"roads": ["road_surface.gd", "geometry.gd", "authored_region.gd", "authored_road_profile.gd"],
+	"scenery": ["harbour.gd", "tree_layout.gd", "shadow_art.gd"],
 	"continent": ["geometry.gd"],
 	"detail": ["local_detail.gd", "geometry.gd"],
+	"layout": ["layout_queries.gd", "../empire_board_streets.gd"],
 }
 const SHARED := ["empire_board.gd", "empire_board_ground.gd", "empire_board_relief.gd", "empire_board_model.gd"]
 const MAX_BYTES := 2 * 1024 * 1024 * 1024
@@ -20,6 +21,7 @@ var directory := "user://supply_chain_3d_bakes"
 var bundled_directory := BUNDLED
 var enabled := DisplayServer.get_name() != "headless"
 var hits := 0
+var bundled_hits := 0
 var misses := 0
 var writes := 0
 var defer_trim := false
@@ -110,6 +112,7 @@ func read(key: String) -> Dictionary:
 		var bake := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_REUSE) as Data
 		if bake != null and bake.schema == SCHEMA and bake.key == key and not bake.data.is_empty():
 			hits += 1
+			if root == bundled_directory: bundled_hits += 1
 			return bake.data
 	misses += 1
 	return {}

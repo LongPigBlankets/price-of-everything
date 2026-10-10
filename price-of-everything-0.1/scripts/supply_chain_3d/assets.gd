@@ -47,6 +47,18 @@ static func dimensions(key: String) -> Vector3:
 	var data: Dictionary = _manifest.get(key, {})
 	return Vector3(float(data.get("width", 1.0)), float(data.get("height", 0.65)), float(data.get("depth", 1.0)))
 
+static func harbour_for(key: String) -> Dictionary:
+	return _manifest.get(key, {}).get("harbour", {})
+
+static func component_for(key: String) -> Dictionary:
+	return _manifest.get(key, {}).get("component", {})
+
+static func cable_anchors(key: String) -> PackedVector3Array:
+	var points := PackedVector3Array()
+	for xyz in _manifest.get(key, {}).get("cable_anchors", []):
+		points.append(Vector3(xyz[0], xyz[1], xyz[2]))
+	return points
+
 static func contour_for(key: String) -> Mesh:
 	if key == "" or not bool(_manifest.get(key, {}).get("contour", false)): return null
 	if _contour == null:

@@ -16,7 +16,11 @@ varying flat vec2 world_anchor;
 void vertex() {
  world_anchor = MODEL_MATRIX[3].xz;
  vec3 direction = normalize(INV_VIEW_MATRIX[2].xyz);
- float yaw = mod(atan(direction.x, direction.z) + TAU, TAU);
+ // Pylons turn their crossarms across the line. Select the atlas view relative
+ // to that fixed world orientation, while the card still faces the camera.
+ vec3 local_direction = vec3(dot(direction, normalize(MODEL_MATRIX[0].xyz)),
+   dot(direction, normalize(MODEL_MATRIX[1].xyz)), dot(direction, normalize(MODEL_MATRIX[2].xyz)));
+ float yaw = mod(atan(local_direction.x, local_direction.z) + TAU, TAU);
  float pitch = asin(clamp(direction.y, -1.0, 1.0));
  frame_index = vec2(mod(floor(yaw / TAU * atlas_grid.x + 0.5), atlas_grid.x),
    clamp(floor((pitch - 0.30) / (1.35 - 0.30) * (atlas_grid.y - 1.0) + 0.5), 0.0, atlas_grid.y - 1.0));
