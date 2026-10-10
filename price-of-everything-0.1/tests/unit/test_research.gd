@@ -1353,7 +1353,24 @@ func _test_research_ds2_panel() -> void:
 		and not (sheet.get("sheet") as Rect2).intersects((sheet.get("hole") as Rect2)),
 		"research ds2: resting on a drawing shows the detail sheet with the full reward, clear of the drawing")
 	board_ref.call("_on_card_hover", coal, false)
+	_check(sheet != null and sheet.visible, "research ds2: the detail sheet waits a moment for the pointer to reach it")
+	await get_tree().create_timer(0.5).timeout
 	_check(sheet != null and not sheet.visible, "research ds2: leaving the drawing hides the detail sheet")
+	# Each prerequisite on the sheet is a link to its own drawing.
+	var reservoir: Control = view.call("card_for", "Reservoir Stimulation")
+	if reservoir != null:
+		view.call("show_detail", reservoir)
+		await get_tree().process_frame
+		sheet.queue_redraw()
+		await get_tree().process_frame
+		var links: Array = sheet.call("links")
+		_check(links.size() == 1 and str(links[0]["title"]) == "Microseismic Monitoring"
+			and (sheet.get("sheet") as Rect2).encloses(links[0]["rect"] as Rect2),
+			"research ds2: a prerequisite on the detail sheet is a link (%s)" % str(links))
+		sheet.emit_signal("link_pressed", "Microseismic Monitoring")
+		_check(sheet.visible and str((sheet.get("data") as Dictionary).get("title", "")) == "Microseismic Monitoring",
+			"research ds2: following a prerequisite's link shows its drawing")
+		view.call("_hide_detail")
 	var notices := _ds2_notices(view)
 	_check(notices.has("Rank II closed") and notices.has("Rank III closed"),
 		"research ds2: closed ranks sit behind a grille with their notice (%s)" % str(notices))

@@ -48,6 +48,11 @@ const PLACEHOLDER := "Search research by name or reward"
 const OLD_PRINT := Color("#f6eedc")
 ## How long the pointer rests on a drawing before the detail sheet shows, so a sweep across the board does not flicker.
 const DETAIL_DELAY := 0.25
+## While a drawing is already shown, how long the pointer rests on another before it takes over, so the pointer
+## can cross the board to the shown drawing.
+const DETAIL_SWITCH_DELAY := 0.5
+## How long the detail sheet stays after the pointer leaves its drawing, for the pointer to reach the sheet.
+const DETAIL_GRACE := 0.35
 
 var _host: Control
 var _search: LineEdit
@@ -131,6 +136,8 @@ func _ready() -> void:
 	strip.add_child(_readout_screen())
 	right.add_child(_board_frame())
 	_detail = DetailSheet.new()
+	_detail.connect("link_pressed", open_detail_for)
+	_detail.connect("pointer_left", _hide_detail_later)
 	add_child(_detail)
 	resized.connect(_size_chest)
 	_size_chest()
@@ -655,24 +662,61 @@ func _on_card_hover(card: Control, on: bool) -> void:
 		_show_readout(card)
 		_detail_wait += 1
 		var wait := _detail_wait
-		get_tree().create_timer(DETAIL_DELAY).timeout.connect(func() -> void:
+		var shown := _detail != null and _detail.visible and _detail_for != card
+		get_tree().create_timer(DETAIL_SWITCH_DELAY if shown else DETAIL_DELAY).timeout.connect(func() -> void:
 			if wait == _detail_wait and _hovered == card and is_instance_valid(card) and card.is_visible_in_tree():
 				show_detail(card))
 	elif _hovered == card:
 		_hovered = null
 		_show_readout(null)
-		_hide_detail()
+		_hide_detail_later()
 
 
-## Shows `card`'s research large, the panel dimmed round the card.
-func show_detail(card: Control) -> void:
+## Hides the detail sheet after a moment unless the pointer has reached it or rests on a drawing.
+func _hide_detail_later() -> void:
+	if _detail == null or not _detail.visible:
+		_detail_wait += 1
+		return
+	var shown_for := _detail_for
+	get_tree().create_timer(DETAIL_GRACE).timeout.connect(func() -> void:
+		if _detail_for == shown_for and _hovered == null and not bool(_detail.call("pointer_inside")):
+			_hide_detail())
+
+
+## Shows `card`'s research large, the panel dimmed round the card. `keep_side` keeps the sheet where it is.
+func show_detail(card: Control, keep_side := false) -> void:
 	if _detail == null or card == null:
 		return
 	_detail_for = card
 	var r := card.get_global_rect()
 	var local := Rect2(r.position - get_global_rect().position, r.size)
 	var top := _view.get_global_rect().position.y - get_global_rect().position.y - 96.0
-	_detail.call("show_for", _detail_data(card), local, maxf(top, 60.0))
+	_detail.call("show_for", _detail_data(card), local, maxf(top, 60.0), keep_side)
+
+
+## Shows `title`'s drawing large, opening its drawer and bringing it into view first, as a prerequisite's link does.
+func open_detail_for(title: String) -> void:
+	if _host == null:
+		return
+	var card := card_for(title)
+	if card == null:
+		var category := ""
+		for r: Dictionary in _host.get("_unlock_rows"):
+			if str(r.get("title", "")) == title:
+				category = str(r.get("category", ""))
+				break
+		if category == "":
+			return
+		if _query != "":
+			_host.call("open_with_search", "")
+		_host.call("select_category", category)
+		card = card_for(title)
+		if card == null:
+			return
+	_view.call("ensure_visible", card)
+	_hovered = null
+	_show_readout(card)
+	show_detail(card, true)
 
 
 func _hide_detail() -> void:
