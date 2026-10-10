@@ -9,6 +9,7 @@ static var _contours: Dictionary = {}
 static var _trees: Dictionary = {}
 static var _lit: Dictionary = {}
 static var _meshes: Dictionary = {}
+static var _picking: Dictionary = {}
 static var _manifest: Dictionary = {}
 
 static func key_for(name: String, level: int) -> String:
@@ -103,3 +104,19 @@ static func lit_material(curtain_wall: bool = false) -> ShaderMaterial:
 		material.set_shader_parameter("curtain_wall", curtain_wall)
 		_lit[curtain_wall] = material
 	return _lit[curtain_wall]
+
+static func print_material() -> ShaderMaterial:
+	if _print == null:
+		_print = ShaderMaterial.new()
+		_print.shader = PrintShader
+	return _print
+
+static func picking_shape(key: String) -> Shape3D:
+	if key == "": return null
+	if not _picking.has(key):
+		var path := DIRECTORY + "picking/" + key + ".res"
+		if ResourceLoader.exists(path): _picking[key] = load(path)
+		else:
+			var mesh := mesh_for(key)
+			if mesh != null: _picking[key] = mesh.create_trimesh_shape()
+	return _picking.get(key)

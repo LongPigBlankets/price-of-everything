@@ -3,16 +3,22 @@ Run from any directory: blender --background --factory-startup --python <this fi
 Only writes assets/supply_chain_3d; never changes sprite builders or regular-map assets.
 The largest footprint of a family's levels sets a shared scale, preserving upgrade sizes.
 """
-import bpy, json, pathlib, sys, math
+import bpy, json, pathlib, sys, math, os
 from mathutils import Vector
-ROOT = pathlib.Path(__file__).resolve().parents[3]
-KIT = ROOT / '.claude/skills/blender-building-sprites'
-OUT = ROOT / 'price-of-everything-0.1/assets/supply_chain_3d'
+ROOT = pathlib.Path(os.environ.get('POE_PROJECT_ROOT', str(pathlib.Path(__file__).resolve().parents[3])))
+KIT = pathlib.Path(os.environ.get('POE_SPRITE_KIT', str(ROOT / '.claude/skills/blender-building-sprites')))
+OUT = pathlib.Path(os.environ.get('POE_MODEL_OUTPUT', str(ROOT / 'price-of-everything-0.1/assets/supply_chain_3d')))
 OUT.mkdir(parents=True, exist_ok=True)
 ns_map = {'__name__': 'builder_catalog', '__file__': str(KIT/'bake_sprite.py')}
 exec(compile((KIT/'bake_sprite.py').read_text(), str(KIT/'bake_sprite.py'), 'exec'), ns_map)
 specs = dict(ns_map['BUILDINGS'])
 specs['tree'] = dict(file='tree_builder.py', fn='build_tree', col='BLDG_tree', levels=(1, 2, 3))
+# The detailed asset pipeline can export a frozen reviewed builder revision. Existing
+# families continue to use their original source and exact export path.
+DETAIL_SOURCE = pathlib.Path(os.environ.get('POE_DETAIL_SOURCE', str(ROOT / 'price-of-everything-0.1/tools/building_assets')))
+for family in ('farm', 'water_pump', 'new_forest', 'old_forest', 'desal', 'oil_well', 'fracking_oil_well'):
+    specs[family] = dict(file=str(DETAIL_SOURCE / 'builders.py'), fn='build_' + family,
+                        col='BLDG_' + family, levels=(1, 2, 3), detailed=True, outer_contour=False)
 manifest_path = OUT / 'manifest.json'
 manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
 # Some builders resolve helper kits relative to Blender's --python argument.
@@ -30,6 +36,8 @@ for name, spec in specs.items():
             if ob.name not in ('Camera', 'Light'): bpy.data.objects.remove(ob, do_unlink=True)
         ns = {'__file__':str(KIT/spec['file'])}
         exec(compile((KIT/'sprite_kit.py').read_text(), str(KIT/'sprite_kit.py'), 'exec'), ns)
+        if spec.get('detailed'):
+            exec(compile((KIT/'props_kit.py').read_text(), str(KIT/'props_kit.py'), 'exec'), ns)
         exec(compile((KIT/spec['file']).read_text(), str(KIT/spec['file']), 'exec'), ns)
         ns[spec['fn']](level) if level else ns[spec['fn']]()
         col = bpy.data.collections[spec['col']]
@@ -72,7 +80,7 @@ for name, spec in specs.items():
             # lattice/equipment retain the kit's thinner ink hierarchy.
             scale = ob.matrix_world.to_scale()
             thickness = min((max(v.co[i] for v in me.vertices) - min(v.co[i] for v in me.vertices)) * abs(scale[i]) for i in range(3))
-            if thickness > 0.000001 and (not marks or not all(marks.data[p.index].value for p in me.polygons)):
+            if spec.get('outer_contour', True) and thickness > 0.000001 and (not marks or not all(marks.data[p.index].value for p in me.polygons)):
                 sums = {}
                 for poly in me.polygons:
                     for i, vi in enumerate(poly.vertices):
@@ -164,6 +172,12 @@ for name, spec in specs.items():
         # The old tree sprites are sized by their projected height, not footprint.
         projected = [(v[0] - v[1]) * 0.40824829 - (v[2] - lo[2]) * 0.81649658 for v in verts]
         manifest[key]['projected_height'] = (max(projected) - min(projected)) / span
+        if not spec.get('outer_contour', True):
+            # Keep all painted geometry and fine ink; the runtime already supports
+            # assets without a separate expanded silhouette shell.
+            manifest[key]['contour'] = False
+            print('EXPORTED',key,len(faces),'triangles; no outer contour',flush=True)
+            continue
         ob.select_set(False)
         cv, cf, cn, cw = contour
         cm = bpy.data.meshes.new(name + '_contour')

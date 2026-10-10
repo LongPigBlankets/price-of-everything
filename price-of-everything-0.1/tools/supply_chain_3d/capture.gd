@@ -1,6 +1,6 @@
 extends Node
 ## Windowed visual smoke test. Uses a disposable game, never a saved game.
-## AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_chain_3d/capture.tscn
+## AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_chain_3d/capture.tscn -- --no-telemetry
 const Harness := preload("res://tools/shot_harness.gd")
 func _ready() -> void:
 	Harness.prepare_window(get_window(), Vector2i(1920, 1080))
@@ -47,7 +47,7 @@ func _ready() -> void:
 	if "--continent-review" in OS.get_cmdline_user_args():
 		await _continent_review(board, home)
 		for i in 5: await get_tree().process_frame
-		get_tree().quit()
+		await _finish_capture()
 		return
 	if not await _exercise_pointer(board): return
 	board.call("restore_camera", home)
@@ -83,7 +83,23 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 	if "--detail-review" in OS.get_cmdline_user_args(): await _detail_review(board, home)
+	await _finish_capture()
+
+func _finish_capture() -> void:
+	# Background windows can stop rendering while process frames continue. Drain
+	# deferred frame_post_draw captures, then release the disposable game before
+	# Godot destroys its scripting runtime. Otherwise cached review runs can leave
+	# an Image/coroutine alive and abort in the native Variant allocator at exit.
+	for i in 8:
+		RenderingServer.force_draw(false)
+		await get_tree().process_frame
+	var main := get_tree().current_scene
+	if is_instance_valid(main) and main != self: main.queue_free()
+	for i in 8:
+		RenderingServer.force_draw(false)
+		await get_tree().process_frame
 	get_tree().quit()
+
 func _shot(label: String) -> void:
 	for i in 5: await get_tree().process_frame
 	Harness.capture(self, "/private/tmp/supply3d_%s.png" % label, Vector2i(1920, 1080))
@@ -101,6 +117,10 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 	measurements.continent_key = builder._continent_key
 	measurements.continent_cache_hits = builder.bake_cache.hits
 	measurements.continent_cache_writes = builder.bake_cache.writes
+	measurements.base_tiles_loaded_at_open = builder.terrain_lods.size()
+	measurements.detail_chunks_loaded_at_open = builder._chunk_data.size()
+	measurements.separate_tile_resources = builder.continent.get("tile_chunks", {}).size()
+	measurements.decorative_sprite_variants = builder.continent.get("decor_sprites", {}).size()
 	print("[BAKE] continent key=", builder._continent_key, " hits=", builder.bake_cache.hits, " writes=", builder.bake_cache.writes)
 	print("[CONTINENT] build_ms=", measurements.build_ms, " tiles=", measurements.tiles)
 	var all_home: Dictionary = board.call("capture_camera")
@@ -112,10 +132,12 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 		if tier > 0:
 			state.target = focus
 			state.span = 1100.0 if tier == 1 else 560.0
+		var detail_start := Time.get_ticks_msec()
 		board.call("restore_camera", state)
 		for i in 20: await get_tree().process_frame
 		while not board.call("detail_ready"): await get_tree().process_frame
 		await board.call("_stream_visible")
+		var detail_ms := Time.get_ticks_msec() - detail_start
 		for i in 15: await get_tree().process_frame
 		var frames: Array[float] = []
 		var last := Time.get_ticks_usec()
@@ -137,6 +159,10 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 		var bytes := 0
 		var resident := 0
 		var textures := {}
+		if builder.continent.get("texture") != null:
+			var atlas: Texture2D = builder.continent.texture
+			textures[atlas.get_instance_id()] = true
+			bytes += int(atlas.get_width() * atlas.get_height() * 4.0 * 4.0 / 3.0)
 		for item in board.get("_builder").terrain_lods:
 			if item.data.meshes[1] != null or item.data.meshes[2] != null: resident += 1
 			for texture in item.data.textures:
@@ -146,11 +172,44 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 		print("[CONTINENT] tier=", tier, " span=", state.span, " resident=", resident, " terrain_MiB=", bytes / 1048576.0,
 			" draws=", draws, " triangles=", triangles)
 		measurements.lods.append({"tier": tier, "span": state.span, "resident_tiles": resident, "terrain_texture_MiB": bytes / 1048576.0,
-			"draw_calls": draws, "triangles": triangles,
+			"draw_calls": draws, "triangles": triangles, "detail_ms": detail_ms,
+			"base_resident_tiles": builder.local_tiles.size(), "base_chunks": builder._chunk_data.size(),
+			"medium_sprite_groups": builder.sprite_pairs.filter(func(pair: Dictionary) -> bool: return pair.get("medium") != null and pair.medium.visible).size(),
 			"frame_median_ms": frames[30], "frame_p95_ms": frames[57]})
+	# Exercise bounded residency through pan, orbit, a return visit and far reset.
+	while not board.call("detail_ready"): await get_tree().process_frame
+	board.set_process(false)
+	var tours: Array = []
+	for shift in [Vector3(2400, 0, 900), Vector3(-2100, 0, -1300), Vector3.ZERO]:
+		var state := all_home.duplicate()
+		state.target = focus + shift
+		state.span = 1100.0
+		state.yaw += 0.5 if shift != Vector3.ZERO else 0.0
+		board.call("restore_camera", state)
+		var pan_start := Time.get_ticks_msec()
+		await board.call("_stream_visible")
+		while not board.call("detail_ready"):
+			RenderingServer.force_draw(false)
+			await get_tree().process_frame
+		assert(builder.local_tiles.size() <= builder.BASE_RESIDENT_TILES)
+		assert(builder._chunk_data.size() == builder.local_tiles.size())
+		assert(builder.terrain_lods.size() == builder.local_tiles.size())
+		tours.append({"base_tiles": builder.local_tiles.size(), "load_ms": Time.get_ticks_msec() - pan_start})
+	measurements.pan_tours = tours
 	var widest := all_home.duplicate()
 	widest.span = preload("res://scripts/supply_chain_3d/orbit_camera.gd").MAX_SIZE
 	board.call("restore_camera", widest)
+	while not board.call("detail_ready"):
+		RenderingServer.force_draw(false)
+		await get_tree().process_frame
+	await board.call("_stream_visible")
+	measurements.far_retained_tiles = builder.local_tiles.size()
+	assert(not builder.local_tiles.is_empty(), "The outgoing view remains cached during the ten-second grace period")
+	board.set("_far_detail_expires_msec", Time.get_ticks_msec() - 1)
+	await board.call("_stream_visible")
+	assert(builder.local_tiles.is_empty() and builder._chunk_data.is_empty() and builder.terrain_lods.is_empty())
+	measurements.far_reset_releases_detail_after_grace = true
+	board.set_process(true)
 	var visible := 0
 	for tile in board.get("_model").tiles.values():
 		if Rect2(Vector2.ZERO, board.size).has_point(board.call("screen_point", board.get("_builder").point(tile.center))): visible += 1
@@ -176,7 +235,7 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 		board.call("restore_camera", state)
 		await get_tree().physics_frame
 		var hit: Dictionary = board.call("pick_at", board.call("screen_point", at))
-		var picked: bool = not hit.is_empty() and hit.collider.get_meta("tile_id", "") == click_tile
+		var picked: bool = not hit.is_empty() and str(hit.get("tile_id", hit.collider.get_meta("tile_id", ""))) == click_tile
 		assert(picked, "Unowned tiles remain selectable")
 		print("[CONTINENT] unowned tile picks=", picked)
 	await board.call("set_all_tiles", false, false)

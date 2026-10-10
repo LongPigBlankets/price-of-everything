@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tools/supply_chain_3d/compare_relief_bakes.gd" id="1"]
+
+[node name="CompareReliefBakes" type="Node"]
+script = ExtResource("1")

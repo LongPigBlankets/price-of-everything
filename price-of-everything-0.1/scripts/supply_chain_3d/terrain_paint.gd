@@ -5,6 +5,7 @@ const Legacy := preload("res://scripts/empire_board.gd")
 const Model := preload("res://scripts/empire_board_model.gd")
 const Ground := preload("res://scripts/empire_board_ground.gd")
 const WaterArt := preload("res://scripts/supply_chain_3d/water_art.gd")
+const ShadowArt := preload("res://scripts/supply_chain_3d/shadow_art.gd")
 const Detail := preload("res://scripts/supply_chain_3d/detail.gd")
 const EXTENT := Vector2(548, 488) # four-unit gutter prevents filtered seams at hex borders
 const CONTINENT_WIDTH := 6144
@@ -15,6 +16,7 @@ class Painter extends Node2D:
 	var rivers: Array
 	var mines: Array
 	var water_art: ArrayMesh
+	var shadow_art: ArrayMesh
 	func _draw() -> void:
 		var sea := MapStyle.sea_colors()
 		var bands := MapStyle.band_colors()
@@ -35,6 +37,7 @@ class Painter extends Node2D:
 			else:
 				var ink := Color(0.24, 0.30, 0.18, rng.randf_range(0.045, 0.10))
 				draw_line(p, p + Vector2(0.6, -rng.randf_range(0.5, 1.8)), ink, 0.32, true)
+		if shadow_art != null and shadow_art.get_surface_count() > 0: draw_mesh(shadow_art, null)
 		# The source board's two ragged rings of worked earth, now baked in plan
 		# around the real opening rather than painted over unbroken terrain.
 		for mine in mines:
@@ -72,7 +75,7 @@ class Painter extends Node2D:
 			RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), indices, part, colors, PackedVector2Array())
 
 static func bake(host: Node, tile: Dictionary, relief: Dictionary, rivers: Array, mines: Array, height: Callable,
-		widths: Array = Detail.TEXTURES) -> Array:
+		widths: Array = Detail.TEXTURES, shadows: Array = []) -> Array:
 	var textures: Array = []
 	if DisplayServer.get_name() == "headless":
 		# Dummy renderer cannot read a viewport. Geometry and input tests still run.
@@ -91,6 +94,7 @@ static func bake(host: Node, tile: Dictionary, relief: Dictionary, rivers: Array
 	painter.relief = relief
 	painter.rivers = rivers
 	painter.mines = mines
+	painter.shadow_art = ShadowArt.artwork(shadows)
 	var water := WaterArt.new()
 	painter.water_art = water.artwork(tile, relief, rivers, height)
 	water.free()
@@ -112,7 +116,7 @@ static func bake(host: Node, tile: Dictionary, relief: Dictionary, rivers: Array
 	return textures
 
 static func bake_continent(host: Node, tiles: Dictionary, rivers: Dictionary, mines: Array,
-		height: Callable, area: Rect2) -> Texture2D:
+		height: Callable, area: Rect2, shadows: Dictionary = {}) -> Texture2D:
 	if DisplayServer.get_name() == "headless":
 		var dummy := Image.create(8, 8, false, Image.FORMAT_RGBA8)
 		dummy.fill(Legacy._warm(MapStyle.band_colors()[2]))
@@ -143,6 +147,7 @@ static func bake_continent(host: Node, tiles: Dictionary, rivers: Dictionary, mi
 		painter.relief = Legacy._relief_of(str(tid), tile.center)
 		painter.rivers = rivers.get(tid, [])
 		painter.mines = mines
+		painter.shadow_art = ShadowArt.artwork(shadows.get(tid, []))
 		var water := WaterArt.new()
 		painter.water_art = water.artwork(tile, painter.relief, painter.rivers, height)
 		water.free()

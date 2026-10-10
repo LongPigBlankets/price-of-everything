@@ -47,17 +47,32 @@ var _progress: Label
 var _fit_after_build := false
 var _streaming := false
 var _stream_clock := 0.0
+var _stream_camera: Dictionary = {}
+var _stream_generation := -1
+var _stream_tier := -1
+var _nearby_tiles: Dictionary = {}
+var _tile_distances: Dictionary = {}
+var _prefetch_tiles: Array = []
+var _prefetch_checked: Dictionary = {}
+const PREFETCH_TILES := 8
+const NEAR_TILE_RADIUS := 4
+const CURSOR_COLLISION_UNITS := 300.0
+const FAR_DETAIL_HOLD_MSEC := 10000
+var _far_detail_expires_msec := 0
+var _collision_sample: Array = []
 
 func _exit_tree() -> void:
 	_generation += 1
 	# Release large cached resources while the scene/rendering services still
 	# exist, rather than retaining them until the scripting runtime shuts down.
+	if _builder != null: _builder.handover.clear()
 	_builder = null
 	_terrain_cache.clear()
 	_goods.clear()
 	_effects.clear()
 
 func _ready() -> void:
+	RenderingServer.frame_post_draw.connect(_on_rendered_frame)
 	show_all_tiles = PlayerProfile.supply_chain_all_tiles
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var container := TextureRect.new()
@@ -150,6 +165,8 @@ func _ready() -> void:
 
 func _visibility() -> void:
 	_drag_button = 0
+	_collision_sample.clear()
+	if not is_visible_in_tree() and _builder != null and _builder.cursor_picking: _builder.set_collision_tiles({})
 	if _viewport != null:
 		_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS if is_visible_in_tree() else SubViewport.UPDATE_DISABLED
 	if _world != null: _world.process_mode = Node.PROCESS_MODE_INHERIT if is_visible_in_tree() else Node.PROCESS_MODE_DISABLED
@@ -189,6 +206,8 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	next.name = "Company"
 	var builder := Builder.new()
 	builder.streamed = show_all_tiles
+	builder.cursor_picking = true
+	builder.lazy_assets = true
 	builder.terrain_cache = _terrain_cache
 	var rivers := _rivers_by_tile(terrain)
 	var river_lines: Dictionary = {}
@@ -220,59 +239,40 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	builder.ground = Ground.for_map(terrain, rivers, Relief.plates(terrain, river_lines), Callable(Legacy, "_relief_of"))
 	# Stable origin: expanding the company does not move existing terrain under the camera.
 	builder.origin = Vector2.ZERO
-	builder.configure_grade()
 	builder.configure_pits(model.get("standing", []))
 	builder.configure_bakes(model)
+	if _progress != null: _progress.text = "Loading landscape layout…"
+	await builder.prepare_scenery(self, model)
+	if generation != _generation: next.free(); return
+	builder.configure_grade()
 	if show_all_tiles:
 		if _progress != null: _progress.text = "Loading continent bake…"
 		await builder.prepare_continent(self)
 		if generation != _generation: next.free(); return
-	var first := true
-	var built := 0
-	for tid in builder.tiles:
-		await builder.prepare_tile(self, str(tid))
-		if generation != _generation: next.free(); return
-		next.add_child(builder.tile_node(str(tid)))
-		built += 1
-		if _progress != null: _progress.text = "Preparing map · %d / %d tiles" % [built, builder.tiles.size()]
-		for p in Model.hex_points(builder.tiles[tid].center):
-			var v: Vector3 = builder.point(p)
-			if first: builder.bounds = AABB(v, Vector3.ONE); first = false
-			else: builder.bounds = builder.bounds.expand(v)
-		if paced and built % 8 == 0:
-			await get_tree().process_frame
-			if generation != _generation: next.free(); return
-	next.add_child(builder.mine_rims_node())
-	if show_all_tiles: print("[CONTINENT BUILD] terrain ready ", Time.get_ticks_msec())
 	var infrastructure := builder.infrastructure(model, Legacy.show, not show_all_tiles)
 	next.add_child(infrastructure)
-	if show_all_tiles and Legacy.show.roads:
-		var roads_built := 0
-		for tid in builder.tiles:
-			builder.append_road(infrastructure, str(tid))
-			roads_built += 1
-			if roads_built % 8 == 0:
-				_progress.text = "Preparing roads · %d / %d tiles" % [roads_built, builder.tiles.size()]
-				await get_tree().process_frame
-				if generation != _generation:
-					builder.road_surface.finish_build()
-					next.free()
-					return
-		builder.road_surface.finish_build()
-		builder._road_height_cache.clear()
-	if show_all_tiles: print("[CONTINENT BUILD] roads ready ", Time.get_ticks_msec())
-	for s in model.get("standing", []): next.add_child(builder.standing_node(s))
-	if show_all_tiles: next.add_child(builder.distant_towns(model.get("standing", [])))
-	if Legacy.show.trees:
-		var groves := 0
-		for tid in builder.tiles:
-			next.add_child(builder.trees_node(str(tid), model.get("standing", [])))
-			groves += 1
-			if paced and groves % 8 == 0:
-				await get_tree().process_frame
-				if generation != _generation: next.free(); return
+	# A far-only world may never request detail. Do not retain the bound height
+	# callback (builder -> road surface -> builder) while waiting for a zoom-in.
+	if not builder.base_ready: builder.road_surface.finish_build()
+	for s in model.get("standing", []):
+		if not show_all_tiles or str(s.kind) != "house": next.add_child(builder.standing_node(s))
+	if builder.base_ready:
+		if not await _build_base_tiles(builder, next, model, generation, paced):
+			builder.road_surface.finish_build()
+			next.free()
+			return
+	next.add_child(builder.mine_rims_node())
 	next.add_child(builder.shadows_node())
-	if show_all_tiles: builder.finish_continent(next)
+	if show_all_tiles:
+		builder.finish_continent(next)
+		# Cold baking may visit every tile, but its temporary detail is not the
+		# runtime working set. Warm and cold openings both start with one backdrop.
+		builder.release_local_tiles({})
+		builder.local_streaming = true
+		builder.base_ready = true
+		builder.handover_enabled = true
+	else:
+		builder.prepare_company_pick_surface(next)
 	if show_all_tiles: print("[CONTINENT BUILD] trees ready ", Time.get_ticks_msec())
 	builder.prepare_flows(model)
 	var goods: Array = []
@@ -307,20 +307,18 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	_content = next
 	_world.add_child(_content)
 	_builder = builder
-	# Keep the reusable continent base across coverage switches, but release
-	# obsolete fine tiers and all data belonging to a different height field.
+	_far_detail_expires_msec = 0
+	_nearby_tiles.clear()
+	_tile_distances.clear()
+	_prefetch_tiles.clear()
+	_prefetch_checked.clear()
+	# The far resource is independently reusable now. Obsolete per-tile meshes
+	# must not stay resident through an owned -> continent coverage switch.
 	var keep: Dictionary = {}
 	for tid in builder.tiles: keep[builder.terrain_key(str(tid))] = true
 	for key in _terrain_cache.keys():
-		if keep.has(key): continue
-		var cached: Dictionary = _terrain_cache[key]
-		if not show_all_tiles and cached.get("streamed", false) and cached.get("ground_id", 0) == builder.ground.get_instance_id():
-			# Keep just the small base continent across coverage switches. Fine
-			# tiers are released; a new map/height field clears the old base too.
-			for tier in [1, 2]:
-				cached.meshes[tier] = null
-				cached.textures[tier] = null
-		else: _terrain_cache.erase(key)
+		if keep.has(key) and builder.base_ready: continue
+		_terrain_cache.erase(key)
 	_detail = -1
 	_model = model
 	_last_show = Legacy.show.duplicate()
@@ -336,6 +334,84 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	_update_goods()
 	_update_cars()
 	if _labels != null: _labels.queue_redraw()
+
+func _build_base_tiles(builder: RefCounted, parent: Node3D, model: Dictionary, generation: int, paced: bool) -> bool:
+	if builder.streamed:
+		var first := true
+		for tid in builder.tiles:
+			if not await _build_local_tile(builder, parent, model, str(tid), generation): return false
+			for p in Model.hex_points(builder.tiles[tid].center):
+				var v: Vector3 = builder.point(p)
+				if first: builder.bounds = AABB(v, Vector3.ONE); first = false
+				else: builder.bounds = builder.bounds.expand(v)
+			if paced and builder.local_tiles.size() % 8 == 0:
+				await get_tree().process_frame
+				if generation != _generation: return false
+		builder.road_surface.finish_build()
+		builder._road_height_cache.clear()
+		parent.add_child(builder.distant_towns(model.get("standing", [])))
+		return true
+	var first := true
+	var built := 0
+	var detail_parent := Node3D.new()
+	detail_parent.name = "TileDetails"
+	detail_parent.visible = not builder.base_loading
+	parent.add_child(detail_parent)
+	builder.labels.clear()
+	for tid in builder.tiles:
+		await builder.prepare_tile(self, str(tid))
+		if generation != _generation: return false
+		detail_parent.add_child(builder.tile_node(str(tid)))
+		for p in Model.hex_points(builder.tiles[tid].center):
+			var v: Vector3 = builder.point(p)
+			if first: builder.bounds = AABB(v, Vector3.ONE); first = false
+			else: builder.bounds = builder.bounds.expand(v)
+		built += 1
+		if paced and built % 8 == 0:
+			if _progress != null: _progress.text = "Preparing map detail · %d / %d tiles" % [built, builder.tiles.size()]
+			await get_tree().process_frame
+			if generation != _generation: return false
+	builder.road_surface.finish_build()
+	builder._road_height_cache.clear()
+	if Legacy.show.trees:
+		var groves := 0
+		for tid in builder.tiles:
+			detail_parent.add_child(builder.trees_node(str(tid), model.get("standing", [])))
+			groves += 1
+			if paced and groves % 8 == 0:
+				await get_tree().process_frame
+				if generation != _generation: return false
+	detail_parent.visible = true
+	builder.base_ready = true
+	builder.active_lod = -1
+	return true
+
+func _build_local_tile(builder: RefCounted, parent: Node3D, model: Dictionary, tid: String, generation: int) -> bool:
+	await builder.prepare_tile(self, tid)
+	if generation != _generation: return false
+	var fields := ["terrain_lods", "frame_nodes", "road_nodes", "glint_nodes", "tree_nodes",
+		"tree_sprite_nodes", "building_visuals", "decor_nodes", "detail_nodes", "sprite_pairs", "pickables", "glows", "smoke"]
+	var offsets := {}
+	for field in fields: offsets[field] = (builder.get(field) as Array).size()
+	var root := Node3D.new()
+	root.name = "Detail_" + tid
+	parent.add_child(root)
+	root.add_child(builder.tile_node(tid))
+	if Legacy.show.roads: builder.append_road(root, tid)
+	for standing in model.get("standing", []):
+		if str(standing.kind) == "house" and str(standing.tile) == tid:
+			root.add_child(builder.standing_node(standing))
+	if Legacy.show.trees: root.add_child(builder.trees_node(tid, model.get("standing", [])))
+	_build_glows(builder, root, offsets.glows)
+	var records := {}
+	for field in fields: records[field] = (builder.get(field) as Array).slice(offsets[field])
+	builder.local_tiles[tid] = {"root": root, "records": records}
+	root.visible = not builder._overview and (not builder.handover_enabled or builder.handover.blend > 0.0)
+	builder.cache_local_tile(tid)
+	return true
+
+func _ensure_continent_detail() -> void:
+	if not _streaming: await _stream_visible()
 
 func _rivers_by_tile(terrain: Node) -> Dictionary:
 	var rivers: Dictionary = {}
@@ -399,23 +475,46 @@ func _render_point(screen: Vector2) -> Vector2:
 
 func _update_detail() -> void:
 	if _builder == null: return
+	var previous_overview: bool = _builder._overview
+	var previous_detail := _detail
 	_detail = Detail.choose(size.y / _rig.span, _detail)
-	_builder.set_detail(_detail)
+	# Apply both decisions before creating assets: a far or near arrival must
+	# not briefly allocate medium sprites using the previous overview state.
+	_builder.set_detail(_detail, false)
 	_builder.set_overview_scale(size.y / _rig.span)
+	if previous_overview != _builder._overview or previous_detail != _detail: _stream_clock = 0.25
+
+func _on_rendered_frame() -> void:
+	if DisplayServer.get_name() == "headless" or not is_visible_in_tree(): return
+	_advance_handover()
+
+func _advance_handover() -> void:
+	if _builder == null or not _builder.handover.active: return
+	_builder.advance_handover()
+	if not _builder.handover.active:
+		_stream_clock = 0.25
+		# Avoid freeing textures the GPU has just sampled. A quick zoom back also
+		# reuses the existing medium view instead of loading it again.
+		_far_detail_expires_msec = Time.get_ticks_msec() + FAR_DETAIL_HOLD_MSEC if _builder._overview and not _builder.local_tiles.is_empty() else 0
 
 func pick_at(screen: Vector2, tiles_only: bool = false) -> Dictionary:
+	_update_cursor_collision(screen)
 	screen = _render_point(screen)
 	if not has_content(): return {}
 	var space := _viewport.find_world_3d().direct_space_state
 	tiles_only = tiles_only or (_builder != null and _builder._overview)
+	if _builder != null and _builder.handover_enabled and _builder.handover.blend < 1.0: tiles_only = true
 	# A long orthographic ray exactly on a shared triangle edge can miss in Jolt.
 	# Subpixel retries cover numerical cracks without expanding selection by a visible pixel.
 	for offset in [Vector2.ZERO, Vector2(0.25, 0.25), Vector2(-0.25, -0.25)]:
 		var from := _camera.project_ray_origin(screen + offset)
 		var ray := PhysicsRayQueryParameters3D.create(from, from + _camera.project_ray_normal(screen + offset) * _camera.far, 1 if tiles_only else 3)
 		ray.hit_back_faces = true
-		var hit := space.intersect_ray(ray)
+		var hit := _surface_ray(space, ray)
 		if not hit.is_empty():
+			if hit.collider.has_meta("continent_pick"):
+				hit["tile_id"] = _builder.tile_at(hit.position)
+				return _as_tile_hit(hit)
 			if tiles_only: return hit
 			if hit.collider.has_meta("standing"):
 				if _building_large_enough(hit.collider): return hit
@@ -423,7 +522,7 @@ func pick_at(screen: Vector2, tiles_only: bool = false) -> Dictionary:
 				# mine's layer-1 collider also covers its excavated terrain opening.
 				var tile_ray := PhysicsRayQueryParameters3D.create(from, from + _camera.project_ray_normal(screen + offset) * _camera.far, 1)
 				tile_ray.hit_back_faces = true
-				var tile_hit := space.intersect_ray(tile_ray)
+				var tile_hit := _surface_ray(space, tile_ray)
 				if tile_hit.is_empty(): return {}
 				return _as_tile_hit(tile_hit)
 			# A two-world-unit halo helps hit fine building edges without swallowing
@@ -434,21 +533,43 @@ func pick_at(screen: Vector2, tiles_only: bool = false) -> Dictionary:
 				var start := _camera.project_ray_origin(pixel)
 				var near_ray := PhysicsRayQueryParameters3D.create(start, start + _camera.project_ray_normal(pixel) * _camera.far, 3)
 				near_ray.hit_back_faces = true
-				var neighbour := space.intersect_ray(near_ray)
+				var neighbour := _surface_ray(space, near_ray)
 				if not neighbour.is_empty() and neighbour.collider.has_meta("standing") and _building_large_enough(neighbour.collider) and neighbour.collider.get_meta("tile_id", "") == hit.collider.get_meta("tile_id", ""):
 					return neighbour
 			return hit
 	return {}
 
+func _surface_ray(space: PhysicsDirectSpaceState3D, ray: PhysicsRayQueryParameters3D) -> Dictionary:
+	if _builder.cursor_picking: ray.collision_mask |= 4
+	if _builder.handover_enabled and (_builder._overview or _builder.handover.blend == 0.0):
+		# Staged/hidden local surfaces must not intercept the visible far terrain.
+		var excluded: Array[RID] = ray.exclude
+		for item in _builder.terrain_lods:
+			if item.has("collider"): excluded.append(item.collider.get_parent().get_rid())
+		ray.exclude = excluded
+	var hit := space.intersect_ray(ray)
+	if hit.is_empty() or not hit.collider.has_meta("continent_pick") or _builder._overview or (_builder.handover_enabled and _builder.handover.blend == 0.0): return hit
+	var tid: String = _builder.tile_at(hit.position)
+	if not (_builder.collision_tiles.has(tid) if _builder.cursor_picking else _builder.local_tiles.has(tid)): return hit
+	# The far terrain is masked out on this tile. Its coarse surface must not
+	# intercept a fine river bank or a building; outside residency it still occludes.
+	ray.exclude = [_builder.continent_body.get_rid()]
+	var local := space.intersect_ray(ray)
+	return local if not local.is_empty() else hit
+
 func _building_large_enough(body: Node3D) -> bool:
 	if not body.has_meta("pick_bounds"): return false
 	var bounds: AABB = body.get_meta("pick_bounds")
-	var rect := Rect2(screen_point(body.to_global(bounds.position)), Vector2.ZERO)
-	for i in 8: rect = rect.expand(screen_point(body.to_global(bounds.get_endpoint(i))))
+	return _pick_bounds_large_enough(body.global_transform * bounds)
+
+func _pick_bounds_large_enough(bounds: AABB) -> bool:
+	var rect := Rect2(screen_point(bounds.position), Vector2.ZERO)
+	for i in 8: rect = rect.expand(screen_point(bounds.get_endpoint(i)))
 	return rect.size.x > 20.0 and rect.size.y > 20.0
 
 func _as_tile_hit(hit: Dictionary) -> Dictionary:
 	# The collider may still be a mine. Activation must treat the pick as terrain.
+	if hit.collider.has_meta("continent_pick"): hit["tile_id"] = _builder.tile_at(hit.position)
 	hit["tiles_only"] = true
 	return hit
 
@@ -463,7 +584,7 @@ func _activate_at(screen: Vector2, tiles_only: bool = false) -> void:
 	elif not tiles_only and str(standing.get("kind", "")) == "suppliers":
 		suppliers_picked.emit()
 	else:
-		var tile := str(body.get_meta("tile_id", ""))
+		var tile := str(hit.get("tile_id", body.get_meta("tile_id", "")))
 		_select_tile(tile)
 		tile_picked.emit(tile)
 
@@ -533,46 +654,265 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	get_viewport().set_input_as_handled()
 
 func _process(delta: float) -> void:
+	# The dummy renderer has no drawn frames; permit headless scene tests to settle.
+	if DisplayServer.get_name() == "headless": _advance_handover()
 	_resize_viewport()
 	if animate_goods: _time += delta
 	_update_detail()
+	if not _building: _update_cursor_collision(get_local_mouse_position())
 	_update_goods()
 	_update_cars()
 	_stream_clock += delta
-	if show_all_tiles and not _building and not _streaming and _stream_clock >= 0.25:
+	# React to travel promptly; idle retention/prefetch still uses the slower tick.
+	var stream_interval := 0.05 if capture_camera() != _stream_camera else 0.25
+	if show_all_tiles and not _building and not _streaming and _stream_clock >= stream_interval:
 		_stream_clock = 0.0
 		_stream_visible()
 	if _labels != null: _labels.queue_redraw()
 
+func _camera_focus_tile() -> String:
+	# The orbit pivot may be above the ground, especially after panning/orbiting
+	# mountains. Centre the preload ring on the terrain under the screen centre.
+	# Camera residency must never move detailed collision away from the cursor.
+	var hit := _cursor_surface_hit(size * 0.5, false) if _builder.cursor_picking else pick_at(size * 0.5, true)
+	return _builder.tile_at(hit.get("position", _rig.target))
+
+static func cursor_collision_rings(units: float = CURSOR_COLLISION_UNITS) -> int:
+	var neighbour_step := minf(Model.HEX_HALF.y * 2.0, Vector2(Model.HEX_HALF.x * 1.5, Model.HEX_HALF.y).length())
+	return maxi(0, floori(units / neighbour_step))
+
+func _cursor_collision_tiles(tid: String) -> Dictionary:
+	if tid.is_empty() or not _builder.tiles.has(tid): return {}
+	var wanted := {tid: true}
+	var rings := cursor_collision_rings()
+	if rings == 0: return wanted
+	for other in _builder.tiles:
+		if _hex_tile_distance(_builder.tiles[tid].center, _builder.tiles[other].center) <= rings: wanted[other] = true
+	return wanted
+
+func _cursor_surface_hit(screen: Vector2, coarse_only: bool = true) -> Dictionary:
+	if _builder == null or _builder.continent_body == null: return {}
+	var space := _viewport.find_world_3d().direct_space_state
+	var pixel := _render_point(screen)
+	for offset in [Vector2.ZERO, Vector2(0.25, 0.25), Vector2(-0.25, -0.25)]:
+		var start := _camera.project_ray_origin(pixel + offset)
+		var ray := PhysicsRayQueryParameters3D.create(start, start + _camera.project_ray_normal(pixel + offset) * _camera.far, 4 if coarse_only else 1)
+		ray.hit_back_faces = true
+		var hit := space.intersect_ray(ray) if coarse_only else _surface_ray(space, ray)
+		if not hit.is_empty(): return hit
+	return {}
+
+func _update_cursor_collision(screen: Vector2) -> void:
+	if _builder == null or not _builder.cursor_picking: return
+	var sample := [screen, capture_camera(), size, _viewport.size, _generation, _builder.get_instance_id(),
+		_builder.collision_revision, _builder.collision_detail_visible()]
+	if sample == _collision_sample: return
+	_collision_sample = sample
+	if not Rect2(Vector2.ZERO, size).has_point(screen) or not _builder.collision_detail_visible():
+		_builder.set_collision_tiles({})
+		return
+	var hit := _cursor_surface_hit(screen)
+	var pixel := _render_point(screen)
+	var start := _camera.project_ray_origin(pixel)
+	var direction := _camera.project_ray_normal(pixel)
+	var tid: String = _builder.tile_at(hit.position) if not hit.is_empty() else ""
+	_builder.set_collision_tiles(_cursor_collision_tiles(tid))
+	var ray := PhysicsRayQueryParameters3D.create(start, start + direction * _camera.far, 3)
+	ray.hit_back_faces = true
+	var space := _viewport.find_world_3d().direct_space_state
+	var local := space.intersect_ray(ray)
+	if local.is_empty() and not tid.is_empty():
+		# Coarse/fine relief can put a boundary ray in different hexes. Test only
+		# resident adjacent surfaces whose bounds cross this ray, one tile at a time.
+		var ground_distance := INF
+		for item in _builder.terrain_lods:
+			if item.tile == tid or _hex_tile_distance(_builder.tiles[tid].center, _builder.tiles[item.tile].center) != 1: continue
+			var bounds: AABB = item.node.global_transform * item.node.get_aabb()
+			if not bounds.grow(0.1).intersects_ray(start, direction) is Vector3: continue
+			_builder.set_collision_tiles(_cursor_collision_tiles(item.tile))
+			var neighbour := space.intersect_ray(ray)
+			if not neighbour.is_empty() and start.distance_squared_to(neighbour.position) < ground_distance:
+				ground_distance = start.distance_squared_to(neighbour.position)
+				local = neighbour
+		if not local.is_empty(): tid = str(local.collider.get_meta("tile_id", tid))
+		_builder.set_collision_tiles(_cursor_collision_tiles(tid))
+	if not local.is_empty(): hit = local
+	var distance := start.distance_squared_to(hit.position) if not hit.is_empty() else INF
+	# A roof can project over another tile, and a mine can leave a hole in the
+	# coarse surface. Cheap bounds nominate candidate tiles; exact silhouettes
+	# decide the hit. Only one tile's detailed collision is attached at a time.
+	var candidates: Array = []
+	for pair in _builder.sprite_pairs:
+		if not pair.get("standing") is Dictionary or str(pair.standing.kind) not in ["building", "site", "warehouse", "suppliers"]: continue
+		if str(pair.tile) == tid: continue
+		var dimension: Vector3 = pair.dimension
+		var bounds: AABB = pair.root.global_transform * AABB(Vector3(-dimension.x * 0.5, 0, -dimension.z * 0.5), dimension)
+		var crossing: Variant = bounds.grow(2.0).intersects_ray(start, direction)
+		if crossing is Vector3 and start.distance_squared_to(crossing) < distance and _pick_bounds_large_enough(bounds):
+			candidates.append({"tile": str(pair.tile), "distance": start.distance_squared_to(crossing)})
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.distance < b.distance)
+	var checked := {tid: true}
+	for candidate in candidates:
+		if candidate.distance >= distance: break
+		if checked.has(candidate.tile): continue
+		checked[candidate.tile] = true
+		_builder.set_collision_tiles(_cursor_collision_tiles(candidate.tile))
+		local = space.intersect_ray(ray)
+		if local.is_empty() or not local.collider.has_meta("standing") or not _building_large_enough(local.collider): continue
+		var local_distance := start.distance_squared_to(local.position)
+		if local_distance < distance:
+			distance = local_distance
+			tid = candidate.tile
+	_builder.set_collision_tiles(_cursor_collision_tiles(tid))
+
+static func _hex_tile_distance(a: Vector2, b: Vector2) -> int:
+	# Flat-top hex centres use 405 x 480 spacing. Axial coordinates handle
+	# staggered columns, negative positions and arbitrary map origins alike.
+	var delta := b - a
+	var q := roundi(delta.x / (Model.HEX_HALF.x * 1.5))
+	var r := roundi(delta.y / (Model.HEX_HALF.y * 2.0) - q * 0.5)
+	return maxi(absi(q), maxi(absi(r), absi(q + r)))
+
+func _wanted_detail_tiles() -> Array:
+	var wanted: Array = []
+	_nearby_tiles.clear()
+	_tile_distances.clear()
+	_prefetch_tiles.clear()
+	if _builder == null or _builder._overview: return wanted
+	var view := Rect2(Vector2.ZERO, size)
+	var buffered := view.grow(120.0)
+	var nearby := buffered.grow(540.0 * size.y / _rig.span)
+	var direction: Vector3 = _rig.target - (_stream_camera.get("target", _rig.target) as Vector3)
+	var focus := _camera_focus_tile() if _detail == 2 else ""
+	for tid in _builder.tiles:
+		var near := focus != "" and _hex_tile_distance(_builder.tiles[focus].center, _builder.tiles[tid].center) <= NEAR_TILE_RADIUS
+		var points: PackedVector3Array = _builder.tile_view_hull(str(tid))
+		var at := points[0]
+		_tile_distances[tid] = at.distance_squared_to(_rig.target)
+		var behind := _camera.is_position_behind(at)
+		if behind and not near: continue
+		var bounds := Rect2(screen_point(at), Vector2.ZERO)
+		for p in points: bounds = bounds.expand(screen_point(p))
+		bounds = bounds.grow(40.0)
+		if near or bounds.intersects(nearby): _nearby_tiles[tid] = true
+		if near or bounds.intersects(buffered):
+			wanted.append({"tile": str(tid), "visible": not behind and bounds.intersects(view), "near": near, "distance": _tile_distances[tid]})
+		elif bounds.intersects(nearby):
+			_prefetch_tiles.append({"tile": str(tid), "distance": _tile_distances[tid],
+				"ahead": direction.length_squared() > 1.0 and direction.dot(at - _rig.target) > 0.0})
+	wanted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if a.visible != b.visible: return a.visible
+		if a.near != b.near: return a.near
+		return a.distance < b.distance)
+	_prefetch_tiles.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if a.ahead != b.ahead: return a.ahead
+		return a.distance < b.distance)
+	# The node allowance limits extra buffering, never visible/radius coverage.
+	# Shallow angles can expose more than 96 tiles at the widest local zoom.
+	var required_count := wanted.filter(func(item: Dictionary) -> bool: return item.visible or item.near).size()
+	if wanted.size() > maxi(Builder.BASE_RESIDENT_TILES, required_count): wanted.resize(maxi(Builder.BASE_RESIDENT_TILES, required_count))
+	if _prefetch_tiles.size() > PREFETCH_TILES: _prefetch_tiles.resize(PREFETCH_TILES)
+	return wanted
+
+func _fine_detail_plan(wanted: Array) -> Dictionary:
+	var plan := {}
+	if _detail <= 0: return plan
+	for item in wanted:
+		# The complete four-ring neighbourhood stays ready, including offscreen
+		# tiles. Visible terrain beyond that radius still receives medium detail.
+		if _detail == 2 and item.get("near", false): plan[item.tile] = 2
+		elif item.visible: plan[item.tile] = 1
+	return plan
+
+func _maintain_resource_cache() -> void:
+	var now := Time.get_ticks_msec()
+	if not _builder._overview:
+		for tid in _builder.local_tiles: _builder.resource_cache.touch(tid, now)
+	_builder.resource_cache.trim(now, _builder.local_tiles, _nearby_tiles if not _builder._overview else {}, _tile_distances)
+
+func _prefetch_resources(builder: RefCounted, generation: int, camera_state: Dictionary) -> void:
+	if builder._overview: return
+	var attempted := 0
+	for item in _prefetch_tiles:
+		if _prefetch_checked.has(item.tile): continue
+		if not builder.resource_cache.can_prefetch(): break
+		_prefetch_checked[item.tile] = true
+		builder.prefetch_medium(item.tile)
+		attempted += 1
+		await get_tree().process_frame
+		if generation != _generation or camera_state != capture_camera() or attempted >= 2: break
+
 func _stream_visible() -> void:
-	if _builder == null or not _builder.streamed: return
+	if _builder == null or not _builder.streamed or _streaming or _building: return
+	if _builder.handover.active: return
+	var camera_state := capture_camera()
+	var far_expired: bool = _builder._overview and _far_detail_expires_msec > 0 and Time.get_ticks_msec() >= _far_detail_expires_msec
+	var changed := _stream_generation != _generation or _stream_camera != camera_state or _stream_tier != _detail
 	_streaming = true
 	var generation := _generation
 	var builder: RefCounted = _builder
-	var tier := _detail
-	var wanted: Array = []
-	if tier > 0:
-		var view := Rect2(Vector2.ZERO, size).grow(120.0)
-		for item in builder.terrain_lods:
-			var at: Vector3 = builder.point(builder.tiles[item.tile].center)
-			if _camera.is_position_behind(at): continue
-			var bounds := Rect2(screen_point(at), Vector2.ZERO)
-			for p in Model.hex_points(builder.tiles[item.tile].center): bounds = bounds.expand(screen_point(builder.point(p)))
-			if bounds.intersects(view): wanted.append(item)
-		wanted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-			return (builder.point(builder.tiles[a.tile].center) - _rig.target).length_squared() < (builder.point(builder.tiles[b.tile].center) - _rig.target).length_squared())
-		if wanted.size() > Builder.RESIDENT_TILES: wanted.resize(Builder.RESIDENT_TILES)
+	if not changed and not far_expired:
+		_maintain_resource_cache()
+		await _prefetch_resources(builder, generation, camera_state)
+		_streaming = false
+		return
+	_prefetch_checked.clear()
+	var wanted := _wanted_detail_tiles()
 	var keep := {}
-	for item in wanted: keep[str(item.tile)] = true
-	builder.release_detail(keep)
-	var camera_state := capture_camera()
+	for item in wanted: keep[item.tile] = true
+	var hold_far_detail: bool = builder._overview and Time.get_ticks_msec() < _far_detail_expires_msec
+	if hold_far_detail:
+		for tid in builder.local_tiles: keep[tid] = true
+	if not builder._overview:
+		# Start the existing unused-resource grace period at departure, even if
+		# the previous streaming pass took longer than the normal idle tick.
+		var now := Time.get_ticks_msec()
+		for tid in builder.local_tiles: builder.resource_cache.touch(tid, now)
+	builder.release_local_tiles(keep, true)
+	if far_expired: _far_detail_expires_msec = 0
+	var slice_start := Time.get_ticks_usec()
 	for item in wanted:
-		await builder.refine_tile(self, item, tier)
-		if generation != _generation or camera_state != capture_camera(): break
+		if builder.local_tiles.has(item.tile): continue
+		if not await _build_local_tile(builder, _content, _model, item.tile, generation): break
+		builder.apply_tile_detail(builder.terrain_lods[-1], _detail)
+		# Cached tiles share a small frame budget instead of paying a whole frame
+		# apiece. Newly built roots remain hidden behind the far fallback until ready.
+		if Time.get_ticks_usec() - slice_start >= 4000:
+			builder._apply_view_visibility()
+			await get_tree().process_frame
+			slice_start = Time.get_ticks_usec()
+			if generation != _generation or camera_state != capture_camera(): break
+	builder.road_surface.finish_build()
+	builder._road_height_cache.clear()
+	if generation == _generation and camera_state == capture_camera() and not hold_far_detail:
+		builder._apply_view_visibility()
+		var fine := _fine_detail_plan(wanted)
+		builder.release_detail(fine, true)
+		var terrain_by_tile := {}
+		for item in builder.terrain_lods: terrain_by_tile[item.tile] = item
+		slice_start = Time.get_ticks_usec()
+		# Follow current viewport priority even when old offscreen tiles were
+		# inserted into terrain_lods before newly visible tiles after a pan.
+		for request in wanted:
+			if not fine.has(request.tile): continue
+			var item: Dictionary = terrain_by_tile[request.tile]
+			await builder.refine_tile(self, item, int(fine[item.tile]))
+			if generation != _generation or camera_state != capture_camera(): break
+			if Time.get_ticks_usec() - slice_start >= 4000:
+				await get_tree().process_frame
+				slice_start = Time.get_ticks_usec()
+				if generation != _generation or camera_state != capture_camera(): break
+	if generation == _generation and camera_state == capture_camera():
+		for tid in builder.local_tiles: builder.cache_local_tile(str(tid))
+		_stream_camera = camera_state
+		_stream_generation = generation
+		_stream_tier = _detail
+		_maintain_resource_cache()
+		builder.complete_detail_request()
 	_streaming = false
 
 func detail_ready() -> bool:
-	return not _building and not _streaming
+	return not _building and not _streaming and (_builder == null or not _builder.handover.active)
 
 func _update_goods() -> void:
 	for item in _goods:
@@ -634,7 +974,7 @@ func standing_screen_rects() -> Array:
 	return out
 
 
-func _build_effects(builder: RefCounted, parent: Node3D) -> Array:
+func _build_glows(builder: RefCounted, parent: Node3D, from_index: int = 0) -> void:
 	# The old view lights windows and yards in polluted districts. Shared additive
 	# cards reproduce its soft bloom without allocating a realtime light per lamp.
 	var glow := GradientTexture2D.new()
@@ -653,12 +993,16 @@ func _build_effects(builder: RefCounted, parent: Node3D) -> Array:
 	glow_material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	glow_material.albedo_texture = glow
 	glow_material.albedo_color = Color(1.0, 0.70, 0.34, 0.6)
-	for item in builder.glows:
+	for item in builder.glows.slice(from_index):
 		var quad := QuadMesh.new()
 		quad.size = item.size
 		var node := Geo.instance(quad, glow_material)
 		node.position = item.point
 		parent.add_child(node)
+		builder.detail_nodes.append({"node": node, "minimum": 1})
+
+func _build_effects(builder: RefCounted, parent: Node3D) -> Array:
+	_build_glows(builder, parent)
 	var cars: Array = []
 	var car := Geo.Batch.new()
 	car.box(Vector3(0, 2, 0), Vector3(4, 3, 9), Color("dbb963"))

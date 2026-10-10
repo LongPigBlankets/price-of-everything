@@ -2,9 +2,12 @@ shader_type spatial;
 // Painted housing windows are single quads on all four walls. The sprite rig
 // renders both sides; back-face culling erased the rear windows while orbiting.
 render_mode unshaded, cull_disabled, fog_disabled;
+#include "res://scripts/supply_chain_3d/lod_transition.gdshaderinc"
 // The sprite pipeline uses material colours, navy crease ink and face-driven stipple,
 // with directional face lighting. Grounding shadows are drawn on the terrain.
 uniform vec4 ink : source_color = vec4(0.20, 0.25, 0.36, 1.0);
+uniform float stroke_width_scale = 1.0;
+uniform float stroke_opacity = 0.88;
 uniform float spacing = 0.014;
 uniform float stipple_strength = 0.22;
 varying vec3 model_position;
@@ -80,7 +83,7 @@ void fragment() {
 	// UV2.y is the source stroke width in model units (glTF flips V). The original
 	// 2.4px / 1.05px lines shrink with the sprite, rather than staying 1.6 screen pixels.
 	float model_per_pixel = max(length(dFdx(model_position)), length(dFdy(model_position)));
-	float half_width = max(0.0, 1.0 - UV2.y) * 0.5 / max(0.000001, model_per_pixel);
+	float half_width = max(0.0, 1.0 - UV2.y) * stroke_width_scale * 0.5 / max(0.000001, model_per_pixel);
 	vec3 distance_px = barycentric / aa;
 	// Integrate subpixel ink coverage; do not impose a minimum opaque line width.
 	vec3 lines = clamp(distance_px + 0.5, vec3(0.0), vec3(half_width))
@@ -89,7 +92,7 @@ void fragment() {
 	vec3 edges = vec3(mod(bits, 2.0), mod(floor(bits / 2.0), 2.0), mod(floor(bits / 4.0), 2.0));
 	float stroke = max(max(lines.x * edges.x, lines.y * edges.y), lines.z * edges.z);
 	vec3 ink_srgb = OUTPUT_IS_SRGB ? ink.rgb : linear_to_srgb(ink.rgb);
-	paint = mix(paint, ink_srgb, stroke * 0.88);
+	paint = mix(paint, ink_srgb, stroke * stroke_opacity);
 	if (lit_windows && glass) {
 		float lit = 1.0;
 		if (curtain_wall) {
@@ -104,4 +107,5 @@ void fragment() {
 		paint = mix(paint, vec3(1.0, 0.87, 0.57) * (1.0 - stroke * 0.50), 0.86 * lit);
 	}
 	ALBEDO = OUTPUT_IS_SRGB ? paint : srgb_to_linear(paint);
+	if (lod_hidden(FRAGCOORD.xy)) { discard; }
 }
