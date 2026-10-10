@@ -76,6 +76,11 @@ func _notification(what: int) -> void:
 
 func _exit_tree() -> void:
 	flush()
+	# The native logger outlives the scene tree. Do not let late shutdown diagnostics
+	# call back into GDScript after its runtime/type registry has been destroyed.
+	if _tee != null:
+		OS.remove_logger(_tee)
+		_tee = null
 
 
 func _is_headless() -> bool:

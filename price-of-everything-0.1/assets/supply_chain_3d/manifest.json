@@ -1,0 +1,724 @@
+{
+  "industrial_factory_lvl1": {
+    "height": 0.39630680572249277,
+    "width": 0.3849431762860489,
+    "depth": 0.6306818083682955,
+    "triangles": 1076,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.7289319501983083,
+    "contour": true
+  },
+  "industrial_factory_lvl2": {
+    "height": 0.7578124838606035,
+    "width": 0.4595170344143324,
+    "depth": 0.9900568279472354,
+    "triangles": 1216,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.9694747320032188,
+    "contour": true
+  },
+  "industrial_factory_lvl3": {
+    "height": 0.7578124838606035,
+    "width": 0.6471945974080582,
+    "depth": 1.0,
+    "triangles": 2332,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.9694747320032188,
+    "contour": true
+  },
+  "furnace_lvl1": {
+    "height": 0.6958620794888201,
+    "width": 0.6813792853519834,
+    "depth": 0.4862069097058526,
+    "triangles": 5712,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.7943209942338731,
+    "contour": true
+  },
+  "furnace_lvl2": {
+    "height": 0.6958620794888201,
+    "width": 0.7137930968712116,
+    "depth": 0.6758620821196457,
+    "triangles": 8428,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8153703788947197,
+    "contour": true
+  },
+  "furnace_lvl3": {
+    "height": 1.0103448382739364,
+    "width": 1.0,
+    "depth": 0.6758620821196457,
+    "triangles": 12000,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 1.0815025523494062,
+    "contour": true
+  },
+  "power_plant_lvl1": {
+    "height": 0.5707656566324101,
+    "width": 0.9814384963425521,
+    "depth": 0.6210363511433176,
+    "triangles": 4604,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 1.0210337357141739,
+    "contour": true
+  },
+  "power_plant_lvl2": {
+    "height": 0.5746326473172323,
+    "width": 0.9907192297320979,
+    "depth": 0.6320374598542213,
+    "triangles": 12284,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 1.0248225792504018,
+    "contour": true
+  },
+  "power_plant_lvl3": {
+    "height": 0.5746326473172323,
+    "width": 1.0,
+    "depth": 0.796424134435475,
+    "triangles": 15288,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 1.0286114378421558,
+    "contour": true
+  },
+  "petro_refinery_lvl1": {
+    "height": 0.5921807020500389,
+    "width": 0.6913551808066759,
+    "depth": 0.5709699552138278,
+    "triangles": 13798,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.6074249030852988,
+    "contour": true
+  },
+  "petro_refinery_lvl2": {
+    "height": 0.5921807020500389,
+    "width": 0.8784682221551596,
+    "depth": 0.750974517477104,
+    "triangles": 33360,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.7926830435871782,
+    "contour": true
+  },
+  "petro_refinery_lvl3": {
+    "height": 0.6896354019739375,
+    "width": 1.0,
+    "depth": 0.8988763547379747,
+    "triangles": 50060,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.9130905115917941,
+    "contour": true
+  },
+  "poly_plant_lvl1": {
+    "height": 0.4691817338254975,
+    "width": 1.0,
+    "depth": 0.5207226345450376,
+    "triangles": 18052,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.5510258410184946,
+    "contour": true
+  },
+  "poly_plant_lvl2": {
+    "height": 0.5669500726036507,
+    "width": 1.0,
+    "depth": 0.7640807515865666,
+    "triangles": 25184,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.7725189186133409,
+    "contour": true
+  },
+  "poly_plant_lvl3": {
+    "height": 0.5669500726036507,
+    "width": 1.0,
+    "depth": 0.8289054198065942,
+    "triangles": 31668,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8074580717073342,
+    "contour": true
+  },
+  "port_lvl1": {
+    "height": 0.2175342514090342,
+    "width": 1.0,
+    "depth": 0.9041095890410958,
+    "triangles": 6724,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8059827894485913,
+    "contour": true
+  },
+  "construction_site_lvl1": {
+    "height": 0.830760942546088,
+    "width": 1.0,
+    "depth": 0.7127293574612626,
+    "triangles": 8768,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 1.079595146724788,
+    "contour": true
+  },
+  "eaf_lvl1": {
+    "height": 0.7398208949586713,
+    "width": 0.6145494155275686,
+    "depth": 0.5336542078240749,
+    "triangles": 7120,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.9227371179085035,
+    "contour": true
+  },
+  "eaf_lvl2": {
+    "height": 0.7398208949586713,
+    "width": 0.9586319411844895,
+    "depth": 0.639196552130652,
+    "triangles": 9074,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.9958760581927818,
+    "contour": true
+  },
+  "eaf_lvl3": {
+    "height": 0.7398208949586713,
+    "width": 1.0,
+    "depth": 0.6471227147474556,
+    "triangles": 10606,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.9958760581927818,
+    "contour": true
+  },
+  "electrolyser_lvl1": {
+    "height": 0.3608472320915979,
+    "width": 0.7566779897156948,
+    "depth": 0.8836160698984445,
+    "triangles": 14310,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8097682258751959,
+    "contour": true
+  },
+  "electrolyser_lvl2": {
+    "height": 0.3608472320915979,
+    "width": 0.8576979441579459,
+    "depth": 0.8836160698984445,
+    "triangles": 27260,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8097682258751959,
+    "contour": true
+  },
+  "electrolyser_lvl3": {
+    "height": 0.3608472320915979,
+    "width": 0.8576979441579459,
+    "depth": 1.0,
+    "triangles": 44376,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8097682258751959,
+    "contour": true
+  },
+  "solar_farm_lvl1": {
+    "height": 0.2697302596856992,
+    "width": 0.6389324768457185,
+    "depth": 0.5216244487952819,
+    "triangles": 1944,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.5137637391267165,
+    "contour": true
+  },
+  "solar_farm_lvl2": {
+    "height": 0.2697302596856992,
+    "width": 0.8315969699234989,
+    "depth": 0.767093262492587,
+    "triangles": 3760,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.6926308985187279,
+    "contour": true
+  },
+  "solar_farm_lvl3": {
+    "height": 0.2697302596856992,
+    "width": 1.0,
+    "depth": 0.9126619724487214,
+    "triangles": 5200,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8208093244953759,
+    "contour": true
+  },
+  "assembly_plant_lvl1": {
+    "height": 0.36202057256533704,
+    "width": 0.7754911054704462,
+    "depth": 0.38821327913418147,
+    "triangles": 3548,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.7063378135973261,
+    "contour": true
+  },
+  "assembly_plant_lvl2": {
+    "height": 0.41534144895545233,
+    "width": 1.0,
+    "depth": 0.38821327913418147,
+    "triangles": 4780,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8680527027227973,
+    "contour": true
+  },
+  "assembly_plant_lvl3": {
+    "height": 0.41534144895545233,
+    "width": 1.0,
+    "depth": 0.7296539183725267,
+    "triangles": 7448,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.9489530939679096,
+    "contour": true
+  },
+  "chem_plant_lvl1": {
+    "height": 0.5261813246051432,
+    "width": 0.5300127564590574,
+    "depth": 0.9348658744836776,
+    "triangles": 9822,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.7966837410597697,
+    "contour": true
+  },
+  "chem_plant_lvl2": {
+    "height": 0.5261813246051432,
+    "width": 0.759897765631321,
+    "depth": 0.9348658744836776,
+    "triangles": 15380,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8905339184896097,
+    "contour": true
+  },
+  "chem_plant_lvl3": {
+    "height": 0.690293684972706,
+    "width": 1.0,
+    "depth": 0.9348658744836776,
+    "triangles": 22330,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 1.2543230706783406,
+    "contour": true
+  },
+  "high_tech_manufactory_lvl1": {
+    "height": 0.5029392521098799,
+    "width": 0.901371668341722,
+    "depth": 0.6544742010696164,
+    "triangles": 7476,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.9610233971433988,
+    "contour": true
+  },
+  "high_tech_manufactory_lvl2": {
+    "height": 0.5029392521098799,
+    "width": 0.901371668341722,
+    "depth": 0.8393207023291237,
+    "triangles": 10088,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 1.0431530508830824,
+    "contour": true
+  },
+  "high_tech_manufactory_lvl3": {
+    "height": 0.6649249154135728,
+    "width": 1.0,
+    "depth": 0.9418680685949098,
+    "triangles": 13068,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 1.1602824072195732,
+    "contour": true
+  },
+  "onshore_wind_farm_lvl1": {
+    "height": 0.6207916680867773,
+    "width": 0.9834899455365562,
+    "depth": 0.7351678122759325,
+    "triangles": 1924,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8844528499632363,
+    "contour": true
+  },
+  "onshore_wind_farm_lvl2": {
+    "height": 0.6207916680867773,
+    "width": 0.9834899455365562,
+    "depth": 0.7351678122759325,
+    "triangles": 4052,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8844528499632363,
+    "contour": true
+  },
+  "onshore_wind_farm_lvl3": {
+    "height": 0.7530860084617793,
+    "width": 1.0,
+    "depth": 0.739365163333527,
+    "triangles": 7104,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 1.1268033628082808,
+    "contour": true
+  },
+  "offshore_wind_farm_lvl1": {
+    "height": 0.545612385230405,
+    "width": 1.0,
+    "depth": 0.6571428435189384,
+    "triangles": 1516,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8137085099252523,
+    "contour": true
+  },
+  "offshore_wind_farm_lvl2": {
+    "height": 0.6053686301623072,
+    "width": 1.0,
+    "depth": 0.6630849838256836,
+    "triangles": 3020,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8656942882054003,
+    "contour": true
+  },
+  "offshore_wind_farm_lvl3": {
+    "height": 0.8308186690722194,
+    "width": 1.0,
+    "depth": 0.8058394023350307,
+    "triangles": 4524,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 1.192114164270503,
+    "contour": true
+  },
+  "warehouse_lvl1": {
+    "height": 0.36090909215536987,
+    "width": 0.6818181818181818,
+    "depth": 0.6363636580380526,
+    "triangles": 464,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.7303933078745692,
+    "contour": true
+  },
+  "warehouse_lvl2": {
+    "height": 0.36090909215536987,
+    "width": 0.8636363636363636,
+    "depth": 0.6363636580380526,
+    "triangles": 644,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8046202696927509,
+    "contour": true
+  },
+  "warehouse_lvl3": {
+    "height": 0.36090909215536987,
+    "width": 0.9363636537031694,
+    "depth": 1.0,
+    "triangles": 1000,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.9827649563774561,
+    "contour": true
+  },
+  "house_lvl1": {
+    "height": 0.47388890198934197,
+    "width": 1.0,
+    "depth": 0.3725485197034247,
+    "triangles": 252,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8438946269343869,
+    "contour": true
+  },
+  "house_lvl2": {
+    "height": 0.47388890198934197,
+    "width": 1.0,
+    "depth": 0.9199937732724595,
+    "triangles": 504,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 1.0673882089119338,
+    "contour": true
+  },
+  "house_lvl3": {
+    "height": 0.7737226702915572,
+    "width": 0.9963503684567696,
+    "depth": 0.9289750185187715,
+    "triangles": 404,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 1.3201021145925456,
+    "contour": true
+  },
+  "towers_lvl1": {
+    "height": 4.24285708568534,
+    "width": 1.0,
+    "depth": 1.0,
+    "triangles": 478,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 3.87690068439216,
+    "contour": true
+  },
+  "towers_lvl2": {
+    "height": 4.692857345391296,
+    "width": 0.9071428589674891,
+    "depth": 0.9071428589674891,
+    "triangles": 164,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 4.467402842422606,
+    "contour": true
+  },
+  "pylon_lvl1": {
+    "height": 2.4293810406587526,
+    "width": 0.5038643288520974,
+    "depth": 1.0,
+    "triangles": 2284,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 2.1916483083418656,
+    "contour": true
+  },
+  "mine_flush_lvl1": {
+    "height": 0.4282616838245615,
+    "width": 0.9987351407363265,
+    "depth": 0.8492952434588048,
+    "triangles": 1008,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.5059160385228197,
+    "contour": true,
+    "pit": {
+      "sink": 0.23491145985154285,
+      "step": 0.05601734811844483,
+      "rim": [
+        [
+          0.177541077753668,
+          0.009035056148136265
+        ],
+        [
+          0.1645478523770847,
+          -0.16615406486764997
+        ],
+        [
+          0.050780455912449715,
+          -0.3022394412720046
+        ],
+        [
+          -0.11447417845755842,
+          -0.3152387720661509
+        ],
+        [
+          -0.23790363161167388,
+          -0.2234573102164043
+        ],
+        [
+          -0.3048688052870592,
+          -0.110507716946208
+        ],
+        [
+          -0.35543355577379493,
+          0.009035056148136232
+        ],
+        [
+          -0.36695924932551055,
+          0.16756245809790773
+        ],
+        [
+          -0.2787197923083705,
+          0.3184089572177012
+        ],
+        [
+          -0.11447417845755849,
+          0.3628311297933011
+        ],
+        [
+          0.03347419362485591,
+          0.2877113870095692
+        ],
+        [
+          0.12596730674773599,
+          0.16000067102393425
+        ]
+      ]
+    }
+  },
+  "mine_flush_lvl2": {
+    "height": 0.756234189259204,
+    "width": 1.0,
+    "depth": 0.8492952434588048,
+    "triangles": 2652,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.6746573057984566,
+    "contour": true,
+    "pit": {
+      "sink": 0.28008674059222416,
+      "step": 0.04969280881474945,
+      "rim": [
+        [
+          0.20063488768899335,
+          0.009035056148136265
+        ],
+        [
+          0.18658596275056272,
+          -0.17823607321356624
+        ],
+        [
+          0.06357496532317615,
+          -0.32370664799063503
+        ],
+        [
+          -0.11510660808939514,
+          -0.33760248435679147
+        ],
+        [
+          -0.2485647043122825,
+          -0.23949126651740713
+        ],
+        [
+          -0.3209707983487929,
+          -0.1187520461251283
+        ],
+        [
+          -0.3756439348125759,
+          0.00903505614813623
+        ],
+        [
+          -0.38810609096536836,
+          0.1784953823703058
+        ],
+        [
+          -0.29269717806558576,
+          0.33974508832594696
+        ],
+        [
+          -0.11510660808939523,
+          0.387230859010209
+        ],
+        [
+          0.044862569224715335,
+          0.30693044431035776
+        ],
+        [
+          0.14487074778882944,
+          0.17041209273950653
+        ]
+      ]
+    }
+  },
+  "mine_flush_lvl3": {
+    "height": 0.8014094699998854,
+    "width": 1.0,
+    "depth": 0.8492952434588048,
+    "triangles": 3160,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.7603516294401489,
+    "contour": true,
+    "pit": {
+      "sink": 0.3252620213329055,
+      "step": 0.04878930319993583,
+      "rim": [
+        [
+          0.20976036444559423,
+          0.009035056148136265
+        ],
+        [
+          0.19530540121414527,
+          -0.18226340932887167
+        ],
+        [
+          0.0687391726472389,
+          -0.33086238356351183
+        ],
+        [
+          -0.11510660808939514,
+          -0.3450570551203383
+        ],
+        [
+          -0.2524218747233486,
+          -0.24483591861774134
+        ],
+        [
+          -0.3269206304372148,
+          -0.12150015585143506
+        ],
+        [
+          -0.3831739153537083,
+          0.009035056148136229
+        ],
+        [
+          -0.3959962494299918,
+          0.1821396904611051
+        ],
+        [
+          -0.29782985349842367,
+          0.3468571320286956
+        ],
+        [
+          -0.11510660808939523,
+          0.3953641020825116
+        ],
+        [
+          0.04948595585229079,
+          0.31333679674395387
+        ],
+        [
+          0.1523845442014949,
+          0.17388256664469726
+        ]
+      ]
+    }
+  },
+  "tree_lvl1": {
+    "height": 0.6960330872722333,
+    "width": 0.6711617770540631,
+    "depth": 0.6845945805396738,
+    "triangles": 5592,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.6424145698023304,
+    "contour": true
+  },
+  "tree_lvl2": {
+    "height": 1.186978800483303,
+    "width": 0.4772747197081624,
+    "depth": 0.5410671421107243,
+    "triangles": 272,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.9868545657101983,
+    "contour": true
+  },
+  "tree_lvl3": {
+    "height": 1.1100054613452983,
+    "width": 1.0,
+    "depth": 0.9131939800700636,
+    "triangles": 6912,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 1.0640706698019606,
+    "contour": true
+  }
+}

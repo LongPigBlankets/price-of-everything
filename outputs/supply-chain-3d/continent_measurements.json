@@ -1,0 +1,64 @@
+{
+  "build_ms": 44957,
+  "lods": [
+    {
+      "draw_calls": 1891.0,
+      "frame_median_ms": 6.914,
+      "frame_p95_ms": 7.094,
+      "resident_tiles": 0,
+      "span": 10724.7809570312,
+      "terrain_texture_MiB": 178.125,
+      "tier": 0,
+      "triangles": 3453479.0
+    },
+    {
+      "draw_calls": 757.0,
+      "frame_median_ms": 6.911,
+      "frame_p95_ms": 7.517,
+      "resident_tiles": 24,
+      "span": 1100.0,
+      "terrain_texture_MiB": 292.125,
+      "tier": 1,
+      "triangles": 1065692.0
+    },
+    {
+      "draw_calls": 423.0,
+      "frame_median_ms": 6.911,
+      "frame_p95_ms": 7.118,
+      "resident_tiles": 15,
+      "span": 560.0,
+      "terrain_texture_MiB": 534.375,
+      "tier": 2,
+      "triangles": 888792.0
+    }
+  ],
+  "max_zoom_visible_tiles": 600,
+  "owned_tiles": 8,
+  "tiles": 600,
+  "capture": "Third continent review iteration",
+  "renderer": "Godot 4.6.2, OpenGL compatibility, Apple M5 Pro",
+  "resolution": [
+    1920,
+    1080
+  ],
+  "frame_method": "60 process-frame intervals after detail streaming completes; desktop scheduling/vsync included, not isolated GPU timings",
+  "texture_method": "Terrain texture dimensions times RGBA8 bytes and 4/3 mip overhead; excludes regular map, meshes, colliders, buildings and viewport buffers",
+  "visual_review": "Sol reviewed three iterations; V3 approved as a usable game map at all three LODs. Marketing hero art still needs outer ocean edge and stronger distant cities.",
+  "iterations": [
+    {
+      "iteration": 1,
+      "cold_build_ms": 956863,
+      "far_draw_calls": 7070
+    },
+    {
+      "iteration": 2,
+      "cold_build_ms": 46783,
+      "far_draw_calls": 3514
+    },
+    {
+      "iteration": 3,
+      "cold_build_ms": 44957,
+      "far_draw_calls": 1891
+    }
+  ]
+}

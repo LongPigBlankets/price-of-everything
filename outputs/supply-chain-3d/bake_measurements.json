@@ -1,0 +1,91 @@
+{
+  "environment": {
+    "engine": "Godot 4.6.2",
+    "renderer": "OpenGL compatibility",
+    "hardware": "Apple M5 Pro",
+    "viewport": [
+      1920,
+      1080
+    ]
+  },
+  "methodology": {
+    "load_time": "Time to switch existing company view into all-tiles view, including live scene construction. Separate processes verify disk reuse. Does not include loading the main game.",
+    "draw_calls": "3D SubViewport visible render-info counters after three forced draws. Excludes HUD; historical global counters are not directly comparable.",
+    "texture_memory": "Unique terrain textures only, RGBA8 plus mipmaps. Atlas counted once. Excludes meshes, buildings, main game and driver allocations.",
+    "frame_intervals": "60 process-frame intervals; desktop scheduling and background window affect these. Not isolated GPU timings."
+  },
+  "cold": {
+    "build_ms": 44050,
+    "continent_cache_hits": 0,
+    "continent_cache_writes": 1,
+    "total_cache_hits": 14,
+    "total_cache_writes": 26,
+    "exit_code": 0
+  },
+  "warm": {
+    "build_ms": 23485,
+    "continent_cache_hits": 1,
+    "continent_cache_writes": 0,
+    "continent_key": "continent-2fea27539e9deffe64be8024415e8728a0700ae2acf4b77adf1ce7814766c4f6",
+    "far_buildings_pick_as_tiles": 4,
+    "lods": [
+      {
+        "draw_calls": 88,
+        "frame_median_ms": 8.543,
+        "frame_p95_ms": 10.595,
+        "resident_tiles": 0,
+        "span": 10724.7809570312,
+        "terrain_texture_MiB": 153.8125,
+        "tier": 0,
+        "triangles": 3446187
+      },
+      {
+        "draw_calls": 508,
+        "frame_median_ms": 13.222,
+        "frame_p95_ms": 19.949,
+        "resident_tiles": 24,
+        "span": 1100.0,
+        "terrain_texture_MiB": 267.8125,
+        "tier": 1,
+        "triangles": 1056044
+      },
+      {
+        "draw_calls": 192,
+        "frame_median_ms": 10.222,
+        "frame_p95_ms": 16.598,
+        "resident_tiles": 15,
+        "span": 560.0,
+        "terrain_texture_MiB": 510.0625,
+        "tier": 2,
+        "triangles": 879526
+      }
+    ],
+    "max_zoom_visible_tiles": 600,
+    "owned_tiles": 8,
+    "tiles": 600,
+    "total_cache_hits": 40,
+    "total_cache_writes": 0,
+    "exit_code": 0
+  },
+  "saved_continent": {
+    "filename": "continent-2fea27539e9deffe64be8024415e8728a0700ae2acf4b77adf1ce7814766c4f6.res",
+    "compressed_bytes": 77839094,
+    "location": "user://supply_chain_3d_bakes/",
+    "contains": [
+      "shared world-space terrain atlas",
+      "joined terrain",
+      "joined roads",
+      "joined far canopies and settlements",
+      "joined cutaway edge meshes",
+      "tile collision/fallback meshes and road parts"
+    ]
+  },
+  "visual_review": "Sol reviewed all three LODs against the preceding approved continent: no material seam, colour, coastline or detail regression.",
+  "validation": {
+    "regression_checks_passed": 2390,
+    "regression_tests": 246,
+    "scripts_parsed": 782,
+    "parse_failures": 0,
+    "script_errors": 0
+  }
+}
