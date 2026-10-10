@@ -48,6 +48,15 @@ var _fit_after_build := false
 var _streaming := false
 var _stream_clock := 0.0
 
+func _exit_tree() -> void:
+	_generation += 1
+	# Release large cached resources while the scene/rendering services still
+	# exist, rather than retaining them until the scripting runtime shuts down.
+	_builder = null
+	_terrain_cache.clear()
+	_goods.clear()
+	_effects.clear()
+
 func _ready() -> void:
 	show_all_tiles = PlayerProfile.supply_chain_all_tiles
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -213,6 +222,11 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	builder.origin = Vector2.ZERO
 	builder.configure_grade()
 	builder.configure_pits(model.get("standing", []))
+	builder.configure_bakes(model)
+	if show_all_tiles:
+		if _progress != null: _progress.text = "Loading continent bake…"
+		await builder.prepare_continent(self)
+		if generation != _generation: next.free(); return
 	var first := true
 	var built := 0
 	for tid in builder.tiles:
@@ -258,6 +272,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 				await get_tree().process_frame
 				if generation != _generation: next.free(); return
 	next.add_child(builder.shadows_node())
+	if show_all_tiles: builder.finish_continent(next)
 	if show_all_tiles: print("[CONTINENT BUILD] trees ready ", Time.get_ticks_msec())
 	builder.prepare_flows(model)
 	var goods: Array = []
@@ -292,8 +307,8 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	_content = next
 	_world.add_child(_content)
 	_builder = builder
-	# Retain only this company's current terrain. Released tiles/old height fields
-	# cannot accumulate their three texture tiers across rebuilds.
+	# Keep the reusable continent base across coverage switches, but release
+	# obsolete fine tiers and all data belonging to a different height field.
 	var keep: Dictionary = {}
 	for tid in builder.tiles: keep[builder.terrain_key(str(tid))] = true
 	for key in _terrain_cache.keys():
@@ -392,6 +407,7 @@ func pick_at(screen: Vector2, tiles_only: bool = false) -> Dictionary:
 	screen = _render_point(screen)
 	if not has_content(): return {}
 	var space := _viewport.find_world_3d().direct_space_state
+	tiles_only = tiles_only or (_builder != null and _builder._overview)
 	# A long orthographic ray exactly on a shared triangle edge can miss in Jolt.
 	# Subpixel retries cover numerical cracks without expanding selection by a visible pixel.
 	for offset in [Vector2.ZERO, Vector2(0.25, 0.25), Vector2(-0.25, -0.25)]:
@@ -400,7 +416,16 @@ func pick_at(screen: Vector2, tiles_only: bool = false) -> Dictionary:
 		ray.hit_back_faces = true
 		var hit := space.intersect_ray(ray)
 		if not hit.is_empty():
-			if tiles_only or hit.collider.has_meta("standing"): return hit
+			if tiles_only: return hit
+			if hit.collider.has_meta("standing"):
+				if _building_large_enough(hit.collider): return hit
+				# An undersized building must not occlude the tile below it. The
+				# mine's layer-1 collider also covers its excavated terrain opening.
+				var tile_ray := PhysicsRayQueryParameters3D.create(from, from + _camera.project_ray_normal(screen + offset) * _camera.far, 1)
+				tile_ray.hit_back_faces = true
+				var tile_hit := space.intersect_ray(tile_ray)
+				if tile_hit.is_empty(): return {}
+				return _as_tile_hit(tile_hit)
 			# A two-world-unit halo helps hit fine building edges without swallowing
 			# the yard in a tall rectangular box. Terrain, trees and roads select tiles.
 			var halo := 2.0 * float(_viewport.size.y) / _rig.span
@@ -410,16 +435,29 @@ func pick_at(screen: Vector2, tiles_only: bool = false) -> Dictionary:
 				var near_ray := PhysicsRayQueryParameters3D.create(start, start + _camera.project_ray_normal(pixel) * _camera.far, 3)
 				near_ray.hit_back_faces = true
 				var neighbour := space.intersect_ray(near_ray)
-				if not neighbour.is_empty() and neighbour.collider.has_meta("standing") and neighbour.collider.get_meta("tile_id", "") == hit.collider.get_meta("tile_id", ""):
+				if not neighbour.is_empty() and neighbour.collider.has_meta("standing") and _building_large_enough(neighbour.collider) and neighbour.collider.get_meta("tile_id", "") == hit.collider.get_meta("tile_id", ""):
 					return neighbour
 			return hit
 	return {}
+
+func _building_large_enough(body: Node3D) -> bool:
+	if not body.has_meta("pick_bounds"): return false
+	var bounds: AABB = body.get_meta("pick_bounds")
+	var rect := Rect2(screen_point(body.to_global(bounds.position)), Vector2.ZERO)
+	for i in 8: rect = rect.expand(screen_point(body.to_global(bounds.get_endpoint(i))))
+	return rect.size.x > 20.0 and rect.size.y > 20.0
+
+func _as_tile_hit(hit: Dictionary) -> Dictionary:
+	# The collider may still be a mine. Activation must treat the pick as terrain.
+	hit["tiles_only"] = true
+	return hit
 
 func _activate_at(screen: Vector2, tiles_only: bool = false) -> void:
 	var hit := pick_at(screen, tiles_only)
 	if hit.is_empty(): return
 	var body: Node = hit.collider
 	var standing: Dictionary = body.get_meta("standing", {})
+	tiles_only = tiles_only or bool(hit.get("tiles_only", false)) or (_builder != null and _builder._overview)
 	if not tiles_only and str(standing.get("kind", "")) in ["building", "site"]:
 		building_picked.emit(str(standing.iid))
 	elif not tiles_only and str(standing.get("kind", "")) == "suppliers":

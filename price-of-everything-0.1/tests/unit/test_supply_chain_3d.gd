@@ -425,5 +425,86 @@ func _test_3d_building_silhouette_picking() -> void:
 			elif hit.collider.get_meta("tile_id", "") == "pick": freed_ground_hits += 1
 	_check(building_hits > 10, "3D picking: visible building remains easy to select")
 	_check(freed_ground_hits > 5, "3D picking: empty space inside the old oversized box now selects the tile")
+	var body: StaticBody3D = standing.find_children("*", "StaticBody3D", true, false)[0]
+	_check(board._building_large_enough(body), "3D picking: large projected building has a clickbox")
+	builder._overview = true
+	var overview_hit := board.pick_at(board.screen_point(builder.pickables[0].point))
+	_check(not overview_hit.is_empty() and not overview_hit.collider.has_meta("standing"),
+		"3D picking: continent overview forces even a large building to select terrain")
+	builder._overview = false
+	var far := board.capture_camera()
+	far.span = Rig.MAX_SIZE
+	board.restore_camera(far)
+	await get_tree().physics_frame
+	var tiny := board.pick_at(board.screen_point(builder.pickables[0].point))
+	_check(not board._building_large_enough(body) and not tiny.is_empty() and not tiny.collider.has_meta("standing"),
+		"3D picking: sub-20px buildings let clicks reach their terrain at far zoom")
+	var pixels := board._viewport.size
+	board._viewport.size = pixels * 2
+	_check(not board._building_large_enough(body), "3D picking: Retina density does not change the 20 logical pixel threshold")
+	board._viewport.size = pixels
+	# Both dimensions matter: a tall, very narrow silhouette remains a tile target.
+	body.set_meta("pick_bounds", AABB(Vector3.ZERO, Vector3(1, 1000, 1)))
+	far.span = 1000.0
+	board.restore_camera(far)
+	_check(not board._building_large_enough(body), "3D picking: tall but narrower-than-20px buildings still select the tile")
 	board.queue_free()
+	await get_tree().process_frame
+
+func _test_3d_persistent_bakes() -> void:
+	var Cache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
+	var first := Builder.new()
+	first.ground = SlopedGround.new()
+	first.tiles = {"cache_test": {"center": Vector2.ZERO, "type": "rural", "label": "Fixture"}}
+	first._map_key = "isolated-flat-fixture"
+	first.bake_cache.enabled = true
+	first.bake_cache.directory = "user://supply-chain-bake-test-%d" % Time.get_ticks_usec()
+	var key := first.tile_bake_key("cache_test", 1)
+	var original := await first._tile_bake(self, "cache_test", 1)
+	_check(first.bake_cache.writes == 1, "3D bake cache: tile is persisted on first generation")
+	var fresh := Builder.new()
+	fresh.ground = SlopedGround.new()
+	fresh.tiles = first.tiles.duplicate(true)
+	fresh._map_key = first._map_key
+	fresh.bake_cache.enabled = true
+	fresh.bake_cache.directory = first.bake_cache.directory
+	var loaded := await fresh._tile_bake(self, "cache_test", 1)
+	_check(fresh.bake_cache.hits == 1 and fresh.bake_cache.writes == 0 and loaded.mesh.surface_get_array_len(0) == original.mesh.surface_get_array_len(0),
+		"3D bake cache: a fresh builder reuses disk geometry and texture without generation")
+	_check(key == fresh.tile_bake_key("cache_test", 1) and key != fresh.tile_bake_key("cache_test", 2),
+		"3D bake cache: stable across instances, separate for medium and near tiles")
+	fresh.tiles.cache_test.type = "urban"
+	_check(key != fresh.tile_bake_key("cache_test", 1), "3D bake cache: changed tile geography invalidates a bake")
+	_check(Cache.digest({"b": 2, "a": 1}) == Cache.digest({"a": 1, "b": 2}), "3D bake cache: dictionary insertion order does not invalidate content")
+	first.pits["adjacent"] = {"pos": Vector2(330, 0), "side": 100.0, "area": Rect2(310, -20, 40, 40)}
+	_check(key != first.tile_bake_key("cache_test", 1),
+		"3D bake cache: an adjacent mine's graded shoulder invalidates the tile even when its pit is outside")
+	DirAccess.remove_absolute(first.bake_cache.directory.path_join(key + ".res"))
+	DirAccess.remove_absolute(first.bake_cache.directory)
+
+func _test_3d_continent_bake_sharing() -> void:
+	var builder := Builder.new()
+	builder.ground = SlopedGround.new()
+	builder.tiles = {"west": {"center": Vector2.ZERO, "type": "rural", "label": "West"},
+		"east": {"center": Vector2(540, 0), "type": "rural", "label": "East"}}
+	builder.streamed = true
+	builder.configure_grade()
+	await builder.prepare_continent(self)
+	var root := Node3D.new()
+	add_child(root)
+	for tid in builder.tiles:
+		await builder.prepare_tile(self, tid)
+		root.add_child(builder.tile_node(tid))
+	var west: Dictionary = builder.terrain_lods[0]
+	var east: Dictionary = builder.terrain_lods[1]
+	_check(west.data.textures[0] == east.data.textures[0] and west.data.textures[0] == builder.continent.texture,
+		"3D continent bake: every coarse tile references one shared atlas")
+	builder.finish_continent(root)
+	builder.set_overview_scale(0.1)
+	_check(builder.continent_node.visible and not west.node.visible and not east.node.visible,
+		"3D continent bake: outermost zoom renders the joined continent instead of per-tile surfaces")
+	builder.set_overview_scale(1.0)
+	_check(not builder.continent_node.visible and west.node.visible and east.node.visible,
+		"3D continent bake: closer zoom restores independently detailed tile surfaces")
+	root.queue_free()
 	await get_tree().process_frame

@@ -46,6 +46,7 @@ func _ready() -> void:
 	var home: Dictionary = board.call("capture_camera")
 	if "--continent-review" in OS.get_cmdline_user_args():
 		await _continent_review(board, home)
+		for i in 5: await get_tree().process_frame
 		get_tree().quit()
 		return
 	if not await _exercise_pointer(board): return
@@ -95,6 +96,12 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 	var start := Time.get_ticks_msec()
 	await board.call("set_all_tiles", true, false)
 	var measurements := {"build_ms": Time.get_ticks_msec() - start, "tiles": board.get("_model").tiles.size(), "lods": []}
+	var builder: RefCounted = board.get("_builder")
+	measurements.cache_directory = ProjectSettings.globalize_path(builder.bake_cache.directory)
+	measurements.continent_key = builder._continent_key
+	measurements.continent_cache_hits = builder.bake_cache.hits
+	measurements.continent_cache_writes = builder.bake_cache.writes
+	print("[BAKE] continent key=", builder._continent_key, " hits=", builder.bake_cache.hits, " writes=", builder.bake_cache.writes)
 	print("[CONTINENT] build_ms=", measurements.build_ms, " tiles=", measurements.tiles)
 	var all_home: Dictionary = board.call("capture_camera")
 	var focus: Vector3 = home.target
@@ -118,17 +125,28 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 			frames.append(float(now - last) / 1000.0)
 			last = now
 		frames.sort()
+		# A background window need not render process frames. Force the current
+		# view, then query this 3D viewport rather than stale global/HUD counters.
+		for i in 3:
+			RenderingServer.force_draw(false)
+			await get_tree().process_frame
+		var viewport: SubViewport = board.get("_viewport")
+		var draws := viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME)
+		var triangles := viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME)
 		Harness.capture(self, "/private/tmp/%s_%s.png" % [tag, ["far", "medium", "near"][tier]], Vector2i(1920, 1080))
 		var bytes := 0
 		var resident := 0
+		var textures := {}
 		for item in board.get("_builder").terrain_lods:
 			if item.data.meshes[1] != null or item.data.meshes[2] != null: resident += 1
 			for texture in item.data.textures:
-				if texture != null: bytes += int(texture.get_width() * texture.get_height() * 4.0 * 4.0 / 3.0)
+				if texture != null and not textures.has(texture.get_instance_id()):
+					textures[texture.get_instance_id()] = true
+					bytes += int(texture.get_width() * texture.get_height() * 4.0 * 4.0 / 3.0)
 		print("[CONTINENT] tier=", tier, " span=", state.span, " resident=", resident, " terrain_MiB=", bytes / 1048576.0,
-			" draws=", Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), " triangles=", Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
+			" draws=", draws, " triangles=", triangles)
 		measurements.lods.append({"tier": tier, "span": state.span, "resident_tiles": resident, "terrain_texture_MiB": bytes / 1048576.0,
-			"draw_calls": Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), "triangles": Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME),
+			"draw_calls": draws, "triangles": triangles,
 			"frame_median_ms": frames[30], "frame_p95_ms": frames[57]})
 	var widest := all_home.duplicate()
 	widest.span = preload("res://scripts/supply_chain_3d/orbit_camera.gd").MAX_SIZE
@@ -139,6 +157,13 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 	print("[CONTINENT] max zoom visible tile centres=", visible)
 	measurements.max_zoom_visible_tiles = visible
 	assert(visible >= 50, "Maximum zoom must fit at least fifty tiles")
+	var buildings_as_tiles := 0
+	for item in builder.pickables:
+		if str(item.kind) != "building": continue
+		var hit: Dictionary = board.call("pick_at", board.call("screen_point", item.point))
+		if not hit.is_empty() and (not hit.collider.has_meta("standing") or builder._overview): buildings_as_tiles += 1
+	assert(buildings_as_tiles > 0, "Far building clicks must target tiles")
+	measurements.far_buildings_pick_as_tiles = buildings_as_tiles
 	board.call("restore_camera", all_home)
 	var click_tile := ""
 	for id in board.get("_model").tiles:
@@ -157,6 +182,9 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 	await board.call("set_all_tiles", false, false)
 	assert(board.get("_model").tiles.size() == owned_count, "Coverage returns to the original company tiles")
 	print("[CONTINENT] owned coverage restored=", owned_count)
+	measurements.total_cache_hits = builder.bake_cache.hits
+	measurements.total_cache_writes = builder.bake_cache.writes
+	print("[BAKE] total hits=", builder.bake_cache.hits, " writes=", builder.bake_cache.writes)
 	measurements.owned_tiles = owned_count
 	var report := FileAccess.open("/private/tmp/%s_measurements.json" % tag, FileAccess.WRITE)
 	report.store_string(JSON.stringify(measurements, "\t"))

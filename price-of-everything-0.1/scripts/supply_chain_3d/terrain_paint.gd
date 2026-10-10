@@ -7,6 +7,7 @@ const Ground := preload("res://scripts/empire_board_ground.gd")
 const WaterArt := preload("res://scripts/supply_chain_3d/water_art.gd")
 const Detail := preload("res://scripts/supply_chain_3d/detail.gd")
 const EXTENT := Vector2(548, 488) # four-unit gutter prevents filtered seams at hex borders
+const CONTINENT_WIDTH := 6144
 
 class Painter extends Node2D:
 	var relief: Dictionary
@@ -109,3 +110,50 @@ static func bake(host: Node, tile: Dictionary, relief: Dictionary, rivers: Array
 			textures.append(ImageTexture.create_from_image(image))
 	viewport.queue_free()
 	return textures
+
+static func bake_continent(host: Node, tiles: Dictionary, rivers: Dictionary, mines: Array,
+		height: Callable, area: Rect2) -> Texture2D:
+	if DisplayServer.get_name() == "headless":
+		var dummy := Image.create(8, 8, false, Image.FORMAT_RGBA8)
+		dummy.fill(Legacy._warm(MapStyle.band_colors()[2]))
+		return ImageTexture.create_from_image(dummy)
+	var viewport := SubViewport.new()
+	var scale := minf(1.0, float(CONTINENT_WIDTH) / maxf(area.size.x, area.size.y))
+	viewport.size = Vector2i((area.size * scale).ceil())
+	viewport.disable_3d = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	host.add_child(viewport)
+	var canvas := Node2D.new()
+	canvas.scale = Vector2(viewport.size) / area.size
+	canvas.position = -area.position * canvas.scale
+	viewport.add_child(canvas)
+	var count := 0
+	for tid in tiles:
+		var tile: Dictionary = tiles[tid]
+		# Clip each source painter into its hex inside ONE shared atlas render.
+		# Its normal gutter still bleeds the paint beyond the clipping boundary.
+		var mask := Polygon2D.new()
+		var polygon := Model.hex_points(tile.center)
+		for i in polygon.size(): polygon[i] += (polygon[i] - (tile.center as Vector2)).normalized() * 0.3
+		mask.polygon = polygon
+		mask.clip_children = CanvasItem.CLIP_CHILDREN_ONLY
+		canvas.add_child(mask)
+		var painter := Painter.new()
+		painter.tile = tile
+		painter.relief = Legacy._relief_of(str(tid), tile.center)
+		painter.rivers = rivers.get(tid, [])
+		painter.mines = mines
+		var water := WaterArt.new()
+		painter.water_art = water.artwork(tile, painter.relief, painter.rivers, height)
+		water.free()
+		mask.add_child(painter)
+		count += 1
+		if count % 32 == 0: await host.get_tree().process_frame
+	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	await host.get_tree().process_frame
+	RenderingServer.force_draw(false)
+	var image := viewport.get_texture().get_image()
+	viewport.queue_free()
+	if image == null or image.is_empty(): return null
+	image.generate_mipmaps()
+	return ImageTexture.create_from_image(image)

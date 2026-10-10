@@ -4,6 +4,7 @@ uniform sampler2D artwork : source_color, filter_linear_mipmap_anisotropic, repe
 uniform bool textured = false;
 uniform bool strata = false;
 uniform float road_fade = 0.0;
+uniform vec4 artwork_rect = vec4(0.0, 0.0, 1.0, 1.0);
 uniform vec2 grade_range = vec2(0.0, 1.0);
 varying vec3 world_point;
 varying vec3 world_normal;
@@ -14,7 +15,7 @@ void vertex() {
 	world_normal = normalize(MODEL_NORMAL_MATRIX * NORMAL);
 }
 void fragment() {
-	vec3 paint = textured ? texture(artwork, UV).rgb : COLOR.rgb;
+	vec3 paint = textured ? texture(artwork, artwork_rect.xy + UV * artwork_rect.zw).rgb : COLOR.rgb;
 	if (textured && !OUTPUT_IS_SRGB) paint = to_srgb(paint);
 	paint = mix(paint, vec3(0.50, 0.52, 0.35), road_fade);
 	vec3 n = normalize(world_normal);

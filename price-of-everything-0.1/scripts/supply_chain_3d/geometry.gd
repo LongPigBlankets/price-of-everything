@@ -78,3 +78,16 @@ static func instance(mesh: Mesh, mat: Material) -> MeshInstance3D:
 	node.mesh = mesh
 	node.material_override = mat
 	return node
+
+static func joined(meshes: Array, uv_rect := Rect2()) -> ArrayMesh:
+	# Generated terrain/roads/canopies are unindexed triangle batches. Preserve
+	# their normals and paint while collapsing them into one continent surface.
+	var batch := Batch.new()
+	for mesh in meshes:
+		if mesh == null or mesh.get_surface_count() == 0: continue
+		var arrays: Array = mesh.surface_get_arrays(0)
+		batch.vertices.append_array(arrays[Mesh.ARRAY_VERTEX])
+		batch.normals.append_array(arrays[Mesh.ARRAY_NORMAL])
+		batch.colors.append_array(arrays[Mesh.ARRAY_COLOR])
+		if arrays[Mesh.ARRAY_TEX_UV] != null: batch.uvs.append_array(arrays[Mesh.ARRAY_TEX_UV])
+	return batch.mesh(uv_rect)

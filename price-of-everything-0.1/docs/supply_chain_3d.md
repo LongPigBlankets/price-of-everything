@@ -15,7 +15,7 @@ open their supply-chain graphs; terrain clicks open the existing tile panel.
 - Mouse wheel / trackpad pinch: zoom around the terrain under the pointer.
 - Q/E or arrow buttons: rotate. Home / Reset view: frame the current coverage.
 - Click terrain or a warehouse: select its tile; Shift-click selects through buildings.
-- Click a building: open its network. Hitboxes follow the visible mesh, with a two-world-unit edge tolerance; empty space around the building selects the tile. Tab returns to the regular map.
+- Click a building: open its network once its projected width **and** height exceed 20 logical screen pixels. Smaller player/NPC buildings select their tile instead. The outermost continent view always selects tiles. Eligible hitboxes follow the visible mesh with a two-world-unit edge tolerance; empty space around the building selects the tile. Retina scaling does not change the threshold. Tab returns to the regular map.
 - Visibility → **Show player owned tiles only** (default) / **Show all tiles**. This preference is saved in the player profile. Owned coverage includes company routes, goods and purchased empty land; all coverage includes every real terrain tile, without inventing stockpiles or player buildings.
 - The maximum camera span is 28,000 units. The 600-tile test continent fits within it, exceeding the requested 50-tile minimum.
 
@@ -77,12 +77,13 @@ Changes to mine placement/level invalidate the affected terrain cache entries.
 ## Three detail levels
 
 LOD is selected from logical screen pixels per world unit, with hysteresis so a slow
-pinch near a threshold does not flicker between tiers. Company coverage keeps all three terrain tiers cached. Continent coverage keeps a small
-base for every tile and refines visible tiles progressively as the camera approaches.
+pinch near a threshold does not flicker between tiers. Company coverage keeps all three terrain tiers in memory. Continent coverage uses one
+shared world-space atlas and a combined far mesh, then refines visible tiles progressively
+as the camera approaches. Both modes reuse disk bakes between game processes.
 
 | Tier | Typical span at 1080px height | Ground mesh spacing | Terrain artwork width | Detail |
 | --- | --- | --- | --- | --- |
-| Far | Above ~1420 units | 12 units | 512px + mipmaps | Accurate contours/beaches, textured strata, denser rounded trees and bushes, roads, lamps, buildings, shadows and tokens |
+| Far (company) | Above ~1420 units | 12 units | 512px + mipmaps | Accurate contours/beaches, textured strata, denser rounded trees and bushes, roads, lamps, buildings, shadows and tokens |
 | Medium | ~675–1420 units | 8 units | 1024px + mipmaps | Finer slopes, canopy lobes and branches, railway sleepers, increased building mesh detail |
 | Near | Below ~675 units | 4 units | 2048px + mipmaps | Fine slope geometry, ground tufts and stones, highest building detail |
 
@@ -92,6 +93,9 @@ tile versus 26, with placement excluding buildings, streets and riverbanks. All 
 use the same deterministic positions. Medium and near add details to those positions.
 Imported glTF LODs handle building meshes; tier-specific biases preserve more geometry
 as the view approaches. Continent terrain colliders follow the currently displayed mesh.
+The continent base uses 24-unit geometry and one 6144px atlas across the map. Below
+0.27 logical pixels per world unit, its joined far geometry replaces per-tile rendering;
+above 0.33, independent tiles return. The separate thresholds prevent flicker.
 Fine ground decoration is intentionally sparse: warm stones appear only on exposed
 slopes, with fewer grass marks, rather than grey specks across every flat tile.
 
@@ -101,18 +105,34 @@ Geometry is frustum-culled by Godot. Ground, vegetation and infrastructure detai
 batched; lighting accents use shared materials and glow cards instead of an individual
 real-time light for every lamp. The viewport and processing stop when the board is hidden.
 Unchanged models retain their scene. Obsolete terrain cache entries are released on
-rebuild, including tiles no longer in the company and old height fields. The small
+rebuild, including tiles no longer in the company and old height fields. The shared
 continent base survives a coverage switch within the same map; its finer tiers do not.
 
 Three complete terrain texture tiers for the eight-tile Metal Magnate company retain
 approximately **199.5 MiB** including mipmaps. Keeping them resident avoids decode/upload
-work while zooming. In continent mode each tile starts with a 256px paint texture
-and 24-unit mesh; at most 24 camera-adjacent tiles retain the 1024px/8-unit or
-2048px/4-unit tiers. Offscreen fine meshes, collision shapes and textures are released.
-The 600-tile base is about 178 MiB of terrain textures; worst-case residency with both
-fine tiers on 24 tiles is about 748 MiB. These figures exclude building assets, terrain
-meshes, collision data and the regular map. Company coverage can retain the 178 MiB
-base after switching back so it need not be repainted on the next switch.
+work while zooming. At outermost continent zoom, one compressed bake contains a shared
+6144px world-space atlas, joined terrain, roads, canopy/settlement masses and cutaway
+edges. It remains genuinely 3D and rotatable. Per-tile collision geometry is retained
+for tile selection; the far artwork is not rendered or baked as 600 independent images.
+At closer zoom, tiles share the atlas as a fallback while at most 24 nearby tiles retain
+1024px/8-unit or 2048px/4-unit bakes. Offscreen fine meshes, collision shapes and textures
+are released from memory, and can be loaded again from disk.
+
+The 600-tile atlas retains about 154 MiB including mipmaps; the measured medium/near
+views retain about 268/510 MiB of terrain textures. Worst-case atlas plus both fine tiers
+on 24 tiles is about 724 MiB. These figures exclude building assets, meshes, collision
+data and the regular map. Switching to company coverage can retain the shared atlas;
+switching back reuses one atlas rather than keeping a duplicate for every coverage swap.
+
+Bakes are persisted under `user://supply_chain_3d_bakes/` as compressed `.res` resources.
+The far map is one `continent-<hash>.res`; closer terrain is `tile-<hash>.res` per tile
+and detail level. Company-mode road geometry is cached too. Keys include generator
+source fingerprints, actual geography, palette, local mine cuts and relevant layout;
+they contain no scene instance IDs, camera angles or display-density values. Changed
+inputs invalidate the corresponding bakes. Writes use a temporary file and rename.
+A periodic trim targets 2 GiB of runtime disk storage; optional packaged bakes in
+`res://assets/supply_chain_3d/bakes/` are read-only. Headless tests never populate the
+production cache with their placeholder artwork.
 
 At very wide framing, trees become batched simplified canopies, decorative settlements
 use grouped masses, roads soften, and tiny traffic, lamps and water glints disappear.
@@ -121,10 +141,11 @@ the source trees and buildings. Paint bleeds into texture gutters to prevent pal
 seams. Roads and river crossings use spatial lookups instead of scanning the whole
 network for every mesh vertex.
 
-Initial terrain and road generation is paced with visible progress. Changes to standing
-objects/infrastructure still rebuild rather than update incrementally. This is not yet
-an instant-loading whole-world renderer: cold generation remains a noticeable wait,
-and a disk bake cache plus incremental scene updates would be the next performance work.
+Initial terrain and road generation is paced with visible progress. Cache hits skip
+texture painting and terrain/road tessellation. Loading/decompressing resources, building
+colliders, and recreating live buildings, vegetation and goods still take time; this is
+not an instant-loading whole-world scene snapshot. Incremental scene updates and lazy
+creation of nearby live detail would be the next performance work.
 
 Rendered measurements: Godot 4.6.2, OpenGL compatibility, Apple M5 Pro, 1920×1080,
 eight tiles / 38 standing objects. After 60 forced-draw warm-up frames, 45 frame samples:
@@ -143,8 +164,23 @@ Near framing culls more tiles, hence fewer draw calls. Initial cold captures inc
 steady-state figures. The engine's total texture monitor also includes the main game's
 prewarmed sprites and regular-map assets, so it is not the supply-chain cache size.
 
+With persistent bakes, the current 600-tile map took about **41–45 seconds cold** and
+**22–24 seconds from disk** to open from company coverage. A fresh process reused the
+continent resource and 39 tile-detail reads, with **zero writes**. Two consecutive
+cached runs exited successfully after using normal reuse for immutable resources.
+The final 3D viewport measured **88 visible draw calls** at continent framing, about
+510 at medium and 192 near. These counters exclude the HUD and are taken after forced
+draws; the historical global draw-call figures below use a different scope.
 
-The 600-tile continent was rendered through three Sol-reviewed iterations. Spatial
+The far resource combines the static atlas and meshes; interactive buildings and goods
+remain live. Cache inputs include pipeline/tree clearances and the full mine grading
+reach, so edits cannot keep stale canopies or neighbouring terrain. The Sol reviewer
+found no material loss of coastline, shading or detail against the previous approved
+three LODs. Final captures use the `baked_continent_` prefix; cache keys, compressed
+size and raw measurements are in `outputs/supply-chain-3d/bake_measurements.json`.
+
+
+Before persistent bakes, the 600-tile continent was rendered through three Sol-reviewed iterations. Spatial
 road/river indexing reduced the first build from 957 seconds to **45 seconds**;
 wide-view batching and detail suppression reduced draw calls from **7,070 to 1,891**.
 The final 1920×1080 capture (same hardware/renderer) measured:
@@ -169,11 +205,12 @@ marketing-art work. Captures and measurement methodology are in
 
 ## Verification and captures
 
-- Map, goods-view and 3D regression: **2,376 checks passed**, 244 tests, no script errors.
-- Includes **70 3D checks** covering coverage without invented assets, screen-space LOD
+- Map, goods-view and 3D regression: **2,390 checks passed**, 246 tests, no script errors.
+- Includes **84 3D checks** covering coverage without invented assets, screen-space LOD
   hysteresis, release of streamed terrain, silhouette picking, high-DPI input,
-  source trees/ink, joined roads at both mesh spacings and all mine levels/LODs.
-- Complete parse sweep: **780 scripts, 0 failures**, 47 excluded by the existing checker.
+  source trees/ink, joined roads at both mesh spacings and all mine levels/LODs,
+  the 20px threshold, shared continent rendering and persistent bake invalidation.
+- Complete parse sweep: **782 scripts, 0 failures**, 47 excluded by the existing checker.
 - Windowed continent run: all 600 tiles present and visible at maximum zoom,
   unowned-tile picking succeeded, and owned coverage restored its original eight tiles.
 - Rendered New Game → Begin → supply chain, routed mouse orbit, routed trackpad pinch,
@@ -184,8 +221,8 @@ marketing-art work. Captures and measurement methodology are in
 - Headless logs retain fixture-level missing-node/dummy-texture diagnostics; the parse
   checker also reports its existing live-script reload diagnostic. No script parse
   failures or assertion failures were reported.
-- The existing ObjectDB leak warning still appears on exit; the previous native logger
-  shutdown abort remains fixed.
+- The existing ObjectDB leak warning still appears on exit. Rendered cold generation
+  and consecutive cached reloads exited with code 0.
 
 From the game directory:
 
@@ -209,3 +246,8 @@ AGENT_GODOT_WINDOW=1 godot --path . --windowed --resolution 1920x1080 \
   res://tools/supply_chain_3d/capture.tscn -- --no-telemetry \
   --continent-review --review-tag=continent_review
 ```
+
+The bake capture reports cache hits/writes and its directory. Run it twice in separate
+processes to verify actual disk reuse. Current bake artifacts live in the local runtime
+cache; `outputs/supply-chain-3d/bake_measurements.json` records their keys and measurements.
+The large binary runtime cache is not committed to the source repository.

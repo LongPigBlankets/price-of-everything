@@ -13,6 +13,7 @@ const GroundShader := preload("res://scripts/supply_chain_3d/ground.gdshader")
 const TreeLayout := preload("res://scripts/supply_chain_3d/tree_layout.gd")
 const GlintShader := preload("res://scripts/supply_chain_3d/water_glints.gdshader")
 const RoadSurface := preload("res://scripts/supply_chain_3d/road_surface.gd")
+const BakeCache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
 var terrain_lods: Array = []
 var detail_nodes: Array = []
 var building_visuals: Array = []
@@ -39,7 +40,6 @@ var tree_placements: Dictionary = {}
 var road_surface := RoadSurface.new()
 var pits: Dictionary = {}
 var streamed := false
-const CONTINENT_TEXTURE := 256
 const RESIDENT_TILES := 24
 var tree_nodes: Array = []
 var far_nodes: Array = []
@@ -49,6 +49,87 @@ var _river_buckets: Dictionary = {}
 var _road_height_cache: Dictionary = {}
 var road_mat: ShaderMaterial
 var glint_nodes: Array = []
+var bake_cache := BakeCache.new()
+var _map_key := ""
+var _continent_key := ""
+var continent: Dictionary = {}
+var continent_node: Node3D
+var road_nodes: Array = []
+var _road_key := ""
+var frame_nodes: Array = []
+var rim_material: ShaderMaterial
+
+func configure_bakes(model: Dictionary) -> void:
+	# Hash actual geography, never an instance ID: this survives a fresh process.
+	_map_key = BakeCache.digest([BakeCache.source_key(), ground.get("tiles"), ground.get("bands"),
+		ground.get("lakes"), ground.get("rivers"), MapStyle.band_colors(), MapStyle.sea_colors()])
+	_road_key = BakeCache.digest([_map_key, model.get("roads", []), pits])
+	var layout: Array = []
+	var geography: Array = []
+	var pipes: Array = []
+	for tid in tiles: geography.append([tid, tiles[tid].center, tiles[tid].type])
+	for s in model.get("standing", []):
+		layout.append([s.iid, s.kind, s.tile, s.pos, s.side, s.get("pad", s.side), s.get("internal_name", ""), s.get("tall", false)])
+	for line in model.get("lines", []):
+		if Model.PIPE_MODES.has(str(line.mode)): pipes.append([line.mode, line.pts])
+	_continent_key = "continent-" + BakeCache.digest([_road_key, geography, layout, pipes, Legacy.show.trees, Legacy.show.roads, Legacy.show.decor])
+
+func tile_bake_key(tid: String, tier: int) -> String:
+	var holes: Array = []
+	var area := Rect2((tiles[tid].center as Vector2) - Model.HEX_HALF, Model.HEX_HALF * 2.0).grow(16.0)
+	for pit in pits.values():
+		# The graded shoulder reaches beyond the excavation polygon and can
+		# alter a neighbouring tile even when the opening stays outside it.
+		var reach := float(pit.side) * 0.80
+		if area.intersects(Rect2((pit.pos as Vector2) - Vector2.ONE * reach, Vector2.ONE * reach * 2.0)):
+			holes.append(pit)
+	return "tile-" + BakeCache.digest([_map_key, tid, tiles[tid].center, tiles[tid].type, holes, tier])
+
+func prepare_continent(host: Node) -> void:
+	continent = bake_cache.read(_continent_key) if _continent_key != "" else {}
+	if not continent.is_empty(): return
+	var area := Rect2()
+	var first := true
+	var parts := {}
+	for tid in tiles:
+		var tile_area := Rect2((tiles[tid].center as Vector2) - Paint.EXTENT * 0.5, Paint.EXTENT)
+		area = tile_area if first else area.merge(tile_area)
+		first = false
+		parts[tid] = _surface(str(tid), 24.0)
+		if parts.size() % 16 == 0: await host.get_tree().process_frame
+	var texture := await Paint.bake_continent(host, tiles, rivers, pits.values(), surface_height, area)
+	continent = {"area": area, "texture": texture, "parts": parts,
+		"mesh": Geo.joined(parts.values(), area), "roads": {}}
+
+func finish_continent(parent: Node3D) -> void:
+	if continent.is_empty(): return
+	if not continent.has("roads_mesh"):
+		continent.roads_mesh = Geo.joined(continent.roads.values())
+		var props: Array = []
+		for node in far_nodes:
+			if node is MeshInstance3D: props.append(node.mesh)
+			for child in node.find_children("*", "MeshInstance3D", true, false): props.append(child.mesh)
+		continent.props_mesh = Geo.joined(props)
+		var rims: Array = []
+		var lips: Array = []
+		for frame in frame_nodes:
+			rims.append(frame.rim.mesh)
+			lips.append(frame.lip.mesh)
+		continent.rim_mesh = Geo.joined(rims)
+		continent.lip_mesh = Geo.joined(lips)
+		if _continent_key != "": bake_cache.write(_continent_key, continent)
+	continent_node = Node3D.new()
+	continent_node.name = "ContinentBake"
+	var paint := mat.duplicate() as ShaderMaterial
+	paint.set_shader_parameter("textured", true)
+	paint.set_shader_parameter("artwork", continent.texture)
+	continent_node.add_child(Geo.instance(continent.mesh, paint))
+	continent_node.add_child(Geo.instance(continent.roads_mesh, road_mat))
+	continent_node.add_child(Geo.instance(continent.props_mesh, mat))
+	continent_node.add_child(Geo.instance(continent.rim_mesh, rim_material))
+	continent_node.add_child(Geo.instance(continent.lip_mesh, mat))
+	continent_node.visible = false
+	parent.add_child(continent_node)
 
 func configure_pits(standing: Array) -> void:
 	pits.clear()
@@ -137,36 +218,59 @@ func terrain_key(tid: String) -> String:
 		var reach := float(pit.side) * 0.80
 		if bounds.intersects(Rect2((pit.pos as Vector2) - Vector2.ONE * reach, Vector2.ONE * reach * 2.0)):
 			holes.append([pit.rim, pit.height, pit.seed])
-	return "%s:%s:%s:%s" % [tid, ground.get_instance_id(), hash([MapStyle.band_colors(), MapStyle.sea_colors(), holes]), streamed]
+	return "%s:%s:%s:%s" % [tid, ground.get_instance_id(), hash([MapStyle.band_colors(), MapStyle.sea_colors(), holes]), _continent_key if streamed else "company"]
 
 func prepare_tile(host: Node, tid: String) -> void:
 	var key := terrain_key(tid)
-	if terrain_cache.has(key): return
-	if streamed:
-		var textures := await Paint.bake(host, tiles[tid], Legacy._relief_of(tid, tiles[tid].center), rivers.get(tid, []), pits.values(), surface_height, [CONTINENT_TEXTURE])
-		var mesh := _surface(tid, 24.0)
-		terrain_cache[key] = {"textures": [textures[0], null, null], "meshes": [mesh, null, null], "streamed": true, "ground_id": ground.get_instance_id()}
+	if terrain_cache.has(key):
+		if streamed and not continent.is_empty():
+			# All tiles share the one atlas loaded for this build, including after
+			# owned → all → owned → all switches; never retain two atlas copies.
+			terrain_cache[key].textures[0] = continent.texture
+			terrain_cache[key].meshes[0] = continent.parts[tid]
 		return
-	var textures := await Paint.bake(host, tiles[tid], Legacy._relief_of(tid, tiles[tid].center), rivers.get(tid, []), pits.values(), surface_height)
+	if streamed:
+		if continent.is_empty(): await prepare_continent(host)
+		terrain_cache[key] = {"textures": [continent.texture, null, null], "meshes": [continent.parts[tid], null, null], "streamed": true, "ground_id": ground.get_instance_id()}
+		return
+	var textures: Array = []
 	var meshes: Array = []
-	for cell in Detail.CELLS:
-		meshes.append(_surface(tid, cell))
+	for tier in 3:
+		var data := await _tile_bake(host, tid, tier)
+		textures.append(data.texture)
+		meshes.append(data.mesh)
 		await host.get_tree().process_frame
 	terrain_cache[key] = {"textures": textures, "meshes": meshes}
+
+func _tile_bake(host: Node, tid: String, tier: int) -> Dictionary:
+	var key := tile_bake_key(tid, tier)
+	var cached := bake_cache.read(key) if _map_key != "" else {}
+	if not cached.is_empty(): return cached
+	var textures := await Paint.bake(host, tiles[tid], Legacy._relief_of(tid, tiles[tid].center), rivers.get(tid, []), pits.values(), surface_height, [Detail.TEXTURES[tier]])
+	var data := {"texture": textures[0], "mesh": _surface(tid, Detail.CELLS[tier])}
+	if _map_key != "": bake_cache.write(key, data)
+	return data
 
 func refine_tile(host: Node, item: Dictionary, tier: int) -> void:
 	if item.data.meshes[tier] != null: return
 	var tid := str(item.tile)
-	var textures := await Paint.bake(host, tiles[tid], Legacy._relief_of(tid, tiles[tid].center), rivers.get(tid, []), pits.values(), surface_height, [Detail.TEXTURES[tier]])
-	if textures.is_empty() or not is_instance_valid(item.node): return
-	item.data.textures[tier] = textures[0]
-	item.data.meshes[tier] = _surface(tid, Detail.CELLS[tier])
+	var data := await _tile_bake(host, tid, tier)
+	if not is_instance_valid(item.node): return
+	item.data.textures[tier] = data.texture
+	item.data.meshes[tier] = data.mesh
 	apply_tile_detail(item, tier)
 
 func apply_tile_detail(item: Dictionary, tier: int) -> void:
 	while tier > 0 and item.data.meshes[tier] == null: tier -= 1
 	item.node.mesh = item.data.meshes[tier]
 	item.material.set_shader_parameter("artwork", item.data.textures[tier])
+	var rect := Vector4(0, 0, 1, 1)
+	if streamed and tier == 0 and not continent.is_empty():
+		var area: Rect2 = continent.area
+		var offset: Vector2 = ((tiles[item.tile].center as Vector2) - Paint.EXTENT * 0.5 - area.position) / area.size
+		var scale := Paint.EXTENT / area.size
+		rect = Vector4(offset.x, offset.y, scale.x, scale.y)
+	item.material.set_shader_parameter("artwork_rect", rect)
 	# Picking follows the displayed surface, including higher-detail river banks.
 	if streamed and int(item.get("collision_tier", -1)) != tier and item.has("collider"):
 		item.collider.shape = (item.node.mesh as Mesh).create_trimesh_shape()
@@ -275,8 +379,12 @@ func tile_node(tid: String) -> Node3D:
 	strata.set_shader_parameter("textured", true)
 	strata.set_shader_parameter("strata", true)
 	strata.set_shader_parameter("artwork", load("res://assets/iso/ground/strata.png"))
-	root.add_child(Geo.instance(rim.mesh(), strata))
-	root.add_child(Geo.instance(lip.mesh(), mat))
+	var rim_node := Geo.instance(rim.mesh(), strata)
+	var lip_node := Geo.instance(lip.mesh(), mat)
+	root.add_child(rim_node)
+	root.add_child(lip_node)
+	frame_nodes.append({"rim": rim_node, "lip": lip_node})
+	rim_material = strata
 	var glints := water_glints(tid, tile, relief)
 	root.add_child(glints)
 	glint_nodes.append(glints)
@@ -322,9 +430,16 @@ func set_overview_scale(ppu: float) -> void:
 	if road_mat != null: road_mat.set_shader_parameter("road_fade", 0.78 if overview else (0.18 if streamed and ppu < 1.5 else 0.0))
 	if overview == _overview: return
 	_overview = overview
+	if continent_node != null:
+		continent_node.visible = overview
+		for item in terrain_lods: item.node.visible = not overview
+		for node in road_nodes: node.visible = not overview
+		for frame in frame_nodes:
+			frame.rim.visible = not overview
+			frame.lip.visible = not overview
 	for node in tree_nodes: node.visible = not overview
 	for node in decor_nodes: node.visible = not overview
-	for node in far_nodes: node.visible = overview
+	for node in far_nodes: node.visible = overview and continent_node == null
 	for node in glint_nodes: node.visible = not overview
 
 func distant_towns(standing: Array) -> Node3D:
@@ -421,9 +536,18 @@ func _index_rivers() -> void:
 					for x in range(low.x, high.x + 1): (_river_buckets.get_or_add(Vector2i(x, y), []) as Array).append(segment)
 
 func append_road(parent: Node3D, tid: String) -> void:
-	var surface := Geo.instance(road_surface.mesh_for(tid), road_mat)
+	var mesh: ArrayMesh
+	if streamed and continent.get("roads", {}).has(tid): mesh = continent.roads[tid]
+	else:
+		var key := "road-" + BakeCache.digest([_road_key, tid, road_surface.cell_size])
+		var cached := bake_cache.read(key) if not streamed and _map_key != "" else {}
+		mesh = cached.mesh if not cached.is_empty() else road_surface.mesh_for(tid)
+		if streamed and not continent.is_empty(): continent.roads[tid] = mesh
+		elif cached.is_empty() and _map_key != "": bake_cache.write(key, {"mesh": mesh})
+	var surface := Geo.instance(mesh, road_mat)
 	surface.name = "JoinedRoads_" + tid.validate_node_name()
 	parent.add_child(surface)
+	road_nodes.append(surface)
 
 func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = true) -> Node3D:
 	var root := Node3D.new()
@@ -564,6 +688,7 @@ func standing_node(s: Dictionary) -> Node3D:
 		body.collision_mask = 0
 		body.set_meta("standing", s)
 		body.set_meta("tile_id", str(s.tile))
+		body.set_meta("pick_bounds", AABB(Vector3(-dimension.x * 0.5, 0, -dimension.z * 0.5), dimension))
 		var collider := CollisionShape3D.new()
 		if mesh != null and pit.is_empty():
 			collider.shape = mesh.create_trimesh_shape()
