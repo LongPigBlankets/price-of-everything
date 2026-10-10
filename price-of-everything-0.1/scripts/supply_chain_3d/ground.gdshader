@@ -1,5 +1,6 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled;
+#include "res://scripts/supply_chain_3d/detail_mask.gdshaderinc"
 uniform sampler2D artwork : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
 uniform bool textured = false;
 uniform bool strata = false;
@@ -15,6 +16,8 @@ void vertex() {
 	world_normal = normalize(MODEL_NORMAL_MATRIX * NORMAL);
 }
 void fragment() {
+	bool hidden = lod_hidden(FRAGCOORD.xy) || replaced_by_detail(world_point.xz, FRAGCOORD.xy);
+	if (lod_side == 0 && local_detail_blend >= 1.0 && hidden) { discard; }
 	vec3 paint = textured ? texture(artwork, artwork_rect.xy + UV * artwork_rect.zw).rgb : COLOR.rgb;
 	if (textured && !OUTPUT_IS_SRGB) paint = to_srgb(paint);
 	paint = mix(paint, vec3(0.50, 0.52, 0.35), road_fade);
@@ -30,4 +33,5 @@ void fragment() {
 	vec3 grade = mix(vec3(0.66, 0.74, 1.0), vec3(1.0, 0.92, 0.72), t);
 	paint *= wash * grade * shading * 0.90;
 	ALBEDO = OUTPUT_IS_SRGB ? paint : to_linear(paint);
+	if (hidden) { discard; }
 }

@@ -1,0 +1,18 @@
+{
+	"engine": "4.6.2-stable (official)",
+	"layers": {
+		"continent": "4db6e76e5401ac7d036a5c5b7660468655fcae1f218a5c5930c9c1adaf8b3ced",
+		"detail": "6c94e812efdc9bb5ec5a136e29ef6e88ddff04f9de45d249f22c05c6b9dfe946",
+		"roads": "738b86fd31f5100e83f5c5f21edbc95cb14af2bdeef664a676dfe5e4bd7189cf",
+		"scenery": "0769978bed5b1d908c83b88d6861c782504909b51929d13c739a497099847347",
+		"terrain": "87e2510646c8d1566be7ed848fce3a1d63ba8cf0a25fd968a42eef11146316bb"
+	},
+	"revisions": {
+		"continent": 2,
+		"detail": 1,
+		"roads": 1,
+		"scenery": 1,
+		"terrain": 2
+	},
+	"schema": 2
+}

@@ -720,5 +720,215 @@
     "source_ink_widths": true,
     "projected_height": 1.0640706698019606,
     "contour": true
+  },
+  "farm_lvl1": {
+    "height": 0.3517025001566546,
+    "width": 0.8785815603674261,
+    "depth": 0.5818889625519206,
+    "triangles": 2628,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.583779183786776,
+    "contour": false
+  },
+  "farm_lvl2": {
+    "height": 0.42447827696312235,
+    "width": 1.0,
+    "depth": 0.6402547098213024,
+    "triangles": 3882,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.6725915993212013,
+    "contour": false
+  },
+  "farm_lvl3": {
+    "height": 0.4952246283448918,
+    "width": 1.0,
+    "depth": 0.6694375834559934,
+    "triangles": 6312,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.7422786537437186,
+    "contour": false
+  },
+  "water_pump_lvl1": {
+    "height": 0.29431720945684126,
+    "width": 0.7794741469134825,
+    "depth": 0.5241729939261301,
+    "triangles": 4992,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.465820656358622,
+    "contour": false
+  },
+  "water_pump_lvl2": {
+    "height": 0.3426632579754045,
+    "width": 0.794571643931026,
+    "depth": 0.5241729939261301,
+    "triangles": 8362,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.5876143376192944,
+    "contour": false
+  },
+  "water_pump_lvl3": {
+    "height": 0.6649703020247621,
+    "width": 1.0,
+    "depth": 0.7650551013828965,
+    "triangles": 12312,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8038693998498894,
+    "contour": false
+  },
+  "new_forest_lvl1": {
+    "height": 0.334173522220701,
+    "width": 0.8369119609789647,
+    "depth": 0.5686518387214085,
+    "triangles": 16400,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.608544811754299,
+    "contour": false
+  },
+  "new_forest_lvl2": {
+    "height": 0.3464944280308189,
+    "width": 1.0,
+    "depth": 0.6500716636186807,
+    "triangles": 24912,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.6495228340105387,
+    "contour": false
+  },
+  "new_forest_lvl3": {
+    "height": 0.34785149157576284,
+    "width": 1.0,
+    "depth": 0.6846082313202114,
+    "triangles": 33424,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.752891638204377,
+    "contour": false
+  },
+  "old_forest_lvl1": {
+    "height": 0.49510761830325056,
+    "width": 0.8194481305795305,
+    "depth": 0.5552058517239904,
+    "triangles": 18040,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8421899825145746,
+    "contour": false
+  },
+  "old_forest_lvl2": {
+    "height": 0.49510761830325056,
+    "width": 0.9173393155582631,
+    "depth": 0.6217906456943391,
+    "triangles": 26196,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8421899825145746,
+    "contour": false
+  },
+  "old_forest_lvl3": {
+    "height": 0.49510761830325056,
+    "width": 1.0,
+    "depth": 0.6809257519467365,
+    "triangles": 34652,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8421899825145746,
+    "contour": false
+  },
+  "desal_lvl1": {
+    "height": 0.3944110367476231,
+    "width": 1.0,
+    "depth": 0.6902192932242781,
+    "triangles": 10108,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.5992658831231841,
+    "contour": false
+  },
+  "desal_lvl2": {
+    "height": 0.3944110367476231,
+    "width": 1.0,
+    "depth": 0.6902192932242781,
+    "triangles": 13816,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.5992658831231841,
+    "contour": false
+  },
+  "desal_lvl3": {
+    "height": 0.3944110367476231,
+    "width": 1.0,
+    "depth": 0.6902192932242781,
+    "triangles": 16902,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.7519933073144885,
+    "contour": false
+  },
+  "oil_well_lvl1": {
+    "height": 0.5341711599501788,
+    "width": 1.0,
+    "depth": 0.42366027160593034,
+    "triangles": 10028,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.6849126070793415,
+    "contour": false
+  },
+  "oil_well_lvl2": {
+    "height": 0.5341711599501788,
+    "width": 1.0,
+    "depth": 0.8181665394350918,
+    "triangles": 13456,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.6849126070793415,
+    "contour": false
+  },
+  "oil_well_lvl3": {
+    "height": 0.5341711599501788,
+    "width": 1.0,
+    "depth": 0.8181665394350918,
+    "triangles": 21256,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.8073733321638242,
+    "contour": false
+  },
+  "fracking_oil_well_lvl1": {
+    "height": 0.22058824680543562,
+    "width": 0.8385773136011897,
+    "depth": 0.712722309019052,
+    "triangles": 13128,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.6933251444351235,
+    "contour": false
+  },
+  "fracking_oil_well_lvl2": {
+    "height": 0.22058824680543562,
+    "width": 0.9846101621370289,
+    "depth": 0.712722309019052,
+    "triangles": 17912,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.7575502574458733,
+    "contour": false
+  },
+  "fracking_oil_well_lvl3": {
+    "height": 0.3871408954662701,
+    "width": 1.0,
+    "depth": 0.8419972993143394,
+    "triangles": 23238,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.7575502574458733,
+    "contour": false
   }
 }

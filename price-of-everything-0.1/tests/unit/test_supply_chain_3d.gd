@@ -9,8 +9,80 @@ const Legacy := preload("res://scripts/empire_board.gd")
 const WaterArt := preload("res://scripts/supply_chain_3d/water_art.gd")
 
 class SlopedGround extends RefCounted:
-	func height(p: Vector2) -> float: return 30.0 + p.x * 0.08 + p.y * 0.03
+	var height_calls := 0
+	func height(p: Vector2) -> float:
+		height_calls += 1
+		return 30.0 + p.x * 0.08 + p.y * 0.03
 	func gradient(_p: Vector2) -> Vector2: return Vector2(0.08, 0.03)
+
+class FlatStreamingGround extends RefCounted:
+	func height(_p: Vector2) -> float: return 30.0
+	func gradient(_p: Vector2) -> Vector2: return Vector2.ZERO
+
+func _test_3d_highland_relief() -> void:
+	var relief := preload("res://scripts/supply_chain_3d/relief.gd")
+	var source := preload("res://scripts/empire_board_relief.gd")
+	var lowlands_unchanged := true
+	for h in [source.SEA_LEVEL, 34.0, 50.0, 66.0, 77.0]:
+		lowlands_unchanged = lowlands_unchanged and is_equal_approx(relief.height(h), h)
+	_check(lowlands_unchanged, "3D relief: sea and map levels below 5 keep their original elevation")
+	var progressive := true
+	for band in range(6, source.BAND_LEVEL.size()):
+		var step: float = source.BAND_LEVEL[band] - source.BAND_LEVEL[band - 1]
+		progressive = progressive and is_equal_approx(relief.height(source.BAND_LEVEL[band]) - relief.height(source.BAND_LEVEL[band - 1]), step * (band - 4))
+	_check(progressive, "3D relief: consecutive upper rises use 2x, 3x, 4x, 5x, 6x and 7x")
+	_check(relief.height(77.001) - relief.height(76.999) < 0.004,
+		"3D relief: the first doubled band has no discontinuous cliff")
+	var builder := Builder.new()
+	builder.ground = SlopedGround.new()
+	var high := Vector2(900, 0)
+	var original: float = builder.ground.height(high)
+	_check(is_equal_approx(original, 102.0) and is_equal_approx(builder.point(high).y, 144.0) and is_equal_approx(builder.ground.height(high), original),
+		"3D relief: display exaggeration leaves the shared source ground untouched")
+	_check(builder.surface_gradient(high).is_equal_approx(Vector2(0.32, 0.12)) and builder.surface_gradient(Vector2.ZERO).is_equal_approx(Vector2(0.08, 0.03)),
+		"3D relief: terrain normals follow the steeper highlands without steepening lowlands")
+	builder.tiles = {"highland": {"center": high, "type": "rural", "polluters": 0}}
+	var aligned := true
+	for cell in Detail.CELLS:
+		var mesh := builder._surface("highland", cell)
+		var arrays := mesh.surface_get_arrays(0)
+		for v in arrays[Mesh.ARRAY_VERTEX]:
+			aligned = aligned and absf(v.y - builder.surface_height(Vector2(v.x, v.z))) < 0.001
+	_check(aligned, "3D relief: all three terrain LODs and their picking meshes use the same elevated surface")
+	_check(is_equal_approx(builder.road_height(high), builder.surface_height(high)), "3D relief: roads remain grounded on raised highlands")
+	var mine := {"iid": "high_mine", "kind": "building", "internal_name": "mine", "level": 1,
+		"side": 80.0, "tile": "highland", "pos": high}
+	builder.configure_pits([mine])
+	var pit: Dictionary = builder.pits.high_mine
+	var node := builder.standing_node(mine)
+	_check(is_equal_approx(float(pit.height), 144.0) and is_equal_approx(node.position.y + float(pit.sink), 144.0),
+		"3D relief: highland mine rims move with the terrain while excavation depth stays intact")
+	node.free()
+
+func _test_far_tree_contrast() -> void:
+	var sprites := preload("res://scripts/supply_chain_3d/far_sprites.gd")
+	var builder := Builder.new()
+	builder.streamed = true
+	builder.set_overview_scale(0.08)
+	var tree := sprites.material_for("tree_lvl1")
+	var factory := sprites.material_for("industrial_factory_lvl1")
+	var medium_tree := sprites.material_for("tree_lvl1", 1)
+	var far_strength := float(tree.get_shader_parameter("foliage_softness"))
+	_check(is_equal_approx(float(medium_tree.get_shader_parameter("foliage_softness")), far_strength),
+		"3D far trees: outgoing medium cards inherit the same softened contrast during transition")
+	_check(far_strength > 0.5 and is_zero_approx(float(factory.get_shader_parameter("foliage_softness"))),
+		"3D far trees: the overview softens foliage without recolouring buildings, including newly loaded materials")
+	builder.set_overview_scale(0.18)
+	var middle_strength := float(tree.get_shader_parameter("foliage_softness"))
+	_check(middle_strength > 0.0 and middle_strength < far_strength, "3D far trees: contrast recovers progressively as the camera zooms in")
+	builder.set_overview_scale(0.27)
+	_check(is_zero_approx(float(tree.get_shader_parameter("foliage_softness"))), "3D far trees: original tree colour is restored before the mesh handover")
+	_check(is_zero_approx(float(medium_tree.get_shader_parameter("foliage_softness"))),
+		"3D far trees: ordinary medium zoom restores the original medium palette")
+	builder.set_overview_scale(0.08)
+	builder.streamed = false
+	builder.set_overview_scale(0.08)
+	_check(is_zero_approx(float(tree.get_shader_parameter("foliage_softness"))), "3D far trees: company-only coverage retains its source tree colour")
 
 func _test_orbit_limits_and_pan() -> void:
 	var rig := Rig.new()
@@ -377,8 +449,7 @@ func _test_3d_continent_residency() -> void:
 	builder.release_detail({})
 	_check(item.node.mesh == item.data.meshes[0] and item.data.meshes[2] == null and item.data.textures[2] == null,
 		"3D continent: leaving the camera releases fine meshes and textures")
-	_check(Rig.MAX_SIZE >= 24000.0 and Builder.RESIDENT_TILES <= 24,
-		"3D continent: wide zoom and explicit fine-terrain budget")
+	_check(Rig.MAX_SIZE >= 24000.0, "3D continent: zoom range fits a whole-continent overview")
 	node.queue_free()
 	await get_tree().process_frame
 
@@ -504,7 +575,407 @@ func _test_3d_continent_bake_sharing() -> void:
 	_check(builder.continent_node.visible and not west.node.visible and not east.node.visible,
 		"3D continent bake: outermost zoom renders the joined continent instead of per-tile surfaces")
 	builder.set_overview_scale(1.0)
-	_check(not builder.continent_node.visible and west.node.visible and east.node.visible,
-		"3D continent bake: closer zoom restores independently detailed tile surfaces")
+	_check(builder.continent_node.visible and west.node.visible and east.node.visible
+		and builder.backdrop_materials[0].get_shader_parameter("local_detail_mask"),
+		"3D continent bake: closer tiles render over a masked far backdrop")
+	root.queue_free()
+	await get_tree().process_frame
+
+func _test_far_sprite_assets_and_lod() -> void:
+	var sprites := preload("res://scripts/supply_chain_3d/far_sprites.gd")
+	var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Assets.DIRECTORY + "manifest.json"))
+	var valid := true
+	for key in manifest:
+		var data: Dictionary = sprites.entry(key)
+		valid = valid and not data.is_empty()
+		if data.is_empty(): continue
+		var texture := load(sprites.DIRECTORY + key + ".png") as Texture2D
+		var depth := load(sprites.DIRECTORY + key + "_depth.png") as Texture2D
+		valid = valid and texture != null and depth != null
+		if texture != null and depth != null:
+			valid = valid and texture.get_size() == Vector2(int(data.cell) * 16, int(data.cell) * 5) and depth.get_size() == texture.get_size()
+		valid = valid and str(data.source_sha256) == FileAccess.get_sha256(Assets.DIRECTORY + key + ".glb")
+	_check(valid, "3D far sprites: every source model has a current 16-direction / 5-tilt colour and depth bake")
+	var builder := Builder.new()
+	builder.ground = SlopedGround.new()
+	builder.tiles = {"test": {"polluters": 0}}
+	var standing := {"iid": "factory", "kind": "building", "internal_name": "industrial_factory", "level": 3,
+		"pos": Vector2.ZERO, "side": 72.0, "tile": "test"}
+	var root := builder.standing_node(standing)
+	var pair: Dictionary = builder.sprite_pairs[0]
+	_check(pair.far.mesh.get_surface_count() == 1 and pair.far.scale == Vector3.ONE * 72.0,
+		"3D far sprites: factory keeps its authored world scale on a single quad")
+	_check(pair.far.position.distance_to(sprites.center("industrial_factory_lvl3") * 72.0) < 0.01,
+		"3D far sprites: card centre preserves the mesh's ground anchor")
+	builder.set_overview_scale(0.26)
+	_check(pair.far.visible and not pair.near[0].visible, "3D far sprites: tiny buildings replace both mesh and contour")
+	builder.set_overview_scale(0.30)
+	_check(pair.far.visible, "3D far sprites: zoom hysteresis prevents flicker at the boundary")
+	builder.set_detail(2)
+	builder.set_overview_scale(0.34)
+	_check(not pair.far.visible and pair.near[0].visible, "3D far sprites: closer zoom restores full building artwork")
+	_check(root.find_children("*", "StaticBody3D", true, false).size() == 1,
+		"3D far sprites: switching artwork retains the existing near building selection collider")
+	root.free()
+
+func _test_far_bake_decorative_proportions() -> void:
+	var sprites := preload("res://scripts/supply_chain_3d/far_sprites.gd")
+	var builder := Builder.new()
+	builder.ground = SlopedGround.new()
+	builder.streamed = true
+	builder.scenery_ready = true
+	builder.tiles = {"test": {"polluters": 0}}
+	var standing := [
+		{"iid": "house", "kind": "house", "tile": "test", "pos": Vector2.ZERO, "side": 72.0,
+			"level": 3, "sprite": load("res://assets/icons/buildings/sprites/house_lvl1.png")},
+		{"iid": "tower", "kind": "house", "tile": "test", "pos": Vector2(120, 0), "side": 36.8,
+			"level": 3, "tall": true, "sprite": load("res://assets/icons/buildings/sprites/towers_lvl2.png")},
+	]
+	var far := builder.distant_towns(standing)
+	_check(builder.decor_sprite_transforms.keys().size() == 2 and builder.decor_sprite_transforms.has("house_lvl1") and builder.decor_sprite_transforms.has("towers_lvl2"),
+		"3D decorative sprites: chosen house/tower variety survives level-3 footprint metadata")
+	for s in standing:
+		var frame := builder.standing_frame(s)
+		var transform: Transform3D = builder.decor_sprite_transforms[frame.key][0]
+		var near := builder.standing_node(s)
+		_check(transform.origin.distance_to(near.position + sprites.center(frame.key) * float(s.side)) < 0.001 and is_equal_approx(transform.basis.x.length(), float(s.side)),
+			"3D decorative sprites: %s retains exact scale and sloping-ground anchor" % s.iid)
+		_check(near.find_children("*", "StaticBody3D", true, false).is_empty(), "3D decorative sprites: scenery never becomes a playable building clickbox")
+		near.free()
+	_check(builder.shadow_batch.vertices.is_empty(), "3D decorative shadows: terrain-baked town shadows are not drawn again as geometry")
+	_check(builder.standing_frame(standing[1]).dimension.y > 160.0, "3D decorative towers: far silhouette keeps full tower height, not a shortened placeholder")
+	far.free()
+	builder.tiles.test.polluters = 1
+	var mine := builder.standing_node({"iid": "mine", "kind": "building", "tile": "test", "pos": Vector2.ZERO,
+		"internal_name": "mine", "level": 3, "side": 80.0})
+	_check(builder.glows.is_empty(), "3D scenery framing: submerged mine variants do not gain window-light glows")
+	mine.free()
+
+func _test_far_bake_shadow_feather_and_invalidation() -> void:
+	var art := preload("res://scripts/supply_chain_3d/shadow_art.gd")
+	var record := art.footprint(Vector2(260, 0), 40.0, true)
+	var mesh := art.artwork([record])
+	var arrays := mesh.surface_get_arrays(0)
+	var has_contact := false
+	var has_clear_edge := false
+	var valid := true
+	for color in arrays[Mesh.ARRAY_COLOR]:
+		has_contact = has_contact or absf(color.a - 0.17) <= 1.0 / 255.0
+		has_clear_edge = has_clear_edge or is_zero_approx(color.a)
+		valid = valid and color.a >= 0.0 and color.a <= 0.17 + 1.0 / 255.0
+	_check(has_contact and has_clear_edge and valid, "3D static shadows: soft source-strength contact falls to a transparent edge")
+	_check(art.bounds(record).has_point(record.center) and record.center.x < 260.0 and record.center.y < 0.0,
+		"3D static shadows: all tiers share the north-west footprint and extent")
+	var builder := Builder.new()
+	builder.ground = SlopedGround.new()
+	builder.tiles = {"test": {"center": Vector2.ZERO, "type": "rural"}}
+	builder._map_key = "shadow-fixture"
+	var without := builder.tile_bake_key("test", 1)
+	builder.static_shadows = {"test": [record]}
+	_check(without != builder.tile_bake_key("test", 1), "3D shadow cache: changing static scenery invalidates its tile artwork")
+
+func _test_far_bake_split_cache_and_lazy_picking() -> void:
+	var first := Builder.new()
+	first.ground = SlopedGround.new()
+	first.streamed = true
+	first.tiles = {"west": {"center": Vector2.ZERO, "type": "rural", "label": "West"},
+		"east": {"center": Vector2(540, 0), "type": "rural", "label": "East"}}
+	first._map_key = "split-fixture"
+	first._continent_key = "continent-split-fixture"
+	first.bake_cache.enabled = true
+	first.bake_cache.directory = "user://supply-chain-split-test-%d" % Time.get_ticks_usec()
+	first.configure_grade()
+	await first.prepare_continent(self)
+	var root := Node3D.new()
+	add_child(root)
+	root.add_child(first.infrastructure({"roads": [], "lines": []}, {"roads": true}, false))
+	for tid in first.tiles:
+		await first.prepare_tile(self, tid)
+		root.add_child(first.tile_node(tid))
+		first.append_road(root, tid)
+	first.road_surface.finish_build()
+	first.finish_continent(root)
+	_check(not first.continent.has("parts") and not first.continent.has("roads") and first.continent.tile_chunks.size() == 2,
+		"3D split bake: far resource contains joined geometry and string references to separate tile chunks")
+	var fresh := Builder.new()
+	fresh.streamed = true
+	fresh.ground = SlopedGround.new()
+	fresh.tiles = first.tiles.duplicate(true)
+	fresh._map_key = first._map_key
+	fresh._continent_key = first._continent_key
+	fresh.bake_cache.enabled = true
+	fresh.bake_cache.directory = first.bake_cache.directory
+	fresh.configure_grade()
+	fresh.ground.height_calls = 0
+	await fresh.prepare_continent(self)
+	_check(fresh.bake_cache.hits == 1 and not fresh.base_ready and fresh._chunk_data.is_empty() and fresh.terrain_lods.is_empty(),
+		"3D split bake: a fresh far load never opens closer tile resources or constructs tile surfaces")
+	_check(fresh.view_hulls == first.view_hulls and fresh.view_hulls.size() == 2 and fresh.ground.height_calls == 0,
+		"3D visibility bake: a fresh load restores every hull without sampling terrain heights")
+	var board := preload("res://scripts/supply_chain_3d/board.gd").new()
+	board.size = Vector2(1280, 720)
+	add_child(board)
+	board.set_process(false)
+	board._builder = fresh
+	board._model = {"tiles": fresh.tiles}
+	board._content = Node3D.new()
+	board._world.add_child(board._content)
+	fresh.finish_continent(board._content)
+	board.restore_camera({"yaw": PI / 4.0, "pitch": 0.7, "span": 1600.0, "target": fresh.point(Vector2(270, 0))})
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	for tid in fresh.tiles:
+		var hit := board.pick_at(board.screen_point(fresh.point(fresh.tiles[tid].center)))
+		_check(str(hit.get("tile_id", "")) == tid and bool(hit.get("tiles_only", false)),
+			"3D split bake: joined far collider resolves %s without per-tile colliders" % tid)
+	await fresh.prepare_tile(self, "west")
+	_check(fresh.bake_cache.hits == 2 and fresh._chunk_data.size() == 1 and fresh._chunk_data.has("west"),
+		"3D split bake: requesting one tile opens exactly one detail resource")
+	var key: String = fresh.tile_chunks.east
+	DirAccess.remove_absolute(fresh.bake_cache.directory.path_join(key + ".res"))
+	var repaired := fresh.base_chunk("east")
+	_check(repaired.mesh != null and repaired.mesh.get_surface_count() > 0,
+		"3D split bake: a missing detail chunk regenerates locally while the far bake remains usable")
+	await fresh.prepare_tile(self, "east")
+	root.add_child(fresh.tile_node("east"))
+	root.add_child(fresh.infrastructure({"roads": [], "lines": []}, {"roads": true}, false))
+	fresh.append_road(root, "east")
+	fresh.road_surface.finish_build()
+	_check(FileAccess.file_exists(fresh.bake_cache.directory.path_join(key + ".res")),
+		"3D split bake: repaired detail is persisted for the next process")
+	# Exercise the upgrade path from a real root resource lacking the new field.
+	var old_data: Dictionary = first.continent.duplicate(true)
+	old_data.metadata.erase("visibility")
+	fresh._continent_key = "continent-visibility-upgrade-fixture"
+	fresh.bake_cache.write(fresh._continent_key, old_data)
+	fresh.view_hulls.clear()
+	var writes_before: int = fresh.bake_cache.writes
+	await fresh.prepare_continent(self)
+	_check(fresh.bake_cache.writes == writes_before + 1 and fresh.view_hulls == first.view_hulls,
+		"3D visibility bake: old roots gain only a small supplement, preserving existing tile bakes")
+	fresh.view_hulls.clear()
+	fresh.ground.height_calls = 0
+	await fresh.prepare_continent(self)
+	_check(fresh.ground.height_calls == 0 and fresh.bake_cache.writes == writes_before + 1 and fresh.view_hulls.size() == 2,
+		"3D visibility bake: upgraded roots reuse bounds on subsequent loads without resampling or writing")
+	var stale: Dictionary = fresh.visibility_bake().duplicate(true)
+	stale.origin = Vector2.ONE
+	_check(not fresh._restore_visibility(stale), "3D visibility bake: a different world origin cannot reuse stale bounds")
+	stale = fresh.visibility_bake().duplicate(true)
+	stale.hulls.erase("west")
+	_check(not fresh._restore_visibility(stale), "3D visibility bake: missing tile bounds cannot count as a complete bake")
+	for name in DirAccess.get_files_at(first.bake_cache.directory): DirAccess.remove_absolute(first.bake_cache.directory.path_join(name))
+	DirAccess.remove_absolute(first.bake_cache.directory)
+	root.queue_free()
+	board.queue_free()
+	await get_tree().process_frame
+
+func _test_local_detail_working_set() -> void:
+	var board := preload("res://scripts/supply_chain_3d/board.gd").new()
+	board.size = Vector2(1280, 720)
+	add_child(board)
+	board.set_process(false)
+	var builder := Builder.new()
+	builder.streamed = true
+	builder.local_streaming = true
+	builder.ground = FlatStreamingGround.new()
+	builder.scenery_ready = true
+	for q in 12:
+		for r in 10:
+			var tid := "%d_%d" % [q, r]
+			builder.tiles[tid] = {"center": Vector2(q * 405, (r + posmod(q, 2) * 0.5) * 480), "type": "sea", "label": tid}
+	builder.configure_grade()
+	builder.continent = {"texture": ImageTexture.create_from_image(Image.create(8, 8, false, Image.FORMAT_RGBA8))}
+	board._builder = builder
+	board._content = Node3D.new()
+	board._world.add_child(board._content)
+	board._model = {"standing": []}
+	board.restore_camera({"yaw": PI / 4.0, "pitch": 0.7, "span": 1100.0, "target": builder.point(Vector2(1200, 1200))})
+	var first: Array = board._wanted_detail_tiles()
+	_check(first.size() > 0 and first.size() < builder.tiles.size() and first.size() <= Builder.BASE_RESIDENT_TILES,
+		"3D local detail: camera request is a bounded subset of the continent")
+	var tid: String = first[0].tile
+	builder.roads = []
+	builder.road_mat = builder.mat
+	builder.road_surface.configure([], builder.road_height, Vector2.ZERO)
+	await board._build_local_tile(builder, board._content, board._model, tid, board._generation)
+	builder.road_surface.finish_build()
+	var root: Node3D = builder.local_tiles[tid].root
+	_check(builder.terrain_lods.size() == 1 and builder._chunk_data.size() == 1 and builder.local_tiles.size() == 1,
+		"3D local detail: a request constructs exactly one tile and one base chunk")
+	builder.release_local_tiles({})
+	_check(not is_instance_valid(root) and builder.terrain_lods.is_empty() and builder.frame_nodes.is_empty()
+		and builder.glint_nodes.is_empty() and builder.road_nodes.is_empty() and builder.terrain_cache.is_empty() and builder._chunk_data.is_empty(),
+		"3D local detail: eviction releases nodes, metadata, terrain and disk resource references")
+	builder.road_surface.configure([], builder.road_height, Vector2.ZERO)
+	await board._build_local_tile(builder, board._content, board._model, tid, board._generation)
+	builder.road_surface.finish_build()
+	_check(builder.terrain_lods.size() == 1 and builder.labels.is_empty(),
+		"3D local detail: revisiting does not duplicate labels or tile registrations")
+	board.restore_camera({"yaw": PI / 4.0, "pitch": 0.7, "span": 1100.0, "target": builder.point(Vector2(4000, 4000))})
+	var second: Array = board._wanted_detail_tiles()
+	_check(not second.any(func(item: Dictionary) -> bool: return item.tile == tid),
+		"3D local detail: a distant pan requests a new working set")
+	builder.release_local_tiles({})
+	board.queue_free()
+	await get_tree().process_frame
+
+func _test_detail_mask_hex_grid() -> void:
+	var mask := preload("res://scripts/supply_chain_3d/detail_residency.gd").new()
+	var tiles := {"middle": {"center": Vector2(150, 160)}, "west": {"center": Vector2(-255, 400)},
+		"east": {"center": Vector2(555, 400)}, "north": {"center": Vector2(150, -320)}}
+	mask.configure(tiles, Vector2(40, 60))
+	mask.update({"west": true, "north": true})
+	var correct := true
+	for tid in tiles:
+		var cell: Vector2i = mask.cells[tid] - mask.low
+		correct = correct and ((mask.image.get_pixelv(cell).r > 0.5) == (tid in ["west", "north"]))
+	_check(correct and mask.anchor.is_equal_approx(Vector2(110, 100)),
+		"3D detail mask: staggered negative columns and nonzero world origins retain exact tile membership")
+	_check(not mask.update({"north": {"root": null}, "west": false}),
+		"3D detail mask: unchanged tile IDs skip the GPU upload regardless of order or record values")
+	_check(mask.update({"east": true, "north": true}),
+		"3D detail mask: replacing a tile uploads even when resident count is unchanged")
+	mask.update({})
+	_check(mask.image.get_pixelv(mask.cells.west - mask.low).r == 0.0,
+		"3D detail mask: leaving closer zoom restores the complete far backdrop")
+
+func _test_medium_sprite_assets_and_handover() -> void:
+	var sprites := preload("res://scripts/supply_chain_3d/far_sprites.gd")
+	var catalog: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Assets.DIRECTORY + "manifest.json"))
+	var valid := true
+	for key in catalog:
+		var data: Dictionary = sprites.entry(key, 1)
+		if data.is_empty(): valid = false; continue
+		var texture := load(sprites.MEDIUM_DIRECTORY + key + ".png") as Texture2D
+		var depth := load(sprites.MEDIUM_DIRECTORY + key + "_depth.png") as Texture2D
+		valid = valid and texture != null and depth != null and data.cell > sprites.entry(key).cell
+		valid = valid and data.center == sprites.entry(key).center and is_equal_approx(data.span, sprites.entry(key).span)
+		valid = valid and data.source_sha256 == FileAccess.get_sha256(Assets.DIRECTORY + key + ".glb")
+	_check(valid, "3D medium sprites: complete current colour/depth set, larger resolution and identical world framing")
+	var builder := Builder.new()
+	builder.ground = SlopedGround.new()
+	builder.tiles = {"test": {"polluters": 0}}
+	var standing := {"iid": "factory", "kind": "building", "internal_name": "industrial_factory", "level": 3,
+		"pos": Vector2.ZERO, "side": 72.0, "tile": "test"}
+	var root := builder.standing_node(standing)
+	var pair: Dictionary = builder.sprite_pairs[0]
+	builder.set_detail(0, false)
+	builder.set_overview_scale(0.1)
+	_check(pair.medium == null and pair.far.visible,
+		"3D medium sprites: first far display does not allocate the intermediate tier")
+	builder.set_detail(1)
+	builder.set_overview_scale(1.0)
+	_check(pair.medium != null and pair.medium.visible and not pair.far.visible and not pair.near[0].visible
+		and pair.medium.scale == pair.far.scale and pair.medium.position == pair.far.position,
+		"3D medium sprites: handover keeps scale and anchor while replacing the full mesh and contour")
+	builder.set_detail(2)
+	_check(not pair.medium.visible and pair.near[0].visible,
+		"3D medium sprites: nearest zoom restores the full source mesh")
+	builder.set_overview_scale(0.1)
+	_check(pair.far.visible and not pair.medium.visible and not pair.near[0].visible,
+		"3D medium sprites: returning to the overview leaves exactly one representation")
+	root.free()
+
+func _test_two_frame_lod_handover() -> void:
+	var transition := preload("res://scripts/supply_chain_3d/lod_handover.gd").new()
+	var material := ShaderMaterial.new()
+	material.shader = preload("res://scripts/supply_chain_3d/ground.gdshader")
+	var local := MeshInstance3D.new()
+	var far := MeshInstance3D.new()
+	local.material_override = material
+	far.material_override = material
+	transition.begin(1.0, [local, local], [far])
+	_check(is_equal_approx(transition.blend, 1.0 / 3.0) and transition.active and transition._bindings.size() == 2,
+		"3D transition: first rendered intermediate state is one-third detail, with no duplicate bindings")
+	_check(local.material_override != material and far.material_override != material
+		and local.material_override.get_shader_parameter("lod_side") == 1 and far.material_override.get_shader_parameter("lod_side") == -1,
+		"3D transition: incoming and outgoing geometry use complementary coverage without mutating shared materials")
+	transition.advance()
+	_check(is_equal_approx(transition.blend, 2.0 / 3.0) and transition.active,
+		"3D transition: second rendered intermediate state is two-thirds detail")
+	transition.advance()
+	_check(transition.blend == 1.0 and not transition.active and local.material_override == material and far.material_override == material,
+		"3D transition: after two drawn frames the endpoint restores original materials")
+	transition.begin(0.0, [local], [far])
+	var before: float = transition.blend
+	transition.begin(1.0, [local], [far])
+	_check(transition.blend > before and transition.blend < 1.0,
+		"3D transition: reversing zoom continues from the current blend instead of snapping to an endpoint")
+	local.free()
+	transition.advance()
+	transition.advance()
+	_check(not transition.active and far.material_override == material,
+		"3D transition: removing a world during handover leaves no stale material bindings")
+	far.free()
+
+func _test_continent_handover_waits_for_detail() -> void:
+	var builder := Builder.new()
+	builder.ground = SlopedGround.new()
+	builder.streamed = true
+	builder.tiles = {"tile": {"center": Vector2.ZERO, "type": "rural", "label": "Tile"}}
+	builder.configure_grade()
+	await builder.prepare_continent(self)
+	await builder.prepare_tile(self, "tile")
+	var root := Node3D.new()
+	add_child(root)
+	var local: Node3D = builder.tile_node("tile")
+	root.add_child(local)
+	builder.local_tiles.tile = {"root": local, "records": {}}
+	builder.finish_continent(root)
+	builder.handover_enabled = true
+	var item: Dictionary = builder.terrain_lods[0]
+	await builder.refine_tile(self, item, 1)
+	builder.set_detail(1, false)
+	builder.set_overview_scale(1.0, true)
+	_check(builder.handover.blend == 0.0 and not local.visible and builder.continent_node.visible,
+		"3D transition: staged detail stays hidden and far coverage survives until loading completes")
+	builder.complete_detail_request()
+	_check(builder.handover.active and local.visible and is_equal_approx(builder.backdrop_materials[0].get_shader_parameter("local_detail_blend"), 1.0 / 3.0),
+		"3D transition: ready detail and its far-mask coverage begin together")
+	builder.advance_handover()
+	builder.advance_handover()
+	_check(builder.handover.blend == 1.0 and local.visible and item.node.material_override == item.material,
+		"3D transition: medium endpoint retains its original terrain material")
+	var mesh: Mesh = item.node.mesh
+	var shape: Shape3D = item.collider.shape
+	builder.set_detail(0, false)
+	builder.set_overview_scale(0.1)
+	_check(builder.handover.active and local.visible and item.node.mesh == mesh and item.collider.shape == shape,
+		"3D transition: zooming out preserves outgoing detail and picking shapes through the handover")
+	builder.advance_handover()
+	_check(local.visible and is_equal_approx(builder.handover.blend, 1.0 / 3.0),
+		"3D transition: outgoing detail survives the second intermediate frame")
+	var board := preload("res://scripts/supply_chain_3d/board.gd").new()
+	board._builder = builder
+	board._detail = 0
+	board._advance_handover()
+	_check(not local.visible and builder.handover.blend == 0.0 and builder.continent_node.visible,
+		"3D transition: far endpoint hides local detail and restores complete continent coverage")
+	_check(board._far_detail_expires_msec > Time.get_ticks_msec() + 9900,
+		"3D transition: the last medium view receives a ten-second grace period after zoom-out")
+	await board._stream_visible()
+	_check(builder.local_tiles.size() == 1 and item.node.mesh == mesh and item.collider.shape == shape,
+		"3D transition: far residency preserves the recently drawn medium mesh and collider")
+	builder.set_detail(1, false)
+	builder.set_overview_scale(1.0)
+	builder.complete_detail_request()
+	board._advance_handover()
+	board._advance_handover()
+	_check(item.node.mesh == mesh and item.collider.shape == shape and board._far_detail_expires_msec == 0,
+		"3D transition: a quick return reuses detail and cancels the far grace deadline")
+	builder.set_detail(0, false)
+	builder.set_overview_scale(0.1)
+	board._advance_handover()
+	board._advance_handover()
+	await board._stream_visible()
+	# Production records remove the tile's references before freeing its root.
+	builder.local_tiles.tile.records = {"terrain_lods": [item], "frame_nodes": builder.frame_nodes.duplicate(), "glint_nodes": builder.glint_nodes.duplicate()}
+	builder.local_tiles.tile.records.far_nodes = builder.far_nodes.duplicate()
+	board._far_detail_expires_msec = Time.get_ticks_msec() - 1
+	await board._stream_visible()
+	_check(builder.local_tiles.is_empty() and builder.terrain_lods.is_empty() and board._far_detail_expires_msec == 0,
+		"3D transition: expired detail is evicted even when the far camera has not moved")
+	board.free()
 	root.queue_free()
 	await get_tree().process_frame
