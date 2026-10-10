@@ -846,6 +846,36 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 		flows.append({"good": good, "kind": str(lane["kind"]), "mode": mode, "pts": pts,
 			"live": lane["live"], "icon": GoodIcons.texture_for(good, _internal_name(good))})
 
+	# Neighbouring tiles that both have roads are joined by them whether or not goods move
+	# between them yet: each tile's streets run from its warehouse out to the edge they share.
+	# Not where the only way runs over the sea.
+	var at_sea_way := func(tile: String, ids: Array) -> bool:
+		var costs: Dictionary = river_cost.get(tile, {})
+		for i in range(1, ids.size()):
+			var a := str(ids[i - 1])
+			var b := str(ids[i])
+			if float(costs.get(mini_str(a, b) + "|" + maxi_str(a, b), 0.0)) >= Streets.SEA_COST:
+				return true
+		return ids.is_empty()
+	var paved: Array = []
+	for tid in tiles:
+		if bool(tiles[tid]["paved"]):
+			paved.append(str(tid))
+	paved.sort()
+	for i in range(paved.size()):
+		var a := str(paved[i])
+		for j in range(i + 1, paved.size()):
+			var b := str(paved[j])
+			var off: Vector2 = (tiles[b]["center"] as Vector2) - (tiles[a]["center"] as Vector2)
+			if Streets.exit_point(off) == Vector2.ZERO:
+				continue
+			var half_a: Array = route.call(a, str(tiles[a]["hub_node"]), Streets.nid(Streets.exit_point(off)))
+			var half_b: Array = route.call(b, str(tiles[b]["hub_node"]), Streets.nid(Streets.exit_point(-off)))
+			if at_sea_way.call(a, half_a) or at_sea_way.call(b, half_b):
+				continue
+			walk.call(a, half_a, "roads")
+			walk.call(b, half_b, "roads")
+
 	# Cables run from pylon to pylon between tiles. A tile's own buildings are not wired up
 	# one by one: the pylon stands for the tile's connection.
 	for ck in cable_links:
