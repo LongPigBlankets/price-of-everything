@@ -67,9 +67,11 @@ func _test_package_gate_rejects_corruption_and_stale_metadata() -> void:
 	cache.write("near", {"mesh": mesh, "texture": ImageTexture.create_from_image(near_picture), "pick_shape": mesh.create_trimesh_shape()})
 	cache.write("root", {"tile_chunks": {"tile": "base"}, "metadata": {"visibility": {"version": Package.VISIBILITY_VERSION, "hulls": {"tile": hull}}}})
 	cache.write("scenery", {"trees": {}})
+	cache.write("transport", {"version":preload("res://scripts/supply_chain_3d/transport_bake.gd").VERSION,"roads":[]})
+	cache.write("rail-layout", {"lines":[],"anchors":{},"depots":[]})
 	var manifest := {"schema": Package.MANIFEST_SCHEMA, "complete": true, "storage": "zstd", "tile_count": 1, "continent_key": "root", "scenery_key": "scenery",
-		"tiles": {"tile": {"base": "base", "medium": "medium", "near": "near"}}, "resources": {}}
-	for key in ["base", "medium", "near", "root", "scenery"]: manifest.resources[key] = Package.file_record(directory, key)
+		"transport_key":"transport","rail_layout_keys":["rail-layout"],"tiles": {"tile": {"base": "base", "medium": "medium", "near": "near"}}, "resources": {}}
+	for key in ["base", "medium", "near", "root", "scenery", "transport", "rail-layout"]: manifest.resources[key] = Package.file_record(directory, key)
 	FileAccess.open(directory.path_join("source_fingerprints.json"), FileAccess.WRITE).store_string(JSON.stringify(Package.Cache.source_fingerprints()))
 	FileAccess.open(directory.path_join("manifest.json"), FileAccess.WRITE).store_string(JSON.stringify(manifest))
 	var report := await Package.validate(directory, self)

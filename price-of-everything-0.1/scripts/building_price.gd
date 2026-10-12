@@ -27,6 +27,8 @@ const PORT_PRICE := 10000     # a seaport is a fixed-value asset — its build k
 
 # Final buy price for a placed building instance dict ({instance_id, building_id, tile_id, level}).
 static func sale_price(building: Dictionary) -> int:
+	if str(building.get("building_id", "")) == "b_038":
+		return 5000
 	if str(Catalog.get_building(str(building.get("building_id", ""))).get("internal_name", "")) == "port":
 		return PORT_PRICE
 	var base := base_cost(building)

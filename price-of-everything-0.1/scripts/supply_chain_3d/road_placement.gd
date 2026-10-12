@@ -4,6 +4,7 @@ const Index := preload("res://scripts/supply_chain_3d/road_index.gd")
 const Region := preload("res://scripts/supply_chain_3d/authored_region.gd")
 const Assets := preload("res://scripts/supply_chain_3d/assets.gd")
 const Cache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
+const Civic := preload("res://scripts/supply_chain_3d/civic_layout.gd")
 var roads: Array = []
 var road_index := {}
 var lots: Array = []
@@ -18,8 +19,8 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 	var inputs: Array = []
 	for s in model.standing:
 		inputs.append([s.iid, s.kind, s.tile, s.pos, s.side, s.get("yaw", 0.0), s.get("footprint", []),
-			s.get("harbour", {}), Assets.dimensions(str(asset_key.call(s)))])
-	var key := Cache.digest([Cache.source_key("roads"), Cache.source_key("terrain"), model.roads, inputs, river_lines])
+			s.get("harbour", {}), s.get("decor_family", ""), s.get("decor_asset", ""), s.get("max_relief", 12.0), Assets.dimensions(str(asset_key.call(s)))])
+	var key := Cache.digest([Cache.source_key("roads"), Cache.source_key("terrain"), model.roads, inputs, river_lines, Civic.catalog_signature()])
 	var variants: Dictionary = prepared.get_or_add("frontages", {})
 	var cached: Dictionary = variants.get(key, {})
 	if not cached.is_empty():
@@ -30,8 +31,7 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 			retained.append(s)
 		model.standing = retained
 		model.roads = cached.roads
-		model.authored_region.paths = model.authored_region.paths.duplicate()
-		model.authored_region.paths.append_array(cached.paths)
+		model.authored_region.paths = cached.paths
 		model.authored_region.frontage = cached.metrics.duplicate(true)
 		return
 	roads = model.roads
@@ -54,19 +54,25 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 		return str(a.iid) < str(b.iid))
 	var omitted := 0
 	var restored := 0
+	var civic_spaces := {}
 	for s in movable:
 		if not model.authored_region.tiles.has(str(s.tile)): continue
+		var space_key := str(s.tile) + ":" + str(s.get("decor_family", ""))
+		if Civic.is_space(s) and civic_spaces.has(space_key):
+			model.standing.erase(s); omitted += 1; continue
 		var placed := frontage(s, model.tiles[s.tile].center)
 		if not placed and str(s.kind) == "house":
 			model.standing.erase(s); omitted += 1; continue
 		s.footprint = footprint(s)
 		reserve(str(s.iid), s.footprint)
+		if Civic.is_space(s): civic_spaces[space_key] = true
 		if str(s.kind) == "house": restored += 1
 	var connections: Array = []
-	var access_paths: Array = []
+	var access_stubs: Array = []
 	var unconnected: Array = []
 	for s in model.standing:
 		if str(s.kind) == "pylon" or not model.authored_region.tiles.has(str(s.tile)): continue
+		if Civic.is_space(s): continue # public paths are already part of the park/plaza
 		var entry := entrance(s)
 		if entry.is_empty():
 			if str(s.kind) != "house": unconnected.append(str(s.iid))
@@ -76,21 +82,30 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 			connections.append({"id": "access:" + str(s.iid), "points": entry, "class": "minor", "layer": 0})
 	if not connections.is_empty():
 		var compiled := Region.compile(connections, model.authored_region.tiles)
-		access_paths = compiled.paths
 		model.roads.append_array(compiled.roads)
-		model.roads = Index.split(model.roads)
-		model.authored_region.paths = model.authored_region.paths.duplicate()
+		model.authored_region.paths = model.authored_region.paths.duplicate(true)
 		model.authored_region.paths.append_array(compiled.paths)
-	model.authored_region.frontage = {"decorative": restored, "omitted": omitted, "access_roads": connections.size(), "unconnected": unconnected}
+		# A new driveway can make the last metre of its receiving street a stub.
+		# Clean the full paths before clipping; door endpoints stay protected.
+		access_stubs = Index.trim_stubs(model.authored_region.paths)
+		if access_stubs.is_empty(): model.roads = Index.split(model.roads)
+		else:
+			var outside: Array = model.roads.filter(func(r: Dictionary) -> bool: return not model.authored_region.tiles.has(str(r.tile)))
+			model.roads = Region.compile_segments(model.authored_region.paths, model.authored_region.tiles)
+			model.roads.append_array(outside)
+	model.authored_region.frontage = {"decorative": restored, "omitted": omitted, "access_roads": connections.size(), "unconnected": unconnected, "trimmed_stubs": access_stubs}
 	var placements := {}
 	for s in model.standing:
 		var placement := {"pos": s.pos, "side": s.side, "yaw": s.get("yaw", 0.0)}
+		if s.has("pad"): placement.pad = s.pad
 		if s.has("entrance"): placement.entrance = s.entrance
 		if s.has("footprint"): placement.footprint = s.footprint
+		if s.has("decor_asset"): placement.decor_asset = s.decor_asset
+		if s.has("civic_bays"): placement.civic_bays = s.civic_bays
 		placements[str(s.iid)] = placement
 	# Company-only and full-continent openings must not evict one another.
 	while variants.size() >= 4: variants.erase(variants.keys()[0])
-	variants[key] = {"placements": placements, "roads": model.roads, "paths": access_paths, "metrics": model.authored_region.frontage}
+	variants[key] = {"placements": placements, "roads": model.roads, "paths": model.authored_region.paths, "metrics": model.authored_region.frontage}
 
 func reserve(iid: String, polygon: PackedVector2Array) -> void:
 	if polygon.is_empty(): return
@@ -135,7 +150,7 @@ func clear_lots(a: Vector2, b: Vector2, reach: float, ignore: String) -> bool:
 		if str(lots[i].iid) != ignore and distance_to_polygon(a, b, lots[i].polygon) < reach: return false
 	return true
 
-func clear_plot(poly: PackedVector2Array, center: Vector2, iid: String) -> bool:
+func clear_plot(poly: PackedVector2Array, center: Vector2, iid: String, max_relief: float = 12.0) -> bool:
 	var low := INF
 	var high := -INF
 	for i in poly.size():
@@ -147,7 +162,7 @@ func clear_plot(poly: PackedVector2Array, center: Vector2, iid: String) -> bool:
 			if not Index.contains(center, p) or wet(p): return false
 			var height := float(ground.call(p))
 			low = minf(low, height); high = maxf(high, height)
-	if high - low > 12.0: return false
+	if high - low > max_relief: return false
 	for i in Index.query(road_index, polygon_bounds(poly).grow(20.0)):
 		var road: Dictionary = roads[i]
 		var half := float(road.get("widths", [5.0])[0])
@@ -168,11 +183,31 @@ func candidates(p: Vector2, reach: float = 240.0) -> Array:
 	return found.slice(0, 40)
 
 func frontage(s: Dictionary, center: Vector2) -> bool:
+	var modules := Civic.options_for(s)
+	if modules.is_empty(): return _fixed_frontage(s, center)
+	var saved := s.duplicate(true)
+	var options := candidates(s.pos)
+	# Largest whole-bay assembly that clears the plot. Windows, storeys and
+	# wing thickness stay fixed; the chosen mesh/atlas is shared by its key.
+	for module in modules:
+		s.decor_asset = module.key
+		s.civic_bays = module.bays
+		s.side = module.side
+		s.erase("footprint")
+		if _fixed_frontage(s, center, options):
+			s.pad = s.side
+			return true
+	s.clear(); s.merge(saved)
+	return false
+
+func _fixed_frontage(s: Dictionary, center: Vector2, nearby: Array = []) -> bool:
 	var original: Vector2 = s.pos
 	var side := float(s.side)
 	var yaw := float(s.get("yaw", 0.0))
-	var options := candidates(original)
-	for scale in [1.0, 0.8]:
+	var options := candidates(original) if nearby.is_empty() else nearby
+	# Civic buildings use a common storey scale. Skip a crowded plot instead of
+	# shrinking its doors and floors to 80% of the neighbouring office's size.
+	for scale in ([1.0] if s.has("decor_family") and not Civic.is_space(s) else [1.0, 0.8]):
 		s.side = side * scale
 		var dim := Assets.dimensions(str(asset_key.call(s))) * float(s.side)
 		for option in options:
@@ -183,7 +218,8 @@ func frontage(s: Dictionary, center: Vector2) -> bool:
 				for along in [0.0, -0.65, 0.65]:
 					s.pos = option.point + normal * direction * (dim.z * 0.5 + half + 7.0) + tangent * dim.x * along
 					s.yaw = -tangent.angle()
-					if clear_plot(footprint(s), center, str(s.iid)): return true
+					if s.has("decor_family") and direction < 0.0: s.yaw += PI
+					if clear_plot(footprint(s), center, str(s.iid), float(s.get("max_relief", 12.0))): return true
 		s.side = side
 		if str(s.kind) != "house": break
 	s.pos = original; s.side = side; s.yaw = yaw

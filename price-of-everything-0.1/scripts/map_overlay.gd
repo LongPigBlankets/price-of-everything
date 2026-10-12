@@ -656,7 +656,7 @@ func _infra_hover_lines(tile_id: String, infra_key: String) -> Array:
 			var mode: String = INFRA_ROUTE_MODES.get(infra_key, "")
 			# Same flow the tile-view uses: networked pass-through + first/last-mile.
 			var total := TransportState.tile_mode_flow(tile_id, mode, true) if mode != "" else 0
-			var cap: float = TransportState.tile_mode_capacity(mode, _infra_level(terrain_layer.id_to_coord(tile_id), infra_key))
+			var cap: float = TransportState.tile_mode_capacity(mode, _infra_level(terrain_layer.id_to_coord(tile_id), infra_key), tile_id)
 			if cap > 0.0:
 				lines.append("Transit units: %d / %d" % [total, int(round(cap))])
 			else:

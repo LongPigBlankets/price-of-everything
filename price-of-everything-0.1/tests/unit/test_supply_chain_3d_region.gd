@@ -8,12 +8,12 @@ func _test_stoneshore_endpoint_topology() -> void:
 	var paths := [
 		{"id": "main", "points": PackedVector2Array([Vector2(0, 0), Vector2(100, 0)])},
 		{"id": "branch", "points": PackedVector2Array([Vector2(50, 1.5), Vector2(50, 30)])},
-		{"id": "far", "points": PackedVector2Array([Vector2(80, 2.5), Vector2(80, 30)])},
+		{"id": "far", "points": PackedVector2Array([Vector2(80, 3.5), Vector2(80, 30)])},
 		{"id": "parallel", "points": PackedVector2Array([Vector2(10, 1.5), Vector2(30, 1.5)]), "layer": 1}]
-	_check(Region.join_endpoints(paths) == 1, "Stoneshore: only the endpoint inside the 2u tolerance joins")
+	_check(Region.join_endpoints(paths) == 1, "Stoneshore: only the endpoint inside the 3u tolerance joins")
 	_check(paths[1].points[0] == Vector2(50, 0), "Stoneshore: branch endpoint projects to the trunk")
 	_check(paths[0].points.has(Vector2(50, 0)), "Stoneshore: trunk is split for a connected T junction")
-	_check(paths[2].points[0] == Vector2(80, 2.5), "Stoneshore: outside-tolerance geometry is retained")
+	_check(paths[2].points[0] == Vector2(80, 3.5), "Stoneshore: outside-tolerance geometry is retained")
 	_check(paths[3].points[0] == Vector2(10, 1.5), "Stoneshore: different elevation layers are not snapped")
 
 func _test_stoneshore_hex_clip() -> void:

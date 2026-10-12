@@ -4,7 +4,10 @@ extends Node
 const Harness := preload("res://tools/shot_harness.gd")
 func _ready() -> void:
 	Harness.prepare_window(get_window(), Vector2i(1920, 1080))
-	Harness.arm_watchdog(self, 900.0 if "--continent-review" in OS.get_cmdline_user_args() else 240.0)
+	var timeout := 900.0 if "--continent-review" in OS.get_cmdline_user_args() else 240.0
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--watchdog-seconds="): timeout=clampf(float(arg.trim_prefix("--watchdog-seconds=")),60,7200)
+	Harness.arm_watchdog(self, timeout)
 	TelemetryState.enabled = false
 	SaveLoad.autosave_enabled = false
 	AudioServer.set_bus_mute(0, true)
@@ -89,6 +92,15 @@ func _open_supply_view(view: Control) -> void:
 	view.find_child("Board", true, false).call("fit_view")
 
 func _finish_capture() -> void:
+	var main := get_tree().current_scene
+	var view := main.find_child("EmpireView",true,false) if is_instance_valid(main) else null
+	var board: Node = view.find_child("Board",true,false) if view != null else null
+	if board != null:
+		while not board.detail_ready():
+			RenderingServer.force_draw(false)
+			await get_tree().process_frame
+		# Prevent an idle prefetch from starting during the drain below.
+		board.set_process(false)
 	# Background windows can stop rendering while process frames continue. Drain
 	# deferred frame_post_draw captures, then release the disposable game before
 	# Godot destroys its scripting runtime. Otherwise cached review runs can leave
@@ -96,7 +108,6 @@ func _finish_capture() -> void:
 	for i in 8:
 		RenderingServer.force_draw(false)
 		await get_tree().process_frame
-	var main := get_tree().current_scene
 	if is_instance_valid(main) and main != self: main.queue_free()
 	for i in 8:
 		RenderingServer.force_draw(false)

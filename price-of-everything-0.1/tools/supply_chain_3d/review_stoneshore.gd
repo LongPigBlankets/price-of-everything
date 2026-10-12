@@ -23,6 +23,18 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 	var builder: RefCounted = board._builder
 	var report := {"ready_ms": ready_ms, "load": board.load_profile.duplicate(), "region": board._model.authored_region.duplicate(true),
 		"crossings": builder.authored_profile.crossings, "unresolved_crossings": builder.authored_profile.unresolved, "npcs": [], "views": []}
+	report.civic = board._model.standing.filter(func(s: Dictionary) -> bool: return s.has("decor_family"))
+	if "--junction-review" in OS.get_cmdline_user_args():
+		var flags := {}
+		for tile in board._last_terrain.tiles.values():
+			if "roads" in tile.get("infrastructure_present", []): flags[str(tile.id)] = true
+		var raw := Region.source_paths(board._last_terrain, flags)
+		report.junctions = {"source": Region.Index.audit(raw, builder.surface_height),
+			"authored": Region.Index.audit(board._layout_queries.data.authored_network.paths, builder.surface_height),
+			"with_access": Region.Index.audit(board._model.authored_region.paths, builder.surface_height)}
+		print("[JUNCTIONS] raw=", report.junctions.source.near_endpoints_within_3u, "/", report.junctions.source.stubs_under_3u,
+			" authored=", report.junctions.authored.near_endpoints_within_3u, "/", report.junctions.authored.stubs_under_3u,
+			" with_access=", report.junctions.with_access.near_endpoints_within_3u, "/", report.junctions.with_access.stubs_under_3u)
 	if "--load-only" in OS.get_cmdline_user_args():
 		FileAccess.open(output.path_join("report.json"), FileAccess.WRITE).store_string(JSON.stringify(report, "\t"))
 		print("[ROAD LOAD] ready_ms=", ready_ms, " bridges=", report.crossings.size(), " unresolved=", report.unresolved_crossings.size())
@@ -69,11 +81,49 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 			for lod in 3:
 				views.append({"name": "%s-lod%d" % [tid, lod], "point": board._model.tiles[tid].center,
 					"span": [board.size.y / 0.24, board.size.y / 1.1, 370.0][lod], "pitch": 0.95, "yaw": 0.0})
+	if "--junction-review" in OS.get_cmdline_user_args():
+		views = [
+			{"name": "trimmed-arin", "point": Vector2(6812, 7559), "span": 145.0, "pitch": 1.3, "yaw": 0.0},
+			{"name": "trimmed-branch", "point": Vector2(4170, 5918), "span": 145.0, "pitch": 1.3, "yaw": 0.0},
+			{"name": "joined-capital", "point": Vector2(10804, 5224), "span": 145.0, "pitch": 1.3, "yaw": 0.0}]
+		for lod in 3:
+			views.append({"name": "stoneshore-lod%d" % lod, "point": board._model.tiles.tile_4_9.center,
+				"span": [board.size.y / 0.24, board.size.y / 1.1, 370.0][lod], "pitch": 0.95, "yaw": 0.0})
 	if "--all-harbours" in OS.get_cmdline_user_args():
 		for s in board._model.standing:
 			if s.has("harbour") and s.tile != "tile_5_10":
 				views.append({"name": "harbour-" + str(s.tile), "point": s.pos, "span": 600.0, "pitch": 0.90, "yaw": 0.0})
-	for crossing in ([] if "--road-rollout" in OS.get_cmdline_user_args() else builder.authored_profile.crossings):
+	if "--farm-review" in OS.get_cmdline_user_args():
+		views.clear()
+		for tid in ["tile_9_15", "tile_14_5", "tile_18_18"]:
+			var center: Vector2 = board._model.tiles[tid].center
+			for s in board._model.standing:
+				if s.tile == tid and s.get("internal_name", "") == "farm": center = s.pos; break
+			for lod in 3:
+				views.append({"name": "farm-%s-lod%d" % [tid, lod], "point": center,
+					"span": [board.size.y / 0.24, board.size.y / 1.1, 240.0][lod], "pitch": 1.05, "yaw": 0.0})
+		views.append({"name": "farm-orbit", "point": Vector2(4529.89, 7941.78), "span": 160.0, "pitch": 0.65, "yaw": 1.7})
+	if "--civic-review" in OS.get_cmdline_user_args():
+		views.clear()
+		for lod in 3:
+			views.append({"name": "stoneshore-lod%d" % lod, "point": board._model.tiles.tile_4_9.center,
+				"span": [board.size.y / 0.24, board.size.y / 1.1, 370.0][lod], "pitch": 0.95, "yaw": 0.0})
+		views.append({"name": "old-quarter", "point": board._model.tiles.tile_4_10.center, "span": 480.0, "pitch": 1.05, "yaw": 0.35})
+		var seen := {}
+		for s in report.civic:
+			if seen.has(s.decor_family): continue
+			seen[s.decor_family] = true
+			views.append({"name": str(s.decor_family), "point": s.pos, "span": 150.0, "pitch": 0.80, "yaw": 0.5})
+		if "--modular-review" in OS.get_cmdline_user_args():
+			for shape in ["long", "l"]:
+				var examples: Array = report.civic.filter(func(s: Dictionary) -> bool:
+					return s.has("decor_asset") and preload("res://scripts/supply_chain_3d/civic_layout.gd").modular_shape(s) == shape)
+				examples.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.civic_bays.x + a.civic_bays.y < b.civic_bays.x + b.civic_bays.y)
+				if examples.is_empty(): continue
+				for selection in [{"name": "short", "s": examples.front()}, {"name": "extended", "s": examples.back()}]:
+					views.append({"name": "modular-%s-%s" % [shape, selection.name], "point": selection.s.pos,
+						"span": 175.0, "pitch": 0.85, "yaw": 0.5})
+	for crossing in ([] if "--road-rollout" in OS.get_cmdline_user_args() or "--junction-review" in OS.get_cmdline_user_args() or "--farm-review" in OS.get_cmdline_user_args() or "--civic-review" in OS.get_cmdline_user_args() else builder.authored_profile.crossings):
 		var middle: Vector2 = (crossing.a + crossing.b) * 0.5
 		if builder.tile_at(builder.point(middle)) not in Region.tile_ids(): continue
 		views.append({"name": "bridge-" + str(views.size()), "point": middle, "span": 120.0, "pitch": 0.25, "yaw": 2.00})

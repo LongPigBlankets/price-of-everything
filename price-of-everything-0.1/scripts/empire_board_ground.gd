@@ -38,7 +38,9 @@ const VALLEY_DEPTH := 9.0
 ## The level floor beside a river, beyond its own half-width, before its valley wall.
 const BANK := 8.0
 ## The heights rises stand at, and how far above the tile height a rung must be to rise.
-const RISE_LEVELS: Array[float] = [50.0, 66.0, 88.0, 110.0, 132.0]
+# Keep every painted upland band, including map level 6 (99u). Skipping
+# alternate bands leaves colour changes and tunnel thresholds on flat plateaus.
+const RISE_LEVELS: Array[float] = [50.0, 66.0, 77.0, 88.0, 99.0, 110.0, 121.0, 132.0, 143.0]
 const RISE_MIN := 10.0
 ## Rises are rounded off by this much, and those left smaller than this are dropped.
 const RISE_ROUND := 16.0

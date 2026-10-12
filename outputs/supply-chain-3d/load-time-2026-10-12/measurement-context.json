@@ -1,0 +1,8 @@
+{
+  "scenario": "Metal Magnate new game, all 600 tiles selected at startup",
+  "engine": "Godot 4.6.2, Metal Forward+, Apple M5 Pro",
+  "begin_wall_seconds": 20.28,
+  "startup_probe_exit_code": 0,
+  "package_validation_exit_code": 0,
+  "note": "Fresh process, forced 120 post-Begin render frames; saved-game restore was not benchmarked. Nonfatal ObjectDB shutdown warning remains."
+}

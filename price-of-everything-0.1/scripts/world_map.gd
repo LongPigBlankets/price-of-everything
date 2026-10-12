@@ -347,6 +347,10 @@ func finish_build(animate: bool) -> void:
 	# road network below, otherwise they use the roadless fallback and sit under
 	# turn-one streets. They are emitted in the post-road pass instead.
 	if loaded_pending and not pending_start:
+		if not pending_tutorial and not BuildingState.rail_hubs_seeded:
+			# Older saves need their port parcels restored before placing new hubs.
+			_rebuild_after_load()
+			preload("res://scripts/rail_hub.gd").seed_world(terrain_layer)
 		_rebuild_after_load()
 	# Advanced Setting "All tiles surveyed at game start": reveal every tile now that
 	# the terrain (and any pending ruleset) exists.
@@ -422,6 +426,10 @@ func finish_build(animate: bool) -> void:
 		# BUILDINGS now — after the baked road network — so they lay out against real
 		# streets (NPC ports, the ruins, the start companies, + future player start builds).
 		await _place_npc_ports(animate)
+		if not pending_tutorial:
+			for iid in preload("res://scripts/rail_hub.gd").seed_world(terrain_layer):
+				var hub: Dictionary = BuildingState.get_building(iid)
+				building_placed.emit(hub.tile_id, hub.building_id, hub.recipe_id, iid, terrain_layer.id_to_coord(hub.tile_id))
 		_prof("place npc_ports")
 		# Tutorial keeps the ports (coast/docks) but drops the ruins + NPC start
 		# companies so the board is a clean slate around the seeded window factory.
@@ -553,12 +561,13 @@ func finish_build(animate: bool) -> void:
 	# arrives while they are still watching, they click straight through, and
 	# the work lands on the map instead. "Ready" has to mean ready.
 	await _warm_deferred_ui()
-	build_complete = true   # the loading screen may now offer "Begin"
-	# The supply chain view, built and baked behind the loading screen in the slack before "Begin"
-	# can be pressed, a little each frame, so its first opening is immediate. Fire and forget: if
-	# the player gets there first, opening it builds it as before.
+	# A coroutine still performs synchronous work between yields. Finish the
+	# packaged supply view before offering Begin, so its remaining uploads cannot
+	# freeze the camera after the player starts moving around.
 	if _loading_screen_active() and empire_view != null:
-		empire_view.prepare()
+		await empire_view.prepare()
+		_prof("supply-chain preparation")
+	build_complete = true   # the loading screen may now offer "Begin"
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", BuildingState.buildings.size())
 
@@ -906,7 +915,9 @@ func _rebuild_after_load() -> void:
 		building_visuals.clear_all()
 	if forest_visuals.has_method("clear_all"):
 		forest_visuals.clear_all()
-	for instance_id in BuildingState.buildings:
+	var restore_ids := BuildingState.buildings.keys()
+	restore_ids.sort_custom(func(a, b): return str(BuildingState.buildings[a].building_id) == "b_038" and str(BuildingState.buildings[b].building_id) != "b_038")
+	for instance_id in restore_ids:
 		var inst: Dictionary = BuildingState.buildings[instance_id]
 		var tile_id := str(inst.get("tile_id", ""))
 		building_placed.emit(tile_id, str(inst.get("building_id", "")),

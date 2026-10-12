@@ -14,6 +14,16 @@ const Assets := preload("res://scripts/supply_chain_3d/assets.gd")
 const ShadowArt := preload("res://scripts/supply_chain_3d/shadow_art.gd")
 const FarSprites := preload("res://scripts/supply_chain_3d/far_sprites.gd")
 const PylonCables := preload("res://scripts/supply_chain_3d/pylon_cables.gd")
+const Railway := preload("res://scripts/supply_chain_3d/railway.gd")
+const RoadGrade := preload("res://scripts/supply_chain_3d/road_grade.gd")
+const RailUrban := preload("res://scripts/supply_chain_3d/rail_urban.gd")
+const RailDepot := preload("res://scripts/supply_chain_3d/rail_depot.gd")
+var road_grade := RoadGrade.new()
+var road_alignment := preload("res://scripts/supply_chain_3d/road_alignment.gd").new()
+var rail_urban := RailUrban.new()
+var rail_plan := {}
+var depots: Array = []
+var transport_ready := false
 var pylon_layout: Dictionary = {}
 const CELL := 12.0
 const Detail := preload("res://scripts/supply_chain_3d/detail.gd")
@@ -25,6 +35,9 @@ const RoadSurface := preload("res://scripts/supply_chain_3d/road_surface.gd")
 const BakeCache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
 const Residency := preload("res://scripts/supply_chain_3d/detail_residency.gd")
 const LocalDetail := preload("res://scripts/supply_chain_3d/local_detail.gd")
+const FarmFields := preload("res://scripts/supply_chain_3d/farm_fields.gd")
+var farm_nodes: Array = []
+var far_field_meshes: Array = []
 const TileCache := preload("res://scripts/supply_chain_3d/tile_resource_cache.gd")
 var resource_cache := TileCache.new()
 const Handover := preload("res://scripts/supply_chain_3d/lod_handover.gd")
@@ -111,10 +124,44 @@ var cursor_picking := false
 var collision_tiles: Dictionary = {}
 var collision_revision := 0
 
+var transport_key := ""
+var transport_profile := {}
+const TransportBake := preload("res://scripts/supply_chain_3d/transport_bake.gd")
+
+func prepare_transport(model: Dictionary) -> void:
+	var start := Time.get_ticks_usec()
+	roads=model.get("roads",[]); lines=model.get("lines",[]); depots=model.get("depots",[])
+	_index_rivers()
+	transport_key=TransportBake.key_for(self,model)
+	var cached := bake_cache.read(transport_key)
+	var hit := TransportBake.restore(self,cached)
+	var stages := {"lookup_ms":(Time.get_ticks_usec()-start)/1000.0,"cache_hit":hit}
+	if not hit:
+		var tick := Time.get_ticks_usec()
+		authored_profile.configure(model.get("authored_region",{}),rivers,natural_height,open_water)
+		stages.authored_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
+		roads=road_alignment.configure(model,formation_height,railway_level,open_water)
+		stages.alignment_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
+		road_grade.configure(roads,formation_height,authored_profile)
+		stages.grading_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
+		rail_plan=Railway.network(lines)
+		rail_urban.configure(tiles,road_grade.segments,road_grade.junctions,rail_plan,depots)
+		road_grade.bridge_rail_junctions(rail_plan,railway_ground_height,rail_urban.buried)
+		stages.rail_ms=(Time.get_ticks_usec()-tick)/1000.0
+		bake_cache.write(transport_key,TransportBake.packed(self))
+	model.roads=roads
+	transport_ready=true
+	if model.has("flows") and model.get("authored_region",{}).has("tiles"):
+		preload("res://scripts/supply_chain_3d/authored_region.gd").reroute_flows(model,model.authored_region.tiles,roads)
+	stages.total_ms=(Time.get_ticks_usec()-start)/1000.0
+	transport_profile=stages
+	print("[TRANSPORT] ",JSON.stringify(stages))
+
 func configure_bakes(model: Dictionary) -> void:
 	# Hash actual geography, never an instance ID: this survives a fresh process.
 	_map_key = BakeCache.digest([BakeCache.source_key("terrain"), ground.get("tiles"), ground.get("bands"),
-		ground.get("lakes"), ground.get("rivers"), MapStyle.band_colors(), MapStyle.sea_colors()])
+		ground.get("lakes"), ground.get("rivers"), MapStyle.band_colors(), MapStyle.sea_colors(),
+		model.get("roads",[]),model.get("lines",[]),model.get("depots",[]),BakeCache.source_key("roads")])
 	var authored: Dictionary = model.get("authored_region", {})
 	_road_key = BakeCache.digest([BakeCache.source_key("roads"), _map_key, model.get("roads", []),
 		authored.get("tiles", {}), authored.get("paths", []), pits])
@@ -127,12 +174,15 @@ func configure_bakes(model: Dictionary) -> void:
 	for s in model.get("standing", []):
 		var key := standing_key(s)
 		assets[key] = Assets.dimensions(key)
+		if FarmFields.is_plot(s):
+			var cell := Assets.key_for("farm_crop_cell", 1)
+			assets[cell] = [Assets.dimensions(cell), Assets.component_for(cell)]
 		if s.has("harbour"):
 			var harbour_key := Assets.key_for("port", 1)
 			assets["harbour:" + harbour_key] = Assets.harbour_for(harbour_key)
 		sprite_geometry[key] = [FarSprites.center(key), FarSprites.entry(key).get("span", 0.0)]
 		layout.append([s.iid, s.kind, s.tile, s.pos, s.side, s.get("pad", s.side), s.get("internal_name", ""), s.get("tall", false), s.get("level", 1),
-			(s.sprite as Texture2D).resource_path if s.get("sprite") is Texture2D else "", s.get("harbour", {}), s.get("yaw", 0.0), s.get("footprint", [])])
+			(s.sprite as Texture2D).resource_path if s.get("sprite") is Texture2D else "", s.get("harbour", {}), s.get("yaw", 0.0), s.get("footprint", []), s.get("decor_family", ""), s.get("decor_asset", "")])
 	for line in model.get("lines", []):
 		if Model.PIPE_MODES.has(str(line.mode)): pipes.append([line.mode, line.pts])
 	if Legacy.show.trees:
@@ -174,15 +224,16 @@ func prepare_scenery(host: Node, model: Dictionary) -> void:
 		infrastructure_bake = cached.get("infrastructure", {})
 		standing_shadow_mesh = cached.get("standing_shadows")
 		if cached.has("road_profile"): authored_profile.restore(cached.road_profile)
-		else: authored_profile.configure(model.get("authored_region", {}), rivers, surface_height, open_water)
+		else: authored_profile.configure(model.get("authored_region", {}), rivers, natural_height, open_water)
 		if standing_shadow_mesh == null: prepare_standing_shadows(model.get("standing", []))
 		scenery_ready = true
 		return
-	authored_profile.configure(model.get("authored_region", {}), rivers, surface_height, open_water)
+	authored_profile.configure(model.get("authored_region", {}), rivers, natural_height, open_water)
 	var all_shadows: Array = []
 	for s in model.get("standing", []):
 		standing_frames[str(s.iid)] = standing_frame(s)
-		if str(s.kind) == "house": all_shadows.append(ShadowArt.footprint(s.pos, float(s.side), false))
+		if str(s.kind) == "house" and not preload("res://scripts/supply_chain_3d/civic_layout.gd").is_space(s):
+			all_shadows.append(ShadowArt.footprint(s.pos, float(s.side), false))
 	roads = model.get("roads", [])
 	lines = model.get("lines", [])
 	for tid in tiles:
@@ -250,7 +301,12 @@ func placements_for(tid: String, standing: Array) -> Array:
 	var local_standing: Array = []
 	for item in standing:
 		if (item.pos as Vector2).distance_squared_to(tile.center) < 500000.0: local_standing.append(item)
-	return TreeLayout.placements(tid, tile, Coast.relief_of(tid, tile.center), local_standing, local_roads, lines, rivers.get(tid, []))
+	var result := TreeLayout.placements(tid, tile, Coast.relief_of(tid, tile.center), local_standing, local_roads, lines, rivers.get(tid, []))
+	return result.filter(func(tree):
+		for depot in depots:
+			var q: Vector2 = (tree.pos-depot.pos).rotated(-depot.yaw)
+			if Rect2(-150,-48,300,110).has_point(q): return false
+		return true)
 
 func prepare_continent(host: Node) -> void:
 	continent = bake_cache.read(_continent_key) if _continent_key != "" else {}
@@ -284,7 +340,8 @@ func prepare_continent(host: Node) -> void:
 		first = false
 		parts[tid] = _surface(str(tid), 24.0)
 		tile_view_hull(str(tid))
-		if parts.size() % 16 == 0: await host.get_tree().process_frame
+		if parts.size() % 16 == 0:
+			await host.get_tree().process_frame
 	var texture := await Paint.bake_continent(host, tiles, rivers, pits.values(), surface_height, area, static_shadows)
 	continent = {"area": area, "texture": texture, "parts": parts,
 		"mesh": Geo.joined(parts.values(), area), "roads": {}}
@@ -418,10 +475,12 @@ func finish_continent(parent: Node3D) -> void:
 		bake_cache.defer_trim = true
 		continent.roads_mesh = Geo.joined(continent.roads.values())
 		var props: Array = []
+		props.append_array(far_field_meshes)
 		for node in far_nodes:
 			if node is MeshInstance3D: props.append(node.mesh)
 			for child in node.find_children("*", "MeshInstance3D", true, false): props.append(child.mesh)
 		continent.props_mesh = Geo.joined(props)
+		far_field_meshes.clear()
 		continent.tree_sprites = tree_sprite_transforms
 		continent.decor_sprites = decor_sprite_transforms
 		var rims: Array = []
@@ -708,13 +767,36 @@ func _mine_grade(p: Vector2) -> Vector2:
 func ground_height(p: Vector2) -> float:
 	return Relief.height(ground.height(p))
 
-func surface_height(p: Vector2) -> float:
+func natural_height(p: Vector2) -> float:
 	var grade := _mine_grade(p)
 	return lerpf(ground_height(p), grade.y, grade.x)
 
+func depot_height(p: Vector2, h: float) -> float:
+	for depot in depots:
+		var q: Vector2 = (p-depot.pos).rotated(-depot.yaw)
+		var d := maxf(maxf(-145-q.x,q.x-145),maxf(-47-q.y,q.y-57))
+		if d<16: h=lerpf(h,depot.height,1.0-smoothstep(0,16,d))
+	return h
+
+func formation_height(p: Vector2) -> float:
+	return depot_height(p,natural_height(p))
+
+func surface_height(p: Vector2) -> float:
+	var h := formation_height(p)
+	if not transport_ready: return h
+	h=road_grade.earth_height(p,h)
+	return rail_urban.cut_height(p,h,natural_height)
+
 func surface_gradient(p: Vector2) -> Vector2:
 	var grade := _mine_grade(p)
-	if grade.x == 0.0: return ground.gradient(p) * Relief.slope_scale(ground.height(p))
+	var modified := false
+	if transport_ready:
+		var key := Vector2i((p/RoadGrade.Index.CELL).floor())
+		modified=road_grade.earth_buckets.has(Vector2i((p/RoadGrade.CELL).floor())) or rail_urban.track_buckets.has(key)
+		if not modified:
+			for depot in depots:
+				if p.distance_squared_to(depot.pos)<40000: modified=true; break
+	if grade.x == 0.0 and not modified: return ground.gradient(p) * Relief.slope_scale(ground.height(p))
 	if grade.x == 1.0: return Vector2.ZERO
 	return Vector2(surface_height(p + Vector2.RIGHT) - surface_height(p - Vector2.RIGHT),
 		surface_height(p + Vector2.DOWN) - surface_height(p - Vector2.DOWN)) * 0.5
@@ -855,27 +937,58 @@ func release_detail(keep: Dictionary, retain_resources: bool = false) -> void:
 			item.data.textures[tier] = null
 			if item.data.has("shapes"): item.data.shapes[tier] = null
 
+func _terrain_parts(poly: PackedVector2Array) -> Array:
+	var result: Array = []
+	for part in _cut_pits(poly):
+		if transport_ready: result.append_array(road_grade.cut_out(part))
+		else: result.append(part)
+	return result
+
 func _surface(tid: String, cell: float) -> ArrayMesh:
 	var center: Vector2 = tiles[tid].center
 	var hex := Model.hex_points(center)
 	var batch := Geo.Batch.new()
+	var vertex_cache := {}
+	var normal_cache := {}
 	var low := ((center - Model.HEX_HALF) / cell).floor()
 	var high := ((center + Model.HEX_HALF) / cell).ceil()
 	for y in range(int(low.y), int(high.y)):
 		for x in range(int(low.x), int(high.x)):
-			var a := Vector2(x, y) * cell
-			var square := PackedVector2Array([a, a + Vector2(cell, 0), a + Vector2(cell, cell), a + Vector2(0, cell)])
-			for tile_part in Geometry2D.intersect_polygons(square, hex):
-				for poly in _cut_pits(tile_part):
-					var indices := Geometry2D.triangulate_polygon(poly)
-					for i in range(0, indices.size(), 3):
-						var before := batch.vertices.size()
-						batch.triangle(point(poly[indices[i]]), point(poly[indices[i + 2]]), point(poly[indices[i + 1]]), Color.WHITE)
-						for j in range(before, batch.vertices.size()):
-							var v: Vector3 = batch.vertices[j]
-							var grad := surface_gradient(Vector2(v.x, v.z) + origin)
-							batch.normals[j] = Vector3(-grad.x, 1, -grad.y).normalized()
-	return batch.mesh(Rect2(center - origin - Paint.EXTENT * 0.5, Paint.EXTENT))
+			var a := Vector2(x,y)*cell
+			var divisions := 1
+			if transport_ready:
+				var area := Rect2(a,Vector2.ONE*cell)
+				for id in RoadGrade.Index.query(road_grade.earth_buckets,area,RoadGrade.CELL):
+					var segment: Dictionary = road_grade.segments[id]
+					if area.intersects(RoadGrade.Index.bounds(segment.a,segment.b,segment.half+RoadGrade.SHOULDER)):
+						divisions=maxi(1,ceili(cell/(6.0 if cell>=12 else 3.0))); break
+				if divisions==1:
+					for id in RoadGrade.Index.query(rail_urban.track_buckets,area):
+						var segment: Dictionary = rail_urban.tracks[id]
+						if area.intersects(RoadGrade.Index.bounds(segment.a,segment.b,12)):
+							divisions=maxi(1,ceili(cell/(6.0 if cell>=12 else 3.0))); break
+			var step := cell/divisions
+			for sy in divisions:
+				for sx in divisions:
+					var p := a+Vector2(sx,sy)*step
+					var square := PackedVector2Array([p,p+Vector2(step,0),p+Vector2(step,step),p+Vector2(0,step)])
+					for tile_part in Geometry2D.intersect_polygons(square,hex):
+						for poly in _terrain_parts(tile_part):
+							if Geometry2D.is_polygon_clockwise(poly): continue
+							var local_poly := PackedVector2Array()
+							for q in poly: local_poly.append(q-p)
+							var indices := Geometry2D.triangulate_polygon(local_poly)
+							for q in poly:
+								if vertex_cache.has(q): continue
+								vertex_cache[q]=point(q)
+								var grad := surface_gradient(q)
+								normal_cache[q]=Vector3(-grad.x,1,-grad.y).normalized()
+							for i in range(0,indices.size(),3):
+								var before := batch.vertices.size()
+								batch.triangle(vertex_cache[poly[indices[i]]],vertex_cache[poly[indices[i+2]]],vertex_cache[poly[indices[i+1]]],Color.WHITE)
+								if batch.vertices.size()>before:
+									for j in 3: batch.normals[before+j]=normal_cache[poly[indices[i+j]]]
+	return batch.mesh(Rect2(center-origin-Paint.EXTENT*0.5,Paint.EXTENT))
 
 func tile_node(tid: String) -> Node3D:
 	var tile: Dictionary = tiles[tid]
@@ -965,6 +1078,20 @@ func tile_node(tid: String) -> Node3D:
 	return root
 
 func _tile_finishing(root: Node3D, tid: String) -> void:
+	var farms: Dictionary = _chunk_data.get(tid, {}).get("local_detail", {}).get("farms", {}) if streamed else FarmFields.build(self, tid, _detail_standing)
+	if not farms.is_empty():
+		var far := Geo.instance(farms.far, mat)
+		far.name = "FarmFieldsFar"
+		root.add_child(far)
+		if not local_streaming: far_field_meshes.append(farms.far)
+		var soil := Geo.instance(farms.soil, mat)
+		root.add_child(soil)
+		# Only resident tiles hold crop instances. The complete continent retains
+		# one joined, simplified field mesh in its existing far bake.
+		var medium := FarmFields.cells(farms, true)
+		root.add_child(medium)
+		farm_nodes.append({"far": far, "soil": soil, "medium": medium, "near": null, "root": root, "data": farms})
+		_update_farm_tier(farm_nodes[-1], maxi(active_lod, 0))
 	var tile: Dictionary = tiles[tid]
 	var center: Vector2 = tile.center
 	var relief: Dictionary = Coast.relief_of(tid, center)
@@ -990,10 +1117,20 @@ func set_detail(tier: int, update_assets: bool = true) -> void:
 	if not (handover_enabled and tier == 0):
 		for item in terrain_lods: apply_tile_detail(item, tier)
 	for item in detail_nodes: item.node.visible = tier >= int(item.minimum)
+	for item in farm_nodes: _update_farm_tier(item, tier)
 	# Imported glTF mesh LODs handle individual buildings as projected size changes.
 	for visual in building_visuals: visual.lod_bias = [0.8, 1.2, 2.0][tier]
 	Assets.set_detail(tier)
 	if update_assets: _update_asset_tier()
+
+func _update_farm_tier(item: Dictionary, tier: int) -> void:
+	if tier == 2 and item.near == null:
+		item.near = FarmFields.cells(item.data, false)
+		item.root.add_child(item.near)
+	item.far.visible = tier == 0
+	item.soil.visible = tier > 0
+	item.medium.visible = tier == 1
+	if item.near != null: item.near.visible = tier == 2
 
 func set_overview_scale(ppu: float, force: bool = false) -> void:
 	FarSprites.set_overview_scale(ppu, streamed)
@@ -1128,6 +1265,7 @@ func ribbon(batch: RefCounted, path: PackedVector2Array, width: float, color: Co
 
 ## Keep streets and traffic over a river valley rather than diving into its water.
 func road_height(p: Vector2) -> float:
+	if transport_ready: return road_grade.height_at(p,natural_height(p))
 	if _road_height_cache.has(p): return _road_height_cache[p]
 	var h := surface_height(p)
 	var authored_height := authored_profile.height_at(p)
@@ -1172,7 +1310,8 @@ func append_road(parent: Node3D, tid: String) -> void:
 			if not road_surface._height.is_valid(): road_surface.configure(roads, road_height, origin)
 			mesh = road_surface.mesh_for(tid)
 			if authored_profile.region.has(tid):
-				mesh = Geo.joined([mesh, authored_profile.mesh_for(tid, surface_height, origin)])
+				mesh = Geo.joined([mesh, authored_profile.mesh_for(tid, natural_height, origin)])
+			if transport_ready: mesh = Geo.joined([mesh,road_grade.bridge_mesh(tid,origin,natural_height),road_alignment.mesh_for(tid,road_height,origin,surface_height,railway_earth_color)])
 		if streamed and continent.has("roads"): continent.roads[tid] = mesh
 		elif cached.is_empty() and _map_key != "": bake_cache.write(key, {"mesh": mesh})
 	var surface := Geo.instance(mesh, road_mat)
@@ -1183,6 +1322,35 @@ func append_road(parent: Node3D, tid: String) -> void:
 		_chunk_data[tid].roads_mesh = mesh
 		persist_base_chunk(tid)
 
+## Map bands are numbered one above the owner's terrain levels (band 7 = height 6).
+func railway_level(p: Vector2) -> float:
+	var grid := NavGrid.instance()
+	if grid.is_ready():
+		var cell := grid.cell_of(p)
+		return float(grid.band(cell.x, cell.y) - 1)
+	# Tools without a navigation grid can still use the source height field.
+	for band in range(Ground.Relief.BAND_LEVEL.size()-1,2,-1):
+		if ground.height(p)>=Ground.Relief.BAND_LEVEL[band]: return float(band-1)
+	return 0.0
+
+## Preserve river crossings without inheriting nearby authored road bridge grades.
+func railway_ground_height(p: Vector2) -> float:
+	var h := depot_height(p,natural_height(p))
+	for segment in _river_buckets.get(Vector2i((p / 128.0).floor()), []):
+		var closest := Geometry2D.get_closest_point_to_segment(p, segment.a, segment.b)
+		if closest.distance_squared_to(p) < float(segment.half) * float(segment.half):
+			var n: Vector2 = (segment.b-segment.a).orthogonal().normalized()*(float(segment.half)+20.0)
+			h = maxf(h,maxf(ground_height(closest-n),ground_height(closest+n))+2.0)
+	return h
+
+## Earth fill uses the same warmed elevation palette as the terrain artwork.
+func railway_earth_color(display_height: float) -> Color:
+	var band := 2
+	for i in range(3, Relief.Source.BAND_LEVEL.size()):
+		if display_height < Relief.height(Relief.Source.BAND_LEVEL[i]): break
+		band = i
+	return Legacy._warm(MapStyle.band_colors()[band])
+
 func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = true) -> Node3D:
 	var root := Node3D.new()
 	root.name = "Infrastructure"
@@ -1191,17 +1359,17 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 	roads = model.get("roads", [])
 	lines = model.get("lines", [])
 	_index_rivers()
-	if authored_profile.region.is_empty(): authored_profile.configure(model.get("authored_region", {}), rivers, surface_height, open_water)
+	if authored_profile.region.is_empty(): authored_profile.configure(model.get("authored_region", {}), rivers, natural_height, open_water)
 	road_mat = mat.duplicate()
 	road_surface.cell_size = 6.0 if streamed else RoadSurface.CELL
 	var line_geometry: Array = []
-	for line in lines: line_geometry.append([line.mode, line.pts, line.get("ids", [])])
+	for line in lines: line_geometry.append([line.mode, line.pts, line.get("ids", []), line.get("level", 1)])
 	var lighting: Array = []
 	for tid in tiles: lighting.append([tid, tiles[tid].get("polluters", 0)])
 	var cable_anchors := {}
 	for s in model.get("standing", []):
 		if str(s.kind) == "pylon": cable_anchors[standing_key(s)] = Assets.cable_anchors(standing_key(s))
-	var cache_key := BakeCache.digest([_scenery_key, line_geometry, lighting, cable_anchors, show])
+	var cache_key := BakeCache.digest([_scenery_key, line_geometry, lighting, cable_anchors, show, Railway.VERSION])
 	if _scenery_key != "" and infrastructure_bake.get("key", "") == cache_key:
 		cars.append_array(infrastructure_bake.cars)
 		glows.append_array(infrastructure_bake.glows)
@@ -1220,6 +1388,7 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 			road_surface.finish_build()
 			_road_height_cache.clear()
 		for rec in roads:
+			if rec.get("tunnel",false): continue
 			var a: Vector2 = rec.a
 			var b: Vector2 = rec.b
 			var across := (b - a).orthogonal().normalized()
@@ -1243,33 +1412,27 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 			var curve := PylonCables.curve(span.a, span.b)
 			for i in range(1, curve.size()):
 				tubes.tube(curve[i - 1], curve[i], 0.45, Color("d6b560"))
+	if bool(show.get("rails", true)):
+		var rail_art := Railway.build(lines, road_grade.segments if transport_ready else roads, railway_ground_height, railway_level, origin, true, railway_earth_color, road_height, surface_height,{"plan":rail_plan,"burial":rail_urban.profile} if transport_ready else {})
+		Railway.append_mesh(tubes, rail_art.bed)
+		Railway.append_mesh(tubes, rail_art.detail)
+		for depot in depots: Railway.append_mesh(tubes,RailDepot.mesh(depot,origin))
 	for rec in model.get("lines", []):
 		var mode := str(rec.get("mode", ""))
-		if not bool(show.get(mode, true)): continue
-		if mode == "cables": continue # Uses mesh-authored clamps above.
+		if Railway.is_rail(mode): continue # Both legacy "rail" and infrastructure "rails".
+		if not bool(show.get(mode, true)) or mode == "cables": continue
 		var path: Array = rec.get("pts", [])
 		for i in range(path.size() - 1):
 			var a: Vector2 = path[i].p
 			var b: Vector2 = path[i + 1].p
-			if mode == "rails":
-				var line := PackedVector2Array([a, b])
-				ribbon(tubes, line, 10.0, Color("766956"), 2.0, true)
-				var across := (b - a).orthogonal().normalized() * 2.4
-				for k in int(a.distance_to(b) / 6.0):
-					var p := a.move_toward(b, k * 6.0)
-					ribbon(details, PackedVector2Array([p - across * 1.7, p + across * 1.7]), 1.3, Color("524939"), 2.6, true)
-				for sign_v in [-1.0, 1.0]:
-					ribbon(tubes, PackedVector2Array([a + across * sign_v, b + across * sign_v]), 0.9, Color("d7d4c0"), 2.8, true)
-			else:
-				var count := maxi(2, ceili(a.distance_to(b) / 12.0))
-				var previous := Vector3.ZERO
-				for j in range(count + 1):
-					var t := float(j) / count
-					var p := a.lerp(b, t)
-					var h := road_height(p) + 5.5
-					var current := at_height(p, h)
-					if j > 0: tubes.tube(previous, current, 2.4, Color("a0a7aa") if mode == "reinf_pipes" else Color("b78552"))
-					previous = current
+			var count := maxi(2, ceili(a.distance_to(b) / 12.0))
+			var previous := Vector3.ZERO
+			for j in range(count + 1):
+				var t := float(j) / count
+				var p := a.lerp(b, t)
+				var current := at_height(p, road_height(p) + 5.5)
+				if j > 0: tubes.tube(previous, current, 2.4, Color("a0a7aa") if mode == "reinf_pipes" else Color("b78552"))
+				previous = current
 	var tube_mesh := tubes.mesh()
 	var detail_mesh := details.mesh()
 	root.add_child(Geo.instance(tube_mesh, mat))
@@ -1282,8 +1445,11 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 
 static func standing_key(s: Dictionary) -> String:
 	if s.has("harbour"): return ""
+	if s.has("decor_asset"): return str(s.decor_asset)
+	if s.has("decor_family"): return Assets.key_for(str(s.decor_family), int(s.level))
 	var kind := str(s["kind"])
 	var family := str(s.get("internal_name", ""))
+	if FarmFields.is_plot(s): family = "farm_building"
 	if kind == "warehouse" or kind == "suppliers": family = "warehouse"
 	elif kind == "port": family = "port"
 	elif kind == "pylon": family = "pylon"
@@ -1451,7 +1617,7 @@ func standing_node(s: Dictionary) -> Node3D:
 	if kind == "pylon": root.rotation.y = float(pylon_layout.get("yaws", {}).get(str(s.iid), 0.0))
 	var dimension: Vector3 = frame.dimension
 	if key == "" and not s.has("harbour"): dimension = Vector3(side * 0.8, side * 0.55, side * 0.65)
-	var lit := int(tiles.get(str(s.tile), {}).get("polluters", 0)) > 0 and kind != "pylon" and family not in ["mine", "mine_flush"]
+	var lit := int(tiles.get(str(s.tile), {}).get("polluters", 0)) > 0 and kind != "pylon" and family not in ["mine", "mine_flush", "civic_park", "civic_plaza"]
 	var pair := {"key": key, "far": null, "near": [], "medium": null, "root": root, "standing": s,
 		"dimension": dimension, "tile": str(s.tile), "lit": lit,
 		# The few lattice pylons are cheap meshes. Their clamps must stay aligned
@@ -1621,6 +1787,7 @@ func _ground_clutter(tid: String, standing: Array) -> Mesh:
 func _plantable(p: Vector2, tid: String, rel: Dictionary, standing: Array, road_margin: float, nearby_roads: Array) -> bool:
 	if not Geometry2D.is_point_in_polygon(p, Model.hex_points(tiles[tid].center)) or Ground.is_water(rel, p): return false
 	for s in standing:
+		if FarmFields.is_plot(s) and Geometry2D.is_point_in_polygon(p, s.footprint): return false
 		if (s.pos as Vector2).distance_to(p) < float(s.get("side", 80)) * 0.74 + 12.0: return false
 	for road in nearby_roads:
 		if Geometry2D.get_closest_point_to_segment(p, road.a, road.b).distance_to(p) < road_margin: return false

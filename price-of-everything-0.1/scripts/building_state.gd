@@ -61,10 +61,12 @@ var buildings: Dictionary = {}
 var tile_buildings: Dictionary = {}
 var _next_instance_counter: int = 0
 var tile_land_owned: Dictionary = {}
+var rail_hubs_seeded := false
 
 
 ## Match-scoped: cleared by MatchState.reset() (new game / scenario start).
 func reset() -> void:
+	rail_hubs_seeded = false
 	buildings.clear()
 	tile_buildings.clear()
 	tile_land_owned.clear()
@@ -74,6 +76,7 @@ func reset() -> void:
 ## Saved under MatchState's "match" section (keys unchanged from before the extraction).
 func export_fields() -> Dictionary:
 	return {
+		"rail_hubs_seeded": rail_hubs_seeded,
 		"next_instance_counter": _next_instance_counter,
 		"buildings": _buildings_for_save(),
 		"tile_land_owned": tile_land_owned.duplicate(true),
@@ -81,6 +84,7 @@ func export_fields() -> Dictionary:
 
 
 func import_fields(d: Dictionary) -> void:
+	rail_hubs_seeded = bool(d.get("rail_hubs_seeded", false))
 	_next_instance_counter = int(d.get("next_instance_counter", 0))
 	buildings = _normalise_loaded_buildings(d.get("buildings", {}))
 	tile_land_owned = (d.get("tile_land_owned", {}) as Dictionary).duplicate(true)
@@ -409,7 +413,7 @@ func _buildings_for_save() -> Dictionary:
 		if not (value is Dictionary):
 			continue
 		var inst: Dictionary = (value as Dictionary).duplicate(true)
-		inst["level"] = clampi(int(inst.get("level", 1)), 1, BuildingLevels.MAX_LEVEL)
+		inst["level"] = 1 if str(inst.get("building_id", "")) == "b_038" else clampi(int(inst.get("level", 1)), 1, BuildingLevels.MAX_LEVEL)
 		out[instance_id] = inst
 	return out
 
@@ -423,7 +427,7 @@ func _normalise_loaded_buildings(raw: Variant) -> Dictionary:
 		if not (value is Dictionary):
 			continue
 		var inst: Dictionary = (value as Dictionary).duplicate(true)
-		inst["level"] = clampi(int(inst.get("level", 1)), 1, BuildingLevels.MAX_LEVEL)
+		inst["level"] = 1 if str(inst.get("building_id", "")) == "b_038" else clampi(int(inst.get("level", 1)), 1, BuildingLevels.MAX_LEVEL)
 		out[instance_id] = inst
 	return out
 

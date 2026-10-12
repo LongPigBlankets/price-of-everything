@@ -579,6 +579,14 @@ func on_building_placed(tile_id: String, building_id: String, _recipe_id: String
 	# Already standing, straight off the bake: the search that would find this exact spot has
 	# been run once, offline. Anything the bake does NOT hold falls through and is laid out
 	# live against it, so an edited start list costs one building, not the whole map.
+	if building_id != "b_038" and _placement_index.has(instance_id):
+		var old: Dictionary = _placements[_placement_index[instance_id]]
+		for depot in preload("res://scripts/rail_hub.gd").sites():
+			if depot.tile != tile_id: continue
+			if not Geometry2D.intersect_polygons(old.verts, preload("res://scripts/supply_chain_3d/rail_depot.gd").yard_polygon(depot)).is_empty():
+				remove_instance(instance_id)
+				_baked_unclaimed.erase(instance_id)
+				break
 	if claim_baked_placement(instance_id, building_id, tile_id):
 		# Baked layouts carry the geometry, but ownership belongs to the live simulation.
 		# The start pass can claim a baked NPC footprint after its BuildingState entry exists;
@@ -720,7 +728,16 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	# mask can't place them at all. Uniform spread, no roads/frontage rules
 	# (sea buildings keep a uniform distance apart).
 	var offshore := str(bd.get("internal_name", "")).to_lower().begins_with("offshore")
-	if offshore:
+	if building_id == "b_038":
+		var hub := BuildingState.get_building(instance_id)
+		if hub.has("rail_hub_site"):
+			var site: Dictionary = hub.rail_hub_site.duplicate(true)
+			site.pos = Vector2(float(site.pos[0]), float(site.pos[1]))
+			var poly := preload("res://scripts/supply_chain_3d/rail_depot.gd").yard_polygon(site)
+			var center := preload("res://scripts/empire_board_model.gd").tile_center(terrain_layer, tile_id)
+			var bounds := _verts_bb(poly)
+			placed = {"verts": poly, "center_rel": bounds.get_center()-center, "half": bounds.size*0.5, "via": "rail_hub"}
+	elif offshore:
 		placed = _place_offshore(coord, area, placed_here)
 	# HIJACK FIRST. On an authored tile a stamped industry takes over a
 	# decorative mass the designer marked as a hijack slot (J in the editor) instead of being

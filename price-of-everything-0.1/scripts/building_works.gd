@@ -429,7 +429,7 @@ func _preview_infra_upgrade(inst: Dictionary, internal: String) -> Dictionary:
 		"from_level": level, "target_level": target,
 		"duration": BuildingLevels.UPGRADE_DURATION,
 		"cash_cost": cost, "affordable": MatchState.money >= cost,
-		"capacity": _infra_capacity_delta(internal, level, target),
+		"capacity": _infra_capacity_delta(internal, level, target, str(inst.get("tile_id", ""))),
 		"research_gate": "", "research_locked": false,
 		"materials": [], "all_on_tile": true, "market_sourceable": true,
 		"source_tile": "", "source_turns": 0, "market_cost": 0.0, "fits": true,
@@ -481,15 +481,15 @@ func reserved_materials_on_tile(tile_id: String, except_instance_id: String = ""
 				out[gid] = int(out.get(gid, 0)) + banked
 	return out
 
-func _infra_capacity_delta(internal: String, level: int, target: int) -> Dictionary:
+func _infra_capacity_delta(internal: String, level: int, target: int, tile_id: String = "") -> Dictionary:
 	if internal == "cables":
 		return {"label": "Power capacity", "unit": "power/turn",
 			"cur": float(EconomyConfig.CABLE_POWER_CAP.get(level, 0)),
 			"new": float(EconomyConfig.CABLE_POWER_CAP.get(target, 0))}
 	var mode := "rail" if internal == "rails" else internal
 	return {"label": "Transport capacity", "unit": "units/turn",
-		"cur": TransportState.tile_mode_capacity(mode, level),
-		"new": TransportState.tile_mode_capacity(mode, target)}
+		"cur": TransportState.tile_mode_capacity(mode, level, tile_id),
+		"new": TransportState.tile_mode_capacity(mode, target, tile_id)}
 
 func preview_upgrade(instance_id: String) -> Dictionary:
 	if not BuildingState.buildings.has(instance_id):
@@ -502,6 +502,8 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 	var level := int(inst.get("level", 1))
 	var building_id := str(inst.get("building_id", ""))
 	var building_name := BuildingNaming.of(inst)
+	if building_id == "b_038":
+		return {"ok": true, "at_max": true, "no_levels": true, "building_name": building_name, "from_level": 1}
 	var infra_internal := str(Catalog.get_building(building_id).get("internal_name", ""))
 	if INFRA_UPGRADABLE.has(infra_internal):
 		return _preview_infra_upgrade(inst, infra_internal)
@@ -678,6 +680,8 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 	if is_upgrading(instance_id):
 		return {"ok": false, "reason": "An upgrade is already in progress."}
 	var inst: Dictionary = BuildingState.buildings[instance_id]
+	if str(inst.get("building_id", "")) == "b_038":
+		return {"ok": false, "reason": "Rail Hubs have no upgrades."}
 	# Levellable infrastructure: cash-only, no materials/research, level read from and
 	# (at completion) written back to the TILE — the gameplay source of truth.
 	var infra_internal := str(Catalog.get_building(str(inst.get("building_id", ""))).get("internal_name", ""))

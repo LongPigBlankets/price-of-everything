@@ -71,7 +71,9 @@ func _exit_tree() -> void:
 	_generation += 1
 	# Release large cached resources while the scene/rendering services still
 	# exist, rather than retaining them until the scripting runtime shuts down.
-	if _builder != null: _builder.handover.clear()
+	if _builder != null:
+		_builder.handover.clear()
+		_builder.road_surface.finish_build()
 	_builder = null
 	_terrain_cache.clear()
 	_goods.clear()
@@ -248,10 +250,12 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	timings.road_import_ms = (Time.get_ticks_usec() - road_started) / 1000.0
 	road_started = Time.get_ticks_usec()
 	preload("res://scripts/supply_chain_3d/harbour.gd").apply(model)
+	if Legacy.plate_town and Legacy.show.decor: preload("res://scripts/supply_chain_3d/civic_layout.gd").populate(model)
 	preload("res://scripts/supply_chain_3d/road_placement.gd").new().fit(model, builder.surface_height, builder.open_water, Builder.standing_key, rivers, queries.data)
 	timings.road_frontage_ms = (Time.get_ticks_usec() - road_started) / 1000.0
 	road_started = Time.get_ticks_usec()
 	preload("res://scripts/supply_chain_3d/authored_region.gd").reroute_flows(model, model.authored_region.tiles, model.roads)
+	preload("res://scripts/supply_chain_3d/rail_network.gd").apply(model, terrain, water, builder.surface_height)
 	timings.road_routing_ms = (Time.get_ticks_usec() - road_started) / 1000.0
 	timings.layout_solve_ms = (Time.get_ticks_usec() - solve_started) / 1000.0
 	queries.finish(builder.bake_cache)
@@ -269,6 +273,8 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	# Stable origin: expanding the company does not move existing terrain under the camera.
 	builder.origin = Vector2.ZERO
 	builder.configure_pits(model.get("standing", []))
+	builder.prepare_transport(model)
+	timings.transport = builder.transport_profile.duplicate()
 	builder.configure_bakes(model)
 	timings.keys_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	stage = Time.get_ticks_usec()
@@ -445,7 +451,7 @@ func _build_local_tile(builder: RefCounted, parent: Node3D, model: Dictionary, t
 	await builder.prepare_tile(self, tid)
 	if generation != _generation: return false
 	var fields := ["terrain_lods", "frame_nodes", "road_nodes", "glint_nodes", "tree_nodes",
-		"tree_sprite_nodes", "building_visuals", "decor_nodes", "detail_nodes", "sprite_pairs", "pickables", "glows", "smoke"]
+		"tree_sprite_nodes", "building_visuals", "decor_nodes", "detail_nodes", "farm_nodes", "sprite_pairs", "pickables", "glows", "smoke"]
 	var offsets := {}
 	for field in fields: offsets[field] = (builder.get(field) as Array).size()
 	var root := Node3D.new()

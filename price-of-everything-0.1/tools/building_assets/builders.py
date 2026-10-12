@@ -21,6 +21,9 @@ PALETTE.update({
     'greenhouse_glass': (.20, .36, .50),
     'equipment_yellow': (.68, .44, .018),
     'equipment_black': (.055, .060, .066),
+    'helideck_green': (.065, .21, .145),
+    'offshore_red': (.47, .095, .045),
+    'flame_orange': (.90, .29, .025),
 })
 
 # The original .12 vertex jitter creates folds steep enough for Freestyle crease
@@ -460,30 +463,45 @@ def frac_tree(K,name,x,y):
     K.washer(name+'_inlet_flange',(x-.25,y,1.27),(1,0,0),.078,.125,.055,K.mat('tank_grey'),seg=20)
 
 
+def oil_drop(K,name,x,y,z,w=.31,h=.43):
+    """Flat painted teardrop on a -Y-facing tank end; no embossed border."""
+    profile=[(0,h*.56),(-w*.36,h*.06),(-w*.50,-h*.14),(-w*.44,-h*.31),
+             (-w*.26,-h*.43),(0,-h*.47),(w*.26,-h*.43),(w*.44,-h*.31),
+             (w*.50,-h*.14),(w*.36,h*.06)]
+    return noink(K.prism(name,(x,y,z),(1,0),profile,.006,K.mat('equipment_black')))
+
+
 def frac_water_tank(K,name,x,y):
-    """Rectangular low-pressure fluid tank on two narrow transport runners."""
+    """Low horizontal water vessel: shell on two bearing saddles, end outlet."""
+    steel,grey=K.mat('equipment_black'),K.mat('tank_grey')
     for side in (-1,1):
-        K.box(name+'_runner',x+side*.32,y,.08,.12,2.10,.16,K.mat('equipment_black'))
-    K.box(name+'_body',x,y,.75,.90,1.96,1.18,K.mat('tank_grey'))
-    K.box(name+'_roof',x,y,1.36,.95,2.01,.055,K.mat('equipment_black'))
+        K.box(name+'_runner',x+side*.32,y,.08,.12,2.10,.16,steel)
+    for yy in (-.64,.64):
+        K.box(name+'_saddle',x,y+yy,.24,.76,.15,.16,steel)
+    K.cyl(name+'_body',x,y,.61,.40,1.96,grey,axis='Y',segments=32)
+    for yy in (-.97,.97):
+        K.cyl(name+'_end_rim',x,y+yy,.61,.413,.055,steel,axis='Y',segments=32)
+    K.cyl(name+'_label_face',x,y-1.001,.61,.352,.013,grey,axis='Y',segments=32)
+    oil_drop(K,name+'_oil_drop',x,y-1.012,.65)
     K._fine_mode=True
-    for yy in (-.76,-.38,0,.38,.76):
-        for side in (-1,1):
-            K.box(name+'_rib',x+side*.46,y+yy,.76,.035,.045,1.13,K.mat('equipment_black'))
-    K.cyl(name+'_hatch',x,y,1.405,.18,.06,K.mat('equipment_black'),segments=20)
-    K.cyl(name+'_vent',x,y+.63,1.49,.035,.20,K.mat('equipment_black'),segments=12)
-    K.cyl(name+'_vent_cap',x,y+.63,1.60,.065,.025,K.mat('equipment_black'),segments=16)
-    K.dircyl(name+'_outlet',(x,y-.94,.32),(x,y-1.10,.32),.07,K.mat('equipment_black'),segments=16)
+    K.cyl(name+'_hatch',x,y,1.03,.15,.065,steel,segments=20)
+    K.cyl(name+'_vent',x,y+.63,1.08,.035,.20,steel,segments=12)
+    K.cyl(name+'_vent_cap',x,y+.63,1.19,.065,.025,steel,segments=16)
+    K.dircyl(name+'_outlet',(x,y-.94,.32),(x,y-1.10,.32),.07,steel,segments=16)
     K._fine_mode=False
 
 
 def frac_pump(K,name,x,y):
     """Compact diesel drive, coupling, reciprocating power end and triplex fluid end.
-    Ports: suction=(x+.64,y,.54); discharge=(x+.82,y,.70).
+    Trailer deck raised .40m; suction z=.94, discharge z=1.10.
+    Tandem wheel D=.44m, wheelbase=.50m; chassis L=2.10m=4.77D.
     """
+    before=set(K.col.objects)
     steel,grey,accent=K.mat('equipment_black'),K.mat('tank_grey'),K.mat('equipment_yellow')
     for side in (-1,1):K.box(name+'_runner',x-.14,y+side*.34,.08,2.10,.13,.16,steel)
-    for xx in (-.85,.23,.52):K.box(name+'_crossmember',x+xx,y,.18,.14,.81,.08,steel)
+    for xx in (-.85,.23):K.box(name+'_crossmember',x+xx,y,.18,.14,.81,.08,steel)
+    # Two bearing brackets leave an open central passage for the suction drop.
+    for side in (-1,1):K.box(name+'_head_crossmember',x+.52,y+side*.31,.18,.14,.19,.08,steel)
     K.box(name+'_engine_foot',x-.59,y,.29,.73,.57,.14,steel)
     K.box(name+'_engine',x-.60,y,.66,.73,.58,.61,accent)
     K.box(name+'_valve_cover',x-.60,y,.99,.58,.42,.08,steel)
@@ -504,13 +522,25 @@ def frac_pump(K,name,x,y):
     K.dircyl(name+'_suction_port',(x+.64,y,.54),(x+.64,y,.60),.07,steel,segments=16)
     K.dircyl(name+'_discharge_port',(x+.78,y,.70),(x+.88,y,.70),.055,steel,segments=16)
 
+    # Raise the complete supported power train onto a road-mobile tandem trailer.
+    for ob in set(K.col.objects)-before:ob.location.z+=.40
+    for xx in (-.80,-.30):
+        K.cyl(name+'_axle',x+xx,y,.22,.055,1.10,steel,axis='Y',segments=12)
+        for side in (-1,1):
+            K.box(name+'_suspension',x+xx,y+side*.34,.33,.19,.11,.18,steel)
+            K.cyl(name+'_tyre',x+xx,y+side*.54,.22,.22,.18,steel,axis='Y',segments=24)
+            K.cyl(name+'_hub',x+xx,y+side*.637,.22,.105,.02,grey,axis='Y',segments=16)
+    for side in (-1,1):
+        K.box(name+'_landing_leg',x+.68,y+side*.34,.23,.085,.085,.46,steel)
+        K.box(name+'_landing_foot',x+.68,y+side*.34,.035,.21,.20,.07,steel)
+
 
 def build_fracking_oil_well(level=1):
     """Active shale-completion spread, schematic equipment counts (2/3/4 pumps).
 
     Every level preserves water/sand -> blender -> LP header -> pumps -> separate
-    HP header -> isolating manifold -> frac trees. L3 upgrades the sand hopper
-    into a tall silo. Port centers are shared with each connected pipe route.
+    HP header -> isolating manifold -> frac trees. Elevated angular sand bins,
+    diagonal enclosed auger and tandem-wheel trailers define the silhouette. Port centers are shared with each connected pipe route.
     Narrow runners/feet only: no shared ground plate and no synthetic outer ink.
     """
     K=begin('fracking_oil_well')
@@ -547,23 +577,38 @@ def build_fracking_oil_well(level=1):
     pipe('additive_feed',[(bx-.24,by+.36,.80),(bx+.08,by+.36,.80),
                           (bx+.08,by+.24,.80)],.024)
     tag('blender')
-    # Sand storage discharge is above the blender lip; the enclosed auger is supported.
+    # Containerized proppant hoppers: tapered outlets and exposed braced trestles.
+    # Bin width D=.96m, legs H=1.40D, body H=1.15D (L3 1.77D).
     sx,sy=-2.40,-2.40
-    for dx in (-.38,.38):
-        for dy in (-.38,.38):
-            K.box('sand_leg',sx+dx,sy+dy,.65,.095,.095,1.30,steel)
-    K.cone('sand_hopper',sx,sy,1.0,.16,.54,.50,grey,segments=24)
-    if level==3:
-        K.cyl('sand_silo',sx,sy,1.99,.54,1.48,grey,segments=24)
-        K.dome_cap('sand_silo_roof',sx,sy,2.73,.55,.10,K.mat('equipment_black'))
+    sand_x=[sx]+([sx-1.22] if level>=2 else [])
+    top=3.10 if level==3 else 2.50
+    for i,xx in enumerate(sand_x):
+        name='sand_bin_'+str(i)
+        for dx in (-.44,.44):
+            for dy in (-.44,.44):
+                K.box(name+'_leg',xx+dx,sy+dy,.70,.095,.095,1.40,steel)
+                K.box(name+'_foot',xx+dx,sy+dy,.04,.20,.20,.08,steel)
+        K.sqcol(name+'_hopper',xx,sy,.77,1.40,.20,.96,accent)
+        K.box(name+'_body',xx,sy,(1.40+top)/2,.96,.96,top-1.40,accent)
+        K.box(name+'_lid',xx,sy,top+.035,1.03,1.03,.07,steel)
+        for z in (1.40,top-.08):K.box(name+'_band',xx,sy,z,1.0,1.0,.075,steel)
         K._fine_mode=True
-        for z in (1.30,2.00,2.65):K.seam('sand_silo_seam',sx,sy,z,.545)
-        K.ladder('sand_silo_ladder',sx+.60,sy,.10,2.78,face='+X',w=.22,mat=accent)
-        for z in (.50,1.60,2.55):K.box('sand_ladder_mount',sx+.55,sy,z,.12,.20,.035,steel)
+        for dx in (-.455,.455):
+            for dy in (-.455,.455):
+                K.box(name+'_corner',xx+dx,sy+dy,(1.40+top)/2,.065,.065,top-1.40,steel)
+        # Front diagonal braces remain below the tapered bin and clear the auger.
+        for dy in (-.44,.44):
+            K.dircyl(name+'_brace',(xx-.44,sy+dy,.18),(xx+.44,sy+dy,1.35),.026,steel,segments=6,smooth=False)
         K._fine_mode=False
-    else:
-        K.cyl('sand_bin',sx,sy,1.41,.54,.32,grey,segments=24)
-        K.cyl('sand_bin_lid',sx,sy,1.59,.56,.04,K.mat('equipment_black'),segments=24)
+        K.dircyl(name+'_outlet',(xx,sy,.67),(xx,sy,.82),.095,steel,segments=16)
+    if level>=2:
+        pipe('sand_crossfeed',[(sand_x[1],sy,.70),(sx,sy,.70),(sx,sy,.77)],.09)
+        foot('sand_transfer_support',(sand_x[1]+sx)/2,sy,.64,.10)
+    if level==3:
+        K._fine_mode=True
+        K.ladder('sand_access',sand_x[1]-.55,sy,.10,top+.08,face='-X',w=.24,mat=steel)
+        for z in (.40,1.55,2.85):K.box('sand_ladder_mount',sand_x[1]-.50,sy,z,.12,.22,.05,steel)
+        K._fine_mode=False
     pipe('sand_auger',[(sx,sy,.77),(sx,sy+.20,.77),(bx+.08,by-.14,1.30),
                        (bx+.08,by-.14,.76)],.10)
     K.cyl('sand_auger_motor',sx,sy-.15,.77,.115,.30,steel,axis='Y',segments=20)
@@ -579,8 +624,8 @@ def build_fracking_oil_well(level=1):
     rows=[-1.40+i*1.40 for i in range(level+1)]
     for i,yy in enumerate(rows):
         frac_pump(K,'frac_pump_'+str(i),-.10,yy);tag('pump_'+str(i))
-        pipe('pump_suction_'+str(i),[(.54,yy,.54),(.54,yy,.35),(1.03,yy,.35)],.07)
-        pipe('pump_discharge_'+str(i),[(.78,yy,.70),(1.45,yy,.70)],.055)
+        pipe('pump_suction_'+str(i),[(.54,yy,.94),(.54,yy,.35),(1.03,yy,.35)],.07)
+        pipe('pump_discharge_'+str(i),[(.78,yy,1.10),(1.23,yy,1.10),(1.23,yy,.70),(1.45,yy,.70)],.055)
         tag('pump_lines_'+str(i))
     end=rows[-1]+.32
     pipe('low_pressure_header',[(1.03,-1.72,.35),(1.03,end,.35)],.085)
@@ -802,3 +847,415 @@ def woodland(level,old):
 
 def build_new_forest(level=1): return woodland(level,False)
 def build_old_forest(level=1): return woodland(level,True)
+
+
+def build_offshore_oil_platform(level=1):
+    """Fixed-jacket platform. Deck D=5.6m, L1 depth .68D, L2 depth 1.02D.
+    L2 extends the front with two process vessels (.10D diameter) and compressor;
+    L3 adds a raised rear module, paired process columns and two more piers.
+    All earlier equipment keeps its coordinates. Owner: better crane-base outlining.
+    Four separate lattice piers carry the deck; open derrick height .61D above drill floor.
+    Crown, travelling block, drillstring and conductor share one well axis.
+    The deck is a load-bearing part of the platform, never a seabed/ground tile.
+    """
+    assert level in (1,2,3), 'Offshore level must be 1, 2 or 3'
+    front=-3.80 if level>=2 else -1.90
+    rear=3.90 if level==3 else 1.90
+    pier_rows=(-1,1,-2,2) if level==3 else ((-1,1,-2) if level>=2 else (-1,1))
+    K=begin('offshore_oil_platform')
+    steel,grey=K.mat('equipment_black'),K.mat('tank_grey')
+    yellow,red=K.mat('equipment_yellow'),K.mat('offshore_red')
+    chalk=K.mat('chalk')
+    seen=set(K.col.objects)
+    def tag(group):
+        nonlocal seen
+        for ob in set(K.col.objects)-seen:ob['assembly']=group
+        seen=set(K.col.objects)
+    def rod(name,p,q,r=.04,mat=None):
+        return K.dircyl(name,p,q,r,mat or steel,segments=8,smooth=False)
+    def rail(name,p,q):
+        p,q=Vector(p),Vector(q)
+        for z in (.20,.40):rod(name+'_bar',p+Vector((0,0,z)),q+Vector((0,0,z)),.019,yellow)
+        n=max(1,math.ceil((p-q).length/.55))
+        for i in range(n+1):
+            v=p.lerp(q,i/n);rod(name+'_post',v,v+Vector((0,0,.41)),.021,yellow)
+    def open_floor(name,cx,cy,z,w,d,hole,t,mat):
+        # Four panels around a real square well opening.
+        for sign in (-1,1):
+            K.box(name+'_side',cx+sign*(w+hole)/4,cy,z,(w-hole)/2,d,t,mat)
+            K.box(name+'_end',cx,cy+sign*(d+hole)/4,z,hole,(d-hole)/2,t,mat)
+    # Owner reference: separate scaffolding-like pillars. Each is a narrow
+    # four-chord lattice pier; braces stay inside its footprint, leaving open bays.
+    for sx in (-1,1):
+        for sy in pier_rows:
+            px,py=sx*2.25,(-3.20 if sy==-2 else (3.20 if sy==2 else sy*1.40))
+            prefix='lattice_pier_%s_%s'%(sx,sy)
+            for dx in (-.31,.31):
+                for dy in (-.31,.31):
+                    K.cyl(prefix+'_chord',px+dx,py+dy,.98,.052,1.96,steel,segments=12)
+            for side in (-1,1):
+                K.box(prefix+'_head_x',px,py+side*.31,1.98,.76,.14,.14,steel)
+                K.box(prefix+'_head_y',px+side*.31,py,1.98,.14,.76,.14,steel)
+            K._fine_mode=True
+            for axis in (0,1):
+                for side in (-1,1):
+                    def node(sign,z):
+                        return (px+sign*.31,py+side*.31,z) if axis==0 else (px+side*.31,py+sign*.31,z)
+                    for z in (.10,.98,1.88):rod(prefix+'_rail',node(-1,z),node(1,z),.030,steel)
+                    # Opposing diagonal directions over two storeys, joined at rail nodes.
+                    rod(prefix+'_brace',node(-1,.10),node(1,.98),.031,steel)
+                    rod(prefix+'_brace',node(1,.98),node(-1,1.88),.031,steel)
+            K._fine_mode=False
+    for yy in [-1.40,1.40]+([-3.20] if level>=2 else [])+([3.20] if level==3 else []):K.box('deck_primary_beam',0,yy,1.97,5.6,.22,.30,steel)
+    for xx in (-2.25,-1.1,.25,1.45,2.25):K.box('deck_crossbeam',xx,(front+rear)/2,2.04,.16,rear-front,.16,steel)
+    # One welded deck mesh with actual well and service-pipe penetrations.
+    holes=[(.55,.95,.25,.65),(1.59,1.79,.72,.92)]
+    if level>=2:holes += [(2.40,2.60,-.75,-.55),(-.30,-.10,-2.52,-2.32),
+                         (-.32,-.12,-3.02,-2.82),(.48,.68,-3.00,-2.80)]
+    if level==3:holes += [(-.85,-.65,3.68,3.82)]
+    xs=sorted(set([-2.8,2.8]+[h[i] for h in holes for i in (0,1)]))
+    ys=sorted(set([front,rear]+[h[i] for h in holes for i in (2,3)]))
+    cells={(i,j) for i in range(len(xs)-1) for j in range(len(ys)-1)
+           if not any(h[0]<(xs[i]+xs[i+1])/2<h[1] and h[2]<(ys[j]+ys[j+1])/2<h[3] for h in holes)}
+    verts=[];faces=[];indices={}
+    def vert(pt):
+        if pt not in indices:indices[pt]=len(verts);verts.append(pt)
+        return indices[pt]
+    def face(pts):faces.append([vert(pt) for pt in pts])
+    for i,j in cells:
+        x0,x1=xs[i:i+2];y0,y1=ys[j:j+2];z0,z1=2.10,2.22
+        face([(x0,y0,z1),(x1,y0,z1),(x1,y1,z1),(x0,y1,z1)])
+        face([(x0,y1,z0),(x1,y1,z0),(x1,y0,z0),(x0,y0,z0)])
+        if (i-1,j) not in cells:face([(x0,y0,z0),(x0,y0,z1),(x0,y1,z1),(x0,y1,z0)])
+        if (i+1,j) not in cells:face([(x1,y1,z0),(x1,y1,z1),(x1,y0,z1),(x1,y0,z0)])
+        if (i,j-1) not in cells:face([(x1,y0,z0),(x1,y0,z1),(x0,y0,z1),(x0,y0,z0)])
+        if (i,j+1) not in cells:face([(x0,y1,z0),(x0,y1,z1),(x1,y1,z1),(x1,y1,z0)])
+    mesh=bpy.data.meshes.new('main_deck');mesh.from_pydata(verts,[],faces);mesh.update()
+    K.obj('main_deck',mesh,grey)
+    for yy in (front,rear):K.box('deck_edge',0,yy,2.14,5.65,.085,.20,yellow)
+    for xx in (-2.8,2.8):K.box('deck_edge',xx,(front+rear)/2,2.14,.085,rear-front,.20,yellow)
+    tag('structure')
+    # Accommodation block and cantilever helideck at the opposite end from flare.
+    K.box('quarters',-1.75,-.22,2.75,1.72,1.90,1.06,chalk)
+    K.box('quarters_roof',-1.75,-.22,3.31,1.80,1.98,.06,red)
+    K._fine_mode=True
+    for xx in (-2.28,-1.76,-1.24):K.window('quarters_window','-Y',(xx,-1.182,2.93),.32,.25,cols=1,rows=1)
+    K.door('quarters_door','+X',(-.881,-.51,2.58),.39,.70)
+    K.box('quarters_vent',-.84,.58,3.04,.12,.26,.26,steel)
+    K._fine_mode=False
+    hx,hy=-2.20,-.14
+    K.box('helideck',hx,hy,3.42,2.38,2.38,.14,K.mat('helideck_green'))
+    for yy in (-.80,.54):
+        K.box('helideck_girder',hx,yy,3.34,2.28,.11,.12,steel)
+        rod('helideck_cantilever',(-2.51,yy,2.22),(-3.28,yy,3.34),.06,steel)
+    K._fine_mode=True
+    for side in (-1,1):
+        noink(K.box('helipad_square',hx+side*.75,hy,3.496,.04,1.54,.008,chalk))
+        noink(K.box('helipad_square',hx,hy+side*.75,3.496,1.54,.04,.008,chalk))
+    for xx in (-.22,.22):noink(K.box('helipad_H',hx+xx,hy,3.500,.095,.70,.008,chalk))
+    noink(K.box('helipad_H_cross',hx,hy,3.501,.44,.095,.008,chalk))
+    # A low safety-net rim avoids railings projecting into the landing surface.
+    for side in (-1,1):
+        rod('helideck_net_rim',(hx+side*1.25,hy-1.25,3.38),(hx+side*1.25,hy+1.25,3.38),.022,steel)
+        rod('helideck_net_rim',(hx-1.25,hy+side*1.25,3.38),(hx+1.25,hy+side*1.25,3.38),.022,steel)
+        for offset in (-1.14,0,1.14):
+            rod('helideck_net_spoke',(hx+side*1.14,hy+offset,3.38),(hx+side*1.25,hy+offset,3.38),.020,steel)
+            rod('helideck_net_spoke',(hx+offset,hy+side*1.14,3.38),(hx+offset,hy+side*1.25,3.38),.020,steel)
+    K._fine_mode=False
+    K._fine_mode=True
+    K.ladder('helideck_access',-.78,.25,2.22,3.51,face='+X',w=.28,mat=steel)
+    for z in (2.45,3.14):K.box('helideck_ladder_mount',-.84,.25,z,.14,.27,.04,steel)
+    K.box('helideck_access_landing',-.995,.25,3.46,.49,.38,.06,steel)
+    K._fine_mode=False
+    tag('quarters_helideck')
+    # Raised drill floor on four legs, with an unbroken open well axis.
+    dx,dy=.75,.45
+    for sx in (-1,1):
+        for sy in (-1,1):K.box('drill_floor_leg',dx+sx*.62,dy+sy*.62,2.54,.15,.15,.64,steel)
+    open_floor('drill_floor',dx,dy,2.89,1.50,1.50,.24,.14,grey)
+    # Open tapered derrick. Each diagonal is on a face, never across the bore.
+    base,top=2.96,6.36
+    def mp(sx,sy,z):
+        half=.62-(.62-.23)*(z-base)/(top-base)
+        return (dx+sx*half,dy+sy*half,z)
+    for sx in (-1,1):
+        for sy in (-1,1):rod('derrick_chord',mp(sx,sy,base),mp(sx,sy,top),.055,red)
+    K._fine_mode=True
+    for j in range(5):
+        z0=base+j*(top-base)/5;z1=base+(j+1)*(top-base)/5
+        for axis in (0,1):
+            for side in (-1,1):
+                a=mp(-1,side,z0) if axis==0 else mp(side,-1,z0)
+                b=mp(1,side,z1) if axis==0 else mp(side,1,z1)
+                c=mp(-1,side,z1) if axis==0 else mp(side,-1,z1)
+                rod('derrick_brace',a,b,.023,red)
+                # Rear top bay is open for the fast line; the crown frame ties its heads.
+                if not (j==4 and axis==0 and side==1):rod('derrick_rail',c,b,.028,red)
+    K._fine_mode=False
+    # Two bearing girders leave the reeving path open through the crown.
+    for xx in (dx-.24,dx+.24):
+        K.box('crown_girder',xx,dy,6.40,.11,.64,.12,steel)
+        K.box('crown_bearing',xx,dy,6.53,.11,.22,.17,red)
+    K.cyl('crown_axle',dx,dy,6.58,.041,.58,steel,axis='X',segments=16)
+    K.cyl('crown_sheave',dx,dy,6.58,.14,.21,grey,axis='X',segments=24)
+    K.cyl('travelling_sheave',dx,dy,5.34,.14,.20,grey,axis='X',segments=24)
+    K.cyl('travelling_axle',dx,dy,5.34,.038,.30,steel,axis='X',segments=16)
+    for xx in (dx-.13,dx+.13):
+        K.box('travelling_cheek',xx,dy,5.34,.04,.36,.36,yellow)
+        rod('block_clevis',(xx,dy,5.16),(dx,dy,5.02),.032,steel)
+    K.cyl('top_drive',dx,dy,4.86,.11,.32,steel,segments=16)
+    K.cyl('drillstring',dx,dy,2.85,.033,3.70,grey,segments=12)
+    # A dead-end crossbar is tied back to the two rear mast heads.
+    K.box('deadline_anchor',dx,dy+.152,6.24,.54,.065,.08,steel)
+    for xx in (dx-.24,dx+.24):K.box('deadline_bracket',xx,dy+.20,6.24,.075,.14,.08,steel)
+    K.cyl('conductor',dx,dy,.73,.092,1.46,steel,segments=20)
+    K.cyl('BOP',dx,dy,1.65,.17,.38,red,segments=16)
+    K.cyl('well_riser',dx,dy,2.25,.10,.82,steel,segments=16)
+    K.washer('rotary_table',(dx,dy,2.976),(0,0,1),.055,.18,.025,steel,seg=24)
+    # Drawworks on its own raised, supported rear shelf. Fast line outside mast.
+    K.box('drawworks_shelf',dx,1.55,2.89,1.05,.64,.14,steel)
+    for xx in (dx-.43,dx+.43):K.box('drawworks_shelf_leg',xx,1.67,2.55,.11,.11,.66,steel)
+    for xx in (dx-.28,dx+.28):K.box('drawworks_bearing',xx,1.55,3.095,.10,.40,.27,red)
+    K.cyl('drawworks_drum',dx,1.55,3.17,.18,.51,steel,axis='X',segments=20)
+    # Exact tangent from the drum to the crown, then wrap and return around the
+    # travelling sheave. One continuous rope, ending on the dead-end crossbar.
+    radius=.152
+    vy,vz=1.55-dy,3.35-6.58
+    tangent=math.atan2(vz,vy)+math.acos(radius/math.hypot(vy,vz))
+    rope=[(dx,1.55,3.35)]
+    for i in range(19):
+        angle=tangent+(math.pi-tangent)*i/18
+        rope.append((dx,dy+radius*math.cos(angle),6.58+radius*math.sin(angle)))
+    rope.append((dx,dy-radius,5.34))
+    for i in range(1,19):
+        angle=math.pi+math.pi*i/18
+        rope.append((dx,dy+radius*math.cos(angle),5.34+radius*math.sin(angle)))
+    rope.append((dx,dy+radius,6.20))
+    K._fine_mode=True
+    for i,(a,b) in enumerate(zip(rope,rope[1:])):noink(rod('reeving_'+str(i),a,b,.013,steel))
+    K._fine_mode=False
+    tag('drilling')
+    # Access stairs stay outside the well axis and meet the drill-floor edge.
+    for i in range(6):K.box('drill_stair',.75,-1.32+i*.18,2.26+i*.12,.58,.22,.08,grey)
+    for xx in (.45,1.05):rod('stair_stringer',(xx,-1.43,2.22),(xx,-.34,2.88),.045,steel)
+    K._fine_mode=True
+    for xx in (.44,1.06):rail('stair_rail',(xx,-1.39,2.30),(xx,-.36,2.91))
+    K._fine_mode=False
+    tag('stairs')
+    # Small process separator, pipe connection to the well and an export riser.
+    for yy in (-.20,.63):K.box('separator_saddle',2.12,yy,2.36,.51,.14,.28,steel)
+    K.cyl('separator',2.12,.22,2.65,.30,1.20,grey,axis='Y',segments=24)
+    K.cyl('separator_hatch',2.12,.22,2.98,.12,.075,steel,segments=16)
+    K.pipe_run('production_line',[(dx+.15,dy,1.65),(1.69,dy,1.65),(1.69,.82,1.65),
+        (1.69,.82,2.65),(2.12,.82,2.65)],.050,mat=steel,bend=.12,ends=('',''))
+    K.pipe_run('export_line',[(2.12,-.38,2.65),(2.12,-.65,2.65),(2.12,-.65,2.80),
+        (2.98,-.65,2.80),(2.98,-.65,.04)],.055,mat=steel,bend=.12,ends=('',''))
+    tag('process')
+    # Small pedestal crane: pivot, luffing cylinder, triangulated jib and hanging hook.
+    cx,cy=1.96,-1.37
+    K.cyl('crane_pedestal',cx,cy,2.57,.20,.70,yellow,segments=20)
+    K.cyl('crane_slew',cx,cy,2.96,.27,.10,steel,segments=20)
+    # Explicit local joint ink: the cylinder/deck intersection has no mesh edge
+    # for Freestyle. A mounting flange and seam rings make the base readable.
+    K.cyl('crane_foot_flange',cx,cy,2.25,.255,.06,yellow,segments=32)
+    noink(K.seam('crane_foot_seam',cx,cy,2.292,.207,t=.024))
+    noink(K.seam('crane_foot_rim',cx,cy,2.239,.258,t=.024))
+    noink(K.seam('crane_neck_seam',cx,cy,2.892,.207,t=.024))
+    K.box('crane_body',cx,cy,3.14,.56,.43,.30,yellow)
+    K.box('crane_counterweight',cx-.35,cy,3.15,.23,.50,.30,steel)
+    p,q=Vector((cx+.18,cy,3.25)),Vector((3.75,-2.20,5.15))
+    side=Vector((-(q-p).y,(q-p).x,0)).normalized()*.12
+    # Closed root triangle and transverse hinge tie all three chords to the body.
+    rod('crane_root_hinge',p-side*1.60,p+side*1.60,.070,steel)
+    for offset in (-side,side):rod('crane_root_frame',p+offset,p+Vector((0,0,.22)),.033,yellow)
+    for offset in (-side*1.40,side*1.40):
+        K.box('crane_root_cheek',p.x+offset.x,p.y+offset.y,3.26,.17,.14,.25,yellow)
+    for offset in (-side,side):rod('crane_boom_chord',p+offset,q+offset,.033,yellow)
+    rod('crane_boom_top',p+Vector((0,0,.22)),q+Vector((0,0,.10)),.033,yellow)
+    K._fine_mode=True
+    for i in range(5):
+        a=p.lerp(q,i/5);b=p.lerp(q,(i+1)/5)
+        rod('crane_boom_brace',a-side,b+side,.018,yellow)
+        rod('crane_boom_brace',a+side,a+Vector((0,0,.22-.12*i/5)),.018,yellow)
+    rod('crane_tip_axle',q-side,q+side,.034,steel)
+    for offset in (-side,side):rod('crane_tip_crosshead',q+offset,q+Vector((0,0,.10)),.028,yellow)
+    K.dircyl('crane_tip_sheave',q-side*.42,q+side*.42,.095,grey,segments=20)
+    forward=Vector(((q-p).x,(q-p).y,0)).normalized()
+    rope_top=q+forward*.108
+    rod('crane_rope',rope_top,(rope_top.x,rope_top.y,2.92),.017,steel)
+    K.washer('crane_hook',(rope_top.x,rope_top.y,2.84),(0,1,0),.048,.078,.036,steel,seg=16)
+    # Outboard hydraulic ram: clear of every face of the lattice, with its own
+    # body-side trunnion and an overhung pin at the .4 panel station.
+    normal=side.normalized()
+    lug=p.lerp(q,.40)
+    ram_top=lug+normal*.28
+    ram_base=Vector((cx+.06,cy,3.04))+normal*.28
+    rod('crane_luff_pin',lug+side,ram_top+normal*.045,.055,grey)
+    rod('crane_ram_trunnion',ram_base-normal*.13,ram_base+normal*.06,.065,steel)
+    rod('crane_luff_cylinder',ram_base,ram_top,.050,grey)
+    K._fine_mode=False
+    tag('crane')
+    # Outboard flare on the far corner, separated from accommodation and helipad.
+    p,q=Vector((2.27,1.46,2.34)),Vector((3.00,3.20,3.64))
+    K.box('flare_root',p.x,p.y,2.28,.40,.40,.12,steel)
+    side=Vector((-(q-p).y,(q-p).x,0)).normalized()*.15
+    for offset in (-side,side):rod('flare_chord',p+offset,q+offset,.039,steel)
+    rod('flare_upper_chord',p+Vector((0,0,.32)),q+Vector((0,0,.17)),.039,steel)
+    K._fine_mode=True
+    # Close every triangular bay, including both ends: no free chord ends.
+    for i in range(6):
+        v=p.lerp(q,i/5);upper=v+Vector((0,0,.32-.15*i/5))
+        rod('flare_crossframe',v-side,v+side,.026,steel)
+        rod('flare_crossframe',v-side,upper,.026,steel)
+        rod('flare_crossframe',v+side,upper,.026,steel)
+    # Upright foot at the root carries the raised third chord down to the base.
+    rod('flare_root_upright',p,p+Vector((0,0,.32)),.050,steel)
+    for i in range(5):
+        a=p.lerp(q,i/5);b=p.lerp(q,(i+1)/5)
+        rod('flare_lattice',a-side,b+side,.022,steel)
+        rod('flare_lattice',a+side,b+Vector((0,0,.32-.15*(i+1)/5)),.022,steel)
+    # Feed pipe runs outside the truss instead of converging with its upper chord.
+    feed_offset=-side.normalized()*.27
+    root_feed=p+feed_offset+Vector((0,0,.15))
+    tip_feed=q+feed_offset+Vector((0,0,.20))
+    K.pipe_run('flare_feed',[(2.12,.82,2.65),(2.12,1.15,2.65),root_feed,
+        tip_feed,(tip_feed.x,tip_feed.y,4.02),(3.00,3.20,4.02)],.038,mat=steel,bend=.06,ends=('',''))
+    K.washer('flare_burner_mount',(3.00,3.20,3.86),(0,0,1),.043,.085,.14,steel,seg=20)
+    K.cyl('flare_tip',3.00,3.20,4.02,.070,.20,steel,segments=16)
+    K._fine_mode=False
+    K.cone('flare_flame',3.00,3.20,4.32,.095,.015,.44,K.mat('flame_orange'),segments=9)
+    tag('flare')
+    if level>=2:
+        # Front process module: two dished vessels, with paired bearing saddles.
+        # Keep a clear central route from the original stair to the new front rail.
+        for i,yy in enumerate((-2.42,-3.22)):
+            name='upgrade_vessel_'+str(i)
+            K.bullet(name,(-2.15,yy,2.84),(-.75,yy,2.84),.28,saddles=False)
+            for xx in (-1.95,-.95):
+                K.box(name+'_saddle',xx,yy,2.40,.17,.48,.36,steel)
+            K._fine_mode=True
+            rod(name+'_gauge_stem',(-1.18,yy,3.10),(-1.18,yy,3.26),.025,steel)
+            K.cyl(name+'_gauge',-1.18,yy-.018,3.25,.082,.07,steel,axis='Y',segments=16)
+            noink(K.cyl(name+'_gauge_face',-1.18,yy-.057,3.25,.063,.008,chalk,axis='Y',segments=16))
+            K._fine_mode=False
+            tag(name)
+        # Enclosed compressor/cooler package. Dark ventilation and two roof fans
+        # provide a different silhouette and clear material hierarchy.
+        for xx in (1.02,1.88):K.box('compressor_foot',xx,-2.90,2.28,.15,1.05,.12,steel)
+        K.box('compressor_housing',1.45,-2.90,2.84,1.30,1.05,1.00,K.mat('helideck_green'))
+        K.box('compressor_roof',1.45,-2.90,3.36,1.38,1.13,.04,grey)
+        K._fine_mode=True
+        K.box('compressor_grille',1.45,-3.438,2.87,.97,.026,.46,steel)
+        for xx in (1.09,1.21,1.33,1.45,1.57,1.69,1.81):
+            noink(K.box('compressor_louvre',xx,-3.456,2.87,.033,.012,.40,grey))
+        for xx in (1.10,1.80):
+            K.cyl('compressor_fan',xx,-2.90,3.397,.205,.034,steel,segments=24)
+            noink(K.cyl('compressor_fan_hub',xx,-2.90,3.421,.056,.014,grey,segments=16))
+            for aa in (0,math.pi/2):
+                rod('compressor_fan_guard',(xx-.17*math.cos(aa),-2.90-.17*math.sin(aa),3.416),
+                    (xx+.17*math.cos(aa),-2.90+.17*math.sin(aa),3.416),.012,grey)
+        K._fine_mode=False
+        tag('compressor')
+        # Four connections; the feed crosses beneath the clear central aisle
+        # and rises through genuine deck openings, never through solid plating.
+        # Only their named terminals may meet equipment from another assembly.
+        K.pipe_run('upgrade_feed',[(2.50,-.65,2.80),(2.50,-.65,1.70),(1.72,-.65,1.70),(1.72,-2.02,1.70),
+            (-.20,-2.02,1.70),(-.20,-2.42,1.70),(-.20,-2.42,2.84),(-.48,-2.42,2.84)],.045,mat=steel,bend=.10,ends=('',''))
+        K.pipe_run('upgrade_interstage',[(-2.42,-2.42,2.84),(-2.60,-2.42,2.84),
+            (-2.60,-3.22,2.84),(-2.42,-3.22,2.84)],.04,mat=steel,bend=.07,ends=('',''))
+        K.pipe_run('upgrade_compressor_in',[(-.48,-3.22,2.84),(-.22,-3.22,2.84),(-.22,-2.92,2.84),
+            (-.22,-2.92,1.70),(.58,-2.92,1.70),(.58,-2.92,2.84),(.81,-2.92,2.84)],.045,mat=steel,bend=.10,ends=('',''))
+        K.pipe_run('upgrade_compressor_out',[(2.09,-2.90,3.05),(2.62,-2.90,3.05),
+            (2.62,-.65,3.05),(2.98,-.65,3.05),(2.98,-.65,2.79)],.045,mat=steel,bend=.07,ends=('',''))
+        tag('upgrade_pipework')
+    if level==3:
+        # New landmark: a two-level rear treatment module. The four columns
+        # bear on the extended main deck; braces stay out of the access stair.
+        for xx in (-2.40,0.0):
+            for yy in (2.10,3.50):
+                K.box('treatment_column',xx,yy,2.95,.14,.14,1.46,steel)
+        for yy in (2.10,3.50):K.box('treatment_girder',-1.20,yy,3.61,2.70,.16,.18,steel)
+        for xx in (-2.40,0.0):K.box('treatment_crossbeam',xx,2.80,3.63,.16,1.70,.14,steel)
+        K.box('treatment_floor',-1.20,2.80,3.71,2.70,1.70,.14,grey)
+        K._fine_mode=True
+        for yy in (2.10,3.50):
+            rod('treatment_brace',(-2.40,yy,2.27),(0.0,yy,3.60),.035,steel)
+        rod('treatment_brace',(-2.40,2.10,2.27),(-2.40,3.50,3.60),.035,steel)
+        K._fine_mode=False
+        tag('treatment_structure')
+        # Compact straight stair with a supported side landing and open gate.
+        for i in range(9):
+            K.box('treatment_stair',.65,2.02+i*.16,2.22+(i+1)*(1.56/9)-.04,.58,.20,.08,grey)
+        for xx in (.34,.96):
+            rod('treatment_stringer',(xx,1.92,2.225),(xx,3.30,3.72),.044,steel)
+            rod('treatment_stair_head_tie',(xx,3.30,3.72),(xx,3.525,3.59),.044,steel)
+        K.box('treatment_landing',.575,3.525,3.71,.85,.25,.14,grey)
+        K.box('treatment_landing_girder',.47,3.525,3.59,1.06,.12,.16,steel)
+        for xx in (.86,):K.box('treatment_landing_column',xx,3.525,2.91,.11,.11,1.38,steel)
+        K._fine_mode=True
+        for xx in (.34,.96):rail('treatment_stair_rail',(xx,1.94,2.30),(xx,3.30,3.80))
+        rail('treatment_right_landing_guard',(.96,3.30,3.78),(.96,3.62,3.78))
+        rail('treatment_front_guard',(-2.52,1.98,3.78),(.12,1.98,3.78))
+        rail('treatment_left_guard',(-2.52,1.98,3.78),(-2.52,3.62,3.78))
+        rail('treatment_rear_guard',(-2.52,3.62,3.78),(.96,3.62,3.78))
+        rail('treatment_right_guard',(.12,1.98,3.78),(.12,3.32,3.78))
+        K._fine_mode=False
+        tag('treatment_access')
+        # Contrasting heights preserve a stepped silhouette at small sizes.
+        for i,(xx,body_top) in enumerate(((-1.90,5.40),(-.75,5.00))):
+            name='treatment_vessel_'+str(i)
+            K.cyl(name+'_skirt',xx,2.68,3.88,.245,.20,steel,segments=24)
+            K.cyl(name,xx,2.68,(3.98+body_top)/2,.32,body_top-3.98,grey,segments=32)
+            K.dome_cap(name+'_head',xx,2.68,body_top-.006,.32,.18,grey,seg=32)
+            K._fine_mode=True
+            noink(K.seam(name+'_base_seam',xx,2.68,3.998,.325,t=.025))
+            noink(K.seam(name+'_top_seam',xx,2.68,body_top-.02,.325,t=.025))
+            K.cyl(name+'_manway',xx,2.354,4.40,.105,.075,steel,axis='Y',segments=20)
+            noink(K.cyl(name+'_manway_lid',xx,2.312,4.40,.083,.012,grey,axis='Y',segments=20))
+            K._fine_mode=False
+            tag(name)
+        # Wet-gas feed around the outside of the upper platform, through the
+        # clear space between rail bars. Two low supports carry its long run.
+        K.pipe_run('treatment_feed',[(1.82,.82,2.65),(1.82,3.50,2.65),(1.82,3.50,4.085),
+            (1.82,3.82,4.085),(-1.90,3.82,4.085),(-1.90,2.99,4.085)],.045,mat=steel,bend=.09,ends=('',''))
+        for yy in (2.30,3.38):rod('treatment_feed_support',(1.82,yy,2.22),(1.82,yy,2.65),.032,steel)
+        K.pipe_run('treatment_top_link',[(-1.90,2.68,5.56),(-1.90,2.68,5.80),
+            (-.75,2.68,5.80),(-.75,2.68,5.16)],.045,mat=steel,bend=.09,ends=('',''))
+        K.pipe_run('treatment_export',[(-.75,2.99,4.25),(-.75,3.25,4.25),(-.75,3.25,3.90),
+            (-.75,3.75,3.90),(-.75,3.75,1.70),(3.02,3.75,1.70),(3.02,3.75,.04)],.045,mat=steel,bend=.08,ends=('',''))
+        rod('treatment_export_bracket',(2.25,3.75,1.98),(3.02,3.75,1.70),.035,steel)
+        tag('treatment_pipework')
+    K._fine_mode=True
+    # Rail segments leave a service gap around the outboard equipment bases.
+    rail('front_guard',(-2.73,front+.04,2.23),(2.73 if level>=2 else 1.44,front+.04,2.23))
+    rail('right_guard',(2.74,front+.12,2.23),(2.74,1.05,2.23))
+    rail('rear_guard',(-2.73,rear-.04,2.23),(2.73 if level==3 else 1.65,rear-.04,2.23))
+    if level==3:rail('right_rear_guard',(2.74,2.10,2.23),(2.74,rear-.12,2.23))
+    for ya,yb in ((front+.12,-1.0),(-.60,.34),(.74,rear-.12)):
+        rail('left_guard',(-2.74,ya,2.23),(-2.74,yb,2.23))
+    K._fine_mode=False
+    tag('guards')
+    # Owner: visible rings where pipework enters equipment, especially the green
+    # cabinet. True annuli grip the pipe and overlap the host skin; no loose discs.
+    def collar(name,centre,axis,radius,host,pipe,outer=None):
+        previous=K._fine_mode;K._fine_mode=True
+        ob=K.washer(name,centre,axis,radius-.002,outer or radius+.070,.060,grey,seg=28)
+        ob['assembly']=bpy.data.objects[host]['assembly']
+        ob['joint_host']=host;ob['joint_pipe']=pipe
+        K._fine_mode=previous
+    collar('bop_pipe_collar',(.91,.45,1.65),(1,0,0),.050,'BOP','production_line_seg0')
+    collar('separator_outlet_collar',(2.12,-.395,2.65),(0,1,0),.055,'separator','export_line_seg0')
+    if level>=2:
+        for i,yy in enumerate((-2.42,-3.22)):
+            collar('vessel_'+str(i)+'_left_collar',(-2.41,yy,2.84),(1,0,0),.040,
+                'upgrade_vessel_'+str(i)+'_head0','upgrade_interstage_seg'+str(0 if i==0 else 2))
+            collar('vessel_'+str(i)+'_right_collar',(-.495,yy,2.84),(1,0,0),.045,
+                'upgrade_vessel_'+str(i)+'_head1','upgrade_feed_seg6' if i==0 else 'upgrade_compressor_in_seg0')
+        collar('compressor_inlet_collar',(.795,-2.92,2.84),(1,0,0),.045,'compressor_housing','upgrade_compressor_in_seg5')
+        collar('compressor_outlet_collar',(2.105,-2.90,3.05),(1,0,0),.045,'compressor_housing','upgrade_compressor_out_seg0')
+    if level==3:
+        collar('treatment_inlet_collar',(-1.90,2.985,4.085),(0,1,0),.045,'treatment_vessel_0','treatment_feed_seg4',outer=.090)
+        collar('treatment_outlet_collar',(-.75,2.985,4.25),(0,1,0),.045,'treatment_vessel_1','treatment_export_seg0')
+        collar('treatment_top_collar_0',(-1.90,2.68,5.550),(0,0,1),.045,'treatment_vessel_0_head','treatment_top_link_seg0')
+        collar('treatment_top_collar_1',(-.75,2.68,5.150),(0,0,1),.045,'treatment_vessel_1_head','treatment_top_link_seg2')
+    return finish(K,level)

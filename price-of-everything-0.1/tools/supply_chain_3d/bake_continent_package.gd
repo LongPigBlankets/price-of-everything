@@ -37,6 +37,16 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 		manifest.layout_key = board._layout_queries.key
 		writer.write(manifest.layout_key, board._layout_queries.data)
 		manifest.resources[manifest.layout_key] = Package.file_record(writer.directory, manifest.layout_key)
+	manifest.rail_layout_keys = []
+	for key in preload("res://scripts/supply_chain_3d/rail_network.gd").prepared_keys:
+		var prepared: Dictionary = preload("res://scripts/supply_chain_3d/rail_network.gd").prepared_keys[key]
+		assert(not prepared.is_empty(), "Missing prepared rail network: " + key)
+		writer.write(key,prepared)
+		manifest.rail_layout_keys.append(key)
+		manifest.resources[key]=Package.file_record(writer.directory,key)
+	manifest.transport_key = builder.transport_key
+	writer.write(builder.transport_key, builder.TransportBake.packed(builder))
+	manifest.resources[builder.transport_key] = Package.file_record(writer.directory, builder.transport_key)
 	builder.bake_cache = writer
 	builder.release_local_tiles({})
 	var started := Time.get_ticks_msec()
@@ -120,6 +130,11 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	report.generated = generated
 	report.copied = copied
 	report.reused = reused
+	report.civic = {}
+	for standing in board._model.get("standing", []):
+		if standing.has("decor_family"):
+			var family := str(standing.decor_family)
+			report.civic[family] = int(report.civic.get(family, 0)) + 1
 	report.elapsed_ms = Time.get_ticks_msec() - started
 	FileAccess.open("/private/tmp/continent_package_report.json", FileAccess.WRITE).store_string(JSON.stringify(report, "\t"))
 	print("[PACKAGE COMPLETE] ", JSON.stringify(report))

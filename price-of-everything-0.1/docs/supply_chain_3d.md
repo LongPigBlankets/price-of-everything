@@ -1619,7 +1619,7 @@ unchanged.
 Topology is resolved across the complete map before clipping into visible
 hexes. `road_index.gd` uses deterministic spatial buckets for endpoint joins,
 T-junction insertion, crossings and tile lookup. Endpoint movement is bounded
-to 2u; joins across water, steep height differences, or different road layers
+to 3u; joins across water, steep height differences, or different road layers
 are rejected. The prepared network persists in the layout bake. Company and
 continent frontage variants are retained separately, so opening one does not
 discard the other.
@@ -1704,3 +1704,229 @@ without regenerating any medium/near terrain textures. Final captures and
 metrics are in `outputs/supply-chain-3d/road-rollout/resident-assets/` (four
 regions, each at far/medium/near). Roads, coast crossings, rotated decoration
 and NPC placement were checked in those captures.
+
+### Three-unit junction cleanup
+
+The supply-chain adapter now joins compatible road ends within 3u, including
+ends close to an existing internal vertex. It trims dead-end chains shorter
+than 3u back to their junction, measuring the entire chain along the road.
+This runs before snapping (so an overshoot cannot turn into a tiny kink),
+after snapping, and after fitting building access roads. It operates on full
+paths before tile clipping, keeping bridge profiles and all LODs consistent.
+The regular-map document and simulation network remain unchanged.
+
+Short links between two junctions, building doors, isolated roads, and separate
+elevation layers are preserved. Proximity alone does not merge parallel
+stretches. Shared endpoints bypass intersection calculations: nearly collinear
+float32 samples at continent coordinates could otherwise generate tiny false
+branches. Cached frontages retain the complete cleaned paths, including any
+street trimmed at a newly added access junction.
+
+`audit_road_junctions.gd` runs headlessly against the bundled layout. It reports
+near endpoints, close parallel stretches, and short junction tails. Add
+`--verify-cleanup` to check that another cleanup pass leaves the layout intact.
+`review_stoneshore.tscn -- --continent-review --junction-review --no-telemetry`
+also audits the live map against its terrain and captures three close junctions
+plus Stoneshore at far, medium and near zoom.
+
+Validation: all 55 road assertions pass, including a float32 regression using
+actual authored curve samples and a cached driveway-junction trim. The broader
+supply-chain suite passes 1,541 assertions with the same three pre-existing
+sprite-version audit failures and no script errors.
+
+The final 600-tile audit removes 64 authored overshoots plus one created by an
+access-road junction. Both the authored graph and the graph including building
+access now have zero unwanted tails under 3u; three repeated trim passes make
+no further changes. Nearby unmatched authored ends fall from 133 in the prior
+bake to 54: 39 parallel approaches, 11 water/height exclusions, and four tails
+whose actual road length exceeds 3u despite their perpendicular gap being
+smaller. There are 22 pairs of close parallel stretches, retained for separate
+review. Building-door endpoints remain protected.
+
+The refreshed package validates all 600 tiles / 1,803 resources with no errors.
+A fresh Forward+/Metal opening measured 5,263.634 ms to ready (4,349.911 ms board
+construction), with three bundled hits, zero misses and zero runtime writes.
+This sample is slightly above the five-second target. The final six captures
+and live terrain-aware audit are in
+`outputs/supply-chain-3d/road-junctions/final/`.
+
+### Farm plots without asset stretching
+
+Authored farm lots now keep the standard 72u asset scale regardless of plot
+dimensions. Renderer-only `farm_building` derivatives retain the barn, silos,
+glasshouse and yard props; the complete farm GLBs and Blender builder remain
+unchanged. Both player and NPC farms use the same path. Selection follows the
+building core rather than giving the whole field a building hitbox.
+
+`farm_fields.gd` fills each authored polygon with a repeated crop cell cut from
+the existing field: the original 0.25-unit plant interval, 0.61-unit row pitch,
+two planted ribbons, bed and (at near zoom) leaves and irrigation pipe. Copies
+use a uniform scale and follow the ground. Boundary cells are omitted rather
+than stretched; brown soil fills the margins and spaces between rows. Barn
+yards, neighbouring barns, road clearances and water are excluded from planting.
+
+Near uses the detailed crop component; medium omits leaves and irrigation.
+Their import settings disable automatic mesh LODs, which otherwise prematurely
+collapse small instanced components. Internal cell-edge ink is removed so copies
+meet without drawing a rectangular grid. Far merges those placements into thin
+crop strips, joined with earth into the single continent props mesh. Medium/near
+soil and instance transforms live in the per-tile base bake and follow the same
+residency/10-second eviction policy as other local detail. Fields add no physics.
+
+Export derivatives with `export_models.py -- farm_building farm_crop_cell
+farm_crop_cell_medium`, then bake far/medium/lighting for the three
+`farm_building_lvl*` keys. `review_stoneshore.tscn -- --continent-review
+--farm-review --no-telemetry` captures three plot shapes at all three LODs plus
+an oblique orbit. `review_farm_components.tscn` compares near, medium and an
+instanced near crop cell. Focused tests cover fixed farm scale, repeated cells,
+ground following, plot edges, concave notches, yards, roads and the LOD imports.
+
+Validation: 14 farm assertions pass; the full supply-chain suite reports 1,555
+passes and the same three pre-existing asset-version audit failures, with no
+script errors. The parse sweep checks 851 scripts with zero failures. All 600
+tiles / 1,803 packaged resources validate. Total map bake size is 1,041,947,156
+bytes (5,795,249 bytes above the road-junction package); existing medium and
+near terrain textures were reused. A fresh packaged opening reaches ready in
+4,742.854 ms (3,768.532 ms board construction), with three bundled hits and zero
+misses or writes. This is one measured run, not a guaranteed load-time ceiling.
+Ten final views and timings are in `outputs/supply-chain-3d/farms/final/`.
+
+### Continuous road paint
+
+The fragmented paint visible beside the farms had two separate causes: polygon
+triangulation lost winding precision for thin strips at continent coordinates,
+and every sampled/split segment restarted its dash pattern. Triangulating each
+clipped polygon relative to its grid cell fixes the missing paint triangles.
+`road_markings.gd` now walks connected carriageways across curve samples,
+authored stroke boundaries and tile borders, retaining one 8u-on/8u-off phase.
+Mitered offsets join the paint at bends; true junctions retain a clear area.
+
+Duplicate edges share one paint layout. Near-coincident parallel overlaps within
+3u defer to the wider road (then a deterministic source order), only for the
+shared stretch. Separate carriageways and different elevation layers retain
+their own markings. This is visual deduplication: it does not alter the authored
+network or regular map. Level 2 uses a dashed centre line; level 3 uses a double
+centre line and four dashed lane dividers for six lanes.
+
+The final packaged 14,326-segment layout contains 526 duplicate edges; the paint
+pass also suppresses 451 near-overlap pairs. Preparing the layout took 1,569 ms
+in a headless audit; this work is baked, not repeated when loading the package.
+`review_road_marks.tscn` captures both isolated flat roads and cached terrain
+roads, with optional paint-only images, and writes the full-map overlap audit.
+The 17 focused assertions cover coordinate precision, short samples, tile
+boundaries, reversed and partial overlaps, shallow crossings, bridges, bends,
+junctions and loops. The full suite has 1,572 passing assertions and the same
+three existing asset-version failures; the parse sweep checks 854 scripts with
+zero failures.
+
+The regenerated 600-tile / 1,803-resource package validates without errors and
+totals 1,051,120,361 bytes (+9,173,205 bytes). All 1,200 medium/near textures are
+reused. A fresh process reaches the all-tiles view in 4,749.634 ms, including
+3,800.362 ms board construction, with three bundled hits, zero misses and zero
+writes. Ten in-game far/medium/near and orbit captures are in
+`outputs/supply-chain-3d/road-marks/final/`.
+
+### Stoneshore offices and public spaces
+
+`civic_builder.py` adds five renderer-only assets using the existing Blender kit:
+a long three-storey office, a stepped office with a recessed fourth floor, a grey
+four-storey L-shaped block, a pocket park and a paved fountain plaza. The offices
+have framed windows on every elevation, entrance canopies, parapets and rooftop
+plant. Small facade and paving details avoid heavy ink. Parks include cross paths,
+lawns, trees and benches; plazas include paving joints, planters and seating.
+
+`civic_layout.gd` seeds infill only in Stoneshore's three urban tiles, before the
+existing frontage fitting pass. Original buildings take priority. Additional plots
+must clear roads, neighbouring footprints and water, with at most 6u ground relief
+for buildings or 2u for public spaces. Entrances face the street. Public spaces do
+not create asphalt driveways, window lighting or building-sized contact shadows.
+These are decorative objects, with no new simulation buildings or physics bodies.
+
+The final layout adds 44 offices, five L-shaped buildings, two parks and three
+plazas: 13 additions each in Stoneshore and Old Quarter, and 28 in the Docks.
+All five assets have 64px far and 128px medium colour/depth atlases, medium lit
+variants, and near meshes. Far sprites use the lighter decorative outline settings.
+The existing per-tile residency and 10-second eviction rules still apply.
+
+Validation: 13 focused assertions pass, including placement clearance, wet-ground
+exclusion, determinism, cached restoration and all five assets' LOD resources.
+The full suite reports 1,585 passes and the same three pre-existing asset-version
+audit failures. The parse sweep checks 857 scripts with zero failures. The package
+validates 600 tiles / 1,803 resources without errors and totals 1,054,474,309 bytes
+(+3,353,948 bytes over the road-paint package). A fresh packaged all-tiles opening
+reaches ready in 4,891.896 ms, including 3,830.634 ms board construction, with three
+bundled hits, zero misses and zero runtime writes. This is a single measured run.
+
+`review_civic_assets.tscn` captures front/rear model galleries.
+`review_stoneshore.tscn -- --continent-review --civic-review --no-telemetry`
+captures far, medium and near views plus individual examples. Final captures and
+timings are in `outputs/supply-chain-3d/civic/final/`; model galleries are in
+`outputs/supply-chain-3d/civic/assets/`.
+
+### Civic scale and outline calibration
+
+The first civic pass used footprint widths of 43u/46u. Because each family is
+normalised by its own source footprint, its nominal 1.1-unit Blender storeys
+became only 5.8–7.9u after placement, versus 11.8u for full-size existing houses
+and towers. Exported civic assets now record their normalised `storey_height`;
+`civic_layout.gd` chooses a uniform scale giving a 12u storey. The resulting
+footprints are about 71u for offices and 70u for the L block. Frontage fitting
+omits crowded civic building plots instead of reducing their scale by 20%.
+Building shapes take turns at the available plots, starting with the broad L,
+before public spaces fill gaps. This prevents one shape consuming every suitable
+site. Each urban tile accepts at most one park and one plaza; their sizes remain
+48u, so enlarging offices does not accidentally fill the city with repeated fountains.
+
+The new offices also lacked the outer contour meshes used by the existing
+housing. They now use that same silhouette path. Their source stroke width is
+calibrated per storey (the civic source module is 1.1u versus housing's 0.45u),
+so the larger Blender units do not produce thinner world-space ink. The existing
+lighter far-LOD outline settings continue to apply. Window trim is half as thick
+and a muted grey; stringcourses and pilasters use the facade tone. Window faces
+remain uninked, as on the existing housing.
+
+`review_civic_assets.tscn -- --style-comparison` renders existing terraces and
+flats beside the new buildings at their actual relative scales, with front/rear
+views in `outputs/supply-chain-3d/civic/style/`. The directory also contains a
+numeric scale audit. All 14 civic checks pass, including preserved storey scale
+after frontage fitting and cache restoration; the full suite has 1,586 passes
+and the same three existing asset-version failures. Far, medium and lit atlases
+are refreshed. The 600-tile / 1,803-resource package validates without errors.
+The final Stoneshore layout retains three long offices, one stepped office, four
+L blocks, three parks and three plazas. Fewer of the larger infill footprints fit
+than in the original miniature-scale pass. All three building shapes are visible
+in the final game, with captures at all LODs in
+`outputs/supply-chain-3d/civic/style-final/`. A fresh cached all-tiles opening
+measures 4,774.665 ms, with three bundled hits, zero misses and zero runtime writes.
+
+### Modular office frontage
+
+The long office now fits by choosing 4–10 window columns in one-column steps.
+The L block independently chooses 4–8 columns along its street wing and 2–4
+additional columns in its return wing. A bay is 0.9 source units, or about
+9.82 map units at the common 12u storey height. Windows, floor heights, wing
+thickness, entrances and outline widths retain their size. The L has a single
+concave wall/roof envelope, avoiding overlapping geometry where its wings join.
+
+Frontage fitting tries the largest whole-bay assembly that clears roads, existing
+lots, water and excessive relief. Sites below the minimum size are omitted. The
+seven long and fifteen L variants are generated offline, with shared near meshes,
+contours, far/medium colour and depth atlases, and medium lighting atlases. No
+runtime mesh generation is needed. The placement cache stores the chosen asset,
+bay counts and pad; its signature includes the module catalogue so geometry
+changes invalidate old fits. Tile and continent bakes include the selected asset.
+
+All 23 civic assertions pass, including narrow/wide plots, independent L-wing
+extension, constant storey/window pitch, cache restoration and LOD resources.
+`review_civic_modules.tscn` renders front/rear comparisons at a common scale in
+`outputs/supply-chain-3d/civic/modular-assets/`. Add `--modular-review` to the
+Stoneshore civic review to capture the shortest and longest placed examples.
+
+The final pilot places nine modular long offices, nine modular L blocks and one
+stepped office, plus two parks and two plazas. It uses nine different modular
+sizes across the three urban tiles. Far, medium and near captures are in
+`outputs/supply-chain-3d/civic/modular-final/`. The refreshed 600-tile package
+validates all 1,803 resources and totals 1,053,343,125 bytes. A fresh process reaches
+all-tiles ready in 4,984.234 ms (3,834.773 ms board construction), with three bundled
+hits, zero misses and zero runtime writes; this is a single run. The wider suite
+reports 1,595 passes and the same three existing asset-version audit failures.

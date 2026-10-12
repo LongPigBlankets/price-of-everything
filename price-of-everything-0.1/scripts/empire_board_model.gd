@@ -668,7 +668,7 @@ static func build(terrain: Object, graph: Dictionary, true_pos: Dictionary = {},
 		for rel in rels:
 			pts.append(_pt(c + (rel as Vector2), tile, Rails.is_exit(rel)))
 		if pts.size() >= 2:
-			lines.append({"mode": "rail", "good": "", "kind": "track", "pts": pts})
+			lines.append({"mode": "rail", "good": "", "kind": "track", "pts": pts, "level": clampi(int(Catalog.tile_infra_level(tile, "rails")), 1, 3)})
 		return pts
 
 	# A pipe's run from the thing at `iid` to its tile's warehouse, beside the streets.

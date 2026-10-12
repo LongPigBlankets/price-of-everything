@@ -7,8 +7,8 @@ const Style := preload("res://scripts/authored_road_style.gd")
 const Regions := preload("res://scripts/road_regions.gd")
 const Sprites := preload("res://scripts/building_sprites.gd")
 const Assets := preload("res://scripts/supply_chain_3d/assets.gd")
-const JOIN_DISTANCE := 2.0
 const Index := preload("res://scripts/supply_chain_3d/road_index.gd")
+const JOIN_DISTANCE := Index.JOIN_DISTANCE
 const Cache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
 
 static func tile_ids() -> Array:
@@ -45,7 +45,7 @@ static func apply(model: Dictionary, terrain: Node, footprints: Node, prepared: 
 	var visible_paths: Array = compiled.paths.filter(func(p: Dictionary) -> bool: return sources.has(p.id))
 	var npc_count := place_npcs(model, region, terrain, footprints)
 	model.authored_region = {"tiles": region, "paths": visible_paths, "joined": compiled.joined, "npc_count": npc_count,
-		"global_paths": compiled.paths.size(), "global_segments": compiled.roads.size()}
+		"global_paths": compiled.paths.size(), "global_segments": compiled.roads.size(), "trimmed_stubs": compiled.get("trimmed_stubs", [])}
 
 static func source_paths(terrain: Node, flags: Dictionary) -> Array:
 	var paths: Array = []
@@ -85,7 +85,15 @@ static func network_path(edge: Dictionary, points: PackedVector2Array, sequence:
 
 static func compile(paths: Array, centers: Dictionary, ground: Callable = Callable()) -> Dictionary:
 	paths = paths.duplicate(true)
+	# Trim overshoots at their true intersection before endpoint snapping can
+	# turn them into a tiny kink. Repeat after joining newly connected roads.
+	var trimmed := Index.trim_stubs(paths)
 	var joined := join_endpoints(paths, ground)
+	trimmed.append_array(Index.trim_stubs(paths))
+	paths = paths.filter(func(p: Dictionary) -> bool: return p.points.size() >= 2)
+	return {"paths": paths, "roads": compile_segments(paths, centers), "joined": joined, "trimmed_stubs": trimmed}
+
+static func compile_segments(paths: Array, centers: Dictionary) -> Array:
 	var parts: Array = []
 	for path in paths:
 		var widths := road_widths(path.class)
@@ -105,7 +113,7 @@ static func compile(paths: Array, centers: Dictionary, ground: Callable = Callab
 			var road: Dictionary = part.duplicate()
 			road.tile = tid; road.a = clipped[0]; road.b = clipped[1]
 			roads.append(road)
-	return {"paths": paths, "roads": roads, "joined": joined}
+	return roads
 
 static func road_widths(road_class: String) -> Array:
 	var bed := Style.bed_width(road_class) * 0.5
@@ -166,6 +174,7 @@ static func place_npcs(model: Dictionary, region: Dictionary, terrain: Node, foo
 		var box := Rect2(verts[0].rotated(-angle), Vector2.ZERO)
 		for p in verts: box = box.expand(p.rotated(-angle))
 		var side := maxf(4.0, minf(box.size.x / maxf(dim.x, 0.1), box.size.y / maxf(dim.z, 0.1)) * 0.90)
+		if family == "farm": side = preload("res://scripts/supply_chain_3d/farm_fields.gd").SIDE
 		var s: Dictionary = existing.get(iid, {"kind": "building", "iid": iid, "tile": tid})
 		var npc := not BuildingState.is_player_owned(live)
 		s.merge({"pos": footprints.call("footprint_center_for", iid, terrain.id_to_coord(tid)), "side": side,

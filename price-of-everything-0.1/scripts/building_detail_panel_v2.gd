@@ -1504,6 +1504,8 @@ func _on_v3_key(key: String, building: Dictionary, recipe: Dictionary) -> void:
 ## upgrading, not at the top level, its research unlocked) and, when it is not, why; and its hover card
 ## (v3_upgrade_tip), the dot-matrix card the tile view's Upgrade keys show.
 static func v3_upgrade_state(building: Dictionary) -> Dictionary:
+	if str(building.get("building_id", "")) == "b_038":
+		return {"upgrade_title": "No upgrades", "upgrade_detail": "", "upgrade_lit": false, "upgrade_tooltip": "Rail Hubs have no levels.", "upgrade_tip": {"title": "No upgrades", "notes": ["Rail Hubs have no levels."]}}
 	var iid := str(building.get("instance_id", ""))
 	var level := int(building.get("level", 1))
 	var tip := v3_upgrade_tip(building)

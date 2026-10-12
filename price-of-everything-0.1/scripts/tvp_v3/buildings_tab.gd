@@ -81,6 +81,7 @@ static func build(panel: Control, pane: VBoxContainer) -> void:
 	var grid := _grid(panel, pane, site)
 	body.add_child(_actions(panel, tile_id))
 	_add_port(panel, body, site, grid)
+	_add_rail_hub(panel, body, site)
 	_add_yours(panel, body, site, grid)
 	_add_others(panel, body, site, grid)
 	_add_features(panel, body, site)
@@ -98,8 +99,12 @@ static func _site(tile_id: String) -> Dictionary:
 	var others: Array = []
 	var features: Array = []
 	var port: Dictionary = {}
+	var rail_hub: Dictionary = {}
 	for b: Dictionary in BuildingState.get_buildings_on_tile(tile_id):
 		var bid := str(b.get("building_id", ""))
+		if bid == "b_038":
+			rail_hub = b
+			continue
 		if bid == PORT_ID:
 			port = b
 			continue
@@ -117,7 +122,7 @@ static func _site(tile_id: String) -> Dictionary:
 			projects.append(p)
 	var port_mine := not port.is_empty() and BuildingState.is_player_owned(port)
 	return {"tile_id": tile_id, "mine": mine, "others": others, "features": features, "port": port,
-		"port_mine": port_mine, "projects": projects}
+		"port_mine": port_mine, "rail_hub": rail_hub, "projects": projects}
 
 
 static func _is_infrastructure(building_id: String) -> bool:
@@ -720,3 +725,39 @@ static func _add_features(panel: Control, pane: VBoxContainer, site: Dictionary)
 		Parts.on_click(module, func() -> void: panel.call("_open_building_or_construction", first_iid))
 		Tip.attach(module, {"name": kind, "detail": "Part of the land, not a company's. It covers %d land here." % roundi(land)})
 		grid.add_child(module)
+
+
+static func _add_rail_hub(panel: Control, pane: VBoxContainer, site: Dictionary) -> void:
+	var hub: Dictionary = site.rail_hub
+	if hub.is_empty(): return
+	var service := preload("res://scripts/rail_hub.gd")
+	var case := Parts.plastic_case("TileRailHub")
+	pane.add_child(case)
+	var rows := case.get_child(0) as VBoxContainer
+	rows.add_child(Parts.heading("Rail Hub"))
+	var module := Parts.module("RailHubBuildingCard")
+	rows.add_child(module)
+	var row := Parts.row_of(module)
+	row.add_child(Parts.emblem(service.ID, Parts.EMBLEM_PX))
+	var owned := BuildingState.is_player_owned(hub)
+	var status := "Owned by %s" % BuildingReadout.company_name(str(hub.owner))
+	if owned:
+		status = "Active · +100% rail throughput" if service.active(hub) else "Paused" if BuildingWorks.is_building_paused(str(hub.instance_id)) else "Needs power connection"
+	row.add_child(Parts.info("Rail Hub", "", status))
+	if not owned:
+		var money := Parts.money("5.0", DS.PALETTE["TEXT"], 3, "K")
+		row.add_child(money)
+		var buy := Parts.key_button("Buy", "RailHubBuyButton", 0.8)
+		buy.custom_minimum_size.x = CANCEL_W
+		buy.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		buy.pressed.connect(func() -> void: panel.call("_open_port_buy", str(hub.instance_id), service.PRICE))
+		Tip.attach(buy, {"name": "Buy Rail Hub", "detail": "£5,000, including 30 land. Activates the local rail-throughput bonus."})
+		row.add_child(buy)
+	var detail := Label.new()
+	detail.name = "RailHubTerms"
+	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	detail.text = "Doubles rail throughput within 3 tiles. Overlapping hubs do not stack.\n30 land · Maintenance £10/turn · Base labour £6/turn · Power 80/turn"
+	detail.add_theme_font_size_override("font_size", 17)
+	rows.add_child(detail)
+	Tip.attach(module, {"name": "Rail Hub", "detail": "Buy for £5,000 to activate +100% rail throughput within three tiles, including this tile. Requires power and stops while paused. Labour follows normal wages and modifiers. No levels."})
+	Parts.on_click(module, func() -> void: panel.emit_signal("building_clicked", hub))

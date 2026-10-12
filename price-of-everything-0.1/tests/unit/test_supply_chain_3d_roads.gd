@@ -30,12 +30,12 @@ func _test_road_rollout_cached_unlocks() -> void:
 func _test_road_rollout_spatial_topology() -> void:
 	var paths := [
 		{"id": "a", "points": PackedVector2Array([Vector2(-65, -65), Vector2(-65, -100)])},
-		{"id": "b", "points": PackedVector2Array([Vector2(-63.5, -65), Vector2(-20, -120)])},
-		{"id": "c", "points": PackedVector2Array([Vector2(-62, -65), Vector2(0, -120)])}]
+		{"id": "b", "points": PackedVector2Array([Vector2(-62.5, -65), Vector2(-20, -120)])},
+		{"id": "c", "points": PackedVector2Array([Vector2(-60, -65), Vector2(0, -120)])}]
 	var original := paths.duplicate(true)
 	Index.join(paths)
 	for i in paths.size():
-		_check((paths[i].points[0] as Vector2).distance_to(original[i].points[0]) <= 2.0, "road_rollout: endpoint clusters cannot move a point beyond the 2u tolerance")
+		_check((paths[i].points[0] as Vector2).distance_to(original[i].points[0]) <= 3.0, "road_rollout: endpoint clusters cannot move a point beyond the 3u tolerance")
 	_check(paths[0].points[0] == paths[1].points[0], "road_rollout: spatial joins work across negative-coordinate bucket boundaries")
 	_check(paths[2].points[0] != paths[0].points[0], "road_rollout: close-point chains do not merge distant endpoints")
 	_check(not Index.safe_join(Vector2.ZERO, Vector2.ONE, func(p: Vector2) -> float: return 24.0 if p.x > 0.25 else 30.0), "road_rollout: short gaps across water are not welded")
@@ -143,6 +143,99 @@ class CountingRoadGround extends RefCounted:
 	func height(_point: Vector2) -> float:
 		samples += 1
 		return 40.0
+
+func _road(id: String, points: Array, layer: int = 0) -> Dictionary:
+	return {"id": id, "class": "minor", "layer": layer, "points": PackedVector2Array(points)}
+
+func _test_road_rollout_three_unit_junctions() -> void:
+	var paths := [_road("street", [Vector2(-30, 0), Vector2.ZERO, Vector2(30, 0)]),
+		_road("branch", [Vector2(0, 2.9), Vector2(0, 30)])]
+	_check(Index.audit(paths).near_endpoints_within_3u == 1, "road_rollout: audit finds a 2.9u gap at an existing road vertex")
+	_check(Index.join(paths) == 1 and paths[1].points[0] == Vector2.ZERO, "road_rollout: 3u joins connect to internal vertices as well as segment interiors")
+	_check(Index.audit(paths).near_endpoints_within_3u == 0, "road_rollout: connected endpoints are not reported as near misses")
+	var parallel := [_road("street", [Vector2(-30, 0), Vector2(30, 0)]),
+		_road("lane", [Vector2(-10, 2.5), Vector2(10, 2.5)])]
+	var original := parallel.duplicate(true)
+	Index.join(parallel)
+	_check(parallel == original, "road_rollout: proximity alone does not merge separate parallel lanes")
+	var overpass := [_road("street", [Vector2(-30, 0), Vector2(30, 0)]),
+		_road("upper", [Vector2(0, -2), Vector2(0, 30)], 1)]
+	original = overpass.duplicate(true)
+	Index.join(overpass)
+	_check(Index.trim_stubs(overpass).is_empty() and overpass == original, "road_rollout: joining and stub cleanup preserve different road layers")
+
+func _test_road_rollout_trim_junction_overshoots() -> void:
+	var paths := [_road("street", [Vector2(-30, 0), Vector2(30, 0)]),
+		_road("branch", [Vector2(0, -2.8), Vector2(0, -1.5), Vector2(0, -0.5), Vector2(0, 30)])]
+	var source := paths.duplicate(true)
+	var compiled := Region.compile(paths, {"t": Vector2.ZERO})
+	_check(compiled.trimmed_stubs.size() == 1 and is_equal_approx(compiled.trimmed_stubs[0].length, 2.8), "road_rollout: measure the complete sampled overshoot to its junction")
+	_check(compiled.paths[1].points[0] == Vector2.ZERO and compiled.paths[1].points[-1] == Vector2(0, 30), "road_rollout: remove only the overshoot and keep the continuing street")
+	_check(Index.audit(compiled.paths).stubs_under_3u == 0, "road_rollout: no short stub survives compilation")
+	_check(paths == source, "road_rollout: trimming never edits the regular-map source paths")
+	var twice := Region.compile(compiled.paths, {"t": Vector2.ZERO})
+	_check(twice.paths == compiled.paths and twice.roads == compiled.roads, "road_rollout: junction cleanup is idempotent")
+	# A chain's short tessellation segments do not make the full dead end short.
+	paths = [_road("street", [Vector2(-30, 0), Vector2(30, 0)]),
+		_road("branch", [Vector2(0, -4), Vector2(0, -2), Vector2(0, -1), Vector2(0, 30)]),
+		_road("exact", [Vector2(10, -3), Vector2(10, 30)])]
+	source = paths.duplicate(true)
+	_check(Index.trim_stubs(paths).is_empty() and paths == source, "road_rollout: keep tails 3u or longer, even with sub-3u samples")
+
+func _test_road_rollout_keep_short_connections() -> void:
+	var paths := [_road("street", [Vector2(-30, 0), Vector2(30, 0)]),
+		_road("left", [Vector2(0, -30), Vector2(0, 30)]),
+		_road("right", [Vector2(2.5, -30), Vector2(2.5, 30)]),
+		_road("access:door", [Vector2(10, -2), Vector2(10, 0)]),
+		_road("isolated", [Vector2(50, 50), Vector2(51, 50)])]
+	var original := paths.duplicate(true)
+	_check(Index.trim_stubs(paths).is_empty() and paths == original, "road_rollout: keep short links between junctions, building entrances and isolated roads")
+	paths = [_road("street", [Vector2(-30, 0), Vector2(2, 0)]),
+		_road("overlap", [Vector2(-30, 0), Vector2.ZERO])]
+	original = paths.duplicate(true)
+	_check(Index.trim_stubs(paths).is_empty() and paths == original, "road_rollout: overlapping strokes do not create a false three-way junction")
+
+func _test_road_rollout_trim_before_hex_clip() -> void:
+	var paths := [_road("street", [Vector2(150, 120), Vector2(250, 120)]),
+		_road("branch", [Vector2(201, 117.5), Vector2(201, 180)])]
+	var both := Region.compile(paths, {"left": Vector2.ZERO, "right": Vector2(405, 240)})
+	var single := Region.compile(paths, {"left": Vector2.ZERO})
+	_check(both.paths == single.paths and both.trimmed_stubs.size() == 1, "road_rollout: stub trimming is independent of visible hex boundaries")
+	var valid := true
+	for road in both.roads:
+		if road.source == "branch": valid = valid and road.a.y >= 120.0 and road.b.y >= 120.0
+	_check(valid, "road_rollout: rendered segments use the same trimmed paths as terrain and bridge profiles")
+
+func _test_road_rollout_trim_at_new_access() -> void:
+	var paths := [_road("street", [Vector2(-150, 0), Vector2(1, 0)])]
+	var model := {"tiles": {"t": {"center": Vector2.ZERO}}, "authored_region": {"tiles": {"t": Vector2.ZERO}, "paths": paths},
+		"roads": Region.compile_segments(paths, {"t": Vector2.ZERO}),
+		"standing": [{"iid": "works", "kind": "building", "tile": "t", "pos": Vector2(0, 20), "side": 8.0}]}
+	var initial := model.duplicate(true)
+	var prepared := {}
+	var ground := func(_p: Vector2) -> float: return 40.0
+	var water := func(_p: Vector2) -> bool: return false
+	var key := func(_s: Dictionary) -> String: return "house_lvl1"
+	Placement.new().fit(model, ground, water, key, {}, prepared)
+	_check(model.authored_region.frontage.trimmed_stubs.size() == 1 and model.authored_region.paths[0].points[-1] == Vector2.ZERO,
+		"road_rollout: a new driveway trims the street's 1u overshoot at the access junction")
+	_check(model.authored_region.paths[1].points[0] == model.standing[0].entrance,
+		"road_rollout: trimming at a driveway preserves its building door")
+	Placement.new().fit(initial, ground, water, key, {}, prepared)
+	_check(initial.roads == model.roads and initial.authored_region == model.authored_region
+		and initial.standing[0].entrance == model.standing[0].entrance and Index.audit(initial.authored_region.paths).stubs_under_3u == 0,
+		"road_rollout: cached frontages restore the trimmed street and access road together")
+
+func _test_road_rollout_shared_endpoint_precision() -> void:
+	# Actual contiguous samples from r:untitled:2190. Re-intersecting them used
+	# to invent a 0.0147u reverse segment beside their shared middle vertex.
+	var points := [Vector2(3627.56103515625, 7768.94384765625), Vector2(3631.29760742188, 7772.67919921875),
+		Vector2(3635.2958984375, 7776.67626953125)]
+	var paths := [_road("curve", points)]
+	var parts := Index.path_segments(paths)
+	_check(Index.split(parts) == parts, "road_rollout: shared float32 endpoints cannot create phantom branches")
+	_check(Index.audit(paths).stubs_under_3u == 0 and Index.trim_stubs(paths).is_empty(),
+		"road_rollout: contiguous curved-road samples are never mistaken for short dead ends")
 
 func _test_road_rollout_cached_scene_meshes() -> void:
 	var builder := preload("res://scripts/supply_chain_3d/world_builder.gd")

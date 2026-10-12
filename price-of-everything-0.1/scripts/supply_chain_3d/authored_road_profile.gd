@@ -96,6 +96,7 @@ func configure(data: Dictionary, rivers: Dictionary, ground: Callable, open_wate
 		for k in range(1, points.size()):
 			var rec := {"a": points[k - 1], "b": points[k], "ha": heights[k - 1], "hb": heights[k],
 				"half": half, "bridge": bridge_at.has(k - 1), "post": k % 3 == 0,
+				"elevated": heights[k-1]>float(ground.call(points[k-1]))+0.5 or heights[k]>float(ground.call(points[k]))+0.5,
 				"start": starts.has(k - 1), "end": ends.has(k - 1), "wet_a": wet[k - 1], "wet_b": wet[k]}
 			segments.append(rec)
 			_index(buckets, rec, half + 8.0)
@@ -130,10 +131,14 @@ static func _index(index: Dictionary, segment: Dictionary, reach: float) -> void
 	for y in range(low.y, high.y + 1):
 		for x in range(low.x, high.x + 1): (index.get_or_add(Vector2i(x, y), []) as Array).append(segment)
 
-func height_at(p: Vector2) -> float:
+func bridge_height_at(p: Vector2) -> float:
+	return height_at(p,true)
+
+func height_at(p: Vector2, bridges_only := false) -> float:
 	if Index.tile_at(tile_index, region, p) == "": return -INF
 	var result := -INF
 	for rec in buckets.get(Vector2i((p / BUCKET).floor()), []):
+		if bridges_only and not (rec.bridge or rec.get("elevated",false)): continue
 		var q := Geometry2D.get_closest_point_to_segment(p, rec.a, rec.b)
 		if q.distance_to(p) > float(rec.half) + 8.0: continue
 		var length: float = (rec.a as Vector2).distance_to(rec.b)

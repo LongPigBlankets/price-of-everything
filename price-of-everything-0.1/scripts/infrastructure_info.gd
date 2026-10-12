@@ -16,6 +16,7 @@ static func purpose(key: String) -> String:
 	match key:
 		"roads": return "Enables faster movement of solid goods like sand, coal and computers."
 		"rail": return "Enables faster and cheaper movement of solid goods than roads."
+		"rail_hub": return "Doubles rail throughput within 3 tiles while owned and powered. Overlapping hubs do not stack. Occupies 30 land, costs £10 maintenance and £6 base labour per turn, and consumes 80 power. No levels."
 		"pipes": return "Enables transport of safe liquids: water, crude oil, processed oil and waste water."
 		"reinf_pipes": return "Enables transport of hazardous liquids and gases, such as nitrogen, hydrogen and chlorine."
 		"cables": return "Enables power transmission from electricity producers and to consumers. Required to power buildings."
@@ -23,7 +24,7 @@ static func purpose(key: String) -> String:
 		_: return "Infrastructure improves how this region moves goods and power."
 
 static func has_level_stats(key: String) -> bool:
-	return key != "hvdc"
+	return key not in ["hvdc", "rail_hub"]
 
 static func level_stats(key: String, level: int) -> Dictionary:
 	if key == "cables":

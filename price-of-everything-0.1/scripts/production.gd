@@ -1926,6 +1926,9 @@ func _base_labour_cost(building: Dictionary, recipe: Dictionary = {}) -> float:
 		+ skilled    * _grown_labour_rate(EconomyConfig.LABOUR_SKILLED_RATE, EconomyConfig.LABOUR_SKILLED_GROWTH)
 		+ high_skilled * _grown_labour_rate(EconomyConfig.LABOUR_HIGH_SKILLED_RATE, EconomyConfig.LABOUR_HIGH_SKILLED_GROWTH)
 	)
+	# Calibrate the hub workforce to £6 at base wages, preserving normal wage growth.
+	if str(building.get("building_id", "")) == "b_038":
+		base_cost *= 6.0 / (658.0 * EconomyConfig.LABOUR_SKILLED_RATE)
 	return base_cost * BuildingLevels.mult("labour", int(building.get("level", 1)))
 
 ## A building's workforce by kind (unskilled, skilled, high skilled): its recipe's columns, else its building's,

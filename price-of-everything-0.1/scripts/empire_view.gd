@@ -111,6 +111,8 @@ func prepare() -> void:
 	_refresh_queued = false
 	if _preparing or visible or not is_inside_tree():
 		return
+	if is_prepared():
+		return
 	var terrain := get_tree().get_first_node_in_group("hex_map")
 	if terrain == null:
 		return
