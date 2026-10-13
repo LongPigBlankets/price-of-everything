@@ -59,6 +59,8 @@ var shadow_batch := Geo.Batch.new()
 var standing_shadow_mesh: Mesh
 var infrastructure_bake := {}
 var origin := Vector2.ZERO
+## Evening lights every town's windows and street lamps; otherwise only polluted tiles are lit.
+var evening := false
 var ground: RefCounted
 var rivers: Dictionary = {}
 var tiles: Dictionary = {}
@@ -522,10 +524,13 @@ func finish_continent(parent: Node3D) -> void:
 	continent_node.add_child(Geo.instance(continent.props_mesh, mat))
 	continent_node.add_child(Geo.instance(continent.rim_mesh, strata_material()))
 	continent_node.add_child(Geo.instance(continent.lip_mesh, mat))
-	for groups in [continent.get("tree_sprites", {}), continent.get("decor_sprites", {})]:
+	for field in ["tree_sprites", "decor_sprites"]:
+		var groups: Dictionary = continent.get(field, {})
 		for key in groups:
 			var grove := FarSprites.grove(key, groups[key], grade_range)
-			if grove != null: continent_node.add_child(grove)
+			if grove == null: continue
+			if field == "decor_sprites": set_role(grove, ROLE_DECOR)
+			continent_node.add_child(grove)
 	continent_node.visible = false
 	parent.add_child(continent_node)
 	# The joined far surface doubles as the selection surface; tile identity is
@@ -1175,6 +1180,7 @@ func _update_asset_tier() -> void:
 		if medium and pair.get("medium") == null and pair.has("standing"):
 			var card := FarSprites.instance(pair.key, grade_range, 1, pair.get("lit", false))
 			if card != null:
+				set_role(card, float(pair.get("role", 0.0)))
 				card.scale = Vector3.ONE * float(pair.standing.side)
 				card.position = FarSprites.center(pair.key) * float(pair.standing.side)
 				pair.root.add_child(card)
@@ -1366,6 +1372,7 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 	for line in lines: line_geometry.append([line.mode, line.pts, line.get("ids", []), line.get("level", 1)])
 	var lighting: Array = []
 	for tid in tiles: lighting.append([tid, tiles[tid].get("polluters", 0)])
+	lighting.append(["evening", evening])
 	var cable_anchors := {}
 	for s in model.get("standing", []):
 		if str(s.kind) == "pylon": cable_anchors[standing_key(s)] = Assets.cable_anchors(standing_key(s))
@@ -1399,7 +1406,7 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 					var foot := at_height(p, road_height(p) + 1.0)
 					streets.tube(foot, foot + Vector3.UP * 14, 0.55, Color("50565e"), 5)
 					streets.box(foot + Vector3(0, 14, 0), Vector3(2.5, 1.3, 2.5), Color("efd68e"))
-					if int(tiles.get(str(rec.get("tile", "")), {}).get("polluters", 0)) > 0:
+					if evening or int(tiles.get(str(rec.get("tile", "")), {}).get("polluters", 0)) > 0:
 						glows.append({"point": foot + Vector3.UP * 14, "size": Vector2(15, 15)})
 			if a.distance_to(b) > 80.0:
 				cars.append({"a": a, "b": b, "tile": str(rec.get("tile", "")), "phase": fmod(absf(float(hash(str(a)))), 100.0) / 100.0})
@@ -1527,6 +1534,7 @@ func _ensure_standing_near(pair: Dictionary) -> void:
 			if mesh == null: continue
 			var visual := MeshInstance3D.new()
 			visual.mesh = mesh
+			set_role(visual, float(pair.get("role", 0.0)))
 			visual.transform = frame.harbour_transform
 			pair.root.add_child(visual)
 			pair.near.append(visual)
@@ -1536,6 +1544,7 @@ func _ensure_standing_near(pair: Dictionary) -> void:
 	var visual := MeshInstance3D.new()
 	if mesh != null:
 		visual.mesh = mesh
+		set_role(visual, float(pair.get("role", 0.0)))
 		visual.scale = Vector3.ONE * float(pair.standing.side)
 		if pair.lit: visual.material_override = Assets.lit_material(str(pair.key).begins_with("towers_"))
 	else:
@@ -1554,6 +1563,7 @@ func _ensure_standing_near(pair: Dictionary) -> void:
 		var outline := MeshInstance3D.new()
 		outline.name = "OuterContour"
 		outline.mesh = contour
+		set_role(outline, float(pair.get("role", 0.0)))
 		outline.scale = visual.scale
 		pair.root.add_child(outline)
 		pair.near.append(outline)
@@ -1602,6 +1612,22 @@ func _ensure_standing_pick(pair: Dictionary) -> void:
 	pair.body = body
 	pair.pick_shape = collider.shape
 
+const ROLE_PLAYER := 1.0
+const ROLE_DECOR := 2.0
+const ROLE_NPC := 3.0
+
+## How a standing object is coloured: the company's own in its livery, NPC works toward
+## paper white, scenery a little greyer, everything else as authored.
+static func role_of(s: Dictionary) -> float:
+	match str(s.get("kind", "")):
+		"house": return ROLE_DECOR
+		"suppliers": return ROLE_NPC
+		"building", "port", "warehouse", "site": return ROLE_NPC if bool(s.get("npc", false)) else ROLE_PLAYER
+	return 0.0
+
+static func set_role(node: Node, role: float) -> void:
+	if role > 0.0 and node is GeometryInstance3D: (node as GeometryInstance3D).set_instance_shader_parameter("sc_role", role)
+
 func standing_node(s: Dictionary) -> Node3D:
 	var root := Node3D.new()
 	root.name = str(s["iid"]).validate_node_name()
@@ -1617,9 +1643,14 @@ func standing_node(s: Dictionary) -> Node3D:
 	if kind == "pylon": root.rotation.y = float(pylon_layout.get("yaws", {}).get(str(s.iid), 0.0))
 	var dimension: Vector3 = frame.dimension
 	if key == "" and not s.has("harbour"): dimension = Vector3(side * 0.8, side * 0.55, side * 0.65)
-	var lit := int(tiles.get(str(s.tile), {}).get("polluters", 0)) > 0 and kind != "pylon" and family not in ["mine", "mine_flush", "civic_park", "civic_plaza"]
+	var polluted := int(tiles.get(str(s.tile), {}).get("polluters", 0)) > 0
+	var lightable := kind != "pylon" and family not in ["mine", "mine_flush", "civic_park", "civic_plaza"]
+	# In the evening most homes have a light on; works are lit through the night.
+	var home_lit := kind != "house" or absi(str(s.iid).hash()) % 100 < 75
+	var lit := lightable and (polluted or (evening and home_lit))
+	var role := role_of(s)
 	var pair := {"key": key, "far": null, "near": [], "medium": null, "root": root, "standing": s,
-		"dimension": dimension, "tile": str(s.tile), "lit": lit,
+		"dimension": dimension, "tile": str(s.tile), "lit": lit, "role": role,
 		# The few lattice pylons are cheap meshes. Their clamps must stay aligned
 		# with continuous 3D cables instead of stepping between atlas angles.
 		"medium_allowed": not s.has("harbour") and kind != "pylon" and (not lit or FarSprites.entry(key, 1).has("lit_texture")),
@@ -1627,7 +1658,8 @@ func standing_node(s: Dictionary) -> Node3D:
 	if not lazy_assets:
 		_ensure_standing_near(pair)
 		_ensure_standing_pick(pair)
-	if lit:
+	# Yard glow stays a mark of pollution, so a lit evening town still reads as clean.
+	if lit and polluted:
 		glows.append({"point": root.position + Vector3(0, dimension.y * 0.3, side * 0.45), "size": Vector2(side * 1.3, side * 0.7)})
 	if streamed and kind == "house": decor_nodes.append(root)
 	if standing_shadow_mesh == null and not s.has("harbour") and kind != "pylon" and pit.is_empty() and not (kind == "house" and scenery_ready): shadow(p, side)
@@ -1637,6 +1669,7 @@ func standing_node(s: Dictionary) -> Node3D:
 		root.add_child(Geo.instance(plinth.mesh(), mat))
 	var card := FarSprites.instance(key, grade_range)
 	if card != null:
+		set_role(card, role)
 		card.scale = Vector3.ONE * side
 		card.position = FarSprites.center(key) * side
 		card.visible = false
@@ -1647,6 +1680,7 @@ func standing_node(s: Dictionary) -> Node3D:
 		# at far zoom, using imported mesh LODs and reduced shader detail.
 		var far := MeshInstance3D.new()
 		far.mesh = Assets.mesh_for(frame.harbour_asset)
+		set_role(far, role)
 		far.transform = frame.harbour_transform
 		far.lod_bias = 0.8
 		far.visible = false

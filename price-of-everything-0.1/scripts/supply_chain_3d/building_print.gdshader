@@ -18,6 +18,12 @@ uniform int detail_level = 2;
 uniform bool lit_windows = false;
 uniform bool curtain_wall = false;
 uniform vec3 foliage_tint = vec3(1.0);
+// 0 = unclassified, 1 = the player's, 2 = decorative scenery, 3 = an NPC's.
+instance uniform float sc_role = 0.0;
+// How far scenery and NPC works step back toward grey.
+uniform float decor_grey = 0.65;
+uniform float npc_grey = 0.80;
+global uniform vec4 sc3d_livery;
 
 void vertex() {
 	model_position = VERTEX;
@@ -38,6 +44,25 @@ float dots(vec2 p, float density, vec2 offset) {
 	float dot = 1.0 - smoothstep(0.16 - aa * 0.5, 0.16 + aa * 0.5, distance);
 	// Unresolved dots converge to average coverage instead of shimmering at distance.
 	return mix(dot, 0.0804, smoothstep(0.3, 0.9, aa));
+}
+vec3 role_paint(vec3 paint, vec3 normal, bool glass) {
+	if (sc_role < 0.5) return paint;
+	float luma = dot(paint, vec3(0.2126, 0.7152, 0.0722));
+	if (sc_role < 1.5) {
+		if (glass) return paint;
+		// The company's buildings: roofs and tops in its livery, walls a little richer.
+		vec3 walls = clamp(mix(vec3(luma), paint, 1.25), 0.0, 1.0);
+		vec3 livery = OUTPUT_IS_SRGB ? sc3d_livery.rgb : linear_to_srgb(sc3d_livery.rgb);
+		float roof = smoothstep(0.50, 0.75, normal.y);
+		// Darker roof faces darken the livery, so the roof keeps its light and stipple.
+		vec3 tinted = livery * clamp(luma / 0.75, 0.55, 0.88);
+		return mix(walls, tinted, roof * 0.90);
+	}
+	// Scenery and NPC works step back: greyer, and NPC works toward paper white.
+	bool npc = sc_role > 2.5;
+	vec3 grey = vec3(luma) * (npc ? vec3(1.04, 1.02, 0.97) : vec3(0.98, 0.99, 1.02));
+	vec3 quiet = mix(paint, grey, (npc ? npc_grey : decor_grey) * (glass ? 0.7 : 1.0));
+	return npc ? mix(quiet, vec3(0.88, 0.86, 0.81), 0.18) : quiet * 1.02;
 }
 void fragment() {
 	vec3 visible_normal = FRONT_FACING ? face_normal : -face_normal;
@@ -74,6 +99,7 @@ void fragment() {
 	float projected_y = (world_point.x + world_point.z) * 0.40824829 - world_point.y * 0.81649658;
 	float t = clamp((projected_y - grade_range.x) / max(1.0, grade_range.y - grade_range.x), 0.0, 1.0);
 	paint *= mix(vec3(0.66, 0.74, 1.0), vec3(1.0, 0.92, 0.72), t);
+	paint = role_paint(paint, visible_normal, glass);
 	// UV contains triangle barycentrics (glTF flips V). UV2.x holds the three
 	// opposite-edge bits. Only modelled creases/borders carry ink, never mesh diagonals.
 	vec3 barycentric = vec3(UV.x, 1.0 - UV.y, UV.y - UV.x);
