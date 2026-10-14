@@ -40,10 +40,10 @@
 
 import math
 
-PALETTE["ht_glass"] = (0.200, 0.360, 0.500)
+PALETTE["ht_glass"] = (0.070, 0.140, 0.190)   # warm teal slate, as the factory's glass
 PALETTE["orange"] = (0.620, 0.215, 0.038)
-PALETTE["brick_orange"] = (0.340, 0.112, 0.080)   # two-tone lower band: brick red (name kept for the role)
-PALETTE["ht_white"] = (0.600, 0.600, 0.590)
+PALETTE["brick_orange"] = (0.380, 0.165, 0.095)   # two-tone lower band: clay brick, as the factory (name kept for the role)
+PALETTE["ht_white"] = (0.680, 0.660, 0.600)   # rendered cream panels above the brick
 PALETTE["pcb"] = (0.060, 0.300, 0.120)
 PALETTE["pcb_lo"] = (0.035, 0.180, 0.070)
 PALETTE["crate"] = (0.052, 0.055, 0.062)        # sleepers and wheels (the assembly plant's)
@@ -51,9 +51,17 @@ PALETTE["rack"] = (0.070, 0.080, 0.095)
 PALETTE["rack_face"] = (0.160, 0.175, 0.200)
 # Catalogue-plate pass: a pale coping caps every parapet, and a dark plinth carries every
 # wall, so each block reads as base, wall and top at poster scale.
-PALETTE["ht_coping"] = (0.640, 0.620, 0.570)
+PALETTE["ht_coping"] = (0.600, 0.560, 0.470)   # stone, as the factory's coping
 PALETTE["ht_plinth"] = (0.022, 0.024, 0.030)   # the darkest band on the building
-PALETTE["ht_window"] = (0.010, 0.013, 0.028)   # punched windows read as dark openings
+# ---- Materials shared with the industrial goods factory: clay brick with lime mortar,
+# rendered panels, dark membrane roofs, stone dressings, warm teal glass seen into a dark
+# room, silver rainwater goods. Names matter: the 3D export picks printed patterns by
+# material name (brick*, ht_white panels, membrane gravel).
+PALETTE["membrane"] = (0.120, 0.125, 0.130)     # flat roofs
+PALETTE["ht_stone"] = (0.600, 0.560, 0.470)     # lintels and sills
+PALETTE["ht_interior"] = (0.040, 0.036, 0.032)  # the room seen through a pane
+PALETTE["ht_interior_lo"] = (0.085, 0.075, 0.062)
+WINDOW_GLASS = ((0.070, 0.140, 0.190), 0.72)    # punched windows: tint, alpha
 PALETTE["ht_pipe"] = (0.700, 0.660, 0.580)     # every pipe and tray run is painted warm white
 ROLES["ht_accent"] = "orange"
 ROLES["robot"] = "orange"
@@ -137,7 +145,7 @@ def _glass(name, colour, alpha):
 def _two_tone_box(K, tag, cx, cy, sx, sy, h):
     """Wall mass painted brick orange to SPLIT and white above: two stacked boxes."""
     K.box("%s_lo" % tag, cx, cy, SPLIT / 2, sx, sy, SPLIT, K.mat("ht_brick"))
-    K.box("%s_hi" % tag, cx, cy, SPLIT + (h - SPLIT) / 2, sx, sy, h - SPLIT, K.mat("wall_bright"))
+    K.box("%s_hi" % tag, cx, cy, SPLIT + (h - SPLIT) / 2, sx, sy, h - SPLIT, K.mat("ht_white"))
 
 
 def _parapet(K, tag, x0, x1, y0, y1, z, skip=()):
@@ -148,7 +156,7 @@ def _parapet(K, tag, x0, x1, y0, y1, z, skip=()):
     }.items():
         if t in skip:
             continue
-        K.box("par_%s_%s" % (tag, t), bx, by, z + PARAPET_H / 2, sx, sy, PARAPET_H, K.mat("wall_bright"))
+        K.box("par_%s_%s" % (tag, t), bx, by, z + PARAPET_H / 2, sx, sy, PARAPET_H, K.mat("ht_white"))
         K.box("cop_%s_%s" % (tag, t), bx, by, z + PARAPET_H + COPING_H / 2, sx + 2 * COPING_OVER,
               sy + 2 * COPING_OVER, COPING_H, K.mat("ht_coping"))
 
@@ -183,16 +191,31 @@ def _punched(K, tag, face, at, along, z, w, h, rows=2):
     along the face."""
     for i, a in enumerate(along):
         centre = (at, a, z) if face in ("+X", "-X") else (a, at, z)
-        K.window("%s%d" % (tag, i), face, centre, w * WINDOW_GROW, h * WINDOW_GROW, cols=1, rows=rows)
-        glass = K.col.objects.get("%s%d_glass" % (tag, i))
-        if glass is not None: glass.data.materials[0] = K.M["ht_window"]
+        ww, wh = w * WINDOW_GROW, h * WINDOW_GROW
+        name = "%s%d" % (tag, i)
+        K.window(name, face, centre, ww, wh, cols=1, rows=rows)
+        glass = K.col.objects.get(name + "_glass")
+        if glass is not None:
+            glass.data.materials[0] = _glass("ht_window_pane", *WINDOW_GLASS)
+        sill = K.col.objects.get(name + "_sill")
+        if sill is not None: sill.data.materials[0] = K.M["ht_stone"]
+        # The room behind the pane (between wall and glass), and a stone lintel over it.
+        out = {"+X": (1, 0), "-X": (-1, 0), "+Y": (0, 1), "-Y": (0, -1)}[face]
+        def at_depth(d, dz):
+            return (centre[0] + out[0] * d, centre[1] + out[1] * d, centre[2] + dz)
+        across_x = face in ("-Y", "+Y")
+        for part, dz, hh, mat in (("room", wh * 0.15, wh * 0.70, "ht_interior"), ("room_lo", -wh * 0.35, wh * 0.30, "ht_interior_lo")):
+            x_, y_, z_ = at_depth(0.006, dz)
+            K.box(name + "_" + part, x_, y_, z_, ww if across_x else 0.006, 0.006 if across_x else ww, hh, K.M[mat])
+        x_, y_, z_ = at_depth(0.018, wh / 2 + 0.085)
+        K.box(name + "_lint", x_, y_, z_, (ww + 0.18) if across_x else 0.035, 0.035 if across_x else (ww + 0.18), 0.10, K.M["ht_stone"])
 
 
 def _block(K, tag, x0, x1, y0, y1, h, skip=(), gaps=()):
     _two_tone_box(K, "blk_%s" % tag, (x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0, h)
     _plinth(K, tag, x0, x1, y0, y1, gaps)
     K.box("roof_%s" % tag, (x0 + x1) / 2, (y0 + y1) / 2, h + 0.03, x1 - x0 - 0.02, y1 - y0 - 0.02, 0.06,
-          K.mat("roof_deck"))
+          K.mat("membrane"))
     _parapet(K, tag, x0, x1, y0, y1, h, skip)
 
 
@@ -213,7 +236,7 @@ def _front_hall(K, pane, seam):
     K.box("end_wall_lo", X0 + WALL_T / 2, (FY0 + FY1) / 2, SPLIT / 2, WALL_T, FY1 - FY0, SPLIT,
           K.mat("ht_brick"))
     K.prism("end_wall_hi", (X0 + WALL_T / 2, 0.0, 0.0), (0.0, 1.0, 0.0),
-            [(FY0, SPLIT), (FY1, SPLIT), (FY1, z1 - 0.02), (FY0, z0 - 0.02)], WALL_T, K.mat("wall_bright"))
+            [(FY0, SPLIT), (FY1, SPLIT), (FY1, z1 - 0.02), (FY0, z0 - 0.02)], WALL_T, K.mat("ht_white"))
     # Rafters down the slope and purlins across it, just under the glass.
     fm = K._fine_mode
     K._fine_mode = True
@@ -242,7 +265,8 @@ def _front_hall(K, pane, seam):
     for poly, f in zip(me.polygons, flags):
         poly.material_index = 1 if f else 0
     # Eave fascia/gutter, the ridge flashing where the pitch meets the rear block, downpipe.
-    K.box("eave_fascia", (X0 + X1) / 2, FY0 - 0.05, z0 - 0.06, X1 - X0 + 0.08, 0.06, 0.16, K.mat("gear"))
+    # Eaves gutter hung below and in front of the glass pitch, falling to the left downpipe.
+    K.box("eave_gutter", (X0 + X1) / 2, FY0 - 0.07, z0 - 0.05, X1 - X0 + 0.08, 0.11, 0.07, K.mat("pipe"))
     K.box("ridge_flash", (X0 + X1) / 2, FY1 - 0.04, z1 + 0.03, X1 - X0 + 0.08, 0.08, 0.06, K.mat("gear"))
     _downpipe(K, "l", X0 - 0.05, FY0 + 0.02, z0 - 0.06, "-Y")
 
@@ -398,12 +422,12 @@ def _glass_corner(K, p, pane):
             [(y0, 0.0), (GY1, 0.0), (GY1, _zr(GY1) - 0.02), (y0, _zr(y0) - 0.02)], 0.12, K.mat("ht_white"))
     K.box("gpart_y", (GX0 + X1) / 2, GY1 - 0.06, (_zr(GY1) - 0.02) / 2, X1 - GX0, 0.12, _zr(GY1) - 0.02,
           K.mat("ht_white"))
-    K.box("clean1", GX0 + 0.72, GY1 - 0.48, 0.10 + 0.44, 1.10, 0.80, 0.88, K.mat("wall_bright"))
+    K.box("clean1", GX0 + 0.72, GY1 - 0.48, 0.10 + 0.44, 1.10, 0.80, 0.88, K.mat("ht_white"))
     K.box("clean1_w", GX0 + 0.72, GY1 - 0.89, 0.10 + 0.55, 0.70, 0.02, 0.22, K.mat("window_glass"))
     K.box("clean1_d", GX0 + 1.12, GY1 - 0.89, 0.10 + 0.36, 0.22, 0.02, 0.62, K.mat("gear"))
     _laser(K, "0", (GX0 + 0.35, y0 + 0.75, 0.42), (X1 - 0.40, y0 + 0.75, 0.42))
     if p["upper_room"]:
-        K.box("clean2", X1 - 0.70, y0 + 0.55, FLOOR2 + 0.04 + 0.32, 0.95, 0.62, 0.64, K.mat("wall_bright"))
+        K.box("clean2", X1 - 0.70, y0 + 0.55, FLOOR2 + 0.04 + 0.32, 0.95, 0.62, 0.64, K.mat("ht_white"))
         K.box("clean2_w", X1 - 0.70, y0 + 0.23, FLOOR2 + 0.04 + 0.40, 0.55, 0.02, 0.18, K.mat("window_glass"))
     if p["lasers"] >= 2:
         _laser(K, "1", (X1 - 0.30, y0 + 0.30, FLOOR2 + 0.38), (X1 - 0.30, GY1 - 0.30, FLOOR2 + 0.38))
@@ -507,7 +531,8 @@ def _downpipe(K, tag, x, y, top, face):
     """Rainwater pipe from a roof edge to the ground: brackets every 0.7, a shoe at the foot."""
     fm = K._fine_mode
     K._fine_mode = True
-    K.cyl("dp%s" % tag, x, y, (top - 0.10) / 2 + 0.05, 0.03, top - 0.10, K.mat("stack"), segments=8)
+    K.cyl("dp%s" % tag, x, y, (top - 0.10) / 2 + 0.05, 0.03, top - 0.10, K.mat("pipe"), segments=8)
+    K.box("dp%s_hopper" % tag, x, y, top - 0.06, 0.10, 0.10, 0.08, K.mat("pipe"))
     out = 0.035 if face in ("+X", "-Y") else -0.035
     z = 0.45
     k = 0
@@ -518,7 +543,17 @@ def _downpipe(K, tag, x, y, top, face):
             K.box("dp%s_b%d" % (tag, k), x, y - out / 2, z, 0.10, 0.07, 0.03, K.mat("gear"))
         z += 0.70
         k += 1
-    K.box("dp%s_shoe" % tag, x, y, 0.05, 0.09, 0.09, 0.08, K.mat("stack"))
+    K.box("dp%s_shoe" % tag, x, y, 0.05, 0.09, 0.09, 0.08, K.mat("pipe"))
+    # A kerbed drain grate where it meets the ground, just out from the wall.
+    gx, gy = (x + out, y) if face in ("+X", "-X") else (x, y - out)
+    K.box("grate%s_kerb" % tag, gx, gy, 0.012, 0.22, 0.22, 0.024, K.mat("yard_pad"))
+    K.box("grate%s" % tag, gx, gy, 0.016, 0.16, 0.16, 0.024, K.mat("opening"))
+    for k in range(3):
+        off = (k - 1) * 0.05
+        if face in ("+X", "-X"):
+            K.box("grate%s_bar%d" % (tag, k), gx, gy + off, 0.03, 0.16, 0.012, 0.006, K.mat("darkmetal"))
+        else:
+            K.box("grate%s_bar%d" % (tag, k), gx + off, gy, 0.03, 0.012, 0.16, 0.006, K.mat("darkmetal"))
     K._fine_mode = fm
 
 
@@ -603,8 +638,10 @@ def _fixtures(K, p):
     if p["steps"] == 3:
         vents += [(1.60, 2.90, STEP_H[1] + 0.06), (p["rx1"] - 0.60, p["back"] - 0.50, STEP_H[1] + 0.06)]
     for i, (vx, vy, vz) in enumerate(vents):
-        K.cyl("vent%d" % i, vx, vy, vz + 0.07, 0.05, 0.14, K.mat("gear"), segments=12)
-        K.cyl("vent%d_cap" % i, vx, vy, vz + 0.16, 0.08, 0.04, K.mat("wall_steel"), segments=12)
+        # Turbine ventilators, as on the factory's roofs.
+        K.cyl("vent%d" % i, vx, vy, vz + 0.06, 0.055, 0.12, K.mat("pipe"), segments=12)
+        K.sphere("vent%d_head" % i, vx, vy, vz + 0.17, 0.095, K.mat("pipe"))
+        K.cyl("vent%d_cap" % i, vx, vy, vz + 0.27, 0.03, 0.03, K.mat("darkmetal"), segments=10)
     K._fine_mode = fm
     K.box("hatch", 0.95, 1.55, z_roof + 0.04, 0.36, 0.36, 0.08, K.mat("gear"))
     # Bollards: the dock pad's open corners, and the transformer's yard side.
@@ -658,7 +695,7 @@ def build_high_tech(level: int = 2) -> dict:
     K = Kit(open_collection("BLDG_hightech"))
     K.M["laser"] = _emissive("laser", (1.0, 0.08, 0.04), 3.0)
     pane = _glass("ht_pane", PALETTE["ht_glass"], GLASS_ALPHA)
-    seam = _glass("ht_seam", (0.12, 0.24, 0.36), min(1.0, GLASS_ALPHA + 0.35))
+    seam = _glass("ht_seam", (0.050, 0.100, 0.140), min(1.0, GLASS_ALPHA + 0.35))
 
     # The apron reaches the transformer and no further: carried to the back of the L3
     # extension it put the sprite's column range at 1011 px and clipped the frame.
@@ -707,7 +744,7 @@ def build_high_tech(level: int = 2) -> dict:
     if p["mast"]:
         h = STEP_H[1]
         K.lattice_mast("mast", X0 + 0.45, STEP2_Y1 + 0.45, h + 0.06, h + 1.85, w=0.16, bays=4)
-        K.cyl("mast_dish", X0 + 0.45, STEP2_Y1 + 0.45, h + 1.95, 0.16, 0.06, K.mat("wall_bright"), segments=16)
+        K.cyl("mast_dish", X0 + 0.45, STEP2_Y1 + 0.45, h + 1.95, 0.16, 0.06, K.mat("ht_white"), segments=16)
 
     print("\n".join(K.validate(ground=-0.06)))
     return {"building": "high_tech_manufactory", "level": level, "steps": p["steps"],

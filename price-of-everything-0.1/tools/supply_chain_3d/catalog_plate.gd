@@ -2,10 +2,12 @@ extends Node
 ## One building rendered through the board's own print shader, alone on a transparent
 ## background at the board's home angle, for catalogue-plate mock-ups.
 ## AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_chain_3d/catalog_plate.tscn -- --no-telemetry
-##   --asset=high_tech_manufactory_lvl3 --out=<dir> [--palette=res://tools/supply_chain_3d/catalog_plate_poster_palette.json] [--strong-faces] [--ink=1.8]
+##   --asset=high_tech_manufactory_lvl3 --out=<dir> [--palette=res://tools/supply_chain_3d/paper_wpa_catalog_palette.json] [--strong-faces] [--ink=1.8]
 ## --dir=res://assets/supply_chain_3d_trial draws a trial export instead of the shipped model:
 ##   POE_MODEL_OUTPUT=<tmp> blender -b --factory-startup --python tools/supply_chain_3d/export_models.py -- <family>
 ##   then copy the GLBs into that folder and import (the shipped models and sprites stay untouched).
+## The render then goes through the Paper WPA Catalog effect, which prints it onto a plate:
+##   python3 tools/supply_chain_3d/paper_wpa_catalog.py <render.png> <plate.png> --title ... --number ...
 ## Prints the mesh's vertex colours with their share of the surface, so a palette remap
 ## (the equivalent of re-colouring the Blender materials) can be written against them.
 const Assets := preload("res://scripts/supply_chain_3d/assets.gd")
