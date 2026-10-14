@@ -257,6 +257,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	if Legacy.plate_town and Legacy.show.decor: preload("res://scripts/supply_chain_3d/civic_layout.gd").populate(model)
 	preload("res://scripts/supply_chain_3d/rail_network.gd").apply(model, terrain, water, builder.surface_height)
 	preload("res://scripts/supply_chain_3d/rail_station.gd").apply(model,builder.surface_height)
+	preload("res://scripts/supply_chain_3d/depot_roads.gd").apply(model,queries.data)
 	preload("res://scripts/supply_chain_3d/district_blocks.gd").new().apply(model, builder.surface_height, builder.open_water, queries.data)
 	preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").populate(model, terrain)
 	preload("res://scripts/supply_chain_3d/road_placement.gd").new().fit(model, builder.surface_height, builder.open_water, Builder.standing_key, rivers, queries.data)

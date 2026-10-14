@@ -45,6 +45,8 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 		{"name": "old-quarter", "point": board._model.tiles.tile_4_10.center, "span": 480.0, "pitch": 1.05, "yaw": 0.35},
 		{"name": "harbour", "point": Vector2(2640, 5840), "span": 650.0, "pitch": 0.95, "yaw": 0.35}]
 	views.append({"name":"docks-centre","point":board._model.tiles.tile_5_10.center,"span":550.0,"pitch":1.05,"yaw":0.0})
+	views.append({"name":"depot-routes","point":Vector2(2800,5500),"span":420.0,"pitch":1.10,"yaw":.1})
+	views.append({"name":"coastal-margin","point":Vector2(2785,5760),"span":370.0,"pitch":.75,"yaw":.5})
 	views.append({"name":"docks-north","point":Vector2(2700,5370),"span":330.0,"pitch":.95,"yaw":.3})
 	var report := {"engine": Engine.get_version_info().string, "views": [], "tiles": board._model.tiles.keys(), "open_ms": open_ms, "load": board.load_profile, "first_open":first_open}
 	if "--stoneshore-review" in OS.get_cmdline_user_args() and "--stoneshore-baseline" not in OS.get_cmdline_user_args():
@@ -181,12 +183,16 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 	for s in board._model.standing:
 		if s.has("trial_skyline"):report.skyline.append({"iid":s.iid,"p":s.pos,"distance":s.pos.distance_to(s.trial_skyline),"asset":board._builder.standing_key(s)})
 	report.sea_margin={"fraction":board._builder.sea_fringe.FRACTION,"width":board._builder.sea_fringe.WIDTH,"parts":board._builder.sea_fringe.strips.size()}
+	report.sea_margin.merge(_coastal_surface_audit(board))
+	report.depot_roads=_depot_routes_audit(board)
 	_export_review_plan(board,output)
 	if "--draft-review" not in OS.get_cmdline_user_args():
 		assert(report.docks_rails.yard_height_error<.01 and report.docks_rails.hidden_yard_samples==0,"Docks working yard must remain open at its original elevation")
 		assert(report.docks_rails.building_conflicts.is_empty() and report.docks_rails.parallel_road_conflicts.is_empty(),"Docks rail still overlaps buildings or parallel road surfaces")
 		assert(report.skyline.size()==3,"Missing central Docks skyline landmarks")
-		assert(report.sea_margin.parts>0,"Missing water-only sea margin")
+		assert(report.sea_margin.parts>0 and report.sea_margin.get("coastal_land_area",0)>0 and report.sea_margin.get("coverage_error",1)<.0001,"Missing continuous coastal land and sea margin")
+		assert(report.depot_roads.a_crossings==0 and report.depot_roads.b_bridges==1 and report.depot_roads.single_pair and report.depot_roads.old_spur==0,"Depot routes must remove the fan crossing and bridge just the single pair")
+		assert(report.depot_roads.a_clearance>=10 and report.depot_roads.b_clearance>=10,"Depot roads must leave a 10u clear gap to ballast")
 	report.final_cache = {"hits":board._builder.bake_cache.hits, "bundled_hits":board._builder.bake_cache.bundled_hits, "writes":board._builder.bake_cache.writes}
 	FileAccess.open(output.path_join("report.json"), FileAccess.WRITE).store_string(JSON.stringify(report, "\t"))
 
@@ -268,7 +274,7 @@ func _docks_rail_audit(board: Control) -> Dictionary:
 func _export_review_plan(board: Control, output: String) -> void:
 	# Numeric, read-only inputs for road alternatives and sea-envelope audits.
 	var b: RefCounted=board._builder
-	var plan := {"tiles":{},"sea_margin":b.sea_fringe.strips,"roads":b.road_grade.segments,"rails":b.rail_urban.tracks,"depots":b.depots,"buildings":[],"land":[]}
+	var plan := {"tiles":{},"sea_margin":b.sea_fringe.strips,"roads":b.road_grade.segments,"rails":b.rail_urban.tracks,"depots":b.depots,"buildings":[],"land":[],"depot_roads":board._model.get("depot_roads",{})}
 	for tid in b.tiles:plan.tiles[tid]=b.tiles[tid].center
 	for s in board._model.standing:
 		plan.buildings.append({"iid":s.iid,"pos":s.pos,"kind":s.kind,"polygons":preload("res://scripts/supply_chain_3d/rail_clearance.gd").building_polygons(s,b.standing_key(s))})
@@ -290,3 +296,46 @@ func _numeric(value: Variant) -> Variant:
 		for key in value:result[str(key)]=_numeric(value[key])
 		return result
 	return value
+
+func _depot_routes_audit(board: Control) -> Dictionary:
+	var routes := preload("res://scripts/supply_chain_3d/depot_roads.gd")
+	var result := {"a_clearance":INF,"b_clearance":INF,"a_crossings":0,"b_bridges":0,"old_spur":0,"bridge":{},"single_pair":false}
+	var proposal: Dictionary=board._model.get("depot_roads",{})
+	if proposal.is_empty():return result
+	var corridors: Array=[]
+	for c in board._builder.rail_plan.corridors:
+		for i in range(1,c.points.size()):
+			if proposal.bridge.distance_to(Geometry2D.get_closest_point_to_segment(proposal.bridge,c.points[i-1],c.points[i]))<.01:
+				corridors.append(c);break
+	result.single_pair=corridors.size()==1 and not corridors[0].has("junction")
+	for road in board._builder.road_grade.segments:
+		if road.source=="r:untitled:65":result.old_spur+=1
+		if road.source not in [routes.A,routes.B]:continue
+		var key := "a_clearance" if road.source==routes.A else "b_clearance"
+		var steps := maxi(1,ceili(road.a.distance_to(road.b)))
+		for i in steps+1:
+			var p: Vector2=road.a.lerp(road.b,float(i)/steps)
+			# The crossing and its curved turn necessarily approach the ballast.
+			if road.source==routes.B and p.distance_to(proposal.bridge)<40:continue
+			result[key]=minf(result[key],routes.rail_distance(p,board._builder.rail_plan)-routes.ROAD_HALF-routes.Rail.CORRIDOR_WIDTH*.5)
+	for crossing in board._builder.road_grade.crossings:
+		if routes.A in crossing.sources:result.a_crossings+=1
+		if routes.B in crossing.sources:
+			if crossing.mode=="bridge":result.b_bridges+=1
+			result.bridge=crossing
+	return result
+
+func _coastal_surface_audit(board: Control) -> Dictionary:
+	var data: Dictionary=board._builder.infrastructure_bake.get("sea_fringe",{})
+	if data.is_empty():return {}
+	var result: Dictionary=data.audit.duplicate()
+	var vertices: PackedVector3Array=data.top.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var area := 0.0
+	for i in range(0,vertices.size(),3):
+		var a := Vector2(vertices[i].x,vertices[i].z)
+		var b := Vector2(vertices[i+1].x,vertices[i+1].z)
+		var c := Vector2(vertices[i+2].x,vertices[i+2].z)
+		area+=absf((b-a).cross(c-a))*.5
+	result.rendered_area=area
+	result.coverage_error=absf(area-result.surface_area)/result.surface_area
+	return result

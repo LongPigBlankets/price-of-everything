@@ -85,3 +85,21 @@ func _test_docks_clearance_margin_round_join_texture() -> void:
 
 	var pocket := PackedVector2Array([Vector2.ZERO,Vector2(3,0),Vector2(0,2)])
 	_check(Fringe.margin_water(pocket,[]).is_empty(),"Sea margin: tiny detached water pockets cannot produce isolated cutaway pillars")
+
+func _test_docks_clearance_continuous_coastal_surface() -> void:
+	var strip := PackedVector2Array([Vector2.ZERO,Vector2(200,0),Vector2(200,48),Vector2(0,48)])
+	var land := PackedVector2Array([Vector2(0,0),Vector2(70,0),Vector2(70,60),Vector2(0,60)])
+	var painted := Fringe.paint_layers(strip,Color.BLUE,[{"p":land,"color":Color.GREEN}])
+	var total := 0.0
+	for part in painted:total+=Fringe.area(part.p)
+	_check(absf(total-200*48)<.01,"Coastal margin: land and water fill the complete envelope with no cutouts")
+	var margin := Fringe.new()
+	margin.strips=[{"p":strip}]
+	_check(margin.contains(Vector2(30,24)) and margin.contains(Vector2(100,24)),"Coastal margin: both land and water suppress the old internal hex cutaway")
+	var batch := preload("res://scripts/supply_chain_3d/geometry.gd").Batch.new()
+	var sample := func(p):return 25.0+p.x*.1
+	var gradient := func(_p):return Vector2(.1,0)
+	Fringe.polygon(batch,strip,Color.GREEN,Vector2.ZERO,25.0,sample,gradient)
+	var continuous := true
+	for v in batch.vertices:continuous=continuous and absf(v.y-sample.call(Vector2(v.x,v.z)))<.001
+	_check(continuous and Array(batch.normals).all(func(n):return n.is_equal_approx(Vector3(-.1,1,0).normalized())),"Coastal margin: terrain uses shared height and normal samples instead of a flat sea-height cap")
