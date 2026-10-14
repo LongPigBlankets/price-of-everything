@@ -83,6 +83,8 @@ var glows: Array = []
 var roads: Array = []
 var lines: Array = []
 var tree_placements: Dictionary = {}
+var urban_plazas := {"tiles":{}}
+var greenery_audit := {}
 var road_surface := RoadSurface.new()
 var pits: Dictionary = {}
 var streamed := false
@@ -152,6 +154,7 @@ func prepare_transport(model: Dictionary) -> void:
 		stages.authored_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
 		roads=road_alignment.configure(model,formation_height,railway_level,open_water)
 		stages.alignment_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
+		preload("res://scripts/supply_chain_3d/port_approach.gd").grade(roads,model.get("port_approach",{}))
 		road_grade.configure(roads,formation_height,authored_profile)
 		stages.grading_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
 		rail_plan=Railway.network(lines)
@@ -220,7 +223,7 @@ func tile_bake_key(tid: String, tier: int) -> String:
 		var reach := float(pit.side) * 0.80
 		if area.intersects(Rect2((pit.pos as Vector2) - Vector2.ONE * reach, Vector2.ONE * reach * 2.0)):
 			holes.append(pit)
-	return "tile-" + BakeCache.digest([_map_key, tid, tiles[tid].center, tiles[tid].type, holes, static_shadows.get(tid, []), tier])
+	return "tile-" + BakeCache.digest([_map_key, tid, tiles[tid].center, tiles[tid].type, holes, static_shadows.get(tid, []), urban_plazas.tiles.get(tid,[]), tier])
 
 func prepare_scenery(host: Node, model: Dictionary) -> void:
 	var water_review := "--water-review" in OS.get_cmdline_user_args()
@@ -231,6 +234,8 @@ func prepare_scenery(host: Node, model: Dictionary) -> void:
 	var cached := bake_cache.read(_scenery_key) if _scenery_key != "" else {}
 	if not cached.is_empty():
 		tree_placements = cached.trees
+		urban_plazas = cached.get("urban_plazas",{"tiles":{}})
+		greenery_audit = cached.get("greenery_audit",{})
 		static_shadows = cached.shadows
 		standing_frames = cached.standing
 		grade_range = cached.grade
@@ -252,6 +257,7 @@ func prepare_scenery(host: Node, model: Dictionary) -> void:
 	rail_vegetation.configure(_prepared_rail_art, road_grade.segments if transport_ready else roads,
 		road_alignment.portals, depots, tiles, natural_height)
 	if water_review: print("[WATER REVIEW] rail rows ", Time.get_ticks_msec())
+	urban_plazas=preload("res://scripts/supply_chain_3d/urban_plazas.gd").build(self,model.get("standing",[]))
 	var all_shadows: Array = []
 	for s in model.get("standing", []):
 		standing_frames[str(s.iid)] = standing_frame(s)
@@ -261,6 +267,9 @@ func prepare_scenery(host: Node, model: Dictionary) -> void:
 	lines = model.get("lines", [])
 	for tid in tiles:
 		var placements := placements_for(str(tid), model.get("standing", [])) if Legacy.show.trees else []
+		if Legacy.show.trees and preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
+			var planted := preload("res://scripts/supply_chain_3d/stoneshore_greenery.gd").new().plant(str(tid),placements,self,model.get("standing",[]),urban_plazas.tiles.get(tid,[]))
+			placements=planted.trees;greenery_audit[tid]=planted.audit
 		tree_placements[tid] = placements
 		for tree in placements:
 			var key := Assets.key_for("tree", {"small": 1, "fir": 2, "large": 3}[tree.kind])
@@ -298,7 +307,7 @@ func prepare_scenery(host: Node, model: Dictionary) -> void:
 	if _scenery_key != "": bake_cache.write(_scenery_key, scenery_data())
 
 func scenery_data() -> Dictionary:
-	return {"trees": tree_placements, "shadows": static_shadows, "standing": standing_frames, "grade": grade_range,
+	return {"trees": tree_placements, "urban_plazas":urban_plazas,"greenery_audit":greenery_audit, "shadows": static_shadows, "standing": standing_frames, "grade": grade_range,
 		"road_profile": authored_profile.packed(), "standing_shadows": standing_shadow_mesh, "infrastructure": infrastructure_bake,
 		"vegetation": rail_vegetation.packed()}
 
@@ -371,7 +380,7 @@ func prepare_continent(host: Node) -> void:
 		tile_view_hull(str(tid))
 		if parts.size() % 16 == 0:
 			await host.get_tree().process_frame
-	var texture := await Paint.bake_continent(host, tiles, rivers, pits.values(), surface_height, area, static_shadows)
+	var texture := await Paint.bake_continent(host, tiles, rivers, pits.values(), surface_height, area, static_shadows, urban_plazas.tiles)
 	continent = {"area": area, "texture": texture, "parts": parts,
 		"mesh": Geo.joined(parts.values(), area), "roads": {}}
 
@@ -938,7 +947,7 @@ func _tile_bake(host: Node, tid: String, tier: int) -> Dictionary:
 	var key := tile_bake_key(tid, tier)
 	var cached := bake_cache.read(key) if _map_key != "" else {}
 	if not cached.is_empty(): return cached
-	var textures := await Paint.bake(host, tiles[tid], Coast.relief_of(tid, tiles[tid].center), rivers.get(tid, []), pits.values(), surface_height, [Detail.TEXTURES[tier]], static_shadows.get(tid, []))
+	var textures := await Paint.bake(host, tiles[tid], Coast.relief_of(tid, tiles[tid].center), rivers.get(tid, []), pits.values(), surface_height, [Detail.TEXTURES[tier]], static_shadows.get(tid, []), urban_plazas.tiles.get(tid,[]))
 	var data := {"texture": textures[0], "mesh": _surface(tid, Detail.CELLS[tier])}
 	prepare_picking(data)
 	if _map_key != "": bake_cache.write(key, data)

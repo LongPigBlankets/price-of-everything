@@ -17,6 +17,7 @@ var _origin := Vector2.ZERO
 const BUCKET := 64.0
 var _way_buckets: Dictionary = {}
 var _by_tile: Dictionary = {}
+var flares: Array=[]
 
 func finish_build() -> void:
 	# The owning builder supplies its height method. Drop that bound Callable so
@@ -60,6 +61,9 @@ func configure(roads: Array, height: Callable, origin := Vector2.ZERO) -> void:
 			w.round.append(not through and not tunnel_end)
 			w.clear.append(0.0 if through else float(nd.reach) + 2.0)
 
+	flares.clear()
+	if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
+		flares=preload("res://scripts/supply_chain_3d/street_curves.gd").junctions(ways)
 	markings.configure(ways)
 
 func mesh_for(tile: String) -> ArrayMesh:
@@ -78,6 +82,15 @@ func mesh_for(tile: String) -> ArrayMesh:
 			var tint: Color = Color.WHITE if bool(w.paved) else Legacy._UNPAVED
 			var polygon := Legacy._capsule(w.a, w.b, w.widths[band], w.round)
 			_add_band(batch, polygon, colours[band] * tint, band)
+	for joint in flares:
+		if joint.a.road.tile!=tile:continue
+		for band in range(-2,4):
+			var a: Dictionary=joint.a.road;var b: Dictionary=joint.b.road
+			if band<0 and minf(Sidewalks.width(a),Sidewalks.width(b))<=0:continue
+			var wa: float=a.widths[0]+Sidewalks.width(a)-(0.18 if band==-1 else 0.0) if band<0 else a.widths[band]
+			var wb: float=b.widths[0]+Sidewalks.width(b)-(0.18 if band==-1 else 0.0) if band<0 else b.widths[band]
+			var poly := preload("res://scripts/supply_chain_3d/street_curves.gd").flare(joint.p,joint.a.d,joint.b.d,wa,wb,4.0)
+			if not poly.is_empty():_add_band(batch,poly,Sidewalks.EDGE if band==-2 else (Sidewalks.PAVING if band==-1 else colours[band]),band)
 	for stripe in markings.polygons_for(tile):
 		_add_band(batch, stripe.points, stripe.colour, 4)
 	return batch.mesh()

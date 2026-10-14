@@ -16,7 +16,7 @@ static func key_for(builder: RefCounted, model: Dictionary) -> String:
 	return "transport-"+Cache.digest([VERSION,Cache.source_key("transport"),Cache.source_key("roads"),Cache.source_key("scenery"),
 		Cache.source_key("terrain"),builder.ground.get("tiles"),builder.ground.get("bands"),builder.ground.get("lakes"),builder.ground.get("rivers"),
 		builder.rivers,builder.pits,geography,plots,model.get("roads",[]),model.get("lines",[]),model.get("depots",[]),model.get("stations",[]),
-		model.get("authored_region",{}).get("paths",[]),model.get("authored_region",{}).get("tiles",{})])
+		model.get("authored_region",{}).get("paths",[]),model.get("authored_region",{}).get("tiles",{}),model.get("port_approach",{})])
 
 static func _fields(object: RefCounted, names: Array) -> Dictionary:
 	var result := {}

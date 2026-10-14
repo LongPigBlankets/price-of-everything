@@ -19,6 +19,7 @@ class Painter extends Node2D:
 	var mines: Array
 	var water_art: ArrayMesh
 	var shadow_art: ArrayMesh
+	var plazas: Array=[]
 	func _draw() -> void:
 		var sea := MapStyle.sea_colors()
 		var bands := MapStyle.band_colors()
@@ -33,12 +34,15 @@ class Painter extends Node2D:
 			"lake_sand": Legacy._SAND.darkened(0.08), "lake_foam": sea[4].lightened(0.3)}
 		for ink in relief.get("water_ink", []): _polygon(ink.p, tones[ink.tone])
 		if water_art != null and water_art.get_surface_count() > 0: draw_mesh(water_art, null)
+		var plaza_index := preload("res://scripts/supply_chain_3d/urban_plazas.gd")._index(plazas)
+		for plaza in plazas:
+			_polygon(plaza,preload("res://scripts/supply_chain_3d/urban_plazas.gd").PAVING)
 		# Same seed in every tier: low tiers integrate marks instead of changing geography.
 		var rng := RandomNumberGenerator.new()
 		rng.seed = hash(str(tile.center))
 		for i in 1300:
 			var p: Vector2 = tile.center + Vector2(rng.randf_range(-274, 274), rng.randf_range(-244, 244))
-			if Ground.is_water(relief, p):
+			if Ground.is_water(relief, p) or plaza_index.get(Vector2i((p/64.0).floor()),[]).any(func(id):return Geometry2D.is_point_in_polygon(p,plazas[id])):
 				continue # Water glints are animated on the actual surface, as in the source view.
 			else:
 				var ink := Color(0.24, 0.30, 0.18, rng.randf_range(0.045, 0.10))
@@ -87,7 +91,7 @@ class Painter extends Node2D:
 		return Geometry2D.triangulate_polygon(local)
 
 static func bake(host: Node, tile: Dictionary, relief: Dictionary, rivers: Array, mines: Array, height: Callable,
-		widths: Array = Detail.TEXTURES, shadows: Array = []) -> Array:
+		widths: Array = Detail.TEXTURES, shadows: Array = [], plazas: Array = []) -> Array:
 	var textures: Array = []
 	if DisplayServer.get_name() == "headless":
 		# Dummy renderer cannot read a viewport. Geometry and input tests still run.
@@ -106,6 +110,7 @@ static func bake(host: Node, tile: Dictionary, relief: Dictionary, rivers: Array
 	painter.relief = relief
 	painter.rivers = rivers
 	painter.mines = mines
+	painter.plazas = plazas
 	painter.shadow_art = ShadowArt.artwork(shadows)
 	var water := WaterArt.new()
 	painter.water_art = water.artwork(tile, relief, rivers, height)
@@ -128,7 +133,7 @@ static func bake(host: Node, tile: Dictionary, relief: Dictionary, rivers: Array
 	return textures
 
 static func bake_continent(host: Node, tiles: Dictionary, rivers: Dictionary, mines: Array,
-		height: Callable, area: Rect2, shadows: Dictionary = {}) -> Texture2D:
+		height: Callable, area: Rect2, shadows: Dictionary = {}, plazas: Dictionary = {}) -> Texture2D:
 	if DisplayServer.get_name() == "headless":
 		var dummy := Image.create(8, 8, false, Image.FORMAT_RGBA8)
 		dummy.fill(Legacy._warm(MapStyle.band_colors()[2]))
@@ -159,6 +164,7 @@ static func bake_continent(host: Node, tiles: Dictionary, rivers: Dictionary, mi
 		painter.relief = Coast.relief_of(str(tid), tile.center)
 		painter.rivers = rivers.get(tid, [])
 		painter.mines = mines
+		painter.plazas = plazas.get(tid,[])
 		painter.shadow_art = ShadowArt.artwork(shadows.get(tid, []))
 		var water := WaterArt.new()
 		painter.water_art = water.artwork(tile, painter.relief, painter.rivers, height)

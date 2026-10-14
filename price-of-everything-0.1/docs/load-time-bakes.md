@@ -809,3 +809,48 @@ Reports and logs: `outputs/supply-chain-3d/stoneshore-interiors/final/` and
 `outputs/supply-chain-3d/stoneshore-interiors/validation/` at repository root.
 The nonfatal system-CA warning in headless Godot and ObjectDB exit warning in
 rendered harnesses remain unchanged.
+
+
+### Stoneshore streets, plazas, trees and port — 14 October 2026
+
+The production five-tile package is regenerated and installed. Independent
+validation passes with current fingerprints: 21 resources, 40,062,209 bytes
+(38.21 MiB). Existing meshes and sprite atlases are reused. The port asset
+only gains road-entry/width metadata; its mesh is unchanged. Layout, transport,
+scenery, five base tile resources and ten medium/near textures reflect the new
+streets, concrete and trees. Medium and near decoded texture payloads remain
+18,677,385 / 74,710,665 bytes; the near resources occupy 20,113,414 bytes on disk.
+Package assembly reused the draft's ten prepared detail resources and took
+2.345s after preparation. Whole-continent baking remains paused.
+
+Fresh Godot 4.6.2 Forward+ / Metal process, empty runtime cache, warm OS cache:
+
+| Measurement | Result |
+| --- | ---: |
+| Process start to Begin | 25.832s |
+| Five-tile board preparation during loading | 1.342s |
+| Frontage/route cache restore | 198.785ms |
+| Transport lookup and restore | 116.946ms |
+| First supply-view opening after Begin | 378ms |
+| Final bundled hits | 19 |
+| Runtime bake misses / writes | 0 / 0 |
+
+The measured Begin time includes the game's main-map startup and asset warmup;
+it is not the supply-view opening time. The offline frontage/plaza/tree search
+took approximately 65s in the final cold draft. Prepared layout, port pose,
+transport and scenery all load from the installed package in normal play.
+
+Sixty-eight focused assertions pass (curves, plaza classification, canopy union,
+port grading, route-cache retention, frontage, neighbourhoods and crossings).
+The final rendered audit passes the 75% frontage target, independent 2u canopy
+check, beach limit, actual junction/building clearance, port road alignment and
+height, wet berths, coastal envelope coverage, depot routes and working-yard
+checks. No regular-map files were changed. Evidence and logs are in
+`outputs/supply-chain-3d/stoneshore-streets-greenery/`.
+
+The independent installed-transport pass records seven bridges, twelve grouped
+crossings, minimum rail-head clearance 8.5325u, modified approach grades at or
+below 8%, level buried rail and no open cuts over fully hidden track. Its fresh
+process also reports 19 bundled hits and zero writes. The previously documented
+steep exposed rail near (2853,4915) and four unrelated road-index endpoint
+failures remain outside this work.
