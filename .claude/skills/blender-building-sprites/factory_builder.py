@@ -31,6 +31,11 @@ PALETTE = {
     "plaster":    (0.720, 0.700, 0.650),   # sawtooth ends and backs: plaster white
     "interior":   (0.040, 0.036, 0.032),   # what is seen through the glass: a dark room
     "interior_lo":(0.085, 0.075, 0.062),   # its lower half: benches and machines catch light
+    # The back yard: storage along the long wall the home view does not show.
+    "pad":        (0.300, 0.290, 0.260),   # yard hardstanding (printed as paving)
+    "container":  (0.105, 0.205, 0.355),   # shipping container, the kit's container blue
+    "carton":     (0.300, 0.165, 0.072),
+    "pallet":     (0.200, 0.130, 0.065),
 }
 # Window glass is see-through (BLENDED, alpha < 1): the 3D export gives it the glass shader.
 # Warm teal slate, as on the reference plate, over a dark interior panel behind each pane.
@@ -67,6 +72,9 @@ WIDEN = 0.27
 X0 = -W / 2 - WIDEN     # left wall
 X1 = W / 2              # right wall (windows / flue / rear annex side)
 XC = (X0 + X1) / 2      # body centre in X
+BACK_DOOR_X = X0 + 0.50 # personnel door in the back gable
+LEAN_D = 0.95           # back lean-to store: depth out from the long -X wall
+LEAN_HI, LEAN_LO = 1.05, 0.70   # its roof at the wall and at the outer eave (one storey at most)
 BW = X1 - X0            # body width
 
 
@@ -308,18 +316,20 @@ def build_factory(level: int) -> dict:
         while z < top - 0.20:
             if wall == "x":
                 box(f"dp_{tag}_b{k}", x - 0.04, y, z, 0.07, 0.07, 0.025, M["darkmetal"])
+            elif wall == "-x":
+                box(f"dp_{tag}_b{k}", x + 0.04, y, z, 0.07, 0.07, 0.025, M["darkmetal"])
             else:
                 box(f"dp_{tag}_b{k}", x, y + 0.04, z, 0.07, 0.07, 0.025, M["darkmetal"])
             z += 0.65
             k += 1
         box(f"dp_{tag}_shoe", x, y, foot + 0.05, 0.08, 0.08, 0.07, M["silver"])
         if foot <= 0.0:
-            gx, gy = (x + 0.04, y) if wall == "x" else (x, y - 0.04)
+            gx, gy = {"x": (x + 0.04, y), "-x": (x - 0.04, y)}.get(wall, (x, y - 0.04))
             box(f"grate_{tag}_kerb", gx, gy, 0.012, 0.22, 0.22, 0.024, M["concrete"])
             box(f"grate_{tag}", gx, gy, 0.016, 0.16, 0.16, 0.024, M["ink_black"])
             for k in range(3):
                 off = (k - 1) * 0.05
-                if wall == "x":
+                if wall in ("x", "-x"):
                     box(f"grate_{tag}_bar{k}", gx, gy + off, 0.03, 0.16, 0.012, 0.006, M["darkmetal"])
                 else:
                     box(f"grate_{tag}_bar{k}", gx + off, gy, 0.03, 0.012, 0.16, 0.006, M["darkmetal"])
@@ -366,7 +376,8 @@ def build_factory(level: int) -> dict:
             box(f"plinth_{tag}", (x0 + x1) / 2, (y0 + y1) / 2, PH_ / 2, x1 - x0, y1 - y0, PH_, M["plinth"])
         plinth_run("e", X1 - PO, X1 + PO, -L / 2 - PO, L / 2 + PO)
         plinth_run("w", X0 - PO, X0 + PO, -L / 2 - PO, L / 2 + PO)
-        plinth_run("n", X0 - PO, X1 + PO, L / 2 - PO, L / 2 + PO)
+        plinth_run("n0", X0 - PO, BACK_DOOR_X - 0.22, L / 2 - PO, L / 2 + PO)
+        plinth_run("n1", BACK_DOOR_X + 0.22, X1 + PO, L / 2 - PO, L / 2 + PO)
         front = [(X0 - PO, X1 + PO)]
         if p["gate"]:
             gx, gw = -0.25 - WIDEN, 1.30
@@ -436,6 +447,184 @@ def build_factory(level: int) -> dict:
             box("cabinet", 1.55, RY0 - 0.11, 0.24, 0.34, 0.18, 0.48, M["door"])
             box("cabinet_cap", 1.55, RY0 - 0.11, 0.495, 0.38, 0.22, 0.03, M["darkmetal"])
             louvre("rannex", 1.55, RY0 - EPS, 0.90, 0.28, 0.22)
+
+
+    # ---------------- the sides the home view does not show ----------------
+    def face_window(tag, face, x, y, cz, ww, wh, cols=2):
+        """A window on the -X long wall or the +Y back gable: teal glass over a dark room,
+        cream frames and mullions, stone lintel and sill."""
+        if face == "-x":
+            xg = x - EPS
+            interior("x", tag, xg + 0.009, y, cz, ww, wh)
+            box(f"{tag}_glass", xg, y, cz, 0.01, ww, wh, M["glass"])
+            for nm, dy, sy in (("fl", -ww / 2, 0.05), ("fr", ww / 2, 0.05)):
+                box(f"{tag}_{nm}", xg - 0.005, y + dy, cz, 0.012, sy, wh + 0.1, M["mullion"])
+            box(f"{tag}_ft", xg - 0.005, y, cz + wh / 2, 0.012, ww + 0.09, 0.05, M["mullion"])
+            box(f"{tag}_sill", xg - 0.01, y, cz - wh / 2, 0.03, ww + 0.13, 0.055, M["stone"])
+            box(f"{tag}_lint", xg - 0.015, y, cz + wh / 2 + 0.085, 0.035, ww + 0.18, 0.10, M["stone"])
+            for k in range(1, cols):
+                box(f"{tag}_mv{k}", xg - 0.004, y - ww / 2 + k * ww / cols, cz, 0.01, 0.026, wh, M["mullion"])
+            for k in range(1, 3):
+                box(f"{tag}_mh{k}", xg - 0.004, y, cz - wh / 2 + k * wh / 3, 0.01, ww, 0.026, M["mullion"])
+        else:
+            yg = y + EPS
+            interior("y", tag, x, yg - 0.009, cz, ww, wh)
+            box(f"{tag}_glass", x, yg, cz, ww, 0.01, wh, M["glass"])
+            for nm, dx in (("fl", -ww / 2), ("fr", ww / 2)):
+                box(f"{tag}_{nm}", x + dx, yg + 0.005, cz, 0.05, 0.012, wh + 0.1, M["mullion"])
+            box(f"{tag}_ft", x, yg + 0.005, cz + wh / 2, ww + 0.09, 0.012, 0.05, M["mullion"])
+            box(f"{tag}_sill", x, yg + 0.01, cz - wh / 2, ww + 0.13, 0.03, 0.055, M["stone"])
+            box(f"{tag}_lint", x, yg + 0.015, cz + wh / 2 + 0.085, ww + 0.18, 0.035, 0.10, M["stone"])
+            for k in range(1, cols):
+                box(f"{tag}_mv{k}", x - ww / 2 + k * ww / cols, yg + 0.004, cz, 0.026, 0.01, wh, M["mullion"])
+            for k in range(1, 3):
+                box(f"{tag}_mh{k}", x, yg + 0.004, cz - wh / 2 + k * wh / 3, ww, 0.01, 0.026, M["mullion"])
+
+    def prism_x(name, x0, x1, y0, y1, z_at_x0, z_at_x1, mat):
+        """A solid whose top slopes across X (z_at_x0 at x0, z_at_x1 at x1), extruded y0..y1."""
+        m = bpy.data.meshes.new(name)
+        bm = bmesh.new()
+        prof = [(x0, 0.0), (x1, 0.0), (x1, z_at_x1), (x0, z_at_x0)]
+        va = [bm.verts.new((x, y0, z)) for (x, z) in prof]
+        vb = [bm.verts.new((x, y1, z)) for (x, z) in prof]
+        bm.faces.new(va)
+        bm.faces.new(list(reversed(vb)))
+        for a in range(4):
+            b = (a + 1) % 4
+            bm.faces.new([va[a], va[b], vb[b], vb[a]])
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        bm.to_mesh(m); bm.free()
+        return new_obj(name, m, mat)
+
+    def container(tag, cx, y0, length, w=0.66, h=0.70):
+        """A shipping container along the wall (long axis Y) on corner blocks: corrugated long
+        side, doors with locking bars on its +Y end, corner castings."""
+        y1 = y0 + length
+        cy = (y0 + y1) / 2
+        for k, (bx, by) in enumerate(((cx - w / 2 + 0.06, y0 + 0.08), (cx + w / 2 - 0.06, y0 + 0.08),
+                                      (cx - w / 2 + 0.06, y1 - 0.08), (cx + w / 2 - 0.06, y1 - 0.08))):
+            box(f"{tag}_block{k}", bx, by, 0.02, 0.10, 0.10, 0.04, M["concrete"])
+        zb = 0.04
+        box(tag, cx, cy, zb + h / 2, w, length, h, M["container"])
+        n_ribs = int(length / 0.12)
+        for k in range(n_ribs):
+            ry = y0 + (k + 0.5) * length / n_ribs
+            box(f"{tag}_rib{k}", cx - w / 2 - 0.006, ry, zb + h / 2, 0.012, 0.035, h - 0.10, M["container"])
+        box(f"{tag}_seam", cx, y1 + 0.006, zb + h / 2, 0.012, 0.012, h - 0.08, M["darkmetal"])
+        for k, bx in enumerate((cx - 0.20, cx - 0.08, cx + 0.08, cx + 0.20)):
+            box(f"{tag}_bar{k}", bx, y1 + 0.012, zb + h / 2, 0.018, 0.018, h - 0.10, M["silver"])
+        for sx in (-1, 1):
+            for sy, yy in ((-1, y0), (1, y1)):
+                for zz in (zb + 0.04, zb + h - 0.04):
+                    box(f"{tag}_cc{sx > 0}{sy > 0}{zz > 0.3}", cx + sx * (w / 2 - 0.04), yy - sy * 0.04, zz,
+                        0.09, 0.09, 0.09, M["darkmetal"])
+
+    def drum(tag, x, y, mat, band=True):
+        cyl(f"drum_{tag}", x, y, 0.15, 0.10, 0.30, mat)
+        cyl(f"drum_{tag}_lid", x, y, 0.305, 0.085, 0.012, M["darkmetal"])
+        if band:
+            cyl(f"drum_{tag}_band", x, y, 0.20, 0.103, 0.035, M["hazard"])
+
+    def pallet(tag, x, y, layers):
+        box(f"pal_{tag}", x, y, 0.035, 0.40, 0.34, 0.07, M["pallet"])
+        for h in range(layers):
+            for k, (dx, dy) in enumerate(((-0.09, -0.07), (0.09, -0.07), (-0.09, 0.08), (0.09, 0.08))):
+                if h == layers - 1 and k == 3:
+                    continue
+                box(f"pal_{tag}_c{h}{k}", x + dx, y + dy, 0.07 + 0.08 + h * 0.16, 0.17, 0.14, 0.15, M["carton"])
+
+    def back_side(p, N, L):
+        # Hardstanding along the long -X wall for the yard.
+        box("yard_pad", X0 - 0.56, 0.0, -0.03, 1.12, L, 0.06, M["pad"])
+        # Pilasters at every bay line, as on the window wall.
+        for i in range(N + 1):
+            box(f"pilaster_w{i}", X0 - 0.03, -L / 2 + i * TL, H / 2, 0.06, 0.14, H, M["brick"])
+        # Lean-to store against bays 1-2: brick walls, standing-seam mono-pitch roof below the
+        # first-floor sills, a roller door and a window, an eaves gutter and downpipe.
+        ya, yb = -L / 2 + TL, -L / 2 + 3 * TL
+        lx = X0 - LEAN_D
+        prism_x("leanto", X0 + 0.01, lx, ya, yb, LEAN_HI, LEAN_LO, M["brick"])
+        m = bpy.data.meshes.new("leanto_roof")
+        bm = bmesh.new()
+        xo = lx - 0.08
+        def zr(x, lift):
+            return LEAN_LO + (LEAN_HI - LEAN_LO) * (x - lx) / (X0 - lx) + lift
+        corners = [(X0, ya - 0.05), (xo, ya - 0.05), (xo, yb + 0.05), (X0, yb + 0.05)]
+        top = [bm.verts.new((x, y, zr(x, 0.05))) for x, y in corners]
+        bot = [bm.verts.new((x, y, zr(x, 0.01))) for x, y in corners]
+        bm.faces.new(top)
+        bm.faces.new(list(reversed(bot)))
+        for a in range(4):
+            b = (a + 1) % 4
+            bm.faces.new([top[a], top[b], bot[b], bot[a]])
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        bm.to_mesh(m); bm.free()
+        new_obj("leanto_roof", m, M["roof_metal"])
+        box("leanto_flash", X0 - 0.04, (ya + yb) / 2, LEAN_HI + 0.07, 0.08, yb - ya + 0.10, 0.05, M["stone"])
+        door_y, dw, dh = (ya + yb) / 2 - 0.25, 0.80, 0.58
+        box("leanto_door", lx - EPS, door_y, dh / 2, 0.01, dw, dh, M["door"])
+        for nm, dy in (("fl", -dw / 2), ("fr", dw / 2)):
+            box(f"leanto_door_{nm}", lx - EPS - 0.005, door_y + dy, dh / 2, 0.012, 0.06, dh + 0.06, M["mullion"])
+        box("leanto_door_ft", lx - EPS - 0.005, door_y, dh + 0.02, 0.012, dw + 0.14, 0.05, M["stone"])
+        for k in range(1, 5):
+            box(f"leanto_slat{k}", lx - EPS - 0.004, door_y, k * dh / 5, 0.008, dw - 0.06, 0.018, M["darkmetal"])
+        face_window("leanto_w", "-x", lx, yb - 0.38, 0.40, 0.36, 0.30)
+        PO = 0.03
+        for k, (a, b) in enumerate(((ya, door_y - dw / 2 - 0.05), (door_y + dw / 2 + 0.05, yb))):
+            box(f"leanto_plinth{k}", lx, (a + b) / 2, 0.07, 2 * PO, b - a, 0.14, M["plinth"])
+        box("leanto_plinth_b", (lx + X0) / 2, yb, 0.07, X0 - lx, 2 * PO, 0.14, M["plinth"])
+        box("leanto_gutter", xo - 0.05, (ya + yb) / 2, LEAN_LO - 0.02, 0.10, yb - ya + 0.10, 0.06, M["silver"])
+        drainpipe("leanto", "-x", xo - 0.05, ya + 0.08, LEAN_LO - 0.05, 0.0)
+        # Windows: first floor along the whole wall, ground floor where no store stands.
+        for i in range(N):
+            cy = -L / 2 + TL / 2 + i * TL
+            face_window(f"ww{i}_1", "-x", X0, cy, FLOOR + 0.24 + 0.36, 0.50, 0.72)
+            if not (ya - 0.01 < cy < yb + 0.01):
+                face_window(f"ww{i}_0", "-x", X0, cy, 0.24 + 0.36, 0.50, 0.72)
+        # Storage on the hardstanding: a container in the bays beyond the store, pallets of
+        # cartons and drums in the front bay.
+        room = L / 2 - yb - 0.24
+        length = 1.60 if room >= 1.75 else 0.85
+        container("cont", X0 - 0.45, yb + 0.12, length)
+        rest = yb + 0.12 + length + 0.10
+        for k, y in enumerate((rest + 0.12, rest + 0.34)):
+            if y < L / 2 - 0.10:
+                drum(f"b{k}", X0 - 0.30 - 0.18 * k, y, M["container"] if k else M["darkmetal"])
+        pallet("a", X0 - 0.34, -L / 2 + 0.30, 2)
+        pallet("b", X0 - 0.34, -L / 2 + 0.72, 1)
+        pallet("c", X0 - 0.80, -L / 2 + 0.36, 1)
+        for k, (dx, dy) in enumerate(((-0.78, 0.80), (-0.58, 0.88), (-0.80, 1.00))):
+            drum(f"f{k}", X0 + dx, -L / 2 + dy, M["darkmetal"], band=(k != 1))
+        # Back gable: the wide first-floor window, a personnel door with canopy and lamp, a
+        # ground-floor window and a louvre.
+        face_window("bw_wide", "+y", XC, L / 2, FLOOR + 0.24 + 0.36, 1.70, 0.72, cols=6)
+        dy = L / 2 + EPS
+        box("back_door", BACK_DOOR_X, dy, 0.38, 0.34, 0.01, 0.76, M["darkmetal"])
+        box("back_door_lint", BACK_DOOR_X, dy + 0.012, 0.82, 0.48, 0.035, 0.09, M["stone"])
+        # Kept shallow: anything standing further out than the boiler house's coping would
+        # widen the family's footprint and shrink the whole building on the board.
+        box("back_hood", BACK_DOOR_X, dy + 0.025, 0.90, 0.52, 0.05, 0.04, M["darkmetal"])
+        box("back_lamp_arm", BACK_DOOR_X + 0.34, dy + 0.012, 0.86, 0.03, 0.024, 0.03, M["darkmetal"])
+        box("back_lamp", BACK_DOOR_X + 0.34, dy + 0.03, 0.83, 0.12, 0.04, 0.05, M["mullion"])
+        face_window("bw_g", "+y", XC + 0.15, L / 2, 0.24 + 0.36, 0.50, 0.72)
+        lx_, lw, lh = XC + 0.95, 0.30, 0.30
+        box("back_louv", lx_, dy - 0.009, 0.62, lw, 0.01, lh, M["ink_black"])
+        for k in range(4):
+            box(f"back_louv_s{k}", lx_, dy + 0.004, 0.62 - lh / 2 + (k + 0.6) * lh / 4, lw - 0.03, 0.012, 0.022, M["darkmetal"])
+        for nm, zz in (("t", 0.62 + lh / 2 + 0.02), ("b", 0.62 - lh / 2 - 0.02)):
+            box(f"back_louv_{nm}", lx_, dy + 0.006, zz, lw + 0.06, 0.02, 0.04, M["stone"])
+        # North lights: the upright face of every sawtooth is glazed, as on a real sawtooth
+        # roof, with a dark room behind and cream mullions.
+        gx0, gx1 = X0 + 0.12, X1 - 0.12
+        z0, z1 = H + 0.07, H + PH - 0.07
+        for i in range(N):
+            y1 = -L / 2 + (i + 1) * TL
+            box(f"nl{i}_room", (gx0 + gx1) / 2, y1 + 0.004, (z0 + z1) / 2, gx1 - gx0, 0.006, z1 - z0, M["interior"])
+            box(f"nl{i}_glass", (gx0 + gx1) / 2, y1 + 0.010, (z0 + z1) / 2, gx1 - gx0, 0.006, z1 - z0, M["glass"])
+            for k in range(9):
+                xm = gx0 + k * (gx1 - gx0) / 8
+                box(f"nl{i}_m{k}", xm, y1 + 0.016, (z0 + z1) / 2, 0.026, 0.008, z1 - z0 + 0.04, M["mullion"])
+            box(f"nl{i}_sill", (gx0 + gx1) / 2, y1 + 0.016, z0 - 0.015, gx1 - gx0 + 0.04, 0.02, 0.03, M["stone"])
 
     # ---------------- main body ----------------
     box("body", XC, 0, H / 2, BW, L, H, M["brick"])
@@ -649,4 +838,5 @@ def build_factory(level: int) -> dict:
             box(f"aw_mh{k}", acx, wy - 0.004, asill + k * awh / 3, aww, 0.01, 0.026, M["mullion"])
 
     details(p, N, L)
+    back_side(p, N, L)
     return {"level": level, "bays": N, "objects": len(col.objects)}
