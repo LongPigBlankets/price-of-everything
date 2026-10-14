@@ -199,7 +199,7 @@ static func profile(points: PackedVector2Array, roads: Array, height: Callable, 
 	for i in range(1, points.size()):
 		for road_id in (range(roads.size()) if road_index.is_empty() else Index.query(road_index, Index.bounds(points[i-1], points[i], 0.01))):
 			var road: Dictionary = roads[road_id]
-			if road.get("over_rail",false): continue
+			if road.get("over_rail",false) or road.has("rail_crossing_mode"): continue
 			var hit: Variant = Geometry2D.segment_intersects_segment(points[i - 1], points[i], road.a, road.b)
 			if hit == null: continue
 			var p: Vector2 = hit
@@ -393,6 +393,9 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 		if _covered_fitting(switch.p,tunnels.covered_ports,portals,18): continue
 		if not _clear(switch.p, level_at, 17.0) or (burial.is_valid() and (burial.call(switch.p) as Vector2).y>0): continue
 		var h := _plan_height(switch.p, height_index, height)
+		if rail_profile.is_valid():
+			var engineered: Vector3=rail_profile.call(switch.p)
+			if engineered.z>0: h=engineered.x
 		var n: Vector2 = switch.dir.orthogonal() * float(switch.get("actuator_side", 1.0))
 		fittings.box(_v(switch.p + n * 8.5 * WIDTH_SCALE, h + 1.4, origin), Vector3(3.4, 2.4, 2.7) * WIDTH_SCALE, Color("d0aa45"))
 		fittings.tube(_v(switch.p + n * 2, h + 0.9, origin), _v(switch.p + n * 8.5 * WIDTH_SCALE, h + 0.9, origin), 0.22, WEB, 4)
@@ -404,6 +407,9 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 		if _covered_fitting(buffer.p,tunnels.covered_ports,portals,6): continue
 		if not _clear(buffer.p, level_at, 6.0) or (burial.is_valid() and (burial.call(buffer.p) as Vector2).y>0): continue
 		var h := _plan_height(buffer.p, height_index, height)
+		if rail_profile.is_valid():
+			var engineered: Vector3=rail_profile.call(buffer.p)
+			if engineered.z>0: h=engineered.x
 		var n: Vector2 = buffer.dir.orthogonal() * 4.2 * WIDTH_SCALE
 		fittings.tube(_v(buffer.p - n, h + 3.3, origin), _v(buffer.p + n, h + 3.3, origin), 0.85, Color("a9694e"), 4)
 		for sign_v in [-1, 1]: fittings.tube(_v(buffer.p + n * sign_v, h, origin), _v(buffer.p + n * sign_v, h + 3.3, origin), 0.6, WEB, 4)

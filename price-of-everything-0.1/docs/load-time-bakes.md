@@ -1,5 +1,41 @@
 # Load time: what is baked, and when to re-bake it
 
+## Stoneshore crossings and station — verified 14 October 2026
+
+The current review package is scoped to **five Stoneshore tiles**. It includes
+nine engineered road bridges, the broader depot lead and Old Quarter terminal
+station, plus regenerated terrain/detail and scenery. Whole-continent baking
+remains paused pending approval.
+
+Production baking and independent validation pass: **21 resources,
+29,491,338 bytes (28.13 MiB)**. The final package pass took 19.28s after cold
+scene preparation; it regenerated five medium and five near bakes, prepared one
+base tile and retained four base resources with identical payloads. Normal
+loading uses these installed resources; these generation times are not startup
+costs.
+
+Fresh process, Apple M5 Pro / Godot 4.6.2 Metal Forward+, disposable game:
+
+| Measurement | Time |
+|---|---:|
+| Begin ready, process elapsed | 17.486s |
+| Five-tile board preparation during loading | 1.029s |
+| Transport cache lookup/restore | 0.073s |
+| Continent resource load, five-tile preview | 0.023s |
+| First supply-chain opening after Begin | 0.275s |
+
+The ten-view far/medium/near review and separate transport capture each use
+**19 bundled hits and zero runtime bake writes**. Source fingerprints are current.
+The baker now includes adjacent relief-query memo entries, avoiding a first-open
+layout rewrite. These timings use fresh processes with warm OS filesystem caches;
+they are not cold-disk measurements and do not describe the stale full-continent
+package. The existing nonfatal ObjectDB shutdown warning remains.
+
+Twenty crossing/station checks, nine tunnel checks, the transport geometry test
+and disk-cache parity/invalidation test pass. Evidence and verification JSON are
+under `outputs/supply-chain-3d/stoneshore-crossings/` at repository root.
+
+
 ## Continuous water and closer rail planting — verified 13 October 2026
 
 The installed package contains the new cross-tile coast/lake geography, flat

@@ -76,9 +76,23 @@ static func occupied(rec: Dictionary, traffic: Array, index: Dictionary) -> bool
 				if Geometry2D.segment_intersects_segment(segment.a,segment.b,poly[i],poly[(i+1)%poly.size()])!=null: return true
 	return false
 
-static func lines(rec: Dictionary, anchor: Vector2) -> Array:
+static func connection(rec: Dictionary, anchor: Vector2, network: Array = []) -> Vector2:
+	# Stoneshore's former anchor lies behind its outward-facing throat. Join
+	# the northbound main line instead, with space for a broad curve.
+	if str(rec.tile)!="tile_5_10": return anchor
+	var target := anchor+Vector2(0,-300);var best := target;var distance := INF
+	for line in network:
+		if line.a!=rec.tile and line.b!=rec.tile: continue
+		for point in line.pts:
+			if point.p.distance_to(anchor)<150: continue
+			var d: float=point.p.distance_to(target)
+			if d<distance: best=point.p;distance=d
+	return best
+
+static func lines(rec: Dictionary, anchor: Vector2, network: Array = []) -> Array:
 	var result: Array = []
-	var routes: Array = [[anchor,world(rec,Vector2(-140,0)),world(rec,Vector2(-100,0)),world(rec,Vector2(103,0))]]
+	var throat := -280.0 if str(rec.tile)=="tile_5_10" else -140.0
+	var routes: Array = [[connection(rec,anchor,network),world(rec,Vector2(throat,0)),world(rec,Vector2(-100,0)),world(rec,Vector2(103,0))]]
 	for side in [-1,1]:
 		routes.append([world(rec,Vector2(-100,0)),world(rec,Vector2(-55,15*side)),world(rec,Vector2(103,15*side))])
 	# Two individual loading sidings terminate beside the rear of the shed.

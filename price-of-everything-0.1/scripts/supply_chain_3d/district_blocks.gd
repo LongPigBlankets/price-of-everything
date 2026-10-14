@@ -71,6 +71,7 @@ func apply(model: Dictionary, height: Callable, wet: Callable, prepared: Diction
 			for p in [Vector2(-half.x,-half.y),Vector2(half.x,-half.y),half,Vector2(-half.x,half.y)]: poly.append(s.pos+p.rotated(-float(s.get("yaw",0))))
 			obstacles.append(s.get("footprint",poly))
 	for depot in model.get("depots",[]): obstacles.append(Depot.yard_polygon(depot))
+	for station in model.get("stations",[]): obstacles.append(preload("res://scripts/supply_chain_3d/rail_station.gd").polygon(station))
 	for i in obstacles.size():
 		var box := Rect2(obstacles[i][0],Vector2.ZERO)
 		for p in obstacles[i]: box=box.expand(p)

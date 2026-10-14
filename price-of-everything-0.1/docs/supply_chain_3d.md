@@ -2381,3 +2381,57 @@ natural ground. None of 14,300 sampled terrain points reaches 95% of the new
 contrast response. This is a tunnel/shading correction, not a complete surface
 rail grading pass: an existing exposed slope near (2853,4915) still reaches 71%.
 No whole-continent package was regenerated.
+
+
+### Stoneshore crossing engineering and terminal station (14 October 2026)
+
+The five-tile 3D pilot now classifies each actual road/rail intersection before
+building it. Depot proximity uses connected rail distance (600u), with nearby
+rail junctions and six-lane roads also favouring bridges. Already buried lines
+retain their fixed bore and surface roads. Duplicate authored strokes and
+closely spaced fan movements share a crossing deck. Road approaches propagate
+through the road graph and across tile borders, with an 8% grade limit carried
+through joins to existing hillside roads. Decks include the sidewalks.
+
+The installed layout has **nine road bridges and three grouped crossings above
+already covered rail**. The quiet branch near (2798,4953) was considered for a
+level crossing, but is only 65.22u by road / 60.95u by rail from the adjacent
+bridge. Accounting for crossing widths leaves 6.68u of attainable separation,
+below the required 10.15u. It therefore also receives a bridge. The level-crossing
+implementation (level rail section, matching road surface, panels, crossbucks,
+raised barriers) is available and tested, but no site in this pilot currently
+qualifies. These are presentation traffic proxies, not simulated train frequency.
+
+| Tile | Crossing centre | Treatment / reason |
+|---|---|---|
+| tile_5_9 | (2650,4968), (2751,4995), (2696,5045), (2704,5206) | Bridges on depot approaches |
+| tile_5_9 | (2798,4953) | Bridge: insufficient ramp separation for a level crossing |
+| tile_5_10 | (2541,5338) | Bridge across rail junction movements |
+| tile_5_10 | (2700,5288), (2817,5505) | Bridges on depot approaches |
+| tile_6_9 | (2897,5331) | Bridge on depot lead |
+| tile_4_10 | (2383,5677) | Existing covered rail |
+| tile_4_9 | (2332,5320), (2385,5475) | Existing covered rail |
+
+The depot lead joins an existing mainline vertex farther north instead of doubling
+back to the old anchor. The Old Quarter terminal at (2341,5806) now has two level
+platforms, canopies, retaining walls, stairs and a street-level ticket hall. A
+small two-lane access road joins r:untitled:56 at (2296,5764). The station reserves
+its exact parcel before infill and vegetation; it is visual infrastructure, like
+the existing presentation depots. Buffers and point fittings now use the solved
+track elevation even below natural ground.
+
+Transport schema 3 stores crossing decisions with the engineered road/rail
+profiles. Source fingerprints cover the new station and crossing modules.
+The packager includes adjacent relief queries warmed after Begin, preventing an
+otherwise redundant first-process layout write. Only the five Stoneshore tiles
+were rebaked; the regular map and whole-continent package were not changed.
+
+Final geometry audit: minimum bridge clearance 8.5325u (required 8.0325u),
+maximum modified road grade 8.0%, zero open terrain cuts over hidden tracks,
+and unchanged flat buried rail. Estimated buildable frontage remains 76.65%
+(39.58% of all roadside length); no decorative street or building overlaps.
+Twenty crossing/station assertions and nine tunnel-datum assertions pass, as do
+transport geometry and disk-cache restore/parity checks. The pre-existing steep
+surface rail near (2853,4915) remains a separate rail-profile issue.
+
+Evidence: `outputs/supply-chain-3d/stoneshore-crossings/` at repository root.

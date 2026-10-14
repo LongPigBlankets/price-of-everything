@@ -6,7 +6,7 @@ const DEPTH := 14.0
 const APPROACH := 180.0
 const MAX_APPROACH_GRADE := 0.12
 
-static func solve(plan: Dictionary, height: Callable, level: Callable, requested: Callable, yard_distance: Callable) -> Dictionary:
+static func solve(plan: Dictionary, height: Callable, level: Callable, requested: Callable, yard_distance: Callable, stations: Array = []) -> Dictionary:
 	var nodes := {}; var profiles: Array = []; var junctions := {}
 	for corridor in plan.corridors:
 		var samples: Array = []
@@ -64,6 +64,14 @@ static func solve(plan: Dictionary, height: Callable, level: Callable, requested
 	# Overlapping approaches must never deform a neighbouring covered datum.
 	for component in components:
 		for key in component.nodes: nodes[key].h=component.datum
+	# A terminus in an open cutting needs level platforms. Extend the nearby
+	# bore datum along its short surfaced tail, while leaving the roof open.
+	for station in stations:
+		var platform_nodes: Array=[];var datum := INF
+		for node in nodes.values():
+			if preload("res://scripts/supply_chain_3d/rail_station.gd").contains_track(station,node.p):
+				platform_nodes.append(node);datum=minf(datum,node.h)
+		for node in platform_nodes: node.h=datum
 	var tracks: Array = []
 	for prof in profiles:
 		for i in range(1,prof.samples.size()):
