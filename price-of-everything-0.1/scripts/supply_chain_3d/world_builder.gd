@@ -23,6 +23,7 @@ var road_grade := RoadGrade.new()
 var road_alignment := preload("res://scripts/supply_chain_3d/road_alignment.gd").new()
 var rail_urban := RailUrban.new()
 var rail_plan := {}
+var sea_fringe := preload("res://scripts/supply_chain_3d/sea_fringe.gd").new()
 var depots: Array = []
 var stations: Array = []
 var neighbourhood := {}
@@ -154,7 +155,7 @@ func prepare_transport(model: Dictionary) -> void:
 		road_grade.configure(roads,formation_height,authored_profile)
 		stages.grading_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
 		rail_plan=Railway.network(lines)
-		rail_urban.configure(tiles,road_grade.segments,road_grade.junctions,rail_plan,depots,railway_ground_height,railway_level,stations)
+		rail_urban.configure(tiles,road_grade.segments,road_grade.junctions,rail_plan,depots,railway_ground_height,railway_level,stations,model.get("standing",[]),standing_key)
 		road_grade.bridge_rail_junctions(rail_plan,railway_ground_height,rail_urban.buried)
 		preload("res://scripts/supply_chain_3d/rail_crossings.gd").build(road_grade,rail_plan,rail_urban,depots)
 		stages.rail_ms=(Time.get_ticks_usec()-tick)/1000.0
@@ -168,6 +169,7 @@ func prepare_transport(model: Dictionary) -> void:
 	print("[TRANSPORT] ",JSON.stringify(stages))
 
 func configure_bakes(model: Dictionary) -> void:
+	sea_fringe.configure(tiles,ground.get("tiles"))
 	# Hash actual geography, never an instance ID: this survives a fresh process.
 	_map_key = BakeCache.digest([BakeCache.source_key("terrain"), ground.get("tiles"), ground.get("bands"),
 		ground.get("lakes"), ground.get("rivers"), MapStyle.band_colors(), MapStyle.sea_colors(),
@@ -1081,6 +1083,7 @@ func tile_node(tid: String) -> Node3D:
 		for j in steps:
 			var pa := a.lerp(b, float(j) / steps)
 			var pb := a.lerp(b, float(j + 1) / steps)
+			if sea_fringe.contains((pa+pb)*.5+((pa+pb)*.5-center).normalized()*.5):continue
 			var ah := surface_height(pa)
 			var bh := surface_height(pb)
 			# Coast cutaways keep the original blue water depth above the strata;
@@ -1431,6 +1434,7 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 		cars.append_array(infrastructure_bake.cars)
 		glows.append_array(infrastructure_bake.glows)
 		pylon_layout = infrastructure_bake.pylons
+		_append_sea_fringe(root,infrastructure_bake.get("sea_fringe",{}))
 		if build_roads and bool(show["roads"]):
 			for tid in tiles: append_road(root, str(tid))
 			road_surface.finish_build()
@@ -1502,6 +1506,8 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 				previous = current
 	if bool(show.get("decor",true)):
 		Railway.append_mesh(tubes,preload("res://scripts/supply_chain_3d/neighbourhood_art.gd").mesh(model.get("neighbourhood",{}),origin,surface_height))
+	var sea_bake := sea_fringe.bake(origin) if not sea_fringe.strips.is_empty() else {}
+	_append_sea_fringe(root,sea_bake)
 	var tube_mesh := tubes.mesh()
 	var detail_mesh := details.mesh()
 	root.add_child(Geo.instance(tube_mesh, mat))
@@ -1511,10 +1517,17 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 	_prepared_rail_art.clear()
 	if _scenery_key != "":
 		infrastructure_bake = {"key": cache_key, "streets": street_mesh, "tubes": tube_mesh, "details": detail_mesh,
-			"rail_overview": rail_overview, "rail_near": rail_near,
+			"rail_overview": rail_overview, "rail_near": rail_near, "sea_fringe":sea_bake,
 			"cars": cars.duplicate(true), "glows": glows.slice(glow_start).duplicate(true), "pylons": pylon_layout}
 		bake_cache.write(_scenery_key, scenery_data())
 	return root
+
+func _append_sea_fringe(root: Node3D, data: Dictionary) -> void:
+	if data.is_empty():return
+	for pair in [["top",mat],["lip",mat],["rim",strata_material()]]:
+		var node := Geo.instance(data[pair[0]],pair[1])
+		node.name="SeaMargin"+str(pair[0]).capitalize()
+		root.add_child(node)
 
 static func standing_key(s: Dictionary) -> String:
 	if s.has("harbour"): return ""

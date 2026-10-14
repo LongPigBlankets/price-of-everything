@@ -44,6 +44,8 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 		{"name": "town", "point": board._model.tiles.tile_4_9.center, "span": 600.0, "pitch": 0.95, "yaw": 0.0},
 		{"name": "old-quarter", "point": board._model.tiles.tile_4_10.center, "span": 480.0, "pitch": 1.05, "yaw": 0.35},
 		{"name": "harbour", "point": Vector2(2640, 5840), "span": 650.0, "pitch": 0.95, "yaw": 0.35}]
+	views.append({"name":"docks-centre","point":board._model.tiles.tile_5_10.center,"span":550.0,"pitch":1.05,"yaw":0.0})
+	views.append({"name":"docks-north","point":Vector2(2700,5370),"span":330.0,"pitch":.95,"yaw":.3})
 	var report := {"engine": Engine.get_version_info().string, "views": [], "tiles": board._model.tiles.keys(), "open_ms": open_ms, "load": board.load_profile, "first_open":first_open}
 	if "--stoneshore-review" in OS.get_cmdline_user_args() and "--stoneshore-baseline" not in OS.get_cmdline_user_args():
 		var counts := {}
@@ -174,6 +176,16 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 			assert(report.interiors.rows.get("2",0)>=10 and report.interiors.rows.get("3",0)>0,"Missing second/third housing rows")
 			assert(report.interior_audit.parcel_intrusions.is_empty(),"Brownfield parcel is occupied")
 			assert(report.footprint_audit.building_overlaps.is_empty() and report.footprint_audit.street_overlaps.is_empty(),"Block interiors overlap buildings or roads")
+	report.docks_rails=_docks_rail_audit(board)
+	report.skyline=[]
+	for s in board._model.standing:
+		if s.has("trial_skyline"):report.skyline.append({"iid":s.iid,"p":s.pos,"distance":s.pos.distance_to(s.trial_skyline),"asset":board._builder.standing_key(s)})
+	report.sea_margin={"fraction":board._builder.sea_fringe.FRACTION,"edges":board._builder.sea_fringe.strips.size()}
+	if "--draft-review" not in OS.get_cmdline_user_args():
+		assert(report.docks_rails.yard_height_error<.01 and report.docks_rails.hidden_yard_samples==0,"Docks working yard must remain open at its original elevation")
+		assert(report.docks_rails.building_conflicts.is_empty() and report.docks_rails.parallel_road_conflicts.is_empty(),"Docks rail still overlaps buildings or parallel road surfaces")
+		assert(report.skyline.size()==3,"Missing central Docks skyline landmarks")
+		assert(report.sea_margin.edges>0,"Missing water-only sea margin")
 	report.final_cache = {"hits":board._builder.bake_cache.hits, "bundled_hits":board._builder.bake_cache.bundled_hits, "writes":board._builder.bake_cache.writes}
 	FileAccess.open(output.path_join("report.json"), FileAccess.WRITE).store_string(JSON.stringify(report, "\t"))
 
@@ -215,3 +227,39 @@ func _footprint_audit(board: Control) -> Dictionary:
 					for k in poly.size(): overlap=overlap or fit.distance_to_polygon(poly[k],poly[(k+1)%poly.size()],shape)<0.001
 					if overlap: result.building_overlaps.append([s.iid,other.iid])
 	return result
+
+func _docks_rail_audit(board: Control) -> Dictionary:
+	var b: RefCounted=board._builder
+	var clearance := preload("res://scripts/supply_chain_3d/rail_clearance.gd")
+	var rail := preload("res://scripts/supply_chain_3d/railway.gd")
+	var fit := preload("res://scripts/supply_chain_3d/road_placement.gd")
+	var index := preload("res://scripts/supply_chain_3d/road_index.gd")
+	var buildings: Array=[]
+	for s in board._model.standing:
+		if str(s.tile)!="tile_5_10" or str(s.kind) in ["pylon","port"] or s.has("harbour") or s.get("decor_family","") in ["civic_grove","civic_park","civic_plaza","civic_pond"]:continue
+		var key: String=b.standing_key(s)
+		if key!="":buildings.append({"id":s.iid,"polygons":clearance.building_polygons(s,key)})
+	var road_index: Dictionary=index.segments(b.road_grade.segments,24)
+	var report := {"building_conflicts":[],"parallel_road_conflicts":[],"covered_length":0.0,"yard_height_error":0.0,"hidden_yard_samples":0}
+	for t in b.rail_urban.tracks:
+		var p: Vector2=(t.a+t.b)*.5
+		if not index.contains(board._model.tiles.tile_5_10.center,p):continue
+		for depot in b.depots:
+			if Geometry2D.is_point_in_polygon(p,preload("res://scripts/supply_chain_3d/rail_depot.gd").yard_polygon(depot)):
+				report.yard_height_error=maxf(report.yard_height_error,maxf(absf(t.ha-t.base_a),absf(t.hb-t.base_b)))
+				if t.hidden_a or t.hidden_b:report.hidden_yard_samples+=1
+		if t.hidden_a or t.hidden_b:
+			report.covered_length+=t.a.distance_to(t.b);continue
+		for building in buildings:
+			for poly in building.polygons:
+				if fit.distance_to_polygon(t.a,t.b,poly)<rail.CORRIDOR_WIDTH*.5:
+					report.building_conflicts.append({"building":building.id,"p":p});break
+		for ri in index.query(road_index,index.bounds(t.a,t.b,24)):
+			var road: Dictionary=b.road_grade.segments[ri]
+			if absf((t.b-t.a).normalized().dot((road.b-road.a).normalized()))<.95:continue
+			var q := Geometry2D.get_closest_point_to_segment(p,road.a,road.b)
+			if q.distance_to(p)>=float(road.half)+rail.CORRIDOR_WIDTH*.5:continue
+			var road_h := lerpf(road.ha,road.hb,road.a.distance_to(q)/maxf(.001,road.a.distance_to(road.b)))
+			if road_h-.5-((t.ha+t.hb)*.5+1.25)<rail.CLEARANCE:
+				report.parallel_road_conflicts.append({"road":road.source,"p":p})
+	return report

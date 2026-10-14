@@ -29,7 +29,7 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 	var index := Index.tiles(centers)
 	var report := {"tiles":centers,"rail_datums":b.rail_urban.components,"portals":[],"runs":[],"corridors":[],"road_bridges":b.road_grade.bridges,"crossings":b.road_grade.crossings,"stations":b.stations,
 		"visible_length":0.0,"hidden_length":0.0,"hidden_open_cut_length":0.0,"steep_visible_length":0.0,
-		"max_visible_grade":0.0,"max_buried_grade":0.0,"fully_hidden_open_cut_length":0.0,"shading_samples":[],"views":[]}
+		"max_visible_grade":0.0,"max_buried_grade":0.0,"max_portal_grade":0.0,"fully_hidden_open_cut_length":0.0,"shading_samples":[],"views":[]}
 	for crossing in report.crossings:
 		crossing.road_height=b.road_grade.height_at(crossing.p,0)
 		crossing.surface_above_rail=crossing.road_height+1.09-(crossing.bed+1.25)
@@ -75,6 +75,7 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 			var road: float=b.road_grade.earth_height(p,ground)
 			var surface: float=b.surface_height(p)
 			var grade: float=absf(z.h-a.h)/maxf(.001,length)
+			if a.hidden!=z.hidden:report.max_portal_grade=maxf(report.max_portal_grade,grade)
 			var record := {"p":p,"tile":tid,"hidden":hidden,"lowering":b.rail_urban.lowering(p),"buried_by_roads":b.rail_urban.buried(p),
 				"start":a.p,"end":z.p,"start_height":a.h,"end_height":z.h,
 				"start_lowering":b.rail_urban.lowering(a.p),"end_lowering":b.rail_urban.lowering(z.p),

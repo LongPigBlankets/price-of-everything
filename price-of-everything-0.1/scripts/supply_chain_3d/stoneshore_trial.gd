@@ -101,6 +101,19 @@ static func populate(model: Dictionary, terrain: Node = null) -> void:
 					"kind":"house","tile":tid,"pos":p,"side":side,"pad":side,"level":1,
 					"decor_family":family,"trial_green":true,"fixed_plot":true,"space_slot":str(i),
 					"sprite":null,"polluting":false,"max_relief":0.8 if family=="civic_pond" else 2.0,"name":"Wooded pond" if family=="civic_pond" else "Neighbourhood green"})
+	# Three compact skyline landmarks take precedence over small decorative plots.
+	# Their half-scale footprints use the existing prepared meshes at every LOD.
+	if model.tiles.has("tile_5_10"):
+		var center: Vector2=model.tiles.tile_5_10.center
+		for i in 3:
+			var family := "civic_u_office" if i==2 else "towers"
+			var level := 1 if i!=1 else 2
+			var side := 45.3 if i==2 else (30.0 if i==0 else 34.0)
+			model.standing.append({"iid":"z0_docks_skyline:%d"%i,"kind":"house","tile":"tile_5_10",
+				"pos":center+[Vector2(-60,-5),Vector2(-30,50),Vector2(-90,65)][i],
+				"side":side,"pad":side,"level":level,"decor_family":family,"decor_scale":DECOR_SCALE,
+				"trial_skyline":center,"trial_max_distance":135.0,"trial_density":true,
+				"polluting":false,"max_relief":6.0,"sprite":null,"name":"Docks skyline"})
 	# Reserve one factory first, on the landward approach to the actual harbour.
 	for port in model.standing.duplicate():
 		if str(port.tile) not in TILES or not port.has("harbour"): continue
