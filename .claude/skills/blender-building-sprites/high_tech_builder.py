@@ -49,6 +49,10 @@ PALETTE["pcb_lo"] = (0.035, 0.180, 0.070)
 PALETTE["crate"] = (0.052, 0.055, 0.062)        # sleepers and wheels (the assembly plant's)
 PALETTE["rack"] = (0.070, 0.080, 0.095)
 PALETTE["rack_face"] = (0.160, 0.175, 0.200)
+# Catalogue-plate pass: a pale coping caps every parapet, and a dark plinth carries every
+# wall, so each block reads as base, wall and top at poster scale.
+PALETTE["ht_coping"] = (0.640, 0.620, 0.570)
+PALETTE["ht_plinth"] = (0.130, 0.135, 0.140)
 ROLES["ht_accent"] = "orange"
 ROLES["robot"] = "orange"
 ROLES["ht_brick"] = "brick_orange"
@@ -58,6 +62,8 @@ ROLES["pcb_lo"] = "pcb_lo"
 ROLES["crate"] = "crate"
 ROLES["rack"] = "rack"
 ROLES["rack_face"] = "rack_face"
+ROLES["ht_coping"] = "ht_coping"
+ROLES["ht_plinth"] = "ht_plinth"
 
 HT_LEVELS = {
     1: dict(steps=2, back=3.60, upper_room=False, lasers=1, mast=False, tray=False, ahus=1,
@@ -85,6 +91,8 @@ STEP_H = (3.05, 3.05)              # the two flat blocks are LEVEL (owner): one 
 STEP2_Y1 = 2.00
 STEP3_X1 = 1.20                    # unused since the rear block went full width; kept for the mast
 PARAPET_H, PARAPET_W = 0.14, 0.10
+COPING_H, COPING_OVER = 0.07, 0.05  # coping overhangs the parapet on both sides
+PLINTH_H, PLINTH_OUT = 0.18, 0.035  # plinth stands proud of the wall face
 SPLIT = 1.00                       # brick below, white above
 GX0 = 0.20
 GY1 = -0.60
@@ -136,12 +144,46 @@ def _parapet(K, tag, x0, x1, y0, y1, z, skip=()):
         if t in skip:
             continue
         K.box("par_%s_%s" % (tag, t), bx, by, z + PARAPET_H / 2, sx, sy, PARAPET_H, K.mat("wall_bright"))
-        K.box("cop_%s_%s" % (tag, t), bx, by, z + PARAPET_H + 0.02, sx + 0.03, sy + 0.03, 0.04,
-              K.mat("gear"))
+        K.box("cop_%s_%s" % (tag, t), bx, by, z + PARAPET_H + COPING_H / 2, sx + 2 * COPING_OVER,
+              sy + 2 * COPING_OVER, COPING_H, K.mat("ht_coping"))
 
 
-def _block(K, tag, x0, x1, y0, y1, h, skip=()):
+def _plinth(K, tag, x0, x1, y0, y1, gaps=()):
+    """A dark base course round a footprint. `gaps` are (face, a, b) spans left open for a
+    door that reaches the ground: face '+X'/'-Y', a..b along that face."""
+    runs = {"-Y": (x0, x1), "+Y": (x0, x1), "-X": (y0, y1), "+X": (y0, y1)}
+    for face, (a, b) in runs.items():
+        cuts = sorted((g[1], g[2]) for g in gaps if g[0] == face)
+        spans, at = [], a - PLINTH_OUT
+        for ga, gb in cuts:
+            spans.append((at, ga))
+            at = gb
+        spans.append((at, b + PLINTH_OUT))
+        for i, (sa, sb) in enumerate(spans):
+            if sb - sa < 0.02:
+                continue
+            m = (sa + sb) / 2
+            if face in ("-Y", "+Y"):
+                yy = y0 if face == "-Y" else y1
+                K.box("plinth_%s_%s%d" % (tag, face, i), m, yy, PLINTH_H / 2, sb - sa, 2 * PLINTH_OUT, PLINTH_H,
+                      K.mat("ht_plinth"))
+            else:
+                xx = x1 if face == "+X" else x0
+                K.box("plinth_%s_%s%d" % (tag, face, i), xx, m, PLINTH_H / 2, 2 * PLINTH_OUT, sb - sa, PLINTH_H,
+                      K.mat("ht_plinth"))
+
+
+def _punched(K, tag, face, at, along, z, w, h, rows=2):
+    """A row of small separate windows (the poster's rhythm), centred on the listed positions
+    along the face."""
+    for i, a in enumerate(along):
+        centre = (at, a, z) if face in ("+X", "-X") else (a, at, z)
+        K.window("%s%d" % (tag, i), face, centre, w, h, cols=1, rows=rows)
+
+
+def _block(K, tag, x0, x1, y0, y1, h, skip=(), gaps=()):
     _two_tone_box(K, "blk_%s" % tag, (x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0, h)
+    _plinth(K, tag, x0, x1, y0, y1, gaps)
     K.box("roof_%s" % tag, (x0 + x1) / 2, (y0 + y1) / 2, h + 0.03, x1 - x0 - 0.02, y1 - y0 - 0.02, 0.06,
           K.mat("roof_deck"))
     _parapet(K, tag, x0, x1, y0, y1, h, skip)
@@ -156,6 +198,10 @@ def _front_hall(K, pane, seam):
     K.box("hall_floor", (X0 + X1) / 2, (FY0 + FY1) / 2, 0.05, X1 - X0, FY1 - FY0, 0.10, K.mat("yard_pad"))
     # Front wall left of the glass corner, two-toned, up to the eave.
     _two_tone_box(K, "front_wall", (X0 + GX0) / 2, FY0 + WALL_T / 2, GX0 - X0, WALL_T, z0 - 0.02)
+    _plinth(K, "front", X0, GX0, FY0, FY0 + WALL_T)
+    # Small windows along the front wall, clear of the entrance canopy (x -0.70..0.20).
+    _punched(K, "fw_hi", "-Y", FY0, (-2.55, -1.95, -1.35), 1.52, 0.26, 0.42)
+    _punched(K, "fw_lo", "-Y", FY0, (-2.55, -1.95, -1.35), 0.58, 0.24, 0.34, rows=1)
     # Left end wall: rectangle to SPLIT in brick, trapezoid above in white.
     K.box("end_wall_lo", X0 + WALL_T / 2, (FY0 + FY1) / 2, SPLIT / 2, WALL_T, FY1 - FY0, SPLIT,
           K.mat("ht_brick"))
@@ -482,8 +528,10 @@ def build_high_tech(level: int = 2) -> dict:
     # Step 2 first: its front face is the hall's rear wall and must exist before the hall.
     # With the two flat blocks level, the rim between them is left out where they abut so the
     # roof reads as one deck; step 2's back rim survives only beyond step 3's narrower plan.
-    _block(K, "s1", X0, X1, 0.0, STEP2_Y1, STEP_H[0], skip=("b",) if p["steps"] == 3 else ())
-    K.window("sw0", "+X", (X1, 1.45, STEP_H[0] - 0.75), 1.00, 0.42, cols=4, rows=1)
+    _block(K, "s1", X0, X1, 0.0, STEP2_Y1, STEP_H[0], skip=("b",) if p["steps"] == 3 else (),
+           gaps=(("+X", 0.13, 0.87),))
+    # Small windows over the goods door, where the strip window used to run behind the conduits.
+    _punched(K, "sw0_", "+X", X1, (0.30, 0.70), STEP_H[0] - 0.75, 0.24, 0.42)
     _front_hall(K, pane, seam)
     _racks(K, p["racks"])
     _cell(K, p["robots"])
@@ -492,11 +540,16 @@ def build_high_tech(level: int = 2) -> dict:
         rx1 = p["rx1"]
         _block(K, "s2", X0, rx1, STEP2_Y1, p["back"], STEP_H[1], skip=("f",))
         if rx1 > X1 + 0.05:
+            # The rear block's exposed front face beside the first block.
+            _punched(K, "s2fw", "-Y", STEP2_Y1, ((X1 + rx1) / 2,), STEP_H[1] - 0.80, 0.28, 0.42)
+        if rx1 > X1 + 0.05:
             _parapet(K, "s2f", X1, rx1, STEP2_Y1, STEP2_Y1 + PARAPET_W + 0.02, STEP_H[1],
                      skip=("b", "l"))
         # Window strip high on the +X face, above the rail canopy when there is one.
-        K.window("sw1", "+X", (rx1, (STEP2_Y1 + p["back"]) / 2, STEP_H[1] - 0.42),
-                 p["back"] - STEP2_Y1 - 0.70, 0.32, cols=5, rows=1)
+        n = 4 if p["back"] - STEP2_Y1 > 2.0 else 3
+        span = p["back"] - STEP2_Y1 - 0.80
+        _punched(K, "sw1_", "+X", rx1, [STEP2_Y1 + 0.40 + span * i / (n - 1) for i in range(n)],
+                 STEP_H[1] - 0.48, 0.22, 0.36)
         if p["rail"]:
             _rail_bay(K, p)
     for i in range(p["ahus"]):

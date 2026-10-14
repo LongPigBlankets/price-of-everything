@@ -3,6 +3,9 @@ extends Node
 ## background at the board's home angle, for catalogue-plate mock-ups.
 ## AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_chain_3d/catalog_plate.tscn -- --no-telemetry
 ##   --asset=high_tech_manufactory_lvl3 --out=<dir> [--palette=res://tools/supply_chain_3d/catalog_plate_poster_palette.json] [--strong-faces] [--ink=1.8]
+## --dir=res://assets/supply_chain_3d_trial draws a trial export instead of the shipped model:
+##   POE_MODEL_OUTPUT=<tmp> blender -b --factory-startup --python tools/supply_chain_3d/export_models.py -- <family>
+##   then copy the GLBs into that folder and import (the shipped models and sprites stay untouched).
 ## Prints the mesh's vertex colours with their share of the surface, so a palette remap
 ## (the equivalent of re-colouring the Blender materials) can be written against them.
 const Assets := preload("res://scripts/supply_chain_3d/assets.gd")
@@ -20,16 +23,23 @@ func _ready() -> void:
 	var palette := {}
 	var strong_faces := false
 	var ink_width := 1.0
+	var directory := ""
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--asset="): key = argument.trim_prefix("--asset=")
 		if argument.begins_with("--out="): out = argument.trim_prefix("--out=")
 		if argument == "--strong-faces": strong_faces = true
+		if argument.begins_with("--dir="): directory = argument.trim_prefix("--dir=")
 		if argument.begins_with("--ink="): ink_width = float(argument.trim_prefix("--ink="))
 		if argument.begins_with("--palette="):
 			palette = JSON.parse_string(FileAccess.get_file_as_string(argument.trim_prefix("--palette=")))
 	DirAccess.make_dir_recursive_absolute(out)
 	Assets.set_grade(Vector2(-100000, 100000))
 	var mesh := Assets.mesh_for(key)
+	var contour := Assets.contour_for(key)
+	if directory != "":
+		# A trial export in another folder, drawn with the board's own materials.
+		mesh = _mesh_from(directory.path_join(key + ".glb"), mesh.surface_get_material(0))
+		if contour != null: contour = _mesh_from(directory.path_join(key + "_contour.glb"), contour.surface_get_material(0))
 	_report(mesh)
 	if not palette.is_empty(): mesh = _remapped(mesh, palette)
 	var print_material := mesh.surface_get_material(0) as ShaderMaterial
@@ -61,7 +71,6 @@ func _ready() -> void:
 	var building := MeshInstance3D.new()
 	building.mesh = mesh
 	viewport.add_child(building)
-	var contour := Assets.contour_for(key)
 	if contour != null:
 		var outline := MeshInstance3D.new()
 		outline.mesh = contour
@@ -82,10 +91,19 @@ func _ready() -> void:
 		RenderingServer.force_draw(false)
 		await get_tree().process_frame
 	var image := viewport.get_texture().get_image()
-	var name := key + ("_palette" if not palette.is_empty() else "") + ("_faces" if strong_faces else "") + ("_ink" if ink_width != 1.0 else "") + ".png"
+	var name := key + ("_trial" if directory != "" else "") + ("_palette" if not palette.is_empty() else "") + ("_faces" if strong_faces else "") + ("_ink" if ink_width != 1.0 else "") + ".png"
 	image.save_png(out.path_join(name))
 	print("[PLATE] saved ", name)
 	get_tree().quit()
+
+func _mesh_from(path: String, material: Material) -> Mesh:
+	var root := (load(path) as PackedScene).instantiate()
+	var nodes := root.find_children("*", "MeshInstance3D", true, false)
+	if root is MeshInstance3D: nodes.push_front(root)
+	var mesh: Mesh = (nodes[0] as MeshInstance3D).mesh
+	root.free()
+	for surface in mesh.get_surface_count(): mesh.surface_set_material(surface, material)
+	return mesh
 
 func _report(mesh: Mesh) -> void:
 	var share := {}
