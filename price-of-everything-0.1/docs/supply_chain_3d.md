@@ -1930,3 +1930,424 @@ validates all 1,803 resources and totals 1,053,343,125 bytes. A fresh process re
 all-tiles ready in 4,984.234 ms (3,834.773 ms board construction), with three bundled
 hits, zero misses and zero runtime writes; this is a single run. The wider suite
 reports 1,595 passes and the same three existing asset-version audit failures.
+
+### Farm road clearance and intermediate 3D relief (13 October 2026)
+
+Farm soil now subtracts the same final road corridors that exclude crop cells:
+road casing plus a 1u verge, including bends, junctions and rounded dead ends.
+This fixes soil (lifted 1.25u) covering lower road surfaces. Tunnel segments do
+not remove fields. A short enclosed segment is partitioned into simple polygons
+so a hole is not accidentally filled by triangulation. Far crop ribbons reserve
+their full pitch, and medium/near crop instances retain their source scale.
+
+The 3D board adds half-level terraces from 1.5 to 9.5. The regular map's authored
+hill JSON, navigation bands, whole-level summit heights and coastline are kept.
+`tools/supply_chain_3d/bake_half_relief.py` derives contours midway between adjacent
+authored bands using distance transforms, ignoring isolated hills without a
+higher contour. It writes `data/supply_chain_half_relief.json` (438 contours,
+1.22 MB), consumed only by the 3D adapter. Existing mountain amplification applies
+after interpolation; for example, level 4.5 stands at 88u between L4 at 77u and
+L5 at 99u. Terrain colours interpolate through the same half levels. Original
+paint order is retained, including valleys painted over mountains.
+
+`coast.gd.ground_for` defaults to the original integer-band sampler for depot
+seeding; `board.gd` explicitly opts into intermediate terrain. These samplers
+have separate caches, preventing a visual terrain change from moving regular-map
+depots. The shared 2D sampler and source hill data are not edited.
+
+To refresh the derivative (Python with NumPy and SciPy), then the production
+package:
+
+```bash
+python3 tools/supply_chain_3d/bake_half_relief.py
+python3 tools/supply_chain_3d/bake_half_relief.py --check
+```
+
+Follow the full package build/validation/fresh-start procedure in
+`docs/load-time-bakes.md`; contour data, sampler and palette changes participate
+in terrain fingerprints. Farm clearance participates in scenery/detail keys.
+A focused capture alone does not refresh production assets.
+
+Focused regression commands:
+
+```bash
+godot --headless --path . tests/test_runner.tscn -- --tags supply_chain_3d --test farm
+godot --headless --path . tests/test_runner.tscn -- --tags supply_chain_3d --test half_relief
+```
+
+These cover projected triangle overlap with road surfaces, enclosed holes,
+tunnels, explicit crop LODs, actual fractional-height terraces, unchanged
+whole-level summits, isolated depot sampling and derived-data freshness.
+
+
+## Standard residential height — 13 October 2026
+
+`building_scale.gd` fixes each ordinary `house_lvl1/2/3` asset at 50u from
+its base to its roof, independent of the fitted footprint. Width, depth,
+placement and foundation clearance stay as authored; towers, offices, public
+spaces and playable/NPC facilities keep their existing heights. The rule only
+belongs to the 3D supply-chain renderer.
+
+The same scale feeds live meshes and contours, medium cards, continent
+MultiMeshes and visibility bounds. The sprite shader transforms the source
+image plane and depth ray through the full instance basis and selects the
+atlas pitch in local space, so independently scaling height does not merely
+stretch a screen-facing image. Uniformly scaled trees and other assets retain
+their original projection. Existing colour/depth atlases remain reusable.
+
+A separate `buildings` bake fingerprint refreshes scenery frames, continent
+transforms and visibility metadata without invalidating road engineering,
+per-tile terrain textures or prepared local detail. Use the production package
+baker and fresh-process checks described in `load-time-bakes.md`.
+
+
+## Rail vegetation and medium track detail — 13 October 2026
+
+Vegetation clearance uses `rail_vegetation.gd`, prepared from the same curved,
+graded corridor profiles and tunnel cutoffs as the visible railway. It reserves
+tree-canopy clearance beside exposed track, ballast embankments, open cuts,
+road bridges, portal approaches/collars and depot yards. Fully covered tunnels
+can retain vegetation. The clearance index also excludes close ground clutter.
+
+Rural rail corridors propose two staggered rows on both sides, with a third on
+some stretches, 13u apart along the line and 10.5u between rows. Small broadleaf
+and occasional fir trees use 50% of their initial size (8.5–10.5u projected
+height); the denser rows keep a 25u first-row setback. Other trees deterministically
+choose 100%, 75% or 50% of their original size. Existing trees within the rail-side
+belt also use only 50%. This scales the complete tree, including its shadow,
+canopy clearance, sprite and near mesh. Rows follow curves;
+bridges and hidden sections do not generate candidates. Existing fields,
+buildings, roads, pipelines, rivers, nearby trees and steep ground can interrupt
+planting. No rural rows are added inside urban tiles. Positions are deterministic
+and the accepted placements/shadows are shared by all LODs.
+
+Medium/far rail linework now uses continuous matte track bands. The old bright
+steel heads, sleepers and tiny switch fittings were geometry rendered at every
+zoom, not a reflective material; their subpixel detail produced the sparkly,
+pixelated appearance. The detailed mesh is retained for near LOD, while ballast,
+embankments, bridges and tunnel mouths remain at every tier. These two detail
+meshes have nonoverlapping LOD ranges.
+
+Cold generation builds railway art once before placing trees, then reuses those
+meshes in infrastructure. Scenery cache lookup happens before this work. The
+saved scenery includes the clearance index and both rail detail meshes. Changes
+to vegetation also invalidate prepared tile tree cards/clutter; unchanged terrain
+geometry and matching medium/near texture resources can still be reused by the
+production baker. Regular-map assets and its rendering code are untouched.
+
+The revised production package is installed and independently validated: 600
+tiles, 1,806 resources, 1,452,283,259 bytes. Fresh-process review matches the
+preview at all three zoom levels and in Stoneshore/Capital Port, with current
+fingerprints, 343 bundled reads and no runtime writes. It counts 22,576 trees:
+20,375 at 50%, 1,140 at 75%, and 1,061 at 100%. The 17,892 rail-row trees span
+158 rural tiles and all use 50%; clearance and rail-side sizing audits find no
+violations. The same-camera `rural-rail-old-linework` capture deliberately forces
+the detailed rail mesh at medium zoom to isolate the previous sparkle.
+
+Focused vegetation/size/LOD tests pass 24 assertions. First opening measures
+2.56 s, continent loading 0.60 s, and Begin 24.98 s in a fresh process with warm
+OS filesystem caches. Full preparation during loading is 8.69 s; the startup
+probe uses 100 bundled reads and no writes. See `docs/load-time-bakes.md` for
+package generation counts and measurement limits; captures and reports are in
+repository-root `outputs/supply-chain-3d/rail-vegetation/`.
+# Continuous water geography and closer rail planting (13 October 2026)
+
+The 3D board uses `data/supply_chain_water.json` for coast/lake geometry. The
+regular map continues to read its original authored geography. Global water
+shapes and shoreline ribbons are calculated before tile clipping, so a clipped
+polygon closing edge cannot become an artificial beach across a lake.
+
+Coasts vary within 20u outward and 5u inward, including 82 small offshore islets.
+Lakes can extend across tile boundaries on the same 3D plateau. Their masks
+exclude other land levels and leave at least 1u of dry terrain at the plateau
+edge. The baked minimum is slightly larger to absorb polygon simplification and
+float32 coordinate conversion. Constrained boundaries vary inward as well.
+Banks are 3u high in displayed space, including under mountain amplification.
+Lake water has flat normals and is protected from road/rail earthwork warping.
+The outer map's finite tile boundary remains the board boundary.
+
+`water_geography.gd` reads the prepared polygons, indexes lake and shoreline
+queries, and partitions cold-generated terrain along the lake edge and lip.
+Production terrain textures, meshes and visibility bounds contain the result;
+normal loading does not run Python/Shapely or regenerate shorelines.
+
+To regenerate geography after changing authored hills, 3D plateau/rise inputs
+or the water generator:
+
+1. Run `godot --headless --path . tools/supply_chain_3d/export_water_inputs.tscn`.
+   It exports actual plateau/rise boundaries and original authored lakes to
+   `/private/tmp/water-inputs.json`. The full map review with
+   `--audit-transport` exports the transport audit from a real loaded game.
+2. Run `python3 tools/supply_chain_3d/bake_water_geography.py` in an environment
+   with NumPy and Shapely installed, then
+   `python3 tools/supply_chain_3d/verify_water_geography.py`.
+3. Run the water and rail vegetation tests, render the focused water check or
+   full map review, and regenerate/validate/install the production package using
+   `docs/load-time-bakes.md`. Do not stop after the focused preview.
+
+Rail-side trees remain 50% size, spaced 13u along each row. Their first-row
+canopy-to-track gap is now one third of the former gap, measured from the actual
+canopy and track edge. Rows on both sides use independent phases, starts and
+ends. Earthwork toes, bridges, portals, depot yards and other existing clearance
+rules still take precedence.
+
+The read-only transport audit found 48 same-height candidate overlap runs over
+10u, plus 324 elevated runs classified separately. Railway route cost currently
+avoids buildings and water but lacks road corridor clearance; crossing treatment
+does not resolve parallel footprints. Recommended repairs and exact coordinates
+are in `../outputs/supply-chain-3d/water-greenery/transport-overlap-review.md`.
+No dedicated overlap-repair or rerouting rules are part of this change. The
+transport bake was regenerated against the updated water/terrain. The final
+audit uses a fully loaded game's mine/depot/river/navigation context and the
+current installed transport key.
+
+### District building additions (13 October 2026)
+
+`tools/supply_chain_3d/district_builder.py` extends the existing civic Blender kit
+with four decorative families. No simulation catalogue entries are added.
+
+- `civic_u_office`: a 20-storey central bar and 12-storey wings around an open
+  U-shaped courtyard. The 12u floor module produces a 90.6u-wide footprint and
+  a 246.4u total height including roof plant. Lower roofs have garden planters.
+- `civic_semi`: a symmetrical pair of brick homes with two-storey canted bay
+  windows, paired central doors and chimneys, and a shared pitched roof. The
+  footprint is 64u × 43.47u and the complete asset retains the 50u house height.
+- `civic_bauhaus`: a pale industrial hall inspired by the supplied factory
+  reference, with blue gridded glazing, a flat roof, loading doors and twin tall
+  chimneys. It is decorative; it produces no goods or pollution.
+- `civic_commercial`: four floors with wide shopfronts, green awnings, a recessed
+  upper storey and a planted roof terrace. The frontage has its own glazing,
+  without the office windows showing through it.
+
+The new families join the Stoneshore urban infill mix. They use the existing
+road/water/lot/relief clearance checks and keep their physical scale when fitting.
+Each tile admits at most one U tower, one factory, two shopping blocks and four
+semi-detached pairs; unsuitable candidates are omitted. Original buildings still
+take priority over infill. The large courtyard footprint is reserved conservatively
+as a rectangle, keeping other buildings out of its courtyard.
+
+All four have near meshes, contour meshes, cached picking shapes, 64px far colour/
+depth atlases and medium colour/depth/lighting atlases. Medium cells are 128px,
+except the tall office's 192px cells. Far outlines use the existing softer civic
+settings. The office cap is explicitly triangulated around its concavity, and a
+geometric regression checks that the exported courtyard remains open to ground.
+
+Regenerate selected assets with background Blender:
+
+```bash
+blender -b --factory-startup --python tools/supply_chain_3d/export_models.py -- \
+  civic_u_office civic_semi civic_bauhaus civic_commercial
+```
+
+Import headlessly, then run `bake_far_sprites.tscn` (far and `--medium`) and
+`bake_medium_lighting.tscn` with those four level-1 `--asset-keys`. Use
+`review_district_assets.tscn` for front, rear and overhead model previews.
+`review_current_map.tscn -- --continent-review --district-review` also checks that
+every new family fits a real plot and captures individual examples.
+
+The civic checks pass 30 assertions, covering deterministic placement, clearance,
+cache restoration, all LOD resources, storey/house scale and the open U geometry.
+Artifacts are under repository-root
+`outputs/supply-chain-3d/district-buildings/`. Production package validation and
+fresh-process timings are recorded in `docs/load-time-bakes.md` after the bake.
+
+### Stoneshore half-scale trial (13 October 2026)
+
+The current review scope is **only five tiles**: Stoneshore (`tile_4_9`), Old
+Quarter (`tile_4_10`), Docks (`tile_5_10`), Fields (`tile_5_9`) and Coast
+(`tile_6_9`). The user has paused full-continent baking until explicit approval.
+`--stoneshore-review` restricts the model before authored roads, frontage,
+scenery and LOD generation. It is not merely a screenshot crop of a full bake.
+The regular map is unchanged. Without this review flag, the normal coverage
+setting still works; the unapproved continent package has not been refreshed.
+
+`stoneshore_trial.gd` replaces the pilot's decorative buildings at 50% model
+scale, including height. Houses and semis therefore become 25u tall in this
+trial; their shared default remains 50u elsewhere. The same scale drives
+meshes, both sprite tiers, shadows and visibility bounds. Modular offices still
+extend by whole window bays at the new half-scale window/storey spacing.
+Gameplay buildings (including NPCs and ports), trees and public-space assets
+retain their sizes.
+
+The measured baseline had 40 decorative buildings, excluding parks/plazas and
+gameplay buildings. The trial places 80, distributed as follows:
+
+| Tile | Before | Trial |
+| --- | ---: | ---: |
+| Stoneshore | 14 | 24 |
+| Old Quarter | 13 | 22 |
+| Docks | 13 | 22 |
+| Fields | 0 | 6 |
+| Coast | 0 | 6 |
+
+Urban interiors use offices/commercial blocks; the edges facing rural tiles
+use houses, apartments and semis. Both rural tiles use residential buildings.
+A single Bauhaus works is reserved before ordinary infill, on dry land within
+180u of the harbour's **shore anchor**, not its offshore pier centre. Its front
+entrance has an unglazed bay; loading doors also have no overlapping glazing.
+Both stacks are at the far left. A third floor occupies the right third only.
+
+Review (from the Godot project directory):
+
+```sh
+AGENT_GODOT_WINDOW=1 godot --path . --log-file /private/tmp/stoneshore-review.log tools/supply_chain_3d/compare_stoneshore.tscn -- --stoneshore-review --continent-review --density-review --no-telemetry --comparison-output=res://../outputs/supply-chain-3d/stoneshore-half-size/after
+```
+
+The review asserts the five-tile scope, the 80-building distribution, half-scale
+markers, and the factory's presence/distance. `--stoneshore-baseline` disables
+only the density trial for a control render. Archived before images preserve
+the earlier factory shape; rerunning a baseline uses the current asset meshes.
+
+Scoped production package:
+
+```sh
+AGENT_GODOT_WINDOW=1 godot --path . --log-file /private/tmp/stoneshore-package.log tools/supply_chain_3d/bake_continent_package.tscn -- --stoneshore-review --continent-review --no-telemetry --prune
+```
+
+This writes `assets/supply_chain_3d/stoneshore_trial_bakes/`, with base, medium
+and near resources for five tiles plus the shared far bake. It never overwrites
+`assets/supply_chain_3d/bakes/`. The bake entry point currently rejects a full
+continent run and rejects directing the scoped package at the full package.
+Only remove that pause after the user approves a continent rebake.
+Use `--trial-cache-directory=/private/tmp/<fresh-directory>` on a new review
+process to verify bundled loading independently of the generation cache.
+
+
+### Stoneshore neighbourhood density trial (13 October 2026)
+
+This supersedes the 80-building half-scale trial above, within the same five-tile
+scope. `district_blocks.gd` offsets deterministic seeds from the actual road
+network, partitions the urban area with Voronoi cells, and connects safe cell
+edges back to authored road centrelines. Unattached components and dangling
+stubs are removed. The added streets have an 8.4u carriageway, two lanes total,
+and a single thinner dashed centre divider. They are visual neighbourhood
+streets only; the regular map and simulation routing are unchanged.
+
+Streets reject water, height steps, gameplay building footprints, harbour quays,
+rail corridors and depot yards. Harbour frontage is reserved for the existing
+Bauhaus works. Rail clearance uses the curved rendered corridors rather than
+straight chords between rail waypoints. The deterministic plan and frontage fits
+are stored in the layout bake; valid lookups precede expensive generation.
+
+The selected layout has 102 decorative buildings (previous trial: 80): Stoneshore
+29, Old Quarter 24, Docks 33, Fields 8 and Coast 8. This includes 40 semidetached
+buildings and 18 compact apartment blocks, alongside offices, commercial blocks,
+two stepped U offices and the harbour factory. All retain the half-scale
+building treatment. Density targets are caps: a building is omitted if no dry,
+clear, sufficiently level frontage fits. They are not quotas that override
+clearance.
+
+Residential zoning includes every nonurban neighbouring tile, including sea-facing
+edges, and excludes the 240u harbour precinct. Urban interiors favour apartments,
+offices and commercial buildings. There are ten public green spaces: two wooded
+ponds, four groves, three parks and a plaza. Ponds and groves have native Blender
+geometry plus prepared far/medium/near representations. Pond parks are flat
+ornamental assets on plots with at most 0.8u relief, not changes to the terrain's
+hydrological lake network.
+
+Use the existing scoped bake command above. Final images, counts, zoning checks
+and fresh-process cache timings are under
+`outputs/supply-chain-3d/stoneshore-neighbourhood/final/` at repository root.
+The full-continent package remains paused and has not been refreshed.
+
+
+### Semidetached proportions (14 October 2026)
+
+The complete semidetached pair now spans 2.5 individual terrace homes and is
+10% taller than the standalone terrace reference (`house_lvl1`, a row of three
+homes). `BuildingScale.semi_side()` derives its width from that three-home row,
+so the pair occupies five-sixths of the row's frontage. At Stoneshore's 50%
+decorative scale, the terrace row is 36u wide / 25u tall and the pair is 30u
+wide / 27.5u tall (previously 32u / 25u). Height includes the asset's chimney
+bounds. The full-scale values are 60u / 55u.
+
+The shared building transform carries these proportions through meshes,
+contours, sprite tiers, shadows and visibility bounds. Frontage fitting uses
+the revised width/depth before placing buildings. Existing reusable meshes
+and sprite atlases remain valid; only their map composition needs rebaking.
+The regular-map assets and player/NPC sizes are unchanged.
+
+`review_housing_scale.tscn` renders the old pair, the three-home terrace and the
+revised pair with the same camera. Images, dimensions and scoped-package
+verification are in `outputs/supply-chain-3d/stoneshore-semi-scale/`.
+
+
+### Urban sidewalks and exact decorative footprints (14 October 2026)
+
+Paved urban streets now have 2u sidewalks, including the Voronoi side streets.
+Their continuous paving and outer trim use the road surface's shared height
+field and junction triangulation. Asphalt overlays the footway union at
+junctions. Rural roads, unpaved tracks, access driveways and tunnels do not gain
+sidewalks. These changes belong only to the 3D supply-chain renderer.
+
+Decorative frontage, obstacle reservation, vegetation clearance and foundation
+skirts use projected model silhouettes, preserving L/U concavities and disjoint
+parts. The former 4u decorative exclusion margin is replaced with a 0.01u
+numerical tolerance; the street-facing position clears the sidewalk by 0.35u.
+Explicit farm/harbour/public-space parcels retain their own boundaries. Player
+and NPC transforms are unchanged in the five-tile verification.
+
+The prepared `assets/supply_chain_3d/building_footprints.json` contains silhouettes
+for 34 existing assets and hashes of their source GLBs. After changing those
+models, regenerate it before the scoped production bake:
+
+```sh
+godot --headless --path . --log-file /private/tmp/building-footprints.log \
+  tools/supply_chain_3d/bake_building_footprints.tscn -- --no-telemetry
+```
+
+Projection excludes low courtyard paving and furniture, while retaining the
+building silhouette, including overhangs. Multiple parts are authoritative;
+legacy `footprint` consumers receive the largest part. No geometry projection
+runs during normal map loading. The metadata and helper scripts participate in
+road/building fingerprints; placement polygons also travel in cached layouts.
+
+The refreshed Stoneshore trial has 133 decorative buildings (previously 105),
+ten green spaces, 40 semidetached pairs and 224 sidewalk-bearing road segments.
+The rendered-model audit finds no decorative building/building overlaps or
+street/sidewalk intrusions. Scope remains the five Stoneshore tiles; full
+continent rebaking remains paused. Images and audit results are under
+`outputs/supply-chain-3d/stoneshore-sidewalks/` at repository root.
+
+
+### Street-front infill and decorative access removal (14 October 2026)
+
+Decorative buildings no longer emit asphalt driveways or add receiving-road
+junctions. Their exact street-facing silhouette sits 0.1u beyond the sidewalk.
+Gameplay structures retain their normal access-path handling; the regular map
+and simulation layout are unchanged.
+
+Stoneshore now seeds 34 landmark/variety buildings, reserves its ten public
+spaces and harbour factory, then fills measured gaps along existing streets.
+U-shaped office landmarks fit before ordinary infill. The placement pass tries
+existing apartment, commercial, modular office and residential assets, then
+quarter-turn orientations for narrower plots. It preserves their established
+half-scale proportions, exact silhouettes, zoning and terrain/transport checks.
+Successful generated records are stored in the frontage cache and restored
+before any new fitting work. No asset/model/atlas rebake was needed.
+
+The metric samples both street sides at no more than 4u intervals, weighted by
+arc length. A facade must intersect the outward 10u frontage ray. Access paths
+and tunnels are excluded. Report both raw roadside length and estimated usable
+frontage: junctions, water, tile boundaries, railway/harbour reservations, public
+spaces, works yards and unsuitable relief cannot all be built on. A conservative
+16x14u land envelope rejects narrow slivers; exact fitting still tries these
+borderline plots and restores them to the usable total when an actual asset
+fits. Decorative gaps are not treated as permanent reservations. Crop fields
+and industrial yards do not count as building facades.
+
+Final trial: 245 decorative buildings (112 more than the previous 133), zero
+decorative access stubs, and ten retained green spaces. Estimated usable-frontage
+coverage is 78.20% region-wide: Town 81.27%, Old Quarter 80.01%, Docks 84.36%,
+Fields 74.69%, Coast 70.26%. Covered length is 9,127.22u of 11,671.37u usable;
+including every road edge yields 42.88% of 21,285.34u. **The 75% threshold applies
+to estimated buildable frontage, not all road edges regardless of obstacles.**
+The report deliberately exposes both denominators rather than treating reserved
+land as buildings. The full five-tile geometric audit finds no decorative
+building overlaps or street/sidewalk intrusions. All 16 gameplay structure
+positions and dimensions match the previous trial.
+
+Evidence and ten camera/LOD captures are in
+`outputs/supply-chain-3d/stoneshore-frontage/` at repository root. The review
+harness asserts regional usable coverage >=75%, zero decorative access stems,
+retained neighbourhood features, and unchanged residential zoning.

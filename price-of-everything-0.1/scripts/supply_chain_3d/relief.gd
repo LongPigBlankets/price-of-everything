@@ -7,6 +7,11 @@ const Source := preload("res://scripts/empire_board_relief.gd")
 const UPPER_DATUM: float = Source.BAND_LEVEL[5]
 const STEP := 11.0
 
+static func band_height(band: float) -> float:
+	# Band IDs are map level + 1; interpolate before applying mountain scaling.
+	var index := clampf(band, 0.0, Source.BAND_LEVEL.size() - 1.0)
+	return lerpf(Source.BAND_LEVEL[floori(index)], Source.BAND_LEVEL[ceili(index)], index - floorf(index))
+
 static func height(source_height: float) -> float:
 	if source_height <= UPPER_DATUM: return source_height
 	var band := clampi(floori((source_height - UPPER_DATUM) / STEP), 0, 5)

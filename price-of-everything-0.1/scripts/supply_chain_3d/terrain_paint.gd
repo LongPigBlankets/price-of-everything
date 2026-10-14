@@ -8,6 +8,7 @@ const Ground := preload("res://scripts/empire_board_ground.gd")
 const WaterArt := preload("res://scripts/supply_chain_3d/water_art.gd")
 const ShadowArt := preload("res://scripts/supply_chain_3d/shadow_art.gd")
 const Detail := preload("res://scripts/supply_chain_3d/detail.gd")
+const HalfRelief := preload("res://scripts/supply_chain_3d/half_relief.gd")
 const EXTENT := Vector2(548, 488) # four-unit gutter prevents filtered seams at hex borders
 const CONTINENT_WIDTH := 6144
 
@@ -25,8 +26,12 @@ class Painter extends Node2D:
 		draw_rect(Rect2(tile.center - EXTENT * 0.5, EXTENT), sea[0 if str(tile.type) == "deep_sea" else 2] if ocean else Legacy._warm(sea[5]))
 		for e in relief.get("sea", []): _polygon(e.p, sea[int(e.b)])
 		for e in relief.get("land", []):
-			_polygon(e.p, Legacy._warm(sea[5] if e.get("beach", false) else bands[clampi(int(e.b), 0, bands.size() - 1)]))
+			_polygon(e.p, Legacy._warm(sea[5] if e.get("beach", false) else HalfRelief.color(float(e.b), bands)))
 		for p in relief.get("lakes", []): _polygon(p, sea[4])
+		var tones := {"shallows_outer": sea[4].lightened(0.14), "shallows_inner": sea[4].lightened(0.3),
+			"sand": Legacy._SAND, "shore": Legacy._SAND.darkened(0.16), "foam": Legacy._FOAM,
+			"lake_sand": Legacy._SAND.darkened(0.08), "lake_foam": sea[4].lightened(0.3)}
+		for ink in relief.get("water_ink", []): _polygon(ink.p, tones[ink.tone])
 		if water_art != null and water_art.get_surface_count() > 0: draw_mesh(water_art, null)
 		# Same seed in every tier: low tiers integrate marks instead of changing geography.
 		var rng := RandomNumberGenerator.new()
@@ -68,12 +73,18 @@ class Painter extends Node2D:
 		if clean.size() > 1 and clean[0].is_equal_approx(clean[-1]): clean.remove_at(clean.size() - 1)
 		if clean.size() < 3: return
 		var parts: Array[PackedVector2Array] = [clean]
-		if Geometry2D.triangulate_polygon(clean).is_empty(): parts = Geometry2D.offset_polygon(clean, 0.01)
+		if _triangulate(clean).is_empty(): parts = Geometry2D.offset_polygon(clean, 0.01)
 		for part in parts:
-			var indices := Geometry2D.triangulate_polygon(part)
+			var indices := _triangulate(part)
 			if indices.is_empty(): continue
 			var colors := PackedColorArray([color])
 			RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), indices, part, colors, PackedVector2Array())
+
+	func _triangulate(points: PackedVector2Array) -> PackedInt32Array:
+		# Keep small shoreline ears accurate at continent-scale coordinates.
+		var local := PackedVector2Array()
+		for p in points: local.append(p - (tile.center as Vector2))
+		return Geometry2D.triangulate_polygon(local)
 
 static func bake(host: Node, tile: Dictionary, relief: Dictionary, rivers: Array, mines: Array, height: Callable,
 		widths: Array = Detail.TEXTURES, shadows: Array = []) -> Array:

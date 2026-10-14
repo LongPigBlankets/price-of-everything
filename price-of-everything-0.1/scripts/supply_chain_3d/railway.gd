@@ -3,7 +3,7 @@ extends RefCounted
 ## Coordinates/grades belong to the map, never to the camera. All levels keep one gauge.
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
 const Index := preload("res://scripts/supply_chain_3d/road_index.gd")
-const VERSION := 7
+const VERSION := 8
 # Match the authored two-lane road carriageway, including map draw scale.
 const CORRIDOR_WIDTH := 12.6 * 0.75
 const WIDTH_SCALE := CORRIDOR_WIDTH / 28.4
@@ -257,6 +257,7 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 	if plan.is_empty(): plan=network(lines)
 	var burial: Callable = context.get("burial",Callable())
 	var bed := Geo.Batch.new(); var fittings := Geo.Batch.new()
+	var overview := Geo.Batch.new()
 	var profiles: Array = []
 	var portals: Array = []
 	var sleepers := {}
@@ -299,6 +300,10 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 			if a.hidden or b.hidden: continue
 			visible_segments += 1
 			_strip(bed, a, b, 0, HALF * 2, 0, BALLAST, origin)
+			# At medium/far zoom the running heads and sleepers are subpixel.
+			# A continuous, low-contrast track band keeps the paired railway legible
+			# without bright dots and moire. Full steel/switchwork returns up close.
+			_strip(overview, a, b, 0, GAUGE + 0.8, 0.85, Color("69716b"), origin)
 			# Sloped ballast embankments carry the approaches; track cannot float.
 			if not a.bridge and not b.bridge:
 				var ga := float(height.call(a.p)); var gb := float(height.call(b.p))
@@ -331,7 +336,7 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 						if middle >= gap.x and middle <= gap.y: skip = true
 					if skip: continue
 					var left := _lerp_sample(a, b, cuts[k - 1]); var right := _lerp_sample(a, b, cuts[k])
-					_strip(bed, left, right, sign_v * GAUGE * 0.5, 0.95 * WIDTH_SCALE, 0.8, WEB, origin)
+					_strip(fittings, left, right, sign_v * GAUGE * 0.5, 0.95 * WIDTH_SCALE, 0.8, WEB, origin)
 					_strip(fittings, left, right, sign_v * GAUGE * 0.5, 0.48 * WIDTH_SCALE, 1.25, STEEL, origin)
 			if a.bridge or b.bridge:
 				_strip(bed, a, b, 0, HALF * 2 + 3.5, -0.5, GIRDER, origin)
@@ -397,7 +402,7 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 		var n: Vector2 = buffer.dir.orthogonal() * 4.2 * WIDTH_SCALE
 		fittings.tube(_v(buffer.p - n, h + 3.3, origin), _v(buffer.p + n, h + 3.3, origin), 0.85, Color("a9694e"), 4)
 		for sign_v in [-1, 1]: fittings.tube(_v(buffer.p + n * sign_v, h, origin), _v(buffer.p + n * sign_v, h + 3.3, origin), 0.6, WEB, 4)
-	return {"bed": bed.mesh(), "detail": fittings.mesh(), "plan": plan, "profiles": profiles, "portals": portals, "visible_segments": visible_segments, "flangeways": frogs.gaps.size(), "track_vertex_count":track_vertex_count, "corridor_profiles":tunnels.profiles}
+	return {"bed": bed.mesh(), "overview": overview.mesh(), "detail": fittings.mesh(), "plan": plan, "profiles": profiles, "portals": portals, "visible_segments": visible_segments, "flangeways": frogs.gaps.size(), "track_vertex_count":track_vertex_count, "corridor_profiles":tunnels.profiles}
 
 ## Cover a whole junction when its switchwork meets a mountain/urban bore.
 ## Portals then sit on the two-track approaches, before any fan of movements.

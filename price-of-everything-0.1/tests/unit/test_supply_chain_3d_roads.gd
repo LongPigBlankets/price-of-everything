@@ -66,13 +66,9 @@ func _test_road_rollout_frontage_and_access() -> void:
 		func(_s: Dictionary) -> String: return "house_lvl1", {}, prepared)
 	_check(model.standing.size() == 1 and model.standing[0].pos != Vector2.ZERO, "road_rollout: decoration moves off the road rather than overlapping it")
 	var poly := fitter.footprint(model.standing[0])
-	_check(Placement.distance_to_polygon(Vector2(-150, 0), Vector2(150, 0), poly) >= 10.0, "road_rollout: frontage clears road casing and setback")
-	_check(model.authored_region.frontage.access_roads == 1 and model.standing[0].has("entrance"), "road_rollout: a dry access road connects the building door")
-	var branch: Dictionary = model.roads[-1]
-	var junctions := 0
-	for road in model.roads:
-		if road.a.is_equal_approx(branch.b) or road.b.is_equal_approx(branch.b): junctions += 1
-	_check(junctions >= 3, "road_rollout: access road splits its receiving street into a connected T")
+	_check(Placement.distance_to_polygon(Vector2(-150, 0), Vector2(150, 0), poly) >= 6.0, "road_rollout: actual building outline clears the road casing")
+	_check(model.authored_region.frontage.access_roads == 0 and not model.standing[0].has("entrance"), "road_rollout: decorative buildings meet the street without an asphalt access stem")
+	_check(model.roads.size()==1,"road_rollout: decorative frontage adds no receiving-road junctions")
 	Placement.new().fit(initial, func(_p: Vector2) -> float: return 40.0, func(_p: Vector2) -> bool: return false,
 		func(_s: Dictionary) -> String: return "house_lvl1", {}, prepared)
 	_check(initial == model, "road_rollout: a cached frontage layout restores identical roads, entrances and decoration")

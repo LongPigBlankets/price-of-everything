@@ -10,7 +10,7 @@ const URBAN := ["distance_field","centers","depots","tile_index","busy","buckets
 static func key_for(builder: RefCounted, model: Dictionary) -> String:
 	var plots: Array=[]
 	for s in model.get("standing",[]):
-		plots.append([s.get("pos"),s.get("pad",s.get("side",16)),s.get("footprint",[])])
+		plots.append([s.get("pos"),s.get("pad",s.get("side",16)),s.get("footprints",[s.get("footprint",[])])])
 	var geography := {}
 	for tid in builder.tiles: geography[tid]=[builder.tiles[tid].center,builder.tiles[tid].type]
 	return "transport-"+Cache.digest([VERSION,Cache.source_key("transport"),Cache.source_key("roads"),Cache.source_key("scenery"),

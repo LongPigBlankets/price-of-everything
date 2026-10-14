@@ -132,6 +132,54 @@
 			"source_sha256": "5c368ea87ac28cc5475cda4c2ad22e030248d7c1f67e60acd4108da4f5c0a6c9",
 			"span": 1.68644016981125
 		},
+		"civic_bauhaus_lvl1": {
+			"cell": 128.0,
+			"center": [
+				0.0,
+				0.554758787155151,
+				0.0
+			],
+			"dimensions": [
+				1.0,
+				1.1095175743103,
+				0.769230782985687
+			],
+			"home_opaque_pixels": [
+				79.0,
+				106.0
+			],
+			"lit_source_sha256": "d225988f1bb5838e7c448d76c501cb6f35ebe19ea15a3764b6072c54dfda4daa",
+			"lit_texture": "civic_bauhaus_lvl1_lit.png",
+			"pitches": 5.0,
+			"reference_scale": 72.0,
+			"source_sha256": "d225988f1bb5838e7c448d76c501cb6f35ebe19ea15a3764b6072c54dfda4daa",
+			"span": 1.84811310768127,
+			"yaws": 16.0
+		},
+		"civic_commercial_lvl1": {
+			"cell": 128.0,
+			"center": [
+				0.0,
+				0.419771432876587,
+				0.0
+			],
+			"dimensions": [
+				1.0,
+				0.839542865753174,
+				0.742167711257935
+			],
+			"home_opaque_pixels": [
+				93.0,
+				97.0
+			],
+			"lit_source_sha256": "7a21cd846e87503592dc33aff943356fc49224d04de5a176724945257f51c4e7",
+			"lit_texture": "civic_commercial_lvl1_lit.png",
+			"pitches": 5.0,
+			"reference_scale": 72.0,
+			"source_sha256": "7a21cd846e87503592dc33aff943356fc49224d04de5a176724945257f51c4e7",
+			"span": 1.65206857919693,
+			"yaws": 16.0
+		},
 		"civic_corner_04x02_lvl1": {
 			"cell": 128.0,
 			"center": [
@@ -492,6 +540,30 @@
 			"span": 1.65927064418793,
 			"yaws": 16.0
 		},
+		"civic_grove_lvl1": {
+			"cell": 128.0,
+			"center": [
+				0.0,
+				0.119743280112743,
+				0.0
+			],
+			"dimensions": [
+				1.0,
+				0.239486560225487,
+				0.893242716789246
+			],
+			"home_opaque_pixels": [
+				77.0,
+				51.0
+			],
+			"lit_source_sha256": "a8a4ca372fccb72dcedbddeece91192f75eedf30470c59b6ad5faaadfd146be9",
+			"lit_texture": "civic_grove_lvl1_lit.png",
+			"pitches": 5.0,
+			"reference_scale": 72.0,
+			"source_sha256": "a8a4ca372fccb72dcedbddeece91192f75eedf30470c59b6ad5faaadfd146be9",
+			"span": 1.49827774763107,
+			"yaws": 16.0
+		},
 		"civic_l_lvl1": {
 			"cell": 128.0,
 			"center": [
@@ -778,6 +850,78 @@
 			"reference_scale": 72.0,
 			"source_sha256": "a1a9046381a93a85985ef3e28949fc056d4b8f48a7ff13da9d6de5c4ebc62443",
 			"span": 1.43553862571716,
+			"yaws": 16.0
+		},
+		"civic_pond_lvl1": {
+			"cell": 128.0,
+			"center": [
+				0.0,
+				0.100384227931499,
+				0.0
+			],
+			"dimensions": [
+				1.0,
+				0.200768455862999,
+				0.800374269485474
+			],
+			"home_opaque_pixels": [
+				79.0,
+				50.0
+			],
+			"lit_source_sha256": "4266ab4fb89395d11b87f61dff64a91128383355c2736c94b02fbd1e0170c26c",
+			"lit_texture": "civic_pond_lvl1_lit.png",
+			"pitches": 5.0,
+			"reference_scale": 72.0,
+			"source_sha256": "4266ab4fb89395d11b87f61dff64a91128383355c2736c94b02fbd1e0170c26c",
+			"span": 1.42614773511887,
+			"yaws": 16.0
+		},
+		"civic_semi_lvl1": {
+			"cell": 128.0,
+			"center": [
+				0.0,
+				0.354334682226181,
+				0.0
+			],
+			"dimensions": [
+				1.0,
+				0.708669364452362,
+				0.679207146167755
+			],
+			"home_opaque_pixels": [
+				96.0,
+				89.0
+			],
+			"lit_source_sha256": "0b26218c8ab93d3fa1c6eb3f64e3614ab2016ff693f0853377209024952191af",
+			"lit_texture": "civic_semi_lvl1_lit.png",
+			"pitches": 5.0,
+			"reference_scale": 72.0,
+			"source_sha256": "0b26218c8ab93d3fa1c6eb3f64e3614ab2016ff693f0853377209024952191af",
+			"span": 1.54138798713684,
+			"yaws": 16.0
+		},
+		"civic_u_office_lvl1": {
+			"cell": 192.0,
+			"center": [
+				0.0,
+				1.3598735332489,
+				0.0
+			],
+			"dimensions": [
+				1.0,
+				2.7197470664978,
+				0.76730877161026
+			],
+			"home_opaque_pixels": [
+				74.0,
+				171.0
+			],
+			"lit_source_sha256": "a560c41cb14c9279e4568365438e695b1ce01d6054a5b8443904a317e330b7e5",
+			"lit_texture": "civic_u_office_lvl1_lit.png",
+			"pitches": 5.0,
+			"reference_scale": 72.0,
+			"source_sha256": "a560c41cb14c9279e4568365438e695b1ce01d6054a5b8443904a317e330b7e5",
+			"span": 3.2973931312561,
 			"yaws": 16.0
 		},
 		"construction_site_lvl1": {

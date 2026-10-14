@@ -6,6 +6,7 @@ const Legacy := preload("res://scripts/empire_board.gd")
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
 const Markings := preload("res://scripts/supply_chain_3d/road_markings.gd")
 var markings := Markings.new()
+const Sidewalks := preload("res://scripts/supply_chain_3d/urban_sidewalks.gd")
 const CELL := 3.0
 var cell_size := CELL
 var ways: Array = []
@@ -64,6 +65,14 @@ func configure(roads: Array, height: Callable, origin := Vector2.ZERO) -> void:
 func mesh_for(tile: String) -> ArrayMesh:
 	var batch := Geo.Batch.new()
 	var colours := [Legacy._ROAD_EDGE, Legacy._ROAD_KERB, Legacy._ROAD_EDGE_IN, Legacy._ROAD_ASPHALT]
+	# All footways share the same grade and triangulation as the carriageway.
+	# Asphalt overlays their union at bends/junctions, so paving never crosses a lane.
+	for band in [-2, -1]:
+		for w in _by_tile.get(tile, []):
+			var width := Sidewalks.width(w)
+			if width <= 0.0: continue
+			var polygon := Legacy._capsule(w.a, w.b, float(w.widths[0]) + width - (0.18 if band == -1 else 0.0), w.round)
+			_add_band(batch, polygon, Sidewalks.EDGE if band == -2 else Sidewalks.PAVING, band)
 	for band in 4:
 		for w in _by_tile.get(tile, []):
 			var tint: Color = Color.WHITE if bool(w.paved) else Legacy._UNPAVED

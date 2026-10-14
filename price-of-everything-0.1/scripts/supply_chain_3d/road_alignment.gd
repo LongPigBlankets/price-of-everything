@@ -31,6 +31,9 @@ func configure(model: Dictionary, height: Callable, level: Callable, water := Ca
 	for tid in model.get("tiles",{}): _centers[tid]=model.tiles[tid].center
 	_tile_index=Index.tiles(_centers)
 	for s in model.get("standing",[]):
+		if s.has("footprints"):
+			for shape in s.footprints: _add_obstacle(shape)
+			continue
 		var poly := PackedVector2Array(s.get("footprint",[]))
 		if poly.size()<3:
 			var p: Vector2=s.pos; var half: float=float(s.get("pad",s.get("side",16)))*0.5+3
