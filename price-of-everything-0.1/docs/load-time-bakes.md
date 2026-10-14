@@ -1,5 +1,43 @@
 # Load time: what is baked, and when to re-bake it
 
+## Stoneshore constant sea margin — verified 14 October 2026
+
+The installed five-tile package includes the unified **48u sea-margin offset**,
+rounded corners, continuous cutaway texture coordinates and removal of tiny
+isolated water pockets. The production baker and independent validator both
+pass with current fingerprints: **21 resources, 31,835,105 bytes (30.36 MiB)**.
+The final package pass took 20.195s after offline scene preparation, reused all
+five byte-identical base resources and regenerated five medium/five near
+resources. Whole-continent baking remains paused.
+
+Fresh Godot 4.6.2 / Forward+ Metal process on Apple M5 Pro, empty runtime cache
+directory and warm OS filesystem caches:
+
+| Measurement | Time |
+|---|---:|
+| Process start to Begin | 17.753s |
+| Five-tile board preparation during loading | 1.074s |
+| Frontage cache restore | 0.123s |
+| Transport cache restore | 0.083s |
+| Combined five-tile resource load | 0.025s |
+| First supply-view opening after Begin | 0.307s |
+
+Fourteen views reach **19 bundled hits, zero initial cache misses and zero
+runtime bake writes**. Twenty focused assertions pass, including oblique edge
+width, convex/re-entrant joins, water-only clipping, tiny-patch removal and
+continuous curved-wall UVs. Final rendered audits retain 258 decorative
+buildings, no building/street overlaps, three central skyline buildings and
+unchanged open depot tracks. No roads were changed; the two measured depot-road
+alternatives are read-only concepts. Regular-map rendering is unchanged.
+
+The sea geometry is restored as three baked scenery meshes. Detailed clipping
+and mesh generation remain on cache miss; normal loading only builds the small
+preview-envelope description before lookup. Decoded medium/near terrain sizes
+remain 18,677,385 / 74,710,665 bytes. The existing nonfatal host certificate and
+ObjectDB exit warnings remain. Evidence, route plans and final captures are in
+`outputs/supply-chain-3d/stoneshore-sea-margin/` at repository root.
+
+
 ## Stoneshore Docks skyline and sea margin — verified 14 October 2026
 
 The current **five-tile** production package contains the three-tower Docks
