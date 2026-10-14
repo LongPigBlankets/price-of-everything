@@ -52,7 +52,8 @@ PALETTE["rack_face"] = (0.160, 0.175, 0.200)
 # Catalogue-plate pass: a pale coping caps every parapet, and a dark plinth carries every
 # wall, so each block reads as base, wall and top at poster scale.
 PALETTE["ht_coping"] = (0.640, 0.620, 0.570)
-PALETTE["ht_plinth"] = (0.130, 0.135, 0.140)
+PALETTE["ht_plinth"] = (0.022, 0.024, 0.030)   # the darkest band on the building
+PALETTE["ht_window"] = (0.010, 0.013, 0.028)   # punched windows read as dark openings
 ROLES["ht_accent"] = "orange"
 ROLES["robot"] = "orange"
 ROLES["ht_brick"] = "brick_orange"
@@ -64,6 +65,7 @@ ROLES["rack"] = "rack"
 ROLES["rack_face"] = "rack_face"
 ROLES["ht_coping"] = "ht_coping"
 ROLES["ht_plinth"] = "ht_plinth"
+ROLES["safety"] = "hi_vis"            # bollards, handrails: a signal, kept to small parts
 
 HT_LEVELS = {
     1: dict(steps=2, back=3.60, upper_room=False, lasers=1, mast=False, tray=False, ahus=1,
@@ -92,7 +94,8 @@ STEP2_Y1 = 2.00
 STEP3_X1 = 1.20                    # unused since the rear block went full width; kept for the mast
 PARAPET_H, PARAPET_W = 0.14, 0.10
 COPING_H, COPING_OVER = 0.07, 0.05  # coping overhangs the parapet on both sides
-PLINTH_H, PLINTH_OUT = 0.18, 0.035  # plinth stands proud of the wall face
+PLINTH_H, PLINTH_OUT = 0.26, 0.035
+WINDOW_GROW = 1.15                  # punched windows, scaled from their listed sizes  # plinth stands proud of the wall face
 SPLIT = 1.00                       # brick below, white above
 GX0 = 0.20
 GY1 = -0.60
@@ -178,7 +181,9 @@ def _punched(K, tag, face, at, along, z, w, h, rows=2):
     along the face."""
     for i, a in enumerate(along):
         centre = (at, a, z) if face in ("+X", "-X") else (a, at, z)
-        K.window("%s%d" % (tag, i), face, centre, w, h, cols=1, rows=rows)
+        K.window("%s%d" % (tag, i), face, centre, w * WINDOW_GROW, h * WINDOW_GROW, cols=1, rows=rows)
+        glass = K.col.objects.get("%s%d_glass" % (tag, i))
+        if glass is not None: glass.data.materials[0] = K.M["ht_window"]
 
 
 def _block(K, tag, x0, x1, y0, y1, h, skip=(), gaps=()):
@@ -237,7 +242,7 @@ def _front_hall(K, pane, seam):
     # Eave fascia/gutter, the ridge flashing where the pitch meets the rear block, downpipe.
     K.box("eave_fascia", (X0 + X1) / 2, FY0 - 0.05, z0 - 0.06, X1 - X0 + 0.08, 0.06, 0.16, K.mat("gear"))
     K.box("ridge_flash", (X0 + X1) / 2, FY1 - 0.04, z1 + 0.03, X1 - X0 + 0.08, 0.08, 0.06, K.mat("gear"))
-    K.cyl("downpipe_l", X0 - 0.05, FY0 + 0.02, z0 / 2, 0.03, z0 - 0.2, K.mat("stack"), segments=8)
+    _downpipe(K, "l", X0 - 0.05, FY0 + 0.02, z0 - 0.06, "-Y")
 
 
 def _ahu(K, tag, cx, cy, z):
@@ -437,7 +442,7 @@ def _services(K, p):
         K.transformer("tr", tx, ty, 0.0, s=0.95, accent=False)
         K.pipe_run("tr_lv", [(tx - 0.25, ty, 0.30), (X1 + 0.45, ty, 0.30), (X1 + 0.45, y1 - 0.28, 0.30)],
                    0.04, K.mat("wall_steel"))
-    K.cyl("downpipe_r", X1 + 0.05, 0.12, h / 2, 0.03, h - 0.2, K.mat("stack"), segments=8)
+    _downpipe(K, "r", X1 + 0.05, 0.12, h, "+X")
 
 
 def _rail_bay(K, p):
@@ -489,6 +494,139 @@ def _rail_bay(K, p):
         for s_ in (-1, 1):
             K.box("wag%d_buf%d" % (i, s_ > 0), RAIL_X, wy + s_ * (L / 2 + 0.10), WAGON_FLOOR - 0.02,
                   0.30, 0.06, 0.08, K.mat("wall_steel"))
+
+
+# ---- Small fixtures (catalogue-plate detail pass). Each one is attached to something:
+# downpipes to a gutter or parapet, lamps over doors, louvres and junction boxes on walls,
+# the refrigerant run from every rooftop unit to a roof penetration, bollards guarding the
+# dock and the transformer, a buffer stop at the end of the siding.
+
+def _downpipe(K, tag, x, y, top, face):
+    """Rainwater pipe from a roof edge to the ground: brackets every 0.7, a shoe at the foot."""
+    fm = K._fine_mode
+    K._fine_mode = True
+    K.cyl("dp%s" % tag, x, y, (top - 0.10) / 2 + 0.05, 0.03, top - 0.10, K.mat("stack"), segments=8)
+    out = 0.035 if face in ("+X", "-Y") else -0.035
+    z = 0.45
+    k = 0
+    while z < top - 0.25:
+        if face in ("+X", "-X"):
+            K.box("dp%s_b%d" % (tag, k), x - out / 2, y, z, 0.07, 0.10, 0.03, K.mat("gear"))
+        else:
+            K.box("dp%s_b%d" % (tag, k), x, y - out / 2, z, 0.10, 0.07, 0.03, K.mat("gear"))
+        z += 0.70
+        k += 1
+    K.box("dp%s_shoe" % tag, x, y, 0.05, 0.09, 0.09, 0.08, K.mat("stack"))
+    K._fine_mode = fm
+
+
+def _lamp(K, tag, face, at, along, z):
+    """Wall lamp over a door: a bracket and a cream head angled down."""
+    fm = K._fine_mode
+    K._fine_mode = True
+    sign = 1 if face in ("+X", "+Y") else -1
+    if face in ("+X", "-X"):
+        K.box("lamp%s_arm" % tag, at + sign * 0.05, along, z, 0.10, 0.03, 0.03, K.mat("darkmetal"))
+        K.box("lamp%s" % tag, at + sign * 0.10, along, z - 0.03, 0.08, 0.12, 0.05, K.mat("window_frame"))
+    else:
+        K.box("lamp%s_arm" % tag, along, at + sign * 0.05, z, 0.03, 0.10, 0.03, K.mat("darkmetal"))
+        K.box("lamp%s" % tag, along, at + sign * 0.10, z - 0.03, 0.12, 0.08, 0.05, K.mat("window_frame"))
+    K._fine_mode = fm
+
+
+def _louvre(K, tag, face, at, along, z, w, h, slats=4):
+    """Ventilation louvre: a dark opening behind slanted slats in a frame."""
+    fm = K._fine_mode
+    K._fine_mode = True
+    sign = 1 if face in ("+X", "+Y") else -1
+    def put(nm, depth, sx, sz, zz, mat):
+        if face in ("+X", "-X"):
+            K.box(nm, at + sign * depth, along, zz, 0.012, sx, sz, mat)
+        else:
+            K.box(nm, along, at + sign * depth, zz, sx, 0.012, sz, mat)
+    put("louv%s" % tag, 0.008, w, h, z, K.mat("opening"))
+    for k in range(slats):
+        put("louv%s_s%d" % (tag, k), 0.016, w - 0.02, 0.022, z - h / 2 + (k + 0.6) * h / slats, K.mat("gear"))
+    for nm, sx, sz, zz in (("t", w + 0.04, 0.03, z + h / 2), ("b", w + 0.04, 0.03, z - h / 2)):
+        put("louv%s_%s" % (tag, nm), 0.014, sx, sz, zz, K.mat("window_frame"))
+    K._fine_mode = fm
+
+
+def _junction(K, tag, face, at, along, z):
+    sign = 1 if face in ("+X", "+Y") else -1
+    if face in ("+X", "-X"):
+        K.box("jb%s" % tag, at + sign * 0.04, along, z, 0.08, 0.16, 0.20, K.mat("gear"))
+    else:
+        K.box("jb%s" % tag, along, at + sign * 0.04, z, 0.16, 0.08, 0.20, K.mat("gear"))
+
+
+def _bollard(K, tag, x, y):
+    fm = K._fine_mode
+    K._fine_mode = True
+    K.cyl("bol%s" % tag, x, y, 0.16, 0.04, 0.32, K.mat("safety"), segments=10)
+    K.cyl("bol%s_cap" % tag, x, y, 0.33, 0.042, 0.03, K.mat("darkmetal"), segments=10)
+    K._fine_mode = fm
+
+
+def _fixtures(K, p):
+    z_roof = STEP_H[0] + 0.06
+    # Lamps over the goods door, on the front wall and over the rail door.
+    _lamp(K, "goods", "+X", X1, 0.50, 1.34)
+    _lamp(K, "front", "-Y", FY0, -2.25, 1.06)
+    # Louvres and junction boxes on the visible walls.
+    _louvre(K, "f", "-Y", FY0, -0.95, 1.52, 0.26, 0.40, slats=5)
+    _louvre(K, "s1", "+X", X1, 1.88, 2.30, 0.16, 0.26, slats=3)
+    _junction(K, "goods", "+X", X1, 0.98, 0.72)
+    _junction(K, "front", "-Y", FY0, -1.65, 1.02)
+    # The refrigerant run: every rooftop unit drops into one pipe pair on sleepers, which
+    # ends at a roof penetration beyond the last unit.
+    fm = K._fine_mode
+    K._fine_mode = True
+    ys, x0 = (0.52, 0.60), X0 + 0.75 + 0.30
+    x_end = X0 + 0.75 + (p["ahus"] - 1) * 1.05 + 0.75
+    for j, y in enumerate(ys):
+        K.pipe_run("rf%d" % j, [(x0, y, z_roof + 0.08), (x_end, y, z_roof + 0.08)], 0.022, K.mat("pipe"))
+    for i in range(p["ahus"]):
+        cx = X0 + 0.75 + i * 1.05 + 0.30
+        K.pipe_run("rf_up%d" % i, [(cx, ys[1], z_roof + 0.08), (cx, 0.90, z_roof + 0.08)], 0.022, K.mat("pipe"))
+    x = x0 - 0.10
+    k = 0
+    while x < x_end:
+        K.box("rf_sl%d" % k, x, sum(ys) / 2, z_roof + 0.02, 0.06, 0.22, 0.05, K.mat("gear"))
+        x += 0.45
+        k += 1
+    K.box("rf_pen", x_end + 0.08, sum(ys) / 2, z_roof + 0.07, 0.18, 0.22, 0.14, K.mat("gear"))
+    # Roof vents and a hatch on the clear parts of the decks.
+    vents = [(1.30, 0.60, z_roof), (1.90, 1.50, z_roof)]
+    if p["steps"] == 3:
+        vents += [(1.60, 2.90, STEP_H[1] + 0.06), (p["rx1"] - 0.60, p["back"] - 0.50, STEP_H[1] + 0.06)]
+    for i, (vx, vy, vz) in enumerate(vents):
+        K.cyl("vent%d" % i, vx, vy, vz + 0.07, 0.05, 0.14, K.mat("gear"), segments=12)
+        K.cyl("vent%d_cap" % i, vx, vy, vz + 0.16, 0.08, 0.04, K.mat("wall_steel"), segments=12)
+    K._fine_mode = fm
+    K.box("hatch", 0.95, 1.55, z_roof + 0.04, 0.36, 0.36, 0.08, K.mat("gear"))
+    # Bollards: the dock pad's open corners, and the transformer's yard side.
+    _bollard(K, "d0", X1 + 0.92, 0.04)
+    _bollard(K, "d1", X1 + 0.92, 0.96)
+    if p["tray"]:
+        _bollard(K, "t0", X1 + 1.32, 0.80)
+        _bollard(K, "t1", X1 + 1.32, 1.50)
+    if p.get("rail"):
+        rx1, y0 = p["rx1"], STEP2_Y1
+        _lamp(K, "rail", "+X", rx1, (y0 + p["back"]) / 2, WAGON_FLOOR + 1.28)
+        # Buffer stop at the siding's end: a red beam on two posts across the rails.
+        K.box("buffer", RAIL_X, RAIL_Y1 - 0.06, 0.20, 0.36, 0.08, 0.10, K.mat("ht_accent"))
+        for s_ in (-1, 1):
+            K.box("buffer_p%d" % (s_ > 0), RAIL_X + s_ * 0.13, RAIL_Y1 - 0.02, 0.12, 0.06, 0.06, 0.24, K.mat("darkmetal"))
+        # Steps up to the platform's front end, with a safety handrail on the open side.
+        sx = rx1 + 0.18
+        for k, (hh, yy) in enumerate(((0.28, y0 + 0.21), (0.14, y0 + 0.09))):
+            K.box("pl_step%d" % k, sx, yy, hh / 2, 0.30, 0.12, hh, K.mat("yard_pad"))
+        K._fine_mode = True
+        for k, (yy, zz) in enumerate(((y0 + 0.04, 0.45), (y0 + 0.30, 0.72))):
+            K.box("pl_rail_p%d" % k, sx + 0.16, yy, zz / 2, 0.03, 0.03, zz, K.mat("safety"))
+        K.dirbox("pl_rail", (sx + 0.16, y0 + 0.04, 0.45), (sx + 0.16, y0 + 0.30, 0.72), 0.03, 0.03, K.mat("safety"))
+        K._fine_mode = fm
 
 
 def _frame(p):
@@ -563,6 +701,7 @@ def build_high_tech(level: int = 2) -> dict:
         K.box("roof_tray_drop", X0 + 0.55 + (p["elec"] - 1) * 0.80 + 0.30, p["back"] - 0.90, z + 0.03,
               0.10, 0.10, 0.05, K.mat("wall_steel"))
     _services(K, p)
+    _fixtures(K, p)
     if p["mast"]:
         h = STEP_H[1]
         K.lattice_mast("mast", X0 + 0.45, STEP2_Y1 + 0.45, h + 0.06, h + 1.85, w=0.16, bays=4)

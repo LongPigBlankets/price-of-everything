@@ -408,6 +408,7 @@
     "contour": true
   },
   "assembly_plant_lvl1": {
+    "span": 10.690000057220459,
     "height": 0.36202057256533704,
     "width": 0.7754911054704462,
     "depth": 0.38821327913418147,
@@ -418,6 +419,7 @@
     "contour": true
   },
   "assembly_plant_lvl2": {
+    "span": 10.690000057220459,
     "height": 0.41534144895545233,
     "width": 1.0,
     "depth": 0.38821327913418147,
@@ -428,6 +430,7 @@
     "contour": true
   },
   "assembly_plant_lvl3": {
+    "span": 10.690000057220459,
     "height": 0.41534144895545233,
     "width": 1.0,
     "depth": 0.7296539183725267,
@@ -468,30 +471,33 @@
     "contour": true
   },
   "high_tech_manufactory_lvl1": {
+    "span": 7.6549999713897705,
     "height": 0.5029392521098799,
     "width": 0.901371668341722,
     "depth": 0.6544742010696164,
-    "triangles": 7476,
+    "triangles": 9092,
     "ink_edges": true,
     "source_ink_widths": true,
-    "projected_height": 0.9610233971433988,
+    "projected_height": 0.9647565652453298,
     "contour": true
   },
   "high_tech_manufactory_lvl2": {
+    "span": 7.6549999713897705,
     "height": 0.5029392521098799,
     "width": 0.901371668341722,
-    "depth": 0.8393207023291237,
-    "triangles": 10088,
+    "depth": 0.8438928886075692,
+    "triangles": 12320,
     "ink_edges": true,
     "source_ink_widths": true,
-    "projected_height": 1.0431530508830824,
+    "projected_height": 1.0500860655512323,
     "contour": true
   },
   "high_tech_manufactory_lvl3": {
+    "span": 7.6549999713897705,
     "height": 0.6649249154135728,
     "width": 1.0,
     "depth": 0.9418680685949098,
-    "triangles": 13068,
+    "triangles": 15704,
     "ink_edges": true,
     "source_ink_widths": true,
     "projected_height": 1.1602824072195732,

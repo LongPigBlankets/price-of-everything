@@ -83,6 +83,7 @@ func _ready() -> void:
 		if "--trees-only" in OS.get_cmdline_user_args() and not str(key).begins_with("tree_"): continue
 		Assets.key_for(str(key).get_slice("_lvl", 0), 3)
 		source.mesh = Assets.mesh_for(key)
+		source.set_instance_shader_parameter("pattern_scale", Assets.span(key))
 		contour.mesh = Assets.contour_for(key)
 		var bounds := source.mesh.get_aabb()
 		var center := bounds.get_center()
@@ -106,8 +107,8 @@ func _ready() -> void:
 		camera.size = span
 		var paint := ShaderMaterial.new()
 		paint.shader = Shader.new()
-		paint.shader.code = FileAccess.get_file_as_string("res://scripts/supply_chain_3d/building_print.gdshader").replace(
-			"paint *= mix(vec3(0.66, 0.74, 1.0), vec3(1.0, 0.92, 0.72), t);", "")
+		# Sprites are graded by position in the shader that draws them, not in the bake.
+		paint.shader.code = Assets.print_code(false, PackedStringArray(["NO_POSITION_GRADE"]))
 		paint.set_shader_parameter("stipple_strength", 0.10 if medium else 0.04)
 		paint.set_shader_parameter("detail_level", 1 if medium else 0)
 		# Small decorative sprites collect too much dark ink after minification.
@@ -131,7 +132,7 @@ func _ready() -> void:
 				camera.position = center + direction * 12.0
 				camera.look_at(center)
 				camera.force_update_transform()
-				source.material_override = paint
+				Assets.paint(source, paint, _glass_like(paint))
 				contour.visible = true
 				await get_tree().process_frame
 				RenderingServer.force_draw(false)
@@ -184,3 +185,15 @@ func _straight_alpha(image: Image) -> void:
 			if c.a > 0.0 and c.a < 1.0:
 				image.set_pixel(x, y, Color(minf(1.0, c.r / c.a), minf(1.0, c.g / c.a), minf(1.0, c.b / c.a), c.a))
 	image.fix_alpha_edges()
+
+## The glass paint with the same parameters as `paint`, for the mesh's see-through surface.
+var _glass_shader: Shader
+func _glass_like(paint: ShaderMaterial) -> ShaderMaterial:
+	if _glass_shader == null:
+		_glass_shader = Shader.new()
+		_glass_shader.code = Assets.print_code(true, PackedStringArray(["NO_POSITION_GRADE"]))
+	var glass := ShaderMaterial.new()
+	glass.shader = _glass_shader
+	for uniform in paint.shader.get_shader_uniform_list():
+		glass.set_shader_parameter(uniform.name, paint.get_shader_parameter(uniform.name))
+	return glass

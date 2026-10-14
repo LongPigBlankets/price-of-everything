@@ -9,6 +9,15 @@ ROOT = pathlib.Path(os.environ.get('POE_PROJECT_ROOT', str(pathlib.Path(__file__
 KIT = pathlib.Path(os.environ.get('POE_SPRITE_KIT', str(ROOT / '.claude/skills/blender-building-sprites')))
 OUT = pathlib.Path(os.environ.get('POE_MODEL_OUTPUT', str(ROOT / 'price-of-everything-0.1/assets/supply_chain_3d')))
 OUT.mkdir(parents=True, exist_ok=True)
+# Opaque faces carry a printed material pattern in the colour's alpha channel, read by
+# building_print.gdshader: 1 brick coursing, 2 wall panel joints, 3 roof gravel, 4 paving.
+# Alpha = 1 - code / 8, so 1.0 (the old export) still means no pattern. See-through faces
+# (BLENDED materials with Alpha < 1) go to a second 'Glass' slot and keep their real alpha.
+PATTERNS = {'white_wall': 2, 'chalk': 2, 'ht_white': 2, 'deck': 3, 'apron': 4, 'pad': 4, 'cream': 4}
+def pattern_code(material_name):
+    base = material_name.split('.')[0]
+    if 'brick' in base: return 1
+    return PATTERNS.get(base, 0)
 ns_map = {'__name__': 'builder_catalog', '__file__': str(KIT/'bake_sprite.py')}
 exec(compile((KIT/'bake_sprite.py').read_text(), str(KIT/'bake_sprite.py'), 'exec'), ns_map)
 specs = dict(ns_map['BUILDINGS'])
@@ -232,6 +241,7 @@ for name, spec in specs.items():
                 faces.append(tuple(offset+i for i in tri.vertices))
                 mat = me.materials[tri.material_index] if tri.material_index < len(me.materials) else None
                 colour = (0.35,0.35,0.32,1)
+                alpha = 1.0
                 if mat:
                     colour = tuple(mat.diffuse_color)
                     if mat.use_nodes:
@@ -241,7 +251,12 @@ for name, spec in specs.items():
                             if bsdf.inputs['Emission Strength'].default_value > 0:
                                 # The kit's furnace embers and navy seam beads are emissive.
                                 colour = tuple(bsdf.inputs['Emission Color'].default_value)
-                colours.append(colour)
+                            if getattr(mat, 'surface_render_method', '') == 'BLENDED':
+                                alpha = min(alpha, float(bsdf.inputs['Alpha'].default_value))
+                glass = alpha < 0.999
+                code = 0 if glass or not mat else pattern_code(mat.name)
+                # The fifth value marks a see-through face; only RGBA reaches the mesh.
+                colours.append((colour[0], colour[1], colour[2], alpha if glass else 1.0 - code / 8.0, glass))
             evaluated.to_mesh_clear()
         if not verts: raise RuntimeError('Empty asset: '+name)
         lo = [min(v[i] for v in frame_points) for i in range(3)]
@@ -263,32 +278,45 @@ for name, spec in specs.items():
         bpy.ops.wm.read_factory_settings(use_empty=True)
         center = ns[spec['ship_source']][:2] if spec.get('port_ship') else ((lo[0]+hi[0])/2, (lo[1]+hi[1])/2)
         vertices = [((v[0]-center[0])/span,(v[1]-center[1])/span,(v[2]-lo[2])/span) for v in verts]
-        me = bpy.data.meshes.new(name); me.from_pydata(vertices,[],faces); me.update()
-        for poly in me.polygons: poly.use_smooth = True
-        me.normals_split_custom_set(normals)
-        bary = me.uv_layers.new(name='Barycentric')
-        edges = me.uv_layers.new(name='InkEdges')
-        for poly, mask, width in zip(me.polygons, edge_masks, ink_widths):
-            for corner, loop in enumerate(poly.loop_indices):
-                bary.data[loop].uv = ((1, 0), (0, 1), (0, 0))[corner]
-                edges.data[loop].uv = (mask, width / span)
-        me.uv_layers.active_index = 0
-        attr = me.color_attributes.new(name='Color',type='FLOAT_COLOR',domain='CORNER')
-        for poly, colour in zip(me.polygons,colours):
-            for i in poly.loop_indices: attr.data[i].color = colour
         mat = bpy.data.materials.new('Paint'); mat.use_nodes=True
         bsdf = mat.node_tree.nodes.get('Principled BSDF')
         bsdf.inputs['Roughness'].default_value=1.0
         bsdf.inputs['Specular IOR Level'].default_value=0.0
-        vc = mat.node_tree.nodes.new('ShaderNodeVertexColor'); vc.layer_name='Color'
-        mat.node_tree.links.new(vc.outputs['Color'],bsdf.inputs['Base Color'])
-        me.materials.append(mat)
-        ob = bpy.data.objects.new(name,me); bpy.context.collection.objects.link(ob)
-        ob.select_set(True); bpy.context.view_layer.objects.active=ob
+        # No colour node: with export_vertex_color='ACTIVE' the exporter then writes the full
+        # RGBA attribute, keeping alpha (the pattern codes and glass opacity). Godot replaces
+        # these materials anyway.
+        def part(part_name, material, wanted):
+            """One exported object holding the faces whose glass flag equals `wanted`."""
+            ids = [i for i, colour in enumerate(colours) if bool(colour[4]) == wanted]
+            if not ids: return None
+            me = bpy.data.meshes.new(part_name); me.from_pydata(vertices,[],[faces[i] for i in ids]); me.update()
+            for poly in me.polygons: poly.use_smooth = True
+            me.normals_split_custom_set([normals[3 * i + k] for i in ids for k in range(3)])
+            bary = me.uv_layers.new(name='Barycentric')
+            edges = me.uv_layers.new(name='InkEdges')
+            for poly, i in zip(me.polygons, ids):
+                for corner, loop in enumerate(poly.loop_indices):
+                    bary.data[loop].uv = ((1, 0), (0, 1), (0, 0))[corner]
+                    edges.data[loop].uv = (edge_masks[i], ink_widths[i] / span)
+            me.uv_layers.active_index = 0
+            attr = me.color_attributes.new(name='Color',type='FLOAT_COLOR',domain='CORNER')
+            for poly, i in zip(me.polygons, ids):
+                for loop in poly.loop_indices: attr.data[loop].color = colours[i][:4]
+            me.materials.append(material)
+            ob = bpy.data.objects.new(part_name,me); bpy.context.collection.objects.link(ob)
+            ob.select_set(True)
+            return ob
+        # See-through faces go out as a second object named 'Glass' (and with a 'Glass'
+        # material): Blender's glTF exporter writes no vertex colour for a second material on
+        # one mesh, so the game merges the two objects back into one mesh, glass last.
+        ob = part(name, mat, False)
+        glass_mat = mat.copy(); glass_mat.name = 'Glass'
+        part(name + '_Glass', glass_mat, True)
+        bpy.context.view_layer.objects.active=ob
         key = f'{name}_lvl{level}'
         if not contours_only:
-            bpy.ops.export_scene.gltf(filepath=str(OUT/(key+'.glb')),export_format='GLB',use_selection=True,export_yup=True,export_materials='EXPORT',export_normals=True,export_cameras=False,export_lights=False)
-            manifest[key] = {'height':(hi[2]-lo[2])/span,'width':(hi[0]-lo[0])/span,'depth':(hi[1]-lo[1])/span,'triangles':len(faces),'ink_edges':True}
+            bpy.ops.export_scene.gltf(filepath=str(OUT/(key+'.glb')),export_format='GLB',use_selection=True,export_yup=True,export_materials='EXPORT',export_vertex_color='ACTIVE',export_normals=True,export_cameras=False,export_lights=False)
+            manifest[key] = {'span': span, 'height':(hi[2]-lo[2])/span,'width':(hi[0]-lo[0])/span,'depth':(hi[1]-lo[1])/span,'triangles':len(faces),'ink_edges':True}
             manifest[key]['source_ink_widths'] = True
             if level in storeys: manifest[key]['storey_height'] = storeys[level] / span
             if level in modules:
@@ -339,7 +367,7 @@ for name, spec in specs.items():
             manifest[key]['contour'] = False
             print('EXPORTED',key,len(faces),'triangles; no outer contour',flush=True)
             continue
-        ob.select_set(False)
+        for selected in list(bpy.context.selected_objects): selected.select_set(False)
         cv, cf, cn, cw = contour
         cm = bpy.data.meshes.new(name + '_contour')
         cm.from_pydata([((v[0]-center[0])/span,(v[1]-center[1])/span,(v[2]-lo[2])/span) for v in cv], [], cf)

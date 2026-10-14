@@ -36,26 +36,22 @@ func _ready() -> void:
 	Assets.set_grade(Vector2(-100000, 100000))
 	var mesh := Assets.mesh_for(key)
 	var contour := Assets.contour_for(key)
+	var span := Assets.span(key)
 	if directory != "":
 		# A trial export in another folder, drawn with the board's own materials.
-		mesh = _mesh_from(directory.path_join(key + ".glb"), mesh.surface_get_material(0))
+		mesh = _mesh_from(directory.path_join(key + ".glb"))
+		Assets.prepare_mesh(mesh)
 		if contour != null: contour = _mesh_from(directory.path_join(key + "_contour.glb"), contour.surface_get_material(0))
+		var trial: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(directory.path_join("manifest.json")))
+		span = float(trial.get(key, {}).get("span", 0.0))
 	_report(mesh)
 	if not palette.is_empty(): mesh = _remapped(mesh, palette)
-	var print_material := mesh.surface_get_material(0) as ShaderMaterial
+	var opaque: ShaderMaterial = Assets.print_material()
+	var glass: ShaderMaterial = Assets.glass_material()
 	if strong_faces or ink_width != 1.0:
-		# A plate-only copy: stronger light-to-shade steps between faces, heavier ink.
-		print_material = print_material.duplicate() as ShaderMaterial
-		if strong_faces:
-			var shader := Shader.new()
-			shader.code = print_material.shader.code.replace("mix(vec3(0.90, 0.92, 0.96), vec3(1.0, 1.0, 0.98)",
-				"mix(vec3(0.42, 0.47, 0.60), vec3(1.0, 0.99, 0.95)").replace("smoothstep(-0.45, 0.8, diffuse)", "smoothstep(-0.2, 0.75, diffuse)").replace(
-				# Still a south-east sun, swung to cast shadows at 11 o'clock so the two visible walls separate.
-				"normalize(vec3(0.50, 0.74, 0.45))", "normalize(vec3(0.35, 0.70, 0.61))")
-			print_material.shader = shader
-		print_material.set_shader_parameter("stroke_width_scale", ink_width)
-		if mesh is ArrayMesh:
-			for surface in mesh.get_surface_count(): (mesh as ArrayMesh).surface_set_material(surface, print_material)
+		# Plate-only copies: stronger light-to-shade steps between faces, heavier ink.
+		opaque = _plate_paint(false, strong_faces, ink_width)
+		glass = _plate_paint(true, strong_faces, ink_width)
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(SIZE, SIZE)
 	viewport.transparent_bg = true
@@ -70,6 +66,8 @@ func _ready() -> void:
 	viewport.add_child(environment)
 	var building := MeshInstance3D.new()
 	building.mesh = mesh
+	Assets.paint(building, opaque, glass)
+	if span > 0.0: building.set_instance_shader_parameter("pattern_scale", span)
 	viewport.add_child(building)
 	if contour != null:
 		var outline := MeshInstance3D.new()
@@ -96,17 +94,29 @@ func _ready() -> void:
 	print("[PLATE] saved ", name)
 	get_tree().quit()
 
-func _mesh_from(path: String, material: Material) -> Mesh:
-	var root := (load(path) as PackedScene).instantiate()
-	var nodes := root.find_children("*", "MeshInstance3D", true, false)
-	if root is MeshInstance3D: nodes.push_front(root)
-	var mesh: Mesh = (nodes[0] as MeshInstance3D).mesh
-	root.free()
-	for surface in mesh.get_surface_count(): mesh.surface_set_material(surface, material)
+func _plate_paint(see_through: bool, strong_faces: bool, ink_width: float) -> ShaderMaterial:
+	var code := Assets.print_code(see_through)
+	if strong_faces:
+		code = code.replace("mix(vec3(0.90, 0.92, 0.96), vec3(1.0, 1.0, 0.98)",
+			"mix(vec3(0.42, 0.47, 0.60), vec3(1.0, 0.99, 0.95)").replace("smoothstep(-0.45, 0.8, diffuse)", "smoothstep(-0.2, 0.75, diffuse)").replace(
+			# Still a south-east sun, swung to cast shadows at 11 o'clock so the two visible walls separate.
+			"normalize(vec3(0.50, 0.74, 0.45))", "normalize(vec3(0.35, 0.70, 0.61))")
+	var material := ShaderMaterial.new()
+	material.shader = Shader.new()
+	material.shader.code = code
+	material.set_shader_parameter("grade_range", Vector2(-100000, 100000))
+	material.set_shader_parameter("stroke_width_scale", ink_width)
+	return material
+
+func _mesh_from(path: String, material: Material = null) -> Mesh:
+	var mesh := Assets.load_mesh(path)
+	if material != null:
+		for surface in mesh.get_surface_count(): mesh.surface_set_material(surface, material)
 	return mesh
 
 func _report(mesh: Mesh) -> void:
 	var share := {}
+	var alphas := {}
 	var total := 0.0
 	for surface in mesh.get_surface_count():
 		var arrays := mesh.surface_get_arrays(surface)
@@ -119,10 +129,13 @@ func _report(mesh: Mesh) -> void:
 			var c := colours[indices[t]]
 			var k := "%.3f,%.3f,%.3f" % [c.r, c.g, c.b]
 			share[k] = share.get(k, 0.0) + area
+			alphas["%s a=%.3f%s" % [k, c.a, " glass" if Assets.is_glass(mesh, surface) else ""]] = true
 			total += area
 	var keys := share.keys()
 	keys.sort_custom(func(x: String, y: String) -> bool: return share[x] > share[y])
 	for k in keys: print("[COLOUR] ", k, " ", snappedf(100.0 * share[k] / total, 0.1), "%")
+	for k in alphas: print("[ALPHA] ", k)
+	print("[SURFACES] ", mesh.get_surface_count(), " glass=", mesh.get_meta("glass_surfaces", []))
 
 func _remapped(mesh: Mesh, palette: Dictionary) -> ArrayMesh:
 	var copy := ArrayMesh.new()
@@ -138,4 +151,5 @@ func _remapped(mesh: Mesh, palette: Dictionary) -> ArrayMesh:
 		arrays[Mesh.ARRAY_COLOR] = colours
 		copy.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		copy.surface_set_material(surface, mesh.surface_get_material(surface))
+	copy.set_meta("glass_surfaces", mesh.get_meta("glass_surfaces", []))
 	return copy

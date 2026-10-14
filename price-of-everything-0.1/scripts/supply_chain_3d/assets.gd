@@ -4,7 +4,11 @@ const DIRECTORY := "res://assets/supply_chain_3d/"
 const BuildingSprites := preload("res://scripts/building_sprites.gd")
 const PrintShader := preload("res://scripts/supply_chain_3d/building_print.gdshader")
 const ContourShader := preload("res://scripts/supply_chain_3d/contour.gdshader")
+const GlassShader := preload("res://scripts/supply_chain_3d/building_glass.gdshader")
+const PAINT_INCLUDE := "res://scripts/supply_chain_3d/building_paint.gdshaderinc"
 static var _print: ShaderMaterial
+static var _glass: ShaderMaterial
+static var _lit_glass: Dictionary = {}
 static var _contour: ShaderMaterial
 static var _contours: Dictionary = {}
 static var _trees: Dictionary = {}
@@ -29,22 +33,66 @@ static func mesh_for(key: String) -> Mesh:
 	if key == "":
 		return null
 	if not _meshes.has(key):
-		var scene := load(DIRECTORY + key + ".glb") as PackedScene
-		if scene == null:
+		if not ResourceLoader.exists(DIRECTORY + key + ".glb"):
 			return null
-		var root := scene.instantiate()
-		var nodes := root.find_children("*", "MeshInstance3D", true, false)
-		if root is MeshInstance3D:
-			nodes.push_front(root)
-		_meshes[key] = (nodes[0] as MeshInstance3D).mesh if not nodes.is_empty() else null
-		root.free()
-		if _meshes[key] != null:
-			if _print == null:
-				_print = ShaderMaterial.new()
-				_print.shader = PrintShader
-			for surface in _meshes[key].get_surface_count():
-				_meshes[key].surface_set_material(surface, _print)
+		_meshes[key] = load_mesh(DIRECTORY + key + ".glb")
+		if _meshes[key] != null: prepare_mesh(_meshes[key])
 	return _meshes[key]
+
+## One mesh from a building GLB. The export writes see-through faces as a second object
+## named "..._Glass"; its surfaces are appended last and keep the 'Glass' material name.
+static func load_mesh(path: String) -> Mesh:
+	var scene := load(path) as PackedScene
+	if scene == null: return null
+	var root := scene.instantiate()
+	var nodes := root.find_children("*", "MeshInstance3D", true, false)
+	if root is MeshInstance3D: nodes.push_front(root)
+	var mesh: Mesh = (nodes[0] as MeshInstance3D).mesh if not nodes.is_empty() else null
+	if nodes.size() > 1 and mesh is ArrayMesh:
+		mesh = mesh.duplicate()
+		for node in nodes.slice(1):
+			var part: Mesh = (node as MeshInstance3D).mesh
+			for surface in part.get_surface_count():
+				mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, part.surface_get_arrays(surface))
+				var material := part.surface_get_material(surface)
+				var tag := StandardMaterial3D.new()
+				# The material may be shared or unnamed after import; the node name is certain.
+				tag.resource_name = "Glass" if str(node.name).ends_with("_Glass") or (material != null and material.resource_name.begins_with("Glass")) else ""
+				mesh.surface_set_material(mesh.get_surface_count() - 1, tag)
+	root.free()
+	return mesh
+
+## Gives an imported building mesh the print paint, and its see-through surface (the
+## export's 'Glass' slot) the glass paint. Remembers which surfaces are glass.
+static func prepare_mesh(mesh: Mesh) -> void:
+	var glass: Array = []
+	for surface in mesh.get_surface_count():
+		var source := mesh.surface_get_material(surface)
+		var is_glass := source != null and source.resource_name.begins_with("Glass")
+		if is_glass: glass.append(surface)
+		mesh.surface_set_material(surface, glass_material() if is_glass else print_material())
+	mesh.set_meta("glass_surfaces", glass)
+
+static func is_glass(mesh: Mesh, surface: int) -> bool:
+	return mesh != null and surface in mesh.get_meta("glass_surfaces", [])
+
+## Paints one building visual surface by surface, so lit windows never turn its glass opaque.
+static func paint(node: MeshInstance3D, opaque: Material, glass: Material) -> void:
+	node.material_override = null
+	for surface in node.mesh.get_surface_count():
+		node.set_surface_override_material(surface, glass if is_glass(node.mesh, surface) else opaque)
+
+## Blender units per model unit for this asset, which keeps material patterns at one real size.
+static func span(key: String) -> float:
+	if _manifest.is_empty(): key_for("warehouse", 1)
+	return float(_manifest.get(key, {}).get("span", 0.0))
+
+## The print paint as one source string, for tools that edit or recompile it.
+static func print_code(glass: bool = false, defines: PackedStringArray = PackedStringArray()) -> String:
+	var source := FileAccess.get_file_as_string((GlassShader if glass else PrintShader).resource_path)
+	var extra := ""
+	for define in defines: extra += "#define %s\n" % define
+	return source.replace('#include "%s"' % PAINT_INCLUDE, extra + FileAccess.get_file_as_string(PAINT_INCLUDE))
 
 static func dimensions(key: String) -> Vector3:
 	var data: Dictionary = _manifest.get(key, {})
@@ -116,11 +164,15 @@ static func set_grade(value: Vector2) -> void:
 		_contour = ShaderMaterial.new()
 		_contour.shader = ContourShader
 	_contour.set_shader_parameter("grade_range", value)
+	glass_material().set_shader_parameter("grade_range", value)
+	for material in _lit_glass.values(): material.set_shader_parameter("grade_range", value)
 	for material in _lit.values(): material.set_shader_parameter("grade_range", value)
 	for material in _trees.values(): material.set_shader_parameter("grade_range", value)
 
 static func set_detail(tier: int) -> void:
 	if _print != null: _print.set_shader_parameter("detail_level", tier)
+	if _glass != null: _glass.set_shader_parameter("detail_level", tier)
+	for material in _lit_glass.values(): material.set_shader_parameter("detail_level", tier)
 	for material in _lit.values(): material.set_shader_parameter("detail_level", tier)
 	for material in _trees.values(): material.set_shader_parameter("detail_level", tier)
 
@@ -131,6 +183,20 @@ static func lit_material(curtain_wall: bool = false) -> ShaderMaterial:
 		material.set_shader_parameter("curtain_wall", curtain_wall)
 		_lit[curtain_wall] = material
 	return _lit[curtain_wall]
+
+static func lit_glass_material(curtain_wall: bool = false) -> ShaderMaterial:
+	if not _lit_glass.has(curtain_wall):
+		var material := glass_material().duplicate() as ShaderMaterial
+		material.set_shader_parameter("lit_windows", true)
+		material.set_shader_parameter("curtain_wall", curtain_wall)
+		_lit_glass[curtain_wall] = material
+	return _lit_glass[curtain_wall]
+
+static func glass_material() -> ShaderMaterial:
+	if _glass == null:
+		_glass = ShaderMaterial.new()
+		_glass.shader = GlassShader
+	return _glass
 
 static func print_material() -> ShaderMaterial:
 	if _print == null:

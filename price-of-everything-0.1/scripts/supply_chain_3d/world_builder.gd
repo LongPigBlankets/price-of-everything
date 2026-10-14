@@ -1546,7 +1546,10 @@ func _ensure_standing_near(pair: Dictionary) -> void:
 		visual.mesh = mesh
 		set_role(visual, float(pair.get("role", 0.0)))
 		visual.scale = Vector3.ONE * float(pair.standing.side)
-		if pair.lit: visual.material_override = Assets.lit_material(str(pair.key).begins_with("towers_"))
+		if Assets.span(pair.key) > 0.0: visual.set_instance_shader_parameter("pattern_scale", Assets.span(pair.key))
+		if pair.lit:
+			var curtain := str(pair.key).begins_with("towers_")
+			Assets.paint(visual, Assets.lit_material(curtain), Assets.lit_glass_material(curtain))
 	else:
 		var box := BoxMesh.new()
 		box.size = pair.dimension
