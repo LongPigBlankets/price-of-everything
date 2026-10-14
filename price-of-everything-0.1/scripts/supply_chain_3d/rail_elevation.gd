@@ -6,7 +6,7 @@ const DEPTH := 14.0
 const APPROACH := 180.0
 const MAX_APPROACH_GRADE := 0.12
 
-static func solve(plan: Dictionary, height: Callable, level: Callable, requested: Callable, yard_distance: Callable, stations: Array = []) -> Dictionary:
+static func solve(plan: Dictionary, height: Callable, level: Callable, requested: Callable, yard_distance: Callable, stations: Array = [], required_cover: Callable = Callable()) -> Dictionary:
 	var nodes := {}; var profiles: Array = []; var junctions := {}
 	for corridor in plan.corridors:
 		var samples: Array = []
@@ -14,13 +14,15 @@ static func solve(plan: Dictionary, height: Callable, level: Callable, requested
 			var p: Vector2 = corridor.points[i]
 			var side: Vector2 = (corridor.points[mini(i+1,corridor.points.size()-1)]-corridor.points[maxi(0,i-1)]).normalized().orthogonal()*(Rail.CORRIDOR_WIDTH*0.5+1.8)
 			var hidden: bool = requested.call(p) or maxf(float(level.call(p)),maxf(float(level.call(p-side)),float(level.call(p+side))))>=Rail.TUNNEL_LEVEL
-			hidden = hidden and float(yard_distance.call(p))>=APPROACH
+			var mandatory: bool=required_cover.is_valid() and bool(required_cover.call(p))
+			hidden = (hidden and float(yard_distance.call(p))>=APPROACH) or mandatory
 			var base := float(height.call(p))+1.2
 			var roof := minf(float(height.call(p)),minf(float(height.call(p-side)),float(height.call(p+side))))
 			samples.append({"p":p,"hidden":hidden})
 			var key := Rail._key(p)
-			var node: Dictionary = nodes.get_or_add(key,{"p":p,"base":base,"h":base,"roof":roof,"hidden":false,"edges":{}})
+			var node: Dictionary = nodes.get_or_add(key,{"p":p,"base":base,"h":base,"roof":roof,"hidden":false,"mandatory":false,"edges":{}})
 			node.roof=minf(node.roof,roof)
+			node.mandatory=node.mandatory or mandatory
 			if i>0:
 				var previous := Rail._key(corridor.points[i-1])
 				if previous!=key:
@@ -44,7 +46,7 @@ static func solve(plan: Dictionary, height: Callable, level: Callable, requested
 			datum=minf(datum,float(nodes[key].roof)+1.2-DEPTH)
 			for other in nodes[key].edges:
 				if nodes[other].hidden and not seen.has(other): seen[other]=true; queue.append(other)
-		components.append({"nodes":queue,"datum":datum})
+		components.append({"nodes":queue,"datum":datum,"mandatory":queue.any(func(key):return nodes[key].mandatory)})
 	# Minimum-distance relaxation; only preprocessing, never on a cache hit.
 	for component in components:
 		var distance := {}; var queue: Array = component.nodes.duplicate(); var cursor := 0
@@ -56,7 +58,10 @@ static func solve(plan: Dictionary, height: Callable, level: Callable, requested
 			var reach := maxf(APPROACH,1.5*drop/MAX_APPROACH_GRADE)
 			if float(distance[key])>reach: continue
 			var target := lerpf(component.datum,node.base,smoothstep(0.0,reach,float(distance[key])))
-			var yard_weight := smoothstep(0.0,APPROACH,float(yard_distance.call(node.p)))
+			# A compulsory roof already overrode depot proximity. Applying the
+			# old XY yard blend only outside its mouth would create a height step.
+			# Use distance along the connected track for these approaches instead.
+			var yard_weight := 1.0 if component.mandatory else smoothstep(0.0,APPROACH,float(yard_distance.call(node.p)))
 			node.h=minf(node.h,lerpf(node.base,target,yard_weight))
 			for other in node.edges:
 				var d := float(distance[key])+float(node.edges[other])

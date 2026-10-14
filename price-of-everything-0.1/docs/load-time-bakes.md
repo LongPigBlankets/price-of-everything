@@ -1,5 +1,45 @@
 # Load time: what is baked, and when to re-bake it
 
+## Stoneshore Docks skyline and sea margin — verified 14 October 2026
+
+The current **five-tile** production package contains the three-tower Docks
+cluster, mandatory tunnel cover beneath conflicting roads/buildings, and the
+water-only margin into adjacent sea tiles. Independent validation passes with
+current fingerprints: **21 resources, 31,829,261 bytes (30.35 MiB)**. No
+full-continent bake was run. The final package assembly took 19.467s after scene
+preparation, regenerated all five medium and five near bakes, prepared three
+base resources and retained two with identical payloads. Cold frontage generation remains offline.
+
+Fresh process, empty runtime cache directory, Apple M5 Pro / Godot 4.6.2 Metal
+Forward+, warm OS filesystem cache:
+
+| Measurement | Time |
+|---|---:|
+| Begin ready, process elapsed | 17.342s |
+| Five-tile board preparation during loading | 1.092s |
+| Frontage restoration | 0.126s |
+| Transport lookup/restore | 0.087s |
+| Combined five-tile continent resource load | 0.023s |
+| First supply-chain opening after Begin | 0.310s |
+
+Fourteen final views record **19 bundled hits, zero initial cache misses and
+zero runtime bake writes**. The three sea-margin meshes are loaded with cached
+scenery; neither polygon clipping nor neighbouring tile/detail generation runs
+on this path. All three skyline buildings survive cache restoration and keep
+correct far/medium/near representations. The Docks audit finds no exposed rail
+intersections with building footprints or parallel road surfaces. Decorative
+building/street and brownfield intrusion audits also pass. Working-yard tracks
+retain their original elevation and remain open; final tunnel entrance
+transitions are at most 0.38%. Seventy-five focused assertions pass across the
+Docks clearance/water, frontage, neighbourhood, crossing/station and tunnel tests.
+
+Decoded medium/near terrain texture sizes remain 18,677,385 / 74,710,665 bytes;
+near resources use 16,169,279 bytes on disk. These are scoped preview numbers,
+not current full-continent timings. The existing RoadRegions water-tile and
+ObjectDB exit warnings remain. Evidence is under
+`outputs/supply-chain-3d/stoneshore-docks/` at repository root.
+
+
 ## Stoneshore crossings and station — verified 14 October 2026
 
 The current review package is scoped to **five Stoneshore tiles**. It includes

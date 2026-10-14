@@ -2484,3 +2484,46 @@ model equality after restore. Expensive parcel/street searches run only after
 a frontage-cache miss. Fresh-process package timings are recorded in
 `docs/load-time-bakes.md`. Evidence is under
 `outputs/supply-chain-3d/stoneshore-interiors/final/` at repository root.
+
+
+### Docks skyline, rail clearance and sea margin (14 October 2026)
+
+The five-tile Stoneshore trial now has a central cluster of three skyscrapers:
+two prepared tower variants and the existing 20-storey U-shaped office moved
+into the cluster. Their centres are 73–129u from the Docks tile centre. They
+receive placement priority over smaller decorative buildings, retain half-scale
+footprints and reuse the existing far/medium/near assets. The final trial has
+258 decorative buildings and 77.52% estimated buildable frontage coverage.
+The refitted interiors retain seven brownfields and now have ten lane paths,
+five courtyard groups, fifteen added greens and fifteen pedestrian links.
+
+The north–south railway was only 4u from the road centreline: carriageways
+intersected even though the centreline crossing test did not fire. The adjoining
+curve also crossed the electric-arc furnace's actual rendered footprint. A
+180u depot-proximity exemption prevented those sections being covered.
+`rail_clearance.gd` now supplies mandatory cover to the existing fixed-datum
+solver for Docks parallel road conflicts and rendered building bounds. Actual
+depot yards stay open, and perpendicular intersections retain the existing
+bridge/level-crossing engineering. The Docks audit finds no remaining exposed
+building or parallel-road conflicts, with 235.58u of covered corridor samples.
+Mandatory cover uses distance along the connected track for its approaches;
+reapplying the old depot-distance blend outside a fixed-height roof would cause
+a step at the portal. The exposed Docks approaches stay below 12%; the final entrance transitions
+are at most 0.38%. Underground
+tracks stay level, and no fully hidden rail has an open terrain cut. The final
+layout has seven road bridges and five grouped crossings above covered rail,
+with minimum bridge clearance 8.5325u and modified road grades at most 8%.
+
+`sea_fringe.gd` adds a water-only margin along nine exposed edges adjoining sea
+tiles: ten percent of the neighbouring hex depth, approximately 47–48u. Clipped
+strips meet at tile corners and use the existing sea-depth and shoreline colours.
+Neighbouring land and islets are subtracted; colours partition the mesh instead
+of overlapping coplanar layers. The margin and its cutaway are three cached
+scenery meshes shared by every LOD. They create no additional playable tiles,
+colliders, building loads or per-tile detail requests. Expensive clipping and
+mesh preparation run only after the scenery lookup misses. This margin is
+currently limited to the Stoneshore review mode.
+
+The regular map and the full-continent package remain unchanged. Production
+package verification and fresh-process timings are in `docs/load-time-bakes.md`.
+Evidence is under `outputs/supply-chain-3d/stoneshore-docks/` at repository root.

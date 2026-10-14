@@ -71,8 +71,8 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 		reserve("__rail_track",PackedVector2Array([a+n,b+n,b-n,a-n]))
 	movable.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		if (a.kind == "house") != (b.kind == "house"): return b.kind == "house"
-		var pa := 0 if a.get("trial_green",false) else (1 if a.has("trial_port") else (2 if a.get("decor_family","")=="civic_u_office" else 3))
-		var pb := 0 if b.get("trial_green",false) else (1 if b.has("trial_port") else (2 if b.get("decor_family","")=="civic_u_office" else 3))
+		var pa := -1 if a.has("trial_skyline") else (0 if a.get("trial_green",false) else (1 if a.has("trial_port") else (2 if a.get("decor_family","")=="civic_u_office" else 3)))
+		var pb := -1 if b.has("trial_skyline") else (0 if b.get("trial_green",false) else (1 if b.has("trial_port") else (2 if b.get("decor_family","")=="civic_u_office" else 3)))
 		return pa<pb if pa!=pb else str(a.iid) < str(b.iid))
 	var omitted := 0
 	var restored := 0
@@ -342,6 +342,7 @@ func entrance(s: Dictionary) -> PackedVector2Array:
 	return PackedVector2Array()
 
 func trial_plot_allowed(s: Dictionary) -> bool:
+	if s.has("trial_skyline") and s.pos.distance_to(s.trial_skyline)>float(s.trial_max_distance): return false
 	if s.has("trial_port") and s.pos.distance_to(s.trial_port) > float(s.trial_max_distance): return false
 	if s.has("trial_residential"):
 		return preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").residential(s.trial_tile, s.pos, s.trial_edge_centers,s.get("trial_harbours",[])) == bool(s.trial_residential)
