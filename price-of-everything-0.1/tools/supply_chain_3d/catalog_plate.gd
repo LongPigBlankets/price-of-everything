@@ -2,7 +2,7 @@ extends Node
 ## One building rendered through the board's own print shader, alone on a transparent
 ## background at the board's home angle, for catalogue-plate mock-ups.
 ## AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_chain_3d/catalog_plate.tscn -- --no-telemetry
-##   --asset=high_tech_manufactory_lvl3 --out=<dir> [--palette=res://tools/supply_chain_3d/paper_wpa_catalog_palette.json] [--strong-faces] [--ink=1.8]
+##   --asset=high_tech_manufactory_lvl3 --out=<dir> [--yaw=180] [--palette=res://tools/supply_chain_3d/paper_wpa_catalog_palette.json] [--strong-faces] [--ink=1.8]
 ## --dir=res://assets/supply_chain_3d_trial draws a trial export instead of the shipped model:
 ##   POE_MODEL_OUTPUT=<tmp> blender -b --factory-startup --python tools/supply_chain_3d/export_models.py -- <family>
 ##   then copy the GLBs into that folder and import (the shipped models and sprites stay untouched).
@@ -26,11 +26,13 @@ func _ready() -> void:
 	var strong_faces := false
 	var ink_width := 1.0
 	var directory := ""
+	var yaw_degrees := 0.0
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--asset="): key = argument.trim_prefix("--asset=")
 		if argument.begins_with("--out="): out = argument.trim_prefix("--out=")
 		if argument == "--strong-faces": strong_faces = true
 		if argument.begins_with("--dir="): directory = argument.trim_prefix("--dir=")
+		if argument.begins_with("--yaw="): yaw_degrees = float(argument.trim_prefix("--yaw="))
 		if argument.begins_with("--ink="): ink_width = float(argument.trim_prefix("--ink="))
 		if argument.begins_with("--palette="):
 			palette = JSON.parse_string(FileAccess.get_file_as_string(argument.trim_prefix("--palette=")))
@@ -83,6 +85,8 @@ func _ready() -> void:
 	var rig := Rig.new()
 	rig.target = box.get_center()
 	rig.span = box.size.length() * 1.05
+	# --yaw=180 orbits to the far side, showing the two faces the home view cannot see.
+	rig.yaw = Rig.HOME_YAW + deg_to_rad(yaw_degrees)
 	var camera := Camera3D.new()
 	viewport.add_child(camera)
 	camera.current = true
@@ -91,7 +95,7 @@ func _ready() -> void:
 		RenderingServer.force_draw(false)
 		await get_tree().process_frame
 	var image := viewport.get_texture().get_image()
-	var name := key + ("_trial" if directory != "" else "") + ("_palette" if not palette.is_empty() else "") + ("_faces" if strong_faces else "") + ("_ink" if ink_width != 1.0 else "") + ".png"
+	var name := key + ("_trial" if directory != "" else "") + ("_palette" if not palette.is_empty() else "") + ("_faces" if strong_faces else "") + ("_ink" if ink_width != 1.0 else "") + ("_yaw%d" % int(yaw_degrees) if yaw_degrees != 0.0 else "") + ".png"
 	image.save_png(out.path_join(name))
 	print("[PLATE] saved ", name)
 	get_tree().quit()
