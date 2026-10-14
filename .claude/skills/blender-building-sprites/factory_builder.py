@@ -34,8 +34,6 @@ PALETTE = {
     # The back yard: storage along the long wall the home view does not show.
     "pad":        (0.300, 0.290, 0.260),   # yard hardstanding (printed as paving)
     "container":  (0.105, 0.205, 0.355),   # shipping container, the kit's container blue
-    "carton":     (0.300, 0.165, 0.072),
-    "pallet":     (0.200, 0.130, 0.065),
 }
 # Window glass is see-through (BLENDED, alpha < 1): the 3D export gives it the glass shader.
 # Warm teal slate, as on the reference plate, over a dark interior panel behind each pane.
@@ -72,8 +70,7 @@ WIDEN = 0.27
 X0 = -W / 2 - WIDEN     # left wall
 X1 = W / 2              # right wall (windows / flue / rear annex side)
 XC = (X0 + X1) / 2      # body centre in X
-BACK_DOOR_X = X0 + 0.50 # personnel door in the back gable
-LEAN_D = 0.95           # back lean-to store: depth out from the long -X wall
+LEAN_D = 0.70           # back lean-to store: depth out from the long -X wall
 LEAN_HI, LEAN_LO = 1.05, 0.70   # its roof at the wall and at the outer eave (one storey at most)
 BW = X1 - X0            # body width
 
@@ -376,8 +373,7 @@ def build_factory(level: int) -> dict:
             box(f"plinth_{tag}", (x0 + x1) / 2, (y0 + y1) / 2, PH_ / 2, x1 - x0, y1 - y0, PH_, M["plinth"])
         plinth_run("e", X1 - PO, X1 + PO, -L / 2 - PO, L / 2 + PO)
         plinth_run("w", X0 - PO, X0 + PO, -L / 2 - PO, L / 2 + PO)
-        plinth_run("n0", X0 - PO, BACK_DOOR_X - 0.22, L / 2 - PO, L / 2 + PO)
-        plinth_run("n1", BACK_DOOR_X + 0.22, X1 + PO, L / 2 - PO, L / 2 + PO)
+        plinth_run("n", X0 - PO, X1 + PO, L / 2 - PO, L / 2 + PO)
         front = [(X0 - PO, X1 + PO)]
         if p["gate"]:
             gx, gw = -0.25 - WIDEN, 1.30
@@ -519,29 +515,29 @@ def build_factory(level: int) -> dict:
                     box(f"{tag}_cc{sx > 0}{sy > 0}{zz > 0.3}", cx + sx * (w / 2 - 0.04), yy - sy * 0.04, zz,
                         0.09, 0.09, 0.09, M["darkmetal"])
 
+    def wall_louvre(tag, x, y, z, w, h):
+        """Ventilation louvre on the -X wall: dark opening, slats, stone head and sill."""
+        box(f"{tag}", x - 0.006, y, z, 0.01, w, h, M["ink_black"])
+        for k in range(4):
+            box(f"{tag}_s{k}", x - 0.014, y, z - h / 2 + (k + 0.6) * h / 4, 0.012, w - 0.03, 0.022, M["darkmetal"])
+        for nm, zz in (("t", z + h / 2 + 0.02), ("b", z - h / 2 - 0.02)):
+            box(f"{tag}_{nm}", x - 0.012, y, zz, 0.02, w + 0.06, 0.04, M["stone"])
+
     def drum(tag, x, y, mat, band=True):
         cyl(f"drum_{tag}", x, y, 0.15, 0.10, 0.30, mat)
         cyl(f"drum_{tag}_lid", x, y, 0.305, 0.085, 0.012, M["darkmetal"])
         if band:
             cyl(f"drum_{tag}_band", x, y, 0.20, 0.103, 0.035, M["hazard"])
 
-    def pallet(tag, x, y, layers):
-        box(f"pal_{tag}", x, y, 0.035, 0.40, 0.34, 0.07, M["pallet"])
-        for h in range(layers):
-            for k, (dx, dy) in enumerate(((-0.09, -0.07), (0.09, -0.07), (-0.09, 0.08), (0.09, 0.08))):
-                if h == layers - 1 and k == 3:
-                    continue
-                box(f"pal_{tag}_c{h}{k}", x + dx, y + dy, 0.07 + 0.08 + h * 0.16, 0.17, 0.14, 0.15, M["carton"])
-
     def back_side(p, N, L):
         # Hardstanding along the long -X wall for the yard.
-        box("yard_pad", X0 - 0.56, 0.0, -0.03, 1.12, L, 0.06, M["pad"])
+        box("yard_pad", X0 - 0.48, 0.0, -0.03, 0.96, L, 0.06, M["pad"])
         # Pilasters at every bay line, as on the window wall.
         for i in range(N + 1):
             box(f"pilaster_w{i}", X0 - 0.03, -L / 2 + i * TL, H / 2, 0.06, 0.14, H, M["brick"])
-        # Lean-to store against bays 1-2: brick walls, standing-seam mono-pitch roof below the
-        # first-floor sills, a roller door and a window, an eaves gutter and downpipe.
-        ya, yb = -L / 2 + TL, -L / 2 + 3 * TL
+        # Lean-to store against bay 1: brick walls, standing-seam mono-pitch roof below the
+        # first-floor sills, a roller door, an eaves gutter and downpipe.
+        ya, yb = -L / 2 + TL, -L / 2 + 2 * TL
         lx = X0 - LEAN_D
         prism_x("leanto", X0 + 0.01, lx, ya, yb, LEAN_HI, LEAN_LO, M["brick"])
         m = bpy.data.meshes.new("leanto_roof")
@@ -561,53 +557,36 @@ def build_factory(level: int) -> dict:
         bm.to_mesh(m); bm.free()
         new_obj("leanto_roof", m, M["roof_metal"])
         box("leanto_flash", X0 - 0.04, (ya + yb) / 2, LEAN_HI + 0.07, 0.08, yb - ya + 0.10, 0.05, M["stone"])
-        door_y, dw, dh = (ya + yb) / 2 - 0.25, 0.80, 0.58
+        door_y, dw, dh = (ya + yb) / 2, 0.56, 0.52
         box("leanto_door", lx - EPS, door_y, dh / 2, 0.01, dw, dh, M["door"])
         for nm, dy in (("fl", -dw / 2), ("fr", dw / 2)):
             box(f"leanto_door_{nm}", lx - EPS - 0.005, door_y + dy, dh / 2, 0.012, 0.06, dh + 0.06, M["mullion"])
         box("leanto_door_ft", lx - EPS - 0.005, door_y, dh + 0.02, 0.012, dw + 0.14, 0.05, M["stone"])
         for k in range(1, 5):
             box(f"leanto_slat{k}", lx - EPS - 0.004, door_y, k * dh / 5, 0.008, dw - 0.06, 0.018, M["darkmetal"])
-        face_window("leanto_w", "-x", lx, yb - 0.38, 0.40, 0.36, 0.30)
         PO = 0.03
         for k, (a, b) in enumerate(((ya, door_y - dw / 2 - 0.05), (door_y + dw / 2 + 0.05, yb))):
             box(f"leanto_plinth{k}", lx, (a + b) / 2, 0.07, 2 * PO, b - a, 0.14, M["plinth"])
         box("leanto_plinth_b", (lx + X0) / 2, yb, 0.07, X0 - lx, 2 * PO, 0.14, M["plinth"])
         box("leanto_gutter", xo - 0.05, (ya + yb) / 2, LEAN_LO - 0.02, 0.10, yb - ya + 0.10, 0.06, M["silver"])
         drainpipe("leanto", "-x", xo - 0.05, ya + 0.08, LEAN_LO - 0.05, 0.0)
-        # Windows: first floor along the whole wall, ground floor where no store stands.
+        # One full-length (20 ft) container in the two bays beyond the store, two drums by it.
+        c0 = yb + 0.25
+        container("cont", X0 - 0.45, c0, 1.60)
+        for k, y in enumerate((c0 + 1.60 + 0.20, c0 + 1.60 + 0.42)):
+            if y < L / 2 - 0.12:
+                drum(f"b{k}", X0 - 0.28, y, M["darkmetal"], band=(k == 0))
+        # First-floor windows along the whole wall; on the ground floor, vents where nothing
+        # stands in front of the wall.
         for i in range(N):
             cy = -L / 2 + TL / 2 + i * TL
             face_window(f"ww{i}_1", "-x", X0, cy, FLOOR + 0.24 + 0.36, 0.50, 0.72)
-            if not (ya - 0.01 < cy < yb + 0.01):
-                face_window(f"ww{i}_0", "-x", X0, cy, 0.24 + 0.36, 0.50, 0.72)
-        # Storage on the hardstanding: a container in the bays beyond the store, pallets of
-        # cartons and drums in the front bay.
-        room = L / 2 - yb - 0.24
-        length = 1.60 if room >= 1.75 else 0.85
-        container("cont", X0 - 0.45, yb + 0.12, length)
-        rest = yb + 0.12 + length + 0.10
-        for k, y in enumerate((rest + 0.12, rest + 0.34)):
-            if y < L / 2 - 0.10:
-                drum(f"b{k}", X0 - 0.30 - 0.18 * k, y, M["container"] if k else M["darkmetal"])
-        pallet("a", X0 - 0.34, -L / 2 + 0.30, 2)
-        pallet("b", X0 - 0.34, -L / 2 + 0.72, 1)
-        pallet("c", X0 - 0.80, -L / 2 + 0.36, 1)
-        for k, (dx, dy) in enumerate(((-0.78, 0.80), (-0.58, 0.88), (-0.80, 1.00))):
-            drum(f"f{k}", X0 + dx, -L / 2 + dy, M["darkmetal"], band=(k != 1))
-        # Back gable: the wide first-floor window, a personnel door with canopy and lamp, a
-        # ground-floor window and a louvre.
-        face_window("bw_wide", "+y", XC, L / 2, FLOOR + 0.24 + 0.36, 1.70, 0.72, cols=6)
+            blocked = (ya - 0.01 < cy < yb + 0.01) or (c0 - 0.05 < cy < c0 + 1.65)
+            if not blocked:
+                wall_louvre(f"wv{i}", X0, cy, 0.58, 0.34, 0.30)
+        # Back gable: plain brick and one vent; no window or door at the very back.
+        lx_, lw, lh = XC, 0.30, 0.30
         dy = L / 2 + EPS
-        box("back_door", BACK_DOOR_X, dy, 0.38, 0.34, 0.01, 0.76, M["darkmetal"])
-        box("back_door_lint", BACK_DOOR_X, dy + 0.012, 0.82, 0.48, 0.035, 0.09, M["stone"])
-        # Kept shallow: anything standing further out than the boiler house's coping would
-        # widen the family's footprint and shrink the whole building on the board.
-        box("back_hood", BACK_DOOR_X, dy + 0.025, 0.90, 0.52, 0.05, 0.04, M["darkmetal"])
-        box("back_lamp_arm", BACK_DOOR_X + 0.34, dy + 0.012, 0.86, 0.03, 0.024, 0.03, M["darkmetal"])
-        box("back_lamp", BACK_DOOR_X + 0.34, dy + 0.03, 0.83, 0.12, 0.04, 0.05, M["mullion"])
-        face_window("bw_g", "+y", XC + 0.15, L / 2, 0.24 + 0.36, 0.50, 0.72)
-        lx_, lw, lh = XC + 0.95, 0.30, 0.30
         box("back_louv", lx_, dy - 0.009, 0.62, lw, 0.01, lh, M["ink_black"])
         for k in range(4):
             box(f"back_louv_s{k}", lx_, dy + 0.004, 0.62 - lh / 2 + (k + 0.6) * lh / 4, lw - 0.03, 0.012, 0.022, M["darkmetal"])

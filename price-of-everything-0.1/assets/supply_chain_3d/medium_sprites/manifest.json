@@ -1362,20 +1362,20 @@
 				0.0
 			],
 			"dimensions": [
-				0.563093602657318,
+				0.529172301292419,
 				0.394843995571136,
 				0.640434145927429
 			],
 			"home_opaque_pixels": [
-				100.0,
-				87.0
+				101.0,
+				89.0
 			],
-			"lit_source_sha256": "617e010abb0d3aef8f6fb64a3acfbbb60734716c7bca13e4ff9048499900d102",
+			"lit_source_sha256": "271ce487be9dc473af98803df19532666fe90705fa4e320d770259d040b458cc",
 			"lit_texture": "industrial_factory_lvl1_lit.png",
 			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "617e010abb0d3aef8f6fb64a3acfbbb60734716c7bca13e4ff9048499900d102",
-			"span": 1.03372619748116,
+			"source_sha256": "271ce487be9dc473af98803df19532666fe90705fa4e320d770259d040b458cc",
+			"span": 1.01180928945541,
 			"yaws": 16.0
 		},
 		"industrial_factory_lvl2": {
@@ -1386,20 +1386,20 @@
 				0.0
 			],
 			"dimensions": [
-				0.626187205314636,
+				0.592265903949738,
 				0.732021749019623,
 				0.999999940395355
 			],
 			"home_opaque_pixels": [
-				82.0,
-				80.0
+				83.0,
+				81.0
 			],
-			"lit_source_sha256": "3a0e5d43c22412cb70bc53a8ebf4f8ccba757a427afb167778c3fa8f78e39feb",
+			"lit_source_sha256": "8564c111ddade94be830d477c08dacc420630a079b7041d85395cc7e635f747c",
 			"lit_texture": "industrial_factory_lvl2_lit.png",
 			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "3a0e5d43c22412cb70bc53a8ebf4f8ccba757a427afb167778c3fa8f78e39feb",
-			"span": 1.52736347913742,
+			"source_sha256": "8564c111ddade94be830d477c08dacc420630a079b7041d85395cc7e635f747c",
+			"span": 1.51090296506882,
 			"yaws": 16.0
 		},
 		"industrial_factory_lvl3": {
@@ -1410,20 +1410,20 @@
 				0.0
 			],
 			"dimensions": [
-				0.77964723110199,
+				0.745725929737091,
 				0.732021749019623,
 				1.0
 			],
 			"home_opaque_pixels": [
-				88.0,
-				76.0
+				89.0,
+				77.0
 			],
-			"lit_source_sha256": "7a2795a71865ffbf65dd4a4a2d1e77290fffa274a72b35d49e1fa96604b2fd06",
+			"lit_source_sha256": "5940264db8f38760260bd1eb3499341ef9970b0a85db872a7b6aa320d7ff5ab5",
 			"lit_texture": "industrial_factory_lvl3_lit.png",
 			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "7a2795a71865ffbf65dd4a4a2d1e77290fffa274a72b35d49e1fa96604b2fd06",
-			"span": 1.61055393218994,
+			"source_sha256": "5940264db8f38760260bd1eb3499341ef9970b0a85db872a7b6aa320d7ff5ab5",
+			"span": 1.59099822044373,
 			"yaws": 16.0
 		},
 		"mine_flush_lvl1": {
