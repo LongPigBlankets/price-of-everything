@@ -571,8 +571,9 @@ def _window(K, name, x, y, z, w, h):
     K.box(name + "_lint", x, y - 0.018, z + h / 2 + 0.085, w + 0.18, 0.035, 0.10, K.M["ap_stone"])
 
 
-def _downpipe(K, tag, x, y, top, face):
-    """Rainwater pipe from a gutter or scupper at `top` to a kerbed drain grate."""
+def _downpipe(K, tag, x, y, top, face, compact=False):
+    """Rainwater pipe from a gutter or scupper at `top` to a kerbed drain grate. `compact`
+    puts a small gully straight under the shoe, for walls at the edge of the footprint."""
     fm = K._fine_mode
     K._fine_mode = True
     K.cyl("dp%s" % tag, x, y, top / 2, 0.03, top, K.mat("pipe"), segments=8)
@@ -583,10 +584,15 @@ def _downpipe(K, tag, x, y, top, face):
         if face in ("+X", "-X"):
             K.box("dp%s_b%d" % (tag, k), x - out / 2, y, z, 0.07, 0.10, 0.03, K.mat("gear"))
         else:
-            K.box("dp%s_b%d" % (tag, k), x, y + 0.035, z, 0.10, 0.07, 0.03, K.mat("gear"))
+            K.box("dp%s_b%d" % (tag, k), x, y + (0.035 if face == "-Y" else -0.035), z, 0.10, 0.07, 0.03, K.mat("gear"))
         z += 0.70
         k += 1
     K.box("dp%s_shoe" % tag, x, y, 0.05, 0.09, 0.09, 0.08, K.mat("pipe"))
+    if compact:
+        K.box("grate%s_kerb" % tag, x, y, 0.012, 0.10, 0.10, 0.024, K.mat("yard_pad"))
+        K.box("grate%s" % tag, x, y, 0.016, 0.07, 0.07, 0.024, K.mat("opening"))
+        K._fine_mode = fm
+        return
     gx, gy = (x + out, y) if face in ("+X", "-X") else (x, y - out)
     K.box("grate%s_kerb" % tag, gx, gy, 0.012, 0.22, 0.22, 0.024, K.mat("yard_pad"))
     K.box("grate%s" % tag, gx, gy, 0.016, 0.16, 0.16, 0.024, K.mat("opening"))
@@ -788,6 +794,122 @@ def _gantry_detail(K, x1, cx, zt, ty):
     K.box("rating", cx + 0.17, (gy0 + gy1) / 2, zt + 0.25, 0.01, 0.30, 0.10, hazard)
 
 
+# ---- The faces the home view does not show (the board's camera orbits) -----------------
+# Owner rules for these sides: no new windows; keep it quiet. The -X side is 0.10 from the
+# family footprint's edge (the front apron's overhang), so nothing there stands out further:
+# a wider footprint would shrink the whole building on the board.
+def _louvre_y(K, tag, x, y, z, w, h):
+    """Ventilation louvre on a +Y face."""
+    K.box("louv_%s" % tag, x, y + 0.008, z, w, 0.012, h, K.mat("opening"))
+    for k in range(4):
+        K.box("louv_%s_s%d" % (tag, k), x, y + 0.016, z - h / 2 + (k + 0.6) * h / 4, w - 0.03, 0.012, 0.022, K.mat("gear"))
+    for nm, zz in (("t", z + h / 2 + 0.02), ("b", z - h / 2 - 0.02)):
+        K.box("louv_%s_%s" % (tag, nm), x, y + 0.014, zz, w + 0.06, 0.02, 0.04, K.M["ap_stone"])
+
+
+def _louvre_nx(K, tag, x, y, z, w, h):
+    """Ventilation louvre on a -X face."""
+    K.box("louv_%s" % tag, x - 0.008, y, z, 0.012, w, h, K.mat("opening"))
+    for k in range(4):
+        K.box("louv_%s_s%d" % (tag, k), x - 0.016, y, z - h / 2 + (k + 0.6) * h / 4, 0.012, w - 0.03, 0.022, K.mat("gear"))
+    for nm, zz in (("t", z + h / 2 + 0.02), ("b", z - h / 2 - 0.02)):
+        K.box("louv_%s_%s" % (tag, nm), x - 0.014, y, zz, 0.02, w + 0.06, 0.04, K.M["ap_stone"])
+
+
+def _gable_dress(K, tag, arc, axis, face_at, sign):
+    """A plain gable dressed like the dock gable, without its windows: corner pilasters with
+    stone caps, a string course at the eave, stone coping along the arch, a centred vent, a
+    row of tie-rod pattress plates, and the dark plinth. `axis` 'X': the gable lies in a plane
+    x = face_at facing `sign` X; 'Y': in y = face_at facing `sign` Y."""
+    def at(across, out, z):
+        return (face_at + sign * out, across, z) if axis == 'X' else (across, face_at + sign * out, z)
+    def slab(name, across, out, z, w_across, t_out, h, mat):
+        x, y, zz = at(across, out, z)
+        if axis == 'X':
+            K.box(name, x, y, zz, t_out, w_across, h, mat)
+        else:
+            K.box(name, x, y, zz, w_across, t_out, h, mat)
+    pc, hs = arc.pc, arc.hs
+    for k, a in enumerate((pc - hs + 0.08, pc + hs - 0.08)):
+        slab("%s_pil%d" % (tag, k), a, 0.025, EAVE / 2, 0.16, 0.05, EAVE, K.mat("ap_wall"))
+        slab("%s_pil%d_cap" % (tag, k), a, 0.035, EAVE + 0.04, 0.20, 0.07, 0.08, K.M["ap_stone"])
+    slab("%s_string" % tag, pc, 0.03, EAVE - 0.05, 2 * hs - 0.30, 0.06, 0.07, K.M["ap_stone"])
+    slab("%s_plinth" % tag, pc, 0.015, 0.11, 2 * hs, 0.03, 0.22, K.M["ap_plinth"])
+    pts = []
+    for i in range(25):
+        th = arc.th0 + (math.pi - 2 * arc.th0) * i / 24
+        a, z = arc.pt(th, 0.06)
+        pts.append(at(a, -GABLE_T / 2, z))
+    K.sweep("%s_coping" % tag, pts, 0.055, K.M["ap_stone"], seg=8)
+    vx, vy, vz = at(pc, 0.0, EAVE + 0.28)
+    if axis == 'Y':
+        _louvre_y(K, tag, vx, vy, vz, 0.34, 0.24) if sign > 0 else None
+    else:
+        _louvre_nx(K, tag, vx, vy, vz, 0.24, 0.34) if sign < 0 else None
+    fm = K._fine_mode
+    K._fine_mode = True
+    for k, a in enumerate((pc - 0.60, pc, pc + 0.60)):
+        p0, p1 = at(a, 0.0, 2.55), at(a, 0.025, 2.55)
+        K.dircyl("%s_pat%d" % (tag, k), p0, p1, 0.055, K.mat("darkmetal"), segments=12)
+    K._fine_mode = fm
+
+
+def _back_side(K, p, x1):
+    """Hall back wall, the hall's left gable (L1), the head block's hidden faces, the wing's
+    far gable and left flank."""
+    fm = K._fine_mode
+    # Hall back wall: gutter at the vault's back eave, pilasters at the bay lines, plinth,
+    # pattress plates, two vents, downpipes onto grates.
+    K.box("back_gutter", (HX0 + x1) / 2, HY1 + 0.095, EAVE - 0.05, x1 - HX0 + 0.06, 0.11, 0.07, K.mat("pipe"))
+    for b in range(0 if not p["head"] else 1, BAYS + 1):
+        bx = min(max(HX0 + b * BAY, HX0 + 0.07), x1 - 0.07)
+        K.box("bpil%d" % b, bx, HY1 + 0.03, EAVE / 2, 0.14, 0.06, EAVE, K.mat("ap_wall"))
+    K.box("back_plinth", (HX0 + x1) / 2, HY1 + 0.015, 0.11, x1 - HX0, 0.03, 0.22, K.M["ap_plinth"])
+    K._fine_mode = True
+    for b in range(BAYS):
+        bx = HX0 + (b + 0.5) * BAY
+        K.dircyl("bpat%d" % b, (bx, HY1, 2.55), (bx, HY1 + 0.025, 2.55), 0.055, K.mat("darkmetal"), segments=12)
+    K._fine_mode = fm
+    for b in (1, 3):
+        _louvre_y(K, "back%d" % b, HX0 + (b + 0.5) * BAY, HY1, 1.05, 0.34, 0.30)
+    for k, dx in enumerate((HX0 + 2 * BAY + 0.16, x1 - 0.18)):
+        _downpipe(K, "back%d" % k, dx, HY1 + 0.08, EAVE - 0.07, "+Y")
+    # The hall's left gable shows only at L1; from L2 the head block stands against it.
+    if not p["head"]:
+        _gable_dress(K, "lgable", HALL, 'X', HX0, -1)
+    # Head block: stone bands at the floor lines and a plinth on its hidden faces, a vent,
+    # and a downpipe from a scupper near the back corner.
+    if p["head"]:
+        hx0, hx1 = HX0 - HEAD_W, HX0
+        hcx = (hx0 + hx1) / 2
+        for k, z in enumerate((1.32, 2.47)):
+            K.box("hband_w%d" % k, hx0 - 0.015, HALL.pc, z, 0.03, HY1 - HY0, 0.07, K.M["ap_stone"])
+            if not p["wing"]:
+                K.box("hband_b%d" % k, hcx, HY1 + 0.015, z, HEAD_W, 0.03, 0.07, K.M["ap_stone"])
+        K.box("hplinth_w", hx0 - 0.015, HALL.pc, 0.11, 0.03, HY1 - HY0, 0.22, K.M["ap_plinth"])
+        if not p["wing"]:
+            K.box("hplinth_b", hcx, HY1 + 0.015, 0.11, HEAD_W, 0.03, 0.22, K.M["ap_plinth"])
+        _louvre_nx(K, "head_w", hx0, HALL.pc - 0.45, 0.70, 0.30, 0.30)
+        K.box("head_scupper_w", hx0 - 0.04, HY1 - 0.14, HEAD_H + 0.05, 0.08, 0.10, 0.06, K.mat("pipe"))
+        _downpipe(K, "head_w", hx0 - 0.045, HY1 - 0.14, HEAD_H + 0.02, "-X", compact=True)
+    # The wing: its far gable dressed like the dock gable (no window), and its left flank with
+    # pilasters, a plinth, two vents and two downpipes from scuppers through the parapet lip.
+    if p["wing"]:
+        hx0, hx1 = HX0 - HEAD_W, HX0
+        wy0, wy1 = HY1, HY1 + p["wing"] * WING_BAY
+        _gable_dress(K, "wgable", WING, 'Y', wy1, 1)
+        for b in range(1, p["wing"] + 1):
+            by = min(wy0 + b * WING_BAY, wy1 - 0.08)
+            K.box("wpil%d" % b, hx0 - 0.03, by, EAVE / 2, 0.06, 0.14, EAVE, K.mat("ap_wall"))
+        K.box("wplinth", hx0 - 0.015, (wy0 + wy1) / 2, 0.11, 0.03, wy1 - wy0, 0.22, K.M["ap_plinth"])
+        for b in (0, 2):
+            _louvre_nx(K, "wing%d" % b, hx0, wy0 + (b + 0.5) * WING_BAY, 1.05, 0.30, 0.30)
+        for k, b in enumerate((1, 3)):
+            dy = wy0 + b * WING_BAY + 0.16
+            K.box("wscupper%d" % k, hx0 - 0.04, dy, EAVE + 0.03, 0.08, 0.10, 0.06, K.mat("pipe"))
+            _downpipe(K, "wing%d" % k, hx0 - 0.045, dy, EAVE, "-X", compact=True)
+
+
 def _frame(p):
     """Camera target from the PROJECTED extents of the extreme corners (SKILL.md rule 20)."""
     bays = BAYS
@@ -881,6 +1003,8 @@ def build_assembly_plant(level: int = 2) -> dict:
         _head(K)
     if p["wing"]:
         _wing(K, p["wing"], p["wrobots"], pane, seam)
+
+    _back_side(K, p, x1)
 
     print("\n".join(K.validate(ground=-0.06)))
     return {"building": "assembly_plant", "level": level, "bays": bays,

@@ -1,7 +1,7 @@
 {
 	"assets": {
 		"assembly_plant_lvl1": {
-			"cell": 64.0,
+			"cell": 64,
 			"center": [
 				0.0,
 				0.184518232941628,
@@ -13,17 +13,17 @@
 				0.388213276863098
 			],
 			"home_opaque_pixels": [
-				52.0,
-				43.0
+				52,
+				43
 			],
-			"pitches": 5.0,
+			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "0f08407b505f12154e12846b74338f9b2687a6554a57b3f77f674c0e6af32e49",
+			"source_sha256": "291a51298c5c306315bfd8886b9d3ccdbecd8abea1743b1037c123a7d1832dc6",
 			"span": 1.03673701286316,
-			"yaws": 16.0
+			"yaws": 16
 		},
 		"assembly_plant_lvl2": {
-			"cell": 64.0,
+			"cell": 64,
 			"center": [
 				0.0,
 				0.207670718431473,
@@ -35,17 +35,17 @@
 				0.388213276863098
 			],
 			"home_opaque_pixels": [
-				50.0,
-				43.0
+				50,
+				43
 			],
-			"pitches": 5.0,
+			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "eddd3b85f81b2d74d07d6c1d1bfae26c6107bdb313d2a7f47a7431b9c96ed045",
+			"source_sha256": "742f574339b714a7115c5ec1ad494034348de9bf1a036ae4ec64c4dae67db855",
 			"span": 1.26534340381622,
-			"yaws": 16.0
+			"yaws": 16
 		},
 		"assembly_plant_lvl3": {
-			"cell": 64.0,
+			"cell": 64,
 			"center": [
 				0.0,
 				0.207670718431473,
@@ -54,17 +54,17 @@
 			"dimensions": [
 				1.0,
 				0.415341436862946,
-				0.732460260391235
+				0.7362020611763
 			],
 			"home_opaque_pixels": [
-				45.0,
-				41.0
+				45,
+				42
 			],
-			"pitches": 5.0,
+			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "703c0f46be42e5d5099997cdeefa16e3321e2feea193dbdb132ec4fe5334aaf4",
-			"span": 1.43801869153976,
-			"yaws": 16.0
+			"source_sha256": "dd06f309919ed11433f1db10907b17b0a8daa6bceb0702e63e5a9becc5d13a47",
+			"span": 1.4403289437294,
+			"yaws": 16
 		},
 		"chem_plant_lvl1": {
 			"cell": 64.0,
@@ -1233,7 +1233,7 @@
 			"span": 1.72330205440521
 		},
 		"industrial_factory_lvl1": {
-			"cell": 64,
+			"cell": 64.0,
 			"center": [
 				0.0,
 				0.197421997785568,
@@ -1245,17 +1245,17 @@
 				0.640434145927429
 			],
 			"home_opaque_pixels": [
-				50,
-				44
+				50.0,
+				44.0
 			],
-			"pitches": 5,
+			"pitches": 5.0,
 			"reference_scale": 72.0,
 			"source_sha256": "271ce487be9dc473af98803df19532666fe90705fa4e320d770259d040b458cc",
 			"span": 1.01180928945541,
-			"yaws": 16
+			"yaws": 16.0
 		},
 		"industrial_factory_lvl2": {
-			"cell": 64,
+			"cell": 64.0,
 			"center": [
 				0.0,
 				0.366010874509811,
@@ -1267,17 +1267,17 @@
 				0.999999940395355
 			],
 			"home_opaque_pixels": [
-				41,
-				41
+				41.0,
+				41.0
 			],
-			"pitches": 5,
+			"pitches": 5.0,
 			"reference_scale": 72.0,
 			"source_sha256": "8564c111ddade94be830d477c08dacc420630a079b7041d85395cc7e635f747c",
 			"span": 1.51090296506882,
-			"yaws": 16
+			"yaws": 16.0
 		},
 		"industrial_factory_lvl3": {
-			"cell": 64,
+			"cell": 64.0,
 			"center": [
 				0.0,
 				0.366010874509811,
@@ -1289,14 +1289,14 @@
 				1.0
 			],
 			"home_opaque_pixels": [
-				44,
-				39
+				44.0,
+				39.0
 			],
-			"pitches": 5,
+			"pitches": 5.0,
 			"reference_scale": 72.0,
 			"source_sha256": "5940264db8f38760260bd1eb3499341ef9970b0a85db872a7b6aa320d7ff5ab5",
 			"span": 1.59099822044373,
-			"yaws": 16
+			"yaws": 16.0
 		},
 		"mine_flush_lvl1": {
 			"cell": 64.0,

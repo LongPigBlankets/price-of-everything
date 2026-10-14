@@ -415,10 +415,10 @@
     "height": 0.36903647970118947,
     "width": 0.7754911054704462,
     "depth": 0.38821327913418147,
-    "triangles": 6616,
+    "triangles": 8104,
     "ink_edges": true,
     "source_ink_widths": true,
-    "projected_height": 0.7063378135973261,
+    "projected_height": 0.710178408362766,
     "contour": true
   },
   "assembly_plant_lvl2": {
@@ -426,7 +426,7 @@
     "height": 0.41534144895545233,
     "width": 1.0,
     "depth": 0.38821327913418147,
-    "triangles": 9980,
+    "triangles": 11076,
     "ink_edges": true,
     "source_ink_widths": true,
     "projected_height": 0.8680527027227973,
@@ -436,11 +436,11 @@
     "span": 10.690000057220459,
     "height": 0.41534144895545233,
     "width": 1.0,
-    "depth": 0.7324602544633229,
-    "triangles": 15080,
+    "depth": 0.7362020656549898,
+    "triangles": 17324,
     "ink_edges": true,
     "source_ink_widths": true,
-    "projected_height": 0.9489530939679096,
+    "projected_height": 0.9527939892030624,
     "contour": true
   },
   "chem_plant_lvl1": {
