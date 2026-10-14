@@ -2435,3 +2435,52 @@ transport geometry and disk-cache restore/parity checks. The pre-existing steep
 surface rail near (2853,4915) remains a separate rail-profile issue.
 
 Evidence: `outputs/supply-chain-3d/stoneshore-crossings/` at repository root.
+
+
+### Stoneshore block interiors and brownfields (14 October 2026)
+
+The five-tile pilot now has a second layer of streets and residential interiors.
+`neighbourhood_blocks.gd` runs inside the existing frontage bake: it reserves
+connected lanes and brownfields, assembles L-shaped courtyard groups from the
+approved terrace modules, then adds greens and quieter housing behind the main
+frontage. Offices/commercial buildings and apartments remain at the main roads;
+the new inner rows use terraces and semidetached homes with increasing gaps.
+The regular map, gameplay construction and player building sizes are unchanged.
+
+The accepted layout has 254 decorative buildings, up from 229: a net gain of
+25 after setting aside seven brownfield parcels and additional green space.
+It has nine new narrow road paths, four courtyard groups, and fourteen added
+greens (including the four shared courtyard gardens). The interior pass places
+45 buildings: seven in the first depth band, 33 in the second and five in the
+third. Existing prepared house/civic meshes and LOD artwork are reused.
+
+New lanes have 4.4u carriageways and use the ordinary road compiler, junction
+splitting, sidewalks and terrain grading. They connect to existing roads at
+both ends and reject water, steep terrain, reserved gameplay footprints, rail
+corridors, depot yards and the station. Garden rows have sixteen clear, reserved 2u
+pedestrian links; these are baked footways rather than decorative asphalt
+stubs. Residential interiors keep the 240u harbour exclusion.
+
+Brownfields are seven fenced 52x40u earth/gravel parcels, totalling 14,560 square
+units, with road-facing gate openings and restrained old-foundation traces.
+Those dimensions were sized against the roughly 31–52u by 27–40u starter works
+in this region. They are visual expansion space: they do not create gameplay build
+slots or alter construction rules. Whole parcels are sampled for water and
+relief, reserved from infill, and excluded from tree placements. Their mesh and
+footways are shared baked infrastructure at all zoom levels.
+
+The existing-road frontage fitter now makes a final 1–2u sliding pass to recover
+small valid gaps missed by its 4u measurement samples. It keeps asset scales
+fixed. Measured coverage is 76.49% of estimated buildable original/district
+frontage; the deliberately sparse new interior lanes have a separate density
+policy and are excluded from that frontage target. Audits found no decorative
+building/street overlaps and no intrusions into the brownfields.
+
+Cold generation and cached loading preserve the exact standing emission order,
+including courtyard buildings emitted before frontage infill. Grouping the
+restored additions by generator instead caused transport/scenery cache misses;
+a regression fixture now includes early courtyard buildings and checks complete
+model equality after restore. Expensive parcel/street searches run only after
+a frontage-cache miss. Fresh-process package timings are recorded in
+`docs/load-time-bakes.md`. Evidence is under
+`outputs/supply-chain-3d/stoneshore-interiors/final/` at repository root.

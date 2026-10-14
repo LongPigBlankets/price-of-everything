@@ -10,7 +10,7 @@ const Far := preload("res://scripts/supply_chain_3d/far_sprites.gd")
 const Scale := preload("res://scripts/supply_chain_3d/building_scale.gd")
 const STEP := 4.0
 const FACADE_REACH := 10.0
-const TARGET := 0.84 # denser urban fronts compensate for constrained rural approaches
+const TARGET := 0.88 # denser urban fronts compensate for constrained rural approaches
 var samples: Array = []
 var sample_index := {}
 var contexts := {}
@@ -28,7 +28,7 @@ static func touches(a: Vector2,b: Vector2,poly: PackedVector2Array) -> bool:
 	return false
 
 static func street(road: Dictionary) -> bool:
-	return str(road.get("tile","")) in Trial.TILES and not str(road.get("source","")).begins_with("access:") and not road.get("tunnel",false)
+	return str(road.get("tile","")) in Trial.TILES and not str(road.get("source","")).begins_with("access:") and not str(road.get("source","")).begins_with("neighbourhood:") and not road.get("tunnel",false)
 
 func run(model: Dictionary, fitter: RefCounted, zoning: Dictionary) -> Dictionary:
 	world=model;fit=fitter;contexts=zoning
@@ -37,7 +37,7 @@ func run(model: Dictionary, fitter: RefCounted, zoning: Dictionary) -> Dictionar
 	tile_totals=before.by_tile.duplicate(true)
 	# Work from the longest uncovered runs, then use smaller existing modules in
 	# remaining gaps. Every attempt uses the normal exact-footprint constraints.
-	for pass_id in 2:
+	for pass_id in 3:
 		failed.clear() # quarter-turn placements open narrower plots on the second pass
 		var gaps := _gaps()
 		if gaps.is_empty(): break
@@ -67,6 +67,7 @@ func run(model: Dictionary, fitter: RefCounted, zoning: Dictionary) -> Dictionar
 func _measure() -> void:
 	var kinds := {}
 	var actual := {}
+	for site in world.get("neighbourhood",{}).get("brownfields",[]): kinds[str(site.id)]="brownfield"
 	for s in world.standing:
 		kinds[str(s.iid)]="green" if Civic.is_space(s) else ("harbour" if s.has("harbour") else "building")
 		if fit.exact_building(s): actual[str(s.iid)]=fit.footprints(s)
@@ -194,8 +195,14 @@ func _place(sample: Dictionary, pass_id: int) -> bool:
 		if choice.has("bays"): s.civic_bays=choice.bays
 		# Test both orientations, keeping the street-facing silhouette at the
 		# sidewalk edge. No new asphalt driveway or reserved access stem.
-		for turn in ([0.0,PI] if pass_id==0 else [PI*0.5,PI*1.5]):
-			fit.street_pose(s,sample.road,sample.p,float(sample.side),0.0,turn)
+		var poses: Array=[]
+		for turn in ([0.0,PI] if pass_id==0 else ([PI*0.5,PI*1.5] if pass_id==1 else [0.0,PI,PI*.5,PI*1.5])):
+			for offset in ([0.0] if pass_id<2 else [-1.0,1.0,-2.0,2.0]): poses.append(Vector2(turn,offset))
+		# Four-unit coverage samples can miss a narrow valid gap by a metre.
+		# Finish with sub-sample slides; keep the exact asset size and silhouette.
+		for pose in poses:
+			var tangent: Vector2=(sample.road.b-sample.road.a).normalized()
+			fit.street_pose(s,sample.road,sample.p+tangent*pose.y,float(sample.side),0.0,pose.x)
 			if not fit.trial_plot_allowed(s): refusals.zoning+=1;continue
 			if not fit.clear_building(s,world.tiles[sample.tile].center): refusals.plot+=1;continue
 			s.footprints=fit.footprints(s);s.footprint=s.footprints[0]

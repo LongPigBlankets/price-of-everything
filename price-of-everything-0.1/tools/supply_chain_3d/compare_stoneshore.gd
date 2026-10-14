@@ -131,6 +131,12 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 				ponds+=1
 				views.append({"name":"pond-%d" % ponds,"point":s.pos,"span":250.0,"pitch":.95,"yaw":.3})
 		views.append({"name":"far", "point":center, "span":3600.0, "pitch":1.05, "yaw":0.0})
+		for s in board._model.standing:
+			if str(s.iid).begins_with("z_court:") and str(s.iid).ends_with(":front"):
+				views.append({"name":"courtyard","point":s.pos,"span":190.0,"pitch":1.05,"yaw":.3})
+				break
+		var plots: Array=board._model.get("neighbourhood",{}).get("brownfields",[])
+		if not plots.is_empty(): views.append({"name":"brownfield","point":plots[0].pos,"span":200.0,"pitch":1.05,"yaw":.3})
 	for view in views:
 		var state := home.duplicate()
 		state.target = board._builder.point(view.point)
@@ -148,6 +154,7 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 		board._viewport.get_texture().get_image().save_png(output.path_join(view.name + ".png"))
 		report.views.append({"name": view.name, "camera": board.capture_camera()})
 		print("[STONESHORE COMPARISON] ", view.name)
+	report.interiors = board._model.get("neighbourhood",{}).duplicate(true)
 	report.frontage = board._model.authored_region.frontage.duplicate(true)
 	report.frontage.decorative_access_stubs=0
 	var decorative_ids := {}
@@ -159,8 +166,30 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 		assert(report.frontage.coverage.after.coverage>=0.75,"Stoneshore buildable frontage is below the 75% regional target")
 		assert(report.frontage.decorative_access_stubs==0,"Decorative access-road stubs remain")
 	report.footprint_audit = _footprint_audit(board)
+	if not report.interiors.is_empty():
+		report.interior_audit=_interior_audit(board)
+		if "--draft-review" not in OS.get_cmdline_user_args():
+			assert(report.footprint_audit.exact_buildings>229,"Interiors must add a net increase over the previous 229 buildings")
+			assert(report.interiors.brownfields.size()>=5 and report.interiors.courtyards>=2,"Missing reserved plots or courtyards")
+			assert(report.interiors.rows.get("2",0)>=10 and report.interiors.rows.get("3",0)>0,"Missing second/third housing rows")
+			assert(report.interior_audit.parcel_intrusions.is_empty(),"Brownfield parcel is occupied")
+			assert(report.footprint_audit.building_overlaps.is_empty() and report.footprint_audit.street_overlaps.is_empty(),"Block interiors overlap buildings or roads")
 	report.final_cache = {"hits":board._builder.bake_cache.hits, "bundled_hits":board._builder.bake_cache.bundled_hits, "writes":board._builder.bake_cache.writes}
 	FileAccess.open(output.path_join("report.json"), FileAccess.WRITE).store_string(JSON.stringify(report, "\t"))
+
+func _interior_audit(board: Control) -> Dictionary:
+	var fit: GDScript=preload("res://scripts/supply_chain_3d/road_placement.gd")
+	var result := {"parcel_intrusions":[],"brownfield_area":0.0}
+	for site in board._model.neighbourhood.brownfields:
+		result.brownfield_area+=float(site.size.x*site.size.y)
+		for s in board._model.standing:
+			for poly in s.get("footprints",[]):
+				var overlap := Geometry2D.is_point_in_polygon(site.polygon[0],poly)
+				for i in poly.size(): overlap=overlap or fit.distance_to_polygon(poly[i],poly[(i+1)%poly.size()],site.polygon)<.01
+				if overlap: result.parcel_intrusions.append([site.id,s.iid])
+		for tree in board._builder.tree_placements.get(site.tile,[]):
+			if Geometry2D.is_point_in_polygon(tree.pos,site.polygon): result.parcel_intrusions.append([site.id,"tree"])
+	return result
 
 func _footprint_audit(board: Control) -> Dictionary:
 	var fit: GDScript=preload("res://scripts/supply_chain_3d/road_placement.gd")

@@ -7,6 +7,7 @@ const Cache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
 const Civic := preload("res://scripts/supply_chain_3d/civic_layout.gd")
 const Footprints := preload("res://scripts/supply_chain_3d/building_footprints.gd")
 const FrontageFill := preload("res://scripts/supply_chain_3d/frontage_fill.gd")
+const Neighbourhood := preload("res://scripts/supply_chain_3d/neighbourhood_blocks.gd")
 const Sidewalks := preload("res://scripts/supply_chain_3d/urban_sidewalks.gd")
 var roads: Array = []
 var road_index := {}
@@ -38,6 +39,7 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 		model.roads = cached.roads
 		model.authored_region.paths = cached.paths
 		model.authored_region.frontage = cached.metrics.duplicate(true)
+		if not cached.get("neighbourhood",{}).is_empty(): model.neighbourhood=cached.neighbourhood.duplicate(true)
 		return
 	roads = model.roads
 	road_index = Index.segments(roads, 20.0)
@@ -105,9 +107,14 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 		if s.get("trial_density", false): trial_counts[str(s.tile)] = int(trial_counts.get(str(s.tile), 0)) + 1
 		if s.get("trial_residential",false): residential_counts[str(s.tile)] = int(residential_counts.get(str(s.tile),0)) + 1
 		if str(s.kind) == "house": restored += 1
+	var blocks := Neighbourhood.new()
+	var interiors := model.has("district_blocks") and not zoning.is_empty()
+	if interiors: blocks.prepare(model,self)
 	var infill := FrontageFill.new()
 	var coverage := infill.run(model,self,zoning) if not zoning.is_empty() else {}
+	if interiors: blocks.populate()
 	restored += infill.added.size()
+	restored += blocks.added.size()
 	var connections: Array = []
 	var access_stubs: Array = []
 	var unconnected: Array = []
@@ -152,7 +159,13 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 		placements[str(s.iid)] = placement
 	# Company-only and full-continent openings must not evict one another.
 	while variants.size() >= 4: variants.erase(variants.keys()[0])
-	variants[key] = {"placements": placements,"infill":infill.added.duplicate(true), "roads": model.roads, "paths": model.authored_region.paths, "metrics": model.authored_region.frontage}
+	# Courtyards precede frontage infill; garden rows follow it. Preserve that
+	# actual emission order on restore: transport/scenery hashes include standing
+	# order, even when the resulting positions and meshes are visually identical.
+	var generated_ids := {}
+	for s in infill.added+blocks.added: generated_ids[str(s.iid)]=true
+	var generated: Array=model.standing.filter(func(s):return generated_ids.has(str(s.iid)))
+	variants[key] = {"placements": placements,"infill":generated.duplicate(true), "roads": model.roads, "paths": model.authored_region.paths, "metrics": model.authored_region.frontage,"neighbourhood":model.get("neighbourhood",{}).duplicate(true)}
 
 func reserve(iid: String, polygon: PackedVector2Array) -> void:
 	if polygon.is_empty(): return

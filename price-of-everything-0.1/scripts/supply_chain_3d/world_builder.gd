@@ -25,6 +25,7 @@ var rail_urban := RailUrban.new()
 var rail_plan := {}
 var depots: Array = []
 var stations: Array = []
+var neighbourhood := {}
 const RailStation := preload("res://scripts/supply_chain_3d/rail_station.gd")
 var transport_ready := false
 var pylon_layout: Dictionary = {}
@@ -138,7 +139,7 @@ const TransportBake := preload("res://scripts/supply_chain_3d/transport_bake.gd"
 
 func prepare_transport(model: Dictionary) -> void:
 	var start := Time.get_ticks_usec()
-	roads=model.get("roads",[]); lines=model.get("lines",[]); depots=model.get("depots",[]); stations=model.get("stations",[])
+	roads=model.get("roads",[]); lines=model.get("lines",[]); depots=model.get("depots",[]); stations=model.get("stations",[]); neighbourhood=model.get("neighbourhood",{})
 	_index_rivers()
 	transport_key=TransportBake.key_for(self,model)
 	var cached := bake_cache.read(transport_key)
@@ -170,7 +171,7 @@ func configure_bakes(model: Dictionary) -> void:
 	# Hash actual geography, never an instance ID: this survives a fresh process.
 	_map_key = BakeCache.digest([BakeCache.source_key("terrain"), ground.get("tiles"), ground.get("bands"),
 		ground.get("lakes"), ground.get("rivers"), MapStyle.band_colors(), MapStyle.sea_colors(),
-		model.get("roads",[]),model.get("lines",[]),model.get("depots",[]),model.get("stations",[]),BakeCache.source_key("roads")])
+		model.get("roads",[]),model.get("lines",[]),model.get("depots",[]),model.get("stations",[]),model.get("neighbourhood",{}),BakeCache.source_key("roads")])
 	var authored: Dictionary = model.get("authored_region", {})
 	_road_key = BakeCache.digest([BakeCache.source_key("roads"), _map_key, model.get("roads", []),
 		authored.get("tiles", {}), authored.get("paths", []), pits])
@@ -325,6 +326,8 @@ func placements_for(tid: String, standing: Array) -> Array:
 		if (item.pos as Vector2).distance_squared_to(tile.center) < 500000.0: local_standing.append(item)
 	var result := TreeLayout.placements(tid, tile, Coast.relief_of(tid, tile.center), local_standing, local_roads, lines, rivers.get(tid, []), rail_vegetation, surface_height)
 	return result.filter(func(tree):
+		for site in neighbourhood.get("brownfields",[]):
+			if Geometry2D.is_point_in_polygon(tree.pos,site.polygon): return false
 		for station in stations:
 			if Geometry2D.is_point_in_polygon(tree.pos,RailStation.polygon(station)): return false
 		for depot in depots:
@@ -1497,6 +1500,8 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 				var current := at_height(p, road_height(p) + 5.5)
 				if j > 0: tubes.tube(previous, current, 2.4, Color("a0a7aa") if mode == "reinf_pipes" else Color("b78552"))
 				previous = current
+	if bool(show.get("decor",true)):
+		Railway.append_mesh(tubes,preload("res://scripts/supply_chain_3d/neighbourhood_art.gd").mesh(model.get("neighbourhood",{}),origin,surface_height))
 	var tube_mesh := tubes.mesh()
 	var detail_mesh := details.mesh()
 	root.add_child(Geo.instance(tube_mesh, mat))
