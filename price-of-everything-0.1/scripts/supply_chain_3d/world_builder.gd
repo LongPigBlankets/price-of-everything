@@ -24,6 +24,8 @@ var road_alignment := preload("res://scripts/supply_chain_3d/road_alignment.gd")
 var rail_urban := RailUrban.new()
 var rail_plan := {}
 var depots: Array = []
+var stations: Array = []
+const RailStation := preload("res://scripts/supply_chain_3d/rail_station.gd")
 var transport_ready := false
 var pylon_layout: Dictionary = {}
 const CELL := 12.0
@@ -136,7 +138,7 @@ const TransportBake := preload("res://scripts/supply_chain_3d/transport_bake.gd"
 
 func prepare_transport(model: Dictionary) -> void:
 	var start := Time.get_ticks_usec()
-	roads=model.get("roads",[]); lines=model.get("lines",[]); depots=model.get("depots",[])
+	roads=model.get("roads",[]); lines=model.get("lines",[]); depots=model.get("depots",[]); stations=model.get("stations",[])
 	_index_rivers()
 	transport_key=TransportBake.key_for(self,model)
 	var cached := bake_cache.read(transport_key)
@@ -151,8 +153,9 @@ func prepare_transport(model: Dictionary) -> void:
 		road_grade.configure(roads,formation_height,authored_profile)
 		stages.grading_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
 		rail_plan=Railway.network(lines)
-		rail_urban.configure(tiles,road_grade.segments,road_grade.junctions,rail_plan,depots,railway_ground_height,railway_level)
+		rail_urban.configure(tiles,road_grade.segments,road_grade.junctions,rail_plan,depots,railway_ground_height,railway_level,stations)
 		road_grade.bridge_rail_junctions(rail_plan,railway_ground_height,rail_urban.buried)
+		preload("res://scripts/supply_chain_3d/rail_crossings.gd").build(road_grade,rail_plan,rail_urban,depots)
 		stages.rail_ms=(Time.get_ticks_usec()-tick)/1000.0
 		bake_cache.write(transport_key,TransportBake.packed(self))
 	model.roads=roads
@@ -167,7 +170,7 @@ func configure_bakes(model: Dictionary) -> void:
 	# Hash actual geography, never an instance ID: this survives a fresh process.
 	_map_key = BakeCache.digest([BakeCache.source_key("terrain"), ground.get("tiles"), ground.get("bands"),
 		ground.get("lakes"), ground.get("rivers"), MapStyle.band_colors(), MapStyle.sea_colors(),
-		model.get("roads",[]),model.get("lines",[]),model.get("depots",[]),BakeCache.source_key("roads")])
+		model.get("roads",[]),model.get("lines",[]),model.get("depots",[]),model.get("stations",[]),BakeCache.source_key("roads")])
 	var authored: Dictionary = model.get("authored_region", {})
 	_road_key = BakeCache.digest([BakeCache.source_key("roads"), _map_key, model.get("roads", []),
 		authored.get("tiles", {}), authored.get("paths", []), pits])
@@ -322,6 +325,8 @@ func placements_for(tid: String, standing: Array) -> Array:
 		if (item.pos as Vector2).distance_squared_to(tile.center) < 500000.0: local_standing.append(item)
 	var result := TreeLayout.placements(tid, tile, Coast.relief_of(tid, tile.center), local_standing, local_roads, lines, rivers.get(tid, []), rail_vegetation, surface_height)
 	return result.filter(func(tree):
+		for station in stations:
+			if Geometry2D.is_point_in_polygon(tree.pos,RailStation.polygon(station)): return false
 		for depot in depots:
 			var q: Vector2 = (tree.pos-depot.pos).rotated(-depot.yaw)
 			if Rect2(-150,-48,300,110).has_point(q): return false
@@ -815,7 +820,11 @@ func surface_height(p: Vector2) -> float:
 	var h := formation_height(p)
 	if not transport_ready: return h
 	h=road_grade.earth_height(p,h)
-	return rail_urban.cut_height(p,h,natural_height)
+	h=rail_urban.cut_height(p,h,natural_height)
+	for station in stations:
+		var profile: Vector3=rail_urban.track_profile(station.pos)
+		if profile.z>0: h=RailStation.cut_height(station,p,h,profile.x)
+	return h
 
 func surface_gradient(p: Vector2) -> Vector2:
 	if ground.get("water_geography") == true and Coast.Water.lake_surface(p).y == 1: return Vector2.ZERO
@@ -827,6 +836,9 @@ func surface_gradient(p: Vector2) -> Vector2:
 		if not modified:
 			for depot in depots:
 				if p.distance_squared_to(depot.pos)<40000: modified=true; break
+	if not modified:
+		for station in stations:
+			if p.distance_squared_to(station.pos)<8100: modified=true;break
 	if grade.x == 0.0 and not modified: return ground.gradient(p) * Relief.slope_scale(ground.height(p))
 	if grade.x == 1.0: return Vector2.ZERO
 	return Vector2(surface_height(p + Vector2.RIGHT) - surface_height(p - Vector2.RIGHT),
@@ -1465,6 +1477,10 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 		rail_overview = rail_art.overview
 		rail_near = rail_art.detail
 		for depot in depots: Railway.append_mesh(tubes,RailDepot.mesh(depot,origin))
+		Railway.append_mesh(tubes,preload("res://scripts/supply_chain_3d/rail_crossings.gd").level_mesh(road_grade.crossings,origin,road_height))
+		for station in stations:
+			var profile: Vector3=rail_urban.track_profile(station.pos)
+			Railway.append_mesh(tubes,RailStation.mesh(station,origin,profile.x if profile.z>0 else railway_ground_height(station.pos)+1.2))
 	for rec in model.get("lines", []):
 		var mode := str(rec.get("mode", ""))
 		if Railway.is_rail(mode): continue # Both legacy "rail" and infrastructure "rails".

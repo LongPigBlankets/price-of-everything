@@ -40,6 +40,14 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 		"continent_key": builder._continent_key, "scenery_key": builder._scenery_key,
 		"map_key": builder._map_key, "tiles": {}, "resources": {}}
 	if board._layout_queries != null:
+		# Begin/first draw may populate an adjacent relief query after the board
+		# snapshot. Ship that warmed query too, avoiding a first-launch cache write.
+		var geography: Dictionary = board._model.get("rail_network",{}).get("tiles",{})
+		for tid in builder.tiles:
+			for neighbour in geography.get(tid,{}).get("neighbours",[]):
+				var center: Vector2 = preload("res://scripts/empire_board_model.gd").tile_center(board._last_terrain,neighbour)
+				preload("res://scripts/empire_board.gd")._relief_of(neighbour,center)
+		board._layout_queries.data.relief = preload("res://scripts/empire_board.gd")._relief_cache.duplicate(true)
 		manifest.layout_key = board._layout_queries.key
 		writer.write(manifest.layout_key, board._layout_queries.data)
 		manifest.resources[manifest.layout_key] = Package.file_record(writer.directory, manifest.layout_key)

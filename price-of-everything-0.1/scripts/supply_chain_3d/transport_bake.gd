@@ -2,9 +2,9 @@ extends RefCounted
 ## Portable precomputed road grades, switchbacks, tunnels and rail topology.
 ## Lookup precedes engineering: loading a valid landscape must not solve it again.
 const Cache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
-const VERSION := 2
+const VERSION := 3
 const ALIGNMENT := ["portals","switchbacks","constrained","grade_eased"]
-const GRADE := ["segments","buckets","earth_buckets","nodes","bridges","junctions"]
+const GRADE := ["segments","buckets","earth_buckets","nodes","bridges","junctions","crossings"]
 const URBAN := ["solved","components","distance_field","centers","depots","tile_index","busy","buckets","tracks","track_buckets"]
 
 static func key_for(builder: RefCounted, model: Dictionary) -> String:
@@ -15,7 +15,7 @@ static func key_for(builder: RefCounted, model: Dictionary) -> String:
 	for tid in builder.tiles: geography[tid]=[builder.tiles[tid].center,builder.tiles[tid].type]
 	return "transport-"+Cache.digest([VERSION,Cache.source_key("transport"),Cache.source_key("roads"),Cache.source_key("scenery"),
 		Cache.source_key("terrain"),builder.ground.get("tiles"),builder.ground.get("bands"),builder.ground.get("lakes"),builder.ground.get("rivers"),
-		builder.rivers,builder.pits,geography,plots,model.get("roads",[]),model.get("lines",[]),model.get("depots",[]),
+		builder.rivers,builder.pits,geography,plots,model.get("roads",[]),model.get("lines",[]),model.get("depots",[]),model.get("stations",[]),
 		model.get("authored_region",{}).get("paths",[]),model.get("authored_region",{}).get("tiles",{})])
 
 static func _fields(object: RefCounted, names: Array) -> Dictionary:

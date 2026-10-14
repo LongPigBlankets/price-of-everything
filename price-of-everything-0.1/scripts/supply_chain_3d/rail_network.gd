@@ -177,7 +177,7 @@ static func apply(model: Dictionary, terrain: Node, water: Callable = Callable()
 	var depots: Array = _cache.depots if preview_depots else saved_depots
 	var source_lines: Array = _cache.lines.duplicate()
 	for depot in depots:
-		if _cache.anchors.has(depot.tile): source_lines.append_array(Depot.lines(depot, _cache.anchors[depot.tile]))
+		if _cache.anchors.has(depot.tile): source_lines.append_array(Depot.lines(depot, _cache.anchors[depot.tile], _cache.lines))
 	var selected: Array = []
 	for source in source_lines:
 		var a_visible: bool = model.tiles.has(source.a)

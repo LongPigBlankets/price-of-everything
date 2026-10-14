@@ -24,7 +24,7 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 	for s in model.standing:
 		inputs.append([s.iid, s.kind, s.tile, s.pos, s.side, s.get("yaw", 0.0), s.get("footprint", []),
 			s.get("harbour", {}), s.get("decor_family", ""), s.get("decor_asset", ""), s.get("max_relief", 12.0), Assets.dimensions(str(asset_key.call(s)))])
-	var key := Cache.digest([Cache.source_key("roads"), Cache.source_key("terrain"), model.roads, inputs, river_lines, Civic.catalog_signature(), model.get("trial_rail_segments",[]), model.get("depots",[])])
+	var key := Cache.digest([Cache.source_key("roads"), Cache.source_key("terrain"), model.roads, inputs, river_lines, Civic.catalog_signature(), model.get("trial_rail_segments",[]), model.get("depots",[]),model.get("stations",[])])
 	var variants: Dictionary = prepared.get_or_add("frontages", {})
 	var cached: Dictionary = variants.get(key, {})
 	if not cached.is_empty():
@@ -62,6 +62,7 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 	for depot in model.get("depots",[]):
 		if str(depot.tile) in preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").TILES:
 			reserve("__rail_yard",preload("res://scripts/supply_chain_3d/rail_depot.gd").yard_polygon(depot))
+	for station in model.get("stations",[]): reserve("__rail_station",preload("res://scripts/supply_chain_3d/rail_station.gd").polygon(station))
 	for rail in model.get("trial_rail_segments",[]):
 		var a: Vector2=rail.a;var b: Vector2=rail.b
 		var n := (b-a).normalized().orthogonal()*7.0
