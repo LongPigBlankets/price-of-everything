@@ -2351,3 +2351,33 @@ Evidence and ten camera/LOD captures are in
 `outputs/supply-chain-3d/stoneshore-frontage/` at repository root. The review
 harness asserts regional usable coverage >=75%, zero decorative access stems,
 retained neighbourhood features, and unchanged residential zoning.
+
+### Fixed tunnel elevations and softer slope shading (14 October 2026)
+
+The terrain shader now uses `slope / (slope + 0.45)` with 4–16% directional
+contrast, replacing the linear response that saturated at a 13.235% slope with
+up to 20% darkening. Ordinary road and rail approaches therefore retain a
+light gradient; steep terrain can continue gaining contrast. The normal palette,
+height levels, regular map and building materials are unchanged.
+
+`rail_elevation.gd` solves the sampled rail graph once during transport baking.
+Covered junction movements and short enclosed daylight gaps are resolved before
+choosing elevations. Each connected bore has one absolute datum: at least 14u
+below the lowest normal rail elevation across its width (normal ballast is 1.2u
+above terrain). Stoneshore's connected bore is at Y=21.2, beneath its Y=34 plain.
+Approaches ease along the network over at least 180u, extended for deeper bores;
+operating depot parcels remain at grade. This replaces a local terrain-minus-depth
+field whose urban tile boundary could produce an abrupt vertical step.
+
+Rendered tracks, portal cutoffs and terrain excavation read the same baked
+profile. Buried spans retain their roofs; visible approach floors sit 1.4u below
+the ballast. Switch/buffer fittings no longer subtract the burial offset twice.
+Transport schema 2 stores the profile, spatial index and tunnel datums, and both
+road/scenery cache fingerprints include its solver. Cache hits do not solve it.
+
+The five-tile audit finds zero hidden open cuts (previously 412.91u), zero grade
+within the 595.78u covered rail, and three portal crowns at least 3.23u beneath
+natural ground. None of 14,300 sampled terrain points reaches 95% of the new
+contrast response. This is a tunnel/shading correction, not a complete surface
+rail grading pass: an existing exposed slope near (2853,4915) still reaches 71%.
+No whole-continent package was regenerated.

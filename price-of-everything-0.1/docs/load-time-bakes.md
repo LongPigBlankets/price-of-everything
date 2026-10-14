@@ -565,3 +565,30 @@ logs and snapshots are under `outputs/supply-chain-3d/stoneshore-frontage/`.
 The broader road regression suite still reports the same four endpoint-clustering /
 near-miss audit failures in unchanged road_index code, with 51 assertions passing.
 No new road regression failure was observed; its complete log is included.
+
+### Rail datum and slope shading verification (14 October 2026)
+
+The production five-tile Stoneshore package was regenerated and installed after
+the rail-profile change: 21 indexed resources, 29,459,268 bytes (28.09 MiB), current
+fingerprints. Baker and independent headless validation both pass. All five base,
+medium and near tile resources were refreshed; existing building meshes and
+sprite atlases were reused. Whole-continent rebaking remains paused.
+
+A fresh Godot 4.6.2 / Forward+ Metal process with an empty runtime cache reached
+Begin at 17.296s. Board preparation took 1.056s during loading, and opening the
+prepared supply view with visible detail ready took 0.273s. Ten review views
+recorded 19 bundled hits, a transport cache hit and zero runtime bake writes.
+These are scoped Stoneshore measurements with a warm OS filesystem cache.
+
+Nine new rail-elevation assertions and 26 rail-vegetation/LOD assertions pass.
+The transport geometry and disk-cache restoration harnesses pass, including
+surface/grade parity and source invalidation. The rendered audit has zero hidden
+open cuts and zero tunnel grade; all portal crowns fit under natural ground.
+All 245 decorative buildings, 78.20% estimated buildable frontage, ten green
+spaces and zero building/street overlaps remain. The previously documented four
+road-index endpoint/audit failures are outside this change and remain unresolved.
+
+Evidence: `outputs/supply-chain-3d/stoneshore-rail-profile/` (before/after transport
+audit, final ten views, validation logs and compact verification JSON). Only the
+scoped package is current; the earlier full-continent bake is not a release of
+these visual changes.

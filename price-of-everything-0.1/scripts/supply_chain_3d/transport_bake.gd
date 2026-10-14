@@ -2,10 +2,10 @@ extends RefCounted
 ## Portable precomputed road grades, switchbacks, tunnels and rail topology.
 ## Lookup precedes engineering: loading a valid landscape must not solve it again.
 const Cache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
-const VERSION := 1
+const VERSION := 2
 const ALIGNMENT := ["portals","switchbacks","constrained","grade_eased"]
 const GRADE := ["segments","buckets","earth_buckets","nodes","bridges","junctions"]
-const URBAN := ["distance_field","centers","depots","tile_index","busy","buckets","tracks","track_buckets"]
+const URBAN := ["solved","components","distance_field","centers","depots","tile_index","busy","buckets","tracks","track_buckets"]
 
 static func key_for(builder: RefCounted, model: Dictionary) -> String:
 	var plots: Array=[]
