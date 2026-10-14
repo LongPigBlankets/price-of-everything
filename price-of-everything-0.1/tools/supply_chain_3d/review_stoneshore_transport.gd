@@ -1,10 +1,12 @@
 extends "res://tools/supply_chain_3d/capture.gd"
 ## Diagnostic only: reads the installed pilot and audits transport profiles.
 ## Never writes a map bake or changes production rendering.
-const OUTPUT := "res://../outputs/supply-chain-3d/stoneshore-transport-review"
+var OUTPUT := "res://../outputs/supply-chain-3d/stoneshore-transport-review"
 const Index := preload("res://scripts/supply_chain_3d/road_index.gd")
 
 func _ready() -> void:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--transport-output="): OUTPUT=arg.trim_prefix("--transport-output=")
 	PlayerProfile.supply_chain_all_tiles=true
 	await super._ready()
 
@@ -25,9 +27,9 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 	var centers := {}
 	for tid in b.tiles: centers[tid]=b.tiles[tid].center
 	var index := Index.tiles(centers)
-	var report := {"tiles":centers,"portals":[],"runs":[],"corridors":[],"road_bridges":b.road_grade.bridges,
+	var report := {"tiles":centers,"rail_datums":b.rail_urban.components,"portals":[],"runs":[],"corridors":[],"road_bridges":b.road_grade.bridges,
 		"visible_length":0.0,"hidden_length":0.0,"hidden_open_cut_length":0.0,"steep_visible_length":0.0,
-		"max_visible_grade":0.0,"shading_samples":[],"views":[]}
+		"max_visible_grade":0.0,"max_buried_grade":0.0,"fully_hidden_open_cut_length":0.0,"shading_samples":[],"views":[]}
 	for portal in b._prepared_rail_art.portals:
 		var tid := Index.tile_at(index,centers,portal.p)
 		if tid.is_empty(): continue
@@ -60,6 +62,9 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 			records.append(record)
 			report["hidden_length" if hidden else "visible_length"]+=length
 			if hidden and surface<road-1.0: report.hidden_open_cut_length+=length
+			if a.hidden and z.hidden:
+				report.max_buried_grade=maxf(report.max_buried_grade,grade)
+				if surface<road-1.0: report.fully_hidden_open_cut_length+=length
 			if not hidden:
 				report.max_visible_grade=maxf(report.max_visible_grade,grade)
 				if grade>.15: report.steep_visible_length+=length
@@ -81,13 +86,14 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 				var gradient: Vector2=b.surface_gradient(p)
 				var magnitude := gradient.length()
 				var facing := (-gradient/maxf(.0001,magnitude)).dot(Vector2.ONE.normalized())
-				var darkening := clampf(magnitude/.13235,0,1)*(.2-.16*maxf(0,facing))
-				var record := {"p":p,"slope":magnitude,"darkening":darkening,"earthwork":surface-natural}
+				var darkening := magnitude/(magnitude+.45)*(.16-.12*maxf(0,facing))
+				var record := {"p":p,"slope":magnitude,"darkening":darkening,"old_darkening":clampf(magnitude/.13235,0,1)*(.2-.16*maxf(0,facing)),"earthwork":surface-natural}
 				(engineered_slopes if absf(surface-natural)>1 else natural_slopes).append(record)
 	for pair in [["natural",natural_slopes],["engineered",engineered_slopes]]:
 		var slopes: Array=pair[1];slopes.sort_custom(func(a,z):return a.slope<z.slope)
-		var saturated := slopes.filter(func(s):return s.slope>=.13235)
+		var saturated := slopes.filter(func(s):return s.slope/(s.slope+.45)>=.95)
 		report.shading_samples.append({"type":pair[0],"samples":slopes.size(),"saturated":saturated.size(),
+			"old_saturated":slopes.filter(func(s): return s.slope>=.13235).size(),
 			"p95_slope":slopes[int(slopes.size()*.95)].slope if not slopes.is_empty() else 0,
 			"worst":slopes.slice(maxi(0,slopes.size()-8))})
 	var center: Vector2=(centers.tile_4_9+centers.tile_5_10)*.5

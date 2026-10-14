@@ -151,7 +151,7 @@ func prepare_transport(model: Dictionary) -> void:
 		road_grade.configure(roads,formation_height,authored_profile)
 		stages.grading_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
 		rail_plan=Railway.network(lines)
-		rail_urban.configure(tiles,road_grade.segments,road_grade.junctions,rail_plan,depots)
+		rail_urban.configure(tiles,road_grade.segments,road_grade.junctions,rail_plan,depots,railway_ground_height,railway_level)
 		road_grade.bridge_rail_junctions(rail_plan,railway_ground_height,rail_urban.buried)
 		stages.rail_ms=(Time.get_ticks_usec()-tick)/1000.0
 		bake_cache.write(transport_key,TransportBake.packed(self))
@@ -1391,7 +1391,7 @@ func railway_earth_color(display_height: float) -> Color:
 func _prepare_rail_art() -> void:
 	if not _prepared_rail_art.is_empty(): return
 	_prepared_rail_art = Railway.build(lines, road_grade.segments if transport_ready else roads, railway_ground_height, railway_level, origin,
-		true, railway_earth_color, road_height, surface_height, {"plan": rail_plan, "burial": rail_urban.profile} if transport_ready else {})
+		true, railway_earth_color, road_height, surface_height, {"plan": rail_plan, "burial": rail_urban.profile, "rail_profile":rail_urban.track_profile} if transport_ready else {})
 
 func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = true) -> Node3D:
 	var root := Node3D.new()

@@ -24,7 +24,10 @@ void fragment() {
 	vec3 n = normalize(world_normal);
 	float slope = length(n.xz) / max(0.08, n.y);
 	float facing = dot(normalize(n.xz + vec2(0.00001)), vec2(0.70710678));
-	float shading = 1.0 - clamp(slope / 0.13235, 0.0, 1.0) * (0.20 - 0.16 * max(0.0, facing));
+	// A soft response keeps road/rail approaches legible without hitting the
+	// full mountain contrast at a modest 13% slope.
+	float relief_response = slope / (slope + 0.45);
+	float shading = 1.0 - relief_response * (0.16 - 0.12 * max(0.0, facing));
 	if (strata) shading = 0.75 + 0.25 * max(0.0, dot(n, normalize(vec3(0.7, 0.3, 0.7))));
 	float projected_y = (world_point.x + world_point.z) * 0.40824829 - world_point.y * 0.81649658;
 	float t = clamp((projected_y - grade_range.x) / max(1.0, grade_range.y - grade_range.x), 0.0, 1.0);
