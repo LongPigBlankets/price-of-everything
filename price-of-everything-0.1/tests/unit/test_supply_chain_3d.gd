@@ -371,13 +371,17 @@ func _check_source_tree_layout(builder: RefCounted, model: Dictionary) -> void:
 				var found := false
 				for candidate in candidates:
 					found = found or (str(candidate.kind) == str(tree.kind) and (tile.center + candidate.p).distance_to(tree.pos) < 0.01)
+				if tree.get("source", "") == "rail_row":
+					found = str(tile.type) == "rural" and int(tree.row) in [0, 1, 2] and float(tree.side) in [-1.0, 1.0]
 				matches = matches and found
+				matches = matches and builder.rail_vegetation.clear(tree.pos, builder.TreeLayout.canopy(tree))
 				for road in model.roads:
+					if road.get("tunnel", false): continue
 					var width := float(road.get("widths", Legacy._road_widths(int(road.level)))[0])
 					matches = matches and Geometry2D.get_closest_point_to_segment(tree.pos, road.a, road.b).distance_to(tree.pos) >= width + 4.0
 				for s in model.standing:
 					if s.has("footprint"): matches = matches and not Geometry2D.is_point_in_polygon(tree.pos, s.footprint)
-		_check(matches and count > 30, "3D trees: retain source species and seeds while clearing authored roads and fitted building footprints")
+		_check(matches and count > 30, "3D trees: retain source placements plus rural rail rows, clearing transport and fitted footprints")
 		return
 	# Compare the actual source renderer's accepted placements, not a second copy
 	# of the candidate/clearance algorithm. Tree sprites encode their foot at 96%.
@@ -673,7 +677,7 @@ func _test_far_bake_decorative_proportions() -> void:
 		var frame := builder.standing_frame(s)
 		var transform: Transform3D = builder.decor_sprite_transforms[frame.key][0]
 		var near := builder.standing_node(s)
-		_check(transform.origin.distance_to(near.position + sprites.center(frame.key) * float(s.side)) < 0.001 and is_equal_approx(transform.basis.x.length(), float(s.side)),
+		_check(transform.origin.distance_to(near.position + sprites.center(frame.key) * Builder.BuildingScale.for_asset(frame.key, float(s.side))) < 0.001 and is_equal_approx(transform.basis.x.length(), float(s.side)),
 			"3D decorative sprites: %s retains exact scale and sloping-ground anchor" % s.iid)
 		_check(near.find_children("*", "StaticBody3D", true, false).is_empty(), "3D decorative sprites: scenery never becomes a playable building clickbox")
 		near.free()

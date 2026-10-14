@@ -4,7 +4,11 @@ extends "res://tools/supply_chain_3d/capture.gd"
 const Package := preload("res://tools/supply_chain_3d/bake_package.gd")
 
 func _ready() -> void:
-	PlayerProfile.supply_chain_all_tiles = false # disposable harness; do not save preferences
+	if not preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
+		push_error("Continent baking is paused pending user approval. Use --stoneshore-review for the five-tile trial.")
+		get_tree().quit(1)
+		return
+	PlayerProfile.supply_chain_all_tiles = true # scoped disposable harness; do not save preferences
 	await super._ready()
 
 func _continent_review(board: Control, _home: Dictionary) -> void:
@@ -17,10 +21,12 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	var source: RefCounted = builder.bake_cache
 	var writer := Package.Cache.new()
 	writer.enabled = true
-	writer.directory = Package.Cache.BUNDLED
+	writer.directory = preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").PACKAGE
 	writer.defer_trim = true # release assets are not the bounded runtime disk cache
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--package-output="): writer.directory = arg.trim_prefix("--package-output=")
+	assert(writer.directory != Package.Cache.BUNDLED, "A Stoneshore trial must not overwrite the continent package")
+	assert(builder.tiles.size() == 5, "Expected only the five Stoneshore review tiles")
 	writer.bundled_directory = writer.directory
 	assert(DirAccess.make_dir_recursive_absolute(writer.directory) == OK)
 	var previous_manifest: Dictionary = {}

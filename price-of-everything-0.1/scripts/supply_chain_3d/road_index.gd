@@ -7,7 +7,7 @@ const EPSILON := 0.01
 const RoadStyle := preload("res://scripts/authored_road_style.gd")
 
 static func path_half(path: Dictionary) -> float:
-	return RoadStyle.casing_width(str(path.get("class","mid")))*0.5
+	return float(path.widths[0]) if path.has("widths") else RoadStyle.casing_width(str(path.get("class","mid")))*0.5
 
 static func insert(index: Dictionary, area: Rect2, id: Variant, size: float = CELL) -> void:
 	var lo := Vector2i((area.position / size).floor())

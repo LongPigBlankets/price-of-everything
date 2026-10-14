@@ -96,11 +96,11 @@ static func compile(paths: Array, centers: Dictionary, ground: Callable = Callab
 static func compile_segments(paths: Array, centers: Dictionary) -> Array:
 	var parts: Array = []
 	for path in paths:
-		var widths := road_widths(path.class)
-		var level: int = {"minor": 1, "mid": 2, "major": 3}.get(path.class, 2)
+		var widths: Array = path.get("widths",road_widths(path.class))
+		var level: int = int(path.get("level", {"minor": 1, "mid": 2, "major": 3}.get(path.class, 2)))
 		for i in range(1, path.points.size()):
 			parts.append({"a": path.points[i - 1], "b": path.points[i], "kind": "authored", "level": level,
-				"paved": true, "widths": widths, "source": path.id, "layer": path.layer})
+				"paved": true, "widths": widths, "source": path.id, "layer": path.layer, "district_street":path.get("district_street",false)})
 	# Resolve global topology first, then clip it for rendering. Company coverage
 	# must not change a junction on its boundary.
 	parts = split_crossings(parts)

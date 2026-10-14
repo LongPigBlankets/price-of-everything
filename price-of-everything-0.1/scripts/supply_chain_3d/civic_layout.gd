@@ -3,7 +3,10 @@ extends RefCounted
 ## Seed plots before frontage fitting so all LODs/cache paths share one layout.
 const Region := preload("res://scripts/supply_chain_3d/authored_region.gd")
 const Assets := preload("res://scripts/supply_chain_3d/assets.gd")
-const SPACES := ["civic_park", "civic_plaza"]
+const SPACES := ["civic_park", "civic_plaza", "civic_pond", "civic_grove"]
+const DISTRICT_LIMITS := {"civic_u_office": 1, "civic_bauhaus": 1, "civic_commercial": 2, "civic_semi": 4}
+const NAMES := {"civic_office": "Offices", "civic_l": "Courtyard offices", "civic_park": "Pocket park", "civic_plaza": "Public square",
+	"civic_u_office": "Courtyard tower", "civic_semi": "Semi-detached homes", "civic_bauhaus": "Bauhaus works", "civic_commercial": "Shopping block"}
 ## Existing full-size houses and towers have 11.8u storeys. Commercial floors
 ## share that scale; a broad footprint must not shrink the people inside it.
 const STOREY := 12.0
@@ -35,6 +38,7 @@ static func catalog_signature() -> Array:
 
 static func side_for(family: String, level: int) -> float:
 	if family in SPACES: return 48.0
+	if family == "civic_semi": return preload("res://scripts/supply_chain_3d/building_scale.gd").semi_side()
 	var key := Assets.key_for(family, level)
 	return STOREY / maxf(Assets.storey_height(key), 0.01)
 
@@ -55,12 +59,20 @@ static func populate(model: Dictionary, scope: Array = []) -> void:
 		var variant_counts := {}
 		for y in range(-180, 181, 60):
 			for x in range(-180, 181, 60):
-				var variant := (index + int(str(tid).get_slice("_", 1))) % 12
+				var variant := (index + int(str(tid).get_slice("_", 1))) % 16
 				var family := "civic_office"
 				var level := 1 + index % 2
-				if variant == 0 or variant == 6:
+				if variant == 0 or variant == 8:
 					family = "civic_park" if variant == 0 else "civic_plaza"
 					level = 1
+				elif variant == 1:
+					family = "civic_u_office"; level = 1
+				elif variant in [5, 11]:
+					family = "civic_semi"; level = 1
+				elif variant in [2, 9]:
+					family = "civic_commercial"; level = 1
+				elif variant == 10:
+					family = "civic_bauhaus"; level = 1
 				elif variant % 3 == 0:
 					family = "civic_l"; level = 1
 				var side := side_for(family, level)
@@ -69,12 +81,13 @@ static func populate(model: Dictionary, scope: Array = []) -> void:
 				var variant_key := "%s:%d" % [family, level]
 				var ordinal := int(variant_counts.get(variant_key, 0))
 				variant_counts[variant_key] = ordinal + 1
-				var priority := 1000 + index if family in SPACES else ordinal * 3 + (0 if family == "civic_l" else level)
+				var order := ["civic_u_office", "civic_bauhaus", "civic_commercial", "civic_l", "civic_office", "civic_semi"].find(family)
+				var priority := 1000 + index if family in SPACES else ordinal * 7 + maxi(order, 0)
 				var id := "z_civic:%s:%04d:%02d" % [tid, priority, index]
 				index += 1
 				if existing.has(id): continue
 				model.standing.append({"iid": id, "kind": "house", "tile": tid,
 					"pos": tile.center + Vector2(x, y), "side": side, "pad": side,
 					"level": level, "decor_family": family, "sprite": null, "polluting": false,
-					"name": {"civic_office": "Offices", "civic_l": "Courtyard offices", "civic_park": "Pocket park", "civic_plaza": "Public square"}[family],
+					"name": NAMES[family],
 					"max_relief": 2.0 if family in SPACES else 6.0})

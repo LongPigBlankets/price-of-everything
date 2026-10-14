@@ -1773,5 +1773,69 @@
     "source_ink_widths": true,
     "projected_height": 1.1726670418442384,
     "contour": false
+  },
+  "civic_u_office_lvl1": {
+    "height": 2.7197469944044985,
+    "width": 1.0,
+    "depth": 0.7673087862970384,
+    "triangles": 21032,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.13245032625880412,
+    "projected_height": 2.8904272809987868,
+    "contour": true
+  },
+  "civic_semi_lvl1": {
+    "height": 0.7086693705384242,
+    "width": 1.0,
+    "depth": 0.6792071313303737,
+    "triangles": 644,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.22177419184273914,
+    "projected_height": 1.048232627608716,
+    "contour": true
+  },
+  "civic_bauhaus_lvl1": {
+    "height": 1.1095176198477652,
+    "width": 1.0,
+    "depth": 0.7692307740130092,
+    "triangles": 1264,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.14341590470120402,
+    "projected_height": 1.5297399899323028,
+    "contour": true
+  },
+  "civic_commercial_lvl1": {
+    "height": 0.8395428556708739,
+    "width": 1.0,
+    "depth": 0.742167696974131,
+    "triangles": 5520,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.18628281960082632,
+    "projected_height": 1.2403005050784361,
+    "contour": true
+  },
+  "civic_pond_lvl1": {
+    "height": 0.2007684614403109,
+    "width": 1.0,
+    "depth": 0.800374277531076,
+    "triangles": 27716,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.5795552946838259,
+    "contour": true
+  },
+  "civic_grove_lvl1": {
+    "height": 0.23948656250274106,
+    "width": 1.0,
+    "depth": 0.8932427120703115,
+    "triangles": 19350,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.6019254144142595,
+    "contour": true
   }
 }

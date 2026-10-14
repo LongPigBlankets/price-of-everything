@@ -21,6 +21,9 @@ for family in ('civic_office', 'civic_l', 'civic_park', 'civic_plaza'):
                         levels=(1, 2) if family == 'civic_office' else (1,),
                         detailed=True, outer_contour=family in ('civic_office', 'civic_l'))
 # Bounded reusable whole-bay combinations; the runtime selects, never stretches.
+for family in ('civic_u_office', 'civic_semi', 'civic_bauhaus', 'civic_commercial', 'civic_pond', 'civic_grove'):
+    specs[family] = dict(file=str(pathlib.Path(__file__).with_name('district_builder.py')),
+        fn='build_'+family, col='BLDG_'+family, levels=(1,), detailed=True, outer_contour=True)
 for columns in range(4, 11):
     specs[f'civic_long_{columns:02d}'] = dict(file=str(pathlib.Path(__file__).with_name('civic_builder.py')),
         fn='build_civic_long', col='BLDG_civic_long', levels=(1,), detailed=True,

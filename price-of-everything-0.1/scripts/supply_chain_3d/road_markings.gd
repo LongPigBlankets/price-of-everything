@@ -181,6 +181,6 @@ static func _stripe(p: Dictionary, from: float, to: float, lateral: float) -> Pa
 	var b: Vector2 = p.a.lerp(p.b, to / p.length)
 	var na: Vector2 = p.start_normal.lerp(p.end_normal, from / p.length)
 	var nb: Vector2 = p.start_normal.lerp(p.end_normal, to / p.length)
-	var half: float = Legacy._ROAD_MARK_W
+	var half: float = 0.18 if p.way.get("district_street",false) else Legacy._ROAD_MARK_W
 	return PackedVector2Array([a + na * (lateral + half), b + nb * (lateral + half),
 		b + nb * (lateral - half), a + na * (lateral - half)])

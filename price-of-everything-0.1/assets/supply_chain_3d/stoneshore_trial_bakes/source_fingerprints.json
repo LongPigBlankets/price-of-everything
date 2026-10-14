@@ -1,0 +1,24 @@
+{
+	"engine": "4.6.2-stable (official)",
+	"layers": {
+		"buildings": "6611aaf3fcc2001f63a15bd221039b05a330ac4f1852ba3d1ac75f1b7d4b6f60",
+		"continent": "b0d409f75163624dd68e19cb984a101397380de89b09e5d85b73e2354a681bf9",
+		"detail": "0f0c60adfdf7eda7764d5a30387fccb659fb2ec5db46b3c65569c55e7820083a",
+		"layout": "7c46e6adaa7833ca475d32785925c3fd5fac78c42b4d1927e416ef27fac60ca4",
+		"roads": "dcc277a6c76070ac906b3e5cd4c89d6461d78fbfd36cee2be43e1964985bf5a3",
+		"scenery": "3ffe16f4315571c84e212933cf51be8c4774c1352ac4a3422ea365c0559a3e35",
+		"terrain": "140178a6470b82d828b340e227700b0752ab991a7d27bb47fe1589868e3de232",
+		"transport": "3d1cde78878fbd5487f99d2e10df22a25fc5ef3a5274d58c462639d2c48e284a"
+	},
+	"revisions": {
+		"buildings": 1,
+		"continent": 2,
+		"detail": 1,
+		"layout": 1,
+		"roads": 1,
+		"scenery": 2,
+		"terrain": 3,
+		"transport": 1
+	},
+	"schema": 2
+}

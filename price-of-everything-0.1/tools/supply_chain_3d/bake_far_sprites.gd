@@ -89,7 +89,7 @@ func _ready() -> void:
 		# The same camera square at every angle: no auto-fit scale pumping on orbit.
 		var cell := (64 if medium else 16) if str(key).begins_with("tree_") else (128 if medium else 64)
 		# Tall, thin structures need more samples at the close end of medium.
-		if medium and key in ["pylon_lvl1", "towers_lvl1", "towers_lvl2"]: cell = 192
+		if medium and key in ["pylon_lvl1", "towers_lvl1", "towers_lvl2", "civic_u_office_lvl1"]: cell = 192
 		var yaws := 32 if medium and key == "pylon_lvl1" else YAWS
 		var span := bounds.size.length() * 1.10
 		if colour_only:
