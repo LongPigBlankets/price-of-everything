@@ -42,7 +42,7 @@ import math
 
 PALETTE["ht_glass"] = (0.200, 0.360, 0.500)
 PALETTE["orange"] = (0.620, 0.215, 0.038)
-PALETTE["brick_orange"] = (0.440, 0.165, 0.068)   # two-tone lower band, warmer than `brick`
+PALETTE["brick_orange"] = (0.340, 0.112, 0.080)   # two-tone lower band: brick red (name kept for the role)
 PALETTE["ht_white"] = (0.600, 0.600, 0.590)
 PALETTE["pcb"] = (0.060, 0.300, 0.120)
 PALETTE["pcb_lo"] = (0.035, 0.180, 0.070)
@@ -54,6 +54,7 @@ PALETTE["rack_face"] = (0.160, 0.175, 0.200)
 PALETTE["ht_coping"] = (0.640, 0.620, 0.570)
 PALETTE["ht_plinth"] = (0.022, 0.024, 0.030)   # the darkest band on the building
 PALETTE["ht_window"] = (0.010, 0.013, 0.028)   # punched windows read as dark openings
+PALETTE["ht_pipe"] = (0.700, 0.660, 0.580)     # every pipe and tray run is painted warm white
 ROLES["ht_accent"] = "orange"
 ROLES["robot"] = "orange"
 ROLES["ht_brick"] = "brick_orange"
@@ -65,6 +66,7 @@ ROLES["rack"] = "rack"
 ROLES["rack_face"] = "rack_face"
 ROLES["ht_coping"] = "ht_coping"
 ROLES["ht_plinth"] = "ht_plinth"
+ROLES["ht_pipework"] = "ht_pipe"
 ROLES["safety"] = "hi_vis"            # bollards, handrails: a signal, kept to small parts
 
 HT_LEVELS = {
@@ -428,20 +430,20 @@ def _services(K, p):
     for i in range(4):
         y = 1.10 + i * 0.22
         K.pipe_run("conduit%d" % i, [(X1 + 0.09, y, 0.25), (X1 + 0.09, y, h - 0.30),
-                                     (X1 - 0.03, y, h - 0.30)], 0.035, K.mat("wall_steel"))
+                                     (X1 - 0.03, y, h - 0.30)], 0.035, K.mat("ht_pipework"))
     K._fine_mode = fm
-    K.box("tray", X1 + 0.16, 1.43, 0.95, 0.14, 0.90, 0.06, K.mat("wall_steel"))
+    K.box("tray", X1 + 0.16, 1.43, 0.95, 0.14, 0.90, 0.06, K.mat("ht_pipework"))
     K.box("swg", X1 + 0.45, y1 - 0.45, 0.36, 0.44, 0.34, 0.72, K.mat("gear"))
     K.box("swg_cap", X1 + 0.45, y1 - 0.45, 0.735, 0.46, 0.36, 0.03, K.mat("wall_steel"))
     K.pipe_run("swg_feed", [(X1 + 0.45, y1 - 0.28, 0.30), (X1 + 0.16, y1 - 0.28, 0.30),
-                            (X1 + 0.16, 1.43, 0.30), (X1 + 0.16, 1.43, 0.92)], 0.04, K.mat("wall_steel"))
+                            (X1 + 0.16, 1.43, 0.30), (X1 + 0.16, 1.43, 0.92)], 0.04, K.mat("ht_pipework"))
     if p["tray"]:
         # Beside the switchgear, in front of the rear block: its old spot (y 2.55) is inside
         # the widened block's footprint at L3.
         tx, ty = X1 + 0.98, 1.15
         K.transformer("tr", tx, ty, 0.0, s=0.95, accent=False)
         K.pipe_run("tr_lv", [(tx - 0.25, ty, 0.30), (X1 + 0.45, ty, 0.30), (X1 + 0.45, y1 - 0.28, 0.30)],
-                   0.04, K.mat("wall_steel"))
+                   0.04, K.mat("ht_pipework"))
     _downpipe(K, "r", X1 + 0.05, 0.12, h, "+X")
 
 
@@ -585,10 +587,10 @@ def _fixtures(K, p):
     ys, x0 = (0.52, 0.60), X0 + 0.75 + 0.30
     x_end = X0 + 0.75 + (p["ahus"] - 1) * 1.05 + 0.75
     for j, y in enumerate(ys):
-        K.pipe_run("rf%d" % j, [(x0, y, z_roof + 0.08), (x_end, y, z_roof + 0.08)], 0.022, K.mat("pipe"))
+        K.pipe_run("rf%d" % j, [(x0, y, z_roof + 0.08), (x_end, y, z_roof + 0.08)], 0.022, K.mat("ht_pipework"))
     for i in range(p["ahus"]):
         cx = X0 + 0.75 + i * 1.05 + 0.30
-        K.pipe_run("rf_up%d" % i, [(cx, ys[1], z_roof + 0.08), (cx, 0.90, z_roof + 0.08)], 0.022, K.mat("pipe"))
+        K.pipe_run("rf_up%d" % i, [(cx, ys[1], z_roof + 0.08), (cx, 0.90, z_roof + 0.08)], 0.022, K.mat("ht_pipework"))
     x = x0 - 0.10
     k = 0
     while x < x_end:

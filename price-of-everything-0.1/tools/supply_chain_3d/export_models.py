@@ -10,10 +10,12 @@ KIT = pathlib.Path(os.environ.get('POE_SPRITE_KIT', str(ROOT / '.claude/skills/b
 OUT = pathlib.Path(os.environ.get('POE_MODEL_OUTPUT', str(ROOT / 'price-of-everything-0.1/assets/supply_chain_3d')))
 OUT.mkdir(parents=True, exist_ok=True)
 # Opaque faces carry a printed material pattern in the colour's alpha channel, read by
-# building_print.gdshader: 1 brick coursing, 2 wall panel joints, 3 roof gravel, 4 paving.
+# building_paint.gdshaderinc: 1 brick coursing, 2 wall panel joints, 3 roof gravel, 4 paving,
+# 5 standing-seam metal roof.
 # Alpha = 1 - code / 8, so 1.0 (the old export) still means no pattern. See-through faces
 # (BLENDED materials with Alpha < 1) go to a second 'Glass' slot and keep their real alpha.
-PATTERNS = {'white_wall': 2, 'chalk': 2, 'ht_white': 2, 'deck': 3, 'apron': 4, 'pad': 4, 'cream': 4}
+PATTERNS = {'white_wall': 2, 'chalk': 2, 'ht_white': 2, 'deck': 3, 'membrane': 3, 'apron': 4, 'pad': 4, 'cream': 4,
+            'roof_metal': 5}
 def pattern_code(material_name):
     base = material_name.split('.')[0]
     if 'brick' in base: return 1

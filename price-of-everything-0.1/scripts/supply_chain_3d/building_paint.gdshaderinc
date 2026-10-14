@@ -60,7 +60,8 @@ float pattern_speckle(vec2 p, float cell) {
 	float v = pattern_hash(floor(p / cell)) * 2.0 - 1.0;
 	return v * (1.0 - smoothstep(0.4 * cell, 1.0 * cell, length(fwidth(p))));
 }
-// The export writes a material pattern into the colour's alpha (export_models.py PATTERNS).
+// The export writes a material pattern into the colour's alpha (export_models.py PATTERNS):
+// 1 brick, 2 wall panels, 3 roof gravel, 4 paving, 5 standing-seam metal roof.
 vec3 material_pattern(vec3 paint, float code, vec3 p, vec3 n) {
 	if (code < 0.5) return paint;
 	bool top = n.y > 0.7;
@@ -74,7 +75,8 @@ vec3 material_pattern(vec3 paint, float code, vec3 p, vec3 n) {
 		float along = u + mod(row, 2.0) * 0.105;
 		float mortar = max(pattern_line(p.y, course, 0.0050), pattern_line(along, 0.21, 0.0050));
 		float brick = pattern_speckle(vec2(along, p.y + 0.5 * course), 0.21) * 0.05;
-		return mix(paint * (1.0 + brick), paint * 0.70 + vec3(0.03), mortar * 0.85);
+		// Light lime mortar, as on a printed elevation: the joints read pale against the brick.
+		return mix(paint * (1.0 + brick), vec3(0.74, 0.70, 0.62), mortar * 0.60);
 	}
 	if (code < 2.5 && wall) {
 		// Cladding panels: fine joints and a faint render speckle.
@@ -87,6 +89,13 @@ vec3 material_pattern(vec3 paint, float code, vec3 p, vec3 n) {
 		float fine = pattern_speckle(p.xz, 0.016) * 0.035 + pattern_speckle(p.xz + 7.3, 0.045) * 0.02;
 		float stone = step(0.96, pattern_hash(floor(p.xz / 0.024) + 3.1)) * (1.0 - smoothstep(0.010, 0.024, length(fwidth(p.xz))));
 		return paint * (1.0 + fine - 0.12 * stone);
+	}
+	if (code > 4.5 && code < 5.5 && n.y > 0.3 && n.y < 0.97) {
+		// Standing-seam metal roof: seams run down the slope, spaced along the ridge.
+		vec2 ridge = normalize(vec2(-n.z, n.x) + vec2(0.00001));
+		float along = dot(p.xz, ridge);
+		float seam = pattern_line(along, 0.085, 0.0045);
+		return mix(paint, paint * 0.80, seam * 0.85);
 	}
 	if (code < 4.5 && top) {
 		// Paving: slab joints and a slight tone per slab.

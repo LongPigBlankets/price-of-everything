@@ -1226,11 +1226,11 @@
 				104.0,
 				90.0
 			],
-			"lit_source_sha256": "17d511a356e829cf1e49f672a91755249bfb97db49df812c3a2b6acdbdfff6b0",
+			"lit_source_sha256": "a496f82088651d01bd69cb2265dec39a5ff0f53821add4ba755df9ae80c0ba41",
 			"lit_texture": "high_tech_manufactory_lvl1_lit.png",
 			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "17d511a356e829cf1e49f672a91755249bfb97db49df812c3a2b6acdbdfff6b0",
+			"source_sha256": "a496f82088651d01bd69cb2265dec39a5ff0f53821add4ba755df9ae80c0ba41",
 			"span": 1.34441204071045,
 			"yaws": 16.0
 		},
@@ -1250,11 +1250,11 @@
 				103.0,
 				89.0
 			],
-			"lit_source_sha256": "acc826c2ba1119ed8223530a3fe51130d0471de8d897e39c5eda7ba328429724",
+			"lit_source_sha256": "04ad42aa14cd334fd3e0334cc28283fdf3b0a557f6291f09bf74069975ce1c2e",
 			"lit_texture": "high_tech_manufactory_lvl2_lit.png",
 			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "acc826c2ba1119ed8223530a3fe51130d0471de8d897e39c5eda7ba328429724",
+			"source_sha256": "04ad42aa14cd334fd3e0334cc28283fdf3b0a557f6291f09bf74069975ce1c2e",
 			"span": 1.46658252477646,
 			"yaws": 16.0
 		},
@@ -1274,11 +1274,11 @@
 				104.0,
 				87.0
 			],
-			"lit_source_sha256": "f77aa349b109d3d4efee2754f6a55fd461f9c6d89847c2bb511fe62cba847487",
+			"lit_source_sha256": "d6a70d22203c9bdf5807509e8d597340fd1b1299aabe3aacac4f8ed64572ac9d",
 			"lit_texture": "high_tech_manufactory_lvl3_lit.png",
 			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "f77aa349b109d3d4efee2754f6a55fd461f9c6d89847c2bb511fe62cba847487",
+			"source_sha256": "d6a70d22203c9bdf5807509e8d597340fd1b1299aabe3aacac4f8ed64572ac9d",
 			"span": 1.6788034081459,
 			"yaws": 16.0
 		},
@@ -1358,67 +1358,73 @@
 			"cell": 128.0,
 			"center": [
 				0.0,
-				0.198153406381607,
+				0.19606514275074,
 				0.0
 			],
 			"dimensions": [
-				0.384943187236786,
-				0.396306812763214,
-				0.630681812763214
+				0.385345995426178,
+				0.39213028550148,
+				0.616010844707489
 			],
 			"home_opaque_pixels": [
-				100.0,
-				101.0
+				99.0,
+				98.0
 			],
-			"lit_source_sha256": "19116ab9d43ae3926d98999161501581d1a1b62f0227a1e02c28353d97ed96ea",
+			"lit_source_sha256": "d96c3757248dba9756a0cf174bf880e5955f1c6f70c99bd81a4399e60b12d7ca",
 			"lit_texture": "industrial_factory_lvl1_lit.png",
+			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "19116ab9d43ae3926d98999161501581d1a1b62f0227a1e02c28353d97ed96ea",
-			"span": 0.922295999526978
+			"source_sha256": "d96c3757248dba9756a0cf174bf880e5955f1c6f70c99bd81a4399e60b12d7ca",
+			"span": 0.90823438167572,
+			"yaws": 16.0
 		},
 		"industrial_factory_lvl2": {
 			"cell": 128.0,
 			"center": [
 				0.0,
-				0.37890625,
+				0.361940294504166,
 				0.0
 			],
 			"dimensions": [
-				0.459517031908035,
-				0.7578125,
-				0.990056812763214
+				0.468792408704758,
+				0.723880589008331,
+				0.999999940395355
 			],
 			"home_opaque_pixels": [
-				89.0,
-				86.0
+				87.0,
+				84.0
 			],
-			"lit_source_sha256": "d2978d6f0ef3c993639a3a841190cfd14fd2942db0cfad868885e3285fa1d4ab",
+			"lit_source_sha256": "aef8c8694beb93f3052e68e7887f50157285e8b7af51014849de780c58726d7b",
 			"lit_texture": "industrial_factory_lvl2_lit.png",
+			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "d2978d6f0ef3c993639a3a841190cfd14fd2942db0cfad868885e3285fa1d4ab",
-			"span": 1.46165465116501
+			"source_sha256": "aef8c8694beb93f3052e68e7887f50157285e8b7af51014849de780c58726d7b",
+			"span": 1.4525704741478,
+			"yaws": 16.0
 		},
 		"industrial_factory_lvl3": {
 			"cell": 128.0,
 			"center": [
 				0.0,
-				0.37890625,
+				0.361940294504166,
 				0.0
 			],
 			"dimensions": [
-				0.647194623947144,
-				0.7578125,
+				0.622252404689789,
+				0.723880589008331,
 				1.0
 			],
 			"home_opaque_pixels": [
-				96.0,
-				81.0
+				93.0,
+				80.0
 			],
-			"lit_source_sha256": "0d619187294457498225e421b3b254bcde9e09cbece2f77d7ef504777188eae1",
+			"lit_source_sha256": "8b4f8909e544efc3836d7d5654f6d0baa5a473ac414b37233357c8b14ee750c4",
 			"lit_texture": "industrial_factory_lvl3_lit.png",
+			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "0d619187294457498225e421b3b254bcde9e09cbece2f77d7ef504777188eae1",
-			"span": 1.55296494960785
+			"source_sha256": "8b4f8909e544efc3836d7d5654f6d0baa5a473ac414b37233357c8b14ee750c4",
+			"span": 1.52070822715759,
+			"yaws": 16.0
 		},
 		"mine_flush_lvl1": {
 			"cell": 128.0,
