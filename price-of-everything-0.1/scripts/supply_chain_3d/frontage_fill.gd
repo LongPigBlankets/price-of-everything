@@ -42,7 +42,9 @@ func run(model: Dictionary, fitter: RefCounted, zoning: Dictionary) -> Dictionar
 		var gaps := _gaps()
 		if gaps.is_empty(): break
 		for gap in gaps:
-			if _at_target(gap.tile) or gap.length<12.0: continue
+			# Short curved pieces can front a full-size plot spanning several segments.
+			# Exact footprint checks, rather than segment length, decide whether it fits.
+			if _at_target(gap.tile): continue
 			for sample_id in gap.indices:
 				var sample: Dictionary=samples[sample_id]
 				if sample.covered or failed.has(sample_id): continue

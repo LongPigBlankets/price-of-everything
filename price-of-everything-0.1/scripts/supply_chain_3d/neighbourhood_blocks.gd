@@ -82,7 +82,7 @@ func _lanes() -> void:
 					var c: Vector2=mid+n*depth*sign_v
 					if centers.any(func(other):return other.distance_to(c)<135.0): continue
 					var a := mid-tangent*run*.5;var b := mid+tangent*run*.5
-					var points := PackedVector2Array([a,a+n*depth*sign_v,b+n*depth*sign_v,b])
+					var points := preload("res://scripts/supply_chain_3d/street_curves.gd").rounded_path(PackedVector2Array([a,a+n*depth*sign_v,b+n*depth*sign_v,b]),18.0)
 					if not _lane_clear(points,tid): continue
 					var path := {"id":"neighbourhood:%s:%d" % [tid,int(counts.get(tid,0))],"points":points,
 						"class":"minor","layer":0,"level":1,"widths":WIDTHS,"district_street":true}

@@ -52,6 +52,7 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 	var zoning := {}
 	for s in model.standing:
 		if s.has("trial_edge_centers"): zoning[str(s.tile)]=s
+	_reserve_junctions()
 	var movable: Array = []
 	for s in model.standing:
 		if s.has("harbour"):
@@ -109,7 +110,9 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 		if str(s.kind) == "house": restored += 1
 	var blocks := Neighbourhood.new()
 	var interiors := model.has("district_blocks") and not zoning.is_empty()
-	if interiors: blocks.prepare(model,self)
+	if interiors:
+		blocks.prepare(model,self)
+		_reserve_junctions()
 	var infill := FrontageFill.new()
 	var coverage := infill.run(model,self,zoning) if not zoning.is_empty() else {}
 	if interiors: blocks.populate()
@@ -123,6 +126,9 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 		if str(s.kind)=="house":
 			s.erase("entrance")
 			continue # decorative doors open onto the sidewalk; no asphalt access stubs
+		if s.has("harbour") and s.harbour.has("road_connection"):
+			s.entrance=s.harbour.road_connection
+			continue
 		var entry := entrance(s)
 		if entry.is_empty():
 			if str(s.kind) != "house": unconnected.append(str(s.iid))
@@ -347,3 +353,11 @@ func trial_plot_allowed(s: Dictionary) -> bool:
 	if s.has("trial_residential"):
 		return preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").residential(s.trial_tile, s.pos, s.trial_edge_centers,s.get("trial_harbours",[])) == bool(s.trial_residential)
 	return true
+
+func _reserve_junctions() -> void:
+	if not preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():return
+	var curves := preload("res://scripts/supply_chain_3d/street_curves.gd")
+	for joint in curves.junctions(roads):
+		var a: Dictionary=joint.a.road;var b: Dictionary=joint.b.road
+		var poly := curves.flare(joint.p,joint.a.d,joint.b.d,float(a.widths[0])+Sidewalks.width(a),float(b.widths[0])+Sidewalks.width(b),4)
+		if not poly.is_empty():reserve("__road_junction",poly)

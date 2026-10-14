@@ -185,6 +185,15 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 	report.sea_margin={"fraction":board._builder.sea_fringe.FRACTION,"width":board._builder.sea_fringe.WIDTH,"parts":board._builder.sea_fringe.strips.size()}
 	report.sea_margin.merge(_coastal_surface_audit(board))
 	report.depot_roads=_depot_routes_audit(board)
+	report.street_curves=board._model.get("street_curves",{})
+	report.plazas={"targets":board._builder.urban_plazas.get("targets",0),"area":board._builder.urban_plazas.get("area",0)}
+	report.greenery={"tiles":board._builder.greenery_audit,"land_area":0.0,"canopy_area":0.0,"trees":0,"beach_trees":0,"plaza_trees":0}
+	for stats in report.greenery.tiles.values():
+		for field in ["land_area","canopy_area","trees","beach_trees","plaza_trees"]:report.greenery[field]+=stats[field]
+	report.greenery.coverage=report.greenery.canopy_area/maxf(1,report.greenery.land_area)
+	report.greenery.fine_grid=_canopy_audit(board)
+	report.junctions=_flare_audit(board)
+	report.port_approach=_port_audit(board)
 	_export_review_plan(board,output)
 	if "--draft-review" not in OS.get_cmdline_user_args():
 		assert(report.docks_rails.yard_height_error<.01 and report.docks_rails.hidden_yard_samples==0,"Docks working yard must remain open at its original elevation")
@@ -192,6 +201,10 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 		assert(report.skyline.size()==3,"Missing central Docks skyline landmarks")
 		assert(report.sea_margin.parts>0 and report.sea_margin.get("coastal_land_area",0)>0 and report.sea_margin.get("coverage_error",1)<.0001,"Missing continuous coastal land and sea margin")
 		assert(report.depot_roads.a_crossings==0 and report.depot_roads.b_bridges==1 and report.depot_roads.single_pair and report.depot_roads.old_spur==0,"Depot routes must remove the fan crossing and bridge just the single pair")
+		assert(report.greenery.coverage>=.10 and report.greenery.fine_grid.coverage>=.10 and report.greenery.beach_trees<=20 and report.greenery.plaza_trees>0,"Stoneshore canopy/beach/plaza planting target failed")
+		assert(report.junctions.overlaps.is_empty(),"Junction flares intrude into buildings")
+		assert(report.port_approach.get("inland",0)>=24 and report.port_approach.get("afloat",false) and report.port_approach.get("gap",INF)<.05 and report.port_approach.get("alignment",0)>.999 and report.port_approach.get("height_error",INF)<.2,"Port road does not meet the moved asset entrance")
+		assert(report.plazas.targets>0 and report.plazas.area>0 and report.street_curves.get("rounded_bends",0)>0,"Missing plaza or road curve work")
 		assert(report.depot_roads.a_clearance>=10 and report.depot_roads.b_clearance>=10,"Depot roads must leave a 10u clear gap to ballast")
 	report.final_cache = {"hits":board._builder.bake_cache.hits, "bundled_hits":board._builder.bake_cache.bundled_hits, "writes":board._builder.bake_cache.writes}
 	FileAccess.open(output.path_join("report.json"), FileAccess.WRITE).store_string(JSON.stringify(report, "\t"))
@@ -274,7 +287,7 @@ func _docks_rail_audit(board: Control) -> Dictionary:
 func _export_review_plan(board: Control, output: String) -> void:
 	# Numeric, read-only inputs for road alternatives and sea-envelope audits.
 	var b: RefCounted=board._builder
-	var plan := {"tiles":{},"sea_margin":b.sea_fringe.strips,"roads":b.road_grade.segments,"rails":b.rail_urban.tracks,"depots":b.depots,"buildings":[],"land":[],"depot_roads":board._model.get("depot_roads",{})}
+	var plan := {"tiles":{},"sea_margin":b.sea_fringe.strips,"roads":b.road_grade.segments,"rails":b.rail_urban.tracks,"depots":b.depots,"buildings":[],"land":[],"depot_roads":board._model.get("depot_roads",{}),"plazas":b.urban_plazas,"trees":b.tree_placements}
 	for tid in b.tiles:plan.tiles[tid]=b.tiles[tid].center
 	for s in board._model.standing:
 		plan.buildings.append({"iid":s.iid,"pos":s.pos,"kind":s.kind,"polygons":preload("res://scripts/supply_chain_3d/rail_clearance.gd").building_polygons(s,b.standing_key(s))})
@@ -338,4 +351,71 @@ func _coastal_surface_audit(board: Control) -> Dictionary:
 		area+=absf((b-a).cross(c-a))*.5
 	result.rendered_area=area
 	result.coverage_error=absf(area-result.surface_area)/result.surface_area
+	return result
+
+func _canopy_audit(board: Control) -> Dictionary:
+	# Independent finer grid over the whole region: catches boundary-spanning
+	# crowns and never double-counts overlapping canopies or land area.
+	const Grid := 2.0
+	var canopy := {};var dry := {};var b: RefCounted=board._builder
+	for trees in b.tree_placements.values():
+		for tree in trees:
+			var r: Vector2=preload("res://scripts/supply_chain_3d/stoneshore_greenery.gd").radii(tree)
+			for y in range(floori((tree.pos.y-r.y)/Grid),ceili((tree.pos.y+r.y)/Grid)):
+				for x in range(floori((tree.pos.x-r.x)/Grid),ceili((tree.pos.x+r.x)/Grid)):
+					var k := Vector2i(x,y)
+					if ((Vector2(k)*Grid+Vector2.ONE*Grid*.5-tree.pos)/r).length_squared()<=1:canopy[k]=true
+	for tid in b.tiles:
+		var center: Vector2=b.tiles[tid].center
+		var rel := preload("res://scripts/supply_chain_3d/coast.gd").relief_of(tid,center)
+		for y in range(floori((center.y-240)/Grid),ceili((center.y+240)/Grid)):
+			for x in range(floori((center.x-270)/Grid),ceili((center.x+270)/Grid)):
+				var k := Vector2i(x,y);var p := Vector2(k)*Grid+Vector2.ONE*Grid*.5
+				if preload("res://scripts/supply_chain_3d/road_index.gd").contains(center,p) and not preload("res://scripts/empire_board_ground.gd").is_water(rel,p):dry[k]=true
+	var count := 0
+	for k in dry:if canopy.has(k):count+=1
+	return {"cell_size":Grid,"land_area":dry.size()*Grid*Grid,"canopy_area":count*Grid*Grid,"coverage":float(count)/maxi(1,dry.size())}
+
+func _flare_audit(board: Control) -> Dictionary:
+	var surface := preload("res://scripts/supply_chain_3d/road_surface.gd").new()
+	surface.configure(board._builder.road_grade.segments,board._builder.road_height)
+	var fit := preload("res://scripts/supply_chain_3d/road_placement.gd")
+	var index := preload("res://scripts/supply_chain_3d/road_index.gd")
+	var polys: Array=[];var buckets := {};var result := {"flares":0,"overlaps":[]}
+	for s in board._model.standing:
+		if not fit.exact_building(s):continue
+		for poly in s.get("footprints",[]):
+			index.insert(buckets,fit.polygon_bounds(poly),polys.size());polys.append({"poly":poly,"iid":s.iid})
+	for joint in surface.flares:
+		var a: Dictionary=joint.a.road;var b: Dictionary=joint.b.road
+		var walks := preload("res://scripts/supply_chain_3d/urban_sidewalks.gd")
+		var poly := preload("res://scripts/supply_chain_3d/street_curves.gd").flare(joint.p,joint.a.d,joint.b.d,float(a.widths[0])+walks.width(a),float(b.widths[0])+walks.width(b),4)
+		if poly.is_empty():continue
+		result.flares+=1
+		for id in index.query(buckets,fit.polygon_bounds(poly)):
+			for overlap in Geometry2D.intersect_polygons(poly,polys[id].poly):
+				if preload("res://scripts/supply_chain_3d/sea_fringe.gd").area(overlap)>.05:result.overlaps.append(polys[id].iid)
+	surface.finish_build();return result
+
+func _port_audit(board: Control) -> Dictionary:
+	var plan: Dictionary=board._model.get("port_approach",{})
+	if plan.is_empty():return {}
+	var result := {"inland":plan.inland,"lateral":plan.lateral,"gap":INF,"alignment":0.0,"height_error":INF,"afloat":false}
+	var b: RefCounted=board._builder
+	var harbour := preload("res://scripts/supply_chain_3d/harbour.gd")
+	for s in board._model.standing:
+		if not s.has("harbour") or not s.harbour.has("trial_frame"):continue
+		var frame: Dictionary=b.standing_frames[s.iid]
+		var asset := preload("res://scripts/supply_chain_3d/assets.gd").harbour_for(frame.harbour_asset)
+		var pose: Transform3D=frame.harbour_transform
+		var entry3 := pose*harbour.vector3(asset.road_entry)
+		var entry: Vector2=s.pos+Vector2(entry3.x,entry3.z)
+		result.afloat=harbour.ships_afloat(asset,pose,s.pos,b.natural_height)
+		for road in b.road_grade.segments:
+			if road.source!=preload("res://scripts/supply_chain_3d/port_approach.gd").SOURCE:continue
+			var q := Geometry2D.get_closest_point_to_segment(entry,road.a,road.b)
+			if q.distance_to(entry)<result.gap:
+				result.gap=q.distance_to(entry)
+				result.alignment=absf((road.b-road.a).normalized().dot(s.harbour.offshore))
+				result.height_error=absf(b.road_height(entry)+1.09-entry3.y)
 	return result

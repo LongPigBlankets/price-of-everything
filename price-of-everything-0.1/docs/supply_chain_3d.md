@@ -2656,3 +2656,50 @@ clearance and single-pair bridge checks, and a triangle-area coastal coverage
 audit. Evidence is in `outputs/supply-chain-3d/stoneshore-coastal-routes/` at
 repository root. Installed-package validation and final load timings are recorded
 in `docs/load-time-bakes.md`. Whole-continent baking remains paused.
+
+
+### Stoneshore curved streets, concrete forecourts and canopy planting
+
+The five-tile trial rounds compatible degree-two road bends before decorative
+frontage is fitted. Junction anchors, fixed gameplay footprints, rail approaches
+and the engineered depot routes stay protected. New neighbourhood loops use
+the same tangent-continuous corner treatment. Three-way and four-way junctions
+receive small concave fillets in the existing sidewalk/asphalt bands; collinear
+joins stay straight. Short arc segments are eligible for infill: the full building
+outline, rather than individual segment length, determines whether a plot fits.
+
+Urban offices, shops, industry and apartment blocks receive concrete within 20u
+of their actual footprints. Terraced and semidetached houses retain gardens.
+The concrete is clipped against roads, rails, water, occupied plots, parks and
+reserved brownfields, then painted into the terrain before shadows. All terrain
+LODs share this layout. Preparation and polygon clipping run only on a scenery
+cache miss; the terrain fingerprint includes the plaza painter and its colour.
+
+Deterministic tree infill prioritises these forecourts, then fills open land in
+loose groups. The canopy target is the union of projected crowns over dry land,
+not added-up crown areas. A 4u grid guides placement; the review independently
+checks a 2u regional grid including crowns across tile boundaries. Existing size
+variation (100%, 75%, 50%) and half-size rail-side trees remain. Exposed beach
+planting is capped at four trees per tile, at most twenty across this trial.
+Trees embedded inside park assets are conservatively omitted from coverage.
+
+The Stoneshore port now connects via its mesh's actual road entrance. Exported
+harbour metadata records the entrance and road width. The trial moves its quay
+inland with a small along-shore adjustment selected to retain wet ship berths;
+its actual three quay slabs are reserved before decorative placement. The
+approach turns through 90 degrees with a rounded corner, aligns with the asset
+road and grades to its deck. The old access stub to the authored plot boundary
+is omitted. The final port pose, approach and street curves are retained in the
+layout cache so normal opening does not repeat these searches.
+
+The regular map is unchanged. Whole-continent baking remains paused.
+
+Final rendered checks: 45 rounded bends, 115 junction fillets with no building
+intrusions, 267 decorative buildings and 80.67% buildable frontage. Concrete
+serves 90 qualifying buildings over 93,304u². There are 658 free-standing trees,
+including 127 planted on concrete and 12 on exposed beaches. Independent union-canopy
+coverage is 10.41% of the region's dry land; this is a regional target, not a
+per-tile quota. The port moves 32u inland and 26u along the shore; the asset road
+and approach agree in position and height to the measured precision, and all
+berth probes remain afloat. Sixteen review views and detailed reports are in
+`outputs/supply-chain-3d/stoneshore-streets-greenery/` at repository root.

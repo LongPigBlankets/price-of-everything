@@ -326,6 +326,8 @@ for name, spec in specs.items():
                                for cx, cy, length, beam in (ns['SHIP_BOXER_A'], ns['SHIP_BOXER_B'], ns['SHIP_TANKER'])
                                for dx in (-1, 1) for dy in (-1, 1)],
                 'shore_edge': [harbour_point(x0, y, ns['QUAY_Z']) for y in (y0, (y0+y1)/2, y1)],
+                'road_entry': harbour_point(x0, y1-ns['ROAD_W']/2, ns['QUAY_Z']+.027),
+                'road_width': ns['ROAD_W']/span,
                 'pier_tip': harbour_point(x1-0.5, y0+ns['ARM_W']/2, ns['QUAY_Z']),
                 'basin': harbour_point(x1-1.0, (y0+y1)/2, ns['WATER_Z']),
                 'bounds_min': harbour_point(raw_bounds[0][0], raw_bounds[1][1], raw_bounds[0][2]),
