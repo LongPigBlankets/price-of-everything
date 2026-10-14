@@ -2703,3 +2703,25 @@ per-tile quota. The port moves 32u inland and 26u along the shore; the asset roa
 and approach agree in position and height to the measured precision, and all
 berth probes remain afloat. Sixteen review views and detailed reports are in
 `outputs/supply-chain-3d/stoneshore-streets-greenery/` at repository root.
+
+
+### Stoneshore riverside farm extension (14 October 2026)
+
+The west-bank farm near the river mouth now repeats its existing crop cells into
+the eastern gap. Its presentation parcel grows from 3,793u² to 6,789u², following
+the river's displayed mouth adjustment and the estuary coastline. A 6u margin
+from the water edge includes the painted bank. Only the connected parcel around
+the barn survives clipping; nothing is planted on the opposite bank. Barn
+position, scale, orientation, crop spacing and brown earth remain unchanged.
+
+The enlarged parcel is reserved before decorative frontage and tree infill. One
+adjacent decorative building is omitted where its clearance would overlap the
+new field; the region retains 266 decorative buildings, 80.67% buildable frontage
+and 10.39% union canopy coverage. This affects only the five-tile 3D trial.
+Gameplay plots, ownership and the regular map remain unchanged.
+
+The field outline is restored from the layout bake before any shoreline clipping
+runs. The layout snapshot retains that memo; downstream scenery and local farm
+geometry include the enlarged footprint in their keys. Crop instances and far
+ribbons continue to use the existing shared layout. Close, medium and regional
+comparisons are in `outputs/supply-chain-3d/stoneshore-riverside-farm/`.

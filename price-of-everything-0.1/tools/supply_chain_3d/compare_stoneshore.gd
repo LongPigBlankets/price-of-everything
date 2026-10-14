@@ -126,6 +126,8 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 	if "--stoneshore-review" in OS.get_cmdline_user_args():
 		views.append({"name":"fields", "point":board._model.tiles.tile_5_9.center, "span":650.0, "pitch":.95, "yaw":0.0})
 		views.append({"name":"coast", "point":board._model.tiles.tile_6_9.center, "span":650.0, "pitch":.95, "yaw":0.0})
+		views.append({"name":"riverside-farm", "point":Vector2(2965,5450), "span":230.0, "pitch":1.10, "yaw":0.0})
+		views.append({"name":"riverside-farm-medium", "point":Vector2(2965,5450), "span":950.0, "pitch":1.10, "yaw":0.0})
 		for s in board._model.standing:
 			if s.get("decor_family", "") == "civic_bauhaus" and s.get("trial_density", false):
 				views.append({"name":"factory", "point":s.pos, "span":180.0, "pitch":.80, "yaw":float(s.get("yaw",0))+.50})
@@ -194,6 +196,7 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 	report.greenery.fine_grid=_canopy_audit(board)
 	report.junctions=_flare_audit(board)
 	report.port_approach=_port_audit(board)
+	report.riverside_farm=_riverside_farm_audit(board)
 	_export_review_plan(board,output)
 	if "--draft-review" not in OS.get_cmdline_user_args():
 		assert(report.docks_rails.yard_height_error<.01 and report.docks_rails.hidden_yard_samples==0,"Docks working yard must remain open at its original elevation")
@@ -205,9 +208,27 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 		assert(report.junctions.overlaps.is_empty(),"Junction flares intrude into buildings")
 		assert(report.port_approach.get("inland",0)>=24 and report.port_approach.get("afloat",false) and report.port_approach.get("gap",INF)<.05 and report.port_approach.get("alignment",0)>.999 and report.port_approach.get("height_error",INF)<.2,"Port road does not meet the moved asset entrance")
 		assert(report.plazas.targets>0 and report.plazas.area>0 and report.street_curves.get("rounded_bends",0)>0,"Missing plaza or road curve work")
+		if not report.riverside_farm.is_empty():
+			assert(report.riverside_farm.area>report.riverside_farm.original_area*1.2 and report.riverside_farm.bank_overlap<.01 and report.riverside_farm.tree_intrusions.is_empty(),"Riverside field did not grow cleanly to its bank")
 		assert(report.depot_roads.a_clearance>=10 and report.depot_roads.b_clearance>=10,"Depot roads must leave a 10u clear gap to ballast")
 	report.final_cache = {"hits":board._builder.bake_cache.hits, "bundled_hits":board._builder.bake_cache.bundled_hits, "writes":board._builder.bake_cache.writes}
 	FileAccess.open(output.path_join("report.json"), FileAccess.WRITE).store_string(JSON.stringify(report, "\t"))
+
+func _riverside_farm_audit(board: Control) -> Dictionary:
+	var fields := preload("res://scripts/supply_chain_3d/riverside_fields.gd")
+	var clip := preload("res://scripts/supply_chain_3d/sea_fringe.gd")
+	for s in board._model.standing:
+		if not s.has("source_field_footprint"):continue
+		var b: RefCounted=board._builder
+		var result := {"iid":s.iid,"position":s.pos,"side":s.side,"yaw":s.yaw,"area":clip.area(s.footprint),"original_area":clip.area(s.source_field_footprint),"bank_overlap":0.0,"tree_intrusions":[]}
+		var rel := preload("res://scripts/supply_chain_3d/coast.gd").relief_of(s.tile,b.tiles[s.tile].center)
+		for mask in fields.river_masks(rel,b.rivers[s.tile]):
+			for part in Geometry2D.intersect_polygons(s.footprint,mask):result.bank_overlap+=clip.area(part)
+		for trees in b.tree_placements.values():
+			for tree in trees:
+				if preload("res://scripts/supply_chain_3d/road_placement.gd").distance_to_polygon(tree.pos,tree.pos,s.footprint)<preload("res://scripts/supply_chain_3d/tree_layout.gd").canopy(tree):result.tree_intrusions.append(tree.pos)
+		return result
+	return {}
 
 func _interior_audit(board: Control) -> Dictionary:
 	var fit: GDScript=preload("res://scripts/supply_chain_3d/road_placement.gd")
@@ -289,6 +310,7 @@ func _export_review_plan(board: Control, output: String) -> void:
 	var b: RefCounted=board._builder
 	var plan := {"tiles":{},"sea_margin":b.sea_fringe.strips,"roads":b.road_grade.segments,"rails":b.rail_urban.tracks,"depots":b.depots,"buildings":[],"land":[],"depot_roads":board._model.get("depot_roads",{}),"plazas":b.urban_plazas,"trees":b.tree_placements}
 	for tid in b.tiles:plan.tiles[tid]=b.tiles[tid].center
+	plan.rivers=b.rivers
 	for s in board._model.standing:
 		plan.buildings.append({"iid":s.iid,"pos":s.pos,"kind":s.kind,"polygons":preload("res://scripts/supply_chain_3d/rail_clearance.gd").building_polygons(s,b.standing_key(s))})
 	var tids := {}
