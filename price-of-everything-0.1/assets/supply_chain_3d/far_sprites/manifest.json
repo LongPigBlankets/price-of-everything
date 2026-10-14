@@ -4,12 +4,12 @@
 			"cell": 64,
 			"center": [
 				0.0,
-				0.181010290980339,
+				0.184518232941628,
 				0.0
 			],
 			"dimensions": [
 				0.775491118431091,
-				0.362020581960678,
+				0.369036465883255,
 				0.388213276863098
 			],
 			"home_opaque_pixels": [
@@ -18,8 +18,8 @@
 			],
 			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "89056d0519b61211d1be1776f3f224683b2f8f6de6ba54ebb334aee9dbba82d1",
-			"span": 1.03373957276344,
+			"source_sha256": "0f08407b505f12154e12846b74338f9b2687a6554a57b3f77f674c0e6af32e49",
+			"span": 1.03673701286316,
 			"yaws": 16
 		},
 		"assembly_plant_lvl2": {
@@ -40,7 +40,7 @@
 			],
 			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "0700421eac5baf094c118422faf5b8a97472890a90efe88d62ee79b58b219b14",
+			"source_sha256": "eddd3b85f81b2d74d07d6c1d1bfae26c6107bdb313d2a7f47a7431b9c96ed045",
 			"span": 1.26534340381622,
 			"yaws": 16
 		},
@@ -62,7 +62,7 @@
 			],
 			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "dfc3e2b177d26cffcfcef412ffd8f3d37101c1f3470cbefa2bda8e6e2b15475d",
+			"source_sha256": "703c0f46be42e5d5099997cdeefa16e3321e2feea193dbdb132ec4fe5334aaf4",
 			"span": 1.43801869153976,
 			"yaws": 16
 		},

@@ -440,7 +440,10 @@ def _gantry(K, x1):
                      (cx + sx * 0.20, ty + sy * 0.18, zs + 0.03), 0.012, K.mat("scaffold"),
                      segments=6)
     K.box("spreader", cx, ty, zs, L + 0.06, 0.18, 0.06, dark)
+    for sx in (-1, 1):
+        K.box("sheave%d" % (sx > 0), cx + sx * 0.20, ty, zs + 0.07, 0.08, 0.40, 0.08, glo)
     K._fine_mode = fm
+    _gantry_detail(K, x1, cx, zt, ty)
     _container(K, "cont1", cx, ty, zs - 0.03 - H, "cont_blue", doors=1)
 
 
@@ -635,6 +638,156 @@ def _bollard(K, tag, x, y):
     K._fine_mode = fm
 
 
+# ---- The gable that faces the crane ---------------------------------------------------
+def _gable_face(K, x1):
+    """The right gable as an elevation: brick pilasters at the corners, a stone string course
+    at the eave, stone coping along the arch, a round window in the tympanum, two windows over
+    the line, the louvre, iron pattress plates for the tie rods, a stone ring and keystone
+    round the belt opening, and the forklift door's lamp fed from the junction box."""
+    fm = K._fine_mode
+    face = x1
+    # Corner pilasters, proud of the face, and the string course at the eave.
+    for tag, y in (("f", HY0 + 0.08), ("b", HY1 - 0.08)):
+        K.box("gp_%s" % tag, face + 0.025, y, EAVE / 2, 0.05, 0.16, EAVE, K.mat("ap_wall"))
+        K.box("gp_%s_cap" % tag, face + 0.035, y, EAVE + 0.04, 0.07, 0.20, 0.08, K.M["ap_stone"])
+    K.box("string", face + 0.03, HALL.pc, EAVE - 0.05, 0.06, HY1 - HY0 - 0.30, 0.07, K.M["ap_stone"])
+    # Stone coping riding the arch.
+    pts = []
+    for i in range(25):
+        th = HALL.th0 + (math.pi - 2 * HALL.th0) * i / 24
+        pp, z = HALL.pt(th, 0.06)
+        pts.append((face - GABLE_T / 2, pp, z))
+    K.sweep("gable_coping", pts, 0.055, K.M["ap_stone"], seg=8)
+    # Round window in the tympanum: dark room, teal glass, stone ring, cross mullions.
+    oz = EAVE + 0.33
+    K.dircyl("ocu_room", (face - 0.004, HALL.pc, oz), (face + 0.002, HALL.pc, oz), 0.20, K.M["ap_interior"], segments=24)
+    K.dircyl("ocu_glass", (face + 0.004, HALL.pc, oz), (face + 0.010, HALL.pc, oz), 0.20,
+             _glass("ap_window", *WINDOW_GLASS), segments=24)
+    K.washer("ocu_ring", (face + 0.02, HALL.pc, oz), (1, 0, 0), 0.20, 0.27, 0.04, K.M["ap_stone"], seg=28)
+    K._fine_mode = True
+    K.box("ocu_mv", face + 0.014, HALL.pc, oz, 0.01, 0.026, 0.40, K.mat("window_frame"))
+    K.box("ocu_mh", face + 0.014, HALL.pc, oz, 0.01, 0.40, 0.026, K.mat("window_frame"))
+    K._fine_mode = fm
+    # Two windows over the line, the louvre beside them.
+    for k, y in enumerate((HY0 + 0.55, HALL.pc - 0.05)):
+        _window_x(K, "gw%d" % k, face, y, 2.15, 0.40, 0.66)
+    _louvre_x(K, "gable", face, HY1 - 0.50, 2.15, 0.30, 0.34)
+    # Pattress plates where the tie rods come through, in a row under the string course.
+    K._fine_mode = True
+    for k, y in enumerate((HY0 + 0.32, -0.45, 0.45, HY1 - 0.32)):
+        K.dircyl("pat%d" % k, (face, y, 2.72), (face + 0.025, y, 2.72), 0.055, K.mat("darkmetal"), segments=12)
+        K.box("pat%d_x" % k, face + 0.03, y, 2.72, 0.012, 0.15, 0.025, K.mat("darkmetal"))
+    K._fine_mode = fm
+    # The belt opening: a stone ring and keystone round its arch.
+    ac = FLOOR + BELT_H + 0.06
+    ring = []
+    for i in range(17):
+        th = math.pi * i / 16
+        ring.append((face + 0.03, BELT_Y + 0.43 * math.cos(th), ac + 0.43 * math.sin(th)))
+    K.sweep("belt_arch_ring", ring, 0.05, K.M["ap_stone"], seg=8)
+    K.box("belt_key", face + 0.04, BELT_Y, ac + 0.45, 0.06, 0.12, 0.14, K.M["ap_stone"])
+    # Lamp over the forklift door, fed by a conduit from the junction box beside it.
+    _lamp_x(K, "gate", face, DOOR_Y, FLOOR + 1.14)
+    K.box("gable_jb", face + 0.04, DOOR_Y - 0.55, FLOOR + 0.62, 0.08, 0.16, 0.20, K.mat("gear"))
+    K._fine_mode = True
+    K.pipe_run("gable_conduit", [(face + 0.03, DOOR_Y - 0.55, FLOOR + 0.72), (face + 0.03, DOOR_Y - 0.55, FLOOR + 1.22),
+                                 (face + 0.03, DOOR_Y - 0.08, FLOOR + 1.22)], 0.014, K.mat("pipe"), bend=0.05)
+    K._fine_mode = fm
+
+
+def _window_x(K, name, x, y, z, w, h):
+    """A +X face window: teal glass over a dark room, stone lintel and sill."""
+    K.window(name, "+X", (x, y, z), w, h)
+    glass = K.col.objects.get(name + "_glass")
+    if glass is not None: glass.data.materials[0] = _glass("ap_window", *WINDOW_GLASS)
+    sill = K.col.objects.get(name + "_sill")
+    if sill is not None: sill.data.materials[0] = K.M["ap_stone"]
+    K.box(name + "_room", x + 0.006, y, z + h * 0.15, 0.006, w, h * 0.70, K.M["ap_interior"])
+    K.box(name + "_room_lo", x + 0.006, y, z - h * 0.35, 0.006, w, h * 0.30, K.M["ap_interior_lo"])
+    K.box(name + "_lint", x + 0.018, y, z + h / 2 + 0.085, 0.035, w + 0.18, 0.10, K.M["ap_stone"])
+
+
+# ---- Gantry detail --------------------------------------------------------------------
+def _gantry_detail(K, x1, cx, zt, ty):
+    """Bracing, girder stiffeners, a railed walkway, an access ladder, wheeled bogies,
+    hazard banding, rail end stops, cab glazing, the hoist house and beacons."""
+    g, glo, dark = K.mat("gantry_green"), K.mat("gantry_green_lo"), K.mat("wall_steel")
+    hazard, black = K.mat("plant_yellow"), K.mat("crate")
+    fm = K._fine_mode
+    for ly in (CRANE_YF, CRANE_YB):
+        # K-bracing below the mid brace and knee braces under the portal beam.
+        for sx in (-1, 1):
+            K.dirbox("kb_%d_%d" % (ly > 0, sx > 0), (cx + sx * 0.34, ly, 0.40), (cx, ly, zt * 0.48 - 0.05), 0.07, 0.08, glo)
+            K.dirbox("knee_%d_%d" % (ly > 0, sx > 0), (cx + sx * 0.34, ly, zt - 0.50), (cx + sx * 0.12, ly, zt - 0.13), 0.07, 0.08, glo)
+            px = cx + sx * 0.34
+            # Hazard banding round the foot of each leg.
+            for k in range(4):
+                K.box("hz_%d_%d_%d" % (ly > 0, sx > 0, k), px, ly, 0.25 + k * 0.11, 0.18, 0.24, 0.11,
+                      hazard if k % 2 == 0 else black)
+            # Bogie wheels on the rail, either side of the boot.
+            for wx in (-0.08, 0.08):
+                for wy in (-1, 1):
+                    K.cyl("wh_%d_%d_%d_%d" % (ly > 0, sx > 0, wx > 0, wy > 0), px + wx, ly + wy * 0.19, 0.11, 0.065, 0.04,
+                          black, axis='Y', segments=12)
+        # End stops at both ends of each rail.
+        for k, ex in enumerate((x1 + 0.62, x1 + 2.88)):
+            K.box("stop_%d_%d" % (ly > 0, k), ex, ly, 0.10, 0.08, 0.20, 0.14, hazard)
+    # Vertical stiffeners down the girder's visible side, and a railed walkway along it.
+    gy0, gy1 = CRANE_YF - 0.15, CRANE_YB + 0.15
+    K._fine_mode = True
+    y, k = gy0 + 0.15, 0
+    while y < gy1 - 0.10:
+        K.box("stiff%d" % k, cx + 0.16, y, zt + 0.23, 0.02, 0.035, 0.27, glo)
+        y += 0.32
+        k += 1
+    K._fine_mode = fm
+    K.box("walkway", cx + 0.32, (gy0 + gy1) / 2, zt + 0.10, 0.22, gy1 - gy0, 0.03, K.mat("darkmetal"))
+    K.box("walk_toe", cx + 0.43, (gy0 + gy1) / 2, zt + 0.14, 0.012, gy1 - gy0, 0.05, hazard)
+    K._fine_mode = True
+    y, k = gy0 + 0.05, 0
+    while y <= gy1:
+        K.box("walk_post%d" % k, cx + 0.43, y, zt + 0.25, 0.02, 0.02, 0.28, hazard)
+        y += 0.45
+        k += 1
+    for nm, z in (("top", zt + 0.39), ("mid", zt + 0.26)):
+        K.box("walk_rail_%s" % nm, cx + 0.43, (gy0 + gy1) / 2, z, 0.02, gy1 - gy0, 0.02, hazard)
+    # Caged access ladder up the front-right leg to the walkway.
+    lx, ly = cx + 0.34 + 0.12, CRANE_YF
+    for s_ in (-1, 1):
+        K.box("lad_rail%d" % (s_ > 0), lx, ly + s_ * 0.08, (0.25 + zt + 0.10) / 2, 0.02, 0.02, zt - 0.15, K.mat("darkmetal"))
+    z, k = 0.35, 0
+    while z < zt + 0.05:
+        K.box("lad_rung%d" % k, lx, ly, z, 0.02, 0.16, 0.018, K.mat("darkmetal"))
+        z += 0.12
+        k += 1
+    z, k = 1.20, 0
+    while z <= zt + 0.10:
+        K.box("cage%d_f" % k, lx + 0.18, ly, z, 0.018, 0.26, 0.018, K.mat("darkmetal"))
+        for s_ in (-1, 1):
+            K.box("cage%d_%d" % (k, s_ > 0), lx + 0.09, ly + s_ * 0.13, z, 0.18, 0.018, 0.018, K.mat("darkmetal"))
+        z += 0.30
+        k += 1
+    K.box("cage_strap", lx + 0.18, ly, (1.20 + zt + 0.10) / 2, 0.018, 0.018, zt - 1.10, K.mat("darkmetal"))
+    K._fine_mode = fm
+    # Cab glazing on its two visible faces, and a roof cap.
+    cab_x, cab_y, cab_z = cx - 0.42, CRANE_YF + 0.55, zt - 0.45
+    pane = _glass("ap_window", *WINDOW_GLASS)
+    K.box("cab_room_y", cab_x, cab_y - 0.168, cab_z + 0.05, 0.24, 0.006, 0.14, K.M["ap_interior"])
+    K.box("cab_glass_y", cab_x, cab_y - 0.175, cab_z + 0.05, 0.24, 0.006, 0.14, pane)
+    K.box("cab_room_x", cab_x + 0.148, cab_y, cab_z + 0.05, 0.006, 0.28, 0.14, K.M["ap_interior"])
+    K.box("cab_glass_x", cab_x + 0.155, cab_y, cab_z + 0.05, 0.006, 0.28, 0.14, pane)
+    K.box("cab_roof", cab_x, cab_y, cab_z + 0.165, 0.34, 0.38, 0.03, g)
+    # Hoist house on the trolley's open side, hoist drums, and beacons at the girder ends.
+    K.box("hoist", cx + 0.33, ty, zt - 0.06, 0.14, 0.30, 0.16, K.mat("gear"))
+    for s_ in (-1, 1):
+        K.cyl("drum%d" % (s_ > 0), cx, ty + s_ * 0.27, zt - 0.08, 0.06, 0.40, dark, axis='X', segments=14)
+    for k, by in enumerate((gy0 + 0.06, gy1 - 0.06)):
+        K.cyl("beacon%d_base" % k, cx, by, zt + 0.40, 0.035, 0.03, K.mat("darkmetal"), segments=10)
+        K.cyl("beacon%d" % k, cx, by, zt + 0.445, 0.028, 0.06, hazard, segments=10)
+    # Load-rating plate on the girder.
+    K.box("rating", cx + 0.17, (gy0 + gy1) / 2, zt + 0.25, 0.01, 0.30, 0.10, hazard)
+
+
 def _frame(p):
     """Camera target from the PROJECTED extents of the extreme corners (SKILL.md rule 20)."""
     bays = BAYS
@@ -702,10 +855,7 @@ def build_assembly_plant(level: int = 2) -> dict:
     for b in (2, bays):
         cx = min(max(HX0 + b * BAY, HX0 + COL / 2), x1 - COL / 2)
         _downpipe(K, "c%d" % b, cx, HY0 - 0.08, EAVE - 0.07, "-Y")
-    # The right gable above the dock: a lamp over the forklift door, a louvre, a junction box.
-    _lamp_x(K, "gate", x1, DOOR_Y, FLOOR + 1.14)
-    _louvre_x(K, "gable", x1, HY1 - 0.50, 2.10, 0.30, 0.30)
-    K.box("gable_jb", x1 + 0.04, DOOR_Y - 0.55, FLOOR + 0.62, 0.08, 0.16, 0.20, K.mat("gear"))
+    _gable_face(K, x1)
     K.arch_opening("exit", (x1 - GABLE_T / 2, BELT_Y, FLOOR + BELT_H + 0.06), (1.0, 0.0, 0.0),
                    0.36, rect_h=0.56, depth=GABLE_T + 0.04)
 
