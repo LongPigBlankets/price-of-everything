@@ -1,5 +1,5 @@
 extends RefCounted
-## A water-only, constant-distance margin around the visible tile perimeter. It is scenery,
+## A continuous coastal margin around the visible tile perimeter. It is scenery,
 ## not another playable tile, and never requests that tile's buildings/detail.
 const Model := preload("res://scripts/empire_board_model.gd")
 const Coast := preload("res://scripts/supply_chain_3d/coast.gd")
@@ -44,7 +44,7 @@ static func margin_parts(hexes: Array, neighbours: Dictionary) -> Array:
 
 func contains(p: Vector2) -> bool:
 	for strip in strips:
-		if Geometry2D.is_point_in_polygon(p,strip.p) and Ground.is_water(Coast.relief_of(strip.tile,strip.center),p):return true
+		if Geometry2D.is_point_in_polygon(p,strip.p):return true
 	return false
 
 func _visible(p: Vector2) -> bool:
@@ -72,9 +72,10 @@ static func area(poly: PackedVector2Array) -> float:
 	for i in range(1,poly.size()-1):result+=(poly[i]-poly[0]).cross(poly[i+1]-poly[0])
 	return absf(result)*.5
 
-static func rim_uvs(a: float, b: float, top: float) -> PackedVector2Array:
+static func rim_uvs(a: float, b: float, top: float, end_top := -1.0) -> PackedVector2Array:
 	var u := a/270.0;var v := b/270.0
-	return PackedVector2Array([Vector2(u,top),Vector2(v,1),Vector2(v,top),Vector2(u,top),Vector2(u,1),Vector2(v,1)])
+	if end_top<0:end_top=top
+	return PackedVector2Array([Vector2(u,top),Vector2(v,1),Vector2(v,end_top),Vector2(u,top),Vector2(u,1),Vector2(v,1)])
 
 static func _subtract(poly: PackedVector2Array, mask: PackedVector2Array) -> Array:
 	var parts := Geometry2D.clip_polygons(poly,mask)
@@ -105,7 +106,7 @@ static func paint_layers(poly: PackedVector2Array, base: Color, layers: Array) -
 		pieces=next
 	return pieces
 
-static func polygon(batch: RefCounted, poly: PackedVector2Array, color: Color, origin: Vector2, height: float) -> void:
+static func polygon(batch: RefCounted, poly: PackedVector2Array, color: Color, origin: Vector2, height: float, sample := Callable(), gradient := Callable(), cached: Dictionary = {}) -> void:
 	if poly.size()<3 or Geometry2D.is_polygon_clockwise(poly):return
 	var local := PackedVector2Array()
 	for p in poly:local.append(p-poly[0])
@@ -114,12 +115,20 @@ static func polygon(batch: RefCounted, poly: PackedVector2Array, color: Color, o
 		var v: Array=[]
 		for j in [0,2,1]:
 			var q: Vector2=poly[indices[i+j]]-origin
-			v.append(Vector3(q.x,height,q.y))
+			if not cached.has(poly[indices[i+j]]):
+				var p: Vector2=poly[indices[i+j]]
+				var grad: Vector2=gradient.call(p) if gradient.is_valid() else Vector2.ZERO
+				cached[p]={"height":float(sample.call(p)) if sample.is_valid() else height,"normal":Vector3(-grad.x,1,-grad.y).normalized()}
+			v.append(Vector3(q.x,cached[poly[indices[i+j]]].height,q.y))
+		var before: int=batch.vertices.size()
 		batch.triangle(v[0],v[1],v[2],color,Vector3.UP)
+		if batch.vertices.size()>before:
+			for j in 3:batch.normals[before+j]=cached[poly[indices[i+j]]].normal
 
-func bake(origin: Vector2) -> Dictionary:
+func bake(origin: Vector2, height: Callable, gradient: Callable) -> Dictionary:
 	var top := Geo.Batch.new();var rim := Geo.Batch.new();var lip := Geo.Batch.new()
 	var sea := MapStyle.sea_colors();var h := Ground.SEA_LEVEL
+	var vertex_cache := {};var surface_area := 0.0;var land_area := 0.0;var rim_segments := 0
 	var by_tile := {}
 	for strip in strips:
 		var group: Array=by_tile.get_or_add(strip.tile,[])
@@ -133,28 +142,32 @@ func bake(origin: Vector2) -> Dictionary:
 		for strip in strips:
 			if strip.tile==tid:center=strip.center;break
 		var rel := Coast.relief_of(tid,center)
-		var land: Array=Coast.Water.for_tile(tid).land
-		var water: Array=[]
-		for mask in by_tile[tid]:water.append_array(margin_water(mask,land))
-		# Grid cells avoid triangulating a polygon with an enclosed land hole.
-		for mask in water:
+		var layers: Array=[]
+		for e in rel.get("sea",[]):
+			layers.append({"p":e.p,"color":sea[int(e.b)]})
+		for e in rel.land:
+			layers.append({"p":e.p,"color":Legacy._warm(sea[5] if e.get("beach",false) else preload("res://scripts/supply_chain_3d/half_relief.gd").color(float(e.b),MapStyle.band_colors()))})
+		var tones := {"shallows_outer":sea[4].lightened(.14),"shallows_inner":sea[4].lightened(.3),"sand":Legacy._SAND,"shore":Legacy._SAND.darkened(.16),"foam":Legacy._FOAM,"lake_sand":Legacy._SAND.darkened(.08),"lake_foam":sea[4].lightened(.3)}
+		for ink in rel.water_ink:
+			if tones.has(ink.tone):layers.append({"p":ink.p,"color":tones[ink.tone]})
+		# Keep the complete envelope, including coastal land. Removing land here
+		# leaves a void between the selected hex and the true cross-tile shoreline.
+		for mask in by_tile[tid]:
+			surface_area+=area(mask)
+			for land in Coast.Water.for_tile(tid).land:
+				for piece in Geometry2D.intersect_polygons(mask,land):land_area+=area(piece)
 			var box := Rect2(mask[0],Vector2.ZERO)
 			for p in mask:box=box.expand(p)
-			for y in range(floori(box.position.y/24),ceili(box.end.y/24)):
-				for x in range(floori(box.position.x/24),ceili(box.end.x/24)):
-					var a := Vector2(x,y)*24
-					var square := PackedVector2Array([a,a+Vector2(24,0),a+Vector2(24,24),a+Vector2(0,24)])
+			const CELL := 4.0
+			for y in range(floori(box.position.y/CELL),ceili(box.end.y/CELL)):
+				for x in range(floori(box.position.x/CELL),ceili(box.end.x/CELL)):
+					var a := Vector2(x,y)*CELL
+					var square := PackedVector2Array([a,a+Vector2(CELL,0),a+Vector2(CELL,CELL),a+Vector2(0,CELL)])
 					for cell in Geometry2D.intersect_polygons(square,mask):
-						for part in water_parts(cell,land):
-							var layers: Array=[]
-							for e in rel.get("sea",[]):
-								if int(e.b)<5:layers.append({"p":e.p,"color":sea[int(e.b)]})
-							var tones := {"shallows_outer":sea[4].lightened(.14),"shallows_inner":sea[4].lightened(.3),"sand":Legacy._SAND,"shore":Legacy._SAND.darkened(.16),"foam":Legacy._FOAM}
-							for ink in rel.water_ink:
-								if tones.has(ink.tone):layers.append({"p":ink.p,"color":tones[ink.tone]})
-							for piece in paint_layers(part,sea[0 if Catalog.tile_type(tid)=="deep_sea" else 2],layers):
-								polygon(top,piece.p,piece.color,origin,h)
-		for poly in water:
+						for piece in paint_layers(cell,sea[0 if Catalog.tile_type(tid)=="deep_sea" else 2],layers):
+							polygon(top,piece.p,piece.color,origin,h,height,gradient,vertex_cache)
+		# Cutaways belong only to the outer preview boundary, never the coastline.
+		for poly in by_tile[tid]:
 			var perimeter := 0.0
 			for i in poly.size():
 				var a: Vector2=poly[i];var b: Vector2=poly[(i+1)%poly.size()]
@@ -166,10 +179,13 @@ func bake(origin: Vector2) -> Dictionary:
 				for j in count:
 					var p := a.lerp(b,float(j)/count);var q := a.lerp(b,float(j+1)/count);var middle := (p+q)*.5
 					if _visible(middle+n) and _visible(middle-n):continue
-					var v := Vector3(p.x-origin.x,h,p.y-origin.y);var w := Vector3(q.x-origin.x,h,q.y-origin.y)
-					lip.quad(v,w,w-Vector3.UP*Legacy._WATER_DEPTH,v-Vector3.UP*Legacy._WATER_DEPTH,sea[3])
-					v.y-=Legacy._WATER_DEPTH;w.y=v.y
+					rim_segments+=1
+					var wet := Ground.is_water(rel,middle)
+					var depth := Legacy._WATER_DEPTH if wet else Legacy._TURF
+					var v := Vector3(p.x-origin.x,float(height.call(p)),p.y-origin.y);var w := Vector3(q.x-origin.x,float(height.call(q)),q.y-origin.y)
+					lip.quad(v,w,w-Vector3.UP*depth,v-Vector3.UP*depth,sea[3] if wet else Legacy._warm(sea[5]).darkened(.38))
+					v.y-=depth;w.y-=depth
 					rim.quad(v,w,Vector3(w.x,-150,w.z),Vector3(v.x,-150,v.z),Color.WHITE)
 					var uv := (100-v.y)/250.0
-					rim.uvs.append_array(rim_uvs(start+edge_length*j/count,start+edge_length*(j+1)/count,uv))
-	return {"top":top.mesh(),"lip":lip.mesh(),"rim":rim.mesh()}
+					rim.uvs.append_array(rim_uvs(start+edge_length*j/count,start+edge_length*(j+1)/count,uv,(100-w.y)/250.0))
+	return {"top":top.mesh(),"lip":lip.mesh(),"rim":rim.mesh(),"audit":{"surface_area":surface_area,"coastal_land_area":land_area,"rim_segments":rim_segments}}

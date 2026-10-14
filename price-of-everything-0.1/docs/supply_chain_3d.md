@@ -2529,7 +2529,7 @@ package verification and fresh-process timings are in `docs/load-time-bakes.md`.
 Evidence is under `outputs/supply-chain-3d/stoneshore-docks/` at repository root.
 
 
-### Constant-distance sea margin and depot routing review (14 October 2026)
+### Constant-distance sea margin and depot routing review (14 October 2026, superseded below)
 
 `sea_fringe.gd` now unions the visible tile polygons before expanding their
 perimeter by **48u** (10% of the 480u north–south tile depth). A single round-join
@@ -2603,3 +2603,56 @@ placement, then recompile intersections and reroute visual goods paths. This
 keeps the regular map and simulation graph unchanged and prevents placing
 buildings into a newly selected road corridor. Blanket scaling of roads,
 buildings or trains would not resolve the underlying network conflict.
+
+
+### Connected depot routes and continuous coastal terrain (14 October 2026)
+
+The five-tile Stoneshore trial now implements **both** routes in
+`depot_roads.gd`, before district streets and decorative frontage are placed.
+Route A wraps around the closed southwest end of the depot and joins the
+existing western road. Route B retains the coastal part of the former red
+`r:untitled:65` stroke, rounds onto the eastern side of the fan with a minimum
+**10u gap between the sidewalk edge and ballast**, then crosses the single pair
+at approximately **(2885, 5385.46)**. It joins the main road on the other side.
+The original road through the fan is removed. A short western junction connector
+also closes the old road's gap to the main road.
+
+Both new routes use an 8.4u two-way carriageway, casing and 2u urban sidewalks
+(6.8u total half-width). Their rounded paths are approximately 290.5u / 330.3u
+long. The actual compiled/engineered roads clear the ballast by at least
+**15.38u / 10.82u** respectively, outside B's crossing turn. A has no rail
+intersection. B intersects exactly one non-junction paired corridor and receives
+one **21.45u bridge**, replacing the former 58.15u fan crossing. Its deck is
+45.4825u, with 8.5325u measured rail-head clearance; the connected approaches
+remain at or below 8%. The regular map and simulation network are unchanged.
+
+The final layout fits 271 decorative buildings with no building/street overlaps,
+76.37% buildable frontage coverage, three Docks skyline landmarks and unchanged
+open working-yard elevations. Existing player/NPC assets retain their positions.
+The bridge uses the normal crossing classifier and shared road-height graph,
+so its junction and adjacent main-road bridge keep consistent road heights.
+
+The coastal gaps were caused by subtracting neighbouring land from the sea
+margin without rendering that land. The 48u envelope now includes **both land
+and water** from those sea-labelled neighbour hexes. It samples the same terrain
+height and gradient as the main tile, paints the existing coast/depth bands,
+and places vertical cutaway faces only on the outer preview boundary. Both
+land and water suppress the obsolete internal hex-edge walls. No neighbouring
+buildings or playable tile detail are requested.
+
+The baked margin fills 121,383u², including 43,372u² of coastal land. Its 38,466
+surface triangles cover that envelope within 0.00015% numerical tolerance; sea
+height is 25u and coastal land reaches 34u. Geometry uses 4u sampling, and three
+cached meshes (top, lip, cutaway) serve all LODs. Polygon clipping, height samples
+and mesh construction stay on the offline scenery-generation path.
+
+`LayoutQueries` preserves the depot-road proposal in its final snapshot. The
+proposal is checked before route generation, and fresh loading does not rewrite
+that snapshot. This closes an initial test failure where `finish()` omitted the
+new memo field. Focused cache tests and a fresh-process zero-write check cover it.
+
+The rendered review adds depot-route and coastal-margin cameras, actual-road
+clearance and single-pair bridge checks, and a triangle-area coastal coverage
+audit. Evidence is in `outputs/supply-chain-3d/stoneshore-coastal-routes/` at
+repository root. Installed-package validation and final load timings are recorded
+in `docs/load-time-bakes.md`. Whole-continent baking remains paused.

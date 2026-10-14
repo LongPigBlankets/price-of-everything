@@ -1,5 +1,51 @@
 # Load time: what is baked, and when to re-bake it
 
+## Stoneshore depot routes and continuous coast — verified 14 October 2026
+
+The installed **five-tile** package implements both depot roads, the single-pair
+bridge and the continuous 48u coastal land/water margin. The production baker
+and independent validator pass with current fingerprints: **21 resources,
+33,078,100 bytes (31.55 MiB)**. Four base resources and all five medium/five near
+resources were updated for the visual change. The final memo-only package pass
+reused all terrain/art resources and took 0.755s after offline preparation.
+Whole-continent baking remains paused.
+
+Fresh Godot 4.6.2 / Forward+ Metal process, Apple M5 Pro, empty runtime cache
+directory and warm OS filesystem caches:
+
+| Measurement | Time |
+|---|---:|
+| Process start to Begin | 17.323s |
+| Five-tile board preparation during loading | 1.092s |
+| Frontage/depot memo restoration stage | 0.145s |
+| Transport cache restore | 0.090s |
+| Combined five-tile resource load | 0.027s |
+| First supply-view opening after Begin | 0.308s |
+
+Sixteen final views record **19 bundled hits, zero initial cache misses and zero
+runtime bake writes**. The first verification exposed a dropped depot-route memo
+in `LayoutQueries.finish()`: route generation was repeated and its insertion
+triggered a redundant layout write. The final snapshot now retains it, and two
+regression assertions verify memo preservation and zero writes on unchanged data.
+The package was regenerated and this timing run used a new empty runtime cache.
+
+Fifty-four focused assertions pass across coast/clearance, crossings, tunnel
+heights and route-cache tests. Rendered audits find no building/street overlaps,
+271 decorative buildings, 76.37% buildable frontage, three skyline landmarks and
+unchanged open working yards. A avoids the rails; B crosses one non-junction
+pair on a 21.45u bridge. Transport verification finds at least 8.5325u rail-head
+clearance and modified road grades at or below 8%.
+
+The coastal mesh fills the complete 121,383u² preview envelope, including
+43,372u² of neighbouring coastal land. Triangle-area error is 0.00015%, with
+height/normal sampling shared with the main terrain. Three restored scenery
+meshes serve every LOD; no neighbour detail, physics or runtime clipping is added.
+Medium/near decoded terrain texture sizes remain 18,677,385 / 74,710,665 bytes.
+Near resources occupy 16,613,616 bytes on disk. Evidence, numeric plans, logs and
+captures are in `outputs/supply-chain-3d/stoneshore-coastal-routes/` at repository
+root. Existing nonfatal certificate/RoadRegions/ObjectDB warnings remain.
+
+
 ## Stoneshore constant sea margin — verified 14 October 2026
 
 The installed five-tile package includes the unified **48u sea-margin offset**,

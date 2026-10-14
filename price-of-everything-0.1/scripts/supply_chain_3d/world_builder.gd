@@ -1506,7 +1506,7 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 				previous = current
 	if bool(show.get("decor",true)):
 		Railway.append_mesh(tubes,preload("res://scripts/supply_chain_3d/neighbourhood_art.gd").mesh(model.get("neighbourhood",{}),origin,surface_height))
-	var sea_bake := sea_fringe.bake(origin) if not sea_fringe.strips.is_empty() else {}
+	var sea_bake := sea_fringe.bake(origin,surface_height,surface_gradient) if not sea_fringe.strips.is_empty() else {}
 	_append_sea_fringe(root,sea_bake)
 	var tube_mesh := tubes.mesh()
 	var detail_mesh := details.mesh()
