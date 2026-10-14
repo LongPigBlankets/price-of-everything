@@ -348,9 +348,11 @@ def build_factory(level: int) -> dict:
         # running out past the +X wall to a hopper and one downpipe per gutter, which ends on
         # a drain grate at ground level (or, at L3, on the boiler-house roof it stands over).
         GW, GH = 0.11, 0.07
-        box("gutter_front", XC, -L / 2 - 0.055, H - 0.025, BW + 0.08, GW, GH, M["silver"])
-        drainpipe("front", "y", X1 - 0.13, -L / 2 - 0.10, H - 0.06, 0.0)
-        box("gutter_front_out", X1 - 0.13, -L / 2 - 0.08, H - 0.05, 0.08, 0.06, 0.05, M["silver"])
+        # Hung below and in front of the eave: its top stays under the roof edge, its back
+        # clear of the facade, so it never cuts into the first slope.
+        box("gutter_front", XC, -L / 2 - 0.015 - GW / 2, H - 0.012 - GH / 2, BW + 0.08, GW, GH, M["silver"])
+        drainpipe("front", "y", X1 - 0.13, -L / 2 - 0.10, H - 0.10, 0.0)
+        box("gutter_front_out", X1 - 0.13, -L / 2 - 0.10, H - 0.10, 0.08, 0.06, 0.05, M["silver"])
         for i in range(1, N):
             y = -L / 2 + i * TL
             box(f"gutter_v{i}", XC + 0.02, y, H + 0.035, BW + 0.12, GW, GH, M["silver"])
@@ -452,9 +454,11 @@ def build_factory(level: int) -> dict:
         for a in range(3):
             b = (a + 1) % 3
             sides.append(bm.faces.new([vf[a], vf[b], vb[b], vb[a]]))
-        # The slope is standing-seam sheet; the triangular ends and the upright back are
-        # plaster white.
-        for f in ends + sides[1:]:
+        # The slope is standing-seam sheet; the triangular ends (the zigzag seen along the
+        # long walls) are plaster white. The upright back and the underside stay roof: both
+        # meet the slope at a grazing angle (ridge, eave), and painted white they flicker
+        # through it there. Neither is seen from the board's camera.
+        for f in ends:
             f.material_index = 1
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         bm.to_mesh(m); bm.free()

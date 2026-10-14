@@ -1370,11 +1370,11 @@
 				97.0,
 				95.0
 			],
-			"lit_source_sha256": "be4fad5d3cc0e73ebb3aea30ccdc244c50b2503c1717ba1639536eddf0d4c1dc",
+			"lit_source_sha256": "590dfd1ec5171dfae4b84c92a7050b2c206de2466b87bf9fe303642096d6c8ca",
 			"lit_texture": "industrial_factory_lvl1_lit.png",
 			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "be4fad5d3cc0e73ebb3aea30ccdc244c50b2503c1717ba1639536eddf0d4c1dc",
+			"source_sha256": "590dfd1ec5171dfae4b84c92a7050b2c206de2466b87bf9fe303642096d6c8ca",
 			"span": 0.936763072013855,
 			"yaws": 16.0
 		},
@@ -1394,11 +1394,11 @@
 				87.0,
 				84.0
 			],
-			"lit_source_sha256": "52450db102d14f7379882b005e563fe688c3e0142d407b44225b91d63abbadb3",
+			"lit_source_sha256": "de483ba68d719037ab87ccd4df81362d5e942db9f556a542874e5971f20b000a",
 			"lit_texture": "industrial_factory_lvl2_lit.png",
 			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "52450db102d14f7379882b005e563fe688c3e0142d407b44225b91d63abbadb3",
+			"source_sha256": "de483ba68d719037ab87ccd4df81362d5e942db9f556a542874e5971f20b000a",
 			"span": 1.4525704741478,
 			"yaws": 16.0
 		},
@@ -1418,11 +1418,11 @@
 				93.0,
 				80.0
 			],
-			"lit_source_sha256": "2fc03331a21ea57679d2af218c7ef9586a193c1e48c04ddb7f9343d6056acbc6",
+			"lit_source_sha256": "c3b9aca6ceb83f82e668f4aaf017ad49ef0a6f93c8f331f8094f9b58aaafdf29",
 			"lit_texture": "industrial_factory_lvl3_lit.png",
 			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "2fc03331a21ea57679d2af218c7ef9586a193c1e48c04ddb7f9343d6056acbc6",
+			"source_sha256": "c3b9aca6ceb83f82e668f4aaf017ad49ef0a6f93c8f331f8094f9b58aaafdf29",
 			"span": 1.52070822715759,
 			"yaws": 16.0
 		},
