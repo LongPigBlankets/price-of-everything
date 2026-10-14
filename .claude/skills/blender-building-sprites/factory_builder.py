@@ -11,7 +11,7 @@ import math
 # ---------------- palette ----------------
 PALETTE = {
     # Brick red, shared with the high-tech manufactory's lower band.
-    "brick":    (0.340, 0.112, 0.080),
+    "brick":    (0.380, 0.165, 0.095),   # warm clay orange
     "roof":     (0.208, 0.262, 0.318),
     "glass":    (0.055, 0.075, 0.140),
     "mullion":  (0.780, 0.760, 0.700),
@@ -28,7 +28,14 @@ PALETTE = {
     "white_pipe": (0.700, 0.660, 0.580),   # process pipework
     "plinth":     (0.035, 0.037, 0.042),   # the dark base course
     "hazard":     (0.520, 0.352, 0.045),   # safety yellow, small parts only
+    "plaster":    (0.720, 0.700, 0.650),   # sawtooth ends and backs: plaster white
+    "interior":   (0.040, 0.036, 0.032),   # what is seen through the glass: a dark room
+    "interior_lo":(0.085, 0.075, 0.062),   # its lower half: benches and machines catch light
 }
+# Window glass is see-through (BLENDED, alpha < 1): the 3D export gives it the glass shader.
+# Warm teal slate, as on the reference plate, over a dark interior panel behind each pane.
+GLASS_TINT = (0.070, 0.140, 0.190)
+GLASS_ALPHA = 0.72
 
 # ---------------- per-level parameters ----------------
 LEVELS = {
@@ -73,6 +80,20 @@ def _mat(name):
     b.inputs["Roughness"].default_value = 1.0
     if "Specular IOR Level" in b.inputs:      # kill sheen: pure flat cel faces,
         b.inputs["Specular IOR Level"].default_value = 0.0  # keeps glass blue-dominant for stylize.py
+    return mt
+
+
+def _glass_mat():
+    mt = bpy.data.materials.get("factory_glass") or bpy.data.materials.new("factory_glass")
+    mt.use_nodes = True
+    b = mt.node_tree.nodes.get("Principled BSDF")
+    b.inputs["Base Color"].default_value = (*GLASS_TINT, 1)
+    b.inputs["Roughness"].default_value = 1.0
+    if "Specular IOR Level" in b.inputs:
+        b.inputs["Specular IOR Level"].default_value = 0.0
+    b.inputs["Alpha"].default_value = GLASS_ALPHA
+    mt.surface_render_method = 'BLENDED'
+    mt.use_backface_culling = False
     return mt
 
 
@@ -153,6 +174,7 @@ def build_factory(level: int) -> dict:
         bpy.data.objects.remove(ob, do_unlink=True)
 
     M = {n: _mat(n) for n in PALETTE}
+    M["glass"] = _glass_mat()
 
     def new_obj(name, mesh, mat=None):
         ob = bpy.data.objects.new(name, mesh)
@@ -267,6 +289,41 @@ def build_factory(level: int) -> dict:
                 k += 1
             box(f"cage_{z0:.2f}_strap", x + 0.22, y, (zc + z1) / 2, 0.02, 0.02, z1 - zc, M["darkmetal"])
 
+    def interior(axis, tag, x, y, z, w, h):
+        """The room behind a pane: dark above, a lighter band of benches and machines below."""
+        if axis == "x":
+            box(f"{tag}_room", x, y, z + h * 0.15, 0.006, w, h * 0.70, M["interior"])
+            box(f"{tag}_room_lo", x, y, z - h * 0.35, 0.006, w, h * 0.30, M["interior_lo"])
+        else:
+            box(f"{tag}_room", x, y, z + h * 0.15, w, 0.006, h * 0.70, M["interior"])
+            box(f"{tag}_room_lo", x, y, z - h * 0.35, w, 0.006, h * 0.30, M["interior_lo"])
+
+    def drainpipe(tag, wall, x, y, top, foot):
+        """Downpipe from a gutter hopper at `top` to `foot`: brackets to the wall (`wall` is
+        the axis it stands off), a shoe, and a drain grate when it reaches the ground."""
+        cyl(f"dp_{tag}", x, y, (top + foot) / 2, 0.03, top - foot, M["silver"], segments=8)
+        box(f"dp_{tag}_hopper", x, y, top - 0.02, 0.10, 0.10, 0.08, M["silver"])
+        z = foot + 0.45
+        k = 0
+        while z < top - 0.20:
+            if wall == "x":
+                box(f"dp_{tag}_b{k}", x - 0.04, y, z, 0.07, 0.07, 0.025, M["darkmetal"])
+            else:
+                box(f"dp_{tag}_b{k}", x, y + 0.04, z, 0.07, 0.07, 0.025, M["darkmetal"])
+            z += 0.65
+            k += 1
+        box(f"dp_{tag}_shoe", x, y, foot + 0.05, 0.08, 0.08, 0.07, M["silver"])
+        if foot <= 0.0:
+            gx, gy = (x + 0.04, y) if wall == "x" else (x, y - 0.04)
+            box(f"grate_{tag}_kerb", gx, gy, 0.012, 0.22, 0.22, 0.024, M["concrete"])
+            box(f"grate_{tag}", gx, gy, 0.016, 0.16, 0.16, 0.024, M["ink_black"])
+            for k in range(3):
+                off = (k - 1) * 0.05
+                if wall == "x":
+                    box(f"grate_{tag}_bar{k}", gx, gy + off, 0.03, 0.16, 0.012, 0.006, M["darkmetal"])
+                else:
+                    box(f"grate_{tag}_bar{k}", gx + off, gy, 0.03, 0.012, 0.16, 0.006, M["darkmetal"])
+
     def louvre(tag, x, y, z, w, h):
         """Wall louvre on a -Y face: dark opening, slats, stone head and sill."""
         box(f"louv_{tag}", x, y - 0.006, z, w, 0.01, h, M["ink_black"])
@@ -287,13 +344,20 @@ def build_factory(level: int) -> dict:
             if rear and y > rear_y0 - 0.15:
                 continue
             box(f"pilaster_{i}", X1 + 0.03, y, H / 2, 0.06, 0.14, H, M["brick"])
-            if 0 < i < N and i % 2 == 1:
-                dy = y + 0.13
-                cyl(f"dpipe_{i}", X1 + 0.09, dy, (H - 0.05) / 2 + 0.05, 0.03, H - 0.10, M["silver"], segments=8)
-                box(f"dpipe_{i}_head", X1 + 0.09, dy, H - 0.04, 0.10, 0.10, 0.08, M["silver"])
-                for k, bz in enumerate((0.55, 1.25, 1.90)):
-                    box(f"dpipe_{i}_b{k}", X1 + 0.06, dy, bz, 0.06, 0.08, 0.025, M["darkmetal"])
-                box(f"dpipe_{i}_shoe", X1 + 0.09, dy, 0.05, 0.09, 0.09, 0.08, M["silver"])
+        # Rainwater: a gutter along the front eave and one in every sawtooth valley, each
+        # running out past the +X wall to a hopper and one downpipe per gutter, which ends on
+        # a drain grate at ground level (or, at L3, on the boiler-house roof it stands over).
+        GW, GH = 0.11, 0.07
+        box("gutter_front", XC, -L / 2 - 0.055, H - 0.025, BW + 0.08, GW, GH, M["silver"])
+        drainpipe("front", "y", X1 - 0.13, -L / 2 - 0.10, H - 0.06, 0.0)
+        box("gutter_front_out", X1 - 0.13, -L / 2 - 0.08, H - 0.05, 0.08, 0.06, 0.05, M["silver"])
+        for i in range(1, N):
+            y = -L / 2 + i * TL
+            box(f"gutter_v{i}", XC + 0.02, y, H + 0.035, BW + 0.12, GW, GH, M["silver"])
+            dy = y + 0.13
+            box(f"gutter_v{i}_out", X1 + 0.10, y + 0.065, H + 0.01, 0.06, 0.19, 0.05, M["silver"])
+            over_annex = rear and dy > rear_y0 - 0.05
+            drainpipe(f"v{i}", "x", X1 + 0.10, dy, H, (RH_L3 + 0.09) if over_annex else 0.0)
         # Dark plinth round every wall base (open where the L1 gate and door reach the ground).
         PH_, PO = 0.20, 0.03
         def plinth_run(tag, x0, x1, y0, y1):
@@ -322,14 +386,15 @@ def build_factory(level: int) -> dict:
             return new_obj(name, m, mat)
         for i in range(N):
             y0 = -L / 2 + i * TL
-            xa, xb, fa, fb = X0 + 0.55, X0 + 1.45, 0.30, 0.78
+            xa, xb, fa, fb = X0 + 0.15, X0 + 1.95, 0.30, 0.78
             slope_quad(f"sky_{i}_frame", y0, xa - 0.05, xb + 0.05, fa - 0.06, fb + 0.06, 0.012, M["stone"])
-            slope_quad(f"sky_{i}", y0, xa, xb, fa, fb, 0.035, M["glass"])
-            for k in range(1, 4):
-                xm = xa + k * (xb - xa) / 4
+            slope_quad(f"sky_{i}_room", y0, xa, xb, fa, fb, 0.024, M["interior"])
+            slope_quad(f"sky_{i}", y0, xa, xb, fa, fb, 0.040, M["glass"])
+            for k in range(1, 8):
+                xm = xa + k * (xb - xa) / 8
                 slope_quad(f"sky_{i}_m{k}", y0, xm - 0.013, xm + 0.013, fa, fb, 0.060, M["mullion"])
             slope_quad(f"sky_{i}_mh", y0, xa, xb, (fa + fb) / 2 - 0.02, (fa + fb) / 2 + 0.02, 0.058, M["mullion"])
-            base = on_slope(X0 + 0.28, y0, 0.70, 0.0)
+            base = on_slope(X0 + 2.20, y0, 0.70, 0.0)
             ventilator(f"t{i}", base.x, base.y, base.z - 0.02)
         if p["front_annex"]:
             AW, AL, AH = 1.5, 1.4, FLOOR
@@ -382,14 +447,19 @@ def build_factory(level: int) -> dict:
         prof = [(y0, H), (y1, H + PH), (y1, H)]
         vf = [bm.verts.new((X0, y, z)) for (y, z) in prof]
         vb = [bm.verts.new((X1, y, z)) for (y, z) in prof]
-        bm.faces.new(vf)
-        bm.faces.new(list(reversed(vb)))
+        ends = [bm.faces.new(vf), bm.faces.new(list(reversed(vb)))]
+        sides = []
         for a in range(3):
             b = (a + 1) % 3
-            bm.faces.new([vf[a], vf[b], vb[b], vb[a]])
+            sides.append(bm.faces.new([vf[a], vf[b], vb[b], vb[a]]))
+        # The slope is standing-seam sheet; the triangular ends and the upright back are
+        # plaster white.
+        for f in ends + sides[1:]:
+            f.material_index = 1
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         bm.to_mesh(m); bm.free()
-        new_obj(f"tooth_{i}", m, M["roof_metal"])
+        tooth = new_obj(f"tooth_{i}", m, M["roof_metal"])
+        tooth.data.materials.append(M["plaster"])
 
     # ---------------- long-wall windows: one column per bay (last bay = flue when chimneyed) ----------------
     n_wincols = N - 1 if p["chimney"] else N
@@ -401,6 +471,7 @@ def build_factory(level: int) -> dict:
             sill = f * FLOOR + 0.24
             cz = sill + wh / 2
             s = f"w{i}_{f}"
+            interior("x", f"{s}", x - 0.009, cy, cz, ww, wh)
             box(f"{s}_glass", x, cy, cz, 0.01, ww, wh, M["glass"])
             box(f"{s}_fl", x + 0.005, cy - ww / 2, cz, 0.012, 0.05, wh + 0.1, M["mullion"])
             box(f"{s}_fr", x + 0.005, cy + ww / 2, cz, 0.012, 0.05, wh + 0.1, M["mullion"])
@@ -417,6 +488,7 @@ def build_factory(level: int) -> dict:
         fw, fh = 1.7, 0.72
         sill = FLOOR + 0.24
         cz = sill + fh / 2
+        interior("y", "fac", XC, y + 0.009, cz, fw, fh)
         box("fac_glass", XC, y, cz, fw, 0.01, fh, M["glass"])
         box("fac_fl", XC - fw / 2, y - 0.005, cz, 0.05, 0.012, fh + 0.1, M["mullion"])
         box("fac_fr", XC + fw / 2, y - 0.005, cz, 0.05, 0.012, fh + 0.1, M["mullion"])
@@ -527,10 +599,11 @@ def build_factory(level: int) -> dict:
         GY0, GY1 = RY0 + 0.16, RY1 - 0.16
         gcx, gcy = (GX0 + GX1) / 2, (GY0 + GY1) / 2
         gw2, gl2 = GX1 - GX0, GY1 - GY0
-        box("rannex_glass", gcx, gcy, RH + 0.085, gw2, gl2, 0.012, M["glass"])
+        box("rannex_glass_room", gcx, gcy, RH + 0.083, gw2, gl2, 0.006, M["interior"])
+        box("rannex_glass", gcx, gcy, RH + 0.100, gw2, gl2, 0.012, M["glass"])
         for k in range(1, 3):
-            box(f"rannex_mul_x{k}", GX0 + k * gw2 / 3, gcy, RH + 0.09, 0.03, gl2, 0.014, M["mullion"])
-        box("rannex_mul_y", gcx, gcy, RH + 0.09, gw2, 0.03, 0.014, M["mullion"])
+            box(f"rannex_mul_x{k}", GX0 + k * gw2 / 3, gcy, RH + 0.112, 0.03, gl2, 0.014, M["mullion"])
+        box("rannex_mul_y", gcx, gcy, RH + 0.112, gw2, 0.03, 0.014, M["mullion"])
         # two silver pipes on the RIGHT (+X) face: out of the ground, up the face,
         # short elbow over the parapet, feeding into the skylight roof
         pr = 0.085
@@ -560,6 +633,7 @@ def build_factory(level: int) -> dict:
         acx = 2.18
         asill = 0.30
         acz = asill + awh / 2
+        interior("y", "aw", acx, wy + 0.009, acz, aww, awh)
         box("aw_glass", acx, wy, acz, aww, 0.01, awh, M["glass"])
         box("aw_fl", acx - aww / 2, wy - 0.005, acz, 0.05, 0.012, awh + 0.1, M["mullion"])
         box("aw_fr", acx + aww / 2, wy - 0.005, acz, 0.05, 0.012, awh + 0.1, M["mullion"])
