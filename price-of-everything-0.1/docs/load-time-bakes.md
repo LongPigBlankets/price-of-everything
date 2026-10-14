@@ -628,3 +628,60 @@ Evidence: `outputs/supply-chain-3d/stoneshore-rail-profile/` (before/after trans
 audit, final ten views, validation logs and compact verification JSON). Only the
 scoped package is current; the earlier full-continent bake is not a release of
 these visual changes.
+
+
+### Stoneshore block interiors — installed package, 14 October 2026
+
+The five-tile production package includes neighbourhood lanes, courtyard homes,
+garden rows, greens and brownfields. The full-continent package remains paused.
+Existing building meshes and far/medium/near artwork are reused; only affected
+layout, transport, scenery and tile resources were regenerated. The final bake
+reused all five byte-identical base tile payloads.
+
+Independent `verify_continent_package.tscn` validation passes with current source
+fingerprints: 21 resources, 31,217,193 bytes (29.77 MiB). Medium decoded payload
+is 18,677,385 bytes; near decoded payload is 74,710,665 bytes. The near resources
+occupy 15,860,308 bytes on disk. Production package assembly took 19.856s after
+scene preparation; the cold frontage search took 29.106s. This search is offline
+preparation, not normal view opening.
+
+Fresh-process `compare_stoneshore.tscn` measurements, using a new empty runtime
+cache directory and warm OS filesystem caches:
+
+| Measurement | Result |
+| --- | ---: |
+| Process start to Begin | 17.394s |
+| Five-tile board preparation | 1.080743s |
+| Frontage cache restore | 124.204ms |
+| Transport lookup and restore | 81.979ms |
+| Shared five-tile continent resource | 23.577ms |
+| First supply-view opening after Begin | 293ms |
+| Final bundled cache hits | 19 |
+| Runtime bake writes | 0 |
+
+The first independent run exposed an ordering bug: cached courtyard additions
+were grouped after frontage infill, changing downstream transport/scenery keys.
+The cache now retains the actual standing emission order. A courtyard-bearing
+unit fixture checks complete model equality after restore. The installed package
+was regenerated after the fix; the fresh timings above are from that final
+package, not from the baking process.
+
+Twelve rendered views cover the regional/far view, town, Old Quarter, harbour,
+rural tiles, ponds, factory, courtyard and brownfield. The final layout has 254
+decorative buildings (previously 229), 76.49% estimated buildable original/district
+frontage, no building/street overlaps and no parcel intrusions. Seven brownfields
+reserve 14,560 square units. Nine new thin lane paths, four courtyard groups,
+fourteen added greens and sixteen footpaths serve the additional inner rows.
+
+Validation includes fourteen neighbourhood/cache/clearance/mesh assertions,
+nineteen frontage/civic assertions and twenty crossing/station assertions. The
+installed transport data still has nine bridge groups and three covered-rail
+crossings, minimum rail-head clearance 8.5325u and maximum modified approach
+grade 8.000001% (floating-point tolerance). No new lane crosses the rail reserve.
+Existing unrelated road-index endpoint failures and the previously documented
+steep exposed rail segment are outside this pass.
+
+Reports and logs: `outputs/supply-chain-3d/stoneshore-interiors/final/` and
+`outputs/supply-chain-3d/stoneshore-interiors/validation/` at repository root.
+The nonfatal system-CA warning in headless Godot and ObjectDB exit warning in
+rendered harnesses remain unchanged.
