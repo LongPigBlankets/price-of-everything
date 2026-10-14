@@ -180,12 +180,13 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 	report.skyline=[]
 	for s in board._model.standing:
 		if s.has("trial_skyline"):report.skyline.append({"iid":s.iid,"p":s.pos,"distance":s.pos.distance_to(s.trial_skyline),"asset":board._builder.standing_key(s)})
-	report.sea_margin={"fraction":board._builder.sea_fringe.FRACTION,"edges":board._builder.sea_fringe.strips.size()}
+	report.sea_margin={"fraction":board._builder.sea_fringe.FRACTION,"width":board._builder.sea_fringe.WIDTH,"parts":board._builder.sea_fringe.strips.size()}
+	_export_review_plan(board,output)
 	if "--draft-review" not in OS.get_cmdline_user_args():
 		assert(report.docks_rails.yard_height_error<.01 and report.docks_rails.hidden_yard_samples==0,"Docks working yard must remain open at its original elevation")
 		assert(report.docks_rails.building_conflicts.is_empty() and report.docks_rails.parallel_road_conflicts.is_empty(),"Docks rail still overlaps buildings or parallel road surfaces")
 		assert(report.skyline.size()==3,"Missing central Docks skyline landmarks")
-		assert(report.sea_margin.edges>0,"Missing water-only sea margin")
+		assert(report.sea_margin.parts>0,"Missing water-only sea margin")
 	report.final_cache = {"hits":board._builder.bake_cache.hits, "bundled_hits":board._builder.bake_cache.bundled_hits, "writes":board._builder.bake_cache.writes}
 	FileAccess.open(output.path_join("report.json"), FileAccess.WRITE).store_string(JSON.stringify(report, "\t"))
 
@@ -263,3 +264,29 @@ func _docks_rail_audit(board: Control) -> Dictionary:
 			if road_h-.5-((t.ha+t.hb)*.5+1.25)<rail.CLEARANCE:
 				report.parallel_road_conflicts.append({"road":road.source,"p":p})
 	return report
+
+func _export_review_plan(board: Control, output: String) -> void:
+	# Numeric, read-only inputs for road alternatives and sea-envelope audits.
+	var b: RefCounted=board._builder
+	var plan := {"tiles":{},"sea_margin":b.sea_fringe.strips,"roads":b.road_grade.segments,"rails":b.rail_urban.tracks,"depots":b.depots,"buildings":[],"land":[]}
+	for tid in b.tiles:plan.tiles[tid]=b.tiles[tid].center
+	for s in board._model.standing:
+		plan.buildings.append({"iid":s.iid,"pos":s.pos,"kind":s.kind,"polygons":preload("res://scripts/supply_chain_3d/rail_clearance.gd").building_polygons(s,b.standing_key(s))})
+	var tids := {}
+	for tid in b.tiles:
+		tids[tid]=true
+		for nb in Catalog.tile_neighbours(tid):tids[nb]=true
+	for tid in tids:plan.land.append_array(preload("res://scripts/supply_chain_3d/water_geography.gd").for_tile(tid).land)
+	FileAccess.open(output.path_join("plan.json"),FileAccess.WRITE).store_string(JSON.stringify(_numeric(plan)))
+
+func _numeric(value: Variant) -> Variant:
+	if value is Vector2 or value is Vector2i:return [value.x,value.y]
+	if value is Array or value is PackedVector2Array:
+		var result: Array=[]
+		for item in value:result.append(_numeric(item))
+		return result
+	if value is Dictionary:
+		var result := {}
+		for key in value:result[str(key)]=_numeric(value[key])
+		return result
+	return value

@@ -1,5 +1,5 @@
 extends RefCounted
-## A water-only margin of one tenth of the adjacent hex depth. It is scenery,
+## A water-only, constant-distance margin around the visible tile perimeter. It is scenery,
 ## not another playable tile, and never requests that tile's buildings/detail.
 const Model := preload("res://scripts/empire_board_model.gd")
 const Coast := preload("res://scripts/supply_chain_3d/coast.gd")
@@ -7,28 +7,40 @@ const Ground := preload("res://scripts/empire_board_ground.gd")
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
 const Legacy := preload("res://scripts/empire_board.gd")
 const FRACTION := .10
+const WIDTH := Model.HEX_HALF.y * 2 * FRACTION
 var strips: Array=[]
 var owned := {}
 
 func configure(tiles: Dictionary, geography: Dictionary) -> void:
 	strips.clear();owned=tiles
 	if not preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():return
+	var neighbours := {}
 	for tid in tiles:
-		var center: Vector2=tiles[tid].center
-		var hex := Model.hex_points(center)
 		for nb in Catalog.tile_neighbours(tid):
-			if tiles.has(nb) or not geography.has(nb) or Catalog.tile_type(nb) not in ["sea","deep_sea"]:continue
-			var other: Vector2=geography[nb].center
-			for i in 6:
-				var a: Vector2=hex[i];var b: Vector2=hex[(i+1)%6]
-				if (a+b-center).distance_to(other)>1:continue
-				var middle := (a+b)*.5
-				var out := (middle-center).normalized()
-				var width := 2*middle.distance_to(center)*FRACTION
-				var along := (b-a).normalized()*width
-				var strip := PackedVector2Array([a-along,b+along,b+along+out*width,a-along+out*width])
-				for poly in Geometry2D.intersect_polygons(strip,Model.hex_points(other)):
-					strips.append({"tile":nb,"center":other,"width":width,"a":a,"b":b,"p":poly})
+			if not tiles.has(nb) and geography.has(nb) and Catalog.tile_type(nb) in ["sea","deep_sea"]:
+				neighbours[nb]=geography[nb].center
+	strips=margin_parts(tiles.values().map(func(tile):return Model.hex_points(tile.center)),neighbours)
+
+static func margin_parts(hexes: Array, neighbours: Dictionary) -> Array:
+	# Offset the union once: separately extruded edges pinch at re-entrant
+	# corners and miss the third neighbouring hex at convex corners. Round joins
+	# keep the nearest-boundary distance constant, including around vertices.
+	var outlines: Array=[]
+	for hex in hexes:
+		var joined: PackedVector2Array=hex
+		var i := 0
+		while i<outlines.size():
+			var merged := Geometry2D.merge_polygons(outlines[i],joined)
+			if merged.size()==1:joined=merged[0];outlines.remove_at(i);i=0
+			else:i+=1
+		outlines.append(joined)
+	var parts: Array=[]
+	for outline in outlines:
+		for expanded in Geometry2D.offset_polygon(outline,WIDTH,Geometry2D.JOIN_ROUND):
+			for tid in neighbours:
+				for poly in Geometry2D.intersect_polygons(expanded,Model.hex_points(neighbours[tid])):
+					parts.append({"tile":tid,"center":neighbours[tid],"width":WIDTH,"p":poly})
+	return parts
 
 func contains(p: Vector2) -> bool:
 	for strip in strips:
@@ -46,7 +58,23 @@ static func water_parts(poly: PackedVector2Array, land: Array) -> Array:
 		var next: Array=[]
 		for part in parts: next.append_array(_subtract(part,mask))
 		parts=next
-	return parts
+	return parts.filter(func(part):return area(part)>.05)
+
+static func margin_water(poly: PackedVector2Array, land: Array) -> Array:
+	# Tiny isolated pockets at the clipping boundary would become conspicuous
+	# 175u-tall pillars. Filter the full water component, never individual grid
+	# cells, so normal coastlines retain their fine detail.
+	return water_parts(poly,land).filter(func(part):return area(part)>=16.0)
+
+static func area(poly: PackedVector2Array) -> float:
+	# Translate before the shoelace sum to avoid cancellation in world coordinates.
+	var result := 0.0
+	for i in range(1,poly.size()-1):result+=(poly[i]-poly[0]).cross(poly[i+1]-poly[0])
+	return absf(result)*.5
+
+static func rim_uvs(a: float, b: float, top: float) -> PackedVector2Array:
+	var u := a/270.0;var v := b/270.0
+	return PackedVector2Array([Vector2(u,top),Vector2(v,1),Vector2(v,top),Vector2(u,top),Vector2(u,1),Vector2(v,1)])
 
 static func _subtract(poly: PackedVector2Array, mask: PackedVector2Array) -> Array:
 	var parts := Geometry2D.clip_polygons(poly,mask)
@@ -107,9 +135,9 @@ func bake(origin: Vector2) -> Dictionary:
 		var rel := Coast.relief_of(tid,center)
 		var land: Array=Coast.Water.for_tile(tid).land
 		var water: Array=[]
-		for mask in by_tile[tid]:water.append_array(water_parts(mask,land))
+		for mask in by_tile[tid]:water.append_array(margin_water(mask,land))
 		# Grid cells avoid triangulating a polygon with an enclosed land hole.
-		for mask in by_tile[tid]:
+		for mask in water:
 			var box := Rect2(mask[0],Vector2.ZERO)
 			for p in mask:box=box.expand(p)
 			for y in range(floori(box.position.y/24),ceili(box.end.y/24)):
@@ -127,8 +155,12 @@ func bake(origin: Vector2) -> Dictionary:
 							for piece in paint_layers(part,sea[0 if Catalog.tile_type(tid)=="deep_sea" else 2],layers):
 								polygon(top,piece.p,piece.color,origin,h)
 		for poly in water:
+			var perimeter := 0.0
 			for i in poly.size():
 				var a: Vector2=poly[i];var b: Vector2=poly[(i+1)%poly.size()]
+				var edge_length := a.distance_to(b)
+				var start := perimeter;perimeter+=edge_length
+				if edge_length<.01:continue
 				var n := (b-a).orthogonal().normalized()*.2
 				var count := maxi(1,ceili(a.distance_to(b)/4))
 				for j in count:
@@ -139,5 +171,5 @@ func bake(origin: Vector2) -> Dictionary:
 					v.y-=Legacy._WATER_DEPTH;w.y=v.y
 					rim.quad(v,w,Vector3(w.x,-150,w.z),Vector3(v.x,-150,v.z),Color.WHITE)
 					var uv := (100-v.y)/250.0
-					rim.uvs.append_array(PackedVector2Array([Vector2(float(j)/count,uv),Vector2(float(j+1)/count,1),Vector2(float(j+1)/count,uv),Vector2(float(j)/count,uv),Vector2(float(j)/count,1),Vector2(float(j+1)/count,1)]))
+					rim.uvs.append_array(rim_uvs(start+edge_length*j/count,start+edge_length*(j+1)/count,uv))
 	return {"top":top.mesh(),"lip":lip.mesh(),"rim":rim.mesh()}

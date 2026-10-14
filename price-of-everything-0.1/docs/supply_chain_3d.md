@@ -2527,3 +2527,79 @@ currently limited to the Stoneshore review mode.
 The regular map and the full-continent package remain unchanged. Production
 package verification and fresh-process timings are in `docs/load-time-bakes.md`.
 Evidence is under `outputs/supply-chain-3d/stoneshore-docks/` at repository root.
+
+
+### Constant-distance sea margin and depot routing review (14 October 2026)
+
+`sea_fringe.gd` now unions the visible tile polygons before expanding their
+perimeter by **48u** (10% of the 480u north–south tile depth). A single round-join
+offset replaces separately extruded and neighbouring-hex-clipped edge strips.
+The width is perpendicular to each edge and radial around convex vertices;
+re-entrant corners form one continuous union. This eliminates corner pinches,
+gaps and excessive mitre extensions. Neighbouring land/islets are still excluded,
+so the exposed water width can narrow where actual land occupies the extension.
+This is a fixed distance from the **tile boundary**, not from the coastline.
+Only sea/deep-sea neighbours are displayed. The cutaway texture uses cumulative
+world distance around curves; tiny clipping slivers no longer emit tall walls.
+
+The five-tile review exports numeric `plan.json` for read-only geometry analysis.
+`tools/supply_chain_3d/review_rail_routes.py` consumes that export and emits a plan
+image plus measured routing concepts. It does not change any road or bake.
+Example (from the project directory, Python with Pillow):
+
+```sh
+python3 tools/supply_chain_3d/review_rail_routes.py ../outputs/supply-chain-3d/stoneshore-sea-margin/final/plan.json ../outputs/supply-chain-3d/stoneshore-sea-margin/routing
+```
+
+The small depot-crossing road is authored stroke `r:untitled:65`. Its present
+crossing spans approximately **58.15u** across the track fan, with a calculated
+approach reach of **143.44u** and a deck approximately **11.48u** above its natural
+road datum. It serves a coastal dead end, so its bridge/earthworks impose a large
+visual cost for a local-access function. The separate main-road bridge across
+the depot lead (`r:procedural:159` / `r:procedural:48`) has a 25.15u crossing group
+and serves the through route; retaining that single arterial crossing is more
+justifiable. No existing road geometry was changed in this review.
+
+| Concept | Road length | Closest road centre to visible rail centre | Decorative footprints affected | Water samples |
+|---|---:|---:|---:|---:|
+| A: around the closed southwest end of the yard | 293.58u | 26.90u | 3 | 0 |
+| B: east of the lead, rejoin beyond the main-road bridge | 363.73u | 36.02u | 6 | 0 |
+
+Both concepts preserve the current coastal road end, avoid all exposed tracks,
+and connect to an existing road centreline. Sampling is every 2u; the proposed
+8.4u carriageway plus casing/sidewalks uses a conservative 6.8u half-width.
+Minimum clear distance between its outside edge and the 4.725u rail half-width
+is approximately **15.38u / 24.50u** respectively. Neither concept affects a
+player/NPC footprint or the Bauhaus factory. Both need decorative relocation.
+A's affected frontage IDs end `0153`, `0074`, `0037`; B's are in `routes.json`.
+
+**Recommended next trial: A.** It is shorter, relocates fewer decorative
+buildings and could become a small tree-lined coastal access road. Remove the
+current spur across the track fan; retain access to its eastern houses from the
+new road. Final junctions have little spare space outside the broad rectangular
+yard reserve and need proper corner/sidewalk fitting. These are 2D route concepts,
+not constructed or height-validated roads: smooth bends, carriageway-normal
+shoulder checks, natural height/grade and road junction profiles still need the
+3D engineering pass before implementation/baking.
+
+For the wider rail treatment:
+
+- Reserve the working yard, switch fan and lead **before** adapting imported
+  local roads and placing frontage. The depot search currently protects the
+  shed and crane footprints but deliberately allows roads through the space
+  between them (`rail_depot.gd:occupied`). That allows this awkward crossing.
+- Give minor roads a route-choice cost: detour to an existing safe crossing,
+  shorten an unnecessary spur, or become a local cul-de-sac. Bridge only when
+  access/connectivity or a major through route requires it.
+- Preserve one continuous grade and reserve width for rail corridors. Move a
+  parallel minor road laterally when space exists instead of excavating around
+  every conflict; use fixed-datum tunnels where dense urban occupation genuinely
+  prevents an exposed alignment.
+- Keep level crossings for quiet, simple sidings away from switches/yard
+  entrances. This busy multi-track fan is a poor level-crossing candidate.
+
+Routing must run on the isolated 3D authored paths before district/frontage
+placement, then recompile intersections and reroute visual goods paths. This
+keeps the regular map and simulation graph unchanged and prevents placing
+buildings into a newly selected road corridor. Blanket scaling of roads,
+buildings or trains would not resolve the underlying network conflict.
