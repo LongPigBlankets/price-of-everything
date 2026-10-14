@@ -1,5 +1,38 @@
 # Load time: what is baked, and when to re-bake it
 
+## Stoneshore riverside field — verified 14 October 2026
+
+The installed five-tile package contains the west-bank farm's expanded field.
+Production assembly reused four unchanged base tiles, updated the affected
+base tile, and copied the ten already prepared medium/near resources. Assembly
+took **1.850s** after offline preparation. Independent validation passes with
+current fingerprints: **21 resources, 39,978,624 bytes (38.13 MiB)**.
+
+Fresh Godot 4.6.2 / Forward+ Metal process, Apple M5 Pro, empty runtime cache
+directory and warm OS filesystem caches:
+
+| Measurement | Time |
+|---|---:|
+| Process start to Begin | 17.654s |
+| Five-tile board preparation during loading | 1.171s |
+| Frontage/field memo restoration stage | 0.176s |
+| Transport cache restore | 0.099s |
+| First supply-view opening after Begin | 0.321s |
+
+Eighteen rendered views record **19 bundled hits, zero misses and zero runtime
+bake writes**. Shoreline clipping is skipped on a valid field-memo hit. The
+field grows from 3,793u² to 6,789u² with zero overlap against the buffered river
+and zero intruding tree crowns. The barn pose and source crop-cell sizes remain
+unchanged. Thirty-one focused assertions pass for field clipping, repeated crop
+geometry, road clearance and layout-cache persistence. Rendered frontage, canopy,
+building, depot, port and coastal checks also pass.
+
+Decoded medium/near terrain texture sizes remain 18,677,385 / 74,710,665 bytes;
+near resources occupy 20,043,469 bytes on disk. Full-continent baking remains
+paused. Evidence is in `outputs/supply-chain-3d/stoneshore-riverside-farm/` at
+repository root. Existing nonfatal certificate, RoadRegions and exit warnings
+remain.
+
 ## Stoneshore depot routes and continuous coast — verified 14 October 2026
 
 The installed **five-tile** package implements both depot roads, the single-pair

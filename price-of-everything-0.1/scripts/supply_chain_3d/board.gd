@@ -251,6 +251,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 		preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").restrict_model(model)
 	var road_started := Time.get_ticks_usec()
 	preload("res://scripts/supply_chain_3d/authored_region.gd").apply(model, terrain, get_tree().get_first_node_in_group("building_footprints"), queries.data, builder.surface_height)
+	preload("res://scripts/supply_chain_3d/riverside_fields.gd").apply(model, rivers, queries.data)
 	timings.road_import_ms = (Time.get_ticks_usec() - road_started) / 1000.0
 	road_started = Time.get_ticks_usec()
 	preload("res://scripts/supply_chain_3d/harbour.gd").apply(model)
