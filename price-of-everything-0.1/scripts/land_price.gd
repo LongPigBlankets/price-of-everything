@@ -115,6 +115,12 @@ static func quote(tile_id: String, patches: int, standalone: bool) -> Dictionary
 		"advisor_pct": float(Modifiers.resolve_pct("purchase_cost", "*", ctx).get("net", 0.0)),
 	}
 
+## What one patch of spare land sells for: the starting price and the economy's rise, never the rises the player
+## makes (buildings, neighbouring purchases), so buying land cannot be turned into money by raising its own price.
+## Land bought before a doubling sells for more after it.
+static func sale_price(tile_id: String) -> float:
+	return starting_price(tile_id) * (1.0 + economy_share(tile_id))
+
 ## The quote's price for one patch after the adviser, what a single patch actually costs.
 static func patch_price(tile_id: String, standalone: bool) -> float:
 	return float(quote(tile_id, 1, standalone).total)

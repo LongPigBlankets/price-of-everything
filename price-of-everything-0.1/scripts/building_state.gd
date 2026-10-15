@@ -134,7 +134,8 @@ func add_building(
 	tile_id: String,
 	owner: String = "player_1",
 	instance_id: String = "",
-	emit_added: bool = true
+	emit_added: bool = true,
+	level: int = 1
 ) -> String:
 	# Pass the building_id here! An explicit instance_id lets a construction project keep one
 	# stable id from placement through completion; empty means generate a fresh one.
@@ -147,7 +148,7 @@ func add_building(
 		"recipe_id": recipe_id,
 		"tile_id": tile_id,
 		"owner": owner,
-		"level": 1,
+		"level": clampi(level, 1, BuildingLevels.MAX_LEVEL),
 	}
 
 	buildings[instance_id] = instance
@@ -413,6 +414,29 @@ func _unprice_land(tile_id: String, units: int) -> void:
 		return
 	tile_land_priced.erase(tile_id)
 	tile_land_standalone.erase(tile_id)
+
+## Land the player owns on the tile that no building, project or upgrade of theirs uses, in units.
+func spare_land_units(tile_id: String) -> int:
+	return maxi(0, get_tile_land_owned(tile_id) - ceili(get_tile_player_space_used(tile_id) - 0.0001))
+
+## Whole patches of spare land the player can sell from the tile. Only land they bought sells: land granted with
+## a bought building or by the start was never paid for at the land price, so selling it would make money.
+func spare_land_patches(tile_id: String) -> int:
+	var units := mini(spare_land_units(tile_id), int(tile_land_priced.get(tile_id, 0)))
+	return floori(float(units) / float(LAND_PATCH_SIZE))
+
+## Sell every whole patch of spare land on the tile at LandPrice.sale_price. Returns {patches, units, paid}.
+func sell_spare_land(tile_id: String) -> Dictionary:
+	var patches := spare_land_patches(tile_id)
+	if patches <= 0:
+		return {"patches": 0, "units": 0, "paid": 0.0}
+	var paid := float(patches) * LandPrice.sale_price(tile_id)
+	var units := patches * LAND_PATCH_SIZE
+	tile_land_owned[tile_id] = get_tile_land_owned(tile_id) - units
+	_unprice_land(tile_id, units)
+	MatchState.add_money(paid)
+	tile_land_owned_changed.emit(tile_id)
+	return {"patches": patches, "units": units, "paid": paid}
 
 func sellable_land_patches(tile_id: String) -> int:
 	if tile_id == "":
