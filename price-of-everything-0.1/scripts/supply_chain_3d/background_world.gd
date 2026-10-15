@@ -22,6 +22,8 @@ static func prepare(board: Control, job: RefCounted, generation: int) -> Diction
 	if job.cancelled: return {}
 	var data: Dictionary = await job.bake(tree, cache, key)
 	if job.cancelled or not Snapshot.matches(data, input_key, manifest): return {}
+	board._loading_ink = data.ink
+	board._sync_paper()
 	var setup_started := Time.get_ticks_usec()
 	var builder := Builder.new()
 	builder.streamed = true; builder.cursor_picking = true; builder.lazy_assets = true

@@ -4,6 +4,9 @@ const Model := preload("res://scripts/empire_board_model.gd")
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
 const PaperShader := preload("res://scripts/supply_chain_3d/paper_map.gdshader")
 const HEIGHT := -2.0
+const InkShader := preload("res://scripts/supply_chain_3d/loading_ink.gdshader")
+const INK_SECONDS := 1.35
+var drawings := {}
 var tiles := {}
 var indices := {}
 var covered := {}
@@ -54,6 +57,8 @@ func cover(ready: Dictionary) -> void:
 	for tid in tiles:
 		if ready.has(tid) == covered.has(tid): continue
 		multimesh.set_instance_transform(indices[tid], _transform(tid, ready.has(tid)))
+		if ready.has(tid) and drawings.has(tid):
+			drawings[tid].node.queue_free(); drawings.erase(tid)
 	covered.clear()
 	for tid in ready: covered[tid] = true
 
@@ -68,3 +73,27 @@ func pick(from: Vector3, direction: Vector3) -> Dictionary:
 		if Geometry2D.is_point_in_polygon(p, Model.hex_points(tiles[tid])):
 			return {"collider":self, "position":at, "tile_id":tid, "tiles_only":true}
 	return {}
+
+func draw_tile(tid: String, mesh: ArrayMesh, delay: float = 0.0) -> void:
+	if covered.has(tid) or drawings.has(tid) or mesh.get_surface_count()==0: return
+	var node := MeshInstance3D.new()
+	node.name = "Ink_"+tid
+	node.mesh = mesh
+	var at: Vector2 = tiles[tid]
+	node.position = Vector3(at.x,HEIGHT+0.2,at.y)
+	var material := ShaderMaterial.new(); material.shader = InkShader
+	node.material_override = material
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(node)
+	drawings[tid] = {"node":node,"material":material,"elapsed":-delay}
+
+func _process(delta: float) -> void:
+	if not visible: return
+	for drawing in drawings.values():
+		if drawing.elapsed >= INK_SECONDS: continue
+		drawing.elapsed += delta
+		drawing.material.set_shader_parameter("progress",clampf(drawing.elapsed/INK_SECONDS,0.0,1.0)*3.0)
+
+func clear_drawings() -> void:
+	for drawing in drawings.values(): drawing.node.queue_free()
+	drawings.clear()

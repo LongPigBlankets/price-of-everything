@@ -1,5 +1,54 @@
 # Load time: what is baked, and when to re-bake it
 
+## Ink-drawn tile loading — 15 October 2026
+
+The paper loader now traces each visible unloaded hex in three stages: curved
+relief contours, blue-grey river courses, then navy roads. A tile's nominal
+sequence takes 1.35 seconds, with up to 0.3 seconds of radial staggering. It
+starts when the prepared snapshot arrives and overlaps model/art loading; ready
+3D coverage always wins, so there is no per-tile animation wait in the streamer.
+Owned tiles remain visible. Panning starts drawings for newly exposed paper;
+ordinary medium/near LOD swaps retain their existing far coverage and do not
+replay this loading animation.
+
+Contours are sampled offline from the actual ground height field, joined and
+smoothed, then clipped to hexes. Flat ground receives no invented contours.
+Connected road strokes avoid the short disconnected marks of the first trial.
+A 0.7u simplification tolerance keeps these small loading meshes compact. Runtime
+uses the saved meshes and a progress uniform; it never samples relief or draws
+textures on the CPU. Drawings are removed as real tiles arrive and all temporary
+ink references are released when the far backdrop is installed. The regular map
+and finished terrain, roads, buildings and artwork are unchanged.
+
+Version 7 of the loading supplement is **20,098,290 bytes**, an increase of
+**5,362,967 bytes (5.11 MiB)**. The initial unsimplified trial was 39.7 MB; it was
+replaced before shipping. The installed 600-tile package has **1,841 resources /
+1,919,680,474 bytes**. Independent validation checks current fingerprints and
+resource hashes; no other production bake was regenerated.
+
+Fresh Godot 4.6.2 / Forward+ Metal, Apple M5 Pro, warm filesystem caches and a
+new empty runtime-cache path, with three extra ink-stage screenshots:
+
+| Measurement | Time |
+|---|---:|
+| Process start to Begin / first supply opening | 19.920s / 149ms |
+| All-tiles request to paper | 8ms |
+| Captured contour / river / road stages | 0.729s / 1.390s / 2.111s |
+| First complete medium tile / far backdrop | 3.980s / 4.842s |
+| Pan to next prioritised tile | 24ms |
+| Complete requested working set after pan | 9.183s |
+| Return owned / repeated all-tiles switch | 7ms / 212ms |
+| Reveal frame p95 / maximum | 28.76ms / 272.65ms |
+
+Screenshot readback/encoding is excluded from frame samples but included in
+elapsed stage and working-set times. These are fresh-process warm-cache samples,
+not cold-disk guarantees. The existing first-use rendering hitch remains. The
+unsimplified first trial also encountered a 547ms first-use frame; the final
+compact run did not. The final run recorded **94 bundled hits, zero misses and
+zero runtime writes**, checked 14 visible tile selections, and verified release
+of temporary ink resources. All **104 focused assertions** pass, including
+contour geometry, phase ordering, cancellation, picking and resource retention. Evidence: `outputs/supply-chain-3d/ink-loading/final/`.
+
 ## Progressive paper-map reveal — 15 October 2026
 
 Selecting all tiles before preparation finishes now displays a warm paper map

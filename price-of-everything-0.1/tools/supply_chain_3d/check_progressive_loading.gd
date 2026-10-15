@@ -15,6 +15,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	var frames: Array[float] = []
 	var slow := []
 	var previous := Time.get_ticks_usec()
+	var ink_captures := {}
 	var first := false
 	var panned := false
 	var after_pan := 0
@@ -27,6 +28,14 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 		var now := Time.get_ticks_usec()
 		frames.append((now-previous)/1000.0); previous = now
 		if frames[-1]>50: slow.append({"ms":frames[-1],"stage":stage,"tiles":board.reveal_profile.tiles.size()})
+		if is_instance_valid(board._paper) and board._paper.visible:
+			var elapsed := 0.0
+			for drawing in board._paper.drawings.values(): elapsed = maxf(elapsed,drawing.elapsed)
+			for phase in [["relief",0.38],["river",0.81],["roads",1.30]]:
+				if elapsed>=phase[1] and not ink_captures.has(phase[0]):
+					ink_captures[phase[0]] = {"ms":Time.get_ticks_msec()-started,"drawings":board._paper.drawings.size()}
+					board._viewport.get_texture().get_image().save_png(output.path_join("ink-"+phase[0]+".png"))
+					previous = Time.get_ticks_usec()
 		if not first and not board.reveal_profile.tiles.is_empty():
 			first = true
 			result.first_tile = board.reveal_profile.tiles[0]
@@ -46,6 +55,8 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 			result.pan_next_tiles = board.reveal_profile.tiles.slice(after_pan)
 		if panned and not board.background_active() and board.detail_ready() and board._stream_camera == board.capture_camera(): break
 		assert(Time.get_ticks_msec()-started<90000,"Progressive reveal timed out")
+	result.ink = ink_captures
+	assert(ink_captures.size()==3,"First opening must visibly trace all three ink layers")
 	result.settled_ms = Time.get_ticks_msec()-started
 	result.background = board.background_profile.duplicate(true)
 	result.reveal = board.reveal_profile.duplicate(true)
@@ -55,6 +66,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	result.max_frame_ms = frames[-1]
 	result.frames = frames.size()
 	var builder: RefCounted = board._builder
+	assert(board._loading_ink.is_empty() and board._paper.drawings.is_empty(), "Real coverage must release the temporary ink resources")
 	result.cache = {"bundled_hits":builder.bake_cache.bundled_hits,"misses":builder.bake_cache.misses,"writes":builder.bake_cache.writes}
 	assert(builder.bake_cache.misses==0 and builder.bake_cache.writes==0,"Progressive loading must reuse installed artwork")
 	var picks := 0

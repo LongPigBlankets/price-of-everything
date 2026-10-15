@@ -19,6 +19,8 @@ const BackgroundLoad := preload("res://scripts/supply_chain_3d/background_load.g
 const BackgroundWorld := preload("res://scripts/supply_chain_3d/background_world.gd")
 const PaperMap := preload("res://scripts/supply_chain_3d/paper_map.gd")
 const ProgressiveTile := preload("res://scripts/supply_chain_3d/progressive_tile.gd")
+var _loading_ink := {}
+var _ink_camera := {}
 var _paper: Node3D
 var _paper_owner: Node3D
 var _owned_center := Vector2.ZERO
@@ -96,6 +98,8 @@ func _discard_background() -> void:
 	background_status = "idle"
 	if is_instance_valid(_paper): _paper.queue_free()
 	_paper = null
+	_loading_ink = {}
+	_ink_camera.clear()
 
 func background_ready() -> bool:
 	return _coverage_states.has(true)
@@ -121,6 +125,23 @@ func _sync_paper() -> void:
 		var covered: Dictionary = _builder.ready_tiles.duplicate() if _builder.streamed else _builder.tiles.duplicate()
 		covered.merge(_builder.paper_owned_tiles)
 		_paper.cover(covered)
+		_draw_loading_ink()
+
+func _draw_loading_ink() -> void:
+	if _loading_ink.is_empty(): return
+	var state := {"camera":capture_camera(),"viewport_size":size}
+	if state == _ink_camera: return
+	_ink_camera = state
+	var view := Rect2(Vector2.ZERO,size).grow(60.0)
+	var centre := Vector2(_rig.target.x,_rig.target.z)
+	for tid in _paper.tiles:
+		if _paper.covered.has(tid) or not _loading_ink.has(tid): continue
+		var at: Vector2 = _paper.tiles[tid]
+		if _camera.is_position_behind(Vector3(at.x,PaperMap.HEIGHT,at.y)): continue
+		var bounds := Rect2(screen_point(Vector3(at.x,PaperMap.HEIGHT,at.y)),Vector2.ZERO)
+		for p in Model.hex_points(at): bounds = bounds.expand(screen_point(Vector3(p.x,PaperMap.HEIGHT,p.y)))
+		if bounds.intersects(view):
+			_paper.draw_tile(tid,_loading_ink[tid],minf(0.3,_hex_tile_distance(centre,at)*0.06))
 
 func _release_paper_owner() -> void:
 	if is_instance_valid(_paper_owner) and _paper_owner.get_parent()==_world:
@@ -137,6 +158,11 @@ func _publish_background(packet: Dictionary, job: RefCounted) -> void:
 		_activate(packet)
 
 func _backdrop_ready(builder: RefCounted) -> void:
+	# Paper drawings are only needed until real far coverage arrives. Drop all
+	# 600 mesh references even when the player stayed on the owned view.
+	_loading_ink = {}
+	_ink_camera.clear()
+	if is_instance_valid(_paper): _paper.clear_drawings()
 	if builder != _builder: return
 	_release_paper_owner()
 	if _reveal_started>0: reveal_profile.backdrop_ms = Time.get_ticks_msec()-_reveal_started

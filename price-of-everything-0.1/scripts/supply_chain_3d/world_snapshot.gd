@@ -2,7 +2,7 @@ extends RefCounted
 ## Optional prepared board data. Artwork remains in the existing independent bakes.
 ## A snapshot is usable only for the same live inputs and source fingerprints.
 const Cache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
-const VERSION := 6
+const VERSION := 7
 const KEY_FIELDS := ["_map_key", "_road_key", "_scenery_key", "_continent_key", "transport_key"]
 const AUTHORED_FIELDS := ["region", "segments", "crossings", "unresolved", "tile_index", "buckets", "bridge_tiles"]
 
@@ -41,6 +41,7 @@ static func packed(board: Control, input_key: String) -> Dictionary:
 			foundations[str(standing.iid)] = board._builder.prepared_foundations[str(standing.iid)]
 	return {"version": VERSION, "input_key": input_key, "keys": keys,
 		"fingerprints": Cache.source_fingerprints(), "model": board._model,
+		"ink": preload("res://scripts/supply_chain_3d/loading_ink_bake.gd").build(board._builder),
 		"rivers": board._builder.rivers, "foundations": foundations,
 		"pits": board._builder.pits,
 		"mine_rims": board._builder.prepared_mine_rims,
@@ -77,6 +78,9 @@ static func matches(data: Dictionary, input_key: String, manifest: Dictionary) -
 	if data.get("version", -1) != VERSION or data.get("input_key", "") != input_key: return false
 	if not data.get("pick_shape") is ConcavePolygonShape3D or not data.get("foundations") is Dictionary: return false
 	if not data.get("pits") is Dictionary: return false
+	if not data.get("ink") is Dictionary or data.ink.size() != int(manifest.get("tile_count", -1)): return false
+	for tid in data.get("model", {}).get("tiles", {}):
+		if not data.ink.get(tid) is ArrayMesh: return false
 	if not data.get("mine_rims") is Mesh: return false
 	for field in ["bounds", "labels", "visibility", "tile_chunks"]:
 		if not data.get("overview", {}).has(field): return false

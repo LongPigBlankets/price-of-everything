@@ -2828,3 +2828,28 @@ withdrawn: in a dense authored town the only building-free corridors are the
 streets, and it moved the tile_5_10 depot. The rail layout cache is version 7. Regions outside the five trial tiles
 change too (anchors near rivers, river-aware routes); the whole-continent
 package has not been rebaked.
+
+
+## Ink-drawn paper loading (15 October 2026)
+
+`loading_ink_bake.gd` prepares cartographic meshes in the version-7 world
+snapshot: natural-ground isolines, river paths and joined non-tunnel roads.
+World-aligned samples and fixed contour levels preserve continuity at hex
+boundaries; Chaikin smoothing and 0.7u simplification keep the lines curved and
+small. This loading-only supplement deliberately does not invalidate artwork
+fingerprints. Bump `Snapshot.VERSION` when changing its generated geometry.
+
+`paper_map.gd` binds meshes only for visible paper hexes. The ink shader reveals
+UV-encoded stroke progress in relief → river → road order over 1.35 seconds,
+staggered outward from the camera. It advances alongside the existing native
+resource queue, never in front of it. Finished coverage can replace ink at any
+point, and the ordinary far-to-medium/near handover does not replay it.
+`_backdrop_ready` releases the temporary drawings and their mesh references,
+including when background preparation completed while the owned view stayed up.
+Snapshot dictionaries are immutable: cancellation drops references rather than
+clearing the shared cached ink dictionary.
+
+Production refresh remains `bake_world_snapshot.tscn`; the latest package adds
+5.11 MiB and reuses all terrain/art resources. The rendered progressive check
+captures all three phases and validates picking, cleanup and zero bake writes.
+See `load-time-bakes.md` for measured first-open and pan times.

@@ -56,7 +56,7 @@ func _test_background_snapshot_rejects_changed_world() -> void:
 	var manifest := {"map_key":"map", "scenery_key":"scenery", "continent_key":"continent", "transport_key":"transport", "tile_count":1}
 	var data := {"version":Snapshot.VERSION, "input_key":"same-world", "keys":keys,
 		"fingerprints":Snapshot.Cache.source_fingerprints(), "model":{"tiles":{"a":{}}},
-		"pick_shape":ConcavePolygonShape3D.new(),"foundations":{},"pits":{},"mine_rims":ArrayMesh.new()}
+		"pick_shape":ConcavePolygonShape3D.new(),"foundations":{},"pits":{},"mine_rims":ArrayMesh.new(),"ink":{"a":ArrayMesh.new()}}
 	data.authored_profile = {}
 	data.overview = {"bounds":AABB(), "labels":[], "visibility":{}, "tile_chunks":{}}
 	for field in Snapshot.AUTHORED_FIELDS: data.authored_profile[field] = {}
@@ -104,8 +104,11 @@ func _test_background_world_change_cancels_pending_selection() -> void:
 	var job := Load.new(); board._warming = job
 	board.set_all_tiles(true, false)
 	await get_tree().process_frame
+	var shared_ink := {"a":ArrayMesh.new()}
+	board._loading_ink = shared_ink
 	board._discard_background()
 	await get_tree().process_frame
+	_check(shared_ink.size()==1 and board._loading_ink.is_empty(), "Invalidation releases ink without mutating the reusable snapshot resource")
 	_check(job.cancelled and not board._requested_all_tiles and not board.show_all_tiles,
 		"Background continent: a world change cancels a waiting selection instead of installing stale coverage")
 	board.queue_free(); await get_tree().process_frame
@@ -149,3 +152,33 @@ func _test_background_detached_scene_cleanup() -> void:
 	_check(is_instance_valid(active) and not is_instance_valid(dormant) and board._coverage_states.is_empty(),
 		"Background continent: invalidation frees the detached scene while retaining the currently visible scene")
 	board.queue_free(); await get_tree().process_frame
+
+func _test_background_ink_follows_relief_and_reveal() -> void:
+	var ink := preload("res://scripts/supply_chain_3d/loading_ink_bake.gd")
+	var hill := func(p: Vector2) -> float: return 34.0+33.0*exp(-p.length_squared()/14000.0)
+	var paths: Array = ink.contours(Vector2.ZERO,hill)
+	_check(paths.size()>=5, "Ink relief has several nested isolines for a real hill")
+	var curved := paths.all(func(p): return p.size()>16 and p[0].distance_to(p[-1])<0.1)
+	_check(curved, "Hill contours are continuous closed curves rather than disconnected hatches")
+	_check(ink.contours(Vector2.ZERO,func(_p): return 34.0).is_empty(), "Flat land gains no invented relief rings")
+	var crossing := PackedVector2Array([Vector2(-400,0),Vector2(400,0)])
+	var mesh := ink.stroke_mesh([paths,[crossing],[crossing]],Board.Model.hex_points(Vector2.ZERO),Vector2.ZERO)
+	var arrays := mesh.surface_get_arrays(0)
+	var outside := 0
+	for p in arrays[Mesh.ARRAY_VERTEX]:
+		if not Geometry2D.is_point_in_polygon(Vector2(p.x,p.z)/1.02,Board.Model.hex_points(Vector2.ZERO)): outside+=1
+	_check(outside==0, "Ink clips rivers, roads and contours to their own hex")
+	var paper := Board.PaperMap.new(); paper.configure({"a":Vector2.ZERO}); add_child(paper)
+	paper.draw_tile("a",mesh)
+	paper.set_process(false)
+	paper._process(0.3)
+	var material: ShaderMaterial = paper.drawings.a.material
+	_check(float(material.get_shader_parameter("progress"))<1.0, "Relief traces first while river and road ink stay hidden")
+	paper._process(0.4)
+	_check(float(material.get_shader_parameter("progress"))>1.0 and float(material.get_shader_parameter("progress"))<2.0,
+		"River tracing follows completed contours, before roads")
+	paper._process(0.45)
+	_check(float(material.get_shader_parameter("progress"))>2.0, "Road tracing is the last ink layer")
+	paper.cover({"a":true})
+	_check(paper.drawings.is_empty(), "Finished terrain removes its ink and releases the drawing node")
+	paper.queue_free(); await get_tree().process_frame
