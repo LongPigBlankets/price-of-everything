@@ -4,6 +4,7 @@ const Grid := preload("res://scripts/supply_chain_3d/detail_residency.gd")
 const DURATION := 1.5
 const EMPTY_END := 0.10
 const INK_END := 0.90
+const BACKDROP_STEP_MS := 120
 const SHADERS := ["ground.gdshader","far_sprite.gdshader","building_print.gdshader","contour.gdshader","water_glints.gdshader"]
 var grid := Grid.new()
 var active := false
@@ -15,6 +16,7 @@ var bindings: Array = []
 var timeline := []
 var _started_at := {}
 var _dirty := false
+var next_backdrop_msec := 0
 
 func configure(tiles: Dictionary, origin: Vector2) -> void:
 	grid.configure(tiles,origin)
@@ -57,6 +59,15 @@ func start(tid: String) -> bool:
 	if not active or complete.has(tid) or elapsed.has(tid): return false
 	elapsed[tid]=0.0; _started_at[tid]=Time.get_ticks_msec()
 	return true
+
+func backdrop_batch(ordered_tiles: Array, now: int, budget: int = 2) -> Array:
+	var started: Array = []
+	if now<next_backdrop_msec: return started
+	for tid in ordered_tiles:
+		if start(str(tid)): started.append(tid)
+		if started.size()>=budget: break
+	next_backdrop_msec=now+BACKDROP_STEP_MS
+	return started
 
 func skip(tid: String) -> void:
 	if elapsed.has(tid): return
@@ -101,4 +112,3 @@ func restore() -> void:
 		if is_instance_valid(record.node) and record.node.material_override==record.material:
 			record.node.material_override=record.original
 	bindings.clear(); materials.clear()
-

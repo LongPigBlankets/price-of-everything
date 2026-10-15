@@ -25,6 +25,15 @@ func copy_model(tree: SceneTree, model: Dictionary) -> Dictionary:
 	while worker.is_alive(): await tree.process_frame
 	return worker.wait_to_finish()
 
+func unpack_startup(tree: SceneTree, payload: Dictionary) -> Dictionary:
+	if cancelled: return {}
+	stage = "decode startup values"
+	var worker := Thread.new()
+	if worker.start(preload("res://scripts/supply_chain_3d/startup_bundle.gd").unpack.bind(payload), Thread.PRIORITY_LOW) != OK: return {}
+	while worker.is_alive(): await tree.process_frame
+	var result: Dictionary = worker.wait_to_finish()
+	return {} if cancelled else result
+
 func resource(tree: SceneTree, path: String) -> Resource:
 	stage = path.get_file()
 	if cancelled or not ResourceLoader.exists(path): return null

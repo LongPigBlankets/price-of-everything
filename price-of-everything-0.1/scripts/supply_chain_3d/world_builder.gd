@@ -236,13 +236,13 @@ func tile_bake_key(tid: String, tier: int) -> String:
 			holes.append(pit)
 	return "tile-" + BakeCache.digest([_map_key, tid, tiles[tid].center, tiles[tid].type, holes, static_shadows.get(tid, []), urban_plazas.tiles.get(tid,[]), tier])
 
-func prepare_scenery(host: Node, model: Dictionary) -> void:
+func prepare_scenery(host: Node, model: Dictionary, prepared: Dictionary = {}) -> void:
 	var water_review := "--water-review" in OS.get_cmdline_user_args()
 	_detail_standing = model.get("standing", [])
 	_visibility_standing.clear()
 	for s in model.get("standing", []):
 		(_visibility_standing.get_or_add(str(s.tile), []) as Array).append(s)
-	var cached := bake_cache.read(_scenery_key) if _scenery_key != "" else {}
+	var cached := prepared if not prepared.is_empty() else (bake_cache.read(_scenery_key) if _scenery_key != "" else {})
 	if not cached.is_empty():
 		tree_placements = cached.trees
 		urban_plazas = cached.get("urban_plazas",{"tiles":{}})

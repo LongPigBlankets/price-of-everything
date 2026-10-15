@@ -1,5 +1,65 @@
 # Load time: what is baked, and when to re-bake it
 
+## Earlier first tiles and a staggered backdrop — 15 October 2026
+
+The first visible tiles no longer wait for three slow native dictionary loads.
+A startup supplement stores the same snapshot, transport and scenery values as
+binary Variant blocks with separate native resource handles. One low-priority
+worker decodes each block; resource links restore the original meshes, textures
+and shapes. Decoded containers belong to this board, avoiding a second model
+copy. Raw byte blocks are released after decoding. The index checks the exact
+source keys before loading its parts, and the live-input/fingerprint check still
+runs before the world can be shown. Missing or stale supplements fall back to
+the original path.
+
+The first three local tiles receive priority before the large far bake starts
+(up to 500ms, only when all tiles is selected at a local zoom). Far-backed visible
+tiles then start in groups of two every 120ms, ordered from the current camera
+outward; the group size grows at wide zoom. Each tile retains its own 1.5-second
+paper/ink/detail timeline. Moving the camera reprioritises later groups. Local
+medium tiles can start as soon as ready, without waiting for a far batch.
+
+Two fresh rendered Godot 4.6.2 Forward+/Metal runs on Apple M5 Pro, warm filesystem
+caches and distinct empty runtime-cache paths:
+
+| All-tiles click to… | Previous loader | New loader (two runs) |
+|---|---:|---:|
+| First tile starts its reveal | 4.033s | **1.281–1.336s** |
+| First fully revealed tile | 5.541s | **2.799–2.851s** |
+| Requested working set after a pan | 9.563s | **5.922–5.995s** |
+
+The owned view opens in 157ms in the first final run. Repeat switching takes
+226ms. Both final runs have zero cache misses/writes and valid visible tile
+picks. Prepared-before-click switching takes 3.462s, repeat switching 343ms, and
+returning after all 45 inactive detail tiles retire takes 1.695s. Owned-view
+frame p95 during background preparation is 9.45ms (maximum 108ms). Frame p95 is 35–38ms; maximum 265–269ms. The existing first-use rendering
+hitch remains. These are fresh-process warm-filesystem samples, not cold-disk
+guarantees. Simultaneous native reads were rejected after making first completion
+slower (10.182s); the shipped path reads the compact parts sequentially.
+
+The installed supplement adds **111,524,585 bytes (106.4 MiB)** across four files;
+no individual file exceeds 65MB. The complete package is **600 tiles / 1,845
+resources / 2,031,205,059 bytes**. Existing terrain, roads, scenery, sprites and
+source fingerprints are unchanged. Validation compares every decoded value,
+mesh/shape and texture against its source bake as well as checking resource
+hashes. Existing source resources remain available for ordinary loading/fallback.
+
+`bake_world_snapshot.tscn` now refreshes this supplement automatically. To repackage
+an already valid snapshot without rendering or regenerating artwork, run from
+the project directory:
+
+```bash
+godot --headless --path . --log-file /private/tmp/startup-bundle.log \
+  res://tools/supply_chain_3d/bake_startup_bundle.tscn -- --no-telemetry
+```
+
+All **132 focused assertions pass**, including private decoded state, stale index
+rejection, concurrent/staggered tile clocks, camera controls, collision and resource
+retention. The snapshot and startup bake tools also pass a headless compile check.
+
+Then run the separate package validator and fresh-process checks below. Evidence:
+`outputs/supply-chain-3d/early-reveal/{baseline,final,repeat,prepared}/`.
+
 ## Timed empty-paper → ink → detail reveal — 15 October 2026
 
 Each drawable tile now receives one **1.5-second** sequence: empty paper for

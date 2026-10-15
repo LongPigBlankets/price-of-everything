@@ -88,6 +88,15 @@ static func validate(directory: String, host: Node) -> Dictionary:
 		var snapshot := cache.read(str(manifest.world_snapshot_key))
 		if not preload("res://scripts/supply_chain_3d/world_snapshot.gd").matches(snapshot, str(snapshot.get("input_key", "")), manifest):
 			result.errors.append("Missing/stale prepared world snapshot")
+		if manifest.has("world_startup_key"):
+			var codec := preload("res://scripts/supply_chain_3d/startup_bundle.gd")
+			var index := cache.read(str(manifest.world_startup_key))
+			var startup := {}
+			if codec.index_matches(index,manifest):
+				startup.keys=index.keys
+				for part in ["snapshot","transport","scenery"]: startup[part]=codec.unpack(cache.read(index.parts[part]))
+			if not codec.matches(startup,manifest) or not same_payload(startup.get("snapshot"),snapshot) or not same_payload(startup.get("transport"),transport) or not same_payload(startup.get("scenery"),scenery):
+				result.errors.append("Missing/stale startup bundle or changed source values")
 	if transport.get("version",-1)!=preload("res://scripts/supply_chain_3d/transport_bake.gd").VERSION or not transport.get("roads") is Array:
 		result.errors.append("Missing prepared transport engineering")
 	for key in manifest.get("rail_layout_keys",[]):
@@ -143,6 +152,10 @@ static func validate(directory: String, host: Node) -> Dictionary:
 ## Compare generated payloads, not resource identities. A regional edit changes
 ## the global root key; identical per-tile resources can retain their old keys.
 static func same_payload(a: Variant, b: Variant) -> bool:
+	if a is Texture2D and b is Texture2D:
+		if a==b: return true
+		var first: Image = a.get_image(); var second: Image = b.get_image()
+		return first!=null and second!=null and first.get_size()==second.get_size() and first.get_format()==second.get_format() and first.has_mipmaps()==second.has_mipmaps() and first.get_data()==second.get_data()
 	if a is Mesh and b is Mesh:
 		if a.get_surface_count() != b.get_surface_count(): return false
 		for i in a.get_surface_count():

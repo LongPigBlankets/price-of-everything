@@ -145,10 +145,22 @@ func _start_tile_reveal(builder: RefCounted, tid: String) -> void:
 
 func _start_backdrop_reveals(builder: RefCounted) -> void:
 	if builder.loading_reveal == null or not builder.loading_reveal.active: return
+	var now := Time.get_ticks_msec()
+	if now<builder.loading_reveal.next_backdrop_msec: return
 	var visible_tiles := _visible_paper_tiles()
+	var ordered: Array = []
 	for tid in builder.tiles:
-		if visible_tiles.has(tid): _start_tile_reveal(builder,tid)
+		if builder.loading_reveal.complete.has(tid) or builder.loading_reveal.elapsed.has(tid): continue
+		if visible_tiles.has(tid): ordered.append(tid)
 		else: builder.loading_reveal.skip(tid)
+	var focus := Vector2(_rig.target.x,_rig.target.z)
+	ordered.sort_custom(func(a,b): return (builder.tiles[a].center as Vector2).distance_squared_to(focus)<(builder.tiles[b].center as Vector2).distance_squared_to(focus))
+	# The far resource arrives as one object, but should not replace every paper
+	# tile in the same frame. Spread it outward, following the current camera.
+	# Scale the batch at very wide zoom so a whole continent does not take minutes.
+	var budget := maxi(2,ceili(visible_tiles.size()/20.0))
+	for tid in builder.loading_reveal.backdrop_batch(ordered,now,budget):
+		if is_instance_valid(_paper) and _loading_ink.has(tid): _paper.draw_tile(tid,_loading_ink[tid])
 
 func _tile_is_paper(tid: String) -> bool:
 	return _builder != null and _builder.loading_reveal != null and _builder.loading_reveal.active and not _builder.loading_reveal.complete.has(tid)
@@ -156,6 +168,7 @@ func _tile_is_paper(tid: String) -> bool:
 func _advance_tile_reveals(delta: float) -> void:
 	if _builder == null or _builder.loading_reveal == null or not _requested_all_tiles: return
 	var reveal: RefCounted = _builder.loading_reveal
+	if reveal.active and not _builder.backdrop_pending: _start_backdrop_reveals(_builder)
 	if reveal.active: reveal.advance(delta,true)
 	if is_instance_valid(_paper):
 		for tid in reveal.elapsed: _paper.set_time(tid,reveal.elapsed[tid])
@@ -1327,7 +1340,12 @@ func _stream_visible() -> void:
 	_streaming = false
 
 func detail_ready() -> bool:
-	return not _building and not _streaming and (_builder == null or (not _builder.handover.active and (_builder.loading_reveal == null or _builder.loading_reveal.elapsed.is_empty())))
+	if _building or _streaming: return false
+	if _builder == null: return true
+	if _builder.handover.active: return false
+	var reveal: RefCounted = _builder.loading_reveal
+	# A loaded backdrop can still have queued reveals between batches.
+	return reveal == null or not reveal.active or (_builder.backdrop_pending and reveal.elapsed.is_empty())
 
 func _update_goods() -> void:
 	for item in _goods:
