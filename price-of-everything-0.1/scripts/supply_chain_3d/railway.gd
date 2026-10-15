@@ -21,6 +21,16 @@ const STEEL := Color("cad0cc")
 const WEB := Color("485359")
 const GIRDER := Color("536a65")
 const CONCRETE := Color("a8aa9b")
+const CONCRETE_FACE := Color("969889")
+## River crossings: a through truss (steel) on concrete abutments and piers.
+const TRUSS := Color("4f625d")
+const TRUSS_HEIGHT := 6.5
+const TRUSS_PANEL := 7.0
+const TRUSS_OFFSET := CORRIDOR_WIDTH * 0.5 + 1.1
+## Track this far beyond the water either side still stands on the bridge.
+const RIVER_PAD := 7.0
+## A river pier stands at most this far from the next support.
+const PIER_SPACING := 38.0
 
 static func is_rail(mode: String) -> bool:
 	return mode in ["rail", "rails"]
@@ -281,6 +291,8 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 	for i in shared_crossings.size():
 		Index.insert(crossing_index, Rect2(shared_crossings[i].p, Vector2.ZERO).grow(APPROACH + shared_crossings[i].half), i)
 	var tunnels := _tunnel_profiles(plan,roads,height,level_at,shared_crossings,road_index,crossing_index,crossing_height,burial,rail_profile)
+	var river: Callable = context.get("river",Callable())
+	var river_spans: Array = _river_spans(tunnels.profiles, river)
 	for path in plan.paths:
 		var prof := profile(path.points, roads, height, level_at, shared_crossings, HALF + 0.8, road_index, crossing_index, false, crossing_height, burial, rail_profile)
 		var shared: Array=tunnels.profiles[path.pair_id].samples
@@ -289,6 +301,7 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 			prof.samples[i].hidden=shared[i].hidden
 			prof.samples[i].h=shared[i].h
 			prof.samples[i].bridge=shared[i].bridge
+			prof.samples[i].river=shared[i].get("river",false)
 		profiles.append(prof)
 	var height_index := {}
 	for prof in profiles:
@@ -343,12 +356,16 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 					var left := _lerp_sample(a, b, cuts[k - 1]); var right := _lerp_sample(a, b, cuts[k])
 					_strip(fittings, left, right, sign_v * GAUGE * 0.5, 0.95 * WIDTH_SCALE, 0.8, WEB, origin)
 					_strip(fittings, left, right, sign_v * GAUGE * 0.5, 0.48 * WIDTH_SCALE, 1.25, STEEL, origin)
-			if a.bridge or b.bridge:
-				_strip(bed, a, b, 0, HALF * 2 + 3.5, -0.5, GIRDER, origin)
+			if a.get("river", false) and b.get("river", false):
+				# The deck under each track; the truss and its slab are drawn per corridor.
+				_strip(bed, a, b, 0, HALF * 2 + 3.5, -0.5, CONCRETE, origin)
+			elif a.bridge or b.bridge:
+				# Over a road: a plain concrete deck with low parapets.
+				_strip(bed, a, b, 0, HALF * 2 + 3.5, -0.5, CONCRETE, origin)
 				for sign_v in [-1.0, 1.0]:
 					var n: Vector2 = a.dir.orthogonal() * sign_v * (HALF + 1.0)
 					var m: Vector2 = b.dir.orthogonal() * sign_v * (HALF + 1.0)
-					bed.quad(_v(a.p + n, a.h - DECK_DEPTH, origin), _v(b.p + m, b.h - DECK_DEPTH, origin), _v(b.p + m, b.h + 1.5, origin), _v(a.p + n, a.h + 1.5, origin), GIRDER)
+					bed.quad(_v(a.p + n, a.h - DECK_DEPTH, origin), _v(b.p + m, b.h - DECK_DEPTH, origin), _v(b.p + m, b.h + 1.0, origin), _v(a.p + n, a.h + 1.0, origin), CONCRETE_FACE)
 			# Fixed arc-length spacing; no pile of sleepers at every curve subdivision.
 			var station := ceilf(float(a.s) / 6.0) * 6.0
 			if station >= float(b.s): continue
@@ -370,6 +387,7 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 				if float(level_at.call(p)) >= TUNNEL_LEVEL: continue
 				var base := float(height.call(p))
 				bed.box(_v(p, (base + float(c.h) - DECK_DEPTH) * 0.5, origin), Vector3(2.4, maxf(1, float(c.h) - DECK_DEPTH - base), 2.4), CONCRETE)
+	for span in river_spans: _truss_bridge(bed, span, origin, soil_height)
 	for frog in frogs.guards:
 		if not _clear(frog.p, level_at, 5.0): continue
 		var n: Vector2 = frog.dir.orthogonal() * 0.9
@@ -413,7 +431,7 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 		var n: Vector2 = buffer.dir.orthogonal() * 4.2 * WIDTH_SCALE
 		fittings.tube(_v(buffer.p - n, h + 3.3, origin), _v(buffer.p + n, h + 3.3, origin), 0.85, Color("a9694e"), 4)
 		for sign_v in [-1, 1]: fittings.tube(_v(buffer.p + n * sign_v, h, origin), _v(buffer.p + n * sign_v, h + 3.3, origin), 0.6, WEB, 4)
-	return {"bed": bed.mesh(), "overview": overview.mesh(), "detail": fittings.mesh(), "plan": plan, "profiles": profiles, "portals": portals, "visible_segments": visible_segments, "flangeways": frogs.gaps.size(), "track_vertex_count":track_vertex_count, "corridor_profiles":tunnels.profiles}
+	return {"bed": bed.mesh(), "overview": overview.mesh(), "detail": fittings.mesh(), "plan": plan, "profiles": profiles, "portals": portals, "visible_segments": visible_segments, "flangeways": frogs.gaps.size(), "track_vertex_count":track_vertex_count, "corridor_profiles":tunnels.profiles, "river_bridges": river_spans.size()}
 
 ## Cover a whole junction when its switchwork meets a mountain/urban bore.
 ## Portals then sit on the two-track approaches, before any fan of movements.
@@ -541,3 +559,98 @@ static func _clear(p: Vector2, level_at: Callable, radius: float) -> bool:
 	for i in 8:
 		if float(level_at.call(p + Vector2.RIGHT.rotated(i * PI / 4.0) * radius)) >= TUNNEL_LEVEL: return false
 	return true
+
+## Runs of corridor samples over a river (plus RIVER_PAD of bank either side) are bridges:
+## they take no embankment, and draw a truss. Returns one span per run.
+static func _river_spans(profiles: Array, river: Callable) -> Array:
+	var spans: Array = []
+	if not river.is_valid(): return spans
+	for prof in profiles:
+		var samples: Array = prof.samples
+		var on := PackedByteArray(); on.resize(samples.size())
+		for i in samples.size():
+			if samples[i].hidden or not bool(river.call(samples[i].p, 2.0)): continue
+			var j := i
+			while j > 0 and float(samples[i].s) - float(samples[j - 1].s) <= RIVER_PAD and not samples[j - 1].hidden: j -= 1
+			var k := i
+			while k < samples.size() - 1 and float(samples[k + 1].s) - float(samples[i].s) <= RIVER_PAD and not samples[k + 1].hidden: k += 1
+			for m in range(j, k + 1): on[m] = 1
+		var start := -1
+		for i in samples.size() + 1:
+			var inside := i < samples.size() and on[i] == 1
+			if inside and start < 0: start = i
+			if not inside and start >= 0:
+				if i - start >= 2:
+					for m in range(start, i):
+						samples[m].bridge = true; samples[m].river = true
+					spans.append({"samples": samples.slice(start, i)})
+				start = -1
+	return spans
+
+## A box standing on `p`, long axis along `dir`.
+static func _block(batch: RefCounted, p: Vector2, dir: Vector2, half_length: float, half_width: float, z0: float, z1: float, color: Color, origin: Vector2) -> void:
+	var n := dir.orthogonal()
+	var c := [p - dir * half_length - n * half_width, p + dir * half_length - n * half_width,
+		p + dir * half_length + n * half_width, p - dir * half_length + n * half_width]
+	for i in 4:
+		var a: Vector2 = c[i]; var b: Vector2 = c[(i + 1) % 4]
+		batch.quad(_v(a, z0, origin), _v(b, z0, origin), _v(b, z1, origin), _v(a, z1, origin), color)
+	batch.quad(_v(c[0], z1, origin), _v(c[1], z1, origin), _v(c[2], z1, origin), _v(c[3], z1, origin), color)
+
+static func _span_sample(samples: Array, s: float) -> Dictionary:
+	for i in range(1, samples.size()):
+		if float(samples[i].s) >= s:
+			var t := (s - float(samples[i - 1].s)) / maxf(0.001, float(samples[i].s) - float(samples[i - 1].s))
+			return _lerp_sample(samples[i - 1], samples[i], clampf(t, 0.0, 1.0))
+	return samples[-1]
+
+## A double-track through truss: concrete deck slab, two Pratt trusses with inclined end
+## posts, top lateral struts, concrete abutments at both banks and piers in the water.
+static func _truss_bridge(batch: RefCounted, span: Dictionary, origin: Vector2, ground: Callable) -> void:
+	var samples: Array = span.samples
+	var s0 := float(samples[0].s); var s1 := float(samples[-1].s)
+	var length := s1 - s0
+	if length < 6.0: return
+	# Deck slab under both tracks, with concrete fascias.
+	for i in range(1, samples.size()):
+		var a: Dictionary = samples[i - 1]; var b: Dictionary = samples[i]
+		var na: Vector2 = a.dir.orthogonal() * TRUSS_OFFSET; var nb: Vector2 = b.dir.orthogonal() * TRUSS_OFFSET
+		for sign_v in [-1.0, 1.0]:
+			batch.quad(_v(a.p + na * sign_v, a.h - DECK_DEPTH - 0.6, origin), _v(b.p + nb * sign_v, b.h - DECK_DEPTH - 0.6, origin),
+				_v(b.p + nb * sign_v, b.h + 0.2, origin), _v(a.p + na * sign_v, a.h + 0.2, origin), CONCRETE_FACE)
+		batch.quad(_v(a.p - na, a.h - DECK_DEPTH - 0.6, origin), _v(b.p - nb, b.h - DECK_DEPTH - 0.6, origin),
+			_v(b.p + nb, b.h - DECK_DEPTH - 0.6, origin), _v(a.p + na, a.h - DECK_DEPTH - 0.6, origin), CONCRETE_FACE)
+	# Panel points: an even number of panels, at least two.
+	var panels := maxi(2, int(round(length / TRUSS_PANEL / 2.0)) * 2)
+	var points: Array = []
+	for k in panels + 1: points.append(_span_sample(samples, s0 + length * float(k) / panels))
+	for sign_v in [-1.0, 1.0]:
+		var low: Array = []; var high: Array = []
+		for q in points:
+			var n: Vector2 = (q.dir as Vector2).orthogonal() * TRUSS_OFFSET * sign_v
+			low.append(_v(q.p + n, float(q.h) + 0.3, origin))
+			high.append(_v(q.p + n, float(q.h) + TRUSS_HEIGHT, origin))
+		for k in panels: batch.tube(low[k], low[k + 1], 0.42, TRUSS, 4)          # bottom chord
+		for k in range(1, panels - 1): batch.tube(high[k], high[k + 1], 0.48, TRUSS, 4)  # top chord
+		batch.tube(low[0], high[1], 0.48, TRUSS, 4)                                  # end posts
+		batch.tube(low[panels], high[panels - 1], 0.48, TRUSS, 4)
+		for k in range(1, panels): batch.tube(low[k], high[k], 0.28, TRUSS, 4)       # verticals
+		var middle := panels / 2
+		for k in range(1, panels - 1):
+			# Pratt: diagonals fall toward mid-span.
+			if k < middle: batch.tube(high[k], low[k + 1], 0.24, TRUSS, 4)
+			else: batch.tube(low[k], high[k + 1], 0.24, TRUSS, 4)
+	# Top lateral struts between the two trusses.
+	for k in range(1, panels):
+		if k % 2 == 1 or k == panels - 1:
+			var q: Dictionary = points[k]; var n: Vector2 = (q.dir as Vector2).orthogonal() * TRUSS_OFFSET
+			batch.tube(_v(q.p - n, float(q.h) + TRUSS_HEIGHT, origin), _v(q.p + n, float(q.h) + TRUSS_HEIGHT, origin), 0.26, TRUSS, 4)
+	# Concrete abutments at both banks, piers in between at most PIER_SPACING apart.
+	for end in [samples[0], samples[-1]]:
+		var base := float(ground.call(end.p)) - 2.0
+		_block(batch, end.p, end.dir, 2.2, TRUSS_OFFSET + 1.4, base, float(end.h) - DECK_DEPTH - 0.6, CONCRETE, origin)
+	var piers := int(floor(length / PIER_SPACING))
+	for k in range(1, piers + 1):
+		var q: Dictionary = _span_sample(samples, s0 + length * float(k) / (piers + 1))
+		var base := float(ground.call(q.p)) - 3.0
+		_block(batch, q.p, q.dir, 1.4, TRUSS_OFFSET + 0.6, base, float(q.h) - DECK_DEPTH - 0.6, CONCRETE, origin)
