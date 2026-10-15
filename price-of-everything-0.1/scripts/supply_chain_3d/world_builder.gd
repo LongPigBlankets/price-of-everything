@@ -158,7 +158,7 @@ func prepare_transport(model: Dictionary) -> void:
 		road_grade.configure(roads,formation_height,authored_profile)
 		stages.grading_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
 		rail_plan=Railway.network(lines)
-		rail_urban.configure(tiles,road_grade.segments,road_grade.junctions,rail_plan,depots,railway_ground_height,railway_level,stations,model.get("standing",[]),standing_key)
+		rail_urban.configure(tiles,road_grade.segments,road_grade.junctions,rail_plan,depots,railway_ground_height,railway_level,stations,model.get("standing",[]),standing_key,river_at)
 		road_grade.bridge_rail_junctions(rail_plan,railway_ground_height,rail_urban.buried)
 		preload("res://scripts/supply_chain_3d/rail_crossings.gd").build(road_grade,rail_plan,rail_urban,depots)
 		stages.rail_ms=(Time.get_ticks_usec()-tick)/1000.0
@@ -1397,6 +1397,16 @@ func railway_level(p: Vector2) -> float:
 		if ground.height(p)>=Ground.Relief.BAND_LEVEL[band]: return float(band-1)
 	return 0.0
 
+## True over a river's water, with `margin` either side: where rail must be on a bridge.
+## (`_river_buckets` stores a generous half-width for bank grading; the water itself is
+## RIVER_BANK_MARGIN narrower.)
+const RIVER_BANK_MARGIN := 17.0
+func river_at(p: Vector2, margin: float = 4.0) -> bool:
+	for segment in _river_buckets.get(Vector2i((p / 128.0).floor()), []):
+		var water: float = float(segment.half) - RIVER_BANK_MARGIN + margin
+		if Geometry2D.get_closest_point_to_segment(p, segment.a, segment.b).distance_squared_to(p) < water * water: return true
+	return false
+
 ## Preserve river crossings without inheriting nearby authored road bridge grades.
 func railway_ground_height(p: Vector2) -> float:
 	var h := depot_height(p,natural_height(p))
@@ -1418,7 +1428,7 @@ func railway_earth_color(display_height: float) -> Color:
 func _prepare_rail_art() -> void:
 	if not _prepared_rail_art.is_empty(): return
 	_prepared_rail_art = Railway.build(lines, road_grade.segments if transport_ready else roads, railway_ground_height, railway_level, origin,
-		true, railway_earth_color, road_height, surface_height, {"plan": rail_plan, "burial": rail_urban.profile, "rail_profile":rail_urban.track_profile} if transport_ready else {})
+		true, railway_earth_color, road_height, surface_height, {"plan": rail_plan, "burial": rail_urban.profile, "rail_profile":rail_urban.track_profile, "river": river_at} if transport_ready else {"river": river_at})
 
 func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = true) -> Node3D:
 	var root := Node3D.new()

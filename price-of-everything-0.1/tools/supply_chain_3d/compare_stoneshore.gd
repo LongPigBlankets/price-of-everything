@@ -244,6 +244,16 @@ func _interior_audit(board: Control) -> Dictionary:
 			if Geometry2D.is_point_in_polygon(tree.pos,site.polygon): result.parcel_intrusions.append([site.id,"tree"])
 	return result
 
+## Two footprints overlap or touch (within 0.001u). Polygon clipping, not a ray-cast
+## point test: identical modules in a row put the ray through matching vertices.
+static func _touching(poly: PackedVector2Array, shape: PackedVector2Array) -> bool:
+	if not Geometry2D.intersect_polygons(poly,shape).is_empty(): return true
+	for k in poly.size():
+		for m in shape.size():
+			var pair := Geometry2D.get_closest_points_between_segments(poly[k],poly[(k+1)%poly.size()],shape[m],shape[(m+1)%shape.size()])
+			if pair[0].distance_to(pair[1])<0.001: return true
+	return false
+
 func _footprint_audit(board: Control) -> Dictionary:
 	var fit: GDScript=preload("res://scripts/supply_chain_3d/road_placement.gd")
 	var walks: GDScript=preload("res://scripts/supply_chain_3d/urban_sidewalks.gd")
@@ -264,9 +274,8 @@ func _footprint_audit(board: Control) -> Dictionary:
 			for j in range(i+1,standing.size()):
 				var other: Dictionary=standing[j]
 				for shape in other.get("footprints",[]):
-					var overlap := Geometry2D.is_point_in_polygon(shape[0],poly)
-					for k in poly.size(): overlap=overlap or fit.distance_to_polygon(poly[k],poly[(k+1)%poly.size()],shape)<0.001
-					if overlap: result.building_overlaps.append([s.iid,other.iid])
+					if not fit.polygon_bounds(poly).grow(0.01).intersects(fit.polygon_bounds(shape)): continue
+					if _touching(poly,shape): result.building_overlaps.append([s.iid,other.iid])
 	return result
 
 func _docks_rail_audit(board: Control) -> Dictionary:

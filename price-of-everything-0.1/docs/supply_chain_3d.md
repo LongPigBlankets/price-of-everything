@@ -2725,3 +2725,54 @@ runs. The layout snapshot retains that memo; downstream scenery and local farm
 geometry include the enlarged footprint in their keys. Crop instances and far
 ribbons continue to use the existing shared layout. Close, medium and regional
 comparisons are in `outputs/supply-chain-3d/stoneshore-riverside-farm/`.
+
+### Rail river bridges, Fields junction and crossing mix (15 October 2026)
+
+**River crossings.** Rail now crosses rivers on a steel truss: a concrete deck with
+fascias, Pratt trusses on both sides (inclined end posts, verticals, diagonals,
+top lateral struts), concrete abutments and piers at most 38u apart. Rail over a
+road is a plain concrete deck with concrete parapets. The tunnel datum solver
+(`rail_elevation.gd`) marks track over water (`world_builder.river_at`) and holds it
+at natural grade; neighbouring track may only fall away at 12% beyond a 12u
+shoulder, so a nearby bore's approach can no longer drag the line below the
+river. Covered track that this lifts close to the surface is uncovered.
+
+**Routing.** Each river crossing adds 6,000 to a line's route cost, so lines take
+one bridge instead of following a meander. A line that still crosses more than
+once also tries gentle S-curves (control points bending independently, never
+more than 125u apart; sharper ones loop when filleted). Rivers run through tile
+centres, so a centred anchor put the junction fan on the water: anchors now keep
+130u clear of a river. This moved tile_9_8 north of Greyroad from the river bank
+to (4450,4560), removing its covered junction under a 119.5u road deck. The
+line from tile_9_8 down to Greyroad no longer crosses the river; tile_9_7–tile_9_8
+and tile_8_7–tile_9_8 still cross it twice, the other Greyroad lines once or not
+at all. tile_6_9's anchor moved to (3197,5372) and neither of its eastern lines
+crosses the river.
+
+**Stoneshore Fields junction.** The tile_5_9 anchor moves from the town's central
+road junction to open ground at the tile's north-east edge, (2820,4830), clear of
+streets and of the tile_5_9 farm (22.5u). A search of the hex, scoring road cells
+within 100u and the first 300u of each line, found two clear spots at the north
+edge; the north-west one sits on that farm. The line to tile_5_10 has two
+hand-placed via points (`LINE_VIAS`): it crosses the six-lane avenue square on at
+(2835,5032), then turns west north of the tile_5_10 grove and rejoins its old
+covered corridor under the north–south street at (2700,5200). Routed freely, it cut
+through the grove block and dropped tile_5_10's canopy from 8.9% to 6.3%. Inside a
+junction fan, two-lane roads now cross at level; only four- and six-lane roads
+still take a deck there.
+
+| Treatment | Crossing centres in the five trial tiles |
+|---|---|
+| Road bridge, six-lane road | (2692,4936), (2835,5032) |
+| Road bridge, four-lane road through a junction fan | (2704,4814), (2832,4947) |
+| Road bridge, depot throat | (2817,5505), (2897,5331) |
+| Level crossing, two-lane road | (2608,4804), (2541,5338) |
+| Already covered rail | six sites |
+
+Road decks over rail in Fields and tile_5_10 total about 170u, down from about
+318u, and each spans about 22u except the 58u depot throat. The north–south street
+through Fields is no longer raised. A street-avoidance routing cost was tried and
+withdrawn: in a dense authored town the only building-free corridors are the
+streets, and it moved the tile_5_10 depot. The rail layout cache is version 7. Regions outside the five trial tiles
+change too (anchors near rivers, river-aware routes); the whole-continent
+package has not been rebaked.

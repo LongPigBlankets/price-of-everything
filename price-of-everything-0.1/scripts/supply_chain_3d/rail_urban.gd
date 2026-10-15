@@ -19,7 +19,7 @@ var components: Array = []
 var tracks: Array = []
 var track_buckets := {}
 
-func configure(tiles: Dictionary, roads: Array, junctions: Array, plan: Dictionary, yards: Array = [], height: Callable = Callable(), level: Callable = Callable(), stations: Array = [], standing: Array = [], key_for: Callable = Callable()) -> void:
+func configure(tiles: Dictionary, roads: Array, junctions: Array, plan: Dictionary, yards: Array = [], height: Callable = Callable(), level: Callable = Callable(), stations: Array = [], standing: Array = [], key_for: Callable = Callable(), river: Callable = Callable()) -> void:
 	depots = yards
 	solved=false; components.clear()
 	centers.clear(); busy.clear(); buckets.clear(); tracks.clear(); track_buckets.clear(); distance_field.clear()
@@ -39,7 +39,7 @@ func configure(tiles: Dictionary, roads: Array, junctions: Array, plan: Dictiona
 	if height.is_valid() and level.is_valid():
 		var clearance := preload("res://scripts/supply_chain_3d/rail_clearance.gd").new()
 		clearance.configure(plan,roads,standing,tiles,depots,key_for)
-		var result := Elevation.solve(plan,height,level,func(p): return distance(p)<=COVER,yard_distance,stations,clearance.covered)
+		var result := Elevation.solve(plan,height,level,func(p): return distance(p)<=COVER,yard_distance,stations,clearance.covered,river)
 		tracks=result.tracks; components=result.components; solved=true
 		for i in tracks.size(): Index.insert(track_buckets,Index.bounds(tracks[i].a,tracks[i].b,Rail.CORRIDOR_WIDTH*0.5+14),i)
 		return
