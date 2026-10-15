@@ -30,7 +30,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	manifest.world_snapshot_key = key
 	manifest.resources[key] = Package.file_record(directory, key)
 	manifest.auxiliary_keys = auxiliary
-	preload("res://tools/supply_chain_3d/bake_startup_bundle.gd").install(directory,manifest)
+	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify(manifest, "\t") + "\n")
 	var report := await Package.validate(directory, self)
 	report.world_snapshot_key = key
 	report.snapshot_bytes = manifest.resources[key].bytes

@@ -100,26 +100,20 @@ func _test_background_material_does_not_regrade_owned_view() -> void:
 		"Background continent: preparing a second world cannot change the current world's sprite shading")
 
 func _test_background_startup_bundle_preserves_values_and_resources() -> void:
-	var codec := preload("res://scripts/supply_chain_3d/startup_bundle.gd")
+	var codec := preload("res://scripts/supply_chain_3d/bake_values.gd")
 	var mesh := ArrayMesh.new()
 	var values := {"nested":[{Vector2i(2,3):mesh},null,mesh],"numbers":PackedFloat32Array([1.5,7.0])}
 	var packed := codec.pack(values)
 	var job := Load.new()
-	var decoded := await job.unpack_startup(get_tree(),packed)
+	var resource := Load.Cache.Data.new(); resource.encoded_values=packed
+	var decoded := await job.decode_resource(get_tree(),resource,true)
 	_check(decoded==values and packed.resources.size()==1, "Startup encoding preserves vector keys, packed arrays, nulls and shared mesh identity")
 	decoded.nested.append("local")
 	_check(values.nested.size()==3 and codec.unpack(packed).nested.size()==3, "Each startup decode owns its containers and cannot mutate another board or the saved payload")
 	job.cancelled=true
-	_check((await job.unpack_startup(get_tree(),packed)).is_empty(), "Cancelled startup decoding cannot publish a world")
+	_check((await job.decode_resource(get_tree(),resource,true)).is_empty(), "Cancelled startup decoding cannot publish a world")
 	packed.resources.clear()
 	_check(codec.unpack(packed).is_empty(), "An incomplete resource table rejects the startup package")
-	var manifest := {"world_snapshot_key":"world","transport_key":"roads","scenery_key":"trees","resources":{"a":{},"b":{},"c":{}}}
-	var index := {"version":codec.VERSION,"keys":{"world_snapshot_key":"world","transport_key":"roads","scenery_key":"trees"},"parts":{"snapshot":"a","transport":"b","scenery":"c"}}
-	_check(codec.index_matches(index,manifest), "A startup index must refer to the current package's exact dependencies")
-	manifest.transport_key="new-roads"
-	_check(not codec.index_matches(index,manifest), "Changing transport rejects an older startup index before its payload is used")
-	manifest.transport_key="roads"; manifest.resources.erase("b")
-	_check(not codec.index_matches(index,manifest), "A partially installed startup package falls back to the existing native bakes")
 
 func _test_background_backdrop_reveals_in_camera_order() -> void:
 	var reveal := preload("res://scripts/supply_chain_3d/tile_reveal.gd").new()

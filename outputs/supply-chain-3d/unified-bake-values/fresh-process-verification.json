@@ -1,0 +1,18 @@
+{
+  "final": {
+    "runtime_cache_directory_exists": false,
+    "script_or_assertion_errors": []
+  },
+  "repeat": {
+    "runtime_cache_directory_exists": false,
+    "script_or_assertion_errors": []
+  },
+  "prepared": {
+    "runtime_cache_directory_exists": false,
+    "script_or_assertion_errors": []
+  },
+  "ordinary": {
+    "runtime_cache_directory_exists": false,
+    "script_or_assertion_errors": []
+  }
+}

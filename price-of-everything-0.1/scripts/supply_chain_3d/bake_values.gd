@@ -24,7 +24,7 @@ static func _values(value: Variant, path: Array, resources: Array[Resource], ids
 		var result: Array = []
 		for i in value.size(): result.append(_values(value[i],path+[i],resources,ids,links))
 		return result
-	assert(not value is Object, "Startup bundles may contain resources, never live scene objects")
+	assert(not value is Object, "Bake values may contain resources, never live scene objects")
 	return value
 
 static func unpack(payload: Dictionary) -> Dictionary:
@@ -50,19 +50,3 @@ static func unpack(payload: Dictionary) -> Dictionary:
 			if i==path.size()-1: target[key]=payload.resources[index]
 			else: target=target[key]
 	return result
-
-static func matches(data: Dictionary, manifest: Dictionary) -> bool:
-	for field in ["world_snapshot_key","transport_key","scenery_key"]:
-		if str(manifest.get(field,"")).is_empty() or data.get("keys",{}).get(field,"")!=manifest.get(field,""): return false
-	for part in ["snapshot","transport","scenery"]:
-		if not data.get(part) is Dictionary or data[part].is_empty(): return false
-	return true
-
-static func index_matches(index: Dictionary, manifest: Dictionary) -> bool:
-	if index.get("version",-1)!=VERSION: return false
-	for field in ["world_snapshot_key","transport_key","scenery_key"]:
-		if str(manifest.get(field,"")).is_empty() or index.get("keys",{}).get(field,"")!=manifest.get(field,""): return false
-	for part in ["snapshot","transport","scenery"]:
-		var key := str(index.get("parts",{}).get(part,""))
-		if key.is_empty() or not manifest.get("resources",{}).has(key): return false
-	return true

@@ -1,7 +1,6 @@
 extends RefCounted
 const Snapshot := preload("res://scripts/supply_chain_3d/world_snapshot.gd")
 const Builder := preload("res://scripts/supply_chain_3d/world_builder.gd")
-const Bundle := preload("res://scripts/supply_chain_3d/startup_bundle.gd")
 const Sprites := preload("res://scripts/supply_chain_3d/far_sprites.gd")
 
 static func prepare(board: Control, job: RefCounted, generation: int) -> Dictionary:
@@ -22,28 +21,9 @@ static func prepare(board: Control, job: RefCounted, generation: int) -> Diction
 	var input_key: String = await job.digest(tree, context)
 	job.profile.digest_ready_ms = (Time.get_ticks_usec()-started)/1000.0
 	if job.cancelled: return {}
-	var startup := {}
-	var startup_key := str(manifest.get("world_startup_key",""))
-	if not startup_key.is_empty():
-		var index: Dictionary = await job.bake(tree,cache,startup_key)
-		if Bundle.index_matches(index,manifest):
-			startup.keys=index.keys
-			for part in ["snapshot","transport","scenery"]:
-				var read_started := Time.get_ticks_usec()
-				var payload: Dictionary = await job.bake(tree,cache,index.parts[part])
-				job.profile[part+"_read_ms"]=(Time.get_ticks_usec()-read_started)/1000.0
-				var decoded := Time.get_ticks_usec()
-				startup[part] = await job.unpack_startup(tree,payload)
-				job.profile[part+"_decode_ms"]=(Time.get_ticks_usec()-decoded)/1000.0
-				# Decoded values retain their mesh/texture handles. Release the raw
-				# byte blocks rather than keeping a second layout copy until streaming ends.
-				payload={}
-				for directory in [cache.bundled_directory,cache.directory]:
-					job.resources.erase(str(directory).path_join(str(index.parts[part])+".res"))
-				if job.cancelled: return {}
-		if not Bundle.matches(startup,manifest): startup={}
-	if job.cancelled: return {}
-	var data: Dictionary = startup.snapshot if not startup.is_empty() else await job.bake(tree,cache,key)
+	# The canonical bake is already encoded for fast loading. Private decoding
+	# detaches live layout values without a second native-format copy on disk.
+	var data: Dictionary = await job.bake(tree,cache,key,true)
 	job.profile.snapshot_ready_ms = (Time.get_ticks_usec()-started)/1000.0
 	if job.cancelled or not Snapshot.matches(data, input_key, manifest): return {}
 	board._loading_ink = data.ink
@@ -55,10 +35,7 @@ static func prepare(board: Control, job: RefCounted, generation: int) -> Diction
 	builder.progressive_manifest = manifest.tiles
 	builder.ground = owner.ground
 	builder.terrain_cache = board._terrain_cache
-	job.stage = "copy prepared model"
-	# The binary decoder already created private containers; the older native
-	# snapshot remains shared and still needs its detached copy.
-	var model: Dictionary = data.model if not startup.is_empty() else await job.copy_model(tree,data.model)
+	var model: Dictionary = data.model
 	if job.cancelled or model.is_empty(): return {}
 	builder.tiles = model.tiles
 	builder.loading_reveal = preload("res://scripts/supply_chain_3d/tile_reveal.gd").new()
@@ -75,15 +52,12 @@ static func prepare(board: Control, job: RefCounted, generation: int) -> Diction
 	builder.base_ready = false
 	for field in Snapshot.KEY_FIELDS: builder.set(field, data.keys[field])
 	job.profile.model_setup_ms = (Time.get_ticks_usec()-setup_started)/1000.0
-	var transport: Dictionary = startup.get("transport",{})
-	var scenery: Dictionary = startup.get("scenery",{})
-	if startup.is_empty():
-		var dependency_started := Time.get_ticks_usec()
-		transport = await job.bake(tree,builder.bake_cache,builder.transport_key)
-		job.profile.transport_load_ms = (Time.get_ticks_usec()-dependency_started)/1000.0
-		dependency_started = Time.get_ticks_usec()
-		scenery = await job.bake(tree,builder.bake_cache,builder._scenery_key)
-		job.profile.scenery_load_ms = (Time.get_ticks_usec()-dependency_started)/1000.0
+	var dependency_started := Time.get_ticks_usec()
+	var transport: Dictionary = await job.bake(tree,builder.bake_cache,builder.transport_key,true)
+	job.profile.transport_load_ms = (Time.get_ticks_usec()-dependency_started)/1000.0
+	dependency_started = Time.get_ticks_usec()
+	var scenery: Dictionary = await job.bake(tree,builder.bake_cache,builder._scenery_key,true)
+	job.profile.scenery_load_ms = (Time.get_ticks_usec()-dependency_started)/1000.0
 	if job.cancelled or transport.is_empty() or scenery.is_empty(): return {}
 	setup_started = Time.get_ticks_usec()
 	job.stage = "restore layout"

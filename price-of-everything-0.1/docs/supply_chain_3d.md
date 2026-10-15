@@ -61,13 +61,20 @@ support tile clicks without individual physics bodies. Already loaded company
 tiles remain visible until the far map replaces them. Hidden tiles do not show
 goods or smoke.
 
-A binary startup supplement now decodes the same prepared layout faster, with
-native meshes and textures preserved separately. Nearby tiles receive the first
-loading slots; the combined far backdrop reveals in camera-centred groups rather
-than all at once. Fresh-process checks start the first tile at 1.28–1.34s and
-complete its 1.5-second animation at 2.80–2.85s, compared with 5.54s previously.
-This trades 106.4 MiB of packaged startup data for lower latency; existing artwork
-bakes remain valid. The snapshot bake refreshes the supplement automatically.
+Canonical transport, scenery and snapshot bakes now store large value dictionaries
+as fast binary Variant blocks with native mesh/texture handles. Ordinary,
+background and offline readers all understand this format; old native user caches
+remain readable. Background decoding uses private containers and releases its raw
+buffers. The duplicate startup files are removed, saving **106.3 MiB**; the full
+600-tile package is **1.920 GB**, just **68 KB** larger than before the speed-up.
+New metadata bakes use this representation automatically.
+
+Nearby tiles receive the first loading slots; the combined far backdrop reveals
+in camera-centred groups. Two fresh-process warm-filesystem checks start the first
+tile at **1.416–1.418s** and complete its 1.5-second animation at **2.943–2.946s**,
+compared with 5.54s before the binary format. Both runs have zero cache misses or
+runtime bake writes. The existing first-use rendering hitch remains; see
+[load-time evidence and migration instructions](load-time-bakes.md).
 
 Both coverage roots are retained for quick toggles. Inactive continent detail
 gets the existing ten-second grace period, then releases its nodes and applies

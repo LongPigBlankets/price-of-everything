@@ -46,7 +46,7 @@ func _ready() -> void:
 		var paths := {"raw": directory.path_join(tid + "_raw.res")}
 		var copy := Data.new()
 		copy.key = original.key
-		copy.data = original.data
+		copy.data = original.values()
 		assert(ResourceSaver.save(copy, paths.raw, 0) == OK)
 		paths.zstd = directory.path_join(tid + "_zstd.res")
 		assert(ResourceSaver.save(copy, paths.zstd, ResourceSaver.FLAG_COMPRESS) == OK)
@@ -54,9 +54,9 @@ func _ready() -> void:
 		fastlz_copy(paths.zstd, paths.fastlz)
 		var verified := ResourceLoader.load(paths.fastlz, "", ResourceLoader.CACHE_MODE_IGNORE) as Data
 		assert(verified != null and verified.key == original.key)
-		assert(verified.data.texture.get_image().get_data() == original.data.texture.get_image().get_data())
-		assert(verified.data.pick_shape.get_faces() == original.data.pick_shape.get_faces())
-		var image: Image = original.data.texture.get_image()
+		assert(verified.values().texture.get_image().get_data() == original.values().texture.get_image().get_data())
+		assert(verified.values().pick_shape.get_faces() == original.values().pick_shape.get_faces())
+		var image: Image = original.values().texture.get_image()
 		var gpu := image.duplicate() as Image
 		var error := gpu.compress(Image.COMPRESS_S3TC if gpu_name == "s3tc" else Image.COMPRESS_BPTC)
 		var quality := {}
@@ -66,7 +66,7 @@ func _ready() -> void:
 			quality = image.compute_image_metrics(decoded, false)
 			copy = Data.new()
 			copy.key = original.key
-			copy.data = original.data.duplicate()
+			copy.data = original.values().duplicate()
 			copy.data.texture = ImageTexture.create_from_image(gpu)
 			paths[gpu_name + "_raw"] = directory.path_join(tid + "_" + gpu_name + "_raw.res")
 			paths[gpu_name + "_zstd"] = directory.path_join(tid + "_" + gpu_name + "_zstd.res")
@@ -91,7 +91,7 @@ func _ready() -> void:
 				var start := Time.get_ticks_usec()
 				var loaded := ResourceLoader.load(sample.paths[format], "", ResourceLoader.CACHE_MODE_IGNORE) as Data
 				var load_ms := (Time.get_ticks_usec() - start) / 1000.0
-				assert(loaded != null and loaded.data.texture.get_width() == 2048)
+				assert(loaded != null and loaded.values().texture.get_width() == 2048)
 				RenderingServer.force_draw(false)
 				var draw_ms := (Time.get_ticks_usec() - start) / 1000.0
 				timings.append({"round": round_index, "tile": sample.tile, "format": format, "load_ms": load_ms, "load_and_draw_ms": draw_ms})

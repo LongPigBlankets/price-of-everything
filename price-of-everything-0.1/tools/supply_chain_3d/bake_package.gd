@@ -12,7 +12,7 @@ static func persisted_data(path: String, key: String) -> Dictionary:
 	# was calculated. Packaging must read the original snapshot from disk.
 	var saved := ResourceLoader.load(path,"",ResourceLoader.CACHE_MODE_IGNORE) as Cache.Data
 	if saved == null or saved.schema != Cache.SCHEMA or saved.key != key: return {}
-	return saved.data
+	return saved.values()
 
 static func enclose_terrain(hull: PackedVector3Array, data: Dictionary) -> PackedVector3Array:
 	assert(hull.size()==9)
@@ -75,6 +75,10 @@ static func validate(directory: String, host: Node) -> Dictionary:
 		var expected: Dictionary = manifest.resources[key]
 		if int(record.get("bytes", -1)) != int(expected.get("bytes", -2)) or record.get("sha256") != expected.get("sha256"):
 			result.errors.append("Missing or changed resource: " + key)
+		if manifest.has("binary_values_version") and Cache.binary_values_for(key):
+			var saved := ResourceLoader.load(directory.path_join(key+".res")) as Cache.Data
+			if saved==null or not saved.data.is_empty() or saved.encoded_values.get("version",-1)!=int(manifest.binary_values_version):
+				result.errors.append("Missing binary values: "+key)
 		for dependency in ResourceLoader.get_dependencies(directory.path_join(key + ".res")):
 			var path: String = dependency.get_slice("::", dependency.get_slice_count("::") - 1)
 			if not path.begins_with("res://") or not ResourceLoader.exists(path):
@@ -88,15 +92,6 @@ static func validate(directory: String, host: Node) -> Dictionary:
 		var snapshot := cache.read(str(manifest.world_snapshot_key))
 		if not preload("res://scripts/supply_chain_3d/world_snapshot.gd").matches(snapshot, str(snapshot.get("input_key", "")), manifest):
 			result.errors.append("Missing/stale prepared world snapshot")
-		if manifest.has("world_startup_key"):
-			var codec := preload("res://scripts/supply_chain_3d/startup_bundle.gd")
-			var index := cache.read(str(manifest.world_startup_key))
-			var startup := {}
-			if codec.index_matches(index,manifest):
-				startup.keys=index.keys
-				for part in ["snapshot","transport","scenery"]: startup[part]=codec.unpack(cache.read(index.parts[part]))
-			if not codec.matches(startup,manifest) or not same_payload(startup.get("snapshot"),snapshot) or not same_payload(startup.get("transport"),transport) or not same_payload(startup.get("scenery"),scenery):
-				result.errors.append("Missing/stale startup bundle or changed source values")
 	if transport.get("version",-1)!=preload("res://scripts/supply_chain_3d/transport_bake.gd").VERSION or not transport.get("roads") is Array:
 		result.errors.append("Missing prepared transport engineering")
 	for key in manifest.get("rail_layout_keys",[]):

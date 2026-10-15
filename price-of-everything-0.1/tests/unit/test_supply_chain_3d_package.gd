@@ -12,13 +12,13 @@ class Slope extends RefCounted:
 func _test_package_preserves_transport_before_renderer_annotations() -> void:
 	var directory := "user://supply_chain_3d_snapshot_test_%d" % Time.get_ticks_usec()
 	var cache := Package.Cache.new();cache.enabled=true;cache.directory=directory;cache.bundled_directory=directory
-	cache.write("transport",{"roads":[{"sidewalk":0.0}],"version":3})
-	var path := directory.path_join("transport.res")
+	cache.write("transport-fixture",{"roads":[{"sidewalk":0.0}],"version":3})
+	var path := directory.path_join("transport-fixture.res")
 	var live := ResourceLoader.load(path) as Package.Cache.Data
-	live.data.roads[0].sidewalk=2.0
-	var saved := Package.persisted_data(path,"transport")
+	live.values().roads[0].sidewalk=2.0
+	var saved := Package.persisted_data(path,"transport-fixture")
 	_check(saved.roads[0].sidewalk==0.0,"3D package snapshot: renderer annotations do not alter the persisted transport input")
-	_check(live.data.roads[0].sidewalk==2.0,"3D package snapshot: reading the persisted input does not mutate the active renderer")
+	_check(live.values().roads[0].sidewalk==2.0,"3D package snapshot: reading the persisted input does not mutate the active renderer")
 	_check(Package.persisted_data(path,"other-key").is_empty(),"3D package snapshot: content key must match")
 	DirAccess.remove_absolute(path);DirAccess.remove_absolute(directory)
 

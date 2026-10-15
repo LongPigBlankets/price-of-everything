@@ -37,7 +37,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 		if saved is Dictionary: previous_manifest = saved
 	var unchanged_base := 0
 	var manifest := {"schema": Package.MANIFEST_SCHEMA, "complete": false, "start": "res://data/starts/metal_magnate.json",
-		"engine": Engine.get_version_info().string, "tile_count": builder.tiles.size(), "storage": "zstd" if writer.compress else "raw",
+		"engine": Engine.get_version_info().string, "binary_values_version": Package.Cache.Data.Values.VERSION, "tile_count": builder.tiles.size(), "storage": "zstd" if writer.compress else "raw",
 		"continent_key": builder._continent_key, "scenery_key": builder._scenery_key,
 		"map_key": builder._map_key, "tiles": {}, "resources": {}}
 	if board._layout_queries != null:

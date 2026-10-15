@@ -1,0 +1,101 @@
+{
+	"background": {
+		"activation": {
+			"attach_ms": 4.49,
+			"detail_ms": 0.024,
+			"effects_ms": 0.23,
+			"grade_ms": 0.072,
+			"state_ms": 2.675
+		},
+		"bundled_hits": 89,
+		"cache_hits": 89,
+		"cache_misses": 0,
+		"cache_writes": 0,
+		"digest_ready_ms": 186.119,
+		"first_tiles_priority_ms": 0.001,
+		"grade_ms": 0.01,
+		"harbour_load_ms": 14.837,
+		"infrastructure_ms": 17.923,
+		"input_copy_ms": 45.659,
+		"layout_ready_ms": 2133.225,
+		"max_get_ms": 0.062,
+		"max_request_ms": 0.01,
+		"max_standing_slice_ms": 4.009,
+		"model_setup_ms": 0.572,
+		"pits_ms": 0.002,
+		"resources_ms": 2097.978,
+		"restore_layout_ms": 34.248,
+		"river_index_ms": 6.481,
+		"scene_ms": 33.957,
+		"scenery_load_ms": 466.39,
+		"scenery_restore_ms": 4.792,
+		"snapshot_ready_ms": 723.882,
+		"standing_art_ms": 31.421,
+		"standing_ms": 12.172,
+		"static_scene_ms": 30.729,
+		"total_ms": 3112.107,
+		"transport_load_ms": 826.402,
+		"transport_restore_ms": 22.959
+	},
+	"background_status": "ready",
+	"cache": {
+		"bundled_hits": 89,
+		"misses": 0,
+		"writes": 0
+	},
+	"frames_over_50ms": 1,
+	"max_owned_frame_ms": 96.47,
+	"opening": {
+		"begin_elapsed_ms": 18944,
+		"owned_tiles": 8,
+		"profile": {
+			"activation": {
+				"attach_ms": 3.202,
+				"detail_ms": 465.531,
+				"effects_ms": 2.324,
+				"grade_ms": 0.041,
+				"state_ms": 0.056
+			},
+			"bundled_hits": 35,
+			"cache_hits": 35,
+			"cache_misses": 0,
+			"cache_writes": 0,
+			"continent_ms": 11.211,
+			"infrastructure_ms": 42.486,
+			"keys_ms": 181.728,
+			"layout_inputs_ms": 596.572,
+			"layout_solve_ms": 353.54,
+			"max_standing_slice_ms": 52.052,
+			"model_ms": 954.036,
+			"road_frontage_ms": 127.747,
+			"road_import_ms": 89.684,
+			"road_routing_ms": 66.553,
+			"scene_ms": 1464.184,
+			"scenery_ms": 12.987,
+			"standing_ms": 519.495,
+			"static_scene_ms": 1443.305,
+			"total_ms": 2624.16,
+			"transport": {
+				"cache_hit": true,
+				"lookup_ms": 55.958,
+				"total_ms": 57.976
+			}
+		},
+		"ready_ms": 147
+	},
+	"owned_frames": 219,
+	"p95_owned_frame_ms": 9.437,
+	"repeat_switch_ms": 351,
+	"retired_tiles": 45,
+	"return_owned_ms": 8,
+	"slow_frames": [
+		{
+			"from": "civic_corner_08x02_lvl1_depth.png",
+			"ms": 96.47,
+			"to": "civic_corner_08x02_lvl1_depth.png"
+		}
+	],
+	"switch_after_grace_ms": 1753,
+	"switch_ms": 3466,
+	"tiles": 600
+}

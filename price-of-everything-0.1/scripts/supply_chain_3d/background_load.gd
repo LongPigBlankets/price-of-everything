@@ -25,11 +25,11 @@ func copy_model(tree: SceneTree, model: Dictionary) -> Dictionary:
 	while worker.is_alive(): await tree.process_frame
 	return worker.wait_to_finish()
 
-func unpack_startup(tree: SceneTree, payload: Dictionary) -> Dictionary:
+func decode_resource(tree: SceneTree, resource: Cache.Data, private_copy: bool = false) -> Dictionary:
 	if cancelled: return {}
-	stage = "decode startup values"
+	stage = "decode " + resource.key
 	var worker := Thread.new()
-	if worker.start(preload("res://scripts/supply_chain_3d/startup_bundle.gd").unpack.bind(payload), Thread.PRIORITY_LOW) != OK: return {}
+	if worker.start(resource.values.bind(private_copy), Thread.PRIORITY_LOW) != OK: return {}
 	while worker.is_alive(): await tree.process_frame
 	var result: Dictionary = worker.wait_to_finish()
 	return {} if cancelled else result
@@ -85,11 +85,16 @@ func batch(tree: SceneTree, paths: Array) -> void:
 			active.erase(path)
 		if not active.is_empty(): await tree.process_frame
 
-func bake(tree: SceneTree, cache: RefCounted, key: String) -> Dictionary:
+func bake(tree: SceneTree, cache: RefCounted, key: String, private_copy: bool = false) -> Dictionary:
 	for directory in [cache.bundled_directory, cache.directory]:
-		var loaded := await resource(tree, str(directory).path_join(key + ".res")) as Cache.Data
-		if loaded != null and loaded.schema == Cache.SCHEMA and loaded.key == key and not loaded.data.is_empty():
+		var path := str(directory).path_join(key + ".res")
+		var loaded := await resource(tree, path) as Cache.Data
+		if loaded != null and loaded.schema == Cache.SCHEMA and loaded.key == key:
+			var values: Dictionary = await decode_resource(tree,loaded,private_copy) if private_copy or not loaded.encoded_values.is_empty() else loaded.values()
+			if private_copy: resources.erase(path) # Keep decoded resources, release the raw byte blocks.
+			if cancelled: return {}
+			if values.is_empty(): continue
 			cache.hits += 1
 			if directory == cache.bundled_directory: cache.bundled_hits += 1
-			return loaded.data
+			return values
 	return {}

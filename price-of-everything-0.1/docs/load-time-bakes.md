@@ -1,64 +1,96 @@
 # Load time: what is baked, and when to re-bake it
 
-## Earlier first tiles and a staggered backdrop — 15 October 2026
+## Canonical binary metadata and earlier tile reveals — 15 October 2026
 
-The first visible tiles no longer wait for three slow native dictionary loads.
-A startup supplement stores the same snapshot, transport and scenery values as
-binary Variant blocks with separate native resource handles. One low-priority
-worker decodes each block; resource links restore the original meshes, textures
-and shapes. Decoded containers belong to this board, avoiding a second model
-copy. Raw byte blocks are released after decoding. The index checks the exact
-source keys before loading its parts, and the live-input/fingerprint check still
-runs before the world can be shown. Missing or stale supplements fall back to
-the original path.
+The ordinary, background, packaging and profiling readers now use the same
+canonical bakes. Transport, scenery and prepared-world metadata store their
+large value dictionaries as binary Variant blocks, with meshes, textures and
+collision shapes retained as native resource handles. This replaces the former
+native-dictionary representation in place; the four duplicate startup files
+have been removed. Terrain and per-tile texture bakes remain unchanged.
 
-The first three local tiles receive priority before the large far bake starts
-(up to 500ms, only when all tiles is selected at a local zoom). Far-backed visible
-tiles then start in groups of two every 120ms, ordered from the current camera
-outward; the group size grows at wide zoom. Each tile retains its own 1.5-second
-paper/ink/detail timeline. Moving the camera reprioritises later groups. Local
-medium tiles can start as soon as ready, without waiting for a far batch.
+Background reads decode private containers on a low-priority worker and release
+the encoded root afterwards. Ordinary reads reuse a decoded resource while it
+is alive. Private reads always start from persisted bytes, so renderer annotations
+on a shared dictionary cannot contaminate a new world. Existing native-format
+user caches remain readable. Source-key, live-input and fingerprint checks still
+reject stale prepared worlds; invalid encoded data falls back to the ordinary
+cache lookup. New metadata writes use the fast representation automatically.
+
+The installed package is **600 tiles / 1,841 resources / 1,919,748,490 bytes**.
+It is **111,456,569 bytes (106.3 MiB) smaller** than the duplicate-startup version,
+and only **68,016 bytes (66.4 KiB) larger** than the original pre-speedup package.
+There is no longer a 106 MiB game-size cost for the fast loading path. This is
+installed package size; old binary revisions still exist in Git history.
+
+All five canonical metadata resources (owned and continent transport/scenery,
+plus the snapshot) were re-encoded, round-tripped and compared before installation.
+Every layout value, mesh array, collision face and texture pixel matched.
+The migration preserved source fingerprints and all unrelated resources, then
+validated the complete package before removing the four indexed duplicate files.
+A separate fresh-process validator also passes. No landscape rendering or
+regeneration was needed for this lossless storage conversion.
+
+The first three local tiles retain priority before the large far bake starts
+(up to 500ms when all tiles is selected at a local zoom). Far-backed visible
+tiles start in groups of two every 120ms, ordered from the current camera;
+the group size grows at wide zoom. Each tile has its own 1.5-second paper/ink/detail
+sequence. Panning reprioritises later groups; ready local tiles start immediately.
 
 Two fresh rendered Godot 4.6.2 Forward+/Metal runs on Apple M5 Pro, warm filesystem
 caches and distinct empty runtime-cache paths:
 
-| All-tiles click to… | Previous loader | New loader (two runs) |
-|---|---:|---:|
-| First tile starts its reveal | 4.033s | **1.281–1.336s** |
-| First fully revealed tile | 5.541s | **2.799–2.851s** |
-| Requested working set after a pan | 9.563s | **5.922–5.995s** |
+| All-tiles click to… | Original native loader | Duplicate startup format | Canonical binary format |
+|---|---:|---:|---:|
+| First tile starts its reveal | 4.033s | 1.281–1.336s | **1.416–1.418s** |
+| First fully revealed tile | 5.541s | 2.799–2.851s | **2.943–2.946s** |
+| Requested working set after a pan | 9.563s | 5.922–5.995s | **6.027–6.162s** |
 
-The owned view opens in 157ms in the first final run. Repeat switching takes
-226ms. Both final runs have zero cache misses/writes and valid visible tile
-picks. Prepared-before-click switching takes 3.462s, repeat switching 343ms, and
-returning after all 45 inactive detail tiles retire takes 1.695s. Owned-view
-frame p95 during background preparation is 9.45ms (maximum 108ms). Frame p95 is 35–38ms; maximum 265–269ms. The existing first-use rendering
-hitch remains. These are fresh-process warm-filesystem samples, not cold-disk
-guarantees. Simultaneous native reads were rejected after making first completion
-slower (10.182s); the shipped path reads the compact parts sequentially.
+Both final runs have **96 bundled hits, zero misses and zero runtime bake writes**;
+14 rendered tile picks pass in each run. The owned view opens in 153ms in the
+first run; a repeated switch takes 229ms. Frame p95 is 33–39ms; maximum 271–272ms.
+The existing first-use rendering hitch remains. These are fresh-process,
+warm-filesystem samples, not cold-disk guarantees. The small measured difference
+from the duplicate format should not be read as a new speed improvement: this
+migration preserves the earlier reveal benefit while removing duplicate storage.
 
-The installed supplement adds **111,524,585 bytes (106.4 MiB)** across four files;
-no individual file exceeds 65MB. The complete package is **600 tiles / 1,845
-resources / 2,031,205,059 bytes**. Existing terrain, roads, scenery, sprites and
-source fingerprints are unchanged. Validation compares every decoded value,
-mesh/shape and texture against its source bake as well as checking resource
-hashes. Existing source resources remain available for ordinary loading/fallback.
+A separate prepared-before-click run settles in **3.466s**; repeat switching takes
+**351ms**. All 45 inactive detail tiles retire after ten seconds and returning
+takes **1.753s**, with 89 bundled hits and zero runtime writes. Owned-view frame
+p95 during preparation is **9.44ms**, maximum **96.47ms**.
 
-`bake_world_snapshot.tscn` now refreshes this supplement automatically. To repackage
-an already valid snapshot without rendering or regenerating artwork, run from
-the project directory:
+The ordinary all-tiles path, with background preparation explicitly disabled,
+also restores all **600 tiles** using **86 bundled hits, zero misses and zero
+writes**. That switch still takes **15.197s**: ordinary model/layout restoration
+and scene construction remain, despite reading the new fast metadata format.
+The normal prepared path avoids that work. Changed worlds without a matching
+snapshot still use this fallback; this migration does not make them a three-second
+full-continent load. No fresh check created its designated runtime-cache directory.
+
+All **157 focused assertions pass**, covering sync/background/private decoding,
+legacy caches, invalid encodings, cancellation, persisted versus live values,
+reveal clocks, camera controls, collision and resource retention. The six affected
+bake/profiling tools also compile headlessly.
+
+For an older installed package, migrate it without regenerating artwork:
 
 ```bash
-godot --headless --path . --log-file /private/tmp/startup-bundle.log \
-  res://tools/supply_chain_3d/bake_startup_bundle.tscn -- --no-telemetry
+godot --headless --path . --log-file /private/tmp/bake-values-migration.log \
+  res://tools/supply_chain_3d/migrate_bake_values.tscn -- --no-telemetry
 ```
 
-All **132 focused assertions pass**, including private decoded state, stale index
-rejection, concurrent/staggered tile clocks, camera controls, collision and resource
-retention. The snapshot and startup bake tools also pass a headless compile check.
+The tool stages and verifies replacements first, backs up originals in a unique
+`/private/tmp/bake-values-migration-*` directory, and rolls back failed installation
+or package validation. Only duplicate files named by the old manifest are removed.
+New `bake_continent_package.tscn` and `bake_world_snapshot.tscn` runs write canonical
+binary metadata directly; the separate `bake_startup_bundle` tool is retired.
 
-Then run the separate package validator and fresh-process checks below. Evidence:
-`outputs/supply-chain-3d/early-reveal/{baseline,final,repeat,prepared}/`.
+Follow with the separate validator and fresh-process checks below. The ordinary
+all-tiles path can also be checked with `check_canonical_bake_loading.tscn`, using
+`--continent-review --no-background-continent` and an empty runtime-cache path.
+It requires a rendered run through `AGENT_GODOT_WINDOW=1 godot`.
+Evidence: `outputs/supply-chain-3d/unified-bake-values/`; historical native and
+duplicate-format comparisons: `outputs/supply-chain-3d/early-reveal/`.
 
 ## Timed empty-paper → ink → detail reveal — 15 October 2026
 

@@ -34,12 +34,9 @@
 		"tile-fe89ececcd355e67e8701e408b7e7c91a87a990acdc29eee5b1b400c2b3f186c",
 		"tile-fed4879626292b38de0d353e0e907ab2a54bf742ca77c30add3727e933702538",
 		"transport-adecf7cf79fe5e63704e72ea478ae86f716ef30348183eb0ada63b716368f6ca",
-		"world-snapshot-dcf3a8442641732f5774cedc94f62593b53e56e6e5c1905c6482669f90571767",
-		"world-startup-ef19d4b360f48e23cc31f4e068798bf347097a8f2bd1876ce02c431d2c81c122",
-		"startup-snapshot-70d7871e2c5e17529485e6f133dace8e9a3c84a3614162da76561193bd70a382",
-		"startup-transport-e945e9afb9bfd00f309aef4c19932eb15ca340a20ee145a57d95b9563d425d48",
-		"startup-scenery-b70c4a68d00351d88ea32463562e0516fade848eec23f56facc9ed4a0e60ffb6"
+		"world-snapshot-dcf3a8442641732f5774cedc94f62593b53e56e6e5c1905c6482669f90571767"
 	],
+	"binary_values_version": 1,
 	"company_start": {
 		"resource_count": 34,
 		"tiles": [
@@ -2512,24 +2509,12 @@
 			"sha256": "a103e104415854f01e4585e29a2c46aa81680945a600980d56a8d0eeec7248a7"
 		},
 		"scenery-0146afa6f8f2a80107076a9e1936601203fddb3e8590ef21d2ff6949b78efb7b": {
-			"bytes": 64058176.0,
-			"sha256": "8ce3995eb3990f0c833d378d5ef80318c60a6fe3ad8239b40494a8d028495dbd"
+			"bytes": 64019504,
+			"sha256": "a2ab27e02a216edbd4141baeaa710e6ea887d45d0d9dbc11f18223867e0cf30d"
 		},
 		"scenery-b8932b11169031474765fef944cdcdb2788ca144c7f4b7bd8c0c0007ce1187e5": {
-			"bytes": 1405593,
-			"sha256": "0ae01cffb3563decafd2abc3ab4616657d7d9ee55abef8b7adb4580ebfb6aacb"
-		},
-		"startup-scenery-b70c4a68d00351d88ea32463562e0516fade848eec23f56facc9ed4a0e60ffb6": {
-			"bytes": 64024069,
-			"sha256": "00853aa649f32ec0c5246dd8136b18730e16d475da2520101f319f917fbae871"
-		},
-		"startup-snapshot-70d7871e2c5e17529485e6f133dace8e9a3c84a3614162da76561193bd70a382": {
-			"bytes": 20200297,
-			"sha256": "45785ef989e0505baa462b5a0f18a5236077c0678d937ca382116c8b23dad4cf"
-		},
-		"startup-transport-e945e9afb9bfd00f309aef4c19932eb15ca340a20ee145a57d95b9563d425d48": {
-			"bytes": 27299543,
-			"sha256": "a26784341c358ab200f371329c6a7dbdc73c40df3ee7b5a2f82d1013c405d014"
+			"bytes": 1405100,
+			"sha256": "331f72123e37d1df92897429c84838da43f424a44cf62e491cf4bf5ecb587875"
 		},
 		"tile-0017dbc2ea0c3cf158f1cf171041ba4f96d293fdea0ea759002c99efb865680b": {
 			"bytes": 3231988.0,
@@ -7428,31 +7413,21 @@
 			"sha256": "2644e77e35f38f59de820f44c540612bec7273dedf96ed240515d7fd148ce8c9"
 		},
 		"transport-9fab9e41b552db01d62f891a27eb687a9e2344daf99567990ac3caf0b62e6ed0": {
-			"bytes": 27262346.0,
-			"sha256": "14da1074ae8ad86a4fead5f394228352636bb5ee1e0a10539322fcea6deda4b9"
+			"bytes": 27267274,
+			"sha256": "72e48b64fd2ee20aa5d971b98b0a78a77ee1f398a1c59a76b9cb8ce3b31db724"
 		},
 		"transport-adecf7cf79fe5e63704e72ea478ae86f716ef30348183eb0ada63b716368f6ca": {
-			"bytes": 898123,
-			"sha256": "886496fab3000a47e65a542f0d4cebe8687dfe3e06a33aba939350577204dad2"
+			"bytes": 900203,
+			"sha256": "0cfa2e952f07324b83b2d4cb46c05cdc1f8b526d784a740950b4af13b67fe40e"
 		},
 		"world-snapshot-dcf3a8442641732f5774cedc94f62593b53e56e6e5c1905c6482669f90571767": {
-			"bytes": 20098290,
-			"sha256": "693e9f932767110c3b41956289405b19a66564498ee5cac181bf025306ef8b0a"
-		},
-		"world-startup-ef19d4b360f48e23cc31f4e068798bf347097a8f2bd1876ce02c431d2c81c122": {
-			"bytes": 676,
-			"sha256": "5ffbe828bc3c4c9515f149748f912f2cc505e603add32c536539db98d1b6e8d4"
+			"bytes": 20198463,
+			"sha256": "df1f534e6f48ed197260f3c363e26a2f9a7d431b2394c48272541c37342d3504"
 		}
 	},
 	"scenery_key": "scenery-0146afa6f8f2a80107076a9e1936601203fddb3e8590ef21d2ff6949b78efb7b",
 	"schema": 5.0,
 	"start": "res://data/starts/metal_magnate.json",
-	"startup_keys": [
-		"startup-snapshot-70d7871e2c5e17529485e6f133dace8e9a3c84a3614162da76561193bd70a382",
-		"startup-transport-e945e9afb9bfd00f309aef4c19932eb15ca340a20ee145a57d95b9563d425d48",
-		"startup-scenery-b70c4a68d00351d88ea32463562e0516fade848eec23f56facc9ed4a0e60ffb6",
-		"world-startup-ef19d4b360f48e23cc31f4e068798bf347097a8f2bd1876ce02c431d2c81c122"
-	],
 	"storage": "zstd",
 	"tile_count": 600.0,
 	"tiles": {
@@ -10458,6 +10433,5 @@
 		}
 	},
 	"transport_key": "transport-9fab9e41b552db01d62f891a27eb687a9e2344daf99567990ac3caf0b62e6ed0",
-	"world_snapshot_key": "world-snapshot-dcf3a8442641732f5774cedc94f62593b53e56e6e5c1905c6482669f90571767",
-	"world_startup_key": "world-startup-ef19d4b360f48e23cc31f4e068798bf347097a8f2bd1876ce02c431d2c81c122"
+	"world_snapshot_key": "world-snapshot-dcf3a8442641732f5774cedc94f62593b53e56e6e5c1905c6482669f90571767"
 }
