@@ -53,18 +53,19 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 		var counts := {}
 		var factories := 0
 		var factory_distance := INF
-		var half_scale := true
+		var decor_scale_matches := true
+		var expected_scale: float = preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").DECOR_SCALE
 		for s in board._model.standing:
 			if not s.get("trial_density", false): continue
 			counts[str(s.tile)] = int(counts.get(str(s.tile),0)) + 1
-			half_scale = half_scale and is_equal_approx(float(s.get("decor_scale",1)),0.5)
+			decor_scale_matches = decor_scale_matches and is_equal_approx(float(s.get("decor_scale",1)),expected_scale)
 			if s.get("decor_family", "") == "civic_bauhaus":
 				factories += 1
 				factory_distance = s.pos.distance_to(s.trial_port)
 		var expected: Dictionary = preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").TARGET_BUILDINGS
-		report.trial_validation = {"counts":counts, "target":expected, "factory_count":factories, "factory_shore_distance":factory_distance, "half_scale":half_scale}
+		report.trial_validation = {"counts":counts, "target":expected, "factory_count":factories, "factory_shore_distance":factory_distance, "decor_scale":expected_scale, "decor_scale_matches":decor_scale_matches}
 		if "--draft-review" not in OS.get_cmdline_user_args():
-			assert(factories == 1 and factory_distance <= 180 and half_scale, "Stoneshore trial scale/factory placement failed")
+			assert(factories == 1 and factory_distance <= 180 and decor_scale_matches, "Stoneshore trial scale/factory placement failed")
 		report.neighbourhood = {"sites":board._model.get("district_blocks",{}).get("sites",0), "side_streets":board._model.get("district_blocks",{}).get("paths",[]).size(), "side_street_length":board._model.get("district_blocks",{}).get("length",0), "greens":{}, "semis":0, "apartments":0, "zoning_violations":[], "families":{}, "residential_by_tile":{}}
 		for s in board._model.standing:
 			var family: String=s.get("decor_family","")

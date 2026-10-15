@@ -13,6 +13,7 @@ open their supply-chain graphs; terrain clicks open the existing tile panel.
 - Left drag / two-finger trackpad pan: pan.
 - Middle drag, or hold `0` while panning with two fingers: rotate and tilt around the camera centre. Right drag also remains available.
 - Mouse wheel / trackpad pinch: zoom around the terrain under the pointer.
+- Closest orthographic span: 192u (25% more magnification than the earlier 240u limit).
 - Q/E: rotate. Home / Reset view: frame the current coverage. The corner rotation arrows have been removed.
 - Click terrain or a warehouse: select its tile; Shift-click selects through buildings.
 - Click a building: open its network once its projected width **and** height exceed 20 logical screen pixels. Smaller player/NPC buildings select their tile instead. The outermost continent view always selects tiles. Eligible hitboxes follow the visible mesh with a two-world-unit edge tolerance; empty space around the building selects the tile. Retina scaling does not change the threshold. Tab returns to the regular map.
@@ -21,6 +22,15 @@ open their supply-chain graphs; terrain clicks open the existing tile panel.
 
 Tile selection also forwards active construction and destination-selection actions.
 The motion key pauses moving goods and shows outputs above their producers.
+
+The current five-tile Stoneshore trial uses decorative building dimensions 35%
+smaller than the preceding half-scale layout (`DECOR_SCALE = 0.325` of the source
+kit). Houses, semis, modular offices, shops, courtyard/back-row buildings and
+skyline landmarks share that reduction; public spaces and gameplay models keep
+their sizes. The normal frontage system repacks the smaller modules, and its
+land probe scales with them. This is a scoped art trial; the proposed smaller
+player/NPC development parcels and narrower road/rail system are still planning
+work. The regular map and full-continent bake are not part of this update.
 
 ## Matching the original artwork
 

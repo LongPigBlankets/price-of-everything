@@ -25,11 +25,11 @@ func _test_stoneshore_trial_preserves_gameplay_and_scope() -> void:
 		if s.tile == "tile_5_9" and not s.get("trial_green",false): residential_only = residential_only and s.trial_residential and s.get("decor_family", "") in ["", "civic_semi"]
 	_check(residential_only, "Stoneshore trial: rural candidates are homes and apartments")
 
-func _test_stoneshore_trial_half_size_and_boundaries() -> void:
+func _test_stoneshore_trial_decor_size_and_boundaries() -> void:
 	for key in ["house_lvl2", "civic_semi_lvl1", "civic_u_office_lvl1", "civic_commercial_lvl1"]:
-		var normal := Scale.for_asset(key, 70.0)
-		var half := Scale.for_asset(key, 35.0, 0.5)
-		_check(half.is_equal_approx(normal * 0.5), "Stoneshore trial: %s halves all three dimensions, including fixed house height" % key)
+		var previous := Scale.for_asset(key, 35.0, 0.5)
+		var smaller := Scale.for_asset(key, 70.0 * Trial.DECOR_SCALE, Trial.DECOR_SCALE)
+		_check(smaller.is_equal_approx(previous * 0.65), "Stoneshore trial: %s is 35%% smaller in all three dimensions, including fixed house height" % key)
 	var tile := {"center":Vector2.ZERO, "type":"urban"}
 	var rural := [Vector2(405,240)]
 	_check(not Trial.residential(tile,Vector2.ZERO,rural) and Trial.residential(tile,Vector2(170,100),rural), "Stoneshore trial: housing occupies the urban edge facing rural land")
