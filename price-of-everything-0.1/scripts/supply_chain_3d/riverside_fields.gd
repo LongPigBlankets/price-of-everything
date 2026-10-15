@@ -38,7 +38,6 @@ static func extend(original: PackedVector2Array, anchor: Vector2, land: Array, m
 	return original
 
 static func apply(model: Dictionary, rivers: Dictionary, prepared: Dictionary) -> void:
-	if not preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled(): return
 	for s in model.standing:
 		if str(s.iid) != FARM or not Fields.is_plot(s): continue
 		var records: Array = rivers.get(str(s.tile), [])

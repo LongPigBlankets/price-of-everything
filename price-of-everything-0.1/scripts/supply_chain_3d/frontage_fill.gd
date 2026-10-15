@@ -28,7 +28,7 @@ static func touches(a: Vector2,b: Vector2,poly: PackedVector2Array) -> bool:
 	return false
 
 static func street(road: Dictionary) -> bool:
-	return str(road.get("tile","")) in Trial.TILES and not str(road.get("source","")).begins_with("access:") and not str(road.get("source","")).begins_with("neighbourhood:") and not road.get("tunnel",false)
+	return not str(road.get("source","")).begins_with("access:") and not str(road.get("source","")).begins_with("neighbourhood:") and not road.get("tunnel",false)
 
 func run(model: Dictionary, fitter: RefCounted, zoning: Dictionary) -> Dictionary:
 	world=model;fit=fitter;contexts=zoning
@@ -67,6 +67,7 @@ func run(model: Dictionary, fitter: RefCounted, zoning: Dictionary) -> Dictionar
 	return result
 
 func _measure() -> void:
+	var scope := Trial.dense_tiles(world)
 	var kinds := {}
 	var actual := {}
 	for site in world.get("neighbourhood",{}).get("brownfields",[]): kinds[str(site.id)]="brownfield"
@@ -85,7 +86,7 @@ func _measure() -> void:
 			actual[str(s.iid)]=[poly]
 	for road_id in fit.roads.size():
 		var road: Dictionary=fit.roads[road_id]
-		if not street(road): continue
+		if not street(road) or str(road.tile) not in scope: continue
 		var tangent: Vector2=(road.b-road.a).normalized()
 		var length: float=road.a.distance_to(road.b)
 		var count := maxi(1,ceili(length/STEP))

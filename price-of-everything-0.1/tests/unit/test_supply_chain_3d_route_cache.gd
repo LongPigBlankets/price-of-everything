@@ -22,3 +22,11 @@ func _test_route_cache_retains_prepared_depot_connections() -> void:
 	_check(queries.data.street_curves==curves and queries.data.port_approach==port,"Route cache: rounded roads and the port pose survive the final snapshot")
 	_check(queries.data.riverside_fields.key=="field", "Route cache: the prepared riverside field survives the final snapshot")
 	_check(cache.writes==0,"Route cache: an unchanged bundled layout does not trigger a runtime write")
+	queries._prepared_keys=Queries.prepared_signature(queries.data)
+	queries.data.frontages["new-layout"]={"placements":{}}
+	queries._previous_paths=Queries.Model.Streets._paths;Queries.Model.Streets._paths={}
+	queries.finish(cache)
+	_check(cache.writes==1,"Route cache: a newly prepared shared frontage variant is saved even when geography is unchanged")
+	queries._previous_paths=Queries.Model.Streets._paths;Queries.Model.Streets._paths={}
+	queries.finish(cache)
+	_check(cache.writes==1,"Route cache: saving a new variant does not cause repeated unchanged writes")

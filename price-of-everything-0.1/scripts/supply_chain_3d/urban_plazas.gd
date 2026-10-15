@@ -31,7 +31,6 @@ static func _index(polys: Array) -> Dictionary:
 
 static func build(builder: RefCounted, standing: Array) -> Dictionary:
 	var result := {"tiles":{},"targets":0,"area":0.0}
-	if not Trial.preview_enabled():return result
 	var targets: Array=[];var obstacles: Array=[]
 	for s in standing:
 		var key := str(builder.standing_key(s))

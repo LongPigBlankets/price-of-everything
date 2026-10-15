@@ -1,5 +1,5 @@
 extends RefCounted
-## Offline Stoneshore crossing engineering; the result is part of transport/scenery bakes.
+## Offline crossing engineering; the result is part of transport/scenery bakes.
 const Index := preload("res://scripts/supply_chain_3d/road_index.gd")
 const Rail := preload("res://scripts/supply_chain_3d/railway.gd")
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
@@ -33,7 +33,6 @@ static func build(grade: RefCounted, plan: Dictionary, urban: RefCounted, depots
 	var hits: Array=[]
 	var rail_bridges: Array=[]
 	for road in grade.segments:
-		if not str(road.get("tile","")) in Trial.TILES: continue
 		var dir: Vector2=(road.b-road.a).normalized()
 		for ri in Index.query(track_index,Index.bounds(road.a,road.b,.01)):
 			var track: Dictionary=urban.tracks[ri]

@@ -20,6 +20,8 @@ func _test_docks_clearance_parallel_road_and_yard_preference() -> void:
 	_check(max_grade<=Elevation.MAX_APPROACH_GRADE+.001,"Docks clearance: mandatory tunnel approaches stay continuous below 12% despite nearby depot proximity")
 	clearance.configure(plan,[{"a":Vector2(0,-180),"b":Vector2(0,180),"half":5.0}],[],{"tile_5_10":{"center":Vector2.ZERO}},[],Callable())
 	_check(not clearance.covered(Vector2.ZERO),"Docks clearance: ordinary perpendicular intersections remain available for bridges or level crossings")
+	clearance.configure(plan,roads,[],{"tile_24_7":{"center":Vector2.ZERO}},[],Callable())
+	_check(clearance.covered(Vector2.ZERO),"Continent clearance: parallel road protection also applies outside Stoneshore")
 
 func _test_docks_clearance_sea_only_clipping() -> void:
 	var strip := PackedVector2Array([Vector2.ZERO,Vector2(200,0),Vector2(200,48),Vector2(0,48)])

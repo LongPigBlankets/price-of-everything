@@ -9,7 +9,7 @@ const Depot := preload("res://scripts/supply_chain_3d/rail_depot.gd")
 
 func fixture(busy := false, hidden := false) -> Dictionary:
 	var lines := [{"mode":"rails","level":2,"pts":[{"p":Vector2(-700,0)},{"p":Vector2(700,0)}]}]
-	var roads := [{"a":Vector2(0,-400),"b":Vector2(0,400),"level":1,"tile":"tile_4_10","source":"crossing","widths":[3.0,2.8,2.6,2.4]}]
+	var roads := [{"a":Vector2(0,-400),"b":Vector2(0,400),"level":1,"tile":"tile_24_7","source":"crossing","widths":[3.0,2.8,2.6,2.4]}]
 	var grade := Grade.new();grade.configure(roads,func(_p):return 34.0)
 	var plan := Rail.network(lines);var urban := Urban.new()
 	var yards: Array=[{"pos":Vector2(250,0),"yaw":0.0}] if busy else []

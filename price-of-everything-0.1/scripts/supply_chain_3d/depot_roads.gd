@@ -47,7 +47,15 @@ static func offset_point(x: float, plan: Dictionary, depot: Dictionary) -> Vecto
 			var b: Vector2=(c.points[i]-depot.pos).rotated(-depot.yaw)
 			if x<minf(a.x,b.x) or x>maxf(a.x,b.x) or absf(a.x-b.x)<.001:continue
 			low=minf(low,lerpf(a.y,b.y,(x-a.x)/(b.x-a.x)))
-	return Depot.world(depot,Vector2(x,low-OFFSET-2.0))
+	return Depot.world(depot,Vector2(x,(low if is_finite(low) else 0.0)-OFFSET-2.0))
+
+static func local_lines(lines: Array) -> Array:
+	# This road follows the Stoneshore fan, even when the model contains the
+	# entire continent. Distant tracks can share its local X coordinate.
+	return lines.filter(func(line):
+		for p in line.get("pts",[]):
+			if str(p.get("tile","")) not in Trial.TILES:return false
+		return true)
 
 static func design(paths: Array, depot: Dictionary, plan: Dictionary) -> Dictionary:
 	var original: Dictionary={}
@@ -93,16 +101,17 @@ static func design(paths: Array, depot: Dictionary, plan: Dictionary) -> Diction
 	return {"a":a,"b":b,"west":west,"bridge":bridge.p,"turn":turn,"clearance":CLEARANCE}
 
 static func apply(model: Dictionary, prepared: Dictionary = {}) -> void:
-	if not Trial.preview_enabled() or not model.tiles.has("tile_5_10"):return
+	if not model.tiles.has("tile_5_10"):return
 	var depot := {}
 	for d in model.get("depots",[]):
 		if d.tile=="tile_5_10":depot=d;break
 	if depot.is_empty():return
 	var paths: Array=model.authored_region.paths.duplicate(true)
 	var cache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
-	var key := cache.digest([cache.source_key("roads"),paths,depot,model.lines])
+	var lines := local_lines(model.lines)
+	var key := cache.digest([cache.source_key("roads"),paths,depot,lines])
 	var saved: Dictionary=prepared.get("depot_roads",{})
-	var proposal: Dictionary=saved.get("proposal",{}) if saved.get("key","")==key else design(paths,depot,Rail.network(model.lines))
+	var proposal: Dictionary=saved.get("proposal",{}) if saved.get("key","")==key else design(paths,depot,Rail.network(lines))
 	prepared.depot_roads={"key":key,"proposal":proposal}
 	if proposal.is_empty():return
 	paths=paths.filter(func(p):return p.id!="r:untitled:65")

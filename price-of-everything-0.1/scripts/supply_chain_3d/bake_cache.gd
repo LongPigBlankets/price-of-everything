@@ -10,7 +10,7 @@ const SOURCES := {
 	"buildings": ["building_scale.gd", "building_footprints.gd", "../../assets/supply_chain_3d/building_footprints.json"],
 	"transport": ["transport_bake.gd"],
 	"terrain": ["urban_plazas.gd", "sea_fringe.gd", "coast.gd", "terrain_paint.gd", "water_art.gd", "water_geography.gd", "../../data/supply_chain_water.json", "geometry.gd", "detail.gd", "shadow_art.gd", "relief.gd", "ground.gd", "half_relief.gd", "../../data/supply_chain_half_relief.json"],
-	"roads": ["riverside_fields.gd", "port_approach.gd", "harbour.gd", "street_curves.gd", "depot_roads.gd", "neighbourhood_blocks.gd", "frontage_fill.gd", "urban_sidewalks.gd", "building_footprints.gd", "../../assets/supply_chain_3d/building_footprints.json", "tunnel_portal.gd", "road_alignment.gd", "road_surface.gd", "road_grade.gd", "rail_urban.gd", "rail_clearance.gd", "rail_elevation.gd", "rail_station.gd", "rail_crossings.gd", "road_markings.gd", "geometry.gd", "authored_region.gd", "authored_road_profile.gd", "road_index.gd", "road_placement.gd", "bridge_network.gd", "civic_layout.gd", "stoneshore_trial.gd", "district_blocks.gd"],
+	"roads": ["coastal_roads.gd", "riverside_fields.gd", "port_approach.gd", "harbour.gd", "street_curves.gd", "depot_roads.gd", "neighbourhood_blocks.gd", "frontage_fill.gd", "urban_sidewalks.gd", "building_footprints.gd", "../../assets/supply_chain_3d/building_footprints.json", "tunnel_portal.gd", "road_alignment.gd", "road_surface.gd", "road_grade.gd", "rail_urban.gd", "rail_clearance.gd", "rail_elevation.gd", "rail_station.gd", "rail_crossings.gd", "road_markings.gd", "geometry.gd", "authored_region.gd", "authored_road_profile.gd", "road_index.gd", "road_placement.gd", "bridge_network.gd", "civic_layout.gd", "stoneshore_trial.gd", "district_blocks.gd"],
 	"scenery": ["urban_plazas.gd", "stoneshore_greenery.gd", "neighbourhood_art.gd", "tunnel_portal.gd", "railway.gd", "rail_network.gd", "rail_depot.gd", "rail_urban.gd", "rail_clearance.gd", "rail_elevation.gd", "rail_station.gd", "rail_crossings.gd", "harbour.gd", "tree_layout.gd", "rail_vegetation.gd", "shadow_art.gd", "farm_fields.gd"],
 	"continent": ["geometry.gd"],
 	"detail": ["stoneshore_greenery.gd", "local_detail.gd", "geometry.gd", "farm_fields.gd", "tree_layout.gd", "rail_vegetation.gd"],
@@ -37,6 +37,9 @@ func _init() -> void:
 		directory = "user://supply_chain_3d_stoneshore_trial"
 		for arg in OS.get_cmdline_user_args():
 			if arg.begins_with("--trial-cache-directory="): directory = arg.trim_prefix("--trial-cache-directory=")
+
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--bake-cache-directory="): directory = arg.trim_prefix("--bake-cache-directory=")
 
 static func is_raw(path: String) -> bool:
 	return storage_format(path) == "raw"

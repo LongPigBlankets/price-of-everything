@@ -52,9 +52,8 @@ static func cells(sites: PackedVector2Array, bounds: Rect2) -> Array:
 func apply(model: Dictionary, height: Callable, wet: Callable, prepared: Dictionary) -> void:
 	if "--stoneshore-baseline" in OS.get_cmdline_user_args(): return
 	ground=height; water=wet
-	for tid in Trial.TILES:
+	for tid in model.tiles:
 		if model.tiles.has(tid) and str(model.tiles[tid].type)=="urban": centers[tid]=model.tiles[tid].center
-	if centers.is_empty(): return
 	tile_index=Index.tiles(centers)
 	roads=model.roads.filter(func(r: Dictionary) -> bool: return centers.has(str(r.tile)))
 	road_index=Index.segments(roads,30)
@@ -65,11 +64,8 @@ func apply(model: Dictionary, height: Callable, wet: Callable, prepared: Diction
 			obstacles.append(s.harbour.main_quay)
 			obstacles.append_array(s.harbour.quays)
 		else:
-			var dim := Assets.dimensions(preload("res://scripts/supply_chain_3d/world_builder.gd").standing_key(s))*float(s.side)
-			var half := Vector2(maxf(dim.x,12),maxf(dim.z,12))*.5
-			var poly := PackedVector2Array()
-			for p in [Vector2(-half.x,-half.y),Vector2(half.x,-half.y),half,Vector2(-half.x,half.y)]: poly.append(s.pos+p.rotated(-float(s.get("yaw",0))))
-			obstacles.append(s.get("footprint",poly))
+			var key := preload("res://scripts/supply_chain_3d/world_builder.gd").standing_key(s)
+			obstacles.append_array(preload("res://scripts/supply_chain_3d/building_footprints.gd").reserved(key,s))
 	for depot in model.get("depots",[]): obstacles.append(Depot.yard_polygon(depot))
 	for station in model.get("stations",[]): obstacles.append(preload("res://scripts/supply_chain_3d/rail_station.gd").polygon(station))
 	for i in obstacles.size():
@@ -78,7 +74,7 @@ func apply(model: Dictionary, height: Callable, wet: Callable, prepared: Diction
 		Index.insert(obstacle_index,box.grow(10),i)
 	var rail_plan := preload("res://scripts/supply_chain_3d/railway.gd").network(model.get("lines",[]))
 	var pilot_centers := {}
-	for tid in Trial.TILES:
+	for tid in model.tiles:
 		if model.tiles.has(tid): pilot_centers[tid]=model.tiles[tid].center
 	var pilot_index := Index.tiles(pilot_centers)
 	for corridor in rail_plan.corridors:
@@ -88,16 +84,40 @@ func apply(model: Dictionary, height: Callable, wet: Callable, prepared: Diction
 			rails.append({"a":a,"b":b})
 	model.trial_rail_segments=rails
 	rail_index=Index.segments(rails,14)
+	if centers.is_empty(): return
 	var key := Cache.digest([Cache.source_key("roads"),Cache.source_key("terrain"),centers,roads,obstacles,rails,harbours])
 	var variants: Dictionary=prepared.get_or_add("district_blocks",{})
 	var plan: Dictionary=variants.get(key,{})
 	if plan.is_empty():
-		plan=generate()
+		plan=generate_regions()
 		while variants.size()>=4: variants.erase(variants.keys()[0])
 		variants[key]=plan
 	model.district_blocks=plan
 	model.authored_region.paths.append_array(plan.paths.duplicate(true))
 	model.roads=Index.split(model.roads+Region.compile_segments(plan.paths,centers))
+
+func generate_regions() -> Dictionary:
+	# A separate local Voronoi diagram per named region keeps generation bounded.
+	# No cell sees distant cities, and streets still terminate on real roads.
+	var all_centers := centers.duplicate()
+	var all_roads := roads
+	var groups := {}
+	for tid in centers:
+		var region := preload("res://scripts/road_regions.gd").region_of(tid)
+		if region==preload("res://scripts/road_regions.gd").DEFAULT_REGION_ID: region=tid
+		(groups.get_or_add(region,{}) as Dictionary)[tid]=centers[tid]
+	var result := {"paths":[],"plots":[],"sites":0,"length":0.0}
+	for region in groups:
+		centers=groups[region];tile_index=Index.tiles(centers)
+		roads=all_roads.filter(func(r):return centers.has(str(r.tile)))
+		road_index=Index.segments(roads,30)
+		var local := generate()
+		for path in local.paths: path.id="district:%s:%s" % [region,path.id]
+		result.paths.append_array(local.paths);result.plots.append_array(local.plots)
+		result.sites+=local.sites;result.length+=local.length
+		print("[DISTRICTS] ",region," urban_tiles=",centers.size()," streets=",local.paths.size())
+	centers=all_centers;roads=all_roads;tile_index=Index.tiles(centers);road_index=Index.segments(roads,30)
+	return result
 
 func safe_point(p: Vector2, margin: float = 7.0) -> bool:
 	for shore in harbours:

@@ -12,7 +12,7 @@ func _test_stoneshore_trial_preserves_gameplay_and_scope() -> void:
 	var model := {"tiles":{"tile_4_9":{"center":Vector2.ZERO,"type":"urban"}, "tile_5_9":{"center":Vector2(405,240),"type":"rural"}},
 		"standing":[player.duplicate(true), npc.duplicate(true), outside.duplicate(true)], "roads":[], "flows":[]}
 	Trial.populate(model)
-	_check(model.standing.has(player) and model.standing.has(npc) and model.standing.has(outside), "Stoneshore trial: gameplay buildings and other regions are untouched")
+	_check(model.standing.has(player) and model.standing.has(npc) , "Stoneshore trial: gameplay buildings are untouched")
 	var first: Array = model.standing.duplicate(true)
 	Trial.populate(model)
 	_check(model.standing == first, "Stoneshore trial: regenerating seeds is deterministic and idempotent")
@@ -37,3 +37,16 @@ func _test_stoneshore_trial_decor_size_and_boundaries() -> void:
 	_check(not Trial.residential(tile,Vector2(-190,0),[Vector2(-405,0)],[Vector2(-200,0)]), "Stoneshore trial: port frontage excludes semi-detached housing")
 	var fit := Placement.new()
 	_check(not fit.trial_plot_allowed({"pos":Vector2(181,0), "trial_port":Vector2.ZERO,"trial_max_distance":180.0}), "Stoneshore trial: the factory cannot drift away from the harbour")
+
+func _test_continent_decorative_scope() -> void:
+	var rural := {"iid":"rural_home","kind":"house","tile":"rural","pos":Vector2(900,0),"side":72.0}
+	var player := {"iid":"player","kind":"building","tile":"urban","pos":Vector2.ZERO,"side":90.0}
+	var model := {"tiles":{"urban":{"center":Vector2.ZERO,"type":"urban"},"rural":{"center":Vector2(900,0),"type":"rural"}},"standing":[rural,player.duplicate(true)]}
+	Trial.populate(model)
+	_check(model.standing.has(player),"Continent: gameplay size stays unchanged")
+	_check(model.trial_targets.has("urban") and not model.trial_targets.has("rural"),"Continent: dense infill extends to urban tiles only")
+	_check(is_equal_approx(rural.side,Scale.TERRACE_ROW_SIDE*Trial.DECOR_SCALE),"Continent: rural hamlets use the same decorative scale")
+	_check(model.standing.filter(func(s):return s.tile=="rural").size()==1,"Continent: countryside retains its existing settlement count")
+	var first: Array=model.standing.duplicate(true)
+	Trial.populate(model)
+	_check(first==model.standing,"Continent: scaling and seeding are idempotent")

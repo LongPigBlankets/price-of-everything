@@ -35,6 +35,7 @@ static func validate(directory: String, host: Node) -> Dictionary:
 	required[str(manifest.get("transport_key",""))] = true
 	for key in manifest.get("rail_layout_keys",[]): required[str(key)]=true
 	if manifest.get("rail_layout_keys",[]).is_empty(): result.errors.append("Missing startup rail layouts")
+	for key in manifest.get("auxiliary_keys",[]): required[str(key)] = true
 	for entry in manifest.tiles.values():
 		required[str(entry.get("base", ""))] = true
 		for name in TILE_TIERS: required[str(entry.get(name, ""))] = true

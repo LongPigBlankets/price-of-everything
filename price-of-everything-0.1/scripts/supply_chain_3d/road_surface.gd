@@ -62,8 +62,7 @@ func configure(roads: Array, height: Callable, origin := Vector2.ZERO) -> void:
 			w.clear.append(0.0 if through else float(nd.reach) + 2.0)
 
 	flares.clear()
-	if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
-		flares=preload("res://scripts/supply_chain_3d/street_curves.gd").junctions(ways)
+	flares=preload("res://scripts/supply_chain_3d/street_curves.gd").junctions(ways)
 	markings.configure(ways)
 
 func mesh_for(tile: String) -> ArrayMesh:

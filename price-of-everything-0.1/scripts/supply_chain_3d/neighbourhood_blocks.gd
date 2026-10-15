@@ -1,5 +1,5 @@
 extends RefCounted
-## Offline, Stoneshore-only block interiors. The normal frontage bake owns this
+## Offline urban block interiors. The normal frontage bake owns this
 ## plan, so opening a cached view never repeats street/parcel searches.
 const Trial := preload("res://scripts/supply_chain_3d/stoneshore_trial.gd")
 const Index := preload("res://scripts/supply_chain_3d/road_index.gd")
@@ -12,6 +12,7 @@ var added: Array = []
 var fit: RefCounted
 var world: Dictionary
 var main_roads: Array = []
+var scope: Array = []
 var main_index := {}
 var plan := {"paths":[],"footpaths":[],"brownfields":[],"greens":0,"courtyards":0,"rows":{},"buildings":0}
 
@@ -24,8 +25,8 @@ static func rectangle(p: Vector2, tangent: Vector2, size: Vector2) -> PackedVect
 		p+tangent*size.x*.5+n*size.y*.5,p-tangent*size.x*.5+n*size.y*.5])
 
 func prepare(model: Dictionary, fitter: RefCounted) -> void:
-	world=model;fit=fitter
-	main_roads=fit.roads.filter(func(r):return str(r.tile) in Trial.TILES and not r.get("district_street",false) and not str(r.get("source","")).begins_with("access:"))
+	world=model;fit=fitter;scope=Trial.dense_tiles(model)
+	main_roads=fit.roads.filter(func(r):return str(r.tile) in scope and not r.get("district_street",false) and not str(r.get("source","")).begins_with("access:"))
 	main_index=Index.segments(main_roads,150)
 	_lanes()
 	_connections()
@@ -97,23 +98,24 @@ func _lanes() -> void:
 func _connections() -> void:
 	# Road-to-road cuts open wedge-shaped blocks where a rectangular loop will
 	# not fit. Both ends are real graph junctions; no isolated decorative stubs.
-	var anchors: Array=[]
+	var anchors := {}
 	for r in fit.roads:
-		if not str(r.tile) in Trial.TILES or str(r.get("source","")).begins_with("access:"): continue
+		if not str(r.tile) in scope or str(r.get("source","")).begins_with("access:"): continue
 		var count := maxi(1,ceili(r.a.distance_to(r.b)/48.0))
 		for i in count:
-			anchors.append({"p":r.a.lerp(r.b,(i+.5)/count),"road":r})
+			(anchors.get_or_add(str(r.tile),[]) as Array).append({"p":r.a.lerp(r.b,(i+.5)/count),"road":r})
 	var options: Array=[]
-	for i in anchors.size():
-		var a: Dictionary=anchors[i]
-		for j in range(i+1,anchors.size()):
-			var b: Dictionary=anchors[j]
-			if a.road.tile!=b.road.tile or a.road.source==b.road.source: continue
-			var distance: float=a.p.distance_to(b.p)
-			if distance<80 or distance>280: continue
-			var tangent: Vector2=(b.p-a.p).normalized()
-			if absf(tangent.dot((a.road.b-a.road.a).normalized()))>.82 or absf(tangent.dot((b.road.b-b.road.a).normalized()))>.82: continue
-			options.append({"a":a.p,"b":b.p,"tile":a.road.tile,"length":distance})
+	for tile_anchors in anchors.values():
+		for i in tile_anchors.size():
+			var a: Dictionary=tile_anchors[i]
+			for j in range(i+1,tile_anchors.size()):
+				var b: Dictionary=tile_anchors[j]
+				if a.road.tile!=b.road.tile or a.road.source==b.road.source: continue
+				var distance: float=a.p.distance_to(b.p)
+				if distance<80 or distance>280: continue
+				var tangent: Vector2=(b.p-a.p).normalized()
+				if absf(tangent.dot((a.road.b-a.road.a).normalized()))>.82 or absf(tangent.dot((b.road.b-b.road.a).normalized()))>.82: continue
+				options.append({"a":a.p,"b":b.p,"tile":a.road.tile,"length":distance})
 	options.sort_custom(func(a,b):return a.length>b.length)
 	var counts := {}
 	for option in options:
@@ -138,7 +140,7 @@ func _brownfields() -> void:
 		return a.a.distance_squared_to(a.b)>b.a.distance_squared_to(b.b))
 	for road in candidates:
 		var tid := str(road.tile)
-		if not tid in Trial.TILES or str(road.get("source","")).begins_with("access:"): continue
+		if not tid in scope or str(road.get("source","")).begins_with("access:"): continue
 		if int(counts.get(tid,0)) >= (2 if world.tiles[tid].type=="urban" else 1): continue
 		if road.a.distance_to(road.b)<56: continue
 		var tangent: Vector2=(road.b-road.a).normalized()
@@ -169,7 +171,7 @@ func _parcel_dry(p: Vector2, tangent: Vector2, size: Vector2) -> bool:
 	return high-low<=1.8
 
 func _greens() -> void:
-	for tid in Trial.TILES:
+	for tid in scope:
 		if not world.tiles.has(tid): continue
 		var choices: Array=[]
 		for y in range(-190,191,38):
@@ -206,7 +208,7 @@ func _courtyards() -> void:
 	var counts := {}
 	for r in fit.roads:
 		if not lane(r) and not r.get("district_street",false): continue
-		if not str(r.tile) in Trial.TILES or int(counts.get(r.tile,0))>=2 or r.a.distance_to(r.b)<40: continue
+		if not str(r.tile) in scope or int(counts.get(r.tile,0))>=2 or r.a.distance_to(r.b)<40: continue
 		var tangent: Vector2=(r.b-r.a).normalized()
 		for t in [.5,.25,.75]:
 			if int(counts.get(r.tile,0))>=2: break
@@ -277,7 +279,7 @@ func _back_rows() -> void:
 	var counts := {};var used := {}
 	for depth in [32.0,62.0]:
 		for r in fit.roads:
-			if not str(r.tile) in Trial.TILES or str(r.get("source","")).begins_with("access:"): continue
+			if not str(r.tile) in scope or str(r.get("source","")).begins_with("access:"): continue
 			if int(counts.get(r.tile,0))>=24: continue
 			var length: float=r.a.distance_to(r.b)
 			var count := maxi(1,floori(length/24.0))
