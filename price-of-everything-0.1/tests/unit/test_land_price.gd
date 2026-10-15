@@ -315,7 +315,8 @@ func _test_land_readouts() -> void:
 		and str(lines[labels.find("Per patch")][1]) == LandPrice.pounds(s * 2.25),
 		"land: the tile panel prints the band, each rise and the patch price")
 	var text: String = panel.buy_land_confirm_text(tile, 20)
-	_check(text.contains(LandPrice.pounds(s * 2.25 * 2.0 * 2.0)) and text.contains(Catalog.tile_label(str(c[2]))),
+	_check(text.contains(LandPrice.pounds(s * 2.25 * 2.0 * 2.0)) and text.contains(Catalog.tile_name(str(c[2])) if Catalog.tile_name(str(c[2])) != "" else Catalog.tile_label(str(c[2])))
+		and not text.contains("("),
 		"land: the stand-alone confirm shows the doubled price and names a neighbour that will rise")
 	_check(LandPrice.pounds(1250.0) == "£1,250" and LandPrice.pounds(40.0) == "£40" and LandPrice.pounds(12.5) == "£12.50",
 		"land: prices print as whole pounds with thousands separators")

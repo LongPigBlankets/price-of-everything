@@ -1215,7 +1215,7 @@ static func buy_land_confirm_text(tile_id: String, land_amount: int) -> String:
 	for n: String in LandPrice.standalone_rises(tile_id):
 		if Catalog.tile_type(n) in ["sea", "deep_sea"]:
 			continue
-		names.append(Catalog.tile_label(n))
+		names.append(Catalog.tile_name(n) if Catalog.tile_name(n) != "" else Catalog.tile_label(n))
 	if names.is_empty():
 		return text
 	var listed := ", ".join(names.slice(0, names.size() - 1)) + " and " + str(names.back()) if names.size() > 1 else str(names[0])
