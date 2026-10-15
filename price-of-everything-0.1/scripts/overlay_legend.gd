@@ -55,6 +55,15 @@ const OWNERSHIP_LEGEND_ROWS: Array = [
 	{"color": OwnershipOverlay.LIGHT_BLUE, "text": "Owned and built on (half-width)"},
 ]
 
+# Land price mode: the shade climbs with the next patch's price for a build.
+const LandPriceOverlay := preload("res://scripts/land_price_overlay.gd")
+const LAND_PRICE_LEGEND_ROWS: Array = [
+	{"price": 20.0, "text": "£20 a patch"},
+	{"price": 60.0, "text": "£60 a patch"},
+	{"price": 150.0, "text": "£150 a patch"},
+	{"price": 400.0, "text": "£400 or more a patch"},
+]
+
 @onready var entries_vbox: VBoxContainer = $MarginContainer/VBoxContainer/EntriesVBox
 @onready var title_label: Label = $MarginContainer/VBoxContainer/TitleLabel
 
@@ -98,6 +107,8 @@ func _on_selections_changed(mode: int, _selections: Array) -> void:
 		_rebuild_stockpile()
 	elif mode == MapMode.Mode.OWNERSHIP:
 		_rebuild_ownership()
+	elif mode == MapMode.Mode.LAND_PRICE:
+		_rebuild_land_price()
 	show()
 
 func _on_mode_cleared() -> void:
@@ -201,6 +212,20 @@ func _rebuild_ownership() -> void:
 	(note.get_node("ColourSwatch") as ColorRect).color = Color(0, 0, 0, 0)
 	(note.get_node("NameLabel") as Label).text = "A band is 5%; built climbs left, then right"
 
+# --- Land price mode ---
+
+func _rebuild_land_price() -> void:
+	_clear_entries()
+	for row in LAND_PRICE_LEGEND_ROWS:
+		var entry := LegendEntryScene.instantiate()
+		entries_vbox.add_child(entry)
+		(entry.get_node("ColourSwatch") as ColorRect).color = LandPriceOverlay.shade(float(row.price))
+		(entry.get_node("NameLabel") as Label).text = row.text
+	var note := LegendEntryScene.instantiate()
+	entries_vbox.add_child(note)
+	(note.get_node("ColourSwatch") as ColorRect).color = Color(0, 0, 0, 0)
+	(note.get_node("NameLabel") as Label).text = "The price of the next patch for a build"
+
 # --- Helpers ---
 
 func _get_mode_name(mode: int) -> String:
@@ -223,5 +248,7 @@ func _get_mode_name(mode: int) -> String:
 			return "Stockpile"
 		MapMode.Mode.OWNERSHIP:
 			return "Ownership"
+		MapMode.Mode.LAND_PRICE:
+			return "Land price"
 		_:
 			return "Overlay"

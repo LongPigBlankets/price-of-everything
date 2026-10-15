@@ -13,6 +13,7 @@ enum Mode {
 	INFRASTRUCTURE,
 	STOCKPILE,
 	OWNERSHIP,
+	LAND_PRICE,
 }
 
 const POWER_SENTINEL := "power_balance_sentinel"
@@ -23,6 +24,7 @@ const WATER_SENTINEL := "water_sentinel"
 const INFRASTRUCTURE_SENTINEL := "infrastructure_sentinel"
 const STOCKPILE_SENTINEL := "stockpile_sentinel"
 const OWNERSHIP_SENTINEL := "ownership_sentinel"
+const LAND_PRICE_SENTINEL := "land_price_sentinel"
 
 # Per-good modes (Producing / Consuming): the player ticks up to MAX_SELECTIONS
 # goods, each shown on the map with its own icon (clustered when a tile has more
@@ -33,7 +35,7 @@ const MAX_SELECTIONS := 6
 # Modes driven by a single sentinel selection (whole-map overlays, no good picker).
 const SENTINEL_MODES: Array = [
 	Mode.DEPOSITS, Mode.WATER, Mode.POWER_BALANCE, Mode.LOGISTICS, Mode.SURVEYING,
-	Mode.INFRASTRUCTURE, Mode.STOCKPILE, Mode.OWNERSHIP,
+	Mode.INFRASTRUCTURE, Mode.STOCKPILE, Mode.OWNERSHIP, Mode.LAND_PRICE,
 ]
 
 var current_mode: Mode = Mode.NONE

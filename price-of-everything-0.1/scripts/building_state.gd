@@ -12,6 +12,7 @@ extends Node
 ## MatchState; upgrades/retrofits/demolition live in BuildingWorks.
 
 const BuildingPrice := preload("res://scripts/building_price.gd")
+const LandPrice := preload("res://scripts/land_price.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 
 # When you SELL a building it transfers to this NPC operator (keeps standing, land occupied).
@@ -61,6 +62,15 @@ var buildings: Dictionary = {}
 var tile_buildings: Dictionary = {}
 var _next_instance_counter: int = 0
 var tile_land_owned: Dictionary = {}
+## Land units the player bought through purchase_tile_land, per tile: the land that raises its neighbours'
+## price (LandPrice.adjacency_share). Land granted under a bought building or by the start is not here.
+var tile_land_priced: Dictionary = {}
+## Tiles holding a stand-alone purchase (tile_id -> true): their neighbours pay LAND_ADJACENT_STANDALONE.
+var tile_land_standalone: Dictionary = {}
+## Latched doublings of global revenue (LandPrice.tick_economy). -1 until known, for an older save.
+var land_economy_level := 0
+## The doubling the briefing last forewarned of, so it warns once per step.
+var land_economy_warned := 0
 var rail_hubs_seeded := false
 
 
@@ -70,6 +80,10 @@ func reset() -> void:
 	buildings.clear()
 	tile_buildings.clear()
 	tile_land_owned.clear()
+	tile_land_priced.clear()
+	tile_land_standalone.clear()
+	land_economy_level = 0
+	land_economy_warned = 0
 	_next_instance_counter = 0
 
 
@@ -80,6 +94,10 @@ func export_fields() -> Dictionary:
 		"next_instance_counter": _next_instance_counter,
 		"buildings": _buildings_for_save(),
 		"tile_land_owned": tile_land_owned.duplicate(true),
+		"tile_land_priced": tile_land_priced.duplicate(true),
+		"tile_land_standalone": tile_land_standalone.duplicate(true),
+		"land_economy_level": land_economy_level,
+		"land_economy_warned": land_economy_warned,
 	}
 
 
@@ -88,6 +106,12 @@ func import_fields(d: Dictionary) -> void:
 	_next_instance_counter = int(d.get("next_instance_counter", 0))
 	buildings = _normalise_loaded_buildings(d.get("buildings", {}))
 	tile_land_owned = (d.get("tile_land_owned", {}) as Dictionary).duplicate(true)
+	tile_land_priced = {}
+	for tile in (d.get("tile_land_priced", {}) as Dictionary):
+		tile_land_priced[str(tile)] = int(d["tile_land_priced"][tile])
+	tile_land_standalone = (d.get("tile_land_standalone", {}) as Dictionary).duplicate(true)
+	land_economy_level = int(d.get("land_economy_level", -1))
+	land_economy_warned = int(d.get("land_economy_warned", maxi(0, land_economy_level)))
 
 
 func is_player_owned(building: Dictionary) -> bool:
@@ -159,6 +183,8 @@ func set_building_owner(instance_id: String, owner: String) -> void:
 		_grant_building_land(instance_id)
 		# The tile size chart stacks buildings bought off an NPC at the top of the pile.
 		buildings[instance_id]["acquired_from_npc"] = true
+		# Buying a works never moves a land price: it never counts toward its tile's ramp.
+		buildings[instance_id]["land_exempt"] = true
 		# A purchase is a going concern, so it arrives with stock to run on. Seeded HERE rather
 		# than in the market panel because three separate surfaces transfer ownership (market
 		# panel, building detail, tile info) and the tutorial buys through one of them.
@@ -344,31 +370,49 @@ func get_tile_land_units_available(tile_id: String, cap: int = MAX_TILE_LAND) ->
 	var effective_cap := mini(cap, max_tile_land(tile_id))
 	return maxi(0, effective_cap - int(round(get_tile_npc_footprint(tile_id))) - get_tile_land_owned(tile_id))
 
-func purchase_tile_land(tile_id: String, patches: int = 1, cap: int = MAX_TILE_LAND) -> bool:
+## Buy `patches` of land on the tile at LandPrice's quote. `standalone` is a purchase made on its own, not for a
+## build or an upgrade: it pays double and raises every neighbour at once (LandPrice.adjacency_share).
+func purchase_tile_land(tile_id: String, patches: int = 1, cap: int = MAX_TILE_LAND, standalone: bool = false) -> bool:
 	if tile_id == "":
 		return false
 	var available := get_tile_land_patches_available(tile_id, cap)
 	if available <= 0:
 		return false
 	var clamped_patches: int = clampi(patches, 1, available)
-	# ctx carries the tile so per-tile purchase_cost modifiers (e.g. the land-deal
+	# The quote carries the tile so per-tile purchase_cost modifiers (e.g. the land-deal
 	# decision's "development premium" follow-up) can target it.
-	var cost := AdvisorState.purchase_cost_after_advisor(float(clamped_patches) * LAND_PATCH_COST, {"tile_id": tile_id})
+	var cost := float(LandPrice.quote(tile_id, clamped_patches, standalone).total)
 	if not MatchState.deduct_money(cost):
 		return false
 	var owned := get_tile_land_owned(tile_id)
 	# The last patch can be a clipped sliver — never grant past the NPC-adjusted cap.
 	var granted := mini(clamped_patches * LAND_PATCH_SIZE, get_tile_land_units_available(tile_id, cap))
 	tile_land_owned[tile_id] = mini(max_tile_land(tile_id), owned + granted)
+	tile_land_priced[tile_id] = int(tile_land_priced.get(tile_id, 0)) + (int(tile_land_owned[tile_id]) - owned)
+	if standalone:
+		tile_land_standalone[tile_id] = true
 	tile_land_owned_changed.emit(tile_id)
 	return true
 
-## Undo a land purchase whose build was refused: the tile goes back to the land it held and the
-## price comes back in full.
+## Undo a land purchase whose build was refused: the tile goes back to the land it held, the
+## price comes back in full, and the land no longer counts as bought.
 func return_tile_land(tile_id: String, owned_before: int, refund: float) -> void:
+	_unprice_land(tile_id, get_tile_land_owned(tile_id) - owned_before)
 	tile_land_owned[tile_id] = owned_before
 	MatchState.add_money(refund)
 	tile_land_owned_changed.emit(tile_id)
+
+## Take `units` off the tile's bought land. When none is left, a stand-alone purchase there no longer
+## raises its neighbours.
+func _unprice_land(tile_id: String, units: int) -> void:
+	if units <= 0 or not tile_land_priced.has(tile_id):
+		return
+	var left := int(tile_land_priced[tile_id]) - units
+	if left > 0:
+		tile_land_priced[tile_id] = left
+		return
+	tile_land_priced.erase(tile_id)
+	tile_land_standalone.erase(tile_id)
 
 func sellable_land_patches(tile_id: String) -> int:
 	if tile_id == "":
@@ -388,6 +432,7 @@ func sell_tile_land(tile_id: String, patches: int, price_per_patch: float) -> bo
 	if clamped <= 0:
 		return false
 	tile_land_owned[tile_id] = get_tile_land_owned(tile_id) - clamped * LAND_PATCH_SIZE
+	_unprice_land(tile_id, clamped * LAND_PATCH_SIZE)
 	MatchState.add_money(float(clamped) * price_per_patch)
 	tile_land_owned_changed.emit(tile_id)
 	return true

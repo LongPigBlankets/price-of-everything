@@ -1418,7 +1418,8 @@ func _upgrade_to_level(instance_id: String, target_level: int) -> void:
 			return
 		var land_cost := 0.0
 		if not bool(preview.get("fits", false)):
-			land_cost = BuildingState.LAND_PATCH_COST
+			var upgrade_tile := str((BuildingState.buildings[instance_id] as Dictionary).get("tile_id", ""))
+			land_cost = float(preload("res://scripts/land_price.gd").quote(upgrade_tile, 1, false).total)
 		var required := float(preview.get("market_cost", 0.0)) + land_cost
 		var funded := true
 		if _balance_mode and bool(_scenario.get("balance_prudent_expansion", true)):
@@ -2062,8 +2063,8 @@ func _ensure_balance_build_funding(building_id: String, tile_id: String) -> bool
 		- float(BuildingState.get_tile_land_owned(tile_id))
 	if needed_land > float(BuildingState.get_tile_land_units_available(tile_id)) + 0.001:
 		return false
-	var land_cost := float(maxi(0, ceili(needed_land / float(BuildingState.LAND_PATCH_SIZE)))) \
-		* BuildingState.LAND_PATCH_COST
+	var land_cost := float(preload("res://scripts/land_price.gd").quote(tile_id,
+		maxi(0, ceili(needed_land / float(BuildingState.LAND_PATCH_SIZE))), false).total)
 	var material_cost := Construction.estimate_market_cost(tile_id, building_id)
 	if material_cost <= 0.0 and not Construction.requirements_for(building_id).is_empty():
 		material_cost = Construction.market_purchase_value(building_id) * 1.10

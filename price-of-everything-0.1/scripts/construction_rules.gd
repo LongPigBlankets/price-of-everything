@@ -21,6 +21,7 @@ extends RefCounted
 
 const InfraIcons := preload("res://scripts/infra_icons.gd")
 const MONEY_EPSILON := 0.0001
+const LandPrice := preload("res://scripts/land_price.gd")
 
 
 # --- Browse: what may be built -------------------------------------------------------------
@@ -239,6 +240,8 @@ static func site_check(building_id: String, recipe_id: String, tile_data: Dictio
 ##                  is short), "short" (not enough owned land even with what is for sale)
 ##   will_buy       the build buys `patches` of land for `cost` on the way. A build refused
 ##                  after it bought land (for the kit or the cash) returns the land and the cash.
+##   price          LandPrice.quote for those patches (its terms are the readout's lines); empty
+##                  when nothing would be bought.
 ##   density_multiplier  1.5 past the planning limit (everyone's land over 100), else 1
 ## `buy_land` is the confirm's one off intent; the standing Auto-buy land setting also buys.
 ## Tendered infrastructure (Logistics Intermediary games with Infrastructure Tendering) may
@@ -258,11 +261,13 @@ static func land_plan(tile_id: String, building_id: String, buy_land: bool = fal
 	var patches_for_sale := BuildingState.get_tile_land_patches_available(tile_id)
 	var patches := 0
 	var cost := 0.0
+	var price: Dictionary = {}
 	var owned_after := owned
 	if shortfall > 0.0 and patches_for_sale > 0:
 		# purchase_tile_land's own clamp and price, and the sliver it may grant.
 		patches = clampi(int(ceil(shortfall / float(BuildingState.LAND_PATCH_SIZE))), 1, patches_for_sale)
-		cost = AdvisorState.purchase_cost_after_advisor(float(patches) * BuildingState.LAND_PATCH_COST, {"tile_id": tile_id})
+		price = LandPrice.quote(tile_id, patches, false)
+		cost = float(price.total)
 		var granted := mini(patches * BuildingState.LAND_PATCH_SIZE, BuildingState.get_tile_land_units_available(tile_id))
 		owned_after = mini(max_land, owned + granted)
 	var outcome := "ok"
@@ -287,7 +292,7 @@ static func land_plan(tile_id: String, building_id: String, buy_land: bool = fal
 		"needed": needed, "free": free, "owned": owned, "owned_after": owned_after if will_buy else owned,
 		"shortfall": shortfall, "tendered": tendered,
 		"patches_for_sale": patches_for_sale, "patches": patches, "units": patches * BuildingState.LAND_PATCH_SIZE,
-		"cost": cost, "wants_buy": wants_buy, "will_buy": will_buy,
+		"cost": cost, "price": price, "wants_buy": wants_buy, "will_buy": will_buy,
 		"covered_by_purchase": patches_for_sale > 0 and player_projected <= float(owned_after),
 		"max_land": max_land, "projected": projected, "player_projected": player_projected,
 		"density_multiplier": 1.5 if projected > BuildingState.DENSITY_SOFT_CAPACITY else 1.0,
