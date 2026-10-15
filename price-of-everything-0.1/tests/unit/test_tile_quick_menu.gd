@@ -212,7 +212,7 @@ func _test_quick_menu_draws() -> void:
 	_check(menu.find_child("QuickAction_Good_" + steel, true, false) != null and menu.find_child("QuickAction_Back", true, false) != null,
 		"quick menu: the goods page lists the tile's goods under Back")
 	menu.show_page("buy_land")
-	_check(menu.find_child("QuickAction_BuyLandConfirm", true, false) != null, "quick menu: buying all the land asks first")
+	_check(menu.find_child("QuickKey_BuyLandConfirm", true, false) != null, "quick menu: buying all the land asks first")
 	menu.queue_free()
 	await get_tree().process_frame
 	_fresh()
