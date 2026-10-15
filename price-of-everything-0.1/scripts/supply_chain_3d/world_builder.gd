@@ -46,6 +46,8 @@ const LocalDetail := preload("res://scripts/supply_chain_3d/local_detail.gd")
 const FarmFields := preload("res://scripts/supply_chain_3d/farm_fields.gd")
 var farm_nodes: Array = []
 var far_field_meshes: Array = []
+const Compact := preload("res://scripts/supply_chain_3d/surface_compact.gd")
+const RoadDrawing := preload("res://scripts/supply_chain_3d/road_drawing.gd")
 const TileCache := preload("res://scripts/supply_chain_3d/tile_resource_cache.gd")
 var resource_cache := TileCache.new()
 const Handover := preload("res://scripts/supply_chain_3d/lod_handover.gd")
@@ -395,7 +397,7 @@ func prepare_continent(host: Node) -> void:
 			await host.get_tree().process_frame
 	var texture := await Paint.bake_continent(host, tiles, rivers, pits.values(), surface_height, area, static_shadows, urban_plazas.tiles)
 	continent = {"area": area, "texture": texture, "parts": parts,
-		"mesh": Geo.joined(parts.values(), area), "roads": {}}
+		"mesh": Compact.joined(parts.values(), area), "roads": {}}
 
 func tile_view_hull(tid: String) -> PackedVector3Array:
 	if not view_hulls.has(tid):
@@ -578,6 +580,8 @@ func finish_continent(parent: Node3D) -> void:
 	paint.set_shader_parameter("artwork", continent.texture)
 	continent_node.add_child(Geo.instance(continent.mesh, paint))
 	continent_node.add_child(Geo.instance(continent.roads_mesh, road_mat))
+	if continent.get("road_drawing",{}).has("texture"):
+		continent_node.add_child(Geo.instance(continent.road_drawing.mesh,RoadDrawing.material(road_mat,continent.road_drawing)))
 	continent_node.add_child(Geo.instance(continent.props_mesh, mat))
 	continent_node.add_child(Geo.instance(continent.rim_mesh, strata_material()))
 	continent_node.add_child(Geo.instance(continent.lip_mesh, mat))
@@ -592,7 +596,7 @@ func finish_continent(parent: Node3D) -> void:
 	for child in continent_node.get_children():
 		if not child is GeometryInstance3D or child.material_override == null: continue
 		var material := child.material_override.duplicate() as ShaderMaterial
-		material.set_meta("road", child.material_override == road_mat)
+		material.set_meta("road", child.material_override == road_mat or child.material_override.get_meta("road",false))
 		material.set_meta("foliage", str(child.name).begins_with("FarTrees_tree_"))
 		child.material_override = material
 		residency.bind(material)
@@ -648,7 +652,7 @@ func prepare_company_pick_surface(parent: Node3D) -> void:
 	continent_body.collision_mask = 0
 	continent_body.set_meta("continent_pick", true)
 	var shape := CollisionShape3D.new()
-	shape.shape = _coarse_pick_shape(Geo.joined(meshes))
+	shape.shape = _coarse_pick_shape(Compact.joined(meshes))
 	continent_body.add_child(shape)
 	parent.add_child(continent_body)
 
@@ -1095,7 +1099,7 @@ func _surface(tid: String, cell: float) -> ArrayMesh:
 								if batch.vertices.size()>before:
 									# Batch.triangle swaps b/c again, restoring index order.
 									for j in 3: batch.normals[before+j]=normal_cache[poly[indices[i+j]]]
-	return batch.mesh(Rect2(center-origin-Paint.EXTENT*0.5,Paint.EXTENT))
+	return Compact.build(batch.mesh(Rect2(center-origin-Paint.EXTENT*0.5,Paint.EXTENT)))
 
 func tile_node(tid: String) -> Node3D:
 	var tile: Dictionary = tiles[tid]
@@ -1252,6 +1256,9 @@ func set_overview_scale(ppu: float, force: bool = false) -> void:
 		if material.get_meta("road", false): material.set_shader_parameter("road_fade", 0.78 if sprites_visible else 0.18)
 	var overview := streamed and (not base_ready or ppu < (0.33 if _overview else 0.27))
 	if road_mat != null: road_mat.set_shader_parameter("road_fade", 0.78 if overview else (0.18 if streamed and ppu < 1.5 else 0.0))
+	for node in road_nodes:
+		if node.material_override!=road_mat:
+			node.material_override.set_shader_parameter("road_fade",road_mat.get_shader_parameter("road_fade"))
 	if overview == _overview and not force: return
 	_overview = overview
 	if continent_body != null: continent_body.collision_layer = 4 if cursor_picking else 1
@@ -1410,13 +1417,17 @@ func _index_rivers() -> void:
 
 func append_road(parent: Node3D, tid: String) -> void:
 	var mesh: ArrayMesh
+	var drawing := {}
 	if streamed and continent.get("roads", {}).has(tid): mesh = continent.roads[tid]
-	elif streamed and tile_chunks.has(tid) and base_chunk(tid).get("roads_mesh") != null: mesh = base_chunk(tid).roads_mesh
+	elif streamed and tile_chunks.has(tid) and base_chunk(tid).get("roads_mesh") != null:
+		mesh = base_chunk(tid).roads_mesh
+		drawing=base_chunk(tid).get("road_drawing",{})
 	else:
 		var key := "road-" + BakeCache.digest([_road_key, tid, road_surface.cell_size])
 		var cached := bake_cache.read(key) if not streamed and _map_key != "" else {}
 		if not cached.is_empty():
 			mesh = cached.mesh
+			drawing=cached.get("road_drawing",{})
 		else:
 			# Ordinary LOD handovers already have road geometry. Reserve the
 			# spatial lookup and height sampler for actual generation/cache repair.
@@ -1433,6 +1444,11 @@ func append_road(parent: Node3D, tid: String) -> void:
 	surface.name = "JoinedRoads_" + tid.validate_node_name()
 	parent.add_child(surface)
 	road_nodes.append(surface)
+	if drawing.has("texture"):
+		var painted := Geo.instance(drawing.mesh,RoadDrawing.material(road_mat,drawing))
+		painted.name="RoadDrawing_"+tid.validate_node_name()
+		parent.add_child(painted)
+		road_nodes.append(painted)
 	if _repair_chunks.has(tid):
 		_chunk_data[tid].roads_mesh = mesh
 		persist_base_chunk(tid)

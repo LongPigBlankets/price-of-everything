@@ -1,5 +1,114 @@
 # Load time: what is baked, and when to re-bake it
 
+## Compact terrain and map-space road drawings — 15 October 2026
+
+The installed **600-tile / 1,841-resource** package is now **1,513,302,023 bytes**,
+down from **1,919,748,490 bytes**: **406,446,467 bytes (387.6 MiB / 21.2%) saved**.
+This is the runtime map-bake package, not the complete game download or Git history.
+There is no second set of road textures outside the package.
+
+| Resource group | Before | After |
+|---|---:|---:|
+| Combined far continent | 139.80 MB | 55.69 MB |
+| 600 base tiles, including roads | 141.59 MB | 122.82 MB |
+| 600 medium tiles | 417.31 MB | 345.17 MB |
+| 600 near tiles (also used at closest zoom) | 1,060.48 MB | 837.60 MB |
+
+Road paint is one transparent map-space drawing on an indexed, graded carrier per
+tile, shared by local LODs. The far continent uses one combined drawing. Pavement,
+kerbs, asphalt and lane markings are composited in their original height-band order.
+Bridge decks, supports, railings and retaining structures keep their 3D geometry;
+paint follows the existing road height field. The tiny paint-layer offsets are
+flattened onto the asphalt plane. The loader retains the original mesh format as a
+fallback for existing caches and newly generated worlds before offline packaging.
+
+Local drawings use four pixels per world unit (maximum 4096 pixels per axis),
+with mipmaps and native BPTC/BC7 storage; the far drawing is capped at 6144 pixels.
+The shader recovers the transparent canvas's premultiplied edge colours before
+applying the existing grade. Road materials participate in tile loading dissolves,
+far/local replacement, road fading and the two-frame handover. The retention budget
+includes the drawing texture and carrier. The measured renderer is Forward+/Metal.
+
+Terrain shares duplicate vertices and retriangulates only horizontal interiors
+with upward normals, in bounded 96u patches. Slopes, height transitions, vertex
+normals, texture coordinates and boundary positions remain. Patches with holes or
+ambiguous topology are retained conservatively. Picking shapes are refreshed from
+the simplified surface. Terrain texture resolution, baked shadows, building assets,
+placement, road layout and rail layout are reused. Receiving a shadow does not
+require a dense flat ground mesh.
+
+For the Stoneshore example (tile_4_9), road geometry drops from **42,330 to 1,735
+triangles**. Near terrain drops from **103,152 to 12,169 vertices** and from
+**34,384 to 23,506 triangles**. The texture costs are included in the package totals.
+At closest zoom, texture filtering slightly softens road edges; matching camera
+captures cover medium, near, closest, rotated near and actual far overviews.
+
+Fresh Godot 4.6.2 Forward+/Metal processes, Apple M5 Pro, warm filesystem caches,
+distinct empty runtime-cache directories, same first-open/pan script:
+
+| Measurement | Previous package | Compact package (three runs) |
+|---|---:|---:|
+| Owned supply view opens | 153 ms | 129–161 ms |
+| First tile fully revealed, including 1.5s animation | 2.943–2.946s | 2.814–3.050s |
+| Requested working set ready after the scripted pan | 6.027–6.162s | 4.705–4.917s |
+| Frame p95 | 33–39 ms | 27.9–28.1 ms |
+| Maximum frame | 271–272 ms | 270–274 ms |
+
+Each new run has **100 bundled hits, zero misses and zero runtime writes**, and
+14 rendered tile picks pass. Adjacent-pan first-tile arrival is 17–61ms. The
+first-use rendering hitch remains; these are warm-filesystem measurements, not
+cold-disk guarantees. Metadata restoration and the fixed reveal duration still
+dominate the first visible tile; the larger gain is finishing the local working set.
+
+The final installed version-2 mesh cleanup was checked again in a fresh process:
+first tile fully revealed **2.834s**, requested set ready **4.717s**, frame p95
+**27.6ms**, maximum **271.4ms**, **100 bundled hits / zero misses or writes**,
+and 14 successful tile picks. This matches the earlier compact-package trials.
+
+With preparation complete before the click, the initial full working set takes
+**3.446s** (previously 3.466s), a repeat switch **255ms**, and returning after all
+45 inactive detail tiles retire after ten seconds takes **1.300s** (previously
+1.753s). Preparation p95 in the owned view is 9.52ms, maximum 79.2ms.
+
+The conversion regenerated **1,833 affected render resources** in 251 seconds,
+reusing all metadata and terrain images. A final 56-second mesh-only pass removed
+sub-millimetre sliver triangles on clipped boundaries, including mine rims; its
+road images were reused. Version 2 is installed. It was staged, validated, installed with
+an original-package backup, and independently validated again in a fresh process.
+All resource hashes and semantic source fingerprints match. A separate render
+fingerprint and payload version cover the representation without invalidating
+placement, engineering or terrain artwork. Re-running the conversion rewrites no
+render resources. The game performs no simplification or road-texture painting on
+a cache hit.
+
+`bake_continent_package.tscn` and `bake_company_start.tscn` now perform this render
+conversion before their final release validation. To convert an existing package,
+first copy it to a staging directory, then run:
+
+```bash
+AGENT_GODOT_WINDOW=1 godot --path . --log-file /private/tmp/compact-render.log \
+  res://tools/supply_chain_3d/compact_render_bakes.tscn -- \
+  --package-output=/absolute/staging/directory --no-telemetry
+godot --headless --path . --log-file /private/tmp/compact-verify.log \
+  res://tools/supply_chain_3d/verify_continent_package.tscn -- \
+  --package-output=/absolute/staging/directory --no-telemetry
+```
+
+Keep a backup and install only changed indexed resources plus the validated
+manifest into `assets/supply_chain_3d/bakes/`; preserve unrelated files. Then run
+`verify_continent_package.tscn` without the directory override and the fresh
+rendered loading checks. Increment the compact payload version when changing
+baked geometry or paint generation; shader-only changes need no artwork rebuild.
+The converter checkpoints its manifest and can resume interrupted staging runs.
+The regular map is unaffected.
+
+Evidence: `outputs/supply-chain-3d/surface-compaction/`. Focused geometry, road grade,
+hole preservation, cursor picking, artwork, reveal and handover checks pass
+**118 assertions**. The sample capture tool is `check_surface_compaction.tscn`;
+`--overview-only` covers true far spans 6000 and 12000, while span 2400 remains a
+wide local view at a 1044-pixel viewport height.
+
+
 ## Canonical binary metadata and earlier tile reveals — 15 October 2026
 
 The ordinary, background, packaging and profiling readers now use the same

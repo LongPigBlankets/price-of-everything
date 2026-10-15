@@ -1,5 +1,8 @@
 # Supply-chain 3D overview
 
+Compact terrain and per-tile road drawings are installed for the production map.
+The package is 21.2% smaller; [bake format, measurements and conversion workflow](load-time-bakes.md#compact-terrain-and-map-space-road-drawings--15-october-2026).
+
 Branch `codex/supply-chain-3d` starts at PR #197 (`6266b19a`) and merges the
 supply-chain work in PR #196 (`86cb0e02`). The regular map remains unchanged.
 

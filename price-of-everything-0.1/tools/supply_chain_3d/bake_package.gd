@@ -53,6 +53,12 @@ static func validate(directory: String, host: Node) -> Dictionary:
 	var fingerprints: Variant = JSON.parse_string(FileAccess.get_file_as_string(fingerprints_path)) if FileAccess.file_exists(fingerprints_path) else null
 	if not fingerprints is Dictionary or not Cache.fingerprints_match(fingerprints, Cache.source_fingerprints()):
 		result.errors.append("Missing/stale export source fingerprints")
+	if manifest.has("compact_surface_version"):
+		var files := []
+		for name in ["surface_compact.gd","road_drawing.gd","road_drawing.gdshader"]:
+			var source: String = "res://scripts/supply_chain_3d/"+name
+			files.append(FileAccess.get_sha256(source) if FileAccess.file_exists(source) else "")
+		if manifest.compact_surface_version!=preload("res://scripts/supply_chain_3d/surface_compact.gd").VERSION or (FileAccess.file_exists("res://scripts/supply_chain_3d/surface_compact.gd") and manifest.get("render_fingerprint","")!=Cache.digest([preload("res://scripts/supply_chain_3d/surface_compact.gd").VERSION,preload("res://scripts/supply_chain_3d/road_drawing.gd").VERSION,files])): result.errors.append("Stale compact render representation")
 	var required := {str(manifest.get("continent_key", "")): true, str(manifest.get("scenery_key", "")): true}
 	if manifest.has("layout_key"): required[str(manifest.layout_key)] = true
 	required[str(manifest.get("transport_key",""))] = true
@@ -83,6 +89,13 @@ static func validate(directory: String, host: Node) -> Dictionary:
 			var path: String = dependency.get_slice("::", dependency.get_slice_count("::") - 1)
 			if not path.begins_with("res://") or not ResourceLoader.exists(path):
 				result.errors.append("Nonportable/missing dependency: " + path)
+		if manifest.has("compact_surface_version") and (key.begins_with("tile-") or key.begins_with("base-tile-") or key.begins_with("continent-") or key.begins_with("road-")):
+			var payload := persisted_data(directory.path_join(key+".res"),key)
+			if payload.get("compact_surface_version",0)!=int(manifest.compact_surface_version): result.errors.append("Unconverted visual bake: "+key)
+			if payload.has("roads_mesh") or key.begins_with("road-"):
+				var road: Dictionary=payload.get("road_drawing",{})
+				if road.get("version",0)!=preload("res://scripts/supply_chain_3d/road_drawing.gd").VERSION or not road.get("mesh") is ArrayMesh:result.errors.append("Missing road drawing: "+key)
+				if road.get("mesh") is ArrayMesh and road.mesh.get_surface_count()>0 and (not road.get("texture") is Texture2D or int(road.get("texture_bytes",0))<=0):result.errors.append("Missing road drawing texture: "+key)
 		result.bytes += int(record.get("bytes", 0))
 		result.resources += 1
 	var root := cache.read(manifest.continent_key)

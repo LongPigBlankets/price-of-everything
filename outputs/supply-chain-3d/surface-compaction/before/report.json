@@ -1,0 +1,98 @@
+{
+	"cache": {
+		"hits": 225,
+		"misses": 0,
+		"writes": 0
+	},
+	"opening": {
+		"begin_elapsed_ms": 19427,
+		"owned_tiles": 8,
+		"profile": {
+			"activation": {
+				"attach_ms": 4.244,
+				"detail_ms": 470.209,
+				"effects_ms": 2.166,
+				"grade_ms": 0.05,
+				"state_ms": 0.075
+			},
+			"bundled_hits": 35,
+			"cache_hits": 35,
+			"cache_misses": 0,
+			"cache_writes": 0,
+			"continent_ms": 10.697,
+			"infrastructure_ms": 47.7,
+			"keys_ms": 186.183,
+			"layout_inputs_ms": 634.9,
+			"layout_solve_ms": 355.923,
+			"max_standing_slice_ms": 51.404,
+			"model_ms": 995.072,
+			"road_frontage_ms": 130.804,
+			"road_import_ms": 90.107,
+			"road_routing_ms": 65.436,
+			"scene_ms": 1485.129,
+			"scenery_ms": 12.869,
+			"standing_ms": 526.529,
+			"static_scene_ms": 1460.641,
+			"total_ms": 2689.971,
+			"transport": {
+				"cache_hit": true,
+				"lookup_ms": 58.32,
+				"total_ms": 60.243
+			}
+		},
+		"ready_ms": 173
+	},
+	"prepared_switch_ms": 3503,
+	"views": [
+		{
+			"camera": {
+				"pitch": 1.05,
+				"span": 2400.0,
+				"target": "(2295.0, 33.85, 5280.0)",
+				"yaw": 0.1
+			},
+			"name": "far",
+			"settle_ms": 3005
+		},
+		{
+			"camera": {
+				"pitch": 1.05,
+				"span": 1000.0,
+				"target": "(2295.0, 33.85, 5280.0)",
+				"yaw": 0.1
+			},
+			"name": "medium",
+			"settle_ms": 812
+		},
+		{
+			"camera": {
+				"pitch": 1.05,
+				"span": 500.0,
+				"target": "(2295.0, 33.85, 5280.0)",
+				"yaw": 0.1
+			},
+			"name": "near",
+			"settle_ms": 5297
+		},
+		{
+			"camera": {
+				"pitch": 1.05,
+				"span": 500.0,
+				"target": "(2295.0, 33.85, 5280.0)",
+				"yaw": 1.0
+			},
+			"name": "near-rotated",
+			"settle_ms": 956
+		},
+		{
+			"camera": {
+				"pitch": 1.05,
+				"span": 240.0,
+				"target": "(2295.0, 33.85, 5280.0)",
+				"yaw": 0.1
+			},
+			"name": "closest",
+			"settle_ms": 722
+		}
+	]
+}

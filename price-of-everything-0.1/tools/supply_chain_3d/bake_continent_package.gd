@@ -146,6 +146,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	manifest.complete = true
 	var path := writer.directory.path_join("manifest.json")
 	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify(manifest, "\t") + "\n")
+	await preload("res://tools/supply_chain_3d/compact_render_bakes.gd").migrate(writer.directory,self)
 	var report := await Package.validate(writer.directory, self)
 	if report.ok and "--prune" in OS.get_cmdline_user_args():
 		for file in DirAccess.get_files_at(writer.directory):

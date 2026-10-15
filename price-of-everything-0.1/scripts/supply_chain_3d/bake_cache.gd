@@ -39,6 +39,7 @@ func _init() -> void:
 			if arg.begins_with("--trial-cache-directory="): directory = arg.trim_prefix("--trial-cache-directory=")
 
 	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--bake-package-directory="): bundled_directory = arg.trim_prefix("--bake-package-directory=")
 		if arg.begins_with("--bake-cache-directory="): directory = arg.trim_prefix("--bake-cache-directory=")
 
 static func is_raw(path: String) -> bool:

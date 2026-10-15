@@ -99,7 +99,7 @@ func _test_cursor_collision_mine_without_coarse_ground_hit() -> void:
 		for tier in 3: item.data.meshes[tier] = builder._surface(item.tile, [120.0, 60.0, 30.0][tier])
 		meshes.append(item.data.meshes[0])
 		builder.apply_tile_detail(item, 2)
-	builder.continent_body.get_child(0).shape = builder.Geo.joined(meshes).create_trimesh_shape()
+	builder.continent_body.get_child(0).shape = builder.Compact.joined(meshes).create_trimesh_shape()
 	var pair := _building(board, "a", Vector3(0, -50, 0), Vector3(80, 100, 80))
 	board.restore_camera({"target": Vector3(0, 20, 0), "span": 240.0, "pitch": 1.35, "yaw": PI / 4.0})
 	await get_tree().physics_frame
@@ -113,7 +113,7 @@ func _test_cursor_collision_mine_without_coarse_ground_hit() -> void:
 	var tile_hit: Dictionary = board.pick_at(screen, true)
 	_check(not tile_hit.is_empty() and tile_hit.collider.get_meta("tile_id", "") == "a",
 		"3D cursor collision: a tile-only click through the mine still targets its tile")
-	builder.continent_body.get_child(0).shape = builder._coarse_pick_shape(builder.Geo.joined(meshes))
+	builder.continent_body.get_child(0).shape = builder._coarse_pick_shape(builder.Compact.joined(meshes))
 	var far: Dictionary = board.capture_camera()
 	far.span = board.Rig.MAX_SIZE
 	board.restore_camera(far)

@@ -1,0 +1,48 @@
+shader_type spatial;
+render_mode unshaded, cull_disabled, alpha_to_coverage, depth_prepass_alpha;
+#include "res://scripts/supply_chain_3d/detail_mask.gdshaderinc"
+uniform sampler2D artwork : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
+uniform bool textured = false;
+uniform bool strata = false;
+uniform float road_fade = 0.0;
+uniform vec4 artwork_rect = vec4(0.0, 0.0, 1.0, 1.0);
+uniform vec2 grade_range = vec2(0.0, 1.0);
+varying vec3 world_point;
+varying vec3 world_normal;
+vec3 to_linear(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)); }
+vec3 to_srgb(vec3 c) { return mix(c * 12.92, 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c)); }
+void vertex() {
+	world_point = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	world_normal = normalize(MODEL_NORMAL_MATRIX * NORMAL);
+}
+void fragment() {
+	bool hidden = lod_hidden(FRAGCOORD.xy) || replaced_by_detail(world_point.xz, FRAGCOORD.xy);
+	if (lod_side == 0 && local_detail_blend >= 1.0 && hidden) { discard; }
+	vec4 drawing = texture(artwork, UV);
+	vec3 paint = drawing.rgb;
+	ALPHA = drawing.a;
+	ALPHA_SCISSOR_THRESHOLD = 0.25;
+	ALPHA_ANTIALIASING_EDGE = 0.2;
+	ALPHA_TEXTURE_COORDINATE = UV * vec2(textureSize(artwork, 0));
+	if (textured && !OUTPUT_IS_SRGB) paint = to_srgb(paint);
+	// The transparent canvas bake stores premultiplied sRGB. Coverage is
+	// handled below; recover edge colour before applying the terrain grade.
+	paint = clamp(paint / max(drawing.a, 0.001), vec3(0.0), vec3(1.0));
+	paint = mix(paint, vec3(0.50, 0.52, 0.35), road_fade);
+	vec3 n = normalize(world_normal);
+	float slope = length(n.xz) / max(0.08, n.y);
+	float facing = dot(normalize(n.xz + vec2(0.00001)), vec2(0.70710678));
+	// A soft response keeps road/rail approaches legible without hitting the
+	// full mountain contrast at a modest 13% slope.
+	float relief_response = slope / (slope + 0.45);
+	float shading = 1.0 - relief_response * (0.16 - 0.12 * max(0.0, facing));
+	if (strata) shading = 0.75 + 0.25 * max(0.0, dot(n, normalize(vec3(0.7, 0.3, 0.7))));
+	float projected_y = (world_point.x + world_point.z) * 0.40824829 - world_point.y * 0.81649658;
+	float t = clamp((projected_y - grade_range.x) / max(1.0, grade_range.y - grade_range.x), 0.0, 1.0);
+	vec3 wash = t > 0.5 ? mix(vec3(1.0), vec3(1.0, 0.80, 0.44), (t - 0.5) * 0.52)
+		: mix(vec3(1.0), vec3(0.05, 0.08, 0.22), (0.5 - t) * 0.20);
+	vec3 grade = mix(vec3(0.66, 0.74, 1.0), vec3(1.0, 0.92, 0.72), t);
+	paint *= wash * grade * shading * 0.90;
+	ALBEDO = OUTPUT_IS_SRGB ? paint : to_linear(paint);
+	if (hidden || loading_hidden(world_point.xz, FRAGCOORD.xy)) { discard; }
+}

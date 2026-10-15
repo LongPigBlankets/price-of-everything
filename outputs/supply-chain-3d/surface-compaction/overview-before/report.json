@@ -1,0 +1,74 @@
+{
+	"cache": {
+		"hits": 89,
+		"misses": 0,
+		"writes": 0
+	},
+	"opening": {
+		"begin_elapsed_ms": 19546,
+		"owned_tiles": 8,
+		"profile": {
+			"activation": {
+				"attach_ms": 3.312,
+				"detail_ms": 503.847,
+				"effects_ms": 2.396,
+				"grade_ms": 0.042,
+				"state_ms": 0.054
+			},
+			"bundled_hits": 35,
+			"cache_hits": 35,
+			"cache_misses": 0,
+			"cache_writes": 0,
+			"continent_ms": 6.64,
+			"infrastructure_ms": 40.375,
+			"keys_ms": 190.971,
+			"layout_inputs_ms": 619.102,
+			"layout_solve_ms": 360.156,
+			"max_standing_slice_ms": 53.845,
+			"model_ms": 983.575,
+			"road_frontage_ms": 133.611,
+			"road_import_ms": 91.436,
+			"road_routing_ms": 68.186,
+			"scene_ms": 1523.449,
+			"scenery_ms": 14.964,
+			"standing_ms": 536.984,
+			"static_scene_ms": 1502.071,
+			"total_ms": 2719.612,
+			"transport": {
+				"cache_hit": true,
+				"lookup_ms": 60.932,
+				"total_ms": 62.865
+			}
+		},
+		"ready_ms": 150
+	},
+	"prepared_switch_ms": 3506,
+	"views": [
+		{
+			"active_lod": 0,
+			"camera": {
+				"pitch": 1.05,
+				"span": 6000.0,
+				"target": "(2295.0, 33.85, 5280.0)",
+				"yaw": 0.1
+			},
+			"name": "continent",
+			"overview": true,
+			"ppu": 0.174,
+			"settle_ms": 504
+		},
+		{
+			"active_lod": 0,
+			"camera": {
+				"pitch": 1.05,
+				"span": 12000.0,
+				"target": "(2295.0, 33.85, 5280.0)",
+				"yaw": 0.1
+			},
+			"name": "whole-continent",
+			"overview": true,
+			"ppu": 0.087,
+			"settle_ms": 335
+		}
+	]
+}
