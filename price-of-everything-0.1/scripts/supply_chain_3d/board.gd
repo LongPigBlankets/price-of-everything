@@ -15,6 +15,8 @@ const Detail := preload("res://scripts/supply_chain_3d/detail.gd")
 const Tokens := preload("res://scripts/supply_chain_3d/tokens.gd")
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
 const LayoutQueries := preload("res://scripts/supply_chain_3d/layout_queries.gd")
+const BackgroundLoad := preload("res://scripts/supply_chain_3d/background_load.gd")
+const BackgroundWorld := preload("res://scripts/supply_chain_3d/background_world.gd")
 var animate_goods := true
 var _viewport: SubViewport
 var _camera: Camera3D
@@ -66,9 +68,59 @@ var _collision_sample: Array = []
 ## Timings separate layout work, disk reads and scene setup from GPU/streaming.
 var load_profile: Dictionary = {}
 var _layout_queries: RefCounted
+var _coverage_states := {}
+var _warming: RefCounted
+var _requested_all_tiles := false
+var background_profile := {}
+var background_status := "idle"
+const SCENE_BUDGET_USEC := 4000
+
+func _discard_background() -> void:
+	_requested_all_tiles = show_all_tiles
+	if _warming != null: _warming.cancelled = true
+	_warming = null
+	for packet in _coverage_states.values():
+		if packet.content != _content and is_instance_valid(packet.content):
+			packet.builder.handover.clear()
+			packet.builder.road_surface.finish_build()
+			packet.content.free()
+	_coverage_states.clear()
+	background_status = "idle"
+
+func background_ready() -> bool:
+	return _coverage_states.has(true)
+
+func background_active() -> bool:
+	return _warming != null and not _warming.done
+
+func _start_background() -> void:
+	if show_all_tiles or _building or _builder == null or background_active() or background_ready(): return
+	if DisplayServer.get_name() == "headless" or "--no-background-continent" in OS.get_cmdline_user_args(): return
+	var job := BackgroundLoad.new()
+	_warming = job
+	background_status = "loading"
+	if _coverage != null: _coverage.set_item_text(1, "Show all tiles (preparing…)")
+	# Yield before any work; owned coverage is already usable and the loading
+	# screen never waits for the continent's readiness.
+	await get_tree().process_frame
+	if job.cancelled: job.done = true; return
+	var packet := await BackgroundWorld.prepare(self, job, _generation)
+	job.done = true
+	if job.cancelled or _warming != job: return
+	background_profile = job.profile
+	if not packet.is_empty():
+		_coverage_states[true] = packet
+		background_status = "ready"
+	else:
+		# A changed world must use its normal rebuild path, never stale scenery.
+		background_status = "unavailable"
+		job.resources.clear()
+	if _coverage != null: _coverage.set_item_text(1, "Show all tiles")
+	print("[CONTINENT BACKGROUND] ", background_status, " ", JSON.stringify(background_profile))
 
 func _exit_tree() -> void:
 	_generation += 1
+	_discard_background()
 	# Release large cached resources while the scene/rendering services still
 	# exist, rather than retaining them until the scripting runtime shuts down.
 	if _builder != null:
@@ -81,7 +133,8 @@ func _exit_tree() -> void:
 
 func _ready() -> void:
 	RenderingServer.frame_post_draw.connect(_on_rendered_frame)
-	show_all_tiles = PlayerProfile.supply_chain_all_tiles
+	# Coverage is session-local: every new board opens on the company.
+	show_all_tiles = false
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var container := TextureRect.new()
 	container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -189,14 +242,29 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 func build_async(graph: Dictionary, terrain: Node) -> void:
 	await _build(graph, terrain, true)
 
-func set_all_tiles(value: bool, persist: bool = true) -> void:
+func set_all_tiles(value: bool, _persist: bool = true) -> void:
+	_requested_all_tiles = value
+	if not value and not show_all_tiles:
+		if _coverage != null: _coverage.selected = 0
+		if _progress != null and not _building: _progress.hide()
+		return
+	if value and not show_all_tiles and background_active():
+		var job: RefCounted = _warming
+		if _progress != null:
+			_progress.text = "Preparing all tiles… Your tiles are still available."
+			_progress.show()
+		while _warming == job and not job.done and _requested_all_tiles:
+			await get_tree().process_frame
+		if not _requested_all_tiles: return
 	if show_all_tiles == value: return
 	show_all_tiles = value
-	if persist: PlayerProfile.set_supply_chain_all_tiles(value)
 	if _coverage != null: _coverage.selected = 1 if value else 0
 	_fit_after_build = not value
 	_medium_after_build = value
-	if is_instance_valid(_last_terrain): await _build(_last_graph, _last_terrain, true)
+	if _coverage_states.has(value):
+		_activate(_coverage_states[value])
+	elif is_instance_valid(_last_terrain):
+		await _build(_last_graph, _last_terrain, true)
 
 func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	var started := Time.get_ticks_usec()
@@ -205,6 +273,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	_last_graph = graph
 	_last_terrain = terrain
 	_generation += 1
+	_discard_background()
 	var generation := _generation
 	_building = true
 	var next := Node3D.new()
@@ -281,6 +350,9 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 		_building = false
 		if _progress != null: _progress.hide()
 		next.free()
+		_coverage_states[show_all_tiles] = {"content": _content, "builder": _builder, "model": _model,
+			"goods": _goods, "effects": _effects, "profile": load_profile}
+		if not show_all_tiles: _start_background.call_deferred()
 		return
 	builder.tiles = model.get("tiles", {})
 	builder.rivers = rivers
@@ -305,24 +377,43 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 		if generation != _generation: next.free(); return
 	timings.continent_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	stage = Time.get_ticks_usec()
-	var infrastructure := builder.infrastructure(model, Legacy.show, not show_all_tiles)
+	next.free()
+	var packet := await _assemble(builder, model, generation, paced, timings)
+	if packet.is_empty(): return
+	timings.total_ms = (Time.get_ticks_usec() - started) / 1000.0
+	packet.profile = timings
+	_activate(packet)
+
+func _assemble(builder: RefCounted, model: Dictionary, generation: int, paced: bool, timings: Dictionary) -> Dictionary:
+	var stage := Time.get_ticks_usec()
+	var next := Node3D.new()
+	next.name = "Continent" if builder.streamed else "Company"
+	var infrastructure: Node3D = builder.infrastructure(model, Legacy.show, not builder.streamed)
 	next.add_child(infrastructure)
 	timings.infrastructure_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	var standing_started := Time.get_ticks_usec()
 	# A far-only world may never request detail. Do not retain the bound height
 	# callback (builder -> road surface -> builder) while waiting for a zoom-in.
 	if not builder.base_ready: builder.road_surface.finish_build()
+	var slice_start := Time.get_ticks_usec()
+	var max_slice := 0
 	for s in model.get("standing", []):
-		if not show_all_tiles or str(s.kind) != "house": next.add_child(builder.standing_node(s))
+		if not builder.streamed or str(s.kind) != "house": next.add_child(builder.standing_node(s))
+		if paced and Time.get_ticks_usec() - slice_start >= SCENE_BUDGET_USEC:
+			max_slice = maxi(max_slice, Time.get_ticks_usec() - slice_start)
+			await get_tree().process_frame
+			if generation != _generation: next.free(); return {}
+			slice_start = Time.get_ticks_usec()
+	timings.max_standing_slice_ms = max_slice / 1000.0
 	timings.standing_ms = (Time.get_ticks_usec() - standing_started) / 1000.0
 	if builder.base_ready:
 		if not await _build_base_tiles(builder, next, model, generation, paced):
 			builder.road_surface.finish_build()
 			next.free()
-			return
+			return {}
 	next.add_child(builder.mine_rims_node())
 	next.add_child(builder.shadows_node())
-	if show_all_tiles:
+	if builder.streamed:
 		builder.finish_continent(next)
 		# Cold baking may visit every tile, but its temporary detail is not the
 		# runtime working set. Warm and cold openings both start with one backdrop.
@@ -332,7 +423,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 		builder.handover_enabled = true
 	else:
 		builder.prepare_company_pick_surface(next)
-	if show_all_tiles: print("[CONTINENT BUILD] trees ready ", Time.get_ticks_msec())
+	if builder.streamed: print("[CONTINENT BUILD] trees ready ", Time.get_ticks_msec())
 	timings.static_scene_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	builder.prepare_flows(model)
 	var goods: Array = []
@@ -361,13 +452,26 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 				goods.append({"sprite": sprite, "stationary": true})
 	var effects := _build_effects(builder, next)
 	timings.scene_ms = (Time.get_ticks_usec() - stage) / 1000.0
+	return {"content": next, "builder": builder, "model": model, "goods": goods, "effects": effects, "profile": timings}
+
+func _activate(packet: Dictionary) -> void:
+	_generation += 1 # Any pending streamer still belongs to the previous world.
+	var builder: RefCounted = packet.builder
+	var model: Dictionary = packet.model
+	var timings: Dictionary = packet.profile
 	if _content != null:
+		if _builder != null and _builder.cursor_picking: _builder.set_collision_tiles({})
 		_world.remove_child(_content)
-		_content.queue_free()
+		if not _coverage_states.has(_last_all_tiles): _content.queue_free()
+		elif _last_all_tiles: _expire_inactive_detail(_coverage_states[true])
+	if is_instance_valid(_selection): _selection.queue_free()
 	_selection = null
-	_content = next
+	_content = packet.content
+	packet.inactive_since = 0
+	_coverage_states[builder.streamed] = packet
 	_world.add_child(_content)
 	_builder = builder
+	builder.configure_grade()
 	_far_detail_expires_msec = 0
 	_nearby_tiles.clear()
 	_tile_distances.clear()
@@ -384,8 +488,8 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	_model = model
 	_last_show = Legacy.show.duplicate()
 	_last_all_tiles = show_all_tiles
-	_goods = goods
-	_effects = effects
+	_goods = packet.goods
+	_effects = packet.effects
 	_building = false
 	if _progress != null: _progress.hide()
 	if has_content():
@@ -402,13 +506,33 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	_update_goods()
 	_update_cars()
 	if _labels != null: _labels.queue_redraw()
-	timings.total_ms = (Time.get_ticks_usec() - started) / 1000.0
 	timings.cache_hits = builder.bake_cache.hits
 	timings.bundled_hits = builder.bake_cache.bundled_hits
 	timings.cache_misses = builder.bake_cache.misses
 	timings.cache_writes = builder.bake_cache.writes
 	load_profile = timings
 	if show_all_tiles: print("[CONTINENT LOAD] ", JSON.stringify(timings))
+	elif not background_ready(): _start_background.call_deferred()
+
+func _expire_inactive_detail(packet: Dictionary) -> void:
+	# Keep a quick return cheap, then retire inactive detail through the same
+	# ten-second grace period and resource target used by normal panning.
+	var stamp := Time.get_ticks_msec()
+	packet.inactive_since = stamp
+	var timer := Timer.new()
+	timer.wait_time = 10.0; timer.one_shot = true
+	add_child(timer)
+	timer.timeout.connect(func() -> void:
+		if packet.get("inactive_since", 0) == stamp: _retire_inactive_detail(packet)
+		timer.queue_free())
+	timer.start()
+
+func _retire_inactive_detail(packet: Dictionary) -> void:
+	if not is_instance_valid(packet.content) or packet.content == _content: return
+	var builder: RefCounted = packet.builder
+	builder.handover.reset(0.0)
+	builder.release_local_tiles({}, true)
+	builder.resource_cache.trim(Time.get_ticks_msec(), {}, {})
 
 func _build_base_tiles(builder: RefCounted, parent: Node3D, model: Dictionary, generation: int, paced: bool) -> bool:
 	if builder.streamed:
@@ -1013,6 +1137,7 @@ func _stream_visible() -> void:
 		_stream_tier = _detail
 		_maintain_resource_cache()
 		builder.complete_detail_request()
+		if _coverage_states.has(true): _coverage_states[true].get("resources", {}).clear()
 	_streaming = false
 
 func detail_ready() -> bool:

@@ -1,5 +1,90 @@
 # Load time: what is baked, and when to re-bake it
 
+## Owned-first opening and background continent — 15 October 2026
+
+Every new supply-chain board now opens with **Show player owned tiles only**,
+ignoring the old saved all-tiles preference. After owned coverage is ready, a
+matching cached continent loads in the background. Selecting all tiles early
+keeps owned tiles usable while preparation finishes; selecting owned cancels
+that pending switch. Coverage selection lasts for the current board only.
+
+The previous **16.023s** all-tiles switch was not rebaking textures. Its 14.274s
+board preparation included 4.551s restoring/building the model, 4.264s computing
+keys/restoring transport, 0.984s loading scenery and 2.681s assembling the scene.
+The rest included visible-detail activation. Worker disk reads alone would not
+remove that synchronous work.
+
+The installed supplement now carries the prepared model, content keys, authored
+road indexes, mine cuts/rims, building foundations and continent picking shape.
+It adds **29,208,588 bytes (27.86 MiB)**; no terrain or sprite artwork was
+regenerated. The complete package is **1,841 resources / 1,928,790,772 bytes**.
+The existing terrain, scenery and transport keys are unchanged. Independent
+package validation checks hashes, source fingerprints, bounds and the supplement.
+
+Fresh rendered Godot 4.6.2 / Forward+ Metal process on Apple M5 Pro, an empty
+runtime-cache path and warm OS filesystem caches:
+
+| Measurement | Time |
+|---|---:|
+| Process start to Begin | 18.864s |
+| Owned-board preparation during loading | 2.704s |
+| First supply-view opening after Begin | **0.152s** |
+| Continent preparation, while owned view remains usable | 6.387s |
+| First all-tiles switch after preparation, visible medium detail ready | **3.068s** |
+| Return to owned coverage | 0.005s |
+| Repeat all-tiles switch | 0.022s |
+| Return after ten-second inactive-detail retirement | 0.541s |
+| Owned-view frame time during preparation, 95th percentile / maximum | 9.22ms / 57.18ms |
+
+There was one frame above 50ms across 603 sampled frames. Earlier iterations
+had 0.5–0.74s stalls from reconstructing indexes, mine geometry and picking
+surfaces; the supplement removes those reconstruction stages. **The first
+all-tiles switch is still about three seconds, not instant.** Local medium scene
+activation and renderer work remain. Game startup is also still around 19s.
+
+The fresh run recorded 35 bundled hits at owned opening and 112 in the continent
+builder, with **zero misses and zero runtime bake writes**. It rendered both
+coverage modes and checked builder reuse through repeated switches. All 45
+resident detail tiles retired after the ten-second grace period; returning
+reused the package without writes. The runtime cache directory was not created.
+Sixty-six focused assertions pass for background cancellation/input validation,
+camera/cursor collision, prefetch and resource-cache retention/prepared reloads.
+The existing ObjectDB exit warning remains in rendered captures. Evidence is
+under `outputs/supply-chain-3d/background-loading/final/` at repository root.
+
+Only twelve nearby base/medium tile resources are warmed, not every detailed
+tile. Strong speculative resource handles are released after the first local
+stream completes. Both coverage roots survive toggles; inactive continent detail
+has a ten-second grace period before node retirement and normal cache-pressure
+rules. Preparation never changes the active world's shared material grading.
+
+The supplement is currently for the **Metal Magnate starting world**, with its
+exact live input signature. A changed simulation/layout, a different company or
+a visibility change cannot use a stale snapshot. Those worlds retain the normal
+explicit all-tiles build path. Pending jobs are cancelled on board invalidation
+or exit. Workers only read detached inputs or immutable loaded data; scene-tree
+work stays on the main thread. `--no-background-continent` disables speculative
+preparation for offline tools and controlled comparisons.
+
+After a production continent bake and `bake_company_start.tscn`, refresh just the
+supplement, then validate in a separate process (from the project directory):
+
+```bash
+AGENT_GODOT_WINDOW=1 godot --path . --log-file /private/tmp/world-snapshot.log \
+  res://tools/supply_chain_3d/bake_world_snapshot.tscn -- \
+  --continent-review --no-background-continent --no-telemetry
+godot --headless --path . --log-file /private/tmp/world-snapshot-verify.log \
+  res://tools/supply_chain_3d/verify_continent_package.tscn -- --no-telemetry
+AGENT_GODOT_WINDOW=1 godot --path . --log-file /private/tmp/background-check.log \
+  res://tools/supply_chain_3d/check_background_loading.tscn -- \
+  --continent-review --verify-retention --no-telemetry \
+  --bake-cache-directory=/private/tmp/background-check-unused-cache
+```
+
+Use a new empty cache path for each acceptance run. A full package rebuild/prune
+must be followed by the supplement step; the runtime safely ignores an absent
+or mismatched supplement. Measurements below are historical baselines.
+
 ## Full-continent decoration rollout — verified 15 October 2026
 
 This supersedes the earlier Stoneshore-only bake pause: the user approved the
