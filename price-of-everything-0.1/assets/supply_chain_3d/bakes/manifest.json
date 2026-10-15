@@ -34,7 +34,7 @@
 		"tile-fe89ececcd355e67e8701e408b7e7c91a87a990acdc29eee5b1b400c2b3f186c",
 		"tile-fed4879626292b38de0d353e0e907ab2a54bf742ca77c30add3727e933702538",
 		"transport-adecf7cf79fe5e63704e72ea478ae86f716ef30348183eb0ada63b716368f6ca",
-		"world-snapshot-7253fb984c86e9c08780031cf68de5ebc644d86108a6379d8e718d7807c1cd07"
+		"world-snapshot-dd381f6c95087c2985242d49e398c98b344bb8f99113240e2eb3abeaedd81151"
 	],
 	"company_start": {
 		"resource_count": 34,
@@ -7419,9 +7419,9 @@
 			"bytes": 898123,
 			"sha256": "886496fab3000a47e65a542f0d4cebe8687dfe3e06a33aba939350577204dad2"
 		},
-		"world-snapshot-7253fb984c86e9c08780031cf68de5ebc644d86108a6379d8e718d7807c1cd07": {
-			"bytes": 29208588,
-			"sha256": "56fc8d0e72d1f74cf0ac2b19345b2cf873358d00ce86bfa43082c06b8e634731"
+		"world-snapshot-dd381f6c95087c2985242d49e398c98b344bb8f99113240e2eb3abeaedd81151": {
+			"bytes": 14735323,
+			"sha256": "db2194b33fb7629ab56d6064b9b548eb76cd524a6860ca0e186c11e12acdb728"
 		}
 	},
 	"scenery_key": "scenery-0146afa6f8f2a80107076a9e1936601203fddb3e8590ef21d2ff6949b78efb7b",
@@ -10432,5 +10432,5 @@
 		}
 	},
 	"transport_key": "transport-9fab9e41b552db01d62f891a27eb687a9e2344daf99567990ac3caf0b62e6ed0",
-	"world_snapshot_key": "world-snapshot-7253fb984c86e9c08780031cf68de5ebc644d86108a6379d8e718d7807c1cd07"
+	"world_snapshot_key": "world-snapshot-dd381f6c95087c2985242d49e398c98b344bb8f99113240e2eb3abeaedd81151"
 }

@@ -128,6 +128,13 @@ var prepared_foundations: Dictionary = {}
 var prepared_continent_pick: Shape3D
 var prepared_authored_profile: Dictionary = {}
 var prepared_mine_rims: Mesh
+var backdrop_pending := false
+var progressive_tiles := false
+var ready_tiles: Dictionary = {}
+var paper_owned_tiles: Dictionary = {}
+var pending_infrastructure: Array[Node3D] = []
+var progressive_manifest: Dictionary = {}
+var tile_load_resources: Dictionary = {}
 var _scenery_key := ""
 var tile_chunks: Dictionary = {}
 var base_ready := true
@@ -579,6 +586,19 @@ func finish_continent(parent: Node3D) -> void:
 			if grove != null: continent_node.add_child(grove)
 	continent_node.visible = false
 	parent.add_child(continent_node)
+	attach_continent_pick(parent)
+	residency.configure(tiles, origin)
+	for child in continent_node.get_children():
+		if not child is GeometryInstance3D or child.material_override == null: continue
+		var material := child.material_override.duplicate() as ShaderMaterial
+		material.set_meta("road", child.material_override == road_mat)
+		material.set_meta("foliage", str(child.name).begins_with("FarTrees_tree_"))
+		child.material_override = material
+		residency.bind(material)
+		backdrop_materials.append(material)
+
+func attach_continent_pick(parent: Node3D) -> void:
+	if continent_body != null: return
 	# The joined far surface doubles as the selection surface; tile identity is
 	# recovered from its map-space hit position, without 600 duplicate meshes.
 	var body := StaticBody3D.new()
@@ -591,15 +611,27 @@ func finish_continent(parent: Node3D) -> void:
 	shape.shape = prepared_continent_pick if prepared_continent_pick != null else (_coarse_pick_shape(continent.mesh) if cursor_picking else (continent.mesh as Mesh).create_trimesh_shape())
 	body.add_child(shape)
 	parent.add_child(body)
-	residency.configure(tiles, origin)
-	for child in continent_node.get_children():
-		if not child is GeometryInstance3D or child.material_override == null: continue
-		var material := child.material_override.duplicate() as ShaderMaterial
-		material.set_meta("road", child.material_override == road_mat)
-		material.set_meta("foliage", str(child.name).begins_with("FarTrees_tree_"))
-		child.material_override = material
-		residency.bind(material)
-		backdrop_materials.append(material)
+
+func tile_ready(tid: String) -> bool:
+	return local_tiles.has(tid) and (not progressive_tiles or ready_tiles.has(tid))
+
+func reveal_tile(tid: String) -> void:
+	ready_tiles[tid] = true
+	if backdrop_pending: handover.reset(1.0)
+	else: complete_detail_request()
+	_apply_view_visibility()
+
+func install_backdrop(parent: Node3D) -> void:
+	finish_continent(parent)
+	backdrop_pending = false
+	for node in pending_infrastructure: node.show()
+	pending_infrastructure.clear()
+	for item in terrain_lods:
+		item.data.textures[0] = continent.texture
+		item.data.meshes[0] = base_chunk(item.tile).mesh
+		item.data.shapes[0] = base_chunk(item.tile).get("pick_shape")
+		apply_tile_detail(item, active_lod)
+	_apply_view_visibility()
 
 func prepare_company_pick_surface(parent: Node3D) -> void:
 	# Reuse the lowest-detail company surfaces to locate the cursor while detailed
@@ -662,7 +694,7 @@ func _sync_tile_collision(item: Dictionary) -> void:
 	item.collision_tier = tier
 
 func update_residency() -> void:
-	residency.update(local_tiles if not _overview or handover.active else {})
+	residency.update((ready_tiles if progressive_tiles else local_tiles) if not _overview or handover.active else {})
 	for material in backdrop_materials:
 		material.set_shader_parameter("local_detail_mask", not _overview or handover.active)
 		material.set_shader_parameter("local_detail_blend", handover.blend if handover_enabled else 1.0)
@@ -688,7 +720,7 @@ func _begin_handover(target: float) -> void:
 			if node.is_visible_in_tree(): local.append(node)
 	for pair in sprite_pairs:
 		if pair.get("decor", false): continue # The continent already contains its far houses.
-		if streamed and local_streaming and pair.get("standing") is Dictionary and pair.has("tile") and not local_tiles.has(str(pair.tile)): continue
+		if streamed and local_streaming and pair.get("standing") is Dictionary and pair.has("tile") and not tile_ready(str(pair.tile)): continue
 		if pair.get("far") != null: far.append(pair.far)
 		if pair.get("medium") != null and pair.medium.visible: local.append(pair.medium)
 		for node in pair.near:
@@ -706,15 +738,16 @@ func _apply_view_visibility() -> void:
 	if cursor_picking and not collision_detail_visible(): set_collision_tiles({})
 	var local := not _overview
 	if handover_enabled: local = handover.blend > 0.0 or _handover_preparing
+	if backdrop_pending: local = true
 	if continent_node != null:
 		continent_node.visible = true
 		update_residency()
-		for record in local_tiles.values(): record.root.visible = local
 		for item in terrain_lods: item.node.visible = local
 		for node in road_nodes: node.visible = local
 		for frame in frame_nodes:
 			frame.rim.visible = local
 			frame.lip.visible = local
+	for tid in local_tiles: local_tiles[tid].root.visible = local and tile_ready(tid) and not paper_owned_tiles.has(tid)
 	for node in decor_nodes: node.visible = local
 	for node in far_nodes: node.visible = _overview and continent_node == null
 	for node in glint_nodes: node.visible = local
@@ -736,6 +769,7 @@ func release_local_tiles(keep: Dictionary, retain_resources: bool = false) -> vo
 		terrain_cache.erase(terrain_key(tid))
 		_chunk_data.erase(tid)
 		local_tiles.erase(tid)
+		ready_tiles.erase(tid)
 	if continent_node != null: update_residency()
 
 func cache_local_tile(tid: String) -> void:
@@ -743,6 +777,7 @@ func cache_local_tile(tid: String) -> void:
 	if terrain_cache.has(key): resource_cache.put(tid, terrain_cache[key], _chunk_data.get(tid, {}), Time.get_ticks_msec())
 
 func prefetch_medium(tid: String) -> bool:
+	if backdrop_pending: return false
 	if not resource_cache.can_prefetch() or local_tiles.has(tid): return false
 	var existing: Dictionary = resource_cache.entries.get(tid, {})
 	if not existing.is_empty() and existing.data.meshes[1] != null: return false
@@ -923,6 +958,9 @@ func terrain_key(tid: String) -> String:
 
 func prepare_tile(host: Node, tid: String) -> void:
 	var key := terrain_key(tid)
+	# Progressive loading supplies a complete medium tile before attaching it;
+	# no dependency on the combined far texture is needed for this path.
+	if backdrop_pending and terrain_cache.has(key): return
 	if streamed and not terrain_cache.has(key):
 		var retained := resource_cache.restore(tid)
 		if not retained.is_empty():
@@ -1228,11 +1266,13 @@ func _update_asset_tier() -> void:
 	if handover_enabled:
 		far_visible = handover.blend < 1.0 or _handover_preparing
 		local_visible = handover.blend > 0.0 or _handover_preparing
+	if backdrop_pending: local_visible = true
 	for pair in sprite_pairs:
 		# Tree/clutter/decor pairs already belong to a streamed tile root. Only
 		# the globally retained player/NPC objects need this extra residency gate.
 		var global_standing: bool = pair.get("standing") is Dictionary and not pair.get("decor", false)
-		var resident: bool = not (streamed and local_streaming and global_standing) or not pair.has("tile") or local_tiles.has(str(pair.tile))
+		var resident: bool = not (streamed and local_streaming and global_standing) or not pair.has("tile") or tile_ready(str(pair.tile))
+		if global_standing: pair.root.visible = (not backdrop_pending or resident) and not paper_owned_tiles.has(str(pair.get("tile", "")))
 		var pair_local: bool = local_visible and resident
 		var pair_far: bool = far_visible or not resident
 		if pair.get("clutter", false):

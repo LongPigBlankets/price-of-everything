@@ -52,10 +52,22 @@ indexes, mine cuts, foundations and the coarse picking shape. Resource loading
 and immutable-data copying/hashing run on workers; scene construction stays on
 the game thread in small batches. See [load-time evidence](load-time-bakes.md).
 
+Selecting all tiles while preparation runs immediately unfolds a warm paper map
+with dashed navy hex boundaries. Completed local tiles appear from the camera/owned
+composition centre outward, with visible tiles first. Panning reprioritises the
+next tile after the current tile finishes. Medium tiles load independently of the
+combined far bake; that bake fills the remaining distance once ready. Paper hexes
+support tile clicks without individual physics bodies. Already loaded company
+tiles remain visible until the far map replaces them. Hidden tiles do not show
+goods or smoke.
+
 Both coverage roots are retained for quick toggles. Inactive continent detail
 gets the existing ten-second grace period, then releases its nodes and applies
-the normal resource-cache limits. The preloader warms only twelve nearby medium
-and base tile resources. It does not keep every medium/near texture in memory.
+the normal resource-cache limits. Native tile resources and sprite textures are
+loaded before attaching a tile; completed shared textures are reused directly.
+The loader does not keep every medium/near texture in memory. The prepared cursor
+locator uses 96 triangles per hex, avoiding a large first-attachment physics cost;
+resident terrain and building hitboxes retain their exact prepared shapes.
 A turn, building/layout change or visibility change invalidates pending work;
 the prepared supplement is used only when its complete input signature and
 package fingerprints match. Currently it is bundled for the Metal Magnate

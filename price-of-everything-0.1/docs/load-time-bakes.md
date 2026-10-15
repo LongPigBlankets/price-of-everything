@@ -1,5 +1,75 @@
 # Load time: what is baked, and when to re-bake it
 
+## Progressive paper-map reveal — 15 October 2026
+
+Selecting all tiles before preparation finishes now displays a warm paper map
+with dashed navy hex boundaries immediately. The existing owned view stays visible through metadata loading and local
+reveal; it is released when the far map is ready, avoiding a flash back to paper. Once layout metadata is ready, complete medium
+tiles reveal from the current focus outward; moving the camera reprioritises the
+next tile. The combined far bake loads independently and fills the remaining
+distance. This replaces the previous all-base-then-all-medium reveal barrier.
+
+The version-6 loading supplement adds overview bounds, labels, tile-resource keys
+and visibility bounds. Its cursor locator has 96 triangles per hex; using the
+complete rendered continent as a locator previously cost **1.08s** on initial
+physics attachment. The new attachment measured **28.0ms**. Exact local terrain
+and building colliders are unchanged. Supplement size is **14,735,323 bytes**;
+the installed package is **1,841 resources / 1,914,317,507 bytes**. All terrain,
+transport, scenery and sprite artwork/resources were reused.
+
+Fresh rendered Godot 4.6.2 / Forward+ on Apple M5 Pro, warm OS file caches, new
+empty runtime-cache paths. The early-click check requests all tiles immediately
+after opening, then pans two hexes while tiles are still arriving:
+
+| Measurement | Time |
+|---|---:|
+| Process start to Begin | 19.039s |
+| First supply-view opening after Begin | 0.154s |
+| Click to paper map / return from request | **8ms** |
+| Click to first complete medium tile | **3.922s** |
+| Click to combined far backdrop | **4.797s** |
+| Pan to next prioritised tile | **21ms** |
+| Complete requested working set after that pan (46 tiles, including buffer) | 9.010s |
+| Return to owned coverage | 7ms |
+| Return to the same continent camera | 240ms |
+| Reveal frame time, 95th percentile / maximum | 27.33ms / 276.41ms |
+
+Before bounded texture-read batches, fresh runs measured 4.070–4.090s to the
+first tile and 91–100ms after the pan. Batching reduced the complete requested
+working-set time from 12.402s to 9.309s and far-backdrop arrival from 5.327s to
+4.612s; at most four resources decode concurrently.
+**This is progressive readiness, not a claim that all medium detail loads in
+four seconds.** Background work continues after the first tile. The remaining
+276ms first-use renderer/resource frame is still measurable; the one-second
+physics activation is removed. Screenshot encoding is excluded from frame-time
+samples but included in elapsed working-set timings.
+
+With preparation complete before clicking, the first full medium working set
+settled in **3.272s**, repeat switches in **340ms**, and a return after the
+ten-second retirement in **1.667s**. The 45 inactive detail tiles retired as
+expected. Background preparation had a 9.26ms p95 / 39.43ms maximum owned-view
+frame, with no frames above 50ms. This is still about three seconds for full
+medium readiness; the improvement is immediate interaction and incremental reveal.
+
+The final early-click check recorded **94 bundled hits, zero misses and zero
+runtime writes**. Fourteen rendered tile-centre queries passed; one correctly
+selected the higher foreground terrain occluding its centre. Empty runtime cache
+paths remained absent. Independent package validation verifies hashes, source
+fingerprints and all 600 tiles. Ninety-five focused regression assertions pass
+for camera controls, cursor collision, loading/cancellation and resource retention.
+The initial-world signature limitation documented
+below remains: unmatched worlds use their existing normal build path.
+
+Final evidence is in `outputs/supply-chain-3d/progressive-loading/owned-retained/` and
+`batched-ready/` at repository root.
+Run `check_progressive_loading.tscn` with `--continent-review --no-telemetry`, a
+fresh `--bake-cache-directory`, and optionally `--review-output`. The existing
+`check_background_loading.tscn --verify-retention` covers prepared-before-click
+switches and ten-second inactive-detail eviction. Refresh the supplement with
+`bake_world_snapshot.tscn` and validate using `verify_continent_package.tscn`.
+
+The measurements below are historical baselines.
+
 ## Owned-first opening and background continent — 15 October 2026
 
 Every new supply-chain board now opens with **Show player owned tiles only**,
