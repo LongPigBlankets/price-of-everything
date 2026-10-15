@@ -7,6 +7,13 @@ const VISIBILITY_VERSION := preload("res://scripts/supply_chain_3d/world_builder
 const MANIFEST_SCHEMA := 5
 const TILE_TIERS := {"medium": 1, "near": 2}
 
+static func persisted_data(path: String, key: String) -> Dictionary:
+	# Live renderer instances may annotate shared dictionaries after their key
+	# was calculated. Packaging must read the original snapshot from disk.
+	var saved := ResourceLoader.load(path,"",ResourceLoader.CACHE_MODE_IGNORE) as Cache.Data
+	if saved == null or saved.schema != Cache.SCHEMA or saved.key != key: return {}
+	return saved.data
+
 static func file_record(directory: String, key: String) -> Dictionary:
 	var path := directory.path_join(key + ".res")
 	var file := FileAccess.open(path, FileAccess.READ)

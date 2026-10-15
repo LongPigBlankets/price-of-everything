@@ -44,3 +44,21 @@ for source, pieces in parts.items():
 result.sort(key=lambda r: r["sea_length"], reverse=True)
 (folder / "sea-roads.json").write_text(json.dumps(result,indent=2)+"\n")
 print(json.dumps(result,indent=2))
+
+rail_parts = []
+for rail in plan.get("visible_rails", []):
+    if rail.get("hidden"):
+        continue
+    line = LineString([rail["a"], rail["b"]])
+    if prepared.covers(line):
+        continue
+    sea = line.difference(local_land(line))
+    if sea.length > .2:
+        rail_parts.append(sea)
+sea_rail = unary_union(rail_parts)
+if sea_rail.geom_type == "MultiLineString":
+    sea_rail = linemerge(sea_rail)
+runs = list(sea_rail.geoms) if hasattr(sea_rail, "geoms") else [sea_rail]
+rail_result = [dict(sea_length=r.length,point=list(r.centroid.coords[0])) for r in runs if r.length>1]
+(folder / "sea-rails.json").write_text(json.dumps(rail_result,indent=2)+"\n")
+print("SEA RAIL",json.dumps(rail_result))

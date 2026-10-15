@@ -52,6 +52,10 @@ def audit(folder, meshes=None):
     roads = plan['roads']
     road_lines = [LineString([r['a'], r['b']]) for r in roads]
     road_tree = STRtree(road_lines)
+    planned_crossings = defaultdict(list)
+    for crossing in plan.get('crossings', []):
+        for source in crossing.get('sources', []):
+            planned_crossings[source].append(crossing)
     issues = []
     seen = set()
 
@@ -129,8 +133,13 @@ def audit(folder, meshes=None):
             elif line.intersects(rl) and r.get('rail_crossing_mode') not in ('level', 'tunnel'):
                 hit = line.intersection(rl)
                 if hit.geom_type == 'Point':
+                    intended = r.get('rail_crossing_mode', 'unclassified')
+                    for crossing in planned_crossings[r['source']]:
+                        if hit.distance(Point(crossing['p'])) < 1:
+                            intended = crossing['mode']
+                            break
                     add('road_rail_crossing', r['tile'], r['source']+'|'+str(tuple(round(v/10) for v in hit.coords[0])),
-                        hit.coords[0], road=r['source'], separation=dh, mode=r.get('rail_crossing_mode', 'unclassified'))
+                        hit.coords[0], road=r['source'], separation=dh, mode=intended)
     for (tile, road), parts in parallel.items():
         shape = unary_union(parts)
         if shape.geom_type == 'MultiLineString':

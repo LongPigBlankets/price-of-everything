@@ -70,7 +70,8 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 			var a: Dictionary=profile.samples[i-1];var z: Dictionary=profile.samples[i]
 			plan.visible_rails.append({"a":a.p,"b":z.p,"ha":a.h,"hb":z.h,"hidden":a.hidden or z.hidden,"bridge":a.bridge or z.bridge})
 	FileAccess.open(output.path_join("plan.json"),FileAccess.WRITE).store_string(JSON.stringify(_numeric(plan)))
-	var report := {"opening":opening,"regions":{},"tile_count":b.tiles.size()}
+	var report := {"opening":opening,"regions":{},"tile_count":b.tiles.size(),
+		"map_key":b._map_key,"continent_key":b._continent_key,"transport_key":b.transport_key}
 	var regions := Regions.all_regions()
 	# Also inspect otherwise unassigned rural/hill tiles in bounded map sectors.
 	for tid in b.tiles:
@@ -112,6 +113,7 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 			board._viewport.get_texture().get_image().save_png(output.path_join(id+"-"+v.name+".png"))
 			report.regions[id].views.append({"name":v.name,"span":v.span,"lod":board._detail})
 		print("[REGION REVIEW] ",id," ",report.regions.size(),"/",regions.size())
+		FileAccess.open(output.path_join("report.json"),FileAccess.WRITE).store_string(JSON.stringify(_numeric(report),"\t"))
 	# Inspect numeric audit candidates in the same fresh process. These are
 	# conservative mesh bounds, so a flag is not automatically a visible clash.
 	var issue_file := ""
@@ -121,7 +123,6 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 		var audit: Dictionary=JSON.parse_string(FileAccess.get_file_as_string(issue_file))
 		report.issue_views=[]
 		for issue in audit.issues:
-			if issue.kind=="building_building":continue
 			var p := Vector2(issue.point[0],issue.point[1])
 			if report.issue_views.any(func(v):return (Vector2(v.point[0],v.point[1])).distance_to(p)<65):continue
 			var state := home.duplicate();state.target=b.point(p);state.span=220.0;state.pitch=.95;state.yaw=.2

@@ -60,7 +60,16 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 		manifest.rail_layout_keys.append(key)
 		manifest.resources[key]=Package.file_record(writer.directory,key)
 	manifest.transport_key = builder.transport_key
-	writer.write(builder.transport_key, builder.TransportBake.packed(builder))
+	# Sidewalk rendering annotates the live road dictionaries after cache keys
+	# have been calculated. Preserve the transport snapshot saved before that
+	# work, rather than baking those later annotations into the next load's key.
+	# Ignore ResourceLoader's live instance, which may share the same dictionaries.
+	var transport_path: String=source.directory.path_join(builder.transport_key+".res")
+	if not FileAccess.file_exists(transport_path):
+		transport_path=source.bundled_directory.path_join(builder.transport_key+".res")
+	var transport := Package.persisted_data(transport_path,builder.transport_key)
+	assert(not transport.is_empty(),"Missing persisted transport snapshot")
+	writer.write(builder.transport_key, transport)
 	manifest.resources[builder.transport_key] = Package.file_record(writer.directory, builder.transport_key)
 	builder.bake_cache = writer
 	builder.release_local_tiles({})

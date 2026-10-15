@@ -25,12 +25,10 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	var manifest_path := writer.directory.path_join("manifest.json")
 	var manifest: Dictionary=JSON.parse_string(FileAccess.get_file_as_string(manifest_path))
 	var auxiliary: Array=manifest.get("auxiliary_keys",[])
-	var source := Package.Cache.new();source.enabled=true
-	source.bundled_directory=cache_directory;source.directory=cache_directory
 	for file in (DirAccess.get_files_at(cache_directory) if DirAccess.dir_exists_absolute(cache_directory) else PackedStringArray()):
 		if not file.ends_with(".res"):continue
 		var key := file.get_basename()
-		var data := source.read(key)
+		var data := Package.persisted_data(cache_directory.path_join(file),key)
 		assert(not data.is_empty(),"Invalid company resource: "+key)
 		writer.write(key,data)
 		if not manifest.resources.has(key): auxiliary.append(key)

@@ -84,7 +84,7 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 			for count in counts.values(): total+=int(count)
 			assert(counts.size()==5 and total>80,"Neighbourhood density must improve on the previous five-tile trial")
 			assert(report.neighbourhood.zoning_violations.is_empty(),"Residential buildings escaped their edge/harbour zoning")
-			assert(report.neighbourhood.greens.get("civic_pond",0)==2 and report.neighbourhood.semis>=30 and report.neighbourhood.side_streets>0,"Missing ponds, housing or connected side streets")
+			assert(report.neighbourhood.greens.get("civic_pond",0)==2 and report.neighbourhood.semis>=30 and report.neighbourhood.side_streets>=8,"Missing neighbourhood features")
 	if "--coastal-road-review" in OS.get_cmdline_user_args():
 		var trial: GDScript = load("res://tools/supply_chain_3d/coastal_road_trial.gd")
 		report.authored_trees = trial.tree_metrics
