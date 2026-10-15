@@ -22,6 +22,18 @@ func _test_package_preserves_transport_before_renderer_annotations() -> void:
 	_check(Package.persisted_data(path,"other-key").is_empty(),"3D package snapshot: content key must match")
 	DirAccess.remove_absolute(path);DirAccess.remove_absolute(directory)
 
+func _test_package_bounds_include_terrain_cuts() -> void:
+	var box := AABB(Vector3(-10,30,-10),Vector3(20,50,20))
+	var hull := PackedVector3Array([Vector3(0,50,0)])
+	for i in 8:hull.append(box.get_endpoint(i))
+	var batch := Geo.Batch.new();batch.box(Vector3(0,20,0),Vector3(10,20,10),Color.WHITE)
+	var mesh := batch.mesh()
+	var widened := Package.enclose_terrain(hull,{"mesh":mesh})
+	var bounds := AABB(widened[1],Vector3.ZERO)
+	for p in widened:bounds=bounds.expand(p)
+	_check(widened.size()==9 and widened[0]==hull[0] and bounds.encloses(mesh.get_aabb()),"3D package bounds: exact cut terrain is enclosed without moving the tile focus")
+	_check(Package.enclose_terrain(widened,{"mesh":mesh})==widened,"3D package bounds: a valid hull stays unchanged")
+
 func _test_targeted_atlases_match_runtime_grid() -> void:
 	for key in ["pylon_lvl1", "towers_lvl1", "towers_lvl2"]:
 		var data := Sprites.entry(key, 1)

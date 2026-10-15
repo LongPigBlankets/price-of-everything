@@ -23,14 +23,31 @@ open their supply-chain graphs; terrain clicks open the existing tile panel.
 Tile selection also forwards active construction and destination-selection actions.
 The motion key pauses moving goods and shows outputs above their producers.
 
-The current five-tile Stoneshore trial uses decorative building dimensions 35%
-smaller than the preceding half-scale layout (`DECOR_SCALE = 0.325` of the source
-kit). Houses, semis, modular offices, shops, courtyard/back-row buildings and
-skyline landmarks share that reduction; public spaces and gameplay models keep
-their sizes. The normal frontage system repacks the smaller modules, and its
-land probe scales with them. This is a scoped art trial; the proposed smaller
-player/NPC development parcels and narrower road/rail system are still planning
-work. The regular map and full-continent bake are not part of this update.
+The current continent rollout uses decorative building dimensions 35% smaller
+than the preceding half-scale layout (`DECOR_SCALE = 0.325` of the source kit).
+Houses, semis, modular offices, shops and courtyard/back-row buildings share the
+reduction; parks and gameplay models retain their sizes. All 92 urban tiles use
+region-local district streets, denser frontage and inner rows where space allows.
+Rural homes use the same scale with sparse placement. Stoneshore's skyline and
+Bauhaus landmarks remain local. Closest camera span is 192u. Smaller player/NPC
+parcels and a narrower road/rail system remain separate planning work.
+
+The full 600-tile package and the scoped Stoneshore package have both been
+regenerated and independently validated. The depot detour now only uses local
+rail corridors, and 3D authored roads cannot continue across sea intervals;
+river/lake bridges are preserved. The sea audit finds no roads or exposed rails
+over sea. The regular map is unchanged.
+
+All 50 named regions and 31 countryside sectors were reviewed at three zoom
+levels. No new decorative-building road/rail conflicts remain in the geometry
+checks; existing NPC and inland crossing candidates are listed in the
+[continent visual review](continent-decoration-review.md). It also records the
+remaining visual backlog and the changed Stoneshore snapshot counts.
+
+Fresh-process loading uses bundled resources without runtime generation: first
+supply-view opening takes 0.188s after Begin, while Show all tiles still takes
+16.023s. See [load-time evidence](load-time-bakes.md) for startup timing, the
+remaining restoration/assembly bottleneck and cache-verification details.
 
 ## Matching the original artwork
 

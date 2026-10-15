@@ -14,6 +14,22 @@ static func persisted_data(path: String, key: String) -> Dictionary:
 	if saved == null or saved.schema != Cache.SCHEMA or saved.key != key: return {}
 	return saved.data
 
+static func enclose_terrain(hull: PackedVector3Array, data: Dictionary) -> PackedVector3Array:
+	assert(hull.size()==9)
+	var bounds := AABB(hull[1],Vector3.ZERO)
+	for p in hull: bounds=bounds.expand(p)
+	var expanded := bounds
+	for field in ["mesh","rim_mesh","lip_mesh"]:
+		var mesh: Mesh=data.get(field)
+		if mesh!=null and mesh.get_surface_count()>0: expanded=expanded.merge(mesh.get_aabb())
+	if bounds.encloses(expanded): return hull
+	# Include exact terrain cuts at every LOD, which may extend beyond the
+	# conservative height-lattice estimate. Retain the original focus point.
+	expanded=expanded.grow(.25)
+	var result := PackedVector3Array([hull[0]])
+	for i in 8: result.append(expanded.get_endpoint(i))
+	return result
+
 static func file_record(directory: String, key: String) -> Dictionary:
 	var path := directory.path_join(key + ".res")
 	var file := FileAccess.open(path, FileAccess.READ)

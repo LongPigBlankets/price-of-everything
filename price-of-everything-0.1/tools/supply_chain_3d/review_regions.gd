@@ -18,6 +18,11 @@ func _open_supply_view(view: Control) -> void:
 	await _settle(board)
 	opening.ready_ms=Time.get_ticks_msec()-start
 	opening.load=board.load_profile.duplicate(true)
+	opening.cache=_cache_stats(board._builder)
+
+func _cache_stats(builder: RefCounted) -> Dictionary:
+	return {"hits":builder.bake_cache.hits,"bundled_hits":builder.bake_cache.bundled_hits,
+		"misses":builder.bake_cache.misses,"writes":builder.bake_cache.writes}
 
 func _settle(board: Control) -> void:
 	await board._stream_visible()
@@ -52,6 +57,32 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 	opening.show_all_load=board.load_profile.duplicate(true)
 	board.set_process(false);board._labels.hide();board.animate_goods=false
 	var b: RefCounted=board._builder
+	if "--verify-load-only" in OS.get_cmdline_user_args():
+		var manifest: Dictionary=JSON.parse_string(FileAccess.get_file_as_string(b.bake_cache.bundled_directory.path_join("manifest.json")))
+		var result := {"opening":opening,"cache":_cache_stats(b),"map_key":b._map_key,
+			"continent_key":b._continent_key,"transport_key":b.transport_key,"tile_count":b.tiles.size()}
+		result.package_matches=manifest.map_key==b._map_key and manifest.continent_key==b._continent_key and manifest.transport_key==b.transport_key
+		# Optional final audit close-ups use the installed package as well.
+		result.issue_views=[]
+		for arg in OS.get_cmdline_user_args():
+			if not arg.begins_with("--issue-file="):continue
+			var audit: Dictionary=JSON.parse_string(FileAccess.get_file_as_string(arg.trim_prefix("--issue-file=")))
+			for issue in audit.issues:
+				var state := home.duplicate();state.target=b.point(Vector2(issue.point[0],issue.point[1]));state.span=220.0;state.pitch=.95;state.yaw=.2
+				board.restore_camera(state);await _settle(board)
+				for i in 6:
+					RenderingServer.force_draw(false);await get_tree().process_frame
+				for item in board._goods:item.sprite.hide()
+				RenderingServer.force_draw(false)
+				var file := "additional-issue-%03d.png" % result.issue_views.size()
+				board._viewport.get_texture().get_image().save_png(output.path_join(file))
+				var entry: Dictionary=issue.duplicate();entry.file=file;result.issue_views.append(entry)
+		result.cache=_cache_stats(b)
+		FileAccess.open(output.path_join("report.json"),FileAccess.WRITE).store_string(JSON.stringify(_numeric(result),"\t"))
+		print("[LOAD VERIFICATION] ",JSON.stringify(result))
+		assert(result.package_matches,"Runtime must use the installed continent's content keys")
+		assert(opening.cache.misses==0 and opening.cache.writes==0 and result.cache.misses==0 and result.cache.writes==0,"Fresh opening must not generate bakes")
+		return
 	var plan := {"tiles":{},"buildings":[],"roads":b.road_grade.segments,"rails":b.rail_urban.tracks,
 		"crossings":b.road_grade.crossings,"depots":b.depots,"frontage":board._model.authored_region.frontage,
 		"neighbourhood":board._model.get("neighbourhood",{}),"greenery":b.greenery_audit}
@@ -136,6 +167,6 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 			board._viewport.get_texture().get_image().save_png(output.path_join(file))
 			var entry: Dictionary=issue.duplicate();entry.file=file;report.issue_views.append(entry)
 			print("[ISSUE REVIEW] ",file," ",issue.kind)
-	report.cache={"hits":b.bake_cache.hits,"bundled_hits":b.bake_cache.bundled_hits,"misses":b.bake_cache.misses,"writes":b.bake_cache.writes}
+	report.cache=_cache_stats(b)
 	FileAccess.open(output.path_join("report.json"),FileAccess.WRITE).store_string(JSON.stringify(_numeric(report),"\t"))
 	print("[REGION REVIEW COMPLETE] ",JSON.stringify(report.cache))

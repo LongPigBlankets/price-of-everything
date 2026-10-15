@@ -107,6 +107,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 			prepared += 1
 		manifest.tiles[tid] = {"base": base_key}
 		manifest.resources[base_key] = Package.file_record(writer.directory, base_key)
+		builder.view_hulls[tid]=Package.enclose_terrain(builder.view_hulls[tid],base)
 		for name in Package.TILE_TIERS:
 			var tier: int = Package.TILE_TIERS[name]
 			var key: String = builder.tile_bake_key(tid, tier)
@@ -126,6 +127,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 				writer.write(key, data)
 			manifest.tiles[tid][name] = key
 			manifest.resources[key] = Package.file_record(writer.directory, key)
+			builder.view_hulls[tid]=Package.enclose_terrain(builder.view_hulls[tid],data)
 		builder.release_local_tiles({})
 		builder._chunk_data.clear()
 		if manifest.tiles.size() % 20 == 0:
