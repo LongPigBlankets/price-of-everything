@@ -107,5 +107,5 @@ void fragment() {
 		paint = mix(paint, vec3(1.0, 0.87, 0.57) * (1.0 - stroke * 0.50), 0.86 * lit);
 	}
 	ALBEDO = OUTPUT_IS_SRGB ? paint : srgb_to_linear(paint);
-	if (lod_hidden(FRAGCOORD.xy)) { discard; }
+	if ((lod_hidden(FRAGCOORD.xy) || loading_hidden(world_point.xz, FRAGCOORD.xy))) { discard; }
 }

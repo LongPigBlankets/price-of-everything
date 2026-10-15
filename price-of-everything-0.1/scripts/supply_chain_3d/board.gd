@@ -20,7 +20,6 @@ const BackgroundWorld := preload("res://scripts/supply_chain_3d/background_world
 const PaperMap := preload("res://scripts/supply_chain_3d/paper_map.gd")
 const ProgressiveTile := preload("res://scripts/supply_chain_3d/progressive_tile.gd")
 var _loading_ink := {}
-var _ink_camera := {}
 var _paper: Node3D
 var _paper_owner: Node3D
 var _owned_center := Vector2.ZERO
@@ -99,7 +98,6 @@ func _discard_background() -> void:
 	if is_instance_valid(_paper): _paper.queue_free()
 	_paper = null
 	_loading_ink = {}
-	_ink_camera.clear()
 
 func background_ready() -> bool:
 	return _coverage_states.has(true)
@@ -120,28 +118,51 @@ func _show_paper() -> void:
 
 func _sync_paper() -> void:
 	if not is_instance_valid(_paper): return
-	_paper.visible = _requested_all_tiles and (_builder == null or not _builder.streamed or _builder.backdrop_pending)
+	_paper.visible = _requested_all_tiles and (_builder == null or not _builder.streamed or _builder.backdrop_pending or (_builder.loading_reveal != null and _builder.loading_reveal.active))
 	if _paper.visible and _builder != null:
 		var covered: Dictionary = _builder.ready_tiles.duplicate() if _builder.streamed else _builder.tiles.duplicate()
+		if _builder.loading_reveal != null and _builder.loading_reveal.active: covered = _builder.loading_reveal.complete.duplicate()
 		covered.merge(_builder.paper_owned_tiles)
 		_paper.cover(covered)
-		_draw_loading_ink()
 
-func _draw_loading_ink() -> void:
-	if _loading_ink.is_empty(): return
-	var state := {"camera":capture_camera(),"viewport_size":size}
-	if state == _ink_camera: return
-	_ink_camera = state
+func _visible_paper_tiles() -> Dictionary:
+	var result := {}
+	if not is_instance_valid(_paper): return result
 	var view := Rect2(Vector2.ZERO,size).grow(60.0)
-	var centre := Vector2(_rig.target.x,_rig.target.z)
 	for tid in _paper.tiles:
-		if _paper.covered.has(tid) or not _loading_ink.has(tid): continue
 		var at: Vector2 = _paper.tiles[tid]
 		if _camera.is_position_behind(Vector3(at.x,PaperMap.HEIGHT,at.y)): continue
 		var bounds := Rect2(screen_point(Vector3(at.x,PaperMap.HEIGHT,at.y)),Vector2.ZERO)
 		for p in Model.hex_points(at): bounds = bounds.expand(screen_point(Vector3(p.x,PaperMap.HEIGHT,p.y)))
-		if bounds.intersects(view):
-			_paper.draw_tile(tid,_loading_ink[tid],minf(0.3,_hex_tile_distance(centre,at)*0.06))
+		if _builder != null and _builder.streamed and _builder.tiles.has(tid):
+			for p in _builder.tile_view_hull(tid): bounds=bounds.expand(screen_point(p))
+		if bounds.intersects(view): result[tid]=true
+	return result
+
+func _start_tile_reveal(builder: RefCounted, tid: String) -> void:
+	if builder.loading_reveal == null or not builder.loading_reveal.start(tid): return
+	if is_instance_valid(_paper) and _loading_ink.has(tid): _paper.draw_tile(tid,_loading_ink[tid])
+
+func _start_backdrop_reveals(builder: RefCounted) -> void:
+	if builder.loading_reveal == null or not builder.loading_reveal.active: return
+	var visible_tiles := _visible_paper_tiles()
+	for tid in builder.tiles:
+		if visible_tiles.has(tid): _start_tile_reveal(builder,tid)
+		else: builder.loading_reveal.skip(tid)
+
+func _tile_is_paper(tid: String) -> bool:
+	return _builder != null and _builder.loading_reveal != null and _builder.loading_reveal.active and not _builder.loading_reveal.complete.has(tid)
+
+func _advance_tile_reveals(delta: float) -> void:
+	if _builder == null or _builder.loading_reveal == null or not _requested_all_tiles: return
+	var reveal: RefCounted = _builder.loading_reveal
+	if reveal.active: reveal.advance(delta,true)
+	if is_instance_valid(_paper):
+		for tid in reveal.elapsed: _paper.set_time(tid,reveal.elapsed[tid])
+	if not reveal.active and not _builder.backdrop_pending:
+		if not _builder.handover.active: reveal.restore()
+		_loading_ink = {}
+		if is_instance_valid(_paper): _paper.clear_drawings()
 
 func _release_paper_owner() -> void:
 	if is_instance_valid(_paper_owner) and _paper_owner.get_parent()==_world:
@@ -158,12 +179,8 @@ func _publish_background(packet: Dictionary, job: RefCounted) -> void:
 		_activate(packet)
 
 func _backdrop_ready(builder: RefCounted) -> void:
-	# Paper drawings are only needed until real far coverage arrives. Drop all
-	# 600 mesh references even when the player stayed on the owned view.
-	_loading_ink = {}
-	_ink_camera.clear()
-	if is_instance_valid(_paper): _paper.clear_drawings()
 	if builder != _builder: return
+	_start_backdrop_reveals(builder)
 	_release_paper_owner()
 	if _reveal_started>0: reveal_profile.backdrop_ms = Time.get_ticks_msec()-_reveal_started
 	builder.set_overview_scale(size.y/_rig.span, true)
@@ -574,6 +591,9 @@ func _activate(packet: Dictionary) -> void:
 	activation.attach_ms = (Time.get_ticks_usec()-measured)/1000.0
 	measured = Time.get_ticks_usec()
 	_builder = builder
+	if builder.loading_reveal != null and not builder.loading_reveal.begun:
+		var owned: Dictionary = _coverage_states[false].builder.tiles if _coverage_states.has(false) else {}
+		builder.loading_reveal.begin(owned)
 	if not builder.streamed:
 		_owned_center = Vector2.ZERO
 		for tile in builder.tiles.values(): _owned_center += tile.center
@@ -620,6 +640,7 @@ func _activate(packet: Dictionary) -> void:
 	measured = Time.get_ticks_usec()
 	_update_goods()
 	_update_cars()
+	if builder.loading_reveal != null and not builder.backdrop_pending: _start_backdrop_reveals(builder)
 	_sync_paper()
 	activation.effects_ms = (Time.get_ticks_usec()-measured)/1000.0
 	timings.activation = activation
@@ -862,9 +883,10 @@ func pick_at(screen: Vector2, tiles_only: bool = false) -> Dictionary:
 		if not hit.is_empty():
 			if hit.collider.has_meta("continent_pick"):
 				hit["tile_id"] = _builder.tile_at(hit.position)
-				if _builder.backdrop_pending and not _builder.tile_ready(hit.tile_id) and not _builder.paper_owned_tiles.has(hit.tile_id):
+				if _tile_is_paper(hit.tile_id) or (_builder.backdrop_pending and not _builder.tile_ready(hit.tile_id) and not _builder.paper_owned_tiles.has(hit.tile_id)):
 					return _paper_hit(screen)
 				return _as_tile_hit(hit)
+			if _tile_is_paper(str(hit.collider.get_meta("tile_id",""))): return _paper_hit(screen)
 			if tiles_only: return hit
 			if hit.collider.has_meta("standing"):
 				if _building_large_enough(hit.collider): return hit
@@ -1023,6 +1045,7 @@ func _process(delta: float) -> void:
 	_update_goods()
 	_update_cars()
 	if _builder != null and not _building: _builder.update_harbour_traffic(_time)
+	_advance_tile_reveals(delta)
 	_sync_paper()
 	_stream_clock += delta
 	# React to travel promptly; idle retention/prefetch still uses the slower tick.
@@ -1078,7 +1101,7 @@ func _update_cursor_collision(screen: Vector2) -> void:
 	var start := _camera.project_ray_origin(pixel)
 	var direction := _camera.project_ray_normal(pixel)
 	var tid: String = _builder.tile_at(hit.position) if not hit.is_empty() else ""
-	if _builder.backdrop_pending and not _builder.tile_ready(tid):
+	if _tile_is_paper(tid) or (_builder.backdrop_pending and not _builder.tile_ready(tid)):
 		_builder.set_collision_tiles({})
 		return
 	_builder.set_collision_tiles(_cursor_collision_tiles(tid))
@@ -1272,6 +1295,10 @@ func _stream_visible() -> void:
 		tile_timings.node_ms = (Time.get_ticks_usec()-node_started)/1000.0
 		var reveal_started := Time.get_ticks_usec()
 		if not builder.ready_tiles.has(tid):
+			if builder.loading_reveal != null:
+				builder.loading_reveal.bind(builder.local_tiles[tid].root)
+				if request.visible: _start_tile_reveal(builder,tid)
+				else: builder.loading_reveal.skip(tid)
 			builder.reveal_tile(tid)
 			if _reveal_started>0:
 				reveal_profile.tiles.append({"tile":tid,"ring":request.ring,"visible":request.visible,
@@ -1300,7 +1327,7 @@ func _stream_visible() -> void:
 	_streaming = false
 
 func detail_ready() -> bool:
-	return not _building and not _streaming and (_builder == null or not _builder.handover.active)
+	return not _building and not _streaming and (_builder == null or (not _builder.handover.active and (_builder.loading_reveal == null or _builder.loading_reveal.elapsed.is_empty())))
 
 func _update_goods() -> void:
 	for item in _goods:
@@ -1316,7 +1343,7 @@ func _update_goods() -> void:
 			var idx := clampi(distances.bsearch(at), 1, distances.size() - 1)
 			var t := inverse_lerp(distances[idx - 1], distances[idx], at)
 			item.sprite.position = (flow.points[idx - 1] as Vector3).lerp(flow.points[idx], t)
-		if _builder.backdrop_pending and not _builder.tile_ready(_builder.tile_at(item.sprite.position)):
+		if _tile_is_paper(_builder.tile_at(item.sprite.position)) or (_builder.backdrop_pending and not _builder.tile_ready(_builder.tile_at(item.sprite.position))):
 			item.sprite.hide()
 
 func _draw_labels() -> void:
@@ -1434,7 +1461,7 @@ func _build_effects(builder: RefCounted, parent: Node3D) -> Array:
 func _update_cars() -> void:
 	var started := Time.get_ticks_usec()
 	for car in _effects:
-		var shown: bool = not show_all_tiles or (size.y / _rig.span >= 0.30 and _builder.local_tiles.has(str(car.road.tile)))
+		var shown: bool = (not show_all_tiles or (size.y / _rig.span >= 0.30 and _builder.local_tiles.has(str(car.road.tile)))) and not _tile_is_paper(str(car.road.tile))
 		if car.node != null: car.node.visible = shown
 		if not shown: continue
 		if car.node == null:

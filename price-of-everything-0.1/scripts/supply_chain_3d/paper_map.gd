@@ -5,7 +5,7 @@ const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
 const PaperShader := preload("res://scripts/supply_chain_3d/paper_map.gdshader")
 const HEIGHT := -2.0
 const InkShader := preload("res://scripts/supply_chain_3d/loading_ink.gdshader")
-const INK_SECONDS := 1.35
+const Reveal := preload("res://scripts/supply_chain_3d/tile_reveal.gd")
 var drawings := {}
 var tiles := {}
 var indices := {}
@@ -74,7 +74,7 @@ func pick(from: Vector3, direction: Vector3) -> Dictionary:
 			return {"collider":self, "position":at, "tile_id":tid, "tiles_only":true}
 	return {}
 
-func draw_tile(tid: String, mesh: ArrayMesh, delay: float = 0.0) -> void:
+func draw_tile(tid: String, mesh: ArrayMesh) -> void:
 	if covered.has(tid) or drawings.has(tid) or mesh.get_surface_count()==0: return
 	var node := MeshInstance3D.new()
 	node.name = "Ink_"+tid
@@ -85,14 +85,14 @@ func draw_tile(tid: String, mesh: ArrayMesh, delay: float = 0.0) -> void:
 	node.material_override = material
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(node)
-	drawings[tid] = {"node":node,"material":material,"elapsed":-delay}
+	drawings[tid] = {"node":node,"material":material,"elapsed":0.0}
 
-func _process(delta: float) -> void:
-	if not visible: return
-	for drawing in drawings.values():
-		if drawing.elapsed >= INK_SECONDS: continue
-		drawing.elapsed += delta
-		drawing.material.set_shader_parameter("progress",clampf(drawing.elapsed/INK_SECONDS,0.0,1.0)*3.0)
+func set_time(tid: String, seconds: float) -> void:
+	if not drawings.has(tid): return
+	var drawing: Dictionary = drawings[tid]
+	drawing.elapsed = seconds
+	drawing.material.set_shader_parameter("progress",Reveal.ink_progress(seconds))
+	drawing.material.set_shader_parameter("opacity",1.0-Reveal.detail_progress(seconds))
 
 func clear_drawings() -> void:
 	for drawing in drawings.values(): drawing.node.queue_free()

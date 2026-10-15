@@ -171,14 +171,55 @@ func _test_background_ink_follows_relief_and_reveal() -> void:
 	var paper := Board.PaperMap.new(); paper.configure({"a":Vector2.ZERO}); add_child(paper)
 	paper.draw_tile("a",mesh)
 	paper.set_process(false)
-	paper._process(0.3)
+	paper.set_time("a",0.25)
 	var material: ShaderMaterial = paper.drawings.a.material
 	_check(float(material.get_shader_parameter("progress"))<1.0, "Relief traces first while river and road ink stay hidden")
-	paper._process(0.4)
+	paper.set_time("a",0.55)
 	_check(float(material.get_shader_parameter("progress"))>1.0 and float(material.get_shader_parameter("progress"))<2.0,
 		"River tracing follows completed contours, before roads")
-	paper._process(0.45)
+	paper.set_time("a",0.85)
 	_check(float(material.get_shader_parameter("progress"))>2.0, "Road tracing is the last ink layer")
 	paper.cover({"a":true})
 	_check(paper.drawings.is_empty(), "Finished terrain removes its ink and releases the drawing node")
 	paper.queue_free(); await get_tree().process_frame
+
+func _test_background_tile_transition_runs_concurrently() -> void:
+	var Reveal := preload("res://scripts/supply_chain_3d/tile_reveal.gd")
+	var reveal := Reveal.new()
+	reveal.configure({"a":{"center":Vector2.ZERO},"b":{"center":Vector2(405,240)},"owned":{"center":Vector2(810,0)}},Vector2.ZERO)
+	reveal.begin({"owned":true})
+	_check(reveal.complete.has("owned") and not reveal.complete.has("a"), "Existing owned tiles stay detailed when the reveal begins")
+	reveal.start("a"); reveal.start("b")
+	reveal.advance(0.05)
+	_check(Reveal.ink_progress(reveal.elapsed.a)==0.0 and Reveal.detail_progress(reveal.elapsed.a)==0.0,
+		"Each ready tile starts with an empty-paper beat")
+	reveal.advance(0.85)
+	_check(Reveal.ink_progress(reveal.elapsed.a)==3.0 and Reveal.detail_progress(reveal.elapsed.a)==0.0,
+		"All ink finishes before detail begins its dissolve")
+	reveal.advance(0.30)
+	_check(is_equal_approx(Reveal.detail_progress(reveal.elapsed.a),0.5), "Detail is halfway revealed at 1.2 seconds")
+	reveal.advance(0.30)
+	_check(not reveal.active and reveal.elapsed.is_empty() and reveal.timeline.size()==2,
+		"Both tiles finish together at 1.5 seconds rather than blocking the loading queue sequentially")
+	_check(not reveal.start("a"), "A completed tile does not replay when reused")
+	var root := MeshInstance3D.new(); root.mesh=PlaneMesh.new()
+	var source := ShaderMaterial.new(); source.shader=preload("res://scripts/supply_chain_3d/ground.gdshader")
+	source.set_shader_parameter("loading_mask",false)
+	root.material_override=source
+	var fresh := Reveal.new(); fresh.configure({"a":{"center":Vector2.ZERO}},Vector2.ZERO)
+	fresh.begin({}); fresh.bind(root)
+	_check(root.material_override!=source and root.material_override.get_shader_parameter("loading_mask")==true and source.get_shader_parameter("loading_mask")==false,
+		"Loading masks use private materials and cannot change retained company visuals")
+	var intrinsic := MeshInstance3D.new()
+	var plane := PlaneMesh.new(); plane.material=source; intrinsic.mesh=plane
+	fresh.bind(intrinsic)
+	_check(intrinsic.material_override is ShaderMaterial and intrinsic.material_override!=source,
+		"Mesh-surface materials used by near buildings and instanced crops join the same reveal")
+	fresh.start("a"); fresh._started_at.a=Time.get_ticks_msec()-1200
+	fresh.advance(0.001,true)
+	_check(absf(fresh.elapsed.a-1.2)<0.02, "The live clock catches up after a slow frame instead of stretching the 1.5-second animation")
+	fresh.finish(); fresh.restore()
+	_check(intrinsic.material_override==null, "Restoring a surface material preserves its original null override")
+	intrinsic.free()
+	_check(root.material_override==source and fresh.bindings.is_empty(), "Completed reveals restore original materials for subsequent LOD and grading changes")
+	root.free()

@@ -35,6 +35,8 @@ static func prepare(board: Control, job: RefCounted, generation: int) -> Diction
 	var model: Dictionary = await job.copy_model(tree, data.model)
 	if job.cancelled or model.is_empty(): return {}
 	builder.tiles = model.tiles
+	builder.loading_reveal = preload("res://scripts/supply_chain_3d/tile_reveal.gd").new()
+	builder.loading_reveal.configure(model.tiles,builder.origin)
 	builder.rivers = data.rivers
 	builder.prepared_foundations = data.foundations
 	builder.prepared_continent_pick = data.pick_shape
@@ -104,6 +106,7 @@ static func prepare(board: Control, job: RefCounted, generation: int) -> Diction
 	if job.cancelled:
 		if not packet.is_empty(): packet.content.free()
 		return {}
+	builder.loading_reveal.bind(packet.content)
 	packet.profile = job.profile
 	packet.resources = job.resources
 	job.profile.layout_ready_ms = (Time.get_ticks_usec()-started)/1000.0

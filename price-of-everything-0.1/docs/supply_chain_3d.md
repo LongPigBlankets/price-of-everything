@@ -2853,3 +2853,25 @@ Production refresh remains `bake_world_snapshot.tscn`; the latest package adds
 5.11 MiB and reuses all terrain/art resources. The rendered progressive check
 captures all three phases and validates picking, cleanup and zero bake writes.
 See `load-time-bakes.md` for measured first-open and pan times.
+
+
+## Timed tile reveal (15 October 2026)
+
+`tile_reveal.gd` replaces the independent ink clock with one 1.5-second tile
+lifecycle: 0.10s empty hex, 0.80s relief/river/road strokes, 0.60s detail dissolve.
+Start occurs when local detail or the combined far representation is drawable;
+loading continues independently. Offscreen tiles need no animation and cached
+coverage does not replay. The far arrival preserves active sequences.
+
+`loading_mask.gdshaderinc` uses a small L8 hex grid and the existing opaque LOD
+coverage pattern. Private material bindings cover terrain, impostors, mesh
+surface materials and lazily created medium/near geometry. They are restored
+after the reveal and any active LOD handover. Once finished there are no mask
+uploads, loading material copies, or ink meshes retained by this controller.
+The mask is isolated per board, so owned coverage stays intact. Picking uses
+the paper tile until completion; goods and vehicles wait for their tile.
+
+No bake invalidation: version-7 ink geometry, terrain/scenery and prepared
+physics are reused. `load-time-bakes.md` records fresh-process verification and
+the independent package validation. The final rendered sequences take
+1.502–1.534s, including the next-frame completion boundary.

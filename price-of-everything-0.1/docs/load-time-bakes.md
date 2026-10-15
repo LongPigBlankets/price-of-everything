@@ -1,5 +1,50 @@
 # Load time: what is baked, and when to re-bake it
 
+## Timed empty-paper → ink → detail reveal — 15 October 2026
+
+Each drawable tile now receives one **1.5-second** sequence: empty paper for
+0.10s, relief/river/road ink for 0.80s, and a smooth 0.60s dissolve into the
+actual 3D representation. The clock starts only once that tile's resources are
+available. It uses elapsed time, so a slow loading frame does not stretch the
+sequence. Independent tiles animate concurrently while streaming continues.
+Existing owned tiles and already revealed cached tiles do not replay it.
+
+The dissolve covers terrain, roads, trees, buildings, instanced crops, and
+lazy medium/near assets through a small per-board hex coverage texture. It
+uses opaque screen coverage rather than transparency sorting. Temporary private
+materials restore their original overrides after completion, including null
+overrides that inherit mesh surface materials; two-frame LOD handovers finish
+before that restoration. Goods and vehicles stay out of unrevealed tiles.
+The far bake can arrive during these animations without cancelling them.
+
+This is runtime-only: the installed version-7 ink meshes and all artwork remain
+valid. Independent package validation still passes for **600 tiles, 1,841
+resources, 1,919,680,474 bytes**, with unchanged source fingerprints.
+
+Fresh Godot 4.6.2 Forward+/Metal process, Apple M5 Pro, warm filesystem caches,
+empty runtime-cache path. Phase images are captured in memory and encoded after
+timing, avoiding PNG writes artificially stretching the sequence:
+
+- First complete visual tile: **5.569s**, including its 1.5s reveal.
+- Measured individual sequences: **1.502–1.534s** (completion on the next frame).
+- Requested working set after the pan: **8.981s**.
+- Frame p95 / maximum: **28.30ms / 283.56ms**; the first-use hitch remains.
+- **98 bundled hits, zero misses, zero runtime bake writes**; 14 tile picks pass.
+- **115 focused assertions pass** for loading, clocks/material restoration,
+  camera controls, collision and cache retention. The broader handover filter
+  passes 43 assertions but flags one existing medium-sprite inventory mismatch
+  (farm/pump/forest source hashes and missing oil/crop/platform entries in
+  unchanged asset manifests). Its actual LOD handover behavior checks pass.
+
+A separate prepared-before-click run settles in **3.293s**; repeat switching
+takes **342ms**. All 45 inactive detail tiles retire after ten seconds; returning
+takes **1.642s**, with 87 bundled hits and zero runtime writes. The timed reveal
+does not replay on these returns.
+
+Evidence: `outputs/supply-chain-3d/timed-ink-loading/final/` and `prepared/`. Optional
+`--capture-transition` on `check_progressive_loading.tscn` records a short frame
+sequence for visual review; its readbacks are instrumentation, not game work.
+
 ## Ink-drawn tile loading — 15 October 2026
 
 The paper loader now traces each visible unloaded hex in three stages: curved

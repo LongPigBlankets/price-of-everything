@@ -36,5 +36,5 @@ void fragment() {
 	vec3 grade = mix(vec3(0.66, 0.74, 1.0), vec3(1.0, 0.92, 0.72), t);
 	paint *= wash * grade * shading * 0.90;
 	ALBEDO = OUTPUT_IS_SRGB ? paint : to_linear(paint);
-	if (hidden) { discard; }
+	if (hidden || loading_hidden(world_point.xz, FRAGCOORD.xy)) { discard; }
 }

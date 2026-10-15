@@ -131,6 +131,7 @@ var prepared_mine_rims: Mesh
 var backdrop_pending := false
 var progressive_tiles := false
 var ready_tiles: Dictionary = {}
+var loading_reveal: RefCounted
 var paper_owned_tiles: Dictionary = {}
 var pending_infrastructure: Array[Node3D] = []
 var progressive_manifest: Dictionary = {}
@@ -624,6 +625,7 @@ func reveal_tile(tid: String) -> void:
 func install_backdrop(parent: Node3D) -> void:
 	finish_continent(parent)
 	backdrop_pending = false
+	if loading_reveal != null: loading_reveal.bind(parent)
 	for node in pending_infrastructure: node.show()
 	pending_infrastructure.clear()
 	for item in terrain_lods:
@@ -1233,6 +1235,7 @@ func _update_farm_tier(item: Dictionary, tier: int) -> void:
 	if tier == 2 and item.near == null:
 		item.near = FarmFields.cells(item.data, false)
 		item.root.add_child(item.near)
+		if loading_reveal != null: loading_reveal.bind(item.near)
 	item.far.visible = tier == 0
 	item.soil.visible = tier > 0
 	item.medium.visible = tier == 1
@@ -1286,6 +1289,7 @@ func _update_asset_tier() -> void:
 				card.scale = BuildingScale.for_asset(pair.key, float(pair.standing.side), float(pair.standing.get("decor_scale", 1.0)))
 				card.position = FarSprites.center(pair.key) * card.scale
 				pair.root.add_child(card)
+				if loading_reveal != null: loading_reveal.bind(card)
 				pair.medium = card
 		medium = medium and pair.get("medium") != null
 		if pair_local:
@@ -1694,6 +1698,7 @@ func _ensure_standing_near(pair: Dictionary) -> void:
 			visual.mesh = mesh
 			visual.transform = frame.harbour_transform
 			pair.root.add_child(visual)
+			if loading_reveal != null: loading_reveal.bind(visual)
 			pair.near.append(visual)
 			_track_visual(visual, str(pair.tile))
 		return
@@ -1712,6 +1717,7 @@ func _ensure_standing_near(pair: Dictionary) -> void:
 		fallback.albedo_color = Color("cbc6a8")
 		visual.material_override = fallback
 	pair.root.add_child(visual)
+	if loading_reveal != null: loading_reveal.bind(visual)
 	pair.near.append(visual)
 	_track_visual(visual, str(pair.tile))
 	var contour := Assets.contour_for(pair.key)
@@ -1721,6 +1727,7 @@ func _ensure_standing_near(pair: Dictionary) -> void:
 		outline.mesh = contour
 		outline.scale = visual.scale
 		pair.root.add_child(outline)
+		if loading_reveal != null: loading_reveal.bind(outline)
 		pair.near.append(outline)
 		_track_visual(outline, str(pair.tile))
 
@@ -1925,6 +1932,7 @@ func _ensure_tree_near(pair: Dictionary) -> void:
 	if pair.get("clutter", false):
 		var node := Geo.instance(_ground_clutter(pair.tile, pair.standing), mat)
 		pair.root.add_child(node)
+		if loading_reveal != null: loading_reveal.bind(node)
 		pair.near.append(node)
 		return
 	var key := str(pair.key)
@@ -1946,6 +1954,7 @@ func _ensure_tree_near(pair: Dictionary) -> void:
 		node.scale = Vector3.ONE * species_scale
 		if mesh == Assets.mesh_for(key): node.material_override = Assets.tree_material(pair.kind == "fir")
 		pair.root.add_child(node)
+		if loading_reveal != null: loading_reveal.bind(node)
 		pair.near.append(node)
 		_track_visual(node, str(pair.tile))
 
