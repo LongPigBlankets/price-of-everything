@@ -3,6 +3,7 @@ extends RefCounted
 const Cache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
 const Detail := preload("res://scripts/supply_chain_3d/detail.gd")
 const Paint := preload("res://scripts/supply_chain_3d/terrain_paint.gd")
+const TextureEncoding := preload("res://scripts/supply_chain_3d/terrain_texture.gd")
 const VISIBILITY_VERSION := preload("res://scripts/supply_chain_3d/world_builder.gd").VISIBILITY_VERSION
 const MANIFEST_SCHEMA := 5
 const TILE_TIERS := {"medium": 1, "near": 2}
@@ -49,6 +50,10 @@ static func validate(directory: String, host: Node) -> Dictionary:
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(manifest_path))
 	if not parsed is Dictionary or not validate_header(parsed): result.errors.append("Incomplete/invalid package manifest"); return result
 	var manifest: Dictionary = parsed
+	if manifest.has("terrain_texture_version"):
+		var texture_source := "res://scripts/supply_chain_3d/terrain_texture.gd"
+		if int(manifest.terrain_texture_version)!=TextureEncoding.VERSION or (FileAccess.file_exists(texture_source) and manifest.get("terrain_texture_fingerprint","")!=Cache.digest([TextureEncoding.VERSION,FileAccess.get_sha256(texture_source)])):
+			result.errors.append("Stale terrain texture encoding")
 	var fingerprints_path := directory.path_join("source_fingerprints.json")
 	var fingerprints: Variant = JSON.parse_string(FileAccess.get_file_as_string(fingerprints_path)) if FileAccess.file_exists(fingerprints_path) else null
 	if not fingerprints is Dictionary or not Cache.fingerprints_match(fingerprints, Cache.source_fingerprints()):
@@ -92,6 +97,11 @@ static func validate(directory: String, host: Node) -> Dictionary:
 		if manifest.has("compact_surface_version") and (key.begins_with("tile-") or key.begins_with("base-tile-") or key.begins_with("continent-") or key.begins_with("road-")):
 			var payload := persisted_data(directory.path_join(key+".res"),key)
 			if payload.get("compact_surface_version",0)!=int(manifest.compact_surface_version): result.errors.append("Unconverted visual bake: "+key)
+			if manifest.has("terrain_texture_version") and payload.get("texture") is Texture2D:
+				var encoded: Dictionary=payload.get("terrain_texture",{})
+				var pixels: Image=payload.texture.get_image()
+				if encoded.get("version",0)!=TextureEncoding.VERSION or pixels==null or pixels.get_format()!=Image.FORMAT_BPTC_RGBA or not pixels.has_mipmaps() or int(encoded.get("bytes",0))!=pixels.get_data_size() or encoded.get("size")!=pixels.get_size():
+					result.errors.append("Invalid compressed terrain texture: "+key)
 			if payload.has("roads_mesh") or key.begins_with("road-"):
 				var road: Dictionary=payload.get("road_drawing",{})
 				if road.get("version",0)!=preload("res://scripts/supply_chain_3d/road_drawing.gd").VERSION or not road.get("mesh") is ArrayMesh:result.errors.append("Missing road drawing: "+key)
@@ -101,6 +111,7 @@ static func validate(directory: String, host: Node) -> Dictionary:
 	var root := cache.read(manifest.continent_key)
 	var scenery := cache.read(manifest.scenery_key)
 	var transport := cache.read(str(manifest.get("transport_key","")))
+	var texture_eligibility := TextureEncoding.package_eligibility(manifest.tiles.keys())
 	if manifest.has("world_snapshot_key"):
 		var snapshot := cache.read(str(manifest.world_snapshot_key))
 		if not preload("res://scripts/supply_chain_3d/world_snapshot.gd").matches(snapshot, str(snapshot.get("input_key", "")), manifest):
@@ -146,6 +157,17 @@ static func validate(directory: String, host: Node) -> Dictionary:
 			var texture: Texture2D = payload.texture
 			var image := texture.get_image()
 			var width: int = Detail.TEXTURES[TILE_TIERS[name]]
+			if manifest.has("terrain_texture_version"):
+				var encoding: Dictionary=payload.get("terrain_texture",{})
+				if encoding.get("source_size")!=Vector2i(width,roundi(width*Paint.EXTENT.y/Paint.EXTENT.x)) or bool(encoding.get("eligible",false))!=bool(texture_eligibility.get(tid,false)):
+					result.errors.append("Wrong terrain texture policy: "+tid+":"+name)
+				var scale: float=encoding.get("scale",1.0)
+				if scale not in [0.5,0.75,1.0] or bool(encoding.get("reduced",false))!=(scale<1.0):
+					result.errors.append("Invalid terrain texture scale: "+tid+":"+name)
+				if scale<1.0:
+					if not texture_eligibility.get(tid,false) or not TextureEncoding.acceptable(encoding.get("quality",{"rmse":INF,"worst_patch_rmse":INF})):
+						result.errors.append("Unsafe terrain texture reduction: "+tid+":"+name)
+					width=roundi(width*scale)
 			if texture.get_width() != width or texture.get_height() != roundi(width * Paint.EXTENT.y / Paint.EXTENT.x) or image == null or not image.has_mipmaps():
 				result.errors.append("Wrong " + name + " resolution/mipmaps: " + tid)
 			else: result[name + "_decoded_bytes"] += image.get_data_size()

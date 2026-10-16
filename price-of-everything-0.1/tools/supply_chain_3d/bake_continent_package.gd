@@ -2,14 +2,30 @@ extends "res://tools/supply_chain_3d/capture.gd"
 ## Resumable production bake set for the authored Metal Magnate starting world.
 ## AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_chain_3d/bake_continent_package.tscn -- --continent-review --no-telemetry
 const Package := preload("res://tools/supply_chain_3d/bake_package.gd")
+var layout_reuse := preload("res://tools/supply_chain_3d/reuse_terrain_bakes.gd").new()
 
 func _ready() -> void:
 	if not preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled() and "--approved-continent-bake" not in OS.get_cmdline_user_args():
 		push_error("Use --stoneshore-review, or --approved-continent-bake after explicit user approval.")
 		get_tree().quit(1)
 		return
+	var reuse_source := ""; var previous_alignment := ""
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--reuse-terrain-package="):reuse_source=arg.trim_prefix("--reuse-terrain-package=")
+		if arg.begins_with("--previous-road-alignment="):previous_alignment=arg.trim_prefix("--previous-road-alignment=")
+	if not reuse_source.is_empty() and previous_alignment.is_empty():
+		push_error("Terrain reuse requires --previous-road-alignment to verify the only changed generator")
+		get_tree().quit(1);return
+	if not previous_alignment.is_empty():
+		if "--no-background-continent" not in OS.get_cmdline_user_args() or reuse_source.is_empty():
+			push_error("Alignment reuse requires --no-background-continent and --reuse-terrain-package")
+			get_tree().quit(1);return
+		layout_reuse.enable_layout_reuse(reuse_source,previous_alignment)
+		if not preload("res://scripts/supply_chain_3d/board.gd").offline_layout_reuse.is_valid():
+			get_tree().quit(1);return
 	PlayerProfile.supply_chain_all_tiles = true # scoped disposable harness; do not save preferences
 	await super._ready()
+	preload("res://scripts/supply_chain_3d/board.gd").offline_layout_reuse=Callable()
 
 func _continent_review(board: Control, _home: Dictionary) -> void:
 	await board.set_all_tiles(true, false)
@@ -19,6 +35,12 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 		await get_tree().process_frame
 	var builder: RefCounted = board._builder
 	var source: RefCounted = builder.bake_cache
+	var terrain_reuse := layout_reuse
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--reuse-terrain-package="):
+			terrain_reuse.configure(arg.trim_prefix("--reuse-terrain-package="),builder,board._model)
+			if not terrain_reuse.configured:
+				get_tree().quit(1);return
 	var writer := Package.Cache.new()
 	writer.enabled = true
 	writer.directory = preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").PACKAGE if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled() else Package.Cache.BUNDLED
@@ -115,8 +137,13 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 			if data.is_empty():
 				data = source.read(key)
 				if data.is_empty():
-					data = await builder._tile_bake(self, tid, tier)
-					generated[name] += 1
+					data = terrain_reuse.read_tile(tid,name)
+					if not data.is_empty():
+						writer.write(key,data)
+						reused[name] += 1
+					else:
+						data = await builder._tile_bake(self, tid, tier)
+						generated[name] += 1
 				else:
 					writer.write(key, data)
 					copied[name] += 1
@@ -157,6 +184,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	report.generated = generated
 	report.copied = copied
 	report.reused = reused
+	report.reused_unchanged_terrain = terrain_reuse.reused
 	report.civic = {}
 	for standing in board._model.get("standing", []):
 		if standing.has("decor_family"):

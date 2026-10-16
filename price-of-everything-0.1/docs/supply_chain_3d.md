@@ -135,6 +135,14 @@ an adjoining road on a slope. Geometry is batched per tile for culling. It adds 
 109k primitives in the far company framing; the source widths and joins are retained at every LOD. The old 3D
 rectangular strips and separate kerb lines are removed.
 
+Mountain roads require a continuous **10u underground run** before receiving tunnel
+entrances. Length is measured across source segments and tile boundaries, before
+approach extensions or daylight merging; separate junction arms do not add their
+lengths together. Short ridge grazes remain open road cuttings. Each entrance's
+earth cover is at most 22u and 45% of its complete bore length, so opposite covers
+cannot overlap merely because the tunnel is short. This applies to 3D roads;
+rail tunnels and the regular map retain their existing rules.
+
 Mines omit the source builder's cut-pass earth block and shaft section, and use its
 actual rim polygon and ground datum. All three terrain LODs and their colliders have
 excavated openings. The first inner wall joins the graded terrain to the submerged

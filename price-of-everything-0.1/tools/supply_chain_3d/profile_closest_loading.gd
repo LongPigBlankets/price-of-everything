@@ -38,7 +38,7 @@ func _stage_stats(stages: Dictionary) -> Dictionary:
 
 func _continent_review(board: Control, home: Dictionary) -> void:
 	await board.set_all_tiles(true, false)
-	while not board.detail_ready():
+	while board.background_active() or not board.detail_ready():
 		RenderingServer.force_draw(false)
 		await get_tree().process_frame
 	board.set_process(false)

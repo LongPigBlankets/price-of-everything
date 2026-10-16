@@ -19,6 +19,9 @@ const BackgroundLoad := preload("res://scripts/supply_chain_3d/background_load.g
 const BackgroundWorld := preload("res://scripts/supply_chain_3d/background_world.gd")
 const PaperMap := preload("res://scripts/supply_chain_3d/paper_map.gd")
 const ProgressiveTile := preload("res://scripts/supply_chain_3d/progressive_tile.gd")
+## Offline packaging may prove that an upstream layout memo is still valid.
+## Empty in normal play; this does not alter source fingerprints or cache reads.
+static var offline_layout_reuse := Callable()
 var _loading_ink := {}
 var _paper: Node3D
 var _paper_owner: Node3D
@@ -446,6 +449,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	print("[LAYOUT] curves ready ",Time.get_ticks_msec())
 	if Legacy.plate_town and Legacy.show.decor: preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").populate(model, terrain)
 	print("[LAYOUT] seeds ready ",Time.get_ticks_msec())
+	if offline_layout_reuse.is_valid(): offline_layout_reuse.call(model,queries.data,rivers,Builder.standing_key)
 	preload("res://scripts/supply_chain_3d/road_placement.gd").new().fit(model, builder.surface_height, builder.open_water, Builder.standing_key, rivers, queries.data)
 	timings.road_frontage_ms = (Time.get_ticks_usec() - road_started) / 1000.0
 	road_started = Time.get_ticks_usec()

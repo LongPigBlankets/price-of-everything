@@ -156,20 +156,26 @@ const TransportBake := preload("res://scripts/supply_chain_3d/transport_bake.gd"
 
 func prepare_transport(model: Dictionary) -> void:
 	var start := Time.get_ticks_usec()
+	var trace := "--trace-transport" in OS.get_cmdline_user_args()
+	if trace: print("[TRANSPORT STAGE] begin roads=",model.get("roads",[]).size()," ",Time.get_ticks_msec())
 	roads=model.get("roads",[]); lines=model.get("lines",[]); depots=model.get("depots",[]); stations=model.get("stations",[]); neighbourhood=model.get("neighbourhood",{})
 	_index_rivers()
 	transport_key=TransportBake.key_for(self,model)
+	if trace: print("[TRANSPORT STAGE] key ",Time.get_ticks_msec())
 	var cached := bake_cache.read(transport_key)
 	var hit := TransportBake.restore(self,cached)
 	var stages := {"lookup_ms":(Time.get_ticks_usec()-start)/1000.0,"cache_hit":hit}
 	if not hit:
 		var tick := Time.get_ticks_usec()
 		authored_profile.configure(model.get("authored_region",{}),rivers,natural_height,open_water)
+		if trace: print("[TRANSPORT STAGE] authored ",Time.get_ticks_msec())
 		stages.authored_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
 		roads=road_alignment.configure(model,formation_height,railway_level,open_water)
+		if trace: print("[TRANSPORT STAGE] alignment ",Time.get_ticks_msec())
 		stages.alignment_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
 		preload("res://scripts/supply_chain_3d/port_approach.gd").grade(roads,model.get("port_approach",{}))
 		road_grade.configure(roads,formation_height,authored_profile)
+		if trace: print("[TRANSPORT STAGE] grade ",Time.get_ticks_msec())
 		stages.grading_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
 		rail_plan=Railway.network(lines)
 		rail_urban.configure(tiles,road_grade.segments,road_grade.junctions,rail_plan,depots,railway_ground_height,railway_level,stations,model.get("standing",[]),standing_key,river_at)
