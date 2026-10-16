@@ -1330,23 +1330,25 @@
 			"cell": 128.0,
 			"center": [
 				0.0,
-				0.505172431468964,
+				0.320523589849472,
 				0.0
 			],
 			"dimensions": [
 				1.0,
-				1.01034486293793,
-				0.675862073898315
+				0.641047179698944,
+				0.78803163766861
 			],
 			"home_opaque_pixels": [
-				77.0,
-				82.0
+				86.0,
+				84.0
 			],
-			"lit_source_sha256": "583ed5854f274811d3fc198ce2c56c0552496d64c9cd8ffe3646a2c8e385149a",
+			"lit_source_sha256": "f2177eca66b17832c6ca7d85d928b966fdf984e8c8e8cfb60528fffc346a4aff",
 			"lit_texture": "furnace_lvl3_lit.png",
+			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "583ed5854f274811d3fc198ce2c56c0552496d64c9cd8ffe3646a2c8e385149a",
-			"span": 1.73143855333328
+			"source_sha256": "f2177eca66b17832c6ca7d85d928b966fdf984e8c8e8cfb60528fffc346a4aff",
+			"span": 1.56800558567047,
+			"yaws": 16.0
 		},
 		"high_tech_manufactory_lvl1": {
 			"cell": 128.0,

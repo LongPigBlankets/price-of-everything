@@ -1,0 +1,40 @@
+{
+  "assets/icons/buildings/sprites/furnace_lvl1.png": "unchanged",
+  "assets/supply_chain_3d/furnace_lvl1.glb": "unchanged",
+  "assets/fx/light/furnace_lvl1.png": "unchanged",
+  "assets/fx/windows/furnace_lvl1.png": "unchanged",
+  "assets/icons/buildings/sprites/furnace_lvl2.png": "unchanged",
+  "assets/supply_chain_3d/furnace_lvl2.glb": "unchanged",
+  "assets/fx/light/furnace_lvl2.png": "unchanged",
+  "assets/fx/windows/furnace_lvl2.png": "unchanged",
+  "far_sprites": {
+    "source_sha256": "f2177eca66b17832c6ca7d85d928b966fdf984e8c8e8cfb60528fffc346a4aff",
+    "cell": 64,
+    "yaws": 16,
+    "pitches": 5
+  },
+  "medium_sprites": {
+    "source_sha256": "f2177eca66b17832c6ca7d85d928b966fdf984e8c8e8cfb60528fffc346a4aff",
+    "cell": 128.0,
+    "yaws": 16.0,
+    "pitches": 5.0
+  },
+  "light": {
+    "active_pixels": 252,
+    "bounds": [
+      178,
+      552,
+      370,
+      674
+    ]
+  },
+  "windows": {
+    "active_pixels": 1140,
+    "bounds": [
+      95,
+      507,
+      406,
+      697
+    ]
+  }
+}

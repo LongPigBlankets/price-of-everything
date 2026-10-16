@@ -41,6 +41,12 @@ for family in ('farm', 'water_pump', 'new_forest', 'old_forest', 'desal', 'oil_w
                         col='BLDG_' + family, levels=(1, 2, 3), detailed=True, outer_contour=False)
 specs['offshore_oil_platform'] = dict(file=str(DETAIL_SOURCE / 'builders.py'), fn='build_offshore_oil_platform',
     col='BLDG_offshore_oil_platform', levels=(1,2,3), detailed=True, outer_contour=False)
+# L3 Paper WPA furnace is released. L1/L2 replacements are coming soon:
+# default exports touch only L3, preserving their installed legacy artwork.
+# The staging pipeline may explicitly build all three draft levels for review.
+specs['furnace'] = dict(file=str(DETAIL_SOURCE / 'furnace_builder.py'), fn='build_furnace',
+    col='BLDG_furnace', levels=(1,2,3) if os.environ.get('POE_FURNACE_VARIANT') == 'paper-wpa' else (3,),
+    detailed=True, outer_contour=False)
 # Export independent vessels from the same reviewed port builder. These are
 # components, with the port's unit scale and their own grounded local origin.
 PORT_SHIPS = {'boxa': ('boxA', 'SHIP_BOXER_A'), 'boxb': ('boxB', 'SHIP_BOXER_B'),

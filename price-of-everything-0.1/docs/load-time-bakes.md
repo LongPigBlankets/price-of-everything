@@ -1,5 +1,15 @@
 # Load time: what is baked, and when to re-bake it
 
+## Furnace L3 artwork — 16 October 2026
+
+The new furnace L3 has refreshed far/medium colour and depth atlases, medium
+lighting and picking resources. L1/L2 replacements are coming soon; their existing
+assets remain installed. All 50 furnaces in the packaged starting snapshot are L1,
+so its 600-tile terrain/layout package remains valid and passes validation.
+A fresh process reports 103 bundled hits, zero misses/writes, a 375ms owned-view
+opening and 2.862s to the first fully revealed continent tile. See the
+[proportion review, scope and measurements](reviews/furnace-l3-2026-10-16.md).
+
 ## Incremental road-tunnel refresh — 16 October 2026
 
 The 10u minimum road-tunnel length and bounded entrance covers are installed in
