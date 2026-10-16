@@ -1,5 +1,123 @@
 # Load time: what is baked, and when to re-bake it
 
+## Lossless storage and release exclusions — 16 October 2026
+
+The installed 600-tile package now contains **968,604,879 bytes** of native
+resources, down from **1,307,187,841**: **338,582,962 bytes (25.90%) saved**.
+All **1,841 decompressed resource payloads are byte-identical**. Terrain pixels,
+mipmaps, mesh attributes, collision triangles, placements and all LODs are
+unchanged. This pass reduces disk/download size, not retained GPU texture memory.
+
+| Group | Before | After | Saving |
+| --- | ---: | ---: | ---: |
+| Near terrain | 671.53 MB | 479.13 MB | 192.40 MB |
+| Medium terrain | 307.48 MB | 247.75 MB | 59.73 MB |
+| Base tiles | 122.72 MB | 83.43 MB | 39.29 MB |
+| Far continent | 55.47 MB | 47.80 MB | 7.67 MB |
+| Other prepared resources | 149.99 MB | 110.50 MB | 39.49 MB |
+
+Sizes use decimal MB. Actual macOS PCK export, excluding the platform executable:
+**2,047,895,336 → 1,672,527,792 bytes**, a **375,367,544-byte (18.33%) reduction**.
+All three release presets omit the 37.12 MB `stoneshore_trial_bakes` preview and
+bake diagnostic reports. Those files remain in the development checkout. An
+export-directory comparison confirms no other removals, no new shipped files,
+and no changed non-bake artwork. The only other changed entry is the UID cache.
+
+### Storage format and production integration
+
+The native RSCC format already supports a block size in its header:
+[engine reader and writer](https://github.com/godotengine/godot/blob/4.6-stable/core/io/file_access_compressed.cpp).
+The default ResourceSaver uses independent 4 KiB Zstd blocks. An offline pass
+tries **256 KiB and 1 MiB**, retaining the smallest result or the original if
+neither wins. It keeps the engine's default compression level. Larger blocks
+capture repetitions across mesh attributes and texture data that the old block
+boundaries concealed. No custom runtime decoder, repacking or new cache key is
+introduced. Native loading needs at most a 1 MiB uncompressed block buffer per
+active reader instead of 4 KiB; it does not decompress an entire continent to
+read a tile.
+
+`repack_bake_storage.gd` checks each input against the manifest, reconstructs and
+compares the complete uncompressed payload, then atomically replaces that file
+and checkpoints its new checksum. Completed resources are skipped on later passes.
+A source mismatch stops migration rather than silently accepting it. Use a staged
+copy: a crash between resource and manifest replacement needs restoration of that
+resource from the input copy. Deliberately raw profiling packages remain raw.
+The full conversion took **37.9s**, without rendering or world/layout generation.
+
+The production continent/company compaction pipeline calls this pass after
+terrain texture encoding; the snapshot baker applies it to new snapshots too.
+For an existing package:
+
+```sh
+godot --headless --path . --log-file /private/tmp/storage-repack.log \
+  res://tools/supply_chain_3d/repack_bake_storage.tscn -- \
+  --package-output=/absolute/staged-package --no-telemetry
+godot --headless --path . --log-file /private/tmp/storage-verify.log \
+  res://tools/supply_chain_3d/verify_continent_package.tscn -- \
+  --package-output=/absolute/staged-package --no-telemetry
+```
+
+Install verified resources and manifest using atomic replacements (do not
+overwrite shared hard links in a baseline copy), then check a fresh process.
+
+### Loading and visual checks
+
+Engine 4.6.2 Forward+/Metal, Apple M5 Pro, fresh processes with warm filesystem:
+
+| Check | Original | Repacked |
+| --- | ---: | ---: |
+| First fully revealed tile, median of 3 | 3,015 ms | 3,025 ms |
+| First fully revealed tile, range | 2,867–3,158 ms | 2,754–4,349 ms |
+| Closest neighbourhood, first pair (61 tiles) | 2,926 ms | 2,811 ms |
+| Closest neighbourhood, second pair | 4,063 ms | 3,850 ms |
+| Adjacent pan, first pair | 519 ms | 446 ms |
+| Adjacent pan, second pair | 668 ms | 609 ms |
+| Retained return pan, first / second pair | 521 / 643 ms | 520 / 656 ms |
+
+First reveal includes the fixed 1.5s animation. The third repacked run also took
+24.25s to reach the game's Begin state, versus about 19.9s earlier; this broader
+slowdown is recorded, not discarded. Both closest runs slowed in the second pair.
+These measurements support broadly unchanged first-open latency and improved
+closest streaming, **not a guaranteed three-second load**. The existing first-use
+rendering hitch remains. In a 12-resource native loader probe, summed median
+load times fell from 33.3ms to 26.1ms with 1 MiB blocks.
+
+All six progressive runs recorded **zero cache misses and zero runtime writes**.
+Both closest comparisons retained the 61-tile radius, 52 shared tiles across the
+pan and ten-second eviction policy. Fixed-camera closest-first and return
+screenshots are pixel-identical; other captures include time-dependent content.
+The complete resource byte comparison is the stronger all-LOD quality check.
+**34 storage assertions pass**, including exact block boundaries, malformed
+headers, native synchronous/threaded reads, collision preservation, manifest
+checksums, idempotence and refusing changed inputs. The installed package and
+actual exported PCK both pass the full 1,841-resource validation gate.
+
+Evidence: `outputs/supply-chain-3d/storage-compaction/`. `audit_export_size.py`
+inventories the actual PCK and maps imported files back to their source folders.
+`verify_export_bakes.gd` runs the standard gate against a PCK without shipping
+developer tools:
+
+```sh
+godot --headless --main-pack /absolute/game.pck \
+  --log-file /private/tmp/export-bakes.log \
+  --script /absolute/project/tools/supply_chain_3d/verify_export_bakes.gd -- \
+  --validation-output=/private/tmp/export-bakes.json --no-telemetry
+```
+
+### Remaining candidates from the export audit
+
+- **Shared geometry/picking data between per-tile LOD resources.** Measure actual
+  duplicates before changing native resource boundaries; external dependencies
+  must preserve asynchronous loading and independent tile eviction.
+- **Medium sprite atlases: 139.53 MB; far atlases: 33.03 MB.** Albedo, depth and lit
+  variants are all referenced. GPU-ready encoding needs a separate fixed-camera
+  edge/depth quality gate; deleting variants would change the rendering.
+- **Water and relief JSON: 31.85 MB combined.** A prepared binary representation
+  could reduce parsing and bytes, but needs compatible exported fingerprints and
+  fallback paths. Do not invalidate the whole map by minifying authored sources.
+- **Regular-map artwork: 143.31 MB.** It is used by the regular map and remains
+  untouched. Loading video/UI/music also remain; removing them changes content.
+
 ## Incremental road-tunnel refresh — 16 October 2026
 
 The 10u minimum road-tunnel length and bounded entrance covers are installed in

@@ -1,0 +1,57 @@
+{
+  "base": {
+    "before": 122718581,
+    "after": 83426947,
+    "count": 600
+  },
+  "continent": {
+    "before": 55468826,
+    "after": 47797326,
+    "count": 1
+  },
+  "layout": {
+    "before": 10860953,
+    "after": 5948178,
+    "count": 1
+  },
+  "rail-layout": {
+    "before": 119770,
+    "after": 79058,
+    "count": 2
+  },
+  "road": {
+    "before": 2717688,
+    "after": 1572930,
+    "count": 8
+  },
+  "scenery": {
+    "before": 65420375,
+    "after": 56519992,
+    "count": 2
+  },
+  "near": {
+    "before": 671531914,
+    "after": 479129018,
+    "count": 600
+  },
+  "medium": {
+    "before": 307478848,
+    "after": 247750801,
+    "count": 600
+  },
+  "tile": {
+    "before": 22475064,
+    "after": 17105773,
+    "count": 24
+  },
+  "transport": {
+    "before": 28197516,
+    "after": 16546785,
+    "count": 2
+  },
+  "world-snapshot": {
+    "before": 20198306,
+    "after": 12728071,
+    "count": 1
+  }
+}

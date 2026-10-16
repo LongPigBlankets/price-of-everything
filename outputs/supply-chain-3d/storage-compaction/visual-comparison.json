@@ -1,0 +1,34 @@
+[
+  {
+    "view": "closest_first",
+    "size": [
+      1920,
+      1044
+    ],
+    "identical": true
+  },
+  {
+    "view": "closest_adjacent",
+    "size": [
+      1920,
+      1044
+    ],
+    "identical": false
+  },
+  {
+    "view": "closest_return",
+    "size": [
+      1920,
+      1044
+    ],
+    "identical": true
+  },
+  {
+    "view": "far_grace",
+    "size": [
+      1920,
+      1044
+    ],
+    "identical": false
+  }
+]

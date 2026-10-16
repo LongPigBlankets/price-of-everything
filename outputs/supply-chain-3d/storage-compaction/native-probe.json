@@ -1,0 +1,326 @@
+[
+	{
+		"key": "tile-00280ff86dabc282d63d70691d3a8a58725697c59960a3a643857e8f856a5f61",
+		"original": 2051999,
+		"raw": 6359773,
+		"variants": [
+			{
+				"bytes": 2051999,
+				"median_us": 4283,
+				"path": "res://assets/supply_chain_3d/bakes/tile-00280ff86dabc282d63d70691d3a8a58725697c59960a3a643857e8f856a5f61.res"
+			},
+			{
+				"bytes": 1667224,
+				"median_us": 3612,
+				"path": "/private/tmp/repack-native/tile-00280ff86dabc282d63d70691d3a8a58725697c59960a3a643857e8f856a5f61-65536.res"
+			},
+			{
+				"bytes": 1496335,
+				"median_us": 3582,
+				"path": "/private/tmp/repack-native/tile-00280ff86dabc282d63d70691d3a8a58725697c59960a3a643857e8f856a5f61-262144.res"
+			},
+			{
+				"bytes": 1402719,
+				"median_us": 3359,
+				"path": "/private/tmp/repack-native/tile-00280ff86dabc282d63d70691d3a8a58725697c59960a3a643857e8f856a5f61-1048576.res"
+			}
+		]
+	},
+	{
+		"key": "tile-6dc4e82a24456a11e573e897062ed3f21b3bb202725c0f753fcbec76cc471132",
+		"original": 743201,
+		"raw": 2030289,
+		"variants": [
+			{
+				"bytes": 743201,
+				"median_us": 2045,
+				"path": "res://assets/supply_chain_3d/bakes/tile-6dc4e82a24456a11e573e897062ed3f21b3bb202725c0f753fcbec76cc471132.res"
+			},
+			{
+				"bytes": 644399,
+				"median_us": 1843,
+				"path": "/private/tmp/repack-native/tile-6dc4e82a24456a11e573e897062ed3f21b3bb202725c0f753fcbec76cc471132-65536.res"
+			},
+			{
+				"bytes": 591428,
+				"median_us": 1841,
+				"path": "/private/tmp/repack-native/tile-6dc4e82a24456a11e573e897062ed3f21b3bb202725c0f753fcbec76cc471132-262144.res"
+			},
+			{
+				"bytes": 578316,
+				"median_us": 1815,
+				"path": "/private/tmp/repack-native/tile-6dc4e82a24456a11e573e897062ed3f21b3bb202725c0f753fcbec76cc471132-1048576.res"
+			}
+		]
+	},
+	{
+		"key": "base-tile-9753d8c962686eaecdf4c83d710d515c4be025bdddc7055827ba84e777cc65b7",
+		"original": 469294,
+		"raw": 4216837,
+		"variants": [
+			{
+				"bytes": 469294,
+				"median_us": 1571,
+				"path": "res://assets/supply_chain_3d/bakes/base-tile-9753d8c962686eaecdf4c83d710d515c4be025bdddc7055827ba84e777cc65b7.res"
+			},
+			{
+				"bytes": 301513,
+				"median_us": 1299,
+				"path": "/private/tmp/repack-native/base-tile-9753d8c962686eaecdf4c83d710d515c4be025bdddc7055827ba84e777cc65b7-65536.res"
+			},
+			{
+				"bytes": 260369,
+				"median_us": 1246,
+				"path": "/private/tmp/repack-native/base-tile-9753d8c962686eaecdf4c83d710d515c4be025bdddc7055827ba84e777cc65b7-262144.res"
+			},
+			{
+				"bytes": 242239,
+				"median_us": 1201,
+				"path": "/private/tmp/repack-native/base-tile-9753d8c962686eaecdf4c83d710d515c4be025bdddc7055827ba84e777cc65b7-1048576.res"
+			}
+		]
+	},
+	{
+		"key": "tile-47113f26edfb3f137f1730f425b9c031e3db074201639ccc45c7d8d344a03a68",
+		"original": 1290059,
+		"raw": 3800947,
+		"variants": [
+			{
+				"bytes": 1290059,
+				"median_us": 3958,
+				"path": "res://assets/supply_chain_3d/bakes/tile-47113f26edfb3f137f1730f425b9c031e3db074201639ccc45c7d8d344a03a68.res"
+			},
+			{
+				"bytes": 1155364,
+				"median_us": 3024,
+				"path": "/private/tmp/repack-native/tile-47113f26edfb3f137f1730f425b9c031e3db074201639ccc45c7d8d344a03a68-65536.res"
+			},
+			{
+				"bytes": 1099369,
+				"median_us": 3068,
+				"path": "/private/tmp/repack-native/tile-47113f26edfb3f137f1730f425b9c031e3db074201639ccc45c7d8d344a03a68-262144.res"
+			},
+			{
+				"bytes": 1111958,
+				"median_us": 2914,
+				"path": "/private/tmp/repack-native/tile-47113f26edfb3f137f1730f425b9c031e3db074201639ccc45c7d8d344a03a68-1048576.res"
+			}
+		]
+	},
+	{
+		"key": "tile-ccfc296620c48d9042a34fe1750c06de9d48d1db3105b5ba445d04589f6d4889",
+		"original": 818529,
+		"raw": 2157000,
+		"variants": [
+			{
+				"bytes": 818529,
+				"median_us": 2542,
+				"path": "res://assets/supply_chain_3d/bakes/tile-ccfc296620c48d9042a34fe1750c06de9d48d1db3105b5ba445d04589f6d4889.res"
+			},
+			{
+				"bytes": 766792,
+				"median_us": 2126,
+				"path": "/private/tmp/repack-native/tile-ccfc296620c48d9042a34fe1750c06de9d48d1db3105b5ba445d04589f6d4889-65536.res"
+			},
+			{
+				"bytes": 711250,
+				"median_us": 2198,
+				"path": "/private/tmp/repack-native/tile-ccfc296620c48d9042a34fe1750c06de9d48d1db3105b5ba445d04589f6d4889-262144.res"
+			},
+			{
+				"bytes": 717903,
+				"median_us": 2134,
+				"path": "/private/tmp/repack-native/tile-ccfc296620c48d9042a34fe1750c06de9d48d1db3105b5ba445d04589f6d4889-1048576.res"
+			}
+		]
+	},
+	{
+		"key": "base-tile-23fb53bbad983d9b546ef7dbc1e9b00bcf9a417a0bf00f13206407ef81bc86d8",
+		"original": 219069,
+		"raw": 2059577,
+		"variants": [
+			{
+				"bytes": 219069,
+				"median_us": 1294,
+				"path": "res://assets/supply_chain_3d/bakes/base-tile-23fb53bbad983d9b546ef7dbc1e9b00bcf9a417a0bf00f13206407ef81bc86d8.res"
+			},
+			{
+				"bytes": 187127,
+				"median_us": 1054,
+				"path": "/private/tmp/repack-native/base-tile-23fb53bbad983d9b546ef7dbc1e9b00bcf9a417a0bf00f13206407ef81bc86d8-65536.res"
+			},
+			{
+				"bytes": 177203,
+				"median_us": 1026,
+				"path": "/private/tmp/repack-native/base-tile-23fb53bbad983d9b546ef7dbc1e9b00bcf9a417a0bf00f13206407ef81bc86d8-262144.res"
+			},
+			{
+				"bytes": 174767,
+				"median_us": 1061,
+				"path": "/private/tmp/repack-native/base-tile-23fb53bbad983d9b546ef7dbc1e9b00bcf9a417a0bf00f13206407ef81bc86d8-1048576.res"
+			}
+		]
+	},
+	{
+		"key": "tile-15f5a105f061993e0f8ec5de481090c10ae2a7a79a6fa32d834e052c916f60b9",
+		"original": 1371675,
+		"raw": 7416926,
+		"variants": [
+			{
+				"bytes": 1371675,
+				"median_us": 4479,
+				"path": "res://assets/supply_chain_3d/bakes/tile-15f5a105f061993e0f8ec5de481090c10ae2a7a79a6fa32d834e052c916f60b9.res"
+			},
+			{
+				"bytes": 1147295,
+				"median_us": 3474,
+				"path": "/private/tmp/repack-native/tile-15f5a105f061993e0f8ec5de481090c10ae2a7a79a6fa32d834e052c916f60b9-65536.res"
+			},
+			{
+				"bytes": 1058851,
+				"median_us": 3414,
+				"path": "/private/tmp/repack-native/tile-15f5a105f061993e0f8ec5de481090c10ae2a7a79a6fa32d834e052c916f60b9-262144.res"
+			},
+			{
+				"bytes": 1017479,
+				"median_us": 3315,
+				"path": "/private/tmp/repack-native/tile-15f5a105f061993e0f8ec5de481090c10ae2a7a79a6fa32d834e052c916f60b9-1048576.res"
+			}
+		]
+	},
+	{
+		"key": "tile-7a6ec125656e33e193408169ebeee80bdacd9863a1800036aade17277b50965e",
+		"original": 676580,
+		"raw": 2637162,
+		"variants": [
+			{
+				"bytes": 676580,
+				"median_us": 2679,
+				"path": "res://assets/supply_chain_3d/bakes/tile-7a6ec125656e33e193408169ebeee80bdacd9863a1800036aade17277b50965e.res"
+			},
+			{
+				"bytes": 608373,
+				"median_us": 2120,
+				"path": "/private/tmp/repack-native/tile-7a6ec125656e33e193408169ebeee80bdacd9863a1800036aade17277b50965e-65536.res"
+			},
+			{
+				"bytes": 561116,
+				"median_us": 2228,
+				"path": "/private/tmp/repack-native/tile-7a6ec125656e33e193408169ebeee80bdacd9863a1800036aade17277b50965e-262144.res"
+			},
+			{
+				"bytes": 563629,
+				"median_us": 2270,
+				"path": "/private/tmp/repack-native/tile-7a6ec125656e33e193408169ebeee80bdacd9863a1800036aade17277b50965e-1048576.res"
+			}
+		]
+	},
+	{
+		"key": "base-tile-0339671da3178ed816ad1aa065a944e4497fa2463900b3d8ddc37ad66ee8048b",
+		"original": 156437,
+		"raw": 1619825,
+		"variants": [
+			{
+				"bytes": 156437,
+				"median_us": 1192,
+				"path": "res://assets/supply_chain_3d/bakes/base-tile-0339671da3178ed816ad1aa065a944e4497fa2463900b3d8ddc37ad66ee8048b.res"
+			},
+			{
+				"bytes": 128211,
+				"median_us": 1028,
+				"path": "/private/tmp/repack-native/base-tile-0339671da3178ed816ad1aa065a944e4497fa2463900b3d8ddc37ad66ee8048b-65536.res"
+			},
+			{
+				"bytes": 118335,
+				"median_us": 1049,
+				"path": "/private/tmp/repack-native/base-tile-0339671da3178ed816ad1aa065a944e4497fa2463900b3d8ddc37ad66ee8048b-262144.res"
+			},
+			{
+				"bytes": 122400,
+				"median_us": 996,
+				"path": "/private/tmp/repack-native/base-tile-0339671da3178ed816ad1aa065a944e4497fa2463900b3d8ddc37ad66ee8048b-1048576.res"
+			}
+		]
+	},
+	{
+		"key": "tile-a5dc195490af2db9e9f0b66f6636d3fa538c6f4c1a2dd2f2e8f4026e21d38d70",
+		"original": 1370507,
+		"raw": 5485942,
+		"variants": [
+			{
+				"bytes": 1370507,
+				"median_us": 4643,
+				"path": "res://assets/supply_chain_3d/bakes/tile-a5dc195490af2db9e9f0b66f6636d3fa538c6f4c1a2dd2f2e8f4026e21d38d70.res"
+			},
+			{
+				"bytes": 1208866,
+				"median_us": 3482,
+				"path": "/private/tmp/repack-native/tile-a5dc195490af2db9e9f0b66f6636d3fa538c6f4c1a2dd2f2e8f4026e21d38d70-65536.res"
+			},
+			{
+				"bytes": 1146410,
+				"median_us": 3454,
+				"path": "/private/tmp/repack-native/tile-a5dc195490af2db9e9f0b66f6636d3fa538c6f4c1a2dd2f2e8f4026e21d38d70-262144.res"
+			},
+			{
+				"bytes": 1104553,
+				"median_us": 3384,
+				"path": "/private/tmp/repack-native/tile-a5dc195490af2db9e9f0b66f6636d3fa538c6f4c1a2dd2f2e8f4026e21d38d70-1048576.res"
+			}
+		]
+	},
+	{
+		"key": "tile-af90a7069e058c622c8920bad956c6dca43514d5e01e6dc25f342a59f89e3926",
+		"original": 819676,
+		"raw": 2826258,
+		"variants": [
+			{
+				"bytes": 819676,
+				"median_us": 2875,
+				"path": "res://assets/supply_chain_3d/bakes/tile-af90a7069e058c622c8920bad956c6dca43514d5e01e6dc25f342a59f89e3926.res"
+			},
+			{
+				"bytes": 726966,
+				"median_us": 2354,
+				"path": "/private/tmp/repack-native/tile-af90a7069e058c622c8920bad956c6dca43514d5e01e6dc25f342a59f89e3926-65536.res"
+			},
+			{
+				"bytes": 677206,
+				"median_us": 2382,
+				"path": "/private/tmp/repack-native/tile-af90a7069e058c622c8920bad956c6dca43514d5e01e6dc25f342a59f89e3926-262144.res"
+			},
+			{
+				"bytes": 688960,
+				"median_us": 2418,
+				"path": "/private/tmp/repack-native/tile-af90a7069e058c622c8920bad956c6dca43514d5e01e6dc25f342a59f89e3926-1048576.res"
+			}
+		]
+	},
+	{
+		"key": "base-tile-6471549f11f4009c7eec8c98c0c69516066ea07ff669156ad41fa2d461e95434",
+		"original": 311133,
+		"raw": 3729695,
+		"variants": [
+			{
+				"bytes": 311133,
+				"median_us": 1756,
+				"path": "res://assets/supply_chain_3d/bakes/base-tile-6471549f11f4009c7eec8c98c0c69516066ea07ff669156ad41fa2d461e95434.res"
+			},
+			{
+				"bytes": 263724,
+				"median_us": 2984,
+				"path": "/private/tmp/repack-native/base-tile-6471549f11f4009c7eec8c98c0c69516066ea07ff669156ad41fa2d461e95434-65536.res"
+			},
+			{
+				"bytes": 241274,
+				"median_us": 1360,
+				"path": "/private/tmp/repack-native/base-tile-6471549f11f4009c7eec8c98c0c69516066ea07ff669156ad41fa2d461e95434-262144.res"
+			},
+			{
+				"bytes": 233092,
+				"median_us": 1255,
+				"path": "/private/tmp/repack-native/base-tile-6471549f11f4009c7eec8c98c0c69516066ea07ff669156ad41fa2d461e95434-1048576.res"
+			}
+		]
+	}
+]
