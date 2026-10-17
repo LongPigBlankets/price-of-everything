@@ -41,6 +41,11 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 			terrain_reuse.configure(arg.trim_prefix("--reuse-terrain-package="),builder,board._model)
 			if not terrain_reuse.configured:
 				get_tree().quit(1);return
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--reuse-scenery-package="):
+			terrain_reuse=preload("res://tools/supply_chain_3d/reuse_scenery_terrain_bakes.gd").new()
+			terrain_reuse.configure(arg.trim_prefix("--reuse-scenery-package="),builder,board._model)
+			if not terrain_reuse.configured: get_tree().quit(1);return
 	var writer := Package.Cache.new()
 	writer.enabled = true
 	writer.directory = preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").PACKAGE if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled() else Package.Cache.BUNDLED
