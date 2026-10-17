@@ -1,0 +1,13 @@
+{
+  "validation": {
+    "bytes": 1513302023,
+    "errors": [],
+    "medium_decoded_bytes": 2241286200,
+    "near_decoded_bytes": 8965279800,
+    "near_disk_bytes": 837596492,
+    "ok": true,
+    "resources": 1841,
+    "tiles": 600
+  },
+  "runtime_cache_directories_created": []
+}

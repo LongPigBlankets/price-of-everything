@@ -1,0 +1,41 @@
+{
+	"after": {
+		"base": {
+			"triangles": 2624,
+			"vertices": 1465
+		},
+		"medium": {
+			"triangles": 11479,
+			"vertices": 9394
+		},
+		"near": {
+			"triangles": 23506,
+			"vertices": 12169
+		},
+		"road_texture_bytes": 3996368,
+		"roads": {
+			"triangles": 1735,
+			"vertices": 1273
+		}
+	},
+	"before": {
+		"base": {
+			"triangles": 3012,
+			"vertices": 9036
+		},
+		"medium": {
+			"triangles": 13618,
+			"vertices": 40854
+		},
+		"near": {
+			"triangles": 34384,
+			"vertices": 103152
+		},
+		"road_texture_bytes": 0,
+		"roads": {
+			"triangles": 42330,
+			"vertices": 126990
+		}
+	},
+	"tile": "tile_4_9"
+}

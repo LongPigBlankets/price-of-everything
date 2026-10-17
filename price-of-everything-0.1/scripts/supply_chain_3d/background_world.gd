@@ -19,29 +19,46 @@ static func prepare(board: Control, job: RefCounted, generation: int) -> Diction
 	var context := Snapshot.inputs(board)
 	job.profile.input_copy_ms = (Time.get_ticks_usec() - copied) / 1000.0
 	var input_key: String = await job.digest(tree, context)
+	job.profile.digest_ready_ms = (Time.get_ticks_usec()-started)/1000.0
 	if job.cancelled: return {}
-	var data: Dictionary = await job.bake(tree, cache, key)
+	# The canonical bake is already encoded for fast loading. Private decoding
+	# detaches live layout values without a second native-format copy on disk.
+	var data: Dictionary = await job.bake(tree,cache,key,true)
+	job.profile.snapshot_ready_ms = (Time.get_ticks_usec()-started)/1000.0
 	if job.cancelled or not Snapshot.matches(data, input_key, manifest): return {}
+	board._loading_ink = data.ink
+	board._sync_paper()
 	var setup_started := Time.get_ticks_usec()
 	var builder := Builder.new()
 	builder.streamed = true; builder.cursor_picking = true; builder.lazy_assets = true
+	builder.backdrop_pending = true; builder.progressive_tiles = true
+	builder.progressive_manifest = manifest.tiles
 	builder.ground = owner.ground
 	builder.terrain_cache = board._terrain_cache
-	job.stage = "copy prepared model"
-	var model: Dictionary = await job.copy_model(tree, data.model)
+	var model: Dictionary = data.model
 	if job.cancelled or model.is_empty(): return {}
 	builder.tiles = model.tiles
+	builder.loading_reveal = preload("res://scripts/supply_chain_3d/tile_reveal.gd").new()
+	builder.loading_reveal.configure(model.tiles,builder.origin)
 	builder.rivers = data.rivers
 	builder.prepared_foundations = data.foundations
 	builder.prepared_continent_pick = data.pick_shape
 	builder.prepared_mine_rims = data.mine_rims
 	builder.prepared_authored_profile = data.authored_profile
+	builder.bounds = data.overview.bounds
+	builder.labels = data.overview.labels.duplicate(true)
+	builder.tile_chunks = data.overview.tile_chunks
+	if not builder._restore_visibility(data.overview.visibility): return {}
+	builder.base_ready = false
 	for field in Snapshot.KEY_FIELDS: builder.set(field, data.keys[field])
 	job.profile.model_setup_ms = (Time.get_ticks_usec()-setup_started)/1000.0
-	# Load immutable resources away from the game thread. Holding their Resource
-	# handles makes the existing native cache lookups below immediate.
-	for dependency in [builder.transport_key, builder._scenery_key, builder._continent_key]:
-		if (await job.bake(tree, builder.bake_cache, dependency)).is_empty() or job.cancelled: return {}
+	var dependency_started := Time.get_ticks_usec()
+	var transport: Dictionary = await job.bake(tree,builder.bake_cache,builder.transport_key,true)
+	job.profile.transport_load_ms = (Time.get_ticks_usec()-dependency_started)/1000.0
+	dependency_started = Time.get_ticks_usec()
+	var scenery: Dictionary = await job.bake(tree,builder.bake_cache,builder._scenery_key,true)
+	job.profile.scenery_load_ms = (Time.get_ticks_usec()-dependency_started)/1000.0
+	if job.cancelled or transport.is_empty() or scenery.is_empty(): return {}
 	setup_started = Time.get_ticks_usec()
 	job.stage = "restore layout"
 	builder.pits = data.pits
@@ -52,7 +69,6 @@ static func prepare(board: Control, job: RefCounted, generation: int) -> Diction
 	builder._index_rivers()
 	job.profile.river_index_ms = (Time.get_ticks_usec()-measured)/1000.0
 	measured = Time.get_ticks_usec()
-	var transport: Dictionary = builder.bake_cache.read(builder.transport_key)
 	if transport.get("version", -1) != Builder.TransportBake.VERSION: return {}
 	# The snapshot carries the final authored spatial indexes. The ordinary
 	# restore rebuilds those indexes twice even when all geometry came from disk.
@@ -68,47 +84,65 @@ static func prepare(board: Control, job: RefCounted, generation: int) -> Diction
 	model.roads = builder.roads
 	job.profile.transport_restore_ms = (Time.get_ticks_usec()-measured)/1000.0
 	measured = Time.get_ticks_usec()
-	await builder.prepare_scenery(board, model)
+	await builder.prepare_scenery(board,model,scenery)
 	job.profile.scenery_restore_ms = (Time.get_ticks_usec()-measured)/1000.0
 	measured = Time.get_ticks_usec()
 	if job.cancelled: return {}
 	builder.configure_grade(false)
 	job.profile.grade_ms = (Time.get_ticks_usec()-measured)/1000.0
-	measured = Time.get_ticks_usec()
-	await builder.prepare_continent(board)
-	job.profile.continent_restore_ms = (Time.get_ticks_usec()-measured)/1000.0
-	if job.cancelled: return {}
 	job.profile.restore_layout_ms = (Time.get_ticks_usec()-setup_started)/1000.0
 	var artwork := {}
+	var harbour_started := Time.get_ticks_usec()
 	for s in model.standing:
 		if str(s.kind) != "house": artwork[builder.standing_key(s)] = true
 		if s.has("harbour"):
 			var frame: Dictionary = builder.standing_frame(s)
 			await job.resource(tree, Builder.Assets.DIRECTORY + str(frame.harbour_asset) + ".glb")
 			if job.cancelled: return {}
-	for groups in [builder.continent.get("tree_sprites", {}), builder.continent.get("decor_sprites", {})]:
-		for asset in groups: artwork[asset] = true
+	var art_paths: Array = []
+	job.profile.harbour_load_ms = (Time.get_ticks_usec()-harbour_started)/1000.0
 	for asset in artwork:
 		if Sprites.entry(asset).is_empty(): continue
 		for suffix in [".png", "_depth.png"]:
-			await job.resource(tree, Sprites.DIRECTORY + asset + suffix)
-			if job.cancelled: return {}
-	# Warm just the nearby medium tile files, not every medium/near tile. Normal
-	# residency and ten-second eviction take over once this coverage is active.
-	var focus: Vector3 = board._rig.target
-	var nearby: Array = builder.tiles.keys()
-	nearby.sort_custom(func(a, b): return builder.tiles[a].center.distance_squared_to(Vector2(focus.x, focus.z)) < builder.tiles[b].center.distance_squared_to(Vector2(focus.x, focus.z)))
-	for tid in nearby.slice(0, 12):
-		for tier in ["base", "medium"]:
-			await job.bake(tree, builder.bake_cache, manifest.tiles[tid][tier])
-			if job.cancelled: return {}
+			art_paths.append(Sprites.DIRECTORY + asset + suffix)
+	var art_started := Time.get_ticks_usec()
+	await job.batch(tree,art_paths)
+	job.profile.standing_art_ms = (Time.get_ticks_usec()-art_started)/1000.0
+	if job.cancelled: return {}
 	job.profile.resources_ms = (Time.get_ticks_usec() - started) / 1000.0
 	job.stage = "assemble scene"
 	var packet: Dictionary = await board._assemble(builder, model, generation, true, job.profile)
 	if job.cancelled:
 		if not packet.is_empty(): packet.content.free()
 		return {}
-	job.profile.total_ms = (Time.get_ticks_usec() - started) / 1000.0
+	builder.loading_reveal.bind(packet.content)
 	packet.profile = job.profile
 	packet.resources = job.resources
+	job.profile.layout_ready_ms = (Time.get_ticks_usec()-started)/1000.0
+	board._publish_background(packet, job)
+	# Give the first nearby tiles exclusive use of the loader before starting the
+	# large far resource. Do not hold background preparation when owned-only is
+	# still selected, or when a far camera needs the backdrop itself to proceed.
+	var first_tiles_started := Time.get_ticks_usec()
+	while not job.cancelled and board._builder == builder and board._requested_all_tiles and not builder._overview and builder.ready_tiles.size()<3:
+		if Time.get_ticks_usec()-first_tiles_started>500000: break
+		await tree.process_frame
+	job.profile.first_tiles_priority_ms = (Time.get_ticks_usec()-first_tiles_started)/1000.0
+	if job.cancelled: return {}
+	# Local medium tiles can now appear over paper. The single far bake loads
+	# independently and fills distant areas when it is ready.
+	var far: Dictionary = await job.bake(tree, builder.bake_cache, builder._continent_key)
+	if job.cancelled: return {}
+	if far.is_empty(): return packet
+	art_paths.clear()
+	for groups in [far.get("tree_sprites", {}), far.get("decor_sprites", {})]:
+		for asset in groups:
+			for suffix in [".png", "_depth.png"]:
+				art_paths.append(Sprites.DIRECTORY+asset+suffix)
+	await job.batch(tree,art_paths)
+	if job.cancelled: return {}
+	builder.continent = far
+	builder.install_backdrop(packet.content)
+	board._backdrop_ready(builder)
+	job.profile.total_ms = (Time.get_ticks_usec() - started) / 1000.0
 	return packet

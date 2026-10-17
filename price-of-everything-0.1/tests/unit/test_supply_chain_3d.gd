@@ -338,7 +338,7 @@ func _test_3d_artwork_submerged_mines() -> void:
 		var cut := true
 		for cell in Detail.CELLS:
 			var mesh: ArrayMesh = builder._surface("mine", cell)
-			var vertices: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+			var vertices: PackedVector3Array = mesh.get_faces()
 			for i in range(0, vertices.size(), 3):
 				var p := (vertices[i] + vertices[i + 1] + vertices[i + 2]) / 3.0
 				if Geometry2D.is_point_in_polygon(Vector2(p.x, p.z), pit.rim): cut = false

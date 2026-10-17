@@ -1,0 +1,43 @@
+{
+  "before": 1919748490.0,
+  "after": 1513302023.0,
+  "reduction": 406446467.0,
+  "groups": {
+    "base-tile": {
+      "before": 141594456.0,
+      "after": 122821311
+    },
+    "continent": {
+      "before": 139804593.0,
+      "after": 55686982
+    },
+    "layout": {
+      "before": 9164715,
+      "after": 9164715.0
+    },
+    "rail-layout": {
+      "before": 119950.0,
+      "after": 119950.0
+    },
+    "road": {
+      "before": 6010636,
+      "after": 2717652
+    },
+    "scenery": {
+      "before": 65424604,
+      "after": 65424604.0
+    },
+    "tile": {
+      "before": 1509263596.0,
+      "after": 1209000869
+    },
+    "transport": {
+      "before": 28167477,
+      "after": 28167477.0
+    },
+    "world-snapshot": {
+      "before": 20198463,
+      "after": 20198463.0
+    }
+  }
+}

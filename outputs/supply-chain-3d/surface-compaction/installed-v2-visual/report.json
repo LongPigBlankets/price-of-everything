@@ -1,0 +1,113 @@
+{
+	"cache": {
+		"hits": 229,
+		"misses": 0,
+		"writes": 0
+	},
+	"opening": {
+		"begin_elapsed_ms": 19438,
+		"owned_tiles": 8,
+		"profile": {
+			"activation": {
+				"attach_ms": 3.845,
+				"detail_ms": 478.407,
+				"effects_ms": 2.37,
+				"grade_ms": 0.056,
+				"state_ms": 0.069
+			},
+			"bundled_hits": 35,
+			"cache_hits": 35,
+			"cache_misses": 0,
+			"cache_writes": 0,
+			"continent_ms": 10.279,
+			"infrastructure_ms": 20.599,
+			"keys_ms": 188.104,
+			"layout_inputs_ms": 615.052,
+			"layout_solve_ms": 355.534,
+			"max_standing_slice_ms": 53.459,
+			"model_ms": 974.774,
+			"road_frontage_ms": 130.973,
+			"road_import_ms": 90.131,
+			"road_routing_ms": 67.758,
+			"scene_ms": 1469.012,
+			"scenery_ms": 12.471,
+			"standing_ms": 537.041,
+			"static_scene_ms": 1447.246,
+			"total_ms": 2654.658,
+			"transport": {
+				"cache_hit": true,
+				"lookup_ms": 58.063,
+				"total_ms": 60.014
+			}
+		},
+		"ready_ms": 150
+	},
+	"prepared_switch_ms": 3455,
+	"views": [
+		{
+			"active_lod": 0,
+			"camera": {
+				"pitch": 1.05,
+				"span": 2400.0,
+				"target": "(2295.0, 33.85, 5280.0)",
+				"yaw": 0.1
+			},
+			"name": "far",
+			"overview": false,
+			"ppu": 0.435,
+			"settle_ms": 1956
+		},
+		{
+			"active_lod": 1,
+			"camera": {
+				"pitch": 1.05,
+				"span": 1000.0,
+				"target": "(2295.0, 33.85, 5280.0)",
+				"yaw": 0.1
+			},
+			"name": "medium",
+			"overview": false,
+			"ppu": 1.044,
+			"settle_ms": 549
+		},
+		{
+			"active_lod": 2,
+			"camera": {
+				"pitch": 1.05,
+				"span": 500.0,
+				"target": "(2295.0, 33.85, 5280.0)",
+				"yaw": 0.1
+			},
+			"name": "near",
+			"overview": false,
+			"ppu": 2.088,
+			"settle_ms": 3603
+		},
+		{
+			"active_lod": 2,
+			"camera": {
+				"pitch": 1.05,
+				"span": 500.0,
+				"target": "(2295.0, 33.85, 5280.0)",
+				"yaw": 1.0
+			},
+			"name": "near-rotated",
+			"overview": false,
+			"ppu": 2.088,
+			"settle_ms": 870
+		},
+		{
+			"active_lod": 2,
+			"camera": {
+				"pitch": 1.05,
+				"span": 240.0,
+				"target": "(2295.0, 33.85, 5280.0)",
+				"yaw": 0.1
+			},
+			"name": "closest",
+			"overview": false,
+			"ppu": 4.35,
+			"settle_ms": 657
+		}
+	]
+}

@@ -63,5 +63,5 @@ void fragment() {
  ALPHA_ANTIALIASING_EDGE = OUTPUT_IS_SRGB ? 1.0 : 0.01;
  ALPHA_TEXTURE_COORDINATE = atlas_uv * vec2(textureSize(artwork, 0));
  // Sample colour/depth before divergent pixel coverage, preserving mip derivatives.
- if (hidden) { discard; }
+ if (hidden || loading_hidden(world_anchor, FRAGCOORD.xy)) { discard; }
 }

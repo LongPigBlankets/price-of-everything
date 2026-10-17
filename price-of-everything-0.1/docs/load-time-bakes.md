@@ -1,5 +1,370 @@
 # Load time: what is baked, and when to re-bake it
 
+## Compact terrain and map-space road drawings — 15 October 2026
+
+The installed **600-tile / 1,841-resource** package is now **1,513,302,023 bytes**,
+down from **1,919,748,490 bytes**: **406,446,467 bytes (387.6 MiB / 21.2%) saved**.
+This is the runtime map-bake package, not the complete game download or Git history.
+There is no second set of road textures outside the package.
+
+| Resource group | Before | After |
+|---|---:|---:|
+| Combined far continent | 139.80 MB | 55.69 MB |
+| 600 base tiles, including roads | 141.59 MB | 122.82 MB |
+| 600 medium tiles | 417.31 MB | 345.17 MB |
+| 600 near tiles (also used at closest zoom) | 1,060.48 MB | 837.60 MB |
+
+Road paint is one transparent map-space drawing on an indexed, graded carrier per
+tile, shared by local LODs. The far continent uses one combined drawing. Pavement,
+kerbs, asphalt and lane markings are composited in their original height-band order.
+Bridge decks, supports, railings and retaining structures keep their 3D geometry;
+paint follows the existing road height field. The tiny paint-layer offsets are
+flattened onto the asphalt plane. The loader retains the original mesh format as a
+fallback for existing caches and newly generated worlds before offline packaging.
+
+Local drawings use four pixels per world unit (maximum 4096 pixels per axis),
+with mipmaps and native BPTC/BC7 storage; the far drawing is capped at 6144 pixels.
+The shader recovers the transparent canvas's premultiplied edge colours before
+applying the existing grade. Road materials participate in tile loading dissolves,
+far/local replacement, road fading and the two-frame handover. The retention budget
+includes the drawing texture and carrier. The measured renderer is Forward+/Metal.
+
+Terrain shares duplicate vertices and retriangulates only horizontal interiors
+with upward normals, in bounded 96u patches. Slopes, height transitions, vertex
+normals, texture coordinates and boundary positions remain. Patches with holes or
+ambiguous topology are retained conservatively. Picking shapes are refreshed from
+the simplified surface. Terrain texture resolution, baked shadows, building assets,
+placement, road layout and rail layout are reused. Receiving a shadow does not
+require a dense flat ground mesh.
+
+For the Stoneshore example (tile_4_9), road geometry drops from **42,330 to 1,735
+triangles**. Near terrain drops from **103,152 to 12,169 vertices** and from
+**34,384 to 23,506 triangles**. The texture costs are included in the package totals.
+At closest zoom, texture filtering slightly softens road edges; matching camera
+captures cover medium, near, closest, rotated near and actual far overviews.
+
+Fresh Godot 4.6.2 Forward+/Metal processes, Apple M5 Pro, warm filesystem caches,
+distinct empty runtime-cache directories, same first-open/pan script:
+
+| Measurement | Previous package | Compact package (three runs) |
+|---|---:|---:|
+| Owned supply view opens | 153 ms | 129–161 ms |
+| First tile fully revealed, including 1.5s animation | 2.943–2.946s | 2.814–3.050s |
+| Requested working set ready after the scripted pan | 6.027–6.162s | 4.705–4.917s |
+| Frame p95 | 33–39 ms | 27.9–28.1 ms |
+| Maximum frame | 271–272 ms | 270–274 ms |
+
+Each new run has **100 bundled hits, zero misses and zero runtime writes**, and
+14 rendered tile picks pass. Adjacent-pan first-tile arrival is 17–61ms. The
+first-use rendering hitch remains; these are warm-filesystem measurements, not
+cold-disk guarantees. Metadata restoration and the fixed reveal duration still
+dominate the first visible tile; the larger gain is finishing the local working set.
+
+The final installed version-2 mesh cleanup was checked again in a fresh process:
+first tile fully revealed **2.834s**, requested set ready **4.717s**, frame p95
+**27.6ms**, maximum **271.4ms**, **100 bundled hits / zero misses or writes**,
+and 14 successful tile picks. This matches the earlier compact-package trials.
+
+With preparation complete before the click, the initial full working set takes
+**3.446s** (previously 3.466s), a repeat switch **255ms**, and returning after all
+45 inactive detail tiles retire after ten seconds takes **1.300s** (previously
+1.753s). Preparation p95 in the owned view is 9.52ms, maximum 79.2ms.
+
+The conversion regenerated **1,833 affected render resources** in 251 seconds,
+reusing all metadata and terrain images. A final 56-second mesh-only pass removed
+sub-millimetre sliver triangles on clipped boundaries, including mine rims; its
+road images were reused. Version 2 is installed. It was staged, validated, installed with
+an original-package backup, and independently validated again in a fresh process.
+All resource hashes and semantic source fingerprints match. A separate render
+fingerprint and payload version cover the representation without invalidating
+placement, engineering or terrain artwork. Re-running the conversion rewrites no
+render resources. The game performs no simplification or road-texture painting on
+a cache hit.
+
+`bake_continent_package.tscn` and `bake_company_start.tscn` now perform this render
+conversion before their final release validation. To convert an existing package,
+first copy it to a staging directory, then run:
+
+```bash
+AGENT_GODOT_WINDOW=1 godot --path . --log-file /private/tmp/compact-render.log \
+  res://tools/supply_chain_3d/compact_render_bakes.tscn -- \
+  --package-output=/absolute/staging/directory --no-telemetry
+godot --headless --path . --log-file /private/tmp/compact-verify.log \
+  res://tools/supply_chain_3d/verify_continent_package.tscn -- \
+  --package-output=/absolute/staging/directory --no-telemetry
+```
+
+Keep a backup and install only changed indexed resources plus the validated
+manifest into `assets/supply_chain_3d/bakes/`; preserve unrelated files. Then run
+`verify_continent_package.tscn` without the directory override and the fresh
+rendered loading checks. Increment the compact payload version when changing
+baked geometry or paint generation; shader-only changes need no artwork rebuild.
+The converter checkpoints its manifest and can resume interrupted staging runs.
+The regular map is unaffected.
+
+Evidence: `outputs/supply-chain-3d/surface-compaction/`. Focused geometry, road grade,
+hole preservation, cursor picking, artwork, reveal and handover checks pass
+**118 assertions**. The sample capture tool is `check_surface_compaction.tscn`;
+`--overview-only` covers true far spans 6000 and 12000, while span 2400 remains a
+wide local view at a 1044-pixel viewport height.
+
+
+## Canonical binary metadata and earlier tile reveals — 15 October 2026
+
+The ordinary, background, packaging and profiling readers now use the same
+canonical bakes. Transport, scenery and prepared-world metadata store their
+large value dictionaries as binary Variant blocks, with meshes, textures and
+collision shapes retained as native resource handles. This replaces the former
+native-dictionary representation in place; the four duplicate startup files
+have been removed. Terrain and per-tile texture bakes remain unchanged.
+
+Background reads decode private containers on a low-priority worker and release
+the encoded root afterwards. Ordinary reads reuse a decoded resource while it
+is alive. Private reads always start from persisted bytes, so renderer annotations
+on a shared dictionary cannot contaminate a new world. Existing native-format
+user caches remain readable. Source-key, live-input and fingerprint checks still
+reject stale prepared worlds; invalid encoded data falls back to the ordinary
+cache lookup. New metadata writes use the fast representation automatically.
+
+The installed package is **600 tiles / 1,841 resources / 1,919,748,490 bytes**.
+It is **111,456,569 bytes (106.3 MiB) smaller** than the duplicate-startup version,
+and only **68,016 bytes (66.4 KiB) larger** than the original pre-speedup package.
+There is no longer a 106 MiB game-size cost for the fast loading path. This is
+installed package size; old binary revisions still exist in Git history.
+
+All five canonical metadata resources (owned and continent transport/scenery,
+plus the snapshot) were re-encoded, round-tripped and compared before installation.
+Every layout value, mesh array, collision face and texture pixel matched.
+The migration preserved source fingerprints and all unrelated resources, then
+validated the complete package before removing the four indexed duplicate files.
+A separate fresh-process validator also passes. No landscape rendering or
+regeneration was needed for this lossless storage conversion.
+
+The first three local tiles retain priority before the large far bake starts
+(up to 500ms when all tiles is selected at a local zoom). Far-backed visible
+tiles start in groups of two every 120ms, ordered from the current camera;
+the group size grows at wide zoom. Each tile has its own 1.5-second paper/ink/detail
+sequence. Panning reprioritises later groups; ready local tiles start immediately.
+
+Two fresh rendered Godot 4.6.2 Forward+/Metal runs on Apple M5 Pro, warm filesystem
+caches and distinct empty runtime-cache paths:
+
+| All-tiles click to… | Original native loader | Duplicate startup format | Canonical binary format |
+|---|---:|---:|---:|
+| First tile starts its reveal | 4.033s | 1.281–1.336s | **1.416–1.418s** |
+| First fully revealed tile | 5.541s | 2.799–2.851s | **2.943–2.946s** |
+| Requested working set after a pan | 9.563s | 5.922–5.995s | **6.027–6.162s** |
+
+Both final runs have **96 bundled hits, zero misses and zero runtime bake writes**;
+14 rendered tile picks pass in each run. The owned view opens in 153ms in the
+first run; a repeated switch takes 229ms. Frame p95 is 33–39ms; maximum 271–272ms.
+The existing first-use rendering hitch remains. These are fresh-process,
+warm-filesystem samples, not cold-disk guarantees. The small measured difference
+from the duplicate format should not be read as a new speed improvement: this
+migration preserves the earlier reveal benefit while removing duplicate storage.
+
+A separate prepared-before-click run settles in **3.466s**; repeat switching takes
+**351ms**. All 45 inactive detail tiles retire after ten seconds and returning
+takes **1.753s**, with 89 bundled hits and zero runtime writes. Owned-view frame
+p95 during preparation is **9.44ms**, maximum **96.47ms**.
+
+The ordinary all-tiles path, with background preparation explicitly disabled,
+also restores all **600 tiles** using **86 bundled hits, zero misses and zero
+writes**. That switch still takes **15.197s**: ordinary model/layout restoration
+and scene construction remain, despite reading the new fast metadata format.
+The normal prepared path avoids that work. Changed worlds without a matching
+snapshot still use this fallback; this migration does not make them a three-second
+full-continent load. No fresh check created its designated runtime-cache directory.
+
+All **157 focused assertions pass**, covering sync/background/private decoding,
+legacy caches, invalid encodings, cancellation, persisted versus live values,
+reveal clocks, camera controls, collision and resource retention. The six affected
+bake/profiling tools also compile headlessly.
+
+For an older installed package, migrate it without regenerating artwork:
+
+```bash
+godot --headless --path . --log-file /private/tmp/bake-values-migration.log \
+  res://tools/supply_chain_3d/migrate_bake_values.tscn -- --no-telemetry
+```
+
+The tool stages and verifies replacements first, backs up originals in a unique
+`/private/tmp/bake-values-migration-*` directory, and rolls back failed installation
+or package validation. Only duplicate files named by the old manifest are removed.
+New `bake_continent_package.tscn` and `bake_world_snapshot.tscn` runs write canonical
+binary metadata directly; the separate `bake_startup_bundle` tool is retired.
+
+Follow with the separate validator and fresh-process checks below. The ordinary
+all-tiles path can also be checked with `check_canonical_bake_loading.tscn`, using
+`--continent-review --no-background-continent` and an empty runtime-cache path.
+It requires a rendered run through `AGENT_GODOT_WINDOW=1 godot`.
+Evidence: `outputs/supply-chain-3d/unified-bake-values/`; historical native and
+duplicate-format comparisons: `outputs/supply-chain-3d/early-reveal/`.
+
+## Timed empty-paper → ink → detail reveal — 15 October 2026
+
+Each drawable tile now receives one **1.5-second** sequence: empty paper for
+0.10s, relief/river/road ink for 0.80s, and a smooth 0.60s dissolve into the
+actual 3D representation. The clock starts only once that tile's resources are
+available. It uses elapsed time, so a slow loading frame does not stretch the
+sequence. Independent tiles animate concurrently while streaming continues.
+Existing owned tiles and already revealed cached tiles do not replay it.
+
+The dissolve covers terrain, roads, trees, buildings, instanced crops, and
+lazy medium/near assets through a small per-board hex coverage texture. It
+uses opaque screen coverage rather than transparency sorting. Temporary private
+materials restore their original overrides after completion, including null
+overrides that inherit mesh surface materials; two-frame LOD handovers finish
+before that restoration. Goods and vehicles stay out of unrevealed tiles.
+The far bake can arrive during these animations without cancelling them.
+
+This is runtime-only: the installed version-7 ink meshes and all artwork remain
+valid. Independent package validation still passes for **600 tiles, 1,841
+resources, 1,919,680,474 bytes**, with unchanged source fingerprints.
+
+Fresh Godot 4.6.2 Forward+/Metal process, Apple M5 Pro, warm filesystem caches,
+empty runtime-cache path. Phase images are captured in memory and encoded after
+timing, avoiding PNG writes artificially stretching the sequence:
+
+- First complete visual tile: **5.569s**, including its 1.5s reveal.
+- Measured individual sequences: **1.502–1.534s** (completion on the next frame).
+- Requested working set after the pan: **8.981s**.
+- Frame p95 / maximum: **28.30ms / 283.56ms**; the first-use hitch remains.
+- **98 bundled hits, zero misses, zero runtime bake writes**; 14 tile picks pass.
+- **115 focused assertions pass** for loading, clocks/material restoration,
+  camera controls, collision and cache retention. The broader handover filter
+  passes 43 assertions but flags one existing medium-sprite inventory mismatch
+  (farm/pump/forest source hashes and missing oil/crop/platform entries in
+  unchanged asset manifests). Its actual LOD handover behavior checks pass.
+
+A separate prepared-before-click run settles in **3.293s**; repeat switching
+takes **342ms**. All 45 inactive detail tiles retire after ten seconds; returning
+takes **1.642s**, with 87 bundled hits and zero runtime writes. The timed reveal
+does not replay on these returns.
+
+Evidence: `outputs/supply-chain-3d/timed-ink-loading/final/` and `prepared/`. Optional
+`--capture-transition` on `check_progressive_loading.tscn` records a short frame
+sequence for visual review; its readbacks are instrumentation, not game work.
+
+## Ink-drawn tile loading — 15 October 2026
+
+The paper loader now traces each visible unloaded hex in three stages: curved
+relief contours, blue-grey river courses, then navy roads. A tile's nominal
+sequence takes 1.35 seconds, with up to 0.3 seconds of radial staggering. It
+starts when the prepared snapshot arrives and overlaps model/art loading; ready
+3D coverage always wins, so there is no per-tile animation wait in the streamer.
+Owned tiles remain visible. Panning starts drawings for newly exposed paper;
+ordinary medium/near LOD swaps retain their existing far coverage and do not
+replay this loading animation.
+
+Contours are sampled offline from the actual ground height field, joined and
+smoothed, then clipped to hexes. Flat ground receives no invented contours.
+Connected road strokes avoid the short disconnected marks of the first trial.
+A 0.7u simplification tolerance keeps these small loading meshes compact. Runtime
+uses the saved meshes and a progress uniform; it never samples relief or draws
+textures on the CPU. Drawings are removed as real tiles arrive and all temporary
+ink references are released when the far backdrop is installed. The regular map
+and finished terrain, roads, buildings and artwork are unchanged.
+
+Version 7 of the loading supplement is **20,098,290 bytes**, an increase of
+**5,362,967 bytes (5.11 MiB)**. The initial unsimplified trial was 39.7 MB; it was
+replaced before shipping. The installed 600-tile package has **1,841 resources /
+1,919,680,474 bytes**. Independent validation checks current fingerprints and
+resource hashes; no other production bake was regenerated.
+
+Fresh Godot 4.6.2 / Forward+ Metal, Apple M5 Pro, warm filesystem caches and a
+new empty runtime-cache path, with three extra ink-stage screenshots:
+
+| Measurement | Time |
+|---|---:|
+| Process start to Begin / first supply opening | 19.920s / 149ms |
+| All-tiles request to paper | 8ms |
+| Captured contour / river / road stages | 0.729s / 1.390s / 2.111s |
+| First complete medium tile / far backdrop | 3.980s / 4.842s |
+| Pan to next prioritised tile | 24ms |
+| Complete requested working set after pan | 9.183s |
+| Return owned / repeated all-tiles switch | 7ms / 212ms |
+| Reveal frame p95 / maximum | 28.76ms / 272.65ms |
+
+Screenshot readback/encoding is excluded from frame samples but included in
+elapsed stage and working-set times. These are fresh-process warm-cache samples,
+not cold-disk guarantees. The existing first-use rendering hitch remains. The
+unsimplified first trial also encountered a 547ms first-use frame; the final
+compact run did not. The final run recorded **94 bundled hits, zero misses and
+zero runtime writes**, checked 14 visible tile selections, and verified release
+of temporary ink resources. All **104 focused assertions** pass, including
+contour geometry, phase ordering, cancellation, picking and resource retention. Evidence: `outputs/supply-chain-3d/ink-loading/final/`.
+
+## Progressive paper-map reveal — 15 October 2026
+
+Selecting all tiles before preparation finishes now displays a warm paper map
+with dashed navy hex boundaries immediately. The existing owned view stays visible through metadata loading and local
+reveal; it is released when the far map is ready, avoiding a flash back to paper. Once layout metadata is ready, complete medium
+tiles reveal from the current focus outward; moving the camera reprioritises the
+next tile. The combined far bake loads independently and fills the remaining
+distance. This replaces the previous all-base-then-all-medium reveal barrier.
+
+The version-6 loading supplement adds overview bounds, labels, tile-resource keys
+and visibility bounds. Its cursor locator has 96 triangles per hex; using the
+complete rendered continent as a locator previously cost **1.08s** on initial
+physics attachment. The new attachment measured **28.0ms**. Exact local terrain
+and building colliders are unchanged. Supplement size is **14,735,323 bytes**;
+the installed package is **1,841 resources / 1,914,317,507 bytes**. All terrain,
+transport, scenery and sprite artwork/resources were reused.
+
+Fresh rendered Godot 4.6.2 / Forward+ on Apple M5 Pro, warm OS file caches, new
+empty runtime-cache paths. The early-click check requests all tiles immediately
+after opening, then pans two hexes while tiles are still arriving:
+
+| Measurement | Time |
+|---|---:|
+| Process start to Begin | 19.039s |
+| First supply-view opening after Begin | 0.154s |
+| Click to paper map / return from request | **8ms** |
+| Click to first complete medium tile | **3.922s** |
+| Click to combined far backdrop | **4.797s** |
+| Pan to next prioritised tile | **21ms** |
+| Complete requested working set after that pan (46 tiles, including buffer) | 9.010s |
+| Return to owned coverage | 7ms |
+| Return to the same continent camera | 240ms |
+| Reveal frame time, 95th percentile / maximum | 27.33ms / 276.41ms |
+
+Before bounded texture-read batches, fresh runs measured 4.070–4.090s to the
+first tile and 91–100ms after the pan. Batching reduced the complete requested
+working-set time from 12.402s to 9.309s and far-backdrop arrival from 5.327s to
+4.612s; at most four resources decode concurrently.
+**This is progressive readiness, not a claim that all medium detail loads in
+four seconds.** Background work continues after the first tile. The remaining
+276ms first-use renderer/resource frame is still measurable; the one-second
+physics activation is removed. Screenshot encoding is excluded from frame-time
+samples but included in elapsed working-set timings.
+
+With preparation complete before clicking, the first full medium working set
+settled in **3.272s**, repeat switches in **340ms**, and a return after the
+ten-second retirement in **1.667s**. The 45 inactive detail tiles retired as
+expected. Background preparation had a 9.26ms p95 / 39.43ms maximum owned-view
+frame, with no frames above 50ms. This is still about three seconds for full
+medium readiness; the improvement is immediate interaction and incremental reveal.
+
+The final early-click check recorded **94 bundled hits, zero misses and zero
+runtime writes**. Fourteen rendered tile-centre queries passed; one correctly
+selected the higher foreground terrain occluding its centre. Empty runtime cache
+paths remained absent. Independent package validation verifies hashes, source
+fingerprints and all 600 tiles. Ninety-five focused regression assertions pass
+for camera controls, cursor collision, loading/cancellation and resource retention.
+The initial-world signature limitation documented
+below remains: unmatched worlds use their existing normal build path.
+
+Final evidence is in `outputs/supply-chain-3d/progressive-loading/owned-retained/` and
+`batched-ready/` at repository root.
+Run `check_progressive_loading.tscn` with `--continent-review --no-telemetry`, a
+fresh `--bake-cache-directory`, and optionally `--review-output`. The existing
+`check_background_loading.tscn --verify-retention` covers prepared-before-click
+switches and ten-second inactive-detail eviction. Refresh the supplement with
+`bake_world_snapshot.tscn` and validate using `verify_continent_package.tscn`.
+
+The measurements below are historical baselines.
+
 ## Owned-first opening and background continent — 15 October 2026
 
 Every new supply-chain board now opens with **Show player owned tiles only**,

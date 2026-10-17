@@ -1,0 +1,7 @@
+Headless Godot 4.6.2 compile check passed:
+- bake_world_snapshot.gd
+- migrate_bake_values.gd
+- bake_continent_package.gd
+- profile_bake_granularity.gd
+- profile_bake_storage.gd
+- profile_compact_bakes.gd

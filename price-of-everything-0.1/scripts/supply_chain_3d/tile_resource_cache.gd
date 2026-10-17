@@ -63,6 +63,10 @@ static func estimate(data: Dictionary, chunk: Dictionary) -> int:
 			width = maxi(1, width / 2)
 			height = maxi(1, height / 2)
 	var meshes: Array = data.get("meshes", []).duplicate()
+	var road: Dictionary=chunk.get("road_drawing",{})
+	if road.get("mesh") is Mesh: meshes.append(road.mesh)
+	if road.get("texture") is Texture2D:
+		total+=int(road.get("texture_bytes",road.texture.get_width()*road.texture.get_height()*4*4/3))
 	for value in chunk.values():
 		if value is Mesh: meshes.append(value)
 	var detail: Dictionary = chunk.get("local_detail", {})

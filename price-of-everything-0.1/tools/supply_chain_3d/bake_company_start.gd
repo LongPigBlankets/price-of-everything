@@ -41,6 +41,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	manifest.auxiliary_keys=auxiliary
 	manifest.company_start={"tiles":board._model.tiles.keys(),"resource_count":auxiliary.size()}
 	FileAccess.open(manifest_path,FileAccess.WRITE).store_string(JSON.stringify(manifest,"\t")+"\n")
+	await preload("res://tools/supply_chain_3d/compact_render_bakes.gd").migrate(writer.directory,self)
 	var report := await Package.validate(writer.directory,self)
 	report.company_start=manifest.company_start
 	FileAccess.open("/private/tmp/company_package_report.json",FileAccess.WRITE).store_string(JSON.stringify(report,"\t"))

@@ -1,0 +1,88 @@
+{
+	"background": {
+		"activation": {
+			"attach_ms": 4.932,
+			"detail_ms": 0.023,
+			"effects_ms": 0.23,
+			"grade_ms": 0.08,
+			"state_ms": 2.821
+		},
+		"bundled_hits": 87,
+		"cache_hits": 87,
+		"cache_misses": 0,
+		"cache_writes": 0,
+		"grade_ms": 0.009,
+		"infrastructure_ms": 18.024,
+		"input_copy_ms": 46.676,
+		"layout_ready_ms": 4732.299,
+		"max_get_ms": 0.058,
+		"max_request_ms": 0.008,
+		"max_standing_slice_ms": 4.004,
+		"model_setup_ms": 99.543,
+		"pits_ms": 0.001,
+		"resources_ms": 4681.556,
+		"restore_layout_ms": 29.707,
+		"river_index_ms": 6.585,
+		"scene_ms": 50.734,
+		"scenery_restore_ms": 5.215,
+		"standing_ms": 28.496,
+		"static_scene_ms": 47.13,
+		"total_ms": 5638.984,
+		"transport_restore_ms": 17.893
+	},
+	"background_status": "ready",
+	"cache": {
+		"bundled_hits": 87,
+		"misses": 0,
+		"writes": 0
+	},
+	"frames_over_50ms": 0,
+	"max_owned_frame_ms": 39.428,
+	"opening": {
+		"begin_elapsed_ms": 19196,
+		"owned_tiles": 8,
+		"profile": {
+			"activation": {
+				"attach_ms": 3.088,
+				"detail_ms": 490.23,
+				"effects_ms": 2.326,
+				"grade_ms": 0.039,
+				"state_ms": 0.054
+			},
+			"bundled_hits": 35,
+			"cache_hits": 35,
+			"cache_misses": 0,
+			"cache_writes": 0,
+			"continent_ms": 6.219,
+			"infrastructure_ms": 39.742,
+			"keys_ms": 231.691,
+			"layout_inputs_ms": 610.362,
+			"layout_solve_ms": 356.247,
+			"max_standing_slice_ms": 52.683,
+			"model_ms": 970.577,
+			"road_frontage_ms": 129.616,
+			"road_import_ms": 89.635,
+			"road_routing_ms": 67.423,
+			"scene_ms": 1472.965,
+			"scenery_ms": 29.733,
+			"standing_ms": 521.862,
+			"static_scene_ms": 1451.926,
+			"total_ms": 2711.199,
+			"transport": {
+				"cache_hit": true,
+				"lookup_ms": 102.556,
+				"total_ms": 104.468
+			}
+		},
+		"ready_ms": 144
+	},
+	"owned_frames": 523,
+	"p95_owned_frame_ms": 9.259,
+	"repeat_switch_ms": 340,
+	"retired_tiles": 45,
+	"return_owned_ms": 7,
+	"slow_frames": [],
+	"switch_after_grace_ms": 1667,
+	"switch_ms": 3272,
+	"tiles": 600
+}

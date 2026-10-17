@@ -2,7 +2,7 @@ extends RefCounted
 ## Optional prepared board data. Artwork remains in the existing independent bakes.
 ## A snapshot is usable only for the same live inputs and source fingerprints.
 const Cache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
-const VERSION := 5
+const VERSION := 7
 const KEY_FIELDS := ["_map_key", "_road_key", "_scenery_key", "_continent_key", "transport_key"]
 const AUTHORED_FIELDS := ["region", "segments", "crossings", "unresolved", "tile_index", "buckets", "bridge_tiles"]
 
@@ -41,17 +41,49 @@ static func packed(board: Control, input_key: String) -> Dictionary:
 			foundations[str(standing.iid)] = board._builder.prepared_foundations[str(standing.iid)]
 	return {"version": VERSION, "input_key": input_key, "keys": keys,
 		"fingerprints": Cache.source_fingerprints(), "model": board._model,
+		"ink": preload("res://scripts/supply_chain_3d/loading_ink_bake.gd").build(board._builder),
 		"rivers": board._builder.rivers, "foundations": foundations,
 		"pits": board._builder.pits,
 		"mine_rims": board._builder.prepared_mine_rims,
+		"overview": {"bounds":board._builder.bounds,"labels":board._builder.labels,
+			"visibility":board._builder.visibility_bake(), "tile_chunks":board._builder.tile_chunks},
 		"authored_profile": authored,
-		"pick_shape": board._builder.continent_body.get_child(0).shape}
+		"pick_shape": _locator_shape(board._builder)}
+
+static func _locator_shape(builder: RefCounted) -> ConcavePolygonShape3D:
+	# Only locates the cursor's tile. Exact resident terrain/building colliders
+	# still decide local hits. Reusing the full rendered continent here makes
+	# Jolt build a huge acceleration structure on first scene attachment.
+	var faces := PackedVector3Array()
+	for tile in builder.tiles.values():
+		var center: Vector2 = tile.center
+		var hex: PackedVector2Array = builder.Model.hex_points(center)
+		for i in 6: _locator_triangle(builder, center, hex[i], hex[(i+1)%6], 2, faces)
+	var shape := ConcavePolygonShape3D.new()
+	shape.set_faces(faces)
+	return shape
+
+static func _locator_triangle(builder: RefCounted, a: Vector2, b: Vector2, c: Vector2, depth: int, faces: PackedVector3Array) -> void:
+	if depth>0:
+		var ab := (a+b)*0.5; var bc := (b+c)*0.5; var ca := (c+a)*0.5
+		_locator_triangle(builder,a,ab,ca,depth-1,faces)
+		_locator_triangle(builder,ab,b,bc,depth-1,faces)
+		_locator_triangle(builder,ca,bc,c,depth-1,faces)
+		_locator_triangle(builder,ab,bc,ca,depth-1,faces)
+	else:
+		# Godot front faces use clockwise winding when viewed from above.
+		for p in [a,b,c]: faces.append(builder.point(p))
 
 static func matches(data: Dictionary, input_key: String, manifest: Dictionary) -> bool:
 	if data.get("version", -1) != VERSION or data.get("input_key", "") != input_key: return false
 	if not data.get("pick_shape") is ConcavePolygonShape3D or not data.get("foundations") is Dictionary: return false
 	if not data.get("pits") is Dictionary: return false
+	if not data.get("ink") is Dictionary or data.ink.size() != int(manifest.get("tile_count", -1)): return false
+	for tid in data.get("model", {}).get("tiles", {}):
+		if not data.ink.get(tid) is ArrayMesh: return false
 	if not data.get("mine_rims") is Mesh: return false
+	for field in ["bounds", "labels", "visibility", "tile_chunks"]:
+		if not data.get("overview", {}).has(field): return false
 	for field in AUTHORED_FIELDS:
 		if not data.get("authored_profile", {}).has(field): return false
 	if not Cache.fingerprints_match(data.get("fingerprints", {}), Cache.source_fingerprints()): return false

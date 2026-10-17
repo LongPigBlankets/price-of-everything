@@ -1,5 +1,8 @@
 # Supply-chain 3D overview
 
+Compact terrain and per-tile road drawings are installed for the production map.
+The package is 21.2% smaller; [bake format, measurements and conversion workflow](load-time-bakes.md#compact-terrain-and-map-space-road-drawings--15-october-2026).
+
 Branch `codex/supply-chain-3d` starts at PR #197 (`6266b19a`) and merges the
 supply-chain work in PR #196 (`86cb0e02`). The regular map remains unchanged.
 
@@ -52,10 +55,37 @@ indexes, mine cuts, foundations and the coarse picking shape. Resource loading
 and immutable-data copying/hashing run on workers; scene construction stays on
 the game thread in small batches. See [load-time evidence](load-time-bakes.md).
 
+Selecting all tiles while preparation runs immediately unfolds a warm paper map
+with dashed navy hex boundaries. Completed local tiles appear from the camera/owned
+composition centre outward, with visible tiles first. Panning reprioritises the
+next tile after the current tile finishes. Medium tiles load independently of the
+combined far bake; that bake fills the remaining distance once ready. Paper hexes
+support tile clicks without individual physics bodies. Already loaded company
+tiles remain visible until the far map replaces them. Hidden tiles do not show
+goods or smoke.
+
+Canonical transport, scenery and snapshot bakes now store large value dictionaries
+as fast binary Variant blocks with native mesh/texture handles. Ordinary,
+background and offline readers all understand this format; old native user caches
+remain readable. Background decoding uses private containers and releases its raw
+buffers. The duplicate startup files are removed, saving **106.3 MiB**; the full
+600-tile package is **1.920 GB**, just **68 KB** larger than before the speed-up.
+New metadata bakes use this representation automatically.
+
+Nearby tiles receive the first loading slots; the combined far backdrop reveals
+in camera-centred groups. Two fresh-process warm-filesystem checks start the first
+tile at **1.416–1.418s** and complete its 1.5-second animation at **2.943–2.946s**,
+compared with 5.54s before the binary format. Both runs have zero cache misses or
+runtime bake writes. The existing first-use rendering hitch remains; see
+[load-time evidence and migration instructions](load-time-bakes.md).
+
 Both coverage roots are retained for quick toggles. Inactive continent detail
 gets the existing ten-second grace period, then releases its nodes and applies
-the normal resource-cache limits. The preloader warms only twelve nearby medium
-and base tile resources. It does not keep every medium/near texture in memory.
+the normal resource-cache limits. Native tile resources and sprite textures are
+loaded before attaching a tile; completed shared textures are reused directly.
+The loader does not keep every medium/near texture in memory. The prepared cursor
+locator uses 96 triangles per hex, avoiding a large first-attachment physics cost;
+resident terrain and building hitboxes retain their exact prepared shapes.
 A turn, building/layout change or visibility change invalidates pending work;
 the prepared supplement is used only when its complete input signature and
 package fingerprints match. Currently it is bundled for the Metal Magnate
@@ -2816,3 +2846,50 @@ withdrawn: in a dense authored town the only building-free corridors are the
 streets, and it moved the tile_5_10 depot. The rail layout cache is version 7. Regions outside the five trial tiles
 change too (anchors near rivers, river-aware routes); the whole-continent
 package has not been rebaked.
+
+
+## Ink-drawn paper loading (15 October 2026)
+
+`loading_ink_bake.gd` prepares cartographic meshes in the version-7 world
+snapshot: natural-ground isolines, river paths and joined non-tunnel roads.
+World-aligned samples and fixed contour levels preserve continuity at hex
+boundaries; Chaikin smoothing and 0.7u simplification keep the lines curved and
+small. This loading-only supplement deliberately does not invalidate artwork
+fingerprints. Bump `Snapshot.VERSION` when changing its generated geometry.
+
+`paper_map.gd` binds meshes only for visible paper hexes. The ink shader reveals
+UV-encoded stroke progress in relief → river → road order over 1.35 seconds,
+staggered outward from the camera. It advances alongside the existing native
+resource queue, never in front of it. Finished coverage can replace ink at any
+point, and the ordinary far-to-medium/near handover does not replay it.
+`_backdrop_ready` releases the temporary drawings and their mesh references,
+including when background preparation completed while the owned view stayed up.
+Snapshot dictionaries are immutable: cancellation drops references rather than
+clearing the shared cached ink dictionary.
+
+Production refresh remains `bake_world_snapshot.tscn`; the latest package adds
+5.11 MiB and reuses all terrain/art resources. The rendered progressive check
+captures all three phases and validates picking, cleanup and zero bake writes.
+See `load-time-bakes.md` for measured first-open and pan times.
+
+
+## Timed tile reveal (15 October 2026)
+
+`tile_reveal.gd` replaces the independent ink clock with one 1.5-second tile
+lifecycle: 0.10s empty hex, 0.80s relief/river/road strokes, 0.60s detail dissolve.
+Start occurs when local detail or the combined far representation is drawable;
+loading continues independently. Offscreen tiles need no animation and cached
+coverage does not replay. The far arrival preserves active sequences.
+
+`loading_mask.gdshaderinc` uses a small L8 hex grid and the existing opaque LOD
+coverage pattern. Private material bindings cover terrain, impostors, mesh
+surface materials and lazily created medium/near geometry. They are restored
+after the reveal and any active LOD handover. Once finished there are no mask
+uploads, loading material copies, or ink meshes retained by this controller.
+The mask is isolated per board, so owned coverage stays intact. Picking uses
+the paper tile until completion; goods and vehicles wait for their tile.
+
+No bake invalidation: version-7 ink geometry, terrain/scenery and prepared
+physics are reused. `load-time-bakes.md` records fresh-process verification and
+the independent package validation. The final rendered sequences take
+1.502–1.534s, including the next-frame completion boundary.

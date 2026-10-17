@@ -39,10 +39,14 @@ func _init() -> void:
 			if arg.begins_with("--trial-cache-directory="): directory = arg.trim_prefix("--trial-cache-directory=")
 
 	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--bake-package-directory="): bundled_directory = arg.trim_prefix("--bake-package-directory=")
 		if arg.begins_with("--bake-cache-directory="): directory = arg.trim_prefix("--bake-cache-directory=")
 
 static func is_raw(path: String) -> bool:
 	return storage_format(path) == "raw"
+
+static func binary_values_for(key: String) -> bool:
+	return key.begins_with("transport-") or key.begins_with("scenery-") or key.begins_with("world-snapshot-")
 
 static func storage_format(path: String) -> String:
 	var file := FileAccess.open(path, FileAccess.READ)
@@ -122,10 +126,12 @@ func read(key: String) -> Dictionary:
 		if not FileAccess.file_exists(path): continue
 		# Content hashes are immutable; reuse any live resource and its subresources.
 		var bake := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_REUSE) as Data
-		if bake != null and bake.schema == SCHEMA and bake.key == key and not bake.data.is_empty():
+		if bake != null and bake.schema == SCHEMA and bake.key == key:
+			var values := bake.values()
+			if values.is_empty(): continue
 			hits += 1
 			if root == bundled_directory: bundled_hits += 1
-			return bake.data
+			return values
 	misses += 1
 	return {}
 
@@ -135,7 +141,8 @@ func write(key: String, data: Dictionary) -> void:
 	var bake := Data.new()
 	bake.schema = SCHEMA
 	bake.key = key
-	bake.data = data
+	if binary_values_for(key): bake.encoded_values=Data.Values.pack(data)
+	else: bake.data=data
 	var path := directory.path_join(key + ".res")
 	var temporary := directory.path_join(key + ".tmp.res")
 	# Generated meshes/textures are internal subresources already. Bundling the
