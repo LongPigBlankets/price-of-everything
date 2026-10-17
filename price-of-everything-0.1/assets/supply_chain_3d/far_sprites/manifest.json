@@ -1213,24 +1213,26 @@
 			"span": 1.32481017112732
 		},
 		"furnace_lvl3": {
-			"cell": 64.0,
+			"cell": 64,
 			"center": [
 				0.0,
-				0.505172431468964,
+				0.320523589849472,
 				0.0
 			],
 			"dimensions": [
 				1.0,
-				1.01034486293793,
-				0.675862073898315
+				0.641047179698944,
+				0.78803163766861
 			],
 			"home_opaque_pixels": [
-				39.0,
-				41.0
+				43,
+				42
 			],
+			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "583ed5854f274811d3fc198ce2c56c0552496d64c9cd8ffe3646a2c8e385149a",
-			"span": 1.73143855333328
+			"source_sha256": "f2177eca66b17832c6ca7d85d928b966fdf984e8c8e8cfb60528fffc346a4aff",
+			"span": 1.56800558567047,
+			"yaws": 16
 		},
 		"high_tech_manufactory_lvl1": {
 			"cell": 64.0,

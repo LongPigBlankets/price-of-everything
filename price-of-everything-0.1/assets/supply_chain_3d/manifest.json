@@ -50,14 +50,14 @@
     "contour": true
   },
   "furnace_lvl3": {
-    "height": 1.0103448382739364,
+    "height": 0.641047207255598,
     "width": 1.0,
-    "depth": 0.6758620821196457,
-    "triangles": 12000,
+    "depth": 0.7880316557982521,
+    "triangles": 44124,
     "ink_edges": true,
     "source_ink_widths": true,
-    "projected_height": 1.0815025523494062,
-    "contour": true
+    "projected_height": 1.0384282037392552,
+    "contour": false
   },
   "power_plant_lvl1": {
     "height": 0.5707656566324101,

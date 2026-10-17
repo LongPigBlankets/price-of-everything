@@ -4,6 +4,7 @@
     "desal",
     "farm",
     "fracking_oil_well",
+    "furnace",
     "new_forest",
     "offshore_oil_platform",
     "oil_well",
@@ -138,6 +139,28 @@
         "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
       },
       "outer_contour": false
+    },
+    "furnace": {
+      "revision": "v23-steel-stoves",
+      "source_sha256": {
+        "builders.py": "d06f723c029a0b876f95cd34c404a1c9213610c5d32dd5bf93d134c6cd8e1535",
+        "furnace_paper.py": "7f23483868de7ac92258a36ec2695d62ce4fac6bb5d0eac19f2496d32a171491",
+        "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
+        "furnace_builder.py": "c4d1494a857a7fc7bd202490b0aba4d64197f4132bac4f63b98418581ef5035d",
+        "bake_sprite.py": "92a7e5a5fb9aab3fd5bbc9080afd7558b42110d61a5f2de8a2f2f825a2a92e8b",
+        "export_models.py": "2cb8ed42b0c9350096d412f4b787e5eace2a0afe0f97c996a027ddc07b83c07c",
+        "sprite_kit.py": "8e9b570492ebde6a8a40113b1098793e9ca176292fb98d294671ea92a4d24d41",
+        "pipeline.py": "7b259053618182d168008e9ff749656b11b7fd00f36534dbf04b92e4f968ee1e",
+        "entry.py": "244ff95f7c8087ef2cb18246541178a1c3e05111c4c7f268fd07252537a8494b",
+        "paper_wpa_catalog.py": "7be39b082de17b6092e9505e67850028966e9d033bf6f665a057997da147c157",
+        "render_sprite.py": "e45834820119808e946b605bb84037a2443e67105928cdfa9c30bf5a78cc4c45",
+        "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
+        "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
+      },
+      "outer_contour": false,
+      "released_levels": [
+        3
+      ]
     }
   },
   "sprites": {
@@ -1580,6 +1603,66 @@
         128,
         255
       ]
+    },
+    "furnace_lvl3.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        31,
+        33,
+        769,
+        766
+      ],
+      "opaque_pixels": 303491,
+      "dominant_rgb": [
+        [
+          64,
+          72,
+          72
+        ],
+        [
+          56,
+          64,
+          64
+        ],
+        [
+          40,
+          48,
+          56
+        ],
+        [
+          184,
+          184,
+          176
+        ],
+        [
+          48,
+          56,
+          56
+        ],
+        [
+          72,
+          80,
+          80
+        ],
+        [
+          48,
+          56,
+          64
+        ],
+        [
+          64,
+          72,
+          88
+        ]
+      ],
+      "sha256": "dd5837934190494906b7c0034cd23cca0ea255d66a1beccce94fc22576298e15",
+      "mask_range": [
+        113,
+        255
+      ]
     }
   },
   "models": {
@@ -1606,6 +1689,7 @@
     "fracking_oil_well_lvl1.glb": "22a62aabf6a37f13bee39c43575e06e8c09c6fc6637e12e7e5bfa4675bb30dee",
     "offshore_oil_platform_lvl1.glb": "7376844d89820efdb4e9d89c1edcbe0b94f7b5e502e96de394ba7d484e37ff19",
     "offshore_oil_platform_lvl2.glb": "fedb94a175404a0c0f7401c2a85a5158df5de10e298f3d6f0cbb0ea9b060b900",
-    "offshore_oil_platform_lvl3.glb": "7f2111eab90d3ea79f2e7d311915421137b0d705189e38c8aae3769c1f55ec95"
+    "offshore_oil_platform_lvl3.glb": "7f2111eab90d3ea79f2e7d311915421137b0d705189e38c8aae3769c1f55ec95",
+    "furnace_lvl3.glb": "f2177eca66b17832c6ca7d85d928b966fdf984e8c8e8cfb60528fffc346a4aff"
   }
 }

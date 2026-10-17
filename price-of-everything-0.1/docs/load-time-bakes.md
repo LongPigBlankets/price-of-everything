@@ -70,6 +70,16 @@ run can index keys the game no longer asks for. Then drop auxiliary keys that
 Keep the old resources until the company-start bake has run. Most owned-tile
 resources are unchanged and are indexed as bundled hits from the old files.
 
+## Furnace L3 artwork — 16 October 2026
+
+The new furnace L3 has refreshed far/medium colour and depth atlases, medium
+lighting and picking resources. L1/L2 replacements are coming soon; their existing
+assets remain installed. All 50 furnaces in the packaged starting snapshot are L1,
+so its 600-tile terrain/layout package remains valid and passes validation.
+A fresh process reports 103 bundled hits, zero misses/writes, a 375ms owned-view
+opening and 2.862s to the first fully revealed continent tile. See the
+[proportion review, scope and measurements](reviews/furnace-l3-2026-10-16.md).
+
 ## Lossless storage and release exclusions — 16 October 2026
 
 The installed 600-tile package now contains **968,604,879 bytes** of native
