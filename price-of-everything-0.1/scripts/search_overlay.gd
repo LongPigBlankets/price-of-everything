@@ -43,6 +43,7 @@ const MECHANIC_ENTRIES := [
 	{"id": "transport", "title": "Transport"},
 	{"id": "port_transport", "title": "Port transport"},
 	{"id": "advisors", "title": "Advisors and the council"},
+	{"id": "land_prices", "title": "Land prices"},
 ]
 
 var _search_stack: VBoxContainer = null
@@ -191,6 +192,25 @@ func _mechanic_body(entry_id: String) -> String:
 		return ("Ports connect eligible goods to the world market. Port charges are ad valorem: they are based on the market value crossing the docks, for both imports and exports. Owning a port halves that rate; the port's maintenance and labour then apply as operating costs.\n\n"
 			+ "A port normally carries 1,500 units of each transport class per turn. Hazardous liquids, gases and ultra-heavy solids each have a 300-unit limit. Traffic may exceed those limits, but that shipment pays double port fees.\n\n"
 			+ ("The standard ad valorem rate is 0.5%% in turns 1–30 and 3%% from turn 31. Games using Local Suppliers charge %s%% from the first turn. Games started from the tutorial keep the 0.5%% base rate permanently. It also drifts upward by 0.1%% each turn, and relevant research or events can change the live rate or throughput. The port panel lists default terms, current terms and recent shipments, so check it before assuming an import or export cost." % String.num(EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES * 100.0, 1)))
+	if entry_id == "land_prices":
+		# Read from the live constants (scripts/land_price.gd), as the advisors page does.
+		var base := BuildingState.LAND_PATCH_COST
+		var mult: Dictionary = EconomyConfig.LAND_BAND_MULT
+		var pct := func(share: float) -> int: return roundi(share * 100.0)
+		return ("Land is bought in patches of %d. What a patch costs depends on where it is and on what you have done nearby.\n\n"
+			+ "1. Every tile starts at a price set by its settlement. A hub city patch costs £%d, a city £%d, a town £%d and anywhere else £%d. The settlement is the one Local Suppliers name, so the place with the cheapest haulage has the dearest land.\n\n"
+			+ "2. Each building you construct on a tile adds %d%% of its starting price to the next patch bought there. Buildings under construction count. Roads, rail, cables, pipes and ports do not.\n\n"
+			+ "3. Owning land you bought on a neighbouring tile adds %d%% of the starting price, once, however many neighbours you hold.\n\n"
+			+ "4. Land bought on its own, from the tile panel rather than for a build or an upgrade, costs double. It also raises every neighbouring tile by %d%% of that tile's starting price, in place of the %d%%.\n\n"
+			+ "5. Town and city land rises %d%% of its starting price each time the economy doubles. The economy is the revenue of every company in the rankings, yours included. The rankings show how close the next doubling is.\n\n"
+			+ "6. Buying another company's building changes no land price anywhere. It is the way into an expensive city.\n\n"
+			+ "7. Every rise is a share of the tile's starting price, so rises add up and never compound.\n\n"
+			+ "The land list on a tile's panel shows each part of its price.") % [
+				BuildingState.LAND_PATCH_SIZE,
+				roundi(base * float(mult.hub_city)), roundi(base * float(mult.city)), roundi(base * float(mult.town)), roundi(base * float(mult.rest)),
+				pct.call(EconomyConfig.LAND_RAMP_PER_BUILDING), pct.call(EconomyConfig.LAND_ADJACENT),
+				pct.call(EconomyConfig.LAND_ADJACENT_STANDALONE), pct.call(EconomyConfig.LAND_ADJACENT),
+				pct.call(EconomyConfig.LAND_ECONOMY_STEP)]
 	if entry_id == "advisors":
 		# Read the live model rather than restating it — an encyclopedia page that quotes hardcoded
 		# numbers is a page that silently goes wrong the first time the constants are tuned.

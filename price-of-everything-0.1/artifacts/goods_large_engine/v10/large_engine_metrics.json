@@ -1,0 +1,87 @@
+{
+  "revision": "large_engine_v10",
+  "objects": 392,
+  "structural_hosts": [
+    "base_rail_-1",
+    "base_rail_+1",
+    "cross_support_0"
+  ],
+  "topology": "universal heavy-duty inline six with turbocharger, a finned motor-generator on its shaft and a lipped output flywheel, on mounts",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 4
+    },
+    "id_step": 17
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shaded_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14
+        ],
+        "thresholds": [
+          0.575,
+          0.5,
+          0.3
+        ]
+      }
+    ]
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 3.87 x 2.12 x 2.76"
+  ],
+  "mesh_checks": {
+    "base_rail_-1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "base_rail_+1": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "cross_support_0": {
+      "vertices": 12,
+      "faces": 8,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 4.774,
+    "target": [
+      0.731,
+      -0.121,
+      1.422
+    ]
+  }
+}

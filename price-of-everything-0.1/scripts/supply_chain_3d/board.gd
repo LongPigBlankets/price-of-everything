@@ -4,6 +4,28 @@ extends Control
 signal building_picked(iid: String)
 signal suppliers_picked
 signal tile_picked(tile_id: String)
+const StreamReadAhead = preload("res://scripts/supply_chain_3d/stream_read_ahead.gd")
+var stream_read_ahead_stats := {}
+const TileOverlay := preload("res://scripts/supply_chain_3d/tile_overlay.gd")
+const WorldSnapshot := preload("res://scripts/supply_chain_3d/world_snapshot.gd")
+static var _shipped_key := ""
+static var _shipped_model := {}
+static var _shipped_index := {}
+var _ground: RefCounted = null
+var _ground_key: Array = []
+var _asset_drain := false
+var _cars_source: Array = []
+var _cars_by_tile: Dictionary = {}
+var _cars_shown_tiles: Dictionary = {}
+var _label_source: Array = []
+var _label_selection := ""
+var _label_count := -1
+var _label_order: Array = []
+var _warm_camera: Dictionary = {}
+const HIDDEN_RELEASE_MSEC := 10000
+var _hidden_since := 0
+var _released_while_hidden := false
+
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const Builder := preload("res://scripts/supply_chain_3d/world_builder.gd")
 const Rig := preload("res://scripts/supply_chain_3d/orbit_camera.gd")
@@ -85,6 +107,10 @@ var _requested_all_tiles := false
 var background_profile := {}
 var background_status := "idle"
 const SCENE_BUDGET_USEC := 4000
+const RENDER_BUDGET_PIXELS := 2560 * 1440
+static var render_budget_pixels := RENDER_BUDGET_PIXELS
+## Tools only: simulate a high-density screen on an ordinary capture window.
+static var density_override := 0.0
 
 func _discard_background() -> void:
 	_release_paper_owner()
@@ -143,6 +169,9 @@ func _visible_paper_tiles() -> Dictionary:
 	return result
 
 func _start_tile_reveal(builder: RefCounted, tid: String) -> void:
+	# Infrastructure arrives with the backdrop; local terrain alone is not ready.
+	# Colour also waits for budgeted building cards/models to finish appearing.
+	if builder.backdrop_pending or builder.asset_tier_pending or (not builder._overview and not builder.tile_ready(tid)): return
 	if builder.loading_reveal == null or not builder.loading_reveal.start(tid): return
 	if is_instance_valid(_paper) and _loading_ink.has(tid): _paper.draw_tile(tid,_loading_ink[tid])
 
@@ -151,10 +180,18 @@ func _start_backdrop_reveals(builder: RefCounted) -> void:
 	var now := Time.get_ticks_msec()
 	if now<builder.loading_reveal.next_backdrop_msec: return
 	var visible_tiles := _visible_paper_tiles()
+	# A high mountain's paper footprint may be on screen while its actual hull
+	# is outside it. Only wait for detail that the streaming planner requests.
+	if not builder._overview:
+		var requested := {}
+		for item in _wanted_detail_tiles(): requested[item.tile]=true
+		for tid in visible_tiles.keys():
+			if not requested.has(tid): visible_tiles.erase(tid)
 	var ordered: Array = []
 	for tid in builder.tiles:
 		if builder.loading_reveal.complete.has(tid) or builder.loading_reveal.elapsed.has(tid): continue
-		if visible_tiles.has(tid): ordered.append(tid)
+		if visible_tiles.has(tid):
+			if builder._overview or builder.tile_ready(tid): ordered.append(tid)
 		else: builder.loading_reveal.skip(tid)
 	var focus := Vector2(_rig.target.x,_rig.target.z)
 	ordered.sort_custom(func(a,b): return (builder.tiles[a].center as Vector2).distance_squared_to(focus)<(builder.tiles[b].center as Vector2).distance_squared_to(focus))
@@ -186,6 +223,14 @@ func _release_paper_owner() -> void:
 	_paper_owner = null
 	if _builder != null: _builder.paper_owned_tiles.clear()
 
+func _release_ready_paper_owner(builder: RefCounted) -> void:
+	if builder != _builder or builder.backdrop_pending or not is_instance_valid(_paper_owner): return
+	if not builder._overview:
+		for request in _wanted_detail_tiles():
+			if builder.paper_owned_tiles.has(request.tile) and not builder.tile_ready(request.tile): return
+	_release_paper_owner()
+	builder._apply_view_visibility()
+
 func _publish_background(packet: Dictionary, job: RefCounted) -> void:
 	if job.cancelled or _warming != job: return
 	_coverage_states[true] = packet
@@ -197,7 +242,7 @@ func _publish_background(packet: Dictionary, job: RefCounted) -> void:
 func _backdrop_ready(builder: RefCounted) -> void:
 	if builder != _builder: return
 	_start_backdrop_reveals(builder)
-	_release_paper_owner()
+	_release_ready_paper_owner(builder)
 	if _reveal_started>0: reveal_profile.backdrop_ms = Time.get_ticks_msec()-_reveal_started
 	builder.set_overview_scale(size.y/_rig.span, true)
 	_stream_generation = -1
@@ -337,6 +382,31 @@ func _visibility() -> void:
 	if _world != null: _world.process_mode = Node.PROCESS_MODE_INHERIT if is_visible_in_tree() else Node.PROCESS_MODE_DISABLED
 	set_process(is_visible_in_tree())
 	set_process_unhandled_key_input(is_visible_in_tree())
+	if _viewport == null: return
+	if is_visible_in_tree():
+		_hidden_since = 0
+		_resize_viewport()
+		if _released_while_hidden:
+			_released_while_hidden = false
+			_stream_camera = {} # rebuild the visible tiles released while away
+	else:
+		# The multisampled render targets stay allocated while hidden unless shrunk.
+		_viewport.size = Vector2i(2, 2)
+		_hidden_since = Time.get_ticks_msec()
+		_release_when_hidden(_hidden_since)
+
+func _release_when_hidden(stamp: int) -> void:
+	# Away from the 3D view for HIDDEN_RELEASE_MSEC: treat every continent tile as
+	# offscreen so its video memory is released, except the company's own tiles.
+	await get_tree().create_timer(HIDDEN_RELEASE_MSEC / 1000.0).timeout
+	if _hidden_since != stamp or is_visible_in_tree() or _builder == null or not _builder.streamed or _building or _streaming: return
+	var now := Time.get_ticks_msec()
+	_builder.release_local_tiles({}, true, true)
+	_builder.resource_cache.owned = _company_tiles()
+	_builder.resource_cache.age(now, {}, {})
+	_builder.resource_cache.trim(now, {}, {})
+	_released_while_hidden = true
+	_drain_asset_tier()
 
 func has_content() -> bool:
 	return not _model.get("tiles", {}).is_empty()
@@ -415,10 +485,19 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 		_progress.show()
 		await get_tree().process_frame
 		if generation != _generation: next.free(); return
-	builder.ground = preload("res://scripts/supply_chain_3d/coast.gd").ground_for(terrain, rivers, Relief.plates(terrain, river_lines), true)
+	# The terrain sampler only depends on the map. Reuse it, with its filled
+	# caches, for every company rebuild of the same map.
+	var ground_key := [terrain.get_instance_id(), river_lines.size(), Legacy.plate_town]
+	if _ground_key != ground_key or _ground == null:
+		_ground = preload("res://scripts/supply_chain_3d/coast.gd").ground_for(terrain, rivers, Relief.plates(terrain, river_lines), true)
+		_ground_key = ground_key
+	builder.ground = _ground
 	if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
 		extra_tiles = preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").TILES.duplicate()
 	var water := Legacy._water_test(terrain)
+	# Layout passes share static memo tables between prepare() and finish().
+	await _lock_layout("build:%d" % generation)
+	if generation != _generation: _unlock_layout("build:%d" % generation); next.free(); return
 	var queries := LayoutQueries.new()
 	var geography: Array = []
 	for coord in terrain.get("tiles"):
@@ -429,35 +508,39 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	var true_positions := _true_positions(graph, terrain)
 	timings.layout_inputs_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	var solve_started := Time.get_ticks_usec()
-	var model := Model.build(terrain, graph, true_positions, river_lines, Legacy.plate_town and Legacy.show.decor,
-		water, Legacy._shore_test(terrain), extra_tiles)
-	if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
-		preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").restrict_model(model)
-	var road_started := Time.get_ticks_usec()
-	preload("res://scripts/supply_chain_3d/authored_region.gd").apply(model, terrain, get_tree().get_first_node_in_group("building_footprints"), queries.data, builder.surface_height)
-	preload("res://scripts/supply_chain_3d/riverside_fields.gd").apply(model, rivers, queries.data)
-	timings.road_import_ms = (Time.get_ticks_usec() - road_started) / 1000.0
-	road_started = Time.get_ticks_usec()
-	preload("res://scripts/supply_chain_3d/harbour.gd").apply(model)
-	preload("res://scripts/supply_chain_3d/rail_network.gd").apply(model, terrain, water, builder.surface_height)
-	preload("res://scripts/supply_chain_3d/rail_station.gd").apply(model,builder.surface_height)
-	preload("res://scripts/supply_chain_3d/depot_roads.gd").apply(model,queries.data)
-	preload("res://scripts/supply_chain_3d/port_approach.gd").apply(model,builder.surface_height,queries.data)
-	preload("res://scripts/supply_chain_3d/district_blocks.gd").new().apply(model, builder.surface_height, builder.open_water, queries.data)
-	print("[LAYOUT] districts ready ",Time.get_ticks_msec())
-	preload("res://scripts/supply_chain_3d/street_curves.gd").apply(model,builder.surface_height,builder.open_water,Builder.standing_key,queries.data)
-	print("[LAYOUT] curves ready ",Time.get_ticks_msec())
-	if Legacy.plate_town and Legacy.show.decor: preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").populate(model, terrain)
-	print("[LAYOUT] seeds ready ",Time.get_ticks_msec())
-	if offline_layout_reuse.is_valid(): offline_layout_reuse.call(model,queries.data,rivers,Builder.standing_key)
-	preload("res://scripts/supply_chain_3d/road_placement.gd").new().fit(model, builder.surface_height, builder.open_water, Builder.standing_key, rivers, queries.data)
-	timings.road_frontage_ms = (Time.get_ticks_usec() - road_started) / 1000.0
-	road_started = Time.get_ticks_usec()
-	preload("res://scripts/supply_chain_3d/authored_region.gd").reroute_flows(model, model.authored_region.tiles, model.roads)
-	preload("res://scripts/supply_chain_3d/rail_network.gd").apply(model, terrain, water, builder.surface_height)
-	timings.road_routing_ms = (Time.get_ticks_usec() - road_started) / 1000.0
+	var model := {}
+	var shipped := {} if show_all_tiles else _shipped_world(builder.bake_cache)
+	timings.shipped_ms = (Time.get_ticks_usec() - solve_started) / 1000.0
+	if not shipped.is_empty():
+		# The company is the shipped world's tiles, with only the tiles whose
+		# contents changed laid out again.
+		var company := {}
+		for tid in extra_tiles: company[str(tid)] = true
+		for n in graph.get("nodes", []):
+			if str(n.get("tile_id", "")) != "": company[str(n.tile_id)] = true
+		await get_tree().process_frame
+		if generation != _generation: next.free(); return
+		var overlay: Dictionary = await TileOverlay.prepare(self, shipped, builder.ground, builder.bake_cache, company.keys(), queries, func() -> bool: return generation == _generation)
+		if generation != _generation: next.free(); return
+		if not overlay.is_empty():
+			var restrict_started := Time.get_ticks_usec()
+			if _shipped_index.is_empty(): _shipped_index = TileOverlay.index(shipped, builder.ground)
+			model = TileOverlay.restrict(overlay.model, overlay.probe, overlay.tiles, builder.ground, _shipped_index)
+			preload("res://scripts/supply_chain_3d/authored_region.gd").reroute_flows(model, model.authored_region.tiles, model.roads)
+			timings.overlay = overlay.profile
+			timings.restrict_ms = (Time.get_ticks_usec() - restrict_started) / 1000.0
+	if model.is_empty():
+		model = Model.build(terrain, graph, true_positions, river_lines, Legacy.plate_town and Legacy.show.decor,
+			water, Legacy._shore_test(terrain), extra_tiles)
+		if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
+			preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").restrict_model(model)
+		_solve_layout(model, terrain, rivers, queries, builder, water, timings)
 	timings.layout_solve_ms = (Time.get_ticks_usec() - solve_started) / 1000.0
+	if not show_all_tiles:
+		await get_tree().process_frame
+		if generation != _generation: next.free(); return
 	queries.finish(builder.bake_cache)
+	_unlock_layout("build:%d" % generation)
 	_layout_queries = queries
 	timings.model_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	stage = Time.get_ticks_usec()
@@ -475,15 +558,26 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	# Stable origin: expanding the company does not move existing terrain under the camera.
 	builder.origin = Vector2.ZERO
 	builder.configure_pits(model.get("standing", []))
+	if not show_all_tiles:
+		await get_tree().process_frame
+		if generation != _generation: next.free(); return
+		await builder.presolve_alignment(self, model, func() -> bool: return generation == _generation)
+		if generation != _generation: next.free(); return
 	builder.prepare_transport(model)
 	timings.transport = builder.transport_profile.duplicate()
 	builder.configure_bakes(model)
 	timings.keys_ms = (Time.get_ticks_usec() - stage) / 1000.0
+	if not show_all_tiles:
+		await get_tree().process_frame
+		if generation != _generation: next.free(); return
 	stage = Time.get_ticks_usec()
 	if _progress != null: _progress.text = "Loading landscape layout…"
 	await builder.prepare_scenery(self, model)
 	if not is_instance_valid(self): next.free(); return
 	timings.scenery_ms = (Time.get_ticks_usec() - stage) / 1000.0
+	if not show_all_tiles:
+		await get_tree().process_frame
+		if generation != _generation: next.free(); return
 	stage = Time.get_ticks_usec()
 	if generation != _generation: next.free(); return
 	builder.configure_grade()
@@ -494,22 +588,93 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	timings.continent_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	stage = Time.get_ticks_usec()
 	next.free()
-	var packet := await _assemble(builder, model, generation, paced, timings)
+	var packet := await _assemble(builder, model, generation, paced or not show_all_tiles, timings)
 	if packet.is_empty(): return
 	timings.total_ms = (Time.get_ticks_usec() - started) / 1000.0
 	packet.profile = timings
 	_activate(packet)
 
+## One layout at a time: the passes swap static memo tables in and out, so a
+## company rebuild and the background continent must not interleave. An owner
+## abandoned by a newer build releases the lock.
+var _layout_owner := ""
+func _lock_layout(owner: String) -> void:
+	while _layout_owner != "" and _layout_owner != owner and _layout_owner_alive():
+		await get_tree().process_frame
+	_layout_owner = owner
+
+func _unlock_layout(owner: String) -> void:
+	if _layout_owner == owner: _layout_owner = ""
+
+func _layout_owner_alive() -> bool:
+	if _layout_owner.begins_with("build:"): return int(_layout_owner.trim_prefix("build:")) == _generation and _building
+	if _layout_owner.begins_with("background:"): return _warming != null and str(_warming.get_instance_id()) == _layout_owner.trim_prefix("background:") and not _warming.cancelled
+	return false
+
+## The shipped world snapshot's model, decoded once per session. Never mutated.
+func _shipped_world(cache: RefCounted) -> Dictionary:
+	if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled(): return {}
+	var manifest_path: String = cache.bundled_directory.path_join("manifest.json")
+	if not FileAccess.file_exists(manifest_path): return {}
+	var manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string(manifest_path))
+	if not manifest is Dictionary or not manifest.get("complete", false): return {}
+	var key := str(manifest.get("world_snapshot_key", ""))
+	if key.is_empty(): return {}
+	if _shipped_key != key:
+		var data: Dictionary = cache.read(key)
+		if data.is_empty() or not WorldSnapshot.usable_base(data, manifest): return {}
+		_shipped_model = data.model
+		_shipped_index = {}
+		_shipped_key = key
+	return _shipped_model
+
+## The presentation layout passes, in order, for whatever tiles the model holds:
+## the company, the whole continent, or only the tiles that differ from the
+## shipped base (tile_overlay.gd).
+func _solve_layout(model: Dictionary, terrain: Node, rivers: Dictionary, queries: RefCounted, builder: RefCounted, water: Callable, timings: Dictionary, fit_roads: Array = []) -> void:
+	var road_started := Time.get_ticks_usec()
+	preload("res://scripts/supply_chain_3d/authored_region.gd").apply(model, terrain, get_tree().get_first_node_in_group("building_footprints"), queries.data, builder.surface_height)
+	preload("res://scripts/supply_chain_3d/riverside_fields.gd").apply(model, rivers, queries.data)
+	timings.road_import_ms = (Time.get_ticks_usec() - road_started) / 1000.0
+	road_started = Time.get_ticks_usec()
+	preload("res://scripts/supply_chain_3d/harbour.gd").apply(model)
+	preload("res://scripts/supply_chain_3d/rail_network.gd").apply(model, terrain, water, builder.surface_height)
+	preload("res://scripts/supply_chain_3d/rail_station.gd").apply(model,builder.surface_height)
+	preload("res://scripts/supply_chain_3d/depot_roads.gd").apply(model,queries.data)
+	preload("res://scripts/supply_chain_3d/port_approach.gd").apply(model,builder.surface_height,queries.data)
+	preload("res://scripts/supply_chain_3d/district_blocks.gd").new().apply(model, builder.surface_height, builder.open_water, queries.data)
+	print("[LAYOUT] districts ready ",Time.get_ticks_msec())
+	preload("res://scripts/supply_chain_3d/street_curves.gd").apply(model,builder.surface_height,builder.open_water,Builder.standing_key,queries.data)
+	print("[LAYOUT] curves ready ",Time.get_ticks_msec())
+	if Legacy.plate_town and Legacy.show.decor: preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").populate(model, terrain)
+	print("[LAYOUT] seeds ready ",Time.get_ticks_msec())
+	if offline_layout_reuse.is_valid(): offline_layout_reuse.call(model,queries.data,rivers,Builder.standing_key)
+	# A tile overlay keeps the shipped road network; its buildings fit those roads.
+	if not fit_roads.is_empty(): model.roads = fit_roads.duplicate()
+	preload("res://scripts/supply_chain_3d/road_placement.gd").new().fit(model, builder.surface_height, builder.open_water, Builder.standing_key, rivers, queries.data)
+	timings.road_frontage_ms = (Time.get_ticks_usec() - road_started) / 1000.0
+	road_started = Time.get_ticks_usec()
+	preload("res://scripts/supply_chain_3d/authored_region.gd").reroute_flows(model, model.authored_region.tiles, model.roads)
+	preload("res://scripts/supply_chain_3d/rail_network.gd").apply(model, terrain, water, builder.surface_height)
+	timings.road_routing_ms = (Time.get_ticks_usec() - road_started) / 1000.0
+
 func _assemble(builder: RefCounted, model: Dictionary, generation: int, paced: bool, timings: Dictionary) -> Dictionary:
 	var stage := Time.get_ticks_usec()
 	var next := Node3D.new()
 	next.name = "Continent" if builder.streamed else "Company"
+	if paced and not builder.streamed:
+		await builder.prebake_roads(self, model, Legacy.show, func() -> bool: return generation == _generation)
+		if generation != _generation: next.free(); return {}
+		stage = Time.get_ticks_usec()
 	var infrastructure: Node3D = builder.infrastructure(model, Legacy.show, not builder.streamed)
 	next.add_child(infrastructure)
 	if builder.backdrop_pending:
 		infrastructure.hide()
 		builder.pending_infrastructure.append(infrastructure)
 	timings.infrastructure_ms = (Time.get_ticks_usec() - stage) / 1000.0
+	if paced:
+		await get_tree().process_frame
+		if generation != _generation: next.free(); return {}
 	var standing_started := Time.get_ticks_usec()
 	# A far-only world may never request detail. Do not retain the bound height
 	# callback (builder -> road surface -> builder) while waiting for a zoom-in.
@@ -617,6 +782,8 @@ func _activate(packet: Dictionary) -> void:
 		_owned_center /= maxf(1,builder.tiles.size())
 	else:
 		builder.progressive_tiles = true
+	# Spread continent model creation over frames; the company view is small.
+	builder.asset_budget_usec = Builder.ASSET_BUDGET_USEC if builder.streamed else 0
 	builder.configure_grade()
 	activation.grade_ms = (Time.get_ticks_usec()-measured)/1000.0
 	measured = Time.get_ticks_usec()
@@ -688,6 +855,8 @@ func _retire_inactive_detail(packet: Dictionary) -> void:
 	var builder: RefCounted = packet.builder
 	builder.handover.reset(0.0)
 	builder.release_local_tiles({}, true)
+	builder.resource_cache.owned = _company_tiles()
+	builder.resource_cache.age(Time.get_ticks_msec(), {}, {})
 	builder.resource_cache.trim(Time.get_ticks_msec(), {}, {})
 
 func _build_base_tiles(builder: RefCounted, parent: Node3D, model: Dictionary, generation: int, paced: bool) -> bool:
@@ -850,8 +1019,20 @@ func restore_camera(state: Dictionary) -> void:
 func _resize_viewport() -> void:
 	if _viewport == null: return
 	var density := get_viewport().get_final_transform().get_scale().abs()
+	if density_override > 0.0: density = Vector2.ONE * density_override
 	var pixels := Vector2i((size * density).ceil()).max(Vector2i(1, 1))
 	if _viewport.size != pixels: _viewport.size = pixels
+	# The 3D scene renders natively up to render_budget_pixels (2560x1440) with
+	# 4x MSAA. Denser screens render that many pixels with 2x MSAA and upscale;
+	# labels and UI stay at the screen's full density.
+	var scale := minf(1.0, sqrt(float(render_budget_pixels) / float(pixels.x * pixels.y)))
+	var reduced := scale < 0.999
+	var upscaler := Viewport.SCALING_3D_MODE_BILINEAR
+	if reduced and RenderingServer.get_current_rendering_method() != "gl_compatibility": upscaler = Viewport.SCALING_3D_MODE_FSR
+	if not is_equal_approx(_viewport.scaling_3d_scale, scale): _viewport.scaling_3d_scale = scale
+	if _viewport.scaling_3d_mode != upscaler: _viewport.scaling_3d_mode = upscaler
+	var msaa := Viewport.MSAA_2X if reduced else Viewport.MSAA_4X
+	if _viewport.msaa_3d != msaa: _viewport.msaa_3d = msaa
 
 func screen_point(world: Vector3) -> Vector2:
 	return _camera.unproject_position(world) * size / Vector2(_viewport.size)
@@ -869,6 +1050,49 @@ func _update_detail() -> void:
 	_builder.set_detail(_detail, false)
 	_builder.set_overview_scale(size.y / _rig.span)
 	if previous_overview != _builder._overview or previous_detail != _detail: _stream_clock = 0.25
+	_drain_asset_tier()
+
+func _warm_ground_slice(delta: float) -> void:
+	# One tile per frame, nearest the camera first, only while the view is still
+	# and the last frame had headroom: a pan never pays for this. On the owned
+	# view this prepares the continent around the company before its first open.
+	var camera := capture_camera()
+	var still := camera == _warm_camera
+	_warm_camera = camera
+	if not still or delta > 1.0 / 50.0 or _building or _streaming or _builder == null: return
+	# The company view first solves its road chains into the alignment memo, so
+	# a building on a new tile re-solves only the chains near that tile.
+	if not _builder.streamed and not _builder.alignment_seeded():
+		_builder.seed_alignment_step(4000)
+		return
+	var builder: RefCounted = _builder
+	var focus := Vector2(_rig.target.x, _rig.target.z)
+	if not builder.streamed:
+		if not background_ready() or background_active(): return
+		builder = _coverage_states[true].builder
+		focus = _owned_center
+	elif builder._overview or not detail_ready(): return
+	if builder.ground_warmed.size() >= builder.tiles.size(): return
+	var best := ""
+	var best_distance := INF
+	for tid in builder.tiles:
+		if builder.ground_warmed.has(tid): continue
+		var distance := (builder.tiles[tid].center as Vector2).distance_squared_to(focus)
+		if distance < best_distance: best = str(tid); best_distance = distance
+	if best != "": builder.warm_ground(best)
+
+func _drain_asset_tier() -> void:
+	# Finish budgeted model creation and released-tile freeing a slice per frame,
+	# independent of _process.
+	if _asset_drain or _builder == null or not (_builder.asset_tier_pending or not _builder.retiring_roots.is_empty()): return
+	_asset_drain = true
+	var builder: RefCounted = _builder
+	while is_inside_tree() and builder == _builder and (builder.asset_tier_pending or not builder.retiring_roots.is_empty()):
+		await get_tree().process_frame
+		if builder != _builder: break
+		if builder.asset_tier_pending: builder._update_asset_tier()
+		builder.free_retired()
+	_asset_drain = false
 
 func _on_rendered_frame() -> void:
 	if DisplayServer.get_name() == "headless" or not is_visible_in_tree(): return
@@ -1058,6 +1282,7 @@ func _process(delta: float) -> void:
 	_resize_viewport()
 	if animate_goods: _time += delta
 	_update_detail()
+	if _builder != null: _builder.free_retired()
 	if not _building: _update_cursor_collision(get_local_mouse_position())
 	_update_goods()
 	_update_cars()
@@ -1065,6 +1290,7 @@ func _process(delta: float) -> void:
 	_advance_tile_reveals(delta)
 	_sync_paper()
 	_stream_clock += delta
+	_warm_ground_slice(delta)
 	# React to travel promptly; idle retention/prefetch still uses the slower tick.
 	var stream_interval := 0.05 if capture_camera() != _stream_camera else 0.25
 	if show_all_tiles and not _building and not _streaming and _stream_clock >= stream_interval:
@@ -1184,8 +1410,8 @@ func _wanted_detail_tiles() -> Array:
 	_tile_distances.clear()
 	_prefetch_tiles.clear()
 	if _builder == null or _builder._overview: return wanted
-	var view := Rect2(Vector2.ZERO, size)
-	var buffered := view.grow(120.0)
+	var view := Rect2(Vector2.ZERO, size).grow(60.0)
+	var buffered := Rect2(-size * 0.20, size * 1.40)
 	var nearby := buffered.grow(540.0 * size.y / _rig.span)
 	var direction: Vector3 = _rig.target - (_stream_camera.get("target", _rig.target) as Vector3)
 	var focus := _camera_focus_tile() if _detail == 2 else ""
@@ -1204,10 +1430,10 @@ func _wanted_detail_tiles() -> Array:
 		for p in points: bounds = bounds.expand(screen_point(p))
 		bounds = bounds.grow(40.0)
 		if near or bounds.intersects(nearby): _nearby_tiles[tid] = true
-		if near or bounds.intersects(buffered):
+		if not behind and bounds.intersects(view):
 			wanted.append({"tile": str(tid), "visible": not behind and bounds.intersects(view), "near": near,
 				"ring":_hex_tile_distance(centre,_builder.tiles[tid].center), "distance": _tile_distances[tid]})
-		elif bounds.intersects(nearby):
+		elif not behind and bounds.intersects(buffered):
 			_prefetch_tiles.append({"tile": str(tid), "distance": _tile_distances[tid],
 				"ahead": direction.length_squared() > 1.0 and direction.dot(at - _rig.target) > 0.0})
 	wanted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
@@ -1219,10 +1445,6 @@ func _wanted_detail_tiles() -> Array:
 	_prefetch_tiles.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		if a.ahead != b.ahead: return a.ahead
 		return a.distance < b.distance)
-	# The node allowance limits extra buffering, never visible/radius coverage.
-	# Shallow angles can expose more than 96 tiles at the widest local zoom.
-	var required_count := wanted.filter(func(item: Dictionary) -> bool: return item.visible or item.near).size()
-	if wanted.size() > maxi(Builder.BASE_RESIDENT_TILES, required_count): wanted.resize(maxi(Builder.BASE_RESIDENT_TILES, required_count))
 	if _prefetch_tiles.size() > PREFETCH_TILES: _prefetch_tiles.resize(PREFETCH_TILES)
 	return wanted
 
@@ -1230,8 +1452,8 @@ func _fine_detail_plan(wanted: Array) -> Dictionary:
 	var plan := {}
 	if _detail <= 0: return plan
 	for item in wanted:
-		# The complete four-ring neighbourhood stays ready, including offscreen
-		# tiles. Visible terrain beyond that radius still receives medium detail.
+		# Visible tiles within four rings use closest detail. Offscreen neighbours
+		# retain resources, without constructing invisible scene nodes.
 		if _detail == 2 and item.get("near", false): plan[item.tile] = 2
 		elif item.visible: plan[item.tile] = 1
 	return plan
@@ -1240,19 +1462,44 @@ func _maintain_resource_cache() -> void:
 	var now := Time.get_ticks_msec()
 	if not _builder._overview:
 		for tid in _builder.local_tiles: _builder.resource_cache.touch(tid, now)
-	_builder.resource_cache.trim(now, _builder.local_tiles, _nearby_tiles if not _builder._overview else {}, _tile_distances)
+	var nearby: Dictionary = _nearby_tiles if not _builder._overview else {}
+	_builder.resource_cache.owned = _company_tiles()
+	_builder.resource_cache.age(now, _builder.local_tiles, nearby)
+	_builder.resource_cache.trim(now, _builder.local_tiles, nearby, _tile_distances)
+
+func _company_tiles() -> Dictionary:
+	# Tiles holding the player's buildings: the owned view's world.
+	return _coverage_states[false].builder.tiles if _coverage_states.has(false) else {}
 
 func _prefetch_resources(builder: RefCounted, generation: int, camera_state: Dictionary) -> void:
-	if builder._overview: return
+	if builder._overview or builder.backdrop_pending: return
 	var attempted := 0
 	for item in _prefetch_tiles:
-		if _prefetch_checked.has(item.tile): continue
+		var tid := str(item.tile)
+		if _prefetch_checked.has(tid) or builder.local_tiles.has(tid): continue
+		# Only packaged tiles have resources to read ahead; a world built at runtime
+		# has nothing to prefetch, and an empty entry would poison the tile cache.
+		if builder.progressive_manifest.get(tid, {}).is_empty(): continue
 		if not builder.resource_cache.can_prefetch(): break
-		_prefetch_checked[item.tile] = true
-		builder.prefetch_medium(item.tile)
+		_prefetch_checked[tid] = true
+		# Work on private containers so rejected speculative upgrades cannot
+		# silently change the cache's retained-byte accounting.
+		var key: String = builder.terrain_key(tid)
+		var retained: Dictionary = builder.resource_cache.restore(tid)
+		if not retained.is_empty(): builder.terrain_cache[key] = retained.data.duplicate(true)
+		var prepared: bool = await ProgressiveTile.prepare(self,builder,tid,maxi(1,_detail),generation)
+		if prepared and generation == _generation and builder == _builder:
+			var data: Dictionary = builder.terrain_cache.get(key,{})
+			var chunk: Dictionary = builder._chunk_data.get(tid,{})
+			var cost := Builder.TileCache.estimate(data,chunk)
+			if data.has("meshes") and builder.resource_cache.can_prefetch(maxi(0,cost-int(retained.get("bytes",0)))):
+				builder.resource_cache.put(tid,data,chunk,Time.get_ticks_msec())
+		builder.terrain_cache.erase(key);builder._chunk_data.erase(tid)
+		builder.tile_load_resources.clear()
 		attempted += 1
 		await get_tree().process_frame
 		if generation != _generation or camera_state != capture_camera() or attempted >= 2: break
+
 
 func _stream_visible() -> void:
 	if _builder == null or not _builder.streamed or _streaming or _building: return
@@ -1280,7 +1527,8 @@ func _stream_visible() -> void:
 		# the previous streaming pass took longer than the normal idle tick.
 		var now := Time.get_ticks_msec()
 		for tid in builder.local_tiles: builder.resource_cache.touch(tid, now)
-	builder.release_local_tiles(keep, true)
+	builder.release_local_tiles(keep, true, true)
+	_drain_asset_tier()
 	if far_expired: _far_detail_expires_msec = 0
 	var fine := _fine_detail_plan(wanted)
 	if not hold_far_detail: builder.release_detail(fine, true)
@@ -1288,17 +1536,27 @@ func _stream_visible() -> void:
 	for item in builder.terrain_lods: terrain_by_tile[item.tile] = item
 	var slice_start := Time.get_ticks_usec()
 	var completed := true
+	var read_ahead := StreamReadAhead.new()
+	var request_index := 0
 	for request in wanted:
 		var tile_started := Time.get_ticks_usec()
 		var tile_timings := {}
 		var tid := str(request.tile)
 		var tier := int(fine.get(tid, 0))
 		if builder.backdrop_pending: tier = maxi(1,tier)
+		builder.free_retired(1000)
+		read_ahead.enqueue(builder,wanted,fine,request_index)
+		await read_ahead.ready_current(get_tree(),builder,tid)
+		if generation != _generation or camera_state != capture_camera():
+			completed = false
+			break
+		request_index += 1
 		if not builder.local_tiles.has(tid) or (tier>0 and terrain_by_tile[tid].data.meshes[tier]==null):
 			if not await ProgressiveTile.prepare(self,builder,tid,tier,generation):
 				completed = false
 				break
 			if generation != _generation: break
+		read_ahead.release_current(builder,tid)
 		tile_timings.prepare_ms = (Time.get_ticks_usec()-tile_started)/1000.0
 		var node_started := Time.get_ticks_usec()
 		if not builder.local_tiles.has(tid):
@@ -1312,16 +1570,18 @@ func _stream_visible() -> void:
 		tile_timings.node_ms = (Time.get_ticks_usec()-node_started)/1000.0
 		var reveal_started := Time.get_ticks_usec()
 		if not builder.ready_tiles.has(tid):
+			builder.reveal_tile(tid)
+			_release_ready_paper_owner(builder)
 			if builder.loading_reveal != null:
 				builder.loading_reveal.bind(builder.local_tiles[tid].root)
 				if request.visible: _start_tile_reveal(builder,tid)
 				else: builder.loading_reveal.skip(tid)
-			builder.reveal_tile(tid)
 			if _reveal_started>0:
 				reveal_profile.tiles.append({"tile":tid,"ring":request.ring,"visible":request.visible,
 					"ms":Time.get_ticks_msec()-_reveal_started,"before_far":builder.backdrop_pending,"stages":tile_timings})
 			_sync_paper()
 		else: builder._apply_view_visibility()
+		_drain_asset_tier()
 		tile_timings.reveal_ms = (Time.get_ticks_usec()-reveal_started)/1000.0
 		builder.cache_local_tile(tid)
 		builder.tile_load_resources.clear()
@@ -1331,6 +1591,8 @@ func _stream_visible() -> void:
 			await get_tree().process_frame
 			slice_start = Time.get_ticks_usec()
 		if camera_state != capture_camera() or generation != _generation: break
+	await read_ahead.finish(get_tree())
+	stream_read_ahead_stats = {"requests":read_ahead.requested,"peak_requests":read_ahead.peak_requests,"peak_disk_bytes":read_ahead.peak_disk_bytes,"errors":read_ahead.errors}
 	builder.road_surface.finish_build()
 	builder._road_height_cache.clear()
 	if completed and generation == _generation and camera_state == capture_camera():
@@ -1346,6 +1608,7 @@ func _stream_visible() -> void:
 func detail_ready() -> bool:
 	if _building or _streaming: return false
 	if _builder == null: return true
+	if _builder.asset_tier_pending: return false
 	if _builder.handover.active: return false
 	var reveal: RefCounted = _builder.loading_reveal
 	# A loaded backdrop can still have queued reveals between batches.
@@ -1374,11 +1637,16 @@ func _draw_labels() -> void:
 	var distant := show_all_tiles and size.y / _rig.span < 0.30
 	var label_limit := 8 if size.y / _rig.span < 0.15 else 14
 	var occupied: Array[Rect2] = []
-	var candidates: Array = _builder.labels.duplicate()
-	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		if (str(a.tile) == _selected_tile) != (str(b.tile) == _selected_tile): return str(a.tile) == _selected_tile
-		return str(a.tile) < str(b.tile))
-	for label in candidates:
+	# Labels redraw every frame; sort only when the set or the selection changes.
+	if not is_same(_label_source, _builder.labels) or _label_selection != _selected_tile or _label_count != _builder.labels.size():
+		_label_source = _builder.labels
+		_label_selection = _selected_tile
+		_label_count = _builder.labels.size()
+		_label_order = _builder.labels.duplicate()
+		_label_order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			if (str(a.tile) == _selected_tile) != (str(b.tile) == _selected_tile): return str(a.tile) == _selected_tile
+			return str(a.tile) < str(b.tile))
+	for label in _label_order:
 		if distant and occupied.size() >= label_limit: break
 		var selected := str(label.tile) == _selected_tile
 		var tile: Dictionary = _builder.tiles[label.tile]
@@ -1481,23 +1749,39 @@ func _build_effects(builder: RefCounted, parent: Node3D) -> Array:
 	return cars
 
 func _update_cars() -> void:
+	if _builder == null: return
+	# Continent traffic has thousands of cars; touch only those on detail tiles.
+	if not is_same(_cars_source, _effects):
+		_cars_source = _effects
+		_cars_by_tile.clear()
+		_cars_shown_tiles.clear()
+		for car in _effects: (_cars_by_tile.get_or_add(str(car.road.tile), []) as Array).append(car)
+	var shown_tiles := {}
+	if not show_all_tiles or size.y / _rig.span >= 0.30:
+		for tid in (_builder.local_tiles if show_all_tiles else _cars_by_tile):
+			if _cars_by_tile.has(tid) and not _tile_is_paper(str(tid)): shown_tiles[tid] = true
+	for tid in _cars_shown_tiles:
+		if shown_tiles.has(tid): continue
+		for car in _cars_by_tile[tid]:
+			if car.node != null: car.node.visible = false
+	_cars_shown_tiles = shown_tiles
 	var started := Time.get_ticks_usec()
-	for car in _effects:
-		var shown: bool = (not show_all_tiles or (size.y / _rig.span >= 0.30 and _builder.local_tiles.has(str(car.road.tile)))) and not _tile_is_paper(str(car.road.tile))
-		if car.node != null: car.node.visible = shown
-		if not shown: continue
-		if car.node == null:
-			if Time.get_ticks_usec() - started > 2000: continue
-			var path := PackedVector3Array()
-			for i in 17:
-				var p: Vector2 = (car.road.a as Vector2).lerp(car.road.b, float(i) / 16.0)
-				path.append(_builder.at_height(p, _builder.road_height(p) + 2.0))
-			car.points = path
-			car.node = Geo.instance(car.mesh, _builder.mat)
-			car.parent.add_child(car.node)
-		var at := fposmod(_time * 0.06 + float(car.phase), 1.0) * 16.0
-		var index := mini(15, int(at))
-		var a: Vector3 = car.points[index]
-		var b: Vector3 = car.points[index + 1]
-		car.node.position = a.lerp(b, at - index)
-		if a.distance_squared_to(b) > 0.01: car.node.look_at(car.node.position + b - a, Vector3.UP)
+	for tid in shown_tiles:
+		for car in _cars_by_tile[tid]:
+			if car.node == null:
+				# Each new car samples its road 17 times; spread creation over frames.
+				if Time.get_ticks_usec() - started > 2000: continue
+				var path := PackedVector3Array()
+				for i in 17:
+					var p: Vector2 = (car.road.a as Vector2).lerp(car.road.b, float(i) / 16.0)
+					path.append(_builder.at_height(p, _builder.road_height(p) + 2.0))
+				car.points = path
+				car.node = Geo.instance(car.mesh, _builder.mat)
+				car.parent.add_child(car.node)
+			car.node.visible = true
+			var at := fposmod(_time * 0.06 + float(car.phase), 1.0) * 16.0
+			var index := mini(15, int(at))
+			var a: Vector3 = car.points[index]
+			var b: Vector3 = car.points[index + 1]
+			car.node.position = a.lerp(b, at - index)
+			if a.distance_squared_to(b) > 0.01: car.node.look_at(car.node.position + b - a, Vector3.UP)

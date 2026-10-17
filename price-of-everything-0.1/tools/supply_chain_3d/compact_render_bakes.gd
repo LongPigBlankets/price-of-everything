@@ -63,7 +63,9 @@ static func migrate(directory: String, host: Node, only: String="") -> Dictionar
 		manifest.render_fingerprint=render_fingerprint()
 	save_json(path,manifest)
 	var textures := await preload("res://tools/supply_chain_3d/compact_terrain_textures.gd").migrate(directory,host,PackedStringArray([only]) if not only.is_empty() else PackedStringArray())
-	return {"changed":changed,"before":total_before,"after":total_after,"elapsed_ms":Time.get_ticks_msec()-started,"terrain_textures":textures}
+	var storage := await preload("res://tools/supply_chain_3d/repack_bake_storage.gd").migrate(directory,host,PackedStringArray(selected.keys()) if not only.is_empty() else PackedStringArray())
+	assert(storage.ok,"Lossless package storage migration failed")
+	return {"changed":changed,"before":total_before,"after":total_after,"elapsed_ms":Time.get_ticks_msec()-started,"terrain_textures":textures,"storage":storage}
 
 static func save_json(path: String, value: Dictionary) -> void:
 	FileAccess.open(path+".tmp",FileAccess.WRITE).store_string(JSON.stringify(value,"\t")+"\n")

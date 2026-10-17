@@ -2341,6 +2341,7 @@ if (EXPORT) exportLayers();
  * title_glyphs, title_glyph_shadows: the title's raised letters and their shadows, an atlas.
  * recipe_enamel, recipe_grunge: the recipe diagram's enamel plate and the grunge over its field.
  * key_pin (+ _pressed): the Location keycap, a map pin.
+ * key_star, key_star_on (+ _pressed): the Favourite keycap, a navy outline star, and lit, an amber star.
  * diag_cable, counter_housing, counter_glass, sheet_plate: the diagnostics' cable, the drum counter and
  *           the action sheets' plate.
  * diag_plastic, screw_silver, shipment_door: the diagnostics' plastic plate and its screws, and the
@@ -2860,6 +2861,37 @@ async function exportLayers() {
     const ss = stage([0, 0, S + 2 * M, S + 2 * M], [group]);
     await post('key_pin', ss.grab()); await pressed(k, 'key_pin_pressed', ss);
     layout.key_pin = { size: [S + 2 * M, S + 2 * M], rect: [M, M, S, S] };
+  });
+
+  // --- the Favourite key: a small keycap like Location, with a five-pointed star; off, its navy outline; on, a
+  // filled amber star ringed in navy. Each with the shadow it casts on the panel.
+  if (want('star')) await withSeed(488, async () => {
+    const S = SMALL_KEY, M = 16;
+    const starPath = (g, a, b) => {
+      const cx = a * 0.5, cy = b * 0.53, R = a * 0.3, r = R * 0.45;
+      g.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const t = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 === 0 ? R : r;
+        if (i === 0) g.moveTo(cx + rr * Math.cos(t), cy + rr * Math.sin(t)); else g.lineTo(cx + rr * Math.cos(t), cy + rr * Math.sin(t));
+      }
+      g.closePath();
+      return a;
+    };
+    for (const [name, lit] of [['key_star', false], ['key_star_on', true]]) {
+      const group = new THREE.Group();
+      const k = keycap(S, S, 6, (g, a, b) => {
+        starPath(g, a, b);
+        g.lineJoin = 'round';
+        if (lit) { g.fillStyle = '#ffb23a'; g.fill(); }
+        g.strokeStyle = NAVY; g.lineWidth = a * 0.055; g.stroke();
+      });
+      k.position.set(M + S / 2, 0, M + S / 2); group.add(k);
+      const catcher = new THREE.Mesh(new THREE.PlaneGeometry(S + 2 * M, S + 2 * M).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: 0.5 }));
+      catcher.position.set(M + S / 2, 0.05, M + S / 2); catcher.receiveShadow = true; group.add(catcher);
+      const ss = stage([0, 0, S + 2 * M, S + 2 * M], [group]);
+      await post(name, ss.grab()); await pressed(k, name + '_pressed', ss);
+      layout[name] = { size: [S + 2 * M, S + 2 * M], rect: [M, M, S, S] };
+    }
   });
 
   // --- the status lamp: lit green, amber or red, or off, each with the shadow it casts on the backing,

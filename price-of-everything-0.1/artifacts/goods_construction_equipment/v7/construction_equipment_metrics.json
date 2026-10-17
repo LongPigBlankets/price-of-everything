@@ -1,0 +1,96 @@
+{
+  "revision": "construction_equipment_v7",
+  "objects": 1087,
+  "structural_hosts": [
+    "chassis",
+    "hood",
+    "boom"
+  ],
+  "topology": "a backhoe loader (cab, hood, loader arms and bucket, rear boom, dipper and bucket, rams, stabilisers, wheels and guards) and a hand-held hydraulic breaker standing on its chisel, its no hose",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 4
+    },
+    "id_step": 17,
+    "outer_by_label": {
+      "14": 6,
+      "15": 6
+    },
+    "component_weight_by_label": {
+      "14": 3,
+      "15": 3
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shaded_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "thresholds": [
+          0.575,
+          0.5,
+          0.3
+        ]
+      }
+    ]
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 6.56 x 5.27 x 4.06"
+  ],
+  "mesh_checks": {
+    "chassis": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "hood": {
+      "vertices": 10,
+      "faces": 7,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "boom": {
+      "vertices": 100,
+      "faces": 98,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 7.279,
+    "target": [
+      -0.049,
+      -0.175,
+      1.46
+    ]
+  }
+}

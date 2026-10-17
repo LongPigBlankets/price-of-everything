@@ -51,10 +51,10 @@ func apply_tile_detail(item: Dictionary, tier: int) -> void:
 	_probe_apply_tile_detail(item, tier)
 	mark("apply_tile_detail", start)
 
-func release_local_tiles(keep: Dictionary, retain_resources: bool = false) -> void:
+func release_local_tiles(keep: Dictionary, retain_resources: bool = false, defer_free: bool = false) -> void:
 	if probe_keep: return
 	var start := Time.get_ticks_usec()
-	super.release_local_tiles(keep, retain_resources)
+	super.release_local_tiles(keep, retain_resources, defer_free)
 	mark("release_local_tiles", start)
 
 func release_detail(keep: Dictionary, retain_resources: bool = false) -> void:

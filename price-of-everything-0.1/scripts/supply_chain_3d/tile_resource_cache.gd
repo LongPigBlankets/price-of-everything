@@ -1,9 +1,16 @@
 extends RefCounted
 ## Per-world resource cache. No scene nodes or active physics bodies are retained.
 ## Visible/recent/nearby tiles can exceed the soft target; speculative loads cannot.
+## Retained textures and meshes occupy video memory, so unused tiles also age out:
+## closest detail goes after DEMOTE_MSEC and everything after MIN_UNUSED_MSEC.
+## Tiles with the player's buildings keep closest detail for OWNED_DEMOTE_MSEC
+## and medium detail indefinitely, so returning to the company stays quick.
 const DEFAULT_TARGET_BYTES := 700 * 1024 * 1024
+const DEMOTE_MSEC := 5000
 const MIN_UNUSED_MSEC := 10000
+const OWNED_DEMOTE_MSEC := 20000
 var target_bytes := DEFAULT_TARGET_BYTES
+var owned: Dictionary = {}
 var entries: Dictionary = {}
 var bytes := 0
 var hits := 0
@@ -42,6 +49,29 @@ func trim(now: int, active: Dictionary, nearby: Dictionary, distances: Dictionar
 	for tid in eligible:
 		if bytes <= target_bytes: break
 		erase(tid)
+
+func age(now: int, active: Dictionary, nearby: Dictionary) -> void:
+	for tid in entries.keys():
+		if active.has(tid): continue
+		var idle := now - int(entries[tid].last_used)
+		var is_owned := owned.has(tid)
+		# Nearby tiles are likely next, so they are never released, but their
+		# closest detail still goes after five idle seconds.
+		if idle >= MIN_UNUSED_MSEC and not is_owned and not nearby.has(tid): erase(tid)
+		elif idle >= (OWNED_DEMOTE_MSEC if is_owned else DEMOTE_MSEC): _drop_closest(tid)
+
+func _drop_closest(tid: String) -> void:
+	var entry: Dictionary = entries[tid]
+	var data: Dictionary = entry.data
+	if data.get("meshes", [null, null, null])[2] == null and data.get("textures", [null, null, null])[2] == null: return
+	# New containers: the old arrays may still be shared with a scene being torn down.
+	data = data.duplicate()
+	for field in ["textures", "meshes", "shapes"]:
+		if data.has(field):
+			data[field] = (data[field] as Array).duplicate()
+			data[field][2] = null
+	var last_used: int = entry.last_used
+	put(tid, data, entry.chunk, last_used)
 
 func can_prefetch(estimated_bytes: int = 8 * 1024 * 1024) -> bool:
 	# Reserve a fifth of the target for foreground work and estimation error.

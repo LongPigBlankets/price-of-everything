@@ -42,6 +42,7 @@
 [ext_resource type="Script" path="res://scripts/water_overlay.gd" id="33_water"]
 [ext_resource type="Script" path="res://scripts/stockpile_overlay.gd" id="34_stockpile"]
 [ext_resource type="Script" path="res://scripts/ownership_overlay.gd" id="35_ownership"]
+[ext_resource type="Script" path="res://scripts/land_price_overlay.gd" id="36_land_price"]
 [ext_resource type="Script" path="res://scripts/good_select_panel.gd" id="34_goodsel"]
 [ext_resource type="Script" path="res://scripts/search_overlay.gd" id="29_search"]
 [ext_resource type="Script" path="res://scripts/research_panel.gd" id="30_research"]
@@ -223,6 +224,9 @@ script = ExtResource("34_stockpile")
 
 [node name="OwnershipOverlay" type="Node2D" parent="."]
 script = ExtResource("35_ownership")
+
+[node name="LandPriceOverlay" type="Node2D" parent="."]
+script = ExtResource("36_land_price")
 
 [node name="UILayer" type="CanvasLayer" parent="." unique_id=1882417710]
 

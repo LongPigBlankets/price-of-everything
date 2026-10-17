@@ -24,7 +24,10 @@ static func inputs(board: Control) -> Array:
 	var builder: RefCounted = board._builder
 	# Copy live inputs on the main thread. The digest worker receives only values,
 	# never scene nodes, shared dictionaries, or references to mutable game state.
-	return plain([VERSION, Cache.source_fingerprints(), board._model,
+	# The company model is derived from this snapshot and the live inputs below,
+	# so it is not an input itself: that would make snapshot and company
+	# supplement depend on each other.
+	return plain([VERSION, Cache.source_fingerprints(),
 		builder.ground.get("tiles"), BuildingState.buildings,
 		footprints.get("_placements") if footprints != null else [],
 		preload("res://scripts/authored_map.gd").settlements(),
@@ -75,7 +78,12 @@ static func _locator_triangle(builder: RefCounted, a: Vector2, b: Vector2, c: Ve
 		for p in [a,b,c]: faces.append(builder.point(p))
 
 static func matches(data: Dictionary, input_key: String, manifest: Dictionary) -> bool:
-	if data.get("version", -1) != VERSION or data.get("input_key", "") != input_key: return false
+	return data.get("input_key", "") == input_key and usable_base(data, manifest)
+
+## The packaged world is complete and current, whatever the live game holds.
+## A different live world then only needs its changed tiles (tile_overlay.gd).
+static func usable_base(data: Dictionary, manifest: Dictionary) -> bool:
+	if data.get("version", -1) != VERSION: return false
 	if not data.get("pick_shape") is ConcavePolygonShape3D or not data.get("foundations") is Dictionary: return false
 	if not data.get("pits") is Dictionary: return false
 	if not data.get("ink") is Dictionary or data.ink.size() != int(manifest.get("tile_count", -1)): return false

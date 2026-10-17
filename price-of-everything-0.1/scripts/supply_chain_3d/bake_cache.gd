@@ -13,7 +13,7 @@ const SOURCES := {
 	"roads": ["coastal_roads.gd", "riverside_fields.gd", "port_approach.gd", "harbour.gd", "street_curves.gd", "depot_roads.gd", "neighbourhood_blocks.gd", "frontage_fill.gd", "urban_sidewalks.gd", "building_footprints.gd", "../../assets/supply_chain_3d/building_footprints.json", "tunnel_portal.gd", "road_alignment.gd", "road_surface.gd", "road_grade.gd", "rail_urban.gd", "rail_clearance.gd", "rail_elevation.gd", "rail_station.gd", "rail_crossings.gd", "road_markings.gd", "geometry.gd", "authored_region.gd", "authored_road_profile.gd", "road_index.gd", "road_placement.gd", "bridge_network.gd", "civic_layout.gd", "stoneshore_trial.gd", "district_blocks.gd"],
 	"scenery": ["urban_plazas.gd", "stoneshore_greenery.gd", "neighbourhood_art.gd", "tunnel_portal.gd", "railway.gd", "rail_network.gd", "rail_depot.gd", "rail_urban.gd", "rail_clearance.gd", "rail_elevation.gd", "rail_station.gd", "rail_crossings.gd", "harbour.gd", "tree_layout.gd", "rail_vegetation.gd", "shadow_art.gd", "farm_fields.gd"],
 	"continent": ["geometry.gd"],
-	"detail": ["stoneshore_greenery.gd", "local_detail.gd", "geometry.gd", "farm_fields.gd", "tree_layout.gd", "rail_vegetation.gd"],
+	"detail": ["railway.gd", "stoneshore_greenery.gd", "local_detail.gd", "geometry.gd", "farm_fields.gd", "tree_layout.gd", "rail_vegetation.gd"],
 	"layout": ["layout_queries.gd", "../empire_board_streets.gd"],
 }
 const SHARED := ["empire_board.gd", "empire_board_ground.gd", "empire_board_relief.gd", "empire_board_model.gd"]
@@ -119,9 +119,21 @@ static func source_key(layer: String = "terrain") -> String:
 		_source_keys[layer] = digest(files)
 	return _source_keys[layer]
 
+static var _layout_memo: Dictionary = {}
+static var _trace_misses := "--trace-bake-misses" in OS.get_cmdline_user_args()
+
 func read(key: String) -> Dictionary:
 	if not enabled: return {}
-	for root in [bundled_directory, directory]:
+	# Content-addressed bakes are immutable, so either copy will do. The layout
+	# memo is keyed by geography and grows with each new company; the runtime
+	# copy holds the bundled entries plus this player's, so it must win.
+	# The layout memo is read and rewritten on every company rebuild; keep the
+	# decoded copy this process last read or wrote instead of decoding it again.
+	if key.begins_with("layout-") and _layout_memo.get("key", "") == key and _layout_memo.get("directory", "") == directory:
+		hits += 1
+		return _layout_memo.data
+	var roots: Array = [directory, bundled_directory] if key.begins_with("layout-") else [bundled_directory, directory]
+	for root in roots:
 		var path: String = root.path_join(key + ".res")
 		if not FileAccess.file_exists(path): continue
 		# Content hashes are immutable; reuse any live resource and its subresources.
@@ -131,12 +143,15 @@ func read(key: String) -> Dictionary:
 			if values.is_empty(): continue
 			hits += 1
 			if root == bundled_directory: bundled_hits += 1
+			if key.begins_with("layout-"): _layout_memo = {"key": key, "directory": directory, "data": values}
 			return values
 	misses += 1
+	if _trace_misses: print("[BAKE MISS] ", key)
 	return {}
 
 func write(key: String, data: Dictionary) -> void:
 	if not enabled: return
+	if key.begins_with("layout-"): _layout_memo = {"key": key, "directory": directory, "data": data}
 	if DirAccess.make_dir_recursive_absolute(directory) != OK: return
 	var bake := Data.new()
 	bake.schema = SCHEMA

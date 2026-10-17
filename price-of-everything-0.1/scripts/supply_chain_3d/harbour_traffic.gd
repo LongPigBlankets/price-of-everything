@@ -7,20 +7,34 @@ const ARRIVE_START := 45.0
 const ARRIVE_DURATION := 38.0
 const CYCLE := 177.0
 
-static func create(parent: Node3D, frame: Dictionary, center: Vector2, height_at: Callable) -> Dictionary:
-	var root := Node3D.new()
-	root.name = "HarbourShips"
-	parent.add_child(root)
-	var ships: Array = []
+static func plan_routes(frame: Dictionary, center: Vector2, height_at: Callable) -> Array:
+	# Deterministic and static per harbour; planned ahead in idle time if possible.
+	var routes: Array = []
 	var pose: Transform3D = frame.harbour_transform
 	var scale := Vector3(pose.basis.x.length(), pose.basis.y.length(), pose.basis.z.length())
 	for asset in Assets.harbour_for(frame.harbour_asset).ships:
 		var xyz: Array = asset.berth
 		var berth := pose * Vector3(xyz[0], xyz[1], xyz[2])
 		var direction := Vector2(pose.basis.x.x, pose.basis.x.z).normalized()
-		var route := plan_route(Vector2(berth.x, berth.z), direction,
+		routes.append(plan_route(Vector2(berth.x, berth.z), direction,
 			float(asset.length) * scale.x, float(asset.beam) * scale.x, float(asset.mouth) * scale.x,
-			center, height_at)
+			center, height_at))
+	return routes
+
+static func create(parent: Node3D, frame: Dictionary, center: Vector2, height_at: Callable, routes: Array = []) -> Dictionary:
+	var root := Node3D.new()
+	root.name = "HarbourShips"
+	parent.add_child(root)
+	var ships: Array = []
+	var pose: Transform3D = frame.harbour_transform
+	var scale := Vector3(pose.basis.x.length(), pose.basis.y.length(), pose.basis.z.length())
+	if routes.is_empty(): routes = plan_routes(frame, center, height_at)
+	var index := 0
+	for asset in Assets.harbour_for(frame.harbour_asset).ships:
+		var xyz: Array = asset.berth
+		var berth := pose * Vector3(xyz[0], xyz[1], xyz[2])
+		var route: Dictionary = routes[index]
+		index += 1
 		var ship := Node3D.new()
 		ship.name = str(asset.near)
 		root.add_child(ship)

@@ -33,6 +33,16 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 		writer.write(key,data)
 		if not manifest.resources.has(key): auxiliary.append(key)
 		manifest.resources[key]=Package.file_record(writer.directory,key)
+	# An unchanged owned-tile resource can be a bundled hit after the continent
+	# manifest was replaced. Index those hits too, not only this run's writes.
+	var required:Array=[board._builder._scenery_key,board._builder.transport_key]
+	for tid in board._builder.tiles:
+		for tier in 3: required.append(board._builder.tile_bake_key(tid,tier))
+		required.append(board._builder.road_mesh_key(tid))
+	for key in required:
+		assert(FileAccess.file_exists(writer.directory.path_join(key+".res")),"Missing company resource: "+key)
+		if not manifest.resources.has(key): auxiliary.append(key)
+		manifest.resources[key]=Package.file_record(writer.directory,key)
 	# The shared layout resource contains BOTH coverage variants. Explicitly use
 	# the finished memo, not a ResourceLoader reference from before this run.
 	var layout_key: String=board._layout_queries.key
@@ -44,6 +54,10 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	await preload("res://tools/supply_chain_3d/compact_render_bakes.gd").migrate(writer.directory,self)
 	var report := await Package.validate(writer.directory,self)
 	report.company_start=manifest.company_start
+	# The layout memo this run writes back can move roads on the next build. A
+	# run that baked nothing new is the settled one; until then, run it again.
+	var baked := Array(DirAccess.get_files_at(cache_directory) if DirAccess.dir_exists_absolute(cache_directory) else PackedStringArray()).filter(func(f: String) -> bool: return f.ends_with(".res") and not f.begins_with("layout-"))
+	report.settled=baked.is_empty()
 	FileAccess.open("/private/tmp/company_package_report.json",FileAccess.WRITE).store_string(JSON.stringify(report,"\t"))
 	print("[COMPANY PACKAGE] ",JSON.stringify(report))
 	if not report.ok:get_tree().quit(1)

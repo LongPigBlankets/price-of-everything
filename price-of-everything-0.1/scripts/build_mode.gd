@@ -35,6 +35,9 @@ var last_attempt_placed: bool = false
 ## so the purchase happens inside the same gate that validates the build — a refusal
 ## upstream of the gate can no longer leave the player owning land bought for nothing.
 var attempt_buy_land: bool = false
+## The level a direct build places the building at (a favourite saved above level 1). One attempt only, like
+## attempt_buy_land: the map hands it to Construction.placing_level for that attempt.
+var attempt_level: int = 1
 
 func enter_build_mode(building_id: String, recipe_id: String, return_to_construct_v2: bool = false) -> void:
 	if building_id == "" or recipe_id == "":
@@ -97,7 +100,7 @@ func attempt_build(tile_id: String) -> void:
 ## changed: no cash spent and no land kept.
 ## buy_land: buy the tile's land shortfall (whole patches, clamped to what's for sale)
 ## inside the build's own space gate — the V3 confirm's single intent. See attempt_buy_land.
-func attempt_direct_build(building_id: String, recipe_id: String, tile_id: String, buy_land: bool = false) -> bool:
+func attempt_direct_build(building_id: String, recipe_id: String, tile_id: String, buy_land: bool = false, level: int = 1) -> bool:
 	if building_id == "" or recipe_id == "" or tile_id == "":
 		return false
 	if not _can_attempt_now():
@@ -105,6 +108,7 @@ func attempt_direct_build(building_id: String, recipe_id: String, tile_id: Strin
 	last_attempt_refused = false
 	last_attempt_placed = false
 	attempt_buy_land = buy_land
+	attempt_level = level
 	var previous_kind := kind
 	var previous_building := current_building_id
 	var previous_recipe := current_recipe_id
@@ -117,6 +121,7 @@ func attempt_direct_build(building_id: String, recipe_id: String, tile_id: Strin
 	return_to_construct_v2_on_exit = false
 	build_attempted.emit(building_id, tile_id)
 	attempt_buy_land = false
+	attempt_level = 1
 	kind = previous_kind
 	current_building_id = previous_building
 	current_recipe_id = previous_recipe

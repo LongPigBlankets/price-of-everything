@@ -2,6 +2,7 @@ extends RefCounted
 const Snapshot := preload("res://scripts/supply_chain_3d/world_snapshot.gd")
 const Builder := preload("res://scripts/supply_chain_3d/world_builder.gd")
 const Sprites := preload("res://scripts/supply_chain_3d/far_sprites.gd")
+const TileOverlay := preload("res://scripts/supply_chain_3d/tile_overlay.gd")
 
 static func prepare(board: Control, job: RefCounted, generation: int) -> Dictionary:
 	var started := Time.get_ticks_usec()
@@ -25,7 +26,21 @@ static func prepare(board: Control, job: RefCounted, generation: int) -> Diction
 	# detaches live layout values without a second native-format copy on disk.
 	var data: Dictionary = await job.bake(tree,cache,key,true)
 	job.profile.snapshot_ready_ms = (Time.get_ticks_usec()-started)/1000.0
-	if job.cancelled or not Snapshot.matches(data, input_key, manifest): return {}
+	if job.cancelled or not Snapshot.usable_base(data, manifest): return {}
+	# A live world that differs from the shipped one lays out only its changed
+	# tiles. The game never lays out or bakes the whole continent.
+	var changed: Array = []
+	if not Snapshot.matches(data, input_key, manifest):
+		job.stage = "changed tiles"
+		var lock := "background:%d" % job.get_instance_id()
+		await board._lock_layout(lock)
+		if job.cancelled: board._unlock_layout(lock); return {}
+		var overlay: Dictionary = await TileOverlay.prepare(board, data.model, owner.ground, cache, [], null, func() -> bool: return not job.cancelled)
+		board._unlock_layout(lock)
+		if job.cancelled or overlay.is_empty(): return {}
+		data.model = overlay.model
+		changed = overlay.changed
+		job.profile.overlay = overlay.profile
 	board._loading_ink = data.ink
 	board._sync_paper()
 	var setup_started := Time.get_ticks_usec()
@@ -85,6 +100,10 @@ static func prepare(board: Control, job: RefCounted, generation: int) -> Diction
 	job.profile.transport_restore_ms = (Time.get_ticks_usec()-measured)/1000.0
 	measured = Time.get_ticks_usec()
 	await builder.prepare_scenery(board,model,scenery)
+	if not changed.is_empty():
+		var shaded: Dictionary = await builder.refresh_scenery_tiles(board, model, changed)
+		if job.cancelled: return {}
+		_rebake_changed_tiles(builder, model, changed, shaded, manifest)
 	job.profile.scenery_restore_ms = (Time.get_ticks_usec()-measured)/1000.0
 	measured = Time.get_ticks_usec()
 	if job.cancelled: return {}
@@ -146,3 +165,28 @@ static func prepare(board: Control, job: RefCounted, generation: int) -> Diction
 	board._backdrop_ready(builder)
 	job.profile.total_ms = (Time.get_ticks_usec() - started) / 1000.0
 	return packet
+
+## Changed tiles, tiles whose mine pits moved and tiles whose shadows changed
+## stop using their packaged terrain and bake it on demand, once. Tiles whose
+## own contents changed also get a new base chunk, so their local detail rebuilds.
+static func _rebake_changed_tiles(builder: RefCounted, model: Dictionary, changed: Array, shaded: Dictionary, manifest: Dictionary) -> void:
+	var own := {}
+	for tid in changed: own[tid] = true
+	var base_pits: Dictionary = builder.pits.duplicate()
+	builder.configure_pits(model.standing)
+	for iid in base_pits.keys() + builder.pits.keys():
+		if var_to_str(base_pits.get(iid)) == var_to_str(builder.pits.get(iid)): continue
+		var pit: Dictionary = builder.pits.get(iid, base_pits.get(iid))
+		own[str(pit.tile)] = true
+		for neighbour in Catalog.tile_neighbours(str(pit.tile)): shaded[neighbour] = true
+		builder.prepared_mine_rims = null
+	var packaged: Dictionary = manifest.tiles.duplicate()
+	for tid in own:
+		var contents: Array = []
+		for s in model.standing:
+			if str(s.tile) == tid: contents.append([str(s.iid), str(s.kind), s.pos, float(s.get("side", 0.0)), float(s.get("yaw", 0.0))])
+		builder.tile_chunks[tid] = "base-tile-" + Builder.BakeCache.digest([str(builder.tile_chunks.get(tid, "")), contents])
+		packaged.erase(tid)
+	for tid in shaded: packaged.erase(tid)
+	builder.progressive_manifest = packaged
+	print("[TILE OVERLAY] rebake tiles=", own.size(), " shadow-only=", shaded.size())
