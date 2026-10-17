@@ -63,7 +63,37 @@ func _test_resource_cache_lru_and_accounting() -> void:
 		"3D resource cache: refreshing a payload does not reset its age or double-count it")
 	cache.target_bytes = cost * 10
 	cache.trim(99999, {}, {})
-	_check(cache.entries.has("2"), "3D resource cache: passing ten seconds alone does not force needless reloads")
+	_check(cache.entries.has("2"), "3D resource cache: the soft budget alone does not evict tiles under target")
+
+func _closest_payload() -> Dictionary:
+	var image := Image.create(8, 8, true, Image.FORMAT_RGBA8)
+	return {"meshes": [null, null, null], "shapes": [null, null, null],
+		"textures": [null, ImageTexture.create_from_image(image), ImageTexture.create_from_image(image)]}
+
+func _test_resource_cache_ages_out_video_memory() -> void:
+	var cache := Cache.new()
+	for tid in ["visible", "nearby", "other", "owned"]: cache.put(tid, _closest_payload(), {}, 0)
+	cache.owned = {"owned": true}
+	var full: int = cache.entries.other.bytes
+	var shared: Array = cache.entries.other.data.textures
+	cache.age(4999, {"visible": true}, {"nearby": true})
+	_check(cache.entries.other.bytes == full, "3D resource cache: closest detail survives the first five idle seconds")
+	cache.age(5000, {"visible": true}, {"nearby": true})
+	_check(cache.entries.other.data.textures[2] == null and cache.entries.other.data.textures[1] != null
+		and cache.entries.other.bytes < full and shared[2] != null,
+		"3D resource cache: after five seconds offscreen tiles keep medium detail only, without mutating shared arrays")
+	_check(cache.entries.owned.data.textures[2] != null, "3D resource cache: company tiles keep closest detail beyond five seconds")
+	_check(cache.entries.nearby.data.textures[2] == null and cache.entries.visible.data.textures[2] != null,
+		"3D resource cache: nearby offscreen tiles also drop closest detail after five seconds; visible tiles keep it")
+	cache.age(10000, {"visible": true}, {"nearby": true})
+	_check(not cache.entries.has("other") and cache.entries.has("visible") and cache.entries.has("nearby"),
+		"3D resource cache: after ten seconds unused tiles are released; visible and nearby tiles stay")
+	cache.age(20000, {}, {})
+	_check(cache.entries.has("owned") and cache.entries.owned.data.textures[2] == null and cache.entries.owned.data.textures[1] != null,
+		"3D resource cache: company tiles drop closest detail at twenty seconds and keep medium detail indefinitely")
+	var expected := 0
+	for tid in cache.entries: expected += int(cache.entries[tid].bytes)
+	_check(cache.bytes == expected, "3D resource cache: ageing keeps byte accounting exact")
 
 func _test_lazy_medium_assets_and_lighting() -> void:
 	var builder := Builder.new()
@@ -103,7 +133,7 @@ func _test_medium_lighting_and_picking_assets_current() -> void:
 	var lit_count := 0
 	var pick_count := 0
 	for key in catalog:
-		if str(key).begins_with("tree_"): continue
+		if str(key).begins_with("tree_") or str(key).begins_with("port_ship_"): continue
 		var digest := FileAccess.get_sha256(Assets.DIRECTORY + key + ".glb")
 		var path: String = Assets.DIRECTORY + "picking/" + key + ".res"
 		if not ResourceLoader.exists(path): valid = false; continue
@@ -268,3 +298,24 @@ func _test_prepared_detail_reloads_without_sampling_terrain() -> void:
 	glints.free()
 	for file in DirAccess.get_files_at(disk.directory): DirAccess.remove_absolute(disk.directory.path_join(file))
 	DirAccess.remove_absolute(disk.directory)
+
+func _test_bake_cache_layout_memo_prefers_runtime_copy() -> void:
+	var BakeCache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
+	var root := "user://test_layout_memo_%d" % Time.get_ticks_usec()
+	var cache := BakeCache.new()
+	cache.enabled = true
+	cache.directory = root.path_join("bundled")
+	cache.write("layout-x", {"v": 0})
+	cache.write("tile-x", {"v": 0})
+	cache.bundled_directory = root.path_join("bundled")
+	cache.directory = root.path_join("runtime")
+	cache.write("layout-x", {"v": 1})
+	cache.write("tile-x", {"v": 1})
+	_check(int(cache.read("layout-x").get("v", -1)) == 1,
+		"3D bake cache: the growing layout memo is read from the player's copy before the bundled one")
+	_check(int(cache.read("tile-x").get("v", -1)) == 0,
+		"3D bake cache: content-addressed bakes still prefer the bundled package")
+	for directory in ["bundled", "runtime"]:
+		for file in DirAccess.get_files_at(root.path_join(directory)): DirAccess.remove_absolute(root.path_join(directory).path_join(file))
+		DirAccess.remove_absolute(root.path_join(directory))
+	DirAccess.remove_absolute(root)

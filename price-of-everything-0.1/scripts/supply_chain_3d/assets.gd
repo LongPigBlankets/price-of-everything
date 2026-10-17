@@ -1,6 +1,7 @@
 extends RefCounted
 ## Only the supply-chain renderer uses these meshes. Existing sprite/map assets are untouched.
 const DIRECTORY := "res://assets/supply_chain_3d/"
+const BuildingSprites := preload("res://scripts/building_sprites.gd")
 const PrintShader := preload("res://scripts/supply_chain_3d/building_print.gdshader")
 const ContourShader := preload("res://scripts/supply_chain_3d/contour.gdshader")
 static var _print: ShaderMaterial
@@ -13,6 +14,8 @@ static var _picking: Dictionary = {}
 static var _manifest: Dictionary = {}
 
 static func key_for(name: String, level: int) -> String:
+	if name in BuildingSprites.WITHHELD_FAMILIES:
+		return ""
 	if _manifest.is_empty():
 		_manifest = JSON.parse_string(FileAccess.get_file_as_string(DIRECTORY + "manifest.json"))
 	var family := "mine_flush" if name == "mine" else name
@@ -46,6 +49,30 @@ static func mesh_for(key: String) -> Mesh:
 static func dimensions(key: String) -> Vector3:
 	var data: Dictionary = _manifest.get(key, {})
 	return Vector3(float(data.get("width", 1.0)), float(data.get("height", 0.65)), float(data.get("depth", 1.0)))
+
+static func storey_height(key: String) -> float:
+	return float(_manifest.get(key, {}).get("storey_height", 0.0))
+
+static func civic_modules(shape: String) -> Array:
+	key_for("civic_office", 1)
+	var result: Array = []
+	for key in _manifest:
+		var module: Dictionary = _manifest[key].get("civic_module", {})
+		if module.get("shape", "") != shape: continue
+		result.append({"key": key, "module": module, "storey": storey_height(key), "dimensions": dimensions(key)})
+	return result
+
+static func harbour_for(key: String) -> Dictionary:
+	return _manifest.get(key, {}).get("harbour", {})
+
+static func component_for(key: String) -> Dictionary:
+	return _manifest.get(key, {}).get("component", {})
+
+static func cable_anchors(key: String) -> PackedVector3Array:
+	var points := PackedVector3Array()
+	for xyz in _manifest.get(key, {}).get("cable_anchors", []):
+		points.append(Vector3(xyz[0], xyz[1], xyz[2]))
+	return points
 
 static func contour_for(key: String) -> Mesh:
 	if key == "" or not bool(_manifest.get(key, {}).get("contour", false)): return null

@@ -1,6 +1,7 @@
 extends RefCounted
 ## Deterministic local geometry prepared offline and retained with each base tile.
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
+const Coast := preload("res://scripts/supply_chain_3d/coast.gd")
 const Legacy := preload("res://scripts/empire_board.gd")
 const Model := preload("res://scripts/empire_board_model.gd")
 const Ground := preload("res://scripts/empire_board_ground.gd")
@@ -9,9 +10,10 @@ const Sprites := preload("res://scripts/supply_chain_3d/far_sprites.gd")
 
 static func build(builder: RefCounted, tid: String, standing: Array) -> Dictionary:
 	var tile: Dictionary = builder.tiles[tid]
-	var rel := Legacy._relief_of(tid, tile.center)
+	var rel := Coast.relief_of(tid, tile.center)
 	var land := str(tile.type) not in ["sea", "deep_sea"]
 	return {"clutter_mesh": clutter(builder, tid, standing) if land else ArrayMesh.new(),
+		"farms": preload("res://scripts/supply_chain_3d/farm_fields.gd").build(builder, tid, standing) if land else {},
 		"glint_mesh": glints(builder, tid, tile, rel),
 		"tree_cards": tree_cards(builder, tid, standing) if land else {}}
 
@@ -27,7 +29,7 @@ static func tree_cards(builder: RefCounted, tid: String, standing: Array) -> Dic
 static func clutter(builder: RefCounted, tid: String, standing: Array) -> Mesh:
 	var near := Geo.Batch.new()
 	var c: Vector2 = builder.tiles[tid].center
-	var rel := Legacy._relief_of(tid, c)
+	var rel := Coast.relief_of(tid, c)
 	var area := Rect2(c - Model.HEX_HALF, Model.HEX_HALF * 2.0).grow(30.0)
 	var local_roads: Array = builder.roads.filter(func(road: Dictionary) -> bool: return area.intersects(Rect2(road.a, Vector2.ZERO).expand(road.b).grow(20.0)))
 	var local_standing := standing.filter(func(item: Dictionary) -> bool: return (item.pos as Vector2).distance_squared_to(c) < 500000.0)

@@ -22,7 +22,7 @@ func _ready() -> void:
 		assert(original != null)
 		var copy := Data.new()
 		copy.key = original.key
-		copy.data = original.data
+		copy.data = original.values()
 		var target: String = directory.path_join(str(tid) + ".res")
 		assert(ResourceSaver.save(copy, target, 0) == OK)
 		samples.append({"tile": tid, "compressed": source, "raw": target,
@@ -41,7 +41,7 @@ func _ready() -> void:
 				start = Time.get_ticks_usec()
 				var loaded := ResourceLoader.load(sample[format], "", ResourceLoader.CACHE_MODE_IGNORE) as Data
 				var load_ms := (Time.get_ticks_usec() - start) / 1000.0
-				assert(loaded != null and loaded.data.texture.get_width() == 2048)
+				assert(loaded != null and loaded.values().texture.get_width() == 2048)
 				RenderingServer.force_draw(false)
 				var settle_ms := (Time.get_ticks_usec() - start) / 1000.0
 				results.append({"round": round_index, "tile": sample.tile, "format": format,

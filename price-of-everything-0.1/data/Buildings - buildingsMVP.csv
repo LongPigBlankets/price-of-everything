@@ -36,3 +36,4 @@ b_034,fracking_oil_well,Hydraulic Fracking Oil Wells,1,10000,10,10,concrete,4,co
 b_035,airport,Airport,1,10000,10000,10000,,,,,,,,,,,2,1,infrastructure,standard,10000,,,,,3,0,0,0,infrastructure,0,,,,,
 b_036,recycling_plant,Recycling Plant,1,10000,10,10,concrete,3,building_frame,2,construction_equipment_ice,1,rubber,4,plastics,4,2,15,production,standard,10000,,,,,3,1670,630,62,manufacturing,0,,,,,
 b_037,water_pump,Water Pump,1,10000,10,10,concrete,4,construction_equipment_ice,2,rubber,4,plastics,5,,,2,15,production,standard,10000,,,,,1.5,1710,260,12,water,0,,,,,
+b_038,rail_hub,Rail Hub,80,0,5000,5000,,,,,,,,,,,0,30,infrastructure,none,,,,,,10,0,658,0,infrastructure,0,,,,,

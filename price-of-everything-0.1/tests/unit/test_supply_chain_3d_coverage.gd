@@ -69,12 +69,15 @@ func _test_near_camera_radius_tracks_hexes_and_map_edges() -> void:
 		var near := wanted.filter(func(item: Dictionary) -> bool: return item.near)
 		var expected := _catalog_radius(tid)
 		var plan: Dictionary = board._fine_detail_plan(wanted)
-		_check(board._camera_focus_tile() == tid and near.size() == expected.size()
-			and near.all(func(item: Dictionary) -> bool: return expected.has(item.tile) and plan[item.tile] == 2),
-			"3D near radius: centre hit %s loads its exact four hex rings across staggered columns/map edges" % tid)
-		_check(near.any(func(item: Dictionary) -> bool: return not item.visible)
-			and near.all(func(item: Dictionary) -> bool: return board._nearby_tiles.has(item.tile)),
-			"3D near radius: offscreen ring tiles remain loaded and protected from pressure eviction")
+		var requested := {}
+		for item in wanted: requested[item.tile] = true
+		_check(board._camera_focus_tile() == tid and not near.is_empty()
+			and wanted.all(func(item: Dictionary) -> bool: return item.near == expected.has(item.tile))
+			and near.all(func(item: Dictionary) -> bool: return plan[item.tile] == 2),
+			"3D near radius: centre hit %s gives closest detail to the visible part of its four hex rings across staggered columns/map edges" % tid)
+		_check(expected.keys().any(func(ring_tile: String) -> bool: return not requested.has(ring_tile))
+			and expected.keys().all(func(ring_tile: String) -> bool: return board._nearby_tiles.has(ring_tile)),
+			"3D near radius: offscreen ring tiles build no scene but stay protected from pressure eviction")
 		var first_offscreen := false
 		var prioritised := true
 		for item in wanted:

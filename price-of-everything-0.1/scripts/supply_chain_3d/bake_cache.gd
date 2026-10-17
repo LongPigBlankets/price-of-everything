@@ -5,13 +5,16 @@ const SCHEMA := 2
 const BUNDLED := "res://assets/supply_chain_3d/bakes"
 ## Bump the relevant revision when world_builder changes generated data. Runtime
 ## visibility/loading edits must not invalidate unrelated terrain artwork.
-const REVISIONS := {"terrain": 2, "roads": 1, "scenery": 1, "continent": 2, "detail": 1}
+const REVISIONS := {"terrain": 3, "roads": 1, "scenery": 2, "continent": 2, "detail": 1, "layout": 1, "transport": 1, "buildings": 1}
 const SOURCES := {
-	"terrain": ["terrain_paint.gd", "water_art.gd", "geometry.gd", "detail.gd", "shadow_art.gd", "relief.gd"],
-	"roads": ["road_surface.gd", "geometry.gd"],
-	"scenery": ["tree_layout.gd", "shadow_art.gd"],
+	"buildings": ["building_scale.gd", "building_footprints.gd", "../../assets/supply_chain_3d/building_footprints.json"],
+	"transport": ["transport_bake.gd"],
+	"terrain": ["urban_plazas.gd", "sea_fringe.gd", "coast.gd", "terrain_paint.gd", "water_art.gd", "water_geography.gd", "../../data/supply_chain_water.json", "geometry.gd", "detail.gd", "shadow_art.gd", "relief.gd", "ground.gd", "half_relief.gd", "../../data/supply_chain_half_relief.json"],
+	"roads": ["coastal_roads.gd", "riverside_fields.gd", "port_approach.gd", "harbour.gd", "street_curves.gd", "depot_roads.gd", "neighbourhood_blocks.gd", "frontage_fill.gd", "urban_sidewalks.gd", "building_footprints.gd", "../../assets/supply_chain_3d/building_footprints.json", "tunnel_portal.gd", "road_alignment.gd", "road_surface.gd", "road_grade.gd", "rail_urban.gd", "rail_clearance.gd", "rail_elevation.gd", "rail_station.gd", "rail_crossings.gd", "road_markings.gd", "geometry.gd", "authored_region.gd", "authored_road_profile.gd", "road_index.gd", "road_placement.gd", "bridge_network.gd", "civic_layout.gd", "stoneshore_trial.gd", "district_blocks.gd"],
+	"scenery": ["urban_plazas.gd", "stoneshore_greenery.gd", "neighbourhood_art.gd", "tunnel_portal.gd", "railway.gd", "rail_network.gd", "rail_depot.gd", "rail_urban.gd", "rail_clearance.gd", "rail_elevation.gd", "rail_station.gd", "rail_crossings.gd", "harbour.gd", "tree_layout.gd", "rail_vegetation.gd", "shadow_art.gd", "farm_fields.gd"],
 	"continent": ["geometry.gd"],
-	"detail": ["local_detail.gd", "geometry.gd"],
+	"detail": ["railway.gd", "stoneshore_greenery.gd", "local_detail.gd", "geometry.gd", "farm_fields.gd", "tree_layout.gd", "rail_vegetation.gd"],
+	"layout": ["layout_queries.gd", "../empire_board_streets.gd"],
 }
 const SHARED := ["empire_board.gd", "empire_board_ground.gd", "empire_board_relief.gd", "empire_board_model.gd"]
 const MAX_BYTES := 2 * 1024 * 1024 * 1024
@@ -20,6 +23,7 @@ var directory := "user://supply_chain_3d_bakes"
 var bundled_directory := BUNDLED
 var enabled := DisplayServer.get_name() != "headless"
 var hits := 0
+var bundled_hits := 0
 var misses := 0
 var writes := 0
 var defer_trim := false
@@ -27,8 +31,22 @@ var defer_trim := false
 ## for controlled profiling; both encodings load through the native resource reader.
 var compress := true
 
+func _init() -> void:
+	if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
+		bundled_directory = preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").PACKAGE
+		directory = "user://supply_chain_3d_stoneshore_trial"
+		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with("--trial-cache-directory="): directory = arg.trim_prefix("--trial-cache-directory=")
+
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--bake-package-directory="): bundled_directory = arg.trim_prefix("--bake-package-directory=")
+		if arg.begins_with("--bake-cache-directory="): directory = arg.trim_prefix("--bake-cache-directory=")
+
 static func is_raw(path: String) -> bool:
 	return storage_format(path) == "raw"
+
+static func binary_values_for(key: String) -> bool:
+	return key.begins_with("transport-") or key.begins_with("scenery-") or key.begins_with("world-snapshot-")
 
 static func storage_format(path: String) -> String:
 	var file := FileAccess.open(path, FileAccess.READ)
@@ -101,26 +119,45 @@ static func source_key(layer: String = "terrain") -> String:
 		_source_keys[layer] = digest(files)
 	return _source_keys[layer]
 
+static var _layout_memo: Dictionary = {}
+static var _trace_misses := "--trace-bake-misses" in OS.get_cmdline_user_args()
+
 func read(key: String) -> Dictionary:
 	if not enabled: return {}
-	for root in [bundled_directory, directory]:
+	# Content-addressed bakes are immutable, so either copy will do. The layout
+	# memo is keyed by geography and grows with each new company; the runtime
+	# copy holds the bundled entries plus this player's, so it must win.
+	# The layout memo is read and rewritten on every company rebuild; keep the
+	# decoded copy this process last read or wrote instead of decoding it again.
+	if key.begins_with("layout-") and _layout_memo.get("key", "") == key and _layout_memo.get("directory", "") == directory:
+		hits += 1
+		return _layout_memo.data
+	var roots: Array = [directory, bundled_directory] if key.begins_with("layout-") else [bundled_directory, directory]
+	for root in roots:
 		var path: String = root.path_join(key + ".res")
 		if not FileAccess.file_exists(path): continue
 		# Content hashes are immutable; reuse any live resource and its subresources.
 		var bake := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_REUSE) as Data
-		if bake != null and bake.schema == SCHEMA and bake.key == key and not bake.data.is_empty():
+		if bake != null and bake.schema == SCHEMA and bake.key == key:
+			var values := bake.values()
+			if values.is_empty(): continue
 			hits += 1
-			return bake.data
+			if root == bundled_directory: bundled_hits += 1
+			if key.begins_with("layout-"): _layout_memo = {"key": key, "directory": directory, "data": values}
+			return values
 	misses += 1
+	if _trace_misses: print("[BAKE MISS] ", key)
 	return {}
 
 func write(key: String, data: Dictionary) -> void:
 	if not enabled: return
+	if key.begins_with("layout-"): _layout_memo = {"key": key, "directory": directory, "data": data}
 	if DirAccess.make_dir_recursive_absolute(directory) != OK: return
 	var bake := Data.new()
 	bake.schema = SCHEMA
 	bake.key = key
-	bake.data = data
+	if binary_values_for(key): bake.encoded_values=Data.Values.pack(data)
+	else: bake.data=data
 	var path := directory.path_join(key + ".res")
 	var temporary := directory.path_join(key + ".tmp.res")
 	# Generated meshes/textures are internal subresources already. Bundling the

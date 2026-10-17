@@ -78,6 +78,7 @@ func _ready() -> void:
 	var keys: Array = catalog.keys()
 	keys.sort()
 	for key in keys:
+		if catalog[key].has("component"): continue
 		if not selected_keys.is_empty() and key not in selected_keys: continue
 		if "--trees-only" in OS.get_cmdline_user_args() and not str(key).begins_with("tree_"): continue
 		Assets.key_for(str(key).get_slice("_lvl", 0), 3)
@@ -88,7 +89,7 @@ func _ready() -> void:
 		# The same camera square at every angle: no auto-fit scale pumping on orbit.
 		var cell := (64 if medium else 16) if str(key).begins_with("tree_") else (128 if medium else 64)
 		# Tall, thin structures need more samples at the close end of medium.
-		if medium and key in ["pylon_lvl1", "towers_lvl1", "towers_lvl2"]: cell = 192
+		if medium and key in ["pylon_lvl1", "towers_lvl1", "towers_lvl2", "civic_u_office_lvl1"]: cell = 192
 		var yaws := 32 if medium and key == "pylon_lvl1" else YAWS
 		var span := bounds.size.length() * 1.10
 		if colour_only:
@@ -111,7 +112,7 @@ func _ready() -> void:
 		paint.set_shader_parameter("detail_level", 1 if medium else 0)
 		# Small decorative sprites collect too much dark ink after minification.
 		# Apply this only to far houses/towers; medium and live meshes keep their art.
-		var far_decor := not medium and (str(key).begins_with("house_") or str(key).begins_with("towers_"))
+		var far_decor := not medium and (str(key).begins_with("house_") or str(key).begins_with("towers_") or str(key).begins_with("civic_"))
 		paint.set_shader_parameter("stroke_width_scale", 0.65 if far_decor else 1.0)
 		paint.set_shader_parameter("stroke_opacity", 0.70 if far_decor else 0.88)
 		paint.set_shader_parameter("ink", Color("48505a") if far_decor else Color(0.20, 0.25, 0.36, 1.0))

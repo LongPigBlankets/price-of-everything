@@ -1,9 +1,16 @@
 extends RefCounted
 ## Per-world resource cache. No scene nodes or active physics bodies are retained.
 ## Visible/recent/nearby tiles can exceed the soft target; speculative loads cannot.
+## Retained textures and meshes occupy video memory, so unused tiles also age out:
+## closest detail goes after DEMOTE_MSEC and everything after MIN_UNUSED_MSEC.
+## Tiles with the player's buildings keep closest detail for OWNED_DEMOTE_MSEC
+## and medium detail indefinitely, so returning to the company stays quick.
 const DEFAULT_TARGET_BYTES := 700 * 1024 * 1024
+const DEMOTE_MSEC := 5000
 const MIN_UNUSED_MSEC := 10000
+const OWNED_DEMOTE_MSEC := 20000
 var target_bytes := DEFAULT_TARGET_BYTES
+var owned: Dictionary = {}
 var entries: Dictionary = {}
 var bytes := 0
 var hits := 0
@@ -43,6 +50,29 @@ func trim(now: int, active: Dictionary, nearby: Dictionary, distances: Dictionar
 		if bytes <= target_bytes: break
 		erase(tid)
 
+func age(now: int, active: Dictionary, nearby: Dictionary) -> void:
+	for tid in entries.keys():
+		if active.has(tid): continue
+		var idle := now - int(entries[tid].last_used)
+		var is_owned := owned.has(tid)
+		# Nearby tiles are likely next, so they are never released, but their
+		# closest detail still goes after five idle seconds.
+		if idle >= MIN_UNUSED_MSEC and not is_owned and not nearby.has(tid): erase(tid)
+		elif idle >= (OWNED_DEMOTE_MSEC if is_owned else DEMOTE_MSEC): _drop_closest(tid)
+
+func _drop_closest(tid: String) -> void:
+	var entry: Dictionary = entries[tid]
+	var data: Dictionary = entry.data
+	if data.get("meshes", [null, null, null])[2] == null and data.get("textures", [null, null, null])[2] == null: return
+	# New containers: the old arrays may still be shared with a scene being torn down.
+	data = data.duplicate()
+	for field in ["textures", "meshes", "shapes"]:
+		if data.has(field):
+			data[field] = (data[field] as Array).duplicate()
+			data[field][2] = null
+	var last_used: int = entry.last_used
+	put(tid, data, entry.chunk, last_used)
+
 func can_prefetch(estimated_bytes: int = 8 * 1024 * 1024) -> bool:
 	# Reserve a fifth of the target for foreground work and estimation error.
 	return bytes + estimated_bytes <= int(target_bytes * 0.8)
@@ -57,12 +87,18 @@ static func estimate(data: Dictionary, chunk: Dictionary) -> int:
 		seen[texture.get_instance_id()] = true
 		var width: int = texture.get_width()
 		var height: int = texture.get_height()
+		# Query the native format, never get_image() (which can read back GPU data).
+		var bc7: bool = texture is ImageTexture and texture.get_format()==Image.FORMAT_BPTC_RGBA
 		while true:
-			total += width * height * 4
+			total += ceili(width/4.0)*ceili(height/4.0)*16 if bc7 else width*height*4
 			if width == 1 and height == 1: break
 			width = maxi(1, width / 2)
 			height = maxi(1, height / 2)
 	var meshes: Array = data.get("meshes", []).duplicate()
+	var road: Dictionary=chunk.get("road_drawing",{})
+	if road.get("mesh") is Mesh: meshes.append(road.mesh)
+	if road.get("texture") is Texture2D:
+		total+=int(road.get("texture_bytes",road.texture.get_width()*road.texture.get_height()*4*4/3))
 	for value in chunk.values():
 		if value is Mesh: meshes.append(value)
 	var detail: Dictionary = chunk.get("local_detail", {})

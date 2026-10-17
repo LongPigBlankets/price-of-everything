@@ -8,6 +8,9 @@ extends RefCounted
 ## Consumers preload this as `const BuildingSprites := preload("res://scripts/building_sprites.gd")`.
 
 const _DIR := "res://assets/icons/buildings/sprites/"
+## Draft forest assets remain on disk for review, but are not enabled in game.
+## Shared with the 3D loader so both presentations respect the same selection.
+const WITHHELD_FAMILIES := ["new_forest", "old_forest"]
 
 static var _cache: Dictionary = {}
 
@@ -15,7 +18,7 @@ static var _cache: Dictionary = {}
 ## The sprite for `internal_name` at `level` (clamped 1..3), falling back to lower
 ## levels if the exact one is missing; null when the building has no sprites at all.
 static func texture_for(internal_name: String, level: int = 1) -> Texture2D:
-	if internal_name == "":
+	if internal_name == "" or internal_name in WITHHELD_FAMILIES:
 		return null
 	var lv := clampi(level, 1, 3)
 	while lv >= 1:

@@ -914,7 +914,8 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 	if resolved_building_id == "":
 		return {}
 	if outputs.is_empty() and inputs.is_empty() \
-			and str(_buildings_by_id.get(resolved_building_id, {}).get("category", "")) != "battery":
+			and str(_buildings_by_id.get(resolved_building_id, {}).get("category", "")) != "battery" \
+			and resolved_building_id != "b_038":
 		return {}
 	for inp in inputs:
 		if inp.good_id == "":

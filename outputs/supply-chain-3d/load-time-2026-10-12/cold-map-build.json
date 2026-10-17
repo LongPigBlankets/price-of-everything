@@ -1,0 +1,29 @@
+{
+  "bundled_hits": 0,
+  "cache_hits": 1,
+  "cache_misses": 604,
+  "cache_writes": 604,
+  "continent_ms": 99681.899,
+  "infrastructure_ms": 65691.605,
+  "keys_ms": 33680.403,
+  "layout_inputs_ms": 134.78,
+  "layout_solve_ms": 1263.685,
+  "model_ms": 1434.047,
+  "road_frontage_ms": 105.156,
+  "road_import_ms": 277.965,
+  "road_routing_ms": 77.143,
+  "scene_ms": 199432.895,
+  "scenery_ms": 11879.722,
+  "standing_ms": 213.522,
+  "static_scene_ms": 199346.943,
+  "total_ms": 346740.848,
+  "transport": {
+    "alignment_ms": 22239.522,
+    "authored_ms": 5011.201,
+    "cache_hit": false,
+    "grading_ms": 2600.849,
+    "lookup_ms": 140.635,
+    "rail_ms": 2050.953,
+    "total_ms": 32676.34
+  }
+}

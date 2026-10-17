@@ -3,20 +3,40 @@ extends Node
 const Sprites := preload("res://scripts/building_sprites.gd")
 const Assets := preload("res://scripts/supply_chain_3d/assets.gd")
 const Harness := preload("res://tools/shot_harness.gd")
-const FAMILIES: Array[String] = ["farm", "water_pump", "new_forest", "old_forest", "desal", "oil_well", "fracking_oil_well"]
+const FAMILIES: Array[String] = ["farm", "water_pump", "desal", "oil_well", "fracking_oil_well", "offshore_oil_platform"]
+const REQUESTED_BUILDINGS := {"b_021": "desal", "b_033": "offshore_oil_platform", "b_037": "water_pump"}
+
+func _levels(_family: String) -> Array[int]:
+	var result: Array[int] = [1, 2, 3]
+	return result
 
 func _ready() -> void:
 	TelemetryState.enabled = false
 	SaveLoad.autosave_enabled = false
 	AudioServer.set_bus_mute(0, true)
 	var failures: int = 0
+	var asset_count: int = 0
+	# Resolve the same catalog names passed by the Empire view and 3D map.
+	for bid in REQUESTED_BUILDINGS:
+		if Catalog.get_building(bid).get("internal_name", "") != REQUESTED_BUILDINGS[bid]:
+			push_error("Building catalog mapping changed: " + bid)
+			failures += 1
+	for family in Sprites.WITHHELD_FAMILIES:
+		for level in _levels(family):
+			if Sprites.texture_for(family, level) != null or Sprites.npc_texture_for(family, level) != null or Assets.key_for(family, level) != "":
+				push_error("Withheld forest enabled: %s L%d" % [family, level])
+				failures += 1
 	for family in FAMILIES:
-		for level in range(1, 4):
+		for level in _levels(family):
+			asset_count += 1
 			var texture: Texture2D = Sprites.texture_for(family, level)
 			var key: String = Assets.key_for(family, level)
 			var mesh: Mesh = Assets.mesh_for(key)
 			if texture == null or texture.get_size() != Vector2(800, 800):
 				push_error("Missing/wrong sprite: %s L%d" % [family, level])
+				failures += 1
+			elif texture.resource_path != "res://assets/icons/buildings/sprites/%s_lvl%d.png" % [family, level]:
+				push_error("Sprite fell back instead of using exact level: %s L%d" % [family, level])
 				failures += 1
 			if key != "%s_lvl%d" % [family, level] or mesh == null:
 				push_error("Missing/exact-level mesh: %s L%d" % [family, level])
@@ -33,7 +53,10 @@ func _ready() -> void:
 			if Assets.contour_for(key) != null:
 				push_error("Unexpected outer contour: " + key)
 				failures += 1
-	print("[building assets] %d sprites + %d meshes, no outer contours checked; failures=%d" % [FAMILIES.size() * 3, FAMILIES.size() * 3, failures])
+	if asset_count != 18:
+		push_error("Expected 18 enabled authored variants; checked %d" % asset_count)
+		failures += 1
+	print("[building assets] %d sprites + %d meshes, no outer contours checked; failures=%d" % [asset_count, asset_count, failures])
 	if failures > 0 or not "--capture" in OS.get_cmdline_user_args():
 		get_tree().quit(1 if failures > 0 else 0)
 		return
@@ -62,7 +85,7 @@ func _ready() -> void:
 		label.add_theme_color_override("font_color", Color("2f3b59"))
 		label.add_theme_font_size_override("font_size", 16)
 		add_child(label)
-		for level in range(1, 4):
+		for level in _levels(FAMILIES[row]):
 			var left: float = 180 + (level - 1) * 465
 			var top: float = 52 + row * 150
 			var sprite := TextureRect.new()

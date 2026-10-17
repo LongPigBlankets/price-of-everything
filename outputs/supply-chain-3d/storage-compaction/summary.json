@@ -1,0 +1,13 @@
+{
+  "after": 968604879,
+  "before": 1307187841,
+  "changed": 1711,
+  "elapsed_ms": 37877,
+  "errors": [],
+  "ok": true,
+  "verified_payloads": 1841,
+  "export_before_bytes": 2047895336,
+  "export_after_bytes": 1672527792,
+  "export_saved_bytes": 375367544,
+  "storage_assertions_passed": 34
+}

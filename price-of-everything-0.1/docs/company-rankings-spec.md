@@ -15,6 +15,12 @@ table the player climbs, without adding an opponent AI or any new economic press
 **The companies are scenery.** They own nothing, buy nothing, and never touch a price. If removing
 this feature would change a single number in a turn resolution, the implementation is wrong.
 
+**One exception, by design (land prices).** Urban land rises 25% of its starting price each time the
+table's summed revenue doubles (`CompanyRankings.global_revenue()`, read by `LandPrice.tick_economy` on
+`turn_advanced`; docs/land-pricing-spec.md §6). That is the only cost the rival curve reaches: retuning a
+difficulty in `DIFFICULTIES` retunes city land too. The rivals still own nothing and buy nothing, and the
+table still never feeds production or the market.
+
 ---
 
 ## 2. The cycle (owner ruling, 2026-08-01)

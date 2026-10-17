@@ -27,8 +27,10 @@ ROOT = GAME.parent
 KIT = ROOT / '.claude/skills/blender-building-sprites'
 OUTPUT = ROOT / 'outputs/building-assets-2026-10-08'
 SPRITES = GAME / 'assets/icons/buildings/sprites'
-FAMILIES = ('farm', 'water_pump', 'new_forest', 'old_forest', 'desal', 'oil_well', 'fracking_oil_well')
-LABELS = dict(zip(FAMILIES, ('FARM', 'WATER PUMP', 'NEW GROWTH', 'OLD GROWTH', 'DESALINATION', 'OIL WELL', 'SHALE OIL WELL')))
+FAMILIES = ('farm', 'water_pump', 'new_forest', 'old_forest', 'desal', 'oil_well', 'fracking_oil_well', 'offshore_oil_platform', 'furnace')
+LABELS = dict(zip(FAMILIES, ('FARM', 'WATER PUMP', 'NEW GROWTH', 'OLD GROWTH', 'DESALINATION', 'OIL WELL', 'SHALE OIL WELL', 'OFFSHORE OIL PLATFORM')))
+LABELS['furnace'] = 'FURNACE'
+FAMILY_LEVELS = {name: (1,2,3) for name in FAMILIES}
 
 
 def sha(path):
@@ -64,6 +66,9 @@ def metrics(path, mask_path=None):
 
 
 def sheet(revision, families):
+    if list(families) == ['furnace']:
+        module(revision/'source/furnace_paper.py').proof(revision)
+        return
     # Proof explicitly includes thumbnail scale and the shipped industrial style control.
     font=ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial.ttf',20) if Path('/System/Library/Fonts/Supplemental/Arial.ttf').exists() else ImageFont.load_default()
     small=ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial.ttf',14) if Path('/System/Library/Fonts/Supplemental/Arial.ttf').exists() else font
@@ -76,7 +81,7 @@ def sheet(revision, families):
         top=95+row*335
         draw.line((25,top,1375,top),fill='#c9c2b1')
         draw.text((30,top+14),LABELS[name],fill='#2f3b59',font=font)
-        for level in (1,2,3):
+        for level in FAMILY_LEVELS[name]:
             x=205+(level-1)*310
             im=Image.open(revision/f'{name}_lvl{level}.png').convert('RGBA')
             canvas.paste(im.resize((300,300),Image.Resampling.LANCZOS),(x,top+15),im.resize((300,300),Image.Resampling.LANCZOS))
@@ -99,7 +104,8 @@ def verify(revision):
     for filename,digest in manifest.get('models',{}).items():
         assert sha(revision/'models'/filename)==digest, f'Model changed: {filename}'
     for name in manifest['families']:
-        assert len({manifest['sprites'][f'{name}_lvl{l}.png']['sha256'] for l in (1,2,3)})==3, f'Duplicate upgrades: {name}'
+        levels=manifest.get('family_levels',{}).get(name,[1,2,3])
+        assert len({manifest['sprites'][f'{name}_lvl{l}.png']['sha256'] for l in levels})==len(levels), f'Duplicate upgrades: {name}'
     print(f"Verified {len(manifest['sprites'])} sprites and frozen source.",flush=True)
     return manifest
 
@@ -113,6 +119,9 @@ def build(revision,families):
     for name in ('sprite_kit.py','props_kit.py','render_sprite.py','sprite_export.py','stylize_shade.py','bake_sprite.py'):
         shutil.copy2(KIT/name,source/name)
     shutil.copy2(HERE/'builders.py',source/'builders.py')
+    shutil.copy2(HERE/'furnace_builder.py',source/'furnace_builder.py')
+    for name in ('furnace_paper.py', 'paper_wpa_catalog.py'):
+        shutil.copy2(HERE/name,source/name)
     shutil.copy2(__file__,source/'pipeline.py')
     shutil.copy2(HERE.parent/'supply_chain_3d/export_models.py',source/'export_models.py')
     # The legacy renderer executes one builder in Kit's namespace. This adapter also
@@ -122,16 +131,18 @@ def build(revision,families):
         "_src=pathlib.Path(sys.argv[sys.argv.index('--python')+1]).parent\n"
         "exec((_src/'props_kit.py').read_text(),globals())\n"
         "exec((_src/'builders.py').read_text(),globals())\n")
+    with (source/'entry.py').open('a') as f:
+        f.write("exec((_src/'furnace_builder.py').read_text(),globals())\n")
     with (source/'render_sprite.py').open('a') as f:
         f.write("\n# Editable source scene, saved after restoring colour-pass settings.\n"
                 "scene.render.filepath = out_png\n"
                 "bpy.ops.wm.save_as_mainfile(filepath=out_png.rsplit('.',1)[0]+'.blend')\n")
-    manifest=dict(format_version=1,revision=revision.name,families=list(families),outer_contour=False,
+    manifest=dict(format_version=1,revision=revision.name,families=list(families),family_levels={n:list(FAMILY_LEVELS[n]) for n in families},outer_contour=False,
                   source_sha256={p.name:sha(p) for p in source.iterdir() if p.is_file()},sprites={})
     exporter=module(source/'sprite_export.py')
     stylizer=module(source/'stylize_shade.py')
     for name in families:
-        for level in (1,2,3):
+        for level in FAMILY_LEVELS[name]:
             out=revision/f'{name}_L{level}.png'
             cmd=['blender','--background','--factory-startup','--python',str(source/'render_sprite.py'),
                  '--','entry.py','build_'+name,str(level),str(out),'BLDG_'+name]
@@ -145,11 +156,19 @@ def build(revision,families):
             b=raw.getchannel('A').getbbox()
             assert b and min(b[0],b[1],raw.width-b[2],raw.height-b[3])>8, f'Raw render clipped: {out}'
         # Owner: remove the heavy outer navy line; preserve both Freestyle detail tiers.
-        exporter.export(str(revision),name,contour=False)
-        for level in (1,2,3):
+        if name == 'furnace':
+            furnace_export=module(source/'furnace_paper.py')
+            furnace_export.export(revision,levels=FAMILY_LEVELS[name])
+            manifest['sprite_scale']=furnace_export.EXPORT_SCALE
+        else:
+            exporter.export(str(revision),name,levels=FAMILY_LEVELS[name],contour=False)
+        for level in FAMILY_LEVELS[name]:
             out=revision/f'{name}_lvl{level}.png'
             mask=revision/f'{name}_lvl{level}_mask.png'
-            stylizer.stylize(str(out),str(mask),str(out),lit=.86,dark=.56,strength=.22)
+            if name == 'furnace':
+                module(source/'furnace_paper.py').finish(out, mask)
+            else:
+                stylizer.stylize(str(out),str(mask),str(out),lit=.86,dark=.56,strength=.22)
             manifest['sprites'][out.name]=metrics(out,mask)
         (revision/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     sheet(revision,families)
@@ -158,6 +177,13 @@ def build(revision,families):
 
 def install(revision):
     manifest=verify(revision)
+    # L1/L2 are still review drafts. A normal install must not replace their
+    # existing game artwork when installing the released furnace L3.
+    def released(filename):
+        return not filename.startswith(('furnace_lvl1', 'furnace_lvl2'))
+    manifest['sprites']={k:v for k,v in manifest['sprites'].items() if released(k)}
+    if manifest.get('models'):
+        manifest['models']={k:v for k,v in manifest['models'].items() if released(k)}
     backup=revision/'previous-installed'
     backup.mkdir(exist_ok=True)
     for filename in manifest['sprites']:
@@ -192,6 +218,7 @@ def install(revision):
     for name in manifest['families']:
         families[name]=dict(revision=manifest['revision'],source_sha256=manifest['source_sha256'],
                             outer_contour=manifest.get('outer_contour',True))
+        if name == 'furnace': families[name]['released_levels']=[3]
     record=dict(format_version=2,families=sorted(families),family_revisions=families,
                 sprites={**previous.get('sprites',{}),**manifest['sprites']},
                 models={k:v for k,v in {**previous.get('models',{}),**manifest.get('models',{})}.items()
@@ -200,6 +227,7 @@ def install(revision):
         model_dir=GAME/'assets/supply_chain_3d'
         current=json.loads((model_dir/'manifest.json').read_text())
         additions=json.loads((revision/'models/manifest.json').read_text())
+        additions={k:v for k,v in additions.items() if released(k)}
         # Retire only this revision's explicitly disabled contour shells. Keep a
         # rollback copy and remove their import sidecars and stale provenance.
         for key, data in additions.items():
@@ -231,13 +259,15 @@ def models(revision):
     if destination.exists(): raise SystemExit('Models already exported; keep the reviewed snapshot immutable.')
     env=dict(os.environ,POE_PROJECT_ROOT=str(ROOT),POE_SPRITE_KIT=str(revision/'source'),
              POE_DETAIL_SOURCE=str(revision/'source'),POE_MODEL_OUTPUT=str(destination))
+    if 'furnace' in manifest['families']:
+        env['POE_FURNACE_VARIANT'] = 'paper-wpa'
     cmd=['blender','--background','--factory-startup','--python',str(revision/'source/export_models.py'),
          '--',*manifest['families']]
     with (revision/'models.log').open('w') as log:
         run=subprocess.run(cmd,env=env,stdout=log,stderr=subprocess.STDOUT)
     assert run.returncode==0 and (destination/'manifest.json').exists(), 'Model export failed; see models.log'
     exported=json.loads((destination/'manifest.json').read_text())
-    assert len(exported)==len(manifest['families'])*3
+    assert len(exported)==sum(len(manifest.get('family_levels',{}).get(n,[1,2,3])) for n in manifest['families'])
     manifest['models']={p.name:sha(p) for p in destination.iterdir() if p.is_file()}
     (revision/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     verify(revision)

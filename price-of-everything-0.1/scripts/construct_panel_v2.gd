@@ -577,8 +577,7 @@ func _v3_compute_land() -> Dictionary:
 		return out
 	var patches := mini(int(ceil(float(short) / float(BuildingState.LAND_PATCH_SIZE))), for_sale)
 	var units := patches * BuildingState.LAND_PATCH_SIZE
-	var cost := AdvisorState.purchase_cost_after_advisor(
-		float(patches) * BuildingState.LAND_PATCH_COST, {"tile_id": _locked_tile_id})
+	var cost := float(preload("res://scripts/land_price.gd").quote(_locked_tile_id, patches, false).total)
 	out.units = units
 	out.cost = cost
 	if free + units < needed:

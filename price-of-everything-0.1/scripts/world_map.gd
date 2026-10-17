@@ -220,6 +220,7 @@ func _build_base() -> void:
 	terrain_layer.tile_selected.connect(_on_tile_selected)
 	terrain_layer.stockpile_destination_selected.connect(_on_stockpile_destination_selected)
 	terrain_layer.survey_tile_clicked.connect(_on_survey_tile_clicked)
+	terrain_layer.tile_menu_requested.connect(_on_tile_menu_requested)
 	MatchState.buy_tile_pick_requested.connect(_on_buy_tile_pick_requested)
 	MatchState.transfer_for_good_requested.connect(_on_transfer_requested)
 	MatchState.purchase_for_good_requested.connect(_on_purchase_requested)
@@ -347,6 +348,10 @@ func finish_build(animate: bool) -> void:
 	# road network below, otherwise they use the roadless fallback and sit under
 	# turn-one streets. They are emitted in the post-road pass instead.
 	if loaded_pending and not pending_start:
+		if not pending_tutorial and not BuildingState.rail_hubs_seeded:
+			# Older saves need their port parcels restored before placing new hubs.
+			_rebuild_after_load()
+			preload("res://scripts/rail_hub.gd").seed_world(terrain_layer)
 		_rebuild_after_load()
 	# Advanced Setting "All tiles surveyed at game start": reveal every tile now that
 	# the terrain (and any pending ruleset) exists.
@@ -422,6 +427,10 @@ func finish_build(animate: bool) -> void:
 		# BUILDINGS now — after the baked road network — so they lay out against real
 		# streets (NPC ports, the ruins, the start companies, + future player start builds).
 		await _place_npc_ports(animate)
+		if not pending_tutorial:
+			for iid in preload("res://scripts/rail_hub.gd").seed_world(terrain_layer):
+				var hub: Dictionary = BuildingState.get_building(iid)
+				building_placed.emit(hub.tile_id, hub.building_id, hub.recipe_id, iid, terrain_layer.id_to_coord(hub.tile_id))
 		_prof("place npc_ports")
 		# Tutorial keeps the ports (coast/docks) but drops the ruins + NPC start
 		# companies so the board is a clean slate around the seeded window factory.
@@ -553,12 +562,13 @@ func finish_build(animate: bool) -> void:
 	# arrives while they are still watching, they click straight through, and
 	# the work lands on the map instead. "Ready" has to mean ready.
 	await _warm_deferred_ui()
-	build_complete = true   # the loading screen may now offer "Begin"
-	# The supply chain view, built and baked behind the loading screen in the slack before "Begin"
-	# can be pressed, a little each frame, so its first opening is immediate. Fire and forget: if
-	# the player gets there first, opening it builds it as before.
+	# A coroutine still performs synchronous work between yields. Finish the
+	# packaged supply view before offering Begin, so its remaining uploads cannot
+	# freeze the camera after the player starts moving around.
 	if _loading_screen_active() and empire_view != null:
-		empire_view.prepare()
+		await empire_view.prepare()
+		_prof("supply-chain preparation")
+	build_complete = true   # the loading screen may now offer "Begin"
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", BuildingState.buildings.size())
 
@@ -906,7 +916,9 @@ func _rebuild_after_load() -> void:
 		building_visuals.clear_all()
 	if forest_visuals.has_method("clear_all"):
 		forest_visuals.clear_all()
-	for instance_id in BuildingState.buildings:
+	var restore_ids := BuildingState.buildings.keys()
+	restore_ids.sort_custom(func(a, b): return str(BuildingState.buildings[a].building_id) == "b_038" and str(BuildingState.buildings[b].building_id) != "b_038")
+	for instance_id in restore_ids:
 		var inst: Dictionary = BuildingState.buildings[instance_id]
 		var tile_id := str(inst.get("tile_id", ""))
 		building_placed.emit(tile_id, str(inst.get("building_id", "")),
@@ -925,6 +937,19 @@ func _on_tile_selected(tile_data: Dictionary) -> void:
 
 # While a tutorial is active, map interaction is confined to the board tiles. Returns
 # true (and nudges the player) when tile_id is off-board. A no-op in normal play.
+var _tile_menu: PopupPanel = null
+
+## Right click on a tile: its quick menu (scripts/tile_quick_menu.gd), unless a tutorial step holds the player to
+## its spotlight.
+func _on_tile_menu_requested(tile_data: Dictionary, screen_pos: Vector2) -> void:
+	if Tutorial.active and Tutorial.hard_gate:
+		return
+	if _tile_menu == null:
+		_tile_menu = load("res://scripts/tile_quick_menu.gd").new()
+		_hud.add_child(_tile_menu)
+	_tile_menu.call("open_for", tile_data, screen_pos)
+
+
 func _tutorial_blocks(tile_id: String) -> bool:
 	if not Tutorial.active or Tutorial.tile_allowed(tile_id):
 		return false
@@ -2151,9 +2176,23 @@ func _on_search_recipe_build_requested(building_id: String, recipe_id: String) -
 ## if the build is placed; a refusal returns the land and its cash.
 func _on_build_attempted(building_id: String, tile_id: String) -> void:
 	_attempt_land = {}
-	var placed := _attempt_build(building_id, tile_id)
+	Construction.placing_level = BuildMode.attempt_level
+	var placed := _attempt_level_allowed(building_id) and _attempt_build(building_id, tile_id)
+	Construction.placing_level = 1
 	_settle_attempt_land(placed)
 	BuildMode.last_attempt_placed = placed
+
+
+## A building placed above level 1 needs that level's research, as an upgrade to it would.
+func _attempt_level_allowed(building_id: String) -> bool:
+	var level := Construction.placing_level
+	if level <= 1:
+		return true
+	var gate := preload("res://scripts/building_levels.gd").research_gate(str(Catalog.get_building(building_id).get("internal_name", "")), level)
+	if gate != "" and not ResearchState.is_unlocked(gate):
+		MatchState.request_toast("Building it at level %d needs the research %s." % [level, gate], "warning")
+		return false
+	return true
 
 
 func _attempt_build(building_id: String, tile_id: String) -> bool:
@@ -2950,7 +2989,7 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 	# The rules (roads and rail off water, the tile's physical cap, owned land and what buying
 	# it takes, the planning limit) are ConstructionRules.land_plan's, the figures the construct
 	# flow shows. This keeps the side effects: the refusals and toasts, and the land purchase.
-	var plan := ConstructionRules.land_plan(tile_id, building_id, BuildMode.attempt_buy_land)
+	var plan := ConstructionRules.land_plan(tile_id, building_id, BuildMode.attempt_buy_land, Construction.placing_level)
 	var internal := str(Catalog.get_building(building_id).get("internal_name", ""))
 	# Infrastructure the tile's water cannot take is refused FIRST: the land gate below would
 	# otherwise answer "buy more land here" for a road across open water, advice the player

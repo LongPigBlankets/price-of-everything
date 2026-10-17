@@ -50,14 +50,14 @@
     "contour": true
   },
   "furnace_lvl3": {
-    "height": 1.0103448382739364,
+    "height": 0.641047207255598,
     "width": 1.0,
-    "depth": 0.6758620821196457,
-    "triangles": 12000,
+    "depth": 0.7880316557982521,
+    "triangles": 44124,
     "ink_edges": true,
     "source_ink_widths": true,
-    "projected_height": 1.0815025523494062,
-    "contour": true
+    "projected_height": 1.0384282037392552,
+    "contour": false
   },
   "power_plant_lvl1": {
     "height": 0.5707656566324101,
@@ -153,10 +153,164 @@
     "height": 0.2175342514090342,
     "width": 1.0,
     "depth": 0.9041095890410958,
-    "triangles": 6724,
+    "triangles": 4828,
     "ink_edges": true,
     "source_ink_widths": true,
-    "projected_height": 0.8059827894485913,
+    "harbour": {
+      "ships": [
+        {
+          "near": "port_ship_boxa_lvl1",
+          "medium": "port_ship_boxa_medium_lvl1",
+          "berth": [
+            0.04246574297343215,
+            0.01972602805046186,
+            -0.16712330857368365
+          ],
+          "length": 0.37260273972602737,
+          "beam": 0.07671232876712328,
+          "mouth": 0.3835616438356164
+        },
+        {
+          "near": "port_ship_boxb_lvl1",
+          "medium": "port_ship_boxb_medium_lvl1",
+          "berth": [
+            0.015068482699459547,
+            0.01972602805046186,
+            0.07397258183727526
+          ],
+          "length": 0.33972602739726027,
+          "beam": 0.07397260273972603,
+          "mouth": 0.410958904109589
+        },
+        {
+          "near": "port_ship_tanker_lvl1",
+          "medium": "port_ship_tanker_medium_lvl1",
+          "berth": [
+            0.135616427904939,
+            0.01972602805046186,
+            0.3397260064948095
+          ],
+          "length": 0.3835616438356164,
+          "beam": 0.0821917808219178,
+          "mouth": 0.2904109589041096
+        }
+      ],
+      "waterline": 0.01972602805046186,
+      "deck": 0.050410959557311175,
+      "across": 0.6794520547945205,
+      "anchor": [
+        -0.19863014743752677,
+        0.01972602805046186,
+        -0.0465753633682042
+      ],
+      "ship_water": [
+        [
+          -0.09912329812245825,
+          0.01972602805046186,
+          -0.14794522638190283
+        ],
+        [
+          -0.09912329812245825,
+          0.01972602805046186,
+          -0.18630139076546448
+        ],
+        [
+          0.18405478406932257,
+          0.01972602805046186,
+          -0.14794522638190283
+        ],
+        [
+          0.18405478406932257,
+          0.01972602805046186,
+          -0.18630139076546448
+        ],
+        [
+          -0.11402740771149937,
+          0.01972602805046186,
+          0.09246573252220677
+        ],
+        [
+          -0.11402740771149937,
+          0.01972602805046186,
+          0.05547943115234374
+        ],
+        [
+          0.14416437311041846,
+          0.01972602805046186,
+          0.09246573252220677
+        ],
+        [
+          0.14416437311041846,
+          0.01972602805046186,
+          0.05547943115234374
+        ],
+        [
+          -0.010136996752595261,
+          0.01972602805046186,
+          0.3602739517002889
+        ],
+        [
+          -0.010136996752595261,
+          0.01972602805046186,
+          0.31917806128933
+        ],
+        [
+          0.28136985256247327,
+          0.01972602805046186,
+          0.3602739517002889
+        ],
+        [
+          0.28136985256247327,
+          0.01972602805046186,
+          0.31917806128933
+        ]
+      ],
+      "shore_edge": [
+        [
+          -0.3630137090813624,
+          0.050410959557311175,
+          0.2931506640290561
+        ],
+        [
+          -0.3630137090813624,
+          0.050410959557311175,
+          -0.0465753633682042
+        ],
+        [
+          -0.3630137090813624,
+          0.050410959557311175,
+          -0.3863013907654645
+        ]
+      ],
+      "pier_tip": [
+        0.398630126535076,
+        0.050410959557311175,
+        0.2109588832071383
+      ],
+      "basin": [
+        0.3712328662611034,
+        0.01972602805046186,
+        -0.0465753633682042
+      ],
+      "bounds_min": [
+        -0.363013698630137,
+        0.0,
+        -0.38630140644230254
+      ],
+      "bounds_max": [
+        0.42602737635782323,
+        0.2175342514090342,
+        0.34638804605562395
+      ],
+      "backdrop_removed": true,
+      "road_entry": [
+        -0.3630137090813624,
+        0.0518904116121057,
+        -0.3643835825462864
+      ],
+      "road_width": 0.043835616438356165
+    },
+    "projected_height": 0.6599081867944676,
     "contour": true
   },
   "construction_site_lvl1": {
@@ -493,9 +647,31 @@
     "height": 2.4293810406587526,
     "width": 0.5038643288520974,
     "depth": 1.0,
-    "triangles": 2284,
+    "triangles": 3004,
     "ink_edges": true,
     "source_ink_widths": true,
+    "cable_anchors": [
+      [
+        0.0,
+        1.911441355802855,
+        0.40588977518498626
+      ],
+      [
+        0.0,
+        1.911441355802855,
+        -0.40588977518498626
+      ],
+      [
+        0.0,
+        1.4731710108969387,
+        0.48350986515388134
+      ],
+      [
+        0.0,
+        1.4731710108969387,
+        -0.48350986515388134
+      ]
+    ],
     "projected_height": 2.1916483083418656,
     "contour": true
   },
@@ -902,33 +1078,770 @@
     "contour": false
   },
   "fracking_oil_well_lvl1": {
-    "height": 0.22058824680543562,
-    "width": 0.8385773136011897,
-    "depth": 0.712722309019052,
-    "triangles": 13128,
+    "height": 0.34899511947735956,
+    "width": 0.8297120626327263,
+    "depth": 0.7047799555901708,
+    "triangles": 17592,
     "ink_edges": true,
     "source_ink_widths": true,
-    "projected_height": 0.6933251444351235,
+    "projected_height": 0.6263535931488958,
     "contour": false
   },
   "fracking_oil_well_lvl2": {
-    "height": 0.22058824680543562,
-    "width": 0.9846101621370289,
-    "depth": 0.712722309019052,
-    "triangles": 17912,
+    "height": 0.34899511947735956,
+    "width": 0.9953828903790013,
+    "depth": 0.7047799555901708,
+    "triangles": 25860,
     "ink_edges": true,
     "source_ink_widths": true,
-    "projected_height": 0.7575502574458733,
+    "projected_height": 0.69010772876413,
     "contour": false
   },
   "fracking_oil_well_lvl3": {
-    "height": 0.3871408954662701,
+    "height": 0.4318304847861498,
     "width": 1.0,
-    "depth": 0.8419972993143394,
-    "triangles": 23238,
+    "depth": 0.8673274806603819,
+    "triangles": 32460,
     "ink_edges": true,
     "source_ink_widths": true,
-    "projected_height": 0.7575502574458733,
+    "projected_height": 0.7289881768347932,
     "contour": false
+  },
+  "port_ship_boxa_lvl1": {
+    "height": 0.1167123260563367,
+    "width": 0.37260273711322106,
+    "depth": 0.0775342444850974,
+    "triangles": 284,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "component": {
+      "waterline": 0.007671232778732091,
+      "medium": false
+    },
+    "projected_height": 0.24025132399051258,
+    "contour": true
+  },
+  "port_ship_boxa_medium_lvl1": {
+    "height": 0.10191780655351404,
+    "width": 0.37260273711322106,
+    "depth": 0.0775342444850974,
+    "triangles": 176,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "component": {
+      "waterline": 0.007671232778732091,
+      "medium": true
+    },
+    "projected_height": 0.23776827823119756,
+    "contour": false
+  },
+  "port_ship_boxb_lvl1": {
+    "height": 0.1167123260563367,
+    "width": 0.3397260300100666,
+    "depth": 0.07479452107050648,
+    "triangles": 284,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "component": {
+      "waterline": 0.007671232778732091,
+      "medium": false
+    },
+    "projected_height": 0.22856311600336596,
+    "contour": true
+  },
+  "port_ship_boxb_medium_lvl1": {
+    "height": 0.10191780655351404,
+    "width": 0.3397260300100666,
+    "depth": 0.07479452107050648,
+    "triangles": 176,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "component": {
+      "waterline": 0.007671232778732091,
+      "medium": true
+    },
+    "projected_height": 0.2255655641737953,
+    "contour": false
+  },
+  "port_ship_tanker_lvl1": {
+    "height": 0.10410959181720264,
+    "width": 0.3835616503676323,
+    "depth": 0.08301371744234268,
+    "triangles": 1256,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "component": {
+      "waterline": 0.007671232778732091,
+      "medium": false
+    },
+    "projected_height": 0.23499442521478506,
+    "contour": true
+  },
+  "port_ship_tanker_medium_lvl1": {
+    "height": 0.09095890636313451,
+    "width": 0.3835616503676323,
+    "depth": 0.08301371744234268,
+    "triangles": 116,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "component": {
+      "waterline": 0.007671232778732091,
+      "medium": true
+    },
+    "projected_height": 0.2334285481894421,
+    "contour": false
+  },
+  "farm_building_lvl1": {
+    "height": 0.3517025001566546,
+    "width": 0.35815353301009495,
+    "depth": 0.5518217389679958,
+    "triangles": 860,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.5234878409995256,
+    "contour": false
+  },
+  "farm_building_lvl2": {
+    "height": 0.42447827696312235,
+    "width": 0.4795719726426689,
+    "depth": 0.615493459428401,
+    "triangles": 2114,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.6123002565339509,
+    "contour": false
+  },
+  "farm_building_lvl3": {
+    "height": 0.4952246283448918,
+    "width": 0.9730279590702671,
+    "depth": 0.6446763330630919,
+    "triangles": 4128,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.7422786537437186,
+    "contour": false
+  },
+  "farm_crop_cell_lvl1": {
+    "height": 0.0557127712159019,
+    "width": 0.04421648542665331,
+    "depth": 0.08135833993194233,
+    "triangles": 160,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "component": {
+      "pitch": [
+        0.04421648542665331,
+        0.10788822444103408
+      ],
+      "medium": false
+    },
+    "projected_height": 0.08592420955839714,
+    "contour": false
+  },
+  "farm_crop_cell_lvl2": {
+    "height": 0.0557127712159019,
+    "width": 0.04421648542665331,
+    "depth": 0.08135833993194233,
+    "triangles": 160,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "component": {
+      "pitch": [
+        0.04421648542665331,
+        0.10788822444103408
+      ],
+      "medium": false
+    },
+    "projected_height": 0.08592420955839714,
+    "contour": false
+  },
+  "farm_crop_cell_lvl3": {
+    "height": 0.0557127712159019,
+    "width": 0.04421648542665331,
+    "depth": 0.08135833993194233,
+    "triangles": 160,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "component": {
+      "pitch": [
+        0.04421648542665331,
+        0.10788822444103408
+      ],
+      "medium": false
+    },
+    "projected_height": 0.08592420955839714,
+    "contour": false
+  },
+  "farm_crop_cell_medium_lvl1": {
+    "height": 0.038026178099443746,
+    "width": 0.04421648542665331,
+    "depth": 0.08135833993194233,
+    "triangles": 36,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "component": {
+      "pitch": [
+        0.04421648542665331,
+        0.10788822444103408
+      ],
+      "medium": true
+    },
+    "projected_height": 0.07870369031456054,
+    "contour": false
+  },
+  "farm_crop_cell_medium_lvl2": {
+    "height": 0.038026178099443746,
+    "width": 0.04421648542665331,
+    "depth": 0.08135833993194233,
+    "triangles": 36,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "component": {
+      "pitch": [
+        0.04421648542665331,
+        0.10788822444103408
+      ],
+      "medium": true
+    },
+    "projected_height": 0.07870369031456054,
+    "contour": false
+  },
+  "farm_crop_cell_medium_lvl3": {
+    "height": 0.038026178099443746,
+    "width": 0.04421648542665331,
+    "depth": 0.08135833993194233,
+    "triangles": 36,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "component": {
+      "pitch": [
+        0.04421648542665331,
+        0.10788822444103408
+      ],
+      "medium": true
+    },
+    "projected_height": 0.07870369031456054,
+    "contour": false
+  },
+  "civic_office_lvl1": {
+    "height": 0.597617258148803,
+    "width": 1.0,
+    "depth": 0.5860876758809008,
+    "triangles": 5588,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.16910070119622728,
+    "projected_height": 1.0135603677801814,
+    "contour": true
+  },
+  "civic_office_lvl2": {
+    "height": 0.7774789614376161,
+    "width": 0.9077632685536029,
+    "depth": 0.716756384871895,
+    "triangles": 6880,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.16910070119622728,
+    "projected_height": 1.1039335417044052,
+    "contour": true
+  },
+  "civic_l_lvl1": {
+    "height": 0.7786885868332785,
+    "width": 1.0,
+    "depth": 0.9519906854082165,
+    "triangles": 8344,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.1717408346385247,
+    "projected_height": 1.3088803634187454,
+    "contour": true
+  },
+  "civic_park_lvl1": {
+    "height": 0.2952083409379928,
+    "width": 1.0,
+    "depth": 0.7904256630556363,
+    "triangles": 11272,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.842335752074399,
+    "contour": false
+  },
+  "civic_plaza_lvl1": {
+    "height": 0.2722199129919171,
+    "width": 1.0,
+    "depth": 0.7931034057517412,
+    "triangles": 5816,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.7404779150695913,
+    "contour": false
+  },
+  "civic_long_04_lvl1": {
+    "height": 1.019672111771627,
+    "width": 0.9980327731888327,
+    "depth": 1.0,
+    "triangles": 3964,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.28852458114234486,
+    "civic_module": {
+      "shape": "long",
+      "columns": 4,
+      "return_columns": 0,
+      "bay_pitch": 0.23606556638919124
+    },
+    "projected_height": 1.4402463481377275,
+    "contour": true
+  },
+  "civic_long_05_lvl1": {
+    "height": 0.8262486951586586,
+    "width": 1.0,
+    "depth": 0.8103082212605528,
+    "triangles": 4468,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.23379384013539947,
+    "civic_module": {
+      "shape": "long",
+      "columns": 5,
+      "return_columns": 0,
+      "bay_pitch": 0.19128586920169047
+    },
+    "projected_height": 1.2451355834705076,
+    "contour": true
+  },
+  "civic_long_06_lvl1": {
+    "height": 0.6935771693942517,
+    "width": 1.0,
+    "depth": 0.680196272298943,
+    "triangles": 5084,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.19625334455963686,
+    "civic_module": {
+      "shape": "long",
+      "columns": 6,
+      "return_columns": 0,
+      "bay_pitch": 0.1605709182760665
+    },
+    "projected_height": 1.1107558080249844,
+    "contour": true
+  },
+  "civic_long_07_lvl1": {
+    "height": 0.597617258148803,
+    "width": 1.0,
+    "depth": 0.5860876758809008,
+    "triangles": 5588,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.16910070119622728,
+    "civic_module": {
+      "shape": "long",
+      "columns": 7,
+      "return_columns": 0,
+      "bay_pitch": 0.13835511916054957
+    },
+    "projected_height": 1.0135603677801814,
+    "contour": true
+  },
+  "civic_long_08_lvl1": {
+    "height": 0.5249831448844483,
+    "width": 1.0,
+    "depth": 0.5148548624835071,
+    "triangles": 6092,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.14854828354715344,
+    "civic_module": {
+      "shape": "long",
+      "columns": 8,
+      "return_columns": 0,
+      "bay_pitch": 0.12153950472039826
+    },
+    "projected_height": 0.9399910167054569,
+    "contour": true
+  },
+  "civic_long_09_lvl1": {
+    "height": 0.4680914996789316,
+    "width": 1.0,
+    "depth": 0.4590608042281818,
+    "triangles": 6596,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.13245032625880412,
+    "civic_module": {
+      "shape": "long",
+      "columns": 9,
+      "return_columns": 0,
+      "bay_pitch": 0.10836844875720338
+    },
+    "projected_height": 0.8823668339180984,
+    "contour": true
+  },
+  "civic_long_10_lvl1": {
+    "height": 0.42232483214606664,
+    "width": 1.0,
+    "depth": 0.4141770940585002,
+    "triangles": 7100,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.11950027258198233,
+    "civic_module": {
+      "shape": "long",
+      "columns": 10,
+      "return_columns": 0,
+      "bay_pitch": 0.09777295029434917
+    },
+    "projected_height": 0.8360109058862528,
+    "contour": true
+  },
+  "civic_corner_04x02_lvl1": {
+    "height": 1.0152672341085582,
+    "width": 0.7745547360049869,
+    "depth": 1.0,
+    "triangles": 5456,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.22391857941059337,
+    "civic_module": {
+      "shape": "l",
+      "columns": 4,
+      "return_columns": 2,
+      "bay_pitch": 0.18320611042684912
+    },
+    "projected_height": 1.4755110813333543,
+    "contour": true
+  },
+  "civic_corner_04x03_lvl1": {
+    "height": 0.8580645489436324,
+    "width": 0.6546236673990885,
+    "depth": 1.0,
+    "triangles": 6128,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.189247311827957,
+    "civic_module": {
+      "shape": "l",
+      "columns": 4,
+      "return_columns": 3,
+      "bay_pitch": 0.15483870967741936
+    },
+    "projected_height": 1.3102574619528606,
+    "contour": true
+  },
+  "civic_corner_04x04_lvl1": {
+    "height": 0.7430167776350483,
+    "width": 0.5668528882976385,
+    "depth": 1.0,
+    "triangles": 6800,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.16387336824906037,
+    "civic_module": {
+      "shape": "l",
+      "columns": 4,
+      "return_columns": 4,
+      "bay_pitch": 0.13407821038559486
+    },
+    "projected_height": 1.189317673610789,
+    "contour": true
+  },
+  "civic_corner_05x02_lvl1": {
+    "height": 1.0152672341085582,
+    "width": 0.9577608173120089,
+    "depth": 1.0,
+    "triangles": 6212,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.22391857941059337,
+    "civic_module": {
+      "shape": "l",
+      "columns": 5,
+      "return_columns": 2,
+      "bay_pitch": 0.18320611042684912
+    },
+    "projected_height": 1.5129078759457169,
+    "contour": true
+  },
+  "civic_corner_05x03_lvl1": {
+    "height": 0.8580645489436324,
+    "width": 0.8094623524655578,
+    "depth": 1.0,
+    "triangles": 6884,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.189247311827957,
+    "civic_module": {
+      "shape": "l",
+      "columns": 5,
+      "return_columns": 3,
+      "bay_pitch": 0.15483870967741936
+    },
+    "projected_height": 1.3418637845277932,
+    "contour": true
+  },
+  "civic_corner_05x04_lvl1": {
+    "height": 0.7430167776350483,
+    "width": 0.7009310773720757,
+    "depth": 1.0,
+    "triangles": 7556,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.16387336824906037,
+    "civic_module": {
+      "shape": "l",
+      "columns": 5,
+      "return_columns": 4,
+      "bay_pitch": 0.13407821038559486
+    },
+    "projected_height": 1.2166862765689601,
+    "contour": true
+  },
+  "civic_corner_06x02_lvl1": {
+    "height": 0.8898305394759487,
+    "width": 1.0,
+    "depth": 0.8764495785754897,
+    "triangles": 6812,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.19625334455963686,
+    "civic_module": {
+      "shape": "l",
+      "columns": 6,
+      "return_columns": 2,
+      "bay_pitch": 0.1605709182760665
+    },
+    "projected_height": 1.3587638751742421,
+    "contour": true
+  },
+  "civic_corner_06x03_lvl1": {
+    "height": 0.8580645489436324,
+    "width": 0.9643010785502772,
+    "depth": 1.0,
+    "triangles": 7484,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.189247311827957,
+    "civic_module": {
+      "shape": "l",
+      "columns": 6,
+      "return_columns": 3,
+      "bay_pitch": 0.15483870967741936
+    },
+    "projected_height": 1.3734701071027255,
+    "contour": true
+  },
+  "civic_corner_06x04_lvl1": {
+    "height": 0.7430167776350483,
+    "width": 0.8350093019651089,
+    "depth": 1.0,
+    "triangles": 8156,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.16387336824906037,
+    "civic_module": {
+      "shape": "l",
+      "columns": 6,
+      "return_columns": 4,
+      "bay_pitch": 0.13407821038559486
+    },
+    "projected_height": 1.244054879527131,
+    "contour": true
+  },
+  "civic_corner_07x02_lvl1": {
+    "height": 0.7667179813359841,
+    "width": 1.0,
+    "depth": 0.7551883440906971,
+    "triangles": 7580,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.16910070119622728,
+    "civic_module": {
+      "shape": "l",
+      "columns": 7,
+      "return_columns": 2,
+      "bay_pitch": 0.13835511916054957
+    },
+    "projected_height": 1.220665553970729,
+    "contour": true
+  },
+  "civic_corner_07x03_lvl1": {
+    "height": 0.7667179813359841,
+    "width": 1.0,
+    "depth": 0.8935434779118827,
+    "triangles": 8252,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.16910070119622728,
+    "civic_module": {
+      "shape": "l",
+      "columns": 7,
+      "return_columns": 3,
+      "bay_pitch": 0.13835511916054957
+    },
+    "projected_height": 1.2771487858030004,
+    "contour": true
+  },
+  "civic_corner_07x04_lvl1": {
+    "height": 0.7430167776350483,
+    "width": 0.9690874555209502,
+    "depth": 1.0,
+    "triangles": 8924,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.16387336824906037,
+    "civic_module": {
+      "shape": "l",
+      "columns": 7,
+      "return_columns": 4,
+      "bay_pitch": 0.13407821038559486
+    },
+    "projected_height": 1.2924060730718423,
+    "contour": true
+  },
+  "civic_corner_08x02_lvl1": {
+    "height": 0.6735314477497857,
+    "width": 1.0,
+    "depth": 0.6634031170533845,
+    "triangles": 8168,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.14854828354715344,
+    "civic_module": {
+      "shape": "l",
+      "columns": 8,
+      "return_columns": 2,
+      "bay_pitch": 0.12153950472039826
+    },
+    "projected_height": 1.121924745046295,
+    "contour": true
+  },
+  "civic_corner_08x03_lvl1": {
+    "height": 0.6735314477497857,
+    "width": 1.0,
+    "depth": 0.7849426346525721,
+    "triangles": 8840,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.14854828354715344,
+    "civic_module": {
+      "shape": "l",
+      "columns": 8,
+      "return_columns": 3,
+      "bay_pitch": 0.12153950472039826
+    },
+    "projected_height": 1.1715430387014085,
+    "contour": true
+  },
+  "civic_corner_08x04_lvl1": {
+    "height": 0.6735314477497857,
+    "width": 1.0,
+    "depth": 0.9064821522517598,
+    "triangles": 9512,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.14854828354715344,
+    "civic_module": {
+      "shape": "l",
+      "columns": 8,
+      "return_columns": 4,
+      "bay_pitch": 0.12153950472039826
+    },
+    "projected_height": 1.221161338928702,
+    "contour": true
+  },
+  "offshore_oil_platform_lvl1": {
+    "height": 0.8664037355367437,
+    "width": 0.9500314170451734,
+    "depth": 0.7235384550788624,
+    "triangles": 19428,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.9269377669255907,
+    "contour": false
+  },
+  "offshore_oil_platform_lvl2": {
+    "height": 0.8664037355367437,
+    "width": 0.9500314170451734,
+    "depth": 0.916827227873064,
+    "triangles": 38088,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 1.02133042534106,
+    "contour": false
+  },
+  "offshore_oil_platform_lvl3": {
+    "height": 0.8664037355367437,
+    "width": 0.9500314170451734,
+    "depth": 1.0,
+    "triangles": 52352,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 1.1726670418442384,
+    "contour": false
+  },
+  "civic_u_office_lvl1": {
+    "height": 2.7197469944044985,
+    "width": 1.0,
+    "depth": 0.7673087862970384,
+    "triangles": 21032,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.13245032625880412,
+    "projected_height": 2.8904272809987868,
+    "contour": true
+  },
+  "civic_semi_lvl1": {
+    "height": 0.7086693705384242,
+    "width": 1.0,
+    "depth": 0.6792071313303737,
+    "triangles": 644,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.22177419184273914,
+    "projected_height": 1.048232627608716,
+    "contour": true
+  },
+  "civic_bauhaus_lvl1": {
+    "height": 1.1095176198477652,
+    "width": 1.0,
+    "depth": 0.7692307740130092,
+    "triangles": 1264,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.14341590470120402,
+    "projected_height": 1.5297399899323028,
+    "contour": true
+  },
+  "civic_commercial_lvl1": {
+    "height": 0.8395428556708739,
+    "width": 1.0,
+    "depth": 0.742167696974131,
+    "triangles": 5520,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "storey_height": 0.18628281960082632,
+    "projected_height": 1.2403005050784361,
+    "contour": true
+  },
+  "civic_pond_lvl1": {
+    "height": 0.2007684614403109,
+    "width": 1.0,
+    "depth": 0.800374277531076,
+    "triangles": 27716,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.5795552946838259,
+    "contour": true
+  },
+  "civic_grove_lvl1": {
+    "height": 0.23948656250274106,
+    "width": 1.0,
+    "depth": 0.8932427120703115,
+    "triangles": 19350,
+    "ink_edges": true,
+    "source_ink_widths": true,
+    "projected_height": 0.6019254144142595,
+    "contour": true
   }
 }

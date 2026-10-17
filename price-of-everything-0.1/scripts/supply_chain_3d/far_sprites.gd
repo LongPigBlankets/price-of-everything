@@ -50,8 +50,8 @@ static func mesh_for(key: String) -> Mesh:
 		_meshes[key] = mesh
 	return _meshes[key]
 
-static func material_for(key: String, tier: int = 0, lit: bool = false) -> ShaderMaterial:
-	var cache_key := ("medium:" if tier == 1 else "") + key + (":lit" if lit else "")
+static func material_for(key: String, tier: int = 0, lit: bool = false, grade := Vector2(-100000, 100000)) -> ShaderMaterial:
+	var cache_key := ("medium:" if tier == 1 else "") + key + (":lit" if lit else "") + ":" + str(grade)
 	var directory := MEDIUM_DIRECTORY if tier == 1 else DIRECTORY
 	if not _materials.has(cache_key):
 		var material := ShaderMaterial.new()
@@ -60,6 +60,7 @@ static func material_for(key: String, tier: int = 0, lit: bool = false) -> Shade
 		material.set_shader_parameter("artwork", load(directory + artwork))
 		material.set_shader_parameter("depth_art", load(directory + key + "_depth.png"))
 		material.set_shader_parameter("span", float(entry(key).span))
+		material.set_shader_parameter("grade_range", grade)
 		var data := entry(key, tier)
 		material.set_shader_parameter("atlas_grid", Vector2(data.get("yaws", 16), data.get("pitches", 5)))
 		material.set_shader_parameter("foliage_softness", _foliage_softness if key.begins_with("tree_") else 0.0)
@@ -73,8 +74,7 @@ static func instance(key: String, grade: Vector2, tier: int = 0, lit: bool = fal
 	var node := MeshInstance3D.new()
 	node.name = "MediumSprite" if tier == 1 else "FarSprite"
 	node.mesh = mesh
-	node.material_override = material_for(key, tier, lit)
-	node.material_override.set_shader_parameter("grade_range", grade)
+	node.material_override = material_for(key, tier, lit, grade)
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return node
 
@@ -90,7 +90,6 @@ static func grove(key: String, transforms: Array, grade: Vector2, tier: int = 0)
 	var node := MultiMeshInstance3D.new()
 	node.name = "FarTrees_" + key
 	node.multimesh = multi
-	node.material_override = material_for(key, tier)
-	node.material_override.set_shader_parameter("grade_range", grade)
+	node.material_override = material_for(key, tier, false, grade)
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return node

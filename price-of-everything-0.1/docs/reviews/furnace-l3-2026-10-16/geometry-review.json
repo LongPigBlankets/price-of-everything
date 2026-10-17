@@ -1,0 +1,350 @@
+{
+  "1": {
+    "checks": [
+      {
+        "check": "Independent vessel count",
+        "passed": true
+      },
+      {
+        "check": "All geometry above ground",
+        "passed": true
+      },
+      {
+        "check": "line0_vessel sealed manifold shell",
+        "passed": true
+      },
+      {
+        "check": "line0 access ladder exists",
+        "passed": true
+      },
+      {
+        "check": "line0 ladder clears vessel",
+        "passed": true
+      },
+      {
+        "check": "line0 complete stove bank",
+        "passed": true
+      },
+      {
+        "check": "line0 stove clearance 0/1",
+        "passed": true
+      },
+      {
+        "check": "line0 stove clearance 0/2",
+        "passed": true
+      },
+      {
+        "check": "line0 stove clearance 1/2",
+        "passed": true
+      },
+      {
+        "check": "line0 gas cleaning enclosure",
+        "passed": true
+      },
+      {
+        "check": "No broad site plate",
+        "passed": true
+      }
+    ],
+    "mesh_objects": 243,
+    "triangles": 14006,
+    "raw_smoke_anchors": [
+      {
+        "x": 732.0321655273438,
+        "y": 352.862060546875,
+        "radius": 10.593103099918263
+      }
+    ]
+  },
+  "2": {
+    "checks": [
+      {
+        "check": "Independent vessel count",
+        "passed": true
+      },
+      {
+        "check": "All geometry above ground",
+        "passed": true
+      },
+      {
+        "check": "line0_vessel sealed manifold shell",
+        "passed": true
+      },
+      {
+        "check": "line0 access ladder exists",
+        "passed": true
+      },
+      {
+        "check": "line0 ladder clears vessel",
+        "passed": true
+      },
+      {
+        "check": "line0 complete stove bank",
+        "passed": true
+      },
+      {
+        "check": "line0 stove clearance 0/1",
+        "passed": true
+      },
+      {
+        "check": "line0 stove clearance 0/2",
+        "passed": true
+      },
+      {
+        "check": "line0 stove clearance 1/2",
+        "passed": true
+      },
+      {
+        "check": "line0 gas cleaning enclosure",
+        "passed": true
+      },
+      {
+        "check": "No broad site plate",
+        "passed": true
+      }
+    ],
+    "mesh_objects": 368,
+    "triangles": 16942,
+    "raw_smoke_anchors": [
+      {
+        "x": 732.0321655273438,
+        "y": 353.356201171875,
+        "radius": 10.593103099918263
+      }
+    ]
+  },
+  "3": {
+    "checks": [
+      {
+        "check": "Independent vessel count",
+        "passed": true
+      },
+      {
+        "check": "All geometry above ground",
+        "passed": true
+      },
+      {
+        "check": "line0_vessel sealed manifold shell",
+        "passed": true
+      },
+      {
+        "check": "line0 access ladder exists",
+        "passed": true
+      },
+      {
+        "check": "line0 ladder clears vessel",
+        "passed": true
+      },
+      {
+        "check": "line0 complete stove bank",
+        "passed": true
+      },
+      {
+        "check": "line0 stove clearance 0/1",
+        "passed": true
+      },
+      {
+        "check": "line0 stove clearance 0/2",
+        "passed": true
+      },
+      {
+        "check": "line0 stove clearance 1/2",
+        "passed": true
+      },
+      {
+        "check": "line0 gas cleaning enclosure",
+        "passed": true
+      },
+      {
+        "check": "line1_vessel sealed manifold shell",
+        "passed": true
+      },
+      {
+        "check": "line1 access ladder exists",
+        "passed": true
+      },
+      {
+        "check": "line1 ladder clears vessel",
+        "passed": true
+      },
+      {
+        "check": "line1 complete stove bank",
+        "passed": true
+      },
+      {
+        "check": "line1 stove clearance 0/1",
+        "passed": true
+      },
+      {
+        "check": "line1 stove clearance 0/2",
+        "passed": true
+      },
+      {
+        "check": "line1 stove clearance 1/2",
+        "passed": true
+      },
+      {
+        "check": "line1 gas cleaning enclosure",
+        "passed": true
+      },
+      {
+        "check": "Separate furnace vessels",
+        "passed": true
+      },
+      {
+        "check": "Paired process lines clear one another: []",
+        "passed": true
+      },
+      {
+        "check": "One continuous two-slope casting hall roof",
+        "passed": true
+      },
+      {
+        "check": "Two casting hall heat openings",
+        "passed": true
+      },
+      {
+        "check": "Open casting doorway at x=0",
+        "passed": true
+      },
+      {
+        "check": "Open casting doorway at x=2.5",
+        "passed": true
+      },
+      {
+        "check": "Two distinct lift stretches",
+        "passed": true
+      },
+      {
+        "check": "Lift stretches clear furnace vessels: []",
+        "passed": true
+      },
+      {
+        "check": "Old direct lift removed",
+        "passed": true
+      },
+      {
+        "check": "column meshes identical after translation",
+        "passed": true
+      },
+      {
+        "check": "foot meshes identical after translation",
+        "passed": true
+      },
+      {
+        "check": "brace meshes identical after translation",
+        "passed": true
+      },
+      {
+        "check": "platform_bearing meshes identical after translation",
+        "passed": true
+      },
+      {
+        "check": "charge_lower_case inclination 0.00 degrees",
+        "passed": true
+      },
+      {
+        "check": "charge_lower_case open interior bore",
+        "passed": true
+      },
+      {
+        "check": "charge_upper_case inclination 14.33 degrees",
+        "passed": true
+      },
+      {
+        "check": "charge_upper_case open interior bore",
+        "passed": true
+      },
+      {
+        "check": "Galleries clear tower masonry through real ports: []",
+        "passed": true
+      },
+      {
+        "check": "Lower conveyor connects to elevator inlet",
+        "passed": true
+      },
+      {
+        "check": "Both transfer chutes descend",
+        "passed": true
+      },
+      {
+        "check": "elevator_head_wheel exists",
+        "passed": true
+      },
+      {
+        "check": "elevator_boot_wheel exists",
+        "passed": true
+      },
+      {
+        "check": "elevator_drive_motor exists",
+        "passed": true
+      },
+      {
+        "check": "elevator_chain_-1 exists",
+        "passed": true
+      },
+      {
+        "check": "elevator_chain_1 exists",
+        "passed": true
+      },
+      {
+        "check": "elevator_boot_floor exists",
+        "passed": true
+      },
+      {
+        "check": "Elevator has open bucket cups",
+        "passed": true
+      },
+      {
+        "check": "Ascending cups open upward",
+        "passed": true
+      },
+      {
+        "check": "Return cups inverted",
+        "passed": true
+      },
+      {
+        "check": "Tipping bucket at elevator head",
+        "passed": true
+      },
+      {
+        "check": "Gallery has independent X-braced trestle",
+        "passed": true
+      },
+      {
+        "check": "line0_uptake_collar closed joint ring",
+        "passed": true
+      },
+      {
+        "check": "line0_hopper_joint closed joint ring",
+        "passed": true
+      },
+      {
+        "check": "line1_uptake_collar closed joint ring",
+        "passed": true
+      },
+      {
+        "check": "line1_hopper_joint closed joint ring",
+        "passed": true
+      },
+      {
+        "check": "No broad site plate",
+        "passed": true
+      }
+    ],
+    "mesh_objects": 797,
+    "triangles": 44124,
+    "raw_smoke_anchors": [
+      {
+        "x": 654.0066528320312,
+        "y": 349.1214599609375,
+        "radius": 10.593103099918263
+      },
+      {
+        "x": 810.0578002929688,
+        "y": 439.216796875,
+        "radius": 10.593103099918263
+      }
+    ]
+  }
+}

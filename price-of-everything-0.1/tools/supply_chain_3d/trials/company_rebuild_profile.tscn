@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://tools/supply_chain_3d/trials/company_rebuild_profile.gd" id="1"]
+
+[node name="CompanyRebuildProfile" type="Node"]
+script = ExtResource("1")

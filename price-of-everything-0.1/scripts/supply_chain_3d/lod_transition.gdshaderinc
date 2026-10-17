@@ -9,3 +9,5 @@ bool lod_hidden(vec2 pixel) {
 	if (lod_side == 0) { return false; }
 	return lod_side > 0 ? lod_sample(pixel) >= lod_blend : lod_sample(pixel) < lod_blend;
 }
+
+#include "res://scripts/supply_chain_3d/loading_mask.gdshaderinc"

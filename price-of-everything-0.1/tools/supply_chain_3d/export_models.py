@@ -13,12 +13,53 @@ ns_map = {'__name__': 'builder_catalog', '__file__': str(KIT/'bake_sprite.py')}
 exec(compile((KIT/'bake_sprite.py').read_text(), str(KIT/'bake_sprite.py'), 'exec'), ns_map)
 specs = dict(ns_map['BUILDINGS'])
 specs['tree'] = dict(file='tree_builder.py', fn='build_tree', col='BLDG_tree', levels=(1, 2, 3))
+specs['pylon'] = dict(file=str(pathlib.Path(__file__).with_name('pylon_builder.py')),
+                      fn='build_pylon', col='BLDG_pylon', levels=())
+for family in ('civic_office', 'civic_l', 'civic_park', 'civic_plaza'):
+    specs[family] = dict(file=str(pathlib.Path(__file__).with_name('civic_builder.py')),
+                        fn='build_'+family, col='BLDG_'+family,
+                        levels=(1, 2) if family == 'civic_office' else (1,),
+                        detailed=True, outer_contour=family in ('civic_office', 'civic_l'))
+# Bounded reusable whole-bay combinations; the runtime selects, never stretches.
+for family in ('civic_u_office', 'civic_semi', 'civic_bauhaus', 'civic_commercial', 'civic_pond', 'civic_grove'):
+    specs[family] = dict(file=str(pathlib.Path(__file__).with_name('district_builder.py')),
+        fn='build_'+family, col='BLDG_'+family, levels=(1,), detailed=True, outer_contour=True)
+for columns in range(4, 11):
+    specs[f'civic_long_{columns:02d}'] = dict(file=str(pathlib.Path(__file__).with_name('civic_builder.py')),
+        fn='build_civic_long', col='BLDG_civic_long', levels=(1,), detailed=True,
+        kwargs={'columns': columns})
+for columns in range(4, 9):
+    for returns in range(2, 5):
+        specs[f'civic_corner_{columns:02d}x{returns:02d}'] = dict(file=str(pathlib.Path(__file__).with_name('civic_builder.py')),
+            fn='build_civic_corner', col='BLDG_civic_corner', levels=(1,), detailed=True,
+            kwargs={'columns': columns, 'return_columns': returns})
 # The detailed asset pipeline can export a frozen reviewed builder revision. Existing
 # families continue to use their original source and exact export path.
 DETAIL_SOURCE = pathlib.Path(os.environ.get('POE_DETAIL_SOURCE', str(ROOT / 'price-of-everything-0.1/tools/building_assets')))
 for family in ('farm', 'water_pump', 'new_forest', 'old_forest', 'desal', 'oil_well', 'fracking_oil_well'):
     specs[family] = dict(file=str(DETAIL_SOURCE / 'builders.py'), fn='build_' + family,
                         col='BLDG_' + family, levels=(1, 2, 3), detailed=True, outer_contour=False)
+specs['offshore_oil_platform'] = dict(file=str(DETAIL_SOURCE / 'builders.py'), fn='build_offshore_oil_platform',
+    col='BLDG_offshore_oil_platform', levels=(1,2,3), detailed=True, outer_contour=False)
+# L3 Paper WPA furnace is released. L1/L2 replacements are coming soon:
+# default exports touch only L3, preserving their installed legacy artwork.
+# The staging pipeline may explicitly build all three draft levels for review.
+specs['furnace'] = dict(file=str(DETAIL_SOURCE / 'furnace_builder.py'), fn='build_furnace',
+    col='BLDG_furnace', levels=(1,2,3) if os.environ.get('POE_FURNACE_VARIANT') == 'paper-wpa' else (3,),
+    detailed=True, outer_contour=False)
+# Export independent vessels from the same reviewed port builder. These are
+# components, with the port's unit scale and their own grounded local origin.
+PORT_SHIPS = {'boxa': ('boxA', 'SHIP_BOXER_A'), 'boxb': ('boxB', 'SHIP_BOXER_B'),
+              'tanker': ('tank', 'SHIP_TANKER')}
+for vessel, (prefix, source) in PORT_SHIPS.items():
+    for medium in (False, True):
+        specs['port_ship_' + vessel + ('_medium' if medium else '')] = dict(
+            specs['port'], port_ship=prefix, ship_source=source, medium_ship=medium,
+            outer_contour=not medium)
+# Renderer-only derivatives. Never rewrite the complete farm or its builder.
+specs['farm_building'] = dict(specs['farm'], farm_part='building')
+specs['farm_crop_cell'] = dict(specs['farm'], farm_part='cell')
+specs['farm_crop_cell_medium'] = dict(specs['farm'], farm_part='cell', medium_crop=True)
 manifest_path = OUT / 'manifest.json'
 manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
 # Some builders resolve helper kits relative to Blender's --python argument.
@@ -26,10 +67,16 @@ sys.argv[sys.argv.index('--python')+1] = str(KIT/'render_sprite.py')
 requested = sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else []
 contours_only = '--contours-only' in requested
 requested = [arg for arg in requested if arg != '--contours-only']
+if 'civic_modules' in requested: requested += [key for key in specs if key.startswith(('civic_long_', 'civic_corner_'))]
+if 'port' in requested: requested += [key for key in specs if key.startswith('port_ship_')]
 for name, spec in specs.items():
     if requested and name not in requested: continue
     if name == 'mine': continue # use the surface pit version on the board
     family = []
+    component_spans = []
+    attachments = {}
+    storeys = {}
+    modules = {}
     for level in spec['levels'] or (0,):
         bpy.ops.wm.read_factory_settings(use_empty=False)
         for ob in list(bpy.data.objects):
@@ -39,8 +86,34 @@ for name, spec in specs.items():
         if spec.get('detailed'):
             exec(compile((KIT/'props_kit.py').read_text(), str(KIT/'props_kit.py'), 'exec'), ns)
         exec(compile((KIT/spec['file']).read_text(), str(KIT/spec['file']), 'exec'), ns)
-        ns[spec['fn']](level) if level else ns[spec['fn']]()
+        built = ns[spec['fn']](level, **spec.get('kwargs', {})) if level else ns[spec['fn']]()
+        if isinstance(built, dict) and 'storey_height' in built:
+            storeys[level or 1] = built['storey_height']
+        if isinstance(built, dict) and 'civic_module' in built:
+            modules[level or 1] = built['civic_module']
+        if isinstance(built, dict) and 'cable_anchors' in built:
+            attachments[level or 1] = built['cable_anchors']
         col = bpy.data.collections[spec['col']]
+        if spec.get('medium_ship'):
+            # Five solid cargo stacks retain the source silhouette and colour
+            # pattern without individual container seams. Tankers keep hull,
+            # house and deck only.
+            prefix = spec['port_ship']
+            for column in range(5):
+                cargo = [ob for ob in col.objects if ob.name.startswith(f'{prefix}_box') and ob.name.endswith(f'_{column}')]
+                if not cargo: continue
+                points = [ob.matrix_world @ Vector(corner) for ob in cargo for corner in ob.bound_box]
+                low = [min(p[i] for p in points) for i in range(3)]
+                high = [max(p[i] for p in points) for i in range(3)]
+                bpy.ops.mesh.primitive_cube_add(size=1, location=[(a+b)/2 for a,b in zip(low,high)])
+                band = bpy.context.object
+                band.name = f'{prefix}_cargo{column}'
+                band.scale = [b-a for a,b in zip(low,high)]
+                band.data.materials.append(max(cargo, key=lambda ob: ob.location.z).data.materials[0])
+                for collection in list(band.users_collection): collection.objects.unlink(band)
+                col.objects.link(band)
+            bpy.context.view_layer.update()
+
         deps = bpy.context.evaluated_depsgraph_get()
         verts, faces, colours, normals, edge_masks, ink_widths = [], [], [], [], [], []
         # Keep the source framing even when a mine's cut-pass earth is omitted.
@@ -52,6 +125,56 @@ for name, spec in specs.items():
             evaluated = ob.evaluated_get(deps)
             me = evaluated.to_mesh(); me.calc_loop_triangles()
             frame_points.extend(tuple(ob.matrix_world @ v.co) for v in me.vertices)
+            if spec.get('farm_part'):
+                field = ob.name.startswith(('bed', 'crop', 'leaves', 'drip', 'field_header', 'irrigation_box'))
+                keep = not field
+                if spec['farm_part'] == 'cell':
+                    keep = ob.name == 'bed0' or ob.name.startswith(('crop0_', 'drip0'))
+                    keep |= ob.name.startswith('leaves0_') and ob.name.endswith('_4')
+                    if spec.get('medium_crop') and ob.name.startswith(('leaves', 'drip')): keep = False
+                if not keep:
+                    evaluated.to_mesh_clear()
+                    continue
+                if spec['farm_part'] == 'cell':
+                    # Cut one repeat interval from the source row, without scaling
+                    # its width, plants, height or spacing. Adjacent copies meet.
+                    inverse = ob.matrix_world.inverted()
+                    for v in me.vertices:
+                        point = ob.matrix_world @ v.co
+                        point.x = min(max(point.x, -1.96), -1.71)
+                        v.co = inverse @ point
+                    me.update(); me.calc_loop_triangles()
+            ship_object = any(ob.name == prefix or ob.name.startswith(prefix + '_')
+                              for prefix, _ in PORT_SHIPS.values())
+            if name == 'port' and ship_object:
+                evaluated.to_mesh_clear()
+                continue
+            if spec.get('port_ship'):
+                prefix = spec['port_ship']
+                keep = ob.name == prefix or ob.name.startswith(prefix + '_')
+                if spec.get('medium_ship'):
+                    keep = ob.name in (prefix, prefix+'_deck', prefix+'_boot', prefix+'_house', prefix+'_bridge') or ob.name.startswith(prefix+'_cargo')
+                if not keep:
+                    evaluated.to_mesh_clear()
+                    continue
+            # The sprite's rectangular ocean/land backdrop belongs to the regular
+            # map only. Keep the actual quay, ships and equipment in the 3D world.
+            if name == 'port' and ob.name in ('water', 'land', 'land_edge', 'road_w'):
+                evaluated.to_mesh_clear()
+                continue
+            if name == 'port' and (ob.name == 'road_n' or ob.name.startswith('rdash')):
+                shore_x = ns['BAY'][0]
+                if max((ob.matrix_world @ v.co).x for v in me.vertices) <= shore_x:
+                    evaluated.to_mesh_clear()
+                    continue
+                # Trim the approach road to the quay after removing its land slab.
+                inverse = ob.matrix_world.inverted()
+                for v in me.vertices:
+                    point = ob.matrix_world @ v.co
+                    point.x = max(point.x, shore_x)
+                    v.co = inverse @ point
+                me.update()
+                me.calc_loop_triangles()
             if ob.get('cut'):
                 evaluated.to_mesh_clear()
                 continue
@@ -108,7 +231,10 @@ for name, spec in specs.items():
             normal_matrix = ob.matrix_world.to_3x3().inverted().transposed()
             for tri in me.loop_triangles:
                 indices = list(tri.vertices)
-                edge_masks.append(sum(1 << j for j in range(3)
+                if spec.get('farm_part') == 'cell':
+                    a, b, c = [ob.matrix_world @ me.vertices[i].co for i in indices]
+                    if (b-a).cross(c-a).length_squared < 1e-14: continue
+                edge_masks.append(0 if spec.get('farm_part') == 'cell' else sum(1 << j for j in range(3)
                     if tuple(sorted((indices[(j+1)%3], indices[(j+2)%3]))) in ink))
                 ink_widths.append(model_width)
                 normals.extend(tuple((normal_matrix @ me.corner_normals[j].vector).normalized()) for j in tri.loops)
@@ -129,6 +255,11 @@ for name, spec in specs.items():
         if not verts: raise RuntimeError('Empty asset: '+name)
         lo = [min(v[i] for v in frame_points) for i in range(3)]
         hi = [max(v[i] for v in frame_points) for i in range(3)]
+        component_span = max(hi[0]-lo[0], hi[1]-lo[1])
+        component_spans.append(component_span)
+        if spec.get('port_ship') or spec.get('farm_part'):
+            lo = [min(v[i] for v in verts) for i in range(3)]
+            hi = [max(v[i] for v in verts) for i in range(3)]
         pit = None
         if name == 'mine_flush':
             p = ns['MINE_LEVELS'][level]
@@ -136,10 +267,10 @@ for name, spec in specs.items():
                                      lobe=0.10, dent=0.14, phase=math.radians(28))
             pit = {'ground': p['ground'], 'step': p['depth'] / (p['benches'] + 1), 'rim': rim}
         family.append((level or 1, verts, faces, colours, lo, hi, normals, edge_masks, ink_widths, pit, (contour_verts, contour_faces, contour_normals, contour_widths)))
-    span = max(max(f[5][0]-f[4][0],f[5][1]-f[4][1]) for f in family)
+    span = max(component_spans) if spec.get('farm_part') else component_span if spec.get('port_ship') else max(max(f[5][0]-f[4][0],f[5][1]-f[4][1]) for f in family)
     for level, verts, faces, colours, lo, hi, normals, edge_masks, ink_widths, pit, contour in family:
         bpy.ops.wm.read_factory_settings(use_empty=True)
-        center = ((lo[0]+hi[0])/2, (lo[1]+hi[1])/2)
+        center = ns[spec['ship_source']][:2] if spec.get('port_ship') else ((lo[0]+hi[0])/2, (lo[1]+hi[1])/2)
         vertices = [((v[0]-center[0])/span,(v[1]-center[1])/span,(v[2]-lo[2])/span) for v in verts]
         me = bpy.data.meshes.new(name); me.from_pydata(vertices,[],faces); me.update()
         for poly in me.polygons: poly.use_smooth = True
@@ -168,6 +299,47 @@ for name, spec in specs.items():
             bpy.ops.export_scene.gltf(filepath=str(OUT/(key+'.glb')),export_format='GLB',use_selection=True,export_yup=True,export_materials='EXPORT',export_normals=True,export_cameras=False,export_lights=False)
             manifest[key] = {'height':(hi[2]-lo[2])/span,'width':(hi[0]-lo[0])/span,'depth':(hi[1]-lo[1])/span,'triangles':len(faces),'ink_edges':True}
             manifest[key]['source_ink_widths'] = True
+            if level in storeys: manifest[key]['storey_height'] = storeys[level] / span
+            if level in modules:
+                manifest[key]['civic_module'] = dict(modules[level], bay_pitch=modules[level]['bay_pitch'] / span)
+            if spec.get('farm_part') == 'cell':
+                manifest[key]['component'] = {'pitch': [.25/span, .61/span], 'medium': spec.get('medium_crop', False)}
+            if spec.get('port_ship'):
+                manifest[key]['component'] = {'waterline': (ns['WATER_Z']-lo[2])/span,
+                                              'medium': spec['medium_ship']}
+
+            if level in attachments:
+                # Blender Z-up -> glTF/Godot Y-up, with the mesh's exact framing.
+                manifest[key]['cable_anchors'] = [[(p[0]-center[0])/span, (p[2]-lo[2])/span,
+                                                  -(p[1]-center[1])/span] for p in attachments[level]]
+        if name == 'port' and not contours_only:
+            def harbour_point(x, y, z):
+                return [(x-center[0])/span, (z-lo[2])/span, -(y-center[1])/span]
+            x0, x1, y0, y1 = ns['BAY']
+            raw_bounds = ([min(v[i] for v in verts) for i in range(3)],
+                          [max(v[i] for v in verts) for i in range(3)])
+            manifest[key]['harbour'] = {
+                'ships': [{'near': 'port_ship_'+vessel+'_lvl1', 'medium': 'port_ship_'+vessel+'_medium_lvl1',
+                           'berth': harbour_point(*ns[source][:2], ns['WATER_Z']),
+                           'length': ns[source][2]/span, 'beam': ns[source][3]/span,
+                           'mouth': (x1-ns[source][0])/span}
+                          for vessel, (_, source) in PORT_SHIPS.items()],
+                'waterline': (ns['WATER_Z']-lo[2])/span,
+                'deck': (ns['QUAY_Z']-lo[2])/span,
+                'across': (y1-y0)/span,
+                'anchor': harbour_point(x0+ns['ARM_W'], (y0+y1)/2, ns['WATER_Z']),
+                'ship_water': [harbour_point(cx+dx*length*0.38, cy+dy*beam*0.25, ns['WATER_Z'])
+                               for cx, cy, length, beam in (ns['SHIP_BOXER_A'], ns['SHIP_BOXER_B'], ns['SHIP_TANKER'])
+                               for dx in (-1, 1) for dy in (-1, 1)],
+                'shore_edge': [harbour_point(x0, y, ns['QUAY_Z']) for y in (y0, (y0+y1)/2, y1)],
+                'road_entry': harbour_point(x0, y1-ns['ROAD_W']/2, ns['QUAY_Z']+.027),
+                'road_width': ns['ROAD_W']/span,
+                'pier_tip': harbour_point(x1-0.5, y0+ns['ARM_W']/2, ns['QUAY_Z']),
+                'basin': harbour_point(x1-1.0, (y0+y1)/2, ns['WATER_Z']),
+                'bounds_min': harbour_point(raw_bounds[0][0], raw_bounds[1][1], raw_bounds[0][2]),
+                'bounds_max': harbour_point(raw_bounds[1][0], raw_bounds[0][1], raw_bounds[1][2]),
+                'backdrop_removed': True,
+            }
         manifest.setdefault(key, {})
         # The old tree sprites are sized by their projected height, not footprint.
         projected = [(v[0] - v[1]) * 0.40824829 - (v[2] - lo[2]) * 0.81649658 for v in verts]

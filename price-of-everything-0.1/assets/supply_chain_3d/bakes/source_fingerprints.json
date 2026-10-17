@@ -1,18 +1,24 @@
 {
 	"engine": "4.6.2-stable (official)",
 	"layers": {
-		"continent": "4db6e76e5401ac7d036a5c5b7660468655fcae1f218a5c5930c9c1adaf8b3ced",
-		"detail": "6c94e812efdc9bb5ec5a136e29ef6e88ddff04f9de45d249f22c05c6b9dfe946",
-		"roads": "738b86fd31f5100e83f5c5f21edbc95cb14af2bdeef664a676dfe5e4bd7189cf",
-		"scenery": "0769978bed5b1d908c83b88d6861c782504909b51929d13c739a497099847347",
-		"terrain": "87e2510646c8d1566be7ed848fce3a1d63ba8cf0a25fd968a42eef11146316bb"
+		"buildings": "3b3fd740fd67d95b06031206992d808143078cb5b4e285bb199d4534555cf522",
+		"continent": "b0d409f75163624dd68e19cb984a101397380de89b09e5d85b73e2354a681bf9",
+		"detail": "92276b56dbcbd0f769b1933b8dae78f91a5696a9f883d19baa21587d1aa96234",
+		"layout": "bac491a58bb7d9629caa087fb652d2fa4c04be248e5b70e9f1d7e431bb7d3e19",
+		"roads": "3f07b5dc417305654a4fa35386ae7ca212018f72ab851e3e6cabbd84662d23cd",
+		"scenery": "af7888aadf2d6986b770ff017de2ea93d83c5a5dbb3119889f08ba93d9065ab4",
+		"terrain": "cb49b5aa5a56e01f058b9dd288c0e1858f4cf1437d6b5db9b514d9073672cd5e",
+		"transport": "2380c1d86c7ba437bf515bfc04151752e5637c5bd20c74d915f31bde93460213"
 	},
 	"revisions": {
+		"buildings": 1,
 		"continent": 2,
 		"detail": 1,
+		"layout": 1,
 		"roads": 1,
-		"scenery": 1,
-		"terrain": 2
+		"scenery": 2,
+		"terrain": 3,
+		"transport": 1
 	},
 	"schema": 2
 }

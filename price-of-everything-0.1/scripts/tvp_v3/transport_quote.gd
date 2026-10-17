@@ -11,7 +11,7 @@ extends RefCounted
 ##              (BuildingState.max_tile_land), land short while automatic buying is off, no land for sale,
 ##              materials the build's source can't bring;
 ##   land       the shortfall in the company's land here, in whole patches at the price
-##              BuildingState.purchase_tile_land charges (AdvisorState.purchase_cost_after_advisor); none for
+##              BuildingState.purchase_tile_land charges (LandPrice.quote, not stand-alone); none for
 ##              a tendered link in a logistics game;
 ##   fee        the catalogue's base price less MatchState.construction_material_rebate, and half as much again
 ##              past the planning limit (BuildingState.DENSITY_SOFT_CAPACITY), each as the map charges it;
@@ -69,7 +69,7 @@ static func quote(tile_id: String, building_id: String) -> Dictionary:
 		else:
 			q.land_short = 0
 			q.land_units = granted
-			q.land_cost = AdvisorState.purchase_cost_after_advisor(float(patches) * BuildingState.LAND_PATCH_COST, {"tile_id": tile_id})
+			q.land_cost = float(preload("res://scripts/land_price.gd").quote(tile_id, patches, false).total)
 
 	# Materials the tile lacks, by the route the map takes for them. On that route the map prices the fee
 	# with the rebate taken after the planning charge.

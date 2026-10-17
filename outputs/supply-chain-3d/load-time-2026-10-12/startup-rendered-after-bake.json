@@ -1,0 +1,116 @@
+{
+	"bundled_hits_after_stream": 101,
+	"cache_hits_after_stream": 101,
+	"cache_writes_after_stream": 0,
+	"combined_ready_ms": 2333.407,
+	"continent_key": "continent-fece8d4fd5f2b9571c4bcdc472c06e1225f9f2f0d4a27042713404a94efe03d9",
+	"engine": "4.6.2-stable (official)",
+	"first_open": {
+		"background_load": {
+			"bundled_hits": 4,
+			"cache_hits": 4,
+			"cache_misses": 0,
+			"cache_writes": 0,
+			"continent_ms": 579.402,
+			"infrastructure_ms": 15.371,
+			"keys_ms": 3017.963,
+			"layout_inputs_ms": 134.652,
+			"layout_solve_ms": 1382.552,
+			"model_ms": 1521.016,
+			"road_frontage_ms": 109.232,
+			"road_import_ms": 342.436,
+			"road_routing_ms": 82.992,
+			"scene_ms": 1842.609,
+			"scenery_ms": 551.671,
+			"standing_ms": 1242.9,
+			"static_scene_ms": 1815.453,
+			"total_ms": 7519.33,
+			"transport": {
+				"cache_hit": true,
+				"lookup_ms": 1807.661,
+				"total_ms": 1841.38
+			}
+		},
+		"begin_elapsed_ms": 24081,
+		"load": {
+			"bundled_hits": 4,
+			"cache_hits": 4,
+			"cache_misses": 0,
+			"cache_writes": 0,
+			"continent_ms": 579.402,
+			"infrastructure_ms": 15.371,
+			"keys_ms": 3017.963,
+			"layout_inputs_ms": 134.652,
+			"layout_solve_ms": 1382.552,
+			"model_ms": 1521.016,
+			"road_frontage_ms": 109.232,
+			"road_import_ms": 342.436,
+			"road_routing_ms": 82.992,
+			"scene_ms": 1842.609,
+			"scenery_ms": 551.671,
+			"standing_ms": 1242.9,
+			"static_scene_ms": 1815.453,
+			"total_ms": 7519.33,
+			"transport": {
+				"cache_hit": true,
+				"lookup_ms": 1807.661,
+				"total_ms": 1841.38
+			}
+		},
+		"map_frames": {
+			"max_ms": 24.946,
+			"median_ms": 6.909,
+			"p95_ms": 18.341,
+			"rendered_frames": 120
+		},
+		"prepared_before_open": true,
+		"preparing_before_open": false,
+		"ready_ms": 2301.573,
+		"tiles": 600
+	},
+	"load": {
+		"bundled_hits": 4,
+		"cache_hits": 4,
+		"cache_misses": 0,
+		"cache_writes": 0,
+		"continent_ms": 579.402,
+		"infrastructure_ms": 15.371,
+		"keys_ms": 3017.963,
+		"layout_inputs_ms": 134.652,
+		"layout_solve_ms": 1382.552,
+		"model_ms": 1521.016,
+		"road_frontage_ms": 109.232,
+		"road_import_ms": 342.436,
+		"road_routing_ms": 82.992,
+		"scene_ms": 1842.609,
+		"scenery_ms": 551.671,
+		"standing_ms": 1242.9,
+		"static_scene_ms": 1815.453,
+		"total_ms": 7519.33,
+		"transport": {
+			"cache_hit": true,
+			"lookup_ms": 1807.661,
+			"total_ms": 1841.38
+		}
+	},
+	"local_tiles": 50,
+	"opening_camera": {
+		"pitch": 0.6154797,
+		"span": 1062.72727272727,
+		"target": "(6952.5, 170.8983, 5520.0)",
+		"yaw": 0.785398163397448
+	},
+	"opening_lod": 1,
+	"previous_camera": {
+		"pitch": 0.6154797,
+		"span": 1062.72727272727,
+		"target": "(6952.5, 170.8983, 5520.0)",
+		"yaw": 0.785398163397448
+	},
+	"rail_layout_cache": {
+		"hits": 2,
+		"misses": 0
+	},
+	"ready_ms": 31.67,
+	"scenery_key": "scenery-67e940545c53b8650732e0c8320e5b73b7fe5153e01fcb08aac4fe949c407d42"
+}

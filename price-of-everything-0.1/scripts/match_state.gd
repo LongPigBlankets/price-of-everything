@@ -64,6 +64,11 @@ var output_ship_quantities: Dictionary = {}  # instance_id -> {good_id -> int}
 var input_tile_only: Dictionary = {}  # "instance_id|good_id" -> true (tile stockpile ONLY; default buys from market)
 var pending_output_stockpile_selection: Dictionary = {}
 var queued_stockpile_market_sales: Dictionary = {}  # tile_id -> true
+## One-off sales to Local Suppliers the player asked for in DECIDE, sold in this turn's sell phase:
+## tile_id -> {good_id -> units}. The global market sells at once instead (queue_sell).
+var queued_local_sales: Dictionary = {}
+## Buildings the player starred, to build again from a tile's quick menu: [{building_id, recipe_id, level}].
+var favourite_builds: Array = []
 var sell_surplus_tiles: Dictionary = {}              # tile_id -> true (master: auto-sell ALL surplus goods)
 var surplus_destinations: Dictionary = {}             # tile_id -> market | middleman | none
 var auto_sell_goods: Dictionary = {}                 # tile_id -> { good_id -> true } (per-good auto-sell overrides)
@@ -204,6 +209,8 @@ signal output_stockpile_selection_started(selection: Dictionary)
 signal output_stockpile_selection_cancelled
 signal output_stockpile_destination_changed(instance_id: String, tile_id: String, good_id: String)
 signal stockpile_market_sale_queue_changed(tile_id: String)
+## The favourite builds list changed (a star in the building panel).
+signal favourites_changed
 signal stockpile_market_sale_completed(sale_record: Dictionary)
 signal sell_surplus_changed(tile_id: String)
 ## A standing recurring move / sell / bulk-sell was added or cancelled — the Market
@@ -734,7 +741,7 @@ func effective_build_duration(building_id: String) -> int:
 
 func is_building_available(building_id: String) -> bool:
 	# Ports are map infrastructure that may be bought from their existing owner, never built.
-	if building_id == "b_004":
+	if building_id in ["b_004", "b_038"]:
 		return false
 	if RECYCLING_BUILDING_IDS.has(building_id) and not is_recycling_available():
 		return false
@@ -837,6 +844,8 @@ func reset() -> void:
 	output_ship_quantities.clear()
 	pending_output_stockpile_selection.clear()
 	queued_stockpile_market_sales.clear()
+	queued_local_sales.clear()
+	favourite_builds.clear()
 	sell_surplus_tiles.clear()
 	surplus_destinations.clear()
 	auto_sell_goods.clear()
@@ -931,6 +940,8 @@ func export_state() -> Dictionary:
 		"auto_sell_keep": auto_sell_keep.duplicate(true),
 		"auto_sell_impact": auto_sell_impact.duplicate(true),
 		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
+		"queued_local_sales": queued_local_sales.duplicate(true),
+		"favourite_builds": favourite_builds.duplicate(true),
 		# Additive (v3 transport panel): an older save has neither, and the empty
 		# default reads correctly as "no history yet" until turns accrue.
 		"transaction_log": transaction_log.duplicate(true),
@@ -1007,6 +1018,8 @@ func import_state(d: Dictionary) -> void:
 	auto_sell_keep = (d.get("auto_sell_keep", {}) as Dictionary).duplicate(true)
 	auto_sell_impact = (d.get("auto_sell_impact", {}) as Dictionary).duplicate(true)
 	queued_stockpile_market_sales = (d.get("queued_stockpile_market_sales", {}) as Dictionary).duplicate(true)
+	queued_local_sales = (d.get("queued_local_sales", {}) as Dictionary).duplicate(true)
+	favourite_builds = (d.get("favourite_builds", []) as Array).duplicate(true)
 	_recompute_unpaid_purchases()  # rebuilt from the shipments so the accumulator can't drift
 	BuildingWorks.import_fields(d)
 	transaction_log = (d.get("transaction_log", []) as Array).duplicate(true)
@@ -1374,6 +1387,45 @@ func clear_stockpile_market_sale_queue(tile_id: String) -> void:
 
 func is_stockpile_market_sale_queued(tile_id: String) -> bool:
 	return queued_stockpile_market_sales.has(tile_id)
+
+## Queue `goods` ({good_id: units}) from the tile for Local Suppliers to buy in this turn's sell phase, on top of
+## anything already queued there.
+func queue_local_sale(tile_id: String, goods: Dictionary) -> void:
+	if tile_id == "" or goods.is_empty():
+		return
+	var queued: Dictionary = queued_local_sales.get(tile_id, {})
+	for gid in goods:
+		queued[str(gid)] = int(queued.get(str(gid), 0)) + int(goods[gid])
+	queued_local_sales[tile_id] = queued
+	stockpile_market_sale_queue_changed.emit(tile_id)
+
+## The queued Local Suppliers sales, cleared: {tile_id: {good_id: units}}.
+func consume_queued_local_sales() -> Dictionary:
+	var queued := queued_local_sales.duplicate(true)
+	queued_local_sales.clear()
+	return queued
+
+## Units of the good queued from the tile for Local Suppliers this turn.
+func queued_local_units(tile_id: String, good_id: String) -> int:
+	return int((queued_local_sales.get(tile_id, {}) as Dictionary).get(good_id, 0))
+
+## Star or unstar a building as a favourite: its type, recipe and level. Returns whether it is now a favourite.
+func toggle_favourite_build(building_id: String, recipe_id: String, level: int) -> bool:
+	var i := favourite_index(building_id, recipe_id, level)
+	if i >= 0:
+		favourite_builds.remove_at(i)
+		favourites_changed.emit()
+		return false
+	favourite_builds.append({"building_id": building_id, "recipe_id": recipe_id, "level": clampi(level, 1, 3)})
+	favourites_changed.emit()
+	return true
+
+func favourite_index(building_id: String, recipe_id: String, level: int) -> int:
+	for i in favourite_builds.size():
+		var f: Dictionary = favourite_builds[i]
+		if str(f.get("building_id", "")) == building_id and str(f.get("recipe_id", "")) == recipe_id and int(f.get("level", 1)) == level:
+			return i
+	return -1
 
 func consume_queued_stockpile_market_sales() -> Array:
 	var queued_tiles: Array = queued_stockpile_market_sales.keys()
@@ -2080,6 +2132,8 @@ func purchase_kit_cost(building: Dictionary) -> float:
 ## A building the player sold costs at least what they were paid for it (`player_sale_price`),
 ## so a purchase discount cannot turn selling and buying it back into money.
 func building_purchase_price(building: Dictionary) -> int:
+	if str(building.get("building_id", "")) == "b_038":
+		return 5000
 	var price := AdvisorState.purchase_cost_after_advisor(float(BuildingPrice.sale_price(building)))
 	if building.has("player_sale_price"):
 		price = maxf(price, float(building["player_sale_price"]))

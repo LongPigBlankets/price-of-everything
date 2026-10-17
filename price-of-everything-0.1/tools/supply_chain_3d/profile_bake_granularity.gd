@@ -58,7 +58,7 @@ func _ready() -> void:
 		var paths := []
 		for tid in tiles:
 			var path: String = Cache.BUNDLED.path_join(str(manifest.tiles[tid][tier]) + ".res")
-			combined[tid] = (ResourceLoader.load(path) as Data).data
+			combined[tid] = (ResourceLoader.load(path) as Data).values()
 			paths.append(path)
 		var region_path := _save("terrain-region-" + tier, combined)
 		var tile_bytes := 0
@@ -91,8 +91,8 @@ func _ready() -> void:
 		loaded_regions.merge(incoming)
 	report.spatial_trace = spatial
 	# Pick the region containing the most real building instances.
-	var root: Dictionary = (ResourceLoader.load(Cache.BUNDLED.path_join(manifest.continent_key + ".res")) as Data).data
-	var scenery: Dictionary = (ResourceLoader.load(Cache.BUNDLED.path_join(manifest.scenery_key + ".res")) as Data).data
+	var root: Dictionary = (ResourceLoader.load(Cache.BUNDLED.path_join(manifest.continent_key + ".res")) as Data).values()
+	var scenery: Dictionary = (ResourceLoader.load(Cache.BUNDLED.path_join(manifest.scenery_key + ".res")) as Data).values()
 	var regions := {}
 	for iid in scenery.standing:
 		var frame: Dictionary = scenery.standing[iid]

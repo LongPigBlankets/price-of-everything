@@ -21,6 +21,8 @@ static func raw_texture(bd: Dictionary) -> Texture2D:
 	var building_id := str(bd.get("id", ""))
 	var internal := str(bd.get("internal_name", ""))
 	var paths: Array[String] = []
+	if building_id == "b_038":
+		return load("res://assets/icons/buildings/b_038_rail_hub.svg") as Texture2D
 	if building_id != "" and internal != "":
 		paths.append("res://assets/icons/buildings/%s_%s.png" % [building_id, internal])
 	if building_id != "":

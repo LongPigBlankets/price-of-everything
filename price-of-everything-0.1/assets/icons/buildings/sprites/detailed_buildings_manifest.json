@@ -1,0 +1,1695 @@
+{
+  "format_version": 2,
+  "families": [
+    "desal",
+    "farm",
+    "fracking_oil_well",
+    "furnace",
+    "new_forest",
+    "offshore_oil_platform",
+    "oil_well",
+    "old_forest",
+    "water_pump"
+  ],
+  "family_revisions": {
+    "farm": {
+      "revision": "v10-no-outline",
+      "source_sha256": {
+        "builders.py": "6096b9f92c7aff1529d5a32dc30e31484fd64fe32ac1853bda30f33867d3bf5a",
+        "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
+        "bake_sprite.py": "92a7e5a5fb9aab3fd5bbc9080afd7558b42110d61a5f2de8a2f2f825a2a92e8b",
+        "export_models.py": "1b7a10c857891153486112a401fd901f9848a179f0a9f8d8aa749a6b93576b14",
+        "sprite_kit.py": "8e9b570492ebde6a8a40113b1098793e9ca176292fb98d294671ea92a4d24d41",
+        "pipeline.py": "25ac896ad4c95248afbaa079bc832422f446980ada901db87ebe22eeb39760c3",
+        "entry.py": "17403cba233eb7575478564e8be1e0ba0fe489923bccf02c2b7f0da0707988a5",
+        "render_sprite.py": "e45834820119808e946b605bb84037a2443e67105928cdfa9c30bf5a78cc4c45",
+        "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
+        "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
+      },
+      "outer_contour": false
+    },
+    "water_pump": {
+      "revision": "v10-no-outline",
+      "source_sha256": {
+        "builders.py": "6096b9f92c7aff1529d5a32dc30e31484fd64fe32ac1853bda30f33867d3bf5a",
+        "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
+        "bake_sprite.py": "92a7e5a5fb9aab3fd5bbc9080afd7558b42110d61a5f2de8a2f2f825a2a92e8b",
+        "export_models.py": "1b7a10c857891153486112a401fd901f9848a179f0a9f8d8aa749a6b93576b14",
+        "sprite_kit.py": "8e9b570492ebde6a8a40113b1098793e9ca176292fb98d294671ea92a4d24d41",
+        "pipeline.py": "25ac896ad4c95248afbaa079bc832422f446980ada901db87ebe22eeb39760c3",
+        "entry.py": "17403cba233eb7575478564e8be1e0ba0fe489923bccf02c2b7f0da0707988a5",
+        "render_sprite.py": "e45834820119808e946b605bb84037a2443e67105928cdfa9c30bf5a78cc4c45",
+        "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
+        "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
+      },
+      "outer_contour": false
+    },
+    "new_forest": {
+      "revision": "v10-no-outline",
+      "source_sha256": {
+        "builders.py": "6096b9f92c7aff1529d5a32dc30e31484fd64fe32ac1853bda30f33867d3bf5a",
+        "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
+        "bake_sprite.py": "92a7e5a5fb9aab3fd5bbc9080afd7558b42110d61a5f2de8a2f2f825a2a92e8b",
+        "export_models.py": "1b7a10c857891153486112a401fd901f9848a179f0a9f8d8aa749a6b93576b14",
+        "sprite_kit.py": "8e9b570492ebde6a8a40113b1098793e9ca176292fb98d294671ea92a4d24d41",
+        "pipeline.py": "25ac896ad4c95248afbaa079bc832422f446980ada901db87ebe22eeb39760c3",
+        "entry.py": "17403cba233eb7575478564e8be1e0ba0fe489923bccf02c2b7f0da0707988a5",
+        "render_sprite.py": "e45834820119808e946b605bb84037a2443e67105928cdfa9c30bf5a78cc4c45",
+        "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
+        "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
+      },
+      "outer_contour": false
+    },
+    "old_forest": {
+      "revision": "v10-no-outline",
+      "source_sha256": {
+        "builders.py": "6096b9f92c7aff1529d5a32dc30e31484fd64fe32ac1853bda30f33867d3bf5a",
+        "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
+        "bake_sprite.py": "92a7e5a5fb9aab3fd5bbc9080afd7558b42110d61a5f2de8a2f2f825a2a92e8b",
+        "export_models.py": "1b7a10c857891153486112a401fd901f9848a179f0a9f8d8aa749a6b93576b14",
+        "sprite_kit.py": "8e9b570492ebde6a8a40113b1098793e9ca176292fb98d294671ea92a4d24d41",
+        "pipeline.py": "25ac896ad4c95248afbaa079bc832422f446980ada901db87ebe22eeb39760c3",
+        "entry.py": "17403cba233eb7575478564e8be1e0ba0fe489923bccf02c2b7f0da0707988a5",
+        "render_sprite.py": "e45834820119808e946b605bb84037a2443e67105928cdfa9c30bf5a78cc4c45",
+        "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
+        "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
+      },
+      "outer_contour": false
+    },
+    "desal": {
+      "revision": "v10-no-outline",
+      "source_sha256": {
+        "builders.py": "6096b9f92c7aff1529d5a32dc30e31484fd64fe32ac1853bda30f33867d3bf5a",
+        "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
+        "bake_sprite.py": "92a7e5a5fb9aab3fd5bbc9080afd7558b42110d61a5f2de8a2f2f825a2a92e8b",
+        "export_models.py": "1b7a10c857891153486112a401fd901f9848a179f0a9f8d8aa749a6b93576b14",
+        "sprite_kit.py": "8e9b570492ebde6a8a40113b1098793e9ca176292fb98d294671ea92a4d24d41",
+        "pipeline.py": "25ac896ad4c95248afbaa079bc832422f446980ada901db87ebe22eeb39760c3",
+        "entry.py": "17403cba233eb7575478564e8be1e0ba0fe489923bccf02c2b7f0da0707988a5",
+        "render_sprite.py": "e45834820119808e946b605bb84037a2443e67105928cdfa9c30bf5a78cc4c45",
+        "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
+        "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
+      },
+      "outer_contour": false
+    },
+    "oil_well": {
+      "revision": "v13-oil-engineering",
+      "source_sha256": {
+        "builders.py": "279cfb417eca6e4af7844672e44b557df895fd7e3df28735a35fd26603abe776",
+        "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
+        "bake_sprite.py": "92a7e5a5fb9aab3fd5bbc9080afd7558b42110d61a5f2de8a2f2f825a2a92e8b",
+        "export_models.py": "1b7a10c857891153486112a401fd901f9848a179f0a9f8d8aa749a6b93576b14",
+        "sprite_kit.py": "8e9b570492ebde6a8a40113b1098793e9ca176292fb98d294671ea92a4d24d41",
+        "pipeline.py": "25ac896ad4c95248afbaa079bc832422f446980ada901db87ebe22eeb39760c3",
+        "entry.py": "17403cba233eb7575478564e8be1e0ba0fe489923bccf02c2b7f0da0707988a5",
+        "render_sprite.py": "e45834820119808e946b605bb84037a2443e67105928cdfa9c30bf5a78cc4c45",
+        "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
+        "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
+      },
+      "outer_contour": false
+    },
+    "fracking_oil_well": {
+      "revision": "v23-oil-offshore",
+      "source_sha256": {
+        "builders.py": "5225bb3a7d77e05e3564faebbce6783b567923996d797985a72fd246268d0fd0",
+        "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
+        "bake_sprite.py": "92a7e5a5fb9aab3fd5bbc9080afd7558b42110d61a5f2de8a2f2f825a2a92e8b",
+        "export_models.py": "76982bcb45706bfc022a9d4bf6620e56c74fab8456899951538d4d3d9ed6a009",
+        "sprite_kit.py": "8e9b570492ebde6a8a40113b1098793e9ca176292fb98d294671ea92a4d24d41",
+        "pipeline.py": "abbc1905171f469b717603a2b5841019ad238e75cdd8e7ab61619ca5771dc591",
+        "entry.py": "17403cba233eb7575478564e8be1e0ba0fe489923bccf02c2b7f0da0707988a5",
+        "render_sprite.py": "e45834820119808e946b605bb84037a2443e67105928cdfa9c30bf5a78cc4c45",
+        "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
+        "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
+      },
+      "outer_contour": false
+    },
+    "offshore_oil_platform": {
+      "revision": "v34-offshore-collars",
+      "source_sha256": {
+        "builders.py": "d06f723c029a0b876f95cd34c404a1c9213610c5d32dd5bf93d134c6cd8e1535",
+        "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
+        "bake_sprite.py": "92a7e5a5fb9aab3fd5bbc9080afd7558b42110d61a5f2de8a2f2f825a2a92e8b",
+        "export_models.py": "abb9c617f1c6582d0471b2f288241f2c12ffbc201a188d8c5420ba53f9b93e6b",
+        "sprite_kit.py": "8e9b570492ebde6a8a40113b1098793e9ca176292fb98d294671ea92a4d24d41",
+        "pipeline.py": "384ce5f482cbe9e0cab04fa438c057cb60a85d6f7896a67b65960b93af0e0287",
+        "entry.py": "17403cba233eb7575478564e8be1e0ba0fe489923bccf02c2b7f0da0707988a5",
+        "render_sprite.py": "e45834820119808e946b605bb84037a2443e67105928cdfa9c30bf5a78cc4c45",
+        "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
+        "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
+      },
+      "outer_contour": false
+    },
+    "furnace": {
+      "revision": "v23-steel-stoves",
+      "source_sha256": {
+        "builders.py": "d06f723c029a0b876f95cd34c404a1c9213610c5d32dd5bf93d134c6cd8e1535",
+        "furnace_paper.py": "7f23483868de7ac92258a36ec2695d62ce4fac6bb5d0eac19f2496d32a171491",
+        "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
+        "furnace_builder.py": "c4d1494a857a7fc7bd202490b0aba4d64197f4132bac4f63b98418581ef5035d",
+        "bake_sprite.py": "92a7e5a5fb9aab3fd5bbc9080afd7558b42110d61a5f2de8a2f2f825a2a92e8b",
+        "export_models.py": "2cb8ed42b0c9350096d412f4b787e5eace2a0afe0f97c996a027ddc07b83c07c",
+        "sprite_kit.py": "8e9b570492ebde6a8a40113b1098793e9ca176292fb98d294671ea92a4d24d41",
+        "pipeline.py": "7b259053618182d168008e9ff749656b11b7fd00f36534dbf04b92e4f968ee1e",
+        "entry.py": "244ff95f7c8087ef2cb18246541178a1c3e05111c4c7f268fd07252537a8494b",
+        "paper_wpa_catalog.py": "7be39b082de17b6092e9505e67850028966e9d033bf6f665a057997da147c157",
+        "render_sprite.py": "e45834820119808e946b605bb84037a2443e67105928cdfa9c30bf5a78cc4c45",
+        "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
+        "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
+      },
+      "outer_contour": false,
+      "released_levels": [
+        3
+      ]
+    }
+  },
+  "sprites": {
+    "farm_lvl1.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        38,
+        192,
+        761,
+        607
+      ],
+      "opaque_pixels": 154869,
+      "dominant_rgb": [
+        [
+          104,
+          120,
+          128
+        ],
+        [
+          128,
+          72,
+          56
+        ],
+        [
+          80,
+          96,
+          56
+        ],
+        [
+          112,
+          120,
+          64
+        ],
+        [
+          112,
+          120,
+          72
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          88,
+          80,
+          64
+        ],
+        [
+          128,
+          136,
+          144
+        ]
+      ],
+      "sha256": "2c3c21f8d71bdb17549dfa0786477688ef796c736eee5110024e21d50a940062",
+      "mask_range": [
+        156,
+        253
+      ]
+    },
+    "farm_lvl2.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        6,
+        161,
+        794,
+        638
+      ],
+      "opaque_pixels": 186530,
+      "dominant_rgb": [
+        [
+          104,
+          120,
+          128
+        ],
+        [
+          128,
+          72,
+          56
+        ],
+        [
+          144,
+          144,
+          152
+        ],
+        [
+          80,
+          96,
+          56
+        ],
+        [
+          112,
+          120,
+          64
+        ],
+        [
+          112,
+          120,
+          72
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          128,
+          128,
+          120
+        ]
+      ],
+      "sha256": "753d180ee83073f56f929c5d2b0bb851dedce1b2eff0e6799f349087dfe5b601",
+      "mask_range": [
+        133,
+        255
+      ]
+    },
+    "farm_lvl3.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        6,
+        137,
+        794,
+        663
+      ],
+      "opaque_pixels": 230706,
+      "dominant_rgb": [
+        [
+          104,
+          120,
+          128
+        ],
+        [
+          144,
+          144,
+          152
+        ],
+        [
+          80,
+          96,
+          56
+        ],
+        [
+          112,
+          120,
+          64
+        ],
+        [
+          128,
+          72,
+          56
+        ],
+        [
+          104,
+          136,
+          152
+        ],
+        [
+          112,
+          120,
+          72
+        ],
+        [
+          56,
+          64,
+          96
+        ]
+      ],
+      "sha256": "0fa8e46329205f060d4ac8643d22b6f6c26792b0e5501c9028d4218e34e69f4d",
+      "mask_range": [
+        128,
+        255
+      ]
+    },
+    "water_pump_lvl1.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        142,
+        242,
+        657,
+        557
+      ],
+      "opaque_pixels": 96387,
+      "dominant_rgb": [
+        [
+          104,
+          120,
+          128
+        ],
+        [
+          128,
+          128,
+          120
+        ],
+        [
+          168,
+          176,
+          176
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          168,
+          168,
+          176
+        ],
+        [
+          96,
+          128,
+          136
+        ],
+        [
+          64,
+          72,
+          96
+        ],
+        [
+          72,
+          80,
+          104
+        ]
+      ],
+      "sha256": "00f9a4727a9e41e1c47a965d12b60cbdda74b5bd09dad9e4b1b79cb0f1cb27a5",
+      "mask_range": [
+        133,
+        255
+      ]
+    },
+    "water_pump_lvl2.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        112,
+        202,
+        688,
+        597
+      ],
+      "opaque_pixels": 130458,
+      "dominant_rgb": [
+        [
+          104,
+          120,
+          128
+        ],
+        [
+          128,
+          128,
+          120
+        ],
+        [
+          168,
+          176,
+          176
+        ],
+        [
+          144,
+          144,
+          152
+        ],
+        [
+          88,
+          96,
+          112
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          168,
+          168,
+          176
+        ],
+        [
+          128,
+          72,
+          56
+        ]
+      ],
+      "sha256": "786550d62a807a164e185627a7d8f0c40e9fa8c1fd4af24efa9e952930aef1cb",
+      "mask_range": [
+        132,
+        255
+      ]
+    },
+    "water_pump_lvl3.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        6,
+        129,
+        794,
+        670
+      ],
+      "opaque_pixels": 181852,
+      "dominant_rgb": [
+        [
+          104,
+          120,
+          128
+        ],
+        [
+          128,
+          128,
+          120
+        ],
+        [
+          88,
+          104,
+          112
+        ],
+        [
+          168,
+          176,
+          176
+        ],
+        [
+          88,
+          96,
+          112
+        ],
+        [
+          144,
+          144,
+          152
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          72,
+          80,
+          104
+        ]
+      ],
+      "sha256": "0290df72ca7ce7f3b60cd2140af4d6407152df45ee0fa1ca971541a92325c62f",
+      "mask_range": [
+        130,
+        255
+      ]
+    },
+    "new_forest_lvl1.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        27,
+        140,
+        773,
+        659
+      ],
+      "opaque_pixels": 107323,
+      "dominant_rgb": [
+        [
+          88,
+          120,
+          64
+        ],
+        [
+          88,
+          128,
+          64
+        ],
+        [
+          88,
+          128,
+          72
+        ],
+        [
+          72,
+          104,
+          56
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          96,
+          72,
+          56
+        ],
+        [
+          88,
+          120,
+          72
+        ],
+        [
+          88,
+          72,
+          56
+        ]
+      ],
+      "sha256": "62d0d3b4432dfa2ae488c9eef0b18054ff75015f901d375398b56b7f369a6bdc",
+      "mask_range": [
+        116,
+        255
+      ]
+    },
+    "new_forest_lvl2.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        6,
+        124,
+        794,
+        676
+      ],
+      "opaque_pixels": 147190,
+      "dominant_rgb": [
+        [
+          88,
+          120,
+          64
+        ],
+        [
+          88,
+          128,
+          64
+        ],
+        [
+          88,
+          128,
+          72
+        ],
+        [
+          72,
+          104,
+          56
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          88,
+          120,
+          72
+        ],
+        [
+          96,
+          72,
+          56
+        ],
+        [
+          48,
+          64,
+          96
+        ]
+      ],
+      "sha256": "ab050a63662366e84e439481b2dff02fae260704d1d17d0dac1464a3f63f2af3",
+      "mask_range": [
+        116,
+        255
+      ]
+    },
+    "new_forest_lvl3.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        6,
+        80,
+        794,
+        720
+      ],
+      "opaque_pixels": 183630,
+      "dominant_rgb": [
+        [
+          88,
+          120,
+          64
+        ],
+        [
+          88,
+          128,
+          64
+        ],
+        [
+          88,
+          128,
+          72
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          72,
+          104,
+          56
+        ],
+        [
+          88,
+          120,
+          72
+        ],
+        [
+          48,
+          64,
+          96
+        ],
+        [
+          96,
+          72,
+          56
+        ]
+      ],
+      "sha256": "70d3100ed2aa0d4712cdf8389d19f6379f666c54a77e3802ac925ee2dafd604e",
+      "mask_range": [
+        117,
+        255
+      ]
+    },
+    "old_forest_lvl1.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        21,
+        17,
+        779,
+        783
+      ],
+      "opaque_pixels": 241842,
+      "dominant_rgb": [
+        [
+          88,
+          120,
+          64
+        ],
+        [
+          88,
+          128,
+          64
+        ],
+        [
+          88,
+          128,
+          72
+        ],
+        [
+          88,
+          72,
+          56
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          96,
+          72,
+          56
+        ],
+        [
+          48,
+          80,
+          32
+        ],
+        [
+          48,
+          80,
+          40
+        ]
+      ],
+      "sha256": "4add4af9bcff1a44ecbadae168b8b368ca7324001473cdbe62f6da01b6a0879b",
+      "mask_range": [
+        117,
+        255
+      ]
+    },
+    "old_forest_lvl2.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        6,
+        17,
+        794,
+        783
+      ],
+      "opaque_pixels": 280209,
+      "dominant_rgb": [
+        [
+          88,
+          120,
+          64
+        ],
+        [
+          88,
+          128,
+          64
+        ],
+        [
+          88,
+          128,
+          72
+        ],
+        [
+          88,
+          72,
+          56
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          96,
+          72,
+          56
+        ],
+        [
+          88,
+          120,
+          72
+        ],
+        [
+          48,
+          80,
+          32
+        ]
+      ],
+      "sha256": "a36ac019fd1d0ef8a800dda5e1ec5e22b2847ad953090b1cb4f0493a07e0c896",
+      "mask_range": [
+        118,
+        255
+      ]
+    },
+    "old_forest_lvl3.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        6,
+        17,
+        794,
+        783
+      ],
+      "opaque_pixels": 325978,
+      "dominant_rgb": [
+        [
+          88,
+          120,
+          64
+        ],
+        [
+          88,
+          128,
+          64
+        ],
+        [
+          88,
+          128,
+          72
+        ],
+        [
+          88,
+          72,
+          56
+        ],
+        [
+          96,
+          72,
+          56
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          48,
+          80,
+          32
+        ],
+        [
+          88,
+          120,
+          72
+        ]
+      ],
+      "sha256": "9880d14f9a9b58a2143c2c89743115dd6d62d328feb816d02fda9cc5efe3aea1",
+      "mask_range": [
+        118,
+        255
+      ]
+    },
+    "desal_lvl1.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        6,
+        188,
+        794,
+        611
+      ],
+      "opaque_pixels": 171933,
+      "dominant_rgb": [
+        [
+          104,
+          120,
+          128
+        ],
+        [
+          128,
+          128,
+          120
+        ],
+        [
+          168,
+          176,
+          176
+        ],
+        [
+          144,
+          144,
+          152
+        ],
+        [
+          88,
+          104,
+          112
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          168,
+          168,
+          176
+        ],
+        [
+          88,
+          96,
+          112
+        ]
+      ],
+      "sha256": "1fc67c51b2fcd6553908e2ed6bf123cea67c1e9b65a5412f63192a87d3682634",
+      "mask_range": [
+        125,
+        255
+      ]
+    },
+    "desal_lvl2.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        6,
+        188,
+        794,
+        611
+      ],
+      "opaque_pixels": 189715,
+      "dominant_rgb": [
+        [
+          104,
+          120,
+          128
+        ],
+        [
+          168,
+          176,
+          176
+        ],
+        [
+          128,
+          128,
+          120
+        ],
+        [
+          144,
+          144,
+          152
+        ],
+        [
+          88,
+          104,
+          112
+        ],
+        [
+          168,
+          168,
+          176
+        ],
+        [
+          88,
+          96,
+          112
+        ],
+        [
+          56,
+          64,
+          96
+        ]
+      ],
+      "sha256": "693bf9d75ec07c01898f0bc7d474fd338a0979c78ac28f107e689d9bea4da347",
+      "mask_range": [
+        125,
+        255
+      ]
+    },
+    "desal_lvl3.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        6,
+        133,
+        794,
+        666
+      ],
+      "opaque_pixels": 224788,
+      "dominant_rgb": [
+        [
+          104,
+          120,
+          128
+        ],
+        [
+          168,
+          176,
+          176
+        ],
+        [
+          144,
+          144,
+          152
+        ],
+        [
+          88,
+          104,
+          112
+        ],
+        [
+          88,
+          96,
+          112
+        ],
+        [
+          128,
+          128,
+          120
+        ],
+        [
+          128,
+          72,
+          56
+        ],
+        [
+          56,
+          64,
+          96
+        ]
+      ],
+      "sha256": "d6aabc0fdee4dd22cd5f1e67002fe944d42807eeff6665224e6149a154a933cb",
+      "mask_range": [
+        126,
+        255
+      ]
+    },
+    "oil_well_lvl1.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        92,
+        175,
+        707,
+        625
+      ],
+      "opaque_pixels": 115138,
+      "dominant_rgb": [
+        [
+          144,
+          144,
+          152
+        ],
+        [
+          88,
+          104,
+          112
+        ],
+        [
+          128,
+          128,
+          120
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          128,
+          72,
+          56
+        ],
+        [
+          88,
+          96,
+          112
+        ],
+        [
+          48,
+          64,
+          96
+        ],
+        [
+          72,
+          80,
+          104
+        ]
+      ],
+      "sha256": "56d63504df00bc27a28ad850fa5479a72c7eeb8ba883f47e8eee1e493adefa10",
+      "mask_range": [
+        121,
+        255
+      ]
+    },
+    "oil_well_lvl2.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        6,
+        175,
+        794,
+        625
+      ],
+      "opaque_pixels": 163280,
+      "dominant_rgb": [
+        [
+          144,
+          144,
+          152
+        ],
+        [
+          128,
+          128,
+          120
+        ],
+        [
+          88,
+          104,
+          112
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          128,
+          72,
+          56
+        ],
+        [
+          88,
+          96,
+          112
+        ],
+        [
+          48,
+          64,
+          96
+        ],
+        [
+          72,
+          80,
+          104
+        ]
+      ],
+      "sha256": "32ee5185110ba098cfb57f30fefdbc3fe525328e8f6cf4d59c384cff115e572b",
+      "mask_range": [
+        121,
+        255
+      ]
+    },
+    "oil_well_lvl3.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        6,
+        135,
+        794,
+        664
+      ],
+      "opaque_pixels": 211602,
+      "dominant_rgb": [
+        [
+          144,
+          144,
+          152
+        ],
+        [
+          88,
+          104,
+          112
+        ],
+        [
+          128,
+          128,
+          120
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          128,
+          72,
+          56
+        ],
+        [
+          88,
+          96,
+          112
+        ],
+        [
+          48,
+          64,
+          96
+        ],
+        [
+          72,
+          80,
+          104
+        ]
+      ],
+      "sha256": "d01cc65fc5dd1162f7d5d01fc59414f7b4ca9a51d1b659a275554d8e0bbfff67",
+      "mask_range": [
+        119,
+        255
+      ]
+    },
+    "fracking_oil_well_lvl1.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        139,
+        180,
+        661,
+        619
+      ],
+      "opaque_pixels": 112311,
+      "dominant_rgb": [
+        [
+          40,
+          48,
+          48
+        ],
+        [
+          176,
+          144,
+          32
+        ],
+        [
+          144,
+          144,
+          152
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          48,
+          64,
+          88
+        ],
+        [
+          48,
+          56,
+          72
+        ],
+        [
+          48,
+          64,
+          96
+        ],
+        [
+          48,
+          56,
+          80
+        ]
+      ],
+      "sha256": "a74695984eced9c7447f9a28f40d5bd8d65c2b3201f0205aa0701db2c943d99f",
+      "mask_range": [
+        124,
+        255
+      ]
+    },
+    "fracking_oil_well_lvl2.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        52,
+        158,
+        748,
+        641
+      ],
+      "opaque_pixels": 178081,
+      "dominant_rgb": [
+        [
+          40,
+          48,
+          48
+        ],
+        [
+          176,
+          144,
+          32
+        ],
+        [
+          144,
+          144,
+          152
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          48,
+          64,
+          88
+        ],
+        [
+          48,
+          56,
+          80
+        ],
+        [
+          48,
+          64,
+          96
+        ],
+        [
+          48,
+          56,
+          72
+        ]
+      ],
+      "sha256": "6d73efcf5b28b75699e503d73ffb8b38c6e28cff88aab4f78cf0b2781b98239e",
+      "mask_range": [
+        121,
+        255
+      ]
+    },
+    "fracking_oil_well_lvl3.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        6,
+        145,
+        794,
+        654
+      ],
+      "opaque_pixels": 220499,
+      "dominant_rgb": [
+        [
+          40,
+          48,
+          48
+        ],
+        [
+          176,
+          144,
+          32
+        ],
+        [
+          144,
+          144,
+          152
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          48,
+          64,
+          88
+        ],
+        [
+          48,
+          56,
+          80
+        ],
+        [
+          48,
+          56,
+          72
+        ],
+        [
+          48,
+          64,
+          96
+        ]
+      ],
+      "sha256": "15663ffa0fba164fc9f92e122265b9372bf4e38ce797465c24b22840853d8601",
+      "mask_range": [
+        123,
+        255
+      ]
+    },
+    "offshore_oil_platform_lvl1.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        72,
+        101,
+        728,
+        698
+      ],
+      "opaque_pixels": 153088,
+      "dominant_rgb": [
+        [
+          144,
+          144,
+          152
+        ],
+        [
+          40,
+          48,
+          48
+        ],
+        [
+          48,
+          104,
+          88
+        ],
+        [
+          176,
+          144,
+          32
+        ],
+        [
+          128,
+          128,
+          120
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          48,
+          104,
+          80
+        ],
+        [
+          48,
+          64,
+          96
+        ]
+      ],
+      "sha256": "28226e87ab21e65bd99c2f6c796f6e3da7e1bdb36c9e5301dc27e5d02179a9a6",
+      "mask_range": [
+        126,
+        255
+      ]
+    },
+    "offshore_oil_platform_lvl2.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        19,
+        72,
+        781,
+        728
+      ],
+      "opaque_pixels": 203403,
+      "dominant_rgb": [
+        [
+          144,
+          144,
+          152
+        ],
+        [
+          40,
+          48,
+          48
+        ],
+        [
+          48,
+          104,
+          88
+        ],
+        [
+          176,
+          144,
+          32
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          80,
+          80,
+          88
+        ],
+        [
+          128,
+          128,
+          120
+        ],
+        [
+          48,
+          104,
+          80
+        ]
+      ],
+      "sha256": "4cb1f37a589fb2a8384331ee6abfb740897947bd17e8340cd0cab473dfa23206",
+      "mask_range": [
+        127,
+        255
+      ]
+    },
+    "offshore_oil_platform_lvl3.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        6,
+        23,
+        794,
+        776
+      ],
+      "opaque_pixels": 272352,
+      "dominant_rgb": [
+        [
+          144,
+          144,
+          152
+        ],
+        [
+          40,
+          48,
+          48
+        ],
+        [
+          48,
+          104,
+          88
+        ],
+        [
+          56,
+          64,
+          96
+        ],
+        [
+          176,
+          144,
+          32
+        ],
+        [
+          80,
+          80,
+          88
+        ],
+        [
+          128,
+          128,
+          120
+        ],
+        [
+          144,
+          152,
+          152
+        ]
+      ],
+      "sha256": "cd9df382f09e859ba655bab085983bbfc4bbf2763cfdf13358401c21003a3b3a",
+      "mask_range": [
+        128,
+        255
+      ]
+    },
+    "furnace_lvl3.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        31,
+        33,
+        769,
+        766
+      ],
+      "opaque_pixels": 303491,
+      "dominant_rgb": [
+        [
+          64,
+          72,
+          72
+        ],
+        [
+          56,
+          64,
+          64
+        ],
+        [
+          40,
+          48,
+          56
+        ],
+        [
+          184,
+          184,
+          176
+        ],
+        [
+          48,
+          56,
+          56
+        ],
+        [
+          72,
+          80,
+          80
+        ],
+        [
+          48,
+          56,
+          64
+        ],
+        [
+          64,
+          72,
+          88
+        ]
+      ],
+      "sha256": "dd5837934190494906b7c0034cd23cca0ea255d66a1beccce94fc22576298e15",
+      "mask_range": [
+        113,
+        255
+      ]
+    }
+  },
+  "models": {
+    "farm_lvl1.glb": "407329ec73e65c3ea611a28e652b4329a911f833731f9eccb0a592467be18124",
+    "farm_lvl3.glb": "1890041af540cad677a26e8c9d813dfe52bc3061d981ea9af72ed5c1810f515d",
+    "farm_lvl2.glb": "97ae7e7c844416e788be3165d9b23637fcb0ce7f4696b5762e450ed3de09bf50",
+    "old_forest_lvl2.glb": "06060c19b8e507037fb9a26e7284787aa01151f1e1745d76eb352f9e2f7807ac",
+    "old_forest_lvl3.glb": "087a910f86d306861878f56dee6ba4fa79874c91b7b9aa25c6d9709fcf9cf608",
+    "old_forest_lvl1.glb": "17a40b7de02e7542be5baf5cf6e7e314cfc4a795577d9caa00fb9a7691d4f7ed",
+    "new_forest_lvl1.glb": "860d8d5cd62f809c5329d0ac206b1fc7944ab54dd3d48b09d082530a5540b842",
+    "new_forest_lvl3.glb": "f395abcc770f2a8d32f14816ff6c72e1fb3cb107d34e2479cfd130b56159007d",
+    "new_forest_lvl2.glb": "55d2ce6ded0399d1049d3bf254689fe091f582b8028b25de47d67e45b669a94c",
+    "water_pump_lvl1.glb": "bf535f64462405467ff357c14d3fdc7b457a3e2e949c696a1cfb9ece3d7f028e",
+    "desal_lvl2.glb": "586844c99fb706902df1090f448b93351e859abbb94c235b741ed4432e9ea92f",
+    "desal_lvl3.glb": "61cd2d82c51430d4a4638bd49a5e8dc3f26dae456d29736f503142cab34445c0",
+    "water_pump_lvl2.glb": "e7411feb550a4d5bb650a2bde9b0fdfc4fcf61c44417eaa33b1e938dfd08aa64",
+    "desal_lvl1.glb": "892ab0c332d7a301be5f4132b946b646dd1f9e46d49995c7e1547399e3a9aa92",
+    "water_pump_lvl3.glb": "028e092b06876493f1c34780b4513521d69c1ab35c48d8aeadde57059aca2e45",
+    "oil_well_lvl2.glb": "66b9b3bea54a7fe5e30b0e55dcc6a613ef81bb23a4ce21f2ab669b57a301270d",
+    "oil_well_lvl3.glb": "a85ba159499a280fe6a9bd303feee78fdab78c8a483d066c6734140267fdb71f",
+    "oil_well_lvl1.glb": "d20020fa1863be6c53355271c2aea981fbdcc507ece7e7d8b5c54ebed9832bfb",
+    "fracking_oil_well_lvl2.glb": "cd1340a1d5c43e4fed9c6e4baf959b0adfc19da3580363bba01e69c91a481bee",
+    "fracking_oil_well_lvl3.glb": "a4979e153192493225ea85a15d581a06fa85c0a100edb5bc7b04c713dcdeeb97",
+    "fracking_oil_well_lvl1.glb": "22a62aabf6a37f13bee39c43575e06e8c09c6fc6637e12e7e5bfa4675bb30dee",
+    "offshore_oil_platform_lvl1.glb": "7376844d89820efdb4e9d89c1edcbe0b94f7b5e502e96de394ba7d484e37ff19",
+    "offshore_oil_platform_lvl2.glb": "fedb94a175404a0c0f7401c2a85a5158df5de10e298f3d6f0cbb0ea9b060b900",
+    "offshore_oil_platform_lvl3.glb": "7f2111eab90d3ea79f2e7d311915421137b0d705189e38c8aae3769c1f55ec95",
+    "furnace_lvl3.glb": "f2177eca66b17832c6ca7d85d928b966fdf984e8c8e8cfb60528fffc346a4aff"
+  }
+}

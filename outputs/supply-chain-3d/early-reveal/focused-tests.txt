@@ -1,0 +1,8 @@
+background_ ==== 55 passed, 0 failed
+camera_ ==== 37 passed, 0 failed
+cursor_collision_ ==== 19 passed, 0 failed
+resource_cache_ ==== 9 passed, 0 failed
+prefetch_is_ ==== 3 passed, 0 failed
+prepared_detail_reloads ==== 5 passed, 0 failed
+cached_resources_survive ==== 4 passed, 0 failed
+TOTAL 132 assertions passed

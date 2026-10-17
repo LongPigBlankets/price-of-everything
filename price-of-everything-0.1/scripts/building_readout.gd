@@ -51,6 +51,8 @@ static func is_recipe_kind(kind: String) -> bool:
 static func run_state(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> String:
 	if BuildingStatus.recipe_deposit_exhausted(building, recipe):
 		return "stalled"
+	if str(building.get("building_id", "")) == "b_038":
+		return "operational" if preload("res://scripts/rail_hub.gd").active(building) else "stalled"
 	if is_infrastructure:
 		return "operational"
 	if BuildingStatus.power_status_color(building, recipe, is_infrastructure) == BuildingStatus.STATUS_RED:

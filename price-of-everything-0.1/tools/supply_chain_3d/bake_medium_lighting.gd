@@ -41,6 +41,7 @@ func _ready() -> void:
 		return
 	contour.material_override = outline
 	for key in catalog:
+		if catalog[key].has("component"): continue
 		if not selected_keys.is_empty() and key not in selected_keys: continue
 		if str(key).begins_with("tree_"): continue
 		Assets.key_for(str(key).get_slice("_lvl", 0), 3)

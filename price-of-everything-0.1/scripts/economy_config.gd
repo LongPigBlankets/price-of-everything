@@ -592,3 +592,21 @@ func transport_link_capacity(mode: String, level: int) -> float:
 	if tiers.is_empty():
 		return 0.0
 	return float(tiers.get(clampi(level, 1, 3), 0.0))
+
+# --- Land prices (scripts/land_price.gd, docs/land-pricing-spec.md) ---
+# A patch's starting price is BuildingState.LAND_PATCH_COST times its settlement band. Every
+# rise below is a share of that starting price, so rises add and never compound.
+const LAND_BAND_MULT := {"hub_city": 10.0, "city": 6.0, "town": 4.0, "rest": 2.0}
+## Share of the starting price per counted building on the tile.
+const LAND_RAMP_PER_BUILDING := 0.5
+## Share of the starting price when a neighbouring tile holds land the player bought.
+const LAND_ADJACENT := 0.25
+## Share of the starting price when a neighbouring tile was bought stand-alone. Replaces LAND_ADJACENT.
+const LAND_ADJACENT_STANDALONE := 2.0
+## The whole quote, for land bought without a build or an upgrade.
+const LAND_STANDALONE_MULT := 2.0
+## Share of the starting price per doubling of global revenue, urban bands only. Retuning the rival
+## curve (CompanyRankings.DIFFICULTIES) retunes this too.
+const LAND_ECONOMY_STEP := 0.25
+## The briefing warns once global revenue passes this share of the next doubling.
+const LAND_ECONOMY_FOREWARN := 0.8

@@ -1,0 +1,94 @@
+{
+	"background": {
+		"activation": {
+			"attach_ms": 4.761,
+			"detail_ms": 0.028,
+			"effects_ms": 0.25,
+			"grade_ms": 0.113,
+			"state_ms": 2.701
+		},
+		"bundled_hits": 87,
+		"cache_hits": 87,
+		"cache_misses": 0,
+		"cache_writes": 0,
+		"grade_ms": 0.01,
+		"infrastructure_ms": 17.753,
+		"input_copy_ms": 46.351,
+		"layout_ready_ms": 4930.635,
+		"max_get_ms": 0.049,
+		"max_request_ms": 0.009,
+		"max_standing_slice_ms": 4.007,
+		"model_setup_ms": 108.941,
+		"pits_ms": 0.003,
+		"resources_ms": 4893.675,
+		"restore_layout_ms": 42.365,
+		"river_index_ms": 6.691,
+		"scene_ms": 35.493,
+		"scenery_restore_ms": 7.361,
+		"standing_ms": 13.538,
+		"static_scene_ms": 31.817,
+		"total_ms": 5800.95,
+		"transport_restore_ms": 28.295
+	},
+	"background_status": "ready",
+	"cache": {
+		"bundled_hits": 87,
+		"misses": 0,
+		"writes": 0
+	},
+	"frames_over_50ms": 1,
+	"max_owned_frame_ms": 51.224,
+	"opening": {
+		"begin_elapsed_ms": 19258,
+		"owned_tiles": 8,
+		"profile": {
+			"activation": {
+				"attach_ms": 3.075,
+				"detail_ms": 466.032,
+				"effects_ms": 2.143,
+				"grade_ms": 0.045,
+				"state_ms": 0.052
+			},
+			"bundled_hits": 35,
+			"cache_hits": 35,
+			"cache_misses": 0,
+			"cache_writes": 0,
+			"continent_ms": 6.695,
+			"infrastructure_ms": 41.892,
+			"keys_ms": 231.05,
+			"layout_inputs_ms": 598.227,
+			"layout_solve_ms": 355.619,
+			"max_standing_slice_ms": 52.931,
+			"model_ms": 957.773,
+			"road_frontage_ms": 128.362,
+			"road_import_ms": 89.67,
+			"road_routing_ms": 67.405,
+			"scene_ms": 1483.78,
+			"scenery_ms": 29.66,
+			"standing_ms": 522.914,
+			"static_scene_ms": 1462.672,
+			"total_ms": 2708.969,
+			"transport": {
+				"cache_hit": true,
+				"lookup_ms": 102.668,
+				"total_ms": 104.75
+			}
+		},
+		"ready_ms": 141
+	},
+	"owned_frames": 543,
+	"p95_owned_frame_ms": 9.271,
+	"repeat_switch_ms": 342,
+	"retired_tiles": 45,
+	"return_owned_ms": 8,
+	"slow_frames": [
+		{
+			"from": "scenery-0146afa6f8f2a80107076a9e1936601203fddb3e8590ef21d2ff6949b78efb7b.res",
+			"ms": 51.224,
+			"to": "port_lvl1.glb"
+		}
+	],
+	"switch_after_grace_ms": 1642,
+	"switch_ms": 3293,
+	"tiles": 600
+}

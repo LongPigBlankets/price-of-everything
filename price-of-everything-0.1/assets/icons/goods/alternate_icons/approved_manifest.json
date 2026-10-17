@@ -15,6 +15,8 @@
     "coal",
     "computer",
     "concrete",
+    "construction_equipment_ev",
+    "construction_equipment_ice",
     "copper_ingots",
     "copper_ore",
     "copper_pipe",
@@ -22,6 +24,7 @@
     "cpu",
     "crude_oil",
     "electrical_components",
+    "engine",
     "ethylene",
     "ev_car",
     "fertilisers",
@@ -36,6 +39,7 @@
     "industrial_acids",
     "iron_ingots",
     "iron_ore",
+    "large_engine",
     "limestone",
     "lithium_battery",
     "lithium_carbonate",
@@ -1737,6 +1741,114 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_045_car_body.png",
       "source": "goods_car_body/v17",
       "sha256": "1b4ed01d7e6b453fa116c8dd7bdfbcd0ac812e38072d06f6a665f74a3837dcaf",
+      "installed_default": true
+    },
+    {
+      "good": "engine",
+      "good_id": "g_046",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_046_engine.png",
+      "source": "goods_engine/v12",
+      "sha256": "01b447c4c035f3d176be6e2e6b2fb4932511435cf48395efd5c459b82182100a",
+      "installed_default": true
+    },
+    {
+      "good": "engine",
+      "good_id": "g_046",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_046_engine.png",
+      "source": "goods_engine/v12",
+      "sha256": "71fc872e61f7fcb1be8a56c253717d2935a7e718b491b34c081f61b6f99754bc",
+      "installed_default": true
+    },
+    {
+      "good": "engine",
+      "good_id": "g_046",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_046_engine.png",
+      "source": "goods_engine/v12",
+      "sha256": "2165d2b31c454a7596667e56d0f7fad4a0b5dcfd142c80bb0729768a231719df",
+      "installed_default": true
+    },
+    {
+      "good": "construction_equipment_ice",
+      "good_id": "g_071",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_071_construction_equipment_ice.png",
+      "source": "goods_construction_equipment/v7",
+      "sha256": "5d08d25dafe4da9eb2a6cc83afb0bbf9dabc9fec5551c53008c76f405a2ea40b",
+      "installed_default": true
+    },
+    {
+      "good": "construction_equipment_ice",
+      "good_id": "g_071",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_071_construction_equipment_ice.png",
+      "source": "goods_construction_equipment/v7",
+      "sha256": "248d1a8b0d27bb8bb529c2a6f1c5c291e634315afa4d2294180b74750c90e36f",
+      "installed_default": true
+    },
+    {
+      "good": "construction_equipment_ice",
+      "good_id": "g_071",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_071_construction_equipment_ice.png",
+      "source": "goods_construction_equipment/v7",
+      "sha256": "016a1a94f34ef0441e737273a2e812499d685579142c9ddc1c5604f488c03196",
+      "installed_default": true
+    },
+    {
+      "good": "construction_equipment_ev",
+      "good_id": "g_072",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_072_construction_equipment_ev.png",
+      "source": "goods_construction_equipment/v7",
+      "sha256": "5d08d25dafe4da9eb2a6cc83afb0bbf9dabc9fec5551c53008c76f405a2ea40b",
+      "installed_default": true
+    },
+    {
+      "good": "construction_equipment_ev",
+      "good_id": "g_072",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_072_construction_equipment_ev.png",
+      "source": "goods_construction_equipment/v7",
+      "sha256": "248d1a8b0d27bb8bb529c2a6f1c5c291e634315afa4d2294180b74750c90e36f",
+      "installed_default": true
+    },
+    {
+      "good": "construction_equipment_ev",
+      "good_id": "g_072",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_072_construction_equipment_ev.png",
+      "source": "goods_construction_equipment/v7",
+      "sha256": "016a1a94f34ef0441e737273a2e812499d685579142c9ddc1c5604f488c03196",
+      "installed_default": true
+    },
+    {
+      "good": "large_engine",
+      "good_id": "g_052",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_052_large_engine.png",
+      "source": "goods_large_engine/v10",
+      "sha256": "423ef6ee956bd177ee231ddfcf624e3c893527b5ba021fd1b6ce02abe22a08a4",
+      "installed_default": true
+    },
+    {
+      "good": "large_engine",
+      "good_id": "g_052",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_052_large_engine.png",
+      "source": "goods_large_engine/v10",
+      "sha256": "629f03822ccae9cd5d76bdbd9bb800ea04e6f442f565cfd5876aa08e2373db91",
+      "installed_default": true
+    },
+    {
+      "good": "large_engine",
+      "good_id": "g_052",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_052_large_engine.png",
+      "source": "goods_large_engine/v10",
+      "sha256": "61975f13431ffed2d8c7af8dcf3a7ae57fd2d1d0ec6d055fd665f5943eda60a5",
       "installed_default": true
     }
   ]

@@ -1,0 +1,4 @@
+[gd_scene format=3]
+[ext_resource type="Script" path="res://tools/tile_quick_menu_shot.gd" id="1"]
+[node name="TileQuickMenuShot" type="Node2D"]
+script = ExtResource("1")

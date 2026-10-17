@@ -332,6 +332,8 @@ static func _building_icon_tex(bd: Dictionary):
 	var building_id := str(bd.get("id", ""))
 	var internal := str(bd.get("internal_name", ""))
 	var paths: Array[String] = []
+	if building_id == "b_038":
+		return load("res://assets/icons/buildings/b_038_rail_hub.svg") as Texture2D
 	if building_id != "" and internal != "":
 		paths.append("res://assets/icons/buildings/%s_%s.png" % [building_id, internal])
 	if building_id != "":
@@ -947,7 +949,7 @@ static func infrastructure_summary(tile_id: String, tile_data: Dictionary) -> Ar
 			continue
 		var mode: String = CAPPED_MODES[key]
 		var level := int(tile_data.get("infrastructure_levels", {}).get(key, 1))
-		var cap := int(round(TransportState.tile_mode_capacity(mode, level)))
+		var cap := int(round(TransportState.tile_mode_capacity(mode, level, tile_id)))
 		var used := TransportState.tile_mode_flow(tile_id, mode, true)
 		var pct := (float(used) / float(cap)) if cap > 0 else 0.0
 		slot["cap"] = cap

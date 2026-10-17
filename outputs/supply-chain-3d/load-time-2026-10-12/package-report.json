@@ -1,0 +1,31 @@
+{
+	"bytes": 1342322554,
+	"civic": {
+		"civic_l": 7,
+		"civic_office": 9,
+		"civic_park": 2,
+		"civic_plaza": 3
+	},
+	"copied": {
+		"medium": 39,
+		"near": 0
+	},
+	"elapsed_ms": 1210517,
+	"errors": [],
+	"generated": {
+		"medium": 561,
+		"near": 600
+	},
+	"medium_decoded_bytes": 2241286200,
+	"near_decoded_bytes": 8965279800,
+	"near_disk_bytes": 786825635,
+	"ok": true,
+	"prepared_base_tiles": 600,
+	"resources": 1806,
+	"reused": {
+		"medium": 0,
+		"near": 0
+	},
+	"tiles": 600,
+	"unchanged_base_tiles": 0
+}

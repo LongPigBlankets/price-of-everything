@@ -1,7 +1,7 @@
 extends RefCounted
 ## Two rendered intermediate states. Never capture/copy the viewport or bake new art.
 const INTERMEDIATE_FRAMES := 2
-const SHADERS := ["ground.gdshader", "far_sprite.gdshader", "building_print.gdshader", "contour.gdshader", "water_glints.gdshader"]
+const SHADERS := ["ground.gdshader", "road_drawing.gdshader", "far_sprite.gdshader", "building_print.gdshader", "contour.gdshader", "water_glints.gdshader"]
 var blend := 0.0
 var target := 0.0
 var active := false

@@ -785,11 +785,14 @@ func _shipment_total_units(s: Dictionary) -> int:
 
 ## Per-turn capacity of one tile-link: configured mode/level cap × the
 ## transport_throughput research multiplier. 0 means the mode is uncapped.
-func tile_mode_capacity(mode: String, level: int) -> float:
+func tile_mode_capacity(mode: String, level: int, tile_id: String = "") -> float:
 	var cap: float = TransportService.link_capacity(mode, level)
 	if cap <= 0.0:
 		return 0.0
-	return Modifiers.apply("transport_throughput", mode, cap, {"mode": mode})
+	var result := Modifiers.apply("transport_throughput", mode, cap, {"mode": mode})
+	if mode in ["rail", "rails"] and tile_id != "":
+		result *= preload("res://scripts/rail_hub.gd").capacity_multiplier(tile_id)
+	return result
 
 # A tile's installed infra level for a mode (from the HexMap terrain). Defaults to
 # Level 1 when there's no map (headless tests) or the tile lacks that infra. The
@@ -992,7 +995,7 @@ func _roll_link_history() -> void:
 		var parts := str(key).split("|")
 		if parts.size() != 2:
 			continue
-		var cap := tile_mode_capacity(parts[1], _tile_infra_level(parts[0], parts[1]))
+		var cap := tile_mode_capacity(parts[1], _tile_infra_level(parts[0], parts[1]), parts[0])
 		var over: bool = cap > 0.0 and float(_last_link_flow[key]) > cap
 		var hist: Array = _link_over_history.get(key, [])
 		hist.append(over)
@@ -1041,7 +1044,7 @@ func active_links(only_over: bool = false) -> Array:
 		if flow <= 0.0:
 			continue
 		var level := _tile_infra_level(parts[0], parts[1])
-		var cap := tile_mode_capacity(parts[1], level)
+		var cap := tile_mode_capacity(parts[1], level, parts[0])
 		if cap <= 0.0:
 			continue   # uncapped mode — it can never be "over"
 		var ratio := flow / cap
@@ -1092,7 +1095,7 @@ func route_congestion(route_data: Dictionary) -> Dictionary:
 				var flow := float(_last_link_flow.get("%s|%s" % [tile_id, mode], 0))
 				if flow <= 0.0:
 					continue
-				var cap := tile_mode_capacity(mode, _tile_infra_level(tile_id, mode))
+				var cap := tile_mode_capacity(mode, _tile_infra_level(tile_id, mode), tile_id)
 				if cap <= 0.0:
 					continue
 				var l1_buffer := float(EconomyConfig.TRANSPORT_LINK_CAP_BY_MODE.get(mode, 0))

@@ -128,10 +128,15 @@ func _test_exported_3d_meshes() -> void:
 	_check(Assets.key_for("mine", 3) == "mine_flush_lvl3", "3D mine uses its surface geometry")
 
 func _test_3d_overview_interaction() -> void:
+	# This fixture exercises company-only geometry, independently of the user's
+	# saved all-tiles preference. Continent streaming has separate coverage tests.
+	var previous_coverage := PlayerProfile.supply_chain_all_tiles
+	PlayerProfile.supply_chain_all_tiles = false
 	SaveLoad.prepare_new_game("res://data/starts/metal_magnate.json")
 	var main: Node = load("res://scenes/main.tscn").instantiate()
 	add_child(main)
 	while not bool(main.get("build_complete")): await get_tree().process_frame
+	PlayerProfile.supply_chain_all_tiles = previous_coverage
 	Tutorial._on_overlay_skipped()
 	var view: Control = main.find_child("EmpireView", true, false)
 	await view.call("prepare")
@@ -333,7 +338,7 @@ func _test_3d_artwork_submerged_mines() -> void:
 		var cut := true
 		for cell in Detail.CELLS:
 			var mesh: ArrayMesh = builder._surface("mine", cell)
-			var vertices: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+			var vertices: PackedVector3Array = mesh.get_faces()
 			for i in range(0, vertices.size(), 3):
 				var p := (vertices[i] + vertices[i + 1] + vertices[i + 2]) / 3.0
 				if Geometry2D.is_point_in_polygon(Vector2(p.x, p.z), pit.rim): cut = false
@@ -355,6 +360,29 @@ func _test_3d_artwork_builder_lifetime() -> void:
 	_check(alive.get_ref() == null, "3D roads: finished infrastructure does not retain its builder through the height callback")
 
 func _check_source_tree_layout(builder: RefCounted, model: Dictionary) -> void:
+	if model.has("authored_region"):
+		var matches := true
+		var count := 0
+		for tid in builder.tree_placements:
+			var tile: Dictionary = model.tiles[tid]
+			var candidates := Legacy._tree_spots(tid, str(tile.type))
+			for tree in builder.tree_placements[tid]:
+				count += 1
+				var found := false
+				for candidate in candidates:
+					found = found or (str(candidate.kind) == str(tree.kind) and (tile.center + candidate.p).distance_to(tree.pos) < 0.01)
+				if tree.get("source", "") == "rail_row":
+					found = str(tile.type) == "rural" and int(tree.row) in [0, 1, 2] and float(tree.side) in [-1.0, 1.0]
+				matches = matches and found
+				matches = matches and builder.rail_vegetation.clear(tree.pos, builder.TreeLayout.canopy(tree))
+				for road in model.roads:
+					if road.get("tunnel", false): continue
+					var width := float(road.get("widths", Legacy._road_widths(int(road.level)))[0])
+					matches = matches and Geometry2D.get_closest_point_to_segment(tree.pos, road.a, road.b).distance_to(tree.pos) >= width + 4.0
+				for s in model.standing:
+					if s.has("footprint"): matches = matches and not Geometry2D.is_point_in_polygon(tree.pos, s.footprint)
+		_check(matches and count > 30, "3D trees: retain source placements plus rural rail rows, clearing transport and fitted footprints")
+		return
 	# Compare the actual source renderer's accepted placements, not a second copy
 	# of the candidate/clearance algorithm. Tree sprites encode their foot at 96%.
 	var original := Legacy.new()
@@ -376,16 +404,26 @@ func _check_source_tree_layout(builder: RefCounted, model: Dictionary) -> void:
 		expected_kinds.append((tree.tex as Texture2D).resource_path.get_file().get_basename().trim_prefix("tree_"))
 	var actual: Array[Vector2] = []
 	var actual_kinds: Array[String] = []
-	for placement in builder.tree_placements.values():
-		for tree in placement:
+	var coastal_additions: Array[bool] = []
+	var coast := preload("res://scripts/supply_chain_3d/coast.gd")
+	var ground := preload("res://scripts/empire_board_ground.gd")
+	for tid in builder.tree_placements:
+		for tree in builder.tree_placements[tid]:
 			actual.append(Legacy.iso(tree.pos, builder.ground.height(tree.pos)))
 			actual_kinds.append(str(tree.kind))
-	var matches := actual.size() == expected.size()
+			var center: Vector2 = model.tiles[tid].center
+			coastal_additions.append(ground.is_water(Legacy._relief_of(tid, center), tree.pos)
+				and not ground.is_water(coast.relief_of(tid, center), tree.pos))
+	var matches := actual.size() >= expected.size()
+	for j in expected.size():
+		var found := false
+		for i in actual.size(): found = found or (actual[i].distance_to(expected[j]) < 0.01 and actual_kinds[i] == expected_kinds[j])
+		matches = matches and found
 	for i in actual.size():
 		var found := false
 		for j in expected.size(): found = found or (actual[i].distance_to(expected[j]) < 0.01 and actual_kinds[i] == expected_kinds[j])
-		matches = matches and found
-	_check(matches and actual.size() > 30, "3D trees: species layout and roadside clearance keep all %d original tree positions (%d actual)" % [expected.size(), actual.size()])
+		matches = matches and (found or coastal_additions[i])
+	_check(matches and actual.size() > 30, "3D trees: preserve original species/clearance; additions only on restored coastal land (%d source, %d actual)" % [expected.size(), actual.size()])
 	original.free()
 
 func _test_3d_artwork_river_mouth() -> void:
@@ -586,6 +624,7 @@ func _test_far_sprite_assets_and_lod() -> void:
 	var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Assets.DIRECTORY + "manifest.json"))
 	var valid := true
 	for key in manifest:
+		if str(key).begins_with("port_ship_"): continue # Runtime near/medium meshes; deliberately absent at far zoom.
 		var data: Dictionary = sprites.entry(key)
 		valid = valid and not data.is_empty()
 		if data.is_empty(): continue
@@ -638,7 +677,7 @@ func _test_far_bake_decorative_proportions() -> void:
 		var frame := builder.standing_frame(s)
 		var transform: Transform3D = builder.decor_sprite_transforms[frame.key][0]
 		var near := builder.standing_node(s)
-		_check(transform.origin.distance_to(near.position + sprites.center(frame.key) * float(s.side)) < 0.001 and is_equal_approx(transform.basis.x.length(), float(s.side)),
+		_check(transform.origin.distance_to(near.position + sprites.center(frame.key) * Builder.BuildingScale.for_asset(frame.key, float(s.side))) < 0.001 and is_equal_approx(transform.basis.x.length(), float(s.side)),
 			"3D decorative sprites: %s retains exact scale and sloping-ground anchor" % s.iid)
 		_check(near.find_children("*", "StaticBody3D", true, false).is_empty(), "3D decorative sprites: scenery never becomes a playable building clickbox")
 		near.free()
@@ -845,6 +884,7 @@ func _test_medium_sprite_assets_and_handover() -> void:
 	var catalog: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Assets.DIRECTORY + "manifest.json"))
 	var valid := true
 	for key in catalog:
+		if str(key).begins_with("port_ship_"): continue
 		var data: Dictionary = sprites.entry(key, 1)
 		if data.is_empty(): valid = false; continue
 		var texture := load(sprites.MEDIUM_DIRECTORY + key + ".png") as Texture2D

@@ -17,7 +17,7 @@ def intentional(a,b):
     pair=sorted((a,b))
     if pair==sorted(('blender_lower','water_to_blender_seg0')):return True
     for pattern,header in [(r'pump_suction_\d+_seg1','low_pressure_header_seg0'),
-                           (r'pump_discharge_\d+_seg0','high_pressure_header_seg0'),
+                           (r'pump_discharge_\d+_seg2','high_pressure_header_seg0'),
                            (r'well_branch_\d+_seg0','zipper_manifold_seg0')]:
         if header in pair and any(re.fullmatch(pattern,n) for n in pair):return True
     return False
@@ -60,6 +60,17 @@ for level in (1,2,3):
         supported(prefix+'_engine_foot',supports)
         mates(prefix+'_discharge_port',f'pump_discharge_{i}_seg0',0)
         mates(f'pump_suction_{i}_seg0',prefix+'_suction_port',2)
+        tyres=[n for n in names if n.startswith(prefix+'_tyre')]
+        assert len(tyres)==4,(prefix,'tandem wheels missing')
+        for tyre in tyres:
+            assert abs(bounds[tyre][0][2])<1e-5,(tyre,'wheel above/below ground')
+            for runner in [n for n in names if n.startswith(prefix+'_runner')]:
+                assert not trees[tyre].overlap(trees[runner]),(tyre,'wheel fouls chassis')
+        for foot in [n for n in names if n.startswith(prefix+'_head_foot')]:
+            supported(foot,[n for n in names if n.startswith(prefix+'_head_crossmember')])
+    for i in range(1 if level==1 else 2):
+        supported(f'sand_bin_{i}_body',[n for n in names if n.startswith(f'sand_bin_{i}_leg')])
+
     for i in range(level):
         supported(f'well_isolation_{i}',[f'branch_support_{i}_post'])
         mates(f'well_branch_{i}_seg2',f'frac_tree_{i}_inlet',0)
@@ -75,6 +86,7 @@ for level in (1,2,3):
     assert len(contacts)==1+2*(level+1)+level,('Missing or extra connected tees',level,contacts)
     results[f'L{level}']=dict(objects=len(objects),expected_connected_joins=contacts,unexpected_intersections=unexpected,
                              mounting_checks=mount_checks,coaxial_port_checks=port_checks,pumps=level+1,trees=level)
+    print('CROSS_ASSEMBLY',level,unexpected,flush=True)
     assert not unexpected,unexpected
 result=dict(source_sha256=hashlib.sha256((revision/'source/builders.py').read_bytes()).hexdigest(),levels=results,
             scope='Exterior surface BVH plus selected support/port checks. Rigid assembly internals and hidden pressure-vessel details are simplified.')

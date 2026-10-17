@@ -1236,7 +1236,7 @@ func _infrastructure_usage_met(d: Dictionary) -> bool:
 				usage = float(maxi(int(Power.tile_drawn.get(tile_id, 0)), int(Power.tile_produced.get(tile_id, 0))))
 			else:
 				var mode := "rail" if internal == "rails" else internal
-				capacity = float(TransportService.link_capacity(mode, 1)) if of_l1 else TransportState.tile_mode_capacity(mode, TransportState._tile_infra_level(tile_id, mode))
+				capacity = float(TransportService.link_capacity(mode, 1)) if of_l1 else TransportState.tile_mode_capacity(mode, TransportState._tile_infra_level(tile_id, mode), tile_id)
 				usage = float(TransportState.tile_mode_flow(tile_id, mode))
 			var bar := capacity * (bar_fraction if of_l1 else 0.80)
 			if capacity > 0.0 and usage >= bar:

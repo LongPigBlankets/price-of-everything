@@ -1,0 +1,129 @@
+{
+  "before": {
+    "first_tile_ms": [
+      2867,
+      3015,
+      3158
+    ],
+    "median_first_tile_ms": 3015,
+    "requested_set_ms": [
+      4328,
+      4835,
+      5303
+    ],
+    "pan_first_ms": [
+      55,
+      16,
+      61
+    ],
+    "owned_open_ms": [
+      292,
+      324,
+      308
+    ],
+    "cache": [
+      {
+        "bundled_hits": 113,
+        "misses": 0,
+        "writes": 0
+      },
+      {
+        "bundled_hits": 101,
+        "misses": 0,
+        "writes": 0
+      },
+      {
+        "bundled_hits": 101,
+        "misses": 0,
+        "writes": 0
+      }
+    ],
+    "whole_game_begin_ms": [
+      19908,
+      19913,
+      19788
+    ],
+    "closest": {
+      "closest_first": [
+        2926,
+        4063
+      ],
+      "closest_adjacent": [
+        519,
+        668
+      ],
+      "closest_return": [
+        521,
+        643
+      ],
+      "far_grace": [
+        80,
+        79
+      ]
+    }
+  },
+  "after": {
+    "first_tile_ms": [
+      2754,
+      3025,
+      4349
+    ],
+    "median_first_tile_ms": 3025,
+    "requested_set_ms": [
+      4506,
+      4872,
+      6970
+    ],
+    "pan_first_ms": [
+      29,
+      31,
+      171
+    ],
+    "owned_open_ms": [
+      300,
+      332,
+      343
+    ],
+    "cache": [
+      {
+        "bundled_hits": 107,
+        "misses": 0,
+        "writes": 0
+      },
+      {
+        "bundled_hits": 107,
+        "misses": 0,
+        "writes": 0
+      },
+      {
+        "bundled_hits": 100,
+        "misses": 0,
+        "writes": 0
+      }
+    ],
+    "whole_game_begin_ms": [
+      19766,
+      19845,
+      24246
+    ],
+    "closest": {
+      "closest_first": [
+        2811,
+        3850
+      ],
+      "closest_adjacent": [
+        446,
+        609
+      ],
+      "closest_return": [
+        520,
+        656
+      ],
+      "far_grace": [
+        79,
+        78
+      ]
+    }
+  },
+  "notes": "Fresh Godot processes, warm filesystem. First tile includes the fixed 1.5s reveal. The third after run took 24.25s to start the whole game versus about 19.9s earlier; retain this slower observation rather than claiming a guaranteed 3s load. Closest runs also slowed in the second pair for both packages."
+}

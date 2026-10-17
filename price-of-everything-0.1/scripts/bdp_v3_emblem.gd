@@ -18,7 +18,7 @@ static func side() -> float:
 
 
 static func has_emblem(building_id: String) -> bool:
-	return building_id != "" and ResourceLoader.exists(PATH % building_id)
+	return building_id == "b_038" or (building_id != "" and ResourceLoader.exists(PATH % building_id))
 
 
 func _init() -> void:
@@ -33,7 +33,9 @@ func _init() -> void:
 func set_building(building_id: String) -> bool:
 	face = null
 	shadow = null
-	if has_emblem(building_id):
+	if building_id == "b_038":
+		face = load("res://assets/icons/buildings/b_038_rail_hub.svg")
+	elif has_emblem(building_id):
 		face = load(PATH % building_id)
 		shadow = load((PATH % building_id).replace(".png", "_shadow.png"))
 	queue_redraw()

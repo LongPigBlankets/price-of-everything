@@ -13,15 +13,16 @@ func artwork(tile: Dictionary, relief: Dictionary, rivers: Array, height: Callab
 	var hex := Model.hex_points(tile.center)
 	var ocean := str(tile.type) in ["sea", "deep_sea"]
 	var water: Color = MapStyle.sea_colors()[4]
-	var coast: Array = [] if ocean or relief.get("sea", []).is_empty() else _shore_of(relief, hex)
-	for band in [[_SHALLOWS_OUT, _SHALLOWS_W, water.lightened(0.14)], [_SHALLOWS_OUT * 0.45, _SHALLOWS_W * 0.6, water.lightened(0.3)],
-			[-_STRAND * 0.5, _STRAND, _SAND], [0.6, 3.4, _SAND.darkened(0.16)], [2.6, 1.1, _FOAM]]:
+	var coast: Array = relief.shore if relief.has("water_ink") else ([] if ocean or relief.get("sea", []).is_empty() else _shore_of(relief, hex))
+	var shore_bands: Array = [] if relief.has("water_ink") else [[_SHALLOWS_OUT, _SHALLOWS_W, water.lightened(0.14)], [_SHALLOWS_OUT * 0.45, _SHALLOWS_W * 0.6, water.lightened(0.3)],
+			[-_STRAND * 0.5, _STRAND, _SAND], [0.6, 3.4, _SAND.darkened(0.16)], [2.6, 1.1, _FOAM]]
+	for band in shore_bands:
 		for seg in coast:
 			var out: Vector2 = seg[2] * float(band[0])
 			if not Geometry2D.is_point_in_polygon(((seg[0] as Vector2) + seg[1]) * 0.5
 					+ seg[2] * (float(band[0]) + signf(float(band[0])) * float(band[1]) * 0.5), hex): continue
 			_stroke_on(verts, cols, indices, PackedVector2Array([seg[0] + out, seg[1] + out]), float(band[1]), band[2])
-	for lake in relief.get("lakes", []):
+	for lake in ([] if relief.has("water_ink") else relief.get("lakes", [])):
 		var ring := PackedVector2Array(lake)
 		ring.append(ring[0])
 		_stroke_on(verts, cols, indices, ring, 4.0, _SAND.darkened(0.08))
