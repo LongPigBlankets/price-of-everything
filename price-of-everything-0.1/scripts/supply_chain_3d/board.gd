@@ -79,6 +79,7 @@ var _goods: Array = []
 var _last_graph: Dictionary = {}
 var _last_terrain: Node
 var _last_show: Dictionary = {}
+var _last_evening := false
 var _effects: Array = []
 var _labels: Control
 var _detail := -1
@@ -449,7 +450,10 @@ func set_evening(value: bool) -> void:
 	evening = value
 	if _light != null: _light.selected = 1 if value else 0
 	_apply_light()
-	if is_instance_valid(_last_terrain): await _build(_last_graph, _last_terrain, true)
+	# The continent is the shipped daylight package, so there only the grade changes.
+	# The company scene relights now, or when the map returns to it.
+	if show_all_tiles or not is_instance_valid(_last_terrain): return
+	await _build(_last_graph, _last_terrain, true)
 
 ## Evening is a per-channel curve after the tonemap: mid tones drop and cool, while the
 ## brightest values (lit windows, lamp glows) keep their warmth.
@@ -491,7 +495,8 @@ func set_all_tiles(value: bool, _persist: bool = true) -> void:
 	if _coverage != null: _coverage.selected = 1 if value else 0
 	_fit_after_build = not value
 	_medium_after_build = value
-	if _coverage_states.has(value):
+	# A company scene built in the other light is rebuilt rather than reused.
+	if _coverage_states.has(value) and (value or _coverage_states[value].builder.evening == evening):
 		_activate(_coverage_states[value])
 	elif is_instance_valid(_last_terrain):
 		await _build(_last_graph, _last_terrain, true)
@@ -592,7 +597,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	timings.model_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	stage = Time.get_ticks_usec()
 	if show_all_tiles: print("[CONTINENT BUILD] model ready ", Time.get_ticks_msec())
-	if model == _model and Legacy.show == _last_show and show_all_tiles == _last_all_tiles:
+	if model == _model and Legacy.show == _last_show and show_all_tiles == _last_all_tiles and evening == _last_evening:
 		_building = false
 		if _progress != null: _progress.hide()
 		next.free()
@@ -850,6 +855,7 @@ func _activate(packet: Dictionary) -> void:
 	_detail = -1
 	_model = model
 	_last_show = Legacy.show.duplicate()
+	_last_evening = packet.builder.evening
 	_last_all_tiles = show_all_tiles
 	_goods = packet.goods
 	_effects = packet.effects
