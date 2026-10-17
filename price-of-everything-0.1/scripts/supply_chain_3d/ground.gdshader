@@ -82,7 +82,9 @@ void fragment() {
 	paint *= wash * grade * shading * 0.90;
 	if (sc3d_soot_on > 0.5 && !strata) {
 		vec2 soot_uv = (world_point.xz - sc3d_soot_rect.xy) / sc3d_soot_rect.zw;
-		float soot = texture(sc3d_soot_map, soot_uv).r;
+		// The map covers the company build only; continent tiles beyond it stay clean.
+		bool inside = all(greaterThanEqual(soot_uv, vec2(0.0))) && all(lessThanEqual(soot_uv, vec2(1.0)));
+		float soot = inside ? texture(sc3d_soot_map, soot_uv).r : 0.0;
 		float luma = dot(paint, vec3(0.2126, 0.7152, 0.0722));
 		vec3 grimy = mix(vec3(luma), paint, 0.30) * vec3(0.78, 0.73, 0.66);
 		paint = mix(paint, grimy, clamp(soot, 0.0, 1.0) * 0.85);

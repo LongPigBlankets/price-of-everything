@@ -1825,7 +1825,8 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 	for line in lines: line_geometry.append([line.mode, line.pts, line.get("ids", []), line.get("level", 1)])
 	var lighting: Array = []
 	for tid in tiles: lighting.append([tid, tiles[tid].get("polluters", 0)])
-	lighting.append(["evening", evening])
+	# Only an evening build gets its own key, so daylight keeps the shipped bakes.
+	if evening: lighting.append(["evening", true])
 	var cable_anchors := {}
 	for s in model.get("standing", []):
 		if str(s.kind) == "pylon": cable_anchors[standing_key(s)] = Assets.cable_anchors(standing_key(s))

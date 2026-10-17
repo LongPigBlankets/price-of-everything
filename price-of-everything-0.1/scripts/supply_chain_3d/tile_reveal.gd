@@ -5,7 +5,7 @@ const DURATION := 1.5
 const EMPTY_END := 0.10
 const INK_END := 0.90
 const BACKDROP_STEP_MS := 120
-const SHADERS := ["ground.gdshader","road_drawing.gdshader","far_sprite.gdshader","building_print.gdshader","contour.gdshader","water_glints.gdshader"]
+const SHADERS := ["ground.gdshader","road_drawing.gdshader","far_sprite.gdshader","building_print.gdshader","building_glass.gdshader","contour.gdshader","water_glints.gdshader"]
 var grid := Grid.new()
 var active := false
 var begun := false
@@ -36,24 +36,42 @@ func bind(root: Node) -> void:
 	var nodes: Array = root.find_children("*","GeometryInstance3D",true,false)
 	if root is GeometryInstance3D: nodes.append(root)
 	for node in nodes:
+		if node is MeshInstance3D and node.material_override == null and node.mesh != null:
+			# Surface by surface: a building's glass keeps its own (transparent) paint.
+			var surfaces: Array = []
+			var bound: Array = []
+			for i in node.mesh.get_surface_count():
+				surfaces.append(node.get_surface_override_material(i))
+				var paint: Material = surfaces[i] if surfaces[i] != null else node.mesh.surface_get_material(i)
+				var revealed := _revealed(paint)
+				bound.append(revealed)
+				if revealed != null: node.set_surface_override_material(i,revealed)
+			if bound.any(func(m): return m != null): bindings.append({"node":node,"surfaces":surfaces,"bound":bound})
+			continue
 		var original: Material = node.material_override
 		var source: Material = original
 		if source == null:
 			var mesh: Mesh = node.mesh if node is MeshInstance3D else (node.multimesh.mesh if node is MultiMeshInstance3D else null)
 			if mesh != null and mesh.get_surface_count()>0: source=mesh.surface_get_material(0)
-		if not source is ShaderMaterial or source.shader == null or source.shader.resource_path.get_file() not in SHADERS: continue
-		if source.get_meta("tile_reveal_owner",0)==get_instance_id(): continue
-		var id := source.get_instance_id()
-		if not materials.has(id):
-			var material := source.duplicate() as ShaderMaterial
-			material.set_meta("tile_reveal_owner",get_instance_id())
-			material.set_shader_parameter("loading_mask",active)
-			material.set_shader_parameter("loading_tiles",grid.texture)
-			material.set_shader_parameter("loading_origin",grid.anchor)
-			material.set_shader_parameter("loading_grid",Vector4(grid.low.x,grid.low.y,grid.image.get_width(),grid.image.get_height()))
-			materials[id]=material
-		bindings.append({"node":node,"original":original,"material":materials[id]})
-		node.material_override=materials[id]
+		var material := _revealed(source)
+		if material == null: continue
+		bindings.append({"node":node,"original":original,"material":material})
+		node.material_override=material
+
+## The loading copy of `source`, shared by every node that uses it.
+func _revealed(source: Material) -> ShaderMaterial:
+	if not source is ShaderMaterial or source.shader == null or source.shader.resource_path.get_file() not in SHADERS: return null
+	if source.get_meta("tile_reveal_owner",0)==get_instance_id(): return null
+	var id := source.get_instance_id()
+	if not materials.has(id):
+		var material := source.duplicate() as ShaderMaterial
+		material.set_meta("tile_reveal_owner",get_instance_id())
+		material.set_shader_parameter("loading_mask",active)
+		material.set_shader_parameter("loading_tiles",grid.texture)
+		material.set_shader_parameter("loading_origin",grid.anchor)
+		material.set_shader_parameter("loading_grid",Vector4(grid.low.x,grid.low.y,grid.image.get_width(),grid.image.get_height()))
+		materials[id]=material
+	return materials[id]
 
 func start(tid: String) -> bool:
 	if not active or complete.has(tid) or elapsed.has(tid): return false
@@ -109,6 +127,11 @@ func finish() -> void:
 func restore() -> void:
 	# Wait until any two-frame LOD handover has restored these materials first.
 	for record in bindings:
-		if is_instance_valid(record.node) and record.node.material_override==record.material:
+		if not is_instance_valid(record.node): continue
+		if record.has("surfaces"):
+			for i in record.surfaces.size():
+				if record.bound[i] != null and record.node.get_surface_override_material(i)==record.bound[i]:
+					record.node.set_surface_override_material(i,record.surfaces[i])
+		elif record.node.material_override==record.material:
 			record.node.material_override=record.original
 	bindings.clear(); materials.clear()
