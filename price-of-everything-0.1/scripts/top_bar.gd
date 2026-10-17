@@ -1971,6 +1971,10 @@ func _fly_revenue_rankings(vb: VBoxContainer) -> void:
 	for head: String in RANK_MONEY_HEADS:
 		money_w = maxf(money_w, ceilf(Plate.FONT_SEMI.get_string_size(head.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, DS2_CAPTION_PX).x))
 	var plate := _ds2_sub_plate(vb, "RankingsPlateRevenue")
+	var economy := _ds2_text(economy_line())
+	economy.name = "RankingsGlobalRevenue"
+	economy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	plate.add_child(economy)
 	var heads := MarginContainer.new()
 	heads.name = "RankingsHeads"
 	heads.add_theme_constant_override("margin_left", roundi(RANK_PAD.x))
@@ -1993,6 +1997,15 @@ func _fly_revenue_rankings(vb: VBoxContainer) -> void:
 	var rows := _fly_list_scroll(plate, RANK_ROW_GAP)
 	for entry: Dictionary in standings:
 		rows.add_child(_ranking_row(entry, digits, suffix_room, money_w))
+
+
+## The table's summed revenue and the land price level it sets (LandPrice): one line over the table.
+static func economy_line() -> String:
+	var land := preload("res://scripts/land_price.gd")
+	var level: int = land.economy_level()
+	var done := "The economy has not doubled yet." if level <= 0 else "The economy has doubled %s." % land.times_word(level)
+	return "All companies took %s last turn. %s Town and city land rises again at %s." % [
+		land.pounds(roundf(CompanyRankings.global_revenue())), done, land.pounds(land.next_threshold())]
 
 
 ## The column headings' right margin: as far in as the rows' figures, past the rail's room and the gutter the list

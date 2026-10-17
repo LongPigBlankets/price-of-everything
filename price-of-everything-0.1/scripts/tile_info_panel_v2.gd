@@ -70,6 +70,7 @@ const LandHex := preload("res://scripts/tile_land_hex.gd")
 const PlayerColours := preload("res://scripts/player_colours.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
+const LandPrice := preload("res://scripts/land_price.gd")
 ## The cabinet's renders (tools/button_mockup/cluster.html?export&only=tiledoor,tilekey), their numbers from
 ## layout.json in layout pixels (1.875 to a logical pixel, 2/1.875 texels to a layout pixel).
 const V3_LAYOUT := 1.875
@@ -539,6 +540,23 @@ func _refresh_land_view() -> void:
 	_land_list.add_child(_land_line(null, "Tile maximum", str(int(chart.get("type_cap", 0)))))
 	if int(chart.get("type_cap", 0)) > int(BuildingState.DENSITY_SOFT_CAPACITY):
 		_land_list.add_child(_land_line("hazard", "Planning limit", str(int(BuildingState.DENSITY_SOFT_CAPACITY))))
+	_add_land_price_lines(_current_tile_id)
+
+
+## The price of the next patch here, line by line as LandPrice builds it: the band, then each rise, then the
+## patch price for a build and for land bought on its own.
+func _add_land_price_lines(tile_id: String) -> void:
+	_land_list.add_child(_land_caption("Land price"))
+	for line: Array in land_price_lines(tile_id):
+		_land_list.add_child(_land_line(null, str(line[0]), str(line[1])))
+
+
+## [label, figure] rows for the tile's land price. The rises print with a plus, and their figures sum to the
+## patch price before any adviser or decision changes it.
+static func land_price_lines(tile_id: String) -> Array:
+	var out := LandPrice.lines(LandPrice.quote(tile_id, 1, false))
+	out.append(["Per patch bought on its own", LandPrice.pounds(float(LandPrice.quote(tile_id, 1, true).total))])
+	return out
 
 
 func _land_caption(text: String) -> Label:
@@ -1125,16 +1143,16 @@ func _on_buy_land_pressed(anchor: Control) -> void:
 	popup.add_child(vb)
 	for e in entries:
 		var land := int(e[1])
-		var cost := int(round(float(land) / float(patch) * BuildingState.LAND_PATCH_COST))
+		var cost := ceili(float(LandPrice.quote(_current_tile_id, ceili(float(land) / float(patch)), true).total) - 0.0001)
 		var affordable := MatchState.money >= float(cost)
 		var b := Button.new()
-		b.text = "%s — £%d" % [str(e[0]), cost]
+		b.text = "%s for £%d" % [str(e[0]), cost]
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.custom_minimum_size = Vector2(240, 30)
 		b.add_theme_font_size_override("font_size", 13)
 		b.focus_mode = Control.FOCUS_NONE
 		if affordable:
-			b.pressed.connect(func(): _buy_land_amount(land); popup.hide())
+			b.pressed.connect(func(): _confirm_buy_land(popup, vb, land))
 		else:
 			# Disabled look (darker, muted), but still hoverable so the tooltip shows.
 			var s := StyleBoxFlat.new()
@@ -1155,11 +1173,59 @@ func _on_buy_land_pressed(anchor: Control) -> void:
 	popup.popup_hide.connect(func(): popup.queue_free())
 	popup.popup(Rect2i(Vector2i(anchor.global_position) + Vector2i(0, int(anchor.size.y)), Vector2i(260, 0)))
 
+## Land bought on its own costs double and raises every neighbour, so the popup asks once more before it buys,
+## with the price and the tiles that will rise.
+func _confirm_buy_land(popup: PopupPanel, vb: VBoxContainer, land_amount: int) -> void:
+	for child in vb.get_children():
+		vb.remove_child(child)
+		child.queue_free()
+	var note := Label.new()
+	note.text = buy_land_confirm_text(_current_tile_id, land_amount)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.custom_minimum_size = Vector2(300, 0)
+	note.add_theme_font_size_override("font_size", 13)
+	note.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+	vb.add_child(note)
+	var keys := HBoxContainer.new()
+	keys.add_theme_constant_override("separation", 8)
+	vb.add_child(keys)
+	for spec: Array in [["Buy", true], ["Cancel", false]]:
+		var b := Button.new()
+		b.name = "BuyLandConfirm" if bool(spec[1]) else "BuyLandCancel"
+		b.text = str(spec[0])
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.custom_minimum_size = Vector2(0, 30)
+		b.focus_mode = Control.FOCUS_NONE
+		var buy := bool(spec[1])
+		b.pressed.connect(func() -> void:
+			if buy:
+				_buy_land_amount(land_amount)
+			popup.hide())
+		keys.add_child(b)
+	popup.reset_size()
+
+
+## What the confirm says before land is bought on its own: the doubled price, and the neighbouring tiles that
+## will rise by twice their starting price.
+static func buy_land_confirm_text(tile_id: String, land_amount: int) -> String:
+	var patches := ceili(float(land_amount) / float(BuildingState.LAND_PATCH_SIZE))
+	var q := LandPrice.quote(tile_id, patches, true)
+	var text := "Land bought on its own costs double. %d land costs %s." % [land_amount, LandPrice.pounds(float(q.total))]
+	var names: Array = []
+	for n: String in LandPrice.standalone_rises(tile_id):
+		if Catalog.tile_type(n) in ["sea", "deep_sea"]:
+			continue
+		names.append(Catalog.tile_name(n) if Catalog.tile_name(n) != "" else Catalog.tile_label(n))
+	if names.is_empty():
+		return text
+	var listed := ", ".join(names.slice(0, names.size() - 1)) + " and " + str(names.back()) if names.size() > 1 else str(names[0])
+	return text + " Land next door on %s then rises by twice its starting price." % listed
+
 func _buy_land_amount(land_amount: int) -> void:
 	var patches := ceili(float(land_amount) / float(BuildingState.LAND_PATCH_SIZE))
 	if patches > 0:
 		var cap := TileViewData.tile_max_capacity(_current_tile_data)
-		if BuildingState.purchase_tile_land(_current_tile_id, patches, cap):
+		if BuildingState.purchase_tile_land(_current_tile_id, patches, cap, true):
 			Audio.transaction()
 
 func _on_bl_build_pressed() -> void:

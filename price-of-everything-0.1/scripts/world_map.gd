@@ -220,6 +220,7 @@ func _build_base() -> void:
 	terrain_layer.tile_selected.connect(_on_tile_selected)
 	terrain_layer.stockpile_destination_selected.connect(_on_stockpile_destination_selected)
 	terrain_layer.survey_tile_clicked.connect(_on_survey_tile_clicked)
+	terrain_layer.tile_menu_requested.connect(_on_tile_menu_requested)
 	MatchState.buy_tile_pick_requested.connect(_on_buy_tile_pick_requested)
 	MatchState.transfer_for_good_requested.connect(_on_transfer_requested)
 	MatchState.purchase_for_good_requested.connect(_on_purchase_requested)
@@ -936,6 +937,19 @@ func _on_tile_selected(tile_data: Dictionary) -> void:
 
 # While a tutorial is active, map interaction is confined to the board tiles. Returns
 # true (and nudges the player) when tile_id is off-board. A no-op in normal play.
+var _tile_menu: PopupPanel = null
+
+## Right click on a tile: its quick menu (scripts/tile_quick_menu.gd), unless a tutorial step holds the player to
+## its spotlight.
+func _on_tile_menu_requested(tile_data: Dictionary, screen_pos: Vector2) -> void:
+	if Tutorial.active and Tutorial.hard_gate:
+		return
+	if _tile_menu == null:
+		_tile_menu = load("res://scripts/tile_quick_menu.gd").new()
+		_hud.add_child(_tile_menu)
+	_tile_menu.call("open_for", tile_data, screen_pos)
+
+
 func _tutorial_blocks(tile_id: String) -> bool:
 	if not Tutorial.active or Tutorial.tile_allowed(tile_id):
 		return false
@@ -2162,9 +2176,23 @@ func _on_search_recipe_build_requested(building_id: String, recipe_id: String) -
 ## if the build is placed; a refusal returns the land and its cash.
 func _on_build_attempted(building_id: String, tile_id: String) -> void:
 	_attempt_land = {}
-	var placed := _attempt_build(building_id, tile_id)
+	Construction.placing_level = BuildMode.attempt_level
+	var placed := _attempt_level_allowed(building_id) and _attempt_build(building_id, tile_id)
+	Construction.placing_level = 1
 	_settle_attempt_land(placed)
 	BuildMode.last_attempt_placed = placed
+
+
+## A building placed above level 1 needs that level's research, as an upgrade to it would.
+func _attempt_level_allowed(building_id: String) -> bool:
+	var level := Construction.placing_level
+	if level <= 1:
+		return true
+	var gate := preload("res://scripts/building_levels.gd").research_gate(str(Catalog.get_building(building_id).get("internal_name", "")), level)
+	if gate != "" and not ResearchState.is_unlocked(gate):
+		MatchState.request_toast("Building it at level %d needs the research %s." % [level, gate], "warning")
+		return false
+	return true
 
 
 func _attempt_build(building_id: String, tile_id: String) -> bool:
@@ -2961,7 +2989,7 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 	# The rules (roads and rail off water, the tile's physical cap, owned land and what buying
 	# it takes, the planning limit) are ConstructionRules.land_plan's, the figures the construct
 	# flow shows. This keeps the side effects: the refusals and toasts, and the land purchase.
-	var plan := ConstructionRules.land_plan(tile_id, building_id, BuildMode.attempt_buy_land)
+	var plan := ConstructionRules.land_plan(tile_id, building_id, BuildMode.attempt_buy_land, Construction.placing_level)
 	var internal := str(Catalog.get_building(building_id).get("internal_name", ""))
 	# Infrastructure the tile's water cannot take is refused FIRST: the land gate below would
 	# otherwise answer "buy more land here" for a road across open water, advice the player

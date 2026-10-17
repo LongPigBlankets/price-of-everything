@@ -1,0 +1,176 @@
+{
+  "revision": "engine_v12",
+  "objects": 349,
+  "structural_hosts": [
+    "block",
+    "pan",
+    "plenum",
+    "timing_cover"
+  ],
+  "topology": "a 90 degree V8 long block: taupe block with banks at 45 degrees, heads and red chamfered cam covers, lower intake and plenum with arched runners, forward throttle body and thermostat neck, exhaust logs with primaries and rear downpipes, red-framed timing cover with crank, pump and alternator pulleys on one belt, engine mount and oil filter, pan with rear sump and bellhousing flange",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 4
+    },
+    "id_step": 17
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shaded_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "thresholds": [
+          0.575,
+          0.5,
+          0.3
+        ]
+      }
+    ]
+  },
+  "dimensions": {
+    "tilt": 45.0,
+    "crank_z": 0.62,
+    "block": {
+      "y": 0.74,
+      "x": 0.36,
+      "rail_z": 0.46,
+      "deck": 0.55,
+      "deck_half": 0.21
+    },
+    "head": {
+      "w": [
+        0.55,
+        0.78
+      ],
+      "half": 0.21,
+      "y": 0.7
+    },
+    "cover": {
+      "w": [
+        0.77,
+        0.81,
+        0.96
+      ],
+      "half": 0.2,
+      "inset": 0.025,
+      "y": 0.68,
+      "corner": 0.07,
+      "fillet": 0.05,
+      "panel_in": 0.075,
+      "panel_h": 0.035,
+      "panel_corner": 0.05
+    },
+    "intake": {
+      "r": 0.18,
+      "z": 1.53,
+      "y": [
+        -0.48,
+        0.48
+      ],
+      "runner_y": [
+        -0.42,
+        -0.14,
+        0.14,
+        0.42
+      ],
+      "runner_r": 0.072,
+      "port_x": 0.3
+    },
+    "timing": {
+      "t": 0.05,
+      "rim": 0.045,
+      "proud": 0.03,
+      "profile": [
+        [
+          0.34,
+          0.5
+        ],
+        [
+          0.34,
+          0.76
+        ],
+        [
+          0.2,
+          1.18
+        ],
+        [
+          -0.2,
+          1.18
+        ],
+        [
+          -0.34,
+          0.76
+        ],
+        [
+          -0.34,
+          0.5
+        ]
+      ]
+    }
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 1.56 x 1.78 x 1.71"
+  ],
+  "mesh_checks": {
+    "block": {
+      "vertices": 18,
+      "faces": 11,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pan": {
+      "vertices": 12,
+      "faces": 8,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "plenum": {
+      "vertices": 128,
+      "faces": 66,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "timing_cover": {
+      "vertices": 12,
+      "faces": 8,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 2.298,
+    "target": [
+      0.177,
+      -0.177,
+      1.003
+    ]
+  }
+}

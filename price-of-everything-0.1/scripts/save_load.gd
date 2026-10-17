@@ -21,8 +21,9 @@ const MiddlemanService := preload("res://scripts/middleman_service.gd")
 # 10 = historical player unit costs alongside prices; 11 = saved cost results.
 # 12 = private middleman service; 13 = independent input/output modes and managed source orders;
 # 14 = expanded material classes/sites; 15 = per-good middleman routes and tile surplus destinations;
-# 16 = intermediary fallback purchases held privately per building ("bridge").
-const SAVE_VERSION := 16
+# 16 = intermediary fallback purchases held privately per building ("bridge");
+# 17 = land prices: player buildings already standing are land_exempt, bought land starts unpriced.
+const SAVE_VERSION := 17
 const MAIN_SCENE := "res://scenes/main.tscn"
 const DEFAULT_START := "res://data/starts/default.json"
 const BuildingLevels := preload("res://scripts/building_levels.gd")   # start-building levels
@@ -368,6 +369,9 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			# Optional starting upgrade level (1..3); production reads building.level.
 			"level": clampi(int(entry.get("level", 1)), 1, BuildingLevels.MAX_LEVEL),
 		}
+		# The starting estate never counts toward its tile's land price.
+		if str(buildings[instance_id].owner) == MatchState.LOCAL_PLAYER:
+			buildings[instance_id]["land_exempt"] = true
 		if entry.has("opening_batches"):
 			opening_batches[instance_id] = maxi(0, int(entry.get("opening_batches", 0)))
 		if str(entry.get("logistics_mode", "")) == "middleman" and tile_id == "tile_5_4" and recipe_id == "r_009":
@@ -470,6 +474,8 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			"buildings": buildings,
 			"middleman_service": {"schema":1,"match_id":str(Time.get_unix_time_from_system())+":"+str(Time.get_ticks_usec()),"buildings":service_buildings} if not service_buildings.is_empty() and str(ruleset.get("logistics_model","")) == "middleman_v1" else {},
 			"tile_land_owned": (cfg.get("land", {}) as Dictionary).duplicate(true),
+			# The start's land is a grant, not a purchase: none of it is priced land.
+			"land_economy_level": 0,
 			"surveyed_tiles": surveyed,
 			"unlocked_titles": unlocked,
 			"recurring_moves": _stamped_orders(recurring.get("moves", [])),
@@ -773,10 +779,29 @@ func _migrate(snap: Dictionary) -> Dictionary:
 				# Fallback purchases add an optional per-building "bridge" holding. Older
 				# saves have none; the bump stops older clients dropping those paid goods.
 				snap["save_version"] = 16
+			16:
+				snap = _migrate_v16_to_v17(snap)
 			_:
 				break
 		version += 1
 		snap["save_version"] = version
+	return snap
+
+func _migrate_v16_to_v17(snap: Dictionary) -> Dictionary:
+	# Land prices count the buildings a player constructs. Nothing in an older save was priced that way,
+	# so its whole estate is exempt and the ramps start from the next build. The economy level is left
+	# unset (-1): BuildingState reads it from the loaded standings on first use.
+	var match_d: Dictionary = snap.get("match", {})
+	var stored: Variant = match_d.get("buildings", {})
+	if stored is Dictionary:
+		for inst: Variant in (stored as Dictionary).values():
+			if inst is Dictionary and str((inst as Dictionary).get("owner", MatchState.LOCAL_PLAYER)) == MatchState.LOCAL_PLAYER:
+				(inst as Dictionary)["land_exempt"] = true
+	match_d.erase("tile_land_priced")
+	match_d.erase("tile_land_standalone")
+	match_d["land_economy_level"] = -1
+	snap["match"] = match_d
+	snap["save_version"] = 17
 	return snap
 
 func _migrate_v1_to_v2(snap: Dictionary) -> Dictionary:

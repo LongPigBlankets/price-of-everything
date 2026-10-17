@@ -821,8 +821,9 @@ static func steps() -> Array:
 			"id": "buy_land",
 			"chapter": "Integration",
 			"title": "Buy the land to build on",
-			"body": "One more thing before you build: every building needs land YOU own. Your factory came with its own plot, but a furnace or Furnace needs room of its own. On the factory tile's land rail, click Buy Land and buy at least %d. Land is cheap (£%d per %d units), and the bracket on the size chart shows what you own." % [
-				_land_lesson_shortfall(), int(BuildingState.LAND_PATCH_COST), BuildingState.LAND_PATCH_SIZE],
+			"body": "One more thing before you build: every building needs land YOU own. Your factory came with its own plot, but a furnace or Furnace needs room of its own. On the factory tile's land rail, click Buy Land and buy at least %d. Bought on its own here, land costs £%d per %d units, and the bracket on the size chart shows what you own." % [
+				_land_lesson_shortfall(), ceili(preload("res://scripts/land_price.gd").patch_price(WINDOW_TILE, true) - 0.0001),
+				BuildingState.LAND_PATCH_SIZE],
 			"setup": [
 				{ "action": "close_building_detail" },
 				{ "action": "focus_tile", "tile": WINDOW_TILE },

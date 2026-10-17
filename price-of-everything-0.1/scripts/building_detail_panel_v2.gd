@@ -124,6 +124,8 @@ var _sheet: Control = null
 var _close_key: TextureButton = null
 # The Location keycap under the close key: pans the map to the building.
 var _pin_key: TextureButton = null
+## The Favourite key at the status line's end: stars the building's type, recipe and level for a tile's quick menu.
+var _star_key: TextureButton = null
 # The backing plate (dark navy-grey steel in a brass trim) drawn behind everything.
 var _backing: Control = null
 
@@ -209,6 +211,17 @@ func _build_shell() -> void:
 	_status_v3_label.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 	_status_v3_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_status_v3.add_child(_status_v3_label)
+	# The Favourite key stands at the status line's right end, under Close and Location, so the header keeps its
+	# height.
+	var status_gap := Control.new()
+	status_gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status_gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_status_v3.add_child(status_gap)
+	_star_key = BdpV3Key.make("star", line)
+	_star_key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_star_key.pressed.connect(_on_star_pressed)
+	_status_v3.add_child(_star_key)
+	MatchState.favourites_changed.connect(_sync_star_key)
 	outer.add_child(_status_v3)
 
 	# The scroll area sits in a plain Control so that the seam edge, added after it, draws over the
@@ -331,6 +344,7 @@ func _rebuild(building: Dictionary) -> void:
 	# Catalog.tile_label, not the raw id: "Stoneshore Fields - (5, 9)", never "tile_5_9".
 	var _tile := str(building.get("tile_id", ""))
 	_pin_key.tooltip_text = "Show on the map · %s" % (Catalog.tile_label(_tile) if _tile != "" else "—")
+	_sync_star_key()
 
 	# construction site → materials checklist + countdown only
 	var constr := BuildingReadout.construction(building)
@@ -1406,6 +1420,34 @@ func _apply_retrofit(iid: String, recipe: Dictionary) -> void:
 	_queue_refresh()
 
 # --- the control plates: the main controls on worn steel plates ----------------------------
+
+## The Favourite key: shown for a building that runs a recipe, lit amber while its type, recipe and level is a
+## favourite. Pressing it stars or unstars that combination.
+func _sync_star_key() -> void:
+	if _star_key == null:
+		return
+	var bid := str(_current_building.get("building_id", ""))
+	var rid := str(_current_building.get("recipe_id", ""))
+	_star_key.visible = bid != "" and rid != ""
+	if not _star_key.visible:
+		return
+	var on := MatchState.favourite_index(bid, rid, int(_current_building.get("level", 1))) >= 0
+	var glyph := "star_on" if on else "star"
+	_star_key.texture_normal = load("res://assets/ui/bdp_v3/key_%s.png" % glyph)
+	_star_key.texture_pressed = load("res://assets/ui/bdp_v3/key_%s_pressed.png" % glyph)
+	_star_key.tooltip_text = "Remove from favourites" if on else "Add to favourites. Build it again from a tile's right click menu."
+
+
+func _on_star_pressed() -> void:
+	var bid := str(_current_building.get("building_id", ""))
+	var rid := str(_current_building.get("recipe_id", ""))
+	if bid == "" or rid == "":
+		return
+	var level := int(_current_building.get("level", 1))
+	var on := MatchState.toggle_favourite_build(bid, rid, level)
+	var words := preload("res://scripts/tile_quick_actions.gd").favourite_title({"building_id": bid, "recipe_id": rid, "level": level})
+	MatchState.request_toast(("Added %s to favourites." if on else "Removed %s from favourites.") % words, "info")
+
 
 ## The Location key: the map pans to the building (and the tile's panel opens), or, for a building site
 ## not yet on the books, to its tile.

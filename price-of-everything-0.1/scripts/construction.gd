@@ -22,10 +22,17 @@ const BuildingNaming := preload("res://scripts/building_naming.gd")
 const MiddlemanContract := preload("res://scripts/middleman_contract.gd")
 const MiddlemanLocations := preload("res://scripts/middleman_locations.gd")
 const MiddlemanService := preload("res://scripts/middleman_service.gd")
+const BuildingLevels := preload("res://scripts/building_levels.gd")
 const STATUS_UNDER_CONSTRUCTION := "under_construction"
 const STATUS_AWAITING_MATERIALS := "awaiting_materials"
 
 var construction_projects: Dictionary = {}  # instance_id -> project dict
+## The level of the build being placed right now. The map sets it for one attempt from BuildMode.attempt_level
+## and puts it back to 1 after, so the kit, the footprint, the countdown and the finished building all read the
+## same level. Not saved: a placed project carries its own "level".
+var placing_level := 1
+## A building placed straight at level 2 or 3 takes this many turns longer than its level 1 build.
+const LEVELLED_BUILD_EXTRA_TURNS := 2
 ## The building type of the construction that just completed, for listeners of construction_completed
 ## (the instance may already be gone when it is infrastructure).
 var last_completed_building_id := ""
@@ -55,9 +62,17 @@ func import_state(d: Dictionary) -> void:
 # Construction materials for a building as {good_id: qty}. The Catalog stores build
 # materials by internal name (build_material_N in the CSV); the Stockpile is keyed by
 # good_id, so we resolve name -> good_id here once.
-func requirements_for(building_id: String) -> Dictionary:
+## The material kit for building `building_id`. At `level` above 1 (0 reads placing_level) the kit carries every
+## upgrade's materials on the way up, as building it at level 1 and upgrading would.
+func requirements_for(building_id: String, level: int = 0) -> Dictionary:
 	var reqs: Dictionary = {}
 	var building: Dictionary = Catalog.get_building(building_id)
+	var at := clampi(placing_level if level <= 0 else level, 1, BuildingLevels.MAX_LEVEL)
+	for target in range(2, at + 1):
+		for internal: String in BuildingLevels.upgrade_materials(str(building.get("internal_name", "")), target):
+			var gid := str(Catalog.get_good_by_internal_name(internal).get("id", ""))
+			if gid != "":
+				reqs[gid] = int(reqs.get(gid, 0)) + int(BuildingLevels.upgrade_materials(str(building.get("internal_name", "")), target)[internal])
 	for mat in building.get("materials", []):
 		var internal: String = str(mat.get("name", ""))
 		var qty: int = int(mat.get("qty", 0))
@@ -262,7 +277,7 @@ func start_on_tile(building_id: String, recipe_id: String, tile_id: String, buil
 		Stockpile.consume(tile_id, good_id, int(reqs[good_id]))
 
 	var building: Dictionary = Catalog.get_building(building_id)
-	var duration: int = MatchState.effective_build_duration(building_id)
+	var duration: int = placing_duration(building_id)
 	var instance_id: String = BuildingState.reserve_instance_id(building_id)
 
 	if duration <= 0:
@@ -270,7 +285,7 @@ func start_on_tile(building_id: String, recipe_id: String, tile_id: String, buil
 		# signals so visuals/toasts follow the same path as a timed build.
 		construction_started.emit(instance_id, tile_id)
 		_complete_build(building_id, recipe_id, tile_id, instance_id,
-			MatchState.construct_start_half_capacity and recipe_id != "", output_destination)
+			MatchState.construct_start_half_capacity and recipe_id != "", output_destination, placing_level)
 		last_completed_building_id = building_id
 		construction_completed.emit(instance_id, tile_id)
 		return instance_id
@@ -285,7 +300,7 @@ func start_on_tile(building_id: String, recipe_id: String, tile_id: String, buil
 		"missing_materials": {},
 		"turns_remaining": duration,
 		"construction_duration": duration,
-		"reserved_space": float(building.get("tile_size_used", 1)),
+		"reserved_space": placing_size(building_id), "level": placing_level,
 		"build_cost": build_cost,
 		"startup_half_capacity": MatchState.construct_start_half_capacity and recipe_id != "",
 		"output_destination": output_destination,
@@ -338,7 +353,7 @@ func start_awaiting_market(building_id: String, recipe_id: String, tile_id: Stri
 	var reqs: Dictionary = requirements_for(building_id)
 	var missing: Dictionary = check_tile(tile_id, building_id).get("missing", {})
 	var building: Dictionary = Catalog.get_building(building_id)
-	var duration: int = MatchState.effective_build_duration(building_id)
+	var duration: int = placing_duration(building_id)
 	var instance_id: String = BuildingState.reserve_instance_id(building_id)
 	var output_destination := MatchState.construct_output_destination
 
@@ -365,7 +380,7 @@ func start_awaiting_market(building_id: String, recipe_id: String, tile_id: Stri
 		"missing_materials": missing.duplicate(),  # only the ordered shortfall remains
 		"turns_remaining": duration,
 		"construction_duration": duration,
-		"reserved_space": float(building.get("tile_size_used", 1)),
+		"reserved_space": placing_size(building_id), "level": placing_level,
 		"source": {"kind": "market"},  # re-ordered from market each turn until secured
 		"build_cost": build_cost,
 		"startup_half_capacity": MatchState.construct_start_half_capacity and recipe_id != "",
@@ -400,7 +415,7 @@ func start_awaiting_middleman(building_id: String, recipe_id: String, tile_id: S
 		MatchState.consume_middleman_free_units(free)
 		ResearchState.note_middleman_shipment(str(good_id), qty)
 	var building: Dictionary = Catalog.get_building(building_id)
-	var duration: int = MatchState.effective_build_duration(building_id)
+	var duration: int = placing_duration(building_id)
 	var instance_id: String = BuildingState.reserve_instance_id(building_id)
 	var output_destination := MatchState.construct_output_destination
 	for good_id in reqs:
@@ -418,7 +433,7 @@ func start_awaiting_middleman(building_id: String, recipe_id: String, tile_id: S
 			"private_materials": missing.duplicate(),
 			"turns_remaining": duration,
 			"construction_duration": duration,
-			"reserved_space": float(building.get("tile_size_used", 1)),
+			"reserved_space": placing_size(building_id), "level": placing_level,
 			"source": {"kind": "middleman", "turns": 1},
 			"build_cost": build_cost,
 			"material_cost": material_cost,
@@ -467,7 +482,7 @@ func start_awaiting_from_tile(building_id: String, recipe_id: String, dest_tile:
 	var reqs: Dictionary = requirements_for(building_id)
 	var missing: Dictionary = check_tile(dest_tile, building_id).get("missing", {})
 	var building: Dictionary = Catalog.get_building(building_id)
-	var duration: int = MatchState.effective_build_duration(building_id)
+	var duration: int = placing_duration(building_id)
 	var instance_id: String = BuildingState.reserve_instance_id(building_id)
 	var output_destination := MatchState.construct_output_destination
 
@@ -489,7 +504,7 @@ func start_awaiting_from_tile(building_id: String, recipe_id: String, dest_tile:
 		"missing_materials": missing.duplicate(),
 		"turns_remaining": duration,
 		"construction_duration": duration,
-		"reserved_space": float(building.get("tile_size_used", 1)),
+		"reserved_space": placing_size(building_id), "level": placing_level,
 		"source": {"kind": "tile", "from_tile_id": source_tile},
 		"build_cost": build_cost,
 		"startup_half_capacity": MatchState.construct_start_half_capacity and recipe_id != "",
@@ -707,6 +722,17 @@ func adjust_remaining(instance_id: String, delta_turns: int) -> bool:
 	return true
 
 
+## Turns to build `building_id` at the placing level.
+func placing_duration(building_id: String) -> int:
+	var turns: int = MatchState.effective_build_duration(building_id)
+	return turns + (LEVELLED_BUILD_EXTRA_TURNS if placing_level > 1 else 0)
+
+
+## The land `building_id` takes at the placing level.
+func placing_size(building_id: String) -> float:
+	return float(Catalog.get_building(building_id).get("tile_size_used", 1)) * BuildingLevels.mult("size", placing_level)
+
+
 func _promote(instance_id: String) -> void:
 	var project: Dictionary = construction_projects[instance_id]
 	construction_projects.erase(instance_id)
@@ -717,6 +743,7 @@ func _promote(instance_id: String) -> void:
 		instance_id,
 		bool(project.get("startup_half_capacity", false)),
 		str(project.get("output_destination", MatchState.construct_output_destination)),
+		int(project.get("level", 1)),
 	)
 	# Carry the real paid build cost (money, density-aware) + the consumed material kit
 	# onto the live instance, so MatchState.refund_cost can give an exact demolish refund.
@@ -732,8 +759,8 @@ func _promote(instance_id: String) -> void:
 
 
 # Promotion seam: turn a (pending) construction into a live building, reusing the stable id.
-func _complete_build(building_id: String, recipe_id: String, tile_id: String, instance_id: String, startup_half_capacity: bool = false, output_destination: String = "") -> String:
-	var completed_id := BuildingState.add_building(building_id, recipe_id, tile_id, MatchState.LOCAL_PLAYER, instance_id)
+func _complete_build(building_id: String, recipe_id: String, tile_id: String, instance_id: String, startup_half_capacity: bool = false, output_destination: String = "", level: int = 1) -> String:
+	var completed_id := BuildingState.add_building(building_id, recipe_id, tile_id, MatchState.LOCAL_PLAYER, instance_id, true, level)
 	if BuildingState.buildings.has(completed_id):
 		# Optional saved planning marker; authored starting businesses default to online.
 		BuildingState.buildings[completed_id]["startup_inputs_pending"] = true
