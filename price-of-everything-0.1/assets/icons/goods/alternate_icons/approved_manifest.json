@@ -14,6 +14,8 @@
     "coal",
     "computer",
     "concrete",
+    "construction_equipment_ev",
+    "construction_equipment_ice",
     "copper_ingots",
     "copper_ore",
     "copper_pipe",
@@ -1737,6 +1739,60 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_046_engine.png",
       "source": "goods_engine/v12",
       "sha256": "2165d2b31c454a7596667e56d0f7fad4a0b5dcfd142c80bb0729768a231719df",
+      "installed_default": true
+    },
+    {
+      "good": "construction_equipment_ice",
+      "good_id": "g_071",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_071_construction_equipment_ice.png",
+      "source": "goods_construction_equipment/v7",
+      "sha256": "5d08d25dafe4da9eb2a6cc83afb0bbf9dabc9fec5551c53008c76f405a2ea40b",
+      "installed_default": true
+    },
+    {
+      "good": "construction_equipment_ice",
+      "good_id": "g_071",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_071_construction_equipment_ice.png",
+      "source": "goods_construction_equipment/v7",
+      "sha256": "248d1a8b0d27bb8bb529c2a6f1c5c291e634315afa4d2294180b74750c90e36f",
+      "installed_default": true
+    },
+    {
+      "good": "construction_equipment_ice",
+      "good_id": "g_071",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_071_construction_equipment_ice.png",
+      "source": "goods_construction_equipment/v7",
+      "sha256": "016a1a94f34ef0441e737273a2e812499d685579142c9ddc1c5604f488c03196",
+      "installed_default": true
+    },
+    {
+      "good": "construction_equipment_ev",
+      "good_id": "g_072",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_072_construction_equipment_ev.png",
+      "source": "goods_construction_equipment/v7",
+      "sha256": "5d08d25dafe4da9eb2a6cc83afb0bbf9dabc9fec5551c53008c76f405a2ea40b",
+      "installed_default": true
+    },
+    {
+      "good": "construction_equipment_ev",
+      "good_id": "g_072",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_072_construction_equipment_ev.png",
+      "source": "goods_construction_equipment/v7",
+      "sha256": "248d1a8b0d27bb8bb529c2a6f1c5c291e634315afa4d2294180b74750c90e36f",
+      "installed_default": true
+    },
+    {
+      "good": "construction_equipment_ev",
+      "good_id": "g_072",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_072_construction_equipment_ev.png",
+      "source": "goods_construction_equipment/v7",
+      "sha256": "016a1a94f34ef0441e737273a2e812499d685579142c9ddc1c5604f488c03196",
       "installed_default": true
     }
   ]
