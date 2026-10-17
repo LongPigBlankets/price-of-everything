@@ -84,6 +84,10 @@ static func validate(directory: String, host: Node) -> Dictionary:
 	var root := cache.read(manifest.continent_key)
 	var scenery := cache.read(manifest.scenery_key)
 	var transport := cache.read(str(manifest.get("transport_key","")))
+	if manifest.has("world_snapshot_key"):
+		var snapshot := cache.read(str(manifest.world_snapshot_key))
+		if not preload("res://scripts/supply_chain_3d/world_snapshot.gd").matches(snapshot, str(snapshot.get("input_key", "")), manifest):
+			result.errors.append("Missing/stale prepared world snapshot")
 	if transport.get("version",-1)!=preload("res://scripts/supply_chain_3d/transport_bake.gd").VERSION or not transport.get("roads") is Array:
 		result.errors.append("Missing prepared transport engineering")
 	for key in manifest.get("rail_layout_keys",[]):

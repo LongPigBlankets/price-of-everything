@@ -124,6 +124,10 @@ var scenery_ready := false
 var static_shadows: Dictionary = {}
 var decor_sprite_transforms: Dictionary = {}
 var standing_frames: Dictionary = {}
+var prepared_foundations: Dictionary = {}
+var prepared_continent_pick: Shape3D
+var prepared_authored_profile: Dictionary = {}
+var prepared_mine_rims: Mesh
 var _scenery_key := ""
 var tile_chunks: Dictionary = {}
 var base_ready := true
@@ -241,7 +245,9 @@ func prepare_scenery(host: Node, model: Dictionary) -> void:
 		infrastructure_bake = cached.get("infrastructure", {})
 		rail_vegetation.restore(cached.get("vegetation", {}))
 		standing_shadow_mesh = cached.get("standing_shadows")
-		if cached.has("road_profile"): authored_profile.restore(cached.road_profile)
+		if not prepared_authored_profile.is_empty():
+			for field in prepared_authored_profile: authored_profile.set(field, prepared_authored_profile[field])
+		elif cached.has("road_profile"): authored_profile.restore(cached.road_profile)
 		else: authored_profile.configure(model.get("authored_region", {}), rivers, natural_height, open_water)
 		if standing_shadow_mesh == null: prepare_standing_shadows(model.get("standing", []))
 		scenery_ready = true
@@ -582,7 +588,7 @@ func finish_continent(parent: Node3D) -> void:
 	body.collision_mask = 0
 	body.set_meta("continent_pick", true)
 	var shape := CollisionShape3D.new()
-	shape.shape = _coarse_pick_shape(continent.mesh) if cursor_picking else (continent.mesh as Mesh).create_trimesh_shape()
+	shape.shape = prepared_continent_pick if prepared_continent_pick != null else (_coarse_pick_shape(continent.mesh) if cursor_picking else (continent.mesh as Mesh).create_trimesh_shape())
 	body.add_child(shape)
 	parent.add_child(body)
 	residency.configure(tiles, origin)
@@ -869,6 +875,7 @@ func _cut_pits(poly: PackedVector2Array) -> Array[PackedVector2Array]:
 	return parts
 
 func mine_rims_node() -> MeshInstance3D:
+	if prepared_mine_rims != null: return Geo.instance(prepared_mine_rims, Assets.print_material())
 	# The sprite cut pass kept the first inward-facing wall of the removed earth
 	# block. In 3D it joins the terrain opening to the first submerged bench.
 	var batch := Geo.Batch.new()
@@ -884,7 +891,8 @@ func mine_rims_node() -> MeshInstance3D:
 				var h: float = pit.height - pit.step
 				batch.quad(point(p, 0.08), point(q, 0.08), at_height(q, h), at_height(p, h), Color(0.310, 0.273, 0.226))
 	var material := Assets.print_material()
-	return Geo.instance(batch.mesh(), material)
+	prepared_mine_rims = batch.mesh()
+	return Geo.instance(prepared_mine_rims, material)
 
 func point(p: Vector2, lift: float = 0.0) -> Vector3:
 	return Vector3(p.x - origin.x, surface_height(p) + lift, p.y - origin.y)
@@ -892,7 +900,7 @@ func point(p: Vector2, lift: float = 0.0) -> Vector3:
 func at_height(p: Vector2, height: float) -> Vector3:
 	return Vector3(p.x - origin.x, height, p.y - origin.y)
 
-func configure_grade() -> void:
+func configure_grade(update_assets: bool = true) -> void:
 	if grade_range == Vector2.ZERO:
 		grade_range = Vector2(INF, -INF)
 		for tile in tiles.values():
@@ -902,7 +910,7 @@ func configure_grade() -> void:
 				grade_range.y = maxf(grade_range.y, y)
 	mat.shader = GroundShader
 	mat.set_shader_parameter("grade_range", grade_range)
-	Assets.set_grade(grade_range)
+	if update_assets: Assets.set_grade(grade_range)
 
 func terrain_key(tid: String) -> String:
 	var holes: Array = []
@@ -1749,9 +1757,14 @@ func standing_node(s: Dictionary) -> Node3D:
 	if streamed and kind == "house": decor_nodes.append(root)
 	if standing_shadow_mesh == null and not s.has("harbour") and kind != "pylon" and pit.is_empty() and not (kind == "house" and scenery_ready): shadow(p, side)
 	if float(frame.plinth_depth) > 0.0:
-		var plinth := Geo.Batch.new()
-		_append_foundation(plinth, s, frame)
-		root.add_child(Geo.instance(plinth.mesh(), mat))
+		var foundation: ArrayMesh = prepared_foundations.get(str(s.iid))
+		if foundation == null:
+			var plinth := Geo.Batch.new()
+			_append_foundation(plinth, s, frame)
+			foundation = plinth.mesh()
+			# Decorative foundations belong to their streamed tile's lifetime.
+			if kind != "house": prepared_foundations[str(s.iid)] = foundation
+		root.add_child(Geo.instance(foundation, mat))
 	var card := FarSprites.instance(key, grade_range)
 	if card != null:
 		card.scale = BuildingScale.for_asset(key, side, float(s.get("decor_scale", 1.0)))

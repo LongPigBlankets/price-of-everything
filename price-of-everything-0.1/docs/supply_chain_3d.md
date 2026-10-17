@@ -17,7 +17,7 @@ open their supply-chain graphs; terrain clicks open the existing tile panel.
 - Q/E: rotate. Home / Reset view: frame the current coverage. The corner rotation arrows have been removed.
 - Click terrain or a warehouse: select its tile; Shift-click selects through buildings.
 - Click a building: open its network once its projected width **and** height exceed 20 logical screen pixels. Smaller player/NPC buildings select their tile instead. The outermost continent view always selects tiles. Eligible hitboxes follow the visible mesh with a two-world-unit edge tolerance; empty space around the building selects the tile. Retina scaling does not change the threshold. Tab returns to the regular map.
-- Visibility → **Show player owned tiles only** (default) / **Show all tiles**. This preference is saved in the player profile. Owned coverage includes company routes, goods and purchased empty land; all coverage includes every real terrain tile, without inventing stockpiles or player buildings.
+- Visibility → **Show player owned tiles only** / **Show all tiles**. Every new board starts with owned coverage, ignoring the old saved all-tiles choice. Switching is session-local. A matching prepared continent loads in the background while owned tiles remain usable. Owned coverage includes company routes, goods and purchased empty land; all coverage includes every real terrain tile, without inventing stockpiles or player buildings.
 - The maximum camera span is 28,000 units. The 600-tile test continent fits within it, exceeding the requested 50-tile minimum.
 
 Tile selection also forwards active construction and destination-selection actions.
@@ -44,10 +44,23 @@ checks; existing NPC and inland crossing candidates are listed in the
 [continent visual review](continent-decoration-review.md). It also records the
 remaining visual backlog and the changed Stoneshore snapshot counts.
 
-Fresh-process loading uses bundled resources without runtime generation: first
-supply-view opening takes 0.188s after Begin, while Show all tiles still takes
-16.023s. See [load-time evidence](load-time-bakes.md) for startup timing, the
-remaining restoration/assembly bottleneck and cache-verification details.
+Fresh-process loading now starts with owned coverage and prepares the matching
+continent separately. The former 16.023s foreground switch included model
+restoration, content hashing, transport lookups and scene construction despite
+having valid artwork. A prepared-world supplement stores those inputs, road
+indexes, mine cuts, foundations and the coarse picking shape. Resource loading
+and immutable-data copying/hashing run on workers; scene construction stays on
+the game thread in small batches. See [load-time evidence](load-time-bakes.md).
+
+Both coverage roots are retained for quick toggles. Inactive continent detail
+gets the existing ten-second grace period, then releases its nodes and applies
+the normal resource-cache limits. The preloader warms only twelve nearby medium
+and base tile resources. It does not keep every medium/near texture in memory.
+A turn, building/layout change or visibility change invalidates pending work;
+the prepared supplement is used only when its complete input signature and
+package fingerprints match. Currently it is bundled for the Metal Magnate
+starting world. Other or changed worlds retain the ordinary explicit all-tiles
+build path; they never display a stale prepared model.
 
 ## Matching the original artwork
 
