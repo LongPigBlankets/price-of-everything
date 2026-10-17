@@ -54,12 +54,14 @@ func _test_frontage_quarter_turn_keeps_house_scale() -> void:
 	var model := {"tiles":{"tile_5_9":tile},"trial_targets":{"tile_5_9":0},"standing":[seed],
 		"authored_region":{"tiles":{"tile_5_9":Vector2.ZERO},"paths":[]},
 		"roads":[{"a":Vector2(-50,0),"b":Vector2(50,0),"tile":"tile_5_9","source":"street","level":1,"paved":true,"widths":[5.0,4.5,4.0,3.5]}]}
-	# A 22u wide lot needs a home's narrow side, rather than its 30/36u frontage.
-	Placement.new().fit(model,func(_p: Vector2)->float:return 40.0,func(p: Vector2)->bool:return absf(p.x)>11.0,Builder.standing_key)
+	# Keep the fixture narrower than the resized home's frontage, so a quarter
+	# turn is still required rather than an ordinary street-facing placement.
+	var half_width: float=11.0*preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").DECOR_SIZE_FACTOR
+	Placement.new().fit(model,func(_p: Vector2)->float:return 40.0,func(p: Vector2)->bool:return absf(p.x)>half_width,Builder.standing_key)
 	var Scale: GDScript=preload("res://scripts/supply_chain_3d/building_scale.gd")
 	_check(model.standing.size()==2,"frontage: quarter-turn homes occupy narrow plots on both sides")
 	var correct := true
 	for s in model.standing:
-		var expected: float=Scale.semi_side()*0.5 if str(s.decor_asset).begins_with("civic_semi") else Scale.TERRACE_ROW_SIDE*0.5
+		var expected: float=(Scale.semi_side() if str(s.decor_asset).begins_with("civic_semi") else Scale.TERRACE_ROW_SIDE)*preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").DECOR_SCALE
 		correct=correct and absf(sin(float(s.yaw)))>0.99 and is_equal_approx(float(s.side),expected)
 	_check(correct,"frontage: narrow plots rotate existing homes without shrinking them")

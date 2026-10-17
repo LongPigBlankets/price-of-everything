@@ -119,10 +119,12 @@ func _measure() -> void:
 						for q in [b,b+tangent*6.0,b-tangent*6.0]:
 							if absf(float(fit.ground.call(q))-h)>6.0: sample.excluded="relief"
 				if sample.excluded=="" and not sample.covered:
-					# A road-facing point alone can sit on a narrow sliver between
-					# rail/road/water boundaries. Require a conservative 16x14u
-					# land envelope, smaller than our smallest 20.75u office.
-					var probe := PackedVector2Array([a-tangent*8.0,a+tangent*8.0,a+n*14.0+tangent*8.0,a+n*14.0-tangent*8.0])
+					# Keep the conservative land probe below the smallest current
+					# decorative module. A larger, stale probe hides valid small plots
+					# and can declare the frontage target met after only one placement.
+					var half_width := 8.0 * Trial.DECOR_SIZE_FACTOR
+					var depth := 14.0 * Trial.DECOR_SIZE_FACTOR
+					var probe := PackedVector2Array([a-tangent*half_width,a+tangent*half_width,a+n*depth+tangent*half_width,a+n*depth-tangent*half_width])
 					var base: float=fit.ground.call(a)
 					for q in probe:
 						if not Index.contains(world.tiles[road.tile].center,q): sample.excluded="plot_boundary"

@@ -24,7 +24,10 @@ const TARGET_BUILDINGS := {"tile_4_9": 12, "tile_4_10": 10, "tile_5_10": 12, "ti
 const RESIDENTIAL_LIMITS := {"tile_4_9": 14, "tile_4_10": 14, "tile_5_10": 14, "tile_5_9": 8, "tile_6_9": 8}
 const SPACES := ["civic_pond", "civic_grove", "civic_park", "civic_plaza"]
 const GREEN_LIMITS := {"civic_pond":1,"civic_grove":2,"civic_park":2,"civic_plaza":1}
-const DECOR_SCALE := 0.5
+## Relative to the preceding half-scale trial: 35% smaller in each dimension.
+## Public spaces and gameplay buildings do not use this decorative scale.
+const DECOR_SIZE_FACTOR := 0.65
+const DECOR_SCALE := 0.5 * DECOR_SIZE_FACTOR
 const Assets := preload("res://scripts/supply_chain_3d/assets.gd")
 const Sprites := preload("res://scripts/building_sprites.gd")
 const Scale := preload("res://scripts/supply_chain_3d/building_scale.gd")
@@ -102,13 +105,13 @@ static func populate(model: Dictionary, terrain: Node = null) -> void:
 					"decor_family":family,"trial_green":true,"fixed_plot":true,"space_slot":str(i),
 					"sprite":null,"polluting":false,"max_relief":0.8 if family=="civic_pond" else 2.0,"name":"Wooded pond" if family=="civic_pond" else "Neighbourhood green"})
 	# Three compact skyline landmarks take precedence over small decorative plots.
-	# Their half-scale footprints use the existing prepared meshes at every LOD.
+	# Landmarks share the same size reduction as ordinary decoration at every LOD.
 	if model.tiles.has("tile_5_10"):
 		var center: Vector2=model.tiles.tile_5_10.center
 		for i in 3:
 			var family := "civic_u_office" if i==2 else "towers"
 			var level := 1 if i!=1 else 2
-			var side := 45.3 if i==2 else (30.0 if i==0 else 34.0)
+			var side := (45.3 if i==2 else (30.0 if i==0 else 34.0)) * DECOR_SIZE_FACTOR
 			model.standing.append({"iid":"z0_docks_skyline:%d"%i,"kind":"house","tile":"tile_5_10",
 				"pos":center+[Vector2(-60,-5),Vector2(-30,50),Vector2(-90,65)][i],
 				"side":side,"pad":side,"level":level,"decor_family":family,"decor_scale":DECOR_SCALE,

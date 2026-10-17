@@ -1,5 +1,43 @@
 # Load time: what is baked, and when to re-bake it
 
+## Smaller Stoneshore decoration and closer zoom — verified 15 October 2026
+
+The installed **five-tile trial** uses decorative modules at 65% of their
+previous dimensions, including courtyard/back-row homes, commercial buildings
+and Docks skyline landmarks. Parks and gameplay building sizes are retained.
+The frontage land probe follows the smaller modules, so narrow usable plots
+remain part of its coverage calculation. Closest camera span is now 192u,
+giving 25% more magnification than the previous 240u limit.
+
+Production assembly prepared five base resources and regenerated five medium
+and five near resources, taking **20.188s after offline preparation**. Independent
+validation passes with current fingerprints: **21 resources, 40,072,245 bytes
+(38.22 MiB)**. Full-continent baking remains paused.
+
+Fresh Godot 4.6.2 / Forward+ Metal process, Apple M5 Pro, empty runtime cache
+directory and warm OS filesystem caches:
+
+| Measurement | Time |
+|---|---:|
+| Process start to Begin | 17.229s |
+| Five-tile board preparation during loading | 1.259s |
+| Frontage memo restoration stage | 0.187s |
+| Transport cache restore | 0.099s |
+| Combined five-tile resource load | 0.032s |
+| First supply-view opening with visible detail ready | 0.275s |
+
+Eighteen rendered views pass the review assertions, including the 192u closest
+view: **19 bundled hits, zero initial cache misses and zero runtime bake writes**.
+The runtime cache directory was never created. Placement produces 474 decorative
+buildings versus 259 in the preceding PR 204 trial, with 86.88% usable frontage,
+10.59% canopy coverage and no building/street overlaps or brownfield intrusions.
+The three skyline landmarks, two ponds, port connection and rail/depot crossing
+checks pass. All 16 gameplay records retain their asset, size and orientation.
+Forty-nine focused assertions pass across trial scaling, frontage, neighbourhood
+layout/cache restoration and camera movement. Existing nonfatal certificate,
+RoadRegions and exit warnings remain. Evidence:
+`outputs/supply-chain-3d/stoneshore-smaller/` at repository root.
+
 ## Rail river bridges and Fields junction — verified 15 October 2026
 
 The installed **five-tile** package contains the moved Fields junction, its routed

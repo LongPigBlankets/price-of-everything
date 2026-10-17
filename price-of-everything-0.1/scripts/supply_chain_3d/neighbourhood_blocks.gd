@@ -213,15 +213,16 @@ func _courtyards() -> void:
 			for sign_v in [-1.0,1.0]:
 				var point: Vector2=r.a.lerp(r.b,t)
 				var id := "z_court:%s:%d" % [r.tile,int(counts.get(r.tile,0))]
-				var a := {"iid":id+":front","kind":"house","tile":r.tile,"pos":point,"side":36.0,"level":1,
+				var side := Scale.TERRACE_ROW_SIDE * Trial.DECOR_SCALE
+				var a := {"iid":id+":front","kind":"house","tile":r.tile,"pos":point,"side":side,"level":1,
 					"decor_asset":"house_lvl1","decor_scale":Trial.DECOR_SCALE,"trial_density":true,"neighbourhood_row":2,
 					"sprite":null,"polluting":false,"max_relief":2.0,"name":"Courtyard homes"}
 				fit.street_pose(a,r,point,sign_v)
 				var n: Vector2=tangent.orthogonal()*sign_v
 				if _near_port(a.pos): continue
-				var depth := Assets.dimensions("house_lvl1").z*36.0
+				var depth := Assets.dimensions("house_lvl1").z*side
 				var b := a.duplicate(true);b.iid=id+":return"
-				b.pos=a.pos+tangent*(-18+depth*.5)+n*(18+depth*.5+.6);b.yaw=float(a.yaw)+PI*.5
+				b.pos=a.pos+tangent*(-side*.5+depth*.5)+n*(side*.5+depth*.5+.6);b.yaw=float(a.yaw)+PI*.5
 				var green := {"iid":id+":garden","kind":"house","tile":r.tile,"pos":a.pos+tangent*7+n*24,
 					"side":19.0,"level":1,"decor_family":"civic_park","yaw":a.yaw,"sprite":null,"polluting":false,
 					"trial_green":true,"max_relief":2.0,"name":"Shared courtyard garden"}
@@ -253,7 +254,7 @@ func populate() -> void:
 				for key in choices:
 					var side := Scale.TERRACE_ROW_SIDE*Trial.DECOR_SCALE
 					if key=="civic_semi_lvl1": side=Scale.semi_side()*Trial.DECOR_SCALE
-					elif key.begins_with("civic_"): side=6.0/Assets.storey_height(key)
+					elif key.begins_with("civic_"): side=12.0/Assets.storey_height(key)*Trial.DECOR_SCALE
 					var s := {"iid":"z_block:%s:%d" % [r.tile,plan.buildings],"kind":"house","tile":r.tile,"pos":point,
 						"side":side,"pad":side,"level":1,"decor_asset":key,"decor_scale":Trial.DECOR_SCALE,
 						"trial_density":true,"neighbourhood_row":row,"sprite":null,"polluting":false,"max_relief":3.0,
@@ -284,7 +285,7 @@ func _back_rows() -> void:
 				var point: Vector2=r.a.lerp(r.b,(i+.5)/count)
 				for sign_v in [-1.0,1.0]:
 					var key := "house_lvl1" if depth<40 else "civic_semi_lvl1"
-					var side := 36.0 if key=="house_lvl1" else Scale.semi_side()*Trial.DECOR_SCALE
+					var side := (Scale.TERRACE_ROW_SIDE if key=="house_lvl1" else Scale.semi_side())*Trial.DECOR_SCALE
 					var s := {"iid":"z_back:%s:%d" % [r.tile,plan.buildings],"kind":"house","tile":r.tile,"pos":point,
 						"side":side,"pad":side,"level":1,"decor_asset":key,"decor_scale":Trial.DECOR_SCALE,
 						"trial_density":true,"sprite":null,"polluting":false,"max_relief":3.0,"name":"Garden-row homes"}
