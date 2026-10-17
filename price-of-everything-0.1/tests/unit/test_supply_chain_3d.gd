@@ -360,6 +360,25 @@ func _test_3d_artwork_builder_lifetime() -> void:
 	_check(alive.get_ref() == null, "3D roads: finished infrastructure does not retain its builder through the height callback")
 
 func _check_source_tree_layout(builder: RefCounted, model: Dictionary) -> void:
+	if model.has("authored_region"):
+		var matches := true
+		var count := 0
+		for tid in builder.tree_placements:
+			var tile: Dictionary = model.tiles[tid]
+			var candidates := Legacy._tree_spots(tid, str(tile.type))
+			for tree in builder.tree_placements[tid]:
+				count += 1
+				var found := false
+				for candidate in candidates:
+					found = found or (str(candidate.kind) == str(tree.kind) and (tile.center + candidate.p).distance_to(tree.pos) < 0.01)
+				matches = matches and found
+				for road in model.roads:
+					var width := float(road.get("widths", Legacy._road_widths(int(road.level)))[0])
+					matches = matches and Geometry2D.get_closest_point_to_segment(tree.pos, road.a, road.b).distance_to(tree.pos) >= width + 4.0
+				for s in model.standing:
+					if s.has("footprint"): matches = matches and not Geometry2D.is_point_in_polygon(tree.pos, s.footprint)
+		_check(matches and count > 30, "3D trees: retain source species and seeds while clearing authored roads and fitted building footprints")
+		return
 	# Compare the actual source renderer's accepted placements, not a second copy
 	# of the candidate/clearance algorithm. Tree sprites encode their foot at 96%.
 	var original := Legacy.new()
@@ -601,6 +620,7 @@ func _test_far_sprite_assets_and_lod() -> void:
 	var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Assets.DIRECTORY + "manifest.json"))
 	var valid := true
 	for key in manifest:
+		if str(key).begins_with("port_ship_"): continue # Runtime near/medium meshes; deliberately absent at far zoom.
 		var data: Dictionary = sprites.entry(key)
 		valid = valid and not data.is_empty()
 		if data.is_empty(): continue
@@ -860,6 +880,7 @@ func _test_medium_sprite_assets_and_handover() -> void:
 	var catalog: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Assets.DIRECTORY + "manifest.json"))
 	var valid := true
 	for key in catalog:
+		if str(key).begins_with("port_ship_"): continue
 		var data: Dictionary = sprites.entry(key, 1)
 		if data.is_empty(): valid = false; continue
 		var texture := load(sprites.MEDIUM_DIRECTORY + key + ".png") as Texture2D

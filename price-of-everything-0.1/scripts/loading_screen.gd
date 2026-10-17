@@ -10,9 +10,6 @@ class_name LoadingScreen
 ## fades the whole screen out over 1 s while the map camera eases from the full-
 ## map view to mid-range — so the reveal *is* the zoom-in.
 
-## Last-resort: offer Begin even if build_complete never arrives. In WALL seconds, like
-## BEGIN_MIN_WALL and for the same reason — a net measured in clamped delta is not a net.
-const SAFETY_TIMEOUT := 60.0
 const DOT_PERIOD := 0.45       # seconds per "Loading…" dot step
 const MORPH_SECS := 1.0        # plate → Begin button crossfade
 const EXIT_SECS := 1.0         # fade-out + camera zoom on Begin
@@ -132,8 +129,7 @@ const CreamKey := preload("res://scripts/ds2/cream_key.gd")
 
 var _from_scene: Node
 var _elapsed := 0.0
-## Real milliseconds since this screen went up. `_elapsed` cannot answer that (see
-## BEGIN_MIN_WALL), and everything the PLAYER waits for is measured in real seconds.
+## Real milliseconds since this screen went up; process delta is clamped during stalls.
 var _wall_t0 := 0
 ## Wall duration of the last frame, ms. The clock the calm check reads — `delta` is clamped
 ## while the main thread is blocked, so it cannot see the very stalls this is looking for.
@@ -606,25 +602,7 @@ func _tick_film(delta: float) -> void:
 		_plate_box.visible = _film.modulate.a < 1.0
 
 
-## The earliest "Begin" may appear, in seconds since this screen went up. The button waits for
-## the LATER of this and a finished world.
-##
-## Two jobs. It gives the player a reason to have watched the film — a button offered on a
-## shot's first frame is the same as not showing the shot. And it is a BUFFER: the load is
-## ~13 s today, so there is ~7 s of slack, and a future load that grows into that slack costs
-## the player nothing at all, because they were never going to be allowed to leave before 20 s
-## anyway. It only starts costing time once the load exceeds it.
-##
-## The safety timeout below still overrides everything, so a transition that goes sideways
-## cannot strand anyone behind this.
-##
-## MEASURED IN WALL CLOCK, not in `_elapsed`. `_elapsed` accumulates `_process` delta, and
-## delta is CLAMPED while the main thread is blocked — 10.0 s of it measured 18.9 s of real
-## time across this load. A twenty-second promise made in that currency is not twenty seconds.
-const BEGIN_MIN_WALL := 20.0
-
-## Is the world built and the pending snapshot applied? Says nothing about whether the player
-## may leave yet — see _ready_to_begin.
+## Is the world built and the pending snapshot applied?
 func _world_ready() -> bool:
 	var current := get_tree().current_scene
 	if not _scene_changed:
@@ -641,13 +619,9 @@ func _world_ready() -> bool:
 
 
 func _ready_to_begin() -> bool:
-	var wall := float(Time.get_ticks_msec() - _wall_t0) / 1000.0
-	if wall > SAFETY_TIMEOUT:
-		return true   # don't strand the player if a transition goes sideways
-	if not _world_ready():
-		return false
-	# Built. The button still waits for the 20 s mark — see BEGIN_MIN_WALL.
-	return wall >= BEGIN_MIN_WALL
+	# Readiness follows actual work: no cinematic minimum, and no timeout that
+	# exposes the map while generation is still blocking its camera.
+	return _world_ready()
 
 
 # ── Morph + exit ──────────────────────────────────────────────────────────────

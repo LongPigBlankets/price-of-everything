@@ -15,12 +15,29 @@ specs = dict(ns_map['BUILDINGS'])
 specs['tree'] = dict(file='tree_builder.py', fn='build_tree', col='BLDG_tree', levels=(1, 2, 3))
 specs['pylon'] = dict(file=str(pathlib.Path(__file__).with_name('pylon_builder.py')),
                       fn='build_pylon', col='BLDG_pylon', levels=())
+for family in ('civic_office', 'civic_l', 'civic_park', 'civic_plaza'):
+    specs[family] = dict(file=str(pathlib.Path(__file__).with_name('civic_builder.py')),
+                        fn='build_'+family, col='BLDG_'+family,
+                        levels=(1, 2) if family == 'civic_office' else (1,),
+                        detailed=True, outer_contour=family in ('civic_office', 'civic_l'))
+# Bounded reusable whole-bay combinations; the runtime selects, never stretches.
+for columns in range(4, 11):
+    specs[f'civic_long_{columns:02d}'] = dict(file=str(pathlib.Path(__file__).with_name('civic_builder.py')),
+        fn='build_civic_long', col='BLDG_civic_long', levels=(1,), detailed=True,
+        kwargs={'columns': columns})
+for columns in range(4, 9):
+    for returns in range(2, 5):
+        specs[f'civic_corner_{columns:02d}x{returns:02d}'] = dict(file=str(pathlib.Path(__file__).with_name('civic_builder.py')),
+            fn='build_civic_corner', col='BLDG_civic_corner', levels=(1,), detailed=True,
+            kwargs={'columns': columns, 'return_columns': returns})
 # The detailed asset pipeline can export a frozen reviewed builder revision. Existing
 # families continue to use their original source and exact export path.
 DETAIL_SOURCE = pathlib.Path(os.environ.get('POE_DETAIL_SOURCE', str(ROOT / 'price-of-everything-0.1/tools/building_assets')))
 for family in ('farm', 'water_pump', 'new_forest', 'old_forest', 'desal', 'oil_well', 'fracking_oil_well'):
     specs[family] = dict(file=str(DETAIL_SOURCE / 'builders.py'), fn='build_' + family,
                         col='BLDG_' + family, levels=(1, 2, 3), detailed=True, outer_contour=False)
+specs['offshore_oil_platform'] = dict(file=str(DETAIL_SOURCE / 'builders.py'), fn='build_offshore_oil_platform',
+    col='BLDG_offshore_oil_platform', levels=(1,2,3), detailed=True, outer_contour=False)
 # Export independent vessels from the same reviewed port builder. These are
 # components, with the port's unit scale and their own grounded local origin.
 PORT_SHIPS = {'boxa': ('boxA', 'SHIP_BOXER_A'), 'boxb': ('boxB', 'SHIP_BOXER_B'),
@@ -30,6 +47,10 @@ for vessel, (prefix, source) in PORT_SHIPS.items():
         specs['port_ship_' + vessel + ('_medium' if medium else '')] = dict(
             specs['port'], port_ship=prefix, ship_source=source, medium_ship=medium,
             outer_contour=not medium)
+# Renderer-only derivatives. Never rewrite the complete farm or its builder.
+specs['farm_building'] = dict(specs['farm'], farm_part='building')
+specs['farm_crop_cell'] = dict(specs['farm'], farm_part='cell')
+specs['farm_crop_cell_medium'] = dict(specs['farm'], farm_part='cell', medium_crop=True)
 manifest_path = OUT / 'manifest.json'
 manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
 # Some builders resolve helper kits relative to Blender's --python argument.
@@ -37,12 +58,16 @@ sys.argv[sys.argv.index('--python')+1] = str(KIT/'render_sprite.py')
 requested = sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else []
 contours_only = '--contours-only' in requested
 requested = [arg for arg in requested if arg != '--contours-only']
+if 'civic_modules' in requested: requested += [key for key in specs if key.startswith(('civic_long_', 'civic_corner_'))]
 if 'port' in requested: requested += [key for key in specs if key.startswith('port_ship_')]
 for name, spec in specs.items():
     if requested and name not in requested: continue
     if name == 'mine': continue # use the surface pit version on the board
     family = []
+    component_spans = []
     attachments = {}
+    storeys = {}
+    modules = {}
     for level in spec['levels'] or (0,):
         bpy.ops.wm.read_factory_settings(use_empty=False)
         for ob in list(bpy.data.objects):
@@ -52,7 +77,11 @@ for name, spec in specs.items():
         if spec.get('detailed'):
             exec(compile((KIT/'props_kit.py').read_text(), str(KIT/'props_kit.py'), 'exec'), ns)
         exec(compile((KIT/spec['file']).read_text(), str(KIT/spec['file']), 'exec'), ns)
-        built = ns[spec['fn']](level) if level else ns[spec['fn']]()
+        built = ns[spec['fn']](level, **spec.get('kwargs', {})) if level else ns[spec['fn']]()
+        if isinstance(built, dict) and 'storey_height' in built:
+            storeys[level or 1] = built['storey_height']
+        if isinstance(built, dict) and 'civic_module' in built:
+            modules[level or 1] = built['civic_module']
         if isinstance(built, dict) and 'cable_anchors' in built:
             attachments[level or 1] = built['cable_anchors']
         col = bpy.data.collections[spec['col']]
@@ -87,6 +116,25 @@ for name, spec in specs.items():
             evaluated = ob.evaluated_get(deps)
             me = evaluated.to_mesh(); me.calc_loop_triangles()
             frame_points.extend(tuple(ob.matrix_world @ v.co) for v in me.vertices)
+            if spec.get('farm_part'):
+                field = ob.name.startswith(('bed', 'crop', 'leaves', 'drip', 'field_header', 'irrigation_box'))
+                keep = not field
+                if spec['farm_part'] == 'cell':
+                    keep = ob.name == 'bed0' or ob.name.startswith(('crop0_', 'drip0'))
+                    keep |= ob.name.startswith('leaves0_') and ob.name.endswith('_4')
+                    if spec.get('medium_crop') and ob.name.startswith(('leaves', 'drip')): keep = False
+                if not keep:
+                    evaluated.to_mesh_clear()
+                    continue
+                if spec['farm_part'] == 'cell':
+                    # Cut one repeat interval from the source row, without scaling
+                    # its width, plants, height or spacing. Adjacent copies meet.
+                    inverse = ob.matrix_world.inverted()
+                    for v in me.vertices:
+                        point = ob.matrix_world @ v.co
+                        point.x = min(max(point.x, -1.96), -1.71)
+                        v.co = inverse @ point
+                    me.update(); me.calc_loop_triangles()
             ship_object = any(ob.name == prefix or ob.name.startswith(prefix + '_')
                               for prefix, _ in PORT_SHIPS.values())
             if name == 'port' and ship_object:
@@ -174,7 +222,10 @@ for name, spec in specs.items():
             normal_matrix = ob.matrix_world.to_3x3().inverted().transposed()
             for tri in me.loop_triangles:
                 indices = list(tri.vertices)
-                edge_masks.append(sum(1 << j for j in range(3)
+                if spec.get('farm_part') == 'cell':
+                    a, b, c = [ob.matrix_world @ me.vertices[i].co for i in indices]
+                    if (b-a).cross(c-a).length_squared < 1e-14: continue
+                edge_masks.append(0 if spec.get('farm_part') == 'cell' else sum(1 << j for j in range(3)
                     if tuple(sorted((indices[(j+1)%3], indices[(j+2)%3]))) in ink))
                 ink_widths.append(model_width)
                 normals.extend(tuple((normal_matrix @ me.corner_normals[j].vector).normalized()) for j in tri.loops)
@@ -196,7 +247,8 @@ for name, spec in specs.items():
         lo = [min(v[i] for v in frame_points) for i in range(3)]
         hi = [max(v[i] for v in frame_points) for i in range(3)]
         component_span = max(hi[0]-lo[0], hi[1]-lo[1])
-        if spec.get('port_ship'):
+        component_spans.append(component_span)
+        if spec.get('port_ship') or spec.get('farm_part'):
             lo = [min(v[i] for v in verts) for i in range(3)]
             hi = [max(v[i] for v in verts) for i in range(3)]
         pit = None
@@ -206,7 +258,7 @@ for name, spec in specs.items():
                                      lobe=0.10, dent=0.14, phase=math.radians(28))
             pit = {'ground': p['ground'], 'step': p['depth'] / (p['benches'] + 1), 'rim': rim}
         family.append((level or 1, verts, faces, colours, lo, hi, normals, edge_masks, ink_widths, pit, (contour_verts, contour_faces, contour_normals, contour_widths)))
-    span = component_span if spec.get('port_ship') else max(max(f[5][0]-f[4][0],f[5][1]-f[4][1]) for f in family)
+    span = max(component_spans) if spec.get('farm_part') else component_span if spec.get('port_ship') else max(max(f[5][0]-f[4][0],f[5][1]-f[4][1]) for f in family)
     for level, verts, faces, colours, lo, hi, normals, edge_masks, ink_widths, pit, contour in family:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         center = ns[spec['ship_source']][:2] if spec.get('port_ship') else ((lo[0]+hi[0])/2, (lo[1]+hi[1])/2)
@@ -238,6 +290,11 @@ for name, spec in specs.items():
             bpy.ops.export_scene.gltf(filepath=str(OUT/(key+'.glb')),export_format='GLB',use_selection=True,export_yup=True,export_materials='EXPORT',export_normals=True,export_cameras=False,export_lights=False)
             manifest[key] = {'height':(hi[2]-lo[2])/span,'width':(hi[0]-lo[0])/span,'depth':(hi[1]-lo[1])/span,'triangles':len(faces),'ink_edges':True}
             manifest[key]['source_ink_widths'] = True
+            if level in storeys: manifest[key]['storey_height'] = storeys[level] / span
+            if level in modules:
+                manifest[key]['civic_module'] = dict(modules[level], bay_pitch=modules[level]['bay_pitch'] / span)
+            if spec.get('farm_part') == 'cell':
+                manifest[key]['component'] = {'pitch': [.25/span, .61/span], 'medium': spec.get('medium_crop', False)}
             if spec.get('port_ship'):
                 manifest[key]['component'] = {'waterline': (ns['WATER_Z']-lo[2])/span,
                                               'medium': spec['medium_ship']}

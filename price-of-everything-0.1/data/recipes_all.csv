@@ -208,3 +208,4 @@ r_234,Steelmaking (Petro),furnace,iron_ingots,37,pet_coke,3,,,,,,,,,140,steel,49
 r_235,Steelmaking (Bio),furnace,iron_ingots,37,carbonised_biomass,2,,,,,,,,,140,steel,49,,,,,,,,,,,,Steel Production,,research_metal_023,1144,429,50,
 r_236,Hydraulics Manufacturing,factory,steel,16,rubber,3,processed_oil,2,,,,,,,20,hydraulic_components,16,,,,,,,,,,,,Industrial Equipment,,,2500,1000,100,
 r_237,Hydraulics Automated Assembly,assembly_plant,steel,16,rubber,3,processed_oil,2,,,,,,,20,hydraulic_components,20,,,,,,,,,,,,Industrial Equipment,,,1200,1000,200,
+r_rail_hub,Rail Hub Operations,rail_hub,,,,,,,,,,,,,80,,,,,,,,,,,,,,Infrastructure,,,0,658,0,

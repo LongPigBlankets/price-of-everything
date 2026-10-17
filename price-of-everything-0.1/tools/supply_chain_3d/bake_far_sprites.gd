@@ -112,7 +112,7 @@ func _ready() -> void:
 		paint.set_shader_parameter("detail_level", 1 if medium else 0)
 		# Small decorative sprites collect too much dark ink after minification.
 		# Apply this only to far houses/towers; medium and live meshes keep their art.
-		var far_decor := not medium and (str(key).begins_with("house_") or str(key).begins_with("towers_"))
+		var far_decor := not medium and (str(key).begins_with("house_") or str(key).begins_with("towers_") or str(key).begins_with("civic_"))
 		paint.set_shader_parameter("stroke_width_scale", 0.65 if far_decor else 1.0)
 		paint.set_shader_parameter("stroke_opacity", 0.70 if far_decor else 0.88)
 		paint.set_shader_parameter("ink", Color("48505a") if far_decor else Color(0.20, 0.25, 0.36, 1.0))

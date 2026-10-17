@@ -1,0 +1,4 @@
+[gd_scene load_steps=2 format=3]
+[ext_resource type="Script" path="res://tools/supply_chain_3d/review_civic_assets.gd" id="1"]
+[node name="ReviewCivicAssets" type="Node"]
+script = ExtResource("1")

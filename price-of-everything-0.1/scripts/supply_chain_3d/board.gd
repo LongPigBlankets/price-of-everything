@@ -71,7 +71,9 @@ func _exit_tree() -> void:
 	_generation += 1
 	# Release large cached resources while the scene/rendering services still
 	# exist, rather than retaining them until the scripting runtime shuts down.
-	if _builder != null: _builder.handover.clear()
+	if _builder != null:
+		_builder.handover.clear()
+		_builder.road_surface.finish_build()
 	_builder = null
 	_terrain_cache.clear()
 	_goods.clear()
@@ -243,8 +245,18 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	var solve_started := Time.get_ticks_usec()
 	var model := Model.build(terrain, graph, true_positions, river_lines, Legacy.plate_town and Legacy.show.decor,
 		water, Legacy._shore_test(terrain), extra_tiles)
-	preload("res://scripts/supply_chain_3d/authored_region.gd").apply(model, terrain, get_tree().get_first_node_in_group("building_footprints"))
+	var road_started := Time.get_ticks_usec()
+	preload("res://scripts/supply_chain_3d/authored_region.gd").apply(model, terrain, get_tree().get_first_node_in_group("building_footprints"), queries.data, builder.surface_height)
+	timings.road_import_ms = (Time.get_ticks_usec() - road_started) / 1000.0
+	road_started = Time.get_ticks_usec()
 	preload("res://scripts/supply_chain_3d/harbour.gd").apply(model)
+	if Legacy.plate_town and Legacy.show.decor: preload("res://scripts/supply_chain_3d/civic_layout.gd").populate(model)
+	preload("res://scripts/supply_chain_3d/road_placement.gd").new().fit(model, builder.surface_height, builder.open_water, Builder.standing_key, rivers, queries.data)
+	timings.road_frontage_ms = (Time.get_ticks_usec() - road_started) / 1000.0
+	road_started = Time.get_ticks_usec()
+	preload("res://scripts/supply_chain_3d/authored_region.gd").reroute_flows(model, model.authored_region.tiles, model.roads)
+	preload("res://scripts/supply_chain_3d/rail_network.gd").apply(model, terrain, water, builder.surface_height)
+	timings.road_routing_ms = (Time.get_ticks_usec() - road_started) / 1000.0
 	timings.layout_solve_ms = (Time.get_ticks_usec() - solve_started) / 1000.0
 	queries.finish(builder.bake_cache)
 	_layout_queries = queries
@@ -261,6 +273,8 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	# Stable origin: expanding the company does not move existing terrain under the camera.
 	builder.origin = Vector2.ZERO
 	builder.configure_pits(model.get("standing", []))
+	builder.prepare_transport(model)
+	timings.transport = builder.transport_profile.duplicate()
 	builder.configure_bakes(model)
 	timings.keys_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	stage = Time.get_ticks_usec()
@@ -279,11 +293,14 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	stage = Time.get_ticks_usec()
 	var infrastructure := builder.infrastructure(model, Legacy.show, not show_all_tiles)
 	next.add_child(infrastructure)
+	timings.infrastructure_ms = (Time.get_ticks_usec() - stage) / 1000.0
+	var standing_started := Time.get_ticks_usec()
 	# A far-only world may never request detail. Do not retain the bound height
 	# callback (builder -> road surface -> builder) while waiting for a zoom-in.
 	if not builder.base_ready: builder.road_surface.finish_build()
 	for s in model.get("standing", []):
 		if not show_all_tiles or str(s.kind) != "house": next.add_child(builder.standing_node(s))
+	timings.standing_ms = (Time.get_ticks_usec() - standing_started) / 1000.0
 	if builder.base_ready:
 		if not await _build_base_tiles(builder, next, model, generation, paced):
 			builder.road_surface.finish_build()
@@ -434,7 +451,7 @@ func _build_local_tile(builder: RefCounted, parent: Node3D, model: Dictionary, t
 	await builder.prepare_tile(self, tid)
 	if generation != _generation: return false
 	var fields := ["terrain_lods", "frame_nodes", "road_nodes", "glint_nodes", "tree_nodes",
-		"tree_sprite_nodes", "building_visuals", "decor_nodes", "detail_nodes", "sprite_pairs", "pickables", "glows", "smoke"]
+		"tree_sprite_nodes", "building_visuals", "decor_nodes", "detail_nodes", "farm_nodes", "sprite_pairs", "pickables", "glows", "smoke"]
 	var offsets := {}
 	for field in fields: offsets[field] = (builder.get(field) as Array).size()
 	var root := Node3D.new()

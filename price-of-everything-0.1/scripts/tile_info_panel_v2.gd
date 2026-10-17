@@ -1067,7 +1067,9 @@ func _on_power_goto() -> void:
 
 
 func _open_port_buy(iid: String, price: int) -> void:
-	if Tutorial.port_purchase_disabled(PORT_BUILDING_ID):
+	var building := BuildingState.get_building(iid)
+	if building.is_empty() or BuildingState.is_player_owned(building): return
+	if Tutorial.port_purchase_disabled(str(building.get("building_id", ""))):
 		return
 	if _port_buy_layer == null or not is_instance_valid(_port_buy_layer):
 		_port_buy_layer = CanvasLayer.new()
@@ -1078,20 +1080,23 @@ func _open_port_buy(iid: String, price: int) -> void:
 		_port_buy_layer.add_child(_port_buy_dialog)
 		_port_buy_dialog.connect("confirmed", _on_port_buy_confirmed)
 	_pending_port_buy = {"iid": iid, "price": price}
-	_port_buy_dialog.call("open", "Port", price)
+	_port_buy_dialog.call("open", Catalog.get_building_display_name(str(building.building_id)), price)
 
 func _on_port_buy_confirmed(_dont_ask: bool) -> void:
 	var iid := str(_pending_port_buy.get("iid", ""))
-	var price := int(_pending_port_buy.get("price", 0))
-	if Tutorial.port_purchase_disabled(PORT_BUILDING_ID):
+	var building := BuildingState.get_building(iid)
+	if building.is_empty() or BuildingState.is_player_owned(building): return
+	var price := MatchState.building_purchase_price(building)
+	var title := Catalog.get_building_display_name(str(building.building_id))
+	if Tutorial.port_purchase_disabled(str(building.building_id)):
 		return
 	if iid == "" or not BuildingState.buildings.has(iid):
 		return
 	if not MatchState.deduct_money(float(price)):
-		MatchState.build_rejected_no_funds.emit("Not enough money to buy the Port — need £%d, you have £%.0f" % [price, MatchState.money])
+		MatchState.build_rejected_no_funds.emit("Not enough money to buy %s — need £%d, you have £%.0f" % [title, price, MatchState.money])
 		return
 	BuildingState.set_building_owner(iid, MatchState.LOCAL_PLAYER)
-	MatchState.request_toast("Purchased the Port for £%d" % price, "success")
+	MatchState.request_toast("Purchased %s for £%d" % [title, price], "success")
 	Audio.transaction()  # building_owner_changed → _refresh_if_visible re-renders the card as owned
 
 

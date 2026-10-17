@@ -4,7 +4,7 @@ const Cache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
 const Detail := preload("res://scripts/supply_chain_3d/detail.gd")
 const Paint := preload("res://scripts/supply_chain_3d/terrain_paint.gd")
 const VISIBILITY_VERSION := 4
-const MANIFEST_SCHEMA := 4
+const MANIFEST_SCHEMA := 5
 const TILE_TIERS := {"medium": 1, "near": 2}
 
 static func file_record(directory: String, key: String) -> Dictionary:
@@ -32,6 +32,9 @@ static func validate(directory: String, host: Node) -> Dictionary:
 		result.errors.append("Missing/stale export source fingerprints")
 	var required := {str(manifest.get("continent_key", "")): true, str(manifest.get("scenery_key", "")): true}
 	if manifest.has("layout_key"): required[str(manifest.layout_key)] = true
+	required[str(manifest.get("transport_key",""))] = true
+	for key in manifest.get("rail_layout_keys",[]): required[str(key)]=true
+	if manifest.get("rail_layout_keys",[]).is_empty(): result.errors.append("Missing startup rail layouts")
 	for entry in manifest.tiles.values():
 		required[str(entry.get("base", ""))] = true
 		for name in TILE_TIERS: required[str(entry.get(name, ""))] = true
@@ -56,6 +59,13 @@ static func validate(directory: String, host: Node) -> Dictionary:
 		result.resources += 1
 	var root := cache.read(manifest.continent_key)
 	var scenery := cache.read(manifest.scenery_key)
+	var transport := cache.read(str(manifest.get("transport_key","")))
+	if transport.get("version",-1)!=preload("res://scripts/supply_chain_3d/transport_bake.gd").VERSION or not transport.get("roads") is Array:
+		result.errors.append("Missing prepared transport engineering")
+	for key in manifest.get("rail_layout_keys",[]):
+		var rail := cache.read(key)
+		if not rail.get("lines") is Array or not rail.get("anchors") is Dictionary or not rail.get("depots") is Array:
+			result.errors.append("Missing startup rail layout: " + key)
 	if manifest.has("layout_key"):
 		var layout := cache.read(manifest.layout_key)
 		if not layout.get("costs") is Dictionary or not layout.get("shores") is Dictionary or not layout.get("paths") is Dictionary or not layout.get("relief") is Dictionary:

@@ -13,6 +13,7 @@ static func build(builder: RefCounted, tid: String, standing: Array) -> Dictiona
 	var rel := Coast.relief_of(tid, tile.center)
 	var land := str(tile.type) not in ["sea", "deep_sea"]
 	return {"clutter_mesh": clutter(builder, tid, standing) if land else ArrayMesh.new(),
+		"farms": preload("res://scripts/supply_chain_3d/farm_fields.gd").build(builder, tid, standing) if land else {},
 		"glint_mesh": glints(builder, tid, tile, rel),
 		"tree_cards": tree_cards(builder, tid, standing) if land else {}}
 

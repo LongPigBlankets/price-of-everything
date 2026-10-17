@@ -2,11 +2,19 @@
 
 This pipeline extends the approved Blender building kit with farms, water pumps,
 new-growth forest, old-growth forest, desalination plants, conventional oil wells
-and shale oil wells. Every family has three levels. Current revisions are
-**v17-shale-colour** for shale oil, **v13-oil-engineering** for approved conventional oil,
-and **v10-no-outline** for the other five families (2026-10-10).
+and shale oil wells, plus an offshore oil platform. All eight families now have
+three authored levels. Current revisions are
+**v34-offshore-collars** for offshore L1/L2/L3, **v23-oil-offshore** for shale oil, **v13-oil-engineering** for approved conventional oil,
+and **v10-no-outline** for the other five families (2026-10-11).
 One parameterized source produces transparent sprites, editable
 Blender scenes and the vertex-painted GLBs used by the supply-chain renderer.
+
+Game selection (2026-10-12): offshore platform, water pump and desalination use
+their exact L1/L2/L3 exports through the catalog-driven sprite and mesh loaders.
+Both forest families are withheld from game presentation by
+`BuildingSprites.WITHHELD_FAMILIES`, shared by the 3D loader. Their draft files
+remain available for review. The game check verifies 18 enabled variants and
+asserts that neither forest resolves a player/NPC sprite or building mesh.
 
 Run from the Godot project directory with Python 3, Pillow, numpy and `blender`
 on PATH. Blender always runs in background mode. The original kit and print
@@ -26,7 +34,8 @@ AGENT_GODOT_WINDOW=1 godot --path . res://tools/building_assets/check.tscn -- --
 
 `--output` selects the revision parent directory. The default is
 `outputs/building-assets-2026-10-08` at repository root. `--families farm desal`
-limits a build. Existing revision directories are never overwritten. Failed
+limits a build. `FAMILY_LEVELS` records authored levels; offshore exports and installs
+all three levels. Existing revision directories are never overwritten. Failed
 attempts keep their logs. A new revision snapshots the builder, pipeline, shared
 kit, foliage kit, renderer, exporters and print pass before executing them.
 
@@ -39,7 +48,7 @@ Each revision contains:
 - `models/`: colour GLBs and dimensions/ink metadata for the game. Older revisions
   also contain the retired outer-contour GLBs.
 - `manifest.json`: source/output hashes, alpha bounds, palette and mask measurements.
-- `proof.png`: three levels, 64px thumbnails and an existing industrial-factory control.
+- `proof.png`: authored levels, 64px thumbnails and an existing industrial-factory control.
 - `previous-installed/`: any files replaced during installation.
 
 ## Build / render / critique / refine
@@ -52,7 +61,7 @@ precedence over the goods-specific ink and shading constants.
 
 Keep the true-isometric camera, AgX building rig, 2.4/1.05px detail ink,
 matte palette and normal-driven print pass. The owner's latest ruling removes
-the heavy navy outer contour: sprite export uses `contour=False`, and these seven
+the heavy navy outer contour: sprite export uses `contour=False`, and these eight
 model families use `outer_contour=False`. Other asset families retain their style.
 The owner permits a broader palette, including black and yellow; colours are
 not restricted to grey and terracotta. Keep deliberate equipment colour groups
@@ -78,7 +87,8 @@ not replace visual review or establish owner approval.
 | Old forest | Six branching mature trees, fallen log, understory | Nine trees | Twelve trees |
 | Desal | Intake screens, membrane rack, freshwater tank | Second membrane rack | Pretreatment filters and recovery unit |
 | Oil well | Conventional horsehead pumpjack, wellhead and storage tank | Second tank, horizontal separator and control cabinet | Second pumpjack and connected gathering line |
-| Shale oil well (`fracking_oil_well`) | One frac tree, two pump modules, blender, sand hopper and water tank | Second tree, third pump and second water tank | Third tree, fourth pump, tall sand silo and control shelter |
+| Shale oil well (`fracking_oil_well`) | One frac tree, two tandem-wheel pump trailers, blender, elevated angular sand hopper and horizontal water tank | Second tree, third trailer, second hopper and water tank | Third tree, fourth trailer, taller twin hoppers and control shelter |
+| Offshore oil platform | Four separate lattice piers, open derrick, crane, square helipad, separator and flare boom | Not authored | Not authored |
 
 Core geometry stays anchored as capabilities are added. Fixed framing scale keeps
 equipment dimensions consistent. Forest seeds and positions are deterministic;
@@ -103,6 +113,176 @@ The pipeline sets these automatically. It retains the current game's barycentric
 detail ink, vertex colour and normal format. The model manifest explicitly sets
 `contour: false`; installation backs up and removes retired contour GLBs and import
 sidecars for those entries, without altering unrelated models.
+
+## Offshore equipment-entry collars (2026-10-12)
+
+- Owner requested rings where pipes meet equipment, especially the green
+  cabinet. V34 adds grey annular collars with fine ink around the cabinet ports,
+  horizontal-vessel nozzles, separator outlet, wellhead outlet and L3 tower ports.
+  L1/L2/L3 contain 2/8/12 collars respectively; existing geometry stays in place.
+- Each collar is a true washer seated against the host skin and gripping its
+  pipe. Joint metadata records the exact host and pipe; the geometry audit checks
+  contact with both and retains the previous clearance tests. All levels pass.
+- Before/after cabinet detail, frozen sources and review evidence are in
+  `v34-offshore-collars` alongside the sprites and game models. Installed hashes
+  match all three levels, and Godot checks 24 sprites/24 meshes with zero failures.
+
+## Offshore L3 raised processing module (2026-10-11)
+
+- L3 adds a rear deck extension, two more separate lattice piers (eight total)
+  and a raised processing platform with four braced columns. A nine-tread
+  staircase reaches its supported landing through an open railing gate.
+- Paired vertical process vessels of different heights form the new landmark.
+  The upper pipe link, low inlet manifold and dedicated export run give the
+  module connected equipment. The conceptual reference is
+  [SLB gas treatment towers](https://www.slb.com/products-and-services/innovating-in-oil-and-gas/well-production/processing-and-separation/gas-treatment/glycol-dehydration-systems),
+  simplified for the established sprite language, not a process specification.
+- Both reviewers caught an export pipe overlapping the flame in projection in
+  V32. V33 takes that line beneath the main deck through a real service opening,
+  leaving the flare visibly separate. No approved equipment is relocated.
+- Geometry audit: 89 targeted checks for L1, 178 for L2 and 248 for L3, including
+  upper-platform bearings, all stair treads, vessel supports, guard clearance,
+  new pipe separation and the retained central aisle. Frozen scenes, source,
+  masks, model exports and review evidence live in `v33-offshore-l3-final`.
+- L1/L2 raw renders remain pixel-identical to the approved V31 designs; their
+  final exports share the new three-level scale. Installed hashes match all
+  three frozen sprites/models. Godot validates 24 sprites and 24 meshes with
+  zero failures; 279 other asset files and 119 model catalog entries are unchanged.
+
+## Offshore L2 and crane-base ink (2026-10-11)
+
+- Owner approved the V26 geometry and requested clearer local crane-base
+  outlining, followed by L2. Both levels now have a circular mounting flange
+  and explicit foot/neck seam rings; the broad outer contour remains disabled.
+- L2 preserves the L1 equipment coordinates and extends the front deck from
+  3.8 to 5.7 units deep. Two additional lattice piers support a processing bay
+  with paired dished vessels, pressure gauges and a ventilated compressor unit.
+  The square helipad, crane, derrick and connected flare remain in place.
+- The processing reference is [SLB's horizontal separator product sheet](https://www.slb.com/-/media/files/testing-services/product-sheet/conventional-separator-ps.ashx).
+  Equipment is simplified for sprite readability; this is not a process design.
+- Review caught pipes across the central aisle. Both crossings now run below
+  the deck through actual openings, with bends routed clear of pier chords and
+  primary beams. The audit explicitly checks the open aisle, six independent
+  support piers, vessel saddles and clearance between the new pipe runs.
+- Frozen geometry passes 89 targeted checks for L1 and 178 for L2. Review notes,
+  source snapshots, geometry audits, enlarged details and level comparison live
+  in `v31-offshore-l2-final`. Shared export scale makes L2 visibly larger.
+- Installed sprite/model hashes match both frozen levels. Godot validates all
+  23 detailed sprites and 23 meshes with zero failures; 279 other asset files
+  and 119 other model catalog entries are unchanged.
+
+## Crane clearance and flare connections (2026-10-11)
+
+- `v26-offshore-joints` fixes the crane hydraulic cylinder intersecting a bottom
+  lattice brace and the flare gas feed merging into its upper structural chord.
+  The ram now mounts outside the boom flank on explicit pins; the raised and
+  turned boom also separates visually from the separator and export riser.
+- Crane root hinges and a triangular root frame connect all three chords.
+  The flare has complete triangular frames at every station, including the tip,
+  plus a burner support collar and a separate gas feed outside the lattice.
+- Earlier cross-assembly checks missed collisions within a single assembly.
+  The expanded audit now checks ram/boom and gas-feed/truss clearance explicitly,
+  as well as the new end-frame and burner connections: 465 meshes, 88 targeted
+  checks and 39 connected reeving segments pass. These are exterior geometry
+  checks, not structural capacity certification.
+- Installed sprite and model hashes match the frozen revision; 279 other asset
+  files and 119 other model catalog entries remain unchanged. Godot validates
+  all 22 detailed sprites and 22 meshes with zero failures. Detail crops and
+  the user's screenshot are preserved alongside the frozen scene and audit.
+
+## Scaffold-like platform pillars (2026-10-11)
+
+- Following the supplied photograph, `v25-offshore-lattice` replaces the solid
+  columns with four independent lattice piers. Each has four vertical chords,
+  intermediate rails, two storeys of diagonal bracing and four bearing heads
+  joined to the deck girders. The braces stay within each narrow pier footprint;
+  the broad gaps between supports remain open. The square helipad is retained.
+- Independent visual review passes at full size and 200 px; `review.md` and
+  `user-support-reference.png` preserve the review and reference in the revision.
+  Frozen geometry passes 77 targeted checks, including brace endpoints and all
+  four piers' load-path connections; prior equipment checks remain intact.
+
+## Separate platform legs and square helipad (2026-10-11)
+
+- Owner requested separate legs in place of the skirt-like support and a square
+  landing spot. `v24-offshore-legs` replaces the perimeter jacket crossbracing
+  with four independent cylindrical columns, each bearing against the retained
+  deck girders through a short capital. Space between the columns remains open.
+- The helideck, white landing outline and low net rim are now square; the H,
+  supporting girders, access landing and ladder are retained.
+- The offshore audit passes 68 targeted checks, including four grounded and
+  separated columns, their capitals, square deck/marking geometry and all prior
+  hoist, pipe and equipment clearance checks. No unexpected cross-assembly
+  surface intersections. Only the offshore L1 sprite and mesh are replaced.
+
+## Tank markings and offshore L1 (2026-10-11)
+
+- `v23-oil-offshore` adds flat charcoal droplet marks to the visible end faces of
+  shale tanks at all three levels. The end faces are light grey inside the dark
+  rim so the symbols remain distinct. The previous machinery is retained.
+- Offshore L1 uses four braced, battered jacket legs, a functional elevated steel
+  deck, open derrick, aligned well conductor and drillstring, accommodation with
+  an accessible helideck, a pedestal crane, separator and outboard flare boom.
+  Its deck is part of the platform structure; there is no seabed plate or ocean
+  tile. It retains matte colours, the isometric rig, thin detail ink and no outer
+  contour shell.
+- The pipeline now supports family-specific authored level sets and freezes
+  `family_levels` in each manifest. Offshore has one sprite, scene and GLB; no L2
+  or L3 variants are generated. Existing three-level exports retain their scale
+  and checks. The generic sprite/mesh loaders already handle the new family.
+- Independent review found missing helideck access, a vent crossing its landing
+  surface, incomplete crown reeving and missing crane bearing attachments. These
+  were corrected together with service-pipe deck penetrations and railing clashes.
+  The final crown has a continuous 39-section rope over the crown sheave, around
+  the travelling sheave and up to the deadline anchor. A clevis supports the top
+  drive; the crane has a tip sheave, crosshead and luffing pin.
+- `audit_offshore.py` checks the frozen mesh: zero unapproved cross-assembly
+  surface intersections, 59 targeted support/clearance/connection checks, shared
+  well axis, open deck penetrations and rope continuity. `audit_shale.py` still
+  passes all three levels. Audit scope is stylized exterior geometry, not vessel
+  internals, load capacity or certification.
+- Engineering reference roles: [BSEE platform structure](https://www.bsee.gov/sites/bsee.gov/files/tap-technical-assessment-program/258aa.pdf),
+  [SLB drilling package](https://glossary.slb.com/terms/r/rig),
+  [SLB crown block](https://glossary.slb.com/terms/c/crown_block), and
+  [Zeeco offshore flare equipment](https://www.zeeco.com/resources/brochures/offshore-products-and-services).
+  The shipped building kit remains the visual reference.
+- Final evidence is in `v23-oil-offshore`: source hashes, editable scenes, both
+  engineering JSON audits, installed-file checks and `delivery-preview.png`.
+  Installation preserves 273 unrelated asset files and 116 catalog records.
+  Godot verifies 22 sprites and 22 meshes with zero failures; `godot-proof.png`
+  records their live gallery. Final independent review passes at 64 px;
+  evidence is in `review-v23-offshore/review.md`.
+
+## Shale silhouette redesign (2026-10-10)
+
+- Owner brief: “do another pass - this building needs to be really differentiated
+  from other assets in the game”. Observable criterion: recognize a mobile frac
+  spread from its elevated angular hoppers, open support frames, wheeled pumping
+  fleet and wellhead row at 64 px, without depending on yellow alone.
+- `v19-shale-mobile` replaces the upright round silo with tapered proppant bins
+  on braced trestles, lowers the water storage into horizontal vessels and raises
+  the pumping modules onto tandem-wheel trailers with landing legs. One bin at
+  L1, twin bins at L2, taller twin bins at L3; pumps increase 2 → 3 → 4. All tiers
+  retain the original palette, shared camera scale, shading and fine detail ink.
+- The geometry is a compact schematic of mobile completion equipment. Reference
+  roles: [TYCROP Sandstorm](https://tycrop.com/case-study/sandstorm/) establishes
+  angular storage boxes and conveyor-fed blending; [NOV SandBank](https://www.nov.com/products/sandbank-proppant-silo-system)
+  establishes elevated proppant storage and enclosed transfer. These guide the
+  assemblies, while the shipped building kit supplies the art style.
+- V18 review and BVH audit both caught suction pipes crossing the raised rear
+  chassis member. V19 replaces that member with separated bearing brackets,
+  keeping the pump-head feet supported while opening the central pipe passage.
+- Frozen-scene audit passes all three levels: zero unexpected cross-assembly
+  surface intersections, 53 support checks, 24 coaxial port checks and 36 wheel
+  ground/clearance checks. Blender inlet/auger clearance is retained. Audit scope
+  is depicted exterior geometry; internal vessels and treatment capacity remain
+  simplified. Evidence: `v19-shale-mobile/engineering-check.json` and its frozen
+  `audit_shale.py`. Prior V16/V17 remain archived as historical snapshots.
+- Independent V19 review passes at 64 px; `review-v18-shale/review.md` records
+  the initial finding and final correction. Godot verifies 21 sprites and 21
+  meshes, zero failures, no contour shells; `v19-shale-mobile/godot-proof.png`
+  captures them together. Installed hashes match, with 36 other-family files
+  and 74 other catalog entries unchanged.
 
 ## Shale palette update (2026-10-10)
 

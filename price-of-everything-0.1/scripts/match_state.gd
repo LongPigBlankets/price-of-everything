@@ -734,7 +734,7 @@ func effective_build_duration(building_id: String) -> int:
 
 func is_building_available(building_id: String) -> bool:
 	# Ports are map infrastructure that may be bought from their existing owner, never built.
-	if building_id == "b_004":
+	if building_id in ["b_004", "b_038"]:
 		return false
 	if RECYCLING_BUILDING_IDS.has(building_id) and not is_recycling_available():
 		return false
@@ -2080,6 +2080,8 @@ func purchase_kit_cost(building: Dictionary) -> float:
 ## A building the player sold costs at least what they were paid for it (`player_sale_price`),
 ## so a purchase discount cannot turn selling and buying it back into money.
 func building_purchase_price(building: Dictionary) -> int:
+	if str(building.get("building_id", "")) == "b_038":
+		return 5000
 	var price := AdvisorState.purchase_cost_after_advisor(float(BuildingPrice.sale_price(building)))
 	if building.has("player_sale_price"):
 		price = maxf(price, float(building["player_sale_price"]))

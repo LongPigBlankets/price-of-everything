@@ -1,5 +1,93 @@
 # Load time: what is baked, and when to re-bake it
 
+## Current completion rule and 3D transport package (12 October 2026)
+
+The measurements below this section describe the earlier Windows startup work;
+they are not current performance promises. A change is incomplete if it invalidates
+a shipped bake without replacing it. See the repository `AGENTS.md`.
+
+Road/rail engineering changes affect the shared 3D map key, so they can invalidate
+all 600 terrain tiles, scenery and the continent. The separate start-building
+placement bake can still be valid: check its own fingerprint and restoration log.
+Do not delete valid caches to fix an unrelated invalidation.
+
+Prepared transport now has its own portable resource. Its lookup runs before
+authored bridge grading, switchback/tunnel solving, road grading, urban rail burial
+and junction bridge planning. The startup rail layout/depot search also has a disk
+cache. The production package includes these records as well as the landscape.
+`[TRANSPORT]` reports a cache hit or a cold-stage timing breakdown. Loading finishes
+the supply-chain preparation before offering Begin, rather than running synchronous
+generation between background coroutine yields after play starts.
+Begin now follows actual readiness: the former 20-second cinematic minimum and
+60-second override for unfinished work have been removed.
+
+From the Godot project directory, rebuild and install the production package:
+
+```bash
+AGENT_GODOT_WINDOW=1 godot --path . --log-file /private/tmp/production-rebake.log \
+  tools/supply_chain_3d/bake_continent_package.tscn -- \
+  --continent-review --no-telemetry --watchdog-seconds=7200 --prune
+godot --headless --path . --log-file /private/tmp/package-validation.log \
+  tools/supply_chain_3d/verify_continent_package.tscn -- --no-telemetry
+```
+
+This renders textures, so it requires the window-enabled shim. The package is
+resumable and reuses matching resources. `--prune` removes unindexed old package
+resources only after validation succeeds. The manifest is marked complete only
+after every required resource has been written. Do not edit fingerprinted generator
+code while baking; that would make the new output stale immediately.
+
+Then use a fresh process to measure the actual full-map startup and first opening:
+
+```bash
+LOAD_PROF=1 AGENT_GODOT_WINDOW=1 godot --path . \
+  --log-file /private/tmp/supply-startup.log \
+  tools/supply_chain_3d/profile_startup.tscn -- \
+  --continent-review --combined-open --all-tiles-on-start --no-telemetry \
+  --startup-output=/private/tmp/supply-startup
+```
+
+Require current fingerprints, bundled landscape/transport hits, no unexpected
+runtime bake writes, and record both Begin time and first-open time. The profiler
+also samples 120 main-map frames after Begin. Run without `--all-tiles-on-start`
+to check company mode followed by the full-map toggle. These harnesses use a
+disposable new game; saved-game placement costs require a separate measurement.
+
+The focused headless cache regression is
+`tools/railway_assets/transport_cache_check.tscn`. It checks disk restoration,
+road/terrain height parity, and invalidation when geometry inputs change.
+
+### Verified result, 12 October 2026
+
+The refreshed package validates 600 tiles and 1,806 resources (1,342,322,554 bytes),
+including two startup rail layouts and the prepared transport resource. Both the
+baker and a separate headless validator exited successfully.
+
+Measured on Apple M5 Pro, Godot 4.6.2, Metal Forward+, a fresh Metal Magnate game
+with all tiles selected at startup:
+
+| Work | Cold generation | Installed package |
+|---|---:|---:|
+| Road/rail preparation | 32.68 s | 1.84 s |
+| Continent stage | 99.68 s | 0.58 s |
+| Infrastructure stage | 65.69 s | 0.015 s |
+| Full 3D board construction | 346.74 s | 7.52 s |
+
+The loading screen offered Begin at 20.28 s; first supply-chain opening took
+2.30 s. All 101 landscape/detail reads came from the bundle, with zero runtime
+bake writes. Startup rail planning recorded two hits and zero misses. The 120
+explicitly rendered post-Begin map frames measured 6.91 ms median, 18.34 ms p95,
+24.95 ms maximum. This is a new-game measurement, not a saved-game restore claim.
+Saved-game placement still has the separate path described below.
+
+Detailed reports are in the repository's
+`outputs/supply-chain-3d/load-time-2026-10-12/`. The final render probe exited 0;
+a nonfatal ObjectDB shutdown warning remains. The earlier diagnostic's rendering
+cleanup abort was resolved by draining streaming and stopping idle prefetch before
+freeing the test scene.
+
+---
+
 A new game used to take **100 s** to reach the "Begin" button. It now takes about **10.5 s**,
 and the worst single frozen frame went from 12.3 s to 1.2 s. Nothing about the map changed: the
 same 417 buildings stand in the same places, byte for byte.

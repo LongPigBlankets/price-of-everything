@@ -103,7 +103,7 @@ func _test_medium_lighting_and_picking_assets_current() -> void:
 	var lit_count := 0
 	var pick_count := 0
 	for key in catalog:
-		if str(key).begins_with("tree_"): continue
+		if str(key).begins_with("tree_") or str(key).begins_with("port_ship_"): continue
 		var digest := FileAccess.get_sha256(Assets.DIRECTORY + key + ".glb")
 		var path: String = Assets.DIRECTORY + "picking/" + key + ".res"
 		if not ResourceLoader.exists(path): valid = false; continue

@@ -379,12 +379,12 @@ static func upgrade_card(s: Dictionary) -> Dictionary:
 	var quote: Dictionary = s.quote
 	if bool(s.upgrading):
 		var rows: Array = [{"caption": "Ready in", "value": _turns(int(quote.get("pending_turns_left", 0)))}]
-		rows.append_array(_gain_rows(key, mode, level, target))
+		rows.append_array(_gain_rows(key, mode, level, target, str(s.instance.get("tile_id", ""))))
 		return {"title": "Upgrading to level %d" % target, "tone": "warn", "rows": rows}
 	if bool(s.upgradable):
 		var paid := bool(quote.get("affordable", true))
 		var rows: Array = [{"caption": "Cost", "value": _money(float(quote.get("cash_cost", 0.0))), "tone": "" if paid else "bad"}]
-		rows.append_array(_gain_rows(key, mode, level, target))
+		rows.append_array(_gain_rows(key, mode, level, target, str(s.instance.get("tile_id", ""))))
 		rows.append({"caption": "Time", "value": _turns(int(quote.get("duration", 0)))})
 		var card := {"title": "Upgrade to level %d" % target, "rows": rows}
 		if not paid:
@@ -392,7 +392,7 @@ static func upgrade_card(s: Dictionary) -> Dictionary:
 			card.notes = [{"text": "Not enough cash", "tone": "bad"}]
 		return card
 	var now: Array = [{"caption": "Level", "value": "%d of %d" % [level, BuildingLevels.MAX_LEVEL]}]
-	now.append_array(_gain_rows(key, mode, level, level))
+	now.append_array(_gain_rows(key, mode, level, level, str(s.instance.get("tile_id", ""))))
 	if bool(s.at_top):
 		return {"title": "Top level", "rows": now}
 	if bool(s.get("locked", false)):
@@ -403,10 +403,10 @@ static func upgrade_card(s: Dictionary) -> Dictionary:
 
 ## A link's capacity and reach at `level` and at `target` (one figure when they match), for its card. Cables
 ## reach the grid, so they have no reach.
-static func _gain_rows(key: String, mode: String, level: int, target: int) -> Array:
+static func _gain_rows(key: String, mode: String, level: int, target: int, tile_id: String = "") -> Array:
 	var rows: Array = []
-	var cap_now := _capacity(key, level)
-	var cap_then := _capacity(key, target)
+	var cap_now := _capacity(key, level, tile_id)
+	var cap_then := _capacity(key, target, tile_id)
 	var unit := " MW" if key == "cables" else "/turn"
 	var caption := "Capacity" if key == "cables" else CAPACITY_CAPTION
 	if cap_now <= 0 and cap_then <= 0:
@@ -550,7 +550,7 @@ static func _spare_module(panel: Control, tile_id: String, slot: Dictionary, pro
 	top.add_child(_name_words(title, key))
 	var reach := EconomyConfig.infra_range_for_level(mode, 1) if mode != "" else 0
 	top.add_child(_cell(str(reach) if reach > 0 else "Grid", reach_width()))
-	top.add_child(_cell(_capacity_short(key, _capacity(key, 1)), capacity_width()))
+	top.add_child(_cell(_capacity_short(key, _capacity(key, 1, tile_id)), capacity_width()))
 
 	# The key on the same line as the figures it would bring, in the keys' column.
 	var q := Quote.quote(tile_id, bid) if project.is_empty() else {}
@@ -932,12 +932,12 @@ static func _carried(key: String) -> String:
 
 
 ## A link's capacity at `level`: MW each way for cables, units a turn for the goods links.
-static func _capacity(key: String, level: int) -> int:
+static func _capacity(key: String, level: int, tile_id: String = "") -> int:
 	if key == "cables":
 		# Power.tile_power_cap's figure for a tile with cables at `level`.
 		var cap := float(EconomyConfig.CABLE_POWER_CAP.get(level, 0))
 		return roundi(Modifiers.apply("transport_throughput", "cables", cap, {"mode": "cables"}))
-	return roundi(TransportState.tile_mode_capacity(str(TileViewData.CAPPED_MODES.get(key, key)), level))
+	return roundi(TransportState.tile_mode_capacity(str(TileViewData.CAPPED_MODES.get(key, key)), level, tile_id))
 
 
 ## A capacity for the spare modules' Capacity column.

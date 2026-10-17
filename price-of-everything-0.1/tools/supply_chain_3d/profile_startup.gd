@@ -8,7 +8,7 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--startup-output="): output = arg.trim_prefix("--startup-output=")
 	DirAccess.make_dir_recursive_absolute(output)
-	PlayerProfile.supply_chain_all_tiles = false # disposable process; never save preferences
+	PlayerProfile.supply_chain_all_tiles = "--all-tiles-on-start" in OS.get_cmdline_user_args() # disposable process; never save preferences
 	await super._ready()
 
 func _open_supply_view(view: Control) -> void:
@@ -19,6 +19,16 @@ func _open_supply_view(view: Control) -> void:
 	first_open = {"prepared_before_open": view.is_prepared(),
 		"preparing_before_open": view._preparing,
 		"background_load": board.load_profile.duplicate()}
+	first_open.begin_elapsed_ms=Time.get_ticks_msec()
+	var frame_times: Array = []
+	var rendered_before := Engine.get_frames_drawn()
+	for i in 120:
+		var frame_start := Time.get_ticks_usec()
+		RenderingServer.force_draw(false)
+		await get_tree().process_frame
+		frame_times.append((Time.get_ticks_usec()-frame_start)/1000.0)
+	frame_times.sort()
+	first_open.map_frames={"median_ms":frame_times[60],"p95_ms":frame_times[114],"max_ms":frame_times.back(),"rendered_frames":Engine.get_frames_drawn()-rendered_before}
 	first_open_started = Time.get_ticks_usec()
 	view.toggle()
 	await _settle(board)
@@ -49,6 +59,8 @@ func _continent_review(board: Control, home: Dictionary) -> void:
 		"bundled_hits_after_stream": board._builder.bake_cache.bundled_hits,
 		"cache_writes_after_stream": board._builder.bake_cache.writes,
 		"continent_key": board._builder._continent_key, "scenery_key": board._builder._scenery_key}
+	report.rail_layout_cache={"hits":preload("res://scripts/supply_chain_3d/rail_network.gd").cache_hits,
+		"misses":preload("res://scripts/supply_chain_3d/rail_network.gd").cache_misses}
 	if not first_open.is_empty():
 		report.first_open = first_open
 		report.combined_ready_ms = (Time.get_ticks_usec() - first_open_started) / 1000.0
