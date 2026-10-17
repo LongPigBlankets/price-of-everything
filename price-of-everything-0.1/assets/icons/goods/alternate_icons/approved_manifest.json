@@ -7,6 +7,7 @@
     "aluminium",
     "ammonia",
     "basic_salt",
+    "bauxite_ore",
     "building_frame",
     "car_body",
     "chem_salts",
@@ -1849,6 +1850,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_052_large_engine.png",
       "source": "goods_large_engine/v10",
       "sha256": "61975f13431ffed2d8c7af8dcf3a7ae57fd2d1d0ec6d055fd665f5943eda60a5",
+      "installed_default": true
+    },
+    {
+      "good": "bauxite_ore",
+      "good_id": "g_022",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_022_bauxite_ore.png",
+      "source": "goods_bauxite_ore/v19",
+      "sha256": "29ac17900d6867ae8dc88050b0b722eb97353708c508f56ca54e59284cb88969",
+      "installed_default": true
+    },
+    {
+      "good": "bauxite_ore",
+      "good_id": "g_022",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_022_bauxite_ore.png",
+      "source": "goods_bauxite_ore/v19",
+      "sha256": "ea7209458b95a80a3fbfc6761c6d35dc79a4e03111db1ed6295987fe840c3a9f",
+      "installed_default": true
+    },
+    {
+      "good": "bauxite_ore",
+      "good_id": "g_022",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_022_bauxite_ore.png",
+      "source": "goods_bauxite_ore/v19",
+      "sha256": "08337afa6a953d4b9eb5296fa4016032011a0dc29f42b88791652c8afc69188f",
       "installed_default": true
     }
   ]

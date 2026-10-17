@@ -1,0 +1,91 @@
+{
+  "revision": "bauxite_ore_v19",
+  "objects": 165,
+  "structural_hosts": [
+    "lump_hero",
+    "lump_hero_lying",
+    "pea0",
+    "pea1",
+    "pea2"
+  ],
+  "topology": "Bauxite ore: a rounded rust red lump sawn in half through ringed pisoids, one half standing and one lying cut face up, and loose dark pisoids",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 4
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shaded_faces",
+        "labels": [
+          1,
+          3,
+          4,
+          5,
+          6
+        ],
+        "thresholds": [
+          0.575,
+          0.5,
+          0.3
+        ]
+      }
+    ]
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 2.00 x 2.82 x 1.36"
+  ],
+  "mesh_checks": {
+    "lump_hero": {
+      "vertices": 1361,
+      "faces": 2357,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump_hero_lying": {
+      "vertices": 1492,
+      "faces": 2650,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pea0": {
+      "vertices": 162,
+      "faces": 320,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pea1": {
+      "vertices": 162,
+      "faces": 320,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "pea2": {
+      "vertices": 162,
+      "faces": 320,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 2.75,
+    "target": [
+      0.185,
+      -0.272,
+      0.67
+    ]
+  }
+}
