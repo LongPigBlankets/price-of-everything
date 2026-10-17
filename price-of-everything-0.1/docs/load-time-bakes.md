@@ -1,5 +1,75 @@
 # Load time: what is baked, and when to re-bake it
 
+## Changed tiles only, company start settled — 17 October 2026
+
+No runtime path lays out or bakes the whole continent any more. Tiles that differ
+from the shipped default are laid out and baked one at a time
+(`docs/supply-chain-3d-tile-overlay.md`). The world snapshot was rebaked after its
+inputs stopped including the live board model. The company-start supplement was
+rebaked until settled (a second run baked nothing new) and its stale keys were
+pruned. Installed package: **1,841 resources, 959,394,140 bytes**, validated. A
+new Metal Magnate game has zero bake misses.
+
+All 2,138 colour textures (2D authored map, 3D far and medium sprites) import as
+Basis Universal (`compress/mode=4`, UASTC level 2); depth atlases stay lossless.
+
+## First-use stutters and tile residency — 17 October 2026
+
+No bake change. Continent harbours, near models, cars, label sorting and tile
+freeing are now spread over frames, and idle frames warm the terrain sampler
+around the camera (and around the company before the first continent open).
+Worst first-open frame 307 → 64–135 ms, first closest zoom 157 → 34 ms, medium
+pans 17–25 ms once warmed. Unused tiles drop closest detail after 5 s and are
+released after 10 s; company tiles keep medium detail. Closing the 3D view
+shrinks its render target and releases continent tiles after 10 s. See the
+[stutter and video memory review](reviews/stutters-and-vram-2026-10-17.md).
+
+## Visibility streaming and rail turnouts — 17 October 2026
+
+Production now builds local scenes only for visible tiles, reads native terrain
+ahead for the next two requests, and holds the colour reveal until local assets
+and shared infrastructure are ready. Rail junctions draw turnouts instead of
+all-pairs curves, which changed tree clearance on 48 tiles and shadows on 64.
+The continent was rebaked: 540 tiles reused, 60 regenerated.
+
+Installed package: **1,841 resources, 963,561,304 bytes**, validated, including
+the company-start supplement and a refreshed world snapshot. Two fresh-process
+runs: zero bake misses or writes, owned view 262–320 ms, first revealed tile
+2.78–2.82 s, closest first detail 396 ms, retained return 95 ms. See the
+[review and full measurements](reviews/stream-ready-2026-10-16.md).
+
+Sequence used, from the project directory (stage and cache paths are examples):
+
+```bash
+AGENT_GODOT_WINDOW=1 godot --path . --log-file /private/tmp/continent.log \
+  res://tools/supply_chain_3d/bake_continent_package.tscn -- \
+  --continent-review --approved-continent-bake --no-background-continent \
+  --no-telemetry --package-output=/private/tmp/stage \
+  --reuse-scenery-package=res://assets/supply_chain_3d/bakes \
+  --bake-cache-directory=/private/tmp/stage-cache --watchdog-seconds=7200
+godot --headless --path . res://tools/supply_chain_3d/verify_continent_package.tscn -- \
+  --no-telemetry --package-output=/private/tmp/stage
+# install: verify hashes, copy new resources, keep old ones for now
+AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_chain_3d/bake_company_start.tscn -- \
+  --continent-review --no-background-continent --no-telemetry \
+  --bake-cache-directory=/private/tmp/company-cache-new
+AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_chain_3d/bake_world_snapshot.tscn -- \
+  --continent-review --no-background-continent --no-telemetry
+# prune .res files the manifest no longer lists, then validate the installed package
+godot --headless --path . res://tools/supply_chain_3d/verify_continent_package.tscn -- --no-telemetry
+AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_chain_3d/profile_streaming_ready.tscn -- \
+  --continent-review --no-telemetry --trial-extra-edges --trial-idle-prefetch \
+  --trial-output=/private/tmp/stream-profile --bake-cache-directory=/private/tmp/empty-cache
+```
+
+Run `bake_company_start` again until its report says `"settled": true`: the
+layout memo it writes back can move border roads on the next build, so the first
+run can index keys the game no longer asks for. Then drop auxiliary keys that
+`tools/supply_chain_3d/trials/company_key_probe.tscn` does not list.
+
+Keep the old resources until the company-start bake has run. Most owned-tile
+resources are unchanged and are indexed as bundled hits from the old files.
+
 ## Lossless storage and release exclusions — 16 October 2026
 
 The installed 600-tile package now contains **968,604,879 bytes** of native

@@ -3,7 +3,7 @@ extends RefCounted
 ## Coordinates/grades belong to the map, never to the camera. All levels keep one gauge.
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
 const Index := preload("res://scripts/supply_chain_3d/road_index.gd")
-const VERSION := 8
+const VERSION := 9
 # Match the authored two-lane road carriageway, including map draw scale.
 const CORRIDOR_WIDTH := 12.6 * 0.75
 const WIDTH_SCALE := CORRIDOR_WIDTH / 28.4
@@ -51,7 +51,7 @@ static func _line(a: Vector2, b: Vector2) -> PackedVector2Array:
 
 ## Split at real intersections AND collinear overlaps before constructing any switches.
 ## This makes shared track independent of route order and route duplication.
-static func network(lines: Array) -> Dictionary:
+static func network(lines: Array, display_only := false) -> Dictionary:
 	var segments: Array = []
 	for rec in lines:
 		if not is_rail(str(rec.get("mode", ""))): continue
@@ -112,7 +112,7 @@ static func network(lines: Array) -> Dictionary:
 		if arms.size() == 1:
 			buffers.append({"p": node.p, "dir": arms[0].dir})
 			continue
-		if arms.size() <= 4:
+		if arms.size() == 2 or (not display_only and arms.size() <= 4):
 			# Every pair of arms has a direct through movement. A train can enter
 			# from any arm and leave any other without reversing at the junction.
 			var movements: Array = []
@@ -130,7 +130,8 @@ static func network(lines: Array) -> Dictionary:
 					switches.append({"p": arm.port, "dir": -arm.dir, "degree": arms.size(), "junction_arms": arms.size()})
 			continue
 		junctions.append({"p":node.p,"arms":arms.size(),"radius":arms.map(func(arm): return arm.reach).max(),"movements":[]})
-		# Larger input nodes remain staggered turnout ladders.
+		# The display uses one trunk and one turnout per extra arm. Keep the
+		# full logical movement network for engineering, without drawing every turn.
 		# The straightest pair is the through route. Other arms join that route
 		# tangentially at staggered points: a turnout ladder, never a road-like fan.
 		var pair := Vector2i(0, 1)
@@ -142,7 +143,7 @@ static func network(lines: Array) -> Dictionary:
 		var a: Dictionary = arms[pair.x]; var b: Dictionary = arms[pair.y]
 		var handle: float = a.port.distance_to(b.port) * 0.40
 		var trunk := _curve(a.port, a.port - a.dir * handle, b.port - b.dir * handle, b.port)
-		paths.append({"points": trunk, "level": maxi(int(a.level), int(b.level)), "junction":_key(node.p)})
+		paths.append({"points": trunk, "level": maxi(int(a.level), int(b.level)), "junction":_key(node.p), "start_dir":-a.dir, "end_dir":b.dir})
 		var branch_index := 0
 		for i in arms.size():
 			if i == pair.x or i == pair.y: continue
@@ -155,7 +156,7 @@ static func network(lines: Array) -> Dictionary:
 			var tangent := (trunk[index + 1] - trunk[index - 1]).normalized() * (1.0 if forward else -1.0)
 			var length := start.distance_to(branch.port)
 			paths.append({"points": _curve(start, start + tangent * length * 0.55,
-				branch.port - branch.dir * length * 0.55, branch.port), "level": branch.level, "turnout": true, "junction":_key(node.p)})
+				branch.port - branch.dir * length * 0.55, branch.port), "level": branch.level, "turnout": true, "junction":_key(node.p), "start_dir":tangent, "end_dir":branch.dir})
 			switches.append({"p": start, "dir": tangent, "degree": 3, "junction_arms": arms.size()})
 			branch_index += 1
 	var paired: Array = []
@@ -267,8 +268,7 @@ static func _strip(batch: RefCounted, a: Dictionary, b: Dictionary, offset: floa
 
 static func build(lines: Array, roads: Array, height: Callable, level_at: Callable, origin := Vector2.ZERO, cap_ends := true, earth_color: Callable = Callable(), crossing_height: Callable = Callable(), terrain_height: Callable = Callable(), context: Dictionary = {}) -> Dictionary:
 	var soil_height: Callable = terrain_height if terrain_height.is_valid() else height
-	var plan: Dictionary = context.get("plan",{})
-	if plan.is_empty(): plan=network(lines)
+	var plan: Dictionary = network(lines, true)
 	var burial: Callable = context.get("burial",Callable())
 	var rail_profile: Callable = context.get("rail_profile",Callable())
 	var bed := Geo.Batch.new(); var fittings := Geo.Batch.new()
