@@ -149,6 +149,25 @@ toggle_goods_graph={
 ]
 }
 
+[shader_globals]
+
+sc3d_livery={
+"type": "color",
+"value": Color(0.7254902, 0.29803923, 0.2509804, 1)
+}
+sc3d_soot_map={
+"type": "sampler2D",
+"value": ""
+}
+sc3d_soot_rect={
+"type": "vec4",
+"value": Vector4(0, 0, 1, 1)
+}
+sc3d_soot_on={
+"type": "float",
+"value": 0.0
+}
+
 [physics]
 
 3d/physics_engine="Jolt Physics"

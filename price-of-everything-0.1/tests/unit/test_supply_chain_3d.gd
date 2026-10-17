@@ -103,11 +103,18 @@ func _test_exported_3d_meshes() -> void:
 	var all_valid := true
 	for key in manifest:
 		var mesh := Assets.mesh_for(str(key))
-		all_valid = all_valid and mesh != null and mesh.get_surface_count() == 1
+		# One opaque surface, plus see-through 'Glass' surfaces after it where a building has glass.
+		all_valid = all_valid and mesh != null and mesh.get_surface_count() - mesh.get_meta("glass_surfaces", []).size() == 1
 		if mesh != null:
 			var box := mesh.get_aabb()
 			all_valid = all_valid and box.size.y > 0 and absf(box.position.y) < 0.01
 	_check(manifest.size() >= 50 and all_valid, "3D assets: all exported levels load as one grounded solid mesh")
+	for key in ["assembly_plant_lvl1", "high_tech_manufactory_lvl3"]:
+		var glazed := Assets.mesh_for(key)
+		var glass: Array = glazed.get_meta("glass_surfaces", [])
+		var colours: PackedColorArray = glazed.surface_get_arrays(glass[0])[Mesh.ARRAY_COLOR] if not glass.is_empty() else PackedColorArray()
+		_check(glass == [1] and not colours.is_empty() and colours[0].a < 0.95 and glazed.surface_get_material(1).shader.resource_path.ends_with("building_glass.gdshader"),
+			"3D glass: %s keeps its see-through glass as a blended surface" % key)
 	var factory := Assets.mesh_for("industrial_factory_lvl3")
 	var arrays := factory.surface_get_arrays(0)
 	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
