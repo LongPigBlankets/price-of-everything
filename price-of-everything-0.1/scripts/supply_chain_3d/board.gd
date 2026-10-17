@@ -231,7 +231,9 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 		_progress.show()
 		await get_tree().process_frame
 		if generation != _generation: next.free(); return
-	builder.ground = preload("res://scripts/supply_chain_3d/coast.gd").ground_for(terrain, rivers, Relief.plates(terrain, river_lines))
+	builder.ground = preload("res://scripts/supply_chain_3d/coast.gd").ground_for(terrain, rivers, Relief.plates(terrain, river_lines), true)
+	if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
+		extra_tiles = preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").TILES.duplicate()
 	var water := Legacy._water_test(terrain)
 	var queries := LayoutQueries.new()
 	var geography: Array = []
@@ -245,12 +247,22 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	var solve_started := Time.get_ticks_usec()
 	var model := Model.build(terrain, graph, true_positions, river_lines, Legacy.plate_town and Legacy.show.decor,
 		water, Legacy._shore_test(terrain), extra_tiles)
+	if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
+		preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").restrict_model(model)
 	var road_started := Time.get_ticks_usec()
 	preload("res://scripts/supply_chain_3d/authored_region.gd").apply(model, terrain, get_tree().get_first_node_in_group("building_footprints"), queries.data, builder.surface_height)
+	preload("res://scripts/supply_chain_3d/riverside_fields.gd").apply(model, rivers, queries.data)
 	timings.road_import_ms = (Time.get_ticks_usec() - road_started) / 1000.0
 	road_started = Time.get_ticks_usec()
 	preload("res://scripts/supply_chain_3d/harbour.gd").apply(model)
 	if Legacy.plate_town and Legacy.show.decor: preload("res://scripts/supply_chain_3d/civic_layout.gd").populate(model)
+	preload("res://scripts/supply_chain_3d/rail_network.gd").apply(model, terrain, water, builder.surface_height)
+	preload("res://scripts/supply_chain_3d/rail_station.gd").apply(model,builder.surface_height)
+	preload("res://scripts/supply_chain_3d/depot_roads.gd").apply(model,queries.data)
+	preload("res://scripts/supply_chain_3d/port_approach.gd").apply(model,builder.surface_height,queries.data)
+	preload("res://scripts/supply_chain_3d/district_blocks.gd").new().apply(model, builder.surface_height, builder.open_water, queries.data)
+	preload("res://scripts/supply_chain_3d/street_curves.gd").apply(model,builder.surface_height,builder.open_water,Builder.standing_key,queries.data)
+	preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").populate(model, terrain)
 	preload("res://scripts/supply_chain_3d/road_placement.gd").new().fit(model, builder.surface_height, builder.open_water, Builder.standing_key, rivers, queries.data)
 	timings.road_frontage_ms = (Time.get_ticks_usec() - road_started) / 1000.0
 	road_started = Time.get_ticks_usec()

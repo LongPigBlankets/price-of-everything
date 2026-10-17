@@ -3,7 +3,7 @@ extends RefCounted
 const Cache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
 const Detail := preload("res://scripts/supply_chain_3d/detail.gd")
 const Paint := preload("res://scripts/supply_chain_3d/terrain_paint.gd")
-const VISIBILITY_VERSION := 4
+const VISIBILITY_VERSION := preload("res://scripts/supply_chain_3d/world_builder.gd").VISIBILITY_VERSION
 const MANIFEST_SCHEMA := 5
 const TILE_TIERS := {"medium": 1, "near": 2}
 

@@ -4,7 +4,11 @@ extends "res://tools/supply_chain_3d/capture.gd"
 const Package := preload("res://tools/supply_chain_3d/bake_package.gd")
 
 func _ready() -> void:
-	PlayerProfile.supply_chain_all_tiles = false # disposable harness; do not save preferences
+	if not preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
+		push_error("Continent baking is paused pending user approval. Use --stoneshore-review for the five-tile trial.")
+		get_tree().quit(1)
+		return
+	PlayerProfile.supply_chain_all_tiles = true # scoped disposable harness; do not save preferences
 	await super._ready()
 
 func _continent_review(board: Control, _home: Dictionary) -> void:
@@ -17,10 +21,12 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	var source: RefCounted = builder.bake_cache
 	var writer := Package.Cache.new()
 	writer.enabled = true
-	writer.directory = Package.Cache.BUNDLED
+	writer.directory = preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").PACKAGE
 	writer.defer_trim = true # release assets are not the bounded runtime disk cache
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--package-output="): writer.directory = arg.trim_prefix("--package-output=")
+	assert(writer.directory != Package.Cache.BUNDLED, "A Stoneshore trial must not overwrite the continent package")
+	assert(builder.tiles.size() == 5, "Expected only the five Stoneshore review tiles")
 	writer.bundled_directory = writer.directory
 	assert(DirAccess.make_dir_recursive_absolute(writer.directory) == OK)
 	var previous_manifest: Dictionary = {}
@@ -34,6 +40,14 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 		"continent_key": builder._continent_key, "scenery_key": builder._scenery_key,
 		"map_key": builder._map_key, "tiles": {}, "resources": {}}
 	if board._layout_queries != null:
+		# Begin/first draw may populate an adjacent relief query after the board
+		# snapshot. Ship that warmed query too, avoiding a first-launch cache write.
+		var geography: Dictionary = board._model.get("rail_network",{}).get("tiles",{})
+		for tid in builder.tiles:
+			for neighbour in geography.get(tid,{}).get("neighbours",[]):
+				var center: Vector2 = preload("res://scripts/empire_board_model.gd").tile_center(board._last_terrain,neighbour)
+				preload("res://scripts/empire_board.gd")._relief_of(neighbour,center)
+		board._layout_queries.data.relief = preload("res://scripts/empire_board.gd")._relief_cache.duplicate(true)
 		manifest.layout_key = board._layout_queries.key
 		writer.write(manifest.layout_key, board._layout_queries.data)
 		manifest.resources[manifest.layout_key] = Package.file_record(writer.directory, manifest.layout_key)

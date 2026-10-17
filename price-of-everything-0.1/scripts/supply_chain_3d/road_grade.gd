@@ -12,10 +12,11 @@ var buckets := {}
 var earth_buckets := {}
 var nodes := {}
 var bridges: Array = []
+var crossings: Array = []
 var junctions: Array = []
 
 func configure(roads: Array, height: Callable, authored: RefCounted = null) -> void:
-	segments.clear(); buckets.clear(); earth_buckets.clear(); nodes.clear(); bridges.clear(); junctions.clear()
+	segments.clear(); buckets.clear(); earth_buckets.clear(); nodes.clear(); bridges.clear(); crossings.clear(); junctions.clear()
 	for road in roads:
 		if road.get("tunnel",false): continue
 		var a: Vector2 = road.a; var b: Vector2 = road.b
@@ -80,6 +81,7 @@ func bridge_rail_junctions(plan: Dictionary, rail_height: Callable, buried: Call
 		var rail_index := Index.segments(rails)
 		for i in Index.query(road_index,Rect2(junction.p,Vector2.ZERO).grow(radius)):
 			var rec: Dictionary = segments[i]
+			if str(rec.get("tile","")) in preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").TILES: continue
 			var p := Geometry2D.get_closest_point_to_segment(junction.p,rec.a,rec.b)
 			if p.distance_to(junction.p)>radius or (buried.is_valid() and buried.call(p)): continue
 			candidates[i]=true
@@ -159,7 +161,7 @@ func bridge_mesh(tid: String, origin: Vector2, ground: Callable) -> ArrayMesh:
 	var batch := Geo.Batch.new()
 	for rec in segments:
 		if str(rec.get("tile",""))!=tid or not (nodes[rec.ka].core or nodes[rec.kb].core): continue
-		var n: Vector2 = (rec.b-rec.a).normalized().orthogonal()*rec.half
+		var n: Vector2 = (rec.b-rec.a).normalized().orthogonal()*(float(rec.half)+float(rec.get("sidewalk",0)))
 		var a := Vector3(rec.a.x-origin.x,rec.ha+0.5,rec.a.y-origin.y)
 		var b := Vector3(rec.b.x-origin.x,rec.hb+0.5,rec.b.y-origin.y)
 		var side := Vector3(n.x,0,n.y)

@@ -3,7 +3,7 @@ extends RefCounted
 ## Coordinates/grades belong to the map, never to the camera. All levels keep one gauge.
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
 const Index := preload("res://scripts/supply_chain_3d/road_index.gd")
-const VERSION := 7
+const VERSION := 8
 # Match the authored two-lane road carriageway, including map draw scale.
 const CORRIDOR_WIDTH := 12.6 * 0.75
 const WIDTH_SCALE := CORRIDOR_WIDTH / 28.4
@@ -192,14 +192,14 @@ static func _arm(node: Dictionary, to: Vector2i) -> Dictionary:
 
 ## Profile each whole track, with a horizontal deck and smooth approach on BOTH sides.
 ## Adjacent bridges form one raised envelope. Mountain intervals are explicitly omitted.
-static func profile(points: PackedVector2Array, roads: Array, height: Callable, level_at: Callable, shared_crossings: Array = [], half_width: float = HALF + 0.8, road_index: Dictionary = {}, crossing_index: Dictionary = {}, crossings_only := false, crossing_height: Callable = Callable(), burial: Callable = Callable()) -> Dictionary:
+static func profile(points: PackedVector2Array, roads: Array, height: Callable, level_at: Callable, shared_crossings: Array = [], half_width: float = HALF + 0.8, road_index: Dictionary = {}, crossing_index: Dictionary = {}, crossings_only := false, crossing_height: Callable = Callable(), burial: Callable = Callable(), rail_profile: Callable = Callable()) -> Dictionary:
 	var distances := PackedFloat32Array([0.0])
 	for i in range(1, points.size()): distances.append(distances[-1] + points[i - 1].distance_to(points[i]))
 	var crossings: Array = []
 	for i in range(1, points.size()):
 		for road_id in (range(roads.size()) if road_index.is_empty() else Index.query(road_index, Index.bounds(points[i-1], points[i], 0.01))):
 			var road: Dictionary = roads[road_id]
-			if road.get("over_rail",false): continue
+			if road.get("over_rail",false) or road.has("rail_crossing_mode"): continue
 			var hit: Variant = Geometry2D.segment_intersects_segment(points[i - 1], points[i], road.a, road.b)
 			if hit == null: continue
 			var p: Vector2 = hit
@@ -238,6 +238,10 @@ static func profile(points: PackedVector2Array, roads: Array, height: Callable, 
 		var tangent := (points[mini(i + 1, points.size() - 1)] - points[maxi(0, i - 1)]).normalized()
 		var side := tangent.orthogonal() * half_width
 		var hidden := float(level_at.call(p)) >= TUNNEL_LEVEL or float(level_at.call(p + side)) >= TUNNEL_LEVEL or float(level_at.call(p - side)) >= TUNNEL_LEVEL
+		if rail_profile.is_valid():
+			var engineered: Vector3=rail_profile.call(p)
+			hidden=engineered.y>0; underground.y=engineered.y
+			if engineered.z>0: h=engineered.x; bridge=false
 		samples.append({"p": p, "h": h, "s": d, "hidden": hidden or underground.y>0, "buried":underground.y>0, "bridge": bridge, "dir": tangent})
 	return {"samples": samples, "crossings": crossings}
 
@@ -256,7 +260,9 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 	var plan: Dictionary = context.get("plan",{})
 	if plan.is_empty(): plan=network(lines)
 	var burial: Callable = context.get("burial",Callable())
+	var rail_profile: Callable = context.get("rail_profile",Callable())
 	var bed := Geo.Batch.new(); var fittings := Geo.Batch.new()
+	var overview := Geo.Batch.new()
 	var profiles: Array = []
 	var portals: Array = []
 	var sleepers := {}
@@ -267,16 +273,16 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 	var crossing_keys := {}
 	var road_index := Index.segments(roads, 0.01)
 	for path in plan.paths:
-		for crossing in profile(path.points, roads, height, level_at, [], HALF + 0.8, road_index, {}, true, crossing_height, burial).crossings:
+		for crossing in profile(path.points, roads, height, level_at, [], HALF + 0.8, road_index, {}, true, crossing_height, burial, rail_profile).crossings:
 			var key := Vector2i((crossing.p as Vector2).round())
 			if crossing_keys.has(key): continue
 			crossing_keys[key] = true; shared_crossings.append(crossing)
 	var crossing_index := {}
 	for i in shared_crossings.size():
 		Index.insert(crossing_index, Rect2(shared_crossings[i].p, Vector2.ZERO).grow(APPROACH + shared_crossings[i].half), i)
-	var tunnels := _tunnel_profiles(plan,roads,height,level_at,shared_crossings,road_index,crossing_index,crossing_height,burial)
+	var tunnels := _tunnel_profiles(plan,roads,height,level_at,shared_crossings,road_index,crossing_index,crossing_height,burial,rail_profile)
 	for path in plan.paths:
-		var prof := profile(path.points, roads, height, level_at, shared_crossings, HALF + 0.8, road_index, crossing_index, false, crossing_height, burial)
+		var prof := profile(path.points, roads, height, level_at, shared_crossings, HALF + 0.8, road_index, crossing_index, false, crossing_height, burial, rail_profile)
 		var shared: Array=tunnels.profiles[path.pair_id].samples
 		for i in prof.samples.size():
 			# One datum and one cutoff for both tracks and the full-width portal.
@@ -299,6 +305,10 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 			if a.hidden or b.hidden: continue
 			visible_segments += 1
 			_strip(bed, a, b, 0, HALF * 2, 0, BALLAST, origin)
+			# At medium/far zoom the running heads and sleepers are subpixel.
+			# A continuous, low-contrast track band keeps the paired railway legible
+			# without bright dots and moire. Full steel/switchwork returns up close.
+			_strip(overview, a, b, 0, GAUGE + 0.8, 0.85, Color("69716b"), origin)
 			# Sloped ballast embankments carry the approaches; track cannot float.
 			if not a.bridge and not b.bridge:
 				var ga := float(height.call(a.p)); var gb := float(height.call(b.p))
@@ -331,7 +341,7 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 						if middle >= gap.x and middle <= gap.y: skip = true
 					if skip: continue
 					var left := _lerp_sample(a, b, cuts[k - 1]); var right := _lerp_sample(a, b, cuts[k])
-					_strip(bed, left, right, sign_v * GAUGE * 0.5, 0.95 * WIDTH_SCALE, 0.8, WEB, origin)
+					_strip(fittings, left, right, sign_v * GAUGE * 0.5, 0.95 * WIDTH_SCALE, 0.8, WEB, origin)
 					_strip(fittings, left, right, sign_v * GAUGE * 0.5, 0.48 * WIDTH_SCALE, 1.25, STEEL, origin)
 			if a.bridge or b.bridge:
 				_strip(bed, a, b, 0, HALF * 2 + 3.5, -0.5, GIRDER, origin)
@@ -382,7 +392,10 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 	for switch in plan.switches:
 		if _covered_fitting(switch.p,tunnels.covered_ports,portals,18): continue
 		if not _clear(switch.p, level_at, 17.0) or (burial.is_valid() and (burial.call(switch.p) as Vector2).y>0): continue
-		var h := _plan_height(switch.p, height_index, height) - ((burial.call(switch.p) as Vector2).x if burial.is_valid() else 0.0)
+		var h := _plan_height(switch.p, height_index, height)
+		if rail_profile.is_valid():
+			var engineered: Vector3=rail_profile.call(switch.p)
+			if engineered.z>0: h=engineered.x
 		var n: Vector2 = switch.dir.orthogonal() * float(switch.get("actuator_side", 1.0))
 		fittings.box(_v(switch.p + n * 8.5 * WIDTH_SCALE, h + 1.4, origin), Vector3(3.4, 2.4, 2.7) * WIDTH_SCALE, Color("d0aa45"))
 		fittings.tube(_v(switch.p + n * 2, h + 0.9, origin), _v(switch.p + n * 8.5 * WIDTH_SCALE, h + 0.9, origin), 0.22, WEB, 4)
@@ -393,20 +406,24 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 	for buffer in (plan.buffers if cap_ends else []):
 		if _covered_fitting(buffer.p,tunnels.covered_ports,portals,6): continue
 		if not _clear(buffer.p, level_at, 6.0) or (burial.is_valid() and (burial.call(buffer.p) as Vector2).y>0): continue
-		var h := _plan_height(buffer.p, height_index, height) - ((burial.call(buffer.p) as Vector2).x if burial.is_valid() else 0.0)
+		var h := _plan_height(buffer.p, height_index, height)
+		if rail_profile.is_valid():
+			var engineered: Vector3=rail_profile.call(buffer.p)
+			if engineered.z>0: h=engineered.x
 		var n: Vector2 = buffer.dir.orthogonal() * 4.2 * WIDTH_SCALE
 		fittings.tube(_v(buffer.p - n, h + 3.3, origin), _v(buffer.p + n, h + 3.3, origin), 0.85, Color("a9694e"), 4)
 		for sign_v in [-1, 1]: fittings.tube(_v(buffer.p + n * sign_v, h, origin), _v(buffer.p + n * sign_v, h + 3.3, origin), 0.6, WEB, 4)
-	return {"bed": bed.mesh(), "detail": fittings.mesh(), "plan": plan, "profiles": profiles, "portals": portals, "visible_segments": visible_segments, "flangeways": frogs.gaps.size(), "track_vertex_count":track_vertex_count, "corridor_profiles":tunnels.profiles}
+	return {"bed": bed.mesh(), "overview": overview.mesh(), "detail": fittings.mesh(), "plan": plan, "profiles": profiles, "portals": portals, "visible_segments": visible_segments, "flangeways": frogs.gaps.size(), "track_vertex_count":track_vertex_count, "corridor_profiles":tunnels.profiles}
 
 ## Cover a whole junction when its switchwork meets a mountain/urban bore.
 ## Portals then sit on the two-track approaches, before any fan of movements.
-static func _tunnel_profiles(plan: Dictionary, roads: Array, height: Callable, level_at: Callable, crossings: Array, road_index: Dictionary, crossing_index: Dictionary, crossing_height: Callable, burial: Callable) -> Dictionary:
+static func _tunnel_profiles(plan: Dictionary, roads: Array, height: Callable, level_at: Callable, crossings: Array, road_index: Dictionary, crossing_index: Dictionary, crossing_height: Callable, burial: Callable, rail_profile: Callable = Callable()) -> Dictionary:
 	var profiles: Array=[]; var junctions := {}; var covered_ports := {}
 	for corridor in plan.corridors:
-		var prof := profile(corridor.points,roads,height,level_at,crossings,CORRIDOR_WIDTH*0.5+0.8,road_index,crossing_index,false,crossing_height,burial)
+		var prof := profile(corridor.points,roads,height,level_at,crossings,CORRIDOR_WIDTH*0.5+0.8,road_index,crossing_index,false,crossing_height,burial,rail_profile)
 		profiles.append(prof)
 		if corridor.has("junction") and prof.samples.any(func(s): return s.hidden): junctions[corridor.junction]=true
+	if rail_profile.is_valid(): return {"profiles":profiles,"covered_ports":covered_ports}
 	for i in plan.corridors.size():
 		var corridor: Dictionary=plan.corridors[i]
 		if not corridor.has("junction") or not junctions.has(corridor.junction): continue

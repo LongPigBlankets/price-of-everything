@@ -3,10 +3,12 @@ extends RefCounted
 const Assets := preload("res://scripts/supply_chain_3d/assets.gd")
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
 const Index := preload("res://scripts/supply_chain_3d/road_index.gd")
+const Roads := preload("res://scripts/empire_board.gd")
 const SIDE := 72.0
 const SOIL := Color("896b50")
 const CROP := Color(0.34, 0.438, 0.263)
 const LIFT := 1.25
+const ROAD_VERGE := 1.0
 
 static func is_plot(s: Dictionary) -> bool:
 	return str(s.get("internal_name", "")) == "farm" and s.get("footprint", []).size() >= 3
@@ -22,7 +24,7 @@ static func build(builder: RefCounted, tid: String, standing: Array) -> Dictiona
 	var soil := Geo.Batch.new()
 	var crops := Geo.Batch.new()
 	var poses: Array[Transform3D] = []
-	var road_index := Index.segments(builder.roads, 16.0)
+	var road_masks := road_clearance(builder.roads)
 	var occupied: Array = []
 	var yards: Array = []
 	for farm in standing:
@@ -54,6 +56,12 @@ static func build(builder: RefCounted, tid: String, standing: Array) -> Dictiona
 						var remaining: Array = []
 						for piece in pieces: remaining.append_array(Geometry2D.clip_polygons(piece, previous))
 						pieces = remaining
+					# Soil sits above the road surface. Cut its footprint as well as
+					# the crops; lowering it would bury fields on graded/sloping roads.
+					for road_id in Index.query(road_masks.index, Roads._box_of(world)):
+						var remaining: Array = []
+						for piece in pieces: remaining.append_array(_subtract_road(piece, road_masks.polygons[road_id]))
+						pieces = remaining
 					for piece in pieces: _soil(soil, builder, piece)
 		var core := Assets.dimensions(Assets.key_for("farm_building", int(s.get("level", 1)))) * SIDE
 		var yard := Rect2(-Vector2(core.x, core.z) * 0.5, Vector2(core.x, core.z)).grow(3.0)
@@ -72,10 +80,11 @@ static func build(builder: RefCounted, tid: String, standing: Array) -> Dictiona
 				for previous in occupied:
 					if Geometry2D.is_point_in_polygon(world, previous): allowed = false; break
 				if allowed:
-					for road_id in Index.query(road_index, Rect2(world - half, half * 2.0).grow(20.0)):
-						var road: Dictionary = builder.roads[road_id]
-						var clearance := float(road.get("widths", [7.0])[0]) + half.length() + 1.0
-						if Geometry2D.get_closest_point_to_segment(world, road.a, road.b).distance_to(world) < clearance:
+					# The radius also covers the full pitch of the far-LOD ribbons.
+					var radius := Vector2(maxf(half.x, pitch.x * 0.5), half.y).length()
+					for road_id in Index.query(road_masks.index, Rect2(world, Vector2.ZERO).grow(radius)):
+						var road: Dictionary = road_masks.roads[road_id]
+						if Geometry2D.get_closest_point_to_segment(world, road.a, road.b).distance_to(world) < road.radius + radius:
 							allowed = false; break
 				if not allowed:
 					_ribbons(crops, builder, s.pos, angle, run, pitch.x, half.y)
@@ -92,6 +101,48 @@ static func build(builder: RefCounted, tid: String, standing: Array) -> Dictiona
 		occupied.append(polygon)
 	var soil_mesh := soil.mesh()
 	return {"soil": soil_mesh, "far": Geo.joined([soil_mesh, crops.mesh()]), "poses": poses}
+
+static func road_clearance(roads: Array) -> Dictionary:
+	var result := {"roads": [], "polygons": [], "index": {}}
+	for road in roads:
+		# A tunnel has no surface carriageway to reserve through a field.
+		if road.get("tunnel", false) or (road.a as Vector2).distance_to(road.b) < 0.5: continue
+		var radius := float(road.get("widths", Roads._road_widths(int(road.get("level", 1))))[0]) + ROAD_VERGE
+		var id: int = result.roads.size()
+		result.roads.append({"a": road.a, "b": road.b, "radius": radius})
+		result.polygons.append(Roads._capsule(road.a, road.b, radius))
+		Index.insert(result.index, Index.bounds(road.a, road.b, radius), id)
+	return result
+
+static func _subtract_road(polygon: PackedVector2Array, mask: PackedVector2Array) -> Array:
+	var pieces := Geometry2D.clip_polygons(polygon, mask)
+	if not pieces.any(func(p: PackedVector2Array) -> bool: return Geometry2D.is_polygon_clockwise(p)):
+		return pieces
+	# A short road wholly inside a patch leaves a hole. Godot triangulation does
+	# not accept hole rings: partition against each convex capsule edge instead.
+	var result: Array = []
+	var indices := Geometry2D.triangulate_polygon(polygon)
+	for i in range(0, indices.size(), 3):
+		var inside := PackedVector2Array([polygon[indices[i]], polygon[indices[i + 1]], polygon[indices[i + 2]]])
+		for j in mask.size():
+			if inside.size() < 3: break
+			var a := mask[j]
+			var direction := mask[(j + 1) % mask.size()] - a
+			var next := PackedVector2Array()
+			var outside := PackedVector2Array()
+			for k in inside.size():
+				var p := inside[k]
+				var q := inside[(k + 1) % inside.size()]
+				var dp := direction.cross(p - a)
+				var dq := direction.cross(q - a)
+				if dp >= 0.0: next.append(p)
+				else: outside.append(p)
+				if (dp < 0.0) != (dq < 0.0):
+					var crossing := p.lerp(q, dp / (dp - dq))
+					next.append(crossing); outside.append(crossing)
+			if outside.size() >= 3: result.append(outside)
+			inside = next
+	return result
 
 static func fits(p: Vector2, half: Vector2, polygon: PackedVector2Array, yard: Rect2) -> bool:
 	if yard.intersects(Rect2(p - half, half * 2.0).grow(0.6)): return false

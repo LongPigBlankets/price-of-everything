@@ -45,7 +45,8 @@ func finish(cache: RefCounted) -> void:
 			shores[str(query).trim_suffix(_shore_suffix)] = Model._shore_streets[query]
 			Model._shore_streets.erase(query)
 	var updated := {"costs": costs, "shores": shores, "paths": Model.Streets._paths,
-		"relief": Landscape._relief_cache.duplicate(true), "authored_network": data.get("authored_network", {}), "frontages": data.get("frontages", {})}
+		"relief": Landscape._relief_cache.duplicate(true), "authored_network": data.get("authored_network", {}), "frontages": data.get("frontages", {}), "district_blocks": data.get("district_blocks", {}),
+		"depot_roads": data.get("depot_roads", {}), "street_curves": data.get("street_curves", {}), "port_approach": data.get("port_approach", {}), "riverside_fields": data.get("riverside_fields", {})}
 	Model.Streets._paths = _previous_paths
 	_previous_paths = {}
 	if updated != data:

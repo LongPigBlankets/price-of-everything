@@ -110,6 +110,10 @@ static func apply(model: Dictionary) -> void:
 
 static func frame(s: Dictionary, height_at: Callable, origin: Vector2) -> Dictionary:
 	var layout: Dictionary = s.harbour
+	if layout.has("trial_frame"):
+		var saved: Dictionary=layout.trial_frame.duplicate(true)
+		saved.position=Vector3(s.pos.x-origin.x,0,s.pos.y-origin.y)
+		return saved
 	var key := Assets.key_for("port", 1)
 	var asset := Assets.harbour_for(key)
 	# Set the ship waterline on the game's sea, and the quay deck on the bank.

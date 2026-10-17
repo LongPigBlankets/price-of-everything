@@ -91,3 +91,59 @@ func _test_farm_authored_plot_does_not_scale_the_barn() -> void:
 	_check(sides == [Fields.SIDE, Fields.SIDE], "Farm: authored small and large plots keep exactly the same barn scale")
 	BuildingState.buildings = saved
 	lots.free(); terrain.free()
+
+func _projected_area(polygon: PackedVector2Array) -> float:
+	var area := 0.0
+	for i in polygon.size(): area += polygon[i].cross(polygon[(i + 1) % polygon.size()])
+	return absf(area) * 0.5
+
+func _overlap_area(mesh: ArrayMesh, masks: Array) -> float:
+	var overlap := 0.0
+	for surface in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(surface)
+		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+		if indices.is_empty():
+			for i in vertices.size(): indices.append(i)
+		for i in range(0, indices.size(), 3):
+			var tri := PackedVector2Array()
+			for j in 3:
+				var p := vertices[indices[i + j]]
+				tri.append(Vector2(p.x, p.z))
+			for mask in masks:
+				for piece in Geometry2D.intersect_polygons(tri, mask): overlap += _projected_area(piece)
+	return overlap
+
+func _test_farm_soil_and_far_rows_clear_road_junctions() -> void:
+	var ground := FieldGround.new()
+	ground.roads = [
+		{"a": Vector2(-180, -80), "b": Vector2(180, 75), "widths": [9.0]},
+		{"a": Vector2(0, -2.5), "b": Vector2(5, 120), "widths": [15.0]},
+		{"a": Vector2(-100, 65), "b": Vector2(-45, 65), "widths": [5.0]}]
+	var data := Fields.build(ground, "test", [plot(Vector2(280, 210))])
+	# Compare against actual road casing, including rounded dead ends, rather
+	# than checking only triangle centres (which missed narrow edge crossings).
+	var masks: Array = []
+	for road in ground.roads: masks.append(Fields.Roads._capsule(road.a, road.b, road.widths[0]))
+	_check(_overlap_area(data.soil, masks) < 0.01, "Farm: no soil triangle overlaps diagonal roads, wide junctions or dead ends")
+	_check(_overlap_area(data.far, masks) < 0.01, "Farm: far crop ribbons and soil keep the same road clearance")
+	_check(not data.poses.is_empty(), "Farm: clipping leaves productive rows beside the roads")
+
+func _test_farm_tunnels_and_enclosed_road_holes() -> void:
+	var ground := FieldGround.new()
+	var farm := plot(Vector2(180, 120))
+	var before := Fields.build(ground, "test", [farm])
+	ground.roads = [{"a": Vector2(-180, 20), "b": Vector2(180, 20), "widths": [9.0], "tunnel": true}]
+	var after := Fields.build(ground, "test", [farm])
+	_check(after.poses == before.poses and after.soil.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] == before.soil.surface_get_arrays(0)[Mesh.ARRAY_VERTEX],
+		"Farm: underground roads do not cut surface fields")
+	var square := PackedVector2Array([Vector2(0,0), Vector2(8,0), Vector2(8,8), Vector2(0,8)])
+	var mask := Fields.Roads._capsule(Vector2(3,4), Vector2(5,4), 1.0)
+	var pieces := Fields._subtract_road(square, mask)
+	var area := 0.0
+	var overlap := 0.0
+	for piece in pieces:
+		area += _projected_area(piece)
+		for cut in Geometry2D.intersect_polygons(piece, mask): overlap += _projected_area(cut)
+	_check(overlap < 0.001 and absf(area - (64.0 - _projected_area(mask))) < 0.001,
+		"Farm: a road wholly inside a soil patch produces a real hole without losing surrounding earth")

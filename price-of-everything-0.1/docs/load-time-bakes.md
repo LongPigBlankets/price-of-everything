@@ -1,5 +1,362 @@
 # Load time: what is baked, and when to re-bake it
 
+## Stoneshore riverside field — verified 14 October 2026
+
+The installed five-tile package contains the west-bank farm's expanded field.
+Production assembly reused four unchanged base tiles, updated the affected
+base tile, and copied the ten already prepared medium/near resources. Assembly
+took **1.850s** after offline preparation. Independent validation passes with
+current fingerprints: **21 resources, 39,978,624 bytes (38.13 MiB)**.
+
+Fresh Godot 4.6.2 / Forward+ Metal process, Apple M5 Pro, empty runtime cache
+directory and warm OS filesystem caches:
+
+| Measurement | Time |
+|---|---:|
+| Process start to Begin | 17.654s |
+| Five-tile board preparation during loading | 1.171s |
+| Frontage/field memo restoration stage | 0.176s |
+| Transport cache restore | 0.099s |
+| First supply-view opening after Begin | 0.321s |
+
+Eighteen rendered views record **19 bundled hits, zero misses and zero runtime
+bake writes**. Shoreline clipping is skipped on a valid field-memo hit. The
+field grows from 3,793u² to 6,789u² with zero overlap against the buffered river
+and zero intruding tree crowns. The barn pose and source crop-cell sizes remain
+unchanged. Thirty-one focused assertions pass for field clipping, repeated crop
+geometry, road clearance and layout-cache persistence. Rendered frontage, canopy,
+building, depot, port and coastal checks also pass.
+
+Decoded medium/near terrain texture sizes remain 18,677,385 / 74,710,665 bytes;
+near resources occupy 20,043,469 bytes on disk. Full-continent baking remains
+paused. Evidence is in `outputs/supply-chain-3d/stoneshore-riverside-farm/` at
+repository root. Existing nonfatal certificate, RoadRegions and exit warnings
+remain.
+
+## Stoneshore depot routes and continuous coast — verified 14 October 2026
+
+The installed **five-tile** package implements both depot roads, the single-pair
+bridge and the continuous 48u coastal land/water margin. The production baker
+and independent validator pass with current fingerprints: **21 resources,
+33,078,100 bytes (31.55 MiB)**. Four base resources and all five medium/five near
+resources were updated for the visual change. The final memo-only package pass
+reused all terrain/art resources and took 0.755s after offline preparation.
+Whole-continent baking remains paused.
+
+Fresh Godot 4.6.2 / Forward+ Metal process, Apple M5 Pro, empty runtime cache
+directory and warm OS filesystem caches:
+
+| Measurement | Time |
+|---|---:|
+| Process start to Begin | 17.323s |
+| Five-tile board preparation during loading | 1.092s |
+| Frontage/depot memo restoration stage | 0.145s |
+| Transport cache restore | 0.090s |
+| Combined five-tile resource load | 0.027s |
+| First supply-view opening after Begin | 0.308s |
+
+Sixteen final views record **19 bundled hits, zero initial cache misses and zero
+runtime bake writes**. The first verification exposed a dropped depot-route memo
+in `LayoutQueries.finish()`: route generation was repeated and its insertion
+triggered a redundant layout write. The final snapshot now retains it, and two
+regression assertions verify memo preservation and zero writes on unchanged data.
+The package was regenerated and this timing run used a new empty runtime cache.
+
+Fifty-four focused assertions pass across coast/clearance, crossings, tunnel
+heights and route-cache tests. Rendered audits find no building/street overlaps,
+271 decorative buildings, 76.37% buildable frontage, three skyline landmarks and
+unchanged open working yards. A avoids the rails; B crosses one non-junction
+pair on a 21.45u bridge. Transport verification finds at least 8.5325u rail-head
+clearance and modified road grades at or below 8%.
+
+The coastal mesh fills the complete 121,383u² preview envelope, including
+43,372u² of neighbouring coastal land. Triangle-area error is 0.00015%, with
+height/normal sampling shared with the main terrain. Three restored scenery
+meshes serve every LOD; no neighbour detail, physics or runtime clipping is added.
+Medium/near decoded terrain texture sizes remain 18,677,385 / 74,710,665 bytes.
+Near resources occupy 16,613,616 bytes on disk. Evidence, numeric plans, logs and
+captures are in `outputs/supply-chain-3d/stoneshore-coastal-routes/` at repository
+root. Existing nonfatal certificate/RoadRegions/ObjectDB warnings remain.
+
+
+## Stoneshore constant sea margin — verified 14 October 2026
+
+The installed five-tile package includes the unified **48u sea-margin offset**,
+rounded corners, continuous cutaway texture coordinates and removal of tiny
+isolated water pockets. The production baker and independent validator both
+pass with current fingerprints: **21 resources, 31,835,105 bytes (30.36 MiB)**.
+The final package pass took 20.195s after offline scene preparation, reused all
+five byte-identical base resources and regenerated five medium/five near
+resources. Whole-continent baking remains paused.
+
+Fresh Godot 4.6.2 / Forward+ Metal process on Apple M5 Pro, empty runtime cache
+directory and warm OS filesystem caches:
+
+| Measurement | Time |
+|---|---:|
+| Process start to Begin | 17.753s |
+| Five-tile board preparation during loading | 1.074s |
+| Frontage cache restore | 0.123s |
+| Transport cache restore | 0.083s |
+| Combined five-tile resource load | 0.025s |
+| First supply-view opening after Begin | 0.307s |
+
+Fourteen views reach **19 bundled hits, zero initial cache misses and zero
+runtime bake writes**. Twenty focused assertions pass, including oblique edge
+width, convex/re-entrant joins, water-only clipping, tiny-patch removal and
+continuous curved-wall UVs. Final rendered audits retain 258 decorative
+buildings, no building/street overlaps, three central skyline buildings and
+unchanged open depot tracks. No roads were changed; the two measured depot-road
+alternatives are read-only concepts. Regular-map rendering is unchanged.
+
+The sea geometry is restored as three baked scenery meshes. Detailed clipping
+and mesh generation remain on cache miss; normal loading only builds the small
+preview-envelope description before lookup. Decoded medium/near terrain sizes
+remain 18,677,385 / 74,710,665 bytes. The existing nonfatal host certificate and
+ObjectDB exit warnings remain. Evidence, route plans and final captures are in
+`outputs/supply-chain-3d/stoneshore-sea-margin/` at repository root.
+
+
+## Stoneshore Docks skyline and sea margin — verified 14 October 2026
+
+The current **five-tile** production package contains the three-tower Docks
+cluster, mandatory tunnel cover beneath conflicting roads/buildings, and the
+water-only margin into adjacent sea tiles. Independent validation passes with
+current fingerprints: **21 resources, 31,829,261 bytes (30.35 MiB)**. No
+full-continent bake was run. The final package assembly took 19.467s after scene
+preparation, regenerated all five medium and five near bakes, prepared three
+base resources and retained two with identical payloads. Cold frontage generation remains offline.
+
+Fresh process, empty runtime cache directory, Apple M5 Pro / Godot 4.6.2 Metal
+Forward+, warm OS filesystem cache:
+
+| Measurement | Time |
+|---|---:|
+| Begin ready, process elapsed | 17.342s |
+| Five-tile board preparation during loading | 1.092s |
+| Frontage restoration | 0.126s |
+| Transport lookup/restore | 0.087s |
+| Combined five-tile continent resource load | 0.023s |
+| First supply-chain opening after Begin | 0.310s |
+
+Fourteen final views record **19 bundled hits, zero initial cache misses and
+zero runtime bake writes**. The three sea-margin meshes are loaded with cached
+scenery; neither polygon clipping nor neighbouring tile/detail generation runs
+on this path. All three skyline buildings survive cache restoration and keep
+correct far/medium/near representations. The Docks audit finds no exposed rail
+intersections with building footprints or parallel road surfaces. Decorative
+building/street and brownfield intrusion audits also pass. Working-yard tracks
+retain their original elevation and remain open; final tunnel entrance
+transitions are at most 0.38%. Seventy-five focused assertions pass across the
+Docks clearance/water, frontage, neighbourhood, crossing/station and tunnel tests.
+
+Decoded medium/near terrain texture sizes remain 18,677,385 / 74,710,665 bytes;
+near resources use 16,169,279 bytes on disk. These are scoped preview numbers,
+not current full-continent timings. The existing RoadRegions water-tile and
+ObjectDB exit warnings remain. Evidence is under
+`outputs/supply-chain-3d/stoneshore-docks/` at repository root.
+
+
+## Stoneshore crossings and station — verified 14 October 2026
+
+The current review package is scoped to **five Stoneshore tiles**. It includes
+nine engineered road bridges, the broader depot lead and Old Quarter terminal
+station, plus regenerated terrain/detail and scenery. Whole-continent baking
+remains paused pending approval.
+
+Production baking and independent validation pass: **21 resources,
+29,491,338 bytes (28.13 MiB)**. The final package pass took 19.28s after cold
+scene preparation; it regenerated five medium and five near bakes, prepared one
+base tile and retained four base resources with identical payloads. Normal
+loading uses these installed resources; these generation times are not startup
+costs.
+
+Fresh process, Apple M5 Pro / Godot 4.6.2 Metal Forward+, disposable game:
+
+| Measurement | Time |
+|---|---:|
+| Begin ready, process elapsed | 17.486s |
+| Five-tile board preparation during loading | 1.029s |
+| Transport cache lookup/restore | 0.073s |
+| Continent resource load, five-tile preview | 0.023s |
+| First supply-chain opening after Begin | 0.275s |
+
+The ten-view far/medium/near review and separate transport capture each use
+**19 bundled hits and zero runtime bake writes**. Source fingerprints are current.
+The baker now includes adjacent relief-query memo entries, avoiding a first-open
+layout rewrite. These timings use fresh processes with warm OS filesystem caches;
+they are not cold-disk measurements and do not describe the stale full-continent
+package. The existing nonfatal ObjectDB shutdown warning remains.
+
+Twenty crossing/station checks, nine tunnel checks, the transport geometry test
+and disk-cache parity/invalidation test pass. Evidence and verification JSON are
+under `outputs/supply-chain-3d/stoneshore-crossings/` at repository root.
+
+
+## Continuous water and closer rail planting — verified 13 October 2026
+
+The installed package contains the new cross-tile coast/lake geography, flat
+lake surfaces, shoreline-aware mesh partitioning, and staggered closer tree
+rows. Visibility metadata is version 5 and explicitly includes narrow lake lips
+and small islets. The release validator shares the runtime version constant.
+
+The production pipeline and independent validator pass **600 tiles / 1,806
+resources / 1,441,338,895 bytes**. All 600 medium and 600 near bakes were
+regenerated, with 600 prepared base tiles. The first generation/validation pass
+took 1,462.27 s after cold scene preparation; final assembly reused all resources
+and passed in 37.23 s. Obsolete resources were pruned only after validation.
+The package is 10,944,364 bytes smaller than the preceding vegetation package;
+the separate generated water-geography JSON adds 22,985,464 bytes. Texture
+resolutions and decoded medium/near texture memory remain unchanged.
+
+Fresh process on Apple M5 Pro, Godot 4.6.2 / Metal Forward+, all tiles enabled:
+
+| Measurement | Time |
+|---|---:|
+| Begin ready (process elapsed) | 26.72 s |
+| Full 3D board preparation during loading | 9.52 s |
+| Prepared transport restore | 1.92 s |
+| Continent resource load | 0.65 s |
+| First supply-chain opening | 2.54 s |
+| Combined open/toggle probe | 2.57 s |
+
+The opening uses medium detail. All 100 streamed reads were bundled, with
+**zero runtime bake writes** and two startup rail-layout hits / zero misses.
+The 120 rendered main-map frames measured 7.16 ms median, 21.55 ms p95 and
+41.18 ms maximum. This is a fresh game process with warm OS filesystem caches,
+not a cold-disk benchmark. The preceding package measured 24.98 s to Begin
+and 2.56 s for first opening; startup is 1.74 s slower in this sample, while
+opening is effectively unchanged.
+
+The focused water/tree checks and relief/isolation/bounds regressions pass
+48 assertions. Independent geometry verification finds no coastline beyond
+the 20u outward / 5u inward envelope, no false shoreline inside lakes, and a
+minimum plateau lip of 1.07u. Reports and captures are under
+`outputs/supply-chain-3d/water-greenery/` at the repository root.
+
+The final 13-view review uses current production fingerprints and reaches 750
+bundled hits with zero runtime writes. Lake and rural railway captures cover
+far, medium and near LODs. The population has 9,069 half-size rail-side trees on
+157 tiles, with zero canopy-clearance or rail-size violations. The live-game
+transport audit finds 48 same-height overlap candidates longer than 10u and
+324 elevated runs; these are documented for a separate routing pass.
+
+## Rail vegetation, tree sizes and medium rails — verified 13 October 2026
+
+The installed package includes transport canopy clearance, denser half-size rural
+rail belts, and 100%/75%/50% size variation for other trees. Medium/far railway
+linework now has its own continuous low-contrast mesh; near retains the steel
+heads and sleepers. Scenery carries both meshes and the vegetation spatial index.
+Prepared tile detail now fingerprints the tree placement sources, preventing
+older tree cards from surviving a vegetation change.
+
+The production baker and independent validator passed **600 tiles / 1,806
+resources / 1,452,283,259 bytes**, an increase of 25,901,381 bytes over the house
+height package. The existing transport/scenery dependency also changed the map
+key, so this refresh replaced all tile references: 600 prepared base tiles,
+557 medium and 539 near textures generated, 43 medium and 61 near resources
+copied from the revised preview cache. Package preparation and validation took
+1,162.15 s, after the separate cold scenery preview. Medium/near decoded terrain
+texture sizes are unchanged. Unindexed older package resources were pruned only
+after validation.
+
+Fresh process on Apple M5 Pro, Godot 4.6.2 / Metal Forward+, all tiles enabled:
+
+| Measurement | Time |
+|---|---:|
+| Begin ready (process elapsed) | 24.98 s |
+| Full 3D board preparation during loading | 8.69 s |
+| Prepared transport restore | 1.64 s |
+| Continent resource load | 0.60 s |
+| First supply-chain opening | 2.56 s |
+| Combined open/toggle probe | 2.59 s |
+
+All 100 streamed reads were bundled, with **zero runtime bake writes** and two
+startup rail-layout hits / zero misses. The 120 explicitly rendered main-map
+frames measured 6.90 ms median, 19.43 ms p95, 27.21 ms maximum. These measurements
+use a fresh game process with warm OS filesystem caches; they are not cold-disk
+or saved-game restore benchmarks. Previous house-height Begin/first-open times
+were 24.90 s / 2.60 s.
+
+A separate six-view fresh-process review verified current source fingerprints,
+343 bundled reads, zero writes, and matching preview/runtime tree statistics.
+There are 22,576 trees, including 17,892 half-size rail-row trees on 158 rural
+tiles. No transport canopy-clearance or rail-side sizing violations were found.
+The 24 focused vegetation/size/rail-LOD assertions pass; railway kit, transport
+cache parity/invalidation and builder-lifetime checks also pass. Existing
+nonfatal shutdown warnings remain. Reports, logs and all three zoom captures are
+under `outputs/supply-chain-3d/rail-vegetation/` at the repository root.
+
+## Standard 50u house height — verified 13 October 2026
+
+The production package now includes the standard residential height in all
+three LODs. A fresh map inspection found all 540 ordinary housing assets at
+50u; their footprint-size distribution is unchanged. Scenery frames, continent
+sprite transforms and visibility bounds were refreshed. The road/rail transport
+key, map key and all 600 base/medium/near tile references are identical to the
+preceding farm/half-relief package. No per-tile textures were regenerated.
+
+The production baker and independent validator passed: **600 tiles, 1,806
+resources, 1,426,381,878 bytes**. It reused 600 medium and 600 near bakes, with no
+base detail preparation required. Package assembly/validation took 40.13 s;
+initial cold 3D scenery/continent rebuilding took 335.29 s separately.
+
+Fresh process on Apple M5 Pro, Godot 4.6.2 / Metal Forward+, all tiles enabled:
+Begin at **24.90 s**, 3D preparation **8.53 s**, continent resource **0.60 s**,
+first supply-chain opening **2.60 s** (combined open/toggle probe **2.62 s**).
+All 101 streamed reads were bundled, with **zero runtime bake writes**. Rail
+layouts had two cache hits and no misses. These are fresh-process results with
+a warm OS filesystem cache, not a cold-disk benchmark.
+
+The separate Stoneshore review checked far/medium/near with current source
+fingerprints, 181 bundled reads and zero writes. A rendered house comparison
+checks all three asset variants against their live meshes. Focused height/LOD,
+far-bake and bounds tests passed 125 assertions. The existing nonfatal ObjectDB
+shutdown warning remains. Reports, logs and screenshots are under
+`outputs/supply-chain-3d/house-height/` at the repository root.
+
+## Farm clearance and half-height 3D relief — verified 13 October 2026
+
+The installed package now includes the farm/road soil cutouts and 438 intermediate
+3D terrain contours. Both the production baker and a separate headless validator
+passed: **600 tiles, 1,806 resources, 1,426,382,982 bytes** (84,060,428 bytes more
+than the 12 October package). Medium/near decoded terrain texture sizes remain
+2,241,286,200 / 8,965,279,800 bytes. The per-tile package phase took 1,186.4 s;
+initial cold scene preparation was additional.
+
+Fresh process, Apple M5 Pro / Godot 4.6.2 / Metal Forward+, disposable Metal
+Magnate game, all tiles selected at startup:
+
+| Measurement | Time |
+|---|---:|
+| Begin ready (process elapsed) | 25.17 s |
+| Prepared full 3D board | 8.55 s |
+| Prepared transport lookup/restore | 1.86 s |
+| Continent resource load | 0.57 s |
+| First supply-chain opening | 2.48 s |
+
+All 101 landscape/detail reads were bundled, with zero runtime bake writes;
+startup rail layouts had two hits and zero misses. The 120 explicitly rendered
+post-Begin frames measured 6.90 ms median, 18.09 ms p95, 21.47 ms maximum.
+The previous historical Begin measurement was 20.28 s; this run is slower, even
+though the baked continent load and first opening remain below a second and
+2.5 seconds respectively. These are fresh-process measurements, not a cold OS
+filesystem-cache benchmark or a saved-game restore measurement.
+
+A separate five-view visual run checked Stoneshore, the farm crossing and all
+three mountain LODs: current fingerprints, 387 bundled reads, zero writes.
+All five depot records and the 374u summit match the previous map; 1,069 of 1,681
+sampled points around the mountain focus changed height. The shared source hill
+and road JSON, shared sampler and depot seeding code are unchanged.
+
+There are 38 passing focused farm/relief assertions plus the disk transport
+restore/invalidation check. An attempted broader feature run encountered the
+existing smoke assertion expecting 37 catalog buildings (the catalog has 38)
+and was stopped in favour of focused regressions; it is not an all-suite pass.
+The rendered harnesses still emit the existing nonfatal ObjectDB shutdown warning.
+Reports, logs and matched screenshots are in
+`outputs/supply-chain-3d/farm-half-relief/` at the repository root.
+
 ## Current completion rule and 3D transport package (12 October 2026)
 
 The measurements below this section describe the earlier Windows startup work;
@@ -285,3 +642,248 @@ see the header of `tools/frame_anatomy_watcher.gd`, and mind the two traps recor
    ~289 MB of VRAM if it were all resident. Not a load-time problem any more (the disk read is
    0.8 s and the upload turned out not to be the reveal cost), but a quarter-resolution second
    layer in the same manifest would cut the resident set about 16× and look identical that far out.
+
+## Current Stoneshore visual trial scope
+
+As of 13 October 2026, the user has paused full-continent rebaking until approval.
+Use the five-tile `--stoneshore-review` procedure documented in
+`supply_chain_3d.md` and install its separate `stoneshore_trial_bakes` package.
+The production bake tool guards against accidentally overwriting the continent
+package. A successful scoped validation certifies only this trial, not the
+outdated full-continent package. Do not regenerate unrelated continent tiles.
+
+Verified trial results: 5 tiles, 21 indexed resources, 22,288,466 bytes (21.26 MiB),
+current source fingerprints, and no missing dependencies. Packaging reused the
+already-rendered tile resources and took 1.17s. A fresh process using an empty
+runtime cache reached the game in approximately 16.97s; the map prepared in
+0.862s during loading and opening the prepared supply view took 0.275s. The
+review visited region, town, old quarter, harbour, fields, coast, factory and
+far views: 19 bundled cache hits and **zero runtime bake writes**. These are
+five-tile trial measurements with a warm OS file cache, not full-continent or
+cold-disk benchmarks. Evidence is in
+`outputs/supply-chain-3d/stoneshore-half-size/validation/` at the repository root.
+The 30 civic assertions and 10 new trial assertions passed; all 16 gameplay
+structures matched the baseline positions and dimensions.
+
+
+### Neighbourhood trial verification (13 October 2026)
+
+The five-tile Stoneshore package now includes the Voronoi side streets, revised
+residential/commercial placement and wooded pond/grove assets. It validates in
+both the baker and a separate headless process: 21 resources, 23,543,906 bytes,
+zero package errors, current source fingerprints. This is the scoped trial
+package, not a refreshed continent package.
+
+A fresh Godot 4.6.2 / Forward+ Metal process using a new empty runtime cache
+prepared the 3D board in 1.042 s during loading; first supply-chain opening,
+including visible detail readiness, took 0.275 s. Begin was reached at 17.296 s
+from process start. All 19 landscape/detail reads used bundled resources, with
+zero runtime writes; transport also restored from its bake. The final layout
+has 102 decorative buildings and ten green spaces, with no residential zoning
+violations. All 16 player/NPC/pylon records retain their previous positions and
+dimensions. Fifty focused Voronoi, zoning and civic assertions passed.
+
+The render harness still reports the existing nonfatal ObjectDB shutdown warning;
+headless tests report the existing macOS `ret != noErr` host warning. Neither
+produced script errors or failed assertions. Reports and logs are under
+`outputs/supply-chain-3d/stoneshore-neighbourhood/validation/` at repository root.
+
+
+### Semidetached scale verification (14 October 2026)
+
+The revised five-tile package validates in both the baker and an independent
+headless process: 21 resources, 23,643,455 bytes, current source fingerprints and
+zero package errors. The final review verifies all 43 placed semidetached pairs
+at 30u wide / 27.5u tall, and all 16 gameplay/pylon records retain their prior
+positions and dimensions. Civic and trial regressions passed 43 assertions.
+
+A fresh rendered process with an empty runtime cache prepared the board in
+1.061s during loading, reached Begin at 17.855s from process start, and opened
+the supply-chain view with visible detail ready in 0.298s. The review recorded
+19 bundled hits and zero runtime writes; the transport lookup also hit its bake.
+These are scoped five-tile measurements on the same warm OS cache, not a
+whole-continent benchmark. The full-continent bake remains paused. Evidence:
+`outputs/supply-chain-3d/stoneshore-semi-scale/validation/`.
+
+
+### Sidewalk and footprint verification (14 October 2026)
+
+The scoped production pipeline regenerated and installed the five Stoneshore
+base/medium/near resources, shared scenery and continent presentation. Validation
+in the baker and an independent headless process passed: 21 indexed resources,
+25,286,917 bytes (24.12 MiB), current fingerprints, no missing dependencies.
+Existing model meshes and sprite atlases were reused. Full-continent baking is
+still paused.
+
+A fresh Godot 4.6.2 / Forward+ process with an empty runtime cache prepared the
+board in 1.102s during loading, reached Begin at 17.926s from process start and
+opened the prepared supply view with visible detail ready in 0.302s. The review
+visited all ten scoped views, recording 19 bundled hits, a transport cache hit
+and zero runtime bake writes. These are five-tile, warm OS-cache measurements.
+
+All 16 gameplay structures match prior positions and dimensions. The geometric
+review reports 133 exact decorative footprints, zero building overlaps and zero
+street/sidewalk intrusions, with all ten green spaces and zoning checks retained.
+38 focused civic, silhouette and sidewalk assertions passed. The broader road
+suite reports 51 passes and four failures in the unchanged road_index endpoint
+clustering / near-miss audit checks; those transport issues are outside this
+visual change. Existing nonfatal host/exit warnings remain as documented above.
+Evidence and the complete test logs are under
+`outputs/supply-chain-3d/stoneshore-sidewalks/validation/` at repository root.
+
+
+### Street-front infill verification (14 October 2026)
+
+The five-tile production pipeline regenerated and installed the current
+Stoneshore trial: 21 indexed resources, 28,574,474 bytes (27.25 MiB), current
+source fingerprints and no package errors. Both the baker and an independent
+headless process validate it. Existing GLBs and far/medium atlases are reused.
+Full-continent rebaking remains paused.
+
+A fresh Godot 4.6.2 / Forward+ Metal process with an empty runtime cache reached
+Begin at 17.165s. Board preparation took 1.040s during loading; opening the
+prepared supply view with detail ready took 0.289s. Across ten review views the
+process recorded 19 bundled hits, a transport cache hit, zero cache misses on
+initial board preparation and zero runtime bake writes. These are scoped trial
+measurements with a warm OS filesystem cache, not cold-disk/continent timings.
+
+58 focused civic, frontage, quarter-turn, caching and Stoneshore assertions
+passed. Rendered verification confirms 245 decorative buildings, ten green
+spaces, no decorative road-access stems and no building/street overlaps. All
+16 gameplay records retain their prior positions and dimensions. Coverage is
+78.20% of estimated buildable frontage (42.88% counting every road edge);
+the metric and exclusions are documented in supply_chain_3d.md. Detailed JSON,
+logs and snapshots are under `outputs/supply-chain-3d/stoneshore-frontage/`.
+
+The broader road regression suite still reports the same four endpoint-clustering /
+near-miss audit failures in unchanged road_index code, with 51 assertions passing.
+No new road regression failure was observed; its complete log is included.
+
+### Rail datum and slope shading verification (14 October 2026)
+
+The production five-tile Stoneshore package was regenerated and installed after
+the rail-profile change: 21 indexed resources, 29,459,268 bytes (28.09 MiB), current
+fingerprints. Baker and independent headless validation both pass. All five base,
+medium and near tile resources were refreshed; existing building meshes and
+sprite atlases were reused. Whole-continent rebaking remains paused.
+
+A fresh Godot 4.6.2 / Forward+ Metal process with an empty runtime cache reached
+Begin at 17.296s. Board preparation took 1.056s during loading, and opening the
+prepared supply view with visible detail ready took 0.273s. Ten review views
+recorded 19 bundled hits, a transport cache hit and zero runtime bake writes.
+These are scoped Stoneshore measurements with a warm OS filesystem cache.
+
+Nine new rail-elevation assertions and 26 rail-vegetation/LOD assertions pass.
+The transport geometry and disk-cache restoration harnesses pass, including
+surface/grade parity and source invalidation. The rendered audit has zero hidden
+open cuts and zero tunnel grade; all portal crowns fit under natural ground.
+All 245 decorative buildings, 78.20% estimated buildable frontage, ten green
+spaces and zero building/street overlaps remain. The previously documented four
+road-index endpoint/audit failures are outside this change and remain unresolved.
+
+Evidence: `outputs/supply-chain-3d/stoneshore-rail-profile/` (before/after transport
+audit, final ten views, validation logs and compact verification JSON). Only the
+scoped package is current; the earlier full-continent bake is not a release of
+these visual changes.
+
+
+### Stoneshore block interiors — installed package, 14 October 2026
+
+The five-tile production package includes neighbourhood lanes, courtyard homes,
+garden rows, greens and brownfields. The full-continent package remains paused.
+Existing building meshes and far/medium/near artwork are reused; only affected
+layout, transport, scenery and tile resources were regenerated. The final bake
+reused all five byte-identical base tile payloads.
+
+Independent `verify_continent_package.tscn` validation passes with current source
+fingerprints: 21 resources, 31,217,193 bytes (29.77 MiB). Medium decoded payload
+is 18,677,385 bytes; near decoded payload is 74,710,665 bytes. The near resources
+occupy 15,860,308 bytes on disk. Production package assembly took 19.856s after
+scene preparation; the cold frontage search took 29.106s. This search is offline
+preparation, not normal view opening.
+
+Fresh-process `compare_stoneshore.tscn` measurements, using a new empty runtime
+cache directory and warm OS filesystem caches:
+
+| Measurement | Result |
+| --- | ---: |
+| Process start to Begin | 17.394s |
+| Five-tile board preparation | 1.080743s |
+| Frontage cache restore | 124.204ms |
+| Transport lookup and restore | 81.979ms |
+| Shared five-tile continent resource | 23.577ms |
+| First supply-view opening after Begin | 293ms |
+| Final bundled cache hits | 19 |
+| Runtime bake writes | 0 |
+
+The first independent run exposed an ordering bug: cached courtyard additions
+were grouped after frontage infill, changing downstream transport/scenery keys.
+The cache now retains the actual standing emission order. A courtyard-bearing
+unit fixture checks complete model equality after restore. The installed package
+was regenerated after the fix; the fresh timings above are from that final
+package, not from the baking process.
+
+Twelve rendered views cover the regional/far view, town, Old Quarter, harbour,
+rural tiles, ponds, factory, courtyard and brownfield. The final layout has 254
+decorative buildings (previously 229), 76.49% estimated buildable original/district
+frontage, no building/street overlaps and no parcel intrusions. Seven brownfields
+reserve 14,560 square units. Nine new thin lane paths, four courtyard groups,
+fourteen added greens and sixteen footpaths serve the additional inner rows.
+
+Validation includes fourteen neighbourhood/cache/clearance/mesh assertions,
+nineteen frontage/civic assertions and twenty crossing/station assertions. The
+installed transport data still has nine bridge groups and three covered-rail
+crossings, minimum rail-head clearance 8.5325u and maximum modified approach
+grade 8.000001% (floating-point tolerance). No new lane crosses the rail reserve.
+Existing unrelated road-index endpoint failures and the previously documented
+steep exposed rail segment are outside this pass.
+
+Reports and logs: `outputs/supply-chain-3d/stoneshore-interiors/final/` and
+`outputs/supply-chain-3d/stoneshore-interiors/validation/` at repository root.
+The nonfatal system-CA warning in headless Godot and ObjectDB exit warning in
+rendered harnesses remain unchanged.
+
+
+### Stoneshore streets, plazas, trees and port — 14 October 2026
+
+The production five-tile package is regenerated and installed. Independent
+validation passes with current fingerprints: 21 resources, 40,062,209 bytes
+(38.21 MiB). Existing meshes and sprite atlases are reused. The port asset
+only gains road-entry/width metadata; its mesh is unchanged. Layout, transport,
+scenery, five base tile resources and ten medium/near textures reflect the new
+streets, concrete and trees. Medium and near decoded texture payloads remain
+18,677,385 / 74,710,665 bytes; the near resources occupy 20,113,414 bytes on disk.
+Package assembly reused the draft's ten prepared detail resources and took
+2.345s after preparation. Whole-continent baking remains paused.
+
+Fresh Godot 4.6.2 Forward+ / Metal process, empty runtime cache, warm OS cache:
+
+| Measurement | Result |
+| --- | ---: |
+| Process start to Begin | 25.832s |
+| Five-tile board preparation during loading | 1.342s |
+| Frontage/route cache restore | 198.785ms |
+| Transport lookup and restore | 116.946ms |
+| First supply-view opening after Begin | 378ms |
+| Final bundled hits | 19 |
+| Runtime bake misses / writes | 0 / 0 |
+
+The measured Begin time includes the game's main-map startup and asset warmup;
+it is not the supply-view opening time. The offline frontage/plaza/tree search
+took approximately 65s in the final cold draft. Prepared layout, port pose,
+transport and scenery all load from the installed package in normal play.
+
+Sixty-eight focused assertions pass (curves, plaza classification, canopy union,
+port grading, route-cache retention, frontage, neighbourhoods and crossings).
+The final rendered audit passes the 75% frontage target, independent 2u canopy
+check, beach limit, actual junction/building clearance, port road alignment and
+height, wet berths, coastal envelope coverage, depot routes and working-yard
+checks. No regular-map files were changed. Evidence and logs are in
+`outputs/supply-chain-3d/stoneshore-streets-greenery/`.
+
+The independent installed-transport pass records seven bridges, twelve grouped
+crossings, minimum rail-head clearance 8.5325u, modified approach grades at or
+below 8%, level buried rail and no open cuts over fully hidden track. Its fresh
+process also reports 19 bundled hits and zero writes. The previously documented
+steep exposed rail near (2853,4915) and four unrelated road-index endpoint
+failures remain outside this work.
