@@ -15,10 +15,10 @@ dest_files=["res://.godot/imported/tile_28_6.png-bb8dbc0ef1e64f3d6ec044ee5a5fd35
 
 [params]
 
-compress/mode=0
+compress/mode=4
 compress/high_quality=false
 compress/lossy_quality=0.7
-compress/uastc_level=0
+compress/uastc_level=2
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0

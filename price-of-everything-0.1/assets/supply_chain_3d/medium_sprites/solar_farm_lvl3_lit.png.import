@@ -15,10 +15,10 @@ dest_files=["res://.godot/imported/solar_farm_lvl3_lit.png-ce817b2cf250635226e6f
 
 [params]
 
-compress/mode=0
+compress/mode=4
 compress/high_quality=false
 compress/lossy_quality=0.7
-compress/uastc_level=0
+compress/uastc_level=2
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0

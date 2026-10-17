@@ -15,10 +15,10 @@ dest_files=["res://.godot/imported/port_lvl1.png-726f13f31e980f40d6465b35f3f1d1a
 
 [params]
 
-compress/mode=0
+compress/mode=4
 compress/high_quality=false
 compress/lossy_quality=0.7
-compress/uastc_level=0
+compress/uastc_level=2
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0

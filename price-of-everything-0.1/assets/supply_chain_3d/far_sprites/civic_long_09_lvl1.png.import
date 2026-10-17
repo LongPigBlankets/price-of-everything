@@ -15,10 +15,10 @@ dest_files=["res://.godot/imported/civic_long_09_lvl1.png-a7a03bd251bef5e8b70c7c
 
 [params]
 
-compress/mode=0
+compress/mode=4
 compress/high_quality=false
 compress/lossy_quality=0.7
-compress/uastc_level=0
+compress/uastc_level=2
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
