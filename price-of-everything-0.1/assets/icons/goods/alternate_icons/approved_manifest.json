@@ -35,6 +35,7 @@
     "industrial_acids",
     "iron_ingots",
     "iron_ore",
+    "large_engine",
     "limestone",
     "lithium_battery",
     "lithium_carbonate",
@@ -1709,6 +1710,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_032_ree_ore.png",
       "source": "goods_ree_ore/v19",
       "sha256": "c51fe019995bf977a9fe5569633384d445456083224a2ac7e29328983762caf2",
+      "installed_default": true
+    },
+    {
+      "good": "large_engine",
+      "good_id": "g_052",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_052_large_engine.png",
+      "source": "goods_large_engine/v10",
+      "sha256": "423ef6ee956bd177ee231ddfcf624e3c893527b5ba021fd1b6ce02abe22a08a4",
+      "installed_default": true
+    },
+    {
+      "good": "large_engine",
+      "good_id": "g_052",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_052_large_engine.png",
+      "source": "goods_large_engine/v10",
+      "sha256": "629f03822ccae9cd5d76bdbd9bb800ea04e6f442f565cfd5876aa08e2373db91",
+      "installed_default": true
+    },
+    {
+      "good": "large_engine",
+      "good_id": "g_052",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_052_large_engine.png",
+      "source": "goods_large_engine/v10",
+      "sha256": "61975f13431ffed2d8c7af8dcf3a7ae57fd2d1d0ec6d055fd665f5943eda60a5",
       "installed_default": true
     }
   ]
