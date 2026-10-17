@@ -8,6 +8,7 @@
     "ammonia",
     "basic_salt",
     "building_frame",
+    "car_body",
     "chem_salts",
     "chlorine",
     "circuit_board",
@@ -1713,6 +1714,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_032_ree_ore.png",
       "source": "goods_ree_ore/v19",
       "sha256": "c51fe019995bf977a9fe5569633384d445456083224a2ac7e29328983762caf2",
+      "installed_default": true
+    },
+    {
+      "good": "car_body",
+      "good_id": "g_045",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_045_car_body.png",
+      "source": "goods_car_body/v17",
+      "sha256": "1294f82e4b68c60ceea82f63f3eea87e588f64d807d82b1dfa615b8808248b1a",
+      "installed_default": true
+    },
+    {
+      "good": "car_body",
+      "good_id": "g_045",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_045_car_body.png",
+      "source": "goods_car_body/v17",
+      "sha256": "86496f1c0afc20e133ccc98fea246a2d84fdf3b0a2ea3594ab717d3312e8b61e",
+      "installed_default": true
+    },
+    {
+      "good": "car_body",
+      "good_id": "g_045",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_045_car_body.png",
+      "source": "goods_car_body/v17",
+      "sha256": "1b4ed01d7e6b453fa116c8dd7bdfbcd0ac812e38072d06f6a665f74a3837dcaf",
       "installed_default": true
     },
     {
