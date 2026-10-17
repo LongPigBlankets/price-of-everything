@@ -57,8 +57,10 @@ static func estimate(data: Dictionary, chunk: Dictionary) -> int:
 		seen[texture.get_instance_id()] = true
 		var width: int = texture.get_width()
 		var height: int = texture.get_height()
+		# Query the native format, never get_image() (which can read back GPU data).
+		var bc7: bool = texture is ImageTexture and texture.get_format()==Image.FORMAT_BPTC_RGBA
 		while true:
-			total += width * height * 4
+			total += ceili(width/4.0)*ceili(height/4.0)*16 if bc7 else width*height*4
 			if width == 1 and height == 1: break
 			width = maxi(1, width / 2)
 			height = maxi(1, height / 2)

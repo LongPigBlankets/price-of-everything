@@ -72,7 +72,7 @@ func _ready() -> void:
 	builder.transport_ready=true
 	var terrain := builder._surface("test",24.0)
 	check(terrain.get_surface_count()>0,"Carved terrain produces visible triangles")
-	var vertices: PackedVector3Array = terrain.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var vertices: PackedVector3Array = terrain.get_faces()
 	var covered := 0
 	for i in range(0,vertices.size(),3):
 		var middle := (vertices[i]+vertices[i+1]+vertices[i+2])/3.0

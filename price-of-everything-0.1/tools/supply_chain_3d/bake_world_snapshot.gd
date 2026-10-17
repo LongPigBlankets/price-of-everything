@@ -31,9 +31,12 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	manifest.resources[key] = Package.file_record(directory, key)
 	manifest.auxiliary_keys = auxiliary
 	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify(manifest, "\t") + "\n")
+	var storage := await preload("res://tools/supply_chain_3d/repack_bake_storage.gd").migrate(directory,self,PackedStringArray([key]))
+	if not storage.ok:
+		push_error("Snapshot storage migration failed");get_tree().quit(1);return
 	var report := await Package.validate(directory, self)
 	report.world_snapshot_key = key
-	report.snapshot_bytes = manifest.resources[key].bytes
+	report.snapshot_bytes = Package.file_record(directory,key).bytes
 	FileAccess.open("/private/tmp/world_snapshot_package.json", FileAccess.WRITE).store_string(JSON.stringify(report, "\t"))
 	print("[WORLD SNAPSHOT PACKAGE] ", JSON.stringify(report))
 	if not report.ok: get_tree().quit(1)

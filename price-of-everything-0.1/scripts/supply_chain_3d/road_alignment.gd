@@ -9,6 +9,7 @@ const STEP := 6.0
 const MAX_GRADE := 0.15
 const MAX_EARTHWORK := 14.0
 const TUNNEL_LEVEL := 7.0
+const MIN_TUNNEL_LENGTH := 10.0
 var portals: Array = []
 var switchbacks := 0
 var constrained := 0
@@ -272,8 +273,16 @@ func _tunnels(roads: Array) -> Array:
 				rec.road_ha=lerpf(road.road_ha,road.road_hb,cuts[i-1]); rec.road_hb=lerpf(road.road_ha,road.road_hb,cuts[i])
 			result.append(rec)
 			for p in [rec.a,rec.b]: (ends.get_or_add(_key(p),[]) as Array).append(rec)
+	# Measure continuous covered runs, including across source segments and hex
+	# edges. Reject tiny ridge grazes before extending approaches or merging
+	# daylight, either of which could otherwise inflate a false tunnel.
+	for run in _tunnel_runs(result):
+		if run.length + 0.001 < MIN_TUNNEL_LENGTH:
+			for id in run.ids: result[id].tunnel=false
 	_extend_steep_approaches(result,ends)
 	_merge_daylight(result,ends)
+	for run in _tunnel_runs(result):
+		for id in run.ids: result[id]._bore_length=run.length
 	# Build each portal once, also when the transition coincides with a tile edge.
 	for key in ends:
 		var visible: Array=ends[key].filter(func(r): return not r.tunnel)
@@ -283,8 +292,30 @@ func _tunnels(roads: Array) -> Array:
 			surface["tunnel_a" if _key(surface.a)==key else "tunnel_b"]=true
 		var road: Dictionary=visible[0]; var p: Vector2=road.a if _key(road.a)==key else road.b
 		var dir: Vector2=(p-(road.b if _key(road.a)==key else road.a)).normalized()
-		portals.append({"p":p,"dir":dir,"tile":road.tile,"half_width":_half(road)+1.8,"depth":minf(7.0,covered[0].a.distance_to(covered[0].b)*0.45)})
+		portals.append({"p":p,"dir":dir,"tile":road.tile,"half_width":_half(road)+1.8,"depth":minf(22.0,float(covered[0]._bore_length)*0.45)})
+	for road in result: road.erase("_bore_length")
 	return result
+
+static func _tunnel_runs(roads: Array) -> Array:
+	var nodes := {}; var seen := {}; var runs: Array=[]
+	for id in roads.size():
+		for p in [roads[id].a,roads[id].b]: (nodes.get_or_add(_key(p),[]) as Array).append(id)
+	for first in roads.size():
+		if not roads[first].get("tunnel",false) or seen.has(first): continue
+		var ids: Array=[first]; var length := 0.0; var cursor := 0
+		seen[first]=true
+		while cursor<ids.size():
+			var road: Dictionary=roads[ids[cursor]]; cursor+=1
+			length+=road.a.distance_to(road.b)
+			for p in [road.a,road.b]:
+				var adjacent: Array=nodes[_key(p)]
+				# Branch lengths cannot be added together to qualify a short arm.
+				if adjacent.size()!=2: continue
+				for id in adjacent:
+					if not seen.has(id) and roads[id].get("tunnel",false):
+						seen[id]=true; ids.append(id)
+		runs.append({"ids":ids,"length":length})
+	return runs
 
 
 func _extend_steep_approaches(roads: Array, ends: Dictionary) -> void:
@@ -336,6 +367,5 @@ func mesh_for(tile: String, height: Callable, origin := Vector2.ZERO, terrain :=
 		if str(portal.tile)!=tile: continue
 		var rec: Dictionary=portal.duplicate()
 		rec.h=float(height.call(rec.p))+0.8; rec.half_width=portal.half_width-1.8
-		rec.depth=22.0
 		preload("res://scripts/supply_chain_3d/tunnel_portal.gd").append(batch,rec,origin,terrain if terrain.is_valid() else height,earth)
 	return batch.mesh()
