@@ -1,3 +1,5 @@
 # Normalize EOL for all files that Git considers text files.
 * text=auto eol=lf
 *.ogv filter=lfs diff=lfs merge=lfs -text
+# Full-continent far resources exceed GitHub's ordinary file-size limit.
+assets/supply_chain_3d/bakes/continent-*.res filter=lfs diff=lfs merge=lfs -text

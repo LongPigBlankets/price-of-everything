@@ -7,7 +7,7 @@
 - Never open a GUI editor merely to run a script. If explicitly opening an app, use `open -g -a <App>`.
 
 ## Bakes are part of completing a change
-- Current visual iteration scope (user instruction, 13 October 2026): review and bake only Stoneshore's 5–7 tiles. Do not bake the whole continent again until the user explicitly approves it. Use the scoped Stoneshore review/package; describe it as a trial, not a refreshed continent release.
+- Current rollout authorization (user instruction, 15 October 2026): after creating the Stoneshore PR, apply its decorative sizing and urban density across the map, review every region and refresh the affected continent package. This supersedes the earlier Stoneshore-only restriction for this rollout. Keep the separate five-tile preview available for focused visual iteration.
 - If a change invalidates a bake, regenerate the affected bake and install it in the project's runtime asset location before declaring the work complete. Do not leave the user to pay the rebuilding cost during game startup or when opening the supply-chain view.
 - Check dependencies first: placement, road/rail planning, terrain, scenery, and streamed detail can have separate bakes. Reuse valid resources; do not delete caches or regenerate unrelated assets indiscriminately.
 - Use the production bake pipeline in `price-of-everything-0.1/tools/supply_chain_3d/` and the instructions in `price-of-everything-0.1/docs/load-time-bakes.md` and `price-of-everything-0.1/docs/supply_chain_3d.md`. A focused screenshot render does not refresh the production package.

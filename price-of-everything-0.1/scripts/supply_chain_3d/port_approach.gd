@@ -69,7 +69,6 @@ static func design(s: Dictionary, paths: Array, height: Callable) -> Dictionary:
 	return {"layout":layout,"points":points,"widths":[half+.6,half+.4,half+.15,half],"entry":entry,"shift":delta,"inland":-delta.dot(offshore),"lateral":delta.dot(across),"deck":entry3.y,"start_height":float(height.call(start)),"afloat":true}
 
 static func apply(model: Dictionary, height: Callable, prepared: Dictionary) -> void:
-	if not preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():return
 	for s in model.standing:
 		if str(s.tile)!="tile_5_10" or not s.has("harbour"):continue
 		var key := Cache.digest([Cache.source_key("roads"),Cache.source_key("terrain"),s.harbour,Assets.harbour_for(Assets.key_for("port",1)),model.authored_region.paths])

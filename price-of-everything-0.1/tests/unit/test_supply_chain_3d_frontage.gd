@@ -24,7 +24,7 @@ func _test_frontage_target_and_cached_infill() -> void:
 	_check(fresh==model,"frontage: cached load restores generated infill and coverage exactly")
 	var outside: Dictionary= model.roads[0].duplicate();outside.tile="elsewhere"
 	var access: Dictionary= model.roads[0].duplicate();access.source="access:player"
-	_check(not Fill.street(outside) and not Fill.street(access),"frontage: infill stays in Stoneshore and excludes access roads from coverage")
+	_check(Fill.street(outside) and not Fill.street(access),"frontage: roads outside Stoneshore are eligible and access roads stay excluded")
 
 func _test_frontage_fields_and_narrow_corridors() -> void:
 	var Assets: GDScript=preload("res://scripts/supply_chain_3d/assets.gd")

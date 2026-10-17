@@ -159,7 +159,6 @@ func prepare_transport(model: Dictionary) -> void:
 		stages.grading_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
 		rail_plan=Railway.network(lines)
 		rail_urban.configure(tiles,road_grade.segments,road_grade.junctions,rail_plan,depots,railway_ground_height,railway_level,stations,model.get("standing",[]),standing_key,river_at)
-		road_grade.bridge_rail_junctions(rail_plan,railway_ground_height,rail_urban.buried)
 		preload("res://scripts/supply_chain_3d/rail_crossings.gd").build(road_grade,rail_plan,rail_urban,depots)
 		stages.rail_ms=(Time.get_ticks_usec()-tick)/1000.0
 		bake_cache.write(transport_key,TransportBake.packed(self))
@@ -267,7 +266,7 @@ func prepare_scenery(host: Node, model: Dictionary) -> void:
 	lines = model.get("lines", [])
 	for tid in tiles:
 		var placements := placements_for(str(tid), model.get("standing", [])) if Legacy.show.trees else []
-		if Legacy.show.trees and preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
+		if Legacy.show.trees and (str(tiles[tid].type)=="urban" or tid in preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").TILES):
 			var planted := preload("res://scripts/supply_chain_3d/stoneshore_greenery.gd").new().plant(str(tid),placements,self,model.get("standing",[]),urban_plazas.tiles.get(tid,[]))
 			placements=planted.trees;greenery_audit[tid]=planted.audit
 		tree_placements[tid] = placements

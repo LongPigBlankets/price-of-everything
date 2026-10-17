@@ -1,5 +1,59 @@
 # Load time: what is baked, and when to re-bake it
 
+## Full-continent decoration rollout — verified 15 October 2026
+
+This supersedes the earlier Stoneshore-only bake pause: the user approved the
+continent rollout. The installed full package covers **600 tiles, 1,840 resources,
+1,899,582,184 bytes (1.77 GiB)**, including the default owned-company start. The
+separate five-tile trial is also refreshed (21 resources, 37,114,834 bytes).
+Decoration uses the approved 35% reduction across all 92 urban tiles and rural
+homes, with region-local infill and clearance against actual NPC meshes. Giant
+Stoneshore sea detours are removed and authored 3D roads are clipped at the coast.
+
+Independent production-package validation passes with current fingerprints.
+The full package's medium textures decode to 2,241,286,200 bytes; near textures
+are 8,965,279,800 bytes if all are resident, with 1,060,484,655 bytes of near
+resources on disk. Normal streaming retains only a subset. The 133.33 MiB
+combined far resource requires Git LFS when cloning/pulling; it is a native
+Godot resource at runtime.
+
+Fresh Godot 4.6.2 / Forward+ process, empty runtime cache path, warm OS filesystem
+caches, no task baker/reviewer running (the user's separate Godot process was
+left running):
+
+| Measurement | Time |
+|---|---:|
+| Process start to Begin | 19.045s |
+| Owned-board preparation during loading | 3.031s |
+| First supply-view opening after Begin | 0.188s |
+| Show all tiles with visible detail ready | **16.023s** |
+| Full-board preparation within that switch | 14.274s |
+
+The run records **35 bundled hits at first opening, 183 after switching and an
+extra close-up, zero misses and zero runtime bake writes**. The cache directory
+was not created. All three runtime content keys match the installed manifest.
+This is a fresh-process result, not a cold OS-cache benchmark. **The all-tiles
+switch still misses the five-second target.** The main remaining costs are
+model/memo restoration, key/transport work and scene assembly, rather than
+runtime art generation. Do not confuse 0.188s opening with the complete game
+startup or the all-tiles switch.
+
+Packaging fixes preserve the persisted transport snapshot before rendering
+adds sidewalk annotations, and include exact terrain cut bounds from all three
+LODs. The original validation caught one low terrain cut on `tile_10_5`; its
+visibility metadata was repaired and independently revalidated without rebaking
+art. `repair_package_visibility.tscn` refuses unrelated validation errors.
+Auxiliary owned-start resources and both prepared layout variants are bundled.
+
+The final resumed offline assembly took 1,106.064s after preparation; initial cold
+preparation took approximately 1,179s. Valid generated-cache resources were reused.
+These offline costs are not incurred by the verified normal loading path.
+Evidence, current content keys, region notes and the outstanding crossing backlog
+are in [the continent review](continent-decoration-review.md) and
+`outputs/supply-chain-3d/continent-rollout/validation/` at repository root.
+
+Historical measurements below describe earlier scoped packages, not this package.
+
 ## Smaller Stoneshore decoration and closer zoom — verified 15 October 2026
 
 The installed **five-tile trial** uses decorative modules at 65% of their

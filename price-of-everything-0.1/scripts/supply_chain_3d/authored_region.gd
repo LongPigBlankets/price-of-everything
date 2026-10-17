@@ -27,10 +27,15 @@ static func apply(model: Dictionary, terrain: Node, footprints: Node, prepared: 
 	if region.is_empty(): return
 	bind_flow_ends(model)
 	var paths := source_paths(terrain, flags)
-	var key := Cache.digest([Cache.source_key("roads"), centers, paths])
+	var key := Cache.digest([Cache.source_key("roads"), Cache.source_key("terrain"), centers, paths])
 	var compiled: Dictionary = prepared.get("authored_network", {})
 	if compiled.get("key", "") != key:
 		compiled = compile(paths, centers, ground)
+		# Clip after endpoint joining, so a coastal gap cannot be snapped shut
+		# and then interpreted as a sea bridge by the terrain profile builder.
+		var coast := preload("res://scripts/supply_chain_3d/coastal_roads.gd").clip(compiled.paths,centers)
+		compiled.paths=coast.paths;compiled.sea_clip=coast.removed
+		compiled.roads=compile_segments(compiled.paths,centers)
 		compiled.key = key
 		prepared.authored_network = compiled
 	var roads: Array = model.roads.filter(func(r: Dictionary) -> bool: return not region.has(str(r.tile)))

@@ -7,6 +7,29 @@ const VISIBILITY_VERSION := preload("res://scripts/supply_chain_3d/world_builder
 const MANIFEST_SCHEMA := 5
 const TILE_TIERS := {"medium": 1, "near": 2}
 
+static func persisted_data(path: String, key: String) -> Dictionary:
+	# Live renderer instances may annotate shared dictionaries after their key
+	# was calculated. Packaging must read the original snapshot from disk.
+	var saved := ResourceLoader.load(path,"",ResourceLoader.CACHE_MODE_IGNORE) as Cache.Data
+	if saved == null or saved.schema != Cache.SCHEMA or saved.key != key: return {}
+	return saved.data
+
+static func enclose_terrain(hull: PackedVector3Array, data: Dictionary) -> PackedVector3Array:
+	assert(hull.size()==9)
+	var bounds := AABB(hull[1],Vector3.ZERO)
+	for p in hull: bounds=bounds.expand(p)
+	var expanded := bounds
+	for field in ["mesh","rim_mesh","lip_mesh"]:
+		var mesh: Mesh=data.get(field)
+		if mesh!=null and mesh.get_surface_count()>0: expanded=expanded.merge(mesh.get_aabb())
+	if bounds.encloses(expanded): return hull
+	# Include exact terrain cuts at every LOD, which may extend beyond the
+	# conservative height-lattice estimate. Retain the original focus point.
+	expanded=expanded.grow(.25)
+	var result := PackedVector3Array([hull[0]])
+	for i in 8: result.append(expanded.get_endpoint(i))
+	return result
+
 static func file_record(directory: String, key: String) -> Dictionary:
 	var path := directory.path_join(key + ".res")
 	var file := FileAccess.open(path, FileAccess.READ)
@@ -35,6 +58,7 @@ static func validate(directory: String, host: Node) -> Dictionary:
 	required[str(manifest.get("transport_key",""))] = true
 	for key in manifest.get("rail_layout_keys",[]): required[str(key)]=true
 	if manifest.get("rail_layout_keys",[]).is_empty(): result.errors.append("Missing startup rail layouts")
+	for key in manifest.get("auxiliary_keys",[]): required[str(key)] = true
 	for entry in manifest.tiles.values():
 		required[str(entry.get("base", ""))] = true
 		for name in TILE_TIERS: required[str(entry.get(name, ""))] = true

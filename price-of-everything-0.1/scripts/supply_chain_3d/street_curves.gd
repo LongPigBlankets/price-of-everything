@@ -24,7 +24,6 @@ static func rounded_path(points: PackedVector2Array, reach := 18.0) -> PackedVec
 	result.append(points[-1]);return result
 
 static func apply(model: Dictionary, height: Callable, water: Callable, key_for: Callable, prepared: Dictionary) -> void:
-	if not Trial.preview_enabled():return
 	var protected: Array=[]
 	for s in model.standing:
 		if not s.has("harbour") and s.kind in ["house","warehouse","suppliers","pylon"]:continue
@@ -39,8 +38,11 @@ static func apply(model: Dictionary, height: Callable, water: Callable, key_for:
 	for s in model.standing:
 		if s.has("harbour"):fixed.append(s.harbour.main_quay);fixed.append_array(s.harbour.quays)
 		elif s.kind not in ["house","warehouse","suppliers","pylon"]:
-			if s.has("footprint"):fixed.append(s.footprint)
-			else:fixed.append_array(preload("res://scripts/supply_chain_3d/rail_clearance.gd").building_polygons(s,str(key_for.call(s))))
+			fixed.append_array(preload("res://scripts/supply_chain_3d/building_footprints.gd").reserved(str(key_for.call(s)),s))
+	var fixed_index := {}
+	for i in fixed.size(): Index.insert(fixed_index,preload("res://scripts/supply_chain_3d/road_placement.gd").polygon_bounds(fixed[i]).grow(30),i)
+	var rails: Array=model.get("trial_rail_segments",[])
+	var rail_index := Index.segments(rails,32)
 	var edges: Array=[];var unique := {};var nodes := {};var centers := {}
 	for tid in model.tiles:centers[tid]=model.tiles[tid].center
 	for road in model.roads:
@@ -62,14 +64,16 @@ static func apply(model: Dictionary, height: Callable, water: Callable, key_for:
 		# Preserve the already engineered depot routes and bridge/rail approaches.
 		if str(e.source).begins_with("depot:") or str(f.source).begins_with("depot:") or str(e.source).begins_with("port:") or str(f.source).begins_with("port:"):continue
 		var near_rail := false
-		for r in model.get("trial_rail_segments",[]):
+		for ri in rail_index.get(Vector2i((p/Index.CELL).floor()),[]):
+			var r: Dictionary=rails[ri]
 			if p.distance_to(Geometry2D.get_closest_point_to_segment(p,r.a,r.b))<32:near_rail=true;break
 		if near_rail:continue
 		var curve := arc(a,p,b,clampf(float(e.widths[0])*4,18,36))
 		var safe := true
 		for q in curve:
 			if water.call(q) or absf(float(height.call(q))-float(height.call(p)))>3:safe=false;break
-			for shape in fixed:
+			for id in fixed_index.get(Vector2i((q/Index.CELL).floor()),[]):
+				var shape: PackedVector2Array=fixed[id]
 				if preload("res://scripts/supply_chain_3d/road_placement.gd").distance_to_polygon(q,q,shape)<float(e.widths[0])+3.0:safe=false;break
 		if not safe:continue
 		corners[k]={"points":curve,"first":nodes[k][0],"owner":e};count+=1

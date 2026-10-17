@@ -1,5 +1,5 @@
 extends RefCounted
-## Local art review: never touch the full-continent package during iteration.
+## Shared decorative scale/zoning, with an optional five-tile art review.
 const TILES := ["tile_4_9", "tile_4_10", "tile_5_9", "tile_5_10", "tile_6_9"]
 const PACKAGE := "res://assets/supply_chain_3d/stoneshore_trial_bakes"
 
@@ -41,14 +41,29 @@ static func residential(tile: Dictionary, p: Vector2, edge_centers: Array, harbo
 		if offset.length() < 510.0 and (p - tile.center).dot(offset.normalized()) > 130.0: return true
 	return false
 
+## Dense urban infill everywhere. Retain the approved Stoneshore fringe, but
+## other rural tiles keep their existing hamlets rather than becoming suburbs.
+static func dense_tiles(model: Dictionary) -> Array:
+	var result: Array=[]
+	for tid in model.tiles:
+		if str(model.tiles[tid].type)=="urban" or tid in TILES: result.append(tid)
+	return result
+
 static func populate(model: Dictionary, terrain: Node = null) -> void:
 	if "--stoneshore-baseline" in OS.get_cmdline_user_args(): return
+	var scope := dense_tiles(model)
 	model.standing = model.standing.filter(func(s: Dictionary) -> bool:
-		return str(s.tile) not in TILES or str(s.kind) != "house")
+		return str(s.tile) not in scope or str(s.kind) != "house")
+	# Rural hamlets use the same kit scale; do not multiply repeatedly on rebuild.
+	for s in model.standing:
+		if str(s.kind)!="house" or s.get("decor_scale",0.0)==DECOR_SCALE: continue
+		s.side=Scale.TERRACE_ROW_SIDE*DECOR_SCALE
+		s.pad=s.side; s.decor_scale=DECOR_SCALE
+		s.erase("footprint");s.erase("footprints")
 	var edge_centers: Array = []
 	if terrain != null:
 		var ids := {}
-		for tid in TILES:
+		for tid in scope:
 			for other in Catalog.tile_neighbours(tid):
 				if Catalog.tile_type(other)!="urban": ids[other]=true
 		for tid in ids: edge_centers.append(preload("res://scripts/empire_board_model.gd").tile_center(terrain,tid))
@@ -59,11 +74,14 @@ static func populate(model: Dictionary, terrain: Node = null) -> void:
 	for s in model.standing:
 		if s.has("harbour"): harbours.append(s.harbour.shore_anchor)
 	model.trial_targets = {}
-	model.trial_residential_limits = RESIDENTIAL_LIMITS
-	for tid in TILES:
-		if not model.tiles.has(tid): continue
-		model.trial_targets[tid] = int(TARGET_BUILDINGS[tid])
+	model.trial_residential_limits = RESIDENTIAL_LIMITS.duplicate()
+	model.dense_tiles = scope
+	for tid in scope:
+		model.trial_targets[tid] = int(TARGET_BUILDINGS.get(tid,12))
+		model.trial_residential_limits[tid] = int(RESIDENTIAL_LIMITS.get(tid,14))
 		var tile: Dictionary = model.tiles[tid]
+		var local_edges: Array=edge_centers.filter(func(c):return c.distance_to(tile.center)<510.0)
+		var local_harbours: Array=harbours.filter(func(c):return c.distance_to(tile.center)<550.0)
 		var points: Array = []
 		for y in range(-210, 211, 26):
 			for x in range(-210, 211, 26):
@@ -72,7 +90,7 @@ static func populate(model: Dictionary, terrain: Node = null) -> void:
 		points.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return a.order < b.order)
 		for i in points.size():
 			var p: Vector2 = points[i].p
-			var housing := residential(tile,p,edge_centers,harbours)
+			var housing := residential(tile,p,local_edges,local_harbours)
 			var family: String = ["house","civic_office","civic_commercial","house","civic_l","civic_office","civic_commercial","civic_u_office"][i%8]
 			var level := 1 # house_lvl1 is the compact flat-roof apartment block
 			if housing:
@@ -82,7 +100,7 @@ static func populate(model: Dictionary, terrain: Node = null) -> void:
 			var standing := {"iid": "z_trial:%s:%04d" % [tid,i], "kind": "house", "tile":tid,
 				"pos":p, "side":side * DECOR_SCALE, "pad":side * DECOR_SCALE, "level":level,
 				"decor_scale":DECOR_SCALE, "trial_density":true, "trial_residential":housing,
-				"trial_tile":tile, "trial_edge_centers":edge_centers, "trial_harbours":harbours,
+				"trial_tile":tile, "trial_edge_centers":local_edges, "trial_harbours":local_harbours,
 				"polluting":false, "max_relief":6.0,
 				"name":"Semi-detached homes" if family=="civic_semi" else ("Apartments" if family=="house" and not housing else "Neighbourhood building"),
 				"sprite":Sprites.texture_for("house",level) if family == "house" else null}

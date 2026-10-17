@@ -4,8 +4,8 @@ extends "res://tools/supply_chain_3d/capture.gd"
 const Package := preload("res://tools/supply_chain_3d/bake_package.gd")
 
 func _ready() -> void:
-	if not preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
-		push_error("Continent baking is paused pending user approval. Use --stoneshore-review for the five-tile trial.")
+	if not preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled() and "--approved-continent-bake" not in OS.get_cmdline_user_args():
+		push_error("Use --stoneshore-review, or --approved-continent-bake after explicit user approval.")
 		get_tree().quit(1)
 		return
 	PlayerProfile.supply_chain_all_tiles = true # scoped disposable harness; do not save preferences
@@ -21,12 +21,13 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	var source: RefCounted = builder.bake_cache
 	var writer := Package.Cache.new()
 	writer.enabled = true
-	writer.directory = preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").PACKAGE
+	writer.directory = preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").PACKAGE if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled() else Package.Cache.BUNDLED
 	writer.defer_trim = true # release assets are not the bounded runtime disk cache
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--package-output="): writer.directory = arg.trim_prefix("--package-output=")
-	assert(writer.directory != Package.Cache.BUNDLED, "A Stoneshore trial must not overwrite the continent package")
-	assert(builder.tiles.size() == 5, "Expected only the five Stoneshore review tiles")
+	if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
+		assert(writer.directory != Package.Cache.BUNDLED, "A Stoneshore trial must not overwrite the continent package")
+		assert(builder.tiles.size() == 5, "Expected only the five Stoneshore review tiles")
 	writer.bundled_directory = writer.directory
 	assert(DirAccess.make_dir_recursive_absolute(writer.directory) == OK)
 	var previous_manifest: Dictionary = {}
@@ -59,7 +60,16 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 		manifest.rail_layout_keys.append(key)
 		manifest.resources[key]=Package.file_record(writer.directory,key)
 	manifest.transport_key = builder.transport_key
-	writer.write(builder.transport_key, builder.TransportBake.packed(builder))
+	# Sidewalk rendering annotates the live road dictionaries after cache keys
+	# have been calculated. Preserve the transport snapshot saved before that
+	# work, rather than baking those later annotations into the next load's key.
+	# Ignore ResourceLoader's live instance, which may share the same dictionaries.
+	var transport_path: String=source.directory.path_join(builder.transport_key+".res")
+	if not FileAccess.file_exists(transport_path):
+		transport_path=source.bundled_directory.path_join(builder.transport_key+".res")
+	var transport := Package.persisted_data(transport_path,builder.transport_key)
+	assert(not transport.is_empty(),"Missing persisted transport snapshot")
+	writer.write(builder.transport_key, transport)
 	manifest.resources[builder.transport_key] = Package.file_record(writer.directory, builder.transport_key)
 	builder.bake_cache = writer
 	builder.release_local_tiles({})
@@ -97,6 +107,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 			prepared += 1
 		manifest.tiles[tid] = {"base": base_key}
 		manifest.resources[base_key] = Package.file_record(writer.directory, base_key)
+		builder.view_hulls[tid]=Package.enclose_terrain(builder.view_hulls[tid],base)
 		for name in Package.TILE_TIERS:
 			var tier: int = Package.TILE_TIERS[name]
 			var key: String = builder.tile_bake_key(tid, tier)
@@ -116,6 +127,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 				writer.write(key, data)
 			manifest.tiles[tid][name] = key
 			manifest.resources[key] = Package.file_record(writer.directory, key)
+			builder.view_hulls[tid]=Package.enclose_terrain(builder.view_hulls[tid],data)
 		builder.release_local_tiles({})
 		builder._chunk_data.clear()
 		if manifest.tiles.size() % 20 == 0:

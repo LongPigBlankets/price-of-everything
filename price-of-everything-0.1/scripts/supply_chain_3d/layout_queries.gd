@@ -11,12 +11,22 @@ var data := {}
 var _cost_suffix := ""
 var _shore_suffix := ""
 var _previous_paths := {}
+var _prepared_keys: Variant = null
+
+static func prepared_signature(value: Dictionary) -> Dictionary:
+	var result := {}
+	for name in ["frontages","district_blocks","street_curves"]:
+		var keys: Array=value.get(name,{}).keys();keys.sort();result[name]=keys
+	for name in ["authored_network","depot_roads","port_approach","riverside_fields"]:
+		result[name]=value.get(name,{}).get("key","")
+	return result
 
 func prepare(cache: RefCounted, geography: Array, water: Callable) -> void:
 	# Use the normal source layer so compiled-script exports recover the same
 	# fingerprint from the package instead of hashing different .gdc bytes.
 	key = "layout-" + Cache.digest([Cache.source_key("layout"), geography])
 	data = cache.read(key)
+	_prepared_keys=prepared_signature(data)
 	# Plot fitting asks for coast/land polygons clipped to each hex. Re-clipping
 	# hundreds of tiles dominated the remaining first-process layout time.
 	if data.has("relief"):
@@ -49,6 +59,9 @@ func finish(cache: RefCounted) -> void:
 		"depot_roads": data.get("depot_roads", {}), "street_curves": data.get("street_curves", {}), "port_approach": data.get("port_approach", {}), "riverside_fields": data.get("riverside_fields", {})}
 	Model.Streets._paths = _previous_paths
 	_previous_paths = {}
-	if updated != data:
+	# Planners mutate shared memo dictionaries. Comparing only updated/data
+	# misses a new route variant when no geographical queries changed.
+	if updated != data or (_prepared_keys!=null and prepared_signature(updated)!=_prepared_keys):
 		data = updated
 		cache.write(key, data)
+	_prepared_keys=prepared_signature(data)

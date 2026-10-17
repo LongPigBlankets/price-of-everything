@@ -23,6 +23,8 @@ var plaza_shapes: Array=[]
 var builder: RefCounted
 var relief := {}
 var center := Vector2.ZERO
+var tile_centers := {}
+var tile_index := {}
 
 static func beach(p: Vector2, rel: Dictionary) -> bool:
 	# The base beach polygon underlies all land; only its visible, unpainted
@@ -60,15 +62,19 @@ func _clear(tree: Dictionary) -> bool:
 	var h: float=builder.surface_height(p)
 	for d in [Vector2.ZERO,Vector2.UP,Vector2.DOWN,Vector2.LEFT,Vector2.RIGHT,Vector2(1,1).normalized(),Vector2(-1,1).normalized(),Vector2(1,-1).normalized(),Vector2(-1,-1).normalized()]:
 		var q: Vector2=p+d*r
-		if not builder.tiles.values().any(func(tile):return Index.contains(tile.center,q)) and not builder.sea_fringe.contains(q):return false
+		if Index.tile_at(tile_index,tile_centers,q).is_empty() and not builder.sea_fringe.contains(q):return false
 		if builder.open_water(q):return false
 		if absf(builder.surface_height(q)-h)>3.0:return false
 	return true
 
 func plant(tid: String, source: Array, owner: RefCounted, standing: Array, plazas: Array) -> Dictionary:
 	builder=owner;center=builder.tiles[tid].center;relief=Coast.relief_of(tid,center)
+	for id in builder.tiles:
+		if (builder.tiles[id].center as Vector2).distance_to(center)<1100: tile_centers[id]=builder.tiles[id].center
+	tile_index=Index.tiles(tile_centers)
 	plaza_shapes=plazas;plaza_index=Plazas._index(plazas)
 	for s in standing:
+		if (s.pos as Vector2).distance_to(center)>800:continue
 		var key := str(builder.standing_key(s))
 		if s.kind=="pylon" or (key.is_empty() and not s.has("harbour")):continue
 		shapes.append_array(Plazas.polygons(s,key))

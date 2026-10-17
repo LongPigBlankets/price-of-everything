@@ -3,6 +3,27 @@ const FEATURE := "supply_chain_3d"
 const Curves := preload("res://scripts/supply_chain_3d/street_curves.gd")
 const Plazas := preload("res://scripts/supply_chain_3d/urban_plazas.gd")
 const Green := preload("res://scripts/supply_chain_3d/stoneshore_greenery.gd")
+
+func _test_streetscape_continent_depot_route_is_local() -> void:
+	var route := preload("res://scripts/supply_chain_3d/depot_roads.gd")
+	var rail := preload("res://scripts/supply_chain_3d/railway.gd")
+	var local := {"mode":"rails","pts":[{"p":Vector2(-300,0),"tile":"tile_5_10"},{"p":Vector2(300,0),"tile":"tile_4_10"}]}
+	var remote := {"mode":"rails","pts":[{"p":Vector2(-300,-6000),"tile":"tile_21_17"},{"p":Vector2(300,-6000),"tile":"tile_21_18"}]}
+	var selected := route.local_lines([local,remote])
+	_check(selected==[local],"Depot route: distant parallel rails cannot enter the Stoneshore road design")
+	var p := route.offset_point(0,rail.network(selected),{"pos":Vector2.ZERO,"yaw":0.0})
+	_check(p.length()<100,"Depot route: offset follows the local fan instead of a track thousands of units away")
+	_check(route.offset_point(1000,rail.network(selected),{"pos":Vector2.ZERO,"yaw":0.0}).is_finite(),"Depot route: a gap in the fan never creates infinite road coordinates")
+
+func _test_streetscape_gameplay_plot_and_visible_mass_reserved() -> void:
+	var footprints := preload("res://scripts/supply_chain_3d/building_footprints.gd")
+	var s := {"kind":"building","pos":Vector2.ZERO,"side":51.0,"yaw":0.3,
+		"footprint":PackedVector2Array([Vector2(80,80),Vector2(90,80),Vector2(90,90),Vector2(80,90)])}
+	var before := s.duplicate(true)
+	var shapes := footprints.reserved("eaf_lvl1",s)
+	_check(shapes.size()==2 and shapes.has(s.footprint),"Building reservation: protect working plots as well as visible industrial masses")
+	_check(shapes.any(func(poly):return Geometry2D.is_point_in_polygon(Vector2.ZERO,poly)),"Building reservation: infill cannot occupy the visible mesh outside its authored plot")
+	_check(s==before,"Building reservation: gameplay position, scale and plot are not changed")
 func _test_streetscape_curves_and_flared_joints() -> void:
 	var points := Curves.rounded_path(PackedVector2Array([Vector2(-80,0),Vector2.ZERO,Vector2(0,80)]),20)
 	_check(points[0]==Vector2(-80,0) and points[-1]==Vector2(0,80),"Street curves: road connections remain fixed")

@@ -255,14 +255,16 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	timings.road_import_ms = (Time.get_ticks_usec() - road_started) / 1000.0
 	road_started = Time.get_ticks_usec()
 	preload("res://scripts/supply_chain_3d/harbour.gd").apply(model)
-	if Legacy.plate_town and Legacy.show.decor: preload("res://scripts/supply_chain_3d/civic_layout.gd").populate(model)
 	preload("res://scripts/supply_chain_3d/rail_network.gd").apply(model, terrain, water, builder.surface_height)
 	preload("res://scripts/supply_chain_3d/rail_station.gd").apply(model,builder.surface_height)
 	preload("res://scripts/supply_chain_3d/depot_roads.gd").apply(model,queries.data)
 	preload("res://scripts/supply_chain_3d/port_approach.gd").apply(model,builder.surface_height,queries.data)
 	preload("res://scripts/supply_chain_3d/district_blocks.gd").new().apply(model, builder.surface_height, builder.open_water, queries.data)
+	print("[LAYOUT] districts ready ",Time.get_ticks_msec())
 	preload("res://scripts/supply_chain_3d/street_curves.gd").apply(model,builder.surface_height,builder.open_water,Builder.standing_key,queries.data)
-	preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").populate(model, terrain)
+	print("[LAYOUT] curves ready ",Time.get_ticks_msec())
+	if Legacy.plate_town and Legacy.show.decor: preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").populate(model, terrain)
+	print("[LAYOUT] seeds ready ",Time.get_ticks_msec())
 	preload("res://scripts/supply_chain_3d/road_placement.gd").new().fit(model, builder.surface_height, builder.open_water, Builder.standing_key, rivers, queries.data)
 	timings.road_frontage_ms = (Time.get_ticks_usec() - road_started) / 1000.0
 	road_started = Time.get_ticks_usec()

@@ -60,11 +60,10 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 			for poly in s.harbour.quays: reserve(str(s.iid), poly)
 		elif str(s.kind) in ["house", "warehouse", "suppliers"]: movable.append(s)
 		elif str(s.kind) != "pylon":
-			for poly in footprints(s): reserve(str(s.iid), poly)
+			for poly in Footprints.reserved(str(asset_key.call(s)),s): reserve(str(s.iid), poly)
 	# The pilot's new plots must clear the actual rail corridors and depot yard.
 	for depot in model.get("depots",[]):
-		if str(depot.tile) in preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").TILES:
-			reserve("__rail_yard",preload("res://scripts/supply_chain_3d/rail_depot.gd").yard_polygon(depot))
+		reserve("__rail_yard",preload("res://scripts/supply_chain_3d/rail_depot.gd").yard_polygon(depot))
 	for station in model.get("stations",[]): reserve("__rail_station",preload("res://scripts/supply_chain_3d/rail_station.gd").polygon(station))
 	for rail in model.get("trial_rail_segments",[]):
 		var a: Vector2=rail.a;var b: Vector2=rail.b
@@ -76,6 +75,7 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 		var pb := -1 if b.has("trial_skyline") else (0 if b.get("trial_green",false) else (1 if b.has("trial_port") else (2 if b.get("decor_family","")=="civic_u_office" else 3)))
 		return pa<pb if pa!=pb else str(a.iid) < str(b.iid))
 	var omitted := 0
+	var omitted_ids := {}
 	var restored := 0
 	var civic_spaces := {}
 	var district_counts := {}
@@ -84,37 +84,43 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 	for s in movable:
 		if not model.authored_region.tiles.has(str(s.tile)): continue
 		if s.get("trial_density", false) and int(trial_counts.get(str(s.tile), 0)) >= int(model.get("trial_targets", {}).get(str(s.tile), 100000)):
-			model.standing.erase(s); omitted += 1; continue
+			omitted_ids[str(s.iid)]=true; omitted += 1; continue
 		if s.get("trial_residential",false) and int(residential_counts.get(str(s.tile),0))>=int(model.get("trial_residential_limits",{}).get(str(s.tile),100000)):
-			model.standing.erase(s); omitted+=1; continue
+			omitted_ids[str(s.iid)]=true; omitted+=1; continue
 		var space_key := str(s.tile) + ":" + str(s.get("decor_family", ""))
 		var limit := int(Civic.DISTRICT_LIMITS.get(str(s.get("decor_family", "")), 100000))
 		if s.get("trial_density", false): limit = 1 if s.get("decor_family", "") in ["civic_u_office", "civic_bauhaus"] else 100000
 		if int(district_counts.get(space_key, 0)) >= limit:
-			model.standing.erase(s); omitted += 1; continue
+			omitted_ids[str(s.iid)]=true; omitted += 1; continue
 		if s.get("trial_green",false): limit = int(preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").GREEN_LIMITS.get(s.decor_family,1))
 		if int(district_counts.get(space_key,0))>=limit:
-			model.standing.erase(s); omitted+=1; continue
+			omitted_ids[str(s.iid)]=true; omitted+=1; continue
 		if Civic.is_space(s) and not s.get("trial_green",false) and civic_spaces.has(space_key):
-			model.standing.erase(s); omitted += 1; continue
+			omitted_ids[str(s.iid)]=true; omitted += 1; continue
 		var placed := frontage(s, model.tiles[s.tile].center)
 		if not placed and str(s.kind) == "house":
-			model.standing.erase(s); omitted += 1; continue
+			omitted_ids[str(s.iid)]=true; omitted += 1; continue
 		s.footprints = footprints(s)
 		s.footprint = s.footprints[0]
 		for poly in s.footprints: reserve(str(s.iid), poly)
+		if str(s.kind)!="house":
+			for poly in Footprints.rendered(str(asset_key.call(s)),s): reserve(str(s.iid),poly)
 		district_counts[space_key] = int(district_counts.get(space_key, 0)) + 1
 		if Civic.is_space(s): civic_spaces[space_key] = true
 		if s.get("trial_density", false): trial_counts[str(s.tile)] = int(trial_counts.get(str(s.tile), 0)) + 1
 		if s.get("trial_residential",false): residential_counts[str(s.tile)] = int(residential_counts.get(str(s.tile),0)) + 1
 		if str(s.kind) == "house": restored += 1
+	model.standing=model.standing.filter(func(s):return not omitted_ids.has(str(s.iid)))
+	print("[LAYOUT] seeds fitted ",Time.get_ticks_msec()," kept=",restored)
 	var blocks := Neighbourhood.new()
 	var interiors := model.has("district_blocks") and not zoning.is_empty()
 	if interiors:
 		blocks.prepare(model,self)
 		_reserve_junctions()
+	print("[LAYOUT] lanes ready ",Time.get_ticks_msec())
 	var infill := FrontageFill.new()
 	var coverage := infill.run(model,self,zoning) if not zoning.is_empty() else {}
+	print("[LAYOUT] fronts ready ",Time.get_ticks_msec()," added=",infill.added.size())
 	if interiors: blocks.populate()
 	restored += infill.added.size()
 	restored += blocks.added.size()
@@ -355,7 +361,6 @@ func trial_plot_allowed(s: Dictionary) -> bool:
 	return true
 
 func _reserve_junctions() -> void:
-	if not preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():return
 	var curves := preload("res://scripts/supply_chain_3d/street_curves.gd")
 	for joint in curves.junctions(roads):
 		var a: Dictionary=joint.a.road;var b: Dictionary=joint.b.road
