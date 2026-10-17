@@ -21,6 +21,7 @@ extends RefCounted
 
 const InfraIcons := preload("res://scripts/infra_icons.gd")
 const MONEY_EPSILON := 0.0001
+const LandPrice := preload("res://scripts/land_price.gd")
 
 
 # --- Browse: what may be built -------------------------------------------------------------
@@ -239,14 +240,17 @@ static func site_check(building_id: String, recipe_id: String, tile_data: Dictio
 ##                  is short), "short" (not enough owned land even with what is for sale)
 ##   will_buy       the build buys `patches` of land for `cost` on the way. A build refused
 ##                  after it bought land (for the kit or the cash) returns the land and the cash.
+##   price          LandPrice.quote for those patches (its terms are the readout's lines); empty
+##                  when nothing would be bought.
 ##   density_multiplier  1.5 past the planning limit (everyone's land over 100), else 1
-## `buy_land` is the confirm's one off intent; the standing Auto-buy land setting also buys.
+## `buy_land` is the confirm's one off intent; the standing Auto-buy land setting also buys. `level` sizes a
+## building placed straight at level 2 or 3 (Construction.placing_level).
 ## Tendered infrastructure (Logistics Intermediary games with Infrastructure Tendering) may
 ## cross land the player does not own.
-static func land_plan(tile_id: String, building_id: String, buy_land: bool = false) -> Dictionary:
+static func land_plan(tile_id: String, building_id: String, buy_land: bool = false, level: int = 1) -> Dictionary:
 	var building := Catalog.get_building(building_id)
 	var internal := str(building.get("internal_name", ""))
-	var needed := maxf(0.0, float(building.get("tile_size_used", 1.0)))
+	var needed := maxf(0.0, float(building.get("tile_size_used", 1.0))) * preload("res://scripts/building_levels.gd").mult("size", level)
 	var projected := BuildingState.get_tile_space_used(tile_id) + needed
 	var max_land := BuildingState.max_tile_land(tile_id)
 	var player_projected := BuildingState.get_tile_player_space_used(tile_id) + needed
@@ -258,11 +262,13 @@ static func land_plan(tile_id: String, building_id: String, buy_land: bool = fal
 	var patches_for_sale := BuildingState.get_tile_land_patches_available(tile_id)
 	var patches := 0
 	var cost := 0.0
+	var price: Dictionary = {}
 	var owned_after := owned
 	if shortfall > 0.0 and patches_for_sale > 0:
 		# purchase_tile_land's own clamp and price, and the sliver it may grant.
 		patches = clampi(int(ceil(shortfall / float(BuildingState.LAND_PATCH_SIZE))), 1, patches_for_sale)
-		cost = AdvisorState.purchase_cost_after_advisor(float(patches) * BuildingState.LAND_PATCH_COST, {"tile_id": tile_id})
+		price = LandPrice.quote(tile_id, patches, false)
+		cost = float(price.total)
 		var granted := mini(patches * BuildingState.LAND_PATCH_SIZE, BuildingState.get_tile_land_units_available(tile_id))
 		owned_after = mini(max_land, owned + granted)
 	var outcome := "ok"
@@ -287,7 +293,7 @@ static func land_plan(tile_id: String, building_id: String, buy_land: bool = fal
 		"needed": needed, "free": free, "owned": owned, "owned_after": owned_after if will_buy else owned,
 		"shortfall": shortfall, "tendered": tendered,
 		"patches_for_sale": patches_for_sale, "patches": patches, "units": patches * BuildingState.LAND_PATCH_SIZE,
-		"cost": cost, "wants_buy": wants_buy, "will_buy": will_buy,
+		"cost": cost, "price": price, "wants_buy": wants_buy, "will_buy": will_buy,
 		"covered_by_purchase": patches_for_sale > 0 and player_projected <= float(owned_after),
 		"max_land": max_land, "projected": projected, "player_projected": player_projected,
 		"density_multiplier": 1.5 if projected > BuildingState.DENSITY_SOFT_CAPACITY else 1.0,
@@ -433,6 +439,9 @@ static func is_intermittent(building_id: String) -> bool:
 ## opts:
 ##   source    a material source for this build ("" reads the pick and the setting)
 ##   buy_land  the confirm's buy land intent (the standing Auto-buy land setting also buys)
+##   level     place the building straight at this level (a favourite): the kit carries each upgrade's
+##             materials, the footprint grows, the build takes Construction.LEVELLED_BUILD_EXTRA_TURNS
+##             longer, and the level's research is a block
 ##
 ## Returns:
 ##   site_known        false with no tile: the figures are estimates at market prices,
@@ -446,11 +455,19 @@ static func is_intermittent(building_id: String) -> bool:
 ##   warnings          [{key, text}] what goes ahead but deserves a word
 ##
 ## Block keys: tutorial_area, tendering, terrain, deposit, requirement, already_built,
-## in_progress, full, cannot_buy_land, land_short, materials_short, no_surplus, funds.
+## in_progress, full, cannot_buy_land, land_short, materials_short, no_surplus, funds, level_research.
 ## Warning keys: site_unknown, blind_deposit, density, buys_land, source_changed, needs_cables,
 ## needs_pipes, needs_reinf_pipes, intermittent.
 static func quote(building_id: String, recipe_id: String = "", tile_id: String = "",
 		tile_data: Dictionary = {}, opts: Dictionary = {}) -> Dictionary:
+	var before := Construction.placing_level
+	Construction.placing_level = clampi(int(opts.get("level", 1)), 1, preload("res://scripts/building_levels.gd").MAX_LEVEL)
+	var q := _quote(building_id, recipe_id, tile_id, tile_data, opts)
+	Construction.placing_level = before
+	return q
+
+
+static func _quote(building_id: String, recipe_id: String, tile_id: String, tile_data: Dictionary, opts: Dictionary) -> Dictionary:
 	var building := Catalog.get_building(building_id)
 	var internal := str(building.get("internal_name", ""))
 	var infrastructure := recipe_id == "" and is_tile_infrastructure(internal)
@@ -461,11 +478,15 @@ static func quote(building_id: String, recipe_id: String = "", tile_id: String =
 	var q := {
 		"building_id": building_id, "recipe_id": recipe_id, "tile_id": tile_id,
 		"infrastructure": infrastructure, "site_known": tile_id != "",
-		"build_turns": MatchState.effective_build_duration(building_id), "materials_turns": 0,
+		"build_turns": Construction.placing_duration(building_id), "materials_turns": 0, "level": Construction.placing_level,
 		"source": source, "blocks": blocks, "warnings": warnings,
 	}
 	for note: Variant in source.notes:
 		warnings.append({"key": "source_changed", "text": str((note as Dictionary).text)})
+	if Construction.placing_level > 1:
+		var gate := preload("res://scripts/building_levels.gd").research_gate(internal, Construction.placing_level)
+		if gate != "" and not ResearchState.is_unlocked(gate):
+			blocks.append({"key": "level_research", "text": "Level %d needs the research %s." % [Construction.placing_level, gate]})
 	if is_intermittent(building_id):
 		warnings.append({"key": "intermittent", "text": "Output rises and falls with the weather."})
 
@@ -523,7 +544,7 @@ static func quote(building_id: String, recipe_id: String = "", tile_id: String =
 				warnings.append({"key": "blind_deposit",
 					"text": "Unsurveyed. The %s deposit is confirmed when the building is finished." % _deposit_name(blind)})
 
-	var land := land_plan(tile_id, building_id, bool(opts.get("buy_land", false)))
+	var land := land_plan(tile_id, building_id, bool(opts.get("buy_land", false)), Construction.placing_level)
 	q.land_plan = land
 	match str(land.outcome):
 		"terrain":

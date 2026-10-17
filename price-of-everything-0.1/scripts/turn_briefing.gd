@@ -620,6 +620,7 @@ const _EVENT_ICONS := {
 	"policy_enacted": "scale",
 	"forewarn": "flag",
 	"advisor_tip": "users",
+	"land_prices": "gauge",
 }
 
 func _event_item(ev: Dictionary) -> Dictionary:

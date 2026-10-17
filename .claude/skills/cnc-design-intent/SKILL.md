@@ -63,6 +63,9 @@ no consumers by design — they're the value-chain summits (volume-apex pricing)
 **The NPC world is scenery-with-services.** ~472 pre-placed NPC buildings don't
 simulate; they sell (building market), anchor ports, and dress the map. Regression
 smell: simulating NPC economics "for realism" (a performance and balance landmine).
+One sanctioned exception: the rankings' summed revenue (19 seeded rivals plus the
+player) drives urban land prices, +25% of a tile's starting price per doubling
+(`scripts/land_price.gd`, docs/land-pricing-spec.md). It is a clock, not a simulation.
 
 **No combat. 300-turn cap.** The cap (turn_manager `MAX_TURNS`) shapes every curve;
 the game soft-ends and still shows DECIDE for overlays.

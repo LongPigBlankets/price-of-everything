@@ -25,7 +25,7 @@ static func make(glyph: String, key_px: float = DEFAULT_KEY_PX) -> TextureButton
 	b.size_flags_horizontal = Control.SIZE_SHRINK_END
 	b.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	b.tooltip_text = str({"close": "Close", "back": "Back", "pin": "Location"}.get(glyph, ""))
+	b.tooltip_text = str({"close": "Close", "back": "Back", "pin": "Location", "star": "Favourite"}.get(glyph, ""))
 	return b
 
 

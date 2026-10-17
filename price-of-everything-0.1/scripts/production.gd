@@ -561,6 +561,22 @@ func _process_production() -> void:
 		var tile_totals: Dictionary = Stockpile.get_tile_totals(str(tile_id))
 		_sell_stockpile_totals(str(tile_id), tile_totals, summary, true)
 
+	# One-off sales to Local Suppliers asked for in DECIDE (the tile quick menu), no more than is still here.
+	var local_sales: Dictionary = MatchState.consume_queued_local_sales()
+	for tile_id in local_sales:
+		var on_tile: Dictionary = Stockpile.get_tile_totals(str(tile_id))
+		var goods: Dictionary = {}
+		for gid in local_sales[tile_id]:
+			var qty := mini(int(local_sales[tile_id][gid]), int(on_tile.get(gid, 0)))
+			if qty > 0:
+				goods[gid] = qty
+		if goods.is_empty():
+			continue
+		var sold: Dictionary = Middleman.sell_surplus(str(tile_id), goods, summary)
+		for item: Dictionary in sold.get("items", []):
+			_note_tile_sale_charge(str(tile_id), str(item.get("good_id", "")), float(item.get("fee", 0.0)))
+			note_good_cost(summary, str(item.get("good_id", "")), "intermediary", float(item.get("fee", 0.0)), int(item.get("qty", 0)))
+
 	# Auto-sell standing orders: the master "sell everything" toggle (sell_surplus_tiles)
 	# and per-good overrides (auto_sell_goods). Runs AFTER production consumes inputs and
 	# AFTER outbound moves ship, so anything still on the tile is genuine surplus — this

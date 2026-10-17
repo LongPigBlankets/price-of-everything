@@ -5,8 +5,17 @@ const Rail := preload("res://scripts/supply_chain_3d/railway.gd")
 const DEPTH := 14.0
 const APPROACH := 180.0
 const MAX_APPROACH_GRADE := 0.12
+## A river is crossed on a bridge at grade: a bore's approach may not dig through it.
+## Track climbs from the bridge at this grade, inside the bore if it has to.
+const RIVER_GRADE := 0.12
+## Bridge abutments: level track this far beyond the water on both banks.
+const BRIDGE_SHOULDER := 12.0
+## A portal crown stands about this high above the rail (tunnel_portal.gd: wall + rise +
+## ring). Where a bore rises toward a bridge, it stays open until the ground covers that.
+const PORTAL_COVER := 10.0
+const MAX_RIVER_DROP := 40.0
 
-static func solve(plan: Dictionary, height: Callable, level: Callable, requested: Callable, yard_distance: Callable, stations: Array = [], required_cover: Callable = Callable()) -> Dictionary:
+static func solve(plan: Dictionary, height: Callable, level: Callable, requested: Callable, yard_distance: Callable, stations: Array = [], required_cover: Callable = Callable(), wet: Callable = Callable()) -> Dictionary:
 	var nodes := {}; var profiles: Array = []; var junctions := {}
 	for corridor in plan.corridors:
 		var samples: Array = []
@@ -20,8 +29,9 @@ static func solve(plan: Dictionary, height: Callable, level: Callable, requested
 			var roof := minf(float(height.call(p)),minf(float(height.call(p-side)),float(height.call(p+side))))
 			samples.append({"p":p,"hidden":hidden})
 			var key := Rail._key(p)
-			var node: Dictionary = nodes.get_or_add(key,{"p":p,"base":base,"h":base,"roof":roof,"hidden":false,"mandatory":false,"edges":{}})
+			var node: Dictionary = nodes.get_or_add(key,{"p":p,"base":base,"h":base,"roof":roof,"hidden":false,"mandatory":false,"wet":false,"edges":{}})
 			node.roof=minf(node.roof,roof)
+			node.wet=node.wet or (wet.is_valid() and bool(wet.call(p)))
 			node.mandatory=node.mandatory or mandatory
 			if i>0:
 				var previous := Rail._key(corridor.points[i-1])
@@ -77,6 +87,7 @@ static func solve(plan: Dictionary, height: Callable, level: Callable, requested
 			if preload("res://scripts/supply_chain_3d/rail_station.gd").contains_track(station,node.p):
 				platform_nodes.append(node);datum=minf(datum,node.h)
 		for node in platform_nodes: node.h=datum
+	_bridge_rivers(nodes)
 	var tracks: Array = []
 	for prof in profiles:
 		for i in range(1,prof.samples.size()):
@@ -86,3 +97,34 @@ static func solve(plan: Dictionary, height: Callable, level: Callable, requested
 				"hidden_a":a.hidden,"hidden_b":b.hidden,"hidden":a.hidden and b.hidden,
 				"active":a.hidden or b.hidden or a.h<a.base-0.001 or b.h<b.base-0.001})
 	return {"tracks":tracks,"components":components.map(func(c): return {"datum":c.datum,"samples":c.nodes.size()})}
+
+## Visible track over a river is a bridge at grade. Nothing near it may lie lower than a
+## RIVER_GRADE climb from that deck: an approach (or the first stretch of a bore) rises to
+## meet the bridge instead of cutting through the river bed. A bore that rises this way
+## opens into a cutting until the ground can cover its portal crown.
+static func _bridge_rivers(nodes: Dictionary) -> void:
+	var floor := {}; var queue: Array = []; var cursor := 0
+	for key in nodes:
+		var node: Dictionary = nodes[key]
+		if node.wet and not node.hidden:
+			floor[key] = {"deck": float(node.base), "distance": 0.0}
+			queue.append(key)
+	if queue.is_empty(): return
+	while cursor < queue.size():
+		var key: Vector2i = queue[cursor]; cursor += 1
+		var at: Dictionary = floor[key]
+		for other in nodes[key].edges:
+			var distance: float = float(at.distance) + float(nodes[key].edges[other])
+			var level: float = float(at.deck) - RIVER_GRADE * maxf(0.0, distance - BRIDGE_SHOULDER)
+			# A lowered node can lie beyond one still at its base, so do not stop at the
+			# first node above the floor; stop once the floor is deeper than any bore.
+			if level < float(at.deck) - MAX_RIVER_DROP: continue
+			if floor.has(other) and float(floor[other].deck) - RIVER_GRADE * maxf(0.0, float(floor[other].distance) - BRIDGE_SHOULDER) >= level: continue
+			floor[other] = {"deck": at.deck, "distance": distance}
+			queue.append(other)
+	for key in floor:
+		var node: Dictionary = nodes[key]
+		var at: Dictionary = floor[key]
+		var level: float = float(at.deck) - RIVER_GRADE * maxf(0.0, float(at.distance) - BRIDGE_SHOULDER)
+		node.h = float(node.base) if node.wet else minf(float(node.base), maxf(float(node.h), level))
+		if node.hidden and float(node.h) + PORTAL_COVER > float(node.roof): node.hidden = false

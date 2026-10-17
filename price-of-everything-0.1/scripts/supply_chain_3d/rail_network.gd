@@ -6,7 +6,21 @@ const Index := preload("res://scripts/supply_chain_3d/road_index.gd")
 const Model := preload("res://scripts/empire_board_model.gd")
 const Rail := preload("res://scripts/supply_chain_3d/railway.gd")
 const Depot := preload("res://scripts/supply_chain_3d/rail_depot.gd")
-const VERSION := 4
+const VERSION := 7
+## Each river crossing costs this much when a line picks its route, so a line crosses a
+## river once on one bridge, not repeatedly where it meanders.
+const RIVER_CROSSING_COST := 6000.0
+## Rivers run through tile centres, so a centred anchor puts the junction fan on the water
+## and every line leaving it on the banks. Anchors keep this clearance from a river.
+const ANCHOR_RIVER_CLEARANCE := 130.0
+## Hand-placed anchors, as offsets from the tile centre. Stoneshore Fields: the default
+## anchor sat on the tile's central road junction, so five lines fanned out under it and
+## every road arm needed a deck. North of it the fan has open ground.
+const ANCHOR_OFFSETS := {"tile_5_9": Vector2(120, -210)}
+## Hand-placed via points, listed from the first tile in the edge id. The Fields line to
+## tile_5_10 crosses the six-lane avenue square on, then rejoins its old corridor under the
+## north–south street instead of cutting through the grove block beside it.
+const LINE_VIAS := {"tile_5_10|tile_5_9": [Vector2(2700, 5200), Vector2(2845, 5080)]}
 static var _cache: Dictionary = {}
 const Cache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
 static var prepared_keys := {}
@@ -139,21 +153,22 @@ static func apply(model: Dictionary, terrain: Node, water: Callable = Callable()
 			authored.obstacles.append({"poly":poly,"bb":bounds,"protected":true})
 	for tid in tiles: tiles[tid].buildings = authored.counts[tid]
 	var seed: int = MatchState.match_rng_seed
-	var key := hash([tiles,authored.obstacles,seed,VERSION])
+	var river_segments := river_polylines(terrain)
+	var key := hash([tiles,authored.obstacles,seed,VERSION,river_segments.size()])
 	var land_index := Index.tiles(centers)
 	var water_at := func(p: Vector2) -> bool:
 		var tid := Index.tile_at(land_index,centers,p)
 		return tid == "" or (water.is_valid() and water.call(tid,p))
 	var store := Cache.new()
 	var persistent_key := "rail-layout-"+Cache.digest([Cache.source_key("scenery"),Cache.source_key("roads"),Cache.source_key("terrain"),
-		tiles,authored.obstacles,seed,VERSION,Authored.active_name(),FileAccess.get_md5(Authored.path_for(Authored.active_name())),
+		tiles,authored.obstacles,seed,VERSION,river_segments,Authored.active_name(),FileAccess.get_md5(Authored.path_for(Authored.active_name())),
 		FileAccess.get_md5("res://data/roads_baked.json"),FileAccess.get_md5("res://data/hills_baked.json")])
 	var changed := false
 	if _cache.get("key") != key:
 		_cache = store.read(persistent_key)
 		if _cache.is_empty():
 			cache_misses+=1
-			_cache = create(tiles,authored.obstacles,seed,water_at); _cache.depots = []; changed=true
+			_cache = create(tiles,authored.obstacles,seed,water_at,river_segments); _cache.depots = []; changed=true
 		else: cache_hits+=1
 		_cache.key = key
 	if preview_depots and _cache.depots.is_empty():
@@ -213,11 +228,35 @@ static func apply(model: Dictionary, terrain: Node, water: Callable = Callable()
 	model.rail_network = {"seed":seed,"version":VERSION,"tiles":tiles,"edges":_cache.edges,"drops":_cache.drops,
 		"components":_cache.components,"anchors":_cache.anchors,"visible_edges":selected.size(),"global_edges":_cache.edges.size(),"protected_bridges":_cache.protected_bridges}
 
-static func create(tiles: Dictionary, obstacles: Array, seed: int, water: Callable = Callable()) -> Dictionary:
+## Every river as segments in map space, from the map's RiverVisuals.
+static func river_polylines(terrain: Node) -> Array:
+	var result: Array = []
+	var rv: Node = terrain.get_parent().get_node_or_null("RiverVisuals") if terrain != null and terrain.get_parent() != null else null
+	if rv == null and Engine.get_main_loop() is SceneTree: rv = (Engine.get_main_loop() as SceneTree).get_first_node_in_group("river_visuals")
+	if rv == null or not rv.has_method("get_river_polylines"): return result
+	for rec in rv.call("get_river_polylines"):
+		var points: PackedVector2Array = rec.points
+		for i in range(1, points.size()): result.append({"a": points[i - 1], "b": points[i]})
+	return result
+
+## How many times a polyline crosses a river (crossings within 6u of each other count once:
+## river records meet end to end at tile borders).
+static func river_crossings(points: PackedVector2Array, rivers: Array, river_index: Dictionary) -> int:
+	var hits: Array = []
+	for j in range(1, points.size()):
+		for i in Index.query(river_index, Index.bounds(points[j - 1], points[j], 0.01)):
+			var hit: Variant = Geometry2D.segment_intersects_segment(points[j - 1], points[j], rivers[i].a, rivers[i].b)
+			if hit == null: continue
+			if hits.any(func(q): return (q as Vector2).distance_to(hit) < 6.0): continue
+			hits.append(hit)
+	return hits.size()
+
+static func create(tiles: Dictionary, obstacles: Array, seed: int, water: Callable = Callable(), rivers: Array = []) -> Dictionary:
 	var plan := topology(tiles,seed)
 	var obstacle_index := {}
 	for i in obstacles.size(): Index.insert(obstacle_index,obstacles[i].bb.grow(16),i)
 	var anchors := {}
+	var river_index := Index.segments(rivers, 0.01)
 	var order := tiles.keys(); order.sort()
 	for tid in order:
 		var center: Vector2 = tiles[tid].center
@@ -226,26 +265,51 @@ static func create(tiles: Dictionary, obstacles: Array, seed: int, water: Callab
 			var angle := TAU * float((i+RoadHash.pick(tid,16))%16)/16.0
 			var p := center if i == 0 else center + Vector2.RIGHT.rotated(angle)*(65.0 if i<=16 else 130.0)
 			var cost := point_cost(p,obstacles,obstacle_index,water) + p.distance_to(center)*0.05
+			cost += maxf(0.0, ANCHOR_RIVER_CLEARANCE-river_gap(p,rivers,river_index))*400.0
 			if cost < score: best = p; score = cost
+		if ANCHOR_OFFSETS.has(tid): best = center + ANCHOR_OFFSETS[tid]
 		anchors[tid] = best
 	var lines: Array = []
 	for edge in plan.edges:
 		var a: Vector2 = anchors[edge.a]; var b: Vector2 = anchors[edge.b]
 		var axis := (b-a).normalized(); var side := axis.orthogonal()
 		var jitter := float(RoadHash.pick("rail-curve:%d:%s" % [seed,edge_id(edge.a,edge.b)],101)-50)
-		var best := PackedVector2Array(); var score := INF
-		for bend in [jitter,-jitter,0.0,75.0,-75.0,125.0,-125.0]:
-			var p := PackedVector2Array([a,a.lerp(b,0.33)+side*bend,a.lerp(b,0.67)+side*bend,b])
-			var cost := absf(float(bend)-jitter)*0.05
+		var best := PackedVector2Array(); var score := INF; var best_crossings := 0
+		if LINE_VIAS.has(edge_id(edge.a,edge.b)):
+			var vias: Array = LINE_VIAS[edge_id(edge.a,edge.b)].duplicate()
+			if edge.a > edge.b: vias.reverse()
+			best.append(a)
+			for via in vias: best.append(via)
+			best.append(b)
+		var bends: Array = [[jitter,jitter],[-jitter,-jitter],[0.0,0.0],[75.0,75.0],[-75.0,-75.0],[125.0,125.0],[-125.0,-125.0]]
+		var tried := 0 if best.is_empty() else bends.size()
+		while tried < bends.size():
+			var bend: Array = bends[tried]; tried += 1
+			var p := PackedVector2Array([a,a.lerp(b,0.33)+side*float(bend[0]),a.lerp(b,0.67)+side*float(bend[1]),b])
+			var cost := (absf(float(bend[0])-jitter)+absf(float(bend[1])-jitter))*0.025
 			for j in range(1,p.size()):
 				var n := maxi(2,ceili(p[j-1].distance_to(p[j])/10))
 				for k in range(n+1): cost += point_cost(p[j-1].lerp(p[j],float(k)/n),obstacles,obstacle_index,water)
-			if cost < score: best = p; score = cost
+			var crossings := river_crossings(p, rivers, river_index)
+			cost += RIVER_CROSSING_COST*crossings
+			if cost < score: best = p; score = cost; best_crossings = crossings
+			# A line still crossing a river more than once also tries gentle S-curves, the two
+			# control points bending independently. Sharper ones loop when the curve is filleted.
+			if tried == 7 and best_crossings > 1:
+				for first in [0.0, 75.0, -75.0, 125.0, -125.0]:
+					for second in [0.0, 75.0, -75.0, 125.0, -125.0]:
+						if first != second and absf(first - second) <= 125.0: bends.append([first, second])
 		var points: Array = []
 		for i in best.size(): points.append({"p":best[i],"tile":edge.a if i<best.size()/2 else edge.b,"edge":false})
 		lines.append({"mode":"rails","kind":"network","a":edge.a,"b":edge.b,"level":2,"pts":points})
 	plan.lines = lines; plan.anchors = anchors
 	return plan
+
+static func river_gap(p: Vector2, rivers: Array, river_index: Dictionary) -> float:
+	var gap := INF
+	for i in Index.query(river_index, Rect2(p, Vector2.ZERO).grow(ANCHOR_RIVER_CLEARANCE)):
+		gap = minf(gap, p.distance_to(Geometry2D.get_closest_point_to_segment(p, rivers[i].a, rivers[i].b)))
+	return gap
 
 static func point_cost(p: Vector2, obstacles: Array, index: Dictionary, water: Callable) -> float:
 	var score := 100000.0 if water.is_valid() and water.call(p) else 0.0

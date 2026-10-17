@@ -13,6 +13,7 @@ extends RefCounted
 ## Every figure and the refusal are ConstructionRules.quote()'s (`q`), the forecast BuildForecast's.
 
 const Rules := preload("res://scripts/construction_rules.gd")
+const LandPrice := preload("res://scripts/land_price.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
@@ -655,13 +656,17 @@ static func requirement_rows(panel: Control, q: Dictionary) -> Array:
 			var land: Dictionary = panel.get("_v3_land")
 			if bool(land.get("purchasable", false)) and not bool(panel.get("_buy_land_wanted")):
 				row.detail = "Short %d land. Buys %d for %s." % [int(land.get("short", 0)), int(land.get("units", 0)), MoneyFigure.text(float(land.get("cost", 0.0)))]
+				row["tip"] = LandPrice.lines_text(LandPrice.quote(str(q.get("tile_id", "")),
+					ceili(float(land.get("units", 0)) / float(BuildingState.LAND_PATCH_SIZE)), false))
 				row["action"] = Callable(panel, "buy_land")
 				row["action_title"] = "Buy land"
 			out.append(row)
 			said[str(land_block.key)] = true
 		elif bool(lp.get("will_buy", false)):
+			var price: Dictionary = lp.get("price", {})
 			out.append({"key": "land", "tone": "warn", "title": "Land",
-				"detail": "Buys %d land for %s" % [int(lp.get("units", 0)), MoneyFigure.text(float(lp.get("cost", 0.0)))]})
+				"detail": "Buys %d land for %s" % [int(lp.get("units", 0)), MoneyFigure.text(float(lp.get("cost", 0.0)))],
+				"tip": LandPrice.lines_text(price) if not price.is_empty() else ""})
 			said["buys_land"] = true
 		else:
 			out.append({"key": "land", "tone": "ok", "title": "Land", "detail": "Takes %d of %d free" % [int(lp.get("needed", 0)), int(lp.get("free", 0))]})
@@ -744,6 +749,9 @@ static func _pillar(rows: Array) -> Control:
 		line.set_meta("blocker", str(r.key))
 		line.add_theme_constant_override("separation", 10)
 		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if str(r.get("tip", "")) != "":
+			line.mouse_filter = Control.MOUSE_FILTER_PASS
+			line.tooltip_text = str(r.tip)
 		var lamp: Control = Lamp.new()
 		lamp.name = "RequirementIcon"
 		lamp.set("lamp_scale", 0.85)

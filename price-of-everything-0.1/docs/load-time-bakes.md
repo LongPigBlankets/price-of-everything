@@ -1,5 +1,37 @@
 # Load time: what is baked, and when to re-bake it
 
+## Rail river bridges and Fields junction — verified 15 October 2026
+
+The installed **five-tile** package contains the moved Fields junction, its routed
+line to tile_5_10, the river-clear tile_6_9 anchor and the new crossing mix (see
+`supply_chain_3d.md`, "Rail river bridges, Fields junction and crossing mix").
+Production assembly regenerated two base tiles and all five medium/five near
+resources, reusing three base tiles; it took **19.558s** after offline
+preparation. Independent validation passes with current fingerprints:
+**21 resources, 40,230,218 bytes (38.37 MiB)**. Whole-continent baking remains
+paused, so the rail layout outside the trial (version 7: river-clear anchors and
+river-aware routes, including Greyroad) is not yet in the continent package.
+
+Fresh Godot 4.6.2 / Forward+ Metal process, Apple M5 Pro, empty runtime cache
+directory and warm OS filesystem caches:
+
+| Measurement | Time |
+|---|---:|
+| Process start to Begin | 16.740s |
+| Five-tile board preparation during loading | 1.220s |
+| Frontage memo restoration stage | 0.183s |
+| Transport cache restore | 0.096s |
+| Combined five-tile resource load | 0.031s |
+| First supply-view opening after Begin | 0.247s |
+
+Eighteen rendered views record **19 bundled hits, zero misses and zero runtime
+bake writes**, and every review assertion passes: 8 side streets, 10.29% canopy
+(baseline 10.29%), 81.98% buildable frontage, no building or street overlaps,
+depot routes and Docks rail checks unchanged. The review's building-overlap test
+now clips polygons: its ray-cast point test reported two pairs of identical
+side-by-side modules as overlapping although they stand 2.5u and 4.6u apart.
+Evidence is in `outputs/supply-chain-3d/stoneshore-rail-bridges/` at repository root.
+
 ## Stoneshore riverside field — verified 14 October 2026
 
 The installed five-tile package contains the west-bank farm's expanded field.

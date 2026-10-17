@@ -6,6 +6,8 @@ const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
 const Trial := preload("res://scripts/supply_chain_3d/stoneshore_trial.gd")
 const MAX_GRADE := 0.08
 const DEPOT_REACH := 600.0
+## Only the depot throat itself (its fan of yard tracks) keeps every road off the rails.
+const DEPOT_THROAT := 250.0
 
 static func depot_distances(tracks: Array, depots: Array) -> Dictionary:
 	var graph := {};var distance := {};var queue: Array=[];var cursor := 0
@@ -29,6 +31,7 @@ static func build(grade: RefCounted, plan: Dictionary, urban: RefCounted, depots
 	var distances := depot_distances(urban.tracks,depots)
 	var track_index := Index.segments(urban.tracks)
 	var hits: Array=[]
+	var rail_bridges: Array=[]
 	for road in grade.segments:
 		if not str(road.get("tile","")) in Trial.TILES: continue
 		var dir: Vector2=(road.b-road.a).normalized()
@@ -48,13 +51,25 @@ static func build(grade: RefCounted, plan: Dictionary, urban: RefCounted, depots
 				var d: float=p.distance_to(junction.p)
 				if d<220: nearby+=1
 				if d<float(junction.radius)+10: inside=true
-			var reason := "quiet branch"
+			# A mix, as a real town has: two-lane roads cross at level, even through a
+			# junction fan; a four-lane road goes under a short rail bridge where the track
+			# runs at grade; six-lane roads, wider roads through a junction fan and the depot
+			# throat take a road bridge; covered rail stays below.
+			var reason := "two-lane road"
 			var mode := "level"
 			if hidden: mode="tunnel";reason="already covered rail"
-			elif depot_distance<DEPOT_REACH: mode="bridge";reason="depot approach"
-			elif inside or nearby>=2: mode="bridge";reason="rail junction movements"
+			elif inside and int(road.level)>=2: mode="bridge";reason="rail junction movements"
+			elif depot_distance<DEPOT_THROAT: mode="bridge";reason="depot throat"
 			elif int(road.level)>=3: mode="bridge";reason="six-lane main road"
 			elif bed+1.25<float(grade.height_at(p,bed))-2: mode="bridge";reason="recessed rail approach"
+			elif int(road.level)==2 and not track.active: mode="rail_bridge";reason="four-lane road under the line"
+			elif int(road.level)==2: mode="bridge";reason="four-lane road over engineered rail"
+			if mode=="rail_bridge":
+				# The railway profile lifts the track over an untagged road on its own concrete
+				# deck; the road keeps its grade and joins no group.
+				if not rail_bridges.any(func(q): return (q.p as Vector2).distance_to(p)<1.0):
+					rail_bridges.append({"p":p,"mode":mode,"reason":reason,"tile":road.tile,"sources":[road.source]})
+				continue
 			road.rail_crossing_mode=mode
 			var duplicate := false
 			for c in hits:
@@ -96,7 +111,7 @@ static func build(grade: RefCounted, plan: Dictionary, urban: RefCounted, depots
 	# Establish bridge approaches before fitting the quiet crossing to their
 	# shared road grade. This avoids lifting a sloping rail into a nearby deck.
 	groups.sort_custom(func(a,b): return {"bridge":0,"level":1,"tunnel":2}[a.mode]<{"bridge":0,"level":1,"tunnel":2}[b.mode])
-	grade.crossings=groups
+	grade.crossings=groups+rail_bridges
 	for c in groups:
 		if c.mode=="tunnel": continue
 		if c.mode=="level":

@@ -1,6 +1,7 @@
 extends Node
-## Cosmetic league table. Rival revenue is derived from the match seed and never
-## participates in the economic simulation; only the player's short UI history is saved.
+## League table. Rival revenue is derived from the match seed and never participates in the
+## production or market simulation; only the player's short UI history is saved. One cost reads it:
+## urban land rises as the table's summed revenue doubles (global_revenue, LandPrice).
 
 const CompanyNames := preload("res://scripts/company_names.gd")
 
@@ -65,6 +66,7 @@ const DIFFICULTIES := {
 		"growth_standard_deviation": 0.05,
 	},
 }
+## Retuning a difficulty's curve retunes urban land prices too (LandPrice.tick_economy reads the table).
 const ACTIVE_DIFFICULTY := "hard"
 
 static func difficulty() -> Dictionary:
@@ -111,6 +113,8 @@ var _announcement_fired: bool = false
 
 func _ready() -> void:
 	TurnManager.phase_started.connect(_on_phase_started)
+	# After the AI phase has recomputed the table, so the land level a player sees in DECIDE is the one they pay.
+	TurnManager.turn_advanced.connect(func(_turn: int) -> void: preload("res://scripts/land_price.gd").tick_economy())
 	MatchState.state_reset.connect(reset)
 
 func reset() -> void:
@@ -169,6 +173,14 @@ func _record_player_goods(produced: Variant) -> void:
 func standings() -> Array[Dictionary]:
 	var completed_turn: int = maxi(0, int(TurnManager.current_turn) - 1)
 	return standings_for(MatchState.match_rng_seed, completed_turn, _player_revenue_history)
+
+## The summed revenue of every firm in the current table, the player included. Land prices read it
+## (LandPrice.tick_economy): the one place the rivals' figures reach a cost the player pays.
+func global_revenue() -> float:
+	var total := 0.0
+	for row: Dictionary in standings():
+		total += float(row.get("revenue", 0.0))
+	return total
 
 ## Pure table builder used by the UI and tests. `player_revenues` contains the
 ## latest resolved revenues in chronological order and is deliberately independent

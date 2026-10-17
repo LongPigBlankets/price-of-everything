@@ -112,7 +112,7 @@ func land_text(v: float) -> String:
 	return str(int(round(v))) if absf(v - round(v)) < 0.05 else "%.1f" % v
 
 ## The land an upgrade buys to close the gap between the player's estate on the tile and the larger building,
-## in whole patches as construction buys it: {units, patches, cost}. Units are 0 when the estate already has
+## in whole patches as construction buys it, at LandPrice's quote: {units, patches, cost, price}. Units are 0 when the estate already has
 ## the room, automatic land buying is off, or the tile doesn't have that much for sale.
 func upgrade_land_purchase(tile_id: String, delta: float) -> Dictionary:
 	var none := {"units": 0, "patches": 0, "cost": 0.0}
@@ -125,8 +125,8 @@ func upgrade_land_purchase(tile_id: String, delta: float) -> Dictionary:
 	var units := mini(patches * BuildingState.LAND_PATCH_SIZE, BuildingState.get_tile_land_units_available(tile_id))
 	if float(units) < short:
 		return none
-	return {"units": units, "patches": patches,
-		"cost": AdvisorState.purchase_cost_after_advisor(float(patches) * BuildingState.LAND_PATCH_COST, {"tile_id": tile_id})}
+	var price := preload("res://scripts/land_price.gd").quote(tile_id, patches, false)
+	return {"units": units, "patches": patches, "cost": float(price.total), "price": price}
 
 func _upgrade_size_delta(building_id: String, from_level: int, target: int) -> float:
 	var base_size := float(Catalog.get_building(building_id).get("tile_size_used", 1.0))

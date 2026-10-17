@@ -36,6 +36,8 @@ const HSM_ORDER := ["HSM1", "HSM2", "HSM3", "HSM4", "HSM5", "HSM6"]
 signal tile_selected(tile_data)
 signal stockpile_destination_selected(tile_data, ctrl: bool, shift: bool)
 signal survey_tile_clicked(tile_data)
+## A right click landed on a tile, outside any map pick: open its quick menu at `screen_pos`.
+signal tile_menu_requested(tile_data, screen_pos)
 
 var tiles := {}  # Vector2i(q, r) -> Dictionary
 var river_properties := {}
@@ -545,6 +547,7 @@ func tile_id_under_mouse() -> String:
 # _unhandled_input — without the arm, clicking a panel button would also select
 # the tile underneath it.
 var _click_armed := false
+var _right_armed := false
 
 func _input(event: InputEvent) -> void:
 	# Clear the arm AFTER every left-release finishes propagating (deferred),
@@ -559,6 +562,19 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		_click_armed = true   # press landed on the map, not on UI
+	if event.button_index == MOUSE_BUTTON_RIGHT:
+		# The quick menu opens on release, and only for a press that landed on the map; never during a pick or
+		# while placing a building, where a right click means nothing yet.
+		if event.pressed:
+			_right_armed = true
+		elif _right_armed:
+			_right_armed = false
+			var right_pos := _tile_coord_under_mouse()
+			if tiles.has(right_pos) and not _stockpile_destination_selection_active and not BuildMode.is_active \
+					and MapMode.current_mode != MapMode.Mode.SURVEYING:
+				tile_menu_requested.emit(tiles[right_pos], get_viewport().get_mouse_position())
+				get_viewport().set_input_as_handled()
+		return
 
 	# LEFT actions fire on RELEASE: the camera's drag-to-pan consumes a drag's
 	# release (camera_controller._input runs before every _unhandled_input), so
