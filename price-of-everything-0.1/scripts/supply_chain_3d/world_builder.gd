@@ -2,6 +2,10 @@ extends RefCounted
 ## Builds the supply-chain world's static geometry. Map-space coordinates and the shared
 ## height field are authoritative; the camera never participates in generation.
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
+const HarbourTraffic := preload("res://scripts/supply_chain_3d/harbour_traffic.gd")
+var harbour_traffic: Array = []
+const Harbour := preload("res://scripts/supply_chain_3d/harbour.gd")
+const Coast := preload("res://scripts/supply_chain_3d/coast.gd")
 const Legacy := preload("res://scripts/empire_board.gd")
 const Model := preload("res://scripts/empire_board_model.gd")
 const Ground := preload("res://scripts/empire_board_ground.gd")
@@ -9,6 +13,8 @@ const Relief := preload("res://scripts/supply_chain_3d/relief.gd")
 const Assets := preload("res://scripts/supply_chain_3d/assets.gd")
 const ShadowArt := preload("res://scripts/supply_chain_3d/shadow_art.gd")
 const FarSprites := preload("res://scripts/supply_chain_3d/far_sprites.gd")
+const PylonCables := preload("res://scripts/supply_chain_3d/pylon_cables.gd")
+var pylon_layout: Dictionary = {}
 const CELL := 12.0
 const Detail := preload("res://scripts/supply_chain_3d/detail.gd")
 const Paint := preload("res://scripts/supply_chain_3d/terrain_paint.gd")
@@ -84,6 +90,7 @@ var continent_node: Node3D
 var continent_body: StaticBody3D
 var road_nodes: Array = []
 var _road_key := ""
+var authored_profile := preload("res://scripts/supply_chain_3d/authored_road_profile.gd").new()
 var frame_nodes: Array = []
 var rim_material: ShaderMaterial
 var scenery_ready := false
@@ -106,20 +113,35 @@ func configure_bakes(model: Dictionary) -> void:
 	# Hash actual geography, never an instance ID: this survives a fresh process.
 	_map_key = BakeCache.digest([BakeCache.source_key("terrain"), ground.get("tiles"), ground.get("bands"),
 		ground.get("lakes"), ground.get("rivers"), MapStyle.band_colors(), MapStyle.sea_colors()])
-	_road_key = BakeCache.digest([BakeCache.source_key("roads"), _map_key, model.get("roads", []), pits])
+	_road_key = BakeCache.digest([BakeCache.source_key("roads"), _map_key, model.get("roads", []), model.get("authored_region", {}), pits])
 	var layout: Array = []
 	var geography: Array = []
 	var pipes: Array = []
+	var assets: Dictionary = {}
+	var sprite_geometry: Dictionary = {}
 	for tid in tiles: geography.append([tid, tiles[tid].center, tiles[tid].type])
 	for s in model.get("standing", []):
+		var key := standing_key(s)
+		assets[key] = Assets.dimensions(key)
+		if s.has("harbour"):
+			var harbour_key := Assets.key_for("port", 1)
+			assets["harbour:" + harbour_key] = Assets.harbour_for(harbour_key)
+		sprite_geometry[key] = [FarSprites.center(key), FarSprites.entry(key).get("span", 0.0)]
 		layout.append([s.iid, s.kind, s.tile, s.pos, s.side, s.get("pad", s.side), s.get("internal_name", ""), s.get("tall", false), s.get("level", 1),
-			(s.sprite as Texture2D).resource_path if s.get("sprite") is Texture2D else ""])
+			(s.sprite as Texture2D).resource_path if s.get("sprite") is Texture2D else "", s.get("harbour", {})])
 	for line in model.get("lines", []):
 		if Model.PIPE_MODES.has(str(line.mode)): pipes.append([line.mode, line.pts])
+	if Legacy.show.trees:
+		for level in range(1, 4):
+			var key := Assets.key_for("tree", level)
+			assets[key] = [Assets.dimensions(key), Assets.projected_height(key)]
+			sprite_geometry[key] = [FarSprites.center(key), FarSprites.entry(key).get("span", 0.0)]
+	# These bakes contain placements, dimensions and terrain, not the building
+	# artwork. An unrelated asset addition or repaint must not rebuild 600 tiles.
 	_scenery_key = "scenery-" + BakeCache.digest([BakeCache.source_key("scenery"), _road_key, geography, layout, pipes, Legacy.show.trees, Legacy.show.decor,
-		FileAccess.get_sha256(Assets.DIRECTORY + "manifest.json")])
+		assets])
 	_continent_key = "continent-" + BakeCache.digest([BakeCache.source_key("continent"), _scenery_key, _road_key, geography, layout, pipes, Legacy.show.trees, Legacy.show.roads, Legacy.show.decor,
-		FileAccess.get_sha256(FarSprites.DIRECTORY + "manifest.json")])
+		sprite_geometry])
 	_previous_continent_key = _continent_key
 	_continent_key = "continent-" + BakeCache.digest([_previous_continent_key, FOUNDATION_VERSION])
 
@@ -160,7 +182,9 @@ func prepare_scenery(host: Node, model: Dictionary) -> void:
 			var key := Assets.key_for("tree", {"small": 1, "fir": 2, "large": 3}[tree.kind])
 			var scale := float(tree.height) / Assets.projected_height(key)
 			all_shadows.append(ShadowArt.footprint(tree.pos, Assets.dimensions(key).x * scale, true))
-		if tree_placements.size() % 16 == 0: await host.get_tree().process_frame
+		if tree_placements.size() % 16 == 0:
+			await host.get_tree().process_frame
+			if not is_instance_valid(host) or not host.is_inside_tree(): return
 	# A shadow can reach over a hex edge. Include it in both tile painters so
 	# filtering and changing terrain tiers cannot cut its footprint at that edge.
 	var buckets := {}
@@ -197,7 +221,7 @@ func placements_for(tid: String, standing: Array) -> Array:
 	var local_standing: Array = []
 	for item in standing:
 		if (item.pos as Vector2).distance_squared_to(tile.center) < 500000.0: local_standing.append(item)
-	return TreeLayout.placements(tid, tile, Legacy._relief_of(tid, tile.center), local_standing, local_roads, lines, rivers.get(tid, []))
+	return TreeLayout.placements(tid, tile, Coast.relief_of(tid, tile.center), local_standing, local_roads, lines, rivers.get(tid, []))
 
 func prepare_continent(host: Node) -> void:
 	continent = bake_cache.read(_continent_key) if _continent_key != "" else {}
@@ -377,7 +401,10 @@ func finish_continent(parent: Node3D) -> void:
 				"rim_mesh": frame.rim.mesh, "lip_mesh": frame.lip.mesh}
 			var key := "base-tile-" + BakeCache.digest([BakeCache.source_key("continent"), _road_key, tid, tiles[tid].center, tiles[tid].type, tiles.keys()])
 			tile_chunks[tid] = key
-			if _continent_key != "": bake_cache.write(key, chunk)
+			# A changed backdrop does not invalidate these independently keyed
+			# chunks. In particular, retain their prepared detail and picking data.
+			if _continent_key != "":
+				if bake_cache.read(key).is_empty(): bake_cache.write(key, chunk)
 			else: _chunk_data[tid] = chunk
 		continent.rim_mesh = Geo.joined(rims)
 		continent.lip_mesh = Geo.joined(lips)
@@ -747,7 +774,7 @@ func _tile_bake(host: Node, tid: String, tier: int) -> Dictionary:
 	var key := tile_bake_key(tid, tier)
 	var cached := bake_cache.read(key) if _map_key != "" else {}
 	if not cached.is_empty(): return cached
-	var textures := await Paint.bake(host, tiles[tid], Legacy._relief_of(tid, tiles[tid].center), rivers.get(tid, []), pits.values(), surface_height, [Detail.TEXTURES[tier]], static_shadows.get(tid, []))
+	var textures := await Paint.bake(host, tiles[tid], Coast.relief_of(tid, tiles[tid].center), rivers.get(tid, []), pits.values(), surface_height, [Detail.TEXTURES[tier]], static_shadows.get(tid, []))
 	var data := {"texture": textures[0], "mesh": _surface(tid, Detail.CELLS[tier])}
 	prepare_picking(data)
 	if _map_key != "": bake_cache.write(key, data)
@@ -844,7 +871,7 @@ func tile_node(tid: String) -> Node3D:
 		return root
 	var rim := Geo.Batch.new()
 	var lip := Geo.Batch.new()
-	var relief: Dictionary = Legacy._relief_of(tid, center)
+	var relief: Dictionary = Coast.relief_of(tid, center)
 	var is_sea := str(tile.type) in ["sea", "deep_sea"]
 	var sea := MapStyle.sea_colors()
 	var hex := Model.hex_points(center)
@@ -906,7 +933,7 @@ func tile_node(tid: String) -> Node3D:
 func _tile_finishing(root: Node3D, tid: String) -> void:
 	var tile: Dictionary = tiles[tid]
 	var center: Vector2 = tile.center
-	var relief: Dictionary = Legacy._relief_of(tid, center)
+	var relief: Dictionary = Coast.relief_of(tid, center)
 	var glints := water_glints(tid, tile, relief)
 	root.add_child(glints)
 	glint_nodes.append(glints)
@@ -1060,6 +1087,11 @@ func ribbon(batch: RefCounted, path: PackedVector2Array, width: float, color: Co
 func road_height(p: Vector2) -> float:
 	if _road_height_cache.has(p): return _road_height_cache[p]
 	var h := surface_height(p)
+	var authored_height := authored_profile.height_at(p)
+	if authored_height != -INF:
+		h = maxf(h, authored_height)
+		_road_height_cache[p] = h
+		return h
 	for segment in _river_buckets.get(Vector2i((p / 128.0).floor()), []):
 		var closest := Geometry2D.get_closest_point_to_segment(p, segment.a, segment.b)
 		if closest.distance_squared_to(p) < float(segment.half) * float(segment.half):
@@ -1096,6 +1128,8 @@ func append_road(parent: Node3D, tid: String) -> void:
 			# spatial lookup and height sampler for actual generation/cache repair.
 			if not road_surface._height.is_valid(): road_surface.configure(roads, road_height, origin)
 			mesh = road_surface.mesh_for(tid)
+			if authored_profile.region.has(tid):
+				mesh = Geo.joined([mesh, authored_profile.mesh_for(tid, surface_height, origin)])
 		if streamed and continent.has("roads"): continent.roads[tid] = mesh
 		elif cached.is_empty() and _map_key != "": bake_cache.write(key, {"mesh": mesh})
 	var surface := Geo.instance(mesh, road_mat)
@@ -1114,6 +1148,7 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 	roads = model.get("roads", [])
 	lines = model.get("lines", [])
 	_index_rivers()
+	authored_profile.configure(model.get("authored_region", {}), rivers, surface_height)
 	road_mat = mat.duplicate()
 	if bool(show["roads"]):
 		road_surface.cell_size = 6.0 if streamed else RoadSurface.CELL
@@ -1136,12 +1171,19 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 					if int(tiles.get(str(rec.get("tile", "")), {}).get("polluters", 0)) > 0:
 						glows.append({"point": foot + Vector3.UP * 14, "size": Vector2(15, 15)})
 			if a.distance_to(b) > 80.0:
-				cars.append({"a": a, "b": b, "phase": fmod(absf(float(hash(str(a)))), 100.0) / 100.0})
+				cars.append({"a": a, "b": b, "tile": str(rec.get("tile", "")), "phase": fmod(absf(float(hash(str(a)))), 100.0) / 100.0})
 	add_detail(root, streets.mesh(), 1 if streamed else 0)
 	var tubes := Geo.Batch.new()
+	pylon_layout = PylonCables.layout(model, standing_frame)
+	if bool(show.get("cables", true)):
+		for span in pylon_layout.spans:
+			var curve := PylonCables.curve(span.a, span.b)
+			for i in range(1, curve.size()):
+				tubes.tube(curve[i - 1], curve[i], 0.45, Color("d6b560"))
 	for rec in model.get("lines", []):
 		var mode := str(rec.get("mode", ""))
 		if not bool(show.get(mode, true)): continue
+		if mode == "cables": continue # Uses mesh-authored clamps above.
 		var path: Array = rec.get("pts", [])
 		for i in range(path.size() - 1):
 			var a: Vector2 = path[i].p
@@ -1156,22 +1198,21 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 				for sign_v in [-1.0, 1.0]:
 					ribbon(tubes, PackedVector2Array([a + across * sign_v, b + across * sign_v]), 0.9, Color("d7d4c0"), 2.8, true)
 			else:
-				var cable := mode == "cables"
 				var count := maxi(2, ceili(a.distance_to(b) / 12.0))
 				var previous := Vector3.ZERO
 				for j in range(count + 1):
 					var t := float(j) / count
 					var p := a.lerp(b, t)
-					var h := lerpf(ground_height(a), ground_height(b), t) + 62.0 - sin(t * PI) * 12.0 if cable else road_height(p) + 5.5
+					var h := road_height(p) + 5.5
 					var current := at_height(p, h)
-					if j > 0: tubes.tube(previous, current, 0.8 if cable else 2.4, Color("d6b560") if cable else (Color("a0a7aa") if mode == "reinf_pipes" else Color("b78552")))
+					if j > 0: tubes.tube(previous, current, 2.4, Color("a0a7aa") if mode == "reinf_pipes" else Color("b78552"))
 					previous = current
 	root.add_child(Geo.instance(tubes.mesh(), mat))
 	add_detail(root, details.mesh(), 1)
 	return root
 
-func standing_frame(s: Dictionary) -> Dictionary:
-	if standing_frames.has(str(s.iid)): return standing_frames[str(s.iid)]
+static func standing_key(s: Dictionary) -> String:
+	if s.has("harbour"): return ""
 	var kind := str(s["kind"])
 	var family := str(s.get("internal_name", ""))
 	if kind == "warehouse" or kind == "suppliers": family = "warehouse"
@@ -1186,7 +1227,12 @@ func standing_frame(s: Dictionary) -> Dictionary:
 		var filename: String = s.sprite.resource_path.get_file().get_basename()
 		if filename.begins_with(family + "_lvl"):
 			level = filename.trim_prefix(family + "_lvl").to_int()
-	var key := Assets.key_for(family, level)
+	return Assets.key_for(family, level)
+
+func standing_frame(s: Dictionary) -> Dictionary:
+	if standing_frames.has(str(s.iid)): return standing_frames[str(s.iid)]
+	if s.has("harbour"): return Harbour.frame(s, surface_height, origin)
+	var key := standing_key(s)
 	var side := float(s.get("side", 80.0))
 	var p: Vector2 = s.pos
 	var floor_h := surface_height(p)
@@ -1233,6 +1279,17 @@ func _track_visual(node: GeometryInstance3D, tid: String) -> void:
 
 func _ensure_standing_near(pair: Dictionary) -> void:
 	if not pair.near.is_empty(): return
+	if pair.standing.has("harbour"):
+		var frame := standing_frame(pair.standing)
+		for mesh in [Assets.mesh_for(frame.harbour_asset), Assets.contour_for(frame.harbour_asset)]:
+			if mesh == null: continue
+			var visual := MeshInstance3D.new()
+			visual.mesh = mesh
+			visual.transform = frame.harbour_transform
+			pair.root.add_child(visual)
+			pair.near.append(visual)
+			_track_visual(visual, str(pair.tile))
+		return
 	var mesh := Assets.mesh_for(pair.key)
 	var visual := MeshInstance3D.new()
 	if mesh != null:
@@ -1282,7 +1339,9 @@ func _ensure_standing_pick(pair: Dictionary) -> void:
 	var dimension: Vector3 = pair.dimension
 	body.set_meta("pick_bounds", AABB(Vector3(-dimension.x * 0.5, 0, -dimension.z * 0.5), dimension))
 	var collider := CollisionShape3D.new()
-	if str(pair.key) != "" and pit.is_empty():
+	if s.has("harbour"):
+		collider.shape = Harbour.picking_shape(standing_frame(s))
+	elif str(pair.key) != "" and pit.is_empty():
 		collider.shape = Assets.picking_shape(pair.key)
 		collider.scale = Vector3.ONE * float(s.side)
 	else:
@@ -1293,6 +1352,11 @@ func _ensure_standing_pick(pair: Dictionary) -> void:
 		collider.position.y = shape.size.y * 0.5
 	body.add_child(collider)
 	pair.root.add_child(body)
+	# Cursor picking queries newly attached bodies immediately, including a
+	# harbour extending over another tile. Flush the inherited world transform.
+	if body.is_inside_tree():
+		body.force_update_transform()
+		collider.force_update_transform()
 	pair.body = body
 	pair.pick_shape = collider.shape
 
@@ -1307,19 +1371,23 @@ func standing_node(s: Dictionary) -> Node3D:
 	var p: Vector2 = s.pos
 	var pit: Dictionary = pits.get(str(s.iid), {})
 	root.position = frame.position
+	if kind == "pylon": root.rotation.y = float(pylon_layout.get("yaws", {}).get(str(s.iid), 0.0))
 	var dimension: Vector3 = frame.dimension
-	if key == "": dimension = Vector3(side * 0.8, side * 0.55, side * 0.65)
+	if key == "" and not s.has("harbour"): dimension = Vector3(side * 0.8, side * 0.55, side * 0.65)
 	var lit := int(tiles.get(str(s.tile), {}).get("polluters", 0)) > 0 and kind != "pylon" and family not in ["mine", "mine_flush"]
 	var pair := {"key": key, "far": null, "near": [], "medium": null, "root": root, "standing": s,
 		"dimension": dimension, "tile": str(s.tile), "lit": lit,
-		"medium_allowed": not lit or FarSprites.entry(key, 1).has("lit_texture"), "decor": streamed and kind == "house"}
+		# The few lattice pylons are cheap meshes. Their clamps must stay aligned
+		# with continuous 3D cables instead of stepping between atlas angles.
+		"medium_allowed": not s.has("harbour") and kind != "pylon" and (not lit or FarSprites.entry(key, 1).has("lit_texture")),
+		"decor": streamed and kind == "house"}
 	if not lazy_assets:
 		_ensure_standing_near(pair)
 		_ensure_standing_pick(pair)
 	if lit:
 		glows.append({"point": root.position + Vector3(0, dimension.y * 0.3, side * 0.45), "size": Vector2(side * 1.3, side * 0.7)})
 	if streamed and kind == "house": decor_nodes.append(root)
-	if kind != "pylon" and pit.is_empty() and not (kind == "house" and scenery_ready): shadow(p, side)
+	if not s.has("harbour") and kind != "pylon" and pit.is_empty() and not (kind == "house" and scenery_ready): shadow(p, side)
 	if float(frame.plinth_depth) > 0.0:
 		var plinth := Geo.Batch.new()
 		_append_foundation(plinth, s, frame)
@@ -1331,6 +1399,17 @@ func standing_node(s: Dictionary) -> Node3D:
 		card.visible = false
 		root.add_child(card)
 		pair.far = card
+	if s.has("harbour"):
+		# Four shared Blender meshes are cheap enough to retain continuous 3D
+		# at far zoom, using imported mesh LODs and reduced shader detail.
+		var far := MeshInstance3D.new()
+		far.mesh = Assets.mesh_for(frame.harbour_asset)
+		far.transform = frame.harbour_transform
+		far.lod_bias = 0.8
+		far.visible = false
+		root.add_child(far)
+		pair.far = far
+		harbour_traffic.append({"root": root, "frame": frame, "center": s.pos, "traffic": {}, "phase": float(abs(str(s.tile).hash()) % 13)})
 	sprite_pairs.append(pair)
 	pickables.append({"iid": s.iid, "kind": kind, "tile": s.tile, "point": root.position + Vector3.UP * dimension.y * 0.5, "top": root.position + Vector3.UP * (dimension.y + 12.0), "size": dimension})
 	if bool(s.get("polluting", false)):
@@ -1514,3 +1593,13 @@ func prepare_flows(model: Dictionary) -> void:
 				points.append(at)
 		if points.size() >= 2:
 			flows.append({"points": points, "distances": distances, "length": distances[-1], "icon": flow.get("icon"), "good": flow.get("good", "")})
+
+func update_harbour_traffic(time: float) -> void:
+	var tier := 0 if _overview else active_lod
+	for item in harbour_traffic:
+		if tier <= 0:
+			if not item.traffic.is_empty(): item.traffic.root.hide()
+			continue
+		if item.traffic.is_empty():
+			item.traffic = HarbourTraffic.create(item.root, item.frame, item.center, surface_height)
+		HarbourTraffic.update(item.traffic, time + float(item.phase), tier)

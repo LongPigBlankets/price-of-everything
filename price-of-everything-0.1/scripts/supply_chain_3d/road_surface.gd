@@ -32,7 +32,7 @@ func configure(roads: Array, height: Callable, origin := Vector2.ZERO) -> void:
 	for rec in roads:
 		if (rec.a as Vector2).distance_to(rec.b) < 0.5: continue
 		var w: Dictionary = rec.duplicate()
-		w.widths = Legacy._road_widths(int(w.level))
+		w.widths = w.get("widths", Legacy._road_widths(int(w.level)))
 		ways.append(w)
 		(_by_tile.get_or_add(str(w.tile), []) as Array).append(w)
 		var bounds := Rect2(w.a, Vector2.ZERO).expand(w.b).grow(float(w.widths[0]) + 3.0)

@@ -14,6 +14,7 @@ const Ground := preload("res://scripts/empire_board_ground.gd")
 const Detail := preload("res://scripts/supply_chain_3d/detail.gd")
 const Tokens := preload("res://scripts/supply_chain_3d/tokens.gd")
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
+const LayoutQueries := preload("res://scripts/supply_chain_3d/layout_queries.gd")
 var animate_goods := true
 var _viewport: SubViewport
 var _camera: Camera3D
@@ -45,6 +46,8 @@ var _last_all_tiles := false
 var _coverage: OptionButton
 var _progress: Label
 var _fit_after_build := false
+var _medium_after_build := false
+var _opened := false
 var _streaming := false
 var _stream_clock := 0.0
 var _stream_camera: Dictionary = {}
@@ -60,6 +63,9 @@ const CURSOR_COLLISION_UNITS := 300.0
 const FAR_DETAIL_HOLD_MSEC := 10000
 var _far_detail_expires_msec := 0
 var _collision_sample: Array = []
+## Timings separate layout work, disk reads and scene setup from GPU/streaming.
+var load_profile: Dictionary = {}
+var _layout_queries: RefCounted
 
 func _exit_tree() -> void:
 	_generation += 1
@@ -143,25 +149,18 @@ func _ready() -> void:
 	add_child(_progress)
 	visibility.changed.connect(func(_key: String, _on: bool) -> void:
 		if is_instance_valid(_last_terrain): set_graph(_last_graph, _last_terrain))
-	var keys := HBoxContainer.new()
-	keys.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	keys.offset_left = -306
-	keys.offset_top = -102
-	keys.offset_right = -24
-	keys.offset_bottom = -58
-	add_child(keys)
-	for label in ["↶", "Reset view", "↷"]:
-		var button := Button.new()
-		button.text = label
-		button.focus_mode = Control.FOCUS_NONE
-		button.theme_type_variation = &"Outlined"
-		button.custom_minimum_size = Vector2(54, 42)
-		button.pressed.connect(func() -> void:
-			if label == "Reset view": reset_view()
-			else:
-				_rig.yaw += PI / 4.0 * (1.0 if label == "↷" else -1.0)
-				_rig.apply(_camera))
-		keys.add_child(button)
+	var reset := Button.new()
+	reset.text = "Reset view"
+	reset.tooltip_text = "Frame the current map and restore the default angle (Home)"
+	reset.focus_mode = Control.FOCUS_NONE
+	reset.theme_type_variation = &"Outlined"
+	reset.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	reset.offset_left = -164
+	reset.offset_top = -102
+	reset.offset_right = -24
+	reset.offset_bottom = -58
+	reset.pressed.connect(reset_view)
+	add_child(reset)
 
 func _visibility() -> void:
 	_drag_button = 0
@@ -193,10 +192,14 @@ func set_all_tiles(value: bool, persist: bool = true) -> void:
 	show_all_tiles = value
 	if persist: PlayerProfile.set_supply_chain_all_tiles(value)
 	if _coverage != null: _coverage.selected = 1 if value else 0
-	_fit_after_build = true
+	_fit_after_build = not value
+	_medium_after_build = value
 	if is_instance_valid(_last_terrain): await _build(_last_graph, _last_terrain, true)
 
 func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
+	var started := Time.get_ticks_usec()
+	var stage := started
+	var timings := {}
 	_last_graph = graph
 	_last_terrain = terrain
 	_generation += 1
@@ -226,8 +229,27 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 		_progress.show()
 		await get_tree().process_frame
 		if generation != _generation: next.free(); return
-	var model := Model.build(terrain, graph, _true_positions(graph, terrain), river_lines, Legacy.plate_town and Legacy.show.decor,
-		Legacy._water_test(terrain), Legacy._shore_test(terrain), extra_tiles)
+	builder.ground = preload("res://scripts/supply_chain_3d/coast.gd").ground_for(terrain, rivers, Relief.plates(terrain, river_lines))
+	var water := Legacy._water_test(terrain)
+	var queries := LayoutQueries.new()
+	var geography: Array = []
+	for coord in terrain.get("tiles"):
+		var tid := "tile_%d_%d" % [coord.x + 1, coord.y + 1]
+		geography.append([tid, Model.tile_center(terrain, tid), Catalog.tile_type(tid)])
+	queries.prepare(builder.bake_cache, [geography, builder.ground.get("bands"), builder.ground.get("lakes"),
+		builder.ground.get("rivers"), HillBaked.sea()], water)
+	var true_positions := _true_positions(graph, terrain)
+	timings.layout_inputs_ms = (Time.get_ticks_usec() - stage) / 1000.0
+	var solve_started := Time.get_ticks_usec()
+	var model := Model.build(terrain, graph, true_positions, river_lines, Legacy.plate_town and Legacy.show.decor,
+		water, Legacy._shore_test(terrain), extra_tiles)
+	preload("res://scripts/supply_chain_3d/authored_region.gd").apply(model, terrain, get_tree().get_first_node_in_group("building_footprints"))
+	preload("res://scripts/supply_chain_3d/harbour.gd").apply(model)
+	timings.layout_solve_ms = (Time.get_ticks_usec() - solve_started) / 1000.0
+	queries.finish(builder.bake_cache)
+	_layout_queries = queries
+	timings.model_ms = (Time.get_ticks_usec() - stage) / 1000.0
+	stage = Time.get_ticks_usec()
 	if show_all_tiles: print("[CONTINENT BUILD] model ready ", Time.get_ticks_msec())
 	if model == _model and Legacy.show == _last_show and show_all_tiles == _last_all_tiles:
 		_building = false
@@ -236,19 +258,25 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 		return
 	builder.tiles = model.get("tiles", {})
 	builder.rivers = rivers
-	builder.ground = Ground.for_map(terrain, rivers, Relief.plates(terrain, river_lines), Callable(Legacy, "_relief_of"))
 	# Stable origin: expanding the company does not move existing terrain under the camera.
 	builder.origin = Vector2.ZERO
 	builder.configure_pits(model.get("standing", []))
 	builder.configure_bakes(model)
+	timings.keys_ms = (Time.get_ticks_usec() - stage) / 1000.0
+	stage = Time.get_ticks_usec()
 	if _progress != null: _progress.text = "Loading landscape layout…"
 	await builder.prepare_scenery(self, model)
+	if not is_instance_valid(self): next.free(); return
+	timings.scenery_ms = (Time.get_ticks_usec() - stage) / 1000.0
+	stage = Time.get_ticks_usec()
 	if generation != _generation: next.free(); return
 	builder.configure_grade()
 	if show_all_tiles:
 		if _progress != null: _progress.text = "Loading continent bake…"
 		await builder.prepare_continent(self)
 		if generation != _generation: next.free(); return
+	timings.continent_ms = (Time.get_ticks_usec() - stage) / 1000.0
+	stage = Time.get_ticks_usec()
 	var infrastructure := builder.infrastructure(model, Legacy.show, not show_all_tiles)
 	next.add_child(infrastructure)
 	# A far-only world may never request detail. Do not retain the bound height
@@ -274,6 +302,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	else:
 		builder.prepare_company_pick_surface(next)
 	if show_all_tiles: print("[CONTINENT BUILD] trees ready ", Time.get_ticks_msec())
+	timings.static_scene_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	builder.prepare_flows(model)
 	var goods: Array = []
 	if Legacy.show.goods:
@@ -300,6 +329,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 				next.add_child(sprite)
 				goods.append({"sprite": sprite, "stationary": true})
 	var effects := _build_effects(builder, next)
+	timings.scene_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	if _content != null:
 		_world.remove_child(_content)
 		_content.queue_free()
@@ -327,13 +357,27 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	_effects = effects
 	_building = false
 	if _progress != null: _progress.hide()
-	if (not _fitted or _fit_after_build) and has_content(): fit_view()
+	if has_content():
+		if show_all_tiles and not _fitted:
+			_focus_map_camera()
+		elif _medium_after_build:
+			_medium_view()
+		elif not _fitted or _fit_after_build:
+			fit_view()
 	_fit_after_build = false
+	_medium_after_build = false
 	_select_tile(_selected_tile)
 	_update_detail()
 	_update_goods()
 	_update_cars()
 	if _labels != null: _labels.queue_redraw()
+	timings.total_ms = (Time.get_ticks_usec() - started) / 1000.0
+	timings.cache_hits = builder.bake_cache.hits
+	timings.bundled_hits = builder.bake_cache.bundled_hits
+	timings.cache_misses = builder.bake_cache.misses
+	timings.cache_writes = builder.bake_cache.writes
+	load_profile = timings
+	if show_all_tiles: print("[CONTINENT LOAD] ", JSON.stringify(timings))
 
 func _build_base_tiles(builder: RefCounted, parent: Node3D, model: Dictionary, generation: int, paced: bool) -> bool:
 	if builder.streamed:
@@ -452,6 +496,28 @@ func fit_view() -> void:
 
 func reset_view() -> void:
 	fit_view()
+
+func _medium_view() -> void:
+	# Logical pixels match Detail.choose(), including scaled/Retina windows.
+	_rig.span = clampf(size.y / 1.1, Rig.MIN_SIZE, Rig.MAX_SIZE)
+	_rig.apply(_camera)
+	_fitted = true
+
+func _focus_map_camera() -> void:
+	var camera := get_tree().get_first_node_in_group("camera") as Camera2D
+	if camera != null and is_instance_valid(_last_terrain) and _builder != null:
+		var at: Vector2 = _last_terrain.to_local(camera.get_screen_center_position())
+		_rig.target = _builder.point(at)
+	elif _builder != null:
+		_rig.target = _builder.bounds.get_center()
+	_medium_view()
+
+func open_at_map_camera() -> void:
+	if _opened: return
+	_opened = true
+	if show_all_tiles and has_content():
+		_focus_map_camera()
+		_update_detail()
 
 func capture_camera() -> Dictionary:
 	return _rig.capture()
@@ -627,7 +693,13 @@ func _gui_input(event: InputEvent) -> void:
 		_zoom_at(event.position, event.factor)
 		accept_event()
 	elif event is InputEventPanGesture:
-		_rig.pan(-event.delta * 12.0, size.y)
+		var delta: Vector2 = -event.delta * 12.0
+		# Poll the held key so releasing it over UI cannot leave orbit mode stuck.
+		# Physical 0 also supports layouts where typing the digit requires Shift.
+		if Input.is_physical_key_pressed(KEY_0) or Input.is_key_pressed(KEY_0) or Input.is_key_pressed(KEY_KP_0):
+			_rig.orbit(delta)
+		else:
+			_rig.pan(delta, size.y)
 		_rig.apply(_camera)
 		accept_event()
 
@@ -662,6 +734,7 @@ func _process(delta: float) -> void:
 	if not _building: _update_cursor_collision(get_local_mouse_position())
 	_update_goods()
 	_update_cars()
+	if _builder != null and not _building: _builder.update_harbour_traffic(_time)
 	_stream_clock += delta
 	# React to travel promptly; idle retention/prefetch still uses the slower tick.
 	var stream_interval := 0.05 if capture_camera() != _stream_camera else 0.25
@@ -1009,13 +1082,9 @@ func _build_effects(builder: RefCounted, parent: Node3D) -> Array:
 	car.box(Vector3(0, 4, 0), Vector3(3.5, 2, 4), Color("41556a"))
 	var car_mesh := car.mesh()
 	for road in builder.cars:
-		var path := PackedVector3Array()
-		for i in 17:
-			var p: Vector2 = (road.a as Vector2).lerp(road.b, float(i) / 16.0)
-			path.append(builder.at_height(p, builder.road_height(p) + 2.0))
-		var node := Geo.instance(car_mesh, builder.mat)
-		parent.add_child(node)
-		cars.append({"node": node, "points": path, "phase": road.phase})
+		# Whole-continent traffic used to sample every road's height before opening,
+		# even when only a handful of tiles (or no cars at far zoom) could be seen.
+		cars.append({"node": null, "mesh": car_mesh, "parent": parent, "road": road, "phase": road.phase})
 	if Legacy.show.pollution:
 		var puff := SphereMesh.new()
 		puff.radial_segments = 8
@@ -1046,9 +1115,20 @@ func _build_effects(builder: RefCounted, parent: Node3D) -> Array:
 	return cars
 
 func _update_cars() -> void:
+	var started := Time.get_ticks_usec()
 	for car in _effects:
-		car.node.visible = not show_all_tiles or size.y / _rig.span >= 0.30
-		if not car.node.visible: continue
+		var shown: bool = not show_all_tiles or (size.y / _rig.span >= 0.30 and _builder.local_tiles.has(str(car.road.tile)))
+		if car.node != null: car.node.visible = shown
+		if not shown: continue
+		if car.node == null:
+			if Time.get_ticks_usec() - started > 2000: continue
+			var path := PackedVector3Array()
+			for i in 17:
+				var p: Vector2 = (car.road.a as Vector2).lerp(car.road.b, float(i) / 16.0)
+				path.append(_builder.at_height(p, _builder.road_height(p) + 2.0))
+			car.points = path
+			car.node = Geo.instance(car.mesh, _builder.mat)
+			car.parent.add_child(car.node)
 		var at := fposmod(_time * 0.06 + float(car.phase), 1.0) * 16.0
 		var index := mini(15, int(at))
 		var a: Vector3 = car.points[index]

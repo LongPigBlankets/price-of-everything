@@ -563,8 +563,8 @@
 				0.372548520565033
 			],
 			"home_opaque_pixels": [
-				100,
-				85
+				100.0,
+				85.0
 			],
 			"lit_source_sha256": "219a09cf8576feb297ea5781757524959c5e8f1eb62c8c4242c5fe7b6739d734",
 			"lit_texture": "house_lvl1_lit.png",
@@ -587,8 +587,8 @@
 				0.919993758201599
 			],
 			"home_opaque_pixels": [
-				112,
-				86
+				112.0,
+				86.0
 			],
 			"lit_source_sha256": "35b24be6f24cb3c7b35b00908e1fe368e21cee198e4a1e93cbf74fd410780bbf",
 			"lit_texture": "house_lvl2_lit.png",
@@ -611,8 +611,8 @@
 				0.928975045681
 			],
 			"home_opaque_pixels": [
-				73,
-				98
+				73.0,
+				98.0
 			],
 			"lit_source_sha256": "c00df22b15daba2fb211e936f9e753afc4a56bbff0461071f9b711bdeb47aa81",
 			"lit_texture": "house_lvl3_lit.png",
@@ -1147,24 +1147,26 @@
 		"port_lvl1": {
 			"cell": 128.0,
 			"center": [
-				0.0,
+				0.0315068364143372,
 				0.108767122030258,
-				0.0
+				-0.0199566781520844
 			],
 			"dimensions": [
-				1.0,
+				0.789041042327881,
 				0.217534244060516,
-				0.904109597206116
+				0.732689440250397
 			],
 			"home_opaque_pixels": [
-				116.0,
-				65.0
+				112.0,
+				67.0
 			],
-			"lit_source_sha256": "e12ab42803181c91ebe873050384e94aabbd886f9b57713f275c4812f06a60af",
+			"lit_source_sha256": "724b4992c3da9796bf9bc7661172dfa0f3f7da0577b5d52146874fce9929aea7",
 			"lit_texture": "port_lvl1_lit.png",
+			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "e12ab42803181c91ebe873050384e94aabbd886f9b57713f275c4812f06a60af",
-			"span": 1.50210845470428
+			"source_sha256": "724b4992c3da9796bf9bc7661172dfa0f3f7da0577b5d52146874fce9929aea7",
+			"span": 1.2083692908287,
+			"yaws": 16.0
 		},
 		"power_plant_lvl1": {
 			"cell": 128.0,
@@ -1250,7 +1252,7 @@
 			],
 			"pitches": 5.0,
 			"reference_scale": 62.0,
-			"source_sha256": "385da5b7b8a2ab9444d3558db504819946f272b5fbdb8586c5d842e7748adbe1",
+			"source_sha256": "105332a20badbc493e26acb70aa96851b8ef7a293df09082085d6c99e8588853",
 			"span": 2.94253010749817,
 			"yaws": 32.0
 		},
@@ -1333,8 +1335,8 @@
 				1.0
 			],
 			"home_opaque_pixels": [
-				58,
-				157
+				58.0,
+				157.0
 			],
 			"lit_source_sha256": "df8483d0e264384186386c7c6c28887a1d3dd88a6923fc857605fcd95fe92c0b",
 			"lit_texture": "towers_lvl1_lit.png",
@@ -1357,8 +1359,8 @@
 				0.907142877578735
 			],
 			"home_opaque_pixels": [
-				48,
-				165
+				48.0,
+				165.0
 			],
 			"lit_source_sha256": "7b1d13e6829259f7e7b7e9243980cb196d21a5fc3ee1307fd1b7fa2317a5fa41",
 			"lit_texture": "towers_lvl2_lit.png",

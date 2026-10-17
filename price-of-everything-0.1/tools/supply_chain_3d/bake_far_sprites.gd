@@ -78,6 +78,7 @@ func _ready() -> void:
 	var keys: Array = catalog.keys()
 	keys.sort()
 	for key in keys:
+		if catalog[key].has("component"): continue
 		if not selected_keys.is_empty() and key not in selected_keys: continue
 		if "--trees-only" in OS.get_cmdline_user_args() and not str(key).begins_with("tree_"): continue
 		Assets.key_for(str(key).get_slice("_lvl", 0), 3)

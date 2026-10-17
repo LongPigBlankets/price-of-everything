@@ -1,6 +1,7 @@
 extends RefCounted
 ## Plan-space artwork, never a camera-angle bake. All three tiers preserve exact
 ## source contours, beaches, riverbanks and deterministic surface marks.
+const Coast := preload("res://scripts/supply_chain_3d/coast.gd")
 const Legacy := preload("res://scripts/empire_board.gd")
 const Model := preload("res://scripts/empire_board_model.gd")
 const Ground := preload("res://scripts/empire_board_ground.gd")
@@ -23,8 +24,8 @@ class Painter extends Node2D:
 		var ocean := str(tile.type) in ["sea", "deep_sea"]
 		draw_rect(Rect2(tile.center - EXTENT * 0.5, EXTENT), sea[0 if str(tile.type) == "deep_sea" else 2] if ocean else Legacy._warm(sea[5]))
 		for e in relief.get("sea", []): _polygon(e.p, sea[int(e.b)])
-		if not ocean:
-			for e in relief.get("land", []): _polygon(e.p, Legacy._warm(bands[clampi(int(e.b), 0, bands.size() - 1)]))
+		for e in relief.get("land", []):
+			_polygon(e.p, Legacy._warm(sea[5] if e.get("beach", false) else bands[clampi(int(e.b), 0, bands.size() - 1)]))
 		for p in relief.get("lakes", []): _polygon(p, sea[4])
 		if water_art != null and water_art.get_surface_count() > 0: draw_mesh(water_art, null)
 		# Same seed in every tier: low tiers integrate marks instead of changing geography.
@@ -144,7 +145,7 @@ static func bake_continent(host: Node, tiles: Dictionary, rivers: Dictionary, mi
 		canvas.add_child(mask)
 		var painter := Painter.new()
 		painter.tile = tile
-		painter.relief = Legacy._relief_of(str(tid), tile.center)
+		painter.relief = Coast.relief_of(str(tid), tile.center)
 		painter.rivers = rivers.get(tid, [])
 		painter.mines = mines
 		painter.shadow_art = ShadowArt.artwork(shadows.get(tid, []))

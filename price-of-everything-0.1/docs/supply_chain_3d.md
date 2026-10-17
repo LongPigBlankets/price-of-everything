@@ -11,9 +11,9 @@ open their supply-chain graphs; terrain clicks open the existing tile panel.
 ## Controls
 
 - Left drag / two-finger trackpad pan: pan.
-- Right or middle drag: orbit and tilt.
+- Middle drag, or hold `0` while panning with two fingers: rotate and tilt around the camera centre. Right drag also remains available.
 - Mouse wheel / trackpad pinch: zoom around the terrain under the pointer.
-- Q/E or arrow buttons: rotate. Home / Reset view: frame the current coverage.
+- Q/E: rotate. Home / Reset view: frame the current coverage. The corner rotation arrows have been removed.
 - Click terrain or a warehouse: select its tile; Shift-click selects through buildings.
 - Click a building: open its network once its projected width **and** height exceed 20 logical screen pixels. Smaller player/NPC buildings select their tile instead. The outermost continent view always selects tiles. Eligible hitboxes follow the visible mesh with a two-world-unit edge tolerance; empty space around the building selects the tile. Retina scaling does not change the threshold. Tab returns to the regular map.
 - Visibility → **Show player owned tiles only** (default) / **Show all tiles**. This preference is saved in the player profile. Owned coverage includes company routes, goods and purchased empty land; all coverage includes every real terrain tile, without inventing stockpiles or player buildings.
@@ -1215,3 +1215,394 @@ the same three existing source-asset freshness failures (far sprites, medium
 sprites, and medium lighting/picking assets). The initial sandboxed test attempt
 also failed user-cache writes; those extra failures disappear with normal access
 to Godot's user data directory. The existing ObjectDB shutdown warning remains.
+
+## Continent startup and stable panning (2026-10-10)
+
+Enabling all tiles now keeps the current camera target and angle and opens at
+medium detail (1.1 logical pixels per world unit). The first opening with all
+tiles already enabled uses the regular map camera's current location. Subsequent
+openings preserve the supply-chain camera. Home / Reset view still explicitly
+frames the entire coverage. The regular map renderer and its controls are unchanged.
+
+The reported minute-long first opening was not a 60-second texture read. The
+old keys hashed the entire 3D asset catalogue and sprite manifest, so adding an
+unrelated model invalidated scenery and the joined continent. The previous
+Forward+ run recorded 602 writes after three fracking-well entries were added.
+Keys now include the dimensions of placed models, tree scale, and sprite framing
+actually used by the bake. Changes to those inputs still invalidate correctly;
+unrelated artwork/catalogue changes do not. When rebuilding a backdrop, existing
+independently keyed base chunks retain their prepared detail and picking data.
+
+The remaining cached path also did substantial work that was not on disk:
+clipping coastline/land polygons to each hex, checking street costs, finding
+shore paths and street routes, and sampling traffic on every road. The new
+`layout_queries.gd` adapter ships the pure geographic memo tables with the
+package. Its key includes geography, coastlines and relevant generator sources;
+callable IDs are rebound per process. A separate `layout` source-fingerprint layer
+preserves the same keys when an export remaps scripts to compiled `.gdc` files.
+Live buildings, stock, routes and goods
+still run through `Model.build`, rather than loading a saved simulation model.
+Traffic height paths and nodes are prepared for resident tiles within a small
+frame budget instead of preparing offscreen traffic during opening.
+
+Measured in fresh Godot 4.6.2 Forward+/Metal processes on the Apple M5 Pro,
+1920×1044 supply-chain viewport, authored Metal Magnate start:
+
+| Stage | Previous cached opening | Updated opening |
+| --- | ---: | ---: |
+| Model inputs and layout | 5,613 ms | 870 ms |
+| Scenery read | 36 ms | 31 ms |
+| Continent read/preparation | 297 ms | 350 ms |
+| Scene/effect preparation | 3,529 ms | 346 ms |
+| Board build total | 9,713 ms | 1,838 ms |
+| Ready, including requested detail and render | 9,718 ms | 2,711 ms |
+
+These timings start at switching an already prepared company view to all tiles.
+The previous opening framed the far continent; the updated opening also loads
+46 local tiles at medium detail. All 86 reads in the updated run came from the
+shipped package, with zero cache misses/writes. This is a first-process opening,
+not an OS-cache-purged disk benchmark or a timing for starting the entire game.
+A genuinely changed map/layout still needs matching bakes; this result does not
+claim sub-five-second regeneration. Textures and meshes were already bundled in
+the game resources. Moving only the texture read into the loading screen would
+not address the CPU work above. The existing loading-screen preparation remains
+opportunistic rather than adding a blocking whole-continent build to New Game.
+
+The refreshed package contains 1,803 resources / 600 tiles, validates with no
+errors, and reuses all 1,200 medium/near terrain resources and 600 prepared base
+tiles. The added geographical layout resource is 1,512,930 bytes. Evidence and
+captures are under repository-root `outputs/supply-chain-3d/startup-pan-review/`;
+`shipped/report.json` is the final rendered measurement and `package-export.stdout`
+contains the package validation. The profiler supports `--profile-layout` to time
+sections of an in-memory model copy without invalidating the measured bakes.
+
+A separate `--combined-open` run bypasses the capture harness's explicit
+preparation wait and opens the view immediately after the normal New Game/Begin
+flow. In `combined/report.json`, the loading screen had already completed
+1,373 ms of company-board preparation. First visible opening took 22 ms, followed
+by 2,702 ms to show all tiles with the initial medium-detail region rendered:
+2,724 ms combined visible wait. This run loaded 49 local tiles, with all 91
+continent/stream reads bundled and zero cache writes. The background preparation
+is additional work during game loading, not an additional wait after opening.
+
+Capital City panning exposed a separate precision issue. Far/medium cards choose
+one of 16 yaw views and five tilt views. `look_at(target)` recovered orientation
+by subtracting large world positions, so a pure pan at an atlas boundary could
+switch between adjacent views. In the reproduction, yaw stayed fixed at 11.25°
+but 300 pan samples selected frame 0 on 250 samples and frame 1 on 50. The rig now
+constructs its basis directly from yaw/pitch. Each tested yaw keeps exactly one
+basis and one sprite frame through all 300 pan samples; a regression additionally
+checks pitch boundaries. Deliberate orbiting still uses discrete far/medium views
+(22.5° yaw steps); closest detail uses the original 3D meshes.
+
+Focused startup/cache checks pass (27 checks), and camera controls/boundary checks
+pass. The broader supply-chain-tag run recorded 1,398 passes and the same three
+existing asset freshness failures. Its company-only integration fixture now
+explicitly selects that coverage instead of inheriting the user's preference.
+A scene closed while asynchronous scenery preparation yields is also handled.
+
+### Pylon geometry and cable attachments (2026-10-10)
+
+The sprite kit's descending X-braces used the bottom width at the top endpoint
+and the top width at the bottom endpoint. On a taper this put their ends outside
+the mast. It also braced only the two faces visible to the original fixed camera.
+The supply-chain-only `tools/supply_chain_3d/pylon_builder.py` corrects those
+endpoints and braces all four faces. The shared sprite kit and regular map are
+unchanged. The solid mesh grows from 2,284 to 3,004 triangles, with exactly the
+same footprint, height and sprite framing.
+
+Four conductor clamps are exported with the model, one below each insulator
+string. At the existing 62u model scale these are about 118.5u and 91.3u above
+the foundation, replacing the renderer's single cable fixed at ground +62u.
+`pylon_cables.gd` uses the actual foundation transform and these attachment
+points, hangs four thinner conductors between towers and aligns the crossarms
+across the line. Opposing spans reinforce the same axis; a bend is bisected,
+and left/right conductors are matched within each tier to avoid crossing.
+
+Pylons use their inexpensive mesh from medium inward. This keeps their thin
+lattice and clamps continuously aligned with the cables rather than stepping
+between medium sprite angles. Far retains the small atlas. The sprite shader
+now chooses views relative to the model's world orientation; unrotated buildings
+keep their original views. Both pylon atlases and its stored picking shape were
+refreshed. No continent terrain/scenery rebake was needed: those resources store
+the unchanged dimensions and framing, not this mesh artwork.
+
+Rendered evidence is under repository-root `outputs/supply-chain-3d/pylons/`.
+`before/` and `after/` record the geometry correction; `continent-final/` exercises
+six angles at each actual far/medium/near LOD. The review asserts the selected
+LOD, avoiding the near-to-medium hysteresis band. Focused tests cover sloping
+spans, exact clamp endpoints, line reversal, branches and the medium/far handover.
+
+### Regular-map roads in the supply-chain view — analysis only
+
+No road rendering, layout or simulation was changed for this investigation.
+The current supply-chain model generates its own repeating industrial-estate
+street plan in `empire_board_streets.gd`: two cross streets, an avenue, building
+spurs and fixed exits at the hex edges. Its route costs avoid water but do not
+use the regular map's terrain-aware road geometry. This explains the repeated
+straight roads and their willingness to climb the exaggerated mountains.
+
+The regular map has two sources. The active document is
+`data/map_authored/stoneshore-procedural.json`, with 984 road strokes, of which
+136 are unlockable. The disposable Metal Magnate start displays 848 strokes.
+`AuthoredRoadGeometry.sample()` gives their curves before visual wobble;
+`polyline()` adds the exact authored styling. A separate `RoadNetwork` stores
+1,120 baked edges / 26,749 points / 38 bridge records and subsequent live roads.
+The renderer suppresses that network on authored tiles. In this particular
+start none of those generated edges are visible: importing both indiscriminately
+would draw a duplicate network. An adapter still needs the generated fallback
+for uncovered tiles and other maps, using the current built state and the same
+coverage/flag rules as `road_network_visuals.gd`.
+
+The read-only `analyse_roads.gd` inventory found 11,822 points in the 848 visible
+polylines before styling: 94,576 bytes of packed XY coordinates, excluding IDs,
+adjacency and mesh data. It found 966 endpoints already on another road and 210
+further endpoints within 2u of another polyline, 106 of them within 1u. These are
+endpoint candidates, not distinct approved joins; two ends can describe one
+gap and some apparent joins may belong at different elevations. Evidence:
+`outputs/supply-chain-3d/pylons/after/roads-analysis.json`.
+
+Recommended integration:
+
+1. **Read one authoritative presentation network.** Combine visible authored
+   strokes with built generated runs only where the regular map displays them.
+   Keep stroke/edge IDs, curve shape, width class, bridge metadata and unlock
+   dependencies. The coordinate systems already agree: the 3D builder maps XY
+   to XZ and subtracts its origin. No screen-coordinate tracing or pathfinding
+   regeneration is needed. Clip this network to company coverage only after
+   building its global connectivity; all-tiles mode uses the same network.
+2. **Unify nearby endpoints before styling or tile splitting.** Use a spatial
+   index and a true distance tolerance (1u preferred, 2u maximum), not coordinate
+   rounding. Endpoint-to-endpoint joins share one deterministic node. For an
+   endpoint beside the interior of a road, project it onto that segment and
+   split the segment to make a real T-junction. Short overlapping, aligned runs
+   can be deduplicated; nearby parallel roads should not simply be collapsed.
+   Preserve curve tangents, bound the total movement of a cluster to 2u and
+   reject joins across water, separated bridge decks or incompatible heights.
+   Keep every accepted/rejected candidate in a review overlay. Apply these
+   corrections in the supply-chain adapter without editing the regular map.
+3. **Fit the road surface to 3D relief.** Feed the corrected curves into joined
+   road geometry, retaining common junction heights and global casing/bed pass
+   order. Build junctions before dividing the mesh among tiles; include a border
+   overlap when baking so adjacent tiles cannot reopen seams. Existing
+   `road_surface.gd` provides the joined-surface foundation but currently accepts
+   straight segments and legacy widths. It needs polyline/width-class input,
+   deliberate bend treatment and bridge decks. Reusing the original routes
+   avoids inventing new mountain crossings, but heights 5+ are exaggerated here:
+   inspect grades and add local road cuttings/ramps where needed. The regular
+   router penalizes altitude and slope and bans levels 9+, not every mountain.
+4. **Reconcile building placement and goods animation.** This is the largest
+   dependency. The board reads regular-map building positions, then moves them
+   to its own fixed slots; decorative houses also use that slot grid. Replacing
+   only the roads can put them through buildings and leave goods travelling
+   along invisible old streets. Prefer the imported roads as the fixed layout,
+   seat buildings/decor beside them, and connect each entrance with a short
+   access road that respects footprints and water. Use the resulting graph for
+   visual shipment paths within the simulation's existing tile itinerary.
+   Traffic should follow whole polylines by arc length, rather than respawning
+   on each small sampled segment. Freight costs/capacities stay unchanged.
+5. **Bake the result offline and invalidate locally.** Keep the compact road
+   graph resident; the measured coordinates alone are only about 92KiB. Bake
+   joined far geometry and per-tile medium/near surfaces from the same graph.
+   Trees avoid roads and their shadows are baked into terrain, so affected
+   vegetation, shadows and building bounds also need updating. The present
+   cache includes the entire road list in a global key: split static source and
+   local road dependencies before supporting frequent road construction, so a
+   changed road refreshes its tiles and seam neighbours rather than invalidating
+   the continent. Retain the far fallback while replacements load. Final mesh
+   memory and pan timing need profiling; the small graph size alone does not
+   predict tessellation or texture costs.
+
+The useful first implementation milestone would be a geometry-only comparison
+overlay plus the 1–2u candidate review. Building/entrance placement and visual
+goods routing should follow before replacing the current roads and rebaking.
+This is a moderate network-import task with a larger layout/animation follow-on,
+not just swapping a road texture.
+
+## Stoneshore authored-road pilot (2026-10-10)
+
+`authored_region.gd` adapts the regular map's active authored document into the
+3D board model. It is restricted to `RoadRegions.get_region("stoneshore")`:
+Stoneshore, Old Quarter, Docks, Fields and Coast (`tile_4_9`, `tile_4_10`,
+`tile_5_10`, `tile_5_9`, `tile_6_9`). Regular-map data, rendering and simulation
+are read-only. Other supply-chain tiles keep the previous layout.
+
+The Metal Magnate opening imports 43 visible strokes. Curves retain their
+control geometry and class widths; the 2D ink wobble is deliberately not used
+as physical road geometry. Unlockable strokes use the same infrastructure
+flags as `AuthoredRoadVisuals`. Nine endpoint gaps of at most 2 world units
+are joined. Endpoint-to-interior joins and at-grade crossings split the graph
+before flow routing; separate elevation layers are not unified. Segment
+clipping follows the hex edges rather than assigning whole strokes to a tile.
+The previous joined road surface continues to render all bands on one height
+field, using the imported road widths in the pilot.
+
+`authored_road_profile.gd` samples the terrain along the imported roads and
+finds bank-to-bank river crossings. The Stoneshore Coast crossing on
+`r:untitled:16` receives a level raised deck, underside, abutments, guard rails
+and eased land approaches. Deck clearance includes the full road width and
+height-field sampling margin so a sloping bank cannot bury the railing. A
+second crossing belongs to the continuation outside the pilot and is not
+rendered there. No additional roads are path-found over mountains. At the
+pilot boundary, imported roads may terminate where the adjacent tile still
+uses the previous street grid; rolling the adapter into neighbouring regions
+will bring those continuations across with the authored network.
+
+Decorative `house` records (including towers) are temporarily removed in these
+five tiles at every LOD, including their baked shadows and far sprites. The
+ordinary NPC buildings use the regular map's actual footprint centres. Mesh
+scale fits the footprint bounding box, keeping industrial works and smaller
+facilities proportional. Ports use the Blender harbour asset at the authored waterfront placement
+described below, rather than their small gameplay lots. Missing regular-map placements are not replaced with overlapping
+buildings at the tile centre. NPC building selection opens the existing real
+building panel; the far-LOD and 20-pixel picking rules still apply.
+
+Regional road goods paths use the imported graph; pipes, rails and cables
+keep their own routes. A road flow without a connected regional path is
+excluded from the visual animation rather than drawn across unconnected
+land (reported as `unrouted_flows` in the review output; zero in this opening).
+This does not change stockpiles, shipments or the simulation.
+
+The package refresh retains byte-equivalent mesh/shape/placement payloads
+under their existing tile resource keys. Comparison includes prepared local
+geometry and picking, not just terrain. The new far root references the
+retained keys. Pruning occurs only after package validation succeeds. This
+pilot retained 588 of 600 base chunks and 586 of 600 textures at each closer
+LOD; changes around the five tiles also refresh neighbouring tree/shadow
+coverage. The validated package is 1,203,584,349 bytes, 1,803 resources,
+600 tiles. The first offline regeneration takes about 48 seconds; this is
+build tooling work, not the packaged loading path.
+
+Validation: 25 focused region checks and 85 existing 3D checks passed.
+`review_stoneshore.tscn -- --continent-review --no-telemetry` opens a disposable
+new game, verifies the region scope and NPC positions, captures far/medium/near
+views and the bridge, and exercises the NPC detail-panel handler. Captures and
+load reports are under `outputs/supply-chain-3d/stoneshore/` in the repository
+root. This review does not save a game or change map-authoring data.
+
+Fresh-process packaged verification on Godot 4.6.2 Forward+/Metal (M5 Pro):
+Show all tiles ready in 2,938.756 ms; board construction 2,116.985 ms, including
+353.891 ms loading the continent resource. Three bundled cache hits, zero
+misses and zero writes. Final views exercise LODs 0/1/2, and NPC selection
+opened the actual port building's detail panel. Final evidence is in
+`outputs/supply-chain-3d/stoneshore/final/report.json`.
+
+
+## Authored shoreline and waterfront ports (2026-10-10)
+
+The old supply-board relief omitted sea band 5, which the regular map uses as
+its beach/land base. Using only the narrower height-band footprint as land
+put authored roads 224–226 on the western side of Old Quarter in apparent
+water. `coast.gd` adds that base polygon to the 3D relief, with a separate
+height-field cache and a rebuilt shoreline. Texture painting, water artwork,
+trees and terrain now share that coast. The source 2D map and legacy relief
+cache are not edited. Road control points stay authored; the fix restores
+the missing coastal land instead of moving the road.
+
+`harbour.gd` reads the active authored map's port-tagged specials and decor.
+The four harbours use the existing detailed Blender docks asset: green gantry
+cranes, container ships, tanker, tank farm, containers and office. The 3D-only
+export removes its rectangular water and land backdrops, the land edge and
+land-only road; the remaining approach road and markings stop at the quay.
+The original Blender sprite builder and regular-map artwork are untouched.
+
+The broad authored quay fixes the width and shoreline anchor; authored crane
+axes set the seaward direction. Older ports without crane metadata derive
+that direction from the narrow piers’ long edges, facing away from the main quay. The model's waterline sits at the game's sea
+level, and its deck meets the bank. Horizontal and vertical fitting are
+independent, and the harbour slides inland only as far as needed for its
+three back-edge contact points to reach the coast. An additional water check
+limits this inland adjustment before it would ground any ship; curved coasts
+can therefore leave a quay corner overhanging water. A bounded 100u search
+prevents runaway movement for inconsistent authoring. The model extends
+across hex borders. All LODs use the shared Blender mesh with native mesh LODs
+and shader detail reduction; only near/medium add the outer contour shell.
+There are four harbour instances, each sharing the same 4,828-triangle static
+asset. The original asset's remaining 1,824 triangles now form three separate
+ships, described below; they are absent from the static mesh and its collider.
+
+The scenery bake stores the fitted transform and visibility dimensions, not
+copies of port geometry. Harbour metadata participates in the scenery key,
+so changed anchoring/bounds cannot reuse an old pose. Exact collision is
+built when cursor proximity enables it; vertices receive the full fitted
+transform so physics never depends on a nonuniformly scaled collision node.
+Far and medium fallback sprites and the normalized picking resource are also
+rebaked from the water-free export.
+
+Trade graph IDs (`port_port_stoneshore`) and building instance IDs differ.
+Deduplication therefore uses the logical port tile, and the resulting
+harbour points to the real `b_004` instance for its building panel. A harbour
+is not clipped to its owning hex. Its full geometry expands visibility and
+picking bounds; adjacent-tile tree clearance includes its yard. Procedural
+houses and towers intersecting that footprint are removed from 3D scenery,
+including across tile borders; real NPC/player buildings remain intact. The hollow
+basin remains water rather than a rectangular building hitbox. All authored
+ports use this placement rule; the road-network pilot remains limited to
+Stoneshore's five tiles.
+
+Validation: 43 focused regional/coast/harbour checks and 85 existing 3D checks
+pass. The rendered review verifies the outer pier selects the owning port
+across the hex border, the basin selects water, and the real port instance
+opens its NPC panel. Captures and reports are in
+`outputs/supply-chain-3d/stoneshore/blender-harbour-final/`.
+
+Before the Blender harbour replacement, the shoreline package validated all
+600 tiles and 1,803 resources with no errors: 1,113,293,594 bytes on disk. Offline refresh took 288.3 seconds.
+A fresh-process Forward+/Metal review loaded Show all tiles in
+2713.913 ms, including 1900.432 ms board construction and
+306.031 ms loading the continent. All three reads hit bundled
+resources; there were zero cache misses and zero runtime bake writes.
+
+The final Blender harbour package validates all 600 tiles and 1,803 resources:
+1,112,552,597 bytes, with no errors. Removing decorative overlap updated nine
+medium and nine near shadow textures; the other 591 tiles at each tier were
+reused. Package copying/validation took 33.815 seconds after scene preparation.
+
+Fresh-process Forward+/Metal verification with the final Blender harbours: Show all tiles ready in 2706.051 ms, board construction 1914.442 ms, and continent resource loading 313.585 ms. Three bundled hits, zero misses and zero runtime writes. Final captures cover all four harbours; their ship-water probes all pass. Stoneshore’s cross-tile pier selects its owning NPC, and the open basin selects water.
+
+### Animated harbour ships
+
+`harbour_traffic.gd` animates the two container ships and tanker extracted from
+the original docks builder. Exporting `port` also exports these components,
+preserving the source hull dimensions, colours, berth positions and waterline.
+The regular-map sprite and Blender source remain unchanged.
+
+Nearest uses the original detailed vessels (1,824 triangles per fleet) with
+contours. Medium uses simplified vessels (468 triangles, 74% fewer), retaining
+the hulls, bridges and five broad cargo stacks without the fine deck equipment or
+contours. Far has no ships, including in fallback harbour sprites, and skips
+their pose updates. Components load lazily and share meshes across the four
+ports; switching detail preserves the current position and heading.
+
+Each 177-second cycle staggers departures, leaves the berths empty briefly,
+then brings in replacement vessels one at a time. Arriving vessels turn beyond
+the pier mouths and reverse into their original berths. Routes are prepared
+once against the actual coast: the hull clearance probes must remain over
+water. A restricted bay can use a straight astern approach; an unsafe berth
+holds its ship in place. Ships fade at the outer end of their route using the
+existing opaque screen-coverage shader, keeping hull/contour depth ordering
+intact instead of alpha-blending the outline over the vessel. These are
+ambient visuals driven by the existing animation clock, with no physics bodies
+or simulation changes.
+
+Ships are runtime overlays; terrain and scenery bakes contain only the static
+harbour. The sprite baking tools exclude ship components. Future changes to
+animation timing or routes therefore do not require continent rebakes.
+
+Run `review_harbour_traffic.tscn -- --continent-review --no-telemetry` for
+rendered near/medium/far captures and a full-cycle water-clearance check at
+all four harbours. Add `--traffic-movie` to capture a complete cycle as PNG
+frames. Output and the timing report go to
+`outputs/supply-chain-3d/harbour-traffic/`. The `harbour_ships` test filter
+covers the mesh partition, simplified LODs, turn clearance, continuous docking,
+coast clipping, hidden far traffic and absence of physics bodies.
+
+Validation: 18 ship checks, 43 regional/coast/harbour checks and 85 existing 3D
+checks pass. The rendered review sampled every visible vessel throughout the
+cycle at all four actual ports; all 12 can depart and turn without failing the
+coast probes. Near/medium continuity and far hiding also pass. On M5 Pro with
+Godot 4.6.2 Forward+/Metal, the warmed medium animation updates for all 12 ships
+take 0.022 ms per frame on the CPU (600 samples; excludes GPU rendering).
+Show all tiles was ready in 2992.248 ms, with three bundled cache hits, zero
+misses and zero runtime writes. The refreshed static package validates all
+600 tiles/1,803 resources and reuses every medium/near terrain texture.

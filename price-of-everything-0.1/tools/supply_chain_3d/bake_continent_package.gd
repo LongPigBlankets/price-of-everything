@@ -3,6 +3,10 @@ extends "res://tools/supply_chain_3d/capture.gd"
 ## AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_chain_3d/bake_continent_package.tscn -- --continent-review --no-telemetry
 const Package := preload("res://tools/supply_chain_3d/bake_package.gd")
 
+func _ready() -> void:
+	PlayerProfile.supply_chain_all_tiles = false # disposable harness; do not save preferences
+	await super._ready()
+
 func _continent_review(board: Control, _home: Dictionary) -> void:
 	await board.set_all_tiles(true, false)
 	board.set_process(false)
@@ -19,10 +23,20 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 		if arg.begins_with("--package-output="): writer.directory = arg.trim_prefix("--package-output=")
 	writer.bundled_directory = writer.directory
 	assert(DirAccess.make_dir_recursive_absolute(writer.directory) == OK)
+	var previous_manifest: Dictionary = {}
+	var previous_path := writer.directory.path_join("manifest.json")
+	if FileAccess.file_exists(previous_path):
+		var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(previous_path))
+		if saved is Dictionary: previous_manifest = saved
+	var unchanged_base := 0
 	var manifest := {"schema": Package.MANIFEST_SCHEMA, "complete": false, "start": "res://data/starts/metal_magnate.json",
 		"engine": Engine.get_version_info().string, "tile_count": builder.tiles.size(), "storage": "zstd" if writer.compress else "raw",
 		"continent_key": builder._continent_key, "scenery_key": builder._scenery_key,
 		"map_key": builder._map_key, "tiles": {}, "resources": {}}
+	if board._layout_queries != null:
+		manifest.layout_key = board._layout_queries.key
+		writer.write(manifest.layout_key, board._layout_queries.data)
+		manifest.resources[manifest.layout_key] = Package.file_record(writer.directory, manifest.layout_key)
 	builder.bake_cache = writer
 	builder.release_local_tiles({})
 	var started := Time.get_ticks_msec()
@@ -46,6 +60,14 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 		builder._chunk_data[tid] = base
 		builder.prepare_local_detail(tid, board._model.get("standing", []))
 		builder.prepare_picking(base)
+		var previous_key := str(previous_manifest.get("tiles", {}).get(tid, {}).get("base", ""))
+		if previous_key != "" and previous_key != base_key:
+			var previous := writer.read(previous_key)
+			if not previous.is_empty() and Package.same_payload(base, previous):
+				base_key = previous_key
+				builder.tile_chunks[tid] = base_key
+				unchanged_base += 1
+				needs_base = false
 		if needs_base:
 			writer.write(base_key, base)
 			prepared += 1
@@ -78,6 +100,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 			await get_tree().process_frame
 	builder.road_surface.finish_build()
 	var root: Dictionary = builder.continent.duplicate()
+	root.tile_chunks = builder.tile_chunks.duplicate()
 	root.metadata = root.metadata.duplicate()
 	root.metadata.visibility = builder.visibility_bake()
 	writer.write(builder._continent_key, root)
@@ -85,15 +108,16 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 		"standing": builder.standing_frames, "grade": builder.grade_range})
 	for key in [builder._continent_key, builder._scenery_key]: manifest.resources[key] = Package.file_record(writer.directory, key)
 	FileAccess.open(writer.directory.path_join("source_fingerprints.json"), FileAccess.WRITE).store_string(JSON.stringify(Package.Cache.source_fingerprints(), "\t") + "\n")
-	if "--prune" in OS.get_cmdline_user_args():
-		for file in DirAccess.get_files_at(writer.directory):
-			if file.ends_with(".res") and not manifest.resources.has(file.get_basename()):
-				DirAccess.remove_absolute(writer.directory.path_join(file))
 	manifest.complete = true
 	var path := writer.directory.path_join("manifest.json")
 	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify(manifest, "\t") + "\n")
 	var report := await Package.validate(writer.directory, self)
+	if report.ok and "--prune" in OS.get_cmdline_user_args():
+		for file in DirAccess.get_files_at(writer.directory):
+			if file.ends_with(".res") and not manifest.resources.has(file.get_basename()):
+				DirAccess.remove_absolute(writer.directory.path_join(file))
 	report.prepared_base_tiles = prepared
+	report.unchanged_base_tiles = unchanged_base
 	report.generated = generated
 	report.copied = copied
 	report.reused = reused

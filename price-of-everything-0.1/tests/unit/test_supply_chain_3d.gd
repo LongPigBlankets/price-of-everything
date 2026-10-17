@@ -128,10 +128,15 @@ func _test_exported_3d_meshes() -> void:
 	_check(Assets.key_for("mine", 3) == "mine_flush_lvl3", "3D mine uses its surface geometry")
 
 func _test_3d_overview_interaction() -> void:
+	# This fixture exercises company-only geometry, independently of the user's
+	# saved all-tiles preference. Continent streaming has separate coverage tests.
+	var previous_coverage := PlayerProfile.supply_chain_all_tiles
+	PlayerProfile.supply_chain_all_tiles = false
 	SaveLoad.prepare_new_game("res://data/starts/metal_magnate.json")
 	var main: Node = load("res://scenes/main.tscn").instantiate()
 	add_child(main)
 	while not bool(main.get("build_complete")): await get_tree().process_frame
+	PlayerProfile.supply_chain_all_tiles = previous_coverage
 	Tutorial._on_overlay_skipped()
 	var view: Control = main.find_child("EmpireView", true, false)
 	await view.call("prepare")
@@ -376,16 +381,26 @@ func _check_source_tree_layout(builder: RefCounted, model: Dictionary) -> void:
 		expected_kinds.append((tree.tex as Texture2D).resource_path.get_file().get_basename().trim_prefix("tree_"))
 	var actual: Array[Vector2] = []
 	var actual_kinds: Array[String] = []
-	for placement in builder.tree_placements.values():
-		for tree in placement:
+	var coastal_additions: Array[bool] = []
+	var coast := preload("res://scripts/supply_chain_3d/coast.gd")
+	var ground := preload("res://scripts/empire_board_ground.gd")
+	for tid in builder.tree_placements:
+		for tree in builder.tree_placements[tid]:
 			actual.append(Legacy.iso(tree.pos, builder.ground.height(tree.pos)))
 			actual_kinds.append(str(tree.kind))
-	var matches := actual.size() == expected.size()
+			var center: Vector2 = model.tiles[tid].center
+			coastal_additions.append(ground.is_water(Legacy._relief_of(tid, center), tree.pos)
+				and not ground.is_water(coast.relief_of(tid, center), tree.pos))
+	var matches := actual.size() >= expected.size()
+	for j in expected.size():
+		var found := false
+		for i in actual.size(): found = found or (actual[i].distance_to(expected[j]) < 0.01 and actual_kinds[i] == expected_kinds[j])
+		matches = matches and found
 	for i in actual.size():
 		var found := false
 		for j in expected.size(): found = found or (actual[i].distance_to(expected[j]) < 0.01 and actual_kinds[i] == expected_kinds[j])
-		matches = matches and found
-	_check(matches and actual.size() > 30, "3D trees: species layout and roadside clearance keep all %d original tree positions (%d actual)" % [expected.size(), actual.size()])
+		matches = matches and (found or coastal_additions[i])
+	_check(matches and actual.size() > 30, "3D trees: preserve original species/clearance; additions only on restored coastal land (%d source, %d actual)" % [expected.size(), actual.size()])
 	original.free()
 
 func _test_3d_artwork_river_mouth() -> void:

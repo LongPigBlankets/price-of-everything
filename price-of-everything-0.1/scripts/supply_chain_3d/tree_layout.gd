@@ -18,6 +18,9 @@ static func placements(tid: String, tile: Dictionary, relief: Dictionary, standi
 		var b := Streets.nid(road.b - tile.center)
 		used["%s|%s" % [a if a < b else b, b if a < b else a]] = true
 	for s in standing:
+		if s.has("harbour"):
+			pads.append((s.harbour.bounds as Rect2).grow(8.0))
+			continue # piers and yards can occupy a neighbouring tile
 		if str(s.tile) != tid: continue
 		var half := float(s.get("pad", s.side)) * 0.5 + (34.0 if str(s.get("internal_name", "")) == "mine" else 8.0)
 		pads.append(Rect2(s.pos - Vector2.ONE * half, Vector2.ONE * half * 2.0))

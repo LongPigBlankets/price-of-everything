@@ -18,8 +18,11 @@ func apply(camera: Camera3D) -> void:
 	camera.near = 1.0
 	camera.far = 100000.0
 	var direction := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch))
-	camera.position = target + direction * 40000.0
-	camera.look_at(target, Vector3.UP)
+	# Do not recover orientation by subtracting two large world positions in
+	# look_at(). At sprite-angle boundaries its rounding can switch atlas frames
+	# during a pure pan. The basis depends only on the requested yaw and pitch.
+	var right := Vector3(cos(yaw), 0.0, -sin(yaw))
+	camera.transform = Transform3D(Basis(right, direction.cross(right), direction), target + direction * 40000.0)
 	camera.force_update_transform()
 
 func orbit(delta: Vector2) -> void:

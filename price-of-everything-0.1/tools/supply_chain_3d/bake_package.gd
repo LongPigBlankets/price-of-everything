@@ -31,6 +31,7 @@ static func validate(directory: String, host: Node) -> Dictionary:
 	if not fingerprints is Dictionary or not Cache.fingerprints_match(fingerprints, Cache.source_fingerprints()):
 		result.errors.append("Missing/stale export source fingerprints")
 	var required := {str(manifest.get("continent_key", "")): true, str(manifest.get("scenery_key", "")): true}
+	if manifest.has("layout_key"): required[str(manifest.layout_key)] = true
 	for entry in manifest.tiles.values():
 		required[str(entry.get("base", ""))] = true
 		for name in TILE_TIERS: required[str(entry.get(name, ""))] = true
@@ -55,6 +56,10 @@ static func validate(directory: String, host: Node) -> Dictionary:
 		result.resources += 1
 	var root := cache.read(manifest.continent_key)
 	var scenery := cache.read(manifest.scenery_key)
+	if manifest.has("layout_key"):
+		var layout := cache.read(manifest.layout_key)
+		if not layout.get("costs") is Dictionary or not layout.get("shores") is Dictionary or not layout.get("paths") is Dictionary or not layout.get("relief") is Dictionary:
+			result.errors.append("Missing geographical layout queries")
 	if root.is_empty() or scenery.is_empty(): result.errors.append("Missing continent/scenery data"); return result
 	var visibility: Dictionary = root.get("metadata", {}).get("visibility", {})
 	if visibility.get("version", -1) != VISIBILITY_VERSION or visibility.get("hulls", {}).size() != manifest.tiles.size():
@@ -96,3 +101,27 @@ static func validate(directory: String, host: Node) -> Dictionary:
 		if result.tiles % 30 == 0: await host.get_tree().process_frame
 	result.ok = result.errors.is_empty() and result.tiles == manifest.tile_count
 	return result
+
+## Compare generated payloads, not resource identities. A regional edit changes
+## the global root key; identical per-tile resources can retain their old keys.
+static func same_payload(a: Variant, b: Variant) -> bool:
+	if a is Mesh and b is Mesh:
+		if a.get_surface_count() != b.get_surface_count(): return false
+		for i in a.get_surface_count():
+			if a.surface_get_primitive_type(i) != b.surface_get_primitive_type(i): return false
+			if a.surface_get_arrays(i) != b.surface_get_arrays(i): return false
+		return true
+	if a is ConcavePolygonShape3D and b is ConcavePolygonShape3D:
+		return a.get_faces() == b.get_faces() and a.backface_collision == b.backface_collision
+	if typeof(a) != typeof(b): return false
+	if a is Dictionary:
+		if a.size() != b.size(): return false
+		for key in a:
+			if not b.has(key) or not same_payload(a[key], b[key]): return false
+		return true
+	if a is Array:
+		if a.size() != b.size(): return false
+		for i in a.size():
+			if not same_payload(a[i], b[i]): return false
+		return true
+	return a == b

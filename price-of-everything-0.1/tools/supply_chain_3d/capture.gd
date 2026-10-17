@@ -36,13 +36,8 @@ func _ready() -> void:
 			else: layer.queue_free()
 	for i in 3: await get_tree().process_frame
 	var view: Control = main.find_child("EmpireView", true, false)
-	await view.call("prepare")
-	Harness.prepare_window(get_window(), Vector2i(1920, 1080))
-	for i in 5: await get_tree().process_frame
-	view.call("toggle")
+	await _open_supply_view(view)
 	var board: Control = view.find_child("Board", true, false)
-	await get_tree().physics_frame
-	board.call("fit_view")
 	var home: Dictionary = board.call("capture_camera")
 	if "--continent-review" in OS.get_cmdline_user_args():
 		await _continent_review(board, home)
@@ -84,6 +79,14 @@ func _ready() -> void:
 		return
 	if "--detail-review" in OS.get_cmdline_user_args(): await _detail_review(board, home)
 	await _finish_capture()
+
+func _open_supply_view(view: Control) -> void:
+	await view.call("prepare")
+	Harness.prepare_window(get_window(), Vector2i(1920, 1080))
+	for i in 5: await get_tree().process_frame
+	view.call("toggle")
+	await get_tree().physics_frame
+	view.find_child("Board", true, false).call("fit_view")
 
 func _finish_capture() -> void:
 	# Background windows can stop rendering while process frames continue. Drain
@@ -252,24 +255,50 @@ func _exercise_pointer(board: Control) -> bool:
 	var before: Dictionary = board.call("capture_camera")
 	var event := InputEventMouseButton.new()
 	event.position = board.size * 0.5
-	event.button_index = MOUSE_BUTTON_RIGHT
+	event.button_index = MOUSE_BUTTON_MIDDLE
 	event.pressed = true
 	get_viewport().push_input(event, true)
 	var motion := InputEventMouseMotion.new()
 	motion.position = event.position + Vector2(100, -40)
 	motion.relative = Vector2(100, -40)
-	motion.button_mask = MOUSE_BUTTON_MASK_RIGHT
+	motion.button_mask = MOUSE_BUTTON_MASK_MIDDLE
 	get_viewport().push_input(motion, true)
 	event.pressed = false
 	event.position = motion.position
 	get_viewport().push_input(event, true)
 	await get_tree().process_frame
 	var after: Dictionary = board.call("capture_camera")
-	if is_equal_approx(before.yaw, after.yaw) or is_equal_approx(before.pitch, after.pitch):
+	if is_equal_approx(before.yaw, after.yaw) or is_equal_approx(before.pitch, after.pitch) or before.target != after.target:
 		push_error("GUI drag must orbit the 3D camera")
 		get_tree().quit(1)
 		return false
-	print("[3D] GUI right drag changed yaw and pitch")
+	print("[3D] GUI middle drag changed yaw and pitch without moving the pivot")
+	var zero := InputEventKey.new()
+	zero.keycode = KEY_0
+	zero.physical_keycode = KEY_0
+	zero.pressed = true
+	Input.parse_input_event(zero)
+	Input.flush_buffered_events()
+	var pan := InputEventPanGesture.new()
+	pan.position = board.size * 0.5
+	pan.delta = Vector2(3, 2)
+	get_viewport().push_input(pan, true)
+	var release := zero.duplicate() as InputEventKey
+	release.pressed = false
+	Input.parse_input_event(release)
+	Input.flush_buffered_events()
+	var orbit: Dictionary = board.call("capture_camera")
+	if is_equal_approx(orbit.yaw, after.yaw) or is_equal_approx(orbit.pitch, after.pitch) or orbit.target != after.target or orbit.span != after.span:
+		push_error("GUI 0 + trackpad pan must orbit without translating or zooming")
+		get_tree().quit(1)
+		return false
+	get_viewport().push_input(pan, true)
+	var moved: Dictionary = board.call("capture_camera")
+	if moved.target == orbit.target or moved.yaw != orbit.yaw or moved.pitch != orbit.pitch:
+		push_error("GUI trackpad pan must resume when 0 is released")
+		get_tree().quit(1)
+		return false
+	print("[3D] GUI 0 + trackpad changed yaw and pitch; releasing 0 restored pan")
 	var pinch := InputEventMagnifyGesture.new()
 	pinch.position = board.size * 0.5
 	pinch.factor = 1.15
