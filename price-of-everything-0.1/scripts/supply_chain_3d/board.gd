@@ -50,6 +50,13 @@ var _paper_owner: Node3D
 var _owned_center := Vector2.ZERO
 var _reveal_started := 0
 var reveal_profile := {"tiles":[]}
+const PlayerColours := preload("res://scripts/player_colours.gd")
+## Soot around a smoking stack: how far it reaches over the ground, and how much one stack adds.
+const SOOT_REACH := 450.0
+const SOOT_PER_STACK := 0.8
+const SMOG_COLOUR := Color(0.31, 0.28, 0.25, 0.17)
+const SMOG_SPREAD := 300.0
+const SMOG_SIZE := 280.0
 var animate_goods := true
 var _viewport: SubViewport
 var _camera: Camera3D
@@ -72,6 +79,7 @@ var _goods: Array = []
 var _last_graph: Dictionary = {}
 var _last_terrain: Node
 var _last_show: Dictionary = {}
+var _last_evening := false
 var _effects: Array = []
 var _labels: Control
 var _detail := -1
@@ -79,6 +87,10 @@ var _tokens := Tokens.new()
 var show_all_tiles := false
 var _last_all_tiles := false
 var _coverage: OptionButton
+## Session switch: evening lights every town, daylight lights only polluted tiles.
+static var evening := false
+var _light: OptionButton
+var _environment: Environment
 var _progress: Label
 var _fit_after_build := false
 var _medium_after_build := false
@@ -316,6 +328,8 @@ func _ready() -> void:
 	environment.environment.ambient_light_color = Color("d3e1f2")
 	environment.environment.ambient_light_energy = 0.45
 	environment.environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	_environment = environment.environment
+	_apply_light()
 	_world.add_child(environment)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-55, -30, 0)
@@ -349,6 +363,14 @@ func _ready() -> void:
 	_coverage.focus_mode = Control.FOCUS_NONE
 	_coverage.item_selected.connect(func(index: int) -> void: set_all_tiles(index == 1))
 	controls.add_child(_coverage)
+	_light = OptionButton.new()
+	_light.name = "Light"
+	_light.add_item("Daylight")
+	_light.add_item("Evening")
+	_light.selected = 1 if evening else 0
+	_light.focus_mode = Control.FOCUS_NONE
+	_light.item_selected.connect(func(index: int) -> void: set_evening(index == 1))
+	controls.add_child(_light)
 	_progress = Label.new()
 	_progress.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_progress.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
@@ -423,6 +445,33 @@ func set_graph(graph: Dictionary, terrain: Node) -> void:
 func build_async(graph: Dictionary, terrain: Node) -> void:
 	await _build(graph, terrain, true)
 
+func set_evening(value: bool) -> void:
+	if evening == value: return
+	evening = value
+	if _light != null: _light.selected = 1 if value else 0
+	_apply_light()
+	# The continent is the shipped daylight package, so there only the grade changes.
+	# The company scene relights now, or when the map returns to it.
+	if show_all_tiles or not is_instance_valid(_last_terrain): return
+	await _build(_last_graph, _last_terrain, true)
+
+## Evening is a per-channel curve after the tonemap: mid tones drop and cool, while the
+## brightest values (lit windows, lamp glows) keep their warmth.
+func _apply_light() -> void:
+	if _environment == null: return
+	_environment.adjustment_enabled = evening
+	if not evening:
+		_environment.adjustment_color_correction = null
+		return
+	var curve := Gradient.new()
+	curve.offsets = PackedFloat32Array([0.0, 0.25, 0.5, 0.75, 1.0])
+	curve.colors = PackedColorArray([Color(0.03, 0.035, 0.10), Color(0.14, 0.15, 0.25),
+		Color(0.34, 0.35, 0.45), Color(0.63, 0.61, 0.68), Color(1.0, 0.96, 0.92)])
+	var lut := GradientTexture1D.new()
+	lut.gradient = curve
+	lut.width = 256
+	_environment.adjustment_color_correction = lut
+
 func set_all_tiles(value: bool, _persist: bool = true) -> void:
 	_requested_all_tiles = value
 	if value:
@@ -446,7 +495,8 @@ func set_all_tiles(value: bool, _persist: bool = true) -> void:
 	if _coverage != null: _coverage.selected = 1 if value else 0
 	_fit_after_build = not value
 	_medium_after_build = value
-	if _coverage_states.has(value):
+	# A company scene built in the other light is rebuilt rather than reused.
+	if _coverage_states.has(value) and (value or _coverage_states[value].builder.evening == evening):
 		_activate(_coverage_states[value])
 	elif is_instance_valid(_last_terrain):
 		await _build(_last_graph, _last_terrain, true)
@@ -465,6 +515,8 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	next.name = "Company"
 	var builder := Builder.new()
 	builder.streamed = show_all_tiles
+	builder.evening = evening
+	RenderingServer.global_shader_parameter_set("sc3d_livery", PlayerColours.active_color())
 	builder.cursor_picking = true
 	builder.lazy_assets = true
 	builder.terrain_cache = _terrain_cache
@@ -545,7 +597,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	timings.model_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	stage = Time.get_ticks_usec()
 	if show_all_tiles: print("[CONTINENT BUILD] model ready ", Time.get_ticks_msec())
-	if model == _model and Legacy.show == _last_show and show_all_tiles == _last_all_tiles:
+	if model == _model and Legacy.show == _last_show and show_all_tiles == _last_all_tiles and evening == _last_evening:
 		_building = false
 		if _progress != null: _progress.hide()
 		next.free()
@@ -743,6 +795,7 @@ func _assemble(builder: RefCounted, model: Dictionary, generation: int, paced: b
 	if builder.backdrop_pending:
 		effects_parent.hide()
 		builder.pending_infrastructure.append(effects_parent)
+	_paint_soot(builder)
 	var effects := _build_effects(builder, effects_parent)
 	timings.scene_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	return {"content": next, "builder": builder, "model": model, "goods": goods, "effects": effects, "profile": timings}
@@ -802,6 +855,7 @@ func _activate(packet: Dictionary) -> void:
 	_detail = -1
 	_model = model
 	_last_show = Legacy.show.duplicate()
+	_last_evening = packet.builder.evening
 	_last_all_tiles = show_all_tiles
 	_goods = packet.goods
 	_effects = packet.effects
@@ -1708,6 +1762,30 @@ func _build_glows(builder: RefCounted, parent: Node3D, from_index: int = 0) -> v
 		parent.add_child(node)
 		builder.detail_nodes.append({"node": node, "minimum": 1})
 
+## A plan-space soot map from every smoking stack, read by the ground shader.
+func _paint_soot(builder: RefCounted) -> void:
+	var stacks: Array = builder.smoke if Legacy.show.pollution else []
+	RenderingServer.global_shader_parameter_set("sc3d_soot_on", 0.0 if stacks.is_empty() else 1.0)
+	if stacks.is_empty(): return
+	var box: AABB = builder.bounds
+	var cell := maxf(box.size.x, box.size.z) / 512.0
+	var size := Vector2i(maxi(1, ceili(box.size.x / cell)), maxi(1, ceili(box.size.z / cell)))
+	var field := PackedFloat32Array()
+	field.resize(size.x * size.y)
+	var reach := SOOT_REACH / cell
+	for stack in stacks:
+		var at := Vector2((stack.point.x - box.position.x) / cell, (stack.point.z - box.position.z) / cell)
+		for y in range(maxi(0, floori(at.y - reach)), mini(size.y, ceili(at.y + reach))):
+			for x in range(maxi(0, floori(at.x - reach)), mini(size.x, ceili(at.x + reach))):
+				var d := Vector2(x + 0.5, y + 0.5).distance_to(at) / reach
+				if d < 1.0: field[y * size.x + x] += SOOT_PER_STACK * (1.0 - d * d) * (1.0 - d * d)
+	var bytes := PackedByteArray()
+	bytes.resize(field.size())
+	for i in field.size(): bytes[i] = mini(255, int(field[i] * 255.0))
+	var image := Image.create_from_data(size.x, size.y, false, Image.FORMAT_L8, bytes)
+	RenderingServer.global_shader_parameter_set("sc3d_soot_map", ImageTexture.create_from_image(image))
+	RenderingServer.global_shader_parameter_set("sc3d_soot_rect", Vector4(box.position.x, box.position.z, size.x * cell, size.y * cell))
+
 func _build_effects(builder: RefCounted, parent: Node3D) -> Array:
 	_build_glows(builder, parent)
 	var cars: Array = []
@@ -1725,7 +1803,7 @@ func _build_effects(builder: RefCounted, parent: Node3D) -> Array:
 		puff.rings = 4
 		var material := StandardMaterial3D.new()
 		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		material.albedo_color = Color(0.62, 0.66, 0.7, 0.4)
+		material.albedo_color = Color(0.40, 0.38, 0.36, 0.55)
 		material.roughness = 1.0
 		puff.material = material
 		for stack in builder.smoke:
@@ -1740,13 +1818,47 @@ func _build_effects(builder: RefCounted, parent: Node3D) -> Array:
 			particles.initial_velocity_min = 8.0
 			particles.initial_velocity_max = 12.0
 			particles.gravity = Vector3(3, 0, 0)
-			particles.scale_amount_min = 6.0
-			particles.scale_amount_max = 12.0
+			particles.scale_amount_min = 8.0
+			particles.scale_amount_max = 17.0
 			var fade := Gradient.new()
 			fade.colors = PackedColorArray([Color(1, 1, 1, 0.55), Color(1, 1, 1, 0)])
 			particles.color_ramp = fade
 			parent.add_child(particles)
+		_build_smog(builder, parent)
 	return cars
+
+## A low brown pall hangs over every polluted tile, thicker with more polluters. Billboards
+## like the lamp glows: no realtime light, one shared material.
+func _build_smog(builder: RefCounted, parent: Node3D) -> void:
+	var haze := GradientTexture2D.new()
+	haze.width = 64
+	haze.height = 64
+	haze.fill = GradientTexture2D.FILL_RADIAL
+	haze.fill_from = Vector2(0.5, 0.5)
+	haze.fill_to = Vector2(1.0, 0.5)
+	haze.gradient = Gradient.new()
+	haze.gradient.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 0)])
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	material.albedo_texture = haze
+	material.albedo_color = SMOG_COLOUR
+	for tid in builder.tiles:
+		var polluters := int(builder.tiles[tid].get("polluters", 0))
+		if polluters <= 0: continue
+		var rng := RandomNumberGenerator.new()
+		rng.seed = hash(str(tid))
+		var centre: Vector2 = builder.tiles[tid].center
+		for i in 4 + 2 * mini(polluters, 6):
+			var at := centre + Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(0.0, SMOG_SPREAD)
+			var quad := QuadMesh.new()
+			var side := rng.randf_range(0.75, 1.25) * SMOG_SIZE
+			quad.size = Vector2(side, side * 0.6)
+			var node := Geo.instance(quad, material)
+			node.position = builder.point(at) + Vector3.UP * rng.randf_range(60.0, 100.0)
+			parent.add_child(node)
 
 func _update_cars() -> void:
 	if _builder == null: return

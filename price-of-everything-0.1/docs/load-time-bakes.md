@@ -1,5 +1,21 @@
 # Load time: what is baked, and when to re-bake it
 
+## Catalogue-look buildings — 18 October 2026
+
+The rebuilt assembly plant, high-tech manufactory and industrial factory changed
+size (span and dimensions), so four resources of the company-start supplement were
+stale: one scenery and three tile bakes. `bake_company_start` was run until settled
+and the four old resources were dropped. The continent package and world snapshot
+did not change: a fresh process has 107 bundled hits after streaming and no misses.
+Installed package: **1,841 resources, 959,392,302 bytes**, validated. A new Metal
+Magnate game opens with 36 bundled hits and zero misses or writes; Begin 21.3 s.
+
+The infrastructure key gains an `evening` entry only in the evening. Adding it to
+every build (as the first version did) changed every daylight key, and the continent
+then rebuilt its infrastructure at run time (72 s). The Evening switch therefore
+relights the company scene only; on the full map it changes the grade, and continent
+towns keep their daylight lights.
+
 ## Changed tiles only, company start settled — 17 October 2026
 
 No runtime path lays out or bakes the whole continent any more. Tiles that differ
