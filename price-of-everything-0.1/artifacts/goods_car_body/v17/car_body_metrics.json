@@ -1,0 +1,87 @@
+{
+  "revision": "car_body_v17",
+  "objects": 618,
+  "structural_hosts": [
+    "body_shell",
+    "bonnet",
+    "cab_shell"
+  ],
+  "topology": "the diesel car's Passat sedan as a bare painted body shell: hollow skin with a grey inside and a dark cavity, open window, screen, lamp and radiator apertures with return flanges, a firewall, slam panel and parcel shelf, the bonnet cut free, hinged at its rear corners and propped open on a stay; beside it a blue cab-over lorry cab shell, open windscreen, grille, lamps and door windows, steps, wheel arch and roof deflector",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 4
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shaded_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "thresholds": [
+          0.575,
+          0.5,
+          0.3
+        ]
+      }
+    ]
+  },
+  "dimensions": {
+    "skin": 0.035,
+    "flange": 0.05,
+    "cowl": 0.1,
+    "bonnet_open_deg": 65.0,
+    "hinge_x": 0.92,
+    "cavity_faces": 42697
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 5.20 x 5.95 x 3.50"
+  ],
+  "mesh_checks": {
+    "body_shell": {
+      "vertices": 92552,
+      "faces": 87519,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "bonnet": {
+      "vertices": 5252,
+      "faces": 4720,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "cab_shell": {
+      "vertices": 5242,
+      "faces": 4194,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 7.722,
+    "target": [
+      0.856,
+      0.824,
+      1.18
+    ]
+  }
+}
