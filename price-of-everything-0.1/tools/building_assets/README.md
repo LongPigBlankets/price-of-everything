@@ -440,3 +440,27 @@ To roll back an overwritten family, restore its `previous-installed` files and
 the previous manifest, then import headlessly. For a newly added family, remove
 only that family's added PNGs/GLBs/import sidecars and manifest entries. Do not
 restore an entire manifest over unrelated later work.
+
+## Furnace
+
+The game's furnace is the generic shaft-furnace works in `furnace_v2_builder.py`, which runs
+after `furnace_builder.py` and shares its palette and shed helpers. Its revisions are staged as
+`furnace_v2` and install as `furnace`, all three levels (`GAME_NAME` in `pipeline.py`). Sprites
+take the Paper WPA print in `furnace_paper.py`; `furnace_v2_fx.py` and
+`package_furnace_v2_fx.py` render and align the window and heat masks and the chimney anchors.
+Materials follow the catalogue factory's names so `export_models.py` writes the 3D print
+shader's pattern codes. Full install and bake commands are in
+`docs/reviews/furnace-v2-2026-10-16.md`.
+
+## Refineries and power plant
+
+The petrochemical and polymerisation refineries (`refinery_v2_builder.py`, families
+`petro_refinery_v2` and `poly_plant_v2`) and the power plant (`power_plant_v2_builder.py`,
+family `power_plant_v2`) follow the furnace: each runs after the builders before it and
+shares their helpers, takes the Paper WPA print, and installs under its game name. They
+remap the kit's process-plant roles for their own build only and cap its segment counts to
+keep triangles near the furnace's. `building_fx.py` and `package_building_fx.py` render and
+align their window and light masks and effect anchors (smoke, steam, fires, traced cables),
+configured per family in `FAMILIES`. Owner rulings, lessons and install records are in
+`docs/reviews/refinery-v2-2026-10-17.md` and `docs/reviews/power-plant-v2-2026-10-17.md`;
+the general lessons are in the `blender-building-sprites` skill.
