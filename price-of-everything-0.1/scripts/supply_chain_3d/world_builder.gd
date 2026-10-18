@@ -27,7 +27,8 @@ const RoadGrade := preload("res://scripts/supply_chain_3d/road_grade.gd")
 const RailUrban := preload("res://scripts/supply_chain_3d/rail_urban.gd")
 const RailDepot := preload("res://scripts/supply_chain_3d/rail_depot.gd")
 var road_grade := RoadGrade.new()
-var road_alignment := preload("res://scripts/supply_chain_3d/road_alignment_memo.gd").new()
+const AlignmentMemo := preload("res://scripts/supply_chain_3d/road_alignment_memo.gd")
+var road_alignment := AlignmentMemo.new()
 var rail_urban := RailUrban.new()
 var rail_plan := {}
 var sea_fringe := preload("res://scripts/supply_chain_3d/sea_fringe.gd").new()
@@ -188,6 +189,7 @@ func prepare_transport(model: Dictionary) -> void:
 		reused = hit
 	var stages := {"lookup_ms":(Time.get_ticks_usec()-start)/1000.0,"cache_hit":hit,"reused":reused}
 	# The company view's alignment input, for seeding the chain memo after a bake hit.
+	load_alignment_memo()
 	alignment_input = {} if streamed else {"roads": model.get("roads", []), "tiles": tiles, "standing": model.get("standing", []), "depots": depots, "signature": signature}
 	_alignment_seeder = null
 	if not hit:
@@ -198,7 +200,9 @@ func prepare_transport(model: Dictionary) -> void:
 		_prepare_alignment_memo(road_alignment)
 		roads=road_alignment.configure(model,formation_height,railway_level,open_water)
 		stages.chains_reused=road_alignment.memo_hits; stages.chains_solved=road_alignment.memo_misses
-		if not streamed: _seeded_alignment = signature
+		if not streamed:
+			_seeded_alignment = signature
+			save_alignment_memo()
 		if trace: print("[TRANSPORT STAGE] alignment ",Time.get_ticks_msec())
 		stages.alignment_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
 		preload("res://scripts/supply_chain_3d/port_approach.gd").grade(roads,model.get("port_approach",{}))
@@ -225,6 +229,26 @@ var alignment_input := {}
 var _presolved_key := {}
 var _alignment_seeder: RefCounted = null
 static var _seeded_alignment := ""
+static var _alignment_memo_loaded := ""
+
+## One persisted memo per map and alignment code. The runtime copy holds the bundled entries
+## plus this player's and is read first (bake_cache.gd), so seeding and new tiles solve each
+## road chain once per install rather than once per session.
+func alignment_memo_key() -> String:
+	return "alignment-" + BakeCache.digest([AlignmentMemo.FORMAT, BakeCache.source_key("roads"), BakeCache.source_key("terrain"),
+		ground.get("tiles"), ground.get("bands"), ground.get("lakes"), ground.get("rivers")])
+
+func load_alignment_memo() -> void:
+	if streamed: return
+	var key := alignment_memo_key()
+	if _alignment_memo_loaded == key: return
+	_alignment_memo_loaded = key
+	AlignmentMemo.import_entries(bake_cache.read(key).get("chains", {}))
+
+func save_alignment_memo() -> void:
+	if streamed or not AlignmentMemo.dirty: return
+	AlignmentMemo.dirty = false
+	bake_cache.write(alignment_memo_key(), {"chains": AlignmentMemo.entries()})
 
 func _prepare_alignment_memo(alignment: RefCounted) -> void:
 	alignment.memo_enabled = not streamed
@@ -244,6 +268,7 @@ func presolve_alignment(host: Node, model: Dictionary, alive: Callable) -> void:
 	var signature := BakeCache.digest([TransportBake.VERSION, model.get("roads",[]), model.get("lines",[]),
 		model.get("depots",[]), model.get("stations",[]), model.get("authored_region",{}).get("paths",[]), model.get("port_approach",{}), pits])
 	if _company_transport.get("signature", "") == signature or _seeded_alignment == signature: return
+	load_alignment_memo()
 	_presolved_key = {"model": model, "key": TransportBake.key_for(self, model)}
 	for root in [bake_cache.bundled_directory, bake_cache.directory]:
 		if FileAccess.file_exists(str(root).path_join(str(_presolved_key.key) + ".res")): return
@@ -257,6 +282,7 @@ func presolve_alignment(host: Node, model: Dictionary, alive: Callable) -> void:
 	while not seeder.seed_step(6000):
 		await host.get_tree().process_frame
 		if not alive.call(): return
+	save_alignment_memo()
 
 ## Solves this view's road chains into the memo a slice at a time, when its
 ## alignment came from a bake. Returns true when there is nothing left to do.
@@ -270,6 +296,7 @@ func seed_alignment_step(budget_usec: int) -> bool:
 	if not _alignment_seeder.seed_step(budget_usec): return false
 	_seeded_alignment = str(alignment_input.signature)
 	_alignment_seeder = null
+	save_alignment_memo()
 	return true
 
 func configure_bakes(model: Dictionary) -> void:
