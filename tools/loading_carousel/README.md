@@ -61,6 +61,39 @@ that underlying workload.
 
 ## Loading profile and proposed split (18 October 2026)
 
+### Corrected demo comparison
+
+The original profiler hardcoded the legacy `coal_baron` start without the demo menu's
+rules. That was not representative of the shipped Metal Magnate demo, whose initial
+world has a matching packaged snapshot. The 47.89s figure below must not be compared
+with a normal demo's roughly 20s startup or attributed to the new carousel.
+
+The probe now obtains the selected start and overrides from the actual New Game panel;
+`CAROUSEL_START` is an explicit optional override for other scenarios. A controlled
+comparison changed only `loading_screen.gd` between the pre-carousel version at
+`478043592` and the new version. Both fresh processes used the current game/building
+assets, High quality, Metal Magnate, Normal, the 100-turn demo timeline, and separate
+empty runtime-cache directories. Both reported the same viewport sequence (1280x720,
+then 3600x2260); the requested initial size was not maintained by the capture window.
+
+| Presentation | Time to Begin | 3D preparation | Worst frame |
+| --- | ---: | ---: | ---: |
+| Old video and intro plates | 17.950s | 4.831s | 4.536s |
+| New hex carousel | 17.241s | 4.556s | 4.562s |
+
+This pair shows no startup slowdown from the carousel; the small difference is not
+enough evidence to claim a repeatable speed improvement. Neither run recalculated
+the 13 company tiles seen in the legacy stress case. The old/new comparison is a
+time-to-Begin measurement: both probes subsequently hit existing background-resource
+teardown errors and exited 134, so it is not a clean-shutdown validation.
+
+Prioritise the common 4.5s stall, present under both screens, before treating the
+legacy scenario's 9s layout solve as the ordinary demo workload. Preserve the valid
+Metal Magnate package; investigate other exposed starts separately before deciding
+whether additional initial overlays need baking.
+
+### Legacy-start stress case (not the shipped demo benchmark)
+
 Measured on the local Apple M5 Pro, Godot 4.6.2 / Metal, fresh processes, the same
 `coal_baron` start, with telemetry disabled. The capture window resizes early from
 1280x720 to the saved 3600x2260; the standalone steady run starts after window settling.
@@ -135,7 +168,9 @@ requires keeping active SceneTree access out of workers. Its
 also warns that `load_threaded_get()` can block if called before completion. The proposed
 split follows those constraints; changing the rendering thread model alone is not a fix.
 
-Use `LOAD_PROF=1 CAROUSEL_PROFILE=1` with the probe for a real load; add `CAROUSEL_LOW=1`
+Use `LOAD_PROF=1 CAROUSEL_PROFILE=1` with the probe for the actual demo menu defaults;
+use `CAROUSEL_START=res://data/starts/coal_baron.json` to reproduce the legacy stress
+case (the original trace also omitted menu overrides). Add `CAROUSEL_LOW=1`
 for the in-memory Low override. `CAROUSEL_IDLE_PROFILE=1` measures the carousel after a
 3s warmup. Each writes `profile.json` beside its captures; long-frame records include
 absolute timestamps for correlation with the existing world/overlay trace.

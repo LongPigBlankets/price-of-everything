@@ -70,7 +70,25 @@ func _stills(screen: Node) -> void:
 func _real_load(screen: Node) -> void:
 	if OS.get_environment("CAROUSEL_LOW") != "":
 		PlayerProfile.graphics_quality = PlayerProfile.QUALITY_LOW  # this probe only; never saved
-	SaveLoad.prepare_new_game("res://data/starts/coal_baron.json")
+	# Use the shipped New Game panel's selected start and rules, rather than a legacy start.
+	var panel: Control = preload("res://scripts/new_game_panel.gd").new()
+	add_child(panel)
+	var selection: Dictionary = {}
+	panel.start_requested.connect(func(path: String, overrides: Dictionary) -> void:
+		selection.path = path
+		selection.overrides = overrides.duplicate(true))
+	panel.call("_on_start_pressed")
+	panel.queue_free()
+	var start: String = OS.get_environment("CAROUSEL_START")
+	if start.is_empty():
+		start = selection.path
+	var overrides: Dictionary = selection.overrides
+	overrides.erase("telemetry_opt_in")
+	if start != selection.path:
+		overrides.ruleset.start_id = start.get_file().get_basename()
+	SaveLoad.prepare_new_game(start, overrides)
+	print("CAROUSEL setup ", JSON.stringify({"start": start, "overrides": overrides,
+		"quality": PlayerProfile.graphics_quality, "window": [get_window().size.x,get_window().size.y]}))
 	# Retain this probe across the scene change, just as the loading layer is retained.
 	get_tree().current_scene = null
 	var started := Time.get_ticks_msec()
