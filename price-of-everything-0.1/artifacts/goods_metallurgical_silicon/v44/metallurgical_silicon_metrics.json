@@ -1,0 +1,98 @@
+{
+  "revision": "metallurgical_silicon_v44",
+  "objects": 399,
+  "structural_hosts": [
+    "silicon_log",
+    "end_fracture_floor"
+  ],
+  "topology": "Metallurgical silicon: a rough cast log of flat polygonal grain facets, dark and mid blue-grey with pale, mirror-bright and tan ones, its near end a radial fan of facets",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 4
+    },
+    "min_fragment_px": 24,
+    "id_step": 16,
+    "component_weight_by_label": {
+      "2": 2.0,
+      "3": 2.0,
+      "4": 2.0,
+      "5": 2.0,
+      "6": 2.0,
+      "7": 2.0,
+      "8": 2.0,
+      "9": 2.0,
+      "10": 2.0,
+      "11": 2.0,
+      "12": 2.0,
+      "13": 2.0,
+      "14": 2.0,
+      "15": 2.0
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.34,
+    "groups": [
+      {
+        "name": "shaded_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "thresholds": [
+          0.575,
+          0.5,
+          0.3
+        ]
+      }
+    ]
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 1.34 x 2.52 x 1.34"
+  ],
+  "mesh_checks": {
+    "silicon_log": {
+      "vertices": 434,
+      "faces": 223,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "end_fracture_floor": {
+      "vertices": 192,
+      "faces": 98,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 2.547,
+    "target": [
+      0.261,
+      -0.114,
+      0.934
+    ]
+  }
+}
