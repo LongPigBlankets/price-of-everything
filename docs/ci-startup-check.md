@@ -5,6 +5,17 @@
 the production `Linux` release export preset. Checkout includes Git LFS assets.
 Engine downloads and Actions are pinned; the job has read-only repository access.
 
+CI ignores the workbench `artifacts`, `docs`, `reports`, `tests` and `tools`
+folders during import; all are already excluded by the release presets. Imported
+resources are cached by engine version and asset/configuration content. Godot's
+import validation still runs after every restore; the UID and script class caches
+are generated fresh. Autoloads use explicit script paths so a cold clone does not
+need an existing UID cache just to start the import.
+
+The first cold import compresses thousands of Basis textures and can take tens of
+minutes. Later runs can reuse the import cache. Import, export and runtime are
+separate steps with bounded timeouts and retained diagnostics.
+
 The single smoke check boots the exported executable twice, using disposable
 data next to a copied binary and a separate working directory outside the source
 tree. The first launch must show the EULA without accepting it. The second uses
