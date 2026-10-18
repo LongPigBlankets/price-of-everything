@@ -16,6 +16,11 @@ OUT.mkdir(parents=True, exist_ok=True)
 # (BLENDED materials with Alpha < 1) go to a second 'Glass' slot and keep their real alpha.
 PATTERNS = {'white_wall': 2, 'chalk': 2, 'ht_white': 2, 'deck': 3, 'membrane': 3, 'apron': 4, 'pad': 4, 'cream': 4,
             'roof_metal': 5}
+def material_alpha(mat):
+    """The face's opacity: below 1 only for BLENDED materials, which export as 'Glass'."""
+    if not mat or not mat.use_nodes or getattr(mat, 'surface_render_method', '') != 'BLENDED': return 1.0
+    bsdf = next((n for n in mat.node_tree.nodes if n.type=='BSDF_PRINCIPLED'),None)
+    return min(1.0, float(bsdf.inputs['Alpha'].default_value)) if bsdf else 1.0
 def pattern_code(material_name):
     base = material_name.split('.')[0]
     if 'brick' in base: return 1
@@ -238,7 +243,9 @@ for name, spec in specs.items():
                     token = tuple(round(c, 5) for c in v.co)
                     contour_normals.append(tuple((normal_matrix @ sums[token]).normalized()))
                     contour_widths.append(radius)
-                contour_faces.extend(tuple(start + vi for vi in tri.vertices) for tri in me.loop_triangles)
+                # Glass gets no shell: seen through the pane, its inner faces read as a solid sheet.
+                contour_faces.extend(tuple(start + vi for vi in tri.vertices) for tri in me.loop_triangles
+                    if material_alpha(me.materials[tri.material_index] if tri.material_index < len(me.materials) else None) >= 0.999)
             normal_matrix = ob.matrix_world.to_3x3().inverted().transposed()
             for tri in me.loop_triangles:
                 indices = list(tri.vertices)
@@ -262,8 +269,7 @@ for name, spec in specs.items():
                             if bsdf.inputs['Emission Strength'].default_value > 0:
                                 # The kit's furnace embers and navy seam beads are emissive.
                                 colour = tuple(bsdf.inputs['Emission Color'].default_value)
-                            if getattr(mat, 'surface_render_method', '') == 'BLENDED':
-                                alpha = min(alpha, float(bsdf.inputs['Alpha'].default_value))
+                    alpha = material_alpha(mat)
                 glass = alpha < 0.999
                 code = 0 if glass or not mat else pattern_code(mat.name)
                 # The fifth value marks a see-through face; only RGBA reaches the mesh.
