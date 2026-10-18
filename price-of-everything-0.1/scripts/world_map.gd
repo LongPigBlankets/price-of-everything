@@ -564,8 +564,9 @@ func finish_build(animate: bool) -> void:
 	await _warm_deferred_ui()
 	# A coroutine still performs synchronous work between yields. Finish the
 	# packaged supply view before offering Begin, so its remaining uploads cannot
-	# freeze the camera after the player starts moving around.
-	if _loading_screen_active() and empire_view != null:
+	# freeze the camera after the player starts moving around. The Low quality preset skips
+	# it: the view is built the first time it opens.
+	if _loading_screen_active() and empire_view != null and not PlayerProfile.is_low_quality():
 		await empire_view.prepare()
 		_prof("supply-chain preparation")
 	build_complete = true   # the loading screen may now offer "Begin"

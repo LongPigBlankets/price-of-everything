@@ -33,6 +33,8 @@ func _until(condition: Callable, limit_ms: int) -> Dictionary:
 func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--trial-output="): output = arg.trim_prefix("--trial-output=")
+		# The quality preset for this run only; the saved profile is not touched.
+		if arg.begins_with("--quality="): PlayerProfile.graphics_quality = arg.trim_prefix("--quality=")
 	Harness.prepare_window(get_window(), Vector2i(1920, 1080))
 	Harness.arm_watchdog(self, 1200.0)
 	TelemetryState.enabled = false
@@ -65,6 +67,9 @@ func _ready() -> void:
 	loading.call("_on_begin_pressed")
 	while is_instance_valid(loading): await get_tree().process_frame
 	_mark("map_playable")
+	marks.quality = PlayerProfile.graphics_quality
+	for i in 30: await get_tree().process_frame
+	marks.gpu_MiB_on_map = snappedf(RenderingServer.get_rendering_device().get_memory_usage(RenderingDevice.MEMORY_TOTAL) / 1048576.0, 1)
 	MatchState.ruleset["opener_done"] = true
 	Tutorial._on_overlay_skipped()
 	DecisionState.enabled = false
