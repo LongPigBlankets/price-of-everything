@@ -175,7 +175,16 @@ static func texture_for(tile_id: String, layer: String, tier: String = Layout.TI
 			_wanted[path] = true
 			return null
 	var _lpt := Time.get_ticks_usec()
-	var texture: Texture2D = load(path)
+	# A worker-thread request for this path (warm_async) must be COLLECTED, not shadowed by a
+	# second load: an uncollected request keeps its texture alive for the rest of the session,
+	# and then trim() can never release it.
+	var texture: Texture2D = null
+	if _pending.has(path):
+		_pending.erase(path)
+		_wanted.erase(path)
+		texture = ResourceLoader.load_threaded_get(path) as Texture2D
+	if texture == null:
+		texture = load(path)
 	_lp_load_us += Time.get_ticks_usec() - _lpt
 	_lp_load_n += 1
 	if _lp_load_n % 25 == 0 and OS.get_environment("LOAD_PROF") != "":
@@ -354,6 +363,22 @@ static func trim(keep_tile_ids: Dictionary) -> void:
 			_textures.erase(path)
 
 
+## Drop every resident texture while nothing draws the map (a full-screen view covers it).
+## Requests that have already landed are collected and dropped too; an uncollected request
+## would keep its texture alive. Requests still loading stay pending and are collected
+## normally once the map streams again. Returns how many textures were let go.
+static func release() -> int:
+	var released := _textures.size()
+	_textures.clear()
+	for path in _pending.keys():
+		if ResourceLoader.load_threaded_get_status(path) == ResourceLoader.THREAD_LOAD_LOADED:
+			ResourceLoader.load_threaded_get(path)
+			_pending.erase(path)
+			_wanted.erase(path)
+			released += 1
+	return released
+
+
 ## Preload the textures for a set of tiles — the loading screen calls this for the tiles the
 ## opening camera will see, so the first frame of play is not a burst of disk reads.
 ## Ask the worker threads to read these tiles NOW, and return immediately.
@@ -375,8 +400,9 @@ static func warm_async(tile_ids: Array, layers: Array = ["fabric", "roads"]) -> 
 			continue
 		for layer in layers:
 			var path := str((entry_layers as Dictionary).get(str(layer), ""))
-			if path != "" and not _textures.has(path) and ResourceLoader.exists(path):
+			if path != "" and not _textures.has(path) and not _pending.has(path) and ResourceLoader.exists(path):
 				ResourceLoader.load_threaded_request(path)
+				_pending[path] = true
 
 
 static func warm(tile_ids: Array, layers: Array = ["fabric", "roads"]) -> int:

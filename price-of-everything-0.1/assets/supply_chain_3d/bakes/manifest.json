@@ -34,12 +34,13 @@
 		"tile-4c9f781e30c4dce6063d303e9baef883c89dd1444efc7a93bcfeac0ef38a9a64",
 		"tile-88f972c18e37766f3d58cb055f282d274eadbb76814093c75e21a678fe18322e",
 		"tile-aa226919ef39bb53f13dade4ec0dea9f4cb51e5260fb55288901591252dd7ac5",
-		"tile-fbc72174ad518a7ec8cef0e7270731914a0315a7016055731227950ec896e41d"
+		"tile-fbc72174ad518a7ec8cef0e7270731914a0315a7016055731227950ec896e41d",
+		"alignment-c2af259d9265772be327cd5afc6264f629c5cd2938271a1042336f891070f3e4"
 	],
 	"binary_values_version": 1.0,
 	"compact_surface_version": 2.0,
 	"company_start": {
-		"resource_count": 35,
+		"resource_count": 36.0,
 		"tiles": [
 			"tile_6_8",
 			"tile_7_10",
@@ -62,6 +63,10 @@
 	],
 	"render_fingerprint": "08d029ba393dde8226c3e1d39367dd2b4825d65ef05faf28d1e998b734c43faf",
 	"resources": {
+		"alignment-c2af259d9265772be327cd5afc6264f629c5cd2938271a1042336f891070f3e4": {
+			"bytes": 36903,
+			"sha256": "33b3ccd97d9ad8c1da03c8028de0345b8d3ad76c0aeacdbe68f9e6b70bed0081"
+		},
 		"base-tile-00393282a0be04bbd107a8aec15283241744f0707a678412064fd1b91d4af235": {
 			"bytes": 287717.0,
 			"sha256": "3d00353212f0cf352f5756ad712f59a3e7aa8e4f00b538d3c6591a44d6ba0d00"
@@ -7433,6 +7438,10 @@
 	"storage": "zstd",
 	"storage_blocks": {
 		"resources": {
+			"alignment-c2af259d9265772be327cd5afc6264f629c5cd2938271a1042336f891070f3e4": {
+				"block_bytes": 1048576,
+				"sha256": "33b3ccd97d9ad8c1da03c8028de0345b8d3ad76c0aeacdbe68f9e6b70bed0081"
+			},
 			"base-tile-00393282a0be04bbd107a8aec15283241744f0707a678412064fd1b91d4af235": {
 				"block_bytes": 1048576.0,
 				"sha256": "3d00353212f0cf352f5756ad712f59a3e7aa8e4f00b538d3c6591a44d6ba0d00"

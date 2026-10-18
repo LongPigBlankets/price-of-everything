@@ -46,7 +46,7 @@ static func is_raw(path: String) -> bool:
 	return storage_format(path) == "raw"
 
 static func binary_values_for(key: String) -> bool:
-	return key.begins_with("transport-") or key.begins_with("scenery-") or key.begins_with("world-snapshot-")
+	return key.begins_with("transport-") or key.begins_with("scenery-") or key.begins_with("world-snapshot-") or key.begins_with("alignment-")
 
 static func storage_format(path: String) -> String:
 	var file := FileAccess.open(path, FileAccess.READ)
@@ -132,7 +132,9 @@ func read(key: String) -> Dictionary:
 	if key.begins_with("layout-") and _layout_memo.get("key", "") == key and _layout_memo.get("directory", "") == directory:
 		hits += 1
 		return _layout_memo.data
-	var roots: Array = [directory, bundled_directory] if key.begins_with("layout-") else [bundled_directory, directory]
+	# The road alignment memo (road_alignment_memo.gd) grows the same way.
+	var growing := key.begins_with("layout-") or key.begins_with("alignment-")
+	var roots: Array = [directory, bundled_directory] if growing else [bundled_directory, directory]
 	for root in roots:
 		var path: String = root.path_join(key + ".res")
 		if not FileAccess.file_exists(path): continue

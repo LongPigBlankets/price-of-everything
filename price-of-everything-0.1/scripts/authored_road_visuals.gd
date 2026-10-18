@@ -69,6 +69,16 @@ func _on_tile_infrastructure_changed(_tile_id: String, _infra_type: String) -> v
 	queue_redraw()
 
 
+## While a full-screen view covers the map its streamed tiles are let go (AuthoredBake.release);
+## the recorded draw commands name them, so they are cleared and the layer repaints on restore.
+func release_images() -> void:
+	RenderingServer.canvas_item_clear(get_canvas_item())
+
+
+func restore_images() -> void:
+	queue_redraw()
+
+
 func _draw() -> void:
 	var _lpd := Time.get_ticks_usec()
 	_lp_draw_inner()

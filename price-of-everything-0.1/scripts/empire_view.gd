@@ -28,6 +28,7 @@ const EmpireLayout := preload("res://scripts/empire_layout.gd")
 const GraphWorldScript := preload("res://scripts/empire_graph_world.gd")
 const HexBgScript := preload("res://scripts/empire_hex_bg.gd")
 const BoardScript := preload("res://scripts/supply_chain_3d/board.gd")
+const MapImages := preload("res://scripts/map_image_residency.gd")
 
 var _map_camera: Node = null                   # the map Camera2D (group "camera"); gated while we own the screen
 var _hidden_layers: Array[CanvasItem] = []     # world layers hidden on enter, restored on leave
@@ -49,6 +50,9 @@ var _bg: Control                               # the animated hex-field backgrou
 ## screen once the world is built, and again in the background whenever what they show changes, so
 ## the view opens at once on finished pictures. Fresh while they match the sim as it stands.
 var _fresh := false
+## The covered map's pictures: a release is pending (stamp) or done (released).
+var _map_release_stamp := 0
+var _map_released := false
 var _refresh_queued := false
 var _preparing := false
 var _changes := 0                              # changes seen in the sim, to tell a build that missed one
@@ -346,6 +350,7 @@ func _enter() -> void:
 	TelemetryState.track_interaction("supply_chain_opened", "supply_chain")
 	move_to_front()
 	_hide_world()
+	_schedule_map_release()
 	_set_camera_blocked(true)
 	_board.open_at_map_camera()
 	PanelStack.push(self)
@@ -385,8 +390,29 @@ func _rebuild_graph() -> void:
 		_graph_world.restore_camera(camera)
 
 
+## The map underneath stays ready to show for MapImages.WARM_MSEC, then its large pictures are
+## let go until the view closes.
+func _schedule_map_release() -> void:
+	_map_release_stamp += 1
+	var stamp := _map_release_stamp
+	await get_tree().create_timer(MapImages.WARM_MSEC / 1000.0).timeout
+	if stamp != _map_release_stamp or not visible or not is_inside_tree():
+		return
+	_map_released = true
+	MapImages.release(get_tree().current_scene)
+
+
+func _restore_map_images() -> void:
+	_map_release_stamp += 1
+	if not _map_released:
+		return
+	_map_released = false
+	MapImages.restore(get_tree().current_scene)
+
+
 func _leave() -> void:
 	_show_world()
+	_restore_map_images()
 	_set_camera_blocked(false)
 	PanelStack.remove(self)
 
