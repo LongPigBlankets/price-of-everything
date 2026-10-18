@@ -449,7 +449,8 @@ func _hold_until_baked() -> void:
 ## never by rebuilding it.
 const LIVE_SHOW_KEYS := ["names", "goods", "pollution"]
 ## Switches that change what the scene is built from. The whole map is the shipped bake
-## and never rebuilt at runtime, so these are fixed while all tiles are shown.
+## and never rebuilt at runtime, so these are hidden while all tiles are shown. The flat
+## view of the Low preset never draws decorative buildings or trees.
 const CONTENT_SHOW_KEYS := ["decor", "trees", "roads", "rails", "pipes", "reinf_pipes", "cables"]
 var _visibility_menu: Control
 
@@ -470,9 +471,10 @@ func _apply_live_show() -> void:
 		for particles in root.find_children("*", "CPUParticles3D", true, false):
 			(particles as CPUParticles3D).emitting = Legacy.show.pollution
 
-func _lock_content_switches() -> void:
-	if _visibility_menu != null:
-		_visibility_menu.call("set_locked", CONTENT_SHOW_KEYS, show_all_tiles, "Fixed while all tiles are shown.")
+func _hide_fixed_switches() -> void:
+	if _visibility_menu == null: return
+	for key in CONTENT_SHOW_KEYS:
+		_visibility_menu.call("set_hidden", [key], show_all_tiles or (built_flat() and key in ["decor", "trees"]))
 
 func set_graph(graph: Dictionary, terrain: Node) -> void:
 	_build(graph, terrain, false)
@@ -907,7 +909,7 @@ func _activate(packet: Dictionary) -> void:
 	_goods = packet.goods
 	_effects = packet.effects
 	_apply_live_show()
-	_lock_content_switches()
+	_hide_fixed_switches()
 	_building = false
 	if _progress != null: _progress.hide()
 	if has_content():

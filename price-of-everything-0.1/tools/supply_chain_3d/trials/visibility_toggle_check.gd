@@ -60,7 +60,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	report.toggled = await _settle(board, 600000)
 	report.after = _state(board)
 	report.rebuilt = board.load_profile != profile_before
-	report.locked = bool(visibility.get("_boxes").get(toggle).disabled) if visibility.get("_boxes").has(toggle) else false
+	report.row_hidden = not bool(visibility.get("_boxes").get(toggle).visible) if visibility.get("_boxes").has(toggle) else false
 	board._viewport.get_texture().get_image().save_png(output.path_join("%s_after.png" % report.quality))
 	print("[VISIBILITY TOGGLE] ", JSON.stringify(report))
 	FileAccess.open(output.path_join("toggle_%s.json" % report.quality), FileAccess.WRITE).store_string(JSON.stringify(report, "\t"))

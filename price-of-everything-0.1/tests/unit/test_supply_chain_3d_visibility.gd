@@ -13,15 +13,14 @@ func _test_visibility_switches_are_classified() -> void:
 	_check(rows == classified, "supply chain visibility: every tickbox is a live switch or a content switch %s" % [rows])
 	_check(Board.LIVE_SHOW_KEYS.has("names"), "supply chain visibility: tile names are drawn over the scene, never rebuilt")
 
-func _test_visibility_rows_lock_with_a_reason() -> void:
+func _test_visibility_rows_hide_when_fixed() -> void:
 	var menu: Control = Visibility.new()
 	add_child(menu)
 	menu.setup({"decor": true, "names": true})
-	menu.set_locked(["decor"], true, "Fixed while all tiles are shown.")
+	menu.set_hidden(["decor"], true)
 	var decor: Button = menu.get("_boxes")["decor"]
 	var names: Button = menu.get("_boxes")["names"]
-	_check(decor.disabled and decor.tooltip_text == "Fixed while all tiles are shown." and not names.disabled,
-		"supply chain visibility: a locked row cannot be ticked and says why; other rows stay live")
-	menu.set_locked(["decor"], false)
-	_check(not decor.disabled and decor.tooltip_text == "", "supply chain visibility: an unlocked row is live again")
+	_check(not decor.visible and names.visible, "supply chain visibility: a row that cannot be changed is left out; other rows stay")
+	menu.set_hidden(["decor"], false)
+	_check(decor.visible, "supply chain visibility: the row returns when it can be changed again")
 	menu.queue_free()

@@ -143,15 +143,11 @@ func setup(state: Dictionary) -> void:
 	_place()
 
 
-## Rows that cannot be changed for now: shown dimmed, with the reason on hover.
-func set_locked(keys: Array, locked: bool, reason: String = "") -> void:
+## Rows that cannot be changed on the view as it stands are left out of the plate.
+func set_hidden(keys: Array, hidden: bool) -> void:
 	for id in keys:
 		var tick: Button = _boxes.get(id)
-		if tick == null: continue
-		tick.disabled = locked
-		tick.modulate.a = 0.45 if locked else 1.0
-		tick.tooltip_text = reason if locked else ""
-		tick.mouse_default_cursor_shape = Control.CURSOR_ARROW if locked else Control.CURSOR_POINTING_HAND
+		if tick != null: tick.visible = not hidden
 
 
 func set_open(open: bool) -> void:
