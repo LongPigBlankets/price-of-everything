@@ -27,7 +27,8 @@ const RoadGrade := preload("res://scripts/supply_chain_3d/road_grade.gd")
 const RailUrban := preload("res://scripts/supply_chain_3d/rail_urban.gd")
 const RailDepot := preload("res://scripts/supply_chain_3d/rail_depot.gd")
 var road_grade := RoadGrade.new()
-var road_alignment := preload("res://scripts/supply_chain_3d/road_alignment_memo.gd").new()
+const AlignmentMemo := preload("res://scripts/supply_chain_3d/road_alignment_memo.gd")
+var road_alignment := AlignmentMemo.new()
 var rail_urban := RailUrban.new()
 var rail_plan := {}
 var sea_fringe := preload("res://scripts/supply_chain_3d/sea_fringe.gd").new()
@@ -99,6 +100,12 @@ var greenery_audit := {}
 var road_surface := RoadSurface.new()
 var pits: Dictionary = {}
 var streamed := false
+## The Low quality preset (PlayerProfile): the company on flat ground, painted with the map's
+## relief colours, with its own buildings and works only. Same layout and positions as the
+## 3D view; no relief, trees, decorative housing or distant sprite sheets. Flat builds key
+## every bake apart from the 3D view's.
+var flat := false
+const FLAT_HEIGHT := 12.0
 const BASE_RESIDENT_TILES := 96
 var local_tiles: Dictionary = {}
 var residency := Residency.new()
@@ -171,24 +178,37 @@ func prepare_transport(model: Dictionary) -> void:
 	var trace := "--trace-transport" in OS.get_cmdline_user_args()
 	if trace: print("[TRANSPORT STAGE] begin roads=",model.get("roads",[]).size()," ",Time.get_ticks_msec())
 	roads=model.get("roads",[]); lines=model.get("lines",[]); depots=model.get("depots",[]); stations=model.get("stations",[]); neighbourhood=model.get("neighbourhood",{})
+	if flat:
+		# Depots and stations carry the height the layout gave them. Flat copies, so the
+		# shared shipped world keeps its own.
+		depots = depots.map(func(d: Dictionary) -> Dictionary:
+			var copy := d.duplicate()
+			copy.height = FLAT_HEIGHT
+			return copy)
+		stations = stations.map(func(d: Dictionary) -> Dictionary:
+			var copy := d.duplicate()
+			copy.height = FLAT_HEIGHT
+			return copy)
 	_index_rivers()
 	var presolved: Dictionary = _presolved_key
 	_presolved_key = {}
 	transport_key=str(presolved.key) if not presolved.is_empty() and is_same(presolved.model, model) else TransportBake.key_for(self,model)
+	if flat: transport_key = "transport-" + BakeCache.digest([transport_key, "flat"])
 	if trace: print("[TRANSPORT STAGE] key ",Time.get_ticks_msec())
 	var cached := bake_cache.read(transport_key)
 	var hit := TransportBake.restore(self,cached)
 	# The company view's roads only change with its tiles. A building change
 	# alone reuses this session's last solve of the same roads.
 	var signature := "" if streamed else BakeCache.digest([TransportBake.VERSION, model.get("roads",[]), model.get("lines",[]),
-		model.get("depots",[]), model.get("stations",[]), model.get("authored_region",{}).get("paths",[]), model.get("port_approach",{}), pits])
+		model.get("depots",[]), model.get("stations",[]), model.get("authored_region",{}).get("paths",[]), model.get("port_approach",{}), pits, flat])
 	var reused := false
 	if not hit and signature != "" and _company_transport.get("signature", "") == signature:
 		hit = TransportBake.restore(self, bake_cache.read(str(_company_transport.key)))
 		reused = hit
 	var stages := {"lookup_ms":(Time.get_ticks_usec()-start)/1000.0,"cache_hit":hit,"reused":reused}
 	# The company view's alignment input, for seeding the chain memo after a bake hit.
-	alignment_input = {} if streamed else {"roads": model.get("roads", []), "tiles": tiles, "standing": model.get("standing", []), "depots": depots, "signature": signature}
+	load_alignment_memo()
+	alignment_input = {} if streamed or flat else {"roads": model.get("roads", []), "tiles": tiles, "standing": model.get("standing", []), "depots": depots, "signature": signature}
 	_alignment_seeder = null
 	if not hit:
 		var tick := Time.get_ticks_usec()
@@ -196,9 +216,11 @@ func prepare_transport(model: Dictionary) -> void:
 		if trace: print("[TRANSPORT STAGE] authored ",Time.get_ticks_msec())
 		stages.authored_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
 		_prepare_alignment_memo(road_alignment)
-		roads=road_alignment.configure(model,formation_height,railway_level,open_water)
+		roads=road_alignment.configure(_flat_alignment_input(model) if flat else model,formation_height,railway_level,open_water)
 		stages.chains_reused=road_alignment.memo_hits; stages.chains_solved=road_alignment.memo_misses
-		if not streamed: _seeded_alignment = signature
+		if not streamed:
+			_seeded_alignment = signature
+			save_alignment_memo()
 		if trace: print("[TRANSPORT STAGE] alignment ",Time.get_ticks_msec())
 		stages.alignment_ms=(Time.get_ticks_usec()-tick)/1000.0; tick=Time.get_ticks_usec()
 		preload("res://scripts/supply_chain_3d/port_approach.gd").grade(roads,model.get("port_approach",{}))
@@ -219,15 +241,47 @@ func prepare_transport(model: Dictionary) -> void:
 	transport_profile=stages
 	print("[TRANSPORT] ",JSON.stringify(stages))
 
+## Shipped roads carry the 3D view's engineering: graded heights, tunnels, switchbacks. A
+## flat build aligns plain copies instead, so every road lies on the flat ground.
+const RELIEF_ROAD_FIELDS := ["road_ha", "road_hb", "tunnel", "tunnel_a", "tunnel_b", "serpentine"]
+
+func _flat_alignment_input(model: Dictionary) -> Dictionary:
+	var plain: Array = model.get("roads", []).map(func(road: Dictionary) -> Dictionary:
+		var copy := road.duplicate()
+		for field in RELIEF_ROAD_FIELDS: copy.erase(field)
+		return copy)
+	return {"roads": plain, "tiles": model.get("tiles", {}), "standing": model.get("standing", []), "depots": depots}
+
 ## Alignment memo (road_alignment_memo.gd): company view only. The continent
 ## solves every chain once, offline.
 var alignment_input := {}
 var _presolved_key := {}
 var _alignment_seeder: RefCounted = null
 static var _seeded_alignment := ""
+static var _alignment_memo_loaded := ""
+
+## One persisted memo per map and alignment code. The runtime copy holds the bundled entries
+## plus this player's and is read first (bake_cache.gd), so seeding and new tiles solve each
+## road chain once per install rather than once per session.
+func alignment_memo_key() -> String:
+	return "alignment-" + BakeCache.digest([AlignmentMemo.FORMAT, BakeCache.source_key("roads"), BakeCache.source_key("terrain"),
+		ground.get("tiles"), ground.get("bands"), ground.get("lakes"), ground.get("rivers")])
+
+func load_alignment_memo() -> void:
+	if streamed or flat: return
+	var key := alignment_memo_key()
+	if _alignment_memo_loaded == key: return
+	_alignment_memo_loaded = key
+	AlignmentMemo.import_entries(bake_cache.read(key).get("chains", {}))
+
+func save_alignment_memo() -> void:
+	if streamed or flat or not AlignmentMemo.dirty: return
+	AlignmentMemo.dirty = false
+	bake_cache.write(alignment_memo_key(), {"chains": AlignmentMemo.entries()})
 
 func _prepare_alignment_memo(alignment: RefCounted) -> void:
-	alignment.memo_enabled = not streamed
+	# The memo's keys leave heights out: flat solves must never enter it.
+	alignment.memo_enabled = not streamed and not flat
 	alignment.memo_pits = pits.values()
 	alignment.memo_depots = depots
 	alignment.memo_hits = 0
@@ -240,10 +294,11 @@ func alignment_seeded() -> bool:
 ## chains into the memo, one slice per frame, so prepare_transport() then only
 ## reads the memo. Chains the change cannot reach are already there.
 func presolve_alignment(host: Node, model: Dictionary, alive: Callable) -> void:
-	if streamed: return
+	if streamed or flat: return
 	var signature := BakeCache.digest([TransportBake.VERSION, model.get("roads",[]), model.get("lines",[]),
 		model.get("depots",[]), model.get("stations",[]), model.get("authored_region",{}).get("paths",[]), model.get("port_approach",{}), pits])
 	if _company_transport.get("signature", "") == signature or _seeded_alignment == signature: return
+	load_alignment_memo()
 	_presolved_key = {"model": model, "key": TransportBake.key_for(self, model)}
 	for root in [bake_cache.bundled_directory, bake_cache.directory]:
 		if FileAccess.file_exists(str(root).path_join(str(_presolved_key.key) + ".res")): return
@@ -257,6 +312,7 @@ func presolve_alignment(host: Node, model: Dictionary, alive: Callable) -> void:
 	while not seeder.seed_step(6000):
 		await host.get_tree().process_frame
 		if not alive.call(): return
+	save_alignment_memo()
 
 ## Solves this view's road chains into the memo a slice at a time, when its
 ## alignment came from a bake. Returns true when there is nothing left to do.
@@ -270,6 +326,7 @@ func seed_alignment_step(budget_usec: int) -> bool:
 	if not _alignment_seeder.seed_step(budget_usec): return false
 	_seeded_alignment = str(alignment_input.signature)
 	_alignment_seeder = null
+	save_alignment_memo()
 	return true
 
 func configure_bakes(model: Dictionary) -> void:
@@ -277,14 +334,15 @@ func configure_bakes(model: Dictionary) -> void:
 	# Hash actual geography, never an instance ID: this survives a fresh process.
 	_map_key = BakeCache.digest([BakeCache.source_key("terrain"), ground.get("tiles"), ground.get("bands"),
 		ground.get("lakes"), ground.get("rivers"), MapStyle.band_colors(), MapStyle.sea_colors(),
-		model.get("roads",[]),model.get("lines",[]),model.get("depots",[]),model.get("stations",[]),model.get("neighbourhood",{}),BakeCache.source_key("roads")])
+		model.get("roads",[]),model.get("lines",[]),model.get("depots",[]),model.get("stations",[]),model.get("neighbourhood",{}),BakeCache.source_key("roads")]
+		+ (["flat"] if flat else []))
 	var authored: Dictionary = model.get("authored_region", {})
 	_road_key = BakeCache.digest([BakeCache.source_key("roads"), _map_key, model.get("roads", []),
 		authored.get("tiles", {}), authored.get("paths", []), pits])
 	# The company view keys each tile's terrain and road meshes by what touches
 	# that tile, so a change elsewhere in the company keeps them (tile_scope_key).
 	_static_map_key = BakeCache.digest([BakeCache.source_key("terrain"), BakeCache.source_key("roads"), ground.get("tiles"), ground.get("bands"),
-		ground.get("lakes"), ground.get("rivers"), MapStyle.band_colors(), MapStyle.sea_colors()])
+		ground.get("lakes"), ground.get("rivers"), MapStyle.band_colors(), MapStyle.sea_colors()] + (["flat"] if flat else []))
 	_tile_scope_keys.clear()
 	var layout: Array = []
 	var geography: Array = []
@@ -397,7 +455,8 @@ func prepare_scenery(host: Node, model: Dictionary, prepared: Dictionary = {}) -
 		await host.get_tree().process_frame
 		if not is_instance_valid(host) or not host.is_inside_tree(): return
 	# Plazas only form on urban tiles; without one, skip measuring every obstacle.
-	if tiles.values().any(func(t: Dictionary) -> bool: return str(t.get("type", "")) == "urban"):
+	# Plazas are town decoration, which the flat view leaves out.
+	if not flat and tiles.values().any(func(t: Dictionary) -> bool: return str(t.get("type", "")) == "urban"):
 		urban_plazas=preload("res://scripts/supply_chain_3d/urban_plazas.gd").build(self,model.get("standing",[]))
 	else:
 		urban_plazas = {"tiles": {}, "targets": 0, "area": 0.0}
@@ -407,21 +466,22 @@ func prepare_scenery(host: Node, model: Dictionary, prepared: Dictionary = {}) -
 	var all_shadows: Array = []
 	for s in model.get("standing", []):
 		standing_frames[str(s.iid)] = standing_frame(s)
-		if str(s.kind) == "house" and not preload("res://scripts/supply_chain_3d/civic_layout.gd").is_space(s):
+		if str(s.kind) == "house" and not flat and not preload("res://scripts/supply_chain_3d/civic_layout.gd").is_space(s):
 			all_shadows.append(ShadowArt.footprint(s.pos, float(s.side), false))
 	roads = model.get("roads", [])
 	lines = model.get("lines", [])
 	for tid in tiles:
 		# The company view remembers each tile's trees for the session, so a
 		# change on one tile does not replant the others.
-		var memo_key := "" if streamed or not Legacy.show.trees else _tree_memo_key(str(tid), model)
+		var trees: bool = Legacy.show.trees and not flat
+		var memo_key := "" if streamed or not trees else _tree_memo_key(str(tid), model)
 		if memo_key != "" and _tree_memo.has(memo_key):
 			tree_placements[tid] = _tree_memo[memo_key].trees
 			if _tree_memo[memo_key].has("audit"): greenery_audit[tid] = _tree_memo[memo_key].audit
 		else:
-			var placements := placements_for(str(tid), model.get("standing", [])) if Legacy.show.trees else []
+			var placements := placements_for(str(tid), model.get("standing", [])) if trees else []
 			var audit = null
-			if Legacy.show.trees and (str(tiles[tid].type)=="urban" or tid in preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").TILES):
+			if trees and (str(tiles[tid].type)=="urban" or tid in preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").TILES):
 				var planted := preload("res://scripts/supply_chain_3d/stoneshore_greenery.gd").new().plant(str(tid),placements,self,model.get("standing",[]),urban_plazas.tiles.get(tid,[]))
 				placements=planted.trees;greenery_audit[tid]=planted.audit;audit=planted.audit
 			tree_placements[tid] = placements
@@ -1124,9 +1184,15 @@ func _mine_grade(p: Vector2) -> Vector2:
 	return result
 
 func ground_height(p: Vector2) -> float:
+	if flat: return FLAT_HEIGHT
+	return Relief.height(ground.height(p))
+
+## The map's relief whatever the preset: flat ground is still painted in its colours.
+func relief_height(p: Vector2) -> float:
 	return Relief.height(ground.height(p))
 
 func natural_height(p: Vector2) -> float:
+	if flat: return FLAT_HEIGHT
 	var grade := _mine_grade(p)
 	return lerpf(ground_height(p), grade.y, grade.x)
 
@@ -1138,9 +1204,11 @@ func depot_height(p: Vector2, h: float) -> float:
 	return h
 
 func formation_height(p: Vector2) -> float:
+	if flat: return FLAT_HEIGHT
 	return depot_height(p,natural_height(p))
 
 func surface_height(p: Vector2) -> float:
+	if flat: return FLAT_HEIGHT
 	if ground.get("water_geography") == true:
 		var water := Coast.Water.lake_surface(p)
 		if water.y == 1: return Relief.height(water.x)
@@ -1154,6 +1222,7 @@ func surface_height(p: Vector2) -> float:
 	return h
 
 func surface_gradient(p: Vector2) -> Vector2:
+	if flat: return Vector2.ZERO
 	if ground.get("water_geography") == true and Coast.Water.lake_surface(p).y == 1: return Vector2.ZERO
 	var grade := _mine_grade(p)
 	var modified := false
@@ -1227,7 +1296,7 @@ func terrain_key(tid: String) -> String:
 		var reach := float(pit.side) * 0.80
 		if bounds.intersects(Rect2((pit.pos as Vector2) - Vector2.ONE * reach, Vector2.ONE * reach * 2.0)):
 			holes.append([pit.rim, pit.height, pit.seed])
-	return "%s:%s:%s:%s" % [tid, ground.get_instance_id(), hash([MapStyle.band_colors(), MapStyle.sea_colors(), holes]), _continent_key if streamed else "company"]
+	return "%s:%s:%s:%s" % [tid, ground.get_instance_id(), hash([MapStyle.band_colors(), MapStyle.sea_colors(), holes]), _continent_key if streamed else ("flat" if flat else "company")]
 
 func prepare_tile(host: Node, tid: String) -> void:
 	var key := terrain_key(tid)
@@ -1261,6 +1330,12 @@ func prepare_tile(host: Node, tid: String) -> void:
 		if continent.is_empty(): await prepare_continent(host)
 		terrain_cache[key] = {"textures": [continent.texture, null, null], "meshes": [continent.parts[tid] if continent.has("parts") else base_chunk(tid).mesh, null, null], "shapes": [base_chunk(tid).get("pick_shape"), null, null], "streamed": true, "ground_id": ground.get_instance_id()}
 		return
+	if flat:
+		# One mid-detail picture for every zoom: flat ground needs no finer mesh, and the
+		# finest texture tier is most of the terrain's video memory.
+		var middle := await _tile_bake(host, tid, 1)
+		terrain_cache[key] = {"textures": [middle.texture, middle.texture, middle.texture], "meshes": [middle.mesh, middle.mesh, middle.mesh]}
+		return
 	var textures: Array = []
 	var meshes: Array = []
 	for tier in 3:
@@ -1274,7 +1349,7 @@ func _tile_bake(host: Node, tid: String, tier: int) -> Dictionary:
 	var key := tile_bake_key(tid, tier)
 	var cached := bake_cache.read(key) if _map_key != "" else {}
 	if not cached.is_empty(): return cached
-	var textures := await Paint.bake(host, tiles[tid], Coast.relief_of(tid, tiles[tid].center), rivers.get(tid, []), pits.values(), surface_height, [Detail.TEXTURES[tier]], static_shadows.get(tid, []), urban_plazas.tiles.get(tid,[]))
+	var textures := await Paint.bake(host, tiles[tid], Coast.relief_of(tid, tiles[tid].center), rivers.get(tid, []), pits.values(), relief_height if flat else surface_height, [Detail.TEXTURES[tier]], static_shadows.get(tid, []), urban_plazas.tiles.get(tid,[]))
 	var data := {"texture": textures[0], "mesh": _surface(tid, Detail.CELLS[tier])}
 	prepare_picking(data)
 	if _map_key != "": bake_cache.write(key, data)
@@ -1523,7 +1598,8 @@ func _update_farm_tier(item: Dictionary, tier: int) -> void:
 
 func set_overview_scale(ppu: float, force: bool = false) -> void:
 	FarSprites.set_overview_scale(ppu, streamed)
-	var sprites_visible := (streamed and not base_ready) or ppu < (0.33 if _sprites_visible else 0.27)
+	# Flat keeps every building a model: no distant sprite sheets are loaded at all.
+	var sprites_visible := not flat and ((streamed and not base_ready) or ppu < (0.33 if _sprites_visible else 0.27))
 	if sprites_visible != _sprites_visible or _asset_tier != active_lod or force:
 		_sprites_visible = sprites_visible
 		_update_asset_tier()
@@ -1768,6 +1844,7 @@ func prebake_roads(host: Node, model: Dictionary, show: Dictionary, alive: Calla
 
 ## Map bands are numbered one above the owner's terrain levels (band 7 = height 6).
 func railway_level(p: Vector2) -> float:
+	if flat: return 0.0
 	var grid := NavGrid.instance()
 	if grid.is_ready():
 		var cell := grid.cell_of(p)
@@ -1789,6 +1866,7 @@ func river_at(p: Vector2, margin: float = 4.0) -> bool:
 
 ## Preserve river crossings without inheriting nearby authored road bridge grades.
 func railway_ground_height(p: Vector2) -> float:
+	if flat: return FLAT_HEIGHT
 	var h := depot_height(p,natural_height(p))
 	for segment in _river_buckets.get(Vector2i((p / 128.0).floor()), []):
 		var closest := Geometry2D.get_closest_point_to_segment(p, segment.a, segment.b)
@@ -1905,7 +1983,7 @@ func infrastructure(model: Dictionary, show: Dictionary, build_roads: bool = tru
 				var current := at_height(p, road_height(p) + 5.5)
 				if j > 0: tubes.tube(previous, current, 2.4, Color("a0a7aa") if mode == "reinf_pipes" else Color("b78552"))
 				previous = current
-	if bool(show.get("decor",true)):
+	if bool(show.get("decor",true)) and not flat:
 		Railway.append_mesh(tubes,preload("res://scripts/supply_chain_3d/neighbourhood_art.gd").mesh(model.get("neighbourhood",{}),origin,surface_height))
 	var sea_bake := sea_fringe.bake(origin,surface_height,surface_gradient) if not sea_fringe.strips.is_empty() else {}
 	_append_sea_fringe(root,sea_bake)
@@ -2154,7 +2232,7 @@ func standing_node(s: Dictionary) -> Node3D:
 		"dimension": dimension, "tile": str(s.tile), "lit": lit, "role": role,
 		# The few lattice pylons are cheap meshes. Their clamps must stay aligned
 		# with continuous 3D cables instead of stepping between atlas angles.
-		"medium_allowed": not s.has("harbour") and kind != "pylon" and (not lit or FarSprites.entry(key, 1).has("lit_texture")),
+		"medium_allowed": not flat and not s.has("harbour") and kind != "pylon" and (not lit or FarSprites.entry(key, 1).has("lit_texture")),
 		"decor": streamed and kind == "house"}
 	if not lazy_assets:
 		_ensure_standing_near(pair)
@@ -2173,7 +2251,7 @@ func standing_node(s: Dictionary) -> Node3D:
 			# Decorative foundations belong to their streamed tile's lifetime.
 			if kind != "house": prepared_foundations[str(s.iid)] = foundation
 		root.add_child(Geo.instance(foundation, mat))
-	var card := FarSprites.instance(key, grade_range)
+	var card := FarSprites.instance(key, grade_range) if not flat else null
 	if card != null:
 		set_role(card, role)
 		card.scale = BuildingScale.for_asset(key, side, float(s.get("decor_scale", 1.0)))

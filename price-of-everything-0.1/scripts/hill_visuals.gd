@@ -43,6 +43,9 @@ var _poly_bb: Array = []     # parallel Rect2 bbox per _polys entry
 var _sea_bb: Array = []
 var _lake_bb: Array = []
 var _baked_tex: Texture2D = null
+## The disk picture was let go while a full-screen view covered the map (see
+## map_image_residency.gd); it comes back on a worker thread.
+var _texture_released := false
 var _bake_rect: Rect2 = Rect2()
 var _mode := MODE_TEXTURE
 var _view_rect := Rect2()
@@ -133,6 +136,7 @@ func _ready() -> void:
 ## re-tints on the next redraw; the far-zoom texture is stale the moment the
 ## style flips — drop it and let _process re-bake lazily on first need.
 func _on_style_changed() -> void:
+	_texture_released = false
 	_bake_generation += 1
 	_baked_tex = null
 	_completed_bake_generation = -1
@@ -146,6 +150,25 @@ func _on_style_changed() -> void:
 		_mode = MODE_TEXTURE
 	elif DisplayServer.get_name() != "headless":
 		_bake_deferred = true
+	queue_redraw()
+
+
+## Let the far-zoom picture go while the map is covered. Only the picture loaded from disk:
+## one rendered live (no bake) would take seconds to make again. The cached contour meshes
+## draw meanwhile.
+func release_images() -> void:
+	if _baked_tex == null or _baked_tex.resource_path != HillTextureBaked.TEXTURE_PATH:
+		return
+	_baked_tex = null
+	HillTextureBaked.release()
+	_texture_released = true
+	_mode = MODE_VECTOR
+	RenderingServer.canvas_item_clear(get_canvas_item())
+
+
+func restore_images() -> void:
+	if _texture_released:
+		HillTextureBaked.request_async()
 	queue_redraw()
 
 
@@ -431,6 +454,9 @@ func _bboxes(coll: Array, has_p_key: bool) -> Array:
 func _process(_delta: float) -> void:
 	if not visible or not _meshes_warm:
 		return
+	if _texture_released and HillTextureBaked.landed():
+		_texture_released = false
+		_baked_tex = HillTextureBaked.texture(_style_key(), _bake_rect)
 	var view := _visible_world_rect()
 	var visible_polys := _count_visible(_poly_bb, view) + _count_visible(_sea_bb, view) + _count_visible(_lake_bb, view)
 	var want := MODE_VECTOR if visible_polys <= VECTOR_CAP else MODE_TEXTURE

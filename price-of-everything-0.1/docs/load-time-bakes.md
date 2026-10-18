@@ -19,14 +19,32 @@ way around them.
 Every scenery, continent and tile key changed, so the whole package was rebaked:
 `bake_continent_package` (600 tiles generated, 67 min; `--no-background-continent` is
 required or the review starts before the tiles exist), then `bake_world_snapshot`, then
-`bake_company_start` until settled (four runs), then the auxiliary keys
-`company_key_probe` does not list were dropped. Order matters: the company start must be
-baked after the world snapshot, because with a snapshot installed the company view opens
-through the overlay and asks for different keys. `company_key_probe` never lists the
-world snapshot; keep it. Installed package: **1,841 resources, 957,055,700 bytes**,
-validated. A fresh process with an empty user directory offers Begin at **25.3 s**, with
-another Godot editor and game running on the same machine; the company opens with 36
-bundled hits and zero misses or writes, and the continent streams with no misses or writes.
+`bake_company_start` until settled, for the High preset and then with `--quality=low` for
+the flat view (four runs each), then High once more (settled at once). The company start
+also writes the road alignment memo. Order matters: the company start must be baked after
+the world snapshot, because with a snapshot installed the company view opens through the
+overlay and asks for different keys. Then the auxiliary keys `company_key_probe` lists for
+neither preset were dropped; the probe never lists the world snapshot or the alignment memo,
+so keep those. Installed package: **1,860 resources, 959,947,140 bytes**, validated. A
+fresh process with an empty user directory offers Begin at **21.2 s**; the company opens
+with 37 bundled hits and zero misses or writes; the continent has 107 bundled hits after
+streaming and no misses or writes. Every key the Low company view asks for is in the package.
+
+## Low quality preset: the flat company view — 18 October 2026
+
+The Low graphics preset (Settings > Graphics) builds the supply chain view flat (`world_builder.gd` `flat`):
+- **Same layout:** the same model and layout as the 3D view, so the same building positions.
+- **Flat ground:** every height lies on one level, with no relief, tunnels or switchbacks.
+- **Painted relief:** the ground is painted in the map's relief colours, at one terrain tier (1024) for every zoom.
+- **Gameplay buildings only:** the company's buildings and works, as models at every zoom. No trees, decorative housing or distant sprite sheets.
+- **Company only:** "Show all tiles" is refused, and no continent is prepared.
+
+Flat builds key every bake apart from the 3D view's, and they never enter the road alignment memo.
+
+The default company's flat view ships in the package. Run `bake_company_start` with `--quality=low` until it reports settled. The first runs rewrote the shared layout memo, so it took four runs. Then confirm the High company start still has every key, with `company_key_probe` for both presets, and prune auxiliary keys neither preset asks for. Result:
+- 18 flat resources, 2.9 MB;
+- package 1,860 resources, validated;
+- 0 bake misses on a new game with either preset.
 
 ## Furnace, refineries and power plant — 18 October 2026
 
@@ -128,6 +146,10 @@ AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_chain_3d/profile_streamin
   --continent-review --no-telemetry --trial-extra-edges --trial-idle-prefetch \
   --trial-output=/private/tmp/stream-profile --bake-cache-directory=/private/tmp/empty-cache
 ```
+
+`bake_company_start` also solves every road chain of the default company into the road
+alignment memo and ships it as `alignment-<map key>` (37 KB). A first session then never
+solves a chain while the player looks at the 3D view.
 
 Run `bake_company_start` again until its report says `"settled": true`: the
 layout memo it writes back can move border roads on the next build, so the first

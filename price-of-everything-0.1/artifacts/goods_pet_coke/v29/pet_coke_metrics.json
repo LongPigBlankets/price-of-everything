@@ -1,0 +1,76 @@
+{
+  "revision": "pet_coke_v29",
+  "objects": 211,
+  "structural_hosts": [
+    "long_hero",
+    "left_chunk",
+    "front_chunk"
+  ],
+  "topology": "Pet coke: three long faceted lumps, the hero along the falling diagonal raised on one behind, a stepped section of lit ridges and dark grooves, broken ends",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 4
+    },
+    "min_fragment_px": 24
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.34,
+    "groups": [
+      {
+        "name": "shaded_faces",
+        "labels": [
+          1,
+          2,
+          3
+        ],
+        "thresholds": [
+          0.575,
+          0.5,
+          0.3
+        ]
+      }
+    ]
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 2.93 x 2.57 x 1.94"
+  ],
+  "mesh_checks": {
+    "long_hero": {
+      "vertices": 260,
+      "faces": 197,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "left_chunk": {
+      "vertices": 166,
+      "faces": 124,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "front_chunk": {
+      "vertices": 132,
+      "faces": 99,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 3.476,
+    "target": [
+      0.701,
+      -0.337,
+      0.78
+    ]
+  }
+}

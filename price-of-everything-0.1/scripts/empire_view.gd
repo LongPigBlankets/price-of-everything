@@ -28,6 +28,7 @@ const EmpireLayout := preload("res://scripts/empire_layout.gd")
 const GraphWorldScript := preload("res://scripts/empire_graph_world.gd")
 const HexBgScript := preload("res://scripts/empire_hex_bg.gd")
 const BoardScript := preload("res://scripts/supply_chain_3d/board.gd")
+const MapImages := preload("res://scripts/map_image_residency.gd")
 
 var _map_camera: Node = null                   # the map Camera2D (group "camera"); gated while we own the screen
 var _hidden_layers: Array[CanvasItem] = []     # world layers hidden on enter, restored on leave
@@ -49,6 +50,9 @@ var _bg: Control                               # the animated hex-field backgrou
 ## screen once the world is built, and again in the background whenever what they show changes, so
 ## the view opens at once on finished pictures. Fresh while they match the sim as it stands.
 var _fresh := false
+## The covered map's pictures: a release is pending (stamp) or done (released).
+var _map_release_stamp := 0
+var _map_released := false
 var _refresh_queued := false
 var _preparing := false
 var _changes := 0                              # changes seen in the sim, to tell a build that missed one
@@ -90,7 +94,8 @@ func refresh_graph() -> void:
 
 ## Something the board shows has changed in the sim. Open, the view rebuilds now; closed, it rebuilds
 ## in the background (prepare), once for any number of changes in one frame. Only the layers whose
-## make-up changed are baked again (empire_board.gd _sort_parts).
+## make-up changed are baked again (empire_board.gd _sort_parts). The Low quality preset keeps no
+## view ready while closed: it stays stale and rebuilds when it next opens (_enter).
 func sim_changed() -> void:
 	_changes += 1
 	_fresh = false
@@ -98,7 +103,7 @@ func sim_changed() -> void:
 		_rebuild_graph()
 		_fresh = true
 		return
-	if _preparing or _refresh_queued or not _board.call("has_content"):
+	if _preparing or _refresh_queued or not _board.call("has_content") or PlayerProfile.is_low_quality():
 		return
 	_refresh_queued = true
 	prepare.call_deferred()
@@ -345,9 +350,13 @@ func _enter() -> void:
 	TelemetryState.track_interaction("supply_chain_opened", "supply_chain")
 	move_to_front()
 	_hide_world()
+	_schedule_map_release()
 	_set_camera_blocked(true)
 	_board.open_at_map_camera()
 	PanelStack.push(self)
+	# Built for the other quality preset: build it again for this one.
+	if _fresh and bool(_board.call("built_flat")) != PlayerProfile.is_low_quality():
+		_fresh = false
 	# Built in the background and nothing changed since: open on it as it is, held back until any
 	# picture still baking is done.
 	if _fresh:
@@ -384,8 +393,29 @@ func _rebuild_graph() -> void:
 		_graph_world.restore_camera(camera)
 
 
+## The map underneath stays ready to show for MapImages.WARM_MSEC, then its large pictures are
+## let go until the view closes.
+func _schedule_map_release() -> void:
+	_map_release_stamp += 1
+	var stamp := _map_release_stamp
+	await get_tree().create_timer(MapImages.WARM_MSEC / 1000.0).timeout
+	if stamp != _map_release_stamp or not visible or not is_inside_tree():
+		return
+	_map_released = true
+	MapImages.release(get_tree().current_scene)
+
+
+func _restore_map_images() -> void:
+	_map_release_stamp += 1
+	if not _map_released:
+		return
+	_map_released = false
+	MapImages.restore(get_tree().current_scene)
+
+
 func _leave() -> void:
 	_show_world()
+	_restore_map_images()
 	_set_camera_blocked(false)
 	PanelStack.remove(self)
 

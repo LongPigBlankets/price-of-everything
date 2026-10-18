@@ -1,21 +1,80 @@
-MIT License
+Carbon and Capital Proprietary Licence
+Version 1.0 — 18 October 2026
 
-Copyright (c) 2026 LongPigBlankets
+Copyright (c) 2026 Sava Cristian Urigiuc. All rights reserved, except as
+expressly permitted below.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. Scope
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+This licence applies to the original code, artwork, assets, data and
+documentation in this repository, beginning with the revision that introduces
+this licence and subsequent revisions, except for material covered by an
+earlier or separate licence as described in section 5.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+This is proprietary commercial software, not open-source software. Making the
+repository publicly accessible does not grant general reuse or redistribution
+rights.
+
+2. Permitted personal use
+
+You may view, download and build the repository, run it for private personal
+use, and modify your own copy for private personal use. You may keep personal
+backup copies. Keep copyright and licence notices intact. Support and
+compatibility for modified copies are not promised.
+
+Official free demo binaries distributed through Steam or itch.io are governed
+by the Demo End User Licence Agreement supplied with them. This repository
+licence does not grant rights to a paid edition. A paid edition will have its
+own terms.
+
+3. Restrictions and gameplay media
+
+Except where permitted by law, a separate applicable licence, the repository
+host's applicable terms, or the copyright holder's written permission, you
+must not sell, sublicense, publish, upload, redistribute or commercially
+exploit this material, whether modified or unmodified, or reuse its code or
+assets in another product. This includes sharing complete copies of a free
+demo; share its official store link instead.
+
+You may publish screenshots, gameplay videos and streams, including monetized
+ones. This permission covers showing the game in your content, not sharing
+its code or assets separately. Do not imply endorsement without permission or
+present an unofficial release as official.
+
+4. Modifications
+
+The permission for private personal modifications does not grant permission
+to distribute mods containing this repository's code or assets. This licence
+does not establish a public modding programme or promise mod support. Any
+future mod distribution permissions will be stated separately.
+
+5. Earlier grants and third-party material
+
+Permissions already granted under the MIT licence for earlier revisions or
+releases remain in effect for the material covered by those grants. This
+licence does not revoke them or claim that previously MIT-licensed material
+has become exclusively proprietary. The previous MIT notice is preserved in
+docs/legal/PREVIOUS-MIT-LICENSE.txt for that purpose; it is not a grant of MIT
+permissions for new material introduced under this licence.
+
+Godot Engine, fonts and other third-party material remain governed by their
+respective licences and notices. This licence does not replace those terms
+or restrict permissions they grant. Rights required by the terms of the
+repository hosting service also remain unaffected.
+
+6. Legal rights and responsibility
+
+Nothing here limits rights, remedies or uses that cannot lawfully be
+excluded, including mandatory consumer rights. To the extent permitted by
+law, this repository is supplied without a promise of uninterrupted or
+error-free operation or fitness for a particular purpose. Nothing excludes
+liability for fraud, death or personal injury caused by negligence, or any
+liability that cannot lawfully be excluded.
+
+This licence is governed by the law of England and Wales. Consumers retain
+mandatory protections where they live and may bring claims in any court
+available under applicable law.
+
+For other permissions or commercial licensing, contact:
+Sava Cristian Urigiuc, United Kingdom
+carbonandcapital.game@gmail.com

@@ -10,8 +10,12 @@ const BakeCache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
 ## Farther than any serpentine bend, its rounding and its clearance query reach.
 const REACH := 300.0
 const MEMO_LIMIT := 20000
+## Bump when an entry's shape changes; persisted memos of another format are ignored.
+const FORMAT := 1
 
 static var _memo := {}
+## New entries since the memo was last persisted (world_builder.save_alignment_memo).
+static var dirty := false
 var memo_enabled := false
 var memo_pits: Array = []
 var memo_depots: Array = []
@@ -29,6 +33,7 @@ func _engineer(chain: Array) -> Array:
 		var reserved_from := _roads.size()
 		var result: Array = super._engineer(chain)
 		if _memo.size() >= MEMO_LIMIT: _memo.clear()
+		dirty = true
 		_memo[key] = {"result": _relative(result, chain), "reserved": _roads.slice(reserved_from).map(func(r: Dictionary) -> Dictionary: return r.duplicate()),
 			"counts": [switchbacks - counts[0], constrained - counts[1], grade_eased - counts[2]]}
 		return result
@@ -112,6 +117,21 @@ static func _hash_sorted(hasher: HashingContext, items: Array) -> void:
 	keyed.sort_custom(func(x: Array, y: Array) -> bool: return x[0] < y[0])
 	hasher.update(var_to_bytes(items.size()))
 	for entry in keyed: hasher.update(var_to_bytes(entry[1]))
+
+## The memo for persisting, and entries read back from a persisted copy. Keys are content
+## hashes, so entries from any session or package are valid wherever their key comes up.
+static func entries() -> Dictionary:
+	return _memo
+
+
+static func import_entries(persisted: Dictionary) -> int:
+	var added := 0
+	for key in persisted:
+		if not _memo.has(key):
+			_memo[key] = persisted[key]
+			added += 1
+	return added
+
 
 ## Results name their source road by index into this solve's road list. Store
 ## the position within the chain instead, which survives other roads joining.

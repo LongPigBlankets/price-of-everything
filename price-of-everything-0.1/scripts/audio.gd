@@ -237,6 +237,19 @@ func stop_music() -> void:
 	_music.stop()
 
 
+## An immediate quit has no time to play DS's deferred button click. Drop it
+## and release active voices before the audio backend tears down.
+func silence_for_quit() -> void:
+	_duck_clicks()
+	stop_music()
+	stop_tile_ambience()
+	# Some presentation widgets (the menu goods board) own their own player.
+	for node: Node in get_tree().root.find_children("*", "AudioStreamPlayer", true, false):
+		var player := node as AudioStreamPlayer
+		player.stop()
+		player.stream = null
+
+
 ## Fade the music out over `duration`s, then stop it. If `resume_after` >= 0, the
 ## playlist resumes with the NEXT track that many seconds after this call (so the menu
 ## theme fades as the game begins, then gameplay music returns); pass -1 to leave the
@@ -265,6 +278,10 @@ func _resume_music_after(gen: int, delay: float) -> void:
 
 
 func _play_track() -> void:
+	# Headless uses the dummy audio backend: playback cannot be heard, consumes
+	# decoding work and can retain active Ogg resources during engine shutdown.
+	if DisplayServer.get_name() == "headless":
+		return
 	_music_gen += 1
 	_music.volume_db = 0.0
 	_music.stream = MUSIC_TRACKS[_track_idx]
@@ -290,6 +307,8 @@ func _on_music_finished() -> void:
 ## terrain is already sounding, so re-selecting same-type tiles doesn't restart the
 ## loop; a terrain with no ambience (e.g. "mountain") falls through to silence.
 func tile_ambience(terrain: String) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
 	var clips: Array = AMBIENCE.get(terrain, [])
 	if clips.is_empty():
 		stop_tile_ambience()
@@ -420,6 +439,8 @@ func _play_click(stream: AudioStream) -> void:
 
 
 func _play(stream: AudioStream, channel: StringName, vol_db: float = 0.0) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
 	if stream == null:
 		return
 	var pool: Array = _channels.get(channel, [])

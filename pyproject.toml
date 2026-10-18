@@ -6,6 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "price-of-everything"
 version = "0.0.1"
 description = "Supply-chain tycoon simulation about the cost of the green transition."
+license = {file = "LICENSE"}
+classifiers = ["License :: Other/Proprietary License"]
 requires-python = ">=3.11"
 dependencies = []
 

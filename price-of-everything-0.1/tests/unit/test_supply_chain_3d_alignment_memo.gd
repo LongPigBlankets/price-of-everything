@@ -49,3 +49,18 @@ func _test_alignment_memo_solves_only_chains_a_change_reaches() -> void:
 	_check(blocked.memo_misses == 1 and blocked.memo_hits == 1,
 		"alignment memo: a building beside the steep road solves that chain again, the flat one is reused")
 	Memo._memo.clear()
+
+func _test_alignment_memo_persists_and_reloads() -> void:
+	Memo._memo.clear()
+	Memo.dirty = false
+	_memo().configure(_model(), _height, _level)
+	_check(Memo.dirty and Memo.entries().size() == 2, "alignment memo: new chains mark the memo for persisting")
+	var persisted: Dictionary = Memo.entries().duplicate(true)
+	Memo._memo.clear()
+	_check(Memo.import_entries(persisted) == 2 and Memo.import_entries(persisted) == 0, "alignment memo: a persisted copy is read back once, without duplicates")
+	var reloaded: RefCounted = _memo()
+	var aligned: Array = reloaded.configure(_model(), _height, _level)
+	_check(reloaded.memo_hits == 2 and reloaded.memo_misses == 0 and var_to_str(aligned) == var_to_str(Alignment.new().configure(_model(), _height, _level)),
+		"alignment memo: a reloaded memo solves nothing and matches a fresh solve")
+	Memo._memo.clear()
+	Memo.dirty = false

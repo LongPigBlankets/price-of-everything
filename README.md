@@ -1,6 +1,24 @@
 # price-of-everything
 A supply-chain tycoon simulation about the cost of the green transition.
 
+## Licence
+
+Carbon and Capital is proprietary commercial software. The [repository licence](LICENSE)
+allows private personal use and modifications, plus gameplay videos and streams
+(including monetized ones). Redistribution of the game, its code or its assets
+requires separate permission. Official future demos also ship with the
+[Demo EULA](price-of-everything-0.1/data/legal/demo_eula.txt).
+
+Earlier MIT grants and third-party licences remain valid; the
+[previous MIT notice](docs/legal/PREVIOUS-MIT-LICENSE.txt) is preserved for earlier material.
+There is no public mod distribution policy yet.
+
+## Startup check
+
+The [demo startup workflow](.github/workflows/demo-startup.yml) exports a Linux release
+and checks fresh and previously accepted EULA launches for Godot errors. See
+[the startup check guide](docs/ci-startup-check.md) for its scope and local commands.
+
 ## Editing the data
 
 Goods and recipes live in `data/goods.csv` and `data/recipes.csv`. Google Sheets is the source of truth.

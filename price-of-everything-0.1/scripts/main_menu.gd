@@ -90,6 +90,7 @@ func _ready() -> void:
 	# touched anything, and warmed nothing at all. The scripts are compiled on the main
 	# thread under the intro plates instead (LoadingScreen._warm_scene_scripts).
 	_warm_map_assets()
+	print("[STARTUP] main_menu_ready")
 
 
 ## Ask a worker for every non-script dependency of the map scene. get_dependencies() reads
