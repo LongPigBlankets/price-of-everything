@@ -1,0 +1,46 @@
+# Files the demo presets leave out, on top of the regular presets' exclude_filter.
+# One Godot export glob per line (res:// relative); blank lines and # comments are ignored.
+#
+# build_demo.py adds two computed groups as well:
+#   - every data/starts/*.json except index.json, default.json, tutorial.json and the
+#     DemoBuild.START_IDS starts (scripts/demo_build.gd), and
+#   - every data/map_authored/*.json except the active document (active.txt).
+#
+# To bring a feature into the demo, delete its lines here and its gate in
+# scripts/demo_build.gd, then run `python3 tools/demo_build/build_demo.py sync`.
+# Anything new is in the demo unless it is listed here or gated at runtime.
+
+# Map editor: scenes, scripts and its working documents.
+tools/*
+scripts/map_editor/*
+data/map_authored/README.md
+
+# Research panel DS2 look, in review behind `toggle research ds2`.
+scripts/research_ds2/*
+
+# Recycling chain (Water Recycling Plant b_022, Landfill b_023, Recycling Plant b_036),
+# hidden in the demo by MatchState.is_recycling_available().
+assets/icons/buildings/b_022_*
+assets/icons/buildings/b_023_*
+assets/icons/buildings/b_036_*
+assets/icons/buildings/cleaned/b_022.png
+assets/icons/buildings/cleaned/b_023.png
+assets/icons/buildings/cleaned/b_036.png
+assets/ui/bdp_v3/bld_emblem_b_022*
+assets/ui/bdp_v3/bld_emblem_b_023*
+assets/ui/bdp_v3/bld_emblem_b_036*
+
+# Hidden prototype buildings behind `unlock hidden_buildings` (Consumer Goods Factory b_030,
+# Disused Buildings b_031, Airport b_035).
+assets/icons/buildings/b_030_*
+assets/icons/buildings/b_031_*
+assets/icons/buildings/b_035_*
+assets/icons/buildings/cleaned/b_030.png
+assets/icons/buildings/cleaned/b_031.png
+assets/icons/buildings/cleaned/b_035.png
+assets/ui/bdp_v3/bld_emblem_b_030*
+assets/ui/bdp_v3/bld_emblem_b_031*
+assets/ui/bdp_v3/bld_emblem_b_035*
+
+# Development data with no runtime reader.
+data/balance_v4_changes.json

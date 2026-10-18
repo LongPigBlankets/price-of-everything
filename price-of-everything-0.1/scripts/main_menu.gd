@@ -14,6 +14,7 @@ const MAP_SCENE := "res://scenes/main.tscn"
 ## never appears where the scene was not shipped. Pinned by
 ## `_test_shipped_code_avoids_editor_only_paths`.
 const MAP_EDITOR_SCENE := "res://tools/map_editor/map_editor.tscn"
+const DemoBuild := preload("res://scripts/demo_build.gd")
 ## The three-hex logo (owner, 1 Oct 2026): brass CARBON AND CAPITAL over a copper factory and silver
 ## windmills, rendered in Blender (tools/steam_capsule, --plate trio; game_logo.py makes this file).
 ## It replaces the old Canva emblem, assets/ui/title_logo.png.
@@ -91,6 +92,7 @@ func _ready() -> void:
 	# thread under the intro plates instead (LoadingScreen._warm_scene_scripts).
 	_warm_map_assets()
 	print("[STARTUP] main_menu_ready")
+	print("[STARTUP] build %s" % ("demo" if DemoBuild.active() else "full"))
 
 
 ## Ask a worker for every non-script dependency of the map scene. get_dependencies() reads
@@ -162,6 +164,8 @@ func _on_start_requested(start_path: String, overrides: Dictionary) -> void:
 ## clean even if someone unlocks the terminal there — the files are excluded, the probe
 ## fails, and the entry stays hidden.
 func _map_editor_available() -> bool:
+	if DemoBuild.active():
+		return false
 	var terminal_script := load("res://scripts/debug_terminal.gd")
 	if terminal_script == null or not terminal_script.cheats_are_unlocked():
 		return false
@@ -418,12 +422,13 @@ func _build_menu() -> void:
 			_make_coming_soon(b, "Coming soon. In the meantime check out the encyclopedia in the top bar in the game.")
 		vbox.add_child(b)
 	# Cheat-gated: hidden until `debug CandC` is entered in the terminal ( ` ), and absent
-	# entirely from a build that did not ship the editor scene.
-	_map_editor_button = _make_button("Map Editor", false)
-	_map_editor_button.tooltip_text = "Hand-author the map's roads, fabric and building slots."
-	_map_editor_button.pressed.connect(_on_map_editor_pressed)
-	_map_editor_button.visible = _map_editor_available()
-	vbox.add_child(_map_editor_button)
+	# entirely from a build that did not ship the editor scene. A demo build never makes it.
+	if not DemoBuild.active():
+		_map_editor_button = _make_button("Map Editor", false)
+		_map_editor_button.tooltip_text = "Hand-author the map's roads, fabric and building slots."
+		_map_editor_button.pressed.connect(_on_map_editor_pressed)
+		_map_editor_button.visible = _map_editor_available()
+		vbox.add_child(_map_editor_button)
 
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL

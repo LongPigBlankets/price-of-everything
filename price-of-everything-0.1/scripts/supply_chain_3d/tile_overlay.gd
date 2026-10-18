@@ -131,7 +131,7 @@ static func prepare(board: Control, base: Dictionary, ground: RefCounted, cache:
 	var base_identity := identity(base, scope)
 	var live_identity := identity(probe, scope)
 	var changed := divergent(base_identity, live_identity, scope)
-	if "--trace-overlay" in OS.get_cmdline_user_args():
+	if "--trace-overlay" in preload("res://scripts/demo_build.gd").user_args():
 		for tid in changed: print("[TILE OVERLAY TRACE] ", tid, "\n  base: ", str(base_identity.get(tid, "")).replace("\n", " ; "), "\n  live: ", str(live_identity.get(tid, "")).replace("\n", " ; "))
 	profile.candidates = scope.size()
 	profile.changed = changed.size()

@@ -29,6 +29,8 @@ extends CanvasLayer
 ##   disable procedural <region>     (map editor only) remove that region's records again
 ##   enable procedural central buildings  (map editor only) show Copperstown's refreshed building fabric
 ##   help                             list commands
+##
+## A demo build (DemoBuild.active()) keeps only DemoBuild.CHEATS: cash, unlock all and help.
 
 ## Emitted when `debug CandC` unlocks this terminal. The main menu listens so it can
 ## reveal its cheat-gated entries (the Map Editor) without polling.
@@ -36,6 +38,8 @@ signal cheats_unlocked
 
 const TOGGLE_KEY := KEY_QUOTELEFT  # the ` / ~ key
 const UNLOCK_WORD := "CandC"  # case-sensitive pass-phrase for `debug <word>`
+const DemoBuild := preload("res://scripts/demo_build.gd")
+const DEMO_HELP := "commands:  cash <int>   |   unlock all   |   help"
 
 # In the main menu there is no match, so only commands that don't touch match state
 # are allowed (`debug` runs before this gate; `swap loading_screen`/`swap song` are the
@@ -68,8 +72,9 @@ static func cheats_are_unlocked() -> bool:
 
 
 ## Whether `unlock demo` has been entered — the New Game panel reads this to drop its demo locks.
+## Never true in a demo build: the demo ships without the content it would reveal.
 static func demo_is_unlocked() -> bool:
-	return _demo_unlocked
+	return _demo_unlocked and not DemoBuild.active()
 
 var _panel: PanelContainer
 var _cmd: LineEdit
@@ -165,6 +170,8 @@ func _run_command(text: String) -> String:
 	if not _cheats_unlocked:
 		return "invalid operation"
 	var cmd := parts[0].to_lower()
+	if not DemoBuild.allows_cheat(text):
+		return "'%s' is not available in the demo  (try 'help')" % cmd
 	if menu_mode and not MENU_SAFE_COMMANDS.has(cmd):
 		return "'%s' is only available during a match  (main menu: swap loading_screen | swap song | help)" % cmd
 	# Anything that can move the sim taints the run for telemetry: an unflagged cheat run
@@ -440,6 +447,8 @@ func _run_command(text: String) -> String:
 				return str(editor.call("procedural_central_buildings_command", cmd))
 			return str(editor.call("procedural_region_command", cmd, parts[2].to_lower()))
 		"help":
+			if DemoBuild.active():
+				return DEMO_HELP
 			return "commands:  hide updates | show updates   |   cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury|dock ds2|legend ds2|research ds2   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   enable|disable procedural <north|arin|vandel|capital|all>   |   enable|disable procedural central buildings  (map editor)   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]

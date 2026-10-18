@@ -21,7 +21,9 @@ const DEFAULT_START := "res://data/starts/default.json"
 # demo_itch length are playable; everything else is greyed with a "Locked in the
 # Demo" tooltip. Flip DEMO_LOCK to false to restore the full menu after the demo.
 const DEMO_LOCK := true
-const DEMO_START_IDS: Array = ["metal_magnate", "glass_merchant"]   # the starts playable in the demo
+## The starts playable in the demo. A demo build ships only these start files; the locked
+## cards are drawn from index.json alone.
+const DEMO_START_IDS: Array = preload("res://scripts/demo_build.gd").START_IDS
 const DEMO_DIFFICULTY_ID := "normal"
 ## The length a demo build is pinned to. Now the Itch.io demo itself: 100 turns with its
 ## own policy timeline, rather than a 300-turn campaign the player could never finish.
@@ -275,7 +277,7 @@ func _start_card(start: Dictionary, group: ButtonGroup) -> Control:
 	for s in ["normal", "hover", "pressed", "focus", "disabled"]:
 		btn.add_theme_stylebox_override(s, StyleBoxEmpty.new())
 	card.add_child(btn)
-	# Demo lock: every start except Coal Baron is greyed + unclickable.
+	# Demo lock: every start outside DEMO_START_IDS is greyed and unclickable.
 	if _demo_locked() and not DEMO_START_IDS.has(String(start.get("id", ""))):
 		btn.disabled = true
 		btn.tooltip_text = DEMO_LOCK_TIP
