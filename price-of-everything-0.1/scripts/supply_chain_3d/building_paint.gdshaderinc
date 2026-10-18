@@ -191,16 +191,11 @@ void fragment() {
 			vec2 inside = smoothstep(vec2(0.16) - aa, vec2(0.16) + aa, within) * (1.0 - smoothstep(vec2(0.80) - aa, vec2(0.80) + aa, within));
 			lit = inside.x * inside.y * step(0.64, random);
 		}
-#ifdef GLASS
-		// See-through glass glows without hiding the lit interior behind it.
-		float glow = 0.55;
-#else
-		float glow = 0.86;
-#endif
-		paint = mix(paint, vec3(1.0, 0.87, 0.57) * (1.0 - stroke * 0.50), glow * lit);
+		paint = mix(paint, vec3(1.0, 0.87, 0.57) * (1.0 - stroke * 0.50), 0.86 * lit);
 	}
 	ALBEDO = OUTPUT_IS_SRGB ? paint : srgb_to_linear(paint);
 #ifdef GLASS
+	// Lit glass keeps its own opacity, so a lit hall still shows its interior.
 	ALPHA = COLOR.a;
 #endif
 	if ((lod_hidden(FRAGCOORD.xy) || loading_hidden(world_point.xz, FRAGCOORD.xy))) { discard; }
