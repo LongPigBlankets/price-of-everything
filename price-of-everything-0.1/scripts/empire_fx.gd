@@ -26,19 +26,13 @@ const SPRITE_PX := 800.0
 ## r is the chimney's radius in sprite px — it sizes the puffs, so a fat cooling tower breathes
 ## a big cloud and a thin flue a thin one.
 ## Keyed by internal name, then by LEVEL (the L1/L2/L3 sprites move their chimneys: the
-## factory has no chimney at L1; furnace L3 has two narrow stove flues). A level
+## factory has no chimney at L1, the furnace has one thin chimney at every level). A level
 ## without its own entry falls back to the nearest lower one.
 const ANCHORS := {
 	"furnace": {
-		1: {"stacks": [{"x": 450, "y": 175, "r": 30, "kind": "auto"}, {"x": 560, "y": 165, "r": 30, "kind": "auto"}],
-			"fires": [{"x": 286, "y": 583, "w": 48, "h": 56, "mode": "breathe"}, {"x": 470, "y": 600, "w": 32, "h": 29, "mode": "window"},
-				{"x": 543, "y": 558, "w": 32, "h": 28, "mode": "window"},
-				{"x": 344, "y": 542, "w": 47, "h": 54, "mode": "pane"}, {"x": 424, "y": 534, "w": 54, "h": 58, "mode": "pane"}, {"x": 451, "y": 437, "w": 54, "h": 36, "mode": "pane"}, {"x": 497, "y": 492, "w": 54, "h": 57, "mode": "pane"}, {"x": 570, "y": 450, "w": 55, "h": 57, "mode": "pane"}]},
-		2: {"stacks": [{"x": 415, "y": 150, "r": 36, "kind": "auto"}, {"x": 560, "y": 140, "r": 36, "kind": "auto"}],
-			"fires": [{"x": 266, "y": 590, "w": 48, "h": 56, "mode": "breathe"}, {"x": 450, "y": 607, "w": 31, "h": 29, "mode": "window"},
-				{"x": 523, "y": 565, "w": 31, "h": 28, "mode": "window"},
-				{"x": 323, "y": 550, "w": 48, "h": 52, "mode": "pane"}, {"x": 404, "y": 541, "w": 54, "h": 58, "mode": "pane"}, {"x": 421, "y": 438, "w": 67, "h": 46, "mode": "pane"}, {"x": 477, "y": 499, "w": 54, "h": 58, "mode": "pane"}, {"x": 550, "y": 457, "w": 55, "h": 57, "mode": "pane"}]},
-		3: {"stacks": [{"x": 563, "y": 213, "r": 12, "kind": "auto"}, {"x": 742, "y": 316, "r": 12, "kind": "auto"}], "fires": [{"x": 178, "y": 552, "w": 192, "h": 122, "mode": "breathe"}]},
+		1: {"stacks": [{"x": 555, "y": 273, "r": 21, "kind": "auto"}], "fires": [{"x": 219, "y": 524, "w": 9, "h": 19, "mode": "breathe"}]},
+		2: {"stacks": [{"x": 543, "y": 348, "r": 21, "kind": "auto"}], "fires": [{"x": 244, "y": 577, "w": 70, "h": 54, "mode": "breathe"}]},
+		3: {"stacks": [{"x": 574, "y": 346, "r": 21, "kind": "auto"}], "fires": [{"x": 275, "y": 576, "w": 165, "h": 110, "mode": "breathe"}]},
 	},
 	"eaf": {
 		1: {"stacks": [{"x": 480, "y": 76, "r": 18, "kind": "auto"}, {"x": 550, "y": 96, "r": 18, "kind": "auto"}],
@@ -70,32 +64,29 @@ const ANCHORS := {
 				"clip": [[157.6, 638.6], [235.6, 593.5]],
 				"stop": [212.9, 701.4], "crate_from": [208.8, 675.6], "crate_to": [173.6, 655.2]}},
 	},
+	# Power plant (tools/building_assets/power_plant_v2_builder.py): chimney smoke, cooling
+	# tower steam from L2, and the overhead line traced for the pulses (package_building_fx.py).
 	"power_plant": {
-		1: {"stacks": [{"x": 400, "y": 55, "r": 30, "kind": "auto"}], "fires": [],
-			"cables": [[[625, 558], [592, 571], [560, 582]]]},
-		2: {"stacks": [{"x": 395, "y": 40, "r": 30, "kind": "auto"}, {"x": 545, "y": 135, "r": 95, "kind": "steam"}], "fires": [],
-			# pylon arm insulators -> the switchyard gantry, with the catenary sag the art draws
-			"cables": [[[627, 507], [583, 536], [532, 555]], [[635, 542], [586, 574], [520, 598]]]},
-		3: {"stacks": [{"x": 395, "y": 45, "r": 30, "kind": "auto"}, {"x": 545, "y": 120, "r": 95, "kind": "steam"}], "fires": [],
-			"cables": [[[652, 447], [596, 490], [535, 515]], [[665, 490], [603, 538], [522, 567]], [[677, 537], [612, 585], [540, 610]]]},
+		1: {"stacks": [{"x": 572, "y": 199, "r": 21, "kind": "auto"}], "fires": [], "cables": [[[424, 539], [635, 416]], [[437, 547], [648, 423]], [[450, 554], [661, 431]]]},
+		2: {"stacks": [{"x": 622, "y": 79, "r": 21, "kind": "auto"}, {"x": 144, "y": 90, "r": 81, "kind": "steam"}], "fires": [], "cables": [[[475, 609], [686, 486]], [[488, 617], [699, 493]], [[501, 624], [712, 501]]]},
+		3: {"stacks": [{"x": 621, "y": 79, "r": 21, "kind": "auto"}, {"x": 142, "y": 90, "r": 81, "kind": "steam"}], "fires": [], "cables": [[[474, 609], [685, 486]], [[487, 617], [698, 493]], [[500, 624], [711, 501]], [[684, 486], [680, 359]], [[698, 494], [672, 412]], [[710, 502], [664, 464]]]},
 	},
 	"electrolyser": {
 		2: {"stacks": [], "fires": [],
 			"cables": [[[330, 147], [303, 245], [262, 340]], [[322, 182], [296, 288], [258, 380]]]},
 	},
+	# Petrochemical refinery: the flare's flame is baked into the art, so its fire is the masked flame
+	# (assets/fx/light), breathing, with no animated lick on top (package_building_fx.py).
 	"petro_refinery": {
-		1: {"stacks": [],
-			"fires": [{"x": 608, "y": 220, "rx": 16, "ry": 14, "lick": 72, "lean": 10}]},
-		2: {"stacks": [],
-			"fires": [{"x": 605, "y": 265, "rx": 16, "ry": 14, "lick": 72, "lean": 10}, {"x": 658, "y": 243, "rx": 16, "ry": 14, "lick": 72, "lean": 10}]},
-		3: {"stacks": [],
-			"fires": [{"x": 633, "y": 254, "rx": 16, "ry": 14, "lick": 72, "lean": 10}, {"x": 692, "y": 235, "rx": 16, "ry": 14, "lick": 72, "lean": 10},
-				{"x": 758, "y": 192, "rx": 16, "ry": 14, "lick": 72, "lean": 10}]},
+		1: {"stacks": [], "fires": [{"x": 600, "y": 195, "w": 44, "h": 81, "mode": "breathe"}]},
+		2: {"stacks": [], "fires": [{"x": 679, "y": 169, "w": 44, "h": 82, "mode": "breathe"}]},
+		3: {"stacks": [], "fires": [{"x": 679, "y": 169, "w": 44, "h": 82, "mode": "breathe"}]},
 	},
+	# Polymerisation refinery: no chimney or vent to plume (package_building_fx.py).
 	"poly_plant": {
-		1: {"stacks": [{"x": 570, "y": 206, "r": 12, "kind": "steam"}], "fires": []},
-		2: {"stacks": [{"x": 630, "y": 120, "r": 16, "kind": "steam"}, {"x": 700, "y": 135, "r": 16, "kind": "steam"}], "fires": []},
-		3: {"stacks": [{"x": 550, "y": 160, "r": 16, "kind": "steam"}, {"x": 630, "y": 200, "r": 16, "kind": "steam"}], "fires": []},
+		1: {"stacks": [], "fires": []},
+		2: {"stacks": [], "fires": []},
+		3: {"stacks": [], "fires": []},
 	},
 	# chem_plant, electrolyser, assembly_plant: process vessels, NOT furnaces — no plume.
 	# The chem plant keeps no entry at all.

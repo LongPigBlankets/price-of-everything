@@ -15,6 +15,8 @@ OUT.mkdir(parents=True, exist_ok=True)
 # Alpha = 1 - code / 8, so 1.0 (the old export) still means no pattern. See-through faces
 # (BLENDED materials with Alpha < 1) go to a second 'Glass' slot and keep their real alpha.
 PATTERNS = {'white_wall': 2, 'chalk': 2, 'ht_white': 2, 'deck': 3, 'membrane': 3, 'apron': 4, 'pad': 4, 'cream': 4,
+            # Furnace: refractory cladding panels, standing-seam roofs, paved footing tops.
+            'f2_refractory': 2, 'f_roof': 5, 'f_base': 4,
             'roof_metal': 5}
 def material_alpha(mat):
     """The face's opacity: below 1 only for BLENDED materials, which export as 'Glass'."""
@@ -57,12 +59,25 @@ for family in ('farm', 'water_pump', 'new_forest', 'old_forest', 'desal', 'oil_w
                         col='BLDG_' + family, levels=(1, 2, 3), detailed=True, outer_contour=False)
 specs['offshore_oil_platform'] = dict(file=str(DETAIL_SOURCE / 'builders.py'), fn='build_offshore_oil_platform',
     col='BLDG_offshore_oil_platform', levels=(1,2,3), detailed=True, outer_contour=False)
-# L3 Paper WPA furnace is released. L1/L2 replacements are coming soon:
-# default exports touch only L3, preserving their installed legacy artwork.
-# The staging pipeline may explicitly build all three draft levels for review.
-specs['furnace'] = dict(file=str(DETAIL_SOURCE / 'furnace_builder.py'), fn='build_furnace',
-    col='BLDG_furnace', levels=(1,2,3) if os.environ.get('POE_FURNACE_VARIANT') == 'paper-wpa' else (3,),
-    detailed=True, outer_contour=False)
+# The furnace is the generic shaft-furnace works (furnace_v2_builder.py), executed after
+# furnace_builder.py, whose palette and shed helpers it shares. It carries the outer ink
+# contour like the catalogue factory. 'furnace_v2' is the same builder under its staging
+# name, for reviewed revisions built by tools/building_assets/pipeline.py.
+specs['furnace'] = dict(file=str(DETAIL_SOURCE / 'furnace_v2_builder.py'), fn='build_furnace_v2',
+    col='BLDG_furnace_v2', levels=(1,2,3), detailed=True, outer_contour=True,
+    prelude=(str(DETAIL_SOURCE / 'furnace_builder.py'),))
+specs['furnace_v2'] = dict(specs['furnace'])
+# The rebuilt refineries (refinery_v2_builder.py), staged under their working names; their
+# reviewed revisions install as 'petro_refinery' and 'poly_plant'.
+for staged in ('petro_refinery_v2', 'poly_plant_v2'):
+    specs[staged] = dict(file=str(DETAIL_SOURCE / 'refinery_v2_builder.py'), fn='build_' + staged,
+        col='BLDG_' + staged, levels=(1, 2, 3), detailed=True, outer_contour=True,
+        prelude=(str(DETAIL_SOURCE / 'furnace_builder.py'), str(DETAIL_SOURCE / 'furnace_v2_builder.py')))
+# The rebuilt power plant (power_plant_v2_builder.py), staged; installs as 'power_plant'.
+specs['power_plant_v2'] = dict(file=str(DETAIL_SOURCE / 'power_plant_v2_builder.py'), fn='build_power_plant_v2',
+    col='BLDG_power_plant_v2', levels=(1, 2, 3), detailed=True, outer_contour=True,
+    prelude=(str(DETAIL_SOURCE / 'furnace_builder.py'), str(DETAIL_SOURCE / 'furnace_v2_builder.py'),
+             str(DETAIL_SOURCE / 'refinery_v2_builder.py')))
 # Export independent vessels from the same reviewed port builder. These are
 # components, with the port's unit scale and their own grounded local origin.
 PORT_SHIPS = {'boxa': ('boxA', 'SHIP_BOXER_A'), 'boxb': ('boxB', 'SHIP_BOXER_B'),
@@ -101,6 +116,9 @@ for name, spec in specs.items():
         exec(compile((KIT/'sprite_kit.py').read_text(), str(KIT/'sprite_kit.py'), 'exec'), ns)
         if spec.get('detailed'):
             exec(compile((KIT/'props_kit.py').read_text(), str(KIT/'props_kit.py'), 'exec'), ns)
+        for prelude in spec.get('prelude', ()):
+            # A builder that extends another family's palette and helpers runs after it.
+            exec(compile((KIT/prelude).read_text(), str(KIT/prelude), 'exec'), ns)
         exec(compile((KIT/spec['file']).read_text(), str(KIT/spec['file']), 'exec'), ns)
         built = ns[spec['fn']](level, **spec.get('kwargs', {})) if level else ns[spec['fn']]()
         if isinstance(built, dict) and 'storey_height' in built:

@@ -51,8 +51,10 @@ scene = bpy.context.scene
 # is synthesized per-component in sprite_export.py, where 2D morphology can tell an interior
 # pocket from true outside.
 fs = scene.view_layers[0].freestyle_settings
+# A builder may add its own "ink_*" set (the power plant inks its turbine hall's contents
+# through the glazed roof); those are kept.
 for ls in list(fs.linesets):
-    if ls.name not in ("ink", "ink_fine"):
+    if ls.name not in ("ink", "ink_fine") and not ls.name.startswith("ink_"):
         print("DROP lineset", ls.name, flush=True)
         fs.linesets.active_index = list(fs.linesets).index(ls)
         bpy.ops.scene.freestyle_lineset_remove()
