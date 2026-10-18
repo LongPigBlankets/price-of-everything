@@ -50,6 +50,7 @@
     "motor",
     "nitrogen",
     "oxygen",
+    "pet_coke",
     "plastics",
     "polysilicon",
     "power",
@@ -1933,6 +1934,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_062_biomass.png",
       "source": "goods_biomass/v29",
       "sha256": "0a58ba240d85bf173abd5c44f1da541588ff1c833485720e07266cd179cce14f",
+      "installed_default": true
+    },
+    {
+      "good": "pet_coke",
+      "good_id": "g_075",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_075_pet_coke.png",
+      "source": "goods_pet_coke/v29",
+      "sha256": "b4089fb5d0189628e5c422f069e1ee34748adc3b52a02355ec4ba4d2c720183d",
+      "installed_default": true
+    },
+    {
+      "good": "pet_coke",
+      "good_id": "g_075",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_075_pet_coke.png",
+      "source": "goods_pet_coke/v29",
+      "sha256": "fe7fb5439e9c310230c679abd0e3c644ed91ba09ea9433e6face3b45ea61bd04",
+      "installed_default": true
+    },
+    {
+      "good": "pet_coke",
+      "good_id": "g_075",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_075_pet_coke.png",
+      "source": "goods_pet_coke/v29",
+      "sha256": "6a766721ed6c072397307a4a73f4c3d330881c66ea8899f05978dd6cd4f9410b",
       "installed_default": true
     }
   ]
