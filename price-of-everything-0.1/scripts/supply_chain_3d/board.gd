@@ -50,7 +50,6 @@ var _paper_owner: Node3D
 var _owned_center := Vector2.ZERO
 var _reveal_started := 0
 var reveal_profile := {"tiles":[]}
-const PlayerColours := preload("res://scripts/player_colours.gd")
 ## Soot around a smoking stack: how far it reaches over the ground, and how much one stack adds.
 const SOOT_REACH := 450.0
 const SOOT_PER_STACK := 0.8
@@ -516,7 +515,6 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	var builder := Builder.new()
 	builder.streamed = show_all_tiles
 	builder.evening = evening
-	RenderingServer.global_shader_parameter_set("sc3d_livery", PlayerColours.active_color())
 	builder.cursor_picking = true
 	builder.lazy_assets = true
 	builder.terrain_cache = _terrain_cache

@@ -9,11 +9,10 @@ uniform float span = 1.0;
 uniform vec2 atlas_grid = vec2(16.0, 5.0);
 uniform vec2 grade_range = vec2(-100000.0, 100000.0);
 uniform float foliage_softness : hint_range(0.0, 1.0) = 0.0;
-// 0 = unclassified, 1 = the player's, 2 = decorative scenery, 3 = an NPC's.
+// 0 = as authored (the company's own and unclassified), 2 = decorative scenery, 3 = an NPC's.
 instance uniform float sc_role = 0.0;
 uniform float decor_grey = 0.65;
 uniform float npc_grey = 0.80;
-global uniform vec4 sc3d_livery;
 varying vec2 frame_index;
 varying float world_span;
 varying vec3 view_point;
@@ -67,20 +66,6 @@ void fragment() {
   vec3 grey = vec3(luma) * (npc ? vec3(1.05, 1.02, 0.95) : vec3(0.98, 0.99, 1.02));
   colour = mix(colour, grey, npc ? npc_grey : decor_grey);
   if (npc) colour = mix(colour, OUTPUT_IS_SRGB ? vec3(0.88, 0.86, 0.80) : to_linear(vec3(0.88, 0.86, 0.80)), 0.18);
- } else if (sc_role > 0.5) {
-  colour = max(mix(vec3(luma), colour, 1.25), vec3(0.0));
-  // A livery edge just outside the silhouette, sampled from the frame's own alpha.
-  vec2 texel = 1.6 / vec2(textureSize(artwork, 0));
-  float around = 0.0;
-  for (int i = 0; i < 8; i++) {
-   float a = float(i) * 0.78539816;
-   around = max(around, texture(artwork, atlas_uv + vec2(cos(a), sin(a)) * texel).a);
-  }
-  float edge = clamp(around - paint.a, 0.0, 1.0);
-  if (edge > 0.35) {
-   colour = sc3d_livery.rgb * 0.45;
-   alpha = 1.0;
-  }
  }
  ALBEDO = colour * (OUTPUT_IS_SRGB ? grade : to_linear(grade));
  ALPHA = alpha;

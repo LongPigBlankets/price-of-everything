@@ -151,10 +151,6 @@ toggle_goods_graph={
 
 [shader_globals]
 
-sc3d_livery={
-"type": "color",
-"value": Color(0.7254902, 0.29803923, 0.2509804, 1)
-}
 sc3d_soot_map={
 "type": "sampler2D",
 "value": ""
