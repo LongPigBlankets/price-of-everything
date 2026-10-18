@@ -178,6 +178,19 @@ func _build_theme() -> Theme:
 	# title only — with bold vs not-bold as the sole other differentiator.
 	_label_var(t, fonts, "SectionRuled", "PLEX_SEMI",   15,             PALETTE["TEXT"], 0.08)
 
+	# The agreement keeps the DS fonts/controls, with a plain black-on-white document.
+	t.set_type_variation("LegalDocument", "RichTextLabel")
+	t.set_color("default_color", "LegalDocument", Color.BLACK)
+	t.set_color("font_selected_color", "LegalDocument", Color.BLACK)
+	if fonts.get("PLEX_MED"):
+		t.set_font("normal_font", "LegalDocument", fonts["PLEX_MED"])
+	t.set_font_size("normal_font_size", "LegalDocument", FS["BODY"])
+	var legal_paper := StyleBoxFlat.new()
+	legal_paper.bg_color = Color.WHITE
+	for side: int in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+		legal_paper.set_content_margin(side, SP["LG"])
+	t.set_stylebox("normal", "LegalDocument", legal_paper)
+
 	# ── PanelContainer base + variations ───────────────────────────────
 	# Default panel: opaque navy + 2px solid cream outline + generous padding
 	t.set_stylebox("panel", "PanelContainer",

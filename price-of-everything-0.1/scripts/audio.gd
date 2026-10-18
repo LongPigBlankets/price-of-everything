@@ -237,6 +237,19 @@ func stop_music() -> void:
 	_music.stop()
 
 
+## An immediate quit has no time to play DS's deferred button click. Drop it
+## and release active voices before the audio backend tears down.
+func silence_for_quit() -> void:
+	_duck_clicks()
+	stop_music()
+	stop_tile_ambience()
+	# Some presentation widgets (the menu goods board) own their own player.
+	for node: Node in get_tree().root.find_children("*", "AudioStreamPlayer", true, false):
+		var player := node as AudioStreamPlayer
+		player.stop()
+		player.stream = null
+
+
 ## Fade the music out over `duration`s, then stop it. If `resume_after` >= 0, the
 ## playlist resumes with the NEXT track that many seconds after this call (so the menu
 ## theme fades as the game begins, then gameplay music returns); pass -1 to leave the

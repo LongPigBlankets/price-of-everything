@@ -15,6 +15,29 @@ python3 tools/run_tests.py --list                   # files, tests and tags; run
 `SCRIPT ERROR` line as well as on a failed assertion. Anything after the script name is passed
 to the Godot runner unchanged (it lands after `--` on the command line).
 
+### Demo agreement
+
+`python3 tools/run_tests.py --test eula` checks first-launch acceptance, changed terms,
+failed persistence, export inclusion and the scrolling document's fixed actions.
+`tools/eula_probe.tscn` also exercises startup in a fresh process:
+
+```bash
+godot --headless --path . res://tools/eula_probe.tscn -- \
+  --no-telemetry --eula-action=accept --acceptance-file=/tmp/cnc-eula-probe.cfg
+godot --headless --path . res://tools/eula_probe.tscn -- \
+  --no-telemetry --eula-action=relaunch --acceptance-file=/tmp/cnc-eula-probe.cfg
+```
+
+Use a fresh, isolated acceptance file for `show`, `accept` and `decline`; reuse the
+accepted file for `relaunch`. A rendered check uses `AGENT_GODOT_WINDOW=1 godot`
+without `--headless`, plus `--capture-dir=/tmp/cnc-eula-shots`. The probe has a
+90-second watchdog and disables telemetry. It must exit zero without Godot errors.
+
+The shipped text is `data/legal/demo_eula.txt`; the Markdown draft outside the Godot
+project is not loaded at runtime. Update the text and `DemoEula.VERSION` together
+when revising the terms. Acceptance lives in `savegames/demo_eula.cfg`, alongside
+the profile but separate from match saves; both the version and text hash must match.
+
 The e2e balance harness is **not** part of this suite. Run it separately:
 
 ```bash
