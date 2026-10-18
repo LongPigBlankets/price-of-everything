@@ -48,6 +48,12 @@ var _view_rect := Rect2()
 ## evicted, and the repainted textures that replace them. See _repair_evicted_tiles.
 var _dirty_tiles: Dictionary = {}
 var _repainted: Dictionary = {}
+## The same repaints at the far tier's size, a quarter of the memory. Zoomed out they are what
+## draws; zoomed in they stand in until the full-size repaint exists.
+var _repainted_far: Dictionary = {}
+## Tiles whose full-size repaint was let go while the map was covered. Re-rendered the first
+## time the near tier draws again.
+var _near_released: Dictionary = {}
 var _repair_running := false
 var _port_deck: Node2D
 
@@ -194,7 +200,8 @@ func _lp_draw_inner() -> void:
 	if AuthoredBake.is_available():
 		_view_rect = AuthoredBake.visible_world_rect(self, STREAM_MARGIN)
 		var _lp_t := Time.get_ticks_usec()
-		AuthoredBake.draw_layer(self, "fabric", _view_rect, _repainted, AuthoredBake.tier_for(self))
+		var tier := AuthoredBake.tier_for(self)
+		AuthoredBake.draw_layer(self, "fabric", _view_rect, _overrides_for(tier), tier)
 		var _lp_textures := Time.get_ticks_usec() - _lp_t
 		_draw_dynamic()
 		if OS.get_environment("LOAD_PROF") != "":
@@ -341,8 +348,41 @@ func _repair_evicted_tiles() -> void:
 		var image := viewport.get_texture().get_image()
 		if image != null and not image.is_empty():
 			_repainted[tile_id] = ImageTexture.create_from_image(image)
+			var far := BakeLayout.texture_size_for(BakeLayout.TIER_FAR)
+			image.resize(far.x, far.y, Image.INTERPOLATE_LANCZOS)
+			_repainted_far[tile_id] = ImageTexture.create_from_image(image)
+			_near_released.erase(tile_id)
 	viewport.queue_free()
 	_repair_running = false
+	queue_redraw()
+
+
+## The repainted tiles to draw at a tier: far copies zoomed out; full-size ones zoomed in, with
+## the far copy standing in for any full-size repaint that was let go and is being re-rendered.
+func _overrides_for(tier: String) -> Dictionary:
+	if tier != BakeLayout.TIER_NEAR:
+		return _repainted_far
+	if not _near_released.is_empty():
+		_dirty_tiles.merge(_near_released)
+		_near_released.clear()
+	if _repainted.size() >= _repainted_far.size():
+		return _repainted
+	var overrides := _repainted_far.duplicate()
+	overrides.merge(_repainted, true)
+	return overrides
+
+
+## Let the map's pictures go while a full-screen view covers it (map_image_residency.gd): the
+## streamed tiles (AuthoredBake.release) and the full-size repaints. The recorded draw commands
+## name those textures, so they are cleared and the layer repaints on restore_images().
+func release_images() -> void:
+	for tile_id in _repainted:
+		_near_released[tile_id] = true
+	_repainted.clear()
+	RenderingServer.canvas_item_clear(get_canvas_item())
+
+
+func restore_images() -> void:
 	queue_redraw()
 
 

@@ -3602,6 +3602,30 @@ func _test_authored_zones() -> void:
 ## all, rebuilt on every redraw. That cost 4.5 seconds a frame and eight minutes of "Building
 ## the world…" in the editor, and the only thing that ever said so was a warning nobody was
 ## reading. Editing a document means re-running the bake; this is what says so.
+## The loading screen reads the opening view on worker threads and collects it synchronously.
+## Each request has to be collected, not shadowed by a second load: an uncollected request keeps
+## its texture alive for the session, and then neither trim() nor release() frees anything.
+func _test_authored_bake_warm_requests_release() -> void:
+	var bake: Variant = load("res://scripts/authored_bake.gd")
+	bake.reset_for_tests()
+	var tile_id := ""
+	for candidate in (bake.tiles() as Dictionary):
+		if str(bake.path_for(str(candidate), "roads")) != "":
+			tile_id = str(candidate)
+			break
+	if not bake.is_available() or tile_id == "":
+		bake.reset_for_tests()
+		return
+	bake.warm_async([tile_id], ["roads"])
+	_check(int(bake.warm([tile_id], ["roads"])) == 1 and (bake._pending as Dictionary).is_empty(),
+		"authored bake: warm collects the worker request warm_async made")
+	var weak: WeakRef = weakref(bake.texture_for(tile_id, "roads"))
+	_check(weak.get_ref() != null, "authored bake: the warmed tile is resident")
+	_check(int(bake.release()) >= 1 and (bake._textures as Dictionary).is_empty(), "authored bake: release lets every resident tile go")
+	_check(weak.get_ref() == null, "authored bake: a released opening-view tile is freed, not pinned by its worker request")
+	bake.reset_for_tests()
+
+
 func _test_authored_bake_matches_its_document() -> void:
 	var bake := load("res://scripts/authored_bake.gd")
 	var manifest: Dictionary = bake.data()

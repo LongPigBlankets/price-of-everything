@@ -24,6 +24,10 @@ var _label_order: Array = []
 var _warm_camera: Dictionary = {}
 const HIDDEN_RELEASE_MSEC := 10000
 var _hidden_since := 0
+## Idle preparation (terrain warming, alignment memo seeding) waits this long after the view
+## appears, so its slices never land in the first moments of looking at it.
+const IDLE_WARM_DELAY_MSEC := 1500
+var _shown_since := 0
 var _released_while_hidden := false
 
 const GoodIcons := preload("res://scripts/good_icons.gd")
@@ -406,6 +410,7 @@ func _visibility() -> void:
 	if _viewport == null: return
 	if is_visible_in_tree():
 		_hidden_since = 0
+		_shown_since = Time.get_ticks_msec()
 		_resize_viewport()
 		if _released_while_hidden:
 			_released_while_hidden = false
@@ -1112,6 +1117,7 @@ func _warm_ground_slice(delta: float) -> void:
 	var still := camera == _warm_camera
 	_warm_camera = camera
 	if not still or delta > 1.0 / 50.0 or _building or _streaming or _builder == null: return
+	if Time.get_ticks_msec() - _shown_since < IDLE_WARM_DELAY_MSEC: return
 	# The company view first solves its road chains into the alignment memo, so
 	# a building on a new tile re-solves only the chains near that tile.
 	if not _builder.streamed and not _builder.alignment_seeded():

@@ -101,6 +101,10 @@ AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_chain_3d/profile_streamin
   --trial-output=/private/tmp/stream-profile --bake-cache-directory=/private/tmp/empty-cache
 ```
 
+`bake_company_start` also solves every road chain of the default company into the road
+alignment memo and ships it as `alignment-<map key>` (37 KB). A first session then never
+solves a chain while the player looks at the 3D view.
+
 Run `bake_company_start` again until its report says `"settled": true`: the
 layout memo it writes back can move border roads on the next build, so the first
 run can index keys the game no longer asks for. Then drop auxiliary keys that

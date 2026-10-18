@@ -117,6 +117,57 @@ The bundled world snapshot and continent package match only the starting company
 
 A related fix: idle prefetch stored empty entries for worlds built at runtime, which raised script errors in `prepare_tile`/`tile_node`. Prefetch now skips tiles without packaged resources.
 
+## The 2D map under the 3D view (fixed)
+
+Measured with `tools/supply_chain_3d/trials/vram_2d_breakdown.tscn` on a new Metal Magnate game. The opening view shows the whole map, so all 911 far-tier authored tiles are on screen.
+
+**Leak.** The loading screen read the opening view's tiles on worker threads (`AuthoredBake.warm_async`), then loaded each tile again synchronously. The worker requests were never collected, and an uncollected request keeps its texture alive. All 911 tiles (401 MB) stayed resident for the session, and trimming freed nothing. The synchronous read now collects the worker request. Zoomed in on the company, 191 tiles stay alive instead of 911, and GPU memory falls from 3,059 to 2,613 MB.
+
+**Hidden map.** The 3D view hides the 2D layers, but hidden layers keep their textures. The map now stays warm for 5 s after the 3D view opens (`MapImages.WARM_MSEC`), so a quick look costs nothing. After that, `map_image_residency.gd` releases:
+- the streamed authored tiles;
+- the full-size in-match repaints, keeping copies at the far tier's size;
+- the far-zoom hill picture, only when it came from disk.
+
+Cached meshes stay. With the 3D view open, GPU memory falls from 3,363 to 2,522 MB.
+
+**Return.** Closing the 3D view repaints the layers. The whole opening view (900 tiles) and the hill picture are back in 423 ms, with a worst frame of 91 ms. Contour meshes draw until the hill picture lands. Full-size repaints are re-rendered the first time the near tier draws. Captures before and after are identical.
+
+**Hill picture.** The far-zoom hill picture (`assets/baked/hills_far_zoom.png`, 4096×3492) was the last large lossless map image. As Basis Universal it is 18.2 MB on the GPU instead of 72.7 MB, and side-by-side captures at the zooms that draw it are identical. Splitting it per tile would save nothing at the opening zoom, because it only draws when a third or more of the map is in view.
+
+## First-open hitches (fixed)
+
+Measured with `tools/supply_chain_3d/trials/first_open_hitches.tscn`: a new game, 8 s on the map, then the 3D view, frame by frame with pipeline compilations.
+
+- **Shader compiles are not the cost.** All 19 draw-time compiles land in the first frame (about 35–40 ms), with Godot's shader cache warm or deleted. A covered shader warm-up would not change the open measurably on this Mac. A cold Windows (D3D12) machine is untested.
+- **The cost was idle preparation.** The board does no work while hidden, so seeding the road alignment memo started the moment the view appeared. One steep road chain can take 70–175 ms, and the 4 ms slice budget is only checked between chains: 14–16 frames over 33 ms in the first 3 s, the worst 173 ms.
+- **Fix.** The memo is persisted in the bake cache (`alignment-<map key>`). The runtime copy wins, as with the layout memo. The default company's memo ships in the package (`bake_company_start`, 37 KB), and idle preparation waits 1.5 s after the view appears.
+- **After.** First open has 2 frames over 33 ms, the worst 55 ms. Both come from idle terrain warming, whose cost (20–55 ms per tile) is the shared terrain sampler filing a tile on its first query.
+
+## Graphics quality budgets (compared, unchanged)
+
+Measured with `tools/supply_chain_3d/trials/quality_budget_ab.tscn`: a simulated 2× screen (3840×2088 board), every tile shown.
+
+| Internal resolution, MSAA | GPU memory, closest / far | Frame median, closest / far |
+| --- | --- | --- |
+| Native, 4× | 3,355 / 3,701 MB | 13.9 / 14.8 ms |
+| 2560×1440, 4× | 3,043 / 3,395 MB | 11.6 / 14.3 ms |
+| 2560×1440, 2× (current) | 3,043 / 3,395 MB | 9.8 / 14.4 ms |
+| 2560×1440, off | 3,043 / 3,395 MB | 10.2 / 14.4 ms |
+| 1920×1080, 2× | 2,880 / 3,307 MB | 8.2 / 14.0 ms |
+| 1920×1080, off | 2,880 / 3,307 MB | 6.9 / 14.0 ms |
+
+- **MSAA uses no measurable memory on Apple GPUs,** which keep multisampled attachments in tile memory. Windows cards do allocate them.
+- **Resolution is the memory lever.** 1920×1080 saves 90–160 MB more, but the closest view is visibly softer, with blurrier rails and truss members.
+- **Medium and far views are limited by the CPU,** so no setting changes their frame time.
+- **The current budget stays.** At 2560×1440, 4× MSAA would cost no memory on a Mac and about 2 ms at the closest zoom.
+
+**Further compression candidates, pending owner rulings.** These are uncompressed by rule:
+- the goods alternate icons, 84.5 MB, mostly 450² (lossless import is an owner rule, 5 September);
+- the building sprites and icons, about 75 MB;
+- the 2D in-match repaints kept at far size, 44 MB.
+
+Basis would cut each to about a quarter.
+
 ## Not done
 
 - One draw-time pipeline compile (about 60–130 ms) remains on the first continent open. Showing the paper map once in advance moved three of its shader compiles out of the open, but would flash the paper over the company view.

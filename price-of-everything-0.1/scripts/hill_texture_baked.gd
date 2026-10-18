@@ -103,6 +103,33 @@ static func _load_texture() -> Texture2D:
 	return _texture
 
 
+## Let the loaded picture go while nothing draws the map. texture() loads it again on demand;
+## request_async() and landed() bring it back on a worker thread instead.
+static func release() -> void:
+	_texture = null
+	_texture_tried = false
+
+
+static func request_async() -> void:
+	if _texture == null and ResourceLoader.exists(TEXTURE_PATH):
+		ResourceLoader.load_threaded_request(TEXTURE_PATH)
+
+
+## True once a request_async() load has landed; the next texture() call returns it.
+static func landed() -> bool:
+	if _texture != null:
+		return true
+	match ResourceLoader.load_threaded_get_status(TEXTURE_PATH):
+		ResourceLoader.THREAD_LOAD_LOADED:
+			_texture = ResourceLoader.load_threaded_get(TEXTURE_PATH) as Texture2D
+			_texture_tried = true
+			return _texture != null
+		ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			return false
+	# Not requested, or failed: texture() falls back to a synchronous load.
+	return true
+
+
 static func _rect_of(value: Variant) -> Rect2:
 	if typeof(value) != TYPE_ARRAY or (value as Array).size() != 4:
 		return Rect2()

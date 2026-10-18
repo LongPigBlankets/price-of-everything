@@ -48,6 +48,14 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	var layout_key: String=board._layout_queries.key
 	writer.write(layout_key,board._layout_queries.data)
 	manifest.resources[layout_key]=Package.file_record(writer.directory,layout_key)
+	# Every road chain of the default company, so its first session never solves one while
+	# the player looks at the view (road_alignment_memo.gd).
+	var builder: RefCounted=board._builder
+	while not builder.seed_alignment_step(1 << 30): pass
+	var alignment_key: String=builder.alignment_memo_key()
+	writer.write(alignment_key,{"chains":builder.AlignmentMemo.entries()})
+	if not manifest.resources.has(alignment_key): auxiliary.append(alignment_key)
+	manifest.resources[alignment_key]=Package.file_record(writer.directory,alignment_key)
 	manifest.auxiliary_keys=auxiliary
 	manifest.company_start={"tiles":board._model.tiles.keys(),"resource_count":auxiliary.size()}
 	FileAccess.open(manifest_path,FileAccess.WRITE).store_string(JSON.stringify(manifest,"\t")+"\n")
@@ -56,7 +64,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	report.company_start=manifest.company_start
 	# The layout memo this run writes back can move roads on the next build. A
 	# run that baked nothing new is the settled one; until then, run it again.
-	var baked := Array(DirAccess.get_files_at(cache_directory) if DirAccess.dir_exists_absolute(cache_directory) else PackedStringArray()).filter(func(f: String) -> bool: return f.ends_with(".res") and not f.begins_with("layout-"))
+	var baked := Array(DirAccess.get_files_at(cache_directory) if DirAccess.dir_exists_absolute(cache_directory) else PackedStringArray()).filter(func(f: String) -> bool: return f.ends_with(".res") and not f.begins_with("layout-") and not f.begins_with("alignment-"))
 	report.settled=baked.is_empty()
 	FileAccess.open("/private/tmp/company_package_report.json",FileAccess.WRITE).store_string(JSON.stringify(report,"\t"))
 	print("[COMPANY PACKAGE] ",JSON.stringify(report))
