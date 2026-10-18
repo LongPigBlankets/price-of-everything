@@ -8,6 +8,7 @@
     "ammonia",
     "basic_salt",
     "bauxite_ore",
+    "biomass",
     "building_frame",
     "car_body",
     "chem_salts",
@@ -1905,6 +1906,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_047_metallurgical_silicon.png",
       "source": "goods_metallurgical_silicon/v44",
       "sha256": "687b62cd771546753cd96c6343e96cbfb7450abeff14fe86c10fa81299d3b555",
+      "installed_default": true
+    },
+    {
+      "good": "biomass",
+      "good_id": "g_062",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_062_biomass.png",
+      "source": "goods_biomass/v29",
+      "sha256": "8b955a9af6a5c928c1f3ef0fb22acaf7165231254f6795f148eeb2e07dc099df",
+      "installed_default": true
+    },
+    {
+      "good": "biomass",
+      "good_id": "g_062",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_062_biomass.png",
+      "source": "goods_biomass/v29",
+      "sha256": "64349dc03741d6e5ebc9b5d379d9d02f26ef4fb1054e5b9b6eb8ee7585908566",
+      "installed_default": true
+    },
+    {
+      "good": "biomass",
+      "good_id": "g_062",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_062_biomass.png",
+      "source": "goods_biomass/v29",
+      "sha256": "0a58ba240d85bf173abd5c44f1da541588ff1c833485720e07266cd179cce14f",
       "installed_default": true
     }
   ]
