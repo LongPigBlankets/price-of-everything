@@ -46,6 +46,7 @@ func _ready() -> void:
 		if str(key).begins_with("tree_"): continue
 		Assets.key_for(str(key).get_slice("_lvl", 0), 3)
 		source.mesh = Assets.mesh_for(key)
+		source.set_instance_shader_parameter("pattern_scale", Assets.span(key))
 		if "--colour-only" not in OS.get_cmdline_user_args():
 			var shape := source.mesh.create_trimesh_shape()
 			shape.set_meta("source_sha256", FileAccess.get_sha256(Assets.DIRECTORY + key + ".glb"))
@@ -60,13 +61,13 @@ func _ready() -> void:
 		camera.size = float(entry.span)
 		var paint := ShaderMaterial.new()
 		paint.shader = Shader.new()
-		paint.shader.code = FileAccess.get_file_as_string("res://scripts/supply_chain_3d/building_print.gdshader").replace(
-			"paint *= mix(vec3(0.66, 0.74, 1.0), vec3(1.0, 0.92, 0.72), t);", "")
+		# Sprites are graded by position in the shader that draws them, not in the bake.
+		paint.shader.code = Assets.print_code(false, PackedStringArray(["NO_POSITION_GRADE"]))
 		paint.set_shader_parameter("stipple_strength", 0.10)
 		paint.set_shader_parameter("detail_level", 1)
 		paint.set_shader_parameter("lit_windows", true)
 		paint.set_shader_parameter("curtain_wall", str(key).begins_with("towers_"))
-		source.material_override = paint
+		Assets.paint(source, paint, _glass_like(paint))
 		var colour := Image.create(cell * yaws, cell * PITCHES, false, Image.FORMAT_RGBA8)
 		for pitch_index in PITCHES:
 			var pitch := lerpf(Rig.MIN_PITCH, Rig.MAX_PITCH, float(pitch_index) / (PITCHES - 1))

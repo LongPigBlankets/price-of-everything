@@ -243,13 +243,27 @@ func _test_background_tile_transition_runs_concurrently() -> void:
 	var intrinsic := MeshInstance3D.new()
 	var plane := PlaneMesh.new(); plane.material=source; intrinsic.mesh=plane
 	fresh.bind(intrinsic)
-	_check(intrinsic.material_override is ShaderMaterial and intrinsic.material_override!=source,
+	var revealed: Material = intrinsic.get_surface_override_material(0)
+	_check(intrinsic.material_override==null and revealed is ShaderMaterial and revealed!=source and revealed.get_shader_parameter("loading_mask")==true,
 		"Mesh-surface materials used by near buildings and instanced crops join the same reveal")
+	var building := MeshInstance3D.new()
+	var faces := ArrayMesh.new()
+	for shader in [preload("res://scripts/supply_chain_3d/building_print.gdshader"), preload("res://scripts/supply_chain_3d/building_glass.gdshader")]:
+		faces.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, PlaneMesh.new().get_mesh_arrays())
+		var paint := ShaderMaterial.new(); paint.shader=shader
+		faces.surface_set_material(faces.get_surface_count()-1, paint)
+	building.mesh=faces
+	fresh.bind(building)
+	var opaque: Material = building.get_surface_override_material(0)
+	var glass: Material = building.get_surface_override_material(1)
+	_check(opaque is ShaderMaterial and glass is ShaderMaterial and opaque.shader==faces.surface_get_material(0).shader and glass.shader==faces.surface_get_material(1).shader,
+		"A building's see-through glass keeps its own paint while its tile is revealed")
 	fresh.start("a"); fresh._started_at.a=Time.get_ticks_msec()-1200
 	fresh.advance(0.001,true)
 	_check(absf(fresh.elapsed.a-1.2)<0.02, "The live clock catches up after a slow frame instead of stretching the 1.5-second animation")
 	fresh.finish(); fresh.restore()
-	_check(intrinsic.material_override==null, "Restoring a surface material preserves its original null override")
-	intrinsic.free()
+	_check(intrinsic.material_override==null and intrinsic.get_surface_override_material(0)==null, "Restoring a surface material preserves its original null override")
+	_check(building.get_surface_override_material(0)==null and building.get_surface_override_material(1)==null, "Restoring a building returns every surface to its own paint")
+	intrinsic.free(); building.free()
 	_check(root.material_override==source and fresh.bindings.is_empty(), "Completed reveals restore original materials for subsequent LOD and grading changes")
 	root.free()
