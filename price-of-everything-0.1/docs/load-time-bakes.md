@@ -1,5 +1,28 @@
 # Load time: what is baked, and when to re-bake it
 
+## Furnace, refineries and power plant — 18 October 2026
+
+All three levels of the furnace, the petrochemical and polymerisation refineries and the
+power plant are replaced in the catalogue look (reviews:
+[furnace](reviews/furnace-v2-2026-10-16.md), [refineries](reviews/refinery-v2-2026-10-17.md),
+[power plant](reviews/power-plant-v2-2026-10-17.md)). The installed models are the reviewed
+revisions' exports. Their contour shells were re-exported from the revisions' frozen
+sources with the current `export_models.py`, so see-through faces stay out of the shell
+(the re-exported models matched the installed geometry), and the far, medium
+and lit atlases and picking were rebaked with `--asset-keys` for the twelve keys.
+
+Every model's span and dimensions changed, which staled the company-start supplement
+(7 misses, 8 runtime writes on the first company open, Begin 25.5 s). The continent
+package and world snapshot did not change: 107 bundled hits after streaming, no misses,
+and the overlay found 0 of 251 candidate tiles changed. `bake_company_start` settled on
+its second run, the seven old auxiliary resources were dropped and the package validated:
+**1,841 resources, 959,386,724 bytes**. A fresh process with an empty user directory
+then offers Begin at **21.4 s**. The company opens with 36 bundled hits and zero misses
+or writes, and the continent has 107 bundled hits after streaming with no writes.
+Captures of all three levels on company tiles, day and evening:
+[works-on-main-2026-10-18.jpg](reviews/works-on-main-2026-10-18.jpg)
+(`tools/supply_chain_3d/trials/works_tile_shot.tscn`).
+
 ## Catalogue-look buildings — 18 October 2026
 
 The rebuilt assembly plant, high-tech manufactory and industrial factory changed

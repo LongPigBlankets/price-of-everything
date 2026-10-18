@@ -507,35 +507,51 @@ it onto the kit without re-approving the renders.**
 Re-baked on the new contour/stipple 2026-08-21; geometry reproduced within 2 px.
 **Not yet flow-audited.**
 
-## furnace — Furnace (blast)
+## furnace — Furnace (generic shaft-furnace works)  *(rebuilt and installed 2026-10-17)*
 
-Steel-clad hall, twin banded round chimneys, scaffold cage, process tanks, ember-lit doors.
-L3 merges the two stacks into one exhaust via the oval breeches piece that took four attempts
-(see `SKILL.md`). Also predates the kit.
+A generic high-temperature works, because the building serves 21 recipes (steel, iron,
+copper, aluminium, glass, graphite, concrete and more) and steel already has the EAF. L1 is a
+simplified old blast furnace on raking columns; L2 is a shaft works with a refractory hall, a
+brick lift tower, a silo and a regenerator wing; L3 doubles the shafts. Built in the catalogue
+look and installed for both views. Source `tools/building_assets/furnace_v2_builder.py`; review
+and install record `price-of-everything-0.1/docs/reviews/furnace-v2-2026-10-16.md`. The
+earlier steel-clad blast furnace and the oval breeches piece are retired.
 
-Re-baked 2026-08-21; within 3 px. **Not yet flow-audited** — worth doing, since it and the EAF
-are a deliberate pair and the EAF's audit found real errors.
+**Flows, all closed.** burden: silos → elevator boot → lift tower → bridge (or L1's bent
+gallery) → charging house on each crown. Gas: throat → downcomer → regenerator wing (L1:
+ground flue) → low flue → chimney base. Metal: working bays → ladles on rails. Rainwater:
+eaves gutters → downpipes → drains.
+
+**Owner rulings that bind any revision.** Dark-metal vessels; silver or white pipes; one thin
+black-topped brick chimney fixed in place at every level; the same vessel height and
+lift-top height at every level; every lift junction a gable housing; the charging house dark
+iron with a zinc roof.
 
 ## power_plant — Power plant
 
-Cooling tower, banded flue, turbine hall with the mustard power dado, transformer compound and
-pylon in a line so hall → transformers → pylon reads left to right as the power actually flows.
-The building that forced four new palette tones (`shell`, `chalk`, `pad`, `deck`) because a
-plant built from the existing greys measured a 26-luma spread.
+**Replaced 17 October 2026** by the fuel-neutral catalogue-look plant in
+`price-of-everything-0.1/tools/building_assets/power_plant_v2_builder.py` (staged family
+`power_plant_v2`). Review, owner rulings, lessons and install record:
+`price-of-everything-0.1/docs/reviews/power-plant-v2-2026-10-17.md`.
 
-Re-baked 2026-08-21; within 5 px. Highest tone divergence of the set (0.717) — its cooling
-tower is the largest curved surface anywhere, so the shading mask redistributed the most dots
-there. Worth an eye before demo. **Not yet flow-audited.**
+**Owner rulings that bind any revision.** Reads as coal or gas, so nothing fuel-specific
+(no heaps, conveyors, wagons, gas holders). The turbine hall is brick, glass and black pillars
+only, two floors of small windows, with the turbines visible through a glazed roof. The heat
+plant grows by level (open boiler, short windowless block, full block with windows); the
+chimney is half height at L1; L2 and L3 share one full-size cooling tower; the transformer
+yard runs in the corridor beside the hall with its takeoff at the back; L3's takeoff is a
+lattice pylon square to the grid. No orange; walkway floors black-grey, barriers yellow.
+Flows audited: all closed.
 
 ## petro_refinery / poly_plant — the refineries
 
-Purple (`CAT_REFINERY`) as the only chroma, cream octagonal aprons, white flat-roofed masses,
-silver pipework. Petro has the flare and the bullets; poly has the floating-roof mixing vats
-and the warehouse with rolls of finished mesh. L2/L3 of the petro plant still carry the older
-layout and were never reworked to match its L1.
-
-Both re-baked 2026-08-21; within 2 px. **Not yet flow-audited** — the petro plant is the most
-likely to have an open flow, given how much pipework it carries.
+**Replaced 17 October 2026** by `price-of-everything-0.1/tools/building_assets/refinery_v2_builder.py`
+(staged families `petro_refinery_v2`, `poly_plant_v2`), built from the owner's two reference
+illustrations. Review and install record: `price-of-everything-0.1/docs/reviews/refinery-v2-2026-10-17.md`.
+Owner rulings: no orange; walkway floors, platforms and stair treads black-grey; barriers,
+rails and ladders the factory's safety yellow; the flare's flame is baked into the art (the
+2D view lights it through a light mask, with no animated lick on top). Flows audited: all
+closed.
 
 ## port — Port / docks
 

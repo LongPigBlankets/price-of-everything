@@ -27,9 +27,19 @@ ROOT = GAME.parent
 KIT = ROOT / '.claude/skills/blender-building-sprites'
 OUTPUT = ROOT / 'outputs/building-assets-2026-10-08'
 SPRITES = GAME / 'assets/icons/buildings/sprites'
-FAMILIES = ('farm', 'water_pump', 'new_forest', 'old_forest', 'desal', 'oil_well', 'fracking_oil_well', 'offshore_oil_platform', 'furnace')
+FAMILIES = ('farm', 'water_pump', 'new_forest', 'old_forest', 'desal', 'oil_well', 'fracking_oil_well', 'offshore_oil_platform', 'furnace', 'furnace_v2',
+            'petro_refinery_v2', 'poly_plant_v2', 'power_plant_v2')
 LABELS = dict(zip(FAMILIES, ('FARM', 'WATER PUMP', 'NEW GROWTH', 'OLD GROWTH', 'DESALINATION', 'OIL WELL', 'SHALE OIL WELL', 'OFFSHORE OIL PLATFORM')))
 LABELS['furnace'] = 'FURNACE'
+LABELS['furnace_v2'] = 'FURNACE V2'
+LABELS['petro_refinery_v2'] = 'PETROCHEMICAL REFINERY'
+LABELS['poly_plant_v2'] = 'POLYMERISATION REFINERY'
+LABELS['power_plant_v2'] = 'POWER PLANT'
+# Furnace families share the paper print pass. furnace_v2 is the staging name of the
+# released furnace: its revisions install as the game's 'furnace' building, all levels.
+PAPER_FAMILIES = ('furnace', 'furnace_v2', 'petro_refinery_v2', 'poly_plant_v2', 'power_plant_v2')
+GAME_NAME = {'furnace_v2': 'furnace', 'petro_refinery_v2': 'petro_refinery', 'poly_plant_v2': 'poly_plant', 'power_plant_v2': 'power_plant'}
+FX = GAME / 'assets/fx'
 FAMILY_LEVELS = {name: (1,2,3) for name in FAMILIES}
 
 
@@ -66,8 +76,10 @@ def metrics(path, mask_path=None):
 
 
 def sheet(revision, families):
-    if list(families) == ['furnace']:
-        module(revision/'source/furnace_paper.py').proof(revision)
+    if all(name in PAPER_FAMILIES for name in families):
+        paper=module(revision/'source/furnace_paper.py')
+        for name in families:
+            paper.proof(revision,family=name,destination=revision/('proof.png' if len(families)==1 else f'proof_{name}.png'))
         return
     # Proof explicitly includes thumbnail scale and the shipped industrial style control.
     font=ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial.ttf',20) if Path('/System/Library/Fonts/Supplemental/Arial.ttf').exists() else ImageFont.load_default()
@@ -120,6 +132,9 @@ def build(revision,families):
         shutil.copy2(KIT/name,source/name)
     shutil.copy2(HERE/'builders.py',source/'builders.py')
     shutil.copy2(HERE/'furnace_builder.py',source/'furnace_builder.py')
+    shutil.copy2(HERE/'furnace_v2_builder.py',source/'furnace_v2_builder.py')
+    shutil.copy2(HERE/'refinery_v2_builder.py',source/'refinery_v2_builder.py')
+    shutil.copy2(HERE/'power_plant_v2_builder.py',source/'power_plant_v2_builder.py')
     for name in ('furnace_paper.py', 'paper_wpa_catalog.py'):
         shutil.copy2(HERE/name,source/name)
     shutil.copy2(__file__,source/'pipeline.py')
@@ -133,6 +148,9 @@ def build(revision,families):
         "exec((_src/'builders.py').read_text(),globals())\n")
     with (source/'entry.py').open('a') as f:
         f.write("exec((_src/'furnace_builder.py').read_text(),globals())\n")
+        f.write("exec((_src/'furnace_v2_builder.py').read_text(),globals())\n")
+        f.write("exec((_src/'refinery_v2_builder.py').read_text(),globals())\n")
+        f.write("exec((_src/'power_plant_v2_builder.py').read_text(),globals())\n")
     with (source/'render_sprite.py').open('a') as f:
         f.write("\n# Editable source scene, saved after restoring colour-pass settings.\n"
                 "scene.render.filepath = out_png\n"
@@ -156,16 +174,16 @@ def build(revision,families):
             b=raw.getchannel('A').getbbox()
             assert b and min(b[0],b[1],raw.width-b[2],raw.height-b[3])>8, f'Raw render clipped: {out}'
         # Owner: remove the heavy outer navy line; preserve both Freestyle detail tiers.
-        if name == 'furnace':
+        if name in PAPER_FAMILIES:
             furnace_export=module(source/'furnace_paper.py')
-            furnace_export.export(revision,levels=FAMILY_LEVELS[name])
+            furnace_export.export(revision,levels=FAMILY_LEVELS[name],family=name)
             manifest['sprite_scale']=furnace_export.EXPORT_SCALE
         else:
             exporter.export(str(revision),name,levels=FAMILY_LEVELS[name],contour=False)
         for level in FAMILY_LEVELS[name]:
             out=revision/f'{name}_lvl{level}.png'
             mask=revision/f'{name}_lvl{level}_mask.png'
-            if name == 'furnace':
+            if name in PAPER_FAMILIES:
                 module(source/'furnace_paper.py').finish(out, mask)
             else:
                 stylizer.stylize(str(out),str(mask),str(out),lit=.86,dark=.56,strength=.22)
@@ -177,22 +195,29 @@ def build(revision,families):
 
 def install(revision):
     manifest=verify(revision)
-    # L1/L2 are still review drafts. A normal install must not replace their
-    # existing game artwork when installing the released furnace L3.
+    staged=[n for n in manifest['families'] if n in GAME_NAME]
+    def game(filename):
+        # A staging family's files install under the game building's name.
+        for n in staged:
+            if filename.startswith(n+'_'): return GAME_NAME[n]+filename[len(n):]
+        return filename
+    # The legacy furnace family released L3 only. A staged furnace_v2 revision replaces
+    # every level of the game's furnace.
     def released(filename):
-        return not filename.startswith(('furnace_lvl1', 'furnace_lvl2'))
+        return bool(staged) or not filename.startswith(('furnace_lvl1', 'furnace_lvl2'))
     manifest['sprites']={k:v for k,v in manifest['sprites'].items() if released(k)}
     if manifest.get('models'):
         manifest['models']={k:v for k,v in manifest['models'].items() if released(k)}
     backup=revision/'previous-installed'
     backup.mkdir(exist_ok=True)
-    for filename in manifest['sprites']:
+    for source_name in manifest['sprites']:
+        filename=game(source_name)
         target=SPRITES/filename
         if target.exists() and not (backup/filename).exists():
             shutil.copy2(target,backup/filename)
         # Replacing each complete PNG is atomic; existing import UIDs remain untouched.
         temp=SPRITES/(filename+'.tmp')
-        shutil.copy2(revision/filename,temp)
+        shutil.copy2(revision/source_name,temp)
         temp.replace(target)
         import_file=SPRITES/(filename+'.import')
         if not import_file.exists():
@@ -216,18 +241,25 @@ def install(revision):
         for name in previous.get('families',[]):
             families[name]=dict(revision=previous.get('revision'),source_sha256=previous.get('source_sha256',{}))
     for name in manifest['families']:
-        families[name]=dict(revision=manifest['revision'],source_sha256=manifest['source_sha256'],
+        families[GAME_NAME.get(name,name)]=dict(revision=manifest['revision'],source_sha256=manifest['source_sha256'],
                             outer_contour=manifest.get('outer_contour',True))
         if name == 'furnace': families[name]['released_levels']=[3]
+        if name in GAME_NAME: families[GAME_NAME[name]].update(released_levels=list(FAMILY_LEVELS[name]), staged_as=name)
     record=dict(format_version=2,families=sorted(families),family_revisions=families,
-                sprites={**previous.get('sprites',{}),**manifest['sprites']},
-                models={k:v for k,v in {**previous.get('models',{}),**manifest.get('models',{})}.items()
+                sprites={**previous.get('sprites',{}),**{game(k):v for k,v in manifest['sprites'].items()}},
+                models={k:v for k,v in {**previous.get('models',{}),**{game(k):v for k,v in manifest.get('models',{}).items()}}.items()
                         if k!='manifest.json'})
+    # Window and heat masks registered to these sprites (package_furnace_v2_fx.py).
+    for kind in ('windows','light'):
+        for mask in sorted((revision/'fx'/kind).glob('*.png')) if (revision/'fx'/kind).exists() else ():
+            target=FX/kind/mask.name; (backup/'fx'/kind).mkdir(parents=True,exist_ok=True)
+            if target.exists() and not (backup/'fx'/kind/mask.name).exists(): shutil.copy2(target,backup/'fx'/kind/mask.name)
+            shutil.copy2(mask,target)
     if manifest.get('models'):
         model_dir=GAME/'assets/supply_chain_3d'
         current=json.loads((model_dir/'manifest.json').read_text())
         additions=json.loads((revision/'models/manifest.json').read_text())
-        additions={k:v for k,v in additions.items() if released(k)}
+        additions={game(k):v for k,v in additions.items() if released(k)}
         # Retire only this revision's explicitly disabled contour shells. Keep a
         # rollback copy and remove their import sidecars and stale provenance.
         for key, data in additions.items():
@@ -239,12 +271,13 @@ def install(revision):
                 if target.exists():
                     if not (backup/name).exists(): shutil.copy2(target,backup/name)
                     target.unlink()
-        for filename in manifest['models']:
-            if filename=='manifest.json': continue
+        for source_name in manifest['models']:
+            if source_name=='manifest.json': continue
+            filename=game(source_name)
             target=model_dir/filename
             if target.exists() and not (backup/filename).exists():
                 shutil.copy2(target,backup/filename)
-            shutil.copy2(revision/'models'/filename,target)
+            shutil.copy2(revision/'models'/source_name,target)
         if not (backup/'model_manifest.json').exists():
             shutil.copy2(model_dir/'manifest.json',backup/'model_manifest.json')
         current.update(additions)

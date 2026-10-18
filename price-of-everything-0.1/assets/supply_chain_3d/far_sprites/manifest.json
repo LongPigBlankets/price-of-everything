@@ -1,7 +1,7 @@
 {
 	"assets": {
 		"assembly_plant_lvl1": {
-			"cell": 64,
+			"cell": 64.0,
 			"center": [
 				0.0,
 				0.184518232941628,
@@ -13,17 +13,17 @@
 				0.388213276863098
 			],
 			"home_opaque_pixels": [
-				52,
-				43
+				52.0,
+				43.0
 			],
-			"pitches": 5,
+			"pitches": 5.0,
 			"reference_scale": 72.0,
 			"source_sha256": "291a51298c5c306315bfd8886b9d3ccdbecd8abea1743b1037c123a7d1832dc6",
 			"span": 1.03673701286316,
-			"yaws": 16
+			"yaws": 16.0
 		},
 		"assembly_plant_lvl2": {
-			"cell": 64,
+			"cell": 64.0,
 			"center": [
 				0.0,
 				0.207670718431473,
@@ -35,17 +35,17 @@
 				0.388213276863098
 			],
 			"home_opaque_pixels": [
-				50,
-				43
+				50.0,
+				43.0
 			],
-			"pitches": 5,
+			"pitches": 5.0,
 			"reference_scale": 72.0,
 			"source_sha256": "742f574339b714a7115c5ec1ad494034348de9bf1a036ae4ec64c4dae67db855",
 			"span": 1.26534340381622,
-			"yaws": 16
+			"yaws": 16.0
 		},
 		"assembly_plant_lvl3": {
-			"cell": 64,
+			"cell": 64.0,
 			"center": [
 				0.0,
 				0.207670718431473,
@@ -57,14 +57,14 @@
 				0.7362020611763
 			],
 			"home_opaque_pixels": [
-				45,
-				42
+				45.0,
+				42.0
 			],
-			"pitches": 5,
+			"pitches": 5.0,
 			"reference_scale": 72.0,
 			"source_sha256": "dd06f309919ed11433f1db10907b17b0a8daa6bceb0702e63e5a9becc5d13a47",
 			"span": 1.4403289437294,
-			"yaws": 16
+			"yaws": 16.0
 		},
 		"chem_plant_lvl1": {
 			"cell": 64.0,
@@ -501,7 +501,7 @@
 			"yaws": 16.0
 		},
 		"civic_grove_lvl1": {
-			"cell": 64,
+			"cell": 64.0,
 			"center": [
 				0.0,
 				0.119743280112743,
@@ -513,14 +513,14 @@
 				0.893242716789246
 			],
 			"home_opaque_pixels": [
-				39,
-				26
+				39.0,
+				26.0
 			],
-			"pitches": 5,
+			"pitches": 5.0,
 			"reference_scale": 72.0,
 			"source_sha256": "a8a4ca372fccb72dcedbddeece91192f75eedf30470c59b6ad5faaadfd146be9",
 			"span": 1.49827774763107,
-			"yaws": 16
+			"yaws": 16.0
 		},
 		"civic_l_lvl1": {
 			"cell": 64.0,
@@ -787,7 +787,7 @@
 			"yaws": 16.0
 		},
 		"civic_pond_lvl1": {
-			"cell": 64,
+			"cell": 64.0,
 			"center": [
 				0.0,
 				0.100384227931499,
@@ -799,14 +799,14 @@
 				0.800374269485474
 			],
 			"home_opaque_pixels": [
-				39,
-				25
+				39.0,
+				25.0
 			],
-			"pitches": 5,
+			"pitches": 5.0,
 			"reference_scale": 72.0,
 			"source_sha256": "4266ab4fb89395d11b87f61dff64a91128383355c2736c94b02fbd1e0170c26c",
 			"span": 1.42614773511887,
-			"yaws": 16
+			"yaws": 16.0
 		},
 		"civic_semi_lvl1": {
 			"cell": 64.0,
@@ -1179,65 +1179,69 @@
 			"span": 1.46193199157715
 		},
 		"furnace_lvl1": {
-			"cell": 64.0,
+			"cell": 64,
 			"center": [
 				0.0,
-				0.347931027412415,
+				0.343532681465149,
 				0.0
 			],
 			"dimensions": [
-				0.68137925863266,
-				0.695862054824829,
-				0.486206918954849
+				0.981223940849304,
+				0.687065362930298,
+				0.705841422080994
 			],
 			"home_opaque_pixels": [
-				39.0,
-				44.0
+				37,
+				37
 			],
+			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "0aa715154690b89ccc3811ea3119711404b706b5c9da7cf7ec94b5794e57502f",
-			"span": 1.19738359451294
+			"source_sha256": "d72610e933c9937448ed33adf6c8deca39b85dbb7985b28535e8dc1c4ffd7fc0",
+			"span": 1.52938432693481,
+			"yaws": 16
 		},
 		"furnace_lvl2": {
-			"cell": 64.0,
+			"cell": 64,
 			"center": [
 				0.0,
-				0.347931027412415,
+				0.343532681465149,
 				0.0
 			],
 			"dimensions": [
-				0.713793098926544,
-				0.695862054824829,
-				0.675862073898315
+				1.0,
+				0.687065362930298,
+				0.748956859111786
 			],
 			"home_opaque_pixels": [
-				47.0,
-				40.0
+				38,
+				44
 			],
+			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "7d244cdc233d4a83db1035526c441b8111a454ec304c7637c96c4bd7cf47b8f2",
-			"span": 1.32481017112732
+			"source_sha256": "6a9453288892694e4e358ffb3df6b52d3e17d602586165ac7b04d96026f7cb89",
+			"span": 1.56841458082199,
+			"yaws": 16
 		},
 		"furnace_lvl3": {
 			"cell": 64,
 			"center": [
 				0.0,
-				0.320523589849472,
+				0.343532681465149,
 				0.0
 			],
 			"dimensions": [
 				1.0,
-				0.641047179698944,
-				0.78803163766861
+				0.687065362930298,
+				0.748956859111786
 			],
 			"home_opaque_pixels": [
-				43,
-				42
+				42,
+				44
 			],
 			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "f2177eca66b17832c6ca7d85d928b966fdf984e8c8e8cfb60528fffc346a4aff",
-			"span": 1.56800558567047,
+			"source_sha256": "3c0e996d985ef8e33398b12012e98f36a0b32fae8a58307e15a6bd9acd1fa3e6",
+			"span": 1.56841458082199,
 			"yaws": 16
 		},
 		"high_tech_manufactory_lvl1": {
@@ -1733,124 +1737,136 @@
 			"span": 1.59928027391434
 		},
 		"petro_refinery_lvl1": {
-			"cell": 64.0,
+			"cell": 64,
 			"center": [
 				0.0,
-				0.296090364456177,
+				0.390545457601547,
 				0.0
 			],
 			"dimensions": [
-				0.691355168819427,
-				0.592180728912354,
-				0.570969939231873
+				1.0,
+				0.781090915203094,
+				0.698118388652802
 			],
 			"home_opaque_pixels": [
-				39.0,
-				34.0
+				36,
+				35
 			],
+			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "89b79be9bbbed7829d295a60d2579cf4934a5025525c12b2b0b6f7648f5bb3dc",
-			"span": 1.18200451135635
+			"source_sha256": "5000b155d7199ccd4a4ef85f087c4003e8af583d80059efd4161d33992e6a50c",
+			"span": 1.59309171438217,
+			"yaws": 16
 		},
 		"petro_refinery_lvl2": {
-			"cell": 64.0,
+			"cell": 64,
 			"center": [
 				0.0,
-				0.296090364456177,
+				0.390545457601547,
 				0.0
 			],
 			"dimensions": [
-				0.878468215465546,
-				0.592180728912354,
-				0.750974535942078
+				1.0,
+				0.781090915203094,
+				0.719209253787994
 			],
 			"home_opaque_pixels": [
-				40.0,
-				35.0
+				46,
+				37
 			],
+			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "c3614c972e38e745d21ce2a11f44109f029a7fea8e6d78f19a87e3edb83b8242",
-			"span": 1.42845379114151
+			"source_sha256": "59233474d713e88207ed32de714c93ee8326e32f29d6f58062bc86750f69e0ab",
+			"span": 1.6044037938118,
+			"yaws": 16
 		},
 		"petro_refinery_lvl3": {
-			"cell": 64.0,
+			"cell": 64,
 			"center": [
 				0.0,
-				0.344817698001862,
+				0.390545457601547,
 				0.0
 			],
 			"dimensions": [
 				1.0,
-				0.689635396003723,
-				0.898876368999481
+				0.781090915203094,
+				0.719209253787994
 			],
 			"home_opaque_pixels": [
-				46.0,
-				35.0
+				46,
+				37
 			],
+			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "a1462363dfcc9f61495eb491d6e61e9d09f393ed36f9875d33f50a3729f1f04b",
-			"span": 1.66226552724838
+			"source_sha256": "ce37919c9cc2268f3c85ab635d679ab01fc0609561c2aca77bf4d75caa62f59f",
+			"span": 1.6044037938118,
+			"yaws": 16
 		},
 		"poly_plant_lvl1": {
-			"cell": 64.0,
+			"cell": 64,
 			"center": [
 				0.0,
-				0.234590873122215,
+				0.291287899017334,
 				0.0
 			],
 			"dimensions": [
 				1.0,
-				0.469181746244431,
-				0.520722627639771
+				0.582575798034668,
+				0.582575738430023
 			],
 			"home_opaque_pixels": [
-				47.0,
-				27.0
+				35,
+				39
 			],
+			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "ac2728ccac2afdefe380f53cd87190a6f954c3d18704891f7e6801ad35894d29",
-			"span": 1.34329926967621
+			"source_sha256": "8dcb2b629763a32c28aaf91f27a456908d50c6ca6346f272f9bbf4b0b5261b8f",
+			"span": 1.42524896860123,
+			"yaws": 16
 		},
 		"poly_plant_lvl2": {
-			"cell": 64.0,
+			"cell": 64,
 			"center": [
 				0.0,
-				0.283475041389465,
+				0.291287899017334,
 				0.0
 			],
 			"dimensions": [
 				1.0,
-				0.566950082778931,
-				0.764080762863159
+				0.582575798034668,
+				0.630303025245667
 			],
 			"home_opaque_pixels": [
-				48.0,
-				33.0
+				42,
+				38
 			],
+			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "558ca3a1dd68568b7c8092c6a0dfaf74d0f4e1bae3056bf89fdb6b1dba609b67",
-			"span": 1.51833935976028
+			"source_sha256": "f9156c811aa36124690eb4056678aa04378aa08766dfd4a7e2f83a1abf9db669",
+			"span": 1.44961322546005,
+			"yaws": 16
 		},
 		"poly_plant_lvl3": {
-			"cell": 64.0,
+			"cell": 64,
 			"center": [
 				0.0,
-				0.283475041389465,
+				0.291287899017334,
 				0.0
 			],
 			"dimensions": [
 				1.0,
-				0.566950082778931,
-				0.828905403614044
+				0.582575798034668,
+				0.730303049087524
 			],
 			"home_opaque_pixels": [
-				52.0,
-				33.0
+				47,
+				36
 			],
+			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "c5700d03d60bb1eca901e5787d2f5d7e000b2d8611a6ac8a1d2abb4d0ab71c3d",
-			"span": 1.55894356966019
+			"source_sha256": "2608424a177ca9083e713b7665d77afadc89c090a2967982eb38941ebb4e08b0",
+			"span": 1.50532783269882,
+			"yaws": 16
 		},
 		"port_lvl1": {
 			"cell": 64.0,
@@ -1875,64 +1891,70 @@
 			"yaws": 16.0
 		},
 		"power_plant_lvl1": {
-			"cell": 64.0,
+			"cell": 64,
 			"center": [
 				0.0,
-				0.285382837057114,
+				0.164259925484657,
 				0.0
 			],
 			"dimensions": [
-				0.981438517570496,
-				0.570765674114227,
-				0.621036350727081
+				0.81107097864151,
+				0.328519850969315,
+				0.625752091407776
 			],
 			"home_opaque_pixels": [
-				35.0,
-				46.0
+				45,
+				39
 			],
+			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "7d1b2f7d7babfca881d0c75de91daddce63f3d776e906a45d0d41b8e7d6c9c0e",
-			"span": 1.42350414991379
+			"source_sha256": "da250d8a94e85af78000915a1afb6d608aec5c749e8248e4c73ea42e3773e01c",
+			"span": 1.18337049484253,
+			"yaws": 16
 		},
 		"power_plant_lvl2": {
-			"cell": 64.0,
+			"cell": 64,
 			"center": [
 				0.0,
-				0.28731632232666,
-				0.0
-			],
-			"dimensions": [
-				0.990719258785248,
-				0.57463264465332,
-				0.632037460803986
-			],
-			"home_opaque_pixels": [
-				43.0,
-				46.0
-			],
-			"reference_scale": 72.0,
-			"source_sha256": "b8f03e1ac5534b60fb6252a7199d6d1d247ea43ce4dd0d0352f159c1d66fa4ff",
-			"span": 1.43894066810608
-		},
-		"power_plant_lvl3": {
-			"cell": 64.0,
-			"center": [
-				0.0,
-				0.28731632232666,
+				0.300842374563217,
 				0.0
 			],
 			"dimensions": [
 				1.0,
-				0.57463264465332,
-				0.796424150466919
+				0.601684749126434,
+				0.672683537006378
 			],
 			"home_opaque_pixels": [
-				42.0,
-				43.0
+				40,
+				38
 			],
+			"pitches": 5,
 			"reference_scale": 72.0,
-			"source_sha256": "aa99ec0442a7e355641daf65b50e7fb2908ccd0b0414961c26fe804010a938ee",
-			"span": 1.54176459312439
+			"source_sha256": "657fe38e6f3f01898ad6f690f66e78f29fabc542edbe27b9a07be7c139ab781d",
+			"span": 1.48174852132797,
+			"yaws": 16
+		},
+		"power_plant_lvl3": {
+			"cell": 64,
+			"center": [
+				0.0,
+				0.300842374563217,
+				0.0
+			],
+			"dimensions": [
+				1.0,
+				0.601684749126434,
+				0.672683537006378
+			],
+			"home_opaque_pixels": [
+				40,
+				38
+			],
+			"pitches": 5,
+			"reference_scale": 72.0,
+			"source_sha256": "2e3fa64aa3bd49b6810b23a2e21ef79b056134511eda553babd1d68eb34415ad",
+			"span": 1.48174852132797,
+			"yaws": 16
 		},
 		"pylon_lvl1": {
 			"cell": 64.0,
