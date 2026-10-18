@@ -8,6 +8,13 @@ class BuildFixture extends Node:
 	var build_complete := false
 
 
+func _test_loading_day_to_night_takes_three_seconds() -> void:
+	_check(is_zero_approx(Carousel.night_mix_at(0.5)), "loading: daylight holds for half a second")
+	_check(is_equal_approx(Carousel.night_mix_at(2.0), 0.5), "loading: dusk is halfway through the three-second fade")
+	_check(is_equal_approx(Carousel.night_mix_at(3.5), 1.0), "loading: full night arrives three seconds after the fade starts")
+	_check(is_zero_approx(Carousel.slide_at(3.5)), "loading: the completed night look holds before the slide")
+
+
 func _test_loading_readiness_does_not_wait_for_carousel() -> void:
 	var previous_scene := get_tree().current_scene
 	var previous_pending := SaveLoad._pending_snapshot.duplicate(true)

@@ -13,7 +13,11 @@ old rectangular sea surface is replaced by the hex.
 
 The camera and geometry stay identical between looks. Warm light arrives from the upper
 left in daytime; a cool night fill leaves the buildings readable, with existing window
-panes lit, industrial heat/flare cues and small nacelle beacons. Smoke is pre-rendered.
+panes lit, industrial heat/flare cues and small nacelle beacons. The factory's sloped
+skylights and annex roof panes light up within their existing mullions. The power plant
+retains transparent roof glazing over warm work lights illuminating its turbine sets.
+The furnace's recessed working bays and molten ladles have yellow centres, orange/red
+edges and local light spill in both looks. Smoke is pre-rendered.
 The face-orientation print pass uses the same stipple method as the capsule and sprites.
 Brick materials also receive the game's catalogue coursing: 0.075m courses, 0.21m
 stretcher bond and 0.005m pale joints, in source model coordinates. That procedural paint
@@ -31,10 +35,11 @@ finished 1024px RGBA stills and `provenance.json` install in
 and output hashes. Rebuild after updating any featured building. Existing texture import
 sidecars retain desktop high-quality VRAM compression and mipmaps.
 
-`scripts/loading_carousel.gd` shows each building for five seconds: daylight to 1.35s,
-dissolve to night by 2.85s, hold until 4.3s, then slide left to reveal the next hex to the
-right. Six buildings make a 30-second loop. Current and next day/night pairs are the only
-resident textures. The next pair loads on a worker; a late read holds the current still.
+`scripts/loading_carousel.gd` shows each building for five seconds: daylight to 0.5s,
+dissolve over three seconds to night by 3.5s, hold until 4.3s, then slide left to reveal
+the next hex to the right. Six buildings make a 30-second loop. Current and next
+day/night pairs are the only resident textures. The next pair loads on a worker; a
+late read holds the current still.
 Static holds do not queue redraws. A live 3D viewport and video decoder are unnecessary.
 
 `loading_screen.gd` keeps script warming, threaded scene loading and readiness gating.

@@ -4,6 +4,8 @@ extends Control
 const DIRECTORY := "res://assets/loading/carousel/"
 const BUILDINGS := ["industrial_factory", "furnace", "power_plant", "petro_refinery", "farm", "offshore_wind_farm"]
 const SECONDS_PER_TILE := 5.0
+const NIGHT_FADE_START := 0.5
+const NIGHT_FADE_SECONDS := 3.0
 const SLIDE_START := 4.3
 const BACKGROUND := Color("#040f1b")
 const BLEND_SHADER := """shader_type canvas_item;
@@ -29,7 +31,7 @@ var _last_index := -1
 
 
 static func night_mix_at(seconds: float) -> float:
-	return smoothstep(1.35, 2.85, seconds)
+	return smoothstep(NIGHT_FADE_START, NIGHT_FADE_START + NIGHT_FADE_SECONDS, seconds)
 
 
 static func slide_at(seconds: float) -> float:

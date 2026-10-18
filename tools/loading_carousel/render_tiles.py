@@ -170,8 +170,87 @@ bsdf.inputs['Base Color'].default_value = (*warm, 1)
 bsdf.inputs['Emission Color'].default_value = (*warm, 1)
 bsdf.inputs['Emission Strength'].default_value = 1.7
 bsdf.inputs['Roughness'].default_value = 1
-windows = [o for o in objects if o.name.endswith('_glass') and not o.name.startswith(('rannex', 'roof'))]
-# Existing panes light up; leave greenhouse and glass roofs transparent.
+windows = [o for o in objects if o.name.endswith('_glass') and not o.name.startswith('roof')]
+# Factory slope panes are named sky_0, sky_1, etc.; their cream mullions stay unlit.
+skylights = [o for o in objects if family == 'industrial_factory'
+             and o.name.startswith('sky_') and o.name[4:].isdigit()]
+windows += skylights
+night_materials = {o: window_mat for o in windows}
+hall_glazing = [o for o in objects if o.name in ('hall_glazing-1', 'hall_glazing1')]
+interior_lamps = []
+if hall_glazing:
+    # Keep the turbine roof see-through: light the machinery below it rather than
+    # covering the roof with the opaque material used by ordinary window panes.
+    glass = hall_glazing[0].data.materials[0].copy()
+    glass.name = 'LoadingLitTurbineGlass'
+    node = glass.node_tree.nodes.get('Principled BSDF')
+    node.inputs['Base Color'].default_value = (.52, .40, .24, 1)
+    node.inputs['Emission Color'].default_value = (*warm, 1)
+    node.inputs['Emission Strength'].default_value = .25
+    node.inputs['Alpha'].default_value = .16
+    for ob in hall_glazing:
+        night_materials[ob] = glass
+    for ob in objects:
+        if ob.name.startswith('turbine') and ob.name.endswith('_pedestal'):
+            bounds = [ob.matrix_world @ Vector(c) for c in ob.bound_box]
+            p = sum(bounds, Vector())/8
+            p.z = max(v.z for v in bounds) + .60*scale
+            lamp = point('Turbine hall work light', p, 70*scale*scale, (1, .72, .42))
+            lamp.data.shadow_soft_size = .20*scale
+            interior_lamps.append(lamp)
+    night_lamps += interior_lamps
+
+
+def heat_material(name, axes):
+    """A yellow hot centre fading through orange to a red edge on an existing opening."""
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    node = nodes.get('Principled BSDF')
+    tex = nodes.new('ShaderNodeTexCoord')
+    offset = nodes.new('ShaderNodeVectorMath')
+    offset.operation = 'SUBTRACT'
+    offset.inputs[1].default_value = (.5, .5, .5)
+    plane = nodes.new('ShaderNodeVectorMath')
+    plane.operation = 'MULTIPLY'
+    plane.inputs[1].default_value = axes
+    radius = nodes.new('ShaderNodeVectorMath')
+    radius.operation = 'LENGTH'
+    ramp = nodes.new('ShaderNodeValToRGB')
+    ramp.color_ramp.elements[0].color = (1, 1, .0005, 1)
+    ramp.color_ramp.elements[1].color = (.50, .0003, .00005, 1)
+    ramp.color_ramp.elements.new(.25).color = (1, 1, .0005, 1)
+    ramp.color_ramp.elements.new(.60).color = (1, .20, .0005, 1)
+    links.new(tex.outputs['Generated'], offset.inputs[0])
+    links.new(offset.outputs[0], plane.inputs[0])
+    links.new(plane.outputs[0], radius.inputs[0])
+    links.new(radius.outputs['Value'], ramp.inputs[0])
+    links.new(ramp.outputs['Color'], node.inputs['Base Color'])
+    links.new(ramp.outputs['Color'], node.inputs['Emission Color'])
+    node.inputs['Emission Strength'].default_value = 2.5
+    node.inputs['Roughness'].default_value = 1
+    return mat
+
+
+heat_sources = []
+if family == 'furnace':
+    bay_heat = heat_material('LoadingFurnaceHeat', (2, 0, 2))
+    molten = heat_material('LoadingMoltenLadle', (2, 2, 0))
+    for ob in objects:
+        bay = ob.name.endswith('_heat')
+        ladle = ob.name.startswith('ladle') and ob.name.endswith('_inside')
+        if not (bay or ladle):
+            continue
+        ob.data.materials.clear()
+        ob.data.materials.append(bay_heat if bay else molten)
+        bounds = [ob.matrix_world @ Vector(c) for c in ob.bound_box]
+        p = sum(bounds, Vector())/8
+        p += Vector((0, -.14*scale, .02*scale)) if bay else Vector((0, 0, .08*scale))
+        lamp = point('Furnace heat spill', p, (8 if bay else 4)*scale*scale, (1, .06, .002))
+        lamp.data.shadow_soft_size = .12*scale
+        # Heat remains present in daylight; its spill becomes clearer at night.
+        heat_sources.append(ob)
+
 if not sea:
     night_lamps.append(point('Yard light', (1.0,-2.1,.65), 65, warm))
 if sea:
@@ -197,7 +276,7 @@ else:
 
 for lamp in night_lamps:
     lamp.hide_render = True
-saved_mats = {o: list(o.data.materials) for o in windows}
+saved_mats = {o: list(o.data.materials) for o in night_materials}
 for look in ('day','night'):
     night = look == 'night'
     sun.data.color = (1.0,.78,.51) if not night else (.49,.61,1.0)
@@ -209,9 +288,9 @@ for look in ('day','night'):
     if beacon_col:
         for ob in beacon_col.objects:
             ob.hide_render = not night
-    for ob in windows:
+    for ob, lit_mat in night_materials.items():
         ob.data.materials.clear()
-        for mat in ([window_mat]*len(saved_mats[ob]) if night else saved_mats[ob]):
+        for mat in ([lit_mat]*len(saved_mats[ob]) if night else saved_mats[ob]):
             ob.data.materials.append(mat)
     path = args.out / f'{family}-{look}.png'
     scene.render.filepath = str(path)
@@ -252,4 +331,6 @@ model = ROOT / f'price-of-everything-0.1/assets/supply_chain_3d/{family}_lvl3.gl
 (args.out / f'{family}.json').write_text(json.dumps(dict(building=family, level=3,
     resolution=args.res, source_sha256=sources, model_sha256=hashlib.sha256(model.read_bytes()).hexdigest(),
     footprint_radius=reach*scale, hex_inradius=R*math.sqrt(3)/2,
-    ground_z=.012, windows=len(windows)), indent=2)+'\n')
+    ground_z=.012, windows=len(windows), skylights=len(skylights),
+    turbine_roof_panes=len(hall_glazing), interior_lamps=len(interior_lamps),
+    heat_sources=len(heat_sources)), indent=2)+'\n')

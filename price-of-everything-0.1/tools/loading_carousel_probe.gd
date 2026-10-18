@@ -52,11 +52,11 @@ func _stills(screen: Node) -> void:
 	carousel.set_process(false)
 	for i in 6:
 		for night in [false, true]:
-			carousel.call("seek", i*5.0 + (3.2 if night else 0.5))
+			carousel.call("seek", i*5.0 + (3.9 if night else 0.5))
 			await _shot("%02d-%s" % [i+1, "night" if night else "day"])
 	carousel.call("seek", 4.65)
 	await _shot("slide")
-	carousel.call("seek", 3.2)
+	carousel.call("seek", 3.9)
 	build_complete = true
 	screen.set("_scene_changed", true)
 	await get_tree().create_timer(1.1, true, false, true).timeout
