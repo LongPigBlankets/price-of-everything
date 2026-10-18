@@ -92,7 +92,14 @@ func _ready() -> void:
 		marks.idle_until_continent = await _until(func() -> bool: return bool(board.call("background_ready")) and not bool(board.call("background_active")), 600000)
 		_mark("continent_prepared")
 	marks.continent_ready_at_show_all = bool(board.call("background_ready"))
-	# The visibility setting.
+	# The visibility setting. The Low preset has no continent view.
+	if PlayerProfile.is_low_quality():
+		print("[TIMELINE REPORT] ", JSON.stringify(marks))
+		if output != "":
+			DirAccess.make_dir_recursive_absolute(output)
+			FileAccess.open(output.path_join("timeline.json"), FileAccess.WRITE).store_string(JSON.stringify(marks, "\t"))
+		get_tree().quit()
+		return
 	_mark("show_all_pressed")
 	board.call("set_all_tiles", true)
 	marks.show_all = await _until(func() -> bool:

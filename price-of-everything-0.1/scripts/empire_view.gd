@@ -354,6 +354,9 @@ func _enter() -> void:
 	_set_camera_blocked(true)
 	_board.open_at_map_camera()
 	PanelStack.push(self)
+	# Built for the other quality preset: build it again for this one.
+	if _fresh and bool(_board.call("built_flat")) != PlayerProfile.is_low_quality():
+		_fresh = false
 	# Built in the background and nothing changed since: open on it as it is, held back until any
 	# picture still baking is done.
 	if _fresh:
