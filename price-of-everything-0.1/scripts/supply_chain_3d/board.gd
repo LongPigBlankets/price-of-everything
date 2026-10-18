@@ -684,6 +684,8 @@ func _shipped_world(cache: RefCounted) -> Dictionary:
 func _solve_layout(model: Dictionary, terrain: Node, rivers: Dictionary, queries: RefCounted, builder: RefCounted, water: Callable, timings: Dictionary, fit_roads: Array = []) -> void:
 	var road_started := Time.get_ticks_usec()
 	preload("res://scripts/supply_chain_3d/authored_region.gd").apply(model, terrain, get_tree().get_first_node_in_group("building_footprints"), queries.data, builder.surface_height)
+	# After the authored lots have sized the buildings, before anything is fitted around them.
+	preload("res://scripts/supply_chain_3d/building_scale.gd").scale_buildings(model)
 	preload("res://scripts/supply_chain_3d/riverside_fields.gd").apply(model, rivers, queries.data)
 	timings.road_import_ms = (Time.get_ticks_usec() - road_started) / 1000.0
 	road_started = Time.get_ticks_usec()

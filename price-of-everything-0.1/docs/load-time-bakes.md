@@ -1,5 +1,33 @@
 # Load time: what is baked, and when to re-bake it
 
+## Buildings drawn 1.5× in 3D — 18 October 2026
+
+Every building (works, farms, forests, mines, wells and energy fields; player or NPC) now
+stands `BUILDINGS_SCALE` = 1.5 times its 2D slot or authored-lot size in the 3D view
+(`building_scale.gd`), so a level 3 works reads larger than a terrace of three houses.
+Farms draw their crop cells and farmhouse at the same scale (`farm_fields.gd` `DRAWN`):
+the field plot keeps its size and holds fewer, larger cells. The scale is applied in
+`board._solve_layout` after the authored lots have sized the buildings and before
+anything is fitted around them, so the full solve, changed tiles and the offline bakes
+agree. Town houses, civic decor, ports and pylons keep their size; the 2D map is unchanged.
+
+Buildings keep their lots and are not moved, so a larger building can reach a road: in
+the rebaked world snapshot 154 of 417 buildings touch a road and 46 pairs overlap (57 and
+5 at 1.0×; `tools/supply_chain_3d/trials/works_scale_audit.tscn`). Town houses still give
+way around them.
+
+Every scenery, continent and tile key changed, so the whole package was rebaked:
+`bake_continent_package` (600 tiles generated, 67 min; `--no-background-continent` is
+required or the review starts before the tiles exist), then `bake_world_snapshot`, then
+`bake_company_start` until settled (four runs), then the auxiliary keys
+`company_key_probe` does not list were dropped. Order matters: the company start must be
+baked after the world snapshot, because with a snapshot installed the company view opens
+through the overlay and asks for different keys. `company_key_probe` never lists the
+world snapshot; keep it. Installed package: **1,841 resources, 957,055,700 bytes**,
+validated. A fresh process with an empty user directory offers Begin at **25.3 s**, with
+another Godot editor and game running on the same machine; the company opens with 36
+bundled hits and zero misses or writes, and the continent streams with no misses or writes.
+
 ## Furnace, refineries and power plant — 18 October 2026
 
 All three levels of the furnace, the petrochemical and polymerisation refineries and the

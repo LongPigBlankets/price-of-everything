@@ -4,7 +4,10 @@ const Assets := preload("res://scripts/supply_chain_3d/assets.gd")
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
 const Index := preload("res://scripts/supply_chain_3d/road_index.gd")
 const Roads := preload("res://scripts/empire_board.gd")
+## A farm's slot size before the 3D building scale (authored_region.gd sizes farms with it).
 const SIDE := 72.0
+## The size crop cells and the farmhouse are drawn at: the farm grows with every building.
+const DRAWN := SIDE * preload("res://scripts/supply_chain_3d/building_scale.gd").BUILDINGS_SCALE
 const SOIL := Color("896b50")
 const CROP := Color(0.34, 0.438, 0.263)
 const LIFT := 1.25
@@ -19,8 +22,8 @@ static func build(builder: RefCounted, tid: String, standing: Array) -> Dictiona
 	plots.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return str(a.iid) < str(b.iid))
 	var key := Assets.key_for("farm_crop_cell", 1)
 	var metadata := Assets.component_for(key)
-	var pitch := Vector2(metadata.pitch[0], metadata.pitch[1]) * SIDE
-	var half := Vector2(Assets.dimensions(key).x, Assets.dimensions(key).z) * SIDE * 0.5
+	var pitch := Vector2(metadata.pitch[0], metadata.pitch[1]) * DRAWN
+	var half := Vector2(Assets.dimensions(key).x, Assets.dimensions(key).z) * DRAWN * 0.5
 	var soil := Geo.Batch.new()
 	var crops := Geo.Batch.new()
 	var poses: Array[Transform3D] = []
@@ -32,7 +35,7 @@ static func build(builder: RefCounted, tid: String, standing: Array) -> Dictiona
 		# Nearby plots may overlap or cross a tile boundary. Reserve every barn
 		# before planting, independent of the order in which plots are filled.
 		if not plots.any(func(s: Dictionary) -> bool: return (s.pos as Vector2).distance_squared_to(farm.pos) < 360000.0): continue
-		var dim := Assets.dimensions(Assets.key_for("farm_building", int(farm.get("level", 1)))) * SIDE
+		var dim := Assets.dimensions(Assets.key_for("farm_building", int(farm.get("level", 1)))) * DRAWN
 		yards.append({"pos": farm.pos, "angle": -float(farm.get("yaw", 0.0)),
 			"box": Rect2(-Vector2(dim.x, dim.z) * 0.5, Vector2(dim.x, dim.z)).grow(3.0 + half.length())})
 	for s in plots:
@@ -63,7 +66,7 @@ static func build(builder: RefCounted, tid: String, standing: Array) -> Dictiona
 						for piece in pieces: remaining.append_array(_subtract_road(piece, road_masks.polygons[road_id]))
 						pieces = remaining
 					for piece in pieces: _soil(soil, builder, piece)
-		var core := Assets.dimensions(Assets.key_for("farm_building", int(s.get("level", 1)))) * SIDE
+		var core := Assets.dimensions(Assets.key_for("farm_building", int(s.get("level", 1)))) * DRAWN
 		var yard := Rect2(-Vector2(core.x, core.z) * 0.5, Vector2(core.x, core.z)).grow(3.0)
 		# Cell centres form a fixed grid. A rejected edge cell leaves an earth
 		# margin; it is never squashed to fit the remainder of the polygon.
@@ -96,7 +99,7 @@ static func build(builder: RefCounted, tid: String, standing: Array) -> Dictiona
 				var along := Vector3(cos(angle), 0.0, sin(angle))
 				var across := along.cross(up).normalized()
 				along = up.cross(across).normalized()
-				poses.append(Transform3D(Basis(along, up, across).scaled(Vector3.ONE * SIDE), builder.point(world, LIFT + 0.05)))
+				poses.append(Transform3D(Basis(along, up, across).scaled(Vector3.ONE * DRAWN), builder.point(world, LIFT + 0.05)))
 			_ribbons(crops, builder, s.pos, angle, run, pitch.x, half.y)
 		occupied.append(polygon)
 	var soil_mesh := soil.mesh()
