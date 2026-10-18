@@ -9,6 +9,9 @@
     "offshore_oil_platform",
     "oil_well",
     "old_forest",
+    "petro_refinery",
+    "poly_plant",
+    "power_plant",
     "water_pump"
   ],
   "family_revisions": {
@@ -141,17 +144,18 @@
       "outer_contour": false
     },
     "furnace": {
-      "revision": "v23-steel-stoves",
+      "revision": "v30-final",
       "source_sha256": {
         "builders.py": "d06f723c029a0b876f95cd34c404a1c9213610c5d32dd5bf93d134c6cd8e1535",
-        "furnace_paper.py": "7f23483868de7ac92258a36ec2695d62ce4fac6bb5d0eac19f2496d32a171491",
+        "furnace_paper.py": "8c26eb1460e75b2da57139be2cfd8913e7620b3d943f336159fabb799d4e3d93",
         "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
+        "furnace_v2_builder.py": "2023fdb6e2d67f7aaf2845929c34fa793820a938622ac03a896240e18a3f46a1",
         "furnace_builder.py": "c4d1494a857a7fc7bd202490b0aba4d64197f4132bac4f63b98418581ef5035d",
         "bake_sprite.py": "92a7e5a5fb9aab3fd5bbc9080afd7558b42110d61a5f2de8a2f2f825a2a92e8b",
-        "export_models.py": "2cb8ed42b0c9350096d412f4b787e5eace2a0afe0f97c996a027ddc07b83c07c",
+        "export_models.py": "b92f69cbc07ac6cc8a9add47f3eb6e2bd08c14f47ef45708f4f7afd8c16bb7e8",
         "sprite_kit.py": "8e9b570492ebde6a8a40113b1098793e9ca176292fb98d294671ea92a4d24d41",
-        "pipeline.py": "7b259053618182d168008e9ff749656b11b7fd00f36534dbf04b92e4f968ee1e",
-        "entry.py": "244ff95f7c8087ef2cb18246541178a1c3e05111c4c7f268fd07252537a8494b",
+        "pipeline.py": "9cd2dbe8f465b173ee7a40783da38a4880bdaf1f1e8d049132198fcbfa55febd",
+        "entry.py": "393a3ddbd48db3c43d96f4deac45ca147ba603e11de7cc1b901fb827ba08cc4a",
         "paper_wpa_catalog.py": "7be39b082de17b6092e9505e67850028966e9d033bf6f665a057997da147c157",
         "render_sprite.py": "e45834820119808e946b605bb84037a2443e67105928cdfa9c30bf5a78cc4c45",
         "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
@@ -159,8 +163,93 @@
       },
       "outer_contour": false,
       "released_levels": [
+        1,
+        2,
         3
-      ]
+      ],
+      "staged_as": "furnace_v2"
+    },
+    "petro_refinery": {
+      "revision": "v12-flame",
+      "source_sha256": {
+        "builders.py": "d06f723c029a0b876f95cd34c404a1c9213610c5d32dd5bf93d134c6cd8e1535",
+        "furnace_paper.py": "1c653f4a3c132ab3e4b4853d8a310667b9d312eb0d94bbf38ad5169ec6e891c2",
+        "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
+        "furnace_v2_builder.py": "2023fdb6e2d67f7aaf2845929c34fa793820a938622ac03a896240e18a3f46a1",
+        "furnace_builder.py": "c4d1494a857a7fc7bd202490b0aba4d64197f4132bac4f63b98418581ef5035d",
+        "bake_sprite.py": "92a7e5a5fb9aab3fd5bbc9080afd7558b42110d61a5f2de8a2f2f825a2a92e8b",
+        "export_models.py": "1a8848a856d05027e0e667079a7cfbb7111e0428866850d2adf8d46fdd35d661",
+        "refinery_v2_builder.py": "1e77c3feee002688cd046fdd7c45fcf614ddda8290551ef44c61eae02cfe69c9",
+        "sprite_kit.py": "8e9b570492ebde6a8a40113b1098793e9ca176292fb98d294671ea92a4d24d41",
+        "pipeline.py": "b3432792c0b7305d73510b8d79425996f7a41f569d6353bf7b65e5170a711619",
+        "entry.py": "190ab0e6bf44c080fb003c611451d495cbf8e9bfaf6cbbaf160a1e346bb3b794",
+        "paper_wpa_catalog.py": "7be39b082de17b6092e9505e67850028966e9d033bf6f665a057997da147c157",
+        "render_sprite.py": "e45834820119808e946b605bb84037a2443e67105928cdfa9c30bf5a78cc4c45",
+        "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
+        "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
+      },
+      "outer_contour": false,
+      "released_levels": [
+        1,
+        2,
+        3
+      ],
+      "staged_as": "petro_refinery_v2"
+    },
+    "poly_plant": {
+      "revision": "v12-flame",
+      "source_sha256": {
+        "builders.py": "d06f723c029a0b876f95cd34c404a1c9213610c5d32dd5bf93d134c6cd8e1535",
+        "furnace_paper.py": "1c653f4a3c132ab3e4b4853d8a310667b9d312eb0d94bbf38ad5169ec6e891c2",
+        "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
+        "furnace_v2_builder.py": "2023fdb6e2d67f7aaf2845929c34fa793820a938622ac03a896240e18a3f46a1",
+        "furnace_builder.py": "c4d1494a857a7fc7bd202490b0aba4d64197f4132bac4f63b98418581ef5035d",
+        "bake_sprite.py": "92a7e5a5fb9aab3fd5bbc9080afd7558b42110d61a5f2de8a2f2f825a2a92e8b",
+        "export_models.py": "1a8848a856d05027e0e667079a7cfbb7111e0428866850d2adf8d46fdd35d661",
+        "refinery_v2_builder.py": "1e77c3feee002688cd046fdd7c45fcf614ddda8290551ef44c61eae02cfe69c9",
+        "sprite_kit.py": "8e9b570492ebde6a8a40113b1098793e9ca176292fb98d294671ea92a4d24d41",
+        "pipeline.py": "b3432792c0b7305d73510b8d79425996f7a41f569d6353bf7b65e5170a711619",
+        "entry.py": "190ab0e6bf44c080fb003c611451d495cbf8e9bfaf6cbbaf160a1e346bb3b794",
+        "paper_wpa_catalog.py": "7be39b082de17b6092e9505e67850028966e9d033bf6f665a057997da147c157",
+        "render_sprite.py": "e45834820119808e946b605bb84037a2443e67105928cdfa9c30bf5a78cc4c45",
+        "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
+        "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
+      },
+      "outer_contour": false,
+      "released_levels": [
+        1,
+        2,
+        3
+      ],
+      "staged_as": "poly_plant_v2"
+    },
+    "power_plant": {
+      "revision": "v20-slim-lintels",
+      "source_sha256": {
+        "builders.py": "d06f723c029a0b876f95cd34c404a1c9213610c5d32dd5bf93d134c6cd8e1535",
+        "furnace_paper.py": "a52aa519d497830e04420d92178db1bb08a05c13eaba559f41097b8350bf5d44",
+        "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
+        "furnace_v2_builder.py": "2023fdb6e2d67f7aaf2845929c34fa793820a938622ac03a896240e18a3f46a1",
+        "power_plant_v2_builder.py": "abbdb66ed7dcc1bc264a5a16ba59b3783b4e66fc873d40becde0e086cd512d01",
+        "furnace_builder.py": "c4d1494a857a7fc7bd202490b0aba4d64197f4132bac4f63b98418581ef5035d",
+        "bake_sprite.py": "92a7e5a5fb9aab3fd5bbc9080afd7558b42110d61a5f2de8a2f2f825a2a92e8b",
+        "export_models.py": "26e408754842d8e0da6262ba977b1ea98f83a795f7f29cdcbad838fc41921b1c",
+        "refinery_v2_builder.py": "1e77c3feee002688cd046fdd7c45fcf614ddda8290551ef44c61eae02cfe69c9",
+        "sprite_kit.py": "8e9b570492ebde6a8a40113b1098793e9ca176292fb98d294671ea92a4d24d41",
+        "pipeline.py": "497c7ef609e4f1acc9adb205292b0c5ae3daf5db58924baee1ab630585225b67",
+        "entry.py": "ae476f774ab5630976cec8dfccfddb7761546ce69d0a7cffadf2e0c11af50601",
+        "paper_wpa_catalog.py": "7be39b082de17b6092e9505e67850028966e9d033bf6f665a057997da147c157",
+        "render_sprite.py": "edf7cd4e41d5d6fa2bedae8435b8b7fa5e80a86711ff828b928a241c09f7bff4",
+        "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
+        "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
+      },
+      "outer_contour": false,
+      "released_levels": [
+        1,
+        2,
+        3
+      ],
+      "staged_as": "power_plant_v2"
     }
   },
   "sprites": {
@@ -1610,17 +1699,27 @@
         800
       ],
       "bbox": [
-        31,
-        33,
-        769,
-        766
+        39,
+        6,
+        761,
+        794
       ],
-      "opaque_pixels": 303491,
+      "opaque_pixels": 329924,
       "dominant_rgb": [
         [
-          64,
-          72,
-          72
+          136,
+          144,
+          144
+        ],
+        [
+          128,
+          136,
+          136
+        ],
+        [
+          40,
+          48,
+          56
         ],
         [
           56,
@@ -1628,9 +1727,9 @@
           64
         ],
         [
-          40,
-          48,
-          56
+          176,
+          176,
+          168
         ],
         [
           184,
@@ -1640,12 +1739,52 @@
         [
           48,
           56,
+          64
+        ],
+        [
+          48,
+          56,
+          56
+        ]
+      ],
+      "sha256": "1b79631fed1ec59c308a9e4a042cf897925f07f78a65c40cb1937b724aa764ad",
+      "mask_range": [
+        123,
+        255
+      ]
+    },
+    "furnace_lvl1.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        85,
+        82,
+        715,
+        717
+      ],
+      "opaque_pixels": 184572,
+      "dominant_rgb": [
+        [
+          136,
+          144,
+          144
+        ],
+        [
+          128,
+          136,
+          136
+        ],
+        [
+          40,
+          48,
           56
         ],
         [
-          72,
-          80,
-          80
+          56,
+          64,
+          64
         ],
         [
           48,
@@ -1653,14 +1792,624 @@
           64
         ],
         [
+          48,
+          56,
+          56
+        ],
+        [
+          184,
+          176,
+          168
+        ],
+        [
+          56,
           64,
-          72,
+          72
+        ]
+      ],
+      "sha256": "da16ddf849f630a1f6fd7b13afa291d262709f0af65d9601f52069b8ee859c07",
+      "mask_range": [
+        115,
+        255
+      ]
+    },
+    "furnace_lvl2.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        70,
+        8,
+        731,
+        791
+      ],
+      "opaque_pixels": 261261,
+      "dominant_rgb": [
+        [
+          136,
+          144,
+          144
+        ],
+        [
+          128,
+          136,
+          136
+        ],
+        [
+          40,
+          48,
+          56
+        ],
+        [
+          56,
+          64,
+          64
+        ],
+        [
+          136,
+          80,
+          56
+        ],
+        [
+          184,
+          184,
+          176
+        ],
+        [
+          136,
+          144,
+          136
+        ],
+        [
+          48,
+          56,
+          64
+        ]
+      ],
+      "sha256": "37e232c3c59dc5b49be3348a358148a037e047e613377871d4a671dc88a859ec",
+      "mask_range": [
+        126,
+        255
+      ]
+    },
+    "petro_refinery_lvl1.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        89,
+        103,
+        710,
+        696
+      ],
+      "opaque_pixels": 185347,
+      "dominant_rgb": [
+        [
+          168,
+          168,
+          160
+        ],
+        [
+          152,
+          152,
+          136
+        ],
+        [
+          176,
+          168,
+          160
+        ],
+        [
+          96,
+          96,
+          88
+        ],
+        [
+          184,
+          176,
+          168
+        ],
+        [
+          176,
+          176,
+          168
+        ],
+        [
+          152,
+          144,
+          136
+        ],
+        [
+          88,
+          88,
           88
         ]
       ],
-      "sha256": "dd5837934190494906b7c0034cd23cca0ea255d66a1beccce94fc22576298e15",
+      "sha256": "3bad4170af9acd184656a24c269059b717f6af189a852f109b07f5faedebb548",
       "mask_range": [
-        113,
+        128,
+        255
+      ]
+    },
+    "petro_refinery_lvl2.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        10,
+        78,
+        790,
+        722
+      ],
+      "opaque_pixels": 242917,
+      "dominant_rgb": [
+        [
+          168,
+          168,
+          160
+        ],
+        [
+          184,
+          176,
+          168
+        ],
+        [
+          176,
+          176,
+          168
+        ],
+        [
+          176,
+          168,
+          160
+        ],
+        [
+          96,
+          96,
+          88
+        ],
+        [
+          200,
+          192,
+          176
+        ],
+        [
+          152,
+          152,
+          136
+        ],
+        [
+          88,
+          88,
+          88
+        ]
+      ],
+      "sha256": "5efd54da9b9d3039c1f3aef30b4871a995621d69ed31837ba8a2388d4c432a6f",
+      "mask_range": [
+        128,
+        255
+      ]
+    },
+    "petro_refinery_lvl3.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        10,
+        78,
+        790,
+        722
+      ],
+      "opaque_pixels": 249676,
+      "dominant_rgb": [
+        [
+          168,
+          168,
+          160
+        ],
+        [
+          184,
+          176,
+          168
+        ],
+        [
+          176,
+          176,
+          168
+        ],
+        [
+          176,
+          168,
+          160
+        ],
+        [
+          96,
+          96,
+          88
+        ],
+        [
+          200,
+          192,
+          176
+        ],
+        [
+          192,
+          184,
+          168
+        ],
+        [
+          88,
+          88,
+          88
+        ]
+      ],
+      "sha256": "39ebe864cf725006cb02591795ab343e98fe71caf55944f9ae7b1748b74bec0d",
+      "mask_range": [
+        128,
+        255
+      ]
+    },
+    "poly_plant_lvl1.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        141,
+        108,
+        660,
+        692
+      ],
+      "opaque_pixels": 152635,
+      "dominant_rgb": [
+        [
+          96,
+          96,
+          88
+        ],
+        [
+          88,
+          88,
+          88
+        ],
+        [
+          168,
+          168,
+          160
+        ],
+        [
+          136,
+          144,
+          144
+        ],
+        [
+          128,
+          136,
+          136
+        ],
+        [
+          88,
+          88,
+          80
+        ],
+        [
+          40,
+          48,
+          56
+        ],
+        [
+          176,
+          176,
+          168
+        ]
+      ],
+      "sha256": "ed22d77b8655b9ea82eb1a70d36293140681b50d7334466767e812184805aa5c",
+      "mask_range": [
+        123,
+        255
+      ]
+    },
+    "poly_plant_lvl2.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        87,
+        108,
+        712,
+        692
+      ],
+      "opaque_pixels": 206012,
+      "dominant_rgb": [
+        [
+          168,
+          168,
+          160
+        ],
+        [
+          96,
+          96,
+          88
+        ],
+        [
+          40,
+          48,
+          56
+        ],
+        [
+          176,
+          176,
+          168
+        ],
+        [
+          176,
+          168,
+          160
+        ],
+        [
+          88,
+          88,
+          88
+        ],
+        [
+          184,
+          176,
+          168
+        ],
+        [
+          88,
+          88,
+          80
+        ]
+      ],
+      "sha256": "a20053e00ecd86f33e976d6df45bb071609269abce8e21af11992d5d8486dea2",
+      "mask_range": [
+        120,
+        255
+      ]
+    },
+    "poly_plant_lvl3.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        32,
+        102,
+        767,
+        698
+      ],
+      "opaque_pixels": 241115,
+      "dominant_rgb": [
+        [
+          168,
+          168,
+          160
+        ],
+        [
+          96,
+          96,
+          88
+        ],
+        [
+          176,
+          168,
+          160
+        ],
+        [
+          176,
+          176,
+          168
+        ],
+        [
+          184,
+          176,
+          168
+        ],
+        [
+          88,
+          88,
+          88
+        ],
+        [
+          40,
+          48,
+          56
+        ],
+        [
+          88,
+          88,
+          80
+        ]
+      ],
+      "sha256": "7bce3fe66c0bca79c94d545bfa085b4d1508476d68bb0259a7cd80f02a2fdca3",
+      "mask_range": [
+        118,
+        255
+      ]
+    },
+    "power_plant_lvl1.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        59,
+        93,
+        741,
+        707
+      ],
+      "opaque_pixels": 234078,
+      "dominant_rgb": [
+        [
+          168,
+          168,
+          160
+        ],
+        [
+          88,
+          88,
+          88
+        ],
+        [
+          40,
+          48,
+          56
+        ],
+        [
+          56,
+          64,
+          72
+        ],
+        [
+          152,
+          152,
+          136
+        ],
+        [
+          96,
+          96,
+          88
+        ],
+        [
+          48,
+          56,
+          64
+        ],
+        [
+          152,
+          144,
+          136
+        ]
+      ],
+      "sha256": "2277229ccb5741df17cab89cad01eeecab96aecc1a42fb74be7b26c271e55d2d",
+      "mask_range": [
+        134,
+        255
+      ]
+    },
+    "power_plant_lvl2.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        8,
+        23,
+        791,
+        777
+      ],
+      "opaque_pixels": 339648,
+      "dominant_rgb": [
+        [
+          168,
+          168,
+          160
+        ],
+        [
+          40,
+          48,
+          56
+        ],
+        [
+          160,
+          160,
+          152
+        ],
+        [
+          168,
+          160,
+          152
+        ],
+        [
+          176,
+          168,
+          160
+        ],
+        [
+          152,
+          152,
+          144
+        ],
+        [
+          160,
+          152,
+          144
+        ],
+        [
+          152,
+          144,
+          136
+        ]
+      ],
+      "sha256": "2750ce5e0c09d185dc77d561c66a44a750aadaaca49f3e44f49841ab007b405c",
+      "mask_range": [
+        123,
+        255
+      ]
+    },
+    "power_plant_lvl3.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        6,
+        23,
+        793,
+        777
+      ],
+      "opaque_pixels": 370559,
+      "dominant_rgb": [
+        [
+          168,
+          168,
+          160
+        ],
+        [
+          160,
+          160,
+          152
+        ],
+        [
+          40,
+          48,
+          56
+        ],
+        [
+          168,
+          160,
+          152
+        ],
+        [
+          152,
+          152,
+          144
+        ],
+        [
+          176,
+          168,
+          160
+        ],
+        [
+          160,
+          152,
+          144
+        ],
+        [
+          176,
+          176,
+          168
+        ]
+      ],
+      "sha256": "98d862ae6b80cc17b377345ea32799cd05e0993e416cd3c47ed86a814568b575",
+      "mask_range": [
+        124,
         255
       ]
     }
@@ -1690,6 +2439,29 @@
     "offshore_oil_platform_lvl1.glb": "7376844d89820efdb4e9d89c1edcbe0b94f7b5e502e96de394ba7d484e37ff19",
     "offshore_oil_platform_lvl2.glb": "fedb94a175404a0c0f7401c2a85a5158df5de10e298f3d6f0cbb0ea9b060b900",
     "offshore_oil_platform_lvl3.glb": "7f2111eab90d3ea79f2e7d311915421137b0d705189e38c8aae3769c1f55ec95",
-    "furnace_lvl3.glb": "f2177eca66b17832c6ca7d85d928b966fdf984e8c8e8cfb60528fffc346a4aff"
+    "furnace_lvl3.glb": "3c0e996d985ef8e33398b12012e98f36a0b32fae8a58307e15a6bd9acd1fa3e6",
+    "furnace_lvl1.glb": "d72610e933c9937448ed33adf6c8deca39b85dbb7985b28535e8dc1c4ffd7fc0",
+    "furnace_lvl1_contour.glb": "0e36e0afda5fa79b82deb8f2036d9ad2cf1310a763aea39cf285e68fbb11df85",
+    "furnace_lvl2.glb": "6a9453288892694e4e358ffb3df6b52d3e17d602586165ac7b04d96026f7cb89",
+    "furnace_lvl2_contour.glb": "c9286abd388f253c1b22d69810d85ae4419131cd6ee89b3df44f5e023465c349",
+    "furnace_lvl3_contour.glb": "a6fe735a72265b0afec249d219453204b85cfd56f18218669432aa32c3bae670",
+    "petro_refinery_lvl1.glb": "5000b155d7199ccd4a4ef85f087c4003e8af583d80059efd4161d33992e6a50c",
+    "petro_refinery_lvl1_contour.glb": "ef66526ea74592cd9f3bf23ab6911dc12409acebf6348a2114ca7afa7807e84e",
+    "petro_refinery_lvl2.glb": "59233474d713e88207ed32de714c93ee8326e32f29d6f58062bc86750f69e0ab",
+    "petro_refinery_lvl2_contour.glb": "c98cc8986199a5ff08937d99ae07fd16057893ea25f47937d59c19f001567844",
+    "petro_refinery_lvl3.glb": "ce37919c9cc2268f3c85ab635d679ab01fc0609561c2aca77bf4d75caa62f59f",
+    "petro_refinery_lvl3_contour.glb": "186d47479c7db51a3ccc2126a791e9b7ba09b64dbd6d1ad58d7555322b008131",
+    "poly_plant_lvl1.glb": "8dcb2b629763a32c28aaf91f27a456908d50c6ca6346f272f9bbf4b0b5261b8f",
+    "poly_plant_lvl1_contour.glb": "a67acb4775a4890676bb0e73fe1e822a0e9c201e8bd80f466243d63d8ab13665",
+    "poly_plant_lvl2.glb": "f9156c811aa36124690eb4056678aa04378aa08766dfd4a7e2f83a1abf9db669",
+    "poly_plant_lvl2_contour.glb": "7e5c4c4faadd93f8d5f0fc3d67287d616db951920f88ff0ed331e98ce67c8239",
+    "poly_plant_lvl3.glb": "2608424a177ca9083e713b7665d77afadc89c090a2967982eb38941ebb4e08b0",
+    "poly_plant_lvl3_contour.glb": "9a79d4f71b8046899afcefe29222672f79cac67dbee8c0d56ae01c14904bae06",
+    "power_plant_lvl1.glb": "da250d8a94e85af78000915a1afb6d608aec5c749e8248e4c73ea42e3773e01c",
+    "power_plant_lvl1_contour.glb": "e6421b3d34c7cf562c643e41563b654f71822765a21f76e3bdd7d598992aa351",
+    "power_plant_lvl2.glb": "657fe38e6f3f01898ad6f690f66e78f29fabc542edbe27b9a07be7c139ab781d",
+    "power_plant_lvl2_contour.glb": "b433d42807454e9de625fdb6de98e44b139365b3625c9e0cebb10c7ca43dc276",
+    "power_plant_lvl3.glb": "2e3fa64aa3bd49b6810b23a2e21ef79b056134511eda553babd1d68eb34415ad",
+    "power_plant_lvl3_contour.glb": "e5c5d32588fb0ab2475e90c879d53a7221cf00c5764661438751225f7ddc03fa"
   }
 }

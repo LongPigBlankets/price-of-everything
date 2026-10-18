@@ -1,6 +1,6 @@
 ---
 name: blender-building-sprites
-description: Load this to create or modify 2.5D building sprites for Carbon and Capital in Blender - new building types, level variations (L1/L2/L3), style tweaks, or re-renders. Covers the locked WPA/midcentury style contract (iso camera, Freestyle ink, no cast shadows), the parametric builder pattern, geometry gotchas (z-fighting, cylinders, missing intersection seams), the print-texture pass, and the owner's screen-direction vocabulary.
+description: Load this to create, rebuild or modify buildings for Carbon and Capital in Blender - 2D sprites and the 3D supply-chain models - including new building types, level variations (L1/L2/L3), style tweaks, re-renders, and installing a building for both views. Covers the locked WPA/midcentury style contract (iso camera, Freestyle ink, no cast shadows), the catalogue look (material names that drive the 3D print shader's brick, roof and panel patterns), the parametric builder pattern, the frozen-revision pipeline, the 2D and 3D install checklist with its bakes, geometry gotchas (z-fighting, buried geometry showing through walls in 3D, wedge junctions, missing intersection seams), rear-view and readability review, and the owner's screen-direction vocabulary.
 ---
 
 # Blender building sprites — the 2.5D asset pipeline
@@ -13,18 +13,37 @@ Reference icons: `assets/icons/goods/medium/g_008_motor.png`, `g_066_graphite.pn
 
 ## Where things live
 
+Two homes, both in the repo. The old `/Users/crisu/Price of Everything/blender-assets/`
+copy outside git is retired; do not edit it.
+
 ```
-/Users/crisu/Price of Everything/blender-assets/       # OUTSIDE the git repo
-├── industrial_goods_factory.blend    # master .blend: the rig + every BLDG_* collection
+.claude/skills/blender-building-sprites/          # this skill: the kit and the legacy builders
 ├── sprite_kit.py                     # ⭐ START HERE — materials, primitives, assemblies
-├── kit_sampler.py                    # renders one of every assembly (kit self-test)
-├── factory_builder.py                # build_factory(level)   — predates the kit
-├── furnace_builder.py                # build_furnace(level)   — predates the kit
-├── stylize.py                        # print pass (stipple-as-shading)
-└── sprite_export.py                  # square crop + exact-pixel padding
+├── render_sprite.py / sprite_export.py / stylize_shade.py / bake_sprite.py   # legacy pipeline
+├── <family>_builder.py               # factory, eaf, power_plant, petro_refinery, poly_plant, …
+└── BUILDING_NOTES.md                 # per-building record and the physical-logic audit
+
+price-of-everything-0.1/tools/building_assets/    # the detailed, frozen-revision pipeline
+├── pipeline.py                       # build / models / verify / install, immutable revisions
+├── builders.py                       # farm, water pump, forests, desal, oil wells, offshore
+├── furnace_builder.py + furnace_v2_builder.py   # the furnace (V2 runs after the first)
+├── refinery_v2_builder.py            # petro + poly refineries (run after the furnace builders)
+├── power_plant_v2_builder.py         # power plant (runs after the refinery builder)
+├── furnace_paper.py / paper_wpa_catalog.py      # the Paper WPA print for sprites
+├── furnace_v2_fx.py / package_furnace_v2_fx.py  # window/heat masks and smoke anchors
+├── building_fx.py / package_building_fx.py      # the same, configured per family (refineries, power plant)
+├── review_reverse.py / review_sheet.py          # rear view; front+rear and 70 px sheets
+└── coplanar_check.py                 # faces that will z-fight in the 3D view
 ```
 
-Blender 5.2 LTS at `/Applications/Blender.app`; drive it via the **official
+The 3D exporter is `price-of-everything-0.1/tools/supply_chain_3d/export_models.py`; the
+far, medium, lit and picking bakes are scenes in the same folder.
+
+Blender 5.2 LTS at `/Applications/Blender.app`. In agent shells call it as `blender`
+through the shims in `~/.agent-shims` (`export PATH="$HOME/.agent-shims:$PATH"` first).
+The shims add `--background`, and a PreToolUse hook refuses any shell command whose text
+names the app with a capital B, even inside a heredoc: write notes like this one with the
+file tools. For interactive work drive it via the **official
 Blender MCP** (`mcp__blender__*` tools; see auto-memory `blender-mcp-setup` for
 install/config — server needs a GUI Blender running, addon autostarts on :9876).
 Verify visually yourself: render via `render_viewport_to_path`, Read the PNG,
@@ -238,6 +257,131 @@ z-fight. What does NOT work, and why:
 (NURBS/curve-with-bevel is the same tube `sweep()` already builds — it would not
 have fixed any of these, because every one was a fault in the PATH.)
 
+## The catalogue look and the detailed pipeline (October 2026)
+
+**The furnace (`furnace_v2_builder.py`, installed 17 October 2026) is the reference
+implementation**, followed the same day by the refineries (`refinery_v2_builder.py`) and the
+power plant (`power_plant_v2_builder.py`). Rebuild other industrial buildings the same way.
+Their reviews, with owner rulings, lessons and install records, are in
+`price-of-everything-0.1/docs/reviews/`: `furnace-v2-2026-10-16.md`,
+`refinery-v2-2026-10-17.md`, `power-plant-v2-2026-10-17.md`.
+
+**Use `tools/building_assets/pipeline.py`, not `bake_sprite.py`, for a rebuild.** Each
+revision is immutable: it freezes the builder, kit, renderer and print pass under
+`source/`, keeps a `.blend` per level, and verifies hashes before `models` and `install`.
+A family listed in `PAPER_FAMILIES` takes the Paper WPA print (`furnace_paper.py`). A
+family staged under a working name installs under its game name through `GAME_NAME`.
+
+**Material names are the 3D look.** The supply-chain view's print shader
+(`building_paint.gdshaderinc`, from `claude/catalog-look-buildings`) draws a pattern chosen
+by material name, which `export_models.py` writes into each vertex colour's alpha
+(`PATTERNS`, `pattern_code`). Use the catalogue factory's names and colours:
+
+| Material name → pattern | Colour | Use |
+| --- | --- | --- |
+| any name containing `brick` → coursing | factory clay `(0.380, 0.165, 0.095)` | masonry |
+| `f_roof` or `roof_metal` → standing seam | `(0.250, 0.300, 0.330)` | pitched roofs |
+| `membrane` → gravel | `(0.120, 0.125, 0.130)` | flat roofs |
+| `f2_refractory`, `white_wall`, `chalk` → panel joints | per building | clad walls |
+| `f_base`, `pad`, `apron`, `cream` → paving | per building | footings, yards |
+| `stone` | `(0.600, 0.560, 0.470)` | lintels, sills, cornices, bands |
+| `white_pipe` | `(0.700, 0.660, 0.580)` | process pipework |
+| `silver` | kit silver | gutters, downpipes, hoppers |
+| `factory_glass` (BLENDED, alpha 0.72) | teal `(0.070, 0.140, 0.190)` | windows, over a dark `interior` panel |
+| `r_shell` | warm white `(0.600, 0.590, 0.560)` | process vessels, tanks, columns, stacks |
+| `r_deck` | black-grey `(0.070, 0.075, 0.080)` | every walkway floor, platform and stair tread |
+| `r_yellow` | safety yellow `(0.520, 0.352, 0.045)` | every barrier, rail and ladder |
+| `roof_glass` (BLENDED, alpha 0.24) | `(0.250, 0.340, 0.380)` | glazed roofs over plant that should show |
+
+**Owner's standing colour rules (October 2026).** No orange anywhere: walkway floors,
+platforms and treads are always black-grey (`r_deck`), barriers, rails and ladders always
+safety yellow (`r_yellow`). Pipework is white or pale silver; vessels dark metal (furnace
+family) or warm white (process plant). The kit's process assemblies paint through roles, so
+a builder remaps them for its own build only (`REFINERY_ROLES`, `POWER_ROLES`, applied in its
+begin function), and never edits the kit's defaults. Flames are baked into the art in the
+same emissive orange as the refinery flare (`r_flame`, 0.95, 0.32, 0.02 at strength 1): the
+kit's ember is light enough that the print drains it to peach.
+
+A name the table does not cover prints flat. Add a pattern only by adding its name to
+`PATTERNS`. Keep `outer_contour=True` in the exporter spec: the factory carries the ink
+outline shell, and a building without it reads lighter beside it.
+
+**Brick on the 2D sprite.** The shader's coursing exists only in 3D, so the sprite gets a
+brick texture on the brick material (`_v2_brick_print` in the furnace builder): 0.075
+courses, 0.21 bricks, stretcher bond, world space so courses run across separate boxes,
+course direction picked from the face normal, tops plain. Two measured traps. `Mortar Size`
+is a **half** width, so 0.005 gives the shader's 0.010 joint. And a sprite lit in the
+renderer prints lighter and more orange than the same value lit by Godot, so the texture
+colours carry a per-channel ratio (`SPRITE_BRICK_RATIO`) tuned against the factory plate,
+while the material's own base colour stays the factory value for the GLB.
+
+**Check the 3D look, not just the sprite.** `tools/supply_chain_3d/catalog_plate.tscn`
+renders one model through the board's own shader (`--asset=<key>`, `--yaw=180` for the
+rear, `--dir=res://<folder>` for a trial export), and `paper_wpa_catalog.py` prints it as a
+plate. Put the building beside `industrial_factory_lvl3` before calling the style matched.
+
+## Installing a building for both views
+
+The 2D map and the 3D supply-chain view read different files. A rebuild is installed only
+when all of these are current:
+
+| Layer | Files | Made by |
+| --- | --- | --- |
+| 2D sprite | `assets/icons/buildings/sprites/<key>_lvl<n>.png`, provenance in `detailed_buildings_manifest.json` | `pipeline.py install` |
+| 2D effects | `assets/fx/windows/` and `assets/fx/light/<key>_lvl<n>.png`; `ANCHORS` in `scripts/empire_fx.gd` | `building_fx.py` + `package_building_fx.py` (configure the family in `FAMILIES`); the furnace keeps its own pair |
+| 3D model | `assets/supply_chain_3d/<key>_lvl<n>.glb`, `_contour.glb`, `manifest.json` | `pipeline.py models`, then `install` |
+| 3D impostors | `far_sprites/` and `medium_sprites/` colour, depth and `_lit` atlases with manifests | the bake scenes below |
+| 3D picking | `assets/supply_chain_3d/picking/<key>_lvl<n>.res` | the lighting bake |
+
+```bash
+godot --headless --editor --import --quit --path .
+AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_chain_3d/bake_far_sprites.tscn -- --asset-keys=<k1>,<k2>,<k3> --no-telemetry
+AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_chain_3d/bake_far_sprites.tscn -- --medium --asset-keys=<k1>,<k2>,<k3> --no-telemetry
+AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_chain_3d/bake_medium_lighting.tscn -- --asset-keys=<k1>,<k2>,<k3> --no-telemetry
+godot --headless --editor --import --quit --path .
+```
+
+**The effects are tied to the old sprite's pixels.** Window masks, light masks and the
+`ANCHORS` entry (chimney mouths, steam vents, fires, traced cables for the power pulses) all
+register to the sprite they were cut from, so a rebuilt sprite needs all of them redone, and
+`ANCHORS` replaced by the packaged `fx/anchors_<key>.json`. `install` copies the new masks
+but never deletes a mask the new building no longer has: remove stale ones yourself, with a
+backup in the revision's `previous-installed/`. A light mask also lights the building on the
+2D board, so a mask left from the old art glows over the new one. The mask check allows 4%
+of the sprite; a mask that leaked onto a wall or roof covers far more.
+
+Order matters: the lighting pass reuses the medium atlas's framing. Each atlas and picking
+resource records its model's SHA-256, and the unit tests fail if they drift. Errors printed
+after a bake's `complete` line are shutdown noise.
+
+**Then rebake the map package if any model's size changed.** Its script fingerprints do not
+cover models, but `world_builder.gd` puts every standing building's model dimensions into
+the scenery key and each far sprite's span into the continent key. A new model of a
+different width, depth, height or span therefore makes all 600 tiles stale, and a fresh
+process rebuilds them before Begin (measured after the furnace install: 377 s to Begin,
+604 misses). `verify_continent_package.tscn` does not catch this: it checks the package
+against itself. Rebake with `bake_continent_package.tscn` as `docs/load-time-bakes.md`
+describes, then measure with `profile_startup.tscn` in a fresh process and require bundled
+hits and no runtime writes, as `AGENTS.md` requires.
+
+## Image references and before-and-after sheets
+
+**Reference first, when the composition is open.** Concept images come from Project
+Rebirth's `./tools/asset-image` (Sunburst): `generate --brief <md> --reference <png> ...` and
+`edit --image <png> --instructions <md>`, dry run by default, `--execute` for one paid
+request. It reads `OPENAI_API_KEY` from `~/.zshrc`: run `source ~/.zshrc >/dev/null 2>&1`
+in the same command and never print the key; `doctor --check-access` tests it. Give the
+house sprites as references (the installed furnace and refineries on paper), not older art
+with off-palette colours. State every colour rule explicitly. The edit mode takes words
+literally: asked for "walkway floors black-grey" it turned the whole site pad black, so name
+the surface ("the small platform decks"). Expect a reference to drift (a cooling tower went
+conical); note what the build must correct.
+
+**Before and after.** For a rebuilt building, compare the sprite the game had (from git
+`HEAD`, or saved before `install`) with the new one: a 2x2 sheet per building, old on top,
+new below, L1 left, L3 right, on paper, no text. Place the whole 800 px canvases at one
+scale, not cropped sprites, so the sheet shows each level at the size the game draws it.
+
 ## Geometry rules (each one cost a debugging round)
 
 1. **No coplanar faces.** Two faces in the same plane z-fight into smears.
@@ -443,6 +587,48 @@ have fixed any of these, because every one was a fault in the PATH.)
    fixtures nearest the serviced wall FROM that wall (`bx1 - DOOR_FROM_R`), and let new
    windows, fan units and tank columns march out on the free side. The assembly hall is the
    limit case: serviced at BOTH ends, so it cannot grow at all and levels add parts instead.
+
+### Lessons from the furnace rebuild (October 2026)
+
+- **Anything buried inside a hollow wall shows through it in 3D.** A plinth sunk into a
+  wall slab, or a column inside cladding, is invisible in the sprite and flickers through
+  the wall in the supply-chain view, even 2.5 cm proud. Stack materials in one plane
+  instead (a brick base slab under the cladding slab) and put columns on the wall face.
+  `tools/building_assets/coplanar_check.py` lists the pairs; same-material corners are fine.
+- **An inclined box meeting a vertical wall reads as a wedge**, and a member that vanishes
+  behind a roof reads as piercing it. Bend the conveyor instead (`_v2_bent_gallery`: one
+  mitred mesh, level, climb, level) so it enters a wall square-on.
+- **Every conveyor or duct ends in a wall, never a roof slope.** Give each end a small
+  gabled housing whose ridge runs along the conveyor (`_v2_gable_house`), with the conveyor
+  through its gable on a flange, under a shallow ridged cover at the same pitch. A housing's
+  roof must butt a taller wall below that wall's eaves, not run into another roof.
+- **Where a vessel passes through a roof, give the joint its own outline**: a short collar
+  with a cap ring. Freestyle draws no line at a mesh interpenetration.
+- **Legs must touch what they carry.** Silo legs meet a ring girder under the body plus a
+  tie ring. A downpipe hangs from a gutter that runs the whole eave and ends at a drain or a
+  lower roof. Rainwater is a flow: include it in the physical-logic audit.
+- **What is fixed on site stays fixed across levels**, and the owner checks: one chimney in
+  one place, one vessel height, one lift-top height. Upgrades add plant around them.
+- **Gas leaves a shaft furnace at the top.** Take-offs run from the throat down a
+  downcomer; waste gas goes to a stack base through a low flue.
+
+### Lessons from the power plant rebuild (October 2026)
+
+- **Glass hides ink.** Freestyle treats glass as opaque, so plant under a glazed roof prints
+  as faint colour with no lines. Link those objects into their own collection and give it an
+  `ink_*` line set with visibility RANGE, QI 0 to 1, and make each pane a single quad: the
+  plant is then inked through one pane and never through a wall (a box is two surfaces).
+  `render_sprite.py` keeps any `ink_*` line set; it drops every other extra set. See
+  `_pp_interior_ink` in `power_plant_v2_builder.py`.
+- **All-brick walls behind glass turn the roof red.** Line the inside with a pale slab a few
+  millimetres clear of the brick.
+- **The 3D outline shell pierces thin bands.** The exporter inflates each part by about
+  4.5 cm, so a band or rim must stand at least 5.5 cm proud, on its host's own facets, or
+  it reads ragged in the supply-chain view.
+- **Kit windows have fixed frame widths** (5 cm frame, 2.6 cm bars, deep sill). Below full
+  size they look heavy; scale every member with the opening (`_pp_window`, `_pp_door`).
+- **The sprite's width is a budget.** The shared scale allows 688 raw px; paving to a far
+  corner, a pylon's arms or a turned object can set the width before the building does.
 
 ## Ink weight: FINE detail needs its own lineset
 
@@ -681,15 +867,26 @@ geometry functions must never depend on saved .blend state.
 3. Run `stylize.py`, then view the final.
 4. For level sets, composite a 3-up strip at IDENTICAL camera scale so relative
    size reads, and check the upgrade story left→right.
+5. **Look at the rear.** `tools/building_assets/review_reverse.py` renders each saved
+   level from the opposite azimuth; `review_sheet.py` prints it like the front and writes
+   the front+rear sheet and a 70 px readability sheet (edge density and tone spread; the
+   furnace sits at 0.32 to 0.37, the factory at 0.15). The 3D view orbits, so a blank or
+   broken back face is a real defect.
+6. **Check the 3D view** with `catalog_plate.tscn` at yaw 0 and 180, zoomed at walls and
+   junctions, and run `coplanar_check.py` on each level's `.blend`.
+7. When the owner points at a problem with a small screenshot crop, locate that crop in
+   the images you delivered (template matching) before guessing what it shows.
 
 ## Not yet decided / pending
 
 - Export naming + sizes into the game (likely mirroring
   `assets/icons/goods/medium|small/` convention) and BDP integration — the
   in-game consumer of these sprites hasn't been wired yet.
-- Brick coursing / hatch textures (graphite-icon style) — deliberately skipped;
-  halftone-only was approved.
-- Brick coursing beyond halftone — still deliberately skipped.
+- Brick coursing is now part of the catalogue look: a 3D shader pattern, plus the sprite
+  brick texture described above. Older sprites still carry halftone-only brick.
+- The 2D set is mixed: the furnace sprite takes the Paper WPA print, every other building
+  still the `stylize_shade` halftone. Converting the rest is part of their rebuilds; see
+  `price-of-everything-0.1/docs/building-rebuild-plan-2026-10-17.md`.
 
 
 ## Headless rendering — use it for anything long (SOLVED 2026-08-07)
