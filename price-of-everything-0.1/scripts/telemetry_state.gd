@@ -35,6 +35,7 @@ extends Node
 ##  - New run re-arming while armed = quit to menu: spool + upload (app alive).
 
 const AppPaths := preload("res://scripts/app_paths.gd")
+const DemoEula := preload("res://scripts/demo_eula.gd")
 
 const ENDPOINT_URL := "https://script.google.com/macros/s/AKfycbw8dUX-A_dSKmI2GB4_2AbRXbGnOKTbP8mpEa17t6wBBAg4Y0LcCnS_xJNH3EeNRwdr/exec"
 const TOKEN := "d299f45324f48cce4b9257789dfc493e172d5ac657ba1641"
@@ -203,6 +204,14 @@ func _watch_ui_node(node: Node) -> void:
 
 
 func _ready() -> void:
+	# The agreement is the first screen. Do not report a launch/retry old uploads
+	# while the player is still deciding whether to accept the terms.
+	start_session.call_deferred()
+
+
+func start_session() -> void:
+	if enabled or not DemoEula.is_accepted():
+		return
 	# Windowed capture/test harnesses opt out before any launch envelope is queued.
 	if OS.get_cmdline_user_args().has("--no-telemetry"):
 		return

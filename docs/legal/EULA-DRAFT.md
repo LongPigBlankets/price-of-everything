@@ -1,0 +1,60 @@
+# Carbon and Capital Demo End User Licence Agreement Draft
+
+**Draft for review. Not effective or ready for distribution. The privacy URL below is a placeholder pending its policy content. This draft does not replace the repository's existing licence.**
+
+Licensor: **Sava Cristian Urigiuc**, based in the United Kingdom ("I", "me").\
+Contact: **carbonandcapital.game@gmail.com**.\
+Draft date: **18 October 2026**.\
+Scope: **Future official demos distributed with this agreement through itch.io or Steam.**
+
+## 1 Your permission to play
+
+This agreement covers the free demo of Carbon and Capital (the "Demo") supplied with it. It does not cover a paid edition. Please read it before accepting it or installing the Demo.
+
+When you obtain the Demo through its official itch.io or Steam page, I grant you a personal, non-exclusive licence to install and play it on devices you own or control. You may make backup copies for your lawful personal use and use store-supported sharing features under that store's terms.
+
+## 2 Ownership and redistribution
+
+The Demo and its original content remain owned by me or their respective owners. This licence does not transfer those intellectual property rights.
+
+You may modify your own copy for private, personal use. Support and compatibility for modified copies are not promised.
+
+Except where permitted by law, a separate applicable licence or my written permission, you must not sell, sublicense, upload or distribute the Demo, whether modified or unmodified, or redistribute its code or assets or reuse them in another product. Share the official download link instead. Keep ownership notices intact and do not present an unofficial release as official.
+
+## 3 Gameplay recordings
+
+You may publish screenshots, gameplay videos and streams, including monetized ones. This permits showing the Demo within your content, not distributing its assets separately. Do not imply my endorsement without permission.
+
+## 4 Demos and updates
+
+The Demo has the features and play limits described on its official download page. It may contain bugs and incomplete features. It does not include a paid edition or guarantee a release date or future feature unless expressly stated.
+
+Updates and support are provided as expressly promised or required by law. Future changes to these terms will not retrospectively change rights granted for an earlier release.
+
+## 5 Stores and privacy
+
+Store terms govern account services and downloads. Your legal rights against me or the store remain unaffected.
+
+Data collection and use are explained separately in the [Privacy Notice](https://www.carbonandcapital.com/privacy-policy). Accepting this agreement does not itself give consent to optional data collection.
+
+## 6 Consumer rights and responsibility
+
+Nothing in this agreement removes your statutory rights or remedies. The Demo must meet the standards and descriptions required by applicable law.
+
+I do not promise uninterrupted or error-free operation. This does not limit my legal obligations.
+
+I do not exclude or limit liability where the law prohibits doing so, including for fraud or death or personal injury caused by negligence. Subject to your statutory rights, I am not responsible for business losses arising from your use of the Demo or permitted gameplay recordings.
+
+## 7 Ending the licence
+
+You may end this licence by stopping use and deleting your copies. For a material breach, I may end it after notice and a reasonable opportunity to remedy the breach where possible. You must then stop using and delete copies used under this agreement. Statutory rights and separate licence permissions remain unaffected.
+
+## 8 Other licences and earlier releases
+
+Godot Engine and other third-party components remain under their own licences and notices. This agreement does not withdraw their permissions or permissions already granted under MIT or another licence for earlier releases or separately licensed material.
+
+## 9 Governing law and contact
+
+This agreement is governed by the law of England and Wales. Consumers retain mandatory protections where they live and may bring claims in any court available under applicable law.
+
+For questions about the Demo or this agreement, contact **carbonandcapital.game@gmail.com**.
