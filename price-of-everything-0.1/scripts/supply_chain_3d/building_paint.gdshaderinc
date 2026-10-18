@@ -14,12 +14,11 @@ uniform int detail_level = 2;
 uniform bool lit_windows = false;
 uniform bool curtain_wall = false;
 uniform vec3 foliage_tint = vec3(1.0);
-// 0 = unclassified, 1 = the player's, 2 = decorative scenery, 3 = an NPC's.
+// 0 = as authored (the company's own and unclassified), 2 = decorative scenery, 3 = an NPC's.
 instance uniform float sc_role = 0.0;
 // How far scenery and NPC works step back toward grey.
 uniform float decor_grey = 0.65;
 uniform float npc_grey = 0.80;
-global uniform vec4 sc3d_livery;
 // Blender units per model unit (the export's family span), so patterns keep one real size
 // across families. 0 = not exported with patterns; the fallback is a typical span.
 instance uniform float pattern_scale = 0.0;
@@ -106,18 +105,8 @@ vec3 material_pattern(vec3 paint, float code, vec3 p, vec3 n) {
 	return paint;
 }
 vec3 role_paint(vec3 paint, vec3 normal, bool glass) {
-	if (sc_role < 0.5) return paint;
+	if (sc_role < 1.5) return paint;
 	float luma = dot(paint, vec3(0.2126, 0.7152, 0.0722));
-	if (sc_role < 1.5) {
-		if (glass) return paint;
-		// The company's buildings: roofs and tops in its livery, walls a little richer.
-		vec3 walls = clamp(mix(vec3(luma), paint, 1.25), 0.0, 1.0);
-		vec3 livery = OUTPUT_IS_SRGB ? sc3d_livery.rgb : linear_to_srgb(sc3d_livery.rgb);
-		float roof = smoothstep(0.50, 0.75, normal.y);
-		// Darker roof faces darken the livery, so the roof keeps its light and stipple.
-		vec3 tinted = livery * clamp(luma / 0.75, 0.55, 0.88);
-		return mix(walls, tinted, roof * 0.90);
-	}
 	// Scenery and NPC works step back: greyer, and NPC works toward paper white.
 	bool npc = sc_role > 2.5;
 	vec3 grey = vec3(luma) * (npc ? vec3(1.04, 1.02, 0.97) : vec3(0.98, 0.99, 1.02));
@@ -140,7 +129,12 @@ void fragment() {
 	if (COLOR.g > COLOR.r * 1.15) { paint *= foliage_tint; }
 	// Preserve the source palette: cream walls and silver mullions are paint, not ink.
 	float luma = dot(paint, vec3(0.2126, 0.7152, 0.0722));
+#ifdef GLASS
+	// Every face of the see-through shader is glass, whatever its tint.
+	bool glass = true;
+#else
 	bool glass = paint.b > paint.r * 1.45 && luma < 0.38;
+#endif
 	// render_sprite.py's mask direction (-.30, -.62, .72), converted to Godot Y-up.
 	float mask = dot(normalize(visible_normal), normalize(vec3(-0.30, 0.72, 0.62))) * 0.48 + 0.52;
 	float shade = linear_to_srgb(vec3(clamp(mask, 0.0, 1.0))).r;
@@ -201,8 +195,8 @@ void fragment() {
 	}
 	ALBEDO = OUTPUT_IS_SRGB ? paint : srgb_to_linear(paint);
 #ifdef GLASS
-	// Lit glass glows: the warm pane grows more opaque so the light reads.
-	ALPHA = lit_windows && glass ? mix(COLOR.a, 0.85, 0.6) : COLOR.a;
+	// Lit glass keeps its own opacity, so a lit hall still shows its interior.
+	ALPHA = COLOR.a;
 #endif
 	if ((lod_hidden(FRAGCOORD.xy) || loading_hidden(world_point.xz, FRAGCOORD.xy))) { discard; }
 }

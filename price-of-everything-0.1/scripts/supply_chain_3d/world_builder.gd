@@ -2065,7 +2065,6 @@ func _ensure_standing_near(pair: Dictionary) -> void:
 		var outline := MeshInstance3D.new()
 		outline.name = "OuterContour"
 		outline.mesh = contour
-		set_role(outline, float(pair.get("role", 0.0)))
 		outline.scale = visual.scale
 		pair.root.add_child(outline)
 		if loading_reveal != null: loading_reveal.bind(outline)
@@ -2115,17 +2114,16 @@ func _ensure_standing_pick(pair: Dictionary) -> void:
 	pair.body = body
 	pair.pick_shape = collider.shape
 
-const ROLE_PLAYER := 1.0
 const ROLE_DECOR := 2.0
 const ROLE_NPC := 3.0
 
-## How a standing object is coloured: the company's own in its livery, NPC works toward
-## paper white, scenery a little greyer, everything else as authored.
+## How a standing object is coloured: NPC works toward paper white, scenery a little
+## greyer, the company's own and everything else as authored.
 static func role_of(s: Dictionary) -> float:
 	match str(s.get("kind", "")):
 		"house": return ROLE_DECOR
 		"suppliers": return ROLE_NPC
-		"building", "port", "warehouse", "site": return ROLE_NPC if bool(s.get("npc", false)) else ROLE_PLAYER
+		"building", "port", "warehouse", "site": return ROLE_NPC if bool(s.get("npc", false)) else 0.0
 	return 0.0
 
 static func set_role(node: Node, role: float) -> void:
