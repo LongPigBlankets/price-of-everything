@@ -7,5 +7,6 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	print("[KEY PROBE] transport ", builder.transport_key)
 	for tid in builder.tiles:
 		print("[KEY PROBE] ", tid, " ", builder.road_mesh_key(tid))
-		for tier in 3: print("[KEY PROBE] ", tid, " ", builder.tile_bake_key(tid, tier))
+		# A flat (Low preset) build bakes one terrain tier, as bake_company_start does.
+		for tier in ([1] if builder.flat else [0, 1, 2]): print("[KEY PROBE] ", tid, " ", builder.tile_bake_key(tid, tier))
 	get_tree().quit()

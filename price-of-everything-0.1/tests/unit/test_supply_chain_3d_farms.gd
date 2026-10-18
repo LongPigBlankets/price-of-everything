@@ -24,7 +24,7 @@ func _test_farm_growth_repeats_identical_cells() -> void:
 	_check(large.poses.size() > small.poses.size() * 3, "Farm: a larger plot adds crop cells")
 	var unchanged := true
 	for pose in large.poses:
-		unchanged = unchanged and (pose as Transform3D).basis.get_scale().is_equal_approx(Vector3.ONE * Fields.SIDE)
+		unchanged = unchanged and (pose as Transform3D).basis.get_scale().is_equal_approx(Vector3.ONE * Fields.DRAWN)
 		unchanged = unchanged and absf(pose.origin.y - (40.0 + Fields.LIFT + 0.05 + pose.origin.x * 0.02)) < 0.001
 	_check(unchanged, "Farm: all copies retain source proportions and follow ground height")
 	_check(Builder.standing_key(plot(Vector2(250, 160))) == "farm_building_lvl1", "Farm: plot uses the separate building core for artwork and picking")
