@@ -1343,6 +1343,21 @@ func _test_empire_board_caches() -> void:
 	var background: Array = changed.call(after, (board.get("_tile_sig") as Dictionary))
 	_check(stale and bool(view.get("_fresh")) and background == [a + "#things"],
 		"board caches: a level reached while the view is closed is built in the background %s" % [background])
+	# The Low quality preset keeps no view ready while closed: a change leaves it stale.
+	var quality_saved: String = PlayerProfile.graphics_quality
+	PlayerProfile.graphics_quality = PlayerProfile.QUALITY_LOW
+	BuildingState.buildings[made[0]]["level"] = 2
+	BuildingWorks.building_upgraded.emit(made[0], 2)
+	for _i in range(30):
+		await get_tree().process_frame
+	_check(not bool(view.get("_fresh")) and not bool(view.get("_preparing")) and not bool(view.get("_refresh_queued")),
+		"board caches: on the Low preset a change while the view is closed is not built in the background")
+	PlayerProfile.graphics_quality = quality_saved
+	view.call("prepare")
+	for _i in range(600):
+		if bool(view.get("_fresh")):
+			break
+		await get_tree().process_frame
 	# Over budget, the bakes let go are the ones off screen, even newer ones, and never a picture
 	# in view: let go, it would be drawn live until baked again and the tiles in view would
 	# flicker as they took turns.
