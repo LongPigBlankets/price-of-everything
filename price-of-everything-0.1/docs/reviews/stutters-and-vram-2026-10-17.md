@@ -117,6 +117,21 @@ The bundled world snapshot and continent package match only the starting company
 
 A related fix: idle prefetch stored empty entries for worlds built at runtime, which raised script errors in `prepare_tile`/`tile_node`. Prefetch now skips tiles without packaged resources.
 
+## The 2D map under the 3D view (fixed)
+
+Measured with `tools/supply_chain_3d/trials/vram_2d_breakdown.tscn` on a new Metal Magnate game. The opening view shows the whole map, so all 911 far-tier authored tiles are on screen.
+
+**Leak.** The loading screen read the opening view's tiles on worker threads (`AuthoredBake.warm_async`), then loaded each tile again synchronously. The worker requests were never collected, and an uncollected request keeps its texture alive. All 911 tiles (401 MB) stayed resident for the session, and trimming freed nothing. The synchronous read now collects the worker request. Zoomed in on the company, 191 tiles stay alive instead of 911, and GPU memory falls from 3,059 to 2,613 MB.
+
+**Hidden map.** The 3D view hides the 2D layers, but hidden layers keep their textures. The map now stays warm for 5 s after the 3D view opens (`MapImages.WARM_MSEC`), so a quick look costs nothing. After that, `map_image_residency.gd` releases:
+- the streamed authored tiles;
+- the full-size in-match repaints, keeping copies at the far tier's size;
+- the far-zoom hill picture, only when it came from disk.
+
+Cached meshes stay. With the 3D view open, GPU memory falls from 3,363 to 2,522 MB.
+
+**Return.** Closing the 3D view repaints the layers. The whole opening view (900 tiles) and the hill picture are back in 423 ms, with a worst frame of 91 ms. Contour meshes draw until the hill picture lands. Full-size repaints are re-rendered the first time the near tier draws. Captures before and after are identical.
+
 ## Not done
 
 - One draw-time pipeline compile (about 60–130 ms) remains on the first continent open. Showing the paper map once in advance moved three of its shader compiles out of the open, but would flash the paper over the company view.
