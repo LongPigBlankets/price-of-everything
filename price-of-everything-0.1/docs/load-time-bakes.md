@@ -1,5 +1,22 @@
 # Load time: what is baked, and when to re-bake it
 
+
+## Low quality preset: the flat company view — 18 October 2026
+
+The Low graphics preset (Settings > Graphics) builds the supply chain view flat (`world_builder.gd` `flat`):
+- **Same layout:** the same model and layout as the 3D view, so the same building positions.
+- **Flat ground:** every height lies on one level, with no relief, tunnels or switchbacks.
+- **Painted relief:** the ground is painted in the map's relief colours, at one terrain tier (1024) for every zoom.
+- **Gameplay buildings only:** the company's buildings and works, as models at every zoom. No trees, decorative housing or distant sprite sheets.
+- **Company only:** "Show all tiles" is refused, and no continent is prepared.
+
+Flat builds key every bake apart from the 3D view's, and they never enter the road alignment memo.
+
+The default company's flat view ships in the package. Run `bake_company_start` with `--quality=low` until it reports settled. The first runs rewrote the shared layout memo, so it took four runs. Then confirm the High company start still has every key, with `company_key_probe` for both presets, and prune auxiliary keys neither preset asks for. Result:
+- 18 flat resources, 2.9 MB;
+- package 1,860 resources, validated;
+- 0 bake misses on a new game with either preset.
+
 ## Furnace, refineries and power plant — 18 October 2026
 
 All three levels of the furnace, the petrochemical and polymerisation refineries and the

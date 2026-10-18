@@ -265,6 +265,7 @@ func _backdrop_ready(builder: RefCounted) -> void:
 
 func _start_background() -> void:
 	if show_all_tiles or _building or _builder == null or background_active() or background_ready(): return
+	if PlayerProfile.is_low_quality(): return
 	if DisplayServer.get_name() == "headless" or "--no-background-continent" in OS.get_cmdline_user_args(): return
 	var job := BackgroundLoad.new()
 	_warming = job
@@ -363,6 +364,7 @@ func _ready() -> void:
 	_coverage.add_item("Show player owned tiles only")
 	_coverage.add_item("Show all tiles")
 	_coverage.selected = 1 if show_all_tiles else 0
+	_coverage.set_item_disabled(1, PlayerProfile.is_low_quality())
 	_coverage.focus_mode = Control.FOCUS_NONE
 	_coverage.item_selected.connect(func(index: int) -> void: set_all_tiles(index == 1))
 	controls.add_child(_coverage)
@@ -477,6 +479,10 @@ func _apply_light() -> void:
 	_environment.adjustment_color_correction = lut
 
 func set_all_tiles(value: bool, _persist: bool = true) -> void:
+	# The Low quality preset has no continent view.
+	if value and PlayerProfile.is_low_quality():
+		if _coverage != null: _coverage.selected = 0
+		return
 	_requested_all_tiles = value
 	if value:
 		_reveal_started = Time.get_ticks_msec()
@@ -515,10 +521,14 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	_discard_background()
 	var generation := _generation
 	_building = true
+	# The Low quality preset shows the company only, flat (world_builder.gd `flat`).
+	var flat := PlayerProfile.is_low_quality()
+	if flat: show_all_tiles = false
 	var next := Node3D.new()
 	next.name = "Company"
 	var builder := Builder.new()
 	builder.streamed = show_all_tiles
+	builder.flat = flat
 	builder.evening = evening
 	builder.cursor_picking = true
 	builder.lazy_assets = true
@@ -600,7 +610,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	timings.model_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	stage = Time.get_ticks_usec()
 	if show_all_tiles: print("[CONTINENT BUILD] model ready ", Time.get_ticks_msec())
-	if model == _model and Legacy.show == _last_show and show_all_tiles == _last_all_tiles and evening == _last_evening:
+	if model == _model and Legacy.show == _last_show and show_all_tiles == _last_all_tiles and evening == _last_evening and flat == built_flat():
 		_building = false
 		if _progress != null: _progress.hide()
 		next.free()
@@ -737,7 +747,7 @@ func _assemble(builder: RefCounted, model: Dictionary, generation: int, paced: b
 	var slice_start := Time.get_ticks_usec()
 	var max_slice := 0
 	for s in model.get("standing", []):
-		if not builder.streamed or str(s.kind) != "house": next.add_child(builder.standing_node(s))
+		if (not builder.streamed and not builder.flat) or str(s.kind) != "house": next.add_child(builder.standing_node(s))
 		if paced and Time.get_ticks_usec() - slice_start >= SCENE_BUDGET_USEC:
 			max_slice = maxi(max_slice, Time.get_ticks_usec() - slice_start)
 			await get_tree().process_frame
@@ -803,6 +813,10 @@ func _assemble(builder: RefCounted, model: Dictionary, generation: int, paced: b
 	timings.scene_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	return {"content": next, "builder": builder, "model": model, "goods": goods, "effects": effects, "profile": timings}
 
+## Whether the scene on show was built for the Low quality preset (flat).
+func built_flat() -> bool:
+	return _builder != null and _builder.flat
+
 func _activate(packet: Dictionary) -> void:
 	var measured := Time.get_ticks_usec()
 	var activation := {}
@@ -859,6 +873,7 @@ func _activate(packet: Dictionary) -> void:
 	_model = model
 	_last_show = Legacy.show.duplicate()
 	_last_evening = packet.builder.evening
+	if _coverage != null: _coverage.set_item_disabled(1, builder.flat)
 	_last_all_tiles = show_all_tiles
 	_goods = packet.goods
 	_effects = packet.effects
@@ -954,7 +969,7 @@ func _build_base_tiles(builder: RefCounted, parent: Node3D, model: Dictionary, g
 			if generation != _generation: return false
 	builder.road_surface.finish_build()
 	builder._road_height_cache.clear()
-	if Legacy.show.trees:
+	if Legacy.show.trees and not builder.flat:
 		var groves := 0
 		for tid in builder.tiles:
 			detail_parent.add_child(builder.trees_node(str(tid), model.get("standing", [])))

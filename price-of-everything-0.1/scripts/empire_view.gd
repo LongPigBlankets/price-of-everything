@@ -94,7 +94,8 @@ func refresh_graph() -> void:
 
 ## Something the board shows has changed in the sim. Open, the view rebuilds now; closed, it rebuilds
 ## in the background (prepare), once for any number of changes in one frame. Only the layers whose
-## make-up changed are baked again (empire_board.gd _sort_parts).
+## make-up changed are baked again (empire_board.gd _sort_parts). The Low quality preset keeps no
+## view ready while closed: it stays stale and rebuilds when it next opens (_enter).
 func sim_changed() -> void:
 	_changes += 1
 	_fresh = false
@@ -102,7 +103,7 @@ func sim_changed() -> void:
 		_rebuild_graph()
 		_fresh = true
 		return
-	if _preparing or _refresh_queued or not _board.call("has_content"):
+	if _preparing or _refresh_queued or not _board.call("has_content") or PlayerProfile.is_low_quality():
 		return
 	_refresh_queued = true
 	prepare.call_deferred()
@@ -353,6 +354,9 @@ func _enter() -> void:
 	_set_camera_blocked(true)
 	_board.open_at_map_camera()
 	PanelStack.push(self)
+	# Built for the other quality preset: build it again for this one.
+	if _fresh and bool(_board.call("built_flat")) != PlayerProfile.is_low_quality():
+		_fresh = false
 	# Built in the background and nothing changed since: open on it as it is, held back until any
 	# picture still baking is done.
 	if _fresh:

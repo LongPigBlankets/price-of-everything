@@ -63,6 +63,19 @@ func set_supply_chain_all_tiles(value: bool) -> void:
 	supply_chain_all_tiles = value
 	_save()
 
+## Graphics quality preset chosen in Settings → Graphics. Low keeps the loading screen from
+## preparing the 3D supply chain view (world_map.gd); it is built the first time it opens.
+const QUALITY_HIGH := "high"
+const QUALITY_LOW := "low"
+var graphics_quality: String = QUALITY_HIGH
+
+func set_graphics_quality(value: String) -> void:
+	graphics_quality = QUALITY_LOW if value == QUALITY_LOW else QUALITY_HIGH
+	_save()
+
+func is_low_quality() -> bool:
+	return graphics_quality == QUALITY_LOW
+
 
 func _ready() -> void:
 	_load()
@@ -214,6 +227,7 @@ func _load() -> void:
 		telemetry_player_id = str((parsed as Dictionary).get("telemetry_player_id", ""))
 		mission_bar_collapsed = bool((parsed as Dictionary).get("mission_bar_collapsed", false))
 		supply_chain_all_tiles = bool((parsed as Dictionary).get("supply_chain_all_tiles", false))
+		graphics_quality = QUALITY_LOW if str((parsed as Dictionary).get("graphics_quality", QUALITY_HIGH)) == QUALITY_LOW else QUALITY_HIGH
 	_merge_legacy()
 
 
@@ -224,7 +238,7 @@ func _save() -> void:
 	if f == null:
 		push_warning("[PlayerProfile] could not write %s" % tmp_path)
 		return
-	f.store_string(JSON.stringify({"exit_feedback_submitted": exit_feedback_submitted, "games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y, "fullscreen": fullscreen, "screen_index": screen_index, "audio_levels": audio_levels, "keybinds": keybinds, "telemetry_opt_out": telemetry_opt_out, "telemetry_player_id": telemetry_player_id, "mission_bar_collapsed": mission_bar_collapsed, "supply_chain_all_tiles": supply_chain_all_tiles}, "\t"))
+	f.store_string(JSON.stringify({"exit_feedback_submitted": exit_feedback_submitted, "games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y, "fullscreen": fullscreen, "screen_index": screen_index, "audio_levels": audio_levels, "keybinds": keybinds, "telemetry_opt_out": telemetry_opt_out, "telemetry_player_id": telemetry_player_id, "mission_bar_collapsed": mission_bar_collapsed, "supply_chain_all_tiles": supply_chain_all_tiles, "graphics_quality": graphics_quality}, "\t"))
 	f.close()
 	var err := DirAccess.rename_absolute(tmp_path, _path())
 	if err != OK:

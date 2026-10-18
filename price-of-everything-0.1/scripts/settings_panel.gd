@@ -30,6 +30,10 @@ var _sliders: Dictionary = {}   # bus StringName -> HSlider
 var _resolution_option: OptionButton
 var _fullscreen_check: CheckBox
 var _screen_option: OptionButton   # only built when more than one monitor is present
+var _quality_option: OptionButton
+## Settings → Graphics quality presets, in dropdown order: [profile value, label].
+const QUALITY_PRESETS := [["high", "High"], ["low", "Low"]]
+const QUALITY_HINT := "Low preset shows only flat maps everywhere whereas High uses 3D assets for relief and roads."
 var _test_knob: Control            # rotary_selector.gd, staged until Apply
 var _test_gauge: Control           # panel_gauge.gd, a live preview with its own controls
 
@@ -374,7 +378,50 @@ func _build_graphics_tab() -> Control:
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_color_override("font_color", Color(OFF_WHITE.r, OFF_WHITE.g, OFF_WHITE.b, 0.6))
 	col.add_child(hint)
+	col.add_child(_build_quality_row())
 	return tab
+
+
+## Quality preset: a dropdown and an info badge whose hover explains the presets.
+func _build_quality_row() -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	row.custom_minimum_size = Vector2(0, 40)
+	var label := Label.new()
+	label.text = "Quality preset"
+	label.theme_type_variation = &"Body"
+	label.custom_minimum_size = Vector2(140, 0)
+	row.add_child(label)
+	_quality_option = OptionButton.new()
+	for preset: Array in QUALITY_PRESETS:
+		_quality_option.add_item(str(preset[1]))
+		if preset[0] == PlayerProfile.graphics_quality:
+			_quality_option.select(_quality_option.item_count - 1)
+	_quality_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_quality_option.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(_quality_option)
+	row.add_child(_info_badge(QUALITY_HINT))
+	return row
+
+
+## A round "i" with a hover explanation. A plain letter, because no shipped font has "ⓘ".
+func _info_badge(text: String) -> Button:
+	var badge: Button = preload("res://scripts/info_button.gd").new()
+	badge.text = "i"
+	badge.tooltip_text = text
+	badge.focus_mode = Control.FOCUS_NONE
+	badge.custom_minimum_size = Vector2(26, 26)
+	badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var ring := StyleBoxFlat.new()
+	ring.bg_color = Color(0, 0, 0, 0)
+	ring.border_color = OFF_WHITE
+	ring.set_border_width_all(2)
+	ring.set_corner_radius_all(13)
+	for state in ["normal", "hover", "pressed", "focus"]:
+		badge.add_theme_stylebox_override(state, ring)
+	for state in ["font_color", "font_hover_color", "font_pressed_color"]:
+		badge.add_theme_color_override(state, OFF_WHITE)
+	return badge
 
 
 # Index into RESOLUTIONS of the currently-applied (or saved) window size, else 0 (1920×1080).
@@ -642,6 +689,9 @@ func _on_apply_pressed() -> void:
 		if _screen_option != null:
 			screen = _screen_option.selected
 		PlayerProfile.set_display(_fullscreen_check.button_pressed, size, screen)
+	# Quality: read by the next loading screen.
+	if _quality_option != null and _quality_option.selected >= 0:
+		PlayerProfile.set_graphics_quality(str(QUALITY_PRESETS[_quality_option.selected][0]))
 	hide()
 
 

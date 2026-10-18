@@ -847,6 +847,35 @@ func _test_panel_gauge_draws_cases() -> void:
 	gauge.queue_free()
 
 
+## Settings → Graphics → Quality preset: opens on the saved preset, Back discards, Apply
+## persists it for the next loading screen, and the info badge carries the explanation.
+func _test_settings_quality_preset() -> void:
+	var quality_saved: String = PlayerProfile.graphics_quality
+	var fs_saved: bool = PlayerProfile.fullscreen
+	var ws_saved: Vector2i = PlayerProfile.window_size
+	var sc_saved: int = PlayerProfile.screen_index
+	var al_saved: Dictionary = PlayerProfile.audio_levels.duplicate()
+	var kb_saved: Dictionary = PlayerProfile.keybinds.duplicate()
+	PlayerProfile.graphics_quality = PlayerProfile.QUALITY_HIGH
+	var panel := SettingsPanel.open(self)
+	var option: OptionButton = panel._quality_option
+	_check(option != null and option.item_count == 2 and option.get_item_text(option.selected) == "High",
+		"quality preset: the dropdown offers High and Low and opens on the saved preset")
+	var badges: Array = option.get_parent().get_children().filter(func(n: Node) -> bool: return n is Button and n.text == "i")
+	_check(badges.size() == 1 and str(badges[0].tooltip_text) == panel.QUALITY_HINT, "quality preset: the info badge explains the presets")
+	option.select(1)
+	panel._on_back_pressed()
+	_check(PlayerProfile.graphics_quality == PlayerProfile.QUALITY_HIGH and not PlayerProfile.is_low_quality(), "quality preset: Back discards the change")
+	panel = SettingsPanel.open(self)
+	panel._quality_option.select(1)
+	panel._on_apply_pressed()
+	_check(PlayerProfile.graphics_quality == PlayerProfile.QUALITY_LOW and PlayerProfile.is_low_quality(), "quality preset: Apply saves Low")
+	PlayerProfile.keybinds = kb_saved
+	PlayerProfile.set_audio_levels(al_saved)
+	PlayerProfile.set_display(fs_saved, ws_saved, sc_saved)
+	PlayerProfile.set_graphics_quality(quality_saved)
+
+
 func _test_settings_test_gauge() -> void:
 	var panel := SettingsPanel.open(self)
 	await get_tree().process_frame
