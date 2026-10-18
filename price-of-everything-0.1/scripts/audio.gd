@@ -278,6 +278,10 @@ func _resume_music_after(gen: int, delay: float) -> void:
 
 
 func _play_track() -> void:
+	# Headless uses the dummy audio backend: playback cannot be heard, consumes
+	# decoding work and can retain active Ogg resources during engine shutdown.
+	if DisplayServer.get_name() == "headless":
+		return
 	_music_gen += 1
 	_music.volume_db = 0.0
 	_music.stream = MUSIC_TRACKS[_track_idx]
@@ -303,6 +307,8 @@ func _on_music_finished() -> void:
 ## terrain is already sounding, so re-selecting same-type tiles doesn't restart the
 ## loop; a terrain with no ambience (e.g. "mountain") falls through to silence.
 func tile_ambience(terrain: String) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
 	var clips: Array = AMBIENCE.get(terrain, [])
 	if clips.is_empty():
 		stop_tile_ambience()
@@ -433,6 +439,8 @@ func _play_click(stream: AudioStream) -> void:
 
 
 func _play(stream: AudioStream, channel: StringName, vol_db: float = 0.0) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
 	if stream == null:
 		return
 	var pool: Array = _channels.get(channel, [])

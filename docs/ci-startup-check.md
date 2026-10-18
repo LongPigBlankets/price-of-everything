@@ -35,6 +35,11 @@ macOS, store integration or the whole unit suite. Import/export logs are retaine
 the strict error gate applies to the two runtime launches. Import/export must
 also exit successfully.
 
+Audio resources and scripts are loaded, but the presentation audio service does
+not start music, ambience or effects on the headless dummy audio backend. This
+avoids pointless decoding and active Ogg playback resources surviving shutdown.
+Audible playback still requires a normal rendered run to validate.
+
 There is currently no automated release publication workflow to gate. This job
 does not publish binaries or prevent manual store uploads. Before a release,
 require a successful check for the exact release commit/tag. A future publication
