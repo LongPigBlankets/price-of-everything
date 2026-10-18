@@ -21,6 +21,8 @@ func _ready() -> void:
 	_screen.accept_requested.connect(_on_accept)
 	_screen.close_requested.connect(_on_close)
 	add_child(_screen)
+	if not Agreement.text().is_empty():
+		print("[STARTUP] eula_ready")
 
 
 func _on_accept() -> void:

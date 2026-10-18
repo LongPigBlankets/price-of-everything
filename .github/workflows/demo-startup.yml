@@ -1,0 +1,76 @@
+name: Demo startup
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ['*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: demo-startup-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  startup:
+    name: Linux release startup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GODOT_VERSION: 4.6.2
+      PROJECT_DIR: price-of-everything-0.1
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: true
+          persist-credentials: false
+
+      - name: Install pinned Godot and Linux release template
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          base="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable"
+          curl --fail --location --retry 3 "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -o godot.zip
+          curl --fail --location --retry 3 "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -o templates.tpz
+          echo '30e6b6d141f0cd5bebd629ad1d0ef1324e60091bb20662d026b402ba58c59937  godot.zip' | sha256sum --check
+          echo '942366dc4e27e7686a99da4d3cfb1b8ae8d3eb9444f6d8217eef16245b599ef2  templates.tpz' | sha256sum --check
+          mkdir -p godot
+          unzip -q godot.zip -d godot
+          mv "godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot/godot
+          chmod +x godot/godot
+          echo "$RUNNER_TEMP/godot" >> "$GITHUB_PATH"
+          template_dir="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$template_dir"
+          unzip -q -j templates.tpz templates/linux_release.x86_64 -d "$template_dir"
+          rm godot.zip templates.tpz
+
+      - name: Check smoke-test failure detection
+        run: python3 -m unittest discover -s tools/ci -p 'test_*.py' -v
+
+      - name: Import and export Linux release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/startup-logs" "$RUNNER_TEMP/demo-build"
+          godot --headless --path "$PROJECT_DIR" --editor --import --quit --log-file "$RUNNER_TEMP/startup-logs/import.log" 2>&1 | tee "$RUNNER_TEMP/startup-logs/import-console.log"
+          godot --headless --path "$PROJECT_DIR" --export-release Linux "$RUNNER_TEMP/demo-build/carbon-and-capital.x86_64" --log-file "$RUNNER_TEMP/startup-logs/export.log" 2>&1 | tee "$RUNNER_TEMP/startup-logs/export-console.log"
+
+      - name: Start the exported demo without engine errors
+        run: |
+          python3 tools/ci/run_startup_smoke.py \
+            --executable "$RUNNER_TEMP/demo-build/carbon-and-capital.x86_64" \
+            --logs "$RUNNER_TEMP/startup-logs/runtime"
+
+      - name: Upload startup logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: demo-startup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/startup-logs
+          if-no-files-found: warn
+          retention-days: 14
