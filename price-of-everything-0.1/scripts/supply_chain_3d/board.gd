@@ -355,6 +355,7 @@ func _ready() -> void:
 	_labels.draw.connect(_draw_labels)
 	add_child(_labels)
 	var visibility := preload("res://scripts/empire_board_visibility.gd").new()
+	_visibility_menu = visibility
 	add_child(visibility)
 	visibility.setup(Legacy.show)
 	var controls: VBoxContainer = visibility.panel.get("content")
@@ -385,8 +386,7 @@ func _ready() -> void:
 	_progress.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_progress.visible = false
 	add_child(_progress)
-	visibility.changed.connect(func(_key: String, _on: bool) -> void:
-		if is_instance_valid(_last_terrain): set_graph(_last_graph, _last_terrain))
+	visibility.changed.connect(_on_show_changed)
 	var reset := Button.new()
 	reset.text = "Reset view"
 	reset.tooltip_text = "Frame the current map and restore the default angle (Home)"
@@ -444,6 +444,35 @@ func is_ready() -> bool:
 
 func _hold_until_baked() -> void:
 	pass # Geometry is retained; there are no angle-dependent image bakes.
+
+## Visibility switches that only change what is drawn over the scene: applied at once,
+## never by rebuilding it.
+const LIVE_SHOW_KEYS := ["names", "goods", "pollution"]
+## Switches that change what the scene is built from. The whole map is the shipped bake
+## and never rebuilt at runtime, so these are fixed while all tiles are shown.
+const CONTENT_SHOW_KEYS := ["decor", "trees", "roads", "rails", "pipes", "reinf_pipes", "cables"]
+var _visibility_menu: Control
+
+func _on_show_changed(key: String, _on: bool) -> void:
+	if key in LIVE_SHOW_KEYS:
+		_last_show[key] = Legacy.show[key]
+		_apply_live_show()
+		return
+	if show_all_tiles or not is_instance_valid(_last_terrain): return
+	build_async(_last_graph, _last_terrain)
+
+func _apply_live_show() -> void:
+	if _labels != null: _labels.queue_redraw()
+	if _builder != null: _paint_soot(_builder)
+	if _content == null: return
+	for root in _content.find_children("Pollution", "Node3D", true, false):
+		(root as Node3D).visible = Legacy.show.pollution
+		for particles in root.find_children("*", "CPUParticles3D", true, false):
+			(particles as CPUParticles3D).emitting = Legacy.show.pollution
+
+func _lock_content_switches() -> void:
+	if _visibility_menu != null:
+		_visibility_menu.call("set_locked", CONTENT_SHOW_KEYS, show_all_tiles, "Fixed while all tiles are shown.")
 
 func set_graph(graph: Dictionary, terrain: Node) -> void:
 	_build(graph, terrain, false)
@@ -780,29 +809,29 @@ func _assemble(builder: RefCounted, model: Dictionary, generation: int, paced: b
 	timings.static_scene_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	builder.prepare_flows(model)
 	var goods: Array = []
-	if Legacy.show.goods:
-		for flow in builder.flows:
-			if not flow.icon is Texture2D: continue
+	# Built whatever the switch says; _update_goods shows them while it is on.
+	for flow in builder.flows:
+		if not flow.icon is Texture2D: continue
+		var sprite := Sprite3D.new()
+		sprite.texture = _tokens.texture_for(flow.icon)
+		sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		sprite.no_depth_test = false
+		sprite.shaded = false
+		sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		next.add_child(sprite)
+		goods.append({"sprite": sprite, "flow": flow})
+	# When paused, show each output above its producer (the existing motion key's meaning).
+	for item in builder.pickables:
+		var output: Array = model.get("made", {}).get(str(item.iid), [])
+		for i in output.size():
 			var sprite := Sprite3D.new()
-			sprite.texture = _tokens.texture_for(flow.icon)
+			var good := str(output[i])
+			sprite.texture = _tokens.texture_for(GoodIcons.texture_for(good, str(Catalog.get_good(good).get("internal_name", ""))))
+			if sprite.texture == null: sprite.free(); continue
 			sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-			sprite.no_depth_test = false
-			sprite.shaded = false
-			sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+			sprite.position = item.top + Vector3((i - (output.size() - 1) * 0.5) * 22.0, 8.0, 0)
 			next.add_child(sprite)
-			goods.append({"sprite": sprite, "flow": flow})
-		# When paused, show each output above its producer (the existing motion key's meaning).
-		for item in builder.pickables:
-			var output: Array = model.get("made", {}).get(str(item.iid), [])
-			for i in output.size():
-				var sprite := Sprite3D.new()
-				var good := str(output[i])
-				sprite.texture = _tokens.texture_for(GoodIcons.texture_for(good, str(Catalog.get_good(good).get("internal_name", ""))))
-				if sprite.texture == null: sprite.free(); continue
-				sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-				sprite.position = item.top + Vector3((i - (output.size() - 1) * 0.5) * 22.0, 8.0, 0)
-				next.add_child(sprite)
-				goods.append({"sprite": sprite, "stationary": true})
+			goods.append({"sprite": sprite, "stationary": true})
 	var effects_parent := Node3D.new()
 	next.add_child(effects_parent)
 	if builder.backdrop_pending:
@@ -877,6 +906,8 @@ func _activate(packet: Dictionary) -> void:
 	_last_all_tiles = show_all_tiles
 	_goods = packet.goods
 	_effects = packet.effects
+	_apply_live_show()
+	_lock_content_switches()
 	_building = false
 	if _progress != null: _progress.hide()
 	if has_content():
@@ -1690,7 +1721,7 @@ func detail_ready() -> bool:
 func _update_goods() -> void:
 	for item in _goods:
 		var stationary := bool(item.get("stationary", false))
-		item.sprite.visible = not animate_goods if stationary else animate_goods
+		item.sprite.visible = Legacy.show.goods and (not animate_goods if stationary else animate_goods)
 		var units_per_pixel := _rig.span / maxf(1.0, size.y)
 		var token_pixels := clampf(44.0 / units_per_pixel + 10.0, 16.0, 40.0)
 		item.sprite.pixel_size = units_per_pixel * token_pixels / maxf(1, item.sprite.texture.get_width())
@@ -1816,34 +1847,39 @@ func _build_effects(builder: RefCounted, parent: Node3D) -> Array:
 		# Whole-continent traffic used to sample every road's height before opening,
 		# even when only a handful of tiles (or no cars at far zoom) could be seen.
 		cars.append({"node": null, "mesh": car_mesh, "parent": parent, "road": road, "phase": road.phase})
-	if Legacy.show.pollution:
-		var puff := SphereMesh.new()
-		puff.radial_segments = 8
-		puff.rings = 4
-		var material := StandardMaterial3D.new()
-		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		material.albedo_color = Color(0.40, 0.38, 0.36, 0.55)
-		material.roughness = 1.0
-		puff.material = material
-		for stack in builder.smoke:
-			var particles := CPUParticles3D.new()
-			particles.mesh = puff
-			particles.position = stack.point
-			particles.amount = 14
-			particles.lifetime = 4.5
-			particles.preprocess = 2.0
-			particles.direction = Vector3.UP
-			particles.spread = 12.0
-			particles.initial_velocity_min = 8.0
-			particles.initial_velocity_max = 12.0
-			particles.gravity = Vector3(3, 0, 0)
-			particles.scale_amount_min = 8.0
-			particles.scale_amount_max = 17.0
-			var fade := Gradient.new()
-			fade.colors = PackedColorArray([Color(1, 1, 1, 0.55), Color(1, 1, 1, 0)])
-			particles.color_ramp = fade
-			parent.add_child(particles)
-		_build_smog(builder, parent)
+	# Built whatever the switch says, under one root the switch shows and hides.
+	var pollution := Node3D.new()
+	pollution.name = "Pollution"
+	pollution.visible = Legacy.show.pollution
+	parent.add_child(pollution)
+	var puff := SphereMesh.new()
+	puff.radial_segments = 8
+	puff.rings = 4
+	var material := StandardMaterial3D.new()
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.albedo_color = Color(0.40, 0.38, 0.36, 0.55)
+	material.roughness = 1.0
+	puff.material = material
+	for stack in builder.smoke:
+		var particles := CPUParticles3D.new()
+		particles.mesh = puff
+		particles.position = stack.point
+		particles.amount = 14
+		particles.lifetime = 4.5
+		particles.preprocess = 2.0
+		particles.direction = Vector3.UP
+		particles.spread = 12.0
+		particles.initial_velocity_min = 8.0
+		particles.initial_velocity_max = 12.0
+		particles.gravity = Vector3(3, 0, 0)
+		particles.scale_amount_min = 8.0
+		particles.scale_amount_max = 17.0
+		var fade := Gradient.new()
+		fade.colors = PackedColorArray([Color(1, 1, 1, 0.55), Color(1, 1, 1, 0)])
+		particles.color_ramp = fade
+		particles.emitting = Legacy.show.pollution
+		pollution.add_child(particles)
+	_build_smog(builder, pollution)
 	return cars
 
 ## A low brown pall hangs over every polluted tile, thicker with more polluters. Billboards
