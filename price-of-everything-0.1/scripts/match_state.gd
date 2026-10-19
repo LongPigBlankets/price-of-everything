@@ -12,18 +12,19 @@ var money: float = 1000.0  # was: int = 1000
 
 # Three legacy/prototype buildings are deliberately absent from normal matches.
 # `unlock hidden_buildings` is an explicit development cheat for testing them.
-const HIDDEN_BUILDING_IDS := {"b_029": true, "b_030": true, "b_031": true, "b_035": true}
+# The sets live in scripts/demo_build.gd, which also leaves them out of the demo build.
+const HIDDEN_BUILDING_IDS: Dictionary = preload("res://scripts/demo_build.gd").HIDDEN_BUILDING_IDS
 var hidden_buildings_unlocked: bool = false
 
 # Recycling is off the table for the demo: the waste chain is a whole
 # second economy — collect it, sort it, feed it back — and a 100-turn demo has no room to
 # teach it. `unlock recycling` in the debug terminal puts it back for development, and `unlock demo` with it.
 # The landfill is where the waste chain ends, so it waits with the plants.
-const RECYCLING_BUILDING_IDS := {"b_022": true, "b_036": true, "b_023": true}
+const RECYCLING_BUILDING_IDS: Dictionary = preload("res://scripts/demo_build.gd").RECYCLING_BUILDING_IDS
 # Waste Water, Scrap Metal, Bio Waste, Electronic Waste — the goods that only exist to be
 # recycled. Hidden alongside the plants, or the encyclopedia advertises a chain with no
 # building that can process it.
-const RECYCLING_GOOD_IDS := {"g_063": true, "g_067": true, "g_073": true, "g_074": true}
+const RECYCLING_GOOD_IDS: Dictionary = preload("res://scripts/demo_build.gd").RECYCLING_GOOD_IDS
 var recycling_unlocked: bool = false
 
 

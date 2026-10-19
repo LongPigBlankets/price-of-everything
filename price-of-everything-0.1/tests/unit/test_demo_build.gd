@@ -4,6 +4,7 @@ extends "res://tests/test_base.gd"
 
 const FEATURE := "demo_build"
 const DemoBuild := preload("res://scripts/demo_build.gd")
+const DemoDataFilter := preload("res://addons/demo_export/demo_data_filter.gd")
 const PRESETS := "res://export_presets.cfg"
 const EXCLUDES := "res://tools/demo_build/excludes.txt"
 const BASE_PRESETS := ["macOS", "Windows Desktop", "Linux"]
@@ -151,7 +152,8 @@ func _test_demo_terminal_keeps_cash_and_unlock_all() -> void:
 			"demo terminal: '%s' is refused" % blocked)
 	_check(not term.demo_is_unlocked(), "demo terminal: the demo locks cannot be lifted")
 	DemoBuild.forced = false
-	_check(DemoBuild.allows_cheat("toggle heightmap"), "full build: every command is allowed")
+	if not DemoBuild.active():
+		_check(DemoBuild.allows_cheat("toggle heightmap"), "full build: every command is allowed")
 	term._cheats_unlocked = was_unlocked
 	term.queue_free()
 
@@ -165,4 +167,74 @@ func _test_demo_runtime_gates() -> void:
 	_check(not menu.call("_map_editor_available"), "demo menu: the map editor is never offered")
 	menu.free()
 	DemoBuild.forced = false
-	_check(not DemoBuild.version_label().ends_with("-demo"), "full telemetry: the version is untagged")
+	if not DemoBuild.active():
+		_check(not DemoBuild.version_label().ends_with("-demo"), "full telemetry: the version is untagged")
+
+
+func _ids(path: String, text: String, column: String) -> Dictionary:
+	var out := {}
+	for row in DemoDataFilter._rows(text):
+		var id := str(row.fields.get(column, "")).strip_edges()
+		if id != "":
+			out[id] = true
+	return out
+
+
+func _test_demo_data_filter_drops_gated_rows() -> void:
+	var gated_recipes := ["r_105", "r_106", "r_107", "r_108", "r_110", "r_111", "r_113", "r_166", "r_167"]
+	var cases := [
+		[DemoDataFilter.BUILDINGS, "ID", DemoBuild.HIDDEN_BUILDING_IDS.keys() + DemoBuild.RECYCLING_BUILDING_IDS.keys()],
+		[DemoDataFilter.RECIPES, "recipe_id", gated_recipes],
+		[DemoDataFilter.RESEARCH, "research_node_id", ["research_recyc_001", "research_recyc_006", "research_biochem_004", "research_petro_020"]],
+	]
+	for c in cases:
+		var path: String = c[0]
+		var source := FileAccess.get_file_as_string(path)
+		var filtered := DemoDataFilter.filter(path, source)
+		var before := _ids(path, source, c[1])
+		var after := _ids(path, filtered, c[1])
+		for id in c[2]:
+			_check(before.has(id) and not after.has(id), "demo data: %s drops %s" % [path.get_file(), id])
+		var lost := 0
+		for row in DemoDataFilter._rows(filtered):
+			if row.fields.is_empty():
+				continue
+			if not source.contains(row.raw):
+				lost += 1
+		_check(lost == 0, "demo data: %s keeps its other rows byte for byte" % path.get_file())
+		_check(after.size() > before.size() * 0.8, "demo data: %s keeps most rows (%d of %d)" % [path.get_file(), after.size(), before.size()])
+		_check(filtered.split("\n")[0] == source.split("\n")[0], "demo data: %s keeps its header" % path.get_file())
+	var goods := FileAccess.get_file_as_string(DemoDataFilter.GOODS)
+	_check(DemoDataFilter.filter(DemoDataFilter.GOODS, goods) == goods, "demo data: goods rows are not filtered")
+	var research := FileAccess.get_file_as_string(DemoDataFilter.RESEARCH)
+	for row in DemoDataFilter._rows(DemoDataFilter.filter(DemoDataFilter.RESEARCH, research)):
+		if str(row.fields.get("category", "")) == DemoBuild.GATED_RESEARCH_CATEGORY:
+			_check(false, "demo data: no Recycling research row survives (%s)" % row.fields.get("research_node_id", ""))
+	var presentation: Dictionary = JSON.parse_string(DemoDataFilter.filter(DemoDataFilter.PRESENTATION,
+		FileAccess.get_file_as_string(DemoDataFilter.PRESENTATION)))
+	_check(not presentation.has("research_recyc_001") and presentation.has("research_mining_001"),
+		"demo data: research presentation drops the gated nodes only")
+
+
+## Run the suite with `-- --as-demo` to load the catalog as the demo does. In that run the
+## loaded catalog must equal the filtered files; in a normal run the gated rows must load.
+func _test_demo_run_loads_what_the_demo_ships() -> void:
+	var recipes := _ids(DemoDataFilter.RECIPES, DemoDataFilter.filter(DemoDataFilter.RECIPES,
+		FileAccess.get_file_as_string(DemoDataFilter.RECIPES)), "recipe_id")
+	var research := _ids(DemoDataFilter.RESEARCH, DemoDataFilter.filter(DemoDataFilter.RESEARCH,
+		FileAccess.get_file_as_string(DemoDataFilter.RESEARCH)), "research_node_id")
+	if not DemoBuild.active():
+		_check(not Catalog.get_building("b_036").is_empty(), "full run: the Recycling Plant loads")
+		return
+	for b in Catalog.all_buildings():
+		_check(not DemoBuild.is_gated_building(str(b.get("id", ""))), "demo run: %s is not loaded" % b.get("id", ""))
+	var extra := PackedStringArray()
+	for r in Catalog._all_recipes:
+		if not recipes.has(str(r.get("recipe_id", ""))):
+			extra.append(str(r.get("recipe_id", "")))
+	_check(extra.is_empty(), "demo run: every loaded recipe ships in the demo file (%s)" % ", ".join(extra))
+	var extra_research := PackedStringArray()
+	for d in ResearchState._unlock_defs:
+		if not research.has(str(d.get("research_node_id", ""))):
+			extra_research.append(str(d.get("research_node_id", "")))
+	_check(extra_research.is_empty(), "demo run: every loaded research node ships (%s)" % ", ".join(extra_research))

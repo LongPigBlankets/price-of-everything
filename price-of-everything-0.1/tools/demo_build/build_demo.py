@@ -159,7 +159,23 @@ def pck_expectations() -> dict:
     present += [f"data/map_authored/{active}.json", "data/Goods - goodsMVP.csv",
                 "data/recipes_all.csv", "scripts/demo_build.gd", "scripts/debug_terminal.gd",
                 "scenes/main_menu.tscn", "scenes/main.tscn"]
-    return {"absent": ["res://" + p for p in absent], "present": ["res://" + p for p in present]}
+    # Rows addons/demo_export/demo_data_filter.gd must have taken out of the shipped files.
+    gated = [m for m in re.findall(r'"(b_\d+)": true', DEMO_SCRIPT.read_text())]
+    absent_text = [["res://data/Buildings - buildingsMVP.csv", f"\n{b},"] for b in gated]
+    absent_text += [["res://data/recipes_all.csv", ",recycling_plant,"],
+                    ["res://data/recipes_all.csv", ",consumer_goods_factory,"],
+                    ["res://data/recipes_all.csv", ",water_treatment_plant,"],
+                    ["res://data/research_unlocks.csv", "research_recyc_"],
+                    ["res://data/research_presentation.json", "research_recyc_"]]
+    return {"absent": ["res://" + p for p in absent], "present": ["res://" + p for p in present],
+            "absent_text": absent_text}
+
+
+def demo_building_count() -> int:
+    """Buildings a demo run loads: every buildings CSV row minus the gated ids."""
+    gated = set(re.findall(r'"(b_\d+)": true', DEMO_SCRIPT.read_text()))
+    rows = (PROJECT / "data/Buildings - buildingsMVP.csv").read_text().splitlines()[1:]
+    return sum(1 for r in rows if r.strip() and r.split(",")[0] not in gated)
 
 
 PCK_CHECK = """extends SceneTree
@@ -175,7 +191,10 @@ func _init() -> void:
 	for p in spec.present:
 		if not (FileAccess.file_exists(p) or ResourceLoader.exists(p)):
 			print("PCKCHECK missing: ", p); bad += 1
-	print("PCKCHECK %d absent, %d present, %d problems" % [spec.absent.size(), spec.present.size(), bad])
+	for pair in spec.absent_text:
+		if FileAccess.get_file_as_string(pair[0]).contains(pair[1]):
+			print("PCKCHECK gated row shipped: ", pair[0], " contains ", pair[1].strip_edges()); bad += 1
+	print("PCKCHECK %d absent, %d present, %d gated rows checked, %d problems" % [spec.absent.size(), spec.present.size(), spec.absent_text.size(), bad])
 	quit(1 if bad else 0)
 """
 
@@ -219,6 +238,9 @@ def smoke_macos(app: Path, logs: Path) -> None:
         console = (logs / "accepted-console.log").read_text(errors="replace")
         if "[STARTUP] build demo" not in console.splitlines():
             raise SystemExit("the exported macOS build did not start as the demo")
+        want = f"Catalog: loaded {demo_building_count()} buildings"
+        if want not in console.splitlines():
+            raise SystemExit(f"the exported macOS demo did not report '{want}'")
     print(f"macOS demo boots to the EULA and the main menu as the demo (logs: {logs})")
 
 

@@ -382,6 +382,9 @@ func _build_settings_columns(parent: Node) -> void:
 	# afterwards, so it stays OUTSIDE the accordion.
 	var accordion := VBoxContainer.new()
 	accordion.add_theme_constant_override("separation", DS.SP["SM"])
+	# A demo build hides the whole section. It is still built: its pressed buttons are the
+	# difficulty and speed the Start button reads.
+	accordion.visible = not preload("res://scripts/demo_build.gd").active()
 	parent.add_child(accordion)
 
 	var header := _accordion_header("Advanced Settings")

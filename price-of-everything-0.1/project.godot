@@ -74,6 +74,10 @@ window/size/window_height_override=1328
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/demo_export/plugin.cfg")
+
 [importer_defaults]
 
 texture={

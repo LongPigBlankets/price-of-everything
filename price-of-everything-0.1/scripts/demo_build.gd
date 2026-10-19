@@ -26,12 +26,34 @@ const CHEATS: Array = ["cash", "unlock all", "help"]
 ## are dropped so a demo binary always runs the shipped game.
 const USER_ARGS: Array = ["--no-telemetry"]
 
+## Buildings every build hides until a cheat brings them back. The demo ships without them:
+## their rows, their recipes and their art are left out of the export
+## (addons/demo_export/demo_data_filter.gd), and a demo run skips them at load.
+const HIDDEN_BUILDING_IDS: Dictionary = {"b_029": true, "b_030": true, "b_031": true, "b_035": true}
+## The recycling chain: Water Recycling Plant, Recycling Plant, Landfill.
+const RECYCLING_BUILDING_IDS: Dictionary = {"b_022": true, "b_036": true, "b_023": true}
+## Waste Water, Scrap Metal, Bio Waste, Electronic Waste. Their goods rows stay in the demo
+## because the market prices every good, but recipes that consume or make them are left out.
+const RECYCLING_GOOD_IDS: Dictionary = {"g_063": true, "g_067": true, "g_073": true, "g_074": true}
+## The research branch that only feeds the recycling chain.
+const GATED_RESEARCH_CATEGORY := "Recycling"
+
+## Command-line switch that runs an editor or headless session as the demo, so the test
+## suite and probes can exercise it. Honoured only where the `editor` feature exists, so an
+## exported build cannot be switched.
+const AS_DEMO_ARG := "--as-demo"
+
 ## Tests set this to run demo behaviour inside the editor.
 static var forced := false
 
 
 static func active() -> bool:
-	return forced or OS.has_feature(FEATURE)
+	return forced or OS.has_feature(FEATURE) \
+		or (OS.has_feature("editor") and OS.get_cmdline_user_args().has(AS_DEMO_ARG))
+
+
+static func is_gated_building(building_id: String) -> bool:
+	return HIDDEN_BUILDING_IDS.has(building_id) or RECYCLING_BUILDING_IDS.has(building_id)
 
 
 ## Whether a terminal command line is allowed. Always true outside a demo build.
