@@ -23,9 +23,15 @@ const POWER_LEGEND_ROWS: Array = [
 # Deposits mode has no per-good selection — explain the hover pill instead.
 const DEPOSITS_LEGEND_ROWS: Array = [
 	"Hover a tile for its deposit size",
+	# demo:strip
 	"500 / 1000  surveyed amount",
+	# demo:keep
+	#| "500 / 1000  deposit amount",
+	# demo:end
 	"∞  permanent deposit",
+	# demo:strip
 	"???  survey the tile to reveal",
+	# demo:end
 ]
 
 # Water mode highlights tiles by colour (no per-good selection).
@@ -97,8 +103,10 @@ func _on_selections_changed(mode: int, _selections: Array) -> void:
 		_rebuild_power()
 	elif mode == MapMode.Mode.LOGISTICS:
 		_rebuild_logistics()
+	# demo:strip
 	elif mode == MapMode.Mode.SURVEYING:
 		_rebuild_survey()
+	# demo:end
 	elif mode == MapMode.Mode.DEPOSITS:
 		_rebuild_deposits()
 	elif mode == MapMode.Mode.WATER:
@@ -155,6 +163,7 @@ func _rebuild_logistics() -> void:
 
 # --- Surveying mode ---
 
+# demo:strip
 func _rebuild_survey() -> void:
 	_clear_entries()
 	var entry := LegendEntryScene.instantiate()
@@ -163,6 +172,7 @@ func _rebuild_survey() -> void:
 	var label: Label = entry.get_node("NameLabel")
 	swatch.color = Color(0.45, 0.04, 0.12)  # burgundy
 	label.text = "Maximum limit of surveys"
+# demo:end
 
 # --- Deposits mode ---
 

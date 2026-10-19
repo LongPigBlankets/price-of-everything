@@ -50,7 +50,7 @@ static func cells(sites: PackedVector2Array, bounds: Rect2) -> Array:
 	return result
 
 func apply(model: Dictionary, height: Callable, wet: Callable, prepared: Dictionary) -> void:
-	if "--stoneshore-baseline" in OS.get_cmdline_user_args(): return
+	if "--stoneshore-baseline" in preload("res://scripts/demo_build.gd").user_args(): return
 	ground=height; water=wet
 	for tid in model.tiles:
 		if model.tiles.has(tid) and str(model.tiles[tid].type)=="urban": centers[tid]=model.tiles[tid].center

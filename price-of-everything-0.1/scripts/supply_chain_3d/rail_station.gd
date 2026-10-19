@@ -17,7 +17,7 @@ static func polygon(s: Dictionary, rect := Rect2(-8,-38,78,55)) -> PackedVector2
 
 static func apply(model: Dictionary, height: Callable) -> void:
 	model.stations=[]
-	if not model.tiles.has(TILE) or "--stoneshore-baseline" in OS.get_cmdline_user_args(): return
+	if not model.tiles.has(TILE) or "--stoneshore-baseline" in preload("res://scripts/demo_build.gd").user_args(): return
 	var plan := Rail.network(model.lines)
 	var centers: Dictionary={TILE:model.tiles[TILE].center}
 	var candidates: Array=[]

@@ -43,12 +43,16 @@ const BUILDING_WORDS := {
 	"assembly_plant": "Assembly Plant",
 	"high_tech_manufactory": "Manufactory",
 	"electrolyser": "Electrolyser",
+	# demo:strip
 	"recycling_plant": "Recycling Plant",
+	# demo:end
 	"farm": "Farm",
 	"new_forest": "Forest",
 	"old_forest": "Forest",
 	"desal": "Desalination Plant",
+	# demo:strip
 	"water_recycling": "Water Recycling Plant",
+	# demo:end
 	"water_pump": "Water Pump",
 	"oil_well": "Oil Well",
 	"fracking_oil_well": "Fracking Oil Well",
@@ -56,8 +60,13 @@ const BUILDING_WORDS := {
 	"hydro_power_plant": "Hydroelectric Dam",
 }
 ## Kinds whose word already says what they make, so the output is left out.
+# demo:strip
 const OUTPUT_IMPLIED := ["desal", "water_recycling", "water_pump", "oil_well", "fracking_oil_well",
 	"offshore_oil_platform", "hydro_power_plant"]
+# demo:keep
+#| const OUTPUT_IMPLIED := ["desal", "water_pump", "oil_well", "fracking_oil_well",
+#| 	"offshore_oil_platform", "hydro_power_plant"]
+# demo:end
 ## A good's plain word where dropping " Ingots" / " Ore" is not enough.
 const OUTPUT_WORDS := {
 	"alloy_ingots": "Alloy Metal",
@@ -112,7 +121,9 @@ const QUALIFIERS := {
 	"r_005": "",                   # Pig Iron Smelting
 	# Arc furnace
 	"r_084": "Carbothermic",       # Aluminium Direct Carbothermic Electrolysis
+	# demo:strip
 	"r_106": "Scrap",              # Scrap Recycling
+	# demo:end
 	# Assembly plant
 	"r_122": "",                   # Semiconductor Fabbing
 	"r_089": "Hydrogen",           # Direct Injection Hydrogen Engines
@@ -187,7 +198,11 @@ static func of(b: Dictionary) -> String:
 static func family_name(internal: String, recipe: Dictionary, output: String) -> String:
 	var out_id := str(recipe.get("output_name", ""))
 	match internal:
+		# demo:strip
 		"industrial_factory", "consumer_factory":
+		# demo:keep
+		#| "industrial_factory":
+		# demo:end
 			return ("%s Factory" % _output_word(out_id, output)) if output != "" else ""
 		"chem_plant":
 			if out_id == CHLOR_ALKALI_OUTPUT:

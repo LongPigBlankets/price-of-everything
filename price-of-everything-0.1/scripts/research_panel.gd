@@ -15,7 +15,8 @@ const EffectEmblem := preload("res://scripts/effect_emblem.gd")
 const KeyedBuildingIcon := preload("res://scripts/keyed_building_icon.gd")
 ## The DS2 look (scripts/research_ds2/): the patent board and the plan chest, behind UiPrefs.use_research_ds2. This panel
 ## keeps the state, the search and the free unlocks either way; the DS2 view reads them and asks it to act.
-const ResearchDs2 := preload("res://scripts/research_ds2/research_ds2.gd")
+## Loaded by path when the look is switched on, never preloaded: the demo build leaves it out.
+const RESEARCH_DS2_SCRIPT := "res://scripts/research_ds2/research_ds2.gd"
 
 const RESEARCH_UNLOCKS_PATH := "res://data/research_unlocks.csv"
 var _seat_research_shown := false
@@ -197,9 +198,9 @@ func _on_research_ds2_changed(_enabled: bool) -> void:
 ## Builds or removes the DS2 view to match UiPrefs.use_research_ds2. The old canvas is untouched when it is off:
 ## the view hands the search box back and the panel draws itself as before.
 func _apply_look() -> void:
-	var on := UiPrefs.use_research_ds2
+	var on := UiPrefs.use_research_ds2 and ResourceLoader.exists(RESEARCH_DS2_SCRIPT)
 	if on and _ds2 == null:
-		_ds2 = ResearchDs2.new()
+		_ds2 = (load(RESEARCH_DS2_SCRIPT) as GDScript).new()
 		_ds2.call("bind", self)
 		add_child(_ds2)
 	elif not on and _ds2 != null:

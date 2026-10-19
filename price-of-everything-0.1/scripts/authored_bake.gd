@@ -21,7 +21,11 @@ const AuthoredMap := preload("res://scripts/authored_map.gd")
 const Layout := preload("res://scripts/authored_bake_layout.gd")
 
 const MANIFEST_PATH := "res://data/map_authored_bake.json"
+# demo:strip
 const REBAKE_HINT := "rerun tools/map_editor/bake_authored_map.tscn"
+# demo:keep
+#| const REBAKE_HINT := "rebake the authored map"
+# demo:end
 
 static var _cache: Dictionary = {}
 static var _loaded := false

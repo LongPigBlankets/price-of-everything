@@ -23,7 +23,9 @@ const Schedule := preload("res://scripts/policy_schedule.gd")
 const NOTICES: Array = [
 	{"def": "carbon_tax_notice", "key": "tax_notice", "present_turn": 90, "until_turn": 101},
 	{"def": "green_subsidy_notice", "key": "subsidy_notice", "present_turn": 100, "until_turn": 105},
+	# demo:strip
 	{"def": "green_subsidy_end_notice", "key": "subsidy_end_notice", "present_turn": 180, "until_turn": 191},
+	# demo:end
 ]
 
 # ── Per-length timelines ──────────────────────────────────────────────────────
@@ -39,12 +41,14 @@ const NOTICES: Array = [
 const TIMELINE_CAMPAIGN := "campaign"
 const TIMELINE_DEMO := "demo_itch"
 const TIMELINES := {
+	# demo:strip
 	TIMELINE_CAMPAIGN: {
 		"election_news": 84, "insider_first": 86, "insider_last": 89,
 		"tax_notice": 90, "ramp_first": 91, "p1": 101,
 		"subsidy_notice": 100, "subsidy": 105, "subsidy_end_notice": 180,
 		"subsidy_end": 191,
 	},
+	# demo:end
 	TIMELINE_DEMO: {
 		"election_news": 54, "insider_first": 56, "insider_last": 57,
 		"tax_notice": 58, "ramp_first": 65, "p1": 75,
@@ -62,8 +66,12 @@ const DEMO_EFFECTIVE := {"co2_tax_p1": 75, "green_subsidy_p1": 80}
 ## Which timeline this match is running. Read from the ruleset the New Game panel set, so
 ## a save carries its own answer and nothing here has to be serialised.
 func timeline_id() -> String:
+	# demo:strip
 	var id := str(MatchState.ruleset.get("policy_timeline", ""))
 	return TIMELINE_DEMO if id == TIMELINE_DEMO else TIMELINE_CAMPAIGN
+	# demo:keep
+	#| return TIMELINE_DEMO
+	# demo:end
 ## One beat's turn under the live timeline.
 func beat(key: String) -> int:
 	return int((TIMELINES[timeline_id()] as Dictionary).get(key, 0))
@@ -96,9 +104,11 @@ const INSIDER_TIP_MIN_INF := 3
 # Green subsidy window (owner ruling): full rate from t105 through t180, then a linear
 # wind-down of 10% per turn across 181..190 (t181 pays 90%, t190 pays 10%), ended
 # completely at t191.
+# demo:strip
 const GREEN_SUBSIDY_FULL_LAST_TURN := 180
 const GREEN_SUBSIDY_WIND_DOWN_PER_TURN := 0.10
 const GREEN_SUBSIDY_END_TURN := 191
+# demo:end
 
 var _seeded: bool = false
 var _insider_tip_fired: bool = false
@@ -126,9 +136,13 @@ func co2_tax_level(turn: int) -> int:
 
 ## The wind-down factor: 1.0 through t180, −10% per turn across 181..190, 0.0 from 191.
 func green_subsidy_wind_down(turn: int) -> float:
+	# demo:strip
 	if turn <= GREEN_SUBSIDY_FULL_LAST_TURN:
 		return 1.0
 	return maxf(0.0, 1.0 - GREEN_SUBSIDY_WIND_DOWN_PER_TURN * float(turn - GREEN_SUBSIDY_FULL_LAST_TURN))
+	# demo:keep
+	#| return 1.0
+	# demo:end
 
 ## £ per green MW generated at `turn` (0.0 before the subsidy window opens; ramps
 ## down 10%/turn across 181..190; gone at 191).
@@ -156,6 +170,17 @@ func co2_tax_scale(turn: int) -> float:
 	var lvl := clampi(co2_tax_level(turn), 0, EconomyConfig.CO2_TAX_PHASE_SCALE.size() - 1)
 	return float(EconomyConfig.CO2_TAX_PHASE_SCALE[lvl])
 
+## Goods travel through the codebase as catalog IDs ("g_001") in some places and as
+## internal names ("coal") in others; the schedule is authored in internal names
+## because a human writes it. Normalise so callers can pass either.
+func _internal_name_of(good_ref: String) -> String:
+	var by_id: Dictionary = Catalog.get_good(good_ref)
+	var n: String = str(by_id.get("internal_name", ""))
+	return n if n != "" else good_ref
+
+# The demo has no prohibitions: its 100 turns end before the first one, so it ships with
+# stubs that report none.
+# demo:strip
 ## --- PROHIBITIONS -------------------------------------------------------------
 ## A ban is a pure function of (turn, schedule) plus one cheat override, so nothing
 ## about it needs to survive a save beyond that override — the levels themselves are
@@ -165,13 +190,6 @@ func co2_tax_scale(turn: int) -> float:
 ## `-1` means the cheat is not engaged; otherwise bans are live from that turn onward.
 var _ban_override_turn: int = -1
 
-## Goods travel through the codebase as catalog IDs ("g_001") in some places and as
-## internal names ("coal") in others; the schedule is authored in internal names
-## because a human writes it. Normalise so callers can pass either.
-func _internal_name_of(good_ref: String) -> String:
-	var by_id: Dictionary = Catalog.get_good(good_ref)
-	var n: String = str(by_id.get("internal_name", ""))
-	return n if n != "" else good_ref
 
 ## Every good banned for `kind` at `turn`, as a set of INTERNAL NAMES. Cheap enough to
 ## call per recipe/purchase: the schedule is a handful of rows.
@@ -278,6 +296,19 @@ func cheat_set_coal_ban(on: bool, turn: int) -> void:
 
 func coal_ban_override_turn() -> int:
 	return _ban_override_turn
+# demo:keep
+#| func produce_banned(_good_id: String, _turn: int) -> bool:
+#| 	return false
+#|
+#| func import_banned(_good_id: String, _turn: int) -> bool:
+#| 	return false
+#|
+#| func any_ban_active(_turn: int) -> bool:
+#| 	return false
+#|
+#| func _enforce_new_prohibitions() -> void:
+#| 	pass
+# demo:end
 
 ## How carbon-intensive the NATIONAL GRID is at `turn`, as a fraction of a fully fossil grid.
 ##
@@ -319,7 +350,9 @@ func _on_state_reset() -> void:
 	# _seeded and EventScheduler restores its own scheduled events.
 	_seeded = false
 	_insider_tip_fired = false
+	# demo:strip
 	_ban_override_turn = -1
+	# demo:end
 	call_deferred("_seed_if_needed")
 
 func _seed_if_needed() -> void:
@@ -345,6 +378,7 @@ func _seed_if_needed() -> void:
 	})
 	# The subsidy's end news at t191 (the wind-down's zero turn). The advance warning is
 	# the blocking green_subsidy_end_notice at t180, so no passive forewarn here.
+	# demo:strip
 	EventScheduler.schedule(beat("subsidy_end"), {
 		"id": "policy:green_subsidy_end",
 		"kind": "policy_enacted",
@@ -357,6 +391,7 @@ func _seed_if_needed() -> void:
 		"persistent": true,
 		"auto_dismiss_turns": 6,
 	})
+	# demo:end
 	for e in Schedule.SCHEDULE:
 		EventScheduler.schedule(effective_turn_of(e), {
 			"id": "policy:%s" % str(e.id),
@@ -439,7 +474,9 @@ func export_state() -> Dictionary:
 	return {
 		"seeded": _seeded,
 		"insider_tip_fired": _insider_tip_fired,
+		# demo:strip
 		"ban_override_turn": _ban_override_turn,
+		# demo:end
 	}
 
 func import_state(d: Dictionary) -> void:
@@ -449,5 +486,7 @@ func import_state(d: Dictionary) -> void:
 	_seeded = bool(d.get("seeded", false))
 	_insider_tip_fired = bool(d.get("insider_tip_fired", false))
 	# Old saves have no key → -1 → no cheat prohibition, schedule bans still apply.
+	# demo:strip
 	_ban_override_turn = int(d.get("ban_override_turn", -1))
+	# demo:end
 	call_deferred("_seed_if_needed")

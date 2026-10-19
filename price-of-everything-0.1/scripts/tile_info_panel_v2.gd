@@ -149,7 +149,9 @@ var _nameplate_text := ""
 var _land_hex: Control = null
 var _terrain_glyph: TextureRect = null
 var _land_readout: HFlowContainer = null
+# demo:strip
 var _survey_key: Control = null
+# demo:end
 ## The land in full, shown in the body's place while open.
 var _land_open := false
 var _land_view: ScrollContainer = null
@@ -418,6 +420,7 @@ func _build_land_row() -> HBoxContainer:
 	buy.custom_minimum_size.x = V3_SIDE_KEY_W
 	buy.pressed.connect(func() -> void: _on_buy_land_pressed(buy))
 	keys.add_child(buy)
+	# demo:strip
 	_survey_key = CabinetKey.new()
 	_survey_key.name = "SurveyKey"
 	_survey_key.text = "Survey"
@@ -425,6 +428,7 @@ func _build_land_row() -> HBoxContainer:
 	_survey_key.custom_minimum_size.x = V3_SIDE_KEY_W
 	_survey_key.pressed.connect(func() -> void: survey_requested.emit(_current_tile_data))
 	keys.add_child(_survey_key)
+	# demo:end
 	return row
 
 
@@ -887,11 +891,15 @@ func _refresh_status_line_v3(tile_data: Dictionary) -> void:
 	if terrain != "":
 		words.append(terrain.capitalize())
 	_refresh_terrain_glyph(terrain)
+	# demo:strip
 	var survey := _survey_status_for_tile(tile_data)
 	words.append(survey)
+	# demo:end
 	var gated: Dictionary = TileViewData.survey_gated_deposits(tid, tile_data)
+	# demo:strip
 	if gated.status == "unsurveyed":
 		words.append("Deposits unknown")
+	# demo:end
 	if not (gated.rows as Array).is_empty():
 		words.append(_v3_deposit_tags(gated.rows, gated.status != "unsurveyed"))
 	if not port.is_empty():
@@ -911,11 +919,13 @@ func _refresh_status_line_v3(tile_data: Dictionary) -> void:
 	_fill_land_line(_land_readout, V3_INK)
 	if _land_open:
 		_refresh_land_view()
+	# demo:strip
 	var surveyed := survey == "Surveyed"
 	_survey_key.visible = not surveyed
 	_survey_key.disabled = not MatchState.is_tile_surveyable(tid)
 	_survey_key.tooltip_text = "Survey this tile" if not _survey_key.disabled \
 		else "This tile is out of survey range. Survey more tiles to extend your range."
+	# demo:end
 
 
 ## The tile's deposits in the status line, after the word Deposits (left out on an unsurveyed tile, whose

@@ -52,7 +52,7 @@ func run(model: Dictionary, fitter: RefCounted, zoning: Dictionary) -> Dictionar
 					if _at_target(gap.tile): break
 				else: failed[sample_id]=true
 	var result := {"before":before,"after":report(),"added":added.size(),"target":TARGET,"refusals":refusals}
-	if "--frontage-audit" in OS.get_cmdline_user_args():
+	if "--frontage-audit" in preload("res://scripts/demo_build.gd").user_args():
 		var debug := {"samples":[],"plots":[],"roads":[],"summary":result}
 		for sample in samples:
 			debug.samples.append({"a":[sample.a.x,sample.a.y],"b":[sample.b.x,sample.b.y],"covered":sample.covered,"excluded":sample.excluded,"tile":sample.tile})

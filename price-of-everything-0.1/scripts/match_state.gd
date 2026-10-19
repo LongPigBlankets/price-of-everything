@@ -12,18 +12,19 @@ var money: float = 1000.0  # was: int = 1000
 
 # Three legacy/prototype buildings are deliberately absent from normal matches.
 # `unlock hidden_buildings` is an explicit development cheat for testing them.
-const HIDDEN_BUILDING_IDS := {"b_029": true, "b_030": true, "b_031": true, "b_035": true}
+# The sets live in scripts/demo_build.gd, which also leaves them out of the demo build.
+const HIDDEN_BUILDING_IDS: Dictionary = preload("res://scripts/demo_build.gd").HIDDEN_BUILDING_IDS
 var hidden_buildings_unlocked: bool = false
 
 # Recycling is off the table for the demo: the waste chain is a whole
 # second economy — collect it, sort it, feed it back — and a 100-turn demo has no room to
 # teach it. `unlock recycling` in the debug terminal puts it back for development, and `unlock demo` with it.
 # The landfill is where the waste chain ends, so it waits with the plants.
-const RECYCLING_BUILDING_IDS := {"b_022": true, "b_036": true, "b_023": true}
+const RECYCLING_BUILDING_IDS: Dictionary = preload("res://scripts/demo_build.gd").RECYCLING_BUILDING_IDS
 # Waste Water, Scrap Metal, Bio Waste, Electronic Waste — the goods that only exist to be
 # recycled. Hidden alongside the plants, or the encyclopedia advertises a chain with no
 # building that can process it.
-const RECYCLING_GOOD_IDS := {"g_063": true, "g_067": true, "g_073": true, "g_074": true}
+const RECYCLING_GOOD_IDS: Dictionary = preload("res://scripts/demo_build.gd").RECYCLING_GOOD_IDS
 var recycling_unlocked: bool = false
 
 
@@ -328,6 +329,8 @@ func _prune_tax_credits() -> void:
 
 
 # --- Public API: survey state ---
+# The demo starts with every tile surveyed and ships without the survey mechanic: the
+# functions below keep their signatures and answer "surveyed, nothing in progress".
 ## Seed the surveyed set with the NPC port tiles (called once at match start).
 func seed_surveyed_ports() -> void:
 	for port in Catalog.all_ports():
@@ -365,38 +368,59 @@ func mark_tile_surveyed(tile_id: String) -> void:
 ## (and tiles auto-revealed by a nearby survey) read as partially surveyed until
 ## fully surveyed; pass the tile's type so this needs no tile-data lookup.
 func survey_status(tile_id: String, tile_type: String = "") -> String:
+	# demo:strip
 	if surveyed_tiles.has(tile_id):
 		return "surveyed"
 	if partially_surveyed_tiles.has(tile_id) or tile_type.strip_edges().to_lower() == "urban":
 		return "partial"
 	return "unsurveyed"
+	# demo:keep
+	#| return "surveyed"
+	# demo:end
 
 func is_survey_in_progress(tile_id: String) -> bool:
+	# demo:strip
 	return surveying_in_progress.has(tile_id)
+	# demo:keep
+	#| return false
+	# demo:end
 
 func survey_turns_left(tile_id: String) -> int:
+	# demo:strip
 	return int(surveying_in_progress.get(tile_id, 0))
+	# demo:keep
+	#| return 0
+	# demo:end
 
 ## Begin a 2-turn survey of a tile (cost is charged by the caller). reveal_nearby
 ## auto-(partially-)surveys one neighbour on completion — true for a full survey of
 ## an unsurveyed tile, false when just finishing a partially surveyed tile.
 func begin_survey(tile_id: String, reveal_nearby: bool = true) -> void:
+	# demo:strip
 	if tile_id == "" or surveyed_tiles.has(tile_id) or surveying_in_progress.has(tile_id):
 		return
 	surveying_in_progress[tile_id] = SURVEY_TURNS
 	surveying_reveal[tile_id] = reveal_nearby
 	surveying_in_progress_changed.emit()
+	# demo:keep
+	#| return
+	# demo:end
 
 ## Mark a tile partially surveyed (auto-revealed by a nearby survey).
 func mark_tile_partial(tile_id: String) -> void:
+	# demo:strip
 	if tile_id == "" or surveyed_tiles.has(tile_id) or partially_surveyed_tiles.has(tile_id):
 		return
 	partially_surveyed_tiles[tile_id] = true
 	surveyed_tiles_changed.emit()
+	# demo:keep
+	#| return
+	# demo:end
 
 ## Tick every in-progress survey down by one turn; complete any that hit zero.
 ## Called once per turn during the PROCESS phase.
 func tick_surveys() -> void:
+	# demo:strip
 	if surveying_in_progress.is_empty():
 		return
 	var done: Array = []
@@ -410,7 +434,11 @@ func tick_surveys() -> void:
 		surveying_reveal.erase(tile_id)
 		_complete_survey(tile_id, reveal)
 	surveying_in_progress_changed.emit()
+	# demo:keep
+	#| return
+	# demo:end
 
+# demo:strip
 func _complete_survey(tile_id: String, reveal_nearby: bool) -> void:
 	partially_surveyed_tiles.erase(tile_id)
 	mark_tile_surveyed(tile_id)
@@ -434,6 +462,7 @@ func _complete_survey(tile_id: String, reveal_nearby: bool) -> void:
 		if fresh.is_empty():
 			break
 		mark_tile_partial(str(fresh[_match_rng_int(fresh.size())]))
+# demo:end
 
 # --- Public API: depletable deposits ---
 ## Seed each tile's depletable-deposit yields from its CSV deposits. Water is
@@ -557,6 +586,7 @@ func _tile_deposit_goods(tile_id: String) -> Array:
 	return out
 
 ## "Survey complete." toast describing what a finished survey revealed.
+# demo:strip
 func _survey_toast(tile_id: String, found: Array) -> String:
 	var label := tile_id.trim_prefix("tile_")
 	if found.is_empty():
@@ -570,6 +600,7 @@ func _survey_toast(tile_id: String, found: Array) -> String:
 			var size := "large" if int(d.get("qty", 0)) >= 500 else "small"
 			parts.append("a %s deposit of %s" % [size, name])
 	return "Survey complete. Tile %s revealed %s." % [label, _join_and(parts)]
+# demo:end
 
 func _join_and(parts: Array) -> String:
 	if parts.size() <= 1:
@@ -589,15 +620,24 @@ func _join_or(parts: Array) -> String:
 
 # --- Public API: survey range ---
 func survey_range() -> int:
+	# demo:strip
 	return SURVEY_RANGE_BASE + (1 if ResearchState.is_unlocked("Computer Assisted Geoscanning") else 0)
+	# demo:keep
+	#| return 0
+	# demo:end
 
 ## A tile is surveyable when it lies within survey_range() tiles of a surveyed
 ## tile. Cached; invalidated whenever the surveyed set or range changes.
 func is_tile_surveyable(tile_id: String) -> bool:
+	# demo:strip
 	if _surveyable_dirty:
 		_rebuild_surveyable()
 	return _surveyable_cache.has(tile_id)
+	# demo:keep
+	#| return false
+	# demo:end
 
+# demo:strip
 func _rebuild_surveyable() -> void:
 	_surveyable_cache.clear()
 	var rng := survey_range()
@@ -620,8 +660,10 @@ func _rebuild_surveyable() -> void:
 				_surveyable_cache[n] = true
 				queue.append(n)
 	_surveyable_dirty = false
+# demo:end
 
 # --- Cheats (debug terminal) ---
+# demo:strip
 func _all_tile_ids() -> Array:
 	var out: Array = []
 	if _deposit_terrain == null:
@@ -631,8 +673,10 @@ func _all_tile_ids() -> Array:
 		if tid != "":
 			out.append(tid)
 	return out
+# demo:end
 
 ## Instantly fully-survey every tile currently within the survey limit.
+# demo:strip
 func cheat_survey_within_limits() -> void:
 	var targets: Array = []
 	for tid in _all_tile_ids():
@@ -640,11 +684,14 @@ func cheat_survey_within_limits() -> void:
 			targets.append(tid)
 	for tid in targets:
 		_cheat_reveal(tid)
+# demo:end
 
 ## Instantly fully-survey every tile on the map.
+# demo:strip
 func cheat_survey_all() -> void:
 	for tid in _all_tile_ids():
 		_cheat_reveal(tid)
+# demo:end
 
 ## Cheat: unlock every research node. Skips the deliberately-dangling gates like
 ## 'hydro'/'consumer' (no node exists, so that content stays locked). Returns count.
@@ -658,13 +705,16 @@ func cheat_unlock_all_research() -> int:
 	return n
 
 ## Survey one tile and play its reveal animation (but no per-tile toast).
+# demo:strip
 func _cheat_reveal(tile_id: String) -> void:
 	if surveyed_tiles.has(tile_id):
 		return
 	tile_survey_completed.emit(tile_id, _tile_deposit_goods(tile_id))
 	mark_tile_surveyed(tile_id)
+# demo:end
 
 ## Partially survey every tile within the survey limit (already-surveyed tiles stay surveyed).
+# demo:strip
 func cheat_partial_within_limits() -> void:
 	var targets: Array = []
 	for tid in _all_tile_ids():
@@ -672,15 +722,19 @@ func cheat_partial_within_limits() -> void:
 			targets.append(tid)
 	for tid in targets:
 		mark_tile_partial(tid)
+# demo:end
 
 ## Partially survey the whole map (already-surveyed tiles stay surveyed).
+# demo:strip
 func cheat_partial_all() -> void:
 	for tid in _all_tile_ids():
 		mark_tile_partial(tid)
+# demo:end
 
 ## Cheat: apply a -60% labour-cost modifier for 10 turns. A single -60% lands
 ## exactly on EconomyConfig.LABOUR_FACTOR_MIN (1 - 0.60 = 0.40), so it exercises
 ## both the labour-floor clamp and the People-panel "max reduction" flag at once.
+# demo:strip
 func cheat_labour_discount() -> void:
 	Modifiers.add({
 		"id": "cheat_labour_discount",
@@ -690,6 +744,7 @@ func cheat_labour_discount() -> void:
 		"label": "Debug: labour -60%",
 		"source": "cheat",
 	})
+# demo:end
 
 
 # --- Battery storage (deposit model — docs/battery-storage-spec.md) ---
@@ -768,13 +823,16 @@ func visible_goods() -> Array:
 	return out
 
 ## Cheat (`unlock recycling`): put the waste chain and its two plants back.
+# demo:strip
 func cheat_unlock_recycling() -> void:
 	if recycling_unlocked:
 		return
 	recycling_unlocked = true
 	ResearchState.unlock_granted.emit("Recycling", "The waste chain and its plants are enabled.", false)
 	hidden_buildings_enabled.emit()   # the catalogue panels already refresh on this
+# demo:end
 
+# demo:strip
 func cheat_unlock_hidden_buildings() -> void:
 	if hidden_buildings_unlocked:
 		return
@@ -782,10 +840,12 @@ func cheat_unlock_hidden_buildings() -> void:
 	# Existing catalogue panels already refresh from this signal after research cheats.
 	ResearchState.unlock_granted.emit("Hidden Buildings", "Legacy prototype buildings enabled.", false)
 	hidden_buildings_enabled.emit()
+# demo:end
 
 ## Cheat (`unlock advisors`): open the full advisor roster, every seat, and the
 ## People-Management seat-unlock research — all hidden by default in the demo, which
 ## ships only Andrew/Vera/Gerald and the CFO/COO/Technical Director/Chief Markets seats.
+# demo:strip
 func cheat_unlock_advisors() -> void:
 	if AdvisorState.advisors_unlocked:
 		return
@@ -796,6 +856,7 @@ func cheat_unlock_advisors() -> void:
 		if id != "" and not AdvisorState.recruited_advisor_ids.has(id):
 			AdvisorState.recruited_advisor_ids.append(id)
 	AdvisorState.advisors_changed.emit()
+# demo:end
 
 
 # --- Reset (useful for new game / testing) ---

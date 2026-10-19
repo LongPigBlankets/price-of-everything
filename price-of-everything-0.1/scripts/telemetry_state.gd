@@ -252,7 +252,7 @@ func _queue_launch() -> void:
 		"player_id": PlayerProfile.get_telemetry_player_id(),
 		"session_id": _session_id,
 		"client": {
-			"version": str(ProjectSettings.get_setting("application/config/version", "dev")),
+			"version": preload("res://scripts/demo_build.gd").version_label(),
 			"os": OS.get_name(),
 		},
 		"launched_at": int(Time.get_unix_time_from_system()),
@@ -565,7 +565,7 @@ func queue_exit_feedback(rating: String, comment: String) -> bool:
 	var payload := {
 		"token": TOKEN, "kind": "feedback", "feedback_id": feedback_id,
 		"player_id": PlayerProfile.get_telemetry_player_id(),
-		"client": {"version": str(ProjectSettings.get_setting("application/config/version", "dev")), "os": OS.get_name()},
+		"client": {"version": preload("res://scripts/demo_build.gd").version_label(), "os": OS.get_name()},
 		"rating": rating, "comment": comment.strip_edges().left(4000),
 		"turn": TurnManager.current_turn, "start": _run_start_id,
 		"sent_at": int(Time.get_unix_time_from_system()),
@@ -630,7 +630,7 @@ func _build_envelope(reason: String) -> Dictionary:
 		"session_id": _session_id,
 		"sent_at": now,
 		"client": {
-			"version": str(ProjectSettings.get_setting("application/config/version", "dev")),
+			"version": preload("res://scripts/demo_build.gd").version_label(),
 			"os": OS.get_name(),
 		},
 		"run": {

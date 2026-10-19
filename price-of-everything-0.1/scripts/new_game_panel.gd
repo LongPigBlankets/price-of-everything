@@ -21,7 +21,9 @@ const DEFAULT_START := "res://data/starts/default.json"
 # demo_itch length are playable; everything else is greyed with a "Locked in the
 # Demo" tooltip. Flip DEMO_LOCK to false to restore the full menu after the demo.
 const DEMO_LOCK := true
-const DEMO_START_IDS: Array = ["metal_magnate", "glass_merchant"]   # the starts playable in the demo
+## The starts playable in the demo. A demo build ships only these start files; the locked
+## cards are drawn from index.json alone.
+const DEMO_START_IDS: Array = preload("res://scripts/demo_build.gd").START_IDS
 const DEMO_DIFFICULTY_ID := "normal"
 ## The length a demo build is pinned to. Now the Itch.io demo itself: 100 turns with its
 ## own policy timeline, rather than a 300-turn campaign the player could never finish.
@@ -65,33 +67,49 @@ const TIERS := {
 	"red":   {"fill": Color(0.62, 0.24, 0.22), "badge": "Challenging"},
 }
 
+# The demo ships only the difficulty and length it plays (DEMO_DIFFICULTY_ID, DEMO_SPEED_ID).
 const DIFFICULTIES: Array = [
+	# demo:strip
 	{"id": "easy", "label": "Easy",
 		"desc": "All resource deposits present on the map and infinite. The whole map is surveyed."},
+	# demo:end
 	{"id": "normal", "label": "Normal",
 		"desc": "All resource deposits on the map, but some are finite. Some tiles are surveyed."},
+	# demo:strip
 	{"id": "hard", "label": "Hard",
 		"desc": "A single finite rare-earth deposit on the map. Other deposits are reduced. Some tiles are surveyed."},
 	{"id": "very_hard", "label": "Very Hard", "locked": true,
 		"desc": "No rare-earth deposits. A single alloy-metal deposit on the map. Other deposits reduced. Only your starting tiles are surveyed."},
 	{"id": "god", "label": "God of Industry", "locked": true,
 		"desc": "No rare-earth, alloy-metal or crude-oil deposits. Other deposits reduced. Only your starting tiles are surveyed."},
+	# demo:end
 ]
+# demo:strip
 const DIFFICULTY_DEFAULT := 1
+# demo:keep
+#| const DIFFICULTY_DEFAULT := 0
+# demo:end
 
 ## A length carries its policy timeline and its victory set with it, because a 100-turn
 ## match cannot use the campaign's decarbonisation beats (the subsidy lands after it ends)
 ## or the campaign's victory tracks (they are written for 300 turns of compounding).
 const SPEEDS: Array = [
+	# demo:strip
 	{"id": "200", "turns": 200, "label": "200 turns"},
 	{"id": "300", "turns": 300, "label": "300 turns"},
 	{"id": "400", "turns": 400, "label": "400 turns"},
+	# demo:end
 	{"id": DEMO_SPEED_ID, "turns": 100, "label": "Demo - Itch.io",
 		"policy_timeline": "demo_itch", "victory_set": "demo_itch"},
 ]
+# demo:strip
 const SPEED_DEFAULT := 1
 ## Which row a demo build starts on — the only one it leaves enabled.
 const SPEED_DEFAULT_DEMO := 3
+# demo:keep
+#| const SPEED_DEFAULT := 0
+#| const SPEED_DEFAULT_DEMO := 0
+# demo:end
 
 # Advanced Settings tickboxes (the "Tutorial" column was replaced by these). Only
 # the first is wired today; 2 & 3 are placeholders for future toggles.
@@ -275,7 +293,7 @@ func _start_card(start: Dictionary, group: ButtonGroup) -> Control:
 	for s in ["normal", "hover", "pressed", "focus", "disabled"]:
 		btn.add_theme_stylebox_override(s, StyleBoxEmpty.new())
 	card.add_child(btn)
-	# Demo lock: every start except Coal Baron is greyed + unclickable.
+	# Demo lock: every start outside DEMO_START_IDS is greyed and unclickable.
 	if _demo_locked() and not DEMO_START_IDS.has(String(start.get("id", ""))):
 		btn.disabled = true
 		btn.tooltip_text = DEMO_LOCK_TIP
@@ -380,6 +398,9 @@ func _build_settings_columns(parent: Node) -> void:
 	# afterwards, so it stays OUTSIDE the accordion.
 	var accordion := VBoxContainer.new()
 	accordion.add_theme_constant_override("separation", DS.SP["SM"])
+	# A demo build hides the whole section. It is still built: its pressed buttons are the
+	# difficulty and speed the Start button reads.
+	accordion.visible = not preload("res://scripts/demo_build.gd").active()
 	parent.add_child(accordion)
 
 	var header := _accordion_header("Advanced Settings")

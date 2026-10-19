@@ -266,7 +266,7 @@ func _backdrop_ready(builder: RefCounted) -> void:
 func _start_background() -> void:
 	if show_all_tiles or _building or _builder == null or background_active() or background_ready(): return
 	if PlayerProfile.is_low_quality(): return
-	if DisplayServer.get_name() == "headless" or "--no-background-continent" in OS.get_cmdline_user_args(): return
+	if DisplayServer.get_name() == "headless" or "--no-background-continent" in preload("res://scripts/demo_build.gd").user_args(): return
 	var job := BackgroundLoad.new()
 	_warming = job
 	background_status = "loading"

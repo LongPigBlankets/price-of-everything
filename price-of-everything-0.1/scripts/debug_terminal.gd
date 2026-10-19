@@ -29,6 +29,8 @@ extends CanvasLayer
 ##   disable procedural <region>     (map editor only) remove that region's records again
 ##   enable procedural central buildings  (map editor only) show Copperstown's refreshed building fabric
 ##   help                             list commands
+##
+## A demo build (DemoBuild.active()) keeps only DemoBuild.CHEATS: cash, unlock all and help.
 
 ## Emitted when `debug CandC` unlocks this terminal. The main menu listens so it can
 ## reveal its cheat-gated entries (the Map Editor) without polling.
@@ -36,6 +38,8 @@ signal cheats_unlocked
 
 const TOGGLE_KEY := KEY_QUOTELEFT  # the ` / ~ key
 const UNLOCK_WORD := "CandC"  # case-sensitive pass-phrase for `debug <word>`
+const DemoBuild := preload("res://scripts/demo_build.gd")
+const DEMO_HELP := "commands:  cash <int>   |   unlock all   |   help"
 
 # In the main menu there is no match, so only commands that don't touch match state
 # are allowed (`debug` runs before this gate; `swap loading_screen`/`swap song` are the
@@ -68,8 +72,13 @@ static func cheats_are_unlocked() -> bool:
 
 
 ## Whether `unlock demo` has been entered — the New Game panel reads this to drop its demo locks.
+## Never true in a demo build: the demo ships without the content it would reveal.
 static func demo_is_unlocked() -> bool:
-	return _demo_unlocked
+	# demo:strip
+	return _demo_unlocked and not DemoBuild.active()
+	# demo:keep
+	#| return false
+	# demo:end
 
 var _panel: PanelContainer
 var _cmd: LineEdit
@@ -165,6 +174,8 @@ func _run_command(text: String) -> String:
 	if not _cheats_unlocked:
 		return "invalid operation"
 	var cmd := parts[0].to_lower()
+	if not DemoBuild.allows_cheat(text):
+		return "'%s' is not available in the demo  (try 'help')" % cmd
 	if menu_mode and not MENU_SAFE_COMMANDS.has(cmd):
 		return "'%s' is only available during a match  (main menu: swap loading_screen | swap song | help)" % cmd
 	# Anything that can move the sim taints the run for telemetry: an unflagged cheat run
@@ -173,27 +184,37 @@ func _run_command(text: String) -> String:
 	if not READ_ONLY_COMMANDS.has(cmd):
 		MatchState.note_cheat_used()
 	match cmd:
+		# demo:strip
 		"hide", "show":
 			if parts.size() == 2 and parts[1].to_lower() == "updates":
 				DecisionState.set_hide_updates(cmd == "hide")
 				return "Updates hidden; first choices selected automatically." if cmd == "hide" else "Updates restored."
 			return "usage: hide updates | show updates"
+		# demo:end
 		"cash":
 			if parts.size() < 2 or not parts[1].is_valid_int():
 				return "usage: cash <integer>"
 			var amount := int(parts[1])
 			MatchState.cheat_add_cash(float(amount))
 			return "Added £%d  (balance now £%.2f)" % [amount, MatchState.money]
+		# demo:strip
 		"research":
 			# Alias for `unlock all` (testing muscle memory: `research all`).
 			var count: int = MatchState.cheat_unlock_all_research()
 			return "Unlocked ALL research (%d nodes)." % count
+		# demo:end
 		"unlock":
+			# demo:strip
 			if parts.size() < 2:
 				return "usage: unlock <research title>  (e.g. 'unlock hydro')  |  unlock all | hidden_buildings | advisors | demo | recycling"
+			# demo:keep
+			#| if parts.size() < 2:
+			#| 	return "usage: unlock all"
+			# demo:end
 			if parts[1].to_lower() == "all":
 				var unlocked_count: int = MatchState.cheat_unlock_all_research()
 				return "Unlocked ALL research (%d nodes)." % unlocked_count
+			# demo:strip
 			if parts[1].to_lower() == "hidden_buildings":
 				MatchState.cheat_unlock_hidden_buildings()
 				return "Hidden buildings enabled for this match."
@@ -212,6 +233,10 @@ func _run_command(text: String) -> String:
 			var title := " ".join(parts.slice(1))
 			ResearchState.grant_unlock(title)
 			return "Unlocked '%s'." % title
+			# demo:keep
+			#| return "usage: unlock all"
+			# demo:end
+		# demo:strip
 		"sellmode":
 			if parts.size() < 2:
 				return "usage: sellmode <stockpile|market|building>  (current: %s)" % _sell_mode_name()
@@ -439,11 +464,19 @@ func _run_command(text: String) -> String:
 					and parts[3].to_lower() == "buildings":
 				return str(editor.call("procedural_central_buildings_command", cmd))
 			return str(editor.call("procedural_region_command", cmd, parts[2].to_lower()))
+		# demo:end
 		"help":
+			# demo:strip
+			if DemoBuild.active():
+				return DEMO_HELP
 			return "commands:  hide updates | show updates   |   cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury|dock ds2|legend ds2|research ds2   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   enable|disable procedural <north|arin|vandel|capital|all>   |   enable|disable procedural central buildings  (map editor)   |   save <name>   |   load <name>   |   saves   |   help"
+			# demo:keep
+			#| return DEMO_HELP
+			# demo:end
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 
+# demo:strip
 # Fast-forward N turns (the `skip` cheat). Runs as an async fire-and-forget loop:
 # fast_mode drops the inter-phase pacing, decisions auto-resolve to their default so the
 # commit never blocks, and each turn awaits full resolution before the next commits.
@@ -543,3 +576,4 @@ func _sell_mode_name() -> String:
 			return "building"
 		_:
 			return "unknown"
+# demo:end
