@@ -105,7 +105,7 @@ if family in ('furnace', 'power_plant'):
 if family == 'power_plant':
     stacks['tower_void'] = ('steam', 1.0, 1.0, .43)
 plate_ns['STACKS'] = stacks
-plate_ns['build_smoke']()
+static_smoke = plate_ns['build_smoke']()
 
 scene = bpy.context.scene
 plate_ns['setup_rig'](res=args.res)
@@ -142,6 +142,13 @@ target = right*((min(sx)+max(sx))/2) + up*((min(sy)+max(sy))/2)
 cam.location = target + toward*40
 cam.data.ortho_scale = max(max(sx)-min(sx), max(sy)-min(sy))*1.16
 cam.data.clip_end = 200
+# Frame with the capsule plume, then replace it with a separate periodic layer.
+for ob in static_smoke.objects:
+    ob.hide_render = True
+execute(Path(__file__).with_name('smoke_loop.py'), plate_ns)
+smoke = plate_ns['LoadingSmokeLoop'](stacks) if stacks else None
+if smoke:
+    smoke.hide()
 
 sun = bpy.data.objects['Light']
 sun.data.type = 'SUN'
@@ -333,7 +340,11 @@ else:
 
 for lamp in night_lamps:
     lamp.hide_render = True
-saved_mats = {o: list(o.data.materials) for o in night_materials}
+night_slots = {o: [mat]*len(o.data.materials) for o, mat in night_materials.items()}
+execute(Path(__file__).with_name('flare_shading.py'), ns)
+column_slots = ns['relight_columns'](objects, flare_lamps[0], 3*scale) if flare_lamps else {}
+night_slots.update(column_slots)
+saved_mats = {o: list(o.data.materials) for o in night_slots}
 for look in ('day','night'):
     night = look == 'night'
     sun.data.color = (1.0,.78,.51) if not night else (.49,.61,1.0)
@@ -345,13 +356,49 @@ for look in ('day','night'):
     if beacon_col:
         for ob in beacon_col.objects:
             ob.hide_render = not night
-    for ob, lit_mat in night_materials.items():
-        ob.data.materials.clear()
-        for mat in ([lit_mat]*len(saved_mats[ob]) if night else saved_mats[ob]):
-            ob.data.materials.append(mat)
+    for ob, lit_mats in night_slots.items():
+        for i, mat in enumerate(lit_mats if night else saved_mats[ob]):
+            ob.data.materials[i] = mat  # clearing slots resets the painted face indices
     path = args.out / f'{family}-{look}.png'
     scene.render.filepath = str(path)
     bpy.ops.render.render(write_still=True)
+
+    if smoke:
+        # Holdout buildings/plate preserve chimney-rim occlusion in the smoke's alpha.
+        holdout = bpy.data.materials.get('LoadingHoldout') or bpy.data.materials.new('LoadingHoldout')
+        holdout.use_nodes = True
+        hnodes = holdout.node_tree.nodes; hnodes.clear()
+        hshader = hnodes.new('ShaderNodeHoldout'); hout = hnodes.new('ShaderNodeOutputMaterial')
+        holdout.node_tree.links.new(hshader.outputs[0], hout.inputs['Surface'])
+        occluders = {o:list(o.data.materials) for o in bpy.data.objects
+            if o.type == 'MESH' and not o.hide_render and o not in smoke.col.objects.values()}
+        for ob in occluders:
+            if not ob.data.materials:
+                ob.data.materials.append(holdout)
+            else:
+                for i in range(len(ob.data.materials)):
+                    ob.data.materials[i] = holdout
+        # Only the fine smoke line set; holdout geometry must not leave floating ink.
+        fs.linesets['ink'].show_render = False
+        fine = fs.linesets['ink_fine']
+        previous_collection = fine.collection
+        fine.collection = smoke.col
+        for frame in range(smoke.FRAMES):
+            smoke.set_phase(frame/smoke.FRAMES)
+            # set_phase restores rising puffs; the fixed mouth cluster stays visible too.
+            for ob in smoke.col.objects:
+                if ob.name.startswith('Mouth.'):
+                    ob.hide_render = False
+            scene.render.filepath = str(args.out / f'{family}-smoke-{look}-{frame:02d}.png')
+            bpy.ops.render.render(write_still=True)
+        smoke.hide()
+        fs.linesets['ink'].show_render = True
+        fine.collection = previous_collection
+        for ob, mats in occluders.items():
+            if not mats:
+                ob.data.materials.clear()
+            for i, mat in enumerate(mats):
+                ob.data.materials[i] = mat
 
 if args.save:
     bpy.ops.wm.save_as_mainfile(filepath=str(args.out / f'{family}.blend'))
@@ -384,6 +431,14 @@ if beacon_col:
         ob.hide_render = True
 scene.render.filepath = str(args.out / f'{family}-shade.png')
 bpy.ops.render.render(write_still=True)
+if flare_lamps:
+    # Direct flare light also suppresses sun-only stippling on the lit sides.
+    maximum = nt.nodes.new('ShaderNodeMath'); maximum.operation = 'MAXIMUM'
+    nt.links.new(rng.outputs['Result'], maximum.inputs[0])
+    nt.links.new(ns['flare_factor'](nt.nodes, nt.links, flare_lamps[0].location, 3*scale), maximum.inputs[1])
+    nt.links.new(maximum.outputs[0], emission.inputs['Color'])
+    scene.render.filepath = str(args.out / f'{family}-shade-night.png')
+    bpy.ops.render.render(write_still=True)
 model = ROOT / f'price-of-everything-0.1/assets/supply_chain_3d/{family}_lvl3.glb'
 (args.out / f'{family}.json').write_text(json.dumps(dict(building=family, level=3,
     resolution=args.res, source_sha256=sources, model_sha256=hashlib.sha256(model.read_bytes()).hexdigest(),
@@ -391,4 +446,6 @@ model = ROOT / f'price-of-everything-0.1/assets/supply_chain_3d/{family}_lvl3.gl
     ground_z=.012, windows=len(windows), skylights=len(skylights),
     turbine_roof_panes=len(hall_glazing), interior_lamps=len(interior_lamps),
     heat_sources=len(heat_sources), flare_lamps=len(flare_lamps),
-    turbine_top_beacons=len(top_beacons), turbine_base_lights=len(base_lights)), indent=2)+'\n')
+    turbine_top_beacons=len(top_beacons), turbine_base_lights=len(base_lights),
+    relit_column_meshes=len(column_slots), smoke_frames=smoke.FRAMES if smoke else 0,
+    smoke_seconds=smoke.SECONDS if smoke else 0), indent=2)+'\n')

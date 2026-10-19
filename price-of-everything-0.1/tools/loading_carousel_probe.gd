@@ -30,6 +30,7 @@ func _ready() -> void:
 	var screen := Screen.show_global(get_tree())
 	if OS.get_environment("CAROUSEL_IDLE_PROFILE") != "":
 		await get_tree().create_timer(3.0, true, false, true).timeout
+		await _capture_frame()  # measure after the requested viewport has settled
 		_profile_started = Time.get_ticks_usec()
 		_profile_last = _profile_started
 		await get_tree().create_timer(10.0, true, false, true).timeout

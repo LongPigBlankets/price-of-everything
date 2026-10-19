@@ -20,7 +20,9 @@ The furnace's recessed working bays and molten ladles have yellow centres, orang
 edges and local light spill in both looks. The refinery flare casts warm light onto its
 shield, tower and nearby equipment in both looks. Each offshore turbine has a red nacelle
 light and a yellow-white light by its boat landing, with local spill at night. These are
-offline lights; runtime rendering still uses only the day/night images. Smoke is pre-rendered.
+offline lights; runtime rendering uses the day/night images and a small smoke atlas.
+At night, the columns' painted shade bands and print stippling are lifted according to
+their orientation and distance from the flare; faces turned away retain their shading.
 The face-orientation print pass uses the same stipple method as the capsule and sprites.
 Brick materials also receive the game's catalogue coursing: 0.075m courses, 0.21m
 stretcher bond and 0.005m pale joints, in source model coordinates. That procedural paint
@@ -33,17 +35,20 @@ python3 tools/loading_carousel/build.py --out /absolute/review-directory --insta
 ```
 
 Raw colour/shade renders and per-building logs remain in the review directory. The twelve
-finished 1024px RGBA stills and `provenance.json` install in
+finished 1024px RGBA smoke-free stills, six smoke atlases, `smoke-layouts.json` and
+`provenance.json` install in
 `price-of-everything-0.1/assets/loading/carousel/`. The manifest records input source/model
 and output hashes. Rebuild after updating any featured building. Existing texture import
-sidecars retain desktop high-quality VRAM compression and mipmaps.
+sidecars retain desktop high-quality VRAM compression and mipmaps for the stills.
+Smoke atlases use BC7 without mipmaps to keep adjacent animation cells from bleeding.
 
 `scripts/loading_carousel.gd` shows each building for five seconds: daylight to 0.5s,
 dissolve over three seconds to night by 3.5s, hold until 4.3s, then slide left to reveal
 the next hex to the right. Six buildings make a 30-second loop. Current and next
-day/night pairs are the only resident textures. The next pair loads on a worker; a
-late read holds the current still.
-Static holds do not queue redraws. A live 3D viewport and video decoder are unnecessary.
+day/night pairs and their smoke atlases are the only resident textures. The next group
+loads on a worker; a late read holds the current tile. Static building holds do not queue
+redraws; smoking tiles update one animation uniform. A live 3D viewport and video decoder
+are unnecessary.
 
 `loading_screen.gd` keeps script warming, threaded scene loading and readiness gating.
 Begin appears as soon as the world and pending save are ready, independently of the art.
@@ -73,22 +78,33 @@ macOS finished restoring the saved display size. This caused the factory's brief
 width change. The recorder now retries such captures without advancing the review clock;
 it does not resize a bad frame into the movie or change the runtime carousel's geometry.
 
-### Optional rising smoke
+### Rising smoke
 
-The present smoke is part of each still. A separate, tightly cropped, pre-rendered smoke
-loop could rise without live 3D, particles or per-puff CPU updates: keep the buildings and
-hex static, pack a short loop into an atlas, and draw it with one extra quad per plume.
-Bake colour for both day and night with matching coverage, then blend it with the same
-night factor. A phase-offset or displacement of the entire still would also distort the
-chimney or make smoke detach from its mouth, so use a separate layer.
+Factory and furnace smoke, and both the power plant's flue and cooling-tower steam, rise
+in a separate layer. The original capsule plume frames the fixed camera, then the base
+renders without smoke. Twelve periodic puff frames are rendered for each look, with the
+building and terrain as holdouts so rims/equipment correctly occlude smoke. Existing
+material slots and face indices are preserved when temporarily applying holdouts.
 
-At 256x256, 12 BC7-compressed frames with mipmaps for each of two looks cost about 2 MiB
-per plume; profiling should decide the resolution/frame count, and only current/next
-plumes should stay resident. Bake the smoke-free base and fixed camera/occlusion masks
-alongside the loop before switching the runtime presentation. This is feasible future
-work, not implemented by this lighting revision. Busy workers alone need not stop such
-an animation, but a blocked main thread still prevents Godot from submitting new frames.
-It would pause during the existing main-thread loading stalls, just like the fade/slide.
+Each building's puffs share one tightly cropped, square 256px cell; the twelve cells pack
+into a 1024x768 atlas per look. The shader interpolates adjacent frames, blends day/night
+with the same factor as the building, and composites using premultiplied alpha. No live
+particles, new puff nodes, per-frame texture uploads or extra draw surfaces are needed.
+The puff-age construction is periodic with slots permuted across the 1.5s loop boundary.
+Puffs emerge from a fixed mouth cluster, grow, drift upward and shrink away at the end.
+
+Two BC7 atlases cost 1.5 MiB per smoking building, with no atlas mipmaps. Current/next
+groups add at most 3 MiB to the approximately 5.33 MiB still-texture budget. A tile without
+smoke neither loads nor samples atlases. Previous atlases are released on advance. Busy
+workers alone need not stop the loop, but main-thread loading stalls still pause frame
+submission, just like the fade/slide. No world-loading scheduling change is claimed.
+
+On 19 October, a fresh Metal process at 1280x720 measured the animated carousel for
+10 seconds after settling: 1450 frames, 6.994ms p95, 8.616ms worst and zero frames over
+100ms. This is presentation-only frame timing, not a new game-loading benchmark. All
+six day/night smoke sequences fit within the camera and their closing frame difference
+is no larger than an ordinary adjacent-frame difference. The geometry itself is checked
+at phase 0 and 1 during baking and must match under permutation of the puff slots.
 
 ## Loading profile and proposed split (18 October 2026)
 
