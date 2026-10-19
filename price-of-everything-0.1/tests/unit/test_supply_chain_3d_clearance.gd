@@ -23,7 +23,7 @@ func _test_clear_company_building_keeps_full_scale() -> void:
 	_check(Clearance.apply(model, Builder.standing_key) == 0 and is_equal_approx(float(mine.side), 60.0) and mine.pos == Vector2.ZERO,
 		"clearance: a company building clear of everything keeps its full 1.5x size and place")
 
-func _test_company_building_keeps_off_the_carriageway() -> void:
+func _test_company_building_slides_back_off_the_carriageway() -> void:
 	var mine := _works("mine", Vector2(0, 0), 40.0, false)
 	var full := Clearance.base(mine, Builder.standing_key(mine), float(mine.side))
 	var edge := Clearance.RoadPlacement.polygon_bounds(full[0]).end.y
@@ -31,7 +31,30 @@ func _test_company_building_keeps_off_the_carriageway() -> void:
 	var model := {"standing": [mine], "roads": [road]}
 	Clearance.apply(model, Builder.standing_key)
 	_check(_carriageway_gap(mine, road) >= Clearance.CLEARANCE - 0.01, "clearance: a company building keeps off the carriageway")
-	_check(float(mine.side) >= 40.0 - 0.01 and float(mine.side) < 60.0, "clearance: it grows as far as it can, never below its lot")
+	_check(is_equal_approx(float(mine.side), 60.0) and (mine.pos as Vector2).y < 0.0,
+		"clearance: with room behind it, it slides back at its full size")
+
+func _test_boxed_in_company_building_grows_as_far_as_it_can() -> void:
+	var mine := _works("mine", Vector2(0, 0), 40.0, false)
+	var full := Clearance.base(mine, Builder.standing_key(mine), float(mine.side))
+	var box := Clearance.RoadPlacement.polygon_bounds(full[0])
+	var roads := [_road(Vector2(-400, box.end.y), Vector2(400, box.end.y)), _road(Vector2(-400, box.position.y), Vector2(400, box.position.y)),
+		_road(Vector2(box.end.x, -400), Vector2(box.end.x, 400)), _road(Vector2(box.position.x, -400), Vector2(box.position.x, 400))]
+	var model := {"standing": [mine], "roads": roads}
+	Clearance.apply(model, Builder.standing_key)
+	_check(float(mine.side) >= 40.0 - 0.01 and float(mine.side) < 60.0, "clearance: boxed in by streets, it grows as far as it can, never below its lot")
+
+func _test_slid_building_stays_on_its_tile() -> void:
+	var mine := _works("mine", Vector2(0, 0), 40.0, false)
+	var full := Clearance.base(mine, Builder.standing_key(mine), float(mine.side))
+	var box := Clearance.RoadPlacement.polygon_bounds(full[0])
+	var shore := box.position.y - 4.0
+	var model := {"standing": [mine], "roads": [_road(Vector2(-400, box.end.y), Vector2(400, box.end.y))], "tiles": {"tile_1_1": {"center": Vector2(0, 0)}}}
+	Clearance.apply(model, Builder.standing_key, func(p: Vector2) -> bool: return p.y < shore)
+	var dry := true
+	for poly in Clearance.base(mine, Builder.standing_key(mine), float(mine.side)):
+		for p in poly: dry = dry and p.y >= shore - 0.01
+	_check(dry, "clearance: a building never slides onto open water")
 
 func _test_npc_works_and_homes_give_way() -> void:
 	var mine := _works("mine", Vector2(0, 0), 40.0, false)

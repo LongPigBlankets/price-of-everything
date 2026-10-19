@@ -13,13 +13,17 @@ const Footprints := preload("res://scripts/supply_chain_3d/building_footprints.g
 const FarmFields := preload("res://scripts/supply_chain_3d/farm_fields.gd")
 const RoadPlacement := preload("res://scripts/supply_chain_3d/road_placement.gd")
 const Legacy := preload("res://scripts/empire_board.gd")
+const Model := preload("res://scripts/empire_board_model.gd")
 ## Clear ground kept between a building's base and a carriageway or another building.
 const CLEARANCE := 1.5
 ## Growth tried, from the full scale down to the lot, in this many steps.
 const STEPS := 10
-## How far a building may slide, as a share of its size, and in how many rings.
-const MAX_SLIDE := 0.2
-const SLIDE_RINGS := 3
+## Half the width kept clear along a rail line.
+const RAIL_HALF := 6.0
+## How far a building may slide, as a share of its size, and in how many rings. A slid building
+## stays on its own tile and off open water.
+const MAX_SLIDE := 0.6
+const SLIDE_RINGS := 6
 ## The smallest share of its lot an NPC works is drawn at to clear the company's buildings.
 const MIN_LOT_SHARE := 0.8
 
@@ -85,7 +89,19 @@ static func _clear(shapes: Array, roads: Array, others: Array) -> bool:
 ## The largest size, from `top` down to `smallest`, at which the base clears the given roads and
 ## bases, plain or centred. A smaller base lies inside a larger one, so only what the largest
 ## clashes with is tried again. Returns [side, shift], the smallest plain when nothing clears.
-static func _fit(s: Dictionary, key: String, top: float, smallest: float, roads: Array, others: Array, slide := false) -> Array:
+## A slid base still stands on its own tile, on land.
+static func _placeable(shapes: Array, hex: PackedVector2Array, water: Callable) -> bool:
+	for poly in shapes:
+		var middle := Vector2.ZERO
+		for p in poly:
+			if not hex.is_empty() and not Geometry2D.is_point_in_polygon(p, hex): return false
+			if water.is_valid() and bool(water.call(p)): return false
+			middle += p
+		if water.is_valid() and bool(water.call(middle / poly.size())): return false
+	return true
+
+static func _fit(s: Dictionary, key: String, top: float, smallest: float, roads: Array, others: Array, slide := false,
+		hex := PackedVector2Array(), water := Callable()) -> Array:
 	var full := base(s, key, top)
 	var box := _bounds(full).grow(CLEARANCE)
 	var near_roads: Array = []
@@ -96,14 +112,15 @@ static func _fit(s: Dictionary, key: String, top: float, smallest: float, roads:
 	for theirs in others:
 		if box.intersects(_bounds(theirs)) and not _clear(full, [], [theirs]): near.append(theirs)
 	if near_roads.is_empty() and near.is_empty(): return [top, Vector2.ZERO]
-	for step in range(STEPS - 1, -1, -1):
+	for step in range(STEPS, -1, -1):
 		var side := lerpf(smallest, top, float(step) / STEPS)
 		var shifts: Array = [Vector2.ZERO, centring(s, key, side)]
 		if slide:
 			for ring in range(1, SLIDE_RINGS + 1):
 				for k in 8: shifts.append(Vector2.RIGHT.rotated(TAU * k / 8.0) * side * MAX_SLIDE * ring / SLIDE_RINGS)
 		for shift in shifts:
-			if _clear(base(s, key, side, shift), near_roads, near): return [side, shift]
+			var moved := base(s, key, side, shift)
+			if _clear(moved, near_roads, near) and (shift == Vector2.ZERO or _placeable(moved, hex, water)): return [side, shift]
 	return [smallest, Vector2.ZERO]
 
 ## The driveway's door end follows a building that slid. Road records may be the shipped
@@ -129,7 +146,7 @@ static func _resize(s: Dictionary, side: float, shift: Vector2) -> void:
 
 ## Fits the company's buildings, then makes the NPC works and homes around them give way.
 ## Returns how many standing things it changed.
-static func apply(model: Dictionary, key_for: Callable) -> int:
+static func apply(model: Dictionary, key_for: Callable, water := Callable()) -> int:
 	if not enabled: return 0
 	var standing: Array = model.get("standing", [])
 	var roads: Array = []
@@ -138,6 +155,11 @@ static func apply(model: Dictionary, key_for: Callable) -> int:
 		var widths: Array = road.get("widths", Legacy._road_widths(int(road.get("level", 1))))
 		# Up to the pavement like any town building, never onto the carriageway.
 		roads.append({"a": road.a, "b": road.b, "reach": float(widths[widths.size() - 1]) + CLEARANCE})
+	var rails: Array = []
+	for line in model.get("lines", []):
+		if str(line.get("mode", "")) != "rail": continue
+		var pts: Array = line.get("pts", [])
+		for i in range(1, pts.size()): rails.append({"a": pts[i - 1], "b": pts[i], "reach": RAIL_HALF + CLEARANCE})
 	var changed := 0
 	var settled: Array = []
 	# The company's buildings, against the streets and whatever does not give way to them.
@@ -148,12 +170,14 @@ static func apply(model: Dictionary, key_for: Callable) -> int:
 		s.lot_side = lot_side
 		if s.has("lot_pos"): s.pos = s.lot_pos
 		s.lot_pos = s.pos
-		var own_roads := roads.filter(func(road: Dictionary) -> bool: return not _driveway(road, s))
+		var own_roads := roads.filter(func(road: Dictionary) -> bool: return not _driveway(road, s)) + rails
 		var fixed: Array = settled.duplicate()
 		for o in standing:
 			if o == s or company(o) or yields(o) or str(o.get("kind", "")) in ["house", "pylon"] or o.has("harbour"): continue
 			fixed.append(base(o, str(key_for.call(o)), float(o.side)))
-		var fit := _fit(s, key, lot_side * BuildingScale.BUILDINGS_SCALE, lot_side, own_roads, fixed, true)
+		var tile: Dictionary = model.get("tiles", {}).get(str(s.get("tile", "")), {})
+		var hex := Model.hex_points(tile.center) if tile.has("center") else PackedVector2Array()
+		var fit := _fit(s, key, lot_side * BuildingScale.BUILDINGS_SCALE, lot_side, own_roads, fixed, true, hex, water)
 		if fit[0] < lot_side * BuildingScale.BUILDINGS_SCALE - 0.01 or fit[1] != Vector2.ZERO: changed += 1
 		_resize(s, fit[0], fit[1])
 		if fit[1] != Vector2.ZERO: _follow(model, s, fit[1])

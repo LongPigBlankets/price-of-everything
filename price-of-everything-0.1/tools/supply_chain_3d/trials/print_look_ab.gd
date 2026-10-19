@@ -125,7 +125,7 @@ func _clash_report(board: Control) -> Array:
 			for road in builder.roads:
 				if road.get("tunnel", false) or _driveway(road, s): continue
 				lot_gap = minf(lot_gap, RoadPlacement.distance_to_polygon(road.a, road.b, lot) - float(road.get("widths", Legacy._road_widths(int(road.get("level", 1))))[0]))
-			clashes.append({"works": who, "iid": str(iid), "base_outside_lot": snappedf(outside, 1), "base_area": snappedf(absf(_area(entry.shapes[0])), 1), "lot_kerb_gap": snappedf(lot_gap, 0.1), "side": snappedf(float(s.side), 0.1)})
+			clashes.append({"works": who, "iid": str(iid), "base_outside_lot": snappedf(outside, 1), "base_area": snappedf(absf(_area(entry.shapes[0])), 1), "lot_kerb_gap": snappedf(lot_gap, 0.1), "side": snappedf(float(s.side), 0.1), "entrance": str(s.get("entrance", "")), "pos": str(s.pos), "lot_pos": str(s.get("lot_pos", ""))})
 		for road in builder.roads:
 			if road.get("tunnel", false) or _driveway(road, s): continue
 			var widths: Array = road.get("widths", Legacy._road_widths(int(road.get("level", 1))))
