@@ -3,21 +3,37 @@ extends "res://tools/supply_chain_3d/capture.gd"
 ## print, and the print with decorative scenery calmed. Daylight and evening, at three zooms, and
 ## the time to draw a medium frame for each look.
 ## AGENT_GODOT_WINDOW=1 godot --path . res://tools/supply_chain_3d/trials/print_look_ab.tscn -- \
-##   --continent-review --no-telemetry --trial-output=<dir>
+##   --continent-review --no-telemetry --trial-output=<dir> [--own-furnace=<tile>]
+## --own-furnace: the company buys the NPC furnace on that tile first, at level III, making steel.
 const Board := preload("res://scripts/supply_chain_3d/board.gd")
 const LOOKS := {"painted": [false, false], "print": [true, false], "calm": [true, true]}
 var output := ""
 var report := {}
 var _town := ""
+var _own_furnace := ""
 
 func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--trial-output="): output = arg.trim_prefix("--trial-output=")
+		if arg.begins_with("--own-furnace="): _own_furnace = arg.trim_prefix("--own-furnace=")
 	DirAccess.make_dir_recursive_absolute(output)
 	# The first build is the look as painted, so the calming starts off.
 	Board.print_look = false
 	Board.calm_scenery = false
 	await super._ready()
+
+func _open_supply_view(view: Control) -> void:
+	if _own_furnace != "":
+		for iid in BuildingState.buildings:
+			var live: Dictionary = BuildingState.buildings[iid]
+			if str(live.get("tile_id", "")) != _own_furnace or str(live.get("building_id", "")) != "b_002": continue
+			if BuildingState.is_player_owned(live): continue
+			BuildingState.set_building_owner(str(iid), MatchState.LOCAL_PLAYER)
+			live.level = 3
+			live.recipe_id = "r_003"
+			report.owned_furnace = str(iid)
+			break
+	await super._open_supply_view(view)
 
 func _settle(board: Control, seconds: float) -> void:
 	var until := Time.get_ticks_msec() + int(seconds * 1000.0)
