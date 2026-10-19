@@ -7722,7 +7722,11 @@ async function exportLayers() {
   // and the company seal, a cast iron press whose lever carries the Start New Game key. Three states on one sheet: the
   // full game; the demo with steel lockboxes over the five full game starts and over the stamps; the demo with the wider
   // book and no form at all. Start New Game stays in every state.
-  if (want('registrystudy')) await withSeed(488, async () => {
+  // The game's layers (docs/new-game-ds2-plan.md §9), exported inside the study's block so they share its materials and
+  // parts: registrydesk (489), registryhead (490), registryrack (491), registryfile (492), registrylid (493),
+  // registryblotter (494), registrystamps (495), registrypress (496), registryslip (497), registrykeys (498).
+  const REGISTRY_PARTS = ['registrydesk', 'registryhead', 'registryrack', 'registryfile', 'registrylid', 'registryblotter', 'registrystamps', 'registrypress', 'registryslip', 'registrykeys'];
+  if (want('registrystudy') || REGISTRY_PARTS.some(want)) await withSeed(488, async () => {
     for (const f of ['500 30px "IBM Plex Sans"', '600 30px "IBM Plex Sans"', '700 30px "IBM Plex Sans"', '600 30px "Barlow Condensed"', '700 30px "Barlow Condensed"', `60px ${TITLE_FAMILY}`]) await document.fonts.load(f);
     const PW = 2617, PH = 1740, PAD = 40, MX = 60, CAPT = 110, MR = 460, ROWGAP = 170;
     const STATES = ['full', 'demo_box', 'demo_wide'];
@@ -8117,7 +8121,7 @@ async function exportLayers() {
     };
 
     // Each state its own render, so the house light's shadow map covers it; composed with the print and the notes.
-    for (const [i, mode] of STATES.entries()) {
+    if (want('registrystudy')) for (const [i, mode] of STATES.entries()) {
       group = new THREE.Group(); OX = MX; OY = CAPT + i * (PH + ROWGAP);
       await panel(mode);
       const y0 = OY - 60, y1 = OY + PH + 60;
@@ -8126,7 +8130,7 @@ async function exportLayers() {
       st.scene.traverse((o) => { if (o.isDirectionalLight) o.shadow.mapSize.set(4096, 4096); });
       shots.push({ img: st.grab(), y0, y1, oy: OY, mode });
     }
-    await post('registry_study', frame2d(W, H, (g) => {
+    if (want('registrystudy')) await post('registry_study', frame2d(W, H, (g) => {
       const BG = '#121820';
       g.fillStyle = BG; g.fillRect(0, 0, W, H);
       for (const s of shots) g.drawImage(s.img, 0, s.y0, W, s.y1 - s.y0);
@@ -8148,6 +8152,195 @@ async function exportLayers() {
         nt.lines.forEach((ln, k) => text(g, ln, NX, nt.y + (k - (nt.lines.length - 1) / 2) * 32, MR - 70, 27, LIGHT, { weight: k ? 500 : 600, family: PLEX }));
       }
     }));
+
+    // ---- the game's layers. Each part is staged alone on a shadow catcher at the height of what it rests on, in the
+    // study's own materials, and its layout entry carries what the game needs to place what it prints on it.
+    // Heights are above the catcher (0): a part lying on the desk sits at 0, a lifted part higher, so its shadow
+    // falls as the study's did.
+    const PCOL = 217, FMW = 720, KW = PCOL - 22, KH = 78;   // the press column, the form, a stamp key (as the study lays them out)
+    const REG = {
+      DESK: { W: PW, H: 1800, M: 30, r: 18, corner: 60 },
+      HEAD: { W: PW - 2 * PAD, H: 112, M: 16, r: 10, corner: 30 },
+      HOLE: { OW: 335, OH: 410, BAR: 24, LIP: 30, M: 24, corner: 40 },
+      FELT: { S: 200 },
+      FILE: { W: 290, H: 372, M: 24, PM: 48, LIFT: 20.5, WIN: 164, WIN_Y: 44, LABEL: [24, 236, 242, 52], TAB: { w: 118, h: 38, x: { green: 70, amber: 145, red: 220 }, inset: 8 } },
+      LID: { W: 600, H: 400, M: 40, r: 12, LIFT: 23, corner: 28 },
+      HINGE: { r: 9, L: 72, M: 14 },
+      HASP: { w: 28, h: 92, M: 14 },
+      PADLOCK: { s: 0.95, W: 96, H: 128, M: 0 },
+      LIDPLATE: { W: 300, H: 58, M: 12, r: 5, screw: 14, corner: 26 },
+      BLOTTER: { W: 720, H: 520, M: 30, r: 14, stud: 18, corner: 40 },
+      COVER: { W: 600, H: 400, M: 16, r: 6, corner: 20 },
+      LEAF: { W: 600, H: 400, M: 14, r: 4, corner: 16 },
+      SRACK: { W: PCOL, H: 510, M: 16, r: 10, corner: 24 },
+      INKPAD: { W: PCOL - 20, H: 84, M: 16 },
+      PRESS: { W: PCOL + 8, H: 320, M: 30, r: 26 },
+      SLIP: { W: 330, H: 96, M: 30, r: 6, LIFT: 9, corner: 20 },
+    };
+    const part = async (name, W, H, M, build, extra = {}, catcherY = 0, opacity = 0.5) => {
+      group = new THREE.Group(); OX = 0; OY = 0;
+      await build();
+      group.add(shadowCatcher(W + 2 * M, H + 2 * M, M + W / 2, M + H / 2, catcherY + 0.05, opacity));
+      const st = stage([0, 0, W + 2 * M, H + 2 * M], [group]);
+      st.scene.traverse((o) => { if (o.isDirectionalLight) o.shadow.mapSize.set(4096, 4096); });
+      await post(name, st.grab());
+      layout[name] = { size: [W + 2 * M, H + 2 * M], margin: M, ...extra };
+    };
+
+    // The desk: dark walnut, the panel's backing, a 9-slice (the grain stretches along the desk where a screen is taller).
+    if (want('registrydesk')) await withSeed(489, async () => {
+      const { W, H, M, r, corner } = REG.DESK;
+      await part('registry_desk', W, H, M, () => {
+        add(shade(new THREE.Mesh(extrude(rrShape(W, H, r), 6, 5, 4, 4), [polish(wood(W, H, '#36200f', 'x', '16,7,3', '150,96,54'), W, H), darkSide])), M + W / 2, M + H / 2, 0);
+      }, { corner, top: T }, 0, 0.45);
+    });
+
+    // The header: a navy steel panel screwed to the desk (the game sets the kit's silver screws, the tile view's
+    // nameplate and the Back key on it), a 9-slice.
+    if (want('registryhead')) await withSeed(490, async () => {
+      const { W, H, M, r, corner } = REG.HEAD;
+      await part('registry_header', W, H, M, () => {
+        add(shade(new THREE.Mesh(extrude(rrShape(W, H, r), 4, 3, 2.4, 4), [plateMaterial(W, H, { icons: [], buttons: [], screws: [], base: NAVY_STEEL_CANVAS, rub: '120,136,160' }), MAT.plateSide])), M + W / 2, M + H / 2, 0);
+      }, { corner, top: 10, screw_inset: 16 });
+    });
+
+    // The card index: the felt a pigeonhole is floored with (flat, under the files), and the oak frame round one
+    // opening with the shadow it throws in, a 9-slice the game draws over each file in its hole (seven of them, the
+    // bars between shared).
+    if (want('registryrack')) await withSeed(491, async () => {
+      const { S } = REG.FELT;
+      await part('registry_felt', S, S, 0, () => {
+        const fl = new THREE.Mesh(new THREE.PlaneGeometry(S, S).rotateX(-Math.PI / 2), felt); fl.receiveShadow = true; add(fl, S / 2, S / 2, 0.3);
+      }, { corner: 20 });
+      const { OW, OH, BAR, LIP, M, corner } = REG.HOLE, W = OW + 2 * BAR, H = OH + 2 * LIP;
+      await part('registry_pigeonhole', W, H, M, () => {
+        const fs = rrShape(W, H, 10); fs.holes.push(rr(new THREE.Path(), OW, OH, 6));
+        add(shade(new THREE.Mesh(extrude(fs, 12, 4, 3.2, 4), [polish(wood(W, H, '#3a2412', 'x'), W, H), darkSide])), M + W / 2, M + H / 2, 0);
+      }, { corner, bar: BAR, lip: LIP, opening: [OW, OH], top: 12 + 8 });
+    });
+
+    // A company file, blank: manila with its border, the navy window the good's tile sits in, the label the name
+    // goes on, the tab in its tier's colour; in its hole, and pulled out over the lip (lifted, a longer shadow).
+    if (want('registryfile')) await withSeed(492, async () => {
+      const { W, H, M, PM, LIFT, WIN, WIN_Y, LABEL, TAB } = REG.FILE;
+      for (const tier of ['green', 'amber', 'red']) {
+        const [tierCol] = TIER[tier];
+        const face = fibre(W, H, '#d9b878', '70,52,20', (c) => {
+          c.save(); c.shadowColor = 'rgba(0,0,0,0.5)'; c.shadowBlur = 5; c.shadowOffsetY = 2; c.fillStyle = '#0d2238'; c.beginPath(); c.roundRect((W - WIN) / 2, WIN_Y, WIN, WIN, 10); c.fill(); c.restore();
+          c.save(); c.shadowColor = 'rgba(0,0,0,0.3)'; c.shadowBlur = 3; c.shadowOffsetY = 1.5; c.fillStyle = '#f6efdf'; c.beginPath(); c.roundRect(...LABEL, 4); c.fill(); c.restore();
+          c.strokeStyle = 'rgba(11,35,64,0.35)'; c.lineWidth = 1.2; c.beginPath(); c.roundRect(LABEL[0] + 4, LABEL[1] + 4, LABEL[2] - 8, LABEL[3] - 8, 3); c.stroke();
+          c.strokeStyle = 'rgba(60,40,10,0.25)'; c.lineWidth = 1; c.beginPath(); c.roundRect(2, 2, W - 4, H - 4, 5); c.stroke();
+        });
+        const tabMat = [new THREE.MeshStandardMaterial({ color: tierCol, map: noiseTexture(12, 20, 40), roughness: 0.78 }), new THREE.MeshStandardMaterial({ color: tierCol, roughness: 0.8 })];
+        for (const pulled of [false, true]) {
+          const m = pulled ? PM : M, y = pulled ? LIFT : 1.5;
+          await part(`registry_file_${tier}${pulled ? '_pulled' : ''}`, W, H, m, () => {
+            add(shade(new THREE.Mesh(extrude(rrShape(W, H, 5), 1.6, 1.4, 1.1, 3), [matte(face, W, H), manilaSide])), m + W / 2, m + H / 2, y);
+            add(shade(new THREE.Mesh(extrude(rrShape(TAB.w, TAB.h, 7), 1.6, 1.2, 1, 3), tabMat)), m + TAB.x[tier], m + TAB.inset, y + 0.2);
+          });
+        }
+      }
+      layout.registry_file = { size: [W, H], margin: M, pulled_margin: PM, lift: LIFT, window: [(W - WIN) / 2, WIN_Y, WIN, WIN], tile_inset: 14, label: LABEL, name_y: 262, tier_y: 320, tab: TAB };
+    });
+
+    // A lockbox: the dark steel lid (a 9-slice), a hinge knuckle, the brass hasp, the padlock and the blank brass plate
+    // the game prints FULL GAME on, each its own layer so a lid of any size can be dressed.
+    if (want('registrylid')) await withSeed(493, async () => {
+      const { W, H, M, r, LIFT, corner } = REG.LID;
+      await part('registry_lid', W, H, M, () => {
+        add(shade(new THREE.Mesh(extrude(rrShape(W, H, r), 8, 3, 2.4, 4), [darkPlate(W, H), MAT.plateSide])), M + W / 2, M + H / 2, LIFT);
+      }, { corner, lift: LIFT, top: LIFT + 8 + 6 });
+      { const { r: hr, L, M: hm } = REG.HINGE;
+        await part('registry_hinge', 2 * hr, L, hm, () => {
+          add(shade(new THREE.Mesh(new THREE.CylinderGeometry(hr, hr, L, 18).rotateX(Math.PI / 2), K.darkSteel)), hm + hr, hm + L / 2, hr);
+        }, {}, 0); }
+      { const { w, h, M: hm } = REG.HASP;
+        await part('registry_hasp', w, h, hm, () => {
+          add(shade(new THREE.Mesh(extrude(rrShape(w, h, 8), 4, 1.5, 1.2, 3), [K.brass, K.brass])), hm + w / 2, hm + h / 2, 0);
+        }); }
+      { const { s, W: pw, H: ph } = REG.PADLOCK;
+        await part('registry_padlock', pw, ph, 0, () => { K.padlock(group, pw / 2, ph / 2 + 6, 0, s); }, { body: [52 * s, 44 * s] }); }
+      { const { W: pw, H: ph, M: pm, r: pr, screw: ps, corner: pc } = REG.LIDPLATE;
+        await part('registry_lid_plate', pw, ph, pm, () => {
+          add(shade(new THREE.Mesh(extrude(rrShape(pw, ph, pr), 1.6, 1.2, 0.9, 3), [K.brassFace(pw, ph), K.brass])), pm + pw / 2, pm + ph / 2, 0);
+          for (const dx of [ps, pw - ps]) add(screw(4), pm + dx, pm + ph / 2, 4);
+        }, { corner: pc, screw: ps }); }
+    });
+
+    // The blotter (green leather, a brass stud in each corner), the open manila cover and a cream leaf, 9-slices the
+    // game prints the file on.
+    if (want('registryblotter')) await withSeed(494, async () => {
+      { const { W, H, M, r, stud, corner } = REG.BLOTTER;
+        await part('registry_blotter', W, H, M, () => {
+          add(shade(new THREE.Mesh(extrude(rrShape(W, H, r), 3, 3, 2.4, 4), [K.leather(W, H, '#2f4a35'), new THREE.MeshStandardMaterial({ color: 0x15241a, roughness: 0.7 })])), M + W / 2, M + H / 2, 0);
+          const dome = new THREE.SphereGeometry(6, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.6, 1);
+          for (const [x, z] of [[stud, stud], [W - stud, stud], [stud, H - stud], [W - stud, H - stud]]) add(shade(new THREE.Mesh(dome, K.brass)), M + x, M + z, 9);
+        }, { corner, top: 9 }); }
+      { const { W, H, M, r, corner } = REG.COVER;
+        await part('registry_cover', W, H, M, () => {
+          add(shade(new THREE.Mesh(extrude(rrShape(W, H, r), 1.4, 1.2, 1, 3), [matte(fibre(W, H, '#d9b878', '70,52,20', (c) => {
+            c.strokeStyle = 'rgba(60,40,10,0.25)'; c.lineWidth = 1; c.beginPath(); c.roundRect(2, 2, W - 4, H - 4, 5); c.stroke();
+          }), W, H), manilaSide])), M + W / 2, M + H / 2, 0);
+        }, { corner, top: 1.4 + 2.4 }); }
+      { const { W, H, M, r, corner } = REG.LEAF;
+        await part('registry_leaf', W, H, M, () => {
+          add(shade(new THREE.Mesh(extrude(rrShape(W, H, r), 1, 0.8, 0.6, 2), [matte(fibre(W, H, '#f3e7cc', '58,46,30'), W, H), paperSide])), M + W / 2, M + H / 2, 0);
+        }, { corner }); }
+    });
+
+    // The grade stamps' rack (dark steel, a 9-slice; the keys are the kit's cream keys) and the red ink pad in its tray.
+    if (want('registrystamps')) await withSeed(495, async () => {
+      { const { W, H, M, r, corner } = REG.SRACK;
+        await part('registry_stamp_rack', W, H, M, () => {
+          add(shade(new THREE.Mesh(extrude(rrShape(W, H, r), 4, 3, 2.4, 4), [darkPlate(W, H), MAT.plateSide])), M + W / 2, M + H / 2, 0);
+        }, { corner, top: 10, title_y: 16, first_key_y: 30, key: [KW, KH], pitch: 94 }); }
+      { const { W, H, M } = REG.INKPAD;
+        await part('registry_ink_pad', W, H, M, () => {
+          add(shade(new THREE.Mesh(extrude(rrShape(W, H, 8), 6, 2, 1.6, 3), [K.darkSteel, K.darkSteel])), M + W / 2, M + H / 2, 0);
+          const pad = new THREE.Mesh(new THREE.PlaneGeometry(W - 24, H - 24).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x8c1d15, map: noiseTexture(20, 0, 40), roughness: 0.98 }));
+          pad.receiveShadow = true; add(pad, M + W / 2, M + H / 2, 6 + 4.2);
+        }); }
+    });
+
+    // The company seal: the cast iron press, its brass die and chrome lever, without the key (the game sets the
+    // kit's cream key at the lever's end, printed Start New Game).
+    if (want('registrypress')) await withSeed(496, async () => {
+      const { W, H, M, r } = REG.PRESS, cx = M + W / 2, dz = M + 92, IT = 10 + 12;
+      await part('registry_press', W, H, M, () => {
+        add(shade(new THREE.Mesh(extrude(rrShape(W, H, r), 10, 6, 5, 4), [iron, iron])), cx, M + H / 2, 0);
+        add(shade(new THREE.Mesh(new THREE.CylinderGeometry(50, 56, 30, 36), iron)), cx, dz, IT + 15);
+        add(shade(new THREE.Mesh(new THREE.TorusGeometry(50, 5, 12, 40).rotateX(Math.PI / 2), K.brass)), cx, dz, IT + 31);
+        add(shade(new THREE.Mesh(new THREE.CylinderGeometry(44, 44, 8, 36), K.brass)), cx, dz, IT + 34);
+        add(shade(new THREE.Mesh(new THREE.CylinderGeometry(12, 12, 150, 20).rotateX(Math.PI / 2), K.chrome)), cx, dz + 75 + 20, IT + 26);
+        add(shade(new THREE.Mesh(new THREE.CylinderGeometry(20, 20, 30, 24).rotateX(Math.PI / 2), iron)), cx, dz + 62, IT + 26);
+        add(shade(new THREE.Mesh(new THREE.BoxGeometry(44, 26, 44), iron)), cx, M + 112, IT + 13);
+      }, { top: IT, key: [(W - (PCOL - 22)) / 2, 92 + 150 + 20 + 30 - 42, PCOL - 22, 84], die: [W / 2, 92, 50] });
+    });
+
+    // The hover slip: white plastic, lifted over the leaf, the game prints the building's name and place on it.
+    if (want('registryslip')) await withSeed(497, async () => {
+      const { W, H, M, r, LIFT, corner } = REG.SLIP;
+      await part('registry_slip', W, H, M, () => {
+        const face = canvas2d(W, H, (c) => paintPlastic(c, W, H));
+        add(shade(new THREE.Mesh(extrude(rrShape(W, H, r), 1.4, 1, 0.8, 2), [new THREE.MeshPhysicalMaterial({ map: faceTexture(face, W, H), ...KNOB_PLASTIC }), MAT.skirt])), M + W / 2, M + H / 2, LIFT);
+      }, { corner, lift: LIFT });
+    });
+
+    // A small cream key with a chevron right (the kit's key_back is the chevron left), for stepping the charter's drum.
+    if (want('registrykeys')) await withSeed(498, async () => {
+      const S = SMALL_KEY, M = 16;
+      group = new THREE.Group(); OX = 0; OY = 0;
+      const k = keycap(S, S, 6, (g, a, b) => {
+        g.strokeStyle = NAVY; g.lineWidth = a * 0.13; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath();
+        g.moveTo(a * 0.4, b * 0.28); g.lineTo(a * 0.62, b * 0.5); g.lineTo(a * 0.4, b * 0.72); g.stroke();
+      });
+      add(k, M + S / 2, M + S / 2, 0);
+      group.add(shadowCatcher(S + 2 * M, S + 2 * M, M + S / 2, M + S / 2, 0.05, 0.5));
+      const ss = stage([0, 0, S + 2 * M, S + 2 * M], [group]);
+      await post('key_forward', ss.grab()); await pressed(k, 'key_forward_pressed', ss);
+      layout.key_forward = { size: [S + 2 * M, S + 2 * M], rect: [M, M, S, S] };
+    });
+    layout.registry_panel = { width: PW, pad: PAD, header: { y: 20, h: REG.HEAD.H, nameplate: [52, 8, 470, 96] }, rack: { y: 150, h: 470 }, counter_y: 150 + 470 + 20, press_col: PCOL, form_w: FMW };
   });
 
   // The Politics panel as a courtroom (docs/ds2-owner-decisions.md, Politics): the panelled oak wall in its moulded

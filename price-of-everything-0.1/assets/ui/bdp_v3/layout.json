@@ -2390,5 +2390,277 @@
    76,
    76
   ]
+ },
+ "registry_desk": {
+  "size": [
+   2677,
+   1860
+  ],
+  "margin": 30,
+  "corner": 60,
+  "top": 16
+ },
+ "registry_header": {
+  "size": [
+   2569,
+   144
+  ],
+  "margin": 16,
+  "corner": 30,
+  "top": 10,
+  "screw_inset": 16
+ },
+ "registry_felt": {
+  "size": [
+   200,
+   200
+  ],
+  "margin": 0,
+  "corner": 20
+ },
+ "registry_pigeonhole": {
+  "size": [
+   431,
+   518
+  ],
+  "margin": 24,
+  "corner": 40,
+  "bar": 24,
+  "lip": 30,
+  "opening": [
+   335,
+   410
+  ],
+  "top": 20
+ },
+ "registry_file_green": {
+  "size": [
+   338,
+   420
+  ],
+  "margin": 24
+ },
+ "registry_file_green_pulled": {
+  "size": [
+   386,
+   468
+  ],
+  "margin": 48
+ },
+ "registry_file_amber": {
+  "size": [
+   338,
+   420
+  ],
+  "margin": 24
+ },
+ "registry_file_amber_pulled": {
+  "size": [
+   386,
+   468
+  ],
+  "margin": 48
+ },
+ "registry_file_red": {
+  "size": [
+   338,
+   420
+  ],
+  "margin": 24
+ },
+ "registry_file_red_pulled": {
+  "size": [
+   386,
+   468
+  ],
+  "margin": 48
+ },
+ "registry_file": {
+  "size": [
+   290,
+   372
+  ],
+  "margin": 24,
+  "pulled_margin": 48,
+  "lift": 20.5,
+  "window": [
+   63,
+   44,
+   164,
+   164
+  ],
+  "tile_inset": 14,
+  "label": [
+   24,
+   236,
+   242,
+   52
+  ],
+  "name_y": 262,
+  "tier_y": 320,
+  "tab": {
+   "w": 118,
+   "h": 38,
+   "x": {
+    "green": 70,
+    "amber": 145,
+    "red": 220
+   },
+   "inset": 8
+  }
+ },
+ "registry_lid": {
+  "size": [
+   680,
+   480
+  ],
+  "margin": 40,
+  "corner": 28,
+  "lift": 23,
+  "top": 37
+ },
+ "registry_hinge": {
+  "size": [
+   46,
+   100
+  ],
+  "margin": 14
+ },
+ "registry_hasp": {
+  "size": [
+   56,
+   120
+  ],
+  "margin": 14
+ },
+ "registry_padlock": {
+  "size": [
+   96,
+   128
+  ],
+  "margin": 0,
+  "body": [
+   49.4,
+   41.8
+  ]
+ },
+ "registry_lid_plate": {
+  "size": [
+   324,
+   82
+  ],
+  "margin": 12,
+  "corner": 26,
+  "screw": 14
+ },
+ "registry_blotter": {
+  "size": [
+   780,
+   580
+  ],
+  "margin": 30,
+  "corner": 40,
+  "top": 9
+ },
+ "registry_cover": {
+  "size": [
+   632,
+   432
+  ],
+  "margin": 16,
+  "corner": 20,
+  "top": 3.8
+ },
+ "registry_leaf": {
+  "size": [
+   628,
+   428
+  ],
+  "margin": 14,
+  "corner": 16
+ },
+ "registry_stamp_rack": {
+  "size": [
+   249,
+   542
+  ],
+  "margin": 16,
+  "corner": 24,
+  "top": 10,
+  "title_y": 16,
+  "first_key_y": 30,
+  "key": [
+   195,
+   78
+  ],
+  "pitch": 94
+ },
+ "registry_ink_pad": {
+  "size": [
+   229,
+   116
+  ],
+  "margin": 16
+ },
+ "registry_press": {
+  "size": [
+   285,
+   380
+  ],
+  "margin": 30,
+  "top": 22,
+  "key": [
+   15,
+   250,
+   195,
+   84
+  ],
+  "die": [
+   112.5,
+   92,
+   50
+  ]
+ },
+ "registry_slip": {
+  "size": [
+   390,
+   156
+  ],
+  "margin": 30,
+  "corner": 20,
+  "lift": 9
+ },
+ "key_forward": {
+  "size": [
+   108,
+   108
+  ],
+  "rect": [
+   16,
+   16,
+   76,
+   76
+  ]
+ },
+ "registry_panel": {
+  "width": 2617,
+  "pad": 40,
+  "header": {
+   "y": 20,
+   "h": 112,
+   "nameplate": [
+    52,
+    8,
+    470,
+    96
+   ]
+  },
+  "rack": {
+   "y": 150,
+   "h": 470
+  },
+  "counter_y": 640,
+  "press_col": 217,
+  "form_w": 720
  }
 }
