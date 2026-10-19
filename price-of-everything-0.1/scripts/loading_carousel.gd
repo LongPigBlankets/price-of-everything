@@ -7,6 +7,7 @@ const SECONDS_PER_TILE := 5.0
 const NIGHT_FADE_START := 0.5
 const NIGHT_FADE_SECONDS := 3.0
 const SLIDE_START := 4.3
+const COMPOSITION_SCALE := 1.30
 const BACKGROUND := Color("#040f1b")
 const BLEND_SHADER := """shader_type canvas_item;
 uniform sampler2D night_texture : source_color, filter_linear;
@@ -56,6 +57,7 @@ var _shader: Shader
 var _last_visual := Vector4(-1, -1, -1, -1)
 var _last_index := -1
 var _smoke_layouts: Dictionary = {}
+var _composition_tops: Dictionary = {}
 var _animation_seconds := 0.0
 
 
@@ -73,6 +75,7 @@ func _ready() -> void:
 	var layouts: Variant = JSON.parse_string(FileAccess.get_file_as_string(DIRECTORY + "smoke-layouts.json"))
 	if layouts is Dictionary:
 		_smoke_layouts = layouts
+		_composition_tops = layouts.get("_composition_tops", {})
 	else:
 		push_error("Loading smoke layouts are missing or invalid")
 	_shader = Shader.new()
@@ -199,15 +202,20 @@ func _layout_tiles() -> void:
 		return
 	_last_visual = visual
 	_last_index = current_index
-	# About half as large again, bounded vertically so smoke and the Begin key stay clear.
-	var side := minf(minf(size.x * 0.88, size.y * 0.78) * 1.5, size.y * 1.10)
-	var centre := Vector2(size.x * 0.5, size.y * 0.49)
+	# Enlarge around the artwork's visible top, including the entire smoke loop.
+	# The lower soil layers may leave the viewport; the smoke keeps its old top clearance.
+	var previous_side := minf(minf(size.x * 0.88, size.y * 0.78) * 1.5, size.y * 1.10)
+	var side := previous_side * COMPOSITION_SCALE
+	var previous_top := size.y * 0.49 - previous_side * 0.5
+	var next_index := (current_index + 1) % BUILDINGS.size()
 	var step := maxf(side * 1.14, size.x * 0.60)
 	_current.size = Vector2.ONE * side
-	_current.position = centre - _current.size * 0.5 - Vector2.RIGHT * step * slide
+	_current.position = Vector2((size.x-side)*0.5-step*slide,
+		previous_top+(previous_side-side)*float(_composition_tops.get(BUILDINGS[current_index],0.08)))
 	(_current.material as ShaderMaterial).set_shader_parameter("night_mix", night)
 	_next.size = _current.size
-	_next.position = _current.position + Vector2.RIGHT * step
+	_next.position = Vector2((size.x-side)*0.5+step*(1.0-slide),
+		previous_top+(previous_side-side)*float(_composition_tops.get(BUILDINGS[next_index],0.08)))
 	_next.visible = _next_ready and slide > 0.0
 	(_next.material as ShaderMaterial).set_shader_parameter("night_mix", 0.0)
 	queue_redraw()

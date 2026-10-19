@@ -32,6 +32,7 @@ From the repository root, with background `blender`, Python, Pillow and NumPy av
 
 ```sh
 python3 tools/loading_carousel/build.py --out /absolute/review-directory --install
+python3 tools/loading_carousel/update_composition_bounds.py
 ```
 
 Raw colour/shade renders and per-building logs remain in the review directory. The twelve
@@ -54,8 +55,17 @@ are unnecessary.
 Begin appears as soon as the world and pending save are ready, independently of the art.
 The DS2 cream key remains beneath the artwork. The retired film and intro images remain
 available as source material but are excluded by all three release export presets.
-The tiles are enlarged by up to 50%, constrained by vertical clearance for smoke and
-the button; no building-name or level caption is drawn.
+The composition is a further 30% larger than the original carousel layout. It scales
+around each building's measured visible upper edge, preserving the previous clearance
+above its roof/rotors or highest smoke puff. Both incoming and outgoing tiles use their
+own upper edge; there is no vertical jump when advancing. Ground layers may extend
+below the viewport. The Begin key stays in its existing foreground position. No
+building-name or level caption is drawn.
+
+`update_composition_bounds.py` measures the installed stills and every day/night smoke
+cell, recording upper bounds and source hashes in the already-bundled `smoke-layouts.json`.
+Run it after changing the loading artwork. This reuses the valid image bakes and avoids
+GPU readback or alpha scanning during game loading.
 
 From the game directory:
 
