@@ -21,9 +21,11 @@ const STEPS := 10
 ## Half the width kept clear along a rail line.
 const RAIL_HALF := 6.0
 ## How far a building may slide, as a share of its size, and in how many rings. A slid building
-## stays on its own tile and off open water.
+## stays on land and keeps most of its base on its own tile.
 const MAX_SLIDE := 0.6
 const SLIDE_RINGS := 6
+## The share of a slid base that may stand on a neighbouring tile.
+const MAX_NEIGHBOUR := 0.25
 ## The smallest share of its lot an NPC works is drawn at to clear the company's buildings.
 const MIN_LOT_SHARE := 0.8
 
@@ -89,16 +91,35 @@ static func _clear(shapes: Array, roads: Array, others: Array) -> bool:
 ## The largest size, from `top` down to `smallest`, at which the base clears the given roads and
 ## bases, plain or centred. A smaller base lies inside a larger one, so only what the largest
 ## clashes with is tried again. Returns [side, shift], the smallest plain when nothing clears.
-## A slid base still stands on its own tile, on land.
+## A slid base stands on land throughout, never over sea terrain, and keeps at least
+## 1 - MAX_NEIGHBOUR of its area on its own tile.
 static func _placeable(shapes: Array, hex: PackedVector2Array, water: Callable) -> bool:
 	for poly in shapes:
-		var middle := Vector2.ZERO
-		for p in poly:
-			if not hex.is_empty() and not Geometry2D.is_point_in_polygon(p, hex): return false
-			if water.is_valid() and bool(water.call(p)): return false
-			middle += p
-		if water.is_valid() and bool(water.call(middle / poly.size())): return false
+		if water.is_valid():
+			for p in _samples(poly):
+				if bool(water.call(p)): return false
+		if hex.is_empty(): continue
+		var area := absf(_area(poly))
+		var outside := 0.0
+		for part in Geometry2D.clip_polygons(poly, hex): outside += absf(_area(part))
+		if area > 0.0 and outside / area > MAX_NEIGHBOUR: return false
 	return true
+
+## Points across a base: its corners and a grid over a four-sided one.
+static func _samples(poly: PackedVector2Array) -> PackedVector2Array:
+	var points := poly.duplicate()
+	if poly.size() != 4: return points
+	for i in 5:
+		for j in 5:
+			var u := (i + 0.5) / 5.0
+			var v := (j + 0.5) / 5.0
+			points.append(poly[0].lerp(poly[1], u).lerp(poly[3].lerp(poly[2], u), v))
+	return points
+
+static func _area(poly: PackedVector2Array) -> float:
+	var total := 0.0
+	for i in poly.size(): total += poly[i].cross(poly[(i + 1) % poly.size()])
+	return total * 0.5
 
 static func _fit(s: Dictionary, key: String, top: float, smallest: float, roads: Array, others: Array, slide := false,
 		hex := PackedVector2Array(), water := Callable()) -> Array:

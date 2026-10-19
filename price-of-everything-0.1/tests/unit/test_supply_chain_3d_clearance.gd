@@ -80,3 +80,11 @@ func _test_clearance_can_be_switched_off() -> void:
 	var changed := Clearance.apply(model, Builder.standing_key)
 	Clearance.enabled = true
 	_check(changed == 0 and is_equal_approx(float(mine.side), 60.0), "clearance: switched off, every building stays at 1.5x")
+
+func _test_slid_base_may_reach_a_quarter_into_a_neighbour() -> void:
+	var hex := PackedVector2Array([Vector2(-100, -100), Vector2(100, -100), Vector2(100, 100), Vector2(-100, 100)])
+	var square := func(x: float) -> Array: return [PackedVector2Array([Vector2(x - 20, -20), Vector2(x + 20, -20), Vector2(x + 20, 20), Vector2(x - 20, 20)])]
+	var land := func(_p: Vector2) -> bool: return false
+	_check(Clearance._placeable(square.call(88.0), hex, land), "clearance: a fifth of the base on the next tile is allowed")
+	_check(not Clearance._placeable(square.call(95.0), hex, land), "clearance: more than a quarter on the next tile is not")
+	_check(not Clearance._placeable(square.call(0.0), hex, func(p: Vector2) -> bool: return p.x > 15.0), "clearance: no part of the base over sea terrain")
