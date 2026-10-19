@@ -54,7 +54,7 @@ are unnecessary.
 `loading_screen.gd` keeps script warming, threaded scene loading and readiness gating.
 Begin appears as soon as the world and pending save are ready, independently of the art.
 The DS2 cream key remains beneath the artwork. The retired film and intro images remain
-available as source material but are excluded by all three release export presets.
+available as source material but are excluded by all six regular/demo export presets.
 The composition is a further 30% larger than the original carousel layout. It scales
 around each building's measured visible upper edge, preserving the previous clearance
 above its roof/rotors or highest smoke puff. Both incoming and outgoing tiles use their

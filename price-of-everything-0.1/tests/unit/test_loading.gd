@@ -66,7 +66,9 @@ func _test_loading_smoke_moves_during_the_night_hold() -> void:
 func _test_loading_smoke_layouts_are_in_release_exports() -> void:
 	var presets := ConfigFile.new()
 	presets.load("res://export_presets.cfg")
-	for section in ["preset.0", "preset.1", "preset.2"]:
+	for section in presets.get_sections():
+		if not section.begins_with("preset.") or section.ends_with(".options"):
+			continue
 		_check(str(presets.get_value(section, "include_filter", "")).contains("assets/loading/carousel/smoke-layouts.json"),
 			"loading: %s includes the non-resource smoke metadata" % presets.get_value(section, "name", section))
 
