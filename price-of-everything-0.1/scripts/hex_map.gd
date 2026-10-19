@@ -596,9 +596,11 @@ func _unhandled_input(event: InputEvent) -> void:
 				if not shift:
 					end_stockpile_destination_selection()
 				get_viewport().set_input_as_handled()
+			# demo:strip
 			elif MapMode.current_mode == MapMode.Mode.SURVEYING:
 				survey_tile_clicked.emit(tile_data)
 				get_viewport().set_input_as_handled()
+			# demo:end
 			elif BuildMode.is_active:
 				BuildMode.attempt_build(tile_data.id)
 			else:

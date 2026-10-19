@@ -397,6 +397,7 @@ const DECISION_DEFINITIONS := {
 					"describe": "Subsidies begin on turn {subsidy_start} for solar, wind, hydro and biomass power."}]},
 		],
 	},
+	# demo:strip
 	# The subsidy's wind-down warning — blocking, reserved by PolicyState to present on
 	# turn 180's DECIDE (payments start shrinking at 181, gone at 191).
 	"green_subsidy_end_notice": {
@@ -413,6 +414,7 @@ const DECISION_DEFINITIONS := {
 					"describe": "Subsidy payments decrease from turn {subsidy_wind_down} and end by turn {subsidy_end}."}]},
 		],
 	},
+	# demo:end
 	"distressed_asset": {
 		"title": "Distressed Asset Program",
 		"body": "Investors offer to buy your buildings and provide a rescue loan. This raises cash but leaves you without the buildings.",

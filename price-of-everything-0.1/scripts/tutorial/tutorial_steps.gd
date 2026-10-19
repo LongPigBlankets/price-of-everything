@@ -1478,6 +1478,7 @@ static func _integration_steps() -> Array:
 			},
 			"advance": "auto",
 		},
+		# demo:strip
 		{
 			"id": "survey_stub",
 			"chapter": "Integration · Fuel",
@@ -1494,6 +1495,7 @@ static func _integration_steps() -> Array:
 			},
 			"advance": "auto",
 		},
+		# demo:end
 		{
 			"id": "build_coal_mine",
 			"chapter": "Integration · Fuel",

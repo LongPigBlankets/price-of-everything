@@ -1,5 +1,34 @@
 # Load time: what is baked, and when to re-bake it
 
+## Buildings drawn 1.5× in 3D — 18 October 2026
+
+Every building (works, farms, forests, mines, wells and energy fields; player or NPC) now
+stands `BUILDINGS_SCALE` = 1.5 times its 2D slot or authored-lot size in the 3D view
+(`building_scale.gd`), so a level 3 works reads larger than a terrace of three houses.
+Farms draw their crop cells and farmhouse at the same scale (`farm_fields.gd` `DRAWN`):
+the field plot keeps its size and holds fewer, larger cells. The scale is applied in
+`board._solve_layout` after the authored lots have sized the buildings and before
+anything is fitted around them, so the full solve, changed tiles and the offline bakes
+agree. Town houses, civic decor, ports and pylons keep their size; the 2D map is unchanged.
+
+Buildings keep their lots and are not moved, so a larger building can reach a road: in
+the rebaked world snapshot 154 of 417 buildings touch a road and 46 pairs overlap (57 and
+5 at 1.0×; `tools/supply_chain_3d/trials/works_scale_audit.tscn`). Town houses still give
+way around them.
+
+Every scenery, continent and tile key changed, so the whole package was rebaked:
+`bake_continent_package` (600 tiles generated, 67 min; `--no-background-continent` is
+required or the review starts before the tiles exist), then `bake_world_snapshot`, then
+`bake_company_start` until settled, for the High preset and then with `--quality=low` for
+the flat view (four runs each), then High once more (settled at once). The company start
+also writes the road alignment memo. Order matters: the company start must be baked after
+the world snapshot, because with a snapshot installed the company view opens through the
+overlay and asks for different keys. Then the auxiliary keys `company_key_probe` lists for
+neither preset were dropped; the probe never lists the world snapshot or the alignment memo,
+so keep those. Installed package: **1,860 resources, 959,947,140 bytes**, validated. A
+fresh process with an empty user directory offers Begin at **21.2 s**; the company opens
+with 37 bundled hits and zero misses or writes; the continent has 107 bundled hits after
+streaming and no misses or writes. Every key the Low company view asks for is in the package.
 
 ## Low quality preset: the flat company view — 18 October 2026
 

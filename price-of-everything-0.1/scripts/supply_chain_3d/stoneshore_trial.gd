@@ -4,7 +4,7 @@ const TILES := ["tile_4_9", "tile_4_10", "tile_5_9", "tile_5_10", "tile_6_9"]
 const PACKAGE := "res://assets/supply_chain_3d/stoneshore_trial_bakes"
 
 static func preview_enabled() -> bool:
-	return "--stoneshore-review" in OS.get_cmdline_user_args()
+	return "--stoneshore-review" in preload("res://scripts/demo_build.gd").user_args()
 
 static func restrict_model(model: Dictionary) -> void:
 	for tid in model.tiles.keys():
@@ -50,7 +50,7 @@ static func dense_tiles(model: Dictionary) -> Array:
 	return result
 
 static func populate(model: Dictionary, terrain: Node = null) -> void:
-	if "--stoneshore-baseline" in OS.get_cmdline_user_args(): return
+	if "--stoneshore-baseline" in preload("res://scripts/demo_build.gd").user_args(): return
 	var scope := dense_tiles(model)
 	model.standing = model.standing.filter(func(s: Dictionary) -> bool:
 		return str(s.tile) not in scope or str(s.kind) != "house")

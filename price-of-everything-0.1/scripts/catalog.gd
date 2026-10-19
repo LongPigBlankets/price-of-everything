@@ -8,6 +8,7 @@ const BUILDINGS_CSV_PATH := "res://data/Buildings - buildingsMVP.csv"
 const PORTS_CSV_PATH := "res://data/ports.csv"
 const TILE_PROPS_CSV_PATH := "res://data/tile_properties.csv"
 const INFRA_CSV_PATH := "res://data/infrastructure.csv"
+const DemoBuild := preload("res://scripts/demo_build.gd")
 
 # recipes_all.csv references buildings by internal_name; a few don't match the
 # game's building internal_names, so alias them here. Recipes whose building can't
@@ -28,6 +29,11 @@ const BUILDING_ALIAS := {
 const HIDDEN_RECIPE_IDS := {
 	"r_078": true,  # Methane Pyrolysis — no methane in the demo
 }
+
+# Internal names of the buildings a demo run skipped, so their recipes are skipped too.
+var _demo_gated_internal_names: Dictionary = {}
+# Internal names of the waste goods a demo run skipped.
+var _demo_gated_good_names: Dictionary = {}
 
 # --- Goods storage ---
 var _goods_by_id: Dictionary = {}
@@ -639,6 +645,9 @@ func _load_goods() -> void:
 		var good := _parse_good_row(headers, line)
 		if good.is_empty():
 			continue
+		if DemoBuild.active() and DemoBuild.RECYCLING_GOOD_IDS.has(str(good.id)):
+			_demo_gated_good_names[str(good.internal_name)] = true
+			continue
 		_all_goods.append(good)
 		_goods_by_id[good.id] = good
 		if good.internal_name != "":
@@ -767,6 +776,8 @@ func _load_recipes() -> void:
 		var recipe := _parse_recipe_row(headers, line)
 		if recipe.is_empty():
 			continue
+		if DemoBuild.active() and _is_demo_gated_recipe(headers, line, recipe):
+			continue
 		_all_recipes.append(recipe)
 		_recipes_by_id[recipe.recipe_id] = recipe
 		var building_id: String = recipe.get("building_id", "")
@@ -881,6 +892,8 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 		var output_qty_str: String = raw.get("output_qty_%d" % i, "")
 		if output_name == "" or output_qty_str == "":
 			continue
+		if _demo_gated_good_names.has(output_name.strip_edges()):
+			continue   # a demo run drops a waste by-product, as the demo's recipes file does
 		var parsed_output_qty: int = int(output_qty_str)
 		if parsed_output_qty <= 0:
 			continue
@@ -1122,6 +1135,9 @@ func _load_buildings() -> void:
 		var building := _parse_building_row(headers, line)
 		if building.is_empty():
 			continue
+		if DemoBuild.active() and DemoBuild.is_gated_building(str(building.id)):
+			_demo_gated_internal_names[str(building.internal_name)] = true
+			continue
 		_all_buildings.append(building)
 		_buildings_by_id[building.id] = building
 		if building.internal_name != "":
@@ -1190,6 +1206,21 @@ func is_allowed_on_tile_type(internal_name: String, tile_type: String) -> bool:
 	if tile_type != "sea" and tile_type != "deep_sea":
 		return not is_sea_only
 	return is_sea_only or internal_name in (EconomyConfig.SEA_INFRASTRUCTURE.get(tile_type, []) as Array)
+
+# A demo run loads without the gated buildings, their recipes, and any recipe that makes or
+# consumes a recycling good. The demo export strips the same rows from the shipped CSV
+# (addons/demo_export/demo_data_filter.gd); this keeps an `--as-demo` run identical to it.
+func _is_demo_gated_recipe(headers: PackedStringArray, line: PackedStringArray, recipe: Dictionary) -> bool:
+	var col := headers.find("building_id")
+	var field := line[col].strip_edges() if col >= 0 and col < line.size() else ""
+	if _demo_gated_internal_names.has(BUILDING_ALIAS.get(field, field)):
+		return true
+	if DemoBuild.RECYCLING_GOOD_IDS.has(str(recipe.get("output_good_id", ""))):
+		return true
+	for item: Dictionary in recipe.get("inputs", []):
+		if DemoBuild.RECYCLING_GOOD_IDS.has(str(item.get("good_id", ""))):
+			return true
+	return false
 
 # Resolve a recipe's building reference (internal_name, possibly aliased) to a b_id.
 func _resolve_building_id(building_field: String) -> String:

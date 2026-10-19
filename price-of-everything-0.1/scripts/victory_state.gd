@@ -23,11 +23,15 @@ extends Node
 # to win climb from WIN_MIN_THRESHOLD (1 maxed track) at WIN_START_TURN to
 # WIN_MAX_THRESHOLD (4 maxed tracks) at MAX_TURNS — one extra required track per
 # WIN_STEP_TURNS. Milestones: turn 105 → 1 track, 170 → 2, 235 → 3, 300 → 4.
+# The demo plays the demo set only (DEMO_WIN_THRESHOLD, DEMO_TRACK_*); the campaign's
+# bar and tracks are stripped from it.
+# demo:strip
 const WIN_MIN_THRESHOLD := 1000   # 1 maxed track — winnable from turn 105 (flat before)
 const WIN_MAX_THRESHOLD := 4000   # 4 maxed tracks — required by turn 300
 const WIN_START_TURN := 105       # the bar is flat at 1 track until here, then rises
 const WIN_STEP_TURNS := 65        # turns per additional required track (105→170→235→300)
 const WIN_STEP_POINTS := 1000     # points per additional required track
+# demo:end
 ## The match length. Was a const 300, which was true of every match until the length
 ## selector became real — a 100-turn demo then showed "turn 7 of 300" in the victory panel
 ## while the top bar counted to 100. Read through, so there is one answer.
@@ -40,7 +44,9 @@ const CAMPAIGN_TRACK_MAX := {
 	"widest": 1000, "greenest": 1000,
 }
 # Display order: 3 on the top row + 2 below, in the panel.
+# demo:strip
 const CAMPAIGN_TRACK_ORDER: Array = ["autarkic", "logistics", "richest", "widest", "greenest"]
+# demo:end
 
 const AUTARKIC_START := 10
 const AUTARKIC_CAP := 30
@@ -65,6 +71,7 @@ const TREND_LEN := 10
 
 # Per-track display metadata. Colours are DS.PALETTE *keys* (resolved by the UI,
 # since the sim has no theme); the panel/widget read these from the breakdown.
+# demo:strip
 const CAMPAIGN_TRACK_NAMES := {
 	"autarkic": "Autarkic", "logistics": "Logistics", "richest": "Richest",
 	"widest": "Widest", "greenest": "Greenest",
@@ -80,6 +87,7 @@ const CAMPAIGN_TRACK_EXPLAIN := {
 	"widest": "Distinct tiles holding one of your (non-infrastructure) buildings — spread out across the map.",
 	"greenest": "Green share of the power you generate — replace fossil plants with solar & wind. Counts once your network generates 5,000 MW and draws 1,000 MW per turn.",
 }
+# demo:end
 
 # ── Demo victory set ───────────────────────────────────────────────────────
 #
@@ -154,16 +162,26 @@ const DEMO_TIERS: Array[String] = ["raw", "processed", "intermediate", "finished
 # VARIABLES, not constants: a match picks its set from the ruleset, and everything that
 # renders a track — the top bar's meters, the victory panel, the end screen, telemetry —
 # reads these rather than knowing the names, so a different set needs no changes there.
+# demo:strip
 var TRACK_ORDER: Array = CAMPAIGN_TRACK_ORDER.duplicate()
 var TRACK_MAX: Dictionary = CAMPAIGN_TRACK_MAX.duplicate()
 var TRACK_NAMES: Dictionary = CAMPAIGN_TRACK_NAMES.duplicate()
 var TRACK_COLOR_KEYS: Dictionary = CAMPAIGN_TRACK_COLOR_KEYS.duplicate()
 var TRACK_EXPLAIN: Dictionary = CAMPAIGN_TRACK_EXPLAIN.duplicate()
 var _demo_rules := false
+# demo:keep
+#| var TRACK_ORDER: Array = DEMO_TRACK_ORDER.duplicate()
+#| var TRACK_MAX: Dictionary = {"crown": 1000, "tiers": 1000, "distance": 1000, "green_demo": 1000, "estate": 1000}
+#| var TRACK_NAMES: Dictionary = DEMO_TRACK_NAMES.duplicate()
+#| var TRACK_COLOR_KEYS: Dictionary = DEMO_TRACK_COLOR_KEYS.duplicate()
+#| var TRACK_EXPLAIN: Dictionary = DEMO_TRACK_EXPLAIN.duplicate()
+#| var _demo_rules := true
+# demo:end
 
 ## Point the track tables at the set this match runs. Called whenever the ruleset lands
 ## (new game and load alike), so a save carries its own answer.
 func apply_ruleset(rules: Dictionary) -> void:
+	# demo:strip
 	_demo_rules = str(rules.get("victory_set", "")) == "demo_itch"
 	TRACK_ORDER = (DEMO_TRACK_ORDER if _demo_rules else CAMPAIGN_TRACK_ORDER).duplicate()
 	TRACK_NAMES = (DEMO_TRACK_NAMES if _demo_rules else CAMPAIGN_TRACK_NAMES).duplicate()
@@ -172,6 +190,9 @@ func apply_ruleset(rules: Dictionary) -> void:
 	TRACK_MAX = {}
 	for key in TRACK_ORDER:
 		TRACK_MAX[key] = int(CAMPAIGN_TRACK_MAX.get(key, 1000))
+	# demo:keep
+	#| _demo_rules = true
+	# demo:end
 
 # ── Saved state (round-trips via export/import — spec §3) ──────────────────
 var autarkic_streak: int = 0
@@ -237,9 +258,13 @@ func conditions_enabled() -> bool:
 func win_threshold_for_turn(turn: int) -> int:
 	if _demo_rules:
 		return DEMO_WIN_THRESHOLD   # flat: 2.5 tracks, whatever the turn
+	# demo:strip
 	var steps := float(maxi(0, turn - WIN_START_TURN)) / float(WIN_STEP_TURNS)
 	return int(clampf(float(WIN_MIN_THRESHOLD) + steps * float(WIN_STEP_POINTS),
 		float(WIN_MIN_THRESHOLD), float(WIN_MAX_THRESHOLD)))
+	# demo:keep
+	#| return DEMO_WIN_THRESHOLD
+	# demo:end
 
 # total = Σ round(best_progress * TRACK_MAX). You start at 0 — no base. Public for tests.
 func total_for_turn(_turn: int = 0) -> int:
@@ -451,6 +476,7 @@ func _live_progress(key: String) -> float:
 			return _demo_green_progress()
 		"estate":
 			return _demo_estate_progress()
+		# demo:strip
 		"autarkic":
 			if produced_units_lifetime < AUTARKIC_MIN_UNITS:
 				return 0.0
@@ -473,6 +499,7 @@ func _live_progress(key: String) -> float:
 			if int(g.total) < GREEN_MIN_POWER or int(g.consumed) < GREEN_MIN_CONSUMED or float(g.share) < GREEN_FLOOR:
 				return 0.0
 			return clampf((float(g.share) - GREEN_FLOOR) / (1.0 - GREEN_FLOOR), 0.0, 1.0)
+		# demo:end
 	return 0.0
 
 func _richest_metric() -> float:
@@ -635,7 +662,11 @@ func _build_breakdown(turn: int, total: int) -> Dictionary:
 		"track_total": total,
 		"win_threshold": win_threshold_for_turn(turn),    # the rising bar for THIS turn
 		# The eventual requirement: the campaign's turn-300 bar, or the demo's flat one.
+		# demo:strip
 		"win_threshold_max": DEMO_WIN_THRESHOLD if _demo_rules else WIN_MAX_THRESHOLD,
+		# demo:keep
+		#| "win_threshold_max": DEMO_WIN_THRESHOLD,
+		# demo:end
 		"won": won,
 		"won_turn": won_turn,
 		"turn": turn,

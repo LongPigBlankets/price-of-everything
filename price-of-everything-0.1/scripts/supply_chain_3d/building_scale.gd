@@ -8,6 +8,23 @@ const TERRACE_HOMES := 3.0
 const SEMI_HOME_WIDTHS := 2.5
 const SEMI_HEIGHT := HOUSE_HEIGHT * 1.1
 
+## Every building (works, farms, forests, mines, wells, energy fields; player or NPC) stands
+## this much larger in 3D than its 2D slot share or authored lot, so a level 3 works reads
+## larger than a terrace of three houses. Town houses, civic decor, ports and pylons keep
+## their size.
+const BUILDINGS_SCALE := 1.5
+
+static func is_building(s: Dictionary) -> bool:
+	return str(s.get("kind", "")) in ["building", "site"]
+
+## Grow the buildings in a freshly built board model, once, before it is laid out.
+static func scale_buildings(model: Dictionary) -> void:
+	for s in model.get("standing", []):
+		if not is_building(s) or s.get("building_scaled", false): continue
+		s.pad = float(s.get("pad", s.side)) * BUILDINGS_SCALE
+		s.side = float(s.side) * BUILDINGS_SCALE
+		s.building_scaled = true
+
 static func semi_side() -> float:
 	var terrace := Assets.key_for("house", 1)
 	var semi := Assets.key_for("civic_semi", 1)

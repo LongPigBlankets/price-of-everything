@@ -175,7 +175,7 @@ const TransportBake := preload("res://scripts/supply_chain_3d/transport_bake.gd"
 
 func prepare_transport(model: Dictionary) -> void:
 	var start := Time.get_ticks_usec()
-	var trace := "--trace-transport" in OS.get_cmdline_user_args()
+	var trace := "--trace-transport" in preload("res://scripts/demo_build.gd").user_args()
 	if trace: print("[TRANSPORT STAGE] begin roads=",model.get("roads",[]).size()," ",Time.get_ticks_msec())
 	roads=model.get("roads",[]); lines=model.get("lines",[]); depots=model.get("depots",[]); stations=model.get("stations",[]); neighbourhood=model.get("neighbourhood",{})
 	if flat:
@@ -417,7 +417,7 @@ func tile_scope_key(tid: String) -> String:
 	return key
 
 func prepare_scenery(host: Node, model: Dictionary, prepared: Dictionary = {}) -> void:
-	var water_review := "--water-review" in OS.get_cmdline_user_args()
+	var water_review := "--water-review" in preload("res://scripts/demo_build.gd").user_args()
 	_detail_standing = model.get("standing", [])
 	_visibility_standing.clear()
 	for s in model.get("standing", []):

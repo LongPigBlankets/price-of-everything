@@ -378,8 +378,10 @@ func _run_setup(actions: Array) -> void:
 				BuildMode.enter_infrastructure_mode(str(a.get("infra", "")))
 			"exit_build_mode":
 				BuildMode.exit_build_mode()
+			# demo:strip
 			"open_survey":
 				MapMode.set_sentinel_mode(MapMode.Mode.SURVEYING, MapMode.SURVEYING_SENTINEL)
+			# demo:end
 			"open_logistics":
 				if MapMode.current_mode != MapMode.Mode.LOGISTICS:
 					MapMode.set_sentinel_mode(MapMode.Mode.LOGISTICS, MapMode.LOGISTICS_SENTINEL)

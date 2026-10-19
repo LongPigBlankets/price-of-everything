@@ -456,8 +456,10 @@ func _make_build_legend(infrastructure_type: String = "") -> PanelContainer:
 		_add_build_legend_row(box, BUILD_RED, "Cannot build")
 		_add_build_legend_row(box, BUILD_DARK_GREEN, "1 input present")
 		_add_build_legend_row(box, BUILD_LIGHT_GREEN, "2+ / all met")
+	# demo:strip
 	_add_build_legend_note(box, "Unsurveyed tiles are hidden")
 	_add_build_legend_note(box, "Partial surveys can match")
+	# demo:end
 	return panel
 
 func _render_infrastructure_build_overlay(infra_type: String) -> void:

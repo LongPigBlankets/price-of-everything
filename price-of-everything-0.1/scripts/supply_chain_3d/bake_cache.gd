@@ -35,10 +35,10 @@ func _init() -> void:
 	if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
 		bundled_directory = preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").PACKAGE
 		directory = "user://supply_chain_3d_stoneshore_trial"
-		for arg in OS.get_cmdline_user_args():
+		for arg in preload("res://scripts/demo_build.gd").user_args():
 			if arg.begins_with("--trial-cache-directory="): directory = arg.trim_prefix("--trial-cache-directory=")
 
-	for arg in OS.get_cmdline_user_args():
+	for arg in preload("res://scripts/demo_build.gd").user_args():
 		if arg.begins_with("--bake-package-directory="): bundled_directory = arg.trim_prefix("--bake-package-directory=")
 		if arg.begins_with("--bake-cache-directory="): directory = arg.trim_prefix("--bake-cache-directory=")
 
@@ -120,7 +120,7 @@ static func source_key(layer: String = "terrain") -> String:
 	return _source_keys[layer]
 
 static var _layout_memo: Dictionary = {}
-static var _trace_misses := "--trace-bake-misses" in OS.get_cmdline_user_args()
+static var _trace_misses := "--trace-bake-misses" in preload("res://scripts/demo_build.gd").user_args()
 
 func read(key: String) -> Dictionary:
 	if not enabled: return {}

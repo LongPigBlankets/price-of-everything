@@ -1,0 +1,37 @@
+# Text that must never appear in a demo pack, in any file (data, scenes, compiled scripts).
+# One string per line; blank lines and # comments are ignored. build_demo.py verify adds the
+# waste goods' internal and display names (DemoBuild.RECYCLING_GOOD_IDS) on its own.
+# Pick text the demo strips that no kept feature would also use.
+
+# Carbon Levy after turn 100 and the coal ban.
+Carbon Levy: Phase 2
+Carbon Levy: Phase 3
+co2_tax_p2
+Prohibition in force
+green_subsidy_end_notice
+Green Energy Subsidy Ended
+
+# The campaign's victory rules and lengths.
+The bar rises with the turn
+400 turns
+God of Industry
+
+# Surveying.
+Survey for coal
+Maximum limit of surveys
+Survey this tile
+survey_overlay
+survey_dialog
+
+# Advisors outside the demo three, and their missions.
+Alexandra Reyes
+Hal Rooker
+loan interest halved
+
+# Gated buildings, research and cheats.
+Recycling Plant
+recycling_plant
+Hyperspectral Remote Sensing
+Forced bankruptcy
+Demo restrictions lifted
+map_editor
