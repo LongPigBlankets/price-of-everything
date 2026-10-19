@@ -7,6 +7,10 @@ Status: **analysis only — no files changed.** Looks at
 [`scripts/production.gd`](../scripts/production.gd) /
 [`scripts/catalog.gd`](../scripts/catalog.gd) actually charge them each turn.
 
+Lifecycle note, 19 October 2026: retained historical balance analysis. Figures below
+describe the proposal's original snapshot. Follow [content authoring](content-authoring.md)
+for approved changes; the former recipe-rebalance generator is archived and retired.
+
 ---
 
 ## 1. How the two per‑turn costs are computed
@@ -154,14 +158,13 @@ gives them teeth.
 
 ## 5. Link to the recipe rebalance
 
-The recipe generator
-([`scripts/rebalance_recipes.py`](../scripts/rebalance_recipes.py)) hardcodes a
-`FIXED` per‑building dict using *today's* numbers (mine 2.8, furnace 4.8, chem 5.6,
-high‑tech 4.8, …). If these recommendations are adopted, update that `FIXED` dict
-to match (mine 2.24, furnace 4.06, chem 5.34, high‑tech **6.12**, …) and re‑run —
-mostly small shifts, except high‑tech goods get a little pricier (their labour
-roughly doubles), which *reinforces* the "advanced goods reward integration"
-design.
+The [archived rebalance proposal](../../archive/legacy-recipes/scripts/rebalance_recipes.py.txt)
+hardcoded the earlier `FIXED` values (mine 2.8, furnace 4.8, chem 5.6, high-tech 4.8).
+This analysis proposed mine 2.24, furnace 4.06, chem 5.34 and high-tech **6.12**.
+Those numbers remain historical evidence. For an approved running-cost change, edit
+the maintained building/economy inputs and measure the live simulation; do not update
+or rerun the retired proposal generator. The original hypothesis was that higher
+high-tech labour costs would reinforce the reward for integration.
 
 ## 6. What I would not change
 - Total fixed‑cost magnitude (£~1.5–6/turn) — it's already ~10 % of recipe

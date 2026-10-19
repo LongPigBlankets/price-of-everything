@@ -140,7 +140,7 @@ River direction (source→mouth) is derivable from `river_type`
 ## 3. Data — the CSV columns
 
 Both columns already exist in `data/recipes_all.csv` (positions 28/29, after
-`requirements`) and in `recipes_master_source.csv`; every cell is currently empty
+`requirements`) (the former master source is now archived); every cell is currently empty
 and `catalog._parse_recipe_row()` ignores them. Edit `recipes_all.csv` directly
 (the generator is stale — established convention).
 

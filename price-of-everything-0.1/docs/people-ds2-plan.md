@@ -1,6 +1,6 @@
 # People panel: how it is used, what it holds, and a DS2 arrangement
 
-Status: built and the default since 27 September 2026 (`UiPrefs.use_people_ds2`, the cheat `toggle people ds2` switches back to today's panel), branch `people-ds2`. The owner's first review is answered in §10. Both tabs are built from the study's answers (§8, each "built as studied, owner to confirm"); what was built, and what is left, is in §9. The concept study is render set `peoplestudy`, seed 437, in `tools/button_mockup/cluster.html`; the game's own layers are the sets `peoplecab` to `peopleknob`, seeds 438 to 443.
+Status, 19 October 2026: **implemented; historical rollout plan retained**. `scripts/people_panel.gd` directly hosts `scripts/people_ds2/`. The former DS2 switchback flag/terminal command is retired. Baseline descriptions and phase plans below describe the earlier rollout, not the current panel structure. Retain its design decisions and approval evidence; follow the current [DS2 theme](ds2-theme.md) and [lifecycle index](../../docs/project-lifecycle.md).
 
 Read with `docs/ds2-theme.md` (the look, the kit, §13 and §14 for the method), `docs/ds2-owner-decisions.md` (settled rulings, including Digital displays) and `docs/tile-view-ds2-plan.md`, the model for this plan.
 

@@ -164,7 +164,7 @@ touching the player's buildings.
 | `scripts/economy_config.gd:81-105` | replace band constants + `price_impact_rate()`; delete flat `price_impact_recovery()`; add ladder table, cap pair, inflation schedule |
 | `scripts/market_row.gd:158+` | threshold column/tooltip is hardcoded to 4 bands — rebuild for the ladder (headline 1x figure stays); tooltip states the floor/ceiling asymmetry |
 | `scripts/search_overlay.gd:1123` | drop the "Decay rate" encyclopedia row (or replace with the good's current 1x threshold) |
-| `data/goods.csv` / `catalog.gd:664` | `decay_rate` column retired from pricing; keep parsed for compat |
+| `data/Goods - goodsMVP.csv` / `catalog.gd` | `decay_rate` column retired from pricing; keep parsed for compat |
 | early-game onboarding §4.1/§8 | calm era keeps only the impact guard; decay-clock probe deleted |
 | `docs/future-market-dynamics.md` §5 | update the "decay stays orthogonal" note — decay is now gone at EA, not post-EA |
 | balance tooling | sweep `tools/` + `balance.py` for `decay_rate` reads; per the engine-cost-model ground truth doc the design model already ignores glut, so re-verify the 80/80 band solve against gently-rising prices |

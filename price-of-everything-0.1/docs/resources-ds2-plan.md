@@ -1,6 +1,6 @@
 # Resources panel: how it is used, what it holds, and a DS2 arrangement
 
-Status: built and the default since 2 October 2026 (owner approved the first build; `toggle resources ds2` switches back to v2): the shell, the table and a good's costs opened under its row (§9). The owner's answers to §8 are recorded there. One concept study is rendered (§5). Read with `docs/ds2-theme.md` (the look, the kit, the method in §13 and §14), `docs/ds2-owner-decisions.md` (settled rulings, including the Digital displays money rule) and `docs/building-ledger-ds2-plan.md` (the sibling this panel borrows from). The tile view's plan is the model for this one.
+Status, 19 October 2026: **implemented; historical rollout plan retained**. `scripts/resource_panel.gd` directly hosts `scripts/resources_ds2/`. The former DS2 switchback flag/terminal command is retired. Baseline descriptions and phase plans below describe the earlier rollout, not the current panel structure. Retain its design decisions and approval evidence; follow the current [DS2 theme](ds2-theme.md) and [lifecycle index](../../docs/project-lifecycle.md).
 
 ## 0. The brief
 

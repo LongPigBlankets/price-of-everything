@@ -1,0 +1,3 @@
+# Archived source is byte-preserved; checksums must survive checkout on every OS.
+legacy-recipes/** -text
+scene-recovery/** -text
