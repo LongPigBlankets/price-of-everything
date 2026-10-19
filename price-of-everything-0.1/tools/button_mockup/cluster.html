@@ -2369,7 +2369,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // missionslot, missionboard, darkmetal, desk, menuplate, tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin, court, dockicon, dockpad. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy.
+  // missionslot, missionboard, darkmetal, desk, menuplate, tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin, court, dockicon, dockpad. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy, registrystudy.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -7709,6 +7709,445 @@ async function exportLayers() {
     const all = (g, col) => { for (const [ch, [x, y, , , ox]] of Object.entries(at.cells)) titleLetter(ch, x + ox, y + at.baseline)(g, col); };
     await post('title_glyph_shadows', frame2d(at.W, at.H, (g) => drawIconShadows(g, at.W, at.H, [{ height: TITLE.height, draw: all }])));
     layout.title_glyphs = { size: [at.W, at.H], font_size: TITLE.size, baseline: at.baseline, glyphs: at.cells };
+  });
+
+  // --- a study for the New Game settings (docs/new-game-ds2-plan.md §2 and §7), not a game layer: the company registry.
+  // The registrar's desk under the house light, at the panel's width (1396 logical px): one dark walnut desk top, a navy
+  // steel panel screwed across its head with the REGISTRY nameplate and the Back key; the card index, an oak rack of seven
+  // pigeonholes with a manila company file in each, its tab in the start's tier colour, the good's tile in a cut window,
+  // the chosen file pulled out; the chosen file open on a green leather blotter (the story, the buildings as a strip of
+  // the building and the good it makes with a hover slip for the name and place, the figures as ledger lines in ink, the
+  // livery as a paint card of squares); the form of incorporation on cream plastic (the grade stamped in red ink, the
+  // charter's term on a drum, the tick boxes); the grade stamps as cream keys in a dark steel rack over the red ink pad;
+  // and the company seal, a cast iron press whose lever carries the Start New Game key. Three states on one sheet: the
+  // full game; the demo with steel lockboxes over the five full game starts and over the stamps; the demo with the wider
+  // book and no form at all. Start New Game stays in every state.
+  if (want('registrystudy')) await withSeed(488, async () => {
+    for (const f of ['500 30px "IBM Plex Sans"', '600 30px "IBM Plex Sans"', '700 30px "IBM Plex Sans"', '600 30px "Barlow Condensed"', '700 30px "Barlow Condensed"', `60px ${TITLE_FAMILY}`]) await document.fonts.load(f);
+    const PW = 2617, PH = 1740, PAD = 40, MX = 60, CAPT = 110, MR = 460, ROWGAP = 170;
+    const STATES = ['full', 'demo_box', 'demo_wide'];
+    const W = MX + PW + MR, H = CAPT + STATES.length * (PH + ROWGAP) - ROWGAP + 70;
+    const T = 16, LIGHT = '#e8eef7', PLEX = '"IBM Plex Sans"', BARLOW = '"Barlow Condensed"';   // T: the desk top, 6 depth + 2 x 5 bevel
+    const INK_RED = '#8f1f19', INK_GREEN = '#1d6b3a', INK_DIM = '#3a4a5c';
+    const K = peopleKit(), prints = [], notes = [], shots = [];
+    let group = null, OX = MX, OY = CAPT;
+    const X = (x) => OX + x, Z = (z) => OY + z;
+    const add = (m, x, z, y = T) => { m.position.set(x, y, z); group.add(m); return m; };
+    const shade = (m) => { m.traverse((o) => { if (o.isMesh) o.castShadow = o.receiveShadow = true; }); return m; };
+    const measure = (str, font) => { const c = document.createElement('canvas').getContext('2d'); c.font = font; return c.measureText(str).width; };
+    const wrapLines = (str, font, maxW) => {
+      const out = []; let line = '';
+      for (const w of str.split(' ')) { const t = line ? line + ' ' + w : w; if (line && measure(t, font) > maxW) { out.push(line); line = w; } else line = t; }
+      if (line) out.push(line); return out;
+    };
+
+    // Print: white with a dark shadow over anything dark, drawn over the render as the game prints live; navy ink into a
+    // light face (paper, manila, cream plastic) with a faint light shadow.
+    const printWhite = (str, x, y, size, { weight = 500, family = PLEX, align = 'left', maxW = 900, colour = LIGHT } = {}) => prints.push((g) => {
+      g.save(); g.shadowColor = 'rgba(0,0,0,0.9)'; g.shadowOffsetX = 1.7; g.shadowOffsetY = 1.7; g.shadowBlur = 1.2;
+      text(g, str, x, y, maxW, size, colour, { align, weight, family }); g.restore();
+    });
+    const ink = (c, str, x, y, size, colour = NAVY, { weight = 500, family = PLEX, align = 'left', maxW = 900 } = {}) => {
+      c.save(); c.shadowColor = 'rgba(255,255,255,0.55)'; c.shadowOffsetX = 1; c.shadowOffsetY = 1;
+      text(c, str, x, y, maxW, size, colour, { align, weight, family }); c.restore();
+    };
+    /** A drum counter (Building Detail's), hgt tall, its left edge at x, centred on cz. Returns its width. */
+    const drum = (cells, str, x, cz, base, hgt = 64) => {
+      const { cap, cell, H: CH, win, drumR } = COUNTER, Wc = 2 * cap + cells * cell, k = hgt / CH, g = new THREE.Group();
+      const wy = (win[0] + win[1]) / 2, wh = win[1] - win[0];
+      const hs = rrShape(Wc - 4, CH - 4, 8); hs.holes.push(rr(new THREE.Path(), Wc - 2 * cap + 8, wh, 3, 0, wy - CH / 2));
+      const housing = new THREE.Mesh(extrude(hs, 2, 2, 1.6, 3), MAT.frame); housing.castShadow = housing.receiveShadow = true; housing.position.set(Wc / 2, 2, CH / 2); g.add(housing);
+      const dm = new THREE.MeshStandardMaterial({ color: 0x151618, roughness: 0.45, metalness: 0.2, envMap: studioEnv, envMapIntensity: 0.6 });
+      for (let i = 0; i < cells; i++) { const d = new THREE.Mesh(new THREE.CylinderGeometry(drumR, drumR, cell - 2.4, 48, 1).rotateZ(Math.PI / 2), dm); d.position.set(cap + i * cell + cell / 2, 4.6 - drumR, wy); d.receiveShadow = true; g.add(d); }
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(Wc - 2 * cap + 8, wh).rotateX(-Math.PI / 2), MAT.gap); floor.position.set(Wc / 2, -2, wy); g.add(floor);
+      g.scale.setScalar(k); const cz0 = cz - CH * k / 2;
+      add(g, x, cz0, base + 1);
+      const chars = str.padStart(cells, ' ');
+      prints.push((c) => {
+        [...chars].forEach((ch, i) => { if (ch !== ' ') text(c, ch, x + k * (cap + i * cell + cell / 2), cz0 + k * wy + 1, 40, k * 34, '#efede6', { align: 'center', weight: 600, family: BARLOW }); });
+        c.save(); c.translate(x, cz0); c.scale(k, k); paintCounterGlass(c, Wc); c.restore();
+      });
+      return Wc * k;
+    };
+
+    // Materials: the two woods (the court's oak, drawn warmer for walnut), paper and manila, cast iron, felt.
+    const wood = (w, h, base, along = 'x', dark = '26,13,6', light = '150,100,58') => canvas2d(w, h, (c) => {
+      c.fillStyle = base; c.fillRect(0, 0, w, h);
+      const len = along === 'x' ? w : h, across = along === 'x' ? h : w;
+      for (let i = 0; i < across * 1.5; i++) {
+        const a = rand() * across, amp = 1.5 + rand() * 5, f = 90 + rand() * 280, ph = rand() * 6;
+        c.strokeStyle = `rgba(${rand() < 0.62 ? dark : light},${0.05 + rand() * 0.13})`; c.lineWidth = 0.5 + rand() * 1.5; c.beginPath();
+        for (let t = 0; t <= len; t += 16) { const o = a + Math.sin(t / f + ph) * amp; if (along === 'x') c.lineTo(t, o); else c.lineTo(o, t); }
+        c.stroke();
+      }
+      for (let i = 0; i < w * h / 26000; i++) { const x = rand() * w, y = rand() * h, r = 18 + rand() * 60, g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, `rgba(${rand() < 0.5 ? '0,0,0' : '255,214,160'},${0.03 + rand() * 0.05})`); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.fillRect(x - r, y - r, 2 * r, 2 * r); }
+    });
+    const polish = (map, w, h) => new THREE.MeshPhysicalMaterial({ map: faceTexture(map, w, h), roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.22, envMap: studioEnv, envMapIntensity: 0.3 });
+    const darkSide = new THREE.MeshStandardMaterial({ color: 0x24140a, roughness: 0.55 });
+    /** Paper or manila: a flat colour under fine fibre speckle and a few soft clouds; `paint` prints on it. */
+    const fibre = (w, h, base, tint, paint) => canvas2d(w, h, (c) => {
+      c.fillStyle = base; c.fillRect(0, 0, w, h);
+      for (let i = 0; i < w * h / 45; i++) { c.fillStyle = `rgba(${tint},${0.04 + rand() * 0.1})`; c.fillRect(rand() * w, rand() * h, 0.5 + rand() * 1.4, 0.5 + rand()); }
+      for (let i = 0; i < w * h / 30000; i++) { const x = rand() * w, y = rand() * h, r = 40 + rand() * 110, g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, `rgba(${tint},${0.03 + rand() * 0.05})`); g.addColorStop(1, `rgba(${tint},0)`); c.fillStyle = g; c.fillRect(x - r, y - r, 2 * r, 2 * r); }
+      paint?.(c);
+    });
+    const matte = (map, w, h) => new THREE.MeshStandardMaterial({ map: faceTexture(map, w, h), roughness: 0.88, metalness: 0 });
+    const paperSide = new THREE.MeshStandardMaterial({ color: 0xd9ccae, roughness: 0.9 });
+    const manilaSide = new THREE.MeshStandardMaterial({ color: 0xb08f55, roughness: 0.9 });
+    const iron = new THREE.MeshStandardMaterial({ color: 0x2b2d30, map: noiseTexture(26, 24, 60), metalness: 0.55, roughness: 0.72, envMap: studioEnv, envMapIntensity: 0.35 });
+    const felt = new THREE.MeshStandardMaterial({ color: 0x1b2626, roughness: 0.96 });
+    const darkPlate = (w, h) => plateMaterial(w, h, { icons: [], buttons: [], screws: [], base: DARK_STEEL_CANVAS, rub: '130,138,150' });
+
+    /** The nameplate: black enamel, its words raised in white Bebas, a rivet at each corner (the tile view's). */
+    const namePlate = (x, y, w, h, str, base) => {
+      const tb = { x: 14, y: 5, w: w - 28, h: h - 10 };
+      const drawTitle = (g, col) => text(g, str, tb.w / 2, tb.h / 2 + 3, tb.w - 4, 56, col, { weight: 400, family: TITLE_FAMILY, align: 'center' });
+      const plateC = canvas2d(w, h, (c) => {
+        c.fillStyle = '#16181c'; c.fillRect(0, 0, w, h);
+        for (let i = 0; i < w * h / 120; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.015 + rand() * 0.025})`; c.fillRect(rand() * w, rand() * h, 1 + rand() * 2, 1 + rand() * 2); }
+        drawIconShadows(c, w, h, [{ height: 5, draw: (g, col) => { g.save(); g.translate(tb.x, tb.y); drawTitle(g, col); g.restore(); } }]);
+      });
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 6), 2, 1.2, 1, 3), [new THREE.MeshPhysicalMaterial({ map: faceTexture(plateC, w, h), roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.2, envMap: studioEnv, envMapIntensity: 0.5 }), K.darkSteel])), x + w / 2, y + h / 2, base);
+      add(relief(tb.w, tb.h, (g) => drawTitle(g, '#fff'), WHITE_LETTERS, { height: 5, soften: 0.7 }), x + tb.x + tb.w / 2, y + tb.y + tb.h / 2, base + 4.7);
+      for (const [rx, rz] of [[9, 9], [w - 9, 9], [9, h - 9], [w - 9, h - 9]]) {
+        const rv = new THREE.Mesh(new THREE.SphereGeometry(3, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), K.darkSteel); rv.scale.y = 0.55; add(shade(rv), x + rx, y + rz, base + 4.4);
+      }
+    };
+    /** A small cream key with a navy glyph (a chevron left or right). */
+    const smallKey = (dir, x, z, base, s = 76) => add(keycap(s, s, 6, (g, a, b) => {
+      g.strokeStyle = NAVY; g.lineWidth = a * 0.13; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath();
+      if (dir === 'left') { g.moveTo(a * 0.6, b * 0.28); g.lineTo(a * 0.38, b * 0.5); g.lineTo(a * 0.6, b * 0.72); }
+      else { g.moveTo(a * 0.4, b * 0.28); g.lineTo(a * 0.62, b * 0.5); g.lineTo(a * 0.4, b * 0.72); }
+      g.stroke();
+    }), x, z, base);
+    /** A wide cream key with its words printed navy (greyed when it cannot be pressed); latched down when `down`. */
+    const wideKey = (str, x, z, w, h, base, { size = 28, grey = false, down = false } = {}) => {
+      const k = keycap(w, h, 8, (g, a, b) => text(g, str, a / 2, b / 2 + 1, a - 22, size, grey ? '#8a8477' : NAVY, { align: 'center', weight: 700, family: BARLOW }));
+      if (down) k.userData.cap.position.y -= 5;
+      return add(k, x, z, base);
+    };
+    /** A good's cream tile with its icon, px square, drawn into a face at (x, y). */
+    const goodTile = (c, img, x, y, px) => {
+      c.save(); c.shadowColor = 'rgba(0,0,0,0.35)'; c.shadowBlur = 4; c.shadowOffsetX = 1.5; c.shadowOffsetY = 2;
+      c.fillStyle = '#f3e7cc'; c.beginPath(); c.roundRect(x, y, px, px, px * 0.12); c.fill(); c.restore();
+      const k = 0.84, s = px * k; c.drawImage(img, x + (px - s) / 2, y + (px - s) / 2, s, s);
+    };
+    /** The red stamp's impression at (cx, cy), a little uneven, set at a slant. */
+    const impression = (c, str, cx, cy, w = 236) => {
+      c.save(); c.translate(cx, cy); c.rotate(-0.07); c.globalAlpha = 0.86;
+      for (const [dx, dy, a] of [[1.5, 1, 0.35], [-1, 1.5, 0.3], [0, 0, 1]]) {
+        c.save(); c.globalAlpha = a; c.translate(dx, dy); c.strokeStyle = '#b8261c'; c.lineWidth = 3; c.beginPath(); c.roundRect(-w / 2, -32, w, 64, 6); c.stroke();
+        text(c, str, 0, 2, w - 36, 44, '#b8261c', { weight: 700, family: BARLOW, align: 'center' }); c.restore();
+      }
+      c.restore();
+      for (let i = 0; i < 80; i++) { c.fillStyle = 'rgba(243,231,204,0.5)'; c.fillRect(cx - w / 2 + rand() * w, cy - 32 + rand() * 64, 1 + rand() * 3, 1 + rand()); }   // the ink's dry spots
+    };
+    /** A lockbox lid: a dark steel plate over a part of the desk the demo keeps shut, hinged on the left, a hasp and a brass
+     * padlock on the right, a brass plate reading FULL GAME. */
+    const lid = (x0, z0, w, h, base, label = 'FULL GAME') => {
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 12), 8, 3, 2.4, 4), [darkPlate(w, h), MAT.plateSide])), x0 + w / 2, z0 + h / 2, base);
+      const top = base + 8 + 6;
+      for (const f of [0.18, 0.5, 0.82]) add(shade(new THREE.Mesh(new THREE.CylinderGeometry(9, 9, 72, 18).rotateX(Math.PI / 2), K.darkSteel)), x0 + 8, z0 + h * f, base + 9);
+      const narrow = w < 400, hx = narrow ? x0 + w / 2 : x0 + w - 44, hz = narrow ? z0 + h - 70 : z0 + h / 2 - 8;
+      add(shade(new THREE.Mesh(extrude(rrShape(28, 92, 8), 4, 1.5, 1.2, 3), [K.brass, K.brass])), hx, hz, top);
+      K.padlock(group, hx, hz + 38, top + 7, 0.95);
+      const pw = narrow ? w - 60 : 300, ph = 58, pcx = narrow ? x0 + w / 2 : x0 + w / 2 - 30, pcz = narrow ? z0 + h / 2 - 40 : z0 + h / 2;
+      const plate = canvas2d(pw, ph, (c) => {
+        c.fillStyle = '#c29a50'; c.fillRect(0, 0, pw, ph);
+        for (let i = 0; i < ph * 5; i++) { const y = rand() * ph; c.strokeStyle = `rgba(${rand() < 0.5 ? '255,236,190' : '96,70,30'},${0.08 + rand() * 0.12})`; c.lineWidth = 0.5; c.beginPath(); c.moveTo(rand() * 40, y); c.lineTo(pw - rand() * 40, y); c.stroke(); }
+        text(c, label, pw / 2, ph / 2 + 2, pw - 60, 34, '#0b2340', { weight: 700, family: BARLOW, align: 'center' });
+      });
+      add(shade(new THREE.Mesh(extrude(rrShape(pw, ph, 5), 1.6, 1.2, 0.9, 3), [new THREE.MeshStandardMaterial({ map: faceTexture(plate, pw, ph), metalness: 0.75, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.7 }), K.brass])), pcx, pcz, top);
+      for (const dx of [-pw / 2 + 14, pw / 2 - 14]) add(screw(4), pcx + dx, pcz, top + 4);
+      printWhite('Opens with the full game.', pcx, pcz + 58, 24, { weight: 500, align: 'center', maxW: w - 24 });
+    };
+
+    // The starts, the two companies the sheet opens (the full game's Troubled Carmaker, the demo's Metal Magnate), the icons.
+    const STARTS = [
+      { name: 'Metal Magnate', tier: 'green', icon: 'g_004_iron_ingots' },
+      { name: 'Glass Merchant', tier: 'green', icon: 'g_038_glass' },
+      { name: 'Open Field', tier: 'amber', icon: 'g_062_biomass' },
+      { name: 'Troubled Carmaker', tier: 'amber', icon: 'g_056_ice_car' },
+      { name: 'Semiconductor Turnaround', tier: 'amber', icon: 'g_041_cpu' },
+      { name: 'Too Many Acquisitions', tier: 'red', icon: 'g_043_circuit_board' },
+      { name: 'Ambitious Start', tier: 'red', icon: 'g_057_ev_car' },
+    ];
+    const TIER = { green: ['#2e7a4f', 'Beginner friendly'], amber: ['#bd8534', 'Intermediate'], red: ['#9e3d38', 'Challenging'] };
+    const COMPANY = {
+      carmaker: { index: 3, name: 'Troubled Carmaker', story: 'An auto business sprawled around Capital Port: two car plants, an engine works, a tyre line, £200 cash, and £500 of debt. Streamline the supply chain or sink under the financing.',
+        rows: [['b_009_assembly_plant.png', 'Assembly Plant', 'Capital Port Docks', 'g_056_ice_car'], ['b_009_assembly_plant.png', 'Assembly Plant', 'Near Capital Port', 'g_056_ice_car'],
+          ['b_007_industrial_factory.png', 'Industrial Goods Factory', 'Capital Port Market Row', 'g_046_engine'], ['b_012_chem_plant.png', 'Chemical Plant', 'Gold Arm Old Quarter', 'g_044_tyres']],
+        ledger: [['Cash', '£200'], ['Debt', '£500'], ['Net', '-£300', INK_RED]] },
+      magnate: { index: 0, name: 'Metal Magnate', story: "Your father swore there was truth in metal, then sold the mill before he could prove it. He left you the mines, the furnace, and a name that lifts every ingot you cast. Strike while the iron's hot.",
+        rows: [['b_001_mine.png', 'Mine', 'Hills near Greyroad', 'g_001_coal'], ['b_001_mine.png', 'Mine', 'Snare Harbour Coast', 'g_002_iron_ore'],
+          ['b_002_furnace.png', 'Furnace', 'Greyroad', 'g_004_iron_ingots'], ['b_003_power_plant.png', 'Power plant', 'Greyroad', 'g_010_power']],
+        ledger: [['Cash', '£300'], ['Debt', 'none'], ['Profit each turn', '£16', INK_GREEN]] },
+    };
+    const CHIPS = [['Diesel Red', '#b94c40'], ['Ethylene Blue', '#405b80'], ['Fertiliser Green', '#5b9b55'], ['Biomass Brown', '#6c4d3a'], ['Construction Yellow', '#daae5c'], ['Graphite Black', '#3f4147'], ['Pipe Orange', '#be7a5f'], ['Lithium Pink', '#e08ba8']];
+    const goodIds = new Set(STARTS.map((s) => s.icon)); for (const c of Object.values(COMPANY)) for (const r of c.rows) goodIds.add(r[3]);
+    const goodImg = Object.fromEntries(await Promise.all([...goodIds].map(async (id) => [id, await loadImage(`/icons/goods/medium/${id}.png`)])));
+    const bldFiles = new Set(); for (const c of Object.values(COMPANY)) for (const r of c.rows) bldFiles.add(r[0]);
+    const masks = Object.fromEntries(await Promise.all([...bldFiles].map(async (f) => [f, keyCream(await loadImage('/icons/buildings/' + f))])));
+
+    /** One state of the panel, built into `group` at (OX, OY). */
+    const panel = async (mode) => {
+      const DEMO = mode !== 'full', WIDE = mode === 'demo_wide', S = DEMO ? COMPANY.magnate : COMPANY.carmaker;
+
+      // ---- the desk: dark walnut edge to edge, everything else stands on it.
+      add(shade(new THREE.Mesh(extrude(rrShape(PW, PH, 18), 6, 5, 4, 4), [polish(wood(PW, PH, '#36200f', 'x', '16,7,3', '150,96,54'), PW, PH), darkSide])), X(PW / 2), Z(PH / 2), 0);
+
+      // ---- the header: a navy steel panel screwed to the desk, the nameplate and the Back key on it.
+      const HW = PW - 2 * PAD, HH = 112, HZ = 20;
+      add(shade(new THREE.Mesh(extrude(rrShape(HW, HH, 10), 4, 3, 2.4, 4), [plateMaterial(HW, HH, { icons: [], buttons: [], screws: [], base: NAVY_STEEL_CANVAS, rub: '120,136,160' }), MAT.plateSide])), X(PAD + HW / 2), Z(HZ + HH / 2), T);
+      const HT = T + 10;
+      for (const [sx, sz] of [[16, 16], [HW - 16, 16], [16, HH - 16], [HW - 16, HH - 16]]) { const sc = silverScrew(); sc.remove(sc.children[sc.children.length - 1]); add(sc, X(PAD + sx - 15), Z(HZ + sz - 15), HT); }
+      namePlate(X(PAD + 52), Z(HZ + 8), 470, 96, 'REGISTRY', HT);
+      smallKey('left', X(PW - PAD - 62), Z(HZ + HH / 2), HT);
+      printWhite('Back', X(PW - PAD - 118), Z(HZ + HH / 2), 26, { weight: 600, align: 'right' });
+
+      // ---- the card index: an oak rack of seven pigeonholes with felt floors, a company file in each.
+      const RY = 150, RH = 470, RW = PW - 2 * PAD, BAR = 24, LIP = 30, N = 7, OW = (RW - (N + 1) * BAR) / N, OH = RH - 2 * LIP;
+      const frameShape = rrShape(RW, RH, 10);
+      for (let i = 0; i < N; i++) frameShape.holes.push(rr(new THREE.Path(), OW, OH, 6, -RW / 2 + BAR + i * (OW + BAR) + OW / 2, 0));
+      const rackTop = T + 12 + 8;
+      add(shade(new THREE.Mesh(extrude(frameShape, 12, 4, 3.2, 4), [polish(wood(RW, RH, '#3a2412', 'x'), RW, RH), darkSide])), X(PAD + RW / 2), Z(RY + RH / 2), T);
+      const FW = 290, FH = 372, WIN = 164;
+      STARTS.forEach((s, i) => {
+        const cx = PAD + BAR + i * (OW + BAR) + OW / 2, cz = RY + LIP + OH / 2;
+        const fl = new THREE.Mesh(new THREE.PlaneGeometry(OW, OH).rotateX(-Math.PI / 2), felt); fl.receiveShadow = true; add(fl, X(cx), Z(cz), T + 0.3);
+        const chosen = i === S.index, pulled = chosen ? 1 : 0, fz = cz + (pulled ? 34 : 0), fy = pulled ? rackTop + 2 : T + 1.5;
+        const [tierCol, tierWords] = TIER[s.tier];
+        const face = fibre(FW, FH, '#d9b878', '70,52,20', (c) => {
+          c.save(); c.shadowColor = 'rgba(0,0,0,0.5)'; c.shadowBlur = 5; c.shadowOffsetY = 2; c.fillStyle = '#0d2238'; c.beginPath(); c.roundRect((FW - WIN) / 2, 44, WIN, WIN, 10); c.fill(); c.restore();
+          goodTile(c, goodImg[s.icon], (FW - WIN) / 2 + 14, 58, WIN - 28);
+          c.save(); c.shadowColor = 'rgba(0,0,0,0.3)'; c.shadowBlur = 3; c.shadowOffsetY = 1.5; c.fillStyle = '#f6efdf'; c.beginPath(); c.roundRect(24, 236, FW - 48, 52, 4); c.fill(); c.restore();
+          c.strokeStyle = 'rgba(11,35,64,0.35)'; c.lineWidth = 1.2; c.beginPath(); c.roundRect(28, 240, FW - 56, 44, 3); c.stroke();
+          ink(c, s.name.toUpperCase(), FW / 2, 262, 26, NAVY, { weight: 700, family: BARLOW, align: 'center', maxW: FW - 70 });
+          ink(c, tierWords, FW / 2, 320, 22, '#4a3818', { weight: 500, align: 'center', maxW: FW - 40 });
+          c.strokeStyle = 'rgba(60,40,10,0.25)'; c.lineWidth = 1; c.beginPath(); c.roundRect(2, 2, FW - 4, FH - 4, 5); c.stroke();
+        });
+        add(shade(new THREE.Mesh(extrude(rrShape(FW, FH, 5), 1.6, 1.4, 1.1, 3), [matte(face, FW, FH), manilaSide])), X(cx), Z(fz), fy);
+        const tabX = cx - FW / 2 + 70 + (i % 3) * 75;
+        add(shade(new THREE.Mesh(extrude(rrShape(118, 38, 7), 1.6, 1.2, 1, 3), [new THREE.MeshStandardMaterial({ color: tierCol, map: noiseTexture(12, 20, 40), roughness: 0.78 }), new THREE.MeshStandardMaterial({ color: tierCol, roughness: 0.8 })])), X(tabX), Z(fz - FH / 2 + 8), fy + 0.2);
+        if (chosen) { const gx = X(cx) - FW / 2 - 6, gz = Z(fz) - FH / 2 - 6;   // read now: the print runs after every state is built
+          prints.push((g) => { g.save(); g.filter = 'blur(3px)'; g.strokeStyle = 'rgba(255,226,150,0.55)'; g.lineWidth = 4; g.beginPath(); g.roundRect(gx, gz, FW + 12, FH + 12, 9); g.stroke(); g.restore(); }); }
+      });
+      // the demo: a lockbox lid over the five pigeonholes the demo keeps shut
+      if (DEMO) { const lx = PAD + BAR + 2 * (OW + BAR) - 12; lid(X(lx), Z(RY + 10), PAD + RW - 10 - lx, RH - 20, rackTop + 3); }
+
+      // ---- the counter is the desk itself; the press column at the right in every state.
+      const CY = RY + RH + 20, CW = RW, CH = PH - CY - PAD, CT = T;
+      const PCOL = 217, SX = PAD + CW - PCOL, FMW = 720;
+      const BX = PAD + 30, BZ = CY + 30, BW = WIDE ? CW - 60 - PCOL - 40 : CW - 60 - PCOL - 40 - FMW - 40, BH = CH - 60 - 50;
+
+      // ---- the blotter and the file open on it.
+      add(shade(new THREE.Mesh(extrude(rrShape(BW, BH, 14), 3, 3, 2.4, 4), [K.leather(BW, BH, '#2f4a35'), new THREE.MeshStandardMaterial({ color: 0x15241a, roughness: 0.7 })])), X(BX + BW / 2), Z(BZ + BH / 2), CT);
+      const BT = CT + 3 + 6;
+      { const dome = new THREE.SphereGeometry(6, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.6, 1);
+        for (const [x, z] of [[18, 18], [BW - 18, 18], [18, BH - 18], [BW - 18, BH - 18]]) add(shade(new THREE.Mesh(dome, K.brass)), X(BX + x), Z(BZ + z), BT); }
+      const CVW = BW - 80, CVH = BH - 80, CVX = BX + 40, CVZ = BZ + 40;
+      add(shade(new THREE.Mesh(extrude(rrShape(CVW, CVH, 6), 1.4, 1.2, 1, 3), [matte(fibre(CVW, CVH, '#d9b878', '70,52,20', (c) => {
+        c.fillStyle = 'rgba(0,0,0,0.18)'; c.fillRect(CVW / 2 - 2, 0, 4, CVH);   // the fold
+        c.strokeStyle = 'rgba(60,40,10,0.25)'; c.lineWidth = 1; c.beginPath(); c.roundRect(2, 2, CVW - 4, CVH - 4, 5); c.stroke();
+      }), CVW, CVH), manilaSide])), X(CVX + CVW / 2), Z(CVZ + CVH / 2), BT);
+      const CVT = BT + 1.4 + 2.4;
+      const LW = CVW / 2 - 60, LH = CVH - 60, L0 = CVX + 30, L1 = CVX + CVW / 2 + 30, LZ = CVZ + 30, M = 44;
+      const storyLines = wrapLines(S.story, `500 26px ${PLEX}`, LW - 2 * M);
+      const HOVERED = 1, STRIP = { cell: (LW - 2 * M) / S.rows.length, bld: 104, good: 56 };
+      let hoverAt = [0, 0];
+      { // the left leaf: the story, then the buildings as a strip, each the building and the good it makes
+        const face = fibre(LW, LH, '#f3e7cc', '58,46,30', (c) => {
+          ink(c, 'COMPANY FILE', M, 62, 24, NAVY, { weight: 700, family: BARLOW });
+          ink(c, `FILE ${S.index + 1} OF 7`, LW - M, 62, 24, NAVY, { weight: 600, family: BARLOW, align: 'right' });
+          ink(c, S.name, M, 116, 48, NAVY, { weight: 700, family: BARLOW, maxW: LW - 2 * M });
+          c.fillStyle = 'rgba(11,35,64,0.5)'; c.fillRect(M, 148, LW - 2 * M, 2);
+          let y = 194; storyLines.forEach((l) => { ink(c, l, M, y, 26, NAVY, { weight: 500 }); y += 36; });
+          y += 34; ink(c, 'BUILDINGS OWNED', M, y, 26, NAVY, { weight: 700, family: BARLOW }); y += 24;
+          c.fillStyle = 'rgba(11,35,64,0.35)'; c.fillRect(M, y, LW - 2 * M, 1.5); y += 22;
+          S.rows.forEach(([f, , , good], k) => {
+            const cx = M + STRIP.cell * (k + 0.5), bx = cx - STRIP.bld / 2;
+            if (k === HOVERED) { c.save(); c.strokeStyle = 'rgba(11,35,64,0.55)'; c.lineWidth = 2; c.setLineDash([6, 5]); c.beginPath(); c.roundRect(cx - Math.min(STRIP.cell, 150) / 2 + 6, y - 8, Math.min(STRIP.cell, 150) - 12, STRIP.bld + STRIP.good + 36, 8); c.stroke(); c.restore(); hoverAt = [cx, y + STRIP.bld + STRIP.good + 44]; }
+            stamp(c, masks[f], bx, y, STRIP.bld, STRIP.bld, NAVY);
+            c.strokeStyle = 'rgba(11,35,64,0.5)'; c.lineWidth = 2; c.beginPath(); c.moveTo(cx, y + STRIP.bld + 4); c.lineTo(cx, y + STRIP.bld + 16); c.stroke();
+            goodTile(c, goodImg[good], cx - STRIP.good / 2, y + STRIP.bld + 20, STRIP.good);
+          });
+        });
+        add(shade(new THREE.Mesh(extrude(rrShape(LW, LH, 4), 1, 0.8, 0.6, 2), [matte(face, LW, LH), paperSide])), X(L0 + LW / 2), Z(LZ + LH / 2), CVT);
+        // the hover: a white plastic slip under the pointed at cell, the building's name and its place
+        const [hx, hy] = hoverAt, [, hname, hwhere] = S.rows[HOVERED], SLW = 330, SLH = 96;
+        const slip = canvas2d(SLW, SLH, (c) => { paintPlastic(c, SLW, SLH); ink(c, hname, 22, 34, 27, NAVY, { weight: 600, maxW: SLW - 44 }); ink(c, hwhere, 22, 66, 23, INK_DIM, { weight: 500, maxW: SLW - 44 }); });
+        const sx = Math.min(L0 + LW - M - SLW / 2, Math.max(L0 + M + SLW / 2, L0 + hx + 40));
+        add(shade(new THREE.Mesh(extrude(rrShape(SLW, SLH, 6), 1.4, 1, 0.8, 2), [new THREE.MeshPhysicalMaterial({ map: faceTexture(slip, SLW, SLH), ...KNOB_PLASTIC }), MAT.skirt])), X(sx), Z(LZ + hy + SLH / 2), CVT + 9);
+      }
+      { // the right leaf: the figures as ledger lines in ink, the livery as a paint card of squares; in the wide book, the demo's charter
+        const face = fibre(LW, LH, '#f3e7cc', '58,46,30', (c) => {
+          ink(c, 'FINANCIALS', M, 62, 26, NAVY, { weight: 700, family: BARLOW });
+          c.fillStyle = 'rgba(11,35,64,0.5)'; c.fillRect(M, 86, LW - 2 * M, 2);
+          let y = 122;
+          S.ledger.forEach(([label, figure, colour = NAVY], k) => {
+            ink(c, label, M + 6, y, 27, NAVY, { weight: 500 });
+            ink(c, figure, LW - M - 6, y, 29, colour, { weight: 600, align: 'right' });
+            c.fillStyle = 'rgba(11,35,64,0.28)'; c.fillRect(M, y + 26, LW - 2 * M, 1.2);
+            if (k === S.ledger.length - 1) c.fillRect(M, y + 30, LW - 2 * M, 1.2);
+            y += 54;
+          });
+          y += 30; ink(c, 'COMPANY COLOUR', M, y, 26, NAVY, { weight: 700, family: BARLOW }); y += 24;
+          c.fillStyle = 'rgba(11,35,64,0.35)'; c.fillRect(M, y, LW - 2 * M, 1.5); y += 30;
+          ink(c, 'Every building this company owns is painted in it.', M, y, 22, INK_DIM, { weight: 500, maxW: LW - 2 * M }); y += 34;
+          // the paint card: eight squares, four a row, the chosen one framed and ticked, its name printed under the card
+          const SQ = 96, GAP = 16, cols = 4, x0 = M + ((LW - 2 * M) - (cols * SQ + (cols - 1) * GAP)) / 2;
+          CHIPS.forEach(([name, col], k) => {
+            const x = x0 + (k % cols) * (SQ + GAP), yy = y + Math.floor(k / cols) * (SQ + GAP), chosen = k === 0;
+            c.save(); c.shadowColor = 'rgba(0,0,0,0.3)'; c.shadowBlur = 3; c.shadowOffsetY = 1.5; c.fillStyle = col; c.beginPath(); c.roundRect(x, yy, SQ, SQ, 8); c.fill(); c.restore();
+            c.strokeStyle = chosen ? NAVY : 'rgba(11,35,64,0.4)'; c.lineWidth = chosen ? 4 : 1.2; c.beginPath(); c.roundRect(x, yy, SQ, SQ, 8); c.stroke();
+            if (chosen) { c.fillStyle = '#f6efdf'; c.beginPath(); c.arc(x + SQ - 18, yy + 18, 13, 0, Math.PI * 2); c.fill(); c.strokeStyle = NAVY; c.lineWidth = 3; c.lineCap = 'round'; c.lineJoin = 'round'; c.beginPath(); c.moveTo(x + SQ - 25, yy + 18); c.lineTo(x + SQ - 20, yy + 24); c.lineTo(x + SQ - 11, yy + 12); c.stroke(); }
+          });
+          y += 2 * SQ + GAP + 36;
+          ink(c, CHIPS[0][0], M + 6, y, 28, NAVY, { weight: 600 });
+          ink(c, 'Press a square to repaint.', LW - M - 6, y, 22, INK_DIM, { weight: 500, align: 'right' });
+          if (WIDE) { // the demo's charter, printed in the file since there is no form
+            y += 56; ink(c, 'CHARTER', M, y, 26, NAVY, { weight: 700, family: BARLOW }); impression(c, 'DEMO', LW - M - 110, y + 2, 180); y += 24;
+            c.fillStyle = 'rgba(11,35,64,0.35)'; c.fillRect(M, y, LW - 2 * M, 1.5); y += 32;
+            ink(c, 'A charter of 100 turns, the Itch.io demo, at the Normal grade. All tiles surveyed at game start.', M, y, 24, NAVY, { weight: 500, maxW: LW - 2 * M });
+          }
+        });
+        add(shade(new THREE.Mesh(extrude(rrShape(LW, LH, 4), 1, 0.8, 0.6, 2), [matte(face, LW, LH), paperSide])), X(L1 + LW / 2), Z(LZ + LH / 2), CVT);
+      }
+
+      // ---- the form of incorporation: cream plastic. The full game: the grade stamped, the term on a drum, the tick boxes.
+      // The demo: the company, the grade and the charter fixed and printed, nothing to set.
+      const FX = BX + BW + 40, FZ = BZ, FMH = BH, FM = 48;
+      if (!WIDE) {
+        const GRADE = { name: 'NORMAL', words: 'All resource deposits on the map, but some are finite. Some tiles are surveyed.' };
+        const gradeLines = wrapLines(GRADE.words, `500 23px ${PLEX}`, FMW - 2 * FM);
+        const tick = (c, x, y, on, label) => {
+          c.strokeStyle = NAVY; c.lineWidth = 2.2; c.beginPath(); c.roundRect(x, y - 15, 30, 30, 4); c.stroke();
+          if (on) { c.strokeStyle = NAVY; c.lineWidth = 3.4; c.lineCap = 'round'; c.lineJoin = 'round'; c.beginPath(); c.moveTo(x + 7, y); c.lineTo(x + 13, y + 8); c.lineTo(x + 25, y - 10); c.stroke(); }
+          ink(c, label, x + 46, y, 24, NAVY, { weight: 500, maxW: FMW - 2 * FM - 50 });
+        };
+        const formFace = canvas2d(FMW, FMH, (c) => {
+          paintPlastic(c, FMW, FMH);
+          ink(c, 'FORM OF INCORPORATION', FMW / 2, 62, 32, NAVY, { weight: 700, family: BARLOW, align: 'center' });
+          ink(c, 'The Registry of Companies', FMW / 2, 98, 22, INK_DIM, { weight: 500, align: 'center' });
+          c.fillStyle = 'rgba(11,35,64,0.5)'; c.fillRect(FM, 126, FMW - 2 * FM, 2);
+          const field = (y, label) => { ink(c, label, FM, y, 22, INK_DIM, { weight: 600, family: BARLOW }); c.fillStyle = 'rgba(11,35,64,0.3)'; c.fillRect(FM, y + 56, FMW - 2 * FM, 1.5); };
+          field(168, 'COMPANY'); ink(c, S.name, FM, 204, 30, NAVY, { weight: 600 });
+          field(262, 'GRADE');
+          impression(c, GRADE.name, FM + 250, 306);
+          let y = 364; gradeLines.forEach((l) => { ink(c, l, FM, y, 23, NAVY, { weight: 500 }); y += 32; });
+          if (DEMO) {
+            field(452, 'CHARTER'); ink(c, '100 turns, the Itch.io demo.', FM, 500, 26, NAVY, { weight: 500 });
+            ink(c, 'All tiles surveyed at game start.', FM, 540, 23, INK_DIM, { weight: 500 });
+            impression(c, 'DEMO', FMW - FM - 130, 500, 200);
+          } else {
+            field(452, 'CHARTER'); ink(c, 'Charter of', FM, 500, 26, NAVY, { weight: 500 }); ink(c, 'turns', FM + 420, 500, 26, NAVY, { weight: 500 });
+            const rx0 = FM, rx1 = FMW - FM, ry = 566;
+            ink(c, 'ERA PACING', FM, 540, 20, INK_DIM, { weight: 600, family: BARLOW });
+            c.strokeStyle = NAVY; c.lineWidth = 2; c.beginPath(); c.moveTo(rx0, ry); c.lineTo(rx1, ry); c.stroke();
+            for (let k = 0; k <= 30; k++) { const x = rx0 + (rx1 - rx0) * k / 30, big = k % 10 === 0; c.beginPath(); c.moveTo(x, ry); c.lineTo(x, ry + (big ? 14 : 7)); c.stroke(); if (big) ink(c, String(k * 10), x, ry + 30, 18, NAVY, { weight: 500, align: 'center' }); }
+            [[0, 'Era 1'], [0.33, 'Era 2'], [0.66, 'Era 3']].forEach(([f, label]) => { const x = rx0 + (rx1 - rx0) * f; c.fillStyle = '#b8261c'; c.beginPath(); c.moveTo(x, ry - 4); c.lineTo(x - 6, ry - 16); c.lineTo(x + 6, ry - 16); c.closePath(); c.fill(); ink(c, label, x + 10, ry - 12, 18, '#b8261c', { weight: 600, family: BARLOW }); });
+            ink(c, 'This also changes the Era pacing.', FM, 626, 21, INK_DIM, { weight: 500 });
+            field(676, 'OPTIONS');
+            tick(c, FM, 724, true, 'All tiles surveyed at game start');
+            tick(c, FM, 772, true, 'Send anonymous metrics');
+          }
+          c.save(); c.setLineDash([8, 7]); c.strokeStyle = 'rgba(11,35,64,0.55)'; c.lineWidth = 2; c.beginPath(); c.arc(FMW - FM - 80, FMH - 112, 72, 0, Math.PI * 2); c.stroke(); c.restore();
+          ink(c, 'SEAL', FMW - FM - 80, FMH - 112, 22, 'rgba(11,35,64,0.6)', { weight: 600, family: BARLOW, align: 'center' });
+          ink(c, 'Registrar', FM, FMH - 60, 22, INK_DIM, { weight: 500 }); c.fillStyle = 'rgba(11,35,64,0.4)'; c.fillRect(FM, FMH - 40, 260, 1.5);
+        });
+        add(shade(new THREE.Mesh(extrude(rrShape(FMW, FMH, 8), 1.6, 1.2, 1, 3), [new THREE.MeshPhysicalMaterial({ map: faceTexture(formFace, FMW, FMH), ...KNOB_PLASTIC }), MAT.skirt])), X(FX + FMW / 2), Z(FZ + FMH / 2), CT);
+        const FT = CT + 1.6 + 2.4;
+        if (!DEMO) { // the charter's term: two small keys either side of a drum
+          const kz = FZ + 500, dx = FX + FM + 128;
+          smallKey('left', X(dx + 28), Z(kz), FT, 60);
+          const dw = drum(3, '300', X(dx + 70), Z(kz), FT, 60);
+          smallKey('right', X(dx + 70 + dw + 36), Z(kz), FT, 60);
+        }
+
+        // ---- the grade stamps: five cream keys in a dark steel rack, the red ink pad under them; in the demo, under a lid.
+        const SZ = FZ, SCW = PCOL, KW = SCW - 22, KH = 78;
+        const GRADES = [['Easy'], ['Normal', 'down'], ['Hard'], ['Very Hard', 'locked'], ['God of Industry', 'locked']];
+        const rackH = 30 + GRADES.length * 94 + 10;
+        add(shade(new THREE.Mesh(extrude(rrShape(SCW, rackH, 10), 4, 3, 2.4, 4), [darkPlate(SCW, rackH), MAT.plateSide])), X(SX + SCW / 2), Z(SZ + rackH / 2), CT);
+        const RT = CT + 10;
+        GRADES.forEach(([label, state], k) => {
+          const kz = SZ + 30 + k * 94 + KH / 2, locked = state === 'locked';
+          wideKey(label, X(SX + SCW / 2), Z(kz), KW, KH, RT, { size: 24, grey: locked, down: state === 'down' });
+          if (locked && !DEMO) K.padlock(group, X(SX + SCW - 12), Z(kz + 4), RT + 34, 0.62);
+        });
+        printWhite('Stamps', X(SX + SCW / 2), Z(SZ + 16), 20, { weight: 600, family: BARLOW, align: 'center' });
+        const pw = SCW - 20, ph = 84, pz = SZ + rackH + 20;
+        add(shade(new THREE.Mesh(extrude(rrShape(pw, ph, 8), 6, 2, 1.6, 3), [K.darkSteel, K.darkSteel])), X(SX + SCW / 2), Z(pz + ph / 2), CT);
+        const pad = new THREE.Mesh(new THREE.PlaneGeometry(pw - 24, ph - 24).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x8c1d15, map: noiseTexture(20, 0, 40), roughness: 0.98 }));
+        pad.receiveShadow = true; add(pad, X(SX + SCW / 2), Z(pz + ph / 2), CT + 6 + 4.2);
+        if (DEMO) lid(X(SX - 10), Z(SZ - 10), SCW + 20, rackH + 20 + ph + 20, RT + 36, 'FULL GAME');
+      }
+
+      // ---- the company seal: a cast iron press, its brass die, its lever carrying Start New Game. In every state.
+      {
+        const pw = PCOL + 8, ph = 320, px = SX - 4, pz = FZ + FMH - ph;
+        add(shade(new THREE.Mesh(extrude(rrShape(pw, ph, 26), 10, 6, 5, 4), [iron, iron])), X(px + pw / 2), Z(pz + ph / 2), CT);
+        const IT = CT + 10 + 12;
+        add(shade(new THREE.Mesh(new THREE.CylinderGeometry(50, 56, 30, 36), iron)), X(px + pw / 2), Z(pz + 92), IT + 15);
+        add(shade(new THREE.Mesh(new THREE.TorusGeometry(50, 5, 12, 40).rotateX(Math.PI / 2), K.brass)), X(px + pw / 2), Z(pz + 92), IT + 31);
+        add(shade(new THREE.Mesh(new THREE.CylinderGeometry(44, 44, 8, 36), K.brass)), X(px + pw / 2), Z(pz + 92), IT + 34);
+        add(shade(new THREE.Mesh(new THREE.CylinderGeometry(12, 12, 150, 20).rotateX(Math.PI / 2), K.chrome)), X(px + pw / 2), Z(pz + 92 + 75 + 20), IT + 26);
+        add(shade(new THREE.Mesh(new THREE.CylinderGeometry(20, 20, 30, 24).rotateX(Math.PI / 2), iron)), X(px + pw / 2), Z(pz + 92 + 62), IT + 26);
+        add(shade(new THREE.Mesh(new THREE.BoxGeometry(44, 26, 44), iron)), X(px + pw / 2), Z(pz + 112), IT + 13);
+        wideKey('START NEW GAME', X(px + pw / 2), Z(pz + 92 + 150 + 20 + 30), PCOL - 22, 84, IT, { size: 24 });
+      }
+
+      // ---- the notes in the margin for this state.
+      if (mode === 'full') {
+        notes.push({ y: Z(RY + 130), lines: ['The card index', 'A file per start, its tab in the', 'tier colour, the good in a cut', 'window. The chosen file is', 'pulled out of its pigeonhole.'] });
+        notes.push({ y: Z(BZ + 70), lines: ['The file on the blotter', 'The story, the buildings as a', 'strip with the good each makes,', 'the figures as ledger lines,', 'the livery as a paint card.'] });
+        notes.push({ y: Z(BZ + 230), lines: ['Hover on a building', 'A slip with its name and place.'] });
+        notes.push({ y: Z(FZ + 330), lines: ['Grade stamps', 'Cream keys, Normal latched.', 'Two padlocked until one game', 'is finished.'] });
+        notes.push({ y: Z(FZ + 620), lines: ['The form of incorporation', 'Grade stamped in red ink, the', 'charter on a drum with its era', 'rule, the options as tick boxes.'] });
+        notes.push({ y: Z(FZ + FMH - 60), lines: ['The company seal', 'Its lever is Start New Game.'] });
+      } else if (mode === 'demo_box') {
+        notes.push({ y: Z(RY + 130), lines: ['The lockboxes', 'Steel lids with a padlock over', 'the five full game starts and', 'over the grade stamps.'] });
+        notes.push({ y: Z(FZ + 300), lines: ['The form, emptier', 'The company, the grade and the', 'charter printed, nothing to set.', 'The DEMO stamp says why.'] });
+        notes.push({ y: Z(FZ + FMH - 60), lines: ['Start New Game', 'As in the full game.'] });
+      } else {
+        notes.push({ y: Z(RY + 130), lines: ['The wider book', 'No form and no stamps: the', 'book takes the desk. The lid', 'over the five starts stays.'] });
+        notes.push({ y: Z(BZ + 300), lines: ['The charter in the file', 'The demo’s 100 turns printed', 'in the file, stamped DEMO.'] });
+        notes.push({ y: Z(FZ + FMH - 60), lines: ['Start New Game', 'As in the full game.'] });
+      }
+    };
+
+    // Each state its own render, so the house light's shadow map covers it; composed with the print and the notes.
+    for (const [i, mode] of STATES.entries()) {
+      group = new THREE.Group(); OX = MX; OY = CAPT + i * (PH + ROWGAP);
+      await panel(mode);
+      const y0 = OY - 60, y1 = OY + PH + 60;
+      group.add(shadowCatcher(W, y1 - y0, W / 2, (y0 + y1) / 2, 0.05, 0.45));
+      const st = stage([0, y0, W, y1], [group]);
+      st.scene.traverse((o) => { if (o.isDirectionalLight) o.shadow.mapSize.set(4096, 4096); });
+      shots.push({ img: st.grab(), y0, y1, oy: OY, mode });
+    }
+    await post('registry_study', frame2d(W, H, (g) => {
+      const BG = '#121820';
+      g.fillStyle = BG; g.fillRect(0, 0, W, H);
+      for (const s of shots) g.drawImage(s.img, 0, s.y0, W, s.y1 - s.y0);
+      for (const p of prints) p(g);
+      const TITLES = { full: 'The full game', demo_box: 'The demo, with lockboxes over what it keeps shut', demo_wide: 'The demo, with the wider book and no form' };
+      shots.forEach((s, i) => {
+        text(g, String(i + 1), MX, s.oy - 44, 40, 40, '#e9b81a', { weight: 700, family: PLEX });
+        text(g, TITLES[s.mode], MX + 38, s.oy - 44, 1600, 36, LIGHT, { weight: 600, family: PLEX });
+      });
+      const y = shots[shots.length - 1].oy + PH + 30; g.strokeStyle = 'rgba(232,238,247,0.7)'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(MX, y); g.lineTo(MX + PW, y); g.moveTo(MX, y - 12); g.lineTo(MX, y + 12); g.moveTo(MX + PW, y - 12); g.lineTo(MX + PW, y + 12); g.stroke();
+      g.fillStyle = BG; g.fillRect(MX + PW / 2 - 150, y - 18, 300, 36);
+      text(g, '1396 px wide', MX + PW / 2, y + 1, 290, 28, LIGHT, { align: 'center', weight: 500, family: PLEX });
+      const NX = MX + PW + 54;
+      for (const nt of notes) {
+        g.save(); g.strokeStyle = '#e9b81a'; g.fillStyle = '#e9b81a'; g.lineWidth = 2.5;
+        const ax = NX - 12, bx = NX - 42; g.beginPath(); g.moveTo(ax, nt.y); g.lineTo(bx, nt.y); g.stroke();
+        g.beginPath(); g.moveTo(bx - 10, nt.y); g.lineTo(bx + 2, nt.y - 7); g.lineTo(bx + 2, nt.y + 7); g.closePath(); g.fill(); g.restore();
+        nt.lines.forEach((ln, k) => text(g, ln, NX, nt.y + (k - (nt.lines.length - 1) / 2) * 32, MR - 70, 27, LIGHT, { weight: k ? 500 : 600, family: PLEX }));
+      }
+    }));
   });
 
   // The Politics panel as a courtroom (docs/ds2-owner-decisions.md, Politics): the panelled oak wall in its moulded
