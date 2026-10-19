@@ -11,6 +11,8 @@ var _profile_last := 0
 var _profile_frames: Array[Dictionary] = []
 var _draw_started := 0
 var _last_draw_ms := 0.0
+var _capture_failed := false
+var _capture_retries := 0
 
 
 func _ready() -> void:
@@ -44,7 +46,7 @@ func _ready() -> void:
 		screen.queue_free()
 	await get_tree().process_frame
 	Audio.silence_for_quit()
-	get_tree().quit()
+	get_tree().quit(1 if _capture_failed else 0)
 
 
 func _stills(screen: Node) -> void:
@@ -154,12 +156,15 @@ func _record(screen: Node) -> void:
 	carousel.set_process(false)
 	screen.set_process(false)
 	for frame in 900:
-		get_window().size = _capture_size
 		carousel.call("seek", frame/30.0)
 		screen.call("_process", 1.0/30.0)
-		await get_tree().process_frame
-		RenderingServer.force_draw(false)
-		get_viewport().get_texture().get_image().save_jpg(_out+"/frame_%04d.jpg" % frame, 0.92)
+		var image := await _capture_frame()
+		if image == null:
+			return
+		image.save_jpg(_out+"/frame_%04d.jpg" % frame, 0.92)
+	FileAccess.open(_out+"/record.json", FileAccess.WRITE).store_string(JSON.stringify({
+		"frames": 900, "fps": 30, "width": _capture_size.x, "height": _capture_size.y,
+		"capture_retries": _capture_retries}, "\t"))
 	print("CAROUSEL loop: 900 frames at 30 fps")
 
 
@@ -167,5 +172,24 @@ func _shot(name: String) -> void:
 	get_window().size = _capture_size
 	for _frame in 4:
 		await get_tree().process_frame
-	RenderingServer.force_draw(false)  # background/occluded macOS windows may not present
-	get_viewport().get_texture().get_image().save_png(_out+"/"+name+".png")
+	var image := await _capture_frame()
+	if image != null:
+		image.save_png(_out+"/"+name+".png")
+
+
+func _capture_frame() -> Image:
+	# macOS can finish restoring a saved fullscreen size a frame after our request.
+	# Never feed that wrong-aspect frame to the encoder; hold the review timeline
+	# until both the window and the rendered image match the requested dimensions.
+	for attempt in 30:
+		get_window().size = _capture_size
+		await get_tree().process_frame
+		RenderingServer.force_draw(false)  # occluded macOS windows may not present
+		var image := get_viewport().get_texture().get_image()
+		if image.get_size() == _capture_size and get_window().size == _capture_size:
+			return image
+		_capture_retries += 1
+		print("CAROUSEL capture retry ", attempt, ": wanted ", _capture_size, ", got ", image.get_size())
+	_capture_failed = true
+	push_error("Loading carousel capture could not settle at the requested size")
+	return null

@@ -155,6 +155,7 @@ bg = scene.world.node_tree.nodes.get('Background')
 def point(name, pos, energy, colour):
     data = bpy.data.lights.new(name, 'POINT')
     data.energy, data.color, data.shadow_soft_size = energy, colour, .65
+    data.use_shadow = False  # match the capsule's flat face lighting, without cast shadows
     ob = bpy.data.objects.new(name, data)
     scene.collection.objects.link(ob)
     ob.location = pos
@@ -251,8 +252,42 @@ if family == 'furnace':
         # Heat remains present in daylight; its spill becomes clearer at night.
         heat_sources.append(ob)
 
+flare_lamps = []
+if family == 'petro_refinery':
+    for ob in objects:
+        if ob.name != 'flare_flame':
+            continue
+        flame_mat = bpy.data.materials.new('LoadingFlareFlame')
+        flame_mat.use_nodes = True
+        nodes, links = flame_mat.node_tree.nodes, flame_mat.node_tree.links
+        nodes.clear()
+        tex = nodes.new('ShaderNodeTexCoord')
+        xyz = nodes.new('ShaderNodeSeparateXYZ')
+        ramp = nodes.new('ShaderNodeValToRGB')
+        ramp.color_ramp.elements[0].color = (1, .90, .30, 1)
+        ramp.color_ramp.elements[1].color = (1, .12, .002, 1)
+        ramp.color_ramp.elements.new(.30).color = (1, .55, .025, 1)
+        emission = nodes.new('ShaderNodeEmission')
+        emission.inputs['Strength'].default_value = 3
+        output = nodes.new('ShaderNodeOutputMaterial')
+        links.new(tex.outputs['Generated'], xyz.inputs[0])
+        links.new(xyz.outputs['Z'], ramp.inputs[0])
+        links.new(ramp.outputs['Color'], emission.inputs['Color'])
+        links.new(emission.outputs[0], output.inputs['Surface'])
+        ob.data.materials.clear()
+        ob.data.materials.append(flame_mat)
+        bounds = [ob.matrix_world @ Vector(c) for c in ob.bound_box]
+        p = sum(bounds, Vector())/8
+        # The flame's base lights the flare shield, lattice and nearby equipment.
+        p.z = min(v.z for v in bounds) + .22*scale
+        lamp = point('Flare light spill', p, 320*scale*scale, (1, .38, .055))
+        lamp.data.shadow_soft_size = .20*scale
+        flare_lamps.append(lamp)  # a burning flare also emits light during the day
+
 if not sea:
     night_lamps.append(point('Yard light', (1.0,-2.1,.65), 65, warm))
+top_beacons = []
+base_lights = []
 if sea:
     # Small red aviation lights on the actual nacelles, not on the blade tips.
     beacon_col = bpy.data.collections.new('LoadingBeacons')
@@ -262,13 +297,35 @@ if sea:
     node = beacon_mat.node_tree.nodes.get('Principled BSDF')
     node.inputs['Base Color'].default_value = (1,.03,.01,1)
     node.inputs['Emission Color'].default_value = (1,.03,.01,1)
+    node.inputs['Emission Strength'].default_value = 3.0
+    base_mat = window_mat.copy()
+    base_mat.name = 'LoadingTurbineBaseLight'
+    node = base_mat.node_tree.nodes.get('Principled BSDF')
+    base_colour = (1, .86, .56)
+    node.inputs['Base Color'].default_value = (*base_colour, 1)
+    node.inputs['Emission Color'].default_value = (*base_colour, 1)
+    node.inputs['Emission Strength'].default_value = 2.2
     for ob in objects:
-        if not ob.name.startswith('nac'):
-            continue
-        p = ob.matrix_world @ Vector((0,0,0))
-        bounds = [ob.matrix_world @ Vector(c) for c in ob.bound_box]
-        p = Vector((sum(v.x for v in bounds)/8, sum(v.y for v in bounds)/8, max(v.z for v in bounds)+.015))
-        bk.cyl('Beacon', p.x,p.y,p.z,.026,.04,beacon_mat,segments=10)
+        if ob.name.startswith('nac'):
+            bounds = [ob.matrix_world @ Vector(c) for c in ob.bound_box]
+            p = sum(bounds, Vector())/8
+            p.z = max(v.z for v in bounds)+.015
+            bk.cyl('Beacon', p.x,p.y,p.z,.026,.04,beacon_mat,segments=10)
+            lamp = point('Red turbine top light', p, 3*scale*scale, (1, .015, .003))
+            lamp.data.shadow_soft_size = .06
+            night_lamps.append(lamp)
+            top_beacons.append(lamp)
+        elif ob.name.startswith('tp') and ob.name[2:].isdigit():
+            # A small lamp on each boat-landing band, facing out from the monopile.
+            bounds = [ob.matrix_world @ Vector(c) for c in ob.bound_box]
+            p = sum(bounds, Vector())/8
+            p.y = min(v.y for v in bounds)-.025
+            p.z = max(v.z for v in bounds)+.025
+            bk.cyl('BaseLight', p.x,p.y,p.z,.036,.025,base_mat,axis='Y',segments=12)
+            lamp = point('Yellow-white turbine base light', p, 24*scale*scale, base_colour)
+            lamp.data.shadow_soft_size = .10
+            night_lamps.append(lamp)
+            base_lights.append(lamp)
     for ob in beacon_col.objects:
         ob.hide_render = True
 else:
@@ -333,4 +390,5 @@ model = ROOT / f'price-of-everything-0.1/assets/supply_chain_3d/{family}_lvl3.gl
     footprint_radius=reach*scale, hex_inradius=R*math.sqrt(3)/2,
     ground_z=.012, windows=len(windows), skylights=len(skylights),
     turbine_roof_panes=len(hall_glazing), interior_lamps=len(interior_lamps),
-    heat_sources=len(heat_sources)), indent=2)+'\n')
+    heat_sources=len(heat_sources), flare_lamps=len(flare_lamps),
+    turbine_top_beacons=len(top_beacons), turbine_base_lights=len(base_lights)), indent=2)+'\n')

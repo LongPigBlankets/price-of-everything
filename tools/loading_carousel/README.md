@@ -17,7 +17,10 @@ panes lit, industrial heat/flare cues and small nacelle beacons. The factory's s
 skylights and annex roof panes light up within their existing mullions. The power plant
 retains transparent roof glazing over warm work lights illuminating its turbine sets.
 The furnace's recessed working bays and molten ladles have yellow centres, orange/red
-edges and local light spill in both looks. Smoke is pre-rendered.
+edges and local light spill in both looks. The refinery flare casts warm light onto its
+shield, tower and nearby equipment in both looks. Each offshore turbine has a red nacelle
+light and a yellow-white light by its boat landing, with local spill at night. These are
+offline lights; runtime rendering still uses only the day/night images. Smoke is pre-rendered.
 The face-orientation print pass uses the same stipple method as the capsule and sprites.
 Brick materials also receive the game's catalogue coursing: 0.075m courses, 0.21m
 stretcher bond and 0.005m pale joints, in source model coordinates. That procedural paint
@@ -63,6 +66,29 @@ Play mode runs a fresh New Game through Begin into gameplay. Record mode writes 
 frames for a 30fps review movie; these are review outputs, not game assets. Normal loading
 can still stall during indivisible main-thread world work; the carousel does not change
 that underlying workload.
+
+The recorder verifies the window and image size before saving every frame. A review movie
+from 18 October contained one 3600x2260 frame (frame 54) among its 1280x720 images while
+macOS finished restoring the saved display size. This caused the factory's brief apparent
+width change. The recorder now retries such captures without advancing the review clock;
+it does not resize a bad frame into the movie or change the runtime carousel's geometry.
+
+### Optional rising smoke
+
+The present smoke is part of each still. A separate, tightly cropped, pre-rendered smoke
+loop could rise without live 3D, particles or per-puff CPU updates: keep the buildings and
+hex static, pack a short loop into an atlas, and draw it with one extra quad per plume.
+Bake colour for both day and night with matching coverage, then blend it with the same
+night factor. A phase-offset or displacement of the entire still would also distort the
+chimney or make smoke detach from its mouth, so use a separate layer.
+
+At 256x256, 12 BC7-compressed frames with mipmaps for each of two looks cost about 2 MiB
+per plume; profiling should decide the resolution/frame count, and only current/next
+plumes should stay resident. Bake the smoke-free base and fixed camera/occlusion masks
+alongside the loop before switching the runtime presentation. This is feasible future
+work, not implemented by this lighting revision. Busy workers alone need not stop such
+an animation, but a blocked main thread still prevents Godot from submitting new frames.
+It would pause during the existing main-thread loading stalls, just like the fade/slide.
 
 ## Loading profile and proposed split (18 October 2026)
 

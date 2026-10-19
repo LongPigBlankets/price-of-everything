@@ -20,7 +20,10 @@
     "turbine_roof_panes": 0,
     "interior_lamps": 0,
     "heat_sources": 0,
-    "renderer_sha256": "b27d3759b786d1f0a5a9be14b533ff4a8ff0c2ef687de48aa9250b419252ae22",
+    "flare_lamps": 0,
+    "turbine_top_beacons": 0,
+    "turbine_base_lights": 0,
+    "renderer_sha256": "7c096a6c7cc55a83943af34468a469bcb1c586773e5350aca979137734484fa2",
     "print_sha256": "a9b318191645cf47382ff6c2d74121796b6be02d0d453d07ed094e3ab6d5ae9d",
     "sha256": "89c6108e1c337b50c4bf7e15918821f275946d4c637eaa2137d127156f46fc36"
   },
@@ -45,9 +48,12 @@
     "turbine_roof_panes": 0,
     "interior_lamps": 0,
     "heat_sources": 0,
-    "renderer_sha256": "b27d3759b786d1f0a5a9be14b533ff4a8ff0c2ef687de48aa9250b419252ae22",
+    "flare_lamps": 0,
+    "turbine_top_beacons": 0,
+    "turbine_base_lights": 0,
+    "renderer_sha256": "7c096a6c7cc55a83943af34468a469bcb1c586773e5350aca979137734484fa2",
     "print_sha256": "a9b318191645cf47382ff6c2d74121796b6be02d0d453d07ed094e3ab6d5ae9d",
-    "sha256": "e6a22c48d4e00453868b5799495e4b9cb0ee1b2a501fef2e1198c79c9ec7f594"
+    "sha256": "d4bb2700089345497863bcacfdbc78e9d9d87154cd09cb830f868b2cd9beb12d"
   },
   "furnace-day.png": {
     "building": "furnace",
@@ -71,9 +77,12 @@
     "turbine_roof_panes": 0,
     "interior_lamps": 0,
     "heat_sources": 5,
-    "renderer_sha256": "b27d3759b786d1f0a5a9be14b533ff4a8ff0c2ef687de48aa9250b419252ae22",
+    "flare_lamps": 0,
+    "turbine_top_beacons": 0,
+    "turbine_base_lights": 0,
+    "renderer_sha256": "7c096a6c7cc55a83943af34468a469bcb1c586773e5350aca979137734484fa2",
     "print_sha256": "a9b318191645cf47382ff6c2d74121796b6be02d0d453d07ed094e3ab6d5ae9d",
-    "sha256": "74751ec6c15365f6adc29ef32daaf763c770768e7626331e9d26554dc9301e20"
+    "sha256": "690b3d4bc8fa638de71402d0acdd792272be5150addf8cee3bd5951a182f7597"
   },
   "furnace-night.png": {
     "building": "furnace",
@@ -97,9 +106,12 @@
     "turbine_roof_panes": 0,
     "interior_lamps": 0,
     "heat_sources": 5,
-    "renderer_sha256": "b27d3759b786d1f0a5a9be14b533ff4a8ff0c2ef687de48aa9250b419252ae22",
+    "flare_lamps": 0,
+    "turbine_top_beacons": 0,
+    "turbine_base_lights": 0,
+    "renderer_sha256": "7c096a6c7cc55a83943af34468a469bcb1c586773e5350aca979137734484fa2",
     "print_sha256": "a9b318191645cf47382ff6c2d74121796b6be02d0d453d07ed094e3ab6d5ae9d",
-    "sha256": "1f6ef1436f1be727859b7c9203472f8e0bc91b680b31b5aecb81dda6668e0da4"
+    "sha256": "ca885bf1dd325f1980b7de027b90462c41e325b05322b420bf0b3bf754257b76"
   },
   "power_plant-day.png": {
     "building": "power_plant",
@@ -125,7 +137,10 @@
     "turbine_roof_panes": 2,
     "interior_lamps": 2,
     "heat_sources": 0,
-    "renderer_sha256": "b27d3759b786d1f0a5a9be14b533ff4a8ff0c2ef687de48aa9250b419252ae22",
+    "flare_lamps": 0,
+    "turbine_top_beacons": 0,
+    "turbine_base_lights": 0,
+    "renderer_sha256": "7c096a6c7cc55a83943af34468a469bcb1c586773e5350aca979137734484fa2",
     "print_sha256": "a9b318191645cf47382ff6c2d74121796b6be02d0d453d07ed094e3ab6d5ae9d",
     "sha256": "b779f9ea9f1f7829da4ecdd790270b460b1aa3878c8aedc32dcbbc7705cbe6ca"
   },
@@ -153,9 +168,12 @@
     "turbine_roof_panes": 2,
     "interior_lamps": 2,
     "heat_sources": 0,
-    "renderer_sha256": "b27d3759b786d1f0a5a9be14b533ff4a8ff0c2ef687de48aa9250b419252ae22",
+    "flare_lamps": 0,
+    "turbine_top_beacons": 0,
+    "turbine_base_lights": 0,
+    "renderer_sha256": "7c096a6c7cc55a83943af34468a469bcb1c586773e5350aca979137734484fa2",
     "print_sha256": "a9b318191645cf47382ff6c2d74121796b6be02d0d453d07ed094e3ab6d5ae9d",
-    "sha256": "e752bbeca78570b51cc5182e538fa5b2a609934ac41376762a3ffb220ddc7dd9"
+    "sha256": "3e4a7f4a088d9e0e244997523caf12794b89a3ba5167df292ddc8a5daa89b994"
   },
   "petro_refinery-day.png": {
     "building": "petro_refinery",
@@ -180,9 +198,12 @@
     "turbine_roof_panes": 0,
     "interior_lamps": 0,
     "heat_sources": 0,
-    "renderer_sha256": "b27d3759b786d1f0a5a9be14b533ff4a8ff0c2ef687de48aa9250b419252ae22",
+    "flare_lamps": 1,
+    "turbine_top_beacons": 0,
+    "turbine_base_lights": 0,
+    "renderer_sha256": "7c096a6c7cc55a83943af34468a469bcb1c586773e5350aca979137734484fa2",
     "print_sha256": "a9b318191645cf47382ff6c2d74121796b6be02d0d453d07ed094e3ab6d5ae9d",
-    "sha256": "27660877b5605617710045e6c90d485e43984cda2775aedb2c718716912a14e9"
+    "sha256": "b2de2cbfd4834505b31bedd68b7ab2a5564f468eab83cf634f9a4f01de4e1ef9"
   },
   "petro_refinery-night.png": {
     "building": "petro_refinery",
@@ -207,9 +228,12 @@
     "turbine_roof_panes": 0,
     "interior_lamps": 0,
     "heat_sources": 0,
-    "renderer_sha256": "b27d3759b786d1f0a5a9be14b533ff4a8ff0c2ef687de48aa9250b419252ae22",
+    "flare_lamps": 1,
+    "turbine_top_beacons": 0,
+    "turbine_base_lights": 0,
+    "renderer_sha256": "7c096a6c7cc55a83943af34468a469bcb1c586773e5350aca979137734484fa2",
     "print_sha256": "a9b318191645cf47382ff6c2d74121796b6be02d0d453d07ed094e3ab6d5ae9d",
-    "sha256": "2e0665a3f75f700fb0a6acf939b6125b19582930d89559f8b69f10b224619013"
+    "sha256": "42fd85879ba6784c2db8b19a36a898f31dfbc9ef763e4e20bcea27c9e84781a0"
   },
   "farm-day.png": {
     "building": "farm",
@@ -232,7 +256,10 @@
     "turbine_roof_panes": 0,
     "interior_lamps": 0,
     "heat_sources": 0,
-    "renderer_sha256": "b27d3759b786d1f0a5a9be14b533ff4a8ff0c2ef687de48aa9250b419252ae22",
+    "flare_lamps": 0,
+    "turbine_top_beacons": 0,
+    "turbine_base_lights": 0,
+    "renderer_sha256": "7c096a6c7cc55a83943af34468a469bcb1c586773e5350aca979137734484fa2",
     "print_sha256": "a9b318191645cf47382ff6c2d74121796b6be02d0d453d07ed094e3ab6d5ae9d",
     "sha256": "e41648e45f38d981dba7ef59d3ba63c2df75e826c026d07f823a75021d070705"
   },
@@ -257,9 +284,12 @@
     "turbine_roof_panes": 0,
     "interior_lamps": 0,
     "heat_sources": 0,
-    "renderer_sha256": "b27d3759b786d1f0a5a9be14b533ff4a8ff0c2ef687de48aa9250b419252ae22",
+    "flare_lamps": 0,
+    "turbine_top_beacons": 0,
+    "turbine_base_lights": 0,
+    "renderer_sha256": "7c096a6c7cc55a83943af34468a469bcb1c586773e5350aca979137734484fa2",
     "print_sha256": "a9b318191645cf47382ff6c2d74121796b6be02d0d453d07ed094e3ab6d5ae9d",
-    "sha256": "890b8edbb3ba79acb86e6ea41ff73387302a29b150b6d32055abc2b23f932d37"
+    "sha256": "981f28a76492cc7b5dcf6aaacdc002cf32d104021e37d27937300f4dd1c4c8a3"
   },
   "offshore_wind_farm-day.png": {
     "building": "offshore_wind_farm",
@@ -282,7 +312,10 @@
     "turbine_roof_panes": 0,
     "interior_lamps": 0,
     "heat_sources": 0,
-    "renderer_sha256": "b27d3759b786d1f0a5a9be14b533ff4a8ff0c2ef687de48aa9250b419252ae22",
+    "flare_lamps": 0,
+    "turbine_top_beacons": 6,
+    "turbine_base_lights": 6,
+    "renderer_sha256": "7c096a6c7cc55a83943af34468a469bcb1c586773e5350aca979137734484fa2",
     "print_sha256": "a9b318191645cf47382ff6c2d74121796b6be02d0d453d07ed094e3ab6d5ae9d",
     "sha256": "838fb2fda089177d3443126979683ca3ea839a3a77f3305fb2b3b78c061186c5"
   },
@@ -307,8 +340,11 @@
     "turbine_roof_panes": 0,
     "interior_lamps": 0,
     "heat_sources": 0,
-    "renderer_sha256": "b27d3759b786d1f0a5a9be14b533ff4a8ff0c2ef687de48aa9250b419252ae22",
+    "flare_lamps": 0,
+    "turbine_top_beacons": 6,
+    "turbine_base_lights": 6,
+    "renderer_sha256": "7c096a6c7cc55a83943af34468a469bcb1c586773e5350aca979137734484fa2",
     "print_sha256": "a9b318191645cf47382ff6c2d74121796b6be02d0d453d07ed094e3ab6d5ae9d",
-    "sha256": "366203a281529be5baadecadb4708bd6be3bbdaf292fc5dff17a1759682d8a25"
+    "sha256": "bcdce565d4e472e92c6e51f65b0257b6bfe92b8f635f6fc2f15c6264596a9443"
   }
 }
