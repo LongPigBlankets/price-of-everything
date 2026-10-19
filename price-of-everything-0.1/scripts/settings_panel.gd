@@ -287,9 +287,16 @@ func _build_telemetry_tab() -> Control:
 	copy.focus_mode = Control.FOCUS_ALL
 	copy.pressed.connect(func() -> void: DisplayServer.clipboard_set(identifier.text))
 	id_row.add_child(copy)
-	var explanation := _control_plate("What's this?", "TelemetryExplanationPlate")
-	col.add_child(explanation)
-	(explanation.get("content") as VBoxContainer).add_child(Parts.body(TELEMETRY_ID_EXPLANATION))
+	var explanation_heading := Parts.caption("What's this?", 20)
+	explanation_heading.uppercase = false
+	explanation_heading.add_theme_color_override("font_color", Plate.NAVY)
+	explanation_heading.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.35))
+	identity_rows.add_child(explanation_heading)
+	var explanation := Parts.body(TELEMETRY_ID_EXPLANATION)
+	explanation.name = "TelemetryUserIDExplanation"
+	explanation.add_theme_color_override("font_color", Plate.NAVY)
+	explanation.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.35))
+	identity_rows.add_child(explanation)
 	return tab
 
 

@@ -46,6 +46,9 @@ func _ready() -> void:
 	panel._tabs.current_tab = 4
 	await _settle(3)
 	var identifier := panel.find_child("TelemetryUserID", true, false) as LineEdit
+	var identity_plate := panel.find_child("TelemetryIdentityPlate", true, false)
+	results["id_explanation_on_same_plate"] = identity_plate.is_ancestor_of(panel.find_child("TelemetryUserIDExplanation", true, false))
+	assert(results.id_explanation_on_same_plate)
 	var actual_id := identifier.text
 	identifier.text = "0123456789abcdef0123456789abcdef"
 	await _capture("settings-user-id-layout")
@@ -60,10 +63,15 @@ func _ready() -> void:
 	await _settle(40)
 	await _capture("new-game")
 	var new_game: Control = menu.get("_new_game_panel")
-	results["new_game_settings_plate_visible"] = new_game.find_child("NewGameSettingsPlate", true, false).is_visible_in_tree()
-	assert(results.new_game_settings_plate_visible)
-	results["setup_summary_matches_rules"] = new_game._setup_turns.value == new_game._speed_turns and new_game._setup_difficulty.text.to_lower() == new_game._difficulty_id
-	assert(results.setup_summary_matches_rules)
+	var setup_plate := new_game.find_child("NewGameSettingsPlate", true, false)
+	if preload("res://scripts/demo_build.gd").active():
+		results["demo_settings_hidden"] = setup_plate == null and not new_game.find_child("NewGameAdvancedPlate", true, false).is_visible_in_tree()
+		assert(results.demo_settings_hidden)
+	else:
+		results["new_game_settings_plate_visible"] = setup_plate.is_visible_in_tree()
+		assert(results.new_game_settings_plate_visible)
+		results["setup_summary_matches_rules"] = new_game._setup_turns.value == new_game._speed_turns and new_game._setup_difficulty.text.to_lower() == new_game._difficulty_id
+		assert(results.setup_summary_matches_rules)
 	for i in new_game._starts.size():
 		if str(new_game._starts[i].get("id", "")) == "glass_merchant":
 			new_game._card_buttons[i].button_pressed = true

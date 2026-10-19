@@ -549,7 +549,8 @@ func _build_settings_columns(parent: Node) -> void:
 	else:
 		_send_metrics = not PlayerProfile.telemetry_opt_out
 
-	_build_setup_plate(parent)
+	if not preload("res://scripts/demo_build.gd").active():
+		_build_setup_plate(parent)
 
 
 func _build_setup_plate(parent: Node) -> void:
