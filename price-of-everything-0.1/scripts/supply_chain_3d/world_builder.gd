@@ -2107,11 +2107,13 @@ func _ensure_standing_near(pair: Dictionary) -> void:
 	if not pair.near.is_empty(): return
 	if pair.standing.has("harbour"):
 		var frame := standing_frame(pair.standing)
-		for mesh in [Assets.mesh_for(frame.harbour_asset), Assets.contour_for(frame.harbour_asset)]:
+		var contour := Assets.contour_for(frame.harbour_asset)
+		for mesh in [Assets.mesh_for(frame.harbour_asset), contour]:
 			if mesh == null: continue
 			var visual := MeshInstance3D.new()
 			visual.mesh = mesh
-			set_role(visual, float(pair.get("role", 0.0)))
+			if mesh != contour: set_role(visual, float(pair.get("role", 0.0)))
+			elif float(pair.get("role", 0.0)) > 0.0: visual.material_override = Assets.contour_material(float(pair.get("role", 0.0)))
 			visual.transform = frame.harbour_transform
 			pair.root.add_child(visual)
 			if loading_reveal != null: loading_reveal.bind(visual)
@@ -2145,7 +2147,7 @@ func _ensure_standing_near(pair: Dictionary) -> void:
 		var outline := MeshInstance3D.new()
 		outline.name = "OuterContour"
 		outline.mesh = contour
-		set_role(outline, float(pair.get("role", 0.0)))
+		if float(pair.get("role", 0.0)) > 0.0: outline.material_override = Assets.contour_material(float(pair.get("role", 0.0)))
 		outline.scale = visual.scale
 		pair.root.add_child(outline)
 		if loading_reveal != null: loading_reveal.bind(outline)

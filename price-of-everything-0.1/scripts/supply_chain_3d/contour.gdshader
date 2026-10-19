@@ -7,8 +7,9 @@ varying vec2 loading_world;
 uniform float outline_width_scale = 1.0;
 uniform vec3 outline_ink = vec3(0.1843137255, 0.2313725490, 0.3490196078);
 uniform vec2 grade_range = vec2(-100000.0, 100000.0);
-// 0 = the company's own and unclassified, 2 = decorative scenery, 3 = an NPC's.
-instance uniform float sc_role = 0.0;
+// 0 = the company's own and unclassified, 2 = decorative scenery, 3 = an NPC's. One shared material
+// per role (Assets.contour_material): outlines are too many for per-instance shader values.
+uniform float sc_role = 0.0;
 varying vec3 world_point;
 #include "res://scripts/supply_chain_3d/print_look.gdshaderinc"
 void vertex() {
