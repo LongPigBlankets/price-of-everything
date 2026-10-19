@@ -1,0 +1,85 @@
+{
+  "revision": "iron_battery_v11",
+  "objects": 496,
+  "structural_hosts": [
+    "cabinet",
+    "skid",
+    "cover"
+  ],
+  "topology": "iron-air battery: grey steel cabinet on a yellow castor skid, black fin stack down its long side braced by a steel frame with crossbars under a header pipe, rounded windows, charcoal cover printed \"Fe-Air\"",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 4
+    },
+    "component_weight_by_label": {
+      "3": 2.5,
+      "5": 3,
+      "6": 3,
+      "7": 2.5
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.38,
+    "groups": [
+      {
+        "name": "shadowed_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "thresholds": [
+          0.65,
+          0.6,
+          0.35
+        ]
+      }
+    ]
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 1.25 x 1.45 x 1.12"
+  ],
+  "mesh_checks": {
+    "cabinet": {
+      "vertices": 192,
+      "faces": 101,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "skid": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "cover": {
+      "vertices": 8,
+      "faces": 6,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 2.137,
+    "target": [
+      0.664,
+      0.486,
+      0.661
+    ]
+  }
+}
