@@ -13,7 +13,9 @@ const MAP_SCENE := "res://scenes/main.tscn"
 ## exported game outright. The runtime `ResourceLoader.exists` probe means the entry simply
 ## never appears where the scene was not shipped. Pinned by
 ## `_test_shipped_code_avoids_editor_only_paths`.
+# demo:strip
 const MAP_EDITOR_SCENE := "res://tools/map_editor/map_editor.tscn"
+# demo:end
 const DemoBuild := preload("res://scripts/demo_build.gd")
 ## The three-hex logo (owner, 1 Oct 2026): brass CARBON AND CAPITAL over a copper factory and silver
 ## windmills, rendered in Blender (tools/steam_capsule, --plate trio; game_logo.py makes this file).
@@ -62,7 +64,9 @@ var _tutorial_panel: Control
 var _hall_of_records_panel: Control
 var _tutorial_prompt: Control
 var _goods_grid: Control
+# demo:strip
 var _map_editor_button: Button
+# demo:end
 
 
 func _ready() -> void:
@@ -77,7 +81,9 @@ func _ready() -> void:
 	# before the first New Game (the in-match terminal is added by world_map).
 	var term: CanvasLayer = load("res://scripts/debug_terminal.gd").new()
 	term.menu_mode = true
+	# demo:strip
 	term.cheats_unlocked.connect(_on_cheats_unlocked)
+	# demo:end
 	add_child(term)
 	Audio.play_music()   # looping main-menu theme (placeholder track)
 	# Warm the map's heavy ASSETS off-thread while the player is on the menu: textures, the
@@ -163,6 +169,7 @@ func _on_start_requested(start_path: String, overrides: Dictionary) -> void:
 ## the editor scene must actually be present. The second is what keeps an exported build
 ## clean even if someone unlocks the terminal there — the files are excluded, the probe
 ## fails, and the entry stays hidden.
+# demo:strip
 func _map_editor_available() -> bool:
 	if DemoBuild.active():
 		return false
@@ -170,18 +177,23 @@ func _map_editor_available() -> bool:
 	if terminal_script == null or not terminal_script.cheats_are_unlocked():
 		return false
 	return ResourceLoader.exists(MAP_EDITOR_SCENE)
+# demo:end
 
 
+# demo:strip
 func _on_cheats_unlocked() -> void:
 	if _map_editor_button != null:
 		_map_editor_button.visible = _map_editor_available()
+# demo:end
 
 
+# demo:strip
 func _on_map_editor_pressed() -> void:
 	if not _map_editor_available():
 		return
 	# By path, never by preload — see MAP_EDITOR_SCENE.
 	get_tree().change_scene_to_file(MAP_EDITOR_SCENE)
+# demo:end
 
 
 func _on_back_requested() -> void:
@@ -423,12 +435,14 @@ func _build_menu() -> void:
 		vbox.add_child(b)
 	# Cheat-gated: hidden until `debug CandC` is entered in the terminal ( ` ), and absent
 	# entirely from a build that did not ship the editor scene. A demo build never makes it.
+	# demo:strip
 	if not DemoBuild.active():
 		_map_editor_button = _make_button("Map Editor", false)
 		_map_editor_button.tooltip_text = "Hand-author the map's roads, fabric and building slots."
 		_map_editor_button.pressed.connect(_on_map_editor_pressed)
 		_map_editor_button.visible = _map_editor_available()
 		vbox.add_child(_map_editor_button)
+	# demo:end
 
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL

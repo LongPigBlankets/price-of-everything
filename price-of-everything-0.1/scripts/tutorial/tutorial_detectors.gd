@@ -53,8 +53,10 @@ static func poll(decide: Dictionary) -> bool:
 				str(decide.get("tile", "")),
 				str(decide.get("infra", "")),
 				str(decide.get("building_id", "")))
+		# demo:strip
 		"tile_surveyed":
 			return MatchState.survey_status(str(decide.get("tile", ""))) == "surveyed"
+		# demo:end
 		"building_running_on_tile":
 			return _building_running_on_tile(str(decide.get("tile", "")), str(decide.get("building_id", "")))
 		"building_recipe_on_tile":

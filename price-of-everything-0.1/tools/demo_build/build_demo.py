@@ -6,8 +6,15 @@ regular preset with the `demo` feature tag and the files in excludes.txt left ou
 
   build_demo.py sync      rewrite the Demo presets in export_presets.cfg from the regular ones
   build_demo.py check     exit 1 when the Demo presets are out of date (no writes)
-  build_demo.py export    sync, export every Demo preset, verify, and zip each platform
+  build_demo.py export    sync, stage, export every Demo preset, verify, and zip each platform
   build_demo.py verify    re-run the checks on an existing export folder
+  build_demo.py stage     only make the staged demo source (see below), and parse-check it;
+                          --keep-excluded leaves tools/ and tests/ in it for probes
+
+The demo is exported from a staged copy of the project: an APFS clone (a plain copy
+elsewhere) in which every `# demo:strip` ... `# demo:end` region of a .gd file is removed.
+Lines between `# demo:keep` and `# demo:end` are the demo's replacement: each is written
+`#| <code>` and appears uncommented in the stage. Regions do not nest.
 
 Run it from anywhere; paths resolve from this file. Godot is found as $GODOT, then `godot`
 on PATH, then the macOS app bundle.
@@ -28,6 +35,7 @@ HERE = Path(__file__).resolve().parent
 PROJECT = HERE.parents[1]
 PRESETS = PROJECT / "export_presets.cfg"
 EXCLUDES = HERE / "excludes.txt"
+FORBIDDEN = HERE / "forbidden.txt"
 DEMO_SCRIPT = PROJECT / "scripts/demo_build.gd"
 SMOKE = PROJECT.parent / "tools/ci/run_startup_smoke.py"
 FEATURE = "demo"
@@ -40,6 +48,12 @@ PLATFORMS = {
     "Linux": ("Linux", "Carbon and Capital.x86_64"),
 }
 HEADER = re.compile(r"^\[preset\.(\d+)(\.options)?\]$", re.MULTILINE)
+STAGE_MARKER = "demo_stage.txt"
+STRIP_BEGIN = re.compile(r"^\s*# demo:strip\b")
+STRIP_KEEP = re.compile(r"^\s*# demo:keep\b")
+STRIP_END = re.compile(r"^\s*# demo:end\b")
+KEEP_LINE = re.compile(r"^(\s*)#\| ?")
+STRIPPED_DIRS = ("scripts", "scenes", "addons")
 
 
 # ── Preset file ──────────────────────────────────────────────────────────────────────
@@ -99,7 +113,26 @@ def demo_excludes() -> list[str]:
     active = (PROJECT / "data/map_authored/active.txt").read_text().strip()
     globs += sorted(f"data/map_authored/{p.name}" for p in (PROJECT / "data/map_authored").glob("*.json")
                     if p.stem != active)
+    icons = PROJECT / "assets/icons/research/nodes"
+    globs += sorted(f"assets/icons/research/nodes/{i}.png" for i in gated_research_ids() if (icons / f"{i}.png").exists())
     return globs
+
+
+def gated_research_ids() -> set[str]:
+    """Research nodes the demo leaves out (demo_data_filter.gd gated_research_ids)."""
+    import csv
+    text = DEMO_SCRIPT.read_text()
+    category = re.search(r'^const GATED_RESEARCH_CATEGORY := "([^"]+)"', text, re.MULTILINE)[1]
+    actions = re.findall(r'"([^"]+)"', re.search(r"^const GATED_RESEARCH_ACTIONS: Array = \[([^\]]*)\]",
+                                                  text, re.MULTILINE)[1])
+    hidden = re.search(r"^const HIDDEN_RESEARCH_IDS := \{(.*?)^\}", (PROJECT / "scripts/research_state.gd").read_text(),
+                       re.MULTILINE | re.DOTALL)[1]
+    out = set(re.findall(r'"(research_[a-z0-9_]+)"', hidden))
+    with open(PROJECT / "data/research_unlocks.csv", newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if row["category"].strip() == category or row["Action"].strip() in actions:
+                out.add(row["research_node_id"].strip())
+    return out
 
 
 def demo_preset(base: dict, index: int) -> dict:
@@ -120,6 +153,173 @@ def synced_text() -> str:
     demos = [demo_preset(p, len(regular) + i) for i, p in enumerate(regular)
              if field(p["main"], "name") in PLATFORMS]
     return write_presets(regular + demos)
+
+
+# ── Staged source ────────────────────────────────────────────────────────────────────
+
+def strip_source(text: str, name: str) -> str:
+    """The demo's version of a script: strip regions removed, keep regions uncommented."""
+    out, state, opened = [], None, 0
+    for number, line in enumerate(text.splitlines(keepends=True), 1):
+        if STRIP_BEGIN.match(line):
+            if state:
+                raise SystemExit(f"{name}:{number}: demo:strip inside the region opened at line {opened}")
+            state, opened = "strip", number
+        elif STRIP_KEEP.match(line):
+            if state != "strip":
+                raise SystemExit(f"{name}:{number}: demo:keep outside a demo:strip region")
+            state = "keep"
+        elif STRIP_END.match(line):
+            if not state:
+                raise SystemExit(f"{name}:{number}: demo:end without demo:strip")
+            state = None
+        elif state == "keep":
+            match = KEEP_LINE.match(line)
+            if match:
+                out.append(match[1] + line[match.end():])
+            elif line.strip():
+                raise SystemExit(f"{name}:{number}: a demo:keep line must start with '#|'")
+            else:
+                out.append(line)
+        elif state is None:
+            out.append(line)
+    if state:
+        raise SystemExit(f"{name}:{opened}: demo:strip is never closed")
+    return "".join(out)
+
+
+SECTION = re.compile(r"^\[(\w+)([^\]]*)\]\s*$")
+ATTR = re.compile(r'(\w+)="([^"]*)"')
+
+
+def strip_scene(text: str, name: str, excluded) -> str:
+    """Drop ext_resources whose file the demo leaves out, the nodes using one as their
+    script (with their children) and those nodes' connections. Any other use of a dropped
+    resource stops the build: the scene would not load."""
+    sections, current = [], []
+    for line in text.splitlines(keepends=True):
+        if SECTION.match(line) and current:
+            sections.append(current)
+            current = []
+        current.append(line)
+    if current:
+        sections.append(current)
+    dropped_ids, dropped_nodes, kept = set(), [], []
+    for sec in sections:
+        head = SECTION.match(sec[0])
+        attrs = dict(ATTR.findall(head[2])) if head else {}
+        if head and head[1] == "ext_resource" and excluded(attrs.get("path", "").removeprefix("res://")):
+            dropped_ids.add(attrs.get("id", ""))
+            continue
+        kept.append((head, attrs, sec))
+    if not dropped_ids:
+        return text
+    out = []
+    for head, attrs, sec in kept:
+        body = "".join(sec[1:])
+        if head and head[1] == "node":
+            parent = attrs.get("parent")
+            path = attrs.get("name", "") if parent in (None, ".") else f"{parent}/{attrs.get('name', '')}"
+            if parent is not None and any(parent == d or parent.startswith(d + "/") for d in dropped_nodes):
+                dropped_nodes.append(path)
+                continue
+            if any(f'script = ExtResource("{i}")' in body for i in dropped_ids):
+                dropped_nodes.append(path)
+                continue
+        if head and head[1] == "connection":
+            ends = (attrs.get("from", ""), attrs.get("to", ""))
+            if any(e == d or e.startswith(d + "/") for e in ends for d in dropped_nodes):
+                continue
+        for i in dropped_ids:
+            if f'ExtResource("{i}")' in "".join(sec):
+                raise SystemExit(f"{name}: {sec[0].strip()} uses a resource the demo leaves out")
+        out.append("".join(sec))
+    print(f"  {name}: dropped nodes {', '.join(dropped_nodes) or 'none'}", flush=True)
+    return "".join(out)
+
+
+def marked_scripts(root: Path) -> list[Path]:
+    found = []
+    for folder in STRIPPED_DIRS:
+        for path in sorted((root / folder).rglob("*.gd")):
+            if "# demo:" in path.read_text(encoding="utf-8", errors="replace"):
+                found.append(path)
+    return found
+
+
+def stage(stage_dir: Path, keep_excluded: bool = False) -> Path:
+    """Clone the project to stage_dir, strip the marked regions, parse-check, return its path."""
+    staged = stage_dir / PROJECT.name
+    if stage_dir.exists():
+        shutil.rmtree(stage_dir)
+    stage_dir.mkdir(parents=True)
+    clone = ["cp", "-cRp"] if sys.platform == "darwin" else ["cp", "-a", "--reflink=auto"]
+    subprocess.run(clone + [str(PROJECT), str(staged)], check=True)
+    changed = 0
+    for path in marked_scripts(staged):
+        rel = path.relative_to(staged)
+        text = path.read_text(encoding="utf-8")
+        demo = strip_source(text, str(rel))
+        if demo != text:
+            path.write_text(demo, encoding="utf-8")
+            changed += 1
+    globs = demo_excludes()
+    excluded = lambda rel: any(fnmatch.fnmatch(rel, g) for g in globs)
+    for folder in ("scenes", "scripts"):
+        for scene in sorted((staged / folder).rglob("*.tscn")):
+            text = scene.read_text(encoding="utf-8")
+            demo = strip_scene(text, str(scene.relative_to(staged)), excluded)
+            if demo != text:
+                scene.write_text(demo, encoding="utf-8")
+    (staged / STAGE_MARKER).write_text("Staged demo source. Made by tools/demo_build/build_demo.py.\n")
+    print(f"staged {staged} ({changed} scripts stripped)", flush=True)
+    result = subprocess.run([godot(), "--headless", "--path", str(staged), "res://tools/parse_check.tscn",
+                             "--quit-after", "600"], capture_output=True, text=True)
+    summary = [l for l in result.stdout.splitlines() if l.startswith("[parse_check]")]
+    failed = [m[1] for l in summary if (m := re.search(r"FAILED\s+res://(\S+)", l))]
+    shipped = [f for f in failed if not excluded(f)]
+    totals = [l for l in summary if "scripts," in l]
+    print("\n".join(totals[-1:]) + f" ({len(failed) - len(shipped)} of them in files the demo leaves out)", flush=True)
+    if shipped or not totals:
+        print("\n".join(f"FAILED {f}" for f in shipped))
+        raise SystemExit("the staged demo source does not parse")
+    # parse_check skips autoloads; a broken one shows as a parse error at boot.
+    boot = subprocess.run([godot(), "--headless", "--path", str(staged), "--quit-after", "5", "--", "--as-demo"],
+                          capture_output=True, text=True)
+    errors = [l for l in (boot.stdout + boot.stderr).splitlines()
+              if re.search(r"Parse Error|SCRIPT ERROR|Failed to load script|Compile Error", l)]
+    if errors:
+        print("\n".join(errors[:20]))
+        raise SystemExit("the staged demo source has autoload errors at boot")
+    print("staged autoloads boot without errors", flush=True)
+    if keep_excluded:
+        return staged
+    # Delete what the demo leaves out, so the caches the export rebuilds (the UID and class
+    # caches, which are packed) list only shipped files. The export plugin and the marker stay.
+    keep = ("addons/demo_export/*", STAGE_MARKER)
+    demo_globs = [g for g in field(next(p for p in read_presets(PRESETS.read_text())
+                                         if field(p["main"], "name") == "Linux" + SUFFIX)["main"],
+                                   "exclude_filter").split(",") if g]
+    removed = 0
+    for path in sorted(staged.rglob("*"), reverse=True):
+        rel = str(path.relative_to(staged))
+        if rel.startswith(".godot") or not path.is_file() or any(fnmatch.fnmatch(rel, k) for k in keep):
+            continue
+        source = rel.removesuffix(".import").removesuffix(".uid")
+        if any(fnmatch.fnmatch(source, g) for g in demo_globs):
+            path.unlink()
+            removed += 1
+    # CSVs imported as translations are never read by the game (it reads its CSVs raw), and
+    # their importer is the one that crashes on odd files: drop them before the export scan.
+    for imp in sorted(staged.rglob("*.csv.import")):
+        if 'importer="csv_translation"' in imp.read_text(encoding="utf-8", errors="replace"):
+            imp.with_suffix("").unlink(missing_ok=True)
+            imp.unlink()
+            removed += 1
+    for cache in ("uid_cache.bin", "global_script_class_cache.cfg"):
+        (staged / ".godot" / cache).unlink(missing_ok=True)
+    print(f"deleted {removed} excluded files from the stage; caches rebuild on export", flush=True)
+    return staged
 
 
 # ── Godot ────────────────────────────────────────────────────────────────────────────
@@ -199,6 +399,120 @@ func _init() -> void:
 """
 
 
+def forbidden_strings() -> list[str]:
+    import csv
+    out = [l.strip() for l in FORBIDDEN.read_text().splitlines() if l.strip() and not l.strip().startswith("#")]
+    gated = re.findall(r'"(g_\d+)": true', DEMO_SCRIPT.read_text())
+    with open(PROJECT / "data/Goods - goodsMVP.csv", newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if row["ID"] in gated:
+                # A plain-word internal name ("scrap") also lives inside kept names such as
+                # Scrap Preheating Towers; its display name covers it.
+                out += [row["display_name"]] + ([row["internal_name"]] if "_" in row["internal_name"] else [])
+    return out
+
+
+def read_pack(path: Path) -> tuple[bytes, list[tuple[str, int, int]]]:
+    """A Godot 4 pack's bytes and its (name, offset, size) directory; standalone or embedded."""
+    import struct
+    data = path.read_bytes()
+    start = 0
+    if not data.startswith(b"GDPC"):
+        size = struct.unpack_from("<Q", data, len(data) - 12)[0]
+        start = len(data) - 12 - size
+    if data[start:start + 4] != b"GDPC":
+        raise SystemExit(f"{path}: no Godot pack found")
+    version = struct.unpack_from("<I", data, start + 4)[0]
+    off = start + 20
+    file_base = 0
+    if version >= 2:
+        file_base = struct.unpack_from("<Q", data, off + 4)[0]
+        off += 12
+    if version >= 3:
+        off = start + struct.unpack_from("<Q", data, off)[0]
+    else:
+        off += 64
+    files = []
+    count = struct.unpack_from("<I", data, off)[0]
+    off += 4
+    for _ in range(count):
+        n = struct.unpack_from("<I", data, off)[0]
+        name = data[off + 4:off + 4 + n].rstrip(b"\0").decode("utf-8", "replace")
+        off += 4 + n
+        foff, fsize = struct.unpack_from("<QQ", data, off)
+        off += 16 + 16 + (4 if version >= 2 else 0)
+        files.append((name, start + file_base + foff, fsize))
+    return data, files
+
+
+SCRIPT_SCAN = """extends SceneTree
+func _walk(dir: String, out: Array) -> void:
+	var d := DirAccess.open(dir)
+	if d == null:
+		return
+	for sub in d.get_directories():
+		_walk(dir.path_join(sub), out)
+	for f in d.get_files():
+		if f.ends_with(".gdc"):
+			out.append(dir.path_join(f))
+func _init() -> void:
+	var args := OS.get_cmdline_user_args()
+	if not ProjectSettings.load_resource_pack(args[0], false):
+		print("SCRIPTSCAN cannot mount"); quit(2); return
+	var needles: Array = JSON.parse_string(FileAccess.get_file_as_string(args[1]))
+	var files: Array = []
+	_walk("res://", files)
+	var bad := 0
+	for path in files:
+		var b := FileAccess.get_file_as_bytes(path)
+		if b.size() < 12 or b.slice(0, 4).get_string_from_ascii() != "GDSC":
+			print("SCRIPTSCAN unreadable ", path); bad += 1; continue
+		var size := b.decode_u32(8)
+		var body := b.slice(12)
+		if size > 0:
+			body = body.decompress(size, FileAccess.COMPRESSION_ZSTD)
+		var hex := body.hex_encode()
+		for n in needles:
+			var u32 := String(n).to_utf32_buffer()
+			var x32 := u32.duplicate()
+			for i in range(0, x32.size(), 4):
+				x32[i] = x32[i] ^ 0xb6
+			for enc in [String(n).to_utf8_buffer(), u32, x32]:
+				if hex.find((enc as PackedByteArray).hex_encode()) >= 0:
+					print("SCRIPTSCAN ", path, " contains ", n); bad += 1; break
+	print("SCRIPTSCAN %d scripts, %d problems" % [files.size(), bad])
+	quit(1 if bad else 0)
+"""
+
+
+def scan_pack(pack: Path) -> None:
+    """No forbidden string in any packed file: raw bytes for data, decompressed for scripts."""
+    needles = forbidden_strings()
+    data, files = read_pack(pack)
+    hits = []
+    for name, off, size in files:
+        if name.endswith(".gdc"):
+            continue
+        blob = data[off:off + size]
+        for n in needles:
+            if n.encode() in blob or n.encode("utf-32-le") in blob:
+                hits.append(f"{name}: {n}")
+    for h in hits[:30]:
+        print("PACKSCAN", h)
+    print(f"PACKSCAN {len(files)} files, {len(needles)} forbidden strings, {len(hits)} hits", flush=True)
+    with tempfile.TemporaryDirectory(prefix="cnc-scan-") as tmp:
+        tmp_path = Path(tmp)
+        (tmp_path / "project.godot").write_text('config_version=5\n\n[application]\nconfig/name="scan"\n')
+        (tmp_path / "scan.gd").write_text(SCRIPT_SCAN)
+        (tmp_path / "needles.json").write_text(json.dumps(needles))
+        result = subprocess.run([godot(), "--headless", "--path", str(tmp_path), "--script", "scan.gd",
+                                 "--", str(pack), str(tmp_path / "needles.json")], capture_output=True, text=True)
+        lines = [l for l in result.stdout.splitlines() if l.startswith("SCRIPTSCAN")]
+        print("\n".join(lines[-30:]), flush=True)
+    if hits or result.returncode != 0:
+        raise SystemExit(f"forbidden text in {pack}")
+
+
 def check_pack(pack: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="cnc-pck-") as tmp:
         tmp_path = Path(tmp)
@@ -260,7 +574,15 @@ def cmd_check(_: argparse.Namespace) -> int:
     if synced_text() != PRESETS.read_text():
         print("Demo presets are out of date: run python3 tools/demo_build/build_demo.py sync")
         return 1
-    print("Demo presets are up to date")
+    for path in marked_scripts(PROJECT):
+        strip_source(path.read_text(encoding="utf-8"), str(path.relative_to(PROJECT)))
+    print("Demo presets are up to date; demo:strip regions are well formed")
+    return 0
+
+
+def cmd_stage(args: argparse.Namespace) -> int:
+    cmd_sync(args)
+    stage(args.stage.expanduser().resolve(), args.keep_excluded)
     return 0
 
 
@@ -270,6 +592,7 @@ def folder_for(out: Path, label: str) -> Path:
 
 def cmd_export(args: argparse.Namespace) -> int:
     cmd_sync(args)
+    staged = stage(args.stage.expanduser().resolve())
     out = args.out.expanduser().resolve()
     for preset, (label, exe) in PLATFORMS.items():
         if args.platforms and label.lower() not in args.platforms:
@@ -279,7 +602,7 @@ def cmd_export(args: argparse.Namespace) -> int:
             shutil.rmtree(folder)
         folder.mkdir(parents=True)
         print(f"exporting {preset}{SUFFIX} -> {folder / exe}", flush=True)
-        result = subprocess.run([godot(), "--headless", "--path", str(PROJECT), "--export-release",
+        result = subprocess.run([godot(), "--headless", "--path", str(staged), "--export-release",
                                  preset + SUFFIX, str(folder / exe)])
         if result.returncode != 0 or not (folder / exe).exists():
             raise SystemExit(f"export failed: {preset}{SUFFIX}")
@@ -301,6 +624,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
             pack = folder / exe
         print(f"checking {label} pack {pack.name}", flush=True)
         check_pack(pack)
+        scan_pack(pack)
         if label == "MacOS" and sys.platform == "darwin" and not args.no_smoke:
             smoke_macos(folder / exe, out / "logs" / label)
         if args.zip:
@@ -320,8 +644,15 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("sync").set_defaults(func=cmd_sync)
     sub.add_parser("check").set_defaults(func=cmd_check)
+    default_stage = Path(tempfile.gettempdir()) / "carbon-and-capital-demo-stage"
+    p = sub.add_parser("stage")
+    p.add_argument("--stage", type=Path, default=default_stage)
+    p.add_argument("--keep-excluded", action="store_true",
+                   help="leave tools/ and tests/ in the stage so probes and tests can run in it")
+    p.set_defaults(func=cmd_stage)
     for name, func in (("export", cmd_export), ("verify", cmd_verify)):
         p = sub.add_parser(name)
+        p.add_argument("--stage", type=Path, default=default_stage)
         p.add_argument("--out", type=Path, default=Path("~/Desktop/Carbon and Capital Demo builds"))
         p.add_argument("--platforms", type=lambda s: [x.strip().lower() for x in s.split(",")],
                        help="comma list of macos, windows, linux (default: all)")

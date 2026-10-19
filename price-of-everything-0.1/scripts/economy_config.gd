@@ -229,7 +229,12 @@ const POWER_INTERMITTENT_BUILDINGS := ["solar_farm", "onshore_wind_farm", "offsh
 const POWER_STEADY_BUILDINGS := ["hydro_power_plant"]
 # Generic power_plant recipes whose fuel is biomass/waste count as steady green.
 # (MVP good internal_names: biomass g_062, bio_waste g_073, carbonised_biomass g_076.)
+# The demo ships without the waste goods (scripts/demo_build.gd).
+# demo:strip
 const POWER_STEADY_FUELS := ["biomass", "bio_waste", "carbonised_biomass"]
+# demo:keep
+#| const POWER_STEADY_FUELS := ["biomass", "carbonised_biomass"]
+# demo:end
 
 ## Supply-priority category for a generator, given its building
 ## internal_name and the SAME power-quality string Production._power_quality()

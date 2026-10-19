@@ -423,10 +423,15 @@ static func _bay_row(r: Dictionary, grid: Dictionary) -> HBoxContainer:
 static func _deposits(panel: Control, tile: String, gated: Dictionary, deposits: Array, grid: Dictionary) -> Control:
 	var sec := _section("Deposits", "Deposits", [], "bare")
 	var vb: VBoxContainer = sec.get("content")
+	# demo:strip
 	if str(gated.status) == "unsurveyed":
 		vb.add_child(_note("SurveyNote", SURVEY_ICON, survey_note(tile)))
 	elif deposits.is_empty():
 		vb.add_child(_note("NoDeposits", SURVEY_ICON, "The survey found no deposits here."))
+	# demo:keep
+	#| if deposits.is_empty():
+	#| 	vb.add_child(_note("NoDeposits", SURVEY_ICON, "No deposits here."))
+	# demo:end
 	for v: Dictionary in deposits:
 		vb.add_child(_deposit_row(panel, tile, v, grid))
 	return sec
@@ -434,6 +439,7 @@ static func _deposits(panel: Control, tile: String, gated: Dictionary, deposits:
 
 ## Why the tile shows no deposits yet, in the Survey key's own terms: a survey under way and its turns,
 ## or the key to press, or (the key disabled) that the tile is out of survey range.
+# demo:strip
 static func survey_note(tile: String) -> String:
 	if MatchState.is_survey_in_progress(tile):
 		var turns := MatchState.survey_turns_left(tile)
@@ -441,6 +447,7 @@ static func survey_note(tile: String) -> String:
 	if MatchState.is_tile_surveyable(tile):
 		return "Survey the tile to find its deposits."
 	return "This tile is out of survey range. Survey more tiles to extend your range."
+# demo:end
 
 
 ## A line saying why there is nothing to show, beside its raised mark in the icon column like every row.

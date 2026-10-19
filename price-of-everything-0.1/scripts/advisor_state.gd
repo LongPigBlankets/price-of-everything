@@ -29,6 +29,8 @@ const PROFIT_MILESTONES := [50, 100, 150, 200, 300, 400, 500, 750, 1000]
 # Andrew (the founder, seated via the family-friend decision), Vera (CFO) and Gerald (COO)
 # are the only advisors until `unlock advisors`. The starting recruited pool is the two
 # non-founder demo advisors; Andrew joins separately through seat_founder.
+# The demo ships these three only: the rest of ADVISOR_ROSTER and ADVISOR_DISPLAY, their
+# portraits and the advisor missions are stripped from it.
 const DEMO_ADVISORS := ["andrew", "vera", "gerald"]
 const STARTING_TRIO := ["vera", "gerald"]
 const FIRE_COOLDOWN_TURNS := 10                     # a fired advisor sits out this many turns
@@ -110,6 +112,7 @@ const MISSION_COUNT := 5
 const MISSION_LOYALTY_THRESHOLDS := [2.0, 5.0, 7.0, 9.0]
 const MISSION5_LOYALTY := 9.0
 const MISSION5_STREAK_TURNS := 20
+# demo:strip
 const MISSION_TEMPLATES := {
 	"cfo": {
 		"temp": {"domain": "loan_interest", "pct": -50.0, "turns": 20, "label": "loan interest halved (20t)"},
@@ -178,6 +181,9 @@ const MISSION_TEMPLATES := {
 		"capstone": {"domain": "market_price", "pct": 3.0, "label": "permanent +3% sale price"},
 	},
 }
+# demo:keep
+#| const MISSION_TEMPLATES := {}
+# demo:end
 # Advisor slot (employ-cap) unlocks: 3rd @15 buildings, 4th @100, 5th @ sustained profit.
 const ADVISOR_SLOT_BUILDINGS_3 := 15
 const ADVISOR_SLOT_BUILDINGS_4 := 100
@@ -205,8 +211,11 @@ const ADVISOR_ROSTER := [
 	# leaves at t33. Salary 0 — he is a favour, not a hire. See spec §5.4.
 	{"id": "andrew",    "name": "Andrew Keeler",   "role": "coo",                "inf": 3, "ops": 3, "lead": 3, "inn": 2, "fin": 3, "salary": 0.0, "traits": {"specialty_name": "Out of Retirement", "specialty_description": "misses the work; serves 30 turns for nothing", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
 	{"id": "vera",      "name": "Vera Ashby",      "role": "cfo",                "inf": 3, "ops": 3, "lead": 3, "inn": 2, "fin": 3, "salary": 1.0, "traits": {"specialty_name": "Family Trust",         "specialty_description": "no malus anywhere",                                 "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	# demo:strip
 	{"id": "alexandra", "name": "Alexandra Reyes", "role": "coo",                "inf": 3, "ops": 3, "lead": 3, "inn": 3, "fin": 2, "salary": 4.0, "traits": {"specialty_name": "Prima Donna",          "specialty_description": "superb everywhere; high salary + walk-risk if benched", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	# demo:end
 	{"id": "gerald",    "name": "Gerald Vance",    "role": "coo",                "inf": 2, "ops": 3, "lead": 3, "inn": 2, "fin": 2, "salary": 2.0, "traits": {"specialty_name": "Dinosaur",             "specialty_description": "top operator; brakes clean-recipe adoption (carbon, later)", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	# demo:strip
 	{"id": "eleanor",   "name": "Eleanor Shaw",    "role": "hr_director",        "inf": 3, "ops": 2, "lead": 3, "inn": 1, "fin": 3, "salary": 2.0, "traits": {"specialty_name": "Beloved",              "specialty_description": "labour cost via HR + slows advisor churn",           "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
 	{"id": "sloane",    "name": "Sloane Vane",     "role": "chief_markets",      "inf": 3, "ops": 3, "lead": 1, "inn": 1, "fin": 2, "salary": 2.0, "traits": {"specialty_name": "Slick",                "specialty_description": "extra temporary sale-price boost in a markets seat",  "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
 	{"id": "priya",     "name": "Priya Anand",     "role": "sustainability",     "inf": 3, "ops": 1, "lead": 2, "inn": 3, "fin": 1, "salary": 2.0, "traits": {"specialty_name": "Idealist",             "specialty_description": "amplifies green; raises short-term spend (green, later)", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
@@ -216,6 +225,7 @@ const ADVISOR_ROSTER := [
 	{"id": "marcus",    "name": "Marcus Thorne",   "role": "chief_investment",   "inf": 2, "ops": 1, "lead": 2, "inn": 1, "fin": 3, "salary": 2.0, "traits": {"specialty_name": "Leverage",             "specialty_description": "cheap capital + discounted acquisitions; debt-risk exposure", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
 	{"id": "idris",     "name": "Idris Kohl",      "role": "technical_director", "inf": 1, "ops": 2, "lead": 1, "inn": 3, "fin": 1, "salary": 2.0, "traits": {"specialty_name": "Insufferable Genius",  "specialty_description": "big recipe efficiency in TD; empire labour malus unless siloed", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
 	{"id": "rufus",     "name": "Rufus Ashby",     "role": "government_affairs", "inf": 3, "ops": 1, "lead": 1, "inn": 1, "fin": 1, "salary": 2.0, "traits": {"specialty_name": "Silver Tongue, Empty Suit", "specialty_description": "strong Influencing effect; a bad block everywhere else", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	# demo:end
 ]
 # Phase-1 FREE-lever effects per seat: each emits domain modifiers scaled by the
 # governing tier. base_pct is the tier-3 magnitude; tier 2 = half, tier 1 = a
@@ -269,8 +279,11 @@ const ADVISOR_DISPLAY := {
 	# one exists for anyone on the roster.
 	"andrew":   {"initials": "AK", "portrait_path": "res://assets/advisors/andrew.png", "accent": "#6B7F5A", "bonus": "Out of Retirement: serves 30 turns unpaid, in one of two chairs", "recommendation": "Free, capable, and temporary — take the seat you need most for the next 30 turns.", "bio": "Ran a shipping firm for thirty years and retired from it two years ago, which he has found to be one and a half years too many. He is not here for the money.", "agenda": "Get the working life out of his system, then go back to the garden.", "likes": ["Being useful", "Cheap freight"], "dislikes": ["Being kept past his welcome"], "bonuses": ["No salary for his tenure", "A signing gift in either chair"]},
 	"vera":      {"initials": "VA", "portrait_path": "res://assets/advisors/natasha.png", "accent": "#7C5A80", "bonus": "Family Trust: steady, strong almost anywhere", "recommendation": "Your reliable keystone — she holds any seat well.", "bio": "Your sister and the steady hand on the board: numerate, unflappable, and very hard to surprise twice.", "agenda": "Anchor the board and keep every seat competently filled.", "likes": ["Steady growth", "A balanced board"], "dislikes": ["Reckless bets", "Idle capital"], "bonuses": ["No weak seat"]},
+	# demo:strip
 	"alexandra": {"initials": "AR", "portrait_path": "res://assets/advisors/alexandra.png", "accent": "#8A5A5A", "bonus": "Prima Donna: superb everywhere, high salary + walk-risk", "recommendation": "A top hire who forces a full board reshuffle when she arrives.", "bio": "A rival operator good enough at everything to make your whole board nervous — and she knows her price.", "agenda": "Be indispensable, be paid, and never be sidelined.", "likes": ["Being centrally slotted", "Ambitious plays"], "dislikes": ["Being benched", "Being under-slotted"], "bonuses": ["Strong in any seat", "Commands a high salary"]},
+	# demo:end
 	"gerald":    {"initials": "GV", "portrait_path": "res://assets/advisors/dan.png", "accent": "#455C78", "bonus": "Dinosaur: superb operator, brakes the green pivot", "recommendation": "Keep him for the throughput; the carbon squeeze makes him a dilemma.", "bio": "A superb pure operator who runs a plant beautifully and fights decarbonisation on instinct.", "agenda": "Maximise output and upkeep; resist the clean transition.", "likes": ["High utilisation", "Cheap fuel"], "dislikes": ["Clean retrofits", "Carbon rules"], "bonuses": ["Excellent COO", "Drags clean adoption"]},
+	# demo:strip
 	"eleanor":   {"initials": "ES", "portrait_path": "res://assets/advisors/anita.png", "accent": "#51707A", "bonus": "Beloved: labour + morale, slows churn", "recommendation": "The glue that lets a flawed board function.", "bio": "The diplomat the crews trust — dampens labour spikes and keeps the board from walking.", "agenda": "Keep the workforce and the board loyal.", "likes": ["Fair policies", "A stable board"], "dislikes": ["Layoffs", "Churn"], "bonuses": ["Labour cost down", "Advisor retention"]},
 	"sloane":    {"initials": "SV", "portrait_path": "", "accent": "#6E5A86", "bonus": "Slick: best sale prices, quietly toxic", "recommendation": "Your best seller — pair with a strong IR to counter the fallout.", "bio": "The closer. Best sale prices in the business, and quietly toxic to everything that isn't a deal.", "agenda": "Push prices and volume; damn the standing.", "likes": ["Fat margins", "High volume"], "dislikes": ["Slow markets", "HR duty"], "bonuses": ["Better sell prices", "Weak with people"]},
 	"priya":     {"initials": "PA", "portrait_path": "res://assets/advisors/priya.png", "accent": "#4F6B58", "bonus": "Idealist: amplifies green, dents near-term profit", "recommendation": "Superb if you're racing Greenest; a cash drain if you're not.", "bio": "A true believer who reaches for the clean option every time, whatever it costs this quarter.", "agenda": "Decarbonise, capture subsidy, win Greenest.", "likes": ["Clean recipes", "Green subsidy"], "dislikes": ["Dirty routes", "Short-termism"], "bonuses": ["Green amplified", "Raises short-term spend"]},
@@ -280,6 +293,7 @@ const ADVISOR_DISPLAY := {
 	"marcus":    {"initials": "MT", "portrait_path": "res://assets/advisors/marcus.png", "accent": "#765742", "bonus": "Leverage: cheap capital, dangerous debt", "recommendation": "High-risk finance specialist; dangerous outside his lane.", "bio": "A financier who makes capital cheap and acquisitions cheaper — until the debt bites.", "agenda": "Borrow big, buy cheap, grow fast.", "likes": ["Cheap debt", "Acquisitions"], "dislikes": ["Thin reserves", "Operations duty"], "bonuses": ["Cheap capital", "Debt-risk exposure"]},
 	"idris":     {"initials": "IK", "portrait_path": "", "accent": "#536C92", "bonus": "Insufferable Genius: brilliant, unbearable", "recommendation": "Atrocious except in the lab — silo him in a TD seat.", "bio": "A brilliant process chemist nobody can stand to work near — keep him in the lab.", "agenda": "Perfect the process; ignore the room.", "likes": ["Hard problems", "Being left alone"], "dislikes": ["Management", "Small talk"], "bonuses": ["Big recipe efficiency", "Empire labour malus unless siloed"]},
 	"rufus":     {"initials": "RA", "portrait_path": "", "accent": "#6B6077", "bonus": "Silver Tongue, Empty Suit: one good seat", "recommendation": "Genuinely, and only, a lobbyist.", "bio": "Your cousin. Great in a room, useless everywhere else, riding the family name.", "agenda": "Talk his way through; do as little as possible.", "likes": ["A podium", "Family favour"], "dislikes": ["Real work", "Being found out"], "bonuses": ["Strong lobbyist", "A disaster elsewhere"]},
+	# demo:end
 }
 
 signal advisor_mission_completed(advisor_id: String, mission_index: int, reward_label: String)

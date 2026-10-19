@@ -80,7 +80,9 @@ signal building_placed(tile_id: String, building_id: String, recipe_id: String, 
 ## this; the baked network still relies on its own counters plus a manual repaint.
 signal tile_infrastructure_changed(tile_id: String, infra_type: String)
 
+# demo:strip
 var _survey_dialog: PanelContainer = null
+# demo:end
 var _special_order_resolution_dialog: Control = null
 var _stockpile_select_prompt: PanelContainer = null
 var _pending_stockpile_selection: Dictionary = {}
@@ -219,7 +221,9 @@ func _build_base() -> void:
 	river_layer.clear()
 	terrain_layer.tile_selected.connect(_on_tile_selected)
 	terrain_layer.stockpile_destination_selected.connect(_on_stockpile_destination_selected)
+	# demo:strip
 	terrain_layer.survey_tile_clicked.connect(_on_survey_tile_clicked)
+	# demo:end
 	terrain_layer.tile_menu_requested.connect(_on_tile_menu_requested)
 	MatchState.buy_tile_pick_requested.connect(_on_buy_tile_pick_requested)
 	MatchState.transfer_for_good_requested.connect(_on_transfer_requested)
@@ -957,6 +961,7 @@ func _tutorial_blocks(tile_id: String) -> bool:
 	MatchState.request_toast("Let's stay on the tutorial area for now.", "info")
 	return true
 
+# demo:strip
 func _on_survey_tile_clicked(tile_data: Dictionary) -> void:
 	# Clicking a tile in the Surveying mapmode opens its survey dialog. Fully
 	# surveyed tiles (and ones already being surveyed) trigger no dialog.
@@ -978,6 +983,7 @@ func _on_survey_tile_clicked(tile_data: Dictionary) -> void:
 	if tile_name == "":
 		tile_name = tile_id
 	_survey_dialog.open_for(tile_id, tile_name, status == "partial")
+# demo:end
 
 func _on_v2_building_clicked(building: Dictionary) -> void:
 	_open_building_detail(building)
@@ -1007,7 +1013,9 @@ func _build_info_panel() -> void:
 	hud_content.add_child(_info_panel)
 	_info_panel.building_clicked.connect(_on_v2_building_clicked)
 	_info_panel.pick_destination_requested.connect(_on_v2_pick_destination)
+	# demo:strip
 	_info_panel.survey_requested.connect(_on_survey_tile_clicked)
+	# demo:end
 	_info_panel.locate_requested.connect(func(tile_id: String) -> void: _focus_camera_on_tile(tile_id))
 
 
@@ -1047,6 +1055,7 @@ func _build_dialogs_and_fx(paced: bool) -> void:
 	if paced:
 		await get_tree().process_frame
 
+	# demo:strip
 	# Opened by clicking a tile in the Surveying mapmode.
 	t = Time.get_ticks_usec()
 	_survey_dialog = load("res://scripts/survey_dialog.gd").new()
@@ -1054,6 +1063,7 @@ func _build_dialogs_and_fx(paced: bool) -> void:
 	_prof_us("  dialog: survey", t)
 	if paced:
 		await get_tree().process_frame
+	# demo:end
 
 	# Debug cheat terminal (toggle with the ` key).
 	t = Time.get_ticks_usec()
@@ -1071,6 +1081,7 @@ func _build_dialogs_and_fx(paced: bool) -> void:
 	if paced:
 		await get_tree().process_frame
 
+	# demo:strip
 	# Collapsing-hex + rising-deposit-icon animation when a tile finishes surveying.
 	t = Time.get_ticks_usec()
 	var survey_fx: Node2D = load("res://scripts/survey_effects.gd").new()
@@ -1078,6 +1089,7 @@ func _build_dialogs_and_fx(paced: bool) -> void:
 	survey_fx.terrain_layer = terrain_layer
 	add_child(survey_fx)
 	_prof_us("  survey effects", t)
+	# demo:end
 
 
 ## Build the Building Detail panel — same lazy contract as _build_info_panel.

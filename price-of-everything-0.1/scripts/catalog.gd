@@ -32,6 +32,8 @@ const HIDDEN_RECIPE_IDS := {
 
 # Internal names of the buildings a demo run skipped, so their recipes are skipped too.
 var _demo_gated_internal_names: Dictionary = {}
+# Internal names of the waste goods a demo run skipped.
+var _demo_gated_good_names: Dictionary = {}
 
 # --- Goods storage ---
 var _goods_by_id: Dictionary = {}
@@ -643,6 +645,9 @@ func _load_goods() -> void:
 		var good := _parse_good_row(headers, line)
 		if good.is_empty():
 			continue
+		if DemoBuild.active() and DemoBuild.RECYCLING_GOOD_IDS.has(str(good.id)):
+			_demo_gated_good_names[str(good.internal_name)] = true
+			continue
 		_all_goods.append(good)
 		_goods_by_id[good.id] = good
 		if good.internal_name != "":
@@ -887,6 +892,8 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 		var output_qty_str: String = raw.get("output_qty_%d" % i, "")
 		if output_name == "" or output_qty_str == "":
 			continue
+		if _demo_gated_good_names.has(output_name.strip_edges()):
+			continue   # a demo run drops a waste by-product, as the demo's recipes file does
 		var parsed_output_qty: int = int(output_qty_str)
 		if parsed_output_qty <= 0:
 			continue

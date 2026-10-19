@@ -37,6 +37,13 @@ const RECYCLING_BUILDING_IDS: Dictionary = {"b_022": true, "b_036": true, "b_023
 const RECYCLING_GOOD_IDS: Dictionary = {"g_063": true, "g_067": true, "g_073": true, "g_074": true}
 ## The research branch that only feeds the recycling chain.
 const GATED_RESEARCH_CATEGORY := "Recycling"
+## Research actions with no meaning in the demo: every tile starts surveyed.
+const GATED_RESEARCH_ACTIONS: Array = ["Survey"]
+
+
+## Whether a research_unlocks.csv row is left out of the demo.
+static func is_gated_research(category: String, action: String) -> bool:
+	return category.strip_edges() == GATED_RESEARCH_CATEGORY or GATED_RESEARCH_ACTIONS.has(action.strip_edges())
 
 ## Command-line switch that runs an editor or headless session as the demo, so the test
 ## suite and probes can exercise it. Honoured only where the `editor` feature exists, so an

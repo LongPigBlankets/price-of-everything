@@ -105,8 +105,10 @@ func _ready() -> void:
 		ResearchState.unlock_granted.connect(_on_unlock_granted)
 	if MatchState.has_signal("market_sale_arrived_at_port"):
 		MatchState.market_sale_arrived_at_port.connect(_on_sale_arrived)
+	# demo:strip
 	if MatchState.has_signal("tile_survey_completed"):
 		MatchState.tile_survey_completed.connect(_on_survey_completed)
+	# demo:end
 	if Stockpile.has_signal("tile_reached_capacity"):
 		Stockpile.tile_reached_capacity.connect(_on_tile_reached_capacity)
 	if LoanState.has_signal("bankruptcy_warning"):
@@ -539,6 +541,7 @@ static func first_market_sale_body(port_tile_id: String) -> String:
 	var port := Catalog.tile_label(port_tile_id) if port_tile_id != "" else "the port"
 	return "Our company sold its first goods to the global market via %s. This is likely the first in many transactions that will put us on the map. Who knows where we'll go from here." % port
 
+# demo:strip
 func _on_survey_completed(tile_id: String, deposit_goods: Array) -> void:
 	var names: Array = []
 	for d in deposit_goods:
@@ -561,6 +564,7 @@ func _on_survey_completed(tile_id: String, deposit_goods: Array) -> void:
 		"deeplink": {"panel": "tile", "tile_id": tile_id},
 		"persistent": false,
 	})
+# demo:end
 
 func _on_tile_reached_capacity(tile_id: String) -> void:
 	emit_event({

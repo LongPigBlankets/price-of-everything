@@ -18,7 +18,9 @@ const ROWS: Array = [
 	{"id": "water", "label": "Water", "kind": "sentinel"},
 	{"id": "power", "label": "Power", "kind": "sentinel"},
 	{"id": "logistics", "label": "Logistics", "kind": "sentinel"},
+	# demo:strip
 	{"id": "surveying", "label": "Surveying", "kind": "sentinel"},
+	# demo:end
 	{"id": "infrastructure", "label": "Infrastructure", "kind": "sentinel"},
 	{"id": "stockpile", "label": "Stockpile", "kind": "sentinel"},
 	{"id": "ownership", "label": "Ownership", "kind": "sentinel"},

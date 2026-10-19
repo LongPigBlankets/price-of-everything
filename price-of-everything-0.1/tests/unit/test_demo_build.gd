@@ -94,7 +94,9 @@ func _test_shipped_code_avoids_demo_excluded_paths() -> void:
 	_check(globs.size() > 20, "demo isolation: the Linux Demo exclude list was read (%d globs)" % globs.size())
 	var offenders := PackedStringArray()
 	var scanned := 0
-	var path_re := RegEx.create_from_string("(?:preload\\(|path=)\"res://([^\"]+)\"")
+	# A scene node whose script the demo leaves out is dropped from the staged scene
+	# (build_demo.py strip_scene), so a Script ext_resource is not a dangling reference.
+	var path_re := RegEx.create_from_string("(?:preload\\(|\\[ext_resource type=\"(?!Script)[^\"]*\"[^\\]]*path=)\"res://([^\"]+)\"")
 	for directory in ["res://scripts", "res://scenes"]:
 		var files: Array = _files_with_ext(directory, ".gd") + _files_with_ext(directory, ".tscn")
 		for file_path in files:
@@ -184,9 +186,12 @@ func _test_demo_data_filter_drops_gated_rows() -> void:
 	var gated_recipes := ["r_105", "r_106", "r_107", "r_108", "r_110", "r_111", "r_113", "r_166", "r_167"]
 	var cases := [
 		[DemoDataFilter.BUILDINGS, "ID", DemoBuild.HIDDEN_BUILDING_IDS.keys() + DemoBuild.RECYCLING_BUILDING_IDS.keys()],
+		[DemoDataFilter.GOODS, "ID", DemoBuild.RECYCLING_GOOD_IDS.keys()],
 		[DemoDataFilter.RECIPES, "recipe_id", gated_recipes],
-		[DemoDataFilter.RESEARCH, "research_node_id", ["research_recyc_001", "research_recyc_006", "research_biochem_004", "research_petro_020"]],
+		[DemoDataFilter.RESEARCH, "research_node_id", ["research_recyc_001", "research_recyc_006", "research_biochem_004",
+			"research_petro_020", "research_mining_008", "research_mining_009"]],
 	]
+	var waste := DemoDataFilter.gated_good_names()
 	for c in cases:
 		var path: String = c[0]
 		var source := FileAccess.get_file_as_string(path)
@@ -201,15 +206,18 @@ func _test_demo_data_filter_drops_gated_rows() -> void:
 				continue
 			if not source.contains(row.raw):
 				lost += 1
-		_check(lost == 0, "demo data: %s keeps its other rows byte for byte" % path.get_file())
+			for value in row.fields.values():
+				if waste.has(str(value).strip_edges()):
+					_check(false, "demo data: %s row %s still names %s" % [path.get_file(), row.values[0], value])
+		var rewritten := 9 if path == DemoDataFilter.RECIPES else 0   # the farm recipes lose their Waste Water
+		_check(lost == rewritten, "demo data: %s keeps its other rows byte for byte (%d rewritten, want %d)"
+			% [path.get_file(), lost, rewritten])
 		_check(after.size() > before.size() * 0.8, "demo data: %s keeps most rows (%d of %d)" % [path.get_file(), after.size(), before.size()])
 		_check(filtered.split("\n")[0] == source.split("\n")[0], "demo data: %s keeps its header" % path.get_file())
-	var goods := FileAccess.get_file_as_string(DemoDataFilter.GOODS)
-	_check(DemoDataFilter.filter(DemoDataFilter.GOODS, goods) == goods, "demo data: goods rows are not filtered")
 	var research := FileAccess.get_file_as_string(DemoDataFilter.RESEARCH)
 	for row in DemoDataFilter._rows(DemoDataFilter.filter(DemoDataFilter.RESEARCH, research)):
-		if str(row.fields.get("category", "")) == DemoBuild.GATED_RESEARCH_CATEGORY:
-			_check(false, "demo data: no Recycling research row survives (%s)" % row.fields.get("research_node_id", ""))
+		if DemoBuild.is_gated_research(str(row.fields.get("category", "")), str(row.fields.get("Action", ""))):
+			_check(false, "demo data: no gated research row survives (%s)" % row.fields.get("research_node_id", ""))
 	var presentation: Dictionary = JSON.parse_string(DemoDataFilter.filter(DemoDataFilter.PRESENTATION,
 		FileAccess.get_file_as_string(DemoDataFilter.PRESENTATION)))
 	_check(not presentation.has("research_recyc_001") and presentation.has("research_mining_001"),
@@ -238,3 +246,41 @@ func _test_demo_run_loads_what_the_demo_ships() -> void:
 		if not research.has(str(d.get("research_node_id", ""))):
 			extra_research.append(str(d.get("research_node_id", "")))
 	_check(extra_research.is_empty(), "demo run: every loaded research node ships (%s)" % ", ".join(extra_research))
+
+
+## Every `# demo:strip` region closes, holds no other region, and its demo:keep lines are
+## `#|` lines (build_demo.py strip_source enforces the same at stage time).
+func _test_demo_strip_regions_are_well_formed() -> void:
+	var marked := 0
+	for directory in ["res://scripts", "res://scenes", "res://addons"]:
+		for file_path in _files_with_ext(directory, ".gd"):
+			var text := FileAccess.get_file_as_string(file_path)
+			if not text.contains("# demo:"):
+				continue
+			marked += 1
+			var state := ""
+			var problem := ""
+			var n := 0
+			for line in text.split("\n"):
+				n += 1
+				var t := line.strip_edges()
+				if t.begins_with("# demo:strip"):
+					if state != "":
+						problem = "line %d: nested demo:strip" % n
+					state = "strip"
+				elif t.begins_with("# demo:keep"):
+					if state != "strip":
+						problem = "line %d: demo:keep outside a region" % n
+					state = "keep"
+				elif t.begins_with("# demo:end"):
+					if state == "":
+						problem = "line %d: demo:end without demo:strip" % n
+					state = ""
+				elif state == "keep" and t != "" and not t.begins_with("#|"):
+					problem = "line %d: demo:keep line without #|" % n
+				if problem != "":
+					break
+			if problem == "" and state != "":
+				problem = "a region is never closed"
+			_check(problem == "", "demo regions: %s is well formed %s" % [file_path.get_file(), problem])
+	_check(marked >= 10, "demo regions: the marked scripts were found (%d)" % marked)

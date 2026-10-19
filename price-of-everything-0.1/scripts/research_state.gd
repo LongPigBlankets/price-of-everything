@@ -373,9 +373,9 @@ func _load_unlock_defs() -> void:
 			continue
 		if HIDDEN_RESEARCH_IDS.has(_csv_at(row, idx, "research_node_id")):
 			continue   # demo-hidden node: never loads, so nothing can link to it
-		if preload("res://scripts/demo_build.gd").active() \
-				and _csv_at(row, idx, "category") == preload("res://scripts/demo_build.gd").GATED_RESEARCH_CATEGORY:
-			continue   # the demo ships without this branch (see scripts/demo_build.gd)
+		if preload("res://scripts/demo_build.gd").active() and preload("res://scripts/demo_build.gd") \
+				.is_gated_research(_csv_at(row, idx, "category"), _csv_at(row, idx, "Action")):
+			continue   # the demo ships without these nodes (see scripts/demo_build.gd)
 		var prereqs: Array = []
 		for col in ["prereq_1", "prereq_2", "prereq_3"]:
 			var p := _csv_at(row, idx, col)

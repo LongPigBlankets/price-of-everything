@@ -38,6 +38,8 @@ const SCHEDULE: Array = [
 		"forewarn_body": "The government is considering a carbon levy. Fossil fuel use and affected imports may become more expensive.",
 		"body": "The first carbon levy phase is fully in force. Fossil fuel use and affected imports now cost more.",
 	},
+	# Phases 2 and 3 land after the demo's 100 turns; the demo ships without them.
+	# demo:strip
 	{
 		"id": "co2_tax_p2", "policy": "co2_tax", "level": 2,
 		"effective_turn": 165, "forewarn_turns": 8, "severity": "warning",
@@ -61,4 +63,5 @@ const SCHEDULE: Array = [
 		"forewarn_body": "The government plans a final increase in the carbon levy. Production that relies on fossil fuels will cost more.",
 		"body": "The carbon levy has reached its final rate. Fossil fuel use and affected imports now face the highest charge.",
 	},
+	# demo:end
 ]

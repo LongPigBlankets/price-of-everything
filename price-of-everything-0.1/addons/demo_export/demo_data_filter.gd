@@ -4,9 +4,12 @@ extends RefCounted
 ## copied byte for byte. The rule matches what a demo run skips at load (Catalog,
 ## ResearchState), and tests/unit/test_demo_build.gd holds the two together:
 ##   buildings   DemoBuild.HIDDEN_BUILDING_IDS and RECYCLING_BUILDING_IDS
-##   recipes     made in one of those buildings, or making or consuming a recycling good
-##   research    the Recycling branch, and the nodes ResearchState hides in every build
-## Goods rows stay: the market prices every good.
+##   goods       DemoBuild.RECYCLING_GOOD_IDS (the waste goods)
+##   recipes     made in one of those buildings, or making or consuming a waste good;
+##               a waste by-product is cleared from the recipe instead
+##   research    the Recycling branch, the Survey nodes, and the nodes ResearchState hides
+##               in every build
+##   missions    the boards switched off in every build (enabled: false)
 
 const DemoBuild := preload("res://scripts/demo_build.gd")
 const BUILDINGS := "res://data/Buildings - buildingsMVP.csv"
@@ -14,7 +17,9 @@ const GOODS := "res://data/Goods - goodsMVP.csv"
 const RECIPES := "res://data/recipes_all.csv"
 const RESEARCH := "res://data/research_unlocks.csv"
 const PRESENTATION := "res://data/research_presentation.json"
-const FILTERED := [BUILDINGS, RECIPES, RESEARCH, PRESENTATION]
+const MISSION_BOARDS := "res://data/mission_boards.json"
+const FILTERED := [BUILDINGS, GOODS, RECIPES, RESEARCH, PRESENTATION, MISSION_BOARDS]
+const OUTPUT_SLOTS := 5
 
 
 ## The filtered text of a FILTERED file; any other path comes back unchanged.
@@ -23,11 +28,14 @@ static func filter(path: String, text: String) -> String:
 		BUILDINGS:
 			return _keep_rows(text, func(row: Dictionary) -> bool:
 				return not DemoBuild.is_gated_building(str(row.get("ID", ""))))
+		GOODS:
+			return _keep_rows(text, func(row: Dictionary) -> bool:
+				return not DemoBuild.RECYCLING_GOOD_IDS.has(str(row.get("ID", ""))))
 		RECIPES:
 			var buildings := gated_building_names()
 			var goods := gated_good_names()
 			var alias: Dictionary = load("res://scripts/catalog.gd").BUILDING_ALIAS
-			return _keep_rows(text, func(row: Dictionary) -> bool:
+			var kept := _keep_rows(text, func(row: Dictionary) -> bool:
 				var building := str(row.get("building_id", "")).strip_edges()
 				if buildings.has(alias.get(building, building)):
 					return false
@@ -35,6 +43,12 @@ static func filter(path: String, text: String) -> String:
 					if goods.has(str(row.get(col, "")).strip_edges()):
 						return false
 				return true)
+			return _rewrite_rows(kept, func(row: Dictionary) -> Dictionary:
+				for i in range(2, OUTPUT_SLOTS + 1):
+					if goods.has(str(row.get("output_%d" % i, "")).strip_edges()):
+						row["output_%d" % i] = ""
+						row["output_qty_%d" % i] = ""
+				return row)
 		RESEARCH:
 			var dropped := gated_research_ids()
 			return _keep_rows(text, func(row: Dictionary) -> bool:
@@ -47,6 +61,14 @@ static func filter(path: String, text: String) -> String:
 			for node_id in gated_research_ids():
 				rows.erase(node_id)
 			return JSON.stringify(rows, "  ") + "\n"
+		MISSION_BOARDS:
+			var doc: Variant = JSON.parse_string(text)
+			if not doc is Dictionary or not (doc as Dictionary).get("boards") is Array:
+				return text
+			(doc as Dictionary)["boards"] = ((doc as Dictionary)["boards"] as Array).filter(
+				func(board: Variant) -> bool: return not (board is Dictionary and board.get("enabled", true) == false))
+			(doc as Dictionary).erase("_comment")
+			return JSON.stringify(doc, "  ") + "\n"
 	return text
 
 
@@ -72,7 +94,7 @@ static func gated_good_names() -> Dictionary:
 static func gated_research_ids() -> Dictionary:
 	var out: Dictionary = (load("res://scripts/research_state.gd").HIDDEN_RESEARCH_IDS as Dictionary).duplicate()
 	for row in _rows(FileAccess.get_file_as_string(RESEARCH)):
-		if str(row.fields.get("category", "")).strip_edges() == DemoBuild.GATED_RESEARCH_CATEGORY:
+		if DemoBuild.is_gated_research(str(row.fields.get("category", "")), str(row.fields.get("Action", ""))):
 			out[str(row.fields.get("research_node_id", "")).strip_edges()] = true
 	return out
 
@@ -88,7 +110,38 @@ static func _keep_rows(text: String, keep: Callable) -> String:
 	return "".join(out)
 
 
-## Rows of a CSV as {fields: {header: value}, raw: the row's original text with its line
+## Rows `change` alters are written again from their fields; untouched rows keep their bytes.
+static func _rewrite_rows(text: String, change: Callable) -> String:
+	var rows := _rows(text, true)
+	if rows.is_empty():
+		return text
+	var header: PackedStringArray = rows[0].values
+	var out := PackedStringArray([rows[0].raw])
+	for i in range(1, rows.size()):
+		var row: Dictionary = rows[i]
+		if row.fields.is_empty():
+			out.append(row.raw)
+			continue
+		var before: Dictionary = row.fields.duplicate()
+		var after: Dictionary = change.call(row.fields.duplicate())
+		if after == before:
+			out.append(row.raw)
+			continue
+		var values: PackedStringArray = row.values.duplicate()
+		for c in mini(header.size(), values.size()):
+			values[c] = _csv_field(str(after.get(header[c].strip_edges(), values[c])))
+		var ending := "\r\n" if row.raw.ends_with("\r\n") else ("\n" if row.raw.ends_with("\n") else "")
+		out.append(",".join(values) + ending)
+	return "".join(out)
+
+
+static func _csv_field(value: String) -> String:
+	if value.contains(",") or value.contains("\"") or value.contains("\n") or value.contains("\r"):
+		return "\"" + value.replace("\"", "\"\"") + "\""
+	return value
+
+
+## Rows of a CSV as {fields: {header: value}, values, raw: the row's original text with its line
 ## ending}. Handles quoted fields, doubled quotes and line breaks inside quotes. The header
 ## row comes first when include_header is true; blank rows have empty fields.
 static func _rows(text: String, include_header := false) -> Array:
@@ -134,12 +187,12 @@ static func _rows(text: String, include_header := false) -> Array:
 	var header: PackedStringArray = records[0].values
 	var out: Array = []
 	if include_header:
-		out.append({"fields": {}, "raw": records[0].raw})
+		out.append({"fields": {}, "values": header, "raw": records[0].raw})
 	for r in range(1, records.size()):
 		var values: PackedStringArray = records[r].values
 		var named := {}
 		if not (values.size() == 1 and values[0].strip_edges() == ""):
 			for c2 in mini(header.size(), values.size()):
 				named[header[c2].strip_edges()] = values[c2]
-		out.append({"fields": named, "raw": records[r].raw})
+		out.append({"fields": named, "values": values, "raw": records[r].raw})
 	return out

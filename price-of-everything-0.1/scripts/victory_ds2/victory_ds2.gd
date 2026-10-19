@@ -166,9 +166,13 @@ func _rule_text(b: Dictionary) -> String:
 	var threshold := int(b.get("win_threshold", 2500))
 	if VictoryState.win_threshold_for_turn(1) == VictoryState.win_threshold_for_turn(max_turns):
 		return "Score %d to win. Each track is up to 1000 points." % threshold
+	# demo:strip
 	return "The bar rises with the turn: one full track wins at turn %d, two at %d, three at %d, four at %d." % [
 		VictoryState.WIN_START_TURN, VictoryState.WIN_START_TURN + VictoryState.WIN_STEP_TURNS,
 		VictoryState.WIN_START_TURN + 2 * VictoryState.WIN_STEP_TURNS, max_turns]
+	# demo:keep
+	#| return "Score %d to win. Each track is up to 1000 points." % threshold
+	# demo:end
 
 
 ## One track's dial on its dark metal plate.

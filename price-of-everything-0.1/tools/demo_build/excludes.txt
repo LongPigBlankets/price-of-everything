@@ -50,3 +50,32 @@ data/balance_v4_changes.json
 
 # The export plugin that filters the demo's data files; editor-only.
 addons/demo_export/*
+
+# The marker build_demo.py writes into the staged copy.
+demo_stage.txt
+
+# Stale exports with no runtime reader: the goods-flow graph (it names the waste goods and
+# the recycling recipes) and the translation resources left by old CSV imports.
+data/goods_flow.json
+*.translation
+
+# Surveying: the demo starts with every tile surveyed. The dialog, the map overlay (its
+# node in scenes/main.tscn is dropped with it), the survey animation and their art.
+scripts/survey_dialog.gd
+scripts/survey_overlay.gd
+scripts/survey_effects.gd
+assets/ui/survey_paper.png
+assets/ui/survey_grunge.png
+assets/fonts/Inkfree.ttf
+assets/fonts/CourierNew.ttf
+
+# Advisors outside DemoBuild's three (AdvisorState.DEMO_ADVISORS): their portraits.
+assets/advisors/alexandra.png
+assets/advisors/anita.png
+assets/advisors/hitomi.png
+assets/advisors/lance.png
+assets/advisors/marcus.png
+assets/advisors/priya.png
+
+# Dev test scenes that sit under scenes/.
+scenes/tests/*
