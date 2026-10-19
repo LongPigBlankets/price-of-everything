@@ -1,0 +1,66 @@
+{
+  "industrial_factory": {
+    "rect": [
+      0.5361328125,
+      0.0791015625,
+      0.138671875,
+      0.138671875
+    ],
+    "frames": 12,
+    "columns": 4,
+    "rows": 3,
+    "seconds": 1.5
+  },
+  "furnace": {
+    "rect": [
+      0.4873046875,
+      0.115234375,
+      0.15234375,
+      0.15234375
+    ],
+    "frames": 12,
+    "columns": 4,
+    "rows": 3,
+    "seconds": 1.5
+  },
+  "power_plant": {
+    "rect": [
+      0.28125,
+      -0.009765625,
+      0.345703125,
+      0.345703125
+    ],
+    "frames": 12,
+    "columns": 4,
+    "rows": 3,
+    "seconds": 1.5
+  },
+  "_composition_tops": {
+    "industrial_factory": 0.0866851806640625,
+    "furnace": 0.087890625,
+    "power_plant": 0.08611297607421875,
+    "petro_refinery": 0.1181640625,
+    "farm": 0.1923828125,
+    "offshore_wind_farm": 0.0859375
+  },
+  "_composition_top_sources": {
+    "industrial_factory-day.png": "8bd81f2cea478075c93ba9faff0b296c7ab832c0ff6aa87864bcb2c7ef34aa0a",
+    "industrial_factory-smoke-day.png": "7badd64f30799c01c4b99d9e0a180daa1a6b602b5d3d77486c525185d6e86fa8",
+    "industrial_factory-night.png": "32ebe6c98f5a4f806f7feae7858483d0fb9913873223fd4374175780ec62e684",
+    "industrial_factory-smoke-night.png": "bf059ce6c9c20bebebd9f51a63b77f1a80286af869dbee8d8c4ad7b8ebdae0e2",
+    "furnace-day.png": "50a1cd118e7958b720389e164cf72f2b3a517c46a9797f7ac9f2fb17cade8092",
+    "furnace-smoke-day.png": "f9e410d11dbdbcec2e874d630e5c01fc0f368802301acd72d5fff75ab615d696",
+    "furnace-night.png": "ebe330f6612ab4f0b25d646172a3045be18e771924711cca398583674f1183cc",
+    "furnace-smoke-night.png": "3be975183d5793f52158f1fd7097b2c7b0785146ec8ef1cd780b5749ff634957",
+    "power_plant-day.png": "f8ae1c61b175af8b8c1acb4facd847d04e3f44e109a1993eb5a742c9a1704eb9",
+    "power_plant-smoke-day.png": "c6a5ecd39cd6e20db22046241a58b50b3f9f81303ebd16f438a80862fd33c627",
+    "power_plant-night.png": "d152d6005c18f755e0bc18b2c93bcd3e92363c27839163b4ee2ff7bd14e43729",
+    "power_plant-smoke-night.png": "6eceb4cab9df15b49010416a956d9d20c4710e83b46cb9ff5aaa29223d575c2a",
+    "petro_refinery-day.png": "b2de2cbfd4834505b31bedd68b7ab2a5564f468eab83cf634f9a4f01de4e1ef9",
+    "petro_refinery-night.png": "a66e4c8ac4f61a82228003b65beb76a3c70e15b78405f7ece9468d410146af14",
+    "farm-day.png": "e41648e45f38d981dba7ef59d3ba63c2df75e826c026d07f823a75021d070705",
+    "farm-night.png": "981f28a76492cc7b5dcf6aaacdc002cf32d104021e37d27937300f4dd1c4c8a3",
+    "offshore_wind_farm-day.png": "838fb2fda089177d3443126979683ca3ea839a3a77f3305fb2b3b78c061186c5",
+    "offshore_wind_farm-night.png": "bcdce565d4e472e92c6e51f65b0257b6bfe92b8f635f6fc2f15c6264596a9443"
+  }
+}
