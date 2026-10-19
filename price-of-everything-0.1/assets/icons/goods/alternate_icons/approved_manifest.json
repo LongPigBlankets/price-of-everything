@@ -35,11 +35,13 @@
     "fuels",
     "glass",
     "graphite",
+    "heavy_vehicle",
     "high_grade_silicon",
     "hydraulic_components",
     "hydrogen",
     "ice_car",
     "industrial_acids",
+    "iron_battery",
     "iron_ingots",
     "iron_ore",
     "large_engine",
@@ -1962,6 +1964,60 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_075_pet_coke.png",
       "source": "goods_pet_coke/v29",
       "sha256": "6a766721ed6c072397307a4a73f4c3d330881c66ea8899f05978dd6cd4f9410b",
+      "installed_default": true
+    },
+    {
+      "good": "heavy_vehicle",
+      "good_id": "g_055",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_055_heavy_vehicle.png",
+      "source": "goods_heavy_vehicle/v38",
+      "sha256": "8fea1e733d333913d61ce1fd0e04e65dbdba41a7ac56d37ff6ac280eb61aa919",
+      "installed_default": true
+    },
+    {
+      "good": "heavy_vehicle",
+      "good_id": "g_055",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_055_heavy_vehicle.png",
+      "source": "goods_heavy_vehicle/v38",
+      "sha256": "3a9f8b1d4baa46ceaeecc68e300e923b0d05acedfab4578cf5ccb13a5ec9d4ec",
+      "installed_default": true
+    },
+    {
+      "good": "heavy_vehicle",
+      "good_id": "g_055",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_055_heavy_vehicle.png",
+      "source": "goods_heavy_vehicle/v38",
+      "sha256": "18227a210498fe9d3b6765f19c030b99c97b29ebf5aa5f40a25e695e655c0437",
+      "installed_default": true
+    },
+    {
+      "good": "iron_battery",
+      "good_id": "g_061",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_061_iron_battery.png",
+      "source": "goods_iron_battery/v11",
+      "sha256": "08ff47a90b0f1d554469418f0ba221b76b7bafba2c2dc8206e6a25ecfd41c05e",
+      "installed_default": true
+    },
+    {
+      "good": "iron_battery",
+      "good_id": "g_061",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_061_iron_battery.png",
+      "source": "goods_iron_battery/v11",
+      "sha256": "9734b10312dfadb147dd6319cc269b92baf94c8fdd4396caff40a0501f40d8d5",
+      "installed_default": true
+    },
+    {
+      "good": "iron_battery",
+      "good_id": "g_061",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_061_iron_battery.png",
+      "source": "goods_iron_battery/v11",
+      "sha256": "6951831c6823f9f79b7b51e2b2dc699177403283674e4426cddda3c368d7e9a0",
       "installed_default": true
     },
     {
