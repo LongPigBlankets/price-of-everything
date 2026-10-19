@@ -1,5 +1,5 @@
 extends RefCounted
-## The settings and New Game native controls wear the same DS2 cream keycaps.
+## The Settings native controls wear the DS2 cream keycaps.
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 
 

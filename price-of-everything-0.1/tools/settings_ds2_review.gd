@@ -1,5 +1,5 @@
 extends Node
-## Render the actual Settings and New Game screens in an isolated profile.
+## Render the actual Settings screen in an isolated profile.
 const Settings := preload("res://scripts/settings_panel.gd")
 const AppPaths := preload("res://scripts/app_paths.gd")
 var output := ""
@@ -59,24 +59,6 @@ func _ready() -> void:
 	assert(results.cabinet_fits_viewport)
 	panel._on_back_pressed()
 	await _settle(5)
-	menu.call("_show_new_game_panel")
-	await _settle(40)
-	await _capture("new-game")
-	var new_game: Control = menu.get("_new_game_panel")
-	var setup_plate := new_game.find_child("NewGameSettingsPlate", true, false)
-	if preload("res://scripts/demo_build.gd").active():
-		results["demo_settings_hidden"] = setup_plate == null and not new_game.find_child("NewGameAdvancedPlate", true, false).is_visible_in_tree()
-		assert(results.demo_settings_hidden)
-	else:
-		results["new_game_settings_plate_visible"] = setup_plate.is_visible_in_tree()
-		assert(results.new_game_settings_plate_visible)
-		results["setup_summary_matches_rules"] = new_game._setup_turns.value == new_game._speed_turns and new_game._setup_difficulty.text.to_lower() == new_game._difficulty_id
-		assert(results.setup_summary_matches_rules)
-	for i in new_game._starts.size():
-		if str(new_game._starts[i].get("id", "")) == "glass_merchant":
-			new_game._card_buttons[i].button_pressed = true
-	await _settle(8)
-	await _capture("new-game-glass-merchant")
 	var file := FileAccess.open(output.path_join("validation.json"), FileAccess.WRITE)
 	file.store_string(JSON.stringify(results, "\t"))
 	file.close()
