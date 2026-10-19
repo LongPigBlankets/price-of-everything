@@ -7,9 +7,8 @@ extends Control
 ##
 ## Pure UI: captures the choices and emits `start_requested(start_path, overrides)` /
 ## `back_requested`; the main menu owns the scene transition. Built from the shared DS
-## theme plus a rounded metallic icon frame + BevelEdge rim (the market panel's framed
-## goods-icon light) over the research panel's metallic navy plate (diagonal light +
-## rivets). Referenced from main_menu via a preload const (no class_name) for headless.
+## kit: the navy cabinet, raised keys, starting-company brief and a separate steel
+## settings plate with a turn counter. The current choices and demo gates are unchanged. Referenced from main_menu via a preload const (no class_name) for headless.
 
 signal start_requested(start_path: String, overrides: Dictionary)
 signal back_requested
@@ -34,7 +33,7 @@ const ICON := 120.0                                  # start-card icon size
 const CARD_PAD := 8                                  # fixed card content margin (constant across states)
 ## Inset of the narrative line from each edge. 200 was set against a panel that stretched to
 ## the screen; against a fixed 1420 it only squeezed the sentence into a column.
-const DESC_INSET := 72
+const DESC_INSET := 32
 const BevelEdge := preload("res://scripts/bevel_edge.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
@@ -43,6 +42,19 @@ const BEBAS := preload("res://assets/fonts/BebasNeue-Regular.ttf")
 const BuildingIcon := preload("res://scripts/building_icon.gd")   # navy-keyed metallic building icons
 const DebugTerminal := preload("res://scripts/debug_terminal.gd")   # for the `unlock demo` cheat flag
 const PlayerColours := preload("res://scripts/player_colours.gd")   # company livery table
+const Ds2Parts := preload("res://scripts/ds2/parts.gd")
+const Ds2Section := preload("res://scripts/bdp_v3_section.gd")
+const CreamKey := preload("res://scripts/ds2/cream_key.gd")
+const Nine := preload("res://scripts/bdp_v3_nine.gd")
+const Title := preload("res://scripts/bdp_v3_title.gd")
+const Plate := preload("res://scripts/bdp_v3_plate.gd")
+const Scroll := preload("res://scripts/bdp_v3_scroll.gd")
+const Drum := preload("res://scripts/ds2/drum_figure.gd")
+const PreferencesKit := preload("res://scripts/ds2/preferences_kit.gd")
+const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
+var _setup_difficulty: Label
+var _setup_turns: Control
+
 const GOLD := Color(0.90, 0.72, 0.36, 1.0)
 const CREAM := Color(0.995234, 0.930806, 0.763265)   # recipe-card parchment, for the goods tiles
 # "2 sizes larger" body text in the start detail (DS Body 14 / Numeric 16 baselines).
@@ -158,7 +170,8 @@ func _input(event: InputEvent) -> void:
 func _build() -> void:
 	_starts = _load_starts()
 
-	var bg := MetalBg.new()
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var bg := Nine.make("panel_backing", 64)
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
@@ -167,7 +180,7 @@ func _build() -> void:
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	margin.clip_contents = true   # keep content from spilling past the panel edges
 	for s in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + s, DS.SP["XL"])
+		margin.add_theme_constant_override("margin_" + s, 28)
 	add_child(margin)
 
 	var col := VBoxContainer.new()
@@ -177,27 +190,48 @@ func _build() -> void:
 	# Header.
 	var header := HBoxContainer.new()
 	col.add_child(header)
-	var title := Label.new()
-	title.text = "New Game"
-	title.theme_type_variation = &"Title"
+	var gear := TextureRect.new()
+	gear.texture = Plate.tex("construct_settings")
+	gear.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	gear.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	gear.custom_minimum_size = Vector2(52, 52)
+	gear.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_child(gear)
+	var title: Control = Title.new()
+	title.set("text", "New Game")
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	header.add_child(title)
-	var back := Button.new()
-	back.text = "Back"
+	var back := CreamKey.make("BackToMenu", "Back", "", 140)
+	back.focus_mode = Control.FOCUS_ALL
 	back.pressed.connect(func() -> void: back_requested.emit())
 	header.add_child(back)
+	var scroll := ScrollContainer.new()
+	scroll.name = "NewGameSetupScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	Scroll.apply(scroll, true)
+	col.add_child(scroll)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 22)
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(body)
 
 	# Start cards — a single centred, spaced-out row.
-	_build_cards(col)
+	_build_cards(body)
 
 	# Selected-start detail: expanded description (inset from each edge) + a fact line.
 	var detail_margin := MarginContainer.new()
 	detail_margin.add_theme_constant_override("margin_left", DESC_INSET)
 	detail_margin.add_theme_constant_override("margin_right", DESC_INSET)
-	col.add_child(detail_margin)
+	body.add_child(detail_margin)
 	var detail_col := VBoxContainer.new()
 	detail_col.add_theme_constant_override("separation", DS.SP["MD"])
-	detail_margin.add_child(detail_col)
+	var brief: MarginContainer = Ds2Section.new()
+	brief.name = "StartingCompanyPlate"
+	brief.set("style", "slab")
+	detail_margin.add_child(brief)
+	(brief.get("content") as VBoxContainer).add_child(detail_col)
 	_detail_desc = Label.new()
 	_detail_desc.theme_type_variation = &"Body"
 	_detail_desc.add_theme_font_size_override("font_size", DETAIL_BODY_FS)
@@ -216,17 +250,16 @@ func _build() -> void:
 	_start_detail_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	detail_col.add_child(_start_detail_box)
 
-	_build_settings_columns(col)
+	_build_settings_columns(body)
 
-	col.add_child(_expand_spacer())
 	var start_wrap := HBoxContainer.new()
 	start_wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_child(start_wrap)
 	start_wrap.add_child(_flex_spacer(0.15))
-	var start_btn := Button.new()
-	start_btn.text = "Start New Game"
-	start_btn.theme_type_variation = &"Primary"
-	start_btn.custom_minimum_size = Vector2(0, 54)
+	var start_btn := CreamKey.make("StartNewGame", "Start New Game", "", 340)
+	start_btn.set("rim", "brass")
+	start_btn.set("title_px", 22)
+	start_btn.focus_mode = Control.FOCUS_ALL
 	start_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	start_btn.size_flags_stretch_ratio = 0.70
 	start_btn.pressed.connect(_on_start_pressed)
@@ -234,6 +267,7 @@ func _build() -> void:
 	start_wrap.add_child(_flex_spacer(0.15))
 
 	_select_default_start()
+	LampOverlay.attach(self)
 
 
 func _build_cards(parent: Node) -> void:
@@ -268,6 +302,7 @@ func _start_card(start: Dictionary, group: ButtonGroup) -> Control:
 	var title := Label.new()
 	title.text = String(start.get("title", ""))
 	title.theme_type_variation = &"BuildingName"
+	title.add_theme_font_override("font", Plate.FONT_SEMI)
 	title.add_theme_font_size_override("font_size", START_NAME_FS)   # larger start-name text
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -311,17 +346,13 @@ func _start_card(start: Dictionary, group: ButtonGroup) -> Control:
 
 # Selected vs unselected card differ ONLY in colour — identical border width, corner
 # radius and content margin, so toggling never resizes the card.
-func _card_box(selected: bool) -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = DS.PALETTE["BG_HIGHLIGHT"] if selected else DS.PALETTE["BG_INSET"]
-	sb.border_color = DS.PALETTE["ACCENT"] if selected else DS.PALETTE["BORDER_SOFT"]
-	sb.set_border_width_all(2)
-	sb.set_corner_radius_all(12)
-	sb.content_margin_left = CARD_PAD
-	sb.content_margin_right = CARD_PAD
-	sb.content_margin_top = CARD_PAD
-	sb.content_margin_bottom = CARD_PAD
-	return sb
+func _card_box(selected: bool) -> StyleBoxTexture:
+	var box := StyleBoxTexture.new()
+	box.texture = Plate.tex("panel_backing" if selected else "diag_module")
+	for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+		box.set_texture_margin(side, 24)
+		box.set_content_margin(side, CARD_PAD)
+	return box
 
 
 # Rounded metallic framed icon: rounded navy plate (cream border) → tier hex + good +
@@ -421,12 +452,13 @@ func _build_settings_columns(parent: Node) -> void:
 		if _start_detail_box != null:
 			_start_detail_box.visible = not on)   # the buildings/financials detail fills this space when closed
 
-	var section := PanelContainer.new()
-	section.theme_type_variation = &"Inset"
+	var section: MarginContainer = Ds2Section.new()
+	section.name = "NewGameAdvancedPlate"
+	section.set("style", "slab")
 	body.add_child(section)
 	var cols := HBoxContainer.new()
 	cols.add_theme_constant_override("separation", DS.SP["XL"])
-	section.add_child(cols)
+	(section.get("content") as VBoxContainer).add_child(cols)
 
 	# Difficulty column (with the God-of-Industry lock).
 	var dcol := _settings_column(cols, "Difficulty")
@@ -453,7 +485,8 @@ func _build_settings_columns(parent: Node) -> void:
 		b.toggled.connect(func(on: bool) -> void:
 			if on:
 				_difficulty_id = oid
-				_difficulty_caption.text = odesc)
+				_difficulty_caption.text = odesc
+				_refresh_setup_readouts())
 	_press_in_group(dcol, DIFFICULTY_DEFAULT)
 
 	# Speed column.
@@ -473,6 +506,7 @@ func _build_settings_columns(parent: Node) -> void:
 			if on:
 				_speed_turns = turns
 				_policy_timeline = timeline
+				_refresh_setup_readouts()
 			_victory_set = victory_set)
 	var note := Label.new()
 	note.text = "This also changes the Era pacing."
@@ -514,6 +548,58 @@ func _build_settings_columns(parent: Node) -> void:
 		parent.add_child(consent["row"])
 	else:
 		_send_metrics = not PlayerProfile.telemetry_opt_out
+
+	_build_setup_plate(parent)
+
+
+func _build_setup_plate(parent: Node) -> void:
+	var plate: MarginContainer = Ds2Section.new()
+	plate.name = "NewGameSettingsPlate"
+	plate.set("style", "plate")
+	parent.add_child(plate)
+	var rows: VBoxContainer = plate.get("content")
+	var heading := Ds2Parts.caption("New game settings", 20)
+	heading.add_theme_color_override("font_color", Plate.NAVY)
+	heading.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.3))
+	rows.add_child(heading)
+	var controls := HBoxContainer.new()
+	controls.add_theme_constant_override("separation", 36)
+	rows.add_child(controls)
+	for words in ["Difficulty", "Game length", "Map"]:
+		var group := VBoxContainer.new()
+		group.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		group.add_theme_constant_override("separation", 8)
+		controls.add_child(group)
+		var label := Ds2Parts.caption(words, 16)
+		label.add_theme_color_override("font_color", Plate.NAVY)
+		label.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.3))
+		group.add_child(label)
+		if words == "Game length":
+			var length_row := HBoxContainer.new()
+			length_row.add_theme_constant_override("separation", 8)
+			group.add_child(length_row)
+			_setup_turns = Drum.new(34, 3, _speed_turns)
+			length_row.add_child(_setup_turns)
+			var turns := Ds2Parts.caption("turns", 17)
+			turns.add_theme_color_override("font_color", Plate.NAVY)
+			turns.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.3))
+			length_row.add_child(turns)
+		else:
+			var reading := Label.new()
+			reading.add_theme_font_override("font", Ds2Parts.FONT_TITLE)
+			reading.add_theme_font_size_override("font_size", 18)
+			reading.add_theme_color_override("font_color", Plate.NAVY)
+			reading.text = "All tiles surveyed" if bool(_advanced.get("survey_all", false)) else "Starting tiles surveyed"
+			group.add_child(reading)
+			if words == "Difficulty": _setup_difficulty = reading
+	_refresh_setup_readouts()
+
+
+func _refresh_setup_readouts() -> void:
+	if _setup_difficulty != null: _setup_difficulty.text = _difficulty_id.replace("_", " ").capitalize()
+	if _setup_turns != null:
+		_setup_turns.set("value", _speed_turns)
+		_setup_turns.queue_redraw()
 
 
 ## Accordion header: a flat, left-aligned toggle in large Bebas Neue cream (the DS Title font),
@@ -563,6 +649,7 @@ func _stacked_button(col: Node, label: String, group: ButtonGroup) -> Button:
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.size_flags_stretch_ratio = 0.70
 	b.custom_minimum_size = Vector2(0, 36)
+	PreferencesKit.key_control(b)
 	wrap.add_child(b)
 	wrap.add_child(_flex_spacer(0.15))
 	return b
@@ -646,6 +733,7 @@ func _colour_column() -> Control:
 	col.add_child(_detail_heading("Company colour"))
 
 	var option := OptionButton.new()
+	PreferencesKit.key_control(option)
 	# Each livery carries its own 20px swatch, so the colour is read from the row rather
 	# than recalled from its name — "Ethylene Blue" means nothing until you have seen it.
 	for entry_value in PlayerColours.all():
@@ -969,47 +1057,7 @@ static func _vignette_tex() -> Texture2D:
 
 # ── Nested draw classes ─────────────────────────────────────────────────────────
 
-## Metallic navy plate: diagonal gradient (light top-left → dark bottom-right), corner
-## rivets and a cream rounded outline — the research/market-panel treatment.
-class MetalBg extends Control:
-	const TL := Color(0.06, 0.21, 0.35, 1.0)
-	const TR := Color(0.02, 0.13, 0.25, 1.0)
-	const BL := Color(0.01, 0.10, 0.20, 1.0)
-	const BR := Color(0.0, 0.05, 0.10, 1.0)
-	const BORDER := Color(0.995234, 0.930806, 0.763265, 1.0)
-	const INSET := 5.0
-	const RADIUS := 14
-
-	func _ready() -> void:
-		resized.connect(queue_redraw)
-
-	func _draw() -> void:
-		var r := Rect2(Vector2.ZERO, size)
-		var b := r.grow(-INSET)
-		if b.size.x <= 0.0 or b.size.y <= 0.0:
-			return
-		draw_polygon(
-			PackedVector2Array([b.position, Vector2(b.end.x, b.position.y), b.end, Vector2(b.position.x, b.end.y)]),
-			PackedColorArray([TL, TR, BR, BL]))
-		var m := 18.0
-		for cc in [b.position + Vector2(m, m), Vector2(b.end.x - m, b.position.y + m),
-				Vector2(b.position.x + m, b.end.y - m), b.end - Vector2(m, m)]:
-			_rivet(cc, 5.0)
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color.TRANSPARENT
-		sb.border_color = BORDER
-		sb.set_border_width_all(4)
-		sb.set_corner_radius_all(RADIUS)
-		draw_style_box(sb, r)
-
-	func _rivet(c: Vector2, rad: float) -> void:
-		draw_circle(c, rad, Color("#586673"))
-		draw_circle(c - Vector2(rad * 0.3, rad * 0.3), rad * 0.5, Color("#cdd8e2"))
-		draw_arc(c, rad, 0, TAU, 16, Color(0, 0, 0, 0.5), 1.0)
-
-
-## Rounded navy plate for the icon — the brass MenuChrome frame is overlaid on top (no cream
-## border of its own). RADIUS matches the brass frame's inner radius so it wraps cleanly.
+## Rounded navy plate under the icon's brass MenuChrome frame.
 class RoundFrame extends Control:
 	const NAVY := Color(0.02, 0.085, 0.155, 1.0)
 	# Match the overlaid brass frame's OUTER silhouette (inset ~3px, radius 28): the fill then

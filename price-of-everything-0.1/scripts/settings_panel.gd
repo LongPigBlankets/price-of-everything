@@ -1,7 +1,7 @@
 extends Control
 class_name SettingsPanel
-## Full-screen settings overlay with tabs across the top: Gameplay / Audio /
-## Graphics / Controls. Audio has Master / Music / SFX volume sliders (0–100);
+## DS2 control cabinet with latched page keys: Gameplay / Audio /
+## Graphics / Controls / Telemetry. Audio has Master / Music / SFX volume sliders (0–100);
 ## Graphics has a window-resolution dropdown persisted via PlayerProfile; Controls
 ## lists the whole scheme, read-only for the demo except the map-mode hotkeys, which
 ## ship unbound for the player to set. Gameplay holds a dummy seven-position "Test
@@ -13,9 +13,22 @@ class_name SettingsPanel
 ## it always reflects the live volumes. Esc / Back closes without applying; Apply
 ## commits and closes. Presentation-only (routes through Audio) — no sim state.
 
-const PANEL_BLACK := Color(0.03, 0.03, 0.045)
 const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
-const MenuChrome := preload("res://scripts/menu_chrome.gd")
+const Parts := preload("res://scripts/ds2/parts.gd")
+const Section := preload("res://scripts/bdp_v3_section.gd")
+const CreamKey := preload("res://scripts/ds2/cream_key.gd")
+const Title := preload("res://scripts/bdp_v3_title.gd")
+const Key := preload("res://scripts/bdp_v3_key.gd")
+const Plate := preload("res://scripts/bdp_v3_plate.gd")
+const Scroll := preload("res://scripts/bdp_v3_scroll.gd")
+const Drum := preload("res://scripts/ds2/drum_figure.gd")
+const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
+const PreferencesKit := preload("res://scripts/ds2/preferences_kit.gd")
+const UIFonts := preload("res://scripts/ui_fonts.gd")
+
+var _cabinet: PanelContainer
+var _tabs: TabContainer
+var _tab_keys: Array[Button] = []
 const Keybinds := preload("res://scripts/keybinds.gd")
 const RotarySelector := preload("res://scripts/rotary_selector.gd")
 const PanelGauge := preload("res://scripts/panel_gauge.gd")
@@ -50,63 +63,162 @@ static func open(parent: Node) -> SettingsPanel:
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
-
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.55)
+	dim.color = Color(0, 0, 0, 0.72)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
 
-	# Near-full-screen dark plate over the dim.
-	var panel := PanelContainer.new()
-	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	panel.offset_left = 48
-	panel.offset_top = 40
-	panel.offset_right = -48
-	panel.offset_bottom = -40
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = PANEL_BLACK
-	sb.set_corner_radius_all(MenuChrome.CORNER)
-	sb.set_content_margin_all(30)
-	panel.add_theme_stylebox_override("panel", sb)
-	add_child(panel)
-	MenuChrome.frame_rect(self, 48, 40, -48, -40)   # brass metallic edge (lit top-left), in sync with the menu
+	_cabinet = PanelContainer.new()
+	_cabinet.name = "SettingsCabinet"
+	var backing := StyleBoxTexture.new()
+	backing.texture = preload("res://assets/ui/bdp_v3/panel_backing.png")
+	for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+		backing.set_texture_margin(side, 64)
+		backing.set_content_margin(side, 30)
+	_cabinet.add_theme_stylebox_override("panel", backing)
+	add_child(_cabinet)
+	var layout := VBoxContainer.new()
+	layout.add_theme_constant_override("separation", 20)
+	_cabinet.add_child(layout)
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 14)
+	layout.add_child(header)
+	var gear := TextureRect.new()
+	gear.name = "SettingsGear"
+	gear.texture = Plate.tex("construct_settings")
+	gear.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	gear.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	gear.custom_minimum_size = Vector2(70, 70)
+	gear.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_child(gear)
+	var titles := VBoxContainer.new()
+	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	titles.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	header.add_child(titles)
+	var title: Control = Title.new()
+	title.set("text", "Settings")
+	titles.add_child(title)
+	titles.add_child(Parts.caption("Control cabinet", 16))
+	var close: TextureButton = Key.make("close", 36)
+	close.tooltip_text = "Close without applying"
+	close.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	close.pressed.connect(_on_back_pressed)
+	header.add_child(close)
 
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 18)
-	panel.add_child(vbox)
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 26)
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	layout.add_child(body)
+	var rail: MarginContainer = Section.new()
+	rail.name = "SettingsSelectorPlate"
+	rail.set("style", "plate")
+	rail.custom_minimum_size.x = 220
+	rail.size_flags_horizontal = Control.SIZE_FILL
+	body.add_child(rail)
+	var selectors: VBoxContainer = rail.get("content")
+	selectors.add_theme_constant_override("separation", 16)
+	var legend := Parts.caption("Settings", 18)
+	legend.add_theme_color_override("font_color", Plate.NAVY)
+	legend.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.3))
+	selectors.add_child(legend)
 
-	var title := Label.new()
-	title.text = "SETTINGS"
-	title.theme_type_variation = &"Title"
-	title.add_theme_font_size_override("font_size", 36)
-	title.add_theme_color_override("font_color", OFF_WHITE)
-	vbox.add_child(title)
+	_tabs = TabContainer.new()
+	_tabs.name = "SettingsPages"
+	_tabs.tabs_visible = false
+	_tabs.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	_tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_tabs.add_child(_build_gameplay_tab())
+	_tabs.add_child(_build_audio_tab())
+	_tabs.add_child(_build_graphics_tab())
+	_tabs.add_child(_build_controls_tab())
+	_tabs.add_child(_build_telemetry_tab())
+	body.add_child(_tabs)
+	for i in _tabs.get_tab_count():
+		var tab_index: int = i
+		var key := CreamKey.make("Settings" + _tabs.get_tab_title(i), _tabs.get_tab_title(i), "", 174)
+		key.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		key.focus_mode = Control.FOCUS_ALL
+		key.pressed.connect(func() -> void: _tabs.current_tab = tab_index)
+		selectors.add_child(key)
+		_tab_keys.append(key)
+	_tabs.tab_changed.connect(_sync_tab_keys)
+	_tabs.current_tab = 1
+	_sync_tab_keys(1)
 
-	var tabs := TabContainer.new()
-	tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	tabs.add_child(_build_gameplay_tab())
-	var audio_tab := _build_audio_tab()
-	tabs.add_child(audio_tab)
-	tabs.add_child(_build_graphics_tab())
-	tabs.add_child(_build_controls_tab())
-	tabs.add_child(_build_telemetry_tab())
-	tabs.current_tab = audio_tab.get_index()   # land on the only working tab
-	vbox.add_child(tabs)
-
-	# Footer: Back (discard) on the left, Apply (commit + close) on the right.
 	var footer := HBoxContainer.new()
-	footer.add_theme_constant_override("separation", 12)
-	vbox.add_child(footer)
+	footer.add_theme_constant_override("separation", 18)
+	layout.add_child(footer)
 	footer.add_child(_make_button("Back", false, _on_back_pressed))
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	footer.add_child(spacer)
+	var note := Parts.body("Changes take effect when you select Apply.")
+	note.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	footer.add_child(note)
 	footer.add_child(_make_button("Apply", true, _on_apply_pressed))
-
+	_style_widgets()
+	resized.connect(_place_cabinet)
+	_place_cabinet()
+	LampOverlay.attach(_cabinet)
 	PanelStack.push(self)
 	visibility_changed.connect(_on_visibility_changed)
+
+
+func _place_cabinet() -> void:
+	if _cabinet == null: return
+	var available := get_viewport_rect().size - Vector2(72, 72)
+	_cabinet.size = Vector2(minf(1480, available.x), minf(960, available.y))
+	_cabinet.position = (get_viewport_rect().size - _cabinet.size) * 0.5
+
+
+func _sync_tab_keys(index: int) -> void:
+	for i in _tab_keys.size():
+		_tab_keys[i].set("chosen", i == index)
+
+
+func _control_plate(title: String, node_name: String, style := "slab") -> MarginContainer:
+	var section: MarginContainer = Section.new()
+	section.name = node_name
+	section.set("style", style)
+	var content: VBoxContainer = section.get("content")
+	content.add_theme_constant_override("separation", 18)
+	if title != "": content.add_child(Parts.heading(title))
+	return section
+
+
+func _add_scroll_plate(tab: Control, plate: Control) -> void:
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	tab.add_child(scroll)
+	plate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(plate)
+
+
+## Reuse the kit's cream caps and physical slider knobs, retaining Godot's native input.
+func _style_widgets() -> void:
+	for option in find_children("*", "OptionButton", true, false):
+		PreferencesKit.key_control(option)
+	for slider in find_children("*", "HSlider", true, false):
+		slider.custom_minimum_size.y = 48
+		for icon in ["grabber", "grabber_highlight", "grabber_disabled"]:
+			slider.add_theme_icon_override(icon, Plate.tex("toggle_knob"))
+		var track := StyleBoxFlat.new()
+		track.bg_color = Color("#080f16")
+		track.border_color = Color("#6c7276")
+		track.set_border_width_all(2)
+		track.set_corner_radius_all(4)
+		track.content_margin_top = 5
+		track.content_margin_bottom = 5
+		slider.add_theme_stylebox_override("slider", track)
+		var fill := track.duplicate() as StyleBoxFlat
+		fill.bg_color = Color("#bda06b")
+		slider.add_theme_stylebox_override("grabber_area", fill)
+		slider.add_theme_stylebox_override("grabber_area_highlight", fill)
+	for scroll in find_children("*", "ScrollContainer", true, false):
+		Scroll.apply(scroll, true)
+	for button in _bind_buttons.values(): PreferencesKit.key_control(button)
 
 
 # --- Tab builders ------------------------------------------------------------
@@ -115,21 +227,22 @@ func _build_telemetry_tab() -> Control:
 	var tab := MarginContainer.new()
 	tab.name = "Telemetry"
 	for side in ["left", "right", "top", "bottom"]:
-		tab.add_theme_constant_override("margin_" + side, 24)
+		tab.add_theme_constant_override("margin_" + side, 12)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	tab.add_child(scroll)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_theme_constant_override("separation", 22)
+	col.add_theme_constant_override("separation", 24)
 	scroll.add_child(col)
+	var reporting := _control_plate("Telemetry", "TelemetryReportingPlate")
+	col.add_child(reporting)
+	var reporting_rows: VBoxContainer = reporting.get("content")
+	reporting_rows.add_child(Parts.body("Choose which gameplay reports you send to the developer."))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
-	var label := Label.new()
-	label.text = "Send data to developer:"
-	label.theme_type_variation = &"Body"
-	label.add_theme_color_override("font_color", OFF_WHITE)
-	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var label := Parts.caption("Send data to developer:", 17)
+	label.uppercase = false
 	row.add_child(label)
 	_telemetry_option = OptionButton.new()
 	_telemetry_option.add_item("Send critical data for balancing")
@@ -138,40 +251,47 @@ func _build_telemetry_tab() -> Control:
 	_telemetry_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(_telemetry_option)
 	row.add_child(_info_badge(TELEMETRY_HINT))
-	col.add_child(row)
-	var launch_note := Label.new()
-	launch_note.text = "A basic launch event is still sent in either mode. Your choice takes effect when you select Apply."
-	launch_note.theme_type_variation = &"Body"
-	launch_note.add_theme_color_override("font_color", OFF_WHITE)
-	launch_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	col.add_child(launch_note)
+	reporting_rows.add_child(row)
+	reporting_rows.add_child(Parts.body("A basic launch event is still sent in either mode. Your choice takes effect when you select Apply."))
+
+	var identity := _control_plate("", "TelemetryIdentityPlate", "plate")
+	col.add_child(identity)
+	var identity_rows: VBoxContainer = identity.get("content")
+	var id_label := Parts.caption("User ID:", 20)
+	id_label.uppercase = false
+	id_label.add_theme_color_override("font_color", Plate.NAVY)
+	id_label.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.35))
+	identity_rows.add_child(id_label)
 	var id_row := HBoxContainer.new()
-	id_row.add_theme_constant_override("separation", 16)
-	var id_label := Label.new()
-	id_label.text = "User ID:"
-	id_label.theme_type_variation = &"Body"
-	id_label.add_theme_color_override("font_color", OFF_WHITE)
-	id_row.add_child(id_label)
+	id_row.add_theme_constant_override("separation", 18)
+	identity_rows.add_child(id_row)
 	var identifier := LineEdit.new()
 	identifier.name = "TelemetryUserID"
 	identifier.text = PlayerProfile.get_telemetry_player_id()
 	identifier.editable = false
 	identifier.add_theme_color_override("font_uneditable_color", OFF_WHITE)
+	identifier.add_theme_font_override("font", UIFonts.mono())
+	identifier.add_theme_font_size_override("font_size", 22)
+	identifier.custom_minimum_size.y = 52
+	var readout := StyleBoxFlat.new()
+	readout.bg_color = Plate.NAVY.darkened(0.6)
+	readout.border_color = Color("#151b20")
+	readout.set_border_width_all(3)
+	readout.set_content_margin_all(12)
+	readout.set_corner_radius_all(4)
+	identifier.add_theme_stylebox_override("normal", readout)
+	identifier.add_theme_stylebox_override("read_only", readout)
 	identifier.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	id_row.add_child(identifier)
-	col.add_child(id_row)
-	var heading := Label.new()
-	heading.text = "What's this?"
-	heading.theme_type_variation = &"Section"
-	heading.add_theme_color_override("font_color", OFF_WHITE)
-	col.add_child(heading)
-	var explanation := Label.new()
-	explanation.text = TELEMETRY_ID_EXPLANATION
-	explanation.theme_type_variation = &"Body"
-	explanation.add_theme_color_override("font_color", OFF_WHITE)
-	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var copy := CreamKey.make("CopyUserID", "Copy ID", "", 130)
+	copy.focus_mode = Control.FOCUS_ALL
+	copy.pressed.connect(func() -> void: DisplayServer.clipboard_set(identifier.text))
+	id_row.add_child(copy)
+	var explanation := _control_plate("What's this?", "TelemetryExplanationPlate")
 	col.add_child(explanation)
+	(explanation.get("content") as VBoxContainer).add_child(Parts.body(TELEMETRY_ID_EXPLANATION))
 	return tab
+
 
 func _build_audio_tab() -> Control:
 	var tab := MarginContainer.new()
@@ -182,7 +302,9 @@ func _build_audio_tab() -> Control:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 22)
 	col.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	tab.add_child(col)
+	var plate := _control_plate("Audio levels", "AudioControlPlate")
+	_add_scroll_plate(tab, plate)
+	(plate.get("content") as VBoxContainer).add_child(col)
 
 	# One row per bus, initialised to the live volume so nothing jumps on Apply.
 	for row: Array in [[Audio.BUS_MASTER, "Master"], [Audio.BUS_MUSIC, "Music"], [Audio.BUS_SFX, "SFX"]]:
@@ -211,17 +333,12 @@ func _make_slider_row(bus: StringName, label_text: String) -> Control:
 	row.add_child(slider)
 	_sliders[bus] = slider
 
-	var value_label := Label.new()
-	value_label.theme_type_variation = &"Numeric"
-	value_label.custom_minimum_size = Vector2(44, 0)
-	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	value_label.text = str(int(slider.value))
-	row.add_child(value_label)
-
-	# Live-update the numeric readout as the slider moves; the value only reaches
-	# the audio bus on Apply.
+	var readout: Control = Drum.new(38, 3, int(slider.value))
+	row.add_child(readout)
+	row.add_child(Parts.caption("%", 18))
 	slider.value_changed.connect(func(v: float) -> void:
-		value_label.text = str(int(round(v))))
+		readout.set("value", int(round(v)))
+		readout.queue_redraw())
 	return row
 
 
@@ -234,7 +351,9 @@ func _build_gameplay_tab() -> Control:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 16)
 	col.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	tab.add_child(col)
+	var plate := _control_plate("Gameplay", "GameplayControlPlate")
+	_add_scroll_plate(tab, plate)
+	(plate.get("content") as VBoxContainer).add_child(col)
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
@@ -370,7 +489,9 @@ func _build_graphics_tab() -> Control:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 16)
 	col.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	tab.add_child(col)
+	var plate := _control_plate("Display and rendering", "GraphicsControlPlate")
+	_add_scroll_plate(tab, plate)
+	(plate.get("content") as VBoxContainer).add_child(col)
 
 	# Monitor picker — only meaningful with more than one display (laptop + external). Lets
 	# the player put the game on the right screen; fullscreen then fills THAT monitor.
@@ -407,10 +528,13 @@ func _build_graphics_tab() -> Control:
 	fs_label.theme_type_variation = &"Body"
 	fs_label.custom_minimum_size = Vector2(140, 0)
 	fs_row.add_child(fs_label)
-	_fullscreen_check = CheckBox.new()
+	_fullscreen_check = PreferencesKit.slide_checkbox(PlayerProfile.fullscreen)
 	_fullscreen_check.button_pressed = PlayerProfile.fullscreen
-	_fullscreen_check.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_fullscreen_check.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	fs_row.add_child(_fullscreen_check)
+	var fullscreen_state := Parts.caption("On" if _fullscreen_check.button_pressed else "Off", 17)
+	fs_row.add_child(fullscreen_state)
+	_fullscreen_check.toggled.connect(func(on: bool) -> void: fullscreen_state.text = "On" if on else "Off")
 	col.add_child(fs_row)
 
 	# Resolution row: label + dropdown, mirroring the audio slider-row layout. It sets the
@@ -546,7 +670,9 @@ func _build_controls_tab() -> Control:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 6)
 	col.custom_minimum_size = Vector2(CONTROLS_WIDTH, 0)
-	centre.add_child(col)
+	var plate := _control_plate("Controls", "ControlsPlate")
+	centre.add_child(plate)
+	(plate.get("content") as VBoxContainer).add_child(col)
 
 	_pending_binds = Keybinds.mapmode_bindings()
 	_bind_buttons.clear()
@@ -721,14 +847,11 @@ func _reject_bind(id: String, message: String) -> void:
 # --- Buttons / lifecycle -----------------------------------------------------
 
 func _make_button(text: String, primary: bool, handler: Callable) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.custom_minimum_size = Vector2(120, 48 if primary else 44)
-	if primary:
-		b.theme_type_variation = &"Primary"
-	if not handler.is_null():
-		b.pressed.connect(handler)
-	return b
+	var button := CreamKey.make(text + "Settings", text, "", 170)
+	if primary: button.set("rim", "brass")
+	button.focus_mode = Control.FOCUS_ALL
+	button.pressed.connect(handler)
+	return button
 
 
 func _on_apply_pressed() -> void:
