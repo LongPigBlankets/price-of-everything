@@ -100,7 +100,7 @@ func _build() -> void:
 		var consent_center := CenterContainer.new()
 		consent_center.add_child(consent["row"])
 		col.add_child(consent_center)
-	# Otherwise no row: send_metrics_enabled() reads true while _consent_cb is null.
+	# Otherwise the Settings preference applies.
 
 	# Back button, top-right — added LAST so it renders on top of the full-rect content
 	# container and actually receives the click (a CenterContainer defaults to MOUSE_FILTER_STOP
@@ -116,7 +116,7 @@ func _build() -> void:
 
 
 func send_metrics_enabled() -> bool:
-	return _consent_cb == null or _consent_cb.button_pressed
+	return _consent_cb.button_pressed if _consent_cb != null else not PlayerProfile.telemetry_opt_out
 
 
 func _sp(key: String, fallback: int) -> int:

@@ -9,24 +9,27 @@ Breaking old saves silently is a **release-blocking incident**. This runbook is 
 never do that. The system: custom versioned dict/JSON — never ResourceSaver, never
 scene serialization (see `cnc-architecture-contract` rule 4).
 
-## Anatomy (`scripts/save_load.gd`, verified 2026-07-05)
+## Anatomy (`scripts/save_load.gd`, verified 2026-10-19)
 
-- `SAVE_VERSION := 4`. Migrations are **stepwise**: `_migrate_v1_to_v2` →
-  `_migrate_v2_to_v3` → `_migrate_v3_to_v4`; each rung only knows the shape below it.
+- `SAVE_VERSION := 17`. Migrations are **stepwise**, v1 through v17; each rung
+  only knows the shape below it. Read the complete ledger in `save_load.gd`.
   Newer-than-current saves are rejected with a readable error, not a crash.
 - One orchestrated snapshot: `export_snapshot()` / `import_snapshot()` gather every
   system's `export_state()` / `import_state()`. New game, Load, and scenario starts all
   flow through the same path. `MatchState.reset()` fires `state_reset` first so
   derived-state holders flush before new data lands.
-- **Ordering matters and is deliberate**: `apply_pending()` applies infrastructure to
-  the Catalog routing map BEFORE `import_snapshot`, so shipment route re-quoting
-  (`_requote_shipment_routes`) sees the loaded network. Don't reorder.
+- **Validate before mutation**: `save_validation.gd` checks bounded JSON and nested
+  import contracts before normalization/migration and before `MatchState.reset()`.
+  Keep its explicit `FIELDS` table and record checks aligned with import owners;
+  missing additive fields remain valid. See `docs/save-validation.md`.
+- **Ordering matters**: `import_snapshot()` restores infrastructure before subsystem
+  imports, so shipment route re-quoting sees the loaded network. Don't reorder.
 - Writes are **atomic**: serialize to `<slot>.json.tmp`, then `DirAccess.rename_absolute`
   over the slot (also `player_profile.gd`). A crash mid-write can't destroy both copies.
 - `load_slot` **refuses while `TurnManager.is_resolving`** — a suspended resolution
   coroutine survives scene changes and would resume over the imported snapshot,
   advancing a phantom turn (real bug, fixed 2026-07). Save is DECIDE-phase-only.
-- Slot files: `user://saves/<name>.json`; autosave rotates 3 slots every 10 turns;
+- Slot files: `AppPaths.saves_dir()/<name>.json`; autosave rotates 3 slots every 10 turns;
   `list_slots` ignores non-`.json` (so `.tmp` never shows).
 
 ## The tolerant-reader doctrine
@@ -81,12 +84,13 @@ follow the existing pattern (world_map re-emits `building_placed` for visuals on
 | Shipments minus route geometry (`tiles/path/legs` stripped, re-quoted on import) | Vector2s aren't JSON-safe; network may have changed |
 | Road network geometry (quantized 0.01) + idempotency markers | visual/routing identity, no double-linking on reload |
 
-## Known open items (2026-07-05)
+## Maintenance status (2026-10-19)
 
-- Production's intermittency derates are neither saved nor cleared on import (1-turn
-  divergence after load; stale-id edge in-session) — audit D2, open.
-- Structurally-corrupt-but-valid-JSON saves can still crash mid-import (only the top
-  level is shape-checked) — audit D4, open. Handle with care if touching import paths.
+- Production's intermittency maps are now saved and restored by `Production.import_state`;
+  keep the existing `_test_power_derate_survives_a_save_file` coverage.
+- Nested save validation added 2026-10-19. Changes to an import contract must also
+  update the validator and malformed/legacy tests; structural validation is not save
+  authenticity or an anti-cheat guarantee.
 
 ## When NOT to use this skill
 - General sim invariants → `cnc-architecture-contract`
@@ -94,7 +98,7 @@ follow the existing pattern (world_map re-emits `building_placed` for visuals on
 - Adding a tunable constant (not saved state) → `cnc-balance-change-control`
 
 ## Provenance and maintenance
-Verified 2026-07-05 against save_load.gd and system export/import pairs.
+Verified 2026-10-19 against save_load.gd and system export/import pairs.
 - Version + migrations: `grep -n "SAVE_VERSION\|_migrate_v" price-of-everything-0.1/scripts/save_load.gd`
 - Atomicity: `grep -n "tmp" price-of-everything-0.1/scripts/save_load.gd`
 - Load guard: `grep -n "is_resolving" price-of-everything-0.1/scripts/save_load.gd`

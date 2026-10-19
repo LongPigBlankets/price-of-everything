@@ -31,6 +31,9 @@ var _resolution_option: OptionButton
 var _fullscreen_check: CheckBox
 var _screen_option: OptionButton   # only built when more than one monitor is present
 var _quality_option: OptionButton
+var _telemetry_option: OptionButton
+const TELEMETRY_HINT := "Turn-by-turn profit and revenue, building counts and types, power generated, and goods produced. Reports include a random user ID, run/session IDs, run timing and end reason, the start played, whether cheats were used, operating system and game version. No IP address, account details or text you type is included."
+const TELEMETRY_ID_EXPLANATION := "This is the randomly generated user ID that any data going to the developer is marked with. No IP is collected, no identifying information is recorded. If you ever want your data deleted, please contact the developer at carbonandcapital.game@gmail.com and quote this user ID number. This can take several weeks."
 ## Settings → Graphics quality presets, in dropdown order: [profile value, label].
 const QUALITY_PRESETS := [["high", "High"], ["low", "Low"]]
 const QUALITY_HINT := "Low preset shows only flat maps everywhere whereas High uses 3D assets for relief and roads."
@@ -88,6 +91,7 @@ func _ready() -> void:
 	tabs.add_child(audio_tab)
 	tabs.add_child(_build_graphics_tab())
 	tabs.add_child(_build_controls_tab())
+	tabs.add_child(_build_telemetry_tab())
 	tabs.current_tab = audio_tab.get_index()   # land on the only working tab
 	vbox.add_child(tabs)
 
@@ -106,6 +110,68 @@ func _ready() -> void:
 
 
 # --- Tab builders ------------------------------------------------------------
+
+func _build_telemetry_tab() -> Control:
+	var tab := MarginContainer.new()
+	tab.name = "Telemetry"
+	for side in ["left", "right", "top", "bottom"]:
+		tab.add_theme_constant_override("margin_" + side, 24)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	tab.add_child(scroll)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 22)
+	scroll.add_child(col)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	var label := Label.new()
+	label.text = "Send data to developer:"
+	label.theme_type_variation = &"Body"
+	label.add_theme_color_override("font_color", OFF_WHITE)
+	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(label)
+	_telemetry_option = OptionButton.new()
+	_telemetry_option.add_item("Send critical data for balancing")
+	_telemetry_option.add_item("Send no data to developer")
+	_telemetry_option.select(1 if PlayerProfile.telemetry_opt_out else 0)
+	_telemetry_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(_telemetry_option)
+	row.add_child(_info_badge(TELEMETRY_HINT))
+	col.add_child(row)
+	var launch_note := Label.new()
+	launch_note.text = "A basic launch event is still sent in either mode. Your choice takes effect when you select Apply."
+	launch_note.theme_type_variation = &"Body"
+	launch_note.add_theme_color_override("font_color", OFF_WHITE)
+	launch_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(launch_note)
+	var id_row := HBoxContainer.new()
+	id_row.add_theme_constant_override("separation", 16)
+	var id_label := Label.new()
+	id_label.text = "User ID:"
+	id_label.theme_type_variation = &"Body"
+	id_label.add_theme_color_override("font_color", OFF_WHITE)
+	id_row.add_child(id_label)
+	var identifier := LineEdit.new()
+	identifier.name = "TelemetryUserID"
+	identifier.text = PlayerProfile.get_telemetry_player_id()
+	identifier.editable = false
+	identifier.add_theme_color_override("font_uneditable_color", OFF_WHITE)
+	identifier.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	id_row.add_child(identifier)
+	col.add_child(id_row)
+	var heading := Label.new()
+	heading.text = "What's this?"
+	heading.theme_type_variation = &"Section"
+	heading.add_theme_color_override("font_color", OFF_WHITE)
+	col.add_child(heading)
+	var explanation := Label.new()
+	explanation.text = TELEMETRY_ID_EXPLANATION
+	explanation.theme_type_variation = &"Body"
+	explanation.add_theme_color_override("font_color", OFF_WHITE)
+	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(explanation)
+	return tab
 
 func _build_audio_tab() -> Control:
 	var tab := MarginContainer.new()
@@ -666,6 +732,7 @@ func _make_button(text: String, primary: bool, handler: Callable) -> Button:
 
 
 func _on_apply_pressed() -> void:
+	_apply_telemetry_preference()
 	if _test_knob != null:
 		test_setting = int(_test_knob.value)
 	# Controls: the staged map-mode hotkeys. Fixed bindings are read-only in the demo, so
@@ -693,6 +760,11 @@ func _on_apply_pressed() -> void:
 	if _quality_option != null and _quality_option.selected >= 0:
 		PlayerProfile.set_graphics_quality(str(QUALITY_PRESETS[_quality_option.selected][0]))
 	hide()
+
+
+func _apply_telemetry_preference() -> void:
+	if _telemetry_option != null:
+		PlayerProfile.set_telemetry_opt_out(_telemetry_option.selected == 1)
 
 
 func _on_back_pressed() -> void:

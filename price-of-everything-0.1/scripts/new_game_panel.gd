@@ -513,7 +513,7 @@ func _build_settings_columns(parent: Node) -> void:
 				func(on: bool) -> void: _send_metrics = on)
 		parent.add_child(consent["row"])
 	else:
-		_send_metrics = true   # demo: the row is hidden and every run reports
+		_send_metrics = not PlayerProfile.telemetry_opt_out
 
 
 ## Accordion header: a flat, left-aligned toggle in large Bebas Neue cream (the DS Title font),

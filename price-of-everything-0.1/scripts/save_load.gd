@@ -10,6 +10,8 @@ extends Node
 const AppPaths := preload("res://scripts/app_paths.gd")
 const MiddlemanLocations := preload("res://scripts/middleman_locations.gd")
 const MiddlemanService := preload("res://scripts/middleman_service.gd")
+const SaveValidation := preload("res://scripts/save_validation.gd")
+const DemoBuild := preload("res://scripts/demo_build.gd")
 # Version history (migrations in _migrate): 1 = initial format; 2 = adds `ruleset`
 # (match.ruleset + meta.ruleset) so future rule variants can key off saves;
 # 3 = adds special order state; 4 = advisor seats/acquisition; 5 = structured
@@ -45,6 +47,7 @@ var _autosave_index := 0
 # A parsed save waiting for the main scene to (re)build. world_map calls
 # apply_pending() at the very end of its _ready, once the terrain exists.
 var _pending_snapshot: Dictionary = {}
+var last_load_error := ""
 
 func _ready() -> void:
 	# Registered last in [autoload], so TurnManager exists. resolution_completed
@@ -103,7 +106,13 @@ func export_snapshot() -> Dictionary:
 		},
 	}
 
-func import_snapshot(snap: Dictionary) -> void:
+func import_snapshot(snap: Dictionary) -> String:
+	last_load_error = SaveValidation.new().validate(snap, SAVE_VERSION, DemoBuild.active())
+	if last_load_error != "":
+		push_warning("[SaveLoad] rejected snapshot: " + last_load_error)
+		return last_load_error
+	if DemoBuild.active():
+		snap = SaveValidation.normalize_demo(snap)
 	# Clean slate first: reset() emits state_reset so listeners that hold derived
 	# state (e.g. Construction clearing its projects) flush before new data lands.
 	MatchState.reset()
@@ -158,6 +167,7 @@ func import_snapshot(snap: Dictionary) -> void:
 	_emit_refresh()
 	preload("res://scripts/cash_commitments.gd").reset()
 	match_loaded.emit()
+	return ""
 
 # Imports run silently; the UI is told once, here, at the end. Per-building
 # building_added is deliberately NOT re-emitted (it would toast "X built" for every
@@ -216,17 +226,24 @@ func load_slot(slot: String, restart_scene: bool = true) -> String:
 	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:
 		return "cannot read %s" % path
+	if f.get_length() > SaveValidation.MAX_FILE_BYTES:
+		f.close()
+		return "save is too large (maximum 64 MiB)"
 	var parsed: Variant = JSON.parse_string(f.get_as_text())
 	f.close()
 	if not (parsed is Dictionary):
 		return "corrupt save '%s'" % slot
+	# Validate shapes before normalization/migration: both recurse or cast nested data.
+	var validation := SaveValidation.new().validate(parsed, SAVE_VERSION, false, true)
+	if validation != "":
+		return "cannot load '%s': %s" % [slot, validation]
 	var snap: Dictionary = normalize_jsonish(parsed)
-	if int(snap.get("save_version", 0)) > SAVE_VERSION:
-		return "save '%s' is from a newer game version" % slot
 	snap = _migrate(snap)
+	validation = SaveValidation.new().validate(snap, SAVE_VERSION, DemoBuild.active(), true)
+	if validation != "":
+		return "cannot load '%s': %s" % [slot, validation]
 	if not restart_scene:
-		import_snapshot(snap)
-		return ""
+		return import_snapshot(snap)
 	_pending_snapshot = snap
 	var err := get_tree().change_scene_to_file(MAIN_SCENE)
 	if err != OK:
@@ -258,8 +275,11 @@ func apply_pending() -> bool:
 	_pending_snapshot = {}
 	if bool(snap.get("start", false)):
 		_merge_npc_buildings(snap)
-	import_snapshot(snap)
-	return true
+	var error := import_snapshot(snap)
+	if error != "":
+		push_warning("[SaveLoad] rejected pending snapshot: " + error)
+		MatchState.request_toast("Could not load game: " + error, "warning")
+	return error == ""
 
 # A start config lists only the PLAYER's holdings; the NPC buildings the fresh
 # scene just seeded (ports, ruins) must survive the import's full overwrite of
@@ -703,11 +723,20 @@ func list_slots() -> Array:
 		var f := FileAccess.open("%s/%s" % [AppPaths.saves_dir(), file], FileAccess.READ)
 		if f == null:
 			continue
+		if f.get_length() > SaveValidation.MAX_FILE_BYTES:
+			f.close()
+			continue
 		var parsed: Variant = JSON.parse_string(f.get_as_text())
 		f.close()
 		if not (parsed is Dictionary):
 			continue
-		var meta: Dictionary = (parsed as Dictionary).get("meta", {})
+		if not parsed.get("meta", {}) is Dictionary:
+			continue
+		var meta: Dictionary = parsed.get("meta", {})
+		if not (meta.get("turn", 0) is int or meta.get("turn", 0) is float) or not (meta.get("money", 0) is int or meta.get("money", 0) is float):
+			continue
+		if not is_finite(float(meta.get("turn", 0))) or not is_finite(float(meta.get("money", 0))):
+			continue
 		out.append({
 			"slot": slot,
 			"turn": int(meta.get("turn", 0)),

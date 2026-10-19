@@ -29,11 +29,13 @@ var wins: Array = []
 # Display preference chosen in Settings → Graphics (persisted, applied at startup).
 # Vector2i.ZERO = never set → keep the project.godot default window size.
 var window_size: Vector2i = Vector2i.ZERO
-# Telemetry (docs/telemetry-spec.md): remembered state of the "send metrics"
-# opt-out checkbox (false = metrics on, the default) and the anonymous
+# Telemetry (docs/telemetry-spec.md): persistent Settings choice
+# (false = balancing reports on, the default) and the anonymous
 # per-install player id (16 random bytes, hex — never personal information).
 var telemetry_opt_out: bool = false
 var telemetry_player_id: String = ""
+var telemetry_notice_seen := false
+signal telemetry_preference_changed(opt_out: bool)
 # Display mode chosen in Settings → Graphics (persisted, applied at startup). Fullscreen
 # fills the current monitor via the project's canvas_items/expand stretch; it is the only
 # reliable "fill the whole screen" control, since a windowed pick smaller than the monitor
@@ -127,15 +129,20 @@ func set_games_completed(n: int) -> void:
 	_save()
 
 
-## Remember the "send metrics" checkbox so the next New Game / Tutorial screen
-## defaults to the player's last choice (true = they unticked it).
+## Commit the Settings choice and notify the active run/outbox (true = reports off).
 func set_telemetry_opt_out(v: bool) -> void:
-	if DisplayServer.get_name() == "headless":
-		return
 	if telemetry_opt_out == v:
 		return
 	telemetry_opt_out = v
-	_save()
+	if DisplayServer.get_name() != "headless":
+		_save()
+	telemetry_preference_changed.emit(v)
+
+
+func acknowledge_telemetry_notice() -> void:
+	telemetry_notice_seen = true
+	if DisplayServer.get_name() != "headless":
+		_save()
 
 
 ## Anonymous per-install telemetry id, minted on first use.
@@ -225,6 +232,7 @@ func _load() -> void:
 		audio_levels = (lv as Dictionary) if lv is Dictionary else {}
 		telemetry_opt_out = bool((parsed as Dictionary).get("telemetry_opt_out", false))
 		telemetry_player_id = str((parsed as Dictionary).get("telemetry_player_id", ""))
+		telemetry_notice_seen = bool((parsed as Dictionary).get("telemetry_notice_seen", false))
 		mission_bar_collapsed = bool((parsed as Dictionary).get("mission_bar_collapsed", false))
 		supply_chain_all_tiles = bool((parsed as Dictionary).get("supply_chain_all_tiles", false))
 		graphics_quality = QUALITY_LOW if str((parsed as Dictionary).get("graphics_quality", QUALITY_HIGH)) == QUALITY_LOW else QUALITY_HIGH
@@ -238,7 +246,7 @@ func _save() -> void:
 	if f == null:
 		push_warning("[PlayerProfile] could not write %s" % tmp_path)
 		return
-	f.store_string(JSON.stringify({"exit_feedback_submitted": exit_feedback_submitted, "games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y, "fullscreen": fullscreen, "screen_index": screen_index, "audio_levels": audio_levels, "keybinds": keybinds, "telemetry_opt_out": telemetry_opt_out, "telemetry_player_id": telemetry_player_id, "mission_bar_collapsed": mission_bar_collapsed, "supply_chain_all_tiles": supply_chain_all_tiles, "graphics_quality": graphics_quality}, "\t"))
+	f.store_string(JSON.stringify({"exit_feedback_submitted": exit_feedback_submitted, "games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y, "fullscreen": fullscreen, "screen_index": screen_index, "audio_levels": audio_levels, "keybinds": keybinds, "telemetry_opt_out": telemetry_opt_out, "telemetry_player_id": telemetry_player_id, "telemetry_notice_seen": telemetry_notice_seen, "mission_bar_collapsed": mission_bar_collapsed, "supply_chain_all_tiles": supply_chain_all_tiles, "graphics_quality": graphics_quality}, "\t"))
 	f.close()
 	var err := DirAccess.rename_absolute(tmp_path, _path())
 	if err != OK:
