@@ -1,0 +1,369 @@
+{
+  "revision": "carbonised_biomass_v26",
+  "objects": 123,
+  "structural_hosts": [
+    "heap_base",
+    "lump0",
+    "lump1",
+    "lump2",
+    "lump3",
+    "lump4",
+    "lump5",
+    "lump6",
+    "lump7",
+    "lump8",
+    "lump9",
+    "lump10",
+    "lump11",
+    "lump12",
+    "lump13",
+    "lump14",
+    "lump15",
+    "lump16",
+    "lump17",
+    "stick0",
+    "stick1",
+    "stick2",
+    "stick3",
+    "stick4",
+    "stick5",
+    "stick6",
+    "stick7",
+    "stick8",
+    "stick9",
+    "stick10",
+    "stick11",
+    "stick12",
+    "stick34",
+    "stick49",
+    "stick107",
+    "stick111"
+  ],
+  "topology": "Carbonised biomass: a heap of angular charcoal lumps with charred sticks criss-crossed over it, alligator cracks and grey burnt ends",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 4
+    },
+    "min_fragment_px": 24,
+    "id_step": 8,
+    "component_weight_by_label": {
+      "1": 4,
+      "2": 4,
+      "3": 4,
+      "4": 4,
+      "5": 4,
+      "6": 4,
+      "7": 4,
+      "8": 4,
+      "9": 4,
+      "10": 4,
+      "11": 4,
+      "12": 6,
+      "13": 6,
+      "14": 6,
+      "15": 6,
+      "16": 6,
+      "17": 6,
+      "18": 6,
+      "19": 6,
+      "20": 6,
+      "21": 6,
+      "22": 6,
+      "23": 6,
+      "24": 6,
+      "25": 6,
+      "26": 6,
+      "27": 6,
+      "28": 6,
+      "29": 6,
+      "30": 6,
+      "31": 6
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.34,
+    "groups": [
+      {
+        "name": "shaded_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "thresholds": [
+          0.575,
+          0.5,
+          0.3
+        ]
+      }
+    ]
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 3.31 x 4.02 x 2.46"
+  ],
+  "mesh_checks": {
+    "heap_base": {
+      "vertices": 381,
+      "faces": 641,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump0": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump1": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump2": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump3": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump4": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump5": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump6": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump7": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump8": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump9": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump10": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump11": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump12": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump13": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump14": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump15": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump16": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "lump17": {
+      "vertices": 42,
+      "faces": 80,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick0": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick1": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick2": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick3": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick4": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick5": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick6": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick7": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick8": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick9": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick10": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick11": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick12": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick34": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick49": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick107": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "stick111": {
+      "vertices": 54,
+      "faces": 47,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 4.061,
+    "target": [
+      0.303,
+      -0.303,
+      0.862
+    ]
+  }
+}

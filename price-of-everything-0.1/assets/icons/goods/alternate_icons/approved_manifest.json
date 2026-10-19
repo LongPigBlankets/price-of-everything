@@ -11,6 +11,7 @@
     "biomass",
     "building_frame",
     "car_body",
+    "carbonised_biomass",
     "chem_salts",
     "chlorine",
     "circuit_board",
@@ -2017,6 +2018,33 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_061_iron_battery.png",
       "source": "goods_iron_battery/v11",
       "sha256": "6951831c6823f9f79b7b51e2b2dc699177403283674e4426cddda3c368d7e9a0",
+      "installed_default": true
+    },
+    {
+      "good": "carbonised_biomass",
+      "good_id": "g_076",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_076_carbonised_biomass.png",
+      "source": "goods_carbonised_biomass/v26",
+      "sha256": "c1e3d3637ace4687db21c6797429741d13c266557f3a769574659afc5f84554f",
+      "installed_default": true
+    },
+    {
+      "good": "carbonised_biomass",
+      "good_id": "g_076",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_076_carbonised_biomass.png",
+      "source": "goods_carbonised_biomass/v26",
+      "sha256": "3a21e64d3fa29ef3b322b2fec0f84519c895b814f2ef54bcedc0dc60e35421e2",
+      "installed_default": true
+    },
+    {
+      "good": "carbonised_biomass",
+      "good_id": "g_076",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_076_carbonised_biomass.png",
+      "source": "goods_carbonised_biomass/v26",
+      "sha256": "13d40ae0757821d78b320a9d7eeedff6ba399ca56a7f30eb5f86e040c7c53672",
       "installed_default": true
     }
   ]
