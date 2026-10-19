@@ -13,6 +13,9 @@ uniform float foliage_softness : hint_range(0.0, 1.0) = 0.0;
 instance uniform float sc_role = 0.0;
 uniform float decor_grey = 0.65;
 uniform float npc_grey = 0.80;
+// Trees take the map sheet's print with the terrain; buildings take the catalogue plate's.
+uniform bool landscape = false;
+#include "res://scripts/supply_chain_3d/print_look.gdshaderinc"
 varying vec2 frame_index;
 varying float world_span;
 varying vec3 view_point;
@@ -67,7 +70,11 @@ void fragment() {
   colour = mix(colour, grey, npc ? npc_grey : decor_grey);
   if (npc) colour = mix(colour, OUTPUT_IS_SRGB ? vec3(0.88, 0.86, 0.80) : to_linear(vec3(0.88, 0.86, 0.80)), 0.18);
  }
- ALBEDO = colour * (OUTPUT_IS_SRGB ? grade : to_linear(grade));
+ colour *= OUTPUT_IS_SRGB ? grade : to_linear(grade);
+ // Decorative scenery steps back furthest at the zooms that show it as a sprite.
+ float scenery = sc_role > 1.5 && sc_role < 2.5 ? sc3d_calm : 0.0;
+ vec3 printed = print_paint(OUTPUT_IS_SRGB ? colour : print_to_srgb(colour), FRAGCOORD.xy, landscape, scenery);
+ ALBEDO = OUTPUT_IS_SRGB ? printed : print_to_linear(printed);
  ALPHA = alpha;
  ALPHA_SCISSOR_THRESHOLD = 0.025;
  // Forward+ requires an AA edge below the scissor threshold; 1.0 makes

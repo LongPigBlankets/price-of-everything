@@ -148,6 +148,7 @@ static func tree_material(fir: bool) -> ShaderMaterial:
 		# Calibrated against matching source-board tree crops: preserve its muted
 		# foliage instead of the saturated greens from the general colour curve.
 		material.set_shader_parameter("foliage_tint", Vector3(0.81, 0.74, 0.83) if fir else Vector3(0.835, 0.735, 0.865))
+		material.set_shader_parameter("landscape", true)
 		_trees[fir] = material
 	return _trees[fir]
 

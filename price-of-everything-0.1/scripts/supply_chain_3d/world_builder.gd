@@ -79,6 +79,8 @@ var infrastructure_bake := {}
 var origin := Vector2.ZERO
 ## Evening lights every town's windows and street lamps; otherwise only polluted tiles are lit.
 var evening := false
+## Decorative scenery steps back: homes never light up for pollution, and fewer light up at night.
+var calm_scenery := false
 var ground: RefCounted
 var rivers: Dictionary = {}
 var tiles: Dictionary = {}
@@ -2143,6 +2145,7 @@ func _ensure_standing_near(pair: Dictionary) -> void:
 		var outline := MeshInstance3D.new()
 		outline.name = "OuterContour"
 		outline.mesh = contour
+		set_role(outline, float(pair.get("role", 0.0)))
 		outline.scale = visual.scale
 		pair.root.add_child(outline)
 		if loading_reveal != null: loading_reveal.bind(outline)
@@ -2224,9 +2227,11 @@ func standing_node(s: Dictionary) -> Node3D:
 	if key == "" and not s.has("harbour"): dimension = Vector3(side * 0.8, side * 0.55, side * 0.65)
 	var polluted := int(tiles.get(str(s.tile), {}).get("polluters", 0)) > 0
 	var lightable := kind != "pylon" and family not in ["mine", "mine_flush", "civic_park", "civic_plaza", "civic_grove", "civic_pond"]
-	# In the evening most homes have a light on; works are lit through the night.
-	var home_lit := kind != "house" or absi(str(s.iid).hash()) % 100 < 75
-	var lit := lightable and (polluted or (evening and home_lit))
+	# In the evening most homes have a light on; works are lit through the night. Calm scenery
+	# lights a third of its homes, in the evening only.
+	var home := kind == "house"
+	var home_lit := not home or absi(str(s.iid).hash()) % 100 < (33 if calm_scenery else 75)
+	var lit := lightable and ((polluted and not (home and calm_scenery)) or (evening and home_lit))
 	var role := role_of(s)
 	var pair := {"key": key, "far": null, "near": [], "medium": null, "root": root, "standing": s,
 		"dimension": dimension, "tile": str(s.tile), "lit": lit, "role": role,
@@ -2238,7 +2243,7 @@ func standing_node(s: Dictionary) -> Node3D:
 		_ensure_standing_near(pair)
 		_ensure_standing_pick(pair)
 	# Yard glow stays a mark of pollution, so a lit evening town still reads as clean.
-	if lit and polluted:
+	if lit and polluted and not (home and calm_scenery):
 		glows.append({"point": root.position + Vector3(0, dimension.y * 0.3, side * 0.45), "size": Vector2(side * 1.3, side * 0.7)})
 	if streamed and kind == "house": decor_nodes.append(root)
 	if standing_shadow_mesh == null and not s.has("harbour") and kind != "pylon" and pit.is_empty() and not (kind == "house" and scenery_ready): shadow(p, side)

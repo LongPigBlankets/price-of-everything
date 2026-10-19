@@ -167,6 +167,14 @@ sc3d_soot_on={
 "type": "float",
 "value": 0.0
 }
+sc3d_print={
+"type": "float",
+"value": 0.0
+}
+sc3d_calm={
+"type": "float",
+"value": 0.0
+}
 
 [physics]
 
