@@ -182,6 +182,7 @@ sc3d_calm={
 
 [rendering]
 
+limits/global_shader_variables/buffer_size=262144
 textures/canvas_textures/default_texture_filter=2
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method.mobile="gl_compatibility"
