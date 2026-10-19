@@ -623,6 +623,10 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 		if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
 			preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").restrict_model(model)
 		_solve_layout(model, terrain, rivers, queries, builder, water, timings)
+	# The company's buildings grow only as far as they keep clear of streets and neighbours.
+	var clearance_started := Time.get_ticks_usec()
+	timings.buildings_held_back = preload("res://scripts/supply_chain_3d/building_clearance.gd").apply(model, Builder.standing_key)
+	timings.clearance_ms = (Time.get_ticks_usec() - clearance_started) / 1000.0
 	timings.layout_solve_ms = (Time.get_ticks_usec() - solve_started) / 1000.0
 	if not show_all_tiles:
 		await get_tree().process_frame

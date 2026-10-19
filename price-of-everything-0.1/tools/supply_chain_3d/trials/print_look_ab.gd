@@ -6,16 +6,21 @@ extends "res://tools/supply_chain_3d/capture.gd"
 ##   --continent-review --no-telemetry --trial-output=<dir> [--own-furnace=<tile>]
 ## --own-furnace: the company buys the NPC furnace on that tile first, at level III, making steel.
 const Board := preload("res://scripts/supply_chain_3d/board.gd")
+const Legacy := preload("res://scripts/empire_board.gd")
+const RoadPlacement := preload("res://scripts/supply_chain_3d/road_placement.gd")
 const LOOKS := {"painted": [false, false], "print": [true, false], "calm": [true, true]}
 var output := ""
 var report := {}
 var _town := ""
 var _own_furnace := ""
+var _looks := PackedStringArray(["painted", "print", "calm"])
 
 func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--trial-output="): output = arg.trim_prefix("--trial-output=")
 		if arg.begins_with("--own-furnace="): _own_furnace = arg.trim_prefix("--own-furnace=")
+		if arg.begins_with("--looks="): _looks = arg.trim_prefix("--looks=").split(",")
+		if arg == "--no-clearance": preload("res://scripts/supply_chain_3d/building_clearance.gd").enabled = false
 	DirAccess.make_dir_recursive_absolute(output)
 	# The first build is the look as painted, so the calming starts off.
 	Board.print_look = false
@@ -87,17 +92,94 @@ func _look(board: Control, look: String) -> void:
 	await board.set_look(setting[0], setting[1])
 	await _settle(board, 3.0)
 
+## Where a standing thing's drawn base lies on the map: a works' foundation outline, a home's footprint.
+func _drawn_base(builder: RefCounted, s: Dictionary) -> Array:
+	var frame: Dictionary = builder.standing_frame(s)
+	var shapes: Array = []
+	for shape in builder._foundation_shapes(s, str(frame.key), frame.dimension):
+		var poly := PackedVector2Array()
+		for q in shape: poly.append((s.pos as Vector2) + (q as Vector2).rotated(-float(s.get("yaw", 0.0))))
+		shapes.append(poly)
+	return shapes
+
+## Every works whose drawn base runs onto a road or into another building, and by how much.
+func _clash_report(board: Control) -> Array:
+	var builder: RefCounted = board._builder
+	var clashes: Array = []
+	var bases := {}
+	for pair in builder.sprite_pairs:
+		if not pair.get("standing") is Dictionary or pair.standing.has("harbour"): continue
+		if str(pair.standing.kind) == "pylon": continue
+		bases[str(pair.standing.iid)] = {"s": pair.standing, "shapes": _drawn_base(builder, pair.standing), "role": float(pair.get("role", 0.0))}
+	for iid in bases:
+		var entry: Dictionary = bases[iid]
+		var s: Dictionary = entry.s
+		if str(s.kind) not in ["building", "warehouse", "suppliers", "site", "port"]: continue
+		var who := "%s %s L%d (%s)" % [str(s.kind), str(s.get("internal_name", "")), int(s.get("level", 1)), "npc" if entry.role == 3.0 else "player"]
+		var lot: PackedVector2Array = s.get("footprint", PackedVector2Array())
+		if not lot.is_empty():
+			var outside := 0.0
+			for poly in entry.shapes:
+				for part in Geometry2D.clip_polygons(poly, lot): outside += absf(_area(part))
+			var lot_gap := INF
+			for road in builder.roads:
+				if road.get("tunnel", false) or _driveway(road, s): continue
+				lot_gap = minf(lot_gap, RoadPlacement.distance_to_polygon(road.a, road.b, lot) - float(road.get("widths", Legacy._road_widths(int(road.get("level", 1))))[0]))
+			clashes.append({"works": who, "iid": str(iid), "base_outside_lot": snappedf(outside, 1), "base_area": snappedf(absf(_area(entry.shapes[0])), 1), "lot_kerb_gap": snappedf(lot_gap, 0.1), "side": snappedf(float(s.side), 0.1)})
+		for road in builder.roads:
+			if road.get("tunnel", false) or _driveway(road, s): continue
+			var widths: Array = road.get("widths", Legacy._road_widths(int(road.get("level", 1))))
+			for poly in entry.shapes:
+				var distance: float = RoadPlacement.distance_to_polygon(road.a, road.b, poly)
+				# Kerb to kerb: the base on the carriageway, not just over the pavement.
+				if distance - float(widths[0]) < 2.0:
+					clashes.append({"works": who, "iid": str(iid), "with": "road L%d" % int(road.get("level", 1)), "road": str(road.get("id", road.get("path", ""))),
+						"keys": road.keys(), "kerb_gap": snappedf(distance - float(widths[0]), 0.1), "carriageway_gap": snappedf(distance - float(widths[widths.size() - 1]), 0.1),
+						"a": [snappedf(road.a.x, 0.1), snappedf(road.a.y, 0.1)], "b": [snappedf(road.b.x, 0.1), snappedf(road.b.y, 0.1)]})
+		for other in bases:
+			if other == iid: continue
+			for poly in entry.shapes:
+				for theirs in bases[other].shapes:
+					var area := 0.0
+					for part in Geometry2D.intersect_polygons(poly, theirs):
+						area += absf(_area(part))
+					if area > 1.0:
+						var o: Dictionary = bases[other].s
+						clashes.append({"works": who, "iid": str(iid), "with": "%s %s" % [str(o.kind), str(o.get("decor_asset", o.get("internal_name", "")))], "overlap": snappedf(area, 1)})
+	return clashes
+
+## A works' own driveway ends at its entrance.
+static func _driveway(road: Dictionary, s: Dictionary) -> bool:
+	if not s.has("entrance"): return false
+	var door: Vector2 = s.entrance
+	return (road.a as Vector2).distance_to(door) < 1.5 or (road.b as Vector2).distance_to(door) < 1.5
+
+static func _area(poly: PackedVector2Array) -> float:
+	var total := 0.0
+	for i in poly.size(): total += poly[i].cross(poly[(i + 1) % poly.size()])
+	return total * 0.5
+
 func _continent_review(board: Control, _home: Dictionary) -> void:
 	await _settle(board, 3.0)
+	if "--clash-report" in OS.get_cmdline_user_args():
+		report.clashes = _clash_report(board)
+		report.held_back = board.load_profile.get("buildings_held_back")
+		report.clearance_ms = board.load_profile.get("clearance_ms")
+		print("[CLEARANCE] held back ", report.held_back, " in ", report.clearance_ms, " ms")
+		print("[CLASH] ", report.clashes.size())
+		FileAccess.open(output.path_join("clashes.json"), FileAccess.WRITE).store_string(JSON.stringify(report.clashes, "\t"))
+		if "--clash-only" in OS.get_cmdline_user_args(): return
 	_town = _busiest_tile(board)
 	report.town = _town
 	report.viewport = board._viewport.size
-	for look in ["painted", "print", "calm"]:
+	for look in _looks:
 		await _look(board, look)
 		await _shots(board, "day", look, ["close", "medium", "far"])
 	await board.set_evening(true)
 	await _settle(board, 3.0)
-	for look in ["calm", "print", "painted"]:
+	var evening_order := _looks.duplicate()
+	evening_order.reverse()
+	for look in evening_order:
 		await _look(board, look)
 		await _shots(board, "evening", look, ["close", "medium"])
 	print("[PRINT AB] ", JSON.stringify(report))
