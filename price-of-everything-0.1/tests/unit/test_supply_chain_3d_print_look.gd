@@ -29,8 +29,8 @@ func _test_calm_scenery_lights_homes_in_the_evening_only() -> void:
 	var evening := _homes(_builder(0, true, false), 300)
 	var calm_evening := _homes(_builder(2, true, true), 300)
 	_check(evening.share > 0.65 and evening.share < 0.85, "scenery: about three homes in four are lit in the evening")
-	_check(calm_evening.share > 0.25 and calm_evening.share < 0.42 and calm_evening.glows == 0,
-		"calm scenery: about a third of homes are lit in the evening, with no yard glow on a polluted tile")
+	_check(calm_evening.share == float(Builder.CALM_HOMES_LIT) / 100.0 and calm_evening.glows == 0,
+		"calm scenery: homes stay dark in the evening, with no yard glow on a polluted tile")
 
 func _test_calm_scenery_leaves_works_lit() -> void:
 	var builder := _builder(2, false, true)
@@ -39,6 +39,16 @@ func _test_calm_scenery_leaves_works_lit() -> void:
 	root.free()
 	_check(bool(builder.sprite_pairs.back().lit) and builder.glows.size() == 1,
 		"calm scenery: works on a polluted tile stay lit, with their yard glow")
+
+func _test_calm_scenery_brings_npc_works_forward() -> void:
+	for calm in [false, true]:
+		var builder := _builder(0, false, calm)
+		var root: Node3D = builder.standing_node({"iid": "npc_furnace", "kind": "building", "npc": true, "internal_name": "furnace",
+			"tile": "tile_1_1", "pos": Vector2(300, 300), "side": 60.0, "level": 1})
+		root.free()
+		var lit := bool(builder.sprite_pairs.back().lit)
+		_check((builder.smoke.size() == 1 and lit and builder.glows.size() == 1) == calm,
+			"calm scenery: an idle NPC furnace smokes and lights up" if calm else "scenery as painted: an idle NPC furnace on a clean tile stays quiet")
 
 func _test_print_look_globals_are_declared() -> void:
 	for global in ["sc3d_print", "sc3d_calm"]:

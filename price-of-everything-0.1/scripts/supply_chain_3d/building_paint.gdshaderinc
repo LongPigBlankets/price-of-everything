@@ -120,6 +120,8 @@ void fragment() {
 	vec3 visible_normal = FRONT_FACING ? face_normal : -face_normal;
 	// Decorative scenery steps back behind the works; up close it keeps more of its detail.
 	float scenery = sc_role > 1.5 && sc_role < 2.5 ? sc3d_calm : 0.0;
+	// NPC works step forward against it: deeper ink in their lines and shadows.
+	float npc_ink = sc_role > 2.5 ? sc3d_calm : 0.0;
 	// Blender's source palette is linear. A restrained, compressive paper response
 	// approximates its AgX sprite render without the glossy PBR/default-sun treatment.
 	vec3 paint = clamp(pow(max(COLOR.rgb, vec3(0.0)), vec3(0.60)) + 0.025, vec3(0.0), vec3(0.86));
@@ -185,7 +187,7 @@ void fragment() {
 	float stroke = max(max(lines.x * edges.x, lines.y * edges.y), lines.z * edges.z);
 	vec3 ink_srgb = OUTPUT_IS_SRGB ? ink.rgb : linear_to_srgb(ink.rgb);
 	paint = mix(paint, ink_srgb, stroke * stroke_opacity * (1.0 - 0.45 * scenery));
-	paint = print_paint(paint, FRAGCOORD.xy, landscape, 0.7 * scenery);
+	paint = print_paint(paint, FRAGCOORD.xy, landscape, 0.7 * (scenery - npc_ink));
 	if (lit_windows && glass) {
 		float lit = 1.0;
 		if (curtain_wall) {

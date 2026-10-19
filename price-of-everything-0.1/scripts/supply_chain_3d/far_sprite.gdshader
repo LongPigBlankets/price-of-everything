@@ -73,7 +73,8 @@ void fragment() {
  colour *= OUTPUT_IS_SRGB ? grade : to_linear(grade);
  // Decorative scenery steps back furthest at the zooms that show it as a sprite.
  float scenery = sc_role > 1.5 && sc_role < 2.5 ? sc3d_calm : 0.0;
- vec3 printed = print_paint(OUTPUT_IS_SRGB ? colour : print_to_srgb(colour), FRAGCOORD.xy, landscape, scenery);
+ float npc_ink = sc_role > 2.5 ? sc3d_calm : 0.0;
+ vec3 printed = print_paint(OUTPUT_IS_SRGB ? colour : print_to_srgb(colour), FRAGCOORD.xy, landscape, scenery - npc_ink);
  ALBEDO = OUTPUT_IS_SRGB ? printed : print_to_linear(printed);
  ALPHA = alpha;
  ALPHA_SCISSOR_THRESHOLD = 0.025;

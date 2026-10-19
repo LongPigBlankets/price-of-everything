@@ -25,14 +25,16 @@ func _settle(board: Control, seconds: float) -> void:
 		RenderingServer.force_draw(false); await get_tree().process_frame
 		if Time.get_ticks_msec() > until + 90000: break
 
-## The company tile with the most homes and works on it.
+## The company tile with the most homes and works on it, NPC works counting most.
 func _busiest_tile(board: Control) -> String:
 	var score := {}
 	for pair in board._builder.sprite_pairs:
 		if not pair.get("standing") is Dictionary: continue
 		var kind := str(pair.standing.kind)
 		var tid := str(pair.get("tile", ""))
-		score[tid] = int(score.get(tid, 0)) + (1 if kind == "house" else 4 if kind == "building" else 0)
+		var npc: bool = float(pair.get("role", 0.0)) == board._builder.ROLE_NPC
+		score[tid] = int(score.get(tid, 0)) + (1 if kind == "house" else 12 if npc else 4 if kind == "building" else 0)
+		if npc: report.npc_works = int(report.get("npc_works", 0)) + 1
 	var best := ""
 	for tid in score:
 		if best == "" or int(score[tid]) > int(score[best]): best = tid

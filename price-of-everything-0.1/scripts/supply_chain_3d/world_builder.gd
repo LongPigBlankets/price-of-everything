@@ -2197,6 +2197,21 @@ func _ensure_standing_pick(pair: Dictionary) -> void:
 
 const ROLE_DECOR := 2.0
 const ROLE_NPC := 3.0
+## Percent of homes lit in the evening while scenery is calm.
+const CALM_HOMES_LIT := 0
+## NPC works that smoke even while idle: what they are built for burns fuel.
+const SMOKING_WORKS := ["furnace", "power_plant", "petro_refinery", "poly_plant", "chem_plant"]
+
+## An NPC works smokes when its recipe burns something the carbon levy bites or digs coal (the
+## company's own rule), or, with no recipe, when it is built to burn fuel.
+static func npc_smokes(s: Dictionary) -> bool:
+	var recipe: Dictionary = Catalog.get_recipe(str(BuildingState.buildings.get(str(s.get("iid", "")), {}).get("recipe_id", "")))
+	if recipe.is_empty(): return str(s.get("internal_name", "")) in SMOKING_WORKS
+	for ip in recipe.get("inputs", []):
+		if float(Catalog.get_good(str((ip as Dictionary).get("good_id", ""))).get("co2_tax_multiplier", 0.0)) > 0.0: return true
+	for o in recipe.get("outputs", []):
+		if str(Catalog.get_good(str((o as Dictionary).get("good_id", ""))).get("internal_name", "")) == "coal": return true
+	return false
 
 ## How a standing object is coloured: NPC works toward paper white, scenery a little
 ## greyer, the company's own and everything else as authored.
@@ -2228,11 +2243,14 @@ func standing_node(s: Dictionary) -> Node3D:
 	var polluted := int(tiles.get(str(s.tile), {}).get("polluters", 0)) > 0
 	var lightable := kind != "pylon" and family not in ["mine", "mine_flush", "civic_park", "civic_plaza", "civic_grove", "civic_pond"]
 	# In the evening most homes have a light on; works are lit through the night. Calm scenery
-	# lights a third of its homes, in the evening only.
+	# leaves its homes dark, so lights and smoke mark the works. Dirty NPC works then smoke
+	# and light up like the company's own.
 	var home := kind == "house"
-	var home_lit := not home or absi(str(s.iid).hash()) % 100 < (33 if calm_scenery else 75)
-	var lit := lightable and ((polluted and not (home and calm_scenery)) or (evening and home_lit))
 	var role := role_of(s)
+	var smoking := bool(s.get("polluting", false)) or (calm_scenery and role == ROLE_NPC and npc_smokes(s))
+	polluted = polluted or smoking
+	var home_lit := not home or absi(str(s.iid).hash()) % 100 < (CALM_HOMES_LIT if calm_scenery else 75)
+	var lit := lightable and ((polluted and not (home and calm_scenery)) or (evening and home_lit))
 	var pair := {"key": key, "far": null, "near": [], "medium": null, "root": root, "standing": s,
 		"dimension": dimension, "tile": str(s.tile), "lit": lit, "role": role,
 		# The few lattice pylons are cheap meshes. Their clamps must stay aligned
@@ -2278,7 +2296,7 @@ func standing_node(s: Dictionary) -> Node3D:
 		harbour_traffic.append({"root": root, "frame": frame, "center": s.pos, "tile": str(s.tile), "traffic": {}, "phase": float(abs(str(s.tile).hash()) % 13)})
 	sprite_pairs.append(pair)
 	pickables.append({"iid": s.iid, "kind": kind, "tile": s.tile, "point": root.position + Vector3.UP * dimension.y * 0.5, "top": root.position + Vector3.UP * (dimension.y + 12.0), "size": rotated_extent(dimension, root.basis)})
-	if bool(s.get("polluting", false)):
+	if smoking:
 		smoke.append({"point": root.position + Vector3.UP * dimension.y, "radius": maxf(4.0, side * 0.08)})
 	return root
 

@@ -115,7 +115,8 @@ vec3 print_grain(vec3 c, vec2 pixel, float paperness) {
 // `paint`: a shader's sRGB colour before the tonemap. `as_landscape`: terrain and trees take the map
 // sheet's print, buildings the plate's. `calm`: how far this piece of scenery steps back; 0 for
 // the works. Calm scenery is printed with less ink: the map's gentler range, drifting toward the
-// stock, so its darks lift and its colour quietens; its lights pale but stay.
+// stock, so its darks lift and its colour quietens; its lights pale but stay. A negative `calm`
+// prints a work with more ink instead: its darks and lines go deeper, its paper stays.
 vec3 print_paint(vec3 paint, vec2 pixel, bool as_landscape, float calm) {
 	if (sc3d_print <= 0.0) return paint;
 	vec3 lab = print_oklab(print_filmic(print_to_linear(clamp(paint, vec3(0.0), vec3(1.0)))));
@@ -123,6 +124,9 @@ vec3 print_paint(vec3 paint, vec2 pixel, bool as_landscape, float calm) {
 	if (calm > 0.0) {
 		lab2 = mix(mix(lab2, print_map(lab), calm), vec3(PRINT_PAPER.x - 0.05, PRINT_PAPER.yz),
 			0.38 * calm * (1.0 - 0.6 * print_light(lab)));
+	} else if (calm < 0.0) {
+		float t = (lab2.x - PRINT_INK.x) / (PRINT_PAPER.x - PRINT_INK.x);
+		lab2 = mix(lab2, PRINT_INK, -calm * 0.45 * smoothstep(0.65, 0.15, t));
 	}
 	vec3 printed = print_to_srgb(print_from_oklab(lab2));
 	printed = print_grain(printed, pixel, (lab2.x - PRINT_INK.x) / (PRINT_PAPER.x - PRINT_INK.x));
