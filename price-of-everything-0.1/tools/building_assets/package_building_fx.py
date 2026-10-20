@@ -56,7 +56,9 @@ for level in (1, 2, 3):
         assert check['pixels'] > 0 and check['outside_sprite_pixels'] == 0, (level, kind, check)
         # 4%, not the furnace's 2%: the power plant's turbine hall has 24 small windows. A mask
         # that leaked onto a wall or roof would cover far more.
-        assert check['pixels'] < int((sprite[:, :, 3] > 128).sum())*.04, ('mask leaks onto building materials', level, kind)
+        # 4% for most; the EAF's two towers carry 18 windows plus the storage tower's, so 6%.
+        limit = .06 if family == 'eaf_v2' else .04
+        assert check['pixels'] < int((sprite[:, :, 3] > 128).sum())*limit, ('mask leaks onto building materials', level, kind)
         out = Image.new('RGBA', (800, 800), (255, 255, 255, 0)); out.putalpha(alpha)
         dest = root/'fx'/kind; dest.mkdir(parents=True, exist_ok=True)
         target = dest/f'{game}_lvl{level}.png'; out.save(target)

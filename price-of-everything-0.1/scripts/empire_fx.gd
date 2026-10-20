@@ -35,12 +35,12 @@ const ANCHORS := {
 		3: {"stacks": [{"x": 574, "y": 346, "r": 21, "kind": "auto"}], "fires": [{"x": 275, "y": 576, "w": 165, "h": 110, "mode": "breathe"}]},
 	},
 	"eaf": {
-		1: {"stacks": [{"x": 725, "y": 231, "r": 21, "kind": "auto"}],
-			"fires": [{"x": 185, "y": 382, "w": 179, "h": 107, "mode": "arc"}]},
-		2: {"stacks": [{"x": 725, "y": 231, "r": 21, "kind": "auto"}],
-			"fires": [{"x": 185, "y": 382, "w": 179, "h": 107, "mode": "arc"}]},
-		3: {"stacks": [{"x": 725, "y": 231, "r": 21, "kind": "auto"}],
-			"fires": [{"x": 185, "y": 382, "w": 179, "h": 107, "mode": "arc"}]},
+		1: {"stacks": [{"x": 725, "y": 247, "r": 21, "kind": "auto"}],
+			"fires": [{"x": 153, "y": 354, "w": 179, "h": 107, "mode": "arc"}]},
+		2: {"stacks": [{"x": 725, "y": 247, "r": 21, "kind": "auto"}],
+			"fires": [{"x": 153, "y": 354, "w": 179, "h": 107, "mode": "arc"}]},
+		3: {"stacks": [{"x": 725, "y": 247, "r": 21, "kind": "auto"}],
+			"fires": [{"x": 153, "y": 354, "w": 179, "h": 107, "mode": "arc"}]},
 	},
 	"industrial_factory": {
 		# bay: the loading-bay choreography (see _draw_bay). door = TL,TR,BR,BL of the roller

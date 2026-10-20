@@ -1022,72 +1022,72 @@
 			"cell": 128.0,
 			"center": [
 				0.0,
-				0.393013089895248,
+				0.352941185235977,
 				0.0
 			],
 			"dimensions": [
 				1.0,
-				0.786026179790497,
-				0.751091659069061
+				0.705882370471954,
+				0.674509763717651
 			],
 			"home_opaque_pixels": [
-				88.0,
-				87.0
+				84.0,
+				82.0
 			],
-			"lit_source_sha256": "900e9e8d9f44a3790a17b75eeac025e5607135322791eb35cff8f07338d7c2ba",
+			"lit_source_sha256": "b7b68f8f33c191ad7abcd5eb199efb1509c2290b1e3762e9b99dd79ee0bf9151",
 			"lit_texture": "eaf_lvl1_lit.png",
 			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "900e9e8d9f44a3790a17b75eeac025e5607135322791eb35cff8f07338d7c2ba",
-			"span": 1.6248664021492,
+			"source_sha256": "b7b68f8f33c191ad7abcd5eb199efb1509c2290b1e3762e9b99dd79ee0bf9151",
+			"span": 1.53733934164047,
 			"yaws": 16.0
 		},
 		"eaf_lvl2": {
 			"cell": 128.0,
 			"center": [
 				0.0,
-				0.393013089895248,
+				0.352941185235977,
 				0.0
 			],
 			"dimensions": [
 				1.0,
-				0.786026179790497,
-				0.83842796087265
+				0.705882370471954,
+				0.752941191196442
 			],
 			"home_opaque_pixels": [
-				86.0,
-				84.0
+				82.0,
+				80.0
 			],
-			"lit_source_sha256": "0d2f78623232337dd29e03808a48f9596558513eef120bceb8a2734bb547cf16",
+			"lit_source_sha256": "c3cc93e1f1f52dbe83e73a6d57c30db40cd55cc39d5795c2540e6f4e70794a98",
 			"lit_texture": "eaf_lvl2_lit.png",
 			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "0d2f78623232337dd29e03808a48f9596558513eef120bceb8a2734bb547cf16",
-			"span": 1.67575843334198,
+			"source_sha256": "c3cc93e1f1f52dbe83e73a6d57c30db40cd55cc39d5795c2540e6f4e70794a98",
+			"span": 1.58078474998474,
 			"yaws": 16.0
 		},
 		"eaf_lvl3": {
 			"cell": 128.0,
 			"center": [
 				0.0,
-				0.393013089895248,
+				0.352941185235977,
 				0.0
 			],
 			"dimensions": [
 				1.0,
-				0.786026179790497,
-				0.83842796087265
+				0.705882370471954,
+				0.752941191196442
 			],
 			"home_opaque_pixels": [
-				86.0,
-				84.0
+				82.0,
+				80.0
 			],
-			"lit_source_sha256": "dbff6a559a09bb4c57bd45b0c9078232118ca3e2bd9f3920e7748857c16a7ff7",
+			"lit_source_sha256": "e08739dff7c8a0f296bef214574785388f1a75282b36afa8db8f47fd78844de6",
 			"lit_texture": "eaf_lvl3_lit.png",
 			"pitches": 5.0,
 			"reference_scale": 72.0,
-			"source_sha256": "dbff6a559a09bb4c57bd45b0c9078232118ca3e2bd9f3920e7748857c16a7ff7",
-			"span": 1.67575843334198,
+			"source_sha256": "e08739dff7c8a0f296bef214574785388f1a75282b36afa8db8f47fd78844de6",
+			"span": 1.58078474998474,
 			"yaws": 16.0
 		},
 		"electrolyser_lvl1": {
