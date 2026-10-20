@@ -166,9 +166,11 @@ func mesh_for(tid: String, ground: Callable, origin: Vector2) -> ArrayMesh:
 			var l: Vector3 = abutment[2]
 			var r: Vector3 = abutment[3]
 			batch.quad(l, r, Vector3(r.x, foot, r.z), Vector3(l.x, foot, l.z), concrete)
-		for edge in [[left_a, left_b], [right_a, right_b]]:
-			batch.tube(edge[0] + Vector3.UP * 3.0, edge[1] + Vector3.UP * 3.0, 0.35, Color("60666a"), 4)
-			if rec.post: batch.tube(edge[0], edge[0] + Vector3.UP * 3.0, 0.4, concrete, 4)
+		# A low concrete parapet on the plate's outer edge: tall railings stood up over the
+		# carriageway in the view and read as lines laid across the road.
+		var lip := Vector3.UP * 0.7
+		batch.quad(left_a, left_b, left_b + lip, left_a + lip, concrete)
+		batch.quad(right_b, right_a, right_a + lip, right_b + lip, concrete)
 		# Piers: a pair of round columns under the deck edges on a cross beam, down to the bed,
 		# at every third deck point (about 15 apart), none at the abutments.
 		if rec.post and not rec.start and a.is_equal_approx(rec.a):
