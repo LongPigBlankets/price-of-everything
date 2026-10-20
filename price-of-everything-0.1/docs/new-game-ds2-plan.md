@@ -146,3 +146,39 @@ Export: `python3 tools/button_mockup/export.py 8790`, then headless Chrome at `c
 3. Whether difficulty should show its effect on a map (B, or a small sheet in A).
 4. Where a start with no ground or several sites sits (B only).
 5. Which demo variant goes forward. *Decided: the lockboxes (state 2 of round three), 19 October 2026. The wider book is set aside.*
+
+## 9. What was built (20 October 2026) and what is left
+
+Built on the branch `new-game-ds2`, behind `UiPrefs.use_new_game_ds2` (off by default) and the cheat `toggle newgame ds2`. With the flag off the old panel is built and stands exactly as before (`tests/unit/test_new_game_ds2.gd` checks it, and that the flag swaps the panel live in the main menu both ways).
+
+**The game layers** (`tools/button_mockup/cluster.html`, seeds 489 to 498, inside the `registrystudy` block so they share the study's materials; the study itself is unchanged): the walnut desk (a 9-slice at the panel's size), the navy header (a 9-slice), the felt and the oak pigeonhole frame (the frame drawn over the files, with the shadow it throws in), a blank manila file per tier in its hole and pulled out, the lockbox lid with its hinge, hasp, padlock and blank brass plate as separate parts, the blotter, the open cover and a cream leaf (9-slices the game prints on), the stamp rack and the ink pad, the press without its key, the hover slip, and a small key with a chevron right (`key_forward`). The kit supplied the rest: the silver screws, the tile view's nameplate, the Back key, the cream keys, the drum counter and `sheet_white` for the form. Export: `python3 tools/button_mockup/export.py <private port>`, then headless Chrome at `cluster.html?export&only=registrydesk,registryhead,registryrack,registryfile,registrylid,registryblotter,registrystamps,registrypress,registryslip,registrykeys` with a fresh `--user-data-dir`; then `godot --headless --path . --import`. The layout entries are listed in `docs/ds2-theme.md` §3.2.
+
+**The shell** (`scripts/new_game_ds2/new_game_ds2.gd`, extending `scripts/new_game_panel.gd`): everything the old panel decides is inherited, the signals, the starts and their configs, the demo lock (`DEMO_LOCK`, `DEMO_START_IDS`, `DEMO_DIFFICULTY_ID`, `DEMO_SPEED_ID`), the difficulty lock on `PlayerProfile.has_completed_game`, the livery table and the telemetry consent. The script lays the desk in regions and prints on them:
+
+- the header with the REGISTRY nameplate, the silver screws and the Back key;
+- the rack of seven files, each a toggle in a group as the old cards were, the chosen one pulled out over the lip with a warm rim; in a demo build the lockbox over the pigeonholes the demo keeps shut;
+- the file on the blotter: the story, the buildings as a strip (the building printed navy, the good it makes on its cream tile under it; pointing at one shows the white slip with its name and place), the ledger (Cash, Debt, then Net while there is debt, else Profit each turn; whole pounds; red ink below zero, green for a profit) and the paint card of the eight liveries, the chosen one framed and ticked, its name under the card;
+- the form on `sheet_white`: the company, the grade's red impression and its words, the charter on a drum between two small keys (`key_back`, `key_forward`, stepping through the old panel's lengths, the demo length included, with its timeline), the era rule, the survey tick (and the metrics tick only while `TelemetryState.SHOW_CONSENT_CHECKBOX` is on), the seal circle; in a demo build the fixed charter line and the DEMO stamp;
+- the stamp rack of five cream keys, the chosen grade latched, a padlock on each locked grade; in a demo build the lockbox over the rack and the pad;
+- the press with the Start New Game key on its lever.
+
+The lamp overlay (`scripts/ds2/lamp_overlay.gd`) is on the whole panel, part by part.
+
+**The era rule's marks** come from the policy timeline, not the study's 0, 100 and 200: `era_marks(turns, timeline)` reads `PolicyState.TIMELINES` for the charter's timeline (the demo's for the demo length, the campaign's otherwise) and `PolicySchedule.SCHEDULE` for the levy phases after it, keeping the beats within the term: Election, Carbon levy, Green subsidy, Levy phase 2, Subsidy ends, Levy phase 3 on a 300 turn charter; Election, Carbon levy, Green subsidy on the demo's 100. Names of marks close together step up a row each.
+
+**Unnamed start tiles** print the nearest named tile with Near in front, as the study did (`place_for`): the Troubled Carmaker's plant on `tile_23_6` prints "Near Long Valley Fields" (the study guessed "Near Capital Port"; the nearest named tile by the grid is the fields one step north). The rule is grid distance over the tile ids, not road distance; a start tile with its own name prints it.
+
+**Captures**: `tools/new_game_ds2_shot.tscn` (windowed, `-- --no-telemetry`, a SubViewport at two pixels a logical pixel) writes `artifacts/new_game_ds2/ds2_v1/`: `01_full_default` (the full game, the recommended start), `02_full_carmaker` (the Troubled Carmaker open, a building pointed at, Hard stamped, a 200 turn charter), `03_demo_lockboxes` (the demo).
+
+**Tests**: `tests/unit/test_new_game_ds2.gd` (tag `new_game`): the flag off keeps the old panel and swaps live; seven files, the recommended one open, the ledger's lines and inks, the building rows, the hover slip, the paint card; the grade stamps and their locks, the charter's keys; `start_requested` with the same overrides as the old panel, `back_requested`; the demo's locks, lid, fixed charter and standing Start key; the era marks; the Near rule.
+
+**Left for later** (none of it blocks the review):
+
+1. The study's choices the owner may still change (§7): the tier in words on the file, Net as cash less debt, Start New Game unguarded.
+2. The old panel's two placeholder options (Setting 2, Setting 3) are not printed on the form; they said nothing. The survey tick prints ticked and is not a control, as the old panel's was disabled.
+3. The grade words are the old panel's strings and carry its hyphens ("rare-earth"); changing them changes the old panel too, so they are left for the copy pass.
+4. The chosen stamp key latches as the cabinet's keys do (sunk, a shade darker); the study sank it further. A sunk cream key render would need a kit change.
+5. The pigeonhole frames are drawn one per opening, overlapping on the shared bars, so a faint seam shows down each bar; a rack rendered as one frame would need a render per start count.
+6. Below 1080p the panel keeps the study's layout and the blotter shrinks to a floor of 420 px; the two column fall back of §5 is not built.
+7. A standard capture set once the owner approves (`docs/ds2-theme.md` §9).
+8. Open Field's story says £1,500 while its config starts it with £1,900, so the ledger (which quotes the config) and the story disagree; the old panel showed the same. A data or copy fix, not the panel's.
