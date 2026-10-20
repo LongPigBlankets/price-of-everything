@@ -1,4 +1,4 @@
-"""The electric arc furnace, rebuilt from scratch in the catalogue look: the electrode house.
+"""The electric arc furnace in the catalogue look: the furnace inside its chamber.
 
 Executed in sprite_kit's namespace after furnace_builder.py, furnace_v2_builder.py,
 refinery_v2_builder.py and power_plant_v2_builder.py, whose palette and helpers it shares.
@@ -7,28 +7,28 @@ Staged as family 'eaf_v2'; it installs as 'eaf'.
 Screen vocabulary at this camera: back = +Y (top-right), right = +X (lower-right),
 front = -Y (bottom-left), left = -X (upper-left).
 
-Composition (dreamloop round 2, direction D, with the owner's asks: a larger bath and a back
-range for storage, hoppers and power). A closed refractory furnace house on a brick base
-course; the furnace is so large that its shell rises through the roof inside a refractory
-housing, the family's vessel-through-roof joint, so the open bath glows above the roof with
-the three graphite electrodes standing over it on arms from a dark mast. A side-draft hood at
-the rim takes the fume by a white duct to the bag house and on to one thin brick chimney.
-Behind the house a brick storage range with zinc silos on legs feeding it, a bucket elevator
-and a level gallery that delivers a chute into the back of the bath. The transformer vault
-stands at the back right with its bus tubes rising to the mast. Scrap waits in a brick bay at
-the front right under a goliath crane and climbs a covered conveyor into the storage range.
-The tap hole glows in the front wall over the ladle car.
+Composition (owner, 20 October 2026, after dreamloop round 2): the furnace INSIDE the
+building, seen through the open front as in the old model, under a single slanted roof plane
+over the process chamber that is high at the open front and drops toward the back, so the
+opening stays tall and little roof shows; the bowl and the electrodes visible; brick side
+walls with windows; the transformers on one side; the centre of the picture the bowl.
 
-Flows: scrap bay -> crane -> conveyor -> storage range; silos -> storage range; storage ->
-elevator -> gallery -> chute -> bath; vault -> bus tubes -> mast -> arms -> electrodes ->
-bath; bath -> tap hole -> ladle car; fume -> hood -> duct -> bag house -> flue -> chimney;
-dust -> hopper -> skip; rain -> gutters -> downpipes -> drains.
+The process chamber has an open portal front under a dark fascia, a brick right wall and
+back wall, and a brick left wing lower than the chamber with factory windows, which is also
+the transformer house: its roof bushings feed the bus tubes that cross into the chamber to
+the mast, and two yard transformers stand in front of it. Inside, the furnace on its
+black-grey operating platform with yellow rails and a stair down into the yard: a dark-metal
+shell with silver hoops, the bath baked as light, three graphite electrodes on arms from a
+dark mast beside the shell. A hood at the back of the rim sends the fume up through the roof
+and over to the bag house and on to one thin brick chimney. Behind the chamber a brick
+elevator tower rising above the roof, with the head house and gallery to a chute house on the
+roof whose chute drops through the roof into the bath; a storage wing fed by tall silos and
+by the covered scrap conveyor from the scrap bay under its goliath crane. The tap hole and
+ladle car at the front right of the bowl.
 
-Fixed across levels: the house, the furnace, the mast, the chimney and the vault's place.
-L1: one silo and a short bunker instead of the range, a switch kiosk, the duct dropping to a
-ground flue, no crane. L2: the full range with elevator and gallery, two silos, the vault,
-the bag house, the goliath crane. L3: a third silo, a second ladle, a deeper bag house and a
-second transformer on the vault's apron.
+Fixed across levels: chamber, wing, furnace, mast, tower, chimney. L1: one yard transformer,
+short bunker, ground flue, no crane. L2: storage wing, two silos, bag house, crane, conveyor,
+two transformers. L3: third silo, third transformer, second ladle, deeper bag house.
 """
 import math
 from mathutils import Vector
@@ -41,53 +41,56 @@ EAF_ROLES = {'stair': 'r_deck', 'walkway': 'r_deck', 'handrail': 'r_yellow', 'ra
              'pipe': 'white_pipe', 'duct': 'white_pipe', 'opening': 'ink_black',
              'gear': 'f_frame', 'wall_grey': 'f_base', 'window_frame': 'p_insulator'}
 
-# ---- furnace house ------------------------------------------------------------------------
-HALL = (-1.90, 1.90, -.90, 1.60)      # x0, x1, y0, y1
-EAVE = 3.10
-RISE = .50                            # roof rise; the ridge runs along X
-BASE_Z = .58                          # brick base course under the cladding
+# ---- the building --------------------------------------------------------------------
+HALL = (-2.40, 2.00, -.90, 1.60)      # x0, x1, y0, y1 of the whole building
+WING_X1 = -1.20                       # the brick left wing ends here; the chamber is to its right
+LWING_H = 2.80                        # the wing's flat roof (the transformer house)
+EAVE_F, EAVE_B = 4.30, 3.10           # the chamber's slanted roof: high at the open front, low at the back
+LINTEL_H = .26                        # the dark fascia across the open front; the sightline head is its underside
+BASE_Z = .58
+PIER_X = 1.80                         # a narrow brick pier closes the opening on the right
 
 # ---- the furnace ------------------------------------------------------------------------
-BX, BY = .00, .35                     # on the ridge line, so the housing cuts the roof symmetrically
-BOWL_R, BOWL_RISE, BOWL_WALL = 1.05, .95, .10
-RIM_Z = 4.30
+PLATFORM_Z = .85
+PLATFORM = (-1.05, 1.45, -.60, 1.10)  # x0, x1, y0, y1
+BX, BY = -.40, -.20                   # left of the chamber's centre and forward, straddling the front line
+BOWL_R, BOWL_RISE, BOWL_WALL = 1.00, .90, .10
+RIM_Z = 1.85
 MELT_DROP = .16
-HOUSING_R = BOWL_R+.08
-HOUSING_TOP = RIM_Z-.38               # the shell shows above the refractory housing from here
-ROD_R, ROD_RING = .13, .42
-ROD_ANGLES = (75.0, 195.0, 315.0)     # even screen columns (see the dreamloop notes)
-ROD_TOPS = (5.55, 5.95, 5.75)
+ROD_R, ROD_RING = .12, .40
+ROD_ANGLES = (75.0, 195.0, 315.0)
+ROD_TOPS = (2.70, 3.20, 2.90)
 ROD_SUBMERGE = .10
-MAST_X = 1.50                         # beside the furnace on the lit side, clear of its screen width
-MAST_W = .30
-ARM_DROP = .40
+MAST_X = .85                          # right of the shell; its x+y must stay under the right pier's, or the pier hides it
+MAST_W = .28
+ARM_DROP = .35
+STAIR_X = -.95
 
 # ---- plant --------------------------------------------------------------------------
-HOOD_XY = (BX+.95, BY+.72)            # side-draft hood at the rim, back right
-DUCT_Z = RIM_Z-.05
-BAG = (3.00, 3.65, 1.30, 2.10)        # bag house behind the vault; L3 deepens it toward the front
+HOOD_XY = (BX+.55, BY+.95)            # hood at the back of the rim; the duct rises through the roof
+DUCT_Z = 4.05                         # the duct's run over the roof
+BAG = (3.00, 3.65, .60, 1.40)
 BAG_Z = (1.50, 3.40)
-STACK_XY = (4.15, 1.85)               # one thin chimney, same place at every level
+STACK_XY = (4.00, 1.70)               # one thin chimney, same place at every level
 STACK_TOP = 5.40
 FLUE_Z = .95
 GROUND_FLUE_Z = .45
-VAULT = (3.00, 3.80, .15, .95)        # transformer vault at the front of the yard, in view
-VAULT_H = 2.50
-BUS_Z = 5.55                          # bus tubes over everything to the mast's head
-TOWER = (-1.55, -.25, 1.70, 3.00)     # brick elevator tower behind the house, rising above its roof
+BUS_Z = 3.55                          # bus tubes from the wing roof across the chamber to the mast
+TX_YARD = (-2.35, -1.25, -1.75, -1.05)  # transformer yard in front of the left wing
+TOWER = (-1.55, -.25, 1.70, 3.00)
 TOWER_H = 4.40
-WING = (-.25, 1.90, 1.70, 2.90)       # storage wing from the tower along the back of the house
+WING = (-.25, 1.90, 1.70, 2.90)       # storage wing from the tower along the back of the chamber
 WING_H = 2.40
-SILOS = ((.70, 3.40), (1.50, 3.40), (2.30, 3.40))    # tall silos behind the wing; the third at L3
-SILO_LEG = 2.60                       # legs tall enough for the bodies to show over the house roof
-ELEV_Y = 2.70                         # bucket elevator casing on the tower's lit flank
+SILOS = ((.70, 3.40), (1.50, 3.40), (2.30, 3.40))
+SILO_LEG = 2.60
+ELEV_Y = 2.70
 ELEV_TOP = 5.05
-CHUTE_Y = 1.62                        # chute house over the back of the rim
-SCRAP = (2.05, 2.85, -1.45, -.65)     # brick scrap bay, front right
+CHUTE_Y = 1.15                        # chute house on the roof; the chute drops through the roof into the bath
+SCRAP = (2.15, 2.95, -1.45, -.65)
 CRANE_Y = -1.05
-CONVEYOR_X = 2.45                     # the covered conveyor climbs beside the house's end wall
-TAP_X = .70
-LADLE_XY = (.70, -1.15)
+CONVEYOR_X = 2.50
+TAP_X = .55
+LADLE_XY = (.60, -1.12)
 
 
 def _e_rod_xy(i):
@@ -107,10 +110,27 @@ def _e_shell_r(z):
 
 
 def _e_roof_z(y):
-    """Top of the roof sheet at y across the house."""
+    """Top of the chamber's slanted roof at y: high at the open front, low at the back."""
     x0, x1, y0, y1 = HALL
-    cy = (y0+y1)/2
-    return EAVE+RISE*(1-abs(y-cy)/((y1-y0)/2))+.06
+    return EAVE_F+(EAVE_B-EAVE_F)*(y-y0)/(y1-y0)+.06
+
+
+def _e_sightline_tests():
+    rm = _e_melt_radius()
+    t = [('melt far lip', BX, BY+rm, RIM_Z-MELT_DROP), ('shell far rim', BX, BY+BOWL_R, RIM_Z)]
+    for i in range(3):
+        rx, ry = _e_rod_xy(i); t.append((f'rod {i+1} tip', rx, ry, ROD_TOPS[i]))
+    t.append(('mast top', MAST_X, BY+MAST_W/2, max(ROD_TOPS)-ARM_DROP+.22))
+    return t
+
+
+def _e_check_sightlines():
+    """Every point the owner wants seen must cross the front plane under the fascia: with a
+    roof that drops toward the back, the front eave alone decides it (the ray rises faster
+    than the roof)."""
+    head = EAVE_F-LINTEL_H; y0 = HALL[2]
+    for name, _, y, z in _e_sightline_tests():
+        if z+(y-y0) >= head: raise RuntimeError('EAF sightline buried: %s crosses at %.2f, head %.2f' % (name, z+(y-y0), head))
 
 
 def _e_begin():
@@ -197,128 +217,152 @@ def _e_bent_gallery_y(K, name, path, x, half_w, half_h, mat):
 # ------------------------------------------------------------------ the furnace house
 
 def _e_house(K):
+    """The chamber with its open front and slanted roof, the brick right wall and back wall,
+    and the lower brick left wing with its windows (the transformer house)."""
     x0, x1, y0, y1 = HALL
-    w, d = x1-x0, y1-y0
-    cx, cy = (x0+x1)/2, (y0+y1)/2
-    wall, frame, brick = K.mat('f2_refractory'), K.mat('f_frame'), K.mat('f_brick')
-    K.box('house_footing', cx, cy, .08, w+.10, d+.10, .16, K.mat('f_base'))
-    t = .08
-
-    def slab(nm, sx_, sy_, lx, ly):
-        # Brick base course under the cladding, stacked in one plane: nothing buried.
-        K.box(nm+'_base', sx_, sy_, (.10+BASE_Z)/2, lx, ly, BASE_Z-.10, brick)
-        K.box(nm, sx_, sy_, (BASE_Z+EAVE)/2, lx, ly, EAVE-BASE_Z, wall)
-    slab('house_front', cx, y0+t/2, w, t)
-    slab('house_back', cx, y1-t/2, w, t)
-    for s, xe in ((-1, x0+t/2), (1, x1-t/2)):
-        slab('house_end'+str(s), xe, cy, t, d-2*t)
-    # Dark portal columns on the wall faces, carrying the eave.
-    for px in [x0+.06+(w-.12)*i/4 for i in range(5)]:
-        for side, py in (('front', y0-.03), ('back', y1+.03)):
-            K.box('house_column_'+side, px, py, (.12+EAVE)/2, .11, .07, EAVE-.12, frame)
-    for s, xe in ((-1, x0-.03), (1, x1+.03)):
-        for py in (y0+.06, cy, y1-.06):
-            K.box('house_column_end', xe, py, (.12+EAVE)/2, .07, .11, EAVE-.12, frame)
-    # Gables and the standing-seam roof to the ridge; the furnace housing cuts through it.
-    for s, xe in ((-1, x0+t/2), (1, x1-t/2)):
-        K.prism('house_gable'+str(s), (xe, cy, 0), (0, 1), [(-d/2, EAVE), (0, EAVE+RISE), (d/2, EAVE)], t, wall)
-    k = RISE/(d/2); o = .09
-    for s in (-1, 1):
-        ya, yb = (-d/2-o, 0) if s < 0 else (0, d/2+o)
-        za, zb = (EAVE-k*o, EAVE+RISE) if s < 0 else (EAVE+RISE, EAVE-k*o)
-        K.prism('house_roof'+str(s), (cx, cy, 0), (0, 1), [(ya, za), (yb, zb), (yb, zb+.055), (ya, za+.055)], w+.16, K.mat('f_roof'))
-    for s, (ra, rb) in ((-1, (x0-.08, BX-HOUSING_R-.02)), (1, (BX+HOUSING_R+.02, x1+.08))):
-        K.dirbox('house_ridge'+str(s), (ra, cy, EAVE+RISE+.04), (rb, cy, EAVE+RISE+.04), .16, .07, K.mat('f_roof'))
+    d = y1-y0; cy = (y0+y1)/2
+    brick, frame = K.mat('f_brick'), K.mat('f_frame')
+    K.box('house_footing', (x0+x1)/2, cy, .08, x1-x0+.10, d+.10, .16, K.mat('f_base'))
+    K.box('house_floor', (WING_X1+x1)/2, cy, .13, x1-WING_X1-.16, d-.16, .02, K.mat('f_base'))
+    t = .16
+    # Left wing: a brick block with a stone coping and membrane roof, windows and a door.
+    wx0, wx1 = x0, WING_X1
+    K.box('wing_walls', (wx0+wx1)/2, cy, (.10+LWING_H)/2, wx1-wx0, d, LWING_H-.10, brick)
+    K.box('wing_coping', (wx0+wx1)/2, cy, LWING_H+.03, wx1-wx0+.06, d+.06, .06, K.mat('stone'))
+    K.box('wing_roof', (wx0+wx1)/2, cy, LWING_H+.07, wx1-wx0-.10, d-.10, .04, K.mat('membrane'))
     K._fine_mode = True
-    n = max(2, round(w/.26))
+    for i, wx in enumerate((wx0+.35, wx0+.85)):
+        _pp_window(K, f'wing_window{i}', '-Y', (wx, y0-.055, 1.90), .40, .55, k=.6)
+    _pp_window(K, 'wing_window_hi', '-Y', (wx0+.60, y0-.055, .95), .40, .55, k=.6)
+    _pp_louvre(K, 'wing_louvre_front', '-Y', (wx0+.60, y0-.03, 2.45), w=.56, h=.30)
+    _pp_louvre(K, 'wing_louvre_back', '+Y', (wx0+.60, y1+.03, 1.90), w=.56, h=.46)
+    K._fine_mode = False
+    # The chamber: the wing's wall continues up as refractory cladding to the roof on the left,
+    # a brick right wall with a narrow pier at the opening, a brick back wall. Side walls are
+    # trapezoids under the slanted roof.
+    def side(nm, x, mat, z0):
+        K.prism(nm, (x, 0, 0), (0, 1), [(y0, z0), (y1, z0), (y1, EAVE_B), (y0, EAVE_F)], t, mat)
+    side('chamber_left_clerestory', WING_X1-t/2+.08, K.mat('f2_refractory'), LWING_H+.09)
+    side('chamber_right', x1-t/2, brick, .10)
+    K.box('chamber_back', (WING_X1+x1)/2, y1-t/2, (.10+EAVE_B)/2, x1-WING_X1, t, EAVE_B-.10, brick)
+    K.box('chamber_pier', (PIER_X+x1)/2, y0+t/2, (.10+EAVE_F)/2, x1-PIER_X, t, EAVE_F-.10, brick)
+    # The open front: dark fascia across the opening and columns at its jambs.
+    K.box('chamber_fascia', (WING_X1+PIER_X)/2, y0+.06, EAVE_F-LINTEL_H/2, PIER_X-WING_X1+.02, .14, LINTEL_H, frame)
+    K.box('chamber_bay_shadow', (WING_X1+PIER_X)/2, y0+t+.02, EAVE_F-LINTEL_H-.09, PIER_X-WING_X1-.02, .02, .18, K.mat('ink_black'))
+    for px in (WING_X1+.06, PIER_X-.045):
+        K.box('chamber_column', px, y0-.03, (.12+EAVE_F)/2, .11, .07, EAVE_F-.12, frame)
+    for py in (y0+.06, cy, y1-.06):
+        K.box('chamber_column_end', x1+.03, py, (.12+_e_roof_z(py)-.10)/2, .07, .11, _e_roof_z(py)-.22, frame)
+    # The slanted roof: one plane with standing seams running down the slope, a dark edge
+    # beam at the front and a gutter at the low back eave.
+    k = (EAVE_F-EAVE_B)/d; o = .10
+    rx0, rx1 = WING_X1-.10, x1+.10
+    K.prism('chamber_roof', ((rx0+rx1)/2, 0, 0), (0, 1), [(y0-o, EAVE_F+k*o), (y1+o, EAVE_B-k*o), (y1+o, EAVE_B-k*o+.06), (y0-o, EAVE_F+k*o+.06)], rx1-rx0, K.mat('f_roof'))
+    K._fine_mode = True
+    n = max(2, round((rx1-rx0)/.26))
     for j in range(n+1):
-        px = x0+j*w/n
-        if abs(px-BX) < HOUSING_R+.05: continue
-        for side in (-1, 1):
-            K.dirbox('house_roof_seam', (px, cy+side*(d/2+.06), EAVE+.05), (px, cy+side*.40, EAVE+RISE*(1-.40/(d/2))+.06), .012, .012, K.mat('f_roof'))
-    # Roof vents either side of the housing, where a monitor cannot run.
-    for vx in (x0+.55, x1-.55):
-        for vy in (cy-.45, cy+.45):
-            K.box('house_vent', vx, vy, _e_roof_z(vy)+.10, .22, .22, .18, K.mat('silver'))
-            K.box('house_vent_cap', vx, vy, _e_roof_z(vy)+.21, .27, .27, .04, frame)
+        px = rx0+j*(rx1-rx0)/n
+        K.dirbox('chamber_roof_seam', (px, y0-.02, _e_roof_z(y0-.02)+.012), (px, y1+.02, _e_roof_z(y1+.02)+.012), .012, .012, K.mat('f_roof'))
     K._fine_mode = False
-    # Rainwater: gutters on both eaves and three downpipes to drains.
-    for s, gy in ((-1, y0-o-.02), (1, y1+o+.02)):
-        K.box('house_gutter'+str(s), cx, gy, EAVE-k*o+.02, w+.12, .07, .06, K.mat('silver'))
-    _v2_downpipe(K, 'house_dp_fl', x0+.12, y0-o-.02, EAVE-k*o, 0.0)
-    _v2_downpipe(K, 'house_dp_fr', x1-.12, y0-o-.02, EAVE-k*o, 0.0)
-    _v2_downpipe(K, 'house_dp_bl', x0+.12, y1+o+.02, EAVE-k*o, 0.0)
-    # Windows and doors, half-size frames: the front carries two pairs of windows and a
-    # personnel door beside the tap hole, the lit end wall a window, door and louvre.
+    K.box('chamber_gutter', (rx0+rx1)/2, y1+o+.03, EAVE_B-k*o+.02, rx1-rx0+.04, .07, .06, K.mat('silver'))
+    _v2_downpipe(K, 'chamber_dp', x1-.12, y1+o+.03, EAVE_B-k*o, 0.0)
+    _v2_downpipe(K, 'wing_dp', x0+.12, y1+.12, LWING_H, 0.0)
+    K.box('wing_gutter', (wx0+wx1)/2, y1+.10, LWING_H+.02, wx1-wx0, .08, .07, K.mat('silver'))
+    # Windows and a door on the lit right wall, a louvre high in it.
     K._fine_mode = True
-    for i, wx in enumerate((-1.30, -.70, 1.20)):
-        _pp_window(K, f'house_window_front{i}', '-Y', (wx, y0-.055, 1.75), .46, .60, k=.6)
-        _pp_window(K, f'house_window_front_hi{i}', '-Y', (wx, y0-.055, 2.60), .46, .40, k=.6)
-    _pp_window(K, 'house_window_end', '+X', (x1+.055, .90, 1.75), .44, .60, k=.6)
-    _pp_louvre(K, 'house_louvre_end', '+X', (x1+.03, .90, 2.65), w=.44, h=.40)
-    _pp_louvre(K, 'house_louvre_front', '-Y', (-.10, y0-.03, 2.60), w=.50, h=.40)
+    for i, (wy, wz) in enumerate(((.15, 1.75), (.90, 1.75), (.15, 2.70), (.90, 2.70))):
+        _pp_window(K, f'chamber_window{i}', '+X', (x1+.055, wy, wz), .40, .55, k=.6)
+    _pp_louvre(K, 'chamber_louvre_end', '+X', (x1+.03, .50, 3.50), w=.50, h=.36)
     K._fine_mode = False
-    _pp_door(K, 'house_door_front', '-Y', (-.10, y0-.02, .14+.95/2), .50, .95)
-    _pp_door(K, 'house_door_end', '+X', (x1+.02, .20, .14+.95/2), .50, .95)
-    K.box('house_step_front', -.10, y0-.14, .04, .66, .20, .08, K.mat('stone'))
-    K.box('house_step_end', x1+.14, .20, .04, .20, .66, .08, K.mat('stone'))
-    # The tap hole: a dark reveal with the glow of the tapping bay, over the ladle car.
-    glow = _emissive('e_glow', (1.0, .42, .09), .42)
-    K.box('tap_reveal', TAP_X, y0-.03, .14+.36, .56, .05, .72, K.mat('ink_black'))
-    K.box('tap_glow', TAP_X, y0-.02, .14+.33, .40, .05, .50, glow)
-    K.box('tap_lintel', TAP_X, y0-.04, .14+.76, .66, .06, .08, K.mat('stone'))
-    K.box('tap_launder', TAP_X, y0-.22, .14+.30, .18, .40, .10, K.mat('f_oxide'))
+    _pp_door(K, 'chamber_door_end', '+X', (x1+.02, -.50, .14+.95/2), .50, .95)
+    K.box('chamber_step_end', x1+.14, -.50, .04, .20, .66, .08, K.mat('stone'))
 
 
 # ------------------------------------------------------------------ the furnace
 
+def _e_platform(K):
+    """Operating platform: black-grey deck on dark columns, yellow rails along its front
+    either side of the shell, and a straight stair from the yard up through the opening."""
+    x0, x1, y0, y1 = PLATFORM
+    z = PLATFORM_Z
+    deck, frame = K.mat('r_deck'), K.mat('f_frame')
+    K.box('platform_deck', (x0+x1)/2, (y0+y1)/2, z-.04, x1-x0, y1-y0, .08, deck)
+    K.box('platform_fascia', (x0+x1)/2, y0-.01, z-.09, x1-x0, .03, .12, frame)
+    for px in (x0+.12, (x0+x1)/2, x1-.12):
+        for py in (y0+.12, y1-.12):
+            K.dirbox('platform_column', (px, py, .14), (px, py, z-.08), .09, .09, frame)
+    gap0, gap1 = BX-BOWL_R-.06, BX+BOWL_R+.06
+    _r_rail(K, 'platform_rail_fl', (x0, y0, z), (max(x0, gap0), y0, z))
+    _r_rail(K, 'platform_rail_fr', (gap1, y0, z), (x1, y0, z))
+    _r_rail(K, 'platform_rail_r', (x1, y0, z), (x1, y1, z))
+    sx = STAIR_X; sw = .30
+    foot_y, head_y = y0-1.15, y0
+    n = 9
+    for i in range(n):
+        f1 = (i+1)/n
+        ty = foot_y+(head_y-foot_y)*(i+.5)/n
+        tz = .14+(z-.14)*f1
+        K.box(f'stair_tread{i}', sx, ty, tz-.015, sw, (head_y-foot_y)/n+.01, .03, deck)
+        K.box(f'stair_riser{i}', sx, ty+(head_y-foot_y)/n/2-.005, tz-.015-(z-.14)/n/2, sw-.02, .01, (z-.14)/n, deck)
+    for s_ in (-1, 1):
+        K.dirbox(f'stair_stringer{s_}', (sx+s_*sw/2, foot_y, .10), (sx+s_*sw/2, head_y, z-.06), .035, .12, frame)
+        K._fine_mode = True
+        for j in range(4):
+            fj = j/3
+            py = foot_y+(head_y-foot_y)*fj; pz = .14+(z-.14)*fj
+            K.dircyl(f'stair_post{s_}{j}', (sx+s_*sw/2, py, pz), (sx+s_*sw/2, py, pz+.24), .014, K.mat('r_yellow'), segments=8)
+        K.dircyl(f'stair_handrail{s_}', (sx+s_*sw/2, foot_y, .14+.24), (sx+s_*sw/2, head_y, z+.24), .013, K.mat('r_yellow'), segments=8)
+        K._fine_mode = False
+    K.box('stair_foot', sx, foot_y-.08, .05, sw+.16, .22, .10, K.mat('f_base'))
+
+
 def _e_furnace(K):
-    """The shell through the roof in its refractory housing, the open bath above the roof,
-    the electrodes on arms from the mast, the side-draft hood at the rim."""
+    """The shell on its rocker, the bath, the electrodes on arms from the mast, the hood."""
     frame, zinc = K.mat('f_frame'), K.mat('f_zinc')
-    roof_z = _e_roof_z(BY)
-    # Refractory housing from inside the roof up to a dark cap ring at the shell.
-    z0 = roof_z-.45
-    K.cyl('furnace_housing', BX, BY, (z0+HOUSING_TOP)/2, HOUSING_R, HOUSING_TOP-z0, K.mat('f2_refractory'), segments=28)
-    K.washer('furnace_housing_cap', (BX, BY, HOUSING_TOP), (0, 0, 1), _e_shell_r(HOUSING_TOP)-.01, HOUSING_R+.05, .10, frame, seg=28)
+    K.cyl('furnace_pedestal', BX, BY, (PLATFORM_Z+RIM_Z-BOWL_RISE+.12)/2, .42, RIM_Z-BOWL_RISE+.12-PLATFORM_Z, frame, segments=24)
+    for s_ in (-1, 1):
+        K.cyl(f'furnace_trunnion{s_}', BX+s_*BOWL_R*.82, BY, RIM_Z-BOWL_RISE*.50, .10, .34, frame, axis='X', segments=14)
     _e_bowl(K, 'furnace_shell', BX, BY, RIM_Z, BOWL_R, BOWL_RISE, BOWL_WALL, K.mat('f_shell'), K.mat('f_oxide'))
     K._fine_mode = True
-    for z in (RIM_Z-.18, RIM_Z-.30):
+    for z in (RIM_Z-.26, RIM_Z-.46, RIM_Z-.66):
         rr = _e_shell_r(z)
         K.washer(f'furnace_hoop{int(z*100)}', (BX, BY, z), (0, 0, 1), rr-.02, rr+.065, .07, zinc)
     K._fine_mode = False
-    # The bath.
+    # Tapping spout at the front right, over the ladle car.
+    a = math.radians(-55)
+    sx, sy = BX+(BOWL_R-.05)*math.cos(a), BY+(BOWL_R-.05)*math.sin(a)
+    K.rotbox('furnace_spout', sx+.16*math.cos(a), sy+.16*math.sin(a), RIM_Z-.10, .42, .22, .14, K.mat('f_oxide'), 'Z', -55)
+    K.rotbox('furnace_spout_trough', sx+.18*math.cos(a), sy+.18*math.sin(a), RIM_Z-.04, .36, .12, .04, K.mat('ink_black'), 'Z', -55)
     melt = _emissive('e_melt', (.95, .32, .02), 1.0)
     melt_z = RIM_Z-MELT_DROP; rm = _e_melt_radius()
     K.cyl('furnace_melt', BX, BY, melt_z, rm, .05, melt, segments=28)
     K.washer('furnace_lining', (BX, BY, melt_z+.012), (0, 0, 1), rm-.07, rm+.085, .036, K.mat('f_oxide'))
-    # Electrodes with silver clamps on arms from the mast.
     for i in range(3):
         rx, ry = _e_rod_xy(i); z1 = ROD_TOPS[i]
         K.cyl(f'electrode{i}', rx, ry, (melt_z-ROD_SUBMERGE+z1)/2, ROD_R, z1-(melt_z-ROD_SUBMERGE), K.mat('e_graphite'), segments=20)
         az = z1-ARM_DROP
-        K.cyl(f'electrode{i}_clamp', rx, ry, az, ROD_R+.06, .24, zinc, segments=20)
+        K.cyl(f'electrode{i}_clamp', rx, ry, az, ROD_R+.06, .22, zinc, segments=20)
         K._fine_mode = True
-        K.washer(f'electrode{i}_ring', (rx, ry, az-.22), (0, 0, 1), ROD_R-.005, ROD_R+.035, .06, zinc)
+        K.washer(f'electrode{i}_ring', (rx, ry, az-.20), (0, 0, 1), ROD_R-.005, ROD_R+.035, .06, zinc)
         K._fine_mode = False
         mx = MAST_X-MAST_W/2
-        K.dirbox(f'electrode{i}_bracket', (MAST_X, BY, az), (MAST_X, ry, az), .15, .15, frame)
-        K.dirbox(f'electrode{i}_arm', (mx+.02, ry, az), (rx+ROD_R, ry, az), .12, .14, zinc)
-        K.box(f'electrode{i}_arm_root', mx-.02, ry, az, .10, .22, .22, frame)
-    # The mast rises through the roof on the lit side, with a collar at the roof.
+        K.dirbox(f'electrode{i}_bracket', (MAST_X, BY, az), (MAST_X, ry, az), .14, .14, frame)
+        K.dirbox(f'electrode{i}_arm', (mx+.02, ry, az), (rx+ROD_R, ry, az), .11, .13, zinc)
+        K.box(f'electrode{i}_arm_root', mx-.02, ry, az, .10, .20, .20, frame)
     mt = max(ROD_TOPS)-ARM_DROP+.22
-    mz = _e_roof_z(BY)
-    K.box('mast', MAST_X, BY, (mz-.40+mt)/2, MAST_W, MAST_W, mt-mz+.40, frame)
+    K.box('mast', MAST_X, BY, (PLATFORM_Z+.08+mt)/2, MAST_W, MAST_W, mt-PLATFORM_Z-.08, frame)
     K.box('mast_cap', MAST_X, BY, mt+.03, MAST_W+.08, MAST_W+.08, .06, zinc)
-    K.box('mast_collar', MAST_X, BY, mz+.06, MAST_W+.16, MAST_W+.16, .12, zinc)
+    K.box('mast_base', MAST_X, BY, PLATFORM_Z+.04, MAST_W+.16, MAST_W+.16, .08, zinc)
     for k in range(3):
-        K.box(f'mast_terminal{k}', MAST_X+MAST_W/2+.02, BY+(k-1)*.15, BUS_Z, .10, .08, .14, zinc)
-    # Side-draft hood at the rim, back right, open toward the bath; the duct leaves its back.
+        K.box(f'mast_terminal{k}', MAST_X-MAST_W/2-.02, BY+(k-1)*.15, BUS_Z, .10, .08, .14, zinc)
+    # Hood at the back of the rim; its duct rises through the roof with a collar.
     hx, hy = HOOD_XY
-    K.box('hood', hx, hy, DUCT_Z, .62, .54, .50, zinc)
-    K.box('hood_mouth', hx-.30, hy-.26, DUCT_Z, .06, .40, .40, K.mat('ink_black'))
-    K.box('hood_stand', hx+.10, hy+.10, (HOUSING_TOP+DUCT_Z-.25)/2, .12, .12, DUCT_Z-.25-HOUSING_TOP, frame)
-    return dict(mast_top=mt, duct_start=(hx+.30, hy, DUCT_Z))
+    K.box('hood', hx, hy, RIM_Z+.55, .80, .50, .40, zinc)
+    K.box('hood_mouth', hx, hy-.26, RIM_Z+.50, .60, .06, .30, K.mat('ink_black'))
+    K.box('hood_stand', hx+.30, hy+.10, (PLATFORM_Z+RIM_Z+.35)/2, .12, .12, RIM_Z+.35-PLATFORM_Z, frame)
+    rz = _e_roof_z(hy)
+    K.washer('hood_duct_collar', (hx, hy, rz+.04), (0, 0, 1), .18, .27, .08, frame, seg=20)
+    return dict(mast_top=mt, duct_start=(hx, hy, RIM_Z+.75))
 
 
 # ------------------------------------------------------------------ fume plant and chimney
@@ -377,78 +421,66 @@ def _e_bag_house(K, deep):
 
 
 def _e_fume(K, start, level):
-    """From the hood at the rim: along +X over the house's eave, then down into the bag
-    house's lid (L2, L3), or to the ground and into the chimney base as a low flue (L1)."""
+    """From the hood: up through the roof, along the roof's fall toward the right and over
+    the right wall, then down into the bag house's lid (L2, L3) or to the ground and into
+    the chimney base as a low flue (L1)."""
     sx, sy = STACK_XY
+    hx, hy, hz = start
+    x1 = HALL[1]
     if level >= 2:
         cxb, cyb = _e_bag_house(K, deep=level == 3)
-        pts = [start, (cxb, start[1], DUCT_Z), (cxb, cyb, DUCT_Z), (cxb, cyb, BAG_Z[1]+.08)]
-        K.pipe_run('fume_duct', pts, .21, mat=K.mat('white_pipe'), bend=.32)
-        K.washer('fume_collar_bag', (cxb, cyb, BAG_Z[1]+.10), (0, 0, 1), .20, .28, .06, K.mat('f_frame'), seg=20)
+        pts = [(hx, hy, hz), (hx, hy, DUCT_Z), (cxb, hy, DUCT_Z), (cxb, cyb, DUCT_Z), (cxb, cyb, BAG_Z[1]+.08)]
+        K.pipe_run('fume_duct', pts, .20, mat=K.mat('white_pipe'), bend=.32)
+        K.washer('fume_collar_bag', (cxb, cyb, BAG_Z[1]+.10), (0, 0, 1), .19, .27, .06, K.mat('f_frame'), seg=20)
     else:
         dx = sx-.95
-        pts = [start, (dx, start[1], DUCT_Z), (dx, start[1], GROUND_FLUE_Z), (dx, sy-.15, GROUND_FLUE_Z), (sx-.31, sy-.15, GROUND_FLUE_Z)]
+        pts = [(hx, hy, hz), (hx, hy, DUCT_Z), (dx, hy, DUCT_Z), (dx, hy, GROUND_FLUE_Z), (dx, sy-.15, GROUND_FLUE_Z), (sx-.31, sy-.15, GROUND_FLUE_Z)]
         K.pipe_run('fume_duct', pts, .19, mat=K.mat('white_pipe'), bend=.30)
         K.washer('fume_collar_stack', (sx-.32, sy-.15, GROUND_FLUE_Z), (1, 0, 0), .18, .24, .04, K.mat('f_frame'), seg=16)
-        K.box('fume_drop_foot', dx, start[1], .05, .32, .32, .10, K.mat('f_base'))
-    # A trestle carries the run where it leaves the house's eave.
-    px = 2.85
-    K.box('fume_post_foot', px, start[1], .05, .18, .18, .10, K.mat('f_base'))
-    K.dirbox('fume_post', (px, start[1], .10), (px, start[1], DUCT_Z-.24), .08, .08, K.mat('f_frame'))
-    K.dirbox('fume_saddle', (px, start[1]-.22, DUCT_Z-.25), (px, start[1]+.22, DUCT_Z-.25), .09, .06, K.mat('f_frame'))
+        K.box('fume_drop_foot', dx, hy, .05, .32, .32, .10, K.mat('f_base'))
+    # A trestle carries the run just outside the right wall.
+    px = x1+.55
+    K.box('fume_post_foot', px, hy, .05, .18, .18, .10, K.mat('f_base'))
+    K.dirbox('fume_post', (px, hy, .10), (px, hy, DUCT_Z-.24), .08, .08, K.mat('f_frame'))
+    K.dirbox('fume_saddle', (px, hy-.22, DUCT_Z-.25), (px, hy+.22, DUCT_Z-.25), .09, .06, K.mat('f_frame'))
 
 
 # ------------------------------------------------------------------ power
 
-def _e_vault(K, level):
-    """Brick transformer vault behind the bag house: stone coping, membrane roof, cooling
-    louvres on its lit faces, a door, three roof bushings and the bus tubes rising over
-    everything to the mast's head. L1 has a low switch kiosk in the same place; L3 adds a
-    yard transformer on the vault's apron."""
-    x0, x1, y0, y1 = VAULT
-    if level == 1:
-        kx0, kx1, ky0, ky1 = x0, x0+.70, y0, y0+.70
-        roof = _r_block(K, 'vault', kx0, kx1, ky0, ky1, 1.35, wall='f_brick')
-        _pp_door(K, 'vault_door', '-Y', ((kx0+kx1)/2, ky0-.02, .08+.75/2), .40, .75, ribs=3)
-        K._fine_mode = True
-        _pp_louvre(K, 'vault_louvre', '+X', (kx1+.03, (ky0+ky1)/2, .85), w=.36, h=.30)
-        K._fine_mode = False
-        bx, by0_ = (kx0+kx1)/2, ky0+.35
-    else:
-        roof = _r_block(K, 'vault', x0, x1, y0, y1, VAULT_H, wall='f_brick')
-        _pp_door(K, 'vault_door', '-Y', (x0+.26, y0-.02, .08+.85/2), .42, .85)
-        K.box('vault_step', x0+.26, y0-.14, .04, .56, .20, .08, K.mat('stone'))
-        K._fine_mode = True
-        for z in (1.00, 1.90):
-            _pp_louvre(K, f'vault_louvre{int(z*10)}', '+X', (x1+.03, (y0+y1)/2, z), w=.52, h=.44)
-        _pp_louvre(K, 'vault_louvre_front', '-Y', (x1-.24, y0-.03, 1.80), w=.36, h=.40)
-        K._fine_mode = False
-        bx, by0_ = x0+.30, y0+.25
-    # Bushings on the roof; each tube rises on its own line, runs -Y past the bag house and
-    # the duct, then -X on its mast terminal's line. Nested, so nothing crosses.
+def _e_power(K, level):
+    """The left wing is the transformer house: roof bushings and the bus tubes that rise
+    and cross into the chamber over the bath to the mast's terminals, carried on a post at
+    the wing's inner edge. Yard transformers stand on gravel in front of the wing (one at
+    L1, two at L2, three at L3), each with a bus duct into the wing's front wall."""
+    x0, x1, y0, y1 = HALL
+    roof = LWING_H+.09
+    bx, by = x0+.55, .20
     K._fine_mode = True
     for k in range(3):
-        px, py = bx+.14*k, by0_+.14*k
+        px, py = bx+.14*k, by+(k-1)*.15
         K.cyl(f'bus{k}_bushing', px, py, roof+.11, .055, .22, K.mat('p_insulator'), segments=12)
         K.washer(f'bus{k}_bushing_flange', (px, py, roof+.02), (0, 0, 1), .06, .11, .04, K.mat('f_frame'), seg=12)
         ty = BY+(k-1)*.15
-        pts = [(px, py, roof+.20), (px, py, BUS_Z), (px, ty, BUS_Z), (MAST_X+MAST_W/2+.07, ty, BUS_Z)]
+        pts = [(px, py, roof+.20), (px, py, BUS_Z), (px, ty, BUS_Z), (MAST_X-MAST_W/2-.07, ty, BUS_Z)]
         K.pipe_run(f'bus{k}', pts, .038, mat=K.mat('f_zinc'), bend=.09)
     K._fine_mode = False
-    # A lattice post carries the three tubes where they cross the yard.
-    px = 2.85
-    K.box('bus_post_foot', px, BY, .05, .18, .18, .10, K.mat('f_base'))
-    K.dirbox('bus_post', (px, BY-.03, .10), (px, BY-.03, BUS_Z-.08), .07, .07, K.mat('f_frame'))
-    K.dirbox('bus_post_arm', (px, BY-.22, BUS_Z-.08), (px, BY+.22, BUS_Z-.08), .05, .06, K.mat('f_frame'))
-    if level == 3:
-        K.transformer('yard_tx', x1+.45, (y0+y1)/2, .07, s=1.1, fins=5)
-        for ob in K.col.objects:
-            if ob.name.startswith('yard_tx') and ob.type == 'MESH':
-                mats = ob.data.materials
-                for i, m in enumerate(mats):
-                    if m == K.mat('f_frame'): mats[i] = K.mat('p_tx')
-        K.dirbox('yard_tx_duct', (x1+.01, (y0+y1)/2, 1.20), (x1+.30, (y0+y1)/2, 1.20), .14, .16, K.mat('f_zinc'))
-        _v2_flange(K, 'yard_tx_collar', x1+.02, (y0+y1)/2, 1.20, 'x', w=.22, h=.24)
+    K.dirbox('bus_post', (WING_X1+.26, BY-.03, roof), (WING_X1+.26, BY-.03, BUS_Z-.08), .07, .07, K.mat('f_frame'))
+    K.dirbox('bus_post_arm', (WING_X1+.26, BY-.22, BUS_Z-.08), (WING_X1+.26, BY+.22, BUS_Z-.08), .05, .06, K.mat('f_frame'))
+    K.box('bus_post_foot', WING_X1+.26, BY-.03, roof+.03, .18, .18, .06, K.mat('f_frame'))
+    tx0, tx1, ty0, ty1 = TX_YARD
+    K.box('tx_gravel', (tx0+tx1)/2, (ty0+ty1)/2, .035, tx1-tx0, ty1-ty0, .07, K.mat('membrane'))
+    K.box('tx_kerb', (tx0+tx1)/2, (ty0+ty1)/2, .02, tx1-tx0+.08, ty1-ty0+.08, .04, K.mat('f_base'))
+    n = {1: 1, 2: 2, 3: 3}[level]
+    for i in range(n):
+        x = tx0+.38+i*.36 if n == 3 else tx0+.30+i*.52
+        K.transformer(f'tx{i}', x, (ty0+ty1)/2, .07, s=.95, fins=4)
+        K.dirbox(f'tx{i}_duct', (x, (ty0+ty1)/2+.17, .07+.44), (x, y0-.01, .07+.44), .09, .11, K.mat('f_zinc'))
+        _v2_flange(K, f'tx{i}_collar', x, y0-.02, .07+.44, 'y', w=.16, h=.18)
+    for ob in K.col.objects:
+        if ob.name.startswith('tx') and ob.type == 'MESH':
+            mats = ob.data.materials
+            for i, m in enumerate(mats):
+                if m == K.mat('f_frame'): mats[i] = K.mat('p_tx')
 
 
 # ------------------------------------------------------------------ storage range
@@ -513,9 +545,14 @@ def _e_storage_range(K, level):
     # chute drops from its front gable into the bath.
     _v2_gable_house(K, 'chute_house', ex, CHUTE_Y, gz-.42, .62, .70, 'y', eave=gz+.08)
     for s in (-1, 1):
-        K.box('chute_house_foot', ex+s*.22, CHUTE_Y+.12, _e_roof_z(CHUTE_Y+.12)+.05, .20, .20, .08, K.mat('f_zinc'))
-        K.dirbox('chute_house_leg', (ex+s*.22, CHUTE_Y+.12, _e_roof_z(CHUTE_Y+.12)+.09), (ex+s*.22, CHUTE_Y+.12, gz-.42), .08, .08, K.mat('f_frame'))
-    K.prism('chute', (ex, 0, 0), (0, -1), [(-(CHUTE_Y-.35), gz-.20), (-(CHUTE_Y-.35)-.55, gz-.62), (-(CHUTE_Y-.35)-.55, gz-.80), (-(CHUTE_Y-.35), gz-.38)], .30, K.mat('f_zinc'))
+        for dy in (-.22, .22):
+            K.box('chute_house_foot', ex+s*.22, CHUTE_Y+dy, _e_roof_z(CHUTE_Y+dy)+.05, .18, .18, .08, K.mat('f_zinc'))
+            K.dirbox('chute_house_leg', (ex+s*.22, CHUTE_Y+dy, _e_roof_z(CHUTE_Y+dy)+.09), (ex+s*.22, CHUTE_Y+dy, gz-.42), .08, .08, K.mat('f_frame'))
+    # The chute drops from the house's floor through the roof into the bath: a square
+    # casing with a collar at the roof.
+    cz = _e_roof_z(CHUTE_Y-.10)
+    K.box('chute', ex, CHUTE_Y-.10, (cz-.30+gz-.42)/2, .30, .30, gz-.42-(cz-.30), K.mat('f_zinc'))
+    K.box('chute_collar', ex, CHUTE_Y-.10, cz+.05, .42, .42, .10, K.mat('f_frame'))
     if level == 1:
         # A short brick bunker where the wing will stand, feeding the tower's boot.
         _r_block(K, 'wing', tx1, tx1+1.10, ty0, ty0+1.10, 1.60, wall='f_brick')
@@ -613,16 +650,16 @@ def _e_ladle_car(K, name, x, y):
 def build_eaf_v2(level=1):
     assert level in (1, 2, 3)
     K = _e_begin()
-    # Paving follows the plant as touching rectangles: the apron in front of the house, the
-    # yard right of it under the scrap bay, duct trestle and bag house.
-    _r_pad(K, 'site_pad_front', HALL[0]-.10, HALL[1], -1.85, HALL[2])
-    _r_pad(K, 'site_pad_scrap', HALL[1], 2.95, -1.85, 2.30)
-    _r_pad(K, 'site_pad_plant', 2.95, STACK_XY[0]+.42, -.10, STACK_XY[1]+.42)
+    _e_check_sightlines()
+    _r_pad(K, 'site_pad_front', HALL[0], HALL[1], -1.85, HALL[2])
+    _r_pad(K, 'site_pad_scrap', HALL[1], 3.05, -1.85, 2.30)
+    _r_pad(K, 'site_pad_plant', 3.05, STACK_XY[0]+.42, .40, STACK_XY[1]+.42)
     _e_house(K)
+    _e_platform(K)
     furnace = _e_furnace(K)
     _e_fume(K, furnace['duct_start'], level)
     _e_chimney(K)
-    _e_vault(K, level)
+    _e_power(K, level)
     _e_storage_range(K, level)
     _e_scrap_bay(K, crane=level >= 2)
     if level >= 2:
@@ -630,5 +667,4 @@ def build_eaf_v2(level=1):
     _e_ladle_car(K, 'ladle', LADLE_XY[0], LADLE_XY[1])
     if level == 3:
         _e_ladle_car(K, 'ladle_b', LADLE_XY[0]+.75, LADLE_XY[1]+.05)
-    result = _r_finish(K, level, 'eaf v2 D: furnace house with the bath above the roof, storage range, vault, bag house, chimney')
-    return result
+    return _r_finish(K, level, 'eaf v2: furnace inside its chamber under a slanted roof, brick wing with transformers, tower and silos, bag house, chimney')

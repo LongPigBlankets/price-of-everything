@@ -253,7 +253,7 @@
       "staged_as": "power_plant_v2"
     },
     "eaf": {
-      "revision": "v5",
+      "revision": "v6",
       "source_sha256": {
         "builders.py": "d06f723c029a0b876f95cd34c404a1c9213610c5d32dd5bf93d134c6cd8e1535",
         "furnace_paper.py": "cfe5acc1ee73d5440a385d545419cf1ee0cf00ce048270406e003d6220a2417d",
@@ -269,7 +269,7 @@
         "entry.py": "21dc339474cd534114ed5874208bac042059a1e5e0ea09b896b2f0d3b670ecbc",
         "paper_wpa_catalog.py": "7be39b082de17b6092e9505e67850028966e9d033bf6f665a057997da147c157",
         "render_sprite.py": "edf7cd4e41d5d6fa2bedae8435b8b7fa5e80a86711ff828b928a241c09f7bff4",
-        "eaf_v2_builder.py": "6bb4b1a096daba13db28aafb6f503c765ee3895bd48ba48dd09ac3cd972f160e",
+        "eaf_v2_builder.py": "0bccef1486765773c37e87125037f9860e391e1506786f3b3cf14577316a29a8",
         "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
         "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
       },
@@ -2449,22 +2449,17 @@
         800
       ],
       "bbox": [
-        15,
-        14,
-        785,
-        786
+        12,
+        11,
+        787,
+        788
       ],
-      "opaque_pixels": 352007,
+      "opaque_pixels": 341210,
       "dominant_rgb": [
         [
+          128,
           136,
-          144,
-          144
-        ],
-        [
-          120,
-          120,
-          112
+          136
         ],
         [
           40,
@@ -2472,34 +2467,39 @@
           56
         ],
         [
-          128,
+          152,
+          152,
+          136
+        ],
+        [
+          152,
+          144,
+          136
+        ],
+        [
           136,
-          136
-        ],
-        [
-          112,
-          112,
-          104
-        ],
-        [
-          152,
-          152,
-          136
+          144,
+          144
         ],
         [
           128,
-          128,
-          120
+          80,
+          56
         ],
         [
-          112,
-          112,
-          112
+          136,
+          80,
+          56
+        ],
+        [
+          160,
+          152,
+          136
         ]
       ],
-      "sha256": "b7adad7e4e536daeb667291d37886783e85a0e228b61ee422f607a5856c6ac3b",
+      "sha256": "7db8703fc67710a7820c3a9f1667c792419e1f627025fbb161ad3a331108b915",
       "mask_range": [
-        129,
+        123,
         255
       ]
     },
@@ -2509,12 +2509,12 @@
         800
       ],
       "bbox": [
-        15,
-        14,
-        785,
-        786
+        12,
+        11,
+        787,
+        788
       ],
-      "opaque_pixels": 402983,
+      "opaque_pixels": 393036,
       "dominant_rgb": [
         [
           40,
@@ -2522,34 +2522,34 @@
           56
         ],
         [
+          128,
+          136,
+          136
+        ],
+        [
+          152,
+          152,
+          136
+        ],
+        [
           136,
           144,
           144
         ],
         [
-          120,
-          120,
-          112
-        ],
-        [
-          128,
-          136,
+          152,
+          144,
           136
         ],
         [
-          128,
-          128,
-          120
+          48,
+          56,
+          64
         ],
         [
-          112,
-          112,
-          104
-        ],
-        [
-          152,
-          152,
-          136
+          96,
+          96,
+          96
         ],
         [
           32,
@@ -2557,9 +2557,9 @@
           48
         ]
       ],
-      "sha256": "25c57de9e95a867a1ef620fc05234a16ac78fa7052cf99c8409291edbef9b9c8",
+      "sha256": "e6a1cdc58a76e2cb97c3b6cf3e1da3cb5fa349b7558fdd9d7068ce23c3239258",
       "mask_range": [
-        129,
+        123,
         255
       ]
     },
@@ -2569,12 +2569,12 @@
         800
       ],
       "bbox": [
-        15,
-        14,
-        785,
-        786
+        12,
+        11,
+        787,
+        788
       ],
-      "opaque_pixels": 410322,
+      "opaque_pixels": 405718,
       "dominant_rgb": [
         [
           40,
@@ -2582,44 +2582,44 @@
           56
         ],
         [
-          136,
-          144,
-          144
-        ],
-        [
-          120,
-          120,
-          112
-        ],
-        [
           128,
           136,
           136
         ],
         [
-          128,
-          128,
-          120
+          136,
+          144,
+          144
         ],
         [
-          112,
-          112,
-          104
+          48,
+          56,
+          64
         ],
         [
-          184,
-          184,
-          176
+          152,
+          152,
+          136
         ],
         [
-          32,
-          40,
-          48
+          96,
+          96,
+          96
+        ],
+        [
+          152,
+          144,
+          136
+        ],
+        [
+          48,
+          56,
+          56
         ]
       ],
-      "sha256": "cfc01d117a150749339c526f4cc59cd7772a737668e97e1c85345be3798ee2cd",
+      "sha256": "fa353f395630efc2ffe0860c1d267b3b9468ccf065b0c737df9dd3b7e9863002",
       "mask_range": [
-        129,
+        123,
         255
       ]
     }
@@ -2673,11 +2673,11 @@
     "power_plant_lvl2_contour.glb": "b433d42807454e9de625fdb6de98e44b139365b3625c9e0cebb10c7ca43dc276",
     "power_plant_lvl3.glb": "2e3fa64aa3bd49b6810b23a2e21ef79b056134511eda553babd1d68eb34415ad",
     "power_plant_lvl3_contour.glb": "e5c5d32588fb0ab2475e90c879d53a7221cf00c5764661438751225f7ddc03fa",
-    "eaf_lvl1_contour.glb": "6e61aa87a8a02b3c9fafe5702ca5350acddb9c94e048521d668e1b7ed9c4845a",
-    "eaf_lvl2.glb": "fd5d982e74212065271911c53571b0b3ce0c2d1038a804d8ae4246ba17bc2218",
-    "eaf_lvl3.glb": "254108a158296e4bdc7adcb58c06236f281bdb216726e7c89cfa6821ce6624fb",
-    "eaf_lvl1.glb": "57d07aadb2b95e0e998c6a9fb6d70d27225b9e731439b0a160a146f81bc0f306",
-    "eaf_lvl2_contour.glb": "fe02feb04399e1590a5c7d5c30c7b9c80860c8747581d203516602e7975fad91",
-    "eaf_lvl3_contour.glb": "06da3bb0b4e61749a588129e90cb6fc905e55af26be3bfc31e0b072e9cda88ab"
+    "eaf_lvl1_contour.glb": "f6988e580adfaf20df77772412b2827b8404ba4ba2f398755a6eead8821baee2",
+    "eaf_lvl2.glb": "0d2f78623232337dd29e03808a48f9596558513eef120bceb8a2734bb547cf16",
+    "eaf_lvl3.glb": "dbff6a559a09bb4c57bd45b0c9078232118ca3e2bd9f3920e7748857c16a7ff7",
+    "eaf_lvl1.glb": "900e9e8d9f44a3790a17b75eeac025e5607135322791eb35cff8f07338d7c2ba",
+    "eaf_lvl2_contour.glb": "9dbeea1efefab5d3186a652ea80c2d8a07244a3c211d9e6a1118fe92c4182698",
+    "eaf_lvl3_contour.glb": "95d41dc6e5a42c34a6b53e779c74fc65a4db8d65ff35af0942746d3b314ee311"
   }
 }
