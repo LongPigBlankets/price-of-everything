@@ -1,0 +1,538 @@
+{
+  "version": 1,
+  "date": "2026-10-19",
+  "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+  "entries": [
+    {
+      "source_path": "price-of-everything-0.1/data/goods.csv",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "92774053f69e8e5a0e85b97d6e2d879879a2e848fde81e8908037239244d446c",
+      "archive_path": "archive/legacy-recipes/data/goods.csv",
+      "archive_sha256": "92774053f69e8e5a0e85b97d6e2d879879a2e848fde81e8908037239244d446c",
+      "bytes": 5678
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes.csv",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "9267f0a9feda7d19dcee155cdc9dfece95214d8e816ab3f1277e0f1ec1579041",
+      "archive_path": "archive/legacy-recipes/data/recipes.csv",
+      "archive_sha256": "9267f0a9feda7d19dcee155cdc9dfece95214d8e816ab3f1277e0f1ec1579041",
+      "bytes": 7245
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipesMVP.csv",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "9d5597d734041ef52229519f734ca8fa029ba7e672230a85adfc8aff85557f89",
+      "archive_path": "archive/legacy-recipes/data/recipesMVP.csv",
+      "archive_sha256": "9d5597d734041ef52229519f734ca8fa029ba7e672230a85adfc8aff85557f89",
+      "bytes": 1474
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_master_source.csv",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "4499fe5a7490da246c91663e569b04a7e8e962f32dc03f6d0ac920ecdb6ba659",
+      "archive_path": "archive/legacy-recipes/data/recipes_master_source.csv",
+      "archive_sha256": "4499fe5a7490da246c91663e569b04a7e8e962f32dc03f6d0ac920ecdb6ba659",
+      "bytes": 23881
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_rebalanced.csv",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "5c4807b41a3f90f07ad13b9019b4096b215e6395be90444b26c73a36993e2efd",
+      "archive_path": "archive/legacy-recipes/data/recipes_rebalanced.csv",
+      "archive_sha256": "5c4807b41a3f90f07ad13b9019b4096b215e6395be90444b26c73a36993e2efd",
+      "bytes": 21439
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/good_prices_rebalanced.csv",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "bb564e5ebc7b348ff486e8428d3cc964d7256674eabcc4da13649f5f1c1d0a0e",
+      "archive_path": "archive/legacy-recipes/data/good_prices_rebalanced.csv",
+      "archive_sha256": "bb564e5ebc7b348ff486e8428d3cc964d7256674eabcc4da13649f5f1c1d0a0e",
+      "bytes": 2522
+    },
+    {
+      "source_path": "price-of-everything-0.1/scripts/build_recipes_all.py",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "f5d8dc367cef318d9522d598b5ad751051b42832c57711f75b153d13bdb468a7",
+      "archive_path": "archive/legacy-recipes/scripts/build_recipes_all.py.txt",
+      "archive_sha256": "f5d8dc367cef318d9522d598b5ad751051b42832c57711f75b153d13bdb468a7",
+      "bytes": 8545
+    },
+    {
+      "source_path": "price-of-everything-0.1/scripts/rebalance_recipes.py",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "0650ba089d5820efb60cddeeb300e1bffc8fc9c367cde99a0fe71d63d5cf6793",
+      "archive_path": "archive/legacy-recipes/scripts/rebalance_recipes.py.txt",
+      "archive_sha256": "0650ba089d5820efb60cddeeb300e1bffc8fc9c367cde99a0fe71d63d5cf6793",
+      "bytes": 21658
+    },
+    {
+      "source_path": "price-of-everything-0.1/docs/recipe-rebalance-spec.md",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "bbc8636d9346eeaf560eb1b135faa155cd79e5f31ff1559a21df07a4004bd9fb",
+      "archive_path": "archive/legacy-recipes/docs/recipe-rebalance-spec.md",
+      "archive_sha256": "6038bca89b06257e0e6cde12cea9483c57a45fe64d3c9c7b06d7f2ee7d8dbf6c",
+      "bytes": 20849
+    },
+    {
+      "source_path": "price-of-everything-0.1/docs/recipe-rebalance-table.md",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "3ec980012c0fe20494469a1347770e2071ce99dfeebd43e086ac52c69b7d4903",
+      "archive_path": "archive/legacy-recipes/docs/recipe-rebalance-table.md",
+      "archive_sha256": "2d22cb50aca1f25faa86c6dfce9bf2ce320c7d59d29401cf25934d7650aaa616",
+      "bytes": 24291
+    },
+    {
+      "source_path": "price-of-everything-0.1/scenes/main.tscn5347244196.tmp",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "85a49fc9fef54692880935962f8d61f3f44471de69ca0bc34285d88509d602f7",
+      "archive_path": "archive/scene-recovery/main.tscn5347244196.tmp.txt",
+      "archive_sha256": "85a49fc9fef54692880935962f8d61f3f44471de69ca0bc34285d88509d602f7",
+      "bytes": 24760
+    }
+  ],
+  "removed_generated": [
+    {
+      "source_path": "price-of-everything-0.1/data/goods.base.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "86c8fec9714bb39f63f44bcd469361daedbe7564f04a2e6d8692a2a5df48b817",
+      "bytes": 2401,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/goods.category.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "09104ee138601bc90a2d2ffc02c5c96a48b3daa0bc0ac0d394f4772eea668010",
+      "bytes": 2657,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/goods.co2.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "c9dc3092499de0221ff8e8db610b7a3dabc97ca53926bca1df7f02e756784346",
+      "bytes": 2356,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/goods.csv.import",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "7afa98a98708132f731c97cff8c300bc65e4a2b21790fa114455aee814ff741f",
+      "bytes": 1136,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/goods.decay.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "23b689bdddacfbb39d1a3ab45fa17692ddb60e32840c5470ac5d9b715d55e02d",
+      "bytes": 2610,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/goods.display.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "32ca503f553973069fa2974edceb6464517f19cff194d3c60c7f0ef30d5eaa97",
+      "bytes": 2960,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/goods.good.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "4916fa15a3f7aea8555f6d022e3c938e020de6b394c031259f3cedd0e0a18e42",
+      "bytes": 2621,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/goods.green.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "b84a08b2c076b3f41135f4c849759f1bdb481fd14beb24fac02a67e26a3acd27",
+      "bytes": 2358,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/goods.internal.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "a58233e9b14fe2c19495fa8b721bd13d2430f2ddc1c6ac1e3d9d769963def11d",
+      "bytes": 2829,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/goods.is.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "840b96b1d8c416a7ddb62ed4d0f0f6ef5d2f5744884f48d9dc269e0eae3a69a8",
+      "bytes": 2419,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/goods.transport.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "f69dee26468d8e617764bfe369d87ad9819b8381e6a072ab282387e752a847a5",
+      "bytes": 2954,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes.building.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "e3c6b38d5222e36dc67438c7eaae540a303d9a4e7db4b3f842a630729089f26c",
+      "bytes": 1813,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes.csv.import",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "555049eccf173d2b2d1688e6abdac3e17fb05c5bad6108530ee317c95b0763b7",
+      "bytes": 2290,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes.display.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "0ffff73b4b92cd6c7243cb76cef870c7aa0f2de8d0edefcde1984bd8667ac8ee",
+      "bytes": 2128,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes.en.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "df8da4ed9f6e5e5e7ae1e281992c0a8d905a4946c04f412af3814fbefb3bbcaf",
+      "bytes": 364,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes.energy.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "9f9a49624cf4df2abdd369a05c74820ea3377c95190791a66c8161acaf17dd60",
+      "bytes": 1575,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes.input.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "904696507fa087284ea31268d29028f6e9fb8f82d27cf6b0348f0a8666c8a017",
+      "bytes": 498,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes.optional.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "2ae8cf8f4cf3ae588f95bb36ae7bd26a917c324594762ea827e25225662bc7ab",
+      "bytes": 501,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes.output.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "8a3f099d29ae4c73e58daabcf3361e9b9f86ce082abafacacb5661c7e5f1d8ba",
+      "bytes": 479,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes.qty.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "06c4a39592b31387d018c931d790c70b2958bf974637a7014f92669924b24141",
+      "bytes": 488,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes.requirements.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "1ec613ba11bc9b4b95938b0737648bb120e8c2766a49f8b66600747531bf9764",
+      "bytes": 729,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipesMVP.building.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "90d9d6765d712b82b35adfbdb10650a082f94eb9b43e027c862dc46df5381644",
+      "bytes": 865,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipesMVP.csv.import",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "9e92a6d16425d5fa1f78ea7367efc112a82b73ab22cc098fae04e8599dfa4a68",
+      "bytes": 2957,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipesMVP.display.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "334a7d3403c82f7f4182483c76068ded88ebf56c522e88ab24adb8225bd7a5f5",
+      "bytes": 1012,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipesMVP.energy.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "8eb79af6b5ba8d844f98bea10e0626ca40010923d2a8f0c612cb43c9b8c0afb5",
+      "bytes": 875,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipesMVP.requirements.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "bd1f44802231bd0234234867b9f021a75ec8d782a69f548e471145b0c5d53311",
+      "bytes": 605,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_master_source.building.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "e54f44df929341ec7c2d41221d6b98fdd2e5034350b0b434552f5ca7164ff97a",
+      "bytes": 8585,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_master_source.category.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "22e0a6c02d9105a62da8f2473623adcef54c5cf215556ff7d25b3be503509595",
+      "bytes": 6041,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_master_source.csv.import",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "91945bf4d18c9c4a70ac7dc6544a4283cc718afb3224147042dc83ee36b9252f",
+      "bytes": 3608,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_master_source.display.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "64e93bec59e6d9b53f1cddbc3e1445a61591a903b80fda61e22aa7de3dc4a010",
+      "bytes": 10468,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_master_source.en.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "d357bb265da1089268dd196327ce82c81b074ff0d19ab217367b396eb2fbeedf",
+      "bytes": 364,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_master_source.energy.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "1bc7f005256b27c21c80f86c6d055f95ff7bf12eb3a60f4b59c441e3344f40e7",
+      "bytes": 6815,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_master_source.input.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "36757c353f88f95e579c73eaca32e583a262cca7973f66c6be524cc7550b0dc9",
+      "bytes": 518,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_master_source.output.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "659b0744361494efb03f83669979e190224023aae8c484a61b67e500e57c1e4e",
+      "bytes": 595,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_master_source.pollution.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "b2b4e5b1bbe456070efd1ab23efb039ec7dd269e0af0090cceb494474f5787d1",
+      "bytes": 898,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_master_source.qty.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "a3fc3b72967b66b76eda07503224bec427811279e743893fe25006aa98658283",
+      "bytes": 508,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_master_source.requirements.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "23a9bac71942d17865e300b081e291f05d27e26287686a1a086d9ec83f17e769",
+      "bytes": 1093,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_master_source.tech.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "88ddeb06975386f94da033116034e5cc036f5250f623841adb8b2293306b1973",
+      "bytes": 2653,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_master_source.terminal.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "22fec1c87d5cbc38f62266669383b4d9e16da55c6ed9866e8a1c00d7673102bb",
+      "bytes": 497,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_rebalanced.building.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "5a5c7b9584287810958918f0693320e1402b23d82ee04aa4a46d6b4568f135db",
+      "bytes": 6685,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_rebalanced.category.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "b812b6c038e428f0c8f3182d61cb4f241ecc1f89861a05316f4792c0504ea16c",
+      "bytes": 5909,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_rebalanced.csv.import",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "a28ef2b7de4f84a7b7e0146f268823b147857de6ae3b896c121270dca101da92",
+      "bytes": 3319,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_rebalanced.display.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "98482b36d33570ae3e138b9bef818de53905decccd89ba4f70387af076a34559",
+      "bytes": 8224,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_rebalanced.en.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "a6e653697322b0adba798242819a9cf3f824c446256996215cc9de992d52640a",
+      "bytes": 364,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_rebalanced.energy.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "e4e215ce45f2da7aa09807aca93a34f9c2b78e87cd843707792ffb389b7ef1dc",
+      "bytes": 5139,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_rebalanced.input.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "47cc54c3ae3139101b25eb521627d2a6888519ffb55d7543a4ce3774dc54e46c",
+      "bytes": 490,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_rebalanced.output.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "02b774dc6ded20723e3ebd558c34465ab313c035937811daf9a4761ddc60dbb2",
+      "bytes": 495,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_rebalanced.pollution.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "7f7f585bc0b9252859a9c6eca9a692c6bf8f48222abedb46bccbd0a3fa64c10e",
+      "bytes": 838,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_rebalanced.qty.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "8ecc69600dd1d0fd8a974c7469a75f07e822af63697a093da303144a266f6bc0",
+      "bytes": 484,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_rebalanced.requirements.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "8ebef44b868d5f7b3a62fcf4d211c5a41800df317f8025e556b6908fcac49233",
+      "bytes": 1481,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/recipes_rebalanced.terminal.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "018e3f408e158d75fbe548dcba516c448f0a8009e8cc1903b2b23e941f94b8db",
+      "bytes": 497,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/good_prices_rebalanced.csv.import",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "38d11c69acf00d75f58542d1ad7663aa4250dda62cff1a41b944853052109863",
+      "bytes": 685,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/good_prices_rebalanced.held.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "93bc199b98ccd49c2ce2108795507e6a55f086b8a207e517031544eff92bd065",
+      "bytes": 909,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/good_prices_rebalanced.integrated.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "b0b904ffadf268b9e4de56c8701695fa0b2ac930f3b437b1426ac2bea5e6b5b2",
+      "bytes": 3991,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/good_prices_rebalanced.new.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "72f12190995e7c67c4beb523b4057e1b0635c15fe22f051cd9d66eb5b6029afc",
+      "bytes": 3836,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/good_prices_rebalanced.tier.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "9b47c4dbc1cef72708795bd51c16ae4b2544453a5c7eff722c9b31c7d4791997",
+      "bytes": 3593,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/Recipes - recipesMVP.building.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "5417403d94c90e0da210be7b3a262a752b5bfc70c30b94a131f1043170961dee",
+      "bytes": 773,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/Recipes - recipesMVP.display.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "8924f9c2d94983811d216543ba68b771b7c49c0f396da0203bafb2ce849c7f24",
+      "bytes": 856,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/Recipes - recipesMVP.en.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "1bc4ef95091e9229b536d2d0bd8e0f6938718bfa3a3a21cd01b8157436fd3db9",
+      "bytes": 364,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/Recipes - recipesMVP.energy.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "8e2278ab8d0bae5870e9fe0084707b7d9b67affe979b1929849a4898932e7d10",
+      "bytes": 751,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/Recipes - recipesMVP.input.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "dbcdd379febc6aabc4755d672b3400d1fbd86c6a9257073713297329ee3c4673",
+      "bytes": 562,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/Recipes - recipesMVP.output.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "5d8955608d88ab0c7d929ac6b9d4f67f6398f16bbf1b2d9b3f3cb8f8d9c11700",
+      "bytes": 467,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    },
+    {
+      "source_path": "price-of-everything-0.1/data/Recipes - recipesMVP.qty.translation",
+      "source_commit": "f730e38784ee007161f6c69f38d28471aa25a5fb",
+      "source_sha256": "d53e1e5bb7c08f6d3f6d16643bb88fe4f610090beb23370373050bd006f0a38c",
+      "bytes": 536,
+      "reason": "Generated companion of retired CSV; recoverable from source commit"
+    }
+  ]
+}

@@ -1,5 +1,24 @@
-# price-of-everything
+# Carbon and Capital
+
 A supply-chain tycoon simulation about the cost of the green transition.
+
+The playable game is the Godot project in **`price-of-everything-0.1/`**.
+Use Godot **4.6.2**, with Forward+ for desktop rendering. Windows selects D3D12;
+the mobile Compatibility override is not the desktop renderer.
+
+## Repository map
+
+| Path | Purpose |
+|---|---|
+| `price-of-everything-0.1/` | Active game, runtime data, tests and asset/bake tools |
+| `price-of-everything-0.1/docs/content-authoring.md` | Current data-authoring instructions and validation |
+| `tools/` | Capsule/trailer/loading artwork and repository maintenance tools |
+| `docs/` | Cross-project reviews, licensing and CI notes |
+| `archive/` | Retired source/data with provenance; ignored local release archives |
+| `outputs/` | Review evidence and generated captures; retain approved results and manifests |
+| `price_of_everything/`, root `data/`, root `tests/` | Separate legacy Python prototype, retained for reference |
+
+See the [lifecycle and archive index](docs/project-lifecycle.md) before retiring material.
 
 ## Licence
 
@@ -19,33 +38,29 @@ The [demo startup workflow](.github/workflows/demo-startup.yml) exports a Linux 
 and checks fresh and previously accepted EULA launches for Godot errors. See
 [the startup check guide](docs/ci-startup-check.md) for its scope and local commands.
 
-## Editing the data
+## Editing game data
 
-Goods and recipes live in `data/goods.csv` and `data/recipes.csv`. Google Sheets is the source of truth.
+Follow [content authoring](price-of-everything-0.1/docs/content-authoring.md).
+The authoritative goods, buildings and recipes are the tables loaded by
+`price-of-everything-0.1/scripts/catalog.gd`. Edit **`data/recipes_all.csv` within
+the Godot project** directly, preserving IDs and existing columns. The former
+master/bootstrap and rebalance outputs are [archived](archive/legacy-recipes/README.md).
 
-To update them:
+The root Python CLI reads a different, historical dataset. Its validation result
+does not describe the game. Its old commands and tests are documented in
+[the prototype guide](docs/legacy-python-prototype.md).
 
-1. Edit in Sheets.
-2. **File ▸ Download ▸ Comma-separated values** for each tab.
-3. Save over `data/goods.csv` / `data/recipes.csv` — Sheets adds " - sheet" and "(1)" suffixes; rename when saving.
-4. Run the validator:
-   ```
-   python -m price_of_everything
-   ```
-   It exits 0 with a row count on success, or prints every cross-reference and schema issue and exits 1.
+## Game verification
 
-## Looking up a good
+From `price-of-everything-0.1/`:
 
+```sh
+godot --headless --path . res://tools/parse_check.tscn
+python3 tools/run_tests.py
+# Also required for simulation, economy or content changes:
+godot --headless --path . res://tests/e2e_stoneshore.tscn -- 100
 ```
-python -m price_of_everything good g_001
-python -m price_of_everything good coal
-```
 
-Accepts either the good id (e.g. `g_001`) or the `internal_name` (e.g. `coal`). Internally the name is resolved to an id, then the id is used for retrieval — single resolution path. Output is two CSV rows: header followed by values. Exits 1 if no match is found.
-
-## Development
-
-```
-pip install -e .[dev]
-pytest
-```
+See [test instructions](price-of-everything-0.1/tests/README.md),
+[demo exports](price-of-everything-0.1/docs/demo-build.md) and
+[load-time bakes](price-of-everything-0.1/docs/load-time-bakes.md).

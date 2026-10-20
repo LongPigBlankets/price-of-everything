@@ -231,6 +231,8 @@ price-of-everything-0.1/reports/
 # Local export output and scratch.
 _export_v02/
 .codex_tmp/
+# Machine-local preserved release bundles, captures and saves (manifest lives inside).
+/archive/local/
 Carbon and Capital*/
 *.zip
 # Godot import sidecars generated from tools/tutorial_strings.csv

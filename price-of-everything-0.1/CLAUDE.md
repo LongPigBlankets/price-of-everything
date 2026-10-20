@@ -1,5 +1,21 @@
 # Working notes for this repo
 
+## Game data and toolchain
+
+Read [content-authoring.md](docs/content-authoring.md) before editing game tables.
+`data/recipes_all.csv` is hand-maintained runtime source. The former master CSV,
+bootstrap and rebalance proposals are retired; their original scripts are archived
+outside the Godot project. The commands at their old paths refuse execution.
+Root `data/` and `python -m price_of_everything` belong to a separate legacy prototype.
+
+Use Godot 4.6.2. Desktop uses Forward+ (D3D12 on Windows); the mobile Compatibility
+override does not describe desktop rendering. Run scripts/tests/imports/exports with
+`godot --headless`, Blender with `blender -b`, and rendered Godot checks with
+`AGENT_GODOT_WINDOW=1 godot ...` through the agent shim.
+
+Consult the [lifecycle index](../docs/project-lifecycle.md) before cleanup. Preserve
+recycling, pollution/carbon, market pricing, balance baselines and active artwork.
+
 ## Text contrast — the standing rule
 
 **Never place grey text on a navy, dark-navy or near-black panel. Default to the design

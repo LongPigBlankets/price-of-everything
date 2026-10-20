@@ -52,6 +52,11 @@ jobs:
       - name: Check smoke-test failure detection
         run: python3 -m unittest discover -s tools/ci -p 'test_*.py' -v
 
+      - name: Check source archive and retired authoring commands
+        run: |
+          python3 tools/maintenance/check_archive.py
+          python3 -m unittest discover -s tools/maintenance -p 'test_*.py' -v
+
       - name: Check the Demo presets match the regular presets
         run: python3 "$PROJECT_DIR/tools/demo_build/build_demo.py" check
 

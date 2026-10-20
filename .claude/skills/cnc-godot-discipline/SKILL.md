@@ -5,7 +5,8 @@ description: Load this when writing or debugging ANY Godot-side code in price-of
 
 # Godot discipline — where "knowing Godot" hurts you here
 
-Pinned to **Godot 4.6.2** (project declares 4.6; GL Compatibility renderer; Jolt physics).
+Pinned to **Godot 4.6.2** (project declares 4.6; Forward+ desktop renderer; Jolt physics).
+Windows selects D3D12. The mobile Compatibility override is not the desktop renderer.
 Stay on 4.6.x — 4.x minors have real API drift. A junior who "knows Godot" is more
 dangerous than one who doesn't, because the default instincts below all violate this
 project's architecture or have bitten before. Every item here is a documented incident.
@@ -37,26 +38,31 @@ project's architecture or have bitten before. Every item here is a documented in
   and rendered with cached meshes + a far-zoom texture LOD (`scripts/hill_visuals.gd`).
 - `_process`/`_draw` must contain zero sim logic (architecture rule 2) and should be
   event-gated: `set_process(false)` when idle, `queue_redraw()` only on change signals.
-- No C# — it would break web export (the GL Compatibility choice exists for browser
-  reach). Escalation for genuinely hot paths is a measured decision, not a default.
+- The runtime uses GDScript. Changing language or adding a native extension for hot
+  paths requires measurement and a platform/build decision; do not infer browser
+  support from the mobile renderer override.
 
 ## Editing the data CSVs safely
 
-The runtime CSVs (`price-of-everything-0.1/data/`) are **CRLF**. Hand-editing in an
-LF editor rewrites every line. Procedure:
+Preserve each runtime CSV's existing line endings. The four main tables are **LF**
+as verified on 19 October 2026; older generations used CRLF. Do not normalize an
+entire table during a row edit. Procedure:
 
 ```bash
 cd "/Users/crisu/Price of Everything/price-of-everything/price-of-everything-0.1"
 python3 - <<'EOF'
 import csv
+from pathlib import Path
 path = 'data/recipes_all.csv'
+raw = Path(path).read_bytes()
+line_ending = '\r\n' if b'\r\n' in raw else '\n'
 rows = list(csv.reader(open(path, newline='')))
 hdr = rows[0]; col = hdr.index('requirements')
 for r in rows[1:]:
     if r and r[0] == 'r_016':
         r[col] = 'deposit:lithium_ore'
 with open(path, 'w', newline='') as f:
-    csv.writer(f).writerows(rows)
+    csv.writer(f, lineterminator=line_ending).writerows(rows)
 EOF
 git diff -- price-of-everything-0.1/data/recipes_all.csv   # MUST show exactly your row(s)
 ```
@@ -83,4 +89,4 @@ repo (see `cnc-failure-archaeology` for the stories). Re-verify:
 - Godot version pin: `grep -n "config/features" price-of-everything-0.1/project.godot`
 - `_ClickCard` still the card pattern: `grep -n "_ClickCard" price-of-everything-0.1/scripts/advisor_council_tab.gd`
 - MAP_PADDING: `grep -n "MAP_PADDING" price-of-everything-0.1/scripts/hex_map.gd`
-- CRLF still true: `file "price-of-everything-0.1/data/recipes_all.csv"` (shows CRLF)
+- CSV line endings: inspect the file's bytes before writing; the main tables were LF on 19 October 2026.
