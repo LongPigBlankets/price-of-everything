@@ -9,7 +9,7 @@ const TAGS := {
 	"_test_registry_form_and_stamps": ["new_game", "ui"],
 	"_test_registry_signals": ["new_game", "ui"],
 	"_test_registry_demo_lockboxes": ["new_game", "ui", "demo_build"],
-	"_test_era_marks_from_the_policy_timeline": ["new_game", "ui"],
+	"_test_era_spans": ["new_game", "ui"],
 	"_test_place_for_unnamed_tiles": ["new_game", "map"],
 	"_test_registry_seal_sequence": ["new_game", "ui"],
 	"_test_grade_words_without_the_survey_sentence": ["new_game", "ui"],
@@ -205,24 +205,13 @@ func _test_registry_demo_lockboxes() -> void:
 	await get_tree().process_frame
 
 
-## The era rule's marks come from the policy timeline the charter runs under, within its term.
-func _test_era_marks_from_the_policy_timeline() -> void:
+## The era rule cuts a charter into three eras: 90, 90 and 110 turns of 300, the same shares of any other length.
+func _test_era_spans() -> void:
 	var script: GDScript = load(DS2_SCRIPT)
-	var campaign: Array = script.call("era_marks", 300, "")
-	var turns: Array = []
-	for m in campaign:
-		turns.append(int((m as Dictionary)["turn"]))
-	_check(turns == [84, 101, 105, 165, 191, 230], "era marks: the campaign's beats in turn order (%s)" % str(turns))
-	var short: Array = script.call("era_marks", 200, "")
-	var all_within := true
-	for m in short:
-		all_within = all_within and int((m as Dictionary)["turn"]) <= 200
-	_check(all_within and short.size() == 5, "era marks: a 200 turn charter keeps only the beats within it")
-	var demo: Array = script.call("era_marks", 100, "demo_itch")
-	turns.clear()
-	for m in demo:
-		turns.append(int((m as Dictionary)["turn"]))
-	_check(turns == [54, 75, 80], "era marks: the demo timeline's own beats (%s)" % str(turns))
+	_check(script.call("era_spans", 300) == [[0, 90], [90, 180], [180, 300]], "eras: 300 turns are 90, 90 and 110")
+	_check(script.call("era_spans", 200) == [[0, 60], [60, 120], [120, 200]], "eras: 200 turns keep the shares")
+	_check(script.call("era_spans", 400) == [[0, 120], [120, 240], [240, 400]], "eras: 400 turns keep the shares")
+	_check(int(script.DEMO_ERA_SPAN) == 300, "eras: the demo's rule spans the campaign's 300 turns")
 
 
 ## A tile with no name prints Near the nearest named tile.

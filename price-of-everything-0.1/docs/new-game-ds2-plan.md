@@ -164,7 +164,7 @@ Built on the branch `new-game-ds2`, behind `UiPrefs.use_new_game_ds2` (off by de
 
 The lamp overlay (`scripts/ds2/lamp_overlay.gd`) is on the whole panel, part by part.
 
-**The era rule's marks** come from the policy timeline, not the study's 0, 100 and 200: `era_marks(turns, timeline)` reads `PolicyState.TIMELINES` for the charter's timeline (the demo's for the demo length, the campaign's otherwise) and `PolicySchedule.SCHEDULE` for the levy phases after it, keeping the beats within the term: Election, Carbon levy, Green subsidy, Levy phase 2, Subsidy ends, Levy phase 3 on a 300 turn charter; Election, Carbon levy, Green subsidy on the demo's 100. Names of marks close together step up a row each.
+**The era rule** (the owner, 20 October 2026, replacing the policy beats the first build printed): a bar cut into the three eras with their names and nothing else on it. A 300 turn charter is 90 turns of Era 1, 90 of Era 2 and 110 of Era 3; a 200 or 400 turn charter keeps those shares (`era_spans`). In the demo the bar spans the campaign's 300 turns, the demo's hundred printed Demo Era and the rest greyed out, under the demo's charter line.
 
 **Unnamed start tiles** print the nearest named tile with Near in front, as the study did (`place_for`): the Troubled Carmaker's plant on `tile_23_6` prints "Near Long Valley Fields" (the study guessed "Near Capital Port"; the nearest named tile by the grid is the fields one step north). The rule is grid distance over the tile ids, not road distance; a start tile with its own name prints it.
 

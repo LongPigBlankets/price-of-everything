@@ -30,7 +30,6 @@ const Counter := preload("res://scripts/bdp_v3_counter.gd")
 const Kit := preload("res://scripts/ds2/parts.gd")
 const PParts := preload("res://scripts/people_ds2/parts.gd")
 const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
-const PolicySchedule := preload("res://scripts/policy_schedule.gd")
 const FONT_PLEX: FontFile = preload("res://assets/fonts/IBMPlexSans-Medium.ttf")
 const FONT_PLEX_SEMI: FontFile = preload("res://assets/fonts/IBMPlexSans-SemiBold.ttf")
 
@@ -73,6 +72,12 @@ const TIER_WORDS := {"green": "Beginner friendly", "amber": "Intermediate", "red
 ## The seal when the game starts: over STAMP_SECONDS the die lifts off the press, slides to the form's seal circle,
 ## comes down on it (the impression stays from then on), holds, rises, slides back and settles on the press, so the
 ## impression is in view as the screen fades. Seconds at which each move ends.
+## The three eras of a charter, as shares of its length: 90, 90 and 110 turns of 300 (the owner's rule, 20 October
+## 2026); a shorter or longer charter keeps the shares. The demo's rule spans the campaign's 300 turns, its own
+## 100 the Demo Era and the rest greyed out.
+const ERA_SHARES := [0.3, 0.3, 0.4]
+const ERA_NAMES := ["Era 1", "Era 2", "Era 3"]
+const DEMO_ERA_SPAN := 300
 const STAMP_SECONDS := 2.5
 const STAMP_LIFT := 0.3
 const STAMP_SLIDE := 1.2
@@ -529,24 +534,14 @@ func charter_turns() -> int:
 	return _speed_turns
 
 
-## The era rule's marks for the chosen charter: [{turn, label}] in turn order, from the policy timeline the length
-## runs under (PolicyState.TIMELINES) and the levy phases after it (PolicySchedule.SCHEDULE), those within the term.
-static func era_marks(turns: int, timeline: String) -> Array:
-	var tid: String = PolicyState.TIMELINE_DEMO if timeline == PolicyState.TIMELINE_DEMO else PolicyState.TIMELINE_CAMPAIGN
-	var beats: Dictionary = PolicyState.TIMELINES.get(tid, PolicyState.TIMELINES.get(PolicyState.TIMELINE_DEMO, {}))
+## The eras of a charter of `turns`: [[from, to], ...], the last taking what the shares leave (90, 90, 110 of 300).
+static func era_spans(turns: int) -> Array:
 	var out: Array = []
-	for pair in [["election_news", "Election"], ["p1", "Carbon levy"], ["subsidy", "Green subsidy"], ["subsidy_end", "Subsidy ends"]]:
-		var t := int(beats.get(String(pair[0]), 0))
-		if t > 0 and t <= turns:
-			out.append({"turn": t, "label": String(pair[1])})
-	for row in PolicySchedule.SCHEDULE:
-		var r := row as Dictionary
-		if String(r.get("policy", "")) != "co2_tax" or int(r.get("level", 0)) < 2:
-			continue
-		var t := int(r.get("effective_turn", 0))
-		if t > 0 and t <= turns:
-			out.append({"turn": t, "label": "Levy phase %d" % int(r.get("level", 0))})
-	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a["turn"]) < int(b["turn"]))
+	var at := 0
+	for i in ERA_SHARES.size():
+		var to := turns if i == ERA_SHARES.size() - 1 else at + roundi(turns * float(ERA_SHARES[i]))
+		out.append([at, to])
+		at = to
 	return out
 
 
@@ -899,13 +894,14 @@ func _draw_form() -> void:
 		_ink(c, FONT_PLEX, 14, DEMO_CHARTER, Vector2(m, 500.0 * L))
 		_ink(c, FONT_PLEX, 12, DEMO_SURVEY, Vector2(m, 540.0 * L), INK_DIM)
 		_impression(c, "DEMO", Vector2(w - m - 130.0 * L, 500.0 * L), 200.0 * L)
+		_era_rule(c, Rect2(m, 600.0 * L, inner, 0), DEMO_ERA_SPAN, true)
 	else:
 		_ink(c, FONT_PLEX, 14, "Charter of", Vector2(m, 500.0 * L))
 		var opt: Dictionary = SPEEDS[clampi(_speed_index, 0, SPEEDS.size() - 1)]
 		var after := "turns" if String(opt.get("policy_timeline", "")) == "" else "turns, the Itch.io demo"
 		_ink(c, FONT_PLEX, 14, after, Vector2(m + 420.0 * L, 500.0 * L))
-		_era_rule(c, Rect2(m, 614.0 * L, inner, 0), _speed_turns)
-		_ink(c, FONT_PLEX, 12, "This also changes the Era pacing.", Vector2(m, 674.0 * L), INK_DIM)
+		_era_rule(c, Rect2(m, 596.0 * L, inner, 0), _speed_turns, false)
+		_ink(c, FONT_PLEX, 12, "This also changes the Era pacing.", Vector2(m, 650.0 * L), INK_DIM)
 		_field(c, 724.0 * L, "OPTIONS", m, inner)
 		_tick(c, Vector2(m, 772.0 * L), true, "All tiles surveyed at game start", inner)
 		if _metrics_box != null:
@@ -948,38 +944,28 @@ func _field(c: CanvasItem, y: float, label: String, m: float, inner: float) -> v
 	c.draw_rect(Rect2(m, y + 56.0 * L, inner, 1.5 * L), Color(NAVY, 0.3))
 
 
-## The era rule: a line from turn 0 to the charter's end, a tick every ten turns with the hundreds printed, and a red
-## mark with its name at each beat of the policy timeline the charter runs under. Names of marks close together
-## step up a row each, so they never print over one another.
-func _era_rule(c: CanvasItem, r: Rect2, turns: int) -> void:
+## The era rule: a bar from the charter's first turn to its last, cut into the three eras with their names and nothing
+## else on it. In the demo the bar spans the campaign's turns, the demo's hundred printed Demo Era and the rest greyed.
+func _era_rule(c: CanvasItem, r: Rect2, turns: int, demo: bool) -> void:
 	var x0 := r.position.x
 	var x1 := r.end.x
-	var ry := r.position.y
-	c.draw_line(Vector2(x0, ry), Vector2(x1, ry), NAVY, 2.0 * L, true)
-	var step := 10
-	var big := 100 if turns > 150 else 50
-	for t in range(0, turns + 1, step):
-		var x := x0 + (x1 - x0) * float(t) / float(turns)
-		var is_big := t % big == 0
-		c.draw_line(Vector2(x, ry), Vector2(x, ry + (14.0 if is_big else 7.0) * L), NAVY, 1.0, true)
-		if is_big:
-			_ink(c, FONT_PLEX, 12, str(t), Vector2(x, ry + 30.0 * L), NAVY, HORIZONTAL_ALIGNMENT_CENTER)
-	var marks := era_marks(turns, _policy_timeline)
-	var row_x: Array = []   # the right end of the last name printed on each row
-	for mk in marks:
-		var x := x0 + (x1 - x0) * float(int(mk["turn"])) / float(turns)
-		c.draw_colored_polygon(PackedVector2Array([Vector2(x, ry - 3.0 * L), Vector2(x - 6.0 * L, ry - 14.0 * L), Vector2(x + 6.0 * L, ry - 14.0 * L)]), STAMP_RED)
-		var label := String(mk["label"])
-		var lw := Plate.FONT_SEMI.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-		var flip := x + 8.0 + lw > x1
-		var left := (x - 8.0 - lw) if flip else (x + 8.0)
-		var row := 0
-		while row < row_x.size() and float(row_x[row]) > left - 6.0:
-			row += 1
-		if row == row_x.size():
-			row_x.append(-INF)
-		row_x[row] = left + lw
-		_ink(c, Plate.FONT_SEMI, 12, label, Vector2(left, ry - (9.0 + 13.0 * row)), STAMP_RED, HORIZONTAL_ALIGNMENT_LEFT)
+	var h := 30.0 * L
+	var top := r.position.y - h * 0.5
+	var spans: Array = [[0, mini(turns, _speed_turns)], [mini(turns, _speed_turns), turns]] if demo else era_spans(turns)
+	for i in spans.size():
+		var a := x0 + (x1 - x0) * float(int(spans[i][0])) / float(turns)
+		var b := x0 + (x1 - x0) * float(int(spans[i][1])) / float(turns)
+		if b <= a:
+			continue
+		var seg := Rect2(a, top, b - a, h)
+		var greyed := demo and i > 0
+		var fill := Color(0.55, 0.57, 0.6, 0.35) if greyed else Color(NAVY, 0.1 + 0.07 * (i % 2))
+		c.draw_rect(seg, fill)
+		c.draw_rect(seg, Color(0.45, 0.47, 0.5, 0.6) if greyed else Color(NAVY, 0.7), false, 1.0)
+		if greyed:
+			continue
+		var label := "Demo Era" if demo else String(ERA_NAMES[mini(i, ERA_NAMES.size() - 1)])
+		_ink(c, Plate.FONT_SEMI, 12, label, seg.get_center(), NAVY, HORIZONTAL_ALIGNMENT_CENTER, seg.size.x - 8.0)
 
 
 func _tick(c: CanvasItem, at: Vector2, on: bool, label: String, inner: float) -> void:
