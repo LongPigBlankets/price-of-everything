@@ -69,8 +69,8 @@ PROOF_TEXT={
                   'Shared scale · stirred reactors · pellet silos on a frame · process building · bagging canopy'),
     'power_plant_v2':('POWER PLANT',['L1  ·  Open boiler, half chimney, one turbine','L2  ·  Cooling tower, low heat block, two turbines','L3  ·  Full heat block, lattice pylon'],
                   'Shared scale · heat block and chimney · glazed turbine hall · cooling tower · transformer yard'),
-    'eaf_v2':('ELECTRIC ARC FURNACE',['L1  ·  Melt shop, kiosk, ground flue','L2  ·  Transformer vault, bag house, scrap crane','L3  ·  Caster annex, second ladle, deeper bag house'],
-                  'Shared scale · refractory melt shop · dark-metal shell · operating platform · brick vault and chimney'),
+    'eaf_v2':('ELECTRIC ARC FURNACE',['L1  ·  Furnace house, elevator tower, kiosk, ground flue','L2  ·  Storage wing and silos, vault, bag house, scrap crane','L3  ·  Third silo, yard transformer, second ladle'],
+                  'Shared scale · bath open above the roof · electrodes on the mast · brick tower, vault and chimney'),
 }
 
 

@@ -253,10 +253,10 @@
       "staged_as": "power_plant_v2"
     },
     "eaf": {
-      "revision": "v3",
+      "revision": "v5",
       "source_sha256": {
         "builders.py": "d06f723c029a0b876f95cd34c404a1c9213610c5d32dd5bf93d134c6cd8e1535",
-        "furnace_paper.py": "9b9fb49b2d795c6cfc9852b6b1dc7e9442679abee3222b5b919cc6189eba1870",
+        "furnace_paper.py": "cfe5acc1ee73d5440a385d545419cf1ee0cf00ce048270406e003d6220a2417d",
         "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
         "furnace_v2_builder.py": "2023fdb6e2d67f7aaf2845929c34fa793820a938622ac03a896240e18a3f46a1",
         "power_plant_v2_builder.py": "abbdb66ed7dcc1bc264a5a16ba59b3783b4e66fc873d40becde0e086cd512d01",
@@ -269,7 +269,7 @@
         "entry.py": "21dc339474cd534114ed5874208bac042059a1e5e0ea09b896b2f0d3b670ecbc",
         "paper_wpa_catalog.py": "7be39b082de17b6092e9505e67850028966e9d033bf6f665a057997da147c157",
         "render_sprite.py": "edf7cd4e41d5d6fa2bedae8435b8b7fa5e80a86711ff828b928a241c09f7bff4",
-        "eaf_v2_builder.py": "83a796a171b10fed992dba1786eb2aa127764d7ce6da9d7451bcb1e711019879",
+        "eaf_v2_builder.py": "6bb4b1a096daba13db28aafb6f503c765ee3895bd48ba48dd09ac3cd972f160e",
         "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
         "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
       },
@@ -2449,17 +2449,27 @@
         800
       ],
       "bbox": [
-        21,
-        39,
-        779,
-        761
+        15,
+        14,
+        785,
+        786
       ],
-      "opaque_pixels": 346027,
+      "opaque_pixels": 352007,
       "dominant_rgb": [
         [
           136,
           144,
           144
+        ],
+        [
+          120,
+          120,
+          112
+        ],
+        [
+          40,
+          48,
+          56
         ],
         [
           128,
@@ -2472,24 +2482,14 @@
           104
         ],
         [
-          40,
-          48,
-          56
-        ],
-        [
           152,
           152,
           136
         ],
         [
-          120,
-          120,
-          112
-        ],
-        [
-          152,
-          144,
-          136
+          128,
+          128,
+          120
         ],
         [
           112,
@@ -2497,9 +2497,9 @@
           112
         ]
       ],
-      "sha256": "1527296acb5a0a7c99b3f5c5af75d9dd00e820a49e1afb5cb4936c1bec48bece",
+      "sha256": "b7adad7e4e536daeb667291d37886783e85a0e228b61ee422f607a5856c6ac3b",
       "mask_range": [
-        125,
+        129,
         255
       ]
     },
@@ -2509,17 +2509,27 @@
         800
       ],
       "bbox": [
-        17,
-        39,
-        782,
-        761
+        15,
+        14,
+        785,
+        786
       ],
-      "opaque_pixels": 367954,
+      "opaque_pixels": 402983,
       "dominant_rgb": [
+        [
+          40,
+          48,
+          56
+        ],
         [
           136,
           144,
           144
+        ],
+        [
+          120,
+          120,
+          112
         ],
         [
           128,
@@ -2527,9 +2537,9 @@
           136
         ],
         [
-          40,
-          48,
-          56
+          128,
+          128,
+          120
         ],
         [
           112,
@@ -2542,24 +2552,14 @@
           136
         ],
         [
-          120,
-          120,
-          112
-        ],
-        [
-          152,
-          144,
-          136
-        ],
-        [
-          112,
-          112,
-          112
+          32,
+          40,
+          48
         ]
       ],
-      "sha256": "d9efa4d68c93df4dc6c7324c8672b60bfbe1b79045fd85a8f6614eaeb3581495",
+      "sha256": "25c57de9e95a867a1ef620fc05234a16ac78fa7052cf99c8409291edbef9b9c8",
       "mask_range": [
-        123,
+        129,
         255
       ]
     },
@@ -2569,17 +2569,27 @@
         800
       ],
       "bbox": [
-        17,
+        15,
         14,
-        782,
-        785
+        785,
+        786
       ],
-      "opaque_pixels": 384366,
+      "opaque_pixels": 410322,
       "dominant_rgb": [
+        [
+          40,
+          48,
+          56
+        ],
         [
           136,
           144,
           144
+        ],
+        [
+          120,
+          120,
+          112
         ],
         [
           128,
@@ -2587,9 +2597,9 @@
           136
         ],
         [
-          40,
-          48,
-          56
+          128,
+          128,
+          120
         ],
         [
           112,
@@ -2597,29 +2607,19 @@
           104
         ],
         [
-          120,
-          120,
-          112
+          184,
+          184,
+          176
         ],
         [
-          152,
-          152,
-          136
-        ],
-        [
-          112,
-          112,
-          112
-        ],
-        [
-          48,
-          56,
-          64
+          32,
+          40,
+          48
         ]
       ],
-      "sha256": "478bf0a7b9f9b3355d260cb51ff969f9bc96afcc990f56959886956c44204697",
+      "sha256": "cfc01d117a150749339c526f4cc59cd7772a737668e97e1c85345be3798ee2cd",
       "mask_range": [
-        123,
+        129,
         255
       ]
     }
@@ -2673,11 +2673,11 @@
     "power_plant_lvl2_contour.glb": "b433d42807454e9de625fdb6de98e44b139365b3625c9e0cebb10c7ca43dc276",
     "power_plant_lvl3.glb": "2e3fa64aa3bd49b6810b23a2e21ef79b056134511eda553babd1d68eb34415ad",
     "power_plant_lvl3_contour.glb": "e5c5d32588fb0ab2475e90c879d53a7221cf00c5764661438751225f7ddc03fa",
-    "eaf_lvl1_contour.glb": "79c08690efcecdf601dcba7f56904db3efafde85e405ba6d60089356356e7ca9",
-    "eaf_lvl2.glb": "4b26119680a43d2241c6dc7311c04e2b1b4d470f812bcafd54f4108fd93287c4",
-    "eaf_lvl3.glb": "27f0683ece946bb5df18d0c3c239436e2f76d4eb4bee93d6fba300198b920ab8",
-    "eaf_lvl1.glb": "aebbdf71a2c203a969f8c12702f5131f16b2d5394fe8808bb6398b2c5abe6f94",
-    "eaf_lvl2_contour.glb": "d45e4cf93213e820decefa8593f5e9d804d67851a951ff0d1bc4fdef6b7bb00e",
-    "eaf_lvl3_contour.glb": "0d92018089ebe2ed4509a594f2c4bfbd31de9451cc1f2797716a52d5104fed51"
+    "eaf_lvl1_contour.glb": "6e61aa87a8a02b3c9fafe5702ca5350acddb9c94e048521d668e1b7ed9c4845a",
+    "eaf_lvl2.glb": "fd5d982e74212065271911c53571b0b3ce0c2d1038a804d8ae4246ba17bc2218",
+    "eaf_lvl3.glb": "254108a158296e4bdc7adcb58c06236f281bdb216726e7c89cfa6821ce6624fb",
+    "eaf_lvl1.glb": "57d07aadb2b95e0e998c6a9fb6d70d27225b9e731439b0a160a146f81bc0f306",
+    "eaf_lvl2_contour.glb": "fe02feb04399e1590a5c7d5c30c7b9c80860c8747581d203516602e7975fad91",
+    "eaf_lvl3_contour.glb": "06da3bb0b4e61749a588129e90cb6fc905e55af26be3bfc31e0b072e9cda88ab"
   }
 }

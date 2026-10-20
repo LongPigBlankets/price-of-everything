@@ -197,3 +197,176 @@ def build_eaf_blockout_c(level=2):
     _m_scrap(K, *SCRAP)
     _v2_ladles(K, 'm_ladle', *LADLE_XY)
     return _m_finish(K, 'C open aisle')
+
+
+# ------------------------------------------------------------------ round 2: from scratch
+# The owner asked for compositions that do not keep the old "shed with a bay round a bowl".
+# Three directions, same massing fidelity, one sheet.
+#
+# D  electrode house   a closed refractory hall; the three electrode columns rise through
+#                      the roof on their masts, the fume elbow leaves the roof
+# E  open yard         no hall: a roofed furnace on an open steel platform in the yard,
+#                      its elbow sweeping to the bag house, brick vault and control house
+# F  tapping tower     the open bath on top of a brick tower under a steel headframe,
+#                      tapping down the tower's side into a ladle on the ground
+
+
+def _m_rods(K, bx, by, melt_z, tops, mast_x, mast_z0, arm_z_off=.35):
+    zinc, frame = K.mat('f_zinc'), K.mat('f_frame')
+    for i in range(3):
+        a = math.radians(ROD_ANGLES[i]); rx, ry = bx+ROD_RING*math.cos(a), by+ROD_RING*math.sin(a)
+        z1 = tops[i]
+        K.cyl(f'm_rod{i}', rx, ry, (melt_z+z1)/2, ROD_R, z1-melt_z, K.mat('e_graphite'), segments=16)
+        az = z1-arm_z_off
+        K.cyl(f'm_clamp{i}', rx, ry, az, ROD_R+.06, .22, zinc, segments=16)
+        K.dirbox(f'm_bracket{i}', (mast_x, by, az), (mast_x, ry, az), .14, .14, frame)
+        K.dirbox(f'm_arm{i}', (mast_x-MAST_W/2+.02, ry, az), (rx+ROD_R, ry, az), .11, .13, zinc)
+    mt = max(tops)-arm_z_off+.20
+    K.box('m_mast', mast_x, by, (mast_z0+mt)/2, MAST_W, MAST_W, mt-mast_z0, frame)
+    K.box('m_mast_cap', mast_x, by, mt+.03, MAST_W+.08, MAST_W+.08, .06, zinc)
+    return mt
+
+
+def _m_elbow(K, start, bag_cxy, z_run, r=.19):
+    cx, cy = bag_cxy
+    K.pipe_run('m_elbow', [start, (start[0], start[1], z_run), (cx, start[1], z_run), (cx, cy, z_run), (cx, cy, BAG_Z[1]+.08)], r, mat=K.mat('white_pipe'), bend=.30)
+
+
+def _m_tap(K, x, y, z, ladle_xy):
+    """A glowing tap opening with its ladle car in front."""
+    K.box('m_tap_reveal', x, y-.02, z, .50, .05, .62, K.mat('ink_black'))
+    K.box('m_tap_glow', x, y-.01, z-.04, .34, .05, .44, _emissive('e_glow', (1.0, .42, .09), .42))
+    _v2_ladles(K, 'm_ladle', *ladle_xy)
+
+
+def build_eaf_blockout_d(level=2):
+    """D: electrode house. A closed hall; the electrodes and their masts stand above the roof."""
+    K = _e_begin()
+    x0, x1, y0, y1 = -1.70, 1.70, -.80, 1.90
+    bx, by = -.10, .55
+    eave = 3.20
+    _r_pad(K, 'm_pad', -1.4, 2.0, -1.80, y0)
+    _r_pad(K, 'm_pad_r', x1, 3.0, -.5, 1.2)
+    # Hall with no bay: the roof carries the furnace's crown.
+    _m_shop(K, x0, x1, y0, y1, eave, 'x', (bx-.01, bx+.01))
+    K.box('m_bay_fill', bx, y0+.04, (BASE_Z+eave)/2, .04, .08, eave-BASE_Z, K.mat('f2_refractory'))
+    roof_z = eave+RISE*(1-abs(by-(y0+y1)/2)/((y1-y0)/2))+.06
+    # Electrodes through the roof on their masts; a collar where each passes the roof.
+    tops = (5.05, 5.45, 5.25)
+    for i in range(3):
+        a = math.radians(ROD_ANGLES[i]); rx, ry = bx+ROD_RING*math.cos(a), by+ROD_RING*math.sin(a)
+        K.washer(f'm_rod_collar{i}', (rx, ry, roof_z+.04), (0, 0, 1), ROD_R-.005, ROD_R+.12, .10, K.mat('f_frame'))
+    _m_rods(K, bx, by, roof_z, tops, bx+1.05, roof_z-.02)
+    K.box('m_mast_foot', bx+1.05, by, roof_z+.02, .50, .50, .08, K.mat('f_zinc'))
+    # Fume elbow out of the roof behind the electrodes, over to the bag house.
+    cx, cy = _m_bag(K, 3.00, 3.65, .90, 1.70)
+    _m_elbow(K, (bx+.40, by+.95, roof_z-.05), (cx, cy), 4.70, r=.22)
+    K.washer('m_elbow_collar', (bx+.40, by+.95, roof_z+.03), (0, 0, 1), .20, .30, .08, K.mat('f_frame'))
+    sx, sy = 4.15, 1.75
+    K.dircyl('m_flue', (3.65+.02, sy-.15, FLUE_Z), (sx-.31, sy-.15, FLUE_Z), .13, K.mat('white_pipe'), segments=14)
+    _m_chimney(K, sx, sy)
+    # Vault against the end wall, tubes over its roof into the hall high up.
+    _m_block(K, 'm_vault', 1.75, 2.65, -.30, .60, 2.50)
+    _m_tubes(K, [(2.30, by, 2.70, 'y'), (2.30, by, 2.95, 'y'), (x1+.01, by, 2.95, 'y')], (x1+.02, by, 2.95, 'x'))
+    # Tap hole in the front wall with the ladle; scrap bay with a conveyor into the hall.
+    _m_tap(K, .70, y0-.04, .75, (.70, -1.25))
+    _m_scrap(K, -2.35, -1.55, -1.40, -.65)
+    K.dirbox('m_charge_conveyor', (-1.95, -.90, 1.00), (-1.95, y0-.02, 2.40), .34, .30, K.mat('f_zinc'))
+    _v2_flange(K, 'm_charge_collar', -1.95, y0-.03, 2.40, 'y', w=.46, h=.42)
+    K.dirbox('m_charge_leg', (-1.95, -.90, .10), (-1.95, -.90, .85), .10, .10, K.mat('f_frame'))
+    return _m_finish(K, 'D electrode house')
+
+
+def build_eaf_blockout_e(level=2):
+    """E: open yard. A roofed furnace on an open steel platform, no hall at all."""
+    K = _e_begin()
+    bx, by = .10, .30
+    pz = 1.10
+    _r_pad(K, 'm_pad', -1.6, 2.2, -1.80, 1.60)
+    _r_pad(K, 'm_pad_r', 2.2, 3.3, -.5, 1.2)
+    # Operating platform on dark columns, yellow rails all round, a stair at the left.
+    px0, px1, py0, py1 = bx-1.35, bx+1.60, by-.95, by+.95
+    K.box('m_platform', (px0+px1)/2, (py0+py1)/2, pz-.04, px1-px0, py1-py0, .08, K.mat('r_deck'))
+    for x in (px0+.12, (px0+px1)/2, px1-.12):
+        for y in (py0+.12, py1-.12):
+            K.dirbox('m_platform_col', (x, y, .06), (x, y, pz-.08), .11, .11, K.mat('f_frame'))
+    _r_rail(K, 'm_rail_f', (px0, py0, pz), (px1, py0, pz))
+    _r_rail(K, 'm_rail_r', (px1, py0, pz), (px1, py1, pz))
+    _r_rail(K, 'm_rail_b', (px0, py1, pz), (px1, py1, pz))
+    _r_rail(K, 'm_rail_l', (px0, py0+.55, pz), (px0, py1, pz))
+    K.prism('m_stair', (px0-.50, py0+.25, 0), (1, 0), [(-.50, .06), (.50, pz-.06), (.50, pz+.02), (-.50, .14)], .34, K.mat('r_deck'))
+    # The furnace: shell, roof dome with the electrodes through it, the fume elbow off the roof.
+    rim = pz+.95
+    K.cyl('m_pedestal', bx, by, (pz+rim-BOWL_RISE+.12)/2, .42, rim-BOWL_RISE+.12-pz, K.mat('f_frame'), segments=20)
+    _e_bowl(K, 'm_shell', bx, by, rim, BOWL_R, BOWL_RISE, BOWL_WALL, K.mat('f_shell'), K.mat('f_oxide'))
+    K.cyl('m_roof_ring', bx, by, rim+.05, BOWL_R+.02, .10, K.mat('f_zinc'), segments=28)
+    K.dome_cap('m_roof', bx, by, rim+.10, BOWL_R-.02, .34, K.mat('f_shell'), rings=6)
+    tops = (3.55, 3.95, 3.75)
+    _m_rods(K, bx, by, rim+.30, tops, bx+1.25, pz)
+    K.washer('m_elbow_collar', (bx+.55, by+.45, rim+.30), (0, 0, 1), .16, .24, .06, K.mat('f_frame'))
+    cx, cy = _m_bag(K, 3.00, 3.65, .80, 1.60)
+    _m_elbow(K, (bx+.55, by+.45, rim+.30), (cx, cy), 4.20, r=.19)
+    sx, sy = 4.15, 1.65
+    K.dircyl('m_flue', (3.65+.02, sy-.15, FLUE_Z), (sx-.31, sy-.15, FLUE_Z), .13, K.mat('white_pipe'), segments=14)
+    _m_chimney(K, sx, sy)
+    # Brick vault and a two-storey control house behind the platform.
+    _m_block(K, 'm_vault', 2.30, 3.10, -.40, .40, 2.20)
+    _m_tubes(K, [(2.70, by, 2.40, 'y'), (2.70, by, 2.85, 'y'), (bx+1.25+.16, by, 2.85, 'y')], (bx+1.25+.15, by, 2.85, 'x'))
+    _m_block(K, 'm_control', -1.90, -.30, 1.45, 2.45, 2.30)
+    # Tap: the spout pours off the platform's front into the ladle below.
+    K.rotbox('m_spout', bx+.55, by-.70, rim-.12, .44, .22, .14, K.mat('f_oxide'), 'Z', -60)
+    _v2_ladles(K, 'm_ladle', bx+.75, -1.10)
+    _m_scrap(K, -2.50, -1.70, -1.30, -.55)
+    return _m_finish(K, 'E open yard')
+
+
+def build_eaf_blockout_f(level=2):
+    """F: tapping tower. The open bath crowns a brick tower under a steel headframe."""
+    K = _e_begin()
+    tx0, tx1, ty0, ty1 = -1.10, 1.10, -.60, 1.50
+    th = 2.40
+    bx, by = 0.0, .45
+    _r_pad(K, 'm_pad', -1.6, 2.4, -1.90, ty1+.2)
+    roof = _m_block(K, 'm_tower', tx0, tx1, ty0, ty1, th)
+    # Working floor on the tower: black-grey deck, yellow rails, the bath on its pedestal.
+    K.box('m_deck', bx, (ty0+ty1)/2, roof+.04, tx1-tx0+.30, ty1-ty0+.30, .08, K.mat('r_deck'))
+    dz = roof+.08
+    _r_rail(K, 'm_rail_f', (tx0-.15, ty0-.15, dz), (bx-BOWL_R-.1, ty0-.15, dz))
+    _r_rail(K, 'm_rail_f2', (bx+BOWL_R+.1, ty0-.15, dz), (tx1+.15, ty0-.15, dz))
+    _r_rail(K, 'm_rail_r', (tx1+.15, ty0-.15, dz), (tx1+.15, ty1+.15, dz))
+    rim = dz+.95
+    K.cyl('m_pedestal', bx, by, (dz+rim-BOWL_RISE+.12)/2, .42, rim-BOWL_RISE+.12-dz, K.mat('f_frame'), segments=20)
+    _e_bowl(K, 'm_shell', bx, by, rim, BOWL_R, BOWL_RISE, BOWL_WALL, K.mat('f_shell'), K.mat('f_oxide'))
+    melt = _emissive('e_melt', (.95, .32, .02), 1.0)
+    K.cyl('m_melt', bx, by, rim-MELT_DROP, _e_melt_radius(), .05, melt, segments=24)
+    # Headframe: four dark legs from the ground past the deck to a top frame that carries
+    # the electrode arms; the canopy hood hangs from it with the duct to the bag house.
+    hz = rim+2.10
+    for sx_ in (tx0-.35, tx1+.35):
+        for sy_ in (ty0-.30, ty1+.30):
+            K.box('m_leg_foot', sx_, sy_, .05, .26, .26, .10, K.mat('f_base'))
+            K.dirbox('m_leg', (sx_, sy_, .10), (sx_, sy_, hz), .14, .14, K.mat('f_frame'))
+    for sy_ in (ty0-.30, ty1+.30):
+        K.dirbox('m_head_beam', (tx0-.35, sy_, hz), (tx1+.35, sy_, hz), .14, .16, K.mat('f_frame'))
+    for sx_ in (tx0-.35, tx1+.35):
+        K.dirbox('m_head_beam', (sx_, ty0-.30, hz), (sx_, ty1+.30, hz), .14, .16, K.mat('f_frame'))
+    tops = (rim+1.05, rim+1.45, rim+1.25)
+    _m_rods(K, bx, by, rim-MELT_DROP-.10, tops, tx1+.35, dz)
+    K.box('m_hood', bx+.10, by+.30, hz-.30, 1.50, .90, .22, K.mat('f_zinc'))
+    cx, cy = _m_bag(K, 2.60, 3.25, .80, 1.60)
+    _m_elbow(K, (bx+.75, by+.30, hz-.30), (cx, cy), hz+.10, r=.19)
+    sx, sy = 3.75, 1.65
+    K.dircyl('m_flue', (3.25+.02, sy-.15, FLUE_Z), (sx-.31, sy-.15, FLUE_Z), .13, K.mat('white_pipe'), segments=14)
+    _m_chimney(K, sx, sy)
+    # The pour: spout over the tower's front edge, a glowing stream into the ladle below.
+    K.rotbox('m_spout', bx+.55, by-.75, rim-.12, .44, .22, .14, K.mat('f_oxide'), 'Z', -60)
+    K.box('m_pour', bx+.72, ty0-.45, (rim-.20+.70)/2, .07, .07, rim-.20-.70, melt)
+    _v2_ladles(K, 'm_ladle', bx+.72, ty0-.45)
+    # Vault on the ground beside the tower, tubes up to the headframe's mast.
+    _m_block(K, 'm_vault', 1.60, 2.40, -.55, .25, 2.00)
+    _m_tubes(K, [(2.00, by, 2.20, 'y'), (2.00, by, tops[1]-.35, 'y'), (tx1+.35+.16, by, tops[1]-.35, 'y')], (tx1+.35+.15, by, tops[1]-.35, 'x'))
+    # Scrap: a skip hoist up the tower's left side from the scrap bay.
+    _m_scrap(K, -2.60, -1.80, -1.20, -.45)
+    K.dirbox('m_hoist', (-1.45, -.10, .20), (-1.45, -.10, dz+.40), .36, .30, K.mat('f_zinc'))
+    K.dirbox('m_hoist_head', (-1.45, -.10, dz+.40), (tx0+.05, -.10, dz+.40), .34, .30, K.mat('f_zinc'))
+    return _m_finish(K, 'F tapping tower')
