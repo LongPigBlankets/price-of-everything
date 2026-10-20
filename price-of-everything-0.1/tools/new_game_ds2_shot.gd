@@ -2,10 +2,12 @@ extends Node
 ## Captures of the New Game settings screen as the company registry (scripts/new_game_ds2/new_game_ds2.gd), the panel
 ## alone at its width of 1396 on a dark backdrop, in a SubViewport at two pixels a logical pixel so every capture has
 ## the same pixels whatever the display. States: the full game with the recommended start, the full game with the
-## Troubled Carmaker open (a building pointed at, Hard stamped, a 200 turn charter), and the demo with its lockboxes.
+## Troubled Carmaker open (a building pointed at, Hard stamped, a 200 turn charter), three moments of the seal coming
+## down when Start New Game is pressed (the die over the circle, the die down, the impression left), and the demo with
+## its lockboxes.
 ## Needs a window:
 ##   AGENT_GODOT_WINDOW=1 godot --path . res://tools/new_game_ds2_shot.tscn --quit-after 20000 -- --no-telemetry
-## Writes <state>.png into $NEW_GAME_SHOT_DIR (default artifacts/new_game_ds2/ds2_v1).
+## Writes <state>.png into $NEW_GAME_SHOT_DIR (default artifacts/new_game_ds2/ds2_v2).
 
 const ShotHarness := preload("res://tools/shot_harness.gd")
 const DebugTerminal := preload("res://scripts/debug_terminal.gd")
@@ -20,7 +22,7 @@ var _dir := ""
 func _ready() -> void:
 	_dir = OS.get_environment("NEW_GAME_SHOT_DIR")
 	if _dir == "":
-		_dir = ProjectSettings.globalize_path("res://artifacts/new_game_ds2/ds2_v1")
+		_dir = ProjectSettings.globalize_path("res://artifacts/new_game_ds2/ds2_v2")
 	DirAccess.make_dir_recursive_absolute(_dir)
 	ShotHarness.arm_watchdog(self, 240.0)
 	ShotHarness.prepare_window(get_window(), Vector2i(1600, 1000))
@@ -53,6 +55,11 @@ func _ready() -> void:
 	panel.call("_step_speed", -1)
 	await _settle(90)
 	await _shot("02_full_carmaker")
+	panel.call("_hover", -1)
+	for moment in [["04_stamp_over", 1.2], ["05_stamp_down", 1.5], ["06_stamp_after", 2.5]]:
+		panel.call("_set_stamp_time", float(moment[1]))
+		await _settle(6)
+		await _shot(String(moment[0]))
 	panel.queue_free()
 	await _settle(2)
 

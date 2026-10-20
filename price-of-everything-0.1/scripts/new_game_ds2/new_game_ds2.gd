@@ -70,6 +70,20 @@ const COUNTER_GAP := 20.0
 const FOOT := 120.0
 
 const TIER_WORDS := {"green": "Beginner friendly", "amber": "Intermediate", "red": "Challenging"}
+## The seal when the game starts: over STAMP_SECONDS the die lifts off the press, slides to the form's seal circle,
+## comes down on it (the impression stays from then on), holds, rises, slides back and settles on the press, so the
+## impression is in view as the screen fades. Seconds at which each move ends.
+const STAMP_SECONDS := 2.5
+const STAMP_LIFT := 0.3
+const STAMP_SLIDE := 1.2
+const STAMP_DOWN := 1.5
+const STAMP_HOLD := 1.9
+const STAMP_RISE := 2.1
+const STAMP_BACK := 2.4
+const DIE_LIFT_SCALE := 1.12
+const SEAL_R := 72.0
+## Tests and headless runs skip the sequence (the signal goes at once); a windowed run plays it.
+static var animate := true
 const LOCKED_GRADE_TIP := "This difficulty is unlocked once you finish one game"
 const DEMO_CHARTER := "100 turns, the Itch.io demo."
 const DEMO_SURVEY := "All tiles surveyed at game start."
@@ -84,6 +98,8 @@ var _story_lines: Array = []
 var _strip_top := 0.0          # leaf px, where the building strip starts
 var _slip_at := Vector2.ZERO   # leaf px, the hovered cell's middle and the strip's foot
 var _grade_keys: Array = []
+var _stamp_t := -1.0          # seconds into the seal sequence, below zero before Start is pressed
+var _starting := false
 var _paint_buttons: Array = []
 var _cell_buttons: Array = []
 
@@ -103,6 +119,8 @@ var _stamps: Control
 var _stamps_over: Control
 var _press: Control
 var _start_key: Button
+var _die: Control
+var _block: Control
 
 # Logical rects laid out from the panel's size.
 var _r_head := Rect2()
@@ -244,6 +262,12 @@ func _build() -> void:
 	_start_key = CreamKey.make("StartNewGame", "START NEW GAME", "", PRESS["key"].size.x * L, false, false, 1.0)
 	_start_key.pressed.connect(_on_start_pressed)
 	_press.add_child(_start_key)
+	_block = Control.new()
+	_block.name = "StartBlock"
+	_block.mouse_filter = Control.MOUSE_FILTER_STOP
+	_block.visible = false
+	add_child(_block)
+	_die = _region("Die", _draw_die)
 
 	_refresh_grades()
 	resized.connect(_layout)
@@ -374,6 +398,8 @@ func _layout() -> void:
 	var skh: float = CreamKey.height_for(1.0)
 	_start_key.position = Vector2(kr.position.x * L, (kr.position.y + kr.size.y * 0.5) * L - skh * 0.5)
 	_start_key.size = Vector2(kr.size.x * L, skh)
+	_place(_block, Rect2(Vector2.ZERO, size))
+	_place_die()
 	queue_redraw()
 	for c in get_children():
 		if c is Control:
@@ -597,7 +623,7 @@ func hovered_cell() -> int:
 
 func _paint_origin() -> Vector2:
 	var m := LEAF["m"] * L
-	var y := 122.0 * L + _ledger.size() * 54.0 * L + 30.0 * L + 24.0 * L + 30.0 * L + 34.0 * L
+	var y := 122.0 * L + _ledger.size() * 54.0 * L + 30.0 * L + 24.0 * L + 30.0 * L
 	var card_w := (PAINT["cols"] * PAINT["sq"] + (PAINT["cols"] - 1) * PAINT["gap"]) * L
 	return Vector2(m + ((_r_leaf_r.size.x - 2.0 * m) - card_w) * 0.5, y)
 
@@ -812,8 +838,6 @@ func _draw_right_leaf() -> void:
 	_ink(c, Plate.FONT_BOLD, 14, "COMPANY COLOUR", Vector2(m, y))
 	y += 24.0 * L
 	c.draw_rect(Rect2(m, y, inner, 1.5 * L), Color(NAVY, 0.35))
-	y += 30.0 * L
-	_ink(c, FONT_PLEX, 12, "Every building this company owns is painted in it.", Vector2(m, y), INK_DIM, HORIZONTAL_ALIGNMENT_LEFT, inner)
 	var o := _paint_origin()
 	var sq := PAINT["sq"] * L
 	var gap := PAINT["gap"] * L
@@ -864,8 +888,8 @@ func _draw_form() -> void:
 	var y := 364.0 * L
 	var tp := TextParagraph.new()
 	tp.width = inner
-	tp.add_string(String(grade.get("desc", "")), FONT_PLEX, 12)
-	var words := String(grade.get("desc", ""))
+	var words := grade_words(String(grade.get("desc", "")))
+	tp.add_string(words, FONT_PLEX, 12)
 	for i in tp.get_line_count():
 		var rng := tp.get_line_range(i)
 		_ink(c, FONT_PLEX, 12, words.substr(rng.x, rng.y - rng.x).strip_edges(), Vector2(m, y))
@@ -886,11 +910,29 @@ func _draw_form() -> void:
 		_tick(c, Vector2(m, 772.0 * L), true, "All tiles surveyed at game start", inner)
 		if _metrics_box != null:
 			_tick(c, Vector2(m, 820.0 * L), _send_metrics, "Send anonymous metrics", inner)
-	var sc := Vector2(w - m - 80.0 * L, h - 112.0 * L)
-	_dashed_circle(c, sc, 72.0 * L, Color(NAVY, 0.55))
-	_ink(c, Plate.FONT_SEMI, 12, "SEAL", sc, Color(NAVY, 0.6), HORIZONTAL_ALIGNMENT_CENTER)
+	var sc := _seal_centre()
+	if _stamp_t >= STAMP_DOWN:
+		_draw_seal_impression(c, sc, SEAL_R * L)
+	else:
+		_dashed_circle(c, sc, SEAL_R * L, Color(NAVY, 0.55))
+		_ink(c, Plate.FONT_SEMI, 12, "SEAL", sc, Color(NAVY, 0.6), HORIZONTAL_ALIGNMENT_CENTER)
 	_ink(c, FONT_PLEX, 12, "Registrar", Vector2(m, h - 60.0 * L), INK_DIM)
 	c.draw_rect(Rect2(m, h - 40.0 * L, 260.0 * L, 1.5 * L), Color(NAVY, 0.4))
+
+
+## A grade's words as the form prints them: the deposits part only. The sentence about how much is surveyed is
+## left out while the All tiles surveyed option is on (which it always is today, and in the demo every tile is
+## surveyed), since it would contradict the option printed under it.
+func grade_words(desc: String) -> String:
+	if not _survey_all:
+		return desc
+	var kept: Array = []
+	for sentence in desc.split(". "):
+		var t := String(sentence).strip_edges()
+		if t == "" or "surveyed" in t:
+			continue
+		kept.append(t.trim_suffix("."))
+	return ". ".join(kept) + ("." if not kept.is_empty() else "")
 
 
 func _grade() -> Dictionary:
@@ -981,6 +1023,168 @@ func _draw_stamps_over() -> void:
 
 func _draw_press() -> void:
 	PParts.draw_fixed(_press, PParts.tex("registry_press"), Vector2.ZERO, PRESS["margin"])
+
+
+## The die, drawn at its own size, larger while it is lifted (nearer the lamp).
+func _draw_die() -> void:
+	var tex: Texture2D = PParts.tex("registry_die")
+	var k := DIE_SCALE_AT(_stamp_t)
+	var s := tex.get_size() * 0.5 * k
+	_die.draw_texture_rect(tex, Rect2((_die.size - s) * 0.5, s), false)
+
+
+## The die's size at `t` seconds into the sequence: lifted between the lift and the drop and again as it rises.
+static func DIE_SCALE_AT(t: float) -> float:
+	if t < 0.0:
+		return 1.0
+	if t < STAMP_LIFT:
+		return lerpf(1.0, DIE_LIFT_SCALE, t / STAMP_LIFT)
+	if t < STAMP_SLIDE:
+		return DIE_LIFT_SCALE
+	if t < STAMP_DOWN:
+		return lerpf(DIE_LIFT_SCALE, 1.0, (t - STAMP_SLIDE) / (STAMP_DOWN - STAMP_SLIDE))
+	if t < STAMP_HOLD:
+		return 1.0
+	if t < STAMP_RISE:
+		return lerpf(1.0, DIE_LIFT_SCALE, (t - STAMP_HOLD) / (STAMP_RISE - STAMP_HOLD))
+	if t < STAMP_BACK:
+		return DIE_LIFT_SCALE
+	return lerpf(DIE_LIFT_SCALE, 1.0, minf(1.0, (t - STAMP_BACK) / (STAMP_SECONDS - STAMP_BACK)))
+
+
+## Where the die rests on the press (its centre, in the panel), and the seal circle's centre on the form.
+func _die_home() -> Vector2:
+	var d: Array = [112.5, 92.0]
+	return _r_press.position + Vector2(d[0], d[1]) * L
+
+
+func _seal_centre() -> Vector2:
+	return Vector2(_r_form.size.x - FORM["m"] * L - 80.0 * L, _r_form.size.y - 112.0 * L)
+
+
+## The die's centre at `t`: on the press, sliding to the circle, over it while it stamps, sliding back and on the
+## press again. Pure, so tests and the shot tool can set a moment.
+func die_centre_at(t: float) -> Vector2:
+	var home := _die_home()
+	var there := _r_form.position + _seal_centre()
+	if t < STAMP_LIFT:
+		return home
+	if t < STAMP_SLIDE:
+		return home.lerp(there, ease((t - STAMP_LIFT) / (STAMP_SLIDE - STAMP_LIFT), -1.8))
+	if t < STAMP_RISE:
+		return there
+	if t < STAMP_BACK:
+		return there.lerp(home, ease((t - STAMP_RISE) / (STAMP_BACK - STAMP_RISE), -1.8))
+	return home
+
+
+func _place_die() -> void:
+	if _die == null:
+		return
+	var tex: Texture2D = PParts.tex("registry_die")
+	var side := tex.get_size() * 0.5 * DIE_LIFT_SCALE
+	_die.position = die_centre_at(_stamp_t) - side * 0.5
+	_die.size = side
+	_die.queue_redraw()
+
+
+## Sets the sequence to `t` seconds: the die's place and size, and the impression once it has come down.
+func _set_stamp_time(t: float) -> void:
+	var was_down := _stamp_t >= STAMP_DOWN
+	_stamp_t = t
+	_place_die()
+	if (t >= STAMP_DOWN) != was_down:
+		_form.queue_redraw()
+
+
+## Seconds into the seal sequence, below zero before Start is pressed.
+func stamp_time() -> float:
+	return _stamp_t
+
+
+## Whether the seal has been stamped on the form.
+func is_sealed() -> bool:
+	return _stamp_t >= STAMP_DOWN
+
+
+## The seal's impression: the registry's mark embossed into the cream, two rings and its words, in a darker cream
+## with a light edge up and to the left and a shadow down and to the right.
+func _draw_seal_impression(c: CanvasItem, centre: Vector2, r: float) -> void:
+	var deep := Color(0.55, 0.47, 0.34, 0.55)
+	var light := Color(1, 1, 1, 0.7)
+	var dark := Color(0.2, 0.15, 0.08, 0.35)
+	for ring in [r, r - 5.0, r * 0.62, r * 0.56]:
+		c.draw_arc(centre + Vector2(-1, -1), ring, 0.0, TAU, 72, light, 1.6, true)
+		c.draw_arc(centre + Vector2(1, 1), ring, 0.0, TAU, 72, dark, 1.6, true)
+		c.draw_arc(centre, ring, 0.0, TAU, 72, deep, 1.4, true)
+	var font: Font = Plate.FONT_BOLD
+	var fs := 9
+	_arc_text(c, font, fs, "REGISTRY OF COMPANIES", centre, r * 0.84, -PI * 0.5, deep, light, dark)
+	_arc_text(c, font, fs, "CARBON AND CAPITAL", centre, r * 0.84, PI * 0.5, deep, light, dark, true)
+	for off in [[Vector2(-1, -1), light], [Vector2(1, 1), dark], [Vector2.ZERO, deep]]:
+		var at: Vector2 = centre + (off[0] as Vector2)
+		var tw := font.get_string_size("SEALED", HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+		c.draw_string(font, Vector2(at.x - tw * 0.5, at.y + 5.0), "SEALED", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, off[1] as Color)
+
+
+## Letters laid round an arc, centred on `mid` (an angle), reading clockwise above the centre or, `under`, counter
+## clockwise below it so they stay upright.
+static func _arc_text(c: CanvasItem, font: Font, fs: int, text: String, centre: Vector2, radius: float, mid: float,
+		ink: Color, light: Color, dark: Color, under := false) -> void:
+	var total := 0.0
+	var widths: Array = []
+	for ch in text:
+		var w := font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		widths.append(w)
+		total += w
+	var span := total / radius
+	var a := mid - span * 0.5 if not under else mid + span * 0.5
+	for i in text.length():
+		var w: float = widths[i]
+		var half := w * 0.5 / radius
+		a += half if not under else -half
+		var pos := centre + Vector2(cos(a), sin(a)) * radius
+		var rot := a + PI * 0.5 if not under else a - PI * 0.5
+		for off in [[Vector2(-1, -1), light], [Vector2(1, 1), dark], [Vector2.ZERO, ink]]:
+			c.draw_set_transform(pos + (off[0] as Vector2), rot, Vector2.ONE)
+			c.draw_string(font, Vector2(-w * 0.5, fs * 0.35), text[i], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, off[1] as Color)
+		a += half if not under else -half
+	c.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## Start New Game: the seal comes down on the form over STAMP_SECONDS, inputs held off and Esc ignored, then the
+## old panel's start_requested goes out as before. Headless (tests, the balance runs) or with `animate` off the
+## signal goes at once.
+func _on_start_pressed() -> void:
+	if _starting:
+		return
+	if not animate or DisplayServer.get_name() == "headless":
+		super._on_start_pressed()
+		return
+	_starting = true
+	_block.visible = true
+	_start_key.disabled = true
+	_start_key.call("set_busy", true)
+	var tw := create_tween()
+	tw.tween_method(_set_stamp_time, 0.0, STAMP_SECONDS, STAMP_SECONDS)
+	tw.tween_callback(_emit_start)
+
+
+func _emit_start() -> void:
+	super._on_start_pressed()
+
+
+## Whether the seal sequence is running or done, so the menu's Esc and clicks are held off.
+func is_starting() -> bool:
+	return _starting
+
+
+func _input(event: InputEvent) -> void:
+	if _starting:
+		if visible and event.is_action_pressed("ui_cancel"):
+			get_viewport().set_input_as_handled()
+		return
+	super._input(event)
 
 
 # ── Print helpers ───────────────────────────────────────────────────────────────

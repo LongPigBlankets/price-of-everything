@@ -11,6 +11,8 @@ const TAGS := {
 	"_test_registry_demo_lockboxes": ["new_game", "ui", "demo_build"],
 	"_test_era_marks_from_the_policy_timeline": ["new_game", "ui"],
 	"_test_place_for_unnamed_tiles": ["new_game", "map"],
+	"_test_registry_seal_sequence": ["new_game", "ui"],
+	"_test_grade_words_without_the_survey_sentence": ["new_game", "ui"],
 }
 const DS2_SCRIPT := "res://scripts/new_game_ds2/new_game_ds2.gd"
 const DebugTerminalScript := preload("res://scripts/debug_terminal.gd")
@@ -235,3 +237,58 @@ func _test_place_for_unnamed_tiles() -> void:
 			break
 	var near := str(script.call("place_for", unnamed))
 	_check(unnamed != "" and near.begins_with("Near ") and near.length() > 5, "place for: an unnamed tile prints Near the nearest named one (%s -> %s)" % [unnamed, near])
+
+
+## The seal: headless the Start key emits at once (the signals test); the sequence itself is a pure function of time,
+## the die on the press before the lift, over the circle after the slide, down on it from the drop, the impression
+## staying from then on.
+func _test_registry_seal_sequence() -> void:
+	var saved: bool = DebugTerminalScript._demo_unlocked
+	var p := _registry(true)
+	await get_tree().process_frame
+	var script: GDScript = p.get_script()
+	var home: Vector2 = p.call("die_centre_at", 0.0)
+	var over: Vector2 = p.call("die_centre_at", script.STAMP_SLIDE)
+	var seal: Vector2 = (p.get("_r_form") as Rect2).position + (p.call("_seal_centre") as Vector2)
+	var press: Rect2 = p.get("_r_press")
+	_check(press.has_point(home) and home.distance_to(seal) > 100.0, "seal: the die rests on the press before Start")
+	_check(over.is_equal_approx(seal) and (p.call("die_centre_at", script.STAMP_HOLD) as Vector2).is_equal_approx(seal),
+		"seal: the die is over the circle from the end of the slide while it stamps")
+	_check((p.call("die_centre_at", script.STAMP_SECONDS) as Vector2).is_equal_approx(home)
+		and is_equal_approx(float(script.DIE_SCALE_AT(script.STAMP_SECONDS)), 1.0),
+		"seal: the die is back on the press at the end, so the impression is in view")
+	var mid: Vector2 = p.call("die_centre_at", (script.STAMP_LIFT + script.STAMP_SLIDE) * 0.5)
+	_check(mid.distance_to(home) > 10.0 and mid.distance_to(seal) > 10.0, "seal: the die is on its way between the two")
+	_check(float(script.DIE_SCALE_AT(script.STAMP_LIFT)) > 1.0 and is_equal_approx(float(script.DIE_SCALE_AT(script.STAMP_DOWN)), 1.0)
+		and is_equal_approx(float(script.DIE_SCALE_AT(-1.0)), 1.0), "seal: the die is larger while lifted, its own size when down")
+	_check(not bool(p.call("is_sealed")), "seal: no impression before Start")
+	p.call("_set_stamp_time", script.STAMP_DOWN - 0.01)
+	_check(not bool(p.call("is_sealed")), "seal: no impression while the die is still coming down")
+	p.call("_set_stamp_time", script.STAMP_DOWN)
+	_check(bool(p.call("is_sealed")) and (p.get("_die") as Control).get_rect().has_point(seal), "seal: the impression is there once the die is down, the die over the circle")
+	p.call("_set_stamp_time", script.STAMP_SECONDS)
+	_check(bool(p.call("is_sealed")) and not (p.get("_die") as Control).get_rect().has_point(seal),
+		"seal: the impression stays once the die has gone back")
+	_check(not bool(p.call("is_starting")), "seal: a headless press never holds the panel (the signal went at once)")
+	p.queue_free()
+	DebugTerminalScript._demo_unlocked = saved
+	await get_tree().process_frame
+
+
+## The grade's words leave out the survey sentence while every tile is surveyed, keeping the deposits.
+func _test_grade_words_without_the_survey_sentence() -> void:
+	var saved: bool = DebugTerminalScript._demo_unlocked
+	var p := _registry(true)
+	await get_tree().process_frame
+	var all_clean := true
+	var kept_deposits := true
+	for opt in NewGamePanel.DIFFICULTIES:
+		var words: String = p.call("grade_words", String(opt["desc"]))
+		all_clean = all_clean and not ("surveyed" in words)
+		kept_deposits = kept_deposits and "deposit" in words and words.ends_with(".")
+	_check(all_clean, "grade words: no sentence about what is surveyed")
+	_check(kept_deposits, "grade words: the deposits part of every grade stays, ending in a full stop")
+	_check(p.call("grade_words", "Some tiles are surveyed.") == "", "grade words: a grade with only the survey sentence prints nothing")
+	p.queue_free()
+	DebugTerminalScript._demo_unlocked = saved
+	await get_tree().process_frame

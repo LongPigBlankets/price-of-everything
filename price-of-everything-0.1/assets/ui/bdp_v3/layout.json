@@ -2618,7 +2618,7 @@
   "die": [
    112.5,
    92,
-   50
+   55
   ]
  },
  "registry_slip": {
@@ -2662,5 +2662,13 @@
   "counter_y": 640,
   "press_col": 217,
   "form_w": 720
+ },
+ "registry_die": {
+  "size": [
+   150,
+   150
+  ],
+  "margin": 20,
+  "radius": 55
  }
 }

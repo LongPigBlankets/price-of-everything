@@ -8302,19 +8302,24 @@ async function exportLayers() {
         }); }
     });
 
-    // The company seal: the cast iron press, its brass die and chrome lever, without the key (the game sets the
-    // kit's cream key at the lever's end, printed Start New Game).
+    // The company seal: the cast iron press, its anvil and chrome lever, without the key (the game sets the kit's
+    // cream key at the lever's end, printed Start New Game) and without the die, which is its own layer so the game
+    // can carry it to the form's seal circle and bring it down when the game starts.
     if (want('registrypress')) await withSeed(496, async () => {
       const { W, H, M, r } = REG.PRESS, cx = M + W / 2, dz = M + 92, IT = 10 + 12;
       await part('registry_press', W, H, M, () => {
         add(shade(new THREE.Mesh(extrude(rrShape(W, H, r), 10, 6, 5, 4), [iron, iron])), cx, M + H / 2, 0);
         add(shade(new THREE.Mesh(new THREE.CylinderGeometry(50, 56, 30, 36), iron)), cx, dz, IT + 15);
-        add(shade(new THREE.Mesh(new THREE.TorusGeometry(50, 5, 12, 40).rotateX(Math.PI / 2), K.brass)), cx, dz, IT + 31);
-        add(shade(new THREE.Mesh(new THREE.CylinderGeometry(44, 44, 8, 36), K.brass)), cx, dz, IT + 34);
         add(shade(new THREE.Mesh(new THREE.CylinderGeometry(12, 12, 150, 20).rotateX(Math.PI / 2), K.chrome)), cx, dz + 75 + 20, IT + 26);
         add(shade(new THREE.Mesh(new THREE.CylinderGeometry(20, 20, 30, 24).rotateX(Math.PI / 2), iron)), cx, dz + 62, IT + 26);
         add(shade(new THREE.Mesh(new THREE.BoxGeometry(44, 26, 44), iron)), cx, M + 112, IT + 13);
-      }, { top: IT, key: [(W - (PCOL - 22)) / 2, 92 + 150 + 20 + 30 - 42, PCOL - 22, 84], die: [W / 2, 92, 50] });
+      }, { top: IT, key: [(W - (PCOL - 22)) / 2, 92 + 150 + 20 + 30 - 42, PCOL - 22, 84], die: [W / 2, 92, 55] });
+      // The die: the brass ring and the disc it holds, lying on what it stamps.
+      const DR = 55, DM = 20;
+      await part('registry_die', 2 * DR, 2 * DR, DM, () => {
+        add(shade(new THREE.Mesh(new THREE.TorusGeometry(50, 5, 12, 40).rotateX(Math.PI / 2), K.brass)), DM + DR, DM + DR, 5);
+        add(shade(new THREE.Mesh(new THREE.CylinderGeometry(44, 44, 8, 36), K.brass)), DM + DR, DM + DR, 8);
+      }, { radius: DR });
     });
 
     // The hover slip: white plastic, lifted over the leaf, the game prints the building's name and place on it.
