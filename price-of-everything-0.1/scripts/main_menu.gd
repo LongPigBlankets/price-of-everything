@@ -23,6 +23,9 @@ const DemoBuild := preload("res://scripts/demo_build.gd")
 const TITLE_LOGO: Texture2D = preload("res://assets/ui/title_logo_trio.png")
 # Preload (not a class_name) keeps the New Game panel out of the headless class cache.
 const NewGamePanelScene := preload("res://scripts/new_game_panel.gd")
+## The DS2 look of the settings screen (the company registry), used while UiPrefs.use_new_game_ds2 is on. Loaded by
+## path, so the old panel stands whatever the state of the new script.
+const NEW_GAME_DS2_SCRIPT := "res://scripts/new_game_ds2/new_game_ds2.gd"
 const TutorialPanelScene := preload("res://scripts/tutorial_intro_panel.gd")
 const HallOfRecordsPanelScene := preload("res://scripts/hall_of_records_panel.gd")
 const TutorialPromptScene := preload("res://scripts/tutorial_prompt_dialog.gd")
@@ -204,7 +207,10 @@ func _on_back_requested() -> void:
 
 func _build_new_game_panel() -> void:
 	_goods_grid = get_node_or_null("GoodsGrid")
-	_new_game_panel = NewGamePanelScene.new()
+	var ds2 := UiPrefs.use_new_game_ds2 and ResourceLoader.exists(NEW_GAME_DS2_SCRIPT)
+	_new_game_panel = ((load(NEW_GAME_DS2_SCRIPT) as GDScript) if ds2 else NewGamePanelScene).new()
+	if not UiPrefs.new_game_ds2_changed.is_connected(_on_new_game_ds2_changed):
+		UiPrefs.new_game_ds2_changed.connect(_on_new_game_ds2_changed)
 	# Full height (less the gap that lets the goods board peek beneath); the horizontal
 	# geometry is fixed rather than anchored, so see _layout_new_game_panel.
 	_new_game_panel.anchor_top = 0.0
@@ -218,6 +224,24 @@ func _build_new_game_panel() -> void:
 	_new_game_panel.back_requested.connect(_on_back_requested)
 	add_child(_new_game_panel)
 	_layout_new_game_panel()
+
+
+## The look changed under the cheat: the panel is built again in the other look, open again if it was open.
+func _on_new_game_ds2_changed(_enabled: bool) -> void:
+	if _new_game_panel == null:
+		return
+	var was_open := _new_game_panel.visible
+	_new_game_panel.queue_free()
+	_new_game_panel = null
+	_build_new_game_panel()
+	if was_open:
+		_new_game_panel.visible = true
+		_new_game_panel.modulate.a = 1.0
+
+
+## Whether the settings screen standing is the DS2 one (the company registry).
+func new_game_is_ds2() -> bool:
+	return _new_game_panel != null and _new_game_panel.get_script() != NewGamePanelScene
 
 
 ## Left edge: the menu section ends at a quarter of the screen less its inset, and the panel

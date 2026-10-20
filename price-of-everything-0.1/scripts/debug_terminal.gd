@@ -17,6 +17,7 @@ extends CanvasLayer
 ##   swap port badge                 gold port hex on selling buildings <-> lines to the port row
 ##   swap empire button               toggle the Empire View button's two icon treatments
 ##   toggle dock ds2                  switch the updates dock to its DS2 look (in review; v2 is default), and again to return
+##   toggle newgame ds2               switch the New Game settings screen to its DS2 look, the company registry (in review), and again to return
 ##   toggle legend ds2                put the map legends on the DS2 plastic pad (in review; v2 is default), and again to return
 ##   toggle research ds2              switch the Research panel to its DS2 look, the patent board and plan chest (in review), and back
 ##   research all                     unlock every research node (alias of `unlock all`)
@@ -374,6 +375,9 @@ func _run_command(text: String) -> String:
 			if " ".join(parts.slice(1)).to_lower() == "research ds2":
 				UiPrefs.toggle_use_research_ds2()
 				return "Research → %s" % ("DS2 (patent board and plan chest)" if UiPrefs.use_research_ds2 else "v2")
+			if " ".join(parts.slice(1)).to_lower() == "newgame ds2":
+				UiPrefs.toggle_use_new_game_ds2()
+				return "New Game → %s" % ("DS2 (the company registry)" if UiPrefs.use_new_game_ds2 else "the old panel")
 			if parts.size() >= 2 and parts[1].to_lower() in ["roads", "roadsv2"]:
 				# Phase-5 cutover: roads-v2 is the only system. This just shows/hides
 				# the road VISUALS — the network/logic runs regardless.
@@ -401,7 +405,7 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 2 and parts[1].to_lower() == "midcentury":
 				MapStyle.set_midcentury(not MapStyle.is_midcentury())
 				return "map style → %s" % _style_name()
-			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | dock ds2 | legend ds2 | research ds2"
+			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | dock ds2 | legend ds2 | research ds2 | newgame ds2"
 		"anim":
 			# Cheat: cycle the Empire-view hex-field animation (1->2->3->4->1), or set it with `anim <n>`.
 			var bg := get_tree().get_first_node_in_group("empire_hex_bg")

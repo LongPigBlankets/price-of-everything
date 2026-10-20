@@ -17,6 +17,7 @@ signal legend_ds2_changed(enabled: bool)
 signal dock_ds2_changed(enabled: bool)
 ## The Research panel's DS2 look switched on or off.
 signal research_ds2_changed(enabled: bool)
+signal new_game_ds2_changed(enabled: bool)
 signal empire_button_icon_changed(use_badge: bool)
 
 # Debug-only: verbose per-turn production / CostSolver logs. Off by default because
@@ -45,6 +46,10 @@ var use_dock_ds2: bool = false
 # plan chest of drawers. Off until the owner has reviewed it; the debug cheat `toggle research ds2` switches it on.
 # Session-only.
 var use_research_ds2: bool = false
+# The New Game settings screen in DS2 (scripts/new_game_ds2/): the company registry, a desk with the card index of
+# company files, the file open on the blotter, the form of incorporation and the seal. Off until the owner has
+# reviewed it; the debug cheat `toggle newgame ds2` switches it on. Session-only.
+var use_new_game_ds2: bool = false
 # Building Detail v3's diagnostics: the Visual view (true) or the Text rows. The player's choice on the
 # panel's switch, kept while the game runs (closing the panel or starting a match keeps it).
 var bdp_diag_visual: bool = false
@@ -117,6 +122,16 @@ func set_use_research_ds2(enabled: bool) -> bool:
 
 func toggle_use_research_ds2() -> bool:
 	return set_use_research_ds2(not use_research_ds2)
+
+func set_use_new_game_ds2(enabled: bool) -> bool:
+	if enabled == use_new_game_ds2:
+		return use_new_game_ds2
+	use_new_game_ds2 = enabled
+	new_game_ds2_changed.emit(use_new_game_ds2)
+	return use_new_game_ds2
+
+func toggle_use_new_game_ds2() -> bool:
+	return set_use_new_game_ds2(not use_new_game_ds2)
 
 func set_bdp_diag_visual(visual: bool) -> void:
 	bdp_diag_visual = visual
