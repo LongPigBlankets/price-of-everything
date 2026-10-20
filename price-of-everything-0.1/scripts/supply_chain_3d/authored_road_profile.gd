@@ -6,6 +6,8 @@ const Model := preload("res://scripts/empire_board_model.gd")
 const Index := preload("res://scripts/supply_chain_3d/road_index.gd")
 const STEP := 6.0
 const BUCKET := 64.0
+## A river deck's underside clears the bank and bed by this much.
+const DECK_CLEARANCE := 0.6
 var segments: Array = []
 var crossings: Array = []
 var buckets := {}
@@ -67,31 +69,19 @@ func configure(data: Dictionary, rivers: Dictionary, ground: Callable, open_wate
 		for span in spans:
 			var start: int = span[0]
 			var end: int = span[1]
-			# Clear the full carriageway and its common height-field sampling rim,
-			# not just the centreline (which can sit well below a sloped bank).
-			var deck := -INF
-			for k in range(start, end + 1):
-				var tangent := points[mini(k + 1, points.size() - 1)] - points[maxi(0, k - 1)]
-				var normal := tangent.normalized().orthogonal() * (half + 9.0)
-				for p in [points[k], points[k] - normal, points[k] + normal]:
-					deck = maxf(deck, float(ground.call(p)) + 5.0)
-			var left := deck
-			var right := deck
+			# A flat concrete deck at road level: straight across from one bank to the other,
+			# lifted only where the carriageway would otherwise meet the ground.
+			var left := heights[start]
+			var right := heights[end]
 			starts[start] = true
 			ends[end - 1] = true
 			for k in range(start, end + 1):
-				heights[k] = lerpf(left, right, float(k - start) / (end - start))
+				var tangent := points[mini(k + 1, points.size() - 1)] - points[maxi(0, k - 1)]
+				var normal := tangent.normalized().orthogonal() * half
+				var clear := -INF
+				for p in [points[k], points[k] - normal, points[k] + normal]: clear = maxf(clear, float(ground.call(p)) + DECK_CLEARANCE)
+				heights[k] = maxf(lerpf(left, right, float(k - start) / (end - start)), clear if k != start and k != end else -INF)
 				if k < end: bridge_at[k] = true
-			# Ease the rise into dry land instead of a vertical step at the bank.
-			for sign_v in [-1, 1]:
-				var anchor: int = start if sign_v < 0 else end
-				var distance := 0.0
-				var k: int = anchor + sign_v
-				while k >= 0 and k < points.size() and distance < 42.0:
-					distance += points[k].distance_to(points[k - sign_v])
-					var blend := smoothstep(0.0, 42.0, distance)
-					heights[k] = maxf(heights[k], lerpf(heights[anchor], heights[k], blend))
-					k += sign_v
 			crossings.append({"source": path.id, "a": points[start], "b": points[end], "height_a": left, "height_b": right})
 		for k in range(1, points.size()):
 			var rec := {"a": points[k - 1], "b": points[k], "ha": heights[k - 1], "hb": heights[k],
@@ -158,7 +148,8 @@ func mesh_for(tid: String, ground: Callable, origin: Vector2) -> ArrayMesh:
 		var b := clipped[1]
 		var ha := lerpf(rec.ha, rec.hb, a.distance_to(rec.a) / maxf(length, 0.001)) + 0.80
 		var hb := lerpf(rec.ha, rec.hb, b.distance_to(rec.a) / maxf(length, 0.001)) + 0.80
-		var n := (b - a).orthogonal().normalized() * float(rec.half)
+		# The concrete plate stands a little proud of the carriageway, so its edge reads as a deck.
+		var n := (b - a).orthogonal().normalized() * (float(rec.half) + 0.9)
 		var left_a := Vector3(a.x + n.x - origin.x, ha, a.y + n.y - origin.y)
 		var left_b := Vector3(b.x + n.x - origin.x, hb, b.y + n.y - origin.y)
 		var right_a := Vector3(a.x - n.x - origin.x, ha, a.y - n.y - origin.y)
@@ -178,4 +169,15 @@ func mesh_for(tid: String, ground: Callable, origin: Vector2) -> ArrayMesh:
 		for edge in [[left_a, left_b], [right_a, right_b]]:
 			batch.tube(edge[0] + Vector3.UP * 3.0, edge[1] + Vector3.UP * 3.0, 0.35, Color("60666a"), 4)
 			if rec.post: batch.tube(edge[0], edge[0] + Vector3.UP * 3.0, 0.4, concrete, 4)
+		# Piers: a pair of round columns under the deck edges on a cross beam, down to the bed,
+		# at every third deck point (about 15 apart), none at the abutments.
+		if rec.post and not rec.start and a.is_equal_approx(rec.a):
+			var top := ha - 2.2
+			var foot := float(ground.call(a)) - 1.5
+			if top - foot > 0.8:
+				for side in [-0.75, 0.75]:
+					var q: Vector2 = a + n * side
+					batch.tube(Vector3(q.x - origin.x, foot, q.y - origin.y), Vector3(q.x - origin.x, top, q.y - origin.y), 0.9, concrete, 8)
+				batch.tube(Vector3(a.x + n.x * 0.85 - origin.x, top - 0.45, a.y + n.y * 0.85 - origin.y),
+					Vector3(a.x - n.x * 0.85 - origin.x, top - 0.45, a.y - n.y * 0.85 - origin.y), 0.7, concrete, 4)
 	return batch.mesh()

@@ -213,7 +213,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 			var camera: Dictionary = board.capture_camera()
 			camera.target = builder.point(centre)
 			camera.yaw = board.Rig.HOME_YAW + PI * side
-			camera.pitch = board.Rig.HOME_PITCH
+			camera.pitch = float(OS.get_environment("AUDIT_PITCH")) if OS.get_environment("AUDIT_PITCH") != "" else board.Rig.HOME_PITCH
 			camera.span = float(OS.get_environment("AUDIT_SPAN")) if OS.get_environment("AUDIT_SPAN") != "" else 260.0
 			board.restore_camera(camera)
 			await _settle(board, 1.2)
