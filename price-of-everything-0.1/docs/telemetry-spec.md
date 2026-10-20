@@ -1,8 +1,39 @@
 # Spec — Playtest Telemetry (per-turn capture → end-of-run upload)
 
-Status: IMPLEMENTED; original design written 2026-07-20.
-Schema 4 interaction columns and receiver deployment: see [telemetry-interactions-demo.md](telemetry-interactions-demo.md).
-Scope: anonymous, consented capture of one row of economic data per turn, cached to disk
+Status: IMPLEMENTED; controls updated 2026-10-19. Original design written 2026-07-20.
+
+## Current shipped controls and reporting scope
+
+Settings → Telemetry owns the persistent gameplay-report preference. The first main-menu
+visit explains collection and offers a DS2 **Understood** button. New profiles default to
+**Send critical data for balancing**; **Send no data to developer** disables gameplay
+reports. Apply commits the choice; Back discards edits. The player's randomly generated
+report ID is selectable in this tab, alongside the deletion contact instructions.
+
+- Transmitted turn metrics: turn, profit, revenue, building count/types, power generated,
+  and goods produced. Supporting metadata: player/run/session IDs, OS family, version,
+  start/ruleset, cheats-used flag, timing, end reason and completion state.
+- `TelemetryState.balancing_payload()` filters both new reports and older queued reports.
+  Interaction history, detailed costs, money, loans, power demand, tutorial progress and
+  victory progress are not transmitted. Legacy receiver columns remain blank/empty so
+  the existing Sheets deployment continues to work. The schema-4 document describes
+  historical receiver capability, not the current client's disclosure/scope.
+- Opt-out takes effect immediately on Apply, clears captured rows/events, removes queued
+  gameplay reports/checkpoints, and cancels gameplay requests still in flight. Already
+  delivered reports cannot be recalled. Explicitly submitted feedback remains independent.
+- **A basic launch event remains enabled in either mode**, by owner request. Both the tab
+  and first-menu notice disclose this exception. EULA acceptance, headless mode and
+  `--no-telemetry` still gate all networking.
+- The profile is authoritative after loading a save; saved `telemetry.collect` cannot
+  override it. Returning to collection starts with subsequent turns, without backfilling.
+- Tests: `tests/unit/test_telemetry_controls.gd`; rendered/persistence review:
+  `tools/telemetry_controls_probe.tscn` (requires `TELEMETRY_REVIEW_OUTPUT` and
+  `--no-telemetry`, uses an isolated profile).
+
+The remaining capture/receiver tables record the original, richer internal format.
+The filtering above is the final boundary before disk spooling and upload.
+
+Historical scope: anonymous, consented capture of one row of economic data per turn, cached to disk
 every 10 turns and on every exit path, collated into one JSON envelope per run, and
 uploaded over HTTPS so the designer can analyse real playthroughs (friends demo → itch
 demo). No gameplay effect whatsoever.
@@ -21,9 +52,9 @@ Design pillars:
 - **Pure observer.** Telemetry reads sim state via the same signals every other
   turn-flow autoload uses. It never mutates sim state, never touches a sim RNG, never
   runs logic in `_process` (architecture contract invariants 2, 3, 5).
-- **Consent first, anonymous always.** Nothing is captured — not even to local disk —
-  until the player opts in. No names, no emails, no hardware IDs. One random UUID per
-  install so runs from the same person can be grouped.
+- **Respect the current Settings choice.** Gameplay reports default on; opting out
+  stops capture and removes undelivered reports. Basic launches are independent and
+  disclosed. No names, emails or hardware IDs; one random ID per profile groups runs.
 - **Crash-proof by spooling, not by blocking.** Rows are flushed to a local `.jsonl`
   every 10 turns; finished envelopes go to a local outbox; the outbox is retried on the
   next launch. The quit path never hangs waiting for a network call.
@@ -128,43 +159,15 @@ up as `ended_at` ≫ `received_at`).
 
 ---
 
-## 2. Consent — per-run opt-out at the start screens (BUILT 2026-07-21)
+## 2. Persistent telemetry controls (updated 2026-10-19)
 
-> **Demo builds (0.4.2+): the checkbox is hidden.** `TelemetryState.SHOW_CONSENT_CHECKBOX`
-> is `false`, so neither run-start screen offers the opt-out, consent is forced on for every
-> run, and a remembered opt-out in `profile.json` is cleared on the next start. Rationale: with
-> an opt-out available the developer could not tell whether anyone had opened the demo at all.
-> The rows, `PlayerProfile.telemetry_opt_out` and `send_metrics_enabled()` are unchanged and
-> return when the constant is flipped back. Disclose the always-on collection on the itch page.
-> Browser builds (`OS.get_name() == "Web"`) land on their own `WB Runs` / `WB Turns` tabs.
+The controls and scope above supersede the former start-screen checkbox and save-bound
+consent design. `SHOW_CONSENT_CHECKBOX` remains false; hiding that legacy UI must never
+force collection or clear `PlayerProfile.telemetry_opt_out`.
 
-**Owner decision (supersedes the earlier opt-in-popup draft):** consent is a
-default-ticked **opt-out checkbox on the two run-start surfaces** — the New Game
-settings panel and the Tutorial intro panel — fixed for the run's lifetime the
-moment it starts. Consent still *precedes* collection (nothing is captured before a
-start screen is passed), with none of the popup's friction.
-
-- **UI:** `UIHelpers.make_telemetry_consent_row()` — shared by both panels:
-  - Checkbox: **"Send in-game performance metrics to the developer"**
-  - Caption below: *"What kind of metrics do you send?"* — hover tooltip:
-    *"Revenue, profit, goods produced per turn, buildings count, loans.
-    Nothing outside the game is collected."*
-- **Flow:** the panel stages the choice via `TelemetryState.set_next_run_consent(
-  collect, tutorial)` (called by `main_menu` on Start / Begin Tutorial); the next
-  arm consumes it. Tutorial runs get a **`-T` suffix on the run id** so they
-  separate cleanly in the data.
-- **Per-run and save-bound:** the choice rides the save (`telemetry.collect`), so a
-  resumed opted-out run stays off and a resumed opted-in run keeps its run id and
-  playtime. Old saves (no key) default to on.
-- **Remembered default:** `PlayerProfile.telemetry_opt_out` stores the last checkbox
-  state so the next start screen defaults to the player's previous choice (fresh
-  installs default ticked).
-- **Identity:** `PlayerProfile.telemetry_player_id` — anonymous 32-hex per-install
-  uuid, minted lazily on first use (in-memory only under headless so tests never
-  dirty the profile).
-- **Gate:** when a run is opted out, TelemetryState captures no rows, writes no
-  checkpoint, and spools no envelope — finalize logs "metrics off, nothing sent".
-  The boot-time outbox retry still runs (those envelopes came from consented runs).
+`PlayerProfile.telemetry_notice_seen` records acknowledgement separately from the
+preference. `telemetry_preference_changed` applies profile changes to the active run
+and outbox. Neither profile field changes the simulation save version.
 
 ---
 
@@ -262,8 +265,9 @@ snapshot key, tolerant-reader like every other system (`save_load.gd:58-87`):
 "telemetry": { "run_id": run_id, "playtime_s": playtime_total_s }
 ```
 
-Missing key (old save) → mint a fresh `run_id`, playtime 0. Consent itself lives in
-the profile (§2), **never** in the save. `SAVE_VERSION` stays 6.
+Missing key (old save) → mint a fresh `run_id`, playtime 0. Legacy snapshots may
+include `collect`, but the current profile preference always wins. This controls-only
+change does not bump the simulation format (`SAVE_VERSION` is 17).
 
 Reload-and-replay means the same `(run_id, turn)` can be captured twice with different
 values. That is fine: rows are append-only and the analysis dedupes per `(run_id,
@@ -413,7 +417,8 @@ Exported-build gotchas — **all verified live 2026-07-20** against the real end
 One row per app start, sent before any run exists — the only signal that counts players
 who open the game and never finish a run, who otherwise produce no envelope at all.
 
-`TelemetryState._queue_launch()` runs in `_ready`, *before* the outbox sweep, so the row
+`TelemetryState._queue_launch()` runs in `start_session()` after the EULA gate,
+*before* the outbox sweep, so the row
 uploads in the same pass; an offline launch simply lands on a later boot. Payload is
 `kind: "launch"` with `launch_id`, `player_id`, `session_id`, `client.version`,
 `client.os` and `launched_at`; the server replies `launch_ok`.
@@ -421,17 +426,17 @@ uploads in the same pass; an offline launch simply lands on a later boot. Payloa
 `launched_at` is the **client's** clock. A queued launch can be received days later, so
 read `launched_at` for activity and `received_at` only for delivery lag.
 
-Because no run exists yet there is no per-run consent to read, so this honours the
-persistent `telemetry_opt_out` only while `SHOW_CONSENT_CHECKBOX` is true. Any envelope
-carrying a `kind` (`launch`, `feedback`) is excluded from the turn-delivery watermark.
+The owner explicitly keeps launch reporting enabled in both Settings modes. Any
+envelope carrying a `kind` (`launch`, `feedback`) is excluded from the turn-delivery
+watermark. Headless mode and `--no-telemetry` suppress launches as well.
 
 ### 6.3 Outbox spool
 
 - Envelope files: `<AppPaths base>/telemetry/outbox/<run_id>_<unix>.json`, written
   atomically (temp + `DirAccess.rename_absolute`, the `player_profile.gd:101` idiom).
-- On every app launch (and on return to main menu), if consent is granted and the
-  outbox is non-empty: upload each file, delete on success. Offline players simply
-  accumulate a few KB until they're online.
+- On every app launch, retry the outbox. Delete opted-out gameplay reports before
+  networking; filter older opted-in reports to the current balancing scope. Launch
+  events and explicitly submitted feedback have independent delivery paths.
 - The per-run `.jsonl` cache is deleted once its final (`run_complete`) envelope is
   confirmed uploaded; checkpoint envelopes keep it.
 
@@ -445,18 +450,14 @@ carrying a `kind` (`launch`, `feedback`) is excluded from the turn-delivery wate
 
 ---
 
-## 7. Privacy posture
+## 7. Player disclosure
 
-- Per-run opt-out, **on by default** (owner decision for the playtest phase — an
-  explicit checkbox on every run-start screen, with the collected fields listed one
-  hover away). Weaker than the original opt-in draft; acceptable for anonymous
-  playtest data, and the itch page must disclose it. Revisit for any wider release.
-- Collected: the §1 economic fields, run config (start/difficulty), game version, OS
-  family string, random IDs. **Not collected:** names, emails, IPs (Apps Script does
-  not expose caller IP to the script), hardware IDs, locale, save contents.
-- The itch page / README gets one sentence stating the above, mirroring the consent
-  copy. This posture (anonymous + opt-in + disclosed) is comfortably on the right
-  side of GDPR for a playtest; revisit if telemetry ever grows identifying fields.
+Keep the first-menu notice, Settings tooltip and public privacy notice aligned with
+`balancing_payload()` and `_launch_envelope()`. Do not add transmitted fields without
+updating the player-facing disclosure. The displayed user ID must be the same value
+used in reports; editor runs retain the existing `Developer` marker. The application
+does not send IP addresses, names, account details or typed search text. The Google
+service handles its own network connection metadata.
 
 ---
 

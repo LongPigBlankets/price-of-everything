@@ -1,4 +1,9 @@
-# Demo interaction telemetry — schema 4
+# Demo interaction telemetry — schema 4 (historical receiver capability)
+
+As of 2026-10-19, the client filters interaction columns and events out of transmitted
+reports. See [the current controls and reporting scope](telemetry-spec.md). Preserve
+these receiver columns for existing historical data; this document does not authorize
+new collection.
 
 ## Spreadsheet update
 

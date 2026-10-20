@@ -72,6 +72,8 @@ jobs:
           # These folders are already excluded by every production export preset.
           # Avoid importing workbench images and treating report CSVs as translations.
           touch "$PROJECT_DIR"/{artifacts,docs,reports,tests,tools}/.gdignore
+          # Balance-history CSVs are developer records, not runtime translations.
+          touch "$PROJECT_DIR/data/balance_baselines/.gdignore"
           godot --headless --path "$PROJECT_DIR" --editor --import --quit --log-file "$RUNNER_TEMP/startup-logs/import.log" 2>&1 | tee "$RUNNER_TEMP/startup-logs/import-console.log"
 
       - name: Save imported resources

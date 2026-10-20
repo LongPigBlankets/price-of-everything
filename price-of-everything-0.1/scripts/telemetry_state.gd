@@ -1,13 +1,12 @@
 extends Node
 ## Telemetry — phases A+B+C: anonymous run envelopes with one row of economic
-## data per turn (money, revenue, profit, loans, buildings, power, per-good
-## production, victory tracks, playtime), uploaded at close time and
+## data per turn (revenue, profit, buildings, power generated, per-good
+## production), uploaded at close time and
 ## crash-resilient via periodic checkpoints that carry the rows.
 ##
-## Consent (docs/telemetry-spec.md §2): opt-out checkbox on the New Game and
-## Tutorial screens, staged via set_next_run_consent() and fixed for the run's
-## lifetime — it rides the save ("collect"), so a resumed opted-out run stays
-## off. When off, nothing is captured, cached, or sent for that run. Tutorial
+## Settings > Telemetry owns the persistent gameplay-report choice. It applies
+## immediately on Apply, clears queued run reports on opt-out, and overrides saved
+## consent when resuming. Basic launch events remain enabled in either mode. Tutorial
 ## runs carry a "-T" run-id suffix. player_id is an anonymous per-install uuid
 ## from PlayerProfile.
 ##
@@ -40,11 +39,8 @@ const DemoEula := preload("res://scripts/demo_eula.gd")
 const ENDPOINT_URL := "https://script.google.com/macros/s/AKfycbw8dUX-A_dSKmI2GB4_2AbRXbGnOKTbP8mpEa17t6wBBAg4Y0LcCnS_xJNH3EeNRwdr/exec"
 const TOKEN := "d299f45324f48cce4b9257789dfc493e172d5ac657ba1641"
 const SCHEMA_VERSION := 5  # v5: tutorial_step + tutorial_visited in the run block
-## Whether the New Game and Tutorial screens offer the "send metrics" checkbox. The demo
-## ships with it HIDDEN so every run reports: an opt-out box left the developer unable to
-## tell whether anyone had opened the game at all. When hidden, consent is forced on and
-## any remembered opt-out in profile.json is cleared on the next start. Flip to true to
-## restore the visible opt-out (the rows and PlayerProfile plumbing are untouched).
+## The persistent choice now lives in Settings > Telemetry. Legacy start-screen rows
+## remain hidden; hiding them never overrides the remembered preference.
 const SHOW_CONSENT_CHECKBOX := false
 const QUIT_UPLOAD_WINDOW_MSEC := 6000  # Apps Script round trips run 1.5-4 s
 const CHECKPOINT_EVERY := 10
@@ -90,11 +86,12 @@ var _run_started_unix := 0
 var _run_started_msec := 0
 var _playtime_carried_s := 0  # playtime from earlier sessions of a loaded run
 var _session_ordinal := 1     # 1 = first sitting of the run, +1 per load
-var _collect := true          # this run's consent (the opt-out checkbox at start)
+var _collect := true          # active gameplay-report preference from Settings
 var _next_collect := true     # staged by the New Game / Tutorial screens
 var _next_tutorial := false   # staged: suffix the next run id with "-T"
 var _rows: Array = []         # one Dictionary per completed turn, this session
 var _uploading := {}  # path -> that file's delivery watermark while its request is in flight
+var _upload_requests := {}  # path -> cancellable HTTPRequest
 # Highest turn the server has ACCEPTED for this run. Every envelope used to carry the whole
 # run history, so a checkpoint upload followed by the final envelope wrote turn 1 to the sheet
 # two or three times over (owner 2026-08-01) — visible there as nested prefixes: 1-10, 1-20,
@@ -204,6 +201,7 @@ func _watch_ui_node(node: Node) -> void:
 
 
 func _ready() -> void:
+	PlayerProfile.telemetry_preference_changed.connect(_on_preference_changed)
 	# The agreement is the first screen. Do not report a launch/retry old uploads
 	# while the player is still deciding whether to accept the terms.
 	start_session.call_deferred()
@@ -241,13 +239,16 @@ func start_session() -> void:
 ## One row per app start, spooled straight into the outbox so the _ready sweep uploads it
 ## immediately and an offline launch still lands on a later boot. A player who opens the game
 ## and never finishes a run produces no envelope at all, so without this they are invisible.
-## Deliberately outside the per-run consent: this fires before any run exists, so it honours
-## only the persistent opt-out, and only while that opt-out is actually reachable in the UI.
+## Deliberately outside the gameplay-report preference, as explained in Settings and
+## the first-menu notice. Agreement acceptance and --no-telemetry still gate all uploads.
 func _queue_launch() -> void:
-	if SHOW_CONSENT_CHECKBOX and PlayerProfile.telemetry_opt_out:
-		return
+	var data := _launch_envelope()
+	_write_json(AppPaths.telemetry_outbox_dir().path_join("launch_%s.json" % data.launch_id), data)
+
+
+func _launch_envelope() -> Dictionary:
 	var launch_id := _uuid()
-	_write_json(AppPaths.telemetry_outbox_dir().path_join("launch_%s.json" % launch_id), {
+	return {
 		"token": TOKEN, "kind": "launch", "launch_id": launch_id,
 		"player_id": PlayerProfile.get_telemetry_player_id(),
 		"session_id": _session_id,
@@ -256,7 +257,75 @@ func _queue_launch() -> void:
 			"os": OS.get_name(),
 		},
 		"launched_at": int(Time.get_unix_time_from_system()),
-	})
+	}
+
+
+func _on_preference_changed(opt_out: bool) -> void:
+	_collect = not opt_out
+	_next_collect = not opt_out
+	if not opt_out:
+		return
+	_rows.clear()
+	_events.clear()
+	if not enabled:
+		return
+	for path in _upload_requests.keys():
+		var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		if data is Dictionary and not _is_run_report(data):
+			continue
+		var request: HTTPRequest = _upload_requests[path]
+		request.cancel_request()
+		request.queue_free()
+		_upload_requests.erase(path)
+		_uploading.erase(path)
+	_discard_run_reports()
+
+
+static func _is_run_report(data: Dictionary) -> bool:
+	return str(data.get("kind", "")) not in ["launch", "feedback"]
+
+
+func _discard_run_reports(directory: String = "") -> void:
+	if directory == "": directory = AppPaths.telemetry_outbox_dir()
+	for name in DirAccess.get_files_at(directory):
+		if not (name.ends_with(".json") or name.ends_with(".json.tmp")):
+			continue
+		var path := directory.path_join(name)
+		var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		if data is Dictionary and _is_run_report(data):
+			DirAccess.remove_absolute(path)
+
+
+## Apply to new envelopes and queued older envelopes alike. Keep sheet columns empty
+## where older receiver versions expect them, while transmitting only balancing metrics.
+static func balancing_payload(data: Dictionary) -> Dictionary:
+	if not _is_run_report(data):
+		return data
+	var clean := data.duplicate(true)
+	for key in clean.keys():
+		if key not in ["token", "schema", "run_id", "session_id", "player_id", "sent_at", "client", "run", "end", "turns", "events"]:
+			clean.erase(key)
+	clean["events"] = []
+	var rows: Array = []
+	for raw in clean.get("turns", []):
+		if not raw is Dictionary:
+			continue
+		var row: Dictionary = raw.duplicate(true)
+		for key in row:
+			if key not in ["turn", "profit", "revenue", "buildings", "buildings_list", "power_gen", "produced"]:
+				row[key] = [] if row[key] is Array else ({} if row[key] is Dictionary else "")
+		rows.append(row)
+	clean["turns"] = rows
+	var run: Dictionary = clean.get("run", {})
+	for key in run.keys():
+		if key not in ["started_at", "ruleset", "start", "cheats_used"]: run.erase(key)
+	var ending: Dictionary = clean.get("end", {})
+	for key in ending.keys():
+		if key not in ["reason", "run_complete", "turn", "ended_at", "playtime_s"]: ending.erase(key)
+	var client: Dictionary = clean.get("client", {})
+	for key in client.keys():
+		if key not in ["version", "os"]: client.erase(key)
+	return clean
 
 
 func _connect_tutorial() -> void:
@@ -280,7 +349,7 @@ func _notification(what: int) -> void:
 
 
 ## Staged by the New Game / Tutorial screens just before a run starts; consumed
-## by the next arm (loads then override consent from the save in import_state).
+## by the next arm; the current Settings preference remains authoritative on load.
 func set_next_run_consent(collect: bool, tutorial: bool) -> void:
 	_next_collect = collect
 	_next_tutorial = tutorial
@@ -293,7 +362,7 @@ func _on_run_started() -> void:
 		_finalize_run("quit_to_menu")
 	_armed = true
 	_finalized = false
-	_collect = _next_collect
+	_collect = _next_collect and not PlayerProfile.telemetry_opt_out
 	_run_id = _uuid() + ("-T" if _next_tutorial else "")
 	_next_collect = true
 	_next_tutorial = false
@@ -509,8 +578,8 @@ func import_state(d: Dictionary) -> void:
 	_run_started_unix = int(d.get("started_at", _run_started_unix))
 	_playtime_carried_s = int(d.get("playtime_s", 0))
 	_session_ordinal = int(d.get("session", 1)) + 1
-	# Consent was fixed when the run started; a resumed opted-out run stays off.
-	_collect = bool(d.get("collect", true))
+	# A match save cannot change the player's current Settings preference.
+	_collect = not PlayerProfile.telemetry_opt_out
 	_run_started_msec = Time.get_ticks_msec()
 	_rows = []
 	_events = (d.get("events", []) as Array).duplicate(true) if _collect else []
@@ -622,7 +691,7 @@ func _finalize_run(reason: String) -> void:
 
 func _build_envelope(reason: String) -> Dictionary:
 	var now := int(Time.get_unix_time_from_system())
-	return {
+	return balancing_payload({
 		"token": TOKEN,
 		"schema": SCHEMA_VERSION,
 		"player_id": PlayerProfile.get_telemetry_player_id(),
@@ -655,7 +724,7 @@ func _build_envelope(reason: String) -> Dictionary:
 		},
 		"turns": _undelivered_rows(),
 		"events": _events.duplicate(true),
-	}
+	})
 
 
 ## Rows the server has not confirmed yet. A failed upload leaves its file in the outbox and the
@@ -730,8 +799,16 @@ func _upload_file(path: String) -> void:
 	var body := FileAccess.get_file_as_string(path)
 	if body == "":
 		return
+	var data: Variant = JSON.parse_string(body)
+	if not data is Dictionary:
+		return
+	if _is_run_report(data) and PlayerProfile.telemetry_opt_out:
+		DirAccess.remove_absolute(path)
+		return
+	body = JSON.stringify(balancing_payload(data))
 	_uploading[path] = _watermark_of(body)
 	var http := HTTPRequest.new()
+	_upload_requests[path] = http
 	http.use_threads = true
 	http.timeout = 15.0
 	# Never let HTTPRequest follow the 302 itself. Apps Script parks every response body on a
@@ -744,12 +821,17 @@ func _upload_file(path: String) -> void:
 	var err := http.request(ENDPOINT_URL, ["Content-Type: application/json"],
 			HTTPClient.METHOD_POST, body)
 	if err != OK:
+		_upload_requests.erase(path)
 		_uploading.erase(path)
 		http.queue_free()
 
 
 func _on_upload_done(result: int, code: int, headers: PackedStringArray,
 		body: PackedByteArray, http: HTTPRequest, path: String) -> void:
+	_upload_requests.erase(path)
+	if not _uploading.has(path):
+		http.queue_free()
+		return
 	var delivered := int(_uploading.get(path, -1))
 	var feedback := path.get_file().begins_with("feedback_")
 	# Feedback is cleared only once the receiver confirms storage, and that confirmation sits
