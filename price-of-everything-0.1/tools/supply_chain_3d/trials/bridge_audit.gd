@@ -10,6 +10,7 @@ var report := {"sites": []}
 func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--trial-output="): output = arg.trim_prefix("--trial-output=")
+		if arg == "--no-clearance": preload("res://scripts/supply_chain_3d/building_clearance.gd").enabled = false
 	DirAccess.make_dir_recursive_absolute(output)
 	await super._ready()
 
@@ -148,6 +149,22 @@ func _keep(best: Dictionary, what: String, at: Vector2, rise: float, run: float,
 	best[key] = {"what": what, "at": [snappedf(at.x, 0.1), snappedf(at.y, 0.1)], "rise": snappedf(rise, 0.1), "run": snappedf(run, 0.1),
 		"bridge_end": bridge_end, "tile": str(builder.ground.tile_at(at)) if builder.ground.has_method("tile_at") else ""}
 
+## Everything standing on a road's carriageway (its own driveway aside): homes, depots, works.
+func _on_roads(builder: RefCounted) -> Array:
+	var Clearance := preload("res://scripts/supply_chain_3d/building_clearance.gd")
+	var roads: Array = []
+	for rec in builder.road_grade.segments: roads.append({"a": rec.a, "b": rec.b, "half": float(rec.get("widths", [rec.half])[-1]) if rec.has("widths") else float(rec.half)})
+	var index := Clearance.Index.segments(roads, 12.0)
+	var found: Array = []
+	for pair in builder.sprite_pairs:
+		if not pair.get("standing") is Dictionary or pair.standing.has("harbour"): continue
+		var st: Dictionary = pair.standing
+		if str(st.kind) not in ["house", "warehouse", "suppliers", "building", "site"]: continue
+		if Clearance._on_road(st, Clearance.base(st, str(builder.standing_key(st)), float(st.side)), roads, index):
+			found.append({"what": str(st.kind), "name": str(st.get("decor_asset", st.get("internal_name", ""))), "npc": bool(st.get("npc", false)), "at": [snappedf(st.pos.x, 0.1), snappedf(st.pos.y, 0.1)],
+				"tile": str(st.get("tile", ""))})
+	return found
+
 func _continent_review(board: Control, _home: Dictionary) -> void:
 	await _settle(board, 3.0)
 	if "--all-tiles" in OS.get_cmdline_user_args():
@@ -166,6 +183,17 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 		for rec in board._builder.road_grade.segments:
 			if Geometry2D.get_closest_point_to_segment(at, rec.a, rec.b).distance_to(at) < 60.0:
 				print("[PROBE] road L", rec.get("level", 1), " ", rec.a, "->", rec.b, " h ", snappedf(rec.ha, 0.1), "/", snappedf(rec.hb, 0.1), " bridge ", rec.bridge, " over_rail ", rec.over_rail, " eased ", board._builder.road_grade.nodes[rec.ka].get("eased", false), " core ", board._builder.road_grade.nodes[rec.ka].core, " base ", snappedf(board._builder.road_grade.nodes[rec.ka].base, 0.1))
+		var Clearance := preload("res://scripts/supply_chain_3d/building_clearance.gd")
+		for pair in board._builder.sprite_pairs:
+			if not pair.get("standing") is Dictionary: continue
+			var st: Dictionary = pair.standing
+			if (st.pos as Vector2).distance_to(at) > 50.0: continue
+			var shapes := Clearance.base(st, str(board._builder.standing_key(st)), float(st.side))
+			var best := INF
+			for rec in board._builder.road_grade.segments:
+				for poly in shapes:
+					if poly.size() >= 3: best = minf(best, Clearance.RoadPlacement.distance_to_polygon(rec.a, rec.b, poly) - float(rec.half))
+			print("[PROBE] standing ", st.kind, " ", st.get("decor_asset", st.get("internal_name", "")), " pos ", st.pos, " side ", snappedf(st.side, 0.1), " shapes ", shapes.size(), " pts ", (shapes[0] as PackedVector2Array).size() if not shapes.is_empty() else 0, " road_gap(half) ", snappedf(best, 0.1))
 		for rec in board._builder.authored_profile.segments:
 			if Geometry2D.get_closest_point_to_segment(at, rec.a, rec.b).distance_to(at) < 60.0:
 				print("[PROBE] authored ", rec.a, "->", rec.b, " h ", snappedf(rec.ha, 0.1), "/", snappedf(rec.hb, 0.1), " bridge ", rec.bridge, " elevated ", rec.get("elevated", false), " ground ", snappedf(board._builder.natural_height(rec.a), 0.1), "/", snappedf(board._builder.natural_height(rec.b), 0.1))
@@ -176,6 +204,9 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	report.bad_crossings = _bad_crossings(board._builder)
 	print("[BRIDGE] bad crossings ", report.bad_crossings.size())
 	for c in report.bad_crossings: print("[CROSSING] ", JSON.stringify(c))
+	report.on_roads = _on_roads(board._builder)
+	print("[BRIDGE] on roads ", report.on_roads.size())
+	for c in report.on_roads: print("[ONROAD] ", JSON.stringify(c))
 	report.steps = _steps(board._builder)
 	print("[BRIDGE] steps ", report.steps.size())
 	for c in report.steps: print("[STEP] ", JSON.stringify(c))
@@ -183,6 +214,7 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	if shots and "--shoot-faults" in OS.get_cmdline_user_args():
 		var faults: Array = []
 		for c in report.bad_crossings: faults.append({"label": "crossing_%s_over_%s" % [str(c.over).replace(" ", ""), str(c.under).replace(" ", "")], "at": c.at, "tile": c.tile})
+		for c in report.on_roads: faults.append({"label": "onroad_%s" % str(c.what), "at": c.at, "tile": c.tile})
 		for c in report.steps: faults.append({"label": "step_%s_%s" % [str(c.what).replace(" ", ""), "bridge" if c.bridge_end else "line"], "at": c.at, "tile": c.tile})
 		var shot_points: Array = []
 		var k := 0

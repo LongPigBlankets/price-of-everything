@@ -88,3 +88,22 @@ func _test_slid_base_may_reach_a_quarter_into_a_neighbour() -> void:
 	_check(Clearance._placeable(square.call(88.0), hex, land), "clearance: a fifth of the base on the next tile is allowed")
 	_check(not Clearance._placeable(square.call(95.0), hex, land), "clearance: more than a quarter on the next tile is not")
 	_check(not Clearance._placeable(square.call(0.0), hex, func(p: Vector2) -> bool: return p.x > 15.0), "clearance: no part of the base over sea terrain")
+
+func _test_homes_on_a_carriageway_are_left_out() -> void:
+	var road := _road(Vector2(-400, 0), Vector2(400, 0))
+	var on_road := {"iid": "on", "kind": "house", "tile": "tile_1_1", "pos": Vector2(0, 2), "side": 20.0, "level": 1, "yaw": 0.0}
+	var beside := {"iid": "beside", "kind": "house", "tile": "tile_1_1", "pos": Vector2(0, 60), "side": 20.0, "level": 1, "yaw": 0.0}
+	var model := {"standing": [on_road, beside], "roads": [road]}
+	Clearance.apply(model, Builder.standing_key)
+	var ids: Array = model.standing.map(func(s: Dictionary) -> String: return str(s.iid))
+	_check(not ids.has("on") and ids.has("beside"), "clearance: a home standing on the carriageway is left out, one beside it stays")
+
+func _test_depot_slides_off_a_carriageway() -> void:
+	var depot := {"iid": "store:tile_1_1", "kind": "warehouse", "tile": "tile_1_1", "pos": Vector2(0, 0), "side": 40.0, "level": 1, "yaw": 0.0}
+	var road := _road(Vector2(-400, 8), Vector2(400, 8))
+	var model := {"standing": [depot], "roads": [road], "tiles": {"tile_1_1": {"center": Vector2(0, 0)}}}
+	Clearance.apply(model, Builder.standing_key)
+	var moved: Dictionary = model.standing[0]
+	_check(float(moved.side) == 40.0 and (moved.pos as Vector2) != Vector2.ZERO and _carriageway_gap(moved, road) >= Clearance.CLEARANCE - 0.01,
+		"clearance: a depot keeps its size and slides off the carriageway")
+	_check(depot.pos == Vector2.ZERO, "clearance: the shared depot record is left as it was")

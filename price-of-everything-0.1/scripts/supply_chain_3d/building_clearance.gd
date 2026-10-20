@@ -14,6 +14,7 @@ const FarmFields := preload("res://scripts/supply_chain_3d/farm_fields.gd")
 const RoadPlacement := preload("res://scripts/supply_chain_3d/road_placement.gd")
 const Legacy := preload("res://scripts/empire_board.gd")
 const Model := preload("res://scripts/empire_board_model.gd")
+const Index := preload("res://scripts/supply_chain_3d/road_index.gd")
 ## Clear ground kept between a building's base and a carriageway or another building.
 const CLEARANCE := 1.5
 ## Growth tried, from the full scale down to the lot, in this many steps.
@@ -144,6 +145,34 @@ static func _fit(s: Dictionary, key: String, top: float, smallest: float, roads:
 			if _clear(moved, near_roads, near) and (shift == Vector2.ZERO or _placeable(moved, hex, water)): return [side, shift]
 	return [smallest, Vector2.ZERO]
 
+## Decorative homes never stand on a carriageway (a driveway to their own door aside): a home
+## that does is left out. Returns how many were.
+static func _clear_homes(model: Dictionary, key_for: Callable) -> int:
+	var roads: Array = []
+	for road in model.get("roads", []):
+		if road.get("tunnel", false): continue
+		var widths: Array = road.get("widths", Legacy._road_widths(int(road.get("level", 1))))
+		roads.append({"a": road.a, "b": road.b, "half": float(widths[widths.size() - 1])})
+	var index := Index.segments(roads, 12.0)
+	var kept: Array = []
+	var dropped := 0
+	for s in model.get("standing", []):
+		if str(s.get("kind", "")) != "house" or not _on_road(s, base(s, str(key_for.call(s)), float(s.side)), roads, index):
+			kept.append(s)
+		else: dropped += 1
+	if dropped > 0: model.standing = kept
+	return dropped
+
+static func _on_road(s: Dictionary, shapes: Array, roads: Array, index: Dictionary) -> bool:
+	for poly in shapes:
+		if poly.size() < 3: continue
+		var box := RoadPlacement.polygon_bounds(poly)
+		for id in Index.query(index, box.grow(2.0)):
+			var road: Dictionary = roads[id]
+			if _driveway(road, s): continue
+			if RoadPlacement.distance_to_polygon(road.a, road.b, poly) < float(road.half) - 0.5: return true
+	return false
+
 ## The driveway's door end follows a building that slid. Road records may be the shipped
 ## model's, so the moved one is a copy.
 static func _follow(model: Dictionary, s: Dictionary, shift: Vector2) -> void:
@@ -182,6 +211,24 @@ static func apply(model: Dictionary, key_for: Callable, water := Callable()) -> 
 		var pts: Array = line.get("pts", [])
 		for i in range(1, pts.size()): rails.append({"a": pts[i - 1], "b": pts[i], "reach": RAIL_HALF + CLEARANCE})
 	var changed := 0
+	# Depots (the company's warehouses, Local Suppliers) keep their size and slide off a
+	# carriageway they stand on, their driveway following; the works then fit around them.
+	for i in standing.size():
+		var depot: Dictionary = standing[i]
+		if str(depot.get("kind", "")) not in ["warehouse", "suppliers"] or depot.has("harbour"): continue
+		var key := str(key_for.call(depot))
+		var own_roads := roads.filter(func(road: Dictionary) -> bool: return not _driveway(road, depot)) + rails
+		if _clear(base(depot, key, float(depot.side)), own_roads, []): continue
+		var tile: Dictionary = model.get("tiles", {}).get(str(depot.get("tile", "")), {})
+		var hex := Model.hex_points(tile.center) if tile.has("center") else PackedVector2Array()
+		var fit := _fit(depot, key, float(depot.side), float(depot.side), own_roads, [], true, hex, water)
+		if fit[1] == Vector2.ZERO: continue
+		# The shipped model's records are shared: the view draws its own copy.
+		var copy := depot.duplicate()
+		copy.pos = (copy.pos as Vector2) + fit[1]
+		_follow(model, copy, fit[1])
+		standing[i] = copy
+		changed += 1
 	var settled: Array = []
 	# The company's buildings, against the streets and whatever does not give way to them.
 	for s in standing:
@@ -203,6 +250,8 @@ static func apply(model: Dictionary, key_for: Callable, water := Callable()) -> 
 		_resize(s, fit[0], fit[1])
 		if fit[1] != Vector2.ZERO: _follow(model, s, fit[1])
 		settled.append(base(s, key, float(s.side)))
+	changed += _clear_homes(model, key_for)
+	standing = model.standing
 	if settled.is_empty(): return changed
 	# NPC works and homes give way to them.
 	var kept: Array = []
