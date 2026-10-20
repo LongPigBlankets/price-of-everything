@@ -1,6 +1,7 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled, alpha_to_coverage, depth_prepass_alpha;
 #include "res://scripts/supply_chain_3d/detail_mask.gdshaderinc"
+#include "res://scripts/supply_chain_3d/print_look.gdshaderinc"
 uniform sampler2D artwork : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
 uniform bool textured = false;
 uniform bool strata = false;
@@ -43,6 +44,7 @@ void fragment() {
 		: mix(vec3(1.0), vec3(0.05, 0.08, 0.22), (0.5 - t) * 0.20);
 	vec3 grade = mix(vec3(0.66, 0.74, 1.0), vec3(1.0, 0.92, 0.72), t);
 	paint *= wash * grade * shading * 0.90;
+	paint = print_paint(paint, FRAGCOORD.xy, true, 0.0);
 	ALBEDO = OUTPUT_IS_SRGB ? paint : to_linear(paint);
 	if (hidden || loading_hidden(world_point.xz, FRAGCOORD.xy)) { discard; }
 }

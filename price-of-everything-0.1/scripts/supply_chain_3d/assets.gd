@@ -11,6 +11,7 @@ static var _glass: ShaderMaterial
 static var _lit_glass: Dictionary = {}
 static var _contour: ShaderMaterial
 static var _contours: Dictionary = {}
+static var _role_contours: Dictionary = {}
 static var _trees: Dictionary = {}
 static var _lit: Dictionary = {}
 static var _meshes: Dictionary = {}
@@ -122,6 +123,18 @@ static func cable_anchors(key: String) -> PackedVector3Array:
 		points.append(Vector3(xyz[0], xyz[1], xyz[2]))
 	return points
 
+## The outline material for a role: the shared one as authored, or a copy for scenery and NPC works.
+static func contour_material(role: float) -> ShaderMaterial:
+	if _contour == null:
+		_contour = ShaderMaterial.new()
+		_contour.shader = ContourShader
+	if role <= 0.0: return _contour
+	if not _role_contours.has(role):
+		var material := _contour.duplicate() as ShaderMaterial
+		material.set_shader_parameter("sc_role", role)
+		_role_contours[role] = material
+	return _role_contours[role]
+
 static func contour_for(key: String) -> Mesh:
 	if key == "" or not bool(_manifest.get(key, {}).get("contour", false)): return null
 	if _contour == null:
@@ -148,6 +161,7 @@ static func tree_material(fir: bool) -> ShaderMaterial:
 		# Calibrated against matching source-board tree crops: preserve its muted
 		# foliage instead of the saturated greens from the general colour curve.
 		material.set_shader_parameter("foliage_tint", Vector3(0.81, 0.74, 0.83) if fir else Vector3(0.835, 0.735, 0.865))
+		material.set_shader_parameter("landscape", true)
 		_trees[fir] = material
 	return _trees[fir]
 
@@ -164,6 +178,7 @@ static func set_grade(value: Vector2) -> void:
 		_contour = ShaderMaterial.new()
 		_contour.shader = ContourShader
 	_contour.set_shader_parameter("grade_range", value)
+	for material in _role_contours.values(): material.set_shader_parameter("grade_range", value)
 	glass_material().set_shader_parameter("grade_range", value)
 	for material in _lit_glass.values(): material.set_shader_parameter("grade_range", value)
 	for material in _lit.values(): material.set_shader_parameter("grade_range", value)

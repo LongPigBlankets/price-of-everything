@@ -29,9 +29,10 @@ func _test_stoneshore_bridge_profile() -> void:
 		"points": PackedVector2Array([Vector2(-100, 0), Vector2(100, 0)])}]},
 		{"test": [{"points": PackedVector2Array([Vector2(0, -100), Vector2(0, 100)]), "start_width": 24.0, "end_width": 24.0}]}, ground)
 	_check(profile.crossings.size() == 1, "Stoneshore: river crossing becomes one bank-to-bank bridge")
-	_check(profile.height_at(Vector2.ZERO) >= 13.0, "Stoneshore: bridge clears the river and joins the bank height")
+	_check(profile.height_at(Vector2.ZERO) >= 10.0 and profile.height_at(Vector2.ZERO) <= 10.0 + Profile.DECK_CLEARANCE + 0.01,
+		"Stoneshore: bridge deck stays at road level across the river, level with its banks")
 	_check(is_equal_approx(profile.height_at(Vector2(-100, 0)), 10.0), "Stoneshore: bridge approach returns to the terrain")
-	_check(profile.mesh_for("test", ground, Vector2.ZERO).get_surface_count() > 0, "Stoneshore: bridge has a deck underside and guard rails")
+	_check(profile.mesh_for("test", ground, Vector2.ZERO).get_surface_count() > 0, "Stoneshore: bridge has a deck plate and parapets")
 	_check(profile.mesh_for("outside", ground, Vector2.ZERO).get_surface_count() == 0, "Stoneshore: bridge structures are clipped to pilot tiles")
 
 func _test_stoneshore_interior_crossings() -> void:

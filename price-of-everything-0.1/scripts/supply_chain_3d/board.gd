@@ -83,6 +83,7 @@ var _last_graph: Dictionary = {}
 var _last_terrain: Node
 var _last_show: Dictionary = {}
 var _last_evening := false
+var _last_calm := false
 var _effects: Array = []
 var _labels: Control
 var _detail := -1
@@ -92,6 +93,10 @@ var _last_all_tiles := false
 var _coverage: OptionButton
 ## Session switch: evening lights every town, daylight lights only polluted tiles.
 static var evening := false
+## Session switches for the look: the ink and paper print over the whole view, and decorative
+## scenery stepping back behind the works (lower contrast, finer outlines, fewer and dimmer lights).
+static var print_look := true
+static var calm_scenery := true
 var _light: OptionButton
 var _environment: Environment
 var _progress: Label
@@ -334,6 +339,7 @@ func _ready() -> void:
 	environment.environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	_environment = environment.environment
 	_apply_light()
+	apply_look()
 	_world.add_child(environment)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-55, -30, 0)
@@ -461,6 +467,21 @@ func set_evening(value: bool) -> void:
 	if show_all_tiles or not is_instance_valid(_last_terrain): return
 	await _build(_last_graph, _last_terrain, true)
 
+## The print and the calming are shader globals, so every material takes them at once.
+static func apply_look() -> void:
+	RenderingServer.global_shader_parameter_set("sc3d_print", 1.0 if print_look else 0.0)
+	RenderingServer.global_shader_parameter_set("sc3d_calm", 1.0 if calm_scenery else 0.0)
+
+func set_look(printed: bool, calm: bool) -> void:
+	if printed == print_look and calm == calm_scenery: return
+	var relight := calm != calm_scenery
+	print_look = printed
+	calm_scenery = calm
+	apply_look()
+	# Which homes light up depends on the calming, so the company scene relights.
+	if not relight or show_all_tiles or not is_instance_valid(_last_terrain): return
+	await _build(_last_graph, _last_terrain, true)
+
 ## Evening is a per-channel curve after the tonemap: mid tones drop and cool, while the
 ## brightest values (lit windows, lamp glows) keep their warmth.
 func _apply_light() -> void:
@@ -506,7 +527,8 @@ func set_all_tiles(value: bool, _persist: bool = true) -> void:
 	_fit_after_build = not value
 	_medium_after_build = value
 	# A company scene built in the other light is rebuilt rather than reused.
-	if _coverage_states.has(value) and (value or _coverage_states[value].builder.evening == evening):
+	if _coverage_states.has(value) and (value or (_coverage_states[value].builder.evening == evening
+			and _coverage_states[value].builder.calm_scenery == calm_scenery)):
 		_activate(_coverage_states[value])
 	elif is_instance_valid(_last_terrain):
 		await _build(_last_graph, _last_terrain, true)
@@ -530,6 +552,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	builder.streamed = show_all_tiles
 	builder.flat = flat
 	builder.evening = evening
+	builder.calm_scenery = calm_scenery
 	builder.cursor_picking = true
 	builder.lazy_assets = true
 	builder.terrain_cache = _terrain_cache
@@ -600,6 +623,10 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 		if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
 			preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").restrict_model(model)
 		_solve_layout(model, terrain, rivers, queries, builder, water, timings)
+	# The company's buildings grow only as far as they keep clear of streets and neighbours.
+	var clearance_started := Time.get_ticks_usec()
+	timings.buildings_held_back = preload("res://scripts/supply_chain_3d/building_clearance.gd").apply(model, Builder.standing_key, builder.open_water)
+	timings.clearance_ms = (Time.get_ticks_usec() - clearance_started) / 1000.0
 	timings.layout_solve_ms = (Time.get_ticks_usec() - solve_started) / 1000.0
 	if not show_all_tiles:
 		await get_tree().process_frame
@@ -610,7 +637,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	timings.model_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	stage = Time.get_ticks_usec()
 	if show_all_tiles: print("[CONTINENT BUILD] model ready ", Time.get_ticks_msec())
-	if model == _model and Legacy.show == _last_show and show_all_tiles == _last_all_tiles and evening == _last_evening and flat == built_flat():
+	if model == _model and Legacy.show == _last_show and show_all_tiles == _last_all_tiles and evening == _last_evening and calm_scenery == _last_calm and flat == built_flat():
 		_building = false
 		if _progress != null: _progress.hide()
 		next.free()
@@ -875,6 +902,7 @@ func _activate(packet: Dictionary) -> void:
 	_model = model
 	_last_show = Legacy.show.duplicate()
 	_last_evening = packet.builder.evening
+	_last_calm = packet.builder.calm_scenery
 	if _coverage != null: _coverage.set_item_disabled(1, builder.flat)
 	_last_all_tiles = show_all_tiles
 	_goods = packet.goods

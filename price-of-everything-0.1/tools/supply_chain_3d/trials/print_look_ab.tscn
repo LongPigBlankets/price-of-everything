@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://tools/supply_chain_3d/trials/print_look_ab.gd" id="1"]
+
+[node name="PrintLookAB" type="Node"]
+script = ExtResource("1")

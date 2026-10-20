@@ -7,11 +7,18 @@ varying vec2 loading_world;
 uniform float outline_width_scale = 1.0;
 uniform vec3 outline_ink = vec3(0.1843137255, 0.2313725490, 0.3490196078);
 uniform vec2 grade_range = vec2(-100000.0, 100000.0);
+// 0 = the company's own and unclassified, 2 = decorative scenery, 3 = an NPC's. One shared material
+// per role (Assets.contour_material): outlines are too many for per-instance shader values.
+uniform float sc_role = 0.0;
 varying vec3 world_point;
+#include "res://scripts/supply_chain_3d/print_look.gdshaderinc"
 void vertex() {
 	loading_world = (MODEL_MATRIX * vec4(VERTEX,1.0)).xz;
 	world_point = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	VERTEX += NORMAL * UV.x * outline_width_scale;
+	// Scenery's outline is finer and lighter than a works', an NPC works' heavier and darker.
+	float scenery = sc_role > 1.5 && sc_role < 2.5 ? sc3d_calm : 0.0;
+	float npc_ink = sc_role > 2.5 ? sc3d_calm : 0.0;
+	VERTEX += NORMAL * UV.x * outline_width_scale * (1.0 - 0.35 * scenery + 0.7 * npc_ink);
 }
 vec3 to_linear(vec3 c) {
 	return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
@@ -23,5 +30,6 @@ void fragment() {
 	vec3 ink = outline_ink;
 	ink *= mix(vec3(0.90, 0.92, 0.96), vec3(1.0, 1.0, 0.98), t);
 	ink *= mix(vec3(0.66, 0.74, 1.0), vec3(1.0, 0.92, 0.72), t);
+	ink = print_paint(ink, FRAGCOORD.xy, false, sc_role > 2.5 ? -sc3d_calm : (sc_role > 1.5 ? sc3d_calm : 0.0));
 	ALBEDO = OUTPUT_IS_SRGB ? ink : to_linear(ink);
 }

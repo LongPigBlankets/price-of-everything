@@ -79,6 +79,8 @@ var infrastructure_bake := {}
 var origin := Vector2.ZERO
 ## Evening lights every town's windows and street lamps; otherwise only polluted tiles are lit.
 var evening := false
+## Decorative scenery steps back: homes never light up for pollution, and fewer light up at night.
+var calm_scenery := false
 var ground: RefCounted
 var rivers: Dictionary = {}
 var tiles: Dictionary = {}
@@ -230,6 +232,7 @@ func prepare_transport(model: Dictionary) -> void:
 		rail_plan=Railway.network(lines)
 		rail_urban.configure(tiles,road_grade.segments,road_grade.junctions,rail_plan,depots,railway_ground_height,railway_level,stations,model.get("standing",[]),standing_key,river_at)
 		preload("res://scripts/supply_chain_3d/rail_crossings.gd").build(road_grade,rail_plan,rail_urban,depots)
+		road_grade.ease_river_decks()
 		stages.rail_ms=(Time.get_ticks_usec()-tick)/1000.0
 		bake_cache.write(transport_key,TransportBake.packed(self))
 	if signature != "" and not reused: _company_transport = {"signature": signature, "key": transport_key}
@@ -2105,11 +2108,13 @@ func _ensure_standing_near(pair: Dictionary) -> void:
 	if not pair.near.is_empty(): return
 	if pair.standing.has("harbour"):
 		var frame := standing_frame(pair.standing)
-		for mesh in [Assets.mesh_for(frame.harbour_asset), Assets.contour_for(frame.harbour_asset)]:
+		var contour := Assets.contour_for(frame.harbour_asset)
+		for mesh in [Assets.mesh_for(frame.harbour_asset), contour]:
 			if mesh == null: continue
 			var visual := MeshInstance3D.new()
 			visual.mesh = mesh
-			set_role(visual, float(pair.get("role", 0.0)))
+			if mesh != contour: set_role(visual, float(pair.get("role", 0.0)))
+			elif float(pair.get("role", 0.0)) > 0.0: visual.material_override = Assets.contour_material(float(pair.get("role", 0.0)))
 			visual.transform = frame.harbour_transform
 			pair.root.add_child(visual)
 			if loading_reveal != null: loading_reveal.bind(visual)
@@ -2143,6 +2148,7 @@ func _ensure_standing_near(pair: Dictionary) -> void:
 		var outline := MeshInstance3D.new()
 		outline.name = "OuterContour"
 		outline.mesh = contour
+		if float(pair.get("role", 0.0)) > 0.0: outline.material_override = Assets.contour_material(float(pair.get("role", 0.0)))
 		outline.scale = visual.scale
 		pair.root.add_child(outline)
 		if loading_reveal != null: loading_reveal.bind(outline)
@@ -2194,6 +2200,21 @@ func _ensure_standing_pick(pair: Dictionary) -> void:
 
 const ROLE_DECOR := 2.0
 const ROLE_NPC := 3.0
+## Percent of homes lit in the evening while scenery is calm.
+const CALM_HOMES_LIT := 0
+## NPC works that smoke even while idle: what they are built for burns fuel.
+const SMOKING_WORKS := ["furnace", "power_plant", "petro_refinery", "poly_plant", "chem_plant"]
+
+## An NPC works smokes when its recipe burns something the carbon levy bites or digs coal (the
+## company's own rule), or, with no recipe, when it is built to burn fuel.
+static func npc_smokes(s: Dictionary) -> bool:
+	var recipe: Dictionary = Catalog.get_recipe(str(BuildingState.buildings.get(str(s.get("iid", "")), {}).get("recipe_id", "")))
+	if recipe.is_empty(): return str(s.get("internal_name", "")) in SMOKING_WORKS
+	for ip in recipe.get("inputs", []):
+		if float(Catalog.get_good(str((ip as Dictionary).get("good_id", ""))).get("co2_tax_multiplier", 0.0)) > 0.0: return true
+	for o in recipe.get("outputs", []):
+		if str(Catalog.get_good(str((o as Dictionary).get("good_id", ""))).get("internal_name", "")) == "coal": return true
+	return false
 
 ## How a standing object is coloured: NPC works toward paper white, scenery a little
 ## greyer, the company's own and everything else as authored.
@@ -2224,10 +2245,15 @@ func standing_node(s: Dictionary) -> Node3D:
 	if key == "" and not s.has("harbour"): dimension = Vector3(side * 0.8, side * 0.55, side * 0.65)
 	var polluted := int(tiles.get(str(s.tile), {}).get("polluters", 0)) > 0
 	var lightable := kind != "pylon" and family not in ["mine", "mine_flush", "civic_park", "civic_plaza", "civic_grove", "civic_pond"]
-	# In the evening most homes have a light on; works are lit through the night.
-	var home_lit := kind != "house" or absi(str(s.iid).hash()) % 100 < 75
-	var lit := lightable and (polluted or (evening and home_lit))
+	# In the evening most homes have a light on; works are lit through the night. Calm scenery
+	# leaves its homes dark, so lights and smoke mark the works. Dirty NPC works then smoke
+	# and light up like the company's own.
+	var home := kind == "house"
 	var role := role_of(s)
+	var smoking := bool(s.get("polluting", false)) or (calm_scenery and role == ROLE_NPC and npc_smokes(s))
+	polluted = polluted or smoking
+	var home_lit := not home or absi(str(s.iid).hash()) % 100 < (CALM_HOMES_LIT if calm_scenery else 75)
+	var lit := lightable and ((polluted and not (home and calm_scenery)) or (evening and home_lit))
 	var pair := {"key": key, "far": null, "near": [], "medium": null, "root": root, "standing": s,
 		"dimension": dimension, "tile": str(s.tile), "lit": lit, "role": role,
 		# The few lattice pylons are cheap meshes. Their clamps must stay aligned
@@ -2238,7 +2264,7 @@ func standing_node(s: Dictionary) -> Node3D:
 		_ensure_standing_near(pair)
 		_ensure_standing_pick(pair)
 	# Yard glow stays a mark of pollution, so a lit evening town still reads as clean.
-	if lit and polluted:
+	if lit and polluted and not (home and calm_scenery):
 		glows.append({"point": root.position + Vector3(0, dimension.y * 0.3, side * 0.45), "size": Vector2(side * 1.3, side * 0.7)})
 	if streamed and kind == "house": decor_nodes.append(root)
 	if standing_shadow_mesh == null and not s.has("harbour") and kind != "pylon" and pit.is_empty() and not (kind == "house" and scenery_ready): shadow(p, side)
@@ -2273,7 +2299,7 @@ func standing_node(s: Dictionary) -> Node3D:
 		harbour_traffic.append({"root": root, "frame": frame, "center": s.pos, "tile": str(s.tile), "traffic": {}, "phase": float(abs(str(s.tile).hash()) % 13)})
 	sprite_pairs.append(pair)
 	pickables.append({"iid": s.iid, "kind": kind, "tile": s.tile, "point": root.position + Vector3.UP * dimension.y * 0.5, "top": root.position + Vector3.UP * (dimension.y + 12.0), "size": rotated_extent(dimension, root.basis)})
-	if bool(s.get("polluting", false)):
+	if smoking:
 		smoke.append({"point": root.position + Vector3.UP * dimension.y, "radius": maxf(4.0, side * 0.08)})
 	return root
 
