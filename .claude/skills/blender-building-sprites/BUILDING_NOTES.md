@@ -48,6 +48,14 @@ of the first one, and smaller.
 
 ## eaf — Electric Arc Furnace  *(new, 2026-08-21)*
 
+**Rebuilt 2026-10-20 in the catalogue look** (`tools/building_assets/eaf_v2_builder.py`,
+review `docs/reviews/eaf-v2-2026-10-20.md`): ridge along X with the bay in the long front
+face, operating platform, brick vault, bag house and the family chimney; the three items
+under "To improve" below are resolved (monitor roof and bay break the mass, the caster annex
+stands at the front right, the bag house discharges into a skip). The notes below describe
+the August builder, kept in this folder.
+
+
 Three flat-ended graphite rods standing in an open bath of molten steel, inside a melt shop
 whose front bay is an open portal frame. Deliberately the blast furnace's sibling — same
 steel-and-heat family, no slab — but sharing none of its silhouette.

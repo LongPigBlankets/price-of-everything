@@ -78,6 +78,11 @@ specs['power_plant_v2'] = dict(file=str(DETAIL_SOURCE / 'power_plant_v2_builder.
     col='BLDG_power_plant_v2', levels=(1, 2, 3), detailed=True, outer_contour=True,
     prelude=(str(DETAIL_SOURCE / 'furnace_builder.py'), str(DETAIL_SOURCE / 'furnace_v2_builder.py'),
              str(DETAIL_SOURCE / 'refinery_v2_builder.py')))
+# The rebuilt electric arc furnace (eaf_v2_builder.py), staged; installs as 'eaf'.
+specs['eaf_v2'] = dict(file=str(DETAIL_SOURCE / 'eaf_v2_builder.py'), fn='build_eaf_v2',
+    col='BLDG_eaf_v2', levels=(1, 2, 3), detailed=True, outer_contour=True,
+    prelude=(str(DETAIL_SOURCE / 'furnace_builder.py'), str(DETAIL_SOURCE / 'furnace_v2_builder.py'),
+             str(DETAIL_SOURCE / 'refinery_v2_builder.py'), str(DETAIL_SOURCE / 'power_plant_v2_builder.py')))
 # Export independent vessels from the same reviewed port builder. These are
 # components, with the port's unit scale and their own grounded local origin.
 PORT_SHIPS = {'boxa': ('boxA', 'SHIP_BOXER_A'), 'boxb': ('boxB', 'SHIP_BOXER_B'),

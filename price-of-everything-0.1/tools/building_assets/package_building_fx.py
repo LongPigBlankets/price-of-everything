@@ -13,7 +13,7 @@ import json, sys, hashlib
 import numpy as np
 from PIL import Image
 
-GAME_NAME = {'petro_refinery_v2': 'petro_refinery', 'poly_plant_v2': 'poly_plant', 'power_plant_v2': 'power_plant'}
+GAME_NAME = {'petro_refinery_v2': 'petro_refinery', 'poly_plant_v2': 'poly_plant', 'power_plant_v2': 'power_plant', 'eaf_v2': 'eaf'}
 
 root = Path(sys.argv[1]).resolve()
 family = sys.argv[2]
@@ -36,7 +36,11 @@ for level in (1, 2, 3):
         for a in entry[kind]:
             x, y = at((a['x'], a['y']))
             stacks.append({'x': x, 'y': y, 'r': max(8, round(a['radius']*factor)), 'kind': tag})
-    anchors[level] = {'stacks': stacks, 'fires': []}
+    fires = []
+    for f in entry.get('fires', ()):
+        (x0, y0), (x1, y1) = at((f['x0'], f['y0'])), at((f['x1'], f['y1']))
+        fires.append({'x': x0, 'y': y0, 'w': x1-x0, 'h': y1-y0, 'mode': 'arc'})
+    anchors[level] = {'stacks': stacks, 'fires': fires}
     if entry['cables']:
         anchors[level]['cables'] = [[at(p) for p in line] for line in entry['cables']]
     for kind in ('windows', 'light'):
@@ -59,8 +63,14 @@ for level in (1, 2, 3):
         check['sha256'] = hashlib.sha256(target.read_bytes()).hexdigest()
         validation[f'{level}/{kind}'] = check
         if kind == 'light':
-            b = alpha.getbbox()
-            anchors[level]['fires'] = [dict(x=b[0], y=b[1], w=b[2]-b[0], h=b[3]-b[1], mode='breathe')]
+            # Explicit arc regions (the bath) keep their mode; whatever else the light mask
+            # holds (a doorway, a caster strand) breathes as one region.
+            rest = np.array(alpha)
+            for f in anchors[level]['fires']:
+                rest[max(0, f['y']-6):f['y']+f['h']+6, max(0, f['x']-6):f['x']+f['w']+6] = 0
+            b = Image.fromarray(rest).getbbox()
+            if b:
+                anchors[level]['fires'].append(dict(x=b[0], y=b[1], w=b[2]-b[0], h=b[3]-b[1], mode='breathe'))
 (root/'fx').mkdir(exist_ok=True)
 (root/'fx'/f'anchors_{game}.json').write_text(json.dumps(anchors, indent=2)+'\n')
 (root/'fx'/f'mask-validation_{game}.json').write_text(json.dumps(validation, indent=2)+'\n')

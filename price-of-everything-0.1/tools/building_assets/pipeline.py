@@ -28,17 +28,18 @@ KIT = ROOT / '.claude/skills/blender-building-sprites'
 OUTPUT = ROOT / 'outputs/building-assets-2026-10-08'
 SPRITES = GAME / 'assets/icons/buildings/sprites'
 FAMILIES = ('farm', 'water_pump', 'new_forest', 'old_forest', 'desal', 'oil_well', 'fracking_oil_well', 'offshore_oil_platform', 'furnace', 'furnace_v2',
-            'petro_refinery_v2', 'poly_plant_v2', 'power_plant_v2')
+            'petro_refinery_v2', 'poly_plant_v2', 'power_plant_v2', 'eaf_v2')
 LABELS = dict(zip(FAMILIES, ('FARM', 'WATER PUMP', 'NEW GROWTH', 'OLD GROWTH', 'DESALINATION', 'OIL WELL', 'SHALE OIL WELL', 'OFFSHORE OIL PLATFORM')))
 LABELS['furnace'] = 'FURNACE'
 LABELS['furnace_v2'] = 'FURNACE V2'
 LABELS['petro_refinery_v2'] = 'PETROCHEMICAL REFINERY'
 LABELS['poly_plant_v2'] = 'POLYMERISATION REFINERY'
 LABELS['power_plant_v2'] = 'POWER PLANT'
+LABELS['eaf_v2'] = 'ELECTRIC ARC FURNACE'
 # Furnace families share the paper print pass. furnace_v2 is the staging name of the
 # released furnace: its revisions install as the game's 'furnace' building, all levels.
-PAPER_FAMILIES = ('furnace', 'furnace_v2', 'petro_refinery_v2', 'poly_plant_v2', 'power_plant_v2')
-GAME_NAME = {'furnace_v2': 'furnace', 'petro_refinery_v2': 'petro_refinery', 'poly_plant_v2': 'poly_plant', 'power_plant_v2': 'power_plant'}
+PAPER_FAMILIES = ('furnace', 'furnace_v2', 'petro_refinery_v2', 'poly_plant_v2', 'power_plant_v2', 'eaf_v2')
+GAME_NAME = {'furnace_v2': 'furnace', 'petro_refinery_v2': 'petro_refinery', 'poly_plant_v2': 'poly_plant', 'power_plant_v2': 'power_plant', 'eaf_v2': 'eaf'}
 FX = GAME / 'assets/fx'
 FAMILY_LEVELS = {name: (1,2,3) for name in FAMILIES}
 
@@ -135,6 +136,7 @@ def build(revision,families):
     shutil.copy2(HERE/'furnace_v2_builder.py',source/'furnace_v2_builder.py')
     shutil.copy2(HERE/'refinery_v2_builder.py',source/'refinery_v2_builder.py')
     shutil.copy2(HERE/'power_plant_v2_builder.py',source/'power_plant_v2_builder.py')
+    shutil.copy2(HERE/'eaf_v2_builder.py',source/'eaf_v2_builder.py')
     for name in ('furnace_paper.py', 'paper_wpa_catalog.py'):
         shutil.copy2(HERE/name,source/name)
     shutil.copy2(__file__,source/'pipeline.py')
@@ -151,6 +153,7 @@ def build(revision,families):
         f.write("exec((_src/'furnace_v2_builder.py').read_text(),globals())\n")
         f.write("exec((_src/'refinery_v2_builder.py').read_text(),globals())\n")
         f.write("exec((_src/'power_plant_v2_builder.py').read_text(),globals())\n")
+        f.write("exec((_src/'eaf_v2_builder.py').read_text(),globals())\n")
     with (source/'render_sprite.py').open('a') as f:
         f.write("\n# Editable source scene, saved after restoring colour-pass settings.\n"
                 "scene.render.filepath = out_png\n"
