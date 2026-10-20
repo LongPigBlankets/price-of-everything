@@ -23,6 +23,9 @@ const DemoBuild := preload("res://scripts/demo_build.gd")
 const TITLE_LOGO: Texture2D = preload("res://assets/ui/title_logo_trio.png")
 # Preload (not a class_name) keeps the New Game panel out of the headless class cache.
 const NewGamePanelScene := preload("res://scripts/new_game_panel.gd")
+## The DS2 look of the settings screen (the company registry), used while UiPrefs.use_new_game_ds2 is on. Loaded by
+## path, so the old panel stands whatever the state of the new script.
+const NEW_GAME_DS2_SCRIPT := "res://scripts/new_game_ds2/new_game_ds2.gd"
 const TutorialPanelScene := preload("res://scripts/tutorial_intro_panel.gd")
 const HallOfRecordsPanelScene := preload("res://scripts/hall_of_records_panel.gd")
 const TutorialPromptScene := preload("res://scripts/tutorial_prompt_dialog.gd")
@@ -46,6 +49,8 @@ const PANEL_INSET := 24.0   # frame inset from the screen edges
 ## 1396 is what a 1080p screen leaves between the navy block and the right inset, so a wide
 ## display shows the panel at exactly the size a 1080p one does.
 const NEW_GAME_PANEL_W := 1396.0
+## The registry's fade to the loading screen after the seal comes down (the DS2 settings screen only).
+const NEW_GAME_FADE_SECONDS := 2.0
 ## ...and it opens this far right of the NAVY BLOCK behind the menu, not of the bordered frame
 ## inside it. Measuring from the frame put the panel four pixels inside the navy and it read as
 ## an overlap (owner, 25 Aug) — the block runs the full left quarter, the frame is inset in it.
@@ -60,6 +65,7 @@ const BUTTONS_PAD_TOP := 26   # padding inside the button frame, above New Game
 
 # The New Game settings panel and the goods board it slides in over.
 var _new_game_panel: Control
+var _start_fade: ColorRect
 var _tutorial_panel: Control
 var _hall_of_records_panel: Control
 var _tutorial_prompt: Control
@@ -153,6 +159,24 @@ func _show_tutorial_prompt() -> void:
 # visuals animate during the heavy load instead of the menu freezing. (overrides —
 # difficulty/victory/tutorial — are consumed by prepare_new_game in Phase 2.)
 func _on_start_requested(start_path: String, overrides: Dictionary) -> void:
+	# The registry (the DS2 settings screen) has just stamped the form; the screen fades to black over
+	# NEW_GAME_FADE_SECONDS before the loading screen comes up. The old panel starts at once, as it always has.
+	if new_game_is_ds2() and DisplayServer.get_name() != "headless" and _start_fade == null:
+		_start_fade = ColorRect.new()
+		_start_fade.name = "StartFade"
+		_start_fade.color = Color(0, 0, 0, 0)
+		_start_fade.mouse_filter = Control.MOUSE_FILTER_STOP
+		_start_fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_start_fade.z_index = 200   # over the panel (100) and the goods board
+		add_child(_start_fade)
+		var tw := create_tween()
+		tw.tween_property(_start_fade, "color:a", 1.0, NEW_GAME_FADE_SECONDS)
+		tw.tween_callback(_begin_new_game.bind(start_path, overrides))
+		return
+	_begin_new_game(start_path, overrides)
+
+
+func _begin_new_game(start_path: String, overrides: Dictionary) -> void:
 	# Prepare the snapshot, raise the loading screen, and let IT drive a threaded load of the map
 	# scene. The heavy instantiation + first render happen behind the animated loading screen; the
 	# HUD panels build lazily (on first open) and the hill work spreads via the loading-screen
@@ -208,7 +232,10 @@ func _on_back_requested() -> void:
 
 func _build_new_game_panel() -> void:
 	_goods_grid = get_node_or_null("GoodsGrid")
-	_new_game_panel = NewGamePanelScene.new()
+	var ds2 := UiPrefs.use_new_game_ds2 and ResourceLoader.exists(NEW_GAME_DS2_SCRIPT)
+	_new_game_panel = ((load(NEW_GAME_DS2_SCRIPT) as GDScript) if ds2 else NewGamePanelScene).new()
+	if not UiPrefs.new_game_ds2_changed.is_connected(_on_new_game_ds2_changed):
+		UiPrefs.new_game_ds2_changed.connect(_on_new_game_ds2_changed)
 	# Full height (less the gap that lets the goods board peek beneath); the horizontal
 	# geometry is fixed rather than anchored, so see _layout_new_game_panel.
 	_new_game_panel.anchor_top = 0.0
@@ -222,6 +249,24 @@ func _build_new_game_panel() -> void:
 	_new_game_panel.back_requested.connect(_on_back_requested)
 	add_child(_new_game_panel)
 	_layout_new_game_panel()
+
+
+## The look changed under the cheat: the panel is built again in the other look, open again if it was open.
+func _on_new_game_ds2_changed(_enabled: bool) -> void:
+	if _new_game_panel == null:
+		return
+	var was_open := _new_game_panel.visible
+	_new_game_panel.queue_free()
+	_new_game_panel = null
+	_build_new_game_panel()
+	if was_open:
+		_new_game_panel.visible = true
+		_new_game_panel.modulate.a = 1.0
+
+
+## Whether the settings screen standing is the DS2 one (the company registry).
+func new_game_is_ds2() -> bool:
+	return _new_game_panel != null and _new_game_panel.get_script() != NewGamePanelScene
 
 
 ## Left edge: the menu section ends at a quarter of the screen less its inset, and the panel
