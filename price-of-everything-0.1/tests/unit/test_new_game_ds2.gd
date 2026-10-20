@@ -36,10 +36,13 @@ func _file_index(p: Control, start_id: String) -> int:
 	return -1
 
 
-## With the flag off the main menu builds the old panel, as it always has; the flag swaps it live, and off again
-## puts the old one back.
+## The registry is the default; the cheat's flag brings the old panel back live, untouched, and on again returns
+## the registry.
 func _test_flag_off_keeps_the_old_panel() -> void:
 	var was: bool = UiPrefs.use_new_game_ds2
+	var fresh: Node = load("res://scripts/ui_prefs.gd").new()
+	_check(bool(fresh.get("use_new_game_ds2")), "new game: the registry is the default")
+	fresh.free()
 	UiPrefs.set_use_new_game_ds2(false)
 	var menu: Control = load("res://scripts/main_menu.gd").new()
 	add_child(menu)

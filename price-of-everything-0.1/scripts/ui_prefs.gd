@@ -47,9 +47,9 @@ var use_dock_ds2: bool = false
 # Session-only.
 var use_research_ds2: bool = false
 # The New Game settings screen in DS2 (scripts/new_game_ds2/): the company registry, a desk with the card index of
-# company files, the file open on the blotter, the form of incorporation and the seal. Off until the owner has
-# reviewed it; the debug cheat `toggle newgame ds2` switches it on. Session-only.
-var use_new_game_ds2: bool = false
+# company files, the file open on the blotter, the form of incorporation and the seal. The default; the debug cheat
+# `toggle newgame settings` brings the old settings panel back, and again returns the registry. Session-only.
+var use_new_game_ds2: bool = true
 # Building Detail v3's diagnostics: the Visual view (true) or the Text rows. The player's choice on the
 # panel's switch, kept while the game runs (closing the panel or starting a match keeps it).
 var bdp_diag_visual: bool = false

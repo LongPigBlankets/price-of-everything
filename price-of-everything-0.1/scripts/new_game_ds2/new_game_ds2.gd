@@ -1,7 +1,7 @@
 extends "res://scripts/new_game_panel.gd"
 ## The New Game settings screen in DS2: the company registry (docs/new-game-ds2-plan.md §2, §7 and §9; the owner's
-## rulings in docs/ds2-owner-decisions.md, New Game settings). Behind UiPrefs.use_new_game_ds2 and the cheat
-## `toggle newgame ds2`; with the flag off the old panel stands untouched.
+## rulings in docs/ds2-owner-decisions.md, New Game settings). The default, behind UiPrefs.use_new_game_ds2; the cheat
+## `toggle newgame settings` brings the old panel back, untouched.
 ##
 ## One dark walnut desk at the panel's width. Across its head a navy steel panel with the REGISTRY nameplate and the
 ## Back key. Under it the card index: an oak rack of seven pigeonholes, a manila company file in each with its tab
