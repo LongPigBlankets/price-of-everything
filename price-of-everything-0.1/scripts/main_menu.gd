@@ -23,8 +23,9 @@ const DemoBuild := preload("res://scripts/demo_build.gd")
 const TITLE_LOGO: Texture2D = preload("res://assets/ui/title_logo_trio.png")
 # Preload (not a class_name) keeps the New Game panel out of the headless class cache.
 const NewGamePanelScene := preload("res://scripts/new_game_panel.gd")
-## The DS2 look of the settings screen (the company registry), used while UiPrefs.use_new_game_ds2 is on. Loaded by
-## path, so the old panel stands whatever the state of the new script.
+## The settings screen as the company registry (DS2), the default while UiPrefs.use_new_game_ds2 is on; the cheat
+## `toggle newgame settings` brings the old panel back. Loaded by path, so the old panel stands whatever the state of
+## the new script.
 const NEW_GAME_DS2_SCRIPT := "res://scripts/new_game_ds2/new_game_ds2.gd"
 const TutorialPanelScene := preload("res://scripts/tutorial_intro_panel.gd")
 const HallOfRecordsPanelScene := preload("res://scripts/hall_of_records_panel.gd")

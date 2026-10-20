@@ -488,7 +488,7 @@ Elsewhere, also reusable: `scripts/rotary_selector.gd` (the white knob; with `op
 
 ## 15. The New Game registry: what it added to the kit
 
-The New Game settings screen (`scripts/new_game_ds2/new_game_ds2.gd`, behind `toggle newgame ds2`, `UiPrefs.use_new_game_ds2`) is the company registry: a desk rather than a plate (`docs/new-game-ds2-plan.md` §7 and §9, the owner's rulings in `docs/ds2-owner-decisions.md`, New Game settings). It is one script that extends the old panel for its data and signals and draws the desk in regions, each a plain `Control` painting 9-slices and print from the panel's state. Its parts are panel specific (renders `registry_*`, §3.2), but three things it did are reusable:
+The New Game settings screen (`scripts/new_game_ds2/new_game_ds2.gd`, the default; `toggle newgame settings` brings the old panel back, `UiPrefs.use_new_game_ds2`) is the company registry: a desk rather than a plate (`docs/new-game-ds2-plan.md` §7 and §9, the owner's rulings in `docs/ds2-owner-decisions.md`, New Game settings). It is one script that extends the old panel for its data and signals and draws the desk in regions, each a plain `Control` painting 9-slices and print from the panel's state. Its parts are panel specific (renders `registry_*`, §3.2), but three things it did are reusable:
 
 | Part or pattern | Where | What |
 |---|---|---|
