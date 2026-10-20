@@ -7,6 +7,8 @@ const Rail := preload("res://scripts/supply_chain_3d/railway.gd")
 const STEP := 6.0
 const CELL := 16.0
 const SHOULDER := 8.0
+## A river deck stands above its banks: every road meeting it climbs over this distance.
+const RIVER_APPROACH := 40.0
 var segments: Array = []
 var buckets := {}
 var earth_buckets := {}
@@ -54,13 +56,45 @@ func configure(roads: Array, height: Callable, authored: RefCounted = null) -> v
 		if node.edges.size()>=3: junctions.append(node.p)
 	refresh()
 
+## Ease every road that meets a river deck up to it over RIVER_APPROACH, across junctions too.
+## A deck path's own ramp stops where its path does, and the road it joins would otherwise
+## step onto the deck at the bank. Run once the rail crossings are known: a road that crosses
+## the railway at level keeps its height there, so the ramp stops short of it.
+func ease_river_decks() -> void:
+	var level := {}
+	for rec in segments:
+		if str(rec.get("rail_crossing_mode", "")) == "level": level[rec.ka] = true; level[rec.kb] = true
+	for key in nodes:
+		var deck_node: Dictionary = nodes[key]
+		if not deck_node.river: continue
+		var distances := {key: 0.0}
+		var queue: Array = [key]
+		var cursor := 0
+		while cursor < queue.size():
+			var at: Vector2i = queue[cursor]; cursor += 1
+			for edge in nodes[at].edges:
+				var rec: Dictionary = segments[edge]
+				var other: Vector2i = rec.kb if rec.ka == at else rec.ka
+				var node: Dictionary = nodes[other]
+				if node.river or level.has(other): continue
+				var next: float = float(distances[at]) + nodes[at].p.distance_to(node.p)
+				if next >= RIVER_APPROACH or next >= float(distances.get(other, INF)): continue
+				distances[other] = next
+				queue.append(other)
+				var eased := lerpf(float(deck_node.h), float(node.base), smoothstep(0.0, RIVER_APPROACH, next))
+				if eased > node.h:
+					node.h = eased
+					node.eased = true
+	refresh()
+
 func refresh() -> void:
 	buckets.clear(); earth_buckets.clear()
 	for i in segments.size():
 		var rec: Dictionary = segments[i]
 		rec.ha = nodes[rec.ka].h; rec.hb = nodes[rec.kb].h
 		rec.bridge = nodes[rec.ka].core or nodes[rec.kb].core or nodes[rec.ka].river or nodes[rec.kb].river
-		rec.over_rail = nodes[rec.ka].core or nodes[rec.kb].core or rec.ha>nodes[rec.ka].base+0.01 or rec.hb>nodes[rec.kb].base+0.01
+		# A river approach is raised too, but it is not a deck over the railway.
+		rec.over_rail = nodes[rec.ka].core or nodes[rec.kb].core or (rec.ha>nodes[rec.ka].base+0.01 and not nodes[rec.ka].get("eased",false)) or (rec.hb>nodes[rec.kb].base+0.01 and not nodes[rec.kb].get("eased",false))
 		rec.earthwork = nodes[rec.ka].cut or nodes[rec.kb].cut or rec.over_rail
 		rec.cut = Legacy._capsule(rec.a,rec.b,maxf(0.5,float(rec.half)-0.8),[false,false])
 		Index.insert(buckets,Index.bounds(rec.a,rec.b,float(rec.half)+SHOULDER),i,CELL)

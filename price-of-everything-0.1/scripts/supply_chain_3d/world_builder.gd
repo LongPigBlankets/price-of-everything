@@ -232,6 +232,7 @@ func prepare_transport(model: Dictionary) -> void:
 		rail_plan=Railway.network(lines)
 		rail_urban.configure(tiles,road_grade.segments,road_grade.junctions,rail_plan,depots,railway_ground_height,railway_level,stations,model.get("standing",[]),standing_key,river_at)
 		preload("res://scripts/supply_chain_3d/rail_crossings.gd").build(road_grade,rail_plan,rail_urban,depots)
+		road_grade.ease_river_decks()
 		stages.rail_ms=(Time.get_ticks_usec()-tick)/1000.0
 		bake_cache.write(transport_key,TransportBake.packed(self))
 	if signature != "" and not reused: _company_transport = {"signature": signature, "key": transport_key}

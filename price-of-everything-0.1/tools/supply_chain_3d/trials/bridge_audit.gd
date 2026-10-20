@@ -137,7 +137,8 @@ func _steps(builder: RefCounted) -> Array:
 			_keep(best, "rail", a.p, float(b.h) - float(a.h), (a.p as Vector2).distance_to(b.p),
 				a.get("river", false) != b.get("river", false) or a.get("bridge", false) != b.get("bridge", false), builder)
 	for rec in builder.road_grade.segments:
-		_keep(best, "road L%d" % int(rec.get("level", 1)), rec.a, float(rec.hb) - float(rec.ha), (rec.a as Vector2).distance_to(rec.b), bool(rec.bridge), builder)
+		var engineering := "serpentine" if rec.get("serpentine", false) else "eased" if rec.has("road_ha") else "terrain"
+		_keep(best, "road L%d %s" % [int(rec.get("level", 1)), engineering], rec.a, float(rec.hb) - float(rec.ha), (rec.a as Vector2).distance_to(rec.b), bool(rec.bridge), builder)
 	return best.values()
 
 func _keep(best: Dictionary, what: String, at: Vector2, rise: float, run: float, bridge_end: bool, builder: RefCounted) -> void:
@@ -152,6 +153,10 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 	if "--all-tiles" in OS.get_cmdline_user_args():
 		var started := Time.get_ticks_msec()
 		await board.set_all_tiles(true, false)
+		# The continent may still be building when the call returns: wait for its builder.
+		while not (board._builder != null and bool(board._builder.streamed) and not bool(board.get("_building"))):
+			RenderingServer.force_draw(false); await get_tree().process_frame
+			if Time.get_ticks_msec() - started > 5400000: break
 		await _settle(board, 5.0)
 		print("[BRIDGE] all tiles shown after ", Time.get_ticks_msec() - started, " ms")
 	var shots := "--no-shots" not in OS.get_cmdline_user_args()
@@ -160,11 +165,14 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 		var at := Vector2(float(probe.get_slice(",", 0)), float(probe.get_slice(",", 1)))
 		for rec in board._builder.road_grade.segments:
 			if Geometry2D.get_closest_point_to_segment(at, rec.a, rec.b).distance_to(at) < 60.0:
-				print("[PROBE] road L", rec.get("level", 1), " ", rec.a, "->", rec.b, " h ", snappedf(rec.ha, 0.1), "/", snappedf(rec.hb, 0.1), " bridge ", rec.bridge, " over_rail ", rec.over_rail)
+				print("[PROBE] road L", rec.get("level", 1), " ", rec.a, "->", rec.b, " h ", snappedf(rec.ha, 0.1), "/", snappedf(rec.hb, 0.1), " bridge ", rec.bridge, " over_rail ", rec.over_rail, " eased ", board._builder.road_grade.nodes[rec.ka].get("eased", false), " core ", board._builder.road_grade.nodes[rec.ka].core, " base ", snappedf(board._builder.road_grade.nodes[rec.ka].base, 0.1))
+		for rec in board._builder.authored_profile.segments:
+			if Geometry2D.get_closest_point_to_segment(at, rec.a, rec.b).distance_to(at) < 60.0:
+				print("[PROBE] authored ", rec.a, "->", rec.b, " h ", snappedf(rec.ha, 0.1), "/", snappedf(rec.hb, 0.1), " bridge ", rec.bridge, " elevated ", rec.get("elevated", false), " ground ", snappedf(board._builder.natural_height(rec.a), 0.1), "/", snappedf(board._builder.natural_height(rec.b), 0.1))
 		for samples in _rail_runs(board._builder):
 			for smp in samples:
 				if (smp.p as Vector2).distance_to(at) < 60.0:
-					print("[PROBE] rail ", smp.p, " h ", snappedf(smp.h, 0.1), " bridge ", smp.get("bridge", false), " river ", smp.get("river", false), " hidden ", smp.get("hidden", false))
+					print("[PROBE] rail ", smp.p, " h ", snappedf(smp.h, 0.1), " bridge ", smp.get("bridge", false), " river ", smp.get("river", false), " hidden ", smp.get("hidden", false), " cut ", smp.get("cut", false), " ground ", snappedf(board._builder.natural_height(smp.p), 0.1))
 	report.bad_crossings = _bad_crossings(board._builder)
 	print("[BRIDGE] bad crossings ", report.bad_crossings.size())
 	for c in report.bad_crossings: print("[CROSSING] ", JSON.stringify(c))

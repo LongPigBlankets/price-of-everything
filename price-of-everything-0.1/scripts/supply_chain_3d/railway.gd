@@ -29,6 +29,12 @@ const TRUSS_PANEL := 7.0
 const TRUSS_OFFSET := CORRIDOR_WIDTH * 0.5 + 1.1
 ## Track this far beyond the water either side still stands on the bridge.
 const RIVER_PAD := 7.0
+## How many samples a truss may reach past its bank to stand clear of a road under its end.
+const ABUTMENT_REACH := 12
+## Clear height a road needs under a deck.
+const ROAD_HEADROOM := 4.5
+## The steepest visible track: anything steeper is a step where two height rules meet.
+const MAX_GRADE := 0.25
 ## A river pier stands at most this far from the next support.
 const PIER_SPACING := 38.0
 
@@ -235,6 +241,8 @@ static func profile(points: PackedVector2Array, roads: Array, height: Callable, 
 		var d := float(distances[i])
 		var base_height := float(height.call(p)) + 1.2
 		var h := base_height
+		# What the crossings ask for here, so the engineered urban profile cannot cut off a ramp.
+		var lifted := -INF
 		var bridge := false
 		for crossing_id in (range(envelope.size()) if crossing_index.is_empty() else crossing_index.get(Vector2i((p / Index.CELL).floor()), [])):
 			var c: Dictionary = envelope[crossing_id]
@@ -242,6 +250,7 @@ static func profile(points: PackedVector2Array, roads: Array, height: Callable, 
 			if away > APPROACH: continue
 			var weight := 1.0 - smoothstep(0.0, APPROACH, away)
 			h = maxf(h, lerpf(base_height, float(c.h), weight))
+			lifted = maxf(lifted, lerpf(base_height, float(c.h), weight))
 			bridge = bridge or away < 0.01
 		var underground: Vector2 = burial.call(p) if burial.is_valid() else Vector2.ZERO
 		if underground.x>0:
@@ -252,9 +261,38 @@ static func profile(points: PackedVector2Array, roads: Array, height: Callable, 
 		if rail_profile.is_valid():
 			var engineered: Vector3=rail_profile.call(p)
 			hidden=engineered.y>0; underground.y=engineered.y
-			if engineered.z>0: h=engineered.x; bridge=false
+			# At grade the engineered profile keeps a crossing's ramp; buried track is its own.
+			if engineered.z>0 and (engineered.y>0 or lifted<=engineered.x): h=engineered.x; bridge=false
+			elif engineered.z>0: h=lifted
 		samples.append({"p": p, "h": h, "s": d, "hidden": hidden or underground.y>0, "buried":underground.y>0, "bridge": bridge, "dir": tangent})
+	_limit_grade(samples, roads, road_index, half_width)
 	return {"samples": samples, "crossings": crossings}
+
+## Where two height rules meet (crossing ramps, the engineered urban profile, a depot), visible
+## track could step. It never climbs or drops more steeply than MAX_GRADE: the low side is
+## raised into a ramp on an embankment, never cut, and never into a road deck's headroom.
+## Buried and tunnel track keeps its own.
+static func _limit_grade(samples: Array, roads: Array = [], road_index: Dictionary = {}, half_width: float = HALF) -> void:
+	# A ramp never rises into the headroom of a road deck above the track.
+	var ceilings := PackedFloat32Array(); ceilings.resize(samples.size())
+	for i in samples.size():
+		ceilings[i] = INF
+		var p: Vector2 = samples[i].p
+		for road_id in (range(roads.size()) if road_index.is_empty() else Index.query(road_index, Rect2(p, Vector2.ZERO).grow(half_width + 12.0))):
+			var road: Dictionary = roads[road_id]
+			if not road.has("ha"): continue
+			var q := Geometry2D.get_closest_point_to_segment(p, road.a, road.b)
+			if q.distance_to(p) > half_width + float(road.get("half", 4.0)): continue
+			var road_h := lerpf(float(road.ha), float(road.hb), q.distance_to(road.a) / maxf(0.01, (road.a as Vector2).distance_to(road.b)))
+			if road_h > float(samples[i].h) + 2.0: ceilings[i] = minf(ceilings[i], road_h - CLEARANCE - DECK_DEPTH - 0.25)
+	for forward in [true, false]:
+		var order: Array = range(1, samples.size()) if forward else range(samples.size() - 2, -1, -1)
+		for i in order:
+			var previous: Dictionary = samples[i - 1 if forward else i + 1]
+			var sample: Dictionary = samples[i]
+			if sample.hidden or previous.hidden: continue
+			var run := absf(float(sample.s) - float(previous.s))
+			sample.h = maxf(float(sample.h), minf(float(previous.h) - MAX_GRADE * run, ceilings[i]))
 
 static func _v(p: Vector2, h: float, origin: Vector2) -> Vector3:
 	return Vector3(p.x - origin.x, h, p.y - origin.y)
@@ -292,7 +330,7 @@ static func build(lines: Array, roads: Array, height: Callable, level_at: Callab
 		Index.insert(crossing_index, Rect2(shared_crossings[i].p, Vector2.ZERO).grow(APPROACH + shared_crossings[i].half), i)
 	var tunnels := _tunnel_profiles(plan,roads,height,level_at,shared_crossings,road_index,crossing_index,crossing_height,burial,rail_profile)
 	var river: Callable = context.get("river",Callable())
-	var river_spans: Array = _river_spans(tunnels.profiles, river)
+	var river_spans: Array = _river_spans(tunnels.profiles, river, roads, road_index)
 	for path in plan.paths:
 		var prof := profile(path.points, roads, height, level_at, shared_crossings, HALF + 0.8, road_index, crossing_index, false, crossing_height, burial, rail_profile)
 		var shared: Array=tunnels.profiles[path.pair_id].samples
@@ -561,8 +599,10 @@ static func _clear(p: Vector2, level_at: Callable, radius: float) -> bool:
 	return true
 
 ## Runs of corridor samples over a river (plus RIVER_PAD of bank either side) are bridges:
-## they take no embankment, and draw a truss. Returns one span per run.
-static func _river_spans(profiles: Array, river: Callable) -> Array:
+## they take no embankment, and draw a truss. A run reaches on past any road passing under its
+## end, so the abutment stands clear of the road. Returns one span per run, with the roads that
+## pass under it (its piers keep off them).
+static func _river_spans(profiles: Array, river: Callable, roads: Array = [], road_index: Dictionary = {}) -> Array:
 	var spans: Array = []
 	if not river.is_valid(): return spans
 	for prof in profiles:
@@ -575,17 +615,49 @@ static func _river_spans(profiles: Array, river: Callable) -> Array:
 			var k := i
 			while k < samples.size() - 1 and float(samples[k + 1].s) - float(samples[i].s) <= RIVER_PAD and not samples[k + 1].hidden: k += 1
 			for m in range(j, k + 1): on[m] = 1
+		var runs: Array = []
 		var start := -1
 		for i in samples.size() + 1:
 			var inside := i < samples.size() and on[i] == 1
 			if inside and start < 0: start = i
 			if not inside and start >= 0:
-				if i - start >= 2:
-					for m in range(start, i):
-						samples[m].bridge = true; samples[m].river = true
-					spans.append({"samples": samples.slice(start, i)})
+				if i - start >= 2: runs.append([start, i - 1])
 				start = -1
+		for run in runs:
+			for side in [0, 1]:
+				var edge: int = run[side]
+				var step := -1 if side == 0 else 1
+				for reach in ABUTMENT_REACH:
+					if _under(samples[edge], roads, road_index, TRUSS_OFFSET + 3.6).is_empty(): break
+					var next := edge + step
+					if next < 0 or next >= samples.size() or samples[next].hidden: break
+					edge = next
+				run[side] = edge
+			for m in range(run[0], run[1] + 1):
+				samples[m].bridge = true; samples[m].river = true
+			var span_samples: Array = samples.slice(run[0], run[1] + 1)
+			var under: Array = []
+			for q in span_samples:
+				for road in _under(q, roads, road_index, TRUSS_OFFSET + 40.0):
+					if not under.has(road): under.append(road)
+			spans.append({"samples": span_samples, "roads": under})
 	return spans
+
+## Roads within `reach` of a track sample that pass under its deck (with a road's headroom).
+static func _under(sample: Dictionary, roads: Array, road_index: Dictionary, reach: float) -> Array:
+	var found: Array = []
+	var p: Vector2 = sample.p
+	var ids: Array = range(roads.size()) if road_index.is_empty() else Index.query(road_index, Rect2(p, Vector2.ZERO).grow(reach + 12.0))
+	for i in ids:
+		var road: Dictionary = roads[i]
+		if road.get("tunnel", false) or not road.has("ha"): continue
+		var q := Geometry2D.get_closest_point_to_segment(p, road.a, road.b)
+		var half := float(road.get("half", 4.0))
+		if q.distance_to(p) > reach + half: continue
+		var t := q.distance_to(road.a) / maxf(0.01, (road.a as Vector2).distance_to(road.b))
+		if lerpf(float(road.ha), float(road.hb), t) > float(sample.h) - DECK_DEPTH - 0.6 - ROAD_HEADROOM: continue
+		found.append(road)
+	return found
 
 ## A box standing on `p`, long axis along `dir`.
 static func _block(batch: RefCounted, p: Vector2, dir: Vector2, half_length: float, half_width: float, z0: float, z1: float, color: Color, origin: Vector2) -> void:
@@ -651,6 +723,17 @@ static func _truss_bridge(batch: RefCounted, span: Dictionary, origin: Vector2, 
 		_block(batch, end.p, end.dir, 2.2, TRUSS_OFFSET + 1.4, base, float(end.h) - DECK_DEPTH - 0.6, CONCRETE, origin)
 	var piers := int(floor(length / PIER_SPACING))
 	for k in range(1, piers + 1):
-		var q: Dictionary = _span_sample(samples, s0 + length * float(k) / (piers + 1))
+		var station := s0 + length * float(k) / (piers + 1)
+		# A pier keeps off any road passing under the span: moved along it, or left out.
+		var q := {}
+		for offset in [0.0, -4.0, 4.0, -8.0, 8.0, -12.0, 12.0]:
+			var candidate: Dictionary = _span_sample(samples, clampf(station + offset, s0 + 4.0, s1 - 4.0))
+			if _clear_of_roads(candidate.p, span.get("roads", []), TRUSS_OFFSET + 1.6): q = candidate; break
+		if q.is_empty(): continue
 		var base := float(ground.call(q.p)) - 3.0
 		_block(batch, q.p, q.dir, 1.4, TRUSS_OFFSET + 0.6, base, float(q.h) - DECK_DEPTH - 0.6, CONCRETE, origin)
+
+static func _clear_of_roads(p: Vector2, roads: Array, reach: float) -> bool:
+	for road in roads:
+		if Geometry2D.get_closest_point_to_segment(p, road.a, road.b).distance_to(p) < reach + float(road.get("half", 4.0)): return false
+	return true

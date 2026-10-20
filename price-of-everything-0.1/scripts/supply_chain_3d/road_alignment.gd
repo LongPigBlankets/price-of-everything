@@ -7,6 +7,9 @@ const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
 const Rail := preload("res://scripts/supply_chain_3d/railway.gd")
 const STEP := 6.0
 const MAX_GRADE := 0.15
+## Where no serpentine fits and the grade cannot be held to MAX_GRADE, a road climbs on an even
+## profile at the gentlest of these grades rather than stepping with the ground.
+const STEEP_GRADES := [0.2, 0.25, 0.3, 0.4]
 const MAX_EARTHWORK := 14.0
 const TUNNEL_LEVEL := 7.0
 const MIN_TUNNEL_LENGTH := 10.0
@@ -100,7 +103,6 @@ func _engineer(chain: Array) -> Array:
 		for j in range(1,count+1):
 			var p: Vector2=rec.b if j==count else rec.a.lerp(rec.b,float(j)/count)
 			distances.append(distances[-1]+points[-1].distance_to(p)); points.append(p); owners.append(rec)
-	if distances[-1]<30: return chain
 	var runs: Array=[]
 	for i in range(1,points.size()):
 		var a := points[i-1]; var b := points[i]
@@ -116,15 +118,20 @@ func _engineer(chain: Array) -> Array:
 	var replacements := {}
 	for run in runs:
 		var lo: int=run[0]; var hi: int=run[1]
-		if distances[hi]-distances[lo]<30: continue
+		if distances[hi]-distances[lo]<6: continue
 		var source := points.slice(lo,hi+1)
 		var excluded := {}
 		for j in range(lo,hi): excluded[owners[j].original]=true
-		var proposal := _serpentine(source,half,excluded)
+		var proposal := _serpentine(source,half,excluded) if distances[hi]-distances[lo]>=30 else {}
 		if proposal.is_empty():
 			# A short steep ripple can be removed by a shallow cutting when a
 			# junction or existing building leaves no room to move the road.
 			var heights := _profile(source,half,source)
+			# With no room to wind, climb evenly at the gentlest grade that fits: steep, never stepped.
+			for grade in STEEP_GRADES:
+				if not heights.is_empty(): break
+				heights = _profile(source,half,source,grade)
+			if heights.is_empty(): heights = _ramp(source,half)
 			if heights.is_empty(): constrained+=1; continue
 			proposal={"points":source,"heights":heights,"eased":true}; grade_eased+=1
 		var pieces: Array=[]; var routed: PackedVector2Array=proposal.points
@@ -194,7 +201,20 @@ static func _line(path: PackedVector2Array, end: Vector2) -> void:
 	var start := path[-1]; var count := maxi(1,ceili(start.distance_to(end)/STEP))
 	for i in range(1,count+1): path.append(end if i==count else start.lerp(end,float(i)/count))
 
-func _profile(path: PackedVector2Array, half: float, source: PackedVector2Array) -> PackedFloat32Array:
+## An even climb between the two anchors, for a stretch too short or tight for any other profile.
+func _ramp(path: PackedVector2Array, half: float) -> PackedFloat32Array:
+	if path.size() < 2: return PackedFloat32Array()
+	var first := _datum(path[0],(path[1]-path[0]).normalized(),half)
+	var last := _datum(path[-1],(path[-1]-path[-2]).normalized(),half)
+	var length := 0.0
+	for i in range(1,path.size()): length+=path[i-1].distance_to(path[i])
+	var result := PackedFloat32Array([first]); var along := 0.0
+	for i in range(1,path.size()):
+		along+=path[i-1].distance_to(path[i])
+		result.append(lerpf(first,last,along/maxf(length,0.001)))
+	return result
+
+func _profile(path: PackedVector2Array, half: float, source: PackedVector2Array, grade: float = MAX_GRADE) -> PackedFloat32Array:
 	var lower := PackedFloat32Array(); var upper := PackedFloat32Array(); var natural := PackedFloat32Array()
 	for i in path.size():
 		var dir := (path[mini(i+1,path.size()-1)]-path[maxi(0,i-1)]).normalized()
@@ -204,16 +224,16 @@ func _profile(path: PackedVector2Array, half: float, source: PackedVector2Array)
 	lower[0]=_datum(source[0],(source[1]-source[0]).normalized(),half); upper[0]=lower[0]
 	lower[-1]=_datum(source[-1],(source[-1]-source[-2]).normalized(),half); upper[-1]=lower[-1]
 	for i in range(1,path.size()):
-		var rise := path[i].distance_to(path[i-1])*MAX_GRADE
+		var rise := path[i].distance_to(path[i-1])*grade
 		lower[i]=maxf(lower[i],lower[i-1]-rise); upper[i]=minf(upper[i],upper[i-1]+rise)
 	for i in range(path.size()-2,-1,-1):
-		var rise := path[i].distance_to(path[i+1])*MAX_GRADE
+		var rise := path[i].distance_to(path[i+1])*grade
 		lower[i]=maxf(lower[i],lower[i+1]-rise); upper[i]=minf(upper[i],upper[i+1]+rise)
 	for i in path.size():
 		if lower[i]>upper[i]+0.001: return PackedFloat32Array()
 	var result := PackedFloat32Array([lower[0]])
 	for i in range(1,path.size()):
-		var rise := path[i].distance_to(path[i-1])*MAX_GRADE
+		var rise := path[i].distance_to(path[i-1])*grade
 		result.append(clampf(natural[i],maxf(lower[i],result[-1]-rise),minf(upper[i],result[-1]+rise)))
 	return result
 
