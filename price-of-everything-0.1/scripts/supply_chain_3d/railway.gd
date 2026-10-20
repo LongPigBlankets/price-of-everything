@@ -35,6 +35,9 @@ const ABUTMENT_REACH := 12
 const ROAD_HEADROOM := 4.5
 ## The steepest visible track: anything steeper is a step where two height rules meet.
 const MAX_GRADE := 0.25
+## The steepest a ramp lifting track over a road climbs (smoothstep peaks at 1.5x its mean).
+const LIFT_GRADE := 0.06
+const MAX_LIFT_APPROACH := 220.0
 ## A river pier stands at most this far from the next support.
 const PIER_SPACING := 38.0
 
@@ -265,8 +268,45 @@ static func profile(points: PackedVector2Array, roads: Array, height: Callable, 
 			if engineered.z>0 and (engineered.y>0 or lifted<=engineered.x): h=engineered.x; bridge=false
 			elif engineered.z>0: h=lifted
 		samples.append({"p": p, "h": h, "s": d, "hidden": hidden or underground.y>0, "buried":underground.y>0, "bridge": bridge, "dir": tangent})
+	_lift_over_roads(samples, crossings, roads, road_index)
 	_limit_grade(samples, roads, road_index, half_width)
 	return {"samples": samples, "crossings": crossings}
+
+## Where visible track crosses a road neither at level nor with a road's headroom under it (the
+## approach to a river truss, a flat road deck meeting a truss), the track rises over the road
+## on its own concrete deck. The ramp lengthens with the lift so it never climbs more steeply
+## than LIFT_GRADE. A road meant to pass over the railway is left to its own deck.
+static func _lift_over_roads(samples: Array, crossings: Array, roads: Array, road_index: Dictionary) -> void:
+	var lifts: Array = []
+	for i in range(1, samples.size()):
+		var a: Dictionary = samples[i - 1]
+		var b: Dictionary = samples[i]
+		if a.hidden or b.hidden: continue
+		for road_id in (range(roads.size()) if road_index.is_empty() else Index.query(road_index, Index.bounds(a.p, b.p, 0.01))):
+			var road: Dictionary = roads[road_id]
+			if not road.has("ha") or str(road.get("rail_crossing_mode", "")) in ["bridge", "tunnel"]: continue
+			var hit: Variant = Geometry2D.segment_intersects_segment(a.p, b.p, road.a, road.b)
+			if hit == null: continue
+			var t := (a.p as Vector2).distance_to(hit) / maxf(0.01, (a.p as Vector2).distance_to(b.p))
+			var rail_h := lerpf(float(a.h), float(b.h), t)
+			var road_h := lerpf(float(road.ha), float(road.hb), (road.a as Vector2).distance_to(hit) / maxf(0.01, (road.a as Vector2).distance_to(road.b)))
+			var target := road_h + CLEARANCE + DECK_DEPTH + 0.25
+			var truss: bool = a.get("river", false) or b.get("river", false)
+			if rail_h < road_h - 0.8 or rail_h >= target - 0.01: continue
+			if absf(rail_h - road_h) < 0.8 and not truss: continue
+			var dir := ((b.p as Vector2) - (a.p as Vector2)).normalized()
+			var sine := maxf(0.2, absf(dir.cross(((road.b as Vector2) - (road.a as Vector2)).normalized())))
+			lifts.append({"p": hit, "s": lerpf(float(a.s), float(b.s), t), "half": (CORRIDOR_WIDTH * 0.5 + float(road.get("half", 4.0)) + 2.0) / sine,
+				"h": target, "dir": dir, "lift": target - rail_h})
+	for lift in lifts:
+		var approach := clampf(float(lift.lift) * 1.5 / LIFT_GRADE, APPROACH, MAX_LIFT_APPROACH)
+		for sample in samples:
+			if sample.hidden: continue
+			var away := maxf(0.0, absf(float(sample.s) - float(lift.s)) - float(lift.half))
+			if away > approach: continue
+			sample.h = maxf(float(sample.h), lerpf(float(sample.h), float(lift.h), 1.0 - smoothstep(0.0, approach, away)))
+			if away < 0.01: sample.bridge = true
+		crossings.append({"p": lift.p, "s": lift.s, "half": lift.half, "h": lift.h, "dir": lift.dir})
 
 ## Where two height rules meet (crossing ramps, the engineered urban profile, a depot), visible
 ## track could step. It never climbs or drops more steeply than MAX_GRADE: the low side is

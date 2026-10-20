@@ -177,12 +177,12 @@ func _continent_review(board: Control, _home: Dictionary) -> void:
 		await _settle(board, 5.0)
 		print("[BRIDGE] all tiles shown after ", Time.get_ticks_msec() - started, " ms")
 	var shots := "--no-shots" not in OS.get_cmdline_user_args()
-	var probe := OS.get_environment("AUDIT_PROBE")
-	if probe != "":
+	for probe in OS.get_environment("AUDIT_PROBE").split(";", false):
 		var at := Vector2(float(probe.get_slice(",", 0)), float(probe.get_slice(",", 1)))
+		print("[PROBE] ==== ", at)
 		for rec in board._builder.road_grade.segments:
 			if Geometry2D.get_closest_point_to_segment(at, rec.a, rec.b).distance_to(at) < 60.0:
-				print("[PROBE] road L", rec.get("level", 1), " ", rec.a, "->", rec.b, " h ", snappedf(rec.ha, 0.1), "/", snappedf(rec.hb, 0.1), " bridge ", rec.bridge, " over_rail ", rec.over_rail, " eased ", board._builder.road_grade.nodes[rec.ka].get("eased", false), " core ", board._builder.road_grade.nodes[rec.ka].core, " base ", snappedf(board._builder.road_grade.nodes[rec.ka].base, 0.1))
+				print("[PROBE] road L", rec.get("level", 1), " ", rec.a, "->", rec.b, " h ", snappedf(rec.ha, 0.1), "/", snappedf(rec.hb, 0.1), " bridge ", rec.bridge, " over_rail ", rec.over_rail, " eased ", board._builder.road_grade.nodes[rec.ka].get("eased", false), " core ", board._builder.road_grade.nodes[rec.ka].core, " base ", snappedf(board._builder.road_grade.nodes[rec.ka].base, 0.1), " mode ", rec.get("rail_crossing_mode", ""))
 		var Clearance := preload("res://scripts/supply_chain_3d/building_clearance.gd")
 		for pair in board._builder.sprite_pairs:
 			if not pair.get("standing") is Dictionary: continue
