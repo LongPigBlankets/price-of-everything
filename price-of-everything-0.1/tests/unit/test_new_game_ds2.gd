@@ -13,6 +13,7 @@ const TAGS := {
 	"_test_place_for_unnamed_tiles": ["new_game", "map"],
 	"_test_registry_seal_sequence": ["new_game", "ui"],
 	"_test_grade_words_without_the_survey_sentence": ["new_game", "ui"],
+	"_test_story_wraps_to_the_leaf": ["new_game", "ui"],
 }
 const DS2_SCRIPT := "res://scripts/new_game_ds2/new_game_ds2.gd"
 const DebugTerminalScript := preload("res://scripts/debug_terminal.gd")
@@ -281,3 +282,24 @@ func _test_grade_words_without_the_survey_sentence() -> void:
 	p.queue_free()
 	DebugTerminalScript._demo_unlocked = saved
 	await get_tree().process_frame
+
+
+## The company's story wraps to the open file's left leaf, even when the file is chosen before the panel has a size
+## (the main menu chooses one as it builds the panel) and after the panel is resized.
+func _test_story_wraps_to_the_leaf() -> void:
+	DebugTerminalScript._demo_unlocked = true
+	var p: Control = (load(DS2_SCRIPT) as GDScript).new()
+	add_child(p)
+	for panel_size in [PANEL_SIZE, PANEL_SIZE * 0.8]:
+		p.size = panel_size
+		p.call("_layout")
+		var leaf: Rect2 = p.get("_r_leaf_l")
+		var inner: float = leaf.size.x - 2.0 * float(p.LEAF["m"]) * p.L
+		var story := String((p.get("_chosen") as Dictionary).get("description", (p.get("_chosen") as Dictionary).get("blurb", "")))
+		var lines: Array = p.get("_story_lines")
+		var widest := 0.0
+		for rng in lines:
+			var line := story.substr(int((rng as Vector2i).x), int((rng as Vector2i).y - (rng as Vector2i).x)).strip_edges()
+			widest = maxf(widest, p.FONT_PLEX.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, p.call("_story_font_px")).x)
+		_check(lines.size() > 1 and widest <= inner + 0.5, "New Game: the company story wraps inside its leaf at %d wide (%d lines, widest %d of %d)" % [panel_size.x, lines.size(), widest, inner])
+	p.queue_free()

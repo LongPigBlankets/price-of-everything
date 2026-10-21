@@ -405,6 +405,10 @@ func _layout() -> void:
 	_start_key.size = Vector2(kr.size.x * L, skh)
 	_place(_block, Rect2(Vector2.ZERO, size))
 	_place_die()
+	# The story wraps to the leaf as it is now: a first choice can come before the first layout.
+	if not _chosen.is_empty():
+		_place_cells()
+		_place_paint()
 	queue_redraw()
 	for c in get_children():
 		if c is Control:
@@ -901,7 +905,7 @@ func _draw_form() -> void:
 		var after := "turns" if String(opt.get("policy_timeline", "")) == "" else "turns, the Itch.io demo"
 		_ink(c, FONT_PLEX, 14, after, Vector2(m + 420.0 * L, 500.0 * L))
 		_era_rule(c, Rect2(m, 596.0 * L, inner, 0), _speed_turns, false)
-		_ink(c, FONT_PLEX, 12, "This also changes the Era pacing.", Vector2(m, 650.0 * L), INK_DIM)
+		_ink(c, FONT_PLEX, 12, "This also changes the Era pacing.", Vector2(m, 682.0 * L), INK_DIM)
 		_field(c, 724.0 * L, "OPTIONS", m, inner)
 		_tick(c, Vector2(m, 772.0 * L), true, "All tiles surveyed at game start", inner)
 		if _metrics_box != null:
@@ -944,8 +948,9 @@ func _field(c: CanvasItem, y: float, label: String, m: float, inner: float) -> v
 	c.draw_rect(Rect2(m, y + 56.0 * L, inner, 1.5 * L), Color(NAVY, 0.3))
 
 
-## The era rule: a bar from the charter's first turn to its last, cut into the three eras with their names and nothing
-## else on it. In the demo the bar spans the campaign's turns, the demo's hundred printed Demo Era and the rest greyed.
+## The era rule: a bar from the charter's first turn to its last, cut into the three eras with their names, over a
+## scale of turns marking where each era ends. In the demo the bar spans the campaign's turns, the demo's hundred
+## printed Demo Era and the rest greyed.
 func _era_rule(c: CanvasItem, r: Rect2, turns: int, demo: bool) -> void:
 	var x0 := r.position.x
 	var x1 := r.end.x
@@ -966,6 +971,21 @@ func _era_rule(c: CanvasItem, r: Rect2, turns: int, demo: bool) -> void:
 			continue
 		var label := "Demo Era" if demo else String(ERA_NAMES[mini(i, ERA_NAMES.size() - 1)])
 		_ink(c, Plate.FONT_SEMI, 12, label, seg.get_center(), NAVY, HORIZONTAL_ALIGNMENT_CENTER, seg.size.x - 8.0)
+	# The turn scale under the bar: a tick every ten turns, and the turn each era ends on.
+	var foot := top + h
+	for t in range(10, turns, 10):
+		var x := x0 + (x1 - x0) * float(t) / float(turns)
+		c.draw_line(Vector2(x, foot), Vector2(x, foot + 5.0 * L), Color(NAVY, 0.45), 1.0)
+	var ends: Array = [0]
+	for span in spans:
+		if int(span[1]) > int(ends[-1]): ends.append(int(span[1]))
+	for k in ends.size():
+		var t: int = ends[k]
+		var x := x0 + (x1 - x0) * float(t) / float(turns)
+		var greyed := demo and t > _speed_turns
+		c.draw_line(Vector2(x, foot), Vector2(x, foot + 10.0 * L), Color(0.45, 0.47, 0.5, 0.8) if greyed else NAVY, 1.5)
+		var align := HORIZONTAL_ALIGNMENT_LEFT if k == 0 else (HORIZONTAL_ALIGNMENT_RIGHT if k == ends.size() - 1 else HORIZONTAL_ALIGNMENT_CENTER)
+		_ink(c, FONT_PLEX, 12, "Turn %d" % maxi(t, 1), Vector2(x, foot + 26.0 * L), INK_DIM if greyed else NAVY, align)
 
 
 func _tick(c: CanvasItem, at: Vector2, on: bool, label: String, inner: float) -> void:
