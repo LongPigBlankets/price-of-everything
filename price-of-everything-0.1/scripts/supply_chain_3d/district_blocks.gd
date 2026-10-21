@@ -7,6 +7,7 @@ const Region := preload("res://scripts/supply_chain_3d/authored_region.gd")
 const Cache := preload("res://scripts/supply_chain_3d/bake_cache.gd")
 const Assets := preload("res://scripts/supply_chain_3d/assets.gd")
 const Depot := preload("res://scripts/supply_chain_3d/rail_depot.gd")
+const Pace := preload("res://scripts/supply_chain_3d/layout_pace.gd")
 const WIDTHS := [4.8, 4.6, 4.4, 4.2] # 8.4u carriageway, one lane each way
 var centers := {}
 var tile_index := {}
@@ -19,6 +20,8 @@ var harbours: Array = []
 var rail_index := {}
 var ground: Callable
 var water: Callable
+## The build's pace (layout_pace.gd); null runs the generation straight through.
+var pace: RefCounted = null
 
 static func clip_half_plane(poly: PackedVector2Array, normal: Vector2, distance: float) -> PackedVector2Array:
 	var out := PackedVector2Array()
@@ -32,26 +35,30 @@ static func clip_half_plane(poly: PackedVector2Array, normal: Vector2, distance:
 	return out
 
 static func cells(sites: PackedVector2Array, bounds: Rect2) -> Array:
-	# Local coordinates avoid cancellation between squared world coordinates.
-	var origin := bounds.get_center()
-	var local := PackedVector2Array()
-	for p in sites: local.append(p-origin)
-	var box := Rect2(bounds.position-origin,bounds.size)
 	var result: Array = []
-	for i in local.size():
-		var poly := PackedVector2Array([box.position, Vector2(box.end.x,box.position.y), box.end, Vector2(box.position.x,box.end.y)])
-		for j in local.size():
-			if i==j: continue
-			var normal := local[j]-local[i]
-			poly=clip_half_plane(poly,normal,(local[j].length_squared()-local[i].length_squared())*0.5)
-			if poly.is_empty(): break
-		for k in poly.size(): poly[k]+=origin
-		result.append(poly)
+	for i in sites.size(): result.append(cell(sites, bounds, i))
 	return result
 
-func apply(model: Dictionary, height: Callable, wet: Callable, prepared: Dictionary) -> void:
+## Site i's Voronoi cell within the bounds.
+static func cell(sites: PackedVector2Array, bounds: Rect2, i: int) -> PackedVector2Array:
+	# Local coordinates avoid cancellation between squared world coordinates.
+	var origin := bounds.get_center()
+	var box := Rect2(bounds.position-origin,bounds.size)
+	var here := sites[i]-origin
+	var poly := PackedVector2Array([box.position, Vector2(box.end.x,box.position.y), box.end, Vector2(box.position.x,box.end.y)])
+	for j in sites.size():
+		if i==j: continue
+		var there := sites[j]-origin
+		poly=clip_half_plane(poly,there-here,(there.length_squared()-here.length_squared())*0.5)
+		if poly.is_empty(): break
+	for k in poly.size(): poly[k]+=origin
+	return poly
+
+## With a pace (layout_pace.gd) a new plan spreads over frames, and is dropped unremembered when its
+## build is given up.
+func apply(model: Dictionary, height: Callable, wet: Callable, prepared: Dictionary, layout_pace: RefCounted = null) -> void:
 	if "--stoneshore-baseline" in preload("res://scripts/demo_build.gd").user_args(): return
-	ground=height; water=wet
+	ground=height; water=wet; pace=layout_pace
 	for tid in model.tiles:
 		if model.tiles.has(tid) and str(model.tiles[tid].type)=="urban": centers[tid]=model.tiles[tid].center
 	tile_index=Index.tiles(centers)
@@ -89,7 +96,8 @@ func apply(model: Dictionary, height: Callable, wet: Callable, prepared: Diction
 	var variants: Dictionary=prepared.get_or_add("district_blocks",{})
 	var plan: Dictionary=variants.get(key,{})
 	if plan.is_empty():
-		plan=generate_regions()
+		plan=await generate_regions()
+		if Pace.gave_up(pace): return
 		while variants.size()>=4: variants.erase(variants.keys()[0])
 		variants[key]=plan
 	model.district_blocks=plan
@@ -111,7 +119,8 @@ func generate_regions() -> Dictionary:
 		centers=groups[region];tile_index=Index.tiles(centers)
 		roads=all_roads.filter(func(r):return centers.has(str(r.tile)))
 		road_index=Index.segments(roads,30)
-		var local := generate()
+		var local: Dictionary = await generate()
+		if Pace.gave_up(pace): return {}
 		for path in local.paths: path.id="district:%s:%s" % [region,path.id]
 		result.paths.append_array(local.paths);result.plots.append_array(local.plots)
 		result.sites+=local.sites;result.length+=local.length
@@ -149,6 +158,8 @@ func generate() -> Dictionary:
 	var sites := PackedVector2Array()
 	# Offset samples from real roads establish frontage depth and orientation.
 	for r in roads:
+		await Pace.step(pace)
+		if Pace.gave_up(pace): return {}
 		var length: float=r.a.distance_to(r.b)
 		var count := maxi(1,ceili(length/100.0))
 		for i in count:
@@ -157,6 +168,8 @@ func generate() -> Dictionary:
 			for direction in [-1,1]: _site(sites,p+n*direction*64)
 	# Fill only large holes left by the authored network.
 	for tid in centers:
+		await Pace.step(pace)
+		if Pace.gave_up(pace): return {}
 		for y in range(-180,181,120):
 			for x in range(-180,181,120):
 				var h := absi(hash("%s:%d:%d" % [tid,x,y]))
@@ -164,9 +177,15 @@ func generate() -> Dictionary:
 	var bounds := Rect2(centers.values()[0],Vector2.ZERO)
 	for c in centers.values(): bounds=bounds.expand(c)
 	bounds=bounds.grow(300)
-	var polygons := cells(sites,bounds)
+	var polygons: Array = []
+	for i in sites.size():
+		await Pace.step(pace)
+		if Pace.gave_up(pace): return {}
+		polygons.append(cell(sites,bounds,i))
 	var unique := {}; var edges: Array=[]
 	for poly in polygons:
+		await Pace.step(pace)
+		if Pace.gave_up(pace): return {}
 		for i in poly.size():
 			var a: Vector2=poly[i];var b: Vector2=poly[(i+1)%poly.size()]
 			var ka := Vector2i((a*100).round());var kb := Vector2i((b*100).round())

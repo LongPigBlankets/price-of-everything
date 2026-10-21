@@ -9,6 +9,7 @@ const Footprints := preload("res://scripts/supply_chain_3d/building_footprints.g
 const FrontageFill := preload("res://scripts/supply_chain_3d/frontage_fill.gd")
 const Neighbourhood := preload("res://scripts/supply_chain_3d/neighbourhood_blocks.gd")
 const Sidewalks := preload("res://scripts/supply_chain_3d/urban_sidewalks.gd")
+const Pace := preload("res://scripts/supply_chain_3d/layout_pace.gd")
 var roads: Array = []
 var road_index := {}
 var lots: Array = []
@@ -18,7 +19,8 @@ var ground: Callable
 var water: Callable
 var asset_key: Callable
 
-func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Callable, river_lines: Dictionary = {}, prepared: Dictionary = {}) -> void:
+## With a pace (layout_pace.gd) the fit spreads over frames, and stops unremembered when its build is given up.
+func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Callable, river_lines: Dictionary = {}, prepared: Dictionary = {}, pace: RefCounted = null) -> void:
 	ground = height_at; water = water_at; asset_key = key_for
 	Sidewalks.apply(model.roads, model.tiles)
 	var inputs: Array = []
@@ -82,6 +84,8 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 	var trial_counts := {}
 	var residential_counts := {}
 	for s in movable:
+		await Pace.step(pace)
+		if Pace.gave_up(pace): return
 		if not model.authored_region.tiles.has(str(s.tile)): continue
 		if s.get("trial_density", false) and int(trial_counts.get(str(s.tile), 0)) >= int(model.get("trial_targets", {}).get(str(s.tile), 100000)):
 			omitted_ids[str(s.iid)]=true; omitted += 1; continue
@@ -115,19 +119,25 @@ func fit(model: Dictionary, height_at: Callable, water_at: Callable, key_for: Ca
 	var blocks := Neighbourhood.new()
 	var interiors := model.has("district_blocks") and not zoning.is_empty()
 	if interiors:
-		blocks.prepare(model,self)
+		await blocks.prepare(model,self,pace)
+		if Pace.gave_up(pace): return
 		_reserve_junctions()
 	print("[LAYOUT] lanes ready ",Time.get_ticks_msec())
 	var infill := FrontageFill.new()
-	var coverage := infill.run(model,self,zoning) if not zoning.is_empty() else {}
+	var coverage := {}
+	if not zoning.is_empty(): coverage = await infill.run(model,self,zoning,pace)
+	if Pace.gave_up(pace): return
 	print("[LAYOUT] fronts ready ",Time.get_ticks_msec()," added=",infill.added.size())
-	if interiors: blocks.populate()
+	if interiors: await blocks.populate(pace)
+	if Pace.gave_up(pace): return
 	restored += infill.added.size()
 	restored += blocks.added.size()
 	var connections: Array = []
 	var access_stubs: Array = []
 	var unconnected: Array = []
 	for s in model.standing:
+		await Pace.step(pace)
+		if Pace.gave_up(pace): return
 		if str(s.kind) == "pylon" or not model.authored_region.tiles.has(str(s.tile)): continue
 		if str(s.kind)=="house":
 			s.erase("entrance")

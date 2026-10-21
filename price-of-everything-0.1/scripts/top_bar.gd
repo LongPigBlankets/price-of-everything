@@ -942,6 +942,19 @@ func _on_quest_mission_completed(kind: String, mission_title: String, reward: St
 ## pipes; top_level, so the container will not touch it. Centred vertically in what the bar actually DRAWS —
 ## its live height less the beam along the bottom — rather than in BAR_H, which is the offset the bar
 ## is anchored by and is smaller than the height its styleboxes give it (53 vs a measured 64).
+## The completion plate's first draw stalls the game for half a second. world_map.gd draws it here once,
+## under the loading screen, so the first mission the player completes does not.
+func warm_mission_plate() -> void:
+	if _mission_plate == null or not is_instance_valid(_mission_plate):
+		_mission_plate = MissionCompletePlate.new()
+		add_child(_mission_plate)
+	_mission_plate.call("play", "Mission", "Reward", size.x * 0.5, global_position.y + size.y - EDGE_H)
+	for i in 2:
+		await get_tree().process_frame
+	if is_instance_valid(_mission_plate):
+		_mission_plate.call("stop")
+
+
 func _place_quest() -> void:
 	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible or _ds2_left_gap == null:
 		return

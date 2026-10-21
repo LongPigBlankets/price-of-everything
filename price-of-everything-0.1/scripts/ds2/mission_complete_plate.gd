@@ -104,6 +104,14 @@ func play(mission: String, reward: String, centre_x: float, top_y: float) -> flo
 	return DROP_SEC + HOLD_SEC + RETRACT_SEC
 
 
+## Stops a completion at once and hides the plate.
+func stop() -> void:
+	if _anim != null and _anim.is_valid():
+		_anim.kill()
+	visible = false
+	set_process(false)
+
+
 func is_playing() -> bool:
 	return _anim != null and _anim.is_valid() and _anim.is_running()
 

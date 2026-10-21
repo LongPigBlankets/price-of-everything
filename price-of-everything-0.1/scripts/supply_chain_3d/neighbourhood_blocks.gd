@@ -7,8 +7,11 @@ const Region := preload("res://scripts/supply_chain_3d/authored_region.gd")
 const Walks := preload("res://scripts/supply_chain_3d/urban_sidewalks.gd")
 const Assets := preload("res://scripts/supply_chain_3d/assets.gd")
 const Scale := preload("res://scripts/supply_chain_3d/building_scale.gd")
+const Pace := preload("res://scripts/supply_chain_3d/layout_pace.gd")
 const WIDTHS := [2.8,2.6,2.4,2.2] # quiet two-way lanes, narrower than district streets
 var added: Array = []
+## The build's pace (layout_pace.gd); null runs the passes straight through.
+var pace: RefCounted = null
 var fit: RefCounted
 var world: Dictionary
 var main_roads: Array = []
@@ -24,14 +27,15 @@ static func rectangle(p: Vector2, tangent: Vector2, size: Vector2) -> PackedVect
 	return PackedVector2Array([p-tangent*size.x*.5-n*size.y*.5,p+tangent*size.x*.5-n*size.y*.5,
 		p+tangent*size.x*.5+n*size.y*.5,p-tangent*size.x*.5+n*size.y*.5])
 
-func prepare(model: Dictionary, fitter: RefCounted) -> void:
+## With a pace (layout_pace.gd) the passes spread over frames and stop when their build is given up.
+func prepare(model: Dictionary, fitter: RefCounted, layout_pace: RefCounted = null) -> void:
+	pace=layout_pace
 	world=model;fit=fitter;scope=Trial.dense_tiles(model)
 	main_roads=fit.roads.filter(func(r):return str(r.tile) in scope and not r.get("district_street",false) and not str(r.get("source","")).begins_with("access:"))
 	main_index=Index.segments(main_roads,150)
-	_lanes()
-	_connections()
-	_brownfields()
-	_courtyards()
+	for pass_fn in [_lanes,_connections,_brownfields,_courtyards]:
+		await pass_fn.call()
+		if Pace.gave_up(pace): return
 	world.neighbourhood=plan
 
 func _lane_clear(points: PackedVector2Array, tile: String) -> bool:
@@ -65,6 +69,8 @@ func _lanes() -> void:
 	var candidates := main_roads.duplicate()
 	candidates.sort_custom(func(a,b):return a.a.distance_squared_to(a.b)>b.a.distance_squared_to(b.b))
 	for r in candidates:
+		await Pace.step(pace)
+		if Pace.gave_up(pace): return
 		var tid := str(r.tile)
 		var urban: bool=world.tiles[tid].type=="urban"
 		if int(counts.get(tid,0)) >= (3 if urban else 1): continue
@@ -100,6 +106,8 @@ func _connections() -> void:
 	# not fit. Both ends are real graph junctions; no isolated decorative stubs.
 	var anchors := {}
 	for r in fit.roads:
+		await Pace.step(pace)
+		if Pace.gave_up(pace): return
 		if not str(r.tile) in scope or str(r.get("source","")).begins_with("access:"): continue
 		var count := maxi(1,ceili(r.a.distance_to(r.b)/48.0))
 		for i in count:
@@ -107,6 +115,8 @@ func _connections() -> void:
 	var options: Array=[]
 	for tile_anchors in anchors.values():
 		for i in tile_anchors.size():
+			await Pace.step(pace)
+			if Pace.gave_up(pace): return
 			var a: Dictionary=tile_anchors[i]
 			for j in range(i+1,tile_anchors.size()):
 				var b: Dictionary=tile_anchors[j]
@@ -119,6 +129,8 @@ func _connections() -> void:
 	options.sort_custom(func(a,b):return a.length>b.length)
 	var counts := {}
 	for option in options:
+		await Pace.step(pace)
+		if Pace.gave_up(pace): return
 		var tid: String=option.tile
 		if int(counts.get(tid,0)) >= (5 if world.tiles[tid].type=="urban" else 2): continue
 		var points := PackedVector2Array([option.a,option.b])
@@ -139,6 +151,8 @@ func _brownfields() -> void:
 		if lane(a)!=lane(b): return lane(a)
 		return a.a.distance_squared_to(a.b)>b.a.distance_squared_to(b.b))
 	for road in candidates:
+		await Pace.step(pace)
+		if Pace.gave_up(pace): return
 		var tid := str(road.tile)
 		if not tid in scope or str(road.get("source","")).begins_with("access:"): continue
 		if int(counts.get(tid,0)) >= (2 if world.tiles[tid].type=="urban" else 1): continue
@@ -175,6 +189,8 @@ func _greens() -> void:
 		if not world.tiles.has(tid): continue
 		var choices: Array=[]
 		for y in range(-190,191,38):
+			await Pace.step(pace)
+			if Pace.gave_up(pace): return
 			for x in range(-190,191,38):
 				var p: Vector2=world.tiles[tid].center+Vector2(x,y)
 				choices.append({"p":p,"seed":absi(hash("green:"+str(p)))})
@@ -207,6 +223,8 @@ func _near_port(p: Vector2) -> bool:
 func _courtyards() -> void:
 	var counts := {}
 	for r in fit.roads:
+		await Pace.step(pace)
+		if Pace.gave_up(pace): return
 		if not lane(r) and not r.get("district_street",false): continue
 		if not str(r.tile) in scope or int(counts.get(r.tile,0))>=2 or r.a.distance_to(r.b)<40: continue
 		var tangent: Vector2=(r.b-r.a).normalized()
@@ -237,11 +255,15 @@ func _courtyards() -> void:
 static func row_for(distance: float) -> int:
 	return 1 if distance<38 else (2 if distance<80 else 3)
 
-func populate() -> void:
-	_greens()
+func populate(layout_pace: RefCounted = null) -> void:
+	pace=layout_pace
+	await _greens()
+	if Pace.gave_up(pace): return
 	# Two additional layers face the new lanes. Beyond the main-road frontage,
 	# remove commerce and leave progressively wider gaps for gardens/greenery.
 	for r in fit.roads:
+		await Pace.step(pace)
+		if Pace.gave_up(pace): return
 		if not lane(r): continue
 		var length: float=r.a.distance_to(r.b)
 		var count := maxi(1,floori(length/19.0))
@@ -269,7 +291,8 @@ func populate() -> void:
 					_accept(s);plan.buildings+=1
 					plan.rows[str(row)]=int(plan.rows.get(str(row),0))+1
 					break
-	_back_rows()
+	await _back_rows()
+	if Pace.gave_up(pace): return
 	world.neighbourhood=plan
 	fit=null;world={}
 
@@ -279,6 +302,8 @@ func _back_rows() -> void:
 	var counts := {};var used := {}
 	for depth in [32.0,62.0]:
 		for r in fit.roads:
+			await Pace.step(pace)
+			if Pace.gave_up(pace): return
 			if not str(r.tile) in scope or str(r.get("source","")).begins_with("access:"): continue
 			if int(counts.get(r.tile,0))>=24: continue
 			var length: float=r.a.distance_to(r.b)
