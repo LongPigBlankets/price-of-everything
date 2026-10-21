@@ -468,8 +468,10 @@ the general lessons are in the `blender-building-sprites` skill.
 ## Electric arc furnace
 
 The EAF (`eaf_v2_builder.py`, family `eaf_v2`, installs as `eaf`) runs after the power plant
-builder and is the furnace's sibling in the catalogue look: refractory melt shop on a brick
-base course with the open charging bay in its long front face, the furnace on a black-grey
-operating platform, a brick transformer vault, bag house and the family chimney. Its eave is
-solved from the sightlines through the bay. The composition was chosen from three blockouts
-(`eaf_v2_dreamloop.py`). Record: `docs/reviews/eaf-v2-2026-10-20.md`.
+builder and is the furnace's sibling in the catalogue look: a large low bowl under a single
+slanted roof plane over an open portal front, the operating deck raised round it, one large
+transformer on the left, a bag house on tall legs behind the chamber and steel stacks behind
+that. L3 widens the chamber for a second shell off the other side of the same mast, a second
+fan and a second stack. Sightlines through the open front and behind the right jamb are
+checked before it builds. The composition went through two rounds of blockouts
+(`eaf_v2_dreamloop.py`) and nine owner directions. Record: `docs/reviews/eaf-v2-2026-10-20.md`.

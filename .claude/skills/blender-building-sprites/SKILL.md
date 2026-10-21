@@ -623,6 +623,10 @@ scale, not cropped sprites, so the sheet shows each level at the size the game d
   point and sets the height the same way.
 - **A mast or column beside an open bay must have a smaller x+y than the bay's jamb**, or
   the pier hides it and anything attached appears to end in the wall.
+- **The sprite's height is max(2z − x + y) − min(2z − x + y).** Plant behind a building is
+  the most expensive place for anything tall, and a wide building the most expensive thing
+  at the front; a site pad run to the front across the whole width costs as much as the
+  building. Behind a building only what satisfies 2z + y above the back eave's shows.
 - **A dreamloop for a building is three massing blockouts at the same fidelity on one
   labelled sheet** (`eaf_v2_dreamloop.py`); a detailed candidate beside two blockouts
   biases the choice.

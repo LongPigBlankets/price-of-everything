@@ -23,7 +23,7 @@ FAMILIES = {
     'poly_plant_v2': dict(smoke=(), steam=(), cables=(), light=()),
     'power_plant_v2': dict(smoke=('stack_top',), steam=('tower_void',), cables=('line_phase', 'line_rise'), light=()),
     # The bath and the caster strand are baked light; the bath also gets the arc's shifting hot spot.
-    'eaf_v2': dict(smoke=('stack_top',), steam=(), cables=(), light=('furnace_melt', 'strand'), fires=('furnace_melt',)),
+    'eaf_v2': dict(smoke=('stack_top',), steam=(), cables=(), light=('furnace_melt', 'furnace_melt_b'), fires=('furnace_melt', 'furnace_melt_b')),
 }
 
 root = Path(sys.argv[sys.argv.index('--')+1])
