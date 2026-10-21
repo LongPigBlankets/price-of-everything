@@ -253,7 +253,7 @@
       "staged_as": "power_plant_v2"
     },
     "eaf": {
-      "revision": "v8",
+      "revision": "v9",
       "source_sha256": {
         "builders.py": "d06f723c029a0b876f95cd34c404a1c9213610c5d32dd5bf93d134c6cd8e1535",
         "furnace_paper.py": "f2786c4ba6ef1b6ad2cd9f97fec17ac6ddee084056fc89e142b0d476d437c6ee",
@@ -269,7 +269,7 @@
         "entry.py": "21dc339474cd534114ed5874208bac042059a1e5e0ea09b896b2f0d3b670ecbc",
         "paper_wpa_catalog.py": "7be39b082de17b6092e9505e67850028966e9d033bf6f665a057997da147c157",
         "render_sprite.py": "edf7cd4e41d5d6fa2bedae8435b8b7fa5e80a86711ff828b928a241c09f7bff4",
-        "eaf_v2_builder.py": "49be6bb79dce7570cd13b301f45299f53b76846bc88f036ee313f96e9384b05b",
+        "eaf_v2_builder.py": "3629bebff509a52403c8fd0dd5364548aff329da3e3723ccf7f4987735513e9e",
         "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
         "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
       },
@@ -2449,12 +2449,12 @@
         800
       ],
       "bbox": [
-        11,
-        16,
-        787,
-        783
+        31,
+        19,
+        769,
+        780
       ],
-      "opaque_pixels": 395217,
+      "opaque_pixels": 374969,
       "dominant_rgb": [
         [
           128,
@@ -2467,19 +2467,14 @@
           144
         ],
         [
-          152,
-          152,
-          136
-        ],
-        [
           40,
           48,
           56
         ],
         [
-          128,
-          80,
-          56
+          152,
+          152,
+          136
         ],
         [
           152,
@@ -2487,19 +2482,24 @@
           136
         ],
         [
+          128,
+          80,
+          56
+        ],
+        [
           136,
           80,
           56
         ],
         [
-          184,
-          176,
-          168
+          120,
+          128,
+          128
         ]
       ],
-      "sha256": "64265a555f1354ec7e4f3fda0bce330b5206d9b418a8b2ab4a23e0f33be27166",
+      "sha256": "85a386bd0b169f1d716311e9b7e947d1963f0776bf83b9dc03a6de2feee3b883",
       "mask_range": [
-        125,
+        126,
         255
       ]
     },
@@ -2509,12 +2509,12 @@
         800
       ],
       "bbox": [
-        11,
-        16,
-        787,
-        783
+        31,
+        19,
+        769,
+        780
       ],
-      "opaque_pixels": 438850,
+      "opaque_pixels": 411979,
       "dominant_rgb": [
         [
           128,
@@ -2537,17 +2537,12 @@
           136
         ],
         [
-          128,
-          80,
-          56
-        ],
-        [
           152,
           144,
           136
         ],
         [
-          136,
+          128,
           80,
           56
         ],
@@ -2555,11 +2550,16 @@
           48,
           56,
           64
+        ],
+        [
+          136,
+          80,
+          56
         ]
       ],
-      "sha256": "b4842c8b5ab55298006eea0cebf1e5dcacb54e302006069a61cb335f1a2d99b4",
+      "sha256": "7ef408d0b32260aed44355968736e26b8be837bcb0674d5fe4b3485ddd41a8f6",
       "mask_range": [
-        125,
+        121,
         255
       ]
     },
@@ -2569,12 +2569,12 @@
         800
       ],
       "bbox": [
-        11,
         16,
-        787,
-        783
+        19,
+        783,
+        780
       ],
-      "opaque_pixels": 447875,
+      "opaque_pixels": 426816,
       "dominant_rgb": [
         [
           128,
@@ -2582,24 +2582,14 @@
           136
         ],
         [
-          136,
-          144,
-          144
-        ],
-        [
           40,
           48,
           56
         ],
         [
-          128,
-          80,
-          56
-        ],
-        [
           136,
-          80,
-          56
+          144,
+          144
         ],
         [
           152,
@@ -2612,14 +2602,24 @@
           64
         ],
         [
-          184,
-          184,
-          176
+          152,
+          144,
+          136
+        ],
+        [
+          176,
+          176,
+          168
+        ],
+        [
+          128,
+          80,
+          56
         ]
       ],
-      "sha256": "549e44054678337a02fd99389fee407a3cc41ccefef7aaa52adb742a4f0282fb",
+      "sha256": "f1c81c00853c65a35f53414d27a902754231a35b16d3754350091b6a3ba70105",
       "mask_range": [
-        125,
+        122,
         255
       ]
     }
@@ -2673,11 +2673,11 @@
     "power_plant_lvl2_contour.glb": "b433d42807454e9de625fdb6de98e44b139365b3625c9e0cebb10c7ca43dc276",
     "power_plant_lvl3.glb": "2e3fa64aa3bd49b6810b23a2e21ef79b056134511eda553babd1d68eb34415ad",
     "power_plant_lvl3_contour.glb": "e5c5d32588fb0ab2475e90c879d53a7221cf00c5764661438751225f7ddc03fa",
-    "eaf_lvl1_contour.glb": "59a76274dba96987a87ffbcff410f645d80e846e9868f2cb8d3ea169018c54b7",
-    "eaf_lvl2.glb": "c3cc93e1f1f52dbe83e73a6d57c30db40cd55cc39d5795c2540e6f4e70794a98",
-    "eaf_lvl3.glb": "e08739dff7c8a0f296bef214574785388f1a75282b36afa8db8f47fd78844de6",
-    "eaf_lvl1.glb": "b7b68f8f33c191ad7abcd5eb199efb1509c2290b1e3762e9b99dd79ee0bf9151",
-    "eaf_lvl2_contour.glb": "f396001a472bb47c3084a196818cb8279747c158bfa070a1d382843bf8866a89",
-    "eaf_lvl3_contour.glb": "bfd641c0e47ea83a686850a6fd143b530ecb053c1e1f086df09f072b5f4eb6fd"
+    "eaf_lvl1_contour.glb": "b38c12acd731a74694f22eee4c1afe3e8cbafb330bff4cffb0c1d7e3e9907b62",
+    "eaf_lvl2.glb": "dd511abe523d7b481f209efbd4d5325b60abc93aa96a42bf9f3723053d744260",
+    "eaf_lvl3.glb": "2115e1f24ab88e9156a0a280ddc38a3ef4edc765d4cd364359c304990a3aff10",
+    "eaf_lvl1.glb": "2e203093c633395b865c3b722176b21302a000b1215779d8c8c54cd5edf3c607",
+    "eaf_lvl2_contour.glb": "c567702e3e8824aba6db77bf63fd8890f4f0318da0a006f190eeef29412b01e1",
+    "eaf_lvl3_contour.glb": "726595d6b40d78730e80f4f06499cc08de47d1cb90eb07c9dcc2bd1aff3e8d11"
   }
 }
