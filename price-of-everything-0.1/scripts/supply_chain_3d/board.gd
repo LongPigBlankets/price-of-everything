@@ -11,6 +11,9 @@ const WorldSnapshot := preload("res://scripts/supply_chain_3d/world_snapshot.gd"
 static var _shipped_key := ""
 static var _shipped_model := {}
 static var _shipped_index := {}
+## A snapshot this build of the game cannot use (stale fingerprints, say) stays unusable for the
+## session, so it is decoded once rather than on every rebuild.
+static var _shipped_rejected := ""
 var _ground: RefCounted = null
 var _ground_key: Array = []
 var _asset_drain := false
@@ -41,6 +44,7 @@ const Detail := preload("res://scripts/supply_chain_3d/detail.gd")
 const Tokens := preload("res://scripts/supply_chain_3d/tokens.gd")
 const Geo := preload("res://scripts/supply_chain_3d/geometry.gd")
 const LayoutQueries := preload("res://scripts/supply_chain_3d/layout_queries.gd")
+const Pace := preload("res://scripts/supply_chain_3d/layout_pace.gd")
 const BackgroundLoad := preload("res://scripts/supply_chain_3d/background_load.gd")
 const BackgroundWorld := preload("res://scripts/supply_chain_3d/background_world.gd")
 const PaperMap := preload("res://scripts/supply_chain_3d/paper_map.gd")
@@ -83,6 +87,7 @@ var _last_graph: Dictionary = {}
 var _last_terrain: Node
 var _last_show: Dictionary = {}
 var _last_evening := false
+var _last_calm := false
 var _effects: Array = []
 var _labels: Control
 var _detail := -1
@@ -92,6 +97,10 @@ var _last_all_tiles := false
 var _coverage: OptionButton
 ## Session switch: evening lights every town, daylight lights only polluted tiles.
 static var evening := false
+## Session switches for the look: the ink and paper print over the whole view, and decorative
+## scenery stepping back behind the works (lower contrast, finer outlines, fewer and dimmer lights).
+static var print_look := true
+static var calm_scenery := true
 var _light: OptionButton
 var _environment: Environment
 var _progress: Label
@@ -334,6 +343,7 @@ func _ready() -> void:
 	environment.environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	_environment = environment.environment
 	_apply_light()
+	apply_look()
 	_world.add_child(environment)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-55, -30, 0)
@@ -461,6 +471,21 @@ func set_evening(value: bool) -> void:
 	if show_all_tiles or not is_instance_valid(_last_terrain): return
 	await _build(_last_graph, _last_terrain, true)
 
+## The print and the calming are shader globals, so every material takes them at once.
+static func apply_look() -> void:
+	RenderingServer.global_shader_parameter_set("sc3d_print", 1.0 if print_look else 0.0)
+	RenderingServer.global_shader_parameter_set("sc3d_calm", 1.0 if calm_scenery else 0.0)
+
+func set_look(printed: bool, calm: bool) -> void:
+	if printed == print_look and calm == calm_scenery: return
+	var relight := calm != calm_scenery
+	print_look = printed
+	calm_scenery = calm
+	apply_look()
+	# Which homes light up depends on the calming, so the company scene relights.
+	if not relight or show_all_tiles or not is_instance_valid(_last_terrain): return
+	await _build(_last_graph, _last_terrain, true)
+
 ## Evening is a per-channel curve after the tonemap: mid tones drop and cool, while the
 ## brightest values (lit windows, lamp glows) keep their warmth.
 func _apply_light() -> void:
@@ -506,7 +531,8 @@ func set_all_tiles(value: bool, _persist: bool = true) -> void:
 	_fit_after_build = not value
 	_medium_after_build = value
 	# A company scene built in the other light is rebuilt rather than reused.
-	if _coverage_states.has(value) and (value or _coverage_states[value].builder.evening == evening):
+	if _coverage_states.has(value) and (value or (_coverage_states[value].builder.evening == evening
+			and _coverage_states[value].builder.calm_scenery == calm_scenery)):
 		_activate(_coverage_states[value])
 	elif is_instance_valid(_last_terrain):
 		await _build(_last_graph, _last_terrain, true)
@@ -530,6 +556,7 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 	builder.streamed = show_all_tiles
 	builder.flat = flat
 	builder.evening = evening
+	builder.calm_scenery = calm_scenery
 	builder.cursor_picking = true
 	builder.lazy_assets = true
 	builder.terrain_cache = _terrain_cache
@@ -599,18 +626,34 @@ func _build(graph: Dictionary, terrain: Node, paced: bool) -> void:
 			water, Legacy._shore_test(terrain), extra_tiles)
 		if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled():
 			preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").restrict_model(model)
-		_solve_layout(model, terrain, rivers, queries, builder, water, timings)
+		# A new company layout takes seconds to solve; spread it over frames so the game keeps
+		# running, and drop it the moment a newer build replaces this one.
+		var pace := Pace.new(get_tree(), func() -> bool: return generation == _generation)
+		await _solve_layout(model, terrain, rivers, queries, builder, water, timings, [], pace)
+		timings.layout_frames = pace.frames
+		timings.layout_longest_slice_ms = pace.longest_usec / 1000.0
+		if pace.stopped or generation != _generation:
+			_abandon_layout(queries, builder, generation)
+			next.free()
+			return
+	# The company's buildings grow only as far as they keep clear of streets and neighbours.
+	var clearance_started := Time.get_ticks_usec()
+	timings.buildings_held_back = preload("res://scripts/supply_chain_3d/building_clearance.gd").apply(model, Builder.standing_key, builder.open_water)
+	timings.clearance_ms = (Time.get_ticks_usec() - clearance_started) / 1000.0
 	timings.layout_solve_ms = (Time.get_ticks_usec() - solve_started) / 1000.0
 	if not show_all_tiles:
 		await get_tree().process_frame
-		if generation != _generation: next.free(); return
+		if generation != _generation:
+			_abandon_layout(queries, builder, generation)
+			next.free()
+			return
 	queries.finish(builder.bake_cache)
 	_unlock_layout("build:%d" % generation)
 	_layout_queries = queries
 	timings.model_ms = (Time.get_ticks_usec() - stage) / 1000.0
 	stage = Time.get_ticks_usec()
 	if show_all_tiles: print("[CONTINENT BUILD] model ready ", Time.get_ticks_msec())
-	if model == _model and Legacy.show == _last_show and show_all_tiles == _last_all_tiles and evening == _last_evening and flat == built_flat():
+	if model == _model and Legacy.show == _last_show and show_all_tiles == _last_all_tiles and evening == _last_evening and calm_scenery == _last_calm and flat == built_flat():
 		_building = false
 		if _progress != null: _progress.hide()
 		next.free()
@@ -676,6 +719,13 @@ func _layout_owner_alive() -> bool:
 	if _layout_owner.begins_with("background:"): return _warming != null and str(_warming.get_instance_id()) == _layout_owner.trim_prefix("background:") and not _warming.cancelled
 	return false
 
+## A build given up mid-layout puts the shared memo tables back and frees the lock, unless a newer
+## build has already taken both over.
+func _abandon_layout(queries: RefCounted, builder: RefCounted, generation: int) -> void:
+	if _layout_owner != "build:%d" % generation: return
+	queries.finish(builder.bake_cache)
+	_unlock_layout("build:%d" % generation)
+
 ## The shipped world snapshot's model, decoded once per session. Never mutated.
 func _shipped_world(cache: RefCounted) -> Dictionary:
 	if preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").preview_enabled(): return {}
@@ -685,9 +735,12 @@ func _shipped_world(cache: RefCounted) -> Dictionary:
 	if not manifest is Dictionary or not manifest.get("complete", false): return {}
 	var key := str(manifest.get("world_snapshot_key", ""))
 	if key.is_empty(): return {}
+	if key == _shipped_rejected: return {}
 	if _shipped_key != key:
 		var data: Dictionary = cache.read(key)
-		if data.is_empty() or not WorldSnapshot.usable_base(data, manifest): return {}
+		if data.is_empty() or not WorldSnapshot.usable_base(data, manifest):
+			_shipped_rejected = key
+			return {}
 		_shipped_model = data.model
 		_shipped_index = {}
 		_shipped_key = key
@@ -696,33 +749,57 @@ func _shipped_world(cache: RefCounted) -> Dictionary:
 ## The presentation layout passes, in order, for whatever tiles the model holds:
 ## the company, the whole continent, or only the tiles that differ from the
 ## shipped base (tile_overlay.gd).
-func _solve_layout(model: Dictionary, terrain: Node, rivers: Dictionary, queries: RefCounted, builder: RefCounted, water: Callable, timings: Dictionary, fit_roads: Array = []) -> void:
+## With a pace (layout_pace.gd) the passes spread over frames, and return early once it is given up.
+func _solve_layout(model: Dictionary, terrain: Node, rivers: Dictionary, queries: RefCounted, builder: RefCounted, water: Callable, timings: Dictionary, fit_roads: Array = [], pace: RefCounted = null) -> void:
 	var road_started := Time.get_ticks_usec()
 	preload("res://scripts/supply_chain_3d/authored_region.gd").apply(model, terrain, get_tree().get_first_node_in_group("building_footprints"), queries.data, builder.surface_height)
+	await Pace.step(pace)
+	if Pace.gave_up(pace): return
 	# After the authored lots have sized the buildings, before anything is fitted around them.
 	preload("res://scripts/supply_chain_3d/building_scale.gd").scale_buildings(model)
 	preload("res://scripts/supply_chain_3d/riverside_fields.gd").apply(model, rivers, queries.data)
+	await Pace.step(pace)
+	if Pace.gave_up(pace): return
 	timings.road_import_ms = (Time.get_ticks_usec() - road_started) / 1000.0
 	road_started = Time.get_ticks_usec()
 	preload("res://scripts/supply_chain_3d/harbour.gd").apply(model)
+	await Pace.step(pace)
+	if Pace.gave_up(pace): return
 	preload("res://scripts/supply_chain_3d/rail_network.gd").apply(model, terrain, water, builder.surface_height)
+	await Pace.step(pace)
+	if Pace.gave_up(pace): return
 	preload("res://scripts/supply_chain_3d/rail_station.gd").apply(model,builder.surface_height)
+	await Pace.step(pace)
+	if Pace.gave_up(pace): return
 	preload("res://scripts/supply_chain_3d/depot_roads.gd").apply(model,queries.data)
+	await Pace.step(pace)
+	if Pace.gave_up(pace): return
 	preload("res://scripts/supply_chain_3d/port_approach.gd").apply(model,builder.surface_height,queries.data)
-	preload("res://scripts/supply_chain_3d/district_blocks.gd").new().apply(model, builder.surface_height, builder.open_water, queries.data)
+	await Pace.step(pace)
+	if Pace.gave_up(pace): return
+	await preload("res://scripts/supply_chain_3d/district_blocks.gd").new().apply(model, builder.surface_height, builder.open_water, queries.data, pace)
+	await Pace.step(pace)
+	if Pace.gave_up(pace): return
 	print("[LAYOUT] districts ready ",Time.get_ticks_msec())
 	preload("res://scripts/supply_chain_3d/street_curves.gd").apply(model,builder.surface_height,builder.open_water,Builder.standing_key,queries.data)
+	await Pace.step(pace)
+	if Pace.gave_up(pace): return
 	print("[LAYOUT] curves ready ",Time.get_ticks_msec())
 	if Legacy.plate_town and Legacy.show.decor: preload("res://scripts/supply_chain_3d/stoneshore_trial.gd").populate(model, terrain)
 	print("[LAYOUT] seeds ready ",Time.get_ticks_msec())
 	if offline_layout_reuse.is_valid(): offline_layout_reuse.call(model,queries.data,rivers,Builder.standing_key)
 	# A tile overlay keeps the shipped road network; its buildings fit those roads.
 	if not fit_roads.is_empty(): model.roads = fit_roads.duplicate()
-	preload("res://scripts/supply_chain_3d/road_placement.gd").new().fit(model, builder.surface_height, builder.open_water, Builder.standing_key, rivers, queries.data)
+	await preload("res://scripts/supply_chain_3d/road_placement.gd").new().fit(model, builder.surface_height, builder.open_water, Builder.standing_key, rivers, queries.data, pace)
+	if Pace.gave_up(pace): return
 	timings.road_frontage_ms = (Time.get_ticks_usec() - road_started) / 1000.0
 	road_started = Time.get_ticks_usec()
 	preload("res://scripts/supply_chain_3d/authored_region.gd").reroute_flows(model, model.authored_region.tiles, model.roads)
+	await Pace.step(pace)
+	if Pace.gave_up(pace): return
 	preload("res://scripts/supply_chain_3d/rail_network.gd").apply(model, terrain, water, builder.surface_height)
+	await Pace.step(pace)
+	if Pace.gave_up(pace): return
 	timings.road_routing_ms = (Time.get_ticks_usec() - road_started) / 1000.0
 
 func _assemble(builder: RefCounted, model: Dictionary, generation: int, paced: bool, timings: Dictionary) -> Dictionary:
@@ -875,6 +952,7 @@ func _activate(packet: Dictionary) -> void:
 	_model = model
 	_last_show = Legacy.show.duplicate()
 	_last_evening = packet.builder.evening
+	_last_calm = packet.builder.calm_scenery
 	if _coverage != null: _coverage.set_item_disabled(1, builder.flat)
 	_last_all_tiles = show_all_tiles
 	_goods = packet.goods

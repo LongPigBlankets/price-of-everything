@@ -64,6 +64,7 @@ static func material_for(key: String, tier: int = 0, lit: bool = false, grade :=
 		var data := entry(key, tier)
 		material.set_shader_parameter("atlas_grid", Vector2(data.get("yaws", 16), data.get("pitches", 5)))
 		material.set_shader_parameter("foliage_softness", _foliage_softness if key.begins_with("tree_") else 0.0)
+		material.set_shader_parameter("landscape", key.begins_with("tree_"))
 		_materials[cache_key] = material
 	return _materials[cache_key]
 

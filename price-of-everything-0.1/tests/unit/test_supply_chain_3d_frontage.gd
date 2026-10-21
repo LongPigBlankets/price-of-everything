@@ -38,13 +38,13 @@ func _test_frontage_fields_and_narrow_corridors() -> void:
 	fit.ground=func(_p: Vector2) -> float:return 40.0
 	fit.asset_key=func(_s: Dictionary) -> String:return key
 	fit.reserve("farm",field)
-	var result := Fill.new().run(model,fit,{})
+	var result: Dictionary = await Fill.new().run(model,fit,{})
 	_check(result.before.covered_length==0.0 and result.before.excluded.get("reserved_plot",0)>0,"frontage: a farm field or works yard does not count as a building facade")
 	var parallel: Dictionary=road.duplicate(true);parallel.a.y=22;parallel.b.y=22
 	model.standing=[];model.roads=[road,parallel]
 	fit=Placement.new();fit.roads=model.roads;fit.road_index=Placement.Index.segments(fit.roads,20)
 	fit.ground=func(_p: Vector2) -> float:return 40.0
-	result=Fill.new().run(model,fit,{})
+	result=await Fill.new().run(model,fit,{})
 	_check(result.before.excluded.get("plot_junction",0)>100.0,"frontage: slivers between close roads require enough depth for an actual building")
 
 func _test_frontage_quarter_turn_keeps_house_scale() -> void:

@@ -1,6 +1,7 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled;
 #include "res://scripts/supply_chain_3d/detail_mask.gdshaderinc"
+#include "res://scripts/supply_chain_3d/print_look.gdshaderinc"
 uniform sampler2D artwork : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
 uniform bool textured = false;
 uniform bool strata = false;
@@ -89,6 +90,7 @@ void fragment() {
 		vec3 grimy = mix(vec3(luma), paint, 0.30) * vec3(0.78, 0.73, 0.66);
 		paint = mix(paint, grimy, clamp(soot, 0.0, 1.0) * 0.85);
 	}
+	paint = print_paint(paint, FRAGCOORD.xy, true, 0.0);
 	ALBEDO = OUTPUT_IS_SRGB ? paint : to_linear(paint);
 	if (hidden || loading_hidden(world_point.xz, FRAGCOORD.xy)) { discard; }
 }

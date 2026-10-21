@@ -19,10 +19,13 @@ instance uniform float sc_role = 0.0;
 // How far scenery and NPC works step back toward grey.
 uniform float decor_grey = 0.65;
 uniform float npc_grey = 0.80;
+// Trees take the map sheet's print with the terrain; buildings take the catalogue plate's.
+uniform bool landscape = false;
 // Blender units per model unit (the export's family span), so patterns keep one real size
 // across families. 0 = not exported with patterns; the fallback is a typical span.
 instance uniform float pattern_scale = 0.0;
 varying vec3 model_normal;
+#include "res://scripts/supply_chain_3d/print_look.gdshaderinc"
 
 void vertex() {
 	model_position = VERTEX;
@@ -115,6 +118,10 @@ vec3 role_paint(vec3 paint, vec3 normal, bool glass) {
 }
 void fragment() {
 	vec3 visible_normal = FRONT_FACING ? face_normal : -face_normal;
+	// Decorative scenery steps back behind the works; up close it keeps more of its detail.
+	float scenery = sc_role > 1.5 && sc_role < 2.5 ? sc3d_calm : 0.0;
+	// NPC works step forward against it: deeper ink in their lines and shadows.
+	float npc_ink = sc_role > 2.5 ? sc3d_calm : 0.0;
 	// Blender's source palette is linear. A restrained, compressive paper response
 	// approximates its AgX sprite render without the glossy PBR/default-sun treatment.
 	vec3 paint = clamp(pow(max(COLOR.rgb, vec3(0.0)), vec3(0.60)) + 0.025, vec3(0.0), vec3(0.86));
@@ -147,7 +154,7 @@ void fragment() {
 	float dot_mask = dots(grid, 1.0, vec2(0.0));
 	if (darkness > 0.45) { dot_mask = max(dot_mask, dots(grid, 1.0, vec2(0.5, 0.0))); }
 	if (darkness > 0.78) { dot_mask = max(dot_mask, dots(grid, 2.0, vec2(0.0, 0.5))); }
-	if (!glass && luma > 0.1) { paint *= 1.0 - dot_mask * darkness * stipple_strength; }
+	if (!glass && luma > 0.1) { paint *= 1.0 - dot_mask * darkness * stipple_strength * (1.0 - 0.5 * scenery); }
 	// Matte directional light is separate from the printed dot mask. A fixed sun
 	// makes different faces read as volumes throughout an orbit, without gloss.
 	float diffuse = dot(normalize(visible_normal), normalize(vec3(0.50, 0.74, 0.45)));
@@ -179,7 +186,8 @@ void fragment() {
 	vec3 edges = vec3(mod(bits, 2.0), mod(floor(bits / 2.0), 2.0), mod(floor(bits / 4.0), 2.0));
 	float stroke = max(max(lines.x * edges.x, lines.y * edges.y), lines.z * edges.z);
 	vec3 ink_srgb = OUTPUT_IS_SRGB ? ink.rgb : linear_to_srgb(ink.rgb);
-	paint = mix(paint, ink_srgb, stroke * stroke_opacity);
+	paint = mix(paint, ink_srgb, stroke * stroke_opacity * (1.0 - 0.45 * scenery));
+	paint = print_paint(paint, FRAGCOORD.xy, landscape, 0.7 * (scenery - npc_ink));
 	if (lit_windows && glass) {
 		float lit = 1.0;
 		if (curtain_wall) {
@@ -191,7 +199,9 @@ void fragment() {
 			vec2 inside = smoothstep(vec2(0.16) - aa, vec2(0.16) + aa, within) * (1.0 - smoothstep(vec2(0.80) - aa, vec2(0.80) + aa, within));
 			lit = inside.x * inside.y * step(0.64, random);
 		}
-		paint = mix(paint, vec3(1.0, 0.87, 0.57) * (1.0 - stroke * 0.50), 0.86 * lit);
+		// A home's light is dimmer and paler than a works' when scenery steps back.
+		vec3 light = mix(vec3(1.0, 0.87, 0.57), vec3(0.96, 0.88, 0.70), 0.5 * scenery);
+		paint = mix(paint, light * (1.0 - stroke * 0.50), 0.86 * lit * (1.0 - 0.45 * scenery));
 	}
 	ALBEDO = OUTPUT_IS_SRGB ? paint : srgb_to_linear(paint);
 #ifdef GLASS

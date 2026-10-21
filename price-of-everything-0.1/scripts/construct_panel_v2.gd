@@ -156,8 +156,7 @@ func _on_unlock_granted(_title: String, _description: String, _via_condition: bo
 
 
 func _on_prices_updated() -> void:
-	if visible and (_view == View.BROWSE or _v3_confirm_live()):
-		_render()
+	_queue_live_render()
 
 
 func _on_money_changed(_new_amount: float) -> void:
@@ -165,6 +164,22 @@ func _on_money_changed(_new_amount: float) -> void:
 	# change immediately updates which buildings can be selected. The build order
 	# recomputes live too: its verdict, refusal and totals follow the bank balance
 	# while the player is deciding.
+	_queue_live_render()
+
+
+## One rebuild a frame however many cash or price changes land in it: a turn changes the cash
+## a dozen times, and each full render costs well over 100 ms.
+var _live_render_queued := false
+
+func _queue_live_render() -> void:
+	if _live_render_queued or not visible:
+		return
+	_live_render_queued = true
+	_apply_live_render.call_deferred()
+
+
+func _apply_live_render() -> void:
+	_live_render_queued = false
 	if visible and (_view == View.BROWSE or _v3_confirm_live()):
 		_render()
 

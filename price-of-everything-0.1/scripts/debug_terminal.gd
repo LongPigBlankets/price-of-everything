@@ -17,6 +17,7 @@ extends CanvasLayer
 ##   swap port badge                 gold port hex on selling buildings <-> lines to the port row
 ##   swap empire button               toggle the Empire View button's two icon treatments
 ##   toggle dock ds2                  switch the updates dock to its DS2 look (in review; v2 is default), and again to return
+##   toggle newgame ds2               switch the New Game settings screen to its DS2 look, the company registry (in review), and again to return
 ##   toggle legend ds2                put the map legends on the DS2 plastic pad (in review; v2 is default), and again to return
 ##   toggle research ds2              switch the Research panel to its DS2 look, the patent board and plan chest (in review), and back
 ##   research all                     unlock every research node (alias of `unlock all`)
@@ -374,6 +375,9 @@ func _run_command(text: String) -> String:
 			if " ".join(parts.slice(1)).to_lower() == "research ds2":
 				UiPrefs.toggle_use_research_ds2()
 				return "Research → %s" % ("DS2 (patent board and plan chest)" if UiPrefs.use_research_ds2 else "v2")
+			if " ".join(parts.slice(1)).to_lower() == "newgame ds2":
+				UiPrefs.toggle_use_new_game_ds2()
+				return "New Game → %s" % ("DS2 (the company registry)" if UiPrefs.use_new_game_ds2 else "the old panel")
 			if parts.size() >= 2 and parts[1].to_lower() in ["roads", "roadsv2"]:
 				# Phase-5 cutover: roads-v2 is the only system. This just shows/hides
 				# the road VISUALS — the network/logic runs regardless.
@@ -401,7 +405,9 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 2 and parts[1].to_lower() == "midcentury":
 				MapStyle.set_midcentury(not MapStyle.is_midcentury())
 				return "map style → %s" % _style_name()
-			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | dock ds2 | legend ds2 | research ds2"
+			if parts.size() >= 2 and parts[1].to_lower() in ["print", "calm"]:
+				return _toggle_supply_chain_look(parts[1].to_lower())
+			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | print | calm | dock ds2 | legend ds2 | research ds2 | newgame ds2"
 		"anim":
 			# Cheat: cycle the Empire-view hex-field animation (1->2->3->4->1), or set it with `anim <n>`.
 			var bg := get_tree().get_first_node_in_group("empire_hex_bg")
@@ -558,6 +564,22 @@ func _roads_route(tile_a: String, tile_b: String) -> String:
 func _toggle_debug_logs() -> String:
 	var enabled: bool = UiPrefs.toggle_debug_turn_logs()
 	return "verbose turn logs → %s" % ("on" if enabled else "off")
+
+## The supply chain view's ink and paper print, and decorative scenery stepping back.
+func _toggle_supply_chain_look(which: String) -> String:
+	var board_script: Script = load("res://scripts/supply_chain_3d/board.gd")
+	var printed: bool = board_script.print_look != (which == "print")
+	var calm: bool = board_script.calm_scenery != (which == "calm")
+	var board: Node = null
+	for node in get_tree().root.find_children("*", "Control", true, false):
+		if node.get_script() == board_script: board = node; break
+	if board != null:
+		board.set_look(printed, calm)
+	else:
+		board_script.print_look = printed
+		board_script.calm_scenery = calm
+		board_script.apply_look()
+	return "supply chain view: print %s, scenery calming %s" % ["on" if printed else "off", "on" if calm else "off"]
 
 func _style_name() -> String:
 	if MapStyle.is_midcentury():

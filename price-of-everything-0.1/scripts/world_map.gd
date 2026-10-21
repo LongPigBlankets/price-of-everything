@@ -823,6 +823,20 @@ func _warm_deferred_ui() -> void:
 	if not is_inside_tree():
 		return
 	t = Time.get_ticks_usec()
+	await _warm_building_detail_draw()
+	_prof_us("warm building detail first draw", t)
+	if not is_inside_tree():
+		return
+	# The mission-complete plate stalls on its first draw too, and the Tutorial's first mission
+	# completes the moment the player opens a building.
+	var bar := get_node_or_null("UILayer/HUD/TopBar")
+	if bar != null and bar.has_method("warm_mission_plate"):
+		t = Time.get_ticks_usec()
+		await bar.warm_mission_plate()
+		_prof_us("warm mission plate", t)
+		if not is_inside_tree():
+			return
+	t = Time.get_ticks_usec()
 	GoodsFlowGraphScript.build()
 	_prof_us("warm goods graph layout", t)
 	t = Time.get_ticks_usec()
@@ -849,6 +863,22 @@ func _warm_deferred_ui() -> void:
 	var hills_node := get_node_or_null("HillVisuals")
 	if hills_node != null and hills_node.has_method("warm_meshes_async"):
 		hills_node.warm_meshes_async()
+
+
+## The first Building Detail the player opens otherwise stalls for half a second on its first draw.
+## Draw it here once, on one of the company's buildings, while the loading screen covers it.
+func _warm_building_detail_draw() -> void:
+	if _bdp_v2 == null:
+		return
+	for iid in BuildingState.buildings:
+		if not BuildingState.is_player_owned(BuildingState.buildings[iid]):
+			continue
+		_bdp_v2.call("warm_draw", BuildingState.get_building(str(iid)).merged({"instance_id": str(iid)}))
+		for i in 2:
+			await get_tree().process_frame
+		if is_instance_valid(_bdp_v2):
+			_bdp_v2.call("end_warm_draw")
+		return
 
 
 ## A loading screen (parented to the tree root, surviving the scene change) is up

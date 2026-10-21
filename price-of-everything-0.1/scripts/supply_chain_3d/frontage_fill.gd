@@ -8,6 +8,7 @@ const Assets := preload("res://scripts/supply_chain_3d/assets.gd")
 const Civic := preload("res://scripts/supply_chain_3d/civic_layout.gd")
 const Far := preload("res://scripts/supply_chain_3d/far_sprites.gd")
 const Scale := preload("res://scripts/supply_chain_3d/building_scale.gd")
+const Pace := preload("res://scripts/supply_chain_3d/layout_pace.gd")
 const STEP := 4.0
 const FACADE_REACH := 10.0
 const TARGET := 0.88 # denser urban fronts compensate for constrained rural approaches
@@ -30,9 +31,10 @@ static func touches(a: Vector2,b: Vector2,poly: PackedVector2Array) -> bool:
 static func street(road: Dictionary) -> bool:
 	return not str(road.get("source","")).begins_with("access:") and not str(road.get("source","")).begins_with("neighbourhood:") and not road.get("tunnel",false)
 
-func run(model: Dictionary, fitter: RefCounted, zoning: Dictionary) -> Dictionary:
+func run(model: Dictionary, fitter: RefCounted, zoning: Dictionary, pace: RefCounted = null) -> Dictionary:
 	world=model;fit=fitter;contexts=zoning
-	_measure()
+	await _measure(pace)
+	if Pace.gave_up(pace): return {}
 	var before := report()
 	tile_totals=before.by_tile.duplicate(true)
 	# Work from the longest uncovered runs, then use smaller existing modules in
@@ -46,6 +48,8 @@ func run(model: Dictionary, fitter: RefCounted, zoning: Dictionary) -> Dictionar
 			# Exact footprint checks, rather than segment length, decide whether it fits.
 			if _at_target(gap.tile): continue
 			for sample_id in gap.indices:
+				await Pace.step(pace)
+				if Pace.gave_up(pace): return {}
 				var sample: Dictionary=samples[sample_id]
 				if sample.covered or failed.has(sample_id): continue
 				if _place(sample,pass_id):
@@ -66,7 +70,7 @@ func run(model: Dictionary, fitter: RefCounted, zoning: Dictionary) -> Dictionar
 	fit=null;world={}
 	return result
 
-func _measure() -> void:
+func _measure(pace: RefCounted = null) -> void:
 	var scope := Trial.dense_tiles(world)
 	var kinds := {}
 	var actual := {}
@@ -85,6 +89,8 @@ func _measure() -> void:
 				poly.append(s.pos+(p+Vector2(center.x,center.z)).rotated(-float(s.get("yaw",0))))
 			actual[str(s.iid)]=[poly]
 	for road_id in fit.roads.size():
+		await Pace.step(pace)
+		if Pace.gave_up(pace): return
 		var road: Dictionary=fit.roads[road_id]
 		if not street(road) or str(road.tile) not in scope: continue
 		var tangent: Vector2=(road.b-road.a).normalized()
