@@ -22,6 +22,8 @@ FAMILIES = {
     'petro_refinery_v2': dict(smoke=(), steam=(), cables=(), light=('flare_flame',)),
     'poly_plant_v2': dict(smoke=(), steam=(), cables=(), light=()),
     'power_plant_v2': dict(smoke=('stack_top',), steam=('tower_void',), cables=('line_phase', 'line_rise'), light=()),
+    # The bath and the caster strand are baked light; the bath also gets the arc's shifting hot spot.
+    'eaf_v2': dict(smoke=('stack_top',), steam=(), cables=(), light=('furnace_melt', 'furnace_melt_b'), fires=('furnace_melt', 'furnace_melt_b')),
 }
 
 root = Path(sys.argv[sys.argv.index('--')+1])
@@ -46,7 +48,7 @@ for level in (1, 2, 3):
         q = world_to_camera_view(scene, scene.camera, p)
         return [q.x*res, (1-q.y)*res]
     objects = [o for o in bpy.data.collections['BLDG_'+family].objects if o.type == 'MESH']
-    entry = {'smoke': [], 'steam': [], 'cables': []}
+    entry = {'smoke': [], 'steam': [], 'cables': [], 'fires': []}
     for kind in ('smoke', 'steam'):
         for ob in objects:
             if ob.name.split('.')[0] not in config[kind]: continue
@@ -60,6 +62,10 @@ for level in (1, 2, 3):
         a, b = max(((p, q) for p in pts for q in pts), key=lambda pq: (pq[0]-pq[1]).length)
         if a.y > b.y: a, b = b, a
         entry['cables'].append([raw(a), raw(b)])
+    for ob in objects:
+        if ob.name.split('.')[0] not in config.get('fires', ()): continue
+        xs, ys = zip(*(raw(p) for p in world_points(ob)))
+        entry['fires'].append({'x0': min(xs), 'y0': min(ys), 'x1': max(xs), 'y1': max(ys)})
     lit_light = [o for o in objects if o.name.split('.')[0] in config['light']]
     entry['glass'] = sum(o.name.endswith('_glass') for o in objects)
     entry['light'] = len(lit_light)

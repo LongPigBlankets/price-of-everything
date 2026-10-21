@@ -29,9 +29,10 @@ price-of-everything-0.1/tools/building_assets/    # the detailed, frozen-revisio
 ├── furnace_builder.py + furnace_v2_builder.py   # the furnace (V2 runs after the first)
 ├── refinery_v2_builder.py            # petro + poly refineries (run after the furnace builders)
 ├── power_plant_v2_builder.py         # power plant (runs after the refinery builder)
+├── eaf_v2_builder.py + eaf_v2_dreamloop.py   # electric arc furnace (runs after the power plant builder) and its blockouts
 ├── furnace_paper.py / paper_wpa_catalog.py      # the Paper WPA print for sprites
 ├── furnace_v2_fx.py / package_furnace_v2_fx.py  # window/heat masks and smoke anchors
-├── building_fx.py / package_building_fx.py      # the same, configured per family (refineries, power plant)
+├── building_fx.py / package_building_fx.py      # the same, configured per family (refineries, power plant, EAF)
 ├── review_reverse.py / review_sheet.py          # rear view; front+rear and 70 px sheets
 └── coplanar_check.py                 # faces that will z-fight in the 3D view
 ```
@@ -261,7 +262,9 @@ have fixed any of these, because every one was a fault in the PATH.)
 
 **The furnace (`furnace_v2_builder.py`, installed 17 October 2026) is the reference
 implementation**, followed the same day by the refineries (`refinery_v2_builder.py`) and the
-power plant (`power_plant_v2_builder.py`). Rebuild other industrial buildings the same way.
+power plant (`power_plant_v2_builder.py`), and on 20 October by the electric arc furnace
+(`eaf_v2_builder.py`, chosen from three blockouts in `eaf_v2_dreamloop.py`; review
+`eaf-v2-2026-10-20.md`). Rebuild other industrial buildings the same way.
 Their reviews, with owner rulings, lessons and install records, are in
 `price-of-everything-0.1/docs/reviews/`: `furnace-v2-2026-10-16.md`,
 `refinery-v2-2026-10-17.md`, `power-plant-v2-2026-10-17.md`.
@@ -611,6 +614,27 @@ scale, not cropped sprites, so the sheet shows each level at the size the game d
   one place, one vessel height, one lift-top height. Upgrades add plant around them.
 - **Gas leaves a shaft furnace at the top.** Take-offs run from the throat down a
   downcomer; waste gas goes to a stack base through a low flue.
+
+### Lessons from the EAF rebuild (October 2026)
+
+- **The sprite's width is max(x+y) − min(x+y) over the actual geometry, about 88 px per
+  unit at ortho 11.6, pads included.** Keep it under 10.7 units for the 688 px limit. Pave
+  as touching rectangles that follow the plant; a front-right annex is the lowest screen
+  point and sets the height the same way.
+- **A mast or column beside an open bay must have a smaller x+y than the bay's jamb**, or
+  the pier hides it and anything attached appears to end in the wall.
+- **The sprite's height is max(2z − x + y) − min(2z − x + y).** Plant behind a building is
+  the most expensive place for anything tall, and a wide building the most expensive thing
+  at the front; a site pad run to the front across the whole width costs as much as the
+  building. Behind a building only what satisfies 2z + y above the back eave's shows.
+- **A dreamloop for a building is three massing blockouts at the same fidelity on one
+  labelled sheet** (`eaf_v2_dreamloop.py`); a detailed candidate beside two blockouts
+  biases the choice.
+- `review_sheet.py` reads the rear renders from `review/reverse/`; write
+  `review_reverse.py`'s output there. A family's `fires=` in `building_fx.py` names the
+  objects that get the arc hot spot; only the rest of the light mask breathes.
+- In zsh an unquoted `$args` string is one argument: build Godot argument lists with
+  `set --`, or the plate tool gets a bogus asset key and a null mesh.
 
 ### Lessons from the power plant rebuild (October 2026)
 

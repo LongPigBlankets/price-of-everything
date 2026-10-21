@@ -1,5 +1,32 @@
 # Load time: what is baked, and when to re-bake it
 
+## Electric arc furnace, print look and clearance — 21 October 2026
+
+The electric arc furnace was rebuilt in the catalogue look at every level
+([review](reviews/eaf-v2-2026-10-20.md)); its spans and dimensions changed, and main had
+also taken the ink-and-paper print, calmer scenery, building clearance and the bridge, rail
+and freeze fixes (pull requests 241, 243 and 244) without a rebake. The print is a runtime
+shader (the `sc3d_print` global defaults to 0, so offline bakes never print twice); nothing
+of it is baked. The whole package was rebaked with the owner's approval.
+
+**The layout memo moves the keys.** The first continent pass validated (600 tiles generated
+in 32 minutes, 1,806 resources) but the world snapshot refused it and a fresh process missed
+every tile: the continent bake computes its scenery and continent keys from the layout memo
+it reads at the start and rewrites that memo at the end, and clearance had moved company
+buildings, so every later build read a different memo and asked for different keys. After a
+change that moves buildings, run `bake_continent_package` twice; the second pass is
+resumable and reads the settled memo. Then `bake_world_snapshot`, then `bake_company_start`
+(it needs a `--bake-cache-directory` that does not exist yet) until settled for High, Low and
+High again; here High took four unsettled runs, Low four, and the final High settled on its
+second run. The 24 auxiliary keys the unsettled runs indexed and `company_key_probe` lists
+for neither preset were dropped (the probe never lists the world snapshot or the alignment
+memo, which stay).
+
+Installed package: **1,858 resources, 964,190,419 bytes**, validated. A fresh process with
+an empty user directory offers Begin at **21.7 s**; the company opens with 37 bundled hits
+and zero misses or writes; the continent has 107 bundled hits after streaming and no misses
+or writes; the combined open is ready 3.5 s after Begin.
+
 ## Buildings drawn 1.5× in 3D — 18 October 2026
 
 Every building (works, farms, forests, mines, wells and energy fields; player or NPC) now

@@ -2,6 +2,7 @@
   "format_version": 2,
   "families": [
     "desal",
+    "eaf",
     "farm",
     "fracking_oil_well",
     "furnace",
@@ -250,6 +251,35 @@
         3
       ],
       "staged_as": "power_plant_v2"
+    },
+    "eaf": {
+      "revision": "v16",
+      "source_sha256": {
+        "builders.py": "d06f723c029a0b876f95cd34c404a1c9213610c5d32dd5bf93d134c6cd8e1535",
+        "furnace_paper.py": "5e44a0f1013d4fadab1b438abd3436815931f51e95d2284028d8f5e66b417358",
+        "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
+        "furnace_v2_builder.py": "2023fdb6e2d67f7aaf2845929c34fa793820a938622ac03a896240e18a3f46a1",
+        "power_plant_v2_builder.py": "abbdb66ed7dcc1bc264a5a16ba59b3783b4e66fc873d40becde0e086cd512d01",
+        "furnace_builder.py": "c4d1494a857a7fc7bd202490b0aba4d64197f4132bac4f63b98418581ef5035d",
+        "bake_sprite.py": "92a7e5a5fb9aab3fd5bbc9080afd7558b42110d61a5f2de8a2f2f825a2a92e8b",
+        "export_models.py": "cd49405b8b3efd9fdc114e1b63a2bc89dd78b825d6ff4e26b8f4d0e486d03e18",
+        "refinery_v2_builder.py": "1e77c3feee002688cd046fdd7c45fcf614ddda8290551ef44c61eae02cfe69c9",
+        "sprite_kit.py": "8e9b570492ebde6a8a40113b1098793e9ca176292fb98d294671ea92a4d24d41",
+        "pipeline.py": "290ee4743787bfca9566cb27926d80a54d3540bb5a294cc57d02e4b245f1a3a7",
+        "entry.py": "21dc339474cd534114ed5874208bac042059a1e5e0ea09b896b2f0d3b670ecbc",
+        "paper_wpa_catalog.py": "7be39b082de17b6092e9505e67850028966e9d033bf6f665a057997da147c157",
+        "render_sprite.py": "edf7cd4e41d5d6fa2bedae8435b8b7fa5e80a86711ff828b928a241c09f7bff4",
+        "eaf_v2_builder.py": "e346e4b26684b1554d36ca7f2c67d0751669ca215989d86cafe8e947e2d313ca",
+        "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
+        "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
+      },
+      "outer_contour": false,
+      "released_levels": [
+        1,
+        2,
+        3
+      ],
+      "staged_as": "eaf_v2"
     }
   },
   "sprites": {
@@ -2412,6 +2442,186 @@
         124,
         255
       ]
+    },
+    "eaf_lvl1.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        26,
+        52,
+        773,
+        748
+      ],
+      "opaque_pixels": 305114,
+      "dominant_rgb": [
+        [
+          40,
+          48,
+          56
+        ],
+        [
+          128,
+          136,
+          136
+        ],
+        [
+          32,
+          40,
+          48
+        ],
+        [
+          48,
+          56,
+          56
+        ],
+        [
+          40,
+          48,
+          48
+        ],
+        [
+          152,
+          152,
+          136
+        ],
+        [
+          48,
+          56,
+          64
+        ],
+        [
+          152,
+          144,
+          136
+        ]
+      ],
+      "sha256": "881d13884c8695778084b5d21d2e9a3b91dd8469d432067148056a67a1415846",
+      "mask_range": [
+        123,
+        255
+      ]
+    },
+    "eaf_lvl2.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        19,
+        52,
+        780,
+        748
+      ],
+      "opaque_pixels": 336120,
+      "dominant_rgb": [
+        [
+          40,
+          48,
+          56
+        ],
+        [
+          128,
+          136,
+          136
+        ],
+        [
+          48,
+          56,
+          56
+        ],
+        [
+          32,
+          40,
+          48
+        ],
+        [
+          40,
+          48,
+          48
+        ],
+        [
+          152,
+          152,
+          136
+        ],
+        [
+          48,
+          56,
+          64
+        ],
+        [
+          152,
+          144,
+          136
+        ]
+      ],
+      "sha256": "e82f987078773533fab7cda7081c2e75a1d604632864172067a05eff27473f20",
+      "mask_range": [
+        118,
+        255
+      ]
+    },
+    "eaf_lvl3.png": {
+      "size": [
+        800,
+        800
+      ],
+      "bbox": [
+        16,
+        13,
+        783,
+        787
+      ],
+      "opaque_pixels": 398108,
+      "dominant_rgb": [
+        [
+          40,
+          48,
+          56
+        ],
+        [
+          128,
+          136,
+          136
+        ],
+        [
+          32,
+          40,
+          48
+        ],
+        [
+          48,
+          56,
+          56
+        ],
+        [
+          48,
+          56,
+          64
+        ],
+        [
+          40,
+          48,
+          48
+        ],
+        [
+          72,
+          72,
+          72
+        ],
+        [
+          184,
+          176,
+          168
+        ]
+      ],
+      "sha256": "82afc7583ea441c3c3d5f53ffffce422120690c9560a8fcbe1ddbbe14a2144bd",
+      "mask_range": [
+        122,
+        255
+      ]
     }
   },
   "models": {
@@ -2462,6 +2672,12 @@
     "power_plant_lvl2.glb": "657fe38e6f3f01898ad6f690f66e78f29fabc542edbe27b9a07be7c139ab781d",
     "power_plant_lvl2_contour.glb": "b433d42807454e9de625fdb6de98e44b139365b3625c9e0cebb10c7ca43dc276",
     "power_plant_lvl3.glb": "2e3fa64aa3bd49b6810b23a2e21ef79b056134511eda553babd1d68eb34415ad",
-    "power_plant_lvl3_contour.glb": "e5c5d32588fb0ab2475e90c879d53a7221cf00c5764661438751225f7ddc03fa"
+    "power_plant_lvl3_contour.glb": "e5c5d32588fb0ab2475e90c879d53a7221cf00c5764661438751225f7ddc03fa",
+    "eaf_lvl1_contour.glb": "36fc3f150da20a5f101d80a0dcfd77406987f46e7c4235d406261aad4c89db25",
+    "eaf_lvl2.glb": "f17e9b05eb35d1aed05352bce7aa77f84c301ff86cfe7bda6c73a8ef731ff004",
+    "eaf_lvl3.glb": "b61471cfb51603615736bebbdc434925e8959970ef751c0aa8dbcb47763ac9b4",
+    "eaf_lvl1.glb": "a51bd4c9b9da66a684a5253a909981ee7c371042d9cdc4e4c924050d531f0c5c",
+    "eaf_lvl2_contour.glb": "446f1f7a6a8230fc98a15409f4d353777ffb25e212f05161d2e4a973d7c6095a",
+    "eaf_lvl3_contour.glb": "a8c156292cf334b8a7a5c748f68b1c34c367d562f36a120d0a0ea1252f2921c5"
   }
 }
