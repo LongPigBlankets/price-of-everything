@@ -253,10 +253,10 @@
       "staged_as": "power_plant_v2"
     },
     "eaf": {
-      "revision": "v9",
+      "revision": "v10",
       "source_sha256": {
         "builders.py": "d06f723c029a0b876f95cd34c404a1c9213610c5d32dd5bf93d134c6cd8e1535",
-        "furnace_paper.py": "f2786c4ba6ef1b6ad2cd9f97fec17ac6ddee084056fc89e142b0d476d437c6ee",
+        "furnace_paper.py": "bed8199c3c8f65c87084b62aaa1461676e92d3b8b3240fe6770e40fb50b4205d",
         "stylize_shade.py": "634c8764bcc54dda7f2e5a3d56a41bab5af2b4e11459a98e74b214543eed1750",
         "furnace_v2_builder.py": "2023fdb6e2d67f7aaf2845929c34fa793820a938622ac03a896240e18a3f46a1",
         "power_plant_v2_builder.py": "abbdb66ed7dcc1bc264a5a16ba59b3783b4e66fc873d40becde0e086cd512d01",
@@ -269,7 +269,7 @@
         "entry.py": "21dc339474cd534114ed5874208bac042059a1e5e0ea09b896b2f0d3b670ecbc",
         "paper_wpa_catalog.py": "7be39b082de17b6092e9505e67850028966e9d033bf6f665a057997da147c157",
         "render_sprite.py": "edf7cd4e41d5d6fa2bedae8435b8b7fa5e80a86711ff828b928a241c09f7bff4",
-        "eaf_v2_builder.py": "3629bebff509a52403c8fd0dd5364548aff329da3e3723ccf7f4987735513e9e",
+        "eaf_v2_builder.py": "a3c8b5309ad1b7dcae601c93c0cc48bf1caa197223da496d653b4df4f83426b6",
         "props_kit.py": "4ed6e7f6ec8d1a57c8ae7875e8ba0fd8cf2f9134074fb3653c0a2b4a701cd5af",
         "sprite_export.py": "2ad8331a62310cf0ceec7f9eb17c5a72ed0726c5676bd557458fff2432fc78b3"
       },
@@ -2449,12 +2449,12 @@
         800
       ],
       "bbox": [
-        31,
-        19,
-        769,
-        780
+        8,
+        9,
+        791,
+        790
       ],
-      "opaque_pixels": 374969,
+      "opaque_pixels": 398580,
       "dominant_rgb": [
         [
           128,
@@ -2462,16 +2462,16 @@
           136
         ],
         [
-          136,
-          144,
-          144
-        ],
-        [
           40,
           48,
           56
         ],
         [
+          136,
+          144,
+          144
+        ],
+        [
           152,
           152,
           136
@@ -2482,24 +2482,24 @@
           136
         ],
         [
-          128,
-          80,
+          184,
+          176,
+          168
+        ],
+        [
+          48,
+          56,
           56
         ],
         [
-          136,
+          128,
           80,
           56
-        ],
-        [
-          120,
-          128,
-          128
         ]
       ],
-      "sha256": "85a386bd0b169f1d716311e9b7e947d1963f0776bf83b9dc03a6de2feee3b883",
+      "sha256": "6ce6bccb6358cc24e78dd185adea8e36fd8b21579fd6b5fb37b75b390aca0ef8",
       "mask_range": [
-        126,
+        118,
         255
       ]
     },
@@ -2509,12 +2509,12 @@
         800
       ],
       "bbox": [
-        31,
-        19,
-        769,
-        780
+        9,
+        9,
+        790,
+        790
       ],
-      "opaque_pixels": 411979,
+      "opaque_pixels": 418585,
       "dominant_rgb": [
         [
           128,
@@ -2522,16 +2522,16 @@
           136
         ],
         [
-          136,
-          144,
-          144
-        ],
-        [
           40,
           48,
           56
         ],
         [
+          136,
+          144,
+          144
+        ],
+        [
           152,
           152,
           136
@@ -2542,8 +2542,8 @@
           136
         ],
         [
-          128,
-          80,
+          48,
+          56,
           56
         ],
         [
@@ -2552,14 +2552,14 @@
           64
         ],
         [
-          136,
-          80,
-          56
+          32,
+          40,
+          48
         ]
       ],
-      "sha256": "7ef408d0b32260aed44355968736e26b8be837bcb0674d5fe4b3485ddd41a8f6",
+      "sha256": "a96a1e8fbd1b03999bb7131318d8dcf1d5348cd30b87436dd2a5e570be79de3d",
       "mask_range": [
-        121,
+        122,
         255
       ]
     },
@@ -2569,12 +2569,12 @@
         800
       ],
       "bbox": [
-        16,
-        19,
-        783,
-        780
+        9,
+        9,
+        790,
+        790
       ],
-      "opaque_pixels": 426816,
+      "opaque_pixels": 421392,
       "dominant_rgb": [
         [
           128,
@@ -2597,27 +2597,27 @@
           136
         ],
         [
-          48,
-          56,
-          64
-        ],
-        [
           152,
           144,
           136
         ],
         [
-          176,
-          176,
-          168
+          48,
+          56,
+          56
         ],
         [
-          128,
-          80,
-          56
+          32,
+          40,
+          48
+        ],
+        [
+          48,
+          56,
+          64
         ]
       ],
-      "sha256": "f1c81c00853c65a35f53414d27a902754231a35b16d3754350091b6a3ba70105",
+      "sha256": "e089a86ce566ecd5ff8fbd6a5029909d400c285ffafaadcfc0686c7181f3afc6",
       "mask_range": [
         122,
         255
@@ -2673,11 +2673,11 @@
     "power_plant_lvl2_contour.glb": "b433d42807454e9de625fdb6de98e44b139365b3625c9e0cebb10c7ca43dc276",
     "power_plant_lvl3.glb": "2e3fa64aa3bd49b6810b23a2e21ef79b056134511eda553babd1d68eb34415ad",
     "power_plant_lvl3_contour.glb": "e5c5d32588fb0ab2475e90c879d53a7221cf00c5764661438751225f7ddc03fa",
-    "eaf_lvl1_contour.glb": "b38c12acd731a74694f22eee4c1afe3e8cbafb330bff4cffb0c1d7e3e9907b62",
-    "eaf_lvl2.glb": "dd511abe523d7b481f209efbd4d5325b60abc93aa96a42bf9f3723053d744260",
-    "eaf_lvl3.glb": "2115e1f24ab88e9156a0a280ddc38a3ef4edc765d4cd364359c304990a3aff10",
-    "eaf_lvl1.glb": "2e203093c633395b865c3b722176b21302a000b1215779d8c8c54cd5edf3c607",
-    "eaf_lvl2_contour.glb": "c567702e3e8824aba6db77bf63fd8890f4f0318da0a006f190eeef29412b01e1",
-    "eaf_lvl3_contour.glb": "726595d6b40d78730e80f4f06499cc08de47d1cb90eb07c9dcc2bd1aff3e8d11"
+    "eaf_lvl1_contour.glb": "1543f49ab3b494a2a536a24faa3d1878260dda29903bd3596f3ae1bf6894bb17",
+    "eaf_lvl2.glb": "906215dcb595c012f940a9ae990c2e9234f8fa08c7e3709a0b7b52836dbe5c79",
+    "eaf_lvl3.glb": "f5330f88ca95034c20849ab4e2f9c94aa5ae7bbf13552d415fe29e222a231742",
+    "eaf_lvl1.glb": "94e7c59b6943474b500f139d83933cc8d12a4c20250b3ce087b2f07984b92a5d",
+    "eaf_lvl2_contour.glb": "1dc4b3c4813a3afa3075d3bdde9dac5cc587a260fbf6183bfeb6b023fe5f6816",
+    "eaf_lvl3_contour.glb": "e8b63e3236b7293d4d021bb5be71ee3817acfc365a6164bb5a1d3f21df0a0326"
   }
 }
