@@ -67,7 +67,10 @@ BUS_Z = 3.45                          # bus tubes from the chamber's left wall a
 
 # ---- plant --------------------------------------------------------------------------
 TX_XY, TX_S = (-2.50, BY), 2.0        # one large transformer left of the open front
-TX_PAD = (-3.25, -1.75, -.65, .45)
+TX2_XY = (-2.80, .70)                 # the second, set back and a little further out (L2, L3)
+TX_PAD = {1: (-3.25, -1.75, -.65, .45), 2: (-3.50, -1.75, -.65, 1.20), 3: (-3.50, -1.75, -.65, 1.20)}
+BUNKER = (-1.25, -.05, 1.95, 2.95)    # closed storage bunker behind the chamber's left end
+BUNKER_Z = (2.00, 4.40)
 HOOD_DY = 1.00                        # hoods at the back of each rim; the ducts rise through the roof
 DUCT_Z = 4.20                         # the duct runs back over the roof's right part, under the stack platform
 DUCT_X = 3.40                         # and drops behind the chamber, outside the L1/L2 wall and over the L3 roof
@@ -491,9 +494,9 @@ def _e_fume(K, starts, level):
 
 # ------------------------------------------------------------------ power
 
-def _e_power(K):
-    """One large oil-filled transformer on kerbed gravel left of the open front, its leads
-    rising to the bushings on the chamber's left wall; inside, bus bushings carry the tubes
+def _e_power(K, level):
+    """One large oil-filled transformer on kerbed gravel left of the open front (a second one
+    set back behind it from L2), their leads rising to the bushings on the chamber's left wall; inside, bus bushings carry the tubes
     across the chamber above the electrodes to the mast's terminals, hung from the roof."""
     wx = HALL[0]
     K._fine_mode = True
@@ -506,22 +509,59 @@ def _e_power(K):
     K.dirbox('bus_hanger', (hx, BY, _e_roof_z(BY)-.05), (hx, BY, BUS_Z+.05), .05, .05, K.mat('f_frame'))
     K.dirbox('bus_hanger_bar', (hx, BY-.22, BUS_Z+.05), (hx, BY+.22, BUS_Z+.05), .05, .05, K.mat('f_frame'))
     K._fine_mode = False
-    tx0, tx1, ty0, ty1 = TX_PAD
+    tx0, tx1, ty0, ty1 = TX_PAD[level]
     K.box('tx_gravel', (tx0+tx1)/2, (ty0+ty1)/2, .035, tx1-tx0, ty1-ty0, .07, K.mat('membrane'))
     K.box('tx_kerb', (tx0+tx1)/2, (ty0+ty1)/2, .02, tx1-tx0+.08, ty1-ty0+.08, .04, K.mat('f_base'))
-    cx, cy = TX_XY
-    K.transformer('tx0', cx, cy, .07, s=TX_S, fins=6)
+    units = [TX_XY] if level == 1 else [TX_XY, TX2_XY]
+    for n, (cx, cy) in enumerate(units):
+        K.transformer(f'tx{n}', cx, cy, .07, s=TX_S, fins=6)
     for ob in K.col.objects:
-        if ob.name.startswith('tx0') and ob.type == 'MESH':
+        if ob.name.startswith('tx') and ob.type == 'MESH':
             mats = ob.data.materials
             for i, m in enumerate(mats):
                 if m == K.mat('f_frame'): mats[i] = K.mat('p_tx')
     K._fine_mode = True
     bush_z = .07+.70*TX_S
-    for k in range(3):
-        bx = cx+(k-1)*.14*TX_S
-        K.dircyl(f'tx_lead{k}', (bx, cy, bush_z), (wx-.22, BY+(k-1)*.15, BUS_Z), .012, K.mat('f_frame'), segments=6)
+    for n, (cx, cy) in enumerate(units):
+        for k in range(3):
+            bx = cx+(k-1)*.14*TX_S
+            K.dircyl(f'tx{n}_lead{k}', (bx, cy, bush_z), (wx-.22, BY+(k-1)*.15, BUS_Z), .012, K.mat('f_frame'), segments=6)
     K._fine_mode = False
+
+
+def _e_bunker(K):
+    """A closed storage bunker for scrap and whatever else the furnace takes, behind the
+    chamber's left end: a zinc-clad body with a lid and loading hatch on a dark four-post
+    frame with ring beams and bracing, a hopper under it and a discharge throat. Closed,
+    because an arc furnace takes many different charges."""
+    x0, x1, y0, y1 = BUNKER
+    z0, z1 = BUNKER_Z
+    cx, cy = (x0+x1)/2, (y0+y1)/2
+    frame, zinc = K.mat('f_frame'), K.mat('f_zinc')
+    K.box('bunker_pad', cx, cy, .05, x1-x0+.20, y1-y0+.20, .10, K.mat('f_base'))
+    for px in (x0+.10, x1-.10):
+        for py in (y0+.10, y1-.10):
+            K.dirbox('bunker_post', (px, py, .10), (px, py, z0+.02), .12, .12, frame)
+    for py in (y0+.10, y1-.10):
+        K.dirbox('bunker_ring', (x0+.04, py, z0-.06), (x1-.04, py, z0-.06), .10, .12, frame)
+    for px in (x0+.10, x1-.10):
+        K.dirbox('bunker_ring', (px, y0+.04, z0-.06), (px, y1-.04, z0-.06), .12, .10, frame)
+    K._fine_mode = True
+    K.dirbox('bunker_brace', (x0+.10, y0+.10, .16), (x1-.10, y0+.10, z0-.16), .05, .05, frame)
+    K.dirbox('bunker_brace', (x1-.10, y0+.10, .16), (x1-.10, y1-.10, z0-.16), .05, .05, frame)
+    K._fine_mode = False
+    _e_frustum(K, 'bunker_hopper', x0+.04, x1-.04, y0+.04, y1-.04, z0+.02, z0-.55, .34, .30, zinc)
+    K.box('bunker_throat', cx, cy, z0-.66, .30, .26, .22, frame)
+    K.box('bunker_body', cx, cy, (z0+z1)/2, x1-x0, y1-y0, z1-z0, zinc)
+    K.box('bunker_lid', cx, cy, z1+.03, x1-x0+.06, y1-y0+.06, .06, frame)
+    K.box('bunker_hatch', cx-.22, cy-.18, z1+.085, .40, .34, .05, frame)
+    K._fine_mode = True
+    K.box('bunker_hatch_hinge', cx-.22, cy-.36, z1+.10, .42, .03, .03, zinc)
+    for dz in (z0+.60, z0+1.30, z0+2.00):
+        K.box('bunker_band', x1+.01, cy, dz, .02, y1-y0+.02, .03, frame)
+        K.box('bunker_band_f', cx, y0-.01, dz, x1-x0+.02, .02, .03, frame)
+    K._fine_mode = False
+    _r_ladder_cage(K, 'bunker_ladder', x1+.04, cy+.20, .10, z1+.06, face='+X')
 
 
 def _e_ladle_car(K, name, x, y):
@@ -546,7 +586,8 @@ def build_eaf_v2(level=1):
     _e_stack(K, '', STACK_XY)
     if level == 3:
         _e_stack(K, '_b', STACK2_XY)
-    _e_power(K)
+    _e_power(K, level)
+    _e_bunker(K)
     _e_ladle_car(K, 'ladle', BX, LADLE_Y)
     if level == 3:
         _e_ladle_car(K, 'ladle_b', BX2, LADLE_Y)
