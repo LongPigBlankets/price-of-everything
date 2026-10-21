@@ -69,7 +69,7 @@ BUS_Z = 3.45                          # bus tubes from the chamber's left wall a
 TX_XY, TX_S = (-2.50, BY), 2.0        # one large transformer left of the open front
 TX_PAD = (-3.25, -1.75, -.65, .45)
 HOOD_DY = 1.00                        # hoods at the back of each rim; the ducts rise through the roof
-DUCT_Z = 4.60                         # the duct runs back over the roof's right part
+DUCT_Z = 4.20                         # the duct runs back over the roof's right part, under the stack platform
 DUCT_X = 3.40                         # and drops behind the chamber, outside the L1/L2 wall and over the L3 roof
 BAG_Z = (2.10, 3.50)                  # the bag house box stands on tall legs so it shows over the back eave
 BAG_Y = (1.90, 2.50)
@@ -225,7 +225,7 @@ def _e_house(K, level):
     for r, wz in enumerate(WIN_ROWS):
         for c, wy in enumerate(WIN_YS):
             _pp_window(K, f'chamber_window{r}{c}', '+X', (x1+.055, wy, wz), .40, .55, k=.6)
-    _pp_louvre(K, 'chamber_louvre_end', '+X', (x1+.03, .95, 3.45), w=.44, h=.34)
+    _pp_louvre(K, 'chamber_louvre_end', '+X', (x1+.03, WIN_YS[0], 3.45), w=.44, h=.34)  # in the front bay, where the roof is still high
     K._fine_mode = False
     _pp_door(K, 'chamber_door_end', '+X', (x1+.02, -.25, .14+.95/2), .50, .95)
     K.box('chamber_step_end', x1+.14, -.25, .04, .20, .66, .08, K.mat('stone'))
@@ -373,13 +373,13 @@ def _e_stack(K, tag, xy):
     def rad(z):
         return .30-.07*(z-.66)/barrel
     K._fine_mode = True
-    for z in (1.80, 3.00, 4.20):
+    for z in (1.80, 3.00):
         K.washer(f'stack{tag}_band', (sx, sy, z), (0, 0, 1), rad(z)-.01, rad(z)+.035, .06, K.mat('f_frame'))
     K._fine_mode = False
     pz = STACK_TOP-.95
     K.washer(f'stack{tag}_deck', (sx, sy, pz), (0, 0, 1), rad(pz)-.004, rad(pz)+.24, .05, K.mat('r_deck'), seg=24)
     _r_ring_rail(K, f'stack{tag}_rail', sx, sy, pz+.025, rad(pz)+.22, h=.22, posts=10)
-    _r_ladder_cage(K, f'stack{tag}_ladder', sx, sy-.33, .70, pz, face='-Y')
+    _r_ladder_cage(K, f'stack{tag}_ladder', sx+.33, sy, .70, pz, face='+X')  # the lit side, clear of the duct and flue
     return rad
 
 
@@ -454,10 +454,10 @@ def _e_fume(K, starts, level):
     if level >= 2:
         bag = _e_bag_house(K, level)
         ix, iy, iz = bag['inlet']
-        main = starts[-1]
+        main = starts[0]  # the main run starts at the leftmost hood and passes over the others
         pts = [main, (main[0], main[1], DUCT_Z), (DUCT_X, hy, DUCT_Z), (DUCT_X, iy, DUCT_Z), (DUCT_X, iy, iz), (ix-.02, iy, iz)]
         K.pipe_run('fume_duct', pts, .20, mat=white, bend=.26)
-        for n, (hx, hy_, hz) in enumerate(starts[:-1]):
+        for n, (hx, hy_, hz) in enumerate(starts[1:]):
             K.pipe_run(f'fume_duct_{n}', [(hx, hy_, hz), (hx, hy_, DUCT_Z-.20)], .20, mat=white, bend=.10)
             K.cyl(f'fume_duct_{n}_tee', hx, hy_, DUCT_Z-.08, .24, .16, white, segments=20)
         K.box('fume_drop_foot', DUCT_X, iy, .05, .20, .20, .10, base)
