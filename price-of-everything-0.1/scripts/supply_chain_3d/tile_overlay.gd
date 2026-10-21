@@ -8,6 +8,7 @@ const Builder := preload("res://scripts/supply_chain_3d/world_builder.gd")
 const Legacy := preload("res://scripts/empire_board.gd")
 const LayoutQueries := preload("res://scripts/supply_chain_3d/layout_queries.gd")
 const AuthoredRegion := preload("res://scripts/supply_chain_3d/authored_region.gd")
+const Pace := preload("res://scripts/supply_chain_3d/layout_pace.gd")
 
 ## Per tile, this session's layout of its current contents. A tile that changed
 ## earlier is not laid out again when a different tile changes.
@@ -151,6 +152,8 @@ static func prepare(board: Control, base: Dictionary, ground: RefCounted, cache:
 	# and the layout memo then remembers it per tile, so an unchanged diverged
 	# tile is a memo hit when another tile changes later.
 	var solve_started := Time.get_ticks_usec()
+	# Each tile's solve spreads over frames too, so a large town never holds the game still.
+	var pace := Pace.new(board.get_tree(), alive)
 	var solved := {"standing": [], "tiles": {}, "district_blocks": {"plots": []}, "dense_tiles": []}
 	var tile_ms := {}
 	var reused: Array = []
@@ -162,7 +165,10 @@ static func prepare(board: Control, base: Dictionary, ground: RefCounted, cache:
 			var sub := Model.build(terrain, graph, positions, river_lines, town, water, Legacy._shore_test(terrain), [tid])
 			_restrict(sub, tid)
 			var drawn: Array = base.get("roads", []).filter(func(r: Dictionary) -> bool: return str(r.get("tile", "")) == tid)
-			board._solve_layout(sub, terrain, rivers, queries, builder, water, {}, drawn)
+			await board._solve_layout(sub, terrain, rivers, queries, builder, water, {}, drawn, pace)
+			if pace.stopped or not is_instance_valid(board):
+				if prepared == null: queries.finish(cache)
+				return {}
 			tile = {"standing": sub.get("standing", []).filter(func(s: Dictionary) -> bool: return str(s.tile) == tid),
 				"tile": sub.get("tiles", {}).get(tid, {}), "plots": sub.get("district_blocks", {}).get("plots", []), "dense": sub.get("dense_tiles", [])}
 			_solved_tiles[tid] = {memo_key: tile}

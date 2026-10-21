@@ -318,6 +318,19 @@ func show_building(building: Dictionary) -> void:
 	if BuildingState.is_player_owned(building):
 		MiniQuest.note_building_opened()   # the Tutorial's first mission
 
+## Draws the panel once for a building, under the loading screen, so the first one the player
+## opens does not stall on shader compiles and texture uploads (world_map.gd _warm_deferred_ui).
+## Not an open: no panel stack, no mission count. end_warm_draw hides it again.
+func warm_draw(building: Dictionary) -> void:
+	_current_building = building
+	_rebuild(building)
+	_size_and_position()
+	visible = true
+
+func end_warm_draw() -> void:
+	visible = false
+	_current_building = {}
+
 func _rebuild(building: Dictionary) -> void:
 	for child in _body.get_children():
 		# A purchase emits building_owner_changed and the tutorial immediately focuses the
