@@ -122,19 +122,20 @@ func _init() -> void:
 	resized.connect(_place_lamp)
 
 
-## Latches the key down while its job runs (it can't be pressed), or frees it.
-func set_busy(value: bool) -> void:
+## Latches the key down while its job runs (it can't be pressed), or frees it. `lamp` lights the amber busy lamp
+## on it; a key whose work is already on screen (the New Game seal) leaves it dark.
+func set_busy(value: bool, lamp: bool = true) -> void:
 	busy = value
 	disabled = value
 	mouse_default_cursor_shape = Control.CURSOR_ARROW if value else Control.CURSOR_POINTING_HAND
-	if value and _lamp == null:
+	if value and lamp and _lamp == null:
 		_lamp = Lamp.new()
 		_lamp.name = "BusyLamp"
 		_lamp.lamp_scale = LAMP_SCALE
 		_lamp.set_tone("warn")
 		add_child(_lamp)
 	if _lamp != null:
-		_lamp.visible = value
+		_lamp.visible = value and lamp
 	_place_lamp()
 	queue_redraw()
 
