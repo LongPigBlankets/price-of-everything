@@ -403,10 +403,13 @@ func _ready() -> void:
 	reset.focus_mode = Control.FOCUS_NONE
 	reset.theme_type_variation = &"Outlined"
 	reset.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	# Clear of the End Turn dock, which stays over this view in the same corner.
+	var Dock := preload("res://scripts/end_turn_dock.gd")
+	var above_dock := Dock.DESK_PLATE_TOP * Dock.DOCK_SCALE + 14.0
 	reset.offset_left = -164
-	reset.offset_top = -102
+	reset.offset_top = -above_dock - 44.0
 	reset.offset_right = -24
-	reset.offset_bottom = -58
+	reset.offset_bottom = -above_dock
 	reset.pressed.connect(reset_view)
 	add_child(reset)
 

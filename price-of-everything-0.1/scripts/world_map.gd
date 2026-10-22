@@ -594,7 +594,7 @@ func _show_metal_magnate_intro() -> void:
 	# game board — not over the loading slideshow and its own "Begin" button.
 	while _loading_screen_active():
 		await get_tree().process_frame
-	_focus_camera_on_tile("tile_5_10")   # centre on Stoneshore Docks (the start's hub)
+	_focus_camera_on_tile(start_focus_tile())   # Greyroad, the company's works
 	var intro: CanvasLayer = load("res://scripts/metal_magnate_intro.gd").new()
 	intro.tree_exited.connect(Tutorial.start_opener)   # the opening steps follow the story
 	add_child(intro)
@@ -603,7 +603,7 @@ func _show_metal_magnate_intro() -> void:
 func _show_glass_merchant_intro() -> void:
 	while _loading_screen_active():
 		await get_tree().process_frame
-	_focus_camera_on_tile("tile_18_16")   # centre on Ashmouth, the start's glassworks
+	_focus_camera_on_tile(start_focus_tile())   # Ashmouth, the company's glassworks
 	var intro: CanvasLayer = load("res://scripts/glass_merchant_intro.gd").new()
 	intro.tree_exited.connect(Tutorial.start_opener)   # the opening steps follow the story
 	add_child(intro)
