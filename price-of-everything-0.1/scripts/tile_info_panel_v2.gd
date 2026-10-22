@@ -18,6 +18,7 @@ signal pick_destination_requested()
 signal locate_requested(tile_id: String)
 
 const Metrics := preload("res://scripts/ds2/metrics.gd")
+const Middleman := preload("res://scripts/middleman_service.gd")
 const TileViewData := preload("res://scripts/tile_view_data.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIFonts := preload("res://scripts/ui_fonts.gd")
@@ -1025,11 +1026,33 @@ func show_tile(tile_data: Dictionary, tab: String = "bl") -> void:
 	Audio.tile_ambience(str(tile_data.get("type", "")))  # looping terrain ambience while this panel is open
 	_active_tab = tab if _panes.has(tab) else "bl"
 	_warehouse_expand = false
+	# Every card, lamp and line below reads the company's Local Suppliers plan; work it out once.
+	Middleman.begin_preview_batch()
 	_refresh_status_line_v3(tile_data)
 	_refresh_tiles()
 	_select_tab(_active_tab)
+	Middleman.end_preview_batch()
 	visible = true
 	PanelStack.push(self)
+
+## Draws the panel once for a tile, under the loading screen, so the first tile the player clicks does not
+## stall on first-time loads (world_map.gd _warm_deferred_ui). Not an open: no panel stack, no ambience.
+## end_warm_draw hides it again.
+func warm_draw(tile_data: Dictionary) -> void:
+	_current_tile_data = tile_data
+	_current_tile_id = str(tile_data.get("id", ""))
+	_active_tab = "bl"
+	Middleman.begin_preview_batch()
+	_refresh_status_line_v3(tile_data)
+	_refresh_tiles()
+	_select_tab(_active_tab)
+	Middleman.end_preview_batch()
+	visible = true
+
+func end_warm_draw() -> void:
+	visible = false
+	_current_tile_id = ""
+	_current_tile_data = {}
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_VISIBILITY_CHANGED and not visible:
@@ -1053,9 +1076,11 @@ func _apply_refresh() -> void:
 	_refresh_queued = false
 	if not visible or _current_tile_id == "":
 		return
+	Middleman.begin_preview_batch()
 	_refresh_status_line_v3(_current_tile_data)  # keeps the land figures + survey live
 	_refresh_tiles()
 	_refresh_active_pane()
+	Middleman.end_preview_batch()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Keys

@@ -38,6 +38,14 @@ label is saying something semantic.
 To make text feel secondary on a dark surface, use **size or weight**, not a greyer
 colour.
 
+## Section headers — the standing rule
+
+**A section header is never smaller than the body text it heads, and never fainter.**
+Headers are bold, at least the body's size (a point or two larger reads best), and in the
+same full-strength colour as the body (`NAVY` on paper, `DS.PALETTE.TEXT` on dark panels).
+A small, dimmed, letter-spaced label is not a header: it reads as a caption and loses the
+hierarchy. The New Game registry keeps this as `HEADER_PX` in `new_game_ds2.gd`.
+
 ## Design system
 
 Style through the `DS` autoload (`scripts/ds.gd`) — `theme_type_variation` of "Title",

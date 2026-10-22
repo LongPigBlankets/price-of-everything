@@ -7,7 +7,8 @@ extends Node
 ## its lockboxes.
 ## Needs a window:
 ##   AGENT_GODOT_WINDOW=1 godot --path . res://tools/new_game_ds2_shot.tscn --quit-after 20000 -- --no-telemetry
-## Writes <state>.png into $NEW_GAME_SHOT_DIR (default artifacts/new_game_ds2/ds2_v2).
+## Writes <state>.png into $NEW_GAME_SHOT_DIR (default artifacts/new_game_ds2/ds2_v2). NEW_GAME_SHOT_EVERY=1 also
+## captures every start, start_<id>.png. 07_many_buildings is a made-up company of nine buildings.
 
 const ShotHarness := preload("res://tools/shot_harness.gd")
 const DebugTerminal := preload("res://scripts/debug_terminal.gd")
@@ -46,6 +47,12 @@ func _ready() -> void:
 	var panel: Control = await _open()
 	await _shot("01_full_default")
 	var files: Array = panel.get("_card_buttons")
+	if OS.get_environment("NEW_GAME_SHOT_EVERY") != "":
+		# Every start in turn, to compare the leaves across stories of different lengths.
+		for i in files.size():
+			(files[i] as Button).button_pressed = true
+			await _settle(90)
+			await _shot("start_" + str((panel.get("_starts")[i] as Dictionary).get("id", i)))
 	for i in files.size():
 		if str((panel.get("_starts")[i] as Dictionary).get("id", "")) == "troubled_carmaker":
 			(files[i] as Button).button_pressed = true
@@ -56,6 +63,7 @@ func _ready() -> void:
 	await _settle(90)
 	await _shot("02_full_carmaker")
 	panel.call("_hover", -1)
+	await _shot_many(panel)
 	for moment in [["04_stamp_over", 1.2], ["05_stamp_down", 1.5], ["06_stamp_after", 2.5]]:
 		panel.call("_set_stamp_time", float(moment[1]))
 		await _settle(6)
@@ -70,6 +78,30 @@ func _ready() -> void:
 	await _settle(2)
 	print("[NEW_GAME_SHOT] done, %s" % _dir)
 	get_tree().quit(0)
+
+
+## No start owns this many buildings yet: a made-up company of nine, alike ones together, three rows of the grid,
+## with a grouped cell pointed at.
+func _shot_many(panel: Control) -> void:
+	var path := "user://new_game_shot_many.json"
+	var buildings: Array = []
+	for e in [["b_002", "r_003", "tile_9_9"], ["b_002", "r_003", "tile_9_10"], ["b_002", "r_003", "tile_7_11"],
+			["b_001", "r_001", "tile_9_9"], ["b_001", "r_001", "tile_9_10"], ["b_001", "r_002", "tile_9_9"],
+			["b_003", "r_004", "tile_9_9"], ["b_001", "r_018", "tile_19_15"], ["b_002", "r_053", "tile_18_16"]]:
+		buildings.append({"building_id": e[0], "recipe_id": e[1], "tile_id": e[2]})
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(JSON.stringify({"money": 1500, "steady_profit_per_turn": 120, "loans": [{"principal": 800}], "buildings": buildings}))
+	f.close()
+	var longest := ""
+	for st in panel.get("_starts"):
+		var words := String((st as Dictionary).get("description", ""))
+		if words.length() > longest.length(): longest = words
+	panel.call("_select_start", {"id": "_many", "title": "Many Buildings", "file": path, "description": longest})
+	await _settle(30)
+	panel.call("_hover", 0)
+	await _settle(10)
+	await _shot("07_many_buildings")
+	panel.call("_hover", -1)
 
 
 func _open() -> Control:

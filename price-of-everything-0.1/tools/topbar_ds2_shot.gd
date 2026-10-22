@@ -71,6 +71,19 @@ func _views(bar: Control, tag: String) -> void:
 	_save(tag + "_treasury", FLYOUT_CROP)
 	bar.call("_close_fly")
 	await _settle(6)
+	# With loans: two repaying, one still in its grace period.
+	var held: Array = LoanState.loans.duplicate(true)
+	LoanState.loans = [
+		{"id": 1, "principal_initial": 200.0, "principal_remaining": 180.0, "payment_per_turn": 5.93, "turns_remaining": 30, "total_repayment": 213.33, "grace_remaining": 0},
+		{"id": 2, "principal_initial": 1200.0, "principal_remaining": 1200.0, "payment_per_turn": 0.0, "turns_remaining": 48, "grace_remaining": 12},
+		{"id": 3, "principal_initial": 300.0, "principal_remaining": 260.0, "payment_per_turn": 9.1, "turns_remaining": 28, "total_repayment": 320.0, "grace_remaining": 0},
+	]
+	bar.call("_toggle_fly", "treasury")
+	await _settle(12)
+	_save(tag + "_treasury_loans", FLYOUT_CROP)
+	bar.call("_close_fly")
+	LoanState.loans = held
+	await _settle(6)
 
 
 ## Cash and last turn's net as the bar reads them.

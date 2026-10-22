@@ -91,10 +91,15 @@ func set_bounds_rect(rect: Rect2) -> void:
 	_target_zoom = Vector2.ONE * _effective_zoom_min()
 	zoom = _target_zoom
 
-## Release the tutorial clamp and restore the full-map bounds.
+## Release the tutorial clamp and restore the full-map bounds, keeping the view where it is: leaving or
+## skipping the tutorial must not throw the player out to the whole map.
 func clear_bounds_rect() -> void:
+	var view := position
+	var view_zoom := zoom
 	_external_clamp = false
 	_configure_for_map()
+	position = view
+	zoom = view_zoom.clamp(Vector2.ONE * zoom_min, Vector2.ONE * zoom_max)
 	_target_zoom = zoom
 
 func _configure_for_map() -> void:

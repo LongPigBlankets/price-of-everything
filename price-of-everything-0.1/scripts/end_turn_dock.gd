@@ -54,6 +54,8 @@ const GEAR_TEETH := 26
 const TEETH_PER_PHASE := 3
 const GEAR_STEEL := Color("#b9c1cb")
 const GEAR_GROOVE := Color("#4a525c")
+## Everything above is drawn this much larger: the dock's plate, button, roller, gears and lettering.
+const DOCK_SCALE := 1.4
 
 # ── State ────────────────────────────────────────────────────────────────────
 var _menu: Control
@@ -180,14 +182,16 @@ func show_note(text: String) -> void:
 func _update_layout() -> void:
 	var w := size.x
 	var h := size.y
-	var gear := 3.0 + GEAR_GAP + GEAR_W
-	var left := maxf(w - (PAD * 2.0 + DESK_BTN.x + ROW_GAP + gear * 2.0 + ROLLER_W + 18.0), _menu_right_local() + 12.0)
-	_r_base = Rect2(left, h - DESK_PLATE_TOP, (w + BASE_BLEED) - left, DESK_PLATE_TOP + BASE_BLEED)
-	_r_button = Rect2(left + PAD + 6.0, h - DESK_FOOT - DESK_LABEL - DESK_BTN.y, DESK_BTN.x, DESK_BTN.y)
+	var k := DOCK_SCALE
+	var gear := (3.0 + GEAR_GAP + GEAR_W) * k
+	var left := maxf(w - ((PAD * 2.0 + DESK_BTN.x + ROW_GAP + ROLLER_W + 18.0) * k + gear * 2.0), _menu_right_local() + 12.0)
+	_r_base = Rect2(left, h - DESK_PLATE_TOP * k, (w + BASE_BLEED) - left, DESK_PLATE_TOP * k + BASE_BLEED)
+	_r_button = Rect2(left + (PAD + 6.0) * k, h - (DESK_FOOT + DESK_LABEL + DESK_BTN.y) * k, DESK_BTN.x * k, DESK_BTN.y * k)
 	_end_turn_button.position = _r_button.position
 	_end_turn_button.size = _r_button.size
-	_roller.position = Vector2(_r_button.end.x + ROW_GAP + gear, _r_button.get_center().y - ROLLER_H * 0.5)
-	_roller.size = Vector2(ROLLER_W, ROLLER_H)
+	_roller.position = Vector2(_r_button.end.x + ROW_GAP * k + gear, _r_button.get_center().y - ROLLER_H * k * 0.5)
+	_roller.size = Vector2(ROLLER_W, ROLLER_H) * k
+	_roller.font_px = roundi(13 * k)
 	_base_block.position = _r_base.position
 	_base_block.size = Vector2(minf(_r_base.size.x, w - _r_base.position.x), h - _r_base.position.y)
 	queue_redraw()
@@ -221,22 +225,26 @@ func _process(_dt: float) -> void:
 ## The desk plate's left end over the dock, the button (at rest, sunk while held, dimmed while a turn
 ## resolves), the roller's gearing and frame, and END TURN engraved under the button.
 func _draw() -> void:
+	var k := DOCK_SCALE
 	var plate := DESK_PLATE.get_size()
-	var shown := Vector2(minf(_r_base.size.x, plate.x / 2.0), plate.y / 2.0)
-	draw_texture_rect_region(DESK_PLATE, Rect2(_r_base.position, shown), Rect2(Vector2.ZERO, shown * 2.0))
+	# The plate's render is at two texels a pixel; drawn DOCK_SCALE larger, a pixel covers 2 / DOCK_SCALE texels.
+	var texel := 2.0 / k
+	var shown := Vector2(minf(_r_base.size.x, plate.x / texel), plate.y / texel)
+	draw_texture_rect_region(DESK_PLATE, Rect2(_r_base.position, shown), Rect2(Vector2.ZERO, shown * texel))
 	if _r_base.size.x > shown.x:
 		# Past the plate's render, the plate runs on off the screen: its middle, without the far end's screw.
 		var rest := Rect2(_r_base.position + Vector2(shown.x, 0.0), Vector2(_r_base.size.x - shown.x, shown.y))
-		draw_texture_rect_region(DESK_PLATE, rest, Rect2(Vector2(plate.x * 0.5, 0.0), Vector2(rest.size.x * 2.0, plate.y)))
+		draw_texture_rect_region(DESK_PLATE, rest, Rect2(Vector2(plate.x * 0.5, 0.0), Vector2(rest.size.x * texel, plate.y)))
 	_draw_desk_button(_r_button, _end_turn_button.disabled, _btn_down, _btn_hover)
 	_draw_gearing()
 	# The roller's black frame.
-	draw_rect(Rect2(_roller.position, _roller.size).grow(3.0), Color("#121316"))
+	draw_rect(Rect2(_roller.position, _roller.size).grow(3.0 * k), Color("#121316"))
 	# END TURN engraved under the button: off-white capitals over a dark cut shadow.
-	var tw := F_ENGRAVE.get_string_size("END TURN", HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
-	var at := Vector2(_r_button.get_center().x - tw * 0.5, _r_button.end.y + 13.0)
-	draw_string(F_ENGRAVE, at + Vector2(1, 1), "END TURN", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0, 0, 0, 0.85))
-	draw_string(F_ENGRAVE, at, "END TURN", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, DS.PALETTE.TEXT)
+	var px := roundi(14 * k)
+	var tw := F_ENGRAVE.get_string_size("END TURN", HORIZONTAL_ALIGNMENT_LEFT, -1, px).x
+	var at := Vector2(_r_button.get_center().x - tw * 0.5, _r_button.end.y + 13.0 * k)
+	draw_string(F_ENGRAVE, at + Vector2(1, 1), "END TURN", HORIZONTAL_ALIGNMENT_LEFT, -1, px, Color(0, 0, 0, 0.85))
+	draw_string(F_ENGRAVE, at, "END TURN", HORIZONTAL_ALIGNMENT_LEFT, -1, px, DS.PALETTE.TEXT)
 
 
 ## The stylised silver button in its black frame: the frame and its well, the shadow the button casts into the
@@ -245,19 +253,19 @@ func _draw_desk_button(r: Rect2, dimmed: bool, held: bool, hover: bool) -> void:
 	var dim := DIMMED if dimmed else Color.WHITE
 	var frame := StyleBoxFlat.new()
 	frame.bg_color = FRAME_BLACK
-	frame.set_corner_radius_all(6)
+	frame.set_corner_radius_all(roundi(6 * DOCK_SCALE))
 	frame.shadow_color = Color(0, 0, 0, 0.45)
-	frame.shadow_size = 3
-	frame.shadow_offset = Vector2(1.5, 2.5)
+	frame.shadow_size = roundi(3 * DOCK_SCALE)
+	frame.shadow_offset = Vector2(1.5, 2.5) * DOCK_SCALE
 	draw_style_box(frame, r)
-	var well := r.grow(-BTN_RIM)
+	var well := r.grow(-BTN_RIM * DOCK_SCALE)
 	draw_rect(well, WELL_BLACK)
 	var body := well.grow(-1.0)
 	if held:
 		body.position += Vector2(0.5, 1.0)
 	else:
-		draw_rect(Rect2(body.position + Vector2(2.0, 2.0), body.size).intersection(well), Color(0, 0, 0, 0.7))
-	var bev := BEVEL_HELD if held else BEVEL
+		draw_rect(Rect2(body.position + Vector2(2.0, 2.0) * DOCK_SCALE, body.size).intersection(well), Color(0, 0, 0, 0.7))
+	var bev := (BEVEL_HELD if held else BEVEL) * DOCK_SCALE
 	var face := body.grow(-bev)
 	var o := [body.position, Vector2(body.end.x, body.position.y), body.end, Vector2(body.position.x, body.end.y)]
 	var f := [face.position, Vector2(face.end.x, face.position.y), face.end, Vector2(face.position.x, face.end.y)]
@@ -290,10 +298,11 @@ func _draw_desk_button(r: Rect2, dimmed: bool, held: bool, hover: bool) -> void:
 
 ## A gear on each end of the roller, seen edge on beside its frame.
 func _draw_gearing() -> void:
-	var frame := Rect2(_roller.position, _roller.size).grow(3.0)
+	var k := DOCK_SCALE
+	var frame := Rect2(_roller.position, _roller.size).grow(3.0 * k)
 	var turn := -(float(_gear_steps - 1) + _roller.progress()) * TAU / GEAR_TEETH * TEETH_PER_PHASE
-	for x: float in [frame.position.x - GEAR_GAP - GEAR_W, frame.end.x + GEAR_GAP]:
-		_draw_gear_edge(Rect2(x, frame.get_center().y - frame.size.y * 0.5 - GEAR_OVER, GEAR_W, frame.size.y + GEAR_OVER * 2.0), turn)
+	for x: float in [frame.position.x - (GEAR_GAP + GEAR_W) * k, frame.end.x + GEAR_GAP * k]:
+		_draw_gear_edge(Rect2(x, frame.get_center().y - frame.size.y * 0.5 - GEAR_OVER * k, GEAR_W * k, frame.size.y + GEAR_OVER * 2.0 * k), turn)
 
 
 ## A steel gear seen edge on, its axle across the view, turned to `turn`: its shadow on the desk, the dark
@@ -336,7 +345,8 @@ func _draw_gear_edge(r: Rect2, turn: float) -> void:
 # in from below. clip_contents keeps the rolling text inside the cylinder.
 class PhaseRoller extends Control:
 	const _FONT: Font = preload("res://assets/fonts/IBMPlexSans-SemiBold.ttf")
-	const _FS := 13
+	## The phase name's size, set by the dock to its scale.
+	var font_px := 13
 	const _ROLL := 0.1                          # transition duration (s)
 	const _NAVY := Color(0.02, 0.10, 0.20)      # navy ink
 	# Cylinder shading: apex (brightest) at the middle line, top lighter than the
@@ -391,7 +401,7 @@ class PhaseRoller extends Control:
 	func _blit(text: String, dy: float) -> void:
 		if text == "":
 			return
-		var tw := _FONT.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, _FS).x
+		var tw := _FONT.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_px).x
 		var x := (size.x - tw) * 0.5
-		var y := (size.y - _FS) * 0.5 + _FONT.get_ascent(_FS) + dy
-		draw_string(_FONT, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, _FS, _NAVY)
+		var y := (size.y - font_px) * 0.5 + _FONT.get_ascent(font_px) + dy
+		draw_string(_FONT, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_px, _NAVY)

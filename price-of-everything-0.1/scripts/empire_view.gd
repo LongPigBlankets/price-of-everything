@@ -242,6 +242,8 @@ func _build_ui() -> void:
 	_sync_motion_key()
 
 func _process(_delta: float) -> void:
+	if visible:
+		_raise_dock()
 	if visible and _back_to_company != null:
 		var focused_on := str(_graph_world.focus_iid())
 		var focused := focused_on != ""
@@ -348,12 +350,15 @@ func _on_visibility_changed() -> void:
 
 func _enter() -> void:
 	TelemetryState.track_interaction("supply_chain_opened", "supply_chain")
+	var dock := _end_turn_dock()
+	_dock_index = dock.get_index() if dock != null else -1
 	move_to_front()
 	_hide_world()
 	_schedule_map_release()
 	_set_camera_blocked(true)
 	_board.open_at_map_camera()
 	PanelStack.push(self)
+	_raise_dock()
 	# Built for the other quality preset: build it again for this one.
 	if _fresh and bool(_board.call("built_flat")) != PlayerProfile.is_low_quality():
 		_fresh = false
@@ -414,10 +419,28 @@ func _restore_map_images() -> void:
 
 
 func _leave() -> void:
+	var dock := _end_turn_dock()
+	if dock != null and _dock_index >= 0:
+		get_parent().move_child(dock, mini(_dock_index, get_parent().get_child_count() - 1))
 	_show_world()
 	_restore_map_images()
 	_set_camera_blocked(false)
 	PanelStack.remove(self)
+
+
+## Where the End Turn dock sat among the HUD's children before the view raised it over itself.
+var _dock_index := -1
+
+## The End Turn dock stays at hand over the view, so a turn can be ended without leaving it. The panel stack
+## raises the view whenever it takes focus, so the dock is put back over it each time.
+func _raise_dock() -> void:
+	var dock := _end_turn_dock()
+	if dock != null and dock.get_index() < get_index():
+		dock.move_to_front()
+
+
+func _end_turn_dock() -> Control:
+	return get_parent().get_node_or_null("EndTurnDock") as Control if get_parent() != null else null
 
 
 ## Hide every world render layer (terrain, visuals, overlays) so the navy view fully

@@ -55,15 +55,28 @@ const NAMEPLATE := {"margin": 14.0, "cap": 60.0}
 const RACK := {"y": 150.0, "h": 470.0, "bar": 24.0, "lip": 30.0, "margin": 24.0, "corner": 40.0}
 const FILE := {"w": 290.0, "h": 372.0, "margin": 24.0, "pulled_margin": 48.0, "pull": 34.0, "window": Rect2(63, 44, 164, 164),
 	"tile_inset": 14.0, "label": Rect2(24, 236, 242, 52), "name_y": 262.0, "tier_y": 320.0}
+## The good's note on a company file, in file units: its side and centre (over the window, which it hides), the icon 30%
+## larger than the window tile's, the steepest tilt either way, and the paperclip holding it to the folder's top edge.
+const NOTE := {"side": 184.0, "centre": Vector2(145, 128), "icon": 148.0, "tilt_deg": 3.6, "band": 0.16,
+	"clip_x": 52.0, "clip_top": -12.0, "clip_w": 17.0, "clip_h": 74.0, "wire": 2.6}
+const NOTE_CREAM := Color("#f6ecc6")
+const NOTE_BAND := Color("#ece0b2")
+const CLIP_STEEL := Color("#a9b2bb")
+const CLIP_DARK := Color("#47525d")
+const CLIP_LIGHT := Color("#eef2f6")
 const LID := {"margin": 40.0, "corner": 28.0, "hinge_margin": 14.0, "hasp_margin": 14.0, "plate": Vector2(300, 58), "plate_margin": 12.0, "plate_corner": 26.0}
 const BLOTTER := {"margin": 30.0, "corner": 40.0, "inset": 40.0}
 const COVER := {"margin": 16.0, "corner": 20.0}
 const LEAF := {"margin": 14.0, "corner": 16.0, "inset": 30.0, "m": 44.0}
 const FORM := {"w": 720.0, "margin": 14.0, "corner": 54.0, "m": 48.0}
+## A section header's size: never smaller than the body text under it (14), and always in full navy (CLAUDE.md).
+const HEADER_PX := 15
 const STAMPS := {"col": 217.0, "margin": 16.0, "corner": 24.0, "key_w": 195.0, "key_h": 78.0, "first": 30.0, "pitch": 94.0, "foot": 10.0, "pad_h": 84.0, "pad_margin": 16.0}
 const PRESS := {"h": 320.0, "margin": 30.0, "key": Rect2(15, 250, 195, 84)}
 const SLIP := {"w": 330.0, "h": 96.0, "margin": 30.0, "corner": 20.0}
-const STRIP := {"bld": 104.0, "good": 56.0}
+const STRIP := {"bld": 160.0, "good": 86.0}
+## Buildings owned are laid out this many to a row.
+const GRID_COLS := 3
 const PAINT := {"sq": 96.0, "gap": 16.0, "cols": 4}
 const COUNTER_GAP := 20.0
 const FOOT := 120.0
@@ -90,17 +103,18 @@ const SEAL_R := 72.0
 ## Tests and headless runs skip the sequence (the signal goes at once); a windowed run plays it.
 static var animate := true
 const LOCKED_GRADE_TIP := "This difficulty is unlocked once you finish one game"
-const DEMO_CHARTER := "100 turns, the Itch.io demo."
+const DEMO_CHARTER := "100 turns, the demo setup."
 const DEMO_SURVEY := "All tiles surveyed at game start."
 
 var _chosen: Dictionary = {}
 var _chosen_index := -1
 var _speed_index := SPEED_DEFAULT
 var _hover_cell := -1
-var _rows: Array = []          # the chosen start's buildings: {bid, internal, name, place, gid, ginternal}
+var _rows: Array = []          # the chosen start's buildings, alike ones together: {bid, internal, name, place, gid, ginternal, count}
 var _ledger: Array = []        # [label, figure, colour]
 var _story_lines: Array = []
 var _strip_top := 0.0          # leaf px, where the building strip starts
+var _owned_top := 0.0          # leaf px, the Buildings Owned heading: the same for every company
 var _slip_at := Vector2.ZERO   # leaf px, the hovered cell's middle and the strip's foot
 var _grade_keys: Array = []
 var _stamp_t := -1.0          # seconds into the seal sequence, below zero before Start is pressed
@@ -441,30 +455,17 @@ func _select_start(start: Dictionary) -> void:
 
 
 ## Reads the chosen start's config into what the leaves print: the buildings with the good each makes and its
-## place, and the ledger lines (Cash, Debt, then Net while there is debt, else Profit each turn).
+## place, and the ledger lines (Cash, Debt, Profit each turn).
 func _read_file(start: Dictionary) -> void:
 	var cfg := _read_config(String(start.get("file", "")))
-	_rows.clear()
-	for entry in (cfg.get("buildings", []) as Array):
-		var e := entry as Dictionary
-		var bid := String(e.get("building_id", ""))
-		var bd := Catalog.get_building(bid)
-		var recipe := Catalog.get_recipe(String(e.get("recipe_id", "")))
-		var gid := String(recipe.get("output_good_id", ""))
-		_rows.append({"bid": bid, "internal": String(bd.get("internal_name", "")),
-			"name": String(bd.get("display_name", bd.get("name", bid))), "place": place_for(String(e.get("tile_id", ""))),
-			"gid": gid, "ginternal": Catalog.get_internal_name(gid) if gid != "" else ""})
+	_rows = group_buildings(cfg.get("buildings", []) as Array)
 	var cash := float(cfg.get("money", EconomyConfig.STARTING_MONEY))
 	var debt := 0.0
 	for l in (cfg.get("loans", []) as Array):
 		debt += float((l as Dictionary).get("principal", 0.0))
 	_ledger = [["Cash", _pounds(cash), NAVY], ["Debt", "none" if debt <= 0.0 else _pounds(debt), NAVY]]
-	if debt > 0.0:
-		var net := cash - debt
-		_ledger.append(["Net", _pounds(net), INK_RED if net < 0.0 else NAVY])
-	else:
-		var profit := float(cfg.get("steady_profit_per_turn", _profit_estimate(cfg)))
-		_ledger.append(["Profit each turn", _pounds(profit), INK_RED if profit < 0.0 else (INK_GREEN if profit > 0.0 else NAVY)])
+	var profit := float(cfg.get("steady_profit_per_turn", _profit_estimate(cfg)))
+	_ledger.append(["Profit each turn", _pounds(profit), INK_RED if profit < 0.0 else (INK_GREEN if profit > 0.0 else NAVY)])
 
 
 ## A figure in whole pounds as the panel prints them, the minus before the £.
@@ -477,7 +478,39 @@ func ledger_lines() -> Array:
 	return _ledger.duplicate(true)
 
 
-## The buildings owned as printed: {bid, name, place, gid}.
+## The start's buildings as the file prints them: one cell for each kind of building making the same good, with how
+## many there are and where. Places read "A and B" for two, "A and 2 more" for more.
+static func group_buildings(entries: Array) -> Array:
+	var groups: Array = []
+	var by_key := {}
+	for entry in entries:
+		var e := entry as Dictionary
+		var bid := String(e.get("building_id", ""))
+		var recipe := Catalog.get_recipe(String(e.get("recipe_id", "")))
+		var gid := String(recipe.get("output_good_id", ""))
+		var key := bid + "|" + gid
+		var place := place_for(String(e.get("tile_id", "")))
+		if by_key.has(key):
+			var g: Dictionary = by_key[key]
+			g.count = int(g.count) + 1
+			if not (g.places as Array).has(place):
+				(g.places as Array).append(place)
+			continue
+		var bd := Catalog.get_building(bid)
+		var row := {"bid": bid, "internal": String(bd.get("internal_name", "")),
+			"name": String(bd.get("display_name", bd.get("name", bid))), "places": [place],
+			"gid": gid, "ginternal": Catalog.get_internal_name(gid) if gid != "" else "", "count": 1}
+		by_key[key] = row
+		groups.append(row)
+	for g in groups:
+		var places: Array = g.places
+		g.place = places[0] if places.size() == 1 else ("%s and %s" % [places[0], places[1]] if places.size() == 2 \
+			else "%s and %d more" % [places[0], places.size() - 1])
+		g.erase("places")
+	return groups
+
+
+## The buildings owned as printed: {bid, name, place, gid, count}.
 func building_rows() -> Array:
 	return _rows.duplicate(true)
 
@@ -555,6 +588,13 @@ func _story_font_px() -> int:
 	return 14
 
 
+func _story_paragraph(text: String, width: float) -> TextParagraph:
+	var tp := TextParagraph.new()
+	tp.width = width
+	tp.add_string(text, FONT_PLEX, _story_font_px())
+	return tp
+
+
 ## Measures the story and places a hover target over each building cell.
 func _place_cells() -> void:
 	for b in _cell_buttons:
@@ -562,18 +602,16 @@ func _place_cells() -> void:
 	_cell_buttons.clear()
 	var m := LEAF["m"] * L
 	var inner := _r_leaf_l.size.x - 2.0 * m
-	var tp := TextParagraph.new()
-	tp.width = inner
-	tp.add_string(String(_chosen.get("description", _chosen.get("blurb", ""))), FONT_PLEX, _story_font_px())
+	var tp := _story_paragraph(String(_chosen.get("description", _chosen.get("blurb", ""))), inner)
 	_story_lines = []
 	for i in tp.get_line_count():
 		_story_lines.append(tp.get_line_range(i))
-	var y := 194.0 * L + tp.get_line_count() * 36.0 * L
-	y += 34.0 * L + 24.0 * L + 22.0 * L
-	_strip_top = y
-	var n := maxi(_rows.size(), 1)
-	var cell_w := inner / n
-	var bld := minf(STRIP["bld"] * L, cell_w - 10.0)
+	# The buildings sit below the longest story of any company, so they stay put from file to file.
+	var longest := tp.get_line_count()
+	for st in _starts:
+		longest = maxi(longest, _story_paragraph(String((st as Dictionary).get("description", (st as Dictionary).get("blurb", ""))), inner).get_line_count())
+	_owned_top = 194.0 * L + longest * 36.0 * L + 34.0 * L
+	_strip_top = _owned_top + 24.0 * L + 22.0 * L
 	for k in _rows.size():
 		var b := Button.new()
 		b.name = "Cell%d" % k
@@ -581,9 +619,9 @@ func _place_cells() -> void:
 		b.mouse_filter = Control.MOUSE_FILTER_PASS
 		for st in ["normal", "hover", "pressed", "focus", "disabled", "hover_pressed"]:
 			b.add_theme_stylebox_override(st, StyleBoxEmpty.new())
-		var hit_w := minf(cell_w, 150.0 * L)
-		b.position = Vector2(m + cell_w * (k + 0.5) - hit_w * 0.5 + 6.0 * L, _strip_top - 8.0 * L)
-		b.size = Vector2(hit_w - 12.0 * L, bld + STRIP["good"] * L + 36.0 * L)
+		var hit: Rect2 = _cell(k).hit
+		b.position = hit.position
+		b.size = hit.size
 		var idx := k
 		b.mouse_entered.connect(func() -> void: _hover(idx))
 		b.mouse_exited.connect(func() -> void:
@@ -600,19 +638,42 @@ func _hover(k: int) -> void:
 		_slip.visible = false
 	else:
 		var m := LEAF["m"] * L
-		var inner := _r_leaf_l.size.x - 2.0 * m
-		var cell_w := inner / maxi(_rows.size(), 1)
-		var bld := minf(STRIP["bld"] * L, cell_w - 10.0)
-		var cx := m + cell_w * (k + 0.5)
-		var foot := _strip_top + bld + STRIP["good"] * L + 44.0 * L
+		var hit: Rect2 = _cell(k).hit
 		var sw := SLIP["w"] * L
 		var sh := SLIP["h"] * L
-		var sx := clampf(cx + 40.0 * L, m + sw * 0.5, _r_leaf_l.size.x - m - sw * 0.5)
-		_slip.position = Vector2(sx - sw * 0.5, foot)
+		var sx := clampf(hit.get_center().x + 40.0 * L, m + sw * 0.5, _r_leaf_l.size.x - m - sw * 0.5)
+		# Under the cell, or over it when the leaf ends first.
+		var sy := hit.end.y + 8.0 * L
+		if sy + sh > _r_leaf_l.size.y:
+			sy = hit.position.y - sh - 8.0 * L
+		_slip.position = Vector2(sx - sw * 0.5, sy)
 		_slip.size = Vector2(sw, sh)
 		_slip.visible = true
 		_slip.queue_redraw()
 	_left_leaf.queue_redraw()
+
+
+## Where building cell k sits on the left leaf: the building art box, the good's tile and the hover target. Three to a
+## row, a short last row centred, all shrunk together when the rows need more height than the leaf has.
+func _cell(k: int) -> Dictionary:
+	var m := LEAF["m"] * L
+	var inner := _r_leaf_l.size.x - 2.0 * m
+	var cell_w := inner / GRID_COLS
+	var rows := maxi(ceili(_rows.size() / float(GRID_COLS)), 1)
+	var gap := 12.0 * L
+	var row_pad := 26.0 * L
+	var room := _r_leaf_l.size.y - LEAF["margin"] - m * 0.5 - _strip_top
+	var ratio := STRIP["good"] / STRIP["bld"]
+	var bld := minf(minf(STRIP["bld"] * L, cell_w - 24.0 * L), (room / rows - gap - row_pad) / (1.0 + ratio))
+	var good := bld * ratio
+	var row := k / GRID_COLS
+	var in_row := mini(_rows.size() - row * GRID_COLS, GRID_COLS)
+	var cx := m + inner * 0.5 + (k % GRID_COLS - (in_row - 1) * 0.5) * cell_w
+	var top := _strip_top + row * (bld + gap + good + row_pad)
+	var art := Rect2(cx - bld * 0.5, top, bld, bld)
+	var tile := Rect2(cx - good * 0.5, top + bld + gap, good, good)
+	var hit_w := minf(cell_w, bld + 30.0 * L) - 8.0 * L
+	return {"art": art, "good": tile, "hit": Rect2(cx - hit_w * 0.5, top - 8.0 * L, hit_w, bld + gap + good + 16.0 * L)}
 
 
 ## The building the slip names, or -1.
@@ -719,16 +780,68 @@ func _draw_file(c: CanvasItem, start: Dictionary, at: Vector2, pulled: bool) -> 
 		tier = "amber"
 	var tex: Texture2D = PParts.tex("registry_file_%s%s" % [tier, "_pulled" if pulled else ""])
 	PParts.draw_fixed(c, tex, at, FILE["pulled_margin"] if pulled else FILE["margin"])
-	var win: Rect2 = FILE["window"]
-	var inset := FILE["tile_inset"] * L
-	var tile := Rect2(at + win.position * L + Vector2(inset, inset), win.size * L - Vector2(inset, inset) * 2.0)
-	var icon: Texture2D = GoodIcons.texture_for_size(String(start.get("good_id", "")), String(start.get("good_internal", "")), tile.size.x)
-	_good_tile(c, icon, tile)
+	_draw_note(c, start, at)
 	var label: Rect2 = FILE["label"]
 	_ink(c, Plate.FONT_BOLD, 14, String(start.get("title", "")).to_upper(), at + Vector2(FILE["w"] * 0.5, FILE["name_y"]) * L, NAVY,
 		HORIZONTAL_ALIGNMENT_CENTER, (label.size.x - 28.0) * L)
 	_ink(c, FONT_PLEX, 12, String(TIER_WORDS[tier]), at + Vector2(FILE["w"] * 0.5, FILE["tier_y"]) * L, Color("#4a3818"),
 		HORIZONTAL_ALIGNMENT_CENTER, (FILE["w"] - 40.0) * L)
+
+
+## The good's note on a file at `at`: a cream note over the window, tipped a little each way by company, its icon on it,
+## and a paperclip over the folder's top edge holding it.
+func _draw_note(c: CanvasItem, start: Dictionary, at: Vector2) -> void:
+	var side := NOTE["side"] * L
+	var centre := at + NOTE["centre"] * L
+	var tilt := deg_to_rad(NOTE["tilt_deg"]) * (float(absi(hash(String(start.get("id", "")))) % 7) / 3.0 - 1.0)
+	var half := Vector2(side, side) * 0.5
+	c.draw_set_transform(centre + Vector2(2.0, 4.0) * L * 1.875, tilt, Vector2.ONE)
+	c.draw_rect(Rect2(-half, Vector2(side, side)), Color(0, 0, 0, 0.28))
+	c.draw_set_transform(centre, tilt, Vector2.ONE)
+	c.draw_rect(Rect2(-half, Vector2(side, side)), NOTE_CREAM)
+	c.draw_rect(Rect2(-half, Vector2(side, side * NOTE["band"])), NOTE_BAND)
+	# A filled rect has no antialiasing; a hairline round it smooths the tipped edges.
+	c.draw_polyline(PackedVector2Array([-half, Vector2(half.x, -half.y), half, Vector2(-half.x, half.y), -half]), NOTE_CREAM, 1.2, true)
+	# The lower corner lifts a little off the folder.
+	var corner := half
+	var lift := side * 0.12
+	c.draw_colored_polygon(PackedVector2Array([corner - Vector2(lift, 0), corner, corner - Vector2(0, lift)]), Color(0, 0, 0, 0.10))
+	var icon: Texture2D = GoodIcons.texture_for_size(String(start.get("good_id", "")), String(start.get("good_internal", "")), NOTE["icon"] * L)
+	if icon != null:
+		var size := Vector2(NOTE["icon"], NOTE["icon"]) * L
+		c.draw_texture_rect(icon, Rect2(Vector2(0, side * NOTE["band"] * 0.5) - size * 0.5, size), false)
+	c.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	_draw_clip(c, at + Vector2(NOTE["clip_x"], NOTE["clip_top"]) * L, tilt)
+
+
+## A steel paperclip with its top left at `top`: the wire's two nested loops, shadowed, with a highlight along the steel.
+static func _draw_clip(c: CanvasItem, top: Vector2, tilt: float) -> void:
+	var w := NOTE["clip_w"] * L
+	var h := NOTE["clip_h"] * L
+	var pts := PackedVector2Array()
+	var u := func(from: Vector2, centre: Vector2, radius: float, a0: float, a1: float) -> void:
+		pts.append(from)
+		for i in range(1, 11):
+			var a := lerpf(a0, a1, i / 10.0)
+			pts.append(centre + Vector2(cos(a), sin(a)) * radius)
+	# The inner end, down the inner leg, round the small bottom bend, up the middle leg, over the top bend, down the
+	# outer right leg, round the big bottom bend and up the outer left leg.
+	var x_in := w - 4.0 * L
+	var x_mid := 3.0 * L
+	u.call(Vector2(x_in, h * 0.34), Vector2((x_in + x_mid) * 0.5, h - 9.0 * L), (x_in - x_mid) * 0.5, 0.0, PI)
+	u.call(Vector2(x_mid, 10.0 * L), Vector2((x_mid + w) * 0.5, 10.0 * L), (w - x_mid) * 0.5, PI, TAU)
+	u.call(Vector2(w, h - w * 0.5), Vector2(w * 0.5, h - w * 0.5), w * 0.5, 0.0, PI)
+	pts.append(Vector2(0.0, h * 0.24))
+	var wire := NOTE["wire"] * L * 1.875
+	c.draw_set_transform(top + Vector2(1.5, 2.5), tilt, Vector2.ONE)
+	c.draw_polyline(pts, Color(0, 0, 0, 0.25), wire + 1.0, true)
+	c.draw_set_transform(top, tilt, Vector2.ONE)
+	c.draw_polyline(pts, CLIP_DARK, wire + 1.2, true)
+	c.draw_polyline(pts, CLIP_STEEL, wire, true)
+	var shine := PackedVector2Array()
+	for p in pts: shine.append(p + Vector2(-0.4, -0.4))
+	c.draw_polyline(shine, CLIP_LIGHT, maxf(wire * 0.3, 0.8), true)
+	c.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 ## A lockbox over `r` in `c`: the lid, its hinges, the hasp with the padlock, the FULL GAME plate and the words under it.
@@ -775,7 +888,7 @@ func _draw_left_leaf() -> void:
 		return
 	var m := LEAF["m"] * L
 	var inner := w - 2.0 * m
-	_ink(c, Plate.FONT_BOLD, 13, "COMPANY FILE", Vector2(m, 62.0 * L))
+	_ink(c, Plate.FONT_BOLD, HEADER_PX, "COMPANY FILE", Vector2(m, 62.0 * L))
 	_ink(c, Plate.FONT_SEMI, 13, "FILE %d OF %d" % [_chosen_index + 1, _starts.size()], Vector2(w - m, 62.0 * L), NAVY, HORIZONTAL_ALIGNMENT_RIGHT)
 	_ink(c, Plate.FONT_BOLD, 26, String(_chosen.get("title", "")), Vector2(m, 116.0 * L), NAVY, HORIZONTAL_ALIGNMENT_LEFT, inner)
 	c.draw_rect(Rect2(m, 148.0 * L, inner, 2.0 * L), INK_FAINT)
@@ -785,33 +898,33 @@ func _draw_left_leaf() -> void:
 		var line := story.substr(int((rng as Vector2i).x), int((rng as Vector2i).y - (rng as Vector2i).x)).strip_edges()
 		_ink(c, FONT_PLEX, _story_font_px(), line, Vector2(m, y))
 		y += 36.0 * L
-	y += 34.0 * L
-	_ink(c, Plate.FONT_BOLD, 14, "BUILDINGS OWNED", Vector2(m, y))
+	y = _owned_top
+	_ink(c, Plate.FONT_BOLD, HEADER_PX, "BUILDINGS OWNED", Vector2(m, y))
 	y += 24.0 * L
 	c.draw_rect(Rect2(m, y, inner, 1.5 * L), Color(NAVY, 0.35))
 	y = _strip_top
 	if _rows.is_empty():
 		_ink(c, FONT_PLEX, 14, "None", Vector2(m, y + 20.0 * L), INK_DIM)
 		return
-	var cell_w := inner / _rows.size()
-	var bld := minf(STRIP["bld"] * L, cell_w - 10.0)
-	var good := STRIP["good"] * L
 	for k in _rows.size():
 		var row: Dictionary = _rows[k]
-		var cx := m + cell_w * (k + 0.5)
+		var cell := _cell(k)
+		var box: Rect2 = cell.art
+		var tile: Rect2 = cell.good
 		if k == _hover_cell:
-			var hit_w := minf(cell_w, 150.0 * L)
-			_dashed_round(c, Rect2(cx - hit_w * 0.5 + 6.0 * L, y - 8.0 * L, hit_w - 12.0 * L, bld + good + 36.0 * L), 8.0 * L, Color(NAVY, 0.55))
+			_dashed_round(c, cell.hit, 8.0 * L, Color(NAVY, 0.55))
 		var art: Texture2D = BuildingIcon.clean_texture(String(row["bid"]), String(row["internal"]))
 		if art != null:
-			var box := Rect2(cx - bld * 0.5, y, bld, bld)
 			var k2 := minf(box.size.x / art.get_width(), box.size.y / art.get_height())
 			var ds := Vector2(art.get_width(), art.get_height()) * k2
 			c.draw_texture_rect(art, Rect2(box.get_center() - ds * 0.5, ds), false, NAVY)
-		c.draw_line(Vector2(cx, y + bld + 4.0 * L), Vector2(cx, y + bld + 16.0 * L), Color(NAVY, 0.5), 2.0 * L, true)
+		var cx := box.get_center().x
+		c.draw_line(Vector2(cx, box.end.y + 2.0 * L), Vector2(cx, tile.position.y - 2.0 * L), Color(NAVY, 0.5), 2.0 * L, true)
 		var gid := String(row["gid"])
 		if gid != "":
-			_good_tile(c, GoodIcons.texture_for_size(gid, String(row["ginternal"]), good), Rect2(cx - good * 0.5, y + bld + 20.0 * L, good, good))
+			_good_tile(c, GoodIcons.texture_for_size(gid, String(row["ginternal"]), tile.size.x), tile)
+		if int(row.get("count", 1)) > 1:
+			_count_pill(c, "×%d" % int(row["count"]), Vector2(box.end.x + 14.0 * L, box.position.y - 4.0 * L))
 
 
 func _draw_right_leaf() -> void:
@@ -822,7 +935,7 @@ func _draw_right_leaf() -> void:
 		return
 	var m := LEAF["m"] * L
 	var inner := w - 2.0 * m
-	_ink(c, Plate.FONT_BOLD, 14, "FINANCIALS", Vector2(m, 62.0 * L))
+	_ink(c, Plate.FONT_BOLD, HEADER_PX, "FINANCIALS", Vector2(m, 62.0 * L))
 	c.draw_rect(Rect2(m, 86.0 * L, inner, 2.0 * L), INK_FAINT)
 	var y := 122.0 * L
 	for k in _ledger.size():
@@ -834,7 +947,7 @@ func _draw_right_leaf() -> void:
 			c.draw_rect(Rect2(m, y + 30.0 * L, inner, 1.2 * L), Color(NAVY, 0.28))
 		y += 54.0 * L
 	y += 30.0 * L
-	_ink(c, Plate.FONT_BOLD, 14, "COMPANY COLOUR", Vector2(m, y))
+	_ink(c, Plate.FONT_BOLD, HEADER_PX, "COMPANY COLOUR", Vector2(m, y))
 	y += 24.0 * L
 	c.draw_rect(Rect2(m, y, inner, 1.5 * L), Color(NAVY, 0.35))
 	var o := _paint_origin()
@@ -865,7 +978,8 @@ func _draw_slip() -> void:
 	if _hover_cell < 0 or _hover_cell >= _rows.size():
 		return
 	var row: Dictionary = _rows[_hover_cell]
-	_ink(c, FONT_PLEX_SEMI, 14, String(row["name"]), Vector2(22.0 * L, 34.0 * L), NAVY, HORIZONTAL_ALIGNMENT_LEFT, c.size.x - 44.0 * L)
+	var name := String(row["name"]) + ("  ×%d" % int(row["count"]) if int(row.get("count", 1)) > 1 else "")
+	_ink(c, FONT_PLEX_SEMI, 14, name, Vector2(22.0 * L, 34.0 * L), NAVY, HORIZONTAL_ALIGNMENT_LEFT, c.size.x - 44.0 * L)
 	_ink(c, FONT_PLEX, 12, String(row["place"]), Vector2(22.0 * L, 66.0 * L), INK_DIM, HORIZONTAL_ALIGNMENT_LEFT, c.size.x - 44.0 * L)
 
 
@@ -902,7 +1016,7 @@ func _draw_form() -> void:
 	else:
 		_ink(c, FONT_PLEX, 14, "Charter of", Vector2(m, 500.0 * L))
 		var opt: Dictionary = SPEEDS[clampi(_speed_index, 0, SPEEDS.size() - 1)]
-		var after := "turns" if String(opt.get("policy_timeline", "")) == "" else "turns, the Itch.io demo"
+		var after := "turns" if String(opt.get("policy_timeline", "")) == "" else "turns, the demo setup"
 		_ink(c, FONT_PLEX, 14, after, Vector2(m + 420.0 * L, 500.0 * L))
 		_era_rule(c, Rect2(m, 596.0 * L, inner, 0), _speed_turns, false)
 		_ink(c, FONT_PLEX, 12, "This also changes the Era pacing.", Vector2(m, 682.0 * L), INK_DIM)
@@ -944,7 +1058,7 @@ func _grade() -> Dictionary:
 
 ## A field of the form: its printed name and the rule under it.
 func _field(c: CanvasItem, y: float, label: String, m: float, inner: float) -> void:
-	_ink(c, Plate.FONT_SEMI, 12, label, Vector2(m, y), INK_DIM)
+	_ink(c, Plate.FONT_BOLD, HEADER_PX, label, Vector2(m, y))
 	c.draw_rect(Rect2(m, y + 56.0 * L, inner, 1.5 * L), Color(NAVY, 0.3))
 
 
@@ -1170,7 +1284,7 @@ func _on_start_pressed() -> void:
 	_starting = true
 	_block.visible = true
 	_start_key.disabled = true
-	_start_key.call("set_busy", true)
+	_start_key.call("set_busy", true, false)
 	var tw := create_tween()
 	tw.tween_method(_set_stamp_time, 0.0, STAMP_SECONDS, STAMP_SECONDS)
 	tw.tween_callback(_emit_start)
@@ -1227,6 +1341,18 @@ func _white(c: CanvasItem, font: Font, px: int, text: String, at: Vector2, align
 
 
 ## A good's cream tile with its icon at 84 percent, a soft shadow under it.
+## How many of a building the company owns: a navy pill with the count in cream, its right edge at `corner`.
+static func _count_pill(c: CanvasItem, text: String, corner: Vector2) -> void:
+	var px := 13
+	var size := FONT_PLEX_SEMI.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, px)
+	var w := size.x + 14.0
+	var r := Rect2(corner - Vector2(w, 0.0), Vector2(w, 22.0))
+	_round_fill(c, Rect2(r.position + Vector2(1.0, 1.5), r.size), r.size.y * 0.5, Color(0, 0, 0, 0.25))
+	_round_fill(c, r, r.size.y * 0.5, NAVY)
+	c.draw_string(FONT_PLEX_SEMI, Vector2(r.position.x + (r.size.x - size.x) * 0.5, r.position.y + 16.0), text,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, px, CREAM_TILE)
+
+
 static func _good_tile(c: CanvasItem, icon: Texture2D, r: Rect2) -> void:
 	var rad := r.size.x * 0.12
 	_round_fill(c, Rect2(r.position + Vector2(1.5, 2.0), r.size), rad, Color(0, 0, 0, 0.3))

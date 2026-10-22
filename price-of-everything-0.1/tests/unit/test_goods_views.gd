@@ -1493,3 +1493,27 @@ func _test_empire_board_pipes() -> void:
 		[{"a": Vector2(50.0, -40.0), "b": Vector2(50.0, 40.0), "half": 8.0}])
 	_check(hit.size() == 1 and float(hit[0][0]) < 42.0 and float(hit[0][1]) > 58.0,
 		"pipes: a road across a leg gives a span wider than the road")
+
+
+## A tooltip over a good can swallow the release of a click. The next mouse move, with no button held, must end
+## the press as a click rather than leave the view panning after the mouse.
+func _test_goods_graph_lost_release_ends_the_drag() -> void:
+	var world: Control = load("res://scripts/goods_graph_world.gd").new()
+	add_child(world)
+	world.size = Vector2(1200, 800)
+	world.call("set_graph", preload("res://scripts/goods_flow_graph.gd").build(false, false))
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = Vector2(600, 400)
+	world.call("_gui_input", press)
+	_check(bool(world.get("_dragging")), "goods graph: a press starts a drag")
+	var offset: Vector2 = world.get("_view_offset")
+	var move := InputEventMouseMotion.new()
+	move.position = Vector2(640, 430)
+	move.relative = Vector2(40, 30)
+	move.button_mask = 0
+	world.call("_gui_input", move)
+	_check(not bool(world.get("_dragging")) and (world.get("_view_offset") as Vector2) == offset,
+		"goods graph: a move with no button held ends the press, the view stays put")
+	world.queue_free()
