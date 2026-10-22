@@ -9,6 +9,8 @@ extends Node
 const START := "res://data/starts/metal_magnate.json"
 const TILE := "tile_9_9"
 const Service := preload("res://scripts/middleman_service.gd")
+const BuildingReadout := preload("res://scripts/building_readout.gd")
+const BuildingStatus := preload("res://scripts/building_status.gd")
 
 var _label := "boot"
 var _last := 0
@@ -35,7 +37,10 @@ func _ready() -> void:
 		probe.set_meta("survivor", true)
 		get_tree().root.add_child.call_deferred(probe)
 		return
-	SaveLoad.prepare_new_game(START)
+	var start := START
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--start="): start = "res://data/starts/%s.json" % arg.trim_prefix("--start=")
+	SaveLoad.prepare_new_game(start)
 	if loading:
 		await get_tree().process_frame
 		var screen: Node = preload("res://scripts/loading_screen.gd").show_global(get_tree())
@@ -49,6 +54,23 @@ func _ready() -> void:
 		var world: Node = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 		add_child(world)
 	await _settle(8000)
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--dock-shots="):
+			await _dock_shots(arg.trim_prefix("--dock-shots="))
+			get_tree().quit(0)
+			return
+	if "--politics" in OS.get_cmdline_user_args():
+		await _politics_open_close()
+		get_tree().quit(0)
+		return
+	if "--tile-clicks" in OS.get_cmdline_user_args():
+		await _tile_clicks()
+		get_tree().quit(0)
+		return
+	if "--camera-report" in OS.get_cmdline_user_args():
+		await _camera_report()
+		get_tree().quit(0)
+		return
 	var view := _find_script(get_tree().root, "res://scripts/empire_view.gd")
 	_view = view
 	print("[PROBE] empire view: %s, low quality: %s" % [view != null, PlayerProfile.is_low_quality()])
@@ -232,3 +254,162 @@ func _find_script(node: Node, path: String) -> Node:
 		var found := _find_script(child, path)
 		if found != null: return found
 	return null
+
+## Where the camera is after Begin, after the start's story closes, and after the tutorial is skipped.
+func _camera_report() -> void:
+	var map := get_tree().get_first_node_in_group("hex_map")
+	for tid in ["tile_9_9", "tile_9_10", "tile_5_10", "tile_18_16"]:
+		var coord: Vector2i = map.id_to_coord(tid)
+		print("[CAMERA] %s %s at %s" % [tid, Catalog.tile_name(tid), map.to_global(map.map_to_local(map.map_coord_for_tile_coord(coord))).round()])
+	print("[CAMERA] start focus tile ", preload("res://scripts/world_map.gd").start_focus_tile())
+	_report_camera("after Begin")
+	for node in get_tree().root.find_children("*", "CanvasLayer", true, false):
+		var path := str(node.get_script().resource_path) if node.get_script() != null else ""
+		if path.ends_with("_intro.gd"): node.queue_free()
+	await _settle(3000)
+	_report_camera("after the story closes")
+	if Tutorial.active:
+		Tutorial.call("_on_overlay_skipped")
+		await _settle(2000)
+		_report_camera("after Skip tutorial")
+
+func _report_camera(moment: String) -> void:
+	var cam := get_viewport().get_camera_2d()
+	var map := get_tree().get_first_node_in_group("hex_map")
+	var nearest := ""
+	var best := INF
+	for coord in map.get("tiles"):
+		var at: Vector2 = map.to_global(map.map_to_local(map.map_coord_for_tile_coord(coord)))
+		if at.distance_to(cam.global_position) < best:
+			best = at.distance_to(cam.global_position)
+			nearest = str(map.tiles[coord].get("id", coord))
+	print("[CAMERA] %-24s centre %s on %s (%s), zoom %.3f of %.3f..%.3f" % [moment, cam.global_position.round(), nearest,
+		Catalog.tile_name(nearest), cam.zoom.x, float(cam.call("_effective_zoom_min")), float(cam.get("zoom_max"))])
+
+## The map and the supply chain view with the End Turn dock on each, saved into `dir`.
+func _dock_shots(dir: String) -> void:
+	DirAccess.make_dir_recursive_absolute(dir)
+	for node in get_tree().root.find_children("*", "CanvasLayer", true, false):
+		var path := str(node.get_script().resource_path) if node.get_script() != null else ""
+		if path.ends_with("_intro.gd"): node.queue_free()
+	await _settle(2000)
+	if Tutorial.active: Tutorial.call("_on_overlay_skipped")
+	await _settle(1500)
+	get_viewport().get_texture().get_image().save_png(dir.path_join("map.png"))
+	MatchState.empire_view_requested.emit()
+	await _settle(8000)
+	get_viewport().get_texture().get_image().save_png(dir.path_join("supply.png"))
+	print("[DOCK SHOTS] ", dir)
+
+## Clicks tiles with the company's buildings and tiles without, twice each, timing the selection's
+## listeners one by one and the worst frame after each click.
+func _tile_clicks() -> void:
+	for node in get_tree().root.find_children("*", "CanvasLayer", true, false):
+		var path := str(node.get_script().resource_path) if node.get_script() != null else ""
+		if path.ends_with("_intro.gd"): node.queue_free()
+	await _settle(1500)
+	if Tutorial.active: Tutorial.call("_on_overlay_skipped")
+	await _settle(1500)
+	var map := get_tree().get_first_node_in_group("hex_map")
+	for round in 2:
+		for tid in ["tile_9_9", "tile_6_8", "tile_9_10", "tile_7_11"]:
+			var data: Dictionary = map.tiles[map.id_to_coord(tid)]
+			_label = "click %s (%s)" % [tid, Catalog.tile_name(tid)]
+			_worst.erase(_label)
+			var sig: Signal = map.tile_selected
+			for connection: Dictionary in sig.get_connections():
+				var callable: Callable = connection.callable
+				var started := Time.get_ticks_usec()
+				callable.call(data)
+				var ms := (Time.get_ticks_usec() - started) / 1000.0
+				if ms > 2.0:
+					var target: Object = callable.get_object()
+					print("[CLICK] round %d %-34s %-44s %7.1f ms" % [round + 1, _label, "%s:%s" % [str(target.get_script().resource_path).get_file() if target.get_script() else str(target), callable.get_method()], ms])
+			await _settle(1200)
+			print("[CLICK] round %d %-34s worst frame after %7.1f ms" % [round + 1, _label, float(_worst.get(_label, 0.0))])
+	# The panel's parts on the company's busiest tile, each timed alone.
+	var panel := _find_script(get_tree().root, "res://scripts/tile_info_panel_v2.gd")
+	var data: Dictionary = map.tiles[map.id_to_coord("tile_9_9")]
+	panel.call("show_tile", data)
+	await _settle(1000)
+	for b: Dictionary in BuildingState.get_buildings_on_tile("tile_9_9"):
+		if not BuildingState.is_player_owned(b): continue
+		var recipe := Catalog.get_recipe(str(b.get("recipe_id", "")))
+		var bd := Catalog.get_building(str(b.get("building_id", "")))
+		for round in 2:
+			for part in [["diagnostics", func() -> void: BuildingReadout.diagnostics(b, recipe, bd, false)],
+					["run_state", func() -> void: BuildingReadout.run_state(b, recipe, false)],
+					["flow", func() -> void: BuildingReadout.flow(b, recipe, true)],
+					["cost_to_produce", func() -> void: BuildingReadout.cost_to_produce(b)],
+					["power_status_color", func() -> void: BuildingStatus.power_status_color(b, recipe, false)],
+					["input_status_color", func() -> void: BuildingStatus.input_status_color(b, recipe, false)],
+					["deposit_exhausted", func() -> void: BuildingStatus.recipe_deposit_exhausted(b, recipe)],
+					["middleman uses+preview", func() -> void: if Service.uses_inputs(str(b.instance_id)): Service.preview(str(b.instance_id))],
+					["whole reading", func() -> void: preload("res://scripts/tvp_v3/buildings_readings.gd").reading(b)]]:
+				var started := Time.get_ticks_usec()
+				(part[1] as Callable).call()
+				print("[READING] %s round %d %-16s %7.1f ms" % [str(b.get("building_id", "")), round + 1, part[0], (Time.get_ticks_usec() - started) / 1000.0])
+	var TVD := preload("res://scripts/tile_view_data.gd")
+	for tid in ["tile_9_9", "tile_6_8", "tile_9_10"]:
+		var td: Dictionary = map.tiles[map.id_to_coord(tid)]
+		for part in [["land_totals", func() -> void: TVD.land_totals(tid, td)],
+				["land_chart_data", func() -> void: TVD.land_chart_data(tid, td)],
+				["survey_gated_deposits", func() -> void: TVD.survey_gated_deposits(tid, td)],
+				["survey status", func() -> void: panel.call("_survey_status_for_tile", td)],
+				["refresh_keys_v3", func() -> void: panel.set("_current_tile_id", tid); panel.set("_current_tile_data", td); panel.call("_refresh_keys_v3")],
+				["buildings_land_summary", func() -> void: TVD.buildings_land_summary(tid, td)],
+				["power_summary", func() -> void: TVD.power_summary(tid)],
+				["production_summary", func() -> void: TVD.production_summary(tid)],
+				["stockpile_summary", func() -> void: TVD.stockpile_summary(tid)]]:
+			var started := Time.get_ticks_usec()
+			(part[1] as Callable).call()
+			print("[STATUS PART] %-10s %-22s %7.1f ms" % [tid, part[0], (Time.get_ticks_usec() - started) / 1000.0])
+	var snare: Dictionary = map.tiles[map.id_to_coord("tile_7_11")]
+	for round in 2:
+		for part in [["status line", func() -> void: panel.call("_refresh_status_line_v3", data)],
+				["tab keys", func() -> void: panel.call("_refresh_tiles")],
+				["buildings tab", func() -> void: panel.call("_refresh_pane", "bl")]]:
+			# Away to a tile with nothing of the company's, then back, as a click on the map does.
+			panel.call("show_tile", snare)
+			await _settle(300)
+			panel.set("_current_tile_data", data)
+			panel.set("_current_tile_id", "tile_9_9")
+			var started := Time.get_ticks_usec()
+			(part[1] as Callable).call()
+			print("[CLICK PART] round %d after a switch: %-16s %7.1f ms" % [round + 1, part[0], (Time.get_ticks_usec() - started) / 1000.0])
+			await _settle(300)
+
+## Opens and closes Politics three times, timing the press and the worst frame after each.
+func _politics_open_close() -> void:
+	for node in get_tree().root.find_children("*", "CanvasLayer", true, false):
+		var path := str(node.get_script().resource_path) if node.get_script() != null else ""
+		if path.ends_with("_intro.gd"): node.queue_free()
+	await _settle(1500)
+	if Tutorial.active: Tutorial.call("_on_overlay_skipped")
+	await _settle(1500)
+	var menu := _find_script(get_tree().root, "res://scripts/bottom_menu.gd")
+	for way in ["close key", "escape"]:
+		_label = "politics open, then %s" % way
+		menu.call("_on_politics_pressed")
+		await _settle(12000)
+		var panel: Node = menu.get("politics_panel")
+		_label = "politics %s" % way
+		var at := Time.get_ticks_usec()
+		if way == "close key":
+			panel.emit_signal("close_requested")
+		else:
+			var esc := InputEventAction.new()
+			esc.action = "ui_cancel"
+			esc.pressed = true
+			Input.parse_input_event(esc)
+		var ms := (Time.get_ticks_usec() - at) / 1000.0
+		await _settle(2000)
+		print("[POLITICS] %-26s press %7.1f ms, worst frame after %7.1f ms, still open %s" % [_label, ms, float(_worst.get(_label, 0.0)), panel.visible])
+	for round in 3:
+		for step in ["open", "close"]:
+			_label = "politics %s %d" % [step, round + 1]
+			var started := Time.get_ticks_usec()
+			menu.call("_on_politics_pressed")
+			var ms := (Time.get_ticks_usec() - started) / 1000.0
+			await _settle(1500)
+			print("[POLITICS] %-18s press %7.1f ms, worst frame after %7.1f ms" % [_label, ms, float(_worst.get(_label, 0.0))])

@@ -2382,6 +2382,37 @@ func _ds2_money_row(label: String, amount: float, colour: Color, digits: int, ro
 	return row
 
 
+## A named row on the sheet with a word or a count for its figure, printed at the right.
+func _ds2_value_row(label: String, value: String, row_name: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = row_name
+	row.add_theme_constant_override("separation", 8)
+	var l := _ds2_text(label, DS2_BODY_PX)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(l)
+	row.add_child(_ds2_text(value, DS2_BODY_PX))
+	return row
+
+
+## The next loan grace period to end: the turn its repayments start and the size of the loan (loans whose grace
+## ends on the same turn added together, with their count). Turn 0 when no loan is in grace.
+static func next_grace_expiry() -> Dictionary:
+	var first := {"turn": 0, "size": 0.0, "count": 0}
+	for l: Dictionary in LoanState.loans:
+		if int(l.get("grace_remaining", 0)) <= 0:
+			continue
+		var start := LoanState.repayment_turns(l).x
+		if start <= 0:
+			continue
+		var size := float(l.get("principal_initial", l.get("principal_remaining", 0.0)))
+		if int(first.turn) == 0 or start < int(first.turn):
+			first = {"turn": start, "size": size, "count": 1}
+		elif start == int(first.turn):
+			first.size = float(first.size) + size
+			first.count = int(first.count) + 1
+	return first
+
+
 ## A keycap on the sheet that is a real Button (the tutorial and the e2e press these by name): Building
 ## Detail's wide worn key, its label printed on it, pressing down while held.
 func _ds2_key_button(text: String, button_name: String) -> Button:
@@ -2496,12 +2527,19 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 	# Loans.
 	body = _ds2_sub_plate(sheet, "FlyPlateLoans")
 	body.add_child(_ds2_caption("Loans"))
-	for l in LoanState.loans:
-		var lrow := _ds2_money_row(LoanState.loan_label(l), LoanState.payoff_amount(l), DS2_CASH_COLOUR, digits, "", DS2_SMALL_LED)
-		body.add_child(lrow)
-		body.add_child(_ds2_text(LoanState.repayment_label(l), DS2_BODY_PX))
 	if LoanState.loans.is_empty():
 		body.add_child(_ds2_text("No loans outstanding.", DS2_BODY_PX))
+	else:
+		# Three lines however many loans: how many, what clearing them all costs now, and when the payments
+		# next go up (the first grace period to end). Each loan's own terms are on the Loans tab.
+		body.add_child(_ds2_value_row("Number of loans", str(LoanState.loans.size()), "FlyRowLoanCount"))
+		body.add_child(_ds2_money_row("Total debt", LoanState.total_outstanding(), DS2_CASH_COLOUR, digits, "FlyRowTotalDebt", DS2_SMALL_LED))
+		var expiry := next_grace_expiry()
+		var expiry_text := "None due"
+		if int(expiry.turn) > 0:
+			expiry_text = "Turn %d, %s %s" % [int(expiry.turn), _money_text(float(expiry.size)),
+				"loan" if int(expiry.count) == 1 else "in %d loans" % int(expiry.count)]
+		body.add_child(_ds2_value_row("Loan grace expiry", expiry_text, "FlyRowGraceExpiry"))
 	body.add_child(_ds2_money_row("Loan capacity", LoanState.available_capacity(), DS2_CASH_COLOUR, digits, "FlyRowLoanCapacity"))
 	if LoanState.transit_credit_available():
 		var rate_pct := LoanState.transit_credit_rate_per_turn() * 100.0

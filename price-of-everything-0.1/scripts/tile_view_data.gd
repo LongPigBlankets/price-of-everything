@@ -328,7 +328,17 @@ static func land_totals(tile_id: String, tile_data: Dictionary) -> Dictionary:
 	var free := maxi(0, mini(owned, max_cap) - int(round(built)))
 	return {"built": int(round(built)), "buyable": buyable, "max": max_cap, "free": free}
 
+## Each building type's icon, found once: probing the icon folders cost a few milliseconds a building on every
+## tile panel refresh.
+static var _icon_by_type: Dictionary = {}
+
 static func _building_icon_tex(bd: Dictionary):
+	var type_key := "%s|%s" % [str(bd.get("id", "")), str(bd.get("internal_name", ""))]
+	if not _icon_by_type.has(type_key):
+		_icon_by_type[type_key] = _find_building_icon(bd)
+	return _icon_by_type[type_key]
+
+static func _find_building_icon(bd: Dictionary):
 	var building_id := str(bd.get("id", ""))
 	var internal := str(bd.get("internal_name", ""))
 	var paths: Array[String] = []
