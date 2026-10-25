@@ -2369,7 +2369,7 @@ async function exportLayers() {
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
   // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet,
-  // missionslot, missionboard, darkmetal, desk, menuplate, tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin, court, dockicon, dockpad. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy, registrystudy.
+  // missionslot, missionboard, darkmetal, desk, menuplate, tiledoor, tilekey, peoplecab, peopleroom, peopleclock, peopleboard, peoplelocker, peopleknob, peoplesheet, peopleguard, marketparts, briefback, briefclip, briefwin, court, dockicon, dockpad. Studies, not game layers: tilestudy, constructoffice, constructlot, marketstudy, resourcesstudy, peoplestudy, briefingstudy, registrystudy, encyclopediastudy, encyclopediacatalog. The encyclopedia's layers: encybinder, encypage, encyring, encytabs, encytape.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -8424,6 +8424,775 @@ async function exportLayers() {
       await post('court_plate', stage([0, 0, W + 2 * M, H + 2 * M], [g]).grab());
       layout.court_plate = { size: [W + 2 * M, H + 2 * M], margin: M, corner: COURT.PLATE.corner };
     }
+  });
+
+
+  // The encyclopedia, three metaphors side by side: A the engineer's handbook, a ring
+  // binder with tab dividers; B the card catalogue, an oak cabinet of drawers and typed index cards; C the trade
+  // literature shelf, bound volumes and an enquiry slip. Each at the panel's width with the same moment: steel looked
+  // up, the Steel entry open. A study only, no game layers.
+  const ENCY_PARTS = ['encybinder', 'encypage', 'encyring', 'encytabs', 'encytape'];
+  if (want('encyclopediastudy') || want('encyclopediacatalog') || ENCY_PARTS.some(want)) await withSeed(520, async () => {
+    for (const [name, file] of [['CourierPrint', 'CourierNew.ttf'], ['InkHand', 'Inkfree.ttf']]) {
+      try { const face = new FontFace(name, `url(/fonts/${file})`); await face.load(); document.fonts.add(face); } catch (e) { /* the page's fallback face */ }
+    }
+    for (const f of ['500 30px "IBM Plex Sans"', '600 30px "IBM Plex Sans"', '700 30px "IBM Plex Sans"', '600 30px "Barlow Condensed"', '700 30px "Barlow Condensed"', `60px ${TITLE_FAMILY}`]) await document.fonts.load(f);
+    const PW = 2617, PH = 1600, PAD = 40, MX = 60, CAPT = 110, MR = 480, ROWGAP = 170;
+    const CATALOG = want('encyclopediacatalog') && !want('encyclopediastudy');
+    const CONCEPTS = CATALOG ? ['catalogIndex', 'catalogEntry1', 'catalogEntry2'] : ['handbook', 'catalogue', 'shelf'];
+    const W = MX + PW + MR, H = CAPT + CONCEPTS.length * (PH + ROWGAP) - ROWGAP + 40;
+    const T = 16, LIGHT = '#e8eef7', PLEX = '"IBM Plex Sans"', BARLOW = '"Barlow Condensed"', TYPE = '"CourierPrint", "Courier New", monospace',
+      HAND = '"InkHand", cursive', SERIF = 'Georgia, "Times New Roman", serif';
+    const INK_DIM = '#3a4a5c', K = peopleKit(), prints = [], notes = [], shots = [];
+    let group = null, OX = MX, OY = CAPT;
+    const X = (x) => OX + x, Z = (z) => OY + z;
+    const add = (m, x, z, y = T) => { m.position.set(x, y, z); group.add(m); return m; };
+    const shade = (m) => { m.traverse((o) => { if (o.isMesh) o.castShadow = o.receiveShadow = true; }); return m; };
+    const slab = (w, h, depth, mats, x, z, base, r = 6, bevel = 1.2) => add(shade(new THREE.Mesh(extrude(rrShape(w, h, r), depth, bevel, bevel * 0.8, 3), mats)), x + w / 2, z + h / 2, base);
+    const printWhite = (str, x, y, size, { weight = 500, family = PLEX, align = 'left', maxW = 900 } = {}) => prints.push((g) => {
+      g.save(); g.shadowColor = 'rgba(0,0,0,0.9)'; g.shadowOffsetX = 1.7; g.shadowOffsetY = 1.7; g.shadowBlur = 1.2;
+      text(g, str, x, y, maxW, size, LIGHT, { align, weight, family }); g.restore();
+    });
+    const ink = (c, str, x, y, size, colour = NAVY, { weight = 500, family = PLEX, align = 'left', maxW = 1200 } = {}) => {
+      c.save(); c.shadowColor = 'rgba(255,255,255,0.5)'; c.shadowOffsetX = 1; c.shadowOffsetY = 1;
+      text(c, str, x, y, maxW, size, colour, { align, weight, family }); c.restore();
+    };
+    const wood = (w, h, base, dark = '26,13,6', light = '150,100,58') => canvas2d(w, h, (c) => {
+      c.fillStyle = base; c.fillRect(0, 0, w, h);
+      for (let i = 0; i < h * 1.5; i++) {
+        const a = rand() * h, amp = 1.5 + rand() * 5, f = 90 + rand() * 280, ph = rand() * 6;
+        c.strokeStyle = `rgba(${rand() < 0.62 ? dark : light},${0.05 + rand() * 0.13})`; c.lineWidth = 0.5 + rand() * 1.5; c.beginPath();
+        for (let t = 0; t <= w; t += 16) c.lineTo(t, a + Math.sin(t / f + ph) * amp);
+        c.stroke();
+      }
+    });
+    const polish = (map, w, h) => new THREE.MeshPhysicalMaterial({ map: faceTexture(map, w, h), roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.22, envMap: studioEnv, envMapIntensity: 0.3 });
+    const darkSide = new THREE.MeshStandardMaterial({ color: 0x24140a, roughness: 0.55 });
+    const fibre = (w, h, base, tint, paint) => canvas2d(w, h, (c) => {
+      c.fillStyle = base; c.fillRect(0, 0, w, h);
+      for (let i = 0; i < w * h / 45; i++) { c.fillStyle = `rgba(${tint},${0.04 + rand() * 0.09})`; c.fillRect(rand() * w, rand() * h, 0.5 + rand() * 1.4, 0.5 + rand()); }
+      paint?.(c);
+    });
+    const matte = (map, w, h) => new THREE.MeshStandardMaterial({ map: faceTexture(map, w, h), roughness: 0.88, metalness: 0 });
+    const paperSide = new THREE.MeshStandardMaterial({ color: 0xd9ccae, roughness: 0.9 });
+    const cloth = (w, h, base, tint = '0,0,0') => new THREE.MeshStandardMaterial({ map: faceTexture(canvas2d(w, h, (c) => {
+      c.fillStyle = base; c.fillRect(0, 0, w, h);
+      for (let y = 0; y < h; y += 3) { c.fillStyle = `rgba(${tint},${0.05 + rand() * 0.05})`; c.fillRect(0, y, w, 1); }
+      for (let x = 0; x < w; x += 3) { c.fillStyle = `rgba(255,255,255,${0.015 + rand() * 0.02})`; c.fillRect(x, 0, 1, h); }
+    }), w, h), roughness: 0.92 });
+    const smallKey = (x, z, base, s = 76) => add(keycap(s, s, 6, (g, a, b) => {
+      g.strokeStyle = NAVY; g.lineWidth = a * 0.13; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath();
+      g.moveTo(a * 0.6, b * 0.28); g.lineTo(a * 0.38, b * 0.5); g.lineTo(a * 0.6, b * 0.72); g.stroke();
+    }), x, z, base);
+    const wideKey = (str, x, z, w, h, base, size = 28) => add(keycap(w, h, 8, (g, a, b) => text(g, str, a / 2, b / 2 + 1, a - 22, size, NAVY, { align: 'center', weight: 700, family: BARLOW })), x, z, base);
+    const goodTile = (c, img, x, y, px) => {
+      c.save(); c.shadowColor = 'rgba(0,0,0,0.3)'; c.shadowBlur = 4; c.shadowOffsetX = 1.5; c.shadowOffsetY = 2;
+      c.fillStyle = '#f3e7cc'; c.beginPath(); c.roundRect(x, y, px, px, px * 0.12); c.fill(); c.restore();
+      const k = 0.84, s = px * k; c.drawImage(img, x + (px - s) / 2, y + (px - s) / 2, s, s);
+    };
+    const namePlate = (x, y, w, h, str, base) => {
+      const plateC = canvas2d(w, h, (c) => { c.fillStyle = '#16181c'; c.fillRect(0, 0, w, h); });
+      add(shade(new THREE.Mesh(extrude(rrShape(w, h, 6), 2, 1.2, 1, 3), [new THREE.MeshPhysicalMaterial({ map: faceTexture(plateC, w, h), roughness: 0.3, clearcoat: 0.6, envMap: studioEnv, envMapIntensity: 0.5 }), K.darkSteel])), x + w / 2, y + h / 2, base);
+      add(relief(w - 28, h - 10, (g) => text(g, str, (w - 28) / 2, (h - 10) / 2 + 3, w - 32, 56, '#fff', { weight: 400, family: TITLE_FAMILY, align: 'center' }), WHITE_LETTERS, { height: 5, soften: 0.7 }), x + w / 2, y + h / 2, base + 4.7);
+    };
+
+    // ---- what every concept shows: steel looked up, the Steel entry open (data/Goods - goodsMVP.csv, recipes_all.csv).
+    const ICONS = ['g_006_steel', 'g_004_iron_ingots', 'g_001_coal'];
+    const img = Object.fromEntries(await Promise.all(ICONS.map(async (id) => [id, await loadImage(`/icons/goods/medium/${id}.png`)])));
+    img.__f = await loadImage('/icons/buildings/b_002_furnace.png');
+    const furnace = (() => { const m = keyCream(img.__f), c = document.createElement('canvas'); c.width = m.width; c.height = m.height;
+      const g = c.getContext('2d'); g.drawImage(m, 0, 0); g.globalCompositeOperation = 'source-in'; g.fillStyle = NAVY; g.fillRect(0, 0, c.width, c.height); return c; })();
+    const RESULTS = {
+      Goods: [['Steel', 'Metals']],
+      Recipes: [['Steelmaking', 'Furnace'], ['Basic Oxygen Steelmaking', 'Furnace'], ['Electric Arc Steelmaking', 'Arc furnace'], ['HIsarna Steel Making', 'Furnace'], ['High Quality Steel Alloying', 'Arc furnace']],
+      Buildings: [['Furnace', 'Makes steel'], ['Electric Arc Furnace', 'Makes steel']],
+    };
+    const FACTS = [['Category', 'Metals'], ['Kind', 'Intermediate good'], ['Moves as', 'Solid, heavy'], ['Base price', '£2.37 a unit']];
+    const MADE_BY = [['Basic Oxygen Steelmaking', 'Furnace', 31], ['Electric Arc Steelmaking', 'Arc furnace', 33], ['HIsarna Steel Making', 'Furnace', 34]];
+    const USED_IN = ['Motor Manufacture', 'Car Body Manufacturing', 'Building Frame Manufacture', 'ICE Engine Manufacturing', 'V8 Engine Manufacturing', 'Hydraulics Manufacturing', 'Iron Air Batteries', 'High Quality Steel Alloying'];
+
+    /** The Steel entry in `style`: 'sheet' (the handbook's printed spec sheet), 'card' (typed on an index card), 'plate'
+     * (the trade catalogue's engraved page). Paints into c over (x, y, w, h). */
+    const entry = (c, x, y, w, h, style) => {
+      const typed = style === 'card', serif = style === 'plate';
+      const body = typed ? TYPE : PLEX, head = typed ? TYPE : (serif ? SERIF : BARLOW), dim = typed ? '#2c3440' : INK_DIM;
+      let yy = y;
+      if (style === 'sheet') {
+        c.fillStyle = NAVY; c.fillRect(x, yy, w, 96);
+        goodTile(c, img.g_006_steel, x + 16, yy + 10, 76);
+        text(c, 'STEEL', x + 112, yy + 40, w - 300, 50, '#f3eee2', { weight: 700, family: BARLOW });
+        text(c, 'Metals, intermediate good', x + 112, yy + 76, w - 300, 22, '#d9e2ee', { weight: 500, family: PLEX });
+        text(c, 'GOODS  p. 12', x + w - 18, yy + 40, 200, 22, '#d9e2ee', { weight: 600, family: BARLOW, align: 'right' });
+        yy += 120;
+      } else if (typed) {
+        ink(c, 'STEEL', x, yy + 26, 44, NAVY, { weight: 700, family: TYPE });
+        ink(c, 'Goods, metals', x + w, yy + 26, 24, dim, { family: TYPE, align: 'right' });
+        yy += 70;
+      } else {
+        c.strokeStyle = 'rgba(30,24,16,0.7)'; c.lineWidth = 2; c.strokeRect(x, yy, 150, 150); c.lineWidth = 0.8; c.strokeRect(x + 6, yy + 6, 138, 138);
+        c.drawImage(img.g_006_steel, x + 15, yy + 15, 120, 120);
+        ink(c, 'Steel', x + 180, yy + 50, 64, '#2a1d10', { weight: 700, family: SERIF });
+        ink(c, 'Section I, Goods. Metals.', x + 182, yy + 104, 24, '#4a3a24', { weight: 400, family: SERIF });
+        yy += 180;
+      }
+      // the facts, two to a row
+      const colW = w / 2;
+      FACTS.forEach(([k, v], i) => {
+        const fx = typed ? x : x + (i % 2) * colW, fy = typed ? yy + i * 40 : yy + Math.floor(i / 2) * 44;
+        ink(c, k, fx, fy + 18, 22, dim, { family: body, weight: typed ? 400 : 500 });
+        ink(c, v, fx + (typed ? 190 : 170), fy + 18, 24, NAVY, { family: body, weight: typed ? 700 : 600, maxW: typed ? w - 190 : colW - 190 });
+        if (!typed) { c.fillStyle = serif ? 'rgba(42,29,16,0.25)' : 'rgba(11,35,64,0.18)'; c.fillRect(fx, fy + 38, colW - 24, 1.5); }
+      });
+      yy += typed ? 170 : 100;
+      // made by: the main recipe drawn, the others listed
+      ink(c, typed ? 'MADE BY' : (serif ? 'Made by' : 'MADE BY'), x, yy + 16, typed ? 26 : 26, NAVY, { weight: 700, family: head });
+      yy += 40;
+      const tile = typed ? 0 : 64;
+      if (typed) {
+        ink(c, 'Steelmaking, Furnace:', x, yy + 16, 24, NAVY, { family: TYPE, weight: 700 });
+        ink(c, '37 iron ingots + 20 coal = 49 steel', x, yy + 50, 24, NAVY, { family: TYPE });
+        yy += 80;
+      } else {
+        const parts = [['g_004_iron_ingots', '37'], ['g_001_coal', '20']];
+        let px = x;
+        parts.forEach(([id, q], i) => {
+          goodTile(c, img[id], px, yy, tile); ink(c, '×' + q, px + tile + 8, yy + tile / 2, 26, NAVY, { weight: 700, family: BARLOW });
+          px += tile + 64; if (i === 0) { ink(c, '+', px - 6, yy + tile / 2, 32, NAVY, { weight: 700, family: PLEX }); px += 20; }
+        });
+        c.strokeStyle = NAVY; c.lineWidth = 3; c.beginPath(); c.moveTo(px + 6, yy + tile / 2); c.lineTo(px + 66, yy + tile / 2); c.stroke();
+        c.beginPath(); c.moveTo(px + 66, yy + tile / 2 - 9); c.lineTo(px + 80, yy + tile / 2); c.lineTo(px + 66, yy + tile / 2 + 9); c.closePath(); c.fillStyle = NAVY; c.fill();
+        px += 96; goodTile(c, img.g_006_steel, px, yy, tile); ink(c, '×49', px + tile + 8, yy + tile / 2, 26, NAVY, { weight: 700, family: BARLOW });
+        c.drawImage(furnace, px + tile + 90, yy - 4, tile + 8, tile + 8);
+        const room = x + w - (px + tile * 2 + 112);
+        if (room >= 260) ink(c, 'Steelmaking, in a Furnace', px + tile * 2 + 112, yy + tile / 2, 22, dim, { maxW: room });
+        else { yy += tile + 10; ink(c, 'Steelmaking, in a Furnace', x, yy + 12, 22, dim, { family: body }); yy += 10; }
+        yy += tile + 20;
+      }
+      MADE_BY.forEach(([r, b, page]) => {
+        ink(c, `${r}, ${b}`, x, yy + 14, 22, NAVY, { family: body, weight: typed ? 400 : 500 });
+        if (style === 'sheet') ink(c, `see p. ${page}`, x + w, yy + 14, 20, '#7a4a00', { family: PLEX, weight: 600, align: 'right' });
+        if (serif) ink(c, `page ${page}`, x + w, yy + 14, 20, '#4a3a24', { family: SERIF, align: 'right' });
+        yy += 34;
+      });
+      yy += 18;
+      ink(c, typed ? 'USED IN 18 RECIPES' : (serif ? 'Used in eighteen recipes' : 'USED IN 18 RECIPES'), x, yy + 16, 26, NAVY, { weight: 700, family: head });
+      yy += 44;
+      const shown = Math.max(2, Math.min(USED_IN.length, Math.floor((y + h - yy - 40) / 32) * 2));
+      USED_IN.slice(0, shown).forEach((r, i) => ink(c, r, x + (i % 2) * colW, yy + 14 + Math.floor(i / 2) * 32, 21, NAVY, { family: body, weight: 400, maxW: colW - 20 }));
+      yy += Math.ceil(shown / 2) * 32 + 4;
+      ink(c, 'and 10 more', x, yy + 12, 20, dim, { family: body });
+    };
+    /** The results of a look up in three columns, Steel picked. */
+    const results = (c, x, y, w, family, colour = NAVY, rule = 'rgba(11,35,64,0.25)') => {
+      const colW = w / 3;
+      Object.entries(RESULTS).forEach(([section, rows], i) => {
+        const cx = x + i * colW;
+        ink(c, section.toUpperCase(), cx, y + 16, 24, colour, { weight: 700, family: family === TYPE ? TYPE : BARLOW });
+        c.fillStyle = rule; c.fillRect(cx, y + 36, colW - 26, 1.5);
+        rows.forEach(([name, note], j) => {
+          const ry = y + 62 + j * 58;
+          if (section === 'Goods' && j === 0) { c.fillStyle = 'rgba(233,184,26,0.35)'; c.fillRect(cx - 6, ry - 18, colW - 20, 52); }
+          ink(c, name, cx, ry, 22, colour, { weight: 600, family, maxW: colW - 34 });
+          ink(c, note, cx, ry + 24, 18, INK_DIM, { weight: 400, family, maxW: colW - 34 });
+        });
+      });
+    };
+
+    /** The shared header: navy steel across the top with the nameplate and the Back key; `extra` paints on it. */
+    const header = (extra) => {
+      const HW = PW - 2 * PAD, HH = 112, HZ = 20;
+      add(shade(new THREE.Mesh(extrude(rrShape(HW, HH, 10), 4, 3, 2.4, 4), [plateMaterial(HW, HH, { icons: [], buttons: [], screws: [], base: NAVY_STEEL_CANVAS, rub: '120,136,160' }), MAT.plateSide])), X(PAD + HW / 2), Z(HZ + HH / 2), T);
+      const HT = T + 10;
+      for (const [sx, sz] of [[16, 16], [HW - 16, 16], [16, HH - 16], [HW - 16, HH - 16]]) { const sc = silverScrew(); sc.remove(sc.children[sc.children.length - 1]); add(sc, X(PAD + sx - 15), Z(HZ + sz - 15), HT); }
+      namePlate(X(PAD + 52), Z(HZ + 8), 560, 96, 'ENCYCLOPEDIA', HT);
+      smallKey(X(PW - PAD - 62), Z(HZ + HH / 2), HT);
+      printWhite('Back', X(PW - PAD - 118), Z(HZ + HH / 2), 26, { weight: 600, align: 'right' });
+      extra?.(HT, HZ, HH);
+      return HZ + HH;
+    };
+
+    // ---- A: the engineer's handbook. A ring binder open on the desk, tab dividers at its fore edge, the label tape
+    // in the header for a look up, the results clipped over the left page, the entry a spec sheet on the right.
+    const handbook = () => {
+      header((HT, HZ, HH) => {
+        const tw = 620, th = 66, tx = PW / 2 - 140, tz = HZ + (HH - th) / 2;
+        printWhite('Look up', X(tx - 24), Z(tz + th / 2), 26, { weight: 600, align: 'right' });
+        const tape = canvas2d(tw, th, (c) => {
+          c.fillStyle = '#121418'; c.fillRect(0, 0, tw, th);
+          const g = c.createLinearGradient(0, 0, 0, th); g.addColorStop(0, 'rgba(255,255,255,0.10)'); g.addColorStop(0.5, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, tw, th);
+          c.save(); c.shadowColor = 'rgba(0,0,0,0.9)'; c.shadowOffsetY = 2; text(c, 'STEEL', 26, th / 2 + 2, tw, 40, '#f1f1ee', { weight: 700, family: BARLOW, align: 'left' }); c.restore();
+          c.fillStyle = '#f1f1ee'; c.fillRect(26 + measureText('STEEL', `700 40px ${BARLOW}`) + 8, 14, 3, th - 28);
+        });
+        add(shade(new THREE.Mesh(extrude(rrShape(tw, th, 4), 1.2, 0.6, 0.5, 2), [new THREE.MeshPhysicalMaterial({ map: faceTexture(tape, tw, th), roughness: 0.35, clearcoat: 0.8, clearcoatRoughness: 0.15 }), new THREE.MeshStandardMaterial({ color: 0x0c0d10 })])), X(tx + tw / 2), Z(tz + th / 2), HT);
+      });
+      const BZ = 170, BW = PW - 2 * PAD - 150, BH = PH - BZ - 40, BX = PAD + 20;
+      slab(BW, BH, 10, [cloth(BW, BH, '#1f3a2c'), new THREE.MeshStandardMaterial({ color: 0x15281e, roughness: 0.9 })], X(BX), Z(BZ), T, 14, 2);
+      const CT = T + 12, pg = 34, LW = BW / 2 - pg - 30, LH = BH - 2 * pg;
+      const L0 = BX + pg, R0 = BX + BW / 2 + 30;
+      // the right page: the spec sheet
+      const right = fibre(LW, LH, '#f4ecd8', '70,52,20', (c) => {
+        entry(c, 48, 44, LW - 96, LH - 170, 'sheet');
+        c.fillStyle = 'rgba(11,35,64,0.12)'; c.fillRect(48, LH - 110, LW - 96, 1.5);
+        ink(c, '12', LW / 2, LH - 34, 22, INK_DIM, { align: 'center' });
+        for (const hy of [LH * 0.18, LH * 0.5, LH * 0.82]) { c.fillStyle = '#d8ccb0'; c.beginPath(); c.arc(-8, hy, 16, 0, Math.PI * 2); c.fill(); }
+      });
+      slab(LW, LH, 2, [matte(right, LW, LH), paperSide], X(R0), Z(BZ + pg), CT, 4, 0.6);
+      wideKey('BUILD A FURNACE', X(R0 + LW - 230), Z(BZ + pg + LH - 75), 360, 76, CT + 4, 26);
+      // the left page: the section's index under the clipped results
+      const left = fibre(LW, LH, '#f4ecd8', '70,52,20', (c) => {
+        ink(c, 'GOODS, INDEX', 48, 60, 30, NAVY, { weight: 700, family: BARLOW });
+        ink(c, 'S', 48, 860, 44, NAVY, { weight: 700, family: BARLOW });
+        ['Silicon', 'Silica Sand', 'Sodium Hydroxide', 'Steel', 'Sulphuric Acid', 'Synthetic Rubber', 'Synthetic Fibre'].forEach((n, i) => {
+          if (n === 'Steel') { c.fillStyle = 'rgba(233,184,26,0.3)'; c.fillRect(40, 920 + i * 48 - 20, LW - 80, 40); }
+          ink(c, n, 48, 920 + i * 48, 24, NAVY); ink(c, String(9 + i), LW - 48, 920 + i * 48, 22, INK_DIM, { align: 'right' });
+        });
+        ink(c, '11', LW / 2, LH - 34, 22, INK_DIM, { align: 'center' });
+      });
+      slab(LW, LH, 2, [matte(left, LW, LH), paperSide], X(L0), Z(BZ + pg), CT, 4, 0.6);
+      // the cut sheet of results, clipped over the left page
+      const SW = LW - 60, SH = 640;
+      const sheet = fibre(SW, SH, '#fbf8f0', '60,60,60', (c) => {
+        ink(c, 'LOOKED UP: STEEL', 36, 46, 30, NAVY, { weight: 700, family: BARLOW });
+        ink(c, '8 entries', SW - 36, 46, 22, INK_DIM, { align: 'right' });
+        results(c, 36, 110, SW - 50, PLEX);
+      });
+      slab(SW, SH, 1.4, [matte(sheet, SW, SH), paperSide], X(L0 + 30), Z(BZ + pg + 120), CT + 3, 3, 0.5);
+      const clip = new THREE.Group();
+      clip.add(new THREE.Mesh(extrude(rrShape(150, 54, 6), 10, 2, 1.6, 3), K.darkSteel));
+      const wire = new THREE.Mesh(new THREE.TorusGeometry(48, 3, 10, 30, Math.PI).rotateX(-Math.PI / 2), K.chrome); wire.position.set(0, 14, -30); clip.add(wire);
+      add(shade(clip), X(L0 + 30 + SW / 2), Z(BZ + pg + 132), CT + 5);
+      // the rings down the spine
+      for (const f of [0.18, 0.5, 0.82]) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(40, 8, 16, 40).scale(1.5, 0.7, 1), K.chrome);
+        add(shade(ring), X(BX + BW / 2), Z(BZ + BH * f), CT + 6);
+      }
+      // the tab dividers at the fore edge, the open section's pulled forward
+      const TABS = [['GOODS', '#1d3c5c'], ['RECIPES', '#2c5e3c'], ['BUILDINGS', '#7a2e2a'], ['MECHANICS', '#8a6420']];
+      TABS.forEach(([name, col], i) => {
+        const tw = i === 0 ? 150 : 120, th = 190, tz = BZ + 80 + i * (th + 24), tx = R0 + LW - 20;
+        const face = canvas2d(tw, th, (c) => {
+          c.fillStyle = col; c.fillRect(0, 0, tw, th);
+          c.save(); c.translate(tw / 2 + 12, th / 2); c.rotate(Math.PI / 2); text(c, name, 0, 0, th - 20, 30, '#f3eee2', { align: 'center', weight: 700, family: BARLOW }); c.restore();
+        });
+        slab(tw, th, 1.6, [matte(face, tw, th), new THREE.MeshStandardMaterial({ color: col, roughness: 0.8 })], X(tx), Z(tz), CT + 1 + (i === 0 ? 2 : 0), 10, 0.6);
+      });
+    };
+
+    // ---- B: the card catalogue. The oak cabinet's drawers at the left (a section each, the open one pulled), the
+    // enquiry card typed in the middle with the cards it turned up fanned below it, and the entry's card at the right.
+    const catalogue = () => {
+      header();
+      const CZ = 170, CW = 760, CH = PH - CZ - 40, CX = PAD + 20;
+      slab(CW, CH, 14, [polish(wood(CW, CH, '#4a2e16'), CW, CH), darkSide], X(CX), Z(CZ), T, 10, 3);
+      const DR = [['GOODS', 'A to L'], ['GOODS', 'M to Z'], ['RECIPES', 'A to L'], ['RECIPES', 'M to Z'], ['BUILDINGS', 'A to Z'], ['MECHANICS', 'A to Z']];
+      const dw = CW - 80, dh = (CH - 60 - 5 * 22) / 6;
+      DR.forEach(([s, r], i) => {
+        const dz = CZ + 30 + i * (dh + 22), open = i === 1, lift = open ? 10 : 0;
+        slab(dw, dh, 8 + lift, [polish(wood(dw, dh, open ? '#7a4f27' : '#64401f'), dw, dh), darkSide], X(CX + 40), Z(dz), T + 14, 6, 1.4);
+        const lw = 230, lh = 70, lx = CX + 40 + (dw - lw) / 2, lz = dz + 24;
+        const label = canvas2d(lw, lh, (c) => {
+          c.fillStyle = '#c29a50'; c.fillRect(0, 0, lw, lh); c.fillStyle = '#f6efdf'; c.fillRect(12, 10, lw - 24, lh - 20);
+          text(c, `${s}, ${r}`, lw / 2, lh / 2 + 1, lw - 40, 24, NAVY, { align: 'center', weight: 700, family: TYPE });
+        });
+        slab(lw, lh, 1.4, [new THREE.MeshStandardMaterial({ map: faceTexture(label, lw, lh), metalness: 0.4, roughness: 0.5 }), K.brass], X(lx), Z(lz), T + 24 + lift, 3, 0.4);
+        const pull = new THREE.Mesh(new THREE.TorusGeometry(34, 5, 12, 28, Math.PI).rotateX(-Math.PI / 2), K.brass);
+        add(shade(pull), X(CX + 40 + dw / 2), Z(dz + dh - 30), T + 26 + lift);
+      });
+      // the enquiry card, typed
+      const EX = CX + CW + 70, EW = 760, EH = 240, EZ = 210;
+      const card = (w, h, paint) => fibre(w, h, '#fbf8ee', '90,80,60', (c) => {
+        c.fillStyle = '#c0392b'; c.fillRect(0, 62, w, 2); c.fillStyle = 'rgba(70,110,170,0.35)'; for (let y = 104; y < h - 20; y += 42) c.fillRect(0, y, w, 1.4);
+        c.fillStyle = '#e8e2d2'; c.beginPath(); c.arc(w / 2, h - 18, 10, 0, Math.PI * 2); c.fill();
+        paint(c);
+      });
+      const enquiry = card(EW, EH, (c) => {
+        ink(c, 'ENQUIRY', 28, 34, 26, '#8f1f19', { weight: 700, family: TYPE });
+        ink(c, 'steel', 28, 96, 40, NAVY, { weight: 700, family: TYPE });
+        c.fillStyle = NAVY; c.fillRect(28 + measureText('steel', `700 40px ${TYPE}`) + 6, 78, 3, 36);
+        ink(c, '8 cards', EW - 28, 96, 24, INK_DIM, { family: TYPE, align: 'right' });
+      });
+      slab(EW, EH, 1.4, [matte(enquiry, EW, EH), paperSide], X(EX), Z(EZ), T, 3, 0.5);
+      // the cards it turned up, fanned
+      const FAN = [['Electric Arc Furnace', 'Building'], ['Steelmaking', 'Recipe'], ['Basic Oxygen Steelmaking', 'Recipe'], ['Steel', 'Good']];
+      FAN.forEach(([name, kind], i) => {
+        const fw = 640, fh = 360, fz = EZ + EH + 60 + i * 150, fx = EX + 40 + i * 18;
+        const face = card(fw, fh, (c) => {
+          ink(c, name.toUpperCase(), 24, 34, 26, NAVY, { weight: 700, family: TYPE, maxW: fw - 160 });
+          ink(c, kind, fw - 24, 34, 22, INK_DIM, { family: TYPE, align: 'right' });
+          if (i === FAN.length - 1) { c.fillStyle = 'rgba(233,184,26,0.4)'; c.fillRect(0, 0, fw, 64); ink(c, 'STEEL', 24, 34, 26, NAVY, { weight: 700, family: TYPE }); }
+        });
+        slab(fw, fh, 1.2, [matte(face, fw, fh), paperSide], X(fx), Z(fz), T + 1 + i * 1.6, 3, 0.4);
+      });
+      // the entry's card, large
+      const KX = EX + EW + 70, KW = PW - PAD - 20 - KX, KZ = 170, KH = PH - KZ - 150;
+      const big = card(KW, KH, (c) => { c.save(); c.scale(1.3, 1.3); entry(c, 30, 14, (KW - 80) / 1.3, (KH - 70) / 1.3, 'card'); c.restore(); });
+      slab(KW, KH, 1.6, [matte(big, KW, KH), paperSide], X(KX), Z(KZ), T, 3, 0.5);
+      wideKey('BUILD A FURNACE', X(KX + KW - 200), Z(PH - 80), 360, 76, T, 26);
+    };
+
+    // ---- C: the trade literature shelf. The bound volumes in a row on the shelf (the open one gone from its place), that
+    // volume open on a reading stand, and the librarian's enquiry slip in its brass holder with the look up written on it.
+    const shelf = () => {
+      header();
+      const SZ = 160, SH = 230, SX = PAD + 20, SW = PW - 2 * PAD - 40;
+      slab(SW, SH, 10, [polish(wood(SW, SH, '#5a3a1c'), SW, SH), darkSide], X(SX), Z(SZ), T, 6, 2);
+      const VOL = [['Goods', '#1d3c5c'], ['Recipes', '#2c5e3c'], ['Buildings', '#6e2622'], ['Game Mechanics', '#5a4a2a'], ['Goods, Supplement', '#2a3a4c']];
+      let vx = SX + 60;
+      VOL.forEach(([name, col], i) => {
+        const vw = 380, vh = SH - 50;
+        if (i === 0) {   // its place on the shelf, empty
+          const gx = X(vx), gz = Z(SZ + 25); prints.push((g) => { g.save(); g.strokeStyle = 'rgba(255,255,255,0.25)'; g.setLineDash([10, 8]); g.lineWidth = 2; g.strokeRect(gx, gz, vw, vh); g.restore(); });
+          vx += vw + 30; return;
+        }
+        const face = canvas2d(vw, vh, (c) => {
+          c.fillStyle = col; c.fillRect(0, 0, vw, vh);
+          c.strokeStyle = 'rgba(214,176,92,0.85)'; c.lineWidth = 2; c.strokeRect(14, 14, vw - 28, vh - 28);
+          text(c, name, vw / 2, vh / 2 - 6, vw - 50, 38, '#dcb460', { align: 'center', weight: 700, family: SERIF });
+          text(c, 'Taralian Trade Catalogue', vw / 2, vh / 2 + 36, vw - 60, 18, '#c9a35a', { align: 'center', weight: 400, family: SERIF });
+        });
+        slab(vw, vh, 26, [new THREE.MeshStandardMaterial({ map: faceTexture(face, vw, vh), roughness: 0.75 }), new THREE.MeshStandardMaterial({ color: 0xe9e0c8, roughness: 0.9 })], X(vx), Z(SZ + 25), T + 10, 8, 2);
+        vx += vw + 30;
+      });
+      // the reading stand and the open volume
+      const RZ = SZ + SH + 40, RW = 1760, RH = PH - RZ - 30, RX = PW - PAD - 20 - RW;
+      slab(RW, RH, 12, [polish(wood(RW, RH, '#3a2412'), RW, RH), darkSide], X(RX), Z(RZ), T, 10, 3);
+      const BW = RW - 80, BH = RH - 60, BX = RX + 40, BZ = RZ + 30, CT = T + 14;
+      slab(BW, BH, 8, [cloth(BW, BH, '#1d3c5c'), new THREE.MeshStandardMaterial({ color: 0x11253a, roughness: 0.9 })], X(BX), Z(BZ), CT, 10, 2);
+      const PWd = BW / 2 - 30, PHd = BH - 40;
+      const leftPage = fibre(PWd, PHd, '#efe3c6', '80,60,30', (c) => {
+        ink(c, 'Section I. Goods', PWd / 2, 50, 30, '#2a1d10', { align: 'center', weight: 700, family: SERIF });
+        ink(c, 'S', 60, 120, 60, '#2a1d10', { weight: 700, family: SERIF });
+        ['Silicon, metallurgical', 'Silica sand', 'Sodium hydroxide', 'Steel', 'Sulphuric acid', 'Synthetic rubber'].forEach((n, i) => {
+          if (n === 'Steel') { c.fillStyle = 'rgba(233,184,26,0.35)'; c.fillRect(54, 172 + i * 46 - 20, PWd - 108, 40); }
+          ink(c, n, 70, 172 + i * 46, 26, '#2a1d10', { family: SERIF }); ink(c, String(9 + i), PWd - 70, 172 + i * 46, 24, '#4a3a24', { family: SERIF, align: 'right' });
+        });
+        ink(c, '11', PWd / 2, PHd - 30, 22, '#4a3a24', { align: 'center', family: SERIF });
+      });
+      const rightPage = fibre(PWd, PHd, '#efe3c6', '80,60,30', (c) => { entry(c, 50, 40, PWd - 100, PHd - 110, 'plate'); ink(c, '12', PWd / 2, PHd - 30, 22, '#4a3a24', { align: 'center', family: SERIF }); });
+      slab(PWd, PHd, 3, [matte(leftPage, PWd, PHd), paperSide], X(BX + 20), Z(BZ + 20), CT + 9, 4, 0.6);
+      slab(PWd, PHd, 3, [matte(rightPage, PWd, PHd), paperSide], X(BX + BW / 2 + 10), Z(BZ + 20), CT + 9, 4, 0.6);
+      prints.push((g) => { const gx = X(BX + BW / 2); const gr = g.createLinearGradient(gx - 40, 0, gx + 40, 0); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(0.5, 'rgba(0,0,0,0.28)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(gx - 40, Z(BZ + 20), 80, PHd); });
+      wideKey('BUILD A FURNACE', X(BX + BW - 230), Z(BZ + BH - 70), 360, 76, CT + 13, 26);
+      // the enquiry slip in its brass holder, at the left of the stand
+      const QX = PAD + 20, QW = RX - QX - 40, QZ = RZ, QH = RH;
+      slab(QW, QH, 6, [K.brassFace ? K.brassFace(QW, QH) : K.brass, K.brass], X(QX), Z(QZ), T, 8, 1.4);
+      const slip = fibre(QW - 50, QH - 50, '#f7f1e2', '80,60,30', (c) => {
+        ink(c, 'ENQUIRY', 24, 40, 26, '#8f1f19', { weight: 700, family: BARLOW });
+        ink(c, 'steel', 24, 104, 56, '#1b2f6a', { family: HAND, weight: 400 });
+        c.fillStyle = 'rgba(42,29,16,0.25)'; c.fillRect(24, 136, QW - 98, 1.5);
+        ink(c, 'Found in:', 24, 176, 22, INK_DIM, { family: PLEX });
+        [['Goods', 'Steel, p. 12'], ['Recipes', 'Steelmaking, p. 30'], ['', 'Basic Oxygen, p. 31'], ['', 'Electric Arc, p. 33'], ['Buildings', 'Furnace, p. 8'], ['', 'Arc Furnace, p. 9']].forEach(([s, v], i) => {
+          ink(c, s, 24, 222 + i * 44, 22, NAVY, { weight: 700, family: BARLOW }); ink(c, v, 140, 222 + i * 44, 22, NAVY, { family: PLEX, maxW: QW - 210 });
+        });
+      });
+      slab(QW - 50, QH - 50, 1.2, [matte(slip, QW - 50, QH - 50), paperSide], X(QX + 25), Z(QZ + 25), T + 8, 3, 0.4);
+    };
+
+    // ---- A, the handbook as a midcentury trade catalogue: the same binder and dividers, white pages, large pictures. The
+    // item's page carries the catalogue number, the name, the picture, a price roundel, a ruled specification table and the
+    // key to the plant symbols; the facing page splits how it is made from what it goes into, each a ruled table of
+    // pictures. The look up is the catalogue's own index: pictures by section, with page numbers. Recipes from
+    // data/recipes_all.csv, steel's row from data/Goods - goodsMVP.csv.
+    const CAT = { paper: '#fbfaf6', tint: '#f1eee6', accent: '#cf4527', mustard: '#e2a720', teal: '#2a7a76', rule: 'rgba(11,35,64,0.2)', cover: '#24474a' };
+    const GOOD_FILE = { iron_ingots: 'g_004_iron_ingots', coal: 'g_001_coal', oxygen: 'g_011_oxygen', limestone: 'g_016_limestone', hydrogen: 'g_014_hydrogen',
+      pet_coke: 'g_075_pet_coke', carbonised_biomass: 'g_076_carbonised_biomass', steel: 'g_006_steel', motor: 'g_008_motor', construction_equipment_ice: 'g_071_construction_equipment_ice',
+      building_frame: 'g_023_building_frame', car_body: 'g_045_car_body', engine: 'g_046_engine', large_engine: 'g_052_large_engine', iron_battery: 'g_061_iron_battery',
+      tyres: 'g_044_tyres', hydraulic_components: 'g_077_hydraulic_components' };
+    const PLANT = { furnace: ['b_002_furnace', 'Furnace'], eaf: ['b_008_eaf', 'Electric Arc Furnace'], factory: ['b_007_industrial_factory', 'Industrial Goods Factory'], assembly_plant: ['b_009_assembly_plant', 'Assembly Plant'] };
+    const gimg = {}, pimg = {};
+    const loadCatalogArt = async () => {
+      for (const [k, f] of Object.entries(GOOD_FILE)) gimg[k] ??= await loadImage(`/icons/goods/alternate_icons/medium/${f}.png`);
+      for (const [k, [f]] of Object.entries(PLANT)) pimg[k] ??= keyCream(await loadImage(`/icons/buildings/${f}.png`));
+      pimg.sankey ??= keyCream(await loadImage('/icons/ui_icons/standalone/sankey.png'));
+    };
+    // [recipe, plant, inputs, steel out, needs research]
+    const MAKES = [
+      ['Steelmaking', 'furnace', [['iron_ingots', 37], ['coal', 20]], 49, false, 30],
+      ['Basic Oxygen Steelmaking', 'furnace', [['iron_ingots', 21], ['oxygen', 3], ['limestone', 8]], 49, true, 31],
+      ['Electric Arc Steelmaking', 'eaf', [['iron_ingots', 21], ['hydrogen', 5]], 60, true, 33],
+      ['HIsarna Steel Making', 'furnace', [['iron_ingots', 21], ['oxygen', 4], ['coal', 18]], 49, true, 34],
+      ['Scrap Recycling', 'eaf', [['scrap', 24]], 30, false, 52],
+      ['Steelmaking (Petro)', 'furnace', [['iron_ingots', 37], ['pet_coke', 3]], 49, true, 35],
+      ['Steelmaking (Bio)', 'furnace', [['iron_ingots', 37], ['carbonised_biomass', 2]], 49, true, 36],
+    ];
+    // [output, its name, [recipe, plant, steel in, output out, needs research]]
+    const USES = [
+      ['motor', 'Motor', [['Motor Manufacture', 'factory', 32, 33, false], ['SynRM Magnetless Motors', 'assembly_plant', 33, 32, true], ['Axial Flux Motors', 'assembly_plant', 13, 33, true], ['Hairpin Stator Motors', 'assembly_plant', 13, 33, true]]],
+      ['large_engine', 'Large Engine', [['Large Vehicle Engine Manufacturing', 'assembly_plant', 32, 11, true], ['Heavy Electric Motor', 'assembly_plant', 16, 12, true]]],
+      ['engine', 'Engine', [['ICE Engine Manufacturing', 'factory', 16, 7, false], ['V8 Engine Manufacturing', 'factory', 13, 7, true]]],
+      ['car_body', 'Car Body', [['Car Body Manufacturing', 'factory', 21, 15, false], ['Lightweight Car Bodies', 'assembly_plant', 13, 20, true]]],
+      ['construction_equipment_ice', 'Construction Equipment', [['Construction Equipment Assembly (ICE)', 'factory', 20, 14, false], ['Construction Equipment Assembly (EV)', 'factory', 20, 13, true]]],
+      ['hydraulic_components', 'Hydraulic Components', [['Hydraulics Manufacturing', 'factory', 16, 16, false], ['Hydraulics Automated Assembly', 'assembly_plant', 16, 20, false]]],
+      ['building_frame', 'Building Frame', [['Building Frame Manufacture', 'assembly_plant', 16, 28, false]]],
+      ['tyres', 'Tyres', [['Radial Axial Tire Production', 'factory', 21, 36, false]]],
+      ['iron_battery', 'Iron Air Battery', [['Iron Air Batteries', 'factory', 13, 9, true]]],
+    ];
+    const BEBAS = TITLE_FAMILY;
+    const spaced = (c, str, x, y, size, colour, { weight = 700, family = BARLOW, align = 'left', gap = 3, maxW = 1200 } = {}) => {
+      c.save(); c.letterSpacing = `${gap}px`; text(c, str, x, y, maxW, size, colour, { align, weight, family }); c.restore();
+    };
+    /** A good's picture, fitted in a px square; scrap has none in the game yet, so a lettered box stands in. */
+    const picture = (c, id, x, y, px) => {
+      const im = gimg[id];
+      if (!im) { c.strokeStyle = NAVY; c.lineWidth = 2; c.strokeRect(x + 4, y + 4, px - 8, px - 8); text(c, 'SCRAP', x + px / 2, y + px / 2 + 1, px - 14, px * 0.26, NAVY, { align: 'center', weight: 700, family: BARLOW }); return; }
+      const k = Math.min(px / im.width, px / im.height); c.drawImage(im, x + (px - im.width * k) / 2, y + (px - im.height * k) / 2, im.width * k, im.height * k);
+    };
+    const symbol = (c, plant, x, y, px, colour = NAVY) => stamp(c, pimg[plant], x, y, px, px, colour);
+    const runningHead = (c, w, left, right) => {
+      spaced(c, left, 56, 50, 22, NAVY); spaced(c, right, w - 56, 50, 22, NAVY, { align: 'right' });
+      c.fillStyle = NAVY; c.fillRect(56, 70, w - 112, 4); c.fillRect(56, 79, w - 112, 1.5);
+    };
+    const folio = (c, w, h, n) => text(c, String(n), w / 2, h - 34, 80, 22, NAVY, { align: 'center', weight: 600, family: BARLOW });
+    /** A section bar: reversed type on a band of colour, a count at its right. */
+    const bar = (c, x, y, w, str, count, colour = NAVY, fg = '#fbfaf6') => {
+      c.fillStyle = colour; c.fillRect(x, y, w, 50);
+      spaced(c, str, x + 16, y + 26, 26, fg, { gap: 3 }); if (count) spaced(c, count, x + w - 16, y + 26, 22, fg, { align: 'right', gap: 2, weight: 600 });
+    };
+    const star = (c, x, y, s, colour = CAT.accent) => {
+      c.fillStyle = colour; c.beginPath();
+      for (let i = 0; i < 10; i++) { const r = i % 2 ? s * 0.42 : s, a = -Math.PI / 2 + i * Math.PI / 5; c.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); }
+      c.closePath(); c.fill();
+    };
+    /** The price roundel: a sunburst in mustard, tipped a little. */
+    const roundel = (c, x, y, r) => {
+      c.save(); c.translate(x, y); c.rotate(-0.12);
+      c.fillStyle = CAT.mustard; c.beginPath();
+      for (let i = 0; i < 48; i++) { const rr = i % 2 ? r * 0.88 : r, a = i * Math.PI / 24; c.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+      c.closePath(); c.fill();
+      text(c, '£2.37', 0, -8, r * 1.5, r * 0.62, NAVY, { align: 'center', weight: 400, family: BEBAS });
+      spaced(c, 'A UNIT', 0, r * 0.42, r * 0.2, NAVY, { align: 'center', gap: 2 });
+      c.restore();
+    };
+    /** Rows: [label, value]; ruled, every other row tinted. */
+    const specTable = (c, x, y, w, rows, rowH = 48, valueX = 280) => {
+      rows.forEach(([k, v], i) => {
+        const ry = y + i * rowH;
+        if (i % 2 === 0) { c.fillStyle = CAT.tint; c.fillRect(x, ry, w, rowH); }
+        c.fillStyle = CAT.rule; c.fillRect(x, ry + rowH - 1, w, 1);
+        text(c, k, x + 14, ry + rowH / 2, valueX - 30, 22, NAVY, { weight: 500, family: PLEX });
+        text(c, v, x + valueX, ry + rowH / 2, w - valueX - 14, 24, NAVY, { weight: 600, family: PLEX });
+      });
+      return y + rows.length * rowH;
+    };
+    /** A formula in pictures: inputs with their quantities, an arrow, the output. Returns its right edge. */
+    const formula = (c, x, y, px, inputs, out, outQty) => {
+      let fx = x;
+      inputs.forEach(([id, q]) => { picture(c, id, fx, y, px); text(c, '×' + q, fx + px + 4, y + px / 2, 60, px * 0.42, NAVY, { weight: 700, family: BARLOW }); fx += px + 4 + measureText('×' + q, `700 ${px * 0.42}px ${BARLOW}`) + 14; });
+      c.fillStyle = CAT.accent; c.fillRect(fx, y + px / 2 - 2, 26, 4);
+      c.beginPath(); c.moveTo(fx + 24, y + px / 2 - 9); c.lineTo(fx + 38, y + px / 2); c.lineTo(fx + 24, y + px / 2 + 9); c.closePath(); c.fill();
+      fx += 48; picture(c, out, fx, y, px); text(c, '×' + outQty, fx + px + 4, y + px / 2, 60, px * 0.42, NAVY, { weight: 700, family: BARLOW });
+      return fx + px + 50;
+    };
+    const holes = (c, x, h) => { for (const f of [0.18, 0.5, 0.82]) { c.fillStyle = '#1b3335'; c.beginPath(); c.arc(x, h * f, 13, 0, Math.PI * 2); c.fill(); } };
+    const pageFibre = (w, h, paint) => fibre(w, h, CAT.paper, '70,70,60', paint);
+    const labelTape = (HT, HZ, HH) => {
+      const tw = 620, th = 66, tx = PW / 2 - 140, tz = HZ + (HH - th) / 2;
+      printWhite('Look up', X(tx - 24), Z(tz + th / 2), 26, { weight: 600, align: 'right' });
+      const tape = canvas2d(tw, th, (c) => {
+        c.fillStyle = '#121418'; c.fillRect(0, 0, tw, th);
+        const g = c.createLinearGradient(0, 0, 0, th); g.addColorStop(0, 'rgba(255,255,255,0.10)'); g.addColorStop(0.5, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, tw, th);
+        c.save(); c.shadowColor = 'rgba(0,0,0,0.9)'; c.shadowOffsetY = 2; text(c, 'STEEL', 26, th / 2 + 2, tw, 40, '#f1f1ee', { weight: 700, family: BARLOW, align: 'left' }); c.restore();
+        c.fillStyle = '#f1f1ee'; c.fillRect(26 + measureText('STEEL', `700 40px ${BARLOW}`) + 8, 14, 3, th - 28);
+      });
+      add(shade(new THREE.Mesh(extrude(rrShape(tw, th, 4), 1.2, 0.6, 0.5, 2), [new THREE.MeshPhysicalMaterial({ map: faceTexture(tape, tw, th), roughness: 0.35, clearcoat: 0.8, clearcoatRoughness: 0.15 }), new THREE.MeshStandardMaterial({ color: 0x0c0d10 })])), X(tx + tw / 2), Z(tz + th / 2), HT);
+    };
+    /** The binder open on the desk with two painted pages and the section dividers; `keys` places 3D keys on the pages. */
+    const catalogBinder = (paintLeft, paintRight, active, keys) => {
+      header(labelTape);
+      const BZ = 170, BW = PW - 2 * PAD - 150, BH = PH - BZ - 40, BX = PAD + 20;
+      slab(BW, BH, 10, [cloth(BW, BH, CAT.cover), new THREE.MeshStandardMaterial({ color: 0x18302f, roughness: 0.9 })], X(BX), Z(BZ), T, 14, 2);
+      const CT = T + 12, pg = 34, LW = BW / 2 - pg - 30, LH = BH - 2 * pg, L0 = BX + pg, R0 = BX + BW / 2 + 30;
+      const left = pageFibre(LW, LH, (c) => { paintLeft(c, LW, LH); holes(c, LW - 26, LH); });
+      const right = pageFibre(LW, LH, (c) => { paintRight(c, LW, LH); holes(c, 26, LH); });
+      slab(LW, LH, 2, [matte(left, LW, LH), paperSide], X(L0), Z(BZ + pg), CT, 4, 0.6);
+      slab(LW, LH, 2, [matte(right, LW, LH), paperSide], X(R0), Z(BZ + pg), CT, 4, 0.6);
+      for (const f of [0.18, 0.5, 0.82]) add(shade(new THREE.Mesh(new THREE.TorusGeometry(40, 8, 16, 40).scale(1.5, 0.7, 1), K.chrome)), X(BX + BW / 2), Z(BZ + pg + LH * f), CT + 6);
+      const TABS = [['GOODS', CAT.accent, '#fbfaf6'], ['RECIPES', CAT.teal, '#fbfaf6'], ['BUILDINGS', CAT.mustard, NAVY], ['MECHANICS', NAVY, '#fbfaf6']];
+      TABS.forEach(([name, col, fg], i) => {
+        const on = name === active, tw = on ? 150 : 120, th = 190, tz = BZ + 80 + i * (th + 24), tx = R0 + LW - 20;
+        const face = canvas2d(tw, th, (c) => {
+          c.fillStyle = col; c.fillRect(0, 0, tw, th);
+          c.save(); c.translate(tw / 2 + 12, th / 2); c.rotate(Math.PI / 2); spaced(c, name, 0, 0, 28, fg, { align: 'center', gap: 3, maxW: th - 20 }); c.restore();
+        });
+        slab(tw, th, 1.6, [matte(face, tw, th), new THREE.MeshStandardMaterial({ color: col, roughness: 0.8 })], X(tx), Z(tz), CT + 1 + (on ? 2 : 0), 10, 0.6);
+      });
+      keys?.({ L0, R0, top: BZ + pg, LW, LH, base: CT + 4 });
+    };
+
+    /** A recipe enclosed in a ruled border: its name (a star when it needs research), its plant's mark (the name is
+     * the mark's hover) and the formula in pictures. */
+    const recipeCard = (c, x, y, w, h, name, plant, research, inputs, out, outQty, px) => {
+      c.fillStyle = CAT.paper; c.fillRect(x, y, w, h);
+      c.strokeStyle = NAVY; c.lineWidth = 2; c.strokeRect(x + 1, y + 1, w - 2, h - 2);
+      let nx = x + 16;
+      if (research) { star(c, nx + 10, y + 32, 11); nx += 28; }
+      text(c, name, nx, y + 32, w - 90 - (nx - x), 26, NAVY, { weight: 700, family: BARLOW });
+      symbol(c, plant, x + w - 60, y + 10, 46);
+      formula(c, x + 16, y + h - px - 18, px, inputs, out, outQty);
+    };
+    /** A recipe as one full width row in a ruled border: its name at the left (two lines when long; a star when it needs
+     * research), the formula in pictures, and its plant's mark large at the right behind a rule (named on hover). */
+    const recipeRow = (c, x, y, w, h, r) => {
+      c.fillStyle = CAT.paper; c.fillRect(x, y, w, h);
+      c.strokeStyle = NAVY; c.lineWidth = 2; c.strokeRect(x + 1, y + 1, w - 2, h - 2);
+      const iz = h - 20, zone = iz + 32;
+      c.fillStyle = CAT.rule; c.fillRect(x + w - zone, y + 12, 1.5, h - 24);
+      symbol(c, r.plant, x + w - zone + 16, y + 10, iz);
+      let nx = x + 18;
+      if (r.research) { star(c, nx + 10, y + h / 2, 11); nx += 28; }
+      const nameW = 330 - (nx - x - 18), font = `700 27px ${BARLOW}`, words = r.name.split(' '), lines = [];
+      let line = '';
+      for (const wd of words) { const t = line ? line + ' ' + wd : wd; if (line && measureText(t, font) > nameW) { lines.push(line); line = wd; } else line = t; }
+      lines.push(line);
+      lines.forEach((ln, i) => text(c, ln, nx, y + h / 2 + (i - (lines.length - 1) / 2) * 31, nameW, 27, NAVY, { weight: 700, family: BARLOW }));
+      const px = r.inputs.length > 2 ? 62 : 72;
+      formula(c, x + 370, y + (h - px) / 2, px, r.inputs, r.out, r.outQty);
+    };
+    /** The building's name on hover: a dark tag with a pointer, pointing down at (x, y). */
+    const hoverTag = (c, x, y, str) => {
+      const tw = measureText(str, `600 22px ${PLEX}`) + 32, th = 42, tx = Math.min(x - tw / 2, 1129 - 30 - tw), ty = y - th - 12;
+      c.save(); c.shadowColor = 'rgba(0,0,0,0.3)'; c.shadowBlur = 8; c.shadowOffsetY = 3;
+      c.fillStyle = '#16233a'; c.beginPath(); c.roundRect(tx, ty, tw, th, 6); c.fill();
+      c.beginPath(); c.moveTo(x - 9, ty + th); c.lineTo(x, ty + th + 10); c.lineTo(x + 9, ty + th); c.closePath(); c.fill(); c.restore();
+      text(c, str, tx + tw / 2, ty + th / 2 + 1, tw - 20, 22, '#e8eef7', { align: 'center', weight: 600, family: PLEX });
+    };
+    /** Paging along the foot of the page: a rule, Previous page at the left, Next page at the right, a dot a page. */
+    const pager = (c, w, h, page, pages) => {
+      const y = h - 58;
+      c.fillStyle = NAVY; c.fillRect(56, y - 40, w - 112, 1.5);
+      const arrow = (x, dir) => { c.fillStyle = CAT.accent; c.beginPath(); c.moveTo(x, y - 11); c.lineTo(x + 16 * dir, y); c.lineTo(x, y + 11); c.closePath(); c.fill(); };
+      if (page > 1) { arrow(72, -1); spaced(c, 'PREVIOUS PAGE', 84, y + 1, 24, NAVY); }
+      if (page < pages) { arrow(w - 72, 1); spaced(c, 'NEXT PAGE', w - 84, y + 1, 24, NAVY, { align: 'right' }); }
+      for (let i = 0; i < pages; i++) {
+        const dx = w / 2 + (i - (pages - 1) / 2) * 26;
+        c.beginPath(); c.arc(dx, y, 7, 0, Math.PI * 2);
+        if (i + 1 === page) { c.fillStyle = NAVY; c.fill(); } else { c.strokeStyle = NAVY; c.lineWidth = 2; c.stroke(); }
+      }
+    };
+    /** The good's feature box, as the index draws its best match; `facts` adds the specification lines. */
+    const feature = (c, x, y, w, h, px, size, facts) => {
+      c.fillStyle = CAT.tint; c.fillRect(x, y, w, h);
+      picture(c, 'steel', x + 20, y + (h - px) / 2, px);
+      const tx = x + px + 54;
+      text(c, 'STEEL', tx - 4, y + 34 + size * 0.45, w - px - 80, size, NAVY, { weight: 400, family: BEBAS });
+      let ty = y + 50 + size;
+      text(c, 'Metals. Intermediate good.', tx, ty, w - px - 80, 24, NAVY, { weight: 500, family: PLEX });
+      if (!facts) return;
+      ty += 50;
+      [['Freight', 'Solid, heavy'], ['Price impact', '0.1% a turn', true], ['Buyable', 'YES'], ['Sellable', 'YES'], ['Base price', '£2.37 a unit']].forEach(([k, v, link], i) => {
+        const ry = ty + i * 42;
+        c.fillStyle = CAT.rule; c.fillRect(tx, ry + 21, w - px - 90, 1);
+        text(c, k, tx, ry, 160, 22, NAVY, { weight: 500, family: PLEX });
+        text(c, v, tx + 170, ry, w - px - 260, 24, NAVY, { weight: v === 'YES' ? 700 : 600, family: v === 'YES' ? BARLOW : PLEX });
+        if (link) { c.fillStyle = NAVY; c.fillRect(tx + 170, ry + 14, measureText(v, `600 24px ${PLEX}`), 2); }   // to Mechanics, Price impact
+      });
+    };
+    /** An icon drawn as a navy outline: its mask stamped round a ring of offsets, the mask itself cut back out. */
+    const outlineIcon = (c, mask, x, y, s, colour = NAVY, t = 3) => {
+      const k = document.createElement('canvas'); k.width = k.height = s + 2 * t; const g = k.getContext('2d');
+      for (let a = 0; a < 24; a++) stamp(g, mask, t + Math.cos(a * Math.PI / 12) * t, t + Math.sin(a * Math.PI / 12) * t, s, s, colour);
+      g.globalCompositeOperation = 'destination-out'; stamp(g, mask, t, t, s, s, '#000');
+      c.drawImage(k, x - t, y - t);
+    };
+    /** The link to the good's Goods Graph: the graph's icon in navy outline inside a navy ruled square. */
+    const graphLink = (c, x, y, s) => {
+      c.fillStyle = CAT.paper; c.fillRect(x, y, s, s); c.strokeStyle = NAVY; c.lineWidth = 2.5; c.strokeRect(x, y, s, s);
+      outlineIcon(c, pimg.sankey, x + s * 0.16, y + s * 0.16, s * 0.68, NAVY, 2.5);
+    };
+    const SEE_ALSO = [['iron_ingots', 'Iron Ingots'], ['coal', 'Coal'], ['oxygen', 'Oxygen'], ['limestone', 'Limestone'], ['hydrogen', 'Hydrogen'], ['scrap', 'Scrap Metal'], ['pet_coke', 'Pet Coke'], ['carbonised_biomass', 'Carbonised Biomass']];
+    const seeAlso = (c, x, y, w, items, px) => {
+      const per = 4, cw = w / per;
+      items.forEach(([id, n], i) => {
+        const sx = x + (i % per) * cw, sy = y + Math.floor(i / per) * (px + 66);
+        picture(c, id, sx + (cw - px) / 2, sy, px);
+        text(c, n, sx + cw / 2, sy + px + 26, cw - 10, 24, NAVY, { weight: 700, family: BARLOW, align: 'center' });
+      });
+    };
+    const PLANTS_FOR_STEEL = [['furnace', 'Makes steel, 5 recipes'], ['eaf', 'Makes steel, 2 recipes']];
+    const plantsRow = (c, x, y, w, px) => PLANTS_FOR_STEEL.forEach(([p, note], i) => {
+      const bx = x + i * (w / 2), bw = w / 2 - 16;
+      symbol(c, p, bx + 10, y, px);
+      text(c, PLANT[p][1], bx + px + 30, y + px / 2 - 18, bw - px - 40, 30, NAVY, { weight: 700, family: BARLOW });
+      text(c, note, bx + px + 30, y + px / 2 + 20, bw - px - 40, 22, NAVY, { weight: 500, family: PLEX });
+    });
+
+    // The entry: Steel, laid out as the index lays out its best match. The facing page runs one column: Made by, then
+    // Used in as a section below it, grouped by what each recipe makes, every recipe a full width card. The page breaks
+    // where the next part would not fit; a section or group carried over starts again under its heading, continued.
+    const ROOM = 1030, BAR_H = 66, GROUP_H = 66, CARD_H = 108, CARD_GAP = 12;
+    const madeFlat = MAKES.map(([name, plant, inputs, out, research]) => ({ name, plant, research, inputs, out: 'steel', outQty: out }));
+    const usedCount = USES.reduce((n, [, , r]) => n + r.length, 0);
+    const entryPages = (() => {
+      const pages = [[]]; let y = 0, section = null, group = null;
+      const put = (it, hgt) => { pages.at(-1).push(it); y += hgt; };
+      const turn = () => {
+        pages.push([]); y = 0;
+        put({ bar: section.title + ', continued', count: section.count, colour: section.colour }, BAR_H);
+        if (group) put({ head: true, good: group.good, gname: group.gname + ', continued' }, GROUP_H);
+      };
+      const card = (r) => { if (y + CARD_H > ROOM) turn(); put(r, CARD_H + CARD_GAP); };
+      const open = (s) => { if (y + BAR_H + GROUP_H + CARD_H > ROOM) { pages.push([]); y = 0; } section = s; group = null; put({ bar: s.title, count: s.count, colour: s.colour }, BAR_H); };
+      open({ title: 'MADE BY', count: `${madeFlat.length} RECIPES`, colour: CAT.teal });
+      madeFlat.forEach(card);
+      open({ title: 'USED IN', count: `${usedCount} RECIPES`, colour: CAT.accent });
+      for (const [good, gname, recipes] of USES) {
+        group = null;
+        if (y + GROUP_H + CARD_H > ROOM) turn();
+        group = { good, gname }; put({ head: true, good, gname }, GROUP_H);
+        for (const [name, plant, steelIn, outQty, research] of recipes) card({ name, plant, research, inputs: [['steel', steelIn]], out: good, outQty });
+      }
+      return pages;
+    })();
+    const PAGES = entryPages.length;
+    const catalogEntry = (page) => () => catalogBinder((c, w, h) => {
+      runningHead(c, w, 'GOODS', 'METALS');
+      bar(c, 56, 104, w - 112, 'GOODS', '');
+      feature(c, 56, 154, w - 112, 470, 380, 150, true);
+      bar(c, 56, 654, w - 112, 'BUILDINGS THAT MAKE IT', '2', CAT.mustard, NAVY);
+      plantsRow(c, 56, 720, w - 112, 150);
+      bar(c, 56, 900, w - 112, 'SEE ALSO, WHAT GOES INTO IT', '8');
+      seeAlso(c, 56, 966, w - 112, SEE_ALSO, 96);
+      graphLink(c, w - 56 - 20 - 92, 174, 92);
+      if (page === 1) hoverTag(c, w - 56 - 20 - 46, 172, "Go to Steel's Goods Graph");
+    }, (c, w, h) => {
+      runningHead(c, w, 'STEEL', 'GOODS');
+      const x = 56, cw = w - 112;
+      let y = 104;
+      for (const it of entryPages[page - 1]) {
+        if (it.bar) { bar(c, x, y, cw, it.bar, it.count, it.colour); y += BAR_H; }
+        else if (it.head) { picture(c, it.good, x, y + 2, 54); text(c, it.gname, x + 68, y + 30, cw - 70, 28, NAVY, { weight: 700, family: BARLOW }); y += GROUP_H; }
+        else {
+          recipeRow(c, x, y, cw, CARD_H, it);
+          const tag = { 1: ['Electric Arc Steelmaking', 'Electric Arc Furnace'], 2: ['SynRM Magnetless Motors', 'Assembly Plant'] }[page];
+          if (tag && it.name === tag[0]) hoverTag(c, x + cw - 16 - 44, y + 10, tag[1]);
+          y += CARD_H + CARD_GAP;
+        }
+      }
+      pager(c, w, h, page, PAGES);
+    }, 'GOODS');
+
+    // The look up: the index for steel, pictures by section; each recipe in its own border.
+    const catalogIndex = () => catalogBinder((c, w, h) => {
+      runningHead(c, w, 'INDEX', 'LOOKED UP: STEEL');
+      text(c, '9 ENTRIES', 56, 128, 400, 30, CAT.accent, { weight: 700, family: BARLOW });
+      bar(c, 56, 170, w - 112, 'GOODS', '1');
+      feature(c, 56, 220, w - 112, 330, 290, 120, false);
+      c.fillStyle = CAT.accent; c.fillRect(56 + 290 + 54 + 270, 288, 160, 40); spaced(c, 'BEST MATCH', 56 + 290 + 68 + 270, 309, 20, '#fbfaf6', { gap: 2 });
+      bar(c, 56, 590, w - 112, 'BUILDINGS THAT MAKE IT', '2', CAT.mustard, NAVY);
+      plantsRow(c, 56, 660, w - 112, 170);
+      bar(c, 56, 890, w - 112, 'SEE ALSO, WHAT GOES INTO IT', '8');
+      seeAlso(c, 56, 958, w - 112, SEE_ALSO, 110);
+    }, (c, w, h) => {
+      runningHead(c, w, 'LOOKED UP: STEEL', 'INDEX');
+      const found = MAKES.filter(([n]) => /steel/i.test(n));
+      bar(c, 56, 104, w - 112, 'RECIPES', String(found.length), CAT.teal);
+      found.forEach(([name, plant, inputs, out, research], i) => recipeRow(c, 56, 172 + i * 140, w - 112, 124, { name, plant, research, inputs, out: 'steel', outQty: out }));
+    }, 'GOODS');
+
+    const measureText = (str, font) => { const c = document.createElement('canvas').getContext('2d'); c.font = font; return c.measureText(str).width; };
+    // ---- the game's layers for the encyclopedia (scripts/encyclopedia_ds2/), each staged alone on a shadow catcher in
+    // the catalogue's materials. The desk and the header are the registry's (registry_desk, registry_header); the
+    // game prints everything on the pages and the tabs.
+    const ENCY = {
+      BINDER: { W: PW - 2 * PAD - 150, H: 1390, M: 24, r: 14, corner: 40 },
+      PAGE: { W: 1129, H: 1322, M: 16, r: 4, corner: 20 },
+      RING: { W: 150, H: 100, M: 22 },
+      TAB: { W: 150, H: 190, M: 14, r: 10, corner: 20 },
+      TAPE: { W: 620, H: 66, M: 10, r: 4, cap: 20 },
+    };
+    const part = async (name, W, H, M, build, extra = {}, opacity = 0.5) => {
+      group = new THREE.Group(); OX = 0; OY = 0;
+      await build();
+      group.add(shadowCatcher(W + 2 * M, H + 2 * M, M + W / 2, M + H / 2, 0.05, opacity));
+      const st = stage([0, 0, W + 2 * M, H + 2 * M], [group]);
+      st.scene.traverse((o) => { if (o.isDirectionalLight) o.shadow.mapSize.set(4096, 4096); });
+      await post(name, st.grab());
+      layout[name] = { size: [W + 2 * M, H + 2 * M], margin: M, ...extra };
+    };
+    // The binder's cloth cover, open flat on the desk, a 9-slice.
+    if (want('encybinder')) await withSeed(521, async () => {
+      const { W, H, M, r, corner } = ENCY.BINDER;
+      await part('ency_binder', W, H, M, () => slab(W, H, 10, [cloth(W, H, CAT.cover), new THREE.MeshStandardMaterial({ color: 0x18302f, roughness: 0.9 })], M, M, 0, r, 2), { corner }, 0.45);
+    });
+    // A white page, blank, a 9-slice; the game prints on it and punches its holes.
+    if (want('encypage')) await withSeed(522, async () => {
+      const { W, H, M, r, corner } = ENCY.PAGE;
+      const face = pageFibre(W, H, () => {});
+      await part('ency_page', W, H, M, () => slab(W, H, 2, [matte(face, W, H), paperSide], M, M, 0, r, 0.6), { corner }, 0.4);
+    });
+    // One chrome ring of the binder's spine, drawn three times down it.
+    if (want('encyring')) await withSeed(523, async () => {
+      const { W, H, M } = ENCY.RING;
+      await part('ency_ring', W, H, M, () => add(shade(new THREE.Mesh(new THREE.TorusGeometry(40, 8, 16, 40).scale(1.5, 0.7, 1), K.chrome)), M + W / 2, M + H / 2, 6), {}, 0.55);
+    });
+    // A section's divider tab in its colour, blank: the game prints its name up the tab.
+    if (want('encytabs')) await withSeed(524, async () => {
+      const { W, H, M, r, corner } = ENCY.TAB;
+      for (const [name, col] of [['goods', CAT.accent], ['recipes', CAT.teal], ['buildings', CAT.mustard], ['mechanics', NAVY]]) {
+        const face = canvas2d(W, H, (c) => { c.fillStyle = col; c.fillRect(0, 0, W, H); });
+        await part(`ency_tab_${name}`, W, H, M, () => slab(W, H, 1.6, [matte(face, W, H), new THREE.MeshStandardMaterial({ color: col, roughness: 0.8 })], M, M, 0, r, 0.6), { corner }, 0.45);
+      }
+    });
+    // The label tape the look up is typed on, blank, a 3-slice across.
+    if (want('encytape')) await withSeed(525, async () => {
+      const { W, H, M, r, cap } = ENCY.TAPE;
+      const tape = canvas2d(W, H, (c) => {
+        c.fillStyle = '#121418'; c.fillRect(0, 0, W, H);
+        const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, 'rgba(255,255,255,0.10)'); g.addColorStop(0.5, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+      });
+      await part('ency_tape', W, H, M, () => add(shade(new THREE.Mesh(extrude(rrShape(W, H, r), 1.2, 0.6, 0.5, 2), [new THREE.MeshPhysicalMaterial({ map: faceTexture(tape, W, H), roughness: 0.35, clearcoat: 0.8, clearcoatRoughness: 0.15 }), new THREE.MeshStandardMaterial({ color: 0x0c0d10 })])), M + W / 2, M + H / 2, 0), { cap }, 0.5);
+    });
+    if (!(want('encyclopediastudy') || want('encyclopediacatalog'))) return;
+
+    const BUILD = { handbook, catalogue, shelf, catalogIndex, catalogEntry1: catalogEntry(1), catalogEntry2: catalogEntry(2) };
+    if (CATALOG) await loadCatalogArt();
+    for (const [i, concept] of CONCEPTS.entries()) {
+      group = new THREE.Group(); OX = MX; OY = CAPT + i * (PH + ROWGAP);
+      add(shade(new THREE.Mesh(extrude(rrShape(PW, PH, 18), 6, 5, 4, 4), [polish(wood(PW, PH, '#36200f', '16,7,3', '150,96,54'), PW, PH), darkSide])), X(PW / 2), Z(PH / 2), 0);
+      BUILD[concept]();
+      const y0 = OY - 60, y1 = OY + PH + 60;
+      group.add(shadowCatcher(W, y1 - y0, W / 2, (y0 + y1) / 2, 0.05, 0.45));
+      const st = stage([0, y0, W, y1], [group]);
+      st.scene.traverse((o) => { if (o.isDirectionalLight) o.shadow.mapSize.set(4096, 4096); });
+      shots.push({ img: st.grab(), y0, y1, oy: OY, concept });
+    }
+    if (CATALOG) {
+      notes.push({ y: shots[0].oy + 76, lines: ['Look up', 'Typed on the label', 'tape, opens the index.'] });
+      notes.push({ y: shots[0].oy + 560, lines: ['The index', 'Results by section,', 'large pictures, no', 'page numbers.'] });
+      notes.push({ y: shots[0].oy + 1100, lines: ['Recipes', 'Each in its own', 'border; a building', 'is named on hover.'] });
+      notes.push({ y: shots[1].oy + 300, lines: ['Goods Graph', 'Navy outline icon,', 'opens the good in', 'the Goods Graph.'] });
+      notes.push({ y: shots[1].oy + 620, lines: ['Price impact', 'Underlined, opens', 'Mechanics at Price', 'impact.'] });
+      notes.push({ y: shots[1].oy + 1000, lines: ['One column', 'Every recipe full', 'width, its building', 'large at the right.'] });
+      notes.push({ y: shots[2].oy + 300, lines: ['Used in', 'A section below Made', 'by, grouped by what', 'it makes; carried', 'over, continued.'] });
+      notes.push({ y: shots[1].oy + 1480, lines: ['Next page', 'Bottom right; a dot', 'a page in the middle.'] });
+      notes.push({ y: shots[2].oy + 1480, lines: ['Previous page', 'Bottom left, from', 'the second page on.'] });
+    } else {
+    notes.push({ y: shots[0].oy + 76, lines: ['Search on label tape', 'Typed into the header.'] });
+    notes.push({ y: shots[0].oy + 600, lines: ['Results clipped over', 'the section index.'] });
+    notes.push({ y: shots[0].oy + 1000, lines: ['Tab dividers', 'One per section; the', 'open one stands out.'] });
+    notes.push({ y: shots[0].oy + 1300, lines: ['The entry', 'A spec sheet, see p.', 'links flip the binder.'] });
+    notes.push({ y: shots[1].oy + 400, lines: ['The cabinet', 'A drawer per section;', 'the open one pulled.'] });
+    notes.push({ y: shots[1].oy + 900, lines: ['Enquiry card', 'Typed search, the cards', 'it found fanned below.'] });
+    notes.push({ y: shots[1].oy + 1300, lines: ['The entry', 'Typed on the large card.'] });
+    notes.push({ y: shots[2].oy + 270, lines: ['The shelf', 'A volume per section;', 'the open one is gone.'] });
+    notes.push({ y: shots[2].oy + 900, lines: ['Enquiry slip', 'The look up written,', 'pages listed under it.'] });
+    notes.push({ y: shots[2].oy + 1300, lines: ['The open volume', 'Index left, the', 'catalogue page right.'] });
+    }
+    await post(CATALOG ? 'encyclopedia_catalog' : 'encyclopedia_study', frame2d(W, H, (g) => {
+      const BG = '#121820';
+      g.fillStyle = BG; g.fillRect(0, 0, W, H);
+      for (const s of shots) g.drawImage(s.img, 0, s.y0, W, s.y1 - s.y0);
+      for (const p of prints) p(g);
+      const TITLES = { handbook: "A. The engineer's handbook", catalogue: 'B. The card catalogue', shelf: 'C. The trade literature shelf', catalogIndex: 'The look up: steel', catalogEntry1: 'The entry: Steel, first page', catalogEntry2: 'The entry: Steel, second page' };
+      shots.forEach((s) => text(g, TITLES[s.concept], MX, s.oy - 44, 1600, 38, LIGHT, { weight: 600, family: PLEX }));
+      const NX = MX + PW + 54;
+      for (const nt of notes) {
+        g.save(); g.strokeStyle = '#e9b81a'; g.fillStyle = '#e9b81a'; g.lineWidth = 2.5;
+        const ax = NX - 12, bx = NX - 42; g.beginPath(); g.moveTo(ax, nt.y); g.lineTo(bx, nt.y); g.stroke();
+        g.beginPath(); g.moveTo(bx - 10, nt.y); g.lineTo(bx + 2, nt.y - 7); g.lineTo(bx + 2, nt.y + 7); g.closePath(); g.fill(); g.restore();
+        nt.lines.forEach((ln, k) => text(g, ln, NX, nt.y + (k - (nt.lines.length - 1) / 2) * 32, MR - 70, 27, LIGHT, { weight: k ? 500 : 600, family: PLEX }));
+      }
+    }));
   });
 
   await fetch('/layers/layout.json', { method: 'POST', body: JSON.stringify(layout, null, 1) });

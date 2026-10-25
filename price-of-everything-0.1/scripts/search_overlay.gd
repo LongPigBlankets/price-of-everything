@@ -20,6 +20,9 @@ const GOOD_TRANSPORT_MODES := ["nothing", "roads", "rail", "pipes", "reinf_pipes
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
+const MParts := preload("res://scripts/market_ds2/parts.gd")
+## The catalogue (DS2), the default while UiPrefs.use_encyclopedia_ds2 is on; every open goes to it then.
+const DS2_BOOK := "res://scripts/encyclopedia_ds2/encyclopedia_ds2.gd"
 
 # Palette aligned to the DS navy theme (was bespoke pure-black). Dark surfaces use
 # DS navy (#040F1B) / highlight (#002E54); body text uses DS TEXT; the build
@@ -55,6 +58,7 @@ var _columns_row: HBoxContainer = null
 var _recipe_view_active := false
 const BOTTOM_RESERVE := 112.0   # room left for the bottom menu below the tall panel
 var _empty_view := "none"
+var _ds2: Control = null
 var _accordion_expanded: Dictionary = {
 	"Goods": true,
 	"Recipes": false,
@@ -70,7 +74,43 @@ func _ready() -> void:
 	hide()
 	call_deferred("_layout_search_stack")
 
+func _use_ds2() -> bool:
+	return UiPrefs.use_encyclopedia_ds2 and ResourceLoader.exists(DS2_BOOK)
+
+
+## The catalogue, made on first use; the old panel hidden while it shows.
+func ds2_book() -> Control:
+	return _ds2
+
+
+func _open_ds2(view: Dictionary, focus: bool) -> void:
+	if not visible:
+		TelemetryState.track_interaction("encyclopedia_opened", "encyclopedia")
+	show()
+	PanelStack.push(self)
+	move_to_front()
+	if _ds2 == null:
+		_ds2 = load(DS2_BOOK).new(self)
+		_ds2.connect("closed_requested", close_search)
+		add_child(_ds2)
+	_search_stack.visible = false
+	_ds2.visible = true
+	_ds2.call("open_fresh", view)
+	if focus:
+		_ds2.call_deferred("focus_tape")
+
+
+func _show_old_panel() -> void:
+	if _ds2 != null:
+		_ds2.visible = false
+	_search_stack.visible = true
+
+
 func open_search() -> void:
+	if _use_ds2():
+		_open_ds2({"kind": "contents", "section": "goods"}, true)
+		return
+	_show_old_panel()
 	if not visible:
 		TelemetryState.track_interaction("encyclopedia_opened", "encyclopedia")
 	show()
@@ -82,6 +122,10 @@ func open_search() -> void:
 	call_deferred("_focus_search_input")
 
 func open_encyclopedia() -> void:
+	if _use_ds2():
+		_open_ds2({"kind": "contents", "section": "goods"}, true)
+		return
+	_show_old_panel()
 	if not visible:
 		TelemetryState.track_interaction("encyclopedia_opened", "encyclopedia")
 	show()
@@ -94,6 +138,14 @@ func open_encyclopedia() -> void:
 ## Deep-link straight to a GOOD's entry (the Produced by / Used in recipe view).
 ## Used by the Goods Graph's expanded-card Encyclopedia key.
 func open_encyclopedia_good(good_id: String) -> void:
+	if _use_ds2():
+		if Catalog.get_good(good_id).is_empty():
+			_open_ds2({"kind": "contents", "section": "goods"}, false)
+		else:
+			TelemetryState.track_interaction("good_encyclopedia_opened", "encyclopedia", good_id)
+			_open_ds2({"kind": "good", "id": good_id}, false)
+		return
+	_show_old_panel()
 	if not visible:
 		TelemetryState.track_interaction("encyclopedia_opened", "encyclopedia")
 	var good: Dictionary = Catalog.get_good(good_id)
@@ -109,6 +161,11 @@ func open_encyclopedia_good(good_id: String) -> void:
 		"title": str(good.get("display_name", good_id)), "payload": good})
 
 func open_encyclopedia_entry(entry_id: String) -> void:
+	if _use_ds2():
+		var known := MECHANIC_ENTRIES.any(func(e: Dictionary) -> bool: return str(e.get("id", "")) == entry_id)
+		_open_ds2({"kind": "mechanic", "id": entry_id} if known else {"kind": "contents", "section": "mechanics"}, false)
+		return
+	_show_old_panel()
 	if not visible:
 		TelemetryState.track_interaction("encyclopedia_opened", "encyclopedia")
 	# Deep-link straight to a Mechanics entry (used by in-game "More info" links).
@@ -137,38 +194,150 @@ static func _turns_to(target: float, rate: float) -> int:
 	return 0 if rate <= 0.0 else int(ceil(target / rate))
 
 
+## The Market price mechanics page, every figure read from the live model (EconomyConfig's price impact ladder,
+## MarketState._tick_impact): why a price moves, the yardstick, the thresholds, the limits, the memory, the growth
+## of the thresholds and the carbon levy, then a worked example. Written to be read as prose. Paragraphs are
+## separated by a blank line; the thresholds are a BBCode table.
+static func market_price_page() -> String:
+	var ladder: Array = EconomyConfig.PRICE_IMPACT_LADDER
+	var first: Array = ladder[0]
+	var top: Array = ladder[-1]
+	var mem := EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS
+	var scale: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
+	var pct := func(v: float) -> String: return String.num(v, 2) + "%"
+	var mult := func(rung: Array) -> String: return String.num(float(rung[0]), 0) + "x"
+	var cell := "[cell padding=0,1,28,1]"
+	var table := "[table=3]%s[b]Net volume a turn[/b][/cell]%s[b]Price moves[/b][/cell]%s[b]Turns to move 10%%[/b][/cell]" % [cell, cell, cell]
+	for rung: Array in ladder:
+		table += (cell + "Over %s base output[/cell]" + cell + "%s/turn[/cell]" + cell + "%d[/cell]") % [
+			mult.call(rung), pct.call(float(rung[1])), _turns_to(10.0, float(rung[1]))]
+	table += "[/table]"
+	var paras: Array = [
+		"A good's price moves when the market is out of balance. When you buy more of a good than you sell, the extra demand pushes its price up, and when you sell more than you buy, the surplus pulls it down. What counts is your net volume in a turn, the difference between what you sold to the market and what you bought from it. Trades made through Local Suppliers count towards it, while deliveries to contracts do not.",
+		"Each good is measured against its base output, which is the largest batch a recipe available at the start of the game makes at level 1. When a good can only be made with recipes that have to be researched, the most generous of those is used instead, and a good that no recipe makes has no base output, so its price never moves.",
+		"Once your net volume passes %s base output in a turn, the price moves at the rate of the highest threshold you crossed that turn, whether %s, %s, %s or beyond. The further supply or demand runs past base output, the faster the price changes, from %s of its base a turn at the first threshold to a top rate of %s once you pass %s." % [
+			mult.call(first), mult.call(ladder[0]), mult.call(ladder[1]), mult.call(ladder[2]), pct.call(float(first[1])), pct.call(float(top[1])), mult.call(top)],
+		table,
+		"These moves add up turn after turn, so two turns at %s leave the price %s away from its base, and the turn counts above assume you hold the same volume every turn. However far the market is pushed, a good's price can never rise above %d%% of its starting price or fall below %d%% of it. Buying also costs a little more than selling earns, because the market adds a %d%% spread to every purchase." % [
+			pct.call(0.4), pct.call(0.8), 100 + int(EconomyConfig.PRICE_IMPACT_CEILING_PCT), 100 + int(EconomyConfig.PRICE_IMPACT_FLOOR_PCT), roundi(EconomyConfig.MARKET_BUY_MARKUP * 100.0)],
+		"The market only remembers the last %d turns. The price moves while your average net volume over those turns stays above %s base output, so a single large sale after a run of quiet turns will rarely budge it. While that average stays high, a quiet turn simply holds the price where it is, and once it falls to %s or below, the price makes its way back to its starting level in equal steps over the next %d turns." % [
+			mem, mult.call(first), mult.call(first), mem],
+		"The thresholds grow over time, in line with a world economy that can absorb more demand and supply more goods. Every %d turns each good is treated as if its base output had grown by another %d%% of its original size, which lifts every threshold with it. Today they stand at %sx their starting size." % [
+			EconomyConfig.IMPACT_THRESHOLD_INFLATION_TURNS, roundi(EconomyConfig.IMPACT_THRESHOLD_INFLATION_STEP * 100.0), String.num(scale, 2)],
+		"One thing besides trading moves a price. Once the carbon levy comes in, every good carries the cost of the carbon it took to make, so goods with a heavy footprint grow dearer whatever the market is doing. You can follow all of this in the market, where the Impact column shows how far each good's price has been pushed and its hover card lists that good's thresholds in units a turn.",
+	]
+	paras.append_array(market_price_example())
+	return "\n\n".join(paras)
+
+
+## The Building Economics page, read from the model it explains (scripts/building_economics.gd for a building's
+## figures, Production's tax, dividend and profit share for the company's): how a building's net value added is
+## built, how goods between your own buildings are counted, what the net cannot see, and what comes off at company
+## level. Written to be read as prose, with a worked example of one building feeding another.
+static func building_economics_page() -> String:
+	var BEcon := preload("res://scripts/building_economics.gd")
+	var paras: Array = [
+		"Every building you own shows its economics in its detail panel, built up the way an accountant would look at a single plant. It starts from the market value of everything the building makes in a turn and takes away what it costs to run: the inputs it uses, the wages of its workers, and its upkeep, which covers maintenance, its share of the power it draws, its share of the storage fee on its tile and, once it comes in, the carbon levy. What is left is the value it adds in production.",
+		"Moving goods comes off next. Inputs have to be brought in and output taken to market, by road, rail or pipe and through a port, or through Local Suppliers where they handle the trade, and taking those charges away gives the building's net value added. The two transport lamps beside it weigh that cost against the value of the goods it moves, staying green while it is under %d%%, turning amber up to %d%% and red beyond that." % [
+			roundi(BEcon.LAMP_AMBER_SHARE * 100.0), roundi(BEcon.LAMP_RED_SHARE * 100.0)],
+		"An input that one of your own buildings supplies is charged at the price it would have fetched on the market, because selling it was the alternative, and it arrives with no freight on this building's account, since the building that sent it pays for the trip. The building that made it is credited that same price, so when one of your buildings feeds another the two figures cancel out, and adding up their nets does not count those goods twice.",
+	]
+	paras.append_array(_economics_example())
+	paras.append_array([
+		"The net does have blind spots. Output that goes into a stockpile instead of being sold is still valued as if it had been sold this turn, less what selling it would cost, so a building filling a warehouse looks better than the cash it brings in until that stock actually reaches the market. It also takes this turn's price as given, so it cannot see the price sliding as your own selling pushes it down.",
+		"Some costs belong to the company rather than to any one building, and no building's net includes them. Tax takes %d%% of each turn's profit above the first £%d, which is tax free, and dividends then take %d%% of what is left after tax, or more under a stock options policy, up to %d%%. Your advisors' pay, your loan repayments and any share of profit your workforce policies promise your staff come out at this level too, and the right advisors can bring the tax and dividend bills down." % [
+			roundi(EconomyConfig.TAX_RATE * 100.0), roundi(EconomyConfig.TAX_FREE_PROFIT_FLOOR), roundi(EconomyConfig.DIVIDEND_RATE * 100.0), 30],
+		"So read a building's net as a guide to how well it works rather than as cash in the bank. For what the company really made and paid out each turn, the Money panel is the place to look.",
+	])
+	return "\n\n".join(paras)
+
+
+## The example on the Building Economics page: your iron furnace feeding your steel furnace, at today's prices.
+## Pig Iron Smelting's ingots, Steelmaking's take of them, both from the recipes; [] when either is missing.
+static func _economics_example() -> Array:
+	var iron := Catalog.get_recipe("r_005")
+	var steel := Catalog.get_recipe("r_003")
+	var gid := "g_004"
+	if iron.is_empty() or steel.is_empty():
+		return []
+	var made := Catalog.recipe_output_qty(iron, gid)
+	var used := 0
+	for inp: Dictionary in steel.get("inputs", []):
+		if str(inp.get("good_id", "")) == gid:
+			used = int(inp.get("qty", 0))
+	if made <= used or used <= 0:
+		return []
+	var price: float = MarketState.get_price(gid)
+	var name := Catalog.get_display_name(gid).to_lower()
+	return ["Take an iron furnace making %d %s a turn that sends %d of them to your steel furnace. In the iron furnace's economics all %d are counted at £%.2f each, £%.2f in all, and in the steel furnace's the %d it receives are charged at the same £%.2f, £%.2f, so across the two buildings those %d come to nothing. The other %d stay in the stockpile, and the iron furnace still counts them as sold, so roughly £%.2f of its net, less what selling them would cost, is money it has not received yet." % [
+		made, name, used, made, price, price * made, used, price, price * used, used, made - used, price * (made - used)]]
+
+
+## Goods the worked example uses: one a furnace sells and one it buys.
+const EXAMPLE_SOLD := "g_006"
+const EXAMPLE_BOUGHT := "g_004"
+const EXAMPLE_TURNS := 5
+
+## The worked example: steel sold over one step and iron ingots bought over another, at today's step sizes, as rows
+## of the market panel now and after EXAMPLE_TURNS turns. Every figure is computed from the model; [] when either
+## good has no steps (no recipe makes it in this game).
+static func market_price_example() -> Array:
+	var sold := _example_trade(EXAMPLE_SOLD, 1, true)
+	var bought := _example_trade(EXAMPLE_BOUGHT, 2, false)
+	if sold.is_empty() or bought.is_empty():
+		return []
+	var cell := "[cell padding=0,2,22,2]"
+	# The picture has its own column, so the name and the figures share a line.
+	var fig := cell
+	var table := "[table=6][cell padding=0,2,6,2][/cell]"
+	for head in ["Good", "Buy", "Sell", "Traded", "Impact"]:
+		table += "%s[b]%s[/b][/cell]" % [cell, head]
+	for t: Dictionary in [sold, bought]:
+		for after in [false, true]:
+			var impact: float = float(t.impact_after) if after else 0.0
+			var price: float = float(t.base) * (1.0 + impact / 100.0)
+			var label := "%s, after %d turns" % [t.name, EXAMPLE_TURNS] if after else "%s, now" % t.name
+			table += "[cell padding=0,0,6,0]%s[/cell]%s%s[/cell]" % [t.icon, cell, label]
+			table += "%s£%.2f[/cell]%s£%.2f[/cell]" % [fig, MarketState.buy_price_from(str(t.id), price), fig, price]
+			table += "%s%d %s[/cell]%s%s[/cell]" % [fig, int(t.volume), "sold" if bool(t.selling) else "bought", fig, MParts.impact_text(impact)]
+	table += "[/table]"
+	var line := func(t: Dictionary) -> String:
+		var steps: Array = t.thresholds
+		return "For %s the base output is %d, which puts the first thresholds at %d, %d and %d units a turn, so %s %d crosses the %sx threshold and the price %s by %s of its base each turn." % [
+			str(t.name).to_lower(), int(t.base_output), int(steps[0]), int(steps[1]), int(steps[2]), "selling" if bool(t.selling) else "buying",
+			int(t.volume), String.num(float(t.mult), 0), "falls" if bool(t.selling) else "rises", String.num(float(t.rate), 2) + "%"]
+	return [
+		"To see it at work, picture a steel maker that sells %d %s and buys %d %s every turn. %s %s" % [
+			int(sold.volume), str(sold.name).to_lower(), int(bought.volume), str(bought.name).to_lower(), line.call(sold), line.call(bought)],
+		table,
+		"Keep it up for %d turns and %s ends up %s cheaper while %s cost %s more, so the steel maker is paid less for everything it sells and pays more for everything it buys." % [
+			EXAMPLE_TURNS * 5, str(sold.name).to_lower(), String.num(absf(float(sold.impact_after)) * 5.0, 1) + "%",
+			str(bought.name).to_lower(), String.num(absf(float(bought.impact_after)) * 5.0, 1) + "%"],
+	]
+
+
+## One side of the example: a volume half way between step `rung` and the next, rounded to tens, and what it does
+## to the price over EXAMPLE_TURNS turns.
+static func _example_trade(good_id: String, rung: int, selling: bool) -> Dictionary:
+	var steps: PackedInt32Array = MarketState.impact_thresholds(good_id)
+	if steps.size() <= rung + 1:
+		return {}
+	var volume := int(round((steps[rung] + steps[rung + 1]) * 0.5 / 10.0)) * 10
+	if volume <= steps[rung] or volume > steps[rung + 1]:
+		volume = steps[rung] + 1
+	var ladder: Array = EconomyConfig.PRICE_IMPACT_LADDER
+	var rate := float(ladder[rung][1])
+	var tex := GoodIcons.texture_for(good_id, Catalog.get_internal_name(good_id), GoodIcons.TIER_SMALL)
+	var icon := "[img=26x26]%s[/img] " % tex.resource_path if tex != null and tex.resource_path != "" else ""
+	var impact_after := clampf(rate * EXAMPLE_TURNS * (-1.0 if selling else 1.0), EconomyConfig.PRICE_IMPACT_FLOOR_PCT, EconomyConfig.PRICE_IMPACT_CEILING_PCT)
+	return {"id": good_id, "name": Catalog.get_display_name(good_id), "icon": icon, "base": MarketState.get_base_price_now(good_id),
+		"base_output": Catalog.base_output_for_good(good_id), "thresholds": steps, "rung": rung, "mult": float(ladder[rung][0]),
+		"rate": rate, "volume": volume, "selling": selling, "impact_after": impact_after}
+
+
 func _mechanic_body(entry_id: String) -> String:
 	if entry_id == "market_price_mechanics":
-		# Reads the LIVE ladder model (docs/price-impact-ladder-spec.md). Price decay is
-		# retired: base prices are static, and only the player's market volume moves them.
-		var scale: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
-		var floor_price := 100 + int(EconomyConfig.PRICE_IMPACT_FLOOR_PCT)
-		var ceil_price := 100 + int(EconomyConfig.PRICE_IMPACT_CEILING_PCT)
-		var mem := EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS
-		var bullets := ""
-		var table := "[table=3][cell][b]Net volume/turn[/b][/cell][cell][b]Price moves[/b][/cell][cell][b]To move 10%[/b][/cell]"
-		for rung in EconomyConfig.PRICE_IMPACT_LADDER:
-			var mult := String.num(float(rung[0]), 0)
-			var rate := float(rung[1])
-			bullets += "   over %sx base output — %s%%/turn\n" % [mult, String.num(rate, 2)]
-			table += "[cell]over %sx base[/cell][cell]%s%%/turn[/cell][cell]%d turns[/cell]" % [
-				mult, String.num(rate, 2), _turns_to(10.0, rate)]
-		table += "[/table]"
-		return ("Every good has a market price that reacts to how much YOU move through the market — and to nothing else. Prices no longer drift on their own: leave a market alone and its price holds at base.\n\n"
-			+ "What matters is your NET volume in one good in one turn — sales minus purchases — measured against that good's BASE OUTPUT: the largest single batch its BASE recipes make at level 1, unmodified — base meaning the ones available without research, so the yardstick is what you can build from the start rather than what a later technology could manage. Measuring against production rather than a flat number means the thresholds mean the same thing for a good made 8 at a time as for one made 400 at a time.\n\n"
-			+ "Cross a multiple of base output and the price moves that much per turn, for as long as you keep it up:\n\n"
-			+ bullets + "\n"
-			+ "The top step is deliberate: past 12x the market stops absorbing and the rate jumps to 1%%/turn.\n\n"
-			+ "SELLING pushes the price DOWN (a glut); BUYING pushes it UP (a deficit). The rates are identical in both directions, but the caps are not: a glut can push a price down to %d%% of its base, while a deficit can drive it up to %d%%.\n\n"
-			+ "The impact is NOT permanent — but the market has a memory. It watches your average volume over the last %d turns: while that average stays over the first threshold, quiet turns just HOLD the price where it is, so pausing for a turn buys no forgiveness. Once the average falls back to or under 1x, the price returns to base over %d turns.\n\n"
-			+ "The thresholds are not fixed either: the world economy grows, and every threshold rises by %d%% of its original value every %d turns (today's multiplier: x%s).\n\n"
-			+ table + "\n\n"
-			+ "Those turn counts assume you hold that volume every single turn. The market table's impact column lists each good's thresholds at today's multiplier; the per-tile auto-sell control uses them — pick how much price impact you will tolerate each turn and it ships only enough to stay inside that band, stockpiling the rest.\n\n"
-			+ "Goods no active recipe produces have no base output and take no impact at all.") % [
-				floor_price, ceil_price,
-				mem, mem,
-				int(EconomyConfig.IMPACT_THRESHOLD_INFLATION_STEP * 100.0), EconomyConfig.IMPACT_THRESHOLD_INFLATION_TURNS,
-				String.num(scale, 2)]
+		return market_price_page()
 	if entry_id == "intermittency":
 		var derate_pct: int = int(round(EconomyConfig.INTERMITTENCY_DERATE * 100.0))
 		return ("Solar and wind power are GREEN but INTERMITTENT — the sun and wind aren't always there. "
@@ -178,12 +347,7 @@ func _mechanic_body(entry_id: String) -> String:
 			+ "A few processes can follow a ragged supply and take no penalty at all, needing no battery to escape it — Membraneless Electrolysis is the first. Its cells have no membrane to dry out or pressure-balance, so they can ramp with the wind instead of demanding a steady load.\n\n"
 			+ "(This is an early stub — worked numbers, the per-tile allocation order, and storage scaling will be detailed here in a later content pass.)") % [derate_pct]
 	if entry_id == "building_economics":
-		var tax_pct: int = int(round(EconomyConfig.TAX_RATE * 100.0))
-		var div_pct: int = int(round(EconomyConfig.DIVIDEND_RATE * 100.0))
-		return ("Open any building and its economics show a per-turn NET: the market value of everything it makes, minus what it costs to run — inputs, power, labour, maintenance and transport.\n\n"
-			+ "Treat that net as a GUIDE, not cash in the bank. It values a building's whole output at the current market price whether or not you actually sell it — so a building that feeds another of yours looks like it 'earns' the market value of goods it never sells.\n\n"
-			+ "IMPORTANT: you CANNOT simply add up the net value-add of your buildings. When one building hands its output to another instead of selling it, it gives up a market sale — one building is quietly subsidising the next. The producer is credited the full market price; the consumer books that same input at its cheaper cost-to-make. The only honest total of what you're really earning is the profit shown in the Turn Summary and the Money panel.\n\n"
-			+ "A few things one building's net can't see, either: %d%% tax and a %d%% dividend come off your profit before it reaches your balance; selling a lot of one good in a single turn floods the market and lowers the price you actually get; and shipping goods between tiles costs freight. Chase the bottom line in the Turn Summary — not the sum of the parts.") % [tax_pct, div_pct]
+		return building_economics_page()
 	if entry_id == "transport":
 		return ("Transport moves goods between tiles and connects your economy to the world market. Roads, railways and pipes have a limited throughput on every tile they cross; congested links constrain the flow that can use them that turn.\n\n"
 			+ "Transport costs are shown as part of the money panel's Transport category. When a building buys inputs or sells output, use the route and capacity information to decide whether to move goods locally, build more infrastructure, or trade through a port.\n\n"

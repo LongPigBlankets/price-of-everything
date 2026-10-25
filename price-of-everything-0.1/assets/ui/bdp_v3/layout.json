@@ -2670,5 +2670,68 @@
   ],
   "margin": 20,
   "radius": 55
+ },
+ "ency_binder": {
+  "size": [
+   2435,
+   1438
+  ],
+  "margin": 24,
+  "corner": 40
+ },
+ "ency_page": {
+  "size": [
+   1161,
+   1354
+  ],
+  "margin": 16,
+  "corner": 20
+ },
+ "ency_ring": {
+  "size": [
+   194,
+   144
+  ],
+  "margin": 22
+ },
+ "ency_tab_goods": {
+  "size": [
+   178,
+   218
+  ],
+  "margin": 14,
+  "corner": 20
+ },
+ "ency_tab_recipes": {
+  "size": [
+   178,
+   218
+  ],
+  "margin": 14,
+  "corner": 20
+ },
+ "ency_tab_buildings": {
+  "size": [
+   178,
+   218
+  ],
+  "margin": 14,
+  "corner": 20
+ },
+ "ency_tab_mechanics": {
+  "size": [
+   178,
+   218
+  ],
+  "margin": 14,
+  "corner": 20
+ },
+ "ency_tape": {
+  "size": [
+   640,
+   86
+  ],
+  "margin": 10,
+  "cap": 20
  }
 }
