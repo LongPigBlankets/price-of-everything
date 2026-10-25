@@ -119,6 +119,7 @@ static func effective_power_output(building: Dictionary, recipe: Dictionary) -> 
 		"recipe_id": rid,
 		"recipe_type": str(recipe.get("recipe_type", "")).to_lower(),
 		"building_id": str(building.get("building_id", "")),
+		"instance_id": str(building.get("instance_id", "")),
 		"good_id": "power",
 		"good_internal": "power",
 	}

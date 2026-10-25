@@ -58,6 +58,9 @@ static func run_state(building: Dictionary, recipe: Dictionary, is_infrastructur
 		return "operational"
 	if BuildingStatus.power_status_color(building, recipe, is_infrastructure) == BuildingStatus.STATUS_RED:
 		return "stalled"
+	# Stopped by an accident: it does not run until the downtime is over.
+	if LabourState.unrest.is_down(str(building.get("instance_id", ""))):
+		return "stalled"
 	# Still hiring its first 70%: amber, it starts on its own once staffed.
 	if Staffing.is_waiting(building):
 		return "restarting"
@@ -396,6 +399,9 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 	# 1) critical fault / restarting / all-clear
 	if exhausted:
 		rows.append(_row("bad", "warn", "Deposit exhausted", "The deposit is exhausted. This building cannot produce with its current recipe."))
+	elif LabourState.unrest.is_down(iid) and not is_infrastructure:
+		var down := LabourState.unrest.down_turns_left(iid)
+		rows.append(_row("bad", "warn", "Accident", "Down after an accident for %d more turn%s." % [down, "" if down == 1 else "s"]))
 	elif Staffing.is_waiting(building) and not is_infrastructure:
 		# Below 70% hired it does not run at all: that is the one reason, whatever its inputs say.
 		rows.append(_row("warn", "clock", "Hiring staff", staffing_detail(building)))
@@ -435,6 +441,13 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 		rows.append(_row("bad", "box", upgrade_fault_label, str(upgrade_progress.get("error", "The upgrade is unable to continue."))))
 	else:
 		rows.append(_row("ok", "check", "No critical faults", "Operating normally." if ran else "Ready to run."))
+	# Strikes (docs/pacing-labour-mining-licensing-spec.md §6): on strike, or named in the warning.
+	if LabourState.unrest.is_on_strike(iid):
+		var left := LabourState.unrest.strike_turns_left(iid)
+		rows.append(_row("warn", "warn", "On strike", "Half output for %d more turn%s. Labour costs half." % [left, "" if left == 1 else "s"]))
+	elif LabourState.unrest.is_named(iid):
+		rows.append(_row("warn", "warn", "Strike warning", "Its workers strike on turn %d unless satisfaction rises above %s or their pay is raised." % [
+			int(LabourState.unrest.warning.get("turn", 0)), LabourState.signed_text(LabourState.LabourUnrest.STRIKE_BELOW)]))
 	# Running short staffed: the share it runs at, under the first row.
 	if Staffing.is_hiring(building) and not Staffing.is_waiting(building) and not is_infrastructure:
 		rows.append(_row("warn", "clock", "Hiring staff", staffing_detail(building)))

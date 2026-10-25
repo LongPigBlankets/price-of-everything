@@ -1,4 +1,4 @@
-// Carbon and Capital — telemetry endpoint (v6: labour satisfaction in turns)
+// Carbon and Capital — telemetry endpoint (v7: strikes in turns)
 // See docs/telemetry-spec.md §6.
 //
 // Setup (once, signed in as carbon.capital.data@gmail.com):
@@ -56,6 +56,8 @@ FIXED.push(...INTERACTIONS);
 // Schema 6: labour satisfaction (−100..+100) at the end of each turn. Appended last, like every new
 // column; older clients leave it blank.
 FIXED.push("satisfaction");
+// Schema 7: buildings on strike at the end of each turn. Appended last; older clients leave it blank.
+FIXED.push("strikes");
 const EVENTS_HEADER = ["received_at", "player_id", "run_id", "session_id", "event_id",
   "turn", "playtime_s", "action", "interface", "target_id", "version"];
 // One row per app start, sent before any run exists. This is the only signal that counts
@@ -124,7 +126,7 @@ function doPost(e) {
   }).map(t => FIXED.map(col => {
     if (INTERACTIONS.includes(col)) return t.interactions ? Number(t.interactions[col] || 0) : "";
     if (col === "received_at") return stamped;
-    if (col === "satisfaction") return t.satisfaction === undefined || t.satisfaction === "" ? "" : Number(t.satisfaction);
+    if (col === "satisfaction" || col === "strikes") return t[col] === undefined || t[col] === "" ? "" : Number(t[col]);
     if (col === "run_id") return p.run_id;
     if (col === "session_id") return p.session_id;
     if (col === "tiers" || col === "victory") return (t[col] || []).join("|");

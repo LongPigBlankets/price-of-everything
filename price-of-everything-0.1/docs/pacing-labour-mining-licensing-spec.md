@@ -1612,6 +1612,77 @@ resolution. Fill is `staff_fill`, the hired share of a building's requirement.
   - seeded draw determinism;
   - strike cost at turn 50 within the §6.1 scale.
 
+#### P3 acceptance criteria
+
+Each item is checked by a named unit test unless marked otherwise. Check turn T is 10, 20, 30…; a
+turn's "resolution" is what happens when the player ends it.
+
+**Strikes (§6.1)**
+
+1. **AC12.1** The warning is drawn in the resolution of turn T−3, so the player sees it from turn
+   T−2, if satisfaction is below −70. It names ceil(25% × N) buildings, or ceil(50% × N) below −90.
+   N counts the player's production and power buildings that are not paused, infrastructure or
+   batteries. Projects under construction don't count.
+2. **AC12.2** The draw is weighted and seeded: hazardous buildings ×2 while safety is Minimal,
+   buildings with an accident in the last 10 turns ×2, others ×1, and the factors multiply. A
+   building under a pay rise is never drawn. The same seed and state give the same names.
+3. **AC12.3** In the resolution of turn T: below −70 the named buildings strike. If the warning was
+   drawn below −90 and satisfaction is now −70 to −90, only the first ceil(25% × N) strike. At −70
+   or above the strike is called off.
+4. **AC12.4** A strike halves the building's output for 3 turns (T, T+1, T+2) through a per-building
+   `recipe_output` `mult` 0.5 modifier, power plants included. Inputs are consumed in full, a mine's
+   deposit is charged in full, and labour costs 50% while it lasts.
+5. **AC12.5** A strike that runs its course ends with a +5 target shift for 10 turns.
+6. **AC12.6** While a Partial or Comprehensive union is active there is no warning, and a standing
+   warning is called off at T.
+
+**Pay rises (§6.2)**
+
+1. **AC13.1** "Raise pay here": labour +20% at that building for 10 turns. Its strike ends at once,
+   or it leaves the warning, and it cannot be drawn while the raise runs.
+2. **AC13.2** "Raise pay for all strikers": labour +20% at every named or striking building for 10
+   turns. Every strike ends, the warning clears, and there are no warnings or strikes for 15 turns.
+3. **AC13.3** Neither raise changes satisfaction, its target or the band. A strike ended by a raise
+   gives no +5.
+
+**Accidents (§4.5)**
+
+1. **AC14.1** Only under Minimal safety, only at hazardous buildings: a 2% chance a turn, rising 0.25
+   points each turn Minimal stays on, to 6%. It resets when safety changes.
+2. **AC14.2** An accident stops the building for 2 turns (it does not run, blocked reason
+   `accident`), shifts the target −10 for 10 turns (stacking), and charges 2 turns of the building's
+   wage bill as compensation in that turn's costs.
+
+**State and telemetry**
+
+1. **AC15.1** Saved and validated: the warning, active strikes, the strike record (last 20), pay
+   rises, strike free turn, accident downtime, last accident turns, Minimal safety's run of turns
+   and the labour RNG's seed and state. Older saves load with none.
+2. **AC15.2** Telemetry schema 7: each turn row carries `strikes`, the number of buildings on
+   strike. The receiver appends a `strikes` column. The Settings disclosure names it.
+
+**UI**
+
+1. **AC16.1** People has a third tab, Strikes: a status plate (band lamp, satisfaction, next check
+   turn, union state), the warning board with each named building's expected lost revenue and its
+   "Raise pay here" key with the cost for 10 turns, "Raise pay for all strikers" with its total, the
+   buildings on strike with turns left, the record, and how strikes work.
+2. **AC16.2** The Strikes key carries a red lamp while a warning or strike is active, and the top
+   bar's Workforce lamp blinks during a warning.
+3. **AC16.3** Bell events at the warning, a strike's start, its end, a call off and an accident.
+   Building detail diagnostics say when a building is on strike or down after an accident.
+4. **AC16.4** Player copy has no hyphens, semicolons or dashes, and text on navy uses
+   `DS.PALETTE.TEXT`. Windowed screenshots of the Strikes tab with a warning, with strikes on, and
+   quiet. *Checked by review.*
+
+**Gates**
+
+1. **AC17.1** Unit suite green with only known baseline failures, parse check clean, no new
+   `SCRIPT ERROR`.
+2. **AC17.2** E2E to turn 100 quoted against P2. A Metal Magnate probe pushed below −70 shows strikes
+   at the check turns and their cost at turn 50 within the §6.1 scale. *Checked by review.*
+3. **AC17.3** Stance A7's strike line is applied to `.claude/skills/cnc-design-intent/SKILL.md`.
+
 ### P4 — Mining and land
 
 - **Seams**:

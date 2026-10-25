@@ -342,6 +342,14 @@ func _process_production() -> void:
 				has_run[instance_id] = true
 				continue
 
+			# Stopped by an accident for its 2 turns (Minimal safety, docs/pacing-labour-mining-licensing-spec.md §4.5).
+			if LabourState.unrest.is_down(instance_id):
+				blocked_reason_by_building[instance_id] = _run_warning("accident",
+					"Accident. Down for %d more turn%s." % [LabourState.unrest.down_turns_left(instance_id),
+						"" if LabourState.unrest.down_turns_left(instance_id) == 1 else "s"])
+				has_run[instance_id] = true
+				continue
+
 			# Too few staff hired to run (below 70%): idle, its hired share paid at the idle pay share.
 			if Staffing.is_waiting(building):
 				blocked_reason_by_building[instance_id] = _run_warning("staffing", Staffing.status_text(building))
@@ -1939,7 +1947,8 @@ func _calculate_labour_cost(building: Dictionary, recipe: Dictionary = {}) -> fl
 	var instance_id: String = str(building.get("instance_id", ""))
 	if BuildingWorks.is_retooling(instance_id):
 		return _base_labour_cost(building, recipe) * BuildingWorks.retooling_labour_fraction(instance_id)
-	return _base_labour_cost(building, recipe) * labour_cost_factor(building)
+	# A struck building pays half its labour while the strike lasts (docs/pacing-labour-mining-licensing-spec.md §6.1).
+	return _base_labour_cost(building, recipe) * labour_cost_factor(building) * LabourState.unrest.labour_share(instance_id)
 
 # Raw per-turn staffing cost for a building BEFORE any percentage labour modifiers:
 # grown wage rates x headcount x the level labour multiplier. This is the "100% base"
@@ -2088,6 +2097,7 @@ func _effective_power_output(building: Dictionary, recipe: Dictionary) -> int:
 		"recipe_id": rid,
 		"recipe_type": str(recipe.get("recipe_type", "")).to_lower(),
 		"building_id": str(building.get("building_id", "")),
+		"instance_id": str(building.get("instance_id", "")),
 		"good_id": "power",
 		"good_internal": "power",
 	}

@@ -66,8 +66,9 @@ func _ready() -> void:
 	print("[PROBE] start=%s turns=%d andrew=%s labour_mult=%.2f policies=%s week=%d union=%s" % [
 		start_name, turns, andrew if andrew != "" else "none",
 		LabourState.labour_multiplier, str(policies), week, union if union != "" else "none"])
-	print("[PROBE] %4s %10s %9s %9s %9s %8s %8s %8s %8s %6s %6s" % [
-		"turn", "money", "revenue", "profit", "transport", "inputs", "labour", "maint", "power", "bldgs", "satis"])
+	print("[PROBE] %4s %10s %9s %9s %9s %8s %8s %8s %8s %6s %6s %5s %5s %5s" % [
+		"turn", "money", "revenue", "profit", "transport", "inputs", "labour", "maint", "power", "bldgs", "satis",
+		"warn", "strk", "down"])
 
 	for i in range(turns):
 		TurnManager.commit_turn()
@@ -78,12 +79,15 @@ func _ready() -> void:
 		var revenue := float(s.get("goods_sales_revenue", 0.0)) + float(s.get("power_sales_revenue", 0.0))
 		var profit := float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
 		var satisfaction: Variant = LabourState.get("satisfaction")
-		print("[PROBE] %4d %10.2f %9.2f %9.2f %9.2f %8.2f %8.2f %8.2f %8.2f %6d %6.1f" % [
+		var unrest = LabourState.get("unrest")
+		print("[PROBE] %4d %10.2f %9.2f %9.2f %9.2f %8.2f %8.2f %8.2f %8.2f %6d %6.1f %5d %5d %5d" % [
 			TurnManager.current_turn - 1, MatchState.money, revenue, profit,
 			float(s.get("transport_paid", 0.0)), float(s.get("goods_purchased_cost", 0.0)),
 			float(s.get("labour_paid", 0.0)), float(s.get("maintenance_paid", 0.0)),
 			float(s.get("power_purchase_cost", 0.0)), BuildingState.player_building_count(),
-			float(satisfaction) if satisfaction != null else 0.0])
+			float(satisfaction) if satisfaction != null else 0.0,
+			(unrest.warning.get("buildings", []) as Array).size() if unrest != null else 0,
+			unrest.active.size() if unrest != null else 0, unrest.accident_down.size() if unrest != null else 0])
 
 	print("[PROBE] freight_credit_left=%d loans=%.2f" % [
 		TransportState.freight_credit_units, LoanState.total_outstanding()])

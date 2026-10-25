@@ -214,6 +214,7 @@ func _ready() -> void:
 	MatchState.cfo_tax_credit_filed.connect(_on_cfo_tax_credit_filed)
 	AdvisorState.advisors_changed.connect(_queue_refresh)
 	LabourState.satisfaction_changed.connect(_queue_refresh)
+	LabourState.unrest_changed.connect(_queue_refresh)
 	Production.turn_processed.connect(func(_s: Dictionary) -> void: _queue_refresh())
 	CompanyRankings.rankings_updated.connect(_queue_refresh)
 	CompanyRankings.rankings_updated.connect(_on_rankings_updated)
@@ -1398,12 +1399,20 @@ func _refresh_workforce() -> void:
 	_workforce_figure.text = LabourState.signed_text(s)
 	_workforce_arrow.set("trend", trend)
 	var led := _workforce_led as StatusLed
-	led.blink = false
-	led.lit = WORKFORCE_LAMP.has(band)
-	led.color = WORKFORCE_LAMP.get(band, C_GOOD)
+	# A strike warning blinks the lamp until the strike starts or is called off (§6.3).
+	var warned := not LabourState.unrest.warning.is_empty()
+	led.blink = warned
+	led.lit = WORKFORCE_LAMP.has(band) or warned
+	led.color = WORKFORCE_LAMP.get(band, C_GOOD) if not warned else WORKFORCE_LAMP.strike
 	(_workforce_btn as _ModuleBtn).warn = band == "strike" or band == "strike_heavy"
 	_workforce_status = "Satisfaction %s, %s" % [LabourState.signed_text(s), trend]
 	_workforce_detail = "Heading for %s." % LabourState.signed_text(LabourState.target_satisfaction())
+	if warned:
+		var named: int = (LabourState.unrest.warning.get("buildings", []) as Array).size()
+		_workforce_detail = "Strike warning: %d building%s on turn %d." % [named, "" if named == 1 else "s",
+			int(LabourState.unrest.warning.get("turn", 0))]
+	elif not LabourState.unrest.active.is_empty():
+		_workforce_detail = "%d building%s on strike." % [LabourState.unrest.active.size(), "" if LabourState.unrest.active.size() == 1 else "s"]
 
 
 ## Where satisfaction is heading: a small triangle up or down, or a level bar when it holds. Drawn, as the

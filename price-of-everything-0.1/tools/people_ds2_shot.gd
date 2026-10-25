@@ -61,6 +61,7 @@ func _ready() -> void:
 		await _pages(panel, "people_ds2_%s" % ["advisors", "labour"][t])
 	await _advisor_views(panel)
 	await _labour_views(panel)
+	await _strike_views(panel)
 	print("[PEOPLE_SHOT] panel %s, min width %.0f" % [str(panel.get_global_rect()), panel.get_combined_minimum_size().x])
 	get_tree().quit(0)
 
@@ -140,6 +141,25 @@ func _labour_views(panel: Control) -> void:
 		setup.call()
 		await _settle(int(v.get("frames", 16)))
 		await _pages(panel, "people_ds2_labour_%s" % str(v.name))
+
+
+## The Strikes tab: quiet, a warning standing, buildings on strike.
+func _strike_views(panel: Control) -> void:
+	var shell: Control = panel.find_child("PeopleDs2", false, false)
+	if shell == null:
+		return
+	shell.call("show_tab", 2)
+	var tab: Control = shell.call("body", 2)
+	if tab == null or not tab.has_method("shot_views"):
+		return
+	for v: Dictionary in tab.call("shot_views"):
+		var setup: Callable = v.setup
+		setup.call()
+		shell.call("_refresh_key_lamps")
+		await _settle(int(v.get("frames", 16)))
+		await _pages(panel, "people_ds2_strikes_%s" % str(v.name))
+	LabourState.unrest.reset()
+	shell.call("_refresh_key_lamps")
 
 
 ## Page the tallest visible scroll in the panel from top to bottom, one crop a page.

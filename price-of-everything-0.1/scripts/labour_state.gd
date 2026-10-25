@@ -129,6 +129,8 @@ signal labour_multiplier_changed(new_value: float)
 signal workforce_policies_changed
 ## Satisfaction, its target or its ledger changed (tick, policy change, renege).
 signal satisfaction_changed
+## A strike warning, strike, pay rise or accident changed (LabourUnrest).
+signal unrest_changed
 
 var labour_multiplier: float = EconomyConfig.LABOUR_MULTIPLIER_DEFAULT
 var workforce_policies: Dictionary = {}
@@ -148,6 +150,13 @@ var union_grandfathered_ids: Dictionary = {}
 ## Harness switch, never saved: the unit suite turns the policies' throughput off so recipe tests
 ## see base quantities (tests/test_runner.gd). The game, the e2e and the probes leave it on.
 var policy_throughput_enabled := true
+## Strikes, pay rises and accidents (docs/pacing-labour-mining-licensing-spec.md §6, §4.5).
+const LabourUnrest := preload("res://scripts/labour_unrest.gd")
+var unrest: LabourUnrest = LabourUnrest.new()
+
+
+func _init() -> void:
+	unrest.changed.connect(func() -> void: unrest_changed.emit())
 
 
 ## Match-scoped: cleared by MatchState.reset() (new game / scenario start).
@@ -163,6 +172,7 @@ func reset() -> void:
 	union_halving_active = false
 	union_signed_turn = 0
 	union_grandfathered_ids.clear()
+	unrest.reset()
 
 
 ## Saved under MatchState's "match" section.
@@ -179,7 +189,7 @@ func export_fields() -> Dictionary:
 		"union_halving_active": union_halving_active,
 		"union_signed_turn": union_signed_turn,
 		"union_grandfathered_ids": union_grandfathered_ids.keys(),
-	}
+	}.merged(unrest.export_fields())
 
 
 ## Older saves carry `labour_output_pressure_pct`; it is retired and ignored.
@@ -201,12 +211,15 @@ func import_fields(d: Dictionary) -> void:
 	union_grandfathered_ids.clear()
 	for id in d.get("union_grandfathered_ids", []) as Array:
 		union_grandfathered_ids[str(id)] = true
+	unrest.import_fields(d)
 
 
 func _on_phase_started(phase: int) -> void:
 	if phase == TurnManager.Phase.PROCESS:
-		# First thing in PROCESS, before production reads the throughput and the output prize.
+		# First thing in PROCESS, before production reads the throughput and the output prize. Strikes and
+		# accidents follow, on the satisfaction just reached.
 		tick_satisfaction()
+		unrest.tick(TurnManager.current_turn)
 
 
 # ── Knobs ─────────────────────────────────────────────────────────────────────────────────────
@@ -487,6 +500,9 @@ func labour_cost_components(building: Dictionary, turns_ahead: int = 0, at_turn:
 	# Long Tenure Awards: a payout spike of +10% labour one turn every 10th turn.
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_LONG_TENURE) and turn > 0 and turn % 10 == 0:
 		parts.append({"id": "long_tenure_awards_payout", "label": "Long Tenure payout", "delta": LONG_TENURE_PAYOUT})
+	var raise_left := int(unrest.pay_raises.get(str(building.get("instance_id", "")), 0))
+	if raise_left > maxi(0, turns_ahead):
+		parts.append({"id": "pay_raise", "label": "Pay rise", "delta": LabourUnrest.PAY_RAISE})
 	var union := union_tier()
 	if union != UNION_NONE:
 		var union_id := WORKFORCE_POLICY_UNION_COMPREHENSIVE if union == UNION_COMPREHENSIVE else WORKFORCE_POLICY_UNION_PARTIAL

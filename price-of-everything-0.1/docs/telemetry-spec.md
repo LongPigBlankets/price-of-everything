@@ -11,7 +11,8 @@ reports. Apply commits the choice; Back discards edits. The player's randomly ge
 report ID is selectable in this tab, alongside the deletion contact instructions.
 
 - Transmitted turn metrics: turn, profit, revenue, building count/types, power generated,
-  goods produced and labour satisfaction (schema 6, the last turns column). Supporting metadata: player/run/session IDs, OS family, version,
+  goods produced, labour satisfaction (schema 6) and buildings on strike (schema 7), the last two
+  turns columns. Supporting metadata: player/run/session IDs, OS family, version,
   start/ruleset, cheats-used flag, timing, end reason and completion state.
 - `TelemetryState.balancing_payload()` filters both new reports and older queued reports.
   Interaction history, detailed costs, money, loans, power demand, tutorial progress and

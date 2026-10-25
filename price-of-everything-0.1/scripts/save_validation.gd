@@ -28,6 +28,11 @@ const FIELDS := {
 			"deposit_remaining",
 			"fired_advisor_cooldowns",
 			"ghost_holdings",
+			"strike_warning",
+			"strike_active",
+			"strike_pay_raises",
+			"accident_down",
+			"accident_turns",
 			"pending_purchases",
 			"infrastructure_usage_last_turn",
 			"infrastructure_usage_streaks",
@@ -91,6 +96,7 @@ const FIELDS := {
 			"scheduled_moves",
 			"transaction_log",
 			"labour_target_shifts",
+			"strike_record",
 			"union_grandfathered_ids"
 		],
 		"number": [
@@ -99,6 +105,8 @@ const FIELDS := {
 			"union_active_turns",
 			"union_signed_turn",
 			"work_week_hours",
+			"strike_free_until",
+			"accident_minimal_turns",
 			"advisor_rng_seed",
 			"advisors_hired_last_turn",
 			"agenda_last_build_turn",
@@ -453,7 +461,7 @@ func validate(snapshot: Variant, version: int, demo: bool, from_disk := false) -
 		if not _number(snap.save_version) or snap.save_version != floorf(float(snap.save_version)) or float(snap.save_version) < 1:
 			return "save_version must be a positive whole number"
 		if float(snap.save_version) > version: return "save is from a newer game version"
-	for path in ["match.advisor_rng_state", "special_orders.rng_state", "decisions.rng_state"]:
+	for path in ["match.advisor_rng_state", "match.labour_rng_seed", "match.labour_rng_state", "special_orders.rng_state", "decisions.rng_state"]:
 		var state := _at(snap, path)
 		if state[0] and state[1] != null and not (_number(state[1]) or (state[1] is String and str(state[1]).is_valid_int())):
 			return path + " must be a number or decimal integer string"
