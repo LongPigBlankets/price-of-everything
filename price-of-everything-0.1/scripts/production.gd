@@ -1,6 +1,7 @@
 extends Node
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const MarketRules := preload("res://scripts/market_rules.gd")
+const Staffing := preload("res://scripts/staffing.gd")
 
 ## How many turns of ore left before a mine starts warning. Short enough to be actionable
 ## (a replacement mine takes turns to build and the nearest spare deposit is 4-6 tiles away
@@ -290,6 +291,9 @@ func _process_production() -> void:
 	# building that could not be fully stocked on the day it was bought can run on what lands.
 	MatchState.drain_ghost_holdings()
 	TurnProfiler.section_begin("construction")
+	# A turn of hiring on finished buildings still short of staff. Before the construction tick, which hires
+	# on its own projects, so a building that completes this turn is not hired for twice.
+	tick_staffing()
 	var completed_construction: Array = Construction.tick_turn()
 	for completed_instance_id in completed_construction:
 		_just_constructed_this_turn[str(completed_instance_id)] = true
@@ -335,6 +339,12 @@ func _process_production() -> void:
 			# A paused building (player-stopped, e.g. via the supply-chain panel) is idle:
 			# no inputs consumed, no outputs, no labour/power draw this turn.
 			if BuildingWorks.is_building_paused(instance_id):
+				has_run[instance_id] = true
+				continue
+
+			# Too few staff hired to run (below 70%): idle, its hired share paid at the idle pay share.
+			if Staffing.is_waiting(building):
+				blocked_reason_by_building[instance_id] = _run_warning("staffing", Staffing.status_text(building))
 				has_run[instance_id] = true
 				continue
 
@@ -428,9 +438,6 @@ func _process_production() -> void:
 			last_turn_run[instance_id] = true
 			if BuildingState.buildings.has(instance_id):
 				BuildingState.buildings[instance_id].erase("startup_inputs_pending")
-			# A new building stays in its selected half-capacity start until it has
-			# actually completed one operating turn; starvation does not consume it.
-			MatchState.consume_startup_capacity(instance_id)
 			full_output_streak_by_building[instance_id] = full_output_streak_by_building.get(instance_id, 0) + 1
 			progress_made = true
 			missing_by_building.erase(instance_id)
@@ -989,8 +996,9 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 	# workforce and the deposit penalty all change how much you GET per turn, never how
 	# fast the ore runs out. A 2000-unit seam therefore lasts the same number of turns
 	# whatever you have unlocked, so investing in yield can't quietly burn the field down.
-	# (Consequence to know: a building throttled by the startup ramp or by intermittent
-	# power still charges the deposit its full base rate for the turn.)
+	# A building short of staff digs, and is charged, only its staffing run fraction of that
+	# (docs/pacing-labour-mining-licensing-spec.md §5). Intermittent power still charges the full rate.
+	var staffed := Staffing.run_fraction(building)
 	var mined_base := 0
 	var recipe_id: String = str(recipe.get("recipe_id", ""))
 	var recipe_type: String = str(recipe.get("recipe_type", "")).to_lower()
@@ -1044,7 +1052,7 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		summary.produced[good.id] = summary.produced.get(good.id, 0) + output_qty
 		_record_building_output(building.instance_id, good.id, output_qty)
 		mined += output_qty
-		mined_base += base_qty
+		mined_base += int(round(float(base_qty) * staffed))
 	if dep_token != "" and mined > 0:
 		# Charged at the base rate, not `mined` — see the mined_base comment above.
 		MatchState.deplete_deposit(tile_id, dep_token, mined_base)
@@ -1919,6 +1927,12 @@ func labour_charge(building: Dictionary, ran: bool, recipe: Dictionary = {}) -> 
 		labour *= LabourState.idle_labour_pay_share
 	return labour
 
+## One turn of hiring on every player building still short of staff (Staffing.tick).
+func tick_staffing() -> void:
+	for building in BuildingState.buildings.values():
+		if (building as Dictionary).has("staff_fill") and BuildingState.is_player_owned(building):
+			Staffing.tick(building)
+
 func _calculate_labour_cost(building: Dictionary, recipe: Dictionary = {}) -> float:
 	# While retooling, a building pays only a reduced fraction of its base labour and
 	# skips the usual modifier factor (spec §7.3).
@@ -1945,7 +1959,8 @@ func _base_labour_cost(building: Dictionary, recipe: Dictionary = {}) -> float:
 	# Calibrate the hub workforce to £6 at base wages, preserving normal wage growth.
 	if str(building.get("building_id", "")) == "b_038":
 		base_cost *= 6.0 / (658.0 * EconomyConfig.LABOUR_SKILLED_RATE)
-	return base_cost * BuildingLevels.mult("labour", int(building.get("level", 1)))
+	# Only the staff hired so far are paid (Staffing.hired_share, 1 once fully staffed).
+	return base_cost * BuildingLevels.mult("labour", int(building.get("level", 1))) * Staffing.hired_share(building)
 
 ## A building's workforce by kind (unskilled, skilled, high skilled): its recipe's columns, else its building's,
 ## else the stub. The headcount its labour cost is priced on (_base_labour_cost).
@@ -1969,7 +1984,9 @@ func labour_headcount() -> Dictionary:
 			continue
 		if BuildingWorks.is_building_paused(str(building.get("instance_id", ""))):
 			continue
-		total += labour_heads(building, Catalog.get_recipe(str(building.get("recipe_id", ""))))
+		var heads := labour_heads(building, Catalog.get_recipe(str(building.get("recipe_id", ""))))
+		var hired := Staffing.hired_share(building)
+		total += Vector3i(roundi(heads.x * hired), roundi(heads.y * hired), roundi(heads.z * hired))
 	return {"unskilled": total.x, "skilled": total.y, "high_skilled": total.z}
 
 # Every percentage labour change applies ADDITIVELY to the 100% base — they do not

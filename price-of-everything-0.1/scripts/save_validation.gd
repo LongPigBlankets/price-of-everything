@@ -28,6 +28,7 @@ const FIELDS := {
 			"deposit_remaining",
 			"fired_advisor_cooldowns",
 			"ghost_holdings",
+			"pending_purchases",
 			"infrastructure_usage_last_turn",
 			"infrastructure_usage_streaks",
 			"input_tile_only",

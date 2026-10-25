@@ -698,7 +698,8 @@ in the next 20 turns finish 1 turn sooner."
 
 ### 7.3 Upgrades
 
-- `UPGRADE_DURATION` 3 → 5.
+- `UPGRADE_DURATION` 3 → 5 for production buildings. Infrastructure upgrades keep 3 turns
+  (`INFRA_UPGRADE_DURATION`), as infrastructure construction is unchanged.
 - UI fallbacks that assume 3 must read the constant: `building_detail_panel_v2.gd:1135` and
   `upgrade_dialog_ds2.gd:239` (`get("duration", 3)`).
 
@@ -1500,6 +1501,97 @@ Labour tab control.
 - **Evidence**:
   - the time-to-first-output table (§7.7) reproduced by the harness;
   - building count at turn 50.
+
+#### P2 acceptance criteria
+
+Each item is checked by a named unit test unless marked otherwise. A "tick" is one turn's
+resolution. Fill is `staff_fill`, the hired share of a building's requirement.
+
+**Staffing (§5)**
+
+1. **AC6.1** Fill starts when construction begins: at placement when the kit is already on the
+   tile, or at the materials claim for a project that waited for materials. It starts at 0, or
+   0.5 while Andrew is Expansion Director. A project still awaiting materials does not hire.
+2. **AC6.2** Each tick, before production, fill rises by 1 / fill turns (5, 8 or 12 by the band
+   that tick), capped at 1. It rises on the same ticks construction counts down, and keeps rising
+   on the finished building. Starting buildings, NPC buildings and anything saved before this
+   phase read as fully staffed (a missing key is 1).
+3. **AC6.3** Run fraction: 0 below 70% fill, equal to fill from 70%.
+   `MatchState.startup_capacity_multiplier` returns it, so `run_multiplier` scales inputs,
+   outputs and power by it. A building below 70% does not run, consumes nothing and carries the
+   blocked reason code `staffing`.
+4. **AC6.4** Labour is charged on the hired share. A building below 70% pays the idle pay share
+   of its hired share.
+5. **AC6.5** Upgrades:
+   - when the works start, fill is rebased to the new level's headcount (×0.67 from level 1 to 2)
+     and keeps rising;
+   - the building runs at its old level during the works, as today, with output unchanged;
+   - after completion its output never falls below the previous level's while fill is under 1;
+   - cancelling the upgrade rebases fill back.
+6. **AC6.6** A recipe switch keeps fill. Demolition keeps the −15 shift from P1.
+7. **AC6.7** A deposit is charged its base draw × the staffing run fraction.
+8. **AC6.8** The half capacity start is retired: the Construct switch is gone, nothing saves the
+   flag, and saves that carry it still load.
+9. **AC6.9** A harness reproduces the §7.7 table exactly: 4, 5 and 6 turn builds at fast, normal
+   and slow hiring, with Andrew's package, and a bought building.
+
+**Durations (§7.1–§7.4)**
+
+1. **AC7.1** `build_duration` gives totals of 4, 5 and 6 turns per §7.1. Buildings §7.1 does not
+   list: landfill 4, water recycling 5, heat battery 5, recycling plant 5, airport 6.
+   Infrastructure stays at 2. A levelled build still adds 2.
+2. **AC7.2** A `construction_time` Modifiers domain applies in `effective_build_duration` as
+   (turns + add) × mult × (1 + pct / 100), rounded, never below 2 (a shorter unmodified duration
+   is kept). Gerald keeps his −1. The search overlay reads `effective_build_duration`. A project
+   keeps the duration it started with.
+3. **AC7.3** `UPGRADE_DURATION` is 5, and the UI fallbacks read the constant. Infrastructure
+   upgrades (roads, rails, pipes, cables) keep 3 turns, like their unchanged construction.
+4. **AC7.4** Retrofit turns: base 3, Ops 3 2, Ops 2 3, Ops 1 4. Fees and labour fractions are
+   unchanged.
+
+**Buying (§7.5)**
+
+1. **AC8.1** `MatchState.offer_for_building(iid)` is the one purchase path. The market lots, the
+   building detail panel and the tile view's port purchase call it. It charges the full price at
+   the offer, and there is no cancel. The onboarding tutorial's purchase closes at once and fully
+   staffed, because its next steps work on the bought building.
+2. **AC8.2** The building is under offer for 2 turns (1 with Andrew's package). It stays NPC
+   owned, leaves the market lots and cannot be offered for twice. Panels say "Under offer.
+   Yours in N turns."
+3. **AC8.3** Closing happens at the end of the last closing tick. The transfer is today's: owner,
+   land, `land_exempt`, seeded stock and Local Suppliers enrolment. Fill is 0.8, or 0.5 if
+   satisfaction is below −5 at closing. The building first runs the tick after.
+4. **AC8.4** `pending_purchases` is saved, validated and cleared on reset. Older saves load with
+   none.
+
+**Andrew Keeler as Expansion Director (§7.2)**
+
+1. **AC9.1** The turn 3 offer has a third choice, Expansion Director. The `expansion_director`
+   seat seats only Andrew and appears only while he holds it.
+2. **AC9.2** While he holds it, for his 30 turn tenure: construction −3 turns (floor 2), new
+   projects start 50% staffed, purchase closing takes 1 turn. No purchase discount and no build
+   on credit. Every effect ends with his tenure.
+
+**UI and copy**
+
+1. **AC10.1** Building detail diagnostics show a staffing row while fill is under 1: "Staffed
+   64%. Starts at 70%." below 70%, "Staffed 85%. Runs at 85%." from 70%.
+2. **AC10.2** The construction view shows the staff hired so far.
+3. **AC10.3** A building under offer leaves the market lots. The building detail panel shows
+   "Under offer. Yours in N turns." in place of its Buy key, and the tile view's port key says the same.
+4. **AC10.4** Tutorial and panel copy that pins construction at 3 turns reads the real duration.
+   Player copy has no hyphens, semicolons or dashes. *Checked by review.*
+5. **AC10.5** Windowed screenshots: the staffing row, a building under offer and Andrew's offer.
+   *Checked by review.*
+
+**Gates**
+
+1. **AC11.1** Unit suite green, with only known baseline failures. Parse check 0 failed. No new
+   `SCRIPT ERROR` in the unit, e2e or shot logs.
+2. **AC11.2** E2E to turn 100 with revenue, profit and buildings at turns 30, 50 and 100 quoted
+   against P1.
+3. **AC11.3** The Metal Magnate probe over 50 turns is quoted against P1 and stays solvent.
+4. **AC11.4** Stances A3, A6 and A7 are applied to `.claude/skills/cnc-design-intent/SKILL.md`.
 
 ### P3 — Strikes and accidents
 

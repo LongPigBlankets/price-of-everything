@@ -104,7 +104,9 @@ func _test_people_ds2_advisors() -> void:
 		states_ok = states_ok and str(place.get("state")) == str(status.seat(sid).state)
 	var want: Array[String] = []
 	for sid in AdvisorState.SEAT_DEFINITIONS:
-		want.append(str(sid))
+		# The Expansion Director seat exists only while Andrew Keeler holds it.
+		if not AdvisorState.FOUNDER_ONLY_SEATS.has(str(sid)):
+			want.append(str(sid))
 	_check(order == want, "people ds2 advisors: all ten seats, in the council's order (%s)" % ", ".join(order))
 	_check(states_ok, "people ds2 advisors: each place is in its seat_status state")
 	for sid in ["cfo", "coo"]:

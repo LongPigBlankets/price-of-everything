@@ -81,9 +81,9 @@ func _commit(mode: String) -> void:
 	if bool(result.get("ok", false)):
 		var status := str(result.get("status", ""))
 		if status == BuildingWorks.UPGRADE_STATUS_AWAITING:
-			_toast("Upgrade queued — sourcing materials, then %d turns." % int(_preview.get("duration", 3)), "show_caution")
+			_toast("Upgrade queued — sourcing materials, then %d turns." % int(_preview.get("duration", preload("res://scripts/building_levels.gd").UPGRADE_DURATION)), "show_caution")
 		else:
-			_toast("Upgrade started — ready in %d turns." % int(_preview.get("duration", 3)), "show_caution")
+			_toast("Upgrade started — ready in %d turns." % int(_preview.get("duration", preload("res://scripts/building_levels.gd").UPGRADE_DURATION)), "show_caution")
 		committed.emit(_instance_id)
 		close()
 		return

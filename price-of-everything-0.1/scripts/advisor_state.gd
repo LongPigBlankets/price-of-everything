@@ -202,7 +202,16 @@ const SEAT_DEFINITIONS := {
 	"chief_investment":   {"seat_name": "Chief Investment",     "governs": "fin",  "flexible": ["fin", "inn"],       "lever_kit": ["one-off cheap loan", "purchase value", "capex"]},
 	"chief_markets":      {"seat_name": "Chief Markets Officer","governs": "inf",  "flexible": ["inf", "fin"],       "lever_kit": ["market spread", "sale-price boosts", "forewarning"]},
 	"sustainability":     {"seat_name": "Sustainability Officer","governs": "inf", "flexible": ["inf", "ops", "lead"],"lever_kit": ["greenest push", "green premium", "clean-adoption discount"]},
+	"expansion_director": {"seat_name": "Expansion Director",   "governs": "ops",  "flexible": [],                  "lever_kit": ["construction time", "new site staffing", "purchase closing"]},
 }
+## Seats only the founder can take, and only for his tenure: they exist while he holds them
+## (docs/pacing-labour-mining-licensing-spec.md §7.2, design stance A6).
+const FOUNDER_ONLY_SEATS: Array[String] = ["expansion_director"]
+const EXPANSION_DIRECTOR_SEAT := "expansion_director"
+## Andrew Keeler's Expansion package: builds take 3 turns less (floor 2, MatchState.effective_build_duration),
+## new sites start half staffed (Staffing.start_fill) and purchases close in 1 turn (MatchState.purchase_closing_turns).
+const EXPANSION_CONSTRUCTION_TURNS := -3.0
+const EXPANSION_DIRECTOR_WORDS: Array[String] = ["Builds take 3 turns less", "New sites start half staffed", "Purchases close in 1 turn"]
 # Canonical 12-advisor stat roster (spec §3). Stars are DERIVED (advisor_star),
 # never stored. salary is static (Phase-2 payroll); advisor_payroll_per_turn stays
 # flat for now. traits.specialty_domain is filled in Phase 1+ for effect routing.
@@ -525,7 +534,14 @@ func advisor_seat_governing_discipline(advisor_id: String, seat_id: String) -> S
 ## Which posts the company can fill. Only CFO and COO exist until the people/labour research
 ## node opens the rest — see docs/early-game-onboarding-spec.md §5.4.
 func is_seat_available(seat_id: String) -> bool:
+	if FOUNDER_ONLY_SEATS.has(seat_id):
+		return founder_seat == seat_id
 	return advisors_unlocked or all_seats_unlocked or BASE_SEATS.has(seat_id)
+
+## Andrew Keeler holds the Expansion Director seat and his tenure is still running.
+func expansion_director_active() -> bool:
+	return founder_seat == EXPANSION_DIRECTOR_SEAT and not founder_tenure_expired() \
+		and get_advisor_in_seat(EXPANSION_DIRECTOR_SEAT) == FOUNDER_ADVISOR_ID
 
 func available_seat_ids() -> Array[String]:
 	var out: Array[String] = []
@@ -575,6 +591,8 @@ func assign_advisor_to_seat(seat_id: String, advisor_id: String) -> bool:
 	if _roster_entry(advisor_id).is_empty():
 		return false
 	if not permanent_advisor_ids.has(advisor_id):
+		return false
+	if FOUNDER_ONLY_SEATS.has(seat_id) and advisor_id != FOUNDER_ADVISOR_ID:
 		return false
 	# The founder's post is his for the tenure — vacating it out from under him is the one
 	# reassignment the council refuses.
@@ -785,6 +803,14 @@ func reconcile_advisor_modifiers() -> void:
 				"domain": str(eff.get("domain", "")),
 				"pct": pct,
 				"label": "%s: %s (tier %d)" % [seat_name, advisor_id, tier],
+				"source": "advisor_seat",
+			})
+		if str(seat_id) == EXPANSION_DIRECTOR_SEAT and expansion_director_active():
+			Modifiers.add({
+				"id": "advisor_seat_%s_construction_time" % seat_id,
+				"domain": "construction_time",
+				"add": EXPANSION_CONSTRUCTION_TURNS,
+				"label": "%s: %s" % [seat_name, advisor_id],
 				"source": "advisor_seat",
 			})
 		if _founder_coo_transport_active(advisor_id, str(seat_id)):

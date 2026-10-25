@@ -912,7 +912,7 @@ static func steps() -> Array:
 			"id": "glass_wait_built",
 			"chapter": "Integration · Margin",
 			"title": "End turns until the furnace is built",
-			"body": "Keep pressing End Turn until the Furnace is built. Materials need to arrive on tile and then construction will take 3 turns.",
+			"body": "Keep pressing End Turn until the Furnace is built. Materials need to arrive on tile and then construction will take %d turns." % MatchState.effective_build_duration("b_002"),
 			"setup": [ { "action": "focus_tile", "tile": GLASS_TILE } ],
 			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {

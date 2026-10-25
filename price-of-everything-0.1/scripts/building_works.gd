@@ -13,6 +13,7 @@ extends Node
 
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
+const Staffing := preload("res://scripts/staffing.gd")
 
 # Demolish is a queued 1-turn job (mirrors upgrades/retrofits) before the building is removed.
 const DEMOLISH_TURNS := 1
@@ -196,12 +197,12 @@ func start_retrofit(instance_id: String, new_recipe_id: String) -> Dictionary:
 		"instance_id": instance_id,
 		"from_recipe": str(inst.get("recipe_id", "")),
 		"to_recipe": new_recipe_id,
-		"turns_remaining": int(tier.get("turns", 2)),
+		"turns_remaining": int(tier.get("turns", 3)),
 		"labour_fraction": float(tier.get("labour", 0.5)),
 	})
 	AdvisorState.flag_agenda_event(AdvisorState.AGENDA_CHANGED_RECIPE)
 	building_retrofit_started.emit(instance_id, new_recipe_id)
-	return {"ok": true, "turns": int(tier.get("turns", 2)), "fee": float(tier.get("fee", 0.0))}
+	return {"ok": true, "turns": int(tier.get("turns", 3)), "fee": float(tier.get("fee", 0.0))}
 
 # Advance every retrofit one turn; on completion swap the recipe. Returns completed ids.
 func tick_retrofits() -> Array:
@@ -427,7 +428,7 @@ func _preview_infra_upgrade(inst: Dictionary, internal: String) -> Dictionary:
 		"ok": true, "at_max": false, "infra": true,
 		"building_name": building_name,
 		"from_level": level, "target_level": target,
-		"duration": BuildingLevels.UPGRADE_DURATION,
+		"duration": BuildingLevels.INFRA_UPGRADE_DURATION,
 		"cash_cost": cost, "affordable": MatchState.money >= cost,
 		"capacity": _infra_capacity_delta(internal, level, target, str(inst.get("tile_id", ""))),
 		"research_gate": "", "research_locked": false,
@@ -778,6 +779,9 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 				TransportState.queue_move(str(move.tile_id), tile_id, move.goods, false, {"upgrade_instance_id": instance_id})
 
 	var status := UPGRADE_STATUS_UPGRADING if shortfall.is_empty() else UPGRADE_STATUS_AWAITING
+	# Works start now when the kit is all here: the extra staff hire from today (§5 Upgrades).
+	if status == UPGRADE_STATUS_UPGRADING:
+		Staffing.begin_upgrade(inst, target)
 	pending_upgrades.append({
 		"instance_id": instance_id,
 		"building_id": building_id,
@@ -862,7 +866,7 @@ func _start_infra_upgrade(instance_id: String, inst: Dictionary, internal: Strin
 		"status": UPGRADE_STATUS_UPGRADING,
 		"materials": {},
 		"missing": {},
-		"turns_remaining": BuildingLevels.UPGRADE_DURATION,
+		"turns_remaining": BuildingLevels.INFRA_UPGRADE_DURATION,
 		"size_delta": 0.0,
 		"infra": true,
 		"infra_slot": internal,     # slot key == building internal for all five
@@ -901,6 +905,8 @@ func tick_upgrades() -> Array:
 			if still.is_empty():
 				p["status"] = UPGRADE_STATUS_UPGRADING
 				p["stalled_turns"] = 0
+				if not is_infra:
+					Staffing.begin_upgrade(BuildingState.buildings[instance_id], int(p.get("target_level", 1)))
 			else:
 				_retry_stalled_upgrade(p, instance_id, tile_id, still)
 			building_upgrade_progress.emit(instance_id)
@@ -920,6 +926,7 @@ func tick_upgrades() -> Array:
 				var inst: Dictionary = BuildingState.buildings[instance_id]
 				new_level = int(p.get("target_level", int(inst.get("level", 1)) + 1))
 				inst["level"] = new_level
+				Staffing.finish_upgrade(inst)
 			completed.append(instance_id)
 			building_upgraded.emit(instance_id, new_level)
 		else:
@@ -1009,6 +1016,8 @@ func cancel_upgrade(instance_id: String) -> bool:
 		var cash_paid := float(p.get("cash_paid", 0.0))
 		if cash_paid > 0.0:
 			MatchState.add_money(cash_paid)
+		if BuildingState.buildings.has(instance_id) and not bool(p.get("infra", false)):
+			Staffing.cancel_upgrade(BuildingState.buildings[instance_id])
 	pending_upgrades = kept
 	if cancelled:
 		building_upgrade_cancelled.emit(instance_id)

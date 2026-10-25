@@ -1,4 +1,5 @@
 extends PanelContainer
+const BuildingMarketTab := preload("res://scripts/building_market_panel.gd")
 const Metrics := preload("res://scripts/ds2/metrics.gd")
 const EffectEmblem := preload("res://scripts/effect_emblem.gd")
 ## Building Detail — the scenario-adaptive detail panel, in DS2's worn-industrial look (control plates,
@@ -275,6 +276,7 @@ func _wire_live_refresh() -> void:
 		[MatchState, "building_demolish_started"],
 		[MatchState, "building_demolished"],
 		[MatchState, "building_owner_changed"],
+		[MatchState, "purchases_changed"],
 	]
 	for c in conns:
 		var obj: Object = c[0]
@@ -499,7 +501,16 @@ func _render_npc(building: Dictionary, building_data: Dictionary, recipe: Dictio
 	vb.add_child(company)
 	_body.add_child(card)
 
-	if not bool(own.get("is_ruins", false)):
+	if MatchState.is_under_offer(str(building.get("instance_id", ""))):
+		# Paid for and closing (docs/pacing-labour-mining-licensing-spec.md §7.5): no Buy key, no cancel.
+		var offer := Label.new()
+		offer.name = "UnderOfferLabel"
+		offer.theme_type_variation = "Body"
+		offer.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+		offer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		offer.text = BuildingMarketTab.offer_words(str(building.get("instance_id", "")))
+		_body.add_child(offer)
+	elif not bool(own.get("is_ruins", false)):
 		var display_name := BuildingNaming.of(building)
 		var price := BuildingReadout.buy_price(building)
 		var buy := Button.new()
@@ -542,17 +553,13 @@ func _open_buy_dialog(iid: String, building_name: String, price: int) -> void:
 func _on_buy_confirmed(_dont_ask: bool) -> void:
 	var iid := str(_pending_buy.get("iid", ""))
 	var building_name := str(_pending_buy.get("name", ""))
-	var price := int(_pending_buy.get("price", 0))
 	var building: Dictionary = BuildingState.get_building(iid)
 	if Tutorial.port_purchase_disabled(str(building.get("building_id", ""))):
 		return
 	if iid == "" or not BuildingState.buildings.has(iid):
 		return
-	if not MatchState.deduct_money(float(price)):
-		MatchState.build_rejected_no_funds.emit("Not enough money to buy %s — need £%d, you have £%.0f" % [building_name, price, MatchState.money])
+	if not bool(MatchState.offer_for_building(iid, building_name).get("ok", false)):
 		return
-	BuildingState.set_building_owner(iid, MatchState.LOCAL_PLAYER)
-	MatchState.request_toast("Purchased %s for £%d" % [building_name, price], "success")
 	Audio.transaction()
 	# building_owner_changed → coalesced refresh re-reads the now-owned building → full panel.
 
@@ -582,6 +589,13 @@ func _render_construction(building: Dictionary, recipe: Dictionary, constr: Dict
 	else:
 		sub.text = "Construction begins once all materials arrive · then a %d-turn build" % after
 	vb.add_child(sub)
+	if str(constr.get("staffing", "")) != "":
+		var staff := Label.new()
+		staff.name = "ConstructionStaffing"
+		staff.theme_type_variation = "Caption"
+		staff.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		staff.text = str(constr.staffing)
+		vb.add_child(staff)
 	_body.add_child(card)
 
 	var mats: Array = constr.get("materials", [])
@@ -1132,7 +1146,7 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 			vb.add_child(m)
 			return
 		var target := int(pv.get("target_level", from_level + 1))
-		var duration := int(pv.get("duration", 3))
+		var duration := int(pv.get("duration", BuildingLevels.UPGRADE_DURATION))
 		var head := Label.new()
 		head.theme_type_variation = "Caption"
 		head.text = "Level %d  →  %d   ·   takes %d turn%s to upgrade" % [from_level, target, duration, "" if duration == 1 else "s"]

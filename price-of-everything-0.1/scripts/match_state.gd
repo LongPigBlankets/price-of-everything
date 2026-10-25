@@ -1,6 +1,7 @@
 extends Node
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const BuildingPrice := preload("res://scripts/building_price.gd")
+const Staffing := preload("res://scripts/staffing.gd")
 const MarketRules := preload("res://scripts/market_rules.gd")
 
 # MatchState: the canonical store for everything that changes during a match.
@@ -127,10 +128,12 @@ var route_objective: int = RouteObjective.FASTEST
 # Session-only; never persisted. See docs/building-detail-v2-plan.md.
 
 
-var construct_start_half_capacity: bool = false
 ## When on, confirming a build on a tile the player has too little land for buys exactly
 ## enough land patches to cover the shortfall first (see world_map._space_check_for_build).
 var construct_auto_buy_land: bool = true
+## NPC buildings the player has paid for that are still closing (docs/pacing-labour-mining-licensing-spec.md
+## §7.5): instance_id -> {price, turns_remaining, offer_turn}. They stay NPC owned until closing.
+var pending_purchases: Dictionary = {}
 ## Last public-road expansion batch applied; persisted so loading cannot repeat a batch.
 var public_roads_last_turn: int = 0
 ## One-off charges a start books on a given turn, [{turn, amount, label}] (data/starts/*.json
@@ -175,6 +178,8 @@ signal toast_requested(message: String, toast_type: String)
 signal market_sale_arrived_at_port(port_tile_id: String, revenue: float)
 ## A build was rejected for lack of funds (drives the error toast + money flash).
 signal build_rejected_no_funds(message: String)
+## An NPC building went under offer, or an offer closed and it changed hands (§7.5).
+signal purchases_changed(instance_id: String)
 ## Purchases tab asked the player to pick a delivery tile on the map.
 signal buy_tile_pick_requested()
 signal buy_tile_picked(tile_id: String)  # tile_id == "" means cancelled
@@ -254,6 +259,9 @@ func _on_survey_phase_started(phase: int) -> void:
 	if phase == TurnManager.Phase.PROCESS:
 		tick_surveys()
 		Power.tick_battery_fills()
+	elif phase == TurnManager.Phase.RECEIVE:
+		# Last phase of the turn: an offer whose closing ends now changes hands, and runs from next turn.
+		tick_purchases()
 # --- Public API: money ---
 func add_money(delta: float) -> void:
 	money += delta
@@ -776,8 +784,14 @@ func _materials_rebate(reqs: Dictionary) -> float:
 # real builds never drop below BUILD_DURATION_MIN. Instant (0-turn) buildings stay instant.
 const BUILD_DURATION_BUMP := 1
 const BUILD_DURATION_MIN := 1
+## Timed speed-ups (`construction_time` modifiers: Andrew Keeler as Expansion Director, mission
+## rewards) never take a build below this many turns. A build already shorter keeps its length.
+const CONSTRUCTION_TIME_FLOOR := 2
 
 
+## Turns to build `building_id`: the CSV duration plus the bump, Gerald's turn off, then the
+## `construction_time` modifiers as (turns + add) × mult × (1 + pct / 100), rounded, floor 2
+## (docs/pacing-labour-mining-licensing-spec.md §7.2). A project keeps the figure it started with.
 func effective_build_duration(building_id: String) -> int:
 	var base := int(Catalog.get_building(building_id).get("build_duration", 0))
 	if base <= 0:
@@ -785,7 +799,13 @@ func effective_build_duration(building_id: String) -> int:
 	var dur := base + BUILD_DURATION_BUMP
 	if AdvisorState.is_master_builder_active():
 		dur -= 1
-	return maxi(BUILD_DURATION_MIN, dur)
+	dur = maxi(BUILD_DURATION_MIN, dur)
+	if Modifiers.has_domain("construction_time"):
+		var timed := roundi(Modifiers.apply("construction_time", building_id, float(dur), {"building_id": building_id}))
+		if timed < dur:
+			timed = maxi(mini(dur, CONSTRUCTION_TIME_FLOOR), timed)
+		dur = timed
+	return dur
 
 
 # --- Land sales (decision events; decision-events-spec.md D8) -----------------
@@ -890,8 +910,8 @@ func reset() -> void:
 	hidden_buildings_unlocked = false
 	recycling_unlocked = false
 	UiPrefs.reset()
-	construct_start_half_capacity = false
 	construct_auto_buy_land = true
+	pending_purchases.clear()
 	public_roads_last_turn = 0
 	one_off_charges = []
 	construct_material_source = "middleman"
@@ -972,8 +992,8 @@ func export_state() -> Dictionary:
 		"middleman_free_units": middleman_free_units,
 		"scenario_name": scenario_name,
 		"cheats_used": cheats_used,
-		"construct_start_half_capacity": construct_start_half_capacity,
 		"construct_auto_buy_land": construct_auto_buy_land,
+		"pending_purchases": pending_purchases.duplicate(true),
 		"public_roads_last_turn": public_roads_last_turn,
 		"one_off_charges": one_off_charges.duplicate(true),
 		"construct_material_source": construct_material_source,
@@ -1041,9 +1061,10 @@ func import_state(d: Dictionary) -> void:
 	# Tolerant readers: saves from before these existed load as an unknown start, uncheated.
 	scenario_name = str(d.get("scenario_name", ""))
 	cheats_used = bool(d.get("cheats_used", false))
-	set_construct_start_half_capacity(bool(d.get("construct_start_half_capacity", false)), false)
 	# Additive key: saves written before this setting existed use automatic land buying.
 	set_construct_auto_buy_land(bool(d.get("construct_auto_buy_land", true)), false)
+	# Additive: saves from before purchases had a closing period have none in flight.
+	pending_purchases = (d.get("pending_purchases", {}) as Dictionary).duplicate(true)
 	public_roads_last_turn = int(d.get("public_roads_last_turn", 0))
 	one_off_charges = (d.get("one_off_charges", []) as Array).duplicate(true)
 	set_construct_material_source(str(d.get("construct_material_source", "middleman")), false)
@@ -1107,13 +1128,6 @@ func set_sell_mode(mode: int) -> void:
 	sell_mode = mode
 	sell_mode_changed.emit(mode)
 
-
-func set_construct_start_half_capacity(enabled: bool, emit_change: bool = true) -> void:
-	if construct_start_half_capacity == enabled:
-		return
-	construct_start_half_capacity = enabled
-	if emit_change:
-		construct_settings_changed.emit()
 
 func set_construct_auto_buy_land(enabled: bool, emit_change: bool = true) -> void:
 	if construct_auto_buy_land == enabled:
@@ -1185,14 +1199,13 @@ func power_priority_for(category: String) -> String:
 		return power_priority_wind_solar
 	return "self"
 
-## Multiplier applied only to a new building's first successful operating turn.
-## It is stored on the instance, so changing the default later cannot alter an
-## already-started project or a completed building.
+## The share of its capacity a building's staff let it run this turn: 0 below 70% hired, else its fill
+## (docs/pacing-labour-mining-licensing-spec.md §5, Staffing.run_fraction). 1 once fully staffed.
 func startup_capacity_multiplier(building: Dictionary) -> float:
-	return 0.5 if bool(building.get("startup_half_capacity", false)) else 1.0
+	return Staffing.run_fraction(building)
 
-## How hard a building runs this turn: the one scale for its inputs, outputs and power. The startup
-## factor times its throughput (docs/pacing-labour-mining-licensing-spec.md §3). Throughput comes
+## How hard a building runs this turn: the one scale for its inputs, outputs and power. The staffing
+## run fraction times its throughput (docs/pacing-labour-mining-licensing-spec.md §3). Throughput comes
 ## from the labour policies and from `throughput` modifiers, whose percentages add.
 func run_multiplier(building: Dictionary) -> float:
 	return startup_capacity_multiplier(building) * throughput_multiplier(building)
@@ -1205,11 +1218,6 @@ func throughput_multiplier(building: Dictionary) -> float:
 		pct += float(Modifiers.resolve_pct("throughput", bid,
 			{"building_id": bid, "instance_id": str(building.get("instance_id", ""))}).get("net", 0.0))
 	return maxf(0.0, 1.0 + pct / 100.0)
-
-func consume_startup_capacity(instance_id: String) -> void:
-	if instance_id == "" or not BuildingState.buildings.has(instance_id):
-		return
-	BuildingState.buildings[instance_id].erase("startup_half_capacity")
 
 func set_route_objective(objective: int) -> void:
 	if objective == route_objective:
@@ -2181,6 +2189,75 @@ const _TIER_MULT := {3: 1.0, 2: 0.5, 1: -0.5, 0: 0.0}
 
 # Assign a HIRED, rostered advisor to a seat. Enforces the slot cap and
 # one-seat-per-advisor. Returns false if rejected.
+## Turns between paying for an NPC building and owning it (§7.5): 2, or 1 while Andrew Keeler is Expansion
+## Director. The onboarding tutorial hands its purchase over at once: its steps continue on the bought building.
+const PURCHASE_CLOSING_TURNS := 2
+const PURCHASE_CLOSING_TURNS_EXPANSION := 1
+
+func purchase_closing_turns() -> int:
+	if bool(ruleset.get("tutorial_enabled", false)):
+		return 0
+	return PURCHASE_CLOSING_TURNS_EXPANSION if AdvisorState.expansion_director_active() else PURCHASE_CLOSING_TURNS
+
+func is_under_offer(instance_id: String) -> bool:
+	return pending_purchases.has(instance_id)
+
+## Turns until an offer closes (0 when the building is not under offer).
+func offer_turns_remaining(instance_id: String) -> int:
+	return int((pending_purchases.get(instance_id, {}) as Dictionary).get("turns_remaining", 0))
+
+## The one way to buy an NPC building (§7.5): pays the full asking price now, takes the building off the
+## market, and hands it over when closing ends. There is no cancel. Returns {ok, reason, price, turns}.
+func offer_for_building(instance_id: String, display_name: String = "") -> Dictionary:
+	var building: Dictionary = BuildingState.get_building(instance_id)
+	if building.is_empty():
+		return {"ok": false, "reason": "That building is no longer for sale."}
+	if BuildingState.is_player_owned(building):
+		return {"ok": false, "reason": "You already own it."}
+	if pending_purchases.has(instance_id):
+		return {"ok": false, "reason": "It is already under offer."}
+	var label := display_name if display_name != "" else Catalog.get_building_display_name(str(building.get("building_id", "")))
+	var price := building_purchase_price(building)
+	if not deduct_money(float(price)):
+		build_rejected_no_funds.emit("Not enough money to buy %s. It costs £%d and you have £%.0f." % [label, price, money])
+		return {"ok": false, "reason": "Not enough money."}
+	var turns := purchase_closing_turns()
+	if turns <= 0:
+		_close_purchase(instance_id, false)
+		request_toast("Purchased %s for £%d" % [label, price], "success")
+		return {"ok": true, "price": price, "turns": 0}
+	pending_purchases[instance_id] = {"price": price, "turns_remaining": turns, "offer_turn": TurnManager.current_turn}
+	purchases_changed.emit(instance_id)
+	request_toast("Bought %s for £%d. Yours in %d turn%s." % [label, price, turns, "" if turns == 1 else "s"], "success")
+	return {"ok": true, "price": price, "turns": turns}
+
+## One turn of closing for every offer. An offer that reaches 0 changes hands now.
+func tick_purchases() -> void:
+	for iid in pending_purchases.keys():
+		var offer: Dictionary = pending_purchases[iid]
+		offer["turns_remaining"] = int(offer.get("turns_remaining", 0)) - 1
+		if int(offer.turns_remaining) <= 0:
+			pending_purchases.erase(iid)
+			if BuildingState.buildings.has(str(iid)):
+				_close_purchase(str(iid), true)
+			else:
+				add_money(float(offer.get("price", 0.0)))
+				purchases_changed.emit(str(iid))
+
+## The transfer: owner, land, stock and Local Suppliers (BuildingState.set_building_owner), and the staff a
+## going concern comes with (0.8, or 0.5 below −5 satisfaction). A building gone by closing is refunded
+## (tick_purchases).
+func _close_purchase(instance_id: String, staffed_by_closing: bool) -> void:
+	BuildingState.set_building_owner(instance_id, LOCAL_PLAYER)
+	var building: Dictionary = BuildingState.buildings[instance_id]
+	var category := str(Catalog.get_building(str(building.get("building_id", ""))).get("category", "production"))
+	if staffed_by_closing and str(building.get("recipe_id", "")) != "" and category != "infrastructure":
+		building["staff_fill"] = Staffing.bought_fill()
+	purchases_changed.emit(instance_id)
+	if staffed_by_closing:
+		request_toast("%s is yours." % Catalog.get_building_display_name(str(building.get("building_id", ""))), "success")
+
+
 ## Purchased buildings arrive with PURCHASE_SEED_TURNS of their recipe's inputs: a going
 ## concern comes with stock, where a fresh build starts empty.
 ## Infra and input-less recipes get nothing: there is no inventory to seed.

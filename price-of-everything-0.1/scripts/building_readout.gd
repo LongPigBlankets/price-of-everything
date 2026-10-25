@@ -16,6 +16,7 @@ const INTERMEDIARY_LABEL := "Local Suppliers"
 
 const BuildingStatus := preload("res://scripts/building_status.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
+const Staffing := preload("res://scripts/staffing.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 const BuildingPrice := preload("res://scripts/building_price.gd")
 const CompanyNames := preload("res://scripts/company_names.gd")
@@ -57,6 +58,9 @@ static func run_state(building: Dictionary, recipe: Dictionary, is_infrastructur
 		return "operational"
 	if BuildingStatus.power_status_color(building, recipe, is_infrastructure) == BuildingStatus.STATUS_RED:
 		return "stalled"
+	# Still hiring its first 70%: amber, it starts on its own once staffed.
+	if Staffing.is_waiting(building):
+		return "restarting"
 	var iid := str(building.get("instance_id", ""))
 	if Middleman.uses_inputs(iid):
 		var p := Middleman.preview(iid)
@@ -355,6 +359,12 @@ static func power_state_text(state: String) -> String:
 # Each row: { tone, ic, label, detail }. Built entirely from the shared status helpers so it
 # never disagrees with the RAG rail, the ledger, or the Empire view.
 
+## The staffing line (docs/pacing-labour-mining-licensing-spec.md §5): "Staffed 64%. Starts at 70%." or "Staffed 85%.
+## Runs at 85%.", then when hiring completes at today's pace.
+static func staffing_detail(building: Dictionary) -> String:
+	var turns := Staffing.turns_to(building, 1.0)
+	return "%s Fully staffed in %d turn%s." % [Staffing.status_text(building), turns, "" if turns == 1 else "s"]
+
 static func diagnostics(building: Dictionary, recipe: Dictionary, building_data: Dictionary, is_infrastructure: bool) -> Array:
 	var rows: Array = []
 	var iid := str(building.get("instance_id", ""))
@@ -386,6 +396,9 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 	# 1) critical fault / restarting / all-clear
 	if exhausted:
 		rows.append(_row("bad", "warn", "Deposit exhausted", "The deposit is exhausted. This building cannot produce with its current recipe."))
+	elif Staffing.is_waiting(building) and not is_infrastructure:
+		# Below 70% hired it does not run at all: that is the one reason, whatever its inputs say.
+		rows.append(_row("warn", "clock", "Hiring staff", staffing_detail(building)))
 	elif not _deposit_runway(iid).is_empty():
 		# AMBER: the deposit is nearly gone. Warned rather than faulted — the mine is still
 		# producing normally today. Without it exhaustion arrives with no notice at all: the
@@ -422,6 +435,9 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 		rows.append(_row("bad", "box", upgrade_fault_label, str(upgrade_progress.get("error", "The upgrade is unable to continue."))))
 	else:
 		rows.append(_row("ok", "check", "No critical faults", "Operating normally." if ran else "Ready to run."))
+	# Running short staffed: the share it runs at, under the first row.
+	if Staffing.is_hiring(building) and not Staffing.is_waiting(building) and not is_infrastructure:
+		rows.append(_row("warn", "clock", "Hiring staff", staffing_detail(building)))
 	# Keep the upgrade fault visible alongside a production fault instead of letting the first
 	# red row hide a separate stalled project.
 	if upgrade_blocked and (rows.is_empty() or str((rows[0] as Dictionary).get("label", "")) != upgrade_fault_label):
@@ -1953,7 +1969,21 @@ static func construction(building: Dictionary) -> Dictionary:
 		"turns_left": int(proj.get("turns_remaining", 0)),
 		"turns_after": int(proj.get("construction_duration", 0)),
 		"materials": mats,
+		# Staff hired so far (docs/pacing-labour-mining-licensing-spec.md §5); empty before construction begins.
+		"staffing": staffing_words(proj) if status == Construction.STATUS_UNDER_CONSTRUCTION and proj.has("staff_fill") else "",
 	}
+
+## A project's hiring in words: "Staff hired 25%. It runs once 70% are hired, in 4 turns." Fully staffed reads
+## "Fully staffed."
+static func staffing_words(project: Dictionary) -> String:
+	if not Staffing.is_hiring(project):
+		return "Fully staffed."
+	var hired := roundi(Staffing.fill(project) * 100.0)
+	var operate := roundi(Staffing.OPERATE_AT * 100.0)
+	if Staffing.fill(project) >= Staffing.OPERATE_AT:
+		return "Staff hired %d%%." % hired
+	var turns := Staffing.turns_to(project, Staffing.OPERATE_AT)
+	return "Staff hired %d%%. It runs once %d%% are hired, in %d turn%s." % [hired, operate, turns, "" if turns == 1 else "s"]
 
 
 ## Transport advice for fluid/gas construction materials. Road and rail can deliver them, so

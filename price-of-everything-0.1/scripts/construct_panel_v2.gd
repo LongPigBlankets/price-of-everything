@@ -409,10 +409,6 @@ func _render_settings() -> void:
 		source_box.add_child(choice)
 
 	_content.add_child(_settings_toggle_card(
-		"Start at half capacity",
-		"New buildings use half their inputs, power and output for their first successful operating turn. Existing projects are unchanged.",
-		MatchState.construct_start_half_capacity, _on_start_capacity_toggled))
-	_content.add_child(_settings_toggle_card(
 		"Auto-buy land when building",
 		"If the chosen tile does not have enough of your land for the building, buy just enough to fit it as part of confirming. Tiles that already have room buy nothing.",
 		MatchState.construct_auto_buy_land, _on_auto_buy_land_toggled))
@@ -501,10 +497,6 @@ func _on_output_destination_selected(destination: String) -> void:
 
 func _on_material_source_selected(source: String) -> void:
 	MatchState.set_construct_material_source(source)
-
-
-func _on_start_capacity_toggled(enabled: bool) -> void:
-	MatchState.set_construct_start_half_capacity(enabled)
 
 
 func _filtered_buildings() -> Array:

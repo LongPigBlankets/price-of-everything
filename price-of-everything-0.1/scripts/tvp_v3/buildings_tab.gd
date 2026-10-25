@@ -36,6 +36,7 @@ extends RefCounted
 ##
 ## Open groups, the open drawer and the readings are kept on the panel (meta), so a refresh keeps them.
 
+const BuildingMarketTab := preload("res://scripts/building_market_panel.gd")
 const Parts := preload("res://scripts/ds2/parts.gd")
 const Readings := preload("res://scripts/tvp_v3/buildings_readings.gd")
 const Recheck := preload("res://scripts/tvp_v3/buildings_recheck.gd")
@@ -661,9 +662,14 @@ static func _port_module(panel: Control, port: Dictionary) -> PanelContainer:
 	buy.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	buy.custom_minimum_size.x = CANCEL_W
 	var iid := str(port.get("instance_id", ""))
-	buy.disabled = Tutorial.port_purchase_disabled(PORT_ID)
-	Tip.attach(buy, {"name": "Buy the port", "detail": Tutorial.PORT_PURCHASE_DISABLED_TOOLTIP + "." if buy.disabled \
-		else "Buy it for %s." % MoneyFigure.text(float(price))})
+	var under_offer := MatchState.is_under_offer(iid)
+	buy.disabled = Tutorial.port_purchase_disabled(PORT_ID) or under_offer
+	var buy_tip := "Buy it for %s." % MoneyFigure.text(float(price))
+	if under_offer:
+		buy_tip = BuildingMarketTab.offer_words(iid)
+	elif buy.disabled:
+		buy_tip = Tutorial.PORT_PURCHASE_DISABLED_TOOLTIP + "."
+	Tip.attach(buy, {"name": "Buy the port", "detail": buy_tip})
 	buy.pressed.connect(func() -> void: panel.call("_open_port_buy", iid, price))
 	row.add_child(buy)
 	Tip.attach(module, {"name": "Port", "detail": "Owned by %s." % owner})

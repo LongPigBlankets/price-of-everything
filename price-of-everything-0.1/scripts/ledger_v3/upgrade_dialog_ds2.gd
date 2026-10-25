@@ -236,7 +236,7 @@ func _rebuild() -> void:
 	if str(p.get("research_gate", "")) != "" and bool(p.get("research_locked", false)):
 		_content.add_child(_research_line(str(p.get("research_gate", ""))))
 	_content.add_child(_land_line(building, p))
-	var time := _time_line(int(p.get("duration", 3)), from_level)
+	var time := _time_line(int(p.get("duration", BuildingLevels.UPGRADE_DURATION)), from_level)
 	time.add_child(_foot(p))
 	_content.add_child(time)
 

@@ -23,6 +23,10 @@ const DOMAIN_NAMES := {
 
 static func seat(seat_id: String) -> Dictionary:
 	var aid := AdvisorState.get_advisor_in_seat(seat_id)
+	if aid != "" and seat_id == AdvisorState.EXPANSION_DIRECTOR_SEAT:
+		# Unpaid, and what he brings is time, not money: the seat always earns its keep.
+		return {"state": "filled", "advisor": aid, "tone": "ok", "bonus": 0.0, "salary": 0.0, "net": 0.0,
+			"words": "Speeds every build and purchase while he serves."}
 	if aid != "":
 		var bonus := AdvisorState.advisor_bonus_preview_per_turn(aid, seat_id)
 		var salary := AdvisorState.advisor_cost_for(aid, AdvisorState.advisor_revenue_basis())
@@ -58,6 +62,8 @@ static func effect_words(eff: Dictionary) -> String:
 
 ## Every effect an advisor brings in a seat, in words.
 static func effects(advisor_id: String, seat_id: String) -> PackedStringArray:
+	if seat_id == AdvisorState.EXPANSION_DIRECTOR_SEAT:
+		return PackedStringArray(AdvisorState.EXPANSION_DIRECTOR_WORDS)
 	var out: PackedStringArray = []
 	for eff in AdvisorState.advisor_seat_effect_list(advisor_id, seat_id):
 		out.append(effect_words(eff))

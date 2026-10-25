@@ -23,6 +23,7 @@ const MiddlemanContract := preload("res://scripts/middleman_contract.gd")
 const MiddlemanLocations := preload("res://scripts/middleman_locations.gd")
 const MiddlemanService := preload("res://scripts/middleman_service.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
+const Staffing := preload("res://scripts/staffing.gd")
 const STATUS_UNDER_CONSTRUCTION := "under_construction"
 const STATUS_AWAITING_MATERIALS := "awaiting_materials"
 
@@ -284,8 +285,7 @@ func start_on_tile(building_id: String, recipe_id: String, tile_id: String, buil
 		# Degenerate (no construction time): complete at once, but still fire the lifecycle
 		# signals so visuals/toasts follow the same path as a timed build.
 		construction_started.emit(instance_id, tile_id)
-		_complete_build(building_id, recipe_id, tile_id, instance_id,
-			MatchState.construct_start_half_capacity and recipe_id != "", output_destination, placing_level)
+		_complete_build(building_id, recipe_id, tile_id, instance_id, output_destination, placing_level)
 		last_completed_building_id = building_id
 		construction_completed.emit(instance_id, tile_id)
 		return instance_id
@@ -302,9 +302,9 @@ func start_on_tile(building_id: String, recipe_id: String, tile_id: String, buil
 		"construction_duration": duration,
 		"reserved_space": placing_size(building_id), "level": placing_level,
 		"build_cost": build_cost,
-		"startup_half_capacity": MatchState.construct_start_half_capacity and recipe_id != "",
 		"output_destination": output_destination,
 	}
+	_begin_hiring(construction_projects[instance_id])
 	# The name at the start, kept with the save. Nothing shows it: every surface names a project through
 	# BuildingNaming when it draws, so an older save's name in the old form never reaches the screen.
 	construction_projects[instance_id]["name"] = BuildingNaming.label_for_tile(tile_id, instance_id, building_id, recipe_id)
@@ -383,7 +383,6 @@ func start_awaiting_market(building_id: String, recipe_id: String, tile_id: Stri
 		"reserved_space": placing_size(building_id), "level": placing_level,
 		"source": {"kind": "market"},  # re-ordered from market each turn until secured
 		"build_cost": build_cost,
-		"startup_half_capacity": MatchState.construct_start_half_capacity and recipe_id != "",
 		"output_destination": output_destination,
 	}
 	construction_projects[instance_id]["name"] = BuildingNaming.label_for_tile(tile_id, instance_id, building_id, recipe_id)
@@ -438,7 +437,6 @@ func start_awaiting_middleman(building_id: String, recipe_id: String, tile_id: S
 			"build_cost": build_cost,
 			"material_cost": material_cost,
 			"materials_discount": materials_discount,
-			"startup_half_capacity": MatchState.construct_start_half_capacity and recipe_id != "",
 			"output_destination": output_destination,
 		}
 	construction_projects[instance_id]["name"] = BuildingNaming.label_for_tile(tile_id, instance_id, building_id, recipe_id)
@@ -507,7 +505,6 @@ func start_awaiting_from_tile(building_id: String, recipe_id: String, dest_tile:
 		"reserved_space": placing_size(building_id), "level": placing_level,
 		"source": {"kind": "tile", "from_tile_id": source_tile},
 		"build_cost": build_cost,
-		"startup_half_capacity": MatchState.construct_start_half_capacity and recipe_id != "",
 		"output_destination": output_destination,
 	}
 	construction_projects[instance_id]["name"] = BuildingNaming.label_for_tile(dest_tile, instance_id, building_id, recipe_id)
@@ -602,9 +599,18 @@ func claim_materials() -> void:
 		if missing.is_empty():
 			project["status"] = STATUS_UNDER_CONSTRUCTION
 			project["turns_remaining"] = int(project.get("construction_duration", 0))
+			_begin_hiring(project)
 			construction_started.emit(instance_id, tile_id)
 		elif changed:
 			construction_materials_updated.emit(instance_id, tile_id)
+
+
+## Construction has begun on `project` (its kit is on the site): hiring starts, at 0 or half with the
+## Expansion Director (Staffing.start_fill). Only buildings that run a recipe hire.
+func _begin_hiring(project: Dictionary) -> void:
+	if str(project.get("recipe_id", "")) == "" or project.has("staff_fill"):
+		return
+	project["staff_fill"] = Staffing.start_fill()
 
 
 # Cancel a project in either state. Refunds the full build cost, returns every material the
@@ -701,6 +707,8 @@ func tick_turn() -> Array:
 		var project: Dictionary = construction_projects[instance_id]
 		if str(project.get("status", "")) != STATUS_UNDER_CONSTRUCTION:
 			continue
+		# Hiring runs on the same turns as the countdown (docs/pacing-labour-mining-licensing-spec.md §5).
+		Staffing.tick(project)
 		project["turns_remaining"] = int(project["turns_remaining"]) - 1
 		if int(project["turns_remaining"]) <= 0:
 			completed.append(instance_id)
@@ -741,7 +749,6 @@ func _promote(instance_id: String) -> void:
 		str(project.get("recipe_id", "")),
 		str(project.get("tile_id", "")),
 		instance_id,
-		bool(project.get("startup_half_capacity", false)),
 		str(project.get("output_destination", MatchState.construct_output_destination)),
 		int(project.get("level", 1)),
 	)
@@ -754,18 +761,19 @@ func _promote(instance_id: String) -> void:
 		inst["build_materials"] = (project.get("required_materials", {}) as Dictionary).duplicate()
 		if float(project.get("materials_discount", 0.0)) > 0.0:
 			inst["materials_discount"] = float(project.materials_discount)
+		# The staff hired while it was built come with it. A project without the key predates staffing.
+		if Staffing.is_hiring(project):
+			inst["staff_fill"] = Staffing.fill(project)
 	last_completed_building_id = str(project.get("building_id", ""))
 	construction_completed.emit(instance_id, str(project.get("tile_id", "")))
 
 
 # Promotion seam: turn a (pending) construction into a live building, reusing the stable id.
-func _complete_build(building_id: String, recipe_id: String, tile_id: String, instance_id: String, startup_half_capacity: bool = false, output_destination: String = "", level: int = 1) -> String:
+func _complete_build(building_id: String, recipe_id: String, tile_id: String, instance_id: String, output_destination: String = "", level: int = 1) -> String:
 	var completed_id := BuildingState.add_building(building_id, recipe_id, tile_id, MatchState.LOCAL_PLAYER, instance_id, true, level)
 	if BuildingState.buildings.has(completed_id):
 		# Optional saved planning marker; authored starting businesses default to online.
 		BuildingState.buildings[completed_id]["startup_inputs_pending"] = true
-	if startup_half_capacity and BuildingState.buildings.has(completed_id):
-		BuildingState.buildings[completed_id]["startup_half_capacity"] = true
 	var destination := output_destination if output_destination in ["market", "same_tile"] else MatchState.construct_output_destination
 	var recipe := Catalog.get_recipe(recipe_id)
 	# In a middleman campaign, leave tradeable outputs without a generic route

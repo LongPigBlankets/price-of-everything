@@ -250,8 +250,8 @@ func _test_retrofit_mechanic() -> void:
 	BuildingState.buildings[iid] = {"instance_id": iid, "building_id": bid, "recipe_id": str(recs[0]), "tile_id": "tile_0_0", "level": 1}
 
 	var tier: Dictionary = BuildingWorks.retrofit_cost_tier()
-	_check(is_equal_approx(float(tier["labour"]), 0.50) and int(tier["turns"]) == 2,
-		"retrofit: base tier (no COO) = 50% labour, 2 turns")
+	_check(is_equal_approx(float(tier["labour"]), 0.50) and int(tier["turns"]) == 3,
+		"retrofit: base tier (no COO) = 50% labour, 3 turns")
 
 	var before := MatchState.money
 	var res: Dictionary = BuildingWorks.start_retrofit(iid, str(recs[1]))
@@ -263,15 +263,16 @@ func _test_retrofit_mechanic() -> void:
 		"retrofit: blocked while already retooling")
 
 	BuildingWorks.tick_retrofits()
-	_check(BuildingWorks.is_retooling(iid), "retrofit: still retooling after 1 tick (base = 2 turns)")
+	BuildingWorks.tick_retrofits()
+	_check(BuildingWorks.is_retooling(iid), "retrofit: still retooling after 2 ticks (base = 3 turns)")
 	BuildingWorks.tick_retrofits()
 	_check(not BuildingWorks.is_retooling(iid) and str(BuildingState.buildings[iid]["recipe_id"]) == str(recs[1]),
-		"retrofit: completes after 2 turns and swaps in the new recipe")
+		"retrofit: completes after 3 turns and swaps in the new recipe")
 
 	AdvisorState.advisor_seats = {"coo": "tom"}   # Ops 3
 	var t3: Dictionary = BuildingWorks.retrofit_cost_tier()
-	_check(int(t3["turns"]) == 1 and is_equal_approx(float(t3["labour"]), 0.30),
-		"retrofit: Ops-3 COO = 1 turn, 30% labour")
+	_check(int(t3["turns"]) == 2 and is_equal_approx(float(t3["labour"]), 0.30),
+		"retrofit: Ops-3 COO = 2 turns, 30% labour")
 	AdvisorState.advisor_seats = {"coo": "rufus"}   # Ops 1 malus
 	var t1: Dictionary = BuildingWorks.retrofit_cost_tier()
 	_check(is_equal_approx(float(t1["labour"]), 0.75) and is_equal_approx(float(t1["fee"]), 40.0),

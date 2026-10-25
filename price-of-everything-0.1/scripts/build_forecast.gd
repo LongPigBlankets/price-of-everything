@@ -63,7 +63,8 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 		if material_source == "ask" or material_source == "": material_source = "middleman"
 		if material_source == "middleman" and str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1": material_source = "market"
 		if material_source == "middleman" and missing: lead = 1
-		var first_sale := duration+lead
+		# A site runs once 70% staffed: hiring that outlasts construction delays the first sale (§7.7).
+		var first_sale := duration+lead+maxi(0,preload("res://scripts/staffing.gd").turns_to_operate()-duration)
 		out.cash_needed = float(p.upfront)
 		out.steady_net = float(p.net)
 		out.capex = float(materials.subtotal)
@@ -202,7 +203,9 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 	var build_turns: int = maxi(0, MatchState.effective_build_duration(building_id))
 	# Turn numbers as the player counts them: turn 1 is the next turn they end.
 	var completes_turn: int = maxi(1, build_turns)
-	var first_producing: int = completes_turn + 1
+	# Hiring that outlasts construction keeps the finished building idle (§5, §7.7).
+	var hire_wait: int = maxi(0, preload("res://scripts/staffing.gd").turns_to_operate() - build_turns)
+	var first_producing: int = completes_turn + 1 + hire_wait
 	var first_selling: int = first_producing + sale_delay
 
 	var phases: Array = []
@@ -212,8 +215,8 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 			"range": _turn_range(1, build_turns - 1), "per_turn": 0.0, "turns": build_turns - 1,
 		})
 	phases.append({
-		"kind": PHASE_COMPLETES, "label": "Completes",
-		"range": _turn_range(completes_turn, completes_turn), "per_turn": -standing, "turns": 1,
+		"kind": PHASE_COMPLETES, "label": "Completes" if hire_wait == 0 else "Completes, hiring staff",
+		"range": _turn_range(completes_turn, completes_turn + hire_wait), "per_turn": -standing, "turns": 1 + hire_wait,
 	})
 	phases.append({
 		"kind": PHASE_SHIPPING, "label": "Making, not yet paid",
@@ -227,7 +230,7 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 	})
 
 	var startup_inventory := _startup_inventory_cost(tile_id, recipe)
-	var cash_needed: float = standing + producing_cost * float(sale_delay) + startup_inventory
+	var cash_needed: float = standing * float(1 + hire_wait) + producing_cost * float(sale_delay) + startup_inventory
 
 	out.phases = phases
 	out.cash_needed = cash_needed

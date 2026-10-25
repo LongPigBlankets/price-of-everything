@@ -683,36 +683,36 @@ func _test_building_leveling() -> void:
 	var rubber_gid := str(Catalog.get_good_by_internal_name("rubber").get("id", ""))
 	for gi in BuildingLevels.upgrade_materials("chem_plant", 2):
 		Stockpile.add(tile, str(Catalog.get_good_by_internal_name(str(gi)).get("id", "")), int(cp[gi]))
-	# Preview reflects all-on-tile + the 3-turn duration before committing.
+	# Preview reflects all-on-tile + the 5-turn duration before committing.
 	var pv: Dictionary = BuildingWorks.preview_upgrade(iid)
-	_check(bool(pv.get("ok", false)) and bool(pv.get("all_on_tile", false)) and int(pv.get("duration", 0)) == 3,
-		"preview: all materials on tile, 3-turn duration")
+	_check(bool(pv.get("ok", false)) and bool(pv.get("all_on_tile", false)) and int(pv.get("duration", 0)) == 5,
+		"preview: all materials on tile, 5-turn duration")
 	var r3: Dictionary = BuildingWorks.start_upgrade(iid, "tile")
 	_check(bool(r3.get("ok", false)) and str(r3.get("status", "")) == BuildingWorks.UPGRADE_STATUS_UPGRADING,
 		"upgrade starts (materials consumed) and is now in progress")
 	_check(BuildingWorks.is_upgrading(iid) and int(BuildingState.get_building(iid).get("level", 1)) == 1,
-		"level stays 1 while the 3-turn upgrade runs")
+		"level stays 1 while the 5-turn upgrade runs")
 	var progress := BuildingWorks.upgrade_progress_snapshot(iid)
-	_check(not bool(progress.get("blocked", true)) and int(progress.get("estimated_turns", 0)) == 3
-			and str(progress.get("tooltip", "")).contains("Estimated completion: 3 turns"),
-		"upgrade progress: active countdown exposes a three-turn completion estimate")
+	_check(not bool(progress.get("blocked", true)) and int(progress.get("estimated_turns", 0)) == 5
+			and str(progress.get("tooltip", "")).contains("Estimated completion: 5 turns"),
+		"upgrade progress: active countdown exposes a five-turn completion estimate")
 	var detail_panel = load("res://scripts/building_detail_panel_v2.gd").new()
 	var upgrade_actions: HBoxContainer = detail_panel.call("_build_primary_actions", BuildingState.get_building(iid), Catalog.get_building("b_012"))
 	var upgrading_button := upgrade_actions.find_child("UpgradeButton", true, false) as Button
 	_check(upgrading_button != null and upgrading_button.disabled
-			and upgrading_button.tooltip_text.contains("Estimated completion: 3 turns"),
+			and upgrading_button.tooltip_text.contains("Estimated completion: 5 turns"),
 		"upgrade button: disabled Upgrading state explains its estimated finish on hover")
 	upgrade_actions.free()
 	detail_panel.free()
 	_check(Stockpile.get_at_tile(tile, rubber_gid) == 0, "upgrade materials consumed from the tile on start")
 	_check(not bool(BuildingWorks.start_upgrade(iid, "tile").get("ok", false)), "cannot queue a second upgrade while one is pending")
 	_check(BuildingWorks.reserved_upgrade_space_on_tile(tile) > 0.0, "in-progress upgrade reserves the growth footprint")
-	BuildingWorks.tick_upgrades()
-	BuildingWorks.tick_upgrades()
-	_check(int(BuildingState.get_building(iid).get("level", 1)) == 1, "still Level 1 after 2 of 3 turns")
+	for _i in BuildingLevels.UPGRADE_DURATION - 1:
+		BuildingWorks.tick_upgrades()
+	_check(int(BuildingState.get_building(iid).get("level", 1)) == 1, "still Level 1 after 4 of 5 turns")
 	var done: Array = BuildingWorks.tick_upgrades()
 	_check(done.has(iid) and int(BuildingState.get_building(iid).get("level", 1)) == 2 and not BuildingWorks.is_upgrading(iid),
-		"upgrade completes to L2 after 3 turns")
+		"upgrade completes to L2 after 5 turns")
 	BuildingState.remove_building(iid)
 
 	# --- Awaiting-materials sourcing: claim arrivals off the tile, then count down ---

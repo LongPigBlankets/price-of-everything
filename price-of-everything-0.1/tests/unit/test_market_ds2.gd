@@ -249,8 +249,11 @@ func _test_market_ds2_lot_buy() -> void:
 	var before := MatchState.money
 	guard.call("lift")
 	guard.emit_signal("pressed")
-	_check(BuildingState.is_player_owned(BuildingState.get_building(iid)), "lots: bought")
+	_check(MatchState.is_under_offer(iid) and (lots.call("shown_lots") as Array).is_empty(), "lots: bought, under offer and off the list")
 	_check(absf((before - MatchState.money) - float(price)) < 0.01, "lots: at the price shown")
+	MatchState.tick_purchases()
+	MatchState.tick_purchases()
+	_check(BuildingState.is_player_owned(BuildingState.get_building(iid)), "lots: yours once the closing ends")
 	panel.hide()
 	_check(str(lots.call("tile_filter")) == "", "lots: the tile filter drops when the panel closes")
 	panel.queue_free()
