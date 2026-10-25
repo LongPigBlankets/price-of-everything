@@ -1626,7 +1626,7 @@ func _test_topbar_ds2_strip() -> void:
 	_check(absf(centre - screen_mid) <= 1.0, "top bar ds2: the money sits on the screen's centre line (%.1f vs %.1f)" % [centre, screen_mid])
 	var order: PackedStringArray = names.call()
 	_check(order.find("PowerModule") < order.find("MoneyWidget") and order.find("TransportModule") < order.find("MoneyWidget")
-		and order.find("VictoryModule") > order.find("MoneyWidget") and order.find("CouncilModule") > order.find("MoneyWidget"),
+		and order.find("VictoryModule") > order.find("MoneyWidget") and order.find("WorkforceModule") > order.find("MoneyWidget"),
 		"top bar ds2: the works to the money's left, victory and the office to its right")
 	var cash: Control = money.find_child("Ds2Cash", true, false)
 	var money_was: float = MatchState.money
@@ -1744,15 +1744,33 @@ func _test_topbar_ds2_strip() -> void:
 	TurnManager.current_turn = turn_was
 	var opened := []
 	var on_victory := func() -> void: opened.append("victory")
-	var on_council := func() -> void: opened.append("council")
+	var on_workforce := func() -> void: opened.append("workforce")
 	bar.connect("victory_widget_clicked", on_victory)
-	bar.connect("council_widget_clicked", on_council)
+	bar.connect("workforce_widget_clicked", on_workforce)
 	bar.call("_module_pressed", "victory")
-	bar.call("_module_pressed", "council")
+	bar.call("_module_pressed", "workforce")
 	bar.disconnect("victory_widget_clicked", on_victory)
-	bar.disconnect("council_widget_clicked", on_council)
-	_check(opened == ["victory", "council"] and str(bar.get("_fly_open_id")) == "",
-		"top bar ds2: Victory and Council open their full panels, no flyout")
+	bar.disconnect("workforce_widget_clicked", on_workforce)
+	_check(opened == ["victory", "workforce"] and str(bar.get("_fly_open_id")) == "",
+		"top bar ds2: Victory and Workforce open their full panels, no flyout")
+	# AC4.1: the Workforce module shows satisfaction, its trend and its band.
+	var sat_was: float = LabourState.satisfaction
+	LabourState.satisfaction = -76.0
+	bar.call("_refresh_workforce")
+	var wf: Control = bar.find_child("WorkforceModule", true, false)
+	var fig: Label = bar.find_child("WorkforceFigure", true, false)
+	var lamp: Control = bar.find_child("WorkforceLamp", true, false)
+	var read: Dictionary = bar.call("_ds2_readout_content", wf) if wf != null else {}
+	_check(wf != null and fig != null and fig.text == "\u221276" and bool(lamp.get("lit"))
+		and str(read.get("stage", "")) == "Workforce" and str(read.get("name", "")).begins_with("Satisfaction \u221276, ")
+		and str(read.get("detail", "")).begins_with("Heading for "),
+		"AC4.1 top bar ds2: Workforce shows the signed figure, a lit lamp in strike territory and its readout")
+	LabourState.satisfaction = 95.0
+	bar.call("_refresh_workforce")
+	_check(fig.text == "+95" and (lamp.get("color") as Color).is_equal_approx(Color("#f2c84b")),
+		"AC4.1 top bar ds2: at 90 and above the lamp is gold")
+	LabourState.satisfaction = sat_was
+	bar.call("_refresh_workforce")
 	var shade: Node2D = bar.get_node_or_null("Ds2Shade")
 	_check(shade != null and shade.visible and bar.get_child(bar.get_child_count() - 1) == shade,
 		"top bar ds2: the lamp's shade is over the strip, drawn last")

@@ -335,7 +335,8 @@ All at the default 45-hour week unless stated:
   - licence effects that cut labour (§10.5).
 - **Not halved**: labour increases, the 0.40 floor (applied after the halving), the seam over-cap
   multiplier (§8.3), strike and pay-rise costs, and the Work week's union labour cost.
-- **Signing Comprehensive again later** starts a new record from that turn.
+- **Signing Comprehensive again later** keeps the existing record while a halving still stands (so
+  stepping down and back up cannot launder halved cuts). After a renege, signing starts a new record.
 - **Consequence**: cutting labour after going Comprehensive is half as effective for the rest of
   the game, unless the company reneges. Deep extraction (§8.3) and a model workforce pull against
   each other.

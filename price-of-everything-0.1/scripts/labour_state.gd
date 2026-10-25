@@ -781,6 +781,28 @@ func fill_turns() -> int:
 		return int(FILL_TURNS.normal)
 	return int(FILL_TURNS.slow)
 
+## The band as the panels describe it: {title, tone, words}. Only effects that are live are named.
+func band_summary(value: float = INF) -> Dictionary:
+	match satisfaction_band(value):
+		"prize":
+			return {"title": "Proud", "tone": "ok", "words": "Every building makes 5% more while satisfaction holds at 90 or above."}
+		"fast":
+			return {"title": "Content", "tone": "ok", "words": "Reach 90 and every building makes 5% more."}
+		"normal":
+			return {"title": "Steady", "tone": "", "words": "Reach 90 and every building makes 5% more."}
+		"slow":
+			return {"title": "Unhappy", "tone": "warn", "words": "Better pay, shorter hours or a union bring it back up."}
+	return {"title": "Restless", "tone": "bad", "words": "Better pay, shorter hours or a union bring it back up."}
+
+## A satisfaction figure as the panels print it: "+42", "−18", "0".
+static func signed_text(value: float) -> String:
+	var n := roundi(value)
+	if n > 0:
+		return "+%d" % n
+	if n < 0:
+		return "−%d" % -n
+	return "0"
+
 ## "rising", "falling" or "steady": where satisfaction is heading this turn.
 func satisfaction_trend() -> String:
 	var gap := target_satisfaction() - satisfaction

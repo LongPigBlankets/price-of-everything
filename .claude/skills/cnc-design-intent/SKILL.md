@@ -39,6 +39,22 @@ omission. Regression smell: adding a science-points currency, or converting
 condition-gates to purchases. (Separately, many conditions are currently DEAD — a bug,
 see `cnc-content-pipeline` — fixing the conditions is good; changing the paradigm is not.)
 
+**Labour policies trade throughput, never free output (2026-10, owner-approved).** A labour policy
+moves THROUGHPUT (inputs, outputs and power scale together, `MatchState.run_multiplier`), cash and
+labour satisfaction. A flat output bonus makes product from nothing and compounds down a chain, so the
+only output-only labour effect is +5% at satisfaction of +90 or more. Regression smell: a labour policy
+that raises output without consuming inputs (Profit Share used to be +15% output and was always on).
+See docs/pacing-labour-mining-licensing-spec.md §3 (the full rare-output stance lands with phase 5).
+
+**Labour satisfaction is a budget (2026-10, owner-approved).** Policies trade throughput and cash for
+satisfaction (−100 to +100); the workforce's size and the HR Director add to it. It moves toward its
+target by max(10% of the gap, 2) a turn, and only reneging on union agreements (−50) is instant: every
+other event shifts the target for a while. Satisfaction sets hiring speed and strikes (phases 2 and 3)
+and the +5% output prize. A Comprehensive Union Agreement buys +30 by halving every labour cut made
+after signing, for good unless the company reneges; stepping a union down costs 5% of revenue and a
+decaying −15 per tier. Regression smell: a policy that raises throughput with no satisfaction cost,
+strike protection that costs nothing, or an instant satisfaction jump for an ordinary event.
+
 **Prices decay monotonically and forecasts are honest.** Per-good decay + visible
 10-turn forecasts are designed pressure: yesterday's product gets cheaper; you must
 move up the value chain. The counterweight is the player-driven price-impact model

@@ -115,6 +115,7 @@ func set_options(list: Array) -> void:
 		if option_plates:
 			var face := OptionFace.new()
 			face.icon = o.get("icon", null)
+			face.text = str(o.get("text", ""))
 			face.pad = PLATE_PAD
 			face.selector = self
 			face.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -342,6 +343,8 @@ func _position_towards(p: Vector2) -> int:
 ## option can't be chosen.
 class OptionFace extends Control:
 	var icon: Texture2D
+	## A short word or figure drawn instead of an icon (an option with no icon art, as the work week's hours).
+	var text := ""
 	var pad := 6.0
 	var selector: Control
 
@@ -359,7 +362,7 @@ class OptionFace extends Control:
 		plate.set_corner_radius_all(int(c["PLATE_RADIUS"]))
 		draw_style_box(plate, box)
 		draw_line(Vector2(4.0, 1.5), Vector2(size.x - 4.0, 1.5), c["PLATE_LIT"], 1.0)
-		if icon == null:
+		if icon == null and text == "":
 			return
 		var button := get_parent() as Button
 		var buttons: Array = selector.get("option_buttons")
@@ -369,6 +372,16 @@ class OptionFace extends Control:
 			ink = c["ICON_GREY"]
 		elif not chosen:
 			ink = Color(ink, float(c["ICON_ALPHA"]["open"]))
+		if icon == null:
+			var font := get_theme_font(&"font", &"Numeric")
+			var fs := 15
+			while fs > 9 and font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > size.x - 2.0 * pad:
+				fs -= 1
+			var extent := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+			var at := box.get_center() + Vector2(-extent.x * 0.5, font.get_ascent(fs) - extent.y * 0.5)
+			draw_string(font, at + Vector2(1.0, 1.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0, 0, 0, 0.85 * ink.a))
+			draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, ink)
+			return
 		var art := box.grow(-pad)
 		var k := minf(art.size.x / icon.get_width(), art.size.y / icon.get_height())
 		var dest := Rect2(art.position + (art.size - icon.get_size() * k) * 0.5, icon.get_size() * k)

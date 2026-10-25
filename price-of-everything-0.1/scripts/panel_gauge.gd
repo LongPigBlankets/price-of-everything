@@ -113,6 +113,12 @@ void fragment() {
 	set(v):
 		amber_percent = clampf(v, 0.0, 100.0)
 		_refresh()
+## Mirror the zones so red starts the scale and green ends it (a dial where high is good, as the
+## workforce's satisfaction). The LED follows the mirrored zones.
+@export var reverse_zones: bool = false:
+	set(v):
+		reverse_zones = v
+		_refresh()
 @export var led_mode: LedMode = LedMode.AUTO:
 	set(v):
 		led_mode = v
@@ -324,6 +330,8 @@ func _refresh() -> void:
 		var b: Vector2 = bounds[zone]
 		if zone == "green":
 			b.x = maxf(b.x, green_from_percent / 100.0)
+		if reverse_zones:
+			b = Vector2(1.0 - b.y, 1.0 - b.x)
 		(_zone_materials[zone] as ShaderMaterial).set_shader_parameter("from_v", b.x)
 		(_zone_materials[zone] as ShaderMaterial).set_shader_parameter("to_v", b.y)
 		(_layers["band_" + zone] as TextureRect).visible = b.y > b.x
@@ -334,9 +342,10 @@ func _refresh() -> void:
 
 	# The LED follows the settled value, not the swinging needle, so it doesn't flicker
 	# between zones while the needle overshoots.
-	var colour := led_colour(led_mode, value, green_percent, amber_percent)
+	var zone_value := 1.0 - value if reverse_zones else value
+	var colour := led_colour(led_mode, zone_value, green_percent, amber_percent)
 	var lit := colour != "off"
-	if lit and led_flashes(led_mode, flash, value, green_percent, amber_percent):
+	if lit and led_flashes(led_mode, flash, zone_value, green_percent, amber_percent):
 		lit = fposmod(_time * FLASH_HZ, 1.0) < FLASH_ON
 	(_layers["led"] as TextureRect).texture = LAYER_LED[colour if lit else "off"]
 	var glow := _layers["led_glow"] as TextureRect

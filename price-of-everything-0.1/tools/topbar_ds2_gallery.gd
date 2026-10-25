@@ -11,7 +11,7 @@ const LOGICAL := Vector2i(1920, 1080)
 const HOVER_HALF_W := 270.0
 const HOVER_H := 150.0
 const MODULES := ["MoneyWidget", "PowerModule", "TransportModule", "VictoryModule", "RankingsModule",
-	"CouncilModule", "GoodsGraphModule", "EncyclopediaButton", "MenuModule"]
+	"WorkforceModule", "GoodsGraphModule", "EncyclopediaButton", "MenuModule"]
 
 var _vp: SubViewport
 var _wm

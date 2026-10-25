@@ -40,6 +40,12 @@ var disabled := false:
 		disabled = v
 		mouse_default_cursor_shape = Control.CURSOR_ARROW if v else Control.CURSOR_POINTING_HAND
 		queue_redraw()
+## A small pilot lamp at the cap's top right, lit in this colour (transparent = no lamp): a tab that needs
+## a look, as People's Advisors key while an advisor is disloyal.
+var lamp := Color(0, 0, 0, 0):
+	set(v):
+		lamp = v
+		queue_redraw()
 var _held := false
 
 
@@ -90,6 +96,12 @@ func _draw() -> void:
 	draw_texture_rect_region(tex, Rect2(dest.position.x + cap_px, dest.position.y, dest.size.x - 2.0 * cap_px, dest.size.y),
 		Rect2(cap_tx, 0, tw - 2.0 * cap_tx, th), tint)
 	draw_texture_rect_region(tex, Rect2(dest.end.x - cap_px, dest.position.y, cap_px, dest.size.y), Rect2(tw - cap_tx, 0, cap_tx, th), tint)
+	if lamp.a > 0.0:
+		var at := Vector2(size.x - 9.0, 8.0)
+		draw_circle(at, 7.0, Color(lamp, 0.25))
+		draw_circle(at, 4.5, Color(0.08, 0.06, 0.05))
+		draw_circle(at, 3.5, lamp)
+		draw_circle(at + Vector2(-1.0, -1.0), 1.2, Color(1, 1, 1, 0.7))
 	if text == "":
 		return
 	var face := Rect2(Vector2.ZERO, size).grow(-FACE_INSET / CAPTURE_SCALE)
