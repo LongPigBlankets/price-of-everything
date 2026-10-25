@@ -41,7 +41,7 @@ func _ready() -> void:
 	preload("res://tools/shot_harness.gd").arm_watchdog(self, 600.0)
 	AudioServer.set_bus_mute(0, true)
 	SaveLoad.autosave_enabled = false
-	SaveLoad.prepare_new_game(start_path, {"ruleset": {"tutorial_enabled": false}})
+	SaveLoad.prepare_new_game(start_path)
 	var world: Node = load("res://scenes/main.tscn").instantiate()
 	get_tree().root.add_child.call_deferred(world)
 	await get_tree().process_frame

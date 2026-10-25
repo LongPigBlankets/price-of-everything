@@ -14,7 +14,7 @@ func _ready() -> void:
 	get_viewport().set_disable_input(true)
 	AudioServer.set_bus_mute(0, true)
 	if "--launch-20260910" in OS.get_cmdline_user_args():
-		TelemetryState.set_next_run_consent(false, false)
+		TelemetryState.set_next_run_consent(false)
 		SaveLoad.prepare_new_game("res://data/starts/metal_magnate.json", {})
 	world = load("res://scenes/main.tscn").instantiate()
 	add_child(world)

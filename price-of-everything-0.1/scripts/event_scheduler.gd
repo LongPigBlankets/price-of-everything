@@ -519,8 +519,8 @@ func _on_sale_arrived(port_tile_id: String, revenue: float) -> void:
 	_tell_first_market_sale(port_tile_id)
 
 
-## The company's first sale at the global market, told once a game as a news line naming the port. The
-## tutorial's own sales are part of its lesson and are not told.
+## The company's first sale at the global market, told once a game as a news line naming the port. Not
+## told while the opening steps' coach owns the screen.
 func _tell_first_market_sale(port_tile_id: String) -> void:
 	if _first_market_sale_told or Tutorial.active:
 		return

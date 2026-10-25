@@ -40,7 +40,7 @@ DEMO_SCRIPT = PROJECT / "scripts/demo_build.gd"
 SMOKE = PROJECT.parent / "tools/ci/run_startup_smoke.py"
 FEATURE = "demo"
 SUFFIX = " Demo"
-ALWAYS_STARTS = {"index.json", "default.json", "tutorial.json"}
+ALWAYS_STARTS = {"index.json", "default.json"}
 # Regular preset name -> (folder label, executable file name).
 PLATFORMS = {
     "macOS": ("MacOS", "Carbon and Capital.app"),

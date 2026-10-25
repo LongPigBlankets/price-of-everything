@@ -58,8 +58,7 @@ func _on_order_settled(_id: int) -> void:
 
 
 ## A tile gaining (or losing) roads changes which unlockable strokes qualify. The baked
-## network notices a flag flip only by side effect — its edge count is unchanged — which is
-## why `world_map.tutorial_install_infrastructure` has to poke the renderer by hand. The
+## network notices a flag flip only by side effect — its edge count is unchanged. The
 ## signal makes it explicit for authored roads.
 ## Both parameters are required even though neither is read: a handler with fewer arguments
 ## than the signal carries still CONNECTS, and only fails when the signal fires — silently

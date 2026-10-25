@@ -258,14 +258,6 @@ func has_pending() -> bool:
 func pending_is_start() -> bool:
 	return bool(_pending_snapshot.get("start", false))
 
-## True when the pending snapshot is a tutorial match (its ruleset carries
-## tutorial_enabled). Read BEFORE apply_pending() clears the snapshot — world_map
-## captures it alongside pending_is_start() to suppress NPC/decoration seeding.
-func pending_is_tutorial() -> bool:
-	var m: Dictionary = _pending_snapshot.get("match", {})
-	var rs: Dictionary = m.get("ruleset", {})
-	return bool(rs.get("tutorial_enabled", false))
-
 ## Called by world_map at the very end of _ready, after the terrain is built and
 ## the default match seeding (NPC ports, deposits) ran. Returns true when a
 ## pending save was applied — the caller then rebuilds its visuals.
@@ -446,9 +438,8 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 	# family workforce that the overtime then wears down).
 	var labour: Dictionary = cfg.get("labour", {})
 	var ruleset := _normalize_ruleset(cfg.get("ruleset", MatchState.DEFAULT_RULESET))
-	# New Game panel overrides (difficulty/speed/tutorial_enabled/survey_all_tiles)
-	# merge over the start's ruleset — the match ruleset is where world_map reads
-	# survey_all_tiles and the Tutorial engine reads tutorial_enabled.
+	# New Game panel overrides (difficulty/speed/survey_all_tiles) merge over the start's
+	# ruleset — the match ruleset is where world_map reads survey_all_tiles.
 	var override_rules: Dictionary = overrides.get("ruleset", {})
 	for k in override_rules:
 		ruleset[str(k)] = override_rules[k]
@@ -507,8 +498,7 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			"labour_multiplier": clampf(
 				float(labour.get("multiplier", EconomyConfig.LABOUR_MULTIPLIER_DEFAULT)),
 				EconomyConfig.LABOUR_MULTIPLIER_MIN, EconomyConfig.LABOUR_MULTIPLIER_MAX),
-			"labour_satisfaction": LabourState.TUTORIAL_SATISFACTION if bool(ruleset.get("tutorial_enabled", false))
-				else clampf(float(labour.get("satisfaction", 0.0)), LabourState.SATISFACTION_MIN, LabourState.SATISFACTION_MAX),
+			"labour_satisfaction": clampf(float(labour.get("satisfaction", 0.0)), LabourState.SATISFACTION_MIN, LabourState.SATISFACTION_MAX),
 			"work_week_hours": int(labour.get("work_week", LabourState.WORK_WEEK_DEFAULT)),
 			"idle_labour_pay_share": clampf(float(labour.get("idle_pay_share", 1.0)), 0.5, 1.0),
 			"one_off_charges": _start_charges(cfg.get("one_off_charges", [])),

@@ -279,7 +279,7 @@ func _test_rotary_selector_options() -> void:
 	_check(buttons[0].position.y < knob.call("_centre").y and buttons[2].position.x > buttons[0].position.x,
 		"knob options: the icons stand on the arc above the knob, in order left to right")
 	knob.queue_free()
-	# The Stock tab: the surplus route on the knob, the port route still the tutorial's SellSurplusToggle.
+	# The Stock tab: the surplus route on the knob, the port route still named SellSurplusToggle.
 	var panel: Control = load("res://scripts/tile_info_panel_v2.gd").new()
 	add_child(panel)
 	await get_tree().process_frame
@@ -1708,7 +1708,7 @@ func _test_topbar_ds2_strip() -> void:
 	_check(vic != null and vic.visible and is_equal_approx(float(counter.get("value")), float(bd.get("total", 0)))
 		and str((bar.get("_ds2_victory_target") as Label).text).begins_with("/"),
 		"top bar ds2: the victory score on a drum counter, the target printed after it")
-	# Treasury and Power open as steel sheets; the Treasury keeps every node the tutorial and e2e use.
+	# Treasury and Power open as steel sheets; the Treasury keeps every node the e2e uses.
 	bar.call("_open_fly", "treasury")
 	await get_tree().process_frame
 	var fly: Control = bar.get("_fly_panel")
@@ -2308,17 +2308,6 @@ func _test_bdp_v3_diag_visual() -> void:
 	found = find_view.call()
 	_check(UiPrefs.bdp_diag_visual and found[1] != null and found[1].visible and not found[0].visible and not found[2].right,
 		"bdp v3 visual: closed and opened on another building, the panel still shows Visual")
-	# While a tutorial step spotlights the rows, which its words describe, the rows show.
-	var saved_tutorial := [Tutorial.active, Tutorial._index, Tutorial._steps]
-	Tutorial.active = true
-	Tutorial._steps = [{"id": "diag_test", "spotlight": {"kind": "node_name", "ref": "DiagnosticsCard"}}]
-	Tutorial._index = 0
-	var during_step: bool = panel._v3_diag_shows_visual()
-	Tutorial.active = saved_tutorial[0]
-	Tutorial._index = saved_tutorial[1]
-	Tutorial._steps = saved_tutorial[2]
-	_check(not during_step and panel._v3_diag_shows_visual(),
-		"bdp v3 visual: a tutorial step that spotlights the diagnostics' rows shows them; after it, Visual again")
 	found[2]._gui_input(click)
 	await get_tree().process_frame
 	_check(found[0].visible and not found[1].visible and found[2].right and not UiPrefs.bdp_diag_visual,

@@ -6,7 +6,6 @@
   "ruleset": {
     "name": "standard",
     "start_id": "pepper_valley_motors_middleman",
-    "tutorial_enabled": false,
     "logistics_model": "middleman_v1"
   },
   "money": 10000,

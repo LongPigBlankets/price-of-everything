@@ -58,29 +58,6 @@ func _test_founder_decision_fires_on_a_new_game() -> void:
 			late = true
 	_check(late, "founder: a run already past the turn still gets the offer")
 
-	# The tutorial teaches one chain; a board appointment is noise inside it.
-	MatchState.reset()
-	MatchState.ruleset = {"name": "tutorial", "tutorial_enabled": true}
-	DecisionState.reset()
-	DecisionState.import_state({})
-	TurnManager.current_turn = DecisionState.FOUNDER_DECISION_TURN
-	DecisionState._tick_narrative()
-	var in_tutorial := false
-	for d in DecisionState.pending_queue:
-		if str((d as Dictionary).get("def_id", "")) == "family_friend":
-			in_tutorial = true
-	_check(not in_tutorial, "founder: the offer is suppressed in the tutorial")
-	# Finishing the coach used to make the overdue turn-3 event fire immediately. Tutorial
-	# startup now spends it permanently before tutorial_enabled is removed.
-	DecisionState.suppress_family_friend_for_match()
-	MatchState.ruleset["tutorial_enabled"] = false
-	TurnManager.current_turn = DecisionState.FOUNDER_DECISION_TURN + 30
-	DecisionState._tick_narrative()
-	var after_tutorial := false
-	for d in DecisionState.pending_queue:
-		if str((d as Dictionary).get("def_id", "")) == "family_friend":
-			after_tutorial = true
-	_check(not after_tutorial, "founder: a tutorial-started match never receives the offer after hand-off")
 	DecisionState.enabled = decisions_enabled
 	MatchState.reset()
 	TurnManager.current_turn = 1

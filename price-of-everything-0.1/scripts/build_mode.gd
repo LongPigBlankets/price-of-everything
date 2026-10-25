@@ -27,7 +27,7 @@ var _last_attempt_ms: int = 0
 var last_attempt_refused: bool = false
 ## Set by the map when the attempt placed something (a building, a project awaiting materials).
 ## attempt_direct_build answers with it, so a refusal of any kind (sea, a deposit, the kit, the
-## cash, the tutorial board) reads as a refusal, not only the space check's.
+## cash) reads as a refusal, not only the space check's.
 var last_attempt_placed: bool = false
 ## True only for the duration of a direct-build attempt that asked to buy its land
 ## shortfall as part of the build (Construct V3's single confirm intent). The map's

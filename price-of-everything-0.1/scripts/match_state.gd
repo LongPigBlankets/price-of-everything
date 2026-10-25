@@ -35,7 +35,7 @@ var recycling_unlocked: bool = false
 # is defined today — add per-rule keys beside it as rules become real.
 const DEFAULT_RULESET := {"name": "standard"}
 var ruleset: Dictionary = DEFAULT_RULESET.duplicate(true)
-## Which start config this match began from ("metal_magnate", "tutorial", …). Telemetry's
+## Which start config this match began from ("metal_magnate", "glass_merchant", …). Telemetry's
 ## primary segmentation field; empty for matches built without a start config (tests).
 ## Unlike ruleset.name this is NOT reset by state_reset mid-teardown, so it stays readable.
 var scenario_name: String = ""
@@ -2190,13 +2190,11 @@ const _TIER_MULT := {3: 1.0, 2: 0.5, 1: -0.5, 0: 0.0}
 # Assign a HIRED, rostered advisor to a seat. Enforces the slot cap and
 # one-seat-per-advisor. Returns false if rejected.
 ## Turns between paying for an NPC building and owning it (§7.5): 2, or 1 while Andrew Keeler is Expansion
-## Director. The onboarding tutorial hands its purchase over at once: its steps continue on the bought building.
+## Director.
 const PURCHASE_CLOSING_TURNS := 2
 const PURCHASE_CLOSING_TURNS_EXPANSION := 1
 
 func purchase_closing_turns() -> int:
-	if bool(ruleset.get("tutorial_enabled", false)):
-		return 0
 	return PURCHASE_CLOSING_TURNS_EXPANSION if AdvisorState.expansion_director_active() else PURCHASE_CLOSING_TURNS
 
 func is_under_offer(instance_id: String) -> bool:
@@ -2222,10 +2220,6 @@ func offer_for_building(instance_id: String, display_name: String = "") -> Dicti
 		build_rejected_no_funds.emit("Not enough money to buy %s. It costs £%d and you have £%.0f." % [label, price, money])
 		return {"ok": false, "reason": "Not enough money."}
 	var turns := purchase_closing_turns()
-	if turns <= 0:
-		_close_purchase(instance_id, false)
-		request_toast("Purchased %s for £%d" % [label, price], "success")
-		return {"ok": true, "price": price, "turns": 0}
 	pending_purchases[instance_id] = {"price": price, "turns_remaining": turns, "offer_turn": TurnManager.current_turn}
 	purchases_changed.emit(instance_id)
 	request_toast("Bought %s for £%d. Yours in %d turn%s." % [label, price, turns, "" if turns == 1 else "s"], "success")
@@ -2239,7 +2233,7 @@ func tick_purchases() -> void:
 		if int(offer.turns_remaining) <= 0:
 			pending_purchases.erase(iid)
 			if BuildingState.buildings.has(str(iid)):
-				_close_purchase(str(iid), true)
+				_close_purchase(str(iid))
 			else:
 				add_money(float(offer.get("price", 0.0)))
 				purchases_changed.emit(str(iid))
@@ -2247,15 +2241,14 @@ func tick_purchases() -> void:
 ## The transfer: owner, land, stock and Local Suppliers (BuildingState.set_building_owner), and the staff a
 ## going concern comes with (0.8, or 0.5 below −5 satisfaction). A building gone by closing is refunded
 ## (tick_purchases).
-func _close_purchase(instance_id: String, staffed_by_closing: bool) -> void:
+func _close_purchase(instance_id: String) -> void:
 	BuildingState.set_building_owner(instance_id, LOCAL_PLAYER)
 	var building: Dictionary = BuildingState.buildings[instance_id]
 	var category := str(Catalog.get_building(str(building.get("building_id", ""))).get("category", "production"))
-	if staffed_by_closing and str(building.get("recipe_id", "")) != "" and category != "infrastructure":
+	if str(building.get("recipe_id", "")) != "" and category != "infrastructure":
 		building["staff_fill"] = Staffing.bought_fill()
 	purchases_changed.emit(instance_id)
-	if staffed_by_closing:
-		request_toast("%s is yours." % Catalog.get_building_display_name(str(building.get("building_id", ""))), "success")
+	request_toast("%s is yours." % Catalog.get_building_display_name(str(building.get("building_id", ""))), "success")
 
 
 ## Purchased buildings arrive with PURCHASE_SEED_TURNS of their recipe's inputs: a going

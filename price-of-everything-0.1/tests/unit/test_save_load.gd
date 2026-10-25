@@ -276,7 +276,7 @@ func _test_start_config_expansion() -> void:
 	# New Game panel overrides merge into the match ruleset (survey_all_tiles etc.).
 	var ov_snap: Dictionary = SaveLoad.expand_start_config(
 		{"start": true, "ruleset": {"name": "standard"}},
-		{"ruleset": {"survey_all_tiles": true, "tutorial_enabled": false}})
+		{"ruleset": {"survey_all_tiles": true}})
 	var ov_rules: Dictionary = (ov_snap.get("match", {}) as Dictionary).get("ruleset", {})
 	_check(bool(ov_rules.get("survey_all_tiles", false)) == true,
 		"start config: override survey_all_tiles merges into the match ruleset")
@@ -394,7 +394,7 @@ func _authored_npc_footprint(tile_id: String, cfg: Dictionary) -> float:
 	for _port in Catalog.all_ports():
 		if str(_port.get("tile_id", "")) == tile_id:
 			total += _authored_building_footprint("b_004")
-	# Ruins are part of every non-tutorial fresh board when the hidden building is available.
+	# Ruins are part of every fresh board when the hidden building is available.
 	# The authored starts with land on this tile have ample room either way; including it
 	# keeps the check conservative when a later start claims the ruin tile.
 	if tile_id == "tile_23_16" and MatchState.is_building_available("b_031"):

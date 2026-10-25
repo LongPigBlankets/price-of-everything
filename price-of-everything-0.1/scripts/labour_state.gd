@@ -124,8 +124,6 @@ const EVENT_SHIFT_TURNS := 10
 const WORKFORCE_SIZE_STEPS: Array[int] = [5000, 25000]
 const WORKFORCE_SIZE_STEP_SATISFACTION := 5.0
 const HR_TIER_SATISFACTION := {1: -5.0, 2: 0.0, 3: 5.0}
-## The tutorial's workforce: content, and frozen while the tutorial runs (set by the start snapshot).
-const TUTORIAL_SATISFACTION := 60.0
 
 signal labour_multiplier_changed(new_value: float)
 signal workforce_policies_changed
@@ -730,10 +728,8 @@ static func step_toward(current: float, target: float) -> float:
 	return current + signf(gap) * maxf(absf(gap) * SATISFACTION_STEP_SHARE, SATISFACTION_STEP_MIN)
 
 ## Once a turn at the start of PROCESS: move toward the target, age the shifts, count the union's
-## pay rounds. Frozen while the tutorial runs.
+## pay rounds.
 func tick_satisfaction() -> void:
-	if _tutorial_running():
-		return
 	satisfaction = step_toward(satisfaction, target_satisfaction())
 	target_shifts = _aged_shifts(target_shifts)
 	if union_tier() != UNION_NONE:
@@ -817,9 +813,6 @@ func on_building_demolished(instance_id: String) -> void:
 ## A sold building moves the target −5 for 10 turns.
 func on_building_sold(instance_id: String) -> void:
 	add_target_shift("sold_%s" % instance_id, "Building sold", -5.0)
-
-func _tutorial_running() -> bool:
-	return bool(MatchState.ruleset.get("tutorial_enabled", false))
 
 static func _thousands(n: int) -> String:
 	var s := str(n)

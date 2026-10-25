@@ -97,12 +97,10 @@ func _test_scripts_parse() -> void:
 		"res://scripts/people_panel.gd",
 		"res://scripts/main_menu.gd",
 		"res://scripts/new_game_panel.gd",
-		"res://scripts/tutorial_intro_panel.gd",
 		"res://scripts/camera_controller.gd",
 		"res://scripts/tutorial/tutorial_engine.gd",
 		"res://scripts/tutorial/coach_overlay.gd",
 		"res://scripts/tutorial/tutorial_recipe_flow_panel.gd",
-		"res://scripts/tutorial/tutorial_route_highlight.gd",
 		"res://scripts/tutorial/tutorial_steps.gd",
 		"res://scripts/tutorial/tutorial_detectors.gd",
 		"res://scripts/company_names.gd",
@@ -265,25 +263,15 @@ func _test_main_scene_instantiates() -> void:
 		panel.hide()
 	else:
 		_check(false, "terrain layer with tiles available for tile-select test")
-	# Step 24 provides a single exact white tile cue; its destination picker must still
-	# capture clicks without repainting every eligible tile green.
-	var tutorial_active_saved: bool = Tutorial.active
-	var tutorial_steps_saved: Array = Tutorial._steps
-	var tutorial_index_saved: int = Tutorial._index
-	Tutorial.active = true
-	Tutorial._steps = [{"id": "transport_redirect_pick"}]
-	Tutorial._index = 0
+	# The destination picker captures clicks and paints the eligible tiles.
 	inst.call("_on_v2_pick_destination")
 	_check(bool(terrain.get("_stockpile_destination_selection_active"))
-		and not bool(terrain.get("_selection_paint")),
-		"tutorial: Step 24 destination picker captures clicks without the green overlay")
+		and bool(terrain.get("_selection_paint")),
+		"destination picker captures clicks and paints the eligible tiles")
 	terrain.end_stockpile_destination_selection()
 	inst.set("_v2_picking_dest", false)
-	Tutorial.active = tutorial_active_saved
-	Tutorial._steps = tutorial_steps_saved
-	Tutorial._index = tutorial_index_saved
-	# Buying a building can refresh its detail from building_owner_changed and then focus it
-	# again from the tutorial in the same frame. Rebuilding twice must replace, not temporarily
+	# Buying a building can refresh its detail from building_owner_changed and again from
+	# another signal in the same frame. Rebuilding twice must replace, not temporarily
 	# stack, the old body controls; stacked generations inflated the panel to viewport width.
 	var detail := inst.find_child("BuildingDetailPanelV2", true, false)
 	var detail_fixture: Dictionary = {}

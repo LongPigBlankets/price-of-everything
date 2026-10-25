@@ -20,7 +20,7 @@ func _ready() -> void:
 	SaveLoad.prepare_new_game("res://data/starts/metal_magnate.json", {"ruleset": {
 		"start_id": "metal_magnate", "difficulty": "normal", "speed_turns": 100,
 		"policy_timeline": "demo_itch", "victory_set": "demo_itch",
-		"tutorial_enabled": false, "survey_all_tiles": true, "company_colour": "diesel_red",
+		"survey_all_tiles": true, "company_colour": "diesel_red",
 	}})
 	var game: Node = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	add_child(game)

@@ -471,7 +471,7 @@ func _prepare_balance_start() -> void:
 	if not authored_start:
 		cfg["money"] = float(_scenario.get("starting_money", cfg.get("money", EconomyConfig.STARTING_MONEY)))
 		cfg["unlocks"] = (_scenario.get("unlocks", []) as Array).duplicate()
-	var ruleset_overrides := {"tutorial_enabled": false}
+	var ruleset_overrides := {}
 	if not authored_start or bool(_scenario.get("balance_survey_all_tiles", false)):
 		ruleset_overrides["survey_all_tiles"] = true
 	var start_id := str(_scenario.get("balance_start_id", ""))

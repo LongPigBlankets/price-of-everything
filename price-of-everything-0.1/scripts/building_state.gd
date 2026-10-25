@@ -188,7 +188,7 @@ func set_building_owner(instance_id: String, owner: String) -> void:
 		buildings[instance_id]["land_exempt"] = true
 		# A purchase is a going concern, so it arrives with stock to run on. Seeded HERE rather
 		# than in the market panel because three separate surfaces transfer ownership (market
-		# panel, building detail, tile info) and the tutorial buys through one of them.
+		# panel, building detail, tile info).
 		MatchState.seed_purchase_inventory(instance_id)
 		# Bought back: what the player was once paid for it no longer applies.
 		buildings[instance_id].erase("player_sale_price")

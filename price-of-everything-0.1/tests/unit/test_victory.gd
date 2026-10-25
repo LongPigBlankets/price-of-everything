@@ -253,22 +253,6 @@ func _test_victory_base_curve() -> void:
 	_check(VictoryState.win_threshold_for_turn(300) == 4000, "victory bar: turn 300 = 4000 (4 tracks)")
 	_check(VictoryState.win_threshold_for_turn(350) == 4000, "victory bar: turn 350 = 4000 (clamped)")
 
-func _test_victory_disabled_in_tutorial() -> void:
-	var rules_saved: Dictionary = MatchState.ruleset.duplicate(true)
-	MatchState.ruleset = {"name": "tutorial", "tutorial_enabled": true}
-	VictoryState.reset()
-	VictoryState._on_turn_processed({"produced": {"steel": 500}, "money_in": 15000.0, "money_out": 0.0})
-	VictoryState.record_movement("buy", "input", 0)
-	VictoryState._tick()
-	_check(not VictoryState.conditions_enabled()
-		and VictoryState.total_for_turn() == 0
-		and VictoryState.produced_units_lifetime == 0
-		and VictoryState.logistics_total == 0
-		and int(VictoryState.purchases_lifetime.get("input", 0)) == 0,
-		"victory: tutorial turns do not advance victory conditions")
-	MatchState.ruleset = rules_saved
-	VictoryState.reset()
-
 func _test_victory_win_curve() -> void:
 	VictoryState.reset()
 	# 1 maxed track (1000) wins at turn 105 but not once the bar has risen past it.

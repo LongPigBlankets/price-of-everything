@@ -72,39 +72,7 @@ func _configure_for_map_after_scene_ready() -> void:
 	_configure_for_map()
 	_target_zoom = zoom
 
-## The tutorial confines the camera to a small board rect. While `_external_clamp` is
-## set, `_configure_for_map` must not stomp map_min/map_max back to the full map.
-var _external_clamp := false
-
-## Clamp the camera to an explicit world rect (tutorial board). Recenters on it and
-## widens the zoom-out so the whole rect fits.
-func set_bounds_rect(rect: Rect2) -> void:
-	if rect.size == Vector2.ZERO:
-		return
-	_external_clamp = true
-	map_min = rect.position
-	map_max = rect.end
-	position = rect.get_center()
-	var viewport_size := get_viewport_rect().size
-	if viewport_size.x > 0.0 and rect.size.x > 0.0 and rect.size.y > 0.0:
-		zoom_min = minf(viewport_size.x / rect.size.x, viewport_size.y / rect.size.y)
-	_target_zoom = Vector2.ONE * _effective_zoom_min()
-	zoom = _target_zoom
-
-## Release the tutorial clamp and restore the full-map bounds, keeping the view where it is: leaving or
-## skipping the tutorial must not throw the player out to the whole map.
-func clear_bounds_rect() -> void:
-	var view := position
-	var view_zoom := zoom
-	_external_clamp = false
-	_configure_for_map()
-	position = view
-	zoom = view_zoom.clamp(Vector2.ONE * zoom_min, Vector2.ONE * zoom_max)
-	_target_zoom = zoom
-
 func _configure_for_map() -> void:
-	if _external_clamp:
-		return
 	var hex_map := get_tree().get_first_node_in_group("hex_map")
 	if hex_map == null or not hex_map.has_method("map_world_rect"):
 		return
@@ -131,25 +99,18 @@ func _process(delta: float) -> void:
 	_apply_zoom_smoothing(delta)
 	_clamp_to_bounds()
 
-## How long a UI-driven focus pan takes (ledger row, notification jump-to-tile, a
-## tutorial step recentring the board). The tutorial raises this for its own steps so
-## they settle instead of snapping; every other caller keeps the snappy default.
+## How long a UI-driven focus pan takes (ledger row, notification jump-to-tile).
 @export var ui_focus_duration: float = 0.3
 
 ## Smoothly pan to a world position — the UI-driven focus move (ledger/panel
 ## selection). Manual pans (keyboard, edge, drag) cancel it.
 func pan_to_world(target: Vector2, dur: float = 0.3) -> void:
 	# IDEMPOTENT: a repeat request for essentially the same destination while a pan is
-	# already in flight must not restart the tween. The tutorial re-runs a step's setup
-	# whenever the spotlight target has not appeared yet (_ensure_locked_panel_open), which
-	# re-emitted focus_tile and restarted this pan from wherever it had reached — measured
-	# as a 178px single-frame jerk in the middle of an otherwise smooth 1s move, which is
-	# the "map snaps in the background" during tutorial steps.
+	# already in flight must not restart the tween, or a caller that re-emits focus restarts
+	# the pan from wherever it had reached and the map jerks mid move.
 	# Pre-clamp the destination. The per-frame _clamp_to_bounds would otherwise OVERRIDE the
-	# tween every frame — during the tutorial the board rect is narrower than the viewport,
-	# so the clamp force-centres the camera and the two fought each other. When the tween
-	# finally died the fight stopped and the camera snapped to the centre: a measured 542px
-	# single-frame jump, landing exactly as the pan ended. Aiming somewhere legal removes it.
+	# tween every frame wherever the bounds are narrower than the viewport, and the camera
+	# snaps when the tween dies. Aiming somewhere legal removes it.
 	target = clamped_position(target)
 	if _pan_tween != null and _pan_tween.is_valid() and _pan_target.distance_to(target) < 1.0:
 		return

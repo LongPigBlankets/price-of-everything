@@ -335,8 +335,8 @@ func end_warm_draw() -> void:
 
 func _rebuild(building: Dictionary) -> void:
 	for child in _body.get_children():
-		# A purchase emits building_owner_changed and the tutorial immediately focuses the
-		# newly-owned building. Both paths can rebuild in the same frame. queue_free() alone
+		# A purchase emits building_owner_changed and the panel may already be rebuilding for
+		# another signal in the same frame. queue_free() alone
 		# leaves the old controls participating in the VBox minimum-size calculation until
 		# frame end, which briefly stretched the detail panel across most of the viewport.
 		_body.remove_child(child)
@@ -518,9 +518,6 @@ func _render_npc(building: Dictionary, building_data: Dictionary, recipe: Dictio
 		buy.theme_type_variation = "Primary"
 		buy.text = "Buy — £%s" % _fmt_int(price)
 		buy.custom_minimum_size = Vector2(0, 46)
-		buy.disabled = Tutorial.port_purchase_disabled(str(building.get("building_id", "")))
-		if buy.disabled:
-			buy.tooltip_text = Tutorial.PORT_PURCHASE_DISABLED_TOOLTIP
 		buy.pressed.connect(func() -> void: _open_buy_dialog(str(building.get("instance_id", "")), display_name, price))
 		_body.add_child(buy)
 
@@ -536,9 +533,6 @@ func _fmt_int(n: int) -> String:
 	return ("-" if n < 0 else "") + out
 
 func _open_buy_dialog(iid: String, building_name: String, price: int) -> void:
-	var building: Dictionary = BuildingState.get_building(iid)
-	if Tutorial.port_purchase_disabled(str(building.get("building_id", ""))):
-		return
 	if _buy_layer == null or not is_instance_valid(_buy_layer):
 		_buy_layer = CanvasLayer.new()
 		_buy_layer.layer = 130
@@ -553,9 +547,6 @@ func _open_buy_dialog(iid: String, building_name: String, price: int) -> void:
 func _on_buy_confirmed(_dont_ask: bool) -> void:
 	var iid := str(_pending_buy.get("iid", ""))
 	var building_name := str(_pending_buy.get("name", ""))
-	var building: Dictionary = BuildingState.get_building(iid)
-	if Tutorial.port_purchase_disabled(str(building.get("building_id", ""))):
-		return
 	if iid == "" or not BuildingState.buildings.has(iid):
 		return
 	if not bool(MatchState.offer_for_building(iid, building_name).get("ok", false)):
@@ -635,7 +626,7 @@ func _render_construction(building: Dictionary, recipe: Dictionary, constr: Dict
 
 	# Delivery blockers: a build material that needs a pipeline the site doesn't have will
 	# never arrive and the build stalls forever. Surface it as a diagnostics card (same
-	# DiagnosticsCard node the run-time view uses, so the tutorial coach can spotlight it).
+	# DiagnosticsCard node the run-time view uses).
 	var cdiag: Array = BuildingReadout.construction_diagnostics(constr)
 	if not cdiag.is_empty():
 		_body.add_child(_make_section("Diagnostics", "delivery blocked"))
@@ -974,8 +965,6 @@ func _build_port_card(building: Dictionary) -> PanelContainer:
 	_port_section(vb, "THE RATE CARD", false)
 	if preload("res://scripts/middleman_service.gd").active():
 		vb.add_child(_port_metric("Ad valorem · all turns", "%s%% of market buy value" % String.num(EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES * 100.0, 1)))
-	elif TransportState.keeps_introductory_port_rate():
-		vb.add_child(_port_metric("Ad valorem · all turns", "0.5% of market buy value"))
 	else:
 		vb.add_child(_port_metric("Ad valorem · turns 1–30", "0.5% of market buy value"))
 		vb.add_child(_port_metric("Ad valorem · turn 31 onward", "3% of market buy value"))
@@ -1104,7 +1093,7 @@ func _build_primary_actions(building: Dictionary, _building_data: Dictionary) ->
 	var alt_count := maxi(0, Catalog.get_recipes_for_building(str(building.get("building_id", ""))).size() - 1)
 	if alt_count > 0:
 		var rc := Button.new()
-		rc.name = "ChangeRecipeButton"   # stable target for the tutorial coach spotlight
+		rc.name = "ChangeRecipeButton"
 		rc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		rc.custom_minimum_size = Vector2(0, 40)
 		if BuildingWorks.is_retooling(iid):
@@ -1395,7 +1384,7 @@ func _open_recipe_sheet(building: Dictionary) -> void:
 
 func _recipe_choice_row(iid: String, recipe: Dictionary, is_current: bool) -> Control:
 	var card := PanelContainer.new()
-	card.name = "RecipeChoice_%s" % str(recipe.get("recipe_id", ""))   # tutorial coach spotlight
+	card.name = "RecipeChoice_%s" % str(recipe.get("recipe_id", ""))
 
 	var st := StyleBoxFlat.new()
 	st.bg_color = DS.PALETTE["BG_HIGHLIGHT"] if is_current else DS.PALETTE["BG_CARD"]
@@ -2123,7 +2112,7 @@ var _v3_last_readings := {}
 ## one-line answer and it should take one line.
 func _build_diagnostics(rows: Array) -> PanelContainer:
 	var card := _make_card()
-	card.name = "DiagnosticsCard"   # stable target for the tutorial coach spotlight
+	card.name = "DiagnosticsCard"
 	var vb := card.get_child(0) as VBoxContainer
 	# Each row is its own module set in the plastic case, fed by a branch off the cable that runs down
 	# the case's left side.
@@ -2204,9 +2193,9 @@ const V3_DIAG_MODULE_MARGIN := 10.0 / 1.875
 const V3_DIAG_MODULE_CORNER := 26.0 * 2.0 / 1.875
 
 ## Whether the diagnostics show the Visual view: the player's choice on the switch (UiPrefs, kept while
-## the game runs), except while a tutorial step spotlights the rows, which its words describe.
+## the game runs).
 func _v3_diag_shows_visual() -> bool:
-	return UiPrefs.bdp_diag_visual and Tutorial.active_spotlight_ref() != "DiagnosticsCard"
+	return UiPrefs.bdp_diag_visual
 
 ## A raised module in the diagnostics' case, for one check.
 func _v3_diag_module() -> PanelContainer:
@@ -2496,7 +2485,7 @@ func _diag_row(r: Dictionary) -> Control:
 
 func _build_cost_to_produce(rows: Array) -> PanelContainer:
 	var card := _make_card()
-	card.name = "CostToProduceCard"   # stable target for the tutorial coach spotlight
+	card.name = "CostToProduceCard"
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", DS.SP["SM"])
 	_v3_cost_gauges(card, vb, rows)

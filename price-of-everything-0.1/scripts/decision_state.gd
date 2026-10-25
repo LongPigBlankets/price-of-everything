@@ -100,12 +100,11 @@ var _next_uid: int = 1
 # ---------------------------------------------------------------------------
 
 const DECISION_DEFINITIONS := {
-	# Turn 3, every sandbox start. A retired shipping director offers to fill ONE of the two
-	# posts that exist, pro bono, for 30 turns. The choice is cheap money versus cheap
-	# movement, and both are good — a new player cannot pick wrong, only differently.
-	# The def id stays `family_friend`: it is a saved key (_fired_once, reservations, the
-	# tutorial's suppression call), so renaming it would strand every existing save for
-	# nothing a player ever sees.
+	# Turn 3, every sandbox start. A retired shipping director offers to fill ONE post, pro
+	# bono, for 30 turns: CFO, COO or Expansion Director. Cheap money, cheap movement or a
+	# faster build out, and all are good — a new player cannot pick wrong, only differently.
+	# The def id stays `family_friend`: it is a saved key (_fired_once, reservations), so
+	# renaming it would strand every existing save for nothing a player ever sees.
 	# Verbatim line and gifts are owner-locked. See docs/early-game-onboarding-spec.md §5.4.
 	"family_friend": {
 		"title": "A Retired Man Who Misses the Work",
@@ -538,25 +537,6 @@ func reset() -> void:
 	pending_changed.emit()
 
 
-## A match that began as the tutorial must never receive the sandbox's opening
-## family-friend event, including after the final tutorial button turns the normal
-## rules back on. Record it as spent so the suppression survives save/load, and
-## discard a queued copy as well so older in-progress tutorial saves are repaired.
-func suppress_family_friend_for_match() -> void:
-	_fired_once["family_friend"] = true
-	var queue_changed := false
-	for i in range(pending_queue.size() - 1, -1, -1):
-		if str((pending_queue[i] as Dictionary).get("def_id", "")) == "family_friend":
-			pending_queue.remove_at(i)
-			queue_changed = true
-	if str(_scheduled_pull.get("def_id", "")) == "family_friend":
-		_scheduled_pull = {}
-	for reserved_turn in _reservations.keys():
-		if str(_reservations[reserved_turn]) == "family_friend":
-			_reservations.erase(reserved_turn)
-	if queue_changed:
-		pending_changed.emit()
-
 func _reseed(match_seed: int) -> void:
 	# Stable arithmetic derivation (never GDScript hash() — not version-stable).
 	_rng_seed = match_seed ^ 0xDEC1DE5
@@ -571,7 +551,7 @@ func _tick_narrative() -> void:
 	if not enabled:
 		return
 	var turn := int(TurnManager.current_turn)
-	# Tutorial pocket: no decisions while the coach is running.
+	# No decisions while the opening steps' coach is running.
 	if Tutorial.active:
 		return
 	# Ambient decisions need something to be ABOUT. Every one of them presumes a going
@@ -604,7 +584,6 @@ func _tick_narrative() -> void:
 	# "decisions" key, so import_state({}) ran immediately after reset() and wiped the booking.
 	# _fired_once is saved, so it is a once-only marker that survives both paths.
 	if turn >= FOUNDER_DECISION_TURN and not _fired_once.has("family_friend") \
-			and not bool(MatchState.ruleset.get("tutorial_enabled", false)) \
 			and pending_queue.size() < PENDING_QUEUE_CAP:
 		_draw("family_friend")
 	if _reservations.has(turn) and pending_queue.size() < PENDING_QUEUE_CAP:

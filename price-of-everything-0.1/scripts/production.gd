@@ -1161,7 +1161,7 @@ func _credit_arrived_sale(shipment: Dictionary, summary: Dictionary) -> void:
 		"items": [],
 		"total_qty": 0,
 		"total_revenue": 0.0,
-		# Additive provenance used by the tutorial and useful to any future ledger
+		# Additive provenance, useful to any future ledger
 		# drill-down. Old shipments simply report zero/absent as before.
 		"shipment_id": shipment.get("id", null),
 		"transport_turns": int(shipment.get("transport_turns", sale_record.get("transport_turns", 0))),

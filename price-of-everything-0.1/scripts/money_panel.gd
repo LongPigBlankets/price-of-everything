@@ -449,30 +449,6 @@ func open_tab(tab_name: String) -> void:
 	push_warning("[MoneyPanel] Requested unavailable tab: %s" % tab_name)
 
 
-## Stable tutorial entry point for the full Balance sheet (the top-bar money
-## widget normally opens a compact treasury flyout instead).
-func open_transport_breakdown() -> void:
-	open_tab("Balance")
-	_set_transport_expanded(true)
-	show()
-	PanelStack.push(self)
-	_queue_refresh()
-
-
-func close_for_tutorial() -> void:
-	if visible:
-		PanelStack.remove(self)
-	hide()
-
-
-## The opening Capital exercise and the west-coast factory lesson are intentionally
-## separate financial examples. Drop the former's local chart caches at the handoff.
-func reset_for_tutorial_handoff() -> void:
-	_chart_history.clear()
-	_sales_history.clear()
-	_purchases_history.clear()
-	_queue_refresh()
-
 func _on_turn_processed(_summary: Dictionary) -> void:
 	# History capture must run even while hidden — it's data, not display.
 	_record_chart_history(_summary)

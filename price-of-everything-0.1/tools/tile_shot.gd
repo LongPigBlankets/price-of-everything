@@ -65,7 +65,7 @@ func _ready() -> void:
 	var start_id := str(opt.get("start", ""))
 	if start_id != "":
 		SaveLoad.prepare_new_game("res://data/starts/%s.json" % start_id,
-			{"ruleset": {"start_id": "", "tutorial_enabled": false}})
+			{"ruleset": {"start_id": ""}})
 		print("[TILE SHOT] seeded start: %s" % start_id)
 
 	get_viewport().set_disable_input(true)

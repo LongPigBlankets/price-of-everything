@@ -199,7 +199,7 @@ func _head() -> HBoxContainer:
 
 
 ## The search on one of Building Detail's mini screens, white print on the dark glass. The field is the research
-## panel's own box, so its text, its signal and its name (which the tutorial finds it by) are the ones it has.
+## panel's own box, so its text, its signal and its name are the ones it has.
 func _search_screen() -> PanelContainer:
 	var screen := PanelContainer.new()
 	screen.name = "SearchScreen"
@@ -758,7 +758,7 @@ func _on_drawer_pressed(category: String) -> void:
 		_host.call("select_category", category)
 
 
-# --- for the tutorial, the tests and the tools ---------------------------------------------------
+# --- for the tests and the tools ---------------------------------------------------
 
 func chest() -> Control:
 	return _chest
@@ -788,21 +788,3 @@ func card_for(title: String) -> Control:
 func open_drawer(category: String) -> void:
 	_on_drawer_pressed(category)
 
-
-## The on screen rect of `title`'s drawing, scrolled into view first; empty when it is not on the board.
-func card_rect(title: String) -> Rect2:
-	var card := card_for(title)
-	if card == null:
-		return Rect2()
-	_view.call("ensure_visible", card)
-	return card.get_global_rect().grow(8.0)
-
-
-## True when at least half of `title`'s drawing shows inside the board's frame.
-func card_visible(title: String) -> bool:
-	var card := card_for(title)
-	if card == null or not card.is_visible_in_tree():
-		return false
-	var view := _view.get_global_rect()
-	var r := card.get_global_rect()
-	return view.has_point(r.get_center()) and view.intersection(r).get_area() >= r.get_area() * 0.5

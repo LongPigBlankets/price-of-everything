@@ -28,7 +28,7 @@ func _ready() -> void:
 	AudioServer.set_bus_mute(0, true)
 	SaveLoad.prepare_new_game("res://data/starts/metal_magnate.json", {"ruleset": {
 		"start_id": "metal_magnate", "difficulty": "normal", "speed_turns": 100,
-		"policy_timeline": "demo_itch", "victory_set": "demo_itch", "tutorial_enabled": false,
+		"policy_timeline": "demo_itch", "victory_set": "demo_itch",
 		"company_colour": "diesel_red"}})
 	var world: Node = load("res://scenes/main.tscn").instantiate()
 	add_child(world)

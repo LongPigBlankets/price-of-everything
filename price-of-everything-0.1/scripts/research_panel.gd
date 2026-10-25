@@ -329,33 +329,6 @@ func end_free_unlock_choice() -> void:
 	queue_redraw()
 	_refresh_ds2()
 
-## Tutorial/coach hook: the exact on-screen rectangle of a searched research node.
-## The tree is custom drawn, so it cannot otherwise be spotlighted like a normal Control.
-func tutorial_unlock_rect(title: String) -> Rect2:
-	if title == "" or not is_visible_in_tree():
-		return Rect2()
-	if _ds2 != null:
-		return _ds2.call("card_rect", title)
-	var unlocks := _category_unlocks(_selected_category)
-	var layout := _layout_unlocks(unlocks)
-	if not layout.has(title):
-		return Rect2()
-	var state := _current_view_state()
-	var zoom: float = state["zoom"]
-	var origin := _tree_origin() + (state["pan"] as Vector2)
-	var local: Rect2 = layout[title]
-	return Rect2(global_position + origin + local.position * zoom, local.size * zoom).grow(8.0)
-
-
-func tutorial_research_visible(title: String) -> bool:
-	if _ds2 != null:
-		return is_visible_in_tree() and bool(_ds2.call("card_visible", title))
-	var card := tutorial_unlock_rect(title)
-	var viewport_rect := Rect2(global_position + _tree_rect().position, _tree_rect().size)
-	return (card.has_area() and viewport_rect.has_point(card.get_center())
-		and viewport_rect.intersection(card).get_area() >= card.get_area() * 0.5)
-
-
 func _search_input_rect() -> Rect2:
 	var body := _body_rect()
 	var close := _close_button_rect()
@@ -1037,8 +1010,7 @@ func _draw_tree() -> void:
 ##
 ## With a query active the tab is IGNORED and matches come from EVERY category. That is
 ## the point: the node you are hunting is usually in a tab you would not have guessed
-## (the tutorial asks for High Strength Glassmaking, which is filed under Inorganic
-## Chemistry), and a search that only looked in the open tab would not have helped.
+## (High Strength Glassmaking is filed under Inorganic Chemistry), and a search that only looked in the open tab would not have helped.
 ## Prereq cables to filtered-out parents simply do not draw — _draw_connections already
 ## skips a prereq that is not in the layout.
 func _category_unlocks(category: String) -> Array[Dictionary]:

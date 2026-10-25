@@ -1153,13 +1153,9 @@ func seaport_base_fee(port_tile: String) -> float:
 		return 0.0
 	return maxf(0.0, Modifiers.apply("port_per_turn_fee", "port", EconomyConfig.SEAPORT_BASE_FEE_PER_GOOD))
 
-func keeps_introductory_port_rate() -> bool:
-	# The saved origin survives completing the coach, which clears tutorial_enabled.
-	return str(MatchState.ruleset.get("name", "")) == "tutorial" or bool(MatchState.ruleset.get("tutorial_enabled", false))
-
 func seaport_insurance_rate(port_tile: String) -> float:
-	# Tutorial games retain the introductory rate permanently. Ownership and research apply.
-	var base := EconomyConfig.seaport_ad_valorem_rate(TurnManager.current_turn, keeps_introductory_port_rate())
+	# Ownership and research apply.
+	var base := EconomyConfig.seaport_ad_valorem_rate(TurnManager.current_turn)
 	if is_seaport_player_owned(port_tile):
 		base *= EconomyConfig.OWNED_SEAPORT_AD_VALOREM_SHARE
 	return maxf(0.0, Modifiers.apply("port_ad_valorem_fee", "port", base))
@@ -1220,7 +1216,7 @@ func preview_sea_shipping(port_tile: String, good_id: String, qty: int, addition
 ## The port charge on one unit at the port's base tariff: its ad valorem on the buy price and its weight
 ## charge, with growth, before research or owning the port. The intermediary passes this on (middleman_service.gd).
 func base_port_charge_per_unit(good_id: String) -> float:
-	var rate := EconomyConfig.seaport_ad_valorem_rate(TurnManager.current_turn, keeps_introductory_port_rate())
+	var rate := EconomyConfig.seaport_ad_valorem_rate(TurnManager.current_turn)
 	var weight := EconomyConfig.seaport_weight_fee(Catalog.get_transport_class(good_id))
 	return (rate * MarketState.get_buy_price(good_id) + weight) * sea_shipping_growth_factor()
 

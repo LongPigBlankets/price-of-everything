@@ -663,12 +663,10 @@ static func _port_module(panel: Control, port: Dictionary) -> PanelContainer:
 	buy.custom_minimum_size.x = CANCEL_W
 	var iid := str(port.get("instance_id", ""))
 	var under_offer := MatchState.is_under_offer(iid)
-	buy.disabled = Tutorial.port_purchase_disabled(PORT_ID) or under_offer
+	buy.disabled = under_offer
 	var buy_tip := "Buy it for %s." % MoneyFigure.text(float(price))
 	if under_offer:
 		buy_tip = BuildingMarketTab.offer_words(iid)
-	elif buy.disabled:
-		buy_tip = Tutorial.PORT_PURCHASE_DISABLED_TOOLTIP + "."
 	Tip.attach(buy, {"name": "Buy the port", "detail": buy_tip})
 	buy.pressed.connect(func() -> void: panel.call("_open_port_buy", iid, price))
 	row.add_child(buy)

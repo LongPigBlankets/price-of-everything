@@ -19,7 +19,7 @@ extends RefCounted
 const PATH := "res://data/player_colours.json"
 
 ## The livery a match uses when nobody has chosen one — saves from before the picker
-## existed, tests, and the tutorial all land here.
+## existed and tests land here.
 const DEFAULT_KEY := "diesel_red"
 ## Fallback if the data file is missing or unreadable, so a livery is never a null colour.
 const FALLBACK := Color("b94c40")

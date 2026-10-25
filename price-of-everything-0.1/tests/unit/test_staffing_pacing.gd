@@ -317,7 +317,7 @@ func _test_upgrade_and_retrofit_durations() -> void:
 
 
 ## AC8.1–AC8.3: the offer pays now, takes the building off the market and closes after 2 turns with 80% (50%
-## when unhappy) of its staff; no second offer; the tutorial's purchase closes at once.
+## when unhappy) of its staff; no second offer.
 func _test_offer_and_closing() -> void:
 	_fresh(BAND_SATISFACTION.normal)
 	MatchState.money = 100000.0
@@ -345,14 +345,6 @@ func _test_offer_and_closing() -> void:
 	MatchState.tick_purchases()
 	MatchState.tick_purchases()
 	_check(is_equal_approx(Staffing.fill(unhappy), 0.5), "AC8.3 below −5 satisfaction it arrives 50% staffed")
-
-	_fresh()
-	MatchState.money = 100000.0
-	MatchState.ruleset["tutorial_enabled"] = true
-	var taught := _building(FACTORY, "r_056", "npc_test")
-	var now := MatchState.offer_for_building(str(taught.instance_id))
-	_check(int(now.turns) == 0 and BuildingState.is_player_owned(taught) and not taught.has("staff_fill"),
-		"AC8.1 the onboarding tutorial's purchase closes at once, fully staffed")
 	_fresh()
 
 

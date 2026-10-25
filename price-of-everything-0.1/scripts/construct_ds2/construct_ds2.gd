@@ -1,7 +1,7 @@
 extends "res://scripts/construct_panel_v2.gd"
 ## The construct panel in DS2, the construction lot with its crane (docs/construct-ds2-plan.md). The base,
 ## construct_panel_v2.gd, keeps the panel's ways in, its state and its Confirm; the lot builds the shell and draws
-## every stage, under the handles the tutorial and the tests look up (ConstructPanelV2, BuildConfirmButton,
+## every stage, under the handles the tests look up (ConstructPanelV2, BuildConfirmButton,
 ## RecipeRow_<id>, ConstructionMaterialsSection): a navy steel hoarding, the yellow tower crane along its top with
 ## the settings key and CONSTRUCT on its cab and the site's name on a plate hung from its jib, one width for every
 ## stage.

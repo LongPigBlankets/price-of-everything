@@ -284,8 +284,7 @@ const FIELDS := {
 			"history"
 		],
 		"number": [
-			"bad_streak",
-			"tutorial_rescues"
+			"bad_streak"
 		],
 		"bool": [
 			"bankrupt",
@@ -429,7 +428,7 @@ const FIELDS := {
 	"match.ruleset": {
 		"number": ["speed_turns"],
 		"string": ["name", "difficulty", "start_id", "victory_set", "logistics_model"],
-		"bool": ["tutorial_enabled", "survey_all_tiles", "middleman_new_buildings"]
+		"bool": ["survey_all_tiles", "middleman_new_buildings"]
 	}
 }
 
@@ -645,7 +644,7 @@ func _roads(data: Dictionary) -> String:
 
 
 func _demo_policy(data: Dictionary, turn: Dictionary) -> String:
-	var allowed := DemoBuild.START_IDS + ["tutorial", "default", ""]
+	var allowed := DemoBuild.START_IDS + ["default", ""]
 	var scenario := str(data.get("scenario_name", "")).to_lower().replace(" ", "_")
 	if scenario == "metals_magnate": scenario = "metal_magnate"
 	if scenario not in allowed: return "this scenario is not available in the demo"
@@ -653,7 +652,7 @@ func _demo_policy(data: Dictionary, turn: Dictionary) -> String:
 	if rules.has("start_id") and str(rules.start_id) not in allowed: return "this start is not available in the demo"
 	if rules.has("speed_turns") and (not _number(rules.speed_turns) or float(rules.speed_turns) != 100): return "the demo supports 100-turn games"
 	if rules.has("difficulty") and (not rules.difficulty is String or str(rules.difficulty).to_lower() != "normal"): return "the demo supports Normal difficulty"
-	if str(rules.get("name", "standard")) not in ["standard", "tutorial"]: return "this ruleset is not available in the demo"
+	if str(rules.get("name", "standard")) != "standard": return "this ruleset is not available in the demo"
 	if rules.has("victory_set") and str(rules.victory_set) != "demo_itch": return "this victory ruleset is not available in the demo"
 	if int(turn.get("current_turn", 1)) > 101 or (int(turn.get("current_turn", 1)) > 100 and not bool(turn.get("game_ended", false))): return "this save is past the demo turn limit"
 	for key in ["recruited_advisor_ids", "permanent_advisor_ids"]:

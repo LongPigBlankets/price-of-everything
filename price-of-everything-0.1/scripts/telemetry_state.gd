@@ -6,9 +6,8 @@ extends Node
 ##
 ## Settings > Telemetry owns the persistent gameplay-report choice. It applies
 ## immediately on Apply, clears queued run reports on opt-out, and overrides saved
-## consent when resuming. Basic launch events remain enabled in either mode. Tutorial
-## runs carry a "-T" run-id suffix. player_id is an anonymous per-install uuid
-## from PlayerProfile.
+## consent when resuming. Basic launch events remain enabled in either mode.
+## player_id is an anonymous per-install uuid from PlayerProfile.
 ##
 ## Rows are a pure observer of Production.last_turn_summary and sim autoload
 ## state — no sim writes, no sim RNG, nothing in _process. The crash
@@ -68,7 +67,7 @@ const COST_LINES := {
 	"carbon_tax_paid": "carbon",
 }
 # Per-turn freight split, FIXED ORDER, summing to the `transport` line in COST_LINES.
-# Added after a tutorial run had to have its freight decomposed by inference — the engine
+# Added after a run had to have its freight decomposed by inference — the engine
 # always knew the split, the sheet just never carried it. Imports/exports carry the WHOLE port
 # charge by direction: splitting fee-from-ad-valorem left both reading zero once the flat fee
 # was retired. See docs/early-game-onboarding-spec.md §4.2b.
@@ -87,8 +86,7 @@ var _run_started_msec := 0
 var _playtime_carried_s := 0  # playtime from earlier sessions of a loaded run
 var _session_ordinal := 1     # 1 = first sitting of the run, +1 per load
 var _collect := true          # active gameplay-report preference from Settings
-var _next_collect := true     # staged by the New Game / Tutorial screens
-var _next_tutorial := false   # staged: suffix the next run id with "-T"
+var _next_collect := true     # staged by the New Game screen
 var _rows: Array = []         # one Dictionary per completed turn, this session
 var _uploading := {}  # path -> that file's delivery watermark while its request is in flight
 var _upload_requests := {}  # path -> cancellable HTTPRequest
@@ -105,10 +103,9 @@ var _building_names := {}     # building_id -> internal_name ("mine"), for the r
 # Run-level facts captured DURING the run rather than read at envelope time. The envelope
 # for a quit-to-menu run is built from inside MatchState.state_reset, by which point the
 # match has already been torn down — anything read there is the reset default, which is
-# how `ruleset` came to report "standard" for tutorial runs in the delivered sheet.
+# how `ruleset` came to report "standard" for some runs in the delivered sheet.
 var _run_start_id := ""
 var _run_cheats := false
-var _run_rescues := 0
 var _run_tutorial_step := ""     # last tutorial step id reached (latched on step_changed)
 var _run_tutorial_visited := 0   # countable steps entered (latched on step_changed)
 var _capture_max_usec := 0    # worst per-turn capture cost, for the perf gate
@@ -348,11 +345,10 @@ func _notification(what: int) -> void:
 		_finalize_run("quit_to_desktop")
 
 
-## Staged by the New Game / Tutorial screens just before a run starts; consumed
-## by the next arm; the current Settings preference remains authoritative on load.
-func set_next_run_consent(collect: bool, tutorial: bool) -> void:
+## Staged by the New Game screen just before a run starts; consumed by the next arm; the
+## current Settings preference remains authoritative on load.
+func set_next_run_consent(collect: bool) -> void:
 	_next_collect = collect
-	_next_tutorial = tutorial
 
 
 func _on_run_started() -> void:
@@ -363,9 +359,8 @@ func _on_run_started() -> void:
 	_armed = true
 	_finalized = false
 	_collect = _next_collect and not PlayerProfile.telemetry_opt_out
-	_run_id = _uuid() + ("-T" if _next_tutorial else "")
+	_run_id = _uuid()
 	_next_collect = true
-	_next_tutorial = false
 	_run_started_unix = int(Time.get_unix_time_from_system())
 	_run_started_msec = Time.get_ticks_msec()
 	_playtime_carried_s = 0
@@ -375,7 +370,6 @@ func _on_run_started() -> void:
 	_delivered_through = 0
 	_run_start_id = ""
 	_run_cheats = false
-	_run_rescues = 0
 	_run_tutorial_step = ""
 	_run_tutorial_visited = 0
 	_ensure_tier_index()
@@ -440,7 +434,6 @@ func _build_row(summary: Dictionary) -> Dictionary:
 	# Run-level facts, latched while the match is still alive (see _run_start_id).
 	_capture_start_id()
 	_run_cheats = _run_cheats or bool(MatchState.cheats_used)
-	_run_rescues = maxi(_run_rescues, SolvencyState.tutorial_rescues())
 	var row := {
 		"turn": TurnManager.current_turn - 1,
 		"money": snappedf(MatchState.money, 0.01),
@@ -708,7 +701,7 @@ func _build_envelope(reason: String) -> Dictionary:
 			"ruleset": str(MatchState.ruleset.get("name", "standard")),
 			# Latched during the run, not read here: on a quit-to-menu finalize the match
 			# has already been reset, which is exactly why `ruleset` above is unreliable
-			# on that path (a tutorial run reports "standard").
+			# on that path.
 			"start": _run_start_id,
 			"cheats_used": _run_cheats or bool(MatchState.cheats_used),
 			"tutorial_step": _run_tutorial_step,
@@ -721,7 +714,6 @@ func _build_envelope(reason: String) -> Dictionary:
 			"ended_at": now,
 			"playtime_s": _playtime_s(),
 			"victory": _victory_array(),
-			"rescues": maxi(_run_rescues, SolvencyState.tutorial_rescues()),
 		},
 		"turns": _undelivered_rows(),
 		"events": _events.duplicate(true),

@@ -1,12 +1,12 @@
 extends Node
 const MiddlemanService := preload("res://scripts/middleman_service.gd")
-## Modular mini missions: a short, concrete goal for the moment a start (or the tutorial)
-## stops telling the player what to do.
+## Modular mini missions: a short, concrete goal for the moment a start stops telling the player
+## what to do.
 ##
 ## THREE CHAINS, AND THEY DO NOT SHARE A SHAPE.
 ##
-##   glass / aluminium (post-tutorial)  integrate the chain you were just taught, then find a
-##                                      second buyer for the surplus that creates.
+##   glass / aluminium                  integrate the chain you run, then find a second buyer for
+##                                      the surplus that creates.
 ##   magnate (the Metal Magnate start)  smelt your own ingots into steel, then get both ores
 ##                                      onto deposits that never run out.
 ##
@@ -114,8 +114,7 @@ const CHAINS := {
 ## Starts whose chain is known the moment the match loads, so the module can appear on turn 1
 ## rather than after the first turn resolves. Both demo starts are here — the magnate already
 ## smelts ingots on turn 1 and the glass merchant already makes glass, so there is nothing to
-## wait for. The tutorial fork is NOT here: it records no start_id for which way the player went,
-## so its chain is inferred from output in _pick_chain instead.
+## wait for. Any other start's chain is inferred from output in _pick_chain instead.
 const START_CHAINS := {
 	"metal_magnate": "magnate",
 	"glass_merchant": "glass",
@@ -289,31 +288,15 @@ func import_fields(fields: Dictionary) -> void:
 
 # ── What the top bar asks ────────────────────────────────────────────────────
 
-## SHOWN BY DEFAULT. The missions are hidden in exactly two situations, and both are about the
-## tutorial rather than about the player:
-##
-##   the tutorial is RUNNING      the coach owns the screen; nothing else competes with it.
-##   they SKIPPED it early        a skip before the second-to-last step leaves them without the
-##                                setup the missions assume, so offering one would point at a
-##                                chain they never built. Skipping later, or finishing, keeps
-##                                them: _complete_tutorial clears tutorial_enabled, so the
-##                                missions appear in that same match.
-##
-## It deliberately does NOT check PlayerProfile.tutorial_completed. That was the first cut and it
-## was wrong: the owner's own profile reads tutorial_completed=false after four finished games,
-## because the flag is only set by pressing End Tutorial, not by playing. Anyone who skipped the
-## tutorial, or finished it before the flag existed, would never see a mission again.
+## SHOWN BY DEFAULT. The missions are hidden only while the opening steps run: the coach owns the
+## screen and nothing else competes with it.
 func is_available() -> bool:
 	if Tutorial.active:
 		return false
-	# A skip leaves tutorial rules on (only End Tutorial clears them), which is how a bailed-out
-	# run is told apart from a normal match — where tutorial_enabled was never set at all.
-	if bool(MatchState.ruleset.get("tutorial_enabled", false)) and not Tutorial.setup_reached:
-		return false
 	# Resolve the chain lazily and cache it. For a START_CHAINS start this needs no production,
 	# so the module can answer "available" on turn 1 the first time anything asks — no dependence
-	# on which setup signal fired when. The tutorial fork returns "" here (no start_id, nothing
-	# produced yet) and is filled in later by _on_turn_processed.
+	# on which setup signal fired when. Another start returns "" here (nothing produced yet) and
+	# is filled in later by _on_turn_processed.
 	if chain == "":
 		chain = _pick_chain({})
 	# The generic branch is part of every campaign. It remains visible while its unlocks are
@@ -972,8 +955,8 @@ func _previous(kind: String) -> String:
 	return str(list[i - 1]) if i > 0 else ""
 
 
-## A named start decides the chain outright; the tutorial fork, which records nothing in the
-## ruleset, is inferred from whichever of glass/aluminium the player makes more of. The start
+## A named start decides the chain outright; any other is inferred from whichever of
+## glass/aluminium the player makes more of. The start
 ## check comes first and needs no production, which is why a START_CHAINS start resolves the
 ## instant the match loads rather than after a turn.
 func _pick_chain(produced: Dictionary) -> String:

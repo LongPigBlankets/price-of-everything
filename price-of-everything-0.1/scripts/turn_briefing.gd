@@ -131,7 +131,7 @@ func critical_alerts() -> Array:
 	return _items.filter(func(it) -> bool:
 		return str(it.section) == "alerts" and str(it.severity) == "critical")
 
-## True while a tutorial match is running. Defensive lookup: the Tutorial autoload
+## True while the opening steps' coach is running. Defensive lookup: the Tutorial autoload
 ## is always present, but treat a missing/renamed singleton as "not active".
 func _tutorial_active() -> bool:
 	var t := get_node_or_null("/root/Tutorial")
@@ -149,10 +149,9 @@ func _rebuild_items() -> void:
 			"category": str(def.get("category", "")),
 			"view": view,
 		})
-	# During the tutorial, show ONLY decisions — the live-state updates (a factory
-	# starved until it's powered, an empty stockpile) fire mid-lesson and confuse
-	# players before they've learned what they mean. The Diagnostics card on the
-	# building still surfaces the same faults where the tutorial points them out.
+	# While the opening steps run, show ONLY decisions — the live-state updates fire
+	# mid-lesson and confuse players before they've learned what they mean. The
+	# Diagnostics card on the building still surfaces the same faults.
 	if _tutorial_active():
 		_items = out
 		return
@@ -598,12 +597,12 @@ const _EVENT_SECTIONS := {
 # Event kinds that never become a dock row from here: superseded by a live alert or the top
 # bar's storage lamp, too noisy, or already posted to the dock by their own source (the
 # research unlock by the top bar, the finished building, the answered decision, the bridge
-# loan, the tutorial top up and the survey by their own toasts).
+# loan and the survey by their own toasts).
 const _NO_DOCK_ROW := {
 	"deposit_exhausted": true, "tile_at_capacity": true, "sales_aggregate": true,
 	"bankruptcy_warning": true, "building_starved": true, "research_unlocked": true,
 	"construction_completed": true, "decision_resolved": true, "bridge_loan": true,
-	"tutorial_rescue": true, "survey_completed": true, "sales_arrived": true,
+	"survey_completed": true, "sales_arrived": true,
 }
 # Kind → icon glyph key (see ICON_GLYPHS). Announcement kinds we don't know fall back
 # to the flag in _event_item.

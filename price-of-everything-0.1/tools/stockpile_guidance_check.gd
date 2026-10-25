@@ -18,7 +18,7 @@ func _ready() -> void:
 	Harness.prepare_window(get_window(), Vector2i(1920, 1080))
 	Harness.arm_watchdog(self, 180.0)
 	AudioServer.set_bus_mute(0, true)
-	TelemetryState.set_next_run_consent(false, false)
+	TelemetryState.set_next_run_consent(false)
 	SaveLoad.prepare_new_game("res://data/starts/metal_magnate.json", {})
 	var world: Node = load("res://scenes/main.tscn").instantiate()
 	add_child(world)
