@@ -338,6 +338,10 @@ func total_per_turn_payment() -> float:
 		sum += loan.payment_per_turn
 	return sum
 
+## Average gross revenue over the rolling window (the last LOAN_PROFIT_WINDOW turns).
+func average_revenue() -> float:
+	return _avg(_revenue_history)
+
 func record_turn_economics(net_profit: float, revenue: float) -> void:
 	# Called once per turn by Production with the company's retained net profit and
 	# gross revenue. Feeds the rolling average that scales borrowing capacity.

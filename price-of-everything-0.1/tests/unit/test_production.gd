@@ -520,8 +520,11 @@ func _test_deposit_penalty_modifier() -> void:
 	MatchState.reset()
 
 func _test_workforce_output_modifier_surfaces_in_building_status() -> void:
+	# Labour policies act through THROUGHPUT now: the 45 hour week shows as +12% (inputs and outputs
+	# together), and profit share no longer moves output at all (spec §3, §4.4).
 	Modifiers.reset()
 	MatchState.reset()
+	LabourState.policy_throughput_enabled = true
 	var old_turn: int = int(TurnManager.current_turn)
 	TurnManager.current_turn = 1
 	var building := {
@@ -533,20 +536,21 @@ func _test_workforce_output_modifier_surfaces_in_building_status() -> void:
 	}
 	var recipe: Dictionary = Catalog.get_recipe("r_009")
 	var base_output: int = int(recipe.get("output_qty", 0))
-	_check(BuildingStatus.effective_output_qty(building, recipe) == base_output,
-		"building status baseline output excludes inactive workforce policies")
-	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
+	_check(LabourState.work_week_hours == 45 and BuildingStatus.effective_output_qty(building, recipe) == int(round(float(base_output) * 1.12)),
+		"building status output includes the 45 hour week's +12% throughput")
 	var mod: Dictionary = BuildingStatus.net_output_modifier(building, recipe)
 	var workforce_parts: Array = mod.get("workforce_parts", [])
-	_check(BuildingStatus.effective_output_qty(building, recipe) == int(round(float(base_output) * 1.10)),
-		"building status output includes annual profit-share workforce multiplier")
-	_check(absf(float(mod.get("pct_f", 0.0)) - 10.0) < 0.001,
-		"building status net output modifier includes annual profit share")
+	_check(absf(float(mod.get("pct_f", 0.0)) - 12.0) < 0.001,
+		"building status net output modifier includes the work week's throughput")
 	var first_workforce_part: Dictionary = workforce_parts[0] if not workforce_parts.is_empty() else {}
-	_check(workforce_parts.size() == 1 and str(first_workforce_part.get("label", "")) == "Annual Profit Share",
-		"building status modifier breakdown lists annual profit share")
-	_check(BuildingStatus._modifier_tooltip(mod).find("Annual Profit Share") >= 0,
-		"building status tooltip includes annual profit share")
+	_check(workforce_parts.size() == 1 and str(first_workforce_part.get("label", "")) == "45 hour week (throughput)",
+		"building status modifier breakdown lists the work week as throughput")
+	_check(BuildingStatus._modifier_tooltip(mod).find("45 hour week") >= 0,
+		"building status tooltip includes the work week")
+	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
+	_check(BuildingStatus.effective_output_qty(building, recipe) == int(round(float(base_output) * 1.12))
+		and (BuildingStatus.net_output_modifier(building, recipe).get("workforce_parts", []) as Array).size() == 1,
+		"profit share no longer changes output")
 	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, false)
 	TurnManager.current_turn = old_turn
 	Modifiers.reset()
@@ -594,12 +598,12 @@ func _test_additive_labour_cost_model() -> void:
 	_check(is_equal_approx(Production.labour_cost_factor(building), 1.0),
 		"labour factor: 100% of base with no modifiers")
 
-	# Slider +20% and a -30% policy delta net to -10% off the 100% base (additive,
-	# not the old compounded 0.8 x 1.2 x ...).
+	# Overtime's +30% salary and a -40% head-count cut net to -10% off the 100% base (additive,
+	# not compounded).
 	LabourState.set_labour_multiplier(1.2)
-	LabourState.workforce_policy_effects["test_policy"] = {"labour_pct": -0.30, "output_pct": 0.0, "active_turns": 1}
+	Modifiers.add({"id": "test_additive_cut", "domain": "labour_headcount", "pct": -40.0})
 	_check(is_equal_approx(Production.labour_cost_factor(building), 0.90),
-		"labour factor: slider and policy deltas add to base 100% (no compounding)")
+		"labour factor: effort salary and head-count deltas add to base 100% (no compounding)")
 	_check(is_equal_approx(Production._calculate_labour_cost(building), Production._base_labour_cost(building) * 0.90),
 		"labour cost: base x additive factor")
 
@@ -607,7 +611,7 @@ func _test_additive_labour_cost_model() -> void:
 	_check(ov.has("current") and ov.has("est_10_turns") and ov.has("factor_pct") and ov.has("next_turn"),
 		"labour overview: exposes current, next-turn, 10-turn estimate and factor %")
 
-	LabourState.workforce_policy_effects.clear()
+	Modifiers.remove("test_additive_cut")
 	LabourState.set_labour_multiplier(1.0)
 	TurnManager.current_turn = old_turn
 	Modifiers.reset()

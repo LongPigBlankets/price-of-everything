@@ -458,6 +458,8 @@ func _build_row(summary: Dictionary) -> Dictionary:
 		"transport": _transport_split(summary),
 		"buildings_list": empire.list,
 		"building_states": empire.states,
+		# Local only: balancing_payload blanks it until the sheet has a satisfaction column.
+		"satisfaction": snappedf(LabourState.satisfaction, 0.1),
 	}
 	row["interactions"] = _interaction_counts(int(row.turn))
 	if _tier_available:

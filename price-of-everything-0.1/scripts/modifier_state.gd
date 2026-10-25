@@ -363,6 +363,10 @@ signal modifiers_changed()
 
 # id -> modifier dict
 var _modifiers: Dictionary = {}
+# Domains that currently hold at least one modifier, rebuilt lazily after any change. Lets hot
+# per-input paths (throughput, recipe_input) skip the scan when their domain is empty.
+var _domains: Dictionary = {}
+var _domains_dirty := true
 # Pruned/expired modifiers, capped FIFO — the bell + future top-bar history.
 var _history: Array = []
 # Monotonic id when the caller doesn't supply one.
@@ -508,6 +512,7 @@ func add(modifier: Dictionary) -> String:
 		m["expires_turn"] = 0
 	m["added_turn"] = int(TurnManager.current_turn)
 	_modifiers[str(m.id)] = m
+	_domains_dirty = true
 	modifiers_changed.emit()
 	return str(m.id)
 
@@ -516,6 +521,7 @@ func remove(id: String) -> bool:
 	if not _modifiers.has(id):
 		return false
 	_modifiers.erase(id)
+	_domains_dirty = true
 	modifiers_changed.emit()
 	return true
 
@@ -538,7 +544,17 @@ func reset() -> void:
 	_modifiers.clear()
 	_history.clear()
 	_next_id = 1
+	_domains_dirty = true
 	modifiers_changed.emit()
+
+## True when at least one active modifier is in `domain`. Cheap after the first call per change.
+func has_domain(domain: String) -> bool:
+	if _domains_dirty:
+		_domains.clear()
+		for m in _modifiers.values():
+			_domains[str(m.get("domain", ""))] = true
+		_domains_dirty = false
+	return _domains.has(domain)
 
 ## Resolve all modifiers in `domain` matching `target`/`ctx` against a base value.
 ## Returns (base + sum_adds) * prod_mults. Hot path: empty registry short-circuits.
@@ -605,7 +621,7 @@ func resolve_pct(domain: String, target: String, ctx: Dictionary = {}) -> Dictio
 		if p == 0.0:
 			continue
 		net += p
-		parts.append({"label": str(m.get("label", m.get("id", ""))), "pct": p})
+		parts.append({"id": str(m.get("id", "")), "label": str(m.get("label", m.get("id", ""))), "pct": p})
 	return {"net": net, "parts": parts}
 
 
@@ -645,6 +661,7 @@ func _prune_expired() -> void:
 		while _history.size() > HISTORY_CAP:
 			_history.pop_front()
 		_modifiers.erase(id)
+	_domains_dirty = true
 	modifiers_changed.emit()
 
 
@@ -699,6 +716,7 @@ func import_state(d: Dictionary) -> void:
 	_modifiers = d.get("modifiers", {}).duplicate(true)
 	_history = d.get("history", []).duplicate(true)
 	_next_id = int(d.get("next_id", 1))
+	_domains_dirty = true
 	# The standing deposit penalties are a baseline rule, not saved player state —
 	# re-seed them so loading a save (or a pre-feature one that lacks them) keeps
 	# extraction penalised. Idempotent: add() keys by id.

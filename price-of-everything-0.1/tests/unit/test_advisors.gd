@@ -353,15 +353,14 @@ func _test_hr_director_policies() -> void:
 	_check(is_equal_approx(LabourState.workforce_labour_cost_delta(10) - LabourState.workforce_labour_cost_delta(11), 0.10),
 		"HR: Long Tenure adds a +10% labour spike every 10th turn")
 
-	# Stock Options accrues output + a dividend bonus (persisted in workforce_dividend_bonus).
+	# Stock Options accrues a dividend bonus (persisted in workforce_dividend_bonus).
 	LabourState.set_workforce_policy_enabled(SO, true)
 	for _j in 5:
 		LabourState.tick_workforce_policies()
 	var so_eff: Dictionary = LabourState.workforce_policy_effects.get(SO, {})
-	_check(float(so_eff.get("output_pct", 0.0)) > 0.0
-		and float(so_eff.get("dividend_pct", 0.0)) > 0.0
+	_check(float(so_eff.get("dividend_pct", 0.0)) > 0.0
 		and is_equal_approx(LabourState.workforce_dividend_bonus(), float(so_eff.get("dividend_pct", 0.0))),
-		"HR: Stock Options accrues output + dividend bonus")
+		"HR: Stock Options accrues a dividend bonus (no output effect)")
 
 	# Un-seating the HR Director revokes the seat-gated policy (Long Tenure); the
 	# mission-unlocked Stock Options is earned permanently and stays available.

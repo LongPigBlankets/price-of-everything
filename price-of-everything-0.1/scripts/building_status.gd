@@ -87,6 +87,7 @@ static func effective_output_qty(building: Dictionary, recipe: Dictionary, this_
 		var q: int = int(round(Modifiers.apply("recipe_output", recipe_id, float(base_qty), ctx)))
 		q = int(round(float(q) * BuildingLevels.mult("output", int(building.get("level", 1)))))
 		q = int(round(float(q) * LabourState.workforce_output_multiplier()))
+		q = int(round(float(q) * MatchState.throughput_multiplier(building)))
 		if this_turn:
 			q = int(round(float(q) * MatchState.startup_capacity_multiplier(building)))
 			var derate := float((Production._intermittency_by_building.get(str(building.get("instance_id", "")), {}) as Dictionary).get("derate", 0.0))
@@ -103,7 +104,8 @@ static func effective_energy_req(building: Dictionary, recipe: Dictionary) -> in
 		return energy_req
 	var bid: String = str(building.get("building_id", ""))
 	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid})
-	return int(round(eff * BuildingLevels.mult("energy", int(building.get("level", 1)))))
+	return int(round(eff * BuildingLevels.mult("energy", int(building.get("level", 1)))
+		* MatchState.throughput_multiplier(building) * LabourState.workforce_power_multiplier(building)))
 
 # Power GENERATION this turn (post recipe_output modifiers × level OUTPUT_MULT × workforce
 # output multiplier) — mirrors production.gd._effective_power_output. 0 when the recipe
@@ -122,7 +124,8 @@ static func effective_power_output(building: Dictionary, recipe: Dictionary) -> 
 	}
 	var eff := Modifiers.apply("recipe_output", rid, float(output_qty), ctx)
 	eff *= Production.colocated_battery_power_multiplier(building)   # renew_014 same-tile battery bonus
-	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1))) * LabourState.workforce_output_multiplier()))
+	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1))) * LabourState.workforce_output_multiplier()
+		* MatchState.throughput_multiplier(building)))
 
 static func good_display_from_internal(internal_name: String) -> String:
 	return str(Catalog.get_good_by_internal_name(internal_name).get("display_name", internal_name))
@@ -330,28 +333,15 @@ static func produce_cost_status(building: Dictionary) -> Dictionary:
 # --- Net output modifier (additive recipe_output modifiers + workforce + intermittency) ----
 # Returns the signed net percent and its colour band (white -1..1%, green >1%, red <-1%), plus the
 # component parts so a UI can build a breakdown tooltip without recomputing.
-static func workforce_output_modifier_parts(turn_number: int = -1) -> Array:
-	var turn := int(TurnManager.current_turn) if turn_number < 0 else turn_number
+## The workforce's parts of a building's net output change: the labour policies' throughput (inputs
+## and outputs together) and the satisfaction prize. [{pct, label}].
+static func workforce_output_modifier_parts(building: Dictionary = {}) -> Array:
 	var parts: Array = []
-	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_GENEROUS_PENSIONS):
-		var pensions: Dictionary = LabourState.workforce_policy_effects.get(LabourState.WORKFORCE_POLICY_GENEROUS_PENSIONS, {})
-		var pension_pct := float(pensions.get("output_pct", 0.0)) * 100.0
-		if absf(pension_pct) > 0.001:
-			parts.append({"pct": pension_pct, "label": "Generous Pensions"})
-	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE) and turn % 10 == 0:
-		parts.append({"pct": -5.0, "label": "Extended Annual Leave"})
-	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE):
-		var ten_turn_block := int(floor(float(maxi(turn, 1) - 1) / 10.0))
-		if ten_turn_block % 2 == 0:
-			parts.append({"pct": -5.0, "label": "Generous Parental Leave"})
-	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_STRICT_SAFETY):
-		parts.append({"pct": -10.0, "label": "Strict Safety Procedures"})
-	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_LAX_SAFETY):
-		parts.append({"pct": 5.0, "label": "Lax Safety Procedures"})
-	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_BONUS) and turn % 10 == 0:
-		parts.append({"pct": 20.0, "label": "Annual Bonus"})
-	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
-		parts.append({"pct": 10.0, "label": "Annual Profit Share"})
+	for part in LabourState.throughput_parts_for(str(building.get("building_id", ""))):
+		if absf(float(part.pct)) > 0.001:
+			parts.append({"pct": float(part.pct), "label": "%s (throughput)" % str(part.label)})
+	if LabourState.workforce_output_multiplier() > 1.0:
+		parts.append({"pct": (LabourState.SATISFACTION_PRIZE_OUTPUT - 1.0) * 100.0, "label": "Satisfaction over 90"})
 	return parts
 
 static func net_output_modifier(building: Dictionary, recipe: Dictionary) -> Dictionary:
@@ -366,8 +356,8 @@ static func net_output_modifier(building: Dictionary, recipe: Dictionary) -> Dic
 	}
 	var res: Dictionary = Modifiers.resolve_pct("recipe_output", recipe_id, ctx)
 	var net: float = float(res.get("net", 0.0))
-	var workforce_mult: float = LabourState.workforce_output_multiplier()
-	var workforce_parts := workforce_output_modifier_parts()
+	var workforce_mult: float = LabourState.workforce_output_multiplier() * MatchState.throughput_multiplier(building)
+	var workforce_parts := workforce_output_modifier_parts(building)
 	var derate: float = float((Production.get_building_intermittency(str(building.get("instance_id", ""))) as Dictionary).get("derate", 0.0))
 	var eff: float = ((1.0 + net / 100.0) * workforce_mult * (1.0 - derate) - 1.0) * 100.0
 	var color: Color

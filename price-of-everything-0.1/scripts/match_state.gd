@@ -1191,6 +1191,21 @@ func power_priority_for(category: String) -> String:
 func startup_capacity_multiplier(building: Dictionary) -> float:
 	return 0.5 if bool(building.get("startup_half_capacity", false)) else 1.0
 
+## How hard a building runs this turn: the one scale for its inputs, outputs and power. The startup
+## factor times its throughput (docs/pacing-labour-mining-licensing-spec.md §3). Throughput comes
+## from the labour policies and from `throughput` modifiers, whose percentages add.
+func run_multiplier(building: Dictionary) -> float:
+	return startup_capacity_multiplier(building) * throughput_multiplier(building)
+
+## 1 + (labour policy throughput + throughput modifiers) / 100 for this building, never below 0.
+func throughput_multiplier(building: Dictionary) -> float:
+	var bid := str(building.get("building_id", ""))
+	var pct := LabourState.throughput_pct_for(bid)
+	if Modifiers.has_domain("throughput"):
+		pct += float(Modifiers.resolve_pct("throughput", bid,
+			{"building_id": bid, "instance_id": str(building.get("instance_id", ""))}).get("net", 0.0))
+	return maxf(0.0, 1.0 + pct / 100.0)
+
 func consume_startup_capacity(instance_id: String) -> void:
 	if instance_id == "" or not BuildingState.buildings.has(instance_id):
 		return

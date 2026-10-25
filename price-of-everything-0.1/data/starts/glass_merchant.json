@@ -10,6 +10,9 @@
 	},
 	"opening_batches": 0,
 	"money": 600,
+	"labour": {
+		"satisfaction": 20
+	},
 	"one_off_charges": [{ "turn": 1, "amount": 100, "label": "Opening costs" }],
 	"steady_profit_per_turn": 15,
 	"loans": [ { "principal": 1200 }, { "principal": 1200, "grace_turns": 36 } ],

@@ -1026,7 +1026,7 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		output_qty = int(round(Modifiers.apply("recipe_output", recipe_id, float(output_qty), mod_ctx)))
 		output_qty = int(round(float(output_qty) * BuildingLevels.mult("output", int(building.get("level", 1)))))
 		output_qty = int(round(float(output_qty) * LabourState.workforce_output_multiplier()))
-		output_qty = int(round(float(output_qty) * MatchState.startup_capacity_multiplier(building)))
+		output_qty = int(round(float(output_qty) * MatchState.run_multiplier(building)))
 		# Intermittency: derate output that relies on unfirmed intermittent green power
 		# (0 for grey/steady/no-power buildings; set by _compute_power_intermittency).
 		var power_derate: float = float((_intermittency_by_building.get(building.instance_id, {}) as Dictionary).get("derate", 0.0))
@@ -1809,19 +1809,19 @@ func _capture_turn_report(building: Dictionary, recipe: Dictionary) -> void:
 	var lvl := int(building.get("level", 1))
 	var imul := BuildingLevels.mult("input", lvl)
 	var omul := BuildingLevels.mult("output", lvl)
-	var startup_mult := MatchState.startup_capacity_multiplier(building)
+	var startup_mult := MatchState.run_multiplier(building)
 
 	# Build inputs_consumed {good_id: qty} from recipe inputs
 	var inputs_consumed: Dictionary = {}
 	for input in recipe.get("inputs", []):
 		var gid: String = input.get("good_id", "")
 		if gid != "":
-			var scaled_input := float(input.get("qty", 0)) * imul * startup_mult
+			var scaled_input := _modified_input_qty(input, building) * imul * startup_mult
 			inputs_consumed[gid] = int(ceil(scaled_input)) if startup_mult < 1.0 and scaled_input > 0.0 else int(round(scaled_input))
 
 	# Build outputs_produced {good_id: qty}. Scale each output the SAME way _produce_outputs
 	# does — recipe_output modifiers (the "Δ +%" shown on the recipe) × level output mult ×
-	# workforce multiplier — so CostSolver divides the run's fixed costs by what the building
+	# the satisfaction prize × the run multiplier (throughput) — so CostSolver divides the run's fixed costs by what the building
 	# actually makes, not the un-modified recipe base. (Intermittency derate is excluded, as
 	# before: the cost basis reflects structural efficiency, not per-turn power weather.)
 	var recipe_id: String = str(recipe.get("recipe_id", ""))
@@ -1972,17 +1972,12 @@ func labour_headcount() -> Dictionary:
 		total += labour_heads(building, Catalog.get_recipe(str(building.get("recipe_id", ""))))
 	return {"unskilled": total.x, "skilled": total.y, "high_skilled": total.z}
 
-# Every percentage labour modifier applies ADDITIVELY to the 100% base — they no
-# longer compound. Research head-count trims (e.g. Lights-Out Automation, the
-# people-management unlocks), the labour slider, and workforce policies all sum as
-# deltas off 1.0, clamped so labour never goes negative. `policy_delta_override`
-# lets the Labour panel reuse this with a projected workforce delta.
-func labour_cost_factor(building: Dictionary, policy_delta_override: float = INF) -> float:
-	var bid: String = str(building.get("building_id", ""))
-	var headcount_delta: float = float(Modifiers.resolve_pct("labour_headcount", bid, {"building_id": bid, "instance_id": str(building.get("instance_id", ""))}).get("net", 0.0)) / 100.0
-	var slider_delta: float = LabourState.labour_multiplier - 1.0
-	var policy_delta: float = LabourState.workforce_labour_cost_delta() if is_inf(policy_delta_override) else policy_delta_override
-	return maxf(EconomyConfig.LABOUR_FACTOR_MIN, 1.0 + headcount_delta + slider_delta + policy_delta)
+# Every percentage labour change applies ADDITIVELY to the 100% base — they do not
+# compound. Research head-count trims, advisor seats, the effort knob and the workforce
+# policies sum as deltas off 1.0 (LabourState.labour_cost_parts), with cuts made after a
+# Comprehensive Union signing halved, then floored. `turns_ahead` projects the ramps.
+func labour_cost_factor(building: Dictionary, turns_ahead: int = 0) -> float:
+	return LabourState.labour_cost_factor_for(building, turns_ahead)
 
 # Aggregate labour snapshot for the People panel's Labour indicator. `current` is what the turn charges: each
 # building's labour_charge, as maintenance_labour pays it (paused buildings carry no workforce, a building that
@@ -1997,8 +1992,6 @@ func labour_overview() -> Dictionary:
 	var est_ten := 0.0
 	var at_floor := false
 	var has_buildings := false
-	var policy_next: float = LabourState.projected_workforce_labour_delta(1)
-	var policy_ten: float = LabourState.projected_workforce_labour_delta(10)
 	for building in BuildingState.buildings.values():
 		if not BuildingState.is_player_owned(building):
 			continue
@@ -2021,8 +2014,8 @@ func labour_overview() -> Dictionary:
 			continue
 		if labour_cost_factor(building) <= EconomyConfig.LABOUR_FACTOR_MIN + 0.000001:
 			at_floor = true
-		next_turn += b_base * share * labour_cost_factor(building, policy_next)
-		est_ten += b_base * share * labour_cost_factor(building, policy_ten)
+		next_turn += b_base * share * labour_cost_factor(building, 1)
+		est_ten += b_base * share * labour_cost_factor(building, 10)
 	var factor_pct: float = (current / base_total * 100.0) if base_total > 0.0 else 100.0
 	return {
 		"base": base_total,
@@ -2047,8 +2040,8 @@ func _calculate_maintenance_cost(building: Dictionary) -> float:
 	# Maintenance modifiers (e.g. Combined Heat & Power thermal-battery retrofit).
 	var bid: String = str(building.get("building_id", ""))
 	var maint_cost := Modifiers.apply("maintenance", bid, maint_val, {"building_id": bid, "instance_id": str(building.get("instance_id", ""))})
-	# Empire-wide workforce penalty (Lax Safety neglect ramps upkeep up to +100%).
-	maint_cost *= LabourState.workforce_maintenance_multiplier()
+	# Automation's extra upkeep on the level 2+ buildings it runs.
+	maint_cost *= LabourState.workforce_maintenance_multiplier(building)
 	return maint_cost * BuildingLevels.mult("maint", int(building.get("level", 1)))
 
 # Power-consumption modifiers (Pulverised Carbon Injection, Scrap Preheating,
@@ -2060,8 +2053,9 @@ func _effective_energy_req(building: Dictionary, recipe: Dictionary) -> int:
 		return energy_req
 	var bid: String = str(building.get("building_id", ""))
 	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid})
-	var capacity_mult := MatchState.startup_capacity_multiplier(building)
-	var scaled := eff * BuildingLevels.mult("energy", int(building.get("level", 1))) * capacity_mult
+	var capacity_mult := MatchState.run_multiplier(building)
+	var scaled := eff * BuildingLevels.mult("energy", int(building.get("level", 1))) * capacity_mult \
+		* LabourState.workforce_power_multiplier(building)
 	return int(ceil(scaled)) if capacity_mult < 1.0 and scaled > 0.0 else int(round(scaled))
 
 # Power generation after recipe_output modifiers (e.g. Pulverised Coal Boilers +5%,
@@ -2082,7 +2076,7 @@ func _effective_power_output(building: Dictionary, recipe: Dictionary) -> int:
 	}
 	var eff := Modifiers.apply("recipe_output", rid, float(output_qty), mod_ctx)
 	eff *= colocated_battery_power_multiplier(building)
-	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1))) * LabourState.workforce_output_multiplier() * MatchState.startup_capacity_multiplier(building)))
+	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1))) * LabourState.workforce_output_multiplier() * MatchState.run_multiplier(building)))
 
 # Wind/solar plants and the battery types (solar b_024 · onshore wind b_025 · offshore wind b_026;
 # electric battery b_028 · thermal battery b_029).
@@ -2126,18 +2120,18 @@ func stats_at_level(instance_id: String, level: int) -> Dictionary:
 		"inputs": [],
 		"outputs": [],
 	}
-	var imul := BuildingLevels.mult("input", level) * MatchState.startup_capacity_multiplier(b)
+	var imul := BuildingLevels.mult("input", level) * MatchState.run_multiplier(b)
 	for input in recipe.get("inputs", []):
 		out.inputs.append({
 			"good_id": str(input.get("good_id", "")),
 			"name": Catalog.get_display_name(str(input.get("good_id", ""))),
-			"qty": int(round(float(input.get("qty", 0)) * imul)),
+			"qty": int(round(_modified_input_qty(input, b) * imul)),
 		})
 	# Outputs: power takes its own branch; everything else mirrors _produce_outputs (modifier + level).
 	if str(recipe.get("output_name", "")) == "power":
 		out.outputs.append({"name": "Power", "good_id": "power", "qty": _effective_power_output(b, recipe)})
 	else:
-		var omul := BuildingLevels.mult("output", level) * MatchState.startup_capacity_multiplier(b)
+		var omul := BuildingLevels.mult("output", level) * MatchState.run_multiplier(b)
 		var rid := str(recipe.get("recipe_id", ""))
 		for output in _recipe_output_items(recipe):
 			var oname := str(output.get("internal_name", ""))
@@ -2161,7 +2155,8 @@ func _effective_energy_req_f(building: Dictionary, recipe: Dictionary) -> float:
 		return float(energy_req)
 	var bid: String = str(building.get("building_id", ""))
 	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid})
-	return eff * BuildingLevels.mult("energy", int(building.get("level", 1))) * MatchState.startup_capacity_multiplier(building)
+	return eff * BuildingLevels.mult("energy", int(building.get("level", 1))) * MatchState.run_multiplier(building) \
+		* LabourState.workforce_power_multiplier(building)
 
 # ── Power intermittency (green/grey quality flags layered on top of `power`) ────
 
@@ -3110,6 +3105,19 @@ func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictiona
 			_carbon_consumed_by_building[iid] = per
 
 func _scaled_input_qty(input: Dictionary, building: Dictionary) -> int:
-	var capacity_mult := MatchState.startup_capacity_multiplier(building)
-	var scaled := float(input.get("qty", 0)) * BuildingLevels.mult("input", int(building.get("level", 1))) * capacity_mult
+	var capacity_mult := MatchState.run_multiplier(building)
+	var scaled := _modified_input_qty(input, building) * BuildingLevels.mult("input", int(building.get("level", 1))) * capacity_mult
 	return int(ceil(scaled)) if capacity_mult < 1.0 and scaled > 0.0 else int(round(scaled))
+
+## An input's per-run quantity after `recipe_input` modifiers (input-saving processes), before the
+## level and run scaling.
+func _modified_input_qty(input: Dictionary, building: Dictionary) -> float:
+	var qty := float(input.get("qty", 0))
+	if qty <= 0.0 or not Modifiers.has_domain("recipe_input"):
+		return qty
+	var rid := str(building.get("recipe_id", ""))
+	var bid := str(building.get("building_id", ""))
+	var gid := str(input.get("good_id", ""))
+	return Modifiers.apply("recipe_input", rid, qty, {"recipe_id": rid, "building_id": bid,
+		"instance_id": str(building.get("instance_id", "")), "good_id": gid,
+		"good_internal": str(Catalog.get_good(gid).get("internal_name", ""))})

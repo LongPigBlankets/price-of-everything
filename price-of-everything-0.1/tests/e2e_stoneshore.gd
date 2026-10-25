@@ -288,9 +288,9 @@ func _print_profit_trajectory() -> void:
 					"recipe_id": want, "building_id": str(inst.get("building_id", "")),
 					"instance_id": str(iid)})
 				var derate := float((Production._intermittency_by_building.get(str(iid), {}) as Dictionary).get("derate", 0.0))
-				print("    %-8s L%d  recipe_output x%.3f   level x%.2f   workforce x%.3f   startup x%.3f   intermittency -%.0f%%"
+				print("    %-8s L%d  recipe_output x%.3f   level x%.2f   prize x%.3f   throughput x%.3f   startup x%.3f   intermittency -%.0f%%"
 					% [want, lvl2, modded / base, BuildingLevels.mult("output", lvl2),
-						LabourState.workforce_output_multiplier(),
+						LabourState.workforce_output_multiplier(), MatchState.throughput_multiplier(inst),
 						MatchState.startup_capacity_multiplier(inst), derate * 100.0])
 				break
 	if _auto_infra:

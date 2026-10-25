@@ -1167,6 +1167,7 @@ func tick_demolish() -> Array:
 				MatchState.add_money(cash)
 			Construction.repay_materials_discount(iid)
 			BuildingState.remove_building(iid)
+			LabourState.on_building_demolished(iid)
 		demolish_queue.erase(iid)
 		completed.append(iid)
 		building_demolished.emit(iid)

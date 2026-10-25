@@ -80,6 +80,9 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 		return out
 
 	# --- Outputs: what it sells, what the freight and port cost to sell it ---------------
+	# The labour policies' throughput scales outputs AND inputs together (MatchState.run_multiplier
+	# for a running building); the startup ramp is left out because the forecast is the lasting rate.
+	var run := MatchState.throughput_multiplier(probe)
 	var outputs := {}          # good_id -> qty
 	var revenue: float = 0.0
 	for item in Production._recipe_output_items(recipe):
@@ -96,7 +99,7 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 			# standing workforce output multiplier. Timed event buffs and advisor bonuses are left
 			# out on purpose so the projection is the lasting margin (owner report 2026-09-05: a
 			# motor factory forecast -£0.74 but ran at ~+£31 with the empire's standing +10%).
-			var qty := _permanent_output_qty(recipe_id, gid, good_internal, base_qty)
+			var qty := int(round(float(_permanent_output_qty(recipe_id, gid, good_internal, base_qty)) * run))
 			outputs[gid] = qty
 			revenue += float(qty) * MarketState.get_price(gid)
 
@@ -128,7 +131,7 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 	var unroutable: Array[String] = []
 	for item in recipe.get("inputs", []):
 		var gid := str(item.get("good_id", ""))
-		var qty := int(item.get("qty", 0))
+		var qty := int(round(Production._modified_input_qty(item, probe) * run))
 		if gid == "" or qty <= 0:
 			continue
 		var source_tile := _own_source_tile(tile_id, gid)
@@ -183,7 +186,7 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 	for item in recipe.get("inputs", []):
 		var gid := str(item.get("good_id", ""))
 		if gid != "":
-			warehousing += float(item.get("qty", 0)) * EconomyConfig.warehousing_cost_per_unit(gid)
+			warehousing += Production._modified_input_qty(item, probe) * run * EconomyConfig.warehousing_cost_per_unit(gid)
 
 	var power_cost := marginal_power_cost(tile_id, Production._effective_energy_req(probe, recipe))
 	var labour := Production._calculate_labour_cost(probe, recipe)
@@ -337,9 +340,9 @@ static func _item_good_id(item: Dictionary) -> String:
 	return gid
 
 
-## The output quantity a NEW building (level 1) will steadily produce: the recipe base scaled by
-## the PERMANENT output boosts it will run under -- permanent recipe_output modifiers (research
-## yield) and the standing workforce output multiplier. Mirrors BuildingStatus.effective_output_qty
+## The output quantity a NEW building (level 1) will steadily produce, before throughput: the recipe
+## base scaled by the PERMANENT output boosts it will run under -- permanent recipe_output modifiers
+## (research yield) and the satisfaction prize. Mirrors BuildingStatus.effective_output_qty
 ## but through Modifiers.apply_permanent, so timed event/research buffs and advisor bonuses are
 ## excluded; level is 1 for a fresh build, so the level output multiplier is 1.0.
 static func _permanent_output_qty(recipe_id: String, good_id: String, good_internal: String, base_qty: int) -> int:

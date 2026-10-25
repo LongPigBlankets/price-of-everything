@@ -27,32 +27,33 @@ func _collect_buttons(node: Node, out: Array) -> void:
 		_collect_buttons(child, out)
 
 func _test_start_labour_preset() -> void:
-	# A start config may ship with a work-effort policy already chosen. metal_magnate (the
-	# easy start) opens on 1.2x overtime with its output momentum already at the cap, so it
-	# reads as an inherited going concern. See docs/early-game-onboarding-spec.md §5.5.
+	# A start config may ship with a work-effort policy and a starting satisfaction. metal_magnate
+	# opens on 1.2x overtime with a content workforce (+40) that the overtime then wears down.
+	# See docs/pacing-labour-mining-licensing-spec.md §4.6.
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/metal_magnate.json"))
 	_check(parsed is Dictionary, "metal_magnate start config parses")
 	var expanded: Dictionary = SaveLoad.expand_start_config(parsed as Dictionary)
 	var match_block: Dictionary = expanded.get("match", {})
 	_check(is_equal_approx(float(match_block.get("labour_multiplier", 0.0)), EconomyConfig.LABOUR_MULTIPLIER_MAX)
-		and is_equal_approx(float(match_block.get("labour_output_pressure_pct", -1.0)),
-			EconomyConfig.LABOUR_OUTPUT_MOMENTUM_CAP),
-		"metal_magnate starts on 1.2x work effort with output momentum at the cap")
+		and is_equal_approx(float(match_block.get("labour_satisfaction", -1.0)), 40.0)
+		and int(match_block.get("work_week_hours", 0)) == 45
+		and not match_block.has("labour_output_pressure_pct"),
+		"metal_magnate starts on 1.2x work effort, satisfaction +40, a 45 hour week")
 
-	# Every other start is untouched: default effort, no accrued momentum.
+	# Every other start: default effort, satisfaction 0, the 45 hour week.
 	var plain: Dictionary = SaveLoad.expand_start_config({"name": "plain", "money": 100})
 	var plain_match: Dictionary = plain.get("match", {})
 	_check(is_equal_approx(float(plain_match.get("labour_multiplier", 0.0)), EconomyConfig.LABOUR_MULTIPLIER_DEFAULT)
-		and is_equal_approx(float(plain_match.get("labour_output_pressure_pct", -1.0)), 0.0),
-		"starts without a labour block keep the default work effort")
+		and is_equal_approx(float(plain_match.get("labour_satisfaction", -1.0)), 0.0)
+		and int(plain_match.get("work_week_hours", 0)) == 45,
+		"starts without a labour block keep the default effort, satisfaction 0 and 45 hours")
 
 	# Authored values are clamped to the configured range, not trusted.
 	var wild: Dictionary = SaveLoad.expand_start_config({
-		"name": "wild", "labour": {"multiplier": 99.0, "output_pressure_pct": 999.0}})
+		"name": "wild", "labour": {"multiplier": 99.0, "satisfaction": 999.0}})
 	var wild_match: Dictionary = wild.get("match", {})
 	_check(is_equal_approx(float(wild_match.get("labour_multiplier", 0.0)), EconomyConfig.LABOUR_MULTIPLIER_MAX)
-		and is_equal_approx(float(wild_match.get("labour_output_pressure_pct", 0.0)),
-			EconomyConfig.LABOUR_OUTPUT_MOMENTUM_CAP),
+		and is_equal_approx(float(wild_match.get("labour_satisfaction", 0.0)), 100.0),
 		"start labour values are clamped to the configured range")
 
 func _test_recording_toasts() -> void:

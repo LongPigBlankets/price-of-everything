@@ -216,6 +216,7 @@ func sell_building(instance_id: String) -> Dictionary:
 	# Remembered so buying it back never costs less than this (MatchState.building_purchase_price).
 	buildings[instance_id]["player_sale_price"] = price
 	set_building_owner(instance_id, SOLD_TO_OWNER)  # emits building_owner_changed → UI refresh
+	LabourState.on_building_sold(instance_id)
 	MatchState.request_toast("Sold building for £%d" % price, "success")
 	return {"ok": true, "price": price}
 
