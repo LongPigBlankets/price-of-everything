@@ -810,8 +810,8 @@
       "good_id": "g_003",
       "tier": "medium",
       "path": "assets/icons/goods/alternate_icons/medium/g_003_copper_ore.png",
-      "source": "blender-good-icons:artifacts/goods_copper_ore/v11/copper_ore_800.png",
-      "sha256": "1b0ae4e7eb620a266fc0e5b4d9e60954c32adbaccbd7ce51c4f404334b6c3694",
+      "source": "blender-good-icons:artifacts/goods_copper_ore/v15/copper_ore_800.png",
+      "sha256": "0b0801c6f4cf98b79819d7ed072b4dfb81b23a8fe3ec63f1caf9c32dc3718080",
       "installed_default": true
     },
     {
@@ -819,8 +819,8 @@
       "good_id": "g_003",
       "tier": "small",
       "path": "assets/icons/goods/alternate_icons/small/g_003_copper_ore.png",
-      "source": "blender-good-icons:artifacts/goods_copper_ore/v11/copper_ore_450.png",
-      "sha256": "c44cb3e658453ec9440d3384ea1bf54662c306316a99fddff5c5391fe5852725",
+      "source": "blender-good-icons:artifacts/goods_copper_ore/v15/copper_ore_450.png",
+      "sha256": "9cd412fb06c42b1586d1cb6b58871ec33fc153327b73483129f41191d64bdc04",
       "installed_default": true
     },
     {
@@ -828,8 +828,8 @@
       "good_id": "g_003",
       "tier": "very_small",
       "path": "assets/icons/goods/alternate_icons/very_small/g_003_copper_ore.png",
-      "source": "blender-good-icons:artifacts/goods_copper_ore/v11/copper_ore_256.png",
-      "sha256": "6596326e611e4db816aa776c2c2e88c9456784e73a37292e465d94735ae7973f",
+      "source": "blender-good-icons:artifacts/goods_copper_ore/v15/copper_ore_256.png",
+      "sha256": "cc09d5255a849e21c4c10163ff951b7e395837145235955afeba20928d2f76a2",
       "installed_default": true
     },
     {

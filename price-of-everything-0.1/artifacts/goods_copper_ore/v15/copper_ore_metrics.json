@@ -1,0 +1,92 @@
+{
+  "revision": "copper_ore_v15",
+  "objects": 53,
+  "structural_hosts": [
+    "rock_hero",
+    "rock_1",
+    "rock_2",
+    "chip_0",
+    "chip_1"
+  ],
+  "topology": "Copper ore: hard broken lumps of dark brown host rock streaked and striped with green malachite and speckled with green and brassy coppery gold grains, the hero's big break turned to the light",
+  "outline": {
+    "host_ownership": true,
+    "component_boundaries": true,
+    "standard_weights": {
+      "outer": 12,
+      "inner": 4
+    }
+  },
+  "stipple": {
+    "version": 1,
+    "dot_radius_fraction": 0.0025,
+    "spacing_fraction": 0.017,
+    "strength": 0.34,
+    "groups": [
+      {
+        "name": "shaded_faces",
+        "labels": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "thresholds": [
+          0.575,
+          0.5,
+          0.3
+        ]
+      }
+    ],
+    "protect_gold": true
+  },
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "validation": [
+    "bbox world 2.40 x 1.98 x 1.48"
+  ],
+  "mesh_checks": {
+    "rock_hero": {
+      "vertices": 376,
+      "faces": 390,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "rock_1": {
+      "vertices": 459,
+      "faces": 561,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "rock_2": {
+      "vertices": 443,
+      "faces": 505,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "chip_0": {
+      "vertices": 303,
+      "faces": 318,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    },
+    "chip_1": {
+      "vertices": 392,
+      "faces": 451,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0
+    }
+  },
+  "frame": {
+    "span": 2.489,
+    "target": [
+      0.001,
+      -0.154,
+      0.601
+    ]
+  }
+}
