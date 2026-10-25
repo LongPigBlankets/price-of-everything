@@ -16,10 +16,11 @@ extends CanvasLayer
 ##   swap empire view sprite          toggle the empire view sprite style (big 2.5D sprites, no backdrop)
 ##   swap port badge                 gold port hex on selling buildings <-> lines to the port row
 ##   swap empire button               toggle the Empire View button's two icon treatments
-##   toggle dock ds2                  switch the updates dock to its DS2 look (in review; v2 is default), and again to return
+##   toggle dock ds2                  bring back the v2 updates dock in place of DS2 (the default), and again to return
 ##   toggle newgame settings          bring back the old New Game settings panel in place of the company registry (the default), and again to return
-##   toggle legend ds2                put the map legends on the DS2 plastic pad (in review; v2 is default), and again to return
-##   toggle research ds2              switch the Research panel to its DS2 look, the patent board and plan chest (in review), and back
+##   toggle legend ds2                bring back the v2 map legends in place of the DS2 pad (the default), and again to return
+##   toggle research ds2              bring back the old Research panel in place of DS2's patent board and plan chest (the default), and back
+##   toggle encyclopedia ds2          bring back the old search panel in place of the catalogue (the default), and again to return
 ##   research all                     unlock every research node (alias of `unlock all`)
 ##   unlock hidden_buildings          enable the three hidden prototype buildings
 ##   unlock advisors                 open the full advisor roster, all seats + seat research
@@ -375,6 +376,9 @@ func _run_command(text: String) -> String:
 			if " ".join(parts.slice(1)).to_lower() == "research ds2":
 				UiPrefs.toggle_use_research_ds2()
 				return "Research → %s" % ("DS2 (patent board and plan chest)" if UiPrefs.use_research_ds2 else "v2")
+			if " ".join(parts.slice(1)).to_lower() == "encyclopedia ds2":
+				UiPrefs.toggle_use_encyclopedia_ds2()
+				return "Encyclopedia → %s" % ("the catalogue" if UiPrefs.use_encyclopedia_ds2 else "the old search panel")
 			if " ".join(parts.slice(1)).to_lower() in ["newgame settings", "newgame ds2"]:
 				UiPrefs.toggle_use_new_game_ds2()
 				return "New Game → %s" % ("the company registry" if UiPrefs.use_new_game_ds2 else "the old settings panel")

@@ -8,8 +8,8 @@ extends "res://scripts/construct_panel_v2.gd"
 ##
 ## The build order (build_order.gd) hangs the site board from the hook: what is built, then the verdict, then
 ## the requirements, the cost, the materials yard, the outlook and the land. Its figures and its refusal are
-## ConstructionRules.quote()'s. The settings keep the base panel's body inside the hoarding until their own DS2
-## body is built (plan §7, phase 5).
+## ConstructionRules.quote()'s. The settings (_render_settings) are DS2's plain dress: each setting on the dark plate
+## in its silver rim, its choices on latching cream keys.
 ##
 ## The parts are renders (tools/button_mockup/cluster.html, sets constructhead, constructboard, constructyard)
 ## placed at the layout's own coordinates: layout px from the panel's top-left, divided by CAPTURE_SCALE.
@@ -24,6 +24,9 @@ const Scroll := preload("res://scripts/bdp_v3_scroll.gd")
 const LampOverlay := preload("res://scripts/ds2/lamp_overlay.gd")
 const Light := preload("res://scripts/bdp_v3_light.gd")
 const Parts := preload("res://scripts/ds2/parts.gd")
+const SilverPlate := preload("res://scripts/tutorial/coach_plate.gd")
+const LatchKey := preload("res://scripts/ds2/latch_key.gd")
+const CreamKey := preload("res://scripts/ds2/cream_key.gd")
 
 const CAPTURE_SCALE := 1.875
 const TEXELS := 2.0
@@ -317,6 +320,137 @@ func _goods_tag() -> Control:
 
 ## Every confirm is the build order: a recipe's, and infrastructure's with its purpose on the sign and its levels
 ## in place of the outlook.
+# --- the settings, in DS2's plain dress ------------------------------------------------------
+
+## Where materials come from when the site lacks the kit: the key's words, the line under the keys when it is the
+## one chosen, and why it can't be chosen yet (empty when it can).
+func _material_options() -> Array:
+	var options: Array = []
+	var service := preload("res://scripts/middleman_service.gd").active()
+	if ResearchState.logistics_progression_active():
+		options.append({"id": "middleman", "label": "Local Suppliers", "detail": "The default. Delivered to the site on the next turn.", "locked": ""})
+	options.append({"id": "market", "label": "Market", "detail": "Always buys the kit in. Never blocks, costs money.",
+		"locked": "Government Import/Export License is required for direct global market construction purchases."
+			if service and not ResearchState.global_trade_license_available() else ""})
+	var contracts := "Open Logistics Contracts is required to use tile stockpiles for construction." \
+		if service and not ResearchState.open_logistics_contracts_available() else ""
+	options.append({"id": "same_tile", "label": "Same tile", "detail": "Uses this tile's stockpile only.", "locked": contracts})
+	options.append({"id": "any_tile", "label": "Any tile", "detail": "Pulls spare goods from any of your tiles.", "locked": contracts})
+	return options
+
+
+## Each setting on the dark plate in its silver rim, its choices on latching cream keys (the chosen one held down)
+## and its switches as a key that latches down for ON. The choices are the base panel's, made the same way.
+func _render_settings() -> void:
+	_search_input.visible = false
+	var back: Button = CreamKey.make("ConstructSettingsBack", "Back to construct", "",
+		CreamKey.width_for("Back to construct", "", false, false))
+	back.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	back.pressed.connect(_on_back_from_settings)
+	_content.add_child(back)
+	_content.add_child(Parts.heading("CONSTRUCTION DEFAULTS"))
+
+	var outputs := [{"id": "market", "label": "Market", "detail": "", "locked": ""},
+		{"id": "same_tile", "label": "Same tile stockpile", "detail": "", "locked": ""}]
+	_content.add_child(_setting_plate("Send output by default to", "This applies to recipes started after changing the setting.",
+		_choice_keys(outputs, MatchState.construct_output_destination, func(id: String) -> void:
+			_on_output_destination_selected(id)
+			_render())))
+	var materials := _material_options()
+	var chosen := _effective_material_source(MatchState.construct_material_source)
+	var keys := _choice_keys(materials, chosen, func(id: String) -> void:
+		_on_material_source_selected(id)
+		_render())
+	for m: Dictionary in materials:
+		if str(m.id) == chosen:
+			var detail := Parts.body(str(m.detail))
+			detail.name = "MaterialSourceDetail"
+			detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			keys.add_child(detail)
+	_content.add_child(_setting_plate("Source of construction materials",
+		"Choose what happens when the selected tile does not hold the full kit.", keys))
+
+	_content.add_child(_switch_plate("Start at half capacity",
+		"New buildings use half their inputs, power and output for their first successful operating turn. Existing projects are unchanged.",
+		MatchState.construct_start_half_capacity, _on_start_capacity_toggled))
+	_content.add_child(_switch_plate("Auto-buy land when building",
+		"If the chosen tile does not have enough of your land for the building, buy just enough to fit it as part of confirming. Tiles that already have room buy nothing.",
+		MatchState.construct_auto_buy_land, _on_auto_buy_land_toggled))
+	_content.add_child(_switch_plate("Expanded mode",
+		"Recipe cards show the full diagram with quantities, sized to what's actually in the recipe. Off shows a compact icons only row instead.",
+		UiPrefs.construct_expanded_recipe_mode, _on_expanded_recipe_mode_toggled))
+
+
+## A setting on the dark plate in its silver rim: its title as a header, the note under it, then `body`.
+func _setting_plate(title: String, note: String, body: Control, beside: Control = null) -> Control:
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	card.add_child(SilverPlate.new())
+	var margin := MarginContainer.new()
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 18)
+	card.add_child(margin)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	margin.add_child(box)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
+	box.add_child(head)
+	var words := VBoxContainer.new()
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	words.add_theme_constant_override("separation", 4)
+	head.add_child(words)
+	words.add_child(Parts.caption(title))
+	var line := Parts.body(note)
+	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	words.add_child(line)
+	if beside != null:
+		beside.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		head.add_child(beside)
+	if body != null:
+		box.add_child(body)
+	return card
+
+
+## A setting that is on or off: one key beside its words, latched down while it is on.
+func _switch_plate(title: String, note: String, is_on: bool, on_toggled: Callable) -> Control:
+	var key: Control = LatchKey.new()
+	key.name = "Switch_%s" % title.replace(" ", "")
+	key.set("text", "On" if is_on else "Off")
+	key.set("latched", is_on)
+	key.size_flags_horizontal = Control.SIZE_SHRINK_END
+	key.custom_minimum_size.x = 92.0
+	key.connect("pressed", func() -> void:
+		on_toggled.call(not is_on)
+		_render())
+	return _setting_plate(title, note, null, key)
+
+
+## The choices as latching cream keys, two to a row, the chosen one held down; a locked choice is greyed with its
+## reason on hover. `pick` runs with the chosen id.
+func _choice_keys(options: Array, chosen: String, pick: Callable) -> VBoxContainer:
+	var holder := VBoxContainer.new()
+	holder.add_theme_constant_override("separation", 8)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 6)
+	holder.add_child(grid)
+	for o: Dictionary in options:
+		var key: Control = LatchKey.new()
+		key.name = "Choice_%s" % str(o.id)
+		key.set("text", str(o.label))
+		key.set("latched", str(o.id) == chosen)
+		var locked := str(o.get("locked", ""))
+		if locked != "":
+			key.set("disabled", true)
+			key.tooltip_text = locked
+		var id := str(o.id)
+		key.connect("pressed", func() -> void: pick.call(id))
+		grid.add_child(key)
+	return holder
+
+
 func _render_confirm() -> void:
 	_search_input.visible = false
 	# The state Confirm reads (the land to buy, the ledger, the forecast).

@@ -1,12 +1,20 @@
 extends PanelContainer
+## The Mapmodes panel in DS2's plain dress: the dark plate in its polished silver rim (the tutorial card's), a raised
+## heading with the close key, and a latching cream key for each map mode, held down while its mode is on.
+
+const SilverPlate := preload("res://scripts/tutorial/coach_plate.gd")
+const LatchKey := preload("res://scripts/ds2/latch_key.gd")
+const Heading := preload("res://scripts/bdp_v3_heading.gd")
+const SmallKey := preload("res://scripts/bdp_v3_key.gd")
+## Inside the silver rim: the plate's frame and the padding round its keys.
+const PAD := 20
 
 @onready var title_label: Label = $MarginContainer/ModalLayout/HeaderRow/TitleLabel
 @onready var close_button: Button = $MarginContainer/ModalLayout/HeaderRow/CloseButton
 @onready var scroll: ScrollContainer = $MarginContainer/ModalLayout/ScrollContainer
 @onready var content_vbox: VBoxContainer = $MarginContainer/ModalLayout/ScrollContainer/ContentVBox
 
-const HEADER_HEIGHT := 40.0
-const ROW_HEIGHT := 36
+const HEADER_HEIGHT := 48.0
 const MENU_GAP := 12.0   # gap kept between the panel's bottom and the bottom menu's top
 
 # kind: "picker" = opens the good-select panel; "sentinel" = whole-map toggle;
@@ -27,7 +35,7 @@ const ROWS: Array = [
 	{"id": "land_price", "label": "Land price", "kind": "sentinel"},
 ]
 
-var _buttons := {}              # mode:int -> Button (for active-state highlight)
+var _buttons := {}              # mode:int -> latching key (held down while its mode is on)
 var _good_panel: Control = null
 var _dragging := false
 var _drag_offset := Vector2.ZERO
@@ -35,6 +43,7 @@ var _drag_offset := Vector2.ZERO
 func _ready() -> void:
 	close_button.pressed.connect(hide)
 	title_label.text = "Mapmodes"
+	_dress()
 	_build_content()
 	MapMode.selections_changed.connect(func(_m, _s) -> void: _sync_states())
 	MapMode.mode_cleared.connect(_sync_states)
@@ -66,6 +75,45 @@ func _max_panel_height() -> float:
 			cap_y = (bm as Control).global_position.y
 	return maxf(140.0, cap_y - global_position.y - MENU_GAP)
 
+## The plate behind everything, the heading and its close key in place of the old title and X, and a fine silver
+## rule under them.
+func _dress() -> void:
+	add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	var plate := SilverPlate.new()
+	plate.name = "Plate"
+	add_child(plate)
+	move_child(plate, 0)
+	var margin := $MarginContainer as MarginContainer
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, PAD)
+	var header := title_label.get_parent() as HBoxContainer
+	title_label.hide()
+	close_button.hide()
+	var words := "MAP MODES"
+	if Heading.can_show(words):
+		var heading: Control = Heading.new()
+		heading.set("text", words)
+		header.add_child(heading)
+	else:
+		var plain := Label.new()
+		plain.text = words
+		plain.add_theme_font_size_override("font_size", 16)
+		plain.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+		header.add_child(plain)
+	var flex := Control.new()
+	flex.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	flex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_child(flex)
+	var close: TextureButton = SmallKey.make("close", 26.0)
+	close.name = "MapModesCloseKey"
+	close.pressed.connect(hide)
+	header.add_child(close)
+	var rule := StyleBoxLine.new()
+	rule.color = Color(SilverPlate.SILVER, 0.35)
+	rule.thickness = 1
+	($MarginContainer/ModalLayout/HSeparator as HSeparator).add_theme_stylebox_override("separator", rule)
+
+
 func _build_content() -> void:
 	for child in content_vbox.get_children():
 		child.queue_free()
@@ -74,19 +122,15 @@ func _build_content() -> void:
 	# the left column and even positions in the right one.
 	var grid := GridContainer.new()
 	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 8)
-	grid.add_theme_constant_override("v_separation", 4)
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 6)
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content_vbox.add_child(grid)
 	for row in ROWS:
-		var button := Button.new()
-		button.text = row.label
+		var button: Control = LatchKey.new()
+		button.set("text", str(row.label))
 		button.name = "MapModeRow_%s" % str(row.id)   # e.g. MapModeRow_logistics — tutorial spotlight target
-		# Unimplemented rows stay plain so they don't latch pressed.
-		button.toggle_mode = row.kind != "none"
-		button.custom_minimum_size = Vector2(0, ROW_HEIGHT)
-		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.pressed.connect(_on_row_pressed.bind(str(row.id), str(row.kind)))
+		button.connect("pressed", _on_row_pressed.bind(str(row.id), str(row.kind)))
 		grid.add_child(button)
 		var mode := _mode_for_id(str(row.id))
 		if mode != MapMode.Mode.NONE:
@@ -121,7 +165,7 @@ func _open_good_panel(kind: String) -> void:
 func _sync_states() -> void:
 	var cur: int = MapMode.current_mode
 	for mode in _buttons:
-		_buttons[mode].set_pressed_no_signal(cur == mode)
+		_buttons[mode].set("latched", cur == mode)
 
 func _mode_for_id(mode_id: String) -> int:
 	match mode_id:

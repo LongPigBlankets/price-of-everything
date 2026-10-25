@@ -18,6 +18,7 @@ signal dock_ds2_changed(enabled: bool)
 ## The Research panel's DS2 look switched on or off.
 signal research_ds2_changed(enabled: bool)
 signal new_game_ds2_changed(enabled: bool)
+signal encyclopedia_ds2_changed(enabled: bool)
 signal empire_button_icon_changed(use_badge: bool)
 
 # Debug-only: verbose per-turn production / CostSolver logs. Off by default because
@@ -36,20 +37,24 @@ var show_port_badge: bool = true
 ## Debug-only: alternates the bottom-menu Empire View icon
 ## between the badge-centre default and the skyline alternative. Session-only.
 var use_empire_button_badge: bool = true
-# The bottom-left map legends on the DS2 pad (scripts/ds2/legend_pad.gd): dark plastic with cut corners. Off until
-# the owner has reviewed it; the debug cheat `toggle legend ds2` switches it on. Session-only.
-var use_legend_ds2: bool = false
+# The bottom-left map legends on the DS2 pad (scripts/ds2/legend_pad.gd): dark plastic with cut corners. The
+# default; the debug cheat `toggle legend ds2` brings back the v2 legends, and again returns the pad. Session-only.
+var use_legend_ds2: bool = true
 # The updates dock in DS2 (scripts/toast_manager.gd): navy steel, the pen and bells raised, a row a module with a
-# lamp. Off until the owner has reviewed it; the debug cheat `toggle dock ds2` switches it on. Session-only.
-var use_dock_ds2: bool = false
+# lamp. The default; the debug cheat `toggle dock ds2` brings back the v2 dock, and again returns DS2. Session-only.
+var use_dock_ds2: bool = true
 # The Research panel in DS2 (scripts/research_ds2/): the patent office's board of blueprints and the drawing office's
-# plan chest of drawers. Off until the owner has reviewed it; the debug cheat `toggle research ds2` switches it on.
-# Session-only.
-var use_research_ds2: bool = false
+# plan chest of drawers. The default; the debug cheat `toggle research ds2` brings back the old panel, and again
+# returns DS2. Session-only.
+var use_research_ds2: bool = true
 # The New Game settings screen in DS2 (scripts/new_game_ds2/): the company registry, a desk with the card index of
 # company files, the file open on the blotter, the form of incorporation and the seal. The default; the debug cheat
 # `toggle newgame settings` brings the old settings panel back, and again returns the registry. Session-only.
 var use_new_game_ds2: bool = true
+# The encyclopedia in DS2 (scripts/encyclopedia_ds2/): a midcentury trade catalogue in a ring binder, the look up on
+# label tape, a section a divider tab. The default; the debug cheat `toggle encyclopedia ds2` brings back the old
+# search panel, and again returns the catalogue. Session-only.
+var use_encyclopedia_ds2: bool = true
 # Building Detail v3's diagnostics: the Visual view (true) or the Text rows. The player's choice on the
 # panel's switch, kept while the game runs (closing the panel or starting a match keeps it).
 var bdp_diag_visual: bool = false
@@ -132,6 +137,16 @@ func set_use_new_game_ds2(enabled: bool) -> bool:
 
 func toggle_use_new_game_ds2() -> bool:
 	return set_use_new_game_ds2(not use_new_game_ds2)
+
+func set_use_encyclopedia_ds2(enabled: bool) -> bool:
+	if enabled == use_encyclopedia_ds2:
+		return use_encyclopedia_ds2
+	use_encyclopedia_ds2 = enabled
+	encyclopedia_ds2_changed.emit(use_encyclopedia_ds2)
+	return use_encyclopedia_ds2
+
+func toggle_use_encyclopedia_ds2() -> bool:
+	return set_use_encyclopedia_ds2(not use_encyclopedia_ds2)
 
 func set_bdp_diag_visual(visual: bool) -> void:
 	bdp_diag_visual = visual
