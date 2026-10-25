@@ -1,12 +1,12 @@
 extends Node
-## Windowed shot of the NEW construction-site delivery diagnostics row. Boots the tutorial
+## Windowed shot of the NEW construction-site delivery diagnostics row. Boots the default
 ## start, places a stalled Chemical Plant (b_012) build on tile_5_8 — an unpiped tile whose
 ## hazard-liquid build material (industrial_acids) can never arrive — opens that project's
 ## Building Detail panel, and screenshots the "No reinforced pipeline to deliver …" row.
 ##   <godot> --path . res://tools/construction_diag_shot.tscn --quit-after 2500
 
 const MAIN_SCENE := "res://scenes/main.tscn"
-const TUTORIAL_START := "res://data/starts/tutorial.json"
+const START := "res://data/starts/default.json"
 
 var _main: Node = null
 var _started := false
@@ -15,7 +15,7 @@ var _frames := 0
 
 
 func _ready() -> void:
-	SaveLoad.prepare_new_game(TUTORIAL_START)
+	SaveLoad.prepare_new_game(START)
 	var packed := load(MAIN_SCENE) as PackedScene
 	_main = packed.instantiate()
 	add_child(_main)

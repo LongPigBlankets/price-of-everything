@@ -8,7 +8,6 @@ extends Control
 
 signal advanced           # info-card "Next" pressed
 signal skipped            # "Skip Tutorial" pressed
-signal choice_made(goto)  # a branch choice button pressed (goto = target step id)
 
 const RecipeFlowPanelScript := preload("res://scripts/tutorial/tutorial_recipe_flow_panel.gd")
 const CoachPlate := preload("res://scripts/tutorial/coach_plate.gd")
@@ -41,7 +40,6 @@ var _hole_from: Rect2 = Rect2()        # rect the spotlight travels FROM (empty 
 # (tutorial start, or returning from a no_dim step) and then simply stays up.
 var _dim_level := 0.0
 var _target_node: Control = null       # live node whose rect we track each frame
-var _virtual_spot := false             # custom-drawn target (currently ResearchPanel node)
 var _card: PanelContainer = null
 var _eyebrow: Label = null
 var _title: Label = null
@@ -49,7 +47,6 @@ var _body: Label = null
 var _skip_btn: LinkButton = null
 var _next_btn: Button = null
 var _footer: HBoxContainer = null
-var _choices_box: VBoxContainer = null
 var _spot: Dictionary = {}              # the current step's spotlight dict (for re-finding)
 var _reresolve_t := 0.0                 # throttle for re-finding the target as panels settle
 var _scrolled_node: Control = null      # the node we've already scrolled into view
@@ -210,7 +207,7 @@ func _process(dt: float) -> void:
 		if stale or _reresolve_t >= 0.2:
 			_reresolve_t = 0.0
 			_refind()
-	if _target_node != null and is_instance_valid(_target_node) and not _virtual_spot:
+	if _target_node != null and is_instance_valid(_target_node):
 		var r := _node_rect(_target_node)
 		if r != _hole:
 			_hole = r
@@ -225,8 +222,7 @@ func _process(dt: float) -> void:
 
 
 # Padded hole around a spotlit Control: a little breathing room, biased UPWARD so a
-# stacked cell (e.g. InfraCell_cables: a 78px dial "+" above two small labels) isn't
-# clipped at the top.
+# stacked cell (a dial above two small labels) isn't clipped at the top.
 func _node_rect(c: Control) -> Rect2:
 	return c.get_global_rect().grow_individual(8.0, 14.0, 8.0, 6.0)
 
@@ -269,7 +265,7 @@ func _find_scroll_ancestor(node: Node) -> ScrollContainer:
 # Does the current spotlight target a named/pathed node we should keep re-finding?
 func _needs_refind() -> bool:
 	var k := str(_spot.get("kind", ""))
-	return k == "node_name" or k == "node_path" or k == "research_unlock"
+	return k == "node_name" or k == "node_path"
 
 
 # Re-find the CURRENT node for the active spotlight (panels rebuild → the node we grabbed
@@ -281,7 +277,6 @@ func _refind() -> void:
 	var kind := str(_spot.get("kind", ""))
 	var ref := str(_spot.get("ref", ""))
 	var node: Control = null
-	_virtual_spot = false
 	if kind == "node_name":
 		var m := scene.find_child(ref, true, false)
 		if m is Control and (m as Control).is_visible_in_tree():
@@ -290,16 +285,6 @@ func _refind() -> void:
 		var n := scene.get_node_or_null(NodePath(ref))
 		if n is Control and (n as Control).is_visible_in_tree():
 			node = n as Control
-	elif kind == "research_unlock":
-		var panel := scene.find_child("ResearchPanel", true, false)
-		if panel is Control and (panel as Control).is_visible_in_tree() and panel.has_method("tutorial_unlock_rect"):
-			var rect: Rect2 = panel.tutorial_unlock_rect(ref)
-			if rect.has_area():
-				_target_node = panel as Control
-				_virtual_spot = true
-				_hole = rect
-				_reposition_card()
-				return
 	if node == null:
 		# Target gone (e.g. the encyclopedia was closed): drop the hole.
 		_target_node = null
@@ -330,25 +315,6 @@ func refresh_spotlight() -> void:
 	_hole_from = previous
 	if _hole != previous:
 		_reposition_card()
-	queue_redraw()
-
-
-## Turns a guided input step into a read-only coach card: the panel beneath is fully
-## bright and interactive, but its instruction remains available in the corner.
-## Used once the player has demonstrated they found a search field, so typing the rest
-## of the query does not happen under a stale spotlight.
-func release_spotlight_and_dim() -> void:
-	_no_dim = true
-	_spotlight_passthrough = true
-	_spot = {}
-	_target_node = null
-	_virtual_spot = false
-	_hole = Rect2()
-	_hole_from = Rect2()
-	_reveal = 1.0
-	_dim_level = 0.0
-	set_process(false)
-	_reposition_card()
 	queue_redraw()
 
 
@@ -401,23 +367,10 @@ func show_step(step: Dictionary, index: int, total: int) -> void:
 	_eyebrow.text = "%s  ·  Step %d/%d" % [str(step.get("chapter", "")), index + 1, total]
 	_title.text = str(step.get("title", ""))
 	_body.text = str(step.get("body", ""))
-	# Choice step: render one Primary button per option (goto target step id).
-	for c in _choices_box.get_children():
-		c.queue_free()
-	var choices: Array = step.get("choices", [])
-	for ch in choices:
-		if not (ch is Dictionary):
-			continue
-		var label := str((ch as Dictionary).get("label", "Choose"))
-		var b := CreamKey.make("CoachChoice", label, "", KEY_MIN_W)
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var goto := str((ch as Dictionary).get("goto", ""))
-		b.pressed.connect(func() -> void: choice_made.emit(goto))
-		_choices_box.add_child(b)
-	# Next is for plain info steps only (hidden when this is a choice step).
+	# Next is for plain info steps only.
 	_skip_btn.visible = not bool(step.get("hide_skip", false))
 	_set_key(_next_btn, str(step.get("next_label", "Next")))
-	_next_btn.visible = str(step.get("advance", "auto")) == "next" and choices.is_empty()
+	_next_btn.visible = str(step.get("advance", "auto")) == "next"
 
 	# "annotate": a HUD primer — full dim, the corner card centred, plus labels + leader
 	# lines pointing at named HUD nodes, and fixed left-edge hint text.
@@ -484,7 +437,6 @@ func _resolve_spotlight(spot: Dictionary) -> void:
 	_scrolled_node = null
 	_reresolve_t = 0.0
 	_target_node = null
-	_virtual_spot = false
 	_hole = Rect2()
 	match str(spot.get("kind", "none")):
 		"node_path":
@@ -505,40 +457,10 @@ func _resolve_spotlight(spot: Dictionary) -> void:
 					_target_node = m
 					_hole = _node_rect(m as Control)
 					_scroll_target_into_view(m as Control)
-		"research_unlock":
-			var scene := get_tree().current_scene
-			var panel := scene.find_child("ResearchPanel", true, false) if scene != null else null
-			if panel is Control and (panel as Control).is_visible_in_tree() and panel.has_method("tutorial_unlock_rect"):
-				var rect: Rect2 = panel.tutorial_unlock_rect(str(spot.get("ref", "")))
-				if rect.has_area():
-					_target_node = panel as Control
-					_virtual_spot = true
-					_hole = rect
-		"tile":
-			_hole = _tile_screen_rect(str(spot.get("ref", "")))
 		_:
 			pass   # "none": full dim, centred card
 	# Run _process (glow pulse + node tracking) only while a spotlight exists.
 	set_process(_hole.has_area() or _target_node != null)
-
-
-# Screen-space rect of a map tile, for map spotlights.
-func _tile_screen_rect(tile_id: String) -> Rect2:
-	var hex_map := get_tree().get_first_node_in_group("hex_map")
-	if hex_map == null or not hex_map.has_method("id_to_coord"):
-		return Rect2()
-	var coord: Vector2i = hex_map.id_to_coord(tile_id)
-	if coord == Vector2i(-1, -1):
-		return Rect2()
-	var cell: Vector2i = hex_map.map_coord_for_tile_coord(coord)
-	var world: Vector2 = hex_map.to_global(hex_map.map_to_local(cell))
-	var xform := get_viewport().get_canvas_transform()
-	var centre := xform * world
-	var half := Vector2(70, 60)   # generous tile box; refined per zoom later
-	if hex_map.tile_set != null:
-		var ts: Vector2 = Vector2(hex_map.tile_set.tile_size) * xform.get_scale()
-		half = ts * 0.7
-	return Rect2(centre - half, half * 2.0)
 
 
 # ── Card ─────────────────────────────────────────────────────────────────────────
@@ -598,12 +520,7 @@ func _build_card() -> void:
 	_body.custom_minimum_size = Vector2(430, 0)
 	col.add_child(_body)
 
-	# Branch-choice buttons (one per option), shown only on a choice step.
-	_choices_box = VBoxContainer.new()
-	_choices_box.add_theme_constant_override("separation", _sp("XS", 4))
-	col.add_child(_choices_box)
-
-	# Navigation gets a dedicated footer below all copy and choices. The expanding
+	# Navigation gets a dedicated footer below all copy. The expanding
 	# centre spacer keeps Skip and Next at opposite edges even on short cards.
 	_footer = HBoxContainer.new()
 	_footer.name = "CoachFooter"

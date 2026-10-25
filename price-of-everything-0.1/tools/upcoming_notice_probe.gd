@@ -8,7 +8,7 @@ func _ready() -> void:
 	var rows: Array = []
 	var failures := 0
 	for start in ["metal_magnate", "glass_merchant"]:
-		SaveLoad.prepare_new_game("res://data/starts/" + start + ".json", {"ruleset": {"start_id":start,"difficulty":"normal","speed_turns":100,"policy_timeline":"demo_itch","victory_set":"demo_itch","tutorial_enabled":false}})
+		SaveLoad.prepare_new_game("res://data/starts/" + start + ".json", {"ruleset": {"start_id":start,"difficulty":"normal","speed_turns":100,"policy_timeline":"demo_itch","victory_set":"demo_itch"}})
 		var world: Node = load("res://scenes/main.tscn").instantiate()
 		add_child(world)
 		for frame in range(160): await get_tree().process_frame

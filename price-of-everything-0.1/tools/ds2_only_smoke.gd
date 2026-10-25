@@ -16,7 +16,7 @@ func _ready() -> void:
 	Harness.prepare_window(get_window(), Vector2i(1920, 1080))
 	Harness.arm_watchdog(self, 400.0)
 	AudioServer.set_bus_mute(0, true)
-	TelemetryState.set_next_run_consent(false, false)
+	TelemetryState.set_next_run_consent(false)
 	_dir = OS.get_environment("DS2_SMOKE_DIR")
 	if _dir == "":
 		_dir = OS.get_user_data_dir().path_join("ds2_smoke")

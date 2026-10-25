@@ -116,7 +116,7 @@ func _run(recipe_id: String) -> void:
 	ResearchState._unlock_defs.clear()
 	MatchState.money = INITIAL_EQUITY
 	MatchState.ruleset = {"name": "standard", "logistics_model": "middleman_v1" if logistics_mode == "middleman" else "standard",
-		"middleman_new_buildings": logistics_mode == "middleman", "tutorial_enabled": false}
+		"middleman_new_buildings": logistics_mode == "middleman"}
 	MatchState.construct_material_source = "market"
 	MatchState.construct_output_destination = "market"
 	MatchState.power_priority_coal_gas = "grid"

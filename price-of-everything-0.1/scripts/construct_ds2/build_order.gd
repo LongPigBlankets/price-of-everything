@@ -712,8 +712,6 @@ static func _infra_word(key: String) -> String:
 
 static func _block_word(key: String) -> String:
 	match key:
-		"tutorial_area":
-			return "Tutorial"
 		"tendering":
 			return "Tendering"
 		"deposit", "blind_deposit":

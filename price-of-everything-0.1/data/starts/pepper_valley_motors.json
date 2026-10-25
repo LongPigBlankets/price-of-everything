@@ -5,8 +5,7 @@
   "_comment": "Reusable prototype benchmark start. Currently runs legacy road/port logistics; not yet listed in New Game. Middleman rules will use this identical factory/site. Cash isolates operating economics, not recommended difficulty balance.",
   "ruleset": {
     "name": "standard",
-    "start_id": "pepper_valley_motors",
-    "tutorial_enabled": false
+    "start_id": "pepper_valley_motors"
   },
   "money": 10000,
   "loans": [],

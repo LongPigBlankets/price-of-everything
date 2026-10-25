@@ -300,7 +300,7 @@ static func make_custom_checkbox() -> CheckBox:
 		cb.add_theme_stylebox_override(state, no_box)
 	return cb
 
-## Telemetry consent row (shared by the New Game and Tutorial screens): opt-out
+## Telemetry consent row (the New Game screen): opt-out
 ## checkbox + a hover caption explaining exactly what gets sent. Returns
 ## {"row": Control, "checkbox": CheckBox}. See docs/telemetry-spec.md §2.
 static func make_telemetry_consent_row(checked: bool) -> Dictionary:

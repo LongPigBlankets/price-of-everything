@@ -4,7 +4,7 @@ extends RefCounted
 ## enamel site board per building on the hoarding, two to a row: its icon printed as a blueprint on the navy
 ## field, its name and its price on an LED. A building opened shows its board across the width with its
 ## recipes hung under it as enamel tags on chains, each drawn out, condensed or expanded as the Construct
-## setting says. The boards keep the names the tutorial looks up (BuildingCard_<id>, RecipeRow_<id>).
+## setting says. The boards keep the names the tests look up (BuildingCard_<id>, RecipeRow_<id>).
 ## A board's price is ConstructionRules.quote()'s for the building on the site, or with no site its fee and
 ## materials.
 

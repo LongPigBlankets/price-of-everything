@@ -458,7 +458,6 @@ than being an event.
 | Metal Magnate | +40 | Presets Overtime, 50% idle pay and the 45-hour default, and starts above 5,000 workers. Target is −55 (−30 −15 −15 +5). Crosses −5 at turn 8 and settles at −55 around turn 26. This is the first labour decision |
 | Glass Merchant | +20 | |
 | Other starts | 0 | |
-| Tutorial | +60 | Satisfaction is frozen until the tutorial ends |
 
 ### 4.7 UX: top bar — LOCKED (layout *proposed*)
 
@@ -1267,7 +1266,6 @@ tools/snapshot_balancing.py` (repo CLAUDE.md rule 8).
 | Idle-15-turns probe | solvent | solvent |
 
 Pinned strings and tests that change:
-- `tutorial_steps.gd:594, 915` ("construction will take 3 turns")
 - `tests/unit/test_construction.gd:133-139`
 - `test_tile_quick_menu.gd:150, 181`
 - `test_research.gd:1238`
@@ -1394,8 +1392,7 @@ Labour tab control.
 5. **AC2.12** Start values:
    - Metal Magnate +40, with a target of −55 from its presets;
    - Glass Merchant +20;
-   - other starts 0;
-   - tutorial +60, frozen while the tutorial runs.
+   - other starts 0.
    - A headless run of Metal Magnate's default policies crosses −5 on turn 8.
 6. **AC2.13** Determinism: the same seed and the same actions give an identical satisfaction
    trajectory, including across a mid-run save and load.
@@ -1495,7 +1492,7 @@ Labour tab control.
   - `offer_for_building` replaces the three duplicated transfers;
   - `pending_purchases`.
 - **Andrew**: the Expansion Director seat (−3 turns, sites 50% staffed, closing 1 turn).
-- **Copy and tests**: tutorial "3 turns" copy, construction and quick-menu tests; deposits stop
+- **Copy and tests**: construction and quick-menu tests; deposits stop
   charging full rate on partial staffing.
 - **Stances**: A3, A6, A7 (closing, 70%).
 - **Evidence**:
@@ -1553,8 +1550,7 @@ resolution. Fill is `staff_fill`, the hired share of a building's requirement.
 
 1. **AC8.1** `MatchState.offer_for_building(iid)` is the one purchase path. The market lots, the
    building detail panel and the tile view's port purchase call it. It charges the full price at
-   the offer, and there is no cancel. The onboarding tutorial's purchase closes at once and fully
-   staffed, because its next steps work on the bought building.
+   the offer, and there is no cancel.
 2. **AC8.2** The building is under offer for 2 turns (1 with Andrew's package). It stays NPC
    owned, leaves the market lots and cannot be offered for twice. Panels say "Under offer.
    Yours in N turns."
@@ -1579,7 +1575,7 @@ resolution. Fill is `staff_fill`, the hired share of a building's requirement.
 2. **AC10.2** The construction view shows the staff hired so far.
 3. **AC10.3** A building under offer leaves the market lots. The building detail panel shows
    "Under offer. Yours in N turns." in place of its Buy key, and the tile view's port key says the same.
-4. **AC10.4** Tutorial and panel copy that pins construction at 3 turns reads the real duration.
+4. **AC10.4** Panel copy that pins construction at 3 turns reads the real duration.
    Player copy has no hyphens, semicolons or dashes. *Checked by review.*
 5. **AC10.5** Windowed screenshots: the staffing row, a building under offer and Andrew's offer.
    *Checked by review.*

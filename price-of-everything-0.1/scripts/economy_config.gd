@@ -166,12 +166,12 @@ const SEAPORT_INSURANCE_RATE: float = 0.0005 # Legacy; superseded by the schedul
 const OWNED_SEAPORT_INSURANCE_RATE: float = 0.00025 # Legacy; superseded.
 
 ## The ad valorem charged on value crossing a port this turn, before modifiers.
-func seaport_ad_valorem_rate(turn: int, tutorial_match: bool = false) -> float:
+func seaport_ad_valorem_rate(turn: int) -> float:
 	# The middleman replaces introductory port relief in the new logistics ruleset.
-	# Legacy saves/tutorials keep their existing economy until explicitly migrated.
+	# Legacy saves keep their existing economy until explicitly migrated.
 	if str(MatchState.ruleset.get("logistics_model", "legacy")) == "middleman_v1":
 		return SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES
-	return SEAPORT_AD_VALOREM_EARLY if tutorial_match or turn < SEAPORT_AD_VALOREM_STEP_TURN else SEAPORT_AD_VALOREM_LATE
+	return SEAPORT_AD_VALOREM_EARLY if turn < SEAPORT_AD_VALOREM_STEP_TURN else SEAPORT_AD_VALOREM_LATE
 ## The port's weight charge per unit of a transport class, before growth: Logistics Intermediary games only.
 func seaport_weight_fee(transport_class: String) -> float:
 	if str(MatchState.ruleset.get("logistics_model", "legacy")) != "middleman_v1":
@@ -441,7 +441,7 @@ const WAREHOUSE_UPGRADE_COSTS := {
 # own value in 13 turns while an ice_car takes 3410, so a hoarder sitting on £56k of CPUs
 # paid the same as one sitting on £320 of coal. Real inventory carrying cost is 15-25%/yr
 # OF VALUE across commodities, because cost of capital dominates physical storage. The
-# ad-valorem term compresses that 262x spread to ~12x while costing the tutorial cluster
+# ad-valorem term compresses that 262x spread to ~12x while costing a window factory cluster
 # the same as flat-0.03 did (measured: £2.41/turn on its 80-unit buffer, 14%/yr of the
 # inventory's value, 1.1% of revenue — real-world warehousing is 1-2% of revenue).
 # `flat` is the floor-space/handling leg, `av` the capital/insurance leg.

@@ -406,20 +406,10 @@ func _test_port_ad_valorem_schedule() -> void:
 	_check(EconomyConfig.SEAPORT_AD_VALOREM_LATE > EconomyConfig.SEAPORT_AD_VALOREM_EARLY,
 		"port: the rate rises rather than falls at the step")
 
-	MatchState.ruleset = {"name": "tutorial", "tutorial_enabled": true}
-	TurnManager.current_turn = 31
-	_check(is_equal_approx(TransportState.seaport_insurance_rate(""), EconomyConfig.SEAPORT_AD_VALOREM_EARLY),
-		"tutorial port: no fee jump at turn 31")
-	MatchState.ruleset["tutorial_enabled"] = false
-	var saved: Dictionary = MatchState.export_state()
 	MatchState.reset()
-	MatchState.import_state(saved)
 	TurnManager.current_turn = 300
-	_check(is_equal_approx(TransportState.seaport_insurance_rate(""), EconomyConfig.SEAPORT_AD_VALOREM_EARLY),
-		"tutorial port: introductory rate survives completion and save reload at turn 300")
-	MatchState.reset()
 	_check(is_equal_approx(TransportState.seaport_insurance_rate(""), EconomyConfig.SEAPORT_AD_VALOREM_LATE),
-		"campaign port: standard late rate restored in a new game")
+		"campaign port: the late rate applies at turn 300")
 	TurnManager.current_turn = 1
 
 func _test_middleman_port_rate_from_start() -> void:
@@ -427,7 +417,6 @@ func _test_middleman_port_rate_from_start() -> void:
 	MatchState.ruleset["logistics_model"] = "middleman_v1"
 	for turn in [1, 10, 30, 31, 100]:
 		_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(turn), EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES), "intermediary games charge their port rate from turn %d" % turn)
-	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(1, true), EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES), "the intermediary ruleset supersedes tutorial port relief")
 	_check(is_equal_approx(EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES, 0.03), "intermediary games pay a 3% port rate")
 	_check(EconomyConfig.seaport_weight_fee("solid_heavy") > 0.0 and EconomyConfig.seaport_weight_fee("ultra_heavy") > EconomyConfig.seaport_weight_fee("solid_heavy"),
 		"intermediary games' ports also charge by weight, heavier classes more")
@@ -440,7 +429,6 @@ func _test_middleman_port_rate_from_start() -> void:
 	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(1), EconomyConfig.SEAPORT_AD_VALOREM_INTERMEDIARY_GAMES), "the intermediary port rule survives save/load")
 	MatchState.reset()
 	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(1), 0.005), "legacy games keep introductory relief")
-	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(100, true), 0.005), "legacy tutorials keep their current rate")
 
 func _test_transport_congestion() -> void:
 	# Throughput soft cap: routes over a link's capacity pay a transport-cost penalty.

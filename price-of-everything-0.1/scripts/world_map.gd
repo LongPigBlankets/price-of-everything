@@ -74,7 +74,7 @@ const OLD_GROWTH_TILE_TYPES := ["rural", "hill"]
 
 signal building_placed(tile_id: String, building_id: String, recipe_id: String, instance_id: String, coord: Vector2i)
 ## A tile gained infrastructure of some type. Emitted for EVERY route that sets the flag —
-## a completed construction, the tutorial's free reveal, the baked start flags — because a
+## a completed construction, the baked start flags — because a
 ## flag flip is invisible to renderers that watch edge counts: the geometry is unchanged,
 ## only which of it qualifies to draw. Authored roads (`authored_road_visuals.gd`) reveal on
 ## this; the baked network still relies on its own counters plus a manual repaint.
@@ -339,10 +339,6 @@ func finish_build(animate: bool) -> void:
 	# real streets. See the "roads → buildings" sequence below.
 
 	var pending_start := SaveLoad.pending_is_start()
-	# Captured BEFORE apply_pending() clears the snapshot: a tutorial match seeds none
-	# of the NPC start companies / ruins / old-growth forests (the player stays confined
-	# to the small board), keeping only the ports so the coast + docks still render.
-	var pending_tutorial := SaveLoad.pending_is_tutorial()
 	# A loaded save applies only now, once the terrain and default seeding exist;
 	# it overwrites the fresh-match state above (docs/save_load_spec.md).
 	var loaded_pending := SaveLoad.apply_pending()
@@ -352,7 +348,7 @@ func finish_build(animate: bool) -> void:
 	# road network below, otherwise they use the roadless fallback and sit under
 	# turn-one streets. They are emitted in the post-road pass instead.
 	if loaded_pending and not pending_start:
-		if not pending_tutorial and not BuildingState.rail_hubs_seeded:
+		if not BuildingState.rail_hubs_seeded:
 			# Older saves need their port parcels restored before placing new hubs.
 			_rebuild_after_load()
 			preload("res://scripts/rail_hub.gd").seed_world(terrain_layer)
@@ -369,7 +365,7 @@ func finish_build(animate: bool) -> void:
 	await _build_yield()
 	# Forests are a TERRAIN feature (the land mask + block templates read them), so they come before
 	# roads. Buildings are deferred until after the roads exist.
-	if (not loaded_pending or pending_start) and not pending_tutorial:
+	if not loaded_pending or pending_start:
 		_place_northern_old_growth_forests()
 	else:
 		# A loaded save seeds no woods — it restores its own — but the forest layer still has to
@@ -406,12 +402,7 @@ func finish_build(animate: bool) -> void:
 	# screen (tests, e2e, load-game) `animate` is false and placement runs
 	# synchronously, exactly as before.
 	if not loaded_pending or pending_start:
-		# The tutorial's opening lesson deliberately starts with a five-hop freight
-		# route that has no transport infrastructure. Keep the baked RoadNetwork
-		# geometry available so the coach can reveal its road later, but do not make
-		# every baked corridor tile gameplay-active at turn zero in this ruleset.
-		if not pending_tutorial:
-			_apply_baked_road_flags()
+		_apply_baked_road_flags()
 		await _build_yield()
 		# The bulk window coalesces the per-placement redraws (the fast path). The
 		# Legacy load leaves it off so each placement redraws the whole
@@ -431,20 +422,16 @@ func finish_build(animate: bool) -> void:
 		# BUILDINGS now — after the baked road network — so they lay out against real
 		# streets (NPC ports, the ruins, the start companies, + future player start builds).
 		await _place_npc_ports(animate)
-		if not pending_tutorial:
-			for iid in preload("res://scripts/rail_hub.gd").seed_world(terrain_layer):
-				var hub: Dictionary = BuildingState.get_building(iid)
-				building_placed.emit(hub.tile_id, hub.building_id, hub.recipe_id, iid, terrain_layer.id_to_coord(hub.tile_id))
+		for iid in preload("res://scripts/rail_hub.gd").seed_world(terrain_layer):
+			var hub: Dictionary = BuildingState.get_building(iid)
+			building_placed.emit(hub.tile_id, hub.building_id, hub.recipe_id, iid, terrain_layer.id_to_coord(hub.tile_id))
 		_prof("place npc_ports")
-		# Tutorial keeps the ports (coast/docks) but drops the ruins + NPC start
-		# companies so the board is a clean slate around the seeded window factory.
-		if not pending_tutorial:
-			if MatchState.is_building_available("b_031"):
-				await _place_ruins("tile_23_16", animate)
-			await _place_start_buildings(animate)
-			_prof("place ruins+start buildings")
-			_prof_total("  of which MatchState.add_building", _place_add_us)
-			_prof_total("  of which building_placed.emit", _place_emit_us)
+		if MatchState.is_building_available("b_031"):
+			await _place_ruins("tile_23_16", animate)
+		await _place_start_buildings(animate)
+		_prof("place ruins+start buildings")
+		_prof_total("  of which MatchState.add_building", _place_add_us)
+		_prof_total("  of which building_placed.emit", _place_emit_us)
 		if pending_start:
 			await _place_pending_start_buildings(animate)
 			_prof("place pending_start buildings")
@@ -990,8 +977,6 @@ func _on_tile_selected(tile_data: Dictionary) -> void:
 	_last_selected_tile = tile_data
 	info_panel.show_tile(tile_data)
 
-# While a tutorial is active, map interaction is confined to the board tiles. Returns
-# true (and nudges the player) when tile_id is off-board. A no-op in normal play.
 var _tile_menu: PopupPanel = null
 
 ## Right click on a tile: its quick menu (scripts/tile_quick_menu.gd), unless a tutorial step holds the player to
@@ -1005,19 +990,11 @@ func _on_tile_menu_requested(tile_data: Dictionary, screen_pos: Vector2) -> void
 	_tile_menu.call("open_for", tile_data, screen_pos)
 
 
-func _tutorial_blocks(tile_id: String) -> bool:
-	if not Tutorial.active or Tutorial.tile_allowed(tile_id):
-		return false
-	MatchState.request_toast("Let's stay on the tutorial area for now.", "info")
-	return true
-
 # demo:strip
 func _on_survey_tile_clicked(tile_data: Dictionary) -> void:
 	# Clicking a tile in the Surveying mapmode opens its survey dialog. Fully
 	# surveyed tiles (and ones already being surveyed) trigger no dialog.
 	var tile_id := str(tile_data.get("id", ""))
-	if _tutorial_blocks(tile_id):
-		return
 	if MatchState.is_survey_in_progress(tile_id):
 		MatchState.request_toast("Survey already in progress (%d turns)." % MatchState.survey_turns_left(tile_id), "info")
 		return
@@ -1944,8 +1921,8 @@ func _focus_camera_on_tile(tile_id: String) -> Dictionary:
 		var cell := terrain_layer.map_coord_for_tile_coord(coord)
 		var target: Vector2 = terrain_layer.to_global(terrain_layer.map_to_local(cell))
 		if cam.has_method("pan_to_world"):
-			# ui_focus_duration is the camera controller's own tunable (the tutorial raises
-			# it); fall back if any other Camera2D is ever the active one.
+			# ui_focus_duration is the camera controller's own tunable; fall back if any other
+			# Camera2D is ever the active one.
 			var dur = cam.get("ui_focus_duration")
 			cam.pan_to_world(target, float(dur) if dur != null else 0.3)
 		else:
@@ -1954,12 +1931,9 @@ func _focus_camera_on_tile(tile_id: String) -> Dictionary:
 
 func _on_v2_pick_destination() -> void:
 	# Enter map pick mode but keep the v2 panel visible; the result returns via
-	# on_destination_picked() so the player can then confirm in the panel. Step 24
-	# supplies its own precise white flash, so suppress the broad green category and
-	# hover paint there while keeping the map click capture active.
+	# on_destination_picked() so the player can then confirm in the panel.
 	_v2_picking_dest = true
-	var paint_overlay := not Tutorial.is_active_step("transport_redirect_pick")
-	terrain_layer.begin_stockpile_destination_selection("", paint_overlay)
+	terrain_layer.begin_stockpile_destination_selection("", true)
 
 func _on_special_order_reroute_requested() -> void:
 	_special_order_reroute_picking = true
@@ -2260,8 +2234,6 @@ func _attempt_level_allowed(building_id: String) -> bool:
 
 func _attempt_build(building_id: String, tile_id: String) -> bool:
 	print("[Build] attempt: building=%s tile=%s" % [building_id, tile_id])
-	if _tutorial_blocks(tile_id):
-		return false
 	var coord := terrain_layer.id_to_coord(tile_id)
 	if coord == Vector2i(-1, -1):
 		print("[Build] FAILED: tile_id %s did not resolve to a coord (id_to_coord returned -1,-1)" % tile_id)
@@ -2354,7 +2326,7 @@ func _show_construction_missing_dialog(building_id: String, recipe_id: String, t
 	# Buy / Use-stockpile CTAs are disabled in the dialog and connected here for later phases.
 	if _construction_dialog == null:
 		_construction_dialog = load("res://scripts/construction_missing_dialog.gd").new()
-		_construction_dialog.name = "ConstructionMissingDialog"   # tutorial spotlight target
+		_construction_dialog.name = "ConstructionMissingDialog"
 		_hud.add_child(_construction_dialog)
 		_construction_dialog.buy_requested.connect(_on_construction_buy_requested)
 		_construction_dialog.use_stockpile_requested.connect(_on_construction_use_stockpile_requested)
@@ -2690,7 +2662,7 @@ func _place_pending_start_buildings(animate: bool = false) -> void:
 			continue
 		# Player buildings always (re)lay out here. NPC buildings only if no earlier
 		# pass drew them: ports/ruins/companies already have footprints, but a snapshot-
-		# seeded NPC building (e.g. the tutorial's Vandel window factory) does not and
+		# seeded NPC building does not and
 		# would otherwise never render.
 		elif not BuildingState.is_player_owned(inst) and building_visuals.has_placement(str(instance_id)):
 			continue
@@ -2999,43 +2971,6 @@ func _apply_built_infrastructure(coord: Vector2i, tile_id: String, infra_type: S
 	tile_infrastructure_changed.emit(tile_id, infra_type)
 	print("Built %s on %s" % [infra_type, tile_id])
 
-## Tutorial-only, zero-cost infrastructure reveal. This is intentionally exposed at
-## the world seam rather than mutating Catalog from the coach: it updates both the
-## authoritative terrain tile and the router in exactly the same way as a completed
-## construction project. Normal matches cannot call it successfully.
-func tutorial_install_infrastructure(tile_ids: Array, infra_type: String) -> void:
-	if not bool(MatchState.ruleset.get("tutorial_enabled", false)):
-		return
-	if not _is_tile_infra_type(infra_type):
-		return
-	for raw_tile_id in tile_ids:
-		var tile_id := str(raw_tile_id)
-		_apply_built_infrastructure(terrain_layer.id_to_coord(tile_id), tile_id, infra_type)
-	# Baked road geometry already exists; changing only the tile clip flags leaves
-	# its edge count unchanged, so force the static renderer to expose the route.
-	var road_visuals := get_node_or_null("RoadNetworkVisuals")
-	if road_visuals is CanvasItem:
-		(road_visuals as CanvasItem).queue_redraw()
-
-## Tutorial-only late reveal for the adjacent demonstration factory. Going through
-## the normal MatchState + building_placed seams keeps simulation, tile indexes and
-## map visuals in sync without making it a construction project the player must wait on.
-func tutorial_spawn_building(building_id: String, recipe_id: String, tile_id: String) -> String:
-	if not bool(MatchState.ruleset.get("tutorial_enabled", false)):
-		return ""
-	for iid in BuildingState.tile_buildings.get(tile_id, []):
-		var existing: Dictionary = BuildingState.get_building(str(iid))
-		if BuildingState.is_player_owned(existing) \
-				and str(existing.get("building_id", "")) == building_id \
-				and str(existing.get("recipe_id", "")) == recipe_id:
-			return str(iid)
-	var coord := terrain_layer.id_to_coord(tile_id)
-	if coord == Vector2i(-1, -1):
-		return ""
-	var instance_id := BuildingState.add_building(building_id, recipe_id, tile_id)
-	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
-	return instance_id
-
 func _on_construction_completed_infra(instance_id: String, tile_id: String) -> void:
 	var building_id := str(BuildingState.get_building(instance_id).get("building_id", ""))
 	var internal_name := str(Catalog.get_building(building_id).get("internal_name", ""))
@@ -3191,10 +3126,6 @@ func _on_turn_advanced(new_turn: int) -> void:
 
 
 func _expand_public_roads(turn: int) -> Array:
-	# Tutorial roads are revealed by its transport lessons, including slow runs
-	# that reach turn 20 before the player finishes learning infrastructure.
-	if bool(MatchState.ruleset.get("tutorial_enabled", false)):
-		return []
 	var expansion := preload("res://scripts/public_road_expansion.gd")
 	if turn > TurnManager.MAX_TURNS or expansion.batch_size(turn) == 0 or turn <= MatchState.public_roads_last_turn:
 		return []

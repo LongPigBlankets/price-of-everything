@@ -395,7 +395,7 @@ func _build_land_row() -> HBoxContainer:
 	_terrain_glyph.mouse_filter = Control.MOUSE_FILTER_STOP
 	hex_col.add_child(_terrain_glyph)
 	_land_hex = LandHex.new()
-	_land_hex.name = "TileLandChart"   # tutorial spotlight target
+	_land_hex.name = "TileLandChart"   # the opening steps' spotlight target
 	_land_hex.expand_requested.connect(func() -> void: _set_land_open(not _land_open))
 	hex_col.add_child(_land_hex)
 	var col := VBoxContainer.new()
@@ -416,7 +416,7 @@ func _build_land_row() -> HBoxContainer:
 	keys.add_theme_constant_override("separation", 10)
 	col.add_child(keys)
 	var buy := CabinetKey.new()
-	buy.name = "BLBuyLandButton"   # tutorial spotlight target
+	buy.name = "BLBuyLandButton"
 	buy.text = "Buy Land"
 	buy.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	buy.custom_minimum_size.x = V3_SIDE_KEY_W
@@ -1123,8 +1123,6 @@ func _on_power_goto() -> void:
 func _open_port_buy(iid: String, price: int) -> void:
 	var building := BuildingState.get_building(iid)
 	if building.is_empty() or BuildingState.is_player_owned(building): return
-	if Tutorial.port_purchase_disabled(str(building.get("building_id", ""))):
-		return
 	if _port_buy_layer == null or not is_instance_valid(_port_buy_layer):
 		_port_buy_layer = CanvasLayer.new()
 		_port_buy_layer.layer = 130
@@ -1141,8 +1139,6 @@ func _on_port_buy_confirmed(_dont_ask: bool) -> void:
 	var building := BuildingState.get_building(iid)
 	if building.is_empty() or BuildingState.is_player_owned(building): return
 	var title := Catalog.get_building_display_name(str(building.building_id))
-	if Tutorial.port_purchase_disabled(str(building.building_id)):
-		return
 	if iid == "" or not BuildingState.buildings.has(iid):
 		return
 	if not bool(MatchState.offer_for_building(iid, title).get("ok", false)):
@@ -1359,7 +1355,7 @@ func _make_surplus_knob() -> Control:
 	knob.call("set_options", routes)
 	for i in routes.size():
 		var b: Button = (knob.get("option_buttons") as Array)[i]
-		# The port route keeps the tutorial's "SellSurplusToggle" spotlight name.
+		# The port route keeps its "SellSurplusToggle" name, which the tests look up.
 		b.name = "SellSurplusToggle" if routes[i].id == "market" else "Surplus_%s" % str(routes[i].id).capitalize()
 		if str(routes[i].id) == selected:
 			knob.call("set_value_no_signal", i + 1)

@@ -123,7 +123,7 @@ func _test_telemetry_interactions() -> void:
 	telemetry.free()
 
 func _test_start_label_captured_before_first_turn_or_interaction() -> void:
-	for start: String in ["tutorial", "metal_magnate", "glass_merchant"]:
+	for start: String in ["metal_magnate", "glass_merchant"]:
 		SaveLoad.prepare_new_game("res://data/starts/" + start + ".json", {})
 		MatchState.scenario_name = str(SaveLoad._pending_snapshot.match.scenario_name)
 		var telemetry := preload("res://scripts/telemetry_state.gd").new()

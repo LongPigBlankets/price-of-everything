@@ -57,10 +57,6 @@ func _ready() -> void:
 	AdvisorState.advisors_changed.connect(_queue_refresh)
 	AdvisorState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
 	visibility_changed.connect(_queue_refresh)   # catch up when the tab is shown
-	# The tutorial advances from bonus inspection to hiring asynchronously. Rebuild the
-	# candidate footer when that happens, so its confirmation button becomes available.
-	if typeof(Tutorial) != TYPE_NIL and Tutorial.has_signal("step_changed"):
-		Tutorial.step_changed.connect(func(_id: String) -> void: _queue_refresh())
 	_rebuild()
 
 # Coalesced (notification_bell pattern): loyalty/seat changes arrive in bursts.
@@ -453,8 +449,6 @@ func _build_detail() -> void:
 		bonus_title.name = "AdvisorBonusPrompt"
 	else:
 		bonus_title.text = "Bonuses from this advisor's expertise — %s" % _seat_name(focus_seat)
-		# A stable name lets the tutorial require an explicit position selection and
-		# a visible seat-specific bonus preview before the player can hire.
 		bonus_title.name = "AdvisorBonusSection"
 	left.add_child(bonus_title)
 	if focus_seat == "":
@@ -644,18 +638,13 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 			_set_view(next_view))
 		chip_holder.add_child(b)
 	var employed := AdvisorState.permanent_advisor_ids.has(advisor_id)
-	var inspecting := _tutorial_bonus_inspection_required()
-	var comparing := inspecting or (typeof(Tutorial) != TYPE_NIL and Tutorial.is_active_step("advisors_hire"))
-	var worthwhile := selected_seat != "" and tutorial_candidate_worthwhile(advisor_id, selected_seat)
-	confirm.name = "AdvisorChooseCandidateButton" if inspecting else "AdvisorHireAssignButton"
-	confirm.text = "Choose this advisor" if inspecting else ("Assign to seat" if employed else "Hire & assign")
+	confirm.name = "AdvisorHireAssignButton"
+	confirm.text = "Assign to seat" if employed else "Hire & assign"
 	confirm.theme_type_variation = &"Primary"
 	confirm.disabled = selected_seat == ""
 	if selected_seat == "":
 		confirm.tooltip_text = "Choose a position first."
-	elif comparing and not worthwhile:
-		confirm.tooltip_text = "Benefits are below salary in the latest turn. Compare other candidates or choose this advisor anyway."
-	confirm.pressed.connect(func() -> void: _confirm_choice(advisor_id, selected_seat, inspecting))
+	confirm.pressed.connect(func() -> void: _confirm_choice(advisor_id, selected_seat))
 	row.add_child(confirm)
 	# Cost sits BELOW the button, not inside its label: it is two numbers plus a percentage and
 	# it changes every turn, which made for a button caption that was mostly arithmetic.
@@ -666,14 +655,10 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 	return wrap
 
 
-## The confirm key: in the tutorial's comparison step it only moves the tutorial on; otherwise it hires the
-## advisor if need be and seats them, says how that went, and goes back to the roster.
-func _confirm_choice(advisor_id: String, selected_seat: String, inspecting: bool) -> void:
+## The confirm key: hires the advisor if need be and seats them, says how that went, and goes back to the
+## roster.
+func _confirm_choice(advisor_id: String, selected_seat: String) -> void:
 	if selected_seat == "":
-		return
-	if inspecting:
-		if Tutorial.is_active_step("advisors_inspect"):
-			Tutorial._advance()
 		return
 	if not AdvisorState.permanent_advisor_ids.has(advisor_id):
 		if not AdvisorState.hire_advisor(advisor_id):
@@ -689,14 +674,6 @@ func _confirm_choice(advisor_id: String, selected_seat: String, inspecting: bool
 		MatchState.request_toast("Could not seat %s as %s — the council is full." % [who, _seat_name(selected_seat)], "warning")
 	_set_view({"mode": "roster"})
 
-
-func tutorial_candidate_worthwhile(advisor_id: String, seat_id: String) -> bool:
-	return AdvisorState.advisor_bonus_preview_per_turn(advisor_id, seat_id) > _salary(advisor_id)
-
-
-func _tutorial_bonus_inspection_required() -> bool:
-	return typeof(Tutorial) != TYPE_NIL and Tutorial.has_method("is_active_step") \
-		and Tutorial.is_active_step("advisors_inspect")
 
 # ── shared atoms ─────────────────────────────────────────────────────────────
 func _back_row(title: String, subtitle: String) -> Control:

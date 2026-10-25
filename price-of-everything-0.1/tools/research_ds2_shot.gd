@@ -21,7 +21,7 @@ func _ready() -> void:
 	Harness.prepare_window(get_window(), Vector2i(1920, 1080))
 	Harness.arm_watchdog(self, 300.0)
 	AudioServer.set_bus_mute(0, true)
-	TelemetryState.set_next_run_consent(false, false)
+	TelemetryState.set_next_run_consent(false)
 	UiPrefs.set_use_research_ds2(true)
 	_dir = OS.get_environment("RESEARCH_SHOT_DIR")
 	if _dir == "":

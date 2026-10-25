@@ -863,7 +863,7 @@ func _refresh_briefing() -> void:
 # ── 4b · Mission: a key and a piston ──────────────────────────────────────────────
 
 ## The modular mission tree (scripts/mini_quest.gd), as a key and a piston (scripts/ds2/mission_slot.gd)
-## in its own section between the works and the left pipes. Hidden only while the explicit tutorial coach
+## in its own section between the works and the left pipes. Hidden only while the opening steps' coach
 ## owns the screen; the generic branch is available from the opening campaign turn even when its first
 ## unlock is still locked.
 func _build_quest() -> void:

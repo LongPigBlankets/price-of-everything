@@ -1,8 +1,7 @@
 extends Node
 ## Tile view v3's Buildings tab (scripts/tvp_v3/buildings_tab.gd), checked without a window: the names the
-## tutorial and the tests reach for, what a click on a card opens, the port in its own case above your
-## buildings (on screen with other companies' drawer shut, for the tutorial's port step too; yours reads
-## as your buildings do), the drawer's key counting other companies' buildings only (never the port, never
+## tests reach for, what a click on a card opens, the port in its own case above your buildings (on screen
+## with other companies' drawer shut; yours reads as your buildings do), the drawer's key counting other companies' buildings only (never the port, never
 ## infrastructure), the figures (a stalled building makes nothing, the port's price in the house money
 ## format, the seven-segment screens for money only, a good's quantity only ever the pill on its icon, the
 ## drums for turns only), the fold of groups kept across rebuilds, the construction column, the width
@@ -87,7 +86,6 @@ func _ready() -> void:
 	await _check_fold()
 	await _check_member_words()
 	_check_construction()
-	await _check_port_step()
 	await _check_width()
 	await _check_columns()
 	_check_tips()
@@ -239,38 +237,6 @@ func _check_construction() -> void:
 		_ok(drum != null and absf(drum.size.y - Drum.led_height()) < 0.6, "the turns drum stands as tall as an LED screen")
 		_ok(r.find_child("CancelConstruction_*", true, false) is Button, "Cancel sits beside the turns")
 	_ok(widths.size() == 2 and widths[0] == widths[1], "the turns column is one width down the case %s" % str(widths))
-
-
-## The tutorial's port step (it spotlights PortBuildingCard) finds the port on screen without opening other
-## companies' drawer, whether the step starts after the tab was built or the tab is built during it, and
-## the port's Buy is disabled during the tutorial.
-func _check_port_step() -> void:
-	_panel.set_meta("tvp_bl_others_open", false)
-	_panel.call("_refresh_pane", "bl")
-	await _frames(2)
-	var saved := {"active": Tutorial.active, "steps": Tutorial.get("_steps"), "index": Tutorial.get("_index")}
-	Tutorial.set("_steps", [{"id": "probe_port", "spotlight": {"kind": "node_name", "ref": "PortBuildingCard"}}])
-	Tutorial.set("_index", 0)
-	Tutorial.active = true
-	Tutorial.step_changed.emit("probe_port")
-	await _frames(2)
-	var card := _find("PortBuildingCard") as Control
-	var drawer := _find("Drawer") as Control
-	_ok(card != null and card.is_visible_in_tree() and drawer != null and not drawer.visible,
-		"PortBuildingCard is on screen for the step started after the build, the drawer left shut")
-	_panel.call("_refresh_pane", "bl")
-	await _frames(2)
-	card = _find("PortBuildingCard") as Control
-	_ok(card != null and card.is_visible_in_tree(), "PortBuildingCard is on screen when the tab is built during the step")
-	var guard := _find("PortBuyButton")
-	_ok(guard != null and bool(guard.get("disabled")), "the port's Buy is disabled during the tutorial")
-	Tutorial.active = bool(saved.active)
-	Tutorial.set("_steps", saved.steps)
-	Tutorial.set("_index", saved.index)
-	Tutorial.step_changed.emit("")
-	_panel.call("_refresh_pane", "bl")
-	await _frames(2)
-	_ok(not bool(_panel.get_meta("tvp_bl_others_open", false)), "the step stored no drawer state")
 
 
 ## With the drawer and the group open, no part is wider than the body (docs/ds2-theme.md §7.12).

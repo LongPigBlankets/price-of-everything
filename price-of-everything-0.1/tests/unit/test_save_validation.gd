@@ -67,7 +67,7 @@ func _test_save_validation_file_boundary_and_slot_listing() -> void:
 
 func _test_save_validation_demo_policy_and_legacy_defaults() -> void:
 	var validator := Validator.new()
-	for start in ["metal_magnate", "glass_merchant", "tutorial", "default"]:
+	for start in ["metal_magnate", "glass_merchant", "default"]:
 		var config: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/" + start + ".json"))
 		var expanded := SaveLoad.expand_start_config(config, {"ruleset": {"speed_turns": 100, "difficulty": "normal", "victory_set": "demo_itch"}})
 		var error := validator.validate(expanded, SaveLoad.SAVE_VERSION, true)

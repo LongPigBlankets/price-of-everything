@@ -1178,7 +1178,7 @@ func _test_research_link_is_exact() -> void:
 	_check(rows != null and rows.size() > 0, "research link: the unlock table loads")
 	for row: Dictionary in rows:
 		if str(row.get("title", "")) == "Bauxite Carbochlorination":
-			_check(panel._unlock_matches(row, "aluminium"), "tutorial research search finds processes by their output")
+			_check(panel._unlock_matches(row, "aluminium"), "research search finds processes by their output")
 
 	# The ORDINARY search matches title, description and category by substring, which is
 	# right for hunting and wrong for a link: several techs mention another tech in their
@@ -1292,7 +1292,7 @@ func _test_research_ds2_panel() -> void:
 		return
 	var search: LineEdit = panel.get("_search_input")
 	_check(search != null and view.is_ancestor_of(search) and search.name == "ResearchSearchInput",
-		"research ds2: the panel's own search box sits on the DS2 screen, its name kept for the tutorial")
+		"research ds2: the panel's own search box sits on the DS2 screen, its name kept")
 
 	# The plan chest: a drawer a category; opening one opens that category.
 	var drawers: Array = view.call("drawers")
@@ -1397,8 +1397,6 @@ func _test_research_ds2_panel() -> void:
 	_check(panel.visible and search.text == "Bauxite Carbochlorination" and shown.size() == 1
 		and str((shown[0] as Control).get("title")) == "Bauxite Carbochlorination",
 		"research ds2: a research link opens the panel showing that research alone")
-	var spot: Rect2 = panel.call("tutorial_unlock_rect", "Bauxite Carbochlorination")
-	_check(spot.has_area(), "research ds2: the tutorial can spotlight a linked drawing")
 	panel.call("open_with_search", "")
 	panel.call("select_category", "Extraction")
 

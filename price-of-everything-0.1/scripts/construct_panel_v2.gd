@@ -113,15 +113,12 @@ func open_for_tile(tile_id: String, tile_data: Dictionary) -> void:
 	show()
 
 
-## Expand a building card so its recipe rows exist (RecipeRow_<id> nodes) — used by
-## the tutorial to reveal the recipe it wants to spotlight without a manual click.
+## Expand a building card so its recipe rows exist (RecipeRow_<id> nodes) without a manual click.
 func expand_building(building_id: String) -> void:
 	if not visible or _view != View.BROWSE:
 		return
 	_expanded_building_id = building_id
 	_render()
-	# The recipe rows now exist; the coach overlay scrolls its spotlight target
-	# (RecipeRow_<id>) into view itself, so no scrolling is needed here.
 
 
 func _reset_to_browse() -> void:
@@ -308,7 +305,7 @@ func _render() -> void:
 	# its freshly-built replacement, and Godot resolves that collision by discarding
 	# BOTH cards' readable names (e.g. "BuildingCard_b_007") for the anonymous
 	# @ClassName@N form, breaking every find_child("BuildingCard_...")-style lookup
-	# (tutorial spotlights, screenshot/test tooling) until the stale pass is freed.
+	# (screenshot/test tooling) until the stale pass is freed.
 	for child in _content.get_children():
 		_content.remove_child(child)
 		child.queue_free()

@@ -15,7 +15,7 @@ func _ready() -> void:
 	var args:=OS.get_cmdline_user_args()
 	var chain:="steel" if args.has("--steel") else "five"
 	var mode:="middleman" if args.has("--middleman") else ("mixed" if args.has("--mixed") else "managed")
-	SaveLoad.prepare_new_game("res://data/starts/pepper_valley_motors.json",{"ruleset":{"logistics_model":"middleman_v1","tutorial_enabled":false}})
+	SaveLoad.prepare_new_game("res://data/starts/pepper_valley_motors.json",{"ruleset":{"logistics_model":"middleman_v1"}})
 	var world: Node=load("res://scenes/main.tscn").instantiate()
 	add_child(world)
 	for frame in 160: await get_tree().process_frame

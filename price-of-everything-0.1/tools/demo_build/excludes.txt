@@ -2,7 +2,7 @@
 # One Godot export glob per line (res:// relative); blank lines and # comments are ignored.
 #
 # build_demo.py adds two computed groups as well:
-#   - every data/starts/*.json except index.json, default.json, tutorial.json and the
+#   - every data/starts/*.json except index.json, default.json and the
 #     DemoBuild.START_IDS starts (scripts/demo_build.gd), and
 #   - every data/map_authored/*.json except the active document (active.txt).
 #

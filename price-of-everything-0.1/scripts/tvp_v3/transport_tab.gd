@@ -518,8 +518,8 @@ static func _wells_room(row: Control) -> MarginContainer:
 ## One link that can be built: its emblem (no lamp: nothing is running to judge), its name, the tiles it
 ## reaches and its throughput at level 1 in the table's columns, its Build key, and under them what laying
 ## it takes, or how long it has left while it is being built (the key latched with its lamp lit). Hovering
-## the key lights its card: what building it costs and brings. Named InfraCell_<key> for the tutorial,
-## which presses the first Button in it: the Build key.
+## the key lights its card: what building it costs and brings. Named InfraCell_<key>; its first Button is the
+## Build key.
 static func _spare_module(panel: Control, tile_id: String, slot: Dictionary, project: Dictionary) -> Control:
 	var key := str(slot.get("key", ""))
 	var title := _name(slot)

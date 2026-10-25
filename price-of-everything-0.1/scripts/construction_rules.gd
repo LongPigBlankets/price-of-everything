@@ -454,7 +454,7 @@ static func is_intermittent(building_id: String) -> bool:
 ##                     build checks them; `ok` when there are none
 ##   warnings          [{key, text}] what goes ahead but deserves a word
 ##
-## Block keys: tutorial_area, tendering, terrain, deposit, requirement, already_built,
+## Block keys: tendering, terrain, deposit, requirement, already_built,
 ## in_progress, full, cannot_buy_land, land_short, materials_short, no_surplus, funds, level_research.
 ## Warning keys: site_unknown, blind_deposit, density, buys_land, source_changed, needs_cables,
 ## needs_pipes, needs_reinf_pipes, intermittent.
@@ -511,7 +511,7 @@ static func _quote(building_id: String, recipe_id: String, tile_id: String, tile
 	if tile_data.is_empty():
 		tile_data = {"id": tile_id, "type": Catalog.tile_type(tile_id)}
 
-	# The build's order: the tutorial board, the terrain and the recipe's requirements for a
+	# The build's order: the terrain and the recipe's requirements for a
 	# building; Infrastructure Tendering, an existing slot and a running project for
 	# infrastructure.
 	if infrastructure:
@@ -527,8 +527,6 @@ static func _quote(building_id: String, recipe_id: String, tile_id: String, tile
 				blocks.append({"key": "in_progress", "text": "%s is already being built here." % str(building.get("display_name", internal))})
 				break
 	else:
-		if Tutorial.active and not Tutorial.tile_allowed(tile_id):
-			blocks.append({"key": "tutorial_area", "text": "Stay on the tutorial area for now."})
 		var tile_type := str(tile_data.get("type", ""))
 		if not Catalog.is_building_allowed_on_tile_type(building_id, tile_type):
 			blocks.append({"key": "terrain", "text": "Only offshore wind farms and oil platforms can be built at sea."

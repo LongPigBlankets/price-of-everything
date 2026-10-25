@@ -14,7 +14,7 @@ const TAGS := {
 }
 
 
-## The panel is the DS2 shell, no TabContainer, under its name for the tutorial, one width of 800.
+## The panel is the DS2 shell, no TabContainer, under its name, one width of 800.
 func _test_people_ds2_panel() -> void:
 	var pp: PanelContainer = load("res://scripts/people_panel.gd").new()
 	add_child(pp)

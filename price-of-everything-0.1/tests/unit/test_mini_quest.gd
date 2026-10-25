@@ -176,7 +176,6 @@ func _test_tutorial_counts_from_the_station_opening() -> void:
 	var old_tutorial: bool = Tutorial.active
 	Tutorial.active = false
 	MatchState.ruleset["start_id"] = "metal_magnate"
-	MatchState.ruleset["tutorial_enabled"] = false
 	MiniQuest.board_done = {}
 	MiniQuest.board_granted = {}
 	MiniQuest.board_baseline = {}
@@ -230,7 +229,9 @@ func _test_discounted_kit_is_repaid_on_refund() -> void:
 func _test_new_games_open_with_the_tutorials_first_steps() -> void:
 	var Steps := preload("res://scripts/tutorial/tutorial_steps.gd")
 	var ids: Array = Steps.opener_steps().map(func(st: Dictionary) -> String: return str(st.get("id", "")))
-	_check(ids.slice(0, Steps.OPENER_IDS.size()) == Steps.OPENER_IDS and ids.has(Steps.OPENER_END_TURN_STEP)
+	var intro := ["welcome", "ui_primer", "tile_basics_select", "tile_basics_land", "tile_basics_features",
+		"recipe_inputs_intro", "recipe_outputs_intro"]
+	_check(ids.slice(0, intro.size()) == intro and ids.has(Steps.OPENER_END_TURN_STEP)
 		and ids.back() == "opener_own_pace",
 		"the opener plays the welcome, the screen tour, tiles, the recipe diagram, then the business steps, in order")
 	_check(str((Steps.opener_steps()[0] as Dictionary).paragraphs[1]).contains("interface"), "the welcome says the interface comes first")

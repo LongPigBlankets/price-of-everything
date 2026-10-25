@@ -418,8 +418,7 @@ func _on_unlock_granted(title: String, _description: String, _via_condition: boo
 ## at a moment this listener isn't connected yet, and grant_unlock is one-shot, so the
 ## signal path alone would drop the bonus forever.
 ## Accepts EITHER a research_node_id (what the table is keyed by) or a display title, and
-## returns the node id. Titles are still the handle in saves, the tutorial detectors and a
-## number of tests, so both must work until those move onto ids.
+## returns the node id. Titles are still the handle in saves and a number of tests, so both must work until those move onto ids.
 func resolve_unlock_key(title_or_id: String) -> String:
 	if UNLOCK_MODIFIERS.has(title_or_id):
 		return title_or_id

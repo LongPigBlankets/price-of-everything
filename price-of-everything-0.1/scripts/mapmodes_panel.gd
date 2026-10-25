@@ -129,7 +129,7 @@ func _build_content() -> void:
 	for row in ROWS:
 		var button: Control = LatchKey.new()
 		button.set("text", str(row.label))
-		button.name = "MapModeRow_%s" % str(row.id)   # e.g. MapModeRow_logistics — tutorial spotlight target
+		button.name = "MapModeRow_%s" % str(row.id)   # e.g. MapModeRow_logistics
 		button.connect("pressed", _on_row_pressed.bind(str(row.id), str(row.kind)))
 		grid.add_child(button)
 		var mode := _mode_for_id(str(row.id))

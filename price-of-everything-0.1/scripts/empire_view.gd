@@ -314,9 +314,6 @@ func _on_tile_picked(tile_id: String) -> void:
 	var coord: Vector2i = terrain.id_to_coord(tile_id)
 	var tiles: Dictionary = terrain.get("tiles")
 	if not tiles.has(coord): return
-	if Tutorial.active and not Tutorial.tile_allowed(tile_id):
-		MatchState.request_toast("Let's stay on the tutorial area for now.", "info")
-		return
 	var data: Dictionary = tiles[coord]
 	if bool(terrain.get("_stockpile_destination_selection_active")):
 		var shift := Input.is_key_pressed(KEY_SHIFT)

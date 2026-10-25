@@ -357,9 +357,8 @@ func _test_start_values_and_magnate_trajectory() -> void:
 	_fresh()
 	var mm: Dictionary = SaveLoad.expand_start_config(JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/metal_magnate.json")))
 	var gm: Dictionary = SaveLoad.expand_start_config(JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/glass_merchant.json")))
-	var tut: Dictionary = SaveLoad.expand_start_config({"name": "t", "ruleset": {"name": "standard", "tutorial_enabled": true}})
-	_check(is_equal_approx(float(mm.match.labour_satisfaction), 40.0) and is_equal_approx(float(gm.match.labour_satisfaction), 20.0)
-		and is_equal_approx(float(tut.match.labour_satisfaction), 60.0), "AC2.12 starts: Magnate +40, Glass Merchant +20, tutorial +60")
+	_check(is_equal_approx(float(mm.match.labour_satisfaction), 40.0) and is_equal_approx(float(gm.match.labour_satisfaction), 20.0),
+		"AC2.12 starts: Magnate +40, Glass Merchant +20")
 	# Magnate's presets and workforce.
 	for spec in [[MINE, "r_001", "tile_6_8"], [MINE, "r_002", "tile_7_10"], [FURNACE, "r_005", "tile_9_9"], ["b_003", "r_004", "tile_9_9"]]:
 		BuildingState.tile_land_owned[str(spec[2])] = 200
@@ -374,10 +373,6 @@ func _test_start_values_and_magnate_trajectory() -> void:
 		if crossed == 0 and LabourState.satisfaction < -5.0:
 			crossed = turn
 	_check(crossed == 8, "AC2.12 Magnate's default satisfaction crosses −5 on turn 8 (turn %d)" % crossed)
-	MatchState.ruleset = {"name": "standard", "tutorial_enabled": true}
-	LabourState.satisfaction = 60.0
-	LabourState.tick_satisfaction()
-	_check(is_equal_approx(LabourState.satisfaction, 60.0), "AC2.12 the tutorial's satisfaction is frozen")
 	_fresh()
 
 

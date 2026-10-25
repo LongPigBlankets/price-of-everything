@@ -16,7 +16,7 @@ var _frames := 0
 
 func _ready() -> void:
 	get_window().size = Vector2i(1920, 1080)
-	SaveLoad.prepare_new_game("res://data/starts/tutorial.json")
+	SaveLoad.prepare_new_game("res://data/starts/default.json")
 	_main = (load(MAIN_SCENE) as PackedScene).instantiate()
 	add_child(_main)
 
@@ -37,10 +37,11 @@ func _run() -> void:
 	if cam != null:
 		cam.set("edge_pan_enabled", false)
 	MatchState.money = 100000.0
-	# Own the window factory (the glass consumer) + build a player glass furnace.
-	for iid in BuildingState.tile_buildings.get(FACTORY_TILE, []):
-		if str(BuildingState.get_building(str(iid)).get("building_id", "")) == "b_007":
-			BuildingState.set_building_owner(str(iid), MatchState.LOCAL_PLAYER)
+	# A player window factory (the glass consumer) + a player glass furnace.
+	BuildingState.tile_land_owned[FACTORY_TILE] = 200
+	BuildingState.tile_land_owned[FURNACE_TILE] = 200
+	var factory_iid := BuildingState.add_building("b_007", "r_056", FACTORY_TILE)
+	print("[SHOT] factory=", factory_iid)
 	var furnace_iid := BuildingState.add_building("b_002", "r_053", FURNACE_TILE)
 	var glass_gid := ""
 	for o in Catalog.get_recipe("r_053").get("outputs", []):

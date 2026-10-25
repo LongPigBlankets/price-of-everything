@@ -47,7 +47,7 @@ func run_stage(label: String, milestone: int) -> Dictionary:
 	add_child(_map)
 	_map.add_to_group("hex_map")
 	var config: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/metal_magnate.json"))
-	SaveLoad.import_snapshot(SaveLoad.expand_start_config(config, {"speed_turns": 300, "tutorial_enabled": false, "policy_timeline": "demo_itch"}))
+	SaveLoad.import_snapshot(SaveLoad.expand_start_config(config, {"speed_turns": 300, "policy_timeline": "demo_itch"}))
 	MatchState.seed_deposits(_map)
 	TurnManager.current_turn = milestone
 	MatchState.money = 100000.0

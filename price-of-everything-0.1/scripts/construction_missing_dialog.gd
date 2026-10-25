@@ -132,7 +132,7 @@ func _build_ui() -> void:
 	# Total market cost of the shortfall — navy ink on a cream card (this dialog is navy, so a
 	# small paper card is what lets navy text read). Filled in per-open by _update_market_total().
 	var total_card := PanelContainer.new()
-	total_card.name = "SourcingMarketCost"   # tutorial spotlight target (build-cost step)
+	total_card.name = "SourcingMarketCost"
 	total_card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	var tsb := StyleBoxFlat.new()
 	tsb.bg_color = BADGE_PAPER
@@ -170,7 +170,7 @@ func _build_ui() -> void:
 	row.add_child(_use_button)
 
 	_buy_button = _make_button("Buy from market and construct", 1.5)
-	_buy_button.name = "SourcingBuyButton"   # tutorial spotlight target
+	_buy_button.name = "SourcingBuyButton"
 	_buy_button.pressed.connect(_on_buy_pressed)
 	row.add_child(_buy_button)
 

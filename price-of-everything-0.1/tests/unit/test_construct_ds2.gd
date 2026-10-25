@@ -1,6 +1,6 @@
 extends "res://tests/test_base.gd"
 ## The construct panel in DS2, the construction lot: behaviour, not looks. One width in every stage; the build
-## order's figures and its refusal are ConstructionRules.quote()'s; the handles the tutorial and the tests look
+## order's figures and its refusal are ConstructionRules.quote()'s; the handles the tests look
 ## up are there; the source knob sets this build's source.
 
 const FEATURE := "construction"

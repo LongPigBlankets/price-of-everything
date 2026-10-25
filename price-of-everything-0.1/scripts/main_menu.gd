@@ -27,9 +27,7 @@ const NewGamePanelScene := preload("res://scripts/new_game_panel.gd")
 ## `toggle newgame settings` brings the old panel back. Loaded by path, so the old panel stands whatever the state of
 ## the new script.
 const NEW_GAME_DS2_SCRIPT := "res://scripts/new_game_ds2/new_game_ds2.gd"
-const TutorialPanelScene := preload("res://scripts/tutorial_intro_panel.gd")
 const HallOfRecordsPanelScene := preload("res://scripts/hall_of_records_panel.gd")
-const TutorialPromptScene := preload("res://scripts/tutorial_prompt_dialog.gd")
 const CreamKey := preload("res://scripts/ds2/cream_key.gd")
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 ## The polished steel plate (layout.json menu_plate): its 9-slice corner in texels (its shadow room, the rounded
@@ -39,7 +37,6 @@ const PLATE_OUTSET := 12.0 / 1.875
 ## New Game's key: its scale and print size.
 const LEAD_KEY_SCALE := 1.35
 const LEAD_KEY_PX := 24
-const TUTORIAL_START := "res://data/starts/tutorial.json"
 const NEW_GAME_BOTTOM_GAP := 90.0   # panel stops this far above the screen bottom (board peeks beneath); low enough that the Start CTA sits on the panel, not the board
 
 const PANEL_INSET := 24.0   # frame inset from the screen edges
@@ -67,9 +64,7 @@ const BUTTONS_PAD_TOP := 26   # padding inside the button frame, above New Game
 # The New Game settings panel and the goods board it slides in over.
 var _new_game_panel: Control
 var _start_fade: ColorRect
-var _tutorial_panel: Control
 var _hall_of_records_panel: Control
-var _tutorial_prompt: Control
 var _goods_grid: Control
 # demo:strip
 var _map_editor_button: Button
@@ -80,9 +75,7 @@ func _ready() -> void:
 	_build_menu()
 	_build_new_game_panel()
 	get_viewport().size_changed.connect(_layout_new_game_panel)
-	_build_tutorial_panel()
 	_build_hall_of_records_panel()
-	_build_tutorial_prompt()
 	# Debug/cheat terminal (toggle with `). Menu mode allows only the match-independent
 	# cheats — chiefly `swap loading_screen`, so the slow-build recording can be armed
 	# before the first New Game (the in-match terminal is added by world_map).
@@ -129,28 +122,9 @@ func _warm_map_assets() -> void:
 
 
 # Clicking New Game opens the settings panel, whose Start New Game button drives the load
-# (see _on_start_requested). Every new game opens with the tutorial's first steps
-# (Tutorial.start_opener), so there is no separate tutorial to nudge the player towards.
+# (see _on_start_requested). Every new game opens with the opening steps (Tutorial.start_opener).
 func _on_new_game_pressed() -> void:
 	_show_new_game_panel()
-
-
-# ── "Play without the tutorial?" prompt ──────────────────────────────────────────
-
-func _build_tutorial_prompt() -> void:
-	_tutorial_prompt = TutorialPromptScene.new()
-	_tutorial_prompt.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_tutorial_prompt.z_index = 200   # over every side panel
-	_tutorial_prompt.go_to_tutorial.connect(_on_tutorial_pressed)
-	_tutorial_prompt.proceed_anyway.connect(_show_new_game_panel)
-	add_child(_tutorial_prompt)
-
-
-func _show_tutorial_prompt() -> void:
-	if _tutorial_prompt == null or _tutorial_prompt.visible:
-		return
-	_close_side_panels()
-	_tutorial_prompt.open()
 
 
 # Start New Game pressed in the settings panel. New Game flows through the same
@@ -158,7 +132,7 @@ func _show_tutorial_prompt() -> void:
 # snapshot and applies once the map is ready. We prepare the snapshot, raise the
 # loading screen, then let IT drive a threaded load of the map scene — so the loading
 # visuals animate during the heavy load instead of the menu freezing. (overrides —
-# difficulty/victory/tutorial — are consumed by prepare_new_game in Phase 2.)
+# difficulty/victory — are consumed by prepare_new_game in Phase 2.)
 func _on_start_requested(start_path: String, overrides: Dictionary) -> void:
 	# The registry (the DS2 settings screen) has just stamped the form; the screen fades to black over
 	# NEW_GAME_FADE_SECONDS before the loading screen comes up. The old panel starts at once, as it always has.
@@ -182,11 +156,11 @@ func _begin_new_game(start_path: String, overrides: Dictionary) -> void:
 	# scene. The heavy instantiation + first render happen behind the animated loading screen; the
 	# HUD panels build lazily (on first open) and the hill work spreads via the loading-screen
 	# pacing gate, so the freeze is far smaller than it was. The panel's overrides (ruleset —
-	# survey_all_tiles, tutorial_enabled, difficulty/speed) merge into the start's ruleset.
+	# survey_all_tiles, difficulty/speed) merge into the start's ruleset.
 	# Settings is authoritative even if a cached start panel carries an older value.
 	var metrics_on := not PlayerProfile.telemetry_opt_out
 	overrides.erase("telemetry_opt_in")
-	TelemetryState.set_next_run_consent(metrics_on, false)
+	TelemetryState.set_next_run_consent(metrics_on)
 	SaveLoad.prepare_new_game(start_path, overrides)
 	var screen := LoadingScreen.show_global(get_tree())
 	screen.begin_load(SaveLoad.MAIN_SCENE)
@@ -306,8 +280,6 @@ func _show_new_game_panel() -> void:
 func _close_side_panels(except: Control = null) -> void:
 	if _new_game_panel != null and _new_game_panel != except:
 		_hide_new_game_panel()
-	if _tutorial_panel != null and _tutorial_panel != except:
-		_on_tutorial_back()
 	if _hall_of_records_panel != null and _hall_of_records_panel != except:
 		_on_hall_of_records_back()
 
@@ -320,49 +292,6 @@ func _hide_new_game_panel() -> void:
 	var tw := create_tween()
 	tw.tween_property(_new_game_panel, "modulate:a", 0.0, 0.18)
 	tw.tween_callback(func() -> void: _new_game_panel.visible = false)
-
-
-# ── Tutorial panel ──────────────────────────────────────────────────────────────
-
-func _build_tutorial_panel() -> void:
-	_tutorial_panel = TutorialPanelScene.new()
-	# Occupy the same right region the New Game panel uses.
-	_tutorial_panel.anchor_left = 0.25
-	_tutorial_panel.anchor_top = 0.0
-	_tutorial_panel.anchor_right = 1.0
-	_tutorial_panel.anchor_bottom = 1.0
-	_tutorial_panel.offset_left = PANEL_INSET
-	_tutorial_panel.offset_top = PANEL_INSET
-	_tutorial_panel.offset_right = -PANEL_INSET
-	_tutorial_panel.offset_bottom = -NEW_GAME_BOTTOM_GAP
-	_tutorial_panel.visible = false
-	_tutorial_panel.modulate.a = 0.0
-	_tutorial_panel.z_index = 100
-	_tutorial_panel.begin_requested.connect(_on_tutorial_begin)
-	_tutorial_panel.back_requested.connect(_on_tutorial_back)
-	add_child(_tutorial_panel)
-
-
-func _on_tutorial_pressed() -> void:
-	if _tutorial_panel == null or _tutorial_panel.visible:
-		return
-	_close_side_panels(_tutorial_panel)
-	if _goods_grid != null:
-		_goods_grid.set_process(false)
-	_tutorial_panel.visible = true
-	_tutorial_panel.modulate.a = 0.0
-	var tw := create_tween()
-	tw.tween_property(_tutorial_panel, "modulate:a", 1.0, 0.22)
-
-
-func _on_tutorial_back() -> void:
-	if _tutorial_panel == null or not _tutorial_panel.visible:
-		return
-	if _goods_grid != null:
-		_goods_grid.set_process(true)
-	var tw := create_tween()
-	tw.tween_property(_tutorial_panel, "modulate:a", 0.0, 0.18)
-	tw.tween_callback(func() -> void: _tutorial_panel.visible = false)
 
 
 # ── Hall of Records panel ───────────────────────────────────────────────────────
@@ -408,18 +337,6 @@ func _on_hall_of_records_back() -> void:
 	tw.tween_callback(func() -> void: _hall_of_records_panel.visible = false)
 
 
-# Begin Tutorial boots the tutorial start config through the same snapshot + loading
-# pipeline as New Game; the tutorial_enabled flag rides tutorial.json's ruleset dict
-# into MatchState.ruleset, where the Tutorial autoload picks it up.
-func _on_tutorial_begin() -> void:
-	# Tutorial runs use the Settings preference and a "-T" suffixed run id.
-	var metrics_on: bool = _tutorial_panel.send_metrics_enabled()
-	TelemetryState.set_next_run_consent(metrics_on, true)
-	SaveLoad.prepare_new_game(TUTORIAL_START)
-	var screen := LoadingScreen.show_global(get_tree())
-	screen.begin_load(SaveLoad.MAIN_SCENE)
-
-
 func _on_load_game_pressed() -> void:
 	_close_side_panels()
 	SaveLoadScreen.open(self, SaveLoadScreen.Mode.LOAD)
@@ -462,12 +379,6 @@ func _build_menu() -> void:
 	var new_game := _make_button("New Game", true)
 	new_game.pressed.connect(_on_new_game_pressed)
 	vbox.add_child(new_game)
-	# The separate tutorial game is hidden: its first steps open every new game instead.
-	var tutorial := _make_button("Tutorial", false)
-	tutorial.name = "TutorialButton"
-	tutorial.visible = false
-	tutorial.pressed.connect(_on_tutorial_pressed)
-	vbox.add_child(tutorial)
 	for label in ["Load Game", "Hall of Records", "Settings", "Credits", "Encyclopedia"]:
 		var b := _make_button(label, false)
 		if label == "Load Game":

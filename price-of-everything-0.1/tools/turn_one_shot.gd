@@ -23,7 +23,7 @@ func _ready() -> void:
 	# expand_start_config merges into the ruleset — without it ruleset.start_id is empty, which
 	# is a fault of this harness, not the game.
 	SaveLoad.prepare_new_game("res://data/starts/%s.json" % start_id,
-		{"ruleset": {"start_id": start_id, "tutorial_enabled": false}})
+		{"ruleset": {"start_id": start_id}})
 	var packed := load("res://scenes/main.tscn") as PackedScene
 	_wm = packed.instantiate()
 	add_child(_wm)

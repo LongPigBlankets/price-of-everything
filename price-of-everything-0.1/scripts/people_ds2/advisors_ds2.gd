@@ -11,11 +11,10 @@ extends "res://scripts/advisor_council_tab.gd"
 ## scripts/people_ds2/seat_status.gd.
 ##
 ## The picker and an advisor's dossier are steel sheets that slide in over the table, not views that replace it.
-## The view state, the candidates, the tutorial's checks and the hire itself are the base tab's
-## (advisor_council_tab.gd); the node names the tutorial and tests look up
-## (AdvisorAddNewButton, AdvisorSeatChoice_<seat>, AdvisorBonusPrompt, AdvisorBonusSection,
-## AdvisorFinancialPreview, AdvisorBonusValue, AdvisorSalaryValue, AdvisorNetBenefitValue,
-## AdvisorChooseCandidateButton, AdvisorHireAssignButton, AdvisorHireCostLine) are kept.
+## The view state, the candidates and the hire itself are the base tab's (advisor_council_tab.gd); the node
+## names the tests look up (AdvisorAddNewButton, AdvisorSeatChoice_<seat>, AdvisorBonusPrompt,
+## AdvisorBonusSection, AdvisorFinancialPreview, AdvisorBonusValue, AdvisorSalaryValue, AdvisorNetBenefitValue,
+## AdvisorHireAssignButton, AdvisorHireCostLine) are kept.
 
 const Parts := preload("res://scripts/people_ds2/parts.gd")
 const Kit := preload("res://scripts/ds2/parts.gd")
@@ -110,8 +109,6 @@ func _ready() -> void:
 	AdvisorState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
 	TurnManager.turn_resolution_completed.connect(_queue_refresh)
 	visibility_changed.connect(_queue_refresh)
-	if typeof(Tutorial) != TYPE_NIL and Tutorial.has_signal("step_changed"):
-		Tutorial.step_changed.connect(func(_id: String) -> void: _queue_refresh())
 	resized.connect(_fit_sheet)
 	_rebuild()
 
@@ -706,19 +703,18 @@ func _seat_keys(advisor_id: String, current_seat: String) -> Control:
 			_set_view(next))
 		keys.add_child(key)
 	var employed := AdvisorState.permanent_advisor_ids.has(advisor_id)
-	var inspecting := _tutorial_bonus_inspection_required()
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 12)
 	wrap.add_child(line)
-	var words := "Choose this advisor" if inspecting else ("Assign to seat" if employed else "Hire and assign")
-	var confirm: Button = CreamKey.make("AdvisorChooseCandidateButton" if inspecting else "AdvisorHireAssignButton", words, "", 0.0)
+	var words := "Assign to seat" if employed else "Hire and assign"
+	var confirm: Button = CreamKey.make("AdvisorHireAssignButton", words, "", 0.0)
 	confirm.custom_minimum_size.x = CreamKey.width_for(words, "", false, false) + 20.0
 	confirm.disabled = selected == ""
 	confirm.set("spent", selected == "")
 	if selected == "":
 		confirm.tooltip_text = "Choose a seat first."
 	var chosen := selected
-	confirm.pressed.connect(func() -> void: _confirm_choice(advisor_id, chosen, inspecting))
+	confirm.pressed.connect(func() -> void: _confirm_choice(advisor_id, chosen))
 	line.add_child(confirm)
 	if not employed:
 		var cost := Parts.body(_cost_words())

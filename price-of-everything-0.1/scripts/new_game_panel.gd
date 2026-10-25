@@ -2,7 +2,7 @@ extends Control
 ## New Game settings screen. Slides in over the main menu's goods board when the
 ## player clicks New Game and lets them pick a START (a single row of 7 cards — a
 ## tier-coloured good-on-hex icon, title and difficulty badge), a DIFFICULTY, a SPEED
-## (game length / era pacing) and whether the TUTORIAL is on, then launches through
+## (game length / era pacing) and the advanced settings, then launches through
 ## the same loading pipeline New Game has always used.
 ##
 ## Pure UI: captures the choices and emits `start_requested(start_path, overrides)` /
@@ -111,8 +111,8 @@ const SPEED_DEFAULT_DEMO := 3
 #| const SPEED_DEFAULT_DEMO := 0
 # demo:end
 
-# Advanced Settings tickboxes (the "Tutorial" column was replaced by these). Only
-# the first is wired today; 2 & 3 are placeholders for future toggles.
+# Advanced Settings tickboxes. Only the first is wired today; 2 & 3 are placeholders for
+# future toggles.
 const ADVANCED_SETTINGS: Array = [
 	{"id": "survey_all", "label": "All tiles surveyed at game start"},
 	{"id": "setting_2", "label": "Setting 2"},
@@ -126,8 +126,6 @@ var _difficulty_id := "normal"
 var _speed_turns := 300
 var _policy_timeline := ""   # only the demo length sets one
 var _victory_set := ""       # ditto: the demo's five tracks, or the campaign's
-# New Game never launches the tutorial coach (that's what the Tutorial menu is for).
-var _tutorial_on := false
 var _survey_all := true
 var _advanced: Dictionary = {}   # setting id -> bool
 var _send_metrics := true        # telemetry opt-out checkbox (default on; remembered)
@@ -389,7 +387,7 @@ func _make_badge(start: Dictionary) -> Control:
 	return pill
 
 
-# Difficulty, Speed and Tutorial as three side-by-side columns (buttons stacked
+# Difficulty and Speed as side-by-side columns (buttons stacked
 # within each), grouped in one section. The selected difficulty's description shows
 # beneath the section.
 func _build_settings_columns(parent: Node) -> void:
@@ -935,9 +933,6 @@ func _on_start_pressed() -> void:
 			# falls back to, so only the demo has to say anything.
 			"policy_timeline": _policy_timeline,
 			"victory_set": _victory_set,
-			# Starts are campaign starts, not tutorial tracks. The optional tutorial is only
-			# enabled when the player explicitly selects it in the tutorial flow.
-			"tutorial_enabled": _tutorial_on,
 			# Advanced Settings: force every land tile surveyed at game start (this
 			# overrides whatever the difficulty's survey config would otherwise do).
 			"survey_all_tiles": _survey_all,

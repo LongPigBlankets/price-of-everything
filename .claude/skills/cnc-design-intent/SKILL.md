@@ -116,8 +116,6 @@ tenure (`AdvisorState.FOUNDER_ONLY_SEATS`): it exists only while he holds it.
 - Same-turn output buffering — co-located chains lag one turn (fairness; see
   `cnc-turn-pipeline-reference`'s worked trace).
 - A bought building cannot be cancelled during its 2-turn closing (`MatchState.offer_for_building`).
-  Only the onboarding tutorial's purchase closes at once, because its next steps work on the bought
-  building.
 - A building idles until it is 70% staffed.
 
 ## How to use this file in review

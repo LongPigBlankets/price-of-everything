@@ -19,7 +19,6 @@ func _ready() -> void:
 		"speed_turns": 100,
 		"policy_timeline": "demo_itch",
 		"victory_set": "demo_itch",
-		"tutorial_enabled": false,
 		"survey_all_tiles": true,
 		"company_colour": "diesel_red",
 	}})
