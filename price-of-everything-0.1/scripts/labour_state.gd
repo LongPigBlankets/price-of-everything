@@ -68,7 +68,7 @@ const HAZARDOUS_BUILDINGS := {
 }
 
 # --- Work effort (the labour_multiplier knob: 0.8 Lean, 1.0 Standard, 1.2 Overtime) ---
-const EFFORT_SALARY := {"lean": -0.20, "standard": 0.0, "overtime": 0.30}
+const EFFORT_SALARY := {"lean": -0.20, "standard": 0.0, "overtime": 0.25}
 const EFFORT_THROUGHPUT_PCT := {"lean": -10.0, "standard": 0.0, "overtime": 15.0}
 const EFFORT_SATISFACTION := {"lean": -20.0, "standard": 0.0, "overtime": -30.0}
 

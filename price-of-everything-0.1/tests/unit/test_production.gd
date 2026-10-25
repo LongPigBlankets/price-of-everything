@@ -598,13 +598,13 @@ func _test_additive_labour_cost_model() -> void:
 	_check(is_equal_approx(Production.labour_cost_factor(building), 1.0),
 		"labour factor: 100% of base with no modifiers")
 
-	# Overtime's +30% salary and a -40% head-count cut net to -10% off the 100% base (additive,
+	# Overtime's +25% salary and a -40% head-count cut net to -15% off the 100% base (additive,
 	# not compounded).
 	LabourState.set_labour_multiplier(1.2)
 	Modifiers.add({"id": "test_additive_cut", "domain": "labour_headcount", "pct": -40.0})
-	_check(is_equal_approx(Production.labour_cost_factor(building), 0.90),
+	_check(is_equal_approx(Production.labour_cost_factor(building), 0.85),
 		"labour factor: effort salary and head-count deltas add to base 100% (no compounding)")
-	_check(is_equal_approx(Production._calculate_labour_cost(building), Production._base_labour_cost(building) * 0.90),
+	_check(is_equal_approx(Production._calculate_labour_cost(building), Production._base_labour_cost(building) * 0.85),
 		"labour cost: base x additive factor")
 
 	var ov: Dictionary = Production.labour_overview()

@@ -166,8 +166,8 @@ func _test_knob_table() -> void:
 	_check(is_equal_approx(LabourState.throughput_pct_for(FACTORY), 2.0) and is_equal_approx(_labour_delta(plain), -0.20)
 		and is_equal_approx(_part("effort"), -20.0), "AC2.1 Lean: throughput −10%, salary −20%, satisfaction −20")
 	LabourState.set_labour_multiplier(1.2)
-	_check(is_equal_approx(LabourState.throughput_pct_for(FACTORY), 27.0) and is_equal_approx(_labour_delta(plain), 0.30)
-		and is_equal_approx(_part("effort"), -30.0), "AC2.1 Overtime: throughput +15%, salary +30%, satisfaction −30")
+	_check(is_equal_approx(LabourState.throughput_pct_for(FACTORY), 27.0) and is_equal_approx(_labour_delta(plain), 0.25)
+		and is_equal_approx(_part("effort"), -30.0), "AC2.1 Overtime: throughput +15%, salary +25%, satisfaction −30")
 	LabourState.set_labour_multiplier(1.0)
 	# Pay while idle.
 	var idle_ok := true

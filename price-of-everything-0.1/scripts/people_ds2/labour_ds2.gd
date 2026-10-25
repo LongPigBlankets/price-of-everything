@@ -420,7 +420,7 @@ func _knob_specs() -> Array:
 		{"id": "effort", "name": "Work effort", "chosen": effort, "options": [
 			["Lean", "Throughput 10% lower. Salary 20% lower. Satisfaction target 20 lower.", func() -> void: LabourState.set_labour_multiplier(0.8)],
 			["Standard", "No change.", func() -> void: LabourState.set_labour_multiplier(1.0)],
-			["Overtime", "Throughput 15% higher. Salary 30% higher. Satisfaction target 30 lower.", func() -> void: LabourState.set_labour_multiplier(1.2)]]},
+			["Overtime", "Throughput 15% higher. Salary 25% higher. Satisfaction target 30 lower.", func() -> void: LabourState.set_labour_multiplier(1.2)]]},
 		{"id": "idle", "name": "Pay while idle", "chosen": idle, "options": [
 			["50%", "A building that made nothing this turn pays half its wage bill. Satisfaction target 15 lower.", func() -> void: LabourState.set_idle_labour_pay_share(0.5)],
 			["75%", "Most of the wage bill is paid through an idle turn. Satisfaction target 5 lower.", func() -> void: LabourState.set_idle_labour_pay_share(0.75)],

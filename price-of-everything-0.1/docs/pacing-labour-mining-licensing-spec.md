@@ -257,7 +257,7 @@ plant and oil wells (`b_001, b_002, b_003, b_008, b_011, b_012, b_013, b_032–b
 |---|---|---|---|---|
 | Work effort | Lean | −10% | salary −20% | −20 |
 | | Standard | — | — | 0 |
-| | Overtime | +15% | salary +30% | −30 |
+| | Overtime | +15% | salary +25% | −30 |
 | Pay while idle | 50% / 75% / 100% | — | as today | −15 / −5 / +5 |
 | Safety | Minimal | +10% at hazardous sites | labour −5% | −25, plus accidents (§4.5) |
 | | Standard | — | — | 0 |
@@ -313,8 +313,8 @@ All at the default 45-hour week unless stated:
 
 | Combination | Throughput | Labour cost | Target |
 |---|---|---|---|
-| Overtime + Minimal safety, no union (squeeze) | +27%, +37% at hazardous sites | +25% | −70: on the strike line |
-| Overtime + Partial Union (buy peace) | +27% | +70%, rising | −15: slow hiring, but no strikes |
+| Overtime + Minimal safety, no union (squeeze) | +27%, +37% at hazardous sites | +20% | −70: on the strike line |
+| Overtime + Partial Union (buy peace) | +27% | +65%, rising | −15: slow hiring, but no strikes |
 | Comprehensive Union + 10% profit share + generous bonus + generous pensions (30 turns in) + High safety, at 35 hours (model employer) | +5% | about +35%, rising, plus profit share | +95 |
 | Comprehensive Union, then Automation | +12% | Automation's −15% counts as −7.5%, because it came after signing | +20 |
 
@@ -498,7 +498,7 @@ A new **satisfaction plate** goes at the top, above the time clock:
 - **Band card**: what the current band does ("New sites hire in 12 turns. Strikes start below
   70.").
 - **Knob option cards** show three lines: throughput, cost and satisfaction. Example: "Overtime.
-  Throughput 15% higher. Salary 30% higher. Satisfaction target 30 lower." The old output pressure
+  Throughput 15% higher. Salary 25% higher. Satisfaction target 30 lower." The old output pressure
   copy is removed.
 - The time clock (labour cost now and in 10 turns), the workforce doors, automation and the
   lockers remain.
