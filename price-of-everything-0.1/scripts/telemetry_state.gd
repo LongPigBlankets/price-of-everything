@@ -38,7 +38,7 @@ const DemoEula := preload("res://scripts/demo_eula.gd")
 
 const ENDPOINT_URL := "https://script.google.com/macros/s/AKfycbw8dUX-A_dSKmI2GB4_2AbRXbGnOKTbP8mpEa17t6wBBAg4Y0LcCnS_xJNH3EeNRwdr/exec"
 const TOKEN := "d299f45324f48cce4b9257789dfc493e172d5ac657ba1641"
-const SCHEMA_VERSION := 5  # v5: tutorial_step + tutorial_visited in the run block
+const SCHEMA_VERSION := 6  # v6: labour satisfaction in each turn row
 ## The persistent choice now lives in Settings > Telemetry. Legacy start-screen rows
 ## remain hidden; hiding them never overrides the remembered preference.
 const SHOW_CONSENT_CHECKBOX := false
@@ -312,7 +312,7 @@ static func balancing_payload(data: Dictionary) -> Dictionary:
 			continue
 		var row: Dictionary = raw.duplicate(true)
 		for key in row:
-			if key not in ["turn", "profit", "revenue", "buildings", "buildings_list", "power_gen", "produced"]:
+			if key not in ["turn", "profit", "revenue", "buildings", "buildings_list", "power_gen", "produced", "satisfaction"]:
 				row[key] = [] if row[key] is Array else ({} if row[key] is Dictionary else "")
 		rows.append(row)
 	clean["turns"] = rows
@@ -458,7 +458,6 @@ func _build_row(summary: Dictionary) -> Dictionary:
 		"transport": _transport_split(summary),
 		"buildings_list": empire.list,
 		"building_states": empire.states,
-		# Local only: balancing_payload blanks it until the sheet has a satisfaction column.
 		"satisfaction": snappedf(LabourState.satisfaction, 0.1),
 	}
 	row["interactions"] = _interaction_counts(int(row.turn))

@@ -51,9 +51,9 @@ func _test_telemetry_controls_saved_runs_cannot_override_preference() -> void:
 
 
 func _test_telemetry_controls_critical_payload_and_queued_data() -> void:
-	var data := {"run_id": "test", "events": [{"action": "search_used"}], "run": {"start": "metal_magnate", "tutorial_step": "private-history"}, "turns": [{"turn": 3, "profit": 20.0, "revenue": 100.0, "buildings": 4, "buildings_list": ["mine(l1)"], "power_gen": 600, "produced": {"coal": 20}, "money": 2000, "costs": {"inputs": 100}, "interactions": {"search_used": 1}}]}
+	var data := {"run_id": "test", "events": [{"action": "search_used"}], "run": {"start": "metal_magnate", "tutorial_step": "private-history"}, "turns": [{"turn": 3, "profit": 20.0, "revenue": 100.0, "buildings": 4, "buildings_list": ["mine(l1)"], "power_gen": 600, "produced": {"coal": 20}, "satisfaction": -12.5, "money": 2000, "costs": {"inputs": 100}, "interactions": {"search_used": 1}}]}
 	var clean := Telemetry.balancing_payload(data)
-	_check(clean.turns[0].profit == 20 and clean.turns[0].revenue == 100 and clean.turns[0].power_gen == 600, "telemetry controls: balancing report retains the advertised metrics")
+	_check(clean.turns[0].profit == 20 and clean.turns[0].revenue == 100 and clean.turns[0].power_gen == 600 and is_equal_approx(float(clean.turns[0].satisfaction), -12.5), "telemetry controls: balancing report retains the advertised metrics, satisfaction included")
 	_check(clean.events.is_empty() and clean.turns[0].interactions.is_empty() and clean.turns[0].costs.is_empty(), "telemetry controls: report excludes interaction history and detailed costs")
 	_check(not clean.run.has("tutorial_step") and clean.turns[0].money == "", "telemetry controls: older queued envelopes are reduced to the same scope")
 	_check(data.events.size() == 1 and data.turns[0].money == 2000, "telemetry controls: payload filtering does not mutate its source")

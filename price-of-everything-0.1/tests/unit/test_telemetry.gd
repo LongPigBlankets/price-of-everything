@@ -34,7 +34,14 @@ func _test_telemetry_schema3_row() -> void:
 		"goods_purchased_cost": 120.0, "labour_paid": 40.0, "maintenance_paid": 22.0,
 		"taxes_paid": 8.0, "produced": {}, "power_supply": 600, "power_demand": 200,
 	}
+	var saved_satisfaction := LabourState.satisfaction
+	LabourState.satisfaction = -37.24
 	var row: Dictionary = TelemetryState._build_row(summary)
+	LabourState.satisfaction = saved_satisfaction
+	_check(is_equal_approx(float(row.get("satisfaction", 0.0)), -37.2),
+		"schema 6: each turn row carries labour satisfaction to one decimal")
+	_check(is_equal_approx(float(TelemetryState.balancing_payload({"run_id": "s6", "turns": [row]}).turns[0].satisfaction), -37.2),
+		"schema 6: the transmitted report keeps satisfaction")
 
 	var roster: Array = row.get("buildings_list", [])
 	var states: Array = row.get("building_states", [])
