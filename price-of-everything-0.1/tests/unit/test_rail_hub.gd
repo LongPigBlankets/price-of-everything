@@ -30,9 +30,14 @@ func _test_rail_hub_purchase_capacity_costs_save() -> void:
 	_check(not BuildingState.is_player_owned(hub) and MatchState.money==4999, "Insufficient funds cannot buy a hub")
 	MatchState.money = 6000
 	panel.call("_on_port_buy_confirmed", false)
-	_check(BuildingState.is_player_owned(hub) and MatchState.money==1000, "Tile-panel purchase transfers ownership and charges £5000")
+	_check(MatchState.is_under_offer(iid) and not BuildingState.is_player_owned(hub) and MatchState.money==1000,
+		"Tile-panel purchase charges £5000 and the hub goes under offer")
 	panel.call("_on_port_buy_confirmed", false)
 	_check(MatchState.money==1000, "Repeated confirmation cannot charge twice")
+	# The 2-turn closing (docs/pacing-labour-mining-licensing-spec.md §7.5).
+	MatchState.tick_purchases()
+	MatchState.tick_purchases()
+	_check(BuildingState.is_player_owned(hub) and MatchState.money==1000, "Tile-panel purchase transfers ownership at closing")
 	_check(BuildingState.get_tile_land_owned(tile)==30, "Buying includes the hub's land")
 	_check(TransportState.tile_mode_capacity("rail",1,tile)==1200, "Purchased hub doubles local rail capacity")
 	var route := {"tiles":[tile,"tile_5_11"],"legs":[{"mode":"rail","from":tile,"to":"tile_5_11"}]}

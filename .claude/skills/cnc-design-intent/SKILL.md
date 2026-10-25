@@ -39,6 +39,31 @@ omission. Regression smell: adding a science-points currency, or converting
 condition-gates to purchases. (Separately, many conditions are currently DEAD — a bug,
 see `cnc-content-pipeline` — fixing the conditions is good; changing the paradigm is not.)
 
+**Labour policies trade throughput, never free output (2026-10, owner-approved).** A labour policy
+moves THROUGHPUT (inputs, outputs and power scale together, `MatchState.run_multiplier`), cash and
+labour satisfaction. A flat output bonus makes product from nothing and compounds down a chain, so the
+only output-only labour effect is +5% at satisfaction of +90 or more. Regression smell: a labour policy
+that raises output without consuming inputs (Profit Share used to be +15% output and was always on).
+See docs/pacing-labour-mining-licensing-spec.md §3 (the full rare-output stance lands with phase 5).
+
+**Labour satisfaction is a budget (2026-10, owner-approved).** Policies trade throughput and cash for
+satisfaction (−100 to +100); the workforce's size and the HR Director add to it. It moves toward its
+target by max(10% of the gap, 2) a turn, and only reneging on union agreements (−50) is instant: every
+other event shifts the target for a while. Satisfaction sets hiring speed and strikes (phases 2 and 3)
+and the +5% output prize. A Comprehensive Union Agreement buys +30 by halving every labour cut made
+after signing, for good unless the company reneges; stepping a union down costs 5% of revenue and a
+decaying −15 per tier. Regression smell: a policy that raises throughput with no satisfaction cost,
+strike protection that costs nothing, or an instant satisfaction jump for an ordinary event.
+
+**Time has a price, and the player sets it (2026-10, owner-approved).** Construction takes 4–6 turns
+(`build_duration` + `BUILD_DURATION_BUMP`). A building also waits for staff (`scripts/staffing.gd`): it
+runs once 70% staffed, at its fill, and staffing takes 5, 8 or 12 turns by labour satisfaction, counted
+from the materials claim. Bought buildings close in 2 turns but arrive 80% staffed. Upgrades take 5 turns,
+recipe switches 3. Speed-ups are timed (Andrew Keeler as Expansion Director, mission rewards, the
+`construction_time` domain with a 2 turn floor), never permanent. Regression smell: instant hiring or
+construction "because waiting is boring", or a permanent cut to build time.
+See docs/pacing-labour-mining-licensing-spec.md §5 and §7.
+
 **Prices decay monotonically and forecasts are honest.** Per-good decay + visible
 10-turn forecasts are designed pressure: yesterday's product gets cheaper; you must
 move up the value chain. The counterweight is the player-driven price-impact model
@@ -82,13 +107,18 @@ modern flat-UI drift, decorative gradients, non-DS colors.
 12-advisor roster with derived stars, loyalty driven by likes/dislikes agendas, 5-step
 mission chains. The 2026-07 UI made assignment ROLE-first (pick the seat, then the
 person) — keep that paradigm. Known-open: three seats have no mechanical effects yet
-(labelled, not hidden).
+(labelled, not hidden). Expansion Director is an eleventh seat, Andrew Keeler's alone, for his 30-turn
+tenure (`AdvisorState.FOUNDER_ONLY_SEATS`): it exists only while he holds it.
 
 **Deliberate friction that looks like UX debt (it isn't):**
 - Special orders are one-off commitments (no recurring) — scarcity is the point.
 - The anti-arbitrage clamp (sale ≤ buy) — no riskless market loops.
 - Same-turn output buffering — co-located chains lag one turn (fairness; see
   `cnc-turn-pipeline-reference`'s worked trace).
+- A bought building cannot be cancelled during its 2-turn closing (`MatchState.offer_for_building`).
+  Only the onboarding tutorial's purchase closes at once, because its next steps work on the bought
+  building.
+- A building idles until it is 70% staffed.
 
 ## How to use this file in review
 

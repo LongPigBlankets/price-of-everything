@@ -28,6 +28,7 @@ const FIELDS := {
 			"deposit_remaining",
 			"fired_advisor_cooldowns",
 			"ghost_holdings",
+			"pending_purchases",
 			"infrastructure_usage_last_turn",
 			"infrastructure_usage_streaks",
 			"input_tile_only",
@@ -88,11 +89,16 @@ const FIELDS := {
 			"recurring_moves",
 			"recurring_sells",
 			"scheduled_moves",
-			"transaction_log"
+			"transaction_log",
+			"labour_target_shifts",
+			"union_grandfathered_ids"
 		],
 		"number": [
 			"advisor_peak_profit",
 			"advisor_profit_streak",
+			"union_active_turns",
+			"union_signed_turn",
+			"work_week_hours",
 			"advisor_rng_seed",
 			"advisors_hired_last_turn",
 			"agenda_last_build_turn",
@@ -102,6 +108,7 @@ const FIELDS := {
 			"idle_labour_pay_share",
 			"labour_multiplier",
 			"labour_output_pressure_pct",
+			"labour_satisfaction",
 			"land_economy_level",
 			"land_economy_warned",
 			"last_sea_shipping_turn",
@@ -133,7 +140,8 @@ const FIELDS := {
 			"construct_start_half_capacity",
 			"global_trade_license_paid",
 			"rail_hubs_seeded",
-			"seaport_auto_subscribe"
+			"seaport_auto_subscribe",
+			"union_halving_active"
 		]
 	},
 	"turn": {
@@ -426,7 +434,7 @@ const FIELDS := {
 }
 
 const NUMERIC_ARRAYS := ["recent_profits", "advisor_crossed_milestones", "profit_history", "revenue_history", "player_revenue_history", "player_rank_history", "richest_window", "history_revenue", "history_output", "history_buildings"]
-const STRING_ARRAYS := ["permanent_advisor_ids", "recruited_advisor_ids", "advisor_mission_policies", "styled_regions", "linked_pairs", "farm_promoted", "farm_links"]
+const STRING_ARRAYS := ["union_grandfathered_ids", "permanent_advisor_ids", "recruited_advisor_ids", "advisor_mission_policies", "styled_regions", "linked_pairs", "farm_promoted", "farm_links"]
 const RECORD_MAPS := ["match.buildings", "construction.projects", "match.middleman_service.buildings", "match.deposit_remaining", "modifiers.modifiers", "events.active", "cost_solver.per_building", "cost_solver.per_good", "production.produced_by_building", "production.lifetime_pl_by_building", "production.direct_feed", "roads.network.nodes", "roads.network.edges"]
 const NUMBER_MAPS := ["stockpile.warehouse_levels", "stockpile.peak_used", "stockpile.refused", "market.impact_pct", "market.recovery_step", "market.lifetime_sold", "match.advisor_loyalty", "match.advisor_hired_turn", "match.fired_advisor_cooldowns", "match.advisor_missions_completed", "victory.track_best", "victory.produced_by_good", "company_rankings.player_goods_produced"]
 var _nodes := 0
@@ -479,6 +487,10 @@ func validate(snapshot: Variant, version: int, demo: bool, from_disk := false) -
 	var match_data: Dictionary = snap.get("match", {})
 	if match_data.has("money") and absf(float(match_data.money)) > 1.0e15:
 		return "match.money is outside the supported range"
+	if match_data.has("labour_satisfaction") and absf(float(match_data.labour_satisfaction)) > 100.0:
+		return "match.labour_satisfaction is outside the supported range"
+	if match_data.has("work_week_hours") and not int(match_data.work_week_hours) in [35, 40, 45, 50]:
+		return "match.work_week_hours must be 35, 40, 45 or 50"
 	var rules: Dictionary = match_data.get("ruleset", {})
 	if rules.has("speed_turns") and (float(rules.speed_turns) != floorf(float(rules.speed_turns)) or float(rules.speed_turns) < 1 or float(rules.speed_turns) > 1000000):
 		return "ruleset.speed_turns is outside the supported range"

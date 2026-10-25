@@ -22,6 +22,9 @@ const AdvisorsTab := preload("res://scripts/people_ds2/advisors_ds2.gd")
 const LabourTab := preload("res://scripts/people_ds2/labour_ds2.gd")
 
 const TABS := ["Advisors", "Labour"]
+## Loyalty (−10..+10) under this is disloyal; the Advisors key's lamp then lights red.
+const DISLOYAL_BELOW := -3.4
+const DISLOYAL_LAMP := Color("#e2604a")
 ## From layout.json (people_backing), in layout px: the render's shadow room and the foot drawn whole.
 const BACKING_MARGIN := 24.0
 const BACKING_FOOT := 420.0
@@ -95,6 +98,9 @@ func _ready() -> void:
 	_seam_slot.item_rect_changed.connect(_place_seam)
 	show_tab(_tab)
 	LampOverlay.attach(self)
+	AdvisorState.advisors_changed.connect(_refresh_key_lamps)
+	AdvisorState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _refresh_key_lamps())
+	_refresh_key_lamps()
 
 
 func _place_seam() -> void:
@@ -190,6 +196,25 @@ func show_tab(i: int) -> void:
 	for j in _bodies.size():
 		_bodies[j].visible = j == _tab
 		_keys[j].set("latched", j == _tab)
+
+
+## Seated advisors whose loyalty has fallen to disloyal (none while the demo keeps loyalty locked).
+static func disloyal_count() -> int:
+	if not preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
+		return 0
+	var n := 0
+	for aid in AdvisorState.advisor_seats.values():
+		if AdvisorState.advisor_loyalty_value(str(aid)) <= DISLOYAL_BELOW:
+			n += 1
+	return n
+
+
+func _refresh_key_lamps() -> void:
+	if _keys.is_empty():
+		return
+	var disloyal := disloyal_count()
+	_keys[0].set("lamp", DISLOYAL_LAMP if disloyal > 0 else Color(0, 0, 0, 0))
+	_keys[0].tooltip_text = ("%d disloyal advisor%s" % [disloyal, "" if disloyal == 1 else "s"]) if disloyal > 0 else ""
 
 
 func current_tab() -> int:

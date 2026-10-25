@@ -25,7 +25,8 @@ const DemoBuild := preload("res://scripts/demo_build.gd")
 # 14 = expanded material classes/sites; 15 = per-good middleman routes and tile surplus destinations;
 # 16 = intermediary fallback purchases held privately per building ("bridge");
 # 17 = land prices: player buildings already standing are land_exempt, bought land starts unpriced.
-const SAVE_VERSION := 17
+# 18 = labour satisfaction, work week, union tiers and the Comprehensive halving; output pressure retired.
+const SAVE_VERSION := 18
 const MAIN_SCENE := "res://scenes/main.tscn"
 const DEFAULT_START := "res://data/starts/default.json"
 const BuildingLevels := preload("res://scripts/building_levels.gd")   # start-building levels
@@ -440,9 +441,9 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 		unlocked[str(title)] = true
 
 	var recurring: Dictionary = cfg.get("recurring", {})
-	# Optional "labour" block lets a start ship with a work-effort policy already chosen
-	# (e.g. metal_magnate opens on 1.2x overtime with its output momentum already at the
-	# cap, so the easy start reads as an inherited going concern rather than a blank slate).
+	# Optional "labour" block lets a start ship with a work-effort policy already chosen and its
+	# workforce's starting satisfaction (e.g. metal_magnate opens on 1.2x overtime with a content
+	# family workforce that the overtime then wears down).
 	var labour: Dictionary = cfg.get("labour", {})
 	var ruleset := _normalize_ruleset(cfg.get("ruleset", MatchState.DEFAULT_RULESET))
 	# New Game panel overrides (difficulty/speed/tutorial_enabled/survey_all_tiles)
@@ -506,9 +507,9 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			"labour_multiplier": clampf(
 				float(labour.get("multiplier", EconomyConfig.LABOUR_MULTIPLIER_DEFAULT)),
 				EconomyConfig.LABOUR_MULTIPLIER_MIN, EconomyConfig.LABOUR_MULTIPLIER_MAX),
-			"labour_output_pressure_pct": clampf(
-				float(labour.get("output_pressure_pct", 0.0)),
-				EconomyConfig.LABOUR_OUTPUT_PRESSURE_FLOOR, EconomyConfig.LABOUR_OUTPUT_MOMENTUM_CAP),
+			"labour_satisfaction": LabourState.TUTORIAL_SATISFACTION if bool(ruleset.get("tutorial_enabled", false))
+				else clampf(float(labour.get("satisfaction", 0.0)), LabourState.SATISFACTION_MIN, LabourState.SATISFACTION_MAX),
+			"work_week_hours": int(labour.get("work_week", LabourState.WORK_WEEK_DEFAULT)),
 			"idle_labour_pay_share": clampf(float(labour.get("idle_pay_share", 1.0)), 0.5, 1.0),
 			"one_off_charges": _start_charges(cfg.get("one_off_charges", [])),
 		},
@@ -810,6 +811,8 @@ func _migrate(snap: Dictionary) -> Dictionary:
 				snap["save_version"] = 16
 			16:
 				snap = _migrate_v16_to_v17(snap)
+			17:
+				snap = _migrate_v17_to_v18(snap)
 			_:
 				break
 		version += 1
@@ -831,6 +834,25 @@ func _migrate_v16_to_v17(snap: Dictionary) -> Dictionary:
 	match_d["land_economy_level"] = -1
 	snap["match"] = match_d
 	snap["save_version"] = 17
+	return snap
+
+func _migrate_v17_to_v18(snap: Dictionary) -> Dictionary:
+	# Labour satisfaction arrives: an older save starts from its start's value (0 when unknown),
+	# on the default 45 hour week, with no union and no halving. Output pressure is retired.
+	var match_d: Dictionary = snap.get("match", {})
+	match_d.erase("labour_output_pressure_pct")
+	if not match_d.has("labour_satisfaction"):
+		var start_satisfaction := 0.0
+		var path := "res://data/starts/%s.json" % str(match_d.get("scenario_name", ""))
+		if str(match_d.get("scenario_name", "")) != "" and FileAccess.file_exists(path):
+			var cfg: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+			if cfg is Dictionary:
+				start_satisfaction = float(((cfg as Dictionary).get("labour", {}) as Dictionary).get("satisfaction", 0.0))
+		match_d["labour_satisfaction"] = clampf(start_satisfaction, -100.0, 100.0)
+	if not match_d.has("work_week_hours"):
+		match_d["work_week_hours"] = 45
+	snap["match"] = match_d
+	snap["save_version"] = 18
 	return snap
 
 func _migrate_v1_to_v2(snap: Dictionary) -> Dictionary:

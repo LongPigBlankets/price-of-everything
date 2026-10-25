@@ -9,8 +9,12 @@ extends "res://scripts/labour_policy_tab.gd"
 ## under the pointer and every policy in force. Then automation, a slide switch on a plastic case between hands
 ## and machines, and the other policies in the workers' lockers, a padlock through the hasp of one not yet open.
 ##
+## Above it all, the workforce's satisfaction (docs/pacing-labour-mining-licensing-spec.md §4.8): a dial with
+## its bands, the needle at today's value, a hollow marker at the target and a ghost needle ten turns on; the
+## figures on a case beside it, the band's card, and the ledger of what moves it.
+##
 ## The choices go through LabourState as its base tab's do (labour_policy_tab.gd); the figures are the engine's
-## (Production.labour_overview, labour_charge).
+## (Production.labour_overview, labour_charge, LabourState's satisfaction).
 
 const Parts := preload("res://scripts/people_ds2/parts.gd")
 const Kit := preload("res://scripts/ds2/parts.gd")
@@ -22,6 +26,9 @@ const Door := preload("res://scripts/bdp_v3_labour_door.gd")
 const Toggle := preload("res://scripts/bdp_v3_toggle.gd")
 const Rotary := preload("res://scripts/rotary_selector.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
+const PanelGauge := preload("res://scripts/panel_gauge.gd")
+const Led := preload("res://scripts/bdp_v3_led.gd")
+const GuardKey := preload("res://scripts/ds2/guard_key.gd")
 
 const RAIL_ROOM := 24
 ## The time clock (layout.json people_clock, layout px): the render's frame, the housing in it, the bell's lamp,
@@ -37,8 +44,15 @@ const CLOCK_DROP := 26.0
 ## The doors (Building Detail's, 200 x 300 layout px) drawn 1.25 times the study's size.
 const DOOR_SIZE := Vector2(133, 200)
 const DOOR_GAP := 10
+## The satisfaction dial's side, and its bands as shares of the scale from its good end (the dial is mirrored:
+## red starts it). Green is −5 and up, amber −70 to −5, red below −70.
+const DIAL_PX := 150.0
+const DIAL_GREEN_PCT := 52.5
+const DIAL_AMBER_PCT := 32.5
+const RENEGE_PX := 64.0
 ## The knobs: their size, the plate's columns, and the icons' scale on their plates.
-const KNOB_PX := 104.0
+const KNOB_PX := 96.0
+const KNOB_COLUMNS := 4
 const KNOB_OPTION_SCALE := 1.05
 const PLATE_W := 468.0
 const NOTICE_GAP := 12
@@ -89,6 +103,7 @@ func _ready() -> void:
 	_root = HBoxContainer.new()
 	LabourState.workforce_policies_changed.connect(_queue_refresh)
 	LabourState.labour_multiplier_changed.connect(func(_v: float) -> void: _queue_refresh())
+	LabourState.satisfaction_changed.connect(_queue_refresh)
 	AdvisorState.advisors_changed.connect(_queue_refresh)
 	TurnManager.turn_resolution_completed.connect(_queue_refresh)
 	visibility_changed.connect(_queue_refresh)
@@ -101,24 +116,191 @@ func _rebuild() -> void:
 		c.queue_free()
 	_knobs.clear()
 	_hover_card = null
+	_body.add_child(_satisfaction())
 	var top := HBoxContainer.new()
 	top.name = "ClockAndDoors"
 	top.add_theme_constant_override("separation", 16)
 	_body.add_child(top)
 	top.add_child(_clock())
 	top.add_child(_workforce())
-	var mid := HBoxContainer.new()
-	mid.name = "PoliciesAndNotices"
-	mid.add_theme_constant_override("separation", NOTICE_GAP)
-	_body.add_child(mid)
-	mid.add_child(_policies())
-	mid.add_child(_notices())
+	_body.add_child(_policies())
+	_body.add_child(_notices())
 	var foot := HBoxContainer.new()
 	foot.name = "AutomationAndLockers"
 	foot.add_theme_constant_override("separation", 12)
 	_body.add_child(foot)
 	foot.add_child(_automation())
 	foot.add_child(_lockers())
+
+
+# --- satisfaction --------------------------------------------------------------------------------
+
+## The dial's needle position for a satisfaction value: −100 at 7 o'clock to +100 at 5 o'clock.
+static func dial_value(satisfaction: float) -> float:
+	return clampf((satisfaction + 100.0) / 200.0, 0.0, 1.0)
+
+
+func _satisfaction() -> Control:
+	var now := LabourState.satisfaction
+	var target := LabourState.target_satisfaction()
+	var ten := LabourState.projected_satisfaction(10)
+	var col := VBoxContainer.new()
+	col.name = "Satisfaction"
+	col.add_theme_constant_override("separation", 10)
+	col.add_child(Parts.heading("Satisfaction"))
+	var row := HBoxContainer.new()
+	row.name = "SatisfactionRow"
+	row.add_theme_constant_override("separation", 16)
+	col.add_child(row)
+	var holder := Control.new()
+	holder.name = "DialHolder"
+	holder.custom_minimum_size = Vector2(DIAL_PX, DIAL_PX)
+	holder.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	holder.mouse_filter = Control.MOUSE_FILTER_PASS
+	holder.tooltip_text = "Needle: now. Hollow marker: where it is heading. Pale needle: in 10 turns."
+	row.add_child(holder)
+	var gauge: Control = PanelGauge.new()
+	gauge.name = "SatisfactionDial"
+	gauge.set("gauge_size", DIAL_PX)
+	gauge.set("reverse_zones", true)
+	gauge.set("green_percent", DIAL_GREEN_PCT)
+	gauge.set("amber_percent", DIAL_AMBER_PCT)
+	gauge.set("animate_needle", false)
+	gauge.set("value", dial_value(now))
+	gauge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(gauge)
+	gauge.size = Vector2(DIAL_PX, DIAL_PX)
+	var marks := DialMarks.new()
+	marks.name = "DialMarks"
+	marks.target_v = dial_value(target)
+	marks.ten_v = dial_value(ten)
+	holder.add_child(marks)
+	marks.size = Vector2(DIAL_PX, DIAL_PX)
+	col.set_meta("figures", {"now": now, "target": target, "ten": ten, "band": LabourState.satisfaction_band()})
+	# The figures, on a case: light print, as on every dark case.
+	var case := Kit.plastic_case("SatisfactionFigures")
+	case.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	case.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	row.add_child(case)
+	var rows: VBoxContainer = case.get_child(0)
+	rows.add_theme_constant_override("separation", 8)
+	for spec: Array in [["Now", now, "SatisfactionNow"], ["Target", target, "SatisfactionTarget"], ["In 10 turns", ten, "SatisfactionTen"]]:
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", 12)
+		var cap := Parts.title(str(spec[0]))
+		cap.custom_minimum_size.x = 96
+		cap.autowrap_mode = TextServer.AUTOWRAP_OFF
+		line.add_child(cap)
+		var screen := _screen(float(spec[1]))
+		screen.name = str(spec[2])
+		line.add_child(screen)
+		rows.add_child(line)
+	var trend := Parts.title(LabourState.satisfaction_trend().capitalize())
+	trend.name = "SatisfactionTrend"
+	rows.add_child(trend)
+	# The band's card, and Renege when it is offered.
+	var right := VBoxContainer.new()
+	right.name = "SatisfactionNotes"
+	right.add_theme_constant_override("separation", 12)
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(right)
+	var band: Dictionary = LabourState.band_summary()
+	var card: Control = Kit.info(str(band.title), str(band.tone), str(band.words))
+	card.name = "BandCard"
+	right.add_child(card)
+	if LabourState.can_renege():
+		right.add_child(_renege_key())
+	col.add_child(_ledger())
+	return col
+
+
+## A satisfaction figure on an LED screen: green from zero up, amber below, red in strike territory.
+func _screen(value: float) -> Control:
+	var led: Control = Led.new()
+	var colour := Parts.GREEN
+	if value < LabourState.BAND_STRIKE_BELOW:
+		colour = Parts.RED
+	elif value < 0.0:
+		colour = Color("#E6B34A")
+	led.call("set_figure", "%4d" % roundi(value), colour)
+	led.set_meta("value", roundi(value))
+	return led
+
+
+## The sources of labour satisfaction: each standing contribution and each timed shift with its signed value, two to a row.
+func _ledger() -> Control:
+	var case := Kit.plastic_case("SatisfactionLedger")
+	case.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var rows: VBoxContainer = case.get_child(0)
+	rows.add_theme_constant_override("separation", 6)
+	rows.add_child(Parts.title("Sources of Labour Satisfaction"))
+	var lines: Array = []
+	for part in LabourState.satisfaction_contributions():
+		lines.append([str(part.label), float(part.value)])
+	for shift in LabourState.target_shifts:
+		var left := int(shift.turns_left)
+		var label := str(shift.label) if left < 0 else "%s, %d turn%s" % [str(shift.label), left, "" if left == 1 else "s"]
+		lines.append([label, float(shift.value)])
+	var grid := GridContainer.new()
+	grid.name = "LedgerGrid"
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 28)
+	grid.add_theme_constant_override("v_separation", 3)
+	rows.add_child(grid)
+	var n := 0
+	for line_spec: Array in lines:
+		var line := HBoxContainer.new()
+		line.name = "LedgerLine_%d" % n
+		line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var l := Parts.body(str(line_spec[0]))
+		l.autowrap_mode = TextServer.AUTOWRAP_OFF
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		line.add_child(l)
+		var v := float(line_spec[1])
+		var r := Parts.title(LabourState.signed_text(v))
+		r.add_theme_color_override("font_color", DS.PALETTE["OK"] if v > 0.0 else DS.PALETTE["DANGER"])
+		r.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		r.custom_minimum_size.x = 40
+		line.add_child(r)
+		line.set_meta("ledger", "%s|%s" % [str(line_spec[0]), LabourState.signed_text(v)])
+		grid.add_child(line)
+		n += 1
+	if LabourState.union_halving_active:
+		var halving := Parts.body("Labour cuts made since turn %d count at half." % LabourState.union_signed_turn)
+		halving.name = "HalvingLine"
+		halving.add_theme_color_override("font_color", DS.PALETTE["WARN"])
+		rows.add_child(halving)
+	return case
+
+
+## Renege on Union Agreements under a guard: lift the cover, then press.
+func _renege_key() -> Control:
+	var box := HBoxContainer.new()
+	box.name = "Renege"
+	box.add_theme_constant_override("separation", 10)
+	var guard: Control = GuardKey.new(RENEGE_PX)
+	guard.name = "RenegeKey"
+	guard.set("layer", "guard_dismiss")
+	guard.set("glow", "lamp_glow_red")
+	guard.tooltip_text = "Labour cuts count in full again. Satisfaction falls 50 at once. Lift the cover, then press."
+	guard.connect("pressed", func() -> void:
+		LabourState.renege_union_agreements()
+		_queue_refresh())
+	var room := Control.new()
+	room.custom_minimum_size = Vector2(RENEGE_PX, RENEGE_PX + GuardKey.overhang(RENEGE_PX))
+	room.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	room.add_child(guard)
+	guard.position = Vector2(0, GuardKey.overhang(RENEGE_PX))
+	guard.size = Vector2(RENEGE_PX, RENEGE_PX)
+	box.add_child(room)
+	var words := VBoxContainer.new()
+	words.size_flags_vertical = Control.SIZE_SHRINK_END
+	words.add_child(Parts.title("Renege on Union Agreements"))
+	var l := Parts.body("Labour cuts count in full again. Satisfaction falls 50 at once.")
+	l.add_theme_font_size_override("font_size", 13)
+	words.add_child(l)
+	box.add_child(words)
+	return box
 
 
 # --- the time clock and the doors ---------------------------------------------------------------
@@ -211,7 +393,12 @@ func _workforce() -> Control:
 
 # --- the knobs and the notice board -------------------------------------------------------------
 
-## Each knob: its name, its options {id, name, words, icon} and the chosen one, and what picking one does.
+## Hazardous sites, as the safety copy names them.
+const HAZARD_WORDS := "mines, furnaces, power plants and chemical works"
+
+
+## Each knob: its name, its options [name, words, pick, text] and the chosen one. `text` prints on the option's
+## plate where the knob has no icon art (the union and the work week).
 func _knob_specs() -> Array:
 	var v := LabourState.labour_multiplier
 	var effort := 1 if absf(v - 1.0) < 0.001 else (0 if v < 1.0 else 2)
@@ -221,39 +408,79 @@ func _knob_specs() -> Array:
 	var pension_group := [LabourState.WORKFORCE_POLICY_PENSIONS_MINIMUM, LabourState.WORKFORCE_POLICY_GENEROUS_PENSIONS]
 	var bonus_group := [LabourState.WORKFORCE_POLICY_SMALL_BONUS, LabourState.WORKFORCE_POLICY_ANNUAL_BONUS]
 	var profit_group := [LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10]
+	var union := LabourState.union_tier() != LabourState.UNION_NONE
+	var week_opts: Array = []
+	for i in LabourState.WORK_WEEK_HOURS.size():
+		var hours: int = LabourState.WORK_WEEK_HOURS[i]
+		var level := i + 1
+		var cost := "Labour cost %d%% higher." % (level * 10) if union else "Satisfaction target %d lower." % (level * 5)
+		week_opts.append(["%d hours" % hours, "Throughput %s%% higher. %s" % [_pct_text(float(LabourState.WORK_WEEK_THROUGHPUT_PCT[hours])), cost],
+			func() -> void: LabourState.set_work_week(hours), str(hours)])
 	return [
 		{"id": "effort", "name": "Work effort", "chosen": effort, "options": [
-			["Lean", "Salary cost 20% lower. Output pressure falls 2%/turn, down to 30% lower.", func() -> void: LabourState.set_labour_multiplier(0.8)],
-			["Standard", "Salary cost unchanged. Output pressure recovers 1%/turn toward none.", func() -> void: LabourState.set_labour_multiplier(1.0)],
-			["Overtime", "Salary cost 20% higher. Output gains 1%/turn, up to 10% more.", func() -> void: LabourState.set_labour_multiplier(1.2)]]},
+			["Lean", "Throughput 10% lower. Salary 20% lower. Satisfaction target 20 lower.", func() -> void: LabourState.set_labour_multiplier(0.8)],
+			["Standard", "No change.", func() -> void: LabourState.set_labour_multiplier(1.0)],
+			["Overtime", "Throughput 15% higher. Salary 25% higher. Satisfaction target 30 lower.", func() -> void: LabourState.set_labour_multiplier(1.2)]]},
 		{"id": "idle", "name": "Pay while idle", "chosen": idle, "options": [
-			["50%", "A building that made nothing this turn pays half its wage bill. Cheapest, and hardest on the workforce.", func() -> void: LabourState.set_idle_labour_pay_share(0.5)],
-			["75%", "Most of the wage bill is paid through an idle turn.", func() -> void: LabourState.set_idle_labour_pay_share(0.75)],
-			["100%", "Workers are paid in full whether the line runs or not.", func() -> void: LabourState.set_idle_labour_pay_share(1.0)]]},
+			["50%", "A building that made nothing this turn pays half its wage bill. Satisfaction target 15 lower.", func() -> void: LabourState.set_idle_labour_pay_share(0.5)],
+			["75%", "Most of the wage bill is paid through an idle turn. Satisfaction target 5 lower.", func() -> void: LabourState.set_idle_labour_pay_share(0.75)],
+			["100%", "Workers are paid in full whether the line runs or not. Satisfaction target 5 higher.", func() -> void: LabourState.set_idle_labour_pay_share(1.0)]]},
 		{"id": "safety", "name": "Safety", "chosen": ["minimal", "standard", "high"].find(_safety_key()), "options": [
-			["Minimal", "Output 5% higher. Labour cost rises 0.5%/turn to 15% more, and upkeep 5%/turn to double.", func() -> void: _pick_exclusive(safety_group, LabourState.WORKFORCE_POLICY_LAX_SAFETY)],
-			["Standard", "Regulation compliance. No change to output or labour cost.", func() -> void: _pick_exclusive(safety_group, LabourState.WORKFORCE_POLICY_STANDARD_SAFETY)],
-			["High", "Output 10% lower. Labour cost falls 0.5%/turn to 15% less.", func() -> void: _pick_exclusive(safety_group, LabourState.WORKFORCE_POLICY_STRICT_SAFETY)]]},
+			["Minimal", "Throughput 10%% higher at %s. Labour cost 5%% lower. Satisfaction target 25 lower." % HAZARD_WORDS, func() -> void: _pick_exclusive(safety_group, LabourState.WORKFORCE_POLICY_LAX_SAFETY)],
+			["Standard", "Regulation compliance. No change.", func() -> void: _pick_exclusive(safety_group, LabourState.WORKFORCE_POLICY_STANDARD_SAFETY)],
+			["High", "Labour cost 5%% higher at %s. Satisfaction target 10 higher." % HAZARD_WORDS, func() -> void: _pick_exclusive(safety_group, LabourState.WORKFORCE_POLICY_STRICT_SAFETY)]]},
 		{"id": "pension", "name": "Pensions", "chosen": ["minimum", "average", "generous"].find(_pensions_key()), "options": [
-			["Minimum legal", "Labour cost falls 0.1%/turn to 5% less. Output drifts down 0.05%/turn to 5% less as people leave.", func() -> void: _pick_exclusive(pension_group, LabourState.WORKFORCE_POLICY_PENSIONS_MINIMUM)],
+			["Minimum legal", "Labour cost 5% lower. Satisfaction target 15 lower.", func() -> void: _pick_exclusive(pension_group, LabourState.WORKFORCE_POLICY_PENSIONS_MINIMUM)],
 			["Industry average", "The baseline. No change either way.", func() -> void: _pick_exclusive(pension_group, "")],
-			["Generous", "Output rises 0.05%/turn to 5% more. Labour cost rises 0.1%/turn, faster as the game ages.", func() -> void: _pick_exclusive(pension_group, LabourState.WORKFORCE_POLICY_GENEROUS_PENSIONS)]]},
+			["Generous", "Labour cost rises 0.1% a turn, faster as the game ages. Satisfaction target 10 higher, 20 after 30 turns.", func() -> void: _pick_exclusive(pension_group, LabourState.WORKFORCE_POLICY_GENEROUS_PENSIONS)]]},
 		{"id": "bonus", "name": "Annual bonus", "chosen": ["none", "small", "generous"].find(_bonus_key()), "options": [
 			["None", "Nothing paid, nothing gained.", func() -> void: _pick_exclusive(bonus_group, "")],
-			["Small", "Labour cost 2.5% higher. Output 10% higher every tenth turn, the bonus month.", func() -> void: _pick_exclusive(bonus_group, LabourState.WORKFORCE_POLICY_SMALL_BONUS)],
-			["Generous", "Labour cost 5% higher. Output 20% higher every tenth turn, the bonus month.", func() -> void: _pick_exclusive(bonus_group, LabourState.WORKFORCE_POLICY_ANNUAL_BONUS)]]},
+			["Small", "Labour cost 2.5% higher. Satisfaction target 8 higher.", func() -> void: _pick_exclusive(bonus_group, LabourState.WORKFORCE_POLICY_SMALL_BONUS)],
+			["Generous", "Labour cost 5% higher. Satisfaction target 15 higher.", func() -> void: _pick_exclusive(bonus_group, LabourState.WORKFORCE_POLICY_ANNUAL_BONUS)]]},
 		{"id": "profit", "name": "Profit share", "chosen": ["none", "five", "ten"].find(_profit_key()), "options": [
 			["None", "Profits stay with the company.", func() -> void: _pick_exclusive(profit_group, "")],
-			["5%", "5% of profit after tax and dividends goes to the workers. Output 10% higher.", func() -> void: _pick_exclusive(profit_group, LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE)],
-			["10%", "10% of profit after tax and dividends goes to the workers. Output 15% higher.", func() -> void: _pick_exclusive(profit_group, LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10)]]},
+			["5%", "5% of profit after tax and dividends goes to the workers. Satisfaction target 10 higher.", func() -> void: _pick_exclusive(profit_group, LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE)],
+			["10%", "10% of profit after tax and dividends goes to the workers. Satisfaction target 20 higher.", func() -> void: _pick_exclusive(profit_group, LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10)]]},
+		{"id": "union", "name": "Union", "chosen": LabourState.union_tier(), "options": [
+			["None", "No agreement.", func() -> void: _pick_union(LabourState.UNION_NONE), "NONE"],
+			["Partial", "Labour cost 10% higher, rising 1% each pay round to 25%. Satisfaction target 15 higher.", func() -> void: _pick_union(LabourState.UNION_PARTIAL), "PART"],
+			["Comprehensive", "Labour cost 10% higher, rising each pay round. Satisfaction target 30 higher. Labour cuts made after signing count at half, for good.", func() -> void: _pick_union(LabourState.UNION_COMPREHENSIVE), "FULL"]]},
+		{"id": "week", "name": "Work week", "chosen": LabourState.WORK_WEEK_HOURS.find(LabourState.work_week_hours), "options": week_opts},
 	]
+
+
+static func _pct_text(pct: float) -> String:
+	return str(int(pct)) if is_equal_approx(pct, roundf(pct)) else "%.1f" % pct
+
+
+## The union knob. Moving up signs at once; stepping down costs money and satisfaction, so it asks first.
+func _pick_union(tier: int) -> void:
+	var old := LabourState.union_tier()
+	if tier >= old:
+		LabourState.set_union_tier(tier)
+		return
+	var steps := old - tier
+	var cost := LoanState.average_revenue() * LabourState.UNION_STEP_DOWN_REVENUE_SHARE * float(steps)
+	var dialog := ConfirmationDialog.new()
+	dialog.name = "UnionStepDown"
+	dialog.title = "Step down the union agreement"
+	dialog.dialog_text = "Stepping down costs £%.2f now (5%% of average revenue a tier) and lowers satisfaction by 15 a tier, easing over 30 turns. Labour cuts made since signing still count at half." % cost
+	dialog.ok_button_text = "Step down"
+	dialog.confirmed.connect(func() -> void:
+		LabourState.set_union_tier(tier)
+		dialog.queue_free())
+	dialog.canceled.connect(func() -> void:
+		dialog.queue_free()
+		_queue_refresh())
+	add_child(dialog)
+	dialog.popup_centered()
 
 
 func _policies() -> Control:
 	var col := VBoxContainer.new()
 	col.name = "Policies"
 	col.add_theme_constant_override("separation", 8)
-	col.custom_minimum_size.x = PLATE_W
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_child(Parts.heading("Policies"))
 	var slab: Control = Section.new()
 	slab.name = "KnobPlate"
@@ -261,7 +488,8 @@ func _policies() -> Control:
 	slab.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(slab)
 	var grid := GridContainer.new()
-	grid.columns = 2
+	grid.name = "KnobGrid"
+	grid.columns = KNOB_COLUMNS
 	grid.add_theme_constant_override("h_separation", 8)
 	grid.add_theme_constant_override("v_separation", 10)
 	(slab.get("content") as VBoxContainer).add_child(grid)
@@ -284,8 +512,9 @@ func _knob(spec: Dictionary) -> Control:
 	var opts: Array = []
 	var options: Array = spec.options
 	for i in options.size():
+		var text := str(options[i][3]) if (options[i] as Array).size() > 3 else ""
 		opts.append({"id": "%s_%d" % [id, i], "name": "%s: %s" % [str(spec.name), str(options[i][0])],
-			"icon": Parts.tex("people_icon_%s_%d" % [id, i])})
+			"icon": null if text != "" else Parts.tex("people_icon_%s_%d" % [id, i]), "text": text})
 	knob.call("set_options", opts)
 	knob.call("set_value_no_signal", maxi(0, int(spec.chosen)) + 1)
 	knob.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -396,7 +625,7 @@ func _fill_card(card: Control, title: String, option: String, words: String) -> 
 
 # --- automation and the lockers ------------------------------------------------------------------
 
-const AUTOMATION_WORDS := "Labour cost falls 0.2%/turn to 15% less. Upkeep rises 2%/turn to 10% more."
+const AUTOMATION_WORDS := "On level 2 and 3 buildings: labour cost 15% lower, power and upkeep 10% higher. Satisfaction target 10 lower."
 
 
 func _automation() -> Control:
@@ -446,13 +675,13 @@ func _automation() -> Control:
 func _other_policies() -> Array:
 	return [
 		{"id": LabourState.WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE, "name": "Extended Annual Leave", "lock": "",
-			"words": "Output 5% lower every tenth turn. Labour cost falls 0.1%/turn to 5% less."},
+			"words": "Throughput 2% lower. Satisfaction target 8 higher."},
 		{"id": LabourState.WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE, "name": "Generous Parental Leave", "lock": "",
-			"words": "Output 5% lower for ten turns in every twenty. Labour cost falls 0.1%/turn to 5% less."},
+			"words": "Throughput 2% lower. Satisfaction target 8 higher."},
 		{"id": LabourState.WORKFORCE_POLICY_LONG_TENURE, "name": "Long Tenure Awards", "lock": "Needs an HR Director",
-			"words": "Labour cost 10% higher every tenth turn, the payout. Otherwise it falls 0.1%/turn to 10% less."},
+			"words": "Labour cost falls 0.1% a turn to 10% less, with a 10% payout every tenth turn. Satisfaction target 5 higher."},
 		{"id": LabourState.WORKFORCE_POLICY_STOCK_OPTIONS, "name": "Stock Options", "lock": "Opens with an HR mission",
-			"words": "Dividends grow 0.05%/turn to 10% more. Output rises 0.1%/turn to 5% more."},
+			"words": "Dividends grow 0.05% a turn to 10% more. Satisfaction target 10 higher."},
 	]
 
 
@@ -520,9 +749,24 @@ func _locker(d: Dictionary) -> Control:
 	return locker
 
 
-## The capture tool's views of this tab (tools/people_ds2_shot.gd): Labour at its extremes.
+## The capture tool's views of this tab (tools/people_ds2_shot.gd): Labour at its extremes, and the
+## satisfaction plate in three bands (content, steady, strike territory).
 func shot_views() -> Array:
 	return [
+		{"name": "satisfaction_content", "setup": func() -> void:
+			LabourState.set_union_tier(LabourState.UNION_COMPREHENSIVE)
+			_pick_exclusive([LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10], LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10)
+			LabourState.satisfaction = 62.0
+			_rebuild()},
+		{"name": "satisfaction_steady", "setup": func() -> void:
+			LabourState.satisfaction = 12.0
+			_rebuild()},
+		{"name": "satisfaction_strikes", "setup": func() -> void:
+			LabourState.set_labour_multiplier(1.2)
+			_pick_exclusive([LabourState.WORKFORCE_POLICY_LAX_SAFETY, LabourState.WORKFORCE_POLICY_STANDARD_SAFETY, LabourState.WORKFORCE_POLICY_STRICT_SAFETY], LabourState.WORKFORCE_POLICY_LAX_SAFETY)
+			LabourState.satisfaction = -76.0
+			LabourState.add_target_shift("shot_demolish", "Building demolished", -15.0)
+			_rebuild()},
 		{"name": "extremes", "setup": func() -> void:
 			LabourState.set_labour_multiplier(0.8)
 			LabourState.set_idle_labour_pay_share(0.5)
@@ -534,6 +778,31 @@ func shot_views() -> Array:
 
 
 # --- the parts ---------------------------------------------------------------------------------------
+
+## Over the satisfaction dial: a hollow marker on the scale at the target, and a pale needle where satisfaction
+## will be in ten turns. Angles as the gauge's needle (PanelGauge.needle_rotation, clockwise from 12 o'clock).
+class DialMarks extends Control:
+	var target_v := 0.5
+	var ten_v := 0.5
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var side := minf(size.x, size.y)
+		var c := size * 0.5
+		var r := side * PanelGauge.SCALE_RADIUS / PanelGauge.LAYER_SIZE
+		var ten_a := PanelGauge.needle_rotation(ten_v)
+		var ten_dir := Vector2(sin(ten_a), -cos(ten_a))
+		draw_line(c, c + ten_dir * r * 0.82, Color(1, 1, 1, 0.45), 2.0, true)
+		var a := PanelGauge.needle_rotation(target_v)
+		var dir := Vector2(sin(a), -cos(a))
+		var tip := c + dir * (r + 3.0)
+		var side_v := Vector2(-dir.y, dir.x)
+		var tri := PackedVector2Array([tip, tip + dir * 9.0 + side_v * 5.0, tip + dir * 9.0 - side_v * 5.0, tip])
+		draw_polyline(tri, Color("#0b2340"), 2.5, true)
+		draw_polyline(tri, Color("#f2c84b"), 1.5, true)
+
 
 ## The time clock's render drawn under the figures on it; `origin` is where the render's frame starts.
 class Clock extends Control:

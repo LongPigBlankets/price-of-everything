@@ -149,7 +149,12 @@ func _build_roster() -> void:
 	_room.name = "Boardroom"
 	_root.add_child(_room)
 	var rows: Array = [[], []]
-	var ids: Array = AdvisorState.SEAT_DEFINITIONS.keys()
+	var ids: Array = []
+	for sid in AdvisorState.SEAT_DEFINITIONS:
+		# A founder-only seat exists while he holds it (the Expansion Director).
+		if AdvisorState.FOUNDER_ONLY_SEATS.has(str(sid)) and AdvisorState.get_advisor_in_seat(str(sid)) == "":
+			continue
+		ids.append(str(sid))
 	for i in ids.size():
 		rows[0 if i < 5 else 1].append(str(ids[i]))
 	for r in 2:

@@ -12,7 +12,10 @@ const MAX_LEVEL := 3
 
 # An upgrade is not instant: once started it occupies the building for this many turns
 # (mirrors a construction project's countdown) before the new level takes effect.
-const UPGRADE_DURATION := 3
+const UPGRADE_DURATION := 5
+## Roads, rails, pipes and cables upgrade faster: like their construction, their pacing is unchanged
+## (docs/pacing-labour-mining-licensing-spec.md §7.1, §7.3 cover production buildings).
+const INFRA_UPGRADE_DURATION := 3
 
 # Per-level scaling, indexed by level (1/2/3).
 const INPUT_MULT  := {1: 1.0, 2: 2.0, 3: 3.0}

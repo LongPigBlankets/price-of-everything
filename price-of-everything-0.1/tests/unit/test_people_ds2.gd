@@ -104,7 +104,9 @@ func _test_people_ds2_advisors() -> void:
 		states_ok = states_ok and str(place.get("state")) == str(status.seat(sid).state)
 	var want: Array[String] = []
 	for sid in AdvisorState.SEAT_DEFINITIONS:
-		want.append(str(sid))
+		# The Expansion Director seat exists only while Andrew Keeler holds it.
+		if not AdvisorState.FOUNDER_ONLY_SEATS.has(str(sid)):
+			want.append(str(sid))
 	_check(order == want, "people ds2 advisors: all ten seats, in the council's order (%s)" % ", ".join(order))
 	_check(states_ok, "people ds2 advisors: each place is in its seat_status state")
 	for sid in ["cfo", "coo"]:
@@ -223,7 +225,7 @@ func _folder_locked(place: Node) -> int:
 
 
 ## The DS2 Labour tab: the time clock shows the overview's figures (cost, share of base, ten turns) and its bell's
-## lamp is lit only at the floor; the doors carry the workforce by kind; six knobs stand where the policies are and
+## lamp is lit only at the floor; the doors carry the workforce by kind; eight knobs stand where the policies are and
 ## turning one sets the policy; the notice board pins each policy in force and, on hover, the option under the
 ## pointer; the lockers of policies not yet open are padlocked and their switches dead; the body fits its scroll.
 func _test_people_ds2_labour() -> void:
@@ -259,12 +261,12 @@ func _test_people_ds2_labour() -> void:
 		var door: Control = pp.find_child("Door_%s" % kind, true, false)
 		doors_ok = doors_ok and door != null and int(door.get("count")) == int(hc[kind])
 	_check(doors_ok and int(hc.unskilled) > 0, "people ds2 labour: each door carries its kind's headcount (%s)" % str(hc))
-	var knobs := ["effort", "idle", "safety", "pension", "bonus", "profit"]
+	var knobs := ["effort", "idle", "safety", "pension", "bonus", "profit", "union", "week"]
 	var all_knobs := true
 	for k in knobs:
 		all_knobs = all_knobs and pp.find_child("Knob_%s" % k, true, false) != null
 	var effort: Control = pp.find_child("Knob_effort", true, false)
-	_check(all_knobs and effort != null and int(effort.get("value")) == 2, "people ds2 labour: six knobs, work effort at Standard")
+	_check(all_knobs and effort != null and int(effort.get("value")) == 2, "people ds2 labour: eight knobs, work effort at Standard")
 	_check(pp.find_child("Notice_effort", true, false) != null and str(pp.find_child("Notice_effort", true, false).get_meta("notice")) == "Work effort|Standard",
 		"people ds2 labour: the notice board pins the effort in force")
 	var lean: Button = (effort.get("option_buttons") as Array)[0]
@@ -302,6 +304,104 @@ func _test_people_ds2_labour() -> void:
 	await get_tree().process_frame
 	for iid in ids:
 		BuildingState.remove_building(iid)
+	MatchState.reset()
+
+
+## Phase 1 satisfaction UX (docs/pacing-labour-mining-licensing-spec.md §4.8): the plate's dial, marks, screens,
+## band card and ledger; eight knobs in two rows of four with the union and work week printed on their plates;
+## stepping the union down asks first; Renege appears only when it is offered; the Advisors key lights while an
+## advisor is disloyal.
+func _test_people_ds2_satisfaction() -> void:
+	MatchState.reset()
+	LabourState.policy_throughput_enabled = true
+	var pp: PanelContainer = load("res://scripts/people_panel.gd").new()
+	add_child(pp)
+	pp.size = Vector2(800, 1000)
+	await get_tree().process_frame
+	pp.call("show_tab", 1)
+	LabourState.satisfaction = 20.0
+	LabourState.add_target_shift("test_event", "Building sold", -5.0)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var plate: Control = pp.find_child("Satisfaction", true, false)
+	var dial: Control = pp.find_child("SatisfactionDial", true, false)
+	var marks: Control = pp.find_child("DialMarks", true, false)
+	var tab_script := load("res://scripts/people_ds2/labour_ds2.gd")
+	var target := LabourState.target_satisfaction()
+	_check(plate != null and dial != null and bool(dial.get("reverse_zones")) and is_equal_approx(float(dial.get("value")), tab_script.dial_value(20.0))
+		and marks != null and is_equal_approx(float(marks.get("target_v")), tab_script.dial_value(target))
+		and is_equal_approx(float(marks.get("ten_v")), tab_script.dial_value(LabourState.projected_satisfaction(10))),
+		"AC4.3 people ds2 labour: the dial's needle, target marker and ten turn ghost")
+	var now_screen: Control = pp.find_child("SatisfactionNow", true, false)
+	var target_screen: Control = pp.find_child("SatisfactionTarget", true, false)
+	_check(now_screen != null and int(now_screen.get_meta("value")) == 20 and target_screen != null
+		and int(target_screen.get_meta("value")) == roundi(target), "AC4.3 people ds2 labour: the screens read now and target")
+	var ledger: Control = pp.find_child("SatisfactionLedger", true, false)
+	var lines := 0
+	var sold := false
+	for n: Node in ledger.find_children("LedgerLine_*", "", true, false):
+		lines += 1
+		sold = sold or str(n.get_meta("ledger", "")) == "Building sold, 10 turns|\u22125"
+	_check(lines == LabourState.satisfaction_contributions().size() + LabourState.target_shifts.size() and sold,
+		"AC4.3 people ds2 labour: the ledger lists every contribution and shift, signed")
+	var band_card: Control = pp.find_child("BandCard", true, false)
+	_check(band_card != null and (band_card.find_child("Title", true, false) as Label).text == str(LabourState.band_summary().title),
+		"AC4.3 people ds2 labour: the band card names the band")
+	var grid: GridContainer = pp.find_child("KnobGrid", true, false)
+	var week: Control = pp.find_child("Knob_week", true, false)
+	var union: Control = pp.find_child("Knob_union", true, false)
+	var week_faces: Array = []
+	for b: Button in (week.get("option_buttons") as Array):
+		week_faces.append(str((b.get_child(0) as Control).get("text")))
+	_check(grid != null and grid.columns == 4 and grid.get_child_count() == 8 and week_faces == ["35", "40", "45", "50"]
+		and int(week.get("value")) == 3, "AC4.4 people ds2 labour: eight knobs in rows of four, the week's hours on its plates, 45 chosen")
+	# Union up signs at once; down asks first.
+	union.set("value", 3)
+	await get_tree().process_frame
+	_check(LabourState.union_tier() == LabourState.UNION_COMPREHENSIVE, "AC4.4 people ds2 labour: turning the union to Full signs Comprehensive")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	union = pp.find_child("Knob_union", true, false)
+	union.set("value", 1)
+	await get_tree().process_frame
+	var dialog: ConfirmationDialog = pp.find_child("UnionStepDown", true, false)
+	_check(dialog != null and LabourState.union_tier() == LabourState.UNION_COMPREHENSIVE, "AC2.18 people ds2 labour: stepping the union down asks first")
+	MatchState.one_off_charges.clear()
+	dialog.confirmed.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(LabourState.union_tier() == LabourState.UNION_NONE and LabourState.can_renege(), "AC2.18 people ds2 labour: confirming steps the union down")
+	var renege: Control = pp.find_child("RenegeKey", true, false)
+	var halving: Control = pp.find_child("HalvingLine", true, false)
+	_check(renege != null and halving != null, "AC4.5 people ds2 labour: Renege and the halving line appear once renege is offered")
+	var sat_before: float = LabourState.satisfaction
+	renege.emit_signal("pressed")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(not LabourState.union_halving_active and is_equal_approx(LabourState.satisfaction, sat_before - 50.0)
+		and pp.find_child("RenegeKey", true, false) == null, "AC4.5 people ds2 labour: Renege ends the halving and leaves the plate")
+	# AC4.2: the Advisors key lights while a seated advisor is disloyal.
+	var term := preload("res://scripts/debug_terminal.gd")
+	var was_unlocked: bool = term._demo_unlocked
+	term._demo_unlocked = true
+	var seats_was: Dictionary = AdvisorState.advisor_seats.duplicate(true)
+	var loyal_was: Dictionary = AdvisorState.advisor_loyalty.duplicate(true)
+	AdvisorState.advisor_seats["cfo"] = "vera"
+	AdvisorState.advisor_loyalty["vera"] = -6.0
+	AdvisorState.advisor_loyalty_changed.emit("vera", -6.0)
+	var key: Control = pp.find_child("TabKey_Advisors", true, false)
+	var lit := key != null and (key.get("lamp") as Color).a > 0.0
+	AdvisorState.advisor_loyalty["vera"] = 5.0
+	AdvisorState.advisor_loyalty_changed.emit("vera", 5.0)
+	_check(lit and (key.get("lamp") as Color).a == 0.0, "AC4.2 people ds2: the Advisors key lights while an advisor is disloyal, and goes dark after")
+	AdvisorState.advisor_seats = seats_was
+	AdvisorState.advisor_loyalty = loyal_was
+	term._demo_unlocked = was_unlocked
+	MatchState.one_off_charges.clear()
+	pp.queue_free()
+	await get_tree().process_frame
 	MatchState.reset()
 
 

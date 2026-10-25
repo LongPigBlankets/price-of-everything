@@ -357,8 +357,8 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 	var ordered := funding_order(buildings, snapshot)
 	for b: Dictionary in ordered:
 		var iid := str(b.instance_id)
-		# A building changing recipe runs nothing, so the service buys nothing for it.
-		if BuildingWorks.is_retooling(iid): continue
+		# A building changing recipe, or still hiring its first 70%, runs nothing, so the service buys nothing for it.
+		if BuildingWorks.is_retooling(iid) or preload("res://scripts/staffing.gd").is_waiting(b): continue
 		var bridge: Dictionary = bridges.get(iid, {})
 		if not enabled(iid):
 			if bridge.is_empty(): continue

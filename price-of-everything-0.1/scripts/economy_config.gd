@@ -514,10 +514,10 @@ const TAX_FREE_PROFIT_FLOOR: float = 20.0
 # retooling (building produces nothing); the fee is a one-off. Tier keyed off the
 # seated COO's Operations stat (base = no COO). Balance-volatile (rule #7).
 const RETROFIT_TIERS := {
-	"base": {"labour": 0.50, "fee": 25.0, "turns": 2},   # no relevant advisor seated
-	"ops3": {"labour": 0.30, "fee": 15.0, "turns": 1},   # Ops 3 — cheap AND fast
-	"ops2": {"labour": 0.30, "fee": 15.0, "turns": 2},   # Ops 2 — cheap, normal speed
-	"ops1": {"labour": 0.75, "fee": 40.0, "turns": 2},   # Ops 1 malus — worse than base
+	"base": {"labour": 0.50, "fee": 25.0, "turns": 3},   # no relevant advisor seated
+	"ops3": {"labour": 0.30, "fee": 15.0, "turns": 2},   # Ops 3 — cheap AND fast
+	"ops2": {"labour": 0.30, "fee": 15.0, "turns": 3},   # Ops 2 — cheap, normal speed
+	"ops1": {"labour": 0.75, "fee": 40.0, "turns": 4},   # Ops 1 malus — worse than base
 }
 
 # --- Labour multiplier ---
@@ -529,15 +529,8 @@ const LABOUR_MULTIPLIER_MAX: float = 1.2
 # labour cost can never fall below this fraction of base. Prevents free labour.
 const LABOUR_FACTOR_MIN: float = 0.40
 
-# Workforce effort ↔ output response (the People panel labour setting). Reduced
-# effort (0.8×) compounds output pressure each worked turn; overtime (1.2×)
-# builds a smaller momentum bonus; at 1.0× the accumulator recovers toward 0.
-# Percent per PROCESS phase; values match the People panel copy — keep in sync.
-const LABOUR_OUTPUT_PRESSURE_PER_TURN: float = -2.0  # accrual at 0.8×
-const LABOUR_OUTPUT_PRESSURE_FLOOR: float = -30.0
-const LABOUR_OUTPUT_MOMENTUM_PER_TURN: float = 1.0   # accrual at 1.2×
-const LABOUR_OUTPUT_MOMENTUM_CAP: float = 10.0
-const LABOUR_OUTPUT_RECOVERY_PER_TURN: float = 1.0   # toward 0 at 1.0×
+# The effort knob's throughput, salary and satisfaction live in LabourState (docs/pacing-labour-
+# mining-licensing-spec.md §4.4); the old output pressure accumulator is retired.
 
 func transport_turns_for_tile_distance(tile_distance: int) -> int:
 	if tile_distance <= 0:

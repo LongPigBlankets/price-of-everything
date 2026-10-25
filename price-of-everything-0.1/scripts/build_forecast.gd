@@ -63,7 +63,8 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 		if material_source == "ask" or material_source == "": material_source = "middleman"
 		if material_source == "middleman" and str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1": material_source = "market"
 		if material_source == "middleman" and missing: lead = 1
-		var first_sale := duration+lead
+		# A site runs once 70% staffed: hiring that outlasts construction delays the first sale (§7.7).
+		var first_sale := duration+lead+maxi(0,preload("res://scripts/staffing.gd").turns_to_operate()-duration)
 		out.cash_needed = float(p.upfront)
 		out.steady_net = float(p.net)
 		out.capex = float(materials.subtotal)
@@ -80,6 +81,9 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 		return out
 
 	# --- Outputs: what it sells, what the freight and port cost to sell it ---------------
+	# The labour policies' throughput scales outputs AND inputs together (MatchState.run_multiplier
+	# for a running building); the startup ramp is left out because the forecast is the lasting rate.
+	var run := MatchState.throughput_multiplier(probe)
 	var outputs := {}          # good_id -> qty
 	var revenue: float = 0.0
 	for item in Production._recipe_output_items(recipe):
@@ -96,7 +100,7 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 			# standing workforce output multiplier. Timed event buffs and advisor bonuses are left
 			# out on purpose so the projection is the lasting margin (owner report 2026-09-05: a
 			# motor factory forecast -£0.74 but ran at ~+£31 with the empire's standing +10%).
-			var qty := _permanent_output_qty(recipe_id, gid, good_internal, base_qty)
+			var qty := int(round(float(_permanent_output_qty(recipe_id, gid, good_internal, base_qty)) * run))
 			outputs[gid] = qty
 			revenue += float(qty) * MarketState.get_price(gid)
 
@@ -128,7 +132,7 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 	var unroutable: Array[String] = []
 	for item in recipe.get("inputs", []):
 		var gid := str(item.get("good_id", ""))
-		var qty := int(item.get("qty", 0))
+		var qty := int(round(Production._modified_input_qty(item, probe) * run))
 		if gid == "" or qty <= 0:
 			continue
 		var source_tile := _own_source_tile(tile_id, gid)
@@ -183,7 +187,7 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 	for item in recipe.get("inputs", []):
 		var gid := str(item.get("good_id", ""))
 		if gid != "":
-			warehousing += float(item.get("qty", 0)) * EconomyConfig.warehousing_cost_per_unit(gid)
+			warehousing += Production._modified_input_qty(item, probe) * run * EconomyConfig.warehousing_cost_per_unit(gid)
 
 	var power_cost := marginal_power_cost(tile_id, Production._effective_energy_req(probe, recipe))
 	var labour := Production._calculate_labour_cost(probe, recipe)
@@ -199,7 +203,9 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 	var build_turns: int = maxi(0, MatchState.effective_build_duration(building_id))
 	# Turn numbers as the player counts them: turn 1 is the next turn they end.
 	var completes_turn: int = maxi(1, build_turns)
-	var first_producing: int = completes_turn + 1
+	# Hiring that outlasts construction keeps the finished building idle (§5, §7.7).
+	var hire_wait: int = maxi(0, preload("res://scripts/staffing.gd").turns_to_operate() - build_turns)
+	var first_producing: int = completes_turn + 1 + hire_wait
 	var first_selling: int = first_producing + sale_delay
 
 	var phases: Array = []
@@ -209,8 +215,8 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 			"range": _turn_range(1, build_turns - 1), "per_turn": 0.0, "turns": build_turns - 1,
 		})
 	phases.append({
-		"kind": PHASE_COMPLETES, "label": "Completes",
-		"range": _turn_range(completes_turn, completes_turn), "per_turn": -standing, "turns": 1,
+		"kind": PHASE_COMPLETES, "label": "Completes" if hire_wait == 0 else "Completes, hiring staff",
+		"range": _turn_range(completes_turn, completes_turn + hire_wait), "per_turn": -standing, "turns": 1 + hire_wait,
 	})
 	phases.append({
 		"kind": PHASE_SHIPPING, "label": "Making, not yet paid",
@@ -224,7 +230,7 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 	})
 
 	var startup_inventory := _startup_inventory_cost(tile_id, recipe)
-	var cash_needed: float = standing + producing_cost * float(sale_delay) + startup_inventory
+	var cash_needed: float = standing * float(1 + hire_wait) + producing_cost * float(sale_delay) + startup_inventory
 
 	out.phases = phases
 	out.cash_needed = cash_needed
@@ -337,9 +343,9 @@ static func _item_good_id(item: Dictionary) -> String:
 	return gid
 
 
-## The output quantity a NEW building (level 1) will steadily produce: the recipe base scaled by
-## the PERMANENT output boosts it will run under -- permanent recipe_output modifiers (research
-## yield) and the standing workforce output multiplier. Mirrors BuildingStatus.effective_output_qty
+## The output quantity a NEW building (level 1) will steadily produce, before throughput: the recipe
+## base scaled by the PERMANENT output boosts it will run under -- permanent recipe_output modifiers
+## (research yield) and the satisfaction prize. Mirrors BuildingStatus.effective_output_qty
 ## but through Modifiers.apply_permanent, so timed event/research buffs and advisor bonuses are
 ## excluded; level is 1 for a fresh build, so the level output multiplier is 1.0.
 static func _permanent_output_qty(recipe_id: String, good_id: String, good_internal: String, base_qty: int) -> int:

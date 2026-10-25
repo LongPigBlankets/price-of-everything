@@ -109,7 +109,7 @@ const DECISION_DEFINITIONS := {
 	# Verbatim line and gifts are owner-locked. See docs/early-game-onboarding-spec.md §5.4.
 	"family_friend": {
 		"title": "A Retired Man Who Misses the Work",
-		"body": "Andrew Keeler ran a shipping firm for thirty years. He's an old acquaintance and has always been happy to mentor you. He offers to serve as your CFO or COO for thirty turns without pay.\n\n\"I've negotiated lots of deals with suppliers and banks in the past. But my specialty will always be transporting goods cheap.\"",
+		"body": "Andrew Keeler ran a shipping firm for thirty years. He's an old acquaintance and has always been happy to mentor you. He offers to serve as your CFO, your COO or your Expansion Director for thirty turns without pay.\n\n\"I've negotiated lots of deals with suppliers and banks in the past. But my specialty will always be transporting goods cheap.\"",
 		"scope": "company", "category": "governance", "priority": PRIORITY_STORY,
 		"target_selector": "company",
 		"cooldown_turns": 9999, "weight": 0.0, "default_choice": "coo",
@@ -128,6 +128,13 @@ const DECISION_DEFINITIONS := {
 				],
 				"advocate_seat": "coo",
 				"stance": "I can cover the first thousand domestic freight units."},
+			# docs/pacing-labour-mining-licensing-spec.md §7.2: a seat his alone, for his tenure. No discount
+			# on purchases and no building on credit.
+			{"id": "expansion", "label": "Make him Expansion Director",
+				"effects": [
+					{"kind": "seat_founder", "seat": "expansion_director"},
+					{"kind": "none", "describe": "builds take 3 turns less, new sites start half staffed and purchases close in 1 turn"},
+				]},
 		],
 	},
 	# The other end of the founder-advisor arc, drawn by _retire_founder when his tenure runs
@@ -1383,7 +1390,7 @@ func _describe_effect(eff: Dictionary, target: Dictionary) -> String:
 			return ("Free research: %s" % title) if title != "" else "No research left to grant"
 		"seat_founder":
 			return "The %s's chair for %d turns, unpaid" % [
-				str(eff.get("seat", "")).to_upper(), AdvisorState.FOUNDER_TENURE_TURNS]
+				_seat_name(str(eff.get("seat", ""))), AdvisorState.FOUNDER_TENURE_TURNS]
 		"founder_loan":
 			return "A £%.0f loan at %.0f%%" % [float(eff.get("amount", 0.0)), float(eff.get("rate", 0.0)) * 100.0]
 		"freight_credit":

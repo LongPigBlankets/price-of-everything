@@ -864,7 +864,9 @@ func _project_next_turn() -> Dictionary:
 		
 		# Output revenue
 		var output_name: String = recipe.get("output_name", "")
-		var output_qty: int = int(round(float(recipe.get("output_qty", 0)) * LabourState.workforce_output_multiplier()))
+		# Throughput scales inputs, outputs and power together.
+		var run := MatchState.throughput_multiplier(building)
+		var output_qty: int = int(round(float(recipe.get("output_qty", 0)) * LabourState.workforce_output_multiplier() * run))
 		if output_name == "power":
 			power_supply += output_qty
 			# Green generation qualifies for the subsidy (mirrors Production._power_quality).
@@ -882,7 +884,7 @@ func _project_next_turn() -> Dictionary:
 				goods_revenue += output_qty * MarketState.get_price(good.id)
 		
 		# Power demand
-		power_demand += recipe.get("energy_req", 0)
+		power_demand += int(round(float(recipe.get("energy_req", 0)) * run))
 		
 		# Per-building costs
 		var bdata: Dictionary = Catalog.get_building(str(building.get("building_id", "")))
@@ -896,10 +898,11 @@ func _project_next_turn() -> Dictionary:
 			if in_gid == "":
 				continue
 			# Carbon levy on taxed inputs (charged regardless of sourcing).
-			carbon_tax += PolicyState.carbon_charge(in_gid, int(input.get("qty", 0)), proj_turn)
+			var in_qty := int(round(float(input.get("qty", 0)) * run))
+			carbon_tax += PolicyState.carbon_charge(in_gid, in_qty, proj_turn)
 			if MatchState.is_input_tile_only(inst_id, in_gid):
 				continue
-			goods_purchased += int(input.get("qty", 0)) * MarketState.get_buy_price(in_gid)
+			goods_purchased += in_qty * MarketState.get_buy_price(in_gid)
 	
 	# Grid settlement
 	var net_power: int = power_supply - power_demand

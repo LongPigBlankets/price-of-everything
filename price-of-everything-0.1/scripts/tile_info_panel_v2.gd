@@ -174,6 +174,7 @@ func _ready() -> void:
 	BuildingState.building_added.connect(func(_i): _refresh_if_visible())
 	BuildingState.building_removed.connect(func(_i): _refresh_if_visible())
 	BuildingState.building_owner_changed.connect(func(_i): _refresh_if_visible())
+	MatchState.purchases_changed.connect(func(_i): _refresh_if_visible())
 	BuildingState.tile_land_owned_changed.connect(func(_t): _refresh_if_visible())
 	Stockpile.stockpile_changed.connect(_refresh_if_visible)
 	Production.turn_processed.connect(func(_summary): _refresh_if_visible())
@@ -1139,18 +1140,14 @@ func _on_port_buy_confirmed(_dont_ask: bool) -> void:
 	var iid := str(_pending_port_buy.get("iid", ""))
 	var building := BuildingState.get_building(iid)
 	if building.is_empty() or BuildingState.is_player_owned(building): return
-	var price := MatchState.building_purchase_price(building)
 	var title := Catalog.get_building_display_name(str(building.building_id))
 	if Tutorial.port_purchase_disabled(str(building.building_id)):
 		return
 	if iid == "" or not BuildingState.buildings.has(iid):
 		return
-	if not MatchState.deduct_money(float(price)):
-		MatchState.build_rejected_no_funds.emit("Not enough money to buy %s — need £%d, you have £%.0f" % [title, price, MatchState.money])
+	if not bool(MatchState.offer_for_building(iid, title).get("ok", false)):
 		return
-	BuildingState.set_building_owner(iid, MatchState.LOCAL_PLAYER)
-	MatchState.request_toast("Purchased %s for £%d" % [title, price], "success")
-	Audio.transaction()  # building_owner_changed → _refresh_if_visible re-renders the card as owned
+	Audio.transaction()  # building_owner_changed or purchases_changed re-renders the card
 
 
 ## Buy Land → a dropdown of fixed increments (10/20/30/40/50) up to the maximum,

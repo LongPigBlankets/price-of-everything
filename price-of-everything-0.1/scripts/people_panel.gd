@@ -38,6 +38,12 @@ func _build() -> void:
 	add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	add_child(shell)
 
+## Shows tab `i` of the shell (0 Advisors, 1 Labour, 2 Strikes once it exists).
+func show_tab(i: int) -> void:
+	var shell := find_child("PeopleDs2", true, false)
+	if shell != null:
+		shell.call("show_tab", i)
+
 func _on_advisor_acquired(advisor_id: String) -> void:
 	var a := AdvisorState.get_advisor(advisor_id)
 	MatchState.request_toast("New advisor: %s" % str(a.get("name", advisor_id)), "success")

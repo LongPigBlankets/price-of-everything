@@ -92,7 +92,8 @@ static func lot_count() -> int:
 	var n := 0
 	for b: Variant in BuildingState.buildings.values():
 		var building: Dictionary = b
-		if not BuildingState.is_player_owned(building) and not BuildingMarketTab._is_infrastructure(building):
+		if not BuildingState.is_player_owned(building) and not BuildingMarketTab._is_infrastructure(building) \
+				and not MatchState.is_under_offer(str(building.get("instance_id", ""))):
 			n += 1
 	return n
 

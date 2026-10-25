@@ -172,6 +172,9 @@ func _run_file(file_name: String) -> void:
 		var p0: int = inst._passed
 		var f0: int = inst._failed
 		var t0 := Time.get_ticks_msec()
+		# Unit tests check recipes at their base rates: the default 45 hour week would scale every
+		# quantity by 12%. Tests of the labour policies switch it back on themselves.
+		LabourState.policy_throughput_enabled = false
 		await inst.call(n)
 		# Isolation between tests: let queue_free'd fixtures actually die (a stale node in
 		# the "hex_map" group is otherwise found first by the next test), and let a turn

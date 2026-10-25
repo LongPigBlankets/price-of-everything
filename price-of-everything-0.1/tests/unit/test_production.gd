@@ -520,8 +520,11 @@ func _test_deposit_penalty_modifier() -> void:
 	MatchState.reset()
 
 func _test_workforce_output_modifier_surfaces_in_building_status() -> void:
+	# Labour policies act through THROUGHPUT now: the 45 hour week shows as +12% (inputs and outputs
+	# together), and profit share no longer moves output at all (spec §3, §4.4).
 	Modifiers.reset()
 	MatchState.reset()
+	LabourState.policy_throughput_enabled = true
 	var old_turn: int = int(TurnManager.current_turn)
 	TurnManager.current_turn = 1
 	var building := {
@@ -533,20 +536,21 @@ func _test_workforce_output_modifier_surfaces_in_building_status() -> void:
 	}
 	var recipe: Dictionary = Catalog.get_recipe("r_009")
 	var base_output: int = int(recipe.get("output_qty", 0))
-	_check(BuildingStatus.effective_output_qty(building, recipe) == base_output,
-		"building status baseline output excludes inactive workforce policies")
-	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
+	_check(LabourState.work_week_hours == 45 and BuildingStatus.effective_output_qty(building, recipe) == int(round(float(base_output) * 1.12)),
+		"building status output includes the 45 hour week's +12% throughput")
 	var mod: Dictionary = BuildingStatus.net_output_modifier(building, recipe)
 	var workforce_parts: Array = mod.get("workforce_parts", [])
-	_check(BuildingStatus.effective_output_qty(building, recipe) == int(round(float(base_output) * 1.10)),
-		"building status output includes annual profit-share workforce multiplier")
-	_check(absf(float(mod.get("pct_f", 0.0)) - 10.0) < 0.001,
-		"building status net output modifier includes annual profit share")
+	_check(absf(float(mod.get("pct_f", 0.0)) - 12.0) < 0.001,
+		"building status net output modifier includes the work week's throughput")
 	var first_workforce_part: Dictionary = workforce_parts[0] if not workforce_parts.is_empty() else {}
-	_check(workforce_parts.size() == 1 and str(first_workforce_part.get("label", "")) == "Annual Profit Share",
-		"building status modifier breakdown lists annual profit share")
-	_check(BuildingStatus._modifier_tooltip(mod).find("Annual Profit Share") >= 0,
-		"building status tooltip includes annual profit share")
+	_check(workforce_parts.size() == 1 and str(first_workforce_part.get("label", "")) == "45 hour week (throughput)",
+		"building status modifier breakdown lists the work week as throughput")
+	_check(BuildingStatus._modifier_tooltip(mod).find("45 hour week") >= 0,
+		"building status tooltip includes the work week")
+	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
+	_check(BuildingStatus.effective_output_qty(building, recipe) == int(round(float(base_output) * 1.12))
+		and (BuildingStatus.net_output_modifier(building, recipe).get("workforce_parts", []) as Array).size() == 1,
+		"profit share no longer changes output")
 	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, false)
 	TurnManager.current_turn = old_turn
 	Modifiers.reset()
@@ -594,20 +598,20 @@ func _test_additive_labour_cost_model() -> void:
 	_check(is_equal_approx(Production.labour_cost_factor(building), 1.0),
 		"labour factor: 100% of base with no modifiers")
 
-	# Slider +20% and a -30% policy delta net to -10% off the 100% base (additive,
-	# not the old compounded 0.8 x 1.2 x ...).
+	# Overtime's +25% salary and a -40% head-count cut net to -15% off the 100% base (additive,
+	# not compounded).
 	LabourState.set_labour_multiplier(1.2)
-	LabourState.workforce_policy_effects["test_policy"] = {"labour_pct": -0.30, "output_pct": 0.0, "active_turns": 1}
-	_check(is_equal_approx(Production.labour_cost_factor(building), 0.90),
-		"labour factor: slider and policy deltas add to base 100% (no compounding)")
-	_check(is_equal_approx(Production._calculate_labour_cost(building), Production._base_labour_cost(building) * 0.90),
+	Modifiers.add({"id": "test_additive_cut", "domain": "labour_headcount", "pct": -40.0})
+	_check(is_equal_approx(Production.labour_cost_factor(building), 0.85),
+		"labour factor: effort salary and head-count deltas add to base 100% (no compounding)")
+	_check(is_equal_approx(Production._calculate_labour_cost(building), Production._base_labour_cost(building) * 0.85),
 		"labour cost: base x additive factor")
 
 	var ov: Dictionary = Production.labour_overview()
 	_check(ov.has("current") and ov.has("est_10_turns") and ov.has("factor_pct") and ov.has("next_turn"),
 		"labour overview: exposes current, next-turn, 10-turn estimate and factor %")
 
-	LabourState.workforce_policy_effects.clear()
+	Modifiers.remove("test_additive_cut")
 	LabourState.set_labour_multiplier(1.0)
 	TurnManager.current_turn = old_turn
 	Modifiers.reset()
@@ -679,36 +683,36 @@ func _test_building_leveling() -> void:
 	var rubber_gid := str(Catalog.get_good_by_internal_name("rubber").get("id", ""))
 	for gi in BuildingLevels.upgrade_materials("chem_plant", 2):
 		Stockpile.add(tile, str(Catalog.get_good_by_internal_name(str(gi)).get("id", "")), int(cp[gi]))
-	# Preview reflects all-on-tile + the 3-turn duration before committing.
+	# Preview reflects all-on-tile + the 5-turn duration before committing.
 	var pv: Dictionary = BuildingWorks.preview_upgrade(iid)
-	_check(bool(pv.get("ok", false)) and bool(pv.get("all_on_tile", false)) and int(pv.get("duration", 0)) == 3,
-		"preview: all materials on tile, 3-turn duration")
+	_check(bool(pv.get("ok", false)) and bool(pv.get("all_on_tile", false)) and int(pv.get("duration", 0)) == 5,
+		"preview: all materials on tile, 5-turn duration")
 	var r3: Dictionary = BuildingWorks.start_upgrade(iid, "tile")
 	_check(bool(r3.get("ok", false)) and str(r3.get("status", "")) == BuildingWorks.UPGRADE_STATUS_UPGRADING,
 		"upgrade starts (materials consumed) and is now in progress")
 	_check(BuildingWorks.is_upgrading(iid) and int(BuildingState.get_building(iid).get("level", 1)) == 1,
-		"level stays 1 while the 3-turn upgrade runs")
+		"level stays 1 while the 5-turn upgrade runs")
 	var progress := BuildingWorks.upgrade_progress_snapshot(iid)
-	_check(not bool(progress.get("blocked", true)) and int(progress.get("estimated_turns", 0)) == 3
-			and str(progress.get("tooltip", "")).contains("Estimated completion: 3 turns"),
-		"upgrade progress: active countdown exposes a three-turn completion estimate")
+	_check(not bool(progress.get("blocked", true)) and int(progress.get("estimated_turns", 0)) == 5
+			and str(progress.get("tooltip", "")).contains("Estimated completion: 5 turns"),
+		"upgrade progress: active countdown exposes a five-turn completion estimate")
 	var detail_panel = load("res://scripts/building_detail_panel_v2.gd").new()
 	var upgrade_actions: HBoxContainer = detail_panel.call("_build_primary_actions", BuildingState.get_building(iid), Catalog.get_building("b_012"))
 	var upgrading_button := upgrade_actions.find_child("UpgradeButton", true, false) as Button
 	_check(upgrading_button != null and upgrading_button.disabled
-			and upgrading_button.tooltip_text.contains("Estimated completion: 3 turns"),
+			and upgrading_button.tooltip_text.contains("Estimated completion: 5 turns"),
 		"upgrade button: disabled Upgrading state explains its estimated finish on hover")
 	upgrade_actions.free()
 	detail_panel.free()
 	_check(Stockpile.get_at_tile(tile, rubber_gid) == 0, "upgrade materials consumed from the tile on start")
 	_check(not bool(BuildingWorks.start_upgrade(iid, "tile").get("ok", false)), "cannot queue a second upgrade while one is pending")
 	_check(BuildingWorks.reserved_upgrade_space_on_tile(tile) > 0.0, "in-progress upgrade reserves the growth footprint")
-	BuildingWorks.tick_upgrades()
-	BuildingWorks.tick_upgrades()
-	_check(int(BuildingState.get_building(iid).get("level", 1)) == 1, "still Level 1 after 2 of 3 turns")
+	for _i in BuildingLevels.UPGRADE_DURATION - 1:
+		BuildingWorks.tick_upgrades()
+	_check(int(BuildingState.get_building(iid).get("level", 1)) == 1, "still Level 1 after 4 of 5 turns")
 	var done: Array = BuildingWorks.tick_upgrades()
 	_check(done.has(iid) and int(BuildingState.get_building(iid).get("level", 1)) == 2 and not BuildingWorks.is_upgrading(iid),
-		"upgrade completes to L2 after 3 turns")
+		"upgrade completes to L2 after 5 turns")
 	BuildingState.remove_building(iid)
 
 	# --- Awaiting-materials sourcing: claim arrivals off the tile, then count down ---

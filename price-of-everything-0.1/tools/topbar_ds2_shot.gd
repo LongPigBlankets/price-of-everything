@@ -58,7 +58,7 @@ func _views(bar: Control, tag: String) -> void:
 	_save(tag + "_long", BAR_CROP)
 	_money(5717.0, -555.0)
 	# Hovered modules: the readout under the bar.
-	for mod_name: String in ["PowerModule", "MoneyWidget", "VictoryModule", "TransportModule", "QuestModule"]:
+	for mod_name: String in ["PowerModule", "MoneyWidget", "VictoryModule", "TransportModule", "QuestModule", "WorkforceModule"]:
 		var mod: Control = bar.find_child(mod_name, true, false)
 		if mod == null or not mod.is_visible_in_tree():
 			continue
@@ -66,6 +66,18 @@ func _views(bar: Control, tag: String) -> void:
 		await _settle(6)
 		_save("%s_hover_%s" % [tag, mod_name.trim_suffix("Module").to_lower()], HOVER_CROP)
 		mod.mouse_exited.emit()
+	# The Workforce module in strike territory: red lamp, falling figure, its readout.
+	var satisfaction_was: float = LabourState.satisfaction
+	LabourState.satisfaction = -76.0
+	bar.call("_refresh_workforce")
+	var workforce: Control = bar.find_child("WorkforceModule", true, false)
+	if workforce != null:
+		workforce.mouse_entered.emit()
+		await _settle(6)
+		_save(tag + "_hover_workforce_strike", HOVER_CROP)
+		workforce.mouse_exited.emit()
+	LabourState.satisfaction = satisfaction_was
+	bar.call("_refresh_workforce")
 	bar.call("_toggle_fly", "treasury")
 	await _settle(12)
 	_save(tag + "_treasury", FLYOUT_CROP)

@@ -1,6 +1,7 @@
 extends Node
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const MarketRules := preload("res://scripts/market_rules.gd")
+const Staffing := preload("res://scripts/staffing.gd")
 
 ## How many turns of ore left before a mine starts warning. Short enough to be actionable
 ## (a replacement mine takes turns to build and the nearest spare deposit is 4-6 tiles away
@@ -290,6 +291,9 @@ func _process_production() -> void:
 	# building that could not be fully stocked on the day it was bought can run on what lands.
 	MatchState.drain_ghost_holdings()
 	TurnProfiler.section_begin("construction")
+	# A turn of hiring on finished buildings still short of staff. Before the construction tick, which hires
+	# on its own projects, so a building that completes this turn is not hired for twice.
+	tick_staffing()
 	var completed_construction: Array = Construction.tick_turn()
 	for completed_instance_id in completed_construction:
 		_just_constructed_this_turn[str(completed_instance_id)] = true
@@ -335,6 +339,12 @@ func _process_production() -> void:
 			# A paused building (player-stopped, e.g. via the supply-chain panel) is idle:
 			# no inputs consumed, no outputs, no labour/power draw this turn.
 			if BuildingWorks.is_building_paused(instance_id):
+				has_run[instance_id] = true
+				continue
+
+			# Too few staff hired to run (below 70%): idle, its hired share paid at the idle pay share.
+			if Staffing.is_waiting(building):
+				blocked_reason_by_building[instance_id] = _run_warning("staffing", Staffing.status_text(building))
 				has_run[instance_id] = true
 				continue
 
@@ -428,9 +438,6 @@ func _process_production() -> void:
 			last_turn_run[instance_id] = true
 			if BuildingState.buildings.has(instance_id):
 				BuildingState.buildings[instance_id].erase("startup_inputs_pending")
-			# A new building stays in its selected half-capacity start until it has
-			# actually completed one operating turn; starvation does not consume it.
-			MatchState.consume_startup_capacity(instance_id)
 			full_output_streak_by_building[instance_id] = full_output_streak_by_building.get(instance_id, 0) + 1
 			progress_made = true
 			missing_by_building.erase(instance_id)
@@ -989,8 +996,9 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 	# workforce and the deposit penalty all change how much you GET per turn, never how
 	# fast the ore runs out. A 2000-unit seam therefore lasts the same number of turns
 	# whatever you have unlocked, so investing in yield can't quietly burn the field down.
-	# (Consequence to know: a building throttled by the startup ramp or by intermittent
-	# power still charges the deposit its full base rate for the turn.)
+	# A building short of staff digs, and is charged, only its staffing run fraction of that
+	# (docs/pacing-labour-mining-licensing-spec.md §5). Intermittent power still charges the full rate.
+	var staffed := Staffing.run_fraction(building)
 	var mined_base := 0
 	var recipe_id: String = str(recipe.get("recipe_id", ""))
 	var recipe_type: String = str(recipe.get("recipe_type", "")).to_lower()
@@ -1026,7 +1034,7 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		output_qty = int(round(Modifiers.apply("recipe_output", recipe_id, float(output_qty), mod_ctx)))
 		output_qty = int(round(float(output_qty) * BuildingLevels.mult("output", int(building.get("level", 1)))))
 		output_qty = int(round(float(output_qty) * LabourState.workforce_output_multiplier()))
-		output_qty = int(round(float(output_qty) * MatchState.startup_capacity_multiplier(building)))
+		output_qty = int(round(float(output_qty) * MatchState.run_multiplier(building)))
 		# Intermittency: derate output that relies on unfirmed intermittent green power
 		# (0 for grey/steady/no-power buildings; set by _compute_power_intermittency).
 		var power_derate: float = float((_intermittency_by_building.get(building.instance_id, {}) as Dictionary).get("derate", 0.0))
@@ -1044,7 +1052,7 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		summary.produced[good.id] = summary.produced.get(good.id, 0) + output_qty
 		_record_building_output(building.instance_id, good.id, output_qty)
 		mined += output_qty
-		mined_base += base_qty
+		mined_base += int(round(float(base_qty) * staffed))
 	if dep_token != "" and mined > 0:
 		# Charged at the base rate, not `mined` — see the mined_base comment above.
 		MatchState.deplete_deposit(tile_id, dep_token, mined_base)
@@ -1809,19 +1817,19 @@ func _capture_turn_report(building: Dictionary, recipe: Dictionary) -> void:
 	var lvl := int(building.get("level", 1))
 	var imul := BuildingLevels.mult("input", lvl)
 	var omul := BuildingLevels.mult("output", lvl)
-	var startup_mult := MatchState.startup_capacity_multiplier(building)
+	var startup_mult := MatchState.run_multiplier(building)
 
 	# Build inputs_consumed {good_id: qty} from recipe inputs
 	var inputs_consumed: Dictionary = {}
 	for input in recipe.get("inputs", []):
 		var gid: String = input.get("good_id", "")
 		if gid != "":
-			var scaled_input := float(input.get("qty", 0)) * imul * startup_mult
+			var scaled_input := _modified_input_qty(input, building) * imul * startup_mult
 			inputs_consumed[gid] = int(ceil(scaled_input)) if startup_mult < 1.0 and scaled_input > 0.0 else int(round(scaled_input))
 
 	# Build outputs_produced {good_id: qty}. Scale each output the SAME way _produce_outputs
 	# does — recipe_output modifiers (the "Δ +%" shown on the recipe) × level output mult ×
-	# workforce multiplier — so CostSolver divides the run's fixed costs by what the building
+	# the satisfaction prize × the run multiplier (throughput) — so CostSolver divides the run's fixed costs by what the building
 	# actually makes, not the un-modified recipe base. (Intermittency derate is excluded, as
 	# before: the cost basis reflects structural efficiency, not per-turn power weather.)
 	var recipe_id: String = str(recipe.get("recipe_id", ""))
@@ -1919,6 +1927,12 @@ func labour_charge(building: Dictionary, ran: bool, recipe: Dictionary = {}) -> 
 		labour *= LabourState.idle_labour_pay_share
 	return labour
 
+## One turn of hiring on every player building still short of staff (Staffing.tick).
+func tick_staffing() -> void:
+	for building in BuildingState.buildings.values():
+		if (building as Dictionary).has("staff_fill") and BuildingState.is_player_owned(building):
+			Staffing.tick(building)
+
 func _calculate_labour_cost(building: Dictionary, recipe: Dictionary = {}) -> float:
 	# While retooling, a building pays only a reduced fraction of its base labour and
 	# skips the usual modifier factor (spec §7.3).
@@ -1945,7 +1959,8 @@ func _base_labour_cost(building: Dictionary, recipe: Dictionary = {}) -> float:
 	# Calibrate the hub workforce to £6 at base wages, preserving normal wage growth.
 	if str(building.get("building_id", "")) == "b_038":
 		base_cost *= 6.0 / (658.0 * EconomyConfig.LABOUR_SKILLED_RATE)
-	return base_cost * BuildingLevels.mult("labour", int(building.get("level", 1)))
+	# Only the staff hired so far are paid (Staffing.hired_share, 1 once fully staffed).
+	return base_cost * BuildingLevels.mult("labour", int(building.get("level", 1))) * Staffing.hired_share(building)
 
 ## A building's workforce by kind (unskilled, skilled, high skilled): its recipe's columns, else its building's,
 ## else the stub. The headcount its labour cost is priced on (_base_labour_cost).
@@ -1969,20 +1984,17 @@ func labour_headcount() -> Dictionary:
 			continue
 		if BuildingWorks.is_building_paused(str(building.get("instance_id", ""))):
 			continue
-		total += labour_heads(building, Catalog.get_recipe(str(building.get("recipe_id", ""))))
+		var heads := labour_heads(building, Catalog.get_recipe(str(building.get("recipe_id", ""))))
+		var hired := Staffing.hired_share(building)
+		total += Vector3i(roundi(heads.x * hired), roundi(heads.y * hired), roundi(heads.z * hired))
 	return {"unskilled": total.x, "skilled": total.y, "high_skilled": total.z}
 
-# Every percentage labour modifier applies ADDITIVELY to the 100% base — they no
-# longer compound. Research head-count trims (e.g. Lights-Out Automation, the
-# people-management unlocks), the labour slider, and workforce policies all sum as
-# deltas off 1.0, clamped so labour never goes negative. `policy_delta_override`
-# lets the Labour panel reuse this with a projected workforce delta.
-func labour_cost_factor(building: Dictionary, policy_delta_override: float = INF) -> float:
-	var bid: String = str(building.get("building_id", ""))
-	var headcount_delta: float = float(Modifiers.resolve_pct("labour_headcount", bid, {"building_id": bid, "instance_id": str(building.get("instance_id", ""))}).get("net", 0.0)) / 100.0
-	var slider_delta: float = LabourState.labour_multiplier - 1.0
-	var policy_delta: float = LabourState.workforce_labour_cost_delta() if is_inf(policy_delta_override) else policy_delta_override
-	return maxf(EconomyConfig.LABOUR_FACTOR_MIN, 1.0 + headcount_delta + slider_delta + policy_delta)
+# Every percentage labour change applies ADDITIVELY to the 100% base — they do not
+# compound. Research head-count trims, advisor seats, the effort knob and the workforce
+# policies sum as deltas off 1.0 (LabourState.labour_cost_parts), with cuts made after a
+# Comprehensive Union signing halved, then floored. `turns_ahead` projects the ramps.
+func labour_cost_factor(building: Dictionary, turns_ahead: int = 0) -> float:
+	return LabourState.labour_cost_factor_for(building, turns_ahead)
 
 # Aggregate labour snapshot for the People panel's Labour indicator. `current` is what the turn charges: each
 # building's labour_charge, as maintenance_labour pays it (paused buildings carry no workforce, a building that
@@ -1997,8 +2009,6 @@ func labour_overview() -> Dictionary:
 	var est_ten := 0.0
 	var at_floor := false
 	var has_buildings := false
-	var policy_next: float = LabourState.projected_workforce_labour_delta(1)
-	var policy_ten: float = LabourState.projected_workforce_labour_delta(10)
 	for building in BuildingState.buildings.values():
 		if not BuildingState.is_player_owned(building):
 			continue
@@ -2021,8 +2031,8 @@ func labour_overview() -> Dictionary:
 			continue
 		if labour_cost_factor(building) <= EconomyConfig.LABOUR_FACTOR_MIN + 0.000001:
 			at_floor = true
-		next_turn += b_base * share * labour_cost_factor(building, policy_next)
-		est_ten += b_base * share * labour_cost_factor(building, policy_ten)
+		next_turn += b_base * share * labour_cost_factor(building, 1)
+		est_ten += b_base * share * labour_cost_factor(building, 10)
 	var factor_pct: float = (current / base_total * 100.0) if base_total > 0.0 else 100.0
 	return {
 		"base": base_total,
@@ -2047,8 +2057,8 @@ func _calculate_maintenance_cost(building: Dictionary) -> float:
 	# Maintenance modifiers (e.g. Combined Heat & Power thermal-battery retrofit).
 	var bid: String = str(building.get("building_id", ""))
 	var maint_cost := Modifiers.apply("maintenance", bid, maint_val, {"building_id": bid, "instance_id": str(building.get("instance_id", ""))})
-	# Empire-wide workforce penalty (Lax Safety neglect ramps upkeep up to +100%).
-	maint_cost *= LabourState.workforce_maintenance_multiplier()
+	# Automation's extra upkeep on the level 2+ buildings it runs.
+	maint_cost *= LabourState.workforce_maintenance_multiplier(building)
 	return maint_cost * BuildingLevels.mult("maint", int(building.get("level", 1)))
 
 # Power-consumption modifiers (Pulverised Carbon Injection, Scrap Preheating,
@@ -2060,8 +2070,9 @@ func _effective_energy_req(building: Dictionary, recipe: Dictionary) -> int:
 		return energy_req
 	var bid: String = str(building.get("building_id", ""))
 	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid})
-	var capacity_mult := MatchState.startup_capacity_multiplier(building)
-	var scaled := eff * BuildingLevels.mult("energy", int(building.get("level", 1))) * capacity_mult
+	var capacity_mult := MatchState.run_multiplier(building)
+	var scaled := eff * BuildingLevels.mult("energy", int(building.get("level", 1))) * capacity_mult \
+		* LabourState.workforce_power_multiplier(building)
 	return int(ceil(scaled)) if capacity_mult < 1.0 and scaled > 0.0 else int(round(scaled))
 
 # Power generation after recipe_output modifiers (e.g. Pulverised Coal Boilers +5%,
@@ -2082,7 +2093,7 @@ func _effective_power_output(building: Dictionary, recipe: Dictionary) -> int:
 	}
 	var eff := Modifiers.apply("recipe_output", rid, float(output_qty), mod_ctx)
 	eff *= colocated_battery_power_multiplier(building)
-	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1))) * LabourState.workforce_output_multiplier() * MatchState.startup_capacity_multiplier(building)))
+	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1))) * LabourState.workforce_output_multiplier() * MatchState.run_multiplier(building)))
 
 # Wind/solar plants and the battery types (solar b_024 · onshore wind b_025 · offshore wind b_026;
 # electric battery b_028 · thermal battery b_029).
@@ -2126,18 +2137,18 @@ func stats_at_level(instance_id: String, level: int) -> Dictionary:
 		"inputs": [],
 		"outputs": [],
 	}
-	var imul := BuildingLevels.mult("input", level) * MatchState.startup_capacity_multiplier(b)
+	var imul := BuildingLevels.mult("input", level) * MatchState.run_multiplier(b)
 	for input in recipe.get("inputs", []):
 		out.inputs.append({
 			"good_id": str(input.get("good_id", "")),
 			"name": Catalog.get_display_name(str(input.get("good_id", ""))),
-			"qty": int(round(float(input.get("qty", 0)) * imul)),
+			"qty": int(round(_modified_input_qty(input, b) * imul)),
 		})
 	# Outputs: power takes its own branch; everything else mirrors _produce_outputs (modifier + level).
 	if str(recipe.get("output_name", "")) == "power":
 		out.outputs.append({"name": "Power", "good_id": "power", "qty": _effective_power_output(b, recipe)})
 	else:
-		var omul := BuildingLevels.mult("output", level) * MatchState.startup_capacity_multiplier(b)
+		var omul := BuildingLevels.mult("output", level) * MatchState.run_multiplier(b)
 		var rid := str(recipe.get("recipe_id", ""))
 		for output in _recipe_output_items(recipe):
 			var oname := str(output.get("internal_name", ""))
@@ -2161,7 +2172,8 @@ func _effective_energy_req_f(building: Dictionary, recipe: Dictionary) -> float:
 		return float(energy_req)
 	var bid: String = str(building.get("building_id", ""))
 	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid})
-	return eff * BuildingLevels.mult("energy", int(building.get("level", 1))) * MatchState.startup_capacity_multiplier(building)
+	return eff * BuildingLevels.mult("energy", int(building.get("level", 1))) * MatchState.run_multiplier(building) \
+		* LabourState.workforce_power_multiplier(building)
 
 # ── Power intermittency (green/grey quality flags layered on top of `power`) ────
 
@@ -3110,6 +3122,19 @@ func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictiona
 			_carbon_consumed_by_building[iid] = per
 
 func _scaled_input_qty(input: Dictionary, building: Dictionary) -> int:
-	var capacity_mult := MatchState.startup_capacity_multiplier(building)
-	var scaled := float(input.get("qty", 0)) * BuildingLevels.mult("input", int(building.get("level", 1))) * capacity_mult
+	var capacity_mult := MatchState.run_multiplier(building)
+	var scaled := _modified_input_qty(input, building) * BuildingLevels.mult("input", int(building.get("level", 1))) * capacity_mult
 	return int(ceil(scaled)) if capacity_mult < 1.0 and scaled > 0.0 else int(round(scaled))
+
+## An input's per-run quantity after `recipe_input` modifiers (input-saving processes), before the
+## level and run scaling.
+func _modified_input_qty(input: Dictionary, building: Dictionary) -> float:
+	var qty := float(input.get("qty", 0))
+	if qty <= 0.0 or not Modifiers.has_domain("recipe_input"):
+		return qty
+	var rid := str(building.get("recipe_id", ""))
+	var bid := str(building.get("building_id", ""))
+	var gid := str(input.get("good_id", ""))
+	return Modifiers.apply("recipe_input", rid, qty, {"recipe_id": rid, "building_id": bid,
+		"instance_id": str(building.get("instance_id", "")), "good_id": gid,
+		"good_internal": str(Catalog.get_good(gid).get("internal_name", ""))})

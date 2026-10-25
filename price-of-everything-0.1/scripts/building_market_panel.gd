@@ -15,7 +15,7 @@ static func lots(tile_filter: String = "") -> Array:
 		var b: Dictionary = BuildingState.buildings[instance_id]
 		if tile_filter != "" and str(b.get("tile_id", "")) != tile_filter:
 			continue
-		if BuildingState.is_player_owned(b):
+		if BuildingState.is_player_owned(b) or MatchState.is_under_offer(str(instance_id)):
 			continue
 		if _is_infrastructure(b):
 			continue  # ports / airports etc. aren't productive buildings for sale
@@ -73,25 +73,24 @@ static func _row_vm(b: Dictionary) -> Dictionary:
 		"blob": blob,
 	}
 
+## A building under offer, in words: "Under offer. Yours in 2 turns." (next turn when 1 is left).
+static func offer_words(instance_id: String) -> String:
+	var turns := MatchState.offer_turns_remaining(instance_id)
+	return "Under offer. Yours next turn." if turns <= 1 else "Under offer. Yours in %d turns." % turns
+
 static func _is_infrastructure(b: Dictionary) -> bool:
 	var bdata: Dictionary = Catalog.get_building(str(b.get("building_id", "")))
 	return str(bdata.get("category", "production")) == "infrastructure"
 
-## Buys a lot at `price` (the figure its key showed): the charge, the transfer and the toast. False when it is
-## gone or can't be paid for.
-static func buy_lot(instance_id: String, building_name: String, price: int) -> bool:
+## Buys a lot: the offer at its live asking price (the figure its key showed, `_price`) and the closing.
+## False when it is gone, already under offer or can't be paid for.
+static func buy_lot(instance_id: String, building_name: String, _price: int) -> bool:
 	if instance_id == "" or not BuildingState.buildings.has(instance_id):
 		return false
-	# Pay for it. deduct_money is atomic — false means the player can't afford it, so reuse the
-	# same insufficient-money toast as building (now on the left), with buy-specific text.
-	if not MatchState.deduct_money(float(price)):
-		MatchState.build_rejected_no_funds.emit("Not enough money to buy %s — need £%d, you have £%.0f" % [
-			building_name, price, MatchState.money])
+	# The price is charged now and the building changes hands after closing (MatchState.offer_for_building,
+	# docs/pacing-labour-mining-licensing-spec.md §7.5). purchases_changed drops the lot from the list.
+	if not bool(MatchState.offer_for_building(instance_id, building_name).get("ok", false)):
 		return false
-	# Ownership transfer is immediate; production picks it up next turn. building_owner_changed
-	# drives the ledger refresh and drops the lot from the for-sale list.
-	BuildingState.set_building_owner(instance_id, MatchState.LOCAL_PLAYER)
-	MatchState.request_toast("Purchased %s for £%d" % [building_name, price], "success")
 	Audio.transaction()
 	return true
 

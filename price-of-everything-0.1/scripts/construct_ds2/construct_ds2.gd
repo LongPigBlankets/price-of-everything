@@ -370,9 +370,6 @@ func _render_settings() -> void:
 	_content.add_child(_setting_plate("Source of construction materials",
 		"Choose what happens when the selected tile does not hold the full kit.", keys))
 
-	_content.add_child(_switch_plate("Start at half capacity",
-		"New buildings use half their inputs, power and output for their first successful operating turn. Existing projects are unchanged.",
-		MatchState.construct_start_half_capacity, _on_start_capacity_toggled))
 	_content.add_child(_switch_plate("Auto-buy land when building",
 		"If the chosen tile does not have enough of your land for the building, buy just enough to fit it as part of confirming. Tiles that already have room buy nothing.",
 		MatchState.construct_auto_buy_land, _on_auto_buy_land_toggled))

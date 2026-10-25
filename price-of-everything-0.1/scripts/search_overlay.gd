@@ -1357,7 +1357,7 @@ func _building_facts(building: Dictionary) -> Array:
 		{"label": "Category", "value": _title_or_dash(building.get("category", ""))},
 		{"label": "Build cost", "value": _decimal_text(float(building.get("base_price", 0.0)))},
 		{"label": "Tile size", "value": str(building.get("tile_size_used", 1))},
-		{"label": "Build duration", "value": str(building.get("build_duration", 0))},
+		{"label": "Build duration", "value": str(MatchState.effective_build_duration(building_id))},
 		{"label": "Maintenance", "value": _nullable_decimal_text(building.get("maintenance_cost", null))},
 		{"label": "Unskilled labour", "value": str(building.get("labour_unskilled_required", 0))},
 		{"label": "Skilled labour", "value": str(building.get("labour_skilled_required", 0))},

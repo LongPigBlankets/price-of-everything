@@ -19,7 +19,7 @@
 	],
 	"labour": {
 		"multiplier": 1.2,
-		"output_pressure_pct": 10.0,
+		"satisfaction": 40,
 		"idle_pay_share": 0.5
 	},
 	"land": {

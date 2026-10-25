@@ -363,8 +363,9 @@ func _run() -> void:
 	await settle()
 	check(Tutorial.setup_reached, "completion hook remains reachable")
 	var bar := node_named("TopBar")
-	bar._refresh_council()
-	check(not bar._council_led.visible, "council lamp is hidden")
+	bar._refresh_workforce()
+	check(bar._workforce_figure != null and bar._workforce_figure.text == LabourState.signed_text(LabourState.satisfaction),
+		"workforce module shows satisfaction")
 	Tutorial._finish()
 	people.hide()
 	DecisionState.enabled = true

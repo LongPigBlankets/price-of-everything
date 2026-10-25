@@ -161,7 +161,7 @@ func _ready() -> void:
 	top_bar.victory_widget_clicked.connect(_on_victory_widget_clicked)
 	victory_panel.hide()
 	# The council loyalty surface opens the People panel (Advisors tab is first).
-	top_bar.council_widget_clicked.connect(_on_people_pressed)
+	top_bar.workforce_widget_clicked.connect(_on_workforce_pressed)
 	# Victory moment (spec §6): the HUD owns the auto-open so it can clear whatever
 	# panel is showing first (the panel can't hide its own siblings).
 	VictoryState.victory_achieved.connect(_on_victory_achieved)
@@ -510,6 +510,13 @@ func _on_people_pressed() -> void:
 		)
 		_link_rise(people_panel, %PeopleButton)
 	_set_panel_visible(people_panel, true)
+
+## The top bar's Workforce module: People, open on its Labour tab.
+func _on_workforce_pressed() -> void:
+	if not (is_instance_valid(people_panel) and people_panel.visible):
+		_on_people_pressed()
+	if is_instance_valid(people_panel):
+		people_panel.call("show_tab", 1)
 
 func _on_empire_pressed() -> void:
 	MatchState.empire_view_requested.emit()

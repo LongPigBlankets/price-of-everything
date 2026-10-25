@@ -20,8 +20,8 @@ signal money_widget_clicked
 signal money_panel_tab_requested(tab_name: String)
 ## The victory flyout's "Full breakdown" was clicked (opens the Victory panel).
 signal victory_widget_clicked
-## A council flyout row was clicked (opens the People panel).
-signal council_widget_clicked
+## The Workforce module was clicked (opens People on its Labour tab).
+signal workforce_widget_clicked
 
 const FLASH_RED := Color(0.9, 0.2, 0.2)
 # Show the "Bankruptcy imminent" strip when total runway — cash plus remaining
@@ -91,8 +91,6 @@ const C_AMBER := Color("#e6b34a")
 const C_CREAM := Color("#f2e6c8")
 const C_TRACK_EDGE := Color("#1c3149")
 
-const DISLOYAL_BELOW := -3.4   # loyalty (−10..+10) under this = disloyal
-
 const CFOIntroPopup := preload("res://scripts/cfo_intro_popup.gd")
 const CFO_INTRO_BODY := "I saw we weren't being tax efficient so now I've filed for a tax credit based on our losses. I can only make it work for 5 turns at a time but it should mean we can reduce our tax bill based on recent losses. See, and you worried about keeping me around…"
 
@@ -155,11 +153,14 @@ var _rankings_head: Label
 ## needs emptying when a new match starts.
 var _research_toasted: Dictionary = {}
 
-# Council module
-var _council_btn: Control
-## The seats in a line ("2 seated", "1 DISLOYAL"), for the readout.
-var _council_status := ""
-var _council_led: Control
+# Workforce module: labour satisfaction (docs/pacing-labour-mining-licensing-spec.md §4.7)
+var _workforce_btn: Control
+var _workforce_led: Control
+var _workforce_figure: Label
+var _workforce_arrow: Control
+## The readout's name and detail lines.
+var _workforce_status := ""
+var _workforce_detail := ""
 
 # Turn/date
 var _date_label: Label
@@ -189,7 +190,7 @@ func _ready() -> void:
 	_build_transport()
 	_build_rankings()
 	_build_quest()
-	_build_council()
+	_build_workforce()
 	_build_goods_graph()
 	_adopt_encyclopedia_and_turn()
 	_build_menu()
@@ -212,7 +213,7 @@ func _ready() -> void:
 	MatchState.build_rejected_no_funds.connect(_on_build_rejected_no_funds)
 	MatchState.cfo_tax_credit_filed.connect(_on_cfo_tax_credit_filed)
 	AdvisorState.advisors_changed.connect(_queue_refresh)
-	AdvisorState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
+	LabourState.satisfaction_changed.connect(_queue_refresh)
 	Production.turn_processed.connect(func(_s: Dictionary) -> void: _queue_refresh())
 	CompanyRankings.rankings_updated.connect(_queue_refresh)
 	CompanyRankings.rankings_updated.connect(_on_rankings_updated)
@@ -1163,7 +1164,7 @@ func _ds2_setup() -> void:
 
 ## The modules that show a readout when hovered.
 const DS2_READOUT_MODULES := ["MoneyWidget", "PowerModule", "TransportModule", "VictoryModule", "RankingsModule",
-	"CouncilModule", "GoodsGraphModule", "EncyclopediaButton", "MenuModule"]
+	"WorkforceModule", "GoodsGraphModule", "EncyclopediaButton", "MenuModule"]
 
 
 ## Shows the hovered module's readout under the bar, centred on the module and kept on the screen.
@@ -1222,9 +1223,9 @@ func _ds2_readout_content(mod: Control) -> Dictionary:
 		"RankingsModule":
 			return {"stage": "Rankings", "name": _rankings_head.text if _rankings_head != null else "",
 				"detail": "How you rank compared to your competitors in revenue and goods production.", "tone": "off"}
-		"CouncilModule":
-			return {"stage": "Council", "name": _council_status if _council_status != "" else "Your advisors",
-				"detail": "Your advisors, their seats and their loyalty.", "tone": "off"}
+		"WorkforceModule":
+			return {"stage": "Workforce", "name": _workforce_status, "detail": _workforce_detail,
+				"tone": str(LabourState.band_summary().tone) if str(LabourState.band_summary().tone) != "" else "off"}
 		"GoodsGraphModule":
 			return {"stage": "", "name": "Goods Graph (G)", "detail": "How every good is made and what it goes into.", "tone": ""}
 		"EncyclopediaButton":
@@ -1358,56 +1359,75 @@ func _on_opener_finished() -> void:
 		_mission_slot.call("shine")
 
 
-# ── 5 · Council ──────────────────────────────────────────────────────────────────
+# ── 5 · Workforce ────────────────────────────────────────────────────────────────
 
-func _build_council() -> void:
-	# Everything from Council rightwards is anchored to the far right edge (the mission is
+const ICON_WORKFORCE: Texture2D = preload("res://assets/ui/bdp_v3/econ_icon_labour.png")
+## The lamp by satisfaction band: gold at 90 and up, green from 50, dark when steady, amber under −5, red
+## under −70.
+const WORKFORCE_LAMP := {"prize": Color("#f2c84b"), "fast": Color("#7ec98a"), "slow": Color("#e6b34a"),
+	"strike": Color("#e2604a"), "strike_heavy": Color("#e2604a")}
+
+func _build_workforce() -> void:
+	# Everything from Workforce rightwards is anchored to the far right edge (the mission is
 	# out of the flow, so this is the row's only expander).
 	_hbox().add_child(_flex())
 	var mod := _ModuleBtn.new(self)
-	mod.name = "CouncilModule"
+	mod.name = "WorkforceModule"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
-	_council_led = StatusLed.new()
-	_council_led.visible = false   # no lamp: the readout carries the seats
-	row.add_child(_council_led)
-	row.add_child(_bar_icon(ICON_COUNCIL, mod))
-	mod.pressed.connect(func() -> void: _module_pressed("council"))
+	_workforce_led = StatusLed.new()
+	_workforce_led.name = "WorkforceLamp"
+	row.add_child(_workforce_led)
+	row.add_child(_bar_icon(ICON_WORKFORCE, mod))
+	_workforce_figure = _mini("0", C_BRIGHT, 14)
+	_workforce_figure.name = "WorkforceFigure"
+	row.add_child(_workforce_figure)
+	_workforce_arrow = _TrendArrow.new()
+	_workforce_arrow.name = "WorkforceTrend"
+	row.add_child(_workforce_arrow)
+	mod.pressed.connect(func() -> void: _module_pressed("workforce"))
 	_hbox().add_child(mod)
-	_council_btn = mod
+	_workforce_btn = mod
 
-func _refresh_council() -> void:
-	var seated: Array = AdvisorState.advisor_seats.values()
-	var disloyal := 0
-	var min_loyalty := 999.0
-	for aid in seated:
-		var lv: float = AdvisorState.advisor_loyalty_value(str(aid))
-		if lv <= DISLOYAL_BELOW:
-			disloyal += 1
-		min_loyalty = minf(min_loyalty, lv)
-	if not preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
-		disloyal = 0
-	(_council_btn as _ModuleBtn).warn = disloyal > 0
-	if seated.is_empty():
-		_council_status = "no seats filled"
-	elif disloyal > 0:
-		_council_status = "%d DISLOYAL" % disloyal
-	else:
-		_council_status = "%d seated" % seated.size()
-	if _council_led != null:
-		_council_led.visible = false
-		var led := _council_led as StatusLed
-		led.blink = false
-		led.lit = true
-		# The lamp's own thresholds — separate from DISLOYAL_BELOW (-3.4), which the status
-		# line uses above. An empty seat list leaves min_loyalty at its sentinel, which clears
-		# both checks below and reads green — no seats filled is not a problem.
-		if min_loyalty < -5.0:
-			led.color = C_RED
-		elif min_loyalty < 0.0:
-			led.color = C_AMBER
-		else:
-			led.color = C_GOOD
+func _refresh_workforce() -> void:
+	if _workforce_figure == null:
+		return
+	var s := LabourState.satisfaction
+	var band := LabourState.satisfaction_band()
+	var trend := LabourState.satisfaction_trend()
+	_workforce_figure.text = LabourState.signed_text(s)
+	_workforce_arrow.set("trend", trend)
+	var led := _workforce_led as StatusLed
+	led.blink = false
+	led.lit = WORKFORCE_LAMP.has(band)
+	led.color = WORKFORCE_LAMP.get(band, C_GOOD)
+	(_workforce_btn as _ModuleBtn).warn = band == "strike" or band == "strike_heavy"
+	_workforce_status = "Satisfaction %s, %s" % [LabourState.signed_text(s), trend]
+	_workforce_detail = "Heading for %s." % LabourState.signed_text(LabourState.target_satisfaction())
+
+
+## Where satisfaction is heading: a small triangle up or down, or a level bar when it holds. Drawn, as the
+## ▲ and ▼ glyphs are missing from the shipped fonts.
+class _TrendArrow extends Control:
+	var trend := "steady":
+		set(v):
+			trend = v
+			queue_redraw()
+
+	func _init() -> void:
+		custom_minimum_size = Vector2(10, 14)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var ink := Color("#f3f8fd")
+		var m := size * 0.5
+		match trend:
+			"rising":
+				draw_colored_polygon(PackedVector2Array([m + Vector2(-4, 3), m + Vector2(4, 3), m + Vector2(0, -4)]), ink)
+			"falling":
+				draw_colored_polygon(PackedVector2Array([m + Vector2(-4, -3), m + Vector2(4, -3), m + Vector2(0, 4)]), ink)
+			_:
+				draw_line(m + Vector2(-4, 0), m + Vector2(4, 0), ink, 2.0)
 
 
 # ── 5b · Goods Graph ─────────────────────────────────────────────────────────────
@@ -1624,8 +1644,8 @@ func _module_pressed(id: String) -> void:
 		_ds2_readout.visible = false
 	if id == "victory":
 		victory_widget_clicked.emit()
-	elif id == "council":
-		council_widget_clicked.emit()
+	elif id == "workforce":
+		workforce_widget_clicked.emit()
 	elif id == "rankings":
 		_toggle_rankings_panel()
 
@@ -2636,7 +2656,7 @@ func _apply_refresh() -> void:
 	_refresh_transport()
 	_refresh_rankings()
 	_refresh_briefing()
-	_refresh_council()
+	_refresh_workforce()
 	if _date_label != null:
 		_date_label.text = _turn_date(int(TurnManager.current_turn))
 	if _enc_button != null and _enc_inner != null:

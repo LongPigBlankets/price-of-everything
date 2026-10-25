@@ -191,9 +191,10 @@ func _test_build_forecast() -> void:
 			== int(smelter.get("sale_delay", 0)),
 		"forecast: the unpaid stretch lasts the shipping delay")
 
-	# cash_needed is what the player must survive before revenue: the idle turn plus the
-	# unpaid producing turns. It is the number the summary line quotes.
-	var expected_need: float = -completes + (-shipping * float(smelter.get("sale_delay", 1))) + float(smelter.breakdown.startup_inventory)
+	# cash_needed is what the player must survive before revenue: the idle turns (completion and any
+	# hiring after it) plus the unpaid producing turns. It is the number the summary line quotes.
+	var idle_turns := float((by_kind[BuildForecast.PHASE_COMPLETES] as Dictionary).get("turns", 1))
+	var expected_need: float = -completes * idle_turns + (-shipping * float(smelter.get("sale_delay", 1))) + float(smelter.breakdown.startup_inventory)
 	_check(is_equal_approx(float(smelter.get("cash_needed", 0.0)), expected_need),
 		"forecast: cash_needed covers the completion turn plus every unpaid producing turn")
 
@@ -266,8 +267,10 @@ func _test_build_forecast() -> void:
 		Production._calculate_labour_cost(probe, Catalog.get_recipe("r_012")) * 0.5 + Production._calculate_maintenance_cost(probe)),
 		"forecast respects half-pay on the idle completion turn")
 	_check(float(chlor.breakdown.startup_inventory) > 0, "forecast reserves initial input pipeline inventory")
-	_check(chlor.first_selling_turn == chlor.build_turns + 1 + chlor.sale_delay,
-		"forecast completion is the final construction turn, not an extra turn")
+	var hire_wait := maxi(0, preload("res://scripts/staffing.gd").turns_to_operate() - int(chlor.build_turns))
+	_check(chlor.first_selling_turn == chlor.build_turns + 1 + hire_wait + chlor.sale_delay,
+		"forecast completion is the final construction turn, not an extra turn, plus any wait for staff")
+	_check(hire_wait == 1, "forecast: at normal satisfaction a 5 turn build waits 1 turn for staff (§7.7)")
 	MatchState.reset()
 	Modifiers.reset()
 	# Two disconnected cabled islands: only the local surplus offsets imports.
@@ -861,7 +864,6 @@ func _test_construction_survives_load() -> void:
 func _test_construct_settings_roundtrip() -> void:
 	MatchState.reset()
 	MatchState.set_construct_auto_buy_land(true)
-	MatchState.set_construct_start_half_capacity(true)
 	var snap: Dictionary = MatchState.export_state()
 	_check(bool(snap.get("construct_auto_buy_land", false)),
 		"construct settings: auto-buy land is exported")
@@ -870,7 +872,6 @@ func _test_construct_settings_roundtrip() -> void:
 	_check(MatchState.construct_auto_buy_land, "construct settings: reset enables auto-buy land")
 	MatchState.import_state(snap)
 	_check(MatchState.construct_auto_buy_land, "construct settings: auto-buy land survives a round-trip")
-	_check(MatchState.construct_start_half_capacity, "construct settings: half-capacity survives a round-trip")
 
 	# A pre-existing save has no such key — it must default to off, not fail.
 	var legacy: Dictionary = snap.duplicate(true)
