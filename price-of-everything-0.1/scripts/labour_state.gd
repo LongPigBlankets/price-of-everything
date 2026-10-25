@@ -787,9 +787,9 @@ func band_summary(value: float = INF) -> Dictionary:
 		"prize":
 			return {"title": "Proud", "tone": "ok", "words": "Every building makes 5% more while satisfaction holds at 90 or above."}
 		"fast":
-			return {"title": "Content", "tone": "ok", "words": "Reach 90 and every building makes 5% more."}
+			return {"title": "Content", "tone": "ok", "words": "At 90+, output increases by 5%"}
 		"normal":
-			return {"title": "Steady", "tone": "", "words": "Reach 90 and every building makes 5% more."}
+			return {"title": "Steady", "tone": "", "words": "At 90+, output increases by 5%"}
 		"slow":
 			return {"title": "Unhappy", "tone": "warn", "words": "Better pay, shorter hours or a union bring it back up."}
 	return {"title": "Restless", "tone": "bad", "words": "Better pay, shorter hours or a union bring it back up."}

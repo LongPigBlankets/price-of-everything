@@ -1403,8 +1403,7 @@ func _refresh_workforce() -> void:
 	led.color = WORKFORCE_LAMP.get(band, C_GOOD)
 	(_workforce_btn as _ModuleBtn).warn = band == "strike" or band == "strike_heavy"
 	_workforce_status = "Satisfaction %s, %s" % [LabourState.signed_text(s), trend]
-	_workforce_detail = "Heading for %s. %s" % [LabourState.signed_text(LabourState.target_satisfaction()),
-		str(LabourState.band_summary().words)]
+	_workforce_detail = "Heading for %s." % LabourState.signed_text(LabourState.target_satisfaction())
 
 
 ## Where satisfaction is heading: a small triangle up or down, or a level bar when it holds. Drawn, as the

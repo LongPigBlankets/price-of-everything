@@ -227,13 +227,13 @@ func _screen(value: float) -> Control:
 	return led
 
 
-## What moves the target: each standing contribution and each timed shift with its signed value, two to a row.
+## The sources of labour satisfaction: each standing contribution and each timed shift with its signed value, two to a row.
 func _ledger() -> Control:
 	var case := Kit.plastic_case("SatisfactionLedger")
 	case.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var rows: VBoxContainer = case.get_child(0)
 	rows.add_theme_constant_override("separation", 6)
-	rows.add_child(Parts.title("What moves it"))
+	rows.add_child(Parts.title("Sources of Labour Satisfaction"))
 	var lines: Array = []
 	for part in LabourState.satisfaction_contributions():
 		lines.append([str(part.label), float(part.value)])

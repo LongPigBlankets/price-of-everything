@@ -493,7 +493,7 @@ A new **satisfaction plate** goes at the top, above the time clock:
 - **Dial**, −100 to +100, with band arcs: dark red under −90, red under −70, amber to −5, cream
   to +50, green to +90, gold above. The needle is current; a hollow marker is the target; a ghost
   needle is the 10-turn projection.
-- **Ledger**: "What moves it". Each active policy with its contribution, and the events of the
+- **Ledger**: "Sources of Labour Satisfaction". Each active policy with its contribution, and the events of the
   last 10 turns with turn and value.
 - **Band card**: what the current band does ("New sites hire in 12 turns. Strikes start below
   70.").
