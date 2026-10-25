@@ -83,6 +83,7 @@ var _view_offset: Vector2 = Vector2.ZERO
 var _zoom_floor: float = _ZOOM_MIN   # fit-whole-graph zoom; you cannot zoom out past it
 var _dragging := false
 var _drag_travel := 0.0
+var _press_at := Vector2.ZERO
 
 var _hover_id := ""
 var _selected_id := ""
@@ -423,12 +424,21 @@ func _gui_input(event: InputEvent) -> void:
 					_search_panel.visible = false
 				_dragging = true
 				_drag_travel = 0.0
+				_press_at = event.position
 			else:
 				if _dragging and _drag_travel <= _CLICK_SLOP:
 					_click_at(event.position)
 				_dragging = false
 			accept_event()
 	elif event is InputEventMouseMotion:
+		# A hover tooltip over a good can swallow the button's release: the drag would then follow the mouse
+		# until the next click. With the button no longer held, the press ends here, a click if it never moved.
+		if _dragging and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) == 0:
+			_dragging = false
+			if _drag_travel <= _CLICK_SLOP:
+				_click_at(_press_at)
+			accept_event()
+			return
 		if _dragging:
 			_view_offset += event.relative
 			_drag_travel += event.relative.length()

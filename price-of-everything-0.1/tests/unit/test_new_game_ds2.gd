@@ -86,12 +86,22 @@ func _test_registry_files_and_the_open_file() -> void:
 	_check(str(p.get("_start_id")) == "troubled_carmaker" and str(p.get("_start_path")).ends_with("troubled_carmaker.json"),
 		"registry: pressing a file opens that start")
 	var rows: Array = p.call("building_rows")
-	_check(rows.size() == 4 and str((rows[0] as Dictionary).get("gid", "")) != "" and str((rows[0] as Dictionary).get("place", "")) != "",
-		"registry: the carmaker's four buildings, each with the good it makes and its place")
+	_check(rows.size() == 3 and str((rows[0] as Dictionary).get("gid", "")) != "" and str((rows[0] as Dictionary).get("place", "")) != "",
+		"registry: the carmaker's buildings, each with the good it makes and its place")
+	_check(int((rows[0] as Dictionary).get("count", 0)) == 2 and rows.slice(1).all(func(r: Dictionary) -> bool: return int(r.count) == 1),
+		"registry: its two assembly plants making the same car share one cell, counted twice")
 	var ledger: Array = p.call("ledger_lines")
 	_check(ledger.size() == 3 and str(ledger[0][0]) == "Cash" and str(ledger[0][1]) == "£200" and str(ledger[1][1]) == "£500"
-		and str(ledger[2][0]) == "Net" and str(ledger[2][1]) == "-£300" and (ledger[2][2] as Color) == Color("#8f1f19"),
-		"registry ledger: Cash £200, Debt £500, Net -£300 in red ink (%s)" % str(ledger))
+		and str(ledger[2][0]) == "Profit each turn",
+		"registry ledger: Cash £200, Debt £500, then Profit each turn, debt or not (%s)" % str(ledger))
+	var owned_top := float(p.get("_owned_top"))
+	(files[_file_index(p, "glass_merchant")] as Button).button_pressed = true
+	await get_tree().process_frame
+	ledger = p.call("ledger_lines")
+	_check(ledger.size() == 3 and str(ledger[1][1]) == "£2,400" and str(ledger[2][0]) == "Profit each turn" and str(ledger[2][1]) == "£15",
+		"registry ledger: the Glass Merchant's debt and its £15 profit each turn (%s)" % str(ledger))
+	_check(is_equal_approx(float(p.get("_owned_top")), owned_top),
+		"registry: the buildings owned stay at the same height whatever the length of the story")
 	(files[_file_index(p, "metal_magnate")] as Button).button_pressed = true
 	await get_tree().process_frame
 	ledger = p.call("ledger_lines")
@@ -306,3 +316,18 @@ func _test_story_wraps_to_the_leaf() -> void:
 			widest = maxf(widest, p.FONT_PLEX.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, p.call("_story_font_px")).x)
 		_check(lines.size() > 1 and widest <= inner + 0.5, "New Game: the company story wraps inside its leaf at %d wide (%d lines, widest %d of %d)" % [panel_size.x, lines.size(), widest, inner])
 	p.queue_free()
+
+
+func _test_alike_buildings_group_and_places_join() -> void:
+	var Panel := preload("res://scripts/new_game_ds2/new_game_ds2.gd")
+	var entries := [
+		{"building_id": "b_001", "recipe_id": "r_018", "tile_id": "tile_19_15"},
+		{"building_id": "b_001", "recipe_id": "r_018", "tile_id": "tile_18_16"},
+		{"building_id": "b_001", "recipe_id": "r_018", "tile_id": "tile_5_9"},
+		{"building_id": "b_001", "recipe_id": "r_001", "tile_id": "tile_19_15"},
+		{"building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_18_16"},
+	]
+	var groups: Array = Panel.group_buildings(entries)
+	_check(groups.size() == 3 and int(groups[0].count) == 3 and int(groups[1].count) == 1 and int(groups[2].count) == 1,
+		"registry: the same building making the same good groups, a different good does not (%s)" % str(groups.map(func(g): return g.count)))
+	_check(str(groups[0].place).ends_with(" and 2 more"), "registry: a group on three tiles names the first and counts the rest (%s)" % str(groups[0].place))

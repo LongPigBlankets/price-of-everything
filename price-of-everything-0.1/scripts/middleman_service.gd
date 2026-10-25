@@ -753,6 +753,31 @@ static func funding_order(buildings: Array, snapshot: Dictionary) -> Array:
 
 ## Allocate previews in the order the turn funds them (funding_order); no sale proceeds enter cash.
 static func company_previews(completing: Array = []) -> Dictionary:
+	if completing.is_empty() and _batch_depth > 0 and _batch_previews != null:
+		return (_batch_previews as Dictionary).duplicate(true)
+	var result := _plan_company_previews(completing)
+	if completing.is_empty() and _batch_depth > 0:
+		_batch_previews = result.duplicate(true)
+	return result
+
+
+## A panel reading many buildings at once (the tile panel's cards, their lamps and words) asks for the
+## company's plan once per building, and the plan covers every building the company has. Between
+## begin_preview_batch and end_preview_batch it is worked out once and reused; nothing in the sim may
+## change inside a batch. Batches nest.
+static var _batch_depth := 0
+static var _batch_previews: Variant = null
+
+static func begin_preview_batch() -> void:
+	_batch_depth += 1
+
+static func end_preview_batch() -> void:
+	_batch_depth = maxi(0, _batch_depth - 1)
+	if _batch_depth == 0:
+		_batch_previews = null
+
+
+static func _plan_company_previews(completing: Array) -> Dictionary:
 	var result := {}
 	var candidates: Array = BuildingState.buildings.values().filter(func(b: Dictionary) -> bool: return enabled(str(b.instance_id)) and BuildingState.is_player_owned(b))
 	candidates.append_array(completing)

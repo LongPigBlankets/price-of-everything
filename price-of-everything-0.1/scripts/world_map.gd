@@ -594,7 +594,7 @@ func _show_metal_magnate_intro() -> void:
 	# game board — not over the loading slideshow and its own "Begin" button.
 	while _loading_screen_active():
 		await get_tree().process_frame
-	_focus_camera_on_tile("tile_5_10")   # centre on Stoneshore Docks (the start's hub)
+	_focus_camera_on_tile(start_focus_tile())   # Greyroad, the company's works
 	var intro: CanvasLayer = load("res://scripts/metal_magnate_intro.gd").new()
 	intro.tree_exited.connect(Tutorial.start_opener)   # the opening steps follow the story
 	add_child(intro)
@@ -603,7 +603,7 @@ func _show_metal_magnate_intro() -> void:
 func _show_glass_merchant_intro() -> void:
 	while _loading_screen_active():
 		await get_tree().process_frame
-	_focus_camera_on_tile("tile_18_16")   # centre on Ashmouth, the start's glassworks
+	_focus_camera_on_tile(start_focus_tile())   # Ashmouth, the company's glassworks
 	var intro: CanvasLayer = load("res://scripts/glass_merchant_intro.gd").new()
 	intro.tree_exited.connect(Tutorial.start_opener)   # the opening steps follow the story
 	add_child(intro)
@@ -827,6 +827,11 @@ func _warm_deferred_ui() -> void:
 	_prof_us("warm building detail first draw", t)
 	if not is_inside_tree():
 		return
+	t = Time.get_ticks_usec()
+	await _warm_tile_panel_draw()
+	_prof_us("warm tile panel first draw", t)
+	if not is_inside_tree():
+		return
 	# The mission-complete plate stalls on its first draw too, and the Tutorial's first mission
 	# completes the moment the player opens a building.
 	var bar := get_node_or_null("UILayer/HUD/TopBar")
@@ -879,6 +884,21 @@ func _warm_building_detail_draw() -> void:
 		if is_instance_valid(_bdp_v2):
 			_bdp_v2.call("end_warm_draw")
 		return
+
+
+## The tile panel likewise, on the company's busiest tile: the player's first click on a tile of theirs.
+func _warm_tile_panel_draw() -> void:
+	if _info_panel == null or not _info_panel.has_method("warm_draw"):
+		return
+	var home := start_focus_tile()
+	var coord := terrain_layer.id_to_coord(home)
+	if home == "" or not terrain_layer.tiles.has(coord):
+		return
+	_info_panel.call("warm_draw", terrain_layer.tiles[coord])
+	for i in 2:
+		await get_tree().process_frame
+	if is_instance_valid(_info_panel):
+		_info_panel.call("end_warm_draw")
 
 
 ## A loading screen (parented to the tree root, surviving the scene change) is up

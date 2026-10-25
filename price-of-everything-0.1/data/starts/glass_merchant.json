@@ -11,7 +11,7 @@
 	"opening_batches": 0,
 	"money": 600,
 	"one_off_charges": [{ "turn": 1, "amount": 100, "label": "Opening costs" }],
-	"steady_profit_per_turn": 9,
+	"steady_profit_per_turn": 15,
 	"loans": [ { "principal": 1200 }, { "principal": 1200, "grace_turns": 36 } ],
 	"buildings": [
 		{ "building_id": "b_001", "recipe_id": "r_018", "tile_id": "tile_19_15", "output_to": "market" },
