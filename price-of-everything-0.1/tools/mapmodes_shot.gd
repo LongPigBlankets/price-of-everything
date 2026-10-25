@@ -3,7 +3,8 @@ extends Node2D
 ## (mapmodes_panel._resize_to_content) and is capped at the bottom menu's top, so every added
 ## mapmode row is a chance for the list to start scrolling instead of growing — the print below
 ## says which of the two happened.
-##   "$GODOT_BIN" --path . res://tools/mapmodes_shot.tscn --quit-after 900
+##   AGENT_GODOT_WINDOW=1 godot --path . res://tools/mapmodes_shot.tscn --quit-after 900 -- --no-telemetry
+## MAPMODES_SHOT_DIR=<dir> writes the capture there instead of the project root.
 var _wm
 func _ready() -> void:
 	get_window().size = Vector2i(1920, 1080)
@@ -32,7 +33,13 @@ func _ready() -> void:
 		print("[MAPMODES_SHOT] clears bottom menu=%s (panel bottom %.0f vs menu top %.0f)" % [
 			str(panel.global_position.y + panel.size.y <= menu.global_position.y),
 			panel.global_position.y + panel.size.y, menu.global_position.y])
-	await RenderingServer.frame_post_draw
-	get_viewport().get_texture().get_image().save_png("res://mapmodes_shot.png")
-	print("SAVED mapmodes_shot.png")
+	# A mode on, so its key shows latched.
+	MapMode.set_sentinel_mode(MapMode.Mode.POWER_BALANCE, MapMode.POWER_SENTINEL)
+	for _i in range(8):
+		RenderingServer.force_draw(false)
+		await get_tree().process_frame
+	var dir := OS.get_environment("MAPMODES_SHOT_DIR")
+	var out := "res://mapmodes_shot.png" if dir == "" else dir.path_join("mapmodes_shot.png")
+	get_viewport().get_texture().get_image().save_png(out)
+	print("SAVED ", out)
 	get_tree().quit()

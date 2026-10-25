@@ -246,10 +246,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 func _activate_mapmode(id: String) -> void:
 	if not is_instance_valid(mapmodes_panel):
 		return
-	var row := mapmodes_panel.find_child("MapModeRow_%s" % id, true, false) as Button
-	if row == null or row.disabled:
+	var row := mapmodes_panel.find_child("MapModeRow_%s" % id, true, false) as Control
+	if row == null or bool(row.get("disabled")):
 		return
-	row.pressed.emit()
+	row.emit_signal("pressed")
 
 func _is_text_entry_focused() -> bool:
 	var fo := get_viewport().gui_get_focus_owner()
