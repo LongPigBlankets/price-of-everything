@@ -639,8 +639,8 @@ uses the DS2 kit (`ds2/parts.gd`). Every part's raised heading stands inside its
      turns left") under the name, the total output loss, then two lines: the total to settle beside
      the Settle key, over the total to break beside the Break strike key;
    - a row "N buildings" with a fold mark, folded at first, that shows the buildings under it;
-   - a slim row a building: its emblem, its name with the good it makes in a small well, its tile
-     on the second line, then its own figures and keys in the same columns;
+   - a row a building: its emblem and the good it makes in a well, both 48 px, at the left, then its
+     name with its tile on the second line, then its own figures and keys in the same columns;
    - Settle is the pay rise (§6.2), Break strike §6.2b. A key opens a key bed under its row that
      says what it does, with Confirm and Cancel. Break strike's bed also says how near the
      workforce is to remembering it for good;

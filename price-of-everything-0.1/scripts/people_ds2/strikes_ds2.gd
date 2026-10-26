@@ -10,7 +10,7 @@ extends Control
 ## - The chosen one's table, as the Building Ledger is laid out: metal labels over its columns (Location,
 ##   Output loss, Cost to manage, Action), then "All strikes (N buildings)" with the round's totals and its
 ##   Settle and Break strike keys, then a row that folds the buildings away ("N buildings", folded at first),
-##   and under it a slim row a building: its emblem, its name with the good it makes, its tile under it, its
+##   and under it a row a building: its emblem and the good it makes side by side, its name, its tile under it, its
 ##   own figures and keys. Settle and Break strike are two lines, each its cost on a screen in Cost to manage
 ##   beside its key under Action. A key opens a key bed under its row that says what it does, with Confirm and Cancel.
 ## - The record: a row a past strike, its turn, the buildings, the outcome's lamp and what it lost.
@@ -55,9 +55,8 @@ const SETTLE := "Settle"
 const BREAK := "Break strike"
 const COL_GAP := 6
 const ROW_PAD_Y := 5.0
-const HEAD_ICON_PX := 36.0
-const ROW_ICON_PX := 32.0
-const GOOD_PX := 24
+## A row's icons: All strikes' labour icon, and a building's emblem and its good's well, all one size.
+const ICON_PX := 48
 ## Buildings under the fold row stand in this far.
 const MEMBER_INDENT := 8
 const RECORD_SHOWN := 8
@@ -332,7 +331,7 @@ func _board(shown: String, iids: Array) -> Control:
 	else:
 		var due := maxi(0, int(u.warning.get("turn", turn)) - turn)
 		when = "Starts this turn" if due == 0 else "Starts in %d turn%s" % [due, "" if due == 1 else "s"]
-	var head := _row("AllStrikes", Kit.raised("econ_icon_labour", HEAD_ICON_PX),
+	var head := _row("AllStrikes", Kit.raised("econ_icon_labour", ICON_PX),
 		Kit.info("All strikes (%d building%s)" % [n, "" if n == 1 else "s"], "bad" if striking else "warn", when),
 		"all", float(totals.loss), float(totals.settle), float(totals["break"]), grid, iids)
 	head.set_meta("total", totals.settle)
@@ -514,33 +513,28 @@ func _fold_row(n: int) -> Control:
 	return module
 
 
-## One named or striking building: its emblem; its name with the good it makes in a small well, its tile
-## under it; its loss, its costs and its keys.
+## One named or striking building: its emblem and the good it makes in a well, one size, at the left; its name
+## with its tile under it; its loss, its costs and its keys.
 func _member(iid: String, loss: float, settle: float, brk: float, grid: Dictionary) -> PanelContainer:
 	var b := BuildingState.get_building(iid)
 	var title := BuildingNaming.of(b) if not b.is_empty() else iid
 	var tile_id := str(b.get("tile_id", ""))
 	var place := Catalog.tile_name(tile_id) if Catalog.tile_name(tile_id) != "" else Catalog.tile_label(tile_id)
 	var info := Kit.info(title, "", place)
+	var icons := HBoxContainer.new()
+	icons.name = "Icons"
+	icons.add_theme_constant_override("separation", COL_GAP)
+	icons.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icons.add_child(Kit.emblem(str(b.get("building_id", "")), ICON_PX))
 	var gid := _good_of(b)
 	if gid != "":
-		var name_l := info.get_node("Title") as Label
-		var line := HBoxContainer.new()
-		line.name = "TitleLine"
-		line.add_theme_constant_override("separation", 4)
-		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		info.remove_child(name_l)
-		name_l.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		name_l.autowrap_mode = TextServer.AUTOWRAP_OFF
-		name_l.custom_minimum_size.x = 0
-		line.add_child(name_l)
-		var well := Kit.good_in_well(gid, -1, "", true, GOOD_PX)
+		var well := Kit.good_in_well(gid, -1, "", true, ICON_PX)
 		well.name = "Makes"
 		well.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		line.add_child(well)
-		info.add_child(line)
-		info.move_child(line, 0)
-	var module := _row("Striker_%s" % iid, Kit.emblem(str(b.get("building_id", "")), ROW_ICON_PX), info, iid, loss, settle, brk, grid, [iid])
+		icons.add_child(well)
+	else:
+		icons.add_child(Kit.spacer(ICON_PX, ICON_PX))
+	var module := _row("Striker_%s" % iid, icons, info, iid, loss, settle, brk, grid, [iid])
 	module.set_meta("cost", settle)
 	module.set_meta("break", brk)
 	module.set_meta("loss", loss)
