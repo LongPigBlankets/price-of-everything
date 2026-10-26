@@ -1,29 +1,32 @@
 extends Control
-## The People panel's Strikes tab in DS2 (docs/pacing-labour-mining-licensing-spec.md §6.3), racked in the DS2
-## kit's cases and modules as the tile view's Buildings tab is (scripts/ds2/parts.gd):
+## The People panel's Strikes tab in DS2 (docs/pacing-labour-mining-licensing-spec.md §6.3), built from the DS2
+## kit's cases and modules (scripts/ds2/parts.gd). Every part's raised heading stands inside its case.
 ## - Strike risk: a module with the labour icon, the workforce's pilot lamp, its mood and what it means, and
 ##   the turns to the next check on a drum (or to the end of a pay rise's protection). Under it the strike
 ##   scale: satisfaction on Building Detail's mini screen, the two strike zones lit and a needle at today's
 ##   value, then the zones' key and the key that opens the encyclopedia's Mechanics page on strikes.
-## - The board, while strikers are named or on strike: "All strikes (N buildings)" first, as a group's head,
-##   with the turns on a drum and the expected loss on an LED screen, then its two actions, each a cost on an
-##   LED screen beside its key: Raise pay and Break strike. The buildings hang off its cable, each with its
-##   emblem, its name with the good it makes in a well, its tile, its own loss and its own two actions. Every
-##   figure stands in one column down the case. An action's key opens a key bed under its module saying what
-##   it does, with Confirm and Cancel.
-## - The record: a module a past strike, its turn, the buildings, the outcome's lamp and what it lost.
+## - Two latching keys on a key bed, Upcoming Strikes and Ongoing Strikes, each counting its buildings in
+##   brackets: those named for a strike that starts within 5 turns, and those on strike.
+## - The chosen one's table, as the Building Ledger is laid out: metal labels over its columns (Location,
+##   Output loss, Cost to manage, Action), then "All strikes (N buildings)" with the round's totals and its
+##   Settle and Break strike keys, then a row that folds the buildings away ("N buildings", folded at first),
+##   and under it a slim row a building: its emblem, its name with the good it makes, its tile under it, its
+##   own figures and keys. Each action's cost stands on a screen in Cost to manage, in the order of the keys
+##   under Action. A key opens a key bed under its row that says what it does, with Confirm and Cancel.
+## - The record: a row a past strike, its turn, the buildings, the outcome's lamp and what it lost.
 ##
-## The figures and the pay rises are LabourState.unrest's (scripts/labour_unrest.gd).
+## The figures and the actions are LabourState.unrest's (scripts/labour_unrest.gd).
 
 const Parts := preload("res://scripts/people_ds2/parts.gd")
 const Kit := preload("res://scripts/ds2/parts.gd")
 const Scroll := preload("res://scripts/bdp_v3_scroll.gd")
-const Cable := preload("res://scripts/bdp_v3_cable.gd")
 const Drum := preload("res://scripts/ds2/drum_figure.gd")
 const Tip := preload("res://scripts/ds2/tip.gd")
 const CreamKey := preload("res://scripts/ds2/cream_key.gd")
+const LatchKey := preload("res://scripts/ds2/latch_key.gd")
 const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
 const Led := preload("res://scripts/bdp_v3_led.gd")
+const Plate := preload("res://scripts/bdp_v3_plate.gd")
 const Section := preload("res://scripts/bdp_v3_section.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 const BuildingReadout := preload("res://scripts/building_readout.gd")
@@ -34,30 +37,40 @@ const RAIL_ROOM := 24
 const KEY_SCALE := 0.72
 ## The Mechanics page "How strikes work" opens (search_overlay.gd MECHANIC_ENTRIES).
 const MECHANICS_ENTRY := "strikes"
-## The board's cable runs under the centre of the head's icon; the buildings start a tap's length right of it.
-const FEED_X := Kit.PAD.x + Kit.EMBLEM_PX * 0.5
-const FEED_INDENT := FEED_X + Cable.TAP_LENGTH
-## The pay rise's key bed: the Advisors tab's seat choice bed (tile_keybed, layout px).
+## The key beds: the Advisors tab's seat choice bed (tile_keybed, layout px).
 const KEYBED: Texture2D = preload("res://assets/ui/bdp_v3/tile_keybed.png")
 const KEYBED_MARGIN := 14.0
 const KEYBED_CORNER := 40.0
-## The figures' labels, printed once under the head's figures.
-const STARTS_IN := "Starts in"
-const TURNS_LEFT := "Turns left"
 const NEXT_CHECK := "Turns to check"
 const TURNS_FREE := "Turns free"
-const LOSS := "Expected loss"
-const PAY_RISE := "Pay rise"
-const RAISE := "Raise pay"
+## The sub-tabs.
+const UPCOMING := "upcoming"
+const ONGOING := "ongoing"
+## The table: its column labels, the gap between columns, a row's padding, the icons and a building's good.
+const LOCATION := "Location"
+const LOSS := "Output loss"
+const COST := "Cost to manage"
+const ACTION := "Action"
+const SETTLE := "Settle"
 const BREAK := "Break strike"
+const COL_GAP := 6
+const ROW_PAD_Y := 5.0
+const HEAD_ICON_PX := 36.0
+const ROW_ICON_PX := 32.0
+const GOOD_PX := 24
+## Buildings under the fold row stand in this far.
+const MEMBER_INDENT := 8
 const RECORD_SHOWN := 8
-## A building's good, in a well on its name's line.
-const GOOD_PX := 36
 
 var _scroll: ScrollContainer
 var _body: VBoxContainer
 var _refresh_queued := false
-## The action whose bed is open, as "raise:<target>" or "break:<target>" (target "all" or a building's
+## The sub-tab the player chose, or "" to follow the round (Ongoing while strikes are on). Any change to the
+## strikes hands it back to the round.
+var _subtab := ""
+## Whether the buildings are unfolded under All strikes.
+var _members_open := false
+## The action whose bed is open, as "settle:<target>" or "break:<target>" (target "all" or a building's
 ## instance id), or "".
 var _confirming := ""
 
@@ -81,10 +94,12 @@ func _ready() -> void:
 	_scroll.add_child(col)
 	_body = VBoxContainer.new()
 	_body.name = "Strikes"
-	_body.add_theme_constant_override("separation", 16)
+	_body.add_theme_constant_override("separation", 14)
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_child(_body)
-	LabourState.unrest_changed.connect(_queue_refresh)
+	LabourState.unrest_changed.connect(func() -> void:
+		_subtab = ""
+		_queue_refresh())
 	LabourState.satisfaction_changed.connect(_queue_refresh)
 	LabourState.workforce_policies_changed.connect(_queue_refresh)
 	TurnManager.turn_resolution_completed.connect(_queue_refresh)
@@ -110,21 +125,43 @@ func _rebuild() -> void:
 		_body.remove_child(c)
 		c.queue_free()
 	var u := LabourState.unrest
-	var affected := u.affected_buildings()
+	var turn := int(TurnManager.current_turn)
+	var up := u.upcoming(turn)
+	var on := u.ongoing()
+	var shown := shown_subtab(_subtab, up.size(), on.size())
+	var listed := up if shown == UPCOMING else on
 	var target := _confirming.get_slice(":", 1)
-	if not (target == "all" and not affected.is_empty()) and not affected.has(target):
+	if not (target == "all" and not listed.is_empty()) and not listed.has(target):
 		_confirming = ""
+	elif target != "all":
+		_members_open = true
 	_body.add_child(_risk())
-	if not affected.is_empty():
-		_body.add_child(_board(affected))
+	_body.add_child(_subtabs(up.size(), on.size(), shown))
+	_body.add_child(_board(shown, listed))
 	if not u.record.is_empty():
 		_body.add_child(_record())
 
 
-## Opens the bed under an action's key ("raise:all", "break:<iid>"), or shuts it when it is already open.
+## The sub-tab on show: the player's choice, else Ongoing while strikes are on, else Upcoming.
+static func shown_subtab(chosen: String, upcoming_n: int, ongoing_n: int) -> String:
+	if chosen != "":
+		return chosen
+	return ONGOING if ongoing_n > 0 else UPCOMING
+
+
+## Opens the bed under an action's key ("settle:all", "break:<iid>"), or shuts it when it is already open.
 func _toggle_confirm(action: String) -> void:
 	_confirming = "" if _confirming == action else action
 	_rebuild()
+
+
+## A section's raised heading as the first row inside its case.
+static func _cased(case_name: String, heading: String) -> Dictionary:
+	var case := Kit.plastic_case(case_name)
+	var rows: VBoxContainer = case.get_child(0)
+	if heading != "":
+		rows.add_child(Parts.heading(heading))
+	return {"case": case, "rows": rows}
 
 
 # --- strike risk ---------------------------------------------------------------------------------
@@ -139,7 +176,7 @@ static func outlook(turn: int) -> Dictionary:
 	if LabourState.union_tier() != LabourState.UNION_NONE:
 		o.merge({"tone": "ok", "words": "Union agreement in force. No strikes.", "turns": -1}, true)
 	elif turn < u.strike_free_until:
-		o.merge({"tone": "ok", "words": "Pay rises hold strikes off.", "turns": u.strike_free_until - turn,
+		o.merge({"tone": "ok", "words": "Settled. No strikes for now.", "turns": u.strike_free_until - turn,
 			"caption": TURNS_FREE}, true)
 	elif s < LabourUnrest.HEAVY_STRIKE_BELOW:
 		o.merge({"tone": "bad", "words": "Half your buildings can strike."}, true)
@@ -151,13 +188,8 @@ static func outlook(turn: int) -> Dictionary:
 
 
 func _risk() -> Control:
-	var col := VBoxContainer.new()
-	col.name = "StrikeStatus"
-	col.add_theme_constant_override("separation", 10)
-	col.add_child(Parts.heading("Strike risk"))
-	var case := Kit.plastic_case("StrikeRiskCase")
-	col.add_child(case)
-	var rows: VBoxContainer = case.get_child(0)
+	var c := _cased("StrikeStatus", "Strike risk")
+	var rows: VBoxContainer = c.rows
 	rows.add_theme_constant_override("separation", 12)
 	var o := outlook(int(TurnManager.current_turn))
 	var module := Kit.module("Outlook")
@@ -167,7 +199,7 @@ func _risk() -> Control:
 	info.name = "Mood"
 	row.add_child(info)
 	if int(o.turns) >= 0:
-		row.add_child(_turns_col(int(o.turns), str(o.caption), _drum_w(int(o.turns), [str(o.caption)])))
+		row.add_child(_turns_col(int(o.turns), str(o.caption)))
 	Tip.attach(module, {"name": str(o.title), "detail": str(o.words), "tone": str(o.tone)})
 	rows.add_child(module)
 	var scale := StrikeScale.new(LabourState.satisfaction)
@@ -195,126 +227,13 @@ func _risk() -> Control:
 		how.tooltip_text = "Opens the encyclopedia's page on strikes and accidents."
 		how.pressed.connect(func() -> void: MatchState.encyclopedia_entry_requested.emit(MECHANICS_ENTRY))
 		foot.add_child(how)
-	col.set_meta("outlook", o)
-	return col
+	c.case.set_meta("outlook", o)
+	return c.case
 
 
-# --- the board -----------------------------------------------------------------------------------
-
-## The named and striking buildings under "All strikes (N buildings)".
-func _board(iids: Array) -> Control:
-	var u := LabourState.unrest
-	var turn := int(TurnManager.current_turn)
-	var named: Array = u.warning.get("buildings", [])
-	var striking := not u.active.is_empty()
-	var col := VBoxContainer.new()
-	col.name = "OnStrike" if striking else "WarningBoard"
-	col.add_theme_constant_override("separation", 10)
-	var title := "On strike"
-	if not striking:
-		title = "Strike warning: turn %d" % int(u.warning.get("turn", turn))
-	elif not named.is_empty():
-		title = "Strikes"
-	col.add_child(Parts.heading(title))
-	var case := Kit.plastic_case("StrikeBoardCase")
-	col.add_child(case)
-	var rows: VBoxContainer = case.get_child(0)
-	var losses := {}
-	var costs := {}
-	var breaks := {}
-	var total_loss := 0.0
-	var total_cost := 0.0
-	var total_break := 0.0
-	var left := 0
-	for iid: String in iids:
-		losses[iid] = _loss(iid)
-		costs[iid] = u.pay_raise_cost(iid)
-		breaks[iid] = u.break_cost(iid)
-		total_loss += float(losses[iid])
-		total_cost += float(costs[iid])
-		total_break += float(breaks[iid])
-		left = maxi(left, u.strike_turns_left(iid))
-	var turns := left if striking else maxi(0, int(u.warning.get("turn", turn)) - turn)
-	var caption := TURNS_LEFT if striking else STARTS_IN
-	var grid := _grid(losses.values() + costs.values() + breaks.values() + [total_loss, total_cost, total_break], turns, caption)
-	var head := Kit.module("AllStrikes")
-	var row := Kit.row_of(head)
-	row.add_child(Kit.raised("econ_icon_labour", Kit.EMBLEM_PX))
-	var n := iids.size()
-	var cut := LabourUnrest.output_cut_pct()
-	var words := ("Output %s%%" % _n(-cut)) if striking else "Output %s%% for %d turns" % [_n(-cut), LabourUnrest.STRIKE_TURNS]
-	row.add_child(Kit.info("All strikes (%d building%s)" % [n, "" if n == 1 else "s"], "bad" if striking else "warn", words))
-	row.add_child(_turns_col(turns, caption, float(grid.fig_w)))
-	row.add_child(_money_col(total_loss, Parts.RED, LOSS, grid,
-		{"name": LOSS, "detail": "%d%% of every striker's output for the turns its strike runs, at today's prices." % LabourUnrest.output_cut_pct()}))
-	row.add_child(_actions("all", total_cost, total_break, grid))
-	head.set_meta("total", total_cost)
-	head.set_meta("break", total_break)
-	head.set_meta("loss", total_loss)
-	rows.add_child(head)
-	if _confirming.get_slice(":", 1) == "all":
-		rows.add_child(_bed(_confirming.get_slice(":", 0), "all", iids))
-	var feed := PanelContainer.new()
-	feed.name = "Feed"
-	feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var bare := StyleBoxEmpty.new()
-	bare.content_margin_left = FEED_INDENT
-	feed.add_theme_stylebox_override("panel", bare)
-	rows.add_child(feed)
-	var cable: Control = Cable.new()
-	cable.centre_x = FEED_X - FEED_INDENT
-	cable.inset = 0.0
-	feed.add_child(cable)
-	var list := VBoxContainer.new()
-	list.name = "Strikers"
-	list.add_theme_constant_override("separation", 6)
-	list.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	feed.add_child(list)
-	var taps: Array[Control] = []
-	for iid: String in iids:
-		var m := _member(iid, float(losses[iid]), float(costs[iid]), float(breaks[iid]), grid)
-		list.add_child(m)
-		taps.append(m)
-		if _confirming.get_slice(":", 1) == iid:
-			list.add_child(_bed(_confirming.get_slice(":", 0), iid, [iid]))
-	cable.taps = taps
-	return col
-
-
-## What a building's strike would cost or still costs: a named one's whole strike, a striking one's turns left.
-func _loss(iid: String) -> float:
-	var u := LabourState.unrest
-	if u.is_on_strike(iid):
-		return u.output_value_per_turn(iid) * (1.0 - LabourUnrest.STRIKE_OUTPUT_MULT) * float(u.strike_turns_left(iid))
-	return u.expected_loss(iid)
-
-
-## The board's columns: one digit count for every screen, so they are one width and their £ signs line up;
-## the loss column at least as wide as its label; the head's turns column as wide as its drum and label; the
-## keys one width, so the action screens line up too.
-static func _grid(values: Array, turns: int, caption: String) -> Dictionary:
-	var digits := 1
-	var suffix := 0.0
-	for v in values:
-		var p := MoneyFigure.screen(float(v))
-		digits = maxi(digits, Led.cells_for(str(p.figure)).size())
-		if str(p.suffix) != "":
-			suffix = Kit.caption_width(str(p.suffix), Kit.POUND_PX) + 4.0
-	var money_w := Kit.money_width(digits) + suffix
-	return {"digits": digits, "money_w": ceilf(money_w), "loss_w": ceilf(maxf(money_w, Kit.caption_width(LOSS) + 4.0)),
-		"fig_w": ceilf(_drum_w(turns, [caption])),
-		"key_w": maxf(CreamKey.width_for(RAISE, "", true, false, KEY_SCALE), CreamKey.width_for(BREAK, "", true, false, KEY_SCALE))}
-
-
-static func _drum_w(turns: int, captions: Array) -> float:
-	var w := Drum.width_for(str(maxi(0, turns)).length(), Drum.led_height())
-	for c: String in captions:
-		w = maxf(w, Kit.caption_width(c) + 4.0)
-	return w
-
-
-## Turns on a drum, its label under it, in a column `width` wide.
-static func _turns_col(turns: int, caption: String, width: float) -> VBoxContainer:
+## Turns on a drum, its label under it.
+static func _turns_col(turns: int, caption: String) -> VBoxContainer:
+	var width := maxf(Drum.width_for(str(maxi(0, turns)).length(), Drum.led_height()), Kit.caption_width(caption) + 4.0)
 	var col := VBoxContainer.new()
 	col.name = "Turns"
 	col.add_theme_constant_override("separation", 2)
@@ -328,98 +247,314 @@ static func _turns_col(turns: int, caption: String, width: float) -> VBoxContain
 	return col
 
 
-## A money figure on an LED screen in the board's column, with its label under it on the head (`caption`).
-## The loss column (`caption` set, or `wide`) is the loss column's width, the actions' screens the screens'.
-static func _money_col(value: float, colour: Color, caption: String, grid: Dictionary, tip: Dictionary, wide := false) -> VBoxContainer:
-	var col: VBoxContainer = Tip.TipVBox.new()
-	col.name = caption.replace(" ", "") if caption != "" else "Figure"
-	col.add_theme_constant_override("separation", 2)
-	var width := float(grid.loss_w) if caption != "" or wide else float(grid.money_w)
-	col.custom_minimum_size = Vector2(width, 0)
-	col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	col.mouse_filter = Control.MOUSE_FILTER_PASS if not tip.is_empty() else Control.MOUSE_FILTER_IGNORE
-	var p := MoneyFigure.screen(value)
-	col.add_child(Kit.money(str(p.figure), colour, int(grid.digits), str(p.suffix)))
-	if caption != "":
-		col.add_child(Kit.caption_under(caption, width))
-	col.set_meta("value", value)
-	if not tip.is_empty():
-		Tip.attach(col, tip)
-	return col
+# --- the sub-tabs --------------------------------------------------------------------------------
+
+## The sub-tab names, each with its count in brackets.
+static func subtab_text(id: String, n: int) -> String:
+	return "%s Strikes (%d)" % ["Upcoming" if id == UPCOMING else "Ongoing", n]
 
 
-## A row's two actions, one over the other: what a pay rise costs over its 10 turns beside Raise pay, and
-## what breaking the strike costs this turn beside Break strike. A key opens its bed under the row and stays
-## down while the bed is open.
-func _actions(target: String, pay: float, brk: float, grid: Dictionary) -> VBoxContainer:
-	var col := VBoxContainer.new()
-	col.name = "Actions"
-	col.add_theme_constant_override("separation", 6)
-	col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var pct := roundi(LabourUnrest.PAY_RAISE * 100.0)
-	var where := "at every striker" if target == "all" else "here"
+func _subtabs(upcoming_n: int, ongoing_n: int, shown: String) -> Control:
+	var bed := PanelContainer.new()
+	bed.name = "StrikeSubtabs"
+	var pad := StyleBoxEmpty.new()
+	pad.content_margin_left = 10
+	pad.content_margin_right = 10
+	pad.content_margin_top = 9
+	pad.content_margin_bottom = 10
+	bed.add_theme_stylebox_override("panel", pad)
+	bed.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	bed.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	bed.draw.connect(func() -> void:
+		Section.Nine.paint(bed, KEYBED, Rect2(Vector2.ZERO, bed.size).grow(KEYBED_MARGIN / Parts.LAYOUT), (KEYBED_MARGIN + KEYBED_CORNER) * Parts.TEXELS))
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 10)
+	bed.add_child(line)
+	for spec: Array in [[UPCOMING, upcoming_n,
+			"Buildings named for a strike that starts within %d turns." % LabourUnrest.UPCOMING_WITHIN],
+			[ONGOING, ongoing_n, "Buildings on strike now."]]:
+		var id := str(spec[0])
+		var text := subtab_text(id, int(spec[1]))
+		var k: Control = LatchKey.new()
+		k.name = "StrikeTab_%s" % id
+		k.set("text", text)
+		k.set("latched", id == shown)
+		k.custom_minimum_size.x = ceilf(Plate.FONT_SEMI.get_string_size(text.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, LatchKey.LABEL_PX).x
+			+ 2.0 * LatchKey.FACE_INSET / LatchKey.CAPTURE_SCALE + 24.0)
+		k.tooltip_text = str(spec[2])
+		k.connect("pressed", func() -> void:
+			_subtab = id
+			_confirming = ""
+			_rebuild())
+		line.add_child(k)
+	return bed
+
+
+# --- the table -----------------------------------------------------------------------------------
+
+## The chosen sub-tab's table, or a line saying it is empty.
+func _board(shown: String, iids: Array) -> Control:
+	var u := LabourState.unrest
+	var turn := int(TurnManager.current_turn)
+	var striking := shown == ONGOING
+	var heading := ""
+	if not iids.is_empty():
+		heading = "On strike" if striking else "Strike warning: turn %d" % int(u.warning.get("turn", turn))
+	var c := _cased("OnStrike" if striking else "WarningBoard", heading)
+	c.case.set_meta("subtab", shown)
+	var rows: VBoxContainer = c.rows
+	rows.add_theme_constant_override("separation", 6)
+	if iids.is_empty():
+		var none := Kit.body("No buildings on strike." if striking
+			else "No strikes due in the next %d turns." % LabourUnrest.UPCOMING_WITHIN)
+		none.name = "NoStrikes"
+		rows.add_child(none)
+		return c.case
+	var losses := {}
+	var settles := {}
+	var breaks := {}
+	var totals := {"loss": 0.0, "settle": 0.0, "break": 0.0}
+	var left := 0
+	for iid: String in iids:
+		losses[iid] = _loss(iid)
+		settles[iid] = u.pay_raise_cost(iid)
+		breaks[iid] = u.break_cost(iid)
+		totals["loss"] += float(losses[iid])
+		totals["settle"] += float(settles[iid])
+		totals["break"] += float(breaks[iid])
+		left = maxi(left, u.strike_turns_left(iid))
+	var grid := _grid(losses.values() + settles.values() + breaks.values() + totals.values())
+	rows.add_child(_header_row(grid))
+	var n := iids.size()
+	var when := ""
+	if striking:
+		when = "%d turn%s left" % [left, "" if left == 1 else "s"]
+	else:
+		var due := maxi(0, int(u.warning.get("turn", turn)) - turn)
+		when = "Starts this turn" if due == 0 else "Starts in %d turn%s" % [due, "" if due == 1 else "s"]
+	var head := _row("AllStrikes", Kit.raised("econ_icon_labour", HEAD_ICON_PX),
+		Kit.info("All strikes (%d building%s)" % [n, "" if n == 1 else "s"], "bad" if striking else "warn", when),
+		"all", float(totals.loss), float(totals.settle), float(totals["break"]), grid, iids)
+	head.set_meta("total", totals.settle)
+	head.set_meta("break", totals["break"])
+	head.set_meta("loss", totals.loss)
+	rows.add_child(head)
+	if _confirming.get_slice(":", 1) == "all":
+		rows.add_child(_bed(_confirming.get_slice(":", 0), "all", iids))
+	rows.add_child(_fold_row(n))
+	var indent := MarginContainer.new()
+	indent.name = "StrikersFold"
+	indent.add_theme_constant_override("margin_left", MEMBER_INDENT)
+	indent.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	indent.visible = _members_open
+	rows.add_child(indent)
+	var list := VBoxContainer.new()
+	list.name = "Strikers"
+	list.add_theme_constant_override("separation", 6)
+	list.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	indent.add_child(list)
+	for iid: String in iids:
+		list.add_child(_member(iid, float(losses[iid]), float(settles[iid]), float(breaks[iid]), grid))
+		if _confirming.get_slice(":", 1) == iid:
+			list.add_child(_bed(_confirming.get_slice(":", 0), iid, [iid]))
+	return c.case
+
+
+## What a building's strike would cost or still costs: a named one's whole strike, a striking one's turns left.
+func _loss(iid: String) -> float:
+	var u := LabourState.unrest
+	if u.is_on_strike(iid):
+		return u.output_value_per_turn(iid) * (1.0 - LabourUnrest.STRIKE_OUTPUT_MULT) * float(u.strike_turns_left(iid))
+	return u.expected_loss(iid)
+
+
+## The table's columns: one digit count for every screen, so they are one width and their £ signs line up;
+## Output loss a screen wide (or its label), Cost to manage two screens, Action the two keys.
+static func _grid(values: Array) -> Dictionary:
+	var digits := 1
+	var suffix := 0.0
+	for v in values:
+		var p := MoneyFigure.screen(float(v))
+		digits = maxi(digits, Led.cells_for(str(p.figure)).size())
+		if str(p.suffix) != "":
+			suffix = Kit.caption_width(str(p.suffix), Kit.POUND_PX) + 4.0
+	var money_w := ceilf(Plate.FONT_SEMI.get_string_size("£", HORIZONTAL_ALIGNMENT_LEFT, -1, Kit.POUND_PX).x + 2.0
+		+ Led.width_for_cells(digits, true) + suffix)
+	var settle_w := CreamKey.width_for(SETTLE, "", false, false, KEY_SCALE)
+	var break_w := CreamKey.width_for(BREAK, "", false, false, KEY_SCALE)
+	return {"digits": digits, "money_w": money_w,
+		"loss_w": maxf(money_w, Kit.caption_width(LOSS) + 4.0),
+		"cost_w": maxf(2.0 * money_w + COL_GAP, Kit.caption_width(COST) + 4.0),
+		"settle_w": settle_w, "break_w": break_w,
+		"action_w": maxf(settle_w + break_w + COL_GAP, Kit.caption_width(ACTION) + 4.0)}
+
+
+## The column labels as metal labels, over the rows' columns.
+static func _header_row(grid: Dictionary) -> Control:
+	var wrap := MarginContainer.new()
+	wrap.name = "StrikeHeadings"
+	wrap.add_theme_constant_override("margin_left", roundi(Kit.PAD.x))
+	wrap.add_theme_constant_override("margin_right", roundi(Kit.PAD.x))
+	wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", COL_GAP)
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wrap.add_child(line)
+	for spec: Array in [[LOCATION, 0.0], [LOSS, float(grid.loss_w)], [COST, float(grid.cost_w)], [ACTION, float(grid.action_w)]]:
+		var l := Kit.caption(str(spec[0]), Kit.CAPTION_PX, HORIZONTAL_ALIGNMENT_LEFT if float(spec[1]) == 0.0 else HORIZONTAL_ALIGNMENT_CENTER)
+		l.name = "Heading_%s" % str(spec[0]).replace(" ", "")
+		if float(spec[1]) == 0.0:
+			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		else:
+			l.custom_minimum_size.x = float(spec[1])
+		line.add_child(l)
+	return wrap
+
+
+## A slim table row: `icon` and `info` in Location, then the loss, the two costs and the two keys.
+func _row(row_name: String, icon: Control, info: Control, target: String, loss: float, settle: float, brk: float,
+		grid: Dictionary, iids: Array) -> PanelContainer:
+	var module := Kit.module(row_name, true)
+	var pad := StyleBoxEmpty.new()
+	pad.content_margin_left = Kit.PAD.x
+	pad.content_margin_right = Kit.PAD.x
+	pad.content_margin_top = ROW_PAD_Y
+	pad.content_margin_bottom = ROW_PAD_Y
+	module.add_theme_stylebox_override("panel", pad)
+	var row := Kit.row_of(module)
+	row.custom_minimum_size.y = 0
+	row.add_theme_constant_override("separation", COL_GAP)
+	var location := HBoxContainer.new()
+	location.name = "Location"
+	location.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	location.add_theme_constant_override("separation", COL_GAP)
+	location.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	location.add_child(icon)
+	location.add_child(info)
+	row.add_child(location)
+	var striking := target != "all" and LabourState.unrest.is_on_strike(target)
+	var loss_tip := "%d%% of %s output for %s, at today's prices." % [LabourUnrest.output_cut_pct(),
+		"every striker's" if target == "all" else "its",
+		("the %d turns left" % LabourState.unrest.strike_turns_left(target)) if striking else "the turns its strike runs"]
+	row.add_child(_money_cell(loss, Parts.RED, float(grid.loss_w), grid, {"name": LOSS, "detail": loss_tip}, "Loss"))
+	var costs := HBoxContainer.new()
+	costs.name = "Costs"
+	costs.custom_minimum_size.x = float(grid.cost_w)
+	costs.alignment = BoxContainer.ALIGNMENT_CENTER
+	costs.add_theme_constant_override("separation", COL_GAP)
+	costs.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	costs.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var where := "every striker" if target == "all" else "this building"
 	var shift := LabourUnrest.BREAK_SHIFT_ROUND if target == "all" else LabourUnrest.BREAK_SHIFT_ONE
-	for spec: Array in [
-		["raise", RAISE, "RaisePay", pay, {"name": PAY_RISE, "detail": "%d%% more labour %s for %d turns." % [pct, where, LabourUnrest.PAY_RAISE_TURNS]}],
-		["break", BREAK, "BreakStrike", brk, {"name": "Strike breaking", "detail": "Replacement crews, paid this turn. Satisfaction %s for %d turns." % [_n(shift), LabourState.EVENT_SHIFT_TURNS]}],
-	]:
-		var line := HBoxContainer.new()
-		line.name = "%sLine" % str(spec[2])
-		line.add_theme_constant_override("separation", Kit.GAP)
-		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		col.add_child(line)
-		line.add_child(_money_col(float(spec[3]), DS.PALETTE["TEXT"], "", grid, spec[4]))
+	costs.add_child(_money_cell(settle, DS.PALETTE["TEXT"], float(grid.money_w), grid, {"name": SETTLE,
+		"detail": "Pay %d%% higher at %s for %d turns." % [roundi(LabourUnrest.PAY_RAISE * 100.0), where, LabourUnrest.PAY_RAISE_TURNS]}, "SettleCost"))
+	costs.add_child(_money_cell(brk, DS.PALETTE["TEXT"], float(grid.money_w), grid, {"name": BREAK,
+		"detail": "Replacement crews at %s, paid this turn. Satisfaction %s for %d turns." % [where, _n(shift), LabourState.EVENT_SHIFT_TURNS]}, "BreakCost"))
+	row.add_child(costs)
+	var keys := HBoxContainer.new()
+	keys.name = "Actions"
+	keys.custom_minimum_size.x = float(grid.action_w)
+	keys.alignment = BoxContainer.ALIGNMENT_CENTER
+	keys.add_theme_constant_override("separation", COL_GAP)
+	keys.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	keys.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	for spec: Array in [["settle", SETTLE, "Settle", float(grid.settle_w)], ["break", BREAK, "BreakStrike", float(grid.break_w)]]:
 		var action := "%s:%s" % [str(spec[0]), target]
 		var key_name := "%sAll" % str(spec[2]) if target == "all" else "%s_%s" % [str(spec[2]), target]
-		var key: Button = CreamKey.make(key_name, str(spec[1]), "", float(grid.key_w), true, false, KEY_SCALE)
+		var key: Button = CreamKey.make(key_name, str(spec[1]), "", float(spec[3]), false, false, KEY_SCALE)
 		key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		key.set("chosen", _confirming == action)
 		key.pressed.connect(func() -> void: _toggle_confirm(action))
-		line.add_child(key)
-	return col
+		keys.add_child(key)
+	row.add_child(keys)
+	module.set_meta("buildings", iids)
+	return module
 
 
-## One named or striking building on the board's cable: its emblem, its name with the good it makes in a small
-## well, its tile under its lamp, its loss, and its own two actions.
-func _member(iid: String, loss: float, cost: float, brk: float, grid: Dictionary) -> PanelContainer:
-	var u := LabourState.unrest
-	var b := BuildingState.get_building(iid)
-	var module := Kit.module("Striker_%s" % iid)
+## A money figure on a screen centred in a cell `width` wide; its hover names what it is.
+static func _money_cell(value: float, colour: Color, width: float, grid: Dictionary, tip: Dictionary, cell_name: String) -> Control:
+	var cell: HBoxContainer = Tip.TipHBox.new()
+	cell.name = cell_name
+	cell.alignment = BoxContainer.ALIGNMENT_CENTER
+	cell.custom_minimum_size.x = width
+	cell.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	cell.add_theme_constant_override("separation", 2)
+	cell.mouse_filter = Control.MOUSE_FILTER_PASS
+	var p := MoneyFigure.screen(value)
+	cell.add_child(Kit.caption("£", Kit.POUND_PX, HORIZONTAL_ALIGNMENT_RIGHT))
+	var led: Control = Led.new()
+	led.name = "Led"
+	led.set("compact", true)
+	var fig := str(p.figure)
+	led.call("set_figure", " ".repeat(maxi(0, int(grid.digits) - Led.cells_for(fig).size())) + fig, colour)
+	cell.add_child(led)
+	if str(p.suffix) != "":
+		cell.add_child(Kit.caption(str(p.suffix), Kit.POUND_PX))
+	cell.set_meta("value", value)
+	Tip.attach(cell, tip)
+	return cell
+
+
+## The row under All strikes that folds its buildings away: "N buildings" and the fold mark. Folded at first.
+func _fold_row(n: int) -> Control:
+	var module := Kit.module("StrikersFoldRow", true)
+	var pad := StyleBoxEmpty.new()
+	pad.content_margin_left = Kit.PAD.x
+	pad.content_margin_right = Kit.PAD.x
+	pad.content_margin_top = ROW_PAD_Y
+	pad.content_margin_bottom = ROW_PAD_Y
+	module.add_theme_stylebox_override("panel", pad)
 	var row := Kit.row_of(module)
-	row.add_child(Kit.emblem(str(b.get("building_id", "")), Kit.EMBLEM_PX))
+	row.custom_minimum_size.y = 0
+	var info := Kit.info("%d building%s" % [n, "" if n == 1 else "s"], "", "", true)
+	info.name = "FoldTitle"
+	row.add_child(info)
+	var chevron: Control = info.find_child("Chevron", true, false)
+	if chevron != null:
+		chevron.set_meta("open", _members_open)
+	Tip.attach(module, {"name": "%d building%s" % [n, "" if n == 1 else "s"],
+		"detail": "Hide the buildings." if _members_open else "Show each building, its figures and its own keys."})
+	Kit.on_click(module, func() -> void:
+		_members_open = not _members_open
+		_rebuild())
+	return module
+
+
+## One named or striking building: its emblem; its name with the good it makes in a small well, its tile
+## under it; its loss, its costs and its keys.
+func _member(iid: String, loss: float, settle: float, brk: float, grid: Dictionary) -> PanelContainer:
+	var b := BuildingState.get_building(iid)
 	var title := BuildingNaming.of(b) if not b.is_empty() else iid
-	var striking := u.is_on_strike(iid)
 	var tile_id := str(b.get("tile_id", ""))
 	var place := Catalog.tile_name(tile_id) if Catalog.tile_name(tile_id) != "" else Catalog.tile_label(tile_id)
-	var info := Kit.info(title, "bad" if striking else "warn", place)
-	row.add_child(info)
-	# The good it makes, in a small well at the end of its name's line: one column down the board.
+	var info := Kit.info(title, "", place)
 	var gid := _good_of(b)
 	if gid != "":
 		var name_l := info.get_node("Title") as Label
 		var line := HBoxContainer.new()
 		line.name = "TitleLine"
-		line.add_theme_constant_override("separation", 8)
+		line.add_theme_constant_override("separation", 4)
 		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		info.remove_child(name_l)
+		name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_l.autowrap_mode = TextServer.AUTOWRAP_OFF
+		name_l.custom_minimum_size.x = 0
+		name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		line.add_child(name_l)
 		var well := Kit.good_in_well(gid, -1, "", true, GOOD_PX)
 		well.name = "Makes"
-		well.size_flags_horizontal = Control.SIZE_SHRINK_END
 		well.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		line.add_child(well)
 		info.add_child(line)
 		info.move_child(line, 0)
-	row.add_child(_money_col(loss, Parts.RED, "", grid,
-		{"name": LOSS, "detail": ("%d%% of its output for the %d turns left." % [LabourUnrest.output_cut_pct(), u.strike_turns_left(iid)]) if striking
-			else "%d%% of its output for %d turns, at today's prices." % [LabourUnrest.output_cut_pct(), LabourUnrest.STRIKE_TURNS]}, true))
-	row.add_child(_actions(iid, cost, brk, grid))
-	module.set_meta("cost", cost)
+	var module := _row("Striker_%s" % iid, Kit.emblem(str(b.get("building_id", "")), ROW_ICON_PX), info, iid, loss, settle, brk, grid, [iid])
+	module.set_meta("cost", settle)
 	module.set_meta("break", brk)
 	module.set_meta("loss", loss)
-	var state := ("On strike, %d turns left" % u.strike_turns_left(iid)) if striking else "Named in the strike warning"
-	Tip.attach(module, {"stage": title, "name": "On strike" if striking else "Strike warning", "detail": state + ".",
+	var striking := LabourState.unrest.is_on_strike(iid)
+	Tip.attach(module, {"stage": title, "name": "On strike" if striking else "Strike warning",
+		"detail": ("On strike, %d turns left." % LabourState.unrest.strike_turns_left(iid)) if striking else "Named in the strike warning.",
 		"tone": "bad" if striking else "warn"})
 	return module
 
@@ -435,9 +570,9 @@ static func _good_of(b: Dictionary) -> String:
 	return ""
 
 
-## The bed under an action's key: what it does, then Confirm and Cancel. `action` is "raise" or "break".
+## The bed under an action's key: what it does, then Confirm and Cancel. `action` is "settle" or "break".
 func _bed(action: String, target: String, iids: Array) -> Control:
-	var stem := "RaisePay" if action == "raise" else "BreakStrike"
+	var stem := "Settle" if action == "settle" else "BreakStrike"
 	var bed := PanelContainer.new()
 	bed.name = "%sBed" % stem
 	var pad := StyleBoxEmpty.new()
@@ -457,7 +592,7 @@ func _bed(action: String, target: String, iids: Array) -> Control:
 	var confirm: Button = CreamKey.make("Confirm%s" % stem, "Confirm", "", 0.0, false, false, KEY_SCALE)
 	confirm.custom_minimum_size.x = CreamKey.width_for("Confirm", "", false, false, KEY_SCALE) + 12.0
 	confirm.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	confirm.pressed.connect(func() -> void: _confirm(action, target))
+	confirm.pressed.connect(func() -> void: _confirm(action, target, iids))
 	line.add_child(confirm)
 	var cancel: Button = CreamKey.make("Cancel%s" % stem, "Cancel", "", 0.0, false, false, KEY_SCALE)
 	cancel.custom_minimum_size.x = CreamKey.width_for("Cancel", "", false, false, KEY_SCALE) + 12.0
@@ -468,18 +603,18 @@ func _bed(action: String, target: String, iids: Array) -> Control:
 	return bed
 
 
-## What an action does, as its bed says it. Breaking also says how close the workforce is to remembering it for
-## good, or that this one will.
+## What an action does, as its bed says it. Breaking also says how near the workforce is to remembering it for
+## good, or that this one will make it.
 static func bed_words(action: String, target: String, iids: Array) -> String:
 	var u := LabourState.unrest
 	var turns := LabourState.EVENT_SHIFT_TURNS
-	if action == "raise":
+	if action == "settle":
 		var pct := roundi(LabourUnrest.PAY_RAISE * 100.0)
 		if target == "all":
-			return "Labour costs %d%% more at %s for %d turns. Every strike ends, and none can start for %d turns." % [
+			return "Pay %d%% higher at %s for %d turns. Every strike ends, and none can start for %d turns." % [
 				pct, "this building" if iids.size() == 1 else "these %d buildings" % iids.size(),
 				LabourUnrest.PAY_RAISE_TURNS, LabourUnrest.STRIKE_FREE_TURNS]
-		return "Labour costs %d%% more here for %d turns. %s" % [pct, LabourUnrest.PAY_RAISE_TURNS,
+		return "Pay %d%% higher here for %d turns. %s" % [pct, LabourUnrest.PAY_RAISE_TURNS,
 			"Its workers go back to work." if u.is_on_strike(target) else "It leaves the strike."]
 	var said := ""
 	if target == "all":
@@ -499,7 +634,7 @@ static func bed_words(action: String, target: String, iids: Array) -> String:
 		u.buildings_broken, LabourUnrest.ROUTINE_BUILDINGS, LabourUnrest.ROUTINE_BUILDINGS]
 
 
-func _confirm(action: String, target: String) -> void:
+func _confirm(action: String, target: String, iids: Array) -> void:
 	var u := LabourState.unrest
 	var turn := int(TurnManager.current_turn)
 	_confirming = ""
@@ -507,28 +642,23 @@ func _confirm(action: String, target: String) -> void:
 	var who := BuildingNaming.of(b) if not b.is_empty() else target
 	if action == "break":
 		if target == "all":
-			if u.break_all(turn):
+			if u.break_all(turn, iids):
 				MatchState.request_toast("Strikes broken. Everyone is back at work.", "warning")
 		elif u.break_strike(target, turn):
 			MatchState.request_toast("Strike broken at %s." % who, "warning")
 	elif target == "all":
-		if u.raise_pay_all(turn):
-			MatchState.request_toast("Pay raised for all strikers. No strikes for %d turns." % LabourUnrest.STRIKE_FREE_TURNS, "success")
+		if u.raise_pay_all(turn, iids):
+			MatchState.request_toast("Strikes settled. No strikes for %d turns." % LabourUnrest.STRIKE_FREE_TURNS, "success")
 	elif u.raise_pay(target):
-		MatchState.request_toast("Pay raised at %s." % who, "success")
+		MatchState.request_toast("Strike settled at %s." % who, "success")
 	_rebuild()
 
 
 # --- the record ----------------------------------------------------------------------------------
 
 func _record() -> Control:
-	var col := VBoxContainer.new()
-	col.name = "StrikeRecord"
-	col.add_theme_constant_override("separation", 10)
-	col.add_child(Parts.heading("Record"))
-	var case := Kit.plastic_case("RecordCase")
-	col.add_child(case)
-	var rows: VBoxContainer = case.get_child(0)
+	var c := _cased("StrikeRecord", "Record")
+	var rows: VBoxContainer = c.rows
 	rows.add_theme_constant_override("separation", 6)
 	var entries: Array = LabourState.unrest.record.duplicate()
 	entries.reverse()
@@ -538,14 +668,13 @@ func _record() -> Control:
 	for e: Dictionary in entries:
 		lost.append(float(e.get("lost", 0.0)))
 		turn_w = maxf(turn_w, Kit.caption_width("Turn %d" % int(e.get("turn", 0))) + 4.0)
-	var grid := _grid(lost, 0, "")
+	var grid := _grid(lost)
 	for i in entries.size():
 		var e: Dictionary = entries[i]
 		var names := PackedStringArray()
 		for b: Dictionary in e.get("buildings", []):
 			names.append(str(b.get("name", "")))
 		var outcome_id := str(e.get("outcome", ""))
-		var struck := outcome_id == "struck"
 		var m := Kit.module("RecordLine_%d" % i, true)
 		var row := Kit.row_of(m)
 		row.custom_minimum_size.y = 0
@@ -555,21 +684,22 @@ func _record() -> Control:
 		var who := ", ".join(names) if not names.is_empty() else "Nobody"
 		var outcome := "Called off"
 		var tone := "ok"
-		if struck:
+		if outcome_id == "struck":
 			outcome = "Struck for %d turns" % LabourUnrest.STRIKE_TURNS
 			tone = "bad"
 		elif outcome_id == "broken":
 			outcome = "Broken"
 			tone = "warn"
 		row.add_child(Kit.line_info(who, tone, outcome))
-		if struck:
-			row.add_child(_money_col(float(e.get("lost", 0.0)), Parts.RED, "", grid,
-				{"name": "Output lost", "detail": "%d%% of the strikers' output for %d turns, at the prices of the day." % [LabourUnrest.output_cut_pct(), LabourUnrest.STRIKE_TURNS]}))
+		if outcome_id == "struck":
+			row.add_child(_money_cell(float(e.get("lost", 0.0)), Parts.RED, float(grid.loss_w), grid,
+				{"name": "Output lost", "detail": "%d%% of the strikers' output for %d turns, at the prices of the day." % [
+					LabourUnrest.output_cut_pct(), LabourUnrest.STRIKE_TURNS]}, "Lost"))
 		else:
-			row.add_child(Kit.spacer(float(grid.money_w), 0))
+			row.add_child(Kit.spacer(float(grid.loss_w), 0))
 		m.set_meta("words", "Turn %d. %s. %s." % [int(e.get("turn", 0)), who, outcome])
 		rows.add_child(m)
-	return col
+	return c.case
 
 
 ## A threshold as the panels print it, with a true minus sign.
@@ -583,7 +713,9 @@ func shot_views() -> Array:
 			LabourState.set_union_tier(LabourState.UNION_NONE)
 			LabourState.unrest.reset()
 			LabourState.satisfaction = 12.0
+			_subtab = ""
 			_confirming = ""
+			_members_open = false
 			_rebuild()},
 		{"name": "warning", "setup": func() -> void:
 			LabourState.set_union_tier(LabourState.UNION_NONE)
@@ -592,13 +724,22 @@ func shot_views() -> Array:
 			var named: Array = LabourState.unrest.eligible_buildings().slice(0, 2)
 			LabourState.unrest.warning = {"turn": LabourUnrest.next_check_turn(int(TurnManager.current_turn)),
 				"buildings": named, "heavy": false, "light": named.size()}
+			_subtab = ""
 			_confirming = ""
+			_members_open = false
 			_rebuild()},
-		{"name": "warning_confirm", "setup": func() -> void:
-			_confirming = "raise:all"
+		{"name": "warning_open", "setup": func() -> void:
+			_members_open = true
+			_rebuild()},
+		{"name": "warning_settle", "setup": func() -> void:
+			_confirming = "settle:all"
 			_rebuild()},
 		{"name": "warning_break", "setup": func() -> void:
 			_confirming = "break:all"
+			_rebuild()},
+		{"name": "warning_ongoing_tab", "setup": func() -> void:
+			_subtab = ONGOING
+			_confirming = ""
 			_rebuild()},
 		{"name": "on_strike", "setup": func() -> void:
 			LabourState.set_union_tier(LabourState.UNION_NONE)
@@ -610,6 +751,8 @@ func shot_views() -> Array:
 			LabourState.unrest._add_record(10, named, "called off", 0.0)
 			LabourState.unrest._add_record(20, named, "struck", 96.0)
 			LabourState.unrest._add_record(30, named.slice(0, 1), "broken", 0.0)
+			_subtab = ""
+			_members_open = true
 			_confirming = ("break:%s" % named[0]) if not named.is_empty() else ""
 			_rebuild()},
 	]

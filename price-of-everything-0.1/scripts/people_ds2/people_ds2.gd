@@ -26,8 +26,6 @@ const TABS := ["Advisors", "Labour", "Strikes"]
 ## Loyalty (−10..+10) under this is disloyal; the Advisors key's lamp then lights red.
 const DISLOYAL_BELOW := -3.4
 const DISLOYAL_LAMP := Color("#e2604a")
-## The Strikes key's lamp while a warning stands or a strike is on.
-const STRIKE_LAMP := Color("#e2604a")
 ## From layout.json (people_backing), in layout px: the render's shadow room and the foot drawn whole.
 const BACKING_MARGIN := 24.0
 const BACKING_FOOT := 420.0
@@ -221,7 +219,6 @@ func _refresh_key_lamps() -> void:
 	_keys[0].tooltip_text = ("%d disloyal advisor%s" % [disloyal, "" if disloyal == 1 else "s"]) if disloyal > 0 else ""
 	var u := LabourState.unrest
 	var unrest := not u.warning.is_empty() or not u.active.is_empty()
-	_keys[2].set("lamp", STRIKE_LAMP if unrest else Color(0, 0, 0, 0))
 	_keys[2].tooltip_text = ("Strike warning for turn %d" % int(u.warning.get("turn", 0))) if not u.warning.is_empty() \
 		else ("%d building%s on strike" % [u.active.size(), "" if u.active.size() == 1 else "s"] if unrest else "")
 

@@ -31,6 +31,8 @@ const PAY_RAISE := 0.20
 const PAY_RAISE_TURNS := 10
 const STRIKE_FREE_TURNS := 15
 const RECORD_CAP := 20
+## The Strikes tab's Upcoming count takes strikes starting within this many turns.
+const UPCOMING_WITHIN := 5
 ## Breaking a strike: replacement crews and guards cost this many turns of a building's base wage bill, paid
 ## this turn, and lower the satisfaction target by 5 a building or 20 for a whole round, for 10 turns.
 const BREAK_COST_TURNS := 1.0
@@ -210,7 +212,7 @@ func _draw_warning(check_turn: int) -> void:
 		return
 	warning = {"turn": check_turn, "buildings": named, "heavy": heavy, "light": strike_size(all.size(), false)}
 	_bell("strike_warning", "warning", "Strike warning",
-		"%s will strike on turn %d unless satisfaction rises above %s or you raise their pay." % [
+		"%s will strike on turn %d unless satisfaction reaches %s. You can settle or break it on the Strikes tab." % [
 			_names_text(named), check_turn, LabourState.signed_text(STRIKE_BELOW)])
 
 
@@ -348,6 +350,20 @@ func pay_raise_cost(iid: String) -> float:
 	return Production._base_labour_cost(b) * PAY_RAISE * float(PAY_RAISE_TURNS)
 
 
+## The named buildings whose strike starts within UPCOMING_WITHIN turns of `turn`.
+func upcoming(turn: int) -> Array:
+	if warning.is_empty() or int(warning.get("turn", 0)) - turn > UPCOMING_WITHIN:
+		return []
+	return (warning.get("buildings", []) as Array).duplicate()
+
+
+## The buildings on strike, in id order.
+func ongoing() -> Array:
+	var out: Array = active.keys()
+	out.sort()
+	return out
+
+
 ## The buildings a pay rise for all strikers covers: those named or on strike.
 func affected_buildings() -> Array:
 	var out: Array = (warning.get("buildings", []) as Array).duplicate()
@@ -357,7 +373,7 @@ func affected_buildings() -> Array:
 	return out
 
 
-## Raise pay at one named or striking building: +20% labour there for 10 turns, its strike ends or it leaves
+## Settle one named or striking building's strike with a pay rise: +20% labour there for 10 turns, its strike ends or it leaves
 ## the warning. No change to satisfaction.
 func raise_pay(iid: String) -> bool:
 	if not is_named(iid) and not is_on_strike(iid):
@@ -380,17 +396,15 @@ func _end_one(iid: String) -> void:
 			warning["buildings"] = left
 
 
-## Raise pay at every named or striking building: each +20% for 10 turns, every strike ends, the warning
-## clears, and there are no strikes for 15 turns.
-func raise_pay_all(turn: int) -> bool:
-	var all := affected_buildings()
+## Settle every strike with a pay rise at each named or striking building (or those of them in `only`): each +20% for 10 turns, their
+## strikes end, they leave the warning, and there are no strikes for 15 turns.
+func raise_pay_all(turn: int, only: Array = []) -> bool:
+	var all := _round(only)
 	if all.is_empty():
 		return false
 	for iid: String in all:
 		pay_raises[iid] = PAY_RAISE_TURNS
-		if is_on_strike(iid):
-			_end_strike_bought(iid)
-	warning = {}
+		_end_one(iid)
 	strike_free_until = turn + STRIKE_FREE_TURNS
 	changed.emit()
 	return true
@@ -425,19 +439,17 @@ func break_strike(iid: String, turn: int) -> bool:
 	return true
 
 
-## Break the whole round: every named and striking building goes back to work at once, each paying
-## break_cost this turn, and the satisfaction target falls 20 for 10 turns. The second round broken makes it
+## Break the whole round: every named and striking building (or those of them in `only`) goes back to work
+## at once, each paying break_cost this turn, and the satisfaction target falls 20 for 10 turns. The second round broken makes it
 ## routine. No protection follows, unlike a pay rise for all.
-func break_all(turn: int) -> bool:
-	var all := affected_buildings()
+func break_all(turn: int, only: Array = []) -> bool:
+	var all := _round(only)
 	if all.is_empty():
 		return false
 	var cost := 0.0
 	for iid: String in all:
 		cost += break_cost(iid)
-		if is_on_strike(iid):
-			_end_strike_bought(iid)
-	warning = {}
+		_end_one(iid)
 	_charge_break(cost, turn)
 	LabourState.add_target_shift("strikes_broken_%d" % turn, "Strikes broken", BREAK_SHIFT_ROUND)
 	_add_record(turn, all, "broken", 0.0)
@@ -448,6 +460,14 @@ func break_all(turn: int) -> bool:
 		_names_text(all), "is" if all.size() == 1 else "are", LabourState.signed_text(BREAK_SHIFT_ROUND), LabourState.EVENT_SHIFT_TURNS])
 	changed.emit()
 	return true
+
+
+## The buildings an action for all acts on: every named and striking one, or those of them in `only`.
+func _round(only: Array) -> Array:
+	var all := affected_buildings()
+	if only.is_empty():
+		return all
+	return all.filter(func(iid: String) -> bool: return only.has(iid))
 
 
 ## Whether breaking `target` ("all" or a building) now would make strike breaking routine.

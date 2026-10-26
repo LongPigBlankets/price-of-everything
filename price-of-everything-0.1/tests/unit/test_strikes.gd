@@ -47,6 +47,13 @@ func _tick(turn: int) -> void:
 	_u().tick(turn)
 
 
+func _left_click() -> InputEventMouseButton:
+	var e := InputEventMouseButton.new()
+	e.button_index = MOUSE_BUTTON_LEFT
+	e.pressed = true
+	return e
+
+
 func _sum_break() -> float:
 	var total := 0.0
 	for iid in _u().affected_buildings():
@@ -423,7 +430,7 @@ func _test_strike_telemetry() -> void:
 	_fresh()
 
 
-## AC16.1–AC16.3: the Strikes tab, its key lamp and the diagnostics rows.
+## AC16.1–AC16.3: the Strikes tab (its sub-tabs, its table, its keys) and the diagnostics rows.
 func _test_strikes_tab_and_diagnostics() -> void:
 	_fresh(-80.0)
 	var iids := _company(4)
@@ -435,40 +442,62 @@ func _test_strikes_tab_and_diagnostics() -> void:
 	shell.call("show_tab", 2)
 	await get_tree().process_frame
 	var tab: Control = shell.call("body", 2)
+	tab.set("_subtab", "")
 	tab.call("_rebuild")
-	_check(tab.find_child("WarningBoard", true, false) != null and tab.find_child("RaisePayAll", true, false) != null,
-		"AC16.1 a warning shows its board and the key to raise pay for all")
-	var named := str((_u().warning.buildings as Array)[0])
-	_check(tab.find_child("RaisePay_%s" % named, true, false) != null, "AC16.1 each named building has its own key")
-	var board: Control = tab.find_child("StrikeBoardCase", true, false)
-	var racked: VBoxContainer = board.get_child(0) if board != null else null
-	var head: Control = racked.get_child(0) if racked != null else null
-	var head_title: Label = head.find_child("Title", true, false) if head != null else null
 	var n := (_u().warning.buildings as Array).size()
-	_check(head != null and head.name == "AllStrikes" and head_title != null and head_title.text == "All strikes (%d building%s)" % [n, "" if n == 1 else "s"],
-		"AC16.1 the board's first row is All strikes (N buildings), here %d" % n)
+	var up_key: Control = tab.find_child("StrikeTab_upcoming", true, false)
+	var on_key: Control = tab.find_child("StrikeTab_ongoing", true, false)
+	_check(up_key != null and str(up_key.get("text")) == "Upcoming Strikes (%d)" % n and bool(up_key.get("latched"))
+		and on_key != null and str(on_key.get("text")) == "Ongoing Strikes (0)",
+		"AC16.2 the sub-tabs count their buildings in brackets, Upcoming open during a warning")
+	_check(_u().upcoming(8).size() == n and _u().upcoming(4).is_empty(), "AC16.2 Upcoming counts only strikes due within 5 turns")
+	shell.call("_refresh_key_lamps")
+	var keys: Array = shell.get("_keys")
+	_check((keys[2].get("lamp") as Color).a == 0.0, "AC16.2 the Strikes key carries no lamp")
+	_check(tab.find_child("WarningBoard", true, false) != null and tab.find_child("SettleAll", true, false) != null,
+		"AC16.1 a warning shows its table and the key to settle every strike")
+	var named := str((_u().warning.buildings as Array)[0])
+	var board: Control = tab.find_child("WarningBoard", true, false)
+	var headings: Control = board.find_child("StrikeHeadings", true, false)
+	var labels := PackedStringArray()
+	if headings != null:
+		for l: Label in headings.find_children("*", "Label", true, false):
+			labels.append(l.text)
+	_check(labels == PackedStringArray(["Location", "Output loss", "Cost to manage", "Action"]), "AC16.1 the table's columns are labelled (%s)" % ", ".join(labels))
+	var head: Control = board.find_child("AllStrikes", true, false)
+	var head_title: Label = head.find_child("Title", true, false) if head != null else null
+	_check(head != null and head_title != null and head_title.text == "All strikes (%d building%s)" % [n, "" if n == 1 else "s"]
+		and not head.find_children("*", "Label", true, false).any(func(l: Label) -> bool: return l.text.contains("Output")),
+		"AC16.1 the first row is All strikes (N buildings), here %d, without the output words" % n)
 	var total := 0.0
 	var loss := 0.0
 	for iid in _u().warning.buildings:
 		total += _u().pay_raise_cost(str(iid))
 		loss += _u().expected_loss(str(iid))
 	_check(head != null and is_equal_approx(float(head.get_meta("total", -1.0)), total) and is_equal_approx(float(head.get_meta("loss", -1.0)), loss),
-		"AC16.1 All strikes carries the total pay rise and its own expected loss")
+		"AC16.1 All strikes carries the total to settle and its own output loss")
+	var fold: Control = tab.find_child("StrikersFold", true, false)
 	var member: Control = tab.find_child("Striker_%s" % named, true, false)
-	_check(member != null and member.find_child("Feed", false, false) == null and member.get_parent().name == "Strikers",
-		"AC16.1 each building is nested under All strikes")
+	_check(tab.find_child("StrikersFoldRow", true, false) != null and fold != null and not fold.visible and member != null and member.get_parent().name == "Strikers",
+		"AC16.1 the buildings start folded under their own row")
+	(tab.find_child("StrikersFoldRow", true, false) as Control).gui_input.emit(_left_click())
+	fold = tab.find_child("StrikersFold", true, false)
+	member = tab.find_child("Striker_%s" % named, true, false)
+	_check(fold != null and fold.visible and member != null, "AC16.1 a click on the fold row shows them")
 	_check(member != null and member.find_child("IconWell", true, false) != null, "AC16.1 each building shows the good it makes")
-	var key: Button = tab.find_child("RaisePayAll", true, false)
-	_check(str(key.get("detail")) == "", "AC16.1 the pay rise's cost stands beside the key, not on it")
-	_check(tab.find_child("RaisePayBed", true, false) == null, "AC16.1 the pay rise's words are hidden until Raise pay is pressed")
+	var key: Button = tab.find_child("SettleAll", true, false)
+	_check(str(key.get("title")) == "Settle" and str(key.get("detail")) == "", "AC16.1 the key reads Settle, its cost beside it, not on it")
+	_check(tab.find_child("SettleBed", true, false) == null, "AC16.1 Settle's words are hidden until it is pressed")
 	key.pressed.emit()
-	var bed: Control = tab.find_child("RaisePayBed", true, false)
+	var bed: Control = tab.find_child("SettleBed", true, false)
 	_check(bed != null and str(bed.get_meta("words", "")).contains("none can start for %d turns" % LabourUnrest.STRIKE_FREE_TURNS),
-		"AC16.1 Raise pay on All strikes opens what it does, with Confirm")
-	(tab.find_child("CancelRaisePay", true, false) as Button).pressed.emit()
-	_check(tab.find_child("RaisePayBed", true, false) == null and not _u().warning.is_empty(), "AC16.1 Cancel shuts it and raises nothing")
+		"AC16.1 Settle on All strikes opens what it does, with Confirm")
+	(tab.find_child("CancelSettle", true, false) as Button).pressed.emit()
+	_check(tab.find_child("SettleBed", true, false) == null and not _u().warning.is_empty(), "AC16.1 Cancel shuts it and settles nothing")
+	head = tab.find_child("AllStrikes", true, false)
+	member = tab.find_child("Striker_%s" % named, true, false)
 	_check(member != null and member.find_child("BreakStrike_%s" % named, true, false) != null and head.find_child("BreakStrikeAll", true, false) != null,
-		"AC16.1 every row has Break strike beside Raise pay")
+		"AC16.1 every row has Break strike beside Settle")
 	_check(is_equal_approx(float(head.get_meta("break", -1.0)), _sum_break()), "AC16.1 All strikes carries the total cost of breaking")
 	(tab.find_child("BreakStrikeAll", true, false) as Button).pressed.emit()
 	var break_bed: Control = tab.find_child("BreakStrikeBed", true, false)
@@ -476,15 +505,16 @@ func _test_strikes_tab_and_diagnostics() -> void:
 		"AC16.1 Break strike on All strikes opens what it does to satisfaction")
 	(tab.find_child("CancelBreakStrike", true, false) as Button).pressed.emit()
 	_check(tab.find_child("BreakStrikeBed", true, false) == null and not _u().warning.is_empty(), "AC16.1 Cancel breaks nothing")
-	shell.call("_refresh_key_lamps")
-	var keys: Array = shell.get("_keys")
-	_check((keys[2].get("lamp") as Color).a > 0.0, "AC16.2 the Strikes key's lamp lights during a warning")
+	(tab.find_child("StrikeTab_ongoing", true, false) as Control).emit_signal("pressed")
+	_check(tab.find_child("OnStrike", true, false) != null and tab.find_child("NoStrikes", true, false) != null,
+		"AC16.2 Ongoing with nobody on strike says so")
 	var rows: Array = BuildingReadout.diagnostics(BuildingState.get_building(named), Catalog.get_recipe("r_005"), Catalog.get_building(FURNACE), false)
 	var warned := false
 	for r: Dictionary in rows:
 		warned = warned or str(r.get("label", "")) == "Strike warning"
 	_check(warned, "AC16.3 the diagnostics say the building is named to strike")
 	_tick(10)
+	tab.set("_subtab", "")
 	tab.call("_rebuild")
 	_check(tab.find_child("OnStrike", true, false) != null and tab.find_child("StrikeRecord", true, false) != null,
 		"AC16.1 strikes on show the buildings on strike and the record")
@@ -493,10 +523,12 @@ func _test_strikes_tab_and_diagnostics() -> void:
 	for r: Dictionary in BuildingReadout.diagnostics(BuildingState.get_building(striking), Catalog.get_recipe(str(BuildingState.get_building(striking).recipe_id)), Catalog.get_building(str(BuildingState.get_building(striking).building_id)), false):
 		on = on or str(r.get("label", "")) == "On strike"
 	_check(on, "AC16.3 the diagnostics say the building is on strike")
-	(tab.find_child("RaisePay_%s" % striking, true, false) as Button).pressed.emit()
-	(tab.find_child("ConfirmRaisePay", true, false) as Button).pressed.emit()
-	_check(not _u().is_on_strike(striking) and _u().pay_raises.has(striking) and tab.find_child("RaisePayBed", true, false) == null,
-		"AC16.1 Confirm raises pay at that building and shuts the bed")
+	var on_text := str((tab.find_child("StrikeTab_ongoing", true, false) as Control).get("text"))
+	_check(on_text == "Ongoing Strikes (%d)" % _u().active.size(), "AC16.2 Ongoing counts the buildings on strike (%s)" % on_text)
+	(tab.find_child("Settle_%s" % striking, true, false) as Button).pressed.emit()
+	(tab.find_child("ConfirmSettle", true, false) as Button).pressed.emit()
+	_check(not _u().is_on_strike(striking) and _u().pay_raises.has(striking) and tab.find_child("SettleBed", true, false) == null,
+		"AC16.1 Confirm settles that building's strike and shuts the bed")
 	var page := SearchOverlay.strikes_page()
 	_check(SearchOverlay.MECHANIC_ENTRIES.any(func(e: Dictionary) -> bool: return str(e.id) == PeopleDs2.StrikesTab.MECHANICS_ENTRY)
 		and page.contains("−70") and page.contains("−90") and not page.contains(";") and not page.contains(" - ") and not page.contains("—"),

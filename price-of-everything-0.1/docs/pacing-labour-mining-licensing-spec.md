@@ -593,8 +593,8 @@ Two actions, open from the warning until the strike ends:
 
 | Action | Cost | Effect |
 |---|---|---|
-| Raise pay at one building | labour +20% at that building for 10 turns | That building's strike ends (or is called off). It cannot be drawn again while the raise runs *(proposed)* |
-| Raise pay at every building affected by strikes | labour +20% at every struck or named building for 10 turns *(duration proposed)* | Every strike ends, and **no strikes for 15 turns** |
+| Settle at one building (a pay rise) | labour +20% at that building for 10 turns | That building's strike ends (or is called off). It cannot be drawn again while the raise runs *(proposed)* |
+| Settle every strike (a pay rise at each) | labour +20% at every struck or named building for 10 turns *(duration proposed)* | Every strike ends, and **no strikes for 15 turns** |
 
 - Neither action changes satisfaction or the band. The workforce is still unhappy, so the next
   check after the protection ends can draw again.
@@ -619,30 +619,36 @@ Beside each pay rise, Break strike: replacement crews end the strike at once.
 ### 6.3 UX: People > Strikes tab — LOCKED (layout *proposed*)
 
 `TABS` (`people_ds2/people_ds2.gd:24`) becomes `["Advisors", "Labour", "Strikes"]`. The tab body
-uses the DS2 kit (`ds2/parts.gd`), racked in cases and modules as the tile view's Buildings tab is. It
-has three parts:
+uses the DS2 kit (`ds2/parts.gd`). Every part's raised heading stands inside its case. In order:
 
 1. **Strike risk** (a case):
    - a module with the labour icon, the pilot lamp, the mood ("Restless at −78") and what it means
      ("A quarter of your buildings can strike."), and the turns to the next check on a drum (or the
-     turns a pay rise still protects). With a union agreement in force, no drum;
+     turns a settlement still protects). With a union agreement in force, no drum;
    - the strike scale: satisfaction from −100 to +100 on a mini screen, below −90 lit red, −90 to −70
      amber, a needle at today's value, the thresholds printed under it, and a key to its zones;
    - "How strikes work", a key that opens the encyclopedia's Mechanics page Strikes and accidents.
      The explanation lives there, not on the panel.
-2. **The board** (only while a warning is open or strikes are on):
-   - first, "All strikes (N buildings)" as a group's head: the turns (Starts in or Turns left) on a
-     drum, the total expected loss on an LED screen labelled under it, then two actions one over the
-     other, each its cost on an LED screen beside its key: Raise pay and Break strike (§6.2b);
-   - under it, on a cable, each named or striking building: its emblem, its name with the good it
-     makes in a small well, its tile, its own loss and its own two actions in the same columns;
-   - an action's key opens a key bed under its row that says what it does, with Confirm and
-     Cancel. Break strike's bed also says how near the workforce is to remembering it for good. For all strikers: "Labour costs 20% more at these N buildings for 10 turns. Every
-     strike ends, and none can start for 15 turns."
-3. **Record**: a row per past strike with its turn, the buildings, the outcome's lamp and the output
+2. **Sub-tabs** (owner ruling 26 Oct): two latching keys on a key bed, "Upcoming Strikes (N)" and
+   "Ongoing Strikes (N)". Upcoming counts the buildings named for a strike that starts within 5
+   turns; Ongoing the buildings on strike. Ongoing opens by itself while strikes are on, else
+   Upcoming. They replace the lamp the Strikes tab key carried.
+3. **The table** for the open sub-tab, laid out as the Building Ledger is:
+   - metal labels over the columns: Location, Output loss, Cost to manage, Action;
+   - "All strikes (N buildings)": the labour icon, its lamp and its timer ("Starts in 2 turns", "2
+     turns left") under the name, the total output loss, the totals to settle and to break side by
+     side, and its Settle and Break strike keys in the same order;
+   - a row "N buildings" with a fold mark, folded at first, that shows the buildings under it;
+   - a slim row a building: its emblem, its name with the good it makes in a small well, its tile
+     on the second line, then its own figures and keys in the same columns;
+   - Settle is the pay rise (§6.2), Break strike §6.2b. A key opens a key bed under its row that
+     says what it does, with Confirm and Cancel. Break strike's bed also says how near the
+     workforce is to remembering it for good;
+   - an empty sub-tab says so ("No strikes due in the next 5 turns.").
+4. **Record**: a row per past strike with its turn, the buildings, the outcome's lamp and the output
    lost.
 
-The Strikes tab key carries a red lamp while a warning or strike is active.
+The money screens in the table are the LED kit's tight variant (`compact`), as in the boardroom.
 
 ### 6.4 Code
 
@@ -1695,14 +1701,15 @@ turn's "resolution" is what happens when the player ends it.
 
 **UI**
 
-1. **AC16.1** People has a third tab, Strikes, laid out as §6.3: the strike risk case (pilot lamp,
-   mood, turns to the next check on a drum, the strike scale), the board with "All strikes (N
-   buildings)" first and each building nested under it (emblem, name, the good it makes, its tile,
-   expected loss on an LED screen, then Raise pay and Break strike, each with its cost on an LED
-   screen beside its key), each key opening what it does with Confirm and Cancel, the record, and "How strikes work" opening the encyclopedia's
-   Mechanics page.
-2. **AC16.2** The Strikes key carries a red lamp while a warning or strike is active, and the top
-   bar's Workforce lamp blinks during a warning.
+1. **AC16.1** People has a third tab, Strikes, laid out as §6.3: the strike risk case, the table
+   with its column labels (Location, Output loss, Cost to manage, Action), "All strikes (N
+   buildings)" first without the output words, a folded "N buildings" row with each building under
+   it, Settle and Break strike on every row with their costs beside each other in Cost to manage,
+   each key opening what it does with Confirm and Cancel, the record, and "How strikes work"
+   opening the encyclopedia's Mechanics page.
+2. **AC16.2** The Strikes key carries no lamp. The sub-tabs read "Upcoming Strikes (N)" (named for a
+   strike within 5 turns) and "Ongoing Strikes (N)", and the top bar's Workforce lamp blinks during
+   a warning.
 3. **AC16.3** Bell events at the warning, a strike's start, its end, a call off and an accident.
    Building detail diagnostics say when a building is on strike or down after an accident.
 4. **AC16.4** Player copy has no hyphens, semicolons or dashes, and text on navy uses
