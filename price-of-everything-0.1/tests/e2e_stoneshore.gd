@@ -2,6 +2,10 @@ extends Node
 
 # RefCounted, not an autoload — consumers preload it (see building_levels.gd header).
 const BuildingLevels := preload("res://scripts/building_levels.gd")
+const Middleman := preload("res://scripts/middleman_service.gd")
+const ConstructionRules := preload("res://scripts/construction_rules.gd")
+const MiningSites := preload("res://scripts/mining_sites.gd")
+const SupplyFallback := preload("res://tests/e2e_supply_fallback.gd")
 ## Headless end-to-end scenario for the foundations sprint.
 ##
 ## This runner deliberately instantiates the real main scene and drives the same
@@ -177,6 +181,20 @@ var _balance_start_config := {}
 var _balance_start_modifiers: Array[Dictionary] = []
 ## Seams that collapsed during the run, "turn tile|token" each.
 var _collapses: PackedStringArray = []
+## The Local Suppliers progression (docs/pacing-labour-mining-licensing-spec.md §14.1): on when the scenario
+## names `logistics_model` middleman_v1. Routes and tile-only inputs wait for Open Logistics Contracts.
+var _local_suppliers := false
+var _routes_pending := false
+var _contracts_turn := -1
+var _tendering_turn := -1
+var _stockpiles_turn := -1
+## Each seam fallback the run took: "t<turn> <consumer> <good>: mine £x a unit at <tile> vs Local Suppliers £y -> choice".
+var _fallbacks: PackedStringArray = []
+var _fallback_done := {}
+## New producers whose managed output waits for their construction to finish: instance id -> {good_id, dest}.
+var _pending_routes := {}
+## Why the game refused the last build, from its own refusal signal.
+var _last_refusal := ""
 
 
 func _ready() -> void:
@@ -338,6 +356,8 @@ func _print_profit_trajectory() -> void:
 	keys.sort()
 	for key: String in keys:
 		var site: Dictionary = sites[key]
+		if _local_suppliers:
+			print("  seam %s: draw %.1f of %d free (max %d) M %.2f" % [key, float(site.draw), int(site.free), int(site.max), float(site.m)])
 		if float(site.m) <= 1.0001:
 			continue
 		over += 1
@@ -345,6 +365,12 @@ func _print_profit_trajectory() -> void:
 			(" collapse %d%%" % roundi(float(site.collapse) * 100.0)) if float(site.collapse) > 0.0 else ""]
 	print(seams if over > 0 else seams + "none")
 	print("  seam collapses: %s" % ("none" if _collapses.is_empty() else "%d   %s" % [_collapses.size(), "   ".join(_collapses)]))
+	if _local_suppliers:
+		print("  logistics: Infrastructure Tendering %s, Open Logistics Contracts %s, tile stockpiles from %s" % [
+			"t%d" % _tendering_turn if _tendering_turn >= 0 else "never earned",
+			"t%d" % _contracts_turn if _contracts_turn >= 0 else "never earned",
+			"t%d" % _stockpiles_turn if _stockpiles_turn >= 0 else "never"])
+		print("  seam fallbacks: %s" % ("none" if _fallbacks.is_empty() else "   ".join(_fallbacks)))
 	# Where it crossed from black to red for good — the turn a fix has to target.
 	var last_positive := 0
 	for e in _profit_by_turn:
@@ -374,10 +400,13 @@ func _run() -> void:
 		_prepare_balance_start()
 	await _load_main_scene()
 	_check_ui_loaded()
+	if not MatchState.build_rejected_no_funds.is_connected(_on_build_refused):
+		MatchState.build_rejected_no_funds.connect(_on_build_refused)
 	if _balance_mode:
 		await _run_balance_v4()
 		return
 	_check_stoneshore_fixture()
+	_apply_logistics_model()
 	await _survey_deposits_via_ui()
 	await _take_loan_via_ui(50.0, "initial working-capital loan")
 	await _add_cash_through_terminal(CASH_RUNWAY)
@@ -386,21 +415,19 @@ func _run() -> void:
 	await _build_coal_runway_from_config()
 	await _take_coal_backed_loan_if_capacity_allows()
 
-	var before_route := TransportService.route("tile_22_3", "tile_26_5", _goods.coal)
-	await _build_transport_spine_from_config()
-	await _advance_turns(2, "complete road/rail/cable construction")
-	var after_route := TransportService.route("tile_22_3", "tile_26_5", _goods.coal)
-	_check(int(after_route.get("turns", 999)) <= int(before_route.get("turns", 999)),
-		"optimized rail corridor does not worsen coal-to-iron routing")
-	_check(int(after_route.get("turns", 999)) < (1 << 30), "coal-to-iron rail route is reachable")
-	_check(int(TransportService.route("tile_20_10", "tile_25_6", _goods.copper_wiring).get("turns", 999)) < (1 << 30),
-		"copper-to-motor rail route is reachable")
+	if not _local_suppliers:
+		await _build_and_check_spine()
 
 	_apply_scenario_unlocks()
 	await _build_supply_chain_from_config()
-	_configure_output_routes_from_config()
-	_configure_surplus_sales_from_config()
-	_configure_tile_only_inputs_from_config()
+	if _local_suppliers:
+		# Until Open Logistics Contracts the chain trades through Local Suppliers; _logistics_tick moves it
+		# onto its tile stockpiles once the contracts are earned.
+		_routes_pending = true
+	else:
+		_configure_output_routes_from_config()
+		_configure_surplus_sales_from_config()
+		_configure_tile_only_inputs_from_config()
 	await _advance_until_no_construction(14)
 	_check(Construction.construction_projects.is_empty(), "all scenario construction projects completed")
 	_load_battery_cells_from_config()   # a battery store has no cell slots until it is BUILT
@@ -961,6 +988,10 @@ func _index_entry_outputs(entry: Dictionary, building_id: String, recipe_id: Str
 func _rightsize_tick() -> void:
 	if not _rightsize_enabled or not _rightsize_armed or _rightsize_busy:
 		return
+	# Under Local Suppliers a shortage before the chain runs on its own stockpiles is Local Suppliers'
+	# to cover, not a reason to build.
+	if _local_suppliers and _stockpiles_turn < 0:
+		return
 	if _rightsize_log.size() >= RIGHTSIZE_MAX_ADDITIONS:
 		return
 	var turn := int(TurnManager.current_turn)
@@ -1032,6 +1063,12 @@ func _rightsize_tick() -> void:
 	var entry: Dictionary = _entry_by_output[worst]
 	var building_id := str(entry.get("building_id", ""))
 	var tile_id := str(entry.get("tile", ""))
+	if _local_suppliers:
+		tile_id = _rightsize_site(entry, worst)
+		if tile_id == "":
+			_rightsize_ready_turn[worst] = turn + RIGHTSIZE_COOLDOWN_TURNS
+			_short_streak[worst] = 0
+			return
 	_rightsize_busy = true
 	if _balance_mode and not await _ensure_balance_build_funding(building_id, tile_id):
 		# Wanted to fix the shortage and could not afford or fit it. This is the most
@@ -1051,6 +1088,8 @@ func _rightsize_tick() -> void:
 		return
 	await _ensure_cabled_to_network(tile_id)
 	_register_built(str(entry.get("logical_id", "")), instance_id)
+	if _local_suppliers:
+		_route_like(str(entry.get("logical_id", "")), instance_id)
 	if _balance_mode:
 		_balance_built_ids.append(instance_id)
 	_rightsize_added[worst] = int(_rightsize_added.get(worst, 0)) + 1
@@ -1509,8 +1548,11 @@ func _build_coal_runway_from_config() -> void:
 	await _advance_until_no_construction(construction_window)
 	await _advance_turns(runway_turns, "coal runway market sales")
 	_cash_after_coal_runway = MatchState.money
-	_check(_sold_qty(_goods.coal) > 0, "coal runway sold coal to market before the motor buildout")
-	_check(_sold_revenue(_goods.coal) > 0.0, "coal runway converted mined coal into market revenue")
+	if _local_suppliers:
+		_check(_recent_run_metric("revenue", runway_turns) > 0.0, "coal runway sold coal through Local Suppliers before the motor buildout")
+	else:
+		_check(_sold_qty(_goods.coal) > 0, "coal runway sold coal to market before the motor buildout")
+		_check(_sold_revenue(_goods.coal) > 0.0, "coal runway converted mined coal into market revenue")
 	# DESIGN RULE: a raw-material-only position is NOT meant to be profitable, so this
 	# phase must not assert profit or break-even. Every shipment pays the flat per-good
 	# seaport charge, which a heavy, low-value good like coal struggles to clear — that
@@ -1670,6 +1712,208 @@ func _configure_tile_only_inputs(entries: Array) -> void:
 			good_ids.append(_good_id(str(g)))
 		for instance_id in _instances_for(logical_id):
 			_set_tile_only(str(instance_id), good_ids)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The Local Suppliers progression (docs/pacing-labour-mining-licensing-spec.md §14.1)
+# ─────────────────────────────────────────────────────────────────────────────
+
+## Plays the match under the scenario's `logistics_model`.
+func _apply_logistics_model() -> void:
+	var model := str(_scenario.get("logistics_model", ""))
+	if model == "":
+		return
+	MatchState.ruleset["logistics_model"] = model
+	_local_suppliers = model == "middleman_v1"
+	# Every Local Suppliers start also enrols new buildings with them (data/starts/metal_magnate.json).
+	MatchState.ruleset["middleman_new_buildings"] = _local_suppliers
+	_check(Middleman.active() == _local_suppliers, "the run plays under the %s logistics rules" % model)
+	if _local_suppliers:
+		_check(not ResearchState.open_logistics_contracts_available(), "tile stockpiles start locked under Local Suppliers")
+
+
+## Builds the transport spine and checks the corridors carry the chain's goods.
+func _build_and_check_spine() -> void:
+	var before_route := TransportService.route("tile_22_3", "tile_26_5", _goods.coal)
+	await _build_transport_spine_from_config()
+	await _advance_turns(2, "complete road/rail/cable construction")
+	var after_route := TransportService.route("tile_22_3", "tile_26_5", _goods.coal)
+	_check(int(after_route.get("turns", 999)) <= int(before_route.get("turns", 999)),
+		"optimized rail corridor does not worsen coal-to-iron routing")
+	_check_spine_routes()
+
+
+func _check_spine_routes() -> void:
+	_check(int(TransportService.route("tile_22_3", "tile_26_5", _goods.coal).get("turns", 999)) < (1 << 30),
+		"coal-to-iron rail route is reachable")
+	_check(int(TransportService.route("tile_20_10", "tile_25_6", _goods.copper_wiring).get("turns", 999)) < (1 << 30),
+		"copper-to-motor rail route is reachable")
+
+
+func _on_build_refused(message: String) -> void:
+	_last_refusal = message
+
+
+## A build short of materials buys them through its source; the run checks it can pay the fee plus that price
+## before it asks, so a refusal is never silent.
+func _check_build_affordable(building_id: String, tile_id: String) -> void:
+	if _balance_mode or not _local_suppliers or bool(Construction.check_tile(tile_id, building_id).get("satisfied", false)):
+		return
+	var need := ConstructionRules.build_fee(building_id, 1.0) + Construction.estimate_middleman_cost(tile_id, building_id)
+	_check(MatchState.money >= need, "cash covers %s on %s with Local Suppliers materials (need £%.0f, have £%.0f)"
+		% [building_id, tile_id, need, MatchState.money])
+
+
+## Each turn: build the transport spine once Infrastructure Tendering is earned (infrastructure needs it under
+## Local Suppliers), note when Open Logistics Contracts is earned, move the chain onto its tile stockpiles once
+## it is and the spine and build-out have finished, then watch the seams feeding it.
+func _logistics_tick() -> void:
+	if not _local_suppliers:
+		return
+	if _tendering_turn < 0 and ResearchState.infrastructure_tendering_available():
+		_tendering_turn = int(TurnManager.current_turn)
+		print("[E2E-LOGISTICS] Infrastructure Tendering earned by turn %d: the transport spine goes up" % _tendering_turn)
+		await _build_transport_spine_from_config()
+	if _contracts_turn < 0 and ResearchState.open_logistics_contracts_available():
+		_contracts_turn = int(TurnManager.current_turn)
+		print("[E2E-LOGISTICS] Open Logistics Contracts earned by turn %d" % _contracts_turn)
+	if _routes_pending and _contracts_turn >= 0 and _tendering_turn >= 0 and Construction.construction_projects.is_empty():
+		_routes_pending = false
+		_stockpiles_turn = int(TurnManager.current_turn)
+		_check_spine_routes()
+		_switch_to_stockpiles()
+	if _stockpiles_turn >= 0:
+		_apply_pending_routes()
+		await _seam_fallback_tick()
+
+
+## The chain's own goods leave Local Suppliers: each routed output goes to its consumer's tile and each input
+## the chain makes for itself comes from the tile stockpile. Motors and anything routed "market" keep selling
+## through Local Suppliers, and so does the surplus on the chain's tiles.
+func _switch_to_stockpiles() -> void:
+	print("[E2E-LOGISTICS] turn %d: the chain moves onto its tile stockpiles" % _stockpiles_turn)
+	for route in _scenario.get("output_routes", []):
+		if typeof(route) != TYPE_DICTIONARY or str(route.get("dest", "")) == "market":
+			continue
+		var good_id := _good_id(str(route.get("good", "")))
+		for instance_id in _instances_for(str(route.get("id", ""))):
+			var r: Dictionary = Middleman.set_good_mode(str(instance_id), "output", good_id, "managed")
+			_check(bool(r.get("ok", false)), "%s output leaves Local Suppliers for its tile stockpile: %s%s"
+				% [str(route.get("good", "")), str(instance_id), "" if bool(r.get("ok", false)) else " (%s)" % str(r.get("reason", ""))])
+		_configure_output_routes([route])
+	for entry in _scenario.get("tile_only_inputs", []):
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		for instance_id in _instances_for(str(entry.get("id", ""))):
+			for g in entry.get("goods", []):
+				var r: Dictionary = Middleman.set_good_mode(str(instance_id), "input", _good_id(str(g)), "managed")
+				_check(bool(r.get("ok", false)), "%s input comes from the tile stockpile: %s%s"
+					% [str(g), str(instance_id), "" if bool(r.get("ok", false)) else " (%s)" % str(r.get("reason", ""))])
+		_configure_tile_only_inputs([entry])
+	for tile_id in _scenario.get("surplus_sales", []):
+		MatchState.set_sell_surplus_destination(str(tile_id), "middleman")
+	_configure_surplus_sales_from_config()
+
+
+## Where another of `entry`'s producer goes under Local Suppliers: its own tile, or for a mine the nearest seam
+## with room under its free amount; "" when nothing has room or the company cannot pay for it.
+func _rightsize_site(entry: Dictionary, good_id: String) -> String:
+	var building_id := str(entry.get("building_id", ""))
+	var tile_id := str(entry.get("tile", ""))
+	if building_id == SupplyFallback.MINE:
+		tile_id = str(SupplyFallback.nearest_site(tile_id, good_id).get("tile", ""))
+	if tile_id == "":
+		print("[E2E] right-size: no seam of %s has room under its free amount" % _good_label(good_id))
+		return ""
+	var need := ConstructionRules.build_fee(building_id, 1.0) + Construction.estimate_middleman_cost(tile_id, building_id)
+	if MatchState.money < need:
+		_rightsize_unaffordable[good_id] = int(_rightsize_unaffordable.get(good_id, 0)) + 1
+		return ""
+	return tile_id
+
+
+## Routes a new producer's managed output where its scenario entry's output goes, once it is built.
+func _route_like(logical_id: String, instance_id: String) -> void:
+	for route in _scenario.get("output_routes", []):
+		if typeof(route) != TYPE_DICTIONARY or str(route.get("id", "")) != logical_id or str(route.get("dest", "")) == "market":
+			continue
+		_pending_routes[instance_id] = {"good_id": _good_id(str(route.get("good", ""))), "dest": str(route.get("dest", ""))}
+
+
+## Takes each finished new producer's output off Local Suppliers and sends it where it was meant to go.
+func _apply_pending_routes() -> void:
+	for instance_id: String in _pending_routes.keys():
+		if not BuildingState.buildings.has(instance_id):
+			continue
+		var route: Dictionary = _pending_routes[instance_id]
+		_pending_routes.erase(instance_id)
+		var r: Dictionary = Middleman.set_good_mode(instance_id, "output", str(route.good_id), "managed")
+		_check(bool(r.get("ok", false)), "new producer's output leaves Local Suppliers: %s" % instance_id)
+		_select_output_destination(instance_id, str(route.good_id), str(route.dest))
+
+
+## For coal and iron ore: when every mine feeding a consumer's tile sits on a seam that has run out, price a
+## new mine nearby against Local Suppliers and take the cheaper (SupplyFallback, AC25.6).
+func _seam_fallback_tick() -> void:
+	for entry in _scenario.get("tile_only_inputs", []):
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		for g in entry.get("goods", []):
+			if not str(g) in ["coal", "iron_ore"]:
+				continue
+			var good_id := _good_id(str(g))
+			for instance_id in _instances_for(str(entry.get("id", ""))):
+				var consumer := BuildingState.get_building(str(instance_id))
+				if consumer.is_empty():
+					continue
+				var key := "%s|%s" % [str(consumer.get("tile_id", "")), good_id]
+				# A key waiting on a new mine clears once that mine is routed here, so its own seam can be judged later.
+				if _fallback_done.get(key, false) is String and not _pending_routes.has(str(_fallback_done[key])):
+					_fallback_done.erase(key)
+				if _fallback_done.has(key) or not _feeding_seams_ran_out(str(consumer.get("tile_id", "")), good_id):
+					continue
+				await _fall_back(consumer, good_id, key)
+
+
+## True when the tile `to_tile` is fed `good_id` by at least one of the player's mines and every one of them
+## sits on a seam that has run out.
+func _feeding_seams_ran_out(to_tile: String, good_id: String) -> bool:
+	var token := str(Catalog.get_good(good_id).get("internal_name", ""))
+	var feeders := 0
+	for b: Dictionary in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(b) or MiningSites.building_token(b) != token:
+			continue
+		if str(MatchState.get_output_stockpile_destination(str(b.instance_id), good_id)) != to_tile:
+			continue
+		feeders += 1
+		if not MatchState.deposit_depleted(str(b.get("tile_id", "")), token):
+			return false
+	return feeders > 0
+
+
+func _fall_back(consumer: Dictionary, good_id: String, key: String) -> void:
+	var pick := SupplyFallback.choose(consumer, good_id)
+	var line := "t%d %s %s: mine £%s a unit%s vs Local Suppliers £%.2f -> %s" % [int(TurnManager.current_turn),
+		str(consumer.get("tile_id", "")), str(Catalog.get_good(good_id).get("internal_name", good_id)),
+		"%.2f" % float(pick.mine_unit) if is_finite(float(pick.mine_unit)) else "n/a",
+		" at %s" % str(pick.tile) if str(pick.tile) != "" else "", float(pick.ls_unit), str(pick.choice)]
+	_fallbacks.append(line)
+	print("[E2E-FALLBACK] %s" % line)
+	if str(pick.choice) == "mine":
+		var iid: String = await _build_building_via_build_mode(SupplyFallback.MINE, str(pick.recipe_id), str(pick.tile))
+		if iid != "":
+			# The seams feeding this tile stay "run out" until the new mine's output is routed here, so the key
+			# waits on it rather than building another each turn.
+			_fallback_done[key] = iid
+			_pending_routes[iid] = {"good_id": good_id, "dest": str(consumer.get("tile_id", ""))}
+			return
+	_fallback_done[key] = true
+	for b: Dictionary in BuildingState.get_buildings_on_tile(str(consumer.get("tile_id", ""))):
+		if not BuildingState.is_player_owned(b) or not _recipe_consumes(str(b.get("recipe_id", "")), good_id):
+			continue
+		MatchState.set_input_tile_only(str(b.instance_id), good_id, false)
+		var r: Dictionary = Middleman.set_good_mode(str(b.instance_id), "input", good_id, "middleman")
+		_check(bool(r.get("ok", false)), "%s input back on Local Suppliers: %s" % [good_id, str(b.instance_id)])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2046,6 +2290,8 @@ func _build_building_via_build_mode(building_id: String, recipe_id: String, tile
 	# the tile already holds every material. Always fall back to buy-and-construct
 	# when it does not; the argument remains for scenario-call compatibility.
 	_ensure_land_for_build(building_id, tile_id)
+	_check_build_affordable(building_id, tile_id)
+	_last_refusal = ""
 	var before_projects := _keys_dict(Construction.construction_projects)
 	var before_buildings := _keys_dict(BuildingState.buildings)
 	var money_before := MatchState.money
@@ -2055,7 +2301,9 @@ func _build_building_via_build_mode(building_id: String, recipe_id: String, tile
 	var instance_id := _find_new_project_or_building(before_projects, before_buildings, building_id, recipe_id, tile_id)
 	if instance_id == "":
 		var dialog := _main.get("_construction_dialog") as Control
-		if not quiet:
+		# The material choice is made inline now: a build short of materials buys them through its source
+		# (Local Suppliers in a Local Suppliers game) and never opens the old modal.
+		if not quiet and ConstructionRules.material_source().buys_via != "middleman":
 			_check(dialog != null and dialog.visible, "missing-materials dialog opened for %s on %s" % [building_id, tile_id])
 		if dialog != null:
 			var buy_btn := dialog.get("_buy_button") as Button
@@ -2070,7 +2318,8 @@ func _build_building_via_build_mode(building_id: String, recipe_id: String, tile
 			await get_tree().process_frame
 		instance_id = _find_new_project_or_building(before_projects, before_buildings, building_id, recipe_id, tile_id)
 	if not quiet:
-		_check(instance_id != "", "construction project created for %s on %s" % [building_id, tile_id])
+		_check(instance_id != "", "construction project created for %s on %s%s" % [building_id, tile_id,
+			"" if _last_refusal == "" else " (refused: %s)" % _last_refusal])
 		_check(MatchState.money < money_before, "building attempt charged money for %s on %s" % [building_id, tile_id])
 	return instance_id
 
@@ -2084,12 +2333,13 @@ func _ensure_balance_build_funding(building_id: String, tile_id: String) -> bool
 		- float(BuildingState.get_tile_land_owned(tile_id))
 	if needed_land > float(BuildingState.get_tile_land_units_available(tile_id)) + 0.001:
 		return false
-	var land_cost := float(preload("res://scripts/land_price.gd").quote(tile_id,
-		maxi(0, ceili(needed_land / float(BuildingState.LAND_PATCH_SIZE))), false).total)
-	var material_cost := Construction.estimate_market_cost(tile_id, building_id)
-	if material_cost <= 0.0 and not Construction.requirements_for(building_id).is_empty():
-		material_cost = Construction.market_purchase_value(building_id) * 1.10
-	var project_cost := land_cost + float(building.get("base_price", 0.0)) + material_cost
+	# The game's own quote: the build fee (planning limit included), the materials through the source the build
+	# will use (Local Suppliers in a Local Suppliers game) and the land it lacks.
+	var q: Dictionary = ConstructionRules.quote(building_id, "", tile_id, {}, {"buy_land": true})
+	var project_cost := float(q.get("total", 0.0))
+	if float(q.get("materials", 0.0)) <= 0.0 and not Construction.requirements_for(building_id).is_empty() \
+			and not bool(Construction.check_tile(tile_id, building_id).get("satisfied", false)):
+		project_cost += Construction.market_purchase_value(building_id) * 1.10
 	# CASH/DEBT check by default (owner 2026-08-23). This used to be opt-in, and only two of
 	# the seven scenarios opted in — the same two that never went bankrupt. The other five
 	# borrowed to the collateral limit for every building and drowned servicing it, which is
@@ -2392,6 +2642,7 @@ func _advance_turns(count: int, reason: String) -> void:
 				"turn advanced for %s (%d -> %d)" % [reason, before_turn, TurnManager.current_turn])
 		_upgrade_saturated_infrastructure()
 		_reroute_outputs_to_local_consumers("turn %d" % TurnManager.current_turn)
+		await _logistics_tick()
 		await _rightsize_tick()
 		await _power_tick()
 		var elapsed_ms := float(Time.get_ticks_usec() - start) / 1000.0

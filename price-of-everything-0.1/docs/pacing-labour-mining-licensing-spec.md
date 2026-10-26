@@ -1313,6 +1313,40 @@ Pinned strings and tests that change:
 - `test_research.gd:1238`
 - Profit Share and labour policy tests
 
+### 14.1 The Stoneshore e2e under Local Suppliers (owner direction, 26 October 2026)
+
+The Stoneshore e2e (`tests/e2e_stoneshore.gd`, scenario `open_field_1`) plays the logistics
+progression a player plays: Local Suppliers first, tile stockpiles once Open Logistics Contracts is
+earned, Local Suppliers again only when a seam runs out and a nearby mine would cost more.
+
+1. **AC25.1** The run uses the Local Suppliers rules (`logistics_model` `middleman_v1`), as Metal
+   Magnate does.
+2. **AC25.2** Until Open Logistics Contracts, every building buys its inputs and sells its outputs
+   through Local Suppliers, and construction materials come from Local Suppliers. The builder
+   checks it can pay the build fee plus the Local Suppliers materials price, so the game never
+   refuses a build in silence; a build the game refuses fails the run with the game's reason.
+3. **AC25.3** Open Logistics Contracts is earned by play (three goods, 300 units each, through
+   Local Suppliers), never granted. The report prints the turn.
+4. **AC25.4** On the first turn after the unlock, every input the chain makes for itself (coal,
+   iron ore, iron ingots, copper ore, copper ingots, copper wiring, steel, water) switches to its
+   tile stockpile, fed by the scenario's output routes. Final goods (motors) and any surplus keep
+   selling through Local Suppliers (the global market needs the Import/Export License, out of
+   scope).
+5. **AC25.5** Mines stay within each seam's free amount: two a seam that never runs out, three a
+   finite one. The rest go to the nearest tile with that deposit (coal tile_20_9, copper
+   tile_18_10, iron tile_22_6). Coal for the smelters is routed to the smelters' tile, tile_25_5.
+6. **AC25.6** Each turn, for coal and iron ore: when a building's own supply has stopped because its
+   seam ran out (a finite seam empty, or collapsed), the run prices a new mine on the nearest tile
+   with that deposit and room under its free amount (running cost a unit at that site, plus haul a
+   unit to the consumer, plus build fee, materials and land spread over 30 turns) against Local
+   Suppliers' delivered price a unit. It builds the mine when that is cheaper, else switches the
+   input back to Local Suppliers, and prints both figures and the choice.
+7. **AC25.7** A unit test drives that choice both ways on a forced empty seam.
+8. **AC25.8** The report prints the unlock turn, each seam's use against its free amount, every
+   fallback choice, the profit trajectory and the cost lines. The run passes with no failed checks.
+9. **AC25.9** The Metal Magnate benchmark bot uses the same builder, so its builds go through;
+   its progression through tile stockpiles is a follow-up.
+
 ## 15. Phasing
 
 **Phase gates.** Every phase lands only when:

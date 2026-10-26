@@ -555,3 +555,30 @@ func _test_forecast_includes_m() -> void:
 	_check(lab_alone > 0.0 and absf(lab_crowded - lab_alone * 2.0) < 0.01, "AC22.4 a third working on an endless seam is forecast at ×2 labour (%.2f, %.2f)" % [lab_alone, lab_crowded])
 	_fresh()
 
+
+
+## AC25.7: when the seams feeding the Stoneshore e2e's chain run out, it prices the nearest mine with room under
+## its free amount against Local Suppliers and takes the cheaper, either way.
+func _test_e2e_seam_fallback() -> void:
+	_fresh()
+	var fallback: GDScript = load("res://tests/e2e_supply_fallback.gd")
+	MatchState.ruleset["logistics_model"] = "middleman_v1"
+	var furnace: String = BuildingState.add_building(FURNACE, "r_005", FINITE_TILE, MatchState.LOCAL_PLAYER, "")
+	_mine(FINITE_TILE)
+	MatchState.deposit_remaining[FINITE_TILE] = {"coal": 0}
+	var consumer := BuildingState.get_building(furnace)
+	var site: Dictionary = fallback.nearest_site(FINITE_TILE, "g_001")
+	_check(not site.is_empty() and str(site.tile) != FINITE_TILE,
+		"AC25.7 the nearest coal seam with room is found, never the empty one (%s)" % str(site.get("tile", "")))
+	var coal := float(MarketState.prices.get("g_001", 0.0))
+	MarketState.prices["g_001"] = coal * 20.0
+	var dear: Dictionary = fallback.choose(consumer, "g_001")
+	_check(str(dear.choice) == "mine" and str(dear.tile) == str(site.get("tile", "")),
+		"AC25.7 Local Suppliers dearer: a new mine (£%.2f a unit against £%.2f; %s)" % [float(dear.mine_unit), float(dear.ls_unit),
+		str(fallback.mine_unit_parts(str(site.get("tile", "")), str(site.get("recipe_id", "")), FINITE_TILE, "g_001"))])
+	MarketState.prices["g_001"] = coal * 0.05
+	var cheap: Dictionary = fallback.choose(consumer, "g_001")
+	_check(str(cheap.choice) == "local_suppliers" and float(cheap.ls_unit) < float(cheap.mine_unit),
+		"AC25.7 Local Suppliers cheaper: the input goes back to them (£%.2f a unit against £%.2f)" % [float(cheap.ls_unit), float(cheap.mine_unit)])
+	MarketState.prices["g_001"] = coal
+	_fresh()
