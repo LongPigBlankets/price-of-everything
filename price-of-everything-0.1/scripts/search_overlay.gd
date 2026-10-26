@@ -47,6 +47,7 @@ const MECHANIC_ENTRIES := [
 	{"id": "port_transport", "title": "Port transport"},
 	{"id": "advisors", "title": "Advisors and the council"},
 	{"id": "land_prices", "title": "Land prices"},
+	{"id": "strikes", "title": "Strikes and accidents"},
 ]
 
 var _search_stack: VBoxContainer = null
@@ -397,7 +398,34 @@ func _mechanic_body(entry_id: String) -> String:
 			+ "Retainers are charged whether or not an advisor's speciality is doing anything for you that turn, so an idle seat is a pure loss — leave it empty until you have work for it.") % [
 				seats, "" if seats == 1 else "s", base, growth_pct, share_pct, seats,
 				share_pct * float(seats)]
+	if entry_id == "strikes":
+		return strikes_page()
 	return ""
+
+
+## The Strikes and accidents page, read from the live rules (scripts/labour_unrest.gd), as the land and advisors
+## pages are.
+static func strikes_page() -> String:
+	const U := preload("res://scripts/labour_unrest.gd")
+	var n := func(v: float) -> String: return LabourState.signed_text(v)
+	var pct := func(share: float) -> int: return roundi(share * 100.0)
+	return ("Your workforce's satisfaction runs from −100 to +100. Every %d turns, on turns %d, %d, %d and so on, the workforce is checked for a strike.\n\n"
+		+ "1. Below %s, a quarter of your production and power buildings can strike. Below %s, half of them can. Hazardous sites under Minimal safety, and buildings with an accident in the last %d turns, are twice as likely to be named.\n\n"
+		+ "2. The strikers are named %d turns before the check. The Strikes tab on the People panel lists them, with what each strike would cost and what a pay rise would cost.\n\n"
+		+ "3. If satisfaction is still below %s on the check turn, the named buildings strike. For %d turns each makes half its output. Its inputs are still used, and its labour costs half. If satisfaction has risen to %s or above by then, only a quarter strike.\n\n"
+		+ "4. A strike is called off if satisfaction reaches %s before the check turn, or if a union agreement is signed. While a union agreement stands there are no strikes.\n\n"
+		+ "5. Raising pay at one building costs %d%% more labour there for %d turns. It leaves the warning, or goes back to work if it is on strike. Raising pay for all strikers does the same at every named and striking building, and no strike can start for %d turns.\n\n"
+		+ "6. When a strike runs its course, satisfaction rises by %d. A strike ended by a pay rise gives nothing back.\n\n"
+		+ "Accidents happen only under Minimal safety, at mines, furnaces, power plants and chemical works. The chance starts at %d%% a turn at each site and rises %s points every turn Minimal safety stays on, up to %d%%. An accident stops the building for %d turns, pays %d turns of its wages in compensation and lowers satisfaction by %d.") % [
+			U.CHECK_EVERY, U.CHECK_EVERY, U.CHECK_EVERY * 2, U.CHECK_EVERY * 3,
+			n.call(U.STRIKE_BELOW), n.call(U.HEAVY_STRIKE_BELOW), U.ACCIDENT_MEMORY,
+			U.WARNING_LEAD - 1,
+			n.call(U.STRIKE_BELOW), U.STRIKE_TURNS, n.call(U.HEAVY_STRIKE_BELOW),
+			n.call(U.STRIKE_BELOW),
+			pct.call(U.PAY_RAISE), U.PAY_RAISE_TURNS, U.STRIKE_FREE_TURNS,
+			roundi(U.STRIKE_END_SHIFT),
+			pct.call(U.ACCIDENT_CHANCE_START), String.num(U.ACCIDENT_CHANCE_STEP * 100.0, 2), pct.call(U.ACCIDENT_CHANCE_MAX), U.ACCIDENT_DOWN_TURNS,
+			U.ACCIDENT_COMPENSATION_TURNS, roundi(absf(U.ACCIDENT_SHIFT))]
 
 func close_search() -> void:
 	if not visible:

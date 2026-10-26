@@ -15,6 +15,8 @@ const POWER := "b_003"
 const FACTORY := "b_007"
 const LabourUnrest := preload("res://scripts/labour_unrest.gd")
 const PeopleDs2 := preload("res://scripts/people_ds2/people_ds2.gd")
+const SearchOverlay := preload("res://scripts/search_overlay.gd")
+const Plate := preload("res://scripts/bdp_v3_plate.gd")
 
 
 func _fresh(satisfaction: float = 0.0) -> void:
@@ -361,6 +363,33 @@ func _test_strikes_tab_and_diagnostics() -> void:
 		"AC16.1 a warning shows its board and the key to raise pay for all")
 	var named := str((_u().warning.buildings as Array)[0])
 	_check(tab.find_child("RaisePay_%s" % named, true, false) != null, "AC16.1 each named building has its own key")
+	var board: Control = tab.find_child("StrikeBoardCase", true, false)
+	var racked: VBoxContainer = board.get_child(0) if board != null else null
+	var head: Control = racked.get_child(0) if racked != null else null
+	var head_title: Label = head.find_child("Title", true, false) if head != null else null
+	var n := (_u().warning.buildings as Array).size()
+	_check(head != null and head.name == "AllStrikes" and head_title != null and head_title.text == "All strikes (%d building%s)" % [n, "" if n == 1 else "s"],
+		"AC16.1 the board's first row is All strikes (N buildings), here %d" % n)
+	var total := 0.0
+	var loss := 0.0
+	for iid in _u().warning.buildings:
+		total += _u().pay_raise_cost(str(iid))
+		loss += _u().expected_loss(str(iid))
+	_check(head != null and is_equal_approx(float(head.get_meta("total", -1.0)), total) and is_equal_approx(float(head.get_meta("loss", -1.0)), loss),
+		"AC16.1 All strikes carries the total pay rise and its own expected loss")
+	var member: Control = tab.find_child("Striker_%s" % named, true, false)
+	_check(member != null and member.find_child("Feed", false, false) == null and member.get_parent().name == "Strikers",
+		"AC16.1 each building is nested under All strikes")
+	_check(member != null and member.find_child("IconWell", true, false) != null, "AC16.1 each building shows the good it makes")
+	var key: Button = tab.find_child("RaisePayAll", true, false)
+	_check(str(key.get("detail")) == "", "AC16.1 the pay rise's cost stands beside the key, not on it")
+	_check(tab.find_child("RaisePayBed", true, false) == null, "AC16.1 the pay rise's words are hidden until Raise pay is pressed")
+	key.pressed.emit()
+	var bed: Control = tab.find_child("RaisePayBed", true, false)
+	_check(bed != null and str(bed.get_meta("words", "")).contains("none can start for %d turns" % LabourUnrest.STRIKE_FREE_TURNS),
+		"AC16.1 Raise pay on All strikes opens what it does, with Confirm")
+	(tab.find_child("CancelRaisePay", true, false) as Button).pressed.emit()
+	_check(tab.find_child("RaisePayBed", true, false) == null and not _u().warning.is_empty(), "AC16.1 Cancel shuts it and raises nothing")
 	shell.call("_refresh_key_lamps")
 	var keys: Array = shell.get("_keys")
 	_check((keys[2].get("lamp") as Color).a > 0.0, "AC16.2 the Strikes key's lamp lights during a warning")
@@ -378,5 +407,25 @@ func _test_strikes_tab_and_diagnostics() -> void:
 	for r: Dictionary in BuildingReadout.diagnostics(BuildingState.get_building(striking), Catalog.get_recipe(str(BuildingState.get_building(striking).recipe_id)), Catalog.get_building(str(BuildingState.get_building(striking).building_id)), false):
 		on = on or str(r.get("label", "")) == "On strike"
 	_check(on, "AC16.3 the diagnostics say the building is on strike")
+	(tab.find_child("RaisePay_%s" % striking, true, false) as Button).pressed.emit()
+	(tab.find_child("ConfirmRaisePay", true, false) as Button).pressed.emit()
+	_check(not _u().is_on_strike(striking) and _u().pay_raises.has(striking) and tab.find_child("RaisePayBed", true, false) == null,
+		"AC16.1 Confirm raises pay at that building and shuts the bed")
+	var page := SearchOverlay.strikes_page()
+	_check(SearchOverlay.MECHANIC_ENTRIES.any(func(e: Dictionary) -> bool: return str(e.id) == PeopleDs2.StrikesTab.MECHANICS_ENTRY)
+		and page.contains("−70") and page.contains("−90") and not page.contains(";") and not page.contains(" - ") and not page.contains("—"),
+		"AC16.1 How strikes work opens a Mechanics page in plain copy")
+	var scale: Control = tab.find_child("StrikeScale", true, false)
+	scale.size = Vector2(420, scale.size.y)
+	var spans: Array[Rect2] = []
+	var clear := true
+	for m: Dictionary in scale.call("marks"):
+		var w := Plate.FONT_SEMI.get_string_size(str(m.text), HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+		var span := Rect2(float(m.x), 0.0, w, 1.0)
+		clear = clear and not spans.any(func(r: Rect2) -> bool: return r.intersects(span))
+		spans.append(span)
+	_check(clear and spans.size() >= 3, "AC16.1 the strike scale's printed marks never run into each other")
+	var o: Dictionary = PeopleDs2.StrikesTab.outlook(10)
+	_check(str(o.tone) == "warn" and int(o.turns) == 10, "AC16.1 the risk row reads a quarter can strike, with the turns to the next check")
 	shell.queue_free()
 	_fresh()

@@ -603,20 +603,29 @@ Two actions, open from the warning until the strike ends:
 ### 6.3 UX: People > Strikes tab — LOCKED (layout *proposed*)
 
 `TABS` (`people_ds2/people_ds2.gd:24`) becomes `["Advisors", "Labour", "Strikes"]`. The tab body
-uses the People DS2 kit (`people_ds2/parts.gd`) and has five parts:
+uses the DS2 kit (`ds2/parts.gd`), racked in cases and modules as the tile view's Buildings tab is. It
+has three parts:
 
-1. **Status plate**:
-   - band lamp and current satisfaction;
-   - "Next strike check: turn 40";
-   - Union Agreement state.
-2. **Warning board** (only while a warning is open):
-   - each named building, its tile and its expected lost revenue;
-   - "Raise pay here", with its labour cost for 10 turns, beside each building;
-   - "Raise pay for all strikers", with its total cost and "No strikes for 15 turns";
-   - a line on what striking does ("Half output for 3 turns.").
-3. **On strike**: each building with turns left.
-4. **Record**: past strikes with turn, buildings and estimated lost revenue.
-5. **How strikes work**: the two thresholds and the Union Agreement.
+1. **Strike risk** (a case):
+   - a module with the labour icon, the pilot lamp, the mood ("Restless at −78") and what it means
+     ("A quarter of your buildings can strike."), and the turns to the next check on a drum (or the
+     turns a pay rise still protects). With a union agreement in force, no drum;
+   - the strike scale: satisfaction from −100 to +100 on a mini screen, below −90 lit red, −90 to −70
+     amber, a needle at today's value, the thresholds printed under it, and a key to its zones;
+   - "How strikes work", a key that opens the encyclopedia's Mechanics page Strikes and accidents.
+     The explanation lives there, not on the panel.
+2. **The board** (only while a warning is open or strikes are on):
+   - first, "All strikes (N buildings)" as a group's head: the turns (Starts in or Turns left) on a
+     drum, the total expected loss and the total pay rise on LED screens, each labelled under it, and
+     a Raise pay key;
+   - under it, on a cable, each named or striking building: its emblem, its name with the good it
+     makes in a small well, its tile, its own loss and pay rise in the same columns, and its own
+     Raise pay key;
+   - a Raise pay key opens a key bed under its row that says what the rise does, with Confirm and
+     Cancel. For all strikers: "Labour costs 20% more at these N buildings for 10 turns. Every
+     strike ends, and none can start for 15 turns."
+3. **Record**: a row per past strike with its turn, the buildings, the outcome's lamp and the output
+   lost.
 
 The Strikes tab key carries a red lamp while a warning or strike is active.
 
@@ -1663,10 +1672,12 @@ turn's "resolution" is what happens when the player ends it.
 
 **UI**
 
-1. **AC16.1** People has a third tab, Strikes: a status plate (band lamp, satisfaction, next check
-   turn, union state), the warning board with each named building's expected lost revenue and its
-   "Raise pay here" key with the cost for 10 turns, "Raise pay for all strikers" with its total, the
-   buildings on strike with turns left, the record, and how strikes work.
+1. **AC16.1** People has a third tab, Strikes, laid out as §6.3: the strike risk case (pilot lamp,
+   mood, turns to the next check on a drum, the strike scale), the board with "All strikes (N
+   buildings)" first and each building nested under it (emblem, name, the good it makes, its tile,
+   expected loss and pay rise on LED screens beside its Raise pay key), Raise pay opening what it
+   does with Confirm and Cancel, the record, and "How strikes work" opening the encyclopedia's
+   Mechanics page.
 2. **AC16.2** The Strikes key carries a red lamp while a warning or strike is active, and the top
    bar's Workforce lamp blinks during a warning.
 3. **AC16.3** Bell events at the warning, a strike's start, its end, a call off and an accident.
