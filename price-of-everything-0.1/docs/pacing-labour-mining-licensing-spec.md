@@ -170,15 +170,15 @@ Per building per turn:
 ```
 base × level mult × throughput (1 + Σ throughput pct) × staffing fill (§5) × accident factor (§4.5)
      × site cap scale (§8.2) → quantity run
-outputs: quantity run × output modifiers (1 + Σ recipe_output pct) × strike factor 0.5 (§6)
+outputs: quantity run × output modifiers (1 + Σ recipe_output pct) × strike factor 0.7 (§6)
 inputs:  quantity run × input modifiers (1 + Σ recipe_input pct)
 power:   quantity run share of energy
 ```
 
 - Throughput pct values add, as Modifiers pct values do (`modifier_state.gd:545`).
 - Staffing, accidents and caps multiply the run.
-- A strike multiplies output only (LOCKED). It is a `mult` 0.5 modifier, not a −50 pct. Pct values
-  add, so −50% beside a +10% legacy perk would net −40% instead of halving.
+- A strike multiplies output only (LOCKED). It is a `mult` 0.7 modifier, not a −30 pct. Pct values
+  add, so −30% beside a +10% legacy perk would net −20% instead of cutting 30%.
 
 ### 3.5 Code
 
@@ -577,14 +577,14 @@ including fill (§8.5).
 | Size | ceil(25% × N) under −70, ceil(50% × N) under −90. N = the player's running production and power buildings (not infrastructure, batteries or sites under construction) |
 | Draw *(proposed)* | Weighted, seeded RNG. Hazardous sites ×2 while safety is Minimal; buildings with an accident in the last 10 turns ×2; others ×1 |
 | At turn T | Under −70: the strike starts. Under −90 at the warning but −70 to −90 at T: only the first 25% strike. At −70 or above at T: "Strike called off" |
-| Effect (LOCKED) | **Output −50%** for 3 turns (T, T+1, T+2), as a `mult` 0.5 modifier with a 3-turn expiry. Inputs are still consumed in full, so a strike also wastes half the input value. A struck mine still digs and charges its deposit in full. Struck buildings pay **50% labour cost** (LOCKED) |
+| Effect (LOCKED) | **Output −30%** for 3 turns (T, T+1, T+2), as a `mult` 0.7 modifier with a 3-turn expiry (owner ruling 26 Oct, was −50%). Inputs are still consumed in full, so a strike also wastes 30% of the input value. A struck mine still digs and charges its deposit in full. Struck buildings pay **50% labour cost** (LOCKED) |
 | Knock-on | Normal shortfall rules. In Local Suppliers starts, in-house inputs default to stockpile first with Local Suppliers buying the shortfall (`middleman_service.gd:229`). A strike upstream becomes a cash shock downstream; on tile-only routes it halts the chain |
 | Union Agreement, Partial or Comprehensive | No warning and no strikes while active |
 
 Scale at turn 50 (revenue £527, profit £133):
-- 25% of buildings striking removes about 12.5% of output for 3 turns, about £66/turn or half
+- 25% of buildings striking removes about 7.5% of output for 3 turns, about £40/turn or 30% of
   the profit.
-- 50% removes about 25%, about all the profit, plus bridging markup.
+- 50% removes about 15%, about £79/turn or 60% of the profit, plus bridging markup.
 - Three turns cannot trigger bankruptcy on their own (−£500 for 5 turns).
 
 ### 6.2 Ending strikes with a pay rise — LOCKED
@@ -599,6 +599,22 @@ Two actions, open from the warning until the strike ends:
 - Neither action changes satisfaction or the band. The workforce is still unhappy, so the next
   check after the protection ends can draw again.
 - Saved: `pay_raises` {instance_id: turns_left} and `strike_free_until` (turn).
+
+### 6.2b Breaking strikes — owner ruling 26 Oct
+
+Beside each pay rise, Break strike: replacement crews end the strike at once.
+
+| Action | Cost | Satisfaction | Effect |
+|---|---|---|---|
+| Break one building | 1 turn of its base wages, paid this turn ("Strike breaking") | target −5 for 10 turns | its strike ends with no +5, or a named building leaves the warning |
+| Break the whole round | 1 turn of base wages per named or striking building | target −20 for 10 turns | every strike ends, the warning clears, no protection after |
+
+- **Routinely broke strikes**: 2 whole rounds broken, or 10 buildings broken one at a time, add a
+  standing −15 to the satisfaction target. Only signing a Comprehensive Union Agreement removes it;
+  signing also resets both counts. A Partial agreement does not.
+- The cost is a first guess (*proposed*): half what a pay rise costs over its 10 turns, so breaking is
+  cheaper in cash and dearer in satisfaction.
+- Saved: `strike_rounds_broken`, `strike_buildings_broken`, `strike_routinely_broke`.
 
 ### 6.3 UX: People > Strikes tab — LOCKED (layout *proposed*)
 
@@ -616,13 +632,12 @@ has three parts:
      The explanation lives there, not on the panel.
 2. **The board** (only while a warning is open or strikes are on):
    - first, "All strikes (N buildings)" as a group's head: the turns (Starts in or Turns left) on a
-     drum, the total expected loss and the total pay rise on LED screens, each labelled under it, and
-     a Raise pay key;
+     drum, the total expected loss on an LED screen labelled under it, then two actions one over the
+     other, each its cost on an LED screen beside its key: Raise pay and Break strike (§6.2b);
    - under it, on a cable, each named or striking building: its emblem, its name with the good it
-     makes in a small well, its tile, its own loss and pay rise in the same columns, and its own
-     Raise pay key;
-   - a Raise pay key opens a key bed under its row that says what the rise does, with Confirm and
-     Cancel. For all strikers: "Labour costs 20% more at these N buildings for 10 turns. Every
+     makes in a small well, its tile, its own loss and its own two actions in the same columns;
+   - an action's key opens a key bed under its row that says what it does, with Confirm and
+     Cancel. Break strike's bed also says how near the workforce is to remembering it for good. For all strikers: "Labour costs 20% more at these N buildings for 10 turns. Every
      strike ends, and none can start for 15 turns."
 3. **Record**: a row per past strike with its turn, the buildings, the outcome's lamp and the output
    lost.
@@ -815,7 +830,7 @@ satisfaction. Buying is the fast lane, which is what LOCKED pacing intends.
 - A **site** is one deposit good on one tile.
 - Its **draw** is the sum over the player's workings on it of: level multiplier (L1 1, L2 2,
   L3 3.5) × throughput × staffing fill × accident factor.
-- Strikes do not lower draw: a struck mine digs in full and recovers half (§6).
+- Strikes do not lower draw: a struck mine digs in full and recovers 70% (§6).
 - Draw is measured in level 1 workings, so caps are recipe-agnostic. An offshore platform and an
   oil well each count 1 at level 1.
 - NPC buildings do not simulate and never draw.
@@ -1160,7 +1175,7 @@ whose condition is unmet, or licensing out a process that was licensed in."
 > **Labour satisfaction is a budget.** Policies trade throughput and cash for satisfaction
 > (−100 to +100). Satisfaction sets:
 > - hiring speed;
-> - strikes: 25% of buildings below −70 and 50% below −90, every 10 turns, at half output;
+> - strikes: 25% of buildings below −70 and 50% below −90, every 10 turns, at 30% less output;
 > - the +5% output prize.
 >
 > Satisfaction moves toward its target by max(10% of the gap, 2) a turn; only reneging on union
@@ -1188,7 +1203,7 @@ whose condition is unmet, or licensing out a process that was licensed in."
 
 > - A bought building cannot be cancelled during its 2-turn closing.
 > - A building idles until it is 70% staffed.
-> - Strikes halve output while inputs are still consumed.
+> - Strikes cut output 30% while inputs are still consumed.
 > - Freight is priced by distance. Local Suppliers settle in the same turn and keep their own
 >   trips constant.
 
@@ -1602,7 +1617,7 @@ resolution. Fill is `staff_fill`, the hired share of a building's requirement.
 
 - **Strikes**:
   - check every 10 turns, warning at T−2, draw 25% or 50% of buildings weighted;
-  - output ×0.5 as a `mult` modifier for 3 turns;
+  - output ×0.7 as a `mult` modifier for 3 turns;
   - strikers at 50% labour cost;
   - called off when satisfaction recovers;
   - pay rises: one building +20% for 10 turns, or every striker +20% for 10 turns with 15 strike-free
@@ -1616,7 +1631,7 @@ resolution. Fill is `staff_fill`, the hired share of a building's requirement.
   - bell events.
 - **Save and telemetry**: strike warning, active strikes, record, pay rises, protection; telemetry
   `strikes`.
-- **Stances**: A7 (strikes halve output).
+- **Stances**: A7 (strikes cut output 30%).
 - **Evidence**:
   - seeded draw determinism;
   - strike cost at turn 50 within the §6.1 scale.
@@ -1638,8 +1653,8 @@ turn's "resolution" is what happens when the player ends it.
 3. **AC12.3** In the resolution of turn T: below −70 the named buildings strike. If the warning was
    drawn below −90 and satisfaction is now −70 to −90, only the first ceil(25% × N) strike. At −70
    or above the strike is called off.
-4. **AC12.4** A strike halves the building's output for 3 turns (T, T+1, T+2) through a per-building
-   `recipe_output` `mult` 0.5 modifier, power plants included. Inputs are consumed in full, a mine's
+4. **AC12.4** A strike cuts the building's output 30% for 3 turns (T, T+1, T+2) through a per-building
+   `recipe_output` `mult` 0.7 modifier, power plants included. Inputs are consumed in full, a mine's
    deposit is charged in full, and labour costs 50% while it lasts.
 5. **AC12.5** A strike that runs its course ends with a +5 target shift for 10 turns.
 6. **AC12.6** While a Partial or Comprehensive union is active there is no warning, and a standing
@@ -1653,6 +1668,14 @@ turn's "resolution" is what happens when the player ends it.
    turns. Every strike ends, the warning clears, and there are no warnings or strikes for 15 turns.
 3. **AC13.3** Neither raise changes satisfaction, its target or the band. A strike ended by a raise
    gives no +5.
+4. **AC13.4** Break strike at one building charges 1 turn of its base wages this turn as "Strike
+   breaking", ends its strike with no +5 (or takes it out of the warning), shifts the target −5 for
+   10 turns and records the round as broken.
+5. **AC13.5** Break strike for the whole round ends every strike, clears the warning, charges every
+   striker's turn of wages and shifts the target −20 for 10 turns, with no protection after.
+6. **AC13.6** The second whole round broken, or the tenth building broken one at a time, adds
+   "Routinely broke strikes", a standing −15 in the satisfaction sources.
+7. **AC13.7** Only a Comprehensive Union Agreement clears it, with both counts. Partial does not.
 
 **Accidents (§4.5)**
 
@@ -1675,8 +1698,8 @@ turn's "resolution" is what happens when the player ends it.
 1. **AC16.1** People has a third tab, Strikes, laid out as §6.3: the strike risk case (pilot lamp,
    mood, turns to the next check on a drum, the strike scale), the board with "All strikes (N
    buildings)" first and each building nested under it (emblem, name, the good it makes, its tile,
-   expected loss and pay rise on LED screens beside its Raise pay key), Raise pay opening what it
-   does with Confirm and Cancel, the record, and "How strikes work" opening the encyclopedia's
+   expected loss on an LED screen, then Raise pay and Break strike, each with its cost on an LED
+   screen beside its key), each key opening what it does with Confirm and Cancel, the record, and "How strikes work" opening the encyclopedia's
    Mechanics page.
 2. **AC16.2** The Strikes key carries a red lamp while a warning or strike is active, and the top
    bar's Workforce lamp blinks during a warning.

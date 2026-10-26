@@ -107,6 +107,8 @@ const FIELDS := {
 			"work_week_hours",
 			"strike_free_until",
 			"accident_minimal_turns",
+			"strike_rounds_broken",
+			"strike_buildings_broken",
 			"advisor_rng_seed",
 			"advisors_hired_last_turn",
 			"agenda_last_build_turn",
@@ -149,7 +151,8 @@ const FIELDS := {
 			"global_trade_license_paid",
 			"rail_hubs_seeded",
 			"seaport_auto_subscribe",
-			"union_halving_active"
+			"union_halving_active",
+			"strike_routinely_broke"
 		]
 	},
 	"turn": {

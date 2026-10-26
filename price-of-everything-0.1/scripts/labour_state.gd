@@ -344,6 +344,7 @@ func set_union_tier(tier: int) -> void:
 		workforce_policies[WORKFORCE_POLICY_UNION_PARTIAL] = true
 	elif tier == UNION_COMPREHENSIVE:
 		workforce_policies[WORKFORCE_POLICY_UNION_COMPREHENSIVE] = true
+		unrest.clear_strike_breaking()
 		if not union_halving_active:
 			union_halving_active = true
 			union_signed_turn = int(TurnManager.current_turn)
@@ -675,6 +676,8 @@ func satisfaction_contributions() -> Array:
 		_add_part(parts, WORKFORCE_POLICY_LONG_TENURE, "Long Tenure Awards", 5.0)
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_STOCK_OPTIONS):
 		_add_part(parts, WORKFORCE_POLICY_STOCK_OPTIONS, "Stock Options", 10.0)
+	if unrest.routinely_broke:
+		_add_part(parts, "routinely_broke_strikes", "Routinely broke strikes", LabourUnrest.ROUTINE_SATISFACTION)
 	var workers := workforce_headcount()
 	for step in WORKFORCE_SIZE_STEPS:
 		if workers > step:

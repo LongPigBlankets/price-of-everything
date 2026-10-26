@@ -5,8 +5,10 @@ extends RefCounted
 ## Strikes are checked every 10th turn T. In the resolution of turn T−3 a workforce below −70 names its strikers,
 ## a quarter of the company's production and power buildings (half below −90), so the player sees the warning
 ## from turn T−2. In the resolution of T the named buildings strike if satisfaction is still below −70: their
-## output halves for 3 turns (a per-building `recipe_output` mult 0.5 modifier) while their inputs are still
+## output falls 30% for 3 turns (a per-building `recipe_output` mult 0.7 modifier) while their inputs are still
 ## consumed and their labour costs half. A union agreement or a pay rise for all strikers keeps strikes away.
+## Breaking a strike ends it for a turn of wages and a fall in satisfaction; done routinely, the workforce
+## remembers it until a Comprehensive Union Agreement is signed.
 ## Accidents happen only under Minimal safety, at hazardous buildings, and stop a building for 2 turns.
 
 signal changed
@@ -21,7 +23,7 @@ const HEAVY_STRIKE_BELOW := -90.0
 const STRIKE_SHARE := 0.25
 const HEAVY_STRIKE_SHARE := 0.5
 const STRIKE_TURNS := 3
-const STRIKE_OUTPUT_MULT := 0.5
+const STRIKE_OUTPUT_MULT := 0.7
 ## Struck buildings pay this share of their labour cost.
 const STRIKE_LABOUR_SHARE := 0.5
 const STRIKE_END_SHIFT := 5.0
@@ -29,6 +31,16 @@ const PAY_RAISE := 0.20
 const PAY_RAISE_TURNS := 10
 const STRIKE_FREE_TURNS := 15
 const RECORD_CAP := 20
+## Breaking a strike: replacement crews and guards cost this many turns of a building's base wage bill, paid
+## this turn, and lower the satisfaction target by 5 a building or 20 for a whole round, for 10 turns.
+const BREAK_COST_TURNS := 1.0
+const BREAK_SHIFT_ONE := -5.0
+const BREAK_SHIFT_ROUND := -20.0
+## Two whole rounds broken, or ten buildings broken one at a time, and the workforce remembers for good:
+## "Routinely broke strikes", until a Comprehensive Union Agreement is signed.
+const ROUTINE_ROUNDS := 2
+const ROUTINE_BUILDINGS := 10
+const ROUTINE_SATISFACTION := -15.0
 const ACCIDENT_CHANCE_START := 0.02
 const ACCIDENT_CHANCE_STEP := 0.0025
 const ACCIDENT_CHANCE_MAX := 0.06
@@ -57,6 +69,11 @@ var accident_down: Dictionary = {}
 var accident_turns: Dictionary = {}
 ## Turns Minimal safety has been on without a break: the accident chance's ramp.
 var minimal_safety_turns := 0
+## Whole rounds broken, and buildings broken one at a time, since the last Comprehensive signing.
+var rounds_broken := 0
+var buildings_broken := 0
+## "Routinely broke strikes": a standing −15 on the satisfaction target until Comprehensive is signed.
+var routinely_broke := false
 var _rng := RandomNumberGenerator.new()
 var _rng_seeded := false
 
@@ -70,6 +87,9 @@ func reset() -> void:
 	accident_down.clear()
 	accident_turns.clear()
 	minimal_safety_turns = 0
+	rounds_broken = 0
+	buildings_broken = 0
+	routinely_broke = false
 	_rng_seeded = false
 
 
@@ -84,6 +104,9 @@ func export_fields() -> Dictionary:
 		"accident_down": accident_down.duplicate(true),
 		"accident_turns": accident_turns.duplicate(true),
 		"accident_minimal_turns": minimal_safety_turns,
+		"strike_rounds_broken": rounds_broken,
+		"strike_buildings_broken": buildings_broken,
+		"strike_routinely_broke": routinely_broke,
 		"labour_rng_seed": SaveLoad.int64_out(_rng.seed),
 		"labour_rng_state": SaveLoad.int64_out(_rng.state),
 	}
@@ -99,6 +122,9 @@ func import_fields(d: Dictionary) -> void:
 	accident_down = _int_values(d.get("accident_down", {}))
 	accident_turns = _int_values(d.get("accident_turns", {}))
 	minimal_safety_turns = maxi(0, int(d.get("accident_minimal_turns", 0)))
+	rounds_broken = maxi(0, int(d.get("strike_rounds_broken", 0)))
+	buildings_broken = maxi(0, int(d.get("strike_buildings_broken", 0)))
+	routinely_broke = bool(d.get("strike_routinely_broke", false))
 	_rng_seeded = d.has("labour_rng_seed")
 	if _rng_seeded:
 		_rng.seed = SaveLoad.int64_in(d.get("labour_rng_seed"), 0)
@@ -246,7 +272,7 @@ func _resolve_warning(turn: int) -> void:
 	_add_record(turn, named, "struck", lost)
 	warning = {}
 	_bell("strike_started", "critical", "Strike",
-		"%s %s on strike: half output for %d turns." % [_names_text(named), "is" if named.size() == 1 else "are", STRIKE_TURNS])
+		"%s %s on strike: output down %d%% for %d turns." % [_names_text(named), "is" if named.size() == 1 else "are", output_cut_pct(), STRIKE_TURNS])
 
 
 func _strike_over(iid: String) -> void:
@@ -281,12 +307,17 @@ func is_named(iid: String) -> bool:
 	return (warning.get("buildings", []) as Array).has(iid)
 
 
+## The share of output a strike takes, in whole percent (30).
+static func output_cut_pct() -> int:
+	return roundi((1.0 - STRIKE_OUTPUT_MULT) * 100.0)
+
+
 ## The next check turn after `turn`.
 static func next_check_turn(turn: int) -> int:
 	return (turn / CHECK_EVERY + 1) * CHECK_EVERY
 
 
-## What a building's strike costs: half its output's value a turn, for the turns a strike runs.
+## What a building's strike costs: the output it loses a turn at today's prices, for the turns a strike runs.
 func expected_loss(iid: String) -> float:
 	return output_value_per_turn(iid) * (1.0 - STRIKE_OUTPUT_MULT) * float(STRIKE_TURNS)
 
@@ -332,6 +363,13 @@ func raise_pay(iid: String) -> bool:
 	if not is_named(iid) and not is_on_strike(iid):
 		return false
 	pay_raises[iid] = PAY_RAISE_TURNS
+	_end_one(iid)
+	changed.emit()
+	return true
+
+
+## Ends one building's part in the round: its strike ends without the +5, or it leaves the warning.
+func _end_one(iid: String) -> void:
 	if is_on_strike(iid):
 		_end_strike_bought(iid)
 	if is_named(iid):
@@ -340,8 +378,6 @@ func raise_pay(iid: String) -> bool:
 			warning = {}
 		else:
 			warning["buildings"] = left
-	changed.emit()
-	return true
 
 
 ## Raise pay at every named or striking building: each +20% for 10 turns, every strike ends, the warning
@@ -358,6 +394,88 @@ func raise_pay_all(turn: int) -> bool:
 	strike_free_until = turn + STRIKE_FREE_TURNS
 	changed.emit()
 	return true
+
+
+# ── Breaking strikes ─────────────────────────────────────────────────────────────────────────────
+
+## What breaking `iid`'s strike costs, paid this turn: a turn of its base wage bill.
+func break_cost(iid: String) -> float:
+	var b := BuildingState.get_building(iid)
+	if b.is_empty():
+		return 0.0
+	return Production._base_labour_cost(b) * BREAK_COST_TURNS
+
+
+## Break one named or striking building's strike: it pays break_cost this turn, its workers go back (a named
+## one never strikes), and the satisfaction target falls 5 for 10 turns. The tenth building broken this way
+## makes it routine.
+func break_strike(iid: String, turn: int) -> bool:
+	if not is_named(iid) and not is_on_strike(iid):
+		return false
+	_charge_break(break_cost(iid), turn)
+	_end_one(iid)
+	LabourState.add_target_shift("strike_broken_%s_%d" % [iid, turn], "Strike broken", BREAK_SHIFT_ONE)
+	_add_record(turn, [iid], "broken", 0.0)
+	buildings_broken += 1
+	if buildings_broken >= ROUTINE_BUILDINGS:
+		_make_routine()
+	_bell("strike_broken", "warning", "Strike broken", "%s is back at work. Satisfaction %s for %d turns." % [
+		_name(iid), LabourState.signed_text(BREAK_SHIFT_ONE), LabourState.EVENT_SHIFT_TURNS])
+	changed.emit()
+	return true
+
+
+## Break the whole round: every named and striking building goes back to work at once, each paying
+## break_cost this turn, and the satisfaction target falls 20 for 10 turns. The second round broken makes it
+## routine. No protection follows, unlike a pay rise for all.
+func break_all(turn: int) -> bool:
+	var all := affected_buildings()
+	if all.is_empty():
+		return false
+	var cost := 0.0
+	for iid: String in all:
+		cost += break_cost(iid)
+		if is_on_strike(iid):
+			_end_strike_bought(iid)
+	warning = {}
+	_charge_break(cost, turn)
+	LabourState.add_target_shift("strikes_broken_%d" % turn, "Strikes broken", BREAK_SHIFT_ROUND)
+	_add_record(turn, all, "broken", 0.0)
+	rounds_broken += 1
+	if rounds_broken >= ROUTINE_ROUNDS:
+		_make_routine()
+	_bell("strikes_broken", "warning", "Strikes broken", "%s %s back at work. Satisfaction %s for %d turns." % [
+		_names_text(all), "is" if all.size() == 1 else "are", LabourState.signed_text(BREAK_SHIFT_ROUND), LabourState.EVENT_SHIFT_TURNS])
+	changed.emit()
+	return true
+
+
+## Whether breaking `target` ("all" or a building) now would make strike breaking routine.
+func break_makes_routine(target: String) -> bool:
+	if routinely_broke:
+		return false
+	return rounds_broken + 1 >= ROUTINE_ROUNDS if target == "all" else buildings_broken + 1 >= ROUTINE_BUILDINGS
+
+
+func _charge_break(amount: float, turn: int) -> void:
+	if amount > 0.0:
+		MatchState.one_off_charges.append({"turn": turn, "amount": snappedf(amount, 0.01), "label": "Strike breaking"})
+
+
+func _make_routine() -> void:
+	if routinely_broke:
+		return
+	routinely_broke = true
+	LabourState.satisfaction_changed.emit()
+	_bell("strikes_routinely_broken", "critical", "Routinely broke strikes",
+		"The workforce will not forget. Satisfaction %s until a Comprehensive Union Agreement is signed." % LabourState.signed_text(ROUTINE_SATISFACTION))
+
+
+## A Comprehensive Union Agreement wipes the slate: the standing −15 and the counts toward it.
+func clear_strike_breaking() -> void:
+	rounds_broken = 0
+	buildings_broken = 0
+	routinely_broke = false
 
 
 # ── Accidents (§4.5) ─────────────────────────────────────────────────────────────────────────────

@@ -47,6 +47,13 @@ func _tick(turn: int) -> void:
 	_u().tick(turn)
 
 
+func _sum_break() -> float:
+	var total := 0.0
+	for iid in _u().affected_buildings():
+		total += _u().break_cost(str(iid))
+	return total
+
+
 func _shift(id_prefix: String) -> float:
 	var total := 0.0
 	for s: Dictionary in LabourState.target_shifts:
@@ -112,7 +119,7 @@ func _test_strike_draw_is_weighted_and_seeded() -> void:
 
 
 ## AC12.3–AC12.5: at T the named buildings strike below −70, or only the first quarter when a −90 warning eased to
-## −70…−90, or it is called off at −70 and above. A strike halves output (power too) for T, T+1 and T+2, consumes
+## −70…−90, or it is called off at −70 and above. A strike cuts output 30% (power too) for T, T+1 and T+2, consumes
 ## full inputs, charges a deposit in full and halves labour; one that runs out lifts the target 5.
 func _test_strike_effect_and_end() -> void:
 	_fresh(-80.0)
@@ -128,8 +135,8 @@ func _test_strike_effect_and_end() -> void:
 	_tick(10)
 	_check(_u().is_on_strike(iid) and _u().warning.is_empty() and str((_u().record.back() as Dictionary).outcome) == "struck",
 		"AC12.3 below −70 at T the named buildings strike")
-	_check(BuildingStatus.effective_output_qty(b, recipe) == int(round(float(out0) * 0.5))
-		and Production._scaled_input_qty(recipe.inputs[0], b) == in0, "AC12.4 a strike halves output and keeps inputs in full")
+	_check(BuildingStatus.effective_output_qty(b, recipe) == int(round(float(out0) * LabourUnrest.STRIKE_OUTPUT_MULT)) and LabourUnrest.STRIKE_OUTPUT_MULT == 0.7
+		and Production._scaled_input_qty(recipe.inputs[0], b) == in0, "AC12.4 a strike cuts output 30% and keeps inputs in full")
 	var unstruck := Production._base_labour_cost(b, recipe) * Production.labour_cost_factor(b)
 	_check(is_equal_approx(Production._calculate_labour_cost(b, recipe), unstruck * 0.5), "AC12.4 struck labour costs half")
 	var expires := -1
@@ -246,6 +253,71 @@ func _test_pay_rises() -> void:
 	_fresh()
 
 
+## AC13.4–AC13.7: breaking strikes. One building: a turn of its base wages charged this turn ("Strike breaking"),
+## its strike ends (or it leaves the warning) with no +5, and the target falls 5 for 10 turns. A whole round:
+## every named and striking building, the target −20, and no protection after. Two whole rounds, or ten buildings
+## one at a time, add "Routinely broke strikes", a standing −15 that only a Comprehensive Union Agreement clears.
+func _test_break_strikes() -> void:
+	_fresh(-80.0)
+	_company(8)
+	_tick(7)
+	var named: Array = (_u().warning.buildings as Array).duplicate()
+	var first := str(named[0])
+	var cost := Production._base_labour_cost(BuildingState.get_building(first)) * LabourUnrest.BREAK_COST_TURNS
+	MatchState.one_off_charges.clear()
+	_check(cost > 0.0 and is_equal_approx(_u().break_cost(first), cost), "AC13.4 breaking costs a turn of base wages")
+	_check(_u().break_strike(first, 8) and not _u().is_named(first), "AC13.4 a broken named building leaves the warning")
+	var charge: Dictionary = MatchState.one_off_charges.back() if not MatchState.one_off_charges.is_empty() else {}
+	_check(str(charge.get("label", "")) == "Strike breaking" and is_equal_approx(float(charge.get("amount", 0.0)), snappedf(cost, 0.01))
+		and int(charge.get("turn", 0)) == 8, "AC13.4 it is charged this turn as Strike breaking")
+	_check(is_equal_approx(_shift("strike_broken_"), LabourUnrest.BREAK_SHIFT_ONE) and LabourUnrest.BREAK_SHIFT_ONE == -5.0,
+		"AC13.4 the target falls 5")
+	_check(str((_u().record.back() as Dictionary).outcome) == "broken" and _u().buildings_broken == 1, "AC13.4 the record says broken")
+	_tick(10)
+	var striking := str(_u().active.keys()[0])
+	_check(_u().break_strike(striking, 10) and not _u().is_on_strike(striking) and is_zero_approx(_shift("strike_over")),
+		"AC13.4 breaking ends a strike at once, with no +5")
+	_fresh(-80.0)
+	_company(8)
+	_tick(7)
+	_tick(10)
+	var total := 0.0
+	for iid in _u().affected_buildings():
+		total += _u().break_cost(str(iid))
+	MatchState.one_off_charges.clear()
+	_check(_u().break_all(10) and _u().active.is_empty() and _u().warning.is_empty() and _u().strike_free_until == 0,
+		"AC13.5 breaking the round ends every strike, with no protection after")
+	_check(is_equal_approx(_shift("strikes_broken_"), -20.0) and is_zero_approx(_shift("strike_broken_")),
+		"AC13.5 the target falls 20 for the round, not 5 a building")
+	_check(not MatchState.one_off_charges.is_empty() and is_equal_approx(float((MatchState.one_off_charges.back() as Dictionary).amount), snappedf(total, 0.01)),
+		"AC13.5 every striker's turn of wages is charged")
+	_check(_u().rounds_broken == 1 and not _u().routinely_broke, "AC13.6 one round broken is not yet routine")
+	_tick(17)
+	_tick(20)
+	_check(not _u().active.is_empty() and _u().break_makes_routine("all"), "AC13.6 setup: the next round strikes, and breaking it would be routine")
+	_u().break_all(20)
+	var routine := false
+	for part: Dictionary in LabourState.satisfaction_contributions():
+		routine = routine or (str(part.id) == "routinely_broke_strikes" and is_equal_approx(float(part.value), -15.0))
+	_check(_u().routinely_broke and routine, "AC13.6 a second round broken adds Routinely broke strikes, −15")
+	LabourState.set_union_tier(LabourState.UNION_PARTIAL)
+	_check(_u().routinely_broke, "AC13.7 a Partial Union Agreement does not clear it")
+	LabourState.set_union_tier(LabourState.UNION_COMPREHENSIVE)
+	_check(not _u().routinely_broke and _u().rounds_broken == 0 and _u().buildings_broken == 0,
+		"AC13.7 a Comprehensive Union Agreement clears it and the counts toward it")
+	LabourState.set_union_tier(LabourState.UNION_NONE)
+	_check(not _u().routinely_broke, "AC13.7 it stays cleared after the union steps down")
+	_fresh(-80.0)
+	_u().buildings_broken = 9
+	_company(8)
+	_tick(7)
+	var ninth := str((_u().warning.buildings as Array)[0])
+	_check(_u().break_makes_routine(ninth) and not _u().break_makes_routine("all"), "AC13.6 the tenth single break would be routine")
+	_u().break_strike(ninth, 8)
+	_check(_u().routinely_broke, "AC13.6 ten buildings broken one at a time make it routine")
+	_fresh()
+
+
 ## AC14.1, AC14.2: accidents under Minimal safety only, at hazardous buildings: 2% rising 0.25 points a turn to 6%,
 ## reset when safety changes; an accident stops the building 2 turns, shifts the target −10 and charges 2 turns of
 ## wages.
@@ -308,9 +380,13 @@ func _test_strike_save_round_trip() -> void:
 	_u().accident_down["y"] = 1
 	_u().accident_turns["y"] = 9
 	_u().minimal_safety_turns = 6
+	_u().rounds_broken = 1
+	_u().buildings_broken = 3
+	_u().routinely_broke = true
 	var snap: Dictionary = MatchState.export_state()
 	for key in ["strike_warning", "strike_active", "strike_record", "strike_pay_raises", "strike_free_until",
-			"accident_down", "accident_turns", "accident_minimal_turns", "labour_rng_seed", "labour_rng_state"]:
+			"accident_down", "accident_turns", "accident_minimal_turns", "labour_rng_seed", "labour_rng_state",
+			"strike_rounds_broken", "strike_buildings_broken", "strike_routinely_broke"]:
 		_check(snap.has(key), "AC15.1 the save carries %s" % key)
 	var state := _u().export_fields()
 	var pool := _u().eligible_buildings()
@@ -321,6 +397,7 @@ func _test_strike_save_round_trip() -> void:
 	_check(_u().is_on_strike(striking) and int(_u().pay_raises.x) == 4 and _u().is_down("y") and _u().minimal_safety_turns == 6,
 		"AC15.1 a load restores strikes, raises and accidents")
 	_check(_u().draw(pool, 2, 20) == next, "AC15.1 the labour RNG continues where it was")
+	_check(_u().rounds_broken == 1 and _u().buildings_broken == 3 and _u().routinely_broke, "AC15.1 a load restores the strike breaking")
 	var legacy := {}
 	_u().import_fields(legacy)
 	_check(_u().active.is_empty() and _u().warning.is_empty() and _u().strike_free_until == 0, "AC15.1 an older save loads quiet")
@@ -390,6 +467,15 @@ func _test_strikes_tab_and_diagnostics() -> void:
 		"AC16.1 Raise pay on All strikes opens what it does, with Confirm")
 	(tab.find_child("CancelRaisePay", true, false) as Button).pressed.emit()
 	_check(tab.find_child("RaisePayBed", true, false) == null and not _u().warning.is_empty(), "AC16.1 Cancel shuts it and raises nothing")
+	_check(member != null and member.find_child("BreakStrike_%s" % named, true, false) != null and head.find_child("BreakStrikeAll", true, false) != null,
+		"AC16.1 every row has Break strike beside Raise pay")
+	_check(is_equal_approx(float(head.get_meta("break", -1.0)), _sum_break()), "AC16.1 All strikes carries the total cost of breaking")
+	(tab.find_child("BreakStrikeAll", true, false) as Button).pressed.emit()
+	var break_bed: Control = tab.find_child("BreakStrikeBed", true, false)
+	_check(break_bed != null and str(break_bed.get_meta("words", "")).contains("−20") and str(break_bed.get_meta("words", "")).contains("remembers it for good"),
+		"AC16.1 Break strike on All strikes opens what it does to satisfaction")
+	(tab.find_child("CancelBreakStrike", true, false) as Button).pressed.emit()
+	_check(tab.find_child("BreakStrikeBed", true, false) == null and not _u().warning.is_empty(), "AC16.1 Cancel breaks nothing")
 	shell.call("_refresh_key_lamps")
 	var keys: Array = shell.get("_keys")
 	_check((keys[2].get("lamp") as Color).a > 0.0, "AC16.2 the Strikes key's lamp lights during a warning")

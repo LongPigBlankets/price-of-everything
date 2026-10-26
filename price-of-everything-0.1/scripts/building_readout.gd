@@ -444,7 +444,7 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 	# Strikes (docs/pacing-labour-mining-licensing-spec.md §6): on strike, or named in the warning.
 	if LabourState.unrest.is_on_strike(iid):
 		var left := LabourState.unrest.strike_turns_left(iid)
-		rows.append(_row("warn", "warn", "On strike", "Half output for %d more turn%s. Labour costs half." % [left, "" if left == 1 else "s"]))
+		rows.append(_row("warn", "warn", "On strike", "Output down %d%% for %d more turn%s. Labour costs half." % [LabourState.LabourUnrest.output_cut_pct(), left, "" if left == 1 else "s"]))
 	elif LabourState.unrest.is_named(iid):
 		rows.append(_row("warn", "warn", "Strike warning", "Its workers strike on turn %d unless satisfaction rises above %s or their pay is raised." % [
 			int(LabourState.unrest.warning.get("turn", 0)), LabourState.signed_text(LabourState.LabourUnrest.STRIKE_BELOW)]))

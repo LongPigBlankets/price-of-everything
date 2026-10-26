@@ -117,7 +117,7 @@ tenure (`AdvisorState.FOUNDER_ONLY_SEATS`): it exists only while he holds it.
   `cnc-turn-pipeline-reference`'s worked trace).
 - A bought building cannot be cancelled during its 2-turn closing (`MatchState.offer_for_building`).
 - A building idles until it is 70% staffed.
-- Strikes halve output while inputs are still consumed (`scripts/labour_unrest.gd`), and a struck mine
+- Strikes cut output 30% while inputs are still consumed (`scripts/labour_unrest.gd`), and a struck mine
   still charges its deposit in full. A strike is a cash shock, not a pause.
 
 ## How to use this file in review
