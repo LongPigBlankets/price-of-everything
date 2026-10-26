@@ -591,6 +591,16 @@ func transport_link_capacity(mode: String, level: int) -> float:
 		return 0.0
 	return float(tiers.get(clampi(level, 1, 3), 0.0))
 
+# --- Mining: seams (scripts/mining_sites.gd, docs/pacing-labour-mining-licensing-spec.md §8) ---
+## Every finite deposit is this many times its CSV size, applied after the coal and iron normalisation.
+const DEPOSIT_SIZE_MULT := 3.0
+## A site's working limits, in level 1 workings: free to SEAM_FREE, nothing past SEAM_MAX.
+const SEAM_FREE := {"endless": 2.0, "finite": 3.0}
+const SEAM_MAX := {"endless": 4.0, "finite": 6.0}
+## What each full working over the free cap adds to the labour and maintenance of the whole site (+100%).
+## `extraction_cap_cost` modifiers scale it.
+const SEAM_OVER_CAP_COST := 1.0
+
 # --- Land prices (scripts/land_price.gd, docs/land-pricing-spec.md) ---
 # A patch's starting price is BuildingState.LAND_PATCH_COST times its settlement band. Every
 # rise below is a share of that starting price, so rises add and never compound.

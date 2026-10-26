@@ -217,7 +217,7 @@ func _tile_has_physical_room(tile_id: String, building_id: String = "") -> bool:
 		building_id = str(BuildMode.current_building_id)
 	if building_id == "":
 		return true
-	var needed := maxf(0.0, float(Catalog.get_building(building_id).get("tile_size_used", 1.0)))
+	var needed := maxf(0.0, Catalog.land_units(Catalog.get_building(building_id)))
 	return BuildingState.get_tile_space_used(tile_id) + needed <= float(BuildingState.max_tile_land(tile_id))
 
 func _tile_meets_all_build_reqs(tile_data: Dictionary, reqs: Array) -> bool:

@@ -92,6 +92,15 @@ One sanctioned exception: the rankings' summed revenue (19 seeded rivals plus th
 player) drives urban land prices, +25% of a tile's starting price per doubling
 (`scripts/land_price.gd`, docs/land-pricing-spec.md). It is a clock, not a simulation.
 
+**Seams have working limits.** Each deposit extracts freely up to 2 level 1 workings (endless
+seams) or 3 (finite seams), with a hard maximum of 4 or 6. Every working over the free cap adds
+100% labour and maintenance on the whole site, as a multiplier after labour discounts
+(`scripts/mining_sites.gd`, docs/pacing-labour-mining-licensing-spec.md §8). Deep extraction
+therefore needs labour and maintenance modifiers. Finite seams are charged for what is dug:
+throughput counts, yield does not. Regression smell: removing the cap because players want to
+upgrade, letting yield research burn seams, or turning the over-cap cost into a percentage that
+labour discounts cancel. (Changes design stance A5, approved by owner.)
+
 **No combat. 300-turn cap.** The cap (turn_manager `MAX_TURNS`) shapes every curve;
 the game soft-ends and still shows DECIDE for overlays.
 

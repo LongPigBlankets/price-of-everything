@@ -534,6 +534,16 @@ func _accident(iid: String, b: Dictionary, turn: int) -> void:
 		"It is down for %d turns. Compensation £%.0f." % [ACCIDENT_DOWN_TURNS, compensation])
 
 
+## An accident at `iid` from outside the Minimal safety roll (robbed pillars, docs/pacing-labour-mining-licensing-spec.md
+## §8.7): the same 2 turns down, compensation and target shift. Nothing for a building already down.
+func cause_accident(iid: String, turn: int) -> void:
+	var b := BuildingState.get_building(iid)
+	if b.is_empty() or accident_down.has(iid):
+		return
+	_accident(iid, b, turn)
+	changed.emit()
+
+
 func is_down(iid: String) -> bool:
 	return accident_down.has(iid)
 

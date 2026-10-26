@@ -83,7 +83,9 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 	# --- Outputs: what it sells, what the freight and port cost to sell it ---------------
 	# The labour policies' throughput scales outputs AND inputs together (MatchState.run_multiplier
 	# for a running building); the startup ramp is left out because the forecast is the lasting rate.
-	var run := MatchState.throughput_multiplier(probe)
+	# A mine past its seam's limit runs at the site's scale with this one counted; its labour and maintenance carry
+	# the site's M through the same helpers the engine pays them by (docs/pacing-labour-mining-licensing-spec.md §8).
+	var run := MatchState.throughput_multiplier(probe) * preload("res://scripts/mining_sites.gd").scale_for(probe)
 	var outputs := {}          # good_id -> qty
 	var revenue: float = 0.0
 	for item in Production._recipe_output_items(recipe):

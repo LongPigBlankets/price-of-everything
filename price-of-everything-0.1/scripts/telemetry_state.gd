@@ -37,7 +37,7 @@ const DemoEula := preload("res://scripts/demo_eula.gd")
 
 const ENDPOINT_URL := "https://script.google.com/macros/s/AKfycbw8dUX-A_dSKmI2GB4_2AbRXbGnOKTbP8mpEa17t6wBBAg4Y0LcCnS_xJNH3EeNRwdr/exec"
 const TOKEN := "d299f45324f48cce4b9257789dfc493e172d5ac657ba1641"
-const SCHEMA_VERSION := 7  # v7: buildings on strike in each turn row
+const SCHEMA_VERSION := 8  # v8: mining sites over their free cap, and the highest M, in each turn row
 ## The persistent choice now lives in Settings > Telemetry. Legacy start-screen rows
 ## remain hidden; hiding them never overrides the remembered preference.
 const SHOW_CONSENT_CHECKBOX := false
@@ -309,7 +309,8 @@ static func balancing_payload(data: Dictionary) -> Dictionary:
 			continue
 		var row: Dictionary = raw.duplicate(true)
 		for key in row:
-			if key not in ["turn", "profit", "revenue", "buildings", "buildings_list", "power_gen", "produced", "satisfaction", "strikes"]:
+			if key not in ["turn", "profit", "revenue", "buildings", "buildings_list", "power_gen", "produced", "satisfaction", "strikes",
+					"over_cap_sites", "max_site_m"]:
 				row[key] = [] if row[key] is Array else ({} if row[key] is Dictionary else "")
 		rows.append(row)
 	clean["turns"] = rows
@@ -434,6 +435,7 @@ func _build_row(summary: Dictionary) -> Dictionary:
 	# Run-level facts, latched while the match is still alive (see _run_start_id).
 	_capture_start_id()
 	_run_cheats = _run_cheats or bool(MatchState.cheats_used)
+	var seams := _seam_pressure()
 	var row := {
 		"turn": TurnManager.current_turn - 1,
 		"money": snappedf(MatchState.money, 0.01),
@@ -453,11 +455,25 @@ func _build_row(summary: Dictionary) -> Dictionary:
 		"building_states": empire.states,
 		"satisfaction": snappedf(LabourState.satisfaction, 0.1),
 		"strikes": LabourState.unrest.active.size(),
+		"over_cap_sites": seams.count,
+		"max_site_m": seams.max_m,
 	}
 	row["interactions"] = _interaction_counts(int(row.turn))
 	if _tier_available:
 		row["tiers"] = tiers
 	return row
+
+
+
+## The player's mining sites over their free cap and the highest M among them (docs/pacing-labour-mining-licensing-spec.md §8).
+func _seam_pressure() -> Dictionary:
+	var count := 0
+	var max_m := 1.0
+	for s: Dictionary in preload("res://scripts/mining_sites.gd").player_sites().values():
+		if float(s.m) > 1.0001:
+			count += 1
+		max_m = maxf(max_m, float(s.m))
+	return {"count": count, "max_m": snappedf(max_m, 0.01)}
 
 
 func _victory_array() -> Array:

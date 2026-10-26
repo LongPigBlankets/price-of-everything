@@ -236,6 +236,8 @@ func _rebuild() -> void:
 	if str(p.get("research_gate", "")) != "" and bool(p.get("research_locked", false)):
 		_content.add_child(_research_line(str(p.get("research_gate", ""))))
 	_content.add_child(_land_line(building, p))
+	if not (p.get("seam", {}) as Dictionary).is_empty():
+		_content.add_child(_seam_line(p))
 	var time := _time_line(int(p.get("duration", BuildingLevels.UPGRADE_DURATION)), from_level)
 	time.add_child(_foot(p))
 	_content.add_child(time)
@@ -343,7 +345,8 @@ func _foot(p: Dictionary) -> HBoxContainer:
 	row.name = "UpgradeKeys"
 	row.alignment = BoxContainer.ALIGNMENT_END
 	row.add_theme_constant_override("separation", 14)
-	var blocked := bool(p.get("research_locked", false)) or not bool(p.get("fits", true)) or _choice < 0
+	var blocked := bool(p.get("research_locked", false)) or not bool(p.get("fits", true)) or _choice < 0 \
+		or str(p.get("seam_reason", "")) != ""
 	var up: Button = CreamKey.make("Key_Upgrade", "Upgrade", "", CreamKey.width_for("Upgrade", "", false, false))
 	if blocked:
 		up.call("set_spent", true)
@@ -410,6 +413,33 @@ func _land_line(building: Dictionary, p: Dictionary) -> HBoxContainer:
 	line.tooltip_text = ("The larger building needs %s more land and %s is free." % [_land(need), _land(free)]) \
 		+ ((" The upgrade %s It is in the price." % bought.replace("Buys", "buys")) if buys > 0 else "") \
 		+ ("" if fits else " Demolish other buildings to make room.")
+	line.mouse_filter = Control.MOUSE_FILTER_STOP
+	return line
+
+
+## A mine's seam after the upgrade (docs/pacing-labour-mining-licensing-spec.md §8.8): green within its free cap,
+## amber over it, red at its limit, where the upgrade adds nothing and is refused.
+func _seam_line(p: Dictionary) -> HBoxContainer:
+	var seam: Dictionary = p.get("seam", {})
+	var reason := str(p.get("seam_reason", ""))
+	var line := HBoxContainer.new()
+	line.name = "SeamLine"
+	line.custom_minimum_size.y = INFO_ROW_H
+	line.add_theme_constant_override("separation", 10)
+	line.add_child(Parts.raised("diag_icon_deposit", ROW_ICON_PX))
+	var tone := "ok"
+	if reason != "" or float(seam.draw) > float(seam.max) + 0.0001:
+		tone = "bad"
+	elif float(seam.m) > 1.0001:
+		tone = "warn"
+	line.add_child(_lamp(tone))
+	var said := _body(reason if reason != "" else preload("res://scripts/mining_sites.gd").after_words(seam))
+	said.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	said.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	line.add_child(said)
+	var sites := preload("res://scripts/mining_sites.gd")
+	line.tooltip_text = "A seam is free to %s workings and ends at %s. Each working over the free cap adds %d%% to the labour and upkeep of every working on it." % [
+		sites.figure(float(seam.free)), sites.figure(float(seam.max)), roundi(sites.cap_cost(str(seam.tile_id), str(seam.token)) * 100.0)]
 	line.mouse_filter = Control.MOUSE_FILTER_STOP
 	return line
 

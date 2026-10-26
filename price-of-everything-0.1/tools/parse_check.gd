@@ -25,7 +25,7 @@ const ROOTS: Array[String] = ["res://scripts", "res://tools", "res://tests"]
 const KNOWN_UNRELOADABLE: Array[String] = ["res://scripts/road_realizer.gd"]
 ## Scripts an autoload instances at boot (LabourState.unrest). Like the autoloads, reload() refuses a script
 ## with live instances, and a parse error in one fails its autoload at boot, which the boot log names.
-const AUTOLOAD_OWNED: Array[String] = ["res://scripts/labour_unrest.gd"]
+const AUTOLOAD_OWNED: Array[String] = ["res://scripts/labour_unrest.gd", "res://scripts/seam_cards.gd"]
 
 ## Failures at or above this count are read as "an autoload is broken" rather than as that
 ## many independent mistakes. Measured: one bad line in match_state.gd failed 37 files.

@@ -2271,6 +2271,10 @@ func _attempt_build(building_id: String, tile_id: String) -> bool:
 		elif req_block == "other":
 			print("[Build] FAILED: recipe requirements not met on %s" % tile_id)
 			return false
+		var seam_full := ConstructionRules.seam_block(recipe_id, tile_id)
+		if seam_full != "":
+			MatchState.request_toast(seam_full, "warning")
+			return false
 
 	# Look up cost
 	var building_data: Dictionary = Catalog.get_building(building_id)

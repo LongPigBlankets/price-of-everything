@@ -2360,9 +2360,9 @@ func _test_bdp_v3_plant_checks() -> void:
 	var was_turn: int = TurnManager.current_turn
 	TurnManager.current_turn = 1
 	var early: Array = BR.plant_checks(b, r, false)
-	_check(early.map(func(c: Dictionary) -> String: return str(c.key)) == ["carbon", "works"]
+	_check(early.map(func(c: Dictionary) -> String: return str(c.key)) == ["carbon", "works", "seam"]
 		and str(early[0].tone) == "ok" and str(early[0].detail).contains("No carbon levy in force")
-		and str(early[1].tone) == "off",
+		and str(early[1].tone) == "off" and str(early[2].tone) == "off",
 		"plant checks: before the levy a coal plant pays none, and with no works the works lamp is unlit (%s / %s)" % [early[0].detail, early[1].detail])
 	TurnManager.current_turn = PolicyState.beat("p1") + 1
 	var levy: float = PolicyState.run_carbon_levy(b, r)

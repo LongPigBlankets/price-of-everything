@@ -66,7 +66,7 @@ func _test_buy_grants_land() -> void:
 	BuildingState.tile_land_owned.erase(tile)  # start from the default for this synthetic tile
 	var iid: String = BuildingState.add_building("b_007", "", tile, "Test NPC Co", "", false)
 	var owned_before: int = BuildingState.get_tile_land_owned(tile)  # default 100
-	var footprint: int = int(Catalog.get_building("b_007").get("tile_size_used", 1))  # 10 at L1
+	var footprint: int = int(Catalog.land_units(Catalog.get_building("b_007")))  # 20 at L1
 	BuildingState.set_building_owner(iid, MatchState.LOCAL_PLAYER)
 	var owned_after: int = BuildingState.get_tile_land_owned(tile)
 	_check(owned_after == mini(BuildingState.MAX_TILE_LAND, owned_before + footprint),

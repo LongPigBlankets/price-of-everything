@@ -502,6 +502,8 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			"work_week_hours": int(labour.get("work_week", LabourState.WORK_WEEK_DEFAULT)),
 			"idle_labour_pay_share": clampf(float(labour.get("idle_pay_share", 1.0)), 0.5, 1.0),
 			"one_off_charges": _start_charges(cfg.get("one_off_charges", [])),
+			# Demo-only seam sizes, applied at import under the demo rules (MatchState._apply_demo_deposit_overrides).
+			"demo_deposit_overrides": (cfg.get("demo_deposit_overrides", {}) as Dictionary).duplicate(true),
 		},
 		"stockpile": {"by_tile": (cfg.get("stockpile", {}) as Dictionary).duplicate(true)},
 		"loans": {"loans": loans, "next_loan_id": loans.size() + 1},

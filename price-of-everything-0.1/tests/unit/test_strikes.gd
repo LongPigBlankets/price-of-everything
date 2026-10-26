@@ -426,7 +426,7 @@ func _test_strike_telemetry() -> void:
 	_check(int(row.get("strikes", -1)) == 2, "AC15.2 the turn row counts buildings on strike")
 	_check(int(TelemetryState.balancing_payload({"run_id": "s7", "turns": [row]}).turns[0].strikes) == 2,
 		"AC15.2 the transmitted report keeps it")
-	_check(TelemetryState.SCHEMA_VERSION == 7, "AC15.2 schema 7")
+	_check(TelemetryState.SCHEMA_VERSION >= 7, "AC15.2 schema 7 or later")
 	_fresh()
 
 

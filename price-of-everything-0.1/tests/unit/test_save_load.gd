@@ -349,8 +349,8 @@ func _test_start_config_applies_on_scene_ready() -> void:
 	_check(npc >= 5, "start: scene-seeded NPC ports/ruins survive the start import")
 	_check(Stockpile.get_at_tile("tile_6_8", "g_001") == 50, "start: stockpile seeded")
 	_check(MatchState.recurring_sells.size() == 1, "start: recurring sell order live")
-	_check(MatchState.deposit_remaining_for("tile_6_8", "coal") == 2000,
-		"start: CSV deposit yields survive (no deposit data in the config)")
+	_check(MatchState.deposit_remaining_for("tile_6_8", "coal") == roundi(2000 * EconomyConfig.DEPOSIT_SIZE_MULT),
+		"start: CSV deposit yields survive (no deposit data in the config), tripled")
 	inst.queue_free()
 	await get_tree().process_frame
 

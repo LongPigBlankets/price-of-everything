@@ -1745,6 +1745,89 @@ turn's "resolution" is what happens when the player ends it.
   - the coal cost table (§8.3) reproduced;
   - the demo seam card fires around turn 25.
 
+#### P4 acceptance criteria
+
+Each item is checked by a named unit test unless marked otherwise. A **site** is one deposit good on one
+tile; a **working** is one of the player's buildings mining it.
+
+**Seams (§8.1–8.3, §8.9)**
+
+1. **AC18.1** A site's draw is the sum over its workings of level (1 / 2 / 3.5) × throughput ×
+   staffing run fraction, 0 for a working down after an accident or offline. NPC buildings never
+   draw. A strike does not lower draw.
+2. **AC18.2** Endless seams (no amount in `tile_properties.csv`, water included) are free to 2 and
+   end at 4. Finite seams are free to 3 and end at 6.
+3. **AC18.3** M = 1 + c × max(0, min(draw, max) − free), with c = 1 (+100% a working) unless
+   `extraction_cap_cost` modifiers change it. M multiplies the labour (after the 40% floor and the
+   strike share) and the maintenance (after modifiers and level) of every working on the site, and
+   it is continuous: 0.2 over the cap costs ×1.2.
+4. **AC18.4** With labour cut 60% at the floor, M 4 makes labour ×1.6 of base, not ×3.4.
+5. **AC18.5** Past the max every working on the site runs at max / draw: inputs, outputs, power and
+   the seam's charge scale together (`MatchState.run_multiplier`).
+6. **AC18.6** A finite seam is charged what is dug: base × level × throughput × staffing × site
+   scale. Yield (`recipe_output`: the −30% penalty, research, strikes) never charges it.
+7. **AC18.7** The coal table of §8.3 is reproduced within £0.02 by a test.
+
+**Deposits (§8.4)**
+
+1. **AC19.1** `EconomyConfig.DEPOSIT_SIZE_MULT` 3 multiplies every finite seam after
+   normalisation: coal 2,000 → 6,000, iron 4,000 → 12,000, copper 5,000 → 15,000; a coal or iron
+   seam above 4,000 in the CSV stays endless.
+2. **AC19.2** Under the demo rules (`victory_set` `demo_itch`) Metal Magnate's coal on tile_6_8 is
+   2,000, set by the start file's `demo_deposit_overrides`; in a standard match it is 6,000. A
+   save keeps whatever remains.
+
+**Land (§9)**
+
+1. **AC20.1** The buildings CSV has a `land_units` column, blank meaning `tile_size_used`, read
+   through `Catalog.land_units`. Mines are 32; the industrial factory, electric arc furnace,
+   assembly plant, high tech manufactory and consumer factory are 20.
+2. **AC20.2** Every simulation land read (building and upgrade checks, land in use, tile room,
+   land quotes, building prices, the ledger and tile view figures) uses `land_units`. Art keeps
+   reading `tile_size_used`, so no bake changes.
+
+**A seam running out (§8.7)**
+
+1. **AC21.1** When a finite site falls to 25% of its starting size, once per site, a decision card
+   offers: Sink a deeper shaft, Rob the pillars, Heavy blasting, Sell with reserves, Carry on (the
+   default). The 5-turn runway warning stays as the last notice.
+2. **AC21.2** Deeper shaft: pays two turns of the site's wages plus a level 1 kit at market,
+   takes the site offline 2 turns, adds 40% to what remains, then site labour ×1.4 and power ×1.5
+   until the seam ends.
+3. **AC21.3** Rob the pillars: adds 25%, site labour ×1.5, and each working has a 3% accident
+   chance a turn (halved under High safety, doubled under Minimal). When the seam ends the
+   workings collapse and are removed with nothing back.
+4. **AC21.4** Heavy blasting, each turn, seeded: 25% a double dig (output and charge ×2), 8% a
+   roof fall (offline 2 turns), 2% the rest of the seam is lost.
+5. **AC21.5** Sell with reserves: the site's workings go to an NPC company; the player is paid
+   their building price plus what remains at 50% of market.
+6. **AC21.6** The card's state and its RNG are saved. The same seed gives the same blasting.
+
+**UX (§8.8)**
+
+1. **AC22.1** The tile view's deposit line: "Coal seam. Drawing 2.5 of 3 free. Limit 6. 4,120
+   left." (an endless seam says no amount).
+2. **AC22.2** The construct and upgrade dialogs show the site after the action: "Takes the seam
+   to 4 of 3 free. Labour and upkeep here ×2." A build or upgrade that adds nothing past the max
+   is refused with that reason.
+3. **AC22.3** Building detail diagnostics, Plant stage: a Seam row, green within the free cap,
+   amber over it, red at the max.
+4. **AC22.4** The build forecast and CostSolver include M and the max.
+
+**Save, telemetry, stances**
+
+1. **AC23.1** Draw, scale and M are derived each turn, never saved. Old saves load with no card
+   state.
+2. **AC23.2** Telemetry schema 8: each turn row carries `over_cap_sites` and `max_site_m`.
+3. **AC23.3** Stance A5, the tech-gating note (§11 C) and the production comment (§11 D) are
+   applied.
+
+**Gates**
+
+1. **AC24.1** Unit suite green with only known baseline failures, parse check clean.
+2. **AC24.2** E2E to turn 100 quoted against P3. A demo Metal Magnate probe shows the seam card
+   around turn 25. *Checked by run.*
+
 ### P5 — Output bonus conversion
 
 - **Research**: output nodes become throughput at ×1.5, extraction kept, a few +5% tier III

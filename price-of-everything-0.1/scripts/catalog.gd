@@ -1170,6 +1170,9 @@ func _parse_building_row(headers: PackedStringArray, line: PackedStringArray) ->
 		"materials": materials,
 		"base_price": float(raw.get("build_cost_money", "0")),
 		"tile_size_used": 1 if raw.get("tile_size_used", "") == "" else int(raw.get("tile_size_used", "1")),
+		# The land the simulation charges; blank means the drawn size (docs/pacing-labour-mining-licensing-spec.md §9).
+		"land_units": (1 if raw.get("tile_size_used", "") == "" else int(raw.get("tile_size_used", "1"))) \
+			if raw.get("land_units", "") == "" else int(raw.get("land_units", "1")),
 		"build_duration": 0 if raw.get("build_duration", "") == "" else int(raw.get("build_duration", "0")),
 		"maintenance_cost": null if raw.get("maintenance_cost", "") == "" else float(raw.get("maintenance_cost", "0")),
 		"labour_unskilled_required": int(raw.get("labour_unskilled_required", "0")),
@@ -1185,6 +1188,11 @@ func all_buildings() -> Array:
 
 func get_building(building_id: String) -> Dictionary:
 	return _buildings_by_id.get(building_id, {})
+
+## The land a building of this type takes at level 1, in land units: the `land_units` column, else its drawn size
+## (`tile_size_used`, which the map and the 3D view keep reading). Every simulation land figure reads this.
+func land_units(bdata: Dictionary) -> float:
+	return float(bdata.get("land_units", bdata.get("tile_size_used", 1)))
 
 func get_building_by_internal_name(internal_name: String) -> Dictionary:
 	return _buildings_by_internal_name.get(internal_name, {})

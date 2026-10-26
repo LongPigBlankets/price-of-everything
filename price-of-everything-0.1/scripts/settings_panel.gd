@@ -45,7 +45,7 @@ var _fullscreen_check: CheckBox
 var _screen_option: OptionButton   # only built when more than one monitor is present
 var _quality_option: OptionButton
 var _telemetry_option: OptionButton
-const TELEMETRY_HINT := "Turn-by-turn profit and revenue, building counts and types, power generated, goods produced, workforce satisfaction and strikes. Reports include a random user ID, run/session IDs, run timing and end reason, the start played, whether cheats were used, operating system and game version. No IP address, account details or text you type is included."
+const TELEMETRY_HINT := "Turn-by-turn profit and revenue, building counts and types, power generated, goods produced, workforce satisfaction, strikes and how hard your mines work their seams. Reports include a random user ID, run/session IDs, run timing and end reason, the start played, whether cheats were used, operating system and game version. No IP address, account details or text you type is included."
 const TELEMETRY_ID_EXPLANATION := "This is the randomly generated user ID that any data going to the developer is marked with. No IP is collected, no identifying information is recorded. If you ever want your data deleted, please contact the developer at carbonandcapital.game@gmail.com and quote this user ID number. This can take several weeks."
 ## Settings → Graphics quality presets, in dropdown order: [profile value, label].
 const QUALITY_PRESETS := [["high", "High"], ["low", "Low"]]

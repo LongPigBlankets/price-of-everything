@@ -202,7 +202,8 @@ func set_building_owner(instance_id: String, owner: String) -> void:
 # Sell a player-owned building to an NPC operator: credit its market value (what it would list
 # at), flip ownership to the NPC — the building keeps standing and its land stays occupied, but it
 # stops running for you (production rebuilds the player-owned set each turn). Instantaneous.
-func sell_building(instance_id: String) -> Dictionary:
+# `paid` >= 0 credits that instead, quietly: a sale whose money the caller pays (a seam sold with its reserves).
+func sell_building(instance_id: String, paid: int = -1) -> Dictionary:
 	if not buildings.has(instance_id):
 		return {"ok": false, "reason": "No such building."}
 	if not is_player_owned(buildings[instance_id]):
@@ -211,14 +212,17 @@ func sell_building(instance_id: String) -> Dictionary:
 	if held != "":
 		return {"ok": false, "reason": held}
 	var price: int = int(round(float(BuildingPrice.sale_price(buildings[instance_id]))))
-	MatchState.add_money(float(price))
+	var credited: int = price if paid < 0 else paid
+	if credited > 0:
+		MatchState.add_money(float(credited))
 	Construction.repay_materials_discount(instance_id)
 	# Remembered so buying it back never costs less than this (MatchState.building_purchase_price).
 	buildings[instance_id]["player_sale_price"] = price
 	set_building_owner(instance_id, SOLD_TO_OWNER)  # emits building_owner_changed → UI refresh
 	LabourState.on_building_sold(instance_id)
-	MatchState.request_toast("Sold building for £%d" % price, "success")
-	return {"ok": true, "price": price}
+	if paid < 0:
+		MatchState.request_toast("Sold building for £%d" % price, "success")
+	return {"ok": true, "price": credited}
 
 # Sell EVERY player building at once for price_mult x sale value (the distressed-asset
 # bailout: investors buy the lot at 1.5x). Returns {total, count}. Buildings keep
@@ -267,7 +271,7 @@ func _grant_building_land(instance_id: String) -> void:
 	if tile_id == "":
 		return
 	var bdata: Dictionary = Catalog.get_building(str(b.get("building_id", "")))
-	var footprint := ceili(float(bdata.get("tile_size_used", 1)) * BuildingLevels.mult("size", int(b.get("level", 1))))
+	var footprint := ceili(Catalog.land_units(bdata) * BuildingLevels.mult("size", int(b.get("level", 1))))
 	if footprint <= 0:
 		return
 	var owned := get_tile_land_owned(tile_id)
@@ -319,7 +323,7 @@ func get_buildings_on_tile(tile_id: String) -> Array:
 ## The land a building stands on: its type's footprint, grown by its level (SIZE_MULT).
 func space_used(instance: Dictionary) -> float:
 	var building_data := Catalog.get_building(str(instance.get("building_id", "")))
-	return float(building_data.get("tile_size_used", 1.0)) * BuildingLevels.mult("size", int(instance.get("level", 1)))
+	return Catalog.land_units(building_data) * BuildingLevels.mult("size", int(instance.get("level", 1)))
 
 func get_tile_space_used(tile_id: String) -> float:
 	var total := 0.0

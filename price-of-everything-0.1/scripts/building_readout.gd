@@ -17,6 +17,7 @@ const INTERMEDIARY_LABEL := "Local Suppliers"
 const BuildingStatus := preload("res://scripts/building_status.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const Staffing := preload("res://scripts/staffing.gd")
+const MiningSites := preload("res://scripts/mining_sites.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 const BuildingPrice := preload("res://scripts/building_price.gd")
 const CompanyNames := preload("res://scripts/company_names.gd")
@@ -446,7 +447,7 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 		var left := LabourState.unrest.strike_turns_left(iid)
 		rows.append(_row("warn", "warn", "On strike", "Output down %d%% for %d more turn%s. Labour costs half." % [LabourState.LabourUnrest.output_cut_pct(), left, "" if left == 1 else "s"]))
 	elif LabourState.unrest.is_named(iid):
-		rows.append(_row("warn", "warn", "Strike warning", "Its workers strike on turn %d unless satisfaction rises above %s or their pay is raised." % [
+		rows.append(_row("warn", "warn", "Strike warning", "Its workers strike on turn %d unless satisfaction reaches %s, or the strike is settled or broken." % [
 			int(LabourState.unrest.warning.get("turn", 0)), LabourState.signed_text(LabourState.LabourUnrest.STRIKE_BELOW)]))
 	# Running short staffed: the share it runs at, under the first row.
 	if Staffing.is_hiring(building) and not Staffing.is_waiting(building) and not is_infrastructure:
@@ -1363,7 +1364,27 @@ static func _unsold_check(building: Dictionary, route: Dictionary, g: Dictionary
 # that tips the building into a loss from one it can carry.
 
 static func plant_checks(building: Dictionary, recipe: Dictionary, is_infrastructure: bool, econ: Dictionary = {}) -> Array:
-	return [_carbon_check(building, recipe, is_infrastructure, econ), _works_check(building)]
+	return [_carbon_check(building, recipe, is_infrastructure, econ), _works_check(building), seam_check(building)]
+
+## A mine's seam (docs/pacing-labour-mining-licensing-spec.md §8.8): green within its free cap, amber over it, red
+## at its limit; off for a building that mines nothing.
+static func seam_check(building: Dictionary) -> Dictionary:
+	var s := MiningSites.site_of(building)
+	if s.is_empty():
+		return _check("seam", "Seam", "off", "Mines no seam.")
+	var c := _check("seam", "Seam", "ok", "")
+	c["icon"] = "deposit"
+	var drawing := "Drawing %s of %s free. Limit %s." % [MiningSites.figure(float(s.draw)), MiningSites.figure(float(s.free)), MiningSites.figure(float(s.max))]
+	if float(s.draw) >= float(s.max) - 0.0001:
+		c["tone"] = "bad"
+		c["detail"] = "%s At its limit: labour and upkeep here ×%s%s." % [drawing, MiningSites.figure(float(s.m)),
+			(", every working runs at %d%%" % roundi(float(s.scale) * 100.0)) if float(s.scale) < 0.9999 else ""]
+	elif float(s.m) > 1.0001:
+		c["tone"] = "warn"
+		c["detail"] = "%s Over the free cap: labour and upkeep here ×%s." % [drawing, MiningSites.figure(float(s.m))]
+	else:
+		c["detail"] = drawing
+	return c
 
 static func _carbon_check(building: Dictionary, recipe: Dictionary, is_infrastructure: bool, econ: Dictionary) -> Dictionary:
 	if is_infrastructure:

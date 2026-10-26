@@ -1,4 +1,4 @@
-// Carbon and Capital — telemetry endpoint (v7: strikes in turns)
+// Carbon and Capital — telemetry endpoint (v8: seam pressure in turns)
 // See docs/telemetry-spec.md §6.
 //
 // Setup (once, signed in as carbon.capital.data@gmail.com):
@@ -58,6 +58,9 @@ FIXED.push(...INTERACTIONS);
 FIXED.push("satisfaction");
 // Schema 7: buildings on strike at the end of each turn. Appended last; older clients leave it blank.
 FIXED.push("strikes");
+// Schema 8: mining sites over their free cap and the highest site multiplier M. Appended last; older clients
+// leave them blank.
+FIXED.push("over_cap_sites", "max_site_m");
 const EVENTS_HEADER = ["received_at", "player_id", "run_id", "session_id", "event_id",
   "turn", "playtime_s", "action", "interface", "target_id", "version"];
 // One row per app start, sent before any run exists. This is the only signal that counts
@@ -126,7 +129,7 @@ function doPost(e) {
   }).map(t => FIXED.map(col => {
     if (INTERACTIONS.includes(col)) return t.interactions ? Number(t.interactions[col] || 0) : "";
     if (col === "received_at") return stamped;
-    if (col === "satisfaction" || col === "strikes") return t[col] === undefined || t[col] === "" ? "" : Number(t[col]);
+    if (col === "satisfaction" || col === "strikes" || col === "over_cap_sites" || col === "max_site_m") return t[col] === undefined || t[col] === "" ? "" : Number(t[col]);
     if (col === "run_id") return p.run_id;
     if (col === "session_id") return p.session_id;
     if (col === "tiers" || col === "victory") return (t[col] || []).join("|");

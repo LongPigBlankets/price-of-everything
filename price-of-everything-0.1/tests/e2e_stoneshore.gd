@@ -324,6 +324,21 @@ func _print_profit_trajectory() -> void:
 		for k in dep_left:
 			dl += "%s %d left   " % [k, int(dep_left[k])]
 	print(dl)
+	# The seams worked past their free cap (docs/pacing-labour-mining-licensing-spec.md §8): each site's
+	# draw, its free cap and limit, M and, past the limit, its scale.
+	var seams := "  seams over the free cap: "
+	var over := 0
+	var sites: Dictionary = preload("res://scripts/mining_sites.gd").player_sites()
+	var keys: Array = sites.keys()
+	keys.sort()
+	for key: String in keys:
+		var site: Dictionary = sites[key]
+		if float(site.m) <= 1.0001:
+			continue
+		over += 1
+		seams += "%s draw %.1f/%d (max %d) M %.2f%s   " % [key, float(site.draw), int(site.free), int(site.max), float(site.m),
+			(" scale %.2f" % float(site.scale)) if float(site.scale) < 0.9999 else ""]
+	print(seams if over > 0 else seams + "none")
 	# Where it crossed from black to red for good — the turn a fix has to target.
 	var last_positive := 0
 	for e in _profit_by_turn:
@@ -2058,7 +2073,7 @@ func _ensure_balance_build_funding(building_id: String, tile_id: String) -> bool
 	if building_id == "":
 		return false
 	var building := Catalog.get_building(building_id)
-	var footprint := maxf(0.0, float(building.get("tile_size_used", 1.0)))
+	var footprint := maxf(0.0, Catalog.land_units(building))
 	var needed_land := BuildingState.get_tile_player_space_used(tile_id) + footprint \
 		- float(BuildingState.get_tile_land_owned(tile_id))
 	if needed_land > float(BuildingState.get_tile_land_units_available(tile_id)) + 0.001:
@@ -2189,7 +2204,7 @@ func _ensure_balance_cash(required: float) -> bool:
 # Tiles start with ZERO owned land (owner 2026-07-11): before each scenario build,
 # buy the patches the footprint needs — exactly what a player does from the TVP.
 func _ensure_land_for_build(building_id: String, tile_id: String) -> void:
-	var footprint := maxf(0.0, float(Catalog.get_building(building_id).get("tile_size_used", 1.0)))
+	var footprint := maxf(0.0, Catalog.land_units(Catalog.get_building(building_id)))
 	var needed := BuildingState.get_tile_player_space_used(tile_id) + footprint
 	var shortfall := needed - float(BuildingState.get_tile_land_owned(tile_id))
 	if shortfall <= 0.0:

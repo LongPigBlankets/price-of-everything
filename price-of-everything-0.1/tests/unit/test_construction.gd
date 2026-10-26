@@ -1503,7 +1503,7 @@ func _test_upgrade_reserved_space_blocks() -> void:
 	_check(BuildingWorks.pending_upgrades.is_empty()
 		and int((BuildingState.get_building("resv_a") as Dictionary).get("level", 1)) == 2,
 		"upgrade hold: the upgrade completes and the hold is released")
-	var grown: float = 15.0 * (BuildingLevels.mult("size", 2) - BuildingLevels.mult("size", 1))
+	var grown: float = Catalog.land_units(Catalog.get_building("b_009")) * (BuildingLevels.mult("size", 2) - BuildingLevels.mult("size", 1))
 	_check(absf(BuildingState.get_tile_space_used(tile) - (held_used - 12.0 + grown)) < 0.01,
 		"upgrade hold: the finished building takes the room, counted once, not twice")
 

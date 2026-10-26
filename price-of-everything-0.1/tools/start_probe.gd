@@ -7,7 +7,10 @@ extends Node2D
 ## wrong. Existing to make "how would metal_magnate behave now" measurable instead of estimated.
 ##
 ##   Godot --headless --path . res://tools/start_probe.tscn -- metal_magnate 40 [andrew=coo]
-##       [policy=<workforce policy id>]… [week=<hours>] [union=partial|comprehensive]
+##       [policy=<workforce policy id>]… [week=<hours>] [union=partial|comprehensive] [demo] [cards]
+##
+## `demo` plays the start under the demo rules (its demo seam sizes, docs/pacing-labour-mining-licensing-spec.md
+## §8.4). `cards` turns decisions on, takes each one's default, and prints when one is drawn (the seam card, §8.7).
 ##
 ## The optional third argument seats the founder (spec §5.4) so his gift and modifiers are in
 ## play from turn 1 rather than turn 3 — the point is the steady state, not the arrival.
@@ -23,6 +26,8 @@ func _ready() -> void:
 	var policies: Array = []
 	var week := 0
 	var union := ""
+	var demo := args.has("demo")
+	var cards := args.has("cards")
 	for a in args:
 		if str(a).begins_with("andrew="):
 			andrew = str(a).split("=")[1]
@@ -41,7 +46,8 @@ func _ready() -> void:
 	# The start must be applied through the REAL boot path: importing a snapshot without the
 	# map leaves no terrain or deposits, so every mine yields nothing and the probe measures a
 	# company that cannot produce. prepare_new_game + the main scene is how the game does it.
-	SaveLoad.prepare_new_game(START_DIR % start_name)
+	SaveLoad.prepare_new_game(START_DIR % start_name,
+		{"ruleset": {"victory_set": "demo_itch", "policy_timeline": "demo_itch"}} if demo else {})
 	var world = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	add_child(world)
 	for _i in range(160):
@@ -63,6 +69,15 @@ func _ready() -> void:
 	if union != "" and LabourState.has_method("set_union_tier"):
 		LabourState.call("set_union_tier", 2 if union == "comprehensive" else 1)
 
+	if cards:
+		DecisionState.enabled = true
+		DecisionState.auto_resolve = true
+		DecisionState.decision_drawn.connect(func(d: Dictionary) -> void:
+			print("[PROBE] card turn=%d %s %s" % [int(TurnManager.current_turn), str(d.get("def_id", "")),
+				str((d.get("target", {}) as Dictionary).get("name", ""))]))
+	for key in MatchState.seams.offered:
+		print("[PROBE] seam card already offered: %s" % key)
+	print("[PROBE] coal at tile_6_8: %d of %d" % [MatchState.deposit_remaining_for("tile_6_8", "coal"), MatchState.deposit_initial_for("tile_6_8", "coal")])
 	print("[PROBE] start=%s turns=%d andrew=%s labour_mult=%.2f policies=%s week=%d union=%s" % [
 		start_name, turns, andrew if andrew != "" else "none",
 		LabourState.labour_multiplier, str(policies), week, union if union != "" else "none"])

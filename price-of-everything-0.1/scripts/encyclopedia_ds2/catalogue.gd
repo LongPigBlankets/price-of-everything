@@ -219,7 +219,7 @@ static func building_facts(building_id: String) -> Array:
 	var maint: Variant = b.get("maintenance_cost", null)
 	var lines := [
 		["Build cost", "£%s" % _thousands(float(b.get("base_price", 0.0))), ""],
-		["Land", str(int(b.get("tile_size_used", 1))), ""],
+		["Land", str(int(Catalog.land_units(b))), ""],
 		["Build time", "%d %s" % [int(b.get("build_duration", 0)), "turn" if int(b.get("build_duration", 0)) == 1 else "turns"], ""],
 		["Upkeep", "None" if maint == null else "£%.2f a turn" % float(maint), ""],
 	]
