@@ -1052,7 +1052,8 @@ func pending_view(uid: String = "") -> Dictionary:
 			"consequence": _describe_effects(choice.get("effects", []), target),
 			"figures": choice_figures(str(d.def_id), str(choice.id), target),
 			"words": choice_words(str(d.def_id), str(choice.id), target),
-			"changes": choice_changes(str(d.def_id), str(choice.id), target),
+			"brief": choice_brief(str(d.def_id), str(choice.id), target),
+			"detail": choice_detail(str(d.def_id), str(choice.id), target),
 			"upfront_cost": cost,
 			"loan_shortfall": shortfall,
 			"advocate": _advocate_view(choice, follow_delta),
@@ -1470,15 +1471,21 @@ func choice_figures(def_id: String, choice_id: String, target: Dictionary) -> Ar
 				out.append({"kind": "turns", "value": int(eff.get("turns", 0)), "caption": "Turns of delay"})
 	return out
 
-## What a choice changes, as icon rows with a start and an outcome and no words (the seam card's,
-## MatchState.seams.changes): [{icon, from, to, chance, tip}].
-func choice_changes(def_id: String, choice_id: String, target: Dictionary) -> Array:
+## A choice in a few lines, each led by its icon (the seam card's, MatchState.seams.brief): [{icon, text, tone}].
+func choice_brief(def_id: String, choice_id: String, target: Dictionary) -> Array:
 	var out: Array = []
-	var choice := _find_choice(DECISION_DEFINITIONS.get(def_id, {}), choice_id)
-	for eff: Dictionary in choice.get("effects", []):
+	for eff: Dictionary in _find_choice(DECISION_DEFINITIONS.get(def_id, {}), choice_id).get("effects", []):
 		if str(eff.get("kind", "")) == "seam":
-			out.append_array(MatchState.seams.changes(str(eff.get("action", "")), str(target.get("tile_id", "")), str(target.get("token", ""))))
+			out.append_array(MatchState.seams.brief(str(eff.get("action", "")), str(target.get("tile_id", "")), str(target.get("token", ""))))
 	return out
+
+
+## A choice explained in full, for the plate that opens over it (MatchState.seams.detail), or {}.
+func choice_detail(def_id: String, choice_id: String, target: Dictionary) -> Dictionary:
+	for eff: Dictionary in _find_choice(DECISION_DEFINITIONS.get(def_id, {}), choice_id).get("effects", []):
+		if str(eff.get("kind", "")) == "seam":
+			return MatchState.seams.detail(str(eff.get("action", "")), str(target.get("tile_id", "")), str(target.get("token", "")))
+	return {}
 
 ## A choice's effects that have no figure, in words, one sentence each ("The CFO's chair for 30
 ## turns, unpaid."). With choice_figures, the whole of `consequence`.

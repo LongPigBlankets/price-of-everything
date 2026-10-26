@@ -298,13 +298,25 @@ func _test_seam_card_offered_once() -> void:
 	_check(ids == PackedStringArray(["deeper_shaft", "rob_pillars", "heavy_blasting", "sell_reserves", "carry_on"]),
 		"AC21.1 it offers the five choices (%s)" % ", ".join(ids))
 	var shaft: Dictionary = (view.get("choices", []) as Array)[0]
-	var rows: Array = shaft.get("changes", [])
-	_check((shaft.get("words", []) as Array).is_empty() and rows.size() == 4 and str(rows[0].icon) == "diag_icon_deposit"
-		and str(rows[0].from) == "200" and str(rows[0].to) == "280" and str(rows[1].icon) == "econ_icon_labour",
-		"AC21.1 each choice shows icons with a start and an outcome, no words")
-	var last: Array = ((view.get("choices", []) as Array)[4] as Dictionary).get("changes", [])
-	_check(last.size() == 1 and str(last[0].icon) == "diag_icon_deposit" and str(last[0].to) == "0" and str(last[0].get("span", "")).ends_with("turns"),
-		"AC21.1 carrying on shows the seam running to nothing and how many turns that takes")
+	var brief: Array = shaft.get("brief", [])
+	_check((shaft.get("words", []) as Array).is_empty() and brief.size() == 3 and str(brief[0].icon) == "diag_icon_deposit"
+		and str(brief[0].text) == "Seam lasts longer", "AC21.1 each choice says what it does in a few lines, each led by its icon")
+	var detail: Dictionary = shaft.get("detail", {})
+	var titles := PackedStringArray()
+	for phase: Dictionary in detail.get("phases", []):
+		titles.append(str(phase.title))
+	var then: Array = ((detail.get("phases", []) as Array)[2] as Dictionary).get("rows", []) if titles.size() == 3 else []
+	_check(titles == PackedStringArray(["Now", "For the next 2 turns", "Then, until the seam runs out"]) and then.size() == 5
+		and str(then[0].from) == "0" and str(then[1].label) == "Left in the seam" and str(then[1].from) == "200" and str(then[1].to) == "280",
+		"AC21.1 hovering a choice explains it phase by phase, with what happens after the mines stop (%s)" % ", ".join(titles))
+	var plate: Control = preload("res://scripts/briefing_ds2/parts.gd").choice_plate(detail)
+	var drawn := plate.find_children("*", "HBoxContainer", true, false).filter(func(n: Node) -> bool: return n.has_node("Label"))
+	_check(drawn.size() == 7, "AC21.1 the plate draws a row a figure (%d)" % drawn.size())
+	plate.free()
+	var last: Dictionary = ((view.get("choices", []) as Array)[4] as Dictionary).get("detail", {})
+	var rows: Array = ((last.get("phases", []) as Array)[0] as Dictionary).get("rows", [])
+	_check(rows.any(func(r: Dictionary) -> bool: return str(r.label) == "Runs out in" and str(r.to).ends_with("turns")),
+		"AC21.1 carrying on says how many turns the seam has left")
 	DecisionState.pending_queue.clear()
 	_dig(a)
 	_check(DecisionState.pending_queue.is_empty(), "AC21.1 it comes once per site")

@@ -361,13 +361,19 @@ func _answer(it: Dictionary) -> Control:
 		if not first:
 			col.add_child(Parts.rule())
 		first = false
-		var row := HBoxContainer.new()
+		# A choice explained in full opens as a plate over its row, key included (Parts.ChoiceRow).
+		var detail: Dictionary = choice.get("detail", {})
+		var row: HBoxContainer = Parts.ChoiceRow.new()
 		row.name = "Choice_%s" % str(choice.get("id", ""))
 		row.add_theme_constant_override("separation", 12)
-		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.mouse_filter = Control.MOUSE_FILTER_PASS if not detail.is_empty() else Control.MOUSE_FILTER_IGNORE
+		row.set("detail", detail)
+		row.tooltip_text = Parts.plate_text(detail) if not detail.is_empty() else ""
 		var key: Button = CreamKey.make("Answer_%s" % str(choice.get("id", "")), str(choice.get("label", "")), "", ANSWER_KEY_W)
 		key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		key.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		if not detail.is_empty():
+			key.mouse_filter = Control.MOUSE_FILTER_PASS
 		var available := bool(choice.get("available", true))
 		if not available:
 			key.set_spent(true)
@@ -388,8 +394,8 @@ func _answer(it: Dictionary) -> Control:
 		row.add_child(said)
 		for w in (choice.get("words", []) as Array):
 			said.add_child(Parts.body(str(w)))
-		for c: Dictionary in (choice.get("changes", []) as Array):
-			said.add_child(Parts.change_row(c))
+		for line: Dictionary in (choice.get("brief", []) as Array):
+			said.add_child(Parts.brief_line(line))
 		for f: Dictionary in (choice.get("figures", []) as Array):
 			var line := HBoxContainer.new()
 			line.name = "Figure"

@@ -2,7 +2,7 @@ extends Node2D
 ## Phase 4's screens (docs/pacing-labour-mining-licensing-spec.md §8.8): a finite coal seam worked past its free
 ## cap (a level 1 mine and two level 2 mines on tile_6_8, digging 300 a turn against 180 free, M 3), seen in the tile view's
 ## Goods tab, Building Detail's visual diagnostics (the Seam check in the Plant stage), the upgrade dialog's seam
-## row, and the seam card in the Turn Briefing.
+## row, the seam card in the Turn Briefing, and each choice's plate as the pointer rests on it.
 ##   AGENT_GODOT_WINDOW=1 godot --path . res://tools/mining_shot.tscn --quit-after 6000 -- --no-telemetry
 ## Writes mining_*.png into $MINING_SHOT_DIR (or /tmp).
 
@@ -12,6 +12,7 @@ const TILE := "tile_6_8"
 
 var _wm
 var _out := "/tmp"
+var _staged: PopupPanel
 
 
 func _ready() -> void:
@@ -99,6 +100,22 @@ func _ready() -> void:
 	if brief != null:
 		_save(brief.get_global_rect(), "mining_seam_card_panel")
 	_save(Rect2(Vector2.ZERO, Vector2(LOGICAL)), "mining_seam_card")
+	# Each choice's plate, opened as a player opens it: the pointer resting on its row.
+	for choice in ["deeper_shaft", "rob_pillars", "heavy_blasting", "sell_reserves", "carry_on"]:
+		var answer: Control = brief.find_child("Choice_%s" % choice, true, false) if brief != null else null
+		if answer == null:
+			continue
+		var scroll := _scroll_of(answer)
+		if scroll != null:
+			scroll.ensure_control_visible(answer)
+			await _settle(4)
+		# The shaft's plate is opened from its key, the others from their lines.
+		var key: Control = answer.find_child("Answer_%s" % choice, true, false)
+		await _hover(key.get_global_rect().get_center() if choice == "deeper_shaft" and key != null
+			else answer.get_global_rect().get_center() + Vector2(answer.size.x * 0.25, 0.0))
+		print("[MINING_SHOT] plate %s open: %s" % [choice, str(_plate_open())])
+		_save(Rect2(Vector2.ZERO, Vector2(LOGICAL)), "mining_plate_%s" % choice)
+		await _unhover()
 	print("[MINING_SHOT] done")
 	get_tree().quit(0)
 
@@ -109,6 +126,70 @@ func _mine(level: int) -> String:
 	b.erase("staff_fill")
 	b["level"] = level
 	return iid
+
+
+## Rests the pointer at `at` as a mouse does and waits for the tooltip. If the engine's tooltip timer does not
+## run for a window the pointer never really entered, the tooltip is put up as the engine puts it up: from the
+## control under the pointer, up its parents until one has a tooltip, stopping at one that stops the mouse, its
+## custom tooltip in a TooltipPanel popup at the pointer. The log says which it was.
+func _hover(at: Vector2) -> void:
+	var vp := get_viewport()
+	vp.notification(NOTIFICATION_VP_MOUSE_ENTER)
+	for i in 3:
+		var move := InputEventMouseMotion.new()
+		move.position = at + Vector2(i, 0)
+		move.global_position = move.position
+		vp.push_input(move, true)
+		await _settle(2)
+	await get_tree().create_timer(1.2).timeout
+	await _settle(4)
+	if _plate_open():
+		print("[MINING_SHOT] tooltip opened by the engine")
+		return
+	var c := vp.gui_get_hovered_control()
+	while c != null and c.tooltip_text == "" and c.mouse_filter != Control.MOUSE_FILTER_STOP:
+		c = c.get_parent() as Control
+	if c == null or c.tooltip_text == "":
+		print("[MINING_SHOT] no tooltip under the pointer (%s)" % str(vp.gui_get_hovered_control()))
+		return
+	var custom: Object = c.call("_make_custom_tooltip", c.tooltip_text) if c.has_method("_make_custom_tooltip") else null
+	_staged = PopupPanel.new()
+	_staged.theme_type_variation = "TooltipPanel"
+	_staged.transparent_bg = true
+	_staged.transparent = true
+	if custom is Control:
+		_staged.add_child(custom as Control)
+	c.add_child(_staged)
+	var offset: Vector2 = ProjectSettings.get_setting("display/mouse_cursor/tooltip_position_offset", Vector2(10, 10))
+	_staged.popup(Rect2i(Vector2i(at + offset), Vector2i(_staged.get_contents_minimum_size())))
+	await _settle(8)
+	print("[MINING_SHOT] tooltip staged from %s" % str(c.name))
+
+
+func _unhover() -> void:
+	if _staged != null:
+		_staged.queue_free()
+		_staged = null
+	await _hover_off()
+
+
+func _hover_off() -> void:
+	var off := InputEventMouseMotion.new()
+	off.position = Vector2(40, 600)
+	off.global_position = off.position
+	get_viewport().push_input(off, true)
+	await _settle(6)
+
+
+func _plate_open() -> bool:
+	return get_tree().root.find_child("ChoicePlate", true, false) != null
+
+
+func _scroll_of(n: Node) -> ScrollContainer:
+	var p := n.get_parent()
+	while p != null and not (p is ScrollContainer):
+		p = p.get_parent()
+	return p as ScrollContainer
 
 
 func _settle(n: int) -> void:

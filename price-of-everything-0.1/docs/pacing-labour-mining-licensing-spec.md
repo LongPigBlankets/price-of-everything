@@ -958,9 +958,11 @@ At 25% remaining, a decision card replaces the 5-turn warning (`DEPOSIT_WARNING_
   Above 240, deposit may collapse." Nothing is refused.
 - **BDP diagnostics, Plant stage**: "Seam" lamp, amber over the free cap, red past the limit with
   its collapse chance.
-- **Seam card choices** show icon rows, a start figure, an arrow and an outcome, with no words:
-  what is left, labour, power, output, the mines. How long a change lasts shows beside a small
-  clock, and a chance beside its row in amber.
+- **Seam card choices** say what they do in a few short lines, each led by its icon, risks in
+  amber ("Seam lasts longer", "Mines stop for 2 turns", "Risks roof falls and seam loss").
+  Hovering a choice, its key included, opens a plate that explains it: a few sentences, then each
+  phase (Now, For the next 2 turns, Then until the seam runs out, Each turn, On average) with a row
+  a figure: icon, what it is, start, arrow, outcome, a clock for how long, a chance in amber.
 - **Build forecast and CostSolver** include M.
 
 ### 8.9 Code
@@ -1802,8 +1804,9 @@ tile; a **working** is one of the player's buildings mining it.
 
 1. **AC21.1** When a finite site falls to 25% of its starting size, once per site, a decision card
    offers: Sink a deeper shaft, Rob the pillars, Heavy blasting, Sell with reserves, Carry on (the
-   default). The 5-turn runway warning stays as the last notice. Each choice shows icon rows with a
-   start figure, an arrow and an outcome, and no words.
+   default). The 5-turn runway warning stays as the last notice. Each choice says what it does in
+   a few lines led by icons; hovering it opens a plate with the figures phase by phase, including
+   what happens after the mines stop.
 2. **AC21.2** Deeper shaft: pays two turns of the site's wages plus a level 1 kit at market,
    takes the site offline 2 turns, adds 40% to what remains, then site labour ×1.4 and power ×1.5
    until the seam ends.

@@ -11,6 +11,7 @@ signal changed
 const MiningSites := preload("res://scripts/mining_sites.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const BuildingPrice := preload("res://scripts/building_price.gd")
+const LabourUnrest := preload("res://scripts/labour_unrest.gd")
 
 const CARD_ID := "seam_running_out"
 ## The card comes once a finite seam is down to this share of its starting size.
@@ -233,11 +234,129 @@ func apply(action: String, tile_id: String, token: String) -> void:
 	changed.emit()
 
 
-## What a choice does to the site, for the card's icon rows: [{icon (a raised layer), from, to, span (how long it
-## lasts), chance, tip}], `from` "" for a figure with no start. Figures only; the tip names what each row is.
-func changes(action: String, tile_id: String, token: String) -> Array:
+## What a choice does to the site in a few lines, for the card: [{icon (a raised layer), text, tone ("" or "warn"
+## for a risk)}]. detail() has the figures.
+func brief(action: String, tile_id: String, token: String) -> Array:
+	var f := _figures(tile_id, token)
+	match action:
+		"deeper_shaft":
+			return [
+				{"icon": "diag_icon_deposit", "text": "Seam lasts longer"},
+				{"icon": "econ_icon_outputs", "text": "Mines stop for %s" % _turns(OFFLINE_TURNS)},
+				{"icon": "econ_icon_labour", "text": "Labour and power cost more"},
+			]
+		"rob_pillars":
+			return [
+				{"icon": "diag_icon_deposit", "text": "Seam lasts a little longer"},
+				{"icon": "econ_icon_labour", "text": "Labour costs more"},
+				{"icon": "diag_icon_works", "text": "Risks accidents at the mines", "tone": "warn"},
+				{"icon": f.emblem, "text": "Mines are lost when it runs out", "tone": "warn"},
+			]
+		"heavy_blasting":
+			return [
+				{"icon": "diag_icon_deposit", "text": "Seam runs out sooner"},
+				{"icon": "econ_icon_outputs", "text": "Output sometimes doubles"},
+				{"icon": "diag_icon_works", "text": "Risks roof falls and seam loss", "tone": "warn"},
+			]
+		"sell_reserves":
+			return [{"icon": f.emblem, "text": "Sells your mines with the seam"}]
+		"carry_on":
+			if int(f.life) > 0:
+				return [{"icon": "diag_icon_deposit", "text": "Seam runs out in %s" % _turns(int(f.life))}]
+			return [{"icon": "diag_icon_deposit", "text": "Mine the seam to the end"}]
+	return []
+
+
+## A choice explained in full, for the plate that opens over it: {title, text, phases: [{title, rows: [{icon, label,
+## from, to, span (how long it lasts), chance}], note}]}. `from` "" for a figure with no start.
+func detail(action: String, tile_id: String, token: String) -> Dictionary:
+	var f := _figures(tile_id, token)
+	var good := str(f.good)
+	var rem := int(f.remaining)
+	var dug := int(f.dug)
+	var life := int(f.life)
+	var lasts := func(turns: int) -> String: return _turns(turns) if turns > 0 else ""
+	match action:
+		"deeper_shaft":
+			var more := rem + roundi(float(rem) * SHAFT_ADD)
+			return {"title": "Sink a deeper shaft",
+				"text": "Your miners sink a new shaft to reach the %s below the old workings. The mines stop while it is dug, and the deeper %s takes more labour and power to raise." % [good, good],
+				"phases": [
+					{"title": "Now", "rows": [{"icon": "bar_icon_coin", "label": "Cost", "to": _money(shaft_cost(tile_id, token))}]},
+					{"title": "For the next %s" % _turns(OFFLINE_TURNS), "rows": [
+						{"icon": "econ_icon_outputs", "label": "Output a turn", "from": _units(dug), "to": "0"}]},
+					{"title": "Then, until the seam runs out", "rows": [
+						{"icon": "econ_icon_outputs", "label": "Output a turn", "from": "0", "to": _units(dug)},
+						{"icon": "diag_icon_deposit", "label": "Left in the seam", "from": _units(rem), "to": _units(more)},
+						{"icon": "diag_icon_transit", "label": "Runs out in", "from": lasts.call(life),
+							"to": lasts.call(OFFLINE_TURNS + _life_at(more, float(dug)))},
+						{"icon": "econ_icon_labour", "label": "Labour a turn", "from": _money(float(f.labour)), "to": _money(float(f.labour) * SHAFT_LABOUR)},
+						{"icon": "bar_icon_power", "label": "Power", "from": "%d MW" % int(f.power), "to": "%d MW" % roundi(float(f.power) * SHAFT_POWER)},
+					]},
+				]}
+		"rob_pillars":
+			var more := rem + roundi(float(rem) * ROB_ADD)
+			var accident := ROB_ACCIDENT * _safety_factor()
+			return {"title": "Rob the pillars",
+				"text": "Your miners cut away the pillars of %s left standing to hold the roof up. The seam gives a little more, but the workings grow unsafe and are lost when it runs out." % good,
+				"phases": [
+					{"title": "From now until the seam runs out", "rows": [
+						{"icon": "diag_icon_deposit", "label": "Left in the seam", "from": _units(rem), "to": _units(more)},
+						{"icon": "diag_icon_transit", "label": "Runs out in", "from": lasts.call(life), "to": lasts.call(_life_at(more, float(dug)))},
+						{"icon": "econ_icon_labour", "label": "Labour a turn", "from": _money(float(f.labour)), "to": _money(float(f.labour) * ROB_LABOUR)},
+						{"icon": "diag_icon_works", "label": "Accident at each mine, a turn", "chance": "%d%%" % roundi(accident * 100.0)},
+					], "note": "An accident stops a mine for %s and costs %s of its wages in compensation." % [
+						_turns(LabourUnrest.ACCIDENT_DOWN_TURNS), _turns(LabourUnrest.ACCIDENT_COMPENSATION_TURNS)]},
+					{"title": "When the seam runs out", "rows": [
+						{"icon": f.emblem, "label": "Your mines here", "from": str(int(f.mines)), "to": "0"}],
+						"note": "They collapse with the seam. Nothing is paid for them."},
+				]}
+		"heavy_blasting":
+			var avg := float(dug) * (1.0 + BLAST_DOUBLE) / (1.0 + BLAST_ROOF * float(OFFLINE_TURNS))
+			return {"title": "Heavy blasting",
+				"text": "Your miners use heavier charges for the rest of the seam. Each turn a blast may bring down twice the %s, bring the roof down on the mines, or bring down the rest of the seam. Most turns nothing changes." % good,
+				"phases": [
+					{"title": "Each turn, one of these at most", "rows": [
+						{"icon": "econ_icon_outputs", "label": "Double dig", "from": _units(dug), "to": _units(dug * 2), "chance": "%d%%" % roundi(BLAST_DOUBLE * 100.0)},
+						{"icon": "econ_icon_outputs", "label": "Roof fall", "from": _units(dug), "to": "0", "span": _turns(OFFLINE_TURNS), "chance": "%d%%" % roundi(BLAST_ROOF * 100.0)},
+						{"icon": "diag_icon_deposit", "label": "Seam lost", "from": _units(rem), "to": "0", "chance": "%d%%" % roundi(BLAST_LOST * 100.0)},
+					], "note": "A double dig takes twice as much from the seam."},
+					{"title": "On average", "rows": [
+						{"icon": "econ_icon_outputs", "label": "Output a turn", "from": _units(dug), "to": _units(roundi(avg))},
+						{"icon": "diag_icon_transit", "label": "Runs out in", "from": lasts.call(life), "to": lasts.call(_life_at(rem, avg))},
+					]},
+				]}
+		"sell_reserves":
+			var parts := sale_parts(tile_id, token)
+			return {"title": "Sell with reserves",
+				"text": "Another company buys your mines here and the %s still in the seam, at half the market price. You are paid now and the mines leave your company." % good,
+				"phases": [
+					{"title": "Now", "rows": [
+						{"icon": f.emblem, "label": "Your %d %s" % [int(f.mines), "mine" if int(f.mines) == 1 else "mines"], "to": _money(float(parts.mines))},
+						{"icon": "diag_icon_deposit", "label": "%s left, at half price" % _units(rem), "to": _money(float(parts.reserves))},
+						{"icon": "bar_icon_coin", "label": "Paid to you", "to": _money(float(parts.mines) + float(parts.reserves))},
+					]},
+				]}
+		"carry_on":
+			var rows: Array = [
+				{"icon": "econ_icon_outputs", "label": "Output a turn", "to": _units(dug)},
+				{"icon": "diag_icon_deposit", "label": "Left in the seam", "from": _units(rem), "to": "0"},
+			]
+			if life > 0:
+				rows.append({"icon": "diag_icon_transit", "label": "Runs out in", "to": _turns(life)})
+			return {"title": "Carry on",
+				"text": "Your miners keep digging as they are until the seam is empty.",
+				"phases": [
+					{"title": "Until the seam runs out", "rows": rows},
+					{"title": "Then", "rows": [], "note": "The mines stand idle with nothing to dig."},
+				]}
+	return {}
+
+
+## What the card's figures start from: the site's mines, what they dig a turn, what is left and how long it lasts
+## at that, their labour and power a turn, and the good's name.
+func _figures(tile_id: String, token: String) -> Dictionary:
 	var site := MiningSites.site(tile_id, token)
-	var remaining := maxi(0, MatchState.deposit_remaining_for(tile_id, token))
 	var labour := 0.0
 	var power := 0
 	for iid: String in site.workings:
@@ -245,40 +364,36 @@ func changes(action: String, tile_id: String, token: String) -> Array:
 		var recipe := Catalog.get_recipe(str(b.get("recipe_id", "")))
 		labour += Production._calculate_labour_cost(b, recipe)
 		power += Production._effective_energy_req(b, recipe)
-	var emblem := "bld_emblem_%s" % str(BuildingState.get_building(str(site.workings[0])).get("building_id", "b_001")) \
-		if not (site.workings as Array).is_empty() else "bld_emblem_b_001"
-	var left := func(v: int) -> String: return MiningSites.thousands(v)
-	var money := func(v: float) -> String: return "£%.2f" % v
-	var mines := (site.workings as Array).size()
-	var dug := roundi(float(site.units))
-	var turns := func(n: int) -> String: return "%d %s" % [n, "turn" if n == 1 else "turns"]
-	match action:
-		"deeper_shaft":
-			return [
-				{"icon": "diag_icon_deposit", "from": left.call(remaining), "to": left.call(remaining + roundi(float(remaining) * SHAFT_ADD)), "tip": "Left in the seam"},
-				{"icon": "econ_icon_labour", "from": money.call(labour), "to": money.call(labour * SHAFT_LABOUR), "tip": "Labour a turn at this seam"},
-				{"icon": "bar_icon_power", "from": "%d MW" % power, "to": "%d MW" % roundi(float(power) * SHAFT_POWER), "tip": "Power a turn at this seam"},
-				{"icon": "econ_icon_outputs", "from": left.call(dug), "to": "0", "span": turns.call(OFFLINE_TURNS), "tip": "Output stops while the shaft is sunk"},
-			]
-		"rob_pillars":
-			return [
-				{"icon": "diag_icon_deposit", "from": left.call(remaining), "to": left.call(remaining + roundi(float(remaining) * ROB_ADD)), "tip": "Left in the seam"},
-				{"icon": "econ_icon_labour", "from": money.call(labour), "to": money.call(labour * ROB_LABOUR), "tip": "Labour a turn at this seam"},
-				{"icon": "diag_icon_works", "chance": "%d%%" % roundi(ROB_ACCIDENT * _safety_factor() * 100.0), "tip": "Accident chance a turn at each mine"},
-				{"icon": emblem, "from": str(mines), "to": "0", "tip": "Mines lost when the seam runs out"},
-			]
-		"heavy_blasting":
-			return [
-				{"icon": "econ_icon_outputs", "from": left.call(dug), "to": left.call(dug * 2), "chance": "%d%%" % roundi(BLAST_DOUBLE * 100.0), "tip": "A double dig: twice the output, twice from the seam"},
-				{"icon": "econ_icon_outputs", "from": left.call(dug), "to": "0", "span": turns.call(OFFLINE_TURNS), "chance": "%d%%" % roundi(BLAST_ROOF * 100.0), "tip": "A roof fall stops the mines"},
-				{"icon": "diag_icon_deposit", "from": left.call(remaining), "to": "0", "chance": "%d%%" % roundi(BLAST_LOST * 100.0), "tip": "The rest of the seam is lost"},
-			]
-		"sell_reserves":
-			return [{"icon": emblem, "from": str(mines), "to": "0", "tip": "Your mines here are sold with the seam"}]
-		"carry_on":
-			return [{"icon": "diag_icon_deposit", "from": left.call(remaining), "to": "0", "span": turns.call(ceili(float(remaining) / maxf(1.0, float(site.units)))),
-				"tip": "The seam runs out at today's digging"}]
-	return []
+	var workings: Array = site.workings
+	var remaining := maxi(0, MatchState.deposit_remaining_for(tile_id, token))
+	return {
+		"mines": workings.size(),
+		"emblem": "bld_emblem_%s" % str(BuildingState.get_building(str(workings[0])).get("building_id", "b_001")) if not workings.is_empty() else "bld_emblem_b_001",
+		"dug": roundi(float(site.units)),
+		"remaining": remaining,
+		"life": _life_at(remaining, float(site.units)),
+		"labour": labour,
+		"power": power,
+		"good": str(Catalog.get_good_by_internal_name(token).get("display_name", token)).to_lower(),
+	}
+
+
+## The turns `remaining` lasts at `a_turn` dug a turn, 0 when nothing is dug.
+static func _life_at(remaining: int, a_turn: float) -> int:
+	return ceili(float(remaining) / a_turn) if a_turn > 0.0 else 0
+
+
+static func _turns(n: int) -> String:
+	return "%d %s" % [n, "turn" if n == 1 else "turns"]
+
+
+static func _units(n: int) -> String:
+	return MiningSites.thousands(n)
+
+
+## Money as the card prints it: pence below £1,000, whole pounds with commas above.
+static func _money(v: float) -> String:
+	return "£%.2f" % v if absf(v) < 1000.0 else "£%s" % MiningSites.thousands(roundi(v))
 
 
 ## A choice in a few words, for the bell and the toast once it is made.
@@ -311,11 +426,18 @@ func shaft_cost(tile_id: String, token: String) -> float:
 
 ## Sell with reserves: what the workings would sell for, plus what remains at half the market price.
 func sale_value(tile_id: String, token: String) -> float:
-	var total := 0.0
+	var parts := sale_parts(tile_id, token)
+	return float(parts.mines) + float(parts.reserves)
+
+
+## The sale in its two parts: {mines (their sale price), reserves (what remains at SALE_SHARE of market)}.
+func sale_parts(tile_id: String, token: String) -> Dictionary:
+	var mines := 0.0
 	for iid: String in MiningSites.site(tile_id, token).workings:
-		total += float(BuildingPrice.sale_price(BuildingState.get_building(iid)))
+		mines += float(BuildingPrice.sale_price(BuildingState.get_building(iid)))
 	var good := Catalog.get_good_by_internal_name(token)
-	return total + float(maxi(0, MatchState.deposit_remaining_for(tile_id, token))) * MarketState.get_price(str(good.get("id", ""))) * SALE_SHARE
+	return {"mines": mines,
+		"reserves": float(maxi(0, MatchState.deposit_remaining_for(tile_id, token))) * MarketState.get_price(str(good.get("id", ""))) * SALE_SHARE}
 
 
 # ── What the rest of the seam costs ──────────────────────────────────────────────────────────────
