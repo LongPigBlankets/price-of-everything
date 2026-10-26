@@ -636,8 +636,8 @@ uses the DS2 kit (`ds2/parts.gd`). Every part's raised heading stands inside its
 3. **The table** for the open sub-tab, laid out as the Building Ledger is:
    - metal labels over the columns: Location, Output loss, Cost to manage, Action;
    - "All strikes (N buildings)": the labour icon, its lamp and its timer ("Starts in 2 turns", "2
-     turns left") under the name, the total output loss, the totals to settle and to break side by
-     side, and its Settle and Break strike keys in the same order;
+     turns left") under the name, the total output loss, then two lines: the total to settle beside
+     the Settle key, over the total to break beside the Break strike key;
    - a row "N buildings" with a fold mark, folded at first, that shows the buildings under it;
    - a slim row a building: its emblem, its name with the good it makes in a small well, its tile
      on the second line, then its own figures and keys in the same columns;
@@ -647,8 +647,6 @@ uses the DS2 kit (`ds2/parts.gd`). Every part's raised heading stands inside its
    - an empty sub-tab says so ("No strikes due in the next 5 turns.").
 4. **Record**: a row per past strike with its turn, the buildings, the outcome's lamp and the output
    lost.
-
-The money screens in the table are the LED kit's tight variant (`compact`), as in the boardroom.
 
 ### 6.4 Code
 
@@ -1704,7 +1702,7 @@ turn's "resolution" is what happens when the player ends it.
 1. **AC16.1** People has a third tab, Strikes, laid out as §6.3: the strike risk case, the table
    with its column labels (Location, Output loss, Cost to manage, Action), "All strikes (N
    buildings)" first without the output words, a folded "N buildings" row with each building under
-   it, Settle and Break strike on every row with their costs beside each other in Cost to manage,
+   it, Settle and Break strike on every row as two lines, each cost beside its key,
    each key opening what it does with Confirm and Cancel, the record, and "How strikes work"
    opening the encyclopedia's Mechanics page.
 2. **AC16.2** The Strikes key carries no lamp. The sub-tabs read "Upcoming Strikes (N)" (named for a

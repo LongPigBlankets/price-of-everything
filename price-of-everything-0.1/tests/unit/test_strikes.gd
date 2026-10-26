@@ -476,6 +476,12 @@ func _test_strikes_tab_and_diagnostics() -> void:
 		loss += _u().expected_loss(str(iid))
 	_check(head != null and is_equal_approx(float(head.get_meta("total", -1.0)), total) and is_equal_approx(float(head.get_meta("loss", -1.0)), loss),
 		"AC16.1 All strikes carries the total to settle and its own output loss")
+	var manage: Control = head.find_child("Manage", true, false) if head != null else null
+	var settle_line: Control = manage.get_child(0) if manage != null and manage.get_child_count() == 2 else null
+	var break_line: Control = manage.get_child(1) if settle_line != null else null
+	_check(settle_line != null and settle_line.find_child("SettleCost", true, false) != null and settle_line.find_child("SettleAll", true, false) != null
+		and break_line.find_child("BreakStrikeCost", true, false) != null and break_line.find_child("BreakStrikeAll", true, false) != null,
+		"AC16.1 Settle and Break strike are two lines, each cost beside its key")
 	var fold: Control = tab.find_child("StrikersFold", true, false)
 	var member: Control = tab.find_child("Striker_%s" % named, true, false)
 	_check(tab.find_child("StrikersFoldRow", true, false) != null and fold != null and not fold.visible and member != null and member.get_parent().name == "Strikers",

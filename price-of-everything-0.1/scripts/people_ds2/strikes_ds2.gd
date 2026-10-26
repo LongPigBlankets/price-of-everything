@@ -11,8 +11,8 @@ extends Control
 ##   Output loss, Cost to manage, Action), then "All strikes (N buildings)" with the round's totals and its
 ##   Settle and Break strike keys, then a row that folds the buildings away ("N buildings", folded at first),
 ##   and under it a slim row a building: its emblem, its name with the good it makes, its tile under it, its
-##   own figures and keys. Each action's cost stands on a screen in Cost to manage, in the order of the keys
-##   under Action. A key opens a key bed under its row that says what it does, with Confirm and Cancel.
+##   own figures and keys. Settle and Break strike are two lines, each its cost on a screen in Cost to manage
+##   beside its key under Action. A key opens a key bed under its row that says what it does, with Confirm and Cancel.
 ## - The record: a row a past strike, its turn, the buildings, the outcome's lamp and what it lost.
 ##
 ## The figures and the actions are LabourState.unrest's (scripts/labour_unrest.gd).
@@ -369,7 +369,7 @@ func _loss(iid: String) -> float:
 
 
 ## The table's columns: one digit count for every screen, so they are one width and their £ signs line up;
-## Output loss a screen wide (or its label), Cost to manage two screens, Action the two keys.
+## Output loss and Cost to manage a screen wide (or their labels), Action the wider key, both keys that wide.
 static func _grid(values: Array) -> Dictionary:
 	var digits := 1
 	var suffix := 0.0
@@ -378,15 +378,12 @@ static func _grid(values: Array) -> Dictionary:
 		digits = maxi(digits, Led.cells_for(str(p.figure)).size())
 		if str(p.suffix) != "":
 			suffix = Kit.caption_width(str(p.suffix), Kit.POUND_PX) + 4.0
-	var money_w := ceilf(Plate.FONT_SEMI.get_string_size("£", HORIZONTAL_ALIGNMENT_LEFT, -1, Kit.POUND_PX).x + 2.0
-		+ Led.width_for_cells(digits, true) + suffix)
-	var settle_w := CreamKey.width_for(SETTLE, "", false, false, KEY_SCALE)
-	var break_w := CreamKey.width_for(BREAK, "", false, false, KEY_SCALE)
+	var money_w := ceilf(Kit.money_width(digits) + suffix)
+	var key_w := maxf(CreamKey.width_for(SETTLE, "", false, false, KEY_SCALE), CreamKey.width_for(BREAK, "", false, false, KEY_SCALE))
 	return {"digits": digits, "money_w": money_w,
 		"loss_w": maxf(money_w, Kit.caption_width(LOSS) + 4.0),
-		"cost_w": maxf(2.0 * money_w + COL_GAP, Kit.caption_width(COST) + 4.0),
-		"settle_w": settle_w, "break_w": break_w,
-		"action_w": maxf(settle_w + break_w + COL_GAP, Kit.caption_width(ACTION) + 4.0)}
+		"cost_w": maxf(money_w, Kit.caption_width(COST) + 4.0),
+		"action_w": maxf(key_w, Kit.caption_width(ACTION) + 4.0)}
 
 
 ## The column labels as metal labels, over the rows' columns.
@@ -411,7 +408,8 @@ static func _header_row(grid: Dictionary) -> Control:
 	return wrap
 
 
-## A slim table row: `icon` and `info` in Location, then the loss, the two costs and the two keys.
+## A table row: `icon` and `info` in Location, then the loss, then two lines, Settle's cost beside its key over
+## Break strike's cost beside its key.
 func _row(row_name: String, icon: Control, info: Control, target: String, loss: float, settle: float, brk: float,
 		grid: Dictionary, iids: Array) -> PanelContainer:
 	var module := Kit.module(row_name, true)
@@ -438,36 +436,32 @@ func _row(row_name: String, icon: Control, info: Control, target: String, loss: 
 		"every striker's" if target == "all" else "its",
 		("the %d turns left" % LabourState.unrest.strike_turns_left(target)) if striking else "the turns its strike runs"]
 	row.add_child(_money_cell(loss, Parts.RED, float(grid.loss_w), grid, {"name": LOSS, "detail": loss_tip}, "Loss"))
-	var costs := HBoxContainer.new()
-	costs.name = "Costs"
-	costs.custom_minimum_size.x = float(grid.cost_w)
-	costs.alignment = BoxContainer.ALIGNMENT_CENTER
-	costs.add_theme_constant_override("separation", COL_GAP)
-	costs.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	costs.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var where := "every striker" if target == "all" else "this building"
 	var shift := LabourUnrest.BREAK_SHIFT_ROUND if target == "all" else LabourUnrest.BREAK_SHIFT_ONE
-	costs.add_child(_money_cell(settle, DS.PALETTE["TEXT"], float(grid.money_w), grid, {"name": SETTLE,
-		"detail": "Pay %d%% higher at %s for %d turns." % [roundi(LabourUnrest.PAY_RAISE * 100.0), where, LabourUnrest.PAY_RAISE_TURNS]}, "SettleCost"))
-	costs.add_child(_money_cell(brk, DS.PALETTE["TEXT"], float(grid.money_w), grid, {"name": BREAK,
-		"detail": "Replacement crews at %s, paid this turn. Satisfaction %s for %d turns." % [where, _n(shift), LabourState.EVENT_SHIFT_TURNS]}, "BreakCost"))
-	row.add_child(costs)
-	var keys := HBoxContainer.new()
-	keys.name = "Actions"
-	keys.custom_minimum_size.x = float(grid.action_w)
-	keys.alignment = BoxContainer.ALIGNMENT_CENTER
-	keys.add_theme_constant_override("separation", COL_GAP)
-	keys.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	keys.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	for spec: Array in [["settle", SETTLE, "Settle", float(grid.settle_w)], ["break", BREAK, "BreakStrike", float(grid.break_w)]]:
+	var manage := VBoxContainer.new()
+	manage.name = "Manage"
+	manage.add_theme_constant_override("separation", 4)
+	manage.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	manage.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(manage)
+	for spec: Array in [
+		["settle", SETTLE, "Settle", settle, "Pay %d%% higher at %s for %d turns." % [roundi(LabourUnrest.PAY_RAISE * 100.0), where, LabourUnrest.PAY_RAISE_TURNS]],
+		["break", BREAK, "BreakStrike", brk, "Replacement crews at %s, paid this turn. Satisfaction %s for %d turns." % [where, _n(shift), LabourState.EVENT_SHIFT_TURNS]],
+	]:
+		var line := HBoxContainer.new()
+		line.name = "%sLine" % str(spec[2])
+		line.add_theme_constant_override("separation", COL_GAP)
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		manage.add_child(line)
+		line.add_child(_money_cell(float(spec[3]), DS.PALETTE["TEXT"], float(grid.cost_w), grid,
+			{"name": str(spec[1]), "detail": str(spec[4])}, "%sCost" % str(spec[2])))
 		var action := "%s:%s" % [str(spec[0]), target]
 		var key_name := "%sAll" % str(spec[2]) if target == "all" else "%s_%s" % [str(spec[2]), target]
-		var key: Button = CreamKey.make(key_name, str(spec[1]), "", float(spec[3]), false, false, KEY_SCALE)
+		var key: Button = CreamKey.make(key_name, str(spec[1]), "", float(grid.action_w), false, false, KEY_SCALE)
 		key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		key.set("chosen", _confirming == action)
 		key.pressed.connect(func() -> void: _toggle_confirm(action))
-		keys.add_child(key)
-	row.add_child(keys)
+		line.add_child(key)
 	module.set_meta("buildings", iids)
 	return module
 
@@ -479,13 +473,12 @@ static func _money_cell(value: float, colour: Color, width: float, grid: Diction
 	cell.alignment = BoxContainer.ALIGNMENT_CENTER
 	cell.custom_minimum_size.x = width
 	cell.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	cell.add_theme_constant_override("separation", 2)
+	cell.add_theme_constant_override("separation", 4)
 	cell.mouse_filter = Control.MOUSE_FILTER_PASS
 	var p := MoneyFigure.screen(value)
 	cell.add_child(Kit.caption("£", Kit.POUND_PX, HORIZONTAL_ALIGNMENT_RIGHT))
 	var led: Control = Led.new()
 	led.name = "Led"
-	led.set("compact", true)
 	var fig := str(p.figure)
 	led.call("set_figure", " ".repeat(maxi(0, int(grid.digits) - Led.cells_for(fig).size())) + fig, colour)
 	cell.add_child(led)
@@ -537,10 +530,9 @@ func _member(iid: String, loss: float, settle: float, brk: float, grid: Dictiona
 		line.add_theme_constant_override("separation", 4)
 		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		info.remove_child(name_l)
-		name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_l.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		name_l.autowrap_mode = TextServer.AUTOWRAP_OFF
 		name_l.custom_minimum_size.x = 0
-		name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		line.add_child(name_l)
 		var well := Kit.good_in_well(gid, -1, "", true, GOOD_PX)
 		well.name = "Makes"
