@@ -1898,6 +1898,69 @@ tile; a **working** is one of the player's buildings mining it.
   - e2e profit at turn 50 within the §14 target (£106–160);
   - base recipe margins lifted if needed.
 
+Each item is checked by a named unit test unless marked otherwise.
+
+**Research (§3.2, §3.3, Appendix A)**
+
+1. **AC26.1** Throughput, recipe input and building power modifiers can be scoped to the recipes
+   that make a good (`target_match.makes`), so a converted node keeps its old scope.
+2. **AC26.2** Every research output node on a building with material inputs becomes throughput at
+   1.5× its old percentage, same scope: Continuous-Flow Reactors, Continuous Catalyst
+   Regeneration, Atomic Layer Deposition, Coordinated Robot Handoff, Polymer Feedstocks, Chlor
+   Alkali Cells, Industrial Salt Purification, Specialist Apprenticeships, Modular Sub-Assembly,
+   Crop Rotation Programmes and Micro Silica Synthesis on concrete (+7.5%); Pozzolanic
+   Vitrification, Fully-Automated Fabs and Micro Silica Synthesis on glass (+15%); Multi-Stage
+   Flash Desal (+30%); Copper Froth Flotation (+7.5% on copper ingots: smelting, not extraction).
+3. **AC26.3** Output stays for extraction (the mining yield table, mines, wells, the water pump,
+   Block Caving, Enhanced Oil Recovery), for buildings with no material inputs (solar, wind,
+   hydro, battery storage, Renewable Dispatch Forecasting) and for hidden recycling (Tertiary
+   Filtration, converted when recycling ships).
+4. **AC26.4** Tier III capstones give +5% output: Advanced Elastomers (rubber, was +10%), Modular
+   Factory Cells, Continuous Improvement Teams.
+5. **AC26.5** Licence-group members take their §10.5 effects now, still unlocked by doing:
+   - Coal power: Pulverized Coal Boilers coal input −15%; Steam Turbine Upgrades throughput +10%;
+     Reheat Turbine Cycles labour and maintenance −10%.
+   - Iron and steel: Basic Blast Furnaces furnace throughput +10%; Continuous Casting steel inputs
+     −10%; Pulverised Carbon Injection coal input −20% on steel, power +5% on steel.
+   - Refining: Fractional Distillation throughput +10%; Catalytic Cracking crude input −10%;
+     Specialised Petrochemical Pipelines power −15%.
+   - Extraction: Bench Blasting Expansion +5% yield (as today); Bulk Haulage Fleets over-cap cost
+     −25% (+100% to +75% a working); Continuous Surface Miners +20% yield on endless seams.
+   - Factory: High-Volume Press Lines throughput +10%; Multi-Shift Production throughput +15%
+     with labour +10%.
+   - EAF: Foamy Slag Practice power −10%; Ultra-High-Power Arcs throughput +15% with power +10%.
+   - Solar and wind keep their output.
+6. **AC26.6** Each changed node's description in `research_unlocks.csv` and its modifier label say
+   what it now does.
+7. **AC26.7** A save from before P5 loads with its research modifiers taken from the new table:
+   no converted node keeps its old output bonus.
+
+**Missions (§3.3)**
+
+1. **AC27.1** `mm_ship_coal` gives +5% output for 20 turns (was permanent); `t_port` +10% for 15
+   turns (was 10); `gp_firm`, `ef_scale`, `br_factory`, `br_chemistry` their output for 20 turns
+   (were permanent); `mm_furnace` is unchanged (extraction). Each reward's text names its turns.
+2. **AC27.2** A reward already earned in a save keeps what it gave.
+
+**Legacy (§3.2)**
+
+1. **AC28.1** Metal Magnate's furnace on tile_9_9 and Glass Merchant's furnace on tile_18_16 are
+   the legacy anchor and are named "Original Furnace"; BuildingNaming honours a per-instance name.
+2. **AC28.2** The start perks hold while the Original Furnace is the player's. A per-turn
+   reconcile removes them for good once it is sold or demolished; buying it back does not restore
+   them. A save from before P5 takes its start furnace as the anchor if it still owns one.
+3. **AC28.3** Wherever a perk is shown its condition reads "While the original furnace is still
+   owned".
+
+**Stances and gates**
+
+1. **AC29.1** Stance A2 is in the design-intent skill and `docs/building-names.md` has the Original
+   Furnace exception (§11 E).
+2. **AC29.2** Unit suite with only known failures, parse check clean.
+3. **AC29.3** The Stoneshore e2e and the Metal Magnate benchmark are quoted against P4. If the
+   benchmark's turn 50 profit is under the §14 target, the recipe margin lift is proposed with
+   numbers for the owner rather than applied. *Checked by run.*
+
 ### P6 — Research licensing
 
 - **Groups**: `licence_group` column; group members move to a "ready to license" state.

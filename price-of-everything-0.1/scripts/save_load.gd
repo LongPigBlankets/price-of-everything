@@ -146,7 +146,10 @@ func import_snapshot(snap: Dictionary) -> String:
 	# add their modifier when the unlock fires — but a start/save building import fires
 	# it BEFORE Modifiers.import_state above wipes the registry, and grant_unlock is
 	# one-shot so it never re-fires. Re-apply the permanent ones from unlocked_titles.
+	Modifiers.prune_stale_unlock_modifiers()
 	Modifiers.reapply_unlock_modifiers(ResearchState.unlocked_titles)
+	# A save from before the Original Furnace anchor ties its start perk to the start's furnace.
+	preload("res://scripts/legacy_perk.gd").migrate(str(MatchState.ruleset.get("start_id", "")))
 	# Missing "victory" key (old saves) -> import_state({}) leaves a fresh zero state.
 	VictoryState.import_state(snap.get("victory", {}))
 	# Additive key (tolerant reader): pre-feature saves seed the policy schedule fresh.
@@ -385,6 +388,11 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 		# The starting estate never counts toward its tile's land price.
 		if str(buildings[instance_id].owner) == MatchState.LOCAL_PLAYER:
 			buildings[instance_id]["land_exempt"] = true
+		# A start's legacy building: its own name and the mark its perk is held by (scripts/legacy_perk.gd).
+		if str(entry.get("name", "")) != "":
+			buildings[instance_id]["name"] = str(entry.get("name", ""))
+		if bool(entry.get("legacy_anchor", false)):
+			buildings[instance_id]["legacy_anchor"] = true
 		if entry.has("opening_batches"):
 			opening_batches[instance_id] = maxi(0, int(entry.get("opening_batches", 0)))
 		if str(entry.get("logistics_mode", "")) == "middleman" and tile_id == "tile_5_4" and recipe_id == "r_009":

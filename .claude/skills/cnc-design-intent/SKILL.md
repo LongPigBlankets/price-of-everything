@@ -44,7 +44,17 @@ moves THROUGHPUT (inputs, outputs and power scale together, `MatchState.run_mult
 labour satisfaction. A flat output bonus makes product from nothing and compounds down a chain, so the
 only output-only labour effect is +5% at satisfaction of +90 or more. Regression smell: a labour policy
 that raises output without consuming inputs (Profit Share used to be +15% output and was always on).
-See docs/pacing-labour-mining-licensing-spec.md §3 (the full rare-output stance lands with phase 5).
+See docs/pacing-labour-mining-licensing-spec.md §3.
+
+**Output bonuses are rare; growth is physical (2026-10, owner-approved).** A flat output bonus makes
+product from nothing and compounds down a chain (+10% at four stages is +46% at the apex). Output
+bonuses exist only for extraction yield; the start legacies, while the Original Furnace is still owned
+(`scripts/legacy_perk.gd`); timed mission rewards of 15 to 30 turns; a few tier III capstones at +5%;
+and Labour satisfaction of +90 or more, at +5%. Everything else is throughput (inputs, outputs and power
+scale together, the `throughput` Modifiers domain), a cost cut, or a licence. Research output nodes on
+processing buildings became throughput at 1.5× (`modifier_state.gd` UNLOCK_MODIFIERS). Regression smell:
+a new permanent output bonus on a processing building, or a labour policy that raises output without
+consuming inputs. (Changes design stance A2, approved by owner.)
 
 **Labour satisfaction is a budget (2026-10, owner-approved).** Policies trade throughput and cash for
 satisfaction (−100 to +100); the workforce's size and the HR Director add to it. It moves toward its

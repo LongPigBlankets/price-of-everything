@@ -50,30 +50,10 @@ const UNLOCK_MODIFIERS := {
 		{"id": "rn_shaft_draining_maint", "domain": "maintenance", "target_match": {"building_id": "b_001"}, "pct": -5.0, "label": "Regular Shaft Draining: -5% mine maintenance", "source": "research_node"},
 		{"id": "rn_shaft_draining_labour", "domain": "labour_headcount", "target_match": {"building_id": "b_001"}, "pct": -5.0, "label": "Regular Shaft Draining: -5% mine labour", "source": "research_node"},
 	],
-	"research_inorg_013": {  # Continuous-Flow Reactors
-		"id": "cfr_chem_output", "domain": "recipe_output",
-		"target_match": {"building_id": "b_012"}, "pct": 5.0,
-		"label": "Continuous-Flow Reactors: +5% chemical-plant output",
-		"source": "research:continuous_flow_reactors",
-	},
-	"research_petro_018": {  # Continuous Catalyst Regeneration
-		"id": "ccr_refinery_output", "domain": "recipe_output",
-		"target_match": {"building_id": "b_011"}, "pct": 5.0,
-		"label": "Continuous Catalyst Regeneration: +5% refinery output",
-		"source": "research:continuous_catalyst_regeneration",
-	},
-	"research_mfg_023": {  # Atomic Layer Deposition
-		"id": "ald_hightech_output", "domain": "recipe_output",
-		"target_match": {"building_id": "b_010"}, "pct": 5.0,
-		"label": "Atomic Layer Deposition: +5% high-tech output",
-		"source": "research:atomic_layer_deposition",
-	},
-	"research_mfg_025": {  # Coordinated Robot Handoff
-		"id": "crh_assembly_output", "domain": "recipe_output",
-		"target_match": {"building_id": "b_009"}, "pct": 5.0,
-		"label": "Coordinated Robot Handoff: +5% assembly-plant output",
-		"source": "research:coordinated_robot_handoff",
-	},
+	"research_inorg_013": {"id": "cfr_chem_output", "domain": "throughput", "target_match": {"building_id": "b_012"}, "pct": 7.5, "label": "Continuous-Flow Reactors: +7.5% chemical plant throughput", "source": "research:continuous_flow_reactors"},
+	"research_petro_018": {"id": "ccr_refinery_output", "domain": "throughput", "target_match": {"building_id": "b_011"}, "pct": 7.5, "label": "Continuous Catalyst Regeneration: +7.5% refinery throughput", "source": "research:continuous_catalyst_regeneration"},
+	"research_mfg_023": {"id": "ald_hightech_output", "domain": "throughput", "target_match": {"building_id": "b_010"}, "pct": 7.5, "label": "Atomic Layer Deposition: +7.5% high tech throughput", "source": "research:atomic_layer_deposition"},
+	"research_mfg_025": {"id": "crh_assembly_output", "domain": "throughput", "target_match": {"building_id": "b_009"}, "pct": 7.5, "label": "Coordinated Robot Handoff: +7.5% assembly plant throughput", "source": "research:coordinated_robot_handoff"},
 	# ── building power consumption ───────────────────────────────────────
 	# Pulverised Carbon Injection (metal_010) sits with the steelmaking nodes below; it also
 	# unlocks the Steelmaking (Petro) / Steelmaking (Bio) recipes — needle coke or carbonised
@@ -127,11 +107,7 @@ const UNLOCK_MODIFIERS := {
 		"target_match": {"good_internal": "iron_ore"}, "pct": 15.0,
 		"label": "Beneficiated Iron Mining", "source": "research:mining_yield",
 	},
-	"research_mining_004": {  # Copper Froth Flotation: a cleaner concentrate -> better ingot yield
-		"id": "yield_copper_ingots", "domain": "recipe_output",
-		"target_match": {"good_internal": "copper_ingots"}, "pct": 5.0,
-		"label": "Copper Froth Flotation: +5% copper ingot output", "source": "research_node",
-	},
+	"research_mining_004": {"id": "yield_copper_ingots", "domain": "throughput", "target_match": {"makes": "copper_ingots"}, "pct": 7.5, "label": "Copper Froth Flotation: +7.5% copper ingot throughput", "source": "research_node"},
 	"research_mining_020": {  # Copper Bioleaching: copper ore's first deposit-penalty recovery step (Automated Mine Dispatch is the second)
 		"id": "yield_copper_ore", "domain": "recipe_output",
 		"target_match": {"good_internal": "copper_ore"}, "pct": 15.0,
@@ -164,11 +140,11 @@ const UNLOCK_MODIFIERS := {
 		{"id": "yield_sand_2", "domain": "recipe_output", "target_match": {"good_internal": "sand"}, "pct": 15.0, "label": "Automated Mine Dispatch", "source": "research:mining_yield"},
 		{"id": "yield_basic_salt_2", "domain": "recipe_output", "target_match": {"good_internal": "basic_salt"}, "pct": 15.0, "label": "Automated Mine Dispatch", "source": "research:mining_yield"},
 	],
-	"research_petro_001": {"id": "rn_fractional_distillation", "domain": "recipe_output", "target_match": {"building_id": "b_011"}, "pct": 5.0, "label": "Fractional Distillation", "source": "research_node"},
+	"research_petro_001": {"id": "rn_fractional_distillation", "domain": "throughput", "target_match": {"building_id": "b_011"}, "pct": 10.0, "label": "Fractional Distillation: +10% refinery throughput", "source": "research_node"},
 	# Tier I: run a refinery for 10 turns. Same shape as
 	# Fractional Distillation above — b_011 is the Petrochemical Refinery.
-	"research_petro_021": {"id": "rn_specialised_petro_pipelines", "domain": "recipe_output", "target_match": {"building_id": "b_011"}, "pct": 5.0, "label": "Specialised Petrochemical Pipelines", "source": "research_node"},
-	"research_petro_002": {"id": "rn_catalytic_cracking", "domain": "recipe_output", "target_match": {"building_id": "b_011"}, "pct": 5.0, "label": "Catalytic Cracking: +5% refinery output", "source": "research_node"},  # Catalytic Cracking (cracking raises light-product yield)
+	"research_petro_021": {"id": "rn_specialised_petro_pipelines", "domain": "building_power", "target_match": {"building_id": "b_011"}, "pct": -15.0, "label": "Specialised Petrochemical Pipelines: 15% less refinery power", "source": "research_node"},
+	"research_petro_002": {"id": "rn_catalytic_cracking", "domain": "recipe_input", "target_match": {"building_id": "b_011", "good_internal": "crude_oil"}, "pct": -10.0, "label": "Catalytic Cracking: 10% less crude in refineries", "source": "research_node"},  # Catalytic Cracking (cracking raises light-product yield)
 	# ── Oil extraction (b_032 oil_well · b_033 offshore_oil_platform · b_034 fracking_oil_well).
 	# These five were authored in research_unlocks.csv with explicit numbers but never wired,
 	# so the player unlocked them and nothing happened — crude oil was the only good in the
@@ -199,36 +175,36 @@ const UNLOCK_MODIFIERS := {
 		{"id": "rn_remote_platform_ops_offshore", "domain": "labour_headcount", "target_match": {"building_id": "b_033"}, "pct": -30.0, "label": "Remote Platform Operations", "source": "research_node"},
 		{"id": "rn_remote_platform_ops_frack", "domain": "labour_headcount", "target_match": {"building_id": "b_034"}, "pct": -30.0, "label": "Remote Platform Operations", "source": "research_node"},
 	],
-	"research_petro_003": {"id": "rn_polymer_feedstocks", "domain": "recipe_output", "target_match": {"building_id": "b_013"}, "pct": 5.0, "label": "Polymer Feedstocks", "source": "research_node"},
+	"research_petro_003": {"id": "rn_polymer_feedstocks", "domain": "throughput", "target_match": {"building_id": "b_013"}, "pct": 7.5, "label": "Polymer Feedstocks: +7.5% polymer plant throughput", "source": "research_node"},
 	"research_petro_004": {"id": "rn_solvent_recovery", "domain": "maintenance", "target_match": {"building_id": "b_011"}, "pct": -5.0, "label": "Solvent Recovery: -5% refinery maintenance", "source": "research_node"},  # Solvent Recovery (permanent)
-	"research_petro_005": {"id": "rn_advanced_elastomers", "domain": "recipe_output", "target_match": {"good_internal": "rubber"}, "pct": 10.0, "label": "Advanced Elastomers: +10% rubber output", "source": "research_node"},  # Advanced Elastomers
-	"research_metal_001": {"id": "rn_basic_blast_furnaces", "domain": "recipe_output", "target_match": {"building_id": "b_002"}, "pct": 5.0, "label": "Basic Blast Furnaces", "source": "research_node"},
-	"research_metal_002": {"id": "rn_continuous_casting", "domain": "recipe_output", "target_match": {"good_internal": "steel"}, "pct": 5.0, "label": "Continuous Casting: +5% steel output", "source": "research_node"},  # Continuous Casting
-	"research_metal_010": [  # Pulverised Carbon Injection: finer carbon burns better — more steel, less furnace power
-		{"id": "rn_pci_steel_output", "domain": "recipe_output", "target_match": {"good_internal": "steel"}, "pct": 5.0, "label": "Pulverised Carbon Injection: +5% steel output", "source": "research_node"},
-		{"id": "rn_pci_furnace_power", "domain": "building_power", "target_match": {"building_id": "b_002"}, "pct": -10.0, "label": "Pulverised Carbon Injection: -10% furnace power", "source": "research_node"},
+	"research_petro_005": {"id": "rn_advanced_elastomers", "domain": "recipe_output", "target_match": {"good_internal": "rubber"}, "pct": 5.0, "label": "Advanced Elastomers: +5% rubber output", "source": "research_node"},  # Advanced Elastomers
+	"research_metal_001": {"id": "rn_basic_blast_furnaces", "domain": "throughput", "target_match": {"building_id": "b_002"}, "pct": 10.0, "label": "Basic Blast Furnaces: +10% furnace throughput", "source": "research_node"},
+	"research_metal_002": {"id": "rn_continuous_casting", "domain": "recipe_input", "target_match": {"makes": "steel"}, "pct": -10.0, "label": "Continuous Casting: 10% fewer inputs for steel", "source": "research_node"},  # Continuous Casting
+	"research_metal_010": [  # Pulverised Carbon Injection
+		{"id": "rn_pci_coal_input", "domain": "recipe_input", "target_match": {"makes": "steel", "good_internal": "coal"}, "pct": -20.0, "label": "Pulverised Carbon Injection: 20% less coal for steel", "source": "research_node"},
+		{"id": "rn_pci_steel_power", "domain": "building_power", "target_match": {"makes": "steel"}, "pct": 5.0, "label": "Pulverised Carbon Injection: +5% power for steel", "source": "research_node"},
 	],
-	"research_inorg_004": {"id": "rn_chlor_alkali_cells", "domain": "recipe_output", "target_match": {"building_id": "b_012"}, "pct": 5.0, "label": "Chlor Alkali Cells: +5% chem plant output", "source": "research_node"},  # Chlor Alkali Cells (chlor-alkali is a chem-plant process, not an electrolyser one)
+	"research_inorg_004": {"id": "rn_chlor_alkali_cells", "domain": "throughput", "target_match": {"building_id": "b_012"}, "pct": 7.5, "label": "Chlor Alkali Cells: +7.5% chemical plant throughput", "source": "research_node"},  # Chlor Alkali Cells (chlor-alkali is a chem-plant process, not an electrolyser one)
 	"research_inorg_005": {"id": "rn_acid_gas_scrubbing", "domain": "maintenance", "target_match": {"building_id": "b_012"}, "pct": -10.0, "label": "Acid Gas Scrubbing: -10% chem plant maintenance", "source": "research_node"},  # Acid Gas Scrubbing (emissions control protects the plant)
-	"research_inorg_006": {"id": "rn_industrial_salt_purification", "domain": "recipe_output", "target_match": {"good_internal": "chlorine"}, "pct": 5.0, "label": "Industrial Salt Purification: +5% chlorine output", "source": "research_node"},  # Industrial Salt Purification (purer brine -> better chlor-alkali yield)
+	"research_inorg_006": {"id": "rn_industrial_salt_purification", "domain": "throughput", "target_match": {"makes": "chlorine"}, "pct": 7.5, "label": "Industrial Salt Purification: +7.5% chlorine throughput", "source": "research_node"},  # Industrial Salt Purification (purer brine -> better chlor-alkali yield)
 	"research_inorg_007": {"id": "rn_ceramic_catalyst_supports", "domain": "building_power", "target_match": {"building_id": "b_012"}, "pct": -5.0, "label": "Ceramic Catalyst Supports", "source": "research_node"},
 	"research_inorg_008": {"id": "rn_precision_reagent_handling", "domain": "maintenance", "target_match": {"building_id": "b_012"}, "pct": -5.0, "label": "Precision Reagent Handling: -5% chem plant maintenance", "source": "research_node"},  # Precision Reagent Handling (permanent)
 	# Silica line off High Strength Glassmaking. Matched on the OUTPUT good rather than the
 	# building, so both concrete routes benefit (r_029 in the furnace, r_030 in the EAF)
 	# rather than only whichever building happens to be running it.
-	"research_inorg_002": {"id": "rn_pozzolanic_vitrification", "domain": "recipe_output", "target_match": {"good_internal": "concrete"}, "pct": 10.0, "label": "Pozzolanic Vitrification", "source": "research_node"},
+	"research_inorg_002": {"id": "rn_pozzolanic_vitrification", "domain": "throughput", "target_match": {"makes": "concrete"}, "pct": 15.0, "label": "Pozzolanic Vitrification: +15% concrete throughput", "source": "research_node"},
 	"research_inorg_003": [  # Micro Silica Synthesis
-		{"id": "rn_micro_silica_concrete", "domain": "recipe_output", "target_match": {"good_internal": "concrete"}, "pct": 5.0, "label": "Micro Silica Synthesis", "source": "research_node"},
-		{"id": "rn_micro_silica_glass", "domain": "recipe_output", "target_match": {"good_internal": "glass"}, "pct": 10.0, "label": "Micro Silica Synthesis", "source": "research_node"},
+		{"id": "rn_micro_silica_concrete", "domain": "throughput", "target_match": {"makes": "concrete"}, "pct": 7.5, "label": "Micro Silica Synthesis: +7.5% concrete throughput", "source": "research_node"},
+		{"id": "rn_micro_silica_glass", "domain": "throughput", "target_match": {"makes": "glass"}, "pct": 15.0, "label": "Micro Silica Synthesis: +15% glass throughput", "source": "research_node"},
 	],
-	"research_biochem_001": {"id": "rn_crop_rotation_programmes", "domain": "recipe_output", "target_match": {"building_id": "b_014"}, "pct": 5.0, "label": "Crop Rotation Programmes: +5% farm output", "source": "research_node"},  # Crop Rotation Programmes
+	"research_biochem_001": {"id": "rn_crop_rotation_programmes", "domain": "throughput", "target_match": {"building_id": "b_014"}, "pct": 7.5, "label": "Crop Rotation Programmes: +7.5% farm throughput", "source": "research_node"},  # Crop Rotation Programmes
 	# Enzyme Screening (biochem_002) and Bioplastic Precursors (biochem_003) are demo-hidden
 	# (MatchState.HIDDEN_RESEARCH_IDS); their entries were removed so no
 	# modifier key points at a node that never loads.
 	# Cell Culture Automation (biochem_005) is demo-hidden; entry removed with the rest of the bioplastics chain.
 	"research_mfg_001": {"id": "rn_interchangeable_tooling", "domain": "labour_headcount", "target_match": {"building_id": "b_007"}, "pct": -5.0, "label": "Interchangeable Tooling: -5% factory labour", "source": "research_node"},  # Interchangeable Tooling (condition builds Factories = industrial_factory b_007)
-	"research_hcpower_001": {"id": "rn_pulverized_coal_boilers", "domain": "recipe_output", "target_match": {"building_id": "b_003"}, "pct": 5.0, "label": "Pulverized Coal Boilers", "source": "research_node"},
-	"research_hcpower_002": {"id": "rn_steam_turbine_upgrades", "domain": "recipe_output", "target_match": {"building_id": "b_003"}, "pct": 5.0, "label": "Steam Turbine Upgrades: +5% coal plant output", "source": "research_node"},  # Steam Turbine Upgrades (permanent)
+	"research_hcpower_001": {"id": "rn_pulverized_coal_boilers", "domain": "recipe_input", "target_match": {"building_id": "b_003", "good_internal": "coal"}, "pct": -15.0, "label": "Pulverized Coal Boilers: 15% less coal in coal plants", "source": "research_node"},
+	"research_hcpower_002": {"id": "rn_steam_turbine_upgrades", "domain": "throughput", "target_match": {"building_id": "b_003"}, "pct": 10.0, "label": "Steam Turbine Upgrades: +10% power plant throughput", "source": "research_node"},  # Steam Turbine Upgrades (permanent)
 	"research_hcpower_003": {"id": "rn_flue_heat_recovery", "domain": "building_power", "target_match": {"building_id": "b_003"}, "pct": -10.0, "label": "Flue Heat Recovery", "source": "research_node"},
 	"research_hcpower_004": [{"id": "rn_grid_synchronous_generation_0", "domain": "maintenance", "target_match": {"building_id": "b_003"}, "pct": -8.0, "duration_turns": 20, "label": "Grid Synchronous Generation", "source": "research_node"}, {"id": "rn_grid_synchronous_generation_1", "domain": "maintenance", "target_match": {"building_id": "b_024"}, "pct": -8.0, "duration_turns": 20, "label": "Grid Synchronous Generation", "source": "research_node"}, {"id": "rn_grid_synchronous_generation_2", "domain": "maintenance", "target_match": {"building_id": "b_025"}, "pct": -8.0, "duration_turns": 20, "label": "Grid Synchronous Generation", "source": "research_node"}, {"id": "rn_grid_synchronous_generation_3", "domain": "maintenance", "target_match": {"building_id": "b_026"}, "pct": -8.0, "duration_turns": 20, "label": "Grid Synchronous Generation", "source": "research_node"}, {"id": "rn_grid_synchronous_generation_4", "domain": "maintenance", "target_match": {"building_id": "b_027"}, "pct": -8.0, "duration_turns": 20, "label": "Grid Synchronous Generation", "source": "research_node"}],
 	"research_renew_001": {"id": "rn_utility_solar_arrays", "domain": "recipe_output", "target_match": {"building_id": "b_024"}, "pct": 5.0, "label": "Utility Solar Arrays", "source": "research_node"},
@@ -256,7 +232,7 @@ const UNLOCK_MODIFIERS := {
 	# -10% at 12 — see docs/economy-bootstrap-findings.md.
 	"research_people_006": {"id": "rn_operational_team_managers", "domain": "labour_headcount", "pct": -10.0, "label": "Operational Team Managers", "source": "research_node"},
 	"research_people_007": {"id": "rn_shift_handover_documentation", "domain": "labour_headcount", "pct": -10.0, "label": "Shift Handover Documentation", "source": "research_node"},
-	"research_people_003": {"id": "rn_specialist_apprenticeships", "domain": "recipe_output", "target_match": {"building_id": "b_009"}, "pct": 5.0, "label": "Specialist Apprenticeships", "source": "research_node"},
+	"research_people_003": {"id": "rn_specialist_apprenticeships", "domain": "throughput", "target_match": {"building_id": "b_009"}, "pct": 7.5, "label": "Specialist Apprenticeships: +7.5% assembly plant throughput", "source": "research_node"},
 	"research_people_004": {"id": "rn_union_liaison_offices", "domain": "maintenance", "pct": -10.0, "duration_turns": 20, "label": "Union Liaison Offices", "source": "research_node"},
 	"research_people_005": [  # Continuous Improvement Teams
 		{"id": "rn_continuous_improvement", "domain": "recipe_output", "pct": 5.0, "label": "Continuous Improvement Teams: +5% building output", "source": "research_node"},
@@ -289,12 +265,15 @@ const UNLOCK_MODIFIERS := {
 	"research_infra_035": {"id": "rn_dynamic_line_rating", "domain": "transport_throughput", "target_match": {"mode": "cables"}, "pct": 25.0, "label": "Dynamic Line Rating", "source": "research_node"},
 	# ── repurposed placeholder rewards ──
 	"research_mfg_020": {"id": "rn_automated_guided_assembly", "domain": "labour_headcount", "target_match": {"building_id": "b_007"}, "pct": -5.0, "label": "Automated Guided Assembly", "source": "research_node"},
-	"research_mfg_024": {"id": "rn_fully_automated_fabs", "domain": "recipe_output", "target_match": {"building_id": "b_010"}, "pct": 10.0, "label": "Fully-Automated Fabs", "source": "research_node"},
-	"research_mfg_013": {"id": "rn_high_volume_press_lines", "domain": "recipe_output", "target_match": {"building_id": "b_007"}, "pct": 5.0, "label": "High-Volume Press Lines", "source": "research_node"},
+	"research_mfg_024": {"id": "rn_fully_automated_fabs", "domain": "throughput", "target_match": {"building_id": "b_010"}, "pct": 15.0, "label": "Fully-Automated Fabs: +15% high tech throughput", "source": "research_node"},
+	"research_mfg_013": {"id": "rn_high_volume_press_lines", "domain": "throughput", "target_match": {"building_id": "b_007"}, "pct": 10.0, "label": "High-Volume Press Lines: +10% factory throughput", "source": "research_node"},
 	"research_mfg_017": [{"id": "rn_jit_b007", "domain": "maintenance", "target_match": {"building_id": "b_007"}, "pct": -15.0, "label": "Asset Integrity Management Cycle", "source": "research_node"}, {"id": "rn_jit_b009", "domain": "maintenance", "target_match": {"building_id": "b_009"}, "pct": -15.0, "label": "Asset Integrity Management Cycle", "source": "research_node"}, {"id": "rn_jit_b010", "domain": "maintenance", "target_match": {"building_id": "b_010"}, "pct": -15.0, "label": "Asset Integrity Management Cycle", "source": "research_node"}],
-	"research_mfg_018": {"id": "rn_modular_sub_assembly", "domain": "recipe_output", "target_match": {"building_id": "b_009"}, "pct": 5.0, "label": "Modular Sub-Assembly", "source": "research_node"},
+	"research_mfg_018": {"id": "rn_modular_sub_assembly", "domain": "throughput", "target_match": {"building_id": "b_009"}, "pct": 7.5, "label": "Modular Sub-Assembly: +7.5% assembly plant throughput", "source": "research_node"},
 	"research_mfg_005": {"id": "rn_modular_factory_cells", "domain": "recipe_output", "target_match": {"building_id": "b_009"}, "pct": 5.0, "label": "Modular Factory Cells: +5% assembly plant output", "source": "research_node"},  # Modular Factory Cells (5 assembly plants on one tile -> +5%)
-	"research_mfg_014": {"id": "rn_multi_shift_production", "domain": "recipe_output", "target_match": {"building_id": "b_007"}, "pct": 5.0, "label": "Multi-Shift Production", "source": "research_node"},
+	"research_mfg_014": [  # Multi-Shift Production
+		{"id": "rn_multi_shift_throughput", "domain": "throughput", "target_match": {"building_id": "b_007"}, "pct": 15.0, "label": "Multi-Shift Production: +15% factory throughput", "source": "research_node"},
+		{"id": "rn_multi_shift_labour", "domain": "labour_headcount", "target_match": {"building_id": "b_007"}, "pct": 10.0, "label": "Multi-Shift Production: +10% factory labour", "source": "research_node"},
+	],
 	"research_mfg_019": {"id": "rn_robotic_final_assembly", "domain": "labour_headcount", "target_match": {"building_id": "b_009"}, "pct": -5.0, "label": "Robotic Final Assembly: -5% assembly labour", "source": "research_node"},  # Robotic Final Assembly (permanent)
 	"research_mfg_016": [{"id": "rn_fmc_b007", "domain": "labour_headcount", "target_match": {"building_id": "b_007"}, "pct": -10.0, "label": "Flexible Manufacturing Cells", "source": "research_node"}, {"id": "rn_fmc_b009", "domain": "labour_headcount", "target_match": {"building_id": "b_009"}, "pct": -10.0, "label": "Flexible Manufacturing Cells", "source": "research_node"}, {"id": "rn_fmc_b010", "domain": "labour_headcount", "target_match": {"building_id": "b_010"}, "pct": -10.0, "label": "Flexible Manufacturing Cells", "source": "research_node"}],
 	"research_renew_019": {"id": "rn_dual_axis_tracking", "domain": "recipe_output", "target_match": {"building_id": "b_024"}, "pct": 10.0, "label": "Dual-Axis Tracking Farms", "source": "research_node"},
@@ -303,22 +282,28 @@ const UNLOCK_MODIFIERS := {
 	"research_renew_016": {"id": "rn_variable_pitch_control", "domain": "maintenance", "target_match": {"building_id": "b_025"}, "pct": -5.0, "label": "Variable-Pitch Control: -5% wind farm maintenance", "source": "research_node"},  # Variable-Pitch Control (permanent)
 	"research_renew_021": {"id": "rn_containerised_battery_racks", "domain": "maintenance", "target_match": {"building_id": "b_028"}, "pct": -5.0, "label": "Containerised Battery Racks: -5% battery maintenance", "source": "research_node"},  # Containerised Battery Racks (permanent)
 	"research_metal_016": {"id": "rn_dc_arc_conversion", "domain": "building_power", "target_match": {"building_id": "b_008"}, "pct": -10.0, "label": "DC Arc Conversion: -10% EAF power", "source": "research_node"},  # DC Arc Conversion
-	"research_metal_014": {"id": "rn_foamy_slag_practice", "domain": "recipe_output", "target_match": {"building_id": "b_008"}, "pct": 5.0, "label": "Foamy Slag Practice", "source": "research_node"},
-	"research_metal_008": {"id": "rn_ultra_high_power_arcs", "domain": "recipe_output", "target_match": {"building_id": "b_008"}, "pct": 10.0, "label": "Ultra-High-Power Arcs", "source": "research_node"},
+	"research_metal_014": {"id": "rn_foamy_slag_practice", "domain": "building_power", "target_match": {"building_id": "b_008"}, "pct": -10.0, "label": "Foamy Slag Practice: 10% less arc furnace power", "source": "research_node"},
+	"research_metal_008": [  # Ultra-High-Power Arcs
+		{"id": "rn_uhp_arcs_throughput", "domain": "throughput", "target_match": {"building_id": "b_008"}, "pct": 15.0, "label": "Ultra-High-Power Arcs: +15% arc furnace throughput", "source": "research_node"},
+		{"id": "rn_uhp_arcs_power", "domain": "building_power", "target_match": {"building_id": "b_008"}, "pct": 10.0, "label": "Ultra-High-Power Arcs: +10% arc furnace power", "source": "research_node"},
+	],
 	"research_mining_013": {"id": "rn_bench_blasting", "domain": "recipe_output", "target_match": {"building_id": "b_001"}, "pct": 5.0, "label": "Bench Blasting Expansion: +5% mine output", "source": "research_node"},  # Bench Blasting Expansion (permanent)
 	"research_mining_016": [  # Block Caving (was -20% mine maintenance): bulk-caves an inexhaustible deposit — more ore, dearer upkeep
 		{"id": "rn_block_caving_output", "domain": "recipe_output", "target_match": {"building_id": "b_001", "on_infinite_deposit": "true"}, "pct": 5.0, "label": "Block Caving: +5% output on inexhaustible deposits", "source": "research_node"},
 		{"id": "rn_block_caving_maint", "domain": "maintenance", "target_match": {"building_id": "b_001", "on_infinite_deposit": "true"}, "pct": 10.0, "label": "Block Caving: +10% maintenance on inexhaustible deposits", "source": "research_node"},
 	],
-	"research_mining_014": {"id": "rn_bulk_haulage_fleets", "domain": "recipe_output", "target_match": {"building_id": "b_001"}, "pct": 5.0, "label": "Bulk Haulage Fleets", "source": "research_node"},
+	"research_mining_014": {"id": "rn_bulk_haulage_fleets", "domain": "extraction_cap_cost", "target": "*", "pct": -25.0, "label": "Bulk Haulage Fleets: each mine over a seam's free amount costs +75%, not +100%", "source": "research_node"},
 	"research_mining_015": {"id": "rn_continuous_surface_miners", "domain": "recipe_output", "target_match": {"building_id": "b_001", "on_infinite_deposit": "true"}, "pct": 20.0, "label": "Continuous Surface Miners: +20% output on inexhaustible deposits", "source": "research_node"},  # Continuous Surface Miners
 	"research_inorg_017": {"id": "rn_bipolar_cell_arrays", "domain": "building_power", "target_match": {"building_id": "b_020"}, "pct": -5.0, "label": "Bipolar Cell Arrays: -5% electrolyser power", "source": "research_node"},  # Bipolar Cell Arrays (permanent)
 	"research_inorg_016": {"id": "rn_high_current_cell_stacks", "domain": "labour_headcount", "target_match": {"building_id": "b_020"}, "pct": -5.0, "label": "High-Current Cell Stacks", "source": "research_node"},
 	"research_inorg_015": {"id": "rn_deep_catalytic_optimisation", "domain": "building_power", "target_match": {"building_id": "b_012"}, "pct": -10.0, "label": "Deep Catalytic Optimisation", "source": "research_node"},
-	"research_inorg_021": {"id": "rn_multi_stage_flash_desal", "domain": "recipe_output", "target_match": {"building_id": "b_021"}, "pct": 20.0, "label": "Multi-Stage Flash Desal", "source": "research_node"},
+	"research_inorg_021": {"id": "rn_multi_stage_flash_desal", "domain": "throughput", "target_match": {"building_id": "b_021"}, "pct": 30.0, "label": "Multi-Stage Flash Desal: +30% desalination throughput", "source": "research_node"},
 	"research_petro_017": {"id": "rn_heat_integrated_trains", "domain": "building_power", "target_match": {"building_id": "b_013"}, "pct": -10.0, "label": "Heat-Integrated Trains", "source": "research_node"},
 	"research_biochem_008": [{"id": "rn_ahf_b015", "domain": "labour_headcount", "target_match": {"building_id": "b_015"}, "pct": -5.0, "label": "Automated Harvest Fleets", "source": "research_node"}, {"id": "rn_ahf_b016", "domain": "labour_headcount", "target_match": {"building_id": "b_016"}, "pct": -5.0, "label": "Automated Harvest Fleets", "source": "research_node"}],
-	"research_hcpower_008": {"id": "rn_reheat_turbine_cycles", "domain": "recipe_output", "target_match": {"building_id": "b_003"}, "pct": 10.0, "label": "Reheat Turbine Cycles", "source": "research_node"},
+	"research_hcpower_008": [  # Reheat Turbine Cycles
+		{"id": "rn_reheat_turbine_labour", "domain": "labour_headcount", "target_match": {"building_id": "b_003"}, "pct": -10.0, "label": "Reheat Turbine Cycles: 10% less power plant labour", "source": "research_node"},
+		{"id": "rn_reheat_turbine_maint", "domain": "maintenance", "target_match": {"building_id": "b_003"}, "pct": -10.0, "label": "Reheat Turbine Cycles: 10% less power plant maintenance", "source": "research_node"},
+	],
 	"research_recyc_003": {"id": "rn_tertiary_filtration", "domain": "recipe_output", "target_match": {"building_id": "b_022"}, "pct": 15.0, "label": "Tertiary Filtration", "source": "research_node"},
 	"research_recyc_005": {"id": "rn_zero_discharge_water", "domain": "building_power", "target_match": {"building_id": "b_022"}, "pct": -10.0, "label": "Zero-Discharge Water", "source": "research_node"},
 	"research_infra_024": {"id": "rn_automated_rail_yards", "domain": "maintenance", "target_match": {"building_id": "b_019"}, "pct": -10.0, "label": "Automated Rail Yards", "source": "research_node"},
@@ -465,6 +450,19 @@ func reapply_unlock_modifiers(unlocked_titles: Dictionary) -> void:
 			if (m as Dictionary).has("duration_turns"):
 				continue  # timed bonus — saved expiry is authoritative
 			add(m)
+
+
+## Drops research modifiers whose id the table no longer has, a node whose effect was rebuilt under new ids, so a
+## save made before the change keeps nothing of the old effect. Run before reapply_unlock_modifiers on load.
+func prune_stale_unlock_modifiers() -> void:
+	var known := {}
+	for spec in UNLOCK_MODIFIERS.values():
+		for m in (spec if spec is Array else [spec]):
+			known[str((m as Dictionary).get("id", ""))] = true
+	for id in _modifiers.keys():
+		var src := str((_modifiers[id] as Dictionary).get("source", ""))
+		if (src == "research_node" or src.begins_with("research:")) and not known.has(str(id)):
+			remove(str(id))
 
 
 # ── Public API ────────────────────────────────────────────────────────────
@@ -620,7 +618,8 @@ func resolve_pct(domain: String, target: String, ctx: Dictionary = {}) -> Dictio
 		if p == 0.0:
 			continue
 		net += p
-		parts.append({"id": str(m.get("id", "")), "label": str(m.get("label", m.get("id", ""))), "pct": p})
+		parts.append({"id": str(m.get("id", "")), "label": str(m.get("label", m.get("id", ""))), "pct": p,
+			"condition": str(m.get("condition", ""))})
 	return {"net": net, "parts": parts}
 
 
@@ -677,6 +676,12 @@ func _target_matches(m: Dictionary, target: String, ctx: Dictionary) -> bool:
 		if str(key) == "on_infinite_deposit":
 			# Resolved from the building behind the ctx, not from a ctx string — see below.
 			if _ctx_on_infinite_deposit(ctx) != (str(match_dict[key]) == "true"):
+				return false
+			continue
+		if str(key) == "makes":
+			# A recipe that makes the good among its outputs (ctx.goods_made, Catalog.goods_made): how a
+			# throughput, input or power modifier keeps a converted output node's scope.
+			if not (ctx.get("goods_made", []) as Array).has(str(match_dict[key])):
 				return false
 			continue
 		if str(ctx.get(key, "")) != str(match_dict[key]):

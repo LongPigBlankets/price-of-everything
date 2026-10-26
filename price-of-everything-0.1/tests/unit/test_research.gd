@@ -942,12 +942,12 @@ func _test_modifiers_pct_additive_and_resolve() -> void:
 func _test_modifiers_new_domain_unlocks() -> void:
 	Modifiers.reset()
 	MatchState.reset()
-	# recipe_output: Continuous-Flow Reactors → +5% at the chem plant (b_012) only.
+	# throughput: Continuous-Flow Reactors → +7.5% at the chem plant (b_012) only.
 	ResearchState.grant_unlock("Continuous-Flow Reactors")
 	_check(Modifiers.has("cfr_chem_output"), "Continuous-Flow Reactors registers its modifier")
-	_check(absf(Modifiers.apply("recipe_output", "any", 100.0, {"building_id": "b_012"}) - 105.0) < 0.001,
-		"chem plant (b_012) gets +5% output")
-	_check(absf(Modifiers.apply("recipe_output", "any", 100.0, {"building_id": "b_010"}) - 100.0) < 0.001,
+	_check(absf(Modifiers.apply("throughput", "any", 100.0, {"building_id": "b_012"}) - 107.5) < 0.001,
+		"chem plant (b_012) gets +7.5% throughput")
+	_check(absf(Modifiers.apply("throughput", "any", 100.0, {"building_id": "b_010"}) - 100.0) < 0.001,
 		"a different building (b_010) is untouched by the chem bonus")
 	# building_power: Energy-Recovery Devices → −50% at desal (b_021).
 	ResearchState.grant_unlock("Energy-Recovery Devices")
@@ -1127,14 +1127,14 @@ func _test_petrochemistry_changes() -> void:
 	_check(ResearchState.research_condition_issues().is_empty(),
 		"petrochem: every research row still resolves to a live condition")
 
-	# ...and it pays out on the Petrochemical Refinery.
+	# ...and it pays out on the Petrochemical Refinery: 15% less power (refining licence group).
 	Modifiers.reset()
-	var before: float = Modifiers.apply("recipe_output", "r", 100.0, {"building_id": "b_011"})
+	var before: float = Modifiers.apply("building_power", "r", 100.0, {"building_id": "b_011"})
 	ResearchState.grant_unlock("Specialised Petrochemical Pipelines")
-	var after: float = Modifiers.apply("recipe_output", "r", 100.0, {"building_id": "b_011"})
-	_check(absf(after - before - 5.0) < 0.001,
-		"petrochem: the pipelines node adds +5%% refinery output (%.1f -> %.1f)" % [before, after])
-	_check(absf(Modifiers.apply("recipe_output", "r", 100.0, {"building_id": "b_001"}) - 100.0) < 0.001,
+	var after: float = Modifiers.apply("building_power", "r", 100.0, {"building_id": "b_011"})
+	_check(absf(before - after - 15.0) < 0.001,
+		"petrochem: the pipelines node cuts refinery power 15%% (%.1f -> %.1f)" % [before, after])
+	_check(absf(Modifiers.apply("building_power", "r", 100.0, {"building_id": "b_001"}) - 100.0) < 0.001,
 		"petrochem: it does not touch other buildings")
 	Modifiers.reset()
 

@@ -2094,7 +2094,8 @@ func _effective_energy_req(building: Dictionary, recipe: Dictionary) -> int:
 	if energy_req <= 0:
 		return energy_req
 	var bid: String = str(building.get("building_id", ""))
-	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid})
+	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid,
+		"goods_made": Catalog.goods_made(str(recipe.get("recipe_id", building.get("recipe_id", ""))))})
 	var capacity_mult := MatchState.run_multiplier(building)
 	var scaled := eff * BuildingLevels.mult("energy", int(building.get("level", 1))) * capacity_mult \
 		* LabourState.workforce_power_multiplier(building) * MatchState.seams.power_mult(building)
@@ -2197,7 +2198,8 @@ func _effective_energy_req_f(building: Dictionary, recipe: Dictionary) -> float:
 	if energy_req <= 0:
 		return float(energy_req)
 	var bid: String = str(building.get("building_id", ""))
-	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid})
+	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid,
+		"goods_made": Catalog.goods_made(str(recipe.get("recipe_id", building.get("recipe_id", ""))))})
 	return eff * BuildingLevels.mult("energy", int(building.get("level", 1))) * MatchState.run_multiplier(building) \
 		* LabourState.workforce_power_multiplier(building) * MatchState.seams.power_mult(building)
 
@@ -3163,4 +3165,4 @@ func _modified_input_qty(input: Dictionary, building: Dictionary) -> float:
 	var gid := str(input.get("good_id", ""))
 	return Modifiers.apply("recipe_input", rid, qty, {"recipe_id": rid, "building_id": bid,
 		"instance_id": str(building.get("instance_id", "")), "good_id": gid,
-		"good_internal": str(Catalog.get_good(gid).get("internal_name", ""))})
+		"good_internal": str(Catalog.get_good(gid).get("internal_name", "")), "goods_made": Catalog.goods_made(rid)})

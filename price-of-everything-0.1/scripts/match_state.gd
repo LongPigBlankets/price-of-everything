@@ -266,6 +266,8 @@ func _on_survey_phase_started(phase: int) -> void:
 		tick_surveys()
 		Power.tick_battery_fills()
 		seams.tick(int(TurnManager.current_turn))
+		# Before production: a start perk whose Original Furnace has gone ends this turn.
+		preload("res://scripts/legacy_perk.gd").reconcile()
 	elif phase == TurnManager.Phase.NARRATIVE:
 		seams.age()
 	elif phase == TurnManager.Phase.RECEIVE:
@@ -1274,7 +1276,8 @@ func throughput_multiplier(building: Dictionary) -> float:
 	var pct := LabourState.throughput_pct_for(bid)
 	if Modifiers.has_domain("throughput"):
 		pct += float(Modifiers.resolve_pct("throughput", bid,
-			{"building_id": bid, "instance_id": str(building.get("instance_id", ""))}).get("net", 0.0))
+			{"building_id": bid, "instance_id": str(building.get("instance_id", "")),
+			"goods_made": Catalog.goods_made(str(building.get("recipe_id", "")))}).get("net", 0.0))
 	return maxf(0.0, 1.0 + pct / 100.0)
 
 func set_route_objective(objective: int) -> void:

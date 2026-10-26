@@ -126,12 +126,12 @@
             "qty": 2
           },
           "reward": {
-            "text": "+10% output for 10 turns",
+            "text": "+10% output for 15 turns",
             "modifier": {
               "domain": "recipe_output",
               "target": "*",
               "pct": 10.0,
-              "turns": 10
+              "turns": 15
             }
           }
         },
@@ -372,11 +372,12 @@
             "qty": 1
           },
           "reward": {
-            "text": "+5% output on every recipe",
+            "text": "+5% output on every recipe for 20 turns",
             "modifier": {
               "domain": "recipe_output",
               "target": "*",
-              "pct": 5.0
+              "pct": 5.0,
+              "turns": 20
             }
           },
           "detail": "Send coal from that mine to a tile where your buildings use it."
@@ -529,14 +530,15 @@
             "unit": "power"
           },
           "reward": {
-            "text": "+5% output of power",
+            "text": "+5% output of power for 20 turns",
             "modifier": {
               "domain": "recipe_output",
               "target": "*",
               "target_match": {
                 "good_internal": "power"
               },
-              "pct": 5.0
+              "pct": 5.0,
+              "turns": 20
             }
           }
         },
@@ -796,11 +798,12 @@
             "unit": "10 turns"
           },
           "reward": {
-            "text": "+3% output",
+            "text": "+3% output for 20 turns",
             "modifier": {
               "domain": "recipe_output",
               "target": "*",
-              "pct": 3.0
+              "pct": 3.0,
+              "turns": 20
             }
           }
         },
@@ -1084,11 +1087,12 @@
             "unit": "recipes"
           },
           "reward": {
-            "text": "+3% output",
+            "text": "+3% output for 20 turns",
             "modifier": {
               "domain": "recipe_output",
               "target": "*",
-              "pct": 3.0
+              "pct": 3.0,
+              "turns": 20
             }
           }
         },
@@ -1108,11 +1112,12 @@
             "unit": "recipes"
           },
           "reward": {
-            "text": "+3% output",
+            "text": "+3% output for 20 turns",
             "modifier": {
               "domain": "recipe_output",
               "target": "*",
-              "pct": 3.0
+              "pct": 3.0,
+              "turns": 20
             }
           }
         },

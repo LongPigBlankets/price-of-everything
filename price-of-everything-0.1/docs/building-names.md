@@ -7,6 +7,7 @@ main output, and the plain recipe of such a group has none. The rule and its tab
 `scripts/building_naming.gd`. This file is written by `tools/building_names_table.tscn`. Regenerate it rather than editing by hand.
 
 A building type in a catalogue, before a recipe is chosen, keeps its type name (the Type column).
+One building in a game carries its own name instead: a start's legacy furnace, Metal Magnate's on tile_9_9 and Glass Merchant's on tile_18_16, is the "Original Furnace" while it stands (a per-instance name, owner-approved, scripts/legacy_perk.gd).
 Names shown here are without the letter. **Was** is the name the building had before, with letter A.
 Rows marked **check** carry a note for the owner.
 

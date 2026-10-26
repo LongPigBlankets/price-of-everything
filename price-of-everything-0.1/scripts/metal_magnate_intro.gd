@@ -95,7 +95,7 @@ func _build() -> void:
 
 	# Bonus line — bold, green, matching the reward palette.
 	var bonus := Label.new()
-	bonus.text = BONUS
+	bonus.text = BONUS + "\n" + preload("res://scripts/legacy_perk.gd").CONDITION_TEXT
 	bonus.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	bonus.add_theme_font_override("font", BONUS_FONT)
 	bonus.add_theme_font_size_override("font_size", 16)

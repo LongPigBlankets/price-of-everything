@@ -1028,6 +1028,22 @@ func _recipe_for_demo(recipe: Dictionary) -> Dictionary:
 func get_recipe(recipe_id: String) -> Dictionary:
 	return _recipe_for_demo(_recipes_by_id.get(recipe_id, {}))
 
+## The internal names of the goods `recipe_id` makes, for modifiers scoped to them (`target_match.makes`). Cached:
+## recipes do not change once loaded.
+func goods_made(recipe_id: String) -> Array:
+	if _goods_made.has(recipe_id):
+		return _goods_made[recipe_id]
+	var out: Array = []
+	for o: Dictionary in get_recipe(recipe_id).get("outputs", []):
+		var internal := str(get_good(str(o.get("good_id", ""))).get("internal_name", ""))
+		if internal != "":
+			out.append(internal)
+	_goods_made[recipe_id] = out
+	return out
+
+var _goods_made: Dictionary = {}
+
+
 ## Every loaded recipe of a building, whatever research, the demo or a prohibition hides. For what must not
 ## change as the game goes on, like a building's name.
 func all_recipes_for_building(building_id: String) -> Array:

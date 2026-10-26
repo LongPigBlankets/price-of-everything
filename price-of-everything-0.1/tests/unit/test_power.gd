@@ -165,9 +165,9 @@ func _test_power_output_modifier() -> void:
 	var coal_plant := {"building_id": "b_003"}  # Coal Power Plant
 	var rec := {"recipe_id": "rp_power", "output_qty": 100, "recipe_type": "power", "output_name": "power"}
 	_check(Production._effective_power_output(coal_plant, rec) == 100, "base power output is unmodified (100)")
-	ResearchState.grant_unlock("Pulverized Coal Boilers")  # +5% Coal Power Plant output
+	Modifiers.add({"id": "t_power_out", "domain": "recipe_output", "target_match": {"building_id": "b_003"}, "pct": 5.0})
 	_check(Production._effective_power_output(coal_plant, rec) == 105,
-		"Pulverized Coal Boilers boosts coal-plant power output +5%% → 105 (got %d)" % Production._effective_power_output(coal_plant, rec))
+		"a +5% coal-plant output modifier boosts its power output → 105 (got %d)" % Production._effective_power_output(coal_plant, rec))
 	_check(Production._effective_power_output({"building_id": "b_024"}, rec) == 100,
 		"the coal-plant boost leaves other power plants (solar) untouched")
 	Modifiers.reset()

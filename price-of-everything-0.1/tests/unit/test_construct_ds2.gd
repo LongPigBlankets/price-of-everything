@@ -304,6 +304,6 @@ func _test_micro_silica_glass_bonus() -> void:
 	for m: Dictionary in Modifiers.UNLOCK_MODIFIERS.get("research_inorg_003", []):
 		if str(m.get("id", "")) == "rn_micro_silica_glass":
 			glass = float(m.get("pct", 0.0))
-	_check(is_equal_approx(glass, 10.0), "Micro Silica Synthesis adds 10%% glass (got %.0f%%)" % glass)
-	_check(str(ResearchState.get_unlock_def("Micro Silica Synthesis").get("description", "")).contains("Glass output by 10%"),
-		"its description says 10%")
+	_check(is_equal_approx(glass, 15.0), "Micro Silica Synthesis adds 15%% glass throughput (got %.0f%%)" % glass)
+	_check(str(ResearchState.get_unlock_def("Micro Silica Synthesis").get("description", "")).contains("Glass throughput by 15%"),
+		"its description says 15%")
