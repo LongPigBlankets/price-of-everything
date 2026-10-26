@@ -5,7 +5,7 @@ extends RefCounted
 ## Strikes are checked every 10th turn T. In the resolution of turn T−3 a workforce below −70 names its strikers,
 ## a quarter of the company's production and power buildings (half below −90), so the player sees the warning
 ## from turn T−2. In the resolution of T the named buildings strike if satisfaction is still below −70: their
-## output falls 30% for 3 turns (a per-building `recipe_output` mult 0.7 modifier) while their inputs are still
+## output falls 60% for 3 turns (a per-building `recipe_output` mult 0.4 modifier) while their inputs are still
 ## consumed and their labour costs half. A union agreement or a pay rise for all strikers keeps strikes away.
 ## Breaking a strike ends it for a turn of wages and a fall in satisfaction; done routinely, the workforce
 ## remembers it until a Comprehensive Union Agreement is signed.
@@ -23,11 +23,11 @@ const HEAVY_STRIKE_BELOW := -90.0
 const STRIKE_SHARE := 0.25
 const HEAVY_STRIKE_SHARE := 0.5
 const STRIKE_TURNS := 3
-const STRIKE_OUTPUT_MULT := 0.7
+const STRIKE_OUTPUT_MULT := 0.4
 ## Struck buildings pay this share of their labour cost.
 const STRIKE_LABOUR_SHARE := 0.5
 const STRIKE_END_SHIFT := 5.0
-const PAY_RAISE := 0.20
+const PAY_RAISE := 0.40
 const PAY_RAISE_TURNS := 10
 const STRIKE_FREE_TURNS := 15
 const RECORD_CAP := 20
@@ -35,7 +35,7 @@ const RECORD_CAP := 20
 const UPCOMING_WITHIN := 5
 ## Breaking a strike: replacement crews and guards cost this many turns of a building's base wage bill, paid
 ## this turn, and lower the satisfaction target by 5 a building or 20 for a whole round, for 10 turns.
-const BREAK_COST_TURNS := 1.0
+const BREAK_COST_TURNS := 2.0
 const BREAK_SHIFT_ONE := -5.0
 const BREAK_SHIFT_ROUND := -20.0
 ## Two whole rounds broken, or ten buildings broken one at a time, and the workforce remembers for good:
@@ -373,7 +373,7 @@ func affected_buildings() -> Array:
 	return out
 
 
-## Settle one named or striking building's strike with a pay rise: +20% labour there for 10 turns, its strike ends or it leaves
+## Settle one named or striking building's strike with a pay rise: +40% labour there for 10 turns, its strike ends or it leaves
 ## the warning. No change to satisfaction.
 func raise_pay(iid: String) -> bool:
 	if not is_named(iid) and not is_on_strike(iid):
@@ -396,7 +396,7 @@ func _end_one(iid: String) -> void:
 			warning["buildings"] = left
 
 
-## Settle every strike with a pay rise at each named or striking building (or those of them in `only`): each +20% for 10 turns, their
+## Settle every strike with a pay rise at each named or striking building (or those of them in `only`): each +40% for 10 turns, their
 ## strikes end, they leave the warning, and there are no strikes for 15 turns.
 func raise_pay_all(turn: int, only: Array = []) -> bool:
 	var all := _round(only)

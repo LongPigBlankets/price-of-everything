@@ -594,9 +594,9 @@ func transport_link_capacity(mode: String, level: int) -> float:
 # --- Mining: seams (scripts/mining_sites.gd, docs/pacing-labour-mining-licensing-spec.md §8) ---
 ## Every finite deposit is this many times its CSV size, applied after the coal and iron normalisation.
 const DEPOSIT_SIZE_MULT := 3.0
-## A site's working limits, in level 1 workings: free to SEAM_FREE, nothing past SEAM_MAX.
-const SEAM_FREE := {"endless": 2.0, "finite": 3.0}
-const SEAM_MAX := {"endless": 4.0, "finite": 6.0}
+## A site's working limits, in level 1 workings: free to SEAM_FREE, and past SEAM_MAX it may collapse.
+const SEAM_FREE := {"endless": 1.5, "finite": 1.5}
+const SEAM_MAX := {"endless": 3.0, "finite": 3.0}
 ## What each full working over the free cap adds to the labour and maintenance of the whole site (+100%).
 ## `extraction_cap_cost` modifiers scale it.
 const SEAM_OVER_CAP_COST := 1.0

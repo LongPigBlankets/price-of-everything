@@ -170,15 +170,15 @@ Per building per turn:
 ```
 base × level mult × throughput (1 + Σ throughput pct) × staffing fill (§5) × accident factor (§4.5)
      → quantity run
-outputs: quantity run × output modifiers (1 + Σ recipe_output pct) × strike factor 0.7 (§6)
+outputs: quantity run × output modifiers (1 + Σ recipe_output pct) × strike factor 0.4 (§6)
 inputs:  quantity run × input modifiers (1 + Σ recipe_input pct)
 power:   quantity run share of energy
 ```
 
 - Throughput pct values add, as Modifiers pct values do (`modifier_state.gd:545`).
 - Staffing, accidents and caps multiply the run.
-- A strike multiplies output only (LOCKED). It is a `mult` 0.7 modifier, not a −30 pct. Pct values
-  add, so −30% beside a +10% legacy perk would net −20% instead of cutting 30%.
+- A strike multiplies output only (LOCKED). It is a `mult` 0.4 modifier, not a −60 pct. Pct values
+  add, so −60% beside a +10% legacy perk would net −50% instead of cutting 60%.
 
 ### 3.5 Code
 
@@ -577,14 +577,14 @@ including fill (§8.5).
 | Size | ceil(25% × N) under −70, ceil(50% × N) under −90. N = the player's running production and power buildings (not infrastructure, batteries or sites under construction) |
 | Draw *(proposed)* | Weighted, seeded RNG. Hazardous sites ×2 while safety is Minimal; buildings with an accident in the last 10 turns ×2; others ×1 |
 | At turn T | Under −70: the strike starts. Under −90 at the warning but −70 to −90 at T: only the first 25% strike. At −70 or above at T: "Strike called off" |
-| Effect (LOCKED) | **Output −30%** for 3 turns (T, T+1, T+2), as a `mult` 0.7 modifier with a 3-turn expiry (owner ruling 26 Oct, was −50%). Inputs are still consumed in full, so a strike also wastes 30% of the input value. A struck mine still digs and charges its deposit in full. Struck buildings pay **50% labour cost** (LOCKED) |
+| Effect (LOCKED) | **Output −60%** for 3 turns (T, T+1, T+2), as a `mult` 0.4 modifier with a 3-turn expiry (owner rulings 26 Oct: −50% to −30%, then doubled to −60%). Inputs are still consumed in full, so a strike also wastes 60% of the input value. A struck mine still digs and charges its deposit in full. Struck buildings pay **50% labour cost** (LOCKED) |
 | Knock-on | Normal shortfall rules. In Local Suppliers starts, in-house inputs default to stockpile first with Local Suppliers buying the shortfall (`middleman_service.gd:229`). A strike upstream becomes a cash shock downstream; on tile-only routes it halts the chain |
 | Union Agreement, Partial or Comprehensive | No warning and no strikes while active |
 
 Scale at turn 50 (revenue £527, profit £133):
-- 25% of buildings striking removes about 7.5% of output for 3 turns, about £40/turn or 30% of
+- 25% of buildings striking removes about 15% of output for 3 turns, about £79/turn or 60% of
   the profit.
-- 50% removes about 15%, about £79/turn or 60% of the profit, plus bridging markup.
+- 50% removes about 30%, about £158/turn, more than the profit, plus bridging markup.
 - Three turns cannot trigger bankruptcy on their own (−£500 for 5 turns).
 
 ### 6.2 Ending strikes with a pay rise — LOCKED
@@ -593,8 +593,8 @@ Two actions, open from the warning until the strike ends:
 
 | Action | Cost | Effect |
 |---|---|---|
-| Settle at one building (a pay rise) | labour +20% at that building for 10 turns | That building's strike ends (or is called off). It cannot be drawn again while the raise runs *(proposed)* |
-| Settle every strike (a pay rise at each) | labour +20% at every struck or named building for 10 turns *(duration proposed)* | Every strike ends, and **no strikes for 15 turns** |
+| Settle at one building (a pay rise) | labour +40% at that building for 10 turns (owner, 26 Oct: doubled from +20%) | That building's strike ends (or is called off). It cannot be drawn again while the raise runs *(proposed)* |
+| Settle every strike (a pay rise at each) | labour +40% at every struck or named building for 10 turns *(duration proposed)* | Every strike ends, and **no strikes for 15 turns** |
 
 - Neither action changes satisfaction or the band. The workforce is still unhappy, so the next
   check after the protection ends can draw again.
@@ -606,8 +606,8 @@ Beside each pay rise, Break strike: replacement crews end the strike at once.
 
 | Action | Cost | Satisfaction | Effect |
 |---|---|---|---|
-| Break one building | 1 turn of its base wages, paid this turn ("Strike breaking") | target −5 for 10 turns | its strike ends with no +5, or a named building leaves the warning |
-| Break the whole round | 1 turn of base wages per named or striking building | target −20 for 10 turns | every strike ends, the warning clears, no protection after |
+| Break one building | 2 turns of its base wages, paid this turn ("Strike breaking"; owner, 26 Oct: doubled from 1) | target −5 for 10 turns | its strike ends with no +5, or a named building leaves the warning |
+| Break the whole round | 2 turns of base wages per named or striking building | target −20 for 10 turns | every strike ends, the warning clears, no protection after |
 
 - **Routinely broke strikes**: 2 whole rounds broken, or 10 buildings broken one at a time, add a
   standing −15 to the satisfaction target. Only signing a Comprehensive Union Agreement removes it;
@@ -843,8 +843,12 @@ satisfaction. Buying is the fast lane, which is what LOCKED pacing intends.
 
 | Seam | Free cap | Collapse limit | Labour and maintenance at the limit |
 |---|---|---|---|
-| Endless (no amount in `tile_properties.csv`) | 2 | 4 | × 3 |
-| Finite | 3 | 6 | × 4 |
+| Endless (no amount in `tile_properties.csv`) | 1.5 | 3 | × 2.5 |
+| Finite | 1.5 | 3 | × 2.5 |
+
+**Owner ruling, 26 October 2026: free amount 1.5.** Every seam is free to 1.5 level 1 workings
+and may collapse past 3 (was 2 and 4 for endless seams, 3 and 6 for finite ones). One mine on
+overtime fits; a second on the same seam pays about ×1.7.
 
 **Owner ruling, 26 October 2026: collapse risk.** Past the limit nothing is scaled back and
 nothing is refused. Every working digs in full, M keeps rising, and each turn the seam may
@@ -853,8 +857,8 @@ the seam cards' saved RNG. A finite seam that collapses loses what remains. An e
 all its mines for 3 turns (`COLLAPSE_OFFLINE_TURNS`).
 
 Players never see workings. Every figure is units dug a turn: a working's draw × its recipe's
-base output. A coal mine digs 60 a turn at level 1, so an endless coal seam is free to 120 and may
-collapse above 240.
+base output. A coal mine digs 60 a turn at level 1, so a coal seam is free to 90 and may collapse
+above 180.
 
 ### 8.3 Over-cap cost — LOCKED
 
@@ -876,13 +880,13 @@ fees):
 
 | Site | Draw | M | £ per coal, no discounts | £ per coal, labour ×0.4 and maintenance ×0.6 |
 |---|---|---|---|---|
-| Endless, one L2 | 2 | 1 | 0.33 | |
-| Endless, one L3 | 3.5 | 2.5 | 0.55 | |
-| Endless, two L2 | 4 | 3 | 0.84 (loses) | 0.43 |
-| Finite, three L1 | 3 | 1 | 0.40 | |
-| Finite, one L3 | 3.5 | 1.5 | 0.35 | |
-| Finite, L3 + L2 | 5.5 | 3.5 | 0.83 (loses) | 0.42 |
-| Finite, three L2 | 6 | 4 | 1.09 (loses) | 0.55 |
+| Endless, one L2 | 2 | 1.5 | 0.45 | |
+| Endless, one L3 | 3.5 | 3 | 0.65 (loses) | |
+| Endless, two L2 | 4 | 3.5 | 0.96 (loses) | 0.49 |
+| Finite, three L1 | 3 | 2.5 | 0.88 (loses) | |
+| Finite, one L3 | 3.5 | 3 | 0.65 (loses) | |
+| Finite, L3 + L2 | 5.5 | 5 | 1.15 (loses) | 0.57 |
+| Finite, three L2 | 6 | 5.5 | 1.48 (loses) | 0.73 (loses) |
 
 Mine upkeep basis:
 - Labour about £9.50, maintenance £4, power £3.30 per turn at level 1.
@@ -890,8 +894,8 @@ Mine upkeep basis:
 - Level 3: ×2 labour, ×2.5 maintenance and power.
 
 Early sites grow by adding level 1 mines, because mine level 2 needs In-Pit Crushing (5
-profitable mines). An endless seam takes 2 free and the third doubles the site. A finite seam
-takes 3 free.
+profitable mines). A seam takes one mine free, with room for overtime; a second costs about ×1.5
+across the site, ×1.7 at the 45 hour week.
 
 ### 8.4 Deposit sizes — LOCKED (×3)
 
@@ -953,9 +957,9 @@ At 25% remaining, a decision card replaces the 5-turn warning (`DEPOSIT_WARNING_
 ### 8.8 UX
 
 - **Tile panel** deposit row, in units a turn, a figure a line: "Digging 150 a turn", "Costs rise
-  above 180", "May collapse above 360", then what is left.
+  above 90", "May collapse above 180", then what is left.
 - **Construct and upgrade dialogs**, in units a turn: "Seam output will increase from 120 to 240.
-  Above 240, deposit may collapse." Nothing is refused.
+  Above 180, deposit may collapse." Nothing is refused.
 - **BDP diagnostics, Plant stage**: "Seam" lamp, amber over the free cap, red past the limit with
   its collapse chance.
 - **Seam card choices** say what they do in a few short lines, each led by its icon, risks in
@@ -1193,7 +1197,7 @@ whose condition is unmet, or licensing out a process that was licensed in."
 > **Labour satisfaction is a budget.** Policies trade throughput and cash for satisfaction
 > (−100 to +100). Satisfaction sets:
 > - hiring speed;
-> - strikes: 25% of buildings below −70 and 50% below −90, every 10 turns, at 30% less output;
+> - strikes: 25% of buildings below −70 and 50% below −90, every 10 turns, at 60% less output;
 > - the +5% output prize.
 >
 > Satisfaction moves toward its target by max(10% of the gap, 2) a turn; only reneging on union
@@ -1205,8 +1209,8 @@ whose condition is unmet, or licensing out a process that was licensed in."
 
 **A5. New stance: seams have working limits** (P4):
 
-> **Seams have working limits.** Each deposit extracts freely up to 2 level 1 workings (endless
-> seams) or 3 (finite seams). Past a limit of 4 or 6 the seam may collapse. Every working over the
+> **Seams have working limits.** Each deposit extracts freely up to 1.5 level 1 workings. Past a
+> limit of 3 the seam may collapse. Every working over the
 > free cap adds 100% labour and maintenance on the whole site, as a multiplier after labour discounts. Deep
 > extraction therefore needs labour and maintenance modifiers. Finite seams are charged for what
 > is dug: throughput counts, yield does not. Regression smell: removing the cap because players
@@ -1221,7 +1225,7 @@ whose condition is unmet, or licensing out a process that was licensed in."
 
 > - A bought building cannot be cancelled during its 2-turn closing.
 > - A building idles until it is 70% staffed.
-> - Strikes cut output 30% while inputs are still consumed.
+> - Strikes cut output 60% while inputs are still consumed.
 > - Freight is priced by distance. Local Suppliers settle in the same turn and keep their own
 >   trips constant.
 
@@ -1332,9 +1336,10 @@ earned, Local Suppliers again only when a seam runs out and a nearby mine would 
    tile stockpile, fed by the scenario's output routes. Final goods (motors) and any surplus keep
    selling through Local Suppliers (the global market needs the Import/Export License, out of
    scope).
-5. **AC25.5** Mines stay within each seam's free amount: two a seam that never runs out, three a
-   finite one. The rest go to the nearest tile with that deposit (coal tile_20_9, copper
-   tile_18_10, iron tile_22_6). Coal for the smelters is routed to the smelters' tile, tile_25_5.
+5. **AC25.5** Coal for the smelters is routed to the smelters' tile, tile_25_5. The layout was set
+   for the old free amounts (two mines on a seam that never runs out, the rest on the nearest tile
+   with that deposit: coal tile_20_9, copper tile_18_10, iron tile_22_6); at 1.5 free each pair
+   now pays about ×1.7. Rightsizing and the fallback only build where a seam has room.
 6. **AC25.6** Each turn, for coal and iron ore: when a building's own supply has stopped because its
    seam ran out (a finite seam empty, or collapsed), the run prices a new mine on the nearest tile
    with that deposit and room under its free amount (running cost a unit at that site, plus haul a
@@ -1669,10 +1674,10 @@ resolution. Fill is `staff_fill`, the hired share of a building's requirement.
 
 - **Strikes**:
   - check every 10 turns, warning at T−2, draw 25% or 50% of buildings weighted;
-  - output ×0.7 as a `mult` modifier for 3 turns;
+  - output ×0.4 as a `mult` modifier for 3 turns;
   - strikers at 50% labour cost;
   - called off when satisfaction recovers;
-  - pay rises: one building +20% for 10 turns, or every striker +20% for 10 turns with 15 strike-free
+  - pay rises: one building +40% for 10 turns, or every striker +40% for 10 turns with 15 strike-free
     turns;
   - either union blocks strikes.
 - **Accidents**: under Minimal safety.
@@ -1683,7 +1688,7 @@ resolution. Fill is `staff_fill`, the hired share of a building's requirement.
   - bell events.
 - **Save and telemetry**: strike warning, active strikes, record, pay rises, protection; telemetry
   `strikes`.
-- **Stances**: A7 (strikes cut output 30%).
+- **Stances**: A7 (strikes cut output 60%).
 - **Evidence**:
   - seeded draw determinism;
   - strike cost at turn 50 within the §6.1 scale.
@@ -1705,8 +1710,8 @@ turn's "resolution" is what happens when the player ends it.
 3. **AC12.3** In the resolution of turn T: below −70 the named buildings strike. If the warning was
    drawn below −90 and satisfaction is now −70 to −90, only the first ceil(25% × N) strike. At −70
    or above the strike is called off.
-4. **AC12.4** A strike cuts the building's output 30% for 3 turns (T, T+1, T+2) through a per-building
-   `recipe_output` `mult` 0.7 modifier, power plants included. Inputs are consumed in full, a mine's
+4. **AC12.4** A strike cuts the building's output 60% for 3 turns (T, T+1, T+2) through a per-building
+   `recipe_output` `mult` 0.4 modifier, power plants included. Inputs are consumed in full, a mine's
    deposit is charged in full, and labour costs 50% while it lasts.
 5. **AC12.5** A strike that runs its course ends with a +5 target shift for 10 turns.
 6. **AC12.6** While a Partial or Comprehensive union is active there is no warning, and a standing
@@ -1714,17 +1719,17 @@ turn's "resolution" is what happens when the player ends it.
 
 **Pay rises (§6.2)**
 
-1. **AC13.1** "Raise pay here": labour +20% at that building for 10 turns. Its strike ends at once,
+1. **AC13.1** "Raise pay here": labour +40% at that building for 10 turns. Its strike ends at once,
    or it leaves the warning, and it cannot be drawn while the raise runs.
-2. **AC13.2** "Raise pay for all strikers": labour +20% at every named or striking building for 10
+2. **AC13.2** "Raise pay for all strikers": labour +40% at every named or striking building for 10
    turns. Every strike ends, the warning clears, and there are no warnings or strikes for 15 turns.
 3. **AC13.3** Neither raise changes satisfaction, its target or the band. A strike ended by a raise
    gives no +5.
-4. **AC13.4** Break strike at one building charges 1 turn of its base wages this turn as "Strike
+4. **AC13.4** Break strike at one building charges 2 turns of its base wages this turn as "Strike
    breaking", ends its strike with no +5 (or takes it out of the warning), shifts the target −5 for
    10 turns and records the round as broken.
 5. **AC13.5** Break strike for the whole round ends every strike, clears the warning, charges every
-   striker's turn of wages and shifts the target −20 for 10 turns, with no protection after.
+   striker's two turns of wages and shifts the target −20 for 10 turns, with no protection after.
 6. **AC13.6** The second whole round broken, or the tenth building broken one at a time, adds
    "Routinely broke strikes", a standing −15 in the satisfaction sources.
 7. **AC13.7** Only a Comprehensive Union Agreement clears it, with both counts. Partial does not.
@@ -1803,8 +1808,8 @@ tile; a **working** is one of the player's buildings mining it.
 1. **AC18.1** A site's draw is the sum over its workings of level (1 / 2 / 3.5) × throughput ×
    staffing run fraction, 0 for a working down after an accident or offline. NPC buildings never
    draw. A strike does not lower draw.
-2. **AC18.2** Endless seams (no amount in `tile_properties.csv`, water included) are free to 2 and
-   end at 4. Finite seams are free to 3 and end at 6.
+2. **AC18.2** Every seam, endless (no amount in `tile_properties.csv`, water included) or finite, is
+   free to 1.5 and may collapse past 3 (owner ruling 26 October 2026; was 2 and 4, 3 and 6).
 3. **AC18.3** M = 1 + c × max(0, draw − free), with c = 1 (+100% a working) unless
    `extraction_cap_cost` modifiers change it. M multiplies the labour (after the 40% floor and the
    strike share) and the maintenance (after modifiers and level) of every working on the site, and
@@ -1856,9 +1861,9 @@ tile; a **working** is one of the player's buildings mining it.
 **UX (§8.8)**
 
 1. **AC22.1** The tile view's deposit line, in units a turn: "Coal seam. Digging 150 a turn. Costs
-   rise above 180. May collapse above 360. 4,120 left." (an endless seam: "Never runs out.").
+   rise above 90. May collapse above 180. 4,120 left." (an endless seam: "Never runs out.").
 2. **AC22.2** The construct and upgrade dialogs, in units a turn: "Seam output will increase from
-   120 to 240. Above 240, deposit may collapse." No build or upgrade is refused for its seam.
+   120 to 240. Above 180, deposit may collapse." No build or upgrade is refused for its seam.
 3. **AC22.3** Building detail diagnostics, Plant stage: a Seam row, green within the free cap,
    amber over it, red past the limit with its collapse chance.
 4. **AC22.4** The build forecast and CostSolver include M.

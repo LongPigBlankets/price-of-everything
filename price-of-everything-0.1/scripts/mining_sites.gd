@@ -4,8 +4,8 @@ extends RefCounted
 ## A site is one deposit good on one tile; its workings are the player's buildings mining that good there. A
 ## site draws the sum of its workings' level (1, 2, 3.5) × throughput × staffing run fraction, in level 1
 ## workings, and a working down after an accident, offline under a seam card or paused draws nothing. NPC
-## buildings never draw. Endless seams (no amount in the CSV, water included) are free to 2 and end at 4; finite
-## seams are free to 3 and end at 6.
+## buildings never draw. Every seam, endless (no amount in the CSV, water included) or finite, is free to 1.5 and
+## may collapse past 3 (EconomyConfig.SEAM_FREE, SEAM_MAX).
 ##
 ## Over the free cap, M = 1 + c × (draw − free), c = 1 unless `extraction_cap_cost` modifiers change it, multiplies the
 ## labour (after the labour floor) and the maintenance of every working on the site. Past the max nothing is held
@@ -41,9 +41,11 @@ static func kind(tile_id: String, token: String) -> String:
 
 
 ## One working's draw in level 1 workings: level × throughput × staffing run fraction. Nothing while it is down
-## after an accident, offline under a seam card, paused or retooling.
+## after an accident, offline under a seam card, paused or retooling, or once its seam is empty.
 static func working_draw(building: Dictionary) -> float:
 	var iid := str(building.get("instance_id", ""))
+	if MatchState.deposit_depleted(str(building.get("tile_id", "")), building_token(building)):
+		return 0.0
 	if iid != "":
 		if LabourState.unrest.is_down(iid) or BuildingWorks.is_building_paused(iid) or BuildingWorks.is_retooling(iid):
 			return 0.0

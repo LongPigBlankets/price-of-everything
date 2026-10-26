@@ -181,6 +181,8 @@ var _balance_start_config := {}
 var _balance_start_modifiers: Array[Dictionary] = []
 ## Seams that collapsed during the run, "turn tile|token" each.
 var _collapses: PackedStringArray = []
+## Labour unrest during the run, by bell kind (strike_warning, strike_started, accident...).
+var _unrest_events := {}
 ## The Local Suppliers progression (docs/pacing-labour-mining-licensing-spec.md §14.1): on when the scenario
 ## names `logistics_model` middleman_v1. Routes and tile-only inputs wait for Open Logistics Contracts.
 var _local_suppliers := false
@@ -201,7 +203,9 @@ func _ready() -> void:
 	_parse_cmdline_args()
 	EventScheduler.event_fired.connect(func(e: Dictionary) -> void:
 		if str(e.get("kind", "")) == "seam_collapsed":
-			_collapses.append("t%d %s" % [int(TurnManager.current_turn), str(e.get("body", ""))]))
+			_collapses.append("t%d %s" % [int(TurnManager.current_turn), str(e.get("body", ""))])
+		if str(e.get("kind", "")).begins_with("strike") or str(e.get("kind", "")) == "accident":
+			_unrest_events[str(e.kind)] = int(_unrest_events.get(str(e.kind), 0)) + 1)
 	print("\n==== price-of-everything E2E: %s ====" % _scenario_name)
 	print("[E2E] scenario=%s target_turn=%d" % [_scenario_name, _target_turn])
 	await _run()
@@ -357,14 +361,19 @@ func _print_profit_trajectory() -> void:
 	for key: String in keys:
 		var site: Dictionary = sites[key]
 		if _local_suppliers:
-			print("  seam %s: draw %.1f of %d free (max %d) M %.2f" % [key, float(site.draw), int(site.free), int(site.max), float(site.m)])
+			print("  seam %s: draw %.1f of %s free (limit %s) M %.2f" % [key, float(site.draw), MiningSites.figure(float(site.free)), MiningSites.figure(float(site.max)), float(site.m)])
 		if float(site.m) <= 1.0001:
 			continue
 		over += 1
-		seams += "%s draw %.1f/%d (max %d) M %.2f%s   " % [key, float(site.draw), int(site.free), int(site.max), float(site.m),
+		seams += "%s draw %.1f/%s (limit %s) M %.2f%s   " % [key, float(site.draw), MiningSites.figure(float(site.free)), MiningSites.figure(float(site.max)), float(site.m),
 			(" collapse %d%%" % roundi(float(site.collapse) * 100.0)) if float(site.collapse) > 0.0 else ""]
 	print(seams if over > 0 else seams + "none")
 	print("  seam collapses: %s" % ("none" if _collapses.is_empty() else "%d   %s" % [_collapses.size(), "   ".join(_collapses)]))
+	var unrest := PackedStringArray()
+	for kind: String in _unrest_events:
+		unrest.append("%s %d" % [kind, int(_unrest_events[kind])])
+	print("  labour: satisfaction %.0f (target %.0f), %s" % [LabourState.satisfaction, LabourState.target_satisfaction(),
+		"no strikes or accidents" if unrest.is_empty() else ", ".join(unrest)])
 	if _local_suppliers:
 		print("  logistics: Infrastructure Tendering %s, Open Logistics Contracts %s, tile stockpiles from %s" % [
 			"t%d" % _tendering_turn if _tendering_turn >= 0 else "never earned",

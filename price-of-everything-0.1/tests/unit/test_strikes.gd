@@ -126,7 +126,7 @@ func _test_strike_draw_is_weighted_and_seeded() -> void:
 
 
 ## AC12.3–AC12.5: at T the named buildings strike below −70, or only the first quarter when a −90 warning eased to
-## −70…−90, or it is called off at −70 and above. A strike cuts output 30% (power too) for T, T+1 and T+2, consumes
+## −70…−90, or it is called off at −70 and above. A strike cuts output 60% (power too) for T, T+1 and T+2, consumes
 ## full inputs, charges a deposit in full and halves labour; one that runs out lifts the target 5.
 func _test_strike_effect_and_end() -> void:
 	_fresh(-80.0)
@@ -142,8 +142,8 @@ func _test_strike_effect_and_end() -> void:
 	_tick(10)
 	_check(_u().is_on_strike(iid) and _u().warning.is_empty() and str((_u().record.back() as Dictionary).outcome) == "struck",
 		"AC12.3 below −70 at T the named buildings strike")
-	_check(BuildingStatus.effective_output_qty(b, recipe) == int(round(float(out0) * LabourUnrest.STRIKE_OUTPUT_MULT)) and LabourUnrest.STRIKE_OUTPUT_MULT == 0.7
-		and Production._scaled_input_qty(recipe.inputs[0], b) == in0, "AC12.4 a strike cuts output 30% and keeps inputs in full")
+	_check(BuildingStatus.effective_output_qty(b, recipe) == int(round(float(out0) * LabourUnrest.STRIKE_OUTPUT_MULT)) and LabourUnrest.STRIKE_OUTPUT_MULT == 0.4
+		and Production._scaled_input_qty(recipe.inputs[0], b) == in0, "AC12.4 a strike cuts output 60% and keeps inputs in full")
 	var unstruck := Production._base_labour_cost(b, recipe) * Production.labour_cost_factor(b)
 	_check(is_equal_approx(Production._calculate_labour_cost(b, recipe), unstruck * 0.5), "AC12.4 struck labour costs half")
 	var expires := -1
@@ -222,7 +222,7 @@ func _test_union_blocks_strikes() -> void:
 	_fresh()
 
 
-## AC13.1–AC13.3: raising pay at one building takes it out of the warning or ends its strike, +20% labour there for
+## AC13.1–AC13.3: raising pay at one building takes it out of the warning or ends its strike, +40% labour there for
 ## 10 turns; raising it for all ends every strike and keeps strikes away for 15 turns; neither moves satisfaction.
 func _test_pay_rises() -> void:
 	_fresh(-80.0)
@@ -235,7 +235,7 @@ func _test_pay_rises() -> void:
 	var target0 := LabourState.target_satisfaction()
 	_check(_u().raise_pay(first) and not _u().is_named(first) and int(_u().pay_raises[first]) == 10,
 		"AC13.1 a pay rise takes the building out of the warning for 10 turns")
-	_check(is_equal_approx(LabourState.labour_cost_factor_for(b) - factor0, 0.20), "AC13.1 its labour is 20% higher")
+	_check(is_equal_approx(LabourState.labour_cost_factor_for(b) - factor0, 0.40), "AC13.1 its labour is 40% higher")
 	_check(is_equal_approx(LabourState.target_satisfaction(), target0) and is_equal_approx(LabourState.satisfaction, -80.0),
 		"AC13.3 a pay rise moves neither satisfaction nor its target")
 	_tick(10)

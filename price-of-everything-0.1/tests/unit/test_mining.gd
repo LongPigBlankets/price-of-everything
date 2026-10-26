@@ -59,8 +59,8 @@ func _test_site_draw_and_caps() -> void:
 	_fresh()
 	var a := _mine(ENDLESS_TILE)
 	var s := MiningSites.site(ENDLESS_TILE, "coal")
-	_check(str(s.kind) == "endless" and is_equal_approx(float(s.free), 2.0) and is_equal_approx(float(s.max), 4.0)
-		and is_equal_approx(float(s.draw), 1.0), "AC18.2 an endless seam is free to 2 and ends at 4; one L1 draws 1")
+	_check(str(s.kind) == "endless" and is_equal_approx(float(s.free), 1.5) and is_equal_approx(float(s.max), 3.0)
+		and is_equal_approx(float(s.draw), 1.0), "AC18.2 an endless seam is free to 1.5 and may collapse past 3; one L1 draws 1")
 	var b := _mine(ENDLESS_TILE, 2)
 	_check(is_equal_approx(float(MiningSites.site(ENDLESS_TILE, "coal").draw), 3.0), "AC18.1 a level 2 working draws 2")
 	BuildingState.get_building(b)["level"] = 3
@@ -83,8 +83,8 @@ func _test_site_draw_and_caps() -> void:
 	_check(is_equal_approx(float(MiningSites.site(ENDLESS_TILE, "coal").draw), 2.0) and MiningSites.m_for(BuildingState.get_building(npc)) == 1.0,
 		"AC18.1 an NPC working never draws and pays no M")
 	var f := MiningSites.site(FINITE_TILE, "coal")
-	_check(str(f.kind) == "finite" and is_equal_approx(float(f.free), 3.0) and is_equal_approx(float(f.max), 6.0),
-		"AC18.2 a finite seam is free to 3 and ends at 6")
+	_check(str(f.kind) == "finite" and is_equal_approx(float(f.free), 1.5) and is_equal_approx(float(f.max), 3.0),
+		"AC18.2 a finite seam is free to 1.5 and may collapse past 3")
 	_check(str(MiningSites.kind(WATER_TILE, "water")) == "endless", "AC18.2 water counts as an endless seam")
 	_fresh()
 
@@ -96,31 +96,28 @@ func _test_over_cap_cost() -> void:
 	var a := _mine(ENDLESS_TILE)
 	var solo_labour := Production._calculate_labour_cost(BuildingState.get_building(a))
 	var solo_maint := Production._calculate_maintenance_cost(BuildingState.get_building(a))
+	_check(is_equal_approx(MiningSites.m_for(BuildingState.get_building(a)), 1.0), "AC18.3 within the free amount M is 1")
 	_mine(ENDLESS_TILE)
-	_check(is_equal_approx(MiningSites.m_for(BuildingState.get_building(a)), 1.0), "AC18.3 at the free cap M is 1")
-	Modifiers.add({"id": "t_thru", "domain": "throughput", "target": "*", "pct": 10.0})
 	var m := MiningSites.m_for(BuildingState.get_building(a))
-	_check(absf(m - 1.2) < 0.0001, "AC18.3 M is continuous: 0.2 over the cap costs ×1.2 (M %.3f)" % m)
-	Modifiers.remove("t_thru")
+	_check(absf(m - 1.5) < 0.0001, "AC18.3 M is continuous: half a working over the free amount costs ×1.5 (M %.3f)" % m)
 	_mine(ENDLESS_TILE, 2)
 	var b := BuildingState.get_building(a)
-	_check(is_equal_approx(MiningSites.m_for(b), 3.0), "AC18.3 two over the free cap is ×3")
-	_check(absf(Production._calculate_labour_cost(b) - solo_labour * 3.0) < 0.001
-		and absf(Production._calculate_maintenance_cost(b) - solo_maint * 3.0) < 0.001,
+	_check(is_equal_approx(MiningSites.m_for(b), 3.5), "AC18.3 two and a half over the free amount is ×3.5")
+	_check(absf(Production._calculate_labour_cost(b) - solo_labour * 3.5) < 0.001
+		and absf(Production._calculate_maintenance_cost(b) - solo_maint * 3.5) < 0.001,
 		"AC18.3 M multiplies the labour and maintenance of every working on the site")
 	Modifiers.add({"id": "t_cap", "domain": "extraction_cap_cost", "target": "*", "pct": -25.0})
-	_check(is_equal_approx(MiningSites.m_for(b), 2.5), "AC18.3 extraction_cap_cost −25% makes each working over +75%")
+	_check(is_equal_approx(MiningSites.m_for(b), 2.875), "AC18.3 extraction_cap_cost −25% makes each working over +75%")
 	Modifiers.remove("t_cap")
 	# Labour cut 60% to the floor, then M 4: labour ×1.6 of base, not ×3.4.
 	_fresh()
-	var f1 := _mine(FINITE_TILE, 2)
-	_mine(FINITE_TILE, 2)
-	_mine(FINITE_TILE, 2)
+	var f1 := _mine(FINITE_TILE, 3)
+	_mine(FINITE_TILE, 1)
 	var fb := BuildingState.get_building(f1)
 	Modifiers.add({"id": "t_lab", "domain": "labour_headcount", "target": "*", "pct": -60.0})
 	var base := Production._base_labour_cost(fb)
 	_check(is_equal_approx(MiningSites.m_for(fb), 4.0) and is_equal_approx(Production.labour_cost_factor(fb), EconomyConfig.LABOUR_FACTOR_MIN),
-		"AC18.4 setup: three L2 on a finite seam, M 4, labour at its floor")
+		"AC18.4 setup: an L3 and an L1 on a finite seam, M 4, labour at its floor")
 	_check(absf(Production._calculate_labour_cost(fb) - base * 1.6) < 0.001, "AC18.4 M applies after the labour floor: ×1.6, not ×3.4")
 	_fresh()
 
@@ -134,21 +131,24 @@ func _test_past_limit_collapse() -> void:
 	_mine(ENDLESS_TILE, 2)
 	_mine(ENDLESS_TILE, 2)
 	var s := MiningSites.site(ENDLESS_TILE, "coal")
-	_check(is_equal_approx(float(s.draw), 6.0) and is_equal_approx(float(s.m), 5.0) and is_equal_approx(float(s.collapse), 0.10),
-		"AC18.5 three L2 on an endless seam: M 5 and a 10%% collapse chance a turn (M %.2f, %.2f)" % [float(s.m), float(s.collapse)])
+	_check(is_equal_approx(float(s.draw), 6.0) and is_equal_approx(float(s.m), 5.5) and is_equal_approx(float(s.collapse), 0.15),
+		"AC18.5 three L2 on an endless seam: M 5.5 and a 15%% collapse chance a turn (M %.2f, %.2f)" % [float(s.m), float(s.collapse)])
 	_check(is_equal_approx(MatchState.run_multiplier(BuildingState.get_building(a)), solo_run), "AC18.5 nothing is scaled back past the limit")
-	_check(is_equal_approx(float(s.units), 360.0) and is_equal_approx(float(s.max_units), 240.0) and is_equal_approx(float(s.free_units), 120.0),
-		"AC18.5 the site reads in units a turn: digs 360, costs rise above 120, may collapse above 240")
+	_check(is_equal_approx(float(s.units), 360.0) and is_equal_approx(float(s.max_units), 180.0) and is_equal_approx(float(s.free_units), 90.0),
+		"AC18.5 the site reads in units a turn: digs 360, costs rise above 90, may collapse above 180")
 	MatchState.seams.collapse(ENDLESS_TILE, "coal")
 	_check(MatchState.seams.offline_turns_left(ENDLESS_TILE, "coal") == 3 and is_equal_approx(float(MiningSites.site(ENDLESS_TILE, "coal").draw), 0.0),
 		"AC18.5 an endless seam that collapses stops its mines for 3 turns")
 	_fresh()
-	for i in 7:
+	for i in 4:
 		_mine(FINITE_TILE)
 	MatchState.deposit_remaining[FINITE_TILE] = {"coal": 3000}
 	_check(is_equal_approx(float(MiningSites.site(FINITE_TILE, "coal").collapse), 0.05), "AC18.5 one working over a finite seam's limit: 5% a turn")
 	MatchState.seams.collapse(FINITE_TILE, "coal")
 	_check(MatchState.deposit_remaining_for(FINITE_TILE, "coal") == 0, "AC18.5 a finite seam that collapses loses what remains")
+	var empty := MiningSites.site(FINITE_TILE, "coal")
+	_check(is_equal_approx(float(empty.draw), 0.0) and is_equal_approx(float(empty.collapse), 0.0) and is_equal_approx(float(empty.m), 1.0),
+		"AC18.5 an empty seam's mines dig nothing, pay no M and cannot collapse again")
 	MatchState.deposit_remaining[FINITE_TILE] = {"coal": 999999}
 	var falls := 0
 	for t in range(1, 401):
@@ -191,9 +191,9 @@ func _test_finite_charge() -> void:
 ## £4, power £3.30 a turn at level 1; level 2 ×1.5 / ×1.8, level 3 ×2 / ×2.5) and coal at 60 × 0.7 a level.
 func _test_coal_table() -> void:
 	var rows := [
-		[ENDLESS_TILE, [2], 0.33, -1.0], [ENDLESS_TILE, [3], 0.55, -1.0], [ENDLESS_TILE, [2, 2], 0.84, 0.43],
-		[FINITE_TILE, [1, 1, 1], 0.40, -1.0], [FINITE_TILE, [3], 0.35, -1.0], [FINITE_TILE, [3, 2], 0.83, 0.42],
-		[FINITE_TILE, [2, 2, 2], 1.09, 0.55],
+		[ENDLESS_TILE, [2], 0.45, -1.0], [ENDLESS_TILE, [3], 0.65, -1.0], [ENDLESS_TILE, [2, 2], 0.96, 0.49],
+		[FINITE_TILE, [1, 1, 1], 0.88, -1.0], [FINITE_TILE, [3], 0.65, -1.0], [FINITE_TILE, [3, 2], 1.15, 0.57],
+		[FINITE_TILE, [2, 2, 2], 1.48, 0.73],
 	]
 	var all_ok := true
 	var said := PackedStringArray()
@@ -471,10 +471,10 @@ func _test_seam_telemetry() -> void:
 		"taxes_paid": 0.0, "produced": {}, "power_supply": 0, "power_demand": 0,
 	}
 	var row: Dictionary = TelemetryState._build_row(summary)
-	_check(int(row.get("over_cap_sites", -1)) == 1 and is_equal_approx(float(row.get("max_site_m", 0.0)), 3.0),
+	_check(int(row.get("over_cap_sites", -1)) == 1 and is_equal_approx(float(row.get("max_site_m", 0.0)), 3.5),
 		"AC23.2 the turn row counts sites over their free cap and the highest M")
 	var sent: Dictionary = TelemetryState.balancing_payload({"run_id": "m8", "turns": [row]}).turns[0]
-	_check(int(sent.over_cap_sites) == 1 and is_equal_approx(float(sent.max_site_m), 3.0) and TelemetryState.SCHEMA_VERSION == 8,
+	_check(int(sent.over_cap_sites) == 1 and is_equal_approx(float(sent.max_site_m), 3.5) and TelemetryState.SCHEMA_VERSION == 8,
 		"AC23.2 schema 8 transmits them")
 	_check(FileAccess.get_file_as_string("res://tools/telemetry/Code.gs").contains('FIXED.push("over_cap_sites", "max_site_m")'),
 		"AC23.2 the receiver appends their columns")
@@ -490,7 +490,7 @@ func _test_seam_words() -> void:
 	Modifiers.add({"id": "t_thru", "domain": "throughput", "target": "*", "pct": 25.0})
 	MatchState.deposit_remaining[FINITE_TILE] = {"coal": 4120}
 	var words := MiningSites.seam_words(FINITE_TILE, "coal")
-	_check(words == "Coal seam. Digging 150 a turn. Costs rise above 180. May collapse above 360. 4,120 left.", "AC22.1 the seam line reads %s" % words)
+	_check(words == "Coal seam. Digging 150 a turn. Costs rise above 90. May collapse above 180. 4,120 left.", "AC22.1 the seam line reads %s" % words)
 	_check(MiningSites.seam_words(ENDLESS_TILE, "coal").ends_with("May collapse above 0. Never runs out.") or MiningSites.seam_words(ENDLESS_TILE, "coal").ends_with("Never runs out."),
 		"AC22.1 an endless seam never runs out")
 	_fresh()
@@ -503,7 +503,7 @@ func _test_construct_and_upgrade_seam() -> void:
 	var a := _mine(ENDLESS_TILE, 2)
 	var after := MiningSites.site_after(MINE, "r_001", ENDLESS_TILE, 2)
 	var said := MiningSites.after_words(after)
-	_check(said == "Seam output will increase from 120 to 240. Above 240, deposit may collapse.", "AC22.2 a build reads %s" % said)
+	_check(said == "Seam output will increase from 120 to 240. Above 180, deposit may collapse.", "AC22.2 a build reads %s" % said)
 	var q: Dictionary = preload("res://scripts/construction_rules.gd").quote(MINE, "r_001", ENDLESS_TILE, {}, {"level": 2})
 	var seam_said := false
 	for w: Dictionary in q.get("warnings", []):
@@ -517,7 +517,7 @@ func _test_construct_and_upgrade_seam() -> void:
 	_check(not refused, "AC22.2 a build past the limit is not refused")
 	var pv: Dictionary = BuildingWorks.preview_upgrade(a)
 	var up := MiningSites.after_words(pv.get("seam", {}))
-	_check(up == "Seam output will increase from 240 to 330. Above 240, deposit may collapse.", "AC22.2 the upgrade reads %s" % up)
+	_check(up == "Seam output will increase from 240 to 330. Above 180, deposit may collapse.", "AC22.2 the upgrade reads %s" % up)
 	_check(not pv.has("seam_reason"), "AC22.2 and is not refused")
 	var lab1 := float(((pv.get("stats", {}) as Dictionary).get("cur", {}) as Dictionary).get("labour", 0.0))
 	var lab2 := float(((pv.get("stats", {}) as Dictionary).get("new", {}) as Dictionary).get("labour", 0.0))
@@ -533,10 +533,10 @@ func _test_seam_check() -> void:
 	_check(str(BuildingReadout.seam_check(BuildingState.get_building(a)).tone) == "ok", "AC22.3 within the free amount the Seam check is green")
 	_mine(ENDLESS_TILE, 2)
 	var mid := BuildingReadout.seam_check(BuildingState.get_building(a))
-	_check(str(mid.tone) == "warn" and str(mid.detail).contains("×2") and str(mid.detail).contains("Digging 180 a turn"), "AC22.3 over it amber, in units, with M (%s)" % str(mid.detail))
+	_check(str(mid.tone) == "warn" and str(mid.detail).contains("×2.5") and str(mid.detail).contains("Digging 180 a turn"), "AC22.3 over it amber, in units, with M (%s)" % str(mid.detail))
 	_mine(ENDLESS_TILE, 2)
 	var past := BuildingReadout.seam_check(BuildingState.get_building(a))
-	_check(str(past.tone) == "bad" and str(past.detail).contains("may collapse, 5% a turn"), "AC22.3 past the limit red, with its collapse chance (%s)" % str(past.detail))
+	_check(str(past.tone) == "bad" and str(past.detail).contains("may collapse, 10% a turn"), "AC22.3 past the limit red, with its collapse chance (%s)" % str(past.detail))
 	var furnace: String = BuildingState.add_building(FURNACE, "r_005", "tile_9_9", MatchState.LOCAL_PLAYER, "")
 	_check(str(BuildingReadout.seam_check(BuildingState.get_building(furnace)).tone) == "off", "AC22.3 off for a building that mines nothing")
 	var plant := BuildingReadout.plant_checks(BuildingState.get_building(a), Catalog.get_recipe("r_001"), false)
@@ -552,7 +552,7 @@ func _test_forecast_includes_m() -> void:
 	var crowded: Dictionary = BuildForecast.project(MINE, "r_001", ENDLESS_TILE)
 	var lab_alone := float((alone.get("breakdown", {}) as Dictionary).get("labour", 0.0))
 	var lab_crowded := float((crowded.get("breakdown", {}) as Dictionary).get("labour", 0.0))
-	_check(lab_alone > 0.0 and absf(lab_crowded - lab_alone * 2.0) < 0.01, "AC22.4 a third working on an endless seam is forecast at ×2 labour (%.2f, %.2f)" % [lab_alone, lab_crowded])
+	_check(lab_alone > 0.0 and absf(lab_crowded - lab_alone * 2.5) < 0.01, "AC22.4 a working beside a level 2 on an endless seam is forecast at ×2.5 labour (%.2f, %.2f)" % [lab_alone, lab_crowded])
 	_fresh()
 
 
