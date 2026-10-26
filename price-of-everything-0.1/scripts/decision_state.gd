@@ -380,21 +380,15 @@ const DECISION_DEFINITIONS := {
 		"cooldown_turns": 0, "weight": 1.0, "default_choice": "carry_on",
 		"choices": [
 			{"id": "deeper_shaft", "label": "Sink a deeper shaft",
-				"effects": [{"kind": "cash", "formula": "seam_shaft_cost"},
-					{"kind": "seam", "action": "deeper_shaft",
-						"describe": "Offline for 2 turns, then 40% more in the seam. Labour ×1.4 and power ×1.5 here until it runs out"}]},
+				"effects": [{"kind": "cash", "formula": "seam_shaft_cost"}, {"kind": "seam", "action": "deeper_shaft"}]},
 			{"id": "rob_pillars", "label": "Rob the pillars",
-				"effects": [{"kind": "seam", "action": "rob_pillars",
-					"describe": "25% more in the seam. Labour ×1.5 here and a 3% accident chance a turn at each working. When it runs out the workings collapse and are lost"}]},
+				"effects": [{"kind": "seam", "action": "rob_pillars"}]},
 			{"id": "heavy_blasting", "label": "Heavy blasting",
-				"effects": [{"kind": "seam", "action": "heavy_blasting",
-					"describe": "Each turn a 25% chance of a double dig, 8% of a roof fall that stops the site for 2 turns, and 2% of losing the rest of the seam"}]},
+				"effects": [{"kind": "seam", "action": "heavy_blasting"}]},
 			{"id": "sell_reserves", "label": "Sell with reserves",
-				"effects": [{"kind": "cash", "formula": "seam_sale_value"},
-					{"kind": "seam", "action": "sell_reserves",
-						"describe": "The workings go to another company with what remains, at their price plus half the market value of the seam"}]},
+				"effects": [{"kind": "cash", "formula": "seam_sale_value"}, {"kind": "seam", "action": "sell_reserves"}]},
 			{"id": "carry_on", "label": "Carry on",
-				"effects": [{"kind": "none", "describe": "Mine it to the end"}]},
+				"effects": [{"kind": "seam", "action": "carry_on"}]},
 		],
 	},
 	# The carbon levy's advance notice (decarbonisation squeeze): PolicyState reserves
@@ -1058,6 +1052,7 @@ func pending_view(uid: String = "") -> Dictionary:
 			"consequence": _describe_effects(choice.get("effects", []), target),
 			"figures": choice_figures(str(d.def_id), str(choice.id), target),
 			"words": choice_words(str(d.def_id), str(choice.id), target),
+			"changes": choice_changes(str(d.def_id), str(choice.id), target),
 			"upfront_cost": cost,
 			"loan_shortfall": shortfall,
 			"advocate": _advocate_view(choice, follow_delta),
@@ -1432,6 +1427,8 @@ func _describe_effect(eff: Dictionary, target: Dictionary) -> String:
 			return "Direct trade on the global market"
 		"schedule_event":
 			return "A follow up in %d turns" % int(eff.get("in_turns", 0))
+		"seam":
+			return MatchState.SeamCards.summary(str(eff.get("action", "")))
 		"set_flag":
 			return "%s is exempt from environmental events" % str(target.get("name", "It"))
 		"sell_land":
@@ -1473,6 +1470,16 @@ func choice_figures(def_id: String, choice_id: String, target: Dictionary) -> Ar
 				out.append({"kind": "turns", "value": int(eff.get("turns", 0)), "caption": "Turns of delay"})
 	return out
 
+## What a choice changes, as icon rows with a start and an outcome and no words (the seam card's,
+## MatchState.seams.changes): [{icon, from, to, chance, tip}].
+func choice_changes(def_id: String, choice_id: String, target: Dictionary) -> Array:
+	var out: Array = []
+	var choice := _find_choice(DECISION_DEFINITIONS.get(def_id, {}), choice_id)
+	for eff: Dictionary in choice.get("effects", []):
+		if str(eff.get("kind", "")) == "seam":
+			out.append_array(MatchState.seams.changes(str(eff.get("action", "")), str(target.get("tile_id", "")), str(target.get("token", ""))))
+	return out
+
 ## A choice's effects that have no figure, in words, one sentence each ("The CFO's chair for 30
 ## turns, unpaid."). With choice_figures, the whole of `consequence`.
 func choice_words(def_id: String, choice_id: String, target: Dictionary) -> Array:
@@ -1480,7 +1487,7 @@ func choice_words(def_id: String, choice_id: String, target: Dictionary) -> Arra
 	var choice := _find_choice(DECISION_DEFINITIONS.get(def_id, {}), choice_id)
 	for eff: Dictionary in choice.get("effects", []):
 		if not eff.has("describe") and str(eff.get("kind", "")) in \
-				["cash", "sell_land", "founder_loan", "freight_credit", "middleman_credit", "construction_delta"]:
+				["cash", "sell_land", "founder_loan", "freight_credit", "middleman_credit", "construction_delta", "seam"]:
 			continue
 		var text := _describe_effect(eff, target)
 		if text != "":

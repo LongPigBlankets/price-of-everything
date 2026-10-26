@@ -600,9 +600,8 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 		"pending_status": str(pend.get("status", "")),
 		"stats": _upgrade_stat_deltas(instance_id, level, target),
 		"unit_cost": _upgrade_cost_per_unit(instance_id, level, target),
-		# A mine's seam after the upgrade, and the refusal while it stands at its limit (§8.8).
+		# A mine's seam after the upgrade, in units a turn (docs/pacing-labour-mining-licensing-spec.md §8.8).
 		"seam": preload("res://scripts/mining_sites.gd").site_after(building_id, str(inst.get("recipe_id", "")), tile_id, target, instance_id),
-		"seam_reason": preload("res://scripts/construction_rules.gd").upgrade_seam_block(inst),
 	}
 
 # cur→new for every aspect the dialog shows, computed via the live engine at each level.
@@ -702,10 +701,6 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 	var gate := BuildingLevels.research_gate(internal, target)
 	if gate != "" and not ResearchState.is_unlocked(gate):
 		return {"ok": false, "reason": "Requires research: %s" % gate, "research": gate}
-	# A seam at its limit takes no deeper working (docs/pacing-labour-mining-licensing-spec.md §8.8).
-	var seam_full := preload("res://scripts/construction_rules.gd").upgrade_seam_block(inst)
-	if seam_full != "":
-		return {"ok": false, "reason": seam_full}
 
 	# Footprint: the larger building must fit (counting other in-progress upgrades).
 	# Physical room counts everything; the owned-land gate only the player's estate.

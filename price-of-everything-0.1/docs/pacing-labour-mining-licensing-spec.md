@@ -169,7 +169,7 @@ Per building per turn:
 
 ```
 base × level mult × throughput (1 + Σ throughput pct) × staffing fill (§5) × accident factor (§4.5)
-     × site cap scale (§8.2) → quantity run
+     → quantity run
 outputs: quantity run × output modifiers (1 + Σ recipe_output pct) × strike factor 0.7 (§6)
 inputs:  quantity run × input modifiers (1 + Σ recipe_input pct)
 power:   quantity run share of energy
@@ -841,17 +841,24 @@ satisfaction. Buying is the fast lane, which is what LOCKED pacing intends.
 
 ### 8.2 Caps — LOCKED
 
-| Seam | Free cap | Hard max | Labour and maintenance at the hard max |
+| Seam | Free cap | Collapse limit | Labour and maintenance at the limit |
 |---|---|---|---|
 | Endless (no amount in `tile_properties.csv`) | 2 | 4 | × 3 |
 | Finite | 3 | 6 | × 4 |
 
-Only finite seams can reach 6. Above the hard max, every working on the site is scaled by
-max / draw (pro rata). The excess is not dug.
+**Owner ruling, 26 October 2026: collapse risk.** Past the limit nothing is scaled back and
+nothing is refused. Every working digs in full, M keeps rising, and each turn the seam may
+collapse: 5% for each level 1 working's worth over the limit (`COLLAPSE_PER_WORKING`), rolled on
+the seam cards' saved RNG. A finite seam that collapses loses what remains. An endless seam stops
+all its mines for 3 turns (`COLLAPSE_OFFLINE_TURNS`).
+
+Players never see workings. Every figure is units dug a turn: a working's draw × its recipe's
+base output. A coal mine digs 60 a turn at level 1, so an endless coal seam is free to 120 and may
+collapse above 240.
 
 ### 8.3 Over-cap cost — LOCKED
 
-Site multiplier: **M = 1 + max(0, min(draw, max) − free cap)**.
+Site multiplier: **M = 1 + max(0, draw − free cap)**. It does not stop at the limit.
 
 - That is +100% labour and maintenance for each full level 1 working over the free cap. It is
   continuous, so overtime pushing a site 0.2 over costs ×1.2, not a cliff.
@@ -945,23 +952,28 @@ At 25% remaining, a decision card replaces the 5-turn warning (`DEPOSIT_WARNING_
 
 ### 8.8 UX
 
-- **Tile panel** deposit line: "Coal seam. Drawing 2.5 of 3 free. Limit 6. 4,120 left."
-- **Construct and upgrade dialogs**:
-  - show the site after the action: "Takes the seam to 4 of 3 free. Labour and upkeep here ×2."
-  - disabled with a reason when the action adds nothing past the hard max.
-- **BDP diagnostics, Plant stage**: "Seam" lamp, amber over the free cap, red at the hard max.
-- **Build forecast and CostSolver** include M and the hard max.
+- **Tile panel** deposit row, in units a turn, a figure a line: "Digging 150 a turn", "Costs rise
+  above 180", "May collapse above 360", then what is left.
+- **Construct and upgrade dialogs**, in units a turn: "Seam output will increase from 120 to 240.
+  Above 240, deposit may collapse." Nothing is refused.
+- **BDP diagnostics, Plant stage**: "Seam" lamp, amber over the free cap, red past the limit with
+  its collapse chance.
+- **Seam card choices** show icon rows, a start figure, an arrow and an outcome, with no words:
+  what is left, labour, power, output, the mines. How long a change lasts shows beside a small
+  clock, and a chance beside its row in amber.
+- **Build forecast and CostSolver** include M.
 
 ### 8.9 Code
 
-- One pass at PROCESS start computes each site's draw, scale and M. It stores no new save state.
-- Production applies the scale in the deposit loop (`production.gd:980–1050`) and charges the
-  deposit what was dug. Labour and maintenance sites multiply by M.
+- Each site's draw and M are derived when asked (`scripts/mining_sites.gd`). They store no save
+  state. The collapse roll runs first in the seam cards' PROCESS tick.
+- Production charges the deposit what was dug (`production.gd:980–1050`). Labour and maintenance
+  on the site multiply by M.
 - Caps live in `EconomyConfig` per seam type, with an `extraction_cap_cost` Modifiers domain for
   the per-working cost.
 - Unit tests:
   - endless and finite caps
-  - pro-rata scaling past max
+  - collapse past the limit
   - M continuity
   - M applied after the labour floor
   - finite charge includes throughput and fill
@@ -1192,8 +1204,8 @@ whose condition is unmet, or licensing out a process that was licensed in."
 **A5. New stance: seams have working limits** (P4):
 
 > **Seams have working limits.** Each deposit extracts freely up to 2 level 1 workings (endless
-> seams) or 3 (finite seams), with a hard maximum of 4 or 6. Every working over the free cap adds
-> 100% labour and maintenance on the whole site, as a multiplier after labour discounts. Deep
+> seams) or 3 (finite seams). Past a limit of 4 or 6 the seam may collapse. Every working over the
+> free cap adds 100% labour and maintenance on the whole site, as a multiplier after labour discounts. Deep
 > extraction therefore needs labour and maintenance modifiers. Finite seams are charged for what
 > is dug: throughput counts, yield does not. Regression smell: removing the cap because players
 > want to upgrade, letting yield research burn seams, or turning the over-cap cost into a
@@ -1757,15 +1769,15 @@ tile; a **working** is one of the player's buildings mining it.
    draw. A strike does not lower draw.
 2. **AC18.2** Endless seams (no amount in `tile_properties.csv`, water included) are free to 2 and
    end at 4. Finite seams are free to 3 and end at 6.
-3. **AC18.3** M = 1 + c × max(0, min(draw, max) − free), with c = 1 (+100% a working) unless
+3. **AC18.3** M = 1 + c × max(0, draw − free), with c = 1 (+100% a working) unless
    `extraction_cap_cost` modifiers change it. M multiplies the labour (after the 40% floor and the
    strike share) and the maintenance (after modifiers and level) of every working on the site, and
    it is continuous: 0.2 over the cap costs ×1.2.
 4. **AC18.4** With labour cut 60% at the floor, M 4 makes labour ×1.6 of base, not ×3.4.
-5. **AC18.5** Past the max every working on the site runs at max / draw: inputs, outputs, power and
-   the seam's charge scale together (`MatchState.run_multiplier`).
-6. **AC18.6** A finite seam is charged what is dug: base × level × throughput × staffing × site
-   scale. Yield (`recipe_output`: the −30% penalty, research, strikes) never charges it.
+5. **AC18.5** Past the limit nothing is scaled back and M keeps rising. Each turn the seam collapses
+   with chance 5% × (draw − max), rolled on a saved seeded RNG: a finite seam loses what remains, an
+   endless one stops its mines for 3 turns. (Owner ruling, 26 October 2026.)
+6. **AC18.6** A finite seam is charged what is dug: base × level × throughput × staffing. Yield (`recipe_output`: the −30% penalty, research, strikes) never charges it.
 7. **AC18.7** The coal table of §8.3 is reproduced within £0.02 by a test.
 
 **Deposits (§8.4)**
@@ -1790,7 +1802,8 @@ tile; a **working** is one of the player's buildings mining it.
 
 1. **AC21.1** When a finite site falls to 25% of its starting size, once per site, a decision card
    offers: Sink a deeper shaft, Rob the pillars, Heavy blasting, Sell with reserves, Carry on (the
-   default). The 5-turn runway warning stays as the last notice.
+   default). The 5-turn runway warning stays as the last notice. Each choice shows icon rows with a
+   start figure, an arrow and an outcome, and no words.
 2. **AC21.2** Deeper shaft: pays two turns of the site's wages plus a level 1 kit at market,
    takes the site offline 2 turns, adds 40% to what remains, then site labour ×1.4 and power ×1.5
    until the seam ends.
@@ -1805,18 +1818,17 @@ tile; a **working** is one of the player's buildings mining it.
 
 **UX (§8.8)**
 
-1. **AC22.1** The tile view's deposit line: "Coal seam. Drawing 2.5 of 3 free. Limit 6. 4,120
-   left." (an endless seam says no amount).
-2. **AC22.2** The construct and upgrade dialogs show the site after the action: "Takes the seam
-   to 4 of 3 free. Labour and upkeep here ×2." A build or upgrade that adds nothing past the max
-   is refused with that reason.
+1. **AC22.1** The tile view's deposit line, in units a turn: "Coal seam. Digging 150 a turn. Costs
+   rise above 180. May collapse above 360. 4,120 left." (an endless seam: "Never runs out.").
+2. **AC22.2** The construct and upgrade dialogs, in units a turn: "Seam output will increase from
+   120 to 240. Above 240, deposit may collapse." No build or upgrade is refused for its seam.
 3. **AC22.3** Building detail diagnostics, Plant stage: a Seam row, green within the free cap,
-   amber over it, red at the max.
-4. **AC22.4** The build forecast and CostSolver include M and the max.
+   amber over it, red past the limit with its collapse chance.
+4. **AC22.4** The build forecast and CostSolver include M.
 
 **Save, telemetry, stances**
 
-1. **AC23.1** Draw, scale and M are derived each turn, never saved. Old saves load with no card
+1. **AC23.1** Draw and M are derived each turn, never saved. Old saves load with no card
    state.
 2. **AC23.2** Telemetry schema 8: each turn row carries `over_cap_sites` and `max_site_m`.
 3. **AC23.3** Stance A5, the tech-gating note (§11 C) and the production comment (§11 D) are

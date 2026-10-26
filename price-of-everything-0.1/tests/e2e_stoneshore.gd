@@ -175,10 +175,15 @@ var _balance_stage_metrics := {}
 var _balance_research_unlock_turns := {}
 var _balance_start_config := {}
 var _balance_start_modifiers: Array[Dictionary] = []
+## Seams that collapsed during the run, "turn tile|token" each.
+var _collapses: PackedStringArray = []
 
 
 func _ready() -> void:
 	_parse_cmdline_args()
+	EventScheduler.event_fired.connect(func(e: Dictionary) -> void:
+		if str(e.get("kind", "")) == "seam_collapsed":
+			_collapses.append("t%d %s" % [int(TurnManager.current_turn), str(e.get("body", ""))]))
 	print("\n==== price-of-everything E2E: %s ====" % _scenario_name)
 	print("[E2E] scenario=%s target_turn=%d" % [_scenario_name, _target_turn])
 	await _run()
@@ -325,7 +330,7 @@ func _print_profit_trajectory() -> void:
 			dl += "%s %d left   " % [k, int(dep_left[k])]
 	print(dl)
 	# The seams worked past their free cap (docs/pacing-labour-mining-licensing-spec.md §8): each site's
-	# draw, its free cap and limit, M and, past the limit, its scale.
+	# draw, its free cap and limit, M and, past the limit, its collapse chance a turn.
 	var seams := "  seams over the free cap: "
 	var over := 0
 	var sites: Dictionary = preload("res://scripts/mining_sites.gd").player_sites()
@@ -337,8 +342,9 @@ func _print_profit_trajectory() -> void:
 			continue
 		over += 1
 		seams += "%s draw %.1f/%d (max %d) M %.2f%s   " % [key, float(site.draw), int(site.free), int(site.max), float(site.m),
-			(" scale %.2f" % float(site.scale)) if float(site.scale) < 0.9999 else ""]
+			(" collapse %d%%" % roundi(float(site.collapse) * 100.0)) if float(site.collapse) > 0.0 else ""]
 	print(seams if over > 0 else seams + "none")
+	print("  seam collapses: %s" % ("none" if _collapses.is_empty() else "%d   %s" % [_collapses.size(), "   ".join(_collapses)]))
 	# Where it crossed from black to red for good — the turn a fix has to target.
 	var last_positive := 0
 	for e in _profit_by_turn:

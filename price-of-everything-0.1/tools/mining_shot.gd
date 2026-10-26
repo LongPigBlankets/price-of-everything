@@ -1,6 +1,6 @@
 extends Node2D
 ## Phase 4's screens (docs/pacing-labour-mining-licensing-spec.md §8.8): a finite coal seam worked past its free
-## cap (a level 1 mine and two level 2 mines on tile_6_8, draw 5 of 3 free, M 3), seen in the tile view's
+## cap (a level 1 mine and two level 2 mines on tile_6_8, digging 300 a turn against 180 free, M 3), seen in the tile view's
 ## Goods tab, Building Detail's visual diagnostics (the Seam check in the Plant stage), the upgrade dialog's seam
 ## row, and the seam card in the Turn Briefing.
 ##   AGENT_GODOT_WINDOW=1 godot --path . res://tools/mining_shot.tscn --quit-after 6000 -- --no-telemetry

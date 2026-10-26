@@ -231,31 +231,6 @@ static func site_check(building_id: String, recipe_id: String, tile_data: Dictio
 	return ""
 
 
-# --- Seams ------------------------------------------------------------------------------------
-
-## A seam already at its limit takes no more workings (docs/pacing-labour-mining-licensing-spec.md §8.8): the
-## reason a build of `recipe_id` on `tile_id` is refused, or "".
-static func seam_block(recipe_id: String, tile_id: String) -> String:
-	var token := MiningSites.token_of(Catalog.get_recipe(recipe_id))
-	if token == "" or tile_id == "":
-		return ""
-	return _seam_full(MiningSites.site(tile_id, token))
-
-
-## The same for raising a working a level: refused while its seam stands at its limit.
-static func upgrade_seam_block(building: Dictionary) -> String:
-	var token := MiningSites.building_token(building)
-	if token == "":
-		return ""
-	return _seam_full(MiningSites.site(str(building.get("tile_id", "")), token))
-
-
-static func _seam_full(site: Dictionary) -> String:
-	if not MiningSites.adds_nothing(site):
-		return ""
-	return "This seam is at its limit of %s workings. Another adds nothing." % MiningSites.figure(float(site.max))
-
-
 # --- Land ------------------------------------------------------------------------------------
 
 ## The land a build needs on a tile and what the build will do about it, in the order the
@@ -563,14 +538,11 @@ static func _quote(building_id: String, recipe_id: String, tile_id: String, tile
 					blocks.append({"key": "deposit", "text": "This tile has no deposit for this recipe."})
 				"other":
 					blocks.append({"key": "requirement", "text": "This tile does not meet the recipe's requirements."})
-			var full := seam_block(recipe_id, tile_id)
-			if full != "":
-				blocks.append({"key": "seam_full", "text": full})
-			else:
-				var seam := MiningSites.site_after(building_id, recipe_id, tile_id, Construction.placing_level)
-				if not seam.is_empty():
-					q["seam"] = seam
-					warnings.append({"key": "seam", "text": MiningSites.after_words(seam)})
+			# A mine's seam after the build, in units a turn (docs/pacing-labour-mining-licensing-spec.md §8.8).
+			var seam := MiningSites.site_after(building_id, recipe_id, tile_id, Construction.placing_level)
+			if not seam.is_empty():
+				q["seam"] = seam
+				warnings.append({"key": "seam", "text": MiningSites.after_words(seam)})
 			var blind := blind_deposit(tile_data, recipe, tile_id)
 			if blind != "":
 				warnings.append({"key": "blind_deposit",

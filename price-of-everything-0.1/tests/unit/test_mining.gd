@@ -125,20 +125,38 @@ func _test_over_cap_cost() -> void:
 	_fresh()
 
 
-## AC18.5: past the max every working runs at max / draw: outputs, power and the charge scale together.
-func _test_past_max_scales() -> void:
+## AC18.5: past the limit nothing is held back: M keeps rising and the seam may collapse, 5% a turn for each working
+## over it. A finite seam that collapses loses what remains; an endless one stops its mines for 3 turns.
+func _test_past_limit_collapse() -> void:
 	_fresh()
 	var a := _mine(ENDLESS_TILE, 2)
 	var solo_run := MatchState.run_multiplier(BuildingState.get_building(a))
-	var solo_power := Production._effective_energy_req_f(BuildingState.get_building(a), Catalog.get_recipe("r_001"))
 	_mine(ENDLESS_TILE, 2)
 	_mine(ENDLESS_TILE, 2)
-	var b := BuildingState.get_building(a)
 	var s := MiningSites.site(ENDLESS_TILE, "coal")
-	_check(is_equal_approx(float(s.draw), 6.0) and is_equal_approx(float(s.scale), 4.0 / 6.0) and is_equal_approx(float(s.m), 3.0),
-		"AC18.5 three L2 on an endless seam draw 6: scale 4/6, M 3 (at the max)")
-	_check(is_equal_approx(MatchState.run_multiplier(b), solo_run * 4.0 / 6.0), "AC18.5 the run multiplier carries the scale")
-	_check(absf(Production._effective_energy_req_f(b, Catalog.get_recipe("r_001")) - solo_power * 4.0 / 6.0) < 0.01, "AC18.5 power scales with it")
+	_check(is_equal_approx(float(s.draw), 6.0) and is_equal_approx(float(s.m), 5.0) and is_equal_approx(float(s.collapse), 0.10),
+		"AC18.5 three L2 on an endless seam: M 5 and a 10%% collapse chance a turn (M %.2f, %.2f)" % [float(s.m), float(s.collapse)])
+	_check(is_equal_approx(MatchState.run_multiplier(BuildingState.get_building(a)), solo_run), "AC18.5 nothing is scaled back past the limit")
+	_check(is_equal_approx(float(s.units), 360.0) and is_equal_approx(float(s.max_units), 240.0) and is_equal_approx(float(s.free_units), 120.0),
+		"AC18.5 the site reads in units a turn: digs 360, costs rise above 120, may collapse above 240")
+	MatchState.seams.collapse(ENDLESS_TILE, "coal")
+	_check(MatchState.seams.offline_turns_left(ENDLESS_TILE, "coal") == 3 and is_equal_approx(float(MiningSites.site(ENDLESS_TILE, "coal").draw), 0.0),
+		"AC18.5 an endless seam that collapses stops its mines for 3 turns")
+	_fresh()
+	for i in 7:
+		_mine(FINITE_TILE)
+	MatchState.deposit_remaining[FINITE_TILE] = {"coal": 3000}
+	_check(is_equal_approx(float(MiningSites.site(FINITE_TILE, "coal").collapse), 0.05), "AC18.5 one working over a finite seam's limit: 5% a turn")
+	MatchState.seams.collapse(FINITE_TILE, "coal")
+	_check(MatchState.deposit_remaining_for(FINITE_TILE, "coal") == 0, "AC18.5 a finite seam that collapses loses what remains")
+	MatchState.deposit_remaining[FINITE_TILE] = {"coal": 999999}
+	var falls := 0
+	for t in range(1, 401):
+		MatchState.seams.tick(t)
+		if MatchState.deposit_remaining_for(FINITE_TILE, "coal") == 0:
+			falls += 1
+			MatchState.deposit_remaining[FINITE_TILE] = {"coal": 999999}
+	_check(falls >= 8 and falls <= 35, "AC18.5 the seeded roll collapses it about 5%% of turns (%d in 400)" % falls)
 	_fresh()
 
 
@@ -279,6 +297,14 @@ func _test_seam_card_offered_once() -> void:
 		ids.append(str(c.id))
 	_check(ids == PackedStringArray(["deeper_shaft", "rob_pillars", "heavy_blasting", "sell_reserves", "carry_on"]),
 		"AC21.1 it offers the five choices (%s)" % ", ".join(ids))
+	var shaft: Dictionary = (view.get("choices", []) as Array)[0]
+	var rows: Array = shaft.get("changes", [])
+	_check((shaft.get("words", []) as Array).is_empty() and rows.size() == 4 and str(rows[0].icon) == "diag_icon_deposit"
+		and str(rows[0].from) == "200" and str(rows[0].to) == "280" and str(rows[1].icon) == "econ_icon_labour",
+		"AC21.1 each choice shows icons with a start and an outcome, no words")
+	var last: Array = ((view.get("choices", []) as Array)[4] as Dictionary).get("changes", [])
+	_check(last.size() == 1 and str(last[0].icon) == "diag_icon_deposit" and str(last[0].to) == "0" and str(last[0].get("span", "")).ends_with("turns"),
+		"AC21.1 carrying on shows the seam running to nothing and how many turns that takes")
 	DecisionState.pending_queue.clear()
 	_dig(a)
 	_check(DecisionState.pending_queue.is_empty(), "AC21.1 it comes once per site")
@@ -443,65 +469,62 @@ func _test_seam_telemetry() -> void:
 	_fresh()
 
 
-## AC22.1: the tile view's seam line.
+## AC22.1: the tile view's seam line, in units a turn.
 func _test_seam_words() -> void:
 	_fresh()
 	_mine(FINITE_TILE)
 	BuildingState.get_building(_mine(FINITE_TILE))["staff_fill"] = 0.0
-	var b := BuildingState.get_building(_mine(FINITE_TILE))
-	b["level"] = 1
+	_mine(FINITE_TILE)
 	Modifiers.add({"id": "t_thru", "domain": "throughput", "target": "*", "pct": 25.0})
 	MatchState.deposit_remaining[FINITE_TILE] = {"coal": 4120}
 	var words := MiningSites.seam_words(FINITE_TILE, "coal")
-	_check(words == "Coal seam. Drawing 2.5 of 3 free. Limit 6. 4,120 left.", "AC22.1 the seam line reads %s" % words)
-	_check(MiningSites.seam_words(ENDLESS_TILE, "coal").ends_with("Limit 4. Never runs out."), "AC22.1 an endless seam never runs out")
+	_check(words == "Coal seam. Digging 150 a turn. Costs rise above 180. May collapse above 360. 4,120 left.", "AC22.1 the seam line reads %s" % words)
+	_check(MiningSites.seam_words(ENDLESS_TILE, "coal").ends_with("May collapse above 0. Never runs out.") or MiningSites.seam_words(ENDLESS_TILE, "coal").ends_with("Never runs out."),
+		"AC22.1 an endless seam never runs out")
 	_fresh()
 
 
-## AC22.2: the construct and upgrade dialogs show the seam after the action and refuse one that adds nothing.
+## AC22.2: the construct and upgrade dialogs say what the seam will dig and where it may collapse; nothing is refused.
 func _test_construct_and_upgrade_seam() -> void:
 	_fresh()
 	MatchState.money = 100000.0
 	var a := _mine(ENDLESS_TILE, 2)
 	var after := MiningSites.site_after(MINE, "r_001", ENDLESS_TILE, 2)
-	_check(MiningSites.after_words(after) == "Takes the seam to 4 of 2 free. Labour and upkeep here ×3.", "AC22.2 a build reads %s" % MiningSites.after_words(after))
-	var q: Dictionary = preload("res://scripts/construction_rules.gd").quote(MINE, "r_001", ENDLESS_TILE, {}, {})
+	var said := MiningSites.after_words(after)
+	_check(said == "Seam output will increase from 120 to 240. Above 240, deposit may collapse.", "AC22.2 a build reads %s" % said)
+	var q: Dictionary = preload("res://scripts/construction_rules.gd").quote(MINE, "r_001", ENDLESS_TILE, {}, {"level": 2})
 	var seam_said := false
 	for w: Dictionary in q.get("warnings", []):
-		seam_said = seam_said or str(w.get("key", "")) == "seam"
-	_check(seam_said, "AC22.2 the construct quote carries the seam line")
+		seam_said = seam_said or str(w.get("text", "")) == said
+	_check(seam_said, "AC22.2 the construct quote carries it")
 	_mine(ENDLESS_TILE, 2)
-	_check(preload("res://scripts/construction_rules.gd").seam_block("r_001", ENDLESS_TILE) != "", "AC22.2 a seam at its limit refuses another build")
 	q = preload("res://scripts/construction_rules.gd").quote(MINE, "r_001", ENDLESS_TILE, {}, {})
-	var blocked := false
+	var refused := false
 	for blk: Dictionary in q.get("blocks", []):
-		blocked = blocked or str(blk.get("key", "")) == "seam_full"
-	_check(blocked and not bool(q.get("ok", true)), "AC22.2 and the construct quote says so")
+		refused = refused or str(blk.get("key", "")).begins_with("seam")
+	_check(not refused, "AC22.2 a build past the limit is not refused")
 	var pv: Dictionary = BuildingWorks.preview_upgrade(a)
-	_check(str(pv.get("seam_reason", "")) != "", "AC22.2 the upgrade preview refuses a working on a full seam")
-	var gate := BuildingLevels.research_gate("mine", 3)
-	if gate != "":
-		ResearchState.grant_unlock(gate)
-	var started: Dictionary = BuildingWorks.start_upgrade(a, "tile")
-	_check(not bool(started.get("ok", true)) and str(started.get("reason", "")).contains("limit"), "AC22.2 and the upgrade itself is refused (%s)" % str(started.get("reason", "")))
-	_fresh()
-	var c := _mine(FINITE_TILE)
-	var pv2: Dictionary = BuildingWorks.preview_upgrade(c)
-	_check(str(pv2.get("seam_reason", "")) == "" and is_equal_approx(float((pv2.get("seam", {}) as Dictionary).get("draw", 0.0)), 2.0),
-		"AC22.2 the upgrade preview shows the seam at level 2")
+	var up := MiningSites.after_words(pv.get("seam", {}))
+	_check(up == "Seam output will increase from 240 to 330. Above 240, deposit may collapse.", "AC22.2 the upgrade reads %s" % up)
+	_check(not pv.has("seam_reason"), "AC22.2 and is not refused")
+	var lab1 := float(((pv.get("stats", {}) as Dictionary).get("cur", {}) as Dictionary).get("labour", 0.0))
+	var lab2 := float(((pv.get("stats", {}) as Dictionary).get("new", {}) as Dictionary).get("labour", 0.0))
+	_check(lab2 > lab1 * (BuildingLevels.mult("labour", 3) / BuildingLevels.mult("labour", 2)) + 0.01,
+		"AC22.2 the upgrade's cost figures count the seam's rise in M (%.2f to %.2f)" % [lab1, lab2])
 	_fresh()
 
 
-## AC22.3: building detail's Seam check: green within the free cap, amber over it, red at the limit.
+## AC22.3: building detail's Seam check: green within the free amount, amber over it, red past the limit.
 func _test_seam_check() -> void:
 	_fresh()
 	var a := _mine(ENDLESS_TILE)
-	_check(str(BuildingReadout.seam_check(BuildingState.get_building(a)).tone) == "ok", "AC22.3 within the free cap the Seam check is green")
+	_check(str(BuildingReadout.seam_check(BuildingState.get_building(a)).tone) == "ok", "AC22.3 within the free amount the Seam check is green")
 	_mine(ENDLESS_TILE, 2)
 	var mid := BuildingReadout.seam_check(BuildingState.get_building(a))
-	_check(str(mid.tone) == "warn" and str(mid.detail).contains("×2"), "AC22.3 over it amber, with M")
-	_mine(ENDLESS_TILE)
-	_check(str(BuildingReadout.seam_check(BuildingState.get_building(a)).tone) == "bad", "AC22.3 at the limit red")
+	_check(str(mid.tone) == "warn" and str(mid.detail).contains("×2") and str(mid.detail).contains("Digging 180 a turn"), "AC22.3 over it amber, in units, with M (%s)" % str(mid.detail))
+	_mine(ENDLESS_TILE, 2)
+	var past := BuildingReadout.seam_check(BuildingState.get_building(a))
+	_check(str(past.tone) == "bad" and str(past.detail).contains("may collapse, 5% a turn"), "AC22.3 past the limit red, with its collapse chance (%s)" % str(past.detail))
 	var furnace: String = BuildingState.add_building(FURNACE, "r_005", "tile_9_9", MatchState.LOCAL_PLAYER, "")
 	_check(str(BuildingReadout.seam_check(BuildingState.get_building(furnace)).tone) == "off", "AC22.3 off for a building that mines nothing")
 	var plant := BuildingReadout.plant_checks(BuildingState.get_building(a), Catalog.get_recipe("r_001"), false)

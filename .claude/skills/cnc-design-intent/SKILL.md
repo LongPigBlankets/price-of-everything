@@ -93,8 +93,9 @@ player) drives urban land prices, +25% of a tile's starting price per doubling
 (`scripts/land_price.gd`, docs/land-pricing-spec.md). It is a clock, not a simulation.
 
 **Seams have working limits.** Each deposit extracts freely up to 2 level 1 workings (endless
-seams) or 3 (finite seams), with a hard maximum of 4 or 6. Every working over the free cap adds
-100% labour and maintenance on the whole site, as a multiplier after labour discounts
+seams) or 3 (finite seams). Past a limit of 4 or 6 nothing is held back but the seam may collapse,
+5% a turn for each working over. Every working over the free cap adds 100% labour and maintenance on
+the whole site, as a multiplier after labour discounts
 (`scripts/mining_sites.gd`, docs/pacing-labour-mining-licensing-spec.md §8). Deep extraction
 therefore needs labour and maintenance modifiers. Finite seams are charged for what is dug:
 throughput counts, yield does not. Regression smell: removing the cap because players want to

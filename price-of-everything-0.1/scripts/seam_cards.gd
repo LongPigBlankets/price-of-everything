@@ -33,6 +33,8 @@ const BLAST_ROOF := 0.08
 const BLAST_LOST := 0.02
 ## Sell with reserves: the buildings' sale price plus what remains at this share of market.
 const SALE_SHARE := 0.5
+## An endless seam that collapses stops its mines this many turns (a finite one loses what remains).
+const COLLAPSE_OFFLINE_TURNS := 3
 ## Seeds the seam RNG from the match seed (stable arithmetic, never hash()).
 const RNG_SALT := 0x5EA3C4
 
@@ -98,9 +100,11 @@ func _ensure_rng() -> void:
 
 # ── The turn ─────────────────────────────────────────────────────────────────────────────────────
 
-## PROCESS, before production: each blasting site's roll and each robbing working's accident chance.
+## PROCESS, before production: each seam past its limit may collapse, then each blasting site's roll and each
+## robbing working's accident chance.
 func tick(turn: int) -> void:
 	double_dig.clear()
+	_roll_collapses()
 	if modes.is_empty():
 		return
 	_ensure_rng()
@@ -129,6 +133,34 @@ func tick(turn: int) -> void:
 						continue
 					if _rng.randf() < chance:
 						LabourState.unrest.cause_accident(iid, turn)
+	changed.emit()
+
+
+## A seam worked past its limit may collapse (owner ruling, 26 October 2026): MiningSites' chance a turn, one
+## seeded roll a site, in key order.
+func _roll_collapses() -> void:
+	var sites: Dictionary = MiningSites.player_sites()
+	var keys: Array = sites.keys()
+	keys.sort()
+	for k: String in keys:
+		var site: Dictionary = sites[k]
+		if float(site.collapse) <= 0.0 or is_offline(str(site.tile_id), str(site.token)):
+			continue
+		_ensure_rng()
+		if _rng.randf() < float(site.collapse):
+			collapse(str(site.tile_id), str(site.token))
+
+
+## A seam collapses: a finite one loses what remains, an endless one stops its mines for COLLAPSE_OFFLINE_TURNS.
+func collapse(tile_id: String, token: String) -> void:
+	var name := "%s seam at %s" % [str(Catalog.get_good_by_internal_name(token).get("display_name", token)).to_lower(), _place(tile_id)]
+	if MiningSites.kind(tile_id, token) == MiningSites.FINITE:
+		_bell("seam_collapsed", "critical", "Seam collapsed", "The %s collapsed. What remained is lost." % name)
+		MatchState.deplete_deposit(tile_id, token, maxi(0, MatchState.deposit_remaining_for(tile_id, token)))
+	else:
+		offline[key(tile_id, token)] = COLLAPSE_OFFLINE_TURNS
+		_bell("seam_collapsed", "critical", "Seam collapsed",
+			"The %s collapsed. Its mines stop for %d turns while it is cleared." % [name, COLLAPSE_OFFLINE_TURNS])
 	changed.emit()
 
 
@@ -199,6 +231,68 @@ func apply(action: String, tile_id: String, token: String) -> void:
 				BuildingState.sell_building(iid, 0)
 			modes.erase(k)
 	changed.emit()
+
+
+## What a choice does to the site, for the card's icon rows: [{icon (a raised layer), from, to, span (how long it
+## lasts), chance, tip}], `from` "" for a figure with no start. Figures only; the tip names what each row is.
+func changes(action: String, tile_id: String, token: String) -> Array:
+	var site := MiningSites.site(tile_id, token)
+	var remaining := maxi(0, MatchState.deposit_remaining_for(tile_id, token))
+	var labour := 0.0
+	var power := 0
+	for iid: String in site.workings:
+		var b := BuildingState.get_building(iid)
+		var recipe := Catalog.get_recipe(str(b.get("recipe_id", "")))
+		labour += Production._calculate_labour_cost(b, recipe)
+		power += Production._effective_energy_req(b, recipe)
+	var emblem := "bld_emblem_%s" % str(BuildingState.get_building(str(site.workings[0])).get("building_id", "b_001")) \
+		if not (site.workings as Array).is_empty() else "bld_emblem_b_001"
+	var left := func(v: int) -> String: return MiningSites.thousands(v)
+	var money := func(v: float) -> String: return "£%.2f" % v
+	var mines := (site.workings as Array).size()
+	var dug := roundi(float(site.units))
+	var turns := func(n: int) -> String: return "%d %s" % [n, "turn" if n == 1 else "turns"]
+	match action:
+		"deeper_shaft":
+			return [
+				{"icon": "diag_icon_deposit", "from": left.call(remaining), "to": left.call(remaining + roundi(float(remaining) * SHAFT_ADD)), "tip": "Left in the seam"},
+				{"icon": "econ_icon_labour", "from": money.call(labour), "to": money.call(labour * SHAFT_LABOUR), "tip": "Labour a turn at this seam"},
+				{"icon": "bar_icon_power", "from": "%d MW" % power, "to": "%d MW" % roundi(float(power) * SHAFT_POWER), "tip": "Power a turn at this seam"},
+				{"icon": "econ_icon_outputs", "from": left.call(dug), "to": "0", "span": turns.call(OFFLINE_TURNS), "tip": "Output stops while the shaft is sunk"},
+			]
+		"rob_pillars":
+			return [
+				{"icon": "diag_icon_deposit", "from": left.call(remaining), "to": left.call(remaining + roundi(float(remaining) * ROB_ADD)), "tip": "Left in the seam"},
+				{"icon": "econ_icon_labour", "from": money.call(labour), "to": money.call(labour * ROB_LABOUR), "tip": "Labour a turn at this seam"},
+				{"icon": "diag_icon_works", "chance": "%d%%" % roundi(ROB_ACCIDENT * _safety_factor() * 100.0), "tip": "Accident chance a turn at each mine"},
+				{"icon": emblem, "from": str(mines), "to": "0", "tip": "Mines lost when the seam runs out"},
+			]
+		"heavy_blasting":
+			return [
+				{"icon": "econ_icon_outputs", "from": left.call(dug), "to": left.call(dug * 2), "chance": "%d%%" % roundi(BLAST_DOUBLE * 100.0), "tip": "A double dig: twice the output, twice from the seam"},
+				{"icon": "econ_icon_outputs", "from": left.call(dug), "to": "0", "span": turns.call(OFFLINE_TURNS), "chance": "%d%%" % roundi(BLAST_ROOF * 100.0), "tip": "A roof fall stops the mines"},
+				{"icon": "diag_icon_deposit", "from": left.call(remaining), "to": "0", "chance": "%d%%" % roundi(BLAST_LOST * 100.0), "tip": "The rest of the seam is lost"},
+			]
+		"sell_reserves":
+			return [{"icon": emblem, "from": str(mines), "to": "0", "tip": "Your mines here are sold with the seam"}]
+		"carry_on":
+			return [{"icon": "diag_icon_deposit", "from": left.call(remaining), "to": "0", "span": turns.call(ceili(float(remaining) / maxf(1.0, float(site.units)))),
+				"tip": "The seam runs out at today's digging"}]
+	return []
+
+
+## A choice in a few words, for the bell and the toast once it is made.
+static func summary(action: String) -> String:
+	match action:
+		"deeper_shaft":
+			return "A deeper shaft is sunk"
+		"rob_pillars":
+			return "The pillars are robbed"
+		"heavy_blasting":
+			return "Heavy blasting from now on"
+		"sell_reserves":
+			return "The workings are sold with the seam"
+	return "Mined to the end"
 
 
 ## Sink a deeper shaft: two turns of the site's wages plus a level 1 kit's materials at market.

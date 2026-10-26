@@ -345,8 +345,7 @@ func _foot(p: Dictionary) -> HBoxContainer:
 	row.name = "UpgradeKeys"
 	row.alignment = BoxContainer.ALIGNMENT_END
 	row.add_theme_constant_override("separation", 14)
-	var blocked := bool(p.get("research_locked", false)) or not bool(p.get("fits", true)) or _choice < 0 \
-		or str(p.get("seam_reason", "")) != ""
+	var blocked := bool(p.get("research_locked", false)) or not bool(p.get("fits", true)) or _choice < 0
 	var up: Button = CreamKey.make("Key_Upgrade", "Upgrade", "", CreamKey.width_for("Upgrade", "", false, false))
 	if blocked:
 		up.call("set_spent", true)
@@ -417,29 +416,30 @@ func _land_line(building: Dictionary, p: Dictionary) -> HBoxContainer:
 	return line
 
 
-## A mine's seam after the upgrade (docs/pacing-labour-mining-licensing-spec.md §8.8): green within its free cap,
-## amber over it, red at its limit, where the upgrade adds nothing and is refused.
+## A mine's seam after the upgrade, in units a turn (docs/pacing-labour-mining-licensing-spec.md §8.8): green within
+## its free amount, amber over it, red past its limit, where it may collapse.
 func _seam_line(p: Dictionary) -> HBoxContainer:
+	var sites := preload("res://scripts/mining_sites.gd")
 	var seam: Dictionary = p.get("seam", {})
-	var reason := str(p.get("seam_reason", ""))
 	var line := HBoxContainer.new()
 	line.name = "SeamLine"
 	line.custom_minimum_size.y = INFO_ROW_H
 	line.add_theme_constant_override("separation", 10)
 	line.add_child(Parts.raised("diag_icon_deposit", ROW_ICON_PX))
 	var tone := "ok"
-	if reason != "" or float(seam.draw) > float(seam.max) + 0.0001:
+	if float(seam.collapse) > 0.0:
 		tone = "bad"
 	elif float(seam.m) > 1.0001:
 		tone = "warn"
 	line.add_child(_lamp(tone))
-	var said := _body(reason if reason != "" else preload("res://scripts/mining_sites.gd").after_words(seam))
+	var said := _body(sites.after_words(seam))
+	said.name = "SeamWords"
 	said.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	said.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	line.add_child(said)
-	var sites := preload("res://scripts/mining_sites.gd")
-	line.tooltip_text = "A seam is free to %s workings and ends at %s. Each working over the free cap adds %d%% to the labour and upkeep of every working on it." % [
-		sites.figure(float(seam.free)), sites.figure(float(seam.max)), roundi(sites.cap_cost(str(seam.tile_id), str(seam.token)) * 100.0)]
+	line.tooltip_text = "Above %s a turn, labour and upkeep here rise by %d%% for each mine's worth. Above %s, there is a %d%% chance a turn for each mine's worth over it that the deposit collapses." % [
+		sites.units_text(float(seam.free_units)), roundi(sites.cap_cost(str(seam.tile_id), str(seam.token)) * 100.0),
+		sites.units_text(float(seam.max_units)), roundi(sites.COLLAPSE_PER_WORKING * 100.0)]
 	line.mouse_filter = Control.MOUSE_FILTER_STOP
 	return line
 

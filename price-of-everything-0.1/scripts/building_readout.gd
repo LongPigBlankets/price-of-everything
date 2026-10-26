@@ -1366,24 +1366,27 @@ static func _unsold_check(building: Dictionary, route: Dictionary, g: Dictionary
 static func plant_checks(building: Dictionary, recipe: Dictionary, is_infrastructure: bool, econ: Dictionary = {}) -> Array:
 	return [_carbon_check(building, recipe, is_infrastructure, econ), _works_check(building), seam_check(building)]
 
-## A mine's seam (docs/pacing-labour-mining-licensing-spec.md §8.8): green within its free cap, amber over it, red
-## at its limit; off for a building that mines nothing.
+## A mine's seam (docs/pacing-labour-mining-licensing-spec.md §8.8), in units a turn: green within its free amount,
+## amber over it (labour and upkeep rise), red past its limit (it may collapse); off for a building that mines
+## nothing.
 static func seam_check(building: Dictionary) -> Dictionary:
 	var s := MiningSites.site_of(building)
 	if s.is_empty():
 		return _check("seam", "Seam", "off", "Mines no seam.")
 	var c := _check("seam", "Seam", "ok", "")
 	c["icon"] = "deposit"
-	var drawing := "Drawing %s of %s free. Limit %s." % [MiningSites.figure(float(s.draw)), MiningSites.figure(float(s.free)), MiningSites.figure(float(s.max))]
-	if float(s.draw) >= float(s.max) - 0.0001:
+	var digging := "Digging %s a turn." % MiningSites.units_text(float(s.units))
+	if float(s.collapse) > 0.0:
 		c["tone"] = "bad"
-		c["detail"] = "%s At its limit: labour and upkeep here ×%s%s." % [drawing, MiningSites.figure(float(s.m)),
-			(", every working runs at %d%%" % roundi(float(s.scale) * 100.0)) if float(s.scale) < 0.9999 else ""]
+		c["detail"] = "%s Above %s it may collapse, %d%% a turn. Labour and upkeep here ×%s." % [digging,
+			MiningSites.units_text(float(s.max_units)), roundi(float(s.collapse) * 100.0), MiningSites.figure(float(s.m))]
 	elif float(s.m) > 1.0001:
 		c["tone"] = "warn"
-		c["detail"] = "%s Over the free cap: labour and upkeep here ×%s." % [drawing, MiningSites.figure(float(s.m))]
+		c["detail"] = "%s Above %s, labour and upkeep here ×%s. May collapse above %s." % [digging,
+			MiningSites.units_text(float(s.free_units)), MiningSites.figure(float(s.m)), MiningSites.units_text(float(s.max_units))]
 	else:
-		c["detail"] = drawing
+		c["detail"] = "%s Costs rise above %s. May collapse above %s." % [digging,
+			MiningSites.units_text(float(s.free_units)), MiningSites.units_text(float(s.max_units))]
 	return c
 
 static func _carbon_check(building: Dictionary, recipe: Dictionary, is_infrastructure: bool, econ: Dictionary) -> Dictionary:

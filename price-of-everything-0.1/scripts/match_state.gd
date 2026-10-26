@@ -1263,11 +1263,10 @@ func startup_capacity_multiplier(building: Dictionary) -> float:
 	return Staffing.run_fraction(building)
 
 ## How hard a building runs this turn: the one scale for its inputs, outputs and power. The staffing
-## run fraction times its throughput (docs/pacing-labour-mining-licensing-spec.md §3), and for a mine past its
-## seam's limit, the site's scale (§8.2, MiningSites). Throughput comes
+## run fraction times its throughput (docs/pacing-labour-mining-licensing-spec.md §3). Throughput comes
 ## from the labour policies and from `throughput` modifiers, whose percentages add.
 func run_multiplier(building: Dictionary) -> float:
-	return startup_capacity_multiplier(building) * throughput_multiplier(building) * MiningSites.scale_for(building)
+	return startup_capacity_multiplier(building) * throughput_multiplier(building)
 
 ## 1 + (labour policy throughput + throughput modifiers) / 100 for this building, never below 0.
 func throughput_multiplier(building: Dictionary) -> float:

@@ -388,6 +388,8 @@ func _answer(it: Dictionary) -> Control:
 		row.add_child(said)
 		for w in (choice.get("words", []) as Array):
 			said.add_child(Parts.body(str(w)))
+		for c: Dictionary in (choice.get("changes", []) as Array):
+			said.add_child(Parts.change_row(c))
 		for f: Dictionary in (choice.get("figures", []) as Array):
 			var line := HBoxContainer.new()
 			line.name = "Figure"

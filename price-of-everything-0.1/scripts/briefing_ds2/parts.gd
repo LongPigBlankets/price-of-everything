@@ -142,6 +142,77 @@ static func figure(f: Dictionary) -> Control:
 			return drum(int(f.get("value", 0)))
 
 
+## What a choice changes, one row: its raised icon, the start, an arrow and the outcome, how long it lasts beside a
+## small clock, and its chance, no words (DecisionState.choice_changes: {icon, from, to, span, chance, tip}). A row
+## with no start shows the outcome alone; the hover names what the row is.
+static func change_row(c: Dictionary) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = "Change"
+	row.add_theme_constant_override("separation", 8)
+	row.mouse_filter = Control.MOUSE_FILTER_PASS
+	row.tooltip_text = str(c.get("tip", ""))
+	var icon := Kit.raised(str(c.get("icon", "")), CHANGE_ICON_PX)
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(icon)
+	var from := str(c.get("from", ""))
+	if from != "":
+		var a := title(from)
+		a.name = "From"
+		_fit_label(a)
+		row.add_child(a)
+		row.add_child(Arrow.new())
+	if str(c.get("to", "")) != "":
+		var to := title(str(c.get("to", "")))
+		to.name = "To"
+		_fit_label(to)
+		row.add_child(to)
+	var span := str(c.get("span", ""))
+	if span != "":
+		var clock := Kit.raised("diag_icon_transit", SPAN_ICON_PX)
+		clock.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(clock)
+		var lasts := title(span)
+		lasts.name = "Span"
+		_fit_label(lasts)
+		row.add_child(lasts)
+	var chance := str(c.get("chance", ""))
+	if chance != "":
+		var odds := body(chance)
+		odds.name = "Chance"
+		odds.add_theme_color_override("font_color", DS.PALETTE["WARN"])
+		_fit_label(odds)
+		row.add_child(odds)
+	return row
+
+
+const CHANGE_ICON_PX := 30.0
+const SPAN_ICON_PX := 20.0
+
+
+static func _fit_label(l: Label) -> void:
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	l.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	l.custom_minimum_size.x = 0
+
+
+## A small arrow from a change's start to its outcome, white with the print's shadow.
+class Arrow extends Control:
+	func _init() -> void:
+		custom_minimum_size = Vector2(20, 14)
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		for pass_i in 2:
+			var off := Vector2(1, 1) if pass_i == 0 else Vector2.ZERO
+			var col: Color = Color(0, 0, 0, 0.8) if pass_i == 0 else DS.PALETTE["TEXT"]
+			var y := size.y * 0.5
+			draw_line(Vector2(2, y) + off, Vector2(size.x - 4, y) + off, col, 2.0, true)
+			draw_colored_polygon(PackedVector2Array([Vector2(size.x - 8, y - 5) + off, Vector2(size.x - 1, y) + off,
+				Vector2(size.x - 8, y + 5) + off]), col)
+
+
 # --- surfaces -----------------------------------------------------------------------------------
 
 ## A dark glass screen in the LED screens' gunmetal bezel (mini_screen and its glass, both 9-slices), its lines
