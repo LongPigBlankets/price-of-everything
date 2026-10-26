@@ -548,11 +548,12 @@ static func _deposit_row(panel: Control, tile: String, v: Dictionary, grid: Dict
 		if Parts.has_icon(gid) else Parts.named_well(str(d.display_name), ICON_COL, str(v.pill))
 	var row := _row("Deposit_%s" % token, icon)
 	# A seam you work reads its draw against its caps (docs/pacing-labour-mining-licensing-spec.md §8.8).
-	var size_line := str(v.size_line)
+	var lines := PackedStringArray([str(v.state)])
 	var miner := BuildingState.get_building(str(d.get("instance_id", "")))
 	if bool(v.worked) and not miner.is_empty() and BuildingState.is_player_owned(miner):
-		size_line = preload("res://scripts/mining_sites.gd").seam_words(tile, token, false)
-	row.add_child(_words(name, PackedStringArray([str(v.state), size_line])))
+		lines.append(preload("res://scripts/mining_sites.gd").draw_words(tile, token))
+	lines.append(str(v.size_line))
+	row.add_child(_words(name, lines))
 	var key_w := float(grid.key_w)
 	if bool(v.worked):
 		var iid := str(d.get("instance_id", ""))

@@ -165,14 +165,19 @@ static func after_words(s: Dictionary) -> String:
 ## A seam as the tile view reads it: "Coal seam. Drawing 2.5 of 3 free. Limit 6. 4,120 left." (`named` false
 ## leaves off "Coal seam."), an endless one "Never runs out." in place of its amount.
 static func seam_words(tile_id: String, token: String, named := true) -> String:
-	var s := site(tile_id, token)
-	var words := "Drawing %s of %s free. Limit %s." % [figure(float(s.draw)), figure(float(s.free)), figure(float(s.max))]
+	var words := draw_words(tile_id, token)
 	var left := MatchState.deposit_remaining_for(tile_id, token)
 	words += (" %s left." % thousands(left)) if left >= 0 else " Never runs out."
 	if named:
 		var good := Catalog.get_good_by_internal_name(token)
 		words = "%s seam. %s" % [str(good.get("display_name", token)), words]
 	return words
+
+
+## A site's draw against its caps: "Drawing 2.5 of 3 free. Limit 6."
+static func draw_words(tile_id: String, token: String) -> String:
+	var s := site(tile_id, token)
+	return "Drawing %s of %s free. Limit %s." % [figure(float(s.draw)), figure(float(s.free)), figure(float(s.max))]
 
 
 ## A whole number with thousands commas: 4,120.
