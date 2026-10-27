@@ -982,11 +982,7 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 
 func _apply_profit_sharing(summary: Dictionary, pre_tax_profit: float) -> float:
 	summary.profit_sharing_paid = 0.0
-	var share_rate := 0.0
-	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
-		share_rate = 0.05
-	elif LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10):
-		share_rate = 0.10
+	var share_rate := LabourState.profit_share_rate()
 	if share_rate <= 0.0:
 		return 0.0
 	var post_dividend_profit := maxf(

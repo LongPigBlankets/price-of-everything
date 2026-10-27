@@ -207,11 +207,11 @@ func _build_profit_share(parent: Control) -> void:
 		{"key": "none", "label": "No profit share",
 			"caption": "Profits stay with the company.",
 			"pick": func() -> void: _pick_exclusive(group, "")},
-		{"key": "five", "label": "5% profit share",
-			"caption": "Pay 5% of post-tax, post-dividend profit to workers · output +10%.",
+		{"key": "five", "label": "10% profit share",
+			"caption": "Pay 10% of profit after tax and dividends to workers.",
 			"pick": func() -> void: _pick_exclusive(group, LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE)},
-		{"key": "ten", "label": "10% profit share",
-			"caption": "Pay 10% of post-tax, post-dividend profit to workers · output +15%.",
+		{"key": "ten", "label": "20% profit share",
+			"caption": "Pay 20% of profit after tax and dividends to workers.",
 			"pick": func() -> void: _pick_exclusive(group, LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10)},
 	], _profit_key()))
 

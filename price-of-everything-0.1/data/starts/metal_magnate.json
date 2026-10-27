@@ -19,9 +19,9 @@
 		{ "building_id": "b_003", "recipe_id": "r_004", "tile_id": "tile_9_9" }
 	],
 	"labour": {
-		"multiplier": 1.2,
+		"multiplier": 1.0,
 		"satisfaction": 40,
-		"idle_pay_share": 0.5
+		"idle_pay_share": 0.75
 	},
 	"land": {
 		"tile_6_8": 50,

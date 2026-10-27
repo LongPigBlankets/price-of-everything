@@ -930,9 +930,7 @@ func _project_next_turn() -> Dictionary:
 	var posttax: float = pretax - tax
 	var dividend_base := maxf(posttax, 0.0)
 	var dividends: float = minf(dividend_base, dividend_base * EconomyConfig.DIVIDEND_RATE)
-	var profit_sharing := 0.0
-	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
-		profit_sharing = maxf(0.0, posttax - dividends) * 0.05
+	var profit_sharing := maxf(0.0, posttax - dividends) * LabourState.profit_share_rate()
 	var net_cashflow: float = posttax - dividends - profit_sharing
 	
 	return {

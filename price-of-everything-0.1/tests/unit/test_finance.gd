@@ -76,9 +76,9 @@ func _test_tax_dividend_caps() -> void:
 	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
 	var share_pretax: float = Production._apply_tax_and_dividends(profit_share_summary)
 	Production._apply_profit_sharing(profit_share_summary, share_pretax)
-	_check(is_equal_approx(float(profit_share_summary.get("profit_sharing_paid", 0.0)), 1.64)
-		and is_equal_approx(float(profit_share_summary.get("money_in", 0.0)) - float(profit_share_summary.get("money_out", 0.0)), 31.16),
-		"profit sharing is paid from post-tax, post-dividend profit")
+	_check(is_equal_approx(float(profit_share_summary.get("profit_sharing_paid", 0.0)), 3.28)
+		and is_equal_approx(float(profit_share_summary.get("money_in", 0.0)) - float(profit_share_summary.get("money_out", 0.0)), 29.52),
+		"profit sharing pays 10% of post-tax, post-dividend profit at the lower setting")
 	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, false)
 
 func _test_tax_free_profit_floor() -> void:

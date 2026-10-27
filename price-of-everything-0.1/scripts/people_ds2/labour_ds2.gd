@@ -439,12 +439,12 @@ func _knob_specs() -> Array:
 			["Generous", "Labour cost 5% higher. Satisfaction target 15 higher.", func() -> void: _pick_exclusive(bonus_group, LabourState.WORKFORCE_POLICY_ANNUAL_BONUS)]]},
 		{"id": "profit", "name": "Profit share", "chosen": ["none", "five", "ten"].find(_profit_key()), "options": [
 			["None", "Profits stay with the company.", func() -> void: _pick_exclusive(profit_group, "")],
-			["5%", "5% of profit after tax and dividends goes to the workers. Satisfaction target 10 higher.", func() -> void: _pick_exclusive(profit_group, LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE)],
-			["10%", "10% of profit after tax and dividends goes to the workers. Satisfaction target 20 higher.", func() -> void: _pick_exclusive(profit_group, LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10)]]},
+			_profit_option(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, profit_group),
+			_profit_option(LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10, profit_group)]},
 		{"id": "union", "name": "Union", "chosen": LabourState.union_tier(), "options": [
 			["None", "No agreement.", func() -> void: _pick_union(LabourState.UNION_NONE), "NONE"],
 			["Partial", "Labour cost 10% higher, rising 1% each pay round to 25%. Satisfaction target 15 higher.", func() -> void: _pick_union(LabourState.UNION_PARTIAL), "PART"],
-			["Comprehensive", "Labour cost 10% higher, rising each pay round. Satisfaction target 30 higher. Labour cuts made after signing count at half, for good.", func() -> void: _pick_union(LabourState.UNION_COMPREHENSIVE), "FULL"]]},
+			["Comprehensive", "Labour cost 10% higher, rising each pay round. Satisfaction target 30 higher, and satisfaction rises twice as fast. Labour cuts made after signing count at half, for good.", func() -> void: _pick_union(LabourState.UNION_COMPREHENSIVE), "FULL"]]},
 		{"id": "week", "name": "Work week", "chosen": LabourState.WORK_WEEK_HOURS.find(LabourState.work_week_hours), "options": week_opts},
 	]
 
@@ -672,12 +672,24 @@ func _automation() -> Control:
 	return col
 
 
+## A profit share option: [face, words, pick]. Its satisfaction follows last turn's profit after tax.
+func _profit_option(share_id: String, group: Array) -> Array:
+	var rate := roundi(float(LabourState.PROFIT_SHARE_RATE[share_id]) * 100.0)
+	var scale := LabourState.PROFIT_SHARE_LOWER_SCALE if share_id == LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE else 1.0
+	var sat: Dictionary = LabourState.PROFIT_SHARE_SATISFACTION
+	var words := "%d%% of profit after tax and dividends goes to the workers. Satisfaction target %s higher at a loss, %s below £%d profit a turn, %s above." % [
+		rate, LabourState.points_text(float(sat.loss) * scale), LabourState.points_text(float(sat.small) * scale),
+		int(LabourState.PROFIT_SHARE_SMALL_BELOW), LabourState.points_text(float(sat.large) * scale)]
+	return ["%d%%" % rate, words, func() -> void: _pick_exclusive(group, share_id)]
+
+
 func _other_policies() -> Array:
+	var leave_words := "Throughput %d%% lower. Satisfaction target 8 higher." % roundi(absf(LabourState.LEAVE_THROUGHPUT_PCT))
 	return [
 		{"id": LabourState.WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE, "name": "Extended Annual Leave", "lock": "",
-			"words": "Throughput 2% lower. Satisfaction target 8 higher."},
+			"words": leave_words},
 		{"id": LabourState.WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE, "name": "Generous Parental Leave", "lock": "",
-			"words": "Throughput 2% lower. Satisfaction target 8 higher."},
+			"words": leave_words},
 		{"id": LabourState.WORKFORCE_POLICY_LONG_TENURE, "name": "Long Tenure Awards", "lock": "Needs an HR Director",
 			"words": "Labour cost falls 0.1% a turn to 10% less, with a 10% payout every tenth turn. Satisfaction target 5 higher."},
 		{"id": LabourState.WORKFORCE_POLICY_STOCK_OPTIONS, "name": "Stock Options", "lock": "Opens with an HR mission",

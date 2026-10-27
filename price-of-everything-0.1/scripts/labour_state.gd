@@ -77,7 +77,7 @@ const WORK_WEEK_HOURS: Array[int] = [35, 40, 45, 50]
 const WORK_WEEK_DEFAULT := 45
 const WORK_WEEK_THROUGHPUT_PCT := {35: 5.0, 40: 9.0, 45: 12.0, 50: 14.5}
 const WORK_WEEK_UNION_LABOUR_PER_LEVEL := 0.10
-const WORK_WEEK_SATISFACTION_PER_LEVEL := -2.5
+const WORK_WEEK_SATISFACTION_PER_LEVEL := -5.0
 
 # --- Safety, pensions, bonus, profit share, automation, lockers ---
 const MINIMAL_SAFETY_THROUGHPUT_PCT := 10.0
@@ -91,7 +91,7 @@ const AUTOMATION_MIN_LEVEL := 2
 const AUTOMATION_LABOUR := -0.15
 const AUTOMATION_POWER_MULT := 1.10
 const AUTOMATION_MAINT_MULT := 1.10
-const LEAVE_THROUGHPUT_PCT := -2.0
+const LEAVE_THROUGHPUT_PCT := -5.0
 const LONG_TENURE_PAYOUT := 0.10
 ## Satisfaction from the pay while idle setting, by its share: below 60%, below 90%, otherwise.
 const IDLE_PAY_SATISFACTION := {"half": -10.0, "most": -5.0, "full": 5.0}
@@ -101,6 +101,14 @@ const MINIMUM_PENSIONS_SATISFACTION := -10.0
 const AUTOMATION_SATISFACTION := -5.0
 ## Metal Magnate's and Glass Merchant's workforce while the company still owns the Original Furnace (LegacyPerk).
 const LIKE_FAMILY_SATISFACTION := 25.0
+## The share of profit after tax and dividends each profit share setting pays. The ids are kept from when they paid
+## 5% and 10%, so saves still name them.
+const PROFIT_SHARE_RATE := {WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE: 0.10, WORKFORCE_POLICY_PROFIT_SHARE_10: 0.20}
+## Satisfaction from the higher share by last turn's profit after tax: at a loss or none, below PROFIT_SHARE_SMALL_BELOW
+## a turn, and at or above it. The lower share gives PROFIT_SHARE_LOWER_SCALE of each.
+const PROFIT_SHARE_SATISFACTION := {"loss": 5.0, "small": 10.0, "large": 15.0}
+const PROFIT_SHARE_SMALL_BELOW := 25.0
+const PROFIT_SHARE_LOWER_SCALE := 0.5
 
 # --- Unions ---
 const UNION_NONE := 0
@@ -114,6 +122,8 @@ const UNION_STEP_DOWN_REVENUE_SHARE := 0.05
 const UNION_STEP_DOWN_SHIFT := -15.0
 const UNION_STEP_DOWN_DECAY := 0.5
 const UNION_HALVING := 0.5
+## While a Comprehensive Union Agreement stands, satisfaction rises this many times as fast. Falls are unchanged.
+const COMPREHENSIVE_RISE_MULT := 2.0
 const RENEGE_SATISFACTION := -50.0
 
 # --- Satisfaction ---
@@ -664,10 +674,11 @@ func satisfaction_contributions() -> Array:
 		_add_part(parts, WORKFORCE_POLICY_SMALL_BONUS, "Small annual bonus", 8.0)
 	elif is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_BONUS):
 		_add_part(parts, WORKFORCE_POLICY_ANNUAL_BONUS, "Generous annual bonus", 15.0)
-	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
-		_add_part(parts, WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, "Profit share 5%", 10.0)
-	elif is_workforce_policy_enabled(WORKFORCE_POLICY_PROFIT_SHARE_10):
-		_add_part(parts, WORKFORCE_POLICY_PROFIT_SHARE_10, "Profit share 10%", 20.0)
+	for share_id: String in PROFIT_SHARE_RATE:
+		if is_workforce_policy_enabled(share_id):
+			_add_part(parts, share_id, "Profit share %d%%" % roundi(float(PROFIT_SHARE_RATE[share_id]) * 100.0),
+				profit_share_satisfaction(share_id))
+			break
 	match union_tier():
 		UNION_PARTIAL:
 			_add_part(parts, WORKFORCE_POLICY_UNION_PARTIAL, "Partial Union Agreement", 15.0)
@@ -750,17 +761,47 @@ func _aged_shifts(shifts: Array) -> Array:
 				kept.append(s)
 	return kept
 
-## One turn of movement: max(10% of the gap, 2) toward the target, landing on it within 2.
-static func step_toward(current: float, target: float) -> float:
+## One turn of movement: max(10% of the gap, 2) toward the target, landing on it within 2. A rise moves `rise` times
+## as far (rise_multiplier: a Comprehensive Union Agreement doubles it).
+static func step_toward(current: float, target: float, rise: float = 1.0) -> float:
 	var gap := target - current
-	if absf(gap) <= SATISFACTION_STEP_MIN:
+	var share := SATISFACTION_STEP_SHARE
+	var least := SATISFACTION_STEP_MIN
+	if gap > 0.0:
+		share *= rise
+		least *= rise
+	if absf(gap) <= least:
 		return target
-	return current + signf(gap) * maxf(absf(gap) * SATISFACTION_STEP_SHARE, SATISFACTION_STEP_MIN)
+	return current + signf(gap) * maxf(absf(gap) * share, least)
+
+## How many times as fast satisfaction rises this turn: COMPREHENSIVE_RISE_MULT under a Comprehensive Union Agreement.
+func rise_multiplier() -> float:
+	return COMPREHENSIVE_RISE_MULT if union_tier() == UNION_COMPREHENSIVE else 1.0
+
+## The share of profit the chosen profit share setting pays, 0 with none.
+func profit_share_rate() -> float:
+	for share_id: String in PROFIT_SHARE_RATE:
+		if is_workforce_policy_enabled(share_id):
+			return float(PROFIT_SHARE_RATE[share_id])
+	return 0.0
+
+## Last turn's profit after tax, from Production's turn summary: 0 before the first turn resolves.
+func last_profit_after_tax() -> float:
+	var s: Dictionary = Production.last_turn_summary
+	return float(s.get("pre_tax_profit", 0.0)) - float(s.get("taxes_paid", 0.0))
+
+## A profit share setting's satisfaction at last turn's profit: PROFIT_SHARE_SATISFACTION, halved for the lower share.
+func profit_share_satisfaction(share_id: String) -> float:
+	var profit := last_profit_after_tax()
+	var value := float(PROFIT_SHARE_SATISFACTION.loss)
+	if profit > 0.0:
+		value = float(PROFIT_SHARE_SATISFACTION.small if profit < PROFIT_SHARE_SMALL_BELOW else PROFIT_SHARE_SATISFACTION.large)
+	return value * (PROFIT_SHARE_LOWER_SCALE if share_id == WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE else 1.0)
 
 ## Once a turn at the start of PROCESS: move toward the target, age the shifts, count the union's
 ## pay rounds.
 func tick_satisfaction() -> void:
-	satisfaction = step_toward(satisfaction, target_satisfaction())
+	satisfaction = step_toward(satisfaction, target_satisfaction(), rise_multiplier())
 	target_shifts = _aged_shifts(target_shifts)
 	if union_tier() != UNION_NONE:
 		union_active_turns += 1
@@ -778,7 +819,7 @@ func projected_satisfaction(turns: int) -> float:
 		var target := base
 		for s in shifts:
 			target += float((s as Dictionary).get("value", 0.0))
-		value = step_toward(value, clampf(target, SATISFACTION_MIN, SATISFACTION_MAX))
+		value = step_toward(value, clampf(target, SATISFACTION_MIN, SATISFACTION_MAX), rise_multiplier())
 		shifts = _aged_shifts(shifts)
 	return value
 

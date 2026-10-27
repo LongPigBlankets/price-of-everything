@@ -34,11 +34,12 @@ func _test_start_labour_preset() -> void:
 	_check(parsed is Dictionary, "metal_magnate start config parses")
 	var expanded: Dictionary = SaveLoad.expand_start_config(parsed as Dictionary)
 	var match_block: Dictionary = expanded.get("match", {})
-	_check(is_equal_approx(float(match_block.get("labour_multiplier", 0.0)), EconomyConfig.LABOUR_MULTIPLIER_MAX)
+	_check(is_equal_approx(float(match_block.get("labour_multiplier", 0.0)), 1.0)
+		and is_equal_approx(float(match_block.get("idle_labour_pay_share", 0.0)), 0.75)
 		and is_equal_approx(float(match_block.get("labour_satisfaction", -1.0)), 40.0)
 		and int(match_block.get("work_week_hours", 0)) == 45
 		and not match_block.has("labour_output_pressure_pct"),
-		"metal_magnate starts on 1.2x work effort, satisfaction +40, a 45 hour week")
+		"metal_magnate starts on Standard effort, 75% pay while idle, satisfaction +40, a 45 hour week")
 
 	# Every other start: default effort, satisfaction 0, the 45 hour week.
 	var plain: Dictionary = SaveLoad.expand_start_config({"name": "plain", "money": 100})
