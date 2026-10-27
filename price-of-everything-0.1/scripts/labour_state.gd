@@ -70,14 +70,14 @@ const HAZARDOUS_BUILDINGS := {
 # --- Work effort (the labour_multiplier knob: 0.8 Lean, 1.0 Standard, 1.2 Overtime) ---
 const EFFORT_SALARY := {"lean": -0.20, "standard": 0.0, "overtime": 0.25}
 const EFFORT_THROUGHPUT_PCT := {"lean": -10.0, "standard": 0.0, "overtime": 15.0}
-const EFFORT_SATISFACTION := {"lean": -20.0, "standard": 0.0, "overtime": -30.0}
+const EFFORT_SATISFACTION := {"lean": -15.0, "standard": 0.0, "overtime": -25.0}
 
 # --- Work week ---
 const WORK_WEEK_HOURS: Array[int] = [35, 40, 45, 50]
 const WORK_WEEK_DEFAULT := 45
 const WORK_WEEK_THROUGHPUT_PCT := {35: 5.0, 40: 9.0, 45: 12.0, 50: 14.5}
 const WORK_WEEK_UNION_LABOUR_PER_LEVEL := 0.10
-const WORK_WEEK_SATISFACTION_PER_LEVEL := -5.0
+const WORK_WEEK_SATISFACTION_PER_LEVEL := -2.5
 
 # --- Safety, pensions, bonus, profit share, automation, lockers ---
 const MINIMAL_SAFETY_THROUGHPUT_PCT := 10.0
@@ -93,6 +93,14 @@ const AUTOMATION_POWER_MULT := 1.10
 const AUTOMATION_MAINT_MULT := 1.10
 const LEAVE_THROUGHPUT_PCT := -2.0
 const LONG_TENURE_PAYOUT := 0.10
+## Satisfaction from the pay while idle setting, by its share: below 60%, below 90%, otherwise.
+const IDLE_PAY_SATISFACTION := {"half": -10.0, "most": -5.0, "full": 5.0}
+const MINIMAL_SAFETY_SATISFACTION := -20.0
+const HIGH_SAFETY_SATISFACTION := 10.0
+const MINIMUM_PENSIONS_SATISFACTION := -10.0
+const AUTOMATION_SATISFACTION := -5.0
+## Metal Magnate's and Glass Merchant's workforce while the company still owns the Original Furnace (LegacyPerk).
+const LIKE_FAMILY_SATISFACTION := 25.0
 
 # --- Unions ---
 const UNION_NONE := 0
@@ -152,6 +160,7 @@ var union_grandfathered_ids: Dictionary = {}
 var policy_throughput_enabled := true
 ## Strikes, pay rises and accidents (docs/pacing-labour-mining-licensing-spec.md §6, §4.5).
 const LabourUnrest := preload("res://scripts/labour_unrest.gd")
+const LegacyPerk := preload("res://scripts/legacy_perk.gd")
 var unrest: LabourUnrest = LabourUnrest.new()
 
 
@@ -636,18 +645,18 @@ func _projected_effects(turns_ahead: int) -> Dictionary:
 func satisfaction_contributions() -> Array:
 	var parts: Array = []
 	_add_part(parts, "effort", "Overtime" if effort_key() == "overtime" else "Lean effort", float(EFFORT_SATISFACTION[effort_key()]))
-	var idle := 5.0
+	var idle := float(IDLE_PAY_SATISFACTION.full)
 	if idle_labour_pay_share < 0.6:
-		idle = -15.0
+		idle = float(IDLE_PAY_SATISFACTION.half)
 	elif idle_labour_pay_share < 0.9:
-		idle = -5.0
+		idle = float(IDLE_PAY_SATISFACTION.most)
 	_add_part(parts, "idle_pay", "Pay while idle %d%%" % int(round(idle_labour_pay_share * 100.0)), idle)
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_LAX_SAFETY):
-		_add_part(parts, WORKFORCE_POLICY_LAX_SAFETY, "Minimal safety", -25.0)
+		_add_part(parts, WORKFORCE_POLICY_LAX_SAFETY, "Minimal safety", MINIMAL_SAFETY_SATISFACTION)
 	elif is_workforce_policy_enabled(WORKFORCE_POLICY_STRICT_SAFETY):
-		_add_part(parts, WORKFORCE_POLICY_STRICT_SAFETY, "High safety", 10.0)
+		_add_part(parts, WORKFORCE_POLICY_STRICT_SAFETY, "High safety", HIGH_SAFETY_SATISFACTION)
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_PENSIONS_MINIMUM):
-		_add_part(parts, WORKFORCE_POLICY_PENSIONS_MINIMUM, "Minimum legal pensions", -15.0)
+		_add_part(parts, WORKFORCE_POLICY_PENSIONS_MINIMUM, "Minimum legal pensions", MINIMUM_PENSIONS_SATISFACTION)
 	elif is_workforce_policy_enabled(WORKFORCE_POLICY_GENEROUS_PENSIONS):
 		var turns := int((workforce_policy_effects.get(WORKFORCE_POLICY_GENEROUS_PENSIONS, {}) as Dictionary).get("active_turns", 0))
 		_add_part(parts, WORKFORCE_POLICY_GENEROUS_PENSIONS, "Generous pensions", 20.0 if turns >= GENEROUS_PENSIONS_MATURE_TURNS else 10.0)
@@ -667,7 +676,7 @@ func satisfaction_contributions() -> Array:
 		_:
 			_add_part(parts, "work_week", "%d hour week" % work_week_hours, WORK_WEEK_SATISFACTION_PER_LEVEL * float(work_week_level()))
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_PUSH_AUTOMATION):
-		_add_part(parts, WORKFORCE_POLICY_PUSH_AUTOMATION, "Automation", -10.0)
+		_add_part(parts, WORKFORCE_POLICY_PUSH_AUTOMATION, "Automation", AUTOMATION_SATISFACTION)
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE):
 		_add_part(parts, WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE, "Extended Annual Leave", 8.0)
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE):
@@ -676,6 +685,8 @@ func satisfaction_contributions() -> Array:
 		_add_part(parts, WORKFORCE_POLICY_LONG_TENURE, "Long Tenure Awards", 5.0)
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_STOCK_OPTIONS):
 		_add_part(parts, WORKFORCE_POLICY_STOCK_OPTIONS, "Stock Options", 10.0)
+	if LegacyPerk.holds():
+		_add_part(parts, "like_family", "Like Family", LIKE_FAMILY_SATISFACTION)
 	if unrest.routinely_broke:
 		_add_part(parts, "routinely_broke_strikes", "Routinely broke strikes", LabourUnrest.ROUTINE_SATISFACTION)
 	var workers := workforce_headcount()
@@ -810,6 +821,16 @@ func band_summary(value: float = INF) -> Dictionary:
 	return {"title": "Restless", "tone": "bad", "words": "Better pay, shorter hours or a union bring it back up."}
 
 ## A satisfaction figure as the panels print it: "+42", "−18", "0".
+## A contribution as the ledger and the knobs show it: whole points, or a half point where there is one (−2.5).
+static func contribution_text(value: float) -> String:
+	if is_equal_approx(value, roundf(value)):
+		return signed_text(value)
+	return ("+%.1f" if value > 0.0 else "−%.1f") % absf(value)
+
+## The size of a contribution without its sign, for the knob words: "15", "2.5".
+static func points_text(value: float) -> String:
+	return contribution_text(absf(value)).trim_prefix("+")
+
 static func signed_text(value: float) -> String:
 	var n := roundi(value)
 	if n > 0:

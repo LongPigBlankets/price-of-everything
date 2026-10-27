@@ -18,7 +18,7 @@ const LORE_PARAGRAPHS := [
 	"They've started calling you the Glass Merchant. In Ashmouth that isn't entirely a compliment. It means someone so plain you can see straight through. Fine. Let them look. The furnaces are lit and so are your eyes when you look to the future.",
 	"Where will you take this next? Will you stun everyone a second time?",
 ]
-const BONUS := "Ashmouth Glassworks Bonus: +5% glass output and +5% window output."
+const BONUS := "Ashmouth Glassworks Bonus: +5% glass output and +5% window output.\nLike Family: +25 workforce satisfaction."
 
 var _input_blocked_parent: Node = null
 

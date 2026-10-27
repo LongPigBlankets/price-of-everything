@@ -255,17 +255,17 @@ plant and oil wells (`b_001, b_002, b_003, b_008, b_011, b_012, b_013, b_032–b
 
 | Knob | Option | Throughput | Cash | Satisfaction |
 |---|---|---|---|---|
-| Work effort | Lean | −10% | salary −20% | −20 |
+| Work effort | Lean | −10% | salary −20% | −15 |
 | | Standard | — | — | 0 |
-| | Overtime | +15% | salary +25% | −30 |
-| Pay while idle | 50% / 75% / 100% | — | as today | −15 / −5 / +5 |
-| Safety | Minimal | +10% at hazardous sites | labour −5% | −25, plus accidents (§4.5) |
+| | Overtime | +15% | salary +25% | −25 |
+| Pay while idle | 50% / 75% / 100% | — | as today | −10 / −5 / +5 |
+| Safety | Minimal | +10% at hazardous sites | labour −5% | −20, plus accidents (§4.5) |
 | | Standard | — | — | 0 |
 | | High | — | labour +5% at hazardous sites | +10; no accidents; halves seam-card accident odds (§8.7) |
-| Pensions | Minimum legal / Average / Generous | — | −5% / — / +3% rising (existing ramp) | −15 / 0 / +10, rising to +20 after 30 turns |
+| Pensions | Minimum legal / Average / Generous | — | −5% / — / +3% rising (existing ramp) | −10 / 0 / +10, rising to +20 after 30 turns |
 | Annual bonus | None / Small / Generous | — | — / +2.5% / +5% | 0 / +8 / +15 |
 | Profit share | None / 5% / 10% | — (no output effect any more) | share of profit after tax and dividends | 0 / +10 / +20 |
-| Automation (switch) | On | — | labour −15% on level 2+ buildings, power +10%, maintenance +10% | −10, plus a −10 jump when switched on (layoffs) |
+| Automation (switch) | On | — | labour −15% on level 2+ buildings, power +10%, maintenance +10% | −5, plus a −10 jump when switched on (layoffs) |
 | Locker | Extended Annual Leave | −2% | — | +8 |
 | Locker | Generous Parental Leave | −2% | — | +8 |
 | Locker | Long Tenure Awards (HR Director) | — | existing trend | +5 |
@@ -273,10 +273,16 @@ plant and oil wells (`b_001, b_002, b_003, b_008, b_011, b_012, b_013, b_032–b
 | **New knob: Union** (always available) | None | — | — | 0 |
 | | **Partial Union Agreement** | — | labour +10% at once, then +1% more each pay round (every 10th turn), to +25% *(ramp proposed)* | **+15**; no strikes while active |
 | | **Comprehensive Union Agreement** | — | the same pay-round ramp *(proposed)*; **every labour cost cut counts at half** while it stands (§4.4a) | **+30**; no strikes while active |
-| **New knob: Work week** (LOCKED, §4.4b) | 35 hours (level 1) | +5% | union: labour +10%; no union: — | union: 0; no union: −5 |
-| | 40 hours (level 2) | +9% | union: labour +20%; no union: — | union: 0; no union: −10 |
-| | 45 hours (level 3) | +12% | union: labour +30%; no union: — | union: 0; no union: −15 |
-| | 50 hours (level 4) | +14.5% | union: labour +40%; no union: — | union: 0; no union: −20 |
+| **New knob: Work week** (LOCKED, §4.4b) | 35 hours (level 1) | +5% | union: labour +10%; no union: — | union: 0; no union: −2.5 |
+| | 40 hours (level 2) | +9% | union: labour +20%; no union: — | union: 0; no union: −5 |
+| | 45 hours (level 3) | +12% | union: labour +30%; no union: — | union: 0; no union: −7.5 |
+| | 50 hours (level 4) | +14.5% | union: labour +40%; no union: — | union: 0; no union: −10 |
+
+**Owner ruling, 27 October.** Every policy option worth −10 or worse gives 5 back (Lean −15, Overtime −25, half pay
+while idle −10, Minimal safety −20, Minimum legal pensions −10, Automation −5); options at −5 are unchanged; the work
+week costs −2.5 a level, not −5. Events and their shifts (layoffs, demolition, accidents, strikes broken, union step
+down, reneging) are unchanged. **Like Family**: Metal Magnate and Glass Merchant get +25 while the company still owns
+its Original Furnace, ending for good with it as the legacy perk does (`LegacyPerk.holds`).
 
 **Company contributions — LOCKED.** These are not policies; they come from the company itself:
 
@@ -313,10 +319,10 @@ All at the default 45-hour week unless stated:
 
 | Combination | Throughput | Labour cost | Target |
 |---|---|---|---|
-| Overtime + Minimal safety, no union (squeeze) | +27%, +37% at hazardous sites | +20% | −70: on the strike line |
-| Overtime + Partial Union (buy peace) | +27% | +65%, rising | −15: slow hiring, but no strikes |
+| Overtime + Minimal safety, no union (squeeze) | +27%, +37% at hazardous sites | +20% | −52.5 (was −70, on the strike line, before the 27 October ruling) |
+| Overtime + Partial Union (buy peace) | +27% | +65%, rising | −10: slow hiring, but no strikes |
 | Comprehensive Union + 10% profit share + generous bonus + generous pensions (30 turns in) + High safety, at 35 hours (model employer) | +5% | about +35%, rising, plus profit share | +95 |
-| Comprehensive Union, then Automation | +12% | Automation's −15% counts as −7.5%, because it came after signing | +20 |
+| Comprehensive Union, then Automation | +12% | Automation's −15% counts as −7.5%, because it came after signing | +25 |
 
 ### 4.4a Comprehensive Union Agreement: halved labour cuts — LOCKED
 
@@ -408,9 +414,9 @@ All at the default 45-hour week unless stated:
 - The cost of each level depends on the union:
   - **under either union agreement**: labour cost +10% per level (+10% to +40%), and no
     satisfaction cost;
-  - **without a union**: no labour cost, and −5 satisfaction per level (−5 to −20).
+  - **without a union**: no labour cost, and −2.5 satisfaction per level (−2.5 to −10; owner ruling 27 October, was −5).
 - **Default for a new game: 45 hours (LOCKED).** Every option has an effect; there is no "off".
-  - Every company therefore runs at +12% throughput from turn 1: −15 satisfaction without a
+  - Every company therefore runs at +12% throughput from turn 1: −7.5 satisfaction without a
     union, or +30% labour with one.
   - The e2e baseline must be re-measured with this default.
 - It stacks with Work effort. Overtime and a 50-hour week give +29.5% throughput (throughput pct
@@ -455,8 +461,8 @@ than being an event.
 
 | Start | Satisfaction | Notes |
 |---|---|---|
-| Metal Magnate | +40 | Presets Overtime, 50% idle pay and the 45-hour default, and starts above 5,000 workers. Target is −55 (−30 −15 −15 +5). Crosses −5 at turn 8 and settles at −55 around turn 26. This is the first labour decision |
-| Glass Merchant | +20 | |
+| Metal Magnate | +40 | Presets Overtime, 50% idle pay and the 45-hour default, starts above 5,000 workers, and has Like Family while it owns the Original Furnace. Target is −12.5 (−25 −10 −7.5 +5 +25; was −55 before the 27 October ruling). Crosses −5 around turn 16 and settles at −12.5 around turn 20. This is the first labour decision |
+| Glass Merchant | +20 | Like Family while it owns the Original Furnace. Target +27.5 (+5 −7.5 +5 +25) |
 | Other starts | 0 | |
 
 ### 4.7 UX: top bar — LOCKED (layout *proposed*)

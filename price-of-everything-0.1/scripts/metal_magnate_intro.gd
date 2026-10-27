@@ -17,7 +17,7 @@ const LORE_PARAGRAPHS := [
 	"Maybe you can succeed where your father couldn't. After all, you hear what they're saying in the furnace halls now, how they whisper when you walk past. They look up to you. They call you the Metal Magnate. You tell yourself you shouldn't let it go to your head. It would be too easy to rest on your laurels.",
 	"So... what will you make of yourself and your business. How will you leave your mark?",
 ]
-const BONUS := "Legacy of Metal Bonus: +10% iron ingots, copper ingots, alloy metal ingots and steel output."
+const BONUS := "Legacy of Metal Bonus: +10% iron ingots, copper ingots, alloy metal ingots and steel output.\nLike Family: +25 workforce satisfaction."
 
 var _input_blocked_parent: Node = null
 

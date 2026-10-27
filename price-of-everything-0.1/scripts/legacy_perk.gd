@@ -1,6 +1,7 @@
 extends RefCounted
 ## A start's legacy perk (docs/pacing-labour-mining-licensing-spec.md §3.2): Metal Magnate's Legacy of Metal and
-## Glass Merchant's Ashmouth Glassworks hold while the start's Original Furnace is still the player's.
+## Glass Merchant's Ashmouth Glassworks, with Like Family's satisfaction (§4.4), hold while the start's Original
+## Furnace is still the player's.
 ##
 ## The start file marks the furnace (`"legacy_anchor": true`, `"name": "Original Furnace"`) and each perk modifier
 ## (`"condition": "legacy_anchor"`). reconcile() runs at PROCESS start, before production: once no building the
@@ -20,6 +21,13 @@ static func anchor_owned() -> bool:
 		if bool(b.get(CONDITION, false)) and BuildingState.is_player_owned(b):
 			return true
 	return false
+
+
+## True while the start's legacy holds: the Original Furnace is the player's and the perk was never lost. Selling
+## the furnace ends it for good, as it ends the perk modifiers; buying it back restores neither. Like Family
+## (LabourState.LIKE_FAMILY_SATISFACTION) reads this.
+static func holds() -> bool:
+	return anchor_owned() and not perk_modifiers().is_empty()
 
 
 ## The modifiers held by the legacy condition.
