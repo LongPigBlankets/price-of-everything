@@ -2516,6 +2516,7 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 		["Goods sold", float(s.get("goods_sales_revenue", 0.0))],
 		["Power sold", float(s.get("power_sales_revenue", 0.0))],
 		["Green subsidy", float(s.get("green_subsidy_received", 0.0))],
+		["Licence sales", float(s.get("licence_income", 0.0))],
 	]
 	var costs := [
 		["Operating costs", float(s.get("maintenance_paid", 0.0)) + float(s.get("labour_paid", 0.0)) + float(s.get("advisor_paid", 0.0))],
@@ -2523,7 +2524,8 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 		["Transport costs", float(s.get("transport_paid", 0.0))],
 		["Goods purchased", float(s.get("goods_purchased_cost", 0.0))],
 		["Warehousing", float(s.get("warehousing_paid", 0.0))],
-		["Opening costs", float(s.get("one_off_paid", 0.0))],
+		["Fees and settlements", float(s.get("one_off_paid", 0.0))],
+		["Royalties", float(s.get("royalties_paid", 0.0))],
 		["Loan repayments", float(s.get("interest_paid", 0.0))],
 		["Taxes and dividends", float(s.get("taxes_paid", 0.0)) + float(s.get("dividends_paid", 0.0))],
 		["Carbon tax", float(s.get("carbon_tax_paid", 0.0))],

@@ -38,6 +38,11 @@ const FIELDS := {
 			"accident_down",
 			"accident_turns",
 			"pending_purchases",
+			"licences",
+			"licensed_out",
+			"licence_ready",
+			"unlock_turns",
+			"free_picks",
 			"infrastructure_usage_last_turn",
 			"infrastructure_usage_streaks",
 			"input_tile_only",
@@ -101,7 +106,8 @@ const FIELDS := {
 			"transaction_log",
 			"labour_target_shifts",
 			"strike_record",
-			"union_grandfathered_ids"
+			"union_grandfathered_ids",
+			"licence_sales_due"
 		],
 		"number": [
 			"advisor_peak_profit",

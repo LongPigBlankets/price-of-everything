@@ -9,10 +9,14 @@ extends Control
 ## white scale filling toward the target with the count over it ("212/500"). By state:
 ##   open      a blueprint, its scale filling;
 ##   locked    the blueprint faded, a padlock in its corner, and the research it needs under the scale;
+##   ready     a licence group member whose condition is met: the blueprint, an amber lamp lit in its corner;
 ##   granted   the cream copy kept on file, a red rubber GRANTED stamp across its foot;
-##   licensed  the same, the stamp in blue: LICENSED (taken free from a knowledge sharing offer).
-## While licences are being chosen an open sheet glows; the board (board_view.gd) turns a click on it into
-## `picked`. The sheet passes the pointer on, so a drag that starts on it still pans the board.
+##   developed the same, the stamp in blue: DEVELOPED (in house, with a free development);
+##   licensed  the same, the stamp in green: LICENSED (bought from its licensor).
+## A licence group member prints its price or its holding on a line at its foot, and an in-house process its
+## licence-out price. While free developments are being chosen an open sheet glows; the board (board_view.gd)
+## turns a click on it into `picked`, and so does a click on an `actionable` sheet (one with a licence to buy or
+## sell). The sheet passes the pointer on, so a drag that starts on it still pans the board.
 
 signal hover_changed(card: Control, on: bool)
 signal picked(card: Control)
@@ -45,8 +49,12 @@ const STRIP_INK := Color("#f4f0e2")
 
 var title := ""
 var node_id := ""
-## "open", "locked", "granted" or "licensed".
+## "open", "locked", "ready", "granted", "developed" or "licensed".
 var state := "open"
+## The licence line at the foot ("License for £200"), or "".
+var licence := ""
+## True when a click opens the licence dialog (ready to license, or an in-house process to license out).
+var actionable := false
 ## The condition in a line or two, and how far it has come (Vector2i.ZERO when it has no count).
 var spec := ""
 var progress := Vector2i.ZERO
@@ -97,12 +105,13 @@ func configure(unlock: Dictionary, presentation: Dictionary) -> void:
 
 
 func refresh_look() -> void:
-	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if (choosing and eligible) else Control.CURSOR_ARROW
+	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if ((choosing and eligible) or (not choosing and actionable)) \
+		else Control.CURSOR_ARROW
 	queue_redraw()
 
 
 func is_granted() -> bool:
-	return state == "granted" or state == "licensed"
+	return state in ["granted", "developed", "licensed"]
 
 
 ## The icon on the sticky note, and the tint it is drawn in (white keeps a good's colours; navy prints a mask).
@@ -141,7 +150,7 @@ func pin_point() -> Vector2:
 
 func _paper() -> Color:
 	match state:
-		"granted", "licensed":
+		"granted", "developed", "licensed":
 			return Ink.PAPER
 		"locked":
 			return Ink.FADED
@@ -150,7 +159,7 @@ func _paper() -> Color:
 
 func _edge() -> Color:
 	match state:
-		"granted", "licensed":
+		"granted", "developed", "licensed":
 			return Ink.PAPER_EDGE
 		"locked":
 			return Ink.FADED_EDGE
@@ -197,8 +206,18 @@ func _draw() -> void:
 	Ink.print_lines(self, Ink.spec_font(), lines, PAD, y, w, spec_px, pitch, Color(_print_ink(), 0.95))
 	y += pitch * float(maxi(lines.size(), 1)) + 6.0
 	var reward_bottom := _draw_reward(Rect2(PAD - 2.0, y, w + 4.0, 0.0))
-	# The foot: a note line (what a locked sheet needs, or its category on a search) under the scale.
+	# The foot: the licence line, a note line (what a locked sheet needs, or its category on a search), the scale.
 	var foot := size.y - PAD - 2.0
+	if licence != "":
+		var lic_text := licence.to_upper()
+		var lpx := Ink.fit(Ink.spec_font(), lic_text, w, NOTE_PX, 10, 1)
+		var ll := Ink.wrap(Ink.spec_font(), lic_text, w, lpx, 1)
+		var lic_ink := Ink.NAVY if is_granted() else Ink.PRICE_AMBER
+		Ink.print_lines(self, Ink.spec_font(), ll, PAD, foot - float(lpx) - 2.0, w, lpx, 0.0, lic_ink)
+		if actionable:
+			draw_line(Vector2(PAD, foot + 1.0), Vector2(PAD + minf(w, Ink.spec_font().get_string_size(lic_text,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, lpx).x), foot + 1.0), Color(lic_ink, 0.8), 1.2)
+		foot -= float(lpx) + 7.0
 	if note != "":
 		var note_text := note.to_upper()
 		var npx := Ink.fit(Ink.spec_font(), note_text, w, NOTE_PX, 11, 1)
@@ -206,21 +225,32 @@ func _draw() -> void:
 		var colour := Color("#ffd27a") if state == "locked" else _print_ink()
 		Ink.print_lines(self, Ink.spec_font(), nl, PAD, foot - float(npx) - 2.0, w, npx, 0.0, colour)
 		foot -= float(npx) + 6.0
-	if not is_granted() and progress != Vector2i.ZERO:
+	if not is_granted() and state != "ready" and progress != Vector2i.ZERO:
 		_draw_scale(Rect2(PAD, maxf(foot - 28.0, reward_bottom + 2.0), w, 28.0))
+	if state == "ready":
+		_draw_lamp(Vector2(size.x - PAD - 11.0, PAD + 13.0))
 	if state == "locked":
 		Ink.padlock(self, Vector2(size.x - PAD - 13.0, PAD + 12.0), LOCK_PX, Color(1, 1, 1, 0.9))
 	if is_granted():
-		var licensed := state == "licensed"
 		var turn := STAMP_ANGLE + float(absi(hash(title)) % 7 - 3) * 0.012
 		var cy := clampf(foot - STAMP_SIZE.y * 0.5 - 2.0, reward_bottom + STAMP_SIZE.y * 0.5 - 4.0, size.y - STAMP_SIZE.y * 0.5 - 6.0)
-		Ink.stamp(self, Vector2(size.x * 0.5, cy), STAMP_SIZE, "LICENSED" if licensed else "GRANTED",
-			Ink.STAMP_BLUE if licensed else Ink.STAMP_RED, turn, hash(title))
+		var word := {"developed": "DEVELOPED", "licensed": "LICENSED"}.get(state, "GRANTED") as String
+		var ink := {"developed": Ink.STAMP_BLUE, "licensed": Ink.STAMP_GREEN}.get(state, Ink.STAMP_RED) as Color
+		Ink.stamp(self, Vector2(size.x * 0.5, cy), STAMP_SIZE, word, ink, turn, hash(title))
 	if hot and not (choosing and not eligible):
 		draw_rect(r.grow(1.0), Color(1, 1, 1, 0.55), false, 1.5)
 	if choosing and not eligible:
 		draw_rect(r, Color(0.02, 0.04, 0.08, 0.45))
-	Ink.pin(self, Vector2(size.x * 0.5, PIN_DROP + 4.0), "people_pin_blue" if state == "licensed" else "people_pin_red", 1.5)
+	Ink.pin(self, Vector2(size.x * 0.5, PIN_DROP + 4.0), "people_pin_blue" if state in ["developed", "licensed"] else "people_pin_red", 1.5)
+
+
+## The ready lamp: an amber lens lit in a black bezel, its glow on the blueprint round it.
+func _draw_lamp(at: Vector2) -> void:
+	for i in 4:
+		draw_circle(at, 9.0 + float(i) * 3.0, Color(Ink.LAMP_AMBER, 0.16 - float(i) * 0.035))
+	draw_circle(at, 9.0, Color("#1a1c20"))
+	draw_circle(at, 7.0, Ink.LAMP_AMBER)
+	draw_circle(at + Vector2(-2.0, -2.0), 2.4, Color(1, 1, 1, 0.75))
 
 
 ## What the research grants on a white label strip stuck across the sheet: a navy GRANTS tab, then the reward in
@@ -270,7 +300,7 @@ func _draw_border(r: Rect2) -> void:
 
 func _draw_title() -> void:
 	var left := PAD + NOTE_SIDE + 12.0
-	var w := size.x - left - PAD - (LOCK_PX + 2.0 if state == "locked" else 0.0)
+	var w := size.x - left - PAD - (LOCK_PX + 2.0 if state in ["locked", "ready"] else 0.0)
 	var text := title.to_upper()
 	var font := Ink.title_font()
 	var px := Ink.fit(font, text, w, TITLE_PX, TITLE_MIN_PX, 3)

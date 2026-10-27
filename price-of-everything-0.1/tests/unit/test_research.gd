@@ -770,8 +770,9 @@ func _test_live_unlock_conditions() -> void:
 	# Building additions mark research progress dirty; it is evaluated in the
 	# NARRATIVE phase, so invoke the shared evaluator for this synchronous unit test.
 	ResearchState._check_unlock_conditions()
-	_check(ResearchState.is_unlocked("Basic Blast Furnaces"),
-		"Build Furnace unlock fires with the CSV display name (case-insensitive)")
+	# A licence group member: its condition makes it ready to license (docs/pacing-labour-mining-licensing-spec.md §10).
+	_check(ResearchState.is_licence_ready("Basic Blast Furnaces"),
+		"Build Furnace condition fires with the CSV display name (case-insensitive)")
 
 	# --- Plain Run and concept aliases: one building, sustained full-output streak ---
 	MatchState.reset()
@@ -1296,7 +1297,8 @@ func _test_research_ds2_panel() -> void:
 
 	# The plan chest: a drawer a category; opening one opens that category.
 	var drawers: Array = view.call("drawers")
-	_check(drawers.size() == (panel.call("categories") as Array).size() and drawers.size() == 12, "research ds2: the plan chest has a drawer per shown category, 12 with Recycling hidden (%d)" % drawers.size())
+	_check(drawers.size() == (panel.call("categories") as Array).size() + 1 and drawers.size() == 13,
+		"research ds2: the plan chest has a drawer per shown category (12 with Recycling hidden) and the Licence groups drawer (%d)" % drawers.size())
 	var chem: Button = null
 	for d: Button in drawers:
 		if str(d.get_meta("category", "")) == "Chemistry":
@@ -1400,7 +1402,7 @@ func _test_research_ds2_panel() -> void:
 	panel.call("open_with_search", "")
 	panel.call("select_category", "Extraction")
 
-	# Choosing a free licence: an open research glows, a click licenses it.
+	# Choosing a free development: an open research glows, a click develops it in house.
 	panel.set("_free_unlocks", 1)
 	panel.call("begin_free_unlock_choice")
 	await get_tree().process_frame
@@ -1432,7 +1434,7 @@ func _test_research_ds2_panel() -> void:
 		and not bool(panel.get("_choosing_free_unlock")),
 		"research ds2: clicking an eligible drawing licenses it and spends the free unlock")
 	var licensed: Control = view.call("card_for", "Beneficiated Iron Mining")
-	_check(licensed != null and str(licensed.get("state")) == "licensed", "research ds2: a licensed research is stamped LICENSED")
+	_check(licensed != null and str(licensed.get("state")) == "developed", "research ds2: a free development is stamped DEVELOPED")
 
 	# Switched off, the old canvas is back as it was.
 	UiPrefs.set_use_research_ds2(false)

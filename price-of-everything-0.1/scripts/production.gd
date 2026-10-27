@@ -242,6 +242,12 @@ func _process_production() -> void:
 	# A start's one-off charges booked this turn (MatchState.one_off_charges), and their labels.
 	"one_off_paid": 0.0,
 	"one_off_lines": [],
+	# Research licensing (ResearchLicensing.settle_turn): royalties charged on this turn's revenue and licences
+	# sold, both before tax, with their lines ({title, rate, amount} / {title, amount}).
+	"royalties_paid": 0.0,
+	"royalty_lines": [],
+	"licence_income": 0.0,
+	"licence_sale_lines": [],
 	"taxes_paid": 0.0,
 	"dividends_paid": 0.0,
 	"profit_sharing_paid": 0.0,
@@ -690,6 +696,7 @@ func _process_production() -> void:
 		summary.money_out += warehousing
 	summary.warehousing_paid = warehousing
 	_apply_one_off_charges(summary)
+	preload("res://scripts/research_licensing.gd").settle_turn(summary)
 	TurnProfiler.section_end("maintenance_labour")
 
 	TurnProfiler.section_begin("loan_payments")

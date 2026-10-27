@@ -474,8 +474,8 @@ func _test_seam_telemetry() -> void:
 	_check(int(row.get("over_cap_sites", -1)) == 1 and is_equal_approx(float(row.get("max_site_m", 0.0)), 3.5),
 		"AC23.2 the turn row counts sites over their free cap and the highest M")
 	var sent: Dictionary = TelemetryState.balancing_payload({"run_id": "m8", "turns": [row]}).turns[0]
-	_check(int(sent.over_cap_sites) == 1 and is_equal_approx(float(sent.max_site_m), 3.5) and TelemetryState.SCHEMA_VERSION == 8,
-		"AC23.2 schema 8 transmits them")
+	_check(int(sent.over_cap_sites) == 1 and is_equal_approx(float(sent.max_site_m), 3.5) and TelemetryState.SCHEMA_VERSION >= 8,
+		"AC23.2 schema 8 and later transmit them")
 	_check(FileAccess.get_file_as_string("res://tools/telemetry/Code.gs").contains('FIXED.push("over_cap_sites", "max_site_m")'),
 		"AC23.2 the receiver appends their columns")
 	_fresh()

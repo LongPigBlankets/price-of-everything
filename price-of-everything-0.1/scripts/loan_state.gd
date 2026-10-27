@@ -342,6 +342,10 @@ func total_per_turn_payment() -> float:
 func average_revenue() -> float:
 	return _avg(_revenue_history)
 
+## Average gross revenue of the last `turns` resolved turns (as many as are kept, up to LOAN_PROFIT_WINDOW).
+func recent_revenue(turns: int) -> float:
+	return _avg(_revenue_history.slice(maxi(0, _revenue_history.size() - turns)))
+
 func record_turn_economics(net_profit: float, revenue: float) -> void:
 	# Called once per turn by Production with the company's retained net profit and
 	# gross revenue. Feeds the rolling average that scales borrowing capacity.

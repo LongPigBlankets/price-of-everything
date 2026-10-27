@@ -85,12 +85,9 @@ const TIER_WORDS := {"green": "Beginner friendly", "amber": "Intermediate", "red
 ## The seal when the game starts: over STAMP_SECONDS the die lifts off the press, slides to the form's seal circle,
 ## comes down on it (the impression stays from then on), holds, rises, slides back and settles on the press, so the
 ## impression is in view as the screen fades. Seconds at which each move ends.
-## The three eras of a charter, as shares of its length: 90, 90 and 110 turns of 300 (the owner's rule, 20 October
-## 2026); a shorter or longer charter keeps the shares. The demo's rule spans the campaign's 300 turns, its own
-## 100 the Demo Era and the rest greyed out.
-const ERA_SHARES := [0.3, 0.3, 0.4]
+## The three eras of a charter: EconomyConfig.ERA_SHARES of its length. The demo's rule spans the campaign's
+## EconomyConfig.DEMO_ERA_SPAN turns, its own 100 the Demo Era and the rest greyed out.
 const ERA_NAMES := ["Era 1", "Era 2", "Era 3"]
-const DEMO_ERA_SPAN := 300
 const STAMP_SECONDS := 2.5
 const STAMP_LIFT := 0.3
 const STAMP_SLIDE := 1.2
@@ -571,15 +568,9 @@ func charter_turns() -> int:
 	return _speed_turns
 
 
-## The eras of a charter of `turns`: [[from, to], ...], the last taking what the shares leave (90, 90, 110 of 300).
+## The eras of a charter of `turns`: [[from, to], ...] (EconomyConfig.era_spans).
 static func era_spans(turns: int) -> Array:
-	var out: Array = []
-	var at := 0
-	for i in ERA_SHARES.size():
-		var to := turns if i == ERA_SHARES.size() - 1 else at + roundi(turns * float(ERA_SHARES[i]))
-		out.append([at, to])
-		at = to
-	return out
+	return EconomyConfig.era_spans(turns)
 
 
 # ── The leaves' live parts: the building cells and the paint squares ────────────
@@ -1012,7 +1003,7 @@ func _draw_form() -> void:
 		_ink(c, FONT_PLEX, 14, DEMO_CHARTER, Vector2(m, 500.0 * L))
 		_ink(c, FONT_PLEX, 12, DEMO_SURVEY, Vector2(m, 540.0 * L), INK_DIM)
 		_impression(c, "DEMO", Vector2(w - m - 130.0 * L, 500.0 * L), 200.0 * L)
-		_era_rule(c, Rect2(m, 600.0 * L, inner, 0), DEMO_ERA_SPAN, true)
+		_era_rule(c, Rect2(m, 600.0 * L, inner, 0), EconomyConfig.DEMO_ERA_SPAN, true)
 	else:
 		_ink(c, FONT_PLEX, 14, "Charter of", Vector2(m, 500.0 * L))
 		var opt: Dictionary = SPEEDS[clampi(_speed_index, 0, SPEEDS.size() - 1)]

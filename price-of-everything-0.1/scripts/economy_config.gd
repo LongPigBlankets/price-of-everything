@@ -618,3 +618,40 @@ const LAND_STANDALONE_MULT := 2.0
 const LAND_ECONOMY_STEP := 0.25
 ## The briefing warns once global revenue passes this share of the next doubling.
 const LAND_ECONOMY_FOREWARN := 0.8
+
+# --- Eras (docs/pacing-labour-mining-licensing-spec.md §10.2) ---
+## The three eras of a charter, as shares of its length: 90, 90 and 110 turns of 300 (the owner's rule, 20 October
+## 2026). A shorter or longer charter keeps the shares. The New Game screen draws them, the first licence prices by them.
+const ERA_SHARES := [0.3, 0.3, 0.4]
+## A demo game counts its eras on the campaign's 300 turns, so its own last ten turns are era 2.
+const DEMO_ERA_SPAN := 300
+
+## The eras of a charter of `turns`: [[from, to], ...], the last taking what the shares leave (90, 90, 110 of 300).
+static func era_spans(turns: int) -> Array:
+	var out: Array = []
+	var at := 0
+	for i in ERA_SHARES.size():
+		var to := turns if i == ERA_SHARES.size() - 1 else at + roundi(turns * float(ERA_SHARES[i]))
+		out.append([at, to])
+		at = to
+	return out
+
+# --- Research licensing (scripts/research_licensing.gd, docs/pacing-labour-mining-licensing-spec.md §10) ---
+## The first licence in a group, one-off, by era.
+const LICENCE_FIRST_PRICE := [200.0, 500.0, 2000.0]
+## The second and third licence in a group: a share of company revenue each turn for LICENCE_ROYALTY_TURNS.
+const LICENCE_ROYALTY_RATES := [0.02, 0.08]
+const LICENCE_ROYALTY_TURNS := 30
+## Licensing out: max(LICENCE_OUT_FLOOR, rate × average revenue of LICENCE_OUT_REVENUE_TURNS), the rate the base
+## plus a step for every other unsold in-house rank II and rank III process, capped.
+const LICENCE_OUT_BASE_RATE := 0.10
+const LICENCE_OUT_RATE_RANK_II := 0.025
+const LICENCE_OUT_RATE_RANK_III := 0.05
+const LICENCE_OUT_RATE_CAP := 0.5
+const LICENCE_OUT_FLOOR := 50.0
+const LICENCE_OUT_REVENUE_TURNS := 5
+## The patent window: turns after its development a process can still be licensed out.
+const LICENCE_OUT_WINDOW_TURNS := 60
+## What each licence sold does to the sale price of the goods the process touches, and for how long.
+const LICENCE_OUT_PRICE_PCT := -2.0
+const LICENCE_OUT_PRICE_TURNS := 30

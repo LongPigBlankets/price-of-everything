@@ -93,6 +93,10 @@ const RESEARCH_GOOD_ALIASES := {
 signal unlock_granted(title: String, description: String, via_condition: bool)
 ## Free unlocks given beyond the turn schedule (a mission reward); the research panel adds them.
 signal free_unlocks_granted(count: int)
+## A licence group member met its condition and can now be licensed (research_licensing.gd).
+signal licence_ready(title: String)
+## A licence was bought, a process licensed out, or a free pick spent: the research views redraw.
+signal licences_changed
 
 # Research unlocks: which are unlocked (by free choice or by meeting a condition),
 # and progress toward the action+object+quantity conditions (e.g. "Survey|tiles").
@@ -140,7 +144,22 @@ var _recent_profits: Array = []
 var bonus_free_unlocks := 0
 var _recent_profits_last_turn: int = -1
 const RECENT_PROFIT_TURNS := 12
-var _unlock_defs: Array = []   # [{research_node_id, title, action, object, qty, prereqs, description}]
+## Research licensing (scripts/research_licensing.gd, docs/pacing-labour-mining-licensing-spec.md §10).
+## Group members held: title -> {kind: "inhouse" | "flat" | "royalty", rate, start_turn, price}. Members outside it
+## are not held; nodes outside groups are in-house once unlocked and carry no entry.
+var licences: Dictionary = {}
+## Processes licensed out: title -> the turn it was sold.
+var licensed_out: Dictionary = {}
+## Group members whose condition has been met, waiting to be licensed: title -> the turn it was met.
+var licence_ready_titles: Dictionary = {}
+## The turn each node was unlocked (its development, for the patent window). Unknown for a save from before
+## licensing: those count as turn 0.
+var unlock_turns: Dictionary = {}
+## Licences sold this turn, paid in the turn's costs phase: [{title, amount}].
+var licence_sales_due: Array = []
+## Free picks spent, by title: in-house developments, and the count a load subtracts from the free unlocks earned.
+var free_picks: Dictionary = {}
+var _unlock_defs: Array = []   # [{research_node_id, title, action, object, qty, prereqs, description, licence_group}]
 var _node_id_by_title: Dictionary = {}   # lazy title -> research_node_id (see research_node_id_for_title)
 var _title_by_node_id: Dictionary = {}   # lazy research_node_id -> title (see research_title_for_node_id)
 
@@ -182,6 +201,12 @@ func reset() -> void:
 	bonus_free_unlocks = 0
 	_recent_profits_last_turn = -1
 	_global_trade_license_paid = false
+	licences.clear()
+	licensed_out.clear()
+	licence_ready_titles.clear()
+	unlock_turns.clear()
+	licence_sales_due.clear()
+	free_picks.clear()
 
 
 ## Saved under MatchState's "match" section (keys unchanged from before the extraction).
@@ -203,6 +228,12 @@ func export_fields() -> Dictionary:
 		"bonus_free_unlocks": bonus_free_unlocks,
 		"recent_profits_last_turn": _recent_profits_last_turn,
 		"global_trade_license_paid": _global_trade_license_paid,
+		"licences": licences.duplicate(true),
+		"licensed_out": licensed_out.duplicate(true),
+		"licence_ready": licence_ready_titles.duplicate(true),
+		"unlock_turns": unlock_turns.duplicate(true),
+		"licence_sales_due": licence_sales_due.duplicate(true),
+		"free_picks": free_picks.duplicate(true),
 	}
 
 
@@ -237,6 +268,19 @@ func import_fields(d: Dictionary) -> void:
 	_recent_profits_last_turn = int(d.get("recent_profits_last_turn", -1))
 	_global_trade_license_paid = bool(d.get("global_trade_license_paid", false))
 	bonus_free_unlocks = int(d.get("bonus_free_unlocks", 0))
+	licensed_out = (d.get("licensed_out", {}) as Dictionary).duplicate(true)
+	licence_ready_titles = (d.get("licence_ready", {}) as Dictionary).duplicate(true)
+	unlock_turns = (d.get("unlock_turns", {}) as Dictionary).duplicate(true)
+	licence_sales_due = (d.get("licence_sales_due", []) as Array).duplicate(true)
+	free_picks = (d.get("free_picks", {}) as Dictionary).duplicate(true)
+	if d.has("licences"):
+		licences = (d.get("licences", {}) as Dictionary).duplicate(true)
+	else:
+		# A save from before licensing: every unlocked group member was the company's own, with no royalty.
+		licences.clear()
+		for t: String in unlocked_titles:
+			if licence_group_of(t) != "":
+				licences[t] = {"kind": "inhouse"}
 
 
 ## Once per resolved turn: extend the streak of every advisor count reached this turn and
@@ -395,6 +439,7 @@ func _load_unlock_defs() -> void:
 			"unit": _csv_at(row, idx, "Unit"),
 			"prereqs": prereqs,
 			"description": _csv_at(row, idx, "description"),
+			"licence_group": _csv_at(row, idx, "licence_group"),
 		})
 	f.close()
 
@@ -460,7 +505,8 @@ func grant_first_locked_in_category(category: String) -> String:
 # RESEARCH_YIELD_BONUS triplet was removed.
 
 ## Grant an unlock. via_condition true => earned by its condition (drives the
-## "Unlocked …" dialog); false => a free-chosen unlock (no dialog).
+## "Unlocked …" dialog); false => a free-chosen unlock (no dialog). A licence group member granted here without a
+## licence (a free pick, a mission reward, a cheat) is the company's own: in-house.
 func grant_unlock(title: String, via_condition: bool = false) -> void:
 	if title == "" or unlocked_titles.has(title):
 		return
@@ -468,6 +514,10 @@ func grant_unlock(title: String, via_condition: bool = false) -> void:
 	if definition.is_empty() or not is_research_visible(definition):
 		return
 	unlocked_titles[title] = true
+	unlock_turns[title] = int(TurnManager.current_turn)
+	if str(definition.get("licence_group", "")) != "" and not licences.has(title):
+		licences[title] = {"kind": "inhouse"}
+	licence_ready_titles.erase(title)
 	# Opening the rest of the council is not a modifier, so it is applied here rather than
 	# through apply_unlock_modifier. See docs/early-game-onboarding-spec.md §5.4.
 	if title == SEATS_UNLOCK_TITLE:
@@ -487,6 +537,32 @@ func grant_unlock(title: String, via_condition: bool = false) -> void:
 			desc = str(d.description)
 			break
 	unlock_granted.emit(title, desc, via_condition)
+
+## The licence group a research title belongs to, or "" (research_unlocks.csv `licence_group`).
+func licence_group_of(title: String) -> String:
+	return str(get_unlock_def(title).get("licence_group", ""))
+
+
+## Every loaded definition, in table order. Read-only: the licensing seam walks it for a group's members.
+func unlock_defs() -> Array:
+	return _unlock_defs
+
+
+## True when a licence group member has met its condition and waits to be licensed.
+func is_licence_ready(title: String) -> bool:
+	return licence_ready_titles.has(title) and not unlocked_titles.has(title)
+
+
+## Spends a free pick on `title`: developed in-house, no fee and no royalty, and remembered so a load does not
+## hand the pick back. False when it cannot be taken (unknown, hidden, closed or already unlocked).
+func develop_free(title: String) -> bool:
+	if title == "" or unlocked_titles.has(title) or not is_node_available(title):
+		return false
+	free_picks[title] = true
+	grant_unlock(title, false)
+	licences_changed.emit()
+	return true
+
 
 ## The loaded unlock definition for a research title (empty if unknown).
 func get_unlock_def(title: String) -> Dictionary:
@@ -717,7 +793,8 @@ func _refresh_research_progress() -> void:
 func _check_unlock_conditions() -> void:
 	for d in _unlock_defs:
 		var title := str(d.title)
-		if title == "" or unlocked_titles.has(title) or int(d.qty) <= 0 or not is_research_visible(d):
+		if title == "" or unlocked_titles.has(title) or licence_ready_titles.has(title) or int(d.qty) <= 0 \
+				or not is_research_visible(d):
 			continue
 		var action := str(d.action)
 		if action == "" or str(d.object) == "":
@@ -740,13 +817,23 @@ func _check_unlock_conditions() -> void:
 		# Level-filtered verbs ("Run L1", "Run Profitable L2") are forward-compatible:
 		# every building is Level 1 until the leveling mechanic ships, so L1 gates can
 		# already fire and L2 gates wait for it.
-		if _live_condition_met(d):
-			grant_unlock(title, true)
-			continue
-		# Legacy flat action|object accumulator (Survey progress, etc.).
-		var key := (action + "|" + str(d.object)).to_lower()
-		if int(_unlock_progress.get(key, 0)) >= int(d.qty):
-			grant_unlock(title, true)
+		if _live_condition_met(d) or int(_unlock_progress.get((action + "|" + str(d.object)).to_lower(), 0)) >= int(d.qty):
+			_condition_met_for(title, str(d.get("licence_group", "")))
+
+
+## A node's condition is met: granted, or, for a licence group member, ready to license and kept ready.
+func _condition_met_for(title: String, group: String) -> void:
+	if group == "":
+		grant_unlock(title, true)
+		return
+	if licence_ready_titles.has(title):
+		return
+	licence_ready_titles[title] = int(TurnManager.current_turn)
+	licence_ready.emit(title)
+	licences_changed.emit()
+	EventScheduler.emit_event({"kind": "licence_ready", "severity": "info", "title": "Ready to license: %s" % title,
+		"body": "%s has met its condition. License it in the research panel." % title,
+		"source": "research", "persistent": false, "auto_dismiss_turns": 5})
 
 ## True when a condition in the research vocabulary holds right now. Missions use it for their own
 ## conditions; "Use Infrastructure" is research-only, since its streak is kept per research title.

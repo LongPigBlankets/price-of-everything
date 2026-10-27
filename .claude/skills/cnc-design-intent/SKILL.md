@@ -35,8 +35,13 @@ normalizing their costs into equivalence (the cost gap IS the choice).
 
 **Unlock-by-doing. No research points.** Research unlocks fire from what you DO
 (build counts, production, profitable runs) plus limited free picks. A stance, not an
-omission. Regression smell: adding a science-points currency, or converting
-condition-gates to purchases. (Separately, many conditions are currently DEAD — a bug,
+omission. Licence groups add a price on top (2026-10, owner-approved). Each of a group's three
+competing processes still needs its condition, and only then can be licensed: the first for £200,
+£500 or £2,000 by era, then 2% and 8% of company revenue for 30 turns. A free pick develops one
+in-house with no fee, and only in-house processes can be licensed out
+(`scripts/research_licensing.gd`). Regression smell: adding a science-points currency,
+converting condition-gates to purchases, letting money buy a node whose condition is unmet, or
+licensing out a process that was licensed in. (Separately, many conditions are currently DEAD — a bug,
 see `cnc-content-pipeline` — fixing the conditions is good; changing the paradigm is not.)
 
 **Labour policies trade throughput, never free output (2026-10, owner-approved).** A labour policy

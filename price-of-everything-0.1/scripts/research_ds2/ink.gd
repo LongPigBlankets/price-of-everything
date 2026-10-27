@@ -32,6 +32,10 @@ const NAVY_LINE := Color(0.043, 0.137, 0.251, 0.85)
 ## The rubber stamps' inks.
 const STAMP_RED := Color("#b3241c")
 const STAMP_BLUE := Color("#1d3f94")
+const STAMP_GREEN := Color("#2c6b3a")
+## A ready licence's lamp, and the price line printed on the blueprint.
+const LAMP_AMBER := Color("#ffb53d")
+const PRICE_AMBER := Color("#ffd27a")
 const THREAD_RED := Color("#c22a21")
 ## Licence choosing: an eligible sheet's glow.
 const PICK_GLOW := Color("#f2c14e")

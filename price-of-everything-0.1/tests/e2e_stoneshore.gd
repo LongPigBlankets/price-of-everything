@@ -6,6 +6,7 @@ const Middleman := preload("res://scripts/middleman_service.gd")
 const ConstructionRules := preload("res://scripts/construction_rules.gd")
 const MiningSites := preload("res://scripts/mining_sites.gd")
 const SupplyFallback := preload("res://tests/e2e_supply_fallback.gd")
+const Licensing := preload("res://scripts/research_licensing.gd")
 ## Headless end-to-end scenario for the foundations sprint.
 ##
 ## This runner deliberately instantiates the real main scene and drives the same
@@ -197,6 +198,17 @@ var _fallback_done := {}
 var _pending_routes := {}
 ## Why the game refused the last build, from its own refusal signal.
 var _last_refusal := ""
+## Research licensing (docs/pacing-labour-mining-licensing-spec.md §10, AC36.3): every licence bought or sold,
+## royalties and licence income to date, the figures at the report turns, and the third-licence check (AC36.4).
+var _licence_log: PackedStringArray = []
+var _royalties_total := 0.0
+var _licence_income_total := 0.0
+var _licence_marks := {}
+var _third_licence: PackedStringArray = []
+var _licence_out_declined := {}
+const LICENCE_MARK_TURNS := [50, 100, 150, 300]
+## Cash kept back over a first licence's price.
+const LICENCE_CASH_BUFFER := 200.0
 
 
 func _ready() -> void:
@@ -206,6 +218,7 @@ func _ready() -> void:
 			_collapses.append("t%d %s" % [int(TurnManager.current_turn), str(e.get("body", ""))])
 		if str(e.get("kind", "")).begins_with("strike") or str(e.get("kind", "")) == "accident":
 			_unrest_events[str(e.kind)] = int(_unrest_events.get(str(e.kind), 0)) + 1)
+	Production.turn_processed.connect(_on_turn_processed)
 	print("\n==== price-of-everything E2E: %s ====" % _scenario_name)
 	print("[E2E] scenario=%s target_turn=%d" % [_scenario_name, _target_turn])
 	await _run()
@@ -380,12 +393,110 @@ func _print_profit_trajectory() -> void:
 			"t%d" % _contracts_turn if _contracts_turn >= 0 else "never earned",
 			"t%d" % _stockpiles_turn if _stockpiles_turn >= 0 else "never"])
 		print("  seam fallbacks: %s" % ("none" if _fallbacks.is_empty() else "   ".join(_fallbacks)))
+	_print_licensing()
 	# Where it crossed from black to red for good — the turn a fix has to target.
 	var last_positive := 0
 	for e in _profit_by_turn:
 		if float(e.get("profit", 0.0)) > 0.0:
 			last_positive = int(e.get("turn", 0))
 	print("  last profitable turn: t%d of %d" % [last_positive, int(_profit_by_turn[-1].get("turn", 0))])
+
+
+## A player's licensing (AC36.3), after each turn: license the ready member of each group its buildings use with the
+## best return, the first at its era price and a later one only when its return beats its royalty; license out an
+## eligible in-house process when its price beats the sales it would cost (2% of last turn's sales of the goods it
+## touches, for 30 turns).
+func _licensing_tick() -> void:
+	var s: Dictionary = Production.last_turn_summary
+	var done := int(TurnManager.current_turn) - 1
+	var revenue := float(s.get("goods_sales_revenue", 0.0)) + float(s.get("power_sales_revenue", 0.0))
+	for group: String in Licensing.groups():
+		var ready: Array = Licensing.members(group).filter(func(t: String) -> bool: return ResearchState.is_licence_ready(t))
+		if ready.is_empty():
+			continue
+		ready.sort_custom(func(a: String, b: String) -> bool: return Licensing.estimate_return(a) > Licensing.estimate_return(b))
+		var best: String = ready[0]
+		var gain := Licensing.estimate_return(best)
+		if gain <= 0.0:
+			continue
+		var terms := Licensing.terms_for(best)
+		if str(terms.kind) == "royalty" and gain <= float(terms.rate) * revenue:
+			continue
+		if str(terms.kind) == "flat" and MatchState.money < float(terms.price) + LICENCE_CASH_BUFFER:
+			continue
+		if Licensing.license(best):
+			_licence_log.append("t%d %s for %s, returns about £%.0f a turn" % [done + 1, best, Licensing.terms_text(terms), gain])
+	var sold: Dictionary = s.get("sold", {})
+	for t: String in ResearchState.unlocked_titles.keys():
+		if Licensing.license_out_refusal(t) != "":
+			continue
+		var price := Licensing.license_out_price(t)
+		var lost := 0.0
+		for gid: String in Licensing.goods_touched(t):
+			lost += float((sold.get(gid, {}) as Dictionary).get("revenue", 0.0))
+		lost *= absf(EconomyConfig.LICENCE_OUT_PRICE_PCT) / 100.0 * float(EconomyConfig.LICENCE_OUT_PRICE_TURNS)
+		if price <= lost:
+			if not _licence_out_declined.has(t):
+				_licence_out_declined[t] = true
+				_licence_log.append("t%d kept %s: £%.0f is less than the £%.0f of sales it would cost" % [done + 1, t, price, lost])
+			continue
+		if Licensing.license_out(t):
+			_licence_log.append("t%d licensed out %s for £%.0f (%s)" % [done + 1, t, price,
+				("%s 2%% lower, costing about £%.0f of sales" % [Licensing.goods_text(t), lost]) if not Licensing.goods_touched(t).is_empty() else "no market good"])
+
+
+## Every resolved turn, however the harness advanced it: royalty and licence income totals and the report turns.
+func _on_turn_processed(s: Dictionary) -> void:
+	var turn := int(TurnManager.current_turn)
+	_royalties_total += float(s.get("royalties_paid", 0.0))
+	_licence_income_total += float(s.get("licence_income", 0.0))
+	var revenue := float(s.get("goods_sales_revenue", 0.0)) + float(s.get("power_sales_revenue", 0.0))
+	if LICENCE_MARK_TURNS.has(turn):
+		_licence_marks[turn] = {"royalties": float(s.get("royalties_paid", 0.0)), "income": float(s.get("licence_income", 0.0)),
+			"royalties_total": _royalties_total, "income_total": _licence_income_total, "revenue": revenue,
+			"rate": Licensing.royalty_rate_total(turn), "held": _licence_holdings()}
+	if turn == 50:
+		_check_third_licence(revenue)
+
+
+func _licence_holdings() -> String:
+	var kinds := {"flat": 0, "royalty": 0, "inhouse": 0}
+	for l: Dictionary in ResearchState.licences.values():
+		kinds[str(l.get("kind", "inhouse"))] = int(kinds.get(str(l.get("kind", "inhouse")), 0)) + 1
+	return "%d bought once, %d on royalty, %d in house, %d sold" % [int(kinds.flat), int(kinds.royalty), int(kinds.inhouse),
+		ResearchState.licensed_out.size()]
+
+
+## AC36.4: at turn 50's revenue, the 8% royalty against the return of every member not held in each group the
+## chain uses. The third licence is a commitment when the royalty is the larger for all of them.
+func _check_third_licence(revenue: float) -> void:
+	var third_cost := float(EconomyConfig.LICENCE_ROYALTY_RATES[-1]) * revenue
+	var all_above := true
+	for group: String in Licensing.groups():
+		var members: Array = Licensing.members(group)
+		if not members.any(func(t: String) -> bool: return Licensing.estimate_return(t) > 0.0):
+			continue
+		for t: String in members:
+			if ResearchState.is_unlocked(t):
+				continue
+			var gain := Licensing.estimate_return(t)
+			all_above = all_above and third_cost > gain
+			_third_licence.append("%s: returns about £%.0f vs 8%% £%.0f" % [t, gain, third_cost])
+	_third_licence.append("third licence a commitment at t50: %s" % ("yes" if all_above else "NO"))
+
+
+func _print_licensing() -> void:
+	print("  licensing: royalties £%.0f in all, licence sales £%.0f in all; %s" % [_royalties_total, _licence_income_total, _licence_holdings()])
+	var turns: Array = _licence_marks.keys()
+	turns.sort()
+	for t: int in turns:
+		var m: Dictionary = _licence_marks[t]
+		print("  licensing at t%d: royalties £%.0f (%.0f%% of £%.0f revenue), £%.0f to date; licence sales £%.0f, £%.0f to date; %s" % [t,
+			float(m.royalties), float(m.rate) * 100.0, float(m.revenue), float(m.royalties_total), float(m.income), float(m.income_total), str(m.held)])
+	for line: String in _licence_log:
+		print("  licence %s" % line)
+	for line: String in _third_licence:
+		print("  third licence: %s" % line)
 
 
 func _run() -> void:
@@ -2654,6 +2765,7 @@ func _advance_turns(count: int, reason: String) -> void:
 		await _logistics_tick()
 		await _rightsize_tick()
 		await _power_tick()
+		_licensing_tick()
 		var elapsed_ms := float(Time.get_ticks_usec() - start) / 1000.0
 		_turn_times_ms.append(elapsed_ms)
 		_turn_wall_records.append({

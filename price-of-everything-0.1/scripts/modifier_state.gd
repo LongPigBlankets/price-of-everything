@@ -274,6 +274,7 @@ const UNLOCK_MODIFIERS := {
 		{"id": "rn_multi_shift_throughput", "domain": "throughput", "target_match": {"building_id": "b_007"}, "pct": 15.0, "label": "Multi-Shift Production: +15% factory throughput", "source": "research_node"},
 		{"id": "rn_multi_shift_labour", "domain": "labour_headcount", "target_match": {"building_id": "b_007"}, "pct": 10.0, "label": "Multi-Shift Production: +10% factory labour", "source": "research_node"},
 	],
+	"research_mfg_041": {"id": "rn_near_net_shape_stamping", "domain": "recipe_input", "target_match": {"building_id": "b_007"}, "pct": -10.0, "label": "Near-Net-Shape Stamping: 10% fewer factory inputs", "source": "research_node"},
 	"research_mfg_019": {"id": "rn_robotic_final_assembly", "domain": "labour_headcount", "target_match": {"building_id": "b_009"}, "pct": -5.0, "label": "Robotic Final Assembly: -5% assembly labour", "source": "research_node"},  # Robotic Final Assembly (permanent)
 	"research_mfg_016": [{"id": "rn_fmc_b007", "domain": "labour_headcount", "target_match": {"building_id": "b_007"}, "pct": -10.0, "label": "Flexible Manufacturing Cells", "source": "research_node"}, {"id": "rn_fmc_b009", "domain": "labour_headcount", "target_match": {"building_id": "b_009"}, "pct": -10.0, "label": "Flexible Manufacturing Cells", "source": "research_node"}, {"id": "rn_fmc_b010", "domain": "labour_headcount", "target_match": {"building_id": "b_010"}, "pct": -10.0, "label": "Flexible Manufacturing Cells", "source": "research_node"}],
 	"research_renew_019": {"id": "rn_dual_axis_tracking", "domain": "recipe_output", "target_match": {"building_id": "b_024"}, "pct": 10.0, "label": "Dual-Axis Tracking Farms", "source": "research_node"},
@@ -286,6 +287,10 @@ const UNLOCK_MODIFIERS := {
 	"research_metal_008": [  # Ultra-High-Power Arcs
 		{"id": "rn_uhp_arcs_throughput", "domain": "throughput", "target_match": {"building_id": "b_008"}, "pct": 15.0, "label": "Ultra-High-Power Arcs: +15% arc furnace throughput", "source": "research_node"},
 		{"id": "rn_uhp_arcs_power", "domain": "building_power", "target_match": {"building_id": "b_008"}, "pct": 10.0, "label": "Ultra-High-Power Arcs: +10% arc furnace power", "source": "research_node"},
+	],
+	"research_metal_024": [  # Eccentric Bottom Tapping
+		{"id": "rn_ebt_labour", "domain": "labour_headcount", "target_match": {"building_id": "b_008"}, "pct": -10.0, "label": "Eccentric Bottom Tapping: 10% less arc furnace labour", "source": "research_node"},
+		{"id": "rn_ebt_maint", "domain": "maintenance", "target_match": {"building_id": "b_008"}, "pct": -10.0, "label": "Eccentric Bottom Tapping: 10% less arc furnace maintenance", "source": "research_node"},
 	],
 	"research_mining_013": {"id": "rn_bench_blasting", "domain": "recipe_output", "target_match": {"building_id": "b_001"}, "pct": 5.0, "label": "Bench Blasting Expansion: +5% mine output", "source": "research_node"},  # Bench Blasting Expansion (permanent)
 	"research_mining_016": [  # Block Caving (was -20% mine maintenance): bulk-caves an inexhaustible deposit — more ore, dearer upkeep

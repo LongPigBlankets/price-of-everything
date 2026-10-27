@@ -201,5 +201,5 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func _click(at: Vector2) -> void:
 	var c := card_at(at)
-	if c != null and bool(c.get("choosing")) and bool(c.get("eligible")):
+	if c != null and ((bool(c.get("choosing")) and bool(c.get("eligible"))) or (not bool(c.get("choosing")) and bool(c.get("actionable")))):
 		c.emit_signal("picked", c)

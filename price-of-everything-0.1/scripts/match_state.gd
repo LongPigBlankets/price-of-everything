@@ -273,6 +273,17 @@ func _on_survey_phase_started(phase: int) -> void:
 	elif phase == TurnManager.Phase.RECEIVE:
 		# Last phase of the turn: an offer whose closing ends now changes hands, and runs from next turn.
 		tick_purchases()
+
+
+## The era `turn` falls in: 1, 2 or 3 (EconomyConfig.era_spans of the charter; a demo counts on the campaign's turns).
+func era_for_turn(turn: int) -> int:
+	var span := EconomyConfig.DEMO_ERA_SPAN if preload("res://scripts/demo_build.gd").active() else TurnManager.MAX_TURNS
+	var spans := EconomyConfig.era_spans(span)
+	for i in spans.size():
+		if turn <= int(spans[i][1]):
+			return i + 1
+	return spans.size()
+
 # --- Public API: money ---
 func add_money(delta: float) -> void:
 	money += delta

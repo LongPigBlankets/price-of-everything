@@ -4,17 +4,18 @@ extends Control
 ##
 ## The cabinet is Building Detail's navy steel backing with its raised title, the search on a screen and the
 ## Close key, then the rubber seam. Under it, down the left, the plan chest (plan_chest.gd): a drawer per
-## research category. To its right, over the board, the licence office (the knowledge sharing offers: when the
-## next comes, the free licences in hand, and the key that starts choosing) beside a readout of the drawing
-## pointed at. Then the patent board (patent_board.gd) in its steel frame, seen through board_view.gd, which
+## research category, and a last drawer holding the licence groups (docs/pacing-labour-mining-licensing-spec.md §10).
+## To its right, over the board, the licence office (the knowledge sharing offers: when the next comes, the free
+## developments in hand, and the key that starts choosing) beside a readout of the drawing pointed at. Then the patent board (patent_board.gd) in its steel frame, seen through board_view.gd, which
 ## zooms and pans it: the open drawer's research pinned up as patent drawings (blueprint_card.gd), rank by rank.
 ## Resting the pointer on a drawing a moment dims the panel round it and shows it large (detail_sheet.gd).
 ## The panel is lit by the DS2 lamp from the top left (scripts/ds2/lamp_overlay.gd).
 ##
 ## Everything the view shows is the research panel's state and ResearchState's: the open category, the search
 ## (the panel's own box, moved onto this screen while the view is up and handed back after), the free unlocks
-## and the choosing. The view asks the panel to act (open a category, start or stop choosing, license a
-## research) and redraws when the panel calls refresh().
+## and the choosing. The view asks the panel to act (open a category, start or stop choosing, develop a research)
+## and redraws when the panel calls refresh(). A click on a ready group member or an in-house process opens the
+## licence dialog (scripts/licence_dialog.gd).
 
 const Ink := preload("res://scripts/research_ds2/ink.gd")
 const PlanChest := preload("res://scripts/research_ds2/plan_chest.gd")
@@ -29,6 +30,11 @@ const DotMatrix := preload("res://scripts/ds2/dot_matrix.gd")
 const CreamKey := preload("res://scripts/ds2/cream_key.gd")
 const LedgerV3 := preload("res://scripts/ledger_v3/ledger_v3.gd")
 const UIFonts := preload("res://scripts/ui_fonts.gd")
+const Licensing := preload("res://scripts/research_licensing.gd")
+const LicenceDialog := preload("res://scripts/licence_dialog.gd")
+
+## The plan chest's last drawer: every licence group, a row each.
+const LICENCE_DRAWER := "Licence groups"
 
 const RANKS := ["I", "II", "III"]
 ## Building Detail's backing (panel_backing): its 9-slice corner in texels and the brass trim's width.
@@ -70,6 +76,9 @@ var _narrow := ""
 var _query := ""
 var _shown_key := ""
 var _hovered: Control = null
+## True while the Licence groups drawer is open (the research panel's category stays where it was).
+var _licence_open := false
+var _last_selected := ""
 
 
 func _init() -> void:
@@ -174,7 +183,7 @@ func _size_chest() -> void:
 
 
 func _categories() -> Array:
-	return _host.call("categories") if _host != null else []
+	return (_host.call("categories") as Array) + [LICENCE_DRAWER] if _host != null else []
 
 
 # --- the head ------------------------------------------------------------------------------------
@@ -243,8 +252,8 @@ func _search_screen() -> PanelContainer:
 
 # --- the licence office and the readout ----------------------------------------------------------
 
-## The licence office: a blackened steel plate screwed over the board. Its name, when the next knowledge sharing
-## offer comes and the free licences in hand on two dot matrix screens, and the key that starts choosing.
+## The development office: a blackened steel plate screwed over the board. Its name, when the next knowledge
+## sharing offer comes and the free developments in hand on two dot matrix screens, and the key that starts choosing.
 func _licence_office() -> PanelContainer:
 	var plate := PanelContainer.new()
 	plate.name = "LicenceOffice"
@@ -265,7 +274,7 @@ func _licence_office() -> PanelContainer:
 	names.add_theme_constant_override("separation", 0)
 	names.alignment = BoxContainer.ALIGNMENT_CENTER
 	names.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	names.add_child(_label("Licence office", Ink.LABEL_FONT, 18, true))
+	names.add_child(_label("Development office", Ink.LABEL_FONT, 18, true))
 	names.add_child(_label("Knowledge sharing", Ink.BODY_FONT, 13, false))
 	row.add_child(names)
 	var screens := VBoxContainer.new()
@@ -277,7 +286,7 @@ func _licence_office() -> PanelContainer:
 	screens.add_child(_licence_turns)
 	screens.add_child(_licence_count)
 	row.add_child(screens)
-	_licence_key = CreamKey.make("ChooseLicences", "Choose patents to license", "", 236.0)
+	_licence_key = CreamKey.make("ChooseLicences", "Choose research to develop", "", 236.0)
 	_licence_key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_licence_key.pressed.connect(_on_licence_key)
 	row.add_child(_licence_key)
@@ -417,6 +426,10 @@ func refresh() -> void:
 		_query = query
 		_narrow = ""
 	var selected := str(_host.get("_selected_category"))
+	if selected != _last_selected:
+		# The panel opened another category (a link, a tab): the Licence groups drawer closes.
+		_last_selected = selected
+		_licence_open = false
 	var nodes: Array = []
 	for u: Dictionary in _host.call("_category_unlocks", selected):
 		if not bool(u.get("is_category_root", false)):
@@ -435,11 +448,12 @@ func refresh() -> void:
 	var shown: Array = nodes
 	if searching and _narrow != "":
 		shown = nodes.filter(func(u: Dictionary) -> bool: return str(u.get("category", "")) == _narrow)
-	_chest.call("set_figures", _drawer_figures(selected, searching, matches))
+	var licences := _licence_open and not searching
+	_chest.call("set_figures", _drawer_figures(LICENCE_DRAWER if licences else selected, searching, matches))
 	var choosing := bool(_host.get("_choosing_free_unlock"))
-	_board.call("populate", _rows(shown, selected, searching), _needs(), choosing,
+	_board.call("populate", _licence_rows() if licences else _rows(shown, selected, searching), _needs(), choosing,
 		"No patents found" if searching else "")
-	var key := "%s|%s|%s" % [selected, _narrow, query]
+	var key := "%s|%s|%s" % [LICENCE_DRAWER if licences else selected, _narrow, query]
 	if key != _shown_key:
 		_shown_key = key
 		_view.call("reset")
@@ -450,7 +464,7 @@ func refresh() -> void:
 
 
 func _is_granted(title: String) -> bool:
-	return ResearchState.is_unlocked(title) or (_host.get("_free_unlocked_titles") as Dictionary).has(title)
+	return ResearchState.is_unlocked(title)
 
 
 func _rank_of(u: Dictionary) -> String:
@@ -462,6 +476,9 @@ func _drawer_figures(selected: String, searching: bool, matches: Dictionary) -> 
 	var out := {}
 	var rows: Array = _host.get("_unlock_rows")
 	for cat: String in _categories():
+		if cat == LICENCE_DRAWER:
+			out[cat] = _licence_drawer_figures(selected, searching)
+			continue
 		var total := 0
 		var granted := 0
 		var per_rank := {"I": [0, 0], "II": [0, 0], "III": [0, 0]}
@@ -515,43 +532,89 @@ func _rows(shown: Array, selected: String, searching: bool) -> Array:
 		var granted := 0
 		var cards: Array = []
 		for u: Dictionary in list:
-			var title := str(u.get("title", ""))
-			var licensed := (_host.get("_free_unlocked_titles") as Dictionary).has(title)
-			var is_granted := _is_granted(title)
-			if is_granted:
+			var entry := _card_entry(u, choosing, searching)
+			if _is_granted(str(u.get("title", ""))):
 				granted += 1
-			var cat := str(u.get("category", ""))
-			var state := "open"
-			var note := ""
-			if licensed:
-				state = "licensed"
-			elif is_granted:
-				state = "granted"
-			elif not ResearchState.is_node_available(title):
-				state = "locked"
-				if not ResearchState.is_tier_available(cat, rk):
-					note = "Rank %s closed" % rk if searching else ""
-				else:
-					for p: String in _host.call("_prereq_titles", u):
-						if not ResearchState.is_unlocked(p):
-							note = "Needs %s" % p
-							break
-			if note == "" and searching:
-				note = cat
-			cards.append({
-				"unlock": u,
-				"presentation": _host.call("_presentation", u),
-				"state": state,
-				"spec": str(_host.call("_collapsed_condition", u)),
-				"progress": Vector2i.ZERO if is_granted else ResearchState.condition_progress(title),
-				"note": note,
-				"eligible": choosing and bool(_host.call("can_choose_free_unlock", title)),
-			})
+			cards.append(entry)
 		rows.append({
 			"rank": rk, "open": rank_open, "granted": granted, "total": list.size(),
 			"notice": _rank_notice(selected, rk), "cards": cards,
 		})
 	return rows
+
+
+## One drawing's entry for the board: its state (granted, developed with a free pick, licensed in, ready to
+## license, open or locked), its licence line, and whether a click opens the licence dialog.
+func _card_entry(u: Dictionary, choosing: bool, searching: bool) -> Dictionary:
+	var title := str(u.get("title", ""))
+	var rk := _rank_of(u)
+	var cat := str(u.get("category", ""))
+	var is_granted := _is_granted(title)
+	var state := "open"
+	var note := ""
+	if is_granted:
+		state = "licensed" if Licensing.is_licensed_in(title) else ("developed" if ResearchState.free_picks.has(title) else "granted")
+	elif ResearchState.is_licence_ready(title):
+		state = "ready"
+	elif not ResearchState.is_node_available(title):
+		state = "locked"
+		if not ResearchState.is_tier_available(cat, rk):
+			note = "Rank %s closed" % rk if searching else ""
+		else:
+			for p: String in _host.call("_prereq_titles", u):
+				if not ResearchState.is_unlocked(p):
+					note = "Needs %s" % p
+					break
+	if note == "" and searching:
+		note = cat
+	var licence := Licensing.price_line(title)
+	var out_line := Licensing.out_line(title) if is_granted else ""
+	if out_line != "":
+		licence = out_line
+	return {
+		"unlock": u,
+		"presentation": _host.call("_presentation", u),
+		"state": state,
+		"spec": str(_host.call("_collapsed_condition", u)),
+		"progress": Vector2i.ZERO if is_granted else ResearchState.condition_progress(title),
+		"note": note,
+		"eligible": choosing and bool(_host.call("can_choose_free_unlock", title)),
+		"licence": licence,
+		"actionable": LicenceDialog.action_for(title) != "",
+	}
+
+
+## The Licence groups drawer's rows: a row per group, its three drawings, its plate counting the processes held.
+func _licence_rows() -> Array:
+	var rows: Array = []
+	var choosing := bool(_host.get("_choosing_free_unlock"))
+	var by_title := {}
+	for u: Dictionary in _host.get("_unlock_rows"):
+		by_title[str(u.get("title", ""))] = u
+	for group: String in Licensing.groups():
+		var cards: Array = []
+		for t: String in Licensing.members(group):
+			if by_title.has(t):
+				cards.append(_card_entry(by_title[t], choosing, false))
+		rows.append({"rank": "", "group": Licensing.group_name(group), "open": true,
+			"granted": Licensing.held_count(group), "total": cards.size(), "cards": cards})
+	return rows
+
+
+## The Licence groups drawer's figures: processes held of every member, a lamp lit amber while one is ready.
+func _licence_drawer_figures(selected: String, searching: bool) -> Dictionary:
+	var held := 0
+	var total := 0
+	var ready := false
+	for group: String in Licensing.groups():
+		for t: String in Licensing.members(group):
+			total += 1
+			if ResearchState.is_unlocked(t):
+				held += 1
+			elif ResearchState.is_licence_ready(t):
+				ready = true
+	return {"granted": held, "total": total, "ranks": ["open" if ready else "off", "off", "off"],
+		"open": not searching and selected == LICENCE_DRAWER, "matches": -1, "lit": false, "dim": searching}
 
 
 ## The notice pinned over a closed rank: what opens it and how far that has come.
@@ -589,13 +652,13 @@ func _refresh_office(choosing: bool) -> void:
 	var free := int(_host.get("_free_unlocks"))
 	var next := _next_offer_turns()
 	_licence_turns.set("text", ("NEXT IN %d TURNS" % next) if next > 0 else "NO MORE OFFERS")
-	_licence_count.set("text", "%d FREE %s" % [free, "LICENCE" if free == 1 else "LICENCES"])
+	_licence_count.set("text", "%d FREE %s" % [free, "DEVELOPMENT" if free == 1 else "DEVELOPMENTS"])
 	_licence_count.set("colour", Color("#ffd27a") if free > 0 else Color.WHITE)
 	_licence_key.set("chosen", choosing)
-	_licence_key.set("title", "Stop choosing" if choosing else "Choose patents to license")
+	_licence_key.set("title", "Stop choosing" if choosing else "Choose research to develop")
 	_licence_key.call("set_spent", free <= 0 and not choosing)
-	_licence_key.tooltip_text = "Click a lit drawing to license it free. Esc stops." if choosing else \
-		("License research free with the licences from knowledge sharing." if free > 0 else "No free licences in hand.")
+	_licence_key.tooltip_text = "Click a lit drawing to develop it in house, free. Esc stops." if choosing else \
+		("Develop research in house, free, with the developments from knowledge sharing." if free > 0 else "No free developments in hand.")
 	_licence_key.queue_redraw()
 
 
@@ -614,19 +677,21 @@ func _show_readout(card: Control) -> void:
 	if _readout_name == null:
 		return
 	if bool(_host.get("_choosing_free_unlock")) and card == null:
-		_readout_name.text = "Choosing a licence"
-		_readout_reward.text = "Click a lit drawing to license it free. Esc stops choosing."
+		_readout_name.text = "Choosing a development"
+		_readout_reward.text = "Click a lit drawing to develop it in house, free. Esc stops choosing."
 		_readout_need.text = ""
 		return
 	if card == null:
-		var sel := str(_host.get("_selected_category"))
+		var sel := LICENCE_DRAWER if _licence_open else str(_host.get("_selected_category"))
 		var drawer: Control = _chest.call("drawer_for", sel)
 		if _query != "":
 			_readout_name.text = "Search: %s" % _query
 			_readout_reward.text = "Drawers holding a match are lit. Open one to see only its patents."
 		else:
-			_readout_name.text = "%s: %d of %d granted" % [sel, int(drawer.get("granted")) if drawer != null else 0, int(drawer.get("total")) if drawer != null else 0]
-			_readout_reward.text = "Point at a drawing to read what it grants."
+			_readout_name.text = "%s: %d of %d %s" % [sel, int(drawer.get("granted")) if drawer != null else 0, int(drawer.get("total")) if drawer != null else 0,
+				"held" if sel == LICENCE_DRAWER else "granted"]
+			_readout_reward.text = "A lamp marks a process ready to license. Click it to license." if sel == LICENCE_DRAWER \
+				else "Point at a drawing to read what it grants."
 		_readout_need.text = ""
 		return
 	var title := str(card.get("title"))
@@ -639,10 +704,11 @@ func _show_readout(card: Control) -> void:
 	_readout_name.text = "%s   Rank %s" % [title, _rank_of(row)]
 	_readout_reward.text = str(u.get("description", ""))
 	var state := str(card.get("state"))
-	if state == "granted":
-		_readout_need.text = "Granted"
-	elif state == "licensed":
-		_readout_need.text = "Licensed free"
+	var licence := str(card.get("licence"))
+	if state in ["granted", "developed", "licensed"]:
+		_readout_need.text = licence if licence != "" else {"granted": "Granted", "developed": "Developed in house"}.get(state, "Licensed")
+	elif state == "ready":
+		_readout_need.text = "Ready. Click to %s" % licence.to_lower()
 	else:
 		var p: Vector2i = card.get("progress")
 		var cond := str(_host.call("_condition_text", row))
@@ -710,8 +776,12 @@ func _detail_data(card: Control) -> Dictionary:
 	match state:
 		"granted":
 			state_text = "Granted"
+		"developed":
+			state_text = "Developed in house with a free development"
 		"licensed":
-			state_text = "Licensed free from a knowledge sharing offer"
+			state_text = "Licensed from its licensor"
+		"ready":
+			state_text = "Ready to license"
 		"locked":
 			if not ResearchState.is_tier_available(category, rank):
 				state_text = "Locked: Rank %s is closed" % rank
@@ -733,8 +803,12 @@ func _detail_data(card: Control) -> Dictionary:
 
 
 func _on_card_picked(card: Control) -> void:
-	if _host != null:
+	if _host == null:
+		return
+	if bool(_host.get("_choosing_free_unlock")):
 		_host.call("choose_free_unlock", str(card.get("title")))
+	else:
+		LicenceDialog.open(self, str(card.get("title")), refresh)
 
 
 func _on_licence_key() -> void:
@@ -749,6 +823,12 @@ func _on_licence_key() -> void:
 func _on_drawer_pressed(category: String) -> void:
 	if _host == null:
 		return
+	if category == LICENCE_DRAWER:
+		if _query == "":
+			_licence_open = true
+			refresh()
+		return
+	_licence_open = false
 	if _query != "":
 		_narrow = "" if _narrow == category else category
 		if _narrow != "":

@@ -1117,8 +1117,8 @@ process.
 | Extraction (`b_001`) | Bench Blasting Expansion, Bulk Haulage Fleets, Continuous Surface Miners | +5% yield; over-cap cost +100% → +75% per working; +20% yield on endless seams (as today) |
 | Solar (`b_024`) | Utility Solar Arrays, Utility-Scale Inverters, Dual-Axis Tracking Farms | output as today (no material inputs) |
 | Wind (`b_025`) | Onshore Wind Control, Taller Turbine Towers, Tall-Tower Wind Capture | output as today |
-| Factory (`b_007`) | High-Volume Press Lines, Multi-Shift Production, third to author | +10% throughput; +15% throughput with labour +10%; — |
-| EAF (`b_008`) | Foamy Slag Practice, Ultra-High-Power Arcs, third to author | power −10%; +15% throughput with power +10%; — |
+| Factory (`b_007`) | High-Volume Press Lines, Multi-Shift Production, Near-Net-Shape Stamping (new, P6) | +10% throughput; +15% throughput with labour +10%; inputs −10% |
+| EAF (`b_008`) | Foamy Slag Practice, Ultra-High-Power Arcs, Eccentric Bottom Tapping (new, P6) | power −10%; +15% throughput with power +10%; labour and maintenance −10% |
 
 ### 10.6 UX
 
@@ -1982,6 +1982,125 @@ Each item is checked by a named unit test unless marked otherwise.
 - **Evidence**:
   - licence income and royalties at turns 50, 150 and 300;
   - the third licence stays a deliberate commitment.
+
+#### P6 acceptance criteria
+
+Each item is checked by a named unit test unless marked otherwise.
+
+**Groups (§10.1, §10.5)**
+
+1. **AC30.1** `research_unlocks.csv` has a `licence_group` column naming eight groups:
+   - Coal power: Pulverized Coal Boilers, Steam Turbine Upgrades, Reheat Turbine Cycles.
+   - Iron and steel: Basic Blast Furnaces, Continuous Casting, Pulverised Carbon Injection.
+   - Refining: Fractional Distillation, Catalytic Cracking, Specialised Petrochemical Pipelines.
+   - Extraction: Bench Blasting Expansion, Bulk Haulage Fleets, Continuous Surface Miners.
+   - Solar: Utility Solar Arrays, Utility-Scale Inverters, Dual-Axis Tracking Farms.
+   - Wind: Onshore Wind Control, Taller Turbine Towers, Tall-Tower Wind Capture.
+   - Factory: High-Volume Press Lines, Multi-Shift Production, and the new Near-Net-Shape Stamping
+     (Industrial Goods Factory inputs −10%; run 3 distinct factory recipes).
+   - EAF: Foamy Slag Practice, Ultra-High-Power Arcs, and the new Eccentric Bottom Tapping (Electric
+     Arc Furnace labour and maintenance −10%; run 2 on one tile).
+2. **AC30.2** Prerequisites between members of one group are gone (Catalytic Cracking, Continuous
+   Casting, Steam Turbine Upgrades, Ultra-High-Power Arcs, Tall-Tower Wind Capture). Prerequisites
+   outside the group and the rank gate stay.
+3. **AC30.3** Meeting a member's condition makes it **ready to license**, with a notice. It is not
+   granted, its effects do not apply and it does not count toward opening the next rank. Once
+   ready it stays ready.
+4. **AC30.4** `ERA_SHARES` and `DEMO_ERA_SPAN` live in `EconomyConfig`, and the New Game screen
+   reads them there. `MatchState.era_for_turn(turn)` gives 1, 2 or 3: turns 1–90, 91–180 and
+   181–300 of 300; a demo game counts on the campaign's 300 turns.
+
+**Licensing in (§10.2)**
+
+1. **AC31.1** A ready member can be licensed. Its price is set by the processes already held in
+   its group, in-house ones included:
+   - none: the era price, £200, £500 or £2,000, once. It is charged in the turn's costs before tax
+     as a one-off charge, and the cash must be in hand;
+   - one: 2% of company revenue a turn for 30 turns;
+   - two: 8%.
+2. **AC31.2** A member whose condition is unmet cannot be licensed: no money path skips a
+   condition.
+3. **AC31.3** Each turn, every royalty licence in its 30-turn term charges its rate on that turn's
+   company revenue (goods and power sales), in the turn's costs before tax, used or not. After 30
+   charges it is paid up and kept for free.
+4. **AC31.4** Licensing grants the node, and its effects apply from that turn.
+
+**In-house (§10.3)**
+
+1. **AC32.1** A free pick on a group member develops it in-house: no fee, no royalty, condition
+   not needed (as free picks today).
+2. **AC32.2** Nodes outside groups unlock by doing and are in-house. So is a group member granted
+   by a mission reward or a cheat.
+3. **AC32.3** Free picks spent are kept by `ResearchState` and saved, so a load does not hand them
+   back.
+
+**Licensing out (§10.4)**
+
+1. **AC33.1** Eligible: an in-house process of rank II or III, within 60 turns of its development, not
+   yet licensed out. Never a licensed-in node, never rank I.
+   - A process: a node with a production effect scoped to buildings, recipes or goods, or one that
+     unlocks a recipe. A company-wide practice (an effect on every building, such as management and
+     staffing) is not one, and neither are logistics, finance or council nodes.
+   - The goods a process touches: the market goods made by the buildings and recipes its effects
+     target, the goods its effects name, and those made by the recipes it unlocks. Power is sold to
+     the grid, so a power plant process touches no market good.
+2. **AC33.2** The price is max(£50, rate × the average company revenue of the last 5 turns), where:
+   - rate = 10% + 2.5% for each other unsold in-house rank II process + 5% for each other unsold
+     in-house rank III process;
+   - the rate is capped at 50%.
+3. **AC33.3** The sale is paid in that turn's costs phase as revenue before tax, on a
+   **Licence sales** line.
+4. **AC33.4** Each process licensed out lowers the sale price of every good it touches by 2% for
+   30 turns: timed `market_price` modifiers, so two sales that touch steel make −4%.
+
+**UX (§10.6)**
+
+1. **AC34.1** On the research board (DS2), a **Licence groups** drawer pins each group as one row of
+   its three drawings. The category drawers keep theirs. Each member's drawing shows:
+   - its condition;
+   - its state: ready (with a lamp), licensed or in-house;
+   - its price: "License for £200", "License for 2% of revenue, 30 turns".
+2. **AC34.2** Clicking a ready drawing opens the licence dialog. It shows the price and the payback
+   at the company's current buildings ("Costs about £8 a turn. Returns about £6 a turn."), with
+   License and Cancel.
+3. **AC34.3** Clicking an eligible in-house drawing opens the licence-out dialog. It shows "License
+   out for £X", the market consequence (the goods, −2% for 30 turns) and the turns left in the
+   patent window.
+4. **AC34.4** The old research canvas, which the demo ships, shows the same price and state lines
+   and opens the same dialogs.
+5. **AC34.5** Free picks read as in-house development ("free developments"), stamped DEVELOPED. A
+   licensed drawing is stamped LICENSED.
+6. **AC34.6** The money panel and the top bar's money sheet show **Royalties** (a cost) and
+   **Licence sales** (revenue). `Production.cash_change_of` and `MoneyPanel.net_cash_of` still
+   agree.
+
+**Save and telemetry (§12, §13)**
+
+1. **AC35.1** These round-trip through a save and are registered in `SaveValidation.FIELDS`:
+   licences, licences sold, ready members, development turns, sales due and free picks spent.
+   - A save from before P6 loads with every unlocked group member in-house and no royalty.
+   - Its development turns are unknown and count as turn 0.
+2. **AC35.2** Telemetry turn rows carry `royalties_paid` and `licence_income`. The run row carries
+   licences by kind. Schema 9.
+
+**Stances and gates**
+
+1. **AC36.1** Stance A1 is in the design-intent skill, and §11 B is in the onboarding spec.
+2. **AC36.2** The unit suite has only known failures and the parse check is clean. Windowed
+   captures show:
+   - the Licence groups drawer;
+   - a ready drawing;
+   - both dialogs;
+   - the money rows.
+3. **AC36.3** The Stoneshore e2e plays licensing:
+   - it licenses the first ready member of each group its chain uses;
+   - it takes a royalty licence only where the estimated return beats the royalty;
+   - it licenses out an eligible process when its price beats the sales it would cost (2% of last
+     turn's sales of the goods it touches, for 30 turns).
+   It reports royalties, licence income and holdings at turns 50 and 100. A 300-turn run reports
+   turns 150 and 300. Profit is quoted against P5. *Checked by run.*
+4. **AC36.4** The third licence stays a commitment: at the e2e's turn 50 revenue, the 8% royalty is
+   above the estimated return of each third member its chain could use. *Checked by run.*
 
 ### P7 — Freight by distance and transport speed
 

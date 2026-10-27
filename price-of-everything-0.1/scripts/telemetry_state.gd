@@ -37,7 +37,7 @@ const DemoEula := preload("res://scripts/demo_eula.gd")
 
 const ENDPOINT_URL := "https://script.google.com/macros/s/AKfycbw8dUX-A_dSKmI2GB4_2AbRXbGnOKTbP8mpEa17t6wBBAg4Y0LcCnS_xJNH3EeNRwdr/exec"
 const TOKEN := "d299f45324f48cce4b9257789dfc493e172d5ac657ba1641"
-const SCHEMA_VERSION := 8  # v8: mining sites over their free cap, and the highest M, in each turn row
+const SCHEMA_VERSION := 9  # v9: royalties as a cost line, licence income in each turn row, licences by kind at the end
 ## The persistent choice now lives in Settings > Telemetry. Legacy start-screen rows
 ## remain hidden; hiding them never overrides the remembered preference.
 const SHOW_CONSENT_CHECKBOX := false
@@ -65,6 +65,7 @@ const COST_LINES := {
 	"dividends_paid": "dividends",
 	"profit_sharing_paid": "profit_share",
 	"carbon_tax_paid": "carbon",
+	"royalties_paid": "royalties",
 }
 # Per-turn freight split, FIXED ORDER, summing to the `transport` line in COST_LINES.
 # Added after a run had to have its freight decomposed by inference — the engine
@@ -106,6 +107,9 @@ var _building_names := {}     # building_id -> internal_name ("mine"), for the r
 # how `ruleset` came to report "standard" for some runs in the delivered sheet.
 var _run_start_id := ""
 var _run_cheats := false
+## Licences held and sold by the latest row, by kind ({flat, royalty, inhouse, sold}): latched, since a quit to the
+## menu resets the match before the run is finalised.
+var _run_licences: Dictionary = {}
 var _run_tutorial_step := ""     # last tutorial step id reached (latched on step_changed)
 var _run_tutorial_visited := 0   # countable steps entered (latched on step_changed)
 var _capture_max_usec := 0    # worst per-turn capture cost, for the perf gate
@@ -310,7 +314,7 @@ static func balancing_payload(data: Dictionary) -> Dictionary:
 		var row: Dictionary = raw.duplicate(true)
 		for key in row:
 			if key not in ["turn", "profit", "revenue", "buildings", "buildings_list", "power_gen", "produced", "satisfaction", "strikes",
-					"over_cap_sites", "max_site_m"]:
+					"over_cap_sites", "max_site_m", "royalties", "licence_income"]:
 				row[key] = [] if row[key] is Array else ({} if row[key] is Dictionary else "")
 		rows.append(row)
 	clean["turns"] = rows
@@ -319,7 +323,7 @@ static func balancing_payload(data: Dictionary) -> Dictionary:
 		if key not in ["started_at", "ruleset", "start", "cheats_used"]: run.erase(key)
 	var ending: Dictionary = clean.get("end", {})
 	for key in ending.keys():
-		if key not in ["reason", "run_complete", "turn", "ended_at", "playtime_s"]: ending.erase(key)
+		if key not in ["reason", "run_complete", "turn", "ended_at", "playtime_s", "licences"]: ending.erase(key)
 	var client: Dictionary = clean.get("client", {})
 	for key in client.keys():
 		if key not in ["version", "os"]: client.erase(key)
@@ -371,6 +375,7 @@ func _on_run_started() -> void:
 	_delivered_through = 0
 	_run_start_id = ""
 	_run_cheats = false
+	_run_licences = {}
 	_run_tutorial_step = ""
 	_run_tutorial_visited = 0
 	_ensure_tier_index()
@@ -457,12 +462,24 @@ func _build_row(summary: Dictionary) -> Dictionary:
 		"strikes": LabourState.unrest.active.size(),
 		"over_cap_sites": seams.count,
 		"max_site_m": seams.max_m,
+		"royalties": snappedf(float(summary.get("royalties_paid", 0.0)), 0.01),
+		"licence_income": snappedf(float(summary.get("licence_income", 0.0)), 0.01),
 	}
+	_run_licences = _licence_counts()
 	row["interactions"] = _interaction_counts(int(row.turn))
 	if _tier_available:
 		row["tiers"] = tiers
 	return row
 
+
+
+## Group licences held by kind, and processes licensed out (docs/pacing-labour-mining-licensing-spec.md §13).
+func _licence_counts() -> Dictionary:
+	var out := {"flat": 0, "royalty": 0, "inhouse": 0, "sold": ResearchState.licensed_out.size()}
+	for l: Dictionary in ResearchState.licences.values():
+		var kind := str(l.get("kind", "inhouse"))
+		out[kind] = int(out.get(kind, 0)) + 1
+	return out
 
 
 ## The player's mining sites over their free cap and the highest M among them (docs/pacing-labour-mining-licensing-spec.md §8).
@@ -731,6 +748,7 @@ func _build_envelope(reason: String) -> Dictionary:
 			"ended_at": now,
 			"playtime_s": _playtime_s(),
 			"victory": _victory_array(),
+			"licences": _run_licences,
 		},
 		"turns": _undelivered_rows(),
 		"events": _events.duplicate(true),

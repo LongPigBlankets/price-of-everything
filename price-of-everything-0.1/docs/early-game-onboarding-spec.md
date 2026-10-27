@@ -32,7 +32,7 @@ fees are regressive — every flat midgame brake doubles as an early-game hammer
 ## 2. Design principles
 
 1. **Kindness must dilute with scale** (grace windows, tax floors, starter kits, tabs).
-2. **Brakes must engage with scale.** No new flat costs, ever.
+2. **Brakes must engage with scale.** No new flat costs, except the first licence in a research licence group, which steps by era (£200, £500, £2,000).
 3. **The anti-raw lever rotates by era**: t1-30 cheap (learning) → t31+ the ad valorem
    six-folds (climb-the-chain squeeze) → t110+ depletion + carbon levy. NOTE: with the flat
    per-good fee retired (§4.2b), the t33-110 flat-fee squeeze no longer exists — the tri-window
