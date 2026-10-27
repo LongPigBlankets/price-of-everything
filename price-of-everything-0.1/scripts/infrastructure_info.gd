@@ -14,7 +14,7 @@ static func key_for(building_data: Dictionary) -> String:
 
 static func purpose(key: String) -> String:
 	match key:
-		"roads": return "Enables faster movement of solid goods like sand, coal and computers."
+		"roads": return "Moves solid goods like sand, coal and computers for a quarter of the cost over bare ground. Upgrades make it faster."
 		"rail": return "Enables faster and cheaper movement of solid goods than roads."
 		"rail_hub": return "Doubles rail throughput within 3 tiles while owned and powered. Overlapping hubs do not stack. Occupies 30 land, costs £10 maintenance and £6 base labour per turn, and consumes 80 power. No levels."
 		"pipes": return "Enables transport of safe liquids: water, crude oil, processed oil and waste water."
@@ -35,27 +35,30 @@ static func level_stats(key: String, level: int) -> Dictionary:
 			"cost": "No per-unit transmission charge",
 		}
 	var mode := key
-	# Keep the building details and construction panels on the same range table as the
-	# router.  This used to be hard-coded to the level-1 values, so every accordion row
-	# displayed 2 road / 4 rail / 2 pipe tiles even though the simulation used the level-
-	# specific 2-3-5, 4-6-9 and 2-3-5 ranges.
-	var range := EconomyConfig.infra_range_for_level(mode, level)
+	# Keep the building details and construction panels on the router's speed table, level by level.
+	var range := EconomyConfig.infra_speed_for_level(mode, level)
 	if range <= 0:
 		# Preserve the CSV fallback for a future levelled mode that has not yet been added
-		# to EconomyConfig.INFRA_RANGE_BY_LEVEL.
+		# to EconomyConfig.INFRA_SPEED_BY_LEVEL.
 		range = Catalog.infra_range(mode)
 	var capacity: float = TransportService.link_capacity(mode, level)
-	var cost := "£0.02–£0.06 / unit / turn"
-	if key == "rail":
-		cost = "£0.01–£0.03 / unit / turn"
-	elif key == "pipes" or key == "reinf_pipes":
-		cost = "£0.03 / unit / tile"
 	return {
 		"capacity_label": "Transport soft cap",
 		"capacity": "%s units / tile / turn" % _number(capacity),
 		"tiles": "%d tile%s / turn" % [range, "" if range == 1 else "s"],
-		"cost": cost,
+		"cost": _tile_cost_text(mode, level),
 	}
+
+## The weight charge a unit pays a tile on `mode` at `level`, lightest class to heaviest, before the share that rides
+## on the good's value: what EconomyConfig.freight_tile_mult charges. Pipes carry fluids at one rate.
+static func _tile_cost_text(mode: String, level: int) -> String:
+	var rates: Array = []
+	for cls: String in (["safe_liquid"] if EconomyConfig.PIPE_MODES.has(mode) else ["solid_light", "solid_heavy", "ultra_heavy"]):
+		rates.append(TransportService.tile_weight_rate(cls, mode, level))
+	if is_equal_approx(float(rates.min()), float(rates.max())):
+		return "£%.3f / unit / tile" % float(rates[0])
+	return "£%.3f to £%.3f / unit / tile" % [float(rates.min()), float(rates.max())]
+
 
 static func _number(value: float) -> String:
 	return str(int(round(value)))

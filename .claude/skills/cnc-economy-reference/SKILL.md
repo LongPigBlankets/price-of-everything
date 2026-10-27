@@ -110,12 +110,19 @@ still consumed in full — known sharp edge).
 
 ## 8. Transport
 
-Cost = per-class rate (`TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS`, e.g.
-solid_heavy 0.03 vs ultra_heavy 0.06) × qty ×
-route legs × mode multipliers, + congestion surcharge tiers (+100/+200%) fed by LAST
-turn's link flow (stable, not self-referential). Fluid classes (`safe_liquid`,
-`hazard_liquid`, `liquid`, `gas`) move ONLY by pipes — `reinf_pipes` required for
-`hazard_liquid` (see `data/infrastructure.csv good_types_tolerated`). Unreachable
+Freight is priced by distance (spec §7.6, Phase 7): weight (`transport_rate_for_good`: the
+class rate `TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS` plus its ad valorem part, ×1.4) × qty ×
+the TILES of each leg × `FREIGHT_TILE_MULT[mode][level of the tile the leg leaves]` (road
+0.5/0.333/0.2, rail 0.125/0.083/0.056, pipe 0.5/0.333/0.2, bare ground 2.0; fluids on road or
+rail pay their tanker premium spread over the same tiles), + congestion surcharge tiers
+(+100/+200%) fed by LAST turn's link flow (stable, not self-referential). Speed is a separate
+table, `INFRA_SPEED_BY_LEVEL` (road 1/2/4, rail 3/5/8, pipes 2/3/5, bare 1 tile a turn): it sets
+transit turns only. The router (`Catalog._cheapest_route`) takes the CHEAPEST route, fewer
+turns between equal costs (owner ruling 27 Oct). Local Suppliers count their trips on their
+own `LOCAL_SUPPLIERS_TILES_PER_TRIP` (2), never on transport speed. Fluid classes (`safe_liquid`,
+`hazard_liquid`, `liquid`, `gas`) prefer pipes — `reinf_pipes` required for
+`hazard_liquid` (see `data/infrastructure.csv good_types_tolerated`) — and use road or rail
+tankers only where no pipe reaches. Unreachable
 routes return the `INF_TURNS` sentinel (1<<30) with `reachable=false` — consumers must
 check it (a leak once showed players "1073741824 turns"). Seaport subscription covers
 per-good freight to port for a flat fee. Deferred settlement: sale revenue is locked at

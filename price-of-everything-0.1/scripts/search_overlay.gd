@@ -1145,7 +1145,7 @@ func _make_good_rubric(good_id: String) -> PanelContainer:
 	_add_rubric_fact(facts, "Carbon tax / unit", _good_carbon_tax_text(good_id))
 
 	var transport_heading := Label.new()
-	transport_heading.text = "Transport cost per unit / turn"
+	transport_heading.text = "Transport cost per unit / tile"
 	transport_heading.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
 	transport_heading.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 	content.add_child(transport_heading)
@@ -1202,8 +1202,7 @@ func _good_supports_transport_mode(good_id: String, mode: String) -> bool:
 	return mode in (Catalog.route_infra_for_good(good_id).get("modes", []) as Array)
 
 func _good_transport_unit_cost(good_id: String, mode: String) -> float:
-	return TransportService.transport_cost(good_id, 1, 1,
-		float(EconomyConfig.TRANSPORT_MODE_COST_MULT.get(mode, 1.0)))
+	return TransportService.freight_per_tile(good_id, mode, 1)
 
 func _good_transport_mode_name(mode: String) -> String:
 	if mode == "nothing":

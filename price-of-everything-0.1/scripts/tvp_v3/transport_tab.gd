@@ -81,7 +81,7 @@ const CAPTION_PX := 15
 const COL_GAP := 8
 const KEY_SCALE := 1.0
 const KEY_WORDS := ["Upgrade", "Build"]
-const REACH_CAPTION := "Tile Distance"
+const REACH_CAPTION := "Tiles/turn"
 const CAPACITY_CAPTION := "Throughput"
 const REACH_W := 42.0
 const CAPACITY_W := 70.0
@@ -416,8 +416,8 @@ static func _gain_rows(key: String, mode: String, level: int, target: int, tile_
 	else:
 		rows.append({"caption": caption, "value": _count(cap_now) + unit})
 	if mode != "":
-		var reach_now := EconomyConfig.infra_range_for_level(mode, level)
-		var reach_then := EconomyConfig.infra_range_for_level(mode, target)
+		var reach_now := EconomyConfig.infra_speed_for_level(mode, level)
+		var reach_then := EconomyConfig.infra_speed_for_level(mode, target)
 		if reach_then != reach_now:
 			rows.append({"caption": REACH_CAPTION, "value": "%d → %d" % [reach_now, reach_then]})
 		elif reach_now > 0:
@@ -548,7 +548,7 @@ static func _spare_module(panel: Control, tile_id: String, slot: Dictionary, pro
 	top.add_theme_constant_override("separation", COL_GAP)
 	main.add_child(top)
 	top.add_child(_name_words(title, key))
-	var reach := EconomyConfig.infra_range_for_level(mode, 1) if mode != "" else 0
+	var reach := EconomyConfig.infra_speed_for_level(mode, 1) if mode != "" else 0
 	top.add_child(_cell(str(reach) if reach > 0 else "Grid", reach_width()))
 	top.add_child(_cell(_capacity_short(key, _capacity(key, 1, tile_id)), capacity_width()))
 
@@ -969,7 +969,7 @@ static func _goods_words(classes: Array) -> String:
 	return ", ".join(parts)
 
 
-## The spare modules' Tile Distance and Throughput columns: their set width, or their caption's when wider.
+## The spare modules' Tiles/turn and Throughput columns: their set width, or their caption's when wider.
 static func reach_width() -> float:
 	return maxf(REACH_W, ceilf(Plate.FONT_SEMI.get_string_size(REACH_CAPTION.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, CAPTION_PX).x))
 

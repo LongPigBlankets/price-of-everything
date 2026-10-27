@@ -394,7 +394,7 @@ func infra_tile_level(inst: Dictionary) -> int:
 ## infrastructure snapshot). No-ops headless (no map), like the reads.
 func set_tile_infra_level(tile_id: String, slot_key: String, level: int) -> void:
 	# Mirror into the router FIRST and unconditionally: a level changes how far one turn-move
-	# reaches (EconomyConfig.INFRA_RANGE_BY_LEVEL), and Catalog cannot read the HexMap tile —
+	# reaches (EconomyConfig.INFRA_SPEED_BY_LEVEL) and its price a tile, and Catalog cannot read the HexMap tile —
 	# it routes headless. Doing it before the early-outs below means a headless caller still
 	# gets correct routing even with no map node in the tree.
 	Catalog.set_tile_infra_level(tile_id, slot_key, level)

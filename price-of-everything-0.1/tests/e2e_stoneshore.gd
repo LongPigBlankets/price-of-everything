@@ -209,6 +209,16 @@ var _licence_out_declined := {}
 const LICENCE_MARK_TURNS := [50, 100, 150, 300]
 ## Cash kept back over a first licence's price.
 const LICENCE_CASH_BUFFER := 200.0
+## Freight (docs/pacing-labour-mining-licensing-spec.md §7.6, AC40.3): own freight to date and by mode, Local
+## Suppliers fees, the figures at the report turns, and the transit turns of every shipment dispatched.
+var _freight_total := 0.0
+var _freight_by_mode := {}
+var _ls_fees_total := 0.0
+var _freight_marks := {}
+var _shipments_seen := {}
+var _transit_turns_sum := 0
+var _transit_shipments := 0
+const FREIGHT_MARK_TURNS := [50, 100, 150, 300]
 
 
 func _ready() -> void:
@@ -394,6 +404,7 @@ func _print_profit_trajectory() -> void:
 			"t%d" % _stockpiles_turn if _stockpiles_turn >= 0 else "never"])
 		print("  seam fallbacks: %s" % ("none" if _fallbacks.is_empty() else "   ".join(_fallbacks)))
 	_print_licensing()
+	_print_freight()
 	# Where it crossed from black to red for good — the turn a fix has to target.
 	var last_positive := 0
 	for e in _profit_by_turn:
@@ -457,6 +468,56 @@ func _on_turn_processed(s: Dictionary) -> void:
 			"rate": Licensing.royalty_rate_total(turn), "held": _licence_holdings()}
 	if turn == 50:
 		_check_third_licence(revenue)
+	_tally_freight(turn, s)
+
+
+func _tally_freight(turn: int, s: Dictionary) -> void:
+	_freight_total += float(s.get("transport_paid", 0.0))
+	var by_mode: Dictionary = s.get("transport_breakdown", {})
+	for kind: String in by_mode:
+		_freight_by_mode[kind] = float(_freight_by_mode.get(kind, 0.0)) + float(by_mode[kind])
+	var good_costs: Dictionary = s.get("good_costs", {})
+	for gid: String in good_costs:
+		_ls_fees_total += float((good_costs[gid] as Dictionary).get("intermediary", 0.0))
+	for shipment: Dictionary in TransportState.pending_transport_shipments:
+		var id := str(shipment.get("id", ""))
+		if id == "" or _shipments_seen.has(id):
+			continue
+		_shipments_seen[id] = true
+		_transit_turns_sum += int(shipment.get("transport_turns", 0))
+		_transit_shipments += 1
+	if FREIGHT_MARK_TURNS.has(turn):
+		_freight_marks[turn] = {"freight": _freight_total, "ls_fees": _ls_fees_total, "congestion": _congestion_paid(),
+			"transit": float(_transit_turns_sum) / float(maxi(_transit_shipments, 1)), "shipments": _transit_shipments}
+
+
+func _congestion_paid() -> float:
+	var total := 0.0
+	for amount in (TransportState._link_congestion_paid as Dictionary).values():
+		total += float(amount)
+	return total
+
+
+func _print_freight() -> void:
+	# Local Suppliers fees ride in transport_paid under "middleman": own freight is the rest.
+	var modes := PackedStringArray()
+	var own := 0.0
+	var kinds: Array = _freight_by_mode.keys()
+	kinds.sort()
+	for kind: String in kinds:
+		if kind == "middleman":
+			continue
+		own += float(_freight_by_mode[kind])
+		modes.append("%s £%.0f" % [kind, float(_freight_by_mode[kind])])
+	print("  freight: £%.0f in all; own freight £%.0f (%s); Local Suppliers fees £%.0f; congestion surcharge £%.0f; %d shipments, %.2f turns in transit on average" % [
+		_freight_total, own, ", ".join(modes) if not modes.is_empty() else "none", _ls_fees_total, _congestion_paid(),
+		_transit_shipments, float(_transit_turns_sum) / float(maxi(_transit_shipments, 1))])
+	var turns: Array = _freight_marks.keys()
+	turns.sort()
+	for t: int in turns:
+		var m: Dictionary = _freight_marks[t]
+		print("  freight at t%d: £%.0f to date, congestion £%.0f, Local Suppliers fees £%.0f, %d shipments at %.2f turns" % [t,
+			float(m.freight), float(m.congestion), float(m.ls_fees), int(m.shipments), float(m.transit)])
 
 
 func _licence_holdings() -> String:

@@ -144,6 +144,12 @@ tenure (`AdvisorState.FOUNDER_ONLY_SEATS`): it exists only while he holds it.
 - A building idles until it is 70% staffed.
 - Strikes cut output 60% while inputs are still consumed (`scripts/labour_unrest.gd`), and a struck mine
   still charges its deposit in full. A strike is a cash shock, not a pause.
+- Freight is priced by distance: every tile a unit crosses is charged (`EconomyConfig.FREIGHT_TILE_MULT`), and
+  speed (`INFRA_SPEED_BY_LEVEL`) only sets transit turns. A level 1 road is no faster than bare ground, only
+  four times cheaper; shipments take the cheapest route and upgrading a level buys speed. Local Suppliers
+  settle in the same turn and keep their own trips constant (`LOCAL_SUPPLIERS_TILES_PER_TRIP`), so slowing
+  the player's own freight never raises their prices. A regression looks like a quote that counts turns, or
+  a Local Suppliers price that moves with a transport speed.
 
 ## How to use this file in review
 

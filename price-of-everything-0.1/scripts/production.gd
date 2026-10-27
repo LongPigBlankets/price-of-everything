@@ -1566,7 +1566,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		"total_revenue": 0.0,
 	}
 	# Sold goods ship by sea: route to the nearest port; cash lands once it arrives
-	# (x turns later, x = transport duration at 2 tiles/turn). Shipping costs apply.
+	# (x turns later, x = the route's transit turns). Shipping costs apply.
 	var covered_goods: Dictionary = {}
 	for gid in totals.keys():
 		if int(totals[gid]) > 0:

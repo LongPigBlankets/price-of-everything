@@ -321,8 +321,8 @@ func add_tile_infrastructure(tile_id: String, infra_type: String) -> void:
 			_route_cache.clear()   # routing network changed: cached paths may now be shorter
 
 ## Mirror a tile's infrastructure LEVEL into the router. Levels change a mode's per-turn reach
-## (EconomyConfig.INFRA_RANGE_BY_LEVEL), so an upgrade can shorten routes and must invalidate the
-## cache exactly as laying new infrastructure does.
+## (EconomyConfig.INFRA_SPEED_BY_LEVEL) and its price a tile (EconomyConfig.FREIGHT_TILE_MULT), so an upgrade can
+## change routes and must invalidate the cache exactly as laying new infrastructure does.
 func set_tile_infra_level(tile_id: String, infra_type: String, level: int) -> void:
 	var norm := _normalise_infra_id(infra_type.strip_edges().to_lower())
 	if tile_id == "" or norm == "":
@@ -427,7 +427,8 @@ func infra_range(type_id: String) -> int:
 	return int(_infra_by_type.get(type_id, {}).get("range", 0))
 
 # =========================================================================
-# TRANSPORT ROUTING (turn-move shortest path; see docs/transport-routing-plan.md)
+# TRANSPORT ROUTING (cheapest route in turn-moves; see docs/transport-routing-plan.md and
+# docs/pacing-labour-mining-licensing-spec.md §7.6)
 # =========================================================================
 
 const ROUTE_MODE_NONE := "nothing"
@@ -456,9 +457,9 @@ func tile_neighbours(tile_id: String) -> Array:
 ## infrastructure.csv range for any mode with no level table.
 func _mode_range(mode: String, tile_id: String = "") -> int:
 	if mode == ROUTE_MODE_NONE:
-		return 1
+		return EconomyConfig.BARE_GROUND_SPEED
 	if tile_id != "":
-		var leveled := EconomyConfig.infra_range_for_level(mode, tile_infra_level(tile_id, mode))
+		var leveled := EconomyConfig.infra_speed_for_level(mode, tile_infra_level(tile_id, mode))
 		if leveled > 0:
 			return maxi(1, leveled)
 	return maxi(1, infra_range(mode))
@@ -491,10 +492,10 @@ func _modes_for_good(good_id: String) -> Array:
 		modes.append(ROUTE_MODE_NONE)
 	return modes
 
+## Tiles reachable in ONE turn-move from `tile_id`: [{tile, mode, steps}], one entry per tile per mode, `steps` being
+## the tiles crossed on that mode's network. Every mode's offer is kept, because a slower mode can be the cheaper one.
 func _turn_move_neighbours(tile_id: String, modes: Array) -> Array:
-	# Tiles reachable in ONE turn (one mode, up to its range hops). [{tile, mode}]
 	var out: Array = []
-	var seen: Dictionary = {}
 	for m in modes:
 		if not _tile_supports_mode(tile_id, m):
 			continue
@@ -510,9 +511,7 @@ func _turn_move_neighbours(tile_id: String, modes: Array) -> Array:
 						continue
 					visited[nb] = true
 					nextf.append(nb)
-					if not seen.has(nb):
-						seen[nb] = true
-						out.append({"tile": nb, "mode": m})
+					out.append({"tile": nb, "mode": m, "steps": depth + 1})
 			frontier = nextf
 			depth += 1
 	return out
@@ -523,15 +522,20 @@ func route(source_tile: String, dest_tile: String, good_id: String = "") -> Dict
 	# cache is cleared whenever the network changes (see add/remove_tile_infrastructure).
 	if source_tile == "" or dest_tile == "" or source_tile == dest_tile:
 		return _route_uncached(source_tile, dest_tile, good_id)
-	var key := "%s|%s|%s" % [source_tile, dest_tile, "-".join(_modes_for_good(good_id))]
+	# A fluid's tanker premium (hazardous or not) changes what the cheapest route is, so it is in the key. Solids
+	# with the same modes price every route alike and share an entry.
+	var premium := ""
+	if good_id != "" and requires_pipeline(good_id):
+		premium = "hazard" if get_transport_class(good_id) == "hazard_liquid" else "fluid"
+	var key := "%s|%s|%s|%s" % [source_tile, dest_tile, "-".join(_modes_for_good(good_id)), premium]
 	if not _route_cache.has(key):
 		_route_cache[key] = _route_uncached(source_tile, dest_tile, good_id)
 	return _route_cache[key]
 
 
 func _route_uncached(source_tile: String, dest_tile: String, good_id: String = "") -> Dictionary:
-	# Fewest turns A->B. Returns {turns, path:[turn-boundary tiles], legs:[{mode,from,to}]}.
-	# (Objective currently FASTEST; cheapest/blended need infra cost_per_unit_shipped.)
+	# Cheapest A->B, fewer turns between equal costs. Returns
+	# {turns, path:[turn-boundary tiles], legs:[{mode, from, to, tiles, level}], tiles}.
 	if source_tile == "" or dest_tile == "":
 		return {"turns": 0, "path": [], "legs": []}
 	if source_tile == dest_tile:
@@ -539,56 +543,58 @@ func _route_uncached(source_tile: String, dest_tile: String, good_id: String = "
 	var modes := _modes_for_good(good_id)
 	# Fluids stay in their pipes whenever a pipe path exists; road and rail are the fallback
 	# for a destination the pipework does not reach, at several times the cost (see
-	# EconomyConfig.FLUID_OVERLAND_COST_MULT). This preference has to be explicit because the
-	# search below is FASTEST-first: rail out-ranges pipe 4 tiles to 2, so without it every
-	# fluid shipment would desert a perfectly good pipe network for the nearest railhead and
-	# quietly cost 3-5x more.
+	# EconomyConfig.FLUID_OVERLAND_COST_MULT). It stays explicit even though the search below
+	# is cheapest-first: a level 3 rail tanker is cheaper a tile than a level 1 pipe, and a
+	# fluid with a pipe to its door belongs in it.
 	if requires_pipeline(good_id):
 		var pipe_only: Array = []
 		for m in modes:
 			if EconomyConfig.PIPE_MODES.has(m):
 				pipe_only.append(m)
 		if not pipe_only.is_empty():
-			var piped := _bfs_route(source_tile, dest_tile, pipe_only)
+			var piped := _cheapest_route(source_tile, dest_tile, pipe_only, good_id)
 			if int(piped.get("turns", 1 << 30)) < (1 << 30):
 				return piped
-	return _bfs_route(source_tile, dest_tile, modes)
+	return _cheapest_route(source_tile, dest_tile, modes, good_id)
 
 
-## Fewest turn-moves from source to dest across `modes`. Split out of _route_uncached so a
-## fluid can be asked for a pipe-only route first and the full network only if that fails.
-func _bfs_route(source_tile: String, dest_tile: String, modes: Array) -> Dictionary:
+const _ROUTE_COST_EPS := 1e-9
+
+## The cheapest route from source to dest across `modes` (owner ruling, spec §7.6), and between equal costs the one
+## with fewer turns. Each turn-move is an edge costing its tiles x EconomyConfig.freight_tile_mult at the departure
+## tile's level, the same figure transport_cost_for_route charges, so the route taken is the one priced. Dijkstra on
+## (cost, turns) with a binary heap; split out of _route_uncached so a fluid can be asked for a pipe-only route first.
+func _cheapest_route(source_tile: String, dest_tile: String, modes: Array, good_id: String = "") -> Dictionary:
 	var INF := 1 << 30
-	var dist: Dictionary = {source_tile: 0}
-	var prev: Dictionary = {}  # tile -> {from, mode}
-	# Every turn-move costs exactly 1 turn, so this graph is unit-weight: plain BFS finds
-	# shortest paths in O(V+E). (The old solver re-scanned every known tile for the minimum
-	# on each step — O(V^2) — which dominated routing once the road/rail network spanned the
-	# map.) A unit-weight node can never be relaxed below the distance it is first reached at,
-	# so processing the queue FIFO yields the identical prev-tree/distances the old code did.
-	var queue: Array = [source_tile]
-	var head := 0
-	while head < queue.size():
-		var u: String = str(queue[head])
-		head += 1
+	var best: Dictionary = {source_tile: [0.0, 0]}
+	var prev: Dictionary = {}  # tile -> {from, mode, tiles, level}
+	var heap: Array = [[0.0, 0, source_tile]]
+	while not heap.is_empty():
+		var top: Array = _heap_pop(heap)
+		var u: String = str(top[2])
+		var at: Array = best[u]
+		if float(top[0]) != float(at[0]) or int(top[1]) != int(at[1]):
+			continue  # superseded by a cheaper or quicker way in
 		if u == dest_tile:
 			break
-		var nd := int(dist[u]) + 1
-		for entry in _turn_move_neighbours(u, modes):
-			var nb: String = entry.tile
-			if dist.has(nb):
+		for entry: Dictionary in _turn_move_neighbours(u, modes):
+			var mode := str(entry.mode)
+			var level := tile_infra_level(u, mode) if mode != ROUTE_MODE_NONE else 1
+			var cand: Array = [float(at[0]) + EconomyConfig.freight_tile_mult(good_id, mode, level) * float(entry.steps), int(at[1]) + 1]
+			var nb := str(entry.tile)
+			if best.has(nb) and not _route_key_less(cand, best[nb]):
 				continue
-			dist[nb] = nd
-			prev[nb] = {"from": u, "mode": entry.mode}
-			queue.append(nb)
-	if not dist.has(dest_tile):
+			best[nb] = cand
+			prev[nb] = {"from": u, "mode": mode, "tiles": int(entry.steps), "level": level}
+			_heap_push(heap, [cand[0], cand[1], nb])
+	if not best.has(dest_tile):
 		return {"turns": INF, "path": [], "legs": [], "tiles": []}  # unreachable via networks
 	var path: Array = [dest_tile]
 	var legs: Array = []
 	var cur := dest_tile
 	while prev.has(cur):
 		var p: Dictionary = prev[cur]
-		legs.push_front({"mode": p.mode, "from": p.from, "to": cur})
+		legs.push_front({"mode": p.mode, "from": p.from, "to": cur, "tiles": p.tiles, "level": p.level})
 		path.push_front(p.from)
 		cur = p.from
 	var tiles: Array = [source_tile]
@@ -596,7 +602,51 @@ func _bfs_route(source_tile: String, dest_tile: String, modes: Array) -> Diction
 		var seg := _mode_shortest_path(str(leg.from), str(leg.to), str(leg.mode))
 		for i in range(1, seg.size()):
 			tiles.append(seg[i])
-	return {"turns": int(dist[dest_tile]), "path": path, "legs": legs, "tiles": tiles}
+	return {"turns": int((best[dest_tile] as Array)[1]), "path": path, "legs": legs, "tiles": tiles}
+
+## (cost, turns) order for the route search: cheaper first, then fewer turns. Costs within _ROUTE_COST_EPS are equal.
+static func _route_key_less(a: Array, b: Array) -> bool:
+	if float(a[0]) < float(b[0]) - _ROUTE_COST_EPS:
+		return true
+	if float(a[0]) > float(b[0]) + _ROUTE_COST_EPS:
+		return false
+	return int(a[1]) < int(b[1])
+
+static func _heap_push(heap: Array, item: Array) -> void:
+	heap.append(item)
+	var i := heap.size() - 1
+	while i > 0:
+		var parent := (i - 1) >> 1
+		if not _route_key_less(heap[i], heap[parent]):
+			break
+		var t: Array = heap[i]
+		heap[i] = heap[parent]
+		heap[parent] = t
+		i = parent
+
+static func _heap_pop(heap: Array) -> Array:
+	var top: Array = heap[0]
+	var last: Array = heap.pop_back()
+	if heap.is_empty():
+		return top
+	heap[0] = last
+	var i := 0
+	var n := heap.size()
+	while true:
+		var l := 2 * i + 1
+		var r := l + 1
+		var m := i
+		if l < n and _route_key_less(heap[l], heap[m]):
+			m = l
+		if r < n and _route_key_less(heap[r], heap[m]):
+			m = r
+		if m == i:
+			break
+		var t: Array = heap[i]
+		heap[i] = heap[m]
+		heap[m] = t
+		i = m
+	return top
 
 func _mode_shortest_path(from_tile: String, to_tile: String, mode: String) -> Array:
 	# BFS shortest tile path from->to staying on one mode's network.

@@ -1,5 +1,10 @@
 # Infrastructure levels change reach — and a scoped goods transport table
 
+> **Superseded in part (Phase 7, docs/pacing-labour-mining-licensing-spec.md §7.6).** Speed and price are now
+> separate tables. `INFRA_SPEED_BY_LEVEL` (road 1/2/4, rail 3/5/8, pipes 2/3/5, port 8/12/20) sets transit turns
+> only, and `FREIGHT_TILE_MULT` charges every tile crossed, calibrated so a whole leg at the ranges below costs
+> what it did. Shipments take the cheapest route. The range table and the per-leg pricing described here are history.
+
 Owner ruling, 9 August 2026. **Mechanic + balance change** (`cnc-balance-change-control`).
 
 ## What shipped

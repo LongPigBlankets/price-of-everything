@@ -793,6 +793,9 @@ Effects:
 
 Slower goods sit on links longer, so congestion rises on busy links. The e2e should report it.
 
+**Route choice (owner ruling, 27 October).** Shipments take the cheapest route, and between equal
+costs the one with fewer turns. Upgrading a level buys speed.
+
 **Local Suppliers: same turn, LOCKED, pricing unchanged.**
 - Their haul is trips to the hub × settlement factor × freight rate.
 - Trips are `ceil(distance ÷ TRANSPORT_MAX_TILES_PER_TURN)` (`middleman_locations.gd:147`).
@@ -2114,6 +2117,65 @@ Each item is checked by a named unit test unless marked otherwise.
   - total freight within about 10% of today on the e2e;
   - congestion surcharge reported;
   - Local Suppliers prices unchanged.
+
+#### P7 acceptance criteria
+
+Each item is checked by a named unit test unless marked otherwise.
+
+**Owner ruling (27 October).** Shipments take the **cheapest** route; between routes that cost the
+same, the one with fewer turns. Today's router takes the fewest turns. Once a level 1 road is no faster
+than bare ground, fewest turns would send goods over bare ground at four times the price per tile.
+
+**Cost (§7.6)**
+
+1. **AC37.1** A route's freight is the sum over its legs of tiles × weight × qty × the per-tile
+   multiplier for the leg's mode at the level of the tile the leg leaves from
+   (`EconomyConfig.FREIGHT_TILE_MULT`): road 0.5 / 0.333 / 0.2, rail 0.125 / 0.083 / 0.056, pipe and
+   reinforced pipe 0.5 / 0.333 / 0.2, bare ground 2.0. A fluid on road or rail pays its tanker
+   multiplier divided by the same reach. Weight is today's `transport_rate_for_good`.
+2. **AC37.2** A whole leg at today's reach costs exactly what it costs today, for every mode and
+   level, solids and fluids (2 road tiles at L1, 4 rail tiles at L1, 5 road tiles at L3, 9 rail tiles
+   at L3, 2 pipe tiles at L1).
+3. **AC37.3** A part leg pays for its tiles only: 3 road tiles at L1 cost 1.5 of today's legs, not 2.
+4. **AC37.4** A route with no built leg (the straight-line fallback) pays bare ground per tile: tile
+   distance × 2.0 × weight × qty.
+5. **AC37.5** `TransportService.freight_per_tile` reads the same table, so the quote the Resources panel
+   shows, times the tiles, is the charge on a one-mode route with no research and no congestion.
+6. **AC37.6** One constant, `FREIGHT_TILE_SCALE` (1.0), scales every per-tile multiplier: the lever
+   if the e2e shows freight moving more than about 10%.
+
+**Speed (§7.6)**
+
+1. **AC38.1** `EconomyConfig.INFRA_SPEED_BY_LEVEL` sets how many tiles one turn-move covers: road
+   1 / 2 / 4, rail 3 / 5 / 8, port 8 / 12 / 20, bare ground 1. Pipes are not in the §7.6 table and
+   keep 2 / 3 / 5. The `range` column of `infrastructure.csv` matches level 1. A route's transit turns
+   are its turn-moves.
+2. **AC38.2** Shipments take the cheapest route, and between equal costs the one with fewer turns. A
+   level 1 road is taken over a shorter run of bare ground while it costs less (up to four times the
+   tiles), and rail over road on the same line.
+3. **AC38.3** A fluid still takes a pipe route when one exists, and road or rail tankers only where
+   the pipework does not reach.
+4. **AC38.4** Every panel that shows a mode's reach (building infrastructure rows, the transport tab,
+   the Construct build order) reads the speed table, and the cost line reads £ per unit per tile.
+5. **AC38.5** In-transit shipments from an old save arrive on their saved countdown and are not charged
+   again. A saved leg without a tile count is costed on its hex distance.
+
+**Local Suppliers (§7.6)**
+
+1. **AC39.1** Local Suppliers trips use `LOCAL_SUPPLIERS_TILES_PER_TRIP` (2), which is not a transport
+   speed. Their coefficient and freight rate are unchanged for every tile they trade on.
+2. **AC39.2** `TRANSPORT_MAX_TILES_PER_TURN` is gone. `transport_turns_for_tile_distance` uses the bare
+   ground speed and gives a route's turns only: nothing prices by turns. *Checked by audit, listed in the
+   commit.*
+
+**Evidence and stance**
+
+1. **AC40.1** Stance A7's freight line is in the design-intent skill.
+2. **AC40.2** The unit suite has only known failures and the parse check is clean. Windowed captures
+   show the reach and cost rows in the transport tab and the build order.
+3. **AC40.3** The Stoneshore e2e reports freight by mode, the congestion surcharge, Local Suppliers
+   fees and the average transit turns, against P6. Total freight is within about 10% of P6. Local
+   Suppliers fees move only as far as what is bought through them moves. *Checked by run.*
 
 ## 16. Open questions
 
