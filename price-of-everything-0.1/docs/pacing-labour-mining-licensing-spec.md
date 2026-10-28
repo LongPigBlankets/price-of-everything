@@ -628,6 +628,40 @@ warning, or strike, at any check before the quiet runs out.
 - A strike that runs its course leaves no quiet (it gives the +5 instead, AC12.5).
 - Saved: `strike_quiet_until` {instance_id: first check turn it can strike again}.
 
+### 6.2d One off bonuses and the strike lists — owner ruling 28 Oct
+
+Two bonuses buy a building quiet (§6.2c) before or during a strike:
+
+| Action | Cost, one lump sum paid now | Effect at each building it covers |
+|---|---|---|
+| One off building bonus | half that building's Settle cost (§6.2) | its strike ends with no +5, or it leaves the warning, and it is quiet for N turns |
+| One off bonus (company wide) | half the Settle cost of every building it covers | the same at every building it covers |
+
+- N scales with satisfaction when the bonus is paid, from 10 turns at −100 to 20 at +100, 15 at
+  0: `roundi(15 + 5 × satisfaction / 100)`. At −80, 11 turns.
+- A bonus never shortens a quiet already running: the building is quiet to the later of the two.
+- Neither bonus changes satisfaction or counts toward Routinely broke strikes. Charged as "One off
+  bonus" in that turn's costs.
+- *Proposed (my calls):* the company wide bonus covers every production and power building that
+  strikes count (§6.1) whose quiet it would lengthen, so a building already quiet for longer is
+  not paid for; a building's own bonus key is off when it would not lengthen its quiet.
+
+The Strikes tab carries two rows, each with a Show key that opens its list (one at a time):
+
+1. **Buildings on strike cooldown (N)**: the buildings quiet now, each with its turns left.
+2. **Buildings vulnerable to strikes in next 10 turns (N)**: while a warning stands, the named
+   buildings. Otherwise, when the next check's warning is still to be drawn and satisfaction is
+   projected (`LabourState.projected_satisfaction`) below −70 at that draw, every building strikes
+   count that would not sit out that check. None while a union agreement stands or strikes are
+   blocked.
+
+An open list starts with its suggested actions: "Increase company wide satisfaction through
+policies" (a key that opens the Labour tab), "One off bonus" (its total beside its key) and "One
+off building bonus" (on each building's row). Then a row a building, as the strike table's rows:
+emblem, good, name and tile, then its turns left (cooldown) or its output loss if it struck
+(vulnerable), then its bonus cost beside its Bonus key. Bonus keys open a key bed with Confirm and
+Cancel.
+
 ### 6.2b Breaking strikes — owner ruling 26 Oct
 
 Beside each pay rise, Break strike: replacement crews end the strike at once.
@@ -673,7 +707,10 @@ uses the DS2 kit (`ds2/parts.gd`). Every part's raised heading stands inside its
      says what it does, with Confirm and Cancel. Break strike's bed also says how near the
      workforce is to remembering it for good;
    - an empty sub-tab says so ("No strikes due in the next 5 turns.").
-4. **Record**: a row per past strike with its turn, the buildings, the outcome's lamp and the output
+4. **Strike planning** (a case, §6.2d): "Buildings on strike cooldown (N)" and "Buildings
+   vulnerable to strikes in next 10 turns (N)", each with a Show key that opens its list under it,
+   the suggested actions first.
+5. **Record**: a row per past strike with its turn, the buildings, the outcome's lamp and the output
    lost.
 
 ### 6.4 Code
@@ -1774,6 +1811,18 @@ turn's "resolution" is what happens when the player ends it.
    any check before turn t + 25, and can be from turn t + 25. Settling every strike still blocks
    all strikes for 15 turns.
 10. **AC13.10** The quiet is saved (`strike_quiet_until`) and validated. Older saves load with none.
+11. **AC13.11** A bonus costs half the Settle cost of each building it covers and quiets it for
+    `roundi(15 + 5 × satisfaction / 100)` turns: 10 at −100, 15 at 0, 20 at +100. It never
+    shortens a running quiet.
+12. **AC13.12** The One off building bonus charges its cost this turn as "One off bonus", ends the
+    building's strike with no +5 or takes it out of the warning, and leaves satisfaction, its
+    target and the strike breaking counts unchanged. It refuses a building it would not lengthen.
+13. **AC13.13** The One off bonus covers every building strikes count whose quiet it would
+    lengthen, charges their costs as one lump sum and quiets each. It refuses when it covers none.
+14. **AC13.14** The cooldown list is the buildings quiet now. The vulnerable list is the named
+    buildings while a warning stands, else every counted building that would not sit out the next
+    check when its warning is still to be drawn and satisfaction is projected below −70 at the
+    draw, else none. A union agreement, or a settlement's 15 turns, empties it.
 
 **Accidents (§4.5)**
 
@@ -1807,6 +1856,11 @@ turn's "resolution" is what happens when the player ends it.
 4. **AC16.4** Player copy has no hyphens, semicolons or dashes, and text on navy uses
    `DS.PALETTE.TEXT`. Windowed screenshots of the Strikes tab with a warning, with strikes on, and
    quiet. *Checked by review.*
+5. **AC16.5** Strike planning: the two rows read "Buildings on strike cooldown (N)" and "Buildings
+   vulnerable to strikes in next 10 turns (N)", each with a Show key. Show opens that list (and
+   shuts the other) with the three suggested actions first: the policies key opens the Labour tab,
+   One off bonus has its total beside its key, and each building row has its own bonus cost and
+   Bonus key. A Bonus key opens a bed, and Confirm pays it.
 
 **Gates**
 

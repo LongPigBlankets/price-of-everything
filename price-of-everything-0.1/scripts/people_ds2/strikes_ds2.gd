@@ -13,6 +13,10 @@ extends Control
 ##   and under it a row a building: its emblem and the good it makes side by side, its name, its tile under it, its
 ##   own figures and keys. Settle and Break strike are two lines, each its cost on a screen in Cost to manage
 ##   beside its key under Action. A key opens a key bed under its row that says what it does, with Confirm and Cancel.
+## - Strike planning (§6.2d): "Buildings on strike cooldown (N)" and "Buildings vulnerable to strikes in next 10 turns
+##   (N)", each with a Show key that opens its list under it: the suggested actions first (policies, the company wide
+##   One off bonus, the One off building bonus), then a row a building with its turns left or its output loss, and its
+##   own bonus cost beside its Bonus key.
 ## - The record: a row a past strike, its turn, the buildings, the outcome's lamp and what it lost.
 ##
 ## The figures and the actions are LabourState.unrest's (scripts/labour_unrest.gd).
@@ -60,6 +64,17 @@ const ICON_PX := 48
 ## Buildings under the fold row stand in this far.
 const MEMBER_INDENT := 8
 const RECORD_SHOWN := 8
+## Strike planning: its two lists, the bonus action, the columns its lists add and its keys.
+const COOLDOWN := "cooldown"
+const VULNERABLE := "vulnerable"
+const BONUS := "bonus"
+const TURNS_LEFT := "Turns left"
+const BONUS_COST := "Bonus"
+const BONUS_KEY := "Bonus"
+const PAY_BONUS := "Pay bonus"
+const POLICIES := "Policies"
+## The People shell's Labour tab (people_ds2.gd TABS).
+const LABOUR_TAB := 1
 
 var _scroll: ScrollContainer
 var _body: VBoxContainer
@@ -69,9 +84,11 @@ var _refresh_queued := false
 var _subtab := ""
 ## Whether the buildings are unfolded under All strikes.
 var _members_open := false
-## The action whose bed is open, as "settle:<target>" or "break:<target>" (target "all" or a building's
-## instance id), or "".
+## The action whose bed is open, as "settle:<target>", "break:<target>" or "bonus:<target>" (target "all" or a
+## building's instance id), or "".
 var _confirming := ""
+## The strike planning list that is open, COOLDOWN or VULNERABLE, or "".
+var _list_open := ""
 
 
 func _ready() -> void:
@@ -129,14 +146,19 @@ func _rebuild() -> void:
 	var on := u.ongoing()
 	var shown := shown_subtab(_subtab, up.size(), on.size())
 	var listed := up if shown == UPCOMING else on
+	var action := _confirming.get_slice(":", 0)
 	var target := _confirming.get_slice(":", 1)
-	if not (target == "all" and not listed.is_empty()) and not listed.has(target):
+	if action == BONUS:
+		if _list_open == "" or not (target == "all" or plan_list(_list_open, turn).has(target)):
+			_confirming = ""
+	elif not (target == "all" and not listed.is_empty()) and not listed.has(target):
 		_confirming = ""
 	elif target != "all":
 		_members_open = true
 	_body.add_child(_risk())
 	_body.add_child(_subtabs(up.size(), on.size(), shown))
 	_body.add_child(_board(shown, listed))
+	_body.add_child(_planning(turn))
 	if not u.record.is_empty():
 		_body.add_child(_record())
 
@@ -338,7 +360,7 @@ func _board(shown: String, iids: Array) -> Control:
 	head.set_meta("break", totals["break"])
 	head.set_meta("loss", totals.loss)
 	rows.add_child(head)
-	if _confirming.get_slice(":", 1) == "all":
+	if _board_bed("all"):
 		rows.add_child(_bed(_confirming.get_slice(":", 0), "all", iids))
 	rows.add_child(_fold_row(n))
 	var indent := MarginContainer.new()
@@ -354,9 +376,14 @@ func _board(shown: String, iids: Array) -> Control:
 	indent.add_child(list)
 	for iid: String in iids:
 		list.add_child(_member(iid, float(losses[iid]), float(settles[iid]), float(breaks[iid]), grid))
-		if _confirming.get_slice(":", 1) == iid:
+		if _board_bed(iid):
 			list.add_child(_bed(_confirming.get_slice(":", 0), iid, [iid]))
 	return c.case
+
+
+## Whether the open bed is the strike table's Settle or Break strike bed for `target`.
+func _board_bed(target: String) -> bool:
+	return _confirming.get_slice(":", 0) != BONUS and _confirming.get_slice(":", 1) == target
 
 
 ## What a building's strike would cost or still costs: a named one's whole strike, a striking one's turns left.
@@ -385,10 +412,10 @@ static func _grid(values: Array) -> Dictionary:
 		"action_w": maxf(key_w, Kit.caption_width(ACTION) + 4.0)}
 
 
-## The column labels as metal labels, over the rows' columns.
-static func _header_row(grid: Dictionary) -> Control:
+## The column labels as metal labels, over the rows' columns: Location, then the three columns `labels` names.
+static func _header_row(grid: Dictionary, labels: Array = [LOSS, COST, ACTION], row_name := "StrikeHeadings") -> Control:
 	var wrap := MarginContainer.new()
-	wrap.name = "StrikeHeadings"
+	wrap.name = row_name
 	wrap.add_theme_constant_override("margin_left", roundi(Kit.PAD.x))
 	wrap.add_theme_constant_override("margin_right", roundi(Kit.PAD.x))
 	wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -396,7 +423,7 @@ static func _header_row(grid: Dictionary) -> Control:
 	line.add_theme_constant_override("separation", COL_GAP)
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	wrap.add_child(line)
-	for spec: Array in [[LOCATION, 0.0], [LOSS, float(grid.loss_w)], [COST, float(grid.cost_w)], [ACTION, float(grid.action_w)]]:
+	for spec: Array in [[LOCATION, 0.0], [labels[0], float(grid.loss_w)], [labels[1], float(grid.cost_w)], [labels[2], float(grid.action_w)]]:
 		var l := Kit.caption(str(spec[0]), Kit.CAPTION_PX, HORIZONTAL_ALIGNMENT_LEFT if float(spec[1]) == 0.0 else HORIZONTAL_ALIGNMENT_CENTER)
 		l.name = "Heading_%s" % str(spec[0]).replace(" ", "")
 		if float(spec[1]) == 0.0:
@@ -560,7 +587,7 @@ static func _good_of(b: Dictionary) -> String:
 
 ## The bed under an action's key: what it does, then Confirm and Cancel. `action` is "settle" or "break".
 func _bed(action: String, target: String, iids: Array) -> Control:
-	var stem := "Settle" if action == "settle" else "BreakStrike"
+	var stem := {"settle": "Settle", "break": "BreakStrike", BONUS: "Bonus"}.get(action, "Settle") as String
 	var bed := PanelContainer.new()
 	bed.name = "%sBed" % stem
 	var pad := StyleBoxEmpty.new()
@@ -596,6 +623,17 @@ func _bed(action: String, target: String, iids: Array) -> Control:
 static func bed_words(action: String, target: String, iids: Array) -> String:
 	var u := LabourState.unrest
 	var turns := LabourState.EVENT_SHIFT_TURNS
+	if action == BONUS:
+		var quiet := LabourUnrest.bonus_quiet_turns(LabourState.satisfaction)
+		if target == "all":
+			return "One off bonus at %s, paid now. No strikes there for %d turns." % [
+				"this building" if iids.size() == 1 else "these %d buildings" % iids.size(), quiet]
+		var ends := ""
+		if u.is_on_strike(target):
+			ends = " Its workers go back to work."
+		elif u.is_named(target):
+			ends = " It leaves the strike."
+		return "One off bonus here, paid now.%s It cannot strike again for %d turns." % [ends, quiet]
 	if action == "settle":
 		var pct := roundi(LabourUnrest.PAY_RAISE * 100.0)
 		if target == "all":
@@ -630,7 +668,15 @@ func _confirm(action: String, target: String, iids: Array) -> void:
 	_confirming = ""
 	var b := BuildingState.get_building(target)
 	var who := BuildingNaming.of(b) if not b.is_empty() else target
-	if action == "break":
+	if action == BONUS:
+		var quiet := LabourUnrest.bonus_quiet_turns(LabourState.satisfaction)
+		if target == "all":
+			var n := u.company_bonus_buildings(turn).size()
+			if u.pay_company_bonus(turn):
+				MatchState.request_toast("One off bonus paid. No strikes at %d building%s for %d turns." % [n, "" if n == 1 else "s", quiet], "success")
+		elif u.pay_bonus(target, turn):
+			MatchState.request_toast("One off bonus paid at %s. No strike there for %d turns." % [who, quiet], "success")
+	elif action == "break":
 		if target == "all":
 			if u.break_all(turn, iids):
 				MatchState.request_toast("Strikes broken. Everyone is back at work.", "warning")
@@ -642,6 +688,221 @@ func _confirm(action: String, target: String, iids: Array) -> void:
 	elif u.raise_pay(target, turn):
 		MatchState.request_toast("Strike settled at %s." % who, "success")
 	_rebuild()
+
+
+# --- strike planning -----------------------------------------------------------------------------
+
+## A strike planning list's buildings on `turn`.
+static func plan_list(id: String, turn: int) -> Array:
+	return LabourState.unrest.on_cooldown(turn) if id == COOLDOWN else LabourState.unrest.vulnerable(turn)
+
+
+## A strike planning row's title, its count in brackets.
+static func plan_title(id: String, n: int) -> String:
+	if id == COOLDOWN:
+		return "Buildings on strike cooldown (%d)" % n
+	return "Buildings vulnerable to strikes in next %d turns (%d)" % [LabourUnrest.CHECK_EVERY, n]
+
+
+func _planning(turn: int) -> Control:
+	var c := _cased("StrikePlanning", "Strike planning")
+	var rows: VBoxContainer = c.rows
+	rows.add_theme_constant_override("separation", 6)
+	for id: String in [COOLDOWN, VULNERABLE]:
+		var iids := plan_list(id, turn)
+		rows.add_child(_plan_row(id, iids.size()))
+		if _list_open == id:
+			rows.add_child(_plan_open(id, iids, turn))
+	return c.case
+
+
+## A list's row: its title and the Show key that opens the list under it (Hide while it is open).
+func _plan_row(id: String, n: int) -> Control:
+	var open := _list_open == id
+	var module := Kit.module("PlanRow_%s" % id, true)
+	var row := Kit.row_of(module)
+	row.custom_minimum_size.y = 0
+	var info := Kit.info(plan_title(id, n), "", "")
+	info.name = "PlanTitle"
+	row.add_child(info)
+	var w := maxf(CreamKey.width_for("Show", "", false, false, KEY_SCALE), CreamKey.width_for("Hide", "", false, false, KEY_SCALE))
+	var key: Button = CreamKey.make("Show_%s" % id, "Hide" if open else "Show", "", w, false, false, KEY_SCALE)
+	key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	key.set("chosen", open)
+	key.pressed.connect(func() -> void:
+		_list_open = "" if open else id
+		if _confirming.begins_with(BONUS):
+			_confirming = ""
+		_rebuild())
+	row.add_child(key)
+	Tip.attach(module, {"name": plan_title(id, n), "detail": "Buildings that cannot strike yet, with the turns left." if id == COOLDOWN
+		else "Buildings that can strike at the next check, if satisfaction stays below %s." % _n(LabourUnrest.STRIKE_BELOW)})
+	return module
+
+
+## An open list: the suggested actions, then a row a building.
+func _plan_open(id: String, iids: Array, turn: int) -> Control:
+	var u := LabourState.unrest
+	var indent := MarginContainer.new()
+	indent.name = "PlanList_%s" % id
+	indent.add_theme_constant_override("margin_left", MEMBER_INDENT)
+	indent.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 6)
+	list.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	indent.add_child(list)
+	var quiet := LabourUnrest.bonus_quiet_turns(LabourState.satisfaction)
+	var costs := {}
+	var losses := {}
+	for iid: String in iids:
+		costs[iid] = u.bonus_cost(iid)
+		losses[iid] = _loss(iid)
+	var company := u.company_bonus_cost(turn)
+	var grid := _plan_grid(id, costs.values() + losses.values() + [company])
+	list.add_child(_action_row("PolicyAction", "Increase company wide satisfaction through policies",
+		"Strikes stop at %s or above. Satisfaction now %s." % [_n(LabourUnrest.STRIKE_BELOW), _n(LabourState.satisfaction)],
+		-1.0, POLICIES, "", grid))
+	var covered := u.company_bonus_buildings(turn)
+	list.add_child(_action_row("BonusAction", "One off bonus",
+		"Company wide, paid now. No strikes for %d turns." % quiet, company, PAY_BONUS,
+		"%s:all" % BONUS if not covered.is_empty() else "", grid))
+	if _confirming == "%s:all" % BONUS:
+		list.add_child(_bed(BONUS, "all", covered))
+	list.add_child(_action_row("BuildingBonusAction", "One off building bonus",
+		"One building at a time, on its row below. No strike there for %d turns." % quiet, -1.0, "", "", grid))
+	if iids.is_empty():
+		var none := Kit.body("No buildings on strike cooldown." if id == COOLDOWN
+			else "No buildings can strike in the next %d turns." % LabourUnrest.CHECK_EVERY)
+		none.name = "PlanEmpty"
+		list.add_child(none)
+		return indent
+	list.add_child(_header_row(grid, [TURNS_LEFT if id == COOLDOWN else LOSS, BONUS_COST, ACTION], "PlanHeadings"))
+	for iid: String in iids:
+		list.add_child(_plan_member(id, iid, float(costs[iid]), float(losses[iid]), grid, turn))
+		if _confirming == "%s:%s" % [BONUS, iid]:
+			list.add_child(_bed(BONUS, iid, [iid]))
+	return indent
+
+
+## A list's columns: Turns left or Output loss, Bonus and Action, one digit count for every screen.
+static func _plan_grid(id: String, values: Array) -> Dictionary:
+	var g := _grid(values)
+	var second := TURNS_LEFT if id == COOLDOWN else LOSS
+	var key_w := 0.0
+	for k: String in [BONUS_KEY, PAY_BONUS, POLICIES]:
+		key_w = maxf(key_w, CreamKey.width_for(k, "", false, false, KEY_SCALE))
+	g["loss_w"] = maxf(float(g.money_w), Kit.caption_width(second) + 4.0)
+	g["cost_w"] = maxf(float(g.money_w), Kit.caption_width(BONUS_COST) + 4.0)
+	g["action_w"] = maxf(key_w, Kit.caption_width(ACTION) + 4.0)
+	return g
+
+
+## A suggested action: its name and what it does, its cost on a screen when it has one, and its key. `confirm` is the
+## bed the key opens; the Policies key opens the Labour tab instead. An action with no key keeps the columns' room.
+func _action_row(row_name: String, title: String, words: String, cost: float, key_text: String, confirm: String,
+		grid: Dictionary) -> Control:
+	var module := Kit.module(row_name, true)
+	var row := Kit.row_of(module)
+	row.custom_minimum_size.y = 0
+	row.add_theme_constant_override("separation", COL_GAP)
+	row.add_child(Kit.info(title, "", words))
+	if cost >= 0.0:
+		row.add_child(_money_cell(cost, DS.PALETTE["TEXT"], float(grid.cost_w), grid, {"name": title, "detail": words}, "Cost"))
+	else:
+		row.add_child(Kit.spacer(float(grid.cost_w), 0))
+	if key_text == "":
+		row.add_child(Kit.spacer(float(grid.action_w), 0))
+	else:
+		var key: Button = CreamKey.make("%sKey" % row_name, key_text, "", float(grid.action_w), false, false, KEY_SCALE)
+		key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		if key_text == POLICIES:
+			key.pressed.connect(_open_labour)
+		else:
+			key.call("set_spent", confirm == "")
+			key.set("chosen", confirm != "" and _confirming == confirm)
+			key.pressed.connect(func() -> void: _toggle_confirm(confirm))
+		row.add_child(key)
+	Tip.attach(module, {"name": title, "detail": words})
+	module.set_meta("cost", cost)
+	return module
+
+
+## One building in a list: its emblem and good, its name and tile, its turns left (cooldown) or the output a strike
+## would take (vulnerable), then its bonus cost beside its Bonus key, off where the bonus would not lengthen its quiet.
+func _plan_member(id: String, iid: String, cost: float, loss: float, grid: Dictionary, turn: int) -> Control:
+	var u := LabourState.unrest
+	var b := BuildingState.get_building(iid)
+	var title := BuildingNaming.of(b) if not b.is_empty() else iid
+	var tile_id := str(b.get("tile_id", ""))
+	var place := Catalog.tile_name(tile_id) if Catalog.tile_name(tile_id) != "" else Catalog.tile_label(tile_id)
+	var module := Kit.module("Plan_%s" % iid, true)
+	var pad := StyleBoxEmpty.new()
+	pad.content_margin_left = Kit.PAD.x
+	pad.content_margin_right = Kit.PAD.x
+	pad.content_margin_top = ROW_PAD_Y
+	pad.content_margin_bottom = ROW_PAD_Y
+	module.add_theme_stylebox_override("panel", pad)
+	var row := Kit.row_of(module)
+	row.custom_minimum_size.y = 0
+	row.add_theme_constant_override("separation", COL_GAP)
+	var location := HBoxContainer.new()
+	location.name = "Location"
+	location.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	location.add_theme_constant_override("separation", COL_GAP)
+	location.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var emblem := Kit.emblem(str(b.get("building_id", "")), ICON_PX)
+	emblem.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	location.add_child(emblem)
+	var gid := _good_of(b)
+	if gid != "":
+		var well := Kit.good_in_well(gid, -1, "", true, ICON_PX)
+		well.name = "Makes"
+		well.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		location.add_child(well)
+	location.add_child(Kit.info(title, "", place))
+	row.add_child(location)
+	var left := u.quiet_turns_left(iid, turn)
+	if id == COOLDOWN:
+		var cell := CenterContainer.new()
+		cell.name = "TurnsLeft"
+		cell.custom_minimum_size.x = float(grid.loss_w)
+		cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cell.add_child(Kit.drum(left, str(left).length()))
+		row.add_child(cell)
+	else:
+		row.add_child(_money_cell(loss, Parts.RED, float(grid.loss_w), grid,
+			{"name": LOSS, "detail": "%d%% of its output for %d turns, at today's prices." % [LabourUnrest.output_cut_pct(), LabourUnrest.STRIKE_TURNS]}, "Loss"))
+	var quiet := LabourUnrest.bonus_quiet_turns(LabourState.satisfaction)
+	row.add_child(_money_cell(cost, DS.PALETTE["TEXT"], float(grid.cost_w), grid,
+		{"name": "One off building bonus", "detail": "Paid now. No strike here for %d turns." % quiet}, "BonusCost"))
+	var confirm := "%s:%s" % [BONUS, iid]
+	var key: Button = CreamKey.make("Bonus_%s" % iid, BONUS_KEY, "", float(grid.action_w), false, false, KEY_SCALE)
+	key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	key.call("set_spent", not u.bonus_lengthens(iid, turn))
+	key.set("chosen", _confirming == confirm)
+	key.pressed.connect(func() -> void: _toggle_confirm(confirm))
+	row.add_child(key)
+	var detail := ""
+	if id == COOLDOWN:
+		detail = "Cannot strike for %d more turn%s." % [left, "" if left == 1 else "s"]
+		if key.disabled:
+			detail += " A bonus now would not add to that."
+	elif u.is_named(iid):
+		detail = "Named in the strike warning."
+	else:
+		detail = "Can be named for the strike on turn %d." % LabourUnrest.next_check_turn(turn)
+	Tip.attach(module, {"stage": title, "name": "Strike cooldown" if id == COOLDOWN else "Can strike", "detail": detail})
+	module.set_meta("cost", cost)
+	return module
+
+
+## Opens the People panel's Labour tab, where the policies are.
+func _open_labour() -> void:
+	var n: Node = get_parent()
+	while n != null and not n.has_method("show_tab"):
+		n = n.get_parent()
+	if n != null:
+		n.call("show_tab", LABOUR_TAB)
 
 
 # --- the record ----------------------------------------------------------------------------------
@@ -745,6 +1006,30 @@ func shot_views() -> Array:
 			_members_open = true
 			_confirming = ("break:%s" % named[0]) if not named.is_empty() else ""
 			_rebuild()},
+		{"name": "planning_vulnerable", "setup": func() -> void:
+			LabourState.set_union_tier(LabourState.UNION_NONE)
+			LabourState.unrest.reset()
+			LabourState.satisfaction = -82.0
+			LabourState.add_target_shift("shot_planning", "Shot", -200.0, 40)
+			var turn := int(TurnManager.current_turn)
+			var all: Array = LabourState.unrest.eligible_buildings()
+			for i in mini(2, all.size()):
+				LabourState.unrest.quiet_until[str(all[i])] = turn + 6 + 9 * i
+			_subtab = ""
+			_confirming = ""
+			_members_open = false
+			_list_open = VULNERABLE
+			_rebuild()},
+		{"name": "planning_vulnerable_bonus", "setup": func() -> void:
+			_confirming = "%s:all" % BONUS
+			_rebuild()},
+		{"name": "planning_cooldown", "setup": func() -> void:
+			_confirming = ""
+			_list_open = COOLDOWN
+			_rebuild()
+			for i in range(LabourState.target_shifts.size() - 1, -1, -1):
+				if str((LabourState.target_shifts[i] as Dictionary).get("id", "")) == "shot_planning":
+					LabourState.target_shifts.remove_at(i)},
 	]
 
 

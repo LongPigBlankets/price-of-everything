@@ -417,6 +417,7 @@ static func strikes_page() -> String:
 		+ "5. Settling a strike raises pay. At one building it costs %d%% more labour there for %d turns, and the building leaves the warning, or goes back to work if it is on strike. Settling every strike does the same at each named and striking building, and no strike can start for %d turns. A settled building cannot strike again for %d turns.\n\n"
 		+ "6. Breaking a strike sends in replacement crews. At one building it costs %d turns of its wages, paid that turn, and ends its strike at once, or keeps a named building from striking. Satisfaction falls %d for %d turns. Breaking the whole round costs %d turns of every striker's wages and lowers satisfaction %d for %d turns. A broken building cannot strike again for %d turns, but others can at the next check. Break %d whole rounds, or %d buildings one at a time, and the workforce remembers it for good: Routinely broke strikes, satisfaction %s until a Comprehensive Union Agreement is signed.\n\n"
 		+ "7. When a strike runs its course, satisfaction rises by %d. A strike settled or broken gives nothing back.\n\n"
+		+ "8. A One off bonus costs half of what settling would, paid at once. It ends a strike or a warning at the building and keeps it from striking for %d to %d turns, longer the happier the workforce: %d at 0. Pay it at one building, or company wide at every building it would help. Strike planning on the Strikes tab lists the buildings on cooldown and those that can strike in the next %d turns.\n\n"
 		+ "Accidents happen only under Minimal safety, at mines, furnaces, power plants and chemical works. The chance starts at %d%% a turn at each site and rises %s points every turn Minimal safety stays on, up to %d%%. An accident stops the building for %d turns, pays %d turns of its wages in compensation and lowers satisfaction by %d.") % [
 			U.CHECK_EVERY, U.CHECK_EVERY, U.CHECK_EVERY * 2, U.CHECK_EVERY * 3,
 			n.call(U.STRIKE_BELOW), n.call(U.HEAVY_STRIKE_BELOW), U.ACCIDENT_MEMORY,
@@ -428,6 +429,7 @@ static func strikes_page() -> String:
 			roundi(U.BREAK_COST_TURNS), roundi(absf(U.BREAK_SHIFT_ROUND)), LabourState.EVENT_SHIFT_TURNS, U.BREAK_QUIET_TURNS,
 			U.ROUTINE_ROUNDS, U.ROUTINE_BUILDINGS, n.call(U.ROUTINE_SATISFACTION),
 			roundi(U.STRIKE_END_SHIFT),
+			U.bonus_quiet_turns(-100.0), U.bonus_quiet_turns(100.0), U.bonus_quiet_turns(0.0), U.CHECK_EVERY,
 			pct.call(U.ACCIDENT_CHANCE_START), String.num(U.ACCIDENT_CHANCE_STEP * 100.0, 2), pct.call(U.ACCIDENT_CHANCE_MAX), U.ACCIDENT_DOWN_TURNS,
 			U.ACCIDENT_COMPENSATION_TURNS, roundi(absf(U.ACCIDENT_SHIFT))]
 

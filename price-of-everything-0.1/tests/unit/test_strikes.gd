@@ -7,6 +7,7 @@ const TAGS := {
 	"_test_strike_telemetry": ["strikes", "telemetry"],
 	"_test_strike_save_round_trip": ["strikes", "save"],
 	"_test_strikes_tab_and_diagnostics": ["strikes", "ui", "people"],
+	"_test_strike_planning_tab": ["strikes", "ui", "people"],
 }
 
 const MINE := "b_001"
@@ -388,6 +389,83 @@ func _test_strike_quiet() -> void:
 	_fresh()
 
 
+## AC13.11–AC13.13: a bonus costs half the Settle cost and quiets a building for 10 to 20 turns by satisfaction, 15 at 0;
+## the building bonus ends its strike or warning, the company wide bonus covers every building it would lengthen, in
+## one lump sum; neither moves satisfaction, and neither shortens a quiet.
+func _test_one_off_bonus() -> void:
+	_check(LabourUnrest.bonus_quiet_turns(-100.0) == 10 and LabourUnrest.bonus_quiet_turns(0.0) == 15
+		and LabourUnrest.bonus_quiet_turns(100.0) == 20 and LabourUnrest.bonus_quiet_turns(-80.0) == 11,
+		"AC13.11 a bonus quiets 10 turns at −100, 15 at 0, 20 at +100 (11 at −80)")
+	_fresh(-80.0)
+	_company(8)
+	_tick(7)
+	var first := str((_u().warning.buildings as Array)[0])
+	var cost := _u().pay_raise_cost(first) * 0.5
+	_check(cost > 0.0 and is_equal_approx(_u().bonus_cost(first), cost), "AC13.11 a building bonus costs half its Settle cost")
+	var target0 := LabourState.target_satisfaction()
+	MatchState.one_off_charges.clear()
+	_check(_u().pay_bonus(first, 8) and not _u().is_named(first) and int(_u().quiet_until[first]) == 19,
+		"AC13.12 a bonus on turn 8 at −80 takes the building out of the warning, quiet to turn 19")
+	var charge: Dictionary = MatchState.one_off_charges.back() if not MatchState.one_off_charges.is_empty() else {}
+	_check(str(charge.get("label", "")) == "One off bonus" and is_equal_approx(float(charge.get("amount", 0.0)), snappedf(cost, 0.01))
+		and int(charge.get("turn", 0)) == 8, "AC13.12 it is charged this turn as One off bonus")
+	_check(is_equal_approx(LabourState.target_satisfaction(), target0) and is_equal_approx(LabourState.satisfaction, -80.0)
+		and _u().buildings_broken == 0 and _u().rounds_broken == 0, "AC13.12 it moves neither satisfaction nor the strike breaking counts")
+	_tick(10)
+	var striking := str(_u().active.keys()[0])
+	_check(_u().pay_bonus(striking, 10) and not _u().is_on_strike(striking) and is_zero_approx(_shift("strike_over"))
+		and int(_u().quiet_until[striking]) == 21, "AC13.12 a bonus ends a strike at once, with no +5")
+	var settled := str(_u().eligible_buildings().filter(func(iid: String) -> bool: return not _u().quiet_until.has(iid))[0])
+	_u().quiet_until[settled] = 35
+	_check(not _u().bonus_lengthens(settled, 10) and not _u().pay_bonus(settled, 10) and int(_u().quiet_until[settled]) == 35,
+		"AC13.12 AC13.11 a bonus is refused where it would not lengthen the quiet, and never shortens it")
+	var covered := _u().company_bonus_buildings(10)
+	var total := 0.0
+	for iid in covered:
+		total += _u().bonus_cost(str(iid))
+	_check(covered.size() == 6 and covered.has(first) and not covered.has(striking) and not covered.has(settled)
+		and is_equal_approx(_u().company_bonus_cost(10), total),
+		"AC13.13 the company wide bonus covers every building it would lengthen (%d)" % covered.size())
+	MatchState.one_off_charges.clear()
+	_check(_u().pay_company_bonus(10) and MatchState.one_off_charges.size() == 1
+		and is_equal_approx(float((MatchState.one_off_charges.back() as Dictionary).amount), snappedf(total, 0.01)),
+		"AC13.13 it charges their costs as one lump sum")
+	_check(covered.all(func(iid: String) -> bool: return int(_u().quiet_until[iid]) == 21) and int(_u().quiet_until[settled]) == 35,
+		"AC13.13 each covered building is quiet to turn 21, the longer quiet kept")
+	_check(not _u().pay_company_bonus(10), "AC13.13 it is refused when it covers none")
+	_fresh()
+
+
+## AC13.14: the cooldown list is the buildings quiet now; the vulnerable list the named buildings during a warning, else
+## those that would not sit out the next check while its warning is still to be drawn and satisfaction is projected below
+## −70 at the draw, else none.
+func _test_strike_lists() -> void:
+	_fresh(-80.0)
+	var iids := _company(4)
+	iids.sort()
+	LabourState.add_target_shift("test_low", "Low", -200.0, 40)
+	_check(_u().vulnerable(1) == iids, "AC13.14 before the draw, every counted building can strike")
+	var quiet := str(iids[0])
+	_u().quiet_until[quiet] = 15
+	_check(not _u().vulnerable(1).has(quiet) and _u().vulnerable(1).size() == 3, "AC13.14 a building quiet past the check cannot")
+	_check(_u().on_cooldown(1) == [quiet] and _u().quiet_turns_left(quiet, 1) == 14 and _u().on_cooldown(15).is_empty(),
+		"AC13.14 the cooldown list is the buildings quiet now, with their turns left")
+	_check(_u().vulnerable(8).is_empty(), "AC13.14 once the draw has passed with no warning, nobody can strike")
+	_tick(7)
+	_check(_u().vulnerable(8) == _u().warning.buildings, "AC13.14 during a warning, the named buildings")
+	_u().warning = {}
+	LabourState.set_union_tier(LabourState.UNION_PARTIAL)
+	_check(_u().vulnerable(1).is_empty(), "AC13.14 none while a union agreement stands")
+	LabourState.set_union_tier(LabourState.UNION_NONE)
+	_u().strike_free_until = 25
+	_check(_u().vulnerable(11).is_empty(), "AC13.14 none while a settlement still protects the check")
+	_u().strike_free_until = 0
+	LabourState.target_shifts.clear()
+	LabourState.add_target_shift("test_high", "High", 200.0, 40)
+	_check(_u().vulnerable(1).is_empty(), "AC13.14 none when satisfaction is projected to reach −70 by the draw")
+	_fresh()
+
+
 ## AC14.1, AC14.2: accidents under Minimal safety only, at hazardous buildings: 2% rising 0.25 points a turn to 6%,
 ## reset when safety changes; an accident stops the building 2 turns, shifts the target −10 and charges 2 turns of
 ## wages.
@@ -476,6 +554,65 @@ func _test_strike_save_round_trip() -> void:
 		"AC15.1 AC13.10 an older save loads quiet")
 	var validator := FileAccess.get_file_as_string("res://scripts/save_validation.gd")
 	_check(validator.contains("\"strike_active\"") and validator.contains("\"strike_quiet_until\""), "AC15.1 AC13.10 the validator knows the fields")
+	_fresh()
+
+
+## AC16.5: Strike planning's two rows and their Show keys; an open list with its suggested actions, its building rows
+## and their Bonus keys, Confirm paying the bonus.
+func _test_strike_planning_tab() -> void:
+	_fresh(-80.0)
+	_company(4)
+	LabourState.add_target_shift("test_low", "Low", -200.0, 40)
+	var quiet := str(_u().eligible_buildings()[0])
+	_u().quiet_until[quiet] = 15
+	var shell: Control = PeopleDs2.new()
+	add_child(shell)
+	await get_tree().process_frame
+	shell.call("show_tab", 2)
+	await get_tree().process_frame
+	var tab: Control = shell.call("body", 2)
+	tab.call("_rebuild")
+	var cool: Control = tab.find_child("PlanRow_cooldown", true, false)
+	var vuln: Control = tab.find_child("PlanRow_vulnerable", true, false)
+	var cool_title := str((cool.find_child("Title", true, false) as Label).text) if cool != null else ""
+	var vuln_title := str((vuln.find_child("Title", true, false) as Label).text) if vuln != null else ""
+	_check(cool_title == "Buildings on strike cooldown (1)" and vuln_title == "Buildings vulnerable to strikes in next 10 turns (3)",
+		"AC16.5 the rows read their titles with counts (%s, %s)" % [cool_title, vuln_title])
+	_check(tab.find_child("Show_cooldown", true, false) != null and tab.find_child("Show_vulnerable", true, false) != null
+		and tab.find_child("PlanList_vulnerable", true, false) == null, "AC16.5 each row has a Show key, the lists shut at first")
+	(tab.find_child("Show_vulnerable", true, false) as Button).pressed.emit()
+	var list: Control = tab.find_child("PlanList_vulnerable", true, false)
+	var order := PackedStringArray()
+	if list != null:
+		for c in list.get_child(0).get_children():
+			order.append(str(c.name))
+	_check(list != null and order.size() >= 3 and order[0] == "PolicyAction" and order[1] == "BonusAction" and order[2] == "BuildingBonusAction",
+		"AC16.5 Show opens the list with the three suggested actions first (%s)" % ", ".join(order.slice(0, 3)))
+	var bonus_row: Control = tab.find_child("BonusAction", true, false)
+	_check(bonus_row != null and is_equal_approx(float(bonus_row.get_meta("cost", -1.0)), _u().company_bonus_cost(1))
+		and bonus_row.find_child("BonusActionKey", true, false) != null, "AC16.5 One off bonus has its total beside its key")
+	var some := str(_u().vulnerable(1)[0])
+	var member: Control = tab.find_child("Plan_%s" % some, true, false)
+	_check(member != null and member.find_child("Bonus_%s" % some, true, false) != null
+		and is_equal_approx(float(member.get_meta("cost", -1.0)), _u().bonus_cost(some)), "AC16.5 each building row has its bonus cost and Bonus key")
+	(tab.find_child("Show_cooldown", true, false) as Button).pressed.emit()
+	_check(tab.find_child("PlanList_cooldown", true, false) != null and tab.find_child("PlanList_vulnerable", true, false) == null
+		and tab.find_child("Plan_%s" % quiet, true, false) != null, "AC16.5 Show on the other row opens it and shuts the first")
+	var labour_shown := false
+	(tab.find_child("PolicyActionKey", true, false) as Button).pressed.emit()
+	await get_tree().process_frame
+	labour_shown = int(shell.get("_tab")) == 1
+	_check(labour_shown, "AC16.5 the policies key opens the Labour tab")
+	shell.call("show_tab", 2)
+	await get_tree().process_frame
+	tab.set("_list_open", "vulnerable")
+	tab.call("_rebuild")
+	(tab.find_child("Bonus_%s" % some, true, false) as Button).pressed.emit()
+	var bed: Control = tab.find_child("BonusBed", true, false)
+	_check(bed != null and str(bed.get_meta("words", "")).contains("cannot strike again for 11 turns"), "AC16.5 a Bonus key opens its bed")
+	(tab.find_child("ConfirmBonus", true, false) as Button).pressed.emit()
+	_check(int(_u().quiet_until.get(some, 0)) == 12 and tab.find_child("BonusBed", true, false) == null, "AC16.5 Confirm pays the bonus")
+	shell.queue_free()
 	_fresh()
 
 

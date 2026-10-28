@@ -8,7 +8,8 @@ extends RefCounted
 ## output falls 60% for 3 turns (a per-building `recipe_output` mult 0.4 modifier) while their inputs are still
 ## consumed and their labour costs half. A union agreement or a pay rise for all strikers keeps strikes away.
 ## Breaking a strike ends it for a turn of wages and a fall in satisfaction; done routinely, the workforce
-## remembers it until a Comprehensive Union Agreement is signed. A building settled or broken stays quiet for a while.
+## remembers it until a Comprehensive Union Agreement is signed. A building settled or broken stays quiet for a while, and a
+## One off bonus buys that quiet for half what settling costs.
 ## Accidents happen only under Minimal safety, at hazardous buildings, and stop a building for 2 turns.
 
 signal changed
@@ -34,6 +35,12 @@ const STRIKE_FREE_TURNS := 15
 ## BREAK_QUIET_TURNS.
 const SETTLE_QUIET_TURNS := 25
 const BREAK_QUIET_TURNS := 20
+## A One off bonus costs this share of a building's Settle cost, paid at once, and quiets it for BONUS_QUIET_AT_ZERO turns
+## at 0 satisfaction, BONUS_QUIET_SWING fewer at −100 and more at +100.
+const BONUS_SHARE := 0.5
+const BONUS_QUIET_AT_ZERO := 15.0
+const BONUS_QUIET_SWING := 5.0
+const BONUS_LABEL := "One off bonus"
 const RECORD_CAP := 20
 ## The Strikes tab's Upcoming count takes strikes starting within this many turns.
 const UPCOMING_WITHIN := 5
@@ -454,7 +461,7 @@ func break_cost(iid: String) -> float:
 func break_strike(iid: String, turn: int) -> bool:
 	if not is_named(iid) and not is_on_strike(iid):
 		return false
-	_charge_break(break_cost(iid), turn)
+	_charge(break_cost(iid), turn, "Strike breaking")
 	_quiet(iid, turn, BREAK_QUIET_TURNS)
 	_end_one(iid)
 	LabourState.add_target_shift("strike_broken_%s_%d" % [iid, turn], "Strike broken", BREAK_SHIFT_ONE)
@@ -480,7 +487,7 @@ func break_all(turn: int, only: Array = []) -> bool:
 		cost += break_cost(iid)
 		_quiet(iid, turn, BREAK_QUIET_TURNS)
 		_end_one(iid)
-	_charge_break(cost, turn)
+	_charge(cost, turn, "Strike breaking")
 	LabourState.add_target_shift("strikes_broken_%d" % turn, "Strikes broken", BREAK_SHIFT_ROUND)
 	_add_record(turn, all, "broken", 0.0)
 	rounds_broken += 1
@@ -507,9 +514,9 @@ func break_makes_routine(target: String) -> bool:
 	return rounds_broken + 1 >= ROUTINE_ROUNDS if target == "all" else buildings_broken + 1 >= ROUTINE_BUILDINGS
 
 
-func _charge_break(amount: float, turn: int) -> void:
+func _charge(amount: float, turn: int, label: String) -> void:
 	if amount > 0.0:
-		MatchState.one_off_charges.append({"turn": turn, "amount": snappedf(amount, 0.01), "label": "Strike breaking"})
+		MatchState.one_off_charges.append({"turn": turn, "amount": snappedf(amount, 0.01), "label": label})
 
 
 func _make_routine() -> void:
@@ -526,6 +533,101 @@ func clear_strike_breaking() -> void:
 	rounds_broken = 0
 	buildings_broken = 0
 	routinely_broke = false
+
+
+# ── One off bonuses and the strike lists (§6.2d) ─────────────────────────────────────────────────
+
+## What a One off building bonus at `iid` costs, paid at once: half its Settle cost.
+func bonus_cost(iid: String) -> float:
+	return pay_raise_cost(iid) * BONUS_SHARE
+
+
+## The turns a bonus quiets a building at `satisfaction`: 10 at −100, 15 at 0, 20 at +100.
+static func bonus_quiet_turns(satisfaction: float) -> int:
+	return roundi(BONUS_QUIET_AT_ZERO + BONUS_QUIET_SWING * clampf(satisfaction, -100.0, 100.0) / 100.0)
+
+
+## Whether a bonus paid on `turn` would lengthen `iid`'s quiet.
+func bonus_lengthens(iid: String, turn: int) -> bool:
+	return turn + bonus_quiet_turns(LabourState.satisfaction) > int(quiet_until.get(iid, 0))
+
+
+## The buildings the company wide bonus covers on `turn`: every one strikes count whose quiet it would lengthen.
+func company_bonus_buildings(turn: int) -> Array:
+	return eligible_buildings().filter(func(iid: String) -> bool: return bonus_lengthens(iid, turn))
+
+
+func company_bonus_cost(turn: int) -> float:
+	var total := 0.0
+	for iid: String in company_bonus_buildings(turn):
+		total += bonus_cost(iid)
+	return total
+
+
+## Pay a One off building bonus at `iid`: its cost this turn, its strike ends with no +5 or it leaves the warning,
+## and it is quiet for bonus_quiet_turns. No change to satisfaction. Refused where it would not lengthen the quiet.
+func pay_bonus(iid: String, turn: int) -> bool:
+	if not eligible_buildings().has(iid) or not bonus_lengthens(iid, turn):
+		return false
+	_charge(bonus_cost(iid), turn, BONUS_LABEL)
+	_bonus(iid, turn, bonus_quiet_turns(LabourState.satisfaction))
+	changed.emit()
+	return true
+
+
+## Pay the One off bonus company wide: every building it covers, their costs as one lump sum this turn.
+func pay_company_bonus(turn: int) -> bool:
+	var all := company_bonus_buildings(turn)
+	if all.is_empty():
+		return false
+	var turns := bonus_quiet_turns(LabourState.satisfaction)
+	var cost := 0.0
+	for iid: String in all:
+		cost += bonus_cost(iid)
+		_bonus(iid, turn, turns)
+	_charge(cost, turn, BONUS_LABEL)
+	changed.emit()
+	return true
+
+
+func _bonus(iid: String, turn: int, turns: int) -> void:
+	_quiet(iid, turn, turns)
+	if is_on_strike(iid) or is_named(iid):
+		_end_one(iid)
+
+
+func quiet_turns_left(iid: String, turn: int) -> int:
+	return maxi(0, int(quiet_until.get(iid, 0)) - turn)
+
+
+## The buildings quiet on `turn`, in id order: the strike cooldown list.
+func on_cooldown(turn: int) -> Array:
+	var out: Array = []
+	for iid in quiet_until:
+		if int(quiet_until[iid]) > turn and _owned(str(iid)):
+			out.append(str(iid))
+	out.sort()
+	return out
+
+
+## The buildings that can strike in the next CHECK_EVERY turns: the named ones while a warning stands. Otherwise, while the
+## next check's warning is still to be drawn and satisfaction is projected below −70 at that draw, every building strikes
+## count that would not sit out that check. None while strikes are blocked.
+func vulnerable(turn: int) -> Array:
+	if not warning.is_empty():
+		return (warning.get("buildings", []) as Array).filter(func(iid: String) -> bool: return _owned(iid))
+	var check := next_check_turn(turn)
+	var draw_turn := check - WARNING_LEAD
+	if draw_turn < turn or strikes_blocked(check):
+		return []
+	if LabourState.projected_satisfaction(draw_turn - turn + 1) >= STRIKE_BELOW:
+		return []
+	return eligible_buildings().filter(func(iid: String) -> bool: return not sits_out(iid, check))
+
+
+func _owned(iid: String) -> bool:
+	var b := BuildingState.get_building(iid)
+	return not b.is_empty() and BuildingState.is_player_owned(b)
 
 
 # ── Accidents (§4.5) ─────────────────────────────────────────────────────────────────────────────
