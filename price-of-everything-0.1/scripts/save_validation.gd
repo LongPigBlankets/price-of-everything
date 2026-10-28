@@ -35,6 +35,7 @@ const FIELDS := {
 			"strike_warning",
 			"strike_active",
 			"strike_pay_raises",
+			"strike_quiet_until",
 			"accident_down",
 			"accident_turns",
 			"pending_purchases",

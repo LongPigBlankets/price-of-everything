@@ -603,12 +603,30 @@ Two actions, open from the warning until the strike ends:
 
 | Action | Cost | Effect |
 |---|---|---|
-| Settle at one building (a pay rise) | labour +40% at that building for 10 turns (owner, 26 Oct: doubled from +20%) | That building's strike ends (or is called off). It cannot be drawn again while the raise runs *(proposed)* |
-| Settle every strike (a pay rise at each) | labour +40% at every struck or named building for 10 turns *(duration proposed)* | Every strike ends, and **no strikes for 15 turns** |
+| Settle at one building (a pay rise) | labour +40% at that building for 10 turns (owner, 26 Oct: doubled from +20%) | That building's strike ends (or is called off). It cannot be named or strike again for 25 turns (owner, 28 Oct) |
+| Settle every strike (a pay rise at each) | labour +40% at every struck or named building for 10 turns *(duration proposed)* | Every strike ends, **no strikes anywhere for 15 turns**, and none of these buildings can strike again for 25 turns |
 
 - Neither action changes satisfaction or the band. The workforce is still unhappy, so the next
   check after the protection ends can draw again.
 - Saved: `pay_raises` {instance_id: turns_left} and `strike_free_until` (turn).
+
+### 6.2c Quiet after a strike — owner ruling 28 Oct
+
+A building whose strike is settled or broken stays quiet for a while: it cannot be named in a
+warning, or strike, at any check before the quiet runs out.
+
+| Ended by | Quiet at that building |
+|---|---|
+| Settle (one building, or every strike) | 25 turns from the turn it was settled |
+| Break strike (one building, or the whole round) | 20 turns from the turn it was broken |
+
+- The quiet counts from the turn of the action. A check turn T is blocked while T is before the
+  action turn plus the quiet, so a strike broken while still named (turn T−2) skips one check and a
+  strike broken while running skips two.
+- The strike size still counts every eligible building; the strikers are drawn from those not
+  quiet, so a settled or broken building passes its turn to the others.
+- A strike that runs its course leaves no quiet (it gives the +5 instead, AC12.5).
+- Saved: `strike_quiet_until` {instance_id: first check turn it can strike again}.
 
 ### 6.2b Breaking strikes — owner ruling 26 Oct
 
@@ -617,7 +635,7 @@ Beside each pay rise, Break strike: replacement crews end the strike at once.
 | Action | Cost | Satisfaction | Effect |
 |---|---|---|---|
 | Break one building | 2 turns of its base wages, paid this turn ("Strike breaking"; owner, 26 Oct: doubled from 1) | target −5 for 10 turns | its strike ends with no +5, or a named building leaves the warning |
-| Break the whole round | 2 turns of base wages per named or striking building | target −20 for 10 turns | every strike ends, the warning clears, no protection after |
+| Break the whole round | 2 turns of base wages per named or striking building | target −20 for 10 turns | every strike ends, the warning clears, no company wide protection (each broken building is quiet for 20 turns, §6.2c) |
 
 - **Routinely broke strikes**: 2 whole rounds broken, or 10 buildings broken one at a time, add a
   standing −15 to the satisfaction target. Only signing a Comprehensive Union Agreement removes it;
@@ -1692,6 +1710,7 @@ resolution. Fill is `staff_fill`, the hired share of a building's requirement.
   - called off when satisfaction recovers;
   - pay rises: one building +40% for 10 turns, or every striker +40% for 10 turns with 15 strike-free
     turns;
+  - a settled building is quiet for 25 turns, a broken one for 20 (§6.2c);
   - either union blocks strikes.
 - **Accidents**: under Minimal safety.
 - **UX**:
@@ -1719,7 +1738,8 @@ turn's "resolution" is what happens when the player ends it.
    batteries. Projects under construction don't count.
 2. **AC12.2** The draw is weighted and seeded: hazardous buildings ×2 while safety is Minimal,
    buildings with an accident in the last 10 turns ×2, others ×1, and the factors multiply. A
-   building under a pay rise is never drawn. The same seed and state give the same names.
+   building under a pay rise or in its quiet (§6.2c) is never drawn. The same seed and state give
+   the same names.
 3. **AC12.3** In the resolution of turn T: below −70 the named buildings strike. If the warning was
    drawn below −90 and satisfaction is now −70 to −90, only the first ceil(25% × N) strike. At −70
    or above the strike is called off.
@@ -1733,7 +1753,7 @@ turn's "resolution" is what happens when the player ends it.
 **Pay rises (§6.2)**
 
 1. **AC13.1** "Raise pay here": labour +40% at that building for 10 turns. Its strike ends at once,
-   or it leaves the warning, and it cannot be drawn while the raise runs.
+   or it leaves the warning, and it cannot be drawn for 25 turns (AC13.9).
 2. **AC13.2** "Raise pay for all strikers": labour +40% at every named or striking building for 10
    turns. Every strike ends, the warning clears, and there are no warnings or strikes for 15 turns.
 3. **AC13.3** Neither raise changes satisfaction, its target or the band. A strike ended by a raise
@@ -1742,10 +1762,18 @@ turn's "resolution" is what happens when the player ends it.
    breaking", ends its strike with no +5 (or takes it out of the warning), shifts the target −5 for
    10 turns and records the round as broken.
 5. **AC13.5** Break strike for the whole round ends every strike, clears the warning, charges every
-   striker's two turns of wages and shifts the target −20 for 10 turns, with no protection after.
+   striker's two turns of wages and shifts the target −20 for 10 turns, with no company wide
+   protection after.
 6. **AC13.6** The second whole round broken, or the tenth building broken one at a time, adds
    "Routinely broke strikes", a standing −15 in the satisfaction sources.
 7. **AC13.7** Only a Comprehensive Union Agreement clears it, with both counts. Partial does not.
+8. **AC13.8** A building broken on turn t, alone or in a whole round, is not named or struck at any
+   check before turn t + 20, and can be from turn t + 20. Other buildings are drawn as usual, and
+   the strike size still counts it.
+9. **AC13.9** A building settled on turn t, alone or with every strike, is not named or struck at
+   any check before turn t + 25, and can be from turn t + 25. Settling every strike still blocks
+   all strikes for 15 turns.
+10. **AC13.10** The quiet is saved (`strike_quiet_until`) and validated. Older saves load with none.
 
 **Accidents (§4.5)**
 
@@ -1758,7 +1786,7 @@ turn's "resolution" is what happens when the player ends it.
 **State and telemetry**
 
 1. **AC15.1** Saved and validated: the warning, active strikes, the strike record (last 20), pay
-   rises, strike free turn, accident downtime, last accident turns, Minimal safety's run of turns
+   rises, strike free turn, each building's quiet, accident downtime, last accident turns, Minimal safety's run of turns
    and the labour RNG's seed and state. Older saves load with none.
 2. **AC15.2** Telemetry schema 7: each turn row carries `strikes`, the number of buildings on
    strike. The receiver appends a `strikes` column. The Settings disclosure names it.
@@ -2198,7 +2226,7 @@ details. They stand unless the owner changes them:
 | Original Furnace | Glass Merchant's starting glass furnace follows the same rule; the perk is lost for good once the building leaves the company |
 | Union agreements | both tiers: labour +10% at once, then +1% each pay round, to +25% |
 | Events | each shifts the target for 10 turns |
-| Strike pay rises | the all-strikers rise lasts 10 turns; a building with its own rise cannot be drawn while it runs |
+| Strike pay rises | the all-strikers rise lasts 10 turns (a settled building's 25 turn quiet is the owner's, §6.2c) |
 | Expansion Director | construction floor of 2 turns after the −3 |
 | Factories | the five factory-class buildings listed in §9 |
 

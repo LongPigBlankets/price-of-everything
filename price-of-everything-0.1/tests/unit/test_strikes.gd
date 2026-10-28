@@ -233,7 +233,7 @@ func _test_pay_rises() -> void:
 	var b := BuildingState.get_building(first)
 	var factor0 := LabourState.labour_cost_factor_for(b)
 	var target0 := LabourState.target_satisfaction()
-	_check(_u().raise_pay(first) and not _u().is_named(first) and int(_u().pay_raises[first]) == 10,
+	_check(_u().raise_pay(first, 8) and not _u().is_named(first) and int(_u().pay_raises[first]) == 10,
 		"AC13.1 a pay rise takes the building out of the warning for 10 turns")
 	_check(is_equal_approx(LabourState.labour_cost_factor_for(b) - factor0, 0.40), "AC13.1 its labour is 40% higher")
 	_check(is_equal_approx(LabourState.target_satisfaction(), target0) and is_equal_approx(LabourState.satisfaction, -80.0),
@@ -241,7 +241,7 @@ func _test_pay_rises() -> void:
 	_tick(10)
 	var striking := str(_u().active.keys()[0])
 	_check(not _u().is_on_strike(first), "AC13.1 the raised building does not strike")
-	_check(_u().raise_pay(striking) and not _u().is_on_strike(striking) and is_zero_approx(_shift("strike_over")),
+	_check(_u().raise_pay(striking, 10) and not _u().is_on_strike(striking) and is_zero_approx(_shift("strike_over")),
 		"AC13.1 raising pay ends a strike at once, with no +5")
 	var mod_left := false
 	for m: Dictionary in Modifiers.active():
@@ -325,6 +325,69 @@ func _test_break_strikes() -> void:
 	_fresh()
 
 
+## AC13.8–AC13.10: a building broken on turn t sits out every check before t + 20, one settled every check before
+## t + 25. The others are drawn as usual and the strike size still counts the quiet ones.
+func _test_strike_quiet() -> void:
+	_fresh(-80.0)
+	var only := str(_company(1)[0])
+	_tick(7)
+	_check(_u().is_named(only) and _u().break_strike(only, 8) and _u().warning.is_empty(), "AC13.8 setup: the only building named, then broken")
+	_check(_u().is_quiet(only, 27) and not _u().is_quiet(only, 28), "AC13.8 broken on turn 8, it is quiet before turn 28 and not from it")
+	for t in range(8, 18):
+		_tick(t)
+	_check(_u().warning.is_empty() and _u().active.is_empty(), "AC13.8 it is not named for the check on turn 20")
+	for t in range(18, 28):
+		_tick(t)
+	_check(_u().is_named(only), "AC13.8 it can be named again for the check on turn 30")
+	_fresh(-80.0)
+	only = str(_company(1)[0])
+	_tick(7)
+	_check(_u().raise_pay(only, 8), "AC13.9 setup: the only building settled on turn 8")
+	_check(_u().is_quiet(only, 32) and not _u().is_quiet(only, 33), "AC13.9 settled on turn 8, it is quiet before turn 33 and not from it")
+	for t in range(8, 18):
+		_tick(t)
+	var quiet_at_20 := _u().warning.is_empty()
+	for t in range(18, 28):
+		_tick(t)
+	_check(quiet_at_20 and _u().warning.is_empty() and _u().active.is_empty(), "AC13.9 it is not named for the checks on turns 20 and 30")
+	for t in range(28, 38):
+		_tick(t)
+	_check(_u().is_named(only), "AC13.9 it can be named again for the check on turn 40")
+	_fresh(-80.0)
+	_company(5)
+	_tick(7)
+	_tick(10)
+	var settled := _u().ongoing()
+	_check(settled.size() == 2 and _u().raise_pay_all(10) and _u().strike_free_until == 25
+		and settled.all(func(iid: String) -> bool: return int(_u().quiet_until.get(iid, 0)) == 35),
+		"AC13.9 settling every strike blocks all strikes to turn 25 and each settled building to turn 35")
+	for t in range(11, 28):
+		_tick(t)
+	var named: Array = _u().warning.get("buildings", [])
+	_check(named.size() == 2 and not named.any(func(iid: String) -> bool: return settled.has(iid)),
+		"AC13.9 at the check on turn 30 two of the other three are named, the size still counting all five")
+	_fresh(-80.0)
+	_company(5)
+	_tick(7)
+	_tick(10)
+	var broken := _u().ongoing()
+	_check(broken.size() == 2 and _u().break_all(10)
+		and broken.all(func(iid: String) -> bool: return int(_u().quiet_until.get(iid, 0)) == 30),
+		"AC13.8 breaking the round makes each broken building quiet to turn 30")
+	for t in range(11, 18):
+		_tick(t)
+	named = _u().warning.get("buildings", [])
+	_check(named.size() == 2 and not named.any(func(iid: String) -> bool: return broken.has(iid)),
+		"AC13.8 at the check on turn 20 two of the other three are named")
+	var iid := str(named[0])
+	_check(str(PeopleDs2.StrikesTab.bed_words("break", iid, [iid])).contains("cannot strike again for 20 turns")
+		and str(PeopleDs2.StrikesTab.bed_words("settle", iid, [iid])).contains("cannot strike again for 25 turns")
+		and SearchOverlay.strikes_page().contains("A settled building cannot strike again for 25 turns")
+		and SearchOverlay.strikes_page().contains("A broken building cannot strike again for 20 turns"),
+		"AC13.8 AC13.9 the Strikes tab and the Mechanics page say how long each stays quiet")
+	_fresh()
+
+
 ## AC14.1, AC14.2: accidents under Minimal safety only, at hazardous buildings: 2% rising 0.25 points a turn to 6%,
 ## reset when safety changes; an accident stops the building 2 turns, shifts the target −10 and charges 2 turns of
 ## wages.
@@ -384,6 +447,7 @@ func _test_strike_save_round_trip() -> void:
 	_tick(10)
 	var striking := str(_u().active.keys()[0])
 	_u().pay_raises["x"] = 4
+	_u().quiet_until["z"] = 31
 	_u().accident_down["y"] = 1
 	_u().accident_turns["y"] = 9
 	_u().minimal_safety_turns = 6
@@ -391,7 +455,7 @@ func _test_strike_save_round_trip() -> void:
 	_u().buildings_broken = 3
 	_u().routinely_broke = true
 	var snap: Dictionary = MatchState.export_state()
-	for key in ["strike_warning", "strike_active", "strike_record", "strike_pay_raises", "strike_free_until",
+	for key in ["strike_warning", "strike_active", "strike_record", "strike_pay_raises", "strike_free_until", "strike_quiet_until",
 			"accident_down", "accident_turns", "accident_minimal_turns", "labour_rng_seed", "labour_rng_state",
 			"strike_rounds_broken", "strike_buildings_broken", "strike_routinely_broke"]:
 		_check(snap.has(key), "AC15.1 the save carries %s" % key)
@@ -405,10 +469,13 @@ func _test_strike_save_round_trip() -> void:
 		"AC15.1 a load restores strikes, raises and accidents")
 	_check(_u().draw(pool, 2, 20) == next, "AC15.1 the labour RNG continues where it was")
 	_check(_u().rounds_broken == 1 and _u().buildings_broken == 3 and _u().routinely_broke, "AC15.1 a load restores the strike breaking")
+	_check(int(_u().quiet_until.get("z", 0)) == 31, "AC13.10 a load restores each building's quiet")
 	var legacy := {}
 	_u().import_fields(legacy)
-	_check(_u().active.is_empty() and _u().warning.is_empty() and _u().strike_free_until == 0, "AC15.1 an older save loads quiet")
-	_check(FileAccess.get_file_as_string("res://scripts/save_validation.gd").contains("\"strike_active\""), "AC15.1 the validator knows the fields")
+	_check(_u().active.is_empty() and _u().warning.is_empty() and _u().strike_free_until == 0 and _u().quiet_until.is_empty(),
+		"AC15.1 AC13.10 an older save loads quiet")
+	var validator := FileAccess.get_file_as_string("res://scripts/save_validation.gd")
+	_check(validator.contains("\"strike_active\"") and validator.contains("\"strike_quiet_until\""), "AC15.1 AC13.10 the validator knows the fields")
 	_fresh()
 
 

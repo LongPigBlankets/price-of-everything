@@ -414,8 +414,8 @@ static func strikes_page() -> String:
 		+ "2. The strikers are named %d turns before the check. The Strikes tab on the People panel lists them, with what each strike would cost and what a pay rise would cost.\n\n"
 		+ "3. If satisfaction is still below %s on the check turn, the named buildings strike. For %d turns each makes %d%% less. Its inputs are still used, and its labour costs half. If satisfaction has risen to %s or above by then, only a quarter strike.\n\n"
 		+ "4. A strike is called off if satisfaction reaches %s before the check turn, or if a union agreement is signed. While a union agreement stands there are no strikes.\n\n"
-		+ "5. Settling a strike raises pay. At one building it costs %d%% more labour there for %d turns, and the building leaves the warning, or goes back to work if it is on strike. Settling every strike does the same at each named and striking building, and no strike can start for %d turns.\n\n"
-		+ "6. Breaking a strike sends in replacement crews. At one building it costs %d turns of its wages, paid that turn, and ends its strike at once, or keeps a named building from striking. Satisfaction falls %d for %d turns. Breaking the whole round costs %d turns of every striker's wages and lowers satisfaction %d for %d turns, with no protection after. Break %d whole rounds, or %d buildings one at a time, and the workforce remembers it for good: Routinely broke strikes, satisfaction %s until a Comprehensive Union Agreement is signed.\n\n"
+		+ "5. Settling a strike raises pay. At one building it costs %d%% more labour there for %d turns, and the building leaves the warning, or goes back to work if it is on strike. Settling every strike does the same at each named and striking building, and no strike can start for %d turns. A settled building cannot strike again for %d turns.\n\n"
+		+ "6. Breaking a strike sends in replacement crews. At one building it costs %d turns of its wages, paid that turn, and ends its strike at once, or keeps a named building from striking. Satisfaction falls %d for %d turns. Breaking the whole round costs %d turns of every striker's wages and lowers satisfaction %d for %d turns. A broken building cannot strike again for %d turns, but others can at the next check. Break %d whole rounds, or %d buildings one at a time, and the workforce remembers it for good: Routinely broke strikes, satisfaction %s until a Comprehensive Union Agreement is signed.\n\n"
 		+ "7. When a strike runs its course, satisfaction rises by %d. A strike settled or broken gives nothing back.\n\n"
 		+ "Accidents happen only under Minimal safety, at mines, furnaces, power plants and chemical works. The chance starts at %d%% a turn at each site and rises %s points every turn Minimal safety stays on, up to %d%%. An accident stops the building for %d turns, pays %d turns of its wages in compensation and lowers satisfaction by %d.") % [
 			U.CHECK_EVERY, U.CHECK_EVERY, U.CHECK_EVERY * 2, U.CHECK_EVERY * 3,
@@ -423,9 +423,9 @@ static func strikes_page() -> String:
 			U.WARNING_LEAD - 1,
 			n.call(U.STRIKE_BELOW), U.STRIKE_TURNS, U.output_cut_pct(), n.call(U.HEAVY_STRIKE_BELOW),
 			n.call(U.STRIKE_BELOW),
-			pct.call(U.PAY_RAISE), U.PAY_RAISE_TURNS, U.STRIKE_FREE_TURNS,
+			pct.call(U.PAY_RAISE), U.PAY_RAISE_TURNS, U.STRIKE_FREE_TURNS, U.SETTLE_QUIET_TURNS,
 			roundi(U.BREAK_COST_TURNS), roundi(absf(U.BREAK_SHIFT_ONE)), LabourState.EVENT_SHIFT_TURNS,
-			roundi(U.BREAK_COST_TURNS), roundi(absf(U.BREAK_SHIFT_ROUND)), LabourState.EVENT_SHIFT_TURNS,
+			roundi(U.BREAK_COST_TURNS), roundi(absf(U.BREAK_SHIFT_ROUND)), LabourState.EVENT_SHIFT_TURNS, U.BREAK_QUIET_TURNS,
 			U.ROUTINE_ROUNDS, U.ROUTINE_BUILDINGS, n.call(U.ROUTINE_SATISFACTION),
 			roundi(U.STRIKE_END_SHIFT),
 			pct.call(U.ACCIDENT_CHANCE_START), String.num(U.ACCIDENT_CHANCE_STEP * 100.0, 2), pct.call(U.ACCIDENT_CHANCE_MAX), U.ACCIDENT_DOWN_TURNS,

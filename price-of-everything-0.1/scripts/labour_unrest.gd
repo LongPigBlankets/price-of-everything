@@ -8,7 +8,7 @@ extends RefCounted
 ## output falls 60% for 3 turns (a per-building `recipe_output` mult 0.4 modifier) while their inputs are still
 ## consumed and their labour costs half. A union agreement or a pay rise for all strikers keeps strikes away.
 ## Breaking a strike ends it for a turn of wages and a fall in satisfaction; done routinely, the workforce
-## remembers it until a Comprehensive Union Agreement is signed.
+## remembers it until a Comprehensive Union Agreement is signed. A building settled or broken stays quiet for a while.
 ## Accidents happen only under Minimal safety, at hazardous buildings, and stop a building for 2 turns.
 
 signal changed
@@ -30,6 +30,10 @@ const STRIKE_END_SHIFT := 5.0
 const PAY_RAISE := 0.40
 const PAY_RAISE_TURNS := 10
 const STRIKE_FREE_TURNS := 15
+## A building whose strike was settled cannot be named or strike again for this many turns; one broken, for
+## BREAK_QUIET_TURNS.
+const SETTLE_QUIET_TURNS := 25
+const BREAK_QUIET_TURNS := 20
 const RECORD_CAP := 20
 ## The Strikes tab's Upcoming count takes strikes starting within this many turns.
 const UPCOMING_WITHIN := 5
@@ -65,6 +69,8 @@ var record: Array = []
 var pay_raises: Dictionary = {}
 ## No warnings or strikes before this turn.
 var strike_free_until := 0
+## Buildings quiet after a settled or broken strike: iid -> the first check turn they can strike again.
+var quiet_until: Dictionary = {}
 ## Buildings stopped by an accident: iid -> turns left.
 var accident_down: Dictionary = {}
 ## The turn of each building's last accident.
@@ -86,6 +92,7 @@ func reset() -> void:
 	record.clear()
 	pay_raises.clear()
 	strike_free_until = 0
+	quiet_until.clear()
 	accident_down.clear()
 	accident_turns.clear()
 	minimal_safety_turns = 0
@@ -103,6 +110,7 @@ func export_fields() -> Dictionary:
 		"strike_record": record.duplicate(true),
 		"strike_pay_raises": pay_raises.duplicate(true),
 		"strike_free_until": strike_free_until,
+		"strike_quiet_until": quiet_until.duplicate(true),
 		"accident_down": accident_down.duplicate(true),
 		"accident_turns": accident_turns.duplicate(true),
 		"accident_minimal_turns": minimal_safety_turns,
@@ -121,6 +129,7 @@ func import_fields(d: Dictionary) -> void:
 	record = (d.get("strike_record", []) as Array).duplicate(true)
 	pay_raises = _int_values(d.get("strike_pay_raises", {}))
 	strike_free_until = int(d.get("strike_free_until", 0))
+	quiet_until = _int_values(d.get("strike_quiet_until", {}))
 	accident_down = _int_values(d.get("accident_down", {}))
 	accident_turns = _int_values(d.get("accident_turns", {}))
 	minimal_safety_turns = maxi(0, int(d.get("accident_minimal_turns", 0)))
@@ -155,6 +164,9 @@ func _ensure_rng() -> void:
 func tick(turn: int) -> void:
 	_age(pay_raises)
 	_age(accident_down)
+	for iid in quiet_until.keys():
+		if int(quiet_until[iid]) <= turn:
+			quiet_until.erase(iid)
 	for iid in active.keys():
 		active[iid] = int(active[iid]) - 1
 		if int(active[iid]) <= 0:
@@ -197,6 +209,20 @@ func strikes_blocked(turn: int) -> bool:
 	return LabourState.union_tier() != LabourState.UNION_NONE or turn < strike_free_until
 
 
+## Whether `iid` is quiet on `check_turn` after a settled or broken strike.
+func is_quiet(iid: String, check_turn: int) -> bool:
+	return check_turn < int(quiet_until.get(iid, 0))
+
+
+## Whether `iid` sits out the strike on `check_turn`: under a pay rise, or quiet.
+func sits_out(iid: String, check_turn: int) -> bool:
+	return pay_raises.has(iid) or is_quiet(iid, check_turn)
+
+
+func _quiet(iid: String, turn: int, turns: int) -> void:
+	quiet_until[iid] = maxi(int(quiet_until.get(iid, 0)), turn + turns)
+
+
 func strike_size(n: int, heavy: bool) -> int:
 	return ceili(float(n) * (HEAVY_STRIKE_SHARE if heavy else STRIKE_SHARE))
 
@@ -207,7 +233,7 @@ func _draw_warning(check_turn: int) -> void:
 	var heavy := LabourState.satisfaction < HEAVY_STRIKE_BELOW
 	var all := eligible_buildings()
 	var count := strike_size(all.size(), heavy)
-	var named := draw(all.filter(func(iid: String) -> bool: return not pay_raises.has(iid)), count, check_turn)
+	var named := draw(all.filter(func(iid: String) -> bool: return not sits_out(iid, check_turn)), count, check_turn)
 	if named.is_empty():
 		return
 	warning = {"turn": check_turn, "buildings": named, "heavy": heavy, "light": strike_size(all.size(), false)}
@@ -254,7 +280,7 @@ func _resolve_warning(turn: int) -> void:
 	var named: Array = []
 	for iid in warning.get("buildings", []):
 		var b := BuildingState.get_building(str(iid))
-		if not b.is_empty() and BuildingState.is_player_owned(b) and not pay_raises.has(str(iid)):
+		if not b.is_empty() and BuildingState.is_player_owned(b) and not sits_out(str(iid), turn):
 			named.append(str(iid))
 	var s := LabourState.satisfaction
 	if strikes_blocked(turn) or s >= STRIKE_BELOW or named.is_empty():
@@ -374,11 +400,12 @@ func affected_buildings() -> Array:
 
 
 ## Settle one named or striking building's strike with a pay rise: +40% labour there for 10 turns, its strike ends or it leaves
-## the warning. No change to satisfaction.
-func raise_pay(iid: String) -> bool:
+## the warning, and it is quiet for 25 turns. No change to satisfaction.
+func raise_pay(iid: String, turn: int) -> bool:
 	if not is_named(iid) and not is_on_strike(iid):
 		return false
 	pay_raises[iid] = PAY_RAISE_TURNS
+	_quiet(iid, turn, SETTLE_QUIET_TURNS)
 	_end_one(iid)
 	changed.emit()
 	return true
@@ -397,13 +424,14 @@ func _end_one(iid: String) -> void:
 
 
 ## Settle every strike with a pay rise at each named or striking building (or those of them in `only`): each +40% for 10 turns, their
-## strikes end, they leave the warning, and there are no strikes for 15 turns.
+## strikes end, they leave the warning, there are no strikes for 15 turns, and each is quiet for 25.
 func raise_pay_all(turn: int, only: Array = []) -> bool:
 	var all := _round(only)
 	if all.is_empty():
 		return false
 	for iid: String in all:
 		pay_raises[iid] = PAY_RAISE_TURNS
+		_quiet(iid, turn, SETTLE_QUIET_TURNS)
 		_end_one(iid)
 	strike_free_until = turn + STRIKE_FREE_TURNS
 	changed.emit()
@@ -421,12 +449,13 @@ func break_cost(iid: String) -> float:
 
 
 ## Break one named or striking building's strike: it pays break_cost this turn, its workers go back (a named
-## one never strikes), and the satisfaction target falls 5 for 10 turns. The tenth building broken this way
-## makes it routine.
+## one never strikes), it is quiet for 20 turns, and the satisfaction target falls 5 for 10 turns. The tenth
+## building broken this way makes it routine.
 func break_strike(iid: String, turn: int) -> bool:
 	if not is_named(iid) and not is_on_strike(iid):
 		return false
 	_charge_break(break_cost(iid), turn)
+	_quiet(iid, turn, BREAK_QUIET_TURNS)
 	_end_one(iid)
 	LabourState.add_target_shift("strike_broken_%s_%d" % [iid, turn], "Strike broken", BREAK_SHIFT_ONE)
 	_add_record(turn, [iid], "broken", 0.0)
@@ -440,8 +469,8 @@ func break_strike(iid: String, turn: int) -> bool:
 
 
 ## Break the whole round: every named and striking building (or those of them in `only`) goes back to work
-## at once, each paying break_cost this turn, and the satisfaction target falls 20 for 10 turns. The second round broken makes it
-## routine. No protection follows, unlike a pay rise for all.
+## at once, each paying break_cost this turn and staying quiet for 20 turns, and the satisfaction target falls 20 for 10 turns.
+## The second round broken makes it routine. No company wide protection follows, unlike a pay rise for all.
 func break_all(turn: int, only: Array = []) -> bool:
 	var all := _round(only)
 	if all.is_empty():
@@ -449,6 +478,7 @@ func break_all(turn: int, only: Array = []) -> bool:
 	var cost := 0.0
 	for iid: String in all:
 		cost += break_cost(iid)
+		_quiet(iid, turn, BREAK_QUIET_TURNS)
 		_end_one(iid)
 	_charge_break(cost, turn)
 	LabourState.add_target_shift("strikes_broken_%d" % turn, "Strikes broken", BREAK_SHIFT_ROUND)

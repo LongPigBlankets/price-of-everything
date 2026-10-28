@@ -444,8 +444,10 @@ func _row(row_name: String, icon: Control, info: Control, target: String, loss: 
 	manage.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(manage)
 	for spec: Array in [
-		["settle", SETTLE, "Settle", settle, "Pay %d%% higher at %s for %d turns." % [roundi(LabourUnrest.PAY_RAISE * 100.0), where, LabourUnrest.PAY_RAISE_TURNS]],
-		["break", BREAK, "BreakStrike", brk, "Replacement crews at %s, paid this turn. Satisfaction %s for %d turns." % [where, _n(shift), LabourState.EVENT_SHIFT_TURNS]],
+		["settle", SETTLE, "Settle", settle, "Pay %d%% higher at %s for %d turns. No strike there for %d turns." % [
+			roundi(LabourUnrest.PAY_RAISE * 100.0), where, LabourUnrest.PAY_RAISE_TURNS, LabourUnrest.SETTLE_QUIET_TURNS]],
+		["break", BREAK, "BreakStrike", brk, "Replacement crews at %s, paid this turn. Satisfaction %s for %d turns. No strike there for %d turns." % [
+			where, _n(shift), LabourState.EVENT_SHIFT_TURNS, LabourUnrest.BREAK_QUIET_TURNS]],
 	]:
 		var line := HBoxContainer.new()
 		line.name = "%sLine" % str(spec[2])
@@ -597,18 +599,20 @@ static func bed_words(action: String, target: String, iids: Array) -> String:
 	if action == "settle":
 		var pct := roundi(LabourUnrest.PAY_RAISE * 100.0)
 		if target == "all":
-			return "Pay %d%% higher at %s for %d turns. Every strike ends, and none can start for %d turns." % [
-				pct, "this building" if iids.size() == 1 else "these %d buildings" % iids.size(),
-				LabourUnrest.PAY_RAISE_TURNS, LabourUnrest.STRIKE_FREE_TURNS]
-		return "Pay %d%% higher here for %d turns. %s" % [pct, LabourUnrest.PAY_RAISE_TURNS,
-			"Its workers go back to work." if u.is_on_strike(target) else "It leaves the strike."]
+			var those := "this building" if iids.size() == 1 else "these %d buildings" % iids.size()
+			return "Pay %d%% higher at %s for %d turns. Every strike ends, and none can start for %d turns, or %d at %s." % [
+				pct, those, LabourUnrest.PAY_RAISE_TURNS, LabourUnrest.STRIKE_FREE_TURNS, LabourUnrest.SETTLE_QUIET_TURNS,
+				"this building" if iids.size() == 1 else "these buildings"]
+		return "Pay %d%% higher here for %d turns. %s It cannot strike again for %d turns." % [pct, LabourUnrest.PAY_RAISE_TURNS,
+			"Its workers go back to work." if u.is_on_strike(target) else "It leaves the strike.", LabourUnrest.SETTLE_QUIET_TURNS]
 	var said := ""
 	if target == "all":
-		said = "Replacement crews end every strike in this round, paid this turn. Satisfaction %s for %d turns. Strikes can come back at the next check." % [
-			_n(LabourUnrest.BREAK_SHIFT_ROUND), turns]
+		said = "Replacement crews end every strike in this round, paid this turn. Satisfaction %s for %d turns. These buildings cannot strike again for %d turns, but others can at the next check." % [
+			_n(LabourUnrest.BREAK_SHIFT_ROUND), turns, LabourUnrest.BREAK_QUIET_TURNS]
 	else:
-		said = "Replacement crews %s, paid this turn. Satisfaction %s for %d turns." % [
-			"end this strike" if u.is_on_strike(target) else "stand ready, so it will not strike", _n(LabourUnrest.BREAK_SHIFT_ONE), turns]
+		said = "Replacement crews %s, paid this turn. Satisfaction %s for %d turns. It cannot strike again for %d turns." % [
+			"end this strike" if u.is_on_strike(target) else "stand ready, so it will not strike", _n(LabourUnrest.BREAK_SHIFT_ONE), turns,
+			LabourUnrest.BREAK_QUIET_TURNS]
 	if u.routinely_broke:
 		return said
 	if u.break_makes_routine(target):
@@ -635,7 +639,7 @@ func _confirm(action: String, target: String, iids: Array) -> void:
 	elif target == "all":
 		if u.raise_pay_all(turn, iids):
 			MatchState.request_toast("Strikes settled. No strikes for %d turns." % LabourUnrest.STRIKE_FREE_TURNS, "success")
-	elif u.raise_pay(target):
+	elif u.raise_pay(target, turn):
 		MatchState.request_toast("Strike settled at %s." % who, "success")
 	_rebuild()
 
