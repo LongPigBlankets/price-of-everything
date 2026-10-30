@@ -53,8 +53,8 @@ func _dig(iid: String) -> void:
 	Production._flush_output_buffer()
 
 
-## AC18.1, AC18.2: draw is level × staffing, nothing while down; caps by seam kind; NPCs and strikes don't count.
-## Throughput never reaches a mine (AC1.6), but a water pump's still counts.
+## AC18.1, AC18.2: draw is level × throughput × staffing, nothing while down; caps by seam kind; NPCs and strikes
+## don't count.
 func _test_site_draw_and_caps() -> void:
 	_fresh()
 	var a := _mine(ENDLESS_TILE)
@@ -67,17 +67,7 @@ func _test_site_draw_and_caps() -> void:
 	_check(is_equal_approx(float(MiningSites.site(ENDLESS_TILE, "coal").draw), 4.5), "AC18.1 a level 3 working draws 3.5")
 	BuildingState.get_building(b)["level"] = 1
 	Modifiers.add({"id": "t_thru", "domain": "throughput", "target": "*", "pct": 20.0})
-	LabourState.policy_throughput_enabled = true
-	LabourState.set_labour_multiplier(1.2)
-	_check(is_equal_approx(float(MiningSites.site(ENDLESS_TILE, "coal").draw), 2.0),
-		"AC18.1 AC1.6 overtime and a +20% throughput modifier leave a mine's draw at 1")
-	BuildingState.tile_land_owned[WATER_TILE] = 2000
-	BuildingState.add_building(PUMP, "r_011", WATER_TILE, MatchState.LOCAL_PLAYER, "")
-	var pump_draw := float(MiningSites.site(WATER_TILE, "water").draw)
-	_check(absf(pump_draw - MatchState.throughput_multiplier({"building_id": PUMP})) < 0.001 and pump_draw > 1.2,
-		"AC18.1 a water pump still draws its throughput (%.3f)" % pump_draw)
-	LabourState.set_labour_multiplier(1.0)
-	LabourState.policy_throughput_enabled = false
+	_check(is_equal_approx(float(MiningSites.site(ENDLESS_TILE, "coal").draw), 2.4), "AC18.1 throughput +20% draws 1.2 a working")
 	Modifiers.remove("t_thru")
 	BuildingState.get_building(b)["staff_fill"] = 0.8
 	_check(absf(float(MiningSites.site(ENDLESS_TILE, "coal").draw) - (1.0 + Staffing.run_fraction(BuildingState.get_building(b)))) < 0.001
@@ -170,7 +160,7 @@ func _test_past_limit_collapse() -> void:
 	_fresh()
 
 
-## AC18.6: a finite seam is charged what is dug (level, staffing, never throughput); yield never charges it.
+## AC18.6: a finite seam is charged what is dug (level, throughput, staffing); yield never charges it.
 func _test_finite_charge() -> void:
 	_fresh()
 	Modifiers.remove("deposit_penalty_coal")
@@ -187,7 +177,7 @@ func _test_finite_charge() -> void:
 	MatchState.deposit_remaining[FINITE_TILE] = {"coal": 9999}
 	Modifiers.add({"id": "t_thru", "domain": "throughput", "target": "*", "pct": 20.0})
 	_dig(a)
-	_check(9999 - MatchState.deposit_remaining_for(FINITE_TILE, "coal") == 60, "AC18.6 AC1.6 a throughput modifier neither digs nor charges more at a mine")
+	_check(9999 - MatchState.deposit_remaining_for(FINITE_TILE, "coal") == 72, "AC18.6 throughput +20% is charged")
 	Modifiers.remove("t_thru")
 	MatchState.deposit_remaining[FINITE_TILE] = {"coal": 9999}
 	Modifiers.add({"id": "t_yield", "domain": "recipe_output", "target": "*", "pct": 50.0})
@@ -500,8 +490,7 @@ func _test_seam_words() -> void:
 	Modifiers.add({"id": "t_thru", "domain": "throughput", "target": "*", "pct": 25.0})
 	MatchState.deposit_remaining[FINITE_TILE] = {"coal": 4120}
 	var words := MiningSites.seam_words(FINITE_TILE, "coal")
-	_check(words == "Coal seam. Digging 120 a turn. Costs rise above 90. May collapse above 180. 4,120 left.",
-		"AC22.1 AC1.6 the seam line reads %s (two staffed mines, throughput not counted)" % words)
+	_check(words == "Coal seam. Digging 150 a turn. Costs rise above 90. May collapse above 180. 4,120 left.", "AC22.1 the seam line reads %s" % words)
 	_check(MiningSites.seam_words(ENDLESS_TILE, "coal").ends_with("May collapse above 0. Never runs out.") or MiningSites.seam_words(ENDLESS_TILE, "coal").ends_with("Never runs out."),
 		"AC22.1 an endless seam never runs out")
 	_fresh()

@@ -113,8 +113,8 @@ limit of 3 nothing is held back but the seam may collapse,
 the whole site, as a multiplier after labour discounts
 (`scripts/mining_sites.gd`, docs/pacing-labour-mining-licensing-spec.md §8). Deep extraction
 therefore needs labour and maintenance modifiers. Finite seams are charged for what is dug:
-level and staffing count, yield does not. Throughput never reaches mines, oil wells or platforms
-(owner ruling 2026-10-30), so a company wide labour setting cannot quietly push a seam over its cap. Regression smell: removing the cap because players want to
+throughput counts, yield does not. Labour policies keep their throughput at mines and wells (owner,
+2026-10-30: mines were historically the site of labour disputes), and the extra seam draw is accepted. Regression smell: removing the cap because players want to
 upgrade, letting yield research burn seams, or turning the over-cap cost into a percentage that
 labour discounts cancel. (Changes design stance A5, approved by owner.)
 

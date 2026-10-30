@@ -3,7 +3,7 @@ extends RefCounted
 ##
 ## A site is one deposit good on one tile; its workings are the player's buildings mining that good there. A
 ## site draws the sum of its workings' level (1, 2, 3.5) × throughput × staffing run fraction, in level 1
-## workings (throughput is 1 at mines and oil wells, so only a water pump's counts, §3.2a), and a working down after an accident, offline under a seam card or paused draws nothing. NPC
+## workings, and a working down after an accident, offline under a seam card or paused draws nothing. NPC
 ## buildings never draw. Every seam, endless (no amount in the CSV, water included) or finite, is free to 1.5 and
 ## may collapse past 3 (EconomyConfig.SEAM_FREE, SEAM_MAX).
 ##
@@ -40,7 +40,7 @@ static func kind(tile_id: String, token: String) -> String:
 	return FINITE if MatchState.deposit_remaining_for(tile_id, token) >= 0 else ENDLESS
 
 
-## One working's draw in level 1 workings: level × throughput (1 at mines and oil wells) × staffing run fraction. Nothing while it is down
+## One working's draw in level 1 workings: level × throughput × staffing run fraction. Nothing while it is down
 ## after an accident, offline under a seam card, paused or retooling, or once its seam is empty.
 static func working_draw(building: Dictionary) -> float:
 	var iid := str(building.get("instance_id", ""))

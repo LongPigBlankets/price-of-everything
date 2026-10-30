@@ -1283,12 +1283,9 @@ func startup_capacity_multiplier(building: Dictionary) -> float:
 func run_multiplier(building: Dictionary) -> float:
 	return startup_capacity_multiplier(building) * throughput_multiplier(building)
 
-## 1 + (labour policy throughput + throughput modifiers) / 100 for this building, never below 0. Always 1 at
-## the extraction buildings throughput never reaches (LabourState.takes_throughput).
+## 1 + (labour policy throughput + throughput modifiers) / 100 for this building, never below 0.
 func throughput_multiplier(building: Dictionary) -> float:
 	var bid := str(building.get("building_id", ""))
-	if not LabourState.takes_throughput(bid):
-		return 1.0
 	var pct := LabourState.throughput_pct_for(bid)
 	if Modifiers.has_domain("throughput"):
 		pct += float(Modifiers.resolve_pct("throughput", bid,

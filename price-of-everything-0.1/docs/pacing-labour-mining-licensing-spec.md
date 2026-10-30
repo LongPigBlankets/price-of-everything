@@ -110,7 +110,7 @@ that never borrows) used throughout this spec:
 | Material inputs | unchanged | × (1 + pct) |
 | Power | unchanged | × (1 + pct) |
 | Labour, maintenance | unchanged | unchanged (the gain is spreading fixed costs) |
-| Mines, oil wells, platforms | more recovered per unit dug (yield) | none: throughput does not reach them (§3.2a) |
+| Mines | more recovered per unit dug (yield) | more dug: counts toward seam draw (§8) |
 | Effect on a 4-stage chain at +10% each | +46% apex output from the same ore | +10% apex, needs +10% ore |
 
 At turn 30 (value added about £177 of £313 revenue), +10% output is worth about +£31/turn and
@@ -147,23 +147,14 @@ At turn 30 (value added about £177 of £313 revenue), +10% output is worth abou
 Everything else that gives output today becomes throughput, a cost reduction, or a licence group
 member (§10).
 
-### 3.2a Extraction takes no throughput — owner ruling 30 October 2026
+### 3.2a Extraction keeps throughput — owner ruling 30 October 2026
 
-- Throughput does not reach mines (`b_001`), oil wells (`b_032`, `b_034`) or offshore oil platforms
-  (`b_033`). The labour policies (work effort, work week, Minimal safety, the leave lockers) and every
-  `throughput` modifier leave how hard they run alone, so their inputs, outputs, power and seam draw
-  ignore it.
-- Output still counts. Output modifiers (yield research, the −30% penalty, mission rewards), the +90
-  satisfaction prize and strikes still change what they recover. Level, staffing and accidents still
-  scale the run.
-- Why: company wide labour settings must not quietly change mining costs. Overtime and the work week
-  used to raise every mine's seam draw, so speeding up factories pushed mines past their free amount.
-- Unchanged: their labour costs still follow the policies, so overtime still raises a mine's salary.
-- *My call, flagged:* the water pump (`b_037`) keeps throughput, because the ruling names mines, wells
-  and platforms only.
-- Code: `LabourState.NO_THROUGHPUT_BUILDINGS` and `LabourState.takes_throughput`.
-  `MatchState.throughput_multiplier` returns 1 for them, so `run_multiplier`, the seam draw, the
-  finite charge, the forecasts and the tooltips all follow.
+- Labour policies and throughput reach mines, oil wells and platforms like any other building. Mines
+  were historically the site of many labour disputes, so leaving them out of labour policy would be
+  strange.
+- The seam impact is accepted: overtime and the work week raise a mine's draw and can push a seam
+  past its free amount or its limit.
+- Taking throughput off extraction was tried the same day and reverted. Do not propose it again.
 
 ### 3.3 Conversion rules *(proposed)*
 
@@ -526,8 +517,7 @@ A new **satisfaction plate** goes at the top, above the time clock:
   70.").
 - **Knob option cards** show three lines: throughput, cost and satisfaction. Example: "Overtime.
   Throughput 15% higher. Salary 25% higher. Satisfaction target 30 lower." The old output pressure
-  copy is removed. Since the 30 October ruling (§3.2a), a throughput line adds "Not at mines, oil
-  wells or platforms." and Minimal safety names only the hazardous sites it speeds up.
+  copy is removed.
 - The time clock (labour cost now and in 10 turns), the workforce doors, automation and the
   lockers remain.
 - **Union** becomes a seventh knob (None, Partial, Comprehensive), and **Work week** an eighth
@@ -936,8 +926,7 @@ satisfaction. Buying is the fast lane, which is what LOCKED pacing intends.
 
 - A **site** is one deposit good on one tile.
 - Its **draw** is the sum over the player's workings on it of: level multiplier (L1 1, L2 2,
-  L3 3.5) × staffing fill × accident factor. Throughput does not reach extraction (§3.2a, owner
-  ruling 30 October 2026; was × throughput).
+  L3 3.5) × throughput × staffing fill × accident factor.
 - Strikes do not lower draw: a struck mine digs in full and recovers 70% (§6).
 - Draw is measured in level 1 workings, so caps are recipe-agnostic. An offshore platform and an
   oil well each count 1 at level 1.
@@ -998,8 +987,8 @@ Mine upkeep basis:
 - Level 3: ×2 labour, ×2.5 maintenance and power.
 
 Early sites grow by adding level 1 mines, because mine level 2 needs In-Pit Crushing (5
-profitable mines). A seam takes one mine free; a second costs ×1.5 across the site, whatever the
-labour policies (§3.2a; was ×1.7 at the 45 hour week).
+profitable mines). A seam takes one mine free, with room for overtime; a second costs about ×1.5
+across the site, ×1.7 at the 45 hour week.
 
 ### 8.4 Deposit sizes — LOCKED (×3)
 
@@ -1031,7 +1020,7 @@ labour policies (§3.2a; was ×1.7 at the 45 hour week).
 
 ### 8.5 Charging and yield
 
-- Finite seams are charged **what is dug**: base × level × fill (no throughput, §3.2a). This
+- Finite seams are charged **what is dug**: base × level × throughput × fill × strike. This
   replaces the rule at `production.gd:987` ("deposit life is independent of output multipliers").
 - Yield (`recipe_output`) still never burns the seam: investing in recovery cannot shorten a
   field.
@@ -1086,7 +1075,7 @@ At 25% remaining, a decision card replaces the 5-turn warning (`DEPOSIT_WARNING_
   - collapse past the limit
   - M continuity
   - M applied after the labour floor
-  - finite charge includes fill, never throughput
+  - finite charge includes throughput and fill
   - yield does not charge
   - ×3 sizes keep endless detection
 
@@ -1317,7 +1306,7 @@ whose condition is unmet, or licensing out a process that was licensed in."
 > limit of 3 the seam may collapse. Every working over the
 > free cap adds 100% labour and maintenance on the whole site, as a multiplier after labour discounts. Deep
 > extraction therefore needs labour and maintenance modifiers. Finite seams are charged for what
-> is dug: level and staffing count, yield does not, and throughput never reaches a mine. Regression smell: removing the cap because players
+> is dug: throughput counts, yield does not. Regression smell: removing the cap because players
 > want to upgrade, letting yield research burn seams, or turning the over-cap cost into a
 > percentage that labour discounts cancel.
 
@@ -1530,12 +1519,6 @@ Labour tab control.
 5. **AC1.5** The cost solver, the build forecast, building status, the money panel projection
    and the e2e diagnostics use the same throughput and prize figures as production (same
    quantities for the same building in the same turn).
-6. **AC1.6** Mines (`b_001`), oil wells (`b_032`, `b_034`) and offshore oil platforms (`b_033`)
-   run at throughput ×1 whatever the labour policies and `throughput` modifiers: their run
-   multiplier is the staffing factor alone, their seam draw ignores the policies, and their
-   output tooltip lists no throughput. Output modifiers and the +90 prize still raise their
-   output. Every other building, the water pump included, is unchanged. (Owner ruling, 30
-   October 2026, §3.2a.)
 
 **Labour policies (§4.4, §4.4b)**
 
@@ -1544,8 +1527,7 @@ Labour tab control.
    while idle, Safety, Pensions, Annual bonus, Profit share, Union, Work week. The automation
    switch and the four lockers are covered too.
 2. **AC2.2** Minimal safety's +10% throughput and High safety's +5% labour apply only to
-   hazardous buildings (`b_001, b_002, b_003, b_008, b_011, b_012, b_013, b_032–b_034`). The
-   throughput skips the extraction ones among them (AC1.6).
+   hazardous buildings (`b_001, b_002, b_003, b_008, b_011, b_012, b_013, b_032–b_034`).
 3. **AC2.3** Profit share costs its share of profit after tax and dividends, as today, and no
    longer changes output.
 4. **AC2.4** Work week:
@@ -1943,8 +1925,8 @@ tile; a **working** is one of the player's buildings mining it.
 
 **Seams (§8.1–8.3, §8.9)**
 
-1. **AC18.1** A site's draw is the sum over its workings of level (1 / 2 / 3.5) × staffing run
-   fraction (no throughput, AC1.6), 0 for a working down after an accident or offline. NPC buildings never
+1. **AC18.1** A site's draw is the sum over its workings of level (1 / 2 / 3.5) × throughput ×
+   staffing run fraction, 0 for a working down after an accident or offline. NPC buildings never
    draw. A strike does not lower draw.
 2. **AC18.2** Every seam, endless (no amount in `tile_properties.csv`, water included) or finite, is
    free to 1.5 and may collapse past 3 (owner ruling 26 October 2026; was 2 and 4, 3 and 6).
@@ -1956,7 +1938,7 @@ tile; a **working** is one of the player's buildings mining it.
 5. **AC18.5** Past the limit nothing is scaled back and M keeps rising. Each turn the seam collapses
    with chance 5% × (draw − max), rolled on a saved seeded RNG: a finite seam loses what remains, an
    endless one stops its mines for 3 turns. (Owner ruling, 26 October 2026.)
-6. **AC18.6** A finite seam is charged what is dug: base × level × staffing (no throughput, AC1.6). Yield (`recipe_output`: the −30% penalty, research, strikes) never charges it.
+6. **AC18.6** A finite seam is charged what is dug: base × level × throughput × staffing. Yield (`recipe_output`: the −30% penalty, research, strikes) never charges it.
 7. **AC18.7** The coal table of §8.3 is reproduced within £0.02 by a test.
 
 **Deposits (§8.4)**

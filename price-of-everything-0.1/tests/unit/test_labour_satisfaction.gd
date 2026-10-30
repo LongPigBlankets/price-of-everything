@@ -8,7 +8,6 @@ const TAGS := {
 	"_test_throughput_scales_inputs_outputs_and_power": ["labour", "production"],
 	"_test_recipe_input_modifier_scales_inputs": ["labour", "production"],
 	"_test_previews_match_production": ["labour", "production"],
-	"_test_extraction_takes_no_throughput": ["labour", "production", "mining"],
 	"_test_save_round_trip_and_migration": ["labour", "save"],
 }
 
@@ -17,9 +16,6 @@ const FACTORY := "b_007"     # not hazardous
 const MINE := "b_001"
 const SaveValidationScript := preload("res://scripts/save_validation.gd")
 const HAZARDOUS := ["b_001", "b_002", "b_003", "b_008", "b_011", "b_012", "b_013", "b_032", "b_033", "b_034"]
-## Mines, oil wells, the offshore platform and fracking wells: throughput never reaches them (AC1.6).
-const EXTRACTION := ["b_001", "b_032", "b_033", "b_034"]
-const PUMP := "b_037"
 
 
 func _fresh() -> void:
@@ -73,46 +69,6 @@ func _test_throughput_scales_inputs_outputs_and_power() -> void:
 	_check(is_equal_approx(Production._calculate_labour_cost(b, recipe), labour0)
 		and is_equal_approx(Production._calculate_maintenance_cost(b), maint0), "AC1.1 throughput leaves labour and maintenance alone")
 	Modifiers.remove("test_tp")
-	_fresh()
-
-
-## AC1.6: mines, oil wells, the offshore platform and fracking wells run at throughput ×1 under every labour policy
-## and throughput modifier, while output modifiers still raise what they make. Other buildings keep throughput.
-func _test_extraction_takes_no_throughput() -> void:
-	_fresh()
-	BuildingState.tile_land_owned["tile_7_4"] = 2000
-	var mine: Dictionary = BuildingState.buildings[BuildingState.add_building(MINE, "r_001", "tile_7_4", MatchState.LOCAL_PLAYER, "")]
-	mine.erase("staff_fill")
-	var recipe: Dictionary = Catalog.get_recipe("r_001")
-	LabourState.policy_throughput_enabled = false
-	var out0 := BuildingStatus.effective_output_qty(mine, recipe)
-	LabourState.policy_throughput_enabled = true
-	LabourState.set_labour_multiplier(1.2)
-	LabourState.set_work_week(50)
-	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_LAX_SAFETY, true)
-	Modifiers.add({"id": "test_tp_all", "domain": "throughput", "target": "*", "pct": 20.0})
-	var flat := true
-	for bid in EXTRACTION:
-		flat = flat and is_equal_approx(MatchState.throughput_multiplier({"building_id": bid}), 1.0) \
-			and LabourState.throughput_parts_for(str(bid)).is_empty()
-	_check(flat, "AC1.6 overtime, a 50 hour week, Minimal safety and a +20% modifier leave every mine and well at ×1")
-	_check(is_equal_approx(MatchState.run_multiplier(mine), MatchState.startup_capacity_multiplier(mine))
-		and BuildingStatus.effective_output_qty(mine, recipe) == out0,
-		"AC1.6 a mine's run multiplier is its staffing alone and its output is unchanged (%d)" % out0)
-	var tip: Dictionary = BuildingStatus.net_output_modifier(mine, recipe)
-	_check((tip.throughput_parts as Array).is_empty() and (tip.workforce_parts as Array).is_empty(),
-		"AC1.6 the mine's output tooltip lists no throughput")
-	Modifiers.add({"id": "test_yield", "domain": "recipe_output", "target": "*", "pct": 50.0})
-	var raised := BuildingStatus.effective_output_qty(mine, recipe)
-	_check(raised > out0, "AC1.6 an output modifier still raises a mine's output (%d -> %d)" % [out0, raised])
-	Modifiers.remove("test_yield")
-	_check(is_equal_approx(MatchState.throughput_multiplier({"building_id": FURNACE}), 1.595)
-		and is_equal_approx(MatchState.throughput_multiplier({"building_id": PUMP}), 1.495),
-		"AC1.6 a furnace (+59.5%%) and the water pump (+49.5%%) keep their throughput")
-	Modifiers.remove("test_tp_all")
-	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_LAX_SAFETY, false)
-	LabourState.set_labour_multiplier(1.0)
-	LabourState.set_work_week(45)
 	_fresh()
 
 
@@ -223,10 +179,10 @@ func _test_knob_table() -> void:
 	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_LAX_SAFETY, true)
 	var haz_ok := true
 	for bid in HAZARDOUS:
-		haz_ok = haz_ok and is_equal_approx(LabourState.throughput_pct_for(str(bid)), 0.0 if EXTRACTION.has(bid) else 22.0)
+		haz_ok = haz_ok and is_equal_approx(LabourState.throughput_pct_for(str(bid)), 22.0)
 	_check(haz_ok and is_equal_approx(LabourState.throughput_pct_for(FACTORY), 12.0)
 		and is_equal_approx(_labour_delta(plain), -0.05) and is_equal_approx(_part(LabourState.WORKFORCE_POLICY_LAX_SAFETY), -20.0),
-		"AC2.1 AC2.2 AC1.6 Minimal safety: +10% at every hazardous site but the mines and wells, labour −5%, satisfaction −20")
+		"AC2.1 AC2.2 Minimal safety: +10% at every hazardous site only, labour −5%, satisfaction −20")
 	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_STRICT_SAFETY, true)
 	_check(is_equal_approx(_labour_delta(haz), 0.05) and is_equal_approx(_labour_delta(plain), 0.0)
 		and is_equal_approx(_part(LabourState.WORKFORCE_POLICY_STRICT_SAFETY), 10.0),
