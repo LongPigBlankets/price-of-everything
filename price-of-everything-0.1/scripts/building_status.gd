@@ -362,7 +362,7 @@ static func net_output_modifier(building: Dictionary, recipe: Dictionary) -> Dic
 	# Research throughput (inputs and outputs together), already inside MatchState.throughput_multiplier below; listed
 	# so the tooltip names it.
 	var throughput_parts: Array = []
-	if Modifiers.has_domain("throughput"):
+	if Modifiers.has_domain("throughput") and LabourState.takes_throughput(str(ctx.building_id)):
 		throughput_parts = Modifiers.resolve_pct("throughput", str(ctx.building_id), {"building_id": str(ctx.building_id),
 			"instance_id": str(ctx.instance_id), "goods_made": Catalog.goods_made(recipe_id)}).get("parts", [])
 	var workforce_mult: float = LabourState.workforce_output_multiplier() * MatchState.throughput_multiplier(building)

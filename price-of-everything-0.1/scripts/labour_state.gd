@@ -67,6 +67,11 @@ const HAZARDOUS_BUILDINGS := {
 	"b_012": true, "b_013": true, "b_032": true, "b_033": true, "b_034": true,
 }
 
+## Mines, oil wells, the offshore oil platform and fracking wells take no throughput: the labour policies and
+## throughput modifiers never change how hard they run or what they dig. Output modifiers still apply
+## (docs/pacing-labour-mining-licensing-spec.md §3.2a).
+const NO_THROUGHPUT_BUILDINGS := {"b_001": true, "b_032": true, "b_033": true, "b_034": true}
+
 # --- Work effort (the labour_multiplier knob: 0.8 Lean, 1.0 Standard, 1.2 Overtime) ---
 const EFFORT_SALARY := {"lean": -0.20, "standard": 0.0, "overtime": 0.25}
 const EFFORT_THROUGHPUT_PCT := {"lean": -10.0, "standard": 0.0, "overtime": 15.0}
@@ -438,6 +443,10 @@ func _prune_grandfathered() -> void:
 
 # ── Throughput and output ──────────────────────────────────────────────────────────────────────
 
+## False for the extraction buildings throughput never reaches (NO_THROUGHPUT_BUILDINGS).
+static func takes_throughput(building_id: String) -> bool:
+	return not NO_THROUGHPUT_BUILDINGS.has(building_id)
+
 ## The labour policies' throughput for a building type, in percent (MatchState.run_multiplier adds
 ## the throughput modifiers to it).
 func throughput_pct_for(building_id: String) -> float:
@@ -449,7 +458,7 @@ func throughput_pct_for(building_id: String) -> float:
 ## The same as labelled parts, for the Modifiers row and the ledger.
 func throughput_parts_for(building_id: String) -> Array:
 	var parts: Array = []
-	if not policy_throughput_enabled:
+	if not policy_throughput_enabled or not takes_throughput(building_id):
 		return parts
 	var effort := float(EFFORT_THROUGHPUT_PCT[effort_key()])
 	if effort != 0.0:

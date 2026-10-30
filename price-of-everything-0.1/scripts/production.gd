@@ -1013,7 +1013,7 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		return
 	var mined := 0
 	# What a finite seam is charged: what is dug, the recipe's base quantity × the building's level × how hard
-	# it runs (staffing and throughput: MatchState.run_multiplier),
+	# it runs (staffing, and throughput where it applies, never at mines and oil wells: MatchState.run_multiplier),
 	# doubled on a blasting site's double dig (docs/pacing-labour-mining-licensing-spec.md §8.5, §8.7). Yield
 	# never charges it: the deposit penalty, mining research, advisor bonuses, the workforce output multiplier
 	# and strikes change how much you GET from what is dug, never how fast the seam runs out, so investing in
