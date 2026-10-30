@@ -351,6 +351,7 @@ func _mechanic_body(entry_id: String) -> String:
 		return building_economics_page()
 	if entry_id == "transport":
 		return ("Transport moves goods between tiles and connects your economy to the world market. Roads, railways and pipes have a limited throughput on every tile they cross; congested links constrain the flow that can use them that turn.\n\n"
+			+ "Every shipment takes its route by the Routing switch on the Shipments and Stockpiles panel. Cheapest, the default, takes the least freight and then the fewest turns. Fastest takes the fewest turns and then the least freight. Blended counts freight and turns half each, each against the best route there is. Shipments already on the way keep their route, and fluids use pipes wherever pipes reach.\n\n"
 			+ "Transport costs are shown as part of the money panel's Transport category. When a building buys inputs or sells output, use the route and capacity information to decide whether to move goods locally, build more infrastructure, or trade through a port.\n\n"
 			+ "Research can improve a transport mode's throughput or lower a specific transport cost. Those bonuses apply to the live route calculation, not just the building card.")
 	if entry_id == "port_transport":

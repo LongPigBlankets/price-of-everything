@@ -7,6 +7,8 @@ const TAGS := {
 	"_test_route_cost_is_tiles": ["freight", "transport"],
 	"_test_cheapest_route": ["freight", "transport"],
 	"_test_equal_cost_takes_fewer_turns": ["freight", "transport"],
+	"_test_routing_switch": ["freight", "transport"],
+	"_test_routing_switch_saves": ["freight", "transport", "save"],
 	"_test_local_suppliers_unchanged": ["freight", "transport", "middleman"],
 }
 
@@ -171,6 +173,72 @@ func _test_equal_cost_takes_fewer_turns() -> void:
 		tiles_ok = tiles_ok and int(leg.get("tiles", 0)) == 2 and int(leg.get("level", 0)) == 2
 	_check(tiles_ok, "AC38.2 each leg records its tiles and the level it leaves from")
 	_restore(saved)
+
+
+## AC38.6: the Routing switch. Beside a straight run of bare ground, a cheaper road detour a turn slower: Fastest
+## takes the bare ground, Cheapest (the default) and Blended the road. Each setting keeps its own cached route, and a
+## fluid still goes by pipe first under Fastest.
+func _test_routing_switch() -> void:
+	var saved := _isolate()
+	var was := MatchState.route_objective
+	MatchState.reset()
+	_check(MatchState.route_objective == MatchState.RouteObjective.CHEAPEST, "AC38.6 a new game routes by Cheapest")
+	var picked := _straight_and_detour()
+	_check(not picked.is_empty(), "AC38.6 found three land tiles in a column with a land detour")
+	if picked.is_empty():
+		MatchState.set_route_objective(was)
+		_restore(saved)
+		return
+	_lay(picked.detour, "roads")
+	var src := str(picked.src)
+	var dst := str(picked.dst)
+	var routes := {}
+	for objective: int in [MatchState.RouteObjective.CHEAPEST, MatchState.RouteObjective.FASTEST, MatchState.RouteObjective.BLENDED]:
+		MatchState.set_route_objective(objective)
+		var r: Dictionary = Catalog.route(src, dst, COAL)
+		routes[objective] = {"turns": int(r.get("turns", -1)), "cost": EconomyConfig.transport_cost_for_route(COAL, 10, r),
+			"modes": (r.get("legs", []) as Array).map(func(l: Dictionary) -> String: return str(l.mode))}
+	var cheap: Dictionary = routes[MatchState.RouteObjective.CHEAPEST]
+	var fast: Dictionary = routes[MatchState.RouteObjective.FASTEST]
+	var blend: Dictionary = routes[MatchState.RouteObjective.BLENDED]
+	_check(int(cheap.turns) == 3 and (cheap.modes as Array).all(func(m: String) -> bool: return m == "roads"),
+		"AC38.6 Cheapest takes the 3 tile road (%s, %d turns)" % [str(cheap.modes), int(cheap.turns)])
+	_check(int(fast.turns) == 2 and float(fast.cost) > float(cheap.cost),
+		"AC38.6 Fastest takes 2 turns of bare ground at more freight (%s, £%.3f vs £%.3f)" % [str(fast.modes), float(fast.cost), float(cheap.cost)])
+	var score := func(r: Dictionary) -> float:
+		return 0.5 * float(r.cost) / float(cheap.cost) + 0.5 * float(r.turns) / float(fast.turns)
+	_check(str(blend.modes) == str(cheap.modes) and float(score.call(blend)) <= minf(float(score.call(cheap)), float(score.call(fast))) + 0.0001,
+		"AC38.6 Blended weighs freight and turns half each and takes the road here (score %.3f, bare ground %.3f)"
+			% [float(score.call(blend)), float(score.call(fast))])
+	MatchState.set_route_objective(MatchState.RouteObjective.CHEAPEST)
+	_check(int(Catalog.route(src, dst, COAL).get("turns", -1)) == 3, "AC38.6 switching back gives the cheapest route again, not a cached fastest one")
+	# A fluid stays in its pipes under Fastest, though level 3 rail on the same line is quicker.
+	Catalog.clear_tile_infrastructure()
+	var chain := _row_chain(5, 5, 11)
+	_lay(chain, "pipes")
+	_lay(chain, "rails", 3)
+	MatchState.set_route_objective(MatchState.RouteObjective.FASTEST)
+	var piped := true
+	for leg: Dictionary in Catalog.route(str(chain[0]), str(chain[-1]), WATER).get("legs", []):
+		piped = piped and EconomyConfig.PIPE_MODES.has(str(leg.get("mode", "")))
+	_check(piped, "AC38.6 a fluid still goes by pipe first under Fastest")
+	MatchState.set_route_objective(was)
+	_restore(saved)
+
+
+## AC38.7: a save from before the switch worked (version 18 or older) loads on Cheapest whatever it shows; a newer
+## save keeps its setting.
+func _test_routing_switch_saves() -> void:
+	var was := MatchState.route_objective
+	var old: Dictionary = SaveLoad._migrate({"save_version": 18, "match": {"route_objective": MatchState.RouteObjective.FASTEST}})
+	_check(int(old.save_version) == SaveLoad.SAVE_VERSION and int(old.match.route_objective) == MatchState.RouteObjective.CHEAPEST,
+		"AC38.7 a version 18 save showing Fastest loads on Cheapest")
+	MatchState.set_route_objective(MatchState.RouteObjective.BLENDED)
+	var saved: Dictionary = MatchState.export_state()
+	MatchState.reset()
+	MatchState.import_state(saved)
+	_check(MatchState.route_objective == MatchState.RouteObjective.BLENDED, "AC38.7 a current save keeps Blended")
+	MatchState.set_route_objective(was)
 
 
 ## AC38.5: a leg saved before freight was priced by distance has no tile count, and is costed on its hex distance.

@@ -527,14 +527,15 @@ func route(source_tile: String, dest_tile: String, good_id: String = "") -> Dict
 	var premium := ""
 	if good_id != "" and requires_pipeline(good_id):
 		premium = "hazard" if get_transport_class(good_id) == "hazard_liquid" else "fluid"
-	var key := "%s|%s|%s|%s" % [source_tile, dest_tile, "-".join(_modes_for_good(good_id)), premium]
+	var key := "%s|%s|%s|%s|%d" % [source_tile, dest_tile, "-".join(_modes_for_good(good_id)), premium, int(MatchState.route_objective)]
 	if not _route_cache.has(key):
 		_route_cache[key] = _route_uncached(source_tile, dest_tile, good_id)
 	return _route_cache[key]
 
 
 func _route_uncached(source_tile: String, dest_tile: String, good_id: String = "") -> Dictionary:
-	# Cheapest A->B, fewer turns between equal costs. Returns
+	# A->B by the Routing switch (MatchState.route_objective, _best_route): by default the cheapest, fewer turns
+	# between equal costs. Returns
 	# {turns, path:[turn-boundary tiles], legs:[{mode, from, to, tiles, level}], tiles}.
 	if source_tile == "" or dest_tile == "":
 		return {"turns": 0, "path": [], "legs": []}
@@ -545,42 +546,64 @@ func _route_uncached(source_tile: String, dest_tile: String, good_id: String = "
 	# for a destination the pipework does not reach, at several times the cost (see
 	# EconomyConfig.FLUID_OVERLAND_COST_MULT). It stays explicit even though the search below
 	# is cheapest-first: a level 3 rail tanker is cheaper a tile than a level 1 pipe, and a
-	# fluid with a pipe to its door belongs in it.
+	# fluid with a pipe to its door belongs in it. That holds under every Routing setting.
+	var objective := int(MatchState.route_objective)
 	if requires_pipeline(good_id):
 		var pipe_only: Array = []
 		for m in modes:
 			if EconomyConfig.PIPE_MODES.has(m):
 				pipe_only.append(m)
 		if not pipe_only.is_empty():
-			var piped := _cheapest_route(source_tile, dest_tile, pipe_only, good_id)
+			var piped := _best_route(source_tile, dest_tile, pipe_only, good_id, objective)
 			if int(piped.get("turns", 1 << 30)) < (1 << 30):
 				return piped
-	return _cheapest_route(source_tile, dest_tile, modes, good_id)
+	return _best_route(source_tile, dest_tile, modes, good_id, objective)
 
 
 const _ROUTE_COST_EPS := 1e-9
 
-## The cheapest route from source to dest across `modes` (owner ruling, spec §7.6), and between equal costs the one
-## with fewer turns. Each turn-move is an edge costing its tiles x EconomyConfig.freight_tile_mult at the departure
-## tile's level, the same figure transport_cost_for_route charges, so the route taken is the one priced. Dijkstra on
-## (cost, turns) with a binary heap; split out of _route_uncached so a fluid can be asked for a pipe-only route first.
-func _cheapest_route(source_tile: String, dest_tile: String, modes: Array, good_id: String = "") -> Dictionary:
+## The route the Routing switch asks for (spec §7.6). Cheapest, the default (owner ruling 27 October): least freight,
+## then fewer turns. Fastest: fewest turns, then least freight. Blended: half freight, half turns, each against the
+## best the network allows, so the least ½ × freight ÷ cheapest freight + ½ × turns ÷ fewest turns, then least freight.
+func _best_route(source_tile: String, dest_tile: String, modes: Array, good_id: String, objective: int) -> Dictionary:
+	if objective == MatchState.RouteObjective.FASTEST:
+		return _search_route(source_tile, dest_tile, modes, good_id, 0.0, 1.0)
+	if objective != MatchState.RouteObjective.BLENDED:
+		return _search_route(source_tile, dest_tile, modes, good_id, 1.0, 0.0)
+	var cheapest := _search_route(source_tile, dest_tile, modes, good_id, 1.0, 0.0)
+	var fastest := _search_route(source_tile, dest_tile, modes, good_id, 0.0, 1.0)
+	if int(cheapest.turns) >= (1 << 30) or int(fastest.turns) <= 0:
+		return cheapest
+	return _search_route(source_tile, dest_tile, modes, good_id,
+		0.5 / maxf(float(cheapest.cost), _ROUTE_COST_EPS), 0.5 / float(fastest.turns))
+
+## A route from source to dest across `modes` with the least cost_weight × freight + turns_weight × turns. Between
+## equal weights it takes fewer turns when only freight is weighed, else less freight.
+## Each turn-move is an edge costing its tiles x EconomyConfig.freight_tile_mult at the departure tile's level, the
+## same figure transport_cost_for_route charges, so the route taken is the one priced. Dijkstra with a binary heap on
+## (weight, then freight or turns); split out of _route_uncached so a fluid can be asked for a pipe-only route first.
+func _search_route(source_tile: String, dest_tile: String, modes: Array, good_id: String, cost_weight: float,
+		turns_weight: float) -> Dictionary:
 	var INF := 1 << 30
-	var best: Dictionary = {source_tile: [0.0, 0]}
+	# A label is [weight, tie break, freight, turns]; the heap holds [weight, tie break, tile].
+	var best: Dictionary = {source_tile: [0.0, 0.0, 0.0, 0]}
 	var prev: Dictionary = {}  # tile -> {from, mode, tiles, level}
-	var heap: Array = [[0.0, 0, source_tile]]
+	var heap: Array = [[0.0, 0.0, source_tile]]
 	while not heap.is_empty():
 		var top: Array = _heap_pop(heap)
 		var u: String = str(top[2])
 		var at: Array = best[u]
-		if float(top[0]) != float(at[0]) or int(top[1]) != int(at[1]):
-			continue  # superseded by a cheaper or quicker way in
+		if float(top[0]) != float(at[0]) or float(top[1]) != float(at[1]):
+			continue  # superseded by a better way in
 		if u == dest_tile:
 			break
 		for entry: Dictionary in _turn_move_neighbours(u, modes):
 			var mode := str(entry.mode)
 			var level := tile_infra_level(u, mode) if mode != ROUTE_MODE_NONE else 1
-			var cand: Array = [float(at[0]) + EconomyConfig.freight_tile_mult(good_id, mode, level) * float(entry.steps), int(at[1]) + 1]
+			var cost := float(at[2]) + EconomyConfig.freight_tile_mult(good_id, mode, level) * float(entry.steps)
+			var turns := int(at[3]) + 1
+			var cand: Array = [cost_weight * cost + turns_weight * float(turns),
+				float(turns) if turns_weight == 0.0 else cost, cost, turns]
 			var nb := str(entry.tile)
 			if best.has(nb) and not _route_key_less(cand, best[nb]):
 				continue
@@ -602,15 +625,17 @@ func _cheapest_route(source_tile: String, dest_tile: String, modes: Array, good_
 		var seg := _mode_shortest_path(str(leg.from), str(leg.to), str(leg.mode))
 		for i in range(1, seg.size()):
 			tiles.append(seg[i])
-	return {"turns": int((best[dest_tile] as Array)[1]), "path": path, "legs": legs, "tiles": tiles}
+	var arrived: Array = best[dest_tile]
+	return {"turns": int(arrived[3]), "cost": float(arrived[2]), "path": path, "legs": legs, "tiles": tiles}
 
-## (cost, turns) order for the route search: cheaper first, then fewer turns. Costs within _ROUTE_COST_EPS are equal.
+## (weight, tie break) order for the route search: the lesser weight first, then the lesser tie break. Values within
+## _ROUTE_COST_EPS are equal.
 static func _route_key_less(a: Array, b: Array) -> bool:
 	if float(a[0]) < float(b[0]) - _ROUTE_COST_EPS:
 		return true
 	if float(a[0]) > float(b[0]) + _ROUTE_COST_EPS:
 		return false
-	return int(a[1]) < int(b[1])
+	return float(a[1]) < float(b[1]) - _ROUTE_COST_EPS
 
 static func _heap_push(heap: Array, item: Array) -> void:
 	heap.append(item)

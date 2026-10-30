@@ -880,6 +880,22 @@ Slower goods sit on links longer, so congestion rises on busy links. The e2e sho
 **Route choice (owner ruling, 27 October).** Shipments take the cheapest route, and between equal
 costs the one with fewer turns. Upgrading a level buys speed.
 
+**The Routing switch sets route choice (owner ruling, 30 October).** The Shipments and Stockpiles
+panel's Routing switch (Fastest, Cheapest, Blended) was never read by the router: it said Fastest
+while goods took the cheapest route. It now sets the route every new shipment takes.
+- **Cheapest**, the default for new games: the 27 October rule above.
+- **Fastest**: the fewest turns, and between equal turns the least freight.
+- **Blended** *(my call, proposed)*: freight and turns count half each, each against the best the
+  network allows. The route with the least ½ × freight ÷ cheapest freight + ½ × turns ÷ fewest
+  turns, then the least freight. On a cheap road detour a turn slower than a run of bare ground,
+  Blended takes the road.
+- It is one company wide setting, as the panel already showed it. Shipments already on the way keep
+  their route. Fluids still take a pipe route first whatever it says. Local Suppliers are unaffected.
+- Saved as before. A save older than version 19 loads on Cheapest, because the switch did nothing
+  then and its goods took the cheapest route.
+- Code: `Catalog._best_route` reads `MatchState.route_objective`; the route cache keys on it.
+  `MatchState.reset` sets Cheapest.
+
 **Local Suppliers: same turn, LOCKED, pricing unchanged.**
 - Their haul is trips to the hub × settlement factor × freight rate.
 - Trips are `ceil(distance ÷ TRANSPORT_MAX_TILES_PER_TURN)` (`middleman_locations.gd:147`).
@@ -2269,7 +2285,7 @@ than bare ground, fewest turns would send goods over bare ground at four times t
    1 / 2 / 4, rail 3 / 5 / 8, port 8 / 12 / 20, bare ground 1. Pipes are not in the §7.6 table and
    keep 2 / 3 / 5. The `range` column of `infrastructure.csv` matches level 1. A route's transit turns
    are its turn-moves.
-2. **AC38.2** Shipments take the cheapest route, and between equal costs the one with fewer turns. A
+2. **AC38.2** Under the default Cheapest setting, shipments take the cheapest route, and between equal costs the one with fewer turns. A
    level 1 road is taken over a shorter run of bare ground while it costs less (up to four times the
    tiles), and rail over road on the same line.
 3. **AC38.3** A fluid still takes a pipe route when one exists, and road or rail tankers only where
@@ -2278,6 +2294,13 @@ than bare ground, fewest turns would send goods over bare ground at four times t
    the Construct build order) reads the speed table, and the cost line reads £ per unit per tile.
 5. **AC38.5** In-transit shipments from an old save arrive on their saved countdown and are not charged
    again. A saved leg without a tile count is costed on its hex distance.
+6. **AC38.6** The Routing switch sets route choice (owner ruling, 30 October 2026): Cheapest for a new
+   game, Fastest the fewest turns then the least freight, Blended the least ½ × freight ÷ cheapest + ½ ×
+   turns ÷ fewest. Beside a road detour a turn slower than bare ground, Fastest takes the bare ground,
+   Cheapest and Blended the road. Each setting has its own cached route, a fluid still goes by pipe first,
+   and each key says what it does.
+7. **AC38.7** A save older than version 19 loads on Cheapest. The Stoneshore e2e and the Magnate bot,
+   which never touch the switch, run exactly as before. *Checked by run.*
 
 **Local Suppliers (§7.6)**
 

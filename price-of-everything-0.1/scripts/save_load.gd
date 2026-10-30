@@ -26,7 +26,8 @@ const DemoBuild := preload("res://scripts/demo_build.gd")
 # 16 = intermediary fallback purchases held privately per building ("bridge");
 # 17 = land prices: player buildings already standing are land_exempt, bought land starts unpriced.
 # 18 = labour satisfaction, work week, union tiers and the Comprehensive halving; output pressure retired.
-const SAVE_VERSION := 18
+# 19 = the Routing switch sets route choice; older saves, whose switch did nothing, load on Cheapest.
+const SAVE_VERSION := 19
 const MAIN_SCENE := "res://scenes/main.tscn"
 const DEFAULT_START := "res://data/starts/default.json"
 const BuildingLevels := preload("res://scripts/building_levels.gd")   # start-building levels
@@ -813,6 +814,8 @@ func _migrate(snap: Dictionary) -> Dictionary:
 				snap = _migrate_v16_to_v17(snap)
 			17:
 				snap = _migrate_v17_to_v18(snap)
+			18:
+				snap = _migrate_v18_to_v19(snap)
 			_:
 				break
 		version += 1
@@ -853,6 +856,15 @@ func _migrate_v17_to_v18(snap: Dictionary) -> Dictionary:
 		match_d["work_week_hours"] = 45
 	snap["match"] = match_d
 	snap["save_version"] = 18
+	return snap
+
+func _migrate_v18_to_v19(snap: Dictionary) -> Dictionary:
+	# Before 19 the Routing switch was never read and goods took the cheapest route, whatever it showed. Keep
+	# them on it now that the switch works.
+	var match_d: Dictionary = snap.get("match", {})
+	match_d["route_objective"] = MatchState.RouteObjective.CHEAPEST
+	snap["match"] = match_d
+	snap["save_version"] = 19
 	return snap
 
 func _migrate_v1_to_v2(snap: Dictionary) -> Dictionary:

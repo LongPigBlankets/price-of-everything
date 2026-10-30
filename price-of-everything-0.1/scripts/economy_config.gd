@@ -395,7 +395,7 @@ func freight_tile_mult(good_id: String, mode: String, level: int) -> float:
 # Pipes are not in the §7.6 speed table and keep their reach. The port row is what the port's upgrade rows show.
 #
 # A level 1 road is no faster than bare ground. It is four times cheaper a tile, and shipments take the cheapest route
-# (Catalog._cheapest_route), so goods use it: upgrading the level is how the player buys speed.
+# by default (Catalog._best_route), so goods use it: upgrading the level is how the player buys speed.
 const INFRA_SPEED_BY_LEVEL := {
 	"roads":       {1: 1, 2: 2, 3: 4},
 	"rail":        {1: 3, 2: 5, 3: 8},

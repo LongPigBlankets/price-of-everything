@@ -2886,9 +2886,11 @@ func _test_transport_panel_ds2() -> void:
 	_check(link != null and link.tooltip_text == "Go to %s" % link.text and not link.text.contains("("), "transport ds2: a tile's name is a link that says Go to it (%s)" % (link.tooltip_text if link != null else ""))
 	_check(panel.find_child("Shipment_0", true, false).find_child("TileLink", true, false) != null, "transport ds2: a shipment's destination is a link")
 	var keys: Dictionary = panel.get("_routing_keys")
-	(keys[MatchState.RouteObjective.CHEAPEST] as Control).emit_signal("pressed")
-	_check(MatchState.route_objective == MatchState.RouteObjective.CHEAPEST and bool((keys[MatchState.RouteObjective.CHEAPEST] as Control).get("latched"))
-		and not bool((keys[MatchState.RouteObjective.FASTEST] as Control).get("latched")), "transport ds2: a routing key sets the objective and latches alone")
+	(keys[MatchState.RouteObjective.FASTEST] as Control).emit_signal("pressed")
+	_check(MatchState.route_objective == MatchState.RouteObjective.FASTEST and bool((keys[MatchState.RouteObjective.FASTEST] as Control).get("latched"))
+		and not bool((keys[MatchState.RouteObjective.CHEAPEST] as Control).get("latched")), "transport ds2: a routing key sets the objective and latches alone")
+	_check((keys[MatchState.RouteObjective.BLENDED] as Control).tooltip_text.begins_with("Blended."),
+		"transport ds2: each routing key says what it does (%s)" % (keys[MatchState.RouteObjective.BLENDED] as Control).tooltip_text)
 	_check(panel.find_child("RoutingObjective", true, false) != null, "transport ds2: the routing objective keeps its name")
 	var went: Array = []
 	var note := func(tile: String) -> void: went.append(tile)

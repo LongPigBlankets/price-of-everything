@@ -583,7 +583,7 @@ func _test_save_round_trip_and_migration() -> void:
 		"AC2.13 AC3.1 a mid-run save and load continues identically")
 	var old := {"save_version": 17, "match": {"scenario_name": "metal_magnate", "labour_output_pressure_pct": 10.0, "labour_multiplier": 1.2}}
 	var migrated: Dictionary = SaveLoad._migrate(old)
-	_check(int(migrated.save_version) == 18 and is_equal_approx(float(migrated.match.labour_satisfaction), 40.0)
+	_check(int(migrated.save_version) == SaveLoad.SAVE_VERSION and is_equal_approx(float(migrated.match.labour_satisfaction), 40.0)
 		and int(migrated.match.work_week_hours) == 45 and not (migrated.match as Dictionary).has("labour_output_pressure_pct"),
 		"AC3.1 a v17 save migrates: its start's satisfaction, 45 hours, no output pressure")
 	var unknown: Dictionary = SaveLoad._migrate({"save_version": 17, "match": {}})

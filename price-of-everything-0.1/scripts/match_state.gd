@@ -126,7 +126,8 @@ var sell_mode: int = SellMode.STOCKPILE_ALL
 
 # How the transport router picks a path between two tiles. FASTEST by default.
 enum RouteObjective { FASTEST, CHEAPEST, BLENDED }
-var route_objective: int = RouteObjective.FASTEST
+## The Routing switch: how every new shipment picks its route (Catalog._best_route). Cheapest by default.
+var route_objective: int = RouteObjective.CHEAPEST
 
 
 # When true (the default), building clicks open the redesigned Building Detail v2
@@ -973,6 +974,7 @@ func reset() -> void:
 	pending_purchases.clear()
 	public_roads_last_turn = 0
 	one_off_charges = []
+	route_objective = RouteObjective.CHEAPEST
 	construct_material_source = "middleman"
 	construct_output_destination = "market"
 	power_priority_coal_gas = "self"
@@ -1147,7 +1149,7 @@ func import_state(d: Dictionary) -> void:
 	_match_rng.seed = match_rng_seed
 	_match_rng.state = SaveLoad.int64_in(d.get("advisor_rng_state"), _match_rng.state)
 	sell_mode = int(d.get("sell_mode", SellMode.STOCKPILE_ALL))
-	route_objective = int(d.get("route_objective", RouteObjective.FASTEST))
+	route_objective = int(d.get("route_objective", RouteObjective.CHEAPEST))
 	output_stockpile_destinations = (d.get("output_stockpile_destinations", {}) as Dictionary).duplicate(true)
 	output_split_destinations = (d.get("output_split_destinations", {}) as Dictionary).duplicate(true)
 	output_special_order_destinations = (d.get("output_special_order_destinations", {}) as Dictionary).duplicate(true)
