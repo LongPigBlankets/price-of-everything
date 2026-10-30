@@ -1378,8 +1378,8 @@ static func seam_check(building: Dictionary) -> Dictionary:
 	var digging := "Digging %s a turn." % MiningSites.units_text(float(s.units))
 	if float(s.collapse) > 0.0:
 		c["tone"] = "bad"
-		c["detail"] = "%s Above %s it may collapse, %d%% a turn. Labour and upkeep here ×%s." % [digging,
-			MiningSites.units_text(float(s.max_units)), roundi(float(s.collapse) * 100.0), MiningSites.figure(float(s.m))]
+		c["detail"] = "%s Above %s it may collapse, %s a turn. Labour and upkeep here ×%s." % [digging,
+			MiningSites.units_text(float(s.max_units)), MiningSites.chance_text(float(s.collapse)), MiningSites.figure(float(s.m))]
 	elif float(s.m) > 1.0001:
 		c["tone"] = "warn"
 		c["detail"] = "%s Above %s, labour and upkeep here ×%s. May collapse above %s." % [digging,

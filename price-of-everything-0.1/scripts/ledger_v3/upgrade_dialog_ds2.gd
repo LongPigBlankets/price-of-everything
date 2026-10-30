@@ -437,9 +437,9 @@ func _seam_line(p: Dictionary) -> HBoxContainer:
 	said.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	said.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	line.add_child(said)
-	line.tooltip_text = "Above %s a turn, labour and upkeep here rise by %d%% for each mine's worth. Above %s, there is a %d%% chance a turn for each mine's worth over it that the deposit collapses." % [
+	line.tooltip_text = "Above %s a turn, labour and upkeep here rise by %d%% for each mine's worth. Above %s, the deposit may collapse each turn: %s for each mine's worth over it." % [
 		sites.units_text(float(seam.free_units)), roundi(sites.cap_cost(str(seam.tile_id), str(seam.token)) * 100.0),
-		sites.units_text(float(seam.max_units)), roundi(sites.COLLAPSE_PER_WORKING * 100.0)]
+		sites.units_text(float(seam.max_units)), sites.collapse_by_level_text()]
 	line.mouse_filter = Control.MOUSE_FILTER_STOP
 	return line
 

@@ -7,6 +7,7 @@ const FEATURE := "mining"
 const TAGS := {
 	"_test_seam_save_round_trip": ["mining", "save"],
 	"_test_land_units": ["mining", "construction"],
+	"_test_collapse_by_level": ["mining", "ui"],
 }
 
 const MINE := "b_001"
@@ -131,8 +132,8 @@ func _test_past_limit_collapse() -> void:
 	_mine(ENDLESS_TILE, 2)
 	_mine(ENDLESS_TILE, 2)
 	var s := MiningSites.site(ENDLESS_TILE, "coal")
-	_check(is_equal_approx(float(s.draw), 6.0) and is_equal_approx(float(s.m), 5.5) and is_equal_approx(float(s.collapse), 0.15),
-		"AC18.5 three L2 on an endless seam: M 5.5 and a 15%% collapse chance a turn (M %.2f, %.2f)" % [float(s.m), float(s.collapse)])
+	_check(is_equal_approx(float(s.draw), 6.0) and is_equal_approx(float(s.m), 5.5) and is_equal_approx(float(s.collapse), 0.1125),
+		"AC18.5 AC18.8 three L2 on an endless seam: M 5.5 and an 11.25%% collapse chance a turn (M %.2f, %.4f)" % [float(s.m), float(s.collapse)])
 	_check(is_equal_approx(MatchState.run_multiplier(BuildingState.get_building(a)), solo_run), "AC18.5 nothing is scaled back past the limit")
 	_check(is_equal_approx(float(s.units), 360.0) and is_equal_approx(float(s.max_units), 180.0) and is_equal_approx(float(s.free_units), 90.0),
 		"AC18.5 the site reads in units a turn: digs 360, costs rise above 90, may collapse above 180")
@@ -157,6 +158,43 @@ func _test_past_limit_collapse() -> void:
 			falls += 1
 			MatchState.deposit_remaining[FINITE_TILE] = {"coal": 999999}
 	_check(falls >= 8 and falls <= 35, "AC18.5 the seeded roll collapses it about 5%% of turns (%d in 400)" % falls)
+	_fresh()
+
+
+## AC18.8: upgraded workings collapse less: 5% a working's worth over the limit × 1 / 0.75 / 0.625 by level, weighted
+## by draw at a mixed site; a level preview counts the new level; the lamp and the upgrade dialog say so.
+func _test_collapse_by_level() -> void:
+	_fresh()
+	for i in 4:
+		_mine(ENDLESS_TILE)
+	_check(is_equal_approx(float(MiningSites.site(ENDLESS_TILE, "coal").collapse), 0.05), "AC18.8 four level 1 mines one over: 5%")
+	_fresh()
+	_mine(ENDLESS_TILE, 2)
+	var b := _mine(ENDLESS_TILE, 2)
+	_check(is_equal_approx(float(MiningSites.site(ENDLESS_TILE, "coal").collapse), 0.0375), "AC18.8 two level 2 mines one over: 3.75%")
+	BuildingState.get_building(b)["level"] = 1
+	var preview := BuildingState.get_building(b).duplicate()
+	preview["level"] = 3
+	var previewed := float(MiningSites.site_of(preview).collapse)
+	BuildingState.get_building(b)["level"] = 3
+	var real := MiningSites.site(ENDLESS_TILE, "coal")
+	_check(is_equal_approx(previewed, float(real.collapse)) and absf(previewed - 0.05 * 2.5 * (2.0 * 0.75 + 3.5 * 0.625) / 5.5) < 0.0001,
+		"AC18.8 a level 3 preview counts the new level (%.4f, built %.4f)" % [previewed, float(real.collapse)])
+	_fresh()
+	_mine(ENDLESS_TILE, 3)
+	_mine(ENDLESS_TILE, 3)
+	_check(is_equal_approx(float(MiningSites.site(ENDLESS_TILE, "coal").collapse), 0.125), "AC18.8 two level 3 mines four over: 12.5%")
+	_fresh()
+	var l3 := _mine(ENDLESS_TILE, 3)
+	_mine(ENDLESS_TILE, 1)
+	var mixed := float(MiningSites.site(ENDLESS_TILE, "coal").collapse)
+	_check(absf(mixed - 0.053125) < 0.00001, "AC18.8 a level 3 beside a level 1, 1.5 over: weighted by draw, 5.3125%% (%.5f)" % mixed)
+	_check(is_equal_approx(0.10 * float(MiningSites.COLLAPSE_LEVEL_FACTOR[2]), 0.075) and is_equal_approx(0.10 * float(MiningSites.COLLAPSE_LEVEL_FACTOR[3]), 0.0625),
+		"AC18.8 the owner's example: 10% at level 1 is 7.5% at level 2 and 6.25% at level 3")
+	var lamp: Dictionary = BuildingReadout.seam_check(BuildingState.get_building(l3))
+	_check(str(lamp.detail).contains("5.31% a turn"), "AC18.8 the Seam lamp gives the site's chance (%s)" % str(lamp.detail))
+	_check(MiningSites.collapse_by_level_text() == "5% at level 1, 3.75% at level 2 and 3.13% at level 3",
+		"AC18.8 the upgrade dialog's words give each level (%s)" % MiningSites.collapse_by_level_text())
 	_fresh()
 
 
@@ -536,7 +574,8 @@ func _test_seam_check() -> void:
 	_check(str(mid.tone) == "warn" and str(mid.detail).contains("×2.5") and str(mid.detail).contains("Digging 180 a turn"), "AC22.3 over it amber, in units, with M (%s)" % str(mid.detail))
 	_mine(ENDLESS_TILE, 2)
 	var past := BuildingReadout.seam_check(BuildingState.get_building(a))
-	_check(str(past.tone) == "bad" and str(past.detail).contains("may collapse, 10% a turn"), "AC22.3 past the limit red, with its collapse chance (%s)" % str(past.detail))
+	_check(str(past.tone) == "bad" and str(past.detail).contains("may collapse, 8% a turn"),
+		"AC22.3 AC18.8 past the limit red, with its collapse chance: 2 over at levels 1, 2, 2, so 10%% × 0.8 (%s)" % str(past.detail))
 	var furnace: String = BuildingState.add_building(FURNACE, "r_005", "tile_9_9", MatchState.LOCAL_PLAYER, "")
 	_check(str(BuildingReadout.seam_check(BuildingState.get_building(furnace)).tone) == "off", "AC22.3 off for a building that mines nothing")
 	var plant := BuildingReadout.plant_checks(BuildingState.get_building(a), Catalog.get_recipe("r_001"), false)

@@ -109,7 +109,7 @@ player) drives urban land prices, +25% of a tile's starting price per doubling
 
 **Seams have working limits.** Each deposit extracts freely up to 1.5 level 1 workings. Past a
 limit of 3 nothing is held back but the seam may collapse,
-5% a turn for each working over. Every working over the free cap adds 100% labour and maintenance on
+5% a turn for each working over, ×0.75 for level 2 workings and ×0.625 for level 3 (owner, 2026-10-30). Every working over the free cap adds 100% labour and maintenance on
 the whole site, as a multiplier after labour discounts
 (`scripts/mining_sites.gd`, docs/pacing-labour-mining-licensing-spec.md §8). Deep extraction
 therefore needs labour and maintenance modifiers. Finite seams are charged for what is dug:

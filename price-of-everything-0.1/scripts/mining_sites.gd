@@ -10,7 +10,8 @@ extends RefCounted
 ## Over the free cap, M = 1 + c × (draw − free), c = 1 unless `extraction_cap_cost` modifiers change it, multiplies the
 ## labour (after the labour floor) and the maintenance of every working on the site. Past the max nothing is held
 ## back: the seam may collapse instead (owner ruling, 26 October 2026), a chance each turn of COLLAPSE_PER_WORKING
-## for each working's worth over it (MatchState.seams rolls it). Players read every figure in units dug a turn:
+## for each working's worth over it, less where the workings are upgraded (COLLAPSE_LEVEL_FACTOR, owner ruling
+## 30 October 2026; MatchState.seams rolls it). Players read every figure in units dug a turn:
 ## a working's draw × its recipe's base output. Everything here is derived when asked and never saved.
 
 const BuildingLevels := preload("res://scripts/building_levels.gd")
@@ -20,6 +21,9 @@ const ENDLESS := "endless"
 const FINITE := "finite"
 ## The chance a turn that a seam worked past its limit collapses, for each level 1 working's worth over it.
 const COLLAPSE_PER_WORKING := 0.05
+## The share of that chance by a working's level: upgraded mines are dug more safely, so 10% at level 1 is 7.5% at
+## level 2 and 6.25% at level 3. A site of mixed levels takes the average weighted by each working's draw.
+const COLLAPSE_LEVEL_FACTOR := {1: 1.0, 2: 0.75, 3: 0.625}
 
 
 ## The deposit good a recipe mines, or "".
@@ -63,6 +67,25 @@ static func cap_cost(tile_id: String, token: String) -> float:
 		{"good_internal": token, "tile_id": tile_id}))
 
 
+## A working's share of the collapse chance, by its level (COLLAPSE_LEVEL_FACTOR).
+static func collapse_factor(building: Dictionary) -> float:
+	return float(COLLAPSE_LEVEL_FACTOR.get(clampi(int(building.get("level", 1)), 1, 3), 1.0))
+
+
+## A collapse chance as words, to two decimals at most: 0.0375 reads "3.75%", 0.08 "8%".
+static func chance_text(chance: float) -> String:
+	return "%s%%" % ("%.2f" % snappedf(chance * 100.0, 0.01)).rstrip("0").rstrip(".")
+
+
+## The chance a turn for each mine's worth over the limit at every level, as words: "5% at level 1, 3.75% at level
+## 2 and 3.13% at level 3".
+static func collapse_by_level_text() -> String:
+	var said: Array = []
+	for level: int in [1, 2, 3]:
+		said.append("%s at level %d" % [chance_text(COLLAPSE_PER_WORKING * float(COLLAPSE_LEVEL_FACTOR[level])), level])
+	return "%s and %s" % [", ".join(said.slice(0, 2)), said[2]]
+
+
 ## A level 1 working's output a turn under `recipe`, before yield: what one working digs.
 static func base_rate(recipe: Dictionary) -> float:
 	var best := 0.0
@@ -73,10 +96,11 @@ static func base_rate(recipe: Dictionary) -> float:
 
 ## A site's figures, counting the player's workings on it plus `extra`, a building not yet on the map (a
 ## forecast's stand-in or a build preview, its instance id empty): {tile_id, token, kind, workings, draw and
-## units (what it digs a turn), free, max and their units, over, m, past (workings over the max) and collapse
-## (its chance a turn)}.
+## units (what it digs a turn), free, max and their units, over, m, past (workings over the max), weighted (draw ×
+## collapse factor, summed) and collapse (its chance a turn)}.
 static func site(tile_id: String, token: String, extra: Dictionary = {}) -> Dictionary:
 	var draw := 0.0
+	var weighted := 0.0
 	var units := 0.0
 	var rate := 0.0
 	var workings: Array = []
@@ -87,29 +111,33 @@ static func site(tile_id: String, token: String, extra: Dictionary = {}) -> Dict
 		var recipe := Catalog.get_recipe(str(b.get("recipe_id", "")))
 		var d := working_draw(b)
 		draw += d
+		weighted += d * collapse_factor(b)
 		units += d * base_rate(recipe)
 		rate = maxf(rate, base_rate(recipe))
 	if not extra.is_empty():
 		var recipe := Catalog.get_recipe(str(extra.get("recipe_id", "")))
 		var d := working_draw(extra)
 		draw += d
+		weighted += d * collapse_factor(extra)
 		units += d * base_rate(recipe)
 		rate = maxf(rate, base_rate(recipe))
 	var k := kind(tile_id, token)
 	return _settle({"tile_id": tile_id, "token": token, "kind": k, "workings": workings, "rate": rate,
-		"free": float(EconomyConfig.SEAM_FREE[k]), "max": float(EconomyConfig.SEAM_MAX[k])}, draw, units)
+		"free": float(EconomyConfig.SEAM_FREE[k]), "max": float(EconomyConfig.SEAM_MAX[k])}, draw, units, weighted)
 
 
-## A site's figures for `draw` workings digging `units` a turn.
-static func _settle(s: Dictionary, draw: float, units: float) -> Dictionary:
+## A site's figures for `draw` workings digging `units` a turn, `weighted` their draw × collapse factor summed.
+static func _settle(s: Dictionary, draw: float, units: float, weighted: float) -> Dictionary:
 	s["draw"] = draw
+	s["weighted"] = weighted
 	s["units"] = units
 	s["free_units"] = float(s.free) * float(s.rate)
 	s["max_units"] = float(s.max) * float(s.rate)
 	s["over"] = maxf(0.0, draw - float(s.free))
 	s["m"] = 1.0 + cap_cost(str(s.tile_id), str(s.token)) * float(s.over)
 	s["past"] = maxf(0.0, draw - float(s.max))
-	s["collapse"] = minf(1.0, COLLAPSE_PER_WORKING * float(s.past))
+	var factor := weighted / draw if draw > 0.0 else 1.0
+	s["collapse"] = minf(1.0, COLLAPSE_PER_WORKING * float(s.past) * factor)
 	return s
 
 
@@ -132,7 +160,8 @@ static func site_of(building: Dictionary) -> Dictionary:
 		return s
 	var rate := base_rate(Catalog.get_recipe(str(building.get("recipe_id", ""))))
 	var swing := working_draw(building) - working_draw(stored)
-	return _settle(s, float(s.draw) + swing, float(s.units) + swing * rate)
+	var weighted_swing := working_draw(building) * collapse_factor(building) - working_draw(stored) * collapse_factor(stored)
+	return _settle(s, float(s.draw) + swing, float(s.units) + swing * rate, float(s.weighted) + weighted_swing)
 
 
 ## M for a building's labour and maintenance: 1 for one that mines nothing.
