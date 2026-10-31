@@ -38,6 +38,7 @@ func _ready() -> void:
 	lines.append("`scripts/building_naming.gd`. This file is written by `tools/building_names_table.tscn`. Regenerate it rather than editing by hand.")
 	lines.append("")
 	lines.append("A building type in a catalogue, before a recipe is chosen, keeps its type name (the Type column).")
+	lines.append("One building in a game carries its own name instead: a start's legacy furnace, Metal Magnate's on tile_9_9 and Glass Merchant's on tile_18_16, is the \"Original Furnace\" while it stands (a per-instance name, owner-approved, scripts/legacy_perk.gd).")
 	lines.append("Names shown here are without the letter. **Was** is the name the building had before, with letter A.")
 	lines.append("Rows marked **check** carry a note for the owner.")
 	lines.append("")

@@ -214,6 +214,7 @@ func _ready() -> void:
 	MatchState.cfo_tax_credit_filed.connect(_on_cfo_tax_credit_filed)
 	AdvisorState.advisors_changed.connect(_queue_refresh)
 	LabourState.satisfaction_changed.connect(_queue_refresh)
+	LabourState.unrest_changed.connect(_queue_refresh)
 	Production.turn_processed.connect(func(_s: Dictionary) -> void: _queue_refresh())
 	CompanyRankings.rankings_updated.connect(_queue_refresh)
 	CompanyRankings.rankings_updated.connect(_on_rankings_updated)
@@ -1398,12 +1399,20 @@ func _refresh_workforce() -> void:
 	_workforce_figure.text = LabourState.signed_text(s)
 	_workforce_arrow.set("trend", trend)
 	var led := _workforce_led as StatusLed
-	led.blink = false
-	led.lit = WORKFORCE_LAMP.has(band)
-	led.color = WORKFORCE_LAMP.get(band, C_GOOD)
+	# A strike warning blinks the lamp until the strike starts or is called off (§6.3).
+	var warned := not LabourState.unrest.warning.is_empty()
+	led.blink = warned
+	led.lit = WORKFORCE_LAMP.has(band) or warned
+	led.color = WORKFORCE_LAMP.get(band, C_GOOD) if not warned else WORKFORCE_LAMP.strike
 	(_workforce_btn as _ModuleBtn).warn = band == "strike" or band == "strike_heavy"
 	_workforce_status = "Satisfaction %s, %s" % [LabourState.signed_text(s), trend]
 	_workforce_detail = "Heading for %s." % LabourState.signed_text(LabourState.target_satisfaction())
+	if warned:
+		var named: int = (LabourState.unrest.warning.get("buildings", []) as Array).size()
+		_workforce_detail = "Strike warning: %d building%s on turn %d." % [named, "" if named == 1 else "s",
+			int(LabourState.unrest.warning.get("turn", 0))]
+	elif not LabourState.unrest.active.is_empty():
+		_workforce_detail = "%d building%s on strike." % [LabourState.unrest.active.size(), "" if LabourState.unrest.active.size() == 1 else "s"]
 
 
 ## Where satisfaction is heading: a small triangle up or down, or a level bar when it holds. Drawn, as the
@@ -2507,6 +2516,7 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 		["Goods sold", float(s.get("goods_sales_revenue", 0.0))],
 		["Power sold", float(s.get("power_sales_revenue", 0.0))],
 		["Green subsidy", float(s.get("green_subsidy_received", 0.0))],
+		["Licence sales", float(s.get("licence_income", 0.0))],
 	]
 	var costs := [
 		["Operating costs", float(s.get("maintenance_paid", 0.0)) + float(s.get("labour_paid", 0.0)) + float(s.get("advisor_paid", 0.0))],
@@ -2514,7 +2524,8 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 		["Transport costs", float(s.get("transport_paid", 0.0))],
 		["Goods purchased", float(s.get("goods_purchased_cost", 0.0))],
 		["Warehousing", float(s.get("warehousing_paid", 0.0))],
-		["Opening costs", float(s.get("one_off_paid", 0.0))],
+		["Fees and settlements", float(s.get("one_off_paid", 0.0))],
+		["Royalties", float(s.get("royalties_paid", 0.0))],
 		["Loan repayments", float(s.get("interest_paid", 0.0))],
 		["Taxes and dividends", float(s.get("taxes_paid", 0.0)) + float(s.get("dividends_paid", 0.0))],
 		["Carbon tax", float(s.get("carbon_tax_paid", 0.0))],

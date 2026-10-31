@@ -556,7 +556,7 @@ func _recipe_matches(recipe: Dictionary, query: String) -> bool:
 ## the player has chosen (_land_toggle_touched), decides whether that cost applies.
 ## `covered` reflects that choice, so the land requirement and the refusal agree.
 func _v3_compute_land() -> Dictionary:
-	var needed := int(round(maxf(0.0, float(_selected_building.get("tile_size_used", 1)))))
+	var needed := int(round(maxf(0.0, Catalog.land_units(_selected_building))))
 	var out := {"needed": needed, "free": 0, "short": 0, "units": 0, "cost": 0.0,
 		"for_sale": 0, "purchasable": false, "covered": true}
 	_land_purchase_units = 0

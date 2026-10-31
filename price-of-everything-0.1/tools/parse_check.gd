@@ -23,6 +23,9 @@ const ROOTS: Array[String] = ["res://scripts", "res://tools", "res://tests"]
 ## message, and nothing in the file explains it. Listed rather than silently skipped, so
 ## the exception stays visible and can be revisited.
 const KNOWN_UNRELOADABLE: Array[String] = ["res://scripts/road_realizer.gd"]
+## Scripts an autoload instances at boot (LabourState.unrest). Like the autoloads, reload() refuses a script
+## with live instances, and a parse error in one fails its autoload at boot, which the boot log names.
+const AUTOLOAD_OWNED: Array[String] = ["res://scripts/labour_unrest.gd", "res://scripts/seam_cards.gd"]
 
 ## Failures at or above this count are read as "an autoload is broken" rather than as that
 ## many independent mistakes. Measured: one bad line in match_state.gd failed 37 files.
@@ -42,7 +45,7 @@ func _ready() -> void:
 		# would report every one of them as broken. They are also the scripts LEAST in need of
 		# checking — the game did not reach this line without compiling all of them.
 		# ...and this file, which is the running scene's own script.
-		if autoloads.has(path) or path == (get_script() as Script).resource_path:
+		if autoloads.has(path) or AUTOLOAD_OWNED.has(path) or path == (get_script() as Script).resource_path:
 			skipped += 1
 			continue
 		# Load the way the game does, then ask whether the result actually COMPILED.

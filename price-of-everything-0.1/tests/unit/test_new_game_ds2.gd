@@ -225,7 +225,7 @@ func _test_era_spans() -> void:
 	_check(script.call("era_spans", 300) == [[0, 90], [90, 180], [180, 300]], "eras: 300 turns are 90, 90 and 110")
 	_check(script.call("era_spans", 200) == [[0, 60], [60, 120], [120, 200]], "eras: 200 turns keep the shares")
 	_check(script.call("era_spans", 400) == [[0, 120], [120, 240], [240, 400]], "eras: 400 turns keep the shares")
-	_check(int(script.DEMO_ERA_SPAN) == 300, "eras: the demo's rule spans the campaign's 300 turns")
+	_check(int(EconomyConfig.DEMO_ERA_SPAN) == 300, "eras: the demo's rule spans the campaign's 300 turns")
 
 
 ## A tile with no name prints Near the nearest named tile.

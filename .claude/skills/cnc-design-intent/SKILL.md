@@ -35,8 +35,13 @@ normalizing their costs into equivalence (the cost gap IS the choice).
 
 **Unlock-by-doing. No research points.** Research unlocks fire from what you DO
 (build counts, production, profitable runs) plus limited free picks. A stance, not an
-omission. Regression smell: adding a science-points currency, or converting
-condition-gates to purchases. (Separately, many conditions are currently DEAD — a bug,
+omission. Licence groups add a price on top (2026-10, owner-approved). Each of a group's three
+competing processes still needs its condition, and only then can be licensed: the first for £200,
+£500 or £2,000 by era, then 2% and 8% of company revenue for 30 turns. A free pick develops one
+in-house with no fee, and only in-house processes can be licensed out
+(`scripts/research_licensing.gd`). Regression smell: adding a science-points currency,
+converting condition-gates to purchases, letting money buy a node whose condition is unmet, or
+licensing out a process that was licensed in. (Separately, many conditions are currently DEAD — a bug,
 see `cnc-content-pipeline` — fixing the conditions is good; changing the paradigm is not.)
 
 **Labour policies trade throughput, never free output (2026-10, owner-approved).** A labour policy
@@ -44,7 +49,17 @@ moves THROUGHPUT (inputs, outputs and power scale together, `MatchState.run_mult
 labour satisfaction. A flat output bonus makes product from nothing and compounds down a chain, so the
 only output-only labour effect is +5% at satisfaction of +90 or more. Regression smell: a labour policy
 that raises output without consuming inputs (Profit Share used to be +15% output and was always on).
-See docs/pacing-labour-mining-licensing-spec.md §3 (the full rare-output stance lands with phase 5).
+See docs/pacing-labour-mining-licensing-spec.md §3.
+
+**Output bonuses are rare; growth is physical (2026-10, owner-approved).** A flat output bonus makes
+product from nothing and compounds down a chain (+10% at four stages is +46% at the apex). Output
+bonuses exist only for extraction yield; the start legacies, while the Original Furnace is still owned
+(`scripts/legacy_perk.gd`); timed mission rewards of 15 to 30 turns; a few tier III capstones at +5%;
+and Labour satisfaction of +90 or more, at +5%. Everything else is throughput (inputs, outputs and power
+scale together, the `throughput` Modifiers domain), a cost cut, or a licence. Research output nodes on
+processing buildings became throughput at 1.5× (`modifier_state.gd` UNLOCK_MODIFIERS). Regression smell:
+a new permanent output bonus on a processing building, or a labour policy that raises output without
+consuming inputs. (Changes design stance A2, approved by owner.)
 
 **Labour satisfaction is a budget (2026-10, owner-approved).** Policies trade throughput and cash for
 satisfaction (−100 to +100); the workforce's size and the HR Director add to it. It moves toward its
@@ -92,6 +107,17 @@ One sanctioned exception: the rankings' summed revenue (19 seeded rivals plus th
 player) drives urban land prices, +25% of a tile's starting price per doubling
 (`scripts/land_price.gd`, docs/land-pricing-spec.md). It is a clock, not a simulation.
 
+**Seams have working limits.** Each deposit extracts freely up to 1.5 level 1 workings. Past a
+limit of 3 nothing is held back but the seam may collapse,
+5% a turn for each working over, ×0.75 for level 2 workings and ×0.5625 for level 3 (owner, 2026-10-30). Every working over the free cap adds 100% labour and maintenance on
+the whole site, as a multiplier after labour discounts
+(`scripts/mining_sites.gd`, docs/pacing-labour-mining-licensing-spec.md §8). Deep extraction
+therefore needs labour and maintenance modifiers. Finite seams are charged for what is dug:
+throughput counts, yield does not. Labour policies keep their throughput at mines and wells (owner,
+2026-10-30: mines were historically the site of labour disputes), and the extra seam draw is accepted. Regression smell: removing the cap because players want to
+upgrade, letting yield research burn seams, or turning the over-cap cost into a percentage that
+labour discounts cancel. (Changes design stance A5, approved by owner.)
+
 **No combat. 300-turn cap.** The cap (turn_manager `MAX_TURNS`) shapes every curve;
 the game soft-ends and still shows DECIDE for overlays.
 
@@ -117,6 +143,14 @@ tenure (`AdvisorState.FOUNDER_ONLY_SEATS`): it exists only while he holds it.
   `cnc-turn-pipeline-reference`'s worked trace).
 - A bought building cannot be cancelled during its 2-turn closing (`MatchState.offer_for_building`).
 - A building idles until it is 70% staffed.
+- Strikes cut output 60% while inputs are still consumed (`scripts/labour_unrest.gd`), and a struck mine
+  still charges its deposit in full. A strike is a cash shock, not a pause.
+- Freight is priced by distance: every tile a unit crosses is charged (`EconomyConfig.FREIGHT_TILE_MULT`), and
+  speed (`INFRA_SPEED_BY_LEVEL`) only sets transit turns. A level 1 road is no faster than bare ground, only
+  four times cheaper; shipments take the cheapest route and upgrading a level buys speed. Local Suppliers
+  settle in the same turn and keep their own trips constant (`LOCAL_SUPPLIERS_TILES_PER_TRIP`), so slowing
+  the player's own freight never raises their prices. A regression looks like a quote that counts turns, or
+  a Local Suppliers price that moves with a transport speed.
 
 ## How to use this file in review
 

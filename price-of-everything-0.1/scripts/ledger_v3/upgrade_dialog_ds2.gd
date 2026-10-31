@@ -236,6 +236,8 @@ func _rebuild() -> void:
 	if str(p.get("research_gate", "")) != "" and bool(p.get("research_locked", false)):
 		_content.add_child(_research_line(str(p.get("research_gate", ""))))
 	_content.add_child(_land_line(building, p))
+	if not (p.get("seam", {}) as Dictionary).is_empty():
+		_content.add_child(_seam_line(p))
 	var time := _time_line(int(p.get("duration", BuildingLevels.UPGRADE_DURATION)), from_level)
 	time.add_child(_foot(p))
 	_content.add_child(time)
@@ -410,6 +412,34 @@ func _land_line(building: Dictionary, p: Dictionary) -> HBoxContainer:
 	line.tooltip_text = ("The larger building needs %s more land and %s is free." % [_land(need), _land(free)]) \
 		+ ((" The upgrade %s It is in the price." % bought.replace("Buys", "buys")) if buys > 0 else "") \
 		+ ("" if fits else " Demolish other buildings to make room.")
+	line.mouse_filter = Control.MOUSE_FILTER_STOP
+	return line
+
+
+## A mine's seam after the upgrade, in units a turn (docs/pacing-labour-mining-licensing-spec.md §8.8): green within
+## its free amount, amber over it, red past its limit, where it may collapse.
+func _seam_line(p: Dictionary) -> HBoxContainer:
+	var sites := preload("res://scripts/mining_sites.gd")
+	var seam: Dictionary = p.get("seam", {})
+	var line := HBoxContainer.new()
+	line.name = "SeamLine"
+	line.custom_minimum_size.y = INFO_ROW_H
+	line.add_theme_constant_override("separation", 10)
+	line.add_child(Parts.raised("diag_icon_deposit", ROW_ICON_PX))
+	var tone := "ok"
+	if float(seam.collapse) > 0.0:
+		tone = "bad"
+	elif float(seam.m) > 1.0001:
+		tone = "warn"
+	line.add_child(_lamp(tone))
+	var said := _body(sites.after_words(seam))
+	said.name = "SeamWords"
+	said.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	said.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	line.add_child(said)
+	line.tooltip_text = "Above %s a turn, labour and upkeep here rise by %d%% for each mine's worth. Above %s, the deposit may collapse each turn: %s for each mine's worth over it." % [
+		sites.units_text(float(seam.free_units)), roundi(sites.cap_cost(str(seam.tile_id), str(seam.token)) * 100.0),
+		sites.units_text(float(seam.max_units)), sites.collapse_by_level_text()]
 	line.mouse_filter = Control.MOUSE_FILTER_STOP
 	return line
 

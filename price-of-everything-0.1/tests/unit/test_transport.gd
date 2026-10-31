@@ -76,8 +76,8 @@ func _test_ports() -> void:
 	# id separator and read as part of the name on screen.
 	_check(Catalog.tile_label("tile_12_2") == "Miney McMineface - (12, 2)", "tile_label uses nickname")
 	_check(Catalog.tile_label("tile_5_10") == "Stoneshore Docks - (5, 10)", "tile_label falls back to city_name")
-	_check(Catalog.infra_range("roads") == 2, "roads range is 2 tiles/turn")
-	_check(Catalog.infra_range("rail") == 4, "rail range is 4 tiles/turn")
+	_check(Catalog.infra_range("roads") == 1, "roads speed is 1 tile/turn at level 1")
+	_check(Catalog.infra_range("rail") == 3, "rail speed is 3 tiles/turn at level 1")
 	_check(Catalog.all_infrastructure().size() == 5, "Catalog loads 5 infrastructure types")
 	_check(Catalog.tile_neighbours("tile_12_2").size() == 6, "interior tile has 6 hex neighbours")
 	_check(int(TransportService.route("tile_12_2", "tile_12_2").get("turns", -1)) == 0, "route same-tile = 0 turns")
@@ -690,10 +690,11 @@ func _test_fluids_by_road_and_rail() -> void:
 	_check(is_equal_approx(EconomyConfig.fluid_overland_mult(water, "pipes"), 0.0),
 		"fluids overland: a pipe leg is not an overland leg (caller keeps the normal multiplier)")
 
-	# 2. Cost: one rail leg against one pipe leg, same good, same quantity.
-	var pipe_route := {"legs": [{"mode": "pipes"}]}
-	var rail_route := {"legs": [{"mode": "rail"}]}
-	var road_route := {"legs": [{"mode": "roads"}]}
+	# 2. Cost: one whole level 1 leg as it was before freight was priced by the tile (pipe 2 tiles, rail 4, road 2),
+	# same good, same quantity. The per-tile table keeps those legs at their old prices (AC37.2).
+	var pipe_route := {"legs": [{"mode": "pipes", "tiles": 2, "level": 1}]}
+	var rail_route := {"legs": [{"mode": "rail", "tiles": 4, "level": 1}]}
+	var road_route := {"legs": [{"mode": "roads", "tiles": 2, "level": 1}]}
 	var piped: float = EconomyConfig.transport_cost_for_route(water, 100, pipe_route)
 	_check(piped > 0.0 and is_equal_approx(
 			EconomyConfig.transport_cost_for_route(water, 100, rail_route), piped * 3.0),
@@ -756,12 +757,14 @@ func _test_fluids_by_road_and_rail() -> void:
 	Catalog._tile_infra = saved_infra
 	Catalog._route_cache.clear()
 
-## Bare ground costs twice a road per turn-move, on a built route's bare legs and on a straight-line haul alike.
+## A tile of bare ground costs twice a whole level 1 road leg (two tiles), on a built route's bare legs and on a
+## straight-line haul alike: four times a level 1 road tile.
 func _test_bare_ground_costs_twice_a_road() -> void:
 	var gid := "g_004"
-	var road := EconomyConfig.transport_cost_for_route(gid, 10, {"legs": [{"mode": "roads"}, {"mode": "roads"}]})
-	var bare := EconomyConfig.transport_cost_for_route(gid, 10, {"legs": [{"mode": "nothing"}, {"mode": "nothing"}]})
-	_check(is_equal_approx(bare, 2.0 * road), "two bare legs cost twice two road legs")
-	var straight := EconomyConfig.transport_cost_for_route(gid, 10, {"legs": [], "turns": 2})
-	_check(is_equal_approx(straight, bare), "a straight-line haul is charged as bare ground")
+	var road := EconomyConfig.transport_cost_for_route(gid, 10, {"legs": [{"mode": "roads", "tiles": 2, "level": 1}]})
+	var bare := EconomyConfig.transport_cost_for_route(gid, 10, {"legs": [{"mode": "nothing", "tiles": 1, "level": 1}]})
+	_check(is_equal_approx(bare, 2.0 * road), "a bare tile costs twice a whole level 1 road leg")
+	var two_bare := EconomyConfig.transport_cost_for_route(gid, 10, {"legs": [{"mode": "nothing", "tiles": 1}, {"mode": "nothing", "tiles": 1}]})
+	var straight := EconomyConfig.transport_cost_for_route(gid, 10, {"legs": [], "tile_distance": 2})
+	_check(is_equal_approx(straight, two_bare), "a straight-line haul is charged as bare ground, tile by tile")
 	_check(is_equal_approx(EconomyConfig.transport_cost_per_unit_turn("gas"), EconomyConfig.TRANSPORT_COST_SCALE * 0.05), "gas flat rate is 0.05 per turn-move before scaling")

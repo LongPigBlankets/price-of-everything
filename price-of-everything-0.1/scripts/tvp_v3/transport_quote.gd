@@ -36,7 +36,7 @@ static func quote(tile_id: String, building_id: String) -> Dictionary:
 		"total": base, "affordable": true, "turns": MatchState.effective_build_duration(building_id)}
 	# The fee, as the map charges it once the site is allowed: worked out first so a refusal's card can say
 	# what the build would cost once the reason is dealt with.
-	var size := maxf(0.0, float(bd.get("tile_size_used", 1.0)))
+	var size := maxf(0.0, Catalog.land_units(bd))
 	var projected := BuildingState.get_tile_space_used(tile_id) + size
 	var planning := projected > BuildingState.DENSITY_SOFT_CAPACITY
 	var charge := PLANNING_CHARGE if planning else 1.0

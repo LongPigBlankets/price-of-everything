@@ -143,11 +143,12 @@ static func hub_for(tile: String) -> String:
 	factors()
 	return str(_hub_of.get(tile, ""))
 
-## Turn-moves over bare ground from a tile to its hub, at least one.
+## Trips from a tile to its hub, at least one: the hex distance in LOCAL_SUPPLIERS_TILES_PER_TRIP steps. Their own
+## constant, not a transport speed, so slowing the player's freight never raises their prices.
 static func trips(tile: String) -> int:
 	var hub := hub_for(tile)
 	if hub == "": return 1
-	return maxi(1, ceili(float(Catalog.tile_hex_distance(tile, hub)) / float(EconomyConfig.TRANSPORT_MAX_TILES_PER_TURN)))
+	return maxi(1, ceili(float(Catalog.tile_hex_distance(tile, hub)) / float(EconomyConfig.LOCAL_SUPPLIERS_TILES_PER_TRIP)))
 
 ## The haul multiplier a Local Suppliers quote applies to a good's freight rate per leg: trips to the hub times
 ## the settlement factor. 0.0 where Local Suppliers do not trade, which a quote refuses.

@@ -7,6 +7,9 @@ extends Control
 ## the ranks runs an aluminium straightedge. A rank not yet open sits behind a steel grille with a notice pinned
 ## to it saying what opens it. Pointing at a drawing runs red threads from its pin to the pins of the research
 ## it needs and the research that needs it, where those are on the board.
+##
+## The Licence groups drawer pins a row per licence group instead of per rank: the group's name on a brass strip
+## over its three drawings, and the plate at its left counting the processes held.
 
 signal card_hover(card: Control, on: bool)
 signal card_picked(card: Control)
@@ -24,6 +27,8 @@ const ROW_PAD := 18.0
 const RULE_H := 12.0
 const RIGHT := 14.0
 const PLATE := Vector2(60, 78)
+## A licence group row's name strip over its drawings.
+const GROUP_H := 30.0
 ## The cork's inside in its render (people_cork: 14 layout px of margin and a 16 px frame), in texels, tiled
 ## across the board at 2 texels a px and darkened a little with age.
 const CORK_INSIDE := Rect2(40, 40, 430, 889)
@@ -33,7 +38,8 @@ const NOTICE_MARGIN := 10.0
 const NOTICE_CORNER := 76.0
 const NOTICE_SIZE := Vector2(300, 92)
 
-## [{rank, open, granted, total, notice: {heading, line, count}, cards: [Card]}] as last laid out.
+## [{rank, open, granted, total, notice: {heading, line, count}, cards: [Card]}] as last laid out; a licence group
+## row has `group` (its name) and no rank.
 var _rows: Array = []
 var _cards := {}
 var _row_rects: Array = []
@@ -82,6 +88,8 @@ func populate(rows: Array, needs: Dictionary, choosing: bool, empty_text: String
 			card.set("note", str(entry.get("note", "")))
 			card.set("choosing", choosing)
 			card.set("eligible", bool(entry.get("eligible", false)))
+			card.set("licence", str(entry.get("licence", "")))
+			card.set("actionable", bool(entry.get("actionable", false)))
 			card.call("configure", entry.get("unlock", {}), entry.get("presentation", {}))
 			card.connect("hover_changed", _on_card_hover)
 			card.connect("picked", func(c: Control) -> void: card_picked.emit(c))
@@ -145,14 +153,16 @@ func _lay_out() -> void:
 		var cards: Array = row.cards
 		var lines := maxi(1, ceili(float(cards.size()) / float(cols)))
 		var top := y
+		var head := GROUP_H if str(row.get("group", "")) != "" else 0.0
 		for j in cards.size():
 			var c: Control = cards[j]
 			c.size = Vector2(cw, Card.SIZE.y)
-			c.position = Vector2(GUTTER + float(j % cols) * (cw + GAP.x), top + ROW_PAD + float(j / cols) * (Card.SIZE.y + GAP.y))
-		var h := ROW_PAD * 2.0 + float(lines) * Card.SIZE.y + float(lines - 1) * GAP.y
+			c.position = Vector2(GUTTER + float(j % cols) * (cw + GAP.x), top + ROW_PAD + head + float(j / cols) * (Card.SIZE.y + GAP.y))
+		var h := ROW_PAD * 2.0 + head + float(lines) * Card.SIZE.y + float(lines - 1) * GAP.y
 		h = maxf(h, PLATE.y + 20.0)
 		var rect := Rect2(0, top, size.x, h)
-		_row_rects.append({"rank": str(row.get("rank", "")), "rect": rect, "open": bool(row.get("open", true))})
+		_row_rects.append({"rank": str(row.get("rank", "")), "rect": rect, "open": bool(row.get("open", true)),
+			"group": str(row.get("group", "")), "width": float(mini(cards.size(), cols)) * (cw + GAP.x) - GAP.x})
 		if row.has("grille"):
 			var g: Control = row.grille
 			g.position = Vector2(GUTTER - 10.0, top + 6.0)
@@ -200,7 +210,12 @@ func _draw() -> void:
 		var rr: Dictionary = _row_rects[i]
 		var rect: Rect2 = rr.rect
 		var row: Dictionary = _rows[i]
-		_draw_rank_plate(Vector2(14, rect.position.y + ROW_PAD - 2.0), str(rr.rank), int(row.get("granted", 0)), int(row.get("total", 0)))
+		if str(rr.get("group", "")) != "":
+			_draw_group_strip(Rect2(GUTTER, rect.position.y + ROW_PAD - 4.0, float(rr.width), GROUP_H - 6.0), str(rr.group))
+			_draw_rank_plate(Vector2(14, rect.position.y + ROW_PAD - 2.0), str(row.get("granted", 0)), int(row.get("granted", 0)),
+				int(row.get("total", 0)), "HELD")
+		else:
+			_draw_rank_plate(Vector2(14, rect.position.y + ROW_PAD - 2.0), str(rr.rank), int(row.get("granted", 0)), int(row.get("total", 0)))
 		if i < _row_rects.size() - 1:
 			_draw_straightedge(rect.end.y + 1.0)
 	if _rows.is_empty() and _empty_text != "":
@@ -226,8 +241,28 @@ static func draw_cork(ci: CanvasItem, r: Rect2) -> void:
 		y += tile.y
 
 
-## A brass plate screwed to the cork: RANK, the numeral engraved, and the rank's count granted under it.
-func _draw_rank_plate(at: Vector2, rank: String, granted: int, total: int) -> void:
+## A licence group's name engraved on a brass strip screwed over its drawings.
+func _draw_group_strip(r: Rect2, group_name: String) -> void:
+	Ink.cast_shadow(self, r, 3.0, 0.5, 3)
+	var brass := StyleBoxFlat.new()
+	brass.bg_color = Color("#b08a3e")
+	brass.set_corner_radius_all(3)
+	brass.border_color = Color("#6f5320")
+	brass.set_border_width_all(1)
+	draw_style_box(brass, r)
+	Ink.bevel(self, r.grow(-1.0), 1.5, Color(1, 0.93, 0.7, 0.45), Color(0.25, 0.17, 0.05, 0.45))
+	var screw := Ink.tex("screw_silver")
+	if screw != null:
+		for p in [Vector2(r.position.x + 10.0, r.get_center().y), Vector2(r.end.x - 10.0, r.get_center().y)]:
+			draw_texture_rect(screw, Rect2(p - Vector2(4.5, 4.5), Vector2(9, 9)), false)
+	var text := ("%s licence group" % group_name).to_upper()
+	var f := Ink.label_font()
+	draw_string(f, Vector2(r.position.x + 24.0, r.get_center().y + 6.0), text, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 48.0, 16, Ink.NAVY)
+
+
+## A brass plate screwed to the cork: RANK (or HELD for a licence group), the numeral engraved, and the count
+## granted under it.
+func _draw_rank_plate(at: Vector2, rank: String, granted: int, total: int, caption: String = "RANK") -> void:
 	var r := Rect2(at, PLATE)
 	Ink.cast_shadow(self, r, 3.0, 0.5, 4)
 	var brass := StyleBoxFlat.new()
@@ -247,8 +282,8 @@ func _draw_rank_plate(at: Vector2, rank: String, granted: int, total: int) -> vo
 			draw_texture_rect(screw, Rect2(p - Vector2(5.5, 5.5), Vector2(11, 11)), false)
 	var navy := Ink.NAVY
 	var small := Ink.label_font()
-	var w := small.get_string_size("RANK", HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-	draw_string(small, Vector2(r.get_center().x - w * 0.5, r.position.y + 25.0), "RANK", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, navy)
+	var w := small.get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+	draw_string(small, Vector2(r.get_center().x - w * 0.5, r.position.y + 25.0), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, navy)
 	var big := Ink.stamp_font()
 	var nw := big.get_string_size(rank, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
 	draw_string(big, Vector2(r.get_center().x - nw * 0.5 + 0.8, r.position.y + 52.8), rank, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color(1, 0.92, 0.7, 0.45))

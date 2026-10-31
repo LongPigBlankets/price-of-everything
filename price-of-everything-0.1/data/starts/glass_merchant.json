@@ -19,7 +19,7 @@
 	"buildings": [
 		{ "building_id": "b_001", "recipe_id": "r_018", "tile_id": "tile_19_15", "output_to": "market" },
 		{ "building_id": "b_001", "recipe_id": "r_018", "tile_id": "tile_19_15", "output_to": "market" },
-		{ "building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_18_16", "output_to": "market" },
+		{ "building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_18_16", "output_to": "market", "name": "Original Furnace", "legacy_anchor": true },
 		{ "building_id": "b_007", "recipe_id": "r_056", "tile_id": "tile_18_16", "output_to": "market", "opening_batches": 1 }
 	],
 	"land": {
@@ -38,7 +38,8 @@
 			"target_match": { "good_internal": "glass" },
 			"pct": 5.0,
 			"label": "Ashmouth Glassworks: +5% glass output",
-			"source": "start:glass_merchant"
+			"source": "start:glass_merchant",
+			"condition": "legacy_anchor"
 		},
 		{
 			"id": "start_glass_merchant_windows",
@@ -47,7 +48,8 @@
 			"target_match": { "good_internal": "windows" },
 			"pct": 5.0,
 			"label": "Ashmouth Glassworks: +5% window output",
-			"source": "start:glass_merchant"
+			"source": "start:glass_merchant",
+			"condition": "legacy_anchor"
 		}
 	]
 }

@@ -18,7 +18,7 @@ const LORE_PARAGRAPHS := [
 	"They've started calling you the Glass Merchant. In Ashmouth that isn't entirely a compliment. It means someone so plain you can see straight through. Fine. Let them look. The furnaces are lit and so are your eyes when you look to the future.",
 	"Where will you take this next? Will you stun everyone a second time?",
 ]
-const BONUS := "Ashmouth Glassworks Bonus: +5% glass output and +5% window output."
+const BONUS := "Ashmouth Glassworks Bonus: +5% glass output and +5% window output.\nLike Family: +25 workforce satisfaction."
 
 var _input_blocked_parent: Node = null
 
@@ -93,7 +93,7 @@ func _build() -> void:
 
 	# Bonus line — bold, green, matching the reward palette.
 	var bonus := Label.new()
-	bonus.text = BONUS
+	bonus.text = BONUS + "\n" + preload("res://scripts/legacy_perk.gd").CONDITION_TEXT
 	bonus.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	bonus.add_theme_font_override("font", BONUS_FONT)
 	bonus.add_theme_font_size_override("font_size", 16)

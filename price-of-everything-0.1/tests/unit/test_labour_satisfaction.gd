@@ -164,25 +164,25 @@ func _test_knob_table() -> void:
 	# Work effort.
 	LabourState.set_labour_multiplier(0.8)
 	_check(is_equal_approx(LabourState.throughput_pct_for(FACTORY), 2.0) and is_equal_approx(_labour_delta(plain), -0.20)
-		and is_equal_approx(_part("effort"), -20.0), "AC2.1 Lean: throughput −10%, salary −20%, satisfaction −20")
+		and is_equal_approx(_part("effort"), -15.0), "AC2.1 Lean: throughput −10%, salary −20%, satisfaction −15")
 	LabourState.set_labour_multiplier(1.2)
 	_check(is_equal_approx(LabourState.throughput_pct_for(FACTORY), 27.0) and is_equal_approx(_labour_delta(plain), 0.25)
-		and is_equal_approx(_part("effort"), -30.0), "AC2.1 Overtime: throughput +15%, salary +25%, satisfaction −30")
+		and is_equal_approx(_part("effort"), -25.0), "AC2.1 Overtime: throughput +15%, salary +25%, satisfaction −25")
 	LabourState.set_labour_multiplier(1.0)
 	# Pay while idle.
 	var idle_ok := true
-	for pair in [[0.5, -15.0], [0.75, -5.0], [1.0, 5.0]]:
+	for pair in [[0.5, -10.0], [0.75, -5.0], [1.0, 5.0]]:
 		LabourState.set_idle_labour_pay_share(float(pair[0]))
 		idle_ok = idle_ok and is_equal_approx(_part("idle_pay"), float(pair[1]))
-	_check(idle_ok, "AC2.1 pay while idle: −15, −5, +5")
+	_check(idle_ok, "AC2.1 pay while idle: −10, −5, +5")
 	# Safety (AC2.2: hazardous only for the throughput and High safety's labour).
 	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_LAX_SAFETY, true)
 	var haz_ok := true
 	for bid in HAZARDOUS:
 		haz_ok = haz_ok and is_equal_approx(LabourState.throughput_pct_for(str(bid)), 22.0)
 	_check(haz_ok and is_equal_approx(LabourState.throughput_pct_for(FACTORY), 12.0)
-		and is_equal_approx(_labour_delta(plain), -0.05) and is_equal_approx(_part(LabourState.WORKFORCE_POLICY_LAX_SAFETY), -25.0),
-		"AC2.1 AC2.2 Minimal safety: +10% at every hazardous site only, labour −5%, satisfaction −25")
+		and is_equal_approx(_labour_delta(plain), -0.05) and is_equal_approx(_part(LabourState.WORKFORCE_POLICY_LAX_SAFETY), -20.0),
+		"AC2.1 AC2.2 Minimal safety: +10% at every hazardous site only, labour −5%, satisfaction −20")
 	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_STRICT_SAFETY, true)
 	_check(is_equal_approx(_labour_delta(haz), 0.05) and is_equal_approx(_labour_delta(plain), 0.0)
 		and is_equal_approx(_part(LabourState.WORKFORCE_POLICY_STRICT_SAFETY), 10.0),
@@ -190,8 +190,8 @@ func _test_knob_table() -> void:
 	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_STRICT_SAFETY, false)
 	# Pensions.
 	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_PENSIONS_MINIMUM, true)
-	_check(is_equal_approx(_labour_delta(plain), -0.05) and is_equal_approx(_part(LabourState.WORKFORCE_POLICY_PENSIONS_MINIMUM), -15.0),
-		"AC2.1 Minimum legal pensions: labour −5%, satisfaction −15")
+	_check(is_equal_approx(_labour_delta(plain), -0.05) and is_equal_approx(_part(LabourState.WORKFORCE_POLICY_PENSIONS_MINIMUM), -10.0),
+		"AC2.1 Minimum legal pensions: labour −5%, satisfaction −10")
 	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_GENEROUS_PENSIONS, true)
 	var young := _part(LabourState.WORKFORCE_POLICY_GENEROUS_PENSIONS)
 	for _t in 30:
@@ -206,21 +206,29 @@ func _test_knob_table() -> void:
 	_check(small_ok and is_equal_approx(_labour_delta(plain), 0.05) and is_equal_approx(_part(LabourState.WORKFORCE_POLICY_ANNUAL_BONUS), 15.0),
 		"AC2.1 annual bonus: small +2.5% and +8, generous +5% and +15")
 	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_BONUS, false)
-	# Profit share: satisfaction only (AC2.3 covers its cost in test_finance).
-	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
-	var five := _part(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE)
-	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10, true)
-	_check(is_equal_approx(five, 10.0) and is_equal_approx(_part(LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10), 20.0)
-		and is_equal_approx(LabourState.throughput_pct_for(FACTORY), 12.0) and is_equal_approx(_labour_delta(plain), 0.0),
-		"AC2.1 AC2.3 profit share: +10 and +20 satisfaction, no throughput, no labour change")
+	# Profit share (owner ruling 27 Oct): 10% and 20% of profit after tax and dividends; satisfaction by last turn's
+	# profit after tax: +5 at a loss, +10 below £25, +15 at £25 or more, the 10% setting half of each.
+	var saved_summary: Dictionary = Production.last_turn_summary
+	var bands := []
+	for profit in [-40.0, 20.0, 80.0]:
+		Production.last_turn_summary = {"pre_tax_profit": profit + 10.0, "taxes_paid": 10.0}
+		LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
+		var lower := _part(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE)
+		LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10, true)
+		bands.append([lower, _part(LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10)])
+	Production.last_turn_summary = saved_summary
+	_check(str(bands) == str([[2.5, 5.0], [5.0, 10.0], [7.5, 15.0]]),
+		"AC2.3 profit share: 20% gives +5 at a loss, +10 below £25, +15 above; 10% half (%s)" % str(bands))
+	_check(is_equal_approx(LabourState.profit_share_rate(), 0.20) and is_equal_approx(LabourState.throughput_pct_for(FACTORY), 12.0)
+		and is_equal_approx(_labour_delta(plain), 0.0), "AC2.3 profit share pays 20% at the higher setting, no throughput, no labour change")
 	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10, false)
 	# Automation (AC2.6): level 2+ only.
 	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_PUSH_AUTOMATION, true)
 	_check(is_equal_approx(_labour_delta(level2), -0.15) and is_equal_approx(_labour_delta(plain), 0.0)
 		and is_equal_approx(LabourState.workforce_power_multiplier(level2), 1.10) and is_equal_approx(LabourState.workforce_maintenance_multiplier(level2), 1.10)
 		and is_equal_approx(LabourState.workforce_power_multiplier(plain), 1.0)
-		and is_equal_approx(_part(LabourState.WORKFORCE_POLICY_PUSH_AUTOMATION), -10.0),
-		"AC2.6 Automation on level 2+: labour −15%, power and maintenance +10%, satisfaction −10")
+		and is_equal_approx(_part(LabourState.WORKFORCE_POLICY_PUSH_AUTOMATION), -5.0),
+		"AC2.6 Automation on level 2+: labour −15%, power and maintenance +10%, satisfaction −5")
 	var layoff := false
 	for s in LabourState.target_shifts:
 		layoff = layoff or (is_equal_approx(float(s.value), -10.0) and int(s.turns_left) == 10)
@@ -229,10 +237,10 @@ func _test_knob_table() -> void:
 	# Lockers.
 	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE, true)
 	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE, true)
-	_check(is_equal_approx(LabourState.throughput_pct_for(FACTORY), 8.0)
+	_check(is_equal_approx(LabourState.throughput_pct_for(FACTORY), 2.0)
 		and is_equal_approx(_part(LabourState.WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE), 8.0)
 		and is_equal_approx(_part(LabourState.WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE), 8.0),
-		"AC2.1 leave policies: −2% throughput and +8 satisfaction each")
+		"AC2.1 leave policies: −5% throughput and +8 satisfaction each")
 	LabourState.workforce_policies[LabourState.WORKFORCE_POLICY_LONG_TENURE] = true
 	LabourState.workforce_policies[LabourState.WORKFORCE_POLICY_STOCK_OPTIONS] = true
 	_check(is_equal_approx(_part(LabourState.WORKFORCE_POLICY_LONG_TENURE), 5.0) and is_equal_approx(_part(LabourState.WORKFORCE_POLICY_STOCK_OPTIONS), 10.0),
@@ -299,7 +307,7 @@ func _test_satisfaction_movement() -> void:
 		and is_equal_approx(LabourState.step_toward(-4.0, -6.0), -6.0), "AC2.8 at least 2 a turn, landing on the target within 2")
 	LabourState.set_labour_multiplier(1.2)
 	LabourState.add_target_shift("test_shift", "test", -20.0)
-	_check(is_equal_approx(LabourState.target_satisfaction(), -30.0 + 5.0 - 15.0 - 20.0), "AC2.8 target = contributions + shifts")
+	_check(is_equal_approx(LabourState.target_satisfaction(), -25.0 + 5.0 - 15.0 - 20.0), "AC2.8 target = contributions + shifts")
 	for _i in 12:
 		LabourState.add_target_shift("test_pile_%d" % _i, "test", -20.0)
 	_check(is_equal_approx(LabourState.target_satisfaction(), -100.0), "AC2.8 the target clamps at −100")
@@ -352,27 +360,72 @@ func _test_events_shift_the_target() -> void:
 	_fresh()
 
 
-## AC2.12: start values and the Metal Magnate trajectory (−5 crossed on turn 8).
+## AC2.12: start values and the Metal Magnate trajectory (owner rulings 27 Oct: Like Family +25, new presets).
 func _test_start_values_and_magnate_trajectory() -> void:
 	_fresh()
 	var mm: Dictionary = SaveLoad.expand_start_config(JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/metal_magnate.json")))
 	var gm: Dictionary = SaveLoad.expand_start_config(JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/glass_merchant.json")))
 	_check(is_equal_approx(float(mm.match.labour_satisfaction), 40.0) and is_equal_approx(float(gm.match.labour_satisfaction), 20.0),
 		"AC2.12 starts: Magnate +40, Glass Merchant +20")
-	# Magnate's presets and workforce.
+	# Magnate's presets (owner ruling 27 Oct: Standard effort, 75% pay while idle) and workforce, with its Original
+	# Furnace and a legacy perk (Like Family, §4.4).
+	_check(is_equal_approx(float(mm.match.labour_multiplier), 1.0) and is_equal_approx(float(mm.match.idle_labour_pay_share), 0.75),
+		"AC2.12 Magnate presets Standard effort and 75% pay while idle")
 	for spec in [[MINE, "r_001", "tile_6_8"], [MINE, "r_002", "tile_7_10"], [FURNACE, "r_005", "tile_9_9"], ["b_003", "r_004", "tile_9_9"]]:
 		BuildingState.tile_land_owned[str(spec[2])] = 200
-		BuildingState.add_building(str(spec[0]), str(spec[1]), str(spec[2]), MatchState.LOCAL_PLAYER, "")
-	LabourState.set_labour_multiplier(1.2)
-	LabourState.set_idle_labour_pay_share(0.5)
+		var iid := BuildingState.add_building(str(spec[0]), str(spec[1]), str(spec[2]), MatchState.LOCAL_PLAYER, "")
+		if str(spec[0]) == FURNACE:
+			BuildingState.buildings[iid]["legacy_anchor"] = true
+	Modifiers.add({"id": "test_legacy", "domain": "recipe_output", "target": "*", "pct": 10.0, "condition": "legacy_anchor"})
+	LabourState.set_labour_multiplier(float(mm.match.labour_multiplier))
+	LabourState.set_idle_labour_pay_share(float(mm.match.idle_labour_pay_share))
 	LabourState.satisfaction = 40.0
-	_check(is_equal_approx(LabourState.target_satisfaction(), -55.0), "AC2.12 Magnate's target is −55 (%.1f)" % LabourState.target_satisfaction())
-	var crossed := 0
+	_check(is_equal_approx(_part("like_family"), 25.0), "AC2.12 Like Family +25 while the Original Furnace is owned")
+	_check(is_equal_approx(LabourState.target_satisfaction(), 10.0),
+		"AC2.12 Magnate's target is +10: idle pay −5, 45 hours −15, workforce +5, Like Family +25 (%.1f)" % LabourState.target_satisfaction())
+	var lowest := 100.0
 	for turn in range(2, 30):
 		LabourState.tick_satisfaction()
-		if crossed == 0 and LabourState.satisfaction < -5.0:
-			crossed = turn
-	_check(crossed == 8, "AC2.12 Magnate's default satisfaction crosses −5 on turn 8 (turn %d)" % crossed)
+		lowest = minf(lowest, LabourState.satisfaction)
+	_check(lowest >= 0.0 and is_equal_approx(LabourState.satisfaction, 10.0),
+		"AC2.12 Magnate's default satisfaction settles at +10 and never goes below 0 (lowest %.1f)" % lowest)
+	_fresh()
+
+
+## A Comprehensive Union Agreement doubles how fast satisfaction rises; falls are unchanged (owner ruling 27 Oct).
+func _test_comprehensive_doubles_rises() -> void:
+	_fresh()
+	_check(is_equal_approx(LabourState.step_toward(0.0, 50.0, 2.0), 10.0) and is_equal_approx(LabourState.step_toward(0.0, 15.0, 2.0), 4.0)
+		and is_equal_approx(LabourState.step_toward(0.0, 3.5, 2.0), 3.5), "Comprehensive: a rise moves 20% of the gap, at least 4")
+	_check(is_equal_approx(LabourState.step_toward(50.0, 0.0, 2.0), 45.0), "Comprehensive: a fall moves as before")
+	_check(is_equal_approx(LabourState.rise_multiplier(), 1.0), "no union: rises at the usual speed")
+	LabourState.set_union_tier(LabourState.UNION_PARTIAL)
+	_check(is_equal_approx(LabourState.rise_multiplier(), 1.0), "Partial union: rises at the usual speed")
+	LabourState.set_union_tier(LabourState.UNION_COMPREHENSIVE)
+	LabourState.satisfaction = -40.0
+	var target := LabourState.target_satisfaction()
+	var projected := LabourState.projected_satisfaction(1)
+	LabourState.tick_satisfaction()
+	_check(is_equal_approx(LabourState.satisfaction, -40.0 + (target + 40.0) * 0.2) and is_equal_approx(projected, LabourState.satisfaction),
+		"Comprehensive: one tick rises 20%% of the gap, and the dial's projection agrees (%.1f toward %.1f)" % [LabourState.satisfaction, target])
+	_fresh()
+
+
+## Like Family ends for good with the Original Furnace: selling it ends it, buying it back does not restore it.
+func _test_like_family_ends_with_the_furnace() -> void:
+	_fresh()
+	BuildingState.tile_land_owned["tile_9_9"] = 200
+	var iid := BuildingState.add_building(FURNACE, "r_005", "tile_9_9", MatchState.LOCAL_PLAYER, "")
+	_check(is_equal_approx(_part("like_family"), 0.0), "Like Family: a start with no Original Furnace has none")
+	BuildingState.buildings[iid]["legacy_anchor"] = true
+	Modifiers.add({"id": "test_legacy", "domain": "recipe_output", "target": "*", "pct": 10.0, "condition": "legacy_anchor"})
+	_check(is_equal_approx(_part("like_family"), 25.0), "Like Family: +25 with the Original Furnace and its perk")
+	var owner := str(BuildingState.buildings[iid].get("owner", ""))
+	BuildingState.buildings[iid]["owner"] = "npc_test"
+	_check(is_equal_approx(_part("like_family"), 0.0), "Like Family: gone the moment the furnace leaves the company")
+	preload("res://scripts/legacy_perk.gd").reconcile()
+	BuildingState.buildings[iid]["owner"] = owner
+	_check(is_equal_approx(_part("like_family"), 0.0), "Like Family: buying the furnace back does not restore it")
 	_fresh()
 
 
@@ -486,7 +539,7 @@ func _test_save_round_trip_and_migration() -> void:
 		"AC2.13 AC3.1 a mid-run save and load continues identically")
 	var old := {"save_version": 17, "match": {"scenario_name": "metal_magnate", "labour_output_pressure_pct": 10.0, "labour_multiplier": 1.2}}
 	var migrated: Dictionary = SaveLoad._migrate(old)
-	_check(int(migrated.save_version) == 18 and is_equal_approx(float(migrated.match.labour_satisfaction), 40.0)
+	_check(int(migrated.save_version) == SaveLoad.SAVE_VERSION and is_equal_approx(float(migrated.match.labour_satisfaction), 40.0)
 		and int(migrated.match.work_week_hours) == 45 and not (migrated.match as Dictionary).has("labour_output_pressure_pct"),
 		"AC3.1 a v17 save migrates: its start's satisfaction, 45 hours, no output pressure")
 	var unknown: Dictionary = SaveLoad._migrate({"save_version": 17, "match": {}})

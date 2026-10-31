@@ -73,7 +73,7 @@ func _ready() -> void:
 				elif owned_rail:
 					# Prescribed shortest covered local path; every edge has rail.
 					# It fits one rail leg at either level, without leaving coverage.
-					assert(s.route.tiles.size()-1 <= EconomyConfig.infra_range_for_level("rail",level))
+					assert(s.route.tiles.size()-1 <= EconomyConfig.infra_speed_for_level("rail",level))
 					for tile in s.route.tiles: assert(TransportState._tile_infra_level(str(tile),"rail") == level)
 					s.route.legs = [{"from":s.source,"to":s.destination,"mode":"rail"}]
 					s.route.turns = 1

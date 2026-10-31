@@ -60,7 +60,7 @@ The four main tables currently use LF. CSV quoting may also affect a diff: inspe
 before accepting the edit rather than assuming a read/write round trip is byte-identical.
 
 As a dated inventory, the full source currently has 77 goods, 38 buildings, 210 recipe
-rows and 253 research rows. Catalog promotes 147 recipes at startup. These counts are
+rows and 256 research rows. Catalog promotes 147 recipes at startup. These counts are
 observations, not schema constraints or a reason to delete dormant rows.
 
 ## Recipe and research checks

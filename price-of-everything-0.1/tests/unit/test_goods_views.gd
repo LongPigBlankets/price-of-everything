@@ -379,10 +379,10 @@ func _test_flavor_nodes_wired() -> void:
 	# The 41 wired flavor nodes register real modifiers on unlock, one per domain.
 	Modifiers.reset()
 	MatchState.reset()
-	# recipe_output: Fractional Distillation → +5% Petrochemical Refinery (b_011).
+	# throughput: Fractional Distillation → +10% Petrochemical Refinery (b_011) throughput (refining licence group).
 	ResearchState.grant_unlock("Fractional Distillation")
-	_check(absf(Modifiers.apply("recipe_output", "x", 100.0, {"building_id": "b_011"}) - 105.0) < 0.001,
-		"Fractional Distillation wires +5% petro-refinery output")
+	_check(absf(Modifiers.apply("throughput", "x", 100.0, {"building_id": "b_011"}) - 110.0) < 0.001,
+		"Fractional Distillation wires +10% petro-refinery throughput")
 	# building_power: Flue Heat Recovery → −10% Coal Power Plant (b_003) power draw.
 	ResearchState.grant_unlock("Flue Heat Recovery")
 	_check(absf(Modifiers.apply("building_power", "b_003", 100.0, {"building_id": "b_003"}) - 90.0) < 0.001,

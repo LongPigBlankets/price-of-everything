@@ -2,6 +2,7 @@ extends Node
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const MarketRules := preload("res://scripts/market_rules.gd")
 const Staffing := preload("res://scripts/staffing.gd")
+const MiningSites := preload("res://scripts/mining_sites.gd")
 
 ## How many turns of ore left before a mine starts warning. Short enough to be actionable
 ## (a replacement mine takes turns to build and the nearest spare deposit is 4-6 tiles away
@@ -241,6 +242,12 @@ func _process_production() -> void:
 	# A start's one-off charges booked this turn (MatchState.one_off_charges), and their labels.
 	"one_off_paid": 0.0,
 	"one_off_lines": [],
+	# Research licensing (ResearchLicensing.settle_turn): royalties charged on this turn's revenue and licences
+	# sold, both before tax, with their lines ({title, rate, amount} / {title, amount}).
+	"royalties_paid": 0.0,
+	"royalty_lines": [],
+	"licence_income": 0.0,
+	"licence_sale_lines": [],
 	"taxes_paid": 0.0,
 	"dividends_paid": 0.0,
 	"profit_sharing_paid": 0.0,
@@ -339,6 +346,23 @@ func _process_production() -> void:
 			# A paused building (player-stopped, e.g. via the supply-chain panel) is idle:
 			# no inputs consumed, no outputs, no labour/power draw this turn.
 			if BuildingWorks.is_building_paused(instance_id):
+				has_run[instance_id] = true
+				continue
+
+			# A seam card's works or a roof fall stop the whole site (docs/pacing-labour-mining-licensing-spec.md §8.7).
+			var seam_token := MiningSites.building_token(building)
+			if seam_token != "" and MatchState.seams.is_offline(str(building.get("tile_id", "")), seam_token):
+				var left := MatchState.seams.offline_turns_left(str(building.get("tile_id", "")), seam_token)
+				blocked_reason_by_building[instance_id] = _run_warning("seam_offline",
+					"Seam works. Offline for %d more turn%s." % [left, "" if left == 1 else "s"])
+				has_run[instance_id] = true
+				continue
+
+			# Stopped by an accident for its 2 turns (Minimal safety, docs/pacing-labour-mining-licensing-spec.md §4.5).
+			if LabourState.unrest.is_down(instance_id):
+				blocked_reason_by_building[instance_id] = _run_warning("accident",
+					"Accident. Down for %d more turn%s." % [LabourState.unrest.down_turns_left(instance_id),
+						"" if LabourState.unrest.down_turns_left(instance_id) == 1 else "s"])
 				has_run[instance_id] = true
 				continue
 
@@ -672,6 +696,7 @@ func _process_production() -> void:
 		summary.money_out += warehousing
 	summary.warehousing_paid = warehousing
 	_apply_one_off_charges(summary)
+	preload("res://scripts/research_licensing.gd").settle_turn(summary)
 	TurnProfiler.section_end("maintenance_labour")
 
 	TurnProfiler.section_begin("loan_payments")
@@ -957,11 +982,7 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 
 func _apply_profit_sharing(summary: Dictionary, pre_tax_profit: float) -> float:
 	summary.profit_sharing_paid = 0.0
-	var share_rate := 0.0
-	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
-		share_rate = 0.05
-	elif LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10):
-		share_rate = 0.10
+	var share_rate := LabourState.profit_share_rate()
 	if share_rate <= 0.0:
 		return 0.0
 	var post_dividend_profit := maxf(
@@ -991,14 +1012,14 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 	if dep_token != "" and MatchState.deposit_depleted(tile_id, dep_token):
 		return
 	var mined := 0
-	# What the DEPOSIT is charged, in unmodified recipe units. Deposit life is deliberately
-	# independent of output multipliers: research, advisor bonuses, building levels, the
-	# workforce and the deposit penalty all change how much you GET per turn, never how
-	# fast the ore runs out. A 2000-unit seam therefore lasts the same number of turns
-	# whatever you have unlocked, so investing in yield can't quietly burn the field down.
-	# A building short of staff digs, and is charged, only its staffing run fraction of that
-	# (docs/pacing-labour-mining-licensing-spec.md §5). Intermittent power still charges the full rate.
-	var staffed := Staffing.run_fraction(building)
+	# What a finite seam is charged: what is dug, the recipe's base quantity × the building's level × how hard
+	# it runs (staffing and throughput: MatchState.run_multiplier),
+	# doubled on a blasting site's double dig (docs/pacing-labour-mining-licensing-spec.md §8.5, §8.7). Yield
+	# never charges it: the deposit penalty, mining research, advisor bonuses, the workforce output multiplier
+	# and strikes change how much you GET from what is dug, never how fast the seam runs out, so investing in
+	# yield cannot burn a field down. Intermittent power still charges the full dig.
+	var dug := BuildingLevels.mult("output", int(building.get("level", 1))) * MatchState.run_multiplier(building) \
+		* MatchState.seams.dig_mult(building)
 	var mined_base := 0
 	var recipe_id: String = str(recipe.get("recipe_id", ""))
 	var recipe_type: String = str(recipe.get("recipe_type", "")).to_lower()
@@ -1035,6 +1056,8 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		output_qty = int(round(float(output_qty) * BuildingLevels.mult("output", int(building.get("level", 1)))))
 		output_qty = int(round(float(output_qty) * LabourState.workforce_output_multiplier()))
 		output_qty = int(round(float(output_qty) * MatchState.run_multiplier(building)))
+		if dep_token != "":
+			output_qty = int(round(float(output_qty) * MatchState.seams.dig_mult(building)))
 		# Intermittency: derate output that relies on unfirmed intermittent green power
 		# (0 for grey/steady/no-power buildings; set by _compute_power_intermittency).
 		var power_derate: float = float((_intermittency_by_building.get(building.instance_id, {}) as Dictionary).get("derate", 0.0))
@@ -1052,7 +1075,7 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		summary.produced[good.id] = summary.produced.get(good.id, 0) + output_qty
 		_record_building_output(building.instance_id, good.id, output_qty)
 		mined += output_qty
-		mined_base += int(round(float(base_qty) * staffed))
+		mined_base += int(round(float(base_qty) * dug))
 	if dep_token != "" and mined > 0:
 		# Charged at the base rate, not `mined` — see the mined_base comment above.
 		MatchState.deplete_deposit(tile_id, dep_token, mined_base)
@@ -1539,7 +1562,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		"total_revenue": 0.0,
 	}
 	# Sold goods ship by sea: route to the nearest port; cash lands once it arrives
-	# (x turns later, x = transport duration at 2 tiles/turn). Shipping costs apply.
+	# (x turns later, x = the route's transit turns). Shipping costs apply.
 	var covered_goods: Dictionary = {}
 	for gid in totals.keys():
 		if int(totals[gid]) > 0:
@@ -1937,9 +1960,13 @@ func _calculate_labour_cost(building: Dictionary, recipe: Dictionary = {}) -> fl
 	# While retooling, a building pays only a reduced fraction of its base labour and
 	# skips the usual modifier factor (spec §7.3).
 	var instance_id: String = str(building.get("instance_id", ""))
+	# A mine's site over its free cap multiplies the labour of every working on it, after the labour floor
+	# (M, docs/pacing-labour-mining-licensing-spec.md §8.3), and a seam card's way of working may add to it (§8.7).
+	var site_mult := MiningSites.m_for(building) * MatchState.seams.labour_mult(building)
 	if BuildingWorks.is_retooling(instance_id):
-		return _base_labour_cost(building, recipe) * BuildingWorks.retooling_labour_fraction(instance_id)
-	return _base_labour_cost(building, recipe) * labour_cost_factor(building)
+		return _base_labour_cost(building, recipe) * BuildingWorks.retooling_labour_fraction(instance_id) * site_mult
+	# A struck building pays half its labour while the strike lasts (docs/pacing-labour-mining-licensing-spec.md §6.1).
+	return _base_labour_cost(building, recipe) * labour_cost_factor(building) * LabourState.unrest.labour_share(instance_id) * site_mult
 
 # Raw per-turn staffing cost for a building BEFORE any percentage labour modifiers:
 # grown wage rates x headcount x the level labour multiplier. This is the "100% base"
@@ -2059,7 +2086,8 @@ func _calculate_maintenance_cost(building: Dictionary) -> float:
 	var maint_cost := Modifiers.apply("maintenance", bid, maint_val, {"building_id": bid, "instance_id": str(building.get("instance_id", ""))})
 	# Automation's extra upkeep on the level 2+ buildings it runs.
 	maint_cost *= LabourState.workforce_maintenance_multiplier(building)
-	return maint_cost * BuildingLevels.mult("maint", int(building.get("level", 1)))
+	# A mine's site over its free cap multiplies it after every modifier (M, docs/pacing-labour-mining-licensing-spec.md §8.3).
+	return maint_cost * BuildingLevels.mult("maint", int(building.get("level", 1))) * MiningSites.m_for(building)
 
 # Power-consumption modifiers (Pulverised Carbon Injection, Scrap Preheating,
 # Energy-Recovery Devices) shrink the energy a building actually draws — applied
@@ -2069,10 +2097,11 @@ func _effective_energy_req(building: Dictionary, recipe: Dictionary) -> int:
 	if energy_req <= 0:
 		return energy_req
 	var bid: String = str(building.get("building_id", ""))
-	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid})
+	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid,
+		"goods_made": Catalog.goods_made(str(recipe.get("recipe_id", building.get("recipe_id", ""))))})
 	var capacity_mult := MatchState.run_multiplier(building)
 	var scaled := eff * BuildingLevels.mult("energy", int(building.get("level", 1))) * capacity_mult \
-		* LabourState.workforce_power_multiplier(building)
+		* LabourState.workforce_power_multiplier(building) * MatchState.seams.power_mult(building)
 	return int(ceil(scaled)) if capacity_mult < 1.0 and scaled > 0.0 else int(round(scaled))
 
 # Power generation after recipe_output modifiers (e.g. Pulverised Coal Boilers +5%,
@@ -2088,6 +2117,7 @@ func _effective_power_output(building: Dictionary, recipe: Dictionary) -> int:
 		"recipe_id": rid,
 		"recipe_type": str(recipe.get("recipe_type", "")).to_lower(),
 		"building_id": str(building.get("building_id", "")),
+		"instance_id": str(building.get("instance_id", "")),
 		"good_id": "power",
 		"good_internal": "power",
 	}
@@ -2133,7 +2163,7 @@ func stats_at_level(instance_id: String, level: int) -> Dictionary:
 		"energy": _effective_energy_req_f(b, recipe),  # FLOAT (the grid still draws the int version)
 		"labour": _calculate_labour_cost(b, recipe),
 		"maintenance": _calculate_maintenance_cost(b),
-		"size": float(bdata.get("tile_size_used", 1.0)) * BuildingLevels.mult("size", level),
+		"size": Catalog.land_units(bdata) * BuildingLevels.mult("size", level),
 		"inputs": [],
 		"outputs": [],
 	}
@@ -2171,9 +2201,10 @@ func _effective_energy_req_f(building: Dictionary, recipe: Dictionary) -> float:
 	if energy_req <= 0:
 		return float(energy_req)
 	var bid: String = str(building.get("building_id", ""))
-	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid})
+	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid,
+		"goods_made": Catalog.goods_made(str(recipe.get("recipe_id", building.get("recipe_id", ""))))})
 	return eff * BuildingLevels.mult("energy", int(building.get("level", 1))) * MatchState.run_multiplier(building) \
-		* LabourState.workforce_power_multiplier(building)
+		* LabourState.workforce_power_multiplier(building) * MatchState.seams.power_mult(building)
 
 # ── Power intermittency (green/grey quality flags layered on top of `power`) ────
 
@@ -3137,4 +3168,4 @@ func _modified_input_qty(input: Dictionary, building: Dictionary) -> float:
 	var gid := str(input.get("good_id", ""))
 	return Modifiers.apply("recipe_input", rid, qty, {"recipe_id": rid, "building_id": bid,
 		"instance_id": str(building.get("instance_id", "")), "good_id": gid,
-		"good_internal": str(Catalog.get_good(gid).get("internal_name", ""))})
+		"good_internal": str(Catalog.get_good(gid).get("internal_name", "")), "goods_made": Catalog.goods_made(rid)})

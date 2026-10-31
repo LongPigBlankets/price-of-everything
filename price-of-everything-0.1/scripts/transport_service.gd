@@ -65,34 +65,30 @@ func route_is_reachable(route_data: Dictionary) -> bool:
 	return bool(route_data.get("reachable", int(route_data.get("turns", INF_TURNS)) < INF_TURNS))
 
 
-func transport_cost(good_id: String, qty: int, transport_turns: int, mode_mult: float = 1.0) -> float:
-	return EconomyConfig.transport_cost_for(good_id, qty, transport_turns, mode_mult)
-
 ## One unit's freight for one road turn-move at the base rate, before research: what Local Suppliers haul on.
 func freight_rate(good_id: String) -> float:
 	return EconomyConfig.transport_rate_for_good(good_id)
 
 
-## £ per unit per TILE for one good on one mode at one infrastructure level — the freight
-## quote the Resources panel shows. Derived from the same model transport_cost_for_route
-## charges with: a leg is one turn-move costing class_rate x mode multiplier (or the fluid
-## overland premium), and a leg reaches infra_range_for_level tiles, so per-tile is the leg
-## divided by the level's range. That division is why L3 is CHEAPER per tile, not just
-## faster. Route-level effects that need an actual route — congestion, the road/rail share
+## £ per unit per TILE for one good on one mode at one infrastructure level — the freight quote the Resources panel
+## shows. The same figure transport_cost_for_route charges each tile of a leg leaving a tile at that level
+## (EconomyConfig.freight_tile_mult: the per-tile table, or a fluid's tanker premium on road and rail), so L3 is
+## cheaper a tile as well as faster. Route-level effects that need an actual route — congestion, the road/rail share
 ## split, the freight credit — are not in it and cannot be: there is no route here.
 func freight_per_tile(good_id: String, mode: String, level: int) -> float:
-	var rate := EconomyConfig.transport_rate_for_good(good_id)
-	var mult := float(EconomyConfig.TRANSPORT_MODE_COST_MULT.get(mode, 1.0))
-	if Catalog.requires_pipeline(good_id):
-		var overland := EconomyConfig.fluid_overland_mult(good_id, mode)
-		if overland > 0.0:
-			mult = overland
-	var per_leg: float = Modifiers.apply("transport_cost", good_id, rate * mult, {"good_id": good_id})
+	var per_tile := EconomyConfig.transport_rate_for_good(good_id) * EconomyConfig.freight_tile_mult(good_id, mode, level)
+	per_tile = Modifiers.apply("transport_cost", good_id, per_tile, {"good_id": good_id})
 	if mode == "roads" or mode == "rail":
 		var overland_pct: float = float(Modifiers.resolve_pct("road_rail_transport_cost", "*", {}).get("net", 0.0))
 		if not is_zero_approx(overland_pct):
-			per_leg *= 1.0 + overland_pct / 100.0
-	return per_leg / float(maxi(EconomyConfig.infra_range_for_level(mode, level), 1))
+			per_tile *= 1.0 + overland_pct / 100.0
+	return per_tile
+
+
+## The weight charge one unit of `transport_class` pays a tile of `mode` at `level`, before the share that rides on a
+## good's value and before research: what the infrastructure rows quote as a range across classes.
+func tile_weight_rate(transport_class: String, mode: String, level: int) -> float:
+	return EconomyConfig.transport_cost_per_unit_turn(transport_class) * EconomyConfig.freight_tile_mult("", mode, level)
 
 
 ## What one unit pays crossing a port this turn: {rate, cost}. The ad valorem on its market
@@ -155,9 +151,9 @@ func land_cost_after_credit(good_id: String, qty: int, route_data: Dictionary, c
 	return gross * float(qty - covered) / float(qty)
 
 
-## What fraction of this route's haul runs on road or rail. Legs are weighted by their own
-## cost multiplier, so a rail leg (0.5x) counts for what it actually costs rather than as a
-## whole leg. A route with no built legs is an ordinary overland haul: entirely road.
+## What fraction of this route's haul runs on road or rail. Legs are weighted by what they
+## charge, tiles x the per-tile multiplier, so a rail leg counts for what it actually costs.
+## A route with no built legs is an ordinary overland haul: entirely road.
 func _road_rail_share(route_data: Dictionary) -> float:
 	var legs: Array = route_data.get("legs", [])
 	if legs.is_empty():
@@ -166,7 +162,7 @@ func _road_rail_share(route_data: Dictionary) -> float:
 	var total := 0.0
 	for leg: Dictionary in legs:
 		var mode := str(leg.get("mode", "roads"))
-		var weight: float = float(EconomyConfig.TRANSPORT_MODE_COST_MULT.get(mode, 1.0))
+		var weight: float = EconomyConfig.leg_tile_mult("", leg) * float(EconomyConfig.leg_tiles(leg))
 		total += weight
 		if mode == "roads" or mode == "rail":
 			overland += weight
@@ -184,12 +180,12 @@ func transport_cost_breakdown_for_route(good_id: String, qty: int, route_data: D
 	var legs: Array = route_data.get("legs", [])
 	var class_rate := EconomyConfig.transport_rate_for_good(good_id)
 	if legs.is_empty():
-		var turns := maxi(int(route_data.get("turns", 0)), 0)
-		weights["nothing"] = float(qty) * float(turns) * class_rate * surcharge
+		weights["nothing"] = 1.0
 	else:
 		for leg: Dictionary in legs:
 			var mode := str(leg.get("mode", "roads"))
-			weights[mode] = float(weights.get(mode, 0.0)) + float(qty) * class_rate * float(EconomyConfig.TRANSPORT_MODE_COST_MULT.get(mode, 1.0)) * surcharge
+			weights[mode] = float(weights.get(mode, 0.0)) + float(qty) * class_rate * EconomyConfig.leg_tile_mult(good_id, leg) \
+				* float(EconomyConfig.leg_tiles(leg)) * surcharge
 	return scale_transport_breakdown(weights, transport_cost_for_route(good_id, qty, route_data, surcharge))
 
 

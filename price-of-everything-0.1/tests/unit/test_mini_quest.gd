@@ -170,6 +170,29 @@ func _test_mission_board_choice_closes_the_other_branch() -> void:
 	MiniQuest.board_choices = old_choices
 
 
+## AC38.8: the Reach a port station takes 2 turns or less, and says so.
+func _test_fast_to_port_takes_two_turns_or_less() -> void:
+	var node: Dictionary = MiniQuest._board_node("t_port")
+	_check(str(node.get("title", "")) == "Reach a port in 2 turns or less", "AC38.8 the station's title says 2 turns or less")
+	var good := str((Catalog.get_recipe("r_001").outputs[0] as Dictionary).good_id)
+	var tile_taking := {}
+	for tile: Variant in Catalog.all_tile_ids():
+		var route := TransportService.route_to_nearest_port(str(tile), good)
+		if TransportService.route_is_reachable(route):
+			tile_taking[int(route.turns)] = str(tile)
+		if tile_taking.has(2) and tile_taking.has(3):
+			break
+	_check(tile_taking.has(2) and tile_taking.has(3), "AC38.8 found tiles 2 and 3 turns from a port")
+	if not (tile_taking.has(2) and tile_taking.has(3)):
+		return
+	var old := BuildingState.buildings
+	BuildingState.buildings = {"probe": {"owner": MatchState.LOCAL_PLAYER, "recipe_id": "r_001", "tile_id": tile_taking[2]}}
+	_check(MiniQuest._station_met(node, {}), "AC38.8 goods 2 turns from a port finish the station")
+	BuildingState.buildings = {"probe": {"owner": MatchState.LOCAL_PLAYER, "recipe_id": "r_001", "tile_id": tile_taking[3]}}
+	_check(not MiniQuest._station_met(node, {}), "AC38.8 goods 3 turns from a port do not")
+	BuildingState.buildings = old
+
+
 func _test_tutorial_counts_from_the_station_opening() -> void:
 	var ruleset := MatchState.ruleset.duplicate(true)
 	var old := MiniQuest.export_fields()

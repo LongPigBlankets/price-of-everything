@@ -30,6 +30,12 @@ const Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const EMBLEM_PX := 52.0
 const COLUMN_GAP := 14
 const ROUTING := [["Fastest", 0], ["Cheapest", 1], ["Blended", 2]]
+## What each routing key does (Catalog._best_route), by its id.
+const ROUTING_WORDS := {
+	0: "Fastest. Goods take the fewest turns, then the least freight. New shipments only.",
+	1: "Cheapest. Goods take the least freight, then the fewest turns. New shipments only.",
+	2: "Blended. Freight and turns count half each, each against the best route there is. New shipments only.",
+}
 
 
 # --- the shell ---------------------------------------------------------------------------------
@@ -102,6 +108,8 @@ static func routing(current: int, on_pick: Callable) -> Dictionary:
 	box.add_theme_constant_override("separation", 8)
 	box.add_child(Parts.caption("Routing"))
 	var bed := key_bed("RoutingObjective", ROUTING, current, on_pick, 92.0)
+	for id in bed.keys:
+		(bed.keys[id] as Control).tooltip_text = str(ROUTING_WORDS.get(id, ""))
 	box.add_child(bed.bed)
 	return {"box": box, "keys": bed.keys}
 

@@ -22,6 +22,7 @@ extends RefCounted
 const InfraIcons := preload("res://scripts/infra_icons.gd")
 const MONEY_EPSILON := 0.0001
 const LandPrice := preload("res://scripts/land_price.gd")
+const MiningSites := preload("res://scripts/mining_sites.gd")
 
 
 # --- Browse: what may be built -------------------------------------------------------------
@@ -207,7 +208,7 @@ static func tile_produces_good(tile_data: Dictionary, internal_name: String) -> 
 ## Is there physical room for the building, counting everyone's buildings, live projects and
 ## reserved upgrades? The one absolute limit: owned land can be bought, this cannot.
 static func has_physical_room(tile_id: String, building_id: String) -> bool:
-	var needed := maxf(0.0, float(Catalog.get_building(building_id).get("tile_size_used", 1.0)))
+	var needed := maxf(0.0, Catalog.land_units(Catalog.get_building(building_id)))
 	return BuildingState.get_tile_space_used(tile_id) + needed <= float(BuildingState.max_tile_land(tile_id))
 
 
@@ -250,7 +251,7 @@ static func site_check(building_id: String, recipe_id: String, tile_data: Dictio
 static func land_plan(tile_id: String, building_id: String, buy_land: bool = false, level: int = 1) -> Dictionary:
 	var building := Catalog.get_building(building_id)
 	var internal := str(building.get("internal_name", ""))
-	var needed := maxf(0.0, float(building.get("tile_size_used", 1.0))) * preload("res://scripts/building_levels.gd").mult("size", level)
+	var needed := maxf(0.0, Catalog.land_units(building)) * preload("res://scripts/building_levels.gd").mult("size", level)
 	var projected := BuildingState.get_tile_space_used(tile_id) + needed
 	var max_land := BuildingState.max_tile_land(tile_id)
 	var player_projected := BuildingState.get_tile_player_space_used(tile_id) + needed
@@ -537,6 +538,11 @@ static func _quote(building_id: String, recipe_id: String, tile_id: String, tile
 					blocks.append({"key": "deposit", "text": "This tile has no deposit for this recipe."})
 				"other":
 					blocks.append({"key": "requirement", "text": "This tile does not meet the recipe's requirements."})
+			# A mine's seam after the build, in units a turn (docs/pacing-labour-mining-licensing-spec.md §8.8).
+			var seam := MiningSites.site_after(building_id, recipe_id, tile_id, Construction.placing_level)
+			if not seam.is_empty():
+				q["seam"] = seam
+				warnings.append({"key": "seam", "text": MiningSites.after_words(seam)})
 			var blind := blind_deposit(tile_data, recipe, tile_id)
 			if blind != "":
 				warnings.append({"key": "blind_deposit",

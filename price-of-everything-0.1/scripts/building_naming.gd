@@ -188,8 +188,11 @@ static func name_for_recipe(recipe_id: String) -> String:
 	var recipe: Dictionary = Catalog.get_recipe(recipe_id)
 	return name_for(str(recipe.get("building_id", "")), recipe_id)
 
-## The name of a building instance or construction project dictionary, with its letter on its tile.
+## The name of a building instance or construction project dictionary, with its letter on its tile, or the
+## instance's own name where it has one (a start's "Original Furnace", docs/building-names.md).
 static func of(b: Dictionary) -> String:
+	if str(b.get("name", "")) != "":
+		return str(b.name)
 	return label_for_tile(str(b.get("tile_id", "")), str(b.get("instance_id", "")), str(b.get("building_id", "")),
 		str(b.get("recipe_id", "")))
 
@@ -317,6 +320,9 @@ static func _is_letter(word: String) -> bool:
 ## Full label for a building/project on a tile, deriving the letter from its order
 ## among the tile's buildings (built first, then under-construction projects).
 static func label_for_tile(tile_id: String, instance_id: String, building_id: String, recipe_id: String) -> String:
+	var own := str(BuildingState.buildings.get(instance_id, {}).get("name", ""))
+	if own != "":
+		return own
 	var idx := -1
 	var blds: Array = BuildingState.get_buildings_on_tile(tile_id)
 	for i in blds.size():

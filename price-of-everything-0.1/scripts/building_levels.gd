@@ -28,6 +28,10 @@ const SIZE_MULT   := {1: 1.0, 2: 1.8, 3: 2.5}
 # Every production-building upgrade includes this base kit (good_internal: qty).
 const _BASE_KIT := {"building_frame": 2, "construction_equipment_ice": 1, "concrete": 10}
 
+## The base kit every production upgrade takes ({good_internal: qty}); a deeper shaft takes one too.
+static func kit_materials() -> Dictionary:
+	return _BASE_KIT.duplicate()
+
 # Per-building EXTRA materials on top of the base kit, by target level.
 const _EXTRAS := {
 	"electrolyser":          {2: {"electrical_components": 2}, 3: {"electrical_components": 6, "computer": 2}},

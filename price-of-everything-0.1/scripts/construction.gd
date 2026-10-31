@@ -738,7 +738,7 @@ func placing_duration(building_id: String) -> int:
 
 ## The land `building_id` takes at the placing level.
 func placing_size(building_id: String) -> float:
-	return float(Catalog.get_building(building_id).get("tile_size_used", 1)) * BuildingLevels.mult("size", placing_level)
+	return Catalog.land_units(Catalog.get_building(building_id)) * BuildingLevels.mult("size", placing_level)
 
 
 func _promote(instance_id: String) -> void:

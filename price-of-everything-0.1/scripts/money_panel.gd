@@ -75,6 +75,8 @@ var _proj_profit_sharing_value: Label
 var _carbon_tax_value: Label
 var _proj_carbon_tax_value: Label
 var _green_subsidy_value: Label
+var _royalties_value: Label
+var _licence_sales_value: Label
 var _proj_green_subsidy_value: Label
 @onready var proj_total_costs_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_TotalCostsRow/TotalCostsValue
 @onready var proj_operating_profit_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_OperatingProfitRow/OperatingProfitValue
@@ -365,14 +367,18 @@ func _ready() -> void:
 	_normalise_balance_rows()
 	_warehousing_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Warehousing")
 	_proj_warehousing_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Warehousing")
-	# A start's opening costs (MatchState.one_off_charges): only in the turn they are paid.
-	_one_off_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Opening costs")
+	# One-off charges (MatchState.one_off_charges: a start's opening costs, settlements, licence fees): only in the
+	# turn they are paid, each listed in the row's tooltip.
+	_one_off_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Fees and settlements")
 	_carbon_tax_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Carbon tax")
+	# Research licensing: royalties on revenue, and licences sold (both only in a turn that has them).
+	_royalties_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Royalties")
 	_proj_carbon_tax_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Carbon tax")
 	# Green subsidy is INCOME: insert into the revenue sections after the power-sales row.
 	var revenue_section := $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection as VBoxContainer
 	var proj_revenue_section := $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_RevenueSection as VBoxContainer
 	_green_subsidy_value = _insert_finance_row(revenue_section, "PowerSalesRow", "Green subsidy", "+£0.00")
+	_licence_sales_value = _insert_finance_row(revenue_section, "PowerSalesRow", "Licence sales", "+£0.00")
 	_proj_green_subsidy_value = _insert_finance_row(proj_revenue_section, "Proj_PowerSalesRow", "Green subsidy", "+£0.00")
 	var projection_content := $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent as VBoxContainer
 	_profit_sharing_value = _insert_finance_row(_balance_content, "DividendsRow", "Profit Sharing", "-£0.00")
@@ -551,14 +557,14 @@ func _on_buildings_changed(_arg = null) -> void:
 
 static func total_revenue_of(s: Dictionary) -> float:
 	return float(s.get("goods_sales_revenue", 0.0)) + float(s.get("power_sales_revenue", 0.0)) \
-		+ float(s.get("green_subsidy_received", 0.0))
+		+ float(s.get("green_subsidy_received", 0.0)) + float(s.get("licence_income", 0.0))
 
 static func operating_costs_of(s: Dictionary) -> float:
 	return float(s.get("maintenance_paid", 0.0)) + float(s.get("labour_paid", 0.0)) \
 		+ float(s.get("advisor_paid", 0.0)) + float(s.get("transport_paid", 0.0)) \
 		+ float(s.get("power_purchase_cost", 0.0)) + float(s.get("goods_purchased_cost", 0.0)) \
 		+ float(s.get("warehousing_paid", 0.0)) + float(s.get("carbon_tax_paid", 0.0)) \
-		+ float(s.get("one_off_paid", 0.0))
+		+ float(s.get("one_off_paid", 0.0)) + float(s.get("royalties_paid", 0.0))
 
 ## Must equal Production.cash_change_of: operating flows plus the intermediary's operating loans.
 static func net_cash_of(s: Dictionary) -> float:
@@ -617,8 +623,18 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	var one_off := float(summary.get("one_off_paid", 0.0))
 	_one_off_value.text = "-£%.2f" % one_off
 	_one_off_value.get_parent().visible = one_off > 0.0
+	var one_off_lines := PackedStringArray()
+	for line: Dictionary in summary.get("one_off_lines", []):
+		one_off_lines.append("%s: £%.2f" % [str(line.get("label", "")), float(line.get("amount", 0.0))])
+	(_one_off_value.get_parent() as Control).tooltip_text = "\n".join(one_off_lines)
 	_carbon_tax_value.text = "-£%.2f" % carbon_tax
 	_green_subsidy_value.text = "+£%.2f" % green_subsidy
+	var royalties := float(summary.get("royalties_paid", 0.0))
+	_royalties_value.text = "-£%.2f" % royalties
+	_royalties_value.get_parent().visible = royalties > 0.0
+	var licence_sales := float(summary.get("licence_income", 0.0))
+	_licence_sales_value.text = "+£%.2f" % licence_sales
+	_licence_sales_value.get_parent().visible = licence_sales > 0.0
 	total_costs_value.text = "-£%.2f" % total_costs
 	_update_section_totals(total_revenue, total_costs)
 	
@@ -914,9 +930,7 @@ func _project_next_turn() -> Dictionary:
 	var posttax: float = pretax - tax
 	var dividend_base := maxf(posttax, 0.0)
 	var dividends: float = minf(dividend_base, dividend_base * EconomyConfig.DIVIDEND_RATE)
-	var profit_sharing := 0.0
-	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
-		profit_sharing = maxf(0.0, posttax - dividends) * 0.05
+	var profit_sharing := maxf(0.0, posttax - dividends) * LabourState.profit_share_rate()
 	var net_cashflow: float = posttax - dividends - profit_sharing
 	
 	return {

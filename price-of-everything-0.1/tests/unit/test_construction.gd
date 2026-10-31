@@ -1503,7 +1503,7 @@ func _test_upgrade_reserved_space_blocks() -> void:
 	_check(BuildingWorks.pending_upgrades.is_empty()
 		and int((BuildingState.get_building("resv_a") as Dictionary).get("level", 1)) == 2,
 		"upgrade hold: the upgrade completes and the hold is released")
-	var grown: float = 15.0 * (BuildingLevels.mult("size", 2) - BuildingLevels.mult("size", 1))
+	var grown: float = Catalog.land_units(Catalog.get_building("b_009")) * (BuildingLevels.mult("size", 2) - BuildingLevels.mult("size", 1))
 	_check(absf(BuildingState.get_tile_space_used(tile) - (held_used - 12.0 + grown)) < 0.01,
 		"upgrade hold: the finished building takes the room, counted once, not twice")
 
@@ -1737,45 +1737,45 @@ func _test_construction_rules() -> void:
 	MatchState.reset()
 
 
-## Infrastructure LEVEL sets how far one turn-move reaches (owner ruling 2026-08-09):
-## roads 2-3-5, rail 4-6-9, pipes and reinforced pipes 2-3-5, ports 10-16-25. Range is not only
-## speed — freight is charged per leg and a leg is one turn-move — so this also locks the
-## invariant the ranges were chosen against: pipe stays the cheapest way to move a fluid at
-## EVERY level pairing and distance, however far rail out-ranges it.
+## Infrastructure LEVEL sets how far one turn-move reaches (docs/pacing-labour-mining-licensing-spec.md §7.6, AC38.1):
+## roads 1-2-4, rail 3-5-8, pipes and reinforced pipes 2-3-5, ports 8-12-20. Speed is transit time only: freight is
+## priced by the tile (EconomyConfig.FREIGHT_TILE_MULT), cheaper a tile at higher levels. This also locks the invariant
+## the tanker premium was chosen against: pipe is the cheaper line for a fluid at matched levels.
 func _test_infra_level_ranges() -> void:
 	var expected := {
-		"roads": [2, 3, 5], "rail": [4, 6, 9],
-		"pipes": [2, 3, 5], "reinf_pipes": [2, 3, 5], "port": [10, 16, 25],
+		"roads": [1, 2, 4], "rail": [3, 5, 8],
+		"pipes": [2, 3, 5], "reinf_pipes": [2, 3, 5], "port": [8, 12, 20],
 	}
 	var table_ok := true
 	for mode in expected:
 		for i in 3:
-			if EconomyConfig.infra_range_for_level(str(mode), i + 1) != int((expected[mode] as Array)[i]):
+			if EconomyConfig.infra_speed_for_level(str(mode), i + 1) != int((expected[mode] as Array)[i]):
 				table_ok = false
-	_check(table_ok, "infra levels: every mode's 3 ranges match the ruling")
-	_check(EconomyConfig.infra_range_for_level("cables", 2) == 0,
+	_check(table_ok, "infra levels: every mode's 3 speeds match the spec")
+	_check(EconomyConfig.infra_speed_for_level("cables", 2) == 0,
 		"infra levels: a mode with no level table reports 0 so the caller keeps the flat range")
 
-	# Level 1 must equal the flat infrastructure.csv range, or an un-upgraded tile would change
-	# behaviour the moment the table was introduced.
+	# Level 1 must equal the flat infrastructure.csv range, the fallback for an unlevelled tile.
 	var l1_matches := true
 	for mode in ["roads", "rail", "pipes", "reinf_pipes", "port"]:
-		if EconomyConfig.infra_range_for_level(str(mode), 1) != Catalog.infra_range(str(mode)):
+		if EconomyConfig.infra_speed_for_level(str(mode), 1) != Catalog.infra_range(str(mode)):
 			l1_matches = false
-	_check(l1_matches, "infra levels: level 1 still equals the flat CSV range")
+	_check(l1_matches, "infra levels: level 1 equals the flat CSV range")
 
 	# The player-facing accordions use InfrastructureInfo, so they must expose the same
-	# per-level ranges as routing rather than repeating the level-1 value for every row.
+	# per-level speeds as routing rather than repeating the level-1 value for every row.
 	var panel_ranges_ok := true
 	for mode in expected:
 		for i in 3:
 			var shown := str(InfrastructureInfo.level_stats(str(mode), i + 1).get("tiles", ""))
-			var want := "%d tiles / turn" % int((expected[mode] as Array)[i])
-			if shown != want:
+			var n := int((expected[mode] as Array)[i])
+			if shown != "%d tile%s / turn" % [n, "" if n == 1 else "s"]:
 				panel_ranges_ok = false
-	_check(panel_ranges_ok, "infra levels: building details shows each level's range")
+	_check(panel_ranges_ok, "infra levels: building details shows each level's speed")
+	_check(str(InfrastructureInfo.level_stats("roads", 1).get("cost", "")).ends_with("/ unit / tile"),
+		"infra levels: the cost line reads per unit per tile (AC38.4)")
 
-	# A real route over a rail chain: 9 tiles is 3 turn-moves at L1 and 1 at L3.
+	# A real route over a rail chain: 9 tiles is 3 turn-moves at L1 and 2 at L3.
 	var saved_infra: Dictionary = Catalog._tile_infra.duplicate(true)
 	var saved_levels: Dictionary = Catalog._tile_infra_levels.duplicate(true)
 	var chain: Array = []
@@ -1788,62 +1788,46 @@ func _test_infra_level_ranges() -> void:
 	var src: String = str(chain[0])
 	var dst: String = str(chain[chain.size() - 1])
 	var coal := "g_001"
-	var turns_l1 := int(Catalog.route(src, dst, coal).get("turns", -1))
+	var route_l1: Dictionary = Catalog.route(src, dst, coal)
 	for t in chain:
 		Catalog.set_tile_infra_level(str(t), "rails", 3)
-	var turns_l3 := int(Catalog.route(src, dst, coal).get("turns", -1))
-	_check(turns_l1 == 3 and turns_l3 == 1,
-		"infra levels: a 9-tile rail haul is 3 turn-moves at L1 and 1 at L3 (got %d, %d)"
-			% [turns_l1, turns_l3])
-	# Freight is per leg, so that speed-up is also a 3x discount on the same cargo.
-	var l1_cost: float = EconomyConfig.transport_cost_for_route(
-		coal, 100, {"legs": [{"mode": "rail"}, {"mode": "rail"}, {"mode": "rail"}]})
-	var l3_cost: float = EconomyConfig.transport_cost_for_route(coal, 100, {"legs": [{"mode": "rail"}]})
-	_check(is_equal_approx(l1_cost, l3_cost * 3.0),
-		"infra levels: fewer legs is proportionally cheaper — L3 rail is a third of L1 over 9 tiles")
+	var route_l3: Dictionary = Catalog.route(src, dst, coal)
+	_check(int(route_l1.get("turns", -1)) == 3 and int(route_l3.get("turns", -1)) == 2,
+		"infra levels: a 9-tile rail haul is 3 turn-moves at L1 and 2 at L3 (got %d, %d)"
+			% [int(route_l1.get("turns", -1)), int(route_l3.get("turns", -1))])
+	# Freight is per tile: L3 rail charges 0.5/9 a tile against L1's 0.125, so the same 9 tiles cost 4/9 as much.
+	var l1_cost: float = EconomyConfig.transport_cost_for_route(coal, 100, route_l1)
+	var l3_cost: float = EconomyConfig.transport_cost_for_route(coal, 100, route_l3)
+	_check(l1_cost > 0.0 and is_equal_approx(l3_cost, l1_cost * 4.0 / 9.0),
+		"infra levels: the same 9 tiles cost 4/9 as much on L3 rail as on L1 (%.4f vs %.4f)" % [l3_cost, l1_cost])
 	Catalog._tile_infra = saved_infra
 	Catalog._tile_infra_levels = saved_levels
 	Catalog._route_cache.clear()
 
-	# What the numbers actually buy, measured rather than assumed. Pipe is the cheapest fluid
-	# haul at every level pairing EXCEPT one: a level-1 pipe against a level-3 rail, where rail's
-	# 4.5x range advantage finally beats the 3x tanker premium. Roads never win anywhere.
-	# NOTE the live consequence: _route_uncached prefers pipes unconditionally, so in that one
-	# case the game routes down the DEARER pipe. Keep the exception locked here so it stays a
-	# known trade rather than a surprise.
+	# What the numbers buy, a tile at a time. Pipe is the cheaper fluid line at every level pairing EXCEPT a level 1
+	# pipe against a level 3 rail tanker (3/9 a tile against 1/2). Roads never win. _route_uncached prefers pipes
+	# unconditionally, so in that one case the game routes down the dearer pipe: locked here as a known trade.
 	var water := "g_009"
 	var pipe_loses: Array = []
 	var road_ever_wins := false
 	for pipe_lvl in [1, 2, 3]:
 		for land_lvl in [1, 2, 3]:
-			var pipe_r: int = EconomyConfig.infra_range_for_level("pipes", pipe_lvl)
-			var rail_r: int = EconomyConfig.infra_range_for_level("rail", land_lvl)
-			var road_r: int = EconomyConfig.infra_range_for_level("roads", land_lvl)
-			for d in range(1, 31):
-				var pipe_c := float(ceili(float(d) / float(pipe_r)))
-				var rail_c := float(ceili(float(d) / float(rail_r))) * EconomyConfig.fluid_overland_mult(water, "rail")
-				var road_c := float(ceili(float(d) / float(road_r))) * EconomyConfig.fluid_overland_mult(water, "roads")
-				if road_c < pipe_c:
-					road_ever_wins = true
-				if rail_c < pipe_c:
-					var pair := "pipeL%d-vs-railL%d" % [pipe_lvl, land_lvl]
-					if not pipe_loses.has(pair):
-						pipe_loses.append(pair)
+			var pipe_c := EconomyConfig.freight_tile_mult(water, "pipes", pipe_lvl)
+			var rail_c := EconomyConfig.freight_tile_mult(water, "rail", land_lvl)
+			var road_c := EconomyConfig.freight_tile_mult(water, "roads", land_lvl)
+			if road_c < pipe_c - 1e-9:
+				road_ever_wins = true
+			if rail_c < pipe_c - 1e-9:
+				pipe_loses.append("pipeL%d-vs-railL%d" % [pipe_lvl, land_lvl])
 	_check(not road_ever_wins,
-		"infra levels: road never beats pipe for a fluid, at any level pairing or distance")
+		"infra levels: road never beats pipe for a fluid, at any level pairing")
 	_check(pipe_loses == ["pipeL1-vs-railL3"],
-		"infra levels: rail out-costs pipe ONLY when the pipe is two levels behind (got %s)"
-			% str(pipe_loses))
-	# And at matched levels — the case a player who upgrades evenly will actually be in —
-	# pipe wins outright at every distance.
+		"infra levels: rail out-costs pipe ONLY when the pipe is two levels behind (got %s)" % str(pipe_loses))
 	var matched_ok := true
 	for lvl in [1, 2, 3]:
-		var pr: int = EconomyConfig.infra_range_for_level("pipes", lvl)
-		var rr: int = EconomyConfig.infra_range_for_level("rail", lvl)
-		for d in range(1, 31):
-			if float(ceili(float(d) / float(rr))) * 3.0 <= float(ceili(float(d) / float(pr))):
-				matched_ok = false
-	_check(matched_ok, "infra levels: at matched levels pipe beats rail at every distance")
+		if EconomyConfig.freight_tile_mult(water, "rail", lvl) <= EconomyConfig.freight_tile_mult(water, "pipes", lvl):
+			matched_ok = false
+	_check(matched_ok, "infra levels: at matched levels pipe beats rail a tile")
 
 
 func _test_infra_upgrade() -> void:

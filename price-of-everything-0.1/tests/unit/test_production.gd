@@ -124,7 +124,7 @@ func _test_land_chart_matches_upgrade_gate() -> void:
 	var TVD := load("res://scripts/tile_view_data.gd")
 	var tile := "tile_land_chart_test_only"
 	var bid := "b_007"
-	var base: float = maxf(0.0, float(Catalog.get_building(bid).get("tile_size_used", 1)))
+	var base: float = maxf(0.0, Catalog.land_units(Catalog.get_building(bid)))
 	if base <= 0.0:
 		_check(false, "land chart: test building has a footprint")
 		return

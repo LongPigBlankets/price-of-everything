@@ -369,6 +369,28 @@ const DECISION_DEFINITIONS := {
 	# Story one-shot: SolvencyState force-draws this the first time cash hits −£500 with
 	# a CFO seated. The CFO proposes it, so accepting follows them (+2.0 company scope),
 	# refusing snubs them (−0.5).
+	# A finite seam down to a quarter of its start (docs/pacing-labour-mining-licensing-spec.md §8.7): MatchState.seams
+	# draws it once per site, for that site (draw_with_target), never the pulse. The cash is the site's own
+	# (seam_shaft_cost, seam_sale_value); the rest is MatchState.seams.apply.
+	"seam_running_out": {
+		"title": "Seam Running Low",
+		"body": "{target_name} is down to a quarter of what it held. Work it harder, sell it while it is worth something, or mine it to the end.",
+		"scope": "tile", "category": "mining", "priority": PRIORITY_STORY,
+		"target_selector": "seam_site",
+		"cooldown_turns": 0, "weight": 1.0, "default_choice": "carry_on",
+		"choices": [
+			{"id": "deeper_shaft", "label": "Sink a deeper shaft",
+				"effects": [{"kind": "cash", "formula": "seam_shaft_cost"}, {"kind": "seam", "action": "deeper_shaft"}]},
+			{"id": "rob_pillars", "label": "Rob the pillars",
+				"effects": [{"kind": "seam", "action": "rob_pillars"}]},
+			{"id": "heavy_blasting", "label": "Heavy blasting",
+				"effects": [{"kind": "seam", "action": "heavy_blasting"}]},
+			{"id": "sell_reserves", "label": "Sell with reserves",
+				"effects": [{"kind": "cash", "formula": "seam_sale_value"}, {"kind": "seam", "action": "sell_reserves"}]},
+			{"id": "carry_on", "label": "Carry on",
+				"effects": [{"kind": "seam", "action": "carry_on"}]},
+		],
+	},
 	# The carbon levy's advance notice (decarbonisation squeeze): PolicyState reserves
 	# this for turn 90 — a critical, non-dismissible government notice the player must
 	# read and acknowledge before the turn can end. Single choice, no effects; the levy
@@ -802,6 +824,20 @@ func _emit_pulse_forewarn(_turn: int) -> void:
 		"auto_dismiss_turns": PULSE_LEAD_TURNS + 1,
 	})
 
+## Draws `def_id` now for a given target, past the pulse (a seam card for its site): it shows at the next DECIDE.
+func draw_with_target(def_id: String, target: Dictionary) -> bool:
+	if not DECISION_DEFINITIONS.has(def_id) or target.is_empty() or pending_queue.size() >= PENDING_QUEUE_CAP:
+		return false
+	var d := {"uid": "dec_%d" % _next_uid, "def_id": def_id, "target": target.duplicate(true),
+		"turn_drawn": int(TurnManager.current_turn)}
+	_next_uid += 1
+	pending_queue.append(d)
+	decision_drawn.emit(d)
+	pending_changed.emit()
+	if auto_resolve:
+		auto_resolve_pending()
+	return true
+
 ## Debug/test hook: force a definition to draw now (respecting target selection).
 ## Stacks onto the queue; only refuses when the queue is full.
 func force_draw(def_id: String) -> String:
@@ -1006,7 +1042,7 @@ func pending_view(uid: String = "") -> Dictionary:
 		var lock_reason := ""
 		if not available:
 			lock_reason = "Needs the %s seat filled at least one turn ago." % _seat_name(seat)
-		var cost := _upfront_cost(choice)
+		var cost := _upfront_cost(choice, target)
 		var shortfall := loan_needed_for(cost)
 		choices.append({
 			"id": str(choice.id),
@@ -1016,6 +1052,8 @@ func pending_view(uid: String = "") -> Dictionary:
 			"consequence": _describe_effects(choice.get("effects", []), target),
 			"figures": choice_figures(str(d.def_id), str(choice.id), target),
 			"words": choice_words(str(d.def_id), str(choice.id), target),
+			"brief": choice_brief(str(d.def_id), str(choice.id), target),
+			"detail": choice_detail(str(d.def_id), str(choice.id), target),
 			"upfront_cost": cost,
 			"loan_shortfall": shortfall,
 			"advocate": _advocate_view(choice, follow_delta),
@@ -1069,11 +1107,14 @@ func _tenured_advisor_in_seat(seat_id: String) -> String:
 		return ""
 	return aid
 
-func _upfront_cost(choice: Dictionary) -> float:
+func _upfront_cost(choice: Dictionary, target: Dictionary = {}) -> float:
 	var cost := 0.0
 	for eff: Dictionary in choice.get("effects", []):
-		if str(eff.get("kind", "")) == "cash" and eff.has("amount") and float(eff.amount) < 0.0:
-			cost += -float(eff.amount)
+		if str(eff.get("kind", "")) != "cash":
+			continue
+		var amount := _cash_amount(eff, target) if eff.has("formula") else float(eff.get("amount", 0.0))
+		if amount < 0.0:
+			cost += -amount
 	return cost
 
 
@@ -1201,6 +1242,8 @@ func _execute_effects(effects: Array, target: Dictionary) -> void:
 				ResearchState.activate_global_trade_license()
 			"distressed_program":
 				SolvencyState.accept_distressed_program()
+			"seam":
+				MatchState.seams.apply(str(eff.get("action", "")), str(target.get("tile_id", "")), str(target.get("token", "")))
 			"none":
 				pass   # describe-only choice (e.g. "tough it out")
 
@@ -1239,6 +1282,11 @@ func _pay_with_loan_fallback(cost: float) -> void:
 	MatchState.add_money(-cost)
 
 func _cash_amount(eff: Dictionary, target: Dictionary) -> float:
+	match str(eff.get("formula", "")):
+		"seam_shaft_cost":
+			return -MatchState.seams.shaft_cost(str(target.get("tile_id", "")), str(target.get("token", "")))
+		"seam_sale_value":
+			return MatchState.seams.sale_value(str(target.get("tile_id", "")), str(target.get("token", "")))
 	if str(eff.get("formula", "")) == "pct_of_building_revenue":
 		var report: Dictionary = Production.turn_report_for(str(target.get("instance_id", "")))
 		var revenue := 0.0
@@ -1380,6 +1428,8 @@ func _describe_effect(eff: Dictionary, target: Dictionary) -> String:
 			return "Direct trade on the global market"
 		"schedule_event":
 			return "A follow up in %d turns" % int(eff.get("in_turns", 0))
+		"seam":
+			return MatchState.SeamCards.summary(str(eff.get("action", "")))
 		"set_flag":
 			return "%s is exempt from environmental events" % str(target.get("name", "It"))
 		"sell_land":
@@ -1421,6 +1471,22 @@ func choice_figures(def_id: String, choice_id: String, target: Dictionary) -> Ar
 				out.append({"kind": "turns", "value": int(eff.get("turns", 0)), "caption": "Turns of delay"})
 	return out
 
+## A choice in a few lines, each led by its icon (the seam card's, MatchState.seams.brief): [{icon, text, tone}].
+func choice_brief(def_id: String, choice_id: String, target: Dictionary) -> Array:
+	var out: Array = []
+	for eff: Dictionary in _find_choice(DECISION_DEFINITIONS.get(def_id, {}), choice_id).get("effects", []):
+		if str(eff.get("kind", "")) == "seam":
+			out.append_array(MatchState.seams.brief(str(eff.get("action", "")), str(target.get("tile_id", "")), str(target.get("token", ""))))
+	return out
+
+
+## A choice explained in full, for the plate that opens over it (MatchState.seams.detail), or {}.
+func choice_detail(def_id: String, choice_id: String, target: Dictionary) -> Dictionary:
+	for eff: Dictionary in _find_choice(DECISION_DEFINITIONS.get(def_id, {}), choice_id).get("effects", []):
+		if str(eff.get("kind", "")) == "seam":
+			return MatchState.seams.detail(str(eff.get("action", "")), str(target.get("tile_id", "")), str(target.get("token", "")))
+	return {}
+
 ## A choice's effects that have no figure, in words, one sentence each ("The CFO's chair for 30
 ## turns, unpaid."). With choice_figures, the whole of `consequence`.
 func choice_words(def_id: String, choice_id: String, target: Dictionary) -> Array:
@@ -1428,7 +1494,7 @@ func choice_words(def_id: String, choice_id: String, target: Dictionary) -> Arra
 	var choice := _find_choice(DECISION_DEFINITIONS.get(def_id, {}), choice_id)
 	for eff: Dictionary in choice.get("effects", []):
 		if not eff.has("describe") and str(eff.get("kind", "")) in \
-				["cash", "sell_land", "founder_loan", "freight_credit", "middleman_credit", "construction_delta"]:
+				["cash", "sell_land", "founder_loan", "freight_credit", "middleman_credit", "construction_delta", "seam"]:
 			continue
 		var text := _describe_effect(eff, target)
 		if text != "":

@@ -2,8 +2,8 @@ extends Control
 ## The People panel in DS2 (docs/people-ds2-plan.md), built into the panel (scripts/people_panel.gd).
 ##
 ## The shell is a painted steel cabinet in machinery green (people_backing: three bolted sheets, two hinges down
-## the left), one width for both tabs. A fixed head: the PEOPLE nameplate (the tile view's black enamel, the name
-## printed white), the two latching tab keys on their key bed (the open one latched down), Close. Under it the
+## the left), one width for every tab. A fixed head: the PEOPLE nameplate (the tile view's black enamel, the name
+## printed white), the three latching tab keys on their key bed (the open one latched down), Close. Under it the
 ## ribbed seam, where the open tab's body scrolls on Building Detail's steel rail. The lamp lights the panel part
 ## by part (scripts/ds2/lamp_overlay.gd), its sheets and parts added later too, as Building Detail's.
 
@@ -20,8 +20,9 @@ const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const UIFonts := preload("res://scripts/ui_fonts.gd")
 const AdvisorsTab := preload("res://scripts/people_ds2/advisors_ds2.gd")
 const LabourTab := preload("res://scripts/people_ds2/labour_ds2.gd")
+const StrikesTab := preload("res://scripts/people_ds2/strikes_ds2.gd")
 
-const TABS := ["Advisors", "Labour"]
+const TABS := ["Advisors", "Labour", "Strikes"]
 ## Loyalty (−10..+10) under this is disloyal; the Advisors key's lamp then lights red.
 const DISLOYAL_BELOW := -3.4
 const DISLOYAL_LAMP := Color("#e2604a")
@@ -86,7 +87,7 @@ func _ready() -> void:
 	host.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	host.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(host)
-	for script: GDScript in [AdvisorsTab, LabourTab]:
+	for script: GDScript in [AdvisorsTab, LabourTab, StrikesTab]:
 		var body: Control = script.new()
 		body.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		host.add_child(body)
@@ -100,6 +101,7 @@ func _ready() -> void:
 	LampOverlay.attach(self)
 	AdvisorState.advisors_changed.connect(_refresh_key_lamps)
 	AdvisorState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _refresh_key_lamps())
+	LabourState.unrest_changed.connect(_refresh_key_lamps)
 	_refresh_key_lamps()
 
 
@@ -190,7 +192,7 @@ func _draw_nameplate(n: Control) -> void:
 
 # --- tabs ----------------------------------------------------------------------------------------
 
-## Shows tab `i` (0 Advisors, 1 Labour), its key latched and the other's up.
+## Shows tab `i` (0 Advisors, 1 Labour, 2 Strikes), its key latched and the others up.
 func show_tab(i: int) -> void:
 	_tab = clampi(i, 0, TABS.size() - 1)
 	for j in _bodies.size():
@@ -215,6 +217,10 @@ func _refresh_key_lamps() -> void:
 	var disloyal := disloyal_count()
 	_keys[0].set("lamp", DISLOYAL_LAMP if disloyal > 0 else Color(0, 0, 0, 0))
 	_keys[0].tooltip_text = ("%d disloyal advisor%s" % [disloyal, "" if disloyal == 1 else "s"]) if disloyal > 0 else ""
+	var u := LabourState.unrest
+	var unrest := not u.warning.is_empty() or not u.active.is_empty()
+	_keys[2].tooltip_text = ("Strike warning for turn %d" % int(u.warning.get("turn", 0))) if not u.warning.is_empty() \
+		else ("%d building%s on strike" % [u.active.size(), "" if u.active.size() == 1 else "s"] if unrest else "")
 
 
 func current_tab() -> int:

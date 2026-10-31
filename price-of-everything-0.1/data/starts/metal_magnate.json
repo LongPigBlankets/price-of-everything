@@ -11,16 +11,17 @@
 	"opening_batches": 0,
 	"money": 300,
 	"steady_profit_per_turn": 24,
+	"demo_deposit_overrides": { "tile_6_8": { "coal": 2000 } },
 	"buildings": [
 		{ "building_id": "b_001", "recipe_id": "r_001", "tile_id": "tile_6_8", "output_to": "market" },
 		{ "building_id": "b_001", "recipe_id": "r_002", "tile_id": "tile_7_10", "output_to": "market" },
-		{ "building_id": "b_002", "recipe_id": "r_005", "tile_id": "tile_9_9", "output_to": "market" },
+		{ "building_id": "b_002", "recipe_id": "r_005", "tile_id": "tile_9_9", "output_to": "market", "name": "Original Furnace", "legacy_anchor": true },
 		{ "building_id": "b_003", "recipe_id": "r_004", "tile_id": "tile_9_9" }
 	],
 	"labour": {
-		"multiplier": 1.2,
+		"multiplier": 1.0,
 		"satisfaction": 40,
-		"idle_pay_share": 0.5
+		"idle_pay_share": 0.75
 	},
 	"land": {
 		"tile_6_8": 50,
@@ -40,7 +41,8 @@
 			"target_match": { "good_internal": "iron_ingots" },
 			"pct": 10.0,
 			"label": "Legacy of Metal: +10% iron ingot output",
-			"source": "start:metals_magnate"
+			"source": "start:metals_magnate",
+			"condition": "legacy_anchor"
 		},
 		{
 			"id": "start_metals_magnate_copper",
@@ -49,7 +51,8 @@
 			"target_match": { "good_internal": "copper_ingots" },
 			"pct": 10.0,
 			"label": "Legacy of Metal: +10% copper ingot output",
-			"source": "start:metals_magnate"
+			"source": "start:metals_magnate",
+			"condition": "legacy_anchor"
 		},
 		{
 			"id": "start_metals_magnate_alloy",
@@ -58,7 +61,8 @@
 			"target_match": { "good_internal": "alloy_ingots" },
 			"pct": 10.0,
 			"label": "Legacy of Metal: +10% alloy ingot output",
-			"source": "start:metals_magnate"
+			"source": "start:metals_magnate",
+			"condition": "legacy_anchor"
 		},
 		{
 			"id": "start_metals_magnate_steel",
@@ -67,7 +71,8 @@
 			"target_match": { "good_internal": "steel" },
 			"pct": 10.0,
 			"label": "Legacy of Metal: +10% steel output",
-			"source": "start:metals_magnate"
+			"source": "start:metals_magnate",
+			"condition": "legacy_anchor"
 		}
 	]
 }

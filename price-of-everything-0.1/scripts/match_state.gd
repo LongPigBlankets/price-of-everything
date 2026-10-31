@@ -104,6 +104,12 @@ const SURVEY_TURNS := 2                          # surveying a tile takes 2 turn
 # tile_5_3 -> {"coal": 480}). Seeded from the CSV "(amount)" on each deposit;
 # water never depletes so it is never tracked. Reaching 0 means the deposit is gone.
 var deposit_remaining: Dictionary = {}
+## Each finite seam's starting size (tile_id -> {token: qty}), for the seam card's quarter mark.
+var deposit_initial: Dictionary = {}
+## Seam cards: a finite seam running out (docs/pacing-labour-mining-licensing-spec.md §8.7).
+const SeamCards := preload("res://scripts/seam_cards.gd")
+const MiningSites := preload("res://scripts/mining_sites.gd")
+var seams: SeamCards = SeamCards.new()
 var _deposit_terrain = null  # HexMap, for counting a tile's deposits when surveyed
 # Single deposits revealed by building a mine on an unsurveyed tile: existence is
 # known but the size stays hidden and the tile remains "unsurveyed".
@@ -120,7 +126,8 @@ var sell_mode: int = SellMode.STOCKPILE_ALL
 
 # How the transport router picks a path between two tiles. FASTEST by default.
 enum RouteObjective { FASTEST, CHEAPEST, BLENDED }
-var route_objective: int = RouteObjective.FASTEST
+## The Routing switch: how every new shipment picks its route (Catalog._best_route). Cheapest by default.
+var route_objective: int = RouteObjective.CHEAPEST
 
 
 # When true (the default), building clicks open the redesigned Building Detail v2
@@ -259,9 +266,25 @@ func _on_survey_phase_started(phase: int) -> void:
 	if phase == TurnManager.Phase.PROCESS:
 		tick_surveys()
 		Power.tick_battery_fills()
+		seams.tick(int(TurnManager.current_turn))
+		# Before production: a start perk whose Original Furnace has gone ends this turn.
+		preload("res://scripts/legacy_perk.gd").reconcile()
+	elif phase == TurnManager.Phase.NARRATIVE:
+		seams.age()
 	elif phase == TurnManager.Phase.RECEIVE:
 		# Last phase of the turn: an offer whose closing ends now changes hands, and runs from next turn.
 		tick_purchases()
+
+
+## The era `turn` falls in: 1, 2 or 3 (EconomyConfig.era_spans of the charter; a demo counts on the campaign's turns).
+func era_for_turn(turn: int) -> int:
+	var span := EconomyConfig.DEMO_ERA_SPAN if preload("res://scripts/demo_build.gd").active() else TurnManager.MAX_TURNS
+	var spans := EconomyConfig.era_spans(span)
+	for i in spans.size():
+		if turn <= int(spans[i][1]):
+			return i + 1
+	return spans.size()
+
 # --- Public API: money ---
 func add_money(delta: float) -> void:
 	money += delta
@@ -478,6 +501,7 @@ func _complete_survey(tile_id: String, reveal_nearby: bool) -> void:
 func seed_deposits(terrain) -> void:
 	_deposit_terrain = terrain
 	deposit_remaining.clear()
+	deposit_initial.clear()
 	for coord in terrain.tiles:
 		var td: Dictionary = terrain.tiles[coord]
 		var tid := str(td.get("id", ""))
@@ -487,9 +511,30 @@ func seed_deposits(terrain) -> void:
 			qty = _normalized_deposit_qty(token, qty)
 			if token == "" or token == "water" or qty <= 0:
 				continue
+			qty = roundi(float(qty) * EconomyConfig.DEPOSIT_SIZE_MULT)
 			if not deposit_remaining.has(tid):
 				deposit_remaining[tid] = {}
+				deposit_initial[tid] = {}
 			deposit_remaining[tid][token] = qty
+			deposit_initial[tid][token] = qty
+
+## A start's demo seam sizes ({tile_id: {token: qty}}), set over the seeded ones when the match runs the demo
+## rules. Only a start snapshot carries them; a save keeps whatever remains.
+func _apply_demo_deposit_overrides(overrides: Variant) -> void:
+	if not overrides is Dictionary or (overrides as Dictionary).is_empty():
+		return
+	if str(ruleset.get("victory_set", "")) != "demo_itch":
+		return
+	for tid in overrides:
+		var per_tile: Variant = (overrides as Dictionary)[tid]
+		if not per_tile is Dictionary or not deposit_remaining.has(str(tid)):
+			continue
+		for token in per_tile:
+			if (deposit_remaining[str(tid)] as Dictionary).has(str(token)):
+				deposit_remaining[str(tid)][str(token)] = maxi(0, int((per_tile as Dictionary)[token]))
+				if not deposit_initial.has(str(tid)):
+					deposit_initial[str(tid)] = {}
+				deposit_initial[str(tid)][str(token)] = maxi(0, int((per_tile as Dictionary)[token]))
 
 ## True when `tile_id` carries an INEXHAUSTIBLE deposit of `token`.
 ##
@@ -522,6 +567,21 @@ func deplete_deposit(tile_id: String, token: String, amount: int) -> void:
 	deposits_changed.emit(tile_id)
 	if int(t[token]) == 0:
 		deposit_exhausted.emit(tile_id, token)
+	seams.on_charged(tile_id, token, int(t[token]), deposit_initial_for(tile_id, token))
+
+## A finite seam's starting size, or -1 for one that is not tracked.
+func deposit_initial_for(tile_id: String, token: String) -> int:
+	return int((deposit_initial.get(tile_id, {}) as Dictionary).get(token, deposit_remaining_for(tile_id, token)))
+
+## Add `amount` to a finite seam that has not run out (a deeper shaft, robbed pillars).
+func extend_deposit(tile_id: String, token: String, amount: int) -> void:
+	if amount <= 0 or not deposit_remaining.has(tile_id):
+		return
+	var t: Dictionary = deposit_remaining[tile_id]
+	if not t.has(token) or int(t[token]) <= 0:
+		return
+	t[token] = int(t[token]) + amount
+	deposits_changed.emit(tile_id)
 
 ## True if a deposit's existence is known to the player: fully surveyed reveals
 ## everything; otherwise a deposit must have been individually revealed (by
@@ -914,6 +974,7 @@ func reset() -> void:
 	pending_purchases.clear()
 	public_roads_last_turn = 0
 	one_off_charges = []
+	route_objective = RouteObjective.CHEAPEST
 	construct_material_source = "middleman"
 	construct_output_destination = "market"
 	power_priority_coal_gas = "self"
@@ -938,6 +999,7 @@ func reset() -> void:
 	sales_by_tile.clear()
 	Power.reset()
 	LabourState.reset()
+	seams.reset()
 	AdvisorState.reset()
 	ghost_holdings.clear()
 	fake_money_this_turn = 0.0
@@ -1032,7 +1094,9 @@ func export_state() -> Dictionary:
 		"surveying_reveal": surveying_reveal.duplicate(true),
 		"revealed_deposits": revealed_deposits.duplicate(true),
 		"deposit_remaining": deposit_remaining.duplicate(true),
+		"deposit_initial": deposit_initial.duplicate(true),
 	}
+	d.merge(seams.export_fields())
 	d.merge(ResearchState.export_fields())
 	d.merge(AdvisorState.export_fields())
 	d.merge(BuildingWorks.export_fields())
@@ -1085,7 +1149,7 @@ func import_state(d: Dictionary) -> void:
 	_match_rng.seed = match_rng_seed
 	_match_rng.state = SaveLoad.int64_in(d.get("advisor_rng_state"), _match_rng.state)
 	sell_mode = int(d.get("sell_mode", SellMode.STOCKPILE_ALL))
-	route_objective = int(d.get("route_objective", RouteObjective.FASTEST))
+	route_objective = int(d.get("route_objective", RouteObjective.CHEAPEST))
 	output_stockpile_destinations = (d.get("output_stockpile_destinations", {}) as Dictionary).duplicate(true)
 	output_split_destinations = (d.get("output_split_destinations", {}) as Dictionary).duplicate(true)
 	output_special_order_destinations = (d.get("output_special_order_destinations", {}) as Dictionary).duplicate(true)
@@ -1114,6 +1178,15 @@ func import_state(d: Dictionary) -> void:
 	# so the CSV-seeded yields from world_map._ready must survive the import. Full
 	# saves always carry the key and overwrite as usual.
 	deposit_remaining = (d.get("deposit_remaining", deposit_remaining) as Dictionary).duplicate(true)
+	# Older saves carry no starting sizes: the seeded ones stand, never below what remains.
+	deposit_initial = (d.get("deposit_initial", deposit_initial) as Dictionary).duplicate(true)
+	for tid in deposit_remaining:
+		for token in (deposit_remaining[tid] as Dictionary):
+			if not deposit_initial.has(tid):
+				deposit_initial[tid] = {}
+			deposit_initial[tid][token] = maxi(int((deposit_initial[tid] as Dictionary).get(token, 0)), int(deposit_remaining[tid][token]))
+	_apply_demo_deposit_overrides(d.get("demo_deposit_overrides", {}))
+	seams.import_fields(d)
 	ResearchState.import_fields(d)
 	MiniQuest.import_fields((d.get("mini_quest", {}) as Dictionary).duplicate(true))
 	# Derived state: the tile index is rebuilt, never saved; caches invalidate.
@@ -1216,7 +1289,8 @@ func throughput_multiplier(building: Dictionary) -> float:
 	var pct := LabourState.throughput_pct_for(bid)
 	if Modifiers.has_domain("throughput"):
 		pct += float(Modifiers.resolve_pct("throughput", bid,
-			{"building_id": bid, "instance_id": str(building.get("instance_id", ""))}).get("net", 0.0))
+			{"building_id": bid, "instance_id": str(building.get("instance_id", "")),
+			"goods_made": Catalog.goods_made(str(building.get("recipe_id", "")))}).get("net", 0.0))
 	return maxf(0.0, 1.0 + pct / 100.0)
 
 func set_route_objective(objective: int) -> void:

@@ -260,9 +260,9 @@ static func level_rows(key: String) -> Array:
 	for level in range(1, 4):
 		var stats: Dictionary = InfrastructureInfo.level_stats(key, level)
 		carry.append(str(int(round(TransportService.link_capacity(key, level)))))
-		var r := EconomyConfig.infra_range_for_level(key, level)
+		var r := EconomyConfig.infra_speed_for_level(key, level)
 		reach.append(str(r if r > 0 else Catalog.infra_range(key)))
-		cost.append(str(stats.get("cost", "")).replace("–", " to ").replace(" / unit / turn", "").replace(" / unit / tile", "/tile"))
+		cost.append(str(stats.get("cost", "")).replace(" / unit / tile", "/tile"))
 	return [carry, reach, cost]
 
 

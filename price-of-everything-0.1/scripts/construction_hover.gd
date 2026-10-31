@@ -95,7 +95,7 @@ static func preview(tile_id: String, building_id: String, recipe_id: String) -> 
 		transport += float(row.transport_cost)
 		arrival = maxi(arrival, int(row.market_turns))
 		missing = missing or int(row.short) > 0
-	var needed := roundi(float(building.get("tile_size_used", 1)))
+	var needed := roundi(Catalog.land_units(building))
 	var free := maxi(0, BuildingState.get_tile_land_owned(tile_id) - roundi(BuildingState.get_tile_player_space_used(tile_id)))
 	var patches := maxi(0, ceili(float(needed - free) / BuildingState.LAND_PATCH_SIZE))
 	var land := float(preload("res://scripts/land_price.gd").quote(tile_id, patches, false).total) if patches > 0 else 0.0

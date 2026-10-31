@@ -8,6 +8,7 @@ extends RefCounted
 ## `const BuildingStatus := preload("res://scripts/building_status.gd")` (no class_name, so
 ## it resolves in headless test runs too — see the GDScript gotcha in the test setup notes).
 
+const LegacyPerk := preload("res://scripts/legacy_perk.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 
 # RAG palette — identical values to the old v1 panel's STATUS_* consts (the contract
@@ -103,7 +104,8 @@ static func effective_energy_req(building: Dictionary, recipe: Dictionary) -> in
 	if energy_req <= 0:
 		return energy_req
 	var bid: String = str(building.get("building_id", ""))
-	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid})
+	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid,
+		"goods_made": Catalog.goods_made(str(recipe.get("recipe_id", building.get("recipe_id", ""))))})
 	return int(round(eff * BuildingLevels.mult("energy", int(building.get("level", 1)))
 		* MatchState.throughput_multiplier(building) * LabourState.workforce_power_multiplier(building)))
 
@@ -119,6 +121,7 @@ static func effective_power_output(building: Dictionary, recipe: Dictionary) -> 
 		"recipe_id": rid,
 		"recipe_type": str(recipe.get("recipe_type", "")).to_lower(),
 		"building_id": str(building.get("building_id", "")),
+		"instance_id": str(building.get("instance_id", "")),
 		"good_id": "power",
 		"good_internal": "power",
 	}
@@ -356,6 +359,12 @@ static func net_output_modifier(building: Dictionary, recipe: Dictionary) -> Dic
 	}
 	var res: Dictionary = Modifiers.resolve_pct("recipe_output", recipe_id, ctx)
 	var net: float = float(res.get("net", 0.0))
+	# Research throughput (inputs and outputs together), already inside MatchState.throughput_multiplier below; listed
+	# so the tooltip names it.
+	var throughput_parts: Array = []
+	if Modifiers.has_domain("throughput"):
+		throughput_parts = Modifiers.resolve_pct("throughput", str(ctx.building_id), {"building_id": str(ctx.building_id),
+			"instance_id": str(ctx.instance_id), "goods_made": Catalog.goods_made(recipe_id)}).get("parts", [])
 	var workforce_mult: float = LabourState.workforce_output_multiplier() * MatchState.throughput_multiplier(building)
 	var workforce_parts := workforce_output_modifier_parts(building)
 	var derate: float = float((Production.get_building_intermittency(str(building.get("instance_id", ""))) as Dictionary).get("derate", 0.0))
@@ -374,6 +383,7 @@ static func net_output_modifier(building: Dictionary, recipe: Dictionary) -> Dic
 		"color": color,
 		"parts": res.get("parts", []),
 		"workforce_parts": workforce_parts,
+		"throughput_parts": throughput_parts,
 		"workforce_multiplier": workforce_mult,
 		"derate": derate,
 		"text": "%s%d%%" % ["+" if eff_i > 0 else "", eff_i],
@@ -438,7 +448,8 @@ static func _modifier_tooltip(mod: Dictionary) -> String:
 	var parts: Array = mod.get("parts", [])
 	var workforce_parts: Array = mod.get("workforce_parts", [])
 	var derate: float = float(mod.get("derate", 0.0))
-	if parts.is_empty() and workforce_parts.is_empty() and derate <= 0.0:
+	var throughput_parts: Array = mod.get("throughput_parts", [])
+	if parts.is_empty() and workforce_parts.is_empty() and throughput_parts.is_empty() and derate <= 0.0:
 		return "Production modifier: none active.\n" + _MOD_RAG_LEGEND
 	var lines: PackedStringArray = ["Production modifiers:"]
 	if not parts.is_empty():
@@ -446,6 +457,13 @@ static func _modifier_tooltip(mod: Dictionary) -> String:
 		for p in parts:
 			var pv: float = float(p.get("pct", 0.0))
 			lines.append("  %s%d%%  %s" % ["+" if pv > 0.0 else "", int(round(pv)), str(p.get("label", ""))])
+			if str(p.get("condition", "")) == LegacyPerk.CONDITION:
+				lines.append("        %s" % LegacyPerk.CONDITION_TEXT)
+	if not throughput_parts.is_empty():
+		lines.append("Throughput (inputs and outputs together):")
+		for p in throughput_parts:
+			var pv: float = float(p.get("pct", 0.0))
+			lines.append("  %s%s%%  %s" % ["+" if pv > 0.0 else "", String.num(pv, 1).trim_suffix(".0"), str(p.get("label", ""))])
 	if not workforce_parts.is_empty():
 		lines.append("Workforce policies (multiplicative):")
 		for p in workforce_parts:

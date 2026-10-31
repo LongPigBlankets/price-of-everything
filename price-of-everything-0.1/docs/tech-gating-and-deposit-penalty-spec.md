@@ -69,6 +69,10 @@ Two small engine features that make the EA rebalance's tech recipes and mine bal
 
 **Effort:** one dict + one multiply in production + one hook in `grant_unlock`.
 
+The −30% and −15% penalties apply to finite and endless seams alike (owner, 25 October 2026).
+Seam caps, over-cap costs and charging by what is dug: `pacing-labour-mining-licensing-spec.md`
+§8.
+
 ---
 
 ## Build order & validation

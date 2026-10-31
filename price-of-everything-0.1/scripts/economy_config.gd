@@ -283,7 +283,9 @@ const BATTERY_TYPE_UNLOCK := {
 }
 
 # --- Transport ---
-const TRANSPORT_MAX_TILES_PER_TURN: int = 2
+## Tiles one Local Suppliers trip covers when their haul to a hub is counted (MiddlemanLocations.trips). Not a
+## transport speed: own freight follows INFRA_SPEED_BY_LEVEL, and slowing it must not raise Local Suppliers prices.
+const LOCAL_SUPPLIERS_TILES_PER_TRIP: int = 2
 # Liquids & gases move by pipe ONLY (1 tile/turn — see infrastructure.csv pipe range)
 # at a flat per-unit-per-tile rate, regardless of weight class.
 const PIPE_MODES := ["pipes", "reinf_pipes"]
@@ -326,9 +328,10 @@ const TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS := {
 	"electricity": 0.0,
 }
 
-# Per-mode multiplier on the weight-class rate. Rail is half the per-unit cost of
-# roads (and also faster — see infrastructure.csv range 4 vs 2). Bare ground costs twice a road, so
-# hauling your own goods only beats Local Suppliers once you have built something to haul them on.
+# Per-mode multiplier on the weight-class rate for one whole turn-move at level 1, as freight was charged before it
+# was priced by distance. Rail is half the per-unit cost of roads. Bare ground costs twice a road, so hauling your own
+# goods only beats Local Suppliers once you have built something to haul them on. FREIGHT_TILE_MULT is this divided by
+# the tiles that turn-move used to reach, and the fluid tanker premium (below) is scaled against it.
 const TRANSPORT_MODE_COST_MULT := {
 	"rail": 0.5,
 	"roads": 1.0,
@@ -360,31 +363,53 @@ func fluid_overland_mult(good_id: String, mode: String) -> float:
 		return 0.0
 	var hazard := Catalog.get_transport_class(good_id) == "hazard_liquid"
 	return float(by_mode.get("hazard" if hazard else "safe", 1.0))
-# How far one turn-move reaches, by mode and infrastructure LEVEL.
-# Level 1 must match the `range` column in infrastructure.csv, which stays the fallback for any
-# mode not listed here.
+# Freight is priced by distance (docs/pacing-labour-mining-licensing-spec.md §7.6): a unit pays its weight
+# (transport_rate_for_good) times this multiplier for every tile it crosses, at the level of the tile the leg leaves
+# from. Each figure is the old whole-leg multiplier divided by the tiles that leg used to reach (road 2 / 3 / 5, rail
+# 4 / 6 / 9, pipe 2 / 3 / 5), so a full old leg costs exactly what it did and a part leg pays for its tiles only.
+# Higher levels are cheaper per tile as well as faster. Bare ground is twice a level 1 road leg on every tile.
+const FREIGHT_TILE_MULT := {
+	"roads":       {1: 0.5, 2: 1.0 / 3.0, 3: 0.2},
+	"rail":        {1: 0.125, 2: 0.5 / 6.0, 3: 0.5 / 9.0},
+	"pipes":       {1: 0.5, 2: 1.0 / 3.0, 3: 0.2},
+	"reinf_pipes": {1: 0.5, 2: 1.0 / 3.0, 3: 0.2},
+	"nothing":     {1: 2.0, 2: 2.0, 3: 2.0},
+}
+## Scales every per-tile multiplier: the one lever if freight as a whole needs to move.
+const FREIGHT_TILE_SCALE := 1.0
+
+## The multiplier on a unit's weight for one tile of `mode` at `level`: FREIGHT_TILE_MULT, or for a fluid on road or
+## rail its tanker premium spread over the same tiles. The pipe premium stays: a level 3 rail tanker (3 / 9 a tile) is
+## dearer than a level 3 pipe (1 / 5) and a hazardous load dearer still, so pipe is the cheaper line at equal levels.
+func freight_tile_mult(good_id: String, mode: String, level: int) -> float:
+	var tiers: Dictionary = FREIGHT_TILE_MULT.get(mode, FREIGHT_TILE_MULT["roads"])
+	var mult := float(tiers.get(clampi(level, 1, 3), tiers.get(1, 1.0)))
+	if good_id != "" and Catalog.requires_pipeline(good_id):
+		var overland := fluid_overland_mult(good_id, mode)
+		if overland > 0.0:
+			mult *= overland / float(TRANSPORT_MODE_COST_MULT.get(mode, 1.0))
+	return mult * FREIGHT_TILE_SCALE
+
+# How many tiles one turn-move covers, by mode and infrastructure LEVEL: transit time only, never price (§7.6).
+# Level 1 must match the `range` column in infrastructure.csv, which stays the fallback for any mode not listed here.
+# Pipes are not in the §7.6 speed table and keep their reach. The port row is what the port's upgrade rows show.
 #
-# Range is not only speed. Freight is charged PER LEG and a leg is one turn-move, so doubling a
-# mode's range halves the number of legs on a long haul and therefore halves its cost: a 9-tile
-# rail run is 3 legs at L1 and 1 leg at L3, i.e. a third of the freight for the same cargo. These
-# numbers are a deliberate long-haul discount as well as a speed-up.
-#
-# The fluid premiums still dominate at every level: rail's best range advantage is 9/5 = 1.8x
-# against a level-3 pipe, which never overcomes the 3x tanker multiplier (5x hazardous). Pipe
-# stays the cheapest way to move a fluid at every level and distance — see
-# docs/fluids-overland-spec.md.
-const INFRA_RANGE_BY_LEVEL := {
-	"roads":       {1: 2, 2: 3, 3: 5},
-	"rail":        {1: 4, 2: 6, 3: 9},
+# A level 1 road is no faster than bare ground. It is four times cheaper a tile, and shipments take the cheapest route
+# by default (Catalog._best_route), so goods use it: upgrading the level is how the player buys speed.
+const INFRA_SPEED_BY_LEVEL := {
+	"roads":       {1: 1, 2: 2, 3: 4},
+	"rail":        {1: 3, 2: 5, 3: 8},
 	"pipes":       {1: 2, 2: 3, 3: 5},
 	"reinf_pipes": {1: 2, 2: 3, 3: 5},
-	"port":        {1: 10, 2: 16, 3: 25},
+	"port":        {1: 8, 2: 12, 3: 20},
 }
+## Tiles a turn over bare ground.
+const BARE_GROUND_SPEED := 1
 
 ## Tiles one turn-move covers on `mode` at `level`. Returns 0 when the mode has no level table,
 ## so the caller falls back to the flat infrastructure.csv range.
-func infra_range_for_level(mode: String, level: int) -> int:
-	var tiers: Dictionary = INFRA_RANGE_BY_LEVEL.get(mode, {})
+func infra_speed_for_level(mode: String, level: int) -> int:
+	var tiers: Dictionary = INFRA_SPEED_BY_LEVEL.get(mode, {})
 	if tiers.is_empty():
 		return 0
 	return int(tiers.get(clampi(level, 1, 3), tiers.get(1, 0)))
@@ -532,10 +557,12 @@ const LABOUR_FACTOR_MIN: float = 0.40
 # The effort knob's throughput, salary and satisfaction live in LabourState (docs/pacing-labour-
 # mining-licensing-spec.md §4.4); the old output pressure accumulator is retired.
 
+## Turns over bare ground for a straight-line haul of `tile_distance`: a route's transit time when no network reaches.
+## Freight never prices by it (transport_cost_for_route charges the tiles).
 func transport_turns_for_tile_distance(tile_distance: int) -> int:
 	if tile_distance <= 0:
 		return 0
-	return maxi(1, ceili(float(maxi(tile_distance, 0)) / float(TRANSPORT_MAX_TILES_PER_TURN)))
+	return maxi(1, ceili(float(maxi(tile_distance, 0)) / float(BARE_GROUND_SPEED)))
 
 ## Every freight rate, on every mode (roads, rail, pipes), scaled by this: both parts of transport_rate_for_good.
 const TRANSPORT_COST_SCALE: float = 1.4
@@ -558,38 +585,48 @@ func transport_rate_for_good(good_id: String) -> float:
 		weight_class, TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS[DEFAULT_TRANSPORT_WEIGHT_CLASS]))
 	return transport_cost_per_unit_turn(weight_class) + TRANSPORT_COST_SCALE * av * good_value_basis(good_id)
 
-func transport_cost_for(good_id: String, qty: int, transport_turns: int, mode_mult: float = 1.0) -> float:
-	return float(qty) * float(maxi(transport_turns, 0)) * transport_rate_for_good(good_id) * mode_mult
-
+## The freight on a route before research and congestion (§7.6): for each leg, its tiles x the good's weight x qty x
+## freight_tile_mult at the level of the tile the leg leaves from. A route with no built leg is a straight-line haul
+## over bare ground, charged on its tile distance.
 func transport_cost_for_route(good_id: String, qty: int, route: Dictionary) -> float:
-	# Leg-aware cost. Each leg is one turn-move; pipe legs charge the flat liquid rate,
-	# rail/road legs charge weight-class * mode multiplier. Falls back to a turns-based
-	# bare-ground charge when the route has no infra legs (straight-line haul).
 	var legs: Array = route.get("legs", [])
 	var class_rate := transport_rate_for_good(good_id)
 	if legs.is_empty():
-		var turns: int = int(route.get("turns", 0))
-		return float(qty) * float(maxi(turns, 0)) * class_rate * float(TRANSPORT_MODE_COST_MULT["nothing"])
+		var tiles := int(route.get("tile_distance", route.get("turns", 0)))
+		return float(qty) * float(maxi(tiles, 0)) * class_rate * freight_tile_mult(good_id, "nothing", 1)
 	var total := 0.0
-	var is_fluid := Catalog.requires_pipeline(good_id)
-	for leg in legs:
-		# Every leg is one turn-move: charge the per-unit-per-turn class rate times the
-		# mode multiplier (rail 0.5x; roads/pipes 1x) — except a fluid on road or rail, which
-		# pays the tanker premium instead (FLUID_OVERLAND_COST_MULT).
-		var mode := str(leg.get("mode", ""))
-		var mult := float(TRANSPORT_MODE_COST_MULT.get(mode, 1.0))
-		if is_fluid:
-			var overland := fluid_overland_mult(good_id, mode)
-			if overland > 0.0:
-				mult = overland
-		total += float(qty) * class_rate * mult
+	for leg: Dictionary in legs:
+		total += float(qty) * class_rate * leg_tile_mult(good_id, leg) * float(leg_tiles(leg))
 	return total
+
+## The tiles a leg crosses. Routes carry the count; a leg saved before freight was priced by distance has none, and is
+## costed on the hex distance between its ends.
+func leg_tiles(leg: Dictionary) -> int:
+	if leg.has("tiles"):
+		return maxi(int(leg.get("tiles", 1)), 1)
+	return maxi(Catalog.tile_hex_distance(str(leg.get("from", "")), str(leg.get("to", ""))), 1)
+
+## freight_tile_mult for a leg: its mode at the level of the tile it leaves from.
+func leg_tile_mult(good_id: String, leg: Dictionary) -> float:
+	var mode := str(leg.get("mode", "roads"))
+	var level := int(leg.get("level", Catalog.tile_infra_level(str(leg.get("from", "")), mode)))
+	return freight_tile_mult(good_id, mode, level)
 
 func transport_link_capacity(mode: String, level: int) -> float:
 	var tiers: Dictionary = TRANSPORT_LINK_CAP_BY_MODE_LEVEL.get(mode, {})
 	if tiers.is_empty():
 		return 0.0
 	return float(tiers.get(clampi(level, 1, 3), 0.0))
+
+# --- Mining: seams (scripts/mining_sites.gd, docs/pacing-labour-mining-licensing-spec.md §8) ---
+## Every finite deposit is this many times its CSV size, applied after the coal and iron normalisation.
+const DEPOSIT_SIZE_MULT := 3.0
+## A site's working limits, in level 1 workings: free to SEAM_FREE, and past SEAM_MAX it may collapse.
+const SEAM_FREE := {"endless": 1.5, "finite": 1.5}
+const SEAM_MAX := {"endless": 3.0, "finite": 3.0}
+## What each full working over the free cap adds to the labour and maintenance of the whole site (+100%).
+## `extraction_cap_cost` modifiers scale it.
+const SEAM_OVER_CAP_COST := 1.0
 
 # --- Land prices (scripts/land_price.gd, docs/land-pricing-spec.md) ---
 # A patch's starting price is BuildingState.LAND_PATCH_COST times its settlement band. Every
@@ -608,3 +645,40 @@ const LAND_STANDALONE_MULT := 2.0
 const LAND_ECONOMY_STEP := 0.25
 ## The briefing warns once global revenue passes this share of the next doubling.
 const LAND_ECONOMY_FOREWARN := 0.8
+
+# --- Eras (docs/pacing-labour-mining-licensing-spec.md §10.2) ---
+## The three eras of a charter, as shares of its length: 90, 90 and 110 turns of 300 (the owner's rule, 20 October
+## 2026). A shorter or longer charter keeps the shares. The New Game screen draws them, the first licence prices by them.
+const ERA_SHARES := [0.3, 0.3, 0.4]
+## A demo game counts its eras on the campaign's 300 turns, so its own last ten turns are era 2.
+const DEMO_ERA_SPAN := 300
+
+## The eras of a charter of `turns`: [[from, to], ...], the last taking what the shares leave (90, 90, 110 of 300).
+static func era_spans(turns: int) -> Array:
+	var out: Array = []
+	var at := 0
+	for i in ERA_SHARES.size():
+		var to := turns if i == ERA_SHARES.size() - 1 else at + roundi(turns * float(ERA_SHARES[i]))
+		out.append([at, to])
+		at = to
+	return out
+
+# --- Research licensing (scripts/research_licensing.gd, docs/pacing-labour-mining-licensing-spec.md §10) ---
+## The first licence in a group, one-off, by era.
+const LICENCE_FIRST_PRICE := [200.0, 500.0, 2000.0]
+## The second and third licence in a group: a share of company revenue each turn for LICENCE_ROYALTY_TURNS.
+const LICENCE_ROYALTY_RATES := [0.02, 0.08]
+const LICENCE_ROYALTY_TURNS := 30
+## Licensing out: max(LICENCE_OUT_FLOOR, rate × average revenue of LICENCE_OUT_REVENUE_TURNS), the rate the base
+## plus a step for every other unsold in-house rank II and rank III process, capped.
+const LICENCE_OUT_BASE_RATE := 0.10
+const LICENCE_OUT_RATE_RANK_II := 0.025
+const LICENCE_OUT_RATE_RANK_III := 0.05
+const LICENCE_OUT_RATE_CAP := 0.5
+const LICENCE_OUT_FLOOR := 50.0
+const LICENCE_OUT_REVENUE_TURNS := 5
+## The patent window: turns after its development a process can still be licensed out.
+const LICENCE_OUT_WINDOW_TURNS := 60
+## What each licence sold does to the sale price of the goods the process touches, and for how long.
+const LICENCE_OUT_PRICE_PCT := -2.0
+const LICENCE_OUT_PRICE_TURNS := 30

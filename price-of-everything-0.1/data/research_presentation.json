@@ -70,7 +70,7 @@
     "glyph": "lorry",
     "effects": [
       [
-        "output",
+        "chevrons",
         "arrow_up"
       ]
     ],
@@ -83,8 +83,8 @@
     "glyph": "lorry",
     "effects": [
       [
-        "output",
-        "arrow_up"
+        "percent",
+        "arrow_down"
       ]
     ],
     "subcategory": "Oil refining",
@@ -135,7 +135,7 @@
     "glyph": "lorry",
     "effects": [
       [
-        "output",
+        "chevrons",
         "arrow_up"
       ]
     ],
@@ -148,8 +148,8 @@
     "glyph": "lorry",
     "effects": [
       [
-        "output",
-        "arrow_up"
+        "percent",
+        "arrow_down"
       ]
     ],
     "subcategory": "Iron & steel",
@@ -486,8 +486,8 @@
     "glyph": "lorry",
     "effects": [
       [
-        "output",
-        "arrow_up"
+        "percent",
+        "arrow_down"
       ]
     ],
     "subcategory": "Coal & steam",
@@ -499,7 +499,7 @@
     "glyph": "lorry",
     "effects": [
       [
-        "output",
+        "chevrons",
         "arrow_up"
       ]
     ],
@@ -1295,8 +1295,12 @@
     "glyph": "lorry",
     "effects": [
       [
-        "output",
+        "chevrons",
         "arrow_up"
+      ],
+      [
+        "power",
+        "plus"
       ]
     ],
     "subcategory": "Iron & steel",
@@ -1485,8 +1489,8 @@
     "glyph": "binoculars",
     "effects": [
       [
-        "output",
-        "arrow_up"
+        "money",
+        "arrow_down"
       ]
     ],
     "subcategory": "Mining & surveying",
@@ -1524,12 +1528,12 @@
     "glyph": "lorry",
     "effects": [
       [
-        "output",
-        "arrow_up"
+        "percent",
+        "arrow_down"
       ],
       [
         "power",
-        "arrow_down"
+        "plus"
       ]
     ],
     "subcategory": "Iron & steel",
@@ -1580,12 +1584,29 @@
     "glyph": "lorry",
     "effects": [
       [
-        "output",
-        "arrow_up"
+        "power",
+        "arrow_down"
       ]
     ],
     "subcategory": "Iron & steel",
     "order": 96
+  },
+  "research_metal_024": {
+    "kind": "building",
+    "base": "b_008",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "engineer",
+        "arrow_down"
+      ],
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 97
   },
   "research_metal_015": {
     "kind": "building",
@@ -1619,7 +1640,7 @@
     "glyph": "lorry",
     "effects": [
       [
-        "output",
+        "chevrons",
         "arrow_up"
       ]
     ],
@@ -1632,12 +1653,29 @@
     "glyph": "lorry",
     "effects": [
       [
-        "output",
+        "chevrons",
         "arrow_up"
+      ],
+      [
+        "engineer",
+        "plus"
       ]
     ],
     "subcategory": "Pipes & industrial goods",
     "order": 123
+  },
+  "research_mfg_041": {
+    "kind": "building",
+    "base": "b_007",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "percent",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Pipes & industrial goods",
+    "order": 124
   },
   "research_mfg_015": {
     "kind": "building",
@@ -2260,8 +2298,12 @@
     "glyph": "lorry",
     "effects": [
       [
-        "output",
-        "arrow_up"
+        "engineer",
+        "arrow_down"
+      ],
+      [
+        "gears",
+        "arrow_down"
       ]
     ],
     "subcategory": "Coal & steam",
@@ -3079,8 +3121,8 @@
     "glyph": "lorry",
     "effects": [
       [
-        "output",
-        "arrow_up"
+        "power",
+        "arrow_down"
       ]
     ],
     "subcategory": "Oil refining",

@@ -82,6 +82,6 @@ static func _good_price(internal_name: String) -> float:
 	return p if p > 0.0 else float(good.get("base_price", 0.0))
 
 static func _land_cost(bdata: Dictionary, level: int) -> float:
-	var footprint := float(bdata.get("tile_size_used", 1)) * BuildingLevels.mult("size", level)
+	var footprint := Catalog.land_units(bdata) * BuildingLevels.mult("size", level)
 	var patches := ceilf(footprint / float(BuildingState.LAND_PATCH_SIZE))
 	return patches * BuildingState.LAND_PATCH_COST

@@ -19,6 +19,12 @@ const KeyedBuildingIcon := preload("res://scripts/keyed_building_icon.gd")
 const RESEARCH_DS2_SCRIPT := "res://scripts/research_ds2/research_ds2.gd"
 
 const RESEARCH_UNLOCKS_PATH := "res://data/research_unlocks.csv"
+const Licensing := preload("res://scripts/research_licensing.gd")
+const LicenceDialog := preload("res://scripts/licence_dialog.gd")
+## The licence strip at a card's foot (a licence group member's price or holding, an in-house process's
+## licence-out price): its height, and the amber it prints in when a click on it opens the licence dialog.
+const LICENCE_STRIP_H := 30.0
+const LICENCE_AMBER := Color("#ffd27a")
 var _seat_research_shown := false
 const NAVY_TOP_LEFT := Color(0.025, 0.18, 0.34, 1.0)
 const NAVY_TOP_RIGHT := Color(0.0, 0.12156863, 0.24313726, 1.0)
@@ -131,7 +137,6 @@ var _dragging_tree := false
 var _free_unlocks := 0
 var _choosing_free_unlock := false
 var _hover_unlock_title := ""
-var _free_unlocked_titles := {}
 var _expanded_requirement_titles := {}
 # turn -> free unlocks granted that turn; built from the cadence above in _ready.
 var _knowledge_grants: Dictionary = {}
@@ -173,9 +178,13 @@ func _ready() -> void:
 	_knowledge_grants = free_unlock_schedule(TurnManager.MAX_TURNS)
 	# Opening balance = everything earned up to the current turn (turn 1 for a new game,
 	# more if this panel came up after a load). Later milestones arrive via turn_advanced.
-	_free_unlocks = free_unlocks_earned_by(TurnManager.current_turn, TurnManager.MAX_TURNS) + ResearchState.bonus_free_unlocks
+	_recount_free_unlocks()
 	if not ResearchState.free_unlocks_granted.is_connected(_on_free_unlocks_granted):
 		ResearchState.free_unlocks_granted.connect(_on_free_unlocks_granted)
+	if not SaveLoad.match_loaded.is_connected(_on_match_loaded):
+		SaveLoad.match_loaded.connect(_on_match_loaded)
+	if not ResearchState.licences_changed.is_connected(_on_licences_changed):
+		ResearchState.licences_changed.connect(_on_licences_changed)
 	if not TurnManager.turn_advanced.is_connected(_on_turn_advanced):
 		TurnManager.turn_advanced.connect(_on_turn_advanced)
 	_seat_research_shown = AdvisorState.advisors_unlocked
@@ -403,6 +412,9 @@ func _gui_input(event: InputEvent) -> void:
 				if _toggle_requirement_dropdown(mouse_event.position):
 					accept_event()
 					return
+				if not _choosing_free_unlock and _try_open_licence(mouse_event.position):
+					accept_event()
+					return
 				if _choosing_free_unlock and _try_choose_free_unlock(mouse_event.position):
 					accept_event()
 					return
@@ -515,7 +527,7 @@ func _draw_knowledge_panel() -> void:
 
 	var separator_y := rect.position.y + 56.0
 	draw_line(Vector2(rect.position.x + 10.0, separator_y), Vector2(rect.end.x - 10.0, separator_y), DS.PALETTE["BORDER_SOFT"], 1.0)
-	_draw_text_fit(BODY_FONT, "Free Unlocks: %d" % _free_unlocks, Rect2(rect.position + Vector2(10.0, 62.0), Vector2(rect.size.x - 20.0, 24.0)), KNOWLEDGE_PANEL_TEXT_SIZE, RESEARCH_TEXT, HORIZONTAL_ALIGNMENT_LEFT)
+	_draw_text_fit(BODY_FONT, "Free developments: %d" % _free_unlocks, Rect2(rect.position + Vector2(10.0, 62.0), Vector2(rect.size.x - 20.0, 24.0)), KNOWLEDGE_PANEL_TEXT_SIZE, RESEARCH_TEXT, HORIZONTAL_ALIGNMENT_LEFT)
 
 	if _free_unlocks > 0:
 		var button_rect := _choose_free_unlock_button_rect()
@@ -528,7 +540,7 @@ func _draw_knowledge_panel() -> void:
 			fill_color = fill_color.lightened(0.08)
 		var button_style := _make_stylebox(fill_color, DS.PALETTE["BORDER"], 8, 1)
 		draw_style_box(button_style, button_rect)
-		_draw_text_fit(BODY_FONT, "Choose Free Unlocks", button_rect.grow(-7.0), KNOWLEDGE_PANEL_TEXT_SIZE, text_color, HORIZONTAL_ALIGNMENT_CENTER)
+		_draw_text_fit(BODY_FONT, "Choose free developments", button_rect.grow(-7.0), KNOWLEDGE_PANEL_TEXT_SIZE, text_color, HORIZONTAL_ALIGNMENT_CENTER)
 
 func _draw_panel_outline() -> void:
 	var style := StyleBoxFlat.new()
@@ -708,6 +720,24 @@ func _on_advisors_changed() -> void:
 	queue_redraw()
 	_refresh_ds2()
 
+## The free unlocks in hand: every one earned by this turn and every bonus, less the picks spent (ResearchState
+## keeps those, so a load does not hand them back).
+func _recount_free_unlocks() -> void:
+	_free_unlocks = maxi(0, free_unlocks_earned_by(TurnManager.current_turn, TurnManager.MAX_TURNS)
+		+ ResearchState.bonus_free_unlocks - ResearchState.free_picks.size())
+
+
+func _on_match_loaded() -> void:
+	_recount_free_unlocks()
+	queue_redraw()
+	_refresh_ds2()
+
+
+func _on_licences_changed() -> void:
+	queue_redraw()
+	_refresh_ds2()
+
+
 func _on_free_unlocks_granted(count: int) -> void:
 	_free_unlocks += count
 	queue_redraw()
@@ -875,18 +905,18 @@ func _try_choose_free_unlock(position: Vector2) -> bool:
 ## True when `title` can be taken as a free unlock now: one is in hand, the node is open (its rank and its
 ## prerequisites) and not already unlocked.
 func can_choose_free_unlock(title: String) -> bool:
-	return _free_unlocks > 0 and title != "" and not _free_unlocked_titles.has(title) \
+	return _free_unlocks > 0 and title != "" and not ResearchState.free_picks.has(title) \
 		and not ResearchState.is_unlocked(title) and ResearchState.is_node_available(title)
 
 
 ## Spends a free unlock on `title`. Returns false when it can't be taken (see can_choose_free_unlock).
 func choose_free_unlock(title: String) -> bool:
-	if title.is_empty() or _free_unlocked_titles.has(title):
+	if title.is_empty() or ResearchState.free_picks.has(title):
 		return false
-	if not ResearchState.is_node_available(title):
-		return false   # greyed (tier- or prereq-locked) node — can't be free-picked either
-	_free_unlocked_titles[title] = true
-	ResearchState.grant_unlock(title, false)  # free choice — unlocked, but no "Unlocked …" dialog
+	# Developed in-house: unlocked with no fee or royalty and no "Unlocked …" dialog. False for a greyed (tier- or
+	# prereq-locked) node, which can't be free-picked either.
+	if not ResearchState.develop_free(title):
+		return false
 	_free_unlocks = maxi(0, _free_unlocks - 1)
 	_hover_unlock_title = ""
 	if _free_unlocks <= 0:
@@ -909,7 +939,7 @@ func _unlock_title_at_position(position: Vector2) -> String:
 		if bool(unlock.get("is_category_root", false)):
 			continue
 		var title: String = unlock["title"]
-		if _free_unlocked_titles.has(title):
+		if ResearchState.free_picks.has(title):
 			continue
 		if layout.has(title) and (layout[title] as Rect2).has_point(world_position):
 			return title
@@ -938,6 +968,42 @@ func _toggle_requirement_dropdown(position: Vector2) -> bool:
 			queue_redraw()
 			return true
 	return false
+
+## A click on a card's licence strip opens the licence dialog (licensing a ready group member in, or an in-house
+## process out). True when it did.
+func _try_open_licence(position: Vector2) -> bool:
+	var unlocks := _category_unlocks(_selected_category)
+	var layout := _layout_unlocks(unlocks)
+	var state := _current_view_state()
+	var origin := _tree_origin() + (state["pan"] as Vector2)
+	var world_position := (position - origin) / float(state["zoom"])
+	for unlock in unlocks:
+		var title := str(unlock.get("title", ""))
+		if bool(unlock.get("is_category_root", false)) or title == "" or not layout.has(title):
+			continue
+		if _expanded_requirement_titles.has(title) or not _licence_strip_rect(layout[title] as Rect2).has_point(world_position):
+			continue
+		if LicenceDialog.action_for(title) == "":
+			return false
+		LicenceDialog.open(self, title, func() -> void:
+			queue_redraw()
+			_refresh_ds2())
+		return true
+	return false
+
+
+func _licence_strip_rect(card_rect: Rect2) -> Rect2:
+	return Rect2(card_rect.position + Vector2(14.0, card_rect.size.y - LICENCE_STRIP_H - 14.0), Vector2(card_rect.size.x - 28.0, LICENCE_STRIP_H))
+
+
+## The licence strip's words: "Ready. License for £200", a holding, or an in-house process's licence-out price.
+static func licence_strip_text(title: String) -> String:
+	if ResearchState.is_unlocked(title):
+		var out_line := Licensing.out_line(title)
+		return out_line if out_line != "" else Licensing.price_line(title)
+	var line := Licensing.price_line(title)
+	return ("Ready. " + line) if line != "" and ResearchState.is_licence_ready(title) else line
+
 
 func _update_profitability_tooltip(position: Vector2) -> void:
 	var next_tooltip := ""
@@ -1688,7 +1754,7 @@ func _unlock_brightness(rect: Rect2, bounds: Rect2) -> float:
 func _draw_unlock(unlock: Dictionary, rect: Rect2, brightness: float) -> void:
 	var title: String = unlock["title"]
 	var is_root := bool(unlock.get("is_category_root", false))
-	var free_unlocked := _free_unlocked_titles.has(title) or ResearchState.is_unlocked(title)
+	var free_unlocked := ResearchState.is_unlocked(title)
 	var locked := not free_unlocked and not is_root and not ResearchState.is_node_available(title)
 	var hovered_for_free := _choosing_free_unlock and _hover_unlock_title == title and not free_unlocked and not is_root and not locked
 	_draw_unlock_shell(rect, brightness, unlock, free_unlocked, hovered_for_free, locked)
@@ -1714,6 +1780,13 @@ func _draw_unlock(unlock: Dictionary, rect: Rect2, brightness: float) -> void:
 	var condition_size := _condition_font_size(unlock, requirement_rect.size.x - 33.0)
 	_draw_wrapped_lines(BODY_FONT, summary, requirement_rect.grow_individual(-7.0, -5.0, -26.0, -5.0), condition_size, RESEARCH_TEXT, 2, HORIZONTAL_ALIGNMENT_CENTER, true)
 	_draw_requirement_caret(requirement_rect, expanded, RESEARCH_TEXT)
+	var licence_text := licence_strip_text(title)
+	if licence_text != "" and not expanded:
+		var strip := _licence_strip_rect(rect)
+		draw_style_box(_condition_style, strip)
+		var actionable := LicenceDialog.action_for(title) != ""
+		_draw_wrapped_lines(BODY_FONT, licence_text, strip.grow_individual(-7.0, -5.0, -7.0, -5.0), UNLOCK_CONDITION_SIZE,
+			LICENCE_AMBER if actionable else RESEARCH_TEXT, 1, HORIZONTAL_ALIGNMENT_CENTER, true)
 	if expanded:
 		var details_top := requirement_rect.end.y + 6.0
 		var details_rect := Rect2(Vector2(rect.position.x + 14.0, details_top), Vector2(rect.size.x - 28.0, rect.end.y - details_top - 14.0))

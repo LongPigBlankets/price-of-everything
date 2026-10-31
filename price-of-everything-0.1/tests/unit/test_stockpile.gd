@@ -72,8 +72,8 @@ func _test_stockpile_legend_label_visible() -> void:
 	await get_tree().process_frame
 
 func _test_building_ledger() -> void:
-	_check(MatchState.route_objective == MatchState.RouteObjective.FASTEST,
-		"route objective defaults to FASTEST")
+	_check(MatchState.route_objective == MatchState.RouteObjective.CHEAPEST,
+		"route objective defaults to CHEAPEST")
 	var scene := load("res://scenes/building_ledger_panel.tscn")
 	var ok := false
 	if scene != null:

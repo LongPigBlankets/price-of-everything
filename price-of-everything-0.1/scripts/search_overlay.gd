@@ -47,6 +47,7 @@ const MECHANIC_ENTRIES := [
 	{"id": "port_transport", "title": "Port transport"},
 	{"id": "advisors", "title": "Advisors and the council"},
 	{"id": "land_prices", "title": "Land prices"},
+	{"id": "strikes", "title": "Strikes and accidents"},
 ]
 
 var _search_stack: VBoxContainer = null
@@ -350,6 +351,7 @@ func _mechanic_body(entry_id: String) -> String:
 		return building_economics_page()
 	if entry_id == "transport":
 		return ("Transport moves goods between tiles and connects your economy to the world market. Roads, railways and pipes have a limited throughput on every tile they cross; congested links constrain the flow that can use them that turn.\n\n"
+			+ "Every shipment takes its route by the Routing switch on the Shipments and Stockpiles panel. Cheapest, the default, takes the least freight and then the fewest turns. Fastest takes the fewest turns and then the least freight. Blended counts freight and turns half each, each against the best route there is. Shipments already on the way keep their route, and fluids use pipes wherever pipes reach.\n\n"
 			+ "Transport costs are shown as part of the money panel's Transport category. When a building buys inputs or sells output, use the route and capacity information to decide whether to move goods locally, build more infrastructure, or trade through a port.\n\n"
 			+ "Research can improve a transport mode's throughput or lower a specific transport cost. Those bonuses apply to the live route calculation, not just the building card.")
 	if entry_id == "port_transport":
@@ -397,7 +399,40 @@ func _mechanic_body(entry_id: String) -> String:
 			+ "Retainers are charged whether or not an advisor's speciality is doing anything for you that turn, so an idle seat is a pure loss — leave it empty until you have work for it.") % [
 				seats, "" if seats == 1 else "s", base, growth_pct, share_pct, seats,
 				share_pct * float(seats)]
+	if entry_id == "strikes":
+		return strikes_page()
 	return ""
+
+
+## The Strikes and accidents page, read from the live rules (scripts/labour_unrest.gd), as the land and advisors
+## pages are.
+static func strikes_page() -> String:
+	const U := preload("res://scripts/labour_unrest.gd")
+	var n := func(v: float) -> String: return LabourState.signed_text(v)
+	var pct := func(share: float) -> int: return roundi(share * 100.0)
+	return ("Your workforce's satisfaction runs from −100 to +100. Every %d turns, on turns %d, %d, %d and so on, the workforce is checked for a strike.\n\n"
+		+ "1. Below %s, a quarter of your production and power buildings can strike. Below %s, half of them can. Hazardous sites under Minimal safety, and buildings with an accident in the last %d turns, are twice as likely to be named.\n\n"
+		+ "2. The strikers are named %d turns before the check. The Strikes tab on the People panel lists them, with what each strike would cost and what a pay rise would cost.\n\n"
+		+ "3. If satisfaction is still below %s on the check turn, the named buildings strike. For %d turns each makes %d%% less. Its inputs are still used, and its labour costs half. If satisfaction has risen to %s or above by then, only a quarter strike.\n\n"
+		+ "4. A strike is called off if satisfaction reaches %s before the check turn, or if a union agreement is signed. While a union agreement stands there are no strikes.\n\n"
+		+ "5. Settling a strike raises pay. At one building it costs %d%% more labour there for %d turns, and the building leaves the warning, or goes back to work if it is on strike. Settling every strike does the same at each named and striking building, and no strike can start for %d turns. A settled building cannot strike again for %d turns.\n\n"
+		+ "6. Breaking a strike sends in replacement crews. At one building it costs %d turns of its wages, paid that turn, and ends its strike at once, or keeps a named building from striking. Satisfaction falls %d for %d turns. Breaking the whole round costs %d turns of every striker's wages and lowers satisfaction %d for %d turns. A broken building cannot strike again for %d turns, but others can at the next check. Break %d whole rounds, or %d buildings one at a time, and the workforce remembers it for good: Routinely broke strikes, satisfaction %s until a Comprehensive Union Agreement is signed.\n\n"
+		+ "7. When a strike runs its course, satisfaction rises by %d. A strike settled or broken gives nothing back.\n\n"
+		+ "8. A One off bonus costs half of what settling would, paid at once. It ends a strike or a warning at the building and keeps it from striking for %d to %d turns, longer the happier the workforce: %d at 0. Pay it at one building, or company wide at every building it would help. Strike planning on the Strikes tab lists the buildings on cooldown and those that can strike in the next %d turns.\n\n"
+		+ "Accidents happen only under Minimal safety, at mines, furnaces, power plants and chemical works. The chance starts at %d%% a turn at each site and rises %s points every turn Minimal safety stays on, up to %d%%. An accident stops the building for %d turns, pays %d turns of its wages in compensation and lowers satisfaction by %d.") % [
+			U.CHECK_EVERY, U.CHECK_EVERY, U.CHECK_EVERY * 2, U.CHECK_EVERY * 3,
+			n.call(U.STRIKE_BELOW), n.call(U.HEAVY_STRIKE_BELOW), U.ACCIDENT_MEMORY,
+			U.WARNING_LEAD - 1,
+			n.call(U.STRIKE_BELOW), U.STRIKE_TURNS, U.output_cut_pct(), n.call(U.HEAVY_STRIKE_BELOW),
+			n.call(U.STRIKE_BELOW),
+			pct.call(U.PAY_RAISE), U.PAY_RAISE_TURNS, U.STRIKE_FREE_TURNS, U.SETTLE_QUIET_TURNS,
+			roundi(U.BREAK_COST_TURNS), roundi(absf(U.BREAK_SHIFT_ONE)), LabourState.EVENT_SHIFT_TURNS,
+			roundi(U.BREAK_COST_TURNS), roundi(absf(U.BREAK_SHIFT_ROUND)), LabourState.EVENT_SHIFT_TURNS, U.BREAK_QUIET_TURNS,
+			U.ROUTINE_ROUNDS, U.ROUTINE_BUILDINGS, n.call(U.ROUTINE_SATISFACTION),
+			roundi(U.STRIKE_END_SHIFT),
+			U.bonus_quiet_turns(-100.0), U.bonus_quiet_turns(100.0), U.bonus_quiet_turns(0.0), U.CHECK_EVERY,
+			pct.call(U.ACCIDENT_CHANCE_START), String.num(U.ACCIDENT_CHANCE_STEP * 100.0, 2), pct.call(U.ACCIDENT_CHANCE_MAX), U.ACCIDENT_DOWN_TURNS,
+			U.ACCIDENT_COMPENSATION_TURNS, roundi(absf(U.ACCIDENT_SHIFT))]
 
 func close_search() -> void:
 	if not visible:
@@ -1113,7 +1148,7 @@ func _make_good_rubric(good_id: String) -> PanelContainer:
 	_add_rubric_fact(facts, "Carbon tax / unit", _good_carbon_tax_text(good_id))
 
 	var transport_heading := Label.new()
-	transport_heading.text = "Transport cost per unit / turn"
+	transport_heading.text = "Transport cost per unit / tile"
 	transport_heading.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
 	transport_heading.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 	content.add_child(transport_heading)
@@ -1170,8 +1205,7 @@ func _good_supports_transport_mode(good_id: String, mode: String) -> bool:
 	return mode in (Catalog.route_infra_for_good(good_id).get("modes", []) as Array)
 
 func _good_transport_unit_cost(good_id: String, mode: String) -> float:
-	return TransportService.transport_cost(good_id, 1, 1,
-		float(EconomyConfig.TRANSPORT_MODE_COST_MULT.get(mode, 1.0)))
+	return TransportService.freight_per_tile(good_id, mode, 1)
 
 func _good_transport_mode_name(mode: String) -> String:
 	if mode == "nothing":
@@ -1356,7 +1390,7 @@ func _building_facts(building: Dictionary) -> Array:
 	return [
 		{"label": "Category", "value": _title_or_dash(building.get("category", ""))},
 		{"label": "Build cost", "value": _decimal_text(float(building.get("base_price", 0.0)))},
-		{"label": "Tile size", "value": str(building.get("tile_size_used", 1))},
+		{"label": "Land", "value": str(int(Catalog.land_units(building)))},
 		{"label": "Build duration", "value": str(MatchState.effective_build_duration(building_id))},
 		{"label": "Maintenance", "value": _nullable_decimal_text(building.get("maintenance_cost", null))},
 		{"label": "Unskilled labour", "value": str(building.get("labour_unskilled_required", 0))},

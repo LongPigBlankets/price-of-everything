@@ -547,7 +547,14 @@ static func _deposit_row(panel: Control, tile: String, v: Dictionary, grid: Dict
 	var icon: Control = Parts.good_in_well(gid, ICON_COL, PackedStringArray([str(v.size_text)]), str(v.pill)) \
 		if Parts.has_icon(gid) else Parts.named_well(str(d.display_name), ICON_COL, str(v.pill))
 	var row := _row("Deposit_%s" % token, icon)
-	row.add_child(_words(name, PackedStringArray([str(v.state), str(v.size_line)])))
+	# A seam you work reads what it digs against its limits, a figure a line, in place of who works it
+	# (docs/pacing-labour-mining-licensing-spec.md §8.8).
+	var lines := PackedStringArray([str(v.state)])
+	var miner := BuildingState.get_building(str(d.get("instance_id", "")))
+	if bool(v.worked) and not miner.is_empty() and BuildingState.is_player_owned(miner):
+		lines = preload("res://scripts/mining_sites.gd").draw_lines(tile, token)
+	lines.append(str(v.size_line))
+	row.add_child(_words(name, lines))
 	var key_w := float(grid.key_w)
 	if bool(v.worked):
 		var iid := str(d.get("instance_id", ""))

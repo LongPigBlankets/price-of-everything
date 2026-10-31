@@ -70,7 +70,7 @@ const HAZARDOUS_BUILDINGS := {
 # --- Work effort (the labour_multiplier knob: 0.8 Lean, 1.0 Standard, 1.2 Overtime) ---
 const EFFORT_SALARY := {"lean": -0.20, "standard": 0.0, "overtime": 0.25}
 const EFFORT_THROUGHPUT_PCT := {"lean": -10.0, "standard": 0.0, "overtime": 15.0}
-const EFFORT_SATISFACTION := {"lean": -20.0, "standard": 0.0, "overtime": -30.0}
+const EFFORT_SATISFACTION := {"lean": -15.0, "standard": 0.0, "overtime": -25.0}
 
 # --- Work week ---
 const WORK_WEEK_HOURS: Array[int] = [35, 40, 45, 50]
@@ -91,8 +91,24 @@ const AUTOMATION_MIN_LEVEL := 2
 const AUTOMATION_LABOUR := -0.15
 const AUTOMATION_POWER_MULT := 1.10
 const AUTOMATION_MAINT_MULT := 1.10
-const LEAVE_THROUGHPUT_PCT := -2.0
+const LEAVE_THROUGHPUT_PCT := -5.0
 const LONG_TENURE_PAYOUT := 0.10
+## Satisfaction from the pay while idle setting, by its share: below 60%, below 90%, otherwise.
+const IDLE_PAY_SATISFACTION := {"half": -10.0, "most": -5.0, "full": 5.0}
+const MINIMAL_SAFETY_SATISFACTION := -20.0
+const HIGH_SAFETY_SATISFACTION := 10.0
+const MINIMUM_PENSIONS_SATISFACTION := -10.0
+const AUTOMATION_SATISFACTION := -5.0
+## Metal Magnate's and Glass Merchant's workforce while the company still owns the Original Furnace (LegacyPerk).
+const LIKE_FAMILY_SATISFACTION := 25.0
+## The share of profit after tax and dividends each profit share setting pays. The ids are kept from when they paid
+## 5% and 10%, so saves still name them.
+const PROFIT_SHARE_RATE := {WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE: 0.10, WORKFORCE_POLICY_PROFIT_SHARE_10: 0.20}
+## Satisfaction from the higher share by last turn's profit after tax: at a loss or none, below PROFIT_SHARE_SMALL_BELOW
+## a turn, and at or above it. The lower share gives PROFIT_SHARE_LOWER_SCALE of each.
+const PROFIT_SHARE_SATISFACTION := {"loss": 5.0, "small": 10.0, "large": 15.0}
+const PROFIT_SHARE_SMALL_BELOW := 25.0
+const PROFIT_SHARE_LOWER_SCALE := 0.5
 
 # --- Unions ---
 const UNION_NONE := 0
@@ -106,6 +122,8 @@ const UNION_STEP_DOWN_REVENUE_SHARE := 0.05
 const UNION_STEP_DOWN_SHIFT := -15.0
 const UNION_STEP_DOWN_DECAY := 0.5
 const UNION_HALVING := 0.5
+## While a Comprehensive Union Agreement stands, satisfaction rises this many times as fast. Falls are unchanged.
+const COMPREHENSIVE_RISE_MULT := 2.0
 const RENEGE_SATISFACTION := -50.0
 
 # --- Satisfaction ---
@@ -129,6 +147,8 @@ signal labour_multiplier_changed(new_value: float)
 signal workforce_policies_changed
 ## Satisfaction, its target or its ledger changed (tick, policy change, renege).
 signal satisfaction_changed
+## A strike warning, strike, pay rise or accident changed (LabourUnrest).
+signal unrest_changed
 
 var labour_multiplier: float = EconomyConfig.LABOUR_MULTIPLIER_DEFAULT
 var workforce_policies: Dictionary = {}
@@ -148,6 +168,14 @@ var union_grandfathered_ids: Dictionary = {}
 ## Harness switch, never saved: the unit suite turns the policies' throughput off so recipe tests
 ## see base quantities (tests/test_runner.gd). The game, the e2e and the probes leave it on.
 var policy_throughput_enabled := true
+## Strikes, pay rises and accidents (docs/pacing-labour-mining-licensing-spec.md §6, §4.5).
+const LabourUnrest := preload("res://scripts/labour_unrest.gd")
+const LegacyPerk := preload("res://scripts/legacy_perk.gd")
+var unrest: LabourUnrest = LabourUnrest.new()
+
+
+func _init() -> void:
+	unrest.changed.connect(func() -> void: unrest_changed.emit())
 
 
 ## Match-scoped: cleared by MatchState.reset() (new game / scenario start).
@@ -163,6 +191,7 @@ func reset() -> void:
 	union_halving_active = false
 	union_signed_turn = 0
 	union_grandfathered_ids.clear()
+	unrest.reset()
 
 
 ## Saved under MatchState's "match" section.
@@ -179,7 +208,7 @@ func export_fields() -> Dictionary:
 		"union_halving_active": union_halving_active,
 		"union_signed_turn": union_signed_turn,
 		"union_grandfathered_ids": union_grandfathered_ids.keys(),
-	}
+	}.merged(unrest.export_fields())
 
 
 ## Older saves carry `labour_output_pressure_pct`; it is retired and ignored.
@@ -201,12 +230,15 @@ func import_fields(d: Dictionary) -> void:
 	union_grandfathered_ids.clear()
 	for id in d.get("union_grandfathered_ids", []) as Array:
 		union_grandfathered_ids[str(id)] = true
+	unrest.import_fields(d)
 
 
 func _on_phase_started(phase: int) -> void:
 	if phase == TurnManager.Phase.PROCESS:
-		# First thing in PROCESS, before production reads the throughput and the output prize.
+		# First thing in PROCESS, before production reads the throughput and the output prize. Strikes and
+		# accidents follow, on the satisfaction just reached.
 		tick_satisfaction()
+		unrest.tick(TurnManager.current_turn)
 
 
 # ── Knobs ─────────────────────────────────────────────────────────────────────────────────────
@@ -331,6 +363,7 @@ func set_union_tier(tier: int) -> void:
 		workforce_policies[WORKFORCE_POLICY_UNION_PARTIAL] = true
 	elif tier == UNION_COMPREHENSIVE:
 		workforce_policies[WORKFORCE_POLICY_UNION_COMPREHENSIVE] = true
+		unrest.clear_strike_breaking()
 		if not union_halving_active:
 			union_halving_active = true
 			union_signed_turn = int(TurnManager.current_turn)
@@ -487,6 +520,9 @@ func labour_cost_components(building: Dictionary, turns_ahead: int = 0, at_turn:
 	# Long Tenure Awards: a payout spike of +10% labour one turn every 10th turn.
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_LONG_TENURE) and turn > 0 and turn % 10 == 0:
 		parts.append({"id": "long_tenure_awards_payout", "label": "Long Tenure payout", "delta": LONG_TENURE_PAYOUT})
+	var raise_left := int(unrest.pay_raises.get(str(building.get("instance_id", "")), 0))
+	if raise_left > maxi(0, turns_ahead):
+		parts.append({"id": "pay_raise", "label": "Pay rise", "delta": LabourUnrest.PAY_RAISE})
 	var union := union_tier()
 	if union != UNION_NONE:
 		var union_id := WORKFORCE_POLICY_UNION_COMPREHENSIVE if union == UNION_COMPREHENSIVE else WORKFORCE_POLICY_UNION_PARTIAL
@@ -619,18 +655,18 @@ func _projected_effects(turns_ahead: int) -> Dictionary:
 func satisfaction_contributions() -> Array:
 	var parts: Array = []
 	_add_part(parts, "effort", "Overtime" if effort_key() == "overtime" else "Lean effort", float(EFFORT_SATISFACTION[effort_key()]))
-	var idle := 5.0
+	var idle := float(IDLE_PAY_SATISFACTION.full)
 	if idle_labour_pay_share < 0.6:
-		idle = -15.0
+		idle = float(IDLE_PAY_SATISFACTION.half)
 	elif idle_labour_pay_share < 0.9:
-		idle = -5.0
+		idle = float(IDLE_PAY_SATISFACTION.most)
 	_add_part(parts, "idle_pay", "Pay while idle %d%%" % int(round(idle_labour_pay_share * 100.0)), idle)
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_LAX_SAFETY):
-		_add_part(parts, WORKFORCE_POLICY_LAX_SAFETY, "Minimal safety", -25.0)
+		_add_part(parts, WORKFORCE_POLICY_LAX_SAFETY, "Minimal safety", MINIMAL_SAFETY_SATISFACTION)
 	elif is_workforce_policy_enabled(WORKFORCE_POLICY_STRICT_SAFETY):
-		_add_part(parts, WORKFORCE_POLICY_STRICT_SAFETY, "High safety", 10.0)
+		_add_part(parts, WORKFORCE_POLICY_STRICT_SAFETY, "High safety", HIGH_SAFETY_SATISFACTION)
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_PENSIONS_MINIMUM):
-		_add_part(parts, WORKFORCE_POLICY_PENSIONS_MINIMUM, "Minimum legal pensions", -15.0)
+		_add_part(parts, WORKFORCE_POLICY_PENSIONS_MINIMUM, "Minimum legal pensions", MINIMUM_PENSIONS_SATISFACTION)
 	elif is_workforce_policy_enabled(WORKFORCE_POLICY_GENEROUS_PENSIONS):
 		var turns := int((workforce_policy_effects.get(WORKFORCE_POLICY_GENEROUS_PENSIONS, {}) as Dictionary).get("active_turns", 0))
 		_add_part(parts, WORKFORCE_POLICY_GENEROUS_PENSIONS, "Generous pensions", 20.0 if turns >= GENEROUS_PENSIONS_MATURE_TURNS else 10.0)
@@ -638,10 +674,11 @@ func satisfaction_contributions() -> Array:
 		_add_part(parts, WORKFORCE_POLICY_SMALL_BONUS, "Small annual bonus", 8.0)
 	elif is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_BONUS):
 		_add_part(parts, WORKFORCE_POLICY_ANNUAL_BONUS, "Generous annual bonus", 15.0)
-	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
-		_add_part(parts, WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, "Profit share 5%", 10.0)
-	elif is_workforce_policy_enabled(WORKFORCE_POLICY_PROFIT_SHARE_10):
-		_add_part(parts, WORKFORCE_POLICY_PROFIT_SHARE_10, "Profit share 10%", 20.0)
+	for share_id: String in PROFIT_SHARE_RATE:
+		if is_workforce_policy_enabled(share_id):
+			_add_part(parts, share_id, "Profit share %d%%" % roundi(float(PROFIT_SHARE_RATE[share_id]) * 100.0),
+				profit_share_satisfaction(share_id))
+			break
 	match union_tier():
 		UNION_PARTIAL:
 			_add_part(parts, WORKFORCE_POLICY_UNION_PARTIAL, "Partial Union Agreement", 15.0)
@@ -650,7 +687,7 @@ func satisfaction_contributions() -> Array:
 		_:
 			_add_part(parts, "work_week", "%d hour week" % work_week_hours, WORK_WEEK_SATISFACTION_PER_LEVEL * float(work_week_level()))
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_PUSH_AUTOMATION):
-		_add_part(parts, WORKFORCE_POLICY_PUSH_AUTOMATION, "Automation", -10.0)
+		_add_part(parts, WORKFORCE_POLICY_PUSH_AUTOMATION, "Automation", AUTOMATION_SATISFACTION)
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE):
 		_add_part(parts, WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE, "Extended Annual Leave", 8.0)
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE):
@@ -659,6 +696,10 @@ func satisfaction_contributions() -> Array:
 		_add_part(parts, WORKFORCE_POLICY_LONG_TENURE, "Long Tenure Awards", 5.0)
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_STOCK_OPTIONS):
 		_add_part(parts, WORKFORCE_POLICY_STOCK_OPTIONS, "Stock Options", 10.0)
+	if LegacyPerk.holds():
+		_add_part(parts, "like_family", "Like Family", LIKE_FAMILY_SATISFACTION)
+	if unrest.routinely_broke:
+		_add_part(parts, "routinely_broke_strikes", "Routinely broke strikes", LabourUnrest.ROUTINE_SATISFACTION)
 	var workers := workforce_headcount()
 	for step in WORKFORCE_SIZE_STEPS:
 		if workers > step:
@@ -720,17 +761,47 @@ func _aged_shifts(shifts: Array) -> Array:
 				kept.append(s)
 	return kept
 
-## One turn of movement: max(10% of the gap, 2) toward the target, landing on it within 2.
-static func step_toward(current: float, target: float) -> float:
+## One turn of movement: max(10% of the gap, 2) toward the target, landing on it within 2. A rise moves `rise` times
+## as far (rise_multiplier: a Comprehensive Union Agreement doubles it).
+static func step_toward(current: float, target: float, rise: float = 1.0) -> float:
 	var gap := target - current
-	if absf(gap) <= SATISFACTION_STEP_MIN:
+	var share := SATISFACTION_STEP_SHARE
+	var least := SATISFACTION_STEP_MIN
+	if gap > 0.0:
+		share *= rise
+		least *= rise
+	if absf(gap) <= least:
 		return target
-	return current + signf(gap) * maxf(absf(gap) * SATISFACTION_STEP_SHARE, SATISFACTION_STEP_MIN)
+	return current + signf(gap) * maxf(absf(gap) * share, least)
+
+## How many times as fast satisfaction rises this turn: COMPREHENSIVE_RISE_MULT under a Comprehensive Union Agreement.
+func rise_multiplier() -> float:
+	return COMPREHENSIVE_RISE_MULT if union_tier() == UNION_COMPREHENSIVE else 1.0
+
+## The share of profit the chosen profit share setting pays, 0 with none.
+func profit_share_rate() -> float:
+	for share_id: String in PROFIT_SHARE_RATE:
+		if is_workforce_policy_enabled(share_id):
+			return float(PROFIT_SHARE_RATE[share_id])
+	return 0.0
+
+## Last turn's profit after tax, from Production's turn summary: 0 before the first turn resolves.
+func last_profit_after_tax() -> float:
+	var s: Dictionary = Production.last_turn_summary
+	return float(s.get("pre_tax_profit", 0.0)) - float(s.get("taxes_paid", 0.0))
+
+## A profit share setting's satisfaction at last turn's profit: PROFIT_SHARE_SATISFACTION, halved for the lower share.
+func profit_share_satisfaction(share_id: String) -> float:
+	var profit := last_profit_after_tax()
+	var value := float(PROFIT_SHARE_SATISFACTION.loss)
+	if profit > 0.0:
+		value = float(PROFIT_SHARE_SATISFACTION.small if profit < PROFIT_SHARE_SMALL_BELOW else PROFIT_SHARE_SATISFACTION.large)
+	return value * (PROFIT_SHARE_LOWER_SCALE if share_id == WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE else 1.0)
 
 ## Once a turn at the start of PROCESS: move toward the target, age the shifts, count the union's
 ## pay rounds.
 func tick_satisfaction() -> void:
-	satisfaction = step_toward(satisfaction, target_satisfaction())
+	satisfaction = step_toward(satisfaction, target_satisfaction(), rise_multiplier())
 	target_shifts = _aged_shifts(target_shifts)
 	if union_tier() != UNION_NONE:
 		union_active_turns += 1
@@ -748,7 +819,7 @@ func projected_satisfaction(turns: int) -> float:
 		var target := base
 		for s in shifts:
 			target += float((s as Dictionary).get("value", 0.0))
-		value = step_toward(value, clampf(target, SATISFACTION_MIN, SATISFACTION_MAX))
+		value = step_toward(value, clampf(target, SATISFACTION_MIN, SATISFACTION_MAX), rise_multiplier())
 		shifts = _aged_shifts(shifts)
 	return value
 
@@ -791,6 +862,16 @@ func band_summary(value: float = INF) -> Dictionary:
 	return {"title": "Restless", "tone": "bad", "words": "Better pay, shorter hours or a union bring it back up."}
 
 ## A satisfaction figure as the panels print it: "+42", "−18", "0".
+## A contribution as the ledger and the knobs show it: whole points, or a half point where there is one (−2.5).
+static func contribution_text(value: float) -> String:
+	if is_equal_approx(value, roundf(value)):
+		return signed_text(value)
+	return ("+%.1f" if value > 0.0 else "−%.1f") % absf(value)
+
+## The size of a contribution without its sign, for the knob words: "15", "2.5".
+static func points_text(value: float) -> String:
+	return contribution_text(absf(value)).trim_prefix("+")
+
 static func signed_text(value: float) -> String:
 	var n := roundi(value)
 	if n > 0:

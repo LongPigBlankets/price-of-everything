@@ -26,7 +26,8 @@ const DemoBuild := preload("res://scripts/demo_build.gd")
 # 16 = intermediary fallback purchases held privately per building ("bridge");
 # 17 = land prices: player buildings already standing are land_exempt, bought land starts unpriced.
 # 18 = labour satisfaction, work week, union tiers and the Comprehensive halving; output pressure retired.
-const SAVE_VERSION := 18
+# 19 = the Routing switch sets route choice; older saves, whose switch did nothing, load on Cheapest.
+const SAVE_VERSION := 19
 const MAIN_SCENE := "res://scenes/main.tscn"
 const DEFAULT_START := "res://data/starts/default.json"
 const BuildingLevels := preload("res://scripts/building_levels.gd")   # start-building levels
@@ -146,7 +147,10 @@ func import_snapshot(snap: Dictionary) -> String:
 	# add their modifier when the unlock fires — but a start/save building import fires
 	# it BEFORE Modifiers.import_state above wipes the registry, and grant_unlock is
 	# one-shot so it never re-fires. Re-apply the permanent ones from unlocked_titles.
+	Modifiers.prune_stale_unlock_modifiers()
 	Modifiers.reapply_unlock_modifiers(ResearchState.unlocked_titles)
+	# A save from before the Original Furnace anchor ties its start perk to the start's furnace.
+	preload("res://scripts/legacy_perk.gd").migrate(str(MatchState.ruleset.get("start_id", "")))
 	# Missing "victory" key (old saves) -> import_state({}) leaves a fresh zero state.
 	VictoryState.import_state(snap.get("victory", {}))
 	# Additive key (tolerant reader): pre-feature saves seed the policy schedule fresh.
@@ -385,6 +389,11 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 		# The starting estate never counts toward its tile's land price.
 		if str(buildings[instance_id].owner) == MatchState.LOCAL_PLAYER:
 			buildings[instance_id]["land_exempt"] = true
+		# A start's legacy building: its own name and the mark its perk is held by (scripts/legacy_perk.gd).
+		if str(entry.get("name", "")) != "":
+			buildings[instance_id]["name"] = str(entry.get("name", ""))
+		if bool(entry.get("legacy_anchor", false)):
+			buildings[instance_id]["legacy_anchor"] = true
 		if entry.has("opening_batches"):
 			opening_batches[instance_id] = maxi(0, int(entry.get("opening_batches", 0)))
 		if str(entry.get("logistics_mode", "")) == "middleman" and tile_id == "tile_5_4" and recipe_id == "r_009":
@@ -502,6 +511,8 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			"work_week_hours": int(labour.get("work_week", LabourState.WORK_WEEK_DEFAULT)),
 			"idle_labour_pay_share": clampf(float(labour.get("idle_pay_share", 1.0)), 0.5, 1.0),
 			"one_off_charges": _start_charges(cfg.get("one_off_charges", [])),
+			# Demo-only seam sizes, applied at import under the demo rules (MatchState._apply_demo_deposit_overrides).
+			"demo_deposit_overrides": (cfg.get("demo_deposit_overrides", {}) as Dictionary).duplicate(true),
 		},
 		"stockpile": {"by_tile": (cfg.get("stockpile", {}) as Dictionary).duplicate(true)},
 		"loans": {"loans": loans, "next_loan_id": loans.size() + 1},
@@ -803,6 +814,8 @@ func _migrate(snap: Dictionary) -> Dictionary:
 				snap = _migrate_v16_to_v17(snap)
 			17:
 				snap = _migrate_v17_to_v18(snap)
+			18:
+				snap = _migrate_v18_to_v19(snap)
 			_:
 				break
 		version += 1
@@ -843,6 +856,15 @@ func _migrate_v17_to_v18(snap: Dictionary) -> Dictionary:
 		match_d["work_week_hours"] = 45
 	snap["match"] = match_d
 	snap["save_version"] = 18
+	return snap
+
+func _migrate_v18_to_v19(snap: Dictionary) -> Dictionary:
+	# Before 19 the Routing switch was never read and goods took the cheapest route, whatever it showed. Keep
+	# them on it now that the switch works.
+	var match_d: Dictionary = snap.get("match", {})
+	match_d["route_objective"] = MatchState.RouteObjective.CHEAPEST
+	snap["match"] = match_d
+	snap["save_version"] = 19
 	return snap
 
 func _migrate_v1_to_v2(snap: Dictionary) -> Dictionary:

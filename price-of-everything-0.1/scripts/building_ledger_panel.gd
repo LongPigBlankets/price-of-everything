@@ -277,7 +277,7 @@ func _row_vm(b: Dictionary) -> Dictionary:
 	var base_price: float = Catalog.get_base_price(out_gid) if out_gid != "" else 0.0
 	var cost_color: Color = BuildingStatus.cost_rag_color(uc, base_price)
 
-	var land: float = float(bdata.get("tile_size_used", 1)) * BuildingLevels.mult("size", level)
+	var land: float = Catalog.land_units(bdata) * BuildingLevels.mult("size", level)
 	var name_str: String = BuildingNaming.label_for_tile(tile_id, instance_id, building_id, str(b.get("recipe_id", "")))
 	var output_str: String = BuildingStatus.primary_output_display_name(recipe)
 	var power: Dictionary = _power_cell(b, recipe, is_infra)

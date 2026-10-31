@@ -17,6 +17,7 @@ const INTERMEDIARY_LABEL := "Local Suppliers"
 const BuildingStatus := preload("res://scripts/building_status.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const Staffing := preload("res://scripts/staffing.gd")
+const MiningSites := preload("res://scripts/mining_sites.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 const BuildingPrice := preload("res://scripts/building_price.gd")
 const CompanyNames := preload("res://scripts/company_names.gd")
@@ -57,6 +58,9 @@ static func run_state(building: Dictionary, recipe: Dictionary, is_infrastructur
 	if is_infrastructure:
 		return "operational"
 	if BuildingStatus.power_status_color(building, recipe, is_infrastructure) == BuildingStatus.STATUS_RED:
+		return "stalled"
+	# Stopped by an accident: it does not run until the downtime is over.
+	if LabourState.unrest.is_down(str(building.get("instance_id", ""))):
 		return "stalled"
 	# Still hiring its first 70%: amber, it starts on its own once staffed.
 	if Staffing.is_waiting(building):
@@ -396,6 +400,9 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 	# 1) critical fault / restarting / all-clear
 	if exhausted:
 		rows.append(_row("bad", "warn", "Deposit exhausted", "The deposit is exhausted. This building cannot produce with its current recipe."))
+	elif LabourState.unrest.is_down(iid) and not is_infrastructure:
+		var down := LabourState.unrest.down_turns_left(iid)
+		rows.append(_row("bad", "warn", "Accident", "Down after an accident for %d more turn%s." % [down, "" if down == 1 else "s"]))
 	elif Staffing.is_waiting(building) and not is_infrastructure:
 		# Below 70% hired it does not run at all: that is the one reason, whatever its inputs say.
 		rows.append(_row("warn", "clock", "Hiring staff", staffing_detail(building)))
@@ -435,6 +442,13 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 		rows.append(_row("bad", "box", upgrade_fault_label, str(upgrade_progress.get("error", "The upgrade is unable to continue."))))
 	else:
 		rows.append(_row("ok", "check", "No critical faults", "Operating normally." if ran else "Ready to run."))
+	# Strikes (docs/pacing-labour-mining-licensing-spec.md §6): on strike, or named in the warning.
+	if LabourState.unrest.is_on_strike(iid):
+		var left := LabourState.unrest.strike_turns_left(iid)
+		rows.append(_row("warn", "warn", "On strike", "Output down %d%% for %d more turn%s. Labour costs half." % [LabourState.LabourUnrest.output_cut_pct(), left, "" if left == 1 else "s"]))
+	elif LabourState.unrest.is_named(iid):
+		rows.append(_row("warn", "warn", "Strike warning", "Its workers strike on turn %d unless satisfaction reaches %s, or the strike is settled or broken." % [
+			int(LabourState.unrest.warning.get("turn", 0)), LabourState.signed_text(LabourState.LabourUnrest.STRIKE_BELOW)]))
 	# Running short staffed: the share it runs at, under the first row.
 	if Staffing.is_hiring(building) and not Staffing.is_waiting(building) and not is_infrastructure:
 		rows.append(_row("warn", "clock", "Hiring staff", staffing_detail(building)))
@@ -1350,7 +1364,30 @@ static func _unsold_check(building: Dictionary, route: Dictionary, g: Dictionary
 # that tips the building into a loss from one it can carry.
 
 static func plant_checks(building: Dictionary, recipe: Dictionary, is_infrastructure: bool, econ: Dictionary = {}) -> Array:
-	return [_carbon_check(building, recipe, is_infrastructure, econ), _works_check(building)]
+	return [_carbon_check(building, recipe, is_infrastructure, econ), _works_check(building), seam_check(building)]
+
+## A mine's seam (docs/pacing-labour-mining-licensing-spec.md §8.8), in units a turn: green within its free amount,
+## amber over it (labour and upkeep rise), red past its limit (it may collapse); off for a building that mines
+## nothing.
+static func seam_check(building: Dictionary) -> Dictionary:
+	var s := MiningSites.site_of(building)
+	if s.is_empty():
+		return _check("seam", "Seam", "off", "Mines no seam.")
+	var c := _check("seam", "Seam", "ok", "")
+	c["icon"] = "deposit"
+	var digging := "Digging %s a turn." % MiningSites.units_text(float(s.units))
+	if float(s.collapse) > 0.0:
+		c["tone"] = "bad"
+		c["detail"] = "%s Above %s it may collapse, %s a turn. Labour and upkeep here ×%s." % [digging,
+			MiningSites.units_text(float(s.max_units)), MiningSites.chance_text(float(s.collapse)), MiningSites.figure(float(s.m))]
+	elif float(s.m) > 1.0001:
+		c["tone"] = "warn"
+		c["detail"] = "%s Above %s, labour and upkeep here ×%s. May collapse above %s." % [digging,
+			MiningSites.units_text(float(s.free_units)), MiningSites.figure(float(s.m)), MiningSites.units_text(float(s.max_units))]
+	else:
+		c["detail"] = "%s Costs rise above %s. May collapse above %s." % [digging,
+			MiningSites.units_text(float(s.free_units)), MiningSites.units_text(float(s.max_units))]
+	return c
 
 static func _carbon_check(building: Dictionary, recipe: Dictionary, is_infrastructure: bool, econ: Dictionary) -> Dictionary:
 	if is_infrastructure:

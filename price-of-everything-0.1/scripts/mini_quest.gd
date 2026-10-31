@@ -1276,7 +1276,7 @@ func station_condition_text(node: Dictionary) -> String:
 		"Infrastructure":
 			return "Build %d pieces of infrastructure: roads, rail, pipes or cables." % qty
 		"Fast To Port":
-			return "Have a building whose goods reach a port in under %d turns." % qty
+			return "Have a building whose goods reach a port in %d turns or less." % qty
 		"Research Count":
 			return "Unlock %d research." % qty
 		"Upgrade":
@@ -1350,7 +1350,7 @@ func _station_met(node: Dictionary, summary: Dictionary) -> bool:
 		"Acquire":
 			return _acquired_count() >= qty
 		"Fast To Port":
-			return _fastest_to_port("") < qty
+			return _fastest_to_port("") <= qty
 		"Faster To Port":
 			var base := float(board_baseline.get(str(node.get("id", "")), INF))
 			return float(_fastest_to_port(_good_id(obj))) < base

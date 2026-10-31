@@ -26,9 +26,24 @@ const FIELDS := {
 			"buildings",
 			"demolish_queue",
 			"deposit_remaining",
+			"deposit_initial",
+			"seam_offered",
+			"seam_modes",
+			"seam_offline",
 			"fired_advisor_cooldowns",
 			"ghost_holdings",
+			"strike_warning",
+			"strike_active",
+			"strike_pay_raises",
+			"strike_quiet_until",
+			"accident_down",
+			"accident_turns",
 			"pending_purchases",
+			"licences",
+			"licensed_out",
+			"licence_ready",
+			"unlock_turns",
+			"free_picks",
 			"infrastructure_usage_last_turn",
 			"infrastructure_usage_streaks",
 			"input_tile_only",
@@ -91,7 +106,9 @@ const FIELDS := {
 			"scheduled_moves",
 			"transaction_log",
 			"labour_target_shifts",
-			"union_grandfathered_ids"
+			"strike_record",
+			"union_grandfathered_ids",
+			"licence_sales_due"
 		],
 		"number": [
 			"advisor_peak_profit",
@@ -99,6 +116,10 @@ const FIELDS := {
 			"union_active_turns",
 			"union_signed_turn",
 			"work_week_hours",
+			"strike_free_until",
+			"accident_minimal_turns",
+			"strike_rounds_broken",
+			"strike_buildings_broken",
 			"advisor_rng_seed",
 			"advisors_hired_last_turn",
 			"agenda_last_build_turn",
@@ -141,7 +162,8 @@ const FIELDS := {
 			"global_trade_license_paid",
 			"rail_hubs_seeded",
 			"seaport_auto_subscribe",
-			"union_halving_active"
+			"union_halving_active",
+			"strike_routinely_broke"
 		]
 	},
 	"turn": {
@@ -453,7 +475,7 @@ func validate(snapshot: Variant, version: int, demo: bool, from_disk := false) -
 		if not _number(snap.save_version) or snap.save_version != floorf(float(snap.save_version)) or float(snap.save_version) < 1:
 			return "save_version must be a positive whole number"
 		if float(snap.save_version) > version: return "save is from a newer game version"
-	for path in ["match.advisor_rng_state", "special_orders.rng_state", "decisions.rng_state"]:
+	for path in ["match.advisor_rng_state", "match.labour_rng_seed", "match.labour_rng_state", "match.seam_rng_seed", "match.seam_rng_state", "special_orders.rng_state", "decisions.rng_state"]:
 		var state := _at(snap, path)
 		if state[0] and state[1] != null and not (_number(state[1]) or (state[1] is String and str(state[1]).is_valid_int())):
 			return path + " must be a number or decimal integer string"

@@ -147,6 +147,15 @@ At turn 30 (value added about £177 of £313 revenue), +10% output is worth abou
 Everything else that gives output today becomes throughput, a cost reduction, or a licence group
 member (§10).
 
+### 3.2a Extraction keeps throughput — owner ruling 30 October 2026
+
+- Labour policies and throughput reach mines, oil wells and platforms like any other building. Mines
+  were historically the site of many labour disputes, so leaving them out of labour policy would be
+  strange.
+- The seam impact is accepted: overtime and the work week raise a mine's draw and can push a seam
+  past its free amount or its limit.
+- Taking throughput off extraction was tried the same day and reverted. Do not propose it again.
+
 ### 3.3 Conversion rules *(proposed)*
 
 | Source | Today | Becomes |
@@ -169,16 +178,16 @@ Per building per turn:
 
 ```
 base × level mult × throughput (1 + Σ throughput pct) × staffing fill (§5) × accident factor (§4.5)
-     × site cap scale (§8.2) → quantity run
-outputs: quantity run × output modifiers (1 + Σ recipe_output pct) × strike factor 0.5 (§6)
+     → quantity run
+outputs: quantity run × output modifiers (1 + Σ recipe_output pct) × strike factor 0.4 (§6)
 inputs:  quantity run × input modifiers (1 + Σ recipe_input pct)
 power:   quantity run share of energy
 ```
 
 - Throughput pct values add, as Modifiers pct values do (`modifier_state.gd:545`).
 - Staffing, accidents and caps multiply the run.
-- A strike multiplies output only (LOCKED). It is a `mult` 0.5 modifier, not a −50 pct. Pct values
-  add, so −50% beside a +10% legacy perk would net −40% instead of halving.
+- A strike multiplies output only (LOCKED). It is a `mult` 0.4 modifier, not a −60 pct. Pct values
+  add, so −60% beside a +10% legacy perk would net −50% instead of cutting 60%.
 
 ### 3.5 Code
 
@@ -255,28 +264,38 @@ plant and oil wells (`b_001, b_002, b_003, b_008, b_011, b_012, b_013, b_032–b
 
 | Knob | Option | Throughput | Cash | Satisfaction |
 |---|---|---|---|---|
-| Work effort | Lean | −10% | salary −20% | −20 |
+| Work effort | Lean | −10% | salary −20% | −15 |
 | | Standard | — | — | 0 |
-| | Overtime | +15% | salary +25% | −30 |
-| Pay while idle | 50% / 75% / 100% | — | as today | −15 / −5 / +5 |
-| Safety | Minimal | +10% at hazardous sites | labour −5% | −25, plus accidents (§4.5) |
+| | Overtime | +15% | salary +25% | −25 |
+| Pay while idle | 50% / 75% / 100% | — | as today | −10 / −5 / +5 |
+| Safety | Minimal | +10% at hazardous sites | labour −5% | −20, plus accidents (§4.5) |
 | | Standard | — | — | 0 |
 | | High | — | labour +5% at hazardous sites | +10; no accidents; halves seam-card accident odds (§8.7) |
-| Pensions | Minimum legal / Average / Generous | — | −5% / — / +3% rising (existing ramp) | −15 / 0 / +10, rising to +20 after 30 turns |
+| Pensions | Minimum legal / Average / Generous | — | −5% / — / +3% rising (existing ramp) | −10 / 0 / +10, rising to +20 after 30 turns |
 | Annual bonus | None / Small / Generous | — | — / +2.5% / +5% | 0 / +8 / +15 |
-| Profit share | None / 5% / 10% | — (no output effect any more) | share of profit after tax and dividends | 0 / +10 / +20 |
-| Automation (switch) | On | — | labour −15% on level 2+ buildings, power +10%, maintenance +10% | −10, plus a −10 jump when switched on (layoffs) |
-| Locker | Extended Annual Leave | −2% | — | +8 |
-| Locker | Generous Parental Leave | −2% | — | +8 |
+| Profit share | None / 10% / 20% | — (no output effect any more) | share of profit after tax and dividends | 20%: +5 at a loss, +10 below £25 profit after tax a turn, +15 at £25 or more; 10%: half of each (owner ruling 27 October) |
+| Automation (switch) | On | — | labour −15% on level 2+ buildings, power +10%, maintenance +10% | −5, plus a −10 jump when switched on (layoffs) |
+| Locker | Extended Annual Leave | −5% | — | +8 |
+| Locker | Generous Parental Leave | −5% | — | +8 |
 | Locker | Long Tenure Awards (HR Director) | — | existing trend | +5 |
 | Locker | Stock Options (HR mission) | — | existing dividend effect | +10 |
 | **New knob: Union** (always available) | None | — | — | 0 |
 | | **Partial Union Agreement** | — | labour +10% at once, then +1% more each pay round (every 10th turn), to +25% *(ramp proposed)* | **+15**; no strikes while active |
-| | **Comprehensive Union Agreement** | — | the same pay-round ramp *(proposed)*; **every labour cost cut counts at half** while it stands (§4.4a) | **+30**; no strikes while active |
+| | **Comprehensive Union Agreement** | — | the same pay-round ramp *(proposed)*; **every labour cost cut counts at half** while it stands (§4.4a) | **+30**; no strikes while active; satisfaction **rises twice as fast** (falls are unchanged) |
 | **New knob: Work week** (LOCKED, §4.4b) | 35 hours (level 1) | +5% | union: labour +10%; no union: — | union: 0; no union: −5 |
 | | 40 hours (level 2) | +9% | union: labour +20%; no union: — | union: 0; no union: −10 |
 | | 45 hours (level 3) | +12% | union: labour +30%; no union: — | union: 0; no union: −15 |
 | | 50 hours (level 4) | +14.5% | union: labour +40%; no union: — | union: 0; no union: −20 |
+
+**Owner ruling, 27 October.** Every policy option worth −10 or worse gives 5 back (Lean −15, Overtime −25, half pay
+while idle −10, Minimal safety −20, Minimum legal pensions −10, Automation −5); options at −5 are unchanged. The work
+week stays −5 a level (a −2.5 trial was taken back the same day). Events and their shifts (layoffs, demolition,
+accidents, strikes broken, union step down, reneging) are unchanged. **Like Family**: Metal Magnate and Glass Merchant
+get +25 while the company still owns its Original Furnace, ending for good with it as the legacy perk does
+(`LegacyPerk.holds`). Also ruled the same day: profit share pays 10% or 20% and its satisfaction follows last turn's
+profit after tax (`LabourState.profit_share_satisfaction`); the leave lockers cost 5% throughput each; a Comprehensive
+Union Agreement doubles how fast satisfaction rises (`LabourState.rise_multiplier`); Metal Magnate starts on Standard
+effort and 75% pay while idle so it settles above 0.
 
 **Company contributions — LOCKED.** These are not policies; they come from the company itself:
 
@@ -313,10 +332,10 @@ All at the default 45-hour week unless stated:
 
 | Combination | Throughput | Labour cost | Target |
 |---|---|---|---|
-| Overtime + Minimal safety, no union (squeeze) | +27%, +37% at hazardous sites | +20% | −70: on the strike line |
-| Overtime + Partial Union (buy peace) | +27% | +65%, rising | −15: slow hiring, but no strikes |
-| Comprehensive Union + 10% profit share + generous bonus + generous pensions (30 turns in) + High safety, at 35 hours (model employer) | +5% | about +35%, rising, plus profit share | +95 |
-| Comprehensive Union, then Automation | +12% | Automation's −15% counts as −7.5%, because it came after signing | +20 |
+| Overtime + Minimal safety, no union (squeeze) | +27%, +37% at hazardous sites | +20% | −60 (was −70, on the strike line, before the 27 October rulings) |
+| Overtime + Partial Union (buy peace) | +27% | +65%, rising | −10: slow hiring, but no strikes |
+| Comprehensive Union + 20% profit share (profitable, £25 a turn or more) + generous bonus + generous pensions (30 turns in) + High safety, at 35 hours (model employer) | +5% | about +35%, rising, plus profit share | +90, reached twice as fast |
+| Comprehensive Union, then Automation | +12% | Automation's −15% counts as −7.5%, because it came after signing | +25 |
 
 ### 4.4a Comprehensive Union Agreement: halved labour cuts — LOCKED
 
@@ -455,8 +474,8 @@ than being an event.
 
 | Start | Satisfaction | Notes |
 |---|---|---|
-| Metal Magnate | +40 | Presets Overtime, 50% idle pay and the 45-hour default, and starts above 5,000 workers. Target is −55 (−30 −15 −15 +5). Crosses −5 at turn 8 and settles at −55 around turn 26. This is the first labour decision |
-| Glass Merchant | +20 | |
+| Metal Magnate | +40 | Presets Standard effort, 75% idle pay and the 45-hour default, starts above 5,000 workers, and has Like Family while it owns the Original Furnace. Target is +10 (−5 −15 +5 +25; was −55 with Overtime and 50% idle pay before the 27 October rulings). Settles at +10 without going below 0 |
+| Glass Merchant | +20 | Like Family while it owns the Original Furnace. Target +20 (+5 −15 +5 +25) |
 | Other starts | 0 | |
 
 ### 4.7 UX: top bar — LOCKED (layout *proposed*)
@@ -577,14 +596,14 @@ including fill (§8.5).
 | Size | ceil(25% × N) under −70, ceil(50% × N) under −90. N = the player's running production and power buildings (not infrastructure, batteries or sites under construction) |
 | Draw *(proposed)* | Weighted, seeded RNG. Hazardous sites ×2 while safety is Minimal; buildings with an accident in the last 10 turns ×2; others ×1 |
 | At turn T | Under −70: the strike starts. Under −90 at the warning but −70 to −90 at T: only the first 25% strike. At −70 or above at T: "Strike called off" |
-| Effect (LOCKED) | **Output −50%** for 3 turns (T, T+1, T+2), as a `mult` 0.5 modifier with a 3-turn expiry. Inputs are still consumed in full, so a strike also wastes half the input value. A struck mine still digs and charges its deposit in full. Struck buildings pay **50% labour cost** (LOCKED) |
+| Effect (LOCKED) | **Output −60%** for 3 turns (T, T+1, T+2), as a `mult` 0.4 modifier with a 3-turn expiry (owner rulings 26 Oct: −50% to −30%, then doubled to −60%). Inputs are still consumed in full, so a strike also wastes 60% of the input value. A struck mine still digs and charges its deposit in full. Struck buildings pay **50% labour cost** (LOCKED) |
 | Knock-on | Normal shortfall rules. In Local Suppliers starts, in-house inputs default to stockpile first with Local Suppliers buying the shortfall (`middleman_service.gd:229`). A strike upstream becomes a cash shock downstream; on tile-only routes it halts the chain |
 | Union Agreement, Partial or Comprehensive | No warning and no strikes while active |
 
 Scale at turn 50 (revenue £527, profit £133):
-- 25% of buildings striking removes about 12.5% of output for 3 turns, about £66/turn or half
+- 25% of buildings striking removes about 15% of output for 3 turns, about £79/turn or 60% of
   the profit.
-- 50% removes about 25%, about all the profit, plus bridging markup.
+- 50% removes about 30%, about £158/turn, more than the profit, plus bridging markup.
 - Three turns cannot trigger bankruptcy on their own (−£500 for 5 turns).
 
 ### 6.2 Ending strikes with a pay rise — LOCKED
@@ -593,32 +612,115 @@ Two actions, open from the warning until the strike ends:
 
 | Action | Cost | Effect |
 |---|---|---|
-| Raise pay at one building | labour +20% at that building for 10 turns | That building's strike ends (or is called off). It cannot be drawn again while the raise runs *(proposed)* |
-| Raise pay at every building affected by strikes | labour +20% at every struck or named building for 10 turns *(duration proposed)* | Every strike ends, and **no strikes for 15 turns** |
+| Settle at one building (a pay rise) | labour +40% at that building for 10 turns (owner, 26 Oct: doubled from +20%) | That building's strike ends (or is called off). It cannot be named or strike again for 25 turns (owner, 28 Oct) |
+| Settle every strike (a pay rise at each) | labour +40% at every struck or named building for 10 turns *(duration proposed)* | Every strike ends, **no strikes anywhere for 15 turns**, and none of these buildings can strike again for 25 turns |
 
 - Neither action changes satisfaction or the band. The workforce is still unhappy, so the next
   check after the protection ends can draw again.
 - Saved: `pay_raises` {instance_id: turns_left} and `strike_free_until` (turn).
 
+### 6.2c Quiet after a strike — owner ruling 28 Oct
+
+A building whose strike is settled or broken stays quiet for a while: it cannot be named in a
+warning, or strike, at any check before the quiet runs out.
+
+| Ended by | Quiet at that building |
+|---|---|
+| Settle (one building, or every strike) | 25 turns from the turn it was settled |
+| Break strike (one building, or the whole round) | 20 turns from the turn it was broken |
+
+- The quiet counts from the turn of the action. A check turn T is blocked while T is before the
+  action turn plus the quiet, so a strike broken while still named (turn T−2) skips one check and a
+  strike broken while running skips two.
+- The strike size still counts every eligible building; the strikers are drawn from those not
+  quiet, so a settled or broken building passes its turn to the others.
+- A strike that runs its course leaves no quiet (it gives the +5 instead, AC12.5).
+- Saved: `strike_quiet_until` {instance_id: first check turn it can strike again}.
+
+### 6.2d One off bonuses and the strike lists — owner ruling 28 Oct
+
+Two bonuses buy a building quiet (§6.2c) before or during a strike:
+
+| Action | Cost, one lump sum paid now | Effect at each building it covers |
+|---|---|---|
+| One off building bonus | half that building's Settle cost (§6.2) | its strike ends with no +5, or it leaves the warning, and it is quiet for N turns |
+| One off bonus (company wide) | half the Settle cost of every building it covers | the same at every building it covers |
+
+- N scales with satisfaction when the bonus is paid, from 10 turns at −100 to 20 at +100, 15 at
+  0: `roundi(15 + 5 × satisfaction / 100)`. At −80, 11 turns.
+- A bonus never shortens a quiet already running: the building is quiet to the later of the two.
+- Neither bonus changes satisfaction or counts toward Routinely broke strikes. Charged as "One off
+  bonus" in that turn's costs.
+- *Proposed (my calls):* the company wide bonus covers every production and power building that
+  strikes count (§6.1) whose quiet it would lengthen, so a building already quiet for longer is
+  not paid for; a building's own bonus key is off when it would not lengthen its quiet.
+
+The Strikes tab carries two rows, each with a Show key that opens its list (one at a time):
+
+1. **Buildings on strike cooldown (N)**: the buildings quiet now, each with its turns left.
+2. **Buildings vulnerable to strikes in next 10 turns (N)**: while a warning stands, the named
+   buildings. Otherwise, when the next check's warning is still to be drawn and satisfaction is
+   projected (`LabourState.projected_satisfaction`) below −70 at that draw, every building strikes
+   count that would not sit out that check. None while a union agreement stands or strikes are
+   blocked.
+
+An open list starts with its suggested actions: "Increase company wide satisfaction through
+policies" (a key that opens the Labour tab), "One off bonus" (its total beside its key) and "One
+off building bonus" (on each building's row). Then a row a building, as the strike table's rows:
+emblem, good, name and tile, then its turns left (cooldown) or its output loss if it struck
+(vulnerable), then its bonus cost beside its Bonus key. Bonus keys open a key bed with Confirm and
+Cancel.
+
+### 6.2b Breaking strikes — owner ruling 26 Oct
+
+Beside each pay rise, Break strike: replacement crews end the strike at once.
+
+| Action | Cost | Satisfaction | Effect |
+|---|---|---|---|
+| Break one building | 2 turns of its base wages, paid this turn ("Strike breaking"; owner, 26 Oct: doubled from 1) | target −5 for 10 turns | its strike ends with no +5, or a named building leaves the warning |
+| Break the whole round | 2 turns of base wages per named or striking building | target −20 for 10 turns | every strike ends, the warning clears, no company wide protection (each broken building is quiet for 20 turns, §6.2c) |
+
+- **Routinely broke strikes**: 2 whole rounds broken, or 10 buildings broken one at a time, add a
+  standing −15 to the satisfaction target. Only signing a Comprehensive Union Agreement removes it;
+  signing also resets both counts. A Partial agreement does not.
+- The cost is a first guess (*proposed*): half what a pay rise costs over its 10 turns, so breaking is
+  cheaper in cash and dearer in satisfaction.
+- Saved: `strike_rounds_broken`, `strike_buildings_broken`, `strike_routinely_broke`.
+
 ### 6.3 UX: People > Strikes tab — LOCKED (layout *proposed*)
 
 `TABS` (`people_ds2/people_ds2.gd:24`) becomes `["Advisors", "Labour", "Strikes"]`. The tab body
-uses the People DS2 kit (`people_ds2/parts.gd`) and has five parts:
+uses the DS2 kit (`ds2/parts.gd`). Every part's raised heading stands inside its case. In order:
 
-1. **Status plate**:
-   - band lamp and current satisfaction;
-   - "Next strike check: turn 40";
-   - Union Agreement state.
-2. **Warning board** (only while a warning is open):
-   - each named building, its tile and its expected lost revenue;
-   - "Raise pay here", with its labour cost for 10 turns, beside each building;
-   - "Raise pay for all strikers", with its total cost and "No strikes for 15 turns";
-   - a line on what striking does ("Half output for 3 turns.").
-3. **On strike**: each building with turns left.
-4. **Record**: past strikes with turn, buildings and estimated lost revenue.
-5. **How strikes work**: the two thresholds and the Union Agreement.
-
-The Strikes tab key carries a red lamp while a warning or strike is active.
+1. **Strike risk** (a case):
+   - a module with the labour icon, the pilot lamp, the mood ("Restless at −78") and what it means
+     ("A quarter of your buildings can strike."), and the turns to the next check on a drum (or the
+     turns a settlement still protects). With a union agreement in force, no drum;
+   - the strike scale: satisfaction from −100 to +100 on a mini screen, below −90 lit red, −90 to −70
+     amber, a needle at today's value, the thresholds printed under it, and a key to its zones;
+   - "How strikes work", a key that opens the encyclopedia's Mechanics page Strikes and accidents.
+     The explanation lives there, not on the panel.
+2. **Sub-tabs** (owner ruling 26 Oct): two latching keys on a key bed, "Upcoming Strikes (N)" and
+   "Ongoing Strikes (N)". Upcoming counts the buildings named for a strike that starts within 5
+   turns; Ongoing the buildings on strike. Ongoing opens by itself while strikes are on, else
+   Upcoming. They replace the lamp the Strikes tab key carried.
+3. **The table** for the open sub-tab, laid out as the Building Ledger is:
+   - metal labels over the columns: Location, Output loss, Cost to manage, Action;
+   - "All strikes (N buildings)": the labour icon, its lamp and its timer ("Starts in 2 turns", "2
+     turns left") under the name, the total output loss, then two lines: the total to settle beside
+     the Settle key, over the total to break beside the Break strike key;
+   - a row "N buildings" with a fold mark, folded at first, that shows the buildings under it;
+   - a row a building: its emblem and the good it makes in a well, both 48 px, at the left, then its
+     name with its tile on the second line, then its own figures and keys in the same columns;
+   - Settle is the pay rise (§6.2), Break strike §6.2b. A key opens a key bed under its row that
+     says what it does, with Confirm and Cancel. Break strike's bed also says how near the
+     workforce is to remembering it for good;
+   - an empty sub-tab says so ("No strikes due in the next 5 turns.").
+4. **Strike planning** (a case, §6.2d): "Buildings on strike cooldown (N)" and "Buildings
+   vulnerable to strikes in next 10 turns (N)", each with a Show key that opens its list under it,
+   the suggested actions first.
+5. **Record**: a row per past strike with its turn, the buildings, the outcome's lamp and the output
+   lost.
 
 ### 6.4 Code
 
@@ -765,6 +867,30 @@ Effects:
 
 Slower goods sit on links longer, so congestion rises on busy links. The e2e should report it.
 
+**Route choice (owner ruling, 27 October).** Shipments take the cheapest route, and between equal
+costs the one with fewer turns. Upgrading a level buys speed.
+
+**The Reach a port step takes 2 turns or less (owner ruling, 31 October).** The tutorial's `t_port`
+step read "in under 2 turns", which meant 1. A level 1 road now covers one tile a turn and the Magnate's
+nearest tiles are 2 from Stoneshore Docks, so that needed rail or a level 2 road. The check is now
+turns ≤ the step's `qty`, still 2, and the title says "in 2 turns or less".
+
+**The Routing switch sets route choice (owner ruling, 30 October).** The Shipments and Stockpiles
+panel's Routing switch (Fastest, Cheapest, Blended) was never read by the router: it said Fastest
+while goods took the cheapest route. It now sets the route every new shipment takes.
+- **Cheapest**, the default for new games: the 27 October rule above.
+- **Fastest**: the fewest turns, and between equal turns the least freight.
+- **Blended** *(my call, proposed)*: freight and turns count half each, each against the best the
+  network allows. The route with the least ½ × freight ÷ cheapest freight + ½ × turns ÷ fewest
+  turns, then the least freight. On a cheap road detour a turn slower than a run of bare ground,
+  Blended takes the road.
+- It is one company wide setting, as the panel already showed it. Shipments already on the way keep
+  their route. Fluids still take a pipe route first whatever it says. Local Suppliers are unaffected.
+- Saved as before. A save older than version 19 loads on Cheapest, because the switch did nothing
+  then and its goods took the cheapest route.
+- Code: `Catalog._best_route` reads `MatchState.route_objective`; the route cache keys on it.
+  `MatchState.reset` sets Cheapest.
+
 **Local Suppliers: same turn, LOCKED, pricing unchanged.**
 - Their haul is trips to the hub × settlement factor × freight rate.
 - Trips are `ceil(distance ÷ TRANSPORT_MAX_TILES_PER_TURN)` (`middleman_locations.gd:147`).
@@ -806,24 +932,48 @@ satisfaction. Buying is the fast lane, which is what LOCKED pacing intends.
 - A **site** is one deposit good on one tile.
 - Its **draw** is the sum over the player's workings on it of: level multiplier (L1 1, L2 2,
   L3 3.5) × throughput × staffing fill × accident factor.
-- Strikes do not lower draw: a struck mine digs in full and recovers half (§6).
+- Strikes do not lower draw: a struck mine digs in full and recovers 70% (§6).
 - Draw is measured in level 1 workings, so caps are recipe-agnostic. An offshore platform and an
   oil well each count 1 at level 1.
 - NPC buildings do not simulate and never draw.
 
 ### 8.2 Caps — LOCKED
 
-| Seam | Free cap | Hard max | Labour and maintenance at the hard max |
+| Seam | Free cap | Collapse limit | Labour and maintenance at the limit |
 |---|---|---|---|
-| Endless (no amount in `tile_properties.csv`) | 2 | 4 | × 3 |
-| Finite | 3 | 6 | × 4 |
+| Endless (no amount in `tile_properties.csv`) | 1.5 | 3 | × 2.5 |
+| Finite | 1.5 | 3 | × 2.5 |
 
-Only finite seams can reach 6. Above the hard max, every working on the site is scaled by
-max / draw (pro rata). The excess is not dug.
+**Owner ruling, 26 October 2026: free amount 1.5.** Every seam is free to 1.5 level 1 workings
+and may collapse past 3 (was 2 and 4 for endless seams, 3 and 6 for finite ones). One mine on
+overtime fits; a second on the same seam pays about ×1.7.
+
+**Owner ruling, 26 October 2026: collapse risk.** Past the limit nothing is scaled back and
+nothing is refused. Every working digs in full, M keeps rising, and each turn the seam may
+collapse: 5% for each level 1 working's worth over the limit (`COLLAPSE_PER_WORKING`), rolled on
+the seam cards' saved RNG. A finite seam that collapses loses what remains. An endless seam stops
+all its mines for 3 turns (`COLLAPSE_OFFLINE_TURNS`).
+
+**Owner ruling, 30 October 2026: upgraded mines collapse less.** The collapse chance scales with
+the level of the workings: ×1 at level 1, ×0.75 at level 2, ×0.5625 at level 3
+(`COLLAPSE_LEVEL_FACTOR`). Each upgrade takes a true 25% off (owner, 31 October). For the same
+amount over the limit, 10% becomes 7.5% at level 2 and 5.625% at level 3, so 5%, 3.75% and 2.8125%
+for each level 1 working's worth over.
+- *My call, flagged:* a site with workings of mixed levels takes the average factor weighted by
+  each working's draw. A level 3 and a level 1 on one seam draw 4.5, so 1.5 over at a factor of
+  (3.5 × 0.5625 + 1) ÷ 4.5 ≈ 0.66: about 4.95% a turn, against 7.5% if both counted as level 1.
+- Upgrading still adds draw (level 2 counts 2, level 3 counts 3.5), so an upgrade that pushes a seam
+  further over its limit can still raise the chance overall.
+- Where shown: the BDP Seam lamp's words give the site's chance to two decimals ("3.75% a turn"),
+  and the upgrade dialog's seam line gives the chance at each level.
+
+Players never see workings. Every figure is units dug a turn: a working's draw × its recipe's
+base output. A coal mine digs 60 a turn at level 1, so a coal seam is free to 90 and may collapse
+above 180.
 
 ### 8.3 Over-cap cost — LOCKED
 
-Site multiplier: **M = 1 + max(0, min(draw, max) − free cap)**.
+Site multiplier: **M = 1 + max(0, draw − free cap)**. It does not stop at the limit.
 
 - That is +100% labour and maintenance for each full level 1 working over the free cap. It is
   continuous, so overtime pushing a site 0.2 over costs ×1.2, not a cliff.
@@ -841,13 +991,13 @@ fees):
 
 | Site | Draw | M | £ per coal, no discounts | £ per coal, labour ×0.4 and maintenance ×0.6 |
 |---|---|---|---|---|
-| Endless, one L2 | 2 | 1 | 0.33 | |
-| Endless, one L3 | 3.5 | 2.5 | 0.55 | |
-| Endless, two L2 | 4 | 3 | 0.84 (loses) | 0.43 |
-| Finite, three L1 | 3 | 1 | 0.40 | |
-| Finite, one L3 | 3.5 | 1.5 | 0.35 | |
-| Finite, L3 + L2 | 5.5 | 3.5 | 0.83 (loses) | 0.42 |
-| Finite, three L2 | 6 | 4 | 1.09 (loses) | 0.55 |
+| Endless, one L2 | 2 | 1.5 | 0.45 | |
+| Endless, one L3 | 3.5 | 3 | 0.65 (loses) | |
+| Endless, two L2 | 4 | 3.5 | 0.96 (loses) | 0.49 |
+| Finite, three L1 | 3 | 2.5 | 0.88 (loses) | |
+| Finite, one L3 | 3.5 | 3 | 0.65 (loses) | |
+| Finite, L3 + L2 | 5.5 | 5 | 1.15 (loses) | 0.57 |
+| Finite, three L2 | 6 | 5.5 | 1.48 (loses) | 0.73 (loses) |
 
 Mine upkeep basis:
 - Labour about £9.50, maintenance £4, power £3.30 per turn at level 1.
@@ -855,8 +1005,8 @@ Mine upkeep basis:
 - Level 3: ×2 labour, ×2.5 maintenance and power.
 
 Early sites grow by adding level 1 mines, because mine level 2 needs In-Pit Crushing (5
-profitable mines). An endless seam takes 2 free and the third doubles the site. A finite seam
-takes 3 free.
+profitable mines). A seam takes one mine free, with room for overtime; a second costs about ×1.5
+across the site, ×1.7 at the 45 hour week.
 
 ### 8.4 Deposit sizes — LOCKED (×3)
 
@@ -917,23 +1067,30 @@ At 25% remaining, a decision card replaces the 5-turn warning (`DEPOSIT_WARNING_
 
 ### 8.8 UX
 
-- **Tile panel** deposit line: "Coal seam. Drawing 2.5 of 3 free. Limit 6. 4,120 left."
-- **Construct and upgrade dialogs**:
-  - show the site after the action: "Takes the seam to 4 of 3 free. Labour and upkeep here ×2."
-  - disabled with a reason when the action adds nothing past the hard max.
-- **BDP diagnostics, Plant stage**: "Seam" lamp, amber over the free cap, red at the hard max.
-- **Build forecast and CostSolver** include M and the hard max.
+- **Tile panel** deposit row, in units a turn, a figure a line: "Digging 150 a turn", "Costs rise
+  above 90", "May collapse above 180", then what is left.
+- **Construct and upgrade dialogs**, in units a turn: "Seam output will increase from 120 to 240.
+  Above 180, deposit may collapse." Nothing is refused.
+- **BDP diagnostics, Plant stage**: "Seam" lamp, amber over the free cap, red past the limit with
+  its collapse chance.
+- **Seam card choices** say what they do in a few short lines, each led by its icon, risks in
+  amber ("Seam lasts longer", "Mines stop for 2 turns", "Risks roof falls and seam loss").
+  Hovering a choice, its key included, opens a plate that explains it: a few sentences, then each
+  phase (Now, For the next 2 turns, Then until the seam runs out, Each turn, On average) with a row
+  a figure: icon, what it is, start, arrow, outcome, a clock for how long, a chance in amber.
+- **Build forecast and CostSolver** include M.
 
 ### 8.9 Code
 
-- One pass at PROCESS start computes each site's draw, scale and M. It stores no new save state.
-- Production applies the scale in the deposit loop (`production.gd:980–1050`) and charges the
-  deposit what was dug. Labour and maintenance sites multiply by M.
+- Each site's draw and M are derived when asked (`scripts/mining_sites.gd`). They store no save
+  state. The collapse roll runs first in the seam cards' PROCESS tick.
+- Production charges the deposit what was dug (`production.gd:980–1050`). Labour and maintenance
+  on the site multiply by M.
 - Caps live in `EconomyConfig` per seam type, with an `extraction_cap_cost` Modifiers domain for
   the per-working cost.
 - Unit tests:
   - endless and finite caps
-  - pro-rata scaling past max
+  - collapse past the limit
   - M continuity
   - M applied after the labour floor
   - finite charge includes throughput and fill
@@ -1071,8 +1228,8 @@ process.
 | Extraction (`b_001`) | Bench Blasting Expansion, Bulk Haulage Fleets, Continuous Surface Miners | +5% yield; over-cap cost +100% → +75% per working; +20% yield on endless seams (as today) |
 | Solar (`b_024`) | Utility Solar Arrays, Utility-Scale Inverters, Dual-Axis Tracking Farms | output as today (no material inputs) |
 | Wind (`b_025`) | Onshore Wind Control, Taller Turbine Towers, Tall-Tower Wind Capture | output as today |
-| Factory (`b_007`) | High-Volume Press Lines, Multi-Shift Production, third to author | +10% throughput; +15% throughput with labour +10%; — |
-| EAF (`b_008`) | Foamy Slag Practice, Ultra-High-Power Arcs, third to author | power −10%; +15% throughput with power +10%; — |
+| Factory (`b_007`) | High-Volume Press Lines, Multi-Shift Production, Near-Net-Shape Stamping (new, P6) | +10% throughput; +15% throughput with labour +10%; inputs −10% |
+| EAF (`b_008`) | Foamy Slag Practice, Ultra-High-Power Arcs, Eccentric Bottom Tapping (new, P6) | power −10%; +15% throughput with power +10%; labour and maintenance −10% |
 
 ### 10.6 UX
 
@@ -1151,7 +1308,7 @@ whose condition is unmet, or licensing out a process that was licensed in."
 > **Labour satisfaction is a budget.** Policies trade throughput and cash for satisfaction
 > (−100 to +100). Satisfaction sets:
 > - hiring speed;
-> - strikes: 25% of buildings below −70 and 50% below −90, every 10 turns, at half output;
+> - strikes: 25% of buildings below −70 and 50% below −90, every 10 turns, at 60% less output;
 > - the +5% output prize.
 >
 > Satisfaction moves toward its target by max(10% of the gap, 2) a turn; only reneging on union
@@ -1163,9 +1320,9 @@ whose condition is unmet, or licensing out a process that was licensed in."
 
 **A5. New stance: seams have working limits** (P4):
 
-> **Seams have working limits.** Each deposit extracts freely up to 2 level 1 workings (endless
-> seams) or 3 (finite seams), with a hard maximum of 4 or 6. Every working over the free cap adds
-> 100% labour and maintenance on the whole site, as a multiplier after labour discounts. Deep
+> **Seams have working limits.** Each deposit extracts freely up to 1.5 level 1 workings. Past a
+> limit of 3 the seam may collapse. Every working over the
+> free cap adds 100% labour and maintenance on the whole site, as a multiplier after labour discounts. Deep
 > extraction therefore needs labour and maintenance modifiers. Finite seams are charged for what
 > is dug: throughput counts, yield does not. Regression smell: removing the cap because players
 > want to upgrade, letting yield research burn seams, or turning the over-cap cost into a
@@ -1179,7 +1336,7 @@ whose condition is unmet, or licensing out a process that was licensed in."
 
 > - A bought building cannot be cancelled during its 2-turn closing.
 > - A building idles until it is 70% staffed.
-> - Strikes halve output while inputs are still consumed.
+> - Strikes cut output 60% while inputs are still consumed.
 > - Freight is priced by distance. Local Suppliers settle in the same turn and keep their own
 >   trips constant.
 
@@ -1270,6 +1427,41 @@ Pinned strings and tests that change:
 - `test_tile_quick_menu.gd:150, 181`
 - `test_research.gd:1238`
 - Profit Share and labour policy tests
+
+### 14.1 The Stoneshore e2e under Local Suppliers (owner direction, 26 October 2026)
+
+The Stoneshore e2e (`tests/e2e_stoneshore.gd`, scenario `open_field_1`) plays the logistics
+progression a player plays: Local Suppliers first, tile stockpiles once Open Logistics Contracts is
+earned, Local Suppliers again only when a seam runs out and a nearby mine would cost more.
+
+1. **AC25.1** The run uses the Local Suppliers rules (`logistics_model` `middleman_v1`), as Metal
+   Magnate does.
+2. **AC25.2** Until Open Logistics Contracts, every building buys its inputs and sells its outputs
+   through Local Suppliers, and construction materials come from Local Suppliers. The builder
+   checks it can pay the build fee plus the Local Suppliers materials price, so the game never
+   refuses a build in silence; a build the game refuses fails the run with the game's reason.
+3. **AC25.3** Open Logistics Contracts is earned by play (three goods, 300 units each, through
+   Local Suppliers), never granted. The report prints the turn.
+4. **AC25.4** On the first turn after the unlock, every input the chain makes for itself (coal,
+   iron ore, iron ingots, copper ore, copper ingots, copper wiring, steel, water) switches to its
+   tile stockpile, fed by the scenario's output routes. Final goods (motors) and any surplus keep
+   selling through Local Suppliers (the global market needs the Import/Export License, out of
+   scope).
+5. **AC25.5** Coal for the smelters is routed to the smelters' tile, tile_25_5. The layout was set
+   for the old free amounts (two mines on a seam that never runs out, the rest on the nearest tile
+   with that deposit: coal tile_20_9, copper tile_18_10, iron tile_22_6); at 1.5 free each pair
+   now pays about ×1.7. Rightsizing and the fallback only build where a seam has room.
+6. **AC25.6** Each turn, for coal and iron ore: when a building's own supply has stopped because its
+   seam ran out (a finite seam empty, or collapsed), the run prices a new mine on the nearest tile
+   with that deposit and room under its free amount (running cost a unit at that site, plus haul a
+   unit to the consumer, plus build fee, materials and land spread over 30 turns) against Local
+   Suppliers' delivered price a unit. It builds the mine when that is cheaper, else switches the
+   input back to Local Suppliers, and prints both figures and the choice.
+7. **AC25.7** A unit test drives that choice both ways on a forced empty seam.
+8. **AC25.8** The report prints the unlock turn, each seam's use against its free amount, every
+   fallback choice, the profit trajectory and the cost lines. The run passes with no failed checks.
+9. **AC25.9** The Metal Magnate benchmark bot uses the same builder, so its builds go through;
+   its progression through tile stockpiles is a follow-up.
 
 ## 15. Phasing
 
@@ -1593,11 +1785,12 @@ resolution. Fill is `staff_fill`, the hired share of a building's requirement.
 
 - **Strikes**:
   - check every 10 turns, warning at T−2, draw 25% or 50% of buildings weighted;
-  - output ×0.5 as a `mult` modifier for 3 turns;
+  - output ×0.4 as a `mult` modifier for 3 turns;
   - strikers at 50% labour cost;
   - called off when satisfaction recovers;
-  - pay rises: one building +20% for 10 turns, or every striker +20% for 10 turns with 15 strike-free
+  - pay rises: one building +40% for 10 turns, or every striker +40% for 10 turns with 15 strike-free
     turns;
+  - a settled building is quiet for 25 turns, a broken one for 20 (§6.2c);
   - either union blocks strikes.
 - **Accidents**: under Minimal safety.
 - **UX**:
@@ -1607,10 +1800,118 @@ resolution. Fill is `staff_fill`, the hired share of a building's requirement.
   - bell events.
 - **Save and telemetry**: strike warning, active strikes, record, pay rises, protection; telemetry
   `strikes`.
-- **Stances**: A7 (strikes halve output).
+- **Stances**: A7 (strikes cut output 60%).
 - **Evidence**:
   - seeded draw determinism;
   - strike cost at turn 50 within the §6.1 scale.
+
+#### P3 acceptance criteria
+
+Each item is checked by a named unit test unless marked otherwise. Check turn T is 10, 20, 30…; a
+turn's "resolution" is what happens when the player ends it.
+
+**Strikes (§6.1)**
+
+1. **AC12.1** The warning is drawn in the resolution of turn T−3, so the player sees it from turn
+   T−2, if satisfaction is below −70. It names ceil(25% × N) buildings, or ceil(50% × N) below −90.
+   N counts the player's production and power buildings that are not paused, infrastructure or
+   batteries. Projects under construction don't count.
+2. **AC12.2** The draw is weighted and seeded: hazardous buildings ×2 while safety is Minimal,
+   buildings with an accident in the last 10 turns ×2, others ×1, and the factors multiply. A
+   building under a pay rise or in its quiet (§6.2c) is never drawn. The same seed and state give
+   the same names.
+3. **AC12.3** In the resolution of turn T: below −70 the named buildings strike. If the warning was
+   drawn below −90 and satisfaction is now −70 to −90, only the first ceil(25% × N) strike. At −70
+   or above the strike is called off.
+4. **AC12.4** A strike cuts the building's output 60% for 3 turns (T, T+1, T+2) through a per-building
+   `recipe_output` `mult` 0.4 modifier, power plants included. Inputs are consumed in full, a mine's
+   deposit is charged in full, and labour costs 50% while it lasts.
+5. **AC12.5** A strike that runs its course ends with a +5 target shift for 10 turns.
+6. **AC12.6** While a Partial or Comprehensive union is active there is no warning, and a standing
+   warning is called off at T.
+
+**Pay rises (§6.2)**
+
+1. **AC13.1** "Raise pay here": labour +40% at that building for 10 turns. Its strike ends at once,
+   or it leaves the warning, and it cannot be drawn for 25 turns (AC13.9).
+2. **AC13.2** "Raise pay for all strikers": labour +40% at every named or striking building for 10
+   turns. Every strike ends, the warning clears, and there are no warnings or strikes for 15 turns.
+3. **AC13.3** Neither raise changes satisfaction, its target or the band. A strike ended by a raise
+   gives no +5.
+4. **AC13.4** Break strike at one building charges 2 turns of its base wages this turn as "Strike
+   breaking", ends its strike with no +5 (or takes it out of the warning), shifts the target −5 for
+   10 turns and records the round as broken.
+5. **AC13.5** Break strike for the whole round ends every strike, clears the warning, charges every
+   striker's two turns of wages and shifts the target −20 for 10 turns, with no company wide
+   protection after.
+6. **AC13.6** The second whole round broken, or the tenth building broken one at a time, adds
+   "Routinely broke strikes", a standing −15 in the satisfaction sources.
+7. **AC13.7** Only a Comprehensive Union Agreement clears it, with both counts. Partial does not.
+8. **AC13.8** A building broken on turn t, alone or in a whole round, is not named or struck at any
+   check before turn t + 20, and can be from turn t + 20. Other buildings are drawn as usual, and
+   the strike size still counts it.
+9. **AC13.9** A building settled on turn t, alone or with every strike, is not named or struck at
+   any check before turn t + 25, and can be from turn t + 25. Settling every strike still blocks
+   all strikes for 15 turns.
+10. **AC13.10** The quiet is saved (`strike_quiet_until`) and validated. Older saves load with none.
+11. **AC13.11** A bonus costs half the Settle cost of each building it covers and quiets it for
+    `roundi(15 + 5 × satisfaction / 100)` turns: 10 at −100, 15 at 0, 20 at +100. It never
+    shortens a running quiet.
+12. **AC13.12** The One off building bonus charges its cost this turn as "One off bonus", ends the
+    building's strike with no +5 or takes it out of the warning, and leaves satisfaction, its
+    target and the strike breaking counts unchanged. It refuses a building it would not lengthen.
+13. **AC13.13** The One off bonus covers every building strikes count whose quiet it would
+    lengthen, charges their costs as one lump sum and quiets each. It refuses when it covers none.
+14. **AC13.14** The cooldown list is the buildings quiet now. The vulnerable list is the named
+    buildings while a warning stands, else every counted building that would not sit out the next
+    check when its warning is still to be drawn and satisfaction is projected below −70 at the
+    draw, else none. A union agreement, or a settlement's 15 turns, empties it.
+
+**Accidents (§4.5)**
+
+1. **AC14.1** Only under Minimal safety, only at hazardous buildings: a 2% chance a turn, rising 0.25
+   points each turn Minimal stays on, to 6%. It resets when safety changes.
+2. **AC14.2** An accident stops the building for 2 turns (it does not run, blocked reason
+   `accident`), shifts the target −10 for 10 turns (stacking), and charges 2 turns of the building's
+   wage bill as compensation in that turn's costs.
+
+**State and telemetry**
+
+1. **AC15.1** Saved and validated: the warning, active strikes, the strike record (last 20), pay
+   rises, strike free turn, each building's quiet, accident downtime, last accident turns, Minimal safety's run of turns
+   and the labour RNG's seed and state. Older saves load with none.
+2. **AC15.2** Telemetry schema 7: each turn row carries `strikes`, the number of buildings on
+   strike. The receiver appends a `strikes` column. The Settings disclosure names it.
+
+**UI**
+
+1. **AC16.1** People has a third tab, Strikes, laid out as §6.3: the strike risk case, the table
+   with its column labels (Location, Output loss, Cost to manage, Action), "All strikes (N
+   buildings)" first without the output words, a folded "N buildings" row with each building under
+   it, Settle and Break strike on every row as two lines, each cost beside its key,
+   each key opening what it does with Confirm and Cancel, the record, and "How strikes work"
+   opening the encyclopedia's Mechanics page.
+2. **AC16.2** The Strikes key carries no lamp. The sub-tabs read "Upcoming Strikes (N)" (named for a
+   strike within 5 turns) and "Ongoing Strikes (N)", and the top bar's Workforce lamp blinks during
+   a warning.
+3. **AC16.3** Bell events at the warning, a strike's start, its end, a call off and an accident.
+   Building detail diagnostics say when a building is on strike or down after an accident.
+4. **AC16.4** Player copy has no hyphens, semicolons or dashes, and text on navy uses
+   `DS.PALETTE.TEXT`. Windowed screenshots of the Strikes tab with a warning, with strikes on, and
+   quiet. *Checked by review.*
+5. **AC16.5** Strike planning: the two rows read "Buildings on strike cooldown (N)" and "Buildings
+   vulnerable to strikes in next 10 turns (N)", each with a Show key. Show opens that list (and
+   shuts the other) with the three suggested actions first: the policies key opens the Labour tab,
+   One off bonus has its total beside its key, and each building row has its own bonus cost and
+   Bonus key. A Bonus key opens a bed, and Confirm pays it.
+
+**Gates**
+
+1. **AC17.1** Unit suite green with only known baseline failures, parse check clean, no new
+   `SCRIPT ERROR`.
+2. **AC17.2** E2E to turn 100 quoted against P2. A Metal Magnate probe pushed below −70 shows strikes
+   at the check turns and their cost at turn 50 within the §6.1 scale. *Checked by review.*
+3. **AC17.3** Stance A7's strike line is applied to `.claude/skills/cnc-design-intent/SKILL.md`.
 
 ### P4 — Mining and land
 
@@ -1635,6 +1936,95 @@ resolution. Fill is `staff_fill`, the hired share of a building's requirement.
   - the coal cost table (§8.3) reproduced;
   - the demo seam card fires around turn 25.
 
+#### P4 acceptance criteria
+
+Each item is checked by a named unit test unless marked otherwise. A **site** is one deposit good on one
+tile; a **working** is one of the player's buildings mining it.
+
+**Seams (§8.1–8.3, §8.9)**
+
+1. **AC18.1** A site's draw is the sum over its workings of level (1 / 2 / 3.5) × throughput ×
+   staffing run fraction, 0 for a working down after an accident or offline. NPC buildings never
+   draw. A strike does not lower draw.
+2. **AC18.2** Every seam, endless (no amount in `tile_properties.csv`, water included) or finite, is
+   free to 1.5 and may collapse past 3 (owner ruling 26 October 2026; was 2 and 4, 3 and 6).
+3. **AC18.3** M = 1 + c × max(0, draw − free), with c = 1 (+100% a working) unless
+   `extraction_cap_cost` modifiers change it. M multiplies the labour (after the 40% floor and the
+   strike share) and the maintenance (after modifiers and level) of every working on the site, and
+   it is continuous: 0.2 over the cap costs ×1.2.
+4. **AC18.4** With labour cut 60% at the floor, M 4 makes labour ×1.6 of base, not ×3.4.
+5. **AC18.5** Past the limit nothing is scaled back and M keeps rising. Each turn the seam collapses
+   with chance 5% × (draw − max), rolled on a saved seeded RNG: a finite seam loses what remains, an
+   endless one stops its mines for 3 turns. (Owner ruling, 26 October 2026.)
+6. **AC18.6** A finite seam is charged what is dug: base × level × throughput × staffing. Yield (`recipe_output`: the −30% penalty, research, strikes) never charges it.
+7. **AC18.7** The coal table of §8.3 is reproduced within £0.02 by a test.
+8. **AC18.8** The collapse chance is 5% × (draw − max) × the draw weighted level factor of the
+   workings: 1 at level 1, 0.75 at level 2, 0.5625 at level 3 (owner ruling, 30 October 2026). Four
+   level 1 mines on an endless seam: 5%. Two level 2: 3.75%. Two level 3: 11.25%. A level 3 beside a
+   level 1: about 4.95%. A level preview (upgrade dialog, forecast) counts the working at its new
+   level. The BDP Seam lamp and the upgrade dialog show the figures.
+
+**Deposits (§8.4)**
+
+1. **AC19.1** `EconomyConfig.DEPOSIT_SIZE_MULT` 3 multiplies every finite seam after
+   normalisation: coal 2,000 → 6,000, iron 4,000 → 12,000, copper 5,000 → 15,000; a coal or iron
+   seam above 4,000 in the CSV stays endless.
+2. **AC19.2** Under the demo rules (`victory_set` `demo_itch`) Metal Magnate's coal on tile_6_8 is
+   2,000, set by the start file's `demo_deposit_overrides`; in a standard match it is 6,000. A
+   save keeps whatever remains.
+
+**Land (§9)**
+
+1. **AC20.1** The buildings CSV has a `land_units` column, blank meaning `tile_size_used`, read
+   through `Catalog.land_units`. Mines are 32; the industrial factory, electric arc furnace,
+   assembly plant, high tech manufactory and consumer factory are 20.
+2. **AC20.2** Every simulation land read (building and upgrade checks, land in use, tile room,
+   land quotes, building prices, the ledger and tile view figures) uses `land_units`. Art keeps
+   reading `tile_size_used`, so no bake changes.
+
+**A seam running out (§8.7)**
+
+1. **AC21.1** When a finite site falls to 25% of its starting size, once per site, a decision card
+   offers: Sink a deeper shaft, Rob the pillars, Heavy blasting, Sell with reserves, Carry on (the
+   default). The 5-turn runway warning stays as the last notice. Each choice says what it does in
+   a few lines led by icons; hovering it opens a plate with the figures phase by phase, including
+   what happens after the mines stop.
+2. **AC21.2** Deeper shaft: pays two turns of the site's wages plus a level 1 kit at market,
+   takes the site offline 2 turns, adds 40% to what remains, then site labour ×1.4 and power ×1.5
+   until the seam ends.
+3. **AC21.3** Rob the pillars: adds 25%, site labour ×1.5, and each working has a 3% accident
+   chance a turn (halved under High safety, doubled under Minimal). When the seam ends the
+   workings collapse and are removed with nothing back.
+4. **AC21.4** Heavy blasting, each turn, seeded: 25% a double dig (output and charge ×2), 8% a
+   roof fall (offline 2 turns), 2% the rest of the seam is lost.
+5. **AC21.5** Sell with reserves: the site's workings go to an NPC company; the player is paid
+   their building price plus what remains at 50% of market.
+6. **AC21.6** The card's state and its RNG are saved. The same seed gives the same blasting.
+
+**UX (§8.8)**
+
+1. **AC22.1** The tile view's deposit line, in units a turn: "Coal seam. Digging 150 a turn. Costs
+   rise above 90. May collapse above 180. 4,120 left." (an endless seam: "Never runs out.").
+2. **AC22.2** The construct and upgrade dialogs, in units a turn: "Seam output will increase from
+   120 to 240. Above 180, deposit may collapse." No build or upgrade is refused for its seam.
+3. **AC22.3** Building detail diagnostics, Plant stage: a Seam row, green within the free cap,
+   amber over it, red past the limit with its collapse chance.
+4. **AC22.4** The build forecast and CostSolver include M.
+
+**Save, telemetry, stances**
+
+1. **AC23.1** Draw and M are derived each turn, never saved. Old saves load with no card
+   state.
+2. **AC23.2** Telemetry schema 8: each turn row carries `over_cap_sites` and `max_site_m`.
+3. **AC23.3** Stance A5, the tech-gating note (§11 C) and the production comment (§11 D) are
+   applied.
+
+**Gates**
+
+1. **AC24.1** Unit suite green with only known baseline failures, parse check clean.
+2. **AC24.2** E2E to turn 100 quoted against P3. A demo Metal Magnate probe shows the seam card
+   around turn 25. *Checked by run.*
+
 ### P5 — Output bonus conversion
 
 - **Research**: output nodes become throughput at ×1.5, extraction kept, a few +5% tier III
@@ -1650,6 +2040,69 @@ resolution. Fill is `staff_fill`, the hired share of a building's requirement.
 - **Evidence**:
   - e2e profit at turn 50 within the §14 target (£106–160);
   - base recipe margins lifted if needed.
+
+Each item is checked by a named unit test unless marked otherwise.
+
+**Research (§3.2, §3.3, Appendix A)**
+
+1. **AC26.1** Throughput, recipe input and building power modifiers can be scoped to the recipes
+   that make a good (`target_match.makes`), so a converted node keeps its old scope.
+2. **AC26.2** Every research output node on a building with material inputs becomes throughput at
+   1.5× its old percentage, same scope: Continuous-Flow Reactors, Continuous Catalyst
+   Regeneration, Atomic Layer Deposition, Coordinated Robot Handoff, Polymer Feedstocks, Chlor
+   Alkali Cells, Industrial Salt Purification, Specialist Apprenticeships, Modular Sub-Assembly,
+   Crop Rotation Programmes and Micro Silica Synthesis on concrete (+7.5%); Pozzolanic
+   Vitrification, Fully-Automated Fabs and Micro Silica Synthesis on glass (+15%); Multi-Stage
+   Flash Desal (+30%); Copper Froth Flotation (+7.5% on copper ingots: smelting, not extraction).
+3. **AC26.3** Output stays for extraction (the mining yield table, mines, wells, the water pump,
+   Block Caving, Enhanced Oil Recovery), for buildings with no material inputs (solar, wind,
+   hydro, battery storage, Renewable Dispatch Forecasting) and for hidden recycling (Tertiary
+   Filtration, converted when recycling ships).
+4. **AC26.4** Tier III capstones give +5% output: Advanced Elastomers (rubber, was +10%), Modular
+   Factory Cells, Continuous Improvement Teams.
+5. **AC26.5** Licence-group members take their §10.5 effects now, still unlocked by doing:
+   - Coal power: Pulverized Coal Boilers coal input −15%; Steam Turbine Upgrades throughput +10%;
+     Reheat Turbine Cycles labour and maintenance −10%.
+   - Iron and steel: Basic Blast Furnaces furnace throughput +10%; Continuous Casting steel inputs
+     −10%; Pulverised Carbon Injection coal input −20% on steel, power +5% on steel.
+   - Refining: Fractional Distillation throughput +10%; Catalytic Cracking crude input −10%;
+     Specialised Petrochemical Pipelines power −15%.
+   - Extraction: Bench Blasting Expansion +5% yield (as today); Bulk Haulage Fleets over-cap cost
+     −25% (+100% to +75% a working); Continuous Surface Miners +20% yield on endless seams.
+   - Factory: High-Volume Press Lines throughput +10%; Multi-Shift Production throughput +15%
+     with labour +10%.
+   - EAF: Foamy Slag Practice power −10%; Ultra-High-Power Arcs throughput +15% with power +10%.
+   - Solar and wind keep their output.
+6. **AC26.6** Each changed node's description in `research_unlocks.csv` and its modifier label say
+   what it now does.
+7. **AC26.7** A save from before P5 loads with its research modifiers taken from the new table:
+   no converted node keeps its old output bonus.
+
+**Missions (§3.3)**
+
+1. **AC27.1** `mm_ship_coal` gives +5% output for 20 turns (was permanent); `t_port` +10% for 15
+   turns (was 10); `gp_firm`, `ef_scale`, `br_factory`, `br_chemistry` their output for 20 turns
+   (were permanent); `mm_furnace` is unchanged (extraction). Each reward's text names its turns.
+2. **AC27.2** A reward already earned in a save keeps what it gave.
+
+**Legacy (§3.2)**
+
+1. **AC28.1** Metal Magnate's furnace on tile_9_9 and Glass Merchant's furnace on tile_18_16 are
+   the legacy anchor and are named "Original Furnace"; BuildingNaming honours a per-instance name.
+2. **AC28.2** The start perks hold while the Original Furnace is the player's. A per-turn
+   reconcile removes them for good once it is sold or demolished; buying it back does not restore
+   them. A save from before P5 takes its start furnace as the anchor if it still owns one.
+3. **AC28.3** Wherever a perk is shown its condition reads "While the original furnace is still
+   owned".
+
+**Stances and gates**
+
+1. **AC29.1** Stance A2 is in the design-intent skill and `docs/building-names.md` has the Original
+   Furnace exception (§11 E).
+2. **AC29.2** Unit suite with only known failures, parse check clean.
+3. **AC29.3** The Stoneshore e2e and the Metal Magnate benchmark are quoted against P4. If the
+   benchmark's turn 50 profit is under the §14 target, the recipe margin lift is proposed with
+   numbers for the owner rather than applied. *Checked by run.*
 
 ### P6 — Research licensing
 
@@ -1673,6 +2126,125 @@ resolution. Fill is `staff_fill`, the hired share of a building's requirement.
   - licence income and royalties at turns 50, 150 and 300;
   - the third licence stays a deliberate commitment.
 
+#### P6 acceptance criteria
+
+Each item is checked by a named unit test unless marked otherwise.
+
+**Groups (§10.1, §10.5)**
+
+1. **AC30.1** `research_unlocks.csv` has a `licence_group` column naming eight groups:
+   - Coal power: Pulverized Coal Boilers, Steam Turbine Upgrades, Reheat Turbine Cycles.
+   - Iron and steel: Basic Blast Furnaces, Continuous Casting, Pulverised Carbon Injection.
+   - Refining: Fractional Distillation, Catalytic Cracking, Specialised Petrochemical Pipelines.
+   - Extraction: Bench Blasting Expansion, Bulk Haulage Fleets, Continuous Surface Miners.
+   - Solar: Utility Solar Arrays, Utility-Scale Inverters, Dual-Axis Tracking Farms.
+   - Wind: Onshore Wind Control, Taller Turbine Towers, Tall-Tower Wind Capture.
+   - Factory: High-Volume Press Lines, Multi-Shift Production, and the new Near-Net-Shape Stamping
+     (Industrial Goods Factory inputs −10%; run 3 distinct factory recipes).
+   - EAF: Foamy Slag Practice, Ultra-High-Power Arcs, and the new Eccentric Bottom Tapping (Electric
+     Arc Furnace labour and maintenance −10%; run 2 on one tile).
+2. **AC30.2** Prerequisites between members of one group are gone (Catalytic Cracking, Continuous
+   Casting, Steam Turbine Upgrades, Ultra-High-Power Arcs, Tall-Tower Wind Capture). Prerequisites
+   outside the group and the rank gate stay.
+3. **AC30.3** Meeting a member's condition makes it **ready to license**, with a notice. It is not
+   granted, its effects do not apply and it does not count toward opening the next rank. Once
+   ready it stays ready.
+4. **AC30.4** `ERA_SHARES` and `DEMO_ERA_SPAN` live in `EconomyConfig`, and the New Game screen
+   reads them there. `MatchState.era_for_turn(turn)` gives 1, 2 or 3: turns 1–90, 91–180 and
+   181–300 of 300; a demo game counts on the campaign's 300 turns.
+
+**Licensing in (§10.2)**
+
+1. **AC31.1** A ready member can be licensed. Its price is set by the processes already held in
+   its group, in-house ones included:
+   - none: the era price, £200, £500 or £2,000, once. It is charged in the turn's costs before tax
+     as a one-off charge, and the cash must be in hand;
+   - one: 2% of company revenue a turn for 30 turns;
+   - two: 8%.
+2. **AC31.2** A member whose condition is unmet cannot be licensed: no money path skips a
+   condition.
+3. **AC31.3** Each turn, every royalty licence in its 30-turn term charges its rate on that turn's
+   company revenue (goods and power sales), in the turn's costs before tax, used or not. After 30
+   charges it is paid up and kept for free.
+4. **AC31.4** Licensing grants the node, and its effects apply from that turn.
+
+**In-house (§10.3)**
+
+1. **AC32.1** A free pick on a group member develops it in-house: no fee, no royalty, condition
+   not needed (as free picks today).
+2. **AC32.2** Nodes outside groups unlock by doing and are in-house. So is a group member granted
+   by a mission reward or a cheat.
+3. **AC32.3** Free picks spent are kept by `ResearchState` and saved, so a load does not hand them
+   back.
+
+**Licensing out (§10.4)**
+
+1. **AC33.1** Eligible: an in-house process of rank II or III, within 60 turns of its development, not
+   yet licensed out. Never a licensed-in node, never rank I.
+   - A process: a node with a production effect scoped to buildings, recipes or goods, or one that
+     unlocks a recipe. A company-wide practice (an effect on every building, such as management and
+     staffing) is not one, and neither are logistics, finance or council nodes.
+   - The goods a process touches: the market goods made by the buildings and recipes its effects
+     target, the goods its effects name, and those made by the recipes it unlocks. Power is sold to
+     the grid, so a power plant process touches no market good.
+2. **AC33.2** The price is max(£50, rate × the average company revenue of the last 5 turns), where:
+   - rate = 10% + 2.5% for each other unsold in-house rank II process + 5% for each other unsold
+     in-house rank III process;
+   - the rate is capped at 50%.
+3. **AC33.3** The sale is paid in that turn's costs phase as revenue before tax, on a
+   **Licence sales** line.
+4. **AC33.4** Each process licensed out lowers the sale price of every good it touches by 2% for
+   30 turns: timed `market_price` modifiers, so two sales that touch steel make −4%.
+
+**UX (§10.6)**
+
+1. **AC34.1** On the research board (DS2), a **Licence groups** drawer pins each group as one row of
+   its three drawings. The category drawers keep theirs. Each member's drawing shows:
+   - its condition;
+   - its state: ready (with a lamp), licensed or in-house;
+   - its price: "License for £200", "License for 2% of revenue, 30 turns".
+2. **AC34.2** Clicking a ready drawing opens the licence dialog. It shows the price and the payback
+   at the company's current buildings ("Costs about £8 a turn. Returns about £6 a turn."), with
+   License and Cancel.
+3. **AC34.3** Clicking an eligible in-house drawing opens the licence-out dialog. It shows "License
+   out for £X", the market consequence (the goods, −2% for 30 turns) and the turns left in the
+   patent window.
+4. **AC34.4** The old research canvas, which the demo ships, shows the same price and state lines
+   and opens the same dialogs.
+5. **AC34.5** Free picks read as in-house development ("free developments"), stamped DEVELOPED. A
+   licensed drawing is stamped LICENSED.
+6. **AC34.6** The money panel and the top bar's money sheet show **Royalties** (a cost) and
+   **Licence sales** (revenue). `Production.cash_change_of` and `MoneyPanel.net_cash_of` still
+   agree.
+
+**Save and telemetry (§12, §13)**
+
+1. **AC35.1** These round-trip through a save and are registered in `SaveValidation.FIELDS`:
+   licences, licences sold, ready members, development turns, sales due and free picks spent.
+   - A save from before P6 loads with every unlocked group member in-house and no royalty.
+   - Its development turns are unknown and count as turn 0.
+2. **AC35.2** Telemetry turn rows carry `royalties_paid` and `licence_income`. The run row carries
+   licences by kind. Schema 9.
+
+**Stances and gates**
+
+1. **AC36.1** Stance A1 is in the design-intent skill, and §11 B is in the onboarding spec.
+2. **AC36.2** The unit suite has only known failures and the parse check is clean. Windowed
+   captures show:
+   - the Licence groups drawer;
+   - a ready drawing;
+   - both dialogs;
+   - the money rows.
+3. **AC36.3** The Stoneshore e2e plays licensing:
+   - it licenses the first ready member of each group its chain uses;
+   - it takes a royalty licence only where the estimated return beats the royalty;
+   - it licenses out an eligible process when its price beats the sales it would cost (2% of last
+     turn's sales of the goods it touches, for 30 turns).
+   It reports royalties, licence income and holdings at turns 50 and 100. A 300-turn run reports
+   turns 150 and 300. Profit is quoted against P5. *Checked by run.*
+4. **AC36.4** The third licence stays a commitment: at the e2e's turn 50 revenue, the 8% royalty is
+   above the estimated return of each third member its chain could use. *Checked by run.*
+
 ### P7 — Freight by distance and transport speed
 
 - **Cost**: per-tile cost multipliers calibrated to today's legs (§7.6) in
@@ -1686,6 +2258,75 @@ resolution. Fill is `staff_fill`, the hired share of a building's requirement.
   - congestion surcharge reported;
   - Local Suppliers prices unchanged.
 
+#### P7 acceptance criteria
+
+Each item is checked by a named unit test unless marked otherwise.
+
+**Owner ruling (27 October).** Shipments take the **cheapest** route; between routes that cost the
+same, the one with fewer turns. Today's router takes the fewest turns. Once a level 1 road is no faster
+than bare ground, fewest turns would send goods over bare ground at four times the price per tile.
+
+**Cost (§7.6)**
+
+1. **AC37.1** A route's freight is the sum over its legs of tiles × weight × qty × the per-tile
+   multiplier for the leg's mode at the level of the tile the leg leaves from
+   (`EconomyConfig.FREIGHT_TILE_MULT`): road 0.5 / 0.333 / 0.2, rail 0.125 / 0.083 / 0.056, pipe and
+   reinforced pipe 0.5 / 0.333 / 0.2, bare ground 2.0. A fluid on road or rail pays its tanker
+   multiplier divided by the same reach. Weight is today's `transport_rate_for_good`.
+2. **AC37.2** A whole leg at today's reach costs exactly what it costs today, for every mode and
+   level, solids and fluids (2 road tiles at L1, 4 rail tiles at L1, 5 road tiles at L3, 9 rail tiles
+   at L3, 2 pipe tiles at L1).
+3. **AC37.3** A part leg pays for its tiles only: 3 road tiles at L1 cost 1.5 of today's legs, not 2.
+4. **AC37.4** A route with no built leg (the straight-line fallback) pays bare ground per tile: tile
+   distance × 2.0 × weight × qty.
+5. **AC37.5** `TransportService.freight_per_tile` reads the same table, so the quote the Resources panel
+   shows, times the tiles, is the charge on a one-mode route with no research and no congestion.
+6. **AC37.6** One constant, `FREIGHT_TILE_SCALE` (1.0), scales every per-tile multiplier: the lever
+   if the e2e shows freight moving more than about 10%.
+
+**Speed (§7.6)**
+
+1. **AC38.1** `EconomyConfig.INFRA_SPEED_BY_LEVEL` sets how many tiles one turn-move covers: road
+   1 / 2 / 4, rail 3 / 5 / 8, port 8 / 12 / 20, bare ground 1. Pipes are not in the §7.6 table and
+   keep 2 / 3 / 5. The `range` column of `infrastructure.csv` matches level 1. A route's transit turns
+   are its turn-moves.
+2. **AC38.2** Under the default Cheapest setting, shipments take the cheapest route, and between equal costs the one with fewer turns. A
+   level 1 road is taken over a shorter run of bare ground while it costs less (up to four times the
+   tiles), and rail over road on the same line.
+3. **AC38.3** A fluid still takes a pipe route when one exists, and road or rail tankers only where
+   the pipework does not reach.
+4. **AC38.4** Every panel that shows a mode's reach (building infrastructure rows, the transport tab,
+   the Construct build order) reads the speed table, and the cost line reads £ per unit per tile.
+5. **AC38.5** In-transit shipments from an old save arrive on their saved countdown and are not charged
+   again. A saved leg without a tile count is costed on its hex distance.
+6. **AC38.6** The Routing switch sets route choice (owner ruling, 30 October 2026): Cheapest for a new
+   game, Fastest the fewest turns then the least freight, Blended the least ½ × freight ÷ cheapest + ½ ×
+   turns ÷ fewest. Beside a road detour a turn slower than bare ground, Fastest takes the bare ground,
+   Cheapest and Blended the road. Each setting has its own cached route, a fluid still goes by pipe first,
+   and each key says what it does.
+7. **AC38.7** A save older than version 19 loads on Cheapest. The Stoneshore e2e and the Magnate bot,
+   which never touch the switch, run exactly as before. *Checked by run.*
+8. **AC38.8** The tutorial's Reach a port step is finished by a building whose goods reach a port in 2
+   turns or less, and not by one 3 turns away. Its title and description say so (owner ruling, 31 October
+   2026).
+
+**Local Suppliers (§7.6)**
+
+1. **AC39.1** Local Suppliers trips use `LOCAL_SUPPLIERS_TILES_PER_TRIP` (2), which is not a transport
+   speed. Their coefficient and freight rate are unchanged for every tile they trade on.
+2. **AC39.2** `TRANSPORT_MAX_TILES_PER_TURN` is gone. `transport_turns_for_tile_distance` uses the bare
+   ground speed and gives a route's turns only: nothing prices by turns. *Checked by audit, listed in the
+   commit.*
+
+**Evidence and stance**
+
+1. **AC40.1** Stance A7's freight line is in the design-intent skill.
+2. **AC40.2** The unit suite has only known failures and the parse check is clean. Windowed captures
+   show the reach and cost rows in the transport tab and the build order.
+3. **AC40.3** The Stoneshore e2e reports freight by mode, the congestion surcharge, Local Suppliers
+   fees and the average transit turns, against P6. Total freight is within about 10% of P6. Local
+   Suppliers fees move only as far as what is bought through them moves. *Checked by run.*
+
 ## 16. Open questions
 
 All thirteen v2 questions are answered (v3 rulings above). The rest are smaller *(proposed)*
@@ -1697,7 +2338,7 @@ details. They stand unless the owner changes them:
 | Original Furnace | Glass Merchant's starting glass furnace follows the same rule; the perk is lost for good once the building leaves the company |
 | Union agreements | both tiers: labour +10% at once, then +1% each pay round, to +25% |
 | Events | each shifts the target for 10 turns |
-| Strike pay rises | the all-strikers rise lasts 10 turns; a building with its own rise cannot be drawn while it runs |
+| Strike pay rises | the all-strikers rise lasts 10 turns (a settled building's 25 turn quiet is the owner's, §6.2c) |
 | Expansion Director | construction floor of 2 turns after the −3 |
 | Factories | the five factory-class buildings listed in §9 |
 

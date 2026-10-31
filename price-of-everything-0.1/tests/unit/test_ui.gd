@@ -2360,9 +2360,9 @@ func _test_bdp_v3_plant_checks() -> void:
 	var was_turn: int = TurnManager.current_turn
 	TurnManager.current_turn = 1
 	var early: Array = BR.plant_checks(b, r, false)
-	_check(early.map(func(c: Dictionary) -> String: return str(c.key)) == ["carbon", "works"]
+	_check(early.map(func(c: Dictionary) -> String: return str(c.key)) == ["carbon", "works", "seam"]
 		and str(early[0].tone) == "ok" and str(early[0].detail).contains("No carbon levy in force")
-		and str(early[1].tone) == "off",
+		and str(early[1].tone) == "off" and str(early[2].tone) == "off",
 		"plant checks: before the levy a coal plant pays none, and with no works the works lamp is unlit (%s / %s)" % [early[0].detail, early[1].detail])
 	TurnManager.current_turn = PolicyState.beat("p1") + 1
 	var levy: float = PolicyState.run_carbon_levy(b, r)
@@ -2886,9 +2886,11 @@ func _test_transport_panel_ds2() -> void:
 	_check(link != null and link.tooltip_text == "Go to %s" % link.text and not link.text.contains("("), "transport ds2: a tile's name is a link that says Go to it (%s)" % (link.tooltip_text if link != null else ""))
 	_check(panel.find_child("Shipment_0", true, false).find_child("TileLink", true, false) != null, "transport ds2: a shipment's destination is a link")
 	var keys: Dictionary = panel.get("_routing_keys")
-	(keys[MatchState.RouteObjective.CHEAPEST] as Control).emit_signal("pressed")
-	_check(MatchState.route_objective == MatchState.RouteObjective.CHEAPEST and bool((keys[MatchState.RouteObjective.CHEAPEST] as Control).get("latched"))
-		and not bool((keys[MatchState.RouteObjective.FASTEST] as Control).get("latched")), "transport ds2: a routing key sets the objective and latches alone")
+	(keys[MatchState.RouteObjective.FASTEST] as Control).emit_signal("pressed")
+	_check(MatchState.route_objective == MatchState.RouteObjective.FASTEST and bool((keys[MatchState.RouteObjective.FASTEST] as Control).get("latched"))
+		and not bool((keys[MatchState.RouteObjective.CHEAPEST] as Control).get("latched")), "transport ds2: a routing key sets the objective and latches alone")
+	_check((keys[MatchState.RouteObjective.BLENDED] as Control).tooltip_text.begins_with("Blended."),
+		"transport ds2: each routing key says what it does (%s)" % (keys[MatchState.RouteObjective.BLENDED] as Control).tooltip_text)
 	_check(panel.find_child("RoutingObjective", true, false) != null, "transport ds2: the routing objective keeps its name")
 	var went: Array = []
 	var note := func(tile: String) -> void: went.append(tile)

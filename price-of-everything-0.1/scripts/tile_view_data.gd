@@ -13,7 +13,7 @@ const BuildingEconomics := preload("res://scripts/building_economics.gd")
 ## tile of upgraded buildings look far emptier than it is, and an upgrade gets refused
 ## for want of room the player can see going spare.
 static func footprint_of(building: Dictionary, bd: Dictionary) -> float:
-	var base := maxf(0.0, float(bd.get("tile_size_used", 1)))
+	var base := maxf(0.0, Catalog.land_units(bd))
 	return base * BuildingLevels.mult("size", int(building.get("level", 1)))
 ## Stateless data helpers for the Tile View Panels. Pure functions that read the
 ## canonical autoloads (MatchState, Production, Stockpile, Catalog, MarketState,
@@ -114,7 +114,7 @@ static func power_build_option(internal: String, hint: String, tile_id: String, 
 			"reason": "Can't build at sea" if sea else "Offshore only — needs a sea tile"}
 	# Land / money checks (mirrors world_map._space_check_for_build): physical room
 	# counts every building; the owned-land gate only the player's estate.
-	var footprint := maxf(0.0, float(bd.get("tile_size_used", 1)))
+	var footprint := maxf(0.0, Catalog.land_units(bd))
 	var projected := BuildingState.get_tile_space_used(tile_id) + footprint
 	var player_used := BuildingState.get_tile_player_space_used(tile_id)
 	var owned := BuildingState.get_tile_land_owned(tile_id)
@@ -142,7 +142,7 @@ static func buildings_land_summary(tile_id: String, tile_data: Dictionary) -> Di
 	for building in BuildingState.get_buildings_on_tile(tile_id):
 		var bd: Dictionary = Catalog.get_building(building.get("building_id", ""))
 		var is_infra := str(bd.get("category", "")) == "infrastructure"
-		var size := maxf(0.0, float(bd.get("tile_size_used", 1)))
+		var size := maxf(0.0, Catalog.land_units(bd))
 		# NPC buildings sit on their own land — kept out of the player's built/used
 		# figures so the land readouts track what the player actually owns.
 		if not BuildingState.is_player_owned(building):
@@ -258,7 +258,7 @@ static func land_chart_data(tile_id: String, tile_data: Dictionary) -> Dictionar
 	for project in Construction.projects_on_tile(tile_id):
 		var bd: Dictionary = Catalog.get_building(project.get("building_id", ""))
 		var recipe: Dictionary = Catalog.get_recipe(project.get("recipe_id", ""))
-		var size := maxf(0.0, float(project.get("reserved_space", bd.get("tile_size_used", 1))))
+		var size := maxf(0.0, float(project.get("reserved_space", Catalog.land_units(bd))))
 		if size <= 0.0:
 			continue
 		built += size
