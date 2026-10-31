@@ -870,6 +870,11 @@ Slower goods sit on links longer, so congestion rises on busy links. The e2e sho
 **Route choice (owner ruling, 27 October).** Shipments take the cheapest route, and between equal
 costs the one with fewer turns. Upgrading a level buys speed.
 
+**The Reach a port step takes 2 turns or less (owner ruling, 31 October).** The tutorial's `t_port`
+step read "in under 2 turns", which meant 1. A level 1 road now covers one tile a turn and the Magnate's
+nearest tiles are 2 from Stoneshore Docks, so that needed rail or a level 2 road. The check is now
+turns ≤ the step's `qty`, still 2, and the title says "in 2 turns or less".
+
 **The Routing switch sets route choice (owner ruling, 30 October).** The Shipments and Stockpiles
 panel's Routing switch (Fastest, Cheapest, Blended) was never read by the router: it said Fastest
 while goods took the cheapest route. It now sets the route every new shipment takes.
@@ -2301,6 +2306,9 @@ than bare ground, fewest turns would send goods over bare ground at four times t
    and each key says what it does.
 7. **AC38.7** A save older than version 19 loads on Cheapest. The Stoneshore e2e and the Magnate bot,
    which never touch the switch, run exactly as before. *Checked by run.*
+8. **AC38.8** The tutorial's Reach a port step is finished by a building whose goods reach a port in 2
+   turns or less, and not by one 3 turns away. Its title and description say so (owner ruling, 31 October
+   2026).
 
 **Local Suppliers (§7.6)**
 

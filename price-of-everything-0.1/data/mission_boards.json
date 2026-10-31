@@ -115,7 +115,7 @@
         },
         {
           "id": "t_port",
-          "title": "Reach a port in under 2 turns",
+          "title": "Reach a port in 2 turns or less",
           "col": 5,
           "lane": 0,
           "parents": [
