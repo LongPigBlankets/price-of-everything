@@ -950,13 +950,13 @@ the seam cards' saved RNG. A finite seam that collapses loses what remains. An e
 all its mines for 3 turns (`COLLAPSE_OFFLINE_TURNS`).
 
 **Owner ruling, 30 October 2026: upgraded mines collapse less.** The collapse chance scales with
-the level of the workings: ×1 at level 1, ×0.75 at level 2, ×0.625 at level 3
-(`COLLAPSE_LEVEL_FACTOR`). For the same amount over the limit, 10% becomes 7.5% at level 2 and
-6.25% at level 3, so 5%, 3.75% and 3.125% for each level 1 working's worth over.
+the level of the workings: ×1 at level 1, ×0.75 at level 2, ×0.5625 at level 3
+(`COLLAPSE_LEVEL_FACTOR`). Each upgrade takes a true 25% off (owner, 31 October). For the same
+amount over the limit, 10% becomes 7.5% at level 2 and 5.625% at level 3, so 5%, 3.75% and 2.8125%
+for each level 1 working's worth over.
 - *My call, flagged:* a site with workings of mixed levels takes the average factor weighted by
   each working's draw. A level 3 and a level 1 on one seam draw 4.5, so 1.5 over at a factor of
-  (3.5 × 0.625 + 1) ÷ 4.5 ≈ 0.71: about 5.3% a turn, against 7.5% if both counted as level 1.
-- The owner's "25% each upgrade" is read by the figures given: the second step cuts 7.5% to 6.25%.
+  (3.5 × 0.5625 + 1) ÷ 4.5 ≈ 0.66: about 4.95% a turn, against 7.5% if both counted as level 1.
 - Upgrading still adds draw (level 2 counts 2, level 3 counts 3.5), so an upgrade that pushes a seam
   further over its limit can still raise the chance overall.
 - Where shown: the BDP Seam lamp's words give the site's chance to two decimals ("3.75% a turn"),
@@ -1954,9 +1954,9 @@ tile; a **working** is one of the player's buildings mining it.
 6. **AC18.6** A finite seam is charged what is dug: base × level × throughput × staffing. Yield (`recipe_output`: the −30% penalty, research, strikes) never charges it.
 7. **AC18.7** The coal table of §8.3 is reproduced within £0.02 by a test.
 8. **AC18.8** The collapse chance is 5% × (draw − max) × the draw weighted level factor of the
-   workings: 1 at level 1, 0.75 at level 2, 0.625 at level 3 (owner ruling, 30 October 2026). Four
-   level 1 mines on an endless seam: 5%. Two level 2: 3.75%. Two level 3: 12.5%. A level 3 beside a
-   level 1: 5.3125%. A level preview (upgrade dialog, forecast) counts the working at its new
+   workings: 1 at level 1, 0.75 at level 2, 0.5625 at level 3 (owner ruling, 30 October 2026). Four
+   level 1 mines on an endless seam: 5%. Two level 2: 3.75%. Two level 3: 11.25%. A level 3 beside a
+   level 1: about 4.95%. A level preview (upgrade dialog, forecast) counts the working at its new
    level. The BDP Seam lamp and the upgrade dialog show the figures.
 
 **Deposits (§8.4)**

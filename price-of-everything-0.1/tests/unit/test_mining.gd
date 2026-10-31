@@ -161,7 +161,7 @@ func _test_past_limit_collapse() -> void:
 	_fresh()
 
 
-## AC18.8: upgraded workings collapse less: 5% a working's worth over the limit × 1 / 0.75 / 0.625 by level, weighted
+## AC18.8: upgraded workings collapse less: 5% a working's worth over the limit × 1 / 0.75 / 0.5625 by level, weighted
 ## by draw at a mixed site; a level preview counts the new level; the lamp and the upgrade dialog say so.
 func _test_collapse_by_level() -> void:
 	_fresh()
@@ -178,22 +178,22 @@ func _test_collapse_by_level() -> void:
 	var previewed := float(MiningSites.site_of(preview).collapse)
 	BuildingState.get_building(b)["level"] = 3
 	var real := MiningSites.site(ENDLESS_TILE, "coal")
-	_check(is_equal_approx(previewed, float(real.collapse)) and absf(previewed - 0.05 * 2.5 * (2.0 * 0.75 + 3.5 * 0.625) / 5.5) < 0.0001,
+	_check(is_equal_approx(previewed, float(real.collapse)) and absf(previewed - 0.05 * 2.5 * (2.0 * 0.75 + 3.5 * 0.5625) / 5.5) < 0.0001,
 		"AC18.8 a level 3 preview counts the new level (%.4f, built %.4f)" % [previewed, float(real.collapse)])
 	_fresh()
 	_mine(ENDLESS_TILE, 3)
 	_mine(ENDLESS_TILE, 3)
-	_check(is_equal_approx(float(MiningSites.site(ENDLESS_TILE, "coal").collapse), 0.125), "AC18.8 two level 3 mines four over: 12.5%")
+	_check(is_equal_approx(float(MiningSites.site(ENDLESS_TILE, "coal").collapse), 0.1125), "AC18.8 two level 3 mines four over: 11.25%")
 	_fresh()
 	var l3 := _mine(ENDLESS_TILE, 3)
 	_mine(ENDLESS_TILE, 1)
 	var mixed := float(MiningSites.site(ENDLESS_TILE, "coal").collapse)
-	_check(absf(mixed - 0.053125) < 0.00001, "AC18.8 a level 3 beside a level 1, 1.5 over: weighted by draw, 5.3125%% (%.5f)" % mixed)
-	_check(is_equal_approx(0.10 * float(MiningSites.COLLAPSE_LEVEL_FACTOR[2]), 0.075) and is_equal_approx(0.10 * float(MiningSites.COLLAPSE_LEVEL_FACTOR[3]), 0.0625),
-		"AC18.8 the owner's example: 10% at level 1 is 7.5% at level 2 and 6.25% at level 3")
+	_check(absf(mixed - 0.075 * 2.96875 / 4.5) < 0.00001, "AC18.8 a level 3 beside a level 1, 1.5 over: weighted by draw, 4.95%% (%.5f)" % mixed)
+	_check(is_equal_approx(0.10 * float(MiningSites.COLLAPSE_LEVEL_FACTOR[2]), 0.075) and is_equal_approx(0.10 * float(MiningSites.COLLAPSE_LEVEL_FACTOR[3]), 0.05625),
+		"AC18.8 the owner's example: 10% at level 1 is 7.5% at level 2 and 5.625% at level 3, a quarter off each step")
 	var lamp: Dictionary = BuildingReadout.seam_check(BuildingState.get_building(l3))
-	_check(str(lamp.detail).contains("5.31% a turn"), "AC18.8 the Seam lamp gives the site's chance (%s)" % str(lamp.detail))
-	_check(MiningSites.collapse_by_level_text() == "5% at level 1, 3.75% at level 2 and 3.13% at level 3",
+	_check(str(lamp.detail).contains("4.95% a turn"), "AC18.8 the Seam lamp gives the site's chance (%s)" % str(lamp.detail))
+	_check(MiningSites.collapse_by_level_text() == "5% at level 1, 3.75% at level 2 and 2.81% at level 3",
 		"AC18.8 the upgrade dialog's words give each level (%s)" % MiningSites.collapse_by_level_text())
 	_fresh()
 
